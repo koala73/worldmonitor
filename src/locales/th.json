@@ -129,17 +129,20 @@
       "currencies": "สกุลเงิน",
       "area": "พื้นที่"
     },
-    "loadingResilienceScore": "Loading resilience score…",
-    "resilienceScoreUnavailable": "Resilience score unavailable.",
+    "loadingResilienceScore": "กำลังโหลดคะแนนความยืดหยุ่น…",
+    "resilienceScoreUnavailable": "คะแนนความยืดหยุ่นไม่พร้อมใช้งาน",
     "china": {
       "title": "ภาพรวมประเทศ: จีน",
       "description": "สถานะปัจจุบันด้านเศรษฐกิจมหภาค ตลาด การค้า พลังงาน และความพร้อมใช้งานเชิงปฏิบัติการจากสัญญาข้อมูลสาธารณะที่มีอยู่",
-      "macroPolicy": "มหภาคและนโยบาย",
-      "marketCredit": "ตลาดและสินเชื่อ",
-      "tradeSupply": "การค้าและห่วงโซ่อุปทาน",
+      "policyEvents": "นโยบายและการบังคับใช้",
       "energy": "พลังงาน",
       "availability": "ภัยพิบัติและการบิน",
       "observed": "ณ วันที่:",
+      "published": "เผยแพร่:",
+      "effective": "มีผลบังคับใช้:",
+      "sectors": "ภาคส่วน:",
+      "entities": "หน่วยงาน:",
+      "translation": "การแปล:",
       "source": "แหล่งที่มา:",
       "imfGrowth": "คาดการณ์การเติบโตของ IMF",
       "creditGdp": "สินเชื่อต่อ GDP",
@@ -148,8 +151,6 @@
       "gasDemand": "ความต้องการก๊าซ",
       "energyMix": "สัดส่วนการผลิตไฟฟ้า",
       "coal": "ถ่านหิน",
-      "aviationAvailability": "ความพร้อมด้านการบิน",
-      "hazardAvailability": "ความพร้อมด้านภัยพิบัติ",
       "noMajorDisruptions": "ไม่มีรายงานการหยุดชะงักที่สำคัญ",
       "activeDisruptions_one": "การหยุดชะงักที่ยังดำเนินอยู่ {{count}} รายการ",
       "activeDisruptions_other": "การหยุดชะงักที่ยังดำเนินอยู่ {{count}} รายการ",
@@ -161,18 +162,21 @@
       "ccfiSource": "ตลาดแลกเปลี่ยนการเดินเรือเซี่ยงไฮ้",
       "comtradeSource": "UN Comtrade ผู้รายงาน 156",
       "sourceUnavailable": "ไม่มีแหล่งที่มา",
-      "macroUnavailable": "ข้อมูลมหภาคและนโยบายไม่พร้อมใช้งานในขณะนี้",
-      "marketUnavailable": "ข้อมูลตลาดและสินเชื่อไม่พร้อมใช้งานในขณะนี้",
-      "tradeUnavailable": "ข้อมูลการค้าและห่วงโซ่อุปทานไม่พร้อมใช้งานในขณะนี้",
-      "energyUnavailable": "ข้อมูลพลังงานไม่พร้อมใช้งานในขณะนี้",
-      "availabilityUnavailable": "ข้อมูลความพร้อมด้านภัยพิบัติและการบินไม่พร้อมใช้งานในขณะนี้",
+      "policyUnavailable": "Official policy and enforcement events are currently unavailable.",
+      "policyPartial": "{{count}} official agencies are temporarily degraded.",
       "status": {
         "loading": "กำลังโหลด",
         "available": "พร้อมใช้งาน",
         "partial": "บางส่วน",
         "stale": "ล้าสมัย",
         "unavailable": "ไม่พร้อมใช้งาน"
-      }
+      },
+      "macroSignals": "สัญญาณมหภาค",
+      "crossStraitActivity": "กิจกรรมข้ามช่องแคบ",
+      "corporateDisclosures": "การเปิดเผยข้อมูลองค์กร",
+      "corridorConditions": "สภาวะทางเดิน",
+      "activityNowcast": "การคาดการณ์กิจกรรมปัจจุบัน",
+      "decisionSignalsUnavailable": "ภาพรวมสัญญาณการตัดสินใจของจีนไม่พร้อมใช้งานในขณะนี้"
     }
   },
   "header": {
@@ -253,7 +257,7 @@
     "panelCatCommodityEcon": "เศรษฐกิจและการค้า",
     "panelCatHappyNews": "ข่าวดี",
     "panelCatHappyPlanet": "โลกและการให้กำลังใจ",
-    "embed": "Embed"
+    "embed": "ฝังตัว"
   },
   "panels": {
     "liveNews": "ข่าวสด",
@@ -883,7 +887,7 @@
       "fytdLabel": "FY{{year}} YTD",
       "vsPriorFy": "เทียบกับ FY{{year}}",
       "sourceWto": "WTO",
-      "sourceTreasury": "US Treasury",
+      "sourceTreasury": "กระทรวงการคลังสหรัฐฯ",
       "colDate": "วันที่",
       "colMonthly": "รายเดือน",
       "colFytd": "FY YTD",
@@ -1268,8 +1272,8 @@
       "sectionFollowing": "Following",
       "sectionAll": "All",
       "sourceStates": {
-        "degraded": "degraded",
-        "stale": "stale"
+        "degraded": "เสื่อมสภาพ",
+        "stale": "ล้าสมัย"
       }
     },
     "insights": {
@@ -1348,7 +1352,8 @@
       "newsSignals": "{{news}} ข่าว • {{signals}} สัญญาณ",
       "provenanceTitle": "ความมาของการครอบคลุม: จำนวนเรื่องข่าวที่นำเข้าและแหล่งข่าวที่แตกต่างกันที่ใช้สำหรับสรุปนี้",
       "compiledFrom": "รวบรวมจาก {{stories}} เรื่องราวจาก {{sources}} แหล่งที่มา",
-      "briefFreshness": "สร้างเมื่อ {{minutes}}m ที่แล้ว · แหล่งข้อมูลล่าสุด {{hours}}h เก่า"
+      "briefFreshness": "สร้างเมื่อ {{minutes}}m ที่แล้ว · แหล่งข้อมูลล่าสุด {{hours}}h เก่า",
+      "briefStoryDetails": "Story details ({{count}})"
     },
     "settings": {
       "exportSettings": "ส่งออกการตั้งค่า",
@@ -1426,10 +1431,10 @@
         "hoursAgo": "{{count}}ชม. ที่แล้ว"
       },
       "infoTooltip": "<strong>วิธีการ</strong> คะแนนรวม (0-100) ผสมผสาน:<ul><li>50% ความไม่มั่นคงของประเทศ (5 อันดับแรกถ่วงน้ำหนัก)</li><li>30% เขตการบรรจบทางภูมิศาสตร์</li><li>20% เหตุการณ์โครงสร้างพื้นฐาน</li></ul>รีเฟรชอัตโนมัติทุก 5 นาที",
-      "cachedCiiStatus": "Cached CII {{states}}",
+      "cachedCiiStatus": "CII ที่แคชไว้ {{states}}",
       "sourceStates": {
-        "degraded": "degraded",
-        "stale": "stale"
+        "degraded": "เสื่อมสภาพ",
+        "stale": "ล้าสมัย"
       },
       "dataFreshness": "Data Freshness",
       "sourcesDetail": "{{active}}/{{total}} sources"
@@ -1556,7 +1561,26 @@
       "cafIndex": "ดัชนี CAF",
       "candidGrants": "ทุน Candid",
       "dataLag": "ความล่าช้าของข้อมูล",
-      "infoTooltip": "<strong>ดัชนีกิจกรรมการบริจาคทั่วโลก</strong> ดัชนีรวมที่ติดตามการบริจาคส่วนบุคคลผ่านแพลตฟอร์มระดมทุนและกระเป๋าเงินคริปโต<ul><li><strong>แพลตฟอร์ม</strong>: GoFundMe, GlobalGiving, JustGiving สุ่มตัวอย่างแคมเปญ</li><li><strong>คริปโต</strong>: เงินเข้ากระเป๋าการกุศลบนเชน (Endaoment, Giving Block)</li><li><strong>สถาบัน</strong>: OECD ODA, CAF World Giving Index, ทุน Candid</li></ul>ดัชนีเป็นตัวชี้ทิศทาง (ไม่ใช่จำนวนเงินที่แน่นอน) รวมการสุ่มตัวอย่างแบบเรียลไทม์กับรายงานประจำปีที่เผยแพร่"
+      "infoTooltip": "<strong>ดัชนีกิจกรรมการบริจาคทั่วโลก</strong> ดัชนีรวมที่ติดตามการบริจาคส่วนบุคคลผ่านแพลตฟอร์มระดมทุนและกระเป๋าเงินคริปโต<ul><li><strong>แพลตฟอร์ม</strong>: GoFundMe, GlobalGiving, JustGiving สุ่มตัวอย่างแคมเปญ</li><li><strong>คริปโต</strong>: เงินเข้ากระเป๋าการกุศลบนเชน (Endaoment, Giving Block)</li><li><strong>สถาบัน</strong>: OECD ODA, CAF World Giving Index, ทุน Candid</li></ul>ดัชนีเป็นตัวชี้ทิศทาง (ไม่ใช่จำนวนเงินที่แน่นอน) รวมการสุ่มตัวอย่างแบบเรียลไทม์กับรายงานประจำปีที่เผยแพร่",
+      "benchmarkTitle": "เกณฑ์มาตรฐานการบริจาคระดับโลก",
+      "benchmarkInfoTooltip": "<strong>เกณฑ์มาตรฐานการบริจาคระดับโลก</strong> การเรียกร้องแพลตฟอร์มและสถาบันที่เผยแพร่พร้อมระยะเวลาแหล่งที่มาและสถานะการตรวจสอบ ตัวเลขรายปีเป็นการประมาณการ ไม่ใช่กิจกรรมสด",
+      "status": {
+        "published": "เกณฑ์มาตรฐานที่เผยแพร่พร้อมการครอบคลุมแหล่งที่มาที่ผ่านการตรวจสอบ",
+        "partial": "เกณฑ์มาตรฐานที่เผยแพร่พร้อมการครอบคลุมแหล่งที่มาบางส่วน",
+        "legacy": "ภาพรวมเก่า; ไม่มีรายละเอียดแหล่งที่มา",
+        "cached": "แสดงภาพรวมที่แคชไว้; ไม่สามารถรีเฟรชได้"
+      },
+      "trackedAnnualized": "การบริจาคแพลตฟอร์มที่ติดตาม — การประมาณการรายปี",
+      "annualizedDaily": "การประมาณการรายวันรายปี",
+      "atLeast": "อย่างน้อย",
+      "about": "ประมาณ",
+      "sourceNotVerified": "แหล่งที่มาไม่ได้รับการตรวจสอบ",
+      "reportedCumulative": "ยอดรวมสะสมที่รายงาน",
+      "sourcePeriod": "{{source}} · {{period}}",
+      "benchmark": "เกณฑ์มาตรฐานที่เผยแพร่",
+      "sourcesMethodology": "แหล่งที่มาและวิธีการ",
+      "methodologyIntro": "เฉพาะการเรียกร้องแพลตฟอร์มประจำปีที่ผ่านการตรวจสอบหรือรายปีที่สามารถป้องกันได้เท่านั้นที่เข้าสู่พาดหัว ตัวเลขสะสมและสถาบันยังคงเป็นบริบทแยกต่างหาก",
+      "partialEstimate": "การประมาณการที่ผ่านการตรวจสอบบางส่วน"
     },
     "displacement": {
       "refugees": "ผู้ลี้ภัย",
@@ -1596,6 +1620,8 @@
       "summaryFailed": "สรุปล้มเหลว",
       "sources": "{{count}} แหล่งที่มา",
       "relatedAssetsNear": "สินทรัพย์ที่เกี่ยวข้องใกล้ {{location}}",
+      "sourceCoverage": "{{covered}}/{{total}} แหล่งข่าว",
+      "sourceCoverageHint": "แสดง {{covered}} จาก {{total}} แหล่งข่าวที่เปิดใช้งาน — แผงนี้จะสลับแหล่งข่าวที่ดึงในทุกครั้งที่รีเฟรช",
       "sortBy": "เรียงลำดับตาม",
       "sortNewest": "ล่าสุด",
       "sortRelevance": "ความเกี่ยวข้อง"
@@ -2108,7 +2134,11 @@
       "infoTooltip": "<strong>Disaster Cascade</strong> ตรวจจับสัญญาณภัยธรรมชาติและโครงสร้างพื้นฐานที่บรรจบกัน:<ul><li>สหสัมพันธ์แผ่นดินไหว ไฟป่า น้ำท่วม และสภาพอากาศสุดโต่ง</li><li>ติดตามผลกระทบแบบเรียงซ้อนต่อโครงสร้างพื้นฐานและห่วงโซ่อุปทาน</li><li>เน้นภูมิภาคที่มีความเสี่ยงจากภัยยุ่งเหยิงรวมกัน</li></ul>คลิกการ์ดเพื่อซูมไปยังภูมิภาคที่ได้รับผลกระทบ"
     },
     "markets": {
-      "infoTooltip": "<strong>Markets</strong> ดัชนีหุ้น หุ้น และราคา crypto แบบเรียลไทม์ ปรับแต่งรายการชมรับชองของคุณด้วยปุ่ม Watchlist Sparklines แสดงแนวโน้มราคาล่าสุด"
+      "infoTooltip": "<strong>Markets</strong> ดัชนีหุ้น หุ้น และราคา crypto แบบเรียลไทม์ ปรับแต่งรายการชมรับชองของคุณด้วยปุ่ม Watchlist Sparklines แสดงแนวโน้มราคาล่าสุด",
+      "chart": {
+        "title": "แผนภูมิราคา {{symbol}}",
+        "close": "ปิดแผนภูมิ"
+      }
     },
     "heatmap": {
       "infoTooltip": "<strong>Sector Heatmap</strong> ประสิทธิภาพของภาคส่วน S&P 500 ในแวบแรก ความเข้มของสีสะท้อนขนาดของการเปลี่ยนแปลงรายวัน เขียว = กำไร แดง = ขาดทุน"
@@ -2170,11 +2200,101 @@
       "cta": "อัปเกรดเป็น Pro →",
       "dismiss": "ปิด"
     },
+    "billingState": {
+      "onHoldDesc": "การชำระเงินล้มเหลว อัปเดตวิธีการชำระเงินของคุณเพื่อกู้คืนการเข้าถึงระดับพรีเมียม",
+      "onHoldBannerMessage": "การชำระเงินล้มเหลว อัปเดตวิธีการชำระเงินของคุณเพื่อให้การสมัครสมาชิกยังคงใช้งานได้",
+      "updatePayment": "อัปเดตการชำระเงิน",
+      "renewalPendingDesc": "เรากำลังตรวจสอบการต่ออายุการสมัครสมาชิกของคุณ การเข้าถึงระดับพรีเมียมจะกลับมาโดยอัตโนมัติเมื่อได้รับการยืนยัน",
+      "refreshStatus": "รีเฟรชสถานะ",
+      "renewalFailedDesc": "เราไม่สามารถตรวจสอบการต่ออายุการสมัครสมาชิกของคุณได้ จัดการการเรียกเก็บเงินหรือติดต่อฝ่ายสนับสนุนหากปัญหายังคงอยู่",
+      "manageBilling": "จัดการการเรียกเก็บเงิน",
+      "lapsedDesc": "การสมัครสมาชิก Pro ของคุณสิ้นสุดแล้ว สมัครใหม่เพื่อกลับมาใช้การเข้าถึงระดับพรีเมียม",
+      "resubscribe": "สมัครใหม่"
+    },
     "checkoutFailureBanner": {
       "message": "ไม่สามารถทำการชำระเงินให้สำเร็จ ไม่มีการเรียกเก็บเงิน",
       "retry": "ลองอีกครั้ง",
       "retrying": "กำลังลองอีกครั้ง…",
       "dismiss": "ปิด"
+    },
+    "proActivation": {
+      "badge": "PRO",
+      "progress": "ขั้นตอนที่ {{current}} จาก {{total}}",
+      "closeLabel": "ข้ามการตั้งค่า",
+      "ariaLabel": "การตั้งค่าเปิดใช้งาน Pro",
+      "signedInAs": "เข้าสู่ระบบในชื่อ {{email}}",
+      "steps": {
+        "brief": {
+          "heading": "สรุปข่าวประจำวันของคุณ ทุกเช้า",
+          "body": "สรุปข่าวกรองที่คัดสรรมาส่งถึงกล่องข้อความของคุณทุกเช้า — สัญญาณสำคัญจากช่วงกลางคืน สรุปให้อ่านจบใน 5 นาที",
+          "confirmCta": "เปิดสรุปข่าวเช้าของฉัน",
+          "confirming": "กำลังเปิดใช้งาน…",
+          "doneNote": "สรุปข่าวเช้าของคุณทำงานอยู่แล้ว",
+          "scheduleNote": "เราจะคงเวลาส่งปัจจุบันของคุณไว้",
+          "summaryLabel": "สรุปข่าวเช้า",
+          "summaryVerified": "เปิดใช้งาน — เริ่มต้นจากสรุปข่าวเช้าครั้งถัดไปของคุณ",
+          "deliverAt": "ส่งเวลา",
+          "previewLoading": "กำลังเตรียมตัวอย่างสรุปข่าวฉบับแรกของคุณ…",
+          "previewLabel": "สรุปข่าวเช้านี้"
+        },
+        "alerts": {
+          "heading": "การแจ้งเตือนสำคัญ",
+          "body": "รับการแจ้งเตือนในเบราว์เซอร์เมื่อมีเหตุการณ์สำคัญเกิดขึ้น — ความขัดแย้งที่ทวีความรุนแรง แรงสั่นสะเทือนของตลาด มาตรการคว่ำบาตรใหม่ ปรับความถี่ได้ทุกเมื่อในการตั้งค่า",
+          "confirmCta": "เปิดใช้งานการแจ้งเตือน",
+          "confirming": "กำลังเปิดใช้งาน…",
+          "doneNote": "การแจ้งเตือนของเบราว์เซอร์เปิดใช้งานอยู่แล้ว",
+          "blockedNote": "การแจ้งเตือนถูกบล็อกในเบราว์เซอร์ของคุณ เปิดใช้งานในการตั้งค่าเว็บไซต์ของเบราว์เซอร์เพื่อรับการแจ้งเตือน",
+          "declinedNote": "ไม่มีปัญหา — เราจะไม่ส่งการแจ้งเตือนของเบราว์เซอร์ คุณสามารถเปิดใช้งานภายหลังได้จากการตั้งค่าเว็บไซต์ของเบราว์เซอร์",
+          "summaryLabel": "การแจ้งเตือนสำคัญ",
+          "summaryVerified": "เปิดใช้งาน — สัญญาณสำคัญจะส่งถึงเบราว์เซอร์ของคุณ"
+        },
+        "power": {
+          "heading": "ชุดเครื่องมือ Pro ของคุณ",
+          "body": "วิดเจ็ตที่กำหนดเอง การเชื่อมต่อ MCP และนักวิจัย AI ถูกปลดล็อกแล้ว สร้างบอร์ดที่คุณอยากจับตาดูจริง ๆ",
+          "confirmCta": "สำรวจเครื่องมือ Pro",
+          "confirming": "กำลังเปิด…",
+          "doneNote": "คุณใช้เครื่องมือ Pro อยู่แล้ว",
+          "summaryLabel": "ชุดเครื่องมือ Pro",
+          "summaryVerified": "ปลดล็อกแล้ว พร้อมใช้งานเมื่อคุณพร้อม",
+          "channelsNote": "ต้องการ Telegram, Slack, Discord หรือเว็บฮุกมากกว่ากัน?",
+          "pointers": {
+            "search": "ค้นหาทั่วทั้งแดชบอร์ด",
+            "widgets": "สร้างวิดเจ็ตที่กำหนดเอง",
+            "analyst": "ถามนักวิเคราะห์ AI",
+            "mcpClients": "ตั้งค่า MCP",
+            "channels": "ตั้งค่าในการตั้งค่าการแจ้งเตือน"
+          }
+        }
+      },
+      "status": {
+        "pending": "ยังไม่ได้ตั้งค่า",
+        "inFlight": "กำลังตั้งค่า…",
+        "verified": "พร้อมแล้ว",
+        "failed": "ไม่สำเร็จ",
+        "blocked": "ถูกบล็อก",
+        "unavailable": "ไม่พร้อมใช้งาน",
+        "blockedNote": "ตอนนี้ยังใช้ไม่ได้ — คุณสามารถตั้งค่าภายหลังได้จากการตั้งค่า",
+        "unavailableNote": "ใช้ไม่ได้บนอุปกรณ์ของคุณ — คุณสามารถตั้งค่าภายหลังได้",
+        "failedBody": "เกิดข้อผิดพลาดบางอย่าง คุณสามารถลองอีกครั้ง หรือตั้งค่าภายหลังได้จากการตั้งค่า",
+        "retry": "ลองอีกครั้ง"
+      },
+      "actions": {
+        "skip": "ข้ามไปก่อน",
+        "continue": "ดำเนินการต่อ"
+      },
+      "summary": {
+        "heading": "พร้อมทุกอย่างแล้ว",
+        "subVerified": "นี่คือสิ่งที่ทำงานอยู่ในบัญชีของคุณ",
+        "subPending": "คุณสามารถตั้งค่าให้เสร็จสมบูรณ์ได้ทุกเมื่อจากการตั้งค่า",
+        "linePending": "ยังไม่ได้ตั้งค่า — ตั้งค่าให้เสร็จได้ทุกเมื่อในการตั้งค่า",
+        "lineFailed": "เราไม่สามารถตั้งค่านี้ได้ — ลองอีกครั้งจากการตั้งค่า",
+        "finish": "ไปที่แดชบอร์ดของฉัน"
+      },
+      "chip": {
+        "message": "ตั้งค่าบัญชี Pro ของคุณให้เสร็จสมบูรณ์",
+        "action": "ตั้งค่าให้เสร็จสมบูรณ์",
+        "dismissLabel": "ปิด"
+      }
     },
     "frameworkSelector": {
       "label": "กรอบการวิเคราะห์",
@@ -2349,43 +2469,59 @@
       }
     },
     "mobileNav": {
-      "panelCategories": "Panel categories"
+      "panelCategories": "หมวดหมู่แผง"
     },
     "panelFreshness": {
       "status": {
-        "fresh": "Fresh",
-        "stale": "Stale",
-        "veryStale": "Very stale",
-        "noData": "No data",
-        "disabled": "Disabled",
-        "error": "Error"
+        "fresh": "ล่าสุด",
+        "stale": "ล้าสมัย",
+        "veryStale": "ล้าสมัยมาก",
+        "noData": "ไม่มีข้อมูล",
+        "disabled": "ปิดใช้งาน",
+        "error": "ข้อผิดพลาด"
       },
       "labelWithAge": "{{status}} {{age}}",
-      "title": "Data freshness: {{status}}. {{sources}}",
+      "title": "ความสดใหม่ของข้อมูล: {{status}} {{sources}}",
       "sourceDetail": "{{name}}: {{status}}, {{update}}",
       "sourceDetailWithHealth": "{{name}}: {{status}}, {{update}}, {{detail}}",
-      "lastUpdated": "last updated {{time}}",
-      "neverUpdated": "never updated",
+      "lastUpdated": "อัปเดตล่าสุด {{time}}",
+      "neverUpdated": "ไม่เคยอัปเดต",
       "health": {
-        "partialCoverage": "partial coverage",
-        "contentStale": "content stale",
-        "seedStale": "seed stale",
-        "noSourceData": "no source data",
-        "sourceErrorReported": "source error reported",
-        "freshnessStoreUnavailable": "freshness store unavailable",
-        "freshnessStoreDegraded": "freshness store degraded"
+        "partialCoverage": "ครอบคลุมบางส่วน",
+        "contentStale": "เนื้อหาล้าสมัย",
+        "seedStale": "seed ล้าสมัย",
+        "noSourceData": "ไม่มีข้อมูลแหล่งที่มา",
+        "sourceErrorReported": "รายงานข้อผิดพลาดแหล่งที่มา",
+        "freshnessStoreUnavailable": "ที่เก็บข้อมูลความสดใหม่ไม่พร้อมใช้งาน",
+        "freshnessStoreDegraded": "ที่เก็บข้อมูลความสดใหม่เสื่อมสภาพ"
       },
       "time": {
-        "never": "never",
-        "justNow": "just now",
-        "minutesAgo": "{{count}}m ago",
-        "hoursAgo": "{{count}}h ago",
-        "daysAgo": "{{count}}d ago",
-        "compactNow": "now",
-        "compactMinutes": "{{count}}m",
-        "compactHours": "{{count}}h",
-        "compactDays": "{{count}}d"
+        "never": "ไม่เคย",
+        "justNow": "เมื่อกี้",
+        "minutesAgo": "{{count}}น ที่แล้ว",
+        "hoursAgo": "{{count}}ช ที่แล้ว",
+        "daysAgo": "{{count}}ว ที่แล้ว",
+        "compactNow": "ตอนนี้",
+        "compactMinutes": "{{count}}น",
+        "compactHours": "{{count}}ช",
+        "compactDays": "{{count}}ว"
       }
+    },
+    "exportGate": {
+      "signedOutDesc": "ลงชื่อเข้าใช้เพื่อส่งออกข้อมูลแดชบอร์ดเป็น CSV, JSON หรือ PDF",
+      "upgradeDesc": "การส่งออกข้อมูล (CSV, JSON, PDF) รวมอยู่ใน Pro Business",
+      "upgradeCta": "อัปเกรดเป็น Pro Business",
+      "lockedAriaLabel": "ส่งออกข้อมูล — ล็อกอยู่ {{reason}}",
+      "unlockedAnnouncement": "การส่งออกข้อมูลถูกปลดล็อกแล้ว",
+      "preparingPdf": "กำลังเตรียม PDF…",
+      "pdfFailed": "ไม่สามารถสร้างรายงาน PDF ได้ ลองอีกครั้งหรือใช้การส่งออก JSON"
+    },
+    "tabCap": {
+      "signedOutDesc": "พื้นที่ทำงานที่ไม่ได้ลงชื่อเข้าใช้จำกัดที่ {{cap}} แท็บ ลงชื่อเข้าใช้เพื่อเพิ่มเติม",
+      "upgradeDesc": "คุณถึงขีดจำกัด {{cap}} แท็บแดชบอร์ดแล้ว",
+      "upgradeCta": "อัปเกรดเพื่อรับเพิ่มเติม",
+      "lockedAriaLabel": "เพิ่มแท็บ — ล็อกอยู่ {{reason}}",
+      "unlockedAnnouncement": "ยกเลิกขีดจำกัดแท็บแดชบอร์ดแล้ว"
     }
   },
   "popups": {
@@ -3189,16 +3325,42 @@
     "visualizationFailed": "การแสดงผลล้มเหลว"
   },
   "dashboardTabs": {
-    "ariaLabel": "Dashboard tabs",
-    "defaultName": "Main",
-    "newTabName": "New Tab",
-    "newTabCreated": "New tab created",
-    "tabDeleted": "Tab \"{{name}}\" deleted",
-    "addTab": "Add tab",
-    "addTabTitle": "New tab (starts with the default panels)",
-    "renameHint": "{{name}} — double-click to rename",
-    "deleteTab": "Delete tab",
-    "deleteTabAria": "Delete tab {{name}}",
-    "tabNameAria": "Tab name"
+    "ariaLabel": "แท็บแดชบอร์ด",
+    "defaultName": "หลัก",
+    "newTabName": "แท็บใหม่",
+    "newTabCreated": "สร้างแท็บใหม่แล้ว",
+    "tabDeleted": "ลบแท็บ \"{{name}}\" แล้ว",
+    "addTab": "เพิ่มแท็บ",
+    "addTabTitle": "แท็บใหม่ (เริ่มต้นด้วยแผงเริ่มต้น)",
+    "renameHint": "{{name}} — ดับเบิลคลิกเพื่อเปลี่ยนชื่อ",
+    "deleteTab": "ลบแท็บ",
+    "deleteTabAria": "ลบแท็บ {{name}}",
+    "tabNameAria": "ชื่อแท็บ"
+  },
+  "theaterPresets": {
+    "label": "พรีเซ็ตการครอบคลุม",
+    "applied": "ใช้พรีเซ็ต {{preset}} แล้ว: เปิดใช้แหล่งข้อมูล {{count}} แหล่ง",
+    "alreadyApplied": "ใช้พรีเซ็ต {{preset}} อยู่แล้ว",
+    "ukraineWar": {
+      "label": "สงครามยูเครน",
+      "description": "เปิดใช้สื่อหลักของยูเครน สื่อรัสเซียอิสระ และแหล่งประเมินสถานการณ์แนวหน้า"
+    },
+    "indoPacific": {
+      "label": "อินโดแปซิฟิก / ไต้หวัน",
+      "description": "เปิดใช้แหล่งข่าวความมั่นคงจากไต้หวัน ปากีสถาน และเอเชียตะวันออกเฉียงใต้"
+    },
+    "sahelWestAfrica": {
+      "label": "ซาเฮลและแอฟริกาตะวันตก",
+      "description": "เปิดใช้แหล่งข่าวท้องถิ่นจากซาเฮล ไนจีเรีย และแอฟริกาตะวันตก"
+    },
+    "caucasusCentralAsia": {
+      "label": "คอเคซัสและเอเชียกลาง",
+      "description": "เปิดใช้แหล่งข่าวภูมิภาคจากคอเคซัสใต้และเอเชียกลาง"
+    },
+    "middleEastFlashpoints": {
+      "label": "จุดตึงเครียดในตะวันออกกลาง",
+      "description": "เปิดใช้แหล่งข่าวจากอิหร่าน อิสราเอล อ่าวอาหรับ และภูมิภาคเคิร์ด"
+    },
+    "unavailable": "พรีเซ็ต {{preset}} ไม่พร้อมใช้งานกับแผงปัจจุบันของคุณ"
   }
 }

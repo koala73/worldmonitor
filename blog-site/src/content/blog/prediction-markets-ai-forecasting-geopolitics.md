@@ -6,7 +6,7 @@ keywords: "prediction markets geopolitics, Polymarket intelligence tool, AI geop
 audience: "Geopolitical analysts, traders using prediction markets, policy researchers, forecasting enthusiasts"
 heroImage: "/blog/images/blog/prediction-markets-ai-forecasting-geopolitics.jpg"
 pubDate: "2026-03-03"
-modifiedDate: "2026-06-13"
+modifiedDate: "2026-07-22"
 ---
 
 Intelligence is about the past and present. Forecasting is about what comes next. Most dashboards give you one or the other. World Monitor gives you both.
@@ -168,4 +168,4 @@ The AI synthesizes CII scores, news velocity, military signals, Telegram OSINT, 
 
 ---
 
-**See what's coming at [worldmonitor.app](https://www.worldmonitor.app). Prediction markets, AI forecasting, and 45 intelligence layers, all free.**
+**See what's coming at [worldmonitor.app](https://www.worldmonitor.app). Prediction markets, AI forecasting, and 56 map layers, all free.**

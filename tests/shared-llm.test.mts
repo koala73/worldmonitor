@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
 import { afterEach, describe, it } from 'node:test';
 
-import { callLlm, callLlmReasoning, getLlmAttemptTimeoutMs } from '../server/_shared/llm.ts';
+import { callLlm, callLlmReasoning, callLlmReasoningStream, getLlmAttemptTimeoutMs } from '../server/_shared/llm.ts';
+import { __testing__ as llmHealth, isModelUsable } from '../server/_shared/llm-health.ts';
 
 const originalFetch = globalThis.fetch;
 const originalAbortSignalTimeout = AbortSignal.timeout;
@@ -16,6 +17,8 @@ const originalLlmReasoningModel = process.env.LLM_REASONING_MODEL;
 afterEach(() => {
   globalThis.fetch = originalFetch;
   AbortSignal.timeout = originalAbortSignalTimeout;
+  // The health gate's caches are module-level and outlive a single test.
+  llmHealth.reset();
 
   if (originalLlmReasoningProvider === undefined) delete process.env.LLM_REASONING_PROVIDER;
   else process.env.LLM_REASONING_PROVIDER = originalLlmReasoningProvider;
@@ -584,5 +587,186 @@ describe('callLlm', () => {
       'https://openrouter.ai/api/v1/chat/completions',
       'https://api.groq.com/openai/v1/chat/completions',
     ]);
+  });
+
+  it('stops re-sending the prompt to a model the provider rejects as unknown', async () => {
+    process.env.GROQ_API_KEY = 'groq-test-key';
+    process.env.OPENROUTER_API_KEY = 'or-test-key';
+    delete process.env.OLLAMA_API_URL;
+    delete process.env.LLM_API_URL;
+    delete process.env.LLM_API_KEY;
+
+    const postUrls: string[] = [];
+
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
+
+      // The origin probe answers 200 — reachability was never the problem.
+      if ((init?.method || 'GET') === 'GET') {
+        return new Response('', { status: 200 });
+      }
+
+      postUrls.push(url);
+      if (url.includes('openrouter.ai')) {
+        return new Response(JSON.stringify({
+          error: { message: 'ghost/ghost-model-v9 is not a valid model ID', code: 400 },
+        }), { status: 400 });
+      }
+
+      return new Response(JSON.stringify({
+        choices: [{ message: { content: 'groq fallback response' } }],
+        usage: { total_tokens: 7 },
+      }), { status: 200 });
+    }) as typeof fetch;
+
+    for (let attempt = 0; attempt < 4; attempt += 1) {
+      const result = await callLlm({
+        messages: [{ role: 'user', content: `attempt ${attempt}` }],
+        modelOverrides: { openrouter: 'ghost/ghost-model-v9' },
+      });
+      assert.equal(result?.provider, 'groq', 'the fallback must keep serving every call');
+    }
+
+    const rejectedModelPosts = postUrls.filter(url => url.includes('openrouter.ai'));
+    assert.equal(
+      rejectedModelPosts.length,
+      2,
+      `a model the provider rejects must stop being re-sent once quarantined, got ${rejectedModelPosts.length} attempts across 4 calls`,
+    );
+  });
+
+  it('clears a prior model rejection as soon as the provider accepts the model', async () => {
+    process.env.OPENROUTER_API_KEY = 'or-test-key';
+    delete process.env.GROQ_API_KEY;
+    delete process.env.OLLAMA_API_URL;
+    delete process.env.LLM_API_URL;
+    delete process.env.LLM_API_KEY;
+
+    const model = 'ghost/ghost-model-v9';
+    let postCount = 0;
+    globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit) => {
+      if ((init?.method || 'GET') === 'GET') return new Response('', { status: 200 });
+      postCount += 1;
+      if (postCount === 2) {
+        return new Response(JSON.stringify({
+          choices: [{ message: { content: 'provider accepted this model' } }],
+          usage: { total_tokens: 5 },
+        }), { status: 200 });
+      }
+      return new Response(JSON.stringify({
+        error: { message: `${model} is not a valid model ID` },
+      }), { status: 400 });
+    }) as typeof fetch;
+
+    const common = {
+      messages: [{ role: 'user', content: 'test' }],
+      provider: 'openrouter',
+      modelOverrides: { openrouter: model },
+    } as const;
+
+    assert.equal(await callLlm(common), null);
+    assert.equal(
+      await callLlm({ ...common, validate: () => false }),
+      null,
+      'application validation still rejects the payload',
+    );
+    assert.equal(await callLlm(common), null);
+
+    assert.equal(
+      isModelUsable('https://openrouter.ai/api/v1/chat/completions', model),
+      true,
+      'HTTP 200 proves the provider accepts the model and must reset the rejection streak',
+    );
+  });
+
+  it('quarantines a rejected reasoning-stream model while its fallback keeps streaming', async () => {
+    process.env.OPENROUTER_API_KEY = 'or-test-key';
+    process.env.GROQ_API_KEY = 'groq-test-key';
+    process.env.LLM_REASONING_PROVIDER = 'openrouter';
+    process.env.LLM_REASONING_MODEL = 'ghost/ghost-model-v9';
+    delete process.env.OLLAMA_API_URL;
+    delete process.env.LLM_API_URL;
+    delete process.env.LLM_API_KEY;
+
+    const postUrls: string[] = [];
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
+      if ((init?.method || 'GET') === 'GET') return new Response('', { status: 200 });
+
+      postUrls.push(url);
+      if (url.includes('openrouter.ai')) {
+        return new Response(JSON.stringify({
+          error: { message: 'ghost/ghost-model-v9 is not a valid model ID' },
+        }), { status: 400 });
+      }
+
+      const body = [
+        'data: {"choices":[{"delta":{"content":"groq fallback"}}]}',
+        '',
+        'data: [DONE]',
+        '',
+      ].join('\n');
+      return new Response(body, {
+        status: 200,
+        headers: { 'Content-Type': 'text/event-stream' },
+      });
+    }) as typeof fetch;
+
+    for (let attempt = 0; attempt < 4; attempt += 1) {
+      const output = await new Response(callLlmReasoningStream({
+        messages: [{ role: 'user', content: `attempt ${attempt}` }],
+      })).text();
+      assert.match(output, /groq fallback/);
+      assert.match(output, /"done":true/);
+    }
+
+    assert.equal(
+      postUrls.filter(url => url.includes('openrouter.ai')).length,
+      2,
+      'the quarantined stream model must be skipped before another completion request',
+    );
+    assert.equal(
+      postUrls.filter(url => url.includes('api.groq.com')).length,
+      4,
+      'the fallback must continue serving every stream',
+    );
+  });
+
+  it('clears a stream model rejection on HTTP success even when the stream is empty', async () => {
+    process.env.OPENROUTER_API_KEY = 'or-test-key';
+    process.env.LLM_REASONING_PROVIDER = 'openrouter';
+    process.env.LLM_REASONING_MODEL = 'ghost/ghost-model-v9';
+    delete process.env.GROQ_API_KEY;
+    delete process.env.OLLAMA_API_URL;
+    delete process.env.LLM_API_URL;
+    delete process.env.LLM_API_KEY;
+
+    let postCount = 0;
+    globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit) => {
+      if ((init?.method || 'GET') === 'GET') return new Response('', { status: 200 });
+      postCount += 1;
+      if (postCount === 2) {
+        return new Response('data: [DONE]\n\n', {
+          status: 200,
+          headers: { 'Content-Type': 'text/event-stream' },
+        });
+      }
+      return new Response(JSON.stringify({
+        error: { message: 'ghost/ghost-model-v9 is not a valid model ID' },
+      }), { status: 400 });
+    }) as typeof fetch;
+
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      await new Response(callLlmReasoningStream({
+        messages: [{ role: 'user', content: `attempt ${attempt}` }],
+      })).text();
+    }
+
+    assert.equal(postCount, 3);
+    assert.equal(
+      isModelUsable('https://openrouter.ai/api/v1/chat/completions', 'ghost/ghost-model-v9'),
+      true,
+      'the accepted empty stream resets the streak before the next rejection',
+    );
   });
 });

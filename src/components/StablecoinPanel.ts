@@ -6,6 +6,7 @@ import { joinSafeHtml, safeHtml } from '@/utils/sanitize';
 import type { ListStablecoinMarketsResponse } from '@/generated/client/worldmonitor/market/v1/service_client';
 import { getHydratedData } from '@/services/bootstrap';
 import { MarketServiceClient } from '@/services/generated-rpc-clients';
+import { proFreshRpcFetch } from '@/services/premium-fetch';
 
 type StablecoinResult = ListStablecoinMarketsResponse;
 
@@ -51,7 +52,7 @@ export class StablecoinPanel extends Panel {
 
   private async refreshFromRpc(): Promise<void> {
     try {
-      const client = new MarketServiceClient(getRpcBaseUrl(), { fetch: (...args) => globalThis.fetch(...args) });
+      const client = new MarketServiceClient(getRpcBaseUrl(), { fetch: proFreshRpcFetch });
       const fresh = await client.listStablecoinMarkets({ coins: [] });
       if (!this.element?.isConnected) return;
       if (fresh.stablecoins?.length || !this.data) {

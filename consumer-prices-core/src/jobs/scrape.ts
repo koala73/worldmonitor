@@ -10,13 +10,21 @@ import { loadAllRetailerConfigs, loadRetailerConfig } from '../config/loader.js'
 import { initProviders, teardownAll } from '../acquisition/registry.js';
 import { GenericPlaywrightAdapter } from '../adapters/generic.js';
 import { ExaSearchAdapter } from '../adapters/exa-search.js';
-import { SearchAdapter } from '../adapters/search.js';
+import { SearchAdapter, SearchTargetError } from '../adapters/search.js';
 import { ExaProvider } from '../acquisition/exa.js';
 import { FirecrawlProvider } from '../acquisition/firecrawl.js';
 import type { AdapterContext } from '../adapters/types.js';
 import { upsertCanonicalProduct } from '../db/queries/products.js';
 import { getBasketItemId, getPinnedUrlsForRetailer, getDisabledPinsForRecovery, upsertProductMatch } from '../db/queries/matches.js';
 import { AUTO_MATCH_THRESHOLD, type ValidatorResult } from '../adapters/validator.js';
+import {
+  classifyValidatorOutcome,
+  createScrapeRunStatement,
+  isRunBudgetExhausted,
+  resolveRunBudgetMs,
+  resolveRunStatus,
+  updateScrapeRunStatement,
+} from './scrape-coverage.js';
 
 const logger = {
   info: (msg: string, ...args: unknown[]) => console.log(`[scrape] ${msg}`, ...args),
@@ -42,11 +50,8 @@ async function getOrCreateRetailer(slug: string, config: ReturnType<typeof loadR
 }
 
 async function createScrapeRun(retailerId: string): Promise<string> {
-  const result = await query<{ id: string }>(
-    `INSERT INTO scrape_runs (retailer_id, started_at, status, trigger_type, pages_attempted, pages_succeeded, errors_count, config_version)
-     VALUES ($1, NOW(), 'running', 'scheduled', 0, 0, 0, '1') RETURNING id`,
-    [retailerId],
-  );
+  const statement = createScrapeRunStatement(retailerId);
+  const result = await query<{ id: string }>(statement.sql, statement.params);
   return result.rows[0].id;
 }
 
@@ -56,11 +61,17 @@ async function updateScrapeRun(
   pagesAttempted: number,
   pagesSucceeded: number,
   errorsCount: number,
+  rejectedCount: number,
 ) {
-  await query(
-    `UPDATE scrape_runs SET status=$2, finished_at=NOW(), pages_attempted=$3, pages_succeeded=$4, errors_count=$5 WHERE id=$1`,
-    [runId, status, pagesAttempted, pagesSucceeded, errorsCount],
-  );
+  const statement = updateScrapeRunStatement({
+    runId,
+    status,
+    pagesAttempted,
+    pagesSucceeded,
+    errorsCount,
+    rejectedCount,
+  });
+  await query(statement.sql, statement.params);
 }
 
 // Pin disable + auto-recovery helpers extracted to ./scrape-pin-recovery.ts
@@ -131,10 +142,31 @@ export async function scrapeRetailer(slug: string) {
   let pagesAttempted = 0;
   let pagesSucceeded = 0;
   let errorsCount = 0;
+  let rejectedCount = 0;
 
   const delay = config.rateLimit?.delayBetweenRequestsMs ?? 2_000;
 
+  // Wall-clock ceiling for one retailer's target loop. Each candidate URL can
+  // now cost two bounded provider calls (Firecrawl, then the opt-in Exa
+  // fallback), so a provider brown-out that never trips the 2-strike cooldowns
+  // — every call slow but eventually answering — can run far past the cron
+  // slot. Without this the only stop is an external kill, which skips
+  // updateScrapeRun entirely and strands the row at status='running'; the
+  // active-run query has no age bound, so that row is served indefinitely.
+  // Stopping ourselves keeps the run's own accounting honest: whatever was
+  // scraped is committed and the status lands on 'partial'.
+  const runBudgetMs = resolveRunBudgetMs(process.env.CONSUMER_PRICES_RUN_BUDGET_MS);
+  const runStartedAt = Date.now();
+  let budgetExhausted = false;
+
   for (const target of targets) {
+    if (isRunBudgetExhausted(runStartedAt, Date.now(), runBudgetMs)) {
+      budgetExhausted = true;
+      logger.warn(
+        `  [budget] ${slug}: run budget ${runBudgetMs}ms exhausted after ${pagesAttempted}/${targets.length} targets — stopping early`,
+      );
+      break;
+    }
     pagesAttempted++;
     const isDirect = target.metadata?.direct === true;
     const pinnedProductId = target.metadata?.pinnedProductId as string | undefined;
@@ -165,21 +197,22 @@ export async function scrapeRetailer(slug: string) {
         // as a second opinion that specifically catches pins that have
         // drifted onto the wrong product (e.g. "White Sugar 1kg" now
         // resolving to "mango sugar baby india"). If the validator
-        // disagrees, skip the observation entirely and route this target
-        // through the existing pin-error counter so the pin soft-disables
-        // after repeated failures. Aggregates never see the bad price.
-        if (wasDirectHit) {
-          const v = product.rawPayload.validator as ValidatorResult | undefined;
-          if (v && !v.ok) {
-            logger.warn(
-              `  [${target.id}] pin validator reject — skipping observation, counting as pin error. reasons=${v.reasons.join(',')} score=${v.score.toFixed(2)} title="${product.rawTitle}"`,
-            );
-            errorsCount++;
-            if (pinnedProductId && pinnedMatchId) {
-              await handlePinError(pinnedProductId, pinnedMatchId, target.id);
-            }
-            continue;
+        // disagrees, count the rejection for coverage. Direct-pin rejects
+        // still skip the observation entirely and route this target through
+        // the existing pin-error counter so the pin soft-disables after
+        // repeated failures. Aggregates never see the bad price.
+        const validator = product.rawPayload.validator as ValidatorResult | undefined;
+        const validatorOutcome = classifyValidatorOutcome(validator, wasDirectHit);
+        rejectedCount += validatorOutcome.rejectedCount;
+        if (validatorOutcome.skipObservation) {
+          logger.warn(
+            `  [${target.id}] pin validator reject — skipping observation, counting as pin error. reasons=${validator?.reasons?.join(',') || 'unknown'} score=${validator?.score?.toFixed(2) || '0.00'} title="${product.rawTitle}"`,
+          );
+          errorsCount += validatorOutcome.errorCount;
+          if (pinnedProductId && pinnedMatchId) {
+            await handlePinError(pinnedProductId, pinnedMatchId, target.id);
           }
+          continue;
         }
 
         const productId = await upsertRetailerProduct({
@@ -285,6 +318,7 @@ export async function scrapeRetailer(slug: string) {
       pagesSucceeded++;
     } catch (err) {
       errorsCount++;
+      if (err instanceof SearchTargetError) rejectedCount += err.rejectedCount;
       logger.error(`  [${target.id}] failed: ${err}`);
       if (isDirect && pinnedProductId && pinnedMatchId) {
         await handlePinError(pinnedProductId, pinnedMatchId, target.id);
@@ -294,9 +328,9 @@ export async function scrapeRetailer(slug: string) {
     if (pagesAttempted < targets.length) await sleep(delay);
   }
 
-  const status = errorsCount === 0 ? 'completed' : pagesSucceeded > 0 ? 'partial' : 'failed';
-  await updateScrapeRun(runId, status, pagesAttempted, pagesSucceeded, errorsCount);
-  logger.info(`Run ${runId} finished: ${status} (${pagesSucceeded}/${pagesAttempted} pages)`);
+  const status = resolveRunStatus(errorsCount, pagesSucceeded, budgetExhausted);
+  await updateScrapeRun(runId, status, pagesAttempted, pagesSucceeded, errorsCount, rejectedCount);
+  logger.info(`Run ${runId} finished: ${status} (${pagesSucceeded}/${pagesAttempted} pages, rejected=${rejectedCount})`);
 
   const parseSuccessRate = pagesAttempted > 0 ? (pagesSucceeded / pagesAttempted) * 100 : 0;
   const isSuccess = status === 'completed' || status === 'partial';
@@ -370,4 +404,15 @@ async function main() {
 // process.exit() is required to flush lingering Playwright/Chromium handles
 // that would otherwise prevent the process from exiting naturally.
 // process.exitCode preserves failure signaling set in the catch block above.
-main().catch(() => { process.exitCode = 1; }).then(() => process.exit(process.exitCode ?? 0));
+const __runStartedAt = Date.now();
+main()
+  .then(() => {
+    // Terminal success marker (format mirrors runSeed() in scripts/_seed-utils.mjs) so the crash
+    // diagnostic can tell a clean run from a silent death; without it every run reads as unknown.
+    // main() CATCHES INTERNALLY and signals failure via process.exitCode, so it resolves even when
+    // the run failed — the guard is what stops this vouching for a failed scrape. Plain console.log
+    // rather than the logger: the marker must survive whatever transport/format the logger uses.
+    if (!process.exitCode) console.log(`\n=== Done (${Date.now() - __runStartedAt}ms) ===`);
+  })
+  .catch(() => { process.exitCode = 1; })
+  .then(() => process.exit(process.exitCode ?? 0));

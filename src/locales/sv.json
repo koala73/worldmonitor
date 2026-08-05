@@ -730,6 +730,8 @@
       "relatedAssetsNear": "Relaterade tillgångar nära {{location}}",
       "summaryError": "Kunde inte skapa sammanfattning",
       "summaryFailed": "Sammanfattning misslyckades",
+      "sourceCoverage": "{{covered}}/{{total}} källor",
+      "sourceCoverageHint": "Visar {{covered}} av {{total}} aktiverade källor — den här panelen växlar mellan sina källor vid varje uppdatering",
       "sortBy": "Sortera efter",
       "sortNewest": "Senaste",
       "sortRelevance": "Relevans"
@@ -1019,7 +1021,7 @@
       "fytdLabel": "FY{{year}} YTD",
       "vsPriorFy": "mot FY{{year}}",
       "sourceWto": "WTO",
-      "sourceTreasury": "USA:s Treasury",
+      "sourceTreasury": "USA:s finansdepartement",
       "colDate": "Datum",
       "colMonthly": "Månadsvis",
       "colFytd": "FY YTD",
@@ -1083,8 +1085,8 @@
       "sectionFollowing": "Following",
       "sectionAll": "All",
       "sourceStates": {
-        "degraded": "degraded",
-        "stale": "stale"
+        "degraded": "försämrad",
+        "stale": "föråldrad"
       }
     },
     "gdeltIntel": {
@@ -1193,10 +1195,10 @@
         "minutesAgo": "{{count}}m ago",
         "hoursAgo": "{{count}}h ago"
       },
-      "cachedCiiStatus": "Cached CII {{states}}",
+      "cachedCiiStatus": "Cachad CII {{states}}",
       "sourceStates": {
-        "degraded": "degraded",
-        "stale": "stale"
+        "degraded": "försämrad",
+        "stale": "föråldrad"
       },
       "dataFreshness": "Data Freshness",
       "sourcesDetail": "{{active}}/{{total}} sources"
@@ -1277,7 +1279,8 @@
       "newsSignals": "{{news}} nyheter • {{signals}} signaler",
       "provenanceTitle": "Täckningshärkomst: hur många inmatade historier och unika källor denna kortfattade sammanfattning valdes från",
       "compiledFrom": "Kompilerat från {{stories}} berättelser från {{sources}} källor",
-      "briefFreshness": "Genererad {{minutes}}m sedan · senaste källa {{hours}}h gammal"
+      "briefFreshness": "Genererad {{minutes}}m sedan · senaste källa {{hours}}h gammal",
+      "briefStoryDetails": "Story details ({{count}})"
     },
     "techHubs": {
       "infoTooltip": "<strong>Teknisk hubbaktivitet</strong><br>Visar tekniska nav med mest nyhetsaktivitet.<br><br><em>Aktivitetsnivåer:</em><br>• <span style=\"color: {{highColor}}\">Hög</span> — Nyheter från 50+ PH_• 50+ stil: {{elevatedColor}}\">Höjd</span> — Poäng 20-49<br>• <span style=\"color: {{lowColor}}\">Låg</span> — Poäng under 20<br><br>Klicka på ett nav för att zooma till dess plats."
@@ -1515,7 +1518,26 @@
       "trend": "Trend",
       "trending": "TREND",
       "velocity": "Hastighet",
-      "wallets": "Plånböcker"
+      "wallets": "Plånböcker",
+      "benchmarkTitle": "Globala givande-riktmärken",
+      "benchmarkInfoTooltip": "<strong>Globala givande-riktmärken</strong> Publicerade plattforms- och institutionsanspråk med källperioder och verifieringsstatus. Annualiserade siffror är uppskattningar, inte liveaktivitet.",
+      "status": {
+        "published": "Publicerade riktmärken med verifierad källtäckning.",
+        "partial": "Publicerade riktmärken med partiell källtäckning.",
+        "legacy": "Äldre ögonblicksbild; källdetaljer ej tillgängliga.",
+        "cached": "Visar cachad ögonblicksbild; uppdatering ej tillgänglig."
+      },
+      "trackedAnnualized": "Spårade plattformsdonationer — annualiserad uppskattning",
+      "annualizedDaily": "Daglig annualiserad uppskattning",
+      "atLeast": "Minst",
+      "about": "Ungefär",
+      "sourceNotVerified": "Källa ej verifierad",
+      "reportedCumulative": "Rapporterad kumulativ summa",
+      "sourcePeriod": "{{source}} · {{period}}",
+      "benchmark": "Publicerat riktmärke",
+      "sourcesMethodology": "Källor och metodologi",
+      "methodologyIntro": "Endast verifierade årliga eller försvarbart annualiserade plattformsanspråk ingår i rubriken. Kumulativa och institutionella siffror förblir separat sammanhang.",
+      "partialEstimate": "Delvis verifierad uppskattning"
     },
     "supplyChain": {
       "chokepoints": "Flaskhalsar",
@@ -1852,7 +1874,11 @@
       "infoTooltip": "<strong>Katastrofkaskad</strong> Detekterar konvergerande signaler för naturkatastrofer och infrastruktur:<ul><li>Korrelerar jordbävningar, skogsbränder, översvämningar och extremt väder</li><li>Spårar kaskadeffekter på infrastruktur och försörjningskedjor</li><li>Markerar regioner med sammanlagd katastrofrisk</li></ul>Klicka på ett kort för att zooma in på den påverkade regionen."
     },
     "markets": {
-      "infoTooltip": "<strong>Marknader</strong> Realtids aktieindex, aktier och kryptovalutapriser. Anpassa din övervakningslista med knappen Övervakningslista. Sparklines visar den senaste pristrenden."
+      "infoTooltip": "<strong>Marknader</strong> Realtids aktieindex, aktier och kryptovalutapriser. Anpassa din övervakningslista med knappen Övervakningslista. Sparklines visar den senaste pristrenden.",
+      "chart": {
+        "title": "{{symbol}} prisdiagram",
+        "close": "Stäng diagram"
+      }
     },
     "heatmap": {
       "infoTooltip": "<strong>Sektorkarta</strong> S&P 500-sektorprestanda i en överblick. Färgintensitet återspeglar storleken på den dagliga förändringen. Grön = vinster, Röd = förluster."
@@ -1914,11 +1940,101 @@
       "cta": "Uppgradera till Pro →",
       "dismiss": "Stäng"
     },
+    "billingState": {
+      "onHoldDesc": "Betalningen misslyckades. Uppdatera din betalningsmetod för att återställa premiumåtkomsten.",
+      "onHoldBannerMessage": "Betalningen misslyckades. Uppdatera din betalningsmetod för att hålla din prenumeration aktiv.",
+      "updatePayment": "Uppdatera betalning",
+      "renewalPendingDesc": "Vi verifierar förnyelsen av din prenumeration. Premiumåtkomsten återställs automatiskt när den har bekräftats.",
+      "refreshStatus": "Uppdatera status",
+      "renewalFailedDesc": "Vi kunde inte verifiera förnyelsen av din prenumeration. Hantera fakturering eller kontakta supporten om problemet kvarstår.",
+      "manageBilling": "Hantera fakturering",
+      "lapsedDesc": "Din Pro-prenumeration har upphört. Prenumerera igen för att återfå premiumåtkomsten.",
+      "resubscribe": "Prenumerera igen"
+    },
     "checkoutFailureBanner": {
       "message": "Betalningen kunde inte genomföras. Ingen debitering gjordes.",
       "retry": "Försök igen",
       "retrying": "Försöker igen…",
       "dismiss": "Stäng"
+    },
+    "proActivation": {
+      "badge": "PRO",
+      "progress": "Steg {{current}} av {{total}}",
+      "closeLabel": "Hoppa över installationen",
+      "ariaLabel": "Inställning för Pro-aktivering",
+      "signedInAs": "Inloggad som {{email}}",
+      "steps": {
+        "brief": {
+          "heading": "Din dagliga sammanfattning, varje morgon",
+          "body": "En sammanställd underrättelsesammanfattning i din inkorg varje morgon — nattens viktiga signaler, komprimerade till fem minuters läsning.",
+          "confirmCta": "Slå på min morgonsammanfattning",
+          "confirming": "Slår på…",
+          "doneNote": "Din morgonsammanfattning körs redan.",
+          "scheduleNote": "Vi behåller din nuvarande leveranstid.",
+          "summaryLabel": "Morgonsammanfattning",
+          "summaryVerified": "På — börjar med din nästa morgonsammanfattning.",
+          "deliverAt": "Leverans kl.",
+          "previewLoading": "Förbereder en förhandsvisning av din första sammanfattning…",
+          "previewLabel": "Dagens morgonsammanfattning"
+        },
+        "alerts": {
+          "heading": "Kritiska varningar",
+          "body": "Få ett meddelande i din webbläsare när något stort händer — konflikteskaleringar, marknadschocker, nya sanktioner. Justera frekvensen när som helst i Inställningar.",
+          "confirmCta": "Aktivera varningar",
+          "confirming": "Aktiverar…",
+          "doneNote": "Webbläsarvarningar är redan på.",
+          "blockedNote": "Aviseringar är blockerade i din webbläsare. Slå på dem i webbläsarens webbplatsinställningar för att få varningar.",
+          "declinedNote": "Inga problem — vi skickar inga webbläsarvarningar. Du kan slå på dem senare via webbläsarens webbplatsinställningar.",
+          "summaryLabel": "Kritiska varningar",
+          "summaryVerified": "På — kritiska signaler når din webbläsare."
+        },
+        "power": {
+          "heading": "Din Pro-verktygslåda",
+          "body": "Anpassade widgetar, MCP-anslutningar och AI-forskaren är upplåsta. Bygg den vy du verkligen vill bevaka.",
+          "confirmCta": "Utforska Pro-verktyg",
+          "confirming": "Öppnar…",
+          "doneNote": "Du använder redan dina Pro-verktyg.",
+          "summaryLabel": "Pro-verktygslåda",
+          "summaryVerified": "Upplåst och redo när du är det.",
+          "channelsNote": "Föredrar du Telegram, Slack, Discord eller en webhook?",
+          "pointers": {
+            "search": "Sök i hela instrumentpanelen",
+            "widgets": "Skapa en anpassad widget",
+            "analyst": "Fråga AI-analytikern",
+            "mcpClients": "Konfigurera MCP",
+            "channels": "Ställ in dem i aviseringsinställningarna"
+          }
+        }
+      },
+      "status": {
+        "pending": "Inte konfigurerat",
+        "inFlight": "Konfigurerar…",
+        "verified": "Klart",
+        "failed": "Det fungerade inte",
+        "blocked": "Blockerat",
+        "unavailable": "Inte tillgängligt",
+        "blockedNote": "Det här är inte tillgängligt just nu — du kan konfigurera det senare i inställningarna.",
+        "unavailableNote": "Det här är inte tillgängligt på din enhet — du kan konfigurera det senare.",
+        "failedBody": "Något gick fel. Du kan försöka igen eller konfigurera det senare i inställningarna.",
+        "retry": "Försök igen"
+      },
+      "actions": {
+        "skip": "Hoppa över för nu",
+        "continue": "Fortsätt"
+      },
+      "summary": {
+        "heading": "Allt är klart",
+        "subVerified": "Så här är det på ditt konto just nu.",
+        "subPending": "Du kan slutföra installationen när som helst i inställningarna.",
+        "linePending": "Inte konfigurerat än — slutför när som helst i inställningarna.",
+        "lineFailed": "Vi kunde inte konfigurera det här — försök igen i inställningarna.",
+        "finish": "Gå till min instrumentpanel"
+      },
+      "chip": {
+        "message": "Slutför installationen av ditt Pro-konto.",
+        "action": "Slutför installation",
+        "dismissLabel": "Stäng"
+      }
     },
     "frameworkSelector": {
       "label": "Analysramverk",
@@ -2093,43 +2209,59 @@
       }
     },
     "mobileNav": {
-      "panelCategories": "Panel categories"
+      "panelCategories": "Panelkategorier"
     },
     "panelFreshness": {
       "status": {
-        "fresh": "Fresh",
-        "stale": "Stale",
-        "veryStale": "Very stale",
-        "noData": "No data",
-        "disabled": "Disabled",
-        "error": "Error"
+        "fresh": "Aktuell",
+        "stale": "Föråldrad",
+        "veryStale": "Mycket föråldrad",
+        "noData": "Inga data",
+        "disabled": "Inaktiverad",
+        "error": "Fel"
       },
       "labelWithAge": "{{status}} {{age}}",
-      "title": "Data freshness: {{status}}. {{sources}}",
+      "title": "Dataaktualitet: {{status}}. {{sources}}",
       "sourceDetail": "{{name}}: {{status}}, {{update}}",
       "sourceDetailWithHealth": "{{name}}: {{status}}, {{update}}, {{detail}}",
-      "lastUpdated": "last updated {{time}}",
-      "neverUpdated": "never updated",
+      "lastUpdated": "senast uppdaterad {{time}}",
+      "neverUpdated": "aldrig uppdaterad",
       "health": {
-        "partialCoverage": "partial coverage",
-        "contentStale": "content stale",
-        "seedStale": "seed stale",
-        "noSourceData": "no source data",
-        "sourceErrorReported": "source error reported",
-        "freshnessStoreUnavailable": "freshness store unavailable",
-        "freshnessStoreDegraded": "freshness store degraded"
+        "partialCoverage": "partiell täckning",
+        "contentStale": "innehåll föråldrat",
+        "seedStale": "seed föråldrat",
+        "noSourceData": "inga källdata",
+        "sourceErrorReported": "källfel rapporterat",
+        "freshnessStoreUnavailable": "aktualitetslager ej tillgängligt",
+        "freshnessStoreDegraded": "aktualitetslager försämrat"
       },
       "time": {
-        "never": "never",
-        "justNow": "just now",
-        "minutesAgo": "{{count}}m ago",
-        "hoursAgo": "{{count}}h ago",
-        "daysAgo": "{{count}}d ago",
-        "compactNow": "now",
+        "never": "aldrig",
+        "justNow": "nyss",
+        "minutesAgo": "{{count}}m sedan",
+        "hoursAgo": "{{count}}t sedan",
+        "daysAgo": "{{count}}d sedan",
+        "compactNow": "nu",
         "compactMinutes": "{{count}}m",
-        "compactHours": "{{count}}h",
+        "compactHours": "{{count}}t",
         "compactDays": "{{count}}d"
       }
+    },
+    "exportGate": {
+      "signedOutDesc": "Logga in för att exportera instrumentpaneldata som CSV, JSON eller PDF.",
+      "upgradeDesc": "Dataexport (CSV, JSON, PDF) ingår i Pro Business.",
+      "upgradeCta": "Uppgradera till Pro Business",
+      "lockedAriaLabel": "Exportera data — låst. {{reason}}",
+      "unlockedAnnouncement": "Dataexport upplåst.",
+      "preparingPdf": "Förbereder PDF…",
+      "pdfFailed": "PDF-rapporten kunde inte genereras. Försök igen eller använd JSON-exporten."
+    },
+    "tabCap": {
+      "signedOutDesc": "Utloggade arbetsytor är begränsade till {{cap}} instrumentpanelflikar. Logga in för att lägga till fler.",
+      "upgradeDesc": "Du har nått din gräns på {{cap}} instrumentpanelflikar.",
+      "upgradeCta": "Uppgradera för mer",
+      "lockedAriaLabel": "Lägg till flik — låst. {{reason}}",
+      "unlockedAnnouncement": "Gränsen för instrumentpanelflikar upphävd."
     }
   },
   "popups": {
@@ -2861,7 +2993,7 @@
     "panelCatCommodityEcon": "Ekonomi & Handel",
     "panelCatHappyNews": "Goda Nyheter",
     "panelCatHappyPlanet": "Planet & Välgörenhet",
-    "embed": "Embed"
+    "embed": "Bädda in"
   },
   "countryBrief": {
     "identifying": "Identifierar land...",
@@ -2993,17 +3125,20 @@
     "geocodeFailed": "Kunde inte identifiera ett land på denna plats",
     "retryBtn": "Försök igen",
     "closeBtn": "Stäng",
-    "loadingResilienceScore": "Loading resilience score…",
-    "resilienceScoreUnavailable": "Resilience score unavailable.",
+    "loadingResilienceScore": "Läser in motståndskraftspoäng…",
+    "resilienceScoreUnavailable": "Motståndskraftspoäng ej tillgänglig.",
     "china": {
       "title": "Landsöversikt Kina",
       "description": "Aktuell makro-, marknads-, handels-, energi- och driftstillgänglighet från befintliga publika datakontrakt.",
-      "macroPolicy": "Makro & politik",
-      "marketCredit": "Marknad & kredit",
-      "tradeSupply": "Handel & leveranskedja",
+      "policyEvents": "Politik och tillämpning",
       "energy": "Energi",
       "availability": "Faror & luftfart",
       "observed": "Per:",
+      "published": "Publicerad:",
+      "effective": "Gäller från:",
+      "sectors": "Sektorer:",
+      "entities": "Enheter:",
+      "translation": "Översättning:",
       "source": "Källa:",
       "imfGrowth": "IMF:s tillväxtprognos",
       "creditGdp": "Kredit i förhållande till BNP",
@@ -3012,8 +3147,6 @@
       "gasDemand": "Gasefterfrågan",
       "energyMix": "Elmix",
       "coal": "kol",
-      "aviationAvailability": "Luftfartstillgänglighet",
-      "hazardAvailability": "Farotillgänglighet",
       "noMajorDisruptions": "Inga större störningar rapporterade",
       "activeDisruptions_one": "{{count}} aktiv störning",
       "activeDisruptions_other": "{{count}} aktiva störningar",
@@ -3025,18 +3158,21 @@
       "ccfiSource": "Shanghai Shipping Exchange",
       "comtradeSource": "UN Comtrade, rapportör 156",
       "sourceUnavailable": "Källa saknas",
-      "macroUnavailable": "Makro- och politikdata är för närvarande inte tillgängliga.",
-      "marketUnavailable": "Marknads- och kreditdata är för närvarande inte tillgängliga.",
-      "tradeUnavailable": "Handels- och leveranskedjedata är för närvarande inte tillgängliga.",
-      "energyUnavailable": "Energidata är för närvarande inte tillgängliga.",
-      "availabilityUnavailable": "Data om faror och luftfart är för närvarande inte tillgängliga.",
+      "policyUnavailable": "Official policy and enforcement events are currently unavailable.",
+      "policyPartial": "{{count}} official agencies are temporarily degraded.",
       "status": {
         "loading": "Läser in",
         "available": "Tillgänglig",
         "partial": "Delvis",
         "stale": "Inaktuell",
         "unavailable": "Otillgänglig"
-      }
+      },
+      "macroSignals": "Makrosignaler",
+      "crossStraitActivity": "Aktivitet över sundet",
+      "corporateDisclosures": "Företagsupplysningar",
+      "corridorConditions": "Korridorförhållanden",
+      "activityNowcast": "Aktivitetsnowcast",
+      "decisionSignalsUnavailable": "Ögonblicksbilden av Kinas beslutssignaler är för närvarande inte tillgänglig."
     }
   },
   "preferences": {
@@ -3189,16 +3325,42 @@
     "visualizationFailed": "Visualiseringen misslyckades"
   },
   "dashboardTabs": {
-    "ariaLabel": "Dashboard tabs",
-    "defaultName": "Main",
-    "newTabName": "New Tab",
-    "newTabCreated": "New tab created",
-    "tabDeleted": "Tab \"{{name}}\" deleted",
-    "addTab": "Add tab",
-    "addTabTitle": "New tab (starts with the default panels)",
-    "renameHint": "{{name}} — double-click to rename",
-    "deleteTab": "Delete tab",
-    "deleteTabAria": "Delete tab {{name}}",
-    "tabNameAria": "Tab name"
+    "ariaLabel": "Instrumentpanelflikar",
+    "defaultName": "Huvud",
+    "newTabName": "Ny flik",
+    "newTabCreated": "Ny flik skapad",
+    "tabDeleted": "Fliken \"{{name}}\" borttagen",
+    "addTab": "Lägg till flik",
+    "addTabTitle": "Ny flik (börjar med standardpanelerna)",
+    "renameHint": "{{name}} — dubbelklicka för att byta namn",
+    "deleteTab": "Ta bort flik",
+    "deleteTabAria": "Ta bort flik {{name}}",
+    "tabNameAria": "Fliknamn"
+  },
+  "theaterPresets": {
+    "label": "Täckningspaket",
+    "applied": "Paketet {{preset}} har tillämpats: {{count}} källor aktiverade",
+    "alreadyApplied": "Paketet {{preset}} har redan tillämpats",
+    "ukraineWar": {
+      "label": "Kriget i Ukraina",
+      "description": "Aktivera ukrainska huvudmedier, oberoende rysk press och källor för frontbedömning"
+    },
+    "indoPacific": {
+      "label": "Indo-Pacific / Taiwan",
+      "description": "Aktivera säkerhetskällor från Taiwan, Pakistan och Sydostasien"
+    },
+    "sahelWestAfrica": {
+      "label": "Sahel och Västafrika",
+      "description": "Aktivera lokala källor från Sahel, Nigeria och Västafrika"
+    },
+    "caucasusCentralAsia": {
+      "label": "Kaukasus och Centralasien",
+      "description": "Aktivera regionala källor från södra Kaukasus och Centralasien"
+    },
+    "middleEastFlashpoints": {
+      "label": "Spänningshärdar i Mellanöstern",
+      "description": "Aktivera källor om Iran, Israel, Gulfen och kurdiska regioner"
+    },
+    "unavailable": "Paketet {{preset}} är inte tillgängligt med dina nuvarande paneler"
   }
 }

@@ -49,13 +49,16 @@ describe('China coverage production registration', () => {
     assert.match(insightsSeed, /\[CHINA_NEWS_DIGEST_LANGUAGE\]: await readChinaNewsDigest\(\)/);
     assert.match(insightsSeed, /digest coverage check failed/);
     assert.match(insightsSeed, /preserveKeys: \[CHINA_COVERAGE_KEY\]/);
-    assert.match(insightsSeed, /return preserveChinaNewsCoverageInLkg\(existing, chinaNewsCoverage\)/);
+    assert.match(insightsSeed, /decorateInsightsRun\(\s*preserveChinaNewsCoverageInLkg\(existing, chinaNewsCoverage\)/);
     assert.match(insightsSeed, /writeExtraKey\(CHINA_COVERAGE_KEY, data\.chinaNewsCoverage, CACHE_TTL\)/);
   });
 
   it('documents the public China source contract and its operator health projection', () => {
     assert.match(dataSources, /### China Coverage, Attribution, and Freshness/);
-    assert.match(dataSources, /BIS, IMF, JODI, UN Comtrade, CCFI, AviationStack, NBS\/PBoC, JMA, and HKO/);
+    assert.match(dataSources, /\[China Data Coverage\]\(\/china-data-coverage\)/);
+    assert.match(dataSources, /UN\s+Comtrade reporter 156 and bilateral HS4 data/);
+    assert.match(dataSources, /JODI remains enabled for its existing global energy product/);
+    assert.match(dataSources, /China\s+contract stays explicitly blocked/);
     assert.match(dataSources, /detailed bilateral trade data remains\s+Pro-only/i);
     assert.match(healthDocs, /### China Coverage Projection/);
     assert.match(healthDocs, /CHINA_DEGRADED/);

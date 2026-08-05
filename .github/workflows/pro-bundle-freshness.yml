@@ -16,6 +16,7 @@ on:
     paths:
       - 'convex/config/productCatalog.ts'
       - 'scripts/generate-product-config.mjs'
+      - 'scripts/generate-public-product-facts.mjs'
       - 'pro-test/**'
       - 'public/pro/**'
 
@@ -39,8 +40,8 @@ jobs:
       - name: Install root deps
         run: npm ci --ignore-scripts
 
-      - name: Regenerate product config
-        run: npx tsx scripts/generate-product-config.mjs
+      - name: Regenerate product facts
+        run: npm run product:facts
 
       - name: Install pro-test deps
         run: cd pro-test && npm ci
@@ -50,10 +51,24 @@ jobs:
 
       - name: Verify generated product config, pro locales, and public/pro/ match build output
         run: |
-          if ! git diff --exit-code src/config/products.generated.ts api/_product-fallback-prices.js pro-test/src/generated/tiers.json pro-test/src/locales/ public/pro/; then
+          if ! git diff --exit-code \
+            api/_product-catalog.generated.js \
+            pro-test/index.html \
+            pro-test/prerender.mjs \
+            pro-test/src/generated/tiers.json \
+            pro-test/src/locales/ \
+            pro-test/welcome.html \
+            public/product-facts.json \
+            public/pro/ \
+            scripts/shared/product-catalog.generated.json \
+            scripts/shared/product-facts.generated.json \
+            shared/product-catalog.generated.json \
+            shared/product-facts.generated.json \
+            src/config/product-ids.generated.ts \
+            src/config/products.generated.ts; then
             echo "::error::Product catalog, generated config, pro locales, or public/pro/ is stale."
             echo "Vercel ships whatever is committed under public/pro/ — it does NOT rebuild pro-test on deploy."
-            echo "Run 'npx tsx scripts/generate-product-config.mjs', then 'cd pro-test && npm run build', and commit generated config, pro locales, plus public/pro/."
+            echo "Run 'npm run product:facts', then 'cd pro-test && npm run build', and commit generated config, public facts, pro locales, plus public/pro/."
             exit 1
           fi
           UNTRACKED=$(git ls-files --others --exclude-standard public/pro/)

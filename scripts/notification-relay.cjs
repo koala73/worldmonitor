@@ -34,6 +34,9 @@ const QUIET_HOURS_BATCH_ENABLED = process.env.QUIET_HOURS_BATCH_ENABLED !== '0';
 const AI_IMPACT_ENABLED = process.env.AI_IMPACT_ENABLED === '1';
 const AI_IMPACT_CACHE_TTL = 1800; // 30 min, matches dedup window
 const DEDUP_TTL_SECONDS = 1800;
+const EVENT_QUEUE_KEY = 'wm:events:queue';
+const WELCOME_V2_QUEUE_KEY = 'wm:events:queue:welcome-v2';
+const WELCOME_V2_POLL_EVERY = 10;
 
 if (!UPSTASH_URL || !UPSTASH_TOKEN) { console.error('[relay] UPSTASH_REDIS_REST_URL/TOKEN not set'); process.exit(1); }
 if (!CONVEX_URL) { console.error('[relay] CONVEX_URL not set'); process.exit(1); }
@@ -929,7 +932,7 @@ function formatMessage(event) {
 }
 
 async function processWelcome(event) {
-  const { userId, channelType } = event;
+  const { userId, channelType, welcomeId } = event;
   if (!userId || !channelType) return;
   // Telegram welcome is sent directly by Convex; no relay send needed.
   if (channelType === 'telegram') return;
@@ -944,7 +947,14 @@ async function processWelcome(event) {
     if (chRes.ok) channels = (await chRes.json()) ?? [];
   } catch {}
 
-  const ch = channels.find(c => c.channelType === channelType && c.verified);
+  const ch = channels.find(c =>
+    c.channelType === channelType &&
+    c.verified &&
+    // Events created before connection-scoped welcome IDs remain compatible.
+    // New events must still target the exact channel document that scheduled
+    // them, so a delayed retry cannot welcome a replacement connection.
+    (!welcomeId || String(c._id) === welcomeId)
+  );
   if (!ch) return;
 
   // Telegram welcome is sent directly by convex/http.ts after claimPairingToken succeeds.
@@ -1284,6 +1294,17 @@ async function processEvent(event) {
   }
 }
 
+async function popNextEvent(pollNumber) {
+  // Old relays do not know this queue, so connection-scoped welcome events
+  // cannot be consumed without the exact-ID guard. Check it periodically,
+  // then fall back to the legacy queue in the same poll cycle.
+  if (pollNumber % WELCOME_V2_POLL_EVERY === 0) {
+    const welcome = await upstashRest('RPOP', WELCOME_V2_QUEUE_KEY);
+    if (welcome) return welcome;
+  }
+  return upstashRest('RPOP', EVENT_QUEUE_KEY);
+}
+
 // ── Poll loop (RPOP queue) ────────────────────────────────────────────────────
 //
 // Publishers push to wm:events:queue via LPUSH (FIFO: LPUSH head, RPOP tail).
@@ -1296,6 +1317,7 @@ async function subscribe() {
   console.log('[relay] TELEGRAM_BOT_TOKEN set:', !!TELEGRAM_BOT_TOKEN, '| RESEND_API_KEY set:', !!RESEND_API_KEY);
   let idleCount = 0;
   let lastDrainMs = 0;
+  let pollNumber = 0;
   const DRAIN_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
   while (true) {
     try {
@@ -1306,7 +1328,7 @@ async function subscribe() {
         drainBatchOnWake().catch(err => console.warn('[relay] drainBatchOnWake error:', err.message));
       }
 
-      const result = await upstashRest('RPOP', 'wm:events:queue');
+      const result = await popNextEvent(pollNumber++);
       if (result) {
         idleCount = 0;
         console.log('[relay] RPOP dequeued message:', String(result).slice(0, 200));
@@ -1343,4 +1365,11 @@ if (require.main === module) {
   });
 }
 
-module.exports = { sendTelegram, checkDedup, upstashDedupSetNx, eventMatchesCountryScope };
+module.exports = {
+  sendTelegram,
+  checkDedup,
+  upstashDedupSetNx,
+  eventMatchesCountryScope,
+  processWelcome,
+  popNextEvent,
+};

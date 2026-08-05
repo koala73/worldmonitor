@@ -32,6 +32,7 @@ const EXPECTED_OG_LOCALE = {
   sv: 'sv_SE',
   th: 'th_TH',
   tr: 'tr_TR',
+  uk: 'uk_UA',
   vi: 'vi_VN',
   zh: 'zh_CN',
 };

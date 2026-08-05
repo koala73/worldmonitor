@@ -1,5 +1,6 @@
 import { mutation } from "./_generated/server";
 import { v, ConvexError } from "convex/values";
+import { isCorporateDomain } from "./lib/emailDomain";
 
 // Field length caps. Aligned with `server/worldmonitor/leads/v1/submit-contact.ts`,
 // which already enforces these bounds at the edge — duplicating them here means
@@ -66,6 +67,12 @@ export const submit = mutation({
     if (!name) throw new ConvexError("Name is required");
     if (!email || !EMAIL_RE.test(email)) {
       throw new ConvexError("Valid email is required");
+    }
+    if (!isCorporateDomain(email)) {
+      throw new ConvexError({
+        kind: "FREE_EMAIL_NOT_ALLOWED",
+        message: "Please use a corporate email address.",
+      });
     }
 
     const normalizedEmail = email.toLowerCase();

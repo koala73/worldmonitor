@@ -113,6 +113,16 @@ describe('api/mcp.ts — per-tool outputSchema coverage (v1.7.0)', () => {
     assert.ok(newsStory.primaryTitle, 'news schema must declare primaryTitle');
     assert.ok(newsStory.primarySource, 'news schema must declare primarySource');
     assert.ok(newsStory.threatLevel, 'news schema must declare threatLevel');
+    assert.deepEqual(newsStory.sourceProvenance.required, [
+      'risk', 'type', 'riskDeclared', 'typeDeclared', 'riskReviewed', 'typeReviewed',
+    ]);
+    assert.deepEqual(newsStory.sourceProvenance.properties.risk.enum, [
+      'low', 'medium', 'high', 'unknown',
+    ]);
+    assert.deepEqual(newsStory.sourceProvenance.properties.type.enum, [
+      'wire', 'gov', 'intel', 'mainstream', 'market', 'tech', 'other', 'unknown',
+    ]);
+    assert.ok(newsStory.sourceProvenance.properties.stateAffiliated);
     assert.deepEqual(newsStory.countryCode.type, ['string', 'null']);
     assert.equal(newsStory.title, undefined, 'news schema must not advertise the drifted title field');
     assert.equal(newsStory.summary, undefined, 'news schema must not advertise the drifted summary field');

@@ -1,11 +1,12 @@
 ---
 title: "Real-Time Market Intelligence with World Monitor Finance"
-description: "Monitor 92 stock exchanges, 13 central banks, commodities, and macro signals in one free dashboard. World Monitor Finance gives traders the geopolitical edge."
+description: "Monitor 29 stock exchanges, 14 central banks, commodities, and macro signals in one free dashboard. World Monitor Finance gives traders the geopolitical edge."
 metaTitle: "Real-Time Market Intelligence for Traders | World Monitor"
 keywords: "real-time market intelligence, stock market dashboard free, financial intelligence platform, macro trading signals, market monitoring tool"
 audience: "Retail and professional traders, financial analysts, macro investors, fintech enthusiasts"
 heroImage: "/blog/images/blog/real-time-market-intelligence-for-traders-and-analysts.jpg"
 pubDate: "2026-02-21"
+modifiedDate: "2026-07-22"
 ---
 
 Markets don't move in isolation. A drone strike in the Persian Gulf moves oil futures. A surprise rate hold from the ECB shifts forex pairs. A GPS jamming spike near the Baltic signals military exercises that rattle European equities.
@@ -18,7 +19,7 @@ World Monitor's Finance variant (finance.worldmonitor.app) combines traditional 
 
 Here's what you get:
 
-## 92 Global Stock Exchanges on One Map
+## 29 Global Stock Exchanges on One Map
 
 Every major exchange, from the NYSE and NASDAQ to the Tadawul and BSE, is plotted on the interactive map with:
 
@@ -35,9 +36,9 @@ World Monitor's macro radar synthesizes seven independent signals into a composi
 
 The radar doesn't tell you what to buy. It tells you whether the macro environment favors risk-on or risk-off positioning. Think of it as the weather forecast for markets: you still pick where to go, but you know whether to bring an umbrella.
 
-## 13 Central Bank Policy Trackers
+## 14 Central Bank and Institution Trackers
 
-Interest rates drive everything. World Monitor tracks policy decisions from 13 central banks:
+Interest rates drive everything. World Monitor tracks policy and systemic indicators from 14 central banks and institutions, including:
 
 - Federal Reserve (Fed)
 - European Central Bank (ECB)
@@ -131,16 +132,16 @@ World Monitor maps the world's **19 major financial centers** ranked by the Glob
 - Check AI-generated World Brief for overnight synthesis
 - Share notable findings via built-in story sharing
 
-## Free. No Login. No Data Harvesting.
+## Free Core Dashboard, Optional Pro Workflows
 
-World Monitor Finance is completely free with no account required. Your data stays in your browser. There's no "premium tier" where the useful features hide, every panel, every data source, every AI feature is available to everyone.
+World Monitor Finance's core dashboard is free with no account required. Optional Pro workflows add analyst chat, scenario analysis, route exploration, AI digests, and MCP access; the public map and core market context remain available without a subscription.
 
 The entire platform is open source under AGPL-3.0, meaning the algorithms behind every score and signal are auditable.
 
 ## Frequently Asked Questions
 
 **Is World Monitor Finance free to use?**
-Yes. Every panel, data source, and AI feature is available at no cost with no account required. There is no premium tier. The platform is open source under AGPL-3.0.
+The core Finance dashboard is free and requires no account. Optional Pro workflows are available for advanced AI analysis, scenarios, route exploration, digests, and MCP access. The platform is open source under AGPL-3.0.
 
 **How does World Monitor differ from Bloomberg or Reuters terminals?**
 World Monitor uniquely overlays geopolitical intelligence (conflict data, military tracking, instability scores) on top of financial data. Traditional terminals focus on price and fundamentals; World Monitor adds the geopolitical context that drives price action.

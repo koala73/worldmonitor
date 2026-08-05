@@ -435,6 +435,11 @@ describe('scoped rate-limit degraded call-site policy (#3531)', () => {
       reason: 'NLWeb /ask serves only anonymous, quota-free, cheap catalog matching — degradation is logged and stays availability-first',
     },
     {
+      path: 'api/docs-mcp.ts',
+      expected: /Redis-degraded scoped limits intentionally stay availability-first/,
+      reason: 'docs MCP facade proxies a fully public, cheap upstream — degradation is logged and stays availability-first',
+    },
+    {
       path: 'api/mcp-proxy.ts',
       expected: /Redis-degraded scoped limits intentionally stay availability-first/,
       reason: 'MCP proxy is already premium-auth gated; scoped limit degradation is logged and remains availability-first',
@@ -622,6 +627,51 @@ describe('EVALSHA-unsupported fallback (#7c — self-hosted redis-rest proxy blo
       await mod.checkEndpointRateLimit(req, pathname, {}),
       null,
       'callers without a trusted principal must continue using the original IP bucket',
+    );
+  });
+
+  it('checkRateLimit isolates trusted principals sharing one IP while preserving the IP default', async () => {
+    const pipelineHandler = makeProxyPipelineHandler();
+    const incrementedKeys = new Set<string>();
+    globalThis.fetch = (async (_url: string, init?: RequestInit) => {
+      const commands = JSON.parse(String(init?.body)) as unknown[][];
+      for (const command of commands) {
+        if (String(command[0]).toUpperCase() === 'INCR') {
+          incrementedKeys.add(String(command[1]));
+        }
+      }
+      return new Response(JSON.stringify(pipelineHandler(commands)), { status: 200 });
+    }) as typeof fetch;
+
+    const mod = await importFreshRateLimitModule();
+    const req = makeRequest({ 'x-real-ip': '203.0.113.13' });
+
+    for (let i = 0; i < 600; i++) {
+      assert.equal(
+        await mod.checkRateLimit(req, {}, { principalUserId: 'pro-a' }),
+        null,
+      );
+    }
+    const blocked = await mod.checkRateLimit(req, {}, { principalUserId: 'pro-a' });
+    assert.equal(blocked?.status, 429, 'one Pro principal must still be capped at 600/min');
+
+    assert.equal(
+      await mod.checkRateLimit(req, {}, { principalUserId: 'pro-b' }),
+      null,
+      'a second Pro principal behind the same IP must receive an independent bucket',
+    );
+    assert.equal(
+      await mod.checkRateLimit(req, {}),
+      null,
+      'callers without a trusted principal must continue using the original IP bucket',
+    );
+    assert.ok(
+      incrementedKeys.has('rl:fw:203.0.113.13'),
+      'anonymous global traffic must preserve the legacy raw-IP key during rollout',
+    );
+    assert.ok(
+      !incrementedKeys.has('rl:fw:ip:203.0.113.13'),
+      'anonymous global traffic must not reset into a new namespaced key',
     );
   });
 

@@ -1,5 +1,8 @@
 import assert from 'node:assert/strict';
-import { readFile } from 'node:fs/promises';
+import { spawnSync } from 'node:child_process';
+import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { delimiter, join } from 'node:path';
 import { describe, it } from 'node:test';
 
 // Regression coverage for issue #3804: the self-hosted Docker stack must
@@ -8,8 +11,9 @@ import { describe, it } from 'node:test';
 // "wm-local-token"; flipping the redis-rest binding from 127.0.0.1 to
 // 0.0.0.0 instantly exposed an authenticated interface with a known token.
 //
-// These tests grep the relevant repo files for forbidden patterns rather
-// than starting containers, because:
+// Most tests grep the relevant repo files for forbidden patterns rather
+// than starting containers, while cross-platform execution paths use
+// hermetic command stubs. This keeps the suite deterministic because:
 //   - the dangerous shape is a literal default in YAML / shell, which a
 //     literal-absence regex catches deterministically without any harness;
 //   - any future contributor who reintroduces the default in any of the
@@ -23,11 +27,17 @@ async function read(rel: string): Promise<string> {
 }
 
 function serviceBlock(compose: string, serviceName: string): string {
-  const match = compose.match(
+  const normalizedCompose = compose.replaceAll('\r\n', '\n');
+  const match = normalizedCompose.match(
     new RegExp(`^  ${serviceName}:\\n([\\s\\S]*?)(?=^  [a-zA-Z0-9_-]+:\\n|^volumes:)`, 'm'),
   );
   assert.ok(match, `docker-compose.yml must define ${serviceName} service`);
   return match[1];
+}
+
+async function writeExecutable(path: string, contents: string): Promise<void> {
+  await writeFile(path, contents);
+  await chmod(path, 0o755);
 }
 
 // Allow a documentation note that EXPLAINS the historical default while
@@ -51,6 +61,22 @@ const SHIPPED_DEFAULT_PATTERNS: RegExp[] = [
 ];
 
 describe('docker self-hosting — no default credentials (#3804)', () => {
+  it('parses service blocks from CRLF Compose input', () => {
+    const compose = [
+      'services:',
+      '  ais-relay:',
+      '    environment:',
+      '      AISSTREAM_API_KEY: optional',
+      '  redis:',
+      '    image: redis:7',
+      'volumes:',
+      '  redis-data:',
+      '',
+    ].join('\r\n');
+
+    assert.match(serviceBlock(compose, 'ais-relay'), /AISSTREAM_API_KEY: optional/);
+  });
+
   it('docker-compose.yml does not default REDIS_TOKEN or UPSTASH_REDIS_REST_TOKEN to a literal', async () => {
     const compose = await read('docker-compose.yml');
     assert.ok(
@@ -169,6 +195,58 @@ describe('docker self-hosting — no default credentials (#3804)', () => {
       /if \[ -n "\$\{REDIS_TOKEN[^}]*}" \]/.test(sh),
       'scripts/run-seeders.sh must unconditionally prefer REDIS_TOKEN when set (PR #3829 P1)',
     );
+  });
+
+  it('scripts/run-seeders.sh passes converted MSYS paths to Node with and without timeout', async () => {
+    const fixtureRoot = await mkdtemp(join(tmpdir(), 'wm-run-seeders-msys-'));
+    const scriptsDir = join(fixtureRoot, 'scripts');
+    const binDir = join(fixtureRoot, 'bin');
+    const nodeArgLog = join(fixtureRoot, 'node-args.log');
+
+    try {
+      await mkdir(scriptsDir);
+      await mkdir(binDir);
+      await writeFile(join(fixtureRoot, '.env'), 'REDIS_TOKEN=fixture-token\n');
+      await writeFile(join(scriptsDir, 'run-seeders.sh'), await read('scripts/run-seeders.sh'));
+      await writeFile(join(scriptsDir, 'seed-probe.mjs'), '// fixture seeder\n');
+      await writeExecutable(join(binDir, 'cygpath'), `#!/bin/sh
+[ "$1" = "-w" ] || exit 64
+printf '%s\n' 'C:\\fixture\\seed-probe.mjs'
+`);
+      await writeExecutable(join(binDir, 'node'), `#!/bin/sh
+printf '%s\n' "$1" >> "$NODE_ARG_LOG"
+printf '%s\n' 'probe ok'
+`);
+      await writeExecutable(join(binDir, 'timeout'), `#!/bin/sh
+if [ "$1" = "-k" ]; then shift 2; fi
+shift
+exec "$@"
+`);
+
+      const env = {
+        ...process.env,
+        PATH: `${binDir}${delimiter}${process.env.PATH || ''}`,
+        NODE_ARG_LOG: nodeArgLog,
+      };
+      for (const seedTimeout of ['0', '30']) {
+        const result = spawnSync('sh', [join(scriptsDir, 'run-seeders.sh')], {
+          encoding: 'utf8',
+          env: { ...env, SEED_TIMEOUT: seedTimeout },
+        });
+        assert.equal(
+          result.status,
+          0,
+          `run-seeders.sh failed with SEED_TIMEOUT=${seedTimeout}\nstdout=${result.stdout}\nstderr=${result.stderr}`,
+        );
+      }
+
+      assert.deepEqual(
+        (await readFile(nodeArgLog, 'utf8')).trim().split('\n'),
+        ['C:\\fixture\\seed-probe.mjs', 'C:\\fixture\\seed-probe.mjs'],
+      );
+    } finally {
+      await rm(fixtureRoot, { recursive: true, force: true });
+    }
   });
 
   it('.env.example documents REDIS_PASSWORD and REDIS_TOKEN as self-hosted Docker vars', async () => {

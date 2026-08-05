@@ -154,4 +154,51 @@ describe('OpenAPI empty-200 degradation contract', () => {
 
     assert.ok(matched >= 10, "expected economic/market unavailable variants, found " + matched);
   });
+
+  it('keeps Giving provenance optional during unavailable degradation and removes false live semantics', () => {
+    const spec = readSpec('GivingService.openapi.json');
+    const { operation, schema } = successfulSchema(spec, '/api/giving/v1/get-giving-summary');
+    const summarySchema = spec.components?.schemas?.GivingSummary;
+    const provenanceSchema = spec.components?.schemas?.GivingProvenance;
+
+    assert.ok(summarySchema, 'GivingSummary schema missing');
+    assert.ok(provenanceSchema, 'GivingProvenance schema missing');
+    assertProperties(summarySchema, 'GivingSummary', [
+      'dataMode',
+      'trendAvailable',
+      'provenance',
+      'activityIndexAvailable',
+    ]);
+    assertProperties(provenanceSchema, 'GivingProvenance', [
+      'subject',
+      'sourceName',
+      'sourceUrl',
+      'referencePeriod',
+      'sourcePublishedAt',
+      'measurementBasis',
+      'status',
+      'coveredMetricPaths',
+      'includedInHighlightedAggregate',
+      'reportedValue',
+      'reportedUnit',
+      'notes',
+      'valueQualifier',
+      'sourceLocator',
+      'accessedAt',
+      'denominator',
+      'derivation',
+    ]);
+    assert.ok(!schema.required?.includes('summary'), 'unavailable response must not require a summary');
+    assert.ok(!summarySchema.required?.includes('provenance'), 'legacy or unavailable summary must not require provenance');
+
+    const contractText = JSON.stringify({ operation, summarySchema, provenanceSchema }).toLowerCase();
+    assert.doesNotMatch(
+      contractText,
+      /combines live sampling|retrieves a composite global giving activity index|tracks transparent on-chain philanthropy/,
+    );
+    assertTerms(summarySchema.properties.activityIndex.description, 'GivingSummary.activityIndex', ['compatibility', 'sentinel']);
+    assertTerms(summarySchema.properties.trend.description, 'GivingSummary.trend', ['compatibility', 'sentinel']);
+    assertTerms(summarySchema.properties.dataMode.description, 'GivingSummary.dataMode', ['absent', 'legacy']);
+    assertTerms(provenanceSchema.properties.status.description, 'GivingProvenance.status', ['unknown', 'unverified']);
+  });
 });

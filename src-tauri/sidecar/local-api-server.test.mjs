@@ -4,11 +4,12 @@ import http, { createServer, request as httpRequest } from 'node:http';
 import https from 'node:https';
 import { createHmac } from 'node:crypto';
 import { EventEmitter } from 'node:events';
+import net from 'node:net';
 import { brotliDecompressSync, gunzipSync } from 'node:zlib';
 import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
-import { createLocalApiServer } from './local-api-server.mjs';
+import { createLocalApiServer, __testing__ } from './local-api-server.mjs';
 
 // The sidecar default-denies when LOCAL_API_TOKEN is unset (security fix:
 // previously "unset" meant "auth disabled", which made any standalone run
@@ -135,10 +136,12 @@ function mockHttpsRequestOnce({ statusCode, headers, body }) {
 async function setupRemoteServer() {
   const hits = [];
   const origins = [];
+  const headers = [];
   const server = createServer((req, res) => {
     const url = new URL(req.url || '/', 'http://127.0.0.1');
     hits.push(url.pathname);
     origins.push(req.headers.origin || null);
+    headers.push(req.headers);
     res.writeHead(200, { 'content-type': 'application/json' });
     res.end(JSON.stringify({
       source: 'remote',
@@ -151,6 +154,7 @@ async function setupRemoteServer() {
   return {
     hits,
     origins,
+    headers,
     remoteBase: `http://127.0.0.1:${port}`,
     async close() {
       await new Promise((resolve, reject) => {
@@ -531,6 +535,88 @@ test('replaces browser origin with localhost origin for local handlers', async (
   }
 });
 
+test('preserves caller Authorization while hiding the sidecar transport token', async () => {
+  const localApi = await setupApiDir({
+    'header-check.js': `
+      export default async function handler(req) {
+        return new Response(JSON.stringify({
+          authorization: req.headers.get('authorization'),
+          transportToken: req.headers.get('x-worldmonitor-local-token'),
+        }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        });
+      }
+    `,
+  });
+
+  const app = await createLocalApiServer({
+    port: 0,
+    apiDir: localApi.apiDir,
+    logger: { log() { }, warn() { }, error() { } },
+  });
+  const { port } = await app.start();
+
+  try {
+    const response = await fetch(`http://127.0.0.1:${port}/api/header-check`, {
+      headers: {
+        Authorization: 'Bearer caller-oauth-token',
+        'X-WorldMonitor-Local-Token': TEST_LOCAL_API_TOKEN,
+      },
+    });
+    assert.equal(response.status, 200);
+    assert.deepEqual(await response.json(), {
+      authorization: 'Bearer caller-oauth-token',
+      transportToken: null,
+    });
+  } finally {
+    await app.close();
+    await localApi.cleanup();
+  }
+});
+
+test('does not forward the sidecar transport token through Docker cloud proxy routes', async () => {
+  const originalConvex = process.env.CONVEX_URL;
+  delete process.env.CONVEX_URL;
+
+  const remote = await setupRemoteServer();
+  const localApi = await setupApiDir({});
+  const app = await createLocalApiServer({
+    port: 0,
+    apiDir: localApi.apiDir,
+    remoteBase: remote.remoteBase,
+    allowPrivateRemoteBase: true,
+    mode: 'docker',
+    logger: { log() { }, warn() { }, error() { } },
+  });
+  const { port } = await app.start();
+
+  try {
+    const headers = { 'X-WorldMonitor-Local-Token': TEST_LOCAL_API_TOKEN };
+    const youtubeResponse = await fetch(`http://127.0.0.1:${port}/api/youtube/live`, { headers });
+    assert.equal(youtubeResponse.status, 200);
+
+    const registerResponse = await fetch(`http://127.0.0.1:${port}/api/register-interest`, {
+      method: 'POST',
+      headers: { ...headers, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: 'docker@example.com', source: 'web-form' }),
+    });
+    assert.equal(registerResponse.status, 200);
+
+    assert.deepEqual(remote.hits, ['/api/youtube/live', '/api/leads/v1/register-interest']);
+    assert.equal(remote.headers.length, 2);
+    for (const upstreamHeaders of remote.headers) {
+      assert.equal(upstreamHeaders['x-worldmonitor-local-token'], undefined);
+    }
+  } finally {
+    await app.close();
+    await localApi.cleanup();
+    await remote.close();
+    if (originalConvex === undefined) delete process.env.CONVEX_URL;
+    else process.env.CONVEX_URL = originalConvex;
+  }
+});
+
 test('preserves Request body when handler uses fetch(Request)', async () => {
   // Use a DISTINCT upstream server (not the sidecar itself) so this test
   // exercises real "handler proxies to external host" semantics. The upstream
@@ -763,6 +849,120 @@ test('allows only Docker mode to fetch configured private Redis REST origin', as
     await new Promise((resolve, reject) => {
       upstream.close((error) => (error ? reject(error) : resolve()));
     });
+  }
+});
+
+test('allows only Docker mode to fetch configured private LLM origins', async () => {
+  const envSnapshot = {
+    LLM_API_URL: process.env.LLM_API_URL,
+    OLLAMA_API_URL: process.env.OLLAMA_API_URL,
+    UNCONFIGURED_PRIVATE_URL: process.env.UNCONFIGURED_PRIVATE_URL,
+  };
+  let handlerHits = 0;
+
+  const upstreams = [];
+  const warnings = [];
+  async function createProbeOrigin() {
+    const upstream = createServer((req, res) => {
+      if (req.headers['x-sidecar-test-probe'] === '1') handlerHits += 1;
+      res.writeHead(200, { 'content-type': 'application/json' });
+      res.end(JSON.stringify({ ok: true }));
+    });
+    upstreams.push(upstream);
+    const port = await listen(upstream);
+    return `http://127.0.0.1:${port}/v1/chat/completions`;
+  }
+
+  const [privateLlmUrl, privateOllamaUrl, unconfiguredPrivateUrl] = await Promise.all([
+    createProbeOrigin(),
+    createProbeOrigin(),
+    createProbeOrigin(),
+  ]);
+
+  const localApi = await setupApiDir({
+    'llm-probe.js': `
+      export default async function handler(request) {
+        const envKey = new URL(request.url).searchParams.get('envKey');
+        const upstream = await fetch(process.env[envKey], {
+          headers: { 'x-sidecar-test-probe': '1' },
+        });
+        const payload = await upstream.text();
+        return new Response(payload, {
+          status: upstream.status,
+          headers: { 'content-type': 'application/json' },
+        });
+      }
+    `,
+  });
+
+  async function runProbes(mode, envKeys) {
+    const app = await createLocalApiServer({
+      port: 0,
+      apiDir: localApi.apiDir,
+      mode,
+      logger: { log() { }, warn(message) { warnings.push(message); }, error() { } },
+    });
+    const { port } = await app.start();
+    try {
+      return await Promise.all(
+        envKeys.map((envKey) => authFetch(
+          `http://127.0.0.1:${port}/api/llm-probe?envKey=${encodeURIComponent(envKey)}`,
+        )),
+      );
+    } finally {
+      await app.close();
+    }
+  }
+
+  try {
+    process.env.LLM_API_URL = privateLlmUrl;
+    process.env.OLLAMA_API_URL = privateOllamaUrl;
+    process.env.UNCONFIGURED_PRIVATE_URL = unconfiguredPrivateUrl;
+    const envKeys = ['LLM_API_URL', 'OLLAMA_API_URL', 'UNCONFIGURED_PRIVATE_URL'];
+    const dockerResponses = await runProbes('docker', envKeys);
+    for (const [index, envKey] of envKeys.entries()) {
+      const dockerResponse = dockerResponses[index];
+      if (index < 2) {
+        assert.equal(dockerResponse.status, 200, envKey);
+        assert.deepEqual(await dockerResponse.json(), { ok: true });
+      } else {
+        assert.equal(dockerResponse.status, 502, envKey);
+        const dockerBody = await dockerResponse.json();
+        assert.equal(dockerBody.error, 'Local handler error');
+        assert.match(dockerBody.reason, /SSRF blocked/);
+      }
+    }
+
+    const desktopResponses = await runProbes('desktop-sidecar', envKeys);
+    for (const [index, envKey] of envKeys.entries()) {
+      const desktopResponse = desktopResponses[index];
+      assert.equal(desktopResponse.status, 502, envKey);
+      const desktopBody = await desktopResponse.json();
+      assert.equal(desktopBody.error, 'Local handler error');
+      assert.match(desktopBody.reason, /SSRF blocked/);
+    }
+    assert.equal(handlerHits, 2, 'only Docker handler probes should reach the upstream');
+
+    process.env.LLM_API_URL = 'not-a-url';
+    process.env.OLLAMA_API_URL = '://also-not-a-url';
+    const malformedResponses = await runProbes('docker', ['LLM_API_URL', 'OLLAMA_API_URL']);
+    for (const [index, envKey] of ['LLM_API_URL', 'OLLAMA_API_URL'].entries()) {
+      assert.equal(malformedResponses[index].status, 502, envKey);
+      const malformedBody = await malformedResponses[index].json();
+      assert.equal(malformedBody.error, 'Local handler error');
+      assert.match(malformedBody.reason, /(?:parse URL|Invalid URL)/i);
+    }
+    assert.ok(warnings.some((message) => message.includes('LLM_API_URL is not a valid URL')));
+    assert.ok(warnings.some((message) => message.includes('OLLAMA_API_URL is not a valid URL')));
+  } finally {
+    for (const [key, value] of Object.entries(envSnapshot)) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+    await localApi.cleanup();
+    await Promise.all(upstreams.map((upstream) => new Promise((resolve, reject) => {
+      upstream.close((error) => (error ? reject(error) : resolve()));
+    })));
   }
 });
 
@@ -2077,6 +2277,316 @@ test('service-status reports bound fallback port after EADDRINUSE recovery', asy
     await localApi.cleanup();
     await new Promise((resolve, reject) => {
       blocker.close((error) => (error ? reject(error) : resolve()));
+    });
+  }
+});
+
+test('releases the upstream fetch semaphore when a response stalls mid-body (#5441)', async () => {
+  // Raw TCP, not http.createServer: sends valid headers with a Content-Length
+  // promising more body than it ever delivers, then destroys the socket
+  // shortly after — the "accepts connection, sends headers, stalls mid-body,
+  // connection eventually drops" failure mode from the issue. Node's http
+  // client surfaces this on `res` ('aborted'/'error'), not on `req` — which is
+  // exactly what the old globalThis.fetch wrapper never listened for, so the
+  // wrapped Promise never settled and the semaphore slot leaked permanently.
+  let stallConnections = 0;
+  const stallServer = net.createServer((socket) => {
+    socket.once('data', () => {
+      stallConnections += 1;
+      socket.write(
+        'HTTP/1.1 200 OK\r\n' +
+        'Content-Type: application/json\r\n' +
+        'Content-Length: 1000\r\n' +
+        '\r\n'
+      );
+      setTimeout(() => socket.destroy(), 20);
+    });
+  });
+  const stallPort = await listen(stallServer);
+
+  const healthy = createServer((_req, res) => {
+    res.writeHead(200, { 'content-type': 'application/json' });
+    res.end(JSON.stringify({ ok: true }));
+  });
+  const healthyPort = await listen(healthy);
+
+  const localApi = await setupApiDir({
+    'stall-proxy.js': `
+      export default async function handler() {
+        try {
+          await fetch('http://127.0.0.1:${stallPort}/');
+          return new Response(JSON.stringify({ settled: 'resolved' }), { status: 200 });
+        } catch (error) {
+          return new Response(JSON.stringify({ settled: 'rejected', message: error.message }), { status: 200 });
+        }
+      }
+    `,
+    'healthy-proxy.js': `
+      export default async function handler() {
+        const upstream = await fetch('http://127.0.0.1:${healthyPort}/');
+        const payload = await upstream.text();
+        return new Response(payload, { status: upstream.status, headers: { 'content-type': 'application/json' } });
+      }
+    `,
+  });
+
+  const app = await createLocalApiServer({
+    port: 0,
+    apiDir: localApi.apiDir,
+    logger: { log() { }, warn() { }, error() { } },
+    allowPrivateFetchOrigins: [
+      `http://127.0.0.1:${stallPort}`,
+      `http://127.0.0.1:${healthyPort}`,
+    ],
+  });
+  const { port } = await app.start();
+
+  try {
+    // getJsonViaHttp, NOT authFetch/global fetch: globalThis.fetch is
+    // monkey-patched by local-api-server.mjs and shares its 6-slot semaphore
+    // with the handler-side fetches this test is exercising. A real external
+    // client (a separate process/browser) never shares that counter — using
+    // the patched fetch for these outer calls too would have each one
+    // consume a slot just reaching the local API server, before its handler
+    // ever got to make its own inner request, self-deadlocking the test
+    // rather than reproducing the issue.
+    //
+    // MAX_CONCURRENT_UPSTREAM is 6 — fire exactly that many concurrent
+    // requests through the stalling upstream to exhaust every slot. Do not
+    // await them yet: under the pre-fix code these never settle at all, so
+    // awaiting here would hang the test itself, not just prove the bug.
+    const stallRequests = Array.from({ length: 6 }, () =>
+      getJsonViaHttp(`http://127.0.0.1:${port}/api/stall-proxy`)
+    );
+
+    // Wait until all 6 have actually reached the upstream (holding their
+    // semaphore slot) before touching the healthy endpoint, so the assertion
+    // below is exercising a genuinely exhausted semaphore, not a race.
+    const deadline = Date.now() + 2000;
+    while (stallConnections < 6 && Date.now() < deadline) {
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+    assert.equal(stallConnections, 6, 'all 6 stalling requests should have reached the upstream');
+
+    // The semaphore is now fully held by 6 in-flight stalling fetches. A 7th
+    // request to a completely healthy upstream must still complete quickly —
+    // proving the stalled slots were released rather than leaked forever.
+    const healthyResponse = await Promise.race([
+      getJsonViaHttp(`http://127.0.0.1:${port}/api/healthy-proxy`),
+      new Promise((_, reject) =>
+        setTimeout(() => reject(new Error('healthy request did not complete — semaphore is wedged')), 3000)
+      ),
+    ]);
+    assert.equal(healthyResponse.status, 200);
+    assert.deepEqual(healthyResponse.json, { ok: true });
+
+    // The 6 stalling requests should also have settled (rejected) by now that
+    // their upstream connections were destroyed — confirm none of them hung.
+    const stallResults = await Promise.all(
+      stallRequests.map((p) =>
+        Promise.race([
+          p.then((r) => r.json),
+          new Promise((_, reject) => setTimeout(() => reject(new Error('stall request never settled')), 1000)),
+        ])
+      )
+    );
+    for (const result of stallResults) {
+      assert.equal(result.settled, 'rejected');
+    }
+  } finally {
+    await app.close();
+    await localApi.cleanup();
+    await new Promise((resolve, reject) => {
+      stallServer.close((error) => (error ? reject(error) : resolve()));
+    });
+    await new Promise((resolve, reject) => {
+      healthy.close((error) => (error ? reject(error) : resolve()));
+    });
+  }
+});
+
+test('releases the upstream fetch semaphore when a connection goes silent forever (#5441 follow-up)', async () => {
+  // Accepts the connection and never writes anything, never closes -- no
+  // FIN/RST, no data. None of res 'error'/'aborted'/'end' or req 'error'/
+  // 'close' ever fire for this shape; only the new idle timeout observes it.
+  const openSockets = new Set();
+  const silentServer = net.createServer((socket) => {
+    // Intentionally do nothing with the data -- leave the connection open
+    // and silent. Track it so cleanup can force-close it: net.Server.close()
+    // waits for every accepted socket to end on its own, and a socket we
+    // never write to or read from (by design, to simulate a true silent
+    // stall) never will.
+    openSockets.add(socket);
+    socket.once('close', () => openSockets.delete(socket));
+  });
+  const silentPort = await listen(silentServer);
+
+  __testing__.setUpstreamIdleTimeoutMs(200);
+
+  const localApi = await setupApiDir({
+    'silent-proxy.js': `
+      export default async function handler() {
+        try {
+          await fetch('http://127.0.0.1:${silentPort}/');
+          return new Response(JSON.stringify({ settled: 'resolved' }), { status: 200 });
+        } catch (error) {
+          return new Response(JSON.stringify({ settled: 'rejected', message: error.message }), { status: 200 });
+        }
+      }
+    `,
+  });
+
+  const app = await createLocalApiServer({
+    port: 0,
+    apiDir: localApi.apiDir,
+    logger: { log() { }, warn() { }, error() { } },
+    allowPrivateFetchOrigins: [`http://127.0.0.1:${silentPort}`],
+  });
+  const { port } = await app.start();
+
+  try {
+    const result = await Promise.race([
+      getJsonViaHttp(`http://127.0.0.1:${port}/api/silent-proxy`).then((r) => r.json),
+      new Promise((_, reject) =>
+        setTimeout(() => reject(new Error('silent stall never settled -- idle timeout did not fire')), 3000)
+      ),
+    ]);
+    assert.equal(result.settled, 'rejected');
+    assert.match(result.message, /idle-timed out/);
+
+    // Slot must be released: a request through the SAME fetch wrapper (any
+    // origin) must not be blocked by the leaked silent connection.
+    const stallRequests = Array.from({ length: 6 }, () =>
+      getJsonViaHttp(`http://127.0.0.1:${port}/api/silent-proxy`).then((r) => r.json)
+    );
+    const followUp = await Promise.race([
+      Promise.all(stallRequests),
+      new Promise((_, reject) => setTimeout(() => reject(new Error('semaphore still wedged after idle timeout')), 5000)),
+    ]);
+    for (const r of followUp) assert.equal(r.settled, 'rejected');
+  } finally {
+    __testing__.setUpstreamIdleTimeoutMs(12000);
+    await app.close();
+    await localApi.cleanup();
+    for (const socket of openSockets) socket.destroy();
+    await new Promise((resolve, reject) => {
+      silentServer.close((error) => (error ? reject(error) : resolve()));
+    });
+  }
+});
+
+test('abort-signal path: mid-flight abort rejects promptly and releases the slot (#5441 follow-up)', async () => {
+  // Mirrors how fetchWithTimeout drives this exact branch in production: an
+  // AbortController whose signal is passed into fetch(), aborted mid-flight
+  // against an upstream that never responds.
+  const openSockets = new Set();
+  const neverResponds = net.createServer((socket) => {
+    // Accepts but never writes -- the abort must fire before any other
+    // listener would (idle timeout stays at its default 12s here). Tracked
+    // so cleanup can force-close it (see the silent-stall test above for why).
+    openSockets.add(socket);
+    socket.once('close', () => openSockets.delete(socket));
+  });
+  const neverRespondsPort = await listen(neverResponds);
+
+  const localApi = await setupApiDir({
+    'abort-proxy.js': `
+      export default async function handler() {
+        const controller = new AbortController();
+        setTimeout(() => controller.abort(), 30);
+        try {
+          await fetch('http://127.0.0.1:${neverRespondsPort}/', { signal: controller.signal });
+          return new Response(JSON.stringify({ settled: 'resolved' }), { status: 200 });
+        } catch (error) {
+          return new Response(JSON.stringify({ settled: 'rejected', message: error.message, name: error.name }), { status: 200 });
+        }
+      }
+    `,
+    'healthy-proxy.js': `
+      export default async function handler() {
+        return new Response(JSON.stringify({ ok: true }), { status: 200 });
+      }
+    `,
+  });
+
+  const app = await createLocalApiServer({
+    port: 0,
+    apiDir: localApi.apiDir,
+    logger: { log() { }, warn() { }, error() { } },
+    allowPrivateFetchOrigins: [`http://127.0.0.1:${neverRespondsPort}`],
+  });
+  const { port } = await app.start();
+
+  try {
+    const result = await Promise.race([
+      getJsonViaHttp(`http://127.0.0.1:${port}/api/abort-proxy`).then((r) => r.json),
+      new Promise((_, reject) =>
+        setTimeout(() => reject(new Error('abort-signal path never settled -- semaphore leak reintroduced')), 2000)
+      ),
+    ]);
+    assert.equal(result.settled, 'rejected');
+    assert.match(result.message, /aborted by signal/);
+
+    // Slot released promptly (well under the 12s idle timeout): a healthy
+    // request right after must not be delayed by the aborted one.
+    const healthy = await Promise.race([
+      getJsonViaHttp(`http://127.0.0.1:${port}/api/healthy-proxy`).then((r) => r.json),
+      new Promise((_, reject) => setTimeout(() => reject(new Error('slot not released after abort')), 1000)),
+    ]);
+    assert.deepEqual(healthy, { ok: true });
+  } finally {
+    await app.close();
+    await localApi.cleanup();
+    for (const socket of openSockets) socket.destroy();
+    await new Promise((resolve, reject) => {
+      neverResponds.close((error) => (error ? reject(error) : resolve()));
+    });
+  }
+});
+
+test('abort-signal path: an already-aborted signal rejects immediately without dispatching (#5441 follow-up)', async () => {
+  let connectionsReceived = 0;
+  const neverShouldConnect = net.createServer((_socket) => {
+    connectionsReceived += 1;
+  });
+  const neverShouldConnectPort = await listen(neverShouldConnect);
+
+  const localApi = await setupApiDir({
+    'preaborted-proxy.js': `
+      export default async function handler() {
+        const controller = new AbortController();
+        controller.abort();
+        try {
+          await fetch('http://127.0.0.1:${neverShouldConnectPort}/', { signal: controller.signal });
+          return new Response(JSON.stringify({ settled: 'resolved' }), { status: 200 });
+        } catch (error) {
+          return new Response(JSON.stringify({ settled: 'rejected', message: error.message }), { status: 200 });
+        }
+      }
+    `,
+  });
+
+  const app = await createLocalApiServer({
+    port: 0,
+    apiDir: localApi.apiDir,
+    logger: { log() { }, warn() { }, error() { } },
+    allowPrivateFetchOrigins: [`http://127.0.0.1:${neverShouldConnectPort}`],
+  });
+  const { port } = await app.start();
+
+  try {
+    const result = await Promise.race([
+      getJsonViaHttp(`http://127.0.0.1:${port}/api/preaborted-proxy`).then((r) => r.json),
+      new Promise((_, reject) => setTimeout(() => reject(new Error('pre-aborted fetch never settled')), 1000)),
+    ]);
+    assert.equal(result.settled, 'rejected');
+    assert.match(result.message, /aborted by signal/);
+    assert.equal(connectionsReceived, 0, 'an already-aborted signal must not dispatch to the network at all');
+  } finally {
+    await app.close();
+    await localApi.cleanup();
+    await new Promise((resolve, reject) => {
+      neverShouldConnect.close((error) => (error ? reject(error) : resolve()));
     });
   }
 });

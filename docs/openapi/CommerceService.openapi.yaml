@@ -111,7 +111,7 @@ paths:
                                       description: High-volume API for teams
                                       features: ["Everything in API Starter", "300 requests/minute", "10,000 requests/day included"]
                                       highlighted: false
-                                      monthlyPrice: 249.99
+                                      monthlyPrice: 299.99
                                       monthlyProductId: pdt_0Nbttg7NuOJrhbyBGCius
                                     - name: Enterprise
                                       description: Custom solutions for organizations

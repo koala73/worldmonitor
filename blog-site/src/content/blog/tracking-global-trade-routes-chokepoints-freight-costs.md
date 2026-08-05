@@ -1,19 +1,19 @@
 ---
 title: "Track Trade Routes, Chokepoints, and Freight Costs"
-description: "Track 8 maritime chokepoints, freight indices (BDI, SCFI), trade policy, and critical mineral risks in real time. Free supply chain intelligence dashboard."
+description: "Track 13 maritime chokepoints, freight indices (BDI, SCFI), trade policy, and critical mineral risks in real time. Free supply chain intelligence dashboard."
 metaTitle: "Chokepoint and Freight Index Monitoring | World Monitor"
 keywords: "chokepoint monitoring, Strait of Hormuz shipping, freight index dashboard, BDI Baltic Dry Index, SCFI container rates, supply chain disruption tracker, trade route intelligence"
 audience: "Supply chain professionals, commodity traders, logistics analysts, maritime intelligence, geopolitical risk analysts"
 heroImage: "/blog/images/blog/hormuz-chokepoint-crisis.png"
 pubDate: "2026-03-15"
-modifiedDate: "2026-06-13"
+modifiedDate: "2026-07-22"
 ---
 
-> **Key Takeaways:** Strait of Hormuz traffic down 94.4%. World Monitor tracks 8 corridors, 9 freight indices, WTO trade policy, and critical mineral concentration across one free dashboard. Data updates in real time.
+> **Key Takeaways:** In the March 15, 2026 snapshot, Strait of Hormuz traffic was down 94.4%. World Monitor monitors 13 waterways, nine freight indices, WTO trade policy, and critical-mineral concentration in one dashboard.
 
-The Strait of Hormuz carries 20% of the world's oil. Right now, [World Monitor's](https://www.worldmonitor.app) live chokepoint tracker shows traffic has dropped 94.4% week-over-week. Tanker transits have collapsed from 60+ daily to single digits. The disruption score is 99%.
+The Strait of Hormuz carries about 20% of global petroleum liquids consumption. In the March 15, 2026 snapshot, [World Monitor's](https://www.worldmonitor.app) chokepoint tracker showed traffic down 94.4% week-over-week, with tanker transits falling from 60+ daily to single digits and a 99% disruption score.
 
-This is not a hypothetical scenario for a risk assessment deck. This is happening right now, and World Monitor is tracking it live.
+This was not a hypothetical scenario for a risk assessment deck. The dashboard continues to track live conditions, while the figures below remain an explicitly dated case study.
 
 *Data as of March 15, 2026. Values update in real time on the dashboard.*
 
@@ -31,11 +31,11 @@ World Monitor's Supply Chain panel shows this in one view:
 
 The chart tells the story: tanker and cargo traffic that had been steady at 40-70 vessels daily suddenly dropped to near zero. This is not a gradual decline. It is a sudden shutdown of one of the world's most important trade arteries.
 
-## Eight Maritime Chokepoints Monitored in Real Time
+## Thirteen Maritime Chokepoints Monitored in Real Time
 
-The Hormuz crisis is the most severe, but it is not the only corridor under pressure. World Monitor tracks eight critical maritime chokepoints, each scored by disruption level, vessel traffic, and [conflict intensity](/blog/posts/track-global-conflicts-in-real-time/):
+The Hormuz crisis was the most severe in this snapshot, but it was not the only corridor under pressure. World Monitor tracks 13 critical maritime chokepoints, each scored by disruption level, vessel traffic, and [conflict intensity](/blog/posts/track-global-conflicts-in-real-time/):
 
-The following table shows the current status of all eight corridors as of mid-March 2026:
+The following table highlights eight of the 13 monitored corridors as of mid-March 2026:
 
 | Corridor | Status | Key Risk |
 |----------|--------|----------|
@@ -144,11 +144,11 @@ The BDI measures the cost of shipping dry bulk commodities (iron ore, coal, grai
 
 **How does the Strait of Hormuz affect oil prices?**
 
-Roughly 20% of the world's oil supply and 25% of global LNG passes through Hormuz. When traffic drops or the strait is threatened, energy markets price in supply disruption risk. The current 94.4% traffic decline is one of the most severe disruptions in the strait's history.
+About 20% of global petroleum liquids consumption and a major share of LNG trade pass through Hormuz. When traffic drops or the strait is threatened, energy markets price in supply-disruption risk. The 94.4% decline cited in this article is a dated March 15, 2026 snapshot, not a current reading.
 
 **What are the world's most critical shipping chokepoints?**
 
-The eight most strategically important chokepoints are: Strait of Hormuz (oil/LNG), Strait of Malacca (Asia-Europe trade), Suez Canal (Mediterranean access), Bab el-Mandeb (Red Sea entry), Panama Canal (Atlantic-Pacific), Bosporus Strait (Black Sea grain), Taiwan Strait (semiconductors), and Dover Strait (North Sea). World Monitor tracks all of these except Malacca and Panama, which are currently low-risk.
+World Monitor monitors 13 waterways: Hormuz, Malacca, Suez/SUMED, Bab el-Mandeb, Panama, Taiwan, Cape of Good Hope, Gibraltar, Bosporus, Korea, Dover, Kerch, and Lombok. Seven currently have EIA-backed oil or gas flow baselines; all 13 can carry traffic, warning, threat, and disruption context. See the [maritime chokepoint methodology](/blog/posts/what-is-a-maritime-chokepoint/) for the canonical registry and coverage limits.
 
 ---
 

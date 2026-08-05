@@ -12,6 +12,9 @@ e2e
 src-tauri/target
 src-tauri/sidecar/node
 *.log
+# Local self-hosting credentials must not enter Docker build contexts or caches.
+docker-compose.override.yml
+secrets/
 *.md
 !README.md
 !CHANGELOG.md

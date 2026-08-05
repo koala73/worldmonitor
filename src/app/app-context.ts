@@ -3,6 +3,7 @@ import type { AirportDelayAlert, PositionSample } from '@/services/aviation';
 import type { IranEvent } from '@/generated/client/worldmonitor/conflict/v1/service_client';
 import type { ConflictEvent } from '@/services/conflict';
 import type { GpsJamHex } from '@/services/gps-interference';
+import type { OverlayId } from '@/utils/overlay-history';
 
 // Geometry-resolved satellite-fire shape ingested into CII. Mirrors the inline
 // projection built in DataLoaderManager.loadFirmsData so the cache can replay it
@@ -25,7 +26,9 @@ import type { UnifiedSettingsTabId } from '@/components/settings-types';
 export type { UnifiedSettingsTabId };
 
 export interface UnifiedSettingsController {
-  open(tab?: UnifiedSettingsTabId): void;
+  open(tab?: UnifiedSettingsTabId, replaceOverlayId?: OverlayId, historyPending?: boolean): void;
+  close(): void;
+  hasPendingChanges(): boolean;
   refreshPanelToggles(): void;
   getButton(): HTMLButtonElement;
   destroy(): void;
@@ -64,6 +67,14 @@ export interface AppContext {
 
   panels: Record<string, import('@/components').Panel>;
   newsPanels: Record<string, import('@/components').NewsPanel>;
+  /**
+   * `feed category key → the panel key its NewsPanel registered under`, filled
+   * by panel-layout as it registers news panels. A category whose key was
+   * already claimed by a non-news panel never lands here, which is what stops
+   * the data layer resolving it as a news category (#5376). See
+   * `enabledNewsCategoryKeys` in src/config/feed-resolution.ts.
+   */
+  newsCategoryPanelKeys: Map<string, string>;
   panelSettings: Record<string, PanelConfig>;
 
   mapLayers: MapLayers;
@@ -115,6 +126,13 @@ export interface AppContext {
   isPlaybackMode: boolean;
   isIdle: boolean;
   initialLoadComplete: boolean;
+  /**
+   * A clustering pass has completed successfully at least once, so `latestClusters`
+   * is an answer rather than "not computed yet". Distinct from `initialLoadComplete`,
+   * which is set before the clustering pass begins. Never reset: once a pass has
+   * settled, a later in-flight pass still leaves the previous clusters on screen.
+   */
+  clustersSettled: boolean;
   resolvedLocation: 'global' | 'america' | 'mena' | 'eu' | 'asia' | 'latam' | 'africa' | 'oceania';
   activeChokepoint: string | null;
 

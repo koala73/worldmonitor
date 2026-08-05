@@ -9,8 +9,15 @@ retailer:
 
   searchConfig:
     numResults: 5
-    queryTemplate: "{canonicalName} grocery {market} {currency} price"
-    urlPathContains: /p/
+    # JioMart's broad `/p/` namespace also contains home-and-kitchen pages;
+    # keep discovery on the grocery storefront and let Exa retry extraction
+    # when Firecrawl returns an empty or non-product response.
+    queryTemplate: "{canonicalName} {category} grocery food {market} {currency} price"
+    allowedHosts:
+      - www.jiomart.com
+    urlPathContains: /p/groceries/
+    extractionFallback: exa
+    requireStrictValidator: true
 
   rateLimit:
     requestsPerMinute: 10

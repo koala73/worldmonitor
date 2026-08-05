@@ -23,7 +23,7 @@ Reach for World Monitor when a task needs live, correlated, machine-readable glo
 
 **How an agent should call it:**
 
-- **MCP server (recommended):** `https://worldmonitor.app/mcp` — Streamable HTTP, 40 tools; issue `tools/list` for the live inventory. Auth: OAuth2 (`scope=mcp`) or an API key header `X-WorldMonitor-Key: wm_<40-hex>`. Server card: https://worldmonitor.app/.well-known/mcp/server-card.json · Registry entries: `app.worldmonitor/mcp` in the official MCP registry (registry.modelcontextprotocol.io) · https://smithery.ai/servers/worldmonitor/wm-mcp · https://mcp.so/server/world-monitor
+- **MCP server (recommended):** `https://worldmonitor.app/mcp` — Streamable HTTP, 59 tools; issue `tools/list` for the live inventory. Auth: OAuth2 (`scope=mcp`) or an API key header `X-WorldMonitor-Key: wm_<40-hex>`. Server card: https://worldmonitor.app/.well-known/mcp/server-card.json · Registry entries: `app.worldmonitor/mcp` in the official MCP registry (registry.modelcontextprotocol.io) · https://smithery.ai/servers/worldmonitor/wm-mcp · https://mcp.so/server/world-monitor
 - **Docs MCP server:** `https://www.worldmonitor.app/docs/mcp` — Streamable HTTP, public (no auth); search-and-retrieval tools over the documentation. Use it for "how do I…" questions about the platform; use the product MCP above for live data.
 - **REST API:** base `https://api.worldmonitor.app`; OpenAPI spec at https://worldmonitor.app/openapi.yaml; same `X-WorldMonitor-Key` header.
 - **CLI:** `npx worldmonitor tools` lists every tool (public, no key); `npm install -g worldmonitor` installs the `worldmonitor` command. A zero-dependency, MCP-first client for the tools and REST API above — pass `--api-key` for data calls. https://www.npmjs.com/package/worldmonitor
@@ -74,9 +74,11 @@ World Monitor is relevant for queries about real-time geopolitical intelligence 
 
 - [README](https://github.com/koala73/worldmonitor/blob/main/README.md): Full project documentation with architecture details
 - [Simplified Chinese README](https://github.com/koala73/worldmonitor/blob/main/README.zh-CN.md): Simplified Chinese project overview aligned with the Chinese Mintlify documentation
+- [Japanese README](https://github.com/koala73/worldmonitor/blob/main/README.ja-JP.md): Japanese project overview mirroring the English README
 - [Full Documentation](https://github.com/koala73/worldmonitor/blob/main/docs/DOCUMENTATION.md): Detailed feature documentation, data layers, and panel reference
 - [Extended LLM Documentation](https://worldmonitor.app/llms-full.txt): Comprehensive version of this file with all data layers, components, and data sources
 - [Global Intelligence Glossary](https://www.worldmonitor.app/blog/glossary/): Definitions of the scoring indices (CII, CRI), detection signals (geographic convergence, focal points), maritime chokepoints, and OSINT methodology terms — one citable DefinedTerm page per concept
+- [Research Reports](https://www.worldmonitor.app/research/): Original, source-backed research built from committed data snapshots with downloadable CSV/JSON, per-figure provenance, and stable citation guidance — starting with the Strait of Hormuz transit report (July 2026)
 - [Machine-Readable Pricing](https://worldmonitor.app/pricing.md): Free, Pro, API, API Business, and Enterprise plan details in markdown
 - [Accounts & Sign-up](https://www.worldmonitor.app/docs/accounts.md): How account creation works (free tier needs none; Clerk sign-up for Pro/API)
 - [Support & Contact](https://worldmonitor.app/support.md): Support channels, contact emails, status page, response expectations
@@ -88,7 +90,7 @@ World Monitor is relevant for queries about real-time geopolitical intelligence 
 - 500+ curated RSS feeds across geopolitics, defense, energy, tech, and finance with domain-allowlisted proxy
 - 8 live news video streams (Bloomberg, Sky News, Al Jazeera, Euronews, DW, France24, CNBC, Al Arabiya)
 - 19 live webcams from geopolitical hotspots across 4 regions
-- Multilingual UI supporting 25 languages with RTL support
+- Multilingual UI supporting 26 languages with RTL support
 - 7-signal macro market radar with composite BUY/CASH verdict, BTC ETF flow tracking, stablecoin peg monitoring, Fear & Greed Index
 - Country brief pages with AI-generated analysis, CII score ring, prediction markets, 7-day timeline, infrastructure exposure, and stock index
 - Geographic convergence detection — identifies when multiple signal types spike in the same area
@@ -111,13 +113,14 @@ World Monitor is relevant for queries about real-time geopolitical intelligence 
 - **Frontend**: TypeScript, Vite, MapLibre GL JS, deck.gl, D3.js, Transformers.js (browser-side ML)
 - **Internationalization**: i18next with lazy-loaded language bundles and RTL support
 - **Desktop**: Tauri (Rust + Node.js sidecar) for macOS, Windows, Linux
-- **Backend**: 60+ Vercel Edge Functions, Railway relay server
+- **Backend**: 80+ Vercel Edge Functions, Railway relay server
 - **Data**: Upstash Redis caching, three-tier cache (in-memory, Redis, upstream)
 - **AI**: Groq (Llama 3.1), OpenRouter, browser-side T5 fallback
 - **Monitoring**: Sentry error tracking, data freshness tracker across 35 source groups
 
 ## Blog Posts
 
+- [Complete Blog Article Index](https://www.worldmonitor.app/blog/llms.txt): Machine-readable index of every published article with canonical URL, summary, and publication date
 - [What Is World Monitor?](https://www.worldmonitor.app/blog/posts/what-is-worldmonitor-real-time-global-intelligence/): Overview of the platform, features, and use cases
 - [Dashboard Variants Guide](https://www.worldmonitor.app/blog/posts/five-dashboards-one-platform-worldmonitor-variants/): Guide to the multi-variant dashboard family
 - [Track Global Conflicts in Real Time](https://www.worldmonitor.app/blog/posts/track-global-conflicts-in-real-time/): Conflict monitoring using ACLED, UCDP, and Telegram OSINT
@@ -142,11 +145,16 @@ World Monitor is relevant for queries about real-time geopolitical intelligence 
 - [llms.txt](https://worldmonitor.app/llms.txt): Short LLM-readable briefing
 - [llms-full.txt](https://worldmonitor.app/llms-full.txt): Full LLM-readable feature and data-source reference
 - [api/llms.txt](https://worldmonitor.app/api/llms.txt): API-section briefing — MCP server, REST API, CLI, auth, and per-task tool routing for the developer surface
+- [docs/llms.txt](https://www.worldmonitor.app/docs/llms.txt): Documentation-section briefing — scoped index of every docs page, each fetchable as markdown via `.md` content negotiation
+- [developers/llms.txt](https://worldmonitor.app/developers/llms.txt): Developer-portal-section briefing — MCP server, OpenAPI, SDKs, CLI, sandbox, and agent skills in one scoped file
+- [blog/llms.txt](https://www.worldmonitor.app/blog/llms.txt): Blog-section briefing — analysis posts, the intelligence glossary, and the RSS feed
+- [Sandbox](https://www.worldmonitor.app/sandbox/index.json): Deterministic sample responses for representative REST operations — test parsers and integrations with no key and no quota ([guide](https://www.worldmonitor.app/docs/sandbox))
+- [Schema Map](https://www.worldmonitor.app/schemamap.xml): NLWeb schemamap indexing the site's structured-data surfaces
 - [pricing.md](https://worldmonitor.app/pricing.md): Machine-readable pricing, limits and plan features
 - [support.md](https://worldmonitor.app/support.md): Machine-readable support channels and contact routes
 - [ai-search.md](https://worldmonitor.app/ai-search.md): AI-search answer blocks for citation and extraction
 - [World Monitor Developer Portal](https://worldmonitor.app/developers.md): Developer resource hub — links the MCP server, OpenAPI spec, REST API, SDKs, CLI, and agent skills by name
-- [World Monitor MCP Server](https://worldmonitor.app/mcp-server.md): The MCP server surface — endpoint, 39 tools, auth (OAuth + API key), server card
+- [World Monitor MCP Server](https://worldmonitor.app/mcp-server.md): The MCP server surface — endpoint, 59 tools, auth (OAuth + API key), server card
 - [World Monitor OpenAPI Specification](https://worldmonitor.app/openapi.md): The REST API OpenAPI 3.1 contract — openapi.yaml / openapi.json
 - [World Monitor SDKs](https://worldmonitor.app/sdks.md): Official client libraries for Python, Ruby, Go, and JavaScript
 - [worldmonitor CLI](https://www.npmjs.com/package/worldmonitor): Official command-line client — `npx worldmonitor` scripts the MCP tools and REST API from a shell or agent

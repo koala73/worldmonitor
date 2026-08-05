@@ -129,17 +129,20 @@
       "currencies": "货币",
       "area": "面积"
     },
-    "loadingResilienceScore": "Loading resilience score…",
-    "resilienceScoreUnavailable": "Resilience score unavailable.",
+    "loadingResilienceScore": "正在加载韧性评分…",
+    "resilienceScoreUnavailable": "韧性评分不可用。",
     "china": {
       "title": "中国国家概览",
       "description": "基于现有公共数据契约的宏观、市场、贸易、能源与运行可用性现状。",
-      "macroPolicy": "宏观与政策",
-      "marketCredit": "市场与信贷",
-      "tradeSupply": "贸易与供应链",
+      "policyEvents": "政策与执法",
       "energy": "能源",
       "availability": "灾害与航空",
       "observed": "数据日期：",
+      "published": "发布：",
+      "effective": "生效：",
+      "sectors": "行业：",
+      "entities": "实体：",
+      "translation": "翻译：",
       "source": "来源：",
       "imfGrowth": "IMF 增长预测",
       "creditGdp": "信贷占 GDP 比重",
@@ -148,8 +151,6 @@
       "gasDemand": "天然气需求",
       "energyMix": "电力结构",
       "coal": "煤炭",
-      "aviationAvailability": "航空可用性",
-      "hazardAvailability": "灾害可用性",
       "noMajorDisruptions": "未报告重大中断",
       "activeDisruptions_one": "{{count}} 起活跃中断",
       "activeDisruptions_other": "{{count}} 起活跃中断",
@@ -161,18 +162,21 @@
       "ccfiSource": "上海航运交易所",
       "comtradeSource": "联合国商品贸易数据库（报告方 156）",
       "sourceUnavailable": "来源不可用",
-      "macroUnavailable": "宏观与政策数据目前不可用。",
-      "marketUnavailable": "市场与信贷数据目前不可用。",
-      "tradeUnavailable": "贸易与供应链数据目前不可用。",
-      "energyUnavailable": "能源数据目前不可用。",
-      "availabilityUnavailable": "灾害与航空可用性数据目前不可用。",
+      "policyUnavailable": "官方政策与执法事件目前不可用。",
+      "policyPartial": "{{count}} 个官方机构的数据暂时降级。",
       "status": {
         "loading": "加载中",
         "available": "可用",
         "partial": "部分",
         "stale": "过期",
         "unavailable": "不可用"
-      }
+      },
+      "macroSignals": "宏观信号",
+      "crossStraitActivity": "两岸活动",
+      "corporateDisclosures": "企业披露",
+      "corridorConditions": "通道状况",
+      "activityNowcast": "活动即时预测",
+      "decisionSignalsUnavailable": "中国决策信号快照当前不可用。"
     }
   },
   "header": {
@@ -253,7 +257,7 @@
     "panelCatCommodityEcon": "经济与贸易",
     "panelCatHappyNews": "好消息",
     "panelCatHappyPlanet": "地球与慈善",
-    "embed": "Embed"
+    "embed": "嵌入"
   },
   "panels": {
     "liveNews": "实时新闻",
@@ -1268,8 +1272,8 @@
       "sectionFollowing": "Following",
       "sectionAll": "All",
       "sourceStates": {
-        "degraded": "degraded",
-        "stale": "stale"
+        "degraded": "已降级",
+        "stale": "已过期"
       }
     },
     "insights": {
@@ -1348,7 +1352,8 @@
       "newsSignals": "{{news}} 条新闻 • {{signals}} 个信号",
       "compiledFrom": "编译自 {{stories}} 条故事和 {{sources}} 个来源",
       "provenanceTitle": "覆盖来源：此摘要选自多少条摄取的故事和不同的来源",
-      "briefFreshness": "生成于 {{minutes}}m 前 · 最新来源 {{hours}}h 前"
+      "briefFreshness": "生成于 {{minutes}}m 前 · 最新来源 {{hours}}h 前",
+      "briefStoryDetails": "Story details ({{count}})"
     },
     "settings": {
       "exportSettings": "导出设置",
@@ -1426,10 +1431,10 @@
         "hoursAgo": "{{count}}h ago"
       },
       "infoTooltip": "<strong>方法论</strong>综合评分（0-100）混合：<ul><li>50% 国家不稳定性（前5名加权）</li><li>30% 地理趋同区域</li><li>20% 基础设施事故</li></ul>每5分钟自动刷新。",
-      "cachedCiiStatus": "Cached CII {{states}}",
+      "cachedCiiStatus": "缓存 CII {{states}}",
       "sourceStates": {
-        "degraded": "degraded",
-        "stale": "stale"
+        "degraded": "已降级",
+        "stale": "已过期"
       },
       "dataFreshness": "Data Freshness",
       "sourcesDetail": "{{active}}/{{total}} sources"
@@ -1556,7 +1561,26 @@
       "cafIndex": "CAF指数",
       "candidGrants": "Candid拨款",
       "dataLag": "数据延迟",
-      "infoTooltip": "<strong>全球捐赠活动指数</strong> 跟踪众筹平台和加密钱包个人捐赠的综合指数。<ul><li><strong>平台</strong>：GoFundMe、GlobalGiving、JustGiving活动抽样</li><li><strong>加密</strong>：链上慈善钱包流入（Endaoment、Giving Block）</li><li><strong>机构</strong>：OECD ODA、CAF世界捐赠指数、Candid拨款</li></ul>指数为方向性指标，非精确金额。结合实时抽样与已发布年度报告。"
+      "infoTooltip": "<strong>全球捐赠活动指数</strong> 跟踪众筹平台和加密钱包个人捐赠的综合指数。<ul><li><strong>平台</strong>：GoFundMe、GlobalGiving、JustGiving活动抽样</li><li><strong>加密</strong>：链上慈善钱包流入（Endaoment、Giving Block）</li><li><strong>机构</strong>：OECD ODA、CAF世界捐赠指数、Candid拨款</li></ul>指数为方向性指标，非精确金额。结合实时抽样与已发布年度报告。",
+      "benchmarkTitle": "全球捐赠基准",
+      "benchmarkInfoTooltip": "<strong>全球捐赠基准</strong> 已发布的平台和机构声明，包含来源期间和验证状态。年化数字为估算值，非实时活动。",
+      "status": {
+        "published": "已发布基准，来源覆盖已验证。",
+        "partial": "已发布基准，来源覆盖部分验证。",
+        "legacy": "历史快照；来源详情不可用。",
+        "cached": "显示缓存快照；刷新不可用。"
+      },
+      "trackedAnnualized": "已追踪平台捐赠 — 年化估算",
+      "annualizedDaily": "日度年化估算",
+      "atLeast": "至少",
+      "about": "约",
+      "sourceNotVerified": "来源未验证",
+      "reportedCumulative": "已报告累计总额",
+      "sourcePeriod": "{{source}} · {{period}}",
+      "benchmark": "已发布基准",
+      "sourcesMethodology": "来源与方法论",
+      "methodologyIntro": "仅经过验证的年度或可辩护年化平台声明才进入标题。累计和机构数字保持独立背景。",
+      "partialEstimate": "部分验证估算"
     },
     "displacement": {
       "refugees": "难民",
@@ -1596,6 +1620,8 @@
       "summaryFailed": "摘要失败",
       "sources": "{{count}}个来源",
       "relatedAssetsNear": "{{location}}附近的相关资产",
+      "sourceCoverage": "{{covered}}/{{total}} 个来源",
+      "sourceCoverageHint": "已显示 {{total}} 个已启用来源中的 {{covered}} 个 — 该面板每次刷新会轮换抓取不同来源",
       "sortBy": "排序方式",
       "sortNewest": "最新",
       "sortRelevance": "相关性"
@@ -2108,7 +2134,11 @@
       "infoTooltip": "<strong>灾难级联</strong> 检测汇聚的自然灾害和基础设施信号：<ul><li>关联地震、野火、洪灾和极端天气</li><li>追踪对基础设施和供应链的级联影响</li><li>突出具有复合灾难风险的地区</li></ul>点击卡片可在地图上放大到受影响区域。"
     },
     "markets": {
-      "infoTooltip": "<strong>市场</strong> 实时股票指数、股票和加密货币价格。使用\"观察列表\"按钮自定义您的观察列表。火花线显示最近价格趋势。"
+      "infoTooltip": "<strong>市场</strong> 实时股票指数、股票和加密货币价格。使用\"观察列表\"按钮自定义您的观察列表。火花线显示最近价格趋势。",
+      "chart": {
+        "title": "{{symbol}} 价格图表",
+        "close": "关闭图表"
+      }
     },
     "heatmap": {
       "infoTooltip": "<strong>板块热力图</strong> S&P 500 板块表现一览。颜色强度反映每日变化幅度。绿色 = 涨幅，红色 = 跌幅。"
@@ -2170,11 +2200,101 @@
       "cta": "升级到Pro →",
       "dismiss": "关闭"
     },
+    "billingState": {
+      "onHoldDesc": "支付失败。请更新您的支付方式以恢复高级访问权限。",
+      "onHoldBannerMessage": "支付失败。请更新您的支付方式以保持订阅有效。",
+      "updatePayment": "更新支付方式",
+      "renewalPendingDesc": "我们正在核实您的订阅续订。确认后将自动恢复高级访问权限。",
+      "refreshStatus": "刷新状态",
+      "renewalFailedDesc": "我们无法核实您的订阅续订。请管理账单，如问题持续请联系支持。",
+      "manageBilling": "管理账单",
+      "lapsedDesc": "您的 Pro 订阅已结束。重新订阅以恢复高级访问权限。",
+      "resubscribe": "重新订阅"
+    },
     "checkoutFailureBanner": {
       "message": "支付无法完成。未进行任何扣款。",
       "retry": "重试",
       "retrying": "重试中…",
       "dismiss": "关闭"
+    },
+    "proActivation": {
+      "badge": "PRO",
+      "progress": "第 {{current}} 步，共 {{total}} 步",
+      "closeLabel": "跳过设置",
+      "ariaLabel": "Pro 激活设置",
+      "signedInAs": "以 {{email}} 身份登录",
+      "steps": {
+        "brief": {
+          "heading": "您的每日简报，每天早晨送达",
+          "body": "每天早晨在您的收件箱中呈现精心策划的情报简报——夜间重要信号，浓缩成五分钟的阅读内容。",
+          "confirmCta": "开启我的晨间简报",
+          "confirming": "正在开启…",
+          "doneNote": "您的晨间简报已在运行。",
+          "scheduleNote": "我们将保留您当前的发送时间。",
+          "summaryLabel": "晨间简报",
+          "summaryVerified": "已开启——将从您的下一份晨间简报开始。",
+          "deliverAt": "发送时间",
+          "previewLoading": "正在准备您第一份简报的预览…",
+          "previewLabel": "今早的简报"
+        },
+        "alerts": {
+          "heading": "重大警报",
+          "body": "当发生重大事件时（冲突升级、市场震荡、新的制裁措施），在浏览器中接收提醒。随时可在设置中调整提醒频率。",
+          "confirmCta": "启用警报",
+          "confirming": "正在启用…",
+          "doneNote": "浏览器警报已开启。",
+          "blockedNote": "您的浏览器中通知已被屏蔽。请在浏览器的网站设置中开启通知以接收警报。",
+          "declinedNote": "没关系——我们不会发送浏览器警报。您可以稍后在浏览器的网站设置中开启。",
+          "summaryLabel": "重大警报",
+          "summaryVerified": "已开启——重大信号将发送至您的浏览器。"
+        },
+        "power": {
+          "heading": "您的 Pro 工具包",
+          "body": "自定义小组件、MCP 连接和 AI 研究员已解锁。构建您真正想要关注的看板。",
+          "confirmCta": "探索 Pro 工具",
+          "confirming": "正在打开…",
+          "doneNote": "您已经在使用 Pro 工具了。",
+          "summaryLabel": "Pro 工具包",
+          "summaryVerified": "已解锁，随时可用。",
+          "channelsNote": "更喜欢 Telegram、Slack、Discord 还是 Webhook？",
+          "pointers": {
+            "search": "搜索整个仪表板",
+            "widgets": "创建自定义小组件",
+            "analyst": "咨询 AI 分析师",
+            "mcpClients": "设置 MCP",
+            "channels": "在通知设置中进行配置"
+          }
+        }
+      },
+      "status": {
+        "pending": "尚未设置",
+        "inFlight": "正在设置…",
+        "verified": "已就绪",
+        "failed": "未能成功",
+        "blocked": "已屏蔽",
+        "unavailable": "不可用",
+        "blockedNote": "此功能目前不可用——您可以稍后在设置中进行配置。",
+        "unavailableNote": "此功能在您的设备上不可用——您可以稍后进行配置。",
+        "failedBody": "出现了问题。您可以重试，或稍后在设置中进行配置。",
+        "retry": "重试"
+      },
+      "actions": {
+        "skip": "暂时跳过",
+        "continue": "继续"
+      },
+      "summary": {
+        "heading": "一切就绪",
+        "subVerified": "以下是您账户中正在运行的内容。",
+        "subPending": "您可以随时在设置中完成配置。",
+        "linePending": "尚未设置——可随时在设置中完成。",
+        "lineFailed": "我们未能完成此设置——请在设置中重试。",
+        "finish": "前往我的仪表盘"
+      },
+      "chip": {
+        "message": "完成您的 Pro 账户设置。",
+        "action": "完成设置",
+        "dismissLabel": "关闭"
+      }
     },
     "frameworkSelector": {
       "label": "分析框架",
@@ -2349,43 +2469,59 @@
       }
     },
     "mobileNav": {
-      "panelCategories": "Panel categories"
+      "panelCategories": "面板类别"
     },
     "panelFreshness": {
       "status": {
-        "fresh": "Fresh",
-        "stale": "Stale",
-        "veryStale": "Very stale",
-        "noData": "No data",
-        "disabled": "Disabled",
-        "error": "Error"
+        "fresh": "最新",
+        "stale": "过期",
+        "veryStale": "严重过期",
+        "noData": "无数据",
+        "disabled": "已禁用",
+        "error": "错误"
       },
       "labelWithAge": "{{status}} {{age}}",
-      "title": "Data freshness: {{status}}. {{sources}}",
+      "title": "数据新鲜度：{{status}}。{{sources}}",
       "sourceDetail": "{{name}}: {{status}}, {{update}}",
       "sourceDetailWithHealth": "{{name}}: {{status}}, {{update}}, {{detail}}",
-      "lastUpdated": "last updated {{time}}",
-      "neverUpdated": "never updated",
+      "lastUpdated": "最后更新 {{time}}",
+      "neverUpdated": "从未更新",
       "health": {
-        "partialCoverage": "partial coverage",
-        "contentStale": "content stale",
-        "seedStale": "seed stale",
-        "noSourceData": "no source data",
-        "sourceErrorReported": "source error reported",
-        "freshnessStoreUnavailable": "freshness store unavailable",
-        "freshnessStoreDegraded": "freshness store degraded"
+        "partialCoverage": "部分覆盖",
+        "contentStale": "内容过期",
+        "seedStale": "种子过期",
+        "noSourceData": "无来源数据",
+        "sourceErrorReported": "已报告来源错误",
+        "freshnessStoreUnavailable": "新鲜度存储不可用",
+        "freshnessStoreDegraded": "新鲜度存储已降级"
       },
       "time": {
-        "never": "never",
-        "justNow": "just now",
-        "minutesAgo": "{{count}}m ago",
-        "hoursAgo": "{{count}}h ago",
-        "daysAgo": "{{count}}d ago",
-        "compactNow": "now",
-        "compactMinutes": "{{count}}m",
-        "compactHours": "{{count}}h",
-        "compactDays": "{{count}}d"
+        "never": "从不",
+        "justNow": "刚刚",
+        "minutesAgo": "{{count}}分钟前",
+        "hoursAgo": "{{count}}小时前",
+        "daysAgo": "{{count}}天前",
+        "compactNow": "现在",
+        "compactMinutes": "{{count}}分",
+        "compactHours": "{{count}}时",
+        "compactDays": "{{count}}天"
       }
+    },
+    "exportGate": {
+      "signedOutDesc": "登录以将仪表板数据导出为 CSV、JSON 或 PDF。",
+      "upgradeDesc": "数据导出（CSV、JSON、PDF）包含在 Pro Business 中。",
+      "upgradeCta": "升级到 Pro Business",
+      "lockedAriaLabel": "导出数据 — 已锁定。{{reason}}",
+      "unlockedAnnouncement": "数据导出已解锁。",
+      "preparingPdf": "正在准备 PDF…",
+      "pdfFailed": "无法生成 PDF 报告。请重试，或使用 JSON 导出。"
+    },
+    "tabCap": {
+      "signedOutDesc": "未登录的工作区限制为 {{cap}} 个仪表板标签页。登录以添加更多。",
+      "upgradeDesc": "您已达到 {{cap}} 个仪表板标签页的上限。",
+      "upgradeCta": "升级获取更多",
+      "lockedAriaLabel": "添加标签页 — 已锁定。{{reason}}",
+      "unlockedAnnouncement": "仪表板标签页限制已解除。"
     }
   },
   "popups": {
@@ -3189,16 +3325,42 @@
     "visualizationFailed": "可视化失败"
   },
   "dashboardTabs": {
-    "ariaLabel": "Dashboard tabs",
-    "defaultName": "Main",
-    "newTabName": "New Tab",
-    "newTabCreated": "New tab created",
-    "tabDeleted": "Tab \"{{name}}\" deleted",
-    "addTab": "Add tab",
-    "addTabTitle": "New tab (starts with the default panels)",
-    "renameHint": "{{name}} — double-click to rename",
-    "deleteTab": "Delete tab",
-    "deleteTabAria": "Delete tab {{name}}",
-    "tabNameAria": "Tab name"
+    "ariaLabel": "仪表板标签页",
+    "defaultName": "主页",
+    "newTabName": "新标签页",
+    "newTabCreated": "新标签页已创建",
+    "tabDeleted": "标签页\"{{name}}\"已删除",
+    "addTab": "添加标签页",
+    "addTabTitle": "新标签页（从默认面板开始）",
+    "renameHint": "{{name}} — 双击重命名",
+    "deleteTab": "删除标签页",
+    "deleteTabAria": "删除标签页 {{name}}",
+    "tabNameAria": "标签页名称"
+  },
+  "theaterPresets": {
+    "label": "覆盖预设",
+    "applied": "已应用{{preset}}预设：已启用{{count}}个来源",
+    "alreadyApplied": "{{preset}}预设已应用",
+    "ukraineWar": {
+      "label": "乌克兰战争",
+      "description": "启用乌克兰主要媒体、独立俄罗斯媒体和前线评估来源"
+    },
+    "indoPacific": {
+      "label": "印太 / 台湾",
+      "description": "启用台湾、巴基斯坦和东南亚安全来源"
+    },
+    "sahelWestAfrica": {
+      "label": "萨赫勒和西非",
+      "description": "启用萨赫勒、尼日利亚和西非本地来源"
+    },
+    "caucasusCentralAsia": {
+      "label": "高加索和中亚",
+      "description": "启用南高加索和中亚地区来源"
+    },
+    "middleEastFlashpoints": {
+      "label": "中东热点",
+      "description": "启用伊朗、以色列、海湾和库尔德地区来源"
+    },
+    "unavailable": "当前面板无法使用{{preset}}预设"
   }
 }

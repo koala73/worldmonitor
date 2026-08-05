@@ -12,6 +12,7 @@ description: "Every error shape the World Monitor MCP server emits — JSON-RPC 
   - Method gate (405 + Allow)           api/mcp/handler.ts (mcpHandler method check)
   - Top-level dispatch / -32600/-32601  api/mcp/handler.ts (POST body parse and dispatch switch)
   - Auth -32001 / -32603 emitters       api/mcp/auth.ts (resolveAuthContext and entitlement checks)
+  - Billing -32002 / -32603 denials     api/mcp/auth.ts (getMcpBillingVerificationDenial) + api/mcp/dispatch.ts (BillingDenialError re-emit)
   - Per-minute -32029 + hit telemetry   api/mcp/auth.ts (applyPerMinuteLimit, applyAnonDiscoveryLimit, emitMcpRateLimitHit)
   - Pro daily-cap -32029 (HTTP 429)     api/mcp/dispatch.ts (reserveDailyQuotaForRequest)
   - Tool exec -32603                    api/mcp/dispatch.ts (dispatchToolsCall)
@@ -29,7 +30,7 @@ For the projection grammar itself, see the [JMESPath guide](/mcp-jmespath). For 
 ## Quick orientation
 
 - **HTTP status** is the transport-layer answer. Most JSON-RPC replies — successes AND errors — come back as **HTTP 200**, per the JSON-RPC 2.0 convention. The handler only escalates the status when the failure is something a generic HTTP client must react to (auth, daily cap, service unavailable) and benefits from a `Retry-After` / `WWW-Authenticate` header.
-- **JSON-RPC `error.code`** is the application-layer answer. Six codes are in use: `-32001`, `-32029`, `-32600`, `-32601`, `-32602`, `-32603`. The handler never emits another code — if you see one, treat it as a wire bug and file an issue.
+- **JSON-RPC `error.code`** is the application-layer answer. Seven codes are in use: `-32001`, `-32002`, `-32029`, `-32600`, `-32601`, `-32602`, `-32603`. The handler never emits another code — if you see one, treat it as a wire bug and file an issue.
 - **Soft-behavior envelopes** are the high-volume failure mode. `tools/call` succeeds at the JSON-RPC layer (HTTP 200, no `error` field), but the JSON sitting inside `result.content[0].text` carries a `_budget_exceeded` or `_jmespath_error` discriminator. Clients that only inspect the JSON-RPC envelope will silently treat these as successes — parse `result.content[0].text` and check for a leading `_` key before consuming the payload as data.
 - **Executed calls stay charged.** `_budget_exceeded`, `_jmespath_error`, and tool-execution errors (`-32603`) all happen after the tool has run, so they consume the Pro daily-quota slot. Only pre-dispatch failures such as daily-cap rejection or quota-reservation service failure avoid charging the slot.
 - **Both 401 paths set `WWW-Authenticate`** with `realm="worldmonitor"` and a `resource_metadata` pointer at `/.well-known/oauth-protected-resource`. RFC 9728-aware clients (Claude Desktop, MCP Inspector) bounce through the OAuth flow on this header without further intervention.
@@ -39,6 +40,7 @@ For the projection grammar itself, see the [JMESPath guide](/mcp-jmespath). For 
 | Code      | Meaning (this server)                                                  | Paired HTTP status        | Recovery                                                              |
 |-----------|------------------------------------------------------------------------|---------------------------|-----------------------------------------------------------------------|
 | `-32001`  | Unauthenticated, invalid token, or subscription not active             | **401**                   | Re-authenticate via OAuth or fix the `X-WorldMonitor-Key` header      |
+| `-32002`  | Subscription lapsed — confirmed with the billing provider              | **403**                   | Do NOT re-authenticate (the identity is still valid). Resubscribe to restore access |
 | `-32029`  | Rate-limited — per-minute throttle OR Pro daily quota cap              | **200** (per-min) / **429** (daily) | Honour `Retry-After`; for 200/per-min back off ~1s                    |
 | `-32600`  | Malformed JSON-RPC request envelope                                    | **200**                   | Fix the request encoder; this is a client bug                         |
 | `-32601`  | Method not found                                                       | **200**                   | Use a method advertised in the initialize result's `capabilities`     |
@@ -55,7 +57,7 @@ Fires from six `api/mcp/auth.ts` emission sites, always paired with HTTP **401**
 2. **`Authorization: Bearer <token>` but `<token>` is invalid or expired** — the token didn't resolve to a context (revoked / TTL expired / never minted by `/api/oauth/token`).
 3. **`X-WorldMonitor-Key: <key>` but `<key>` isn't in the valid set** — the API key is wrong.
 4. **OAuth token resolves but the Pro MCP token row is missing or cross-bound** — the `mcpTokenId` no longer maps to the userId. Typically a revoke from Settings → Connected MCP clients.
-5. **OAuth token resolves but the subscription went away** — entitlement re-check found `tier < 1`, `mcpAccess !== true`, or `validUntil < now`. Includes the entitlements-service-unavailable fail-closed path.
+5. **OAuth token resolves but the subscription went away** — entitlement re-check found `tier < 1`, `mcpAccess !== true`, or `validUntil < now`. Includes the entitlements-service-unavailable fail-closed path. A lapse the billing provider has *confirmed* does NOT use this code — it returns `-32002` at HTTP 403 (see below), because re-authenticating cannot fix it.
 
 Example wire payload (case 1):
 
@@ -77,6 +79,31 @@ Content-Type: application/json
 ```
 
 **What to do.** Re-run the OAuth flow (`/api/oauth/token` with a fresh authorization code, OR refresh-grant with a valid refresh token). For API-key clients, double-check the `X-WorldMonitor-Key` header — user-issued `wm_` keys and operator-issued enterprise keys must go in that header, NOT as `Authorization: Bearer`. The `WWW-Authenticate` header's `resource_metadata` pointer is the canonical place to start the discovery flow from scratch.
+
+### `-32002` — Subscription lapsed (confirmed)
+
+Fires from the entitlement pre-check (`api/mcp/auth.ts` `getMcpBillingVerificationDenial`) and, for a lapse that lands mid-call between the pre-check and a tool's downstream fetch, from `api/mcp/dispatch.ts` (typed `BillingDenialError` re-emit). Always paired with HTTP **403**, `Cache-Control: no-store`, and an `X-Billing-Verification: subscription_lapsed` header. No `WWW-Authenticate` header is set — the credential is still valid; the subscription is not.
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": null,
+  "error": {
+    "code": -32002,
+    "message": "Subscription lapsed. Re-authenticating will not help — resubscribe to restore access.",
+    "data": { "code": "subscription_lapsed" }
+  }
+}
+```
+
+```http
+HTTP/1.1 403 Forbidden
+Cache-Control: no-store
+X-Billing-Verification: subscription_lapsed
+Content-Type: application/json
+```
+
+**What to do.** Do not retry and do not re-run OAuth — both will reproduce the same denial. Surface the state to the user: the subscription must be renewed (worldmonitor.app → Pricing) before MCP access resumes. Renewal takes effect within seconds of the provider webhook; no re-authentication is needed afterwards. While the same subscription is still being *verified* (provider re-check in flight), the server instead returns a retryable `-32603` at HTTP 503 with `X-Billing-Verification: renewal_verification_pending|renewal_verification_failed` and a dynamic `Retry-After` — see `-32603` below.
 
 ### `-32029` — Rate limited (per-minute OR daily)
 
@@ -183,7 +210,7 @@ The most common error code, shared across `tools/call`, `prompts/get`, `resource
 
 ### `-32603` — Internal error
 
-Three distinct conditions share this code; the HTTP status disambiguates whether retry is reasonable.
+Four distinct conditions share this code; the HTTP status (and, for billing verification, the `X-Billing-Verification` header) disambiguates whether retry is reasonable.
 
 **HTTP 200 — tool-execution failure.** A tool dispatcher threw. Most commonly: every Redis key the tool reads returned null (`cache_all_null` — transient Redis blip or a still-warming seeder), or a sibling internal fetch failed mid-call. Pro quota is not rolled back: the tool already executed, so retrying consumes another slot.
 
@@ -211,15 +238,18 @@ Retry-After: 5
 Content-Type: application/json
 ```
 
-The `message` text identifies the trigger. Three sites emit a 503; two distinct strings:
+The `message` text identifies the trigger. Seven sites emit a 503; five distinct strings:
 
 | Trigger                                         | `message`                                              | Site                              |
 |-------------------------------------------------|--------------------------------------------------------|-----------------------------------|
 | OAuth resolution service threw (Convex blip)    | `Auth service temporarily unavailable. Try again.`     | `api/mcp/auth.ts` `resolveAuthContext` bearer branch |
 | `MCP_INTERNAL_HMAC_SECRET` unset (Pro path)     | `Service temporarily unavailable, retry in a moment.`  | `api/mcp/auth.ts` `runProPreChecks` secret preflight |
 | Pro quota-reservation Redis failure (non-cap)   | `Service temporarily unavailable, retry in a moment.`  | `api/mcp/dispatch.ts` `dispatchToolsCall` quota reservation |
+| Renewal verification in flight (#4770)          | `Renewal verification pending. Retry shortly.`         | `api/mcp/auth.ts` `getMcpBillingVerificationDenial` (pre-check) or `api/mcp/dispatch.ts` (mid-call re-emit) |
+| Renewal verification failed, in cooldown (#4770)| `Renewal verification failed. Retry shortly.`          | same two sites as above           |
+| Entitlement backend unreachable (#4770)         | `Unable to verify API access. Retry shortly.`          | `api/mcp/auth.ts` `getMcpBillingVerificationDenial` (pre-check, transient entitlement-lookup failure) or `api/mcp/dispatch.ts` (mid-call re-emit of a gateway `entitlement_verification_unavailable` 503 on wm\_-key tool fetches) |
 
-Client recovery is identical for all three (honour `Retry-After: 5`); the message disambiguates only for log analysis.
+Recovery for the first three is identical (honour `Retry-After: 5`). The billing-verification rows differ: they carry an `X-Billing-Verification` header (`renewal_verification_pending|renewal_verification_failed`, or `entitlement_verification_unavailable` for the backend-unreachable row), a `data.code` mirroring it, and — for the two renewal-verification codes — a **dynamic `Retry-After` between 1 and 60 seconds** sized to the actual provider re-check; honour the header value rather than assuming 5 (the backend-unreachable row uses a fixed `Retry-After: 5`). The renewal-verification codes mean the subscription recently expired locally and the server is re-confirming it with the billing provider before denying; a renewed subscription typically recovers within one or two retries.
 
 **HTTP 200 — `resources/read` payload was empty or unparseable.** Defensive guard inside `resources/read` for the never-should-happen case where the inner `tools/call` dispatcher returned no `content[0].text` or non-JSON text.
 
@@ -235,9 +265,10 @@ Every status the MCP handler can return. Most JSON-RPC replies — including mos
 | **202** | empty                     | n/a              | `notifications/initialized` — JSON-RPC notifications take no response body, per spec |
 | **204** | empty                     | n/a              | `OPTIONS` preflight                                                  |
 | **401** | JSON-RPC envelope         | `-32001`         | Missing/invalid/expired credentials, revoked Pro MCP token, inactive subscription. `WWW-Authenticate` header set. |
+| **403** | JSON-RPC envelope         | `-32002`         | Subscription lapse confirmed with the billing provider. `X-Billing-Verification: subscription_lapsed` set; no `WWW-Authenticate` (re-auth cannot fix it). |
 | **405** | empty                     | n/a              | Request method is not `POST`, `GET`, `HEAD`, or `OPTIONS` (or a bare `GET` with no `Last-Event-ID`). `Allow: POST, GET, HEAD, OPTIONS` header set. |
 | **429** | JSON-RPC envelope         | `-32029`         | **Pro daily cap exceeded only.** `Retry-After: <seconds-until-UTC-midnight>` set. (Per-minute throttle returns `-32029` inside HTTP 200 — see `-32029` above.) |
-| **503** | JSON-RPC envelope         | `-32603`         | Auth service unavailable, `MCP_INTERNAL_HMAC_SECRET` misconfigured, or quota-reservation Redis failure. `Retry-After: 5`. |
+| **503** | JSON-RPC envelope         | `-32603`         | Auth service unavailable, `MCP_INTERNAL_HMAC_SECRET` misconfigured, or quota-reservation Redis failure (`Retry-After: 5`); OR renewal verification pending/failed (`X-Billing-Verification` set, dynamic `Retry-After` 1-60s). |
 
 One HTTP status appears that isn't a JSON-RPC error:
 

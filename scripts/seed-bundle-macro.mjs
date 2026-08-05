@@ -1,12 +1,26 @@
 #!/usr/bin/env node
 import { runBundle, HOUR, DAY } from './_bundle-runner.mjs';
+import { CHINA_MACRO_CACHE_KEY } from './_china-macro-contract.mjs';
 
 await runBundle('macro', [
   { label: 'BIS-Data', script: 'seed-bis-data.mjs', seedMetaKey: 'economic:bis', canonicalKey: 'economic:bis:policy:v1', intervalMs: 12 * HOUR, timeoutMs: 300_000 },
-  // OECD is capped at 60 downloads/hour. Each China macro run performs two
-  // consolidated dataflow requests, and the 36h gate stays far below budget.
-  { label: 'China-Macro', script: 'seed-china-macro.mjs', seedMetaKey: 'economic:china-macro', canonicalKey: 'economic:china:macro:v1', intervalMs: 36 * HOUR, timeoutMs: 240_000 },
+  // Bank of Russia official RUB rates + key policy rate. Three sequential cbr.ru
+  // calls (daily table, prior day for change1d, KeyRate SOAP history); the two
+  // required ones use withRetry(fn, 1, 2000) = 2 attempts x 15s + 2s backoff, so
+  // the design worst case is 32 + 15 + 32 = 79s. The seeder caps its own fetch
+  // phase at 90s (fetchPhaseTimeoutMs) so a slow cbr.ru — plausible behind
+  // ddos-guard — aborts through runSeed's graceful last-good path rather than
+  // being SIGTERM'd here, which the runner counts as a hard section failure.
+  // 300_000 matches the peer sections and leaves the publish phase headroom.
+  { label: 'CBR-Rates', script: 'seed-cbr-rates.mjs', seedMetaKey: 'economic:cbr-rates', canonicalKey: 'economic:cbr-rates:v1', intervalMs: DAY, timeoutMs: 300_000 },
+  // Official-source requests are sequential and bounded per host. Blocked
+  // PBoC/GACC candidates stay explicitly unavailable rather than using proxies.
+  { label: 'China-Macro', script: 'seed-china-macro.mjs', seedMetaKey: 'economic:china-macro', freshnessMetaKey: 'seed-meta:economic:china-macro-transport', completionMetaKey: 'seed-meta:economic:china-macro-complete', canonicalKey: CHINA_MACRO_CACHE_KEY, requireCanonical: true, intervalMs: 36 * HOUR, timeoutMs: 240_000 },
   { label: 'China-Release-Calendar', script: 'seed-china-release-calendar.mjs', seedMetaKey: 'economic:china-release-calendar', canonicalKey: 'economic:china:release-calendar:v1', intervalMs: 36 * HOUR, timeoutMs: 240_000 },
+  // Six official agencies, each capped at one listing plus three documents with
+  // a 400ms same-host cadence. The section is independent from macro sources:
+  // failures retain the last valid policy event set through runSeed.
+  { label: 'China-Policy-Events', script: 'seed-china-policy-events.mjs', seedMetaKey: 'china:policy-events', canonicalKey: 'china:policy-events:v1', intervalMs: 6 * HOUR, timeoutMs: 220_000 },
   { label: 'BIS-Extended', script: 'seed-bis-extended.mjs', seedMetaKey: 'economic:bis-extended', canonicalKey: 'economic:bis:dsr:v1', intervalMs: 12 * HOUR, timeoutMs: 300_000 },
   { label: 'BLS-Series', script: 'seed-bls-series.mjs', seedMetaKey: 'economic:bls-series', canonicalKey: 'bls:series:v1', intervalMs: DAY, timeoutMs: 120_000 },
   { label: 'Eurostat', script: 'seed-eurostat-country-data.mjs', seedMetaKey: 'economic:eurostat-country-data', canonicalKey: 'economic:eurostat-country-data:v1', intervalMs: DAY, timeoutMs: 300_000 },

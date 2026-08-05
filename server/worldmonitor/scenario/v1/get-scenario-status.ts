@@ -6,7 +6,9 @@ import type {
 } from '../../../../src/generated/server/worldmonitor/scenario/v1/service_server';
 import { ApiError, ValidationError } from '../../../../src/generated/server/worldmonitor/scenario/v1/service_server';
 
-import { isCallerPremium } from '../../../_shared/premium-check';
+import {
+  requirePremiumRpcAccess,
+} from '../../../_shared/premium-check';
 import { getRawJson } from '../../../_shared/redis';
 
 // Matches jobIds produced by run-scenario.ts: `scenario:{13-digit-ts}:{8-char-suffix}`.
@@ -61,10 +63,7 @@ export async function getScenarioStatus(
   ctx: ServerContext,
   req: GetScenarioStatusRequest,
 ): Promise<GetScenarioStatusResponse> {
-  const isPro = await isCallerPremium(ctx.request);
-  if (!isPro) {
-    throw new ApiError(403, 'PRO subscription required', '');
-  }
+  await requirePremiumRpcAccess(ctx.request, ApiError, 'PRO subscription required');
 
   const jobId = req.jobId ?? '';
   if (!JOB_ID_RE.test(jobId)) {

@@ -56,12 +56,93 @@ export function computeScorecard(ledger, nowMs, options = {}) {
 
   const overall = summarizeScored(scored);
   if (overall) scorecard.overall = overall;
-  const excludeOrigins = new Set(options.skillExcludeOrigins ?? DEFAULT_SKILL_EXCLUDED_ORIGINS);
+  // Promotion flag (#5525 U14): bet_engine stays OUT of the skill headline
+  // until Gate 2 passes. Flipping `promoteBetEngine` (the resolutions seeder
+  // wires it from FORECAST_PROMOTE_BET_ENGINE=1) is the ONLY promotion path —
+  // it removes bet_engine from the exclusion set while state_derived stays
+  // excluded.
+  const promoteBetEngine = options.promoteBetEngine === true;
+  const defaultExcluded = promoteBetEngine
+    ? DEFAULT_SKILL_EXCLUDED_ORIGINS.filter((origin) => origin !== 'bet_engine')
+    : DEFAULT_SKILL_EXCLUDED_ORIGINS;
+  const excludeOrigins = new Set(options.skillExcludeOrigins ?? defaultExcluded);
   const skill = summarizeSkill(scored, excludeOrigins);
   if (skill) scorecard.skill = skill;
   const marketSkill = summarizeMarketSkill(scored);
   if (marketSkill) scorecard.vsMarketSkill = marketSkill;
+
+  // Per-origin Gate-2 measurement (#5525 U14): the pooled calibration and
+  // vsMarketSkill above mix legacy + shadow origins, so Gate 2 reads these
+  // bet_engine-scoped slices instead — calibration curve, market comparison,
+  // ensemble-vs-base-rate baseline delta, and outcome-conditioned deviation
+  // skill (KTD3: on bets where the ensemble deviates from the market, does the
+  // deviation's direction predict outcomes better than the market alone?).
+  const betEngineScored = scored.filter((entry) => (entry?.generationOrigin || 'unknown') === 'bet_engine');
+  if (betEngineScored.length) {
+    const slice = {
+      count: betEngineScored.length,
+      calibration: calibrationBuckets(betEngineScored),
+    };
+    const sliceOverall = summarizeScored(betEngineScored);
+    if (sliceOverall) {
+      slice.brier = sliceOverall.brier;
+      slice.logScore = sliceOverall.logScore;
+    }
+    const sliceMarket = summarizeMarketSkill(betEngineScored);
+    if (sliceMarket) slice.vsMarketSkill = sliceMarket;
+    const baseline = summarizeBaselineSkill(betEngineScored);
+    if (baseline) slice.vsBaseRate = baseline;
+    const deviation = summarizeDeviationSkill(betEngineScored);
+    if (deviation) slice.deviationSkill = deviation;
+    scorecard.betEngine = slice;
+  }
   return scorecard;
+}
+
+// Ensemble-vs-recorded-base-rate Brier comparison (#5525 KTD5). Only entries
+// carrying baselineProbability participate; absent fields exclude the entry
+// (never NaN).
+function summarizeBaselineSkill(scored) {
+  const anchored = scored
+    .map((entry) => {
+      const baseline = clampProbability(Number(entry?.baselineProbability));
+      return Number.isFinite(baseline) ? { entry, baseline } : null;
+    })
+    .filter(Boolean);
+  if (!anchored.length) return null;
+  const forecastBrier = mean(anchored.map(({ entry }) => brier(entry)));
+  const baselineBrier = mean(anchored.map(({ entry, baseline }) => brier(entry, baseline)));
+  return {
+    count: anchored.length,
+    forecastBrier: round(forecastBrier),
+    baselineBrier: round(baselineBrier),
+    brierDelta: round(baselineBrier - forecastBrier),
+  };
+}
+
+// Outcome-conditioned deviation skill (#5525 KTD3): restricted to entries where
+// the graded probability deviates from the market price by more than the band,
+// correlate the deviation's SIGN with the outcome-minus-market residual. A
+// market-copying forecaster (deviation = noise) scores ~0; genuinely derived
+// deviation scores > 0. Positive skill is a hard Gate-2 criterion.
+const DEVIATION_BAND = 0.05;
+function summarizeDeviationSkill(scored) {
+  const deviating = scored
+    .map((entry) => {
+      const market = marketProbability(entry);
+      if (!Number.isFinite(market)) return null;
+      const p = probability(entry);
+      const deviation = p - market;
+      if (Math.abs(deviation) <= DEVIATION_BAND) return null;
+      const residual = outcomeNumber(entry) - market;
+      return { sign: Math.sign(deviation), residual };
+    })
+    .filter(Boolean);
+  if (!deviating.length) return null;
+  // Mean of sign(deviation) * residual: positive when deviations point toward
+  // realized outcomes, ~0 for noise, negative when they point away.
+  const skill = mean(deviating.map(({ sign, residual }) => sign * residual));
+  return { count: deviating.length, skill: round(skill) };
 }
 
 function normalizeLedger(ledger) {

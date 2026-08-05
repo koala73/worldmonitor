@@ -4,7 +4,6 @@
     "pro": "Pro",
     "api": "API",
     "enterprise": "Enterprise",
-    "reserveAccess": "预订早鸟访问",
     "signIn": "登录",
     "upgradeToPro": "升级到 Pro",
     "goToDashboard": "转到仪表板"
@@ -13,11 +12,8 @@
     "noiseWord": "噪音",
     "signalWord": "信号",
     "valueProps": "地缘政治 AI 层 — 向它提问、订阅它、在其之上构建。",
-    "reserveEarlyAccess": "预订早鸟访问",
     "launchingDate": "现已上线",
     "tryFreeDashboard": "试用免费仪表板",
-    "emailPlaceholder": "输入您的邮箱",
-    "emailAriaLabel": "等候名单邮箱地址",
     "choosePlan": "选择方案",
     "signIn": "登录",
     "goToDashboard": "转到仪表板"
@@ -37,7 +33,6 @@
     "proF7": "告警规则引擎 — 自定义触发器、静音时段、AES-256 加密通道",
     "proF8": "市场观察列表、宏观与央行追踪",
     "proF9": "AI Market Implications 与 Regional Intelligence(即将推出:轨道监视、高级地图图层、更长历史)",
-    "proCta": "预订早鸟访问",
     "choosePlan": "选择方案",
     "entTitle": "World Monitor Enterprise",
     "entDesc": "面向需要共享监测、API 访问、部署选项、TV 应用和直接支持的团队。",
@@ -143,7 +138,10 @@
   "tiers": {
     "free": "免费",
     "pro": "Pro",
-    "enterprise": "Enterprise"
+    "enterprise": "Enterprise",
+    "priceMonthly": "$39.99 / 月\t",
+    "priceAnnual": "$359.99 / 年\t",
+    "annualSavingsNote": "节省 3 个月\t"
   },
   "proShowcase": {
     "proTier": "PRO 等级",
@@ -186,8 +184,9 @@
     "starterWebhooks": "5 条 webhook 规则",
     "business": "Business",
     "businessReqs": "10,000 次/天",
-    "businessWebhooks": "Priority support",
-    "feedData": "将数据输入您的仪表板,通过 Zapier/n8n/Make 自动化告警,基于 CII/风险数据构建自定义评分模型。"
+    "feedData": "将数据输入您的仪表板,通过 Zapier/n8n/Make 自动化告警,基于 CII/风险数据构建自定义评分模型。",
+    "cli": "零依赖 CLI，可从您的 shell 编写每个工具的脚本\t",
+    "businessWebhooks": "优先级支持"
   },
   "enterpriseShowcase": {
     "enterpriseTier": "ENTERPRISE 等级",
@@ -200,7 +199,7 @@
     "dataLayers": "扩展的数据层",
     "dataLayersDesc": "全球数万项已绘制基础设施资产。卫星图像集成,含变化检测与 SAR。",
     "connectors": "100+ 数据连接器",
-    "connectorsDesc": "PostgreSQL、Snowflake、Splunk、Sentinel、Jira、Slack、Teams 等。导出为 PDF、PowerPoint、CSV、GeoJSON。",
+    "connectorsDesc": "PostgreSQL、Snowflake、Splunk、Sentinel、Jira、Slack、Teams 等。导出为 PDF、CSV、JSON。",
     "whiteLabel": "White-label、TV 与可嵌入",
     "whiteLabelDesc": "您的品牌、您的域名、您的桌面应用。用于 SOC 墙与交易大厅的 Android TV 应用。可嵌入 iframe 面板。",
     "financial": "金融情报",
@@ -210,7 +209,7 @@
     "government": "政府与机构",
     "governmentDesc": "气隙、AI 代理、完整态势感知、MCP。数据不离开您的网络。",
     "risk": "风险咨询公司",
-    "riskDesc": "情景模拟、投资者人设、按需提供的品牌 PDF/PowerPoint 报告。",
+    "riskDesc": "场景模拟、投资者人物角色、按需生成品牌 PDF 报告。",
     "soc": "SOC 与 CERT",
     "socDesc": "网络威胁图层、SIEM 集成、BGP 异常监测、勒索软件 feed。",
     "talkToSales": "联系销售",
@@ -277,13 +276,13 @@
   "faq": {
     "title": "常见问题",
     "q1": "World Monitor 仍然免费吗?",
-    "a1": "是。核心平台保持免费。Pro 增加股票研究、宏观分析和 AI 简报。Enterprise 增加团队部署与 TV 应用。",
+    "a1": "是的。核心平台保持免费。Pro 版本增加了股票研究、宏观分析和 AI 简报。Pro Business 版本增加了商业许可证和数据导出。Enterprise 版本增加了团队部署和 TV 应用。",
     "q2": "为什么要付费使用 Pro?",
     "a2": "Pro 面向希望获得股票监测、地缘政治分析、经济分析与 AI 每日简报的投资者、分析师与专业人士 — 全部在一把密钥下。",
     "q3": "Enterprise 面向谁?",
     "a3": "Enterprise 面向需要共享使用、API、集成、部署选项与直接支持的团队。",
     "q4": "我可以先用 Pro 之后再升级吗?",
-    "a4": "可以。Pro 适合认真的个人用户。团队和部署需求增长时,Enterprise 在那里等您。",
+    "a4": "是的。Pro 版本供个人使用。Pro Business（49.99 美元/月）增加了商业许可证、数据导出、25 个仪表板和 250 次 MCP 调用/天。API 计划涵盖编程访问，Enterprise 计划涵盖自定义部署。升级通过计费门户进行 — 应用会指导您完成相应步骤。",
     "q5": "这只用于冲突监测吗?",
     "a5": "不是。World Monitor 主要是一个覆盖股票市场、宏观经济、地缘政治分析、能源、基础设施等的全球情报平台。冲突追踪是众多能力之一 — 不是重点。",
     "q6": "为何保持核心平台免费?",
@@ -306,39 +305,18 @@
   "finalCta": {
     "title": "从 Pro 开始。扩展到 Enterprise。",
     "subtitle": "继续免费使用 World Monitor,或升级以获取股票研究、宏观分析和 AI 简报。若您的组织需要团队访问、TV 应用或 API 支持,请与我们联系。",
-    "getPro": "预订早鸟访问",
     "talkToSales": "联系销售"
   },
   "footer": {
-    "beFirstInLine": "抢占队列第一位。",
     "lookingForEnterprise": "在找 Enterprise?",
     "contactUs": "联系我们",
     "wiredArticle": "WIRED 文章"
   },
-  "form": {
-    "submitting": "提交中...",
-    "joinWaitlist": "预订早鸟访问",
-    "tooManyRequests": "请求过多",
-    "failedTryAgain": "失败 — 请重试"
-  },
-  "referral": {
-    "alreadyOnList": "您已在名单上。",
-    "shareHint": "分享您的链接以在队列中前移。每位加入的朋友都让您更靠前。",
-    "copied": "已复制!",
-    "shareOnX": "在 X 上分享",
-    "linkedin": "LinkedIn",
-    "whatsapp": "WhatsApp",
-    "telegram": "Telegram",
-    "shareText": "我刚加入了 World Monitor Pro 等候名单 — 一个平台囊括股票监测、地缘政治分析与每日 AI 简报。一起来:",
-    "joinWaitlistShare": "加入 World Monitor Pro 等候名单:",
-    "youreIn": "您已入列!",
-    "invitedBanner": "您已被邀请 — 加入等候名单"
-  },
   "soonBadge": "即将推出",
   "meta": {
-    "title": "World Monitor Pro — AI 分析师、个人智能助手、Claude & GPT 的 MCP",
-    "description": "地缘政治 AI 层。提问、订阅、构建。WM Analyst 聊天支持 30+ 个实时服务，AI 摘要按日、两次日或周频率投送至 Slack、Discord、Telegram、Email 或 webhook，自定义小部件构建器（HTML/CSS/JS + AI），以及 Claude、GPT 和自定义 LLM 的 MCP 连接器。",
-    "ogTitle": "World Monitor Pro — 地缘政治 AI 层",
+    "title": "World Monitor Pro | AI 智能与 MCP",
+    "description": "World Monitor Pro 添加 AI 分析师、定时智能摘要、自定义小部件、市场研究和 MCP 访问权限，用于访问实时地缘政治和金融数据。",
+    "ogTitle": "World Monitor Pro | 地缘政治 AI",
     "ogDescription": "提问、订阅、构建。WM Analyst 聊天、按您的时间表（日、两次日或周）投送的 AI 摘要、自定义小部件构建器，以及 Claude/GPT 的 MCP — 跨 30+ 个实时服务，一个密钥管理。"
   },
   "pricing": {
@@ -352,7 +330,7 @@
     "headerSubtitle": "从实时监控到完整的情报基础设施。选择适合您任务的层级。",
     "billingMonthly": "月度",
     "billingAnnual": "年度",
-    "saveAnnual": "节省 17%",
+    "saveAnnual": "节省 25%",
     "mostPopular": "最受欢迎",
     "promoCodeNote": "有促销代码？在结账时输入。",
     "tiers": {
@@ -362,7 +340,8 @@
           "核心仪表板面板",
           "全球新闻源",
           "地震和天气警报",
-          "基础地图视图"
+          "基础地图视图",
+          "3 个仪表板标签\t"
         ],
         "cta": "开始使用"
       },
@@ -374,20 +353,26 @@
           "每日市场简报",
           "军事和地缘政治追踪",
           "自定义小部件构建器",
-          "面向 Claude Desktop 和其他 AI 客户端的 MCP + SDK 访问权限（50 次调用/天）",
-          "优先级数据刷新"
+          "10 个自定义仪表板（相比 3 个）",
+          "MCP + SDK 访问权限，适用于 Claude Desktop 和其他 AI 客户端（50 次调用/天）",
+          "优先数据刷新\t"
+        ],
+        "highlightFeatures": [
+          "个人许可证\t"
         ]
       },
       "api": {
-        "description": "对情报数据的程序化访问",
+        "description": "在实时数据基础上构建内部工具",
         "features": [
           "REST API + 官方 SDK（npm、PyPI、RubyGems、Go）",
           "包含许可证 / API 密钥",
           "实时数据流",
           "每分钟 60 个请求",
           "包含每天 1,000 个请求",
-          "Webhook 通知",
-          "自定义数据导出"
+          "Webhook 通知"
+        ],
+        "highlightFeatures": [
+          "商业许可证 — 供您的组织使用"
         ]
       },
       "enterprise": {
@@ -401,11 +386,295 @@
           "本地部署选项"
         ],
         "cta": "联系销售"
+      },
+      "apiBusiness": {
+        "description": "在 WorldMonitor 数据基础上推出您自己的产品",
+        "features": [
+          "涵盖 API Starter 的全部内容",
+          "再分发权限 — 将我们的数据嵌入到您的销售产品中",
+          "300 次请求/分钟",
+          "包含 10,000 次请求/天",
+          "包含 5 个 Pro 许可证",
+          "优先支持"
+        ],
+        "highlightFeatures": [
+          "商业许可证 — 供您的客户使用"
+        ]
+      },
+      "proBusiness": {
+        "description": "Pro 仪表板，面向工作使用授权\t",
+        "features": [
+          "Pro 中的所有功能\t",
+          "用于客户工作、内部工具和报告\t",
+          "数据导出 — CSV、JSON 和 PDF 报告\t",
+          "25 个自定义仪表板（vs 10 个）\t",
+          "MCP + SDK：250 次调用/天（对比 50 次）",
+          "优先支持\t"
+        ],
+        "highlightFeatures": [
+          "包含商业许可证\t"
+        ]
       }
     },
     "cta": {
       "checkoutDefault": "开始使用",
       "learnMore": "了解更多"
+    },
+    "axisPersonal": "个人\t",
+    "axisPersonalNote": "个人使用\t",
+    "axisCommercial": "商业\t",
+    "axisCommercialNote": "工作、团队和产品\t"
+  },
+  "welcome": {
+    "meta": {
+      "title": "World Monitor — 免费实时全球情报仪表板\t",
+      "description": "新闻报道之前，您已经了解。冲突、海运枢纽、军事航班、市场和网络安全信息都在一张免费实时世界地图上，并配有 AI 分析。无需注册。\t",
+      "ogTitle": "World Monitor — 新闻报道之前，您已经了解。\t",
+      "ogDescription": "世界原始信号 — 船舶、飞机、警报、电缆、市场 — 汇聚在一张免费实时情报地图上，AI 会在它们汇聚成重要信息时发出标记。免费、无需注册。\t"
+    },
+    "nav": {
+      "useCases": "关联\t",
+      "firstFive": "前 5 分钟\t",
+      "depth": "深度\t",
+      "pricing": "定价\t",
+      "faq": "常见问题\t",
+      "docs": "文档\t",
+      "launch": "启动仪表板\t",
+      "blog": "博客",
+      "menu": "菜单"
+    },
+    "hero": {
+      "eyebrow": "免费全球情报仪表板 · 实时在线\t",
+      "headline1": "新闻报道之前，\t",
+      "headline2": "您已经了解。\t",
+      "sub": "新闻报道滞后。World Monitor 将世界的原始信号 — 船舶、飞机、警报、电缆、市场 — 流式传输到一张实时地图上，配有 AI 技术，可在它们汇聚成重要信息时发出标记。\t",
+      "ctaPrimary": "启动仪表板\t",
+      "ctaFree": "免费 · 无需注册 · 秒速加载\t",
+      "ctaSecondary": "查看人们如何使用它 ↓\t",
+      "trustUsers": "200 万+ 用户\t",
+      "trustOpenSource": "开源 · AGPL-3.0\t",
+      "screenshotAlt": "World Monitor 实时情报仪表板 — 包含冲突、海运和市场图层的全球地图\t",
+      "plateNote": "从实时地图捕获 — 点击打开\t",
+      "trustBuild": "构建应用：\t",
+      "positioningLink": "WorldMonitor 不是开源的 Palantir\t"
+    },
+    "live": {
+      "eyebrow": "实时在线\t",
+      "title": "此页面连接到与仪表板相同的 API。\t",
+      "subtitle": "World Monitor 全天候监控的百余个信号中的四个。\t",
+      "liveBadge": "实时\t",
+      "sampleBadge": "示例\t",
+      "cardHeadlines": "顶部信号\t",
+      "cardCii": "不稳定指数",
+      "ciiNote": "每个国家 12 个融合信号",
+      "cardChokepoints": "海上咽喉要道",
+      "chokeSummary": "{{disrupted}} 个／共 {{total}} 个受阻",
+      "cardMarkets": "市场",
+      "marketBreadth": "上升",
+      "marketBest": "最强",
+      "marketWeakest": "最弱",
+      "trendRising": "上升",
+      "trendFalling": "下降",
+      "trendStable": "稳定"
+    },
+    "moments": {
+      "eyebrow": "关联引擎",
+      "title": "优势在于看到信号一起移动。",
+      "sub": "你可以从百个地方找到数据源。优势是一个统一界面，在这里地缘政治、海运、商品、宏观、市场、天气、基础设施、网络安全、新闻和国家风险可以相互解释。",
+      "signalStack": "融合信号",
+      "correlation": "关联",
+      "bridge1": "不是数据源列表。",
+      "bridge2": "一个关联面板：当三个系统同时移动时，地图使其可见 ↓",
+      "m1": {
+        "kicker": "地缘政治 + 市场 + 宏观",
+        "title1": "市场变动",
+        "title2": "有其地理位置。",
+        "s1": "国家风险、制裁、热点升级、官方警报和新闻速度显示地缘政治压力上升的位置。",
+        "s2": "船舶、咽喉要道、航班、海缆和基础设施接近度显示该压力是否会冲击供应、贸易或资本路线。",
+        "s3": "利率、外汇、股票、加密资产和避险资产显示哪个市场制度正在重新定价。",
+        "s4": "优势在于同时看到地缘政治压力、传导路径和价格走势，早于市场共识形成。",
+        "c1": "国家风险",
+        "c2": "贸易流向",
+        "c3": "利率 + 外汇",
+        "c4": "股票 + 加密资产",
+        "link": "打开市场透镜 →"
+      },
+      "m2": {
+        "kicker": "商品 + 咽喉要道 + 天气",
+        "title1": "商品变动源于",
+        "title2": "现实世界。",
+        "s1": "AIS、港口、管道、液化天然气、炼油厂、水道和咽喉要道显示供应何时减速、改道或集中。",
+        "s2": "天气、火灾、地震、停电和冲突图层显示可能冲击生产或运输的现实事件。",
+        "s3": "石油、天然气、黄金、谷物、矿业公司、海运公司和商品关联货币显示冲击如何定价。",
+        "s4": "商品智能只有在现实流动、中断信号和市场价差同时可见时才有效。",
+        "c1": "AIS + 港口",
+        "c2": "天气 + 火灾",
+        "c3": "能源资产",
+        "link": "打开商品透镜 →",
+        "c4": "石油/黄金/谷物"
+      },
+      "m3": {
+        "kicker": "AI 基础设施 + 能源 + 气候",
+        "title1": "AI 繁荣有其",
+        "title2": "物理资产负债表。",
+        "s1": "AI 数据中心位于电网、管道、液化天然气、核设施、云区域和电力市场敞口旁。",
+        "s2": "电网压力、停电、高温、火灾和天气图层显示哪些计算走廊今天承受压力。",
+        "s3": "公司、交易所和宏观面板显示能源、计算和资本碰撞时谁会受到风险敞口。",
+        "s4": "AI 基础设施风险只有在物理资产、气候信号和市场共享一个屏幕时才会显现。",
+        "c1": "AI 数据中心",
+        "c2": "电力资产",
+        "c3": "火灾 + 天气",
+        "c4": "市场",
+        "link": "查看 AI 基础设施地图 →"
+      },
+      "m4": {
+        "kicker": "海缆 + 中断 + 贸易",
+        "title": "海缆断裂引发的连锁反应",
+        "s1": "海底光缆、登陆站、港口、管道和关键枢纽被整合到一张地图上。",
+        "s2": "互联网和 BGP 异常数据流显示物理故障是否正在演变成数字中断。",
+        "s3": "贸易走廊、国家韧性和冗余数据显示谁会首先失去备用路由。",
+        "s4": "当电信冗余、贸易走廊和国家风险敞口相重叠时，海缆损坏才会产生影响。",
+        "c1": "86 条海缆",
+        "c2": "BGP + 中断",
+        "c3": "港口 + 管道",
+        "c4": "韧性",
+        "link": "在地图上追踪海缆 →"
+      }
+    },
+    "firstFive": {
+      "eyebrow": "从零开始快速上手",
+      "title": "你在实时地图上的前五分钟。",
+      "sub": "无导览、无空状态、无注册墙。这就是实际情况。",
+      "f1Title": "地图已在动态更新",
+      "f1Desc": "冲突、船舶、航班、火灾和中断在页面加载时实时呈现。无需提前配置任何内容。",
+      "f2Title": "点击任意国家",
+      "f2Desc": "会打开完整档案：包含各分量的不稳定指数、引用标题的 AI 简报、实时信号和 7 天时间线。",
+      "f3Title": "按 ⌘K / Ctrl-K",
+      "f3Desc": "154 条命令。无需先学习 UI，即可快速跳转到任何图层、面板或国家。",
+      "f4Title": "选择你的视角",
+      "f4Desc": "世界、科技、金融、商品、能源或快乐——同一引擎，六个专业监控，仅需一键切换。",
+      "f5Title": "你可能只看到了十分之一",
+      "f5Desc": "当世界变化时，其余内容会逐渐显现——卫星过境、GPS 干扰、暗船、抗议集群、警报提示。",
+      "cta": "开始计时"
+    },
+    "depth": {
+      "eyebrow": "深层次分析",
+      "title": "深度即产品。",
+      "sub": "下面的每个数字现在都在仪表板中实时更新——不是路线图。",
+      "s1v": "56",
+      "s1l": "地图图层",
+      "s2v": "500+",
+      "s2l": "精选数据源",
+      "s3v": "65+",
+      "s3l": "数据提供商",
+      "s4v": "13",
+      "s4l": "关键枢纽 · 实时 AIS",
+      "s5v": "31",
+      "s5l": "不稳定指数 · 实时",
+      "s6v": "196",
+      "s6l": "韧性排名",
+      "s7v": "86",
+      "s7l": "海底光缆",
+      "s8v": "88",
+      "s8l": "管道和液化天然气",
+      "s9v": "313",
+      "s9l": "AI 数据中心映射",
+      "s10v": "29",
+      "s10l": "得分热点",
+      "s11v": "92",
+      "s11l": "交易所与资产",
+      "s12v": "59",
+      "s12l": "MCP工具",
+      "s13v": "154",
+      "s13l": "⌘K命令",
+      "s14v": "24",
+      "s14l": "语言·含RTL",
+      "s15v": "5",
+      "s15l": "独立警报源",
+      "n1Title": "卫星追踪",
+      "n1Desc": "使用SGP4在浏览器内实时计算轨道位置——监控国际空间站、星链和军事卫星的头顶通过。",
+      "n2Title": "GPS干扰区域",
+      "n2Desc": "实时射频干扰地图，显示GPS当前被降级或欺骗的位置。",
+      "n3Title": "卡点运输情报",
+      "n3Desc": "通过霍尔木兹海峡、苏伊士运河、曼德海峡及另外10个海峡的船舶计数——含中断评分。",
+      "n4Title": "AI数据中心地图",
+      "n4Desc": "313个AI数据中心，包含电力和运营商元数据——AI竞赛的物理层。",
+      "n5Title": "海底电缆",
+      "n5Desc": "86条承载互联网的海底电缆，叠加中断和威胁信号。",
+      "n6Title": "抗议追踪",
+      "n6Desc": "双源抗议检测，含跨源去重——信号，非谣言。",
+      "faith": "不要盲目相信这些数字——",
+      "faithCta": "打开应用并自己计数。",
+      "faithNote": "每个面板都标注了来源。"
+    },
+    "agents": {
+      "eyebrow": "为构建者与AI代理",
+      "title": "基于实时世界情报构建——来自任何技术栈。",
+      "sub": "地图上的所有内容也都是API。通过MCP接入Claude、从任何地方调用REST端点，或安装适用于Python、Ruby、Go或JavaScript的原生客户端——你的代码用实时数据而不是训练数据进行研究。",
+      "b1": "59 个 MCP 工具 — 风险评分、关键节点、冲突、市场、简报",
+      "b2": "已文档化的REST API——193个操作、一份OpenAPI 3.1规范、一个密钥",
+      "b3": "npm、PyPI、RubyGems和Go上的官方SDK——零依赖、MCP优先",
+      "b4": "每次调用都支持JMESPath投影——仅获取你需要的字段",
+      "cta": "阅读开发者文档",
+      "termTitle": "claude——会话",
+      "termQuery": "我们本周的红海风险敞口在恶化吗？",
+      "termAnswer": "周环比运输计数下降；战争风险等级提升；过去48小时内两处密度异常。",
+      "termDocs": "查看完整工具参考→",
+      "promise": "一个密钥。59 个 MCP 工具。完整 REST API。语言原生客户端。"
+    },
+    "pricing": {
+      "eyebrow": "访问",
+      "title1": "免费是观测站。",
+      "title2": "专业版是行动室。",
+      "sub": "仪表板免费提供——除韧性层外的每个地图图层、每个数据源，无需注册。Pro 版本添加决策层。",
+      "freeTitle": "免费版",
+      "freeDesc": "免费版是完整产品，不是试用版。除韧性层外的每个地图图层、每个数据源、每个监控——无需注册，无试用期限制。",
+      "freeF1": "除韧性层外的所有地图图层及 500+ 个数据源",
+      "freeF2": "国家简报、热点、不稳定性评分",
+      "freeF3": "卡点、电缆、级联分析",
+      "freeF4": "突发警报管道与监控列表",
+      "proTitle": "专业版",
+      "proDesc": "立即行动。上述时刻使用的决策层：",
+      "proF1": "WM 分析师 — 跨 30+ 个实时服务聊天，附带引用",
+      "proF2": "场景引擎和路线探索器 — 在中断发生前游戏演推",
+      "proF3": "个人 AI 摘要 — 每天、一天两次或每周发送到 Slack、Telegram 或邮件",
+      "proF4": "MCP、REST API 及官方 SDK — 59 个工具统一密钥管理",
+      "proF5": "自定义小部件构建器，用于您自己的面板",
+      "cta": "查看计划和定价",
+      "note": "起价 $39.99/月 · 按年计费可免费享受 3 个月"
+    },
+    "faq": {
+      "eyebrow": "无隐藏条件",
+      "title": "合理的问题。",
+      "q1": "World Monitor 真的免费吗？",
+      "a1": "是的。实时地图——除韧性层外的每个图层、500+ 个数据源、国家简报、突发警报、全部六个监控——免费使用，无需注册，无试用期限制。Pro 版本为数据源付费：添加 WM 分析师、场景引擎、路线浏览器、定时摘要、AI 客户端的 MCP 访问权限和韧性地图图层。无广告，无账户意味着没有用户数据被出售。",
+      "q2": "什么是全球智能仪表板？",
+      "a2": "一个单一的实时视图，融合大多数工具分开保存的信号：冲突事件、船舶和飞机追踪、航运枢纽、卫星、海底电缆、管道、市场和网络威胁 — 在一个实时世界地图上，带有 AI 评分和摘要。World Monitor 是一个免费的。",
+      "q3": "数据来自哪里？",
+      "a3": "65+ 个提供商，具名：冲突数据来自 ACLED 和 UCDP，实时船舶来自 AISStream，飞机来自 OpenSky，火灾来自 NASA FIRMS，地震来自 USGS，市场和宏观数据来自 IMF、BIS、FRED 和 Finnhub — 加上 500+ 个精选新闻源。每个面板都内联引用其来源和时间戳。",
+      "q4": "我可以实时监视霍尔木兹海峡或曼德海峡等枢纽吗？",
+      "a4": "可以。13 个枢纽通过实时 AIS 船舶数数、周度过境变化和中断评分进行追踪 — 密度异常会与每条海峡的滚动基线进行标记比较。",
+      "q5": "这与 Liveuamap 之类的冲突地图有何不同？",
+      "a5": "冲突只是 56 层中的一层。World Monitor 融合冲突、航运、军事飞行、基础设施、市场和网络 — 然后 AI 评估汇聚：不稳定指数、热点升级、证实的突发警报和每日摘要。",
+      "q6": "为什么要相信警报？",
+      "a6": "突发横幅仅在独立来源类型相互印证时触发 — 新闻分类、关键词速率、热点升级、军事激增、官方警报器 — 去重和速率限制。更少的警报，真实的警报。",
+      "q7": "Claude 或 GPT 等 AI 代理可以使用它吗？",
+      "a7": "可以。World Monitor 提供了 59 个工具的 MCP 服务器，因此 Claude、GPT 或任何兼容 MCP 的代理都可以查询实时风险评分、关键节点状态、冲突、市场和简报 — 通过 JMESPath 投影，代理可以精确获取所需的数据。",
+      "q8": "我需要账户吗？",
+      "a8": "不需要。仪表板无需注册立即工作。只有在升级到 Pro 或想在设备间同步设置时才需要账户。",
+      "q9": "这是开源的吗？",
+      "a9": "是的 — 在 GitHub 上以 AGPL-3.0 许可证开源：阅读代码、自托管或基于其进行构建。还提供 Windows、macOS 和 Linux 的原生桌面应用，以及用于墙面显示的 Android TV 应用。",
+      "q10": "为什么 World Monitor 不是 Palantir？",
+      "a10": "Palantir 使机构能够在其内部运营自有数据。World Monitor 从另一个角度出发：它汇集、规范化、关联和监控公开数据，然后通过免费仪表板和开源代码发布该情报层。工作不同，产品也不同。",
+      "q11": "Which World Monitor license do I need?",
+      "a11": "Choose based on who will use the output. Pro's Personal license is for one person using World Monitor for their own research and decisions. Pro Business lets one licensed user use it for company or client work, internal tools, and reports. API Starter covers API use inside one organization, with no customer redistribution. API Business lets that organization embed World Monitor data in products and services for its customers. Enterprise covers custom seats, white-labeling, and deployments. These subscription licenses are separate from the AGPL/MIT source-code licenses. Full terms: worldmonitor.app/docs/terms."
+    },
+    "cta": {
+      "title": "世界地图不会等你。",
+      "subtitle": "在你阅读本页面的同时它在不断变化 — 13 条海峡、29 个热点、92 个市场、500+ 个源。其中一个是明天的头版新闻。率先找到它 — 免费，无需账户。",
+      "button": "率先找到它",
+      "note": "免费 · 无需注册 · 秒速加载",
+      "secondary": "或查看 Pro 计划 →"
     }
   }
 }

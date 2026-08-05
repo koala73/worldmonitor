@@ -5,6 +5,7 @@ import { describe, it } from 'node:test';
 import { fileURLToPath } from 'node:url';
 
 import { VARIANT_FEEDS } from '../server/worldmonitor/news/v1/_feeds.ts';
+import { SOURCE_PROPAGANDA_RISK } from '../shared/source-provenance.ts';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const readText = (path: string) => readFileSync(resolve(root, path), 'utf8');
@@ -145,9 +146,7 @@ describe('China client/server news digest parity (#5272)', () => {
     assert.equal(tiers['MOFCOM (China)'], 1);
     assert.equal(tiers.Xinhua, 3);
     assert.equal(readText('scripts/shared/source-tiers.json'), readText('shared/source-tiers.json'));
-    assert.match(
-      readText('src/config/feeds.ts'),
-      /'Xinhua':\s*\{\s*risk:\s*'high',\s*stateAffiliated:\s*'China'/,
-    );
+    assert.equal(SOURCE_PROPAGANDA_RISK.Xinhua?.risk, 'high');
+    assert.equal(SOURCE_PROPAGANDA_RISK.Xinhua?.stateAffiliated, 'China');
   });
 });

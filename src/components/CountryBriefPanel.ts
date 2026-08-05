@@ -4,6 +4,8 @@ import type { PredictionMarket } from '@/services/prediction';
 import type { NewsItem } from '@/types';
 import type { GetCountryChokepointIndexResponse, SectorExposureSummary, CountryProductsResponse, MultiSectorShockResponse } from '@/services/supply-chain';
 import type { BriefSource } from '@/utils/brief-sources';
+import type { DecisionSignalProvenance } from '../../shared/decision-signal-provenance-contract';
+import type { ChinaDecisionSignalGroupId } from '../../shared/china-decision-signals';
 
 export interface CountryIntelData {
   brief: string;
@@ -69,14 +71,25 @@ export interface CountryDeepDiveEconomicIndicator {
   source?: string;
 }
 
-export type ChinaCountrySummaryGroupId = 'macro-policy' | 'market-credit' | 'trade-supply' | 'energy' | 'availability';
+export type ChinaCountrySummaryGroupId = ChinaDecisionSignalGroupId;
 export type ChinaCountrySummaryState = 'loading' | 'available' | 'partial' | 'stale' | 'unavailable';
 
 export interface ChinaCountrySummarySignal {
   label: string;
   value: string;
   source: string;
+  sourceUrl?: string;
   observedAt?: string;
+  publishedAt?: string;
+  effectiveAt?: string;
+  action?: string;
+  status?: string;
+  sectors?: string[];
+  entities?: string[];
+  translationState?: string;
+  publisherType?: string;
+  lineageId?: string;
+  provenance?: DecisionSignalProvenance;
   stale: boolean;
 }
 

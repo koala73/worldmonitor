@@ -164,3 +164,78 @@ describe('computeScorecard', () => {
     assert.equal(a.overall.brier, 0.01);
   });
 });
+
+describe('Phase-2 betEngine slice + promotion flag (#5525 U14)', () => {
+  function betEngineEntry(overrides) {
+    return resolved({ generationOrigin: 'bet_engine', ...overrides });
+  }
+
+  it('exposes a bet_engine-scoped slice with calibration + brier, isolated from legacy', () => {
+    const scorecard = computeScorecard({
+      // legacy entry WITH marketPrice — must NOT leak into the slice's vsMarketSkill
+      a: resolved({ probability: 0.9, outcome: 'YES', calibration: { marketPrice: 80 } }),
+      b: betEngineEntry({ probability: 0.8, outcome: 'YES', calibration: { marketPrice: 60 } }),
+      c: betEngineEntry({ probability: 0.4, outcome: 'NO', calibration: { marketPrice: 70 } }),
+    }, NOW);
+
+    assert.ok(scorecard.betEngine);
+    assert.equal(scorecard.betEngine.count, 2);
+    assert.equal(scorecard.betEngine.brier, 0.1); // ((0.8-1)^2 + (0.4-0)^2)/2
+    assert.equal(scorecard.betEngine.vsMarketSkill.count, 2); // legacy 'a' excluded
+    const filled = scorecard.betEngine.calibration.filter((b) => b.count > 0);
+    assert.equal(filled.length, 2); // 40-50 and 80-90 deciles
+  });
+
+  it('omits the slice when nothing bet_engine is scored', () => {
+    const scorecard = computeScorecard({ a: resolved({ probability: 0.8, outcome: 'YES' }) }, NOW);
+    assert.ok(!Object.hasOwn(scorecard, 'betEngine'));
+  });
+
+  it('computes ensemble-vs-base-rate skill from persisted baselineProbability only', () => {
+    const scorecard = computeScorecard({
+      a: betEngineEntry({ probability: 0.8, outcome: 'YES', baselineProbability: 0.4 }),
+      b: betEngineEntry({ probability: 0.3, outcome: 'NO', baselineProbability: 0.4 }),
+      c: betEngineEntry({ probability: 0.6, outcome: 'YES' }), // no baseline → excluded
+    }, NOW);
+    const vsBase = scorecard.betEngine.vsBaseRate;
+    assert.equal(vsBase.count, 2);
+    // ensemble brier: ((0.8-1)^2 + (0.3-0)^2)/2 = 0.065; baseline: ((0.4-1)^2+(0.4-0)^2)/2 = 0.26
+    assert.equal(vsBase.forecastBrier, 0.065);
+    assert.equal(vsBase.baselineBrier, 0.26);
+    assert.equal(vsBase.brierDelta, 0.195); // positive = ensemble beats the base rate
+  });
+
+  it('deviation skill is positive when deviations point toward outcomes, negative for noise', () => {
+    const toward = computeScorecard({
+      a: betEngineEntry({ probability: 0.75, outcome: 'YES', calibration: { marketPrice: 60 } }), // dev + → YES
+      b: betEngineEntry({ probability: 0.45, outcome: 'NO', calibration: { marketPrice: 60 } }),  // dev − → NO
+    }, NOW);
+    assert.ok(toward.betEngine.deviationSkill.skill > 0, `expected positive, got ${toward.betEngine.deviationSkill.skill}`);
+
+    const noise = computeScorecard({
+      a: betEngineEntry({ probability: 0.75, outcome: 'NO', calibration: { marketPrice: 60 } }),  // dev + → NO
+      b: betEngineEntry({ probability: 0.45, outcome: 'YES', calibration: { marketPrice: 60 } }), // dev − → YES
+    }, NOW);
+    assert.ok(noise.betEngine.deviationSkill.skill < 0, `expected negative, got ${noise.betEngine.deviationSkill.skill}`);
+  });
+
+  it('small deviations inside the band are excluded from deviation skill', () => {
+    const scorecard = computeScorecard({
+      a: betEngineEntry({ probability: 0.62, outcome: 'YES', calibration: { marketPrice: 60 } }), // |dev| 0.02 <= band
+    }, NOW);
+    assert.ok(!scorecard.betEngine.deviationSkill);
+  });
+
+  it('promoteBetEngine flag is the only promotion path into the skill headline', () => {
+    const ledger = {
+      a: resolved({ probability: 0.8, outcome: 'YES' }),
+      b: betEngineEntry({ probability: 0.2, outcome: 'NO' }),
+    };
+    const off = computeScorecard(ledger, NOW);
+    assert.equal(off.skill.count, 1); // bet_engine excluded (default)
+    assert.deepEqual(off.skill.excludedOrigins, ['bet_engine']);
+    const on = computeScorecard(ledger, NOW, { promoteBetEngine: true });
+    assert.equal(on.skill.count, 2); // promoted
+    assert.deepEqual(on.skill.excludedOrigins, []);
+  });
+});

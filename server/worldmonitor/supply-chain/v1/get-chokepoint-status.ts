@@ -3,6 +3,7 @@ import type {
   GetChokepointStatusRequest,
   GetChokepointStatusResponse,
   ChokepointInfo,
+  FlowSource,
 } from '../../../../src/generated/server/worldmonitor/supply_chain/v1/service_server';
 
 import type {
@@ -249,6 +250,81 @@ interface ChokepointFetchResult {
 
 interface FlowEstimateEntry { currentMbd: number; baselineMbd: number; flowRatio: number; disrupted: boolean; source: string; hazardAlertLevel: string | null; hazardAlertName: string | null }
 
+/**
+ * The coverage bases seed-chokepoint-flows.mjs can emit. Declared as an
+ * EXHAUSTIVE record over the non-UNSPECIFIED FlowSource members so that adding
+ * a member to the proto is a compile error here. A plain `Set<FlowSource>`
+ * caught a typo but not an omission — the new member would simply be absent,
+ * and this handler would silently strip the very value the proto had just
+ * declared legal.
+ */
+const FLOW_SOURCE_MEMBERS: Record<Exclude<FlowSource, 'FLOW_SOURCE_UNSPECIFIED'>, true> = {
+  'portwatch-dwt': true,
+  'portwatch-counts': true,
+};
+
+const FLOW_SOURCES: ReadonlySet<string> = new Set(Object.keys(FLOW_SOURCE_MEMBERS));
+
+/**
+ * Narrow the seeder's `source` onto the FlowSource taxonomy the proto declares
+ * (#6101). `energy:chokepoint-flows:v1` is an untyped Redis blob written by a
+ * seeder that deploys independently of this handler, so the value here is not
+ * guaranteed to be one the published enum lists — and a closed taxonomy is only
+ * worth declaring if the response cannot carry a value outside it.
+ *
+ * Anything unrecognized collapses to FLOW_SOURCE_UNSPECIFIED, which is the
+ * declared way to say "not one of the known coverage bases" without inventing a
+ * value or dropping the field. The two real values pass through verbatim, so
+ * the wire is unchanged for every payload the current seeder produces.
+ *
+ * The collapse is logged because it is otherwise indistinguishable from a
+ * missing field: UNSPECIFIED is what an operator sees whether the seeder went
+ * quiet or shipped a third basis this deploy does not know about, and only the
+ * second case needs a proto change. Once per distinct value per instance — the
+ * re-narrow below runs on every warm request, so an unconditional warn would
+ * bill a log line per request for as long as the seeder kept emitting it.
+ */
+const warnedFlowSources = new Set<string>();
+
+function toFlowSource(value: unknown): FlowSource {
+  if (typeof value === 'string' && FLOW_SOURCES.has(value)) return value as FlowSource;
+  if (value !== undefined && value !== null && value !== '') {
+    const seen = String(value);
+    if (!warnedFlowSources.has(seen)) {
+      warnedFlowSources.add(seen);
+      console.warn('[chokepoint-status] flow source outside the FlowSource taxonomy:', seen);
+    }
+  }
+  return 'FLOW_SOURCE_UNSPECIFIED';
+}
+
+/**
+ * Re-narrow a response that came back from the outer cache.
+ *
+ * `toFlowSource` runs inside the cold-path builder, so on its own it leaves a
+ * window where `supply_chain:chokepoints:v4` still holds a blob written by an
+ * earlier deploy — served verbatim for the rest of the TTL, and read straight
+ * from that key by route-intelligence, get-bypass-options, both cost-shock
+ * handlers, get-route-explorer-lane and the bootstrap tier. Narrowing again at
+ * the return boundary makes "never serves a value outside the enum"
+ * unconditional instead of true only after the first cold rebuild. Idempotent,
+ * so the cold path is unaffected.
+ */
+function narrowServedSources(response: GetChokepointStatusResponse): GetChokepointStatusResponse {
+  // A cached blob from an older shape may not carry the array the type promises.
+  // Pass it through untouched rather than throwing into the degraded sentinel —
+  // that failure mode belongs to whoever wrote the blob, not to this narrowing.
+  if (!Array.isArray(response?.chokepoints)) return response;
+  return {
+    ...response,
+    chokepoints: response.chokepoints.map((cp) => (
+      cp.flowEstimate
+        ? { ...cp, flowEstimate: { ...cp.flowEstimate, source: toFlowSource(cp.flowEstimate.source) } }
+        : cp
+    )),
+  };
+}
+
 async function fetchChokepointData(): Promise<ChokepointFetchResult> {
   const ctx = makeInternalCtx();
 
@@ -362,7 +438,7 @@ async function fetchChokepointData(): Promise<ChokepointFetchResult> {
         baselineMbd: flowsData[cp.id]!.baselineMbd,
         flowRatio: flowsData[cp.id]!.flowRatio,
         disrupted: flowsData[cp.id]!.disrupted,
-        source: flowsData[cp.id]!.source,
+        source: toFlowSource(flowsData[cp.id]!.source),
         hazardAlertLevel: flowsData[cp.id]!.hazardAlertLevel ?? '',
         hazardAlertName: flowsData[cp.id]!.hazardAlertName ?? '',
       } : undefined,
@@ -404,7 +480,7 @@ export async function getChokepointStatus(
       },
     );
 
-    return result ?? { chokepoints: [], fetchedAt: '', upstreamUnavailable: true };
+    return result ? narrowServedSources(result) : { chokepoints: [], fetchedAt: '', upstreamUnavailable: true };
   } catch {
     return { chokepoints: [], fetchedAt: '', upstreamUnavailable: true };
   }

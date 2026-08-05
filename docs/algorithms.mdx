@@ -286,28 +286,28 @@ A minimum of 10 historical samples is required before anomalies are reported, pr
 
 ### Breaking News Alert Pipeline
 
-The dashboard monitors five independent alert origins and fuses them into a unified breaking news stream with layered deduplication, cooldowns, and source quality gating:
+The dashboard currently wires two independent producer paths into the breaking news banner:
 
 | Origin               | Trigger                                                        | Example                                      |
 | -------------------- | -------------------------------------------------------------- | -------------------------------------------- |
 | **RSS alert**        | News item with `isAlert: true` and threat level critical/high  | Reuters flash: missile strike confirmed       |
-| **Keyword spike**    | Trending keyword exceeds spike threshold                       | "nuclear" surges across 8+ feeds in 2 hours  |
-| **Hotspot escalation** | Hotspot escalation score exceeds critical threshold          | Taiwan Strait tension crosses 80/100         |
-| **Military surge**   | Theater posture assessment detects strike packaging            | Tanker + AWACS + fighters co-present in MENA |
 | **OREF siren**       | Israel Home Front Command issues incoming rocket/missile alert | Rocket barrage detected in northern Israel   |
+
+Keyword spikes, hotspot escalations, and military surges remain inputs to correlation and anomaly products; they do not currently dispatch the breaking-news banner. Their reserved names in the `BreakingAlert` origin type do not make them active producers.
 
 **Anti-noise safeguards**:
 
-- **Per-event dedup** — each alert is keyed by a content hash; repeated alerts for the same event are suppressed for 30 minutes
-- **Global cooldown** — after any alert fires, a 60-second global cooldown prevents rapid-fire notification bursts
-- **Recency gate** — items older than 15 minutes at processing time are silently dropped, preventing stale events from generating alerts after a reconnection
-- **Source tier gating** — Tier 3+ sources (niche outlets, aggregators) must have LLM-confirmed classification (`threat.source !== 'keyword'`) to fire an alert; Tier 1–2 sources bypass this gate
-- **Story-phase gate** — sustained and fading RSS stories are suppressed; the banner is reserved for breaking/developing stories or items without story metadata
-- **Importance floor** — RSS items with `importanceScore < 30` are too low-signal for the banner
-- **Startup grace** — RSS alerts are suppressed for the first 10 seconds after app load so the initial feed fetch does not replay old articles as breaking news. OREF siren alerts are exempt
-- **User sensitivity control** — configurable between `critical-only` (only critical severity fires) and `critical-and-high` (both critical and high severities)
+- **Shared per-event dedup** — each producer creates a stable event key; repeated alerts for the same event are suppressed for 30 minutes
+- **RSS global cooldown** — before an RSS alert fires, the latest dispatched alert (RSS or OREF) starts a 60-second cooldown; a critical RSS item may override only a cooldown started by a high-severity alert
+- **RSS recency gate** — items older than 15 minutes at processing time are silently dropped, preventing stale events from generating alerts after a reconnection
+- **RSS source tier gating** — Tier 3+ sources (niche outlets, aggregators) require a non-keyword classification (`threat.source` is `ml` or `llm`) to fire an alert; Tier 1–2 sources bypass this gate
+- **RSS story-phase gate** — sustained and fading stories are suppressed; the banner is reserved for breaking/developing stories or items without story metadata
+- **RSS importance floor** — items with `importanceScore < 30` are too low-signal for the banner
+- **RSS startup grace** — RSS alerts are suppressed for the first 10 seconds after app load so the initial feed fetch does not replay old articles as breaking news
+- **RSS user sensitivity control** — configurable between `critical-only` (only critical severity fires) and `critical-and-high` (critical and high severities both fire)
+- **OREF direct escalation** — OREF siren alerts are exempt from the RSS gates and global cooldown; any non-empty siren batch raises a critical alert when alerts are enabled and the event is not a duplicate
 
-When an alert passes all gates, the system dispatches a `wm:breaking-news` CustomEvent on `document`, which the Breaking News Banner consumes to display a persistent top-of-screen notification. Optional browser Notification API popups and an audio chime are available as user settings. Clicking the banner scrolls to the RSS panel that sourced the alert and applies a 1.5-second flash highlight animation.
+When an alert passes the gates that apply to its producer, the system dispatches a `wm:breaking-news` CustomEvent on `document`, which the Breaking News Banner consumes to display a persistent top-of-screen notification. Optional browser Notification API popups and an audio chime are available as user settings. Clicking an RSS-sourced banner scrolls to the RSS panel and applies a 1.5-second flash highlight animation.
 
 ---
 

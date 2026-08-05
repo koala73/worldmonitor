@@ -17,7 +17,7 @@ description: "Tauri desktop architecture for World Monitor — sidecar process m
 - **Consolidated keychain vault** — all secrets are stored as a single JSON blob in one keychain entry (`secrets-vault`) rather than individual entries per key. This reduces macOS Keychain authorization prompts from 20+ to exactly 1 on each app launch. A one-time migration reads any existing individual entries, consolidates them, and cleans up the old format
 - **Verbose debug mode** — toggle traffic logging with persistent state across restarts. View the last 200 requests with timing, status codes, and error details
 - **DevTools toggle** — Cmd+Alt+I opens the embedded web inspector for debugging
-- **Auto-update checker** — polls the cloud API for new versions every 6 hours. Displays a non-intrusive update badge with direct download link and per-version dismiss. Variant-aware — a Tech Monitor desktop app links to the correct Tech Monitor release asset
+- **Auto-update checker** — polls the cloud API for new versions every 6 hours. Displays a non-intrusive update badge with direct download link and per-version dismiss. The download link is chosen by OS and architecture; one binary serves every variant, so there is no per-variant asset to pick between
 
 ## Multi-Platform Architecture
 
@@ -217,6 +217,8 @@ When a local API handler is missing, throws an error, or returns a 5xx status, t
 
 The desktop app checks for new versions by polling `worldmonitor.app/api/version` — once at startup (after a 5-second delay) and then every 6 hours. When a newer version is detected (semver comparison), a non-intrusive update badge appears with a direct link to the GitHub Release page.
 
-Update prompts are dismissable per-version — dismissing v2.5.0 won't suppress v2.6.0 notifications. The updater is variant-aware: a Tech Monitor desktop build links to the Tech Monitor release asset, not the full variant.
+Update prompts are dismissable per-version — dismissing v2.5.0 won't suppress v2.6.0 notifications. One World Monitor binary ships and every variant is selected in-app, so the updater resolves the download by OS and architecture alone (`/api/download?platform=…`) rather than by variant.
+
+A version the updater cannot parse is reported as `version_unparsable` and never treated as "up to date" — silently concluding "no update" from an unreadable version is exactly how a single malformed release tag could stop every client updating (#5908).
 
 The `/api/version` endpoint reads the latest GitHub Release tag and caches the result for 1 hour, so version checks don't hit the GitHub API on every request.

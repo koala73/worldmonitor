@@ -1,0 +1,144 @@
+---
+title: "China Data Coverage"
+description: "Complete inventory of WorldMonitor's China data lanes, public surfaces, source status, cadence, freshness, and access boundaries."
+---
+
+This page is the entry point for WorldMonitor's China data. It describes the
+launched and explicitly blocked source contracts; it is not a claim that every
+upstream source is healthy at this moment. Current transport and content health
+remain visible through the China projection in `/api/health`.
+`/api/seed-health` reports whether the China coverage evaluator itself ran
+recently; a fresh evaluator heartbeat does not prove healthy China content.
+
+## Coverage inventory
+
+| Lane | Sources and method | Primary surface | Refresh contract |
+| --- | --- | --- | --- |
+| Global China projection | BIS, IMF, China energy spine, UN Comtrade reporter 156, CCFI, China market index, China news sources, eight reviewed aviation hubs, HKO, and Western Pacific hazards | China country summary and operator health | Source-specific; evaluated hourly |
+| Official macro | NBS and SAFE revision-aware observations; PBoC and GACC candidates remain explicit unavailable rows | REST snapshot and Pro MCP `get_economic_data` with dataset `china-macro` | 36 hours |
+| Official release calendar | NBS release calendar plus provisional PBoC LPR dates verified against ChinaMoney/CFETS notices | China macro bootstrap and Pro MCP `get_economic_data` with dataset `china-release-calendar` | 36 hours |
+| Policy and enforcement | CAC, SAMR, MIIT, MOFCOM, NDRC, and PBOC official documents | China country brief and `chinaPolicyEvents` bootstrap | 6 hours |
+| Cross-Strait activity | Taiwan Ministry of National Defense daily claims with separately attributed Japan Joint Staff context | Force Posture and China decision signals | 3 hours |
+| Corporate disclosures | SSE and SZSE public metadata for a reviewed issuer basket; HKEX is explicitly blocked | `chinaCorporateDisclosures` bootstrap and China decision signals | 30 minutes |
+| Logistics corridors | Four reviewed corridors composed from six named source families | REST/UI detail; MCP receives a bounded decision-signal summary | On request; healthy aggregate cached 5 minutes |
+| Activity nowcast | Deterministic comparison of official macro vintages with seven reviewed proxy families | REST/UI detail; MCP receives a bounded decision-signal summary | On request; healthy result cached 15 minutes |
+| Decision-signal composition | Bounded composition of macro, policy, Cross-Strait, disclosures, corridors, and nowcast | Country brief, public RPC, bootstrap, and Pro MCP | 15 minutes |
+| Bilateral HS4 continuity | Annual UN Comtrade import baskets for the reviewed country/strategic-product registry | PRO `GET /api/supply-chain/v1/get-country-products` and route-exposure workflows | `0 6 1 * *` |
+
+## Health projection registry
+
+The China health projection tracks these stable contracts. `launched` means the
+lane is admitted to the China projection; it does not override the lane's live
+freshness or content status.
+
+| Contract ID | Coverage | Launch state |
+| --- | --- | --- |
+| `economic.bis-policy` | BIS policy rate | `launched` |
+| `economic.imf-macro` | IMF macro snapshot | `launched` |
+| `energy.jodi-oil` | JODI oil | `blocked` — `CHINA_UPSTREAM_ROW_UNAVAILABLE` |
+| `energy.jodi-gas` | JODI gas | `blocked` — `CHINA_UPSTREAM_ROW_UNAVAILABLE` |
+| `energy.spine` | China energy spine | `launched` |
+| `trade.comtrade-reporter-156` | UN Comtrade reporter 156 | `launched` |
+| `supply-chain.ccfi` | China Containerized Freight Index | `launched` |
+| `market.china-index` | China country market index | `launched` |
+| `market.china-corporate-disclosures` | Official SSE/SZSE corporate disclosures | `launched` |
+| `news.china` | China news digest | `launched` |
+| `aviation.china-hubs` | Eight reviewed China aviation hubs | `launched` |
+| `macro.china-snapshot` | Normalized China macro snapshot | `launched` |
+| `macro.china-release-calendar` | China release calendar | `launched` |
+| `policy.official-events` | Official policy and enforcement events | `launched` |
+| `hazards.western-pacific-cyclones` | Western Pacific cyclone identity | `launched` |
+| `hazards.hko-warnings` | Hong Kong Observatory warnings | `launched` |
+| `military.cross-strait-activity` | Official Cross-Strait activity baseline | `launched` |
+
+JODI remains available to existing global energy products. Its China oil and
+gas contracts stay blocked because the reviewed upstream country index does not
+currently publish substantive `CN` rows. A healthy global JODI heartbeat
+therefore cannot be presented as China coverage.
+
+Detailed method and source contracts:
+
+- [Official macro and policy](/china-official-macro-policy)
+- [Corporate disclosures](/china-corporate-disclosures)
+- [Logistics corridors](/china-logistics-corridors)
+- [Cross-domain decision signals](/china-decision-signals)
+- [Activity nowcast methodology](/methodology/china-activity-nowcast)
+- [Shared provenance contract](/decision-signal-provenance)
+
+## Status and missingness
+
+Source arrival is not the same as usable content. China health evaluates
+transport freshness and content freshness separately. A successful request can
+still publish stale, partial, empty, or timestamp-unknown content.
+
+The public contracts use explicit states:
+
+- `available` or `healthy` means the required payload passed its domain
+  validation and freshness rules;
+- `partial` or `degraded` means some reviewed coverage is missing, stale, or
+  invalid while other evidence remains usable;
+- `stale` means the last valid observation is outside its content budget;
+- `unavailable` means no usable observation can be published; and
+- `blocked` means a source was deliberately not launched, normally because
+  robots, terms, transport, or source-substance review did not pass.
+
+Missing categories are never converted to zero, normal, unchanged, or current.
+Last-good preservation keeps its original observation time and reports the
+current transport failure.
+
+## Bilateral HS4 import baskets
+
+The bilateral store covers the 20 reviewed `bilateralHs4Code` entries in
+`scripts/shared/comtrade-strategic-products.json`. Each country shard contains
+annual imports by HS4 product and the leading exporter partners. It supports
+country exposure, route impact, multi-sector shock, and the PRO
+`get-country-products` route. Detailed bilateral rows are not part of the
+anonymous China summary.
+
+The authenticated Comtrade route sends one four-year period window, `Y-2`
+through `Y-5`, for each of the two HS4 batches. The normalizer keeps the newest
+year per product-and-partner pair, so a response cannot silently mix annual
+values. When `COMTRADE_API_KEYS` is absent, the public preview route cannot
+accept a period list and instead tries `Y-2` followed by `Y-3`.
+
+The scheduled production contract is deliberately quota-bound:
+
+| Control | Contract |
+| --- | --- |
+| Railway cron | `0 6 1 * *` — 06:00 UTC on the first day of each month |
+| Provider quota | 500 keyed calls per month |
+| Seeder request budget | 480 |
+| Freshness gate | 24 days, bypassed only by an explicit `FORCE_RESEED=true` |
+| Country payload TTL | 40 days |
+| Health staleness threshold | 35 days |
+| Coverage floor | 110 country shards |
+
+A run below the 110-shard floor writes `partial` seed metadata rather than
+claiming full success. Failed reporters preserve an existing shard for at most
+two consecutive runs; after that, the shard may expire so the on-demand public
+fallback can probe it again. Rate limits, quota exhaustion, and request-budget
+exhaustion publish partial coverage and stop the run instead of overwriting
+last-good country data with empty payloads.
+
+## Access boundaries
+
+- Country summary, corridor conditions, decision-signal summaries, provenance,
+  and aggregate health are available through bounded public surfaces.
+- Detailed corridor control towers and activity-nowcast evidence are REST/UI
+  surfaces. MCP does not expose dedicated tools for either route; Pro MCP
+  receives their bounded summaries through `get_china_decision_signals`.
+- Pro MCP reads the canonical macro and release-calendar caches through
+  `get_economic_data` with dataset `china-macro` or
+  `china-release-calendar`.
+- Detailed bilateral HS4 product rows and route exposure are PRO-only.
+- The Pro MCP decision-signal tool receives the same bounded items and
+  provenance as the public composition, not raw exchange documents or
+  unrestricted source expansion.
+- Proxy credentials, raw per-attempt request diagnostics, cache names, and
+  detailed freshness thresholds remain operator-only. Public documentation
+  names the configuration keys and selection semantics, not their values.
+
+No China surface should be interpreted as independent verification merely
+because its publisher is official. Publisher identity, extraction confidence,
+classification confidence, corroboration, and freshness remain separate
+claims.

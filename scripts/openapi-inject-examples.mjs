@@ -33,6 +33,12 @@ const HTTP_METHODS = new Set(['get', 'post', 'put', 'delete', 'patch', 'options'
 const MAX_OBJECT_DEPTH = 6;
 const MAX_OPTIONAL_PROPERTIES = 5;
 
+// Object keys whose boolean members are rollout gates, not status fields. Their example
+// value must be `false` (the shipped default), never the generic `true`.
+const FLAG_CONTAINER_KEYS = new Set(['featureflags', 'rolloutflags']);
+const CHINA_CORRIDOR_PATH = '/api/supply-chain/v1/get-china-corridor-control-towers';
+const CHINA_DECISION_SIGNALS_PATH = '/api/intelligence/v1/get-china-decision-signals';
+
 // ── Curated per-parameter example overrides ───────────────────────────────
 // The field-name heuristic in stringExample() picks structurally-valid but
 // semantically WRONG string examples for a handful of parameters whose accepted
@@ -56,6 +62,10 @@ function readRepoText(rel) {
     return '';
   }
 }
+
+const GIVING_PUBLISHED_ESTIMATE_CLAIMS = JSON.parse(
+  readRepoText('scripts/shared/giving-published-estimate-claims.json'),
+);
 
 // chokepointId / chokepointIds: get-bypass-options & siblings (SupplyChain) and
 // register-webhook (ShippingV2) validate against the chokepoint registry
@@ -146,7 +156,10 @@ const REGIONAL_INTELLIGENCE_EXAMPLE_ID = (() => {
 })();
 
 const GDELT_TOPIC_EXAMPLE_ID = (() => {
-  const src = readRepoText('scripts/seed-gdelt-intel.mjs');
+  // Sourced from the ACTIVE producer (#5864): scripts/seed-gdelt-intel.mjs no
+  // longer runs on any Railway service after the #5843 materializer cutover,
+  // so reading its topic ids would silently drift from what is published.
+  const src = readRepoText('scripts/_gdelt-bulk-materializer.mjs');
   const ids = [...src.matchAll(/\bid:\s*['"`]([a-z0-9-]+)['"`]/g)].map((m) => m[1]);
   return ids.includes('military') ? 'military' : (ids[0] ?? 'military');
 })();
@@ -309,6 +322,109 @@ function getScenarioStatusExample() {
   };
 }
 
+function getGivingSummaryExample() {
+  const generatedAt = '2026-07-24T12:00:00.000Z';
+  const annualizedPlatformValueUsd = (claim) => {
+    if (
+      !claim.platform
+      || !claim.includedInHighlightedAggregate
+      || claim.status !== 'verified'
+      || claim.reportedUnit !== 'USD'
+      || !Number.isFinite(claim.reportedValue)
+      || claim.reportedValue <= 0
+    ) {
+      return 0;
+    }
+    if (claim.denominator === 'year') return claim.reportedValue;
+    if (claim.denominator === 'week') return claim.reportedValue * 52;
+    return 0;
+  };
+  const platforms = [
+    ['GoFundMe', 'annual'],
+    ['GlobalGiving', 'annual'],
+    ['JustGiving', 'cumulative'],
+  ].map(([platform, dataFreshness]) => {
+    const platformClaims = GIVING_PUBLISHED_ESTIMATE_CLAIMS
+      .filter((claim) => claim.platform === platform);
+    const annualizedUsd = platformClaims
+      .reduce((total, claim) => total + annualizedPlatformValueUsd(claim), 0);
+    const lastUpdated = platformClaims.find((claim) =>
+      claim.status === 'verified' && claim.sourcePublishedAt?.trim())?.sourcePublishedAt ?? '';
+    return {
+      platform,
+      dailyVolumeUsd: annualizedUsd / 365,
+      dataFreshness,
+      lastUpdated,
+    };
+  });
+  const verifiedContextValue = (metric) => {
+    const claim = GIVING_PUBLISHED_ESTIMATE_CLAIMS.find((entry) =>
+      entry.contextMetric === metric && entry.status === 'verified');
+    return claim?.reportedValue ?? 0;
+  };
+  const publicProvenance = GIVING_PUBLISHED_ESTIMATE_CLAIMS.map((claim) =>
+    Object.fromEntries(
+      Object.entries(claim).filter(([key]) => key !== 'platform' && key !== 'contextMetric'),
+    ));
+  const oecdOdaAnnualUsdBn = verifiedContextValue('oecd_oda_usd_bn');
+  const dataMode = GIVING_PUBLISHED_ESTIMATE_CLAIMS.some((claim) =>
+    claim.status === 'unverified' || claim.status === 'partially_verified')
+    ? 'partial_estimate'
+    : 'published_estimate';
+  const categories = [
+    'Medical & Health',
+    'Disaster Relief',
+    'Education',
+    'Community',
+    'Memorials',
+    'Animals & Pets',
+    'Environment',
+    'Hunger & Food',
+    'Other',
+  ].map((category) => ({
+    category,
+    share: 0,
+    change24h: 0,
+    activeCampaigns: 0,
+    trending: false,
+  }));
+
+  return {
+    summary: {
+      generatedAt,
+      activityIndex: 0,
+      trend: 'stable',
+      estimatedDailyFlowUsd: platforms.reduce(
+        (total, platform) => total + platform.dailyVolumeUsd,
+        0,
+      ),
+      platforms,
+      categories,
+      crypto: {
+        dailyInflowUsd: 0,
+        trackedWallets: 0,
+        transactions24h: 0,
+        topReceivers: [],
+        pctOfTotal: 0,
+      },
+      institutional: {
+        oecdOdaAnnualUsdBn,
+        oecdDataYear: oecdOdaAnnualUsdBn > 0 ? 2023 : 0,
+        cafWorldGivingIndex: 0,
+        cafDataYear: 0,
+        candidGrantsTracked: verifiedContextValue('candid_grants'),
+        dataLag: 'Annual published context',
+      },
+      dataMode,
+      trendAvailable: false,
+      provenance: publicProvenance,
+      activityIndexAvailable: false,
+    },
+    fetchedAt: Date.parse(generatedAt),
+    dataAvailable: true,
+  };
+}
+
 function clone(value) {
   return value === undefined ? undefined : JSON.parse(JSON.stringify(value));
 }
@@ -362,8 +478,20 @@ function constrainedString(value, schema) {
 
 function patternString(pattern, key) {
   if (!pattern) return null;
+  if (pattern.startsWith('^cmc1\\.')) {
+    return `cmc1.${'a'.repeat(32)}.${'b'.repeat(43)}`;
+  }
+  if (pattern.includes('(?:www\\.)?') && pattern.includes('[A-Za-z0-9-]')) {
+    return 'example.com';
+  }
   const simpleAlternation = pattern.match(/^\^\(([^)]+)\)\$/);
   if (simpleAlternation) return simpleAlternation[1].split('|')[0];
+  const companyMonitoringLogicalId = pattern.match(
+    /^\^(cm_(?:company|claim|event|evidence|impact)_)\[0-9A-HJKMNP-TV-Z\]\{26\}\$$/,
+  );
+  if (companyMonitoringLogicalId) {
+    return `${companyMonitoringLogicalId[1]}01ARZ3NDEKTSV4RRFFQ69G5FAV`;
+  }
   if (/scenario:\[0-9\]\{13\}:\[a-z0-9\]\{8\}/.test(pattern) || pattern.includes('scenario:')) {
     return 'scenario:1717200000000:abcd1234';
   }
@@ -384,6 +512,14 @@ function stringExample(name, schema = {}, context = {}) {
   // field. Keep the generated response example truthful instead of emitting
   // the generic non-empty string placeholder.
   if (key === 'abstract' && (where.includes('listdefensepatents') || where.includes('list-defense-patents'))) return '';
+  // Intel-history scope: `domain` collides with web-domain params on other
+  // ops, so anchor on the exact accepted-values pattern instead of the name.
+  // If the contract's pattern ever changes this falls through to the generic
+  // heuristic and the schema-validity check reds — the correct failure mode.
+  if (schema.pattern === '^(conflict|military|energy)?$') return 'conflict';
+  // get-similar-events `situation` enforces min_len 10; the generic
+  // placeholder is shorter and produces an un-runnable request sample.
+  if (key === 'situation') return constrainedString('chokepoint closure with an energy price spike', schema);
   const override = overrideStringExample(key, context);
   if (override !== undefined) return constrainedString(override, schema);
   if (shouldUseDescriptionClosedValue(context)) {
@@ -453,7 +589,13 @@ function stringExample(name, schema = {}, context = {}) {
 function numberExample(name, schema = {}, integer = false) {
   const key = normalizeKey(name);
   let value = integer ? 1 : 1.5;
-  if (key.includes('page') || key.includes('limit')) value = 25;
+  // A zero-based position must example as 0. The generic `1` published an import-batch
+  // example whose single row had ordinal 1, which the batch contract rejects outright
+  // ("batch ordinals must be contiguous from 0") — a copy-pasteable 400.
+  // Deliberately `ordinal` only, NOT `index`: in this repo `index` is a price index
+  // (base = 100) on ConsumerPricesService, where 0 is a nonsense example value.
+  if (key === 'ordinal') value = 0;
+  else if (key.includes('page') || key.includes('limit')) value = 25;
   else if (key.includes('days')) value = 7;
   else if (key.includes('closuredays')) value = 30;
   else if (key === 'lat' || key.endsWith('lat') || key.includes('latitude')) value = 40.7128;
@@ -478,16 +620,135 @@ function mergeObjects(a, b) {
     : b;
 }
 
+function getCompanyEnrichmentExample() {
+  return {
+    company: {
+      name: 'Apple Inc.',
+      domain: 'apple.com',
+      description: 'Electronic Computers',
+      location: 'Cupertino, CA',
+      website: 'https://www.apple.com',
+      founded: 0,
+      cik: '0000320193',
+      ticker: 'AAPL',
+    },
+    // Deprecated compatibility collections are intentionally empty. `github`
+    // is omitted because the handler serializes its undefined value away.
+    techStack: [],
+    secFilings: {
+      totalFilings: 120,
+      recentFilings: [{
+        form: '8-K',
+        fileDate: '2026-07-24',
+        description: 'Results of Operations and Financial Condition',
+        url: 'https://www.sec.gov/Archives/edgar/data/320193/000032019326000070/0000320193-26-000070-index.htm',
+        items: ['2.02'],
+      }],
+    },
+    hackerNewsMentions: [],
+    enrichedAtMs: 1784908800000,
+    sources: ['sec_edgar', 'finnhub', 'news'],
+    market: {
+      exchange: 'NASDAQ NMS - GLOBAL MARKET',
+      industry: 'Technology',
+      marketCapMusd: 3200000,
+      ipoDate: '1980-12-12',
+      logoUrl: 'https://static2.finnhub.io/file/publicdatany/finnhubimage/stock_logo/AAPL.png',
+      country: 'US',
+      currency: 'USD',
+    },
+    earningsSurprises: [{
+      period: '2026-06-30',
+      actualEps: 1.57,
+      estimateEps: 1.43,
+      surprise: 0.14,
+      surprisePercent: 9.79,
+      year: 2026,
+      quarter: 3,
+    }],
+    newsMentions: [{
+      title: 'Apple reports quarterly results',
+      url: 'https://example.com/apple-results',
+      source: 'example.com',
+      publishedAtMs: 1784905200000,
+    }],
+    unavailable: false,
+  };
+}
+
+// ShippingIndex has 12 properties and none are `required`, so the generic
+// builder's MAX_OPTIONAL_PROPERTIES cap keeps only the 5 alphabetically-first —
+// dropping the four decision-grade period-change fields (#6078) along with
+// previousValue/unit/spikeAlert. Curate it so the published example shows what
+// the endpoint actually returns, including the fail-closed shape where the
+// exchange published no comparable prior.
+function getShippingRatesExample() {
+  return {
+    indices: [
+      {
+        indexId: 'CCFI',
+        name: 'CCFI - China Container Freight',
+        currentValue: 1072.16,
+        previousValue: 1054.38,
+        changePct: 1.69,
+        unit: 'index',
+        history: [{ date: '2026-01-15', value: 1072.16 }],
+        spikeAlert: false,
+        periodChangePct: 1.69,
+        periodChangeBasis: 'publisher_reported',
+        priorPeriodValue: 1054.38,
+        priorPeriodDate: '2026-01-08',
+      },
+      {
+        // Fail-closed shape: the exchange published a level with no comparable
+        // prior, so the decision-grade fields are ABSENT (not 0, not null) while
+        // the legacy display fields still carry their fabricated fallback.
+        indexId: 'BDI',
+        name: 'BDI - Baltic Dry Index',
+        currentValue: 1972,
+        previousValue: 1972,
+        changePct: 0,
+        unit: 'index',
+        history: [{ date: '2026-01-15', value: 1972 }],
+        spikeAlert: false,
+      },
+    ],
+    fetchedAt: '2026-01-15T12:00:00Z',
+    upstreamUnavailable: false,
+  };
+}
+
 function exampleForSchema(schema, spec, context = {}, depth = 0, seen = new Set()) {
   if (!schema || typeof schema !== 'object') return 'example';
   const original = schema;
   schema = resolveRef(schema, spec);
   if (
     depth === 0
+    && String(context.operationId ?? '').toLowerCase() === 'getgivingsummary'
+    && String(context.name ?? '').toLowerCase().endsWith('response')
+  ) {
+    return getGivingSummaryExample();
+  }
+  if (
+    depth === 0
     && String(context.operationId ?? '').toLowerCase() === 'getscenariostatus'
     && String(context.name ?? '').toLowerCase().endsWith('response')
   ) {
     return getScenarioStatusExample();
+  }
+  if (
+    depth === 0
+    && String(context.operationId ?? '').toLowerCase() === 'getcompanyenrichment'
+    && String(context.name ?? '').toLowerCase().endsWith('response')
+  ) {
+    return getCompanyEnrichmentExample();
+  }
+  if (
+    depth === 0
+    && String(context.operationId ?? '').toLowerCase() === 'getshippingrates'
+    && String(context.name ?? '').toLowerCase().endsWith('response')
+  ) {
+    return getShippingRatesExample();
   }
   const ref = original.$ref;
   if (ref) {
@@ -540,13 +801,28 @@ function exampleForSchema(schema, spec, context = {}, depth = 0, seen = new Set(
     }
     const out = {};
     for (const key of keys) {
-      out[key] = exampleForSchema(props[key], spec, { ...context, name: key }, depth + 1, seen);
+      // Carry the container's own key so a leaf can tell what block it belongs to
+      // (a feature-flag boolean must not inherit the generic `true` default).
+      out[key] = exampleForSchema(props[key], spec, { ...context, name: key, parent: name }, depth + 1, seen);
     }
     return out;
   }
   if (type === 'integer') return numberExample(name, schema, true);
   if (type === 'number') return numberExample(name, schema, false);
-  if (type === 'boolean') return true;
+  if (type === 'boolean') {
+    // Success-path examples must not teach outage envelopes. `unavailable` on
+    // corporate-intel (and similar) RPCs means the upstream seed/registry was
+    // unreadable — a 200 example with unavailable:true is a contract footgun.
+    const key = normalizeKey(name || context.name || '');
+    if (key === 'unavailable' || key.endsWith('unavailable')) return false;
+    // Rollout/feature flags default OFF. The generic `true` default is wrong for a
+    // block whose whole design is "every gate starts false and flips one at a time":
+    // it published an example showing Company Monitoring mostly-enabled next to
+    // accessState DISABLED — a state the product cannot actually be in, and the exact
+    // opposite of the invariant the flags exist to hold.
+    if (FLAG_CONTAINER_KEYS.has(normalizeKey(context.parent || ''))) return false;
+    return true;
+  }
   return stringExample(name, schema, context);
 }
 
@@ -619,6 +895,11 @@ function injectSpecExamples(spec) {
       if (responses.length > 0) responseOperations++;
       for (const [, response] of responses) {
         const media = response.content[JSON_MEDIA];
+        // This response carries a canonical JSON document inside payloadJson.
+        // Its dedicated injector owns a representative decoded example; keep
+        // that curated example stable when the generic examples pass is
+        // re-run or checked after code generation.
+        if ((path === CHINA_CORRIDOR_PATH || path === CHINA_DECISION_SIGNALS_PATH) && media.example !== undefined) continue;
         const example = exampleForSchema(media.schema, spec, {
           ...context,
           name: `${op.operationId ?? 'operation'}Response`,

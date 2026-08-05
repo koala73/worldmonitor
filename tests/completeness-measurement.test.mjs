@@ -210,7 +210,14 @@ describe('coverage-ledger and provenance wiring (source-textual)', () => {
 
 // ── #4927 review-round additions ───────────────────────────────────────────
 
-import { unwrapEnvelope, gdeltUrl } from '../scripts/seed-recall-benchmark.mjs';
+import {
+  GDELT_BULK_MAX_FUTURE_SKEW_MS,
+  GDELT_BULK_REFERENCE_MAX_AGE_MS,
+  materializedReferenceItems,
+  runRecallBenchmark,
+  unwrapEnvelope,
+} from '../scripts/seed-recall-benchmark.mjs';
+import { GDELT_BULK_ARTICLES_KEY } from '../scripts/_gdelt-bulk-contract.mjs';
 import { publishFeedHealth } from '../scripts/validate-rss-feeds.mjs';
 import { getOptionalUpstashCreds } from '../scripts/_upstash-rest.mjs';
 
@@ -266,12 +273,108 @@ describe('publisher orchestration seams (#4927 review)', () => {
     }
   });
 
-  it('gdeltUrl builds a bounded, English, 24h ArtList query', () => {
-    const url = gdeltUrl('(economy OR markets)');
-    assert.match(url, /^https:\/\/api\.gdeltproject\.org\/api\/v2\/doc\/doc\?/);
-    assert.match(url, /sourcelang%3Aeng/);
-    assert.match(url, /maxrecords=25/);
-    assert.match(url, /timespan=24h/);
+  it('materializedReferenceItems validates and deduplicates the bulk index', () => {
+    assert.deepEqual(materializedReferenceItems({
+      articles: [
+        { title: 'A sufficiently long headline', url: 'https://example.com/a' },
+        { title: 'A duplicate URL with another title', url: 'https://example.com/a' },
+        { title: 'short', url: 'https://example.com/short' },
+        { title: 'Unsafe URL is omitted but title remains', url: 'javascript:alert(1)' },
+      ],
+    }), [
+      {
+        title: 'A sufficiently long headline',
+        url: 'https://example.com/a',
+        vertical: 'gdelt-bulk',
+      },
+      {
+        title: 'Unsafe URL is omitted but title remains',
+        url: undefined,
+        vertical: 'gdelt-bulk',
+      },
+    ]);
+  });
+
+  it('recall accepts the exact reference-age boundary and preserves fetchedAt in the publication', async () => {
+    const nowMs = Date.parse('2026-07-30T15:00:00.000Z');
+    const referenceFetchedAt = nowMs - GDELT_BULK_REFERENCE_MAX_AGE_MS;
+    const writes = [];
+    const articles = Array.from({ length: 20 }, (_, index) => ({
+      title: `Reference headline number ${index} with enough words`,
+      url: `https://example.com/reference-${index}`,
+    }));
+    const digest = {
+      categories: {
+        world: {
+          items: [{ title: articles[0].title }],
+        },
+      },
+    };
+
+    await runRecallBenchmark({
+      _getCreds: () => ({ url: 'https://redis.invalid', token: 'test' }),
+      _now: () => nowMs,
+      _redisCommand: async (_creds, command) => {
+        if (command[0] === 'GET' && command[1] === 'news:digest:v1:full:en') {
+          return { result: JSON.stringify(digest) };
+        }
+        if (command[0] === 'GET' && command[1] === GDELT_BULK_ARTICLES_KEY) {
+          return {
+            result: JSON.stringify({ articles, fetchedAt: referenceFetchedAt }),
+          };
+        }
+        writes.push(command);
+        return { result: 'OK' };
+      },
+      _logger: { log() {}, warn() {} },
+    });
+
+    const publication = JSON.parse(
+      writes.find((command) => command[0] === 'SET' && command[1] === 'news:recall-benchmark:v1')[2],
+    );
+    assert.equal(publication.checkedAt, nowMs);
+    assert.equal(publication.referenceFetchedAt, referenceFetchedAt);
+  });
+
+  it('recall rejects stale and future-skewed references before any publication', async () => {
+    const nowMs = Date.parse('2026-07-30T15:00:00.000Z');
+    const articles = Array.from({ length: 20 }, (_, index) => ({
+      title: `Reference headline number ${index} with enough words`,
+      url: `https://example.com/reference-${index}`,
+    }));
+    const digest = {
+      categories: {
+        world: {
+          items: [{ title: articles[0].title }],
+        },
+      },
+    };
+
+    for (const fetchedAt of [
+      nowMs - GDELT_BULK_REFERENCE_MAX_AGE_MS - 1,
+      nowMs + GDELT_BULK_MAX_FUTURE_SKEW_MS + 1,
+    ]) {
+      const writes = [];
+      await assert.rejects(
+        runRecallBenchmark({
+          _getCreds: () => ({ url: 'https://redis.invalid', token: 'test' }),
+          _now: () => nowMs,
+          _redisCommand: async (_creds, command) => {
+            if (command[0] === 'GET' && command[1] === 'news:digest:v1:full:en') {
+              return { result: JSON.stringify(digest) };
+            }
+            if (command[0] === 'GET' && command[1] === GDELT_BULK_ARTICLES_KEY) {
+              return { result: JSON.stringify({ articles, fetchedAt }) };
+            }
+            writes.push(command);
+            return { result: 'OK' };
+          },
+          _logger: { log() {}, warn() {} },
+        }),
+        fetchedAt < nowMs ? /stale/ : /future/,
+      );
+      assert.deepEqual(writes, [], 'a rejected reference must not publish checkedAt or activation');
+    }
   });
 
   it('unwrapEnvelope tolerates enveloped and bare payloads', () => {
@@ -358,11 +461,11 @@ describe('durable activation lifecycle (#4927 re-review P1)', () => {
     };
     // Never activated: missing data reads soft EMPTY_ON_DEMAND.
     const pending = classifyKey('newsFeedHealth', 'news:feed-health:v1', { allowOnDemand: true },
-      { ...baseCtx, activatedNames: new Set() });
+      { ...baseCtx, activationStates: new Map([['newsFeedHealth', false]]) });
     assert.equal(pending.status, 'EMPTY_ON_DEMAND');
     // Activated then died (marker present, data+meta expired): must alarm.
     const dead = classifyKey('newsFeedHealth', 'news:feed-health:v1', { allowOnDemand: true },
-      { ...baseCtx, activatedNames: new Set(['newsFeedHealth']) });
+      { ...baseCtx, activationStates: new Map([['newsFeedHealth', true]]) });
     assert.equal(dead.status, 'EMPTY', 'post-activation missing data must be EMPTY, not softened');
   });
 
@@ -377,7 +480,54 @@ describe('durable activation lifecycle (#4927 re-review P1)', () => {
     const seedHealthSrc = readSrc('api/seed-health.js');
     assert.match(seedHealthSrc, /activationKey: 'seed-activated:news:feed-health'/,
       'seed-health gates pending-activation on the marker');
-    assert.match(seedHealthSrc, /cfg\.activationKey && !activatedMap\.get\(domain\)/,
-      'missing meta with marker present must fall through to missing/stale');
+  });
+
+  // The claim above ("missing meta with the marker present must fall through to
+  // missing") used to be a regex over the exact gate expression in
+  // api/seed-health.js. That guard passed for the shape of the line rather than
+  // for its behaviour: it went red when #6095 rewrote the same gate to a
+  // three-valued read, and it would have stayed green if the gate had been
+  // inverted while keeping the expression's spelling. Drive the handler instead.
+  it('seed-health: the durable marker, not the missing meta, decides pending vs missing', async () => {
+    const { default: seedHealthHandler } = await import('../api/seed-health.js');
+    const FEED_HEALTH_MARKER = 'seed-activated:news:feed-health';
+    const FEED_HEALTH_META_KEY = 'seed-meta:news:feed-health';
+    const realFetch = globalThis.fetch;
+    const realKeys = process.env.WORLDMONITOR_VALID_KEYS;
+    const realUrl = process.env.UPSTASH_REDIS_REST_URL;
+    const realToken = process.env.UPSTASH_REDIS_REST_TOKEN;
+    process.env.WORLDMONITOR_VALID_KEYS = 'test-completeness-key';
+    process.env.UPSTASH_REDIS_REST_URL = 'https://mock-upstash.test';
+    process.env.UPSTASH_REDIS_REST_TOKEN = 'mock-token';
+
+    const readFeedHealth = async (markerExists) => {
+      globalThis.fetch = async (_url, init) => {
+        const results = JSON.parse(init.body).map(([op, key]) => {
+          if (op === 'EXISTS') return { result: key === FEED_HEALTH_MARKER && markerExists ? 1 : 0 };
+          if (key === FEED_HEALTH_META_KEY) return { result: null };
+          return { result: JSON.stringify({ fetchedAt: Date.now(), recordCount: 10_000 }) };
+        });
+        return new Response(JSON.stringify(results), { status: 200 });
+      };
+      const res = await seedHealthHandler(new Request('https://api.worldmonitor.app/api/seed-health', {
+        headers: { 'X-WorldMonitor-Key': 'test-completeness-key' },
+      }));
+      return (await res.json()).seeds['news:feed-health'];
+    };
+
+    try {
+      assert.equal((await readFeedHealth(false)).status, 'pending-activation',
+        'before the first publish an absent meta is deploy lag, not a fault');
+      assert.equal((await readFeedHealth(true)).status, 'missing',
+        'a publisher that ran once and died must alarm, not read as pending');
+    } finally {
+      globalThis.fetch = realFetch;
+      if (realKeys == null) delete process.env.WORLDMONITOR_VALID_KEYS;
+      else process.env.WORLDMONITOR_VALID_KEYS = realKeys;
+      if (realUrl == null) delete process.env.UPSTASH_REDIS_REST_URL;
+      else process.env.UPSTASH_REDIS_REST_URL = realUrl;
+      if (realToken == null) delete process.env.UPSTASH_REDIS_REST_TOKEN;
+      else process.env.UPSTASH_REDIS_REST_TOKEN = realToken;
+    }
   });
 });

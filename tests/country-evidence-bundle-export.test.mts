@@ -118,8 +118,16 @@ function zeroCountryBriefSignals() {
   };
 }
 
-async function loadCountryBriefPage(options: { premiumAccess?: boolean } = {}) {
+type CountryBriefHarnessOptions = {
+  premiumAccess?: boolean;
+  exportGateLocked?: boolean;
+  availableExportFormats?: Array<'csv' | 'json' | 'pdf'>;
+};
+
+async function loadCountryBriefPage(options: CountryBriefHarnessOptions = {}) {
   const premiumAccess = options.premiumAccess === true;
+  const exportGateLocked = options.exportGateLocked === true;
+  const availableExportFormats = options.availableExportFormats ?? ['csv', 'json', 'pdf'];
   const tempDir = mkdtempSync(join(tmpdir(), 'wm-country-brief-page-'));
   const outfile = join(tempDir, 'CountryBriefPage.bundle.mjs');
   const entry = resolve(process.cwd(), 'src/components/CountryBriefPage.ts');
@@ -170,6 +178,8 @@ async function loadCountryBriefPage(options: { premiumAccess?: boolean } = {}) {
         if (!String(html).includes('cb-export-option')) return;
         const page = document.createElement('div');
         page.className = 'country-brief-page';
+        const trigger = document.createElement('button');
+        trigger.className = 'cb-export-btn';
         const menu = document.createElement('div');
         menu.className = 'cb-export-menu hidden';
         for (const match of String(html).matchAll(/<button\\s+([^>]*class="[^"]*cb-export-option[^"]*"[^>]*)>([\\s\\S]*?)<\\/button>/g)) {
@@ -178,6 +188,7 @@ async function loadCountryBriefPage(options: { premiumAccess?: boolean } = {}) {
           button.textContent = textFromHtml(match[2]);
           menu.appendChild(button);
         }
+        page.appendChild(trigger);
         page.appendChild(menu);
         root.appendChild(page);
       }
@@ -191,7 +202,26 @@ async function loadCountryBriefPage(options: { premiumAccess?: boolean } = {}) {
       }
     `],
     ['auth-state-stub', `export function getAuthState() { return { user: null }; }`],
-    ['panel-gating-stub', `export function hasPremiumAccess() { return ${premiumAccess ? 'true' : 'false'}; }`],
+    ['panel-gating-stub', `
+      export function hasPremiumAccess() { return ${premiumAccess ? 'true' : 'false'}; }
+    `],
+    ['gates-export-stub', `
+      export function evaluateExportGate() {
+        return ${exportGateLocked
+          ? `{ locked: true, reason: 'free_tier' }`
+          : '{ locked: false, pendingActivation: false }'};
+      }
+      export function evaluateAvailableExportFormats() {
+        return ${JSON.stringify(availableExportFormats)};
+      }
+      export function exportLockToGateReason(reason) { return reason; }
+    `],
+    ['export-gate-stub', `export function primeExportGateActivation() { return Promise.resolve(false); }`],
+    ['export-gate-control-stub', `
+      export function exportGateCopy(reason) {
+        return { icon: '', desc: 'export-gate-locked:' + reason, cta: '' };
+      }
+    `],
     ['analytics-stub', `
       export function trackGateHit(feature) {
         globalThis.__wmCountryBriefPageTestState.gateHits.push(feature);
@@ -212,6 +242,9 @@ async function loadCountryBriefPage(options: { premiumAccess?: boolean } = {}) {
     ['@/utils/dom-utils', 'dom-utils-stub'],
     ['@/services/auth-state', 'auth-state-stub'],
     ['@/services/panel-gating', 'panel-gating-stub'],
+    ['@/services/gates/export', 'gates-export-stub'],
+    ['@/services/gates/export-resolver', 'export-gate-stub'],
+    ['@/components/ExportGateControl', 'export-gate-control-stub'],
     ['@/services/analytics', 'analytics-stub'],
   ]);
 
@@ -249,7 +282,7 @@ async function loadCountryBriefPage(options: { premiumAccess?: boolean } = {}) {
   };
 }
 
-async function createCountryBriefPageHarness(options: { premiumAccess?: boolean } = {}) {
+async function createCountryBriefPageHarness(options: CountryBriefHarnessOptions = {}) {
   const originalGlobals = {
     document: snapshotGlobal('document'),
     window: snapshotGlobal('window'),
@@ -319,6 +352,12 @@ async function createCountryBriefPageHarness(options: { premiumAccess?: boolean 
     },
     getEvidenceExports() {
       return state.evidenceExports;
+    },
+    getJsonExports() {
+      return state.jsonExports;
+    },
+    getCsvExports() {
+      return state.csvExports;
     },
     getGateHits() {
       return state.gateHits;
@@ -554,7 +593,12 @@ describe('country evidence bundle export', () => {
 
     assert.match(legacySource, /exportCountryEvidenceMarkdown/);
     assert.match(legacySource, /data-format="evidence-md"/);
-    assert.match(legacySource, /format === 'json' \|\| format === 'csv' \|\| format === 'evidence-md'/);
+    // U5 (plan 2026-07-25-001): json/csv route through the data-export gate;
+    // evidence-md keeps its own Pro gate, and image/pdf/print stay free.
+    assert.match(legacySource, /format === 'json' \|\| format === 'csv'/);
+    assert.match(legacySource, /if \(this\.canExportStructuredData\(format\)\) this\.exportBrief\(format\);/);
+    assert.match(legacySource, /evaluateAvailableExportFormats\(authState\)/);
+    assert.match(legacySource, /else if \(format === 'evidence-md'\) \{\n\s+this\.exportBrief\(format\);/);
     assert.match(legacySource, /if \(format === 'evidence-md' && !this\.canExportEvidenceBundle\(\)\) return;/);
     assert.match(legacySource, /if \(format === 'evidence-md'\) exportCountryEvidenceMarkdown\(data\)/);
     assert.match(legacySource, /data-format="json"/);
@@ -585,6 +629,93 @@ describe('country evidence bundle export', () => {
       assert.equal(harness.getEvidenceExports().length, 0);
       assert.deepEqual(harness.getGateHits(), ['evidence-export']);
       assert.deepEqual(harness.getToasts(), ['Evidence export is available on Pro.']);
+    } finally {
+      harness.cleanup();
+    }
+  });
+
+  it('blocks country brief JSON/CSV export when the data-export gate is locked (R9)', async () => {
+    const harness = await createCountryBriefPageHarness({ premiumAccess: false, exportGateLocked: true });
+    try {
+      const page = harness.createPage();
+      page.show('France', 'FR', null, zeroCountryBriefSignals());
+
+      const overlay = harness.getOverlay();
+      assert.ok(overlay, 'expected country brief overlay');
+      for (const format of ['json', 'csv']) {
+        const button = overlay.querySelector(`[data-format="${format}"]`) as HTMLElement | null;
+        assert.ok(button, `expected ${format} export option`);
+        dispatchDelegatedClick(overlay, button);
+      }
+
+      assert.equal(harness.getJsonExports().length, 0);
+      assert.equal(harness.getCsvExports().length, 0);
+      assert.deepEqual(harness.getGateHits(), ['export', 'export']);
+      // The toast carries the billing-aware reason, not a hardcoded upsell.
+      assert.deepEqual(harness.getToasts(), ['export-gate-locked:free_tier', 'export-gate-locked:free_tier']);
+    } finally {
+      harness.cleanup();
+    }
+  });
+
+  it('allows country brief JSON/CSV export when the data-export gate is open', async () => {
+    const harness = await createCountryBriefPageHarness({ premiumAccess: false, exportGateLocked: false });
+    try {
+      const page = harness.createPage();
+      page.show('France', 'FR', null, zeroCountryBriefSignals());
+
+      const overlay = harness.getOverlay();
+      assert.ok(overlay, 'expected country brief overlay');
+      const jsonButton = overlay.querySelector('[data-format="json"]') as HTMLElement | null;
+      assert.ok(jsonButton, 'expected json export option');
+      dispatchDelegatedClick(overlay, jsonButton);
+
+      assert.equal(harness.getJsonExports().length, 1);
+      assert.deepEqual(harness.getGateHits(), []);
+      assert.deepEqual(harness.getToasts(), []);
+    } finally {
+      harness.cleanup();
+    }
+  });
+
+  it('enforces declared Country Brief formats at menu-open and click time', async () => {
+    const harness = await createCountryBriefPageHarness({
+      premiumAccess: false,
+      exportGateLocked: false,
+      availableExportFormats: ['json'],
+    });
+    try {
+      const page = harness.createPage();
+      page.show('France', 'FR', null, zeroCountryBriefSignals());
+
+      const overlay = harness.getOverlay();
+      assert.ok(overlay, 'expected country brief overlay');
+      const trigger = overlay.querySelector('.cb-export-btn') as HTMLElement | null;
+      const jsonButton = overlay.querySelector('[data-format="json"]') as HTMLButtonElement | null;
+      const csvButton = overlay.querySelector('[data-format="csv"]') as HTMLButtonElement | null;
+      const pdfButton = overlay.querySelector('[data-format="pdf"]') as HTMLButtonElement | null;
+      assert.ok(trigger, 'expected country brief export trigger');
+      assert.ok(jsonButton, 'expected json export option');
+      assert.ok(csvButton, 'expected csv export option');
+      assert.ok(pdfButton, 'expected pdf export option');
+
+      dispatchDelegatedClick(overlay, trigger);
+
+      assert.equal(jsonButton.hidden, false);
+      assert.equal(csvButton.hidden, true);
+      // The Country Brief print-based PDF remains free and outside the
+      // structured-data format allowlist.
+      assert.notEqual(pdfButton.hidden, true);
+
+      // A synthetic click proves the action itself re-checks the allowlist;
+      // hiding alone must not be the security boundary.
+      dispatchDelegatedClick(overlay, csvButton);
+      dispatchDelegatedClick(overlay, jsonButton);
+
+      assert.equal(harness.getCsvExports().length, 0);
+      assert.equal(harness.getJsonExports().length, 1);
+      assert.deepEqual(harness.getGateHits(), []);
+      assert.deepEqual(harness.getToasts(), []);
     } finally {
       harness.cleanup();
     }

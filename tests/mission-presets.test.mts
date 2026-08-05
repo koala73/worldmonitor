@@ -459,7 +459,8 @@ async function loadEventHandlerManager(): Promise<EventHandlerManagerCtor> {
       };
     `],
     ['@/services/i18n', 'export function t(key) { return key; }'],
-    ['@/services/widget-store', 'export function deleteWidget(){} export function getWidget(){ return null; } export function saveWidget(){} export function isProUser(){ return true; }'],
+    ['@/services/widget-store', 'export function deleteWidget(){} export function getWidget(){ return null; } export function saveWidget(){} export function isProUser(){ return globalThis.__missionIsProUser === true; } export function isProTierResolved(){ return globalThis.__missionIsProTierResolved === true; }'],
+    ['@/services/panel-gating', 'export const PanelGateReason = { NONE: "none", ANONYMOUS: "anonymous", FREE_TIER: "free_tier", PAYMENT_ON_HOLD: "payment_on_hold", RENEWAL_PENDING: "renewal_pending", RENEWAL_FAILED: "renewal_failed", LAPSED: "lapsed" }; export function hasPremiumAccess(){ return globalThis.__missionHasPremium === true; } export function resolveGateAction(){ return () => {}; }'],
     ['@/services/mcp-store', 'export function deleteMcpPanel(){} export function getMcpPanel(){ return null; } export function saveMcpPanel(){}'],
     ['@/services/runtime', 'export function isDesktopRuntime(){ return false; }'],
     ['@/services/tauri-bridge', 'export async function invokeTauri(){ return null; }'],
@@ -568,6 +569,20 @@ function resetMissionGlobals(): void {
   delete (globalThis as { __missionFreshness?: unknown }).__missionFreshness;
   delete (globalThis as { __missionToastMessages?: unknown }).__missionToastMessages;
   delete (globalThis as { __missionAfterPaintTasks?: unknown }).__missionAfterPaintTasks;
+  delete (globalThis as { __missionIsProUser?: unknown }).__missionIsProUser;
+  delete (globalThis as { __missionIsProTierResolved?: unknown }).__missionIsProTierResolved;
+  delete (globalThis as { __missionHasPremium?: unknown }).__missionHasPremium;
+}
+
+function setMissionAccess(options: { premium?: boolean; tierResolved?: boolean } = {}): void {
+  const access = globalThis as {
+    __missionIsProUser?: boolean;
+    __missionIsProTierResolved?: boolean;
+    __missionHasPremium?: boolean;
+  };
+  access.__missionIsProUser = options.premium ?? true;
+  access.__missionIsProTierResolved = options.tierResolved ?? true;
+  access.__missionHasPremium = options.premium ?? true;
 }
 
 beforeEach(() => {
@@ -580,6 +595,7 @@ beforeEach(() => {
   defineLocalStorage(new MemoryStorage());
   defineBrowserGlobals();
   resetMissionGlobals();
+  setMissionAccess();
 });
 
 afterEach(() => {
@@ -1012,7 +1028,12 @@ function makeMapSpy(options: { isGlobe?: boolean; isDeckGLActive?: boolean } = {
   };
 }
 
-function createMissionHarness(options: { mobile?: boolean; storage?: MemoryStorage; map?: ReturnType<typeof makeMapSpy> } = {}): MissionHarness {
+function createMissionHarness(options: {
+  mobile?: boolean;
+  storage?: MemoryStorage;
+  map?: ReturnType<typeof makeMapSpy>;
+  freeTierFallback?: boolean;
+} = {}): MissionHarness {
   const storage = options.storage ?? new MemoryStorage();
   defineLocalStorage(storage);
   const document = defineBrowserGlobals();
@@ -1105,6 +1126,7 @@ function createMissionHarness(options: { mobile?: boolean; storage?: MemoryStora
     refreshCiiAfterFocalPointsReady() {},
     stopLayerActivity: (layer: keyof MapLayers) => callbacks.stopLayerActivity.push(String(layer)),
     mountLiveNewsIfReady: () => { callbacks.mountLiveNewsCalls += 1; },
+    isFreeTierFallbackActive: () => options.freeTierFallback === true,
   });
 
   return { ctx, callbacks, manager: manager as MissionHarness['manager'], storage };
@@ -1189,6 +1211,40 @@ describe('mission preset shell integration', () => {
     assert.ok(callbacks.loadDataForLayer.includes('tradeRoutes'));
     assert.equal(callbacks.loadDataForLayer.includes('resilienceScore'), false);
     assert.equal(callbacks.stopLayerActivity.includes('resilienceScore'), false);
+  });
+
+  it('sanitizes locked mission layers only for settled free users or the bounded fallback', () => {
+    setMissionAccess({ premium: false, tierResolved: false });
+    const pending = createMissionHarness();
+    pending.manager.applyMissionPreset('supply-chain-risk');
+    assert.equal(pending.ctx.mapLayers.resilienceScore, true,
+      'pending auth must preserve a possible Pro user\'s layer state');
+    assert.equal(readJsonStorage<MapLayers>('worldmonitor-layers').resilienceScore, true);
+    assert.equal(pending.ctx.map.calls.setLayers.at(-1)?.resilienceScore, true);
+
+    setMissionAccess({ premium: false, tierResolved: true });
+    const settled = createMissionHarness();
+    settled.manager.applyMissionPreset('supply-chain-risk');
+    assert.equal(settled.ctx.mapLayers.resilienceScore, false,
+      'settled free users must not persist the locked layer');
+    assert.equal(readJsonStorage<MapLayers>('worldmonitor-layers').resilienceScore, false);
+    assert.equal(settled.ctx.map.calls.setLayers.at(-1)?.resilienceScore, false);
+
+    setMissionAccess({ premium: false, tierResolved: false });
+    const fallback = createMissionHarness({ freeTierFallback: true });
+    fallback.manager.applyMissionPreset('supply-chain-risk');
+    assert.equal(fallback.ctx.mapLayers.resilienceScore, false,
+      'the bounded fallback must heal stale locked state when auth never settles');
+    assert.equal(readJsonStorage<MapLayers>('worldmonitor-layers').resilienceScore, false);
+    assert.equal(fallback.ctx.map.calls.setLayers.at(-1)?.resilienceScore, false);
+
+    setMissionAccess({ premium: true, tierResolved: false });
+    const premium = createMissionHarness({ freeTierFallback: true });
+    premium.manager.applyMissionPreset('supply-chain-risk');
+    assert.equal(premium.ctx.mapLayers.resilienceScore, true,
+      'fallback must not strip a premium user\'s layer');
+    assert.equal(readJsonStorage<MapLayers>('worldmonitor-layers').resilienceScore, true);
+    assert.equal(premium.ctx.map.calls.setLayers.at(-1)?.resilienceScore, true);
   });
 
   it('filters AIS before persisting a mission preset when AIS is not configured', async () => {

@@ -129,17 +129,20 @@
       "currencies": "Monedas",
       "area": "Superficie"
     },
-    "loadingResilienceScore": "Loading resilience score…",
-    "resilienceScoreUnavailable": "Resilience score unavailable.",
+    "loadingResilienceScore": "Cargando puntuación de resiliencia…",
+    "resilienceScoreUnavailable": "Puntuación de resiliencia no disponible.",
     "china": {
       "title": "Panorama de país: China",
       "description": "Situación actual de macro, mercado, comercio, energía y disponibilidad operativa a partir de los contratos de datos públicos existentes.",
-      "macroPolicy": "Macro y política",
-      "marketCredit": "Mercado y crédito",
-      "tradeSupply": "Comercio y cadena de suministro",
+      "policyEvents": "Política y aplicación",
       "energy": "Energía",
       "availability": "Riesgos y aviación",
       "observed": "A fecha de:",
+      "published": "Publicado:",
+      "effective": "Vigente:",
+      "sectors": "Sectores:",
+      "entities": "Entidades:",
+      "translation": "Traducción:",
       "source": "Fuente:",
       "imfGrowth": "Previsión de crecimiento del FMI",
       "creditGdp": "Crédito sobre PIB",
@@ -148,8 +151,6 @@
       "gasDemand": "Demanda de gas",
       "energyMix": "Mix eléctrico",
       "coal": "carbón",
-      "aviationAvailability": "Disponibilidad aérea",
-      "hazardAvailability": "Disponibilidad de riesgos",
       "noMajorDisruptions": "Sin interrupciones importantes notificadas",
       "activeDisruptions_one": "{{count}} interrupción activa",
       "activeDisruptions_many": "{{count}} interrupciones activas",
@@ -163,18 +164,21 @@
       "ccfiSource": "Bolsa de Transporte Marítimo de Shanghái",
       "comtradeSource": "UN Comtrade, declarante 156",
       "sourceUnavailable": "Fuente no disponible",
-      "macroUnavailable": "Los datos macro y de política no están disponibles actualmente.",
-      "marketUnavailable": "Los datos de mercado y crédito no están disponibles actualmente.",
-      "tradeUnavailable": "Los datos de comercio y cadena de suministro no están disponibles actualmente.",
-      "energyUnavailable": "Los datos de energía no están disponibles actualmente.",
-      "availabilityUnavailable": "Los datos de disponibilidad de riesgos y aviación no están disponibles actualmente.",
+      "policyUnavailable": "Official policy and enforcement events are currently unavailable.",
+      "policyPartial": "{{count}} official agencies are temporarily degraded.",
       "status": {
         "loading": "Cargando",
         "available": "Disponible",
         "partial": "Parcial",
         "stale": "Desactualizado",
         "unavailable": "No disponible"
-      }
+      },
+      "macroSignals": "Señales macro",
+      "crossStraitActivity": "Actividad trans-estrecho",
+      "corporateDisclosures": "Divulgaciones corporativas",
+      "corridorConditions": "Condiciones del corredor",
+      "activityNowcast": "Previsión de actividad",
+      "decisionSignalsUnavailable": "El resumen de señales de decisión de China no está disponible actualmente."
     }
   },
   "header": {
@@ -255,7 +259,7 @@
     "panelCatCommodityEcon": "Economía y Comercio",
     "panelCatHappyNews": "Buenas Noticias",
     "panelCatHappyPlanet": "Planeta y Donaciones",
-    "embed": "Embed"
+    "embed": "Insertar"
   },
   "panels": {
     "liveNews": "Noticias en vivo",
@@ -873,7 +877,7 @@
       "fytdLabel": "Año fiscal {{year}} hasta la fecha",
       "vsPriorFy": "vs Año fiscal {{year}}",
       "sourceWto": "OMC",
-      "sourceTreasury": "Tesoro de EE.UU.",
+      "sourceTreasury": "Tesoro de EE. UU.",
       "colDate": "Fecha",
       "colMonthly": "Mensual",
       "colFytd": "Año fiscal hasta la fecha",
@@ -1078,7 +1082,7 @@
           "macroWaterways": "Puntos de estrangulamiento estratégicos para el transporte de mercancías",
           "weatherAlertsMarket": "Eventos climáticos severos con relevancia para el mercado",
           "naturalEventsMacro": "Terremotos, incendios, inundaciones y otras perturbaciones naturales",
-          "timeRecent": "Filtrar datos basados ​​en el tiempo a horas recientes",
+          "timeRecent": "Filtrar datos basados en el tiempo a horas recientes",
           "timeExtended": "Mostrar datos de la semana pasada, el mes o todo el tiempo",
           "geoConflicts": "Zonas de guerra activas (Ucrania, Gaza, etc.) con fronteras",
           "geoHotspots": "Regiones de tensión: codificadas por colores según el nivel de actividad de las noticias",
@@ -1137,6 +1141,8 @@
       "relatedAssetsNear": "Activos relacionados cerca de {{location}}",
       "summaryError": "No se pudo generar el resumen",
       "summaryFailed": "Resumen fallido",
+      "sourceCoverage": "{{covered}}/{{total}} fuentes",
+      "sourceCoverageHint": "Mostrando {{covered}} de {{total}} fuentes activas — este panel va rotando sus fuentes en cada actualización",
       "sortBy": "Ordenar por",
       "sortNewest": "Más reciente",
       "sortRelevance": "Relevancia"
@@ -1419,7 +1425,26 @@
       "cafIndex": "Índice CAF",
       "candidGrants": "Subvenciones Candid",
       "dataLag": "Retraso de datos",
-      "infoTooltip": "<strong>Índice de actividad de donaciones globales</strong> Índice compuesto que rastrea donaciones personales a través de plataformas de crowdfunding y billeteras cripto.<ul><li><strong>Plataformas</strong>: GoFundMe, GlobalGiving, JustGiving muestreo de campañas</li><li><strong>Cripto</strong>: Ingresos a billeteras de caridad on-chain (Endaoment, Giving Block)</li><li><strong>Institucional</strong>: OCDE AOD, CAF World Giving Index, subvenciones Candid</li></ul>El índice es direccional (no montos exactos en dólares). Combina muestreo en vivo con informes anuales publicados."
+      "infoTooltip": "<strong>Índice de actividad de donaciones globales</strong> Índice compuesto que rastrea donaciones personales a través de plataformas de crowdfunding y billeteras cripto.<ul><li><strong>Plataformas</strong>: GoFundMe, GlobalGiving, JustGiving muestreo de campañas</li><li><strong>Cripto</strong>: Ingresos a billeteras de caridad on-chain (Endaoment, Giving Block)</li><li><strong>Institucional</strong>: OCDE AOD, CAF World Giving Index, subvenciones Candid</li></ul>El índice es direccional (no montos exactos en dólares). Combina muestreo en vivo con informes anuales publicados.",
+      "benchmarkTitle": "Referencias globales de donaciones",
+      "benchmarkInfoTooltip": "<strong>Referencias globales de donaciones</strong> Declaraciones publicadas de plataformas e instituciones con períodos de fuente y estado de verificación. Las cifras anualizadas son estimaciones, no actividad en tiempo real.",
+      "status": {
+        "published": "Referencias publicadas con cobertura de fuente verificada.",
+        "partial": "Referencias publicadas con cobertura de fuente parcial.",
+        "legacy": "Instantánea heredada; detalles de la fuente no disponibles.",
+        "cached": "Mostrando una instantánea en caché; actualización no disponible."
+      },
+      "trackedAnnualized": "Donaciones de plataforma rastreadas — estimación anualizada",
+      "annualizedDaily": "Estimación diaria anualizada",
+      "atLeast": "Al menos",
+      "about": "Aproximadamente",
+      "sourceNotVerified": "Fuente no verificada",
+      "reportedCumulative": "Total acumulado reportado",
+      "sourcePeriod": "{{source}} · {{period}}",
+      "benchmark": "Referencia publicada",
+      "sourcesMethodology": "Fuentes y metodología",
+      "methodologyIntro": "Solo las declaraciones anuales verificadas o anualiz adas de forma defendible entran en el titular. Las cifras acumulativas e institucionales permanecen como contexto separado.",
+      "partialEstimate": "Estimación parcialmente verificada"
     },
     "displacement": {
       "refugees": "Refugiados",
@@ -1456,8 +1481,8 @@
       "sectionFollowing": "Following",
       "sectionAll": "All",
       "sourceStates": {
-        "degraded": "degraded",
-        "stale": "stale"
+        "degraded": "degradado",
+        "stale": "obsoleto"
       }
     },
     "gdeltIntel": {
@@ -1566,10 +1591,10 @@
         "minutesAgo": "{{count}}m ago",
         "hoursAgo": "{{count}}h ago"
       },
-      "cachedCiiStatus": "Cached CII {{states}}",
+      "cachedCiiStatus": "CII en caché {{states}}",
       "sourceStates": {
-        "degraded": "degraded",
-        "stale": "stale"
+        "degraded": "degradado",
+        "stale": "obsoleto"
       },
       "dataFreshness": "Data Freshness",
       "sourcesDetail": "{{active}}/{{total}} sources"
@@ -1651,7 +1676,8 @@
       "sources_many": "{{count}} fuentes",
       "provenanceTitle": "Procedencia de cobertura: cuántas historias ingeridas y fuentes distintas se seleccionaron para este resumen",
       "compiledFrom": "Compilado de {{stories}} historias en {{sources}} fuentes",
-      "briefFreshness": "Generado hace {{minutes}}m · fuente más reciente con {{hours}}h de antigüedad"
+      "briefFreshness": "Generado hace {{minutes}}m · fuente más reciente con {{hours}}h de antigüedad",
+      "briefStoryDetails": "Story details ({{count}})"
     },
     "etfFlows": {
       "unavailable": "Datos ETF temporalmente no disponibles",
@@ -2117,7 +2143,11 @@
       "infoTooltip": "<strong>Cascada de Desastres</strong> Detecta señales convergentes de desastres naturales e infraestructura:<ul><li>Correlaciona terremotos, incendios forestales, inundaciones y fenómenos meteorológicos extremos</li><li>Rastrea efectos en cascada sobre infraestructura y cadenas de suministro</li><li>Destaca regiones con riesgo de desastres compuesto</li></ul>Haz clic en una tarjeta para ampliar la región afectada."
     },
     "markets": {
-      "infoTooltip": "<strong>Mercados</strong> Índices bursátiles en tiempo real, acciones y precios de criptomonedas. Personaliza tu lista de seguimiento con el botón Lista de Seguimiento. Los gráficos de chispa muestran la tendencia reciente de precios."
+      "infoTooltip": "<strong>Mercados</strong> Índices bursátiles en tiempo real, acciones y precios de criptomonedas. Personaliza tu lista de seguimiento con el botón Lista de Seguimiento. Los gráficos de chispa muestran la tendencia reciente de precios.",
+      "chart": {
+        "title": "Gráfico de precios {{symbol}}",
+        "close": "Cerrar gráfico"
+      }
     },
     "heatmap": {
       "infoTooltip": "<strong>Mapa de Calor de Sectores</strong> Rendimiento de sectores del S&P 500 de un vistazo. La intensidad del color refleja la magnitud del cambio diario. Verde = ganancias, Rojo = pérdidas."
@@ -2179,11 +2209,101 @@
       "cta": "Actualiza a Pro →",
       "dismiss": "Descartar"
     },
+    "billingState": {
+      "onHoldDesc": "El pago falló. Actualiza tu método de pago para restaurar el acceso premium.",
+      "onHoldBannerMessage": "El pago falló. Actualiza tu método de pago para mantener tu suscripción activa.",
+      "updatePayment": "Actualizar pago",
+      "renewalPendingDesc": "Estamos verificando la renovación de tu suscripción. El acceso premium se restaurará automáticamente una vez confirmada.",
+      "refreshStatus": "Actualizar estado",
+      "renewalFailedDesc": "No pudimos verificar la renovación de tu suscripción. Gestiona la facturación o contacta con soporte si el problema persiste.",
+      "manageBilling": "Gestionar facturación",
+      "lapsedDesc": "Tu suscripción Pro ha finalizado. Vuelve a suscribirte para recuperar el acceso premium.",
+      "resubscribe": "Volver a suscribirse"
+    },
     "checkoutFailureBanner": {
       "message": "No se pudo completar el pago. No se realizó ningún cargo.",
       "retry": "Reintentar",
       "retrying": "Reintentando…",
       "dismiss": "Descartar"
+    },
+    "proActivation": {
+      "badge": "PRO",
+      "progress": "Paso {{current}} de {{total}}",
+      "closeLabel": "Omitir configuración",
+      "ariaLabel": "Configuración de activación Pro",
+      "signedInAs": "Sesión iniciada como {{email}}",
+      "steps": {
+        "brief": {
+          "heading": "Tu resumen diario, cada mañana",
+          "body": "Un resumen de inteligencia curado en tu bandeja de entrada cada mañana: las señales de la noche que importan, condensadas en una lectura de cinco minutos.",
+          "confirmCta": "Activar mi resumen matutino",
+          "confirming": "Activando…",
+          "doneNote": "Tu resumen matutino ya está activo.",
+          "scheduleNote": "Mantendremos tu horario de entrega actual.",
+          "summaryLabel": "Resumen matutino",
+          "summaryVerified": "Activo — comienza con tu próximo resumen matutino.",
+          "deliverAt": "Entregar a las",
+          "previewLoading": "Preparando una vista previa de tu primer resumen…",
+          "previewLabel": "El resumen de esta mañana"
+        },
+        "alerts": {
+          "heading": "Alertas críticas",
+          "body": "Recibe un aviso en tu navegador cuando ocurra algo importante: escaladas de conflictos, shocks del mercado, nuevas sanciones. Ajusta la frecuencia cuando quieras en Configuración.",
+          "confirmCta": "Activar alertas",
+          "confirming": "Activando…",
+          "doneNote": "Las alertas del navegador ya están activadas.",
+          "blockedNote": "Las notificaciones están bloqueadas en tu navegador. Actívalas en la configuración del sitio de tu navegador para recibir alertas.",
+          "declinedNote": "No hay problema — no enviaremos alertas del navegador. Puedes activarlas más tarde desde la configuración del sitio de tu navegador.",
+          "summaryLabel": "Alertas críticas",
+          "summaryVerified": "Activas — las señales críticas llegarán a tu navegador."
+        },
+        "power": {
+          "heading": "Tu kit de herramientas Pro",
+          "body": "Widgets personalizados, conexiones MCP y el investigador de IA están desbloqueados. Crea el panel que realmente quieres vigilar.",
+          "confirmCta": "Explorar herramientas Pro",
+          "confirming": "Abriendo…",
+          "doneNote": "Ya estás usando tus herramientas Pro.",
+          "summaryLabel": "Kit de herramientas Pro",
+          "summaryVerified": "Desbloqueado y listo cuando tú lo estés.",
+          "channelsNote": "¿Prefieres Telegram, Slack, Discord o un webhook?",
+          "pointers": {
+            "search": "Buscar en todo el panel",
+            "widgets": "Crear un widget personalizado",
+            "analyst": "Preguntar al analista de IA",
+            "mcpClients": "Configurar MCP",
+            "channels": "Configúralos en los ajustes de notificaciones"
+          }
+        }
+      },
+      "status": {
+        "pending": "Sin configurar",
+        "inFlight": "Configurando…",
+        "verified": "Listo",
+        "failed": "No funcionó",
+        "blocked": "Bloqueado",
+        "unavailable": "No disponible",
+        "blockedNote": "Esto no está disponible ahora mismo — puedes configurarlo más tarde desde los ajustes.",
+        "unavailableNote": "Esto no está disponible en tu dispositivo — puedes configurarlo más tarde.",
+        "failedBody": "Algo salió mal. Puedes intentarlo de nuevo o configurarlo más tarde desde los ajustes.",
+        "retry": "Intentar de nuevo"
+      },
+      "actions": {
+        "skip": "Omitir por ahora",
+        "continue": "Continuar"
+      },
+      "summary": {
+        "heading": "Todo listo",
+        "subVerified": "Esto es lo que está activo en tu cuenta.",
+        "subPending": "Puedes terminar la configuración cuando quieras desde los ajustes.",
+        "linePending": "Aún sin configurar — termínalo cuando quieras en los ajustes.",
+        "lineFailed": "No pudimos configurar esto — inténtalo de nuevo desde los ajustes.",
+        "finish": "Ir a mi panel"
+      },
+      "chip": {
+        "message": "Termina de configurar tu cuenta Pro.",
+        "action": "Terminar configuración",
+        "dismissLabel": "Descartar"
+      }
     },
     "frameworkSelector": {
       "label": "Marco de análisis",
@@ -2367,43 +2487,59 @@
       }
     },
     "mobileNav": {
-      "panelCategories": "Panel categories"
+      "panelCategories": "Categorías de paneles"
     },
     "panelFreshness": {
       "status": {
-        "fresh": "Fresh",
-        "stale": "Stale",
-        "veryStale": "Very stale",
-        "noData": "No data",
-        "disabled": "Disabled",
+        "fresh": "Reciente",
+        "stale": "Desactualizado",
+        "veryStale": "Muy desactualizado",
+        "noData": "Sin datos",
+        "disabled": "Desactivado",
         "error": "Error"
       },
       "labelWithAge": "{{status}} {{age}}",
-      "title": "Data freshness: {{status}}. {{sources}}",
+      "title": "Actualidad de datos: {{status}}. {{sources}}",
       "sourceDetail": "{{name}}: {{status}}, {{update}}",
       "sourceDetailWithHealth": "{{name}}: {{status}}, {{update}}, {{detail}}",
-      "lastUpdated": "last updated {{time}}",
-      "neverUpdated": "never updated",
+      "lastUpdated": "última actualización {{time}}",
+      "neverUpdated": "nunca actualizado",
       "health": {
-        "partialCoverage": "partial coverage",
-        "contentStale": "content stale",
-        "seedStale": "seed stale",
-        "noSourceData": "no source data",
-        "sourceErrorReported": "source error reported",
-        "freshnessStoreUnavailable": "freshness store unavailable",
-        "freshnessStoreDegraded": "freshness store degraded"
+        "partialCoverage": "cobertura parcial",
+        "contentStale": "contenido desactualizado",
+        "seedStale": "seed desactualizado",
+        "noSourceData": "sin datos de fuente",
+        "sourceErrorReported": "error de fuente reportado",
+        "freshnessStoreUnavailable": "almacén de actualidad no disponible",
+        "freshnessStoreDegraded": "almacén de actualidad degradado"
       },
       "time": {
-        "never": "never",
-        "justNow": "just now",
-        "minutesAgo": "{{count}}m ago",
-        "hoursAgo": "{{count}}h ago",
-        "daysAgo": "{{count}}d ago",
-        "compactNow": "now",
+        "never": "nunca",
+        "justNow": "ahora mismo",
+        "minutesAgo": "hace {{count}}m",
+        "hoursAgo": "hace {{count}}h",
+        "daysAgo": "hace {{count}}d",
+        "compactNow": "ahora",
         "compactMinutes": "{{count}}m",
         "compactHours": "{{count}}h",
         "compactDays": "{{count}}d"
       }
+    },
+    "exportGate": {
+      "signedOutDesc": "Inicia sesión para exportar datos del panel en CSV, JSON o PDF.",
+      "upgradeDesc": "La exportación de datos (CSV, JSON, PDF) está incluida con Pro Business.",
+      "upgradeCta": "Actualizar a Pro Business",
+      "lockedAriaLabel": "Exportar datos — bloqueado. {{reason}}",
+      "unlockedAnnouncement": "Exportación de datos desbloqueada.",
+      "preparingPdf": "Preparando PDF…",
+      "pdfFailed": "No se pudo generar el informe PDF. Inténtalo de nuevo o usa la exportación JSON."
+    },
+    "tabCap": {
+      "signedOutDesc": "Los espacios de trabajo sin sesión están limitados a {{cap}} pestañas. Inicia sesión para agregar más.",
+      "upgradeDesc": "Has alcanzado tu límite de {{cap}} pestañas del panel.",
+      "upgradeCta": "Actualizar para obtener más",
+      "lockedAriaLabel": "Agregar pestaña — bloqueado. {{reason}}",
+      "unlockedAnnouncement": "Límite de pestañas del panel eliminado."
     }
   },
   "popups": {
@@ -3207,16 +3343,42 @@
     "visualizationFailed": "Error en la visualización"
   },
   "dashboardTabs": {
-    "ariaLabel": "Dashboard tabs",
-    "defaultName": "Main",
-    "newTabName": "New Tab",
-    "newTabCreated": "New tab created",
-    "tabDeleted": "Tab \"{{name}}\" deleted",
-    "addTab": "Add tab",
-    "addTabTitle": "New tab (starts with the default panels)",
-    "renameHint": "{{name}} — double-click to rename",
-    "deleteTab": "Delete tab",
-    "deleteTabAria": "Delete tab {{name}}",
-    "tabNameAria": "Tab name"
+    "ariaLabel": "Pestañas del panel",
+    "defaultName": "Principal",
+    "newTabName": "Nueva pestaña",
+    "newTabCreated": "Nueva pestaña creada",
+    "tabDeleted": "Pestaña \"{{name}}\" eliminada",
+    "addTab": "Agregar pestaña",
+    "addTabTitle": "Nueva pestaña (comienza con los paneles predeterminados)",
+    "renameHint": "{{name}} — doble clic para renombrar",
+    "deleteTab": "Eliminar pestaña",
+    "deleteTabAria": "Eliminar pestaña {{name}}",
+    "tabNameAria": "Nombre de pestaña"
+  },
+  "theaterPresets": {
+    "label": "Paquetes de cobertura",
+    "applied": "Paquete {{preset}} aplicado: {{count}} fuentes activadas",
+    "alreadyApplied": "El paquete {{preset}} ya está aplicado",
+    "ukraineWar": {
+      "label": "Guerra de Ucrania",
+      "description": "Activar medios ucranianos principales, prensa rusa independiente y fuentes de evaluación del frente"
+    },
+    "indoPacific": {
+      "label": "Indo-Pacífico / Taiwán",
+      "description": "Activar fuentes de seguridad de Taiwán, Pakistán y el Sudeste Asiático"
+    },
+    "sahelWestAfrica": {
+      "label": "Sahel y África Occidental",
+      "description": "Activar fuentes locales del Sahel, Nigeria y África Occidental"
+    },
+    "caucasusCentralAsia": {
+      "label": "Cáucaso y Asia Central",
+      "description": "Activar fuentes regionales del Cáucaso Sur y Asia Central"
+    },
+    "middleEastFlashpoints": {
+      "label": "Focos de tensión en Oriente Medio",
+      "description": "Activar fuentes de Irán, Israel, el Golfo y las regiones kurdas"
+    },
+    "unavailable": "El paquete {{preset}} no está disponible con tus paneles actuales"
   }
 }

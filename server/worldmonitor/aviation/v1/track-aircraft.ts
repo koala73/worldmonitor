@@ -14,6 +14,7 @@ const CACHE_TTL = 120;
 // negative hits 10s so a retry after panning into view returns fresh data quickly.
 const CALLSIGN_CACHE_TTL = 60;
 const CALLSIGN_NEGATIVE_TTL = 10;
+const BBOX_RELAY_TIMEOUT_MS = 6_000;
 
 interface OpenSkyResponse {
     states?: unknown[][];
@@ -115,37 +116,47 @@ export async function trackAircraft(
                     }
                 }
 
-                // For bbox queries: run OpenSky relay and Wingbits relay in parallel.
-                // Sequential was 10s + 6s + 15s = 31s worst-case, exceeding Vercel's 25s limit.
-                // Parallel caps at 10s and gives merged coverage from both sources.
+                // Wingbits is the normal bbox source. A successful response — including an
+                // empty one — is authoritative for that viewport, so do not also debit the
+                // shared authenticated OpenSky account. OpenSky is recovery-only when the
+                // Wingbits request itself fails.
                 if (!isCallsignOnly && relayBase && req.swLat != null && req.neLat != null) {
-                    const osUrl = `${relayBase}/opensky/states/all?lamin=${req.swLat}&lomin=${req.swLon}&lamax=${req.neLat}&lomax=${req.neLon}`;
                     const wbUrl = `${relayBase}/wingbits/track?lamin=${req.swLat}&lomin=${req.swLon}&lamax=${req.neLat}&lomax=${req.neLon}`;
-
-                    const [osResult, wbResult] = await Promise.allSettled([
-                        fetch(osUrl, { headers: getRelayHeaders({}), signal: AbortSignal.timeout(10_000) })
-                            .then(r => r.ok ? r.json() as Promise<OpenSkyResponse> : Promise.resolve(null))
-                            .then(d => d ? parseOpenSkyStates(d.states ?? []) : [])
-                            .catch(() => [] as PositionSample[]),
-                        fetch(wbUrl, { headers: getRelayHeaders({}), signal: AbortSignal.timeout(10_000) })
-                            .then(r => r.ok ? r.json() as Promise<WingbitsRelayResponse> : Promise.resolve(null))
-                            .then(d => d?.positions ?? [])
-                            .catch(() => [] as PositionSample[]),
-                    ]);
-
-                    const osPositions = osResult.status === 'fulfilled' ? osResult.value : [];
-                    const wbPositions = wbResult.status === 'fulfilled' ? wbResult.value : [];
-
-                    // Merge: Wingbits preferred for duplicates (more accurate for commercial flights).
-                    const seenIcao = new Set(wbPositions.map(p => p.icao24));
-                    const merged = [...wbPositions, ...osPositions.filter(p => !seenIcao.has(p.icao24))];
-                    if (merged.length > 0) {
-                        const source = wbPositions.length > 0 && osPositions.length > 0 ? 'wingbits'
-                            : wbPositions.length > 0 ? 'wingbits' : 'opensky';
-                        return { positions: merged, source };
+                    try {
+                        const wbResp = await fetch(wbUrl, {
+                            headers: getRelayHeaders({}),
+                            signal: AbortSignal.timeout(BBOX_RELAY_TIMEOUT_MS),
+                        });
+                        if (wbResp.ok) {
+                            const wbData = await wbResp.json() as WingbitsRelayResponse;
+                            return { positions: wbData.positions ?? [], source: 'wingbits' };
+                        }
+                    } catch (err) {
+                        // sentry-coverage-ok: provider failure is expected here and the bounded OpenSky fallback owns recovery.
+                        console.warn(`[Aviation] Wingbits bbox relay failed: ${err instanceof Error ? err.message : err}`);
                     }
 
-                    // Both relay sources empty — try OpenSky anonymous as last resort
+                    try {
+                        const osUrl = `${relayBase}/opensky/states/all?lamin=${req.swLat}&lomin=${req.swLon}&lamax=${req.neLat}&lomax=${req.neLon}`;
+                        const osResp = await fetch(osUrl, {
+                            headers: getRelayHeaders({}),
+                            signal: AbortSignal.timeout(BBOX_RELAY_TIMEOUT_MS),
+                        });
+                        if (osResp.ok) {
+                            const osData = await osResp.json() as OpenSkyResponse;
+                            const osPositions = parseOpenSkyStates(osData.states ?? []);
+                            if (osPositions.length > 0) return { positions: osPositions, source: 'opensky' };
+                        }
+                    } catch (err) {
+                        // sentry-coverage-ok: authenticated relay failure intentionally falls through to anonymous recovery.
+                        console.warn(`[Aviation] OpenSky bbox relay failed: ${err instanceof Error ? err.message : err}`);
+                    }
+
+                    // Both relay paths failed or OpenSky recovery was empty — try anonymous
+                    // OpenSky as a last resort. The 6s + 6s + 6s timeouts leave 7s of
+                    // headroom under the Vercel initial-response ceiling for cache I/O and
+                    // response serialization. Keep these sequential: parallel OpenSky
+                    // recovery would spend an authenticated credit even when anonymous wins.
                     try {
                         const directPositions = await fetchOpenSkyAnonymous(req);
                         if (directPositions.length > 0) {

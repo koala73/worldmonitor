@@ -1,0 +1,126 @@
+---
+title: "China Corporate Disclosures"
+description: "SSE, SZSE, and HKEX source admission, reviewed issuers, metadata-only collection, transport fallback, revisions, and health semantics."
+---
+
+The China corporate-disclosure lane monitors a small reviewed issuer basket
+against official exchange metadata. It is not a general-purpose exchange
+scraper, a full-market announcement archive, or a document redistribution
+service.
+
+## Source admission
+
+| Exchange | Launch status | Admission decision | Collection contract |
+| --- | --- | --- | --- |
+| `SSE` | `launched` | `admitted_metadata_only` | Public announcement metadata, bounded first page, document links retained but bodies not fetched |
+| `SZSE` | `launched` | `admitted_metadata_only` | Public announcement metadata, bounded first page, document links retained but bodies not fetched |
+| `HKEX` | `blocked` | `rejected` | No automated collection; `TERMS_PROHIBIT_AUTOMATED_ACCESS` |
+
+The reviewed terms records are:
+
+- SSE: [official legal terms](https://www.sse.com.cn/home/legal/)
+- SZSE: [applicable rules and notices](https://www.szse.cn/application/laws/)
+- HKEX: [terms of use](https://www2.hkexnews.hk/Global/Exchange/Terms-of-Use?sc_lang=en)
+
+SSE and SZSE are metadata-only because commercial reuse of document bodies can
+require written permission. `documentRetrieval` is `lazy-link-only`: consumers
+receive the official link but WorldMonitor does not ingest or redistribute the
+linked body. HKEX terms prohibit programmatic systematic retrieval without
+permission, so the source remains blocked even when its website is reachable.
+
+## Reviewed issuer basket
+
+| Exchange | Code | Symbol | Issuer |
+| --- | --- | --- | --- |
+| SSE | `600519` | `600519.SS` | Kweichow Moutai |
+| SSE | `601318` | `601318.SS` | Ping An Insurance |
+| SSE | `600900` | `600900.SS` | China Yangtze Power |
+| SSE | `688981` | `688981.SS` | SMIC |
+| SZSE | `300750` | `300750.SZ` | CATL |
+| HKEX, blocked | `0700` | `0700.HK` | Tencent |
+| HKEX, blocked | `1211` | `1211.HK` | BYD |
+| HKEX, blocked | `0939` | `0939.HK` | China Construction Bank |
+| HKEX, blocked | `0857` | `0857.HK` | PetroChina |
+
+HKEX issuers remain in the reviewed registry so the source decision is visible;
+they do not cause HKEX network requests.
+
+## Event classification and revisions
+
+Only reviewed title patterns become typed events:
+
+- trading halt and resumption;
+- share pledge;
+- investigation;
+- exchange risk alert;
+- earnings warning; and
+- major restructuring.
+
+Each event retains official exchange identity, issuer mapping, original title,
+publication time, metadata URL, document link, extraction/classification
+confidence, content hash, transport/content freshness, and a stable lineage.
+Corrections, revisions, withdrawals, and cancellations attach to that lineage
+instead of appearing as unrelated new events. Unclassified revisions are kept
+in a bounded diagnostic collection rather than promoted to decision signals.
+
+## Bounded collection
+
+SSE requests at most 100 rows from one reviewed 90-day page. SZSE requests at
+most 50 rows from one reviewed page. Neither adapter silently follows
+additional pages. A saturated page reports `PAGE_LIMIT_REACHED`; three
+consecutive empty results report `COVERAGE_GAP`.
+
+The combined snapshot retains at most 100 classified events, at most 20
+revisions per event, and at most 100 unclassified revisions. The Railway
+market-backup member runs every 30 minutes and publishes
+`market:china:corporate-disclosures:v1`.
+
+## Transport fallback
+
+SSE and SZSE first try direct Railway egress. At process start, each source
+selects the first non-empty proxy setting in this precedence order:
+
+```text
+SSE:  SSE_PROXY_URL → SZSE_PROXY_URL → PROXY_URL
+SZSE: SZSE_PROXY_URL → PROXY_URL
+```
+
+This is configuration precedence, not sequential URL failover. After a proxy
+URL is selected, a failed attempt does not advance to the next environment
+variable. Distinct SZSE proxy attempts rotate eligible Decodo sticky gateway
+ports within the selected proxy configuration.
+
+SSE uses up to four direct and four proxy requests with bounded concurrency.
+SZSE uses one direct attempt, up to two proxy attempts on distinct eligible
+gateway ports, and then the fixed
+`https://api.worldmonitor.app/api/internal/china-exchange-egress` edge hop.
+The edge hop is authenticated with `RELAY_SHARED_SECRET`; the secret is never
+sent to the exchange.
+
+The fallback order applies only to transport failures. HTTP or schema results
+that prove an application-level response are recorded and do not trigger
+unbounded route guessing. SZSE requires two consecutive successful runs to
+clear its durable transport-failure state.
+
+`SSE_PROXY_URL` is an optional SSE-specific override. `SZSE_PROXY_URL` is an
+optional shared China exit. `PROXY_URL` is selected only when the corresponding
+source-specific setting is absent and is also required by other market-bundle
+members. `RELAY_SHARED_SECRET` is required for the fixed edge fallback.
+
+## Coverage and health
+
+The snapshot can be:
+
+- `healthy` when every launched exchange has usable reviewed coverage;
+- `degraded` when SSE or SZSE is missing, stale, saturated, repeatedly empty,
+  or in transport error while another launched exchange remains usable; or
+- unavailable when no launched exchange can provide a usable result.
+
+A fresh seed heartbeat does not override a degraded embedded source state.
+Failed refreshes preserve valid last-good events with their original
+publication times and current transport failure. The blocked HKEX decision is
+reported separately and does not masquerade as a runtime outage.
+
+The public China decision-signal surface includes at most four valid classified
+events. Proxy credentials, raw per-attempt source diagnostics, and unclassified
+revisions are operator-only.

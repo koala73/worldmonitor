@@ -1,6 +1,12 @@
 {
   "_generated": "scripts/docs-stats.mjs — do not edit by hand; run `npm run docs:stats`",
   "layerDefinitions": 56,
+  "lockedLayerDefinitions": 1,
+  "lockedLayerKeys": [
+    "resilienceScore"
+  ],
+  "tier1Countries": 31,
+  "rankableUniverseCountries": 196,
   "variantLayers": {
     "full": 37,
     "tech": 13,
@@ -10,14 +16,14 @@
     "energy": 18
   },
   "variantCount": 6,
-  "componentTopLevelTsFiles": 163,
-  "serviceTopLevelEntries": 200,
-  "apiEndpointEntries": 88,
-  "panelClasses": 105,
-  "protoFiles": 281,
-  "protoServices": 35,
-  "protoDomainFolders": 36,
-  "openapiServiceSpecs": 35,
+  "componentTopLevelTsFiles": 182,
+  "serviceTopLevelEntries": 224,
+  "apiEndpointEntries": 91,
+  "panelClasses": 107,
+  "protoFiles": 295,
+  "protoServices": 36,
+  "protoDomainFolders": 37,
+  "openapiServiceSpecs": 36,
   "serverDomains": 35,
   "localeCodes": [
     "ar",
@@ -43,20 +49,25 @@
     "sv",
     "th",
     "tr",
+    "uk",
     "vi",
     "zh"
   ],
-  "locales": 25,
+  "locales": 26,
   "workflows": [
+    "analytics-collector-monitor.yml",
     "build-desktop.yml",
+    "china-decision-parity-live.yml",
     "contributor-trust.yml",
     "convex-deploy.yml",
     "deploy-gate.yml",
     "deploy-worker.yml",
     "docker-publish.yml",
     "feed-validation.yml",
+    "indexnow-submit.yml",
     "lint-code.yml",
     "lint.yml",
+    "live-api-cache-auth.yml",
     "mcp-live-smoke.yml",
     "pro-bundle-freshness.yml",
     "proto-check.yml",
@@ -64,16 +75,18 @@
     "publish-go.yml",
     "publish-python.yml",
     "publish-ruby.yml",
+    "railway-deploy-trigger.yml",
     "security-audit.yml",
     "seed-freshness-monitor.yml",
     "test-linux-app.yml",
     "test.yml",
-    "typecheck.yml"
+    "typecheck.yml",
+    "umami-storage-monitor.yml"
   ],
-  "workflowCount": 21,
+  "workflowCount": 27,
   "freshnessSources": 35,
   "freshnessRequiredForRisk": 2,
-  "feedDefinitions": 567,
+  "feedDefinitions": 628,
   "airportCount": 115,
   "stockExchangeCount": 29,
   "centralBankInstitutionCount": 14,
@@ -86,7 +99,7 @@
   "leaderNames": 16,
   "populationPriorityCountries": 20,
   "sebufVersion": "v0.11.1",
-  "mcpToolCount": 41,
+  "mcpToolCount": 59,
   "mcpApps": {
     "specVersion": "2026-01-26",
     "mimeType": "text/html;profile=mcp-app",
@@ -253,5 +266,25 @@
     "get_natural_disasters",
     "get_prediction_markets",
     "get_forecast_predictions"
-  ]
+  ],
+  "bootstrapCache": {
+    "tierCache": {
+      "slow": "max-age=300, stale-while-revalidate=600, stale-if-error=3600",
+      "fast": "max-age=60, stale-while-revalidate=120, stale-if-error=900"
+    },
+    "tierCdnCache": {
+      "slow": "public, s-maxage=7200, stale-while-revalidate=1800, stale-if-error=7200",
+      "fast": "public, s-maxage=600, stale-while-revalidate=120, stale-if-error=900"
+    },
+    "onDemandProfiles": {
+      "chinaDecisionSignals": {
+        "browser": "max-age=60, stale-while-revalidate=120, stale-if-error=900",
+        "cdn": "public, s-maxage=900, stale-while-revalidate=120, stale-if-error=900"
+      }
+    },
+    "onDemandDefaultTier": "slow",
+    "defaultCacheControl": "public, s-maxage=600, stale-while-revalidate=120, stale-if-error=900",
+    "defaultCdnTier": "fast",
+    "nonCacheable": "no-store"
+  }
 }

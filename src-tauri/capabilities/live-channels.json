@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "live-channels",
+  "description": "Minimal capability for the live channels window",
+  "windows": ["live-channels"],
+  "permissions": ["core:window:default"]
+}

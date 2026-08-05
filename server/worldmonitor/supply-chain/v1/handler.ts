@@ -20,6 +20,7 @@ import { getStorageFacilityDetail } from './get-storage-facility-detail';
 import { listFuelShortages } from './list-fuel-shortages';
 import { getFuelShortageDetail } from './get-fuel-shortage-detail';
 import { listEnergyDisruptions } from './list-energy-disruptions';
+import { getChinaCorridorControlTowers } from './get-china-corridor-control-towers';
 
 export const supplyChainHandler: SupplyChainServiceHandler = {
   getShippingRates,
@@ -42,4 +43,5 @@ export const supplyChainHandler: SupplyChainServiceHandler = {
   listFuelShortages,
   getFuelShortageDetail,
   listEnergyDisruptions,
+  getChinaCorridorControlTowers,
 };

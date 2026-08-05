@@ -6,7 +6,7 @@ keywords: "country risk monitoring, geopolitical risk assessment workflow, polit
 audience: "Risk analysts, corporate security teams, procurement and supply chain managers, investors, NGO security officers"
 heroImage: "/blog/images/blog/country-risk-monitoring-workflow-for-analysts.jpg"
 pubDate: "2026-06-06"
-modifiedDate: "2026-06-13"
+modifiedDate: "2026-07-22"
 ---
 
 Most organizations monitor country risk the same way: an annual PDF from a consultancy, a quarterly review meeting, and then a frantic scramble when something actually happens. The PDF was accurate the day it was written. Risk is not.
@@ -74,6 +74,10 @@ Say your exposure is Taiwan (semiconductors), Mexico (assembly), Poland (logisti
 - **Automation:** chokepoint webhooks on Taiwan Strait and Suez at threshold 60; weekly resilience-change report on all five.
 
 Total setup time: about half an hour. Annual cost: less than one hour of the consultancy that wrote the PDF.
+
+## Analyst Reference Sources
+
+Use the workflow to prioritize deeper checks in authoritative datasets, including [World Bank Data](https://data.worldbank.org/) and the [US Treasury sanctions programs and country information](https://ofac.treasury.gov/sanctions-programs-and-country-information). Preserve the source timestamp and distinguish observed facts from analyst inference.
 
 ## Frequently Asked Questions
 

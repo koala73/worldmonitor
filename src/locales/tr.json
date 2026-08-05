@@ -129,17 +129,20 @@
       "currencies": "Para birimleri",
       "area": "Yüz ölçümü"
     },
-    "loadingResilienceScore": "Loading resilience score…",
-    "resilienceScoreUnavailable": "Resilience score unavailable.",
+    "loadingResilienceScore": "Dayanıklılık puanı yükleniyor…",
+    "resilienceScoreUnavailable": "Dayanıklılık puanı kullanılamıyor.",
     "china": {
       "title": "Ülke özeti: Çin",
       "description": "Mevcut kamu veri sözleşmelerinden güncel makro, piyasa, ticaret, enerji ve operasyonel kullanılabilirlik.",
-      "macroPolicy": "Makro ve Politika",
-      "marketCredit": "Piyasa ve Kredi",
-      "tradeSupply": "Ticaret ve Tedarik Zinciri",
+      "policyEvents": "Politika ve Uygulama",
       "energy": "Enerji",
       "availability": "Tehlikeler ve Havacılık",
       "observed": "Tarih:",
+      "published": "Yayımlandı:",
+      "effective": "Yürürlükte:",
+      "sectors": "Sektörler:",
+      "entities": "Kuruluşlar:",
+      "translation": "Çeviri:",
       "source": "Kaynak:",
       "imfGrowth": "IMF büyüme tahmini",
       "creditGdp": "GSYH'ye oranla kredi",
@@ -148,8 +151,6 @@
       "gasDemand": "Gaz talebi",
       "energyMix": "Elektrik karması",
       "coal": "kömür",
-      "aviationAvailability": "Havacılık kullanılabilirliği",
-      "hazardAvailability": "Tehlike kullanılabilirliği",
       "noMajorDisruptions": "Büyük bir kesinti bildirilmedi",
       "activeDisruptions_one": "{{count}} etkin kesinti",
       "activeDisruptions_other": "{{count}} etkin kesinti",
@@ -161,18 +162,21 @@
       "ccfiSource": "Şanghay Denizcilik Borsası",
       "comtradeSource": "UN Comtrade, raporlayan 156",
       "sourceUnavailable": "Kaynak yok",
-      "macroUnavailable": "Makro ve politika verileri şu anda kullanılamıyor.",
-      "marketUnavailable": "Piyasa ve kredi verileri şu anda kullanılamıyor.",
-      "tradeUnavailable": "Ticaret ve tedarik zinciri verileri şu anda kullanılamıyor.",
-      "energyUnavailable": "Enerji verileri şu anda kullanılamıyor.",
-      "availabilityUnavailable": "Tehlike ve havacılık kullanılabilirlik verileri şu anda kullanılamıyor.",
+      "policyUnavailable": "Official policy and enforcement events are currently unavailable.",
+      "policyPartial": "{{count}} official agencies are temporarily degraded.",
       "status": {
         "loading": "Yükleniyor",
         "available": "Kullanılabilir",
         "partial": "Kısmi",
         "stale": "Güncel değil",
         "unavailable": "Kullanılamıyor"
-      }
+      },
+      "macroSignals": "Makro Sinyaller",
+      "crossStraitActivity": "Boğaz Ötesi Aktivite",
+      "corporateDisclosures": "Kurumsal Açıklamalar",
+      "corridorConditions": "Koridor Koşulları",
+      "activityNowcast": "Aktivite Nowcast",
+      "decisionSignalsUnavailable": "Çin karar sinyali anlık görüntüsü şu anda kullanılamıyor."
     }
   },
   "header": {
@@ -253,7 +257,7 @@
     "panelCatCommodityEcon": "Ekonomi & Ticaret",
     "panelCatHappyNews": "İyi Haberler",
     "panelCatHappyPlanet": "Gezegen & Hayırseverlik",
-    "embed": "Embed"
+    "embed": "Göm"
   },
   "panels": {
     "liveNews": "Canli Haberler",
@@ -1268,8 +1272,8 @@
       "sectionFollowing": "Following",
       "sectionAll": "All",
       "sourceStates": {
-        "degraded": "degraded",
-        "stale": "stale"
+        "degraded": "düşük kaliteli",
+        "stale": "eski"
       }
     },
     "insights": {
@@ -1348,7 +1352,8 @@
       "newsSignals": "{{news}} haber • {{signals}} sinyal",
       "compiledFrom": "{{stories}} hikaye ve {{sources}} kaynaktan derlenmiştir",
       "provenanceTitle": "Kapsam kaynağı: bu özet için kaç alınan hikaye ve farklı kaynaktan seçildiği",
-      "briefFreshness": "{{minutes}}m önce oluşturuldu · en yeni kaynak {{hours}}s eski"
+      "briefFreshness": "{{minutes}}m önce oluşturuldu · en yeni kaynak {{hours}}s eski",
+      "briefStoryDetails": "Story details ({{count}})"
     },
     "settings": {
       "exportSettings": "Ayarları Dışa Aktar",
@@ -1426,10 +1431,10 @@
         "hoursAgo": "{{count}}h ago"
       },
       "infoTooltip": "<strong>Metodoloji</strong> Bilesik puan (0-100) harmanlama:<ul><li>%50 Ulke Istikrarsizligi (ilk 5 agirlikli)</li><li>%30 Cografi yakinlasma bolgeleri</li><li>%20 Altyapi olaylari</li></ul>Her 5 dakikada otomatik yenilenir.",
-      "cachedCiiStatus": "Cached CII {{states}}",
+      "cachedCiiStatus": "Önbellekte CII {{states}}",
       "sourceStates": {
-        "degraded": "degraded",
-        "stale": "stale"
+        "degraded": "düşük kaliteli",
+        "stale": "eski"
       },
       "dataFreshness": "Data Freshness",
       "sourcesDetail": "{{active}}/{{total}} sources"
@@ -1556,7 +1561,26 @@
       "cafIndex": "CAF Endeksi",
       "candidGrants": "Candid Hibeleri",
       "dataLag": "Veri Gecikmesi",
-      "infoTooltip": "<strong>Küresel Bağış Faaliyet Endeksi</strong> Kitlesel fonlama platformları ve kripto cüzdanları üzerinden kişisel bağışları izleyen bileşik endeks.<ul><li><strong>Platformlar</strong>: GoFundMe, GlobalGiving, JustGiving kampanya örneklemesi</li><li><strong>Kripto</strong>: Zincir üzeri hayır kurumu cüzdan girişleri (Endaoment, Giving Block)</li><li><strong>Kurumsal</strong>: OECD ODA, CAF Dünya Bağış Endeksi, Candid hibeleri</li></ul>Endeks yönsel bir göstergedir (kesin dolar tutarları değildir). Canlı örnekleme ile yayımlanan yıllık raporları birleştirir."
+      "infoTooltip": "<strong>Küresel Bağış Faaliyet Endeksi</strong> Kitlesel fonlama platformları ve kripto cüzdanları üzerinden kişisel bağışları izleyen bileşik endeks.<ul><li><strong>Platformlar</strong>: GoFundMe, GlobalGiving, JustGiving kampanya örneklemesi</li><li><strong>Kripto</strong>: Zincir üzeri hayır kurumu cüzdan girişleri (Endaoment, Giving Block)</li><li><strong>Kurumsal</strong>: OECD ODA, CAF Dünya Bağış Endeksi, Candid hibeleri</li></ul>Endeks yönsel bir göstergedir (kesin dolar tutarları değildir). Canlı örnekleme ile yayımlanan yıllık raporları birleştirir.",
+      "benchmarkTitle": "Küresel Bağış Referansları",
+      "benchmarkInfoTooltip": "<strong>Küresel Bağış Referansları</strong> Kaynak dönemleri ve doğrulama durumuyla yayımlanan platform ve kurum iddiaları. Yıllıklaştırılmış rakamlar tahmindir, gerçek zamanlı aktivite değildir.",
+      "status": {
+        "published": "Doğrulanmış kaynak kapsamıyla yayımlanmış referanslar.",
+        "partial": "Kısmi kaynak kapsamıyla yayımlanmış referanslar.",
+        "legacy": "Eski anlık görüntü; kaynak ayrıntıları kullanılamıyor.",
+        "cached": "Önbelleğe alınmış anlık görüntü gösteriliyor; yenileme kullanılamıyor."
+      },
+      "trackedAnnualized": "Takip edilen platform bağışları — yıllıklaştırılmış tahmin",
+      "annualizedDaily": "Günlük yıllıklaştırılmış tahmin",
+      "atLeast": "En az",
+      "about": "Yaklaşık",
+      "sourceNotVerified": "Kaynak doğrulanmadı",
+      "reportedCumulative": "Bildirilen kümülatif toplam",
+      "sourcePeriod": "{{source}} · {{period}}",
+      "benchmark": "Yayımlanmış referans",
+      "sourcesMethodology": "Kaynaklar ve metodoloji",
+      "methodologyIntro": "Yalnızca doğrulanmış yıllık veya savunulabilir biçimde yıllıklaştırılmış platform iddiaları başlığa girer. Kümülatif ve kurumsal rakamlar ayrı bağlam olarak kalır.",
+      "partialEstimate": "Kısmen doğrulanmış tahmin"
     },
     "displacement": {
       "refugees": "Multeciler",
@@ -1596,6 +1620,8 @@
       "summaryFailed": "Özet başarısız",
       "sources": "{{count}} kaynak",
       "relatedAssetsNear": "{{location}} yakinindaki ilgili varliklar",
+      "sourceCoverage": "{{covered}}/{{total}} kaynak",
+      "sourceCoverageHint": "Etkin {{total}} kaynaktan {{covered}} tanesi gösteriliyor — bu panel her yenilemede kaynaklarını sırayla çekiyor",
       "sortBy": "Sırala",
       "sortNewest": "En Yeni",
       "sortRelevance": "İlgili"
@@ -2108,7 +2134,11 @@
       "infoTooltip": "<strong>Felaket Kaskadı</strong> Yakınlaşan doğal afet ve altyapı sinyallerini tespit eder:<ul><li>Depremleri, orman yangınlarını, seller ve hava aşırılıklarını ilişkilendirir</li><li>Altyapı ve tedarik zincirlerine ilişkin basamaklı etkileri izler</li><li>Bileşik afet riski olan bölgeleri vurgular</li></ul>Etkilenen bölgeyi haritada yakınlaştırmak için bir kartı tıklayın."
     },
     "markets": {
-      "infoTooltip": "<strong>Piyasalar</strong> Gerçek zamanlı borsa endeksleri, hisse senetleri ve kripto fiyatları. Watchlist düğmesi ile izleme listenizi özelleştirin. Sparkline'lar son fiyat eğilimini gösterir."
+      "infoTooltip": "<strong>Piyasalar</strong> Gerçek zamanlı borsa endeksleri, hisse senetleri ve kripto fiyatları. Watchlist düğmesi ile izleme listenizi özelleştirin. Sparkline'lar son fiyat eğilimini gösterir.",
+      "chart": {
+        "title": "{{symbol}} fiyat grafiği",
+        "close": "Grafiği kapat"
+      }
     },
     "heatmap": {
       "infoTooltip": "<strong>Sektör Isı Haritası</strong> S&P 500 sektör performansını bir bakışta görün. Renk yoğunluğu günlük değişimin büyüklüğünü yansıtır. Yeşil = kazançlar, Kırmızı = kayıplar."
@@ -2170,11 +2200,101 @@
       "cta": "Pro'ya Yükselt →",
       "dismiss": "Kapat"
     },
+    "billingState": {
+      "onHoldDesc": "Ödeme başarısız oldu. Premium erişimi geri yüklemek için ödeme yönteminizi güncelleyin.",
+      "onHoldBannerMessage": "Ödeme başarısız oldu. Aboneliğinizi aktif tutmak için ödeme yönteminizi güncelleyin.",
+      "updatePayment": "Ödemeyi Güncelle",
+      "renewalPendingDesc": "Aboneliğinizin yenilenmesini doğruluyoruz. Onaylandığında premium erişim otomatik olarak geri yüklenecek.",
+      "refreshStatus": "Durumu Yenile",
+      "renewalFailedDesc": "Aboneliğinizin yenilenmesini doğrulayamadık. Sorun devam ederse faturalandırmayı yönetin veya destekle iletişime geçin.",
+      "manageBilling": "Faturalandırmayı Yönet",
+      "lapsedDesc": "Pro aboneliğiniz sona erdi. Premium erişimi yeniden kazanmak için tekrar abone olun.",
+      "resubscribe": "Tekrar Abone Ol"
+    },
     "checkoutFailureBanner": {
       "message": "Ödeme tamamlanamadı. Herhangi bir ücret alınmadı.",
       "retry": "Tekrar Dene",
       "retrying": "Tekrar Deneniyor…",
       "dismiss": "Kapat"
+    },
+    "proActivation": {
+      "badge": "PRO",
+      "progress": "Adım {{current}} / {{total}}",
+      "closeLabel": "Kurulumu Atla",
+      "ariaLabel": "Pro Etkinleştirme Kurulumu",
+      "signedInAs": "{{email}} olarak oturum açıldı",
+      "steps": {
+        "brief": {
+          "heading": "Her sabah günlük özetiniz",
+          "body": "Her sabah gelen kutunuzda özenle hazırlanmış bir istihbarat özeti — gece boyunca önemli olan sinyaller, beş dakikalık bir okumaya sığdırılmış.",
+          "confirmCta": "Sabah Özetimi Aç",
+          "confirming": "Açılıyor…",
+          "doneNote": "Sabah özetiniz zaten çalışıyor.",
+          "scheduleNote": "Mevcut teslim saatinizi koruyacağız.",
+          "summaryLabel": "Sabah Özeti",
+          "summaryVerified": "Açık — bir sonraki sabah özetinizle başlar.",
+          "deliverAt": "Teslim saati",
+          "previewLoading": "İlk özetinizin önizlemesi hazırlanıyor…",
+          "previewLabel": "Bu sabahki özet"
+        },
+        "alerts": {
+          "heading": "Kritik Uyarılar",
+          "body": "Çatışma tırmanışları, piyasa şokları, yeni yaptırımlar gibi büyük bir şey olduğunda tarayıcınızda bildirim alın. Sıklığı istediğiniz zaman Ayarlar'dan değiştirebilirsiniz.",
+          "confirmCta": "Uyarıları Etkinleştir",
+          "confirming": "Etkinleştiriliyor…",
+          "doneNote": "Tarayıcı uyarıları zaten açık.",
+          "blockedNote": "Tarayıcınızda bildirimler engellenmiş. Uyarı alabilmek için tarayıcınızın site ayarlarından bunları açın.",
+          "declinedNote": "Sorun değil — tarayıcı uyarısı göndermeyeceğiz. Bunları daha sonra tarayıcınızın site ayarlarından açabilirsiniz.",
+          "summaryLabel": "Kritik Uyarılar",
+          "summaryVerified": "Açık — kritik sinyaller tarayıcınıza ulaşacak."
+        },
+        "power": {
+          "heading": "Pro Araç Setiniz",
+          "body": "Özel widget'lar, MCP bağlantıları ve yapay zeka araştırmacısının kilidi açıldı. Gerçekten izlemek istediğiniz paneli oluşturun.",
+          "confirmCta": "Pro Araçları Keşfet",
+          "confirming": "Açılıyor…",
+          "doneNote": "Pro araçlarınızı zaten kullanıyorsunuz.",
+          "summaryLabel": "Pro Araç Seti",
+          "summaryVerified": "Kilidi açıldı, siz hazır olduğunuzda kullanıma hazır.",
+          "channelsNote": "Telegram, Slack, Discord veya bir webhook mu tercih edersiniz?",
+          "pointers": {
+            "search": "Tüm panoda ara",
+            "widgets": "Özel bir widget oluşturun",
+            "analyst": "Yapay zeka analistine sorun",
+            "mcpClients": "MCP'yi kurun",
+            "channels": "Bunları bildirim ayarlarından yapılandırın"
+          }
+        }
+      },
+      "status": {
+        "pending": "Kurulmadı",
+        "inFlight": "Kuruluyor…",
+        "verified": "Hazır",
+        "failed": "Başarısız Oldu",
+        "blocked": "Engellendi",
+        "unavailable": "Kullanılamıyor",
+        "blockedNote": "Bu şu anda kullanılamıyor — daha sonra ayarlardan kurabilirsiniz.",
+        "unavailableNote": "Bu, cihazınızda kullanılamıyor — daha sonra kurabilirsiniz.",
+        "failedBody": "Bir şeyler ters gitti. Tekrar deneyebilir veya daha sonra ayarlardan kurabilirsiniz.",
+        "retry": "Tekrar Dene"
+      },
+      "actions": {
+        "skip": "Şimdilik Atla",
+        "continue": "Devam Et"
+      },
+      "summary": {
+        "heading": "Her Şey Hazır",
+        "subVerified": "Hesabınızda çalışan şeyler burada.",
+        "subPending": "Kurulumu istediğiniz zaman ayarlardan tamamlayabilirsiniz.",
+        "linePending": "Henüz kurulmadı — istediğiniz zaman ayarlardan tamamlayın.",
+        "lineFailed": "Bunu kuramadık — ayarlardan tekrar deneyin.",
+        "finish": "Panelime Git"
+      },
+      "chip": {
+        "message": "Pro hesabınızın kurulumunu tamamlayın.",
+        "action": "Kurulumu Tamamla",
+        "dismissLabel": "Kapat"
+      }
     },
     "frameworkSelector": {
       "label": "Analiz Çerçevesi",
@@ -2349,43 +2469,59 @@
       }
     },
     "mobileNav": {
-      "panelCategories": "Panel categories"
+      "panelCategories": "Panel kategorileri"
     },
     "panelFreshness": {
       "status": {
-        "fresh": "Fresh",
-        "stale": "Stale",
-        "veryStale": "Very stale",
-        "noData": "No data",
-        "disabled": "Disabled",
-        "error": "Error"
+        "fresh": "Güncel",
+        "stale": "Eski",
+        "veryStale": "Çok eski",
+        "noData": "Veri yok",
+        "disabled": "Devre dışı",
+        "error": "Hata"
       },
       "labelWithAge": "{{status}} {{age}}",
-      "title": "Data freshness: {{status}}. {{sources}}",
+      "title": "Veri güncelliği: {{status}}. {{sources}}",
       "sourceDetail": "{{name}}: {{status}}, {{update}}",
       "sourceDetailWithHealth": "{{name}}: {{status}}, {{update}}, {{detail}}",
-      "lastUpdated": "last updated {{time}}",
-      "neverUpdated": "never updated",
+      "lastUpdated": "son güncelleme {{time}}",
+      "neverUpdated": "hiç güncellenmedi",
       "health": {
-        "partialCoverage": "partial coverage",
-        "contentStale": "content stale",
-        "seedStale": "seed stale",
-        "noSourceData": "no source data",
-        "sourceErrorReported": "source error reported",
-        "freshnessStoreUnavailable": "freshness store unavailable",
-        "freshnessStoreDegraded": "freshness store degraded"
+        "partialCoverage": "kısmi kapsam",
+        "contentStale": "içerik eski",
+        "seedStale": "seed eski",
+        "noSourceData": "kaynak verisi yok",
+        "sourceErrorReported": "kaynak hatası bildirildi",
+        "freshnessStoreUnavailable": "güncellik deposu kullanılamıyor",
+        "freshnessStoreDegraded": "güncellik deposu bozuk"
       },
       "time": {
-        "never": "never",
-        "justNow": "just now",
-        "minutesAgo": "{{count}}m ago",
-        "hoursAgo": "{{count}}h ago",
-        "daysAgo": "{{count}}d ago",
-        "compactNow": "now",
-        "compactMinutes": "{{count}}m",
-        "compactHours": "{{count}}h",
-        "compactDays": "{{count}}d"
+        "never": "hiç",
+        "justNow": "şimdi",
+        "minutesAgo": "{{count}}d önce",
+        "hoursAgo": "{{count}}s önce",
+        "daysAgo": "{{count}}g önce",
+        "compactNow": "şimdi",
+        "compactMinutes": "{{count}}d",
+        "compactHours": "{{count}}s",
+        "compactDays": "{{count}}g"
       }
+    },
+    "exportGate": {
+      "signedOutDesc": "Panel verilerini CSV, JSON veya PDF olarak dışa aktarmak için giriş yapın.",
+      "upgradeDesc": "Veri dışa aktarma (CSV, JSON, PDF) Pro Business'a dahildir.",
+      "upgradeCta": "Pro Business'a yükselt",
+      "lockedAriaLabel": "Veri dışa aktar — kilitli. {{reason}}",
+      "unlockedAnnouncement": "Veri dışa aktarma kilidi açıldı.",
+      "preparingPdf": "PDF hazırlanıyor…",
+      "pdfFailed": "PDF raporu oluşturulamadı. Yeniden deneyin veya JSON dışa aktarmayı kullanın."
+    },
+    "tabCap": {
+      "signedOutDesc": "Oturum açılmamış çalışma alanları {{cap}} panel sekmesiyle sınırlıdır. Daha fazlası için giriş yapın.",
+      "upgradeDesc": "{{cap}} panel sekmesi sınırınıza ulaştınız.",
+      "upgradeCta": "Daha fazlası için yükseltin",
+      "lockedAriaLabel": "Sekme ekle — kilitli. {{reason}}",
+      "unlockedAnnouncement": "Panel sekmesi limiti kaldırıldı."
     }
   },
   "popups": {
@@ -3189,16 +3325,42 @@
     "visualizationFailed": "Görselleştirme başarısız"
   },
   "dashboardTabs": {
-    "ariaLabel": "Dashboard tabs",
-    "defaultName": "Main",
-    "newTabName": "New Tab",
-    "newTabCreated": "New tab created",
-    "tabDeleted": "Tab \"{{name}}\" deleted",
-    "addTab": "Add tab",
-    "addTabTitle": "New tab (starts with the default panels)",
-    "renameHint": "{{name}} — double-click to rename",
-    "deleteTab": "Delete tab",
-    "deleteTabAria": "Delete tab {{name}}",
-    "tabNameAria": "Tab name"
+    "ariaLabel": "Panel sekmeleri",
+    "defaultName": "Ana",
+    "newTabName": "Yeni Sekme",
+    "newTabCreated": "Yeni sekme oluşturuldu",
+    "tabDeleted": "\"{{name}}\" sekmesi silindi",
+    "addTab": "Sekme ekle",
+    "addTabTitle": "Yeni sekme (varsayılan panellerle başlar)",
+    "renameHint": "{{name}} — yeniden adlandırmak için çift tıklayın",
+    "deleteTab": "Sekmeyi sil",
+    "deleteTabAria": "{{name}} sekmesini sil",
+    "tabNameAria": "Sekme adı"
+  },
+  "theaterPresets": {
+    "label": "Kapsama ön ayarları",
+    "applied": "{{preset}} ön ayarı uygulandı: {{count}} kaynak etkinleştirildi",
+    "alreadyApplied": "{{preset}} ön ayarı zaten uygulanmış",
+    "ukraineWar": {
+      "label": "Ukrayna Savaşı",
+      "description": "Ukrayna'nın başlıca yayınlarını, bağımsız Rus basınını ve cephe değerlendirme kaynaklarını etkinleştirir"
+    },
+    "indoPacific": {
+      "label": "Hint-Pasifik / Tayvan",
+      "description": "Tayvan, Pakistan ve Güneydoğu Asya güvenlik kaynaklarını etkinleştirir"
+    },
+    "sahelWestAfrica": {
+      "label": "Sahel ve Batı Afrika",
+      "description": "Sahel, Nijerya ve Batı Afrika'daki yerel kaynakları etkinleştirir"
+    },
+    "caucasusCentralAsia": {
+      "label": "Kafkasya ve Orta Asya",
+      "description": "Güney Kafkasya ve Orta Asya bölgesel kaynaklarını etkinleştirir"
+    },
+    "middleEastFlashpoints": {
+      "label": "Orta Doğu gerilim noktaları",
+      "description": "İran, İsrail, Körfez ve Kürt bölgelerine ilişkin kaynakları etkinleştirir"
+    },
+    "unavailable": "{{preset}} ön ayarı mevcut panellerinizle kullanılamıyor"
   }
 }

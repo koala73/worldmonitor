@@ -702,6 +702,191 @@ export function validateNoHallucinatedProperNouns(summary, headline) {
   return { ok: true };
 }
 
+// Numeric and date facts need their own citation-scoped check. Proper-noun
+// grounding cannot see a casualty count, percentage, year, or calendar date,
+// so a merged lead could otherwise borrow those facts from an uncited sibling.
+const NUMBER_FACT_WORD_VALUES = new Map([
+  ['zero', 0], ['one', 1], ['two', 2], ['three', 3], ['four', 4],
+  ['five', 5], ['six', 6], ['seven', 7], ['eight', 8], ['nine', 9],
+  ['ten', 10], ['eleven', 11], ['twelve', 12], ['thirteen', 13],
+  ['fourteen', 14], ['fifteen', 15], ['sixteen', 16], ['seventeen', 17],
+  ['eighteen', 18], ['nineteen', 19], ['twenty', 20], ['thirty', 30],
+  ['forty', 40], ['fifty', 50], ['sixty', 60], ['seventy', 70],
+  ['eighty', 80], ['ninety', 90], ['hundred', 100], ['thousand', 1000],
+  ['thousands', 1000], ['million', 1_000_000], ['millions', 1_000_000],
+  ['billion', 1_000_000_000], ['billions', 1_000_000_000],
+  ['trillion', 1_000_000_000_000], ['trillions', 1_000_000_000_000],
+  ['dozen', 12],
+]);
+const NUMBER_FACT_WORDS = [...NUMBER_FACT_WORD_VALUES.keys(), 'dozens'];
+const NUMBER_FACT_WORD_PATTERN = NUMBER_FACT_WORDS
+  .sort((a, b) => b.length - a.length)
+  .join('|');
+const NUMBER_FACT_WORD_SEQUENCE_RE = new RegExp(
+  `\\b(?:${NUMBER_FACT_WORD_PATTERN})(?:[- ](?:${NUMBER_FACT_WORD_PATTERN}|and))*\\b(?:\\s+percent\\b)?`,
+  'gi',
+);
+const DIGIT_FACT_RE = /\d[\d,]*(?:\.\d+)?(?:\s*(?:%|percent|thousands?|millions?|billions?|trillions?))?/gi;
+const DATE_MONTH_PATTERN = 'Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:t(?:ember)?)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?';
+const DATE_EXPRESSION_RE = new RegExp(
+  `\\b(?:\\d{4}-\\d{1,2}-\\d{1,2}|\\d{1,2}[/-]\\d{1,2}(?:[/-]\\d{2,4})?|(?:${DATE_MONTH_PATTERN})\\.?\\s+\\d{1,2}(?:,?\\s+\\d{4})?|\\d{1,2}\\s+(?:${DATE_MONTH_PATTERN})\\.?\\s*(?:\\d{4})?)\\b`,
+  'gi',
+);
+const DATE_MONTH_NUMBERS = new Map([
+  ['jan', 1], ['january', 1], ['feb', 2], ['february', 2], ['mar', 3], ['march', 3],
+  ['apr', 4], ['april', 4], ['may', 5], ['jun', 6], ['june', 6], ['jul', 7], ['july', 7],
+  ['aug', 8], ['august', 8], ['sep', 9], ['sept', 9], ['september', 9], ['oct', 10],
+  ['october', 10], ['nov', 11], ['november', 11], ['dec', 12], ['december', 12],
+]);
+
+function formatNumericFact(value) {
+  return String(value);
+}
+
+function normalizeDigitFact(raw) {
+  const match = raw.trim().toLowerCase().replace(/,/g, '').match(
+    /^(\d+(?:\.\d+)?)(?:\s*(%|percent|thousands?|millions?|billions?|trillions?))?$/,
+  );
+  if (!match) return `number:${raw.trim().toLowerCase()}`;
+  const value = Number(match[1]);
+  if (!Number.isFinite(value)) return `number:${raw.trim().toLowerCase()}`;
+  const unit = match[2];
+  if (!unit) return `number:${formatNumericFact(value)}`;
+  if (unit === '%' || unit === 'percent') return `number:${formatNumericFact(value)}%`;
+  const scale = NUMBER_FACT_WORD_VALUES.get(unit.replace(/s$/, ''));
+  return scale ? `number:${formatNumericFact(value * scale)}` : `number:${formatNumericFact(value)} ${unit}`;
+}
+
+function normalizeNumberWordFact(raw) {
+  const words = raw.toLowerCase().replace(/-/g, ' ').split(/\s+/).filter(Boolean);
+  let percent = false;
+  if (words.at(-1) === 'percent') {
+    percent = true;
+    words.pop();
+  }
+  if (words.includes('dozen') || words.includes('dozens')) return `word:${words.join(' ')}`;
+
+  let total = 0;
+  let current = 0;
+  let sawValue = false;
+  for (const word of words) {
+    if (word === 'and') continue;
+    const value = NUMBER_FACT_WORD_VALUES.get(word);
+    if (value == null) return `word:${words.join(' ')}`;
+    sawValue = true;
+    if (value >= 100) {
+      if (current === 0) current = 1;
+      if (value >= 1000) {
+        total += current * value;
+        current = 0;
+      } else {
+        current *= value;
+      }
+    } else {
+      current += value;
+    }
+  }
+  if (!sawValue) return `word:${words.join(' ')}`;
+  const value = total + current;
+  return `number:${formatNumericFact(value)}${percent ? '%' : ''}`;
+}
+
+function addDateFact(facts, year, month, day) {
+  const monthNumber = Number(month);
+  const dayNumber = Number(day);
+  if (!Number.isInteger(monthNumber) || !Number.isInteger(dayNumber)) return;
+  if (monthNumber < 1 || monthNumber > 12 || dayNumber < 1 || dayNumber > 31) return;
+  const monthPart = String(monthNumber).padStart(2, '0');
+  const dayPart = String(dayNumber).padStart(2, '0');
+  facts.add(`date:${monthPart}-${dayPart}`);
+  // Keep the components available for prose that says only "in 2026" or
+  // "on the 1st" while the full date expression still requires an exact match.
+  facts.add(`number:${formatNumericFact(monthNumber)}`);
+  facts.add(`number:${formatNumericFact(dayNumber)}`);
+  if (year != null && year !== '') {
+    const yearNumber = Number(year);
+    if (Number.isInteger(yearNumber)) {
+      facts.add(`date:${yearNumber}-${monthPart}-${dayPart}`);
+      facts.add(`number:${formatNumericFact(yearNumber)}`);
+    }
+  }
+}
+
+function addDateExpressionFacts(facts, raw) {
+  const normalized = raw.trim().replace(/\s+/g, ' ');
+  let match = normalized.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
+  if (match) {
+    addDateFact(facts, match[1], match[2], match[3]);
+    return;
+  }
+  match = normalized.match(/^(\d{1,2})[/-](\d{1,2})(?:[/-](\d{2,4}))?$/);
+  if (match) {
+    addDateFact(facts, match[3], match[1], match[2]);
+    return;
+  }
+  match = normalized.match(/^([A-Za-z]+)\.?\s+(\d{1,2})(?:,?\s+(\d{4}))?$/);
+  if (match) {
+    addDateFact(facts, match[3], DATE_MONTH_NUMBERS.get(match[1].toLowerCase()), match[2]);
+    return;
+  }
+  match = normalized.match(/^(\d{1,2})\s+([A-Za-z]+)\.?\s*(?:\s+(\d{4}))?$/);
+  if (match) addDateFact(facts, match[3], DATE_MONTH_NUMBERS.get(match[2].toLowerCase()), match[1]);
+}
+
+/**
+ * Extract citation-relevant numeric and date facts from prose. Citation
+ * markers are removed before extraction, and digit/word forms normalize to
+ * the same value ("9" and "nine"). This is intentionally a fact-presence
+ * check, not a full source fact-checker.
+ *
+ * @param {string} text
+ * @returns {Set<string>}
+ */
+export function extractNumericFacts(text) {
+  const facts = new Set();
+  if (typeof text !== 'string' || text.length === 0) return facts;
+
+  let remaining = text.replace(/\[\d{1,3}\]/g, ' ');
+  remaining = remaining.replace(DATE_EXPRESSION_RE, (match) => {
+    addDateExpressionFacts(facts, match);
+    return ' '.repeat(match.length);
+  });
+  remaining = remaining.replace(DIGIT_FACT_RE, (match, offset, original) => {
+    const before = original[offset - 1];
+    const after = original[offset + match.length];
+    const isWordChar = (value) => typeof value === 'string' && /[\p{L}\p{N}]/u.test(value);
+    if (isWordChar(before) || isWordChar(after)) return match;
+    facts.add(normalizeDigitFact(match));
+    return ' '.repeat(match.length);
+  });
+  remaining.replace(NUMBER_FACT_WORD_SEQUENCE_RE, (match) => {
+    facts.add(normalizeNumberWordFact(match));
+    return match;
+  });
+  return facts;
+}
+
+/**
+ * Validate that every numeric or date fact in summary appears in the cited
+ * source text. Malformed inputs keep the existing defensive acceptance
+ * behavior used by the proper-noun validator.
+ *
+ * @param {string} summary
+ * @param {string} groundText
+ * @returns {{ ok: boolean, hallucinated?: string[] }}
+ */
+export function validateNoHallucinatedFacts(summary, groundText) {
+  if (typeof summary !== 'string' || summary.length === 0) return { ok: true };
+  if (typeof groundText !== 'string' || groundText.length === 0) return { ok: true };
+  const summaryFacts = extractNumericFacts(summary);
+  if (summaryFacts.size === 0) return { ok: true };
+  const groundFacts = extractNumericFacts(groundText);
+  for (const fact of summaryFacts) {
+    if (!groundFacts.has(fact)) return { ok: false, hallucinated: [fact] };
+  }
+  return { ok: true };
+}
+
 /**
  * Does `haystack` contain `needle` as a contiguous subsequence?
  * Both are token arrays. Order matters; positions must be adjacent.

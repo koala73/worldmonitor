@@ -6,7 +6,14 @@
  */
 import { isMobileDevice } from '@/utils';
 import { markLcpDebug } from '@/utils/lcp-debug';
-import type { MapComponent } from './Map';
+import {
+  isLayerToggleAllowed,
+  isLayerEntitled,
+  sanitizeLockedLayers,
+  shouldSanitizeLockedLayers,
+} from '@/config/map-layer-definitions';
+import { isProTierResolved } from '@/services/widget-store';
+import type { MapComponent, MapComponentOptions } from './Map';
 import type { DeckGLMap, DeckMapView, CountryClickPayload } from './DeckGLMap';
 import type { GlobeMap } from './GlobeMap';
 import type {
@@ -51,6 +58,8 @@ import type { TrafficAnomaly as ProtoTrafficAnomaly, DdosLocationHit } from '@/g
 import type { AcledConflictEvent } from '@/generated/client/worldmonitor/conflict/v1/service_client';
 import type { DiseaseOutbreakItem } from '@/services/disease-outbreaks';
 import type { GetChokepointStatusResponse } from '@/services/supply-chain';
+import type { ChinaCorridorControlTower } from '../../shared/china-corridor-control-towers';
+import { projectChinaCorridorOverlay } from './map/china-corridor-overlay';
 import type { ScenarioVisualState, ScenarioResult } from '@/config/scenario-templates';
 import { getAuthState } from '@/services/auth-state';
 import { hasPremiumAccess } from '@/services/panel-gating';
@@ -104,6 +113,7 @@ export interface MapContainerState {
 
 export interface MapContainerOptions {
   chrome?: boolean;
+  isFreeTierFallbackActive?: () => boolean;
 }
 
 interface TechEventMarker {
@@ -138,6 +148,8 @@ export class MapContainer {
   private useDeckGL: boolean;
   private useGlobe: boolean;
   private readonly chrome: boolean;
+  private readonly svgLayerToggleGuard: NonNullable<MapComponentOptions['canToggleLayer']>;
+  private readonly isFreeTierFallbackActive: (() => boolean) | null;
   private isResizingInternal = false;
   private resizeObserver: ResizeObserver | null = null;
   private rendererDemandCleanup: (() => void) | null = null;
@@ -162,6 +174,7 @@ export class MapContainer {
   private cachedOnHotspotClicked: ((hotspot: Hotspot) => void) | null = null;
   private cachedOnAircraftPositionsUpdate: ((positions: PositionSample[]) => void) | null = null;
   private cachedOnMapContextMenu: ((payload: { lat: number; lon: number; screenX: number; screenY: number; countryCode?: string; countryName?: string }) => void) | null = null;
+  private cachedOnChinaCorridorRendererCapabilityChange: ((supported: boolean) => void) | null = null;
 
   // ─── Data cache (survives map mode switches) ───────────────────────────────
   private cachedEarthquakes: Earthquake[] | null = null;
@@ -209,11 +222,18 @@ export class MapContainer {
   private cachedTrafficAnomalies: ProtoTrafficAnomaly[] | null = null;
   private cachedDdosLocations: DdosLocationHit[] | null = null;
   private cachedChokepointData: GetChokepointStatusResponse | null | undefined;
+  private cachedChinaCorridorSelection: ChinaCorridorControlTower | null = null;
 
   constructor(container: HTMLElement, initialState: MapContainerState, preferGlobe = false, options: MapContainerOptions = {}) {
     this.container = container;
     this.initialState = initialState;
     this.chrome = options.chrome ?? true;
+    this.svgLayerToggleGuard = (layer, currentlyEnabled) => isLayerToggleAllowed(
+      layer,
+      currentlyEnabled === true,
+      hasPremiumAccess(getAuthState()),
+    );
+    this.isFreeTierFallbackActive = options.isFreeTierFallbackActive ?? null;
     this.isMobile = isMobileDevice();
     this.useGlobe = preferGlobe && this.hasGlobeSupport();
 
@@ -472,7 +492,11 @@ export class MapContainer {
     this.prepareRendererDom('svg-mode');
     // DeckGLMap mutates DOM early during construction. If initialization throws,
     // clear partial WebGL nodes before creating the SVG fallback.
-    this.svgMap = new MapComponent(this.container, this.initialState, { chrome: this.chrome, isMobile: this.isMobile });
+    this.svgMap = new MapComponent(this.container, this.initialState, {
+      chrome: this.chrome,
+      isMobile: this.isMobile,
+      canToggleLayer: this.svgLayerToggleGuard,
+    });
     this.rehydrateActiveMap();
     this.rendererReady = true;
     this.replayPendingChokepointOpen();
@@ -667,6 +691,10 @@ export class MapContainer {
     if (this.cachedTrafficAnomalies) this.setTrafficAnomalies(this.cachedTrafficAnomalies);
     if (this.cachedDdosLocations) this.setDdosLocations(this.cachedDdosLocations);
     if (this.cachedChokepointData !== undefined) this.setChokepointData(this.cachedChokepointData);
+    if (this.cachedChinaCorridorSelection) {
+      const supported = this.applyChinaCorridorSelection(this.cachedChinaCorridorSelection);
+      this.cachedOnChinaCorridorRendererCapabilityChange?.(supported);
+    }
     if (this.cachedWebcams) {
       if (this.useGlobe) this.globeMap?.setWebcams(this.cachedWebcams);
       else if (this.useDeckGL) this.deckGLMap?.setWebcams(this.cachedWebcams);
@@ -798,7 +826,16 @@ export class MapContainer {
   }
 
   public setLayers(layers: MapLayers): void {
-    const sanitized = !this.useDeckGL && layers.resilienceScore ? { ...layers, resilienceScore: false } : layers;
+    // Strip resilience on non-DeckGL, then locked premium layers for settled free users (#6045).
+    // Wait for isProTierResolved so Pro users don't lose resilienceScore during Clerk/Convex boot.
+    let sanitized = !this.useDeckGL && layers.resilienceScore ? { ...layers, resilienceScore: false } : layers;
+    if (shouldSanitizeLockedLayers(
+      hasPremiumAccess(getAuthState()),
+      isProTierResolved(),
+      this.isFreeTierFallbackActive?.() === true,
+    )) {
+      sanitized = sanitizeLockedLayers(sanitized, false);
+    }
     this.initialState = { ...this.initialState, layers: sanitized };
     if (this.useGlobe) { this.globeMap?.setLayers(sanitized); return; }
     if (this.useDeckGL) { this.deckGLMap?.setLayers(sanitized); } else { this.svgMap?.setLayers(sanitized); }
@@ -1083,6 +1120,31 @@ export class MapContainer {
     this.svgMap?.setChokepointData(data);
   }
 
+  private applyChinaCorridorSelection(corridor: ChinaCorridorControlTower): boolean {
+    if (this.useDeckGL) {
+      this.deckGLMap?.setChinaCorridorSelection(corridor);
+      return true;
+    }
+    const { center, bounds } = projectChinaCorridorOverlay(corridor);
+    const span = Math.max(bounds[2] - bounds[0], bounds[3] - bounds[1]);
+    this.setCenter(center.lat, center.lon, span > 25 ? 3 : span > 8 ? 4 : 5);
+    return false;
+  }
+
+  public setChinaCorridorSelection(
+    corridor: ChinaCorridorControlTower,
+  ): boolean | undefined {
+    this.cachedChinaCorridorSelection = corridor;
+    if (!this.hasActiveRenderer()) return undefined;
+    return this.applyChinaCorridorSelection(corridor);
+  }
+
+  public setOnChinaCorridorRendererCapabilityChange(
+    callback: (supported: boolean) => void,
+  ): void {
+    this.cachedOnChinaCorridorRendererCapabilityChange = callback;
+  }
+
   public setCIIScores(scores: CIIScore[]): void {
     this.cachedCIIScores = scores;
     if (this.useGlobe) { this.globeMap?.setCIIScores(scores); return; }
@@ -1263,6 +1325,8 @@ export class MapContainer {
   // Layer enable/disable and trigger methods
   public enableLayer(layer: keyof MapLayers): void {
     if (layer === 'resilienceScore' && !this.useDeckGL) return;
+    // #6045 — don't stamp initialState or enable locked premium layers for free users.
+    if (!isLayerEntitled(layer, hasPremiumAccess(getAuthState()))) return;
     this.initialState = {
       ...this.initialState,
       layers: { ...this.initialState.layers, [layer]: true },
@@ -1501,6 +1565,7 @@ export class MapContainer {
     this.cachedOnHotspotClicked = null;
     this.cachedOnAircraftPositionsUpdate = null;
     this.cachedOnMapContextMenu = null;
+    this.cachedOnChinaCorridorRendererCapabilityChange = null;
     this.cachedEarthquakes = null;
     this.cachedConflictEvents = null;
     this.cachedWeatherAlerts = null;
@@ -1543,6 +1608,7 @@ export class MapContainer {
     this.cachedTrafficAnomalies = null;
     this.cachedDdosLocations = null;
     this.cachedChokepointData = undefined;
+    this.cachedChinaCorridorSelection = null;
     this.pendingCenter = null;
     this.pendingViewportActions = [];
     this.pendingChokepointOpen = null;

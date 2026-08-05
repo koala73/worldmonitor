@@ -7,7 +7,13 @@
  * is not configured or ConvexClient is unavailable.
  */
 
-import { getConvexClient, getConvexApi, waitForConvexAuth } from './convex-client';
+import {
+  getConvexClient,
+  getConvexApi,
+  waitForConvexAuth,
+  waitForConvexAuthForUser,
+} from './convex-client';
+import { getCurrentClerkUser } from './clerk';
 
 export interface EntitlementState {
   planKey: string;
@@ -20,6 +26,7 @@ export interface EntitlementState {
       apiBurstRequestsPerMinute: number | null;
       mcpCallsPerDay: number | null;
       mcpBurstRequestsPerMinute: number | null;
+      dashboardAiCallsPerDay?: number | null;
     };
     maxDashboards: number;
     prioritySupport: boolean;
@@ -32,6 +39,16 @@ export interface EntitlementState {
      * Dodo's next webhook repopulates the field).
      */
     mcpAccess?: boolean;
+    /**
+     * Data-export entitlement (plan 2026-07-25-001). This controls the locked
+     * state while `exportFormats` controls which CSV/JSON/PDF actions the
+     * unlocked menu exposes; `tier` cannot discriminate because Pro Business
+     * shares tier 1 with Pro.
+     * Undefined on legacy snapshots: the export gate treats undefined on a
+     * `tier >= 2` snapshot as entitled (permanent fail-open) so a stale row
+     * never locks a paying customer out of their own data.
+     */
+    dataExport?: boolean;
   };
   validUntil: number;
 }
@@ -43,12 +60,38 @@ let initialized = false;
 let unsubscribeFn: (() => void) | null = null;
 
 /**
+ * Fan a new snapshot out to every subscriber, isolating failures.
+ *
+ * One listener must not block the rest: subscribers are independent UI
+ * surfaces, and an unguarded loop silently stops updating every listener
+ * registered after the one that threw — a failure with no error path, since
+ * the survivors just quietly hold their last verdict. Both emission sites
+ * (the Convex watch below and `resetEntitlementState`) route through here so
+ * they cannot drift apart on that guarantee.
+ */
+function notifyListeners(state: EntitlementState | null): void {
+  for (const cb of listeners) {
+    try {
+      cb(state);
+    } catch (err) {
+      console.warn('[entitlements] listener threw; continuing fan-out:', err);
+    }
+  }
+}
+
+/**
  * Initialize the entitlement subscription for the authenticated user.
  * Idempotent — calling multiple times is a no-op after the first.
  * Failures are logged but never thrown (dashboard must not break).
  */
-export async function initEntitlementSubscription(_userId?: string): Promise<void> {
-  if (initialized) return;
+export async function initEntitlementSubscription(
+  _userId?: string,
+  isCurrent: () => boolean = () => true,
+): Promise<void> {
+  const isExpectedAccount = (): boolean => (
+    isCurrent() && (_userId === undefined || getCurrentClerkUser()?.id === _userId)
+  );
+  if (initialized || !isExpectedAccount()) return;
 
   try {
     const client = await getConvexClient();
@@ -69,20 +112,25 @@ export async function initEntitlementSubscription(_userId?: string): Promise<voi
     // decision (the UI renders as free before the auth-ready pro snapshot
     // arrives). Unauthenticated visitors time out after 10s and we skip the
     // subscription entirely — they don't need entitlement updates.
-    const authed = await waitForConvexAuth(10_000);
+    const authed = _userId
+      ? await waitForConvexAuthForUser(_userId, 10_000)
+      : await waitForConvexAuth(10_000);
     if (!authed) {
       console.log('[entitlements] Convex auth not established — skipping subscription');
       return;
     }
+    if (!isExpectedAccount()) return;
 
     const watch = client.onUpdate(
       api.entitlements.getEntitlementsForUser,
       {},
       (result: EntitlementState | null) => {
+        if (!isExpectedAccount()) return;
         currentState = result;
-        for (const cb of listeners) cb(result);
+        notifyListeners(result);
       },
       (err: Error) => {
+        if (!isExpectedAccount()) return;
         console.warn('[entitlements] Subscription query error:', err.message);
       },
     );
@@ -116,9 +164,15 @@ export function destroyEntitlementSubscription(): void {
  * Explicitly nulls currentState. Call on sign-out to prevent the previous
  * user's entitlements from leaking into a subsequent session.
  * Distinct from destroyEntitlementSubscription() which preserves state for reconnects.
+ *
+ * Notifies listeners with `null` so UI that subscribed via onEntitlementChange
+ * (e.g. Pro banner #5728) re-evaluates immediately. Without this, a sign-out
+ * that only cleared state left free-tier surfaces stuck on the previous
+ * account's premium snapshot until the next real Convex update.
  */
 export function resetEntitlementState(): void {
   currentState = null;
+  notifyListeners(null);
 }
 
 /**
@@ -165,15 +219,26 @@ export function hasTier(minTier: number): boolean {
 }
 
 /**
+ * The "is this a paying user" predicate, over an injected snapshot and clock.
+ *
+ * Split out of `isEntitled()` so tests can evaluate the REAL rule against a
+ * snapshot they control — `currentState` is module-private and has no setter,
+ * so the alternative is re-implementing these three conditions in a mock,
+ * where they silently drift the moment this rule changes (#5632).
+ */
+export function isEntitlementActive(
+  state: EntitlementState | null,
+  now: number,
+): boolean {
+  return state !== null && state.planKey !== 'free' && state.validUntil >= now;
+}
+
+/**
  * Simple "is this a paying user" check.
  * Returns true if entitlement data exists, plan is not free, and hasn't expired.
  */
 export function isEntitled(): boolean {
-  return (
-    currentState !== null &&
-    currentState.planKey !== 'free' &&
-    currentState.validUntil >= Date.now()
-  );
+  return isEntitlementActive(currentState, Date.now());
 }
 
 /**

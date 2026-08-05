@@ -20,7 +20,7 @@
 //     we return it without re-prompting. Re-linking an already-linked
 //     device is a no-op from the user's perspective.
 
-import { getClerkToken } from '@/services/clerk';
+import { getClerkToken, getCurrentClerkUser } from '@/services/clerk';
 import { VAPID_PUBLIC_KEY, isWebPushConfigured, urlBase64ToUint8Array, arrayBufferToBase64 } from '@/config/push';
 
 export type PushPermission = 'default' | 'granted' | 'denied' | 'unsupported';
@@ -94,9 +94,21 @@ function subscriptionToPayload(sub: PushSubscription): SubscriptionPayload | nul
   };
 }
 
-async function authFetch(path: string, init: RequestInit): Promise<Response> {
+function assertExpectedAccount(expectedUserId?: string): void {
+  if (expectedUserId && getCurrentClerkUser()?.id !== expectedUserId) {
+    throw new Error('Authenticated account changed during push setup');
+  }
+}
+
+async function authFetch(
+  path: string,
+  init: RequestInit,
+  expectedUserId?: string,
+): Promise<Response> {
+  assertExpectedAccount(expectedUserId);
   const token = await getClerkToken();
   if (!token) throw new Error('Not authenticated');
+  assertExpectedAccount(expectedUserId);
   return fetch(path, {
     ...init,
     headers: {
@@ -112,7 +124,8 @@ async function authFetch(path: string, init: RequestInit): Promise<Response> {
  * the endpoint with the server. Resolves with the payload the server
  * accepted, or throws on cancel / denial / network failure.
  */
-export async function subscribeToPush(): Promise<SubscriptionPayload> {
+export async function subscribeToPush(expectedUserId?: string): Promise<SubscriptionPayload> {
+  assertExpectedAccount(expectedUserId);
   if (!isWebPushSupported()) {
     throw new Error('Web push is not supported in this browser.');
   }
@@ -152,21 +165,54 @@ export async function subscribeToPush(): Promise<SubscriptionPayload> {
     });
     const retryPayload = subscriptionToPayload(retry);
     if (!retryPayload) throw new Error('Failed to extract push subscription keys.');
-    await postSubscription(retryPayload);
+    await postSubscription(retryPayload, expectedUserId);
     return retryPayload;
   }
 
-  await postSubscription(payload);
+  await postSubscription(payload, expectedUserId);
   return payload;
 }
 
-async function postSubscription(payload: SubscriptionPayload): Promise<void> {
+/**
+ * Shape the error thrown when `/api/notification-channels` rejects a
+ * subscription.
+ *
+ * Every rejection on that route answers with a distinct `error` code —
+ * `endpoint host is not a recognised push service`, `pro_required`,
+ * `Invalid JSON body`, `MISSING_USER_ID`, … — but the throw used to carry only
+ * the HTTP status. That made WORLDMONITOR-XR (3 events / 2 users, Chrome on
+ * macOS) permanently undiagnosable: a bare "(400)" cannot distinguish an
+ * unrecognised push host from a malformed body from an entitlement denial, and
+ * the response was already discarded by the time Sentry saw it.
+ *
+ * Only a JSON `error` string is appended, so the message stays bounded to the
+ * route's own fixed code set — a proxy/CDN HTML interstitial can't blow up
+ * Sentry's issue cardinality with one group per body.
+ */
+export async function describePushRegistrationFailure(
+  res: Pick<Response, 'status' | 'text'>,
+): Promise<string> {
+  let code = '';
+  try {
+    const parsed: unknown = JSON.parse(await res.text());
+    const error = (parsed as { error?: unknown } | null)?.error;
+    if (typeof error === 'string' && error) code = error.slice(0, 120);
+  } catch {
+    // Non-JSON body (or an unreadable stream) — the status is all we have.
+  }
+  return `Failed to register push subscription (${res.status})${code ? `: ${code}` : ''}.`;
+}
+
+async function postSubscription(
+  payload: SubscriptionPayload,
+  expectedUserId?: string,
+): Promise<void> {
   const res = await authFetch('/api/notification-channels', {
     method: 'POST',
     body: JSON.stringify({ action: 'set-web-push', ...payload }),
-  });
+  }, expectedUserId);
   if (!res.ok) {
-    throw new Error(`Failed to register push subscription (${res.status}).`);
+    throw new Error(await describePushRegistrationFailure(res));
   }
 }
 

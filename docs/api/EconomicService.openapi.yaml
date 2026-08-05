@@ -467,13 +467,97 @@ paths:
                                 "generatedAt": "2026-01-15T12:00:00Z"
                                 "indicators":
                                     - "category": "cs.AI"
+                                      "comparisonBasis": "example"
+                                      "comparisonValue": 1.5
                                       "contextOnly": true
-                                      "hasPriorValue": true
-                                      "hasValue": true
-                                      "id": "example-id"
+                                      "direction": "example"
                                 "latestObservationDate": "40.7128"
                             schema:
                                 $ref: '#/components/schemas/GetChinaMacroSnapshotResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/ValidationError'
+                                    - $ref: '#/components/schemas/JmespathProjectionError'
+                "401":
+                    description: Missing or invalid API key.
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/UnauthorizedError'
+                "403":
+                    description: API access requires an active subscription (the API key's subscription is inactive or expired).
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ForbiddenError'
+                "429":
+                    description: Rate limit exceeded.
+                    headers:
+                        X-RateLimit-Limit:
+                            description: Maximum requests allowed in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Remaining:
+                            description: Requests remaining in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Reset:
+                            description: Unix epoch milliseconds when the active rate-limit window resets.
+                            schema:
+                                type: string
+                        Retry-After:
+                            description: Seconds to wait before retrying the request.
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/RateLimitError'
+                default:
+                    description: Gateway or handler error response.
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/GatewayError'
+    /api/economic/v1/get-china-activity-nowcast:
+        get:
+            tags:
+                - EconomicService
+            summary: GetChinaActivityNowcast
+            description: |-
+                GetChinaActivityNowcast compares the revision-aware official macro pulse
+                 with reviewed proxy families using a deterministic, no-lookahead method.
+            operationId: GetChinaActivityNowcast
+            parameters:
+                - name: jmespath
+                  in: query
+                  description: |-
+                    Optional JMESPath expression applied server-side to project or reduce the JSON response before it is returned (mirrors the MCP jmespath argument). Invalid expressions, expressions larger than 1024 UTF-8 bytes, or projections that exceed the 256 KB output cap return HTTP 400 with a {_jmespath_error, original_keys} envelope. Grammar and worked examples: https://www.worldmonitor.app/docs/mcp-jmespath.
+                  required: false
+                  example: "keys(@)"
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            example:
+                                "comparisonState": "example"
+                                "generatedAt": "2026-01-15T12:00:00Z"
+                                "methodVersion": "example"
+                                "payloadJson": "example"
+                                "upstreamUnavailable": false
+                            schema:
+                                $ref: '#/components/schemas/GetChinaActivityNowcastResponse'
                 "400":
                     description: Validation error
                     content:
@@ -1255,7 +1339,7 @@ paths:
                                       "debtUsd": 1.5
                                       "gdpUsd": 1.5
                                 "seededAt": "2026-01-15T12:00:00Z"
-                                "unavailable": true
+                                "unavailable": false
                             schema:
                                 $ref: '#/components/schemas/GetNationalDebtResponse'
                 "400":
@@ -1552,7 +1636,7 @@ paths:
                                 "fromDate": "2026-01-15"
                                 "toDate": "2026-01-15"
                                 "total": 1
-                                "unavailable": true
+                                "unavailable": false
                             schema:
                                 $ref: '#/components/schemas/GetEconomicCalendarResponse'
                 "400":
@@ -1800,7 +1884,7 @@ paths:
                                       "pair": "example"
                                       "rate": 75.25
                                 "seededAt": "1717200000000"
-                                "unavailable": true
+                                "unavailable": false
                                 "updatedAt": "2026-01-15"
                             schema:
                                 $ref: '#/components/schemas/GetEcbFxRatesResponse'
@@ -1900,7 +1984,7 @@ paths:
                                             "unit": "example"
                                             "value": 1.5
                                 "seededAt": "1717200000000"
-                                "unavailable": true
+                                "unavailable": false
                             schema:
                                 $ref: '#/components/schemas/GetEurostatCountryDataResponse'
                 "400":
@@ -2069,7 +2153,7 @@ paths:
                                         "exampleKey": 1.5
                                     "source": "example"
                                     "updatedAt": "2026-01-15"
-                                "unavailable": true
+                                "unavailable": false
                             schema:
                                 $ref: '#/components/schemas/GetEuYieldCurveResponse'
                 "400":
@@ -2240,7 +2324,7 @@ paths:
                                 "compositeScore": 42.5
                                 "label": "example"
                                 "seededAt": "2026-01-15T12:00:00Z"
-                                "unavailable": true
+                                "unavailable": false
                             schema:
                                 $ref: '#/components/schemas/GetEconomicStressResponse'
                 "400":
@@ -2426,7 +2510,7 @@ paths:
                                     "northAmerica":
                                         "avgDays": 7
                                         "netExporters": 1
-                                "unavailable": true
+                                "unavailable": false
                             schema:
                                 $ref: '#/components/schemas/GetOilStocksAnalysisResponse'
                 "400":
@@ -2641,7 +2725,7 @@ paths:
                                       "measure": "example"
                                 "source": "example"
                                 "sourceUrl": "https://example.com/worldmonitor"
-                                "unavailable": true
+                                "unavailable": false
                             schema:
                                 $ref: '#/components/schemas/GetEnergyCrisisPoliciesResponse'
                 "400":
@@ -3450,11 +3534,21 @@ components:
                     description: |-
                         True when the seeded snapshot or release calendar is unavailable; callers
                          should render the response as degraded rather than treating it as current.
+                schemaVersion:
+                    type: integer
+                    format: int32
+                pillars:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/ChinaMacroPillarPulse'
         ChinaMacroIndicator:
             type: object
             properties:
                 id:
                     type: string
+                    description: |-
+                        Kept as "indicator" for API compatibility; each row is a versioned,
+                         revision-aware official observation in cache schema v2.
                 label:
                     type: string
                 category:
@@ -3483,6 +3577,74 @@ components:
                     type: string
                 contextOnly:
                     type: boolean
+                geography:
+                    type: string
+                seasonalAdjustment:
+                    type: string
+                periodKind:
+                    type: string
+                observationPeriod:
+                    type: string
+                releaseTime:
+                    type: string
+                retrievalTime:
+                    type: string
+                direction:
+                    type: string
+                directionReason:
+                    type: string
+                comparisonBasis:
+                    type: string
+                comparisonValue:
+                    type: number
+                    format: double
+                hasComparisonValue:
+                    type: boolean
+                revisionState:
+                    type: string
+                vintageId:
+                    type: string
+                revisionSequence:
+                    type: integer
+                    format: int32
+                provenanceJson:
+                    type: string
+                    description: 'Canonical #5581 payload, validated before crossing the cache/API boundary.'
+                vintages:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/ChinaMacroVintage'
+                transportStatus:
+                    type: string
+                transportFailureReason:
+                    type: string
+        ChinaMacroVintage:
+            type: object
+            properties:
+                vintageId:
+                    type: string
+                sequence:
+                    type: integer
+                    format: int32
+                state:
+                    type: string
+                value:
+                    type: number
+                    format: double
+                hasValue:
+                    type: boolean
+                observationPeriod:
+                    type: string
+                periodKind:
+                    type: string
+                releaseTime:
+                    type: string
+                retrievalTime:
+                    type: string
+                supersededBy:
+                    type: string
+                provenanceJson:
+                    type: string
         ChinaMacroSourceDecision:
             type: object
             properties:
@@ -3501,6 +3663,19 @@ components:
                 requestCount:
                     type: integer
                     format: int32
+                publisherId:
+                    type: string
+                redirectBehavior:
+                    type: string
+                requestBudget:
+                    type: integer
+                    format: int32
+                robotsStatus:
+                    type: string
+                termsStatus:
+                    type: string
+                sourceUrl:
+                    type: string
         ChinaReleaseEvent:
             type: object
             properties:
@@ -3524,6 +3699,40 @@ components:
                     type: string
                 sourceUrl:
                     type: string
+        ChinaMacroPillarPulse:
+            type: object
+            properties:
+                pillar:
+                    type: string
+                direction:
+                    type: string
+                reason:
+                    type: string
+                observationIds:
+                    type: array
+                    items:
+                        type: string
+        GetChinaActivityNowcastRequest:
+            type: object
+        GetChinaActivityNowcastResponse:
+            type: object
+            properties:
+                generatedAt:
+                    type: string
+                methodVersion:
+                    type: string
+                comparisonState:
+                    type: string
+                upstreamUnavailable:
+                    type: boolean
+                    description: |-
+                        True only when no official vintage or proxy contribution is available.
+                         Methodological insufficiency with otherwise healthy inputs remains false.
+                payloadJson:
+                    type: string
+                    description: |-
+                        Canonical inspectable method payload. Numeric computation and state
+                         assignment are deterministic and validated before crossing this boundary.
         GetEnergyCapacityRequest:
             type: object
             properties:
@@ -3677,10 +3886,10 @@ components:
                     type: array
                     items:
                         type: string
-                        maxItems: 10
+                        maxItems: 20
                         minItems: 1
-                        description: FRED series IDs (e.g., "WALCL", "FEDFUNDS"). Max 10.
-                    maxItems: 10
+                        description: FRED series IDs (e.g., "WALCL", "FEDFUNDS"). Max 20.
+                    maxItems: 20
                     minItems: 1
                 limit:
                     type: integer
@@ -4941,4 +5150,6 @@ components:
                     type: string
                     description: Time of the most recent successful retrieval; preserved across failures.
                 stale:
+                    type: boolean
+                paced:
                     type: boolean

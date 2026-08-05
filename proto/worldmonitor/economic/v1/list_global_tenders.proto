@@ -51,6 +51,7 @@ message TenderSourceStatus {
   // Time of the most recent successful retrieval; preserved across failures.
   string last_successful_at = 6;
   bool stale = 7;
+  bool paced = 8;
 }
 
 message ListGlobalTendersRequest {

@@ -93,13 +93,16 @@ const matchKeyword = (tokens: string[], keyword: string) => tokens.includes(keyw
       'const INTEL_HOTSPOTS: any[] = []; const CONFLICT_ZONES: any[] = []; const STRATEGIC_WATERWAYS: any[] = [];',
     )
     .replace(
-      "import { CURATED_COUNTRIES, DEFAULT_BASELINE_RISK, DEFAULT_EVENT_MULTIPLIER, getHotspotCountries } from '@/config/countries';",
+      "import { CURATED_COUNTRIES, DEFAULT_BASELINE_RISK, DEFAULT_EVENT_MULTIPLIER } from '@/config/countries';",
       `const CURATED_COUNTRIES: Record<string, any> = {
   US: { name: "United States", scoringKeywords: ["united", "states", "america"], baselineRisk: 10, eventMultiplier: 0.5 },
 };
 const DEFAULT_BASELINE_RISK = 5;
-const DEFAULT_EVENT_MULTIPLIER = 1;
-const getHotspotCountries = (_: string) => [];`,
+const DEFAULT_EVENT_MULTIPLIER = 1;`,
+    )
+    .replace(
+      "import { getHotspotCountries } from '../../shared/hotspot-country-map';",
+      'const getHotspotCountries = (_: string) => [];',
     )
     .replace(
       "export { TIER1_COUNTRIES } from '@/config/countries';",

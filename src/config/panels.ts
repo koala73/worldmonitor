@@ -62,6 +62,8 @@ const FULL_PANELS: Record<string, PanelConfig> = {
   'global-procurement': { name: 'Global Procurement', enabled: true, priority: 1, premium: 'locked' as const },
   'trade-policy': { name: 'Trade Policy', enabled: true, priority: 1, premium: 'locked' as const },
   'supply-chain': { name: 'Supply Chain', enabled: true, priority: 1, ...(_desktop && { premium: 'enhanced' as const }) },
+  'china-corridors': { name: 'China Logistics Corridors', enabled: true, priority: 1 },
+  'china-activity-nowcast': { name: 'China Activity Nowcast', enabled: true, priority: 1 },
   finance: { name: 'Financial', enabled: true, priority: 1 },
   tech: { name: 'Technology', enabled: true, priority: 2 },
   crypto: { name: 'Crypto', enabled: true, priority: 2 },
@@ -468,6 +470,8 @@ const FINANCE_PANELS: Record<string, PanelConfig> = {
   'trade-policy': { name: 'Trade Policy', enabled: true, priority: 1, premium: 'locked' as const },
   'sanctions-pressure': { name: 'Sanctions Pressure', enabled: true, priority: 1 },
   'supply-chain': { name: 'Supply Chain', enabled: true, priority: 1 },
+  'china-corridors': { name: 'China Logistics Corridors', enabled: false, priority: 2 },
+  'china-activity-nowcast': { name: 'China Activity Nowcast', enabled: false, priority: 2 },
   'economic-news': { name: 'Economic News', enabled: true, priority: 2 },
   ipo: { name: 'IPOs, Earnings & M&A', enabled: true, priority: 1 },
   heatmap: { name: 'Sector Heatmap', enabled: true, priority: 1 },
@@ -784,6 +788,8 @@ const COMMODITY_PANELS: Record<string, PanelConfig> = {
   'base-metals': { name: 'Base Metals', enabled: true, priority: 1 },
   'mining-companies': { name: 'Mining Companies', enabled: true, priority: 1 },
   'supply-chain': { name: 'Supply Chain & Logistics', enabled: true, priority: 1 },
+  'china-corridors': { name: 'China Logistics Corridors', enabled: false, priority: 2 },
+  'china-activity-nowcast': { name: 'China Activity Nowcast', enabled: false, priority: 2 },
   'commodity-regulation': { name: 'Regulation & Policy', enabled: true, priority: 1 },
   markets: { name: 'Commodity Markets', enabled: true, priority: 1 },
   commodities: { name: 'Live Metals & Materials', enabled: true, priority: 1 },
@@ -962,6 +968,8 @@ const ENERGY_PANELS: Record<string, PanelConfig> = {
   'macro-signals': { name: 'Market Regime', enabled: true, priority: 2 },
   // Supply-chain & chokepoint context
   'supply-chain': { name: 'Chokepoints & Routes', enabled: true, priority: 1 },
+  'china-corridors': { name: 'China Logistics Corridors', enabled: false, priority: 2 },
+  'china-activity-nowcast': { name: 'China Activity Nowcast', enabled: false, priority: 2 },
   'sanctions-pressure': { name: 'Sanctions Pressure', enabled: true, priority: 2 },
   // Gulf / OPEC
   'gulf-economies': { name: 'Gulf & OPEC Economies', enabled: true, priority: 2 },
@@ -1188,8 +1196,10 @@ export function getEffectivePanelConfig(key: string, variant: string): PanelConf
  * (e.g. tech-readiness on commodity/finance/energy) blow their 5s fetch
  * budget on a key that will never populate.
  */
+const SITE_VARIANT_DEFAULTS = new Set(VARIANT_DEFAULTS[SITE_VARIANT] ?? []);
+
 export function isPanelInVariantDefaults(key: string): boolean {
-  return (VARIANT_DEFAULTS[SITE_VARIANT] ?? []).includes(key);
+  return SITE_VARIANT_DEFAULTS.has(key);
 }
 
 export const FREE_MAX_PANELS = 40;
@@ -1243,13 +1253,15 @@ export function isPanelEntitled(key: string, config: PanelConfig, isPro = false)
  * truth for the count limit so App boot, the settings/search add paths, and
  * the dashboard-tab add/switch/load paths all enforce the SAME ceiling.
  *
- * Returns a NEW map; the input is never mutated. Pro users get the same
- * panel eligibility, but still receive a copied map. For free users: cw-*
+ * Returns a NEW map; the input is never mutated. For free users: cw-*
  * custom-widget panels are a pro
  * feature and are always disabled. The map is free baseline infrastructure
  * and never consumes a capped panel slot. Among the remaining enabled panels
  * the lowest-priority ones past FREE_MAX_PANELS are disabled (priority asc,
  * key tiebreak — identical ordering to App.enforceFreeTierLimits).
+ *
+ * Pro users get the same panel eligibility, plus the inverse of the cw-* gate:
+ * widgets this helper previously hid are restored (see restoreProGatedPanels).
  *
  * `isPro` is passed in (rather than read here) to keep this a pure config
  * helper with no service-state dependency, matching isPanelEntitled above.
@@ -1258,17 +1270,19 @@ export function enforceFreePanelLimit(
   panelSettings: Record<string, PanelConfig>,
   isPro: boolean,
 ): Record<string, PanelConfig> {
+  if (isPro) return restoreProGatedPanels(panelSettings);
+
   const next: Record<string, PanelConfig> = {};
   for (const [key, config] of Object.entries(panelSettings)) {
     next[key] = { ...config };
   }
 
-  if (isPro) return next;
-
   // cw-* custom widgets are pro-only — never enabled on the free tier.
+  // Stamp `proGated` so restoreProGatedPanels can tell this apart from a
+  // widget the user hid themselves and put it back when they go Pro.
   for (const key of Object.keys(next)) {
     if (key.startsWith('cw-') && next[key]?.enabled) {
-      next[key] = { ...next[key]!, enabled: false };
+      next[key] = { ...next[key]!, enabled: false, proGated: true };
     }
   }
 
@@ -1282,6 +1296,63 @@ export function enforceFreePanelLimit(
   }
 
   return next;
+}
+
+/**
+ * Inverse of the cw-* half of `enforceFreePanelLimit`: re-enable the custom
+ * widgets that the free-tier gate hid, and clear the marker.
+ *
+ * Without this the gate is a one-way door. `enforceFreePanelLimit` writes
+ * straight into STORAGE_KEYS.panels, so once a widget is disabled nothing
+ * ever turns it back on — a user who upgrades to Pro (or whose Pro session
+ * simply resolved late, see App.enforceFreeTierLimits) would find their
+ * widgets permanently missing from the dashboard even though the specs are
+ * still in wm-custom-widgets.
+ *
+ * Only panels carrying `proGated` are touched, so a widget the user hid
+ * deliberately via the settings toggle stays hidden.
+ */
+export function restoreProGatedPanels(
+  panelSettings: Record<string, PanelConfig>,
+): Record<string, PanelConfig> {
+  const next: Record<string, PanelConfig> = {};
+  for (const [key, config] of Object.entries(panelSettings)) {
+    if (config.proGated) {
+      const { proGated: _proGated, ...rest } = config;
+      next[key] = { ...rest, enabled: true };
+    } else {
+      next[key] = { ...config };
+    }
+  }
+  return next;
+}
+
+/**
+ * True while the session's tier is still unknowable, so the persisted
+ * free-tier clamp must not run yet. Two windows qualify:
+ *
+ * - Clerk hasn't settled (`authPending`) — a signed-in Pro user is
+ *   indistinguishable from an anonymous one.
+ * - Clerk settled on a signed-in user but the Convex entitlement snapshot
+ *   hasn't arrived (`hasUser && !entitlementLoaded`) — isEntitled() is
+ *   deterministically false until the snapshot lands, so a Convex-only Pro
+ *   subscriber would be clamped as free.
+ *
+ * `deadlineExceeded` is the AUTH_SETTLE_GRACE_MS backstop: once the grace
+ * timer fires, enforcement proceeds with whatever tier signals exist, so a
+ * snapshot that never arrives cannot defer the caps forever.
+ *
+ * Pure on plain booleans (no service imports) to keep this a config helper,
+ * matching isPanelEntitled above.
+ */
+export function shouldDeferFreeTierEnforcement(
+  authPending: boolean,
+  hasUser: boolean,
+  entitlementLoaded: boolean,
+  deadlineExceeded: boolean,
+): boolean {
+  if (deadlineExceeded) return false;
+  return authPending || (hasUser && !entitlementLoaded);
 }
 
 // ============================================
@@ -1364,7 +1435,7 @@ export const PANEL_CATEGORY_MAP: Record<string, { labelKey: string; panelKeys: s
   },
   marketsFinance: {
     labelKey: 'header.panelCatMarketsFinance',
-    panelKeys: ['commodities', 'energy-complex', 'energy-risk-overview', 'pipeline-status', 'storage-facility-map', 'oil-inventories', 'fuel-prices', 'chokepoint-strip', 'fuel-shortages', 'energy-disruptions', 'hormuz-tracker', 'energy-crisis', 'markets', 'economic', 'global-procurement', 'trade-policy', 'sanctions-pressure', 'supply-chain', 'finance', 'polymarket', 'macro-signals', 'gulf-economies', 'etf-flows', 'stablecoins', 'crypto', 'heatmap', 'aaii-sentiment', 'cot-positioning', 'earnings-calendar', 'economic-calendar', 'fear-greed', 'fsi', 'macro-tiles', 'market-breadth', 'liquidity-shifts', 'national-debt', 'positioning-247', 'wsb-ticker-scanner', 'yield-curve', 'gold-intelligence', 'bigmac', 'market-implications'],
+    panelKeys: ['commodities', 'energy-complex', 'energy-risk-overview', 'pipeline-status', 'storage-facility-map', 'oil-inventories', 'fuel-prices', 'chokepoint-strip', 'fuel-shortages', 'energy-disruptions', 'hormuz-tracker', 'energy-crisis', 'markets', 'economic', 'global-procurement', 'trade-policy', 'sanctions-pressure', 'supply-chain', 'china-corridors', 'china-activity-nowcast', 'finance', 'polymarket', 'macro-signals', 'gulf-economies', 'etf-flows', 'stablecoins', 'crypto', 'heatmap', 'aaii-sentiment', 'cot-positioning', 'earnings-calendar', 'economic-calendar', 'fear-greed', 'fsi', 'macro-tiles', 'market-breadth', 'liquidity-shifts', 'national-debt', 'positioning-247', 'wsb-ticker-scanner', 'yield-curve', 'gold-intelligence', 'bigmac', 'market-implications'],
     variants: ['full', 'energy'],
   },
   topical: {
@@ -1423,7 +1494,7 @@ export const PANEL_CATEGORY_MAP: Record<string, { labelKey: string; panelKeys: s
   },
   centralBanksEcon: {
     labelKey: 'header.panelCatCentralBanks',
-    panelKeys: ['centralbanks', 'economic', 'global-procurement', 'energy-complex', 'trade-policy', 'sanctions-pressure', 'supply-chain', 'economic-news'],
+    panelKeys: ['centralbanks', 'economic', 'global-procurement', 'energy-complex', 'trade-policy', 'sanctions-pressure', 'supply-chain', 'china-corridors', 'china-activity-nowcast', 'economic-news'],
     variants: ['finance'],
   },
   dealsInstitutional: {
@@ -1445,7 +1516,7 @@ export const PANEL_CATEGORY_MAP: Record<string, { labelKey: string; panelKeys: s
   },
   miningIndustry: {
     labelKey: 'header.panelCatMining',
-    panelKeys: ['commodity-news', 'mining-news', 'mining-companies', 'supply-chain', 'commodity-regulation'],
+    panelKeys: ['commodity-news', 'mining-news', 'mining-companies', 'supply-chain', 'china-corridors', 'china-activity-nowcast', 'commodity-regulation'],
     variants: ['commodity'],
   },
   commodityEcon: {

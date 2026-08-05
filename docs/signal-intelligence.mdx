@@ -242,11 +242,14 @@ The dashboard visually flags sources with known state affiliations or propaganda
 
 | Level | Visual | Meaning |
 |-------|--------|---------|
-| **High** | ⚠ State Media (red) | Direct state control or ownership |
+| **High** | ⚠ State Media or Official Government Source (red) | Direct state control or ownership; government publishers use the type-aware official-source label |
 | **Medium** | ! Caution (orange) | Significant state influence or funding |
-| **Low** | (none) | Independent editorial control |
+| **Low** | (none) | **Explicitly reviewed** independent editorial control |
+| **Unknown** | ? Unreviewed (muted) | Provenance not yet reviewed — **not** an independence claim |
 
-**Flagged Sources**
+Every configured feed has an explicit per-dimension declaration of **Reviewed** or **Unknown**. CI requires that inventory to match the configured feed names exactly, so additions, removals, and alias changes cannot silently inherit a default. Absence from the reviewed registry defaults to **Unknown**, never Low. A missing badge only means independent journalism when the source has an explicit Low classification; unclassified feeds show **? Unreviewed** so missing data cannot be mistaken for a positive editorial assessment.
+
+**Flagged Sources** (selected examples)
 
 | Source | Risk Level | State Affiliation | Notes |
 |--------|------------|-------------------|-------|
@@ -255,6 +258,8 @@ The dashboard visually flags sources with known state affiliations or propaganda
 | **RT** | High | Russia | Registered foreign agent in US |
 | **CGTN** | High | China (CCP) | China Global Television Network |
 | **PressTV** | High | Iran | IRIB subsidiary |
+| **MIIT (China)** | High | China | Ministry of Industry and IT official feed |
+| **MOFCOM (China)** | High | China | Ministry of Commerce official feed |
 | **Al Jazeera** | Medium | Qatar | Qatari government funded |
 | **TRT World** | Medium | Turkey | Turkish state broadcaster |
 
@@ -452,7 +457,9 @@ Total Signals: 47
 
 | Signal family | Endpoint | Notes |
 |---|---|---|
-| Company enrichment | `GET /api/intelligence/v1/get-company-enrichment` | Aggregates GitHub, SEC, Hacker News, and inferred stack context for one company. |
-| Company activity signals | `GET /api/intelligence/v1/list-company-signals` | Funding, hiring, expansion, executive, and open-source activity cards. |
+| Company enrichment | `GET /api/intelligence/v1/get-company-enrichment` | SEC EDGAR identity + recent filings (via ticker→CIK resolution), market profile, earnings surprises, and news mentions for one company. |
+| Company activity signals | `GET /api/intelligence/v1/list-company-signals` | Classified timestamped signals from SEC 8-K material events and news mentions. Earnings surprises stay in enrichment because fiscal period end is not report time. |
+| SEC filing search | `GET /api/intelligence/v1/search-sec-filings` | Full-text search over SEC EDGAR filings with form-type and date-range filters. |
+| Material events stream | `GET /api/intelligence/v1/list-material-events` | Market-wide stream of recent SEC 8-K material-event filings (M&A, executive changes, restatements). |
 | GDELT topic timeline | `GET /api/intelligence/v1/get-gdelt-topic-timeline` | Tone and volume timeline for an intelligence topic. |
 | Market-implication cards | `GET /api/intelligence/v1/list-market-implications` | AI-generated implication cards from live world state; documented here to avoid duplicating market-domain panel ownership. |

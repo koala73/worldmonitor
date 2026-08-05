@@ -205,17 +205,20 @@
       "currencies": "Valute",
       "area": "Površina"
     },
-    "loadingResilienceScore": "Loading resilience score…",
-    "resilienceScoreUnavailable": "Resilience score unavailable.",
+    "loadingResilienceScore": "Učitavanje ocjene otpornosti…",
+    "resilienceScoreUnavailable": "Ocjena otpornosti nije dostupna.",
     "china": {
       "title": "Pregled zemlje: Kina",
       "description": "Trenutačno stanje makroekonomije, tržišta, trgovine, energetike i operativne dostupnosti iz postojećih javnih podatkovnih ugovora.",
-      "macroPolicy": "Makro i politika",
-      "marketCredit": "Tržište i kredit",
-      "tradeSupply": "Trgovina i opskrbni lanac",
+      "policyEvents": "Politika i provedba",
       "energy": "Energetika",
       "availability": "Opasnosti i zrakoplovstvo",
       "observed": "Na dan:",
+      "published": "Objavljeno:",
+      "effective": "Na snazi:",
+      "sectors": "Sektori:",
+      "entities": "Entiteti:",
+      "translation": "Prijevod:",
       "source": "Izvor:",
       "imfGrowth": "MMF-ova prognoza rasta",
       "creditGdp": "Kredit prema BDP-u",
@@ -224,8 +227,6 @@
       "gasDemand": "Potražnja za plinom",
       "energyMix": "Struktura proizvodnje struje",
       "coal": "ugljen",
-      "aviationAvailability": "Dostupnost zrakoplovstva",
-      "hazardAvailability": "Dostupnost opasnosti",
       "noMajorDisruptions": "Nema prijavljenih većih poremećaja",
       "activeDisruptions_one": "{{count}} aktivan prekid",
       "activeDisruptions_few": "{{count}} aktivna prekida",
@@ -239,18 +240,21 @@
       "ccfiSource": "Šangajska brodarska burza",
       "comtradeSource": "UN Comtrade, izvjestitelj 156",
       "sourceUnavailable": "Izvor nedostupan",
-      "macroUnavailable": "Makroekonomski i politički podaci trenutačno su nedostupni.",
-      "marketUnavailable": "Tržišni i kreditni podaci trenutačno su nedostupni.",
-      "tradeUnavailable": "Podaci o trgovini i opskrbnom lancu trenutačno su nedostupni.",
-      "energyUnavailable": "Energetski podaci trenutačno su nedostupni.",
-      "availabilityUnavailable": "Podaci o opasnostima i zrakoplovstvu trenutačno su nedostupni.",
+      "policyUnavailable": "Official policy and enforcement events are currently unavailable.",
+      "policyPartial": "{{count}} official agencies are temporarily degraded.",
       "status": {
         "loading": "Učitavanje",
         "available": "Dostupno",
         "partial": "Djelomično",
         "stale": "Zastarjelo",
         "unavailable": "Nedostupno"
-      }
+      },
+      "macroSignals": "Makrosignali",
+      "crossStraitActivity": "Aktivnost preko tjesnaca",
+      "corporateDisclosures": "Korporativna razotkrivanja",
+      "corridorConditions": "Uvjeti koridora",
+      "activityNowcast": "Nowcast aktivnosti",
+      "decisionSignalsUnavailable": "Snimka signala odlučivanja Kine trenutno nije dostupna."
     }
   },
   "header": {
@@ -334,7 +338,7 @@
     "panelCatCommodityEcon": "Ekonomija i trgovina",
     "panelCatHappyNews": "Dobre vijesti",
     "panelCatHappyPlanet": "Planet i pomoć",
-    "embed": "Embed"
+    "embed": "Ugradi"
   },
   "panels": {
     "liveNews": "Vijesti uživo",
@@ -1061,7 +1065,7 @@
       "fytdLabel": "FY{{year}} YTD",
       "vsPriorFy": "vs FY{{year}}",
       "sourceWto": "WTO",
-      "sourceTreasury": "Američka blagajna",
+      "sourceTreasury": "Ministarstvo financija SAD-a",
       "colDate": "Datum",
       "colMonthly": "Mjesečno",
       "colFytd": "FY YTD",
@@ -1536,8 +1540,8 @@
       "sectionFollowing": "Following",
       "sectionAll": "All",
       "sourceStates": {
-        "degraded": "degraded",
-        "stale": "stale"
+        "degraded": "degradiran",
+        "stale": "zastario"
       }
     },
     "insights": {
@@ -1626,7 +1630,8 @@
       "sources_few": "{{count}} izvora",
       "provenanceTitle": "Pokrivanje izvora: koliko je unesenih članaka i različitih izvora odabrano za ovaj sažetak",
       "compiledFrom": "Sastavljeno od {{stories}} priča iz {{sources}} izvora",
-      "briefFreshness": "Generirano prije {{minutes}}m · najnoviji izvor star {{hours}}h"
+      "briefFreshness": "Generirano prije {{minutes}}m · najnoviji izvor star {{hours}}h",
+      "briefStoryDetails": "Story details ({{count}})"
     },
     "settings": {
       "dataManagementLabel": "Upravljanje podacima",
@@ -1706,10 +1711,10 @@
         "hoursAgo": "prije {{count}}h"
       },
       "infoTooltip": "<strong>Metodologija</strong> Kombinirana ocjena (0-100) koja uključuje:<ul><li>50% Nestabilnost zemlje (top 5 ponderirano)</li><li>30% Zone geografske konvergencije</li><li>20% Incidenti infrastrukture</li></ul>Automatski osvježava se svakih 5 minuta.",
-      "cachedCiiStatus": "Cached CII {{states}}",
+      "cachedCiiStatus": "Predmemorirani CII {{states}}",
       "sourceStates": {
-        "degraded": "degraded",
-        "stale": "stale"
+        "degraded": "degradiran",
+        "stale": "zastario"
       },
       "dataFreshness": "Data Freshness",
       "sourcesDetail": "{{active}}/{{total}} sources"
@@ -1843,7 +1848,26 @@
       "cafIndex": "CAF Indeks",
       "candidGrants": "Candid Grantovi",
       "dataLag": "Vremenski zamak podataka",
-      "infoTooltip": "<strong>Globalni indeks aktivnosti davanja</strong> Kompozitni indeks koji prati osobnu dobrotvornu davanja na platformama za skupljanje sredstava i kripto novčanike.<ul><li><strong>Platforme</strong>: GoFundMe, GlobalGiving, JustGiving uzorci kampanja</li><li><strong>Kripto</strong>: Prilivi na lancu dobrotvornih novčanika (Endaoment, Giving Block)</li><li><strong>Institucionalno</strong>: OECD ODA, CAF World Giving Index, Candid grantovi</li></ul>Indeks je smjerodavan (ne točan iznos u dolarima). Kombinira uzorkovanje u vremenu stvarnom s objavljenim godišnjim izvještajima."
+      "infoTooltip": "<strong>Globalni indeks aktivnosti davanja</strong> Kompozitni indeks koji prati osobnu dobrotvornu davanja na platformama za skupljanje sredstava i kripto novčanike.<ul><li><strong>Platforme</strong>: GoFundMe, GlobalGiving, JustGiving uzorci kampanja</li><li><strong>Kripto</strong>: Prilivi na lancu dobrotvornih novčanika (Endaoment, Giving Block)</li><li><strong>Institucionalno</strong>: OECD ODA, CAF World Giving Index, Candid grantovi</li></ul>Indeks je smjerodavan (ne točan iznos u dolarima). Kombinira uzorkovanje u vremenu stvarnom s objavljenim godišnjim izvještajima.",
+      "benchmarkTitle": "Globalne referentne vrijednosti davanja",
+      "benchmarkInfoTooltip": "<strong>Globalne referentne vrijednosti davanja</strong> Objavljeni zahtjevi platformi i institucija s izvornim razdobljima i statusom provjere. Godišnje cifre su procjene, a ne aktivnost u stvarnom vremenu.",
+      "status": {
+        "published": "Objavljene referentne vrijednosti s verificiranim izvornim pokrićem.",
+        "partial": "Objavljene referentne vrijednosti s djelomičnim izvornim pokrićem.",
+        "legacy": "Stara snimka; pojedinosti izvora nisu dostupne.",
+        "cached": "Prikazuje se snimka iz predmemorije; osvježavanje nije dostupno."
+      },
+      "trackedAnnualized": "Praćena davanja platforme — godišnja procjena",
+      "annualizedDaily": "Dnevna godišnja procjena",
+      "atLeast": "Najmanje",
+      "about": "Otprilike",
+      "sourceNotVerified": "Izvor nije verificiran",
+      "reportedCumulative": "Prijavljeni kumulativni ukupan iznos",
+      "sourcePeriod": "{{source}} · {{period}}",
+      "benchmark": "Objavljena referentna vrijednost",
+      "sourcesMethodology": "Izvori i metodologija",
+      "methodologyIntro": "U naslov ulaze samo verificirani godišnji ili opravdano anualizirani zahtjevi platformi. Kumulativne i institucionalne cifre ostaju zasebni kontekst.",
+      "partialEstimate": "Djelomično verificirana procjena"
     },
     "displacement": {
       "noData": "Nema podataka",
@@ -1884,6 +1908,8 @@
       "summaryFailed": "Sažetak neuspješan",
       "sources": "{{count}} izvora",
       "relatedAssetsNear": "Povezana sredstva blizu {{location}}",
+      "sourceCoverage": "{{covered}}/{{total}} izvora",
+      "sourceCoverageHint": "Prikazano {{covered}} od {{total}} uključenih izvora — ova ploča izmjenjuje svoje izvore pri svakom osvježavanju",
       "sortBy": "Sortiraj po",
       "sortNewest": "Najnovije",
       "sortRelevance": "Relevantnost"
@@ -2053,7 +2079,11 @@
       "infoTooltip": "<strong>Kaskada katastrofa</strong> Detektira konvergirajuće signale prirodnih katastrofa i infrastrukture:<ul><li>Korelira zemljotrese, šumske požare, poplave i ekstremne vremenske pojave</li><li>Prati kaskadne učinke na infrastrukturu i lanac opskrbe</li><li>Ističe regije s povećanim rizikom od više katastrofa</li></ul>Kliknite na karticu za uvećanje pogođene regije."
     },
     "markets": {
-      "infoTooltip": "<strong>Tržišta</strong> Životijedni indeksi dionica, dionice i cijene kriptovaluta. Prilagodite svoju listu praćenja gumbom Watchlist. Sparklines prikazuju nedavni trend cijena."
+      "infoTooltip": "<strong>Tržišta</strong> Životijedni indeksi dionica, dionice i cijene kriptovaluta. Prilagodite svoju listu praćenja gumbom Watchlist. Sparklines prikazuju nedavni trend cijena.",
+      "chart": {
+        "title": "Graf cijene {{symbol}}",
+        "close": "Zatvori graf"
+      }
     },
     "heatmap": {
       "infoTooltip": "<strong>Toplinska karta sektora</strong> Izvedba S&P 500 sektora na prvi pogled. Intenzitet boje odražava veličinu dnevne promjene. Zelena = dobit, Crvena = gubitak."
@@ -2416,11 +2446,101 @@
       "cta": "Nadogradi na Pro →",
       "dismiss": "Odbaci"
     },
+    "billingState": {
+      "onHoldDesc": "Plaćanje nije uspjelo. Ažurirajte način plaćanja kako biste vratili premium pristup.",
+      "onHoldBannerMessage": "Plaćanje nije uspjelo. Ažurirajte način plaćanja kako bi vaša pretplata ostala aktivna.",
+      "updatePayment": "Ažuriraj plaćanje",
+      "renewalPendingDesc": "Provjeravamo obnovu vaše pretplate. Premium pristup bit će automatski vraćen nakon potvrde.",
+      "refreshStatus": "Osvježi status",
+      "renewalFailedDesc": "Nismo mogli provjeriti obnovu vaše pretplate. Upravljajte naplatom ili kontaktirajte podršku ako se problem nastavi.",
+      "manageBilling": "Upravljanje naplatom",
+      "lapsedDesc": "Vaša Pro pretplata je istekla. Pretplatite se ponovno kako biste vratili premium pristup.",
+      "resubscribe": "Ponovno se pretplati"
+    },
     "checkoutFailureBanner": {
       "message": "Plaćanje nije moglo biti dovršeno. Nije izvršena nikakva naplata.",
       "retry": "Pokušaj ponovno",
       "retrying": "Ponovno pokušavam…",
       "dismiss": "Odbaci"
+    },
+    "proActivation": {
+      "badge": "PRO",
+      "progress": "Korak {{current}} od {{total}}",
+      "closeLabel": "Preskoči postavljanje",
+      "ariaLabel": "Postavljanje aktivacije Pro",
+      "signedInAs": "Prijavljeni ste kao {{email}}",
+      "steps": {
+        "brief": {
+          "heading": "Vaš dnevni pregled, svako jutro",
+          "body": "Kurirani obavještajni pregled u vašem pretincu svako jutro — noćni signali koji su bitni, sažeti u petominutno čitanje.",
+          "confirmCta": "Uključi moj jutarnji pregled",
+          "confirming": "Uključivanje…",
+          "doneNote": "Vaš jutarnji pregled već radi.",
+          "scheduleNote": "Zadržat ćemo vaše trenutno vrijeme dostave.",
+          "summaryLabel": "Jutarnji pregled",
+          "summaryVerified": "Uključeno — počinje s vašim sljedećim jutarnjim pregledom.",
+          "deliverAt": "Dostava u",
+          "previewLoading": "Priprema pregleda vašeg prvog izvještaja…",
+          "previewLabel": "Jutrošnji pregled"
+        },
+        "alerts": {
+          "heading": "Kritična upozorenja",
+          "body": "Primite obavijest u pregledniku kad se dogodi nešto veliko — eskalacije sukoba, tržišni šokovi, nove sankcije. Prilagodite učestalost bilo kada u Postavkama.",
+          "confirmCta": "Omogući upozorenja",
+          "confirming": "Omogućavanje…",
+          "doneNote": "Upozorenja u pregledniku već su uključena.",
+          "blockedNote": "Obavijesti su blokirane u vašem pregledniku. Uključite ih u postavkama stranice u vašem pregledniku kako biste primali upozorenja.",
+          "declinedNote": "Nema problema — nećemo slati obavijesti u pregledniku. Možete ih kasnije uključiti putem postavki stranice u vašem pregledniku.",
+          "summaryLabel": "Kritična upozorenja",
+          "summaryVerified": "Uključeno — kritični signali stizat će do vašeg preglednika."
+        },
+        "power": {
+          "heading": "Vaš Pro komplet alata",
+          "body": "Prilagođeni widgeti, MCP veze i AI istraživač su otključani. Izgradite nadzornu ploču koju stvarno želite pratiti.",
+          "confirmCta": "Istraži Pro alate",
+          "confirming": "Otvaranje…",
+          "doneNote": "Već koristite svoje Pro alate.",
+          "summaryLabel": "Pro komplet alata",
+          "summaryVerified": "Otključano i spremno kad i vi budete.",
+          "channelsNote": "Preferirate Telegram, Slack, Discord ili webhook?",
+          "pointers": {
+            "search": "Pretraži cijelu nadzornu ploču",
+            "widgets": "Izradi prilagođeni widget",
+            "analyst": "Pitaj AI analitičara",
+            "mcpClients": "Postavi MCP",
+            "channels": "Postavite ih u postavkama obavijesti"
+          }
+        }
+      },
+      "status": {
+        "pending": "Nije postavljeno",
+        "inFlight": "Postavljanje…",
+        "verified": "Spremno",
+        "failed": "Nije uspjelo",
+        "blocked": "Blokirano",
+        "unavailable": "Nedostupno",
+        "blockedNote": "Ovo trenutno nije dostupno — možete to postaviti kasnije u postavkama.",
+        "unavailableNote": "Ovo nije dostupno na vašem uređaju — možete to postaviti kasnije.",
+        "failedBody": "Nešto je pošlo po zlu. Možete pokušati ponovno ili to postaviti kasnije u postavkama.",
+        "retry": "Pokušaj ponovno"
+      },
+      "actions": {
+        "skip": "Preskoči za sada",
+        "continue": "Nastavi"
+      },
+      "summary": {
+        "heading": "Sve je spremno",
+        "subVerified": "Evo što radi na vašem računu.",
+        "subPending": "Postavljanje možete dovršiti bilo kada u postavkama.",
+        "linePending": "Još nije postavljeno — dovršite bilo kada u postavkama.",
+        "lineFailed": "Nismo uspjeli ovo postaviti — pokušajte ponovno u postavkama.",
+        "finish": "Idi na moju nadzornu ploču"
+      },
+      "chip": {
+        "message": "Dovršite postavljanje svog Pro računa.",
+        "action": "Dovrši postavljanje",
+        "dismissLabel": "Odbaci"
+      }
     },
     "frameworkSelector": {
       "label": "Analysis Framework",
@@ -2604,43 +2724,59 @@
       }
     },
     "mobileNav": {
-      "panelCategories": "Panel categories"
+      "panelCategories": "Kategorije ploča"
     },
     "panelFreshness": {
       "status": {
-        "fresh": "Fresh",
-        "stale": "Stale",
-        "veryStale": "Very stale",
-        "noData": "No data",
-        "disabled": "Disabled",
-        "error": "Error"
+        "fresh": "Svježe",
+        "stale": "Zastarjelo",
+        "veryStale": "Vrlo zastarjelo",
+        "noData": "Nema podataka",
+        "disabled": "Onemogućeno",
+        "error": "Greška"
       },
       "labelWithAge": "{{status}} {{age}}",
-      "title": "Data freshness: {{status}}. {{sources}}",
+      "title": "Svježina podataka: {{status}}. {{sources}}",
       "sourceDetail": "{{name}}: {{status}}, {{update}}",
       "sourceDetailWithHealth": "{{name}}: {{status}}, {{update}}, {{detail}}",
-      "lastUpdated": "last updated {{time}}",
-      "neverUpdated": "never updated",
+      "lastUpdated": "zadnje ažurirano {{time}}",
+      "neverUpdated": "nikada nije ažurirano",
       "health": {
-        "partialCoverage": "partial coverage",
-        "contentStale": "content stale",
-        "seedStale": "seed stale",
-        "noSourceData": "no source data",
-        "sourceErrorReported": "source error reported",
-        "freshnessStoreUnavailable": "freshness store unavailable",
-        "freshnessStoreDegraded": "freshness store degraded"
+        "partialCoverage": "djelomično pokrivanje",
+        "contentStale": "sadržaj zastario",
+        "seedStale": "seed zastario",
+        "noSourceData": "nema izvornih podataka",
+        "sourceErrorReported": "prijavljna greška izvora",
+        "freshnessStoreUnavailable": "pohrana svježine nedostupna",
+        "freshnessStoreDegraded": "pohrana svježine degradirana"
       },
       "time": {
-        "never": "never",
-        "justNow": "just now",
-        "minutesAgo": "{{count}}m ago",
-        "hoursAgo": "{{count}}h ago",
-        "daysAgo": "{{count}}d ago",
-        "compactNow": "now",
+        "never": "nikada",
+        "justNow": "upravo sad",
+        "minutesAgo": "prije {{count}}m",
+        "hoursAgo": "prije {{count}}h",
+        "daysAgo": "prije {{count}}d",
+        "compactNow": "sada",
         "compactMinutes": "{{count}}m",
         "compactHours": "{{count}}h",
         "compactDays": "{{count}}d"
       }
+    },
+    "exportGate": {
+      "signedOutDesc": "Prijavite se za izvoz podataka nadzorne ploče kao CSV, JSON ili PDF.",
+      "upgradeDesc": "Izvoz podataka (CSV, JSON, PDF) uključen je u Pro Business.",
+      "upgradeCta": "Nadogradi na Pro Business",
+      "lockedAriaLabel": "Izvezi podatke — zaključano. {{reason}}",
+      "unlockedAnnouncement": "Izvoz podataka je otključan.",
+      "preparingPdf": "Priprema PDF-a…",
+      "pdfFailed": "PDF izvješće nije moglo biti generirano. Pokušajte ponovo ili koristite JSON izvoz."
+    },
+    "tabCap": {
+      "signedOutDesc": "Radni prostori bez prijave ograničeni su na {{cap}} kartica. Prijavite se za dodavanje više.",
+      "upgradeDesc": "Dostigli ste ograničenje od {{cap}} kartica nadzorne ploče.",
+      "upgradeCta": "Nadogradi za više",
+      "lockedAriaLabel": "Dodaj karticu — zaključano. {{reason}}",
+      "unlockedAnnouncement": "Ograničenje kartica nadzorne ploče ukinuto."
     }
   },
   "popups": {
@@ -3407,16 +3543,42 @@
     "visualizationFailed": "Vizualizacija nije uspjela"
   },
   "dashboardTabs": {
-    "ariaLabel": "Dashboard tabs",
-    "defaultName": "Main",
-    "newTabName": "New Tab",
-    "newTabCreated": "New tab created",
-    "tabDeleted": "Tab \"{{name}}\" deleted",
-    "addTab": "Add tab",
-    "addTabTitle": "New tab (starts with the default panels)",
-    "renameHint": "{{name}} — double-click to rename",
-    "deleteTab": "Delete tab",
-    "deleteTabAria": "Delete tab {{name}}",
-    "tabNameAria": "Tab name"
+    "ariaLabel": "Kartice nadzorne ploče",
+    "defaultName": "Glavna",
+    "newTabName": "Nova kartica",
+    "newTabCreated": "Nova kartica je stvorena",
+    "tabDeleted": "Kartica \"{{name}}\" je obrisana",
+    "addTab": "Dodaj karticu",
+    "addTabTitle": "Nova kartica (počinje s zadanim pločama)",
+    "renameHint": "{{name}} — dvaput kliknite za preimenovanje",
+    "deleteTab": "Obriši karticu",
+    "deleteTabAria": "Obriši karticu {{name}}",
+    "tabNameAria": "Naziv kartice"
+  },
+  "theaterPresets": {
+    "label": "Paketi pokrivenosti",
+    "applied": "Paket {{preset}} primijenjen: omogućena su {{count}} izvora",
+    "alreadyApplied": "Paket {{preset}} već je primijenjen",
+    "ukraineWar": {
+      "label": "Rat u Ukrajini",
+      "description": "Omogućite glavne ukrajinske medije, neovisni ruski tisak i izvore za procjenu bojišta"
+    },
+    "indoPacific": {
+      "label": "Indo-Pacifik / Tajvan",
+      "description": "Omogućite sigurnosne izvore iz Tajvana, Pakistana i jugoistočne Azije"
+    },
+    "sahelWestAfrica": {
+      "label": "Sahel i zapadna Afrika",
+      "description": "Omogućite lokalne izvore iz Sahela, Nigerije i zapadne Afrike"
+    },
+    "caucasusCentralAsia": {
+      "label": "Kavkaz i srednja Azija",
+      "description": "Omogućite regionalne izvore iz Južnog Kavkaza i srednje Azije"
+    },
+    "middleEastFlashpoints": {
+      "label": "Žarišta na Bliskom istoku",
+      "description": "Omogućite izvore o Iranu, Izraelu, Zaljevu i kurdskim regijama"
+    },
+    "unavailable": "Paket {{preset}} nije dostupan s vašim trenutačnim panelima"
   }
 }

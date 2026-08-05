@@ -87,7 +87,7 @@ export function deriveWtoSeverityStatus(value) {
 
 // ─── Shipping Rates (FRED) ───
 
-const SHIPPING_SERIES = [
+export const SHIPPING_SERIES = [
   { seriesId: 'PCU483111483111', name: 'Deep Sea Freight Producer Price Index', unit: 'index', frequency: 'm' },
   { seriesId: 'TSIFRGHT', name: 'Freight Transportation Services Index', unit: 'index', frequency: 'm' },
 ];
@@ -101,6 +101,24 @@ function detectSpike(history) {
   const stdDev = Math.sqrt(variance);
   if (stdDev === 0) return false;
   return values[values.length - 1] > mean + 2 * stdDev;
+}
+
+// Build one shipping-index entry from a FRED `series/observations` envelope, or
+// null when the series carries no usable observation. Exported for the same
+// reason as `parseBdiIndices` — the #6078 contract gate must diff the real
+// published shape, not a re-implementation of it.
+export function parseFredShippingIndex(cfg, data) {
+  const observations = (data?.observations || [])
+    .map(o => { const v = parseFloat(o.value); return Number.isNaN(v) || o.value === '.' ? null : { date: o.date, value: v }; })
+    .filter(Boolean).reverse();
+  if (observations.length === 0) return null;
+  const current = observations[observations.length - 1].value;
+  const previous = observations.length > 1 ? observations[observations.length - 2].value : current;
+  const changePct = previous !== 0 ? ((current - previous) / previous) * 100 : 0;
+  return {
+    indexId: cfg.seriesId, name: cfg.name, currentValue: current, previousValue: previous,
+    changePct, unit: cfg.unit, history: observations, spikeAlert: detectSpike(observations),
+  };
 }
 
 async function fetchShippingRates() {
@@ -119,17 +137,9 @@ async function fetchShippingRates() {
         return null;
       });
       if (!data) continue;
-      const observations = (data.observations || [])
-        .map(o => { const v = parseFloat(o.value); return Number.isNaN(v) || o.value === '.' ? null : { date: o.date, value: v }; })
-        .filter(Boolean).reverse();
-      if (observations.length === 0) continue;
-      const current = observations[observations.length - 1].value;
-      const previous = observations.length > 1 ? observations[observations.length - 2].value : current;
-      const changePct = previous !== 0 ? ((current - previous) / previous) * 100 : 0;
-      indices.push({
-        indexId: cfg.seriesId, name: cfg.name, currentValue: current, previousValue: previous,
-        changePct, unit: cfg.unit, history: observations, spikeAlert: detectSpike(observations),
-      });
+      const index = parseFredShippingIndex(cfg, data);
+      if (!index) continue;
+      indices.push(index);
       await sleep(200);
     } catch (e) {
       console.warn(`  FRED ${cfg.seriesId}: ${e.message}`);
@@ -141,6 +151,81 @@ async function fetchShippingRates() {
 
 // ─── Container Indices (Shanghai Shipping Exchange) ───
 
+function finiteOrNull(value) {
+  return typeof value === 'number' && Number.isFinite(value) ? value : null;
+}
+
+function validSseDate(value) {
+  if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return null;
+  const [year, month, day] = value.split('-').map(Number);
+  const date = new Date(Date.UTC(year, month - 1, day));
+  return date.getUTCFullYear() === year
+    && date.getUTCMonth() === month - 1
+    && date.getUTCDate() === day
+    ? value
+    : null;
+}
+
+// Parse one Shanghai Shipping Exchange `currentIndex` envelope (issue #6066).
+//
+// `changePct` / `previousValue` are the legacy display fields, kept as-is so the
+// supply-chain UI keeps rendering (it does unguarded arithmetic on them). They carry
+// SSE's real percentage when it publishes one, but FABRICATE a flat 0 / the current
+// level when it does not — so they cannot distinguish "SSE published an unchanged
+// week" from "SSE published no prior at all" and must never be consumed as evidence
+// of a period-over-period move.
+//
+// `periodChangePct` is the decision-grade field and fails CLOSED. It is null unless
+// SSE published its own percentage, or a comparable prior-period level this function
+// differences against — `periodChangeBasis` names which of the two it came from.
+// A single index level never becomes a change. It is also null when SSE does not
+// provide a real calendar date: an undateable change must not be stamped with a
+// retrieval or synthetic date downstream and pass the freshness budget forever.
+export function parseSseIndexResponse(json, indexId, dataItemType, displayName, unit) {
+  const lines = json?.data?.lineDataList;
+  if (!Array.isArray(lines)) return [];
+  const composite = lines.find(l => l.dataItemTypeName === dataItemType);
+  if (!composite) return [];
+  const currentValue = composite.currentContent;
+  const previousValue = composite.lastContent;
+  if (typeof currentValue !== 'number' || !Number.isFinite(currentValue)) return [];
+  const changePct = typeof composite.percentage === 'number' ? composite.percentage
+    : (previousValue > 0 ? ((currentValue - previousValue) / previousValue) * 100 : 0);
+
+  // An undated observation is not a dateable change. Keep the display record, but
+  // preserve an explicit null marker so history accumulation cannot invent a date.
+  const publishedDate = validSseDate(json.data?.currentDate);
+  const publishedChangePct = finiteOrNull(composite.percentage);
+  const priorPeriodValue = finiteOrNull(previousValue);
+  const derivedChangePct = publishedChangePct === null && priorPeriodValue !== null
+    && priorPeriodValue !== 0
+    ? ((currentValue - priorPeriodValue) / Math.abs(priorPeriodValue)) * 100
+    : null;
+  const provenChangePct = publishedDate === null
+    ? null
+    : publishedChangePct ?? derivedChangePct;
+  const periodChangeBasis = provenChangePct === null
+    ? null
+    : publishedChangePct !== null
+      ? 'publisher_reported'
+      : 'derived_from_prior_period_level';
+
+  return [{
+    indexId, name: displayName, currentValue, previousValue: previousValue ?? currentValue,
+    changePct,
+    periodChangePct: provenChangePct,
+    periodChangeBasis,
+    // Both prior-period facts describe the comparison the change was measured
+    // against, so neither is published without a change to attach them to.
+    priorPeriodValue: provenChangePct === null ? null : priorPeriodValue,
+    priorPeriodDate: provenChangePct !== null
+      ? validSseDate(json.data?.lastDate)
+      : null,
+    unit, history: [], spikeAlert: false,
+    _observationDate: publishedDate,
+  }];
+}
+
 async function fetchSSEIndex(indexName, indexId, dataItemType, displayName, unit) {
   try {
     const resp = await fetch(`https://en.sse.net.cn/currentIndex?indexName=${indexName}`, {
@@ -149,20 +234,13 @@ async function fetchSSEIndex(indexName, indexId, dataItemType, displayName, unit
     });
     if (!resp.ok) { console.warn(`  SSE ${indexName}: HTTP ${resp.status}`); return []; }
     const json = await resp.json();
-    const lines = json?.data?.lineDataList;
-    if (!Array.isArray(lines)) { console.warn(`  SSE ${indexName}: no lineDataList`); return []; }
-    const composite = lines.find(l => l.dataItemTypeName === dataItemType);
-    if (!composite) { console.warn(`  SSE ${indexName}: ${dataItemType} not found`); return []; }
-    const currentValue = composite.currentContent;
-    const previousValue = composite.lastContent;
-    if (typeof currentValue !== 'number') return [];
-    const changePct = typeof composite.percentage === 'number' ? composite.percentage
-      : (previousValue > 0 ? ((currentValue - previousValue) / previousValue) * 100 : 0);
-    const observationDate = json.data?.currentDate || new Date().toISOString().slice(0, 10);
-    return [{
-      indexId, name: displayName, currentValue, previousValue: previousValue ?? currentValue,
-      changePct, unit, history: [], spikeAlert: false, _observationDate: observationDate,
-    }];
+    if (!Array.isArray(json?.data?.lineDataList)) {
+      console.warn(`  SSE ${indexName}: no lineDataList`);
+      return [];
+    }
+    const parsed = parseSseIndexResponse(json, indexId, dataItemType, displayName, unit);
+    if (parsed.length === 0) console.warn(`  SSE ${indexName}: ${dataItemType} not usable`);
+    return parsed;
   } catch (e) {
     console.warn(`  SSE ${indexName}: ${e.message}`);
     return [];
@@ -187,6 +265,64 @@ const BDI_INDEX_MAP = [
   { label: 'Handysize', id: 'BHSI', name: 'BHSI - Baltic Handysize Index' },
 ];
 
+// Parse the HandyBulk article body into shipping-index entries. Exported so the
+// #6078 contract gate exercises the REAL producer — a mirrored copy in the test
+// file drifts silently from production, which is exactly how the payload grew
+// four fields `ShippingIndex` never declared (#6066/#6074).
+export function parseBdiIndices(html) {
+  // Parse article date from heading (e.g., "13-March-2026" or "13-Mar-2026").
+  //
+  // `new Date("March 13, 2026")` yields LOCAL midnight, so toISOString() shifts
+  // it back a day everywhere east of UTC — the heading date and the fallback
+  // below (which is UTC) would disagree by a day depending on where the seeder
+  // runs. Re-read the parsed calendar components as UTC so the stamp is the date
+  // the article states, in every timezone. This feeds accumulateHistory's
+  // dedup key and supplyChainContentMeta's content-age, both of which are
+  // date-keyed, so an off-by-one silently re-dates history points.
+  const dateMatch = html.match(/(\d{1,2})-(\w+)-(\d{4})/);
+  let articleDate = new Date().toISOString().slice(0, 10);
+  if (dateMatch) {
+    const parsed = new Date(`${dateMatch[2]} ${dateMatch[1]}, ${dateMatch[3]}`);
+    if (!Number.isNaN(parsed.getTime())) {
+      articleDate = new Date(Date.UTC(parsed.getFullYear(), parsed.getMonth(), parsed.getDate()))
+        .toISOString().slice(0, 10);
+    }
+  }
+
+  const indices = [];
+  for (const cfg of BDI_INDEX_MAP) {
+    const patterns = [
+      new RegExp(`Baltic ${cfg.label} Index \\(${cfg.id}\\)[^.]*?(?:reach|to|at)\\s+([\\d,]+)\\s*points`, 'i'),
+      new RegExp(`${cfg.id}[^.]*?(?:reach|to|at)\\s+([\\d,]+)\\s*points`, 'i'),
+      new RegExp(`Baltic ${cfg.label} Index \\(${cfg.id}\\)[^.]*?([\\d,]+)\\s*points`, 'i'),
+    ];
+    let currentValue = null;
+    for (const re of patterns) {
+      const m = html.match(re);
+      if (m) { currentValue = parseFloat(m[1].replace(/,/g, '')); break; }
+    }
+    if (currentValue == null || !Number.isFinite(currentValue)) continue;
+
+    let changePct = 0;
+    let previousValue = currentValue;
+    const deltaRe = new RegExp(`${cfg.id}\\)?[^.]*?(increased|decreased|gained|lost|dropped|rose)\\s+by\\s+([\\d,]+)\\s+points`, 'i');
+    const deltaMatch = html.match(deltaRe);
+    if (deltaMatch) {
+      const delta = parseFloat(deltaMatch[2].replace(/,/g, ''));
+      const isNeg = /decreased|lost|dropped/i.test(deltaMatch[1]);
+      const signedDelta = isNeg ? -delta : delta;
+      previousValue = currentValue - signedDelta;
+      changePct = previousValue !== 0 ? (signedDelta / previousValue) * 100 : 0;
+    }
+
+    indices.push({
+      indexId: cfg.id, name: cfg.name, currentValue, previousValue,
+      changePct, unit: 'index', history: [], spikeAlert: false, _observationDate: articleDate,
+    });
+  }
+  return indices;
+}
+
 async function fetchBDI() {
   try {
     const resp = await fetch('https://www.handybulk.com/baltic-dry-index/', {
@@ -203,45 +339,7 @@ async function fetchBDI() {
     const html = await resp.text();
     if (html.length > 1_000_000) { console.warn('  BDI: body too large'); return []; }
 
-    // Parse article date from heading (e.g., "13-March-2026" or "13-Mar-2026")
-    const dateMatch = html.match(/(\d{1,2})-(\w+)-(\d{4})/);
-    let articleDate = new Date().toISOString().slice(0, 10);
-    if (dateMatch) {
-      const parsed = new Date(`${dateMatch[2]} ${dateMatch[1]}, ${dateMatch[3]}`);
-      if (!Number.isNaN(parsed.getTime())) articleDate = parsed.toISOString().slice(0, 10);
-    }
-
-    const indices = [];
-    for (const cfg of BDI_INDEX_MAP) {
-      const patterns = [
-        new RegExp(`Baltic ${cfg.label} Index \\(${cfg.id}\\)[^.]*?(?:reach|to|at)\\s+([\\d,]+)\\s*points`, 'i'),
-        new RegExp(`${cfg.id}[^.]*?(?:reach|to|at)\\s+([\\d,]+)\\s*points`, 'i'),
-        new RegExp(`Baltic ${cfg.label} Index \\(${cfg.id}\\)[^.]*?([\\d,]+)\\s*points`, 'i'),
-      ];
-      let currentValue = null;
-      for (const re of patterns) {
-        const m = html.match(re);
-        if (m) { currentValue = parseFloat(m[1].replace(/,/g, '')); break; }
-      }
-      if (currentValue == null || !Number.isFinite(currentValue)) continue;
-
-      let changePct = 0;
-      let previousValue = currentValue;
-      const deltaRe = new RegExp(`${cfg.id}\\)?[^.]*?(increased|decreased|gained|lost|dropped|rose)\\s+by\\s+([\\d,]+)\\s+points`, 'i');
-      const deltaMatch = html.match(deltaRe);
-      if (deltaMatch) {
-        const delta = parseFloat(deltaMatch[2].replace(/,/g, ''));
-        const isNeg = /decreased|lost|dropped/i.test(deltaMatch[1]);
-        const signedDelta = isNeg ? -delta : delta;
-        previousValue = currentValue - signedDelta;
-        changePct = previousValue !== 0 ? (signedDelta / previousValue) * 100 : 0;
-      }
-
-      indices.push({
-        indexId: cfg.id, name: cfg.name, currentValue, previousValue,
-        changePct, unit: 'index', history: [], spikeAlert: false, _observationDate: articleDate,
-      });
-    }
+    const indices = parseBdiIndices(html);
     console.log(`  BDI: ${indices.length} indices parsed`);
     return indices;
   } catch (e) {
@@ -252,9 +350,17 @@ async function fetchBDI() {
 
 // ─── History accumulation (inline in canonical payload) ───
 
-function accumulateHistory(newIndices, previousPayload) {
+export function accumulateHistory(newIndices, previousPayload) {
   if (!previousPayload?.indices?.length) {
-    for (const idx of newIndices) delete idx._observationDate;
+    for (const idx of newIndices) {
+      const hasObservationDate = Object.prototype.hasOwnProperty.call(idx, '_observationDate');
+      if (idx.history?.length === 0 && typeof idx._observationDate === 'string') {
+        idx.history = [{ date: idx._observationDate, value: idx.currentValue }];
+      }
+      // An explicit null means the source did not date this observation. Do not
+      // replace it with today; the adapter must see it as stale/undated.
+      if (hasObservationDate) delete idx._observationDate;
+    }
     return newIndices;
   }
   const prevMap = new Map();
@@ -266,7 +372,13 @@ function accumulateHistory(newIndices, previousPayload) {
     const prev = prevMap.get(idx.indexId);
     const existingHistory = prev?.history ?? [];
     if (idx.history?.length > 0) { delete idx._observationDate; continue; }
-    const obsDate = idx._observationDate || fallbackDate;
+    const hasObservationDate = Object.prototype.hasOwnProperty.call(idx, '_observationDate');
+    if (hasObservationDate && typeof idx._observationDate !== 'string') {
+      idx.history = existingHistory.slice(-24);
+      delete idx._observationDate;
+      continue;
+    }
+    const obsDate = hasObservationDate ? idx._observationDate : fallbackDate;
     const last = existingHistory[existingHistory.length - 1];
     const newHistory = [...existingHistory];
     if (!last || last.date !== obsDate) {

@@ -15,6 +15,7 @@ const brotliCompressAsync = promisify(brotliCompress);
 const DESKTOP_AUTH_SECRET_ENV = 'WM_DESKTOP_SHARED_SECRET';
 const DESKTOP_AUTH_TIMESTAMP_HEADER = 'X-WorldMonitor-Desktop-Timestamp';
 const DESKTOP_AUTH_SIGNATURE_HEADER = 'X-WorldMonitor-Desktop-Signature';
+const LOCAL_API_TRANSPORT_HEADER = 'x-worldmonitor-local-token';
 
 // Monkey-patch globalThis.fetch to force IPv4 for HTTPS requests.
 // Node.js built-in fetch (undici) tries IPv6 first via Happy Eyeballs.
@@ -86,6 +87,15 @@ function isTransientVerificationError(error) {
 let _activeUpstream = 0;
 const _upstreamQueue = [];
 const MAX_CONCURRENT_UPSTREAM = 6;
+// Inactivity timeout for ipv4Fetch's upstream requests. req.setTimeout fires
+// after this many ms with NO socket activity (it resets on data, so a slow
+// but active transfer is unaffected) -- protects against a peer that accepts
+// the connection and then goes fully silent (no FIN/RST, no more bytes),
+// which none of the other terminal-event listeners below ever observe.
+// Matches fetchWithTimeout()'s own default timeoutMs for consistency.
+// Mutable (not const) only so tests can shrink it -- production always runs
+// at the default.
+let _upstreamIdleTimeoutMs = 12000;
 function acquireUpstreamSlot() {
   if (_activeUpstream < MAX_CONCURRENT_UPSTREAM) {
     _activeUpstream++;
@@ -229,10 +239,27 @@ globalThis.fetch = async function ipv4Fetch(input, init) {
     if (pinned) {
       requestOptions.lookup = makePinnedLookup(pinned.address, pinned.family);
     }
+    // Settle idempotently and reject on every stream event that can leave a
+    // response mid-flight (upstream accepts the connection, sends headers,
+    // then stalls) — not just `res 'end'` / `req 'error'`. Without this, a
+    // stalled response never settles the Promise, the `finally` below never
+    // runs, and one upstream slot leaks permanently (#5441).
     return await new Promise((resolve, reject) => {
+      let settled = false;
+      const settle = (fn, v) => { if (settled) return; settled = true; fn(v); };
+      // Check before ever dispatching to the network: if the caller's signal
+      // already fired (e.g. while we were awaiting the SSRF check or the
+      // upstream-slot queue above), honor it now instead of wasting a slot
+      // on a request nobody wants (#5441 follow-up review).
+      if (init?.signal?.aborted) {
+        settle(reject, new Error('aborted by signal'));
+        return;
+      }
       const req = mod.request(requestOptions, (res) => {
         const chunks = [];
         res.on('data', (c) => chunks.push(c));
+        res.on('error', (e) => settle(reject, e));
+        res.on('aborted', () => settle(reject, new Error('upstream response aborted mid-body')));
         res.on('end', () => {
           const buf = Buffer.concat(chunks);
           const responseHeaders = new Headers();
@@ -240,14 +267,24 @@ globalThis.fetch = async function ipv4Fetch(input, init) {
             if (v) responseHeaders.set(k, Array.isArray(v) ? v.join(', ') : v);
           }
           try {
-            resolve(buildSafeResponse(res.statusCode, res.statusMessage, responseHeaders, buf));
+            settle(resolve, buildSafeResponse(res.statusCode, res.statusMessage, responseHeaders, buf));
           } catch (error) {
-            reject(error);
+            settle(reject, error);
           }
         });
       });
-      req.on('error', reject);
-      if (init?.signal) { init.signal.addEventListener('abort', () => req.destroy()); }
+      req.on('error', (e) => settle(reject, e));
+      req.on('close', () => settle(reject, new Error('request closed before completion')));
+      // Catches a peer that accepts the connection and then goes silent
+      // forever (no error, no close, no data) -- the only stall shape none
+      // of the listeners above ever observe.
+      req.setTimeout(_upstreamIdleTimeoutMs, () => {
+        req.destroy();
+        settle(reject, new Error('upstream request idle-timed out'));
+      });
+      if (init?.signal) {
+        init.signal.addEventListener('abort', () => { req.destroy(); settle(reject, new Error('aborted by signal')); });
+      }
       if (body != null) req.write(body);
       req.end();
     });
@@ -555,6 +592,7 @@ async function proxyToCloud(requestUrl, req, remoteBase) {
   const target = `${remoteBase}${requestUrl.pathname}${requestUrl.search}`;
   const body = ['GET', 'HEAD'].includes(req.method) ? undefined : await readBody(req);
   const headers = toHeaders(req.headers, { stripOrigin: true });
+  headers.delete(LOCAL_API_TRANSPORT_HEADER);
   // Strip sidecar auth token — meaningless to cloud API.
   headers.delete('Authorization');
   // Strip conditional headers so cloud always returns fresh 200, not 304.
@@ -598,6 +636,7 @@ async function proxyRegisterInterestToCloud(requestUrl, req, context) {
   };
   const body = JSON.stringify(normalizedPayload);
   const headers = toHeaders(req.headers, { stripOrigin: true });
+  headers.delete(LOCAL_API_TRANSPORT_HEADER);
   headers.delete('Authorization');
   headers.delete('If-None-Match');
   headers.delete('If-Modified-Since');
@@ -1406,7 +1445,10 @@ async function dispatch(requestUrl, req, routes, context) {
     return json({ error: 'Service misconfigured: LOCAL_API_TOKEN not set' }, 503);
   }
   const authHeader = req.headers.authorization || '';
-  if (authHeader !== `Bearer ${expectedToken}`) {
+  const transportToken = req.headers[LOCAL_API_TRANSPORT_HEADER] || '';
+  const hasTransportAuth = transportToken === expectedToken;
+  const hasLegacyAuth = authHeader === `Bearer ${expectedToken}`;
+  if (!hasTransportAuth && !hasLegacyAuth) {
     context.logger.warn(`[local-api] unauthorized request to ${requestUrl.pathname}`);
     return json({ error: 'Unauthorized' }, 401);
   }
@@ -1696,6 +1738,13 @@ async function dispatch(requestUrl, req, routes, context) {
     const body = ['GET', 'HEAD'].includes(req.method) ? undefined : await readBody(req);
     const hdrs = toHeaders(req.headers, { stripOrigin: true });
     hdrs.set('Origin', `http://127.0.0.1:${context.port}`);
+    // The transport credential authenticates the nginx/sidecar hop only. Do
+    // not expose it to route handlers, where Authorization is caller identity
+    // (OAuth bearer) and X-WorldMonitor-Key is the caller's API key.
+    hdrs.delete(LOCAL_API_TRANSPORT_HEADER);
+    if (hdrs.get('Authorization') === `Bearer ${expectedToken}`) {
+      hdrs.delete('Authorization');
+    }
     const request = new Request(requestUrl.toString(), {
       method: req.method,
       headers: hdrs,
@@ -1728,6 +1777,15 @@ async function dispatch(requestUrl, req, routes, context) {
     return json({ error: 'Local handler error', reason, endpoint: requestUrl.pathname }, 502);
   }
 }
+
+// Test seam: lets tests shrink ipv4Fetch's upstream idle timeout so a
+// silent-stall test doesn't have to wait out the real 12s production value.
+// Production code never calls this.
+export const __testing__ = {
+  setUpstreamIdleTimeoutMs(ms) {
+    _upstreamIdleTimeoutMs = ms;
+  },
+};
 
 export async function createLocalApiServer(options = {}) {
   const context = resolveConfig(options);
@@ -1828,22 +1886,33 @@ export async function createLocalApiServer(options = {}) {
       const boundPort = typeof address === 'object' && address?.port ? address.port : context.port;
       context.port = boundPort;
       const extraAllowedPrivateOrigins = [];
-      // Docker self-host ONLY: the Redis REST proxy (UPSTASH_REDIS_REST_URL)
-      // points at an internal private host (e.g. http://redis-rest:80 on a
-      // docker network). Without trusting it the SSRF guard blocks every Redis
-      // call and all /api/* return 503 REDIS_DOWN. Gated on mode === 'docker'
-      // so desktop/production startup never widens the SSRF boundary via env
-      // — the same containment as the cloudFallback=false docker policy above,
-      // and the programmatic allowPrivateFetchOrigins escape hatch stays
-      // env-free. On desktop UPSTASH_REDIS_REST_URL is a public Upstash https
-      // origin that already passes the SSRF check, so this path is docker-only.
-      if (context.mode === 'docker' && process.env.UPSTASH_REDIS_REST_URL) {
-        try {
-          extraAllowedPrivateOrigins.push(new URL(process.env.UPSTASH_REDIS_REST_URL).origin);
-        } catch (err) {
-          context.logger.warn(
-            `[local-api] UPSTASH_REDIS_REST_URL is not a valid URL; not added to the private-fetch allowlist (Redis calls will be SSRF-blocked): ${err.message}`,
-          );
+      if (context.mode === 'docker') {
+        const addConfiguredPrivateOrigin = (envKey, blockedService) => {
+          const rawUrl = process.env[envKey];
+          if (!rawUrl) return;
+          try {
+            extraAllowedPrivateOrigins.push(new URL(rawUrl).origin);
+          } catch (err) {
+            context.logger.warn(
+              `[local-api] ${envKey} is not a valid URL; not added to the private-fetch allowlist (${blockedService}): ${err.message}`,
+            );
+          }
+        };
+
+        // Docker self-host ONLY: the Redis REST proxy (UPSTASH_REDIS_REST_URL)
+        // points at an internal private host (e.g. http://redis-rest:80 on a
+        // docker network). Without trusting it the SSRF guard blocks every Redis
+        // call and all /api/* return 503 REDIS_DOWN. On desktop,
+        // UPSTASH_REDIS_REST_URL is a public Upstash https origin that already
+        // passes the SSRF check, so this path is docker-only.
+        addConfiguredPrivateOrigin('UPSTASH_REDIS_REST_URL', 'Redis calls will be SSRF-blocked');
+
+        // SELF_HOSTING.md documents LLM_API_URL for compose-network or LAN
+        // endpoints; OLLAMA_API_URL is the supported desktop runtime setting.
+        // Without trusting their exact configured origins, the global SSRF
+        // guard blocks every private LLM probe and silently skips the provider.
+        for (const envKey of ['LLM_API_URL', 'OLLAMA_API_URL']) {
+          addConfiguredPrivateOrigin(envKey, 'LLM calls will be SSRF-blocked');
         }
       }
       if (context.allowPrivateRemoteBase) {

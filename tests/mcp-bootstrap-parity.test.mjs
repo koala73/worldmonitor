@@ -15,7 +15,6 @@ import assert from 'node:assert/strict';
 
 import { __testing__ as healthTesting } from '../api/health.js';
 import { __testing__ as mcpTesting } from '../api/mcp.ts';
-import { CII_RISK_SCORE_CACHE_KEYS } from '../api/_cii-risk-cache-keys.js';
 
 const { BOOTSTRAP_KEYS, STANDALONE_KEYS } = healthTesting;
 const { TOOL_REGISTRY } = mcpTesting;
@@ -60,6 +59,10 @@ const EXCLUDED_FROM_MCP = new Map([
     'ops surface: per-source procurement availability, freshness, and record count; consumed by api/health.js while tender content is exposed through the bounded MCP procurement tool, which proxies the paginated economic RPC.'],
   ['economic:global-tenders:v1:source:world-bank',
     'ops surface: per-source procurement availability, freshness, and record count; consumed by api/health.js while tender content is exposed through the bounded MCP procurement tool, which proxies the paginated economic RPC.'],
+  ['military:cross-strait-activity:v1:source:taiwan-mnd',
+    'operational: Taiwan MND transport status, errors, and last-success time consumed by api/health.js; #5580 owns final MCP composition for the separately attributed official activity records.'],
+  ['military:cross-strait-activity:v1:source:japan-mod',
+    'operational: Japan Joint Staff transport status, errors, and last-success time consumed by api/health.js; #5580 owns final MCP composition for the separately attributed reviewed activity records.'],
 
   // ===========================================================================
   // Intermediate / pipeline keys (data surfaces through a sibling tool)
@@ -67,7 +70,9 @@ const EXCLUDED_FROM_MCP = new Map([
   ['supply_chain:corridorrisk:v1',
     'intermediate: data flows through transit-summaries:v1 (matches api/health.js:461 ON_DEMAND_KEYS rationale; explicitly NOT bundled into get_chokepoint_status to avoid duplicate exposure).'],
   ['military:forecast-inputs:stale:v1',
-    'intermediate: seed-to-seed pipeline key, only populated after seed-military-flights runs (matches api/health.js:463 ON_DEMAND_KEYS rationale).'],
+    'intermediate: late-stage seed-to-seed pipeline output, health-monitored with its own freshness budget; no direct MCP slice exists.'],
+  ['military:surges:stale:v1',
+    'cascade-mirror: stale fallback of military:surges:v1, which is covered by get_military_surge; this copy is retained for the health freshness probe.'],
   ['intelligence:military-cii:v1',
     'intermediate: per-country military-presence aggregate (own/foreign flights+vessels, AIS disruption buckets) read by server/worldmonitor/intelligence/v1/get-risk-scores.ts to feed the CII Security component; surfaces transitively via the country-risk score returned by get_country_risk. Not a queryable MCP slice on its own.'],
   ['weather:hko-warnings:v1',
@@ -76,18 +81,10 @@ const EXCLUDED_FROM_MCP = new Map([
   // ===========================================================================
   // Cascade-mirror fallbacks (live/stale/backup of a sibling already exposed)
   // ===========================================================================
-  ['theater-posture:sebuf:v1',
-    'cascade-mirror: live counterpart of theater_posture:sebuf:stale:v1 (covered by get_military_posture). CASCADE_GROUPS theaterPosture entry.'],
   ['theater-posture:sebuf:backup:v1',
     'cascade-mirror: backup counterpart of theater_posture:sebuf:stale:v1 (covered by get_military_posture). CASCADE_GROUPS theaterPosture entry.'],
-  [CII_RISK_SCORE_CACHE_KEYS.live,
-    `cascade-mirror: live counterpart of ${CII_RISK_SCORE_CACHE_KEYS.stale} (covered by get_conflict_events).`],
-  ['military:flights:v1',
-    'cascade-mirror: live counterpart of military:flights:stale:v1 — deferred to a future expanded military tool (no current tool exposes either variant).'],
   ['military:flights:stale:v1',
     'cascade-mirror: stale fallback of military:flights:v1 — deferred to a future expanded military tool. CASCADE_GROUPS militaryFlights entry.'],
-  ['usni-fleet:sebuf:v1',
-    'cascade-mirror: live USNI fleet — deferred to a future military-fleet tool (no current tool exposes either variant).'],
   ['usni-fleet:sebuf:stale:v1',
     'cascade-mirror: stale USNI fleet — deferred to a future military-fleet tool.'],
   ['displacement:summary:v1:' + (new Date().getUTCFullYear() - 1),
@@ -100,6 +97,8 @@ const EXCLUDED_FROM_MCP = new Map([
     'cascade-mirror: RPC variant of cyber:threats-bootstrap:v2 (covered by get_cyber_threats). Same seed-meta key (seed-meta:cyber:threats).'],
   ['conflict:ucdp-events-bootstrap:v1',
     'cascade-mirror: pre-compacted dashboard view of conflict:ucdp-events:v1 (covered by get_conflict_events). Carries the 150 rows the panel renders plus precomputed classifications/aggregates; agents must read the canonical key, which carries all 2,000 events (#5300).'],
+  ['conflict:humanitarian:v1',
+    'deferred: per-country monthly humanitarian conflict-event/fatality aggregates (HDX HAPI) seeded by scripts/seed-conflict-intel.mjs. Different shape from get_conflict_events (event lists with geo-coordinates, not per-country monthly counts) — not a trivial _coverageKeys addition. No dedicated humanitarian/aid MCP tool exists yet; file a follow-up issue if/when one is planned rather than reusing #5554 (the bug fix this key\'s health-monitoring wiring shipped with).'],
   ['wildfire:fires-bootstrap:v1',
     'cascade-mirror: pre-compacted dashboard/RPC variant of wildfire:fires:v1 (covered by get_natural_events). It preserves the same top-500 response while avoiding canonical-payload Redis egress.'],
   ['thermal:escalation-bootstrap:v1',
@@ -132,12 +131,10 @@ const EXCLUDED_FROM_MCP = new Map([
     'on-demand: superseded by the transit-summaries + chokepoint-flows + portwatch-ports bundle exposed via get_chokepoint_status.'],
   ['supply_chain:minerals:v2',
     'on-demand: RPC cache populated only after first user query — deferred to a future minerals/strategic-materials tool.'],
-  ['giving:summary:v1',
+  ['giving:summary:v2',
     'on-demand: RPC cache for philanthropy summary; not in v1 brainstorm inventory. Deferred to a future humanitarian/aid tool.'],
   ['military:bases:active',
     'on-demand: RPC cache for military bases — deferred to a future expanded military tool.'],
-  ['temporal:anomalies:v1',
-    'on-demand: RPC cache populated only after first user query — deferred to a future temporal-analysis tool.'],
   ['news:threat:summary:v1',
     'on-demand: relay-classify-only, written only when classify produces country matches (matches api/health.js:468 ON_DEMAND_KEYS rationale). Underlying news inputs already exposed via get_news_intelligence.'],
   ['resilience:ranking:v25',
@@ -180,8 +177,6 @@ const EXCLUDED_FROM_MCP = new Map([
     'deferred: strict health seed probe added by #5055; future economic-data MCP expansion can expose energy prices directly.'],
   ['shared:fx-rates:v1',
     'deferred: strict health seed probe added by #5055; FX rates are shared infrastructure consumed by seeders and future economic MCP expansion.'],
-  ['infrastructure:submarine-cables:v1',
-    'deferred: strict health seed probe added by #5055; future infrastructure MCP expansion can expose the cable inventory directly.'],
   ['patents:defense:latest',
     'deferred: strict health seed probe added by #5055; future military or defense-innovation MCP expansion can expose patent summaries.'],
   ['conflict:acled:v1:all:0:0',
@@ -220,8 +215,6 @@ const EXCLUDED_FROM_MCP = new Map([
     'deferred: Windy webcam active-version pointer for app map markers. A future webcam MCP tool would expose decoded camera entries, not the raw Redis pointer.'],
   ['supply_chain:hormuz_tracker:v1',
     'deferred: specialized Strait-of-Hormuz tracker; broader chokepoint coverage via get_chokepoint_status. Hormuz-specific tool deferred.'],
-  ['thermal:escalation:v1',
-    'deferred to a future conflict-escalation tool.'],
   ['resilience:static:index:v1',
     'deferred to a future resilience tool (paired with resilience:ranking:v25).'],
   ['resilience:static:fao',
@@ -232,7 +225,7 @@ const EXCLUDED_FROM_MCP = new Map([
     'deferred to a future resilience tool. Companion data to fossil-electricity-share (already exposed via get_energy_intelligence).'],
   ['resilience:power-losses:v1',
     'deferred to a future resilience tool. Companion data to the resilience v2 energy bundle.'],
-  ['product-catalog:v2',
+  ['product-catalog:v3',
     'deferred to a future product-catalog tool. Used by the dashboard to render product metadata, not a queryable data slice.'],
   ['climate:zone-normals:v1',
     'deferred to a future climate-baseline tool. Reference data (30-year WMO normals) used as a denominator for climate:anomalies:v2 (already exposed via get_climate_data).'],
@@ -330,8 +323,6 @@ const EXCLUDED_FROM_MCP = new Map([
     'deferred to a future expanded energy tool. IEA OECD oil-stocks index — companion to energy:eia-petroleum:v1 (US weekly petroleum stocks already exposed via get_energy_intelligence). Monthly IEA cadence vs weekly EIA — distinct release.'],
   ['energy:intelligence:feed:v1',
     'deferred: derived energy-intelligence narrative feed (LLM-generated); underlying energy inputs already exposed via get_energy_intelligence. A future LLM-narrative tool would expose this.'],
-  ['cable-health-v1',
-    'deferred to a future maritime-infrastructure tool. Subsea cable disruption tracker — not in v1 brainstorm inventory.'],
 
   // ---- Energy supplementary keys not bundled into get_energy_intelligence ----
   // get_energy_intelligence covers the 9 headline keys (EIA petroleum,
@@ -372,6 +363,28 @@ const EXCLUDED_FROM_MCP = new Map([
     'operational: relay loop heartbeat — covered by /api/health, not a user-facing data slice for MCP.'],
   ['digest:last-run',
     'operational: digest-notifications cron heartbeat — covered by /api/health, not a user-facing data slice for MCP.'],
+  ['intel-history:ingest-health:conflict:acled-intel:v1',
+    'operational: per-collector intel-history ingest state (last successful append, last relay error, consecutive failures) published by scripts/_seed-history.mjs for /api/health + /api/seed-health (#5736). The history CONTENT it guards is already queryable through search_intel_history / get_intel_timeline / get_similar_events.'],
+  ['intel-history:ingest-health:military:cross-strait-activity:v1',
+    'operational: per-collector intel-history ingest state (last successful append, last relay error, consecutive failures) published by scripts/_seed-history.mjs for /api/health + /api/seed-health (#5736). The history CONTENT it guards is already queryable through search_intel_history / get_intel_timeline / get_similar_events.'],
+  ['intel-history:ingest-health:energy:intelligence:v1',
+    'operational: per-collector intel-history ingest state (last successful append, last relay error, consecutive failures) published by scripts/_seed-history.mjs for /api/health + /api/seed-health (#5736). The history CONTENT it guards is already queryable through search_intel_history / get_intel_timeline / get_similar_events.'],
+  ['consumer-prices:coverage:ae',
+    'operational: consumer-price market/retailer completion and validator-rejection coverage published for /api/health; the underlying price observations are exposed through get_consumer_prices, while this health snapshot is not a queryable MCP slice (#5945).'],
+  ['consumer-prices:coverage:au',
+    'operational: consumer-price market/retailer completion and validator-rejection coverage published for /api/health; the underlying price observations are exposed through get_consumer_prices, while this health snapshot is not a queryable MCP slice (#5945).'],
+  ['consumer-prices:coverage:br',
+    'operational: consumer-price market/retailer completion and validator-rejection coverage published for /api/health; the underlying price observations are exposed through get_consumer_prices, while this health snapshot is not a queryable MCP slice (#5945).'],
+  ['consumer-prices:coverage:gb',
+    'operational: consumer-price market/retailer completion and validator-rejection coverage published for /api/health; the underlying price observations are exposed through get_consumer_prices, while this health snapshot is not a queryable MCP slice (#5945).'],
+  ['consumer-prices:coverage:in',
+    'operational: consumer-price market/retailer completion and validator-rejection coverage published for /api/health; the underlying price observations are exposed through get_consumer_prices, while this health snapshot is not a queryable MCP slice (#5945).'],
+  ['consumer-prices:coverage:sa',
+    'operational: consumer-price market/retailer completion and validator-rejection coverage published for /api/health; the underlying price observations are exposed through get_consumer_prices, while this health snapshot is not a queryable MCP slice (#5945).'],
+  ['consumer-prices:coverage:sg',
+    'operational: consumer-price market/retailer completion and validator-rejection coverage published for /api/health; the underlying price observations are exposed through get_consumer_prices, while this health snapshot is not a queryable MCP slice (#5945).'],
+  ['consumer-prices:coverage:us',
+    'operational: consumer-price market/retailer completion and validator-rejection coverage published for /api/health; the underlying price observations are exposed through get_consumer_prices, while this health snapshot is not a queryable MCP slice (#5945).'],
 ]);
 
 // -----------------------------------------------------------------------------

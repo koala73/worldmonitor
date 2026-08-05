@@ -1,5 +1,5 @@
 import { convexTest } from "convex-test";
-import { afterEach, expect, test, describe } from "vitest";
+import { afterEach, expect, test, describe, vi } from "vitest";
 import { getFeaturesForPlan } from "../lib/entitlements";
 import { signUserId } from "../lib/identitySigning";
 import schema from "../schema";
@@ -68,6 +68,9 @@ const SIGNING_SECRET = "test-dodo-identity-signing-secret";
 
 afterEach(() => {
   delete process.env.DODO_IDENTITY_SIGNING_SECRET;
+  delete process.env.RESEND_API_KEY;
+  vi.useRealTimers();
+  vi.restoreAllMocks();
 });
 
 // ---------------------------------------------------------------------------
@@ -215,6 +218,229 @@ describe("webhook processWebhookEvent", () => {
     });
     expect(subs).toHaveLength(1);
     expect(subs[0].status).toBe("active");
+  });
+
+  test("subscription.active reactivation sends a welcome-back email", async () => {
+    vi.useFakeTimers();
+    process.env.RESEND_API_KEY = "re_test";
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue(new Response("{}", { status: 200 }));
+    const t = convexTest(schema, modules);
+
+    await seedProductPlan(t, "pdt_test_pro", "pro_monthly", "Pro Monthly");
+
+    await t.run(async (ctx) => {
+      await ctx.db.insert("subscriptions", {
+        userId: "test-user-001",
+        dodoSubscriptionId: "sub_test_001",
+        dodoProductId: "pdt_test_pro",
+        planKey: "pro_monthly",
+        status: "expired",
+        currentPeriodStart: BASE_TIMESTAMP - 31 * 86400000,
+        currentPeriodEnd: BASE_TIMESTAMP - 86400000,
+        rawPayload: {},
+        updatedAt: BASE_TIMESTAMP - 86400000,
+      });
+    });
+
+    await processEvent(t, "wh_002_reactivation", "subscription.active", makeSubscriptionPayload(), BASE_TIMESTAMP);
+    await t.finishAllScheduledFunctions(vi.runAllTimers);
+
+    const sends = fetchMock.mock.calls
+      .filter(([url]) => String(url).includes("api.resend.com"))
+      .map(([, init]) => JSON.parse(String((init as RequestInit).body)) as {
+        to: string[];
+        subject: string;
+        html: string;
+      });
+
+    expect(sends).toHaveLength(1);
+    expect(sends[0]?.to).toEqual(["test@example.com"]);
+    expect(sends[0]?.subject).toContain("Welcome back");
+    expect(sends[0]?.html).toContain("subscription is active again");
+  });
+
+  test("new-checkout reactivation uses prior lapsed history instead of a new-subscriber alert", async () => {
+    vi.useFakeTimers();
+    process.env.RESEND_API_KEY = "re_test";
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue(new Response("{}", { status: 200 }));
+    const t = convexTest(schema, modules);
+
+    await seedProductPlan(t, "pdt_test_pro", "pro_monthly", "Pro Monthly");
+    await t.run(async (ctx) => {
+      await ctx.db.insert("subscriptions", {
+        userId: "test-user-001",
+        dodoSubscriptionId: "sub_old_expired",
+        dodoProductId: "pdt_test_pro",
+        planKey: "pro_monthly",
+        status: "expired",
+        currentPeriodStart: BASE_TIMESTAMP - 31 * 86400000,
+        currentPeriodEnd: BASE_TIMESTAMP - 86400000,
+        rawPayload: {},
+        updatedAt: BASE_TIMESTAMP - 86400000,
+      });
+    });
+
+    await processEvent(
+      t,
+      "wh_new_subscription_reactivation",
+      "subscription.active",
+      makeSubscriptionPayload({ subscription_id: "sub_new_reactivated" }),
+      BASE_TIMESTAMP,
+    );
+    await t.finishAllScheduledFunctions(vi.runAllTimers);
+
+    const sends = fetchMock.mock.calls
+      .filter(([url]) => String(url).includes("api.resend.com"))
+      .map(([, init]) => JSON.parse(String((init as RequestInit).body)) as {
+        to: string[];
+        subject: string;
+      });
+
+    expect(sends).toHaveLength(1);
+    expect(sends[0]?.to).toEqual(["test@example.com"]);
+    expect(sends[0]?.subject).toContain("Welcome back");
+  });
+
+  test("a covering sibling prevents old lapsed history from forcing welcome-back mail", async () => {
+    vi.useFakeTimers();
+    process.env.RESEND_API_KEY = "re_test";
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue(new Response("{}", { status: 200 }));
+    const t = convexTest(schema, modules);
+
+    await seedProductPlan(t, "pdt_test_pro", "pro_monthly", "Pro Monthly");
+    await t.run(async (ctx) => {
+      await ctx.db.insert("subscriptions", {
+        userId: "test-user-001",
+        dodoSubscriptionId: "sub_old_expired_with_cover",
+        dodoProductId: "pdt_test_pro",
+        planKey: "pro_monthly",
+        status: "expired",
+        currentPeriodStart: BASE_TIMESTAMP - 31 * 86400000,
+        currentPeriodEnd: BASE_TIMESTAMP - 86400000,
+        rawPayload: {},
+        updatedAt: BASE_TIMESTAMP - 86400000,
+      });
+      await ctx.db.insert("subscriptions", {
+        userId: "test-user-001",
+        dodoSubscriptionId: "sub_covering_sibling",
+        dodoProductId: "pdt_test_pro",
+        planKey: "pro_monthly",
+        status: "active",
+        currentPeriodStart: BASE_TIMESTAMP - 86400000,
+        currentPeriodEnd: BASE_TIMESTAMP + 30 * 86400000,
+        rawPayload: {},
+        updatedAt: BASE_TIMESTAMP - 1000,
+      });
+    });
+
+    await processEvent(
+      t,
+      "wh_new_subscription_with_covering_sibling",
+      "subscription.active",
+      makeSubscriptionPayload({ subscription_id: "sub_new_while_covered" }),
+      BASE_TIMESTAMP,
+    );
+    await t.finishAllScheduledFunctions(vi.runAllTimers);
+
+    const subjects = fetchMock.mock.calls
+      .filter(([url]) => String(url).includes("api.resend.com"))
+      .map(([, init]) => {
+        const body = JSON.parse(String((init as RequestInit).body)) as { subject: string };
+        return body.subject;
+      });
+
+    expect(subjects).toHaveLength(2);
+    expect(subjects.some((subject) => subject.startsWith("Welcome to World Monitor"))).toBe(true);
+    expect(subjects.some((subject) => subject.startsWith("[WM] New User Subscribed"))).toBe(true);
+    expect(subjects.every((subject) => !subject.includes("Welcome back"))).toBe(true);
+  });
+
+  // KTD9: Pro Business is a Pro plan for lifecycle purposes — it must get the
+  // Pro welcome shell (value-prop headline, brief CTA, Pro feature grid), not
+  // the neutral fallback shell that api_* and unknown plan keys fall through to.
+  test("subscription.active for Pro Business sends the Pro welcome variant", async () => {
+    vi.useFakeTimers();
+    process.env.RESEND_API_KEY = "re_test";
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue(new Response("{}", { status: 200 }));
+    const t = convexTest(schema, modules);
+
+    await seedProductPlan(t, "pdt_test_pro_business", "pro_business_monthly", "Pro Business Monthly");
+
+    await processEvent(
+      t,
+      "wh_pro_business_welcome",
+      "subscription.active",
+      makeSubscriptionPayload({
+        subscription_id: "sub_pro_business_001",
+        product_id: "pdt_test_pro_business",
+      }),
+      BASE_TIMESTAMP,
+    );
+    await t.finishAllScheduledFunctions(vi.runAllTimers);
+
+    const sends = fetchMock.mock.calls
+      .filter(([url]) => String(url).includes("api.resend.com"))
+      .map(([, init]) => JSON.parse(String((init as RequestInit).body)) as {
+        to: string[];
+        subject: string;
+        html: string;
+      });
+
+    const welcome = sends.find((send) => send.subject.startsWith("Welcome to World Monitor"));
+    expect(welcome?.to).toEqual(["test@example.com"]);
+    expect(welcome?.subject).toBe("Welcome to World Monitor Pro Business (Monthly)");
+    // Pro shell markers — headline, CTA, and a Pro-only feature card.
+    expect(welcome?.html).toContain("your intel, delivered");
+    expect(welcome?.html).toContain("Open My Brief");
+    expect(welcome?.html).toContain("WM Analyst");
+    // The generic fallback grid must not appear.
+    expect(welcome?.html).not.toContain("Full API Access");
+  });
+
+  test.each([
+    ["on_hold", BASE_TIMESTAMP + 7 * 86400000],
+    ["cancelled", BASE_TIMESTAMP],
+  ] as const)("subscription.active from non-lapsed %s remains email-silent", async (status, currentPeriodEnd) => {
+    vi.useFakeTimers();
+    process.env.RESEND_API_KEY = "re_test";
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue(new Response("{}", { status: 200 }));
+    const t = convexTest(schema, modules);
+
+    await seedProductPlan(t, "pdt_test_pro", "pro_monthly", "Pro Monthly");
+    await t.run(async (ctx) => {
+      await ctx.db.insert("subscriptions", {
+        userId: "test-user-001",
+        dodoSubscriptionId: "sub_test_001",
+        dodoProductId: "pdt_test_pro",
+        planKey: "pro_monthly",
+        status,
+        currentPeriodStart: BASE_TIMESTAMP - 86400000,
+        currentPeriodEnd,
+        rawPayload: {},
+        updatedAt: BASE_TIMESTAMP - 1000,
+      });
+    });
+
+    await processEvent(
+      t,
+      `wh_non_lapsed_${status}`,
+      "subscription.active",
+      makeSubscriptionPayload(),
+      BASE_TIMESTAMP,
+    );
+    await t.finishAllScheduledFunctions(vi.runAllTimers);
+
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 
   test("subscription.renewed extends billing period", async () => {
@@ -471,6 +697,112 @@ describe("webhook processWebhookEvent", () => {
     });
     expect(paymentEvents).toHaveLength(1);
     expect(paymentEvents[0].status).toBe("failed");
+  });
+
+  // WORLDMONITOR-YA — every other test in this file routes through `processEvent`,
+  // which pre-seeds a `customers` row, so the production shape (no customer row,
+  // unsigned metadata) was never exercised. These two dispatch the mutation
+  // directly to cover it.
+  test("payment.failed resolves the userId from a known subscription when no customer row exists", async () => {
+    const t = convexTest(schema, modules);
+
+    await t.run(async (ctx) => {
+      await ctx.db.insert("subscriptions", {
+        userId: "user_known_via_sub",
+        dodoSubscriptionId: "sub_no_customer_row",
+        dodoCustomerId: "cust_never_recorded",
+        dodoProductId: "pdt_test_pro",
+        planKey: "pro_monthly",
+        status: "active",
+        currentPeriodStart: BASE_TIMESTAMP,
+        currentPeriodEnd: BASE_TIMESTAMP + 86_400_000,
+        rawPayload: {},
+        updatedAt: BASE_TIMESTAMP,
+      });
+    });
+
+    // Unsigned metadata is ignored by resolveUserId, and no `customers` row
+    // exists — the subscription row is the only identity source.
+    const payload = makePaymentPayload("payment.failed", {
+      payment_id: "pay_no_customer_row",
+      subscription_id: "sub_no_customer_row",
+      customer: { customer_id: "cust_never_recorded", email: "nobody@example.com" },
+      metadata: {},
+    });
+
+    await t.mutation(internal.payments.webhookMutations.processWebhookEvent, {
+      webhookId: "wh_ya_sub_fallback",
+      eventType: "payment.failed",
+      rawPayload: payload,
+      timestamp: BASE_TIMESTAMP,
+    });
+
+    const paymentEvents = await t.run(async (ctx) => {
+      return ctx.db.query("paymentEvents").collect();
+    });
+    expect(paymentEvents).toHaveLength(1);
+    expect(paymentEvents[0].userId).toBe("user_known_via_sub");
+    expect(paymentEvents[0].status).toBe("failed");
+  });
+
+  // Previously this asserted the mutation threw. That was wrong in production:
+  // the identity lookup is deterministic, so every one of Dodo's 8 retries
+  // failed identically and a buyer abandoning 3DS raised a "delivery
+  // permanently failed" alert. No charge settled, so there is nothing to
+  // record — acknowledge it. See isChargedEventType in unattributedPayments.ts.
+  test("payment.failed for a wholly unknown customer is acknowledged, not dead-lettered", async () => {
+    const t = convexTest(schema, modules);
+
+    const payload = makePaymentPayload("payment.failed", {
+      payment_id: "pay_unattributable",
+      subscription_id: "sub_unattributable",
+      customer: { customer_id: "cust_unattributable", email: "nobody@example.com" },
+      metadata: {},
+    });
+
+    await t.mutation(internal.payments.webhookMutations.processWebhookEvent, {
+      webhookId: "wh_ya_unattributable",
+      eventType: "payment.failed",
+      rawPayload: payload,
+      timestamp: BASE_TIMESTAMP,
+    });
+
+    // Still records nothing — there is no user to attribute the row to.
+    const paymentEvents = await t.run(async (ctx) => {
+      return ctx.db.query("paymentEvents").collect();
+    });
+    expect(paymentEvents).toHaveLength(0);
+  });
+
+  test("payment.succeeded for a wholly unknown customer is captured for attribution", async () => {
+    const t = convexTest(schema, modules);
+
+    // Money moved. It must never be silently discarded — but throwing only
+    // burned Dodo's retries and lost it, so it is captured durably instead and
+    // flagged `charged` for the ops alert. See unattributed-payments.test.ts.
+    const payload = makePaymentPayload("payment.succeeded", {
+      payment_id: "pay_unattributable_paid",
+      subscription_id: "sub_unattributable_paid",
+      customer: { customer_id: "cust_unattributable", email: "nobody@example.com" },
+      metadata: {},
+    });
+
+    await t.mutation(internal.payments.webhookMutations.processWebhookEvent, {
+      webhookId: "wh_ya_unattributable_paid",
+      eventType: "payment.succeeded",
+      rawPayload: payload,
+      timestamp: BASE_TIMESTAMP,
+    });
+
+    const { paymentEvents, unattributed } = await t.run(async (ctx) => ({
+      paymentEvents: await ctx.db.query("paymentEvents").collect(),
+      unattributed: await ctx.db.query("unattributedPaymentEvents").collect(),
+    }));
+    // No paymentEvents row — it requires a userId we do not have.
+    expect(paymentEvents).toHaveLength(0);
+    expect(unattributed).toHaveLength(1);
+    expect(unattributed[0].charged).toBe(true);
+    expect(unattributed[0].dodoCustomerId).toBe("cust_unattributable");
   });
 
   // #5056 — entitlement lifecycle integrity across claim, active webhook, and dispute races.

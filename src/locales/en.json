@@ -142,12 +142,20 @@
     "china": {
       "title": "China Country Snapshot",
       "description": "Current macro, market, trade, energy, and operational availability from existing public data contracts.",
-      "macroPolicy": "Macro & Policy",
-      "marketCredit": "Market & Credit",
-      "tradeSupply": "Trade & Supply Chain",
+      "macroSignals": "Macro Signals",
+      "policyEvents": "Policy & Enforcement",
+      "crossStraitActivity": "Cross-Strait Activity",
+      "corporateDisclosures": "Corporate Disclosures",
+      "corridorConditions": "Corridor Conditions",
+      "activityNowcast": "Activity Nowcast",
       "energy": "Energy",
       "availability": "Hazards & Aviation",
       "observed": "As of:",
+      "published": "Published:",
+      "effective": "Effective:",
+      "sectors": "Sectors:",
+      "entities": "Entities:",
+      "translation": "Translation:",
       "source": "Source:",
       "imfGrowth": "IMF growth forecast",
       "creditGdp": "Credit to GDP",
@@ -156,8 +164,6 @@
       "gasDemand": "Gas demand",
       "energyMix": "Power mix",
       "coal": "coal",
-      "aviationAvailability": "Aviation availability",
-      "hazardAvailability": "Hazard availability",
       "noMajorDisruptions": "No major disruptions reported",
       "activeDisruptions_one": "{{count}} active disruption",
       "activeDisruptions_other": "{{count}} active disruptions",
@@ -169,11 +175,9 @@
       "ccfiSource": "Shanghai Shipping Exchange",
       "comtradeSource": "UN Comtrade reporter 156",
       "sourceUnavailable": "Source unavailable",
-      "macroUnavailable": "Macro and policy data are currently unavailable.",
-      "marketUnavailable": "Market and credit data are currently unavailable.",
-      "tradeUnavailable": "Trade and supply-chain data are currently unavailable.",
-      "energyUnavailable": "Energy data are currently unavailable.",
-      "availabilityUnavailable": "Hazard and aviation availability data are currently unavailable.",
+      "decisionSignalsUnavailable": "The China decision-signal snapshot is currently unavailable.",
+      "policyUnavailable": "Unavailable",
+      "policyPartial": "Degraded: {{count}}",
       "status": {
         "loading": "Loading",
         "available": "Available",
@@ -1478,6 +1482,7 @@
       "briefCommodity": "COMMODITY BRIEF",
       "briefEnergy": "ENERGY BRIEF",
       "briefWorld": "WORLD BRIEF",
+      "briefStoryDetails": "Story details ({{count}})",
       "mlDetected": "ML DETECTED",
       "geographicConvergence": "GEOGRAPHIC CONVERGENCE",
       "focalPoints": "FOCAL POINTS",
@@ -1672,6 +1677,25 @@
       "infoTooltip": "<strong>Armed Conflict Events</strong> Event-level conflict data from Uppsala University (UCDP).<ul><li><strong>State-Based</strong>: Government vs rebel group</li><li><strong>Non-State</strong>: Armed group vs armed group</li><li><strong>One-Sided</strong>: Violence against civilians</li></ul>Deaths shown as best estimate (low-high range). ACLED duplicates are filtered out automatically."
     },
     "giving": {
+      "benchmarkTitle": "Global Giving Benchmarks",
+      "benchmarkInfoTooltip": "<strong>Global Giving Benchmarks</strong> Published platform and institutional claims with source periods and verification status. Annualized figures are estimates, not live activity.",
+      "status": {
+        "published": "Published benchmarks with verified source coverage.",
+        "partial": "Published benchmarks with partial source coverage.",
+        "legacy": "Legacy snapshot; source details are unavailable.",
+        "cached": "Showing a cached snapshot; refresh unavailable."
+      },
+      "trackedAnnualized": "Tracked platform giving — annualized estimate",
+      "annualizedDaily": "Annualized daily estimate",
+      "atLeast": "At least",
+      "about": "About",
+      "sourceNotVerified": "Source not verified",
+      "partialEstimate": "Partially verified estimate",
+      "reportedCumulative": "Reported cumulative total",
+      "sourcePeriod": "{{source}} · {{period}}",
+      "benchmark": "Published benchmark",
+      "sourcesMethodology": "Sources & methodology",
+      "methodologyIntro": "Only verified annual or defensibly annualized platform claims enter the headline. Cumulative and institutional figures remain separate context.",
       "activityIndex": "Activity Index",
       "trend": "Trend",
       "estDailyFlow": "Est. Daily Flow",
@@ -1697,7 +1721,7 @@
       "cafIndex": "CAF Index",
       "candidGrants": "Candid Grants",
       "dataLag": "Data Lag",
-      "infoTooltip": "<strong>Global Giving Activity Index</strong> Composite index tracking personal giving across crowdfunding platforms and crypto wallets.<ul><li><strong>Platforms</strong>: GoFundMe, GlobalGiving, JustGiving campaign sampling</li><li><strong>Crypto</strong>: On-chain charity wallet inflows (Endaoment, Giving Block)</li><li><strong>Institutional</strong>: OECD ODA, CAF World Giving Index, Candid grants</li></ul>Index is directional (not exact dollar amounts). Combines live sampling with published annual reports."
+      "infoTooltip": "<strong>Global Giving Benchmarks</strong> Published platform and institutional claims with source periods and verification status. Annualized figures are estimates, not live activity."
     },
     "displacement": {
       "refugees": "Refugees",
@@ -1737,6 +1761,8 @@
       "summaryFailed": "Summary failed",
       "sources": "{{count}} sources",
       "relatedAssetsNear": "Related assets near {{location}}",
+      "sourceCoverage": "{{covered}}/{{total}} sources",
+      "sourceCoverageHint": "Showing {{covered}} of {{total}} enabled sources — this panel rotates through its sources on each refresh",
       "sortBy": "Sort by",
       "sortNewest": "Newest",
       "sortRelevance": "Relevance"
@@ -1899,7 +1925,11 @@
       "infoTooltip": "<strong>Disaster Cascade</strong> Detects converging natural disaster and infrastructure signals:<ul><li>Correlates earthquakes, wildfires, floods, and weather extremes</li><li>Tracks cascading effects on infrastructure and supply chains</li><li>Highlights regions with compounding disaster risk</li></ul>Click a card to zoom to the affected region."
     },
     "markets": {
-      "infoTooltip": "<strong>Markets</strong> Real-time stock indices, equities, and crypto prices. Customize your watchlist with the Watchlist button. Sparklines show recent price trend."
+      "infoTooltip": "<strong>Markets</strong> Real-time stock indices, equities, and crypto prices. Customize your watchlist with the Watchlist button. Sparklines show recent price trend.",
+      "chart": {
+        "title": "{{symbol}} price chart",
+        "close": "Close chart"
+      }
     },
     "heatmap": {
       "infoTooltip": "<strong>Sector Heatmap</strong> S&P 500 sector performance at a glance. Color intensity reflects the magnitude of daily change. Green = gains, Red = losses."
@@ -2242,11 +2272,117 @@
       "cta": "Upgrade to Pro →",
       "dismiss": "Dismiss"
     },
+    "billingState": {
+      "onHoldDesc": "Payment failed. Update your payment method to restore premium access.",
+      "onHoldBannerMessage": "Payment failed. Update your payment method to keep your subscription active.",
+      "updatePayment": "Update Payment",
+      "renewalPendingDesc": "We're verifying your subscription renewal. Premium access will be restored automatically once confirmed.",
+      "refreshStatus": "Refresh Status",
+      "renewalFailedDesc": "We couldn't verify your subscription renewal. Manage billing or contact support if this persists.",
+      "manageBilling": "Manage Billing",
+      "lapsedDesc": "Your Pro subscription has ended. Resubscribe to regain premium access.",
+      "resubscribe": "Resubscribe"
+    },
+    "exportGate": {
+      "signedOutDesc": "Sign in to export dashboard data as CSV, JSON or PDF.",
+      "upgradeDesc": "Data export (CSV, JSON, PDF) is included with Pro Business.",
+      "upgradeCta": "Upgrade to Pro Business",
+      "lockedAriaLabel": "Export data — locked. {{reason}}",
+      "unlockedAnnouncement": "Data export unlocked.",
+      "preparingPdf": "Preparing PDF…",
+      "pdfFailed": "The PDF report could not be generated. Try again, or use the JSON export."
+    },
+    "tabCap": {
+      "signedOutDesc": "Signed-out workspaces are limited to {{cap}} dashboard tabs. Sign in to add more.",
+      "upgradeDesc": "You've reached your limit of {{cap}} dashboard tabs.",
+      "upgradeCta": "Upgrade for more",
+      "lockedAriaLabel": "Add tab — locked. {{reason}}",
+      "unlockedAnnouncement": "Dashboard tab limit lifted."
+    },
     "checkoutFailureBanner": {
       "message": "Payment couldn't be completed. No charge was made.",
       "retry": "Try again",
       "retrying": "Retrying…",
       "dismiss": "Dismiss"
+    },
+    "proActivation": {
+      "badge": "PRO",
+      "progress": "Step {{current}} of {{total}}",
+      "closeLabel": "Skip setup",
+      "ariaLabel": "Pro activation setup",
+      "signedInAs": "Signed in as {{email}}",
+      "steps": {
+        "brief": {
+          "heading": "Your daily brief, every morning",
+          "body": "A curated intelligence briefing in your inbox each morning — the overnight signals that matter, distilled into a five-minute read.",
+          "confirmCta": "Turn on my morning brief",
+          "confirming": "Turning it on…",
+          "doneNote": "Your morning brief is already running.",
+          "scheduleNote": "We'll keep your current delivery time.",
+          "summaryLabel": "Morning brief",
+          "summaryVerified": "On — starts with your next morning brief.",
+          "deliverAt": "Deliver at",
+          "previewLoading": "Preparing a preview of your first brief…",
+          "previewLabel": "This morning's brief"
+        },
+        "alerts": {
+          "heading": "Critical alerts",
+          "body": "Get pinged in your browser when something big breaks — conflict escalations, market shocks, fresh sanctions. Tune the cadence anytime in Settings.",
+          "confirmCta": "Enable alerts",
+          "confirming": "Enabling…",
+          "doneNote": "Browser alerts are already on.",
+          "blockedNote": "Notifications are blocked in your browser. Turn them on in your browser's site settings to get alerts.",
+          "declinedNote": "No problem — we won't send browser alerts. You can turn them on later from your browser's site settings.",
+          "summaryLabel": "Critical alerts",
+          "summaryVerified": "On — critical signals will reach your browser."
+        },
+        "power": {
+          "heading": "Your Pro toolkit",
+          "body": "Custom widgets, MCP connections, and the AI researcher are unlocked. Build the board you actually want to watch.",
+          "confirmCta": "Explore Pro tools",
+          "confirming": "Opening…",
+          "doneNote": "You're already using your Pro tools.",
+          "summaryLabel": "Pro toolkit",
+          "summaryVerified": "Unlocked and ready when you are.",
+          "channelsNote": "Prefer Telegram, Slack, Discord, or a webhook?",
+          "pointers": {
+            "search": "Search the entire dashboard",
+            "widgets": "Build a custom widget",
+            "analyst": "Ask the AI analyst",
+            "mcpClients": "Set up MCP",
+            "channels": "Set those up in notification settings"
+          }
+        }
+      },
+      "status": {
+        "pending": "Not set up",
+        "inFlight": "Setting up…",
+        "verified": "Ready",
+        "failed": "Didn't work",
+        "blocked": "Blocked",
+        "unavailable": "Not available",
+        "blockedNote": "This isn't available right now — you can set it up later from settings.",
+        "unavailableNote": "This isn't available on your device — you can set it up later.",
+        "failedBody": "Something went wrong. You can try again, or set it up later from settings.",
+        "retry": "Try again"
+      },
+      "actions": {
+        "skip": "Skip for now",
+        "continue": "Continue"
+      },
+      "summary": {
+        "heading": "You're all set",
+        "subVerified": "Here's what's running on your account.",
+        "subPending": "You can finish setup any time from settings.",
+        "linePending": "Not set up yet — finish any time in settings.",
+        "lineFailed": "We couldn't set this up — try again from settings.",
+        "finish": "Go to my dashboard"
+      },
+      "chip": {
+        "message": "Finish setting up your Pro account.",
+        "action": "Finish setup",
+        "dismissLabel": "Dismiss"
+      }
     },
     "frameworkSelector": {
       "label": "Analysis Framework",
@@ -3021,6 +3157,32 @@
     "multipleRegions": "Multiple Regions",
     "trending": "\"{{term}}\" Trending - {{count}} mentions in {{hours}}h",
     "eventsDetected": "{{count}} events detected in region ({{lat}}°, {{lon}}°)"
+  },
+  "theaterPresets": {
+    "label": "Coverage presets",
+    "applied": "{{preset}} preset applied: {{count}} sources enabled",
+    "alreadyApplied": "{{preset}} preset already applied",
+    "unavailable": "{{preset}} preset is not available with your current panels",
+    "ukraineWar": {
+      "label": "Ukraine War",
+      "description": "Enable Ukrainian primary outlets, independent Russian press, and frontline assessment sources"
+    },
+    "indoPacific": {
+      "label": "Indo-Pacific / Taiwan",
+      "description": "Enable Taiwan, Pakistan, and Southeast Asia security sources"
+    },
+    "sahelWestAfrica": {
+      "label": "Sahel & West Africa",
+      "description": "Enable Sahel, Nigeria, and West Africa local sources"
+    },
+    "caucasusCentralAsia": {
+      "label": "Caucasus & Central Asia",
+      "description": "Enable South Caucasus and Central Asia regional sources"
+    },
+    "middleEastFlashpoints": {
+      "label": "Middle East Flashpoints",
+      "description": "Enable Iran, Israel, Gulf, and Kurdish-region sources"
+    }
   },
   "intel": {
     "topics": {

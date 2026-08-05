@@ -161,6 +161,21 @@ export const Hero = () => (
           <span className="text-wm-green">{t('welcome.hero.trustBuild')}</span> REST API · MCP · npm · PyPI · Go · RubyGems
         </a>
       </motion.div>
+      <motion.div
+        initial={false}
+        animate={{ opacity: 1 }}
+        transition={{ duration: 0.6, delay: 0.35 }}
+        className="mt-4"
+      >
+        <a
+          href="/blog/posts/worldmonitor-is-not-palantir/"
+          data-umami-event="welcome-cta"
+          data-umami-event-target="welcome-positioning"
+          className="inline-flex items-center gap-1.5 font-mono text-xs text-wm-muted hover:text-wm-green transition-colors"
+        >
+          {t('welcome.hero.positioningLink')} <ArrowRight className="w-3.5 h-3.5" aria-hidden="true" />
+        </a>
+      </motion.div>
     </div>
     <ConsoleFrame />
   </section>

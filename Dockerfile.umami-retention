@@ -1,0 +1,10 @@
+FROM postgres:17-alpine@sha256:742f40ea20b9ff2ff31db5458d127452988a2164df9e17441e191f3b72252193
+
+ENV PGCONNECT_TIMEOUT=10
+
+COPY --chmod=0444 scripts/umami-retention.sql /app/umami-retention.sql
+
+# libpq reads PGHOST, PGPORT, PGDATABASE, PGUSER, and PGPASSWORD directly.
+# Keeping the connection out of a shell avoids both interpolation mistakes and
+# accidental command-line exposure of a database URL.
+CMD ["psql", "-X", "--set=ON_ERROR_STOP=1", "--file=/app/umami-retention.sql"]

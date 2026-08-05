@@ -1,12 +1,24 @@
 #!/usr/bin/env node
 
-import { readFileSync, existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { dirname, join, resolve } from 'node:path';
+import { resolve } from 'node:path';
+import { loadEnvFile } from './_seed-utils.mjs';
 import { unwrapEnvelope } from './_seed-envelope-source.mjs';
 import { compactUcdpDashboardPayload } from './_ucdp-dashboard.mjs';
+// GED Candidate discovery/fetch/merge is shared with scripts/ais-relay.cjs so the
+// two UCDP writers cannot drift (they already had, on discovery concurrency and
+// probe timeout). CJS module imported from ESM, as seed-market-quotes.mjs does
+// with scripts/shared/notification-dedup.cjs.
+import ucdpCandidate from './shared/ucdp-candidate.cjs';
 
-const __dirname = dirname(fileURLToPath(import.meta.url));
+const {
+  CANDIDATE_MAX_PAGES,
+  buildCandidateVersions,
+  discoverCandidateVersion: discoverCandidateRelease,
+  fetchCandidatePages,
+  capWithAnnualFloor,
+  candidateContentMeta,
+} = ucdpCandidate;
 
 const REDIS_KEY = 'conflict:ucdp-events:v1';
 // Dashboard-sized projection. The bootstrap slow tier hydrates from THIS key so
@@ -31,29 +43,6 @@ const VIOLENCE_TYPE_MAP = {
 
 const CHROME_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
 
-function loadEnvFile() {
-  let envPath = join(__dirname, '..', '.env.local');
-  if (!existsSync(envPath)) {
-    envPath = join('/Users/eliehabib/Documents/GitHub/worldmonitor', '.env.local');
-  }
-  if (!existsSync(envPath)) return;
-  const lines = readFileSync(envPath, 'utf8').split('\n');
-  for (const line of lines) {
-    const trimmed = line.trim();
-    if (!trimmed || trimmed.startsWith('#')) continue;
-    const eqIdx = trimmed.indexOf('=');
-    if (eqIdx === -1) continue;
-    const key = trimmed.slice(0, eqIdx).trim();
-    let val = trimmed.slice(eqIdx + 1).trim();
-    if ((val.startsWith('"') && val.endsWith('"')) || (val.startsWith("'") && val.endsWith("'"))) {
-      val = val.slice(1, -1);
-    }
-    if (!process.env[key]) {
-      process.env[key] = val;
-    }
-  }
-}
-
 function maskToken(token) {
   if (!token || token.length < 8) return '***';
   return token.slice(0, 4) + '***' + token.slice(-4);
@@ -64,12 +53,23 @@ function buildVersionCandidates() {
   return [...new Set([`${year}.1`, `${year - 1}.1`, '25.1', '24.1'])];
 }
 
-async function fetchGedPage(version, page, token) {
+// UCDP also publishes GED Candidate releases monthly ('${year}.0.N'), with "not
+// more than a month's lag globally" per UCDP's docs — unlike the ANNUAL release
+// above, which is finalized once a year and lags ~7 months behind by the time
+// the next one lands. Window construction, discovery, paging and merge semantics
+// live in scripts/shared/ucdp-candidate.cjs (imported above) so this cron and
+// the relay seeder stay identical in behaviour; only the transport differs.
+
+// Page fetches keep the generous 90s budget (a 1000-row page of a 418k-row
+// release is slow); candidate DISCOVERY passes a much shorter timeout, because
+// it fires six speculative probes and this script runs inside the relay-backup
+// bundle, which SIGKILLs the UCDP section at 300s.
+async function fetchGedPage(version, page, token, timeoutMs = 90_000) {
   const headers = { Accept: 'application/json', 'User-Agent': CHROME_UA };
   if (token) headers['x-ucdp-access-token'] = token;
   const resp = await fetch(
     `https://ucdpapi.pcr.uu.se/api/gedevents/${version}?pagesize=${UCDP_PAGE_SIZE}&page=${page}`,
-    { headers, signal: AbortSignal.timeout(90_000) },
+    { headers, signal: AbortSignal.timeout(timeoutMs) },
   );
   if (!resp.ok) throw new Error(`UCDP GED API error (${version}, page ${page}): ${resp.status}`);
   return resp.json();
@@ -91,6 +91,46 @@ async function discoverVersion(token, fetchPage = fetchGedPage, candidates = bui
   throw new Error('No valid UCDP GED version found');
 }
 
+// Binds the token into the (version, page, timeoutMs) shape the shared candidate
+// helpers call, so transport stays here and merge semantics stay shared.
+function candidateFetcher(token) {
+  return (version, page, timeoutMs) => fetchGedPage(version, page, token, timeoutMs);
+}
+
+// Probes all candidates CONCURRENTLY under a short discovery timeout and returns
+// null (never throws) when none is published yet — the candidate is an addition
+// on top of the annual base, never a replacement, so its absence is not an error.
+async function discoverCandidateVersion(token, fetchPage = candidateFetcher(token), candidates = buildCandidateVersions()) {
+  console.log(`  Probing candidate versions: ${candidates.join(', ')}`);
+  const found = await discoverCandidateRelease(fetchPage, candidates);
+  if (!found) {
+    console.log('  No candidate release available this cycle — continuing with annual only');
+    return null;
+  }
+  console.log(`  Found candidate v${found.version} with ${found.first.Result.length} events on page 0`);
+  return found;
+}
+
+// Extend the TTL on the existing canonical key + its seed-meta instead of
+// overwriting last-good data. Deliberately does NOT write a fresh seed-meta:
+// health must reflect the age of the data actually being served, not the time
+// of a failed attempt.
+async function extendExistingTtl(redisUrl, redisToken) {
+  try {
+    const expire = (key, ttl) => fetch(redisUrl, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${redisToken}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify(['EXPIRE', key, ttl]),
+      signal: AbortSignal.timeout(5_000),
+    });
+    const r1 = await expire(REDIS_KEY, 86400);
+    if (!r1.ok) console.warn(`  EXPIRE ${REDIS_KEY} failed: HTTP ${r1.status}`);
+    const r2 = await expire('seed-meta:conflict:ucdp-events', 604800);
+    if (!r2.ok) console.warn(`  EXPIRE seed-meta failed: HTTP ${r2.status}`);
+    if (r1.ok && r2.ok) console.log(`  Extended TTL on ${REDIS_KEY} and seed-meta`);
+  } catch (e) { console.warn(`  TTL extension failed: ${e.message}`); }
+}
+
 function parseDateMs(value) {
   if (!value) return NaN;
   return Date.parse(String(value));
@@ -107,7 +147,7 @@ function getMaxDateMs(events) {
 }
 
 async function main() {
-  loadEnvFile();
+  loadEnvFile(import.meta.url);
 
   const redisUrl = process.env.UPSTASH_REDIS_REST_URL;
   const redisToken = process.env.UPSTASH_REDIS_REST_TOKEN;
@@ -158,7 +198,70 @@ async function main() {
 
   console.log(`  Raw events: ${allEvents.length} | Failed pages: ${failedPages}`);
 
-  const filtered = allEvents.filter((event) => {
+  // Preserve last-good data when the annual base could not be fetched AT ALL.
+  //
+  // This MUST run before the candidate merge. The empty-payload guard further
+  // down fires on the FINAL event count, so once a healthy candidate refills the
+  // payload it can no longer detect that the annual base is missing — the run
+  // would publish a thin candidate-only release over the last good annual
+  // payload and stamp it with a fresh seed-meta. ais-relay.cjs has always had
+  // this guard ahead of its merge; this writer did not.
+  if (allEvents.length === 0 && failedPages > 0) {
+    console.warn(`  All ${failedPages} annual pages failed — extending existing key TTL (preserving last good data)`);
+    await extendExistingTtl(redisUrl, redisToken);
+    process.exit(0);
+  }
+
+  // Merge the newest GED Candidate release on top of the annual base (ADD,
+  // never replace — annual is the finalized, authoritative history; replacing
+  // it with a candidate, which is ~1.8k events vs ~418k, would drop nearly
+  // everything outside the CII 2-year conflict recency window and flip
+  // /api/health.riskScores to COVERAGE_PARTIAL — the same class of regression
+  // ucdpDiscoverVersion's Promise.any history in scripts/ais-relay.cjs was
+  // fixed to avoid).
+  let candidateVersion = null;
+  let candidateComplete = false;
+  const candidateIds = new Set();
+  try {
+    const candidate = await discoverCandidateVersion(ucdpToken);
+    if (candidate) {
+      const merged = await fetchCandidatePages(candidateFetcher(ucdpToken), candidate);
+      // Only claim the bare candidate version once the release was fetched
+      // whole — a partial fetch labelled `26.0.6` is indistinguishable from a
+      // complete one downstream.
+      candidateComplete = merged.complete && !merged.truncated;
+      candidateVersion = candidateComplete ? candidate.version : `${candidate.version}+partial`;
+      if (merged.failedPages > 0) {
+        console.warn(`  candidate v${candidate.version}: ${merged.failedPages} page(s) failed — publishing as partial`);
+      }
+      if (merged.truncated) {
+        console.warn(`  candidate v${candidate.version}: ${merged.totalPages} pages exceeds cap ${CANDIDATE_MAX_PAGES} — ${merged.totalPages - CANDIDATE_MAX_PAGES} page(s) dropped`);
+      }
+      for (const event of merged.events) {
+        if (event?.id != null) candidateIds.add(String(event.id));
+      }
+      allEvents.push(...merged.events);
+      const candidateMaxMs = getMaxDateMs(merged.events);
+      if (Number.isFinite(candidateMaxMs) && (!Number.isFinite(latestDatasetMs) || candidateMaxMs > latestDatasetMs)) {
+        latestDatasetMs = candidateMaxMs;
+      }
+      console.log(`  Merged candidate v${candidateVersion}: +${merged.events.length} events`);
+    }
+  } catch (err) {
+    console.warn(`  Candidate merge skipped: ${err.message}`);
+  }
+
+  // Dedupe by id: candidate events are appended after the annual base, so a
+  // candidate's revision of an event also present in the annual release wins
+  // (it's the fresher record).
+  const byId = new Map();
+  for (const event of allEvents) {
+    const id = event?.id != null ? String(event.id) : '';
+    byId.set(id || Symbol(id), event);
+  }
+  const dedupedEvents = [...byId.values()];
+
+  const filtered = dedupedEvents.filter((event) => {
     if (!Number.isFinite(latestDatasetMs)) return true;
     const eventMs = parseDateMs(event?.date_start);
     if (!Number.isFinite(eventMs)) return false;
@@ -186,30 +289,18 @@ async function main() {
   }));
 
   mapped.sort((a, b) => b.dateStart - a.dateStart);
-  const capped = mapped.slice(0, MAX_EVENTS);
-  if (mapped.length > MAX_EVENTS) console.log(`  Capped: ${mapped.length} → ${MAX_EVENTS}`);
+  // Cap newest-first, but reserve slots for the annual base. Every candidate
+  // event is newer than every annual one, so a plain slice hands the whole
+  // payload to the candidate as soon as it outgrows the cap — evicting the
+  // history get-risk-scores.ts needs for per-country conflict floors.
+  const capped = capWithAnnualFloor(mapped, (event) => candidateIds.has(event.id), MAX_EVENTS);
+  if (mapped.length > MAX_EVENTS) console.log(`  Capped: ${mapped.length} → ${capped.length}`);
 
   // Guard: never overwrite existing data with empty results.
   // Extend TTL on existing key instead so health stays OK.
   if (capped.length === 0) {
     console.warn(`  0 events after processing — extending existing key TTL (preserving last good data)`);
-    try {
-      const r1 = await fetch(redisUrl, {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${redisToken}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify(['EXPIRE', REDIS_KEY, 86400]),
-        signal: AbortSignal.timeout(5_000),
-      });
-      if (!r1.ok) console.warn(`  EXPIRE ${REDIS_KEY} failed: HTTP ${r1.status}`);
-      const r2 = await fetch(redisUrl, {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${redisToken}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify(['EXPIRE', 'seed-meta:conflict:ucdp-events', 604800]),
-        signal: AbortSignal.timeout(5_000),
-      });
-      if (!r2.ok) console.warn(`  EXPIRE seed-meta failed: HTTP ${r2.status}`);
-      if (r1.ok && r2.ok) console.log(`  Extended TTL on ${REDIS_KEY} and seed-meta`);
-    } catch (e) { console.warn(`  TTL extension failed: ${e.message}`); }
+    await extendExistingTtl(redisUrl, redisToken);
     process.exit(0);
   }
 
@@ -217,6 +308,7 @@ async function main() {
     events: capped,
     fetchedAt: Date.now(),
     version,
+    candidateVersion,
     totalRaw: allEvents.length,
     filteredCount: mapped.length,
   };
@@ -275,9 +367,21 @@ async function main() {
     console.error(`  Compact projection write failed: ${e.message} — canonical key is published, dashboard will fall back to the RPC`);
   }
 
-  // Write seed-meta for health endpoint freshness tracking
+  // Write seed-meta for health endpoint freshness tracking.
+  // The content-age trio (newestItemAt/oldestItemAt/maxContentAgeMin) is the
+  // opt-in signal api/health.js reads to report STALE_CONTENT. Without it a
+  // silently dead candidate merge is invisible: fetchedAt stays fresh and
+  // recordCount stays full while the data itself falls back to the annual
+  // release's ~7-month lag.
   const metaKey = 'seed-meta:conflict:ucdp-events';
-  const meta = { fetchedAt: Date.now(), recordCount: capped.length };
+  const meta = {
+    fetchedAt: Date.now(),
+    recordCount: capped.length,
+    candidateVersion,
+    candidateComplete,
+    annualFailedPages: failedPages,
+    ...candidateContentMeta(capped),
+  };
   const metaBody = JSON.stringify(['SET', metaKey, JSON.stringify(meta), 'EX', 604800]);
   await fetch(redisUrl, {
     method: 'POST',
@@ -303,7 +407,7 @@ async function main() {
   console.log('\n=== Done ===');
 }
 
-export { buildVersionCandidates, discoverVersion };
+export { buildVersionCandidates, discoverVersion, buildCandidateVersions, discoverCandidateVersion };
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === resolve(process.argv[1])) {
   main().catch(err => {

@@ -15,7 +15,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use keyring::Entry;
 use reqwest::Url;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 use tauri::menu::{AboutMetadata, Menu, MenuItem, PredefinedMenuItem, Submenu};
 use tauri::{AppHandle, Manager, RunEvent, Webview, WebviewUrl, WebviewWindowBuilder, WindowEvent};
@@ -23,6 +23,7 @@ use tauri::{AppHandle, Manager, RunEvent, Webview, WebviewUrl, WebviewWindowBuil
 use cache_bounds::validate_cache_write_sizes;
 
 const DEFAULT_LOCAL_API_PORT: u16 = 46123;
+const MAX_LOCAL_API_PROXY_BYTES: usize = 16 * 1024 * 1024;
 const KEYRING_SERVICE: &str = "world-monitor";
 const LOCAL_API_LOG_FILE: &str = "local-api.log";
 const DESKTOP_LOG_FILE: &str = "desktop.log";
@@ -31,12 +32,13 @@ const MENU_HELP_GITHUB_ID: &str = "help.github";
 #[cfg(feature = "devtools")]
 const MENU_HELP_DEVTOOLS_ID: &str = "help.devtools";
 const TRUSTED_WINDOWS: [&str; 3] = ["main", "settings", "live-channels"];
+const SECRET_MANAGEMENT_WINDOWS: [&str; 2] = ["main", "settings"];
 const DESKTOP_SHARED_SECRET_KEY: &str = "WM_DESKTOP_SHARED_SECRET";
 const BUILD_TIME_SIDECAR_ENV_KEYS: [&str; 2] = ["CONVEX_URL", DESKTOP_SHARED_SECRET_KEY];
 const SUPPORTED_SECRET_KEYS: [&str; 29] = [
     "GROQ_API_KEY",
     "OPENROUTER_API_KEY",
-    "TAVILY_API_KEYS",
+    "EXA_API_KEYS",
     "BRAVE_API_KEYS",
     "SERPAPI_API_KEYS",
     "FRED_API_KEY",
@@ -221,6 +223,27 @@ struct DesktopRuntimeInfo {
     local_api_port: Option<u16>,
 }
 
+#[derive(Deserialize)]
+struct LocalApiProxyRequest {
+    method: String,
+    path: String,
+    headers: HashMap<String, String>,
+    body: Option<Vec<u8>>,
+}
+
+#[derive(Serialize)]
+struct LocalApiProxyResponse {
+    status: u16,
+    headers: HashMap<String, String>,
+    body: Vec<u8>,
+}
+
+#[derive(Serialize)]
+struct SecretValidationResponse {
+    status: u16,
+    payload: Value,
+}
+
 fn save_vault(cache: &HashMap<String, String>) -> Result<(), String> {
     let json =
         serde_json::to_string(cache).map_err(|e| format!("Failed to serialize vault: {e}"))?;
@@ -246,16 +269,134 @@ fn require_trusted_window(label: &str) -> Result<(), String> {
     }
 }
 
-#[tauri::command]
-fn get_local_api_token(webview: Webview, state: tauri::State<'_, LocalApiState>) -> Result<String, String> {
-    require_trusted_window(webview.label())?;
+fn can_manage_renderer_secrets(label: &str) -> bool {
+    SECRET_MANAGEMENT_WINDOWS.contains(&label)
+}
+
+// The shared desktop secret is host-managed. All other supported vault keys
+// may be configured by the first-party main/settings renderers.
+fn is_renderer_managed_secret_key(key: &str) -> bool {
+    key != DESKTOP_SHARED_SECRET_KEY && SUPPORTED_SECRET_KEYS.contains(&key)
+}
+
+fn require_secret_management_window(label: &str) -> Result<(), String> {
+    if can_manage_renderer_secrets(label) {
+        Ok(())
+    } else {
+        Err(format!("Secret management not allowed from window '{label}'"))
+    }
+}
+
+fn configured_renderer_secret_keys(secrets: &HashMap<String, String>) -> Vec<String> {
+    secrets
+        .keys()
+        .filter(|key| is_renderer_managed_secret_key(key))
+        .cloned()
+        .collect()
+}
+
+fn normalized_local_api_proxy_path(path: &str) -> Result<String, String> {
+    let url = Url::parse(&format!("http://127.0.0.1{path}"))
+        .map_err(|_| "Invalid local API path".to_string())?;
+    if url.host_str() != Some("127.0.0.1") || url.fragment().is_some() {
+        return Err("Invalid local API path".to_string());
+    }
+    Ok(match url.query() {
+        Some(query) => format!("{}?{query}", url.path()),
+        None => url.path().to_string(),
+    })
+}
+
+fn normalized_local_api_proxy_path_is_allowed(normalized_path: &str) -> bool {
+    let route = normalized_path.split('?').next().unwrap_or(normalized_path);
+    route.starts_with("/api/")
+        && !route.starts_with("//")
+        && (!route.starts_with("/api/local-")
+            || matches!(route, "/api/local-debug-toggle" | "/api/local-traffic-log"))
+        // Keep the denylist explicit as a guard against accidentally widening
+        // the local-* exception above during future maintenance.
+        && route != "/api/local-env-update"
+        && route != "/api/local-env-update-batch"
+        && route != "/api/local-validate-secret"
+}
+
+#[cfg(test)]
+fn local_api_proxy_path_is_allowed(path: &str) -> bool {
+    normalized_local_api_proxy_path(path)
+        .is_ok_and(|normalized| normalized_local_api_proxy_path_is_allowed(&normalized))
+}
+
+async fn send_local_api_request(
+    state: &LocalApiState,
+    method: &str,
+    path: &str,
+    headers: &HashMap<String, String>,
+    body: Option<Vec<u8>>,
+) -> Result<LocalApiProxyResponse, String> {
+    if body.as_ref().is_some_and(|body| body.len() > MAX_LOCAL_API_PROXY_BYTES) {
+        return Err("Local API request body exceeds the proxy limit".to_string());
+    }
+    let port = state
+        .port
+        .lock()
+        .map_err(|_| "Failed to lock local API port".to_string())?
+        .ok_or_else(|| "Local API sidecar is not ready".to_string())?;
     let token = state
         .token
         .lock()
-        .map_err(|_| "Failed to lock local API token".to_string())?;
-    token
+        .map_err(|_| "Failed to lock local API token".to_string())?
         .clone()
-        .ok_or_else(|| "Token not generated".to_string())
+        .ok_or_else(|| "Local API token is unavailable".to_string())?;
+    let method = reqwest::Method::from_bytes(method.as_bytes())
+        .map_err(|_| "Unsupported local API method".to_string())?;
+    let url = Url::parse(&format!("http://127.0.0.1:{port}{path}"))
+        .map_err(|_| "Invalid local API path".to_string())?;
+    let mut request = state.http_client.request(method, url).bearer_auth(token);
+    for (name, value) in headers {
+        if !name.eq_ignore_ascii_case("authorization")
+            && !name.eq_ignore_ascii_case("host")
+            && !name.eq_ignore_ascii_case("content-length")
+        {
+            request = request.header(name, value);
+        }
+    }
+    if let Some(body) = body {
+        request = request.body(body);
+    }
+    let response = request
+        .send()
+        .await
+        .map_err(|error| format!("Local API request failed: {error}"))?;
+    let status = response.status().as_u16();
+    let headers = response
+        .headers()
+        .iter()
+        .filter_map(|(name, value)| value.to_str().ok().map(|value| (name.to_string(), value.to_string())))
+        .collect();
+    let body = response
+        .bytes()
+        .await
+        .map_err(|error| format!("Failed to read local API response: {error}"))?
+        .to_vec();
+    if body.len() > MAX_LOCAL_API_PROXY_BYTES {
+        return Err("Local API response exceeds the proxy limit".to_string());
+    }
+    Ok(LocalApiProxyResponse { status, headers, body })
+}
+
+#[tauri::command]
+async fn proxy_local_api_request(
+    webview: Webview,
+    request: LocalApiProxyRequest,
+    state: tauri::State<'_, LocalApiState>,
+) -> Result<LocalApiProxyResponse, String> {
+    require_secret_management_window(webview.label())?;
+    let normalized_path = normalized_local_api_proxy_path(&request.path)?;
+    let route = normalized_path.split('?').next().unwrap_or(&normalized_path);
+    if !normalized_local_api_proxy_path_is_allowed(&normalized_path) {
+        return Err(format!("Local API route is not proxyable: {route}"));
+    }
+    send_local_api_request(&state, &request.method, &normalized_path, &request.headers, request.body).await
 }
 
 #[tauri::command]
@@ -278,84 +419,125 @@ fn get_local_api_port(webview: Webview, state: tauri::State<'_, LocalApiState>) 
 }
 
 #[tauri::command]
-fn list_supported_secret_keys(webview: Webview) -> Result<Vec<String>, String> {
-    require_trusted_window(webview.label())?;
-    Ok(SUPPORTED_SECRET_KEYS
-        .iter()
-        .map(|key| (*key).to_string())
-        .collect())
-}
-
-#[tauri::command]
-fn get_secret(
+fn list_configured_secret_keys(
     webview: Webview,
-    key: String,
     cache: tauri::State<'_, SecretsCache>,
-) -> Result<Option<String>, String> {
-    require_trusted_window(webview.label())?;
-    if !SUPPORTED_SECRET_KEYS.contains(&key.as_str()) {
-        return Err(format!("Unsupported secret key: {key}"));
-    }
+) -> Result<Vec<String>, String> {
+    require_secret_management_window(webview.label())?;
     let secrets = cache
         .secrets
         .lock()
         .map_err(|_| "Lock poisoned".to_string())?;
-    Ok(secrets.get(&key).cloned())
+    Ok(configured_renderer_secret_keys(&secrets))
 }
 
-#[tauri::command]
-fn get_all_secrets(webview: Webview, cache: tauri::State<'_, SecretsCache>) -> Result<HashMap<String, String>, String> {
-    require_trusted_window(webview.label())?;
-    Ok(cache
+fn update_renderer_secret_cache(
+    cache: &SecretsCache,
+    key: &str,
+    value: Option<&str>,
+) -> Result<(), String> {
+    let mut secrets = cache
         .secrets
         .lock()
-        .unwrap_or_else(|e| e.into_inner())
-        .clone())
+        .map_err(|_| "Lock poisoned".to_string())?;
+    // Build proposed state, persist first, then commit to cache.
+    let mut proposed = secrets.clone();
+    match value {
+        Some(value) => {
+            proposed.insert(key.to_string(), value.to_string());
+        }
+        None => {
+            proposed.remove(key);
+        }
+    }
+    save_vault(&proposed)?;
+    *secrets = proposed;
+    Ok(())
+}
+
+async fn sync_renderer_secret_to_sidecar(
+    state: &LocalApiState,
+    key: &str,
+    value: Option<&str>,
+) {
+    let body = match serde_json::to_vec(&serde_json::json!({ "key": key, "value": value })) {
+        Ok(body) => body,
+        Err(error) => {
+            eprintln!("[tauri] failed to serialize local secret sync for {key}: {error}");
+            return;
+        }
+    };
+    let headers = HashMap::from([(String::from("Content-Type"), String::from("application/json"))]);
+    match send_local_api_request(state, "POST", "/api/local-env-update", &headers, Some(body)).await {
+        Ok(response) if (200..300).contains(&response.status) => {}
+        Ok(response) => eprintln!(
+            "[tauri] local secret sync for {key} returned HTTP {}",
+            response.status
+        ),
+        Err(error) => eprintln!("[tauri] local secret sync failed for {key}: {error}"),
+    }
 }
 
 #[tauri::command]
-fn set_secret(
+async fn set_secret(
     webview: Webview,
     key: String,
     value: String,
     cache: tauri::State<'_, SecretsCache>,
+    state: tauri::State<'_, LocalApiState>,
 ) -> Result<(), String> {
-    require_trusted_window(webview.label())?;
-    if !SUPPORTED_SECRET_KEYS.contains(&key.as_str()) {
+    require_secret_management_window(webview.label())?;
+    if !is_renderer_managed_secret_key(&key) {
         return Err(format!("Unsupported secret key: {key}"));
     }
-    let mut secrets = cache
-        .secrets
-        .lock()
-        .map_err(|_| "Lock poisoned".to_string())?;
-    let trimmed = value.trim().to_string();
-    // Build proposed state, persist first, then commit to cache
-    let mut proposed = secrets.clone();
-    if trimmed.is_empty() {
-        proposed.remove(&key);
-    } else {
-        proposed.insert(key, trimmed);
-    }
-    save_vault(&proposed)?;
-    *secrets = proposed;
+    let value = (!value.trim().is_empty()).then(|| value.trim().to_string());
+    update_renderer_secret_cache(&cache, &key, value.as_deref())?;
+    sync_renderer_secret_to_sidecar(&state, &key, value.as_deref()).await;
     Ok(())
 }
 
 #[tauri::command]
-fn delete_secret(webview: Webview, key: String, cache: tauri::State<'_, SecretsCache>) -> Result<(), String> {
-    require_trusted_window(webview.label())?;
-    if !SUPPORTED_SECRET_KEYS.contains(&key.as_str()) {
+async fn delete_secret(
+    webview: Webview,
+    key: String,
+    cache: tauri::State<'_, SecretsCache>,
+    state: tauri::State<'_, LocalApiState>,
+) -> Result<(), String> {
+    require_secret_management_window(webview.label())?;
+    if !is_renderer_managed_secret_key(&key) {
         return Err(format!("Unsupported secret key: {key}"));
     }
-    let mut secrets = cache
-        .secrets
-        .lock()
-        .map_err(|_| "Lock poisoned".to_string())?;
-    let mut proposed = secrets.clone();
-    proposed.remove(&key);
-    save_vault(&proposed)?;
-    *secrets = proposed;
+    update_renderer_secret_cache(&cache, &key, None)?;
+    sync_renderer_secret_to_sidecar(&state, &key, None).await;
     Ok(())
+}
+
+#[tauri::command]
+async fn validate_secret_with_sidecar(
+    webview: Webview,
+    key: String,
+    value: String,
+    context: HashMap<String, String>,
+    state: tauri::State<'_, LocalApiState>,
+) -> Result<SecretValidationResponse, String> {
+    require_secret_management_window(webview.label())?;
+    if !is_renderer_managed_secret_key(&key) {
+        return Err(format!("Unsupported secret key: {key}"));
+    }
+    let body = serde_json::to_vec(&serde_json::json!({ "key": key, "value": value, "context": context }))
+        .map_err(|error| format!("Failed to serialize secret validation: {error}"))?;
+    let headers = HashMap::from([(String::from("Content-Type"), String::from("application/json"))]);
+    let response = send_local_api_request(&state, "POST", "/api/local-validate-secret", &headers, Some(body)).await?;
+    let payload = serde_json::from_slice(&response.body).unwrap_or_else(|_| {
+        serde_json::json!({
+            "valid": false,
+            "message": format!("Secret validation returned HTTP {} with an invalid response", response.status),
+        })
+    });
+    Ok(SecretValidationResponse {
+        status: response.status,
+        payload,
+    })
 }
 
 fn cache_file_path(app: &AppHandle) -> Result<PathBuf, String> {
@@ -904,9 +1086,11 @@ fn sidecar_env_value(key: &str) -> Option<String> {
 #[cfg(test)]
 mod sanitize_path_tests {
     use super::{
-        build_time_sidecar_env_value, sanitize_path_for_node, BUILD_TIME_SIDECAR_ENV_KEYS,
-        DESKTOP_SHARED_SECRET_KEY, SUPPORTED_SECRET_KEYS,
+        build_time_sidecar_env_value, can_manage_renderer_secrets, configured_renderer_secret_keys,
+        is_renderer_managed_secret_key, local_api_proxy_path_is_allowed, sanitize_path_for_node,
+        BUILD_TIME_SIDECAR_ENV_KEYS, DESKTOP_SHARED_SECRET_KEY, SUPPORTED_SECRET_KEYS,
     };
+    use std::collections::HashMap;
     use std::path::Path;
 
     #[test]
@@ -947,8 +1131,53 @@ mod sanitize_path_tests {
     }
 
     #[test]
+    fn renderer_secret_commands_cannot_manage_desktop_shared_secret() {
+        assert!(!is_renderer_managed_secret_key(DESKTOP_SHARED_SECRET_KEY));
+    }
+
+    #[test]
+    fn only_main_and_settings_can_manage_renderer_secrets() {
+        assert!(can_manage_renderer_secrets("main"));
+        assert!(can_manage_renderer_secrets("settings"));
+        assert!(!can_manage_renderer_secrets("live-channels"));
+        assert!(!can_manage_renderer_secrets("youtube-login"));
+    }
+
+    #[test]
+    fn configured_secret_metadata_filters_internal_values_and_keys() {
+        let secrets = HashMap::from([
+            ("GROQ_API_KEY".to_string(), "secret-value".to_string()),
+            (DESKTOP_SHARED_SECRET_KEY.to_string(), "internal-value".to_string()),
+        ]);
+        assert_eq!(configured_renderer_secret_keys(&secrets), vec!["GROQ_API_KEY"]);
+    }
+
+    #[test]
     fn ignores_unknown_build_time_sidecar_env_keys() {
         assert_eq!(build_time_sidecar_env_value("NOT_A_SUPPORTED_SIDECAR_KEY"), None);
+    }
+
+    #[test]
+    fn local_api_proxy_allows_normal_api_routes_and_settings_diagnostics() {
+        assert!(local_api_proxy_path_is_allowed("/api/fred-data?series_id=CPI"));
+        assert!(local_api_proxy_path_is_allowed("/api/local-debug-toggle"));
+        assert!(local_api_proxy_path_is_allowed("/api/local-traffic-log"));
+    }
+
+    #[test]
+    fn local_api_proxy_rejects_secret_control_routes_and_non_api_paths() {
+        for path in [
+            "/api/local-env-update",
+            "/api/local-env-update-batch",
+            "/api/local-validate-secret",
+            "/api/../api/local-env-update",
+            "/api/%2e%2e/api/local-env-update",
+            "/api/local-unexpected",
+            "/settings",
+            "//api/fred-data",
+        ] {
+            assert!(!local_api_proxy_path_is_allowed(path), "{path} must be rejected");
+        }
     }
 }
 
@@ -1425,12 +1654,11 @@ fn main() {
         .manage(LocalApiState::default())
         .manage(SecretsCache::load_from_keychain())
         .invoke_handler(tauri::generate_handler![
-            list_supported_secret_keys,
-            get_secret,
-            get_all_secrets,
+            list_configured_secret_keys,
             set_secret,
             delete_secret,
-            get_local_api_token,
+            validate_secret_with_sidecar,
+            proxy_local_api_request,
             get_local_api_port,
             get_desktop_runtime_info,
             read_cache_entry,

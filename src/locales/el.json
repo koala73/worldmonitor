@@ -129,17 +129,20 @@
       "currencies": "Νομίσματα",
       "area": "Έκταση"
     },
-    "loadingResilienceScore": "Loading resilience score…",
-    "resilienceScoreUnavailable": "Resilience score unavailable.",
+    "loadingResilienceScore": "Φόρτωση βαθμολογίας ανθεκτικότητας…",
+    "resilienceScoreUnavailable": "Η βαθμολογία ανθεκτικότητας δεν είναι διαθέσιμη.",
     "china": {
       "title": "Επισκόπηση χώρας: Κίνα",
       "description": "Τρέχουσα εικόνα μακροοικονομίας, αγοράς, εμπορίου, ενέργειας και επιχειρησιακής διαθεσιμότητας από τα υφιστάμενα δημόσια συμβόλαια δεδομένων.",
-      "macroPolicy": "Μακροοικονομία & Πολιτική",
-      "marketCredit": "Αγορά & Πίστωση",
-      "tradeSupply": "Εμπόριο & Εφοδιαστική αλυσίδα",
+      "policyEvents": "Πολιτική και εφαρμογή",
       "energy": "Ενέργεια",
       "availability": "Κίνδυνοι & Αεροπορία",
       "observed": "Έως:",
+      "published": "Δημοσιεύτηκε:",
+      "effective": "Σε ισχύ:",
+      "sectors": "Τομείς:",
+      "entities": "Οντότητες:",
+      "translation": "Μετάφραση:",
       "source": "Πηγή:",
       "imfGrowth": "Πρόβλεψη ανάπτυξης ΔΝΤ",
       "creditGdp": "Πίστωση προς ΑΕΠ",
@@ -148,8 +151,6 @@
       "gasDemand": "Ζήτηση φυσικού αερίου",
       "energyMix": "Μείγμα ηλεκτροπαραγωγής",
       "coal": "άνθρακας",
-      "aviationAvailability": "Διαθεσιμότητα αεροπορίας",
-      "hazardAvailability": "Διαθεσιμότητα κινδύνων",
       "noMajorDisruptions": "Δεν αναφέρθηκαν σημαντικές διαταραχές",
       "activeDisruptions_one": "{{count}} ενεργή διαταραχή",
       "activeDisruptions_other": "{{count}} ενεργές διαταραχές",
@@ -161,18 +162,21 @@
       "ccfiSource": "Ναυτιλιακό Χρηματιστήριο της Σαγκάης",
       "comtradeSource": "UN Comtrade, δηλούσα χώρα 156",
       "sourceUnavailable": "Μη διαθέσιμη πηγή",
-      "macroUnavailable": "Τα δεδομένα μακροοικονομίας και πολιτικής δεν είναι διαθέσιμα αυτήν τη στιγμή.",
-      "marketUnavailable": "Τα δεδομένα αγοράς και πίστωσης δεν είναι διαθέσιμα αυτήν τη στιγμή.",
-      "tradeUnavailable": "Τα δεδομένα εμπορίου και εφοδιαστικής αλυσίδας δεν είναι διαθέσιμα αυτήν τη στιγμή.",
-      "energyUnavailable": "Τα ενεργειακά δεδομένα δεν είναι διαθέσιμα αυτήν τη στιγμή.",
-      "availabilityUnavailable": "Τα δεδομένα διαθεσιμότητας κινδύνων και αεροπορίας δεν είναι διαθέσιμα αυτήν τη στιγμή.",
+      "policyUnavailable": "Official policy and enforcement events are currently unavailable.",
+      "policyPartial": "{{count}} official agencies are temporarily degraded.",
       "status": {
         "loading": "Φόρτωση",
         "available": "Διαθέσιμο",
         "partial": "Μερικό",
         "stale": "Παρωχημένο",
         "unavailable": "Μη διαθέσιμο"
-      }
+      },
+      "macroSignals": "Μακροσήματα",
+      "crossStraitActivity": "Δραστηριότητα διαμέσου του πορθμού",
+      "corporateDisclosures": "Εταιρικές γνωστοποιήσεις",
+      "corridorConditions": "Συνθήκες διαδρόμου",
+      "activityNowcast": "Nowcast δραστηριότητας",
+      "decisionSignalsUnavailable": "Το στιγμιότυπο σημάτων απόφασης της Κίνας δεν είναι διαθέσιμο αυτή τη στιγμή."
     }
   },
   "header": {
@@ -253,7 +257,7 @@
     "panelCatCommodityEcon": "Οικονομία & Εμπόριο",
     "panelCatHappyNews": "Καλές Ειδήσεις",
     "panelCatHappyPlanet": "Πλανήτης & Δωρεές",
-    "embed": "Embed"
+    "embed": "Ενσωμάτωση"
   },
   "panels": {
     "liveNews": "Ζωντανές Ειδήσεις",
@@ -883,7 +887,7 @@
       "fytdLabel": "FY{{year}} YTD",
       "vsPriorFy": "vs FY{{year}}",
       "sourceWto": "WTO",
-      "sourceTreasury": "US Treasury",
+      "sourceTreasury": "Υπουργείο Οικονομικών ΗΠΑ",
       "colDate": "Ημερομηνία",
       "colMonthly": "Μηνιαία",
       "colFytd": "FY YTD",
@@ -1268,8 +1272,8 @@
       "sectionFollowing": "Following",
       "sectionAll": "All",
       "sourceStates": {
-        "degraded": "degraded",
-        "stale": "stale"
+        "degraded": "υποβαθμισμένο",
+        "stale": "παρωχημένο"
       }
     },
     "insights": {
@@ -1348,7 +1352,8 @@
       "newsSignals": "{{news}} ειδήσεις • {{signals}} σήματα",
       "provenanceTitle": "Προέλευση κάλυψης: πόσες καταχωρημένες ιστορίες και διακριτές πηγές επιλέχθησαν για αυτή τη σύνοψη",
       "compiledFrom": "Συντάχθηκε από {{stories}} ιστορίες σε {{sources}} πηγές",
-      "briefFreshness": "Δημιουργήθηκε πριν {{minutes}}λ · νεότερη πηγή {{hours}}ώ παλιά"
+      "briefFreshness": "Δημιουργήθηκε πριν {{minutes}}λ · νεότερη πηγή {{hours}}ώ παλιά",
+      "briefStoryDetails": "Story details ({{count}})"
     },
     "settings": {
       "exportSettings": "Εξαγωγή ρυθμίσεων",
@@ -1426,10 +1431,10 @@
         "hoursAgo": "{{count}}ω πριν"
       },
       "infoTooltip": "<strong>Μεθοδολογία</strong> Σύνθετη βαθμολογία (0-100) που συνδυάζει:<ul><li>50% Αστάθεια Χωρών (κορυφαίες 5 σταθμισμένες)</li><li>30% Ζώνες γεωγραφικής σύγκλισης</li><li>20% Συμβάντα υποδομών</li></ul>Αυτόματη ανανέωση κάθε 5 λεπτά.",
-      "cachedCiiStatus": "Cached CII {{states}}",
+      "cachedCiiStatus": "Αποθηκευμένο CII {{states}}",
       "sourceStates": {
-        "degraded": "degraded",
-        "stale": "stale"
+        "degraded": "υποβαθμισμένο",
+        "stale": "παρωχημένο"
       },
       "dataFreshness": "Data Freshness",
       "sourcesDetail": "{{active}}/{{total}} sources"
@@ -1556,7 +1561,26 @@
       "cafIndex": "Δείκτης CAF",
       "candidGrants": "Επιχορηγήσεις Candid",
       "dataLag": "Καθυστέρηση Δεδομένων",
-      "infoTooltip": "<strong>Δείκτης Παγκόσμιας Φιλανθρωπικής Δραστηριότητας</strong> Σύνθετος δείκτης που παρακολουθεί προσωπικές δωρεές μέσω πλατφορμών crowdfunding και crypto πορτοφολιών.<ul><li><strong>Πλατφόρμες</strong>: Δειγματοληψία καμπανιών GoFundMe, GlobalGiving, JustGiving</li><li><strong>Crypto</strong>: On-chain εισροές φιλανθρωπικών πορτοφολιών (Endaoment, Giving Block)</li><li><strong>Θεσμικά</strong>: OECD ODA, Δείκτης CAF World Giving, Επιχορηγήσεις Candid</li></ul>Ο δείκτης είναι κατευθυντικός (όχι ακριβή ποσά). Συνδυάζει ζωντανή δειγματοληψία με δημοσιευμένες ετήσιες εκθέσεις."
+      "infoTooltip": "<strong>Δείκτης Παγκόσμιας Φιλανθρωπικής Δραστηριότητας</strong> Σύνθετος δείκτης που παρακολουθεί προσωπικές δωρεές μέσω πλατφορμών crowdfunding και crypto πορτοφολιών.<ul><li><strong>Πλατφόρμες</strong>: Δειγματοληψία καμπανιών GoFundMe, GlobalGiving, JustGiving</li><li><strong>Crypto</strong>: On-chain εισροές φιλανθρωπικών πορτοφολιών (Endaoment, Giving Block)</li><li><strong>Θεσμικά</strong>: OECD ODA, Δείκτης CAF World Giving, Επιχορηγήσεις Candid</li></ul>Ο δείκτης είναι κατευθυντικός (όχι ακριβή ποσά). Συνδυάζει ζωντανή δειγματοληψία με δημοσιευμένες ετήσιες εκθέσεις.",
+      "benchmarkTitle": "Παγκόσμια σημεία αναφοράς δωρεών",
+      "benchmarkInfoTooltip": "<strong>Παγκόσμια σημεία αναφοράς δωρεών</strong> Δημοσιευμένοι ισχυρισμοί πλατφορμών και ιδρυμάτων με περιόδους πηγής και κατάσταση επαλήθευσης. Οι εξετικοί αριθμοί είναι εκτιμήσεις, όχι ζωντανή δραστηριότητα.",
+      "status": {
+        "published": "Δημοσιευμένα σημεία αναφοράς με επαληθευμένη κάλυψη πηγής.",
+        "partial": "Δημοσιευμένα σημεία αναφοράς με μερική κάλυψη πηγής.",
+        "legacy": "Παλαιό στιγμιότυπο· λεπτομέρειες πηγής μη διαθέσιμες.",
+        "cached": "Εμφάνιση αποθηκευμένου στιγμιότυπου· η ανανέωση δεν είναι διαθέσιμη."
+      },
+      "trackedAnnualized": "Παρακολουθούμενες δωρεές πλατφόρμας — εξετική εκτίμηση",
+      "annualizedDaily": "Ημερήσια εξετική εκτίμηση",
+      "atLeast": "Τουλάχιστον",
+      "about": "Περίπου",
+      "sourceNotVerified": "Πηγή μη επαληθευμένη",
+      "reportedCumulative": "Αναφερόμενο σωρευτικό σύνολο",
+      "sourcePeriod": "{{source}} · {{period}}",
+      "benchmark": "Δημοσιευμένο σημείο αναφοράς",
+      "sourcesMethodology": "Πηγές και μεθοδολογία",
+      "methodologyIntro": "Μόνο επαληθευμένοι ετήσιοι ή υπεράσιμα εξετικοί ισχυρισμοί πλατφορμών εισέρχονται στον τίτλο. Τα σωρευτικά και θεσμικά στοιχεία παραμένουν ξεχωριστό πλαίσιο.",
+      "partialEstimate": "Μερικώς επαληθευμένη εκτίμηση"
     },
     "displacement": {
       "refugees": "Πρόσφυγες",
@@ -1596,6 +1620,8 @@
       "summaryFailed": "Αποτυχία περίληψης",
       "sources": "{{count}} πηγές",
       "relatedAssetsNear": "Σχετικά στοιχεία κοντά σε {{location}}",
+      "sourceCoverage": "{{covered}}/{{total}} πηγές",
+      "sourceCoverageHint": "Εμφανίζονται {{covered}} από {{total}} ενεργές πηγές — αυτός ο πίνακας εναλλάσσει τις πηγές του σε κάθε ανανέωση",
       "sortBy": "Ταξινόμηση κατά",
       "sortNewest": "Πιο πρόσφατα",
       "sortRelevance": "Σχετικότητα"
@@ -2108,7 +2134,11 @@
       "infoTooltip": "<strong>Disaster Cascade</strong> Ανιχνεύει συγκλίνοντα σήματα φυσικής καταστροφής και υποδομής:<ul><li>Συσχετίζει σεισμούς, δασικές πυρκαγιές, πλημμύρες και ακραία καιρικά φαινόμενα</li><li>Παρακολουθεί κασκαδικές επιπτώσεις στην υποδομή και την αλυσίδα εφοδιασμού</li><li>Επισημαίνει περιοχές με σύνθετο κίνδυνο καταστροφής</li></ul>Κάντε κλικ σε μια κάρτα για μεγέθυνση στην πληγείσα περιοχή."
     },
     "markets": {
-      "infoTooltip": "<strong>Markets</strong> Δείκτες αγοράς σε πραγματικό χρόνο, μετοχές και τιμές κρυπτογράφησης. Προσαρμόστε τη λίστα παρακολούθησής σας με το κουμπί Watchlist. Τα sparklines δείχνουν την πρόσφατη τάση τιμής."
+      "infoTooltip": "<strong>Markets</strong> Δείκτες αγοράς σε πραγματικό χρόνο, μετοχές και τιμές κρυπτογράφησης. Προσαρμόστε τη λίστα παρακολούθησής σας με το κουμπί Watchlist. Τα sparklines δείχνουν την πρόσφατη τάση τιμής.",
+      "chart": {
+        "title": "Γράφημα τιμής {{symbol}}",
+        "close": "Κλείσιμο γραφήματος"
+      }
     },
     "heatmap": {
       "infoTooltip": "<strong>Sector Heatmap</strong> Απόδοση του τομέα S&P 500 με μια ματιά. Η ένταση χρώματος αντανακλά το μέγεθος της ημερήσιας αλλαγής. Πράσινο = κέρδη, Κόκκινο = ζημιές."
@@ -2170,11 +2200,101 @@
       "cta": "Αναβάθμιση σε Pro →",
       "dismiss": "Απόρριψη"
     },
+    "billingState": {
+      "onHoldDesc": "Η πληρωμή απέτυχε. Ενημερώστε τη μέθοδο πληρωμής σας για να επαναφέρετε την premium πρόσβαση.",
+      "onHoldBannerMessage": "Η πληρωμή απέτυχε. Ενημερώστε τη μέθοδο πληρωμής σας για να παραμείνει ενεργή η συνδρομή σας.",
+      "updatePayment": "Ενημέρωση πληρωμής",
+      "renewalPendingDesc": "Επαληθεύουμε την ανανέωση της συνδρομής σας. Η premium πρόσβαση θα αποκατασταθεί αυτόματα μόλις επιβεβαιωθεί.",
+      "refreshStatus": "Ανανέωση κατάστασης",
+      "renewalFailedDesc": "Δεν ήταν δυνατή η επαλήθευση της ανανέωσης της συνδρομής σας. Διαχειριστείτε τη χρέωση ή επικοινωνήστε με την υποστήριξη αν το πρόβλημα επιμένει.",
+      "manageBilling": "Διαχείριση χρέωσης",
+      "lapsedDesc": "Η συνδρομή σας Pro έληξε. Εγγραφείτε ξανά για να ανακτήσετε την premium πρόσβαση.",
+      "resubscribe": "Επανεγγραφή"
+    },
     "checkoutFailureBanner": {
       "message": "Η πληρωμή δεν μπορούσε να ολοκληρωθεί. Δεν χρεώθηκε κανένα ποσό.",
       "retry": "Δοκιμάστε ξανά",
       "retrying": "Γίνεται νέα προσπάθεια…",
       "dismiss": "Απόρριψη"
+    },
+    "proActivation": {
+      "badge": "PRO",
+      "progress": "Βήμα {{current}} από {{total}}",
+      "closeLabel": "Παράλειψη ρύθμισης",
+      "ariaLabel": "Ρύθμιση ενεργοποίησης Pro",
+      "signedInAs": "Συνδεδεμένος ως {{email}}",
+      "steps": {
+        "brief": {
+          "heading": "Η καθημερινή σας ενημέρωση, κάθε πρωί",
+          "body": "Μια επιμελημένη ενημέρωση πληροφοριών στα εισερχόμενά σας κάθε πρωί — τα σήματα της νύχτας που έχουν σημασία, συμπυκνωμένα σε ανάγνωση πέντε λεπτών.",
+          "confirmCta": "Ενεργοποίηση της πρωινής μου ενημέρωσης",
+          "confirming": "Ενεργοποίηση…",
+          "doneNote": "Η πρωινή σας ενημέρωση εκτελείται ήδη.",
+          "scheduleNote": "Θα διατηρήσουμε την τρέχουσα ώρα παράδοσής σας.",
+          "summaryLabel": "Πρωινή ενημέρωση",
+          "summaryVerified": "Ενεργή — ξεκινά με την επόμενη πρωινή σας ενημέρωση.",
+          "deliverAt": "Παράδοση στις",
+          "previewLoading": "Προετοιμασία προεπισκόπησης της πρώτης σας ενημέρωσης…",
+          "previewLabel": "Η σημερινή πρωινή ενημέρωση"
+        },
+        "alerts": {
+          "heading": "Κρίσιμες ειδοποιήσεις",
+          "body": "Λάβετε ειδοποίηση στο πρόγραμμα περιήγησής σας όταν συμβεί κάτι σημαντικό — κλιμακώσεις συγκρούσεων, κραδασμοί αγοράς, νέες κυρώσεις. Προσαρμόστε τη συχνότητα ανά πάσα στιγμή στις Ρυθμίσεις.",
+          "confirmCta": "Ενεργοποίηση ειδοποιήσεων",
+          "confirming": "Ενεργοποίηση…",
+          "doneNote": "Οι ειδοποιήσεις προγράμματος περιήγησης είναι ήδη ενεργές.",
+          "blockedNote": "Οι ειδοποιήσεις είναι αποκλεισμένες στο πρόγραμμα περιήγησής σας. Ενεργοποιήστε τις στις ρυθμίσεις ιστότοπου του προγράμματος περιήγησής σας για να λαμβάνετε ειδοποιήσεις.",
+          "declinedNote": "Κανένα πρόβλημα — δεν θα στείλουμε ειδοποιήσεις προγράμματος περιήγησης. Μπορείτε να τις ενεργοποιήσετε αργότερα από τις ρυθμίσεις ιστότοπου του προγράμματος περιήγησής σας.",
+          "summaryLabel": "Κρίσιμες ειδοποιήσεις",
+          "summaryVerified": "Ενεργές — τα κρίσιμα σήματα θα φτάνουν στο πρόγραμμα περιήγησής σας."
+        },
+        "power": {
+          "heading": "Το σετ εργαλείων Pro σας",
+          "body": "Προσαρμοσμένα widgets, συνδέσεις MCP και ο ερευνητής AI έχουν ξεκλειδωθεί. Φτιάξτε τον πίνακα που πραγματικά θέλετε να παρακολουθείτε.",
+          "confirmCta": "Εξερεύνηση εργαλείων Pro",
+          "confirming": "Άνοιγμα…",
+          "doneNote": "Ήδη χρησιμοποιείτε τα εργαλεία Pro σας.",
+          "summaryLabel": "Σετ εργαλείων Pro",
+          "summaryVerified": "Ξεκλειδωμένο και έτοιμο όποτε είστε κι εσείς.",
+          "channelsNote": "Προτιμάτε Telegram, Slack, Discord ή ένα webhook;",
+          "pointers": {
+            "search": "Αναζήτηση σε ολόκληρο τον πίνακα",
+            "widgets": "Δημιουργία προσαρμοσμένου widget",
+            "analyst": "Ρωτήστε τον αναλυτή AI",
+            "mcpClients": "Ρύθμιση MCP",
+            "channels": "Ρυθμίστε τα στις ρυθμίσεις ειδοποιήσεων"
+          }
+        }
+      },
+      "status": {
+        "pending": "Δεν έχει ρυθμιστεί",
+        "inFlight": "Ρύθμιση…",
+        "verified": "Έτοιμο",
+        "failed": "Δεν λειτούργησε",
+        "blocked": "Αποκλεισμένο",
+        "unavailable": "Μη διαθέσιμο",
+        "blockedNote": "Αυτό δεν είναι διαθέσιμο αυτήν τη στιγμή — μπορείτε να το ρυθμίσετε αργότερα από τις ρυθμίσεις.",
+        "unavailableNote": "Αυτό δεν είναι διαθέσιμο στη συσκευή σας — μπορείτε να το ρυθμίσετε αργότερα.",
+        "failedBody": "Κάτι πήγε στραβά. Μπορείτε να δοκιμάσετε ξανά ή να το ρυθμίσετε αργότερα από τις ρυθμίσεις.",
+        "retry": "Δοκιμάστε ξανά"
+      },
+      "actions": {
+        "skip": "Παράλειψη προς το παρόν",
+        "continue": "Συνέχεια"
+      },
+      "summary": {
+        "heading": "Όλα είναι έτοιμα",
+        "subVerified": "Δείτε τι λειτουργεί στον λογαριασμό σας.",
+        "subPending": "Μπορείτε να ολοκληρώσετε τη ρύθμιση ανά πάσα στιγμή από τις ρυθμίσεις.",
+        "linePending": "Δεν έχει ρυθμιστεί ακόμα — ολοκληρώστε το όποτε θέλετε στις ρυθμίσεις.",
+        "lineFailed": "Δεν μπορέσαμε να το ρυθμίσουμε — δοκιμάστε ξανά από τις ρυθμίσεις.",
+        "finish": "Μετάβαση στον πίνακά μου"
+      },
+      "chip": {
+        "message": "Ολοκληρώστε τη ρύθμιση του λογαριασμού σας Pro.",
+        "action": "Ολοκλήρωση ρύθμισης",
+        "dismissLabel": "Απόρριψη"
+      }
     },
     "frameworkSelector": {
       "label": "Πλαίσιο Ανάλυσης",
@@ -2349,43 +2469,59 @@
       }
     },
     "mobileNav": {
-      "panelCategories": "Panel categories"
+      "panelCategories": "Κατηγορίες πίνακα"
     },
     "panelFreshness": {
       "status": {
-        "fresh": "Fresh",
-        "stale": "Stale",
-        "veryStale": "Very stale",
-        "noData": "No data",
-        "disabled": "Disabled",
-        "error": "Error"
+        "fresh": "Ενημερωμένο",
+        "stale": "Παρωχημένο",
+        "veryStale": "Πολύ παρωχημένο",
+        "noData": "Χωρίς δεδομένα",
+        "disabled": "Απενεργοποιημένο",
+        "error": "Σφάλμα"
       },
       "labelWithAge": "{{status}} {{age}}",
-      "title": "Data freshness: {{status}}. {{sources}}",
+      "title": "Επικαιρότητα δεδομένων: {{status}}. {{sources}}",
       "sourceDetail": "{{name}}: {{status}}, {{update}}",
       "sourceDetailWithHealth": "{{name}}: {{status}}, {{update}}, {{detail}}",
-      "lastUpdated": "last updated {{time}}",
-      "neverUpdated": "never updated",
+      "lastUpdated": "τελευταία ενημέρωση {{time}}",
+      "neverUpdated": "ποτέ δεν ενημερώθηκε",
       "health": {
-        "partialCoverage": "partial coverage",
-        "contentStale": "content stale",
-        "seedStale": "seed stale",
-        "noSourceData": "no source data",
-        "sourceErrorReported": "source error reported",
-        "freshnessStoreUnavailable": "freshness store unavailable",
-        "freshnessStoreDegraded": "freshness store degraded"
+        "partialCoverage": "μερική κάλυψη",
+        "contentStale": "περιεχόμενο παρωχημένο",
+        "seedStale": "seed παρωχημένο",
+        "noSourceData": "χωρίς δεδομένα πηγής",
+        "sourceErrorReported": "αναφέρθηκε σφάλμα πηγής",
+        "freshnessStoreUnavailable": "αποθήκη επικαιρότητας μη διαθέσιμη",
+        "freshnessStoreDegraded": "αποθήκη επικαιρότητας υποβαθμισμένη"
       },
       "time": {
-        "never": "never",
-        "justNow": "just now",
-        "minutesAgo": "{{count}}m ago",
-        "hoursAgo": "{{count}}h ago",
-        "daysAgo": "{{count}}d ago",
-        "compactNow": "now",
-        "compactMinutes": "{{count}}m",
-        "compactHours": "{{count}}h",
-        "compactDays": "{{count}}d"
+        "never": "ποτέ",
+        "justNow": "μόλις τώρα",
+        "minutesAgo": "πριν {{count}}λ",
+        "hoursAgo": "πριν {{count}}ω",
+        "daysAgo": "πριν {{count}}η",
+        "compactNow": "τώρα",
+        "compactMinutes": "{{count}}λ",
+        "compactHours": "{{count}}ω",
+        "compactDays": "{{count}}η"
       }
+    },
+    "exportGate": {
+      "signedOutDesc": "Συνδεθείτε για εξαγωγή δεδομένων πίνακα ελέγχου ως CSV, JSON ή PDF.",
+      "upgradeDesc": "Η εξαγωγή δεδομένων (CSV, JSON, PDF) περιλαμβάνεται στο Pro Business.",
+      "upgradeCta": "Αναβάθμιση σε Pro Business",
+      "lockedAriaLabel": "Εξαγωγή δεδομένων — κλειδωμένο. {{reason}}",
+      "unlockedAnnouncement": "Η εξαγωγή δεδομένων ξεκλειδώθηκε.",
+      "preparingPdf": "Προετοιμασία PDF…",
+      "pdfFailed": "Η αναφορά PDF δεν ήταν δυνατό να δημιουργηθεί. Δοκιμάστε ξανά ή χρησιμοποιήστε την εξαγωγή JSON."
+    },
+    "tabCap": {
+      "signedOutDesc": "Οι χώροι εργασίας χωρίς σύνδεση περιορίζονται σε {{cap}} καρτέλες. Συνδεθείτε για να προσθέσετε περισσότερες.",
+      "upgradeDesc": "Έχετε φτάσει το όριο {{cap}} καρτελών πίνακα ελέγχου.",
+      "upgradeCta": "Αναβάθμιση για περισσότερα",
+      "lockedAriaLabel": "Προσθήκη καρτέλας — κλειδωμένο. {{reason}}",
+      "unlockedAnnouncement": "Το όριο καρτελών πίνακα ελέγχου αρθρώθηκε."
     }
   },
   "popups": {
@@ -3189,16 +3325,42 @@
     "visualizationFailed": "Η απεικόνιση απέτυχε"
   },
   "dashboardTabs": {
-    "ariaLabel": "Dashboard tabs",
-    "defaultName": "Main",
-    "newTabName": "New Tab",
-    "newTabCreated": "New tab created",
-    "tabDeleted": "Tab \"{{name}}\" deleted",
-    "addTab": "Add tab",
-    "addTabTitle": "New tab (starts with the default panels)",
-    "renameHint": "{{name}} — double-click to rename",
-    "deleteTab": "Delete tab",
-    "deleteTabAria": "Delete tab {{name}}",
-    "tabNameAria": "Tab name"
+    "ariaLabel": "Καρτέλες πίνακα ελέγχου",
+    "defaultName": "Κύρια",
+    "newTabName": "Νέα καρτέλα",
+    "newTabCreated": "Δημιουργήθηκε νέα καρτέλα",
+    "tabDeleted": "Η καρτέλα \"{{name}}\" διαγράφηκε",
+    "addTab": "Προσθήκη καρτέλας",
+    "addTabTitle": "Νέα καρτέλα (ξεκινά με τα προεπιλεγμένα πάνελ)",
+    "renameHint": "{{name}} — διπλό κλικ για μετονομασία",
+    "deleteTab": "Διαγραφή καρτέλας",
+    "deleteTabAria": "Διαγραφή καρτέλας {{name}}",
+    "tabNameAria": "Όνομα καρτέλας"
+  },
+  "theaterPresets": {
+    "label": "Προρυθμίσεις κάλυψης",
+    "applied": "Εφαρμόστηκε η προρύθμιση {{preset}}: ενεργοποιήθηκαν {{count}} πηγές",
+    "alreadyApplied": "Η προρύθμιση {{preset}} έχει ήδη εφαρμοστεί",
+    "ukraineWar": {
+      "label": "Πόλεμος στην Ουκρανία",
+      "description": "Ενεργοποίηση βασικών ουκρανικών μέσων, ανεξάρτητου ρωσικού Τύπου και πηγών αξιολόγησης του μετώπου"
+    },
+    "indoPacific": {
+      "label": "Ινδο-Ειρηνικός / Ταϊβάν",
+      "description": "Ενεργοποίηση πηγών ασφάλειας για την Ταϊβάν, το Πακιστάν και τη Νοτιοανατολική Ασία"
+    },
+    "sahelWestAfrica": {
+      "label": "Σαχέλ και Δυτική Αφρική",
+      "description": "Ενεργοποίηση τοπικών πηγών από το Σαχέλ, τη Νιγηρία και τη Δυτική Αφρική"
+    },
+    "caucasusCentralAsia": {
+      "label": "Καύκασος και Κεντρική Ασία",
+      "description": "Ενεργοποίηση περιφερειακών πηγών από τον Νότιο Καύκασο και την Κεντρική Ασία"
+    },
+    "middleEastFlashpoints": {
+      "label": "Εστίες έντασης στη Μέση Ανατολή",
+      "description": "Ενεργοποίηση πηγών για το Ιράν, το Ισραήλ, τον Κόλπο και τις κουρδικές περιοχές"
+    },
+    "unavailable": "Η προρύθμιση {{preset}} δεν είναι διαθέσιμη με τα τρέχοντα πάνελ"
   }
 }

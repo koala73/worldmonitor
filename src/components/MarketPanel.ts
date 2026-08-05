@@ -6,23 +6,53 @@ import { escapeHtml, unsafeRawHtml } from '@/utils/sanitize';
 import { miniSparkline } from '@/utils/sparkline';
 import { SITE_VARIANT } from '@/config';
 import { createWatchlistButton } from './watchlist-modal';
+import {
+  renderChinaCorporateDisclosureSignals,
+  type ChinaCorporateDisclosureSnapshot,
+} from './market-disclosures';
+import { composeMarketPanelContent } from './market-panel-content';
+import { openMarketChartModal } from './market-chart-modal';
+import {
+  bindMarketChartActivation,
+  getMarketChartRowAttributes,
+} from './market-chart-interactions';
 
 export class MarketPanel extends Panel {
+  private _markets: MarketData[] = [];
+  private _marketsRateLimited = false;
+  private _disclosures: ChinaCorporateDisclosureSnapshot | null = null;
+
   constructor() {
     super({ id: 'markets', title: t('panels.markets'), infoTooltip: t('components.markets.infoTooltip') });
     this.header.appendChild(createWatchlistButton());
+
+    // Delegated once on the persistent content element (each render only swaps
+    // innerHTML): click or Enter/Space on a plottable ticker opens its terminal chart.
+    bindMarketChartActivation(this.content, () => this._markets, openMarketChartModal);
   }
 
   public renderMarkets(data: MarketData[], rateLimited?: boolean): void {
-    if (data.length === 0) {
-      this.showRetrying(rateLimited ? t('common.rateLimitedMarket') : t('common.failedMarketData'));
-      return;
-    }
+    this._markets = data;
+    this._marketsRateLimited = Boolean(rateLimited);
+    this._renderMarketsAndDisclosures();
+  }
 
-    const html = data
-      .map(
-        (stock) => `
-      <div class="market-item">
+  public renderDisclosures(snapshot: ChinaCorporateDisclosureSnapshot | null | undefined): void {
+    this._disclosures = snapshot ?? null;
+    this._renderMarketsAndDisclosures();
+  }
+
+  private _renderMarketsAndDisclosures(): void {
+    const disclosureHtml = renderChinaCorporateDisclosureSignals(this._disclosures);
+    const marketsHtml = this._markets
+      .map((stock, idx) => {
+        const attrs = getMarketChartRowAttributes(
+          stock,
+          idx,
+          t('components.markets.chart.title', { symbol: stock.display }),
+        );
+        return `
+      <div${attrs}>
         <div class="market-info">
           <span class="market-name">${escapeHtml(stock.name)}</span>
           <span class="market-symbol">${escapeHtml(stock.display)}</span>
@@ -33,11 +63,25 @@ export class MarketPanel extends Panel {
           <span class="market-change ${getChangeClass(stock.change!)}">${formatChange(stock.change!)}</span>
         </div>
       </div>
-    `
-      )
+    `;
+      })
       .join('');
-
-    this.setSafeContent(unsafeRawHtml(html, 'legacy Panel.setContent() migration'));
+    const content = composeMarketPanelContent({
+      hasMarkets: this._markets.length > 0,
+      marketsHtml,
+      disclosureHtml,
+      unavailableMessage: this._marketsRateLimited
+        ? t('common.rateLimitedMarket')
+        : t('common.failedMarketData'),
+    });
+    if (content.kind === 'retry') {
+      this.showRetrying(content.message);
+      return;
+    }
+    this.setSafeContent(unsafeRawHtml(
+      content.html,
+      'legacy Panel.setContent() migration',
+    ));
   }
 }
 
@@ -57,6 +101,7 @@ export class HeatmapPanel extends Panel {
   private _heatmapData: Array<{ symbol?: string; name: string; change: number | null }> = [];
   private _sectorBars: Array<{ symbol: string; name: string; change1d: number }> = [];
   private _valuations: Record<string, SectorValuation> = {};
+  private _staleValuationSymbols: Set<string> = new Set();
 
   constructor() {
     super({ id: 'heatmap', title: t('panels.heatmap'), infoTooltip: t('components.heatmap.infoTooltip') });
@@ -79,18 +124,37 @@ export class HeatmapPanel extends Panel {
     this._render();
   }
 
-  public updateValuations(valuations: Record<string, SectorValuation> | undefined): void {
+  public updateValuations(
+    valuations: Record<string, SectorValuation> | undefined,
+    staleSymbols?: string[],
+  ): void {
     // undefined = caller has no valuations to push (e.g. fresh fetch returned
     // a payload without the field). Leave prior state intact so returning
     // users don't see the Valuations tab vanish mid-session.
     if (valuations === undefined) return;
+    this._staleValuationSymbols = new Set((staleSymbols ?? []).map((s) => s.toUpperCase()));
     if (Object.keys(valuations).length === 0) {
       this._valuations = {};
       if (this._tab === 'valuations') this._tab = 'performance';
       this._render();
       return;
     }
-    this._valuations = valuations;
+    // A record replayed from the seeder's last-good snapshot can arrive with
+    // null-valued keys omitted. `SectorValuation` declares them `number | null`,
+    // and every formatter guards with `=== null`, so a MISSING key would slip
+    // through and reach `undefined.toFixed()`. Coerce to the declared shape.
+    const normalized: Record<string, SectorValuation> = {};
+    for (const [symbol, value] of Object.entries(valuations)) {
+      normalized[symbol] = {
+        trailingPE: value?.trailingPE ?? null,
+        forwardPE: value?.forwardPE ?? null,
+        beta: value?.beta ?? null,
+        ytdReturn: value?.ytdReturn ?? null,
+        threeYearReturn: value?.threeYearReturn ?? null,
+        fiveYearReturn: value?.fiveYearReturn ?? null,
+      };
+    }
+    this._valuations = normalized;
     this._render();
   }
 
@@ -218,8 +282,14 @@ export class HeatmapPanel extends Panel {
     const tableRows = sorted
       .map((e) => {
         const name = nameMap.get(e.symbol) ?? e.symbol;
-        return `<tr>
-  <td style="padding:3px 6px;white-space:nowrap;font-size:11px">${escapeHtml(name)}</td>
+        // A stale row carries real numbers replayed from the seeder's last-good
+        // snapshot, so it must not read as current data.
+        const isStale = this._staleValuationSymbols.has(e.symbol.toUpperCase());
+        const staleMark = isStale
+          ? ` <span title="Last known value; not refreshed this cycle" style="color:var(--text-dim);font-size:9px">(stale)</span>`
+          : '';
+        return `<tr${isStale ? ' style="opacity:0.65"' : ''}>
+  <td style="padding:3px 6px;white-space:nowrap;font-size:11px">${escapeHtml(name)}${staleMark}</td>
   <td style="padding:3px 6px;text-align:right;font-size:11px;color:${peColor(e.trailingPE)}">${fmtPE(e.trailingPE)}</td>
   <td style="padding:3px 6px;text-align:right;font-size:11px;color:${peColor(e.forwardPE)}">${fmtPE(e.forwardPE)}</td>
   <td style="padding:3px 6px;text-align:right;font-size:11px">${fmtBeta(e.beta)}</td>

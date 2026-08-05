@@ -589,6 +589,95 @@ describe("api plan-limit usage scanner", () => {
     expect(mcp[0].usage).toBe(60); // Redis counter, not the Axiom 80
   });
 
+  test("mcp_daily_calls for a Pro Business account also uses the Redis counter, not the Axiom row", async () => {
+    // Same single-source invariant as the Pro case above. Pro Business is
+    // metered by the SAME `mcp:pro-usage` counter (it rides the pro context in
+    // api/mcp/dispatch.ts), so leaving it out of the isPro set would dual-source
+    // its usage and flap the notice within one scan.
+    const t = convexTest(schema, modules);
+    await seedEntitlement(t, "user-pro-business", "pro_business_monthly");
+    vi.stubEnv("AXIOM_QUERY_TOKEN", "test-token");
+    vi.stubEnv("UPSTASH_REDIS_REST_URL", "https://upstash.test");
+    vi.stubEnv("UPSTASH_REDIS_REST_TOKEN", "upstash-token");
+
+    // Axiom reads 400 (it also tallies quota-exempt calls); the authoritative
+    // Redis counter reads 300. Both exceed the 250/day Pro Business cap, so the
+    // usage value on the single notice is what identifies the winning source.
+    vi.stubGlobal("fetch", vi.fn(async (url: string | URL, init?: RequestInit) => {
+      const u = String(url);
+      if (u.includes("api.axiom.co")) {
+        const apl = JSON.parse(String(init?.body)).apl as string;
+        if (apl.includes("mcp.toolcall")) {
+          return new Response(JSON.stringify({ matches: [{ data: { user_id: "user-pro-business", usage: 400 } }] }), { status: 200 });
+        }
+        return new Response(JSON.stringify({ matches: [] }), { status: 200 });
+      }
+      if (u.includes("mcp%3Apro-usage")) return new Response(JSON.stringify({ result: "300" }), { status: 200 });
+      return new Response(JSON.stringify({ result: "0" }), { status: 200 });
+    }));
+
+    const summary = await t.action(usageFns.scanApiPlanLimitUsageInternal, { now: NOW });
+
+    expect(summary.evaluated).toBe(1);
+    const mcp = (await t.run((ctx) => ctx.db.query("apiPlanLimitNotices").collect()))
+      .filter((n) => n.dimension === "mcp_daily_calls" && n.current);
+    expect(mcp).toHaveLength(1);
+    expect(mcp[0].state).toBe("over_limit");
+    expect(mcp[0].usage).toBe(300); // Redis counter, not the Axiom 400
+    expect(mcp[0].limit).toBe(250); // the Pro Business allowance, not Pro's 50
+  });
+
+  test("a capped Pro Business account is offered API Starter, not a dead-end notice", async () => {
+    // AE6 tail: without a dodoUpgradeNotice branch, pro_business falls through
+    // to `{ctaKind: 'none'}` — the user is told they hit the cap with no way out.
+    const t = convexTest(schema, modules);
+    await seedEntitlement(t, "user-pro-business", "pro_business_monthly");
+
+    const summary = await t.action(usageFns.scanApiPlanLimitUsageInternal, {
+      now: NOW,
+      rows: [{
+        userId: "user-pro-business",
+        dimension: "mcp_daily_calls",
+        usage: 300,
+        source: "test",
+      }],
+    });
+
+    expect(summary.notified).toBe(1);
+    const notices = await t.run((ctx) => ctx.db.query("apiPlanLimitNotices").collect());
+    expect(notices).toHaveLength(1);
+    expect(notices[0]).toMatchObject({
+      planKey: "pro_business_monthly",
+      dimension: "mcp_daily_calls",
+      state: "over_limit",
+      ctaKind: "checkout",
+      upgradeTargetPlanKey: "api_starter",
+    });
+  });
+
+  test("the annual Pro Business plan gets the same API Starter CTA as monthly", async () => {
+    const t = convexTest(schema, modules);
+    await seedEntitlement(t, "user-pro-business-annual", "pro_business_annual");
+
+    await t.action(usageFns.scanApiPlanLimitUsageInternal, {
+      now: NOW,
+      rows: [{
+        userId: "user-pro-business-annual",
+        dimension: "mcp_daily_calls",
+        usage: 300,
+        source: "test",
+      }],
+    });
+
+    const notices = await t.run((ctx) => ctx.db.query("apiPlanLimitNotices").collect());
+    expect(notices).toHaveLength(1);
+    expect(notices[0]).toMatchObject({
+      planKey: "pro_business_annual",
+      ctaKind: "checkout",
+      upgradeTargetPlanKey: "api_starter",
+    });
+  });
+
   test("clears a stale api_* notice for a non-apiAccess account instead of wedging it", async () => {
     const t = convexTest(schema, modules);
     await seedEntitlement(t, "user-pro", "pro_monthly");

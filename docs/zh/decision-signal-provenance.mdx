@@ -1,0 +1,107 @@
+---
+title: "决策信号溯源"
+description: "规范化观测、事件、状态和派生比较所共用的溯源声明、验证与序列化规则。"
+---
+
+WorldMonitor 的决策信号溯源契约在保留各领域负载差异的同时，为每个规范化观测或事件提供统一、失败即关闭的证据词汇。它位于来源专用适配器与缓存、API、MCP 或 UI 消费者之间。
+
+该契约是增量式的。现有数据源负载不会被隐式迁移；各领域管线仍负责自己的来源适配器、负载模型、缓存行为和领域测试。
+
+## 信封与声明
+
+与运行时无关的模块包括：
+
+- `shared/decision-signal-provenance-contract.ts` — TypeScript 词汇
+- `shared/decision-signal-provenance-families.ts` — 信号族声明和 CI 注册边界
+- `shared/decision-signal-provenance.ts` — 运行时验证和规范序列化适配器
+
+每个信封都包含 `contractVersion`、稳定的 `signalId`、已声明的 `familyId`，以及完整的 `claims` 对象。每项声明只能具有以下一种状态：
+
+| 声明状态 | 含义 |
+| --- | --- |
+| `known` | 声明具有经过验证的值。 |
+| `unknown` | 该维度适用，但值不可用或尚未确定；必须提供非空原因。 |
+| `not_applicable` | 该维度不适用于此信号族；必须提供非空原因。 |
+
+`unknown` 和 `not_applicable` 声明不能携带值。这可以防止缺失字段被误解为当前、官方、独立、已验证、正常或零值的展示声明。
+
+## 信号族声明
+
+每个信号族必须将每个维度声明为 `required`、`unknown_allowed` 或 `not_applicable`。共享参考信号族覆盖：
+
+- 官方数值观测
+- 类型化文档事件
+- 运行活动记录
+- 交易所披露
+- 组合走廊状态
+- 派生比较
+
+`required` 维度只接受 `known` 声明；`unknown_allowed` 接受 `known` 或显式 `unknown`；`not_applicable` 只接受显式 `not_applicable`。任何策略下，遗漏任一维度都无效。
+
+这些维度覆盖发布者身份、来源 URL、原始证据、语言、翻译、四种独立时间角色、修订与替代、两种独立置信度声明、佐证、传输新鲜度、内容新鲜度和派生关系。
+
+## 发布者与证据身份
+
+有来源支持的发布者保留稳定的发布者 ID，以及包含 `shared/source-provenance.ts` 中规范来源名称、来源类型和宣传风险状态的 `registryReference` 快照。如果来源未声明，或快照与来源级溯源契约建立的注册表发生漂移，验证将失败。
+
+发布者类别与置信度或佐证相互独立：
+
+- `official_government` 表示政府直接发布者。
+- `state_controlled_media` 与政府部门保持明确区分。
+- `official_exchange` 表示官方市场或披露机构。
+- `independent_observation`、`independent_media`、`wire_service` 和 `market_publisher` 保留各自含义。
+- `derived_output` 没有来源注册表引用；其输入信号 ID 和方法必须写入必需的派生声明。
+- `unknown` 是显式的非正向发布者分类。
+
+独立发布者声明要求注册表条目明确为低风险，且不能将政府、通讯社或市场来源重新标记为独立来源。
+
+来源 URL 必须是绝对、无凭据的 HTTPS URL。原始引用独立标识文档、文本、观测、事件或数据集，并可携带 SHA-256 内容哈希。
+
+## 语言与翻译
+
+原始语言与翻译状态相互独立。翻译值只能使用：
+
+- `unavailable`
+- `not_translated`
+- `machine_assisted`
+- `human_reviewed`
+
+机器辅助和人工审校翻译必须包含目标语言。当翻译不适用时，声明本身使用 `not_applicable`，不能用有利的翻译状态代替。
+
+## 时间、沿袭与置信度
+
+观测时间、生效时间、发布时间和检索时间是独立声明。每个已知时间值还携带其语义角色，因此序列化器或适配器若用一个时间戳替代另一个，验证就会失败。精度必须显式指定为 `instant`、`day`、`month` 或 `year`。
+
+修订声明保留稳定的版本 ID、单调递增序列，以及 `original`、`revised` 或 `corrected` 状态。替代声明则分别记录 `current`、`corrected`、`cancelled` 或 `superseded`；更正和被替代记录要链接相关信号，取消则必须提供原因。`current` 记录不能携带更正、取消或替换元数据。因此历史版本始终可以寻址。
+
+提取置信度和分类置信度是相互独立的值，各自具有分数和方法。发布者权威性不能提供任何一种分数。佐证也是独立声明，并显式列出来源信号 ID；官方来源并不意味着已获独立验证。
+
+## 新鲜度与最后良好数据
+
+传输新鲜度报告采集状态是 `fresh`、`stale`、`missing` 还是 `error`。内容新鲜度则独立报告 `current`、`stale`、`unavailable`、`partial` 或 `timestamp_unknown`。
+
+使用最后良好数据回退时，这一区分仍然保留。新鲜传输可能返回陈旧内容，陈旧传输也可能与仍然当前的缓存内容共存。消费者必须同时呈现两项声明，不能将它们折叠成单一的绿色或红色状态。`timestamp_unknown` 不能携带 `contentAsOf` 值。
+
+## 序列化一致性
+
+`DECISION_SIGNAL_PROVENANCE_SURFACE_ADAPTERS` 为以下表面公开相同的规范线格式：
+
+- `cache_storage`
+- `api`
+- `mcp`
+- `ui`
+
+每个适配器都在序列化之前和反序列化之后执行验证。因此稳定 ID、声明状态、时间戳角色以及未知或不适用原因都能原样往返。
+
+## 扩展契约
+
+当领域管线推出携带溯源信息的信号族时：
+
+1. 在 `shared/decision-signal-provenance-families.ts` 中添加完整的信号族声明。
+2. 添加匹配的注册项，并显式选择 `launchStatus: 'launched'`。
+3. 在 `tests/fixtures/decision-signal-provenance/` 下添加正向序列化夹具，并让注册项指向其夹具 ID。
+4. 为该领域自身的负载语义添加正向和负向夹具。
+5. 在写入缓存或存储数据，或公开 API、MCP、UI 输出之前，在适配器边界执行验证。
+6. 运行聚焦溯源测试以及前端和 API 类型检查。
+
+CI 会精确比较信号族声明与注册项，要求每个信号族都有正向夹具，遍历所有表面适配器，并拒绝缺失声明、过期注册表引用、无效词汇、语义时间戳替换或未经测试的序列化路径。

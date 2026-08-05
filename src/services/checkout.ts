@@ -28,7 +28,10 @@ import {
   classifySyntheticCheckoutError,
   classifyThrownCheckoutError,
   parseCheckoutErrorBody,
+  parseCheckoutSuccessBody,
+  snapshotUpstreamBodyKeys,
   snapshotUpstreamResponse,
+  UNUSABLE_SUCCESS_BODY_MESSAGE,
   type CheckoutError,
   type CheckoutErrorCode,
   type UpstreamSnapshot,
@@ -38,7 +41,7 @@ import {
   createDefaultCheckoutTransportDeps,
   postCreateCheckout,
 } from './checkout-transport';
-import { decideNoUserPathOutcome } from './checkout-no-user-policy';
+import { runNoUserPath } from './checkout-no-user-policy';
 import { shouldSkipSentryForAction } from './checkout-sentry-policy';
 import { isEntitled, onEntitlementChange } from './entitlements';
 import {
@@ -53,8 +56,17 @@ import { showDuplicateSubscriptionDialog } from './checkout-duplicate-dialog';
 import { showCheckoutPendingDialog } from './checkout-pending-dialog';
 import { resolvePlanDisplayName } from './checkout-plan-names';
 import { createEntitlementWatchdog, type EntitlementWatchdog } from './entitlement-watchdog';
-import { buildDashboardCheckoutReturnUrl } from './checkout-return-url';
+import {
+  buildDashboardCheckoutReturnUrl,
+  DESKTOP_CHECKOUT_SOURCE,
+  resolveCheckoutReturnOrigin,
+} from './checkout-return-url';
+import { WEB_APP_ORIGIN } from '@/config/web-origin';
+import { openExternalUrl } from './external-navigation';
+import { isDesktopRuntime } from './desktop-runtime';
+import { showToast } from '@/utils/toast';
 import { saveAnonClaimToken } from './anonymous-identity-storage';
+import { applyProBannerEntitlementHint } from './pro-banner-policy';
 
 export {
   EXTENDED_UNLOCK_TIMEOUT_MS,
@@ -75,7 +87,43 @@ const CHECKOUT_REFERRAL_PARAM = 'checkoutReferral';
 const CHECKOUT_DISCOUNT_PARAM = 'checkoutDiscount';
 const PENDING_CHECKOUT_KEY = 'wm-pending-checkout';
 const POST_CHECKOUT_FLAG_KEY = 'wm-post-checkout';
-const APP_CHECKOUT_BASE_URL = 'https://worldmonitor.app/dashboard';
+const APP_CHECKOUT_BASE_URL = `${WEB_APP_ORIGIN}/dashboard`;
+
+/**
+ * The desktop "return to app" step (#5911). Handing checkout to the OS
+ * browser is otherwise indistinguishable from a dead click: the app window
+ * stays exactly as it was while the browser comes forward somewhere else, or
+ * not at all when the app is fullscreen. The message also states the return
+ * contract — nothing redirects back into the app, Pro arrives over the live
+ * entitlement subscription — so the buyer knows there is nothing to do here
+ * but wait.
+ */
+/**
+ * Send the user to a worldmonitor.app surface the way the runtime expects:
+ * the OS browser on desktop, a top-window navigation on web. Every exit from
+ * this file that used to `window.location.assign` a web URL goes through
+ * here, so the desktop rule cannot be fixed on one path and missed on its
+ * siblings (#5911).
+ */
+function navigateToWebSurface(url: string): void {
+  if (isDesktopRuntime()) {
+    void openExternalUrl(url);
+    return;
+  }
+  window.location.assign(url);
+}
+
+export const DESKTOP_CHECKOUT_HANDOFF_MESSAGE =
+  'Checkout opened in your browser. Finish payment there, then come back — Pro unlocks here automatically.';
+
+/**
+ * Same contract, minus the claim about WHERE it opened. Used when the native
+ * handoff failed and checkout landed in a WebView window instead: the buyer
+ * can still complete payment, so naming the wrong window is the only real
+ * risk to avoid.
+ */
+export const DESKTOP_CHECKOUT_FALLBACK_MESSAGE =
+  'Checkout opened in a new window. Finish payment there — Pro unlocks here automatically.';
 
 /**
  * Session flag set just before the post-overlay reload. Lets panel-layout
@@ -103,6 +151,13 @@ function markPostCheckout(): void {
   } catch {
     // Storage denied — the reload will still run; transition detector will
     // fall back to its null baseline, matching the pre-flag behavior.
+  }
+  // Optimistic pre-paint pro hint so the reloaded dashboard does not reserve
+  // an empty Upgrade strip for a just-paid account (#5728 first-session strip).
+  try {
+    applyProBannerEntitlementHint(localStorage, true);
+  } catch {
+    // Storage optional — live entitlement still suppresses the banner.
   }
 }
 
@@ -737,6 +792,35 @@ export async function openCheckout(checkoutUrl: string): Promise<void> {
 }
 
 let _checkoutInFlight = false;
+let _checkoutRateLimitedUntilMs = 0;
+
+function checkoutRateLimitRemainingSeconds(): number {
+  return Math.max(0, Math.ceil((_checkoutRateLimitedUntilMs - Date.now()) / 1000));
+}
+
+/**
+ * True when the checkout being blocked was for a Pro Business product — the
+ * one duplicate-subscription 409 that needs guided upgrade copy instead of the
+ * billing-portal line (Pro and Pro Business are separate Dodo products, so the
+ * portal cannot perform the change).
+ *
+ * The product ids arrive via a DYNAMIC import on purpose: this module sits in
+ * the eager dashboard graph (panel-layout imports it statically) and
+ * tests/dashboard-eager-chunks.test.mjs requires the `products` chunk to stay
+ * off that graph — the same reason every other client consumer lazy-loads it.
+ * A failed load falls back to the generic copy rather than blocking the dialog.
+ */
+async function isProBusinessCheckoutTarget(productId: string): Promise<boolean> {
+  try {
+    const { DODO_PRODUCTS } = await import('@/config/products');
+    return (
+      productId === DODO_PRODUCTS.PRO_BUSINESS_MONTHLY ||
+      productId === DODO_PRODUCTS.PRO_BUSINESS_ANNUAL
+    );
+  } catch {
+    return false;
+  }
+}
 
 /**
  * High-level checkout entry point for UI code.
@@ -770,23 +854,40 @@ export async function startCheckout(
       classifySyntheticCheckoutError('unauthorized'),
       { productId, action: 'no-user' },
     );
-    // Pure policy decision lives in checkout-no-user-policy.ts; tested
-    // against regression in tests/checkout-no-user-policy.test.mts. The
-    // contract: redirect path MUST NOT write sessionStorage (would
+    // Both the decision AND the effect sequencing live in
+    // checkout-no-user-policy.ts, exercised in
+    // tests/checkout-no-user-policy.test.mts against a recording double.
+    // The contract: redirect path MUST NOT write sessionStorage (would
     // create a stale dashboard intent that a later unrelated sign-in
-    // would auto-resume); inline path MUST write so the post-auth
-    // Clerk listener can resume the exact checkout.
-    const outcome = decideNoUserPathOutcome(fallbackToPricingPage);
-    if (outcome.kind === 'redirect-pro') {
-      window.location.assign(outcome.redirectUrl);
-    } else {
-      savePendingCheckoutIntent(intent);
-      saveCheckoutAttempt({
-        ...intent,
-        startedAt: Date.now(),
-      });
-      openSignIn();
-    }
+    // would auto-resume); inline path MUST write BEFORE openSignIn so the
+    // post-auth Clerk listener can resume the exact checkout. Keeping that
+    // ordering in the policy module (not this if/else) is deliberate —
+    // #5380-High-3 proved a source-grep guard over this file stays green
+    // with either contract violated.
+    runNoUserPath(fallbackToPricingPage, {
+      // Desktop must not navigate the WebView here either (#5911). This is
+      // the branch a signed-out desktop user takes — the most reachable one
+      // in the app's first session — so leaving it on `assign` would keep the
+      // reported bug alive under the fix.
+      navigate: (url) => navigateToWebSurface(url),
+      persistIntent: () => savePendingCheckoutIntent(intent),
+      persistAttempt: () => saveCheckoutAttempt({ ...intent, startedAt: Date.now() }),
+      openSignIn: () => openSignIn(),
+    });
+    return false;
+  }
+
+  const cooldownSeconds = checkoutRateLimitRemainingSeconds();
+  if (cooldownSeconds > 0) {
+    // A prior 429 already told this browser when it may try again. Keep
+    // repeated CTA clicks local during that window instead of recreating the
+    // provider request amplification this rate-limit path is meant to stop.
+    const error = classifyHttpCheckoutError(
+      429,
+      { error: 'CHECKOUT_RATE_LIMITED' },
+      String(cooldownSeconds),
+    );
+    showCheckoutErrorToast(error.userMessage);
     return false;
   }
 
@@ -809,6 +910,7 @@ export async function startCheckout(
     discountCode: options?.discountCode,
     startedAt: Date.now(),
   });
+  const desktopRuntime = isDesktopRuntime();
   try {
     let token = await getClerkToken();
     if (!token) {
@@ -830,7 +932,14 @@ export async function startCheckout(
       token,
       payload: {
         productId,
-        returnUrl: buildDashboardCheckoutReturnUrl(window.location.origin),
+        // Desktop swaps its `tauri://localhost` WebView origin for the
+        // canonical web origin: checkout runs in the OS browser there, and
+        // the WebView origin serves no /dashboard route for Dodo to return
+        // to (#5911).
+        returnUrl: buildDashboardCheckoutReturnUrl(
+          resolveCheckoutReturnOrigin(window.location.origin, desktopRuntime),
+          desktopRuntime ? DESKTOP_CHECKOUT_SOURCE : undefined,
+        ),
         discountCode: options?.discountCode,
         referralCode: effectiveReferral,
         // #4438: only set when the user confirmed "start a new checkout anyway"
@@ -853,7 +962,14 @@ export async function startCheckout(
       // runtime — defensive against future consumers that don't add their
       // own optional chaining. Greptile P2 review of PR #3894.
       const body = parseCheckoutErrorBody(rawText);
-      const error = classifyHttpCheckoutError(resp.status, body);
+      const error = classifyHttpCheckoutError(
+        resp.status,
+        body,
+        resp.headers.get('Retry-After'),
+      );
+      if (error.code === 'rate_limited' && error.retryAfterSeconds !== undefined) {
+        _checkoutRateLimitedUntilMs = Date.now() + error.retryAfterSeconds * 1000;
+      }
       reportCheckoutError(error, { productId, action: 'http-error' }, undefined, upstream);
       // 409 duplicate-subscription — confirm with the user BEFORE
       // navigating to the billing portal. Previously the portal opened
@@ -868,6 +984,9 @@ export async function startCheckout(
         const planDisplayName = resolvePlanDisplayName(planKey);
         showDuplicateSubscriptionDialog({
           planDisplayName,
+          // Picks the guided cancel-then-rebuy copy for the Pro → Pro Business
+          // pairing; every other pairing keeps the portal line.
+          isProBusinessUpgrade: await isProBusinessCheckoutTarget(productId),
           onConfirm: () => {
             // Pre-reserve the tab SYNCHRONOUSLY in the click handler
             // before the async work; popup blockers otherwise suppress
@@ -932,8 +1051,44 @@ export async function startCheckout(
       return false;
     }
 
-    const result = await resp.json();
-    if (typeof result?.anonymous_claim_token === 'string' && result.anonymous_claim_token.length > 0) {
+    // Read the success body as TEXT first, for the same reason the !ok
+    // branch above does: a 200 whose body is not valid JSON (edge
+    // interstitial, empty payload, mid-transit truncation) made the old
+    // bare `resp.json()` throw an engine-specific DOMException — Safari's
+    // is `SyntaxError: The string did not match the expected pattern.` —
+    // which skipped the contract-violation reporter below, discarded the
+    // upstream snapshot that would name the emitter, and split one bug
+    // across a Sentry fingerprint per browser engine. WORLDMONITOR-XV.
+    // Let body-stream failures reach the outer exception path. Replacing a
+    // rejected read with an empty string discards the original error, stack,
+    // and cause, and falsely reports that the server sent an empty body.
+    const rawSuccessText = await resp.text();
+    const parsedSuccess = parseCheckoutSuccessBody(rawSuccessText);
+    if (parsedSuccess.kind !== 'object') {
+      // A 200 we cannot use is a different contract violation from a
+      // well-formed payload missing checkout_url below: it points at
+      // transport corruption or a middlebox rather than a relay payload
+      // bug, so it carries its own action tag. The upstream snapshot is
+      // what makes the next one self-diagnosing — it says whether the
+      // body was HTML, empty, or truncated, and which layer emitted it.
+      const unparsableBodyError: CheckoutError = {
+        code: 'service_unavailable',
+        userMessage: 'Checkout is temporarily unavailable. Please try again in a moment.',
+        serverMessage: UNUSABLE_SUCCESS_BODY_MESSAGE[parsedSuccess.kind],
+        httpStatus: resp.status,
+        retryable: true,
+      };
+      reportCheckoutError(
+        unparsableBodyError,
+        { productId, action: 'unparsable-success-body' },
+        undefined,
+        snapshotUpstreamResponse(resp, rawSuccessText),
+      );
+      renderCheckoutErrorSurface(unparsableBodyError, fallbackToPricingPage);
+      return false;
+    }
+    const result = parsedSuccess.body;
+    if (typeof result.anonymous_claim_token === 'string' && result.anonymous_claim_token.length > 0) {
       saveAnonClaimToken(result.anonymous_claim_token);
     }
     // #4449: navigate the top window to Dodo's HOSTED checkout instead of
@@ -946,8 +1101,49 @@ export async function startCheckout(
     // returns the customer to /dashboard?wm_checkout=return to reconcile. The
     // overlay machinery (openCheckout / ensureCheckoutOverlayInitialized / the
     // event handler / watchdog) is left dormant pending removal.
-    const hostedCheckoutUrl = safeHostedCheckoutUrl(result?.checkout_url);
+    const hostedCheckoutUrl = safeHostedCheckoutUrl(result.checkout_url);
     if (hostedCheckoutUrl) {
+      if (desktopRuntime) {
+        // #5911: on desktop the same `window.location.assign` would replace
+        // the entire app with Dodo's page — no tab, no back button — and run
+        // 3DS/fraud inside an embedded WebView, the exact nesting #4449 moved
+        // away from. Hand the hosted checkout to the OS browser instead. The
+        // buyer finishes in the browser; the desktop client needs no redirect
+        // back in, because Pro arrives over the same live Convex entitlement
+        // subscription the web client uses.
+        const outcome = await openExternalUrl(hostedCheckoutUrl);
+        // Only a confirmed NATIVE open counts. `popup` on desktop means the
+        // bridge call failed and we fell back to `window.open` inside the
+        // WebView — which is the bug this branch exists to prevent, so
+        // announcing "opened in your browser" for it would be false.
+        if (outcome !== 'native') {
+          // Nothing opened. Announcing "check your browser" here would send
+          // the buyer to a window that does not exist and strand a paid-for
+          // session, so this takes the same shape as every other checkout
+          // contract violation: reported, surfaced, and `false` so retry
+          // surfaces stay offered.
+          const handoffError: CheckoutError = {
+            code: 'service_unavailable',
+            userMessage: 'Could not open checkout in your browser. Please try again.',
+            serverMessage: 'Desktop handoff to the OS browser failed',
+            httpStatus: resp.status,
+            retryable: true,
+          };
+          reportCheckoutError(handoffError, { productId, action: 'desktop-handoff-failed' });
+          renderCheckoutErrorSurface(handoffError, fallbackToPricingPage);
+          return false;
+        }
+        // Only `native` actually reached the OS browser. `popup` means the
+        // native handoff failed and the session opened in a WebView window
+        // instead — the buyer can still pay, so the sale is not blocked, but
+        // pointing them at "your browser" would send them to the wrong place.
+        showToast(
+          outcome === 'native'
+            ? DESKTOP_CHECKOUT_HANDOFF_MESSAGE
+            : DESKTOP_CHECKOUT_FALLBACK_MESSAGE,
+        );
+        return true;
+      }
       window.location.assign(hostedCheckoutUrl);
       return true;
     }
@@ -967,7 +1163,17 @@ export async function startCheckout(
       httpStatus: resp.status,
       retryable: true,
     };
-    reportCheckoutError(missingUrlError, { productId, action: 'missing-checkout-url' });
+    reportCheckoutError(
+      missingUrlError,
+      { productId, action: 'missing-checkout-url' },
+      undefined,
+      // Names the emitter (cf-ray / server / x-vercel-id) and the payload's
+      // KEY NAMES — "had session_id, no checkout_url" is the whole finding
+      // here, so values are withheld. The payload is a wholesale spread of
+      // the Dodo SDK's response, whose field set we do not control, and a
+      // redaction deny-list would silently outrun any schema change.
+      snapshotUpstreamBodyKeys(resp, result),
+    );
     renderCheckoutErrorSurface(missingUrlError, fallbackToPricingPage);
     return false;
   } catch (err) {
@@ -997,6 +1203,7 @@ const INFO_LEVEL_CODES: ReadonlySet<CheckoutErrorCode> = new Set([
   'unauthorized',
   'session_expired',
   'duplicate_subscription',
+  'rate_limited',
 ]);
 
 export function checkoutErrorTelemetryLevel(error: Pick<CheckoutError, 'code'>): SentryLevel {
@@ -1026,6 +1233,7 @@ function reportCheckoutError(
       productId: context.productId,
       httpStatus: error.httpStatus,
       serverMessage: error.serverMessage,
+      retryAfterSeconds: error.retryAfterSeconds,
       ...(upstream ? { upstream } : {}),
     },
   };
@@ -1060,8 +1268,24 @@ function renderCheckoutErrorSurface(
   error: CheckoutError,
   fallbackToPricingPage: boolean,
 ): void {
+  // A 429 already carries a safe local recovery path. Keep the user on the
+  // current surface so the message and in-memory cooldown remain active
+  // instead of redirecting them to /pro and discarding the wait contract.
+  if (error.code === 'rate_limited') {
+    showCheckoutErrorToast(error.userMessage);
+    return;
+  }
   if (fallbackToPricingPage) {
-    window.location.assign('https://worldmonitor.app/pro');
+    // Same desktop rule as every other exit from this file (#5911): the
+    // pricing page is a web surface, so it leaves for the OS browser instead
+    // of replacing the app. The toast stays on desktop because, unlike the
+    // web redirect, the app is still on screen to show it.
+    if (isDesktopRuntime()) {
+      void openExternalUrl(`${WEB_APP_ORIGIN}/pro`);
+      showCheckoutErrorToast(error.userMessage);
+      return;
+    }
+    window.location.assign(`${WEB_APP_ORIGIN}/pro`);
     return;
   }
   showCheckoutErrorToast(error.userMessage);
@@ -1087,6 +1311,11 @@ function renderCheckoutErrorSurface(
  *   - `timeout`: after 30s with no transition, swap to an explicit
  *               "Refresh if features haven't unlocked" CTA + Sentry
  *               warning. Never silently disappears.
+ *
+ * Account-agnostic mode is a short-lived classic acknowledgement for a
+ * desktop return in an arbitrary browser. It deliberately skips Clerk email
+ * hydration and entitlement waiting because this browser may belong to nobody
+ * or to a different account.
  */
 // Module-scoped cleanup for the currently-mounted success banner.
 // When `showCheckoutSuccess` is called a second time before the first
@@ -1099,7 +1328,7 @@ function renderCheckoutErrorSurface(
 let _currentBannerCleanup: (() => void) | null = null;
 
 export function showCheckoutSuccess(
-  options?: { waitForEntitlement?: boolean; email?: string | null },
+  options?: { waitForEntitlement?: boolean; email?: string | null; accountAgnostic?: boolean },
 ): void {
   _currentBannerCleanup?.();
   _currentBannerCleanup = null;
@@ -1138,7 +1367,8 @@ export function showCheckoutSuccess(
   // mutable container that later transitions can re-read, and
   // subscribe to auth-state once to update the banner text when email
   // hydrates.
-  let currentMaskedEmail = maskEmail(options?.email);
+  const accountAgnostic = options?.accountAgnostic === true;
+  let currentMaskedEmail = accountAgnostic ? null : maskEmail(options?.email);
   let unsubscribeAuth: (() => void) | null = null;
   let emailPollInterval: ReturnType<typeof setInterval> | null = null;
   let currentState: CheckoutSuccessBannerState = 'pending';
@@ -1147,7 +1377,7 @@ export function showCheckoutSuccess(
     const next = maskEmail(raw ?? null);
     if (next && next !== currentMaskedEmail) {
       currentMaskedEmail = next;
-      setBannerText(banner, currentState, currentMaskedEmail);
+      setBannerText(banner, currentState, currentMaskedEmail, accountAgnostic);
       stopEmailWatchers();
       return true;
     }
@@ -1162,7 +1392,7 @@ export function showCheckoutSuccess(
     }
   };
 
-  if (!currentMaskedEmail) {
+  if (!accountAgnostic && !currentMaskedEmail) {
     // Two fallbacks needed. (1) subscribeAuthState should fire when Clerk
     // hydrates — but auth-state.ts subscribes to clerkInstance at the
     // moment subscribeAuthState is called; if showCheckoutSuccess runs
@@ -1185,7 +1415,7 @@ export function showCheckoutSuccess(
       applyEmail(getCurrentClerkUser()?.email);
     }, POLL_MS);
   }
-  setBannerText(banner, 'pending', currentMaskedEmail);
+  setBannerText(banner, 'pending', currentMaskedEmail, accountAgnostic);
   document.body.appendChild(banner);
 
   requestAnimationFrame(() => {
@@ -1260,9 +1490,14 @@ function setBannerText(
   banner: HTMLElement,
   state: CheckoutSuccessBannerState,
   maskedEmail: string | null,
+  accountAgnostic = false,
 ): void {
   banner.setAttribute('data-entitlement-state', state);
   if (state === 'pending') {
+    if (accountAgnostic) {
+      banner.textContent = 'Payment completed in the desktop app. Pro access will update there automatically.';
+      return;
+    }
     banner.textContent = maskedEmail
       ? `Payment received! Receipt sent to ${maskedEmail}. Unlocking your premium features…`
       : 'Payment received! Unlocking your premium features…';

@@ -4,6 +4,7 @@
 
 import { createRequire } from 'node:module';
 import { loadEnvFile, CHROME_UA, runSeed, sleep, writeExtraKey } from './_seed-utils.mjs';
+import { candidatePeriods, recentPeriod } from './shared/comtrade-period.mjs';
 
 loadEnvFile(import.meta.url);
 
@@ -56,9 +57,13 @@ const BEST_EFFORT_REPORTERS = REPORTERS.filter((reporter) => reporter.required =
 // uniform year instead: (y-2) is ~2 years old, so it is reliably final for all
 // strategic reporters. (Single-year data means yoyChange stays 0 here, same as
 // the pre-fix implicit-latest behavior — restoring true YoY needs a second call.)
-export function recentPeriod(now = new Date(), lag = 2) {
-  return String(now.getUTCFullYear() - lag);
-}
+// Canonical implementation now lives in scripts/shared/comtrade-period.mjs so
+// the bilateral seeder and the server-side lazy fallback share this exact
+// year arithmetic instead of carrying their own copies. Re-exported here to
+// keep this module's public surface (and its tests) unchanged.
+// NOTE: imported (not `export ... from`) because fetchFlows and fetchAllFlows
+// below call these directly — a bare re-export creates no local binding.
+export { recentPeriod, candidatePeriods };
 
 // Candidate periods, freshest first. fetchAllFlows tries (y-2) and, only if its
 // coverage gate fails, falls back to (y-3). This survives the year boundary:
@@ -66,9 +71,6 @@ export function recentPeriod(now = new Date(), lag = 2) {
 // have filed yet — without the fallback the seed would exit-75-crash for weeks
 // until they catch up. (y-3) is guaranteed-final and keeps the snapshot fresh
 // enough (annual trade data is inherently ~2yr lagged).
-export function candidatePeriods(now = new Date()) {
-  return [recentPeriod(now, 2), recentPeriod(now, 3)];
-}
 
 const require = createRequire(import.meta.url);
 const STRATEGIC_PRODUCT_METADATA = require('./shared/comtrade-strategic-products.json');

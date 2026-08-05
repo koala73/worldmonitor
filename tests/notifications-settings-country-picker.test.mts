@@ -239,8 +239,10 @@ describe('notifications-settings.ts — centralized save state (countries thread
     // `enabled, eventTypes, sensitivity, channels, aiDigestEnabled` without
     // `...state` is a regression of the centralization fix.
     //
-    // Match every saveAlertRules invocation; each must contain `...state`.
-    const calls = settingsSrc.match(/saveAlertRules\(\{[\s\S]*?\}\)/g) ?? [];
+    // Match every settings-scoped saveAlertRules invocation; each must contain
+    // `...state` and the settings lifecycle signal so a Retry-After wait cannot
+    // outlive the panel that initiated it.
+    const calls = settingsSrc.match(/saveAlertRules\(\{[\s\S]*?\},\s*signal\)/g) ?? [];
     assert.ok(calls.length >= 4, `expected ≥4 saveAlertRules call sites, found ${calls.length}`);
     for (const call of calls) {
       assert.match(

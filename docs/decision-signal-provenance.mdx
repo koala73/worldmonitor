@@ -1,0 +1,170 @@
+---
+title: "Decision-Signal Provenance"
+description: "Shared provenance declarations, validation, and serialization rules for normalized observations, events, conditions, and derived comparisons."
+---
+
+WorldMonitor's decision-signal provenance contract keeps domain payloads
+separate while giving every normalized observation or event the same
+fail-closed evidence vocabulary. It is the boundary between a source-specific
+adapter and cache, API, MCP, or UI consumers.
+
+The contract is additive. Existing feed payloads are not implicitly migrated,
+and a domain lane still owns its source adapter, payload model, cache behavior,
+and domain tests.
+
+The [China Decision Signals](/china-decision-signals) surface is the first
+bounded cross-domain composition that publishes all six launched families
+through the same provenance contract without expanding their source scope.
+
+## Envelope and claims
+
+The runtime-neutral modules are:
+
+- `shared/decision-signal-provenance-contract.ts` — TypeScript vocabulary
+- `shared/decision-signal-provenance-families.ts` — family declarations and
+  the CI registration frontier
+- `shared/decision-signal-provenance.ts` — runtime validation and canonical
+  serialization adapters
+
+Every envelope carries `contractVersion`, a stable `signalId`, a declared
+`familyId`, and the complete `claims` object. Each claim has exactly one status:
+
+| Claim status | Meaning |
+| --- | --- |
+| `known` | The claim has a validated value. |
+| `unknown` | The dimension applies, but the value is unavailable or has not been established. A non-empty reason is required. |
+| `not_applicable` | The dimension does not apply to this family. A non-empty reason is required. |
+
+`unknown` and `not_applicable` claims cannot carry a value. This prevents an
+absent field from turning into a current, official, independent, verified,
+normal, or zero-valued presentation claim.
+
+## Family declarations
+
+Each family declares every dimension as `required`, `unknown_allowed`, or
+`not_applicable`. The shared reference families cover:
+
+- official numeric observations
+- typed document events
+- operational activity records
+- exchange disclosures
+- composed corridor conditions
+- derived comparisons
+
+A `required` dimension accepts only a `known` claim.
+`unknown_allowed` accepts `known` or explicit `unknown`.
+`not_applicable` accepts only explicit `not_applicable`.
+Omitting any dimension is invalid under every policy.
+
+The dimensions cover publisher identity, source URL, original evidence,
+language, translation, four distinct time roles, revision and supersession,
+two independent confidence claims, corroboration, transport freshness, content
+freshness, and derivation.
+
+## Publisher and evidence identity
+
+Source-backed publishers retain a stable publisher ID and a
+`registryReference` snapshot containing the canonical source name, source
+type, and propaganda-risk state from `shared/source-provenance.ts`. Validation
+fails when the source is undeclared or the snapshot has drifted from the
+registry established by the source-level provenance contract.
+
+Publisher classes are separate from confidence or corroboration:
+
+- `official_government` is a direct government publisher.
+- `state_controlled_media` remains distinct from government ministries.
+- `official_exchange` identifies an official market or disclosure authority.
+- `independent_observation`, `independent_media`, `wire_service`, and
+  `market_publisher` retain their own meanings.
+- `derived_output` has no source-registry reference. Its input signal IDs and
+  method belong in the required derivation claim.
+- `unknown` is an explicit non-favorable publisher classification.
+
+Independent publisher claims require an explicitly low-risk registry entry and
+cannot relabel a government, wire, or market source.
+
+The source URL must be an absolute credential-free HTTPS URL. The original
+reference independently identifies a document, text, observation, event, or
+dataset and can carry a SHA-256 content hash.
+
+## Language and translation
+
+Original language is independent of translation state. Translation values use
+only:
+
+- `unavailable`
+- `not_translated`
+- `machine_assisted`
+- `human_reviewed`
+
+Machine-assisted and human-reviewed translations require a target language.
+When translation does not apply, the claim itself uses `not_applicable`; it is
+not represented as a favorable translation state.
+
+## Time, lineage, and confidence
+
+Observation, effective, publication, and retrieval time are separate claims.
+Each known time value also carries its semantic role, so a serializer or
+adapter cannot substitute one timestamp for another without validation
+failing. Precision is explicit (`instant`, `day`, `month`, or `year`).
+
+Revision claims preserve a stable vintage ID, monotonic sequence, and
+`original`, `revised`, or `corrected` state. Supersession separately records
+`current`, `corrected`, `cancelled`, or `superseded`; corrected and superseded
+records link to the related signal, while cancellation requires a reason.
+`current` records cannot carry correction, cancellation, or replacement
+metadata.
+Historical vintages therefore remain addressable.
+
+Extraction confidence and classification confidence are independent values
+with their own score and method. Publisher authority never supplies either
+score. Corroboration is another claim, with explicit source signal IDs; an
+official source does not imply independent verification.
+
+## Freshness and last-good data
+
+Transport freshness reports whether collection is `fresh`, `stale`, `missing`,
+or in `error`. Content freshness independently reports `current`, `stale`,
+`unavailable`, `partial`, or `timestamp_unknown`.
+
+This distinction survives last-good fallback. A fresh transport can return
+stale content, and stale transport can coexist with still-current cached
+content. Consumers must render both claims rather than collapsing them into a
+single green or red state. `timestamp_unknown` cannot carry a `contentAsOf`
+value.
+
+## Serialization parity
+
+`DECISION_SIGNAL_PROVENANCE_SURFACE_ADAPTERS` exposes the same canonical wire
+shape for:
+
+- `cache_storage`
+- `api`
+- `mcp`
+- `ui`
+
+Every adapter validates before serialization and after deserialization. Stable
+IDs, claim statuses, timestamp roles, and unknown/not-applicable reasons
+therefore round-trip unchanged.
+
+## Extending the contract
+
+When a domain lane launches a provenance-bearing signal family:
+
+1. Add a complete family declaration in
+   `shared/decision-signal-provenance-families.ts`.
+2. Add the matching registration and explicitly choose `launchStatus:
+   'launched'`.
+3. Add a positive serialization fixture under
+   `tests/fixtures/decision-signal-provenance/` and point the registration at
+   its fixture ID.
+4. Add domain-specific positive and negative fixtures for its own payload
+   semantics.
+5. Validate at the adapter boundary before writing cache/storage data or
+   exposing API, MCP, or UI output.
+6. Run the focused provenance test plus frontend and API typechecks.
+
+CI compares family declarations and registrations exactly, requires a positive
+fixture for every family, exercises every surface adapter, and rejects missing
+claims, stale registry references, invalid vocabulary, semantic timestamp
+substitution, or untested serialization paths.

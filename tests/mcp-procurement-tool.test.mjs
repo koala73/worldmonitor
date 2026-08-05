@@ -23,7 +23,7 @@ const canonicalResponse = {
     automationFit: { level: 'high', score: 91, classificationVersion: 'keyword-v1', matchReasons: ['cloud', 'cybersecurity'], evidence: ['cloud security platform'] },
   }],
   nextCursor: '10', fetchedAt: '2026-07-14T12:00:00.000Z', dataAvailable: true,
-  availability: 'partial', sourceStatuses: [{ source: 'sam', state: 'ok', recordCount: 1, fetchedAt: '2026-07-14T12:00:00.000Z', lastSuccessfulAt: '2026-07-14T12:00:00.000Z', stale: false }],
+  availability: 'partial', sourceStatuses: [{ source: 'sam', state: 'ok', recordCount: 1, fetchedAt: '2026-07-14T12:00:00.000Z', lastSuccessfulAt: '2026-07-14T12:00:00.000Z', stale: false, paced: true }],
   total: 22, appliedFilters: ['country', 'min_automation_score'], countryCoverage: 'unknown',
 };
 
@@ -98,6 +98,7 @@ describe('get_procurement_opportunities MCP tool', () => {
     assert.equal(result.countryCoverage, 'unknown', 'unknown coverage is never a confirmed zero-result');
     assert.equal(result.availability, 'partial');
     assert.deepEqual(result.sourceStatuses, canonicalResponse.sourceStatuses);
+    assert.equal(result.sourceStatuses[0].paced, true, 'paced source status survives the canonical route proxy');
     assert.deepEqual(result.opportunities[0], {
       id: 'sam:abc-123', source: 'sam', officialUrl: 'https://sam.gov/opp/abc-123', countryCode: 'US', region: 'North America',
       title: 'Cloud security platform', buyer: 'Example agency', publishedAt: '2026-07-14T00:00:00.000Z', deadline: '2026-08-01T00:00:00.000Z',

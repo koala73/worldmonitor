@@ -2,10 +2,20 @@
 title: Bootstrap R2 economic comparison
 date: 2026-07-14
 issue: 5300
-status: complete-with-account-caveat
+status: superseded-r2-serving-no-go
 ---
 
 # Bootstrap R2 economic comparison
+
+> **Superseded (2026-07-24).** The recommendation below — "proceed with R2" — assumed R2 could
+> *serve* the bootstrap tiers and thereby offload Redis egress. That premise failed: R2-origin
+> serving is a **KTD7 no-go** (single-region latency; see
+> `2026-07-14-bootstrap-r2-timeout-measurement.md`). Without a viable serving path, none of the
+> storage-tier savings modeled here materialize *via R2*. The same objective — shrink the Upstash
+> tier by moving bootstrap reads off Redis — is instead met by the **KV storage-primitive** cutover
+> (Cloudflare Worker → globally-replicated KV, ~$0 storage; evidence
+> `2026-07-16-bootstrap-kv-verify.md`). The cost analysis below is retained for its account/tier
+> reasoning, which remains accurate; only the R2-specific recommendation is retired.
 
 ## Decision summary
 

@@ -64,7 +64,7 @@ export interface DeductContextDetail {
   autoSubmit?: boolean;
 }
 
-export type PropagandaRisk = 'low' | 'medium' | 'high';
+export type PropagandaRisk = 'low' | 'medium' | 'high' | 'unknown';
 
 export interface Feed {
   name: string;
@@ -73,7 +73,8 @@ export interface Feed {
   region?: string;
   propagandaRisk?: PropagandaRisk;
   stateAffiliated?: string;  // e.g., "Russia", "China", "Iran"
-  lang?: string;             // ISO 2-letter code for filtering
+  lang?: string;             // ISO 2-letter code for filtering (locale boost)
+  strategicDefault?: boolean; // always default-on regardless of UI language
 }
 
 export type ThreatLevel = 'critical' | 'high' | 'medium' | 'low' | 'info';
@@ -627,6 +628,13 @@ export interface PanelConfig {
   enabled: boolean;
   priority?: number;
   premium?: 'locked' | 'enhanced';
+  /**
+   * Set by `enforceFreePanelLimit` when the free-tier pro gate — not the user —
+   * is what turned this panel off. Distinguishes "hidden because you aren't Pro"
+   * from "you hid it in settings", so the gate can be reversed on upgrade
+   * without overriding a deliberate choice. Only ever set on `cw-*` panels.
+   */
+  proGated?: boolean;
 }
 
 export interface MapLayers {

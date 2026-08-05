@@ -15,7 +15,7 @@ export const Agents = () => (
   <section id="agents" className="py-24 px-6 border-t border-wm-border">
     <div className="max-w-6xl mx-auto grid md:grid-cols-2 gap-12 items-center">
       <motion.div
-        initial={{ opacity: 0, y: 20 }}
+        initial={false}
         whileInView={{ opacity: 1, y: 0 }}
         viewport={{ once: true, margin: '-60px' }}
         transition={{ duration: 0.5 }}
@@ -54,7 +54,7 @@ export const Agents = () => (
         </a>
       </motion.div>
       <motion.div
-        initial={{ opacity: 0, y: 20 }}
+        initial={false}
         whileInView={{ opacity: 1, y: 0 }}
         viewport={{ once: true, margin: '-60px' }}
         transition={{ duration: 0.5, delay: 0.1 }}

@@ -1,7 +1,7 @@
 // MCP Apps (extension `io.modelcontextprotocol/ui`, spec 2026-01-26) — the
 // interactive app shell for the `get_news_intelligence` tool: a compact news
 // radar rendering AI-classified top stories (headline, category, alert flag,
-// country, source) from WorldMonitor's intelligence layer. Built on the shared
+// country, source provenance) from WorldMonitor's intelligence layer. Built on the shared
 // shell foundation.
 //
 // Tool result shape (cache tool — content[0].text JSON, freshness envelope).
@@ -9,8 +9,8 @@
 // its topStories items are ServerInsightStory (see src/services/insights-loader.ts),
 // which use camelCase `primaryTitle` / `primarySource` (NOT `title`/`summary`):
 //   { cached_at, stale, data: {
-//       insights: { topStories: [{ primaryTitle, primarySource, category,
-//                                  threatLevel, isAlert, countryCode }] },
+//       insights: { topStories: [{ primaryTitle, primarySource, sourceProvenance,
+//                                  category, threatLevel, isAlert, countryCode }] },
 //       "gdelt-intel": {...}, "cross-source-signals": {...} } }
 // Any label may be absent (topic/category/country filters narrow the bundle).
 //
@@ -66,7 +66,22 @@ const RENDER = `
       if (cn) head.appendChild(el("span", "story-country", cn));
       row.appendChild(head);
       var src = collapseWs(s.primarySource);
-      if (src) row.appendChild(el("div", "story-src", src));
+      var provenance = s.sourceProvenance && typeof s.sourceProvenance === "object"
+        ? s.sourceProvenance : null;
+      var provenanceLabel = "";
+      if (provenance) {
+        if (provenance.riskReviewed === false || provenance.risk === "unknown") {
+          provenanceLabel = "? Unreviewed";
+        } else if (provenance.type === "gov") {
+          provenanceLabel = "Official government source"
+            + (collapseWs(provenance.stateAffiliated) ? ": " + collapseWs(provenance.stateAffiliated) : "");
+        } else if (collapseWs(provenance.stateAffiliated)) {
+          provenanceLabel = "State-affiliated: " + collapseWs(provenance.stateAffiliated);
+        } else if (provenance.type === "wire") {
+          provenanceLabel = "Wire service";
+        }
+      }
+      if (src) row.appendChild(el("div", "story-src", src + (provenanceLabel ? " • " + provenanceLabel : "")));
       host.appendChild(row);
     }
     if (!host.childNodes.length) {

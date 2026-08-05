@@ -25,7 +25,7 @@ const OPENAPI_NOOP_PARAMS = [
   ['MarketService.openapi.json', '/api/market/v1/get-sector-summary', ['period']],
   ['MarketService.openapi.json', '/api/market/v1/list-earnings-calendar', ['fromDate', 'toDate']],
   ['MilitaryService.openapi.json', '/api/military/v1/get-theater-posture', ['theater']],
-  ['MilitaryService.openapi.json', '/api/military/v1/list-military-flights', ['cursor', 'operator', 'aircraft_type']],
+  ['MilitaryService.openapi.json', '/api/military/v1/list-military-flights', ['operator', 'aircraft_type']],
   ['NaturalService.openapi.json', '/api/natural/v1/list-natural-events', ['days']],
   ['PredictionService.openapi.json', '/api/prediction/v1/list-prediction-markets', ['cursor']],
   ['ResearchService.openapi.json', '/api/research/v1/list-arxiv-papers', ['cursor', 'query']],
@@ -77,6 +77,26 @@ describe('sebuf query-param implementation contract', () => {
         );
       }
     }
+  });
+
+  it('documents the military flights cursor as implemented rather than a no-op', () => {
+    const spec = JSON.parse(readFileSync(resolve(apiDir, 'MilitaryService.openapi.json'), 'utf8'));
+    const params = spec.paths?.['/api/military/v1/list-military-flights']?.get?.parameters;
+    assert.ok(Array.isArray(params), 'MilitaryService.openapi.json: missing list-military-flights parameters');
+    const cursor = params.find((candidate) => candidate.name === 'cursor');
+    assert.ok(cursor, 'MilitaryService.openapi.json: missing cursor query parameter');
+    assert.doesNotMatch(
+      String(cursor.description ?? ''),
+      /Accepted but currently ignored; no-op/,
+      'implemented military pagination must not be generated as accepted-but-ignored',
+    );
+
+    const contractSource = readFileSync(resolve(root, 'scripts/lib/sebuf-query-param-contract.mjs'), 'utf8');
+    assert.doesNotMatch(
+      contractSource,
+      /worldmonitor\/military\/v1\/list_military_flights\.proto:cursor/,
+      'implemented military cursor must be removed from the forced no-op registry',
+    );
   });
 
   it('flags unannotated query params that handlers do not reference', () => {

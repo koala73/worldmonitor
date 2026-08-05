@@ -394,12 +394,18 @@ describe('CII docs drift guards', () => {
   });
 
   it('public and developer surfaces do not retain stale CII, CRI, or platform-count claims', () => {
+    const publicHome = readFileSync(resolve(root, 'public', 'home.md'), 'utf8');
+    const agentViewText = readFileSync(resolve(root, 'public', 'agent-view.json'), 'utf8');
+    const agentView = JSON.parse(agentViewText) as { capabilities?: unknown };
+
     const surfaces = [
       { label: 'public/llms.txt', text: readFileSync(resolve(root, 'public', 'llms.txt'), 'utf8') },
       { label: 'public/llms-full.txt', text: readFileSync(resolve(root, 'public', 'llms-full.txt'), 'utf8') },
       { label: 'docs/PRESS_KIT.md', text: readFileSync(resolve(root, 'docs', 'PRESS_KIT.md'), 'utf8') },
       { label: 'docs/COMMUNITY-PROMOTION-GUIDE.md', text: readFileSync(resolve(root, 'docs', 'COMMUNITY-PROMOTION-GUIDE.md'), 'utf8') },
       { label: 'AGENTS.md', text: readFileSync(resolve(root, 'AGENTS.md'), 'utf8') },
+      { label: 'public/home.md', text: publicHome },
+      { label: 'public/agent-view.json', text: agentViewText },
     ];
 
     for (const surface of surfaces) {
@@ -431,22 +437,42 @@ describe('CII docs drift guards', () => {
     assert.match(llmsBrief, /six specialized variants/i);
     assert.match(llmsBrief, /56 map layer types/i);
     assert.match(llmsBrief, /500\+ curated RSS feeds/i);
-    assert.match(llmsBrief, /25 languages/i);
+    assert.match(llmsBrief, /26 languages/i);
     assert.match(llmsFull, /Country Instability Index \(CII v8\)[\s\S]{0,240}31 Tier-1 countries/i);
     assert.match(llmsFull, /eventScore = unrest \* 0\.25 \+ conflict \* 0\.30 \+ security \* 0\.20 \+ information \* 0\.25/i);
     assert.match(llmsFull, /Country Resilience Index \(CRI\)[\s\S]{0,160}196-country public rankable universe/i);
     assert.match(llmsFull, /six specialized variants/i);
     assert.match(llmsFull, /56 map layer types/i);
     assert.match(llmsFull, /500\+ RSS feeds/i);
-    assert.match(llmsFull, /25 languages/i);
+    assert.match(llmsFull, /26 languages/i);
     assert.match(pressKit, /server-authoritative CII v8[\s\S]{0,120}31 Tier-1 countries/i);
     assert.match(pressKit, /Country Resilience Index[\s\S]{0,140}196-country public rankable universe/i);
     assert.match(pressKit, /six thematic variants/i);
     assert.match(pressKit, /56 map layer types/i);
     assert.match(pressKit, /500\+ RSS feeds/i);
-    assert.match(pressKit, /24 \(including RTL\)/i);
+    assert.match(pressKit, /26 \(including RTL\)/i);
     assert.match(communityGuide, /six specialized views/i);
     assert.match(agentsGuide, /`energy`:\s+Energy security/i);
+    assert.match(
+      publicHome,
+      /^- CII v8 for 31 Tier-1 countries, 196-country resilience scores, and global live conflict tracking$/m,
+    );
+    assert.ok(Array.isArray(agentView.capabilities), 'public/agent-view.json capabilities must be an array');
+    assert.ok(
+      agentView.capabilities.includes('global live conflict events and CII v8 scores for 31 Tier-1 countries'),
+      'public/agent-view.json must publish the current CII coverage',
+    );
+    assert.ok(
+      agentView.capabilities.includes(
+        'country resilience scores across the 196-country public rankable universe, with domain/pillar breakdown',
+      ),
+      'public/agent-view.json must distinguish the 196-country CRI universe from CII coverage',
+    );
+    assert.doesNotMatch(
+      `${publicHome}\n${agentViewText}`,
+      /\b(?:CII(?: v\d+)?|Country Instability Index|country instability\/risk scores)\b[^\n]{0,100}(?:\(\s*196 countries\s*\)|\b(?:for|across|covers?)\s+(?:all\s+)?196 countries\b)/i,
+      'public surfaces must not attribute the 196-country CRI universe to CII',
+    );
     assert.doesNotMatch(
       `${llmsFull}\n${communityGuide}\n${agentsGuide}`,
       /Tri-Variant Build System|Three Variant Dashboards|three specialized variants|tri-variant architecture|three specialized views/i,

@@ -10,6 +10,9 @@ permissions:
 
 jobs:
   changes:
+    # Distinct check-run name — see the note in typecheck.yml (#5822). The job
+    # id stays `changes` so `needs: changes` below keeps resolving.
+    name: lint-changes
     runs-on: ubuntu-latest
     permissions:
       pull-requests: read

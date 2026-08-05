@@ -1,6 +1,6 @@
 import { describe, it, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
-import { installSwUpdateHandler, OPEN_MODAL_SELECTOR } from '../src/bootstrap/sw-update.ts';
+import { installSwUpdateHandler, OPEN_MODAL_SELECTOR, readServiceWorkerContainer } from '../src/bootstrap/sw-update.ts';
 
 // ---------------------------------------------------------------------------
 // Fake environment
@@ -642,5 +642,46 @@ describe('installSwUpdateHandler', () => {
     env.swContainer.fireControllerChange();
     assert.equal(env.visibilityListeners.length, 1, 'still exactly one listener after N+1');
     assert.ok(env.doc._removedListeners.length > 0, 'old listener was explicitly removed');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// readServiceWorkerContainer — sandboxed-iframe SecurityError (WORLDMONITOR-Y5)
+// ---------------------------------------------------------------------------
+
+describe('readServiceWorkerContainer', () => {
+  it('returns null when the serviceWorker getter throws (sandboxed iframe)', () => {
+    // Chrome in an iframe sandboxed without `allow-same-origin`: the property
+    // EXISTS on Navigator.prototype (so `'serviceWorker' in navigator` is true)
+    // but reading it raises SecurityError. A plain existence check therefore
+    // passes and the first real read throws.
+    const nav = {} as Navigator;
+    Object.defineProperty(nav, 'serviceWorker', {
+      get() {
+        throw new DOMException(
+          "Failed to read the 'serviceWorker' property from 'Navigator': Service worker is disabled because the context is sandboxed and lacks the 'allow-same-origin' flag.",
+          'SecurityError',
+        );
+      },
+      configurable: true,
+    });
+    assert.ok('serviceWorker' in nav, 'precondition: the property-existence check passes');
+    assert.equal(readServiceWorkerContainer(nav), null);
+  });
+
+  it('returns null when the navigator has no serviceWorker at all', () => {
+    assert.equal(readServiceWorkerContainer({} as Navigator), null);
+  });
+
+  it('installSwUpdateHandler is an inert no-op when no container is readable', () => {
+    // The early return is the whole point of the guard: without it the handler
+    // walks on to `options.document ?? document` and dereferences a container
+    // that was never there.
+    assert.doesNotThrow(() => installSwUpdateHandler({}));
+  });
+
+  it('returns the container when it is readable', () => {
+    const container = { controller: null, addEventListener() {} };
+    assert.equal(readServiceWorkerContainer({ serviceWorker: container } as unknown as Navigator), container);
   });
 });

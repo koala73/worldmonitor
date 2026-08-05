@@ -27,7 +27,9 @@ function isSameSnapshot(a: StockAnalysisSnapshot, b: StockAnalysisSnapshot): boo
   return a.symbol === b.symbol
     && a.generatedAt === b.generatedAt
     && a.signal === b.signal
+    && a.ratingSignal === b.ratingSignal
     && a.signalScore === b.signalScore
+    && a.compositeScore === b.compositeScore
     && a.currentPrice === b.currentPrice;
 }
 
@@ -60,13 +62,32 @@ export function getLatestStockAnalysisSnapshots(history: StockAnalysisHistory, l
   return limit != null ? snapshots.slice(0, limit) : snapshots;
 }
 
-// Snapshots written before the analyst-revisions rollout have neither
-// analystConsensus nor priceTarget fields. Treat those as stale even if
-// the generatedAt timestamp is still within the freshness window so the
-// loader forces a live refetch to populate the new section.
-function hasAnalystSchemaFields(snapshot: StockAnalysisSnapshot | undefined): boolean {
+// Snapshots written before the analyst/fundamentals rollouts can still be
+// time-fresh while missing the richer Pro payload. Treat them as stale so the
+// first post-deploy load refreshes them instead of hiding the new section for
+// the remainder of the normal 15-minute freshness window. An empty
+// fundamentals object is valid when Yahoo has no values for a symbol.
+function hasCurrentStockAnalysisSchema(snapshot: StockAnalysisSnapshot | undefined): boolean {
   if (!snapshot) return false;
-  return snapshot.analystConsensus !== undefined || snapshot.priceTarget !== undefined;
+  const hasAnalystFields = snapshot.analystConsensus !== undefined || snapshot.priceTarget !== undefined;
+  const hasCompositeScore = typeof snapshot.compositeScore === 'number'
+    && Number.isFinite(snapshot.compositeScore);
+  const hasRatingNarrative = typeof snapshot.ratingSummary === 'string'
+    && snapshot.ratingSummary.length > 0
+    && typeof snapshot.ratingAction === 'string'
+    && snapshot.ratingAction.length > 0
+    && typeof snapshot.ratingConfidence === 'string'
+    && snapshot.ratingConfidence.length > 0
+    && typeof snapshot.ratingWhyNow === 'string'
+    && snapshot.ratingWhyNow.length > 0
+    && Array.isArray(snapshot.ratingBullishFactors)
+    && Array.isArray(snapshot.ratingRiskFactors);
+  return hasAnalystFields
+    && snapshot.fundamentals !== undefined
+    && hasCompositeScore
+    && typeof snapshot.ratingSignal === 'string'
+    && snapshot.ratingSignal.length > 0
+    && hasRatingNarrative;
 }
 
 function isFreshSnapshot(
@@ -77,7 +98,7 @@ function isFreshSnapshot(
   if (!snapshot?.available) return false;
   const ts = Date.parse(snapshot.generatedAt || '');
   if (!Number.isFinite(ts) || (now - ts) > maxAgeMs) return false;
-  if (!hasAnalystSchemaFields(snapshot)) return false;
+  if (!hasCurrentStockAnalysisSchema(snapshot)) return false;
   return true;
 }
 

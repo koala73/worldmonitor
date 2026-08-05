@@ -14,10 +14,8 @@ function readFileSync(path, options) {
 import { fileURLToPath } from 'node:url';
 import {
   CONTENT_CORPUS_PREFIXES,
-  buildContentCorpusSitemapBlock,
   discoverContentCorpusPages,
-  injectContentCorpusSitemapBlock,
-} from '../scripts/build-content-corpus-sitemap.mjs';
+} from '../scripts/discover-content-corpus-pages.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const packageJson = JSON.parse(readFileSync(resolve(__dirname, '../package.json'), 'utf-8'));
@@ -35,7 +33,7 @@ const dockerNginxSource = readFileSync(resolve(__dirname, '../docker/nginx.conf'
 const frontendDockerfileSource = readFileSync(resolve(__dirname, '../docker/Dockerfile'), 'utf-8');
 const dockerignoreSource = readFileSync(resolve(__dirname, '../.dockerignore'), 'utf-8');
 const vercelIgnoreSource = readFileSync(resolve(__dirname, '../scripts/vercel-ignore.sh'), 'utf-8');
-const SPA_HTML_CACHE_SOURCE = '/((?!api|mcp|a2a|ask|oauth|assets|blog|docs|countries|chokepoints|reference|changelog|embed|embed\\.html|favico|map-styles|data|textures|pro|sw\\.js|workbox-[a-f0-9]+\\.js|manifest\\.webmanifest|offline\\.html|robots\\.txt|sitemap\\.xml|llms\\.txt|llms-full\\.txt|openapi\\.yaml|openapi\\.json|auth\\.md|pricing\\.md|support\\.md|ai-search\\.md|agents\\.md|developers\\.md|mcp-server\\.md|openapi\\.md|sdks\\.md|agent\\.txt|\\.well-known|wm-widget-sandbox\\.html|mcp-grant\\.html|mcp-grant).*)';
+const SPA_HTML_CACHE_SOURCE = '/((?!api|mcp|a2a|ask|oauth|assets|blog|docs|countries|chokepoints|crises|tools|research|reference|changelog|embed|embed\\.html|favico|map-styles|data|textures|pro|sw\\.js|workbox-[a-f0-9]+\\.js|manifest\\.webmanifest|offline\\.html|robots\\.txt|sitemap\\.xml|schemamap\\.xml|sandbox|llms\\.txt|llms-full\\.txt|openapi\\.yaml|openapi\\.json|auth\\.md|pricing\\.md|support\\.md|ai-search\\.md|agents\\.md|developers\\.md|developers/llms\\.txt|mcp-server\\.md|openapi\\.md|sdks\\.md|agent\\.txt|\\.well-known|wm-widget-sandbox\\.html|mcp-grant\\.html|mcp-grant).*)';
 const GLOBAL_SECURITY_HEADER_SOURCE = '/((?!docs|embed|embed\\.html).*)';
 const APP_ROOT_HOST_PATTERN = '^(?:(?:www|tech|finance|commodity|happy|energy)\\.)?worldmonitor\\.app$';
 const GLOBAL_CSP_INLINE_SCRIPT_HTML_FILES = [
@@ -173,6 +171,9 @@ describe('crawlable content corpus deployment contracts', () => {
   const staticCorpusPaths = [
     '/countries/ukraine/',
     '/chokepoints/suez-canal/',
+    '/research/strait-of-hormuz-transit-report-2026-07/',
+    '/crises/ukraine-war/',
+    '/tools/natural-hazard-pulse/',
     '/reference/changelog/page/2/',
   ];
 
@@ -189,28 +190,28 @@ describe('crawlable content corpus deployment contracts', () => {
   it('runs content corpus sitemap integration after generated blog pages but before Vite builds', () => {
     assert.equal(
       packageJson.scripts['build:crawlable-corpus'],
-      'tsx scripts/build-crawlable-corpus.mjs'
+      'node --import tsx scripts/build-crawlable-corpus.mjs'
     );
     assert.equal(
-      packageJson.scripts['build:content-corpus'],
-      'node scripts/build-content-corpus-sitemap.mjs'
+      packageJson.scripts['build:sitemap'],
+      'node scripts/build-sitemap.mjs'
     );
 
     for (const scriptName of ['build', 'build:full']) {
       const script = packageJson.scripts[scriptName];
       assert.ok(script.includes('npm run build:blog'), scriptName + ' must build the Astro blog first');
       assert.ok(script.includes('npm run build:crawlable-corpus'), scriptName + ' must build the static corpus');
-      assert.ok(script.includes('npm run build:content-corpus'), scriptName + ' must run content corpus sitemap integration');
+      assert.ok(script.includes('npm run build:sitemap'), scriptName + ' must run root sitemap generation');
       assert.ok(
         script.indexOf('npm run build:blog') < script.indexOf('npm run build:crawlable-corpus'),
         scriptName + ' must build /blog first so existing /blog/glossary remains delegated to the blog sitemap'
       );
       assert.ok(
-        script.indexOf('npm run build:crawlable-corpus') < script.indexOf('npm run build:content-corpus'),
+        script.indexOf('npm run build:crawlable-corpus') < script.indexOf('npm run build:sitemap'),
         scriptName + ' must scan the corpus only after the page generator runs'
       );
       assert.ok(
-        script.indexOf('npm run build:content-corpus') < script.indexOf('vite build'),
+        script.indexOf('npm run build:sitemap') < script.indexOf('vite build'),
         scriptName + ' must update public/sitemap.xml before Vite copies public/ into dist/'
       );
     }
@@ -220,13 +221,13 @@ describe('crawlable content corpus deployment contracts', () => {
       ['docker/Dockerfile', frontendDockerfileSource],
     ]) {
       assert.ok(source.includes('npm run build:crawlable-corpus'), name + ' must build the static corpus');
-      assert.ok(source.includes('npm run build:content-corpus'), name + ' must update the sitemap block');
+      assert.ok(source.includes('npm run build:sitemap'), name + ' must generate the root sitemap');
       assert.ok(
-        source.indexOf('npm run build:crawlable-corpus') < source.indexOf('npm run build:content-corpus'),
+        source.indexOf('npm run build:crawlable-corpus') < source.indexOf('npm run build:sitemap'),
         name + ' must scan the sitemap only after corpus pages exist'
       );
       assert.ok(
-        source.indexOf('npm run build:content-corpus') < source.indexOf('npx vite build'),
+        source.indexOf('npm run build:sitemap') < source.indexOf('npx vite build'),
         name + ' must update public/sitemap.xml before Vite copies public/ into dist/'
       );
     }
@@ -242,6 +243,19 @@ describe('crawlable content corpus deployment contracts', () => {
     const changelogInclude = dockerignoreSource.indexOf('!CHANGELOG.md');
     assert.ok(markdownIgnore >= 0, 'expected the broad markdown ignore rule to be present');
     assert.ok(changelogInclude > markdownIgnore, 'CHANGELOG.md must be re-included after *.md for Docker corpus builds');
+  });
+
+  it('keeps local self-hosting credentials out of Docker build contexts', () => {
+    const ignoreRules = new Set(
+      dockerignoreSource
+        .split('\n')
+        .map((line) => line.trim())
+        .filter((line) => line && !line.startsWith('#'))
+    );
+
+    for (const path of ['docker-compose.override.yml', 'secrets/']) {
+      assert.ok(ignoreRules.has(path), `${path} must never enter Docker build contexts or caches`);
+    }
   });
 
   it('keeps generated corpus prefixes out of the SPA catch-all while preserving normal app deep links', () => {
@@ -280,9 +294,12 @@ describe('crawlable content corpus deployment contracts', () => {
     assert.match(robotsSource, /^Sitemap: https:\/\/www\.worldmonitor\.app\/docs\/sitemap\.xml$/m);
   });
 
-  it('keeps a generated-content marker in the root sitemap', () => {
-    assert.ok(sitemapSource.includes('<!-- content-corpus:start -->'));
-    assert.ok(sitemapSource.includes('<!-- content-corpus:end -->'));
+  it('keeps the root sitemap generated while delegating blog and docs inventories', () => {
+    assert.ok(sitemapSource.includes('Generated by npm run build:sitemap. Do not edit by hand.'));
+    assert.ok(!sitemapSource.includes('https://www.worldmonitor.app/blog/'));
+    assert.ok(!sitemapSource.includes('https://www.worldmonitor.app/docs/'));
+    assert.ok(!sitemapSource.includes('<changefreq>'));
+    assert.ok(!sitemapSource.includes('<priority>'));
   });
 
   it('discovers canonical generated corpus pages and validates changelog pagination links', () => {
@@ -301,6 +318,16 @@ describe('crawlable content corpus deployment contracts', () => {
       );
       writeFixturePage(
         publicDir,
+        'crises/ukraine-war/index.html',
+        '<link rel="canonical" href="https://www.worldmonitor.app/crises/ukraine-war/" />'
+      );
+      writeFixturePage(
+        publicDir,
+        'tools/natural-hazard-pulse/index.html',
+        '<link rel="canonical" href="https://www.worldmonitor.app/tools/natural-hazard-pulse/" />'
+      );
+      writeFixturePage(
+        publicDir,
         'reference/changelog/page/1/index.html',
         '<link rel="canonical" href="https://www.worldmonitor.app/reference/changelog/page/1/" /><link rel="next" href="https://www.worldmonitor.app/reference/changelog/page/2/" />'
       );
@@ -316,22 +343,10 @@ describe('crawlable content corpus deployment contracts', () => {
         'https://www.worldmonitor.app/reference/changelog/page/1/',
         'https://www.worldmonitor.app/reference/changelog/page/2/',
         'https://www.worldmonitor.app/chokepoints/suez-canal/',
+        'https://www.worldmonitor.app/crises/ukraine-war/',
         'https://www.worldmonitor.app/countries/ukraine/',
+        'https://www.worldmonitor.app/tools/natural-hazard-pulse/',
       ].sort());
-
-      const block = buildContentCorpusSitemapBlock(pages);
-      assert.match(block, /<loc>https:\/\/www\.worldmonitor\.app\/countries\/ukraine\/<\/loc>/);
-      assert.match(block, /<lastmod>2026-07-08<\/lastmod>/);
-
-      const injected = injectContentCorpusSitemapBlock(
-        '<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n  <url><loc>https://www.worldmonitor.app/</loc></url>\n</urlset>\n',
-        pages
-      );
-      assert.match(injected, /<!-- content-corpus:start -->[\s\S]*\/countries\/ukraine\/[\s\S]*<!-- content-corpus:end -->/);
-      const reinjected = injectContentCorpusSitemapBlock(injected, pages);
-      assert.equal(reinjected, injected, 're-injecting the same pages must be idempotent');
-      assert.equal((reinjected.match(/<!-- content-corpus:start -->/g) ?? []).length, 1);
-      assert.equal((reinjected.match(/<!-- content-corpus:end -->/g) ?? []).length, 1);
 
       writeFixturePage(
         publicDir,
@@ -669,6 +684,29 @@ describe('welcome landing page routing', () => {
     assert.ok(redirect, 'expected a redirect for /index.html');
     assert.equal(redirect.destination, '/');
     assert.equal(redirect.permanent, true);
+  });
+
+  it('redirects the human pricing route to the canonical pricing section before SPA routing', () => {
+    const redirect = vercelConfig.redirects.find((r) => r.source === '/pricing');
+    assert.ok(redirect, 'expected a redirect for /pricing');
+    assert.equal(redirect.destination, '/pro#pricing');
+    assert.equal(redirect.permanent, true);
+
+    assert.equal(
+      vercelConfig.redirects.some((r) => r.source === '/pricing.md'),
+      false,
+      'the machine-readable pricing contract must remain a static asset',
+    );
+    assert.equal(
+      vercelConfig.redirects.some((r) => r.source === '/api/product-catalog'),
+      false,
+      'the live product catalog endpoint must remain unchanged',
+    );
+    assert.equal(
+      vercelConfig.rewrites.some((r) => r.source === '/pricing'),
+      false,
+      '/pricing must be handled in the redirects phase before the SPA rewrites phase',
+    );
   });
 
   it('redirects bare corpus roots to canonical generated pages', () => {
@@ -2640,5 +2678,141 @@ describe('agent readiness: named developer-resource pages (#4953)', () => {
       );
       assert.ok(blogPost.includes(page.path), `the developer blog post must cross-link ${page.path}`);
     }
+  });
+});
+
+// NLWeb schemamap (orank "NLWeb Schema Feeds"): keep the file published and
+// discoverable without advertising it through robots.txt. Lighthouse rejects
+// the emerging `Schemamap:` directive as unknown, dropping SEO 100 -> 92 on
+// every route; #4835 tracks the upstream safelist unblock. Every <loc> must
+// still resolve to a tracked file or a live route — a schemamap pointing at a
+// 404 is worse than none (same dead-pointer class as the deleted Wikidata QID
+// incident).
+describe('NLWeb schemamap (/schemamap.xml)', () => {
+  const schemamapSource = readFileSync(resolve(__dirname, '../public/schemamap.xml'), 'utf-8');
+
+  it('keeps the file published without an unsupported robots.txt directive', () => {
+    assert.doesNotMatch(
+      robotsSource,
+      /^Schemamap:/mi,
+      'Lighthouse rejects Schemamap as an unknown robots.txt directive; see #4835'
+    );
+    assert.match(schemamapSource, /^<\?xml version="1\.0" encoding="UTF-8"\?>/);
+    assert.ok(
+      schemamapSource.includes('<schemamap xmlns="http://www.nlweb.ai/schemas/schemamap/0.1">'),
+      'schemamap must declare the NLWeb schemamap namespace'
+    );
+  });
+
+  it('every advertised <loc> resolves to a tracked file or a live route', () => {
+    const locs = [...schemamapSource.matchAll(/<loc>([^<]+)<\/loc>/g)].map((m) => m[1]);
+    assert.ok(locs.length >= 3, 'schemamap must index at least the homepage, blog, and RSS feed');
+    const resolvable = {
+      'https://www.worldmonitor.app/': () =>
+        vercelConfig.rewrites.some((r) => r.source === '/' && r.destination === '/pro/welcome.html'),
+      'https://www.worldmonitor.app/blog/': () =>
+        existsSync(resolve(__dirname, '../blog-site/src/pages/index.astro')),
+      'https://www.worldmonitor.app/blog/rss.xml': () =>
+        existsSync(resolve(__dirname, '../blog-site/src/pages/rss.xml.ts')),
+      'https://www.worldmonitor.app/blog/glossary/': () =>
+        existsSync(resolve(__dirname, '../blog-site/src/pages/glossary/index.astro')),
+    };
+    for (const loc of locs) {
+      const probe = resolvable[loc];
+      assert.ok(probe, `schemamap <loc> ${loc} has no resolvability probe — add one when adding entries`);
+      assert.ok(probe(), `schemamap <loc> ${loc} does not resolve to a tracked file or live route`);
+    }
+    // Each entry must pair the loc with a schema.org type. Line-anchored so
+    // the explanatory XML comment (which names the tags) doesn't count.
+    const entries = schemamapSource.match(/^ {2}<url>$/gm) || [];
+    const schemas = schemamapSource.match(/<schema>https:\/\/schema\.org\/[A-Za-z]+<\/schema>/g) || [];
+    assert.equal(entries.length, locs.length);
+    assert.equal(schemas.length, locs.length, 'every schemamap entry needs a schema.org type');
+  });
+
+  it('the schemamap.xml headers rule serves XML with CORS', () => {
+    const rule = vercelConfig.headers.find((h) => h.source === '/schemamap.xml');
+    assert.ok(rule, 'vercel.json must carry a /schemamap.xml headers rule');
+    const keys = Object.fromEntries(rule.headers.map((h) => [h.key, h.value]));
+    assert.match(keys['Content-Type'], /application\/xml/);
+    assert.equal(keys['Access-Control-Allow-Origin'], '*');
+  });
+});
+
+// Docs MCP facade: /docs/mcp must hit api/docs-mcp.ts (which lifts the
+// upstream's protocol-level tool-call failures into real JSON-RPC errors)
+// BEFORE the catch-all /docs/:match* Mintlify rewrite — rewrites are
+// first-match-wins, so ordering is load-bearing.
+describe('docs MCP facade (/docs/mcp)', () => {
+  it('rewrites /docs/mcp to /api/docs-mcp ahead of the Mintlify catch-all', () => {
+    const rewrites = vercelConfig.rewrites;
+    const facadeIdx = rewrites.findIndex(
+      (r) => r.source === '/docs/mcp' && r.destination === '/api/docs-mcp'
+    );
+    const mintlifyIdx = rewrites.findIndex(
+      (r) => r.source === '/docs/:match*' && String(r.destination).includes('mintlify.dev')
+    );
+    assert.ok(facadeIdx >= 0, 'missing /docs/mcp → /api/docs-mcp rewrite');
+    assert.ok(mintlifyIdx >= 0, 'Mintlify /docs rewrite missing');
+    assert.ok(facadeIdx < mintlifyIdx, '/docs/mcp rewrite must precede the /docs/:match* Mintlify rewrite');
+    assert.ok(existsSync(resolve(__dirname, '../api/docs-mcp.ts')), 'api/docs-mcp.ts must exist');
+  });
+
+  it('the first-party docs server card still points at the facade URL', () => {
+    const card = JSON.parse(
+      readFileSync(resolve(__dirname, '../public/.well-known/mcp/docs-server-card.json'), 'utf-8')
+    );
+    assert.equal(card.url, 'https://www.worldmonitor.app/docs/mcp');
+    assert.equal(card.serverUrl, 'https://www.worldmonitor.app/docs/mcp');
+  });
+});
+
+// Modular llms.txt (orank "Modular llms.txt per product area"): section-scoped
+// files must exist and the site-wide llms.txt must cross-link every section so
+// agents can discover them without probing paths blind.
+describe('section-scoped llms.txt files', () => {
+  it('tracked section files exist', () => {
+    for (const path of ['../public/api/llms.txt', '../public/developers/llms.txt', '../blog-site/src/pages/llms.txt.ts']) {
+      assert.ok(existsSync(resolve(__dirname, path)), `${path} must exist`);
+    }
+  });
+
+  it('the site-wide llms.txt cross-links every section file and the sandbox', () => {
+    const llms = readFileSync(resolve(__dirname, '../public/llms.txt'), 'utf-8');
+    for (const url of [
+      'https://worldmonitor.app/api/llms.txt',
+      'https://www.worldmonitor.app/docs/llms.txt',
+      'https://worldmonitor.app/developers/llms.txt',
+      'https://www.worldmonitor.app/blog/llms.txt',
+      'https://www.worldmonitor.app/sandbox/index.json',
+      'https://www.worldmonitor.app/schemamap.xml',
+    ]) {
+      assert.ok(llms.includes(url), `public/llms.txt must link ${url}`);
+    }
+  });
+});
+
+describe('skeleton brand text extraction (#5541)', () => {
+  const indexHtml = readFileSync(resolve(__dirname, '../index.html'), 'utf-8');
+
+  it('.skeleton-brand raw textContent does not contain "WWorld"', () => {
+    const match = indexHtml.match(/<div class="skeleton-brand">([\s\S]*?)<\/div>/);
+    assert.ok(match, 'index.html must contain .skeleton-brand element');
+    // Simulate raw textContent: strip all HTML tags
+    const rawText = match[1].replace(/<[^>]+>/g, '');
+    assert.doesNotMatch(rawText, /WWorld/, 'skeleton-brand raw text must not concatenate as "WWorld Monitor"');
+    assert.match(rawText, /World Monitor/, 'skeleton-brand raw text must contain "World Monitor"');
+  });
+
+  it('.skeleton-brand-mark is aria-hidden and has no text content', () => {
+    const markMatch = indexHtml.match(/<span class="skeleton-brand-mark"[^>]*>([\s\S]*?)<\/span>/);
+    assert.ok(markMatch, 'index.html must contain .skeleton-brand-mark element');
+    assert.match(markMatch[0], /aria-hidden="true"/, 'skeleton-brand-mark must be aria-hidden');
+    const markText = markMatch[1].replace(/<[^>]+>/g, '').trim();
+    assert.equal(markText, '', 'skeleton-brand-mark must have no text content (use CSS ::after instead)');
+  });
+
+  it('.skeleton-brand-mark renders "W" via CSS content pseudo-element', () => {
+    assert.match(indexHtml, /\.skeleton-brand-mark::after\s*\{\s*content:\s*"W"\s*\}/, 'skeleton-brand-mark must render W via CSS ::after content');
   });
 });

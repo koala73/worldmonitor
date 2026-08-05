@@ -53,6 +53,7 @@ import { setCachedFuelShortageRegistry } from '../shared/fuel-shortage-registry-
 import { setCachedPipelineRegistries } from '../shared/pipeline-registry-store';
 import { setCachedStorageFacilityRegistry } from '../shared/storage-facility-registry-store';
 import type { WeatherAlert } from '../services/weather';
+import { CHINA_LOGISTICS_CORRIDORS } from '../../shared/china-logistics-corridors';
 
 type Scenario = 'alpha' | 'beta';
 type HarnessVariant = 'full' | 'tech' | 'finance' | 'commodity' | 'energy' | 'happy';
@@ -132,6 +133,7 @@ type MapHarness = {
   getProtestClusterCount: () => number;
   getOverlaySnapshot: () => OverlaySnapshot;
   getCyberTooltipHtml: (indicator: string) => string;
+  showChinaCorridor: (index?: number) => void;
   destroy: () => void;
 };
 
@@ -1672,6 +1674,14 @@ window.__mapHarness = {
   getProtestClusterCount,
   getOverlaySnapshot,
   getCyberTooltipHtml,
+  showChinaCorridor: (index = 0): void => {
+    const definition = CHINA_LOGISTICS_CORRIDORS[index] ?? CHINA_LOGISTICS_CORRIDORS[0]!;
+    map.setChinaCorridorSelection({
+      ...definition,
+      availability: 'partial',
+      conditions: [],
+    });
+  },
   destroy: (): void => {
     map.destroy();
   },

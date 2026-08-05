@@ -20,12 +20,10 @@ export const BASELINE_ADVISORIES_BY_LOCKFILE = {
   // buffers (brief carousel), and @xenova/transformers is consumed solely by
   // the browser ML worker (src/workers/ml.worker.ts) — its Node-only sharp
   // binary never executes server-side. The clean fix (sharp 0.35.x) is
-  // semver-major across both chains; baselined until the parents bump. The
-  // same reasoning covers blog-site below: sharp runs only at Astro build
-  // time over repo-owned images, and the fix requires astro@7 (semver-major).
+  // semver-major across both chains; baselined until the parents bump.
   'package-lock.json': ['GHSA-f88m-g3jw-g9cj'],
   'consumer-prices-core/package-lock.json': [],
-  'blog-site/package-lock.json': ['GHSA-f88m-g3jw-g9cj'],
+  'blog-site/package-lock.json': [],
   // GHSA-395f-4hp3-45gv (shell-quote quadratic-complexity DoS in parse()) reaches
   // pro-test only via react-native -> react-devtools-core, a mobile/dev-tooling
   // chain the Vite web build never bundles into public/pro/. The parse() DoS is
@@ -33,7 +31,14 @@ export const BASELINE_ADVISORIES_BY_LOCKFILE = {
   // `overrides` pin bump) would drag an otherwise-untouched public/pro/ rebuild
   // into a lockfile-hygiene change. Baselined rather than patched here; drop it
   // once react-native leaves pro-test's tree. (GHSA-qjx8/w24r predate this.)
-  'pro-test/package-lock.json': ['GHSA-qjx8-664m-686j', 'GHSA-w24r-5266-9c3c', 'GHSA-395f-4hp3-45gv'],
+  // GHSA-r28c-9q8g-f849 (postcss sourceMappingURL path traversal) requires
+  // postcss to process attacker-controlled CSS carrying a malicious
+  // sourceMappingURL. pro-test runs postcss only at build time over
+  // first-party Tailwind sources; postcss never ships in public/pro/. The
+  // clean fix means bumping the `overrides.postcss` pin (8.5.12 → ≥8.5.23),
+  // which drags a public/pro/ bundle rebuild into a lockfile-hygiene change —
+  // same trade-off as GHSA-395f below. Drop when the pin next bumps.
+  'pro-test/package-lock.json': ['GHSA-qjx8-664m-686j', 'GHSA-w24r-5266-9c3c', 'GHSA-395f-4hp3-45gv', 'GHSA-r28c-9q8g-f849'],
   'scripts/package-lock.json': [],
   'docker/runtime-package-lock.json': [],
 };
@@ -96,12 +101,56 @@ export function collectStaleBaselineEntries(report, lockfile) {
   return (BASELINE_ADVISORIES_BY_LOCKFILE[lockfile] ?? []).filter((id) => !present.has(id));
 }
 
+/**
+ * Best available human-readable reason from a failed `npm audit --json`.
+ *
+ * npm returns `{"error": {"summary": "", "detail": ""}}` — EMPTY STRINGS, not
+ * null — when the advisories endpoint misbehaves, and puts the only useful text
+ * in the top-level `message`. `??` only falls through on null/undefined, so the
+ * previous `summary ?? detail ?? fallback` threw `Error("")` and the gate went
+ * red printing a single blank line. Pick the first NON-EMPTY value instead.
+ */
+export function resolveAuditErrorMessage(report, workspace) {
+  const candidates = [report?.error?.summary, report?.error?.detail, report?.message];
+  const found = candidates.find((value) => typeof value === 'string' && value.trim().length > 0);
+  return found?.trim() ?? `npm audit failed for ${workspace}`;
+}
+
+/**
+ * Whether the audit failed because the REGISTRY could not be reached or its
+ * response was unusable — i.e. nothing an author of this PR can fix.
+ *
+ * Observed 2026-07-26: registry.npmjs.org's
+ * `/-/npm/v1/security/advisories/bulk` served a gzip body npm could not parse
+ * (the gzip magic number where JSON was expected), failing every audit
+ * repo-wide. The same commit passed 7 hours earlier, so the lockfile was not
+ * the variable; only the live advisory database was.
+ */
+export function isUpstreamAuditOutage(report) {
+  const text = [report?.error?.summary, report?.error?.detail, report?.message]
+    .filter((value) => typeof value === 'string')
+    .join(' ');
+  if (!text.trim()) return false;
+  return (
+    /security\/advisories\/bulk/i.test(text) ||
+    /audit endpoint returned an error/i.test(text) ||
+    /invalid json response body/i.test(text) ||
+    /(ENOTFOUND|ECONNRESET|ECONNREFUSED|ETIMEDOUT|EAI_AGAIN|socket hang up|network timeout)/i.test(text) ||
+    /\b(502|503|504)\b/.test(text)
+  );
+}
+
 function parseArgs(argv) {
   const args = {
     auditLevel: 'high',
     workspace: '.',
     packageJson: '',
     lockfile: '',
+    // A registry outage is not an actor-fixable defect, so by default it warns
+    // loudly and exits 0 rather than bricking every merge on npm's uptime.
+    // Set --fail-on-outage (or AUDIT_FAIL_ON_OUTAGE=1) where a missed audit is
+    // less acceptable than a blocked pipeline, e.g. a release gate.
+    failOnOutage: process.env.AUDIT_FAIL_ON_OUTAGE === '1',
   };
 
   for (let i = 0; i < argv.length; i += 1) {
@@ -110,6 +159,7 @@ function parseArgs(argv) {
     else if (arg === '--workspace') args.workspace = argv[++i] ?? args.workspace;
     else if (arg === '--package-json') args.packageJson = argv[++i] ?? args.packageJson;
     else if (arg === '--lockfile') args.lockfile = argv[++i] ?? args.lockfile;
+    else if (arg === '--fail-on-outage') args.failOnOutage = true;
   }
 
   if (!args.lockfile) {
@@ -155,7 +205,10 @@ function readAuditReport({ workspace, packageJson, lockfile }) {
 
     if (!json) {
       process.stderr.write(result.stderr);
-      throw new Error(`npm audit did not return JSON for ${workspace}`);
+      const failure = new Error(`npm audit did not return JSON for ${workspace}`);
+      // npm writes transport diagnostics to stderr, so classify from there.
+      failure.upstreamOutage = isUpstreamAuditOutage({ message: result.stderr ?? '' });
+      throw failure;
     }
 
     let report;
@@ -163,11 +216,15 @@ function readAuditReport({ workspace, packageJson, lockfile }) {
       report = JSON.parse(json);
     } catch (error) {
       process.stderr.write(result.stderr);
-      throw new Error(`Could not parse npm audit JSON for ${workspace}: ${error.message}`);
+      const failure = new Error(`Could not parse npm audit JSON for ${workspace}: ${error.message}`);
+      failure.upstreamOutage = isUpstreamAuditOutage({ message: result.stderr ?? '' });
+      throw failure;
     }
 
     if (report.error) {
-      throw new Error(report.error.summary ?? report.error.detail ?? `npm audit failed for ${workspace}`);
+      const failure = new Error(resolveAuditErrorMessage(report, workspace));
+      failure.upstreamOutage = isUpstreamAuditOutage(report);
+      throw failure;
     }
 
     return report;
@@ -186,7 +243,21 @@ function main() {
   const workspace = resolve(process.cwd(), args.workspace);
   const packageJson = resolve(process.cwd(), args.packageJson);
   const lockfile = resolve(process.cwd(), args.lockfile);
-  const report = readAuditReport({ workspace, packageJson, lockfile });
+
+  let report;
+  try {
+    report = readAuditReport({ workspace, packageJson, lockfile });
+  } catch (error) {
+    // Split the failure classes: a broken registry is not a broken PR.
+    if (error?.upstreamOutage && !args.failOnOutage) {
+      console.log(
+        `::warning title=Security audit could not run::${args.lockfile} was NOT audited — the npm advisory endpoint is unavailable (${error.message}). This is an upstream outage, not a dependency problem; re-run once it recovers.`,
+      );
+      return;
+    }
+    throw error;
+  }
+
   const allFindings = collectAuditFindings(report, args.auditLevel);
   const unbaselined = collectUnbaselinedFindings(report, args.lockfile, args.auditLevel);
   const unbaselinedKeys = new Set(unbaselined.map((finding) => `${finding.id}:${finding.name}`));

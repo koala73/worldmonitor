@@ -28,12 +28,15 @@ export const BOOTSTRAP_CACHE_KEYS = Object.freeze({
   imfGrowth: 'economic:imf:growth:v1',
   imfLabor: 'economic:imf:labor:v1',
   imfExternal: 'economic:imf:external:v1',
-  chinaMacro: 'economic:china:macro:v1',
+  chinaMacro: 'economic:china:macro:v2',
   chinaReleaseCalendar: 'economic:china:release-calendar:v1',
+  chinaCorporateDisclosures: 'market:china:corporate-disclosures:v1',
+  chinaPolicyEvents: 'china:policy-events:v1',
+  chinaDecisionSignals: 'intelligence:china-decision-signals:v1',
   shippingRates: 'supply_chain:shipping:v2',
   chokepoints: 'supply_chain:chokepoints:v4',
   minerals: 'supply_chain:minerals:v2',
-  giving: 'giving:summary:v1',
+  giving: 'giving:summary:v2',
   climateAnomalies: 'climate:anomalies:v2',
   climateDisasters: 'climate:disasters:v1',
   co2Monitoring: 'climate:co2-monitoring:v1',
@@ -70,6 +73,7 @@ export const BOOTSTRAP_CACHE_KEYS = Object.freeze({
   techEvents: 'research:tech-events-bootstrap:v1',
   gdeltIntel: 'intelligence:gdelt-intel:v1',
   correlationCards: 'correlation:cards-bootstrap:v1',
+  crossStraitActivity: 'military:cross-strait-activity-bootstrap:v1',
   forecasts: 'forecast:predictions-bootstrap:v1',
   securityAdvisories: 'intelligence:advisories-bootstrap:v1',
   customsRevenue: 'trade:customs-revenue:v1',
@@ -120,9 +124,10 @@ export const BOOTSTRAP_CACHE_KEYS = Object.freeze({
 });
 
 const SLOW_KEY_NAMES = new Set([
-  'bisPolicy', 'bisExchange', 'bisCredit', 'chinaMacro', 'chinaReleaseCalendar', 'minerals', 'giving',
+  'bisPolicy', 'bisExchange', 'bisCredit', 'chinaMacro', 'chinaReleaseCalendar', 'chinaCorporateDisclosures', 'minerals', 'giving',
   'sectors', 'etfFlows', 'wildfires', 'climateAnomalies', 'climateDisasters', 'co2Monitoring', 'oceanIce', 'climateNews',
   'radiationWatch', 'thermalEscalation', 'crossSourceSignals',
+  'crossStraitActivity',
   'techReadiness', 'progressData', 'renewableEnergy',
   'naturalEvents',
   'cryptoQuotes', 'cryptoSectors', 'defiTokens', 'aiTokens', 'otherTokens',
@@ -169,6 +174,7 @@ const FAST_KEY_NAMES = new Set([
 
 const ON_DEMAND_KEY_NAMES = new Set([
   'cyberThreats',
+  'chinaPolicyEvents', 'chinaDecisionSignals',
   'bisDsr', 'bisPropertyResidential', 'bisPropertyCommercial',
   'imfMacro', 'imfGrowth', 'imfLabor', 'imfExternal',
   'eurostatHousePrices', 'eurostatGovDebtQ', 'eurostatIndProd',
@@ -176,6 +182,21 @@ const ON_DEMAND_KEY_NAMES = new Set([
   'portwatchChokepointsRef', 'portwatchPortActivity', 'sprPolicies',
   'energyDisruptions',
 ]);
+
+/**
+ * The one tiered key that ALSO has its own credential-less public URL,
+ * `?keys=weatherAlerts&public=1` (#5386).
+ *
+ * Every other single-key public URL is drawn from the on-demand tier, so
+ * `bootstrapTierKeyNames('on-demand')` is the shared allowlist. weatherAlerts is
+ * the exception: it rides the fast tier, but the map embed fetches it directly
+ * (src/services/weather.ts) and that read needs a CDN entry of its own so the
+ * BARE `?keys=weatherAlerts` URL — which credentialed callers also use — can
+ * stay no-store. Exported so the handler's allowlist (api/bootstrap.js) and the
+ * client's credential-less-read guard (src/services/wm-session.ts) name the same
+ * key instead of hardcoding it twice.
+ */
+export const PUBLIC_WEATHER_BOOTSTRAP_KEY = 'weatherAlerts';
 
 function tierForKey(name) {
   if (FAST_KEY_NAMES.has(name)) return 'fast';

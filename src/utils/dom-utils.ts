@@ -193,3 +193,21 @@ function appendChildren(
     }
   }
 }
+
+/**
+ * Focusable elements within a modal/overlay root, for focus-trap Tab cycling.
+ * Filters out disabled, aria-hidden, and undisplayed (offsetParent-less)
+ * matches so the trap never focuses something the user can't see.
+ */
+export function getFocusableElements(root: ParentNode): HTMLElement[] {
+  return Array.from(
+    root.querySelectorAll<HTMLElement>(
+      'button:not([disabled]), a[href], [tabindex]:not([tabindex="-1"])',
+    ),
+  ).filter(
+    (el) =>
+      !el.hasAttribute('disabled') &&
+      el.getAttribute('aria-hidden') !== 'true' &&
+      el.offsetParent !== null,
+  );
+}

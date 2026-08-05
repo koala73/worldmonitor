@@ -198,17 +198,20 @@
       "currencies": "Valuták",
       "area": "Terület"
     },
-    "loadingResilienceScore": "Loading resilience score…",
-    "resilienceScoreUnavailable": "Resilience score unavailable.",
+    "loadingResilienceScore": "Rugalmassági pontszám betöltése…",
+    "resilienceScoreUnavailable": "A rugalmassági pontszám nem érhető el.",
     "china": {
       "title": "Országáttekintés: Kína",
       "description": "Aktuális makro-, piaci, kereskedelmi, energia- és működési rendelkezésre állási adatok a meglévő nyilvános adatszerződésekből.",
-      "macroPolicy": "Makró és szakpolitika",
-      "marketCredit": "Piac és hitel",
-      "tradeSupply": "Kereskedelem és ellátási lánc",
+      "policyEvents": "Politika és végrehajtás",
       "energy": "Energia",
       "availability": "Veszélyek és légi közlekedés",
       "observed": "Állapot:",
+      "published": "Közzétéve:",
+      "effective": "Hatályos:",
+      "sectors": "Szektorok:",
+      "entities": "Entitások:",
+      "translation": "Fordítás:",
       "source": "Forrás:",
       "imfGrowth": "IMF növekedési előrejelzés",
       "creditGdp": "Hitel a GDP arányában",
@@ -217,8 +220,6 @@
       "gasDemand": "Gázkereslet",
       "energyMix": "Árammix",
       "coal": "szén",
-      "aviationAvailability": "Légi közlekedés rendelkezésre állása",
-      "hazardAvailability": "Veszélyadatok rendelkezésre állása",
       "noMajorDisruptions": "Nem jelentettek jelentős fennakadást",
       "activeDisruptions_one": "{{count}} aktív fennakadás",
       "activeDisruptions_other": "{{count}} aktív fennakadás",
@@ -230,18 +231,21 @@
       "ccfiSource": "Sanghaji Hajózási Tőzsde",
       "comtradeSource": "UN Comtrade, 156-os jelentő",
       "sourceUnavailable": "A forrás nem érhető el",
-      "macroUnavailable": "A makro- és szakpolitikai adatok jelenleg nem érhetők el.",
-      "marketUnavailable": "A piaci és hiteladatok jelenleg nem érhetők el.",
-      "tradeUnavailable": "A kereskedelmi és ellátásilánc-adatok jelenleg nem érhetők el.",
-      "energyUnavailable": "Az energiaadatok jelenleg nem érhetők el.",
-      "availabilityUnavailable": "A veszély- és légiközlekedési adatok jelenleg nem érhetők el.",
+      "policyUnavailable": "Official policy and enforcement events are currently unavailable.",
+      "policyPartial": "{{count}} official agencies are temporarily degraded.",
       "status": {
         "loading": "Betöltés",
         "available": "Elérhető",
         "partial": "Részleges",
         "stale": "Elavult",
         "unavailable": "Nem elérhető"
-      }
+      },
+      "macroSignals": "Makro jelek",
+      "crossStraitActivity": "Szoroson átívelő tevékenység",
+      "corporateDisclosures": "Vállalati közzétételek",
+      "corridorConditions": "Folyosó feltételek",
+      "activityNowcast": "Tevékenység nowcast",
+      "decisionSignalsUnavailable": "Kína döntési jeleinek pillanatképe jelenleg nem érhető el."
     }
   },
   "header": {
@@ -322,7 +326,7 @@
     "panelCatCommodityEcon": "Gazdaság & Kereskedelem",
     "panelCatHappyNews": "Jó Hírek",
     "panelCatHappyPlanet": "Bolygó & Adományozás",
-    "embed": "Embed"
+    "embed": "Beágyazás"
   },
   "panels": {
     "liveNews": "Élő Hírek",
@@ -984,7 +988,7 @@
       "fytdLabel": "FY{{year}} YTD",
       "vsPriorFy": "vs FY{{year}}",
       "sourceWto": "WTO",
-      "sourceTreasury": "US Pénzügyminisztérium",
+      "sourceTreasury": "USA Pénzügyminisztérium",
       "colDate": "Dátum",
       "colMonthly": "Havi",
       "colFytd": "FY YTD",
@@ -1409,8 +1413,8 @@
       "sectionFollowing": "Following",
       "sectionAll": "All",
       "sourceStates": {
-        "degraded": "degraded",
-        "stale": "stale"
+        "degraded": "leromlott",
+        "stale": "elavult"
       }
     },
     "insights": {
@@ -1489,7 +1493,8 @@
       "newsSignals": "{{news}} hír • {{signals}} szignál",
       "provenanceTitle": "Lefedettség eredete: hány feldolgozott történetből és különálló forrásból választotta ki ezt az összefoglalót",
       "compiledFrom": "{{stories}} történetből és {{sources}} forrásból összeállítva",
-      "briefFreshness": "Generálva {{minutes}}m idővel ezelőtt · legfrissebb forrás {{hours}}ó régi"
+      "briefFreshness": "Generálva {{minutes}}m idővel ezelőtt · legfrissebb forrás {{hours}}ó régi",
+      "briefStoryDetails": "Story details ({{count}})"
     },
     "settings": {
       "exportSettings": "Beállítások exportálása",
@@ -1567,10 +1572,10 @@
         "hoursAgo": "{{count}}ó ezzel ezelőtt"
       },
       "infoTooltip": "<strong>Módszertan</strong> Összetett pontszám (0–100) összevetítve:<ul><li>50% Országinstabilitás (top 5 súlyozva)</li><li>30% Földrajzi konvergencia zónák</li><li>20% Infrastruktúra incidensek</li></ul>Automatikus frissítés 5 percenként.",
-      "cachedCiiStatus": "Cached CII {{states}}",
+      "cachedCiiStatus": "Gyorsítótárazott CII {{states}}",
       "sourceStates": {
-        "degraded": "degraded",
-        "stale": "stale"
+        "degraded": "leromlott",
+        "stale": "elavult"
       },
       "dataFreshness": "Data Freshness",
       "sourcesDetail": "{{active}}/{{total}} sources"
@@ -1697,7 +1702,26 @@
       "cafIndex": "CAF Index",
       "candidGrants": "Candid Grants",
       "dataLag": "Adatforgalom",
-      "infoTooltip": "<strong>Global Giving Activity Index</strong> Összetett index, amely a személyes adományozást követi nyomauxiliar platformokon és kriptopénz pénztárcákon.<ul><li><strong>Platformok</strong>: GoFundMe, GlobalGiving, JustGiving kampánymintavételezés</li><li><strong>Kriptó</strong>: On-chain jótékonysági pénztárca beáramlása (Endaoment, Giving Block)</li><li><strong>Intézményi</strong>: OECD ODA, CAF World Giving Index, Candid grants</li></ul>Az index irányjellegű (nem pontos dollárösszegek). Élő mintavételezést egyesít a megjelent éves jelentésekkel."
+      "infoTooltip": "<strong>Global Giving Activity Index</strong> Összetett index, amely a személyes adományozást követi nyomauxiliar platformokon és kriptopénz pénztárcákon.<ul><li><strong>Platformok</strong>: GoFundMe, GlobalGiving, JustGiving kampánymintavételezés</li><li><strong>Kriptó</strong>: On-chain jótékonysági pénztárca beáramlása (Endaoment, Giving Block)</li><li><strong>Intézményi</strong>: OECD ODA, CAF World Giving Index, Candid grants</li></ul>Az index irányjellegű (nem pontos dollárösszegek). Élő mintavételezést egyesít a megjelent éves jelentésekkel.",
+      "benchmarkTitle": "Globális adományozási referenciák",
+      "benchmarkInfoTooltip": "<strong>Globális adományozási referenciák</strong> Közzétett platform és intézményi igények forrásidőszakokkal és ellenőrzési státusszal. Az éves számadatok becslések, nem valós idejű tevékenység.",
+      "status": {
+        "published": "Közzétett referenciák ellenőrzött forráslefedetséggel.",
+        "partial": "Közzétett referenciák részleges forráslefedetséggel.",
+        "legacy": "Régi pillanatkép; forrás részletei nem elérhetők.",
+        "cached": "Gyorsítótárazott pillanatkép megjelenítése; frissítés nem elérhető."
+      },
+      "trackedAnnualized": "Nyomon követett platform adományok — éves becslés",
+      "annualizedDaily": "Napi éves becslés",
+      "atLeast": "Legalább",
+      "about": "Körülbelül",
+      "sourceNotVerified": "Forrás nem ellenőrzött",
+      "reportedCumulative": "Jelentett kumulatív összeg",
+      "sourcePeriod": "{{source}} · {{period}}",
+      "benchmark": "Közzétett referencia",
+      "sourcesMethodology": "Források és módszertan",
+      "methodologyIntro": "Csak ellenőrzött éves vagy védhető módon évesített platform igények kerülnek a főcímbe. A kumulatív és intézményi számadatok külön kontextusként maradnak.",
+      "partialEstimate": "Részlegesen ellenőrzött becslés"
     },
     "displacement": {
       "refugees": "Menekültek",
@@ -1737,6 +1761,8 @@
       "summaryFailed": "Összegzés sikertelen",
       "sources": "{{count}} forrás",
       "relatedAssetsNear": "Kapcsolódó eszközök a közelben: {{location}}",
+      "sourceCoverage": "{{covered}}/{{total}} forrás",
+      "sourceCoverageHint": "{{total}} engedélyezett forrásból {{covered}} látszik — ez a panel minden frissítéskor váltogatja a forrásait",
       "sortBy": "Rendezés:",
       "sortNewest": "Legújabb",
       "sortRelevance": "Relevancia"
@@ -1896,7 +1922,11 @@
       "infoTooltip": "<strong>Katasztrófa Kaszkád</strong> Konvergens természeti katasztrófa és infrastruktúra jelek detektálása:<ul><li>Földrengéseket, erdőtüzeket, árvizeket és szélsőséges időjárási eseményeket korreláló</li><li>Az infrastruktúrára és ellátási láncolatra gyakorolt kaszkádhatásokat nyomon követi</li><li>Összetett katasztrófakockázatú régiókat emel ki</li></ul>Kattintson egy kártyára, hogy nagyítson az érintett régióra."
     },
     "markets": {
-      "infoTooltip": "<strong>Piacok</strong> Valós idejű részvényindexek, értékpapírok és kriptoárak. Szabja testre a megfigyelési listáját a Megfigyelési lista gombbal. A minitrendek a közelmúltbeli ártrend változást mutatják."
+      "infoTooltip": "<strong>Piacok</strong> Valós idejű részvényindexek, értékpapírok és kriptoárak. Szabja testre a megfigyelési listáját a Megfigyelési lista gombbal. A minitrendek a közelmúltbeli ártrend változást mutatják.",
+      "chart": {
+        "title": "{{symbol}} árdiagram",
+        "close": "Diagram bezárása"
+      }
     },
     "heatmap": {
       "infoTooltip": "<strong>Szektoros Hőtérkép</strong> Az S&P 500 szektor teljesítménye egy pillantásra. A szín intenzitása a napi változás mértékét tükrözi. Zöld = nyereség, Piros = veszteség."
@@ -2239,11 +2269,101 @@
       "cta": "Frissítés Pro-ra →",
       "dismiss": "Eltüntetés"
     },
+    "billingState": {
+      "onHoldDesc": "A fizetés sikertelen. Frissítse fizetési módját a prémium hozzáférés visszaállításához.",
+      "onHoldBannerMessage": "A fizetés sikertelen. Frissítse fizetési módját, hogy előfizetése aktív maradjon.",
+      "updatePayment": "Fizetés frissítése",
+      "renewalPendingDesc": "Ellenőrizzük előfizetése megújítását. A prémium hozzáférés a megerősítés után automatikusan helyreáll.",
+      "refreshStatus": "Állapot frissítése",
+      "renewalFailedDesc": "Nem sikerült ellenőrizni előfizetése megújítását. Kezelje a számlázást, vagy lépjen kapcsolatba az ügyfélszolgálattal, ha a probléma továbbra is fennáll.",
+      "manageBilling": "Számlázás kezelése",
+      "lapsedDesc": "Pro előfizetése lejárt. Fizessen elő újra a prémium hozzáférés visszaszerzéséhez.",
+      "resubscribe": "Újra előfizetek"
+    },
     "checkoutFailureBanner": {
       "message": "A fizetés nem fejeződött be. Nem történt költség.",
       "retry": "Próbáld újra",
       "retrying": "Újrapróbálás…",
       "dismiss": "Eltüntetés"
+    },
+    "proActivation": {
+      "badge": "PRO",
+      "progress": "{{current}}. lépés / {{total}}",
+      "closeLabel": "Beállítás kihagyása",
+      "ariaLabel": "Pro aktiválás beállítása",
+      "signedInAs": "Bejelentkezve mint {{email}}",
+      "steps": {
+        "brief": {
+          "heading": "Napi összefoglalója minden reggel",
+          "body": "Válogatott hírszerzési összefoglaló a postafiókjában minden reggel — az éjszaka fontos jelei öt perces olvasmányba sűrítve.",
+          "confirmCta": "Reggeli összefoglaló bekapcsolása",
+          "confirming": "Bekapcsolás…",
+          "doneNote": "A reggeli összefoglalója már fut.",
+          "scheduleNote": "Megtartjuk a jelenlegi kézbesítési időpontját.",
+          "summaryLabel": "Reggeli összefoglaló",
+          "summaryVerified": "Bekapcsolva — a következő reggeli összefoglalóval indul.",
+          "deliverAt": "Kézbesítés ekkor",
+          "previewLoading": "Az első összefoglaló előnézetének előkészítése…",
+          "previewLabel": "A mai reggeli összefoglaló"
+        },
+        "alerts": {
+          "heading": "Kritikus riasztások",
+          "body": "Kapjon értesítést a böngészőjében, ha valami nagy dolog történik — konfliktusok eszkalációja, piaci sokkok, friss szankciók. A gyakoriságot bármikor módosíthatja a Beállításokban.",
+          "confirmCta": "Riasztások engedélyezése",
+          "confirming": "Engedélyezés…",
+          "doneNote": "A böngészőriasztások már be vannak kapcsolva.",
+          "blockedNote": "Az értesítések le vannak tiltva a böngészőjében. Kapcsolja be őket a böngésző webhelybeállításaiban, hogy riasztásokat kapjon.",
+          "declinedNote": "Semmi gond — nem küldünk böngészőriasztásokat. Később bármikor bekapcsolhatja őket a böngésző webhelybeállításaiban.",
+          "summaryLabel": "Kritikus riasztások",
+          "summaryVerified": "Bekapcsolva — a kritikus jelzések eljutnak a böngészőjéhez."
+        },
+        "power": {
+          "heading": "Az Ön Pro eszköztára",
+          "body": "Egyéni widgetek, MCP-kapcsolatok és az AI kutató fel vannak oldva. Építse fel azt az irányítópultot, amit valóban figyelni szeretne.",
+          "confirmCta": "Pro eszközök felfedezése",
+          "confirming": "Megnyitás…",
+          "doneNote": "Már használja Pro eszközeit.",
+          "summaryLabel": "Pro eszköztár",
+          "summaryVerified": "Feloldva és készen áll, amikor Ön is az.",
+          "channelsNote": "Inkább Telegramot, Slacket, Discordot vagy egy webhookot szeretne?",
+          "pointers": {
+            "search": "Keresés a teljes irányítópulton",
+            "widgets": "Egyéni widget létrehozása",
+            "analyst": "Kérdezze meg az AI elemzőt",
+            "mcpClients": "MCP beállítása",
+            "channels": "Állítsa be ezeket az értesítési beállításokban"
+          }
+        }
+      },
+      "status": {
+        "pending": "Nincs beállítva",
+        "inFlight": "Beállítás…",
+        "verified": "Kész",
+        "failed": "Nem sikerült",
+        "blocked": "Blokkolva",
+        "unavailable": "Nem elérhető",
+        "blockedNote": "Ez most nem elérhető — később beállíthatja a beállításokban.",
+        "unavailableNote": "Ez nem elérhető az Ön eszközén — később beállíthatja.",
+        "failedBody": "Valami elromlott. Próbálja újra, vagy állítsa be később a beállításokban.",
+        "retry": "Próbálja újra"
+      },
+      "actions": {
+        "skip": "Kihagyás egyelőre",
+        "continue": "Folytatás"
+      },
+      "summary": {
+        "heading": "Minden készen áll",
+        "subVerified": "Íme, mi fut a fiókján.",
+        "subPending": "A beállítást bármikor befejezheti a beállításokban.",
+        "linePending": "Még nincs beállítva — bármikor befejezheti a beállításokban.",
+        "lineFailed": "Ezt nem sikerült beállítanunk — próbálja újra a beállításokban.",
+        "finish": "Ugrás az irányítópultomra"
+      },
+      "chip": {
+        "message": "Fejezze be Pro fiókja beállítását.",
+        "action": "Beállítás befejezése",
+        "dismissLabel": "Elvetés"
+      }
     },
     "frameworkSelector": {
       "label": "Elemzési Keretrendszer",
@@ -2418,43 +2538,59 @@
       }
     },
     "mobileNav": {
-      "panelCategories": "Panel categories"
+      "panelCategories": "Panel kategóriák"
     },
     "panelFreshness": {
       "status": {
-        "fresh": "Fresh",
-        "stale": "Stale",
-        "veryStale": "Very stale",
-        "noData": "No data",
-        "disabled": "Disabled",
-        "error": "Error"
+        "fresh": "Aktuális",
+        "stale": "Elavult",
+        "veryStale": "Nagyon elavult",
+        "noData": "Nincs adat",
+        "disabled": "Letiltva",
+        "error": "Hiba"
       },
       "labelWithAge": "{{status}} {{age}}",
-      "title": "Data freshness: {{status}}. {{sources}}",
+      "title": "Adatok frissessége: {{status}}. {{sources}}",
       "sourceDetail": "{{name}}: {{status}}, {{update}}",
       "sourceDetailWithHealth": "{{name}}: {{status}}, {{update}}, {{detail}}",
-      "lastUpdated": "last updated {{time}}",
-      "neverUpdated": "never updated",
+      "lastUpdated": "utoljára frissítve {{time}}",
+      "neverUpdated": "soha nem frissítve",
       "health": {
-        "partialCoverage": "partial coverage",
-        "contentStale": "content stale",
-        "seedStale": "seed stale",
-        "noSourceData": "no source data",
-        "sourceErrorReported": "source error reported",
-        "freshnessStoreUnavailable": "freshness store unavailable",
-        "freshnessStoreDegraded": "freshness store degraded"
+        "partialCoverage": "részleges lefedettség",
+        "contentStale": "tartalom elavult",
+        "seedStale": "seed elavult",
+        "noSourceData": "nincs forrásadat",
+        "sourceErrorReported": "forrás hiba jelentve",
+        "freshnessStoreUnavailable": "frissességi tároló nem érhető el",
+        "freshnessStoreDegraded": "frissességi tároló leromlott"
       },
       "time": {
-        "never": "never",
-        "justNow": "just now",
-        "minutesAgo": "{{count}}m ago",
-        "hoursAgo": "{{count}}h ago",
-        "daysAgo": "{{count}}d ago",
-        "compactNow": "now",
-        "compactMinutes": "{{count}}m",
-        "compactHours": "{{count}}h",
-        "compactDays": "{{count}}d"
+        "never": "soha",
+        "justNow": "éppen most",
+        "minutesAgo": "{{count}}p-vel ezelőtt",
+        "hoursAgo": "{{count}}ó-val ezelőtt",
+        "daysAgo": "{{count}}n-nel ezelőtt",
+        "compactNow": "most",
+        "compactMinutes": "{{count}}p",
+        "compactHours": "{{count}}ó",
+        "compactDays": "{{count}}n"
       }
+    },
+    "exportGate": {
+      "signedOutDesc": "Jelentkezzen be az irányítópult adatainak CSV, JSON vagy PDF formátumban való exportálásához.",
+      "upgradeDesc": "Az adatexportálás (CSV, JSON, PDF) a Pro Business csomagban szerepel.",
+      "upgradeCta": "Váltás Pro Business csomagra",
+      "lockedAriaLabel": "Adatok exportálása — zárolva. {{reason}}",
+      "unlockedAnnouncement": "Az adatexportálás feloldva.",
+      "preparingPdf": "PDF előkészítése…",
+      "pdfFailed": "A PDF-jelentés nem hozható létre. Próbálja újra, vagy használja a JSON exportot."
+    },
+    "tabCap": {
+      "signedOutDesc": "A bejelentkezés nélküli munkaterületek {{cap}} irányítópult-fülre korlátozódnak. Többe való hozzáadáshoz jelentkezzen be.",
+      "upgradeDesc": "Elérte a(z) {{cap}} irányítópult-fül korlátját.",
+      "upgradeCta": "Frissítés többért",
+      "lockedAriaLabel": "Fül hozzáadása — zárolva. {{reason}}",
+      "unlockedAnnouncement": "Az irányítópult-fülek korlátja feloldva."
     }
   },
   "popups": {
@@ -3189,16 +3325,42 @@
     "visualizationFailed": "A vizualizáció sikertelen volt"
   },
   "dashboardTabs": {
-    "ariaLabel": "Dashboard tabs",
-    "defaultName": "Main",
-    "newTabName": "New Tab",
-    "newTabCreated": "New tab created",
-    "tabDeleted": "Tab \"{{name}}\" deleted",
-    "addTab": "Add tab",
-    "addTabTitle": "New tab (starts with the default panels)",
-    "renameHint": "{{name}} — double-click to rename",
-    "deleteTab": "Delete tab",
-    "deleteTabAria": "Delete tab {{name}}",
-    "tabNameAria": "Tab name"
+    "ariaLabel": "Irányítópult fülek",
+    "defaultName": "Fő",
+    "newTabName": "Új fül",
+    "newTabCreated": "Új fül létrehozva",
+    "tabDeleted": "\"{{name}}\" fül törölve",
+    "addTab": "Fül hozzáadása",
+    "addTabTitle": "Új fül (az alapértelmezett panelekkel indul)",
+    "renameHint": "{{name}} — dupla kattintás az átnevezéshez",
+    "deleteTab": "Fül törlése",
+    "deleteTabAria": "{{name}} fül törlése",
+    "tabNameAria": "Fül neve"
+  },
+  "theaterPresets": {
+    "label": "Lefedettségi csomagok",
+    "applied": "A(z) {{preset}} csomag alkalmazva: {{count}} forrás engedélyezve",
+    "alreadyApplied": "A(z) {{preset}} csomag már alkalmazva van",
+    "ukraineWar": {
+      "label": "Ukrajnai háború",
+      "description": "Ukrán elsődleges híroldalak, független orosz sajtó és frontértékelési források engedélyezése"
+    },
+    "indoPacific": {
+      "label": "Indo-csendes-óceáni térség / Tajvan",
+      "description": "Tajvani, pakisztáni és délkelet-ázsiai biztonsági források engedélyezése"
+    },
+    "sahelWestAfrica": {
+      "label": "Száhel-övezet és Nyugat-Afrika",
+      "description": "A Száhel-övezetből, Nigériából és Nyugat-Afrikából származó helyi források engedélyezése"
+    },
+    "caucasusCentralAsia": {
+      "label": "Kaukázus és Közép-Ázsia",
+      "description": "A Dél-Kaukázusból és Közép-Ázsiából származó regionális források engedélyezése"
+    },
+    "middleEastFlashpoints": {
+      "label": "Közel-keleti gócpontok",
+      "description": "Iránnal, Izraellel, az Öböllel és a kurd régiókkal kapcsolatos források engedélyezése"
+    },
+    "unavailable": "A(z) {{preset}} csomag a jelenlegi panelekkel nem érhető el"
   }
 }

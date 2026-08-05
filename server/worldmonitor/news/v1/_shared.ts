@@ -13,6 +13,7 @@ export {
   canonicalizeSummaryInputs,
   buildSummaryCacheKey,
   buildSummaryCacheKey as getCacheKey,
+  selectUniqueHeadlinePairs,
 } from '../../../../src/utils/summary-cache-key';
 
 // ========================================================================

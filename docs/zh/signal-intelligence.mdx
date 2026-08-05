@@ -241,11 +241,14 @@ description: "信号检测、实体关联、来源排名与情报聚合流程，
 
 | 等级 | 视觉标识 | 含义 |
 |-------|--------|---------|
-| **高** | ⚠ State Media（红色） | 直接的国家控制或所有权 |
+| **高** | ⚠ State Media 或 Official Government Source（红色） | 直接的国家控制或所有权；政府发布方使用与类型匹配的官方来源标识 |
 | **中** | ! Caution（橙色） | 重大的国家影响或资助 |
-| **低** | （无） | 独立的编辑控制 |
+| **低** | （无） | **经明确审核的**独立编辑控制 |
+| **未知** | ? Unreviewed（弱化显示） | 来源尚未完成审核——**不代表其独立性** |
 
-**被标记的来源**
+每个已配置来源的各个维度都必须明确声明为**已审核**或**未知**。CI 要求该清单与配置中的来源名称完全一致，因此新增、删除或别名变更都不能静默继承默认值。未出现在已审核注册表中的来源默认归为**未知**，绝不会默认为低风险。只有来源被明确标记为低风险时，无徽章才表示独立新闻来源；未分类来源会显示 **? Unreviewed**，避免将缺失数据误认为正面的编辑评估。
+
+**被标记的来源**（部分示例）
 
 | 来源 | 风险等级 | 国家背景 | 备注 |
 |--------|------------|-------------------|-------|
@@ -254,6 +257,8 @@ description: "信号检测、实体关联、来源排名与情报聚合流程，
 | **RT** | 高 | Russia | 在美国注册为外国代理人 |
 | **CGTN** | 高 | China (CCP) | China Global Television Network |
 | **PressTV** | 高 | Iran | IRIB 子机构 |
+| **MIIT (China)** | 高 | China | 工业和信息化部官方信息源 |
+| **MOFCOM (China)** | 高 | China | 商务部官方信息源 |
 | **Al Jazeera** | 中 | Qatar | 卡塔尔政府资助 |
 | **TRT World** | 中 | Turkey | 土耳其国家广播机构 |
 
@@ -451,7 +456,9 @@ Total Signals: 47
 
 | 信号族 | 端点 | 备注 |
 |---|---|---|
-| 公司富化 | `GET /api/intelligence/v1/get-company-enrichment` | 为一家公司聚合 GitHub、SEC、Hacker News 与推断的技术栈上下文。 |
-| 公司活动信号 | `GET /api/intelligence/v1/list-company-signals` | 融资、招聘、扩张、高管与开源活动卡片。 |
+| 公司富化 | `GET /api/intelligence/v1/get-company-enrichment` | 通过股票代码→CIK 解析聚合 SEC EDGAR 身份与近期申报文件、市场概况、盈利意外与新闻提及。 |
+| 公司活动信号 | `GET /api/intelligence/v1/list-company-signals` | 来自 SEC 8-K 重大事件与新闻提及的分类信号；盈利意外保留为公司富化事实，不会被误标为带事件时间戳的信号。 |
+| SEC 文件搜索 | `GET /api/intelligence/v1/search-sec-filings` | 对 SEC EDGAR 申报文件的全文搜索，支持表格类型与日期范围过滤。 |
+| 重大事件流 | `GET /api/intelligence/v1/list-material-events` | 全市场近期 SEC 8-K 重大事件申报流（并购、高管变动、财务重述）。 |
 | GDELT 话题时间线 | `GET /api/intelligence/v1/get-gdelt-topic-timeline` | 某情报话题的基调与体量时间线。 |
 | 市场影响卡片 | `GET /api/intelligence/v1/list-market-implications` | 基于实时世界状态生成的 AI 影响卡片；在此记录以避免重复市场领域面板的所有权。 |

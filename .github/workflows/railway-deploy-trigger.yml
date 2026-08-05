@@ -1,0 +1,182 @@
+name: Railway Deploy Trigger
+
+# Builds the Railway services a merge actually changed, from CI (#6142).
+#
+# Railway already builds most merges promptly — measured across the fleet over
+# 600 commits, a service whose closure changed and that Railway simply built saw
+# p90 0.01h from merge to build. The gap this closes is the other decision
+# Railway takes: it refuses to build a commit whose GitHub check suite is
+# failing, and it reads the WHOLE suite, including scheduled workflows that
+# re-report onto main's head SHA hours after the merge gates went green. That
+# accounted for 1,068 of 6,037 closure-relevant merges at p90 4.7h, and it is
+# self-reinforcing — the freshness monitor turns red precisely when the fleet is
+# behind, which then keeps the fleet behind.
+#
+# This does not remove that safety, it replaces the rule with the repository's
+# own: deploy only when main's head carries a green `gate` status, which is the
+# same required-gate aggregate branch protection uses. A red gate stops this
+# workflow exactly as it stops a merge.
+#
+# It is a RECONCILER, not a push handler, and that is deliberate. Each service
+# is judged against the commit IT is running rather than against a pushed range,
+# so the run is idempotent, needs no `event.before`, and self-heals after a
+# failed trigger, a webhook outage (#6064) or a manual `railway up` recovery —
+# none of which a push-shaped trigger recovers from.
+
+on:
+  schedule:
+    # Every 5 minutes, offset from the Seed Freshness Monitor's :00/:15/:30/:45.
+    #
+    # This cadence is what the fleet-wide deployment query bought. A sweep used
+    # to cost 79 Railway API calls; it now costs 9, so running 3x more often
+    # still lands at roughly a third of the old load — and the interval IS the
+    # worst-case lag for the cohort Railway defers on a red check suite, which
+    # is the whole reason this workflow exists.
+    - cron: '2,7,12,17,22,27,32,37,42,47,52,57 * * * *'
+  workflow_dispatch:
+    inputs:
+      dryRun:
+        description: 'Report what would be deployed without deploying it'
+        type: boolean
+        default: false
+
+# Never cancel a run in progress: this one mutates production, and a cancelled
+# sweep leaves half the fleet triggered with no record of where it stopped. A
+# superseding run would re-derive the same plan anyway, so queueing costs
+# nothing but interrupting costs a partial deploy.
+concurrency:
+  group: railway-deploy-trigger
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  statuses: read
+
+jobs:
+  trigger:
+    runs-on: ubuntu-latest
+    # Under the 15-minute interval on purpose. The offset cron below assumes
+    # this job and the freshness monitor do not overlap their fleet-wide Railway
+    # fan-outs; a 25-minute ceiling would let one run stretch across the next
+    # two ticks and land on top of the monitor anyway. The reconciler is
+    # idempotent, so being cut off costs a tick, not correctness.
+    timeout-minutes: 13
+    environment:
+      name: ingestion-acceptance-production
+      deployment: false
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          # Full history, no blobs. Every service is compared against the commit
+          # it is running, which for a service that has been behind for weeks is
+          # far outside any fixed depth — and an unreachable commit resolves to
+          # "deploy", so a shallow checkout would rebuild the whole fleet on
+          # every run. `git diff --name-only` needs trees, never blobs, so the
+          # partial-clone filter costs nothing here.
+          fetch-depth: 0
+          filter: blob:none
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '24'
+
+      - name: Resolve main's head and require it to be green
+        id: head
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dryRun }}
+        run: |
+          set -o pipefail
+          head_sha=$(git rev-parse origin/main)
+          echo "sha=$head_sha" >> "$GITHUB_OUTPUT"
+          # Same status this repository's branch protection requires, read the
+          # same way scripts/check-seed-freshness.mjs's monitor reads it: newest
+          # first, because updated_at has only second resolution and sorting can
+          # invert ties.
+          gate_state=$(
+            gh api --paginate --slurp \
+              "repos/$GITHUB_REPOSITORY/commits/$head_sha/statuses?per_page=100" |
+              jq -r 'flatten | map(select(.context == "gate")) | first | .state // "missing"'
+          )
+          echo "gate=$gate_state" >> "$GITHUB_OUTPUT"
+          echo "main is at ${head_sha:0:9}, gate=$gate_state"
+          # A dry run mutates nothing, so the gate has no authority over it —
+          # and the moment an operator most needs to read the plan is when main
+          # is red and the fleet is falling behind. Report the state and stop
+          # short of failing, so the preview step below still runs.
+          if [ "${DRY_RUN:-false}" = "true" ] && [ "$gate_state" != "success" ]; then
+            echo "::notice::Gate for ${head_sha:0:9} is $gate_state — previewing only, nothing will be deployed."
+          elif [ "$gate_state" = "success" ]; then
+            :
+          elif [ "$gate_state" = "pending" ] || [ "$gate_state" = "missing" ]; then
+            # Deferring is right for a young commit — the gate genuinely has not
+            # resolved yet. But an UNBOUNDED defer is how this workflow stops
+            # reconciling forever while still reporting success every 15 minutes,
+            # which is the silent-green failure the whole change exists to
+            # remove. `missing` in particular is not a timing state once the
+            # commit is old: it means no `gate` status was ever posted.
+            age=$(( $(date -u +%s) - $(git log -1 --format=%ct "$head_sha") ))
+            if [ "$age" -gt 10800 ]; then
+              echo "::error::Gate for ${head_sha:0:9} has been $gate_state for $((age / 3600))h. The reconciler has not run in that time and the fleet is not being caught up."
+              exit 1
+            fi
+            echo "::notice::Gate for ${head_sha:0:9} is $gate_state ($((age / 60))m old); deferring to the next run rather than deploying an unverified commit."
+          else
+            echo "::error::Refusing to deploy ${head_sha:0:9}: its required gates are $gate_state."
+            exit 1
+          fi
+
+      # Also for a dry run: the preview shells out to the same CLI, and gating
+      # the install on a green gate made `railway: command not found` the actual
+      # behaviour of previewing while main was red.
+      - name: Install pinned Railway CLI
+        if: steps.head.outputs.gate == 'success' || (github.event_name == 'workflow_dispatch' && inputs.dryRun)
+        run: npm install --global @railway/cli@5.30.1
+
+      - name: Verify Railway production context
+        if: steps.head.outputs.gate == 'success' || (github.event_name == 'workflow_dispatch' && inputs.dryRun)
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_PRODUCTION_TOKEN }}
+          RAILWAY_PROJECT_ID: ${{ vars.RAILWAY_PROJECT_ID }}
+        run: |
+          if [ -z "$RAILWAY_TOKEN" ]; then
+            echo "::error::RAILWAY_PRODUCTION_TOKEN is required to trigger deployments."
+            exit 1
+          fi
+          if [ -z "$RAILWAY_PROJECT_ID" ]; then
+            echo "::error::RAILWAY_PROJECT_ID Actions environment variable is required."
+            exit 1
+          fi
+          railway status --project "$RAILWAY_PROJECT_ID" --environment production --json > /dev/null
+          echo "Project-scoped Railway token is valid for the expected production context."
+
+      # Split from the deploy step rather than sharing one step with a
+      # conditional --dry-run flag. One step would need its run condition and
+      # its flag expression to agree forever, and the day they diverge the arm
+      # that still runs is the one that deploys. Here each step's own condition
+      # decides both whether it runs AND what it does, so there is nothing to
+      # drift apart.
+      #
+      # Deliberately NOT gated on the gate: previewing mutates nothing, and the
+      # moment an operator most needs to read the plan is when main is red and
+      # the fleet is falling behind — which is exactly when the gate is not
+      # green and the deploy step below is correctly refusing to run.
+      - name: Preview what would be deployed
+        if: github.event_name == 'workflow_dispatch' && inputs.dryRun
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_PRODUCTION_TOKEN }}
+          RAILWAY_PROJECT_ID: ${{ vars.RAILWAY_PROJECT_ID }}
+        run: node scripts/trigger-railway-deploys.mjs --dry-run --head "${{ steps.head.outputs.sha }}"
+
+      # A failure here is a real one and must red the run: an unauthorized
+      # mutation, an unreadable deployment history, or a deploy call that
+      # returned no deployment id all mean services stayed behind while this
+      # workflow reported that it had handled them.
+      - name: Trigger deploys for services this merge changed
+        if: steps.head.outputs.gate == 'success' && !(github.event_name == 'workflow_dispatch' && inputs.dryRun)
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_PRODUCTION_TOKEN }}
+          # Needed by resolveEnvironmentId: a clean runner has no .railway link,
+          # so `railway status` must be told which project to answer for.
+          RAILWAY_PROJECT_ID: ${{ vars.RAILWAY_PROJECT_ID }}
+        run: node scripts/trigger-railway-deploys.mjs --head "${{ steps.head.outputs.sha }}"

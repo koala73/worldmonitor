@@ -8,21 +8,29 @@ import { timingSafeIncludes } from '../_crypto.js';
 import { getClientIp } from '../_client-ip.js';
 // @ts-expect-error — JS module, no declaration file
 import { captureSilentError } from '../_sentry-edge.js';
-// @ts-expect-error — JS module, no declaration file
 import { redisPipeline as rawRedisPipeline } from '../_upstash-json.js';
-import { getEntitlements } from '../../server/_shared/entitlement-check';
+import { resolvePlanDrivenMcpAllowance } from './quota';
+import {
+  getBillingVerificationDenial,
+  getEntitlements,
+  isEntitlementBackendConfigured,
+} from '../../server/_shared/entitlement-check';
+import { checkProMcpAccess } from '../../server/_shared/pro-mcp-gate';
+import type { BillingVerificationCode } from './billing-denial';
 import {
   buildInternalMcpHeaders,
   signInternalMcpRequest,
 } from '../../server/_shared/mcp-internal-hmac';
 import { validateProMcpTokenOrNull } from '../../server/_shared/pro-mcp-token';
 import { validateUserApiKey } from '../../server/_shared/user-api-key';
+import { checkFailClosedScopedIpRateLimit } from '../../server/_shared/rate-limit';
 import { rpcError, withMcpNoStore } from './rpc';
 import type {
   AuthResolution,
   AuthResolutionRejected,
   McpAuthContext,
   McpHandlerDeps,
+  McpPreCheckResult,
 } from './types';
 import { emitMcpRateLimitHit } from './telemetry';
 
@@ -138,6 +146,13 @@ export const PRODUCTION_DEPS: McpHandlerDeps = {
   validateProMcpToken: validateProMcpTokenOrNull,
   getEntitlements,
   validateUserApiKey,
+  guardUserApiKeyValidation: (request, corsHeaders) => checkFailClosedScopedIpRateLimit(
+    request,
+    'mcp:user-api-key:pre-auth-validation',
+    60,
+    '60 s',
+    corsHeaders,
+  ),
   redisPipeline: rawRedisPipeline,
 };
 
@@ -149,6 +164,112 @@ export const PRODUCTION_DEPS: McpHandlerDeps = {
 export function wwwAuthHeader(resourceMetadataUrl: string, errorParam = ''): string {
   const errSegment = errorParam ? `, error="${errorParam}"` : '';
   return `Bearer realm="worldmonitor"${errSegment}, resource_metadata="${resourceMetadataUrl}"`;
+}
+
+function userKeyValidationBackpressureResponse(response: Response, corsHeaders: Record<string, string>): Response {
+  const limited = response.status === 429;
+  return new Response(
+    JSON.stringify({
+      jsonrpc: '2.0',
+      id: null,
+      error: {
+        code: limited ? -32029 : -32603,
+        message: limited ? 'Too many requests' : 'Auth service temporarily unavailable. Try again.',
+      },
+    }),
+    {
+      status: response.status,
+      headers: withMcpNoStore({
+        ...Object.fromEntries(response.headers.entries()),
+        ...corsHeaders,
+        'Content-Type': 'application/json',
+      }),
+    },
+  );
+}
+
+export function getMcpBillingVerificationDenial(
+  entitlements: {
+    billingStatus?: BillingVerificationCode;
+    retryAfterSeconds?: number;
+    // Transient entitlement-lookup failure marker from getEntitlements()
+    // (server/_shared/entitlement-check.ts) — mapped to the same retryable
+    // envelope as a gateway-synthesized entitlement_verification_unavailable.
+    verificationUnavailable?: boolean;
+  } | null | undefined,
+  corsHeaders: Record<string, string>,
+  id: unknown = null,
+): Response | null {
+  const billingStatus = entitlements?.verificationUnavailable
+    ? 'entitlement_verification_unavailable'
+    : entitlements?.billingStatus;
+  if (billingStatus === 'entitlement_verification_unavailable') {
+    // Gateway-synthesized backend-unreachable 503 (server/gateway.ts wm_-key
+    // branch). The shared Convex-facing helper doesn't recognize this code, so
+    // build the same retryable envelope here; clamp mirrors the shared helper.
+    const raw = entitlements?.retryAfterSeconds;
+    const retryAfter = Number.isFinite(raw)
+      ? Math.max(1, Math.min(60, Math.ceil(raw as number)))
+      : 5;
+    return new Response(
+      JSON.stringify({
+        jsonrpc: '2.0',
+        id: id ?? null,
+        error: {
+          code: -32603,
+          message: 'Unable to verify API access. Retry shortly.',
+          data: { code: billingStatus },
+        },
+      }),
+      {
+        status: 503,
+        headers: new Headers({
+          ...corsHeaders,
+          'Content-Type': 'application/json',
+          'Cache-Control': 'no-store',
+          'Retry-After': String(retryAfter),
+          'X-Billing-Verification': billingStatus,
+        }),
+      },
+    );
+  }
+
+  // The shared helper owns status, retry normalization, no-store, and billing
+  // headers. Its parameter asks only for the billing fields, so both the
+  // McpHandlerDeps entitlement shape and dispatch's synthesized
+  // BillingDenialError shape are directly assignable.
+  const denial = getBillingVerificationDenial(
+    billingStatus ? { billingStatus, retryAfterSeconds: entitlements?.retryAfterSeconds } : null,
+    corsHeaders,
+  );
+  if (!denial || !billingStatus) return null;
+
+  const retryable = denial.status === 503;
+  const message = {
+    subscription_lapsed: 'Subscription lapsed. Re-authenticating will not help — resubscribe to restore access.',
+    renewal_verification_pending: 'Renewal verification pending. Retry shortly.',
+    renewal_verification_failed: 'Renewal verification failed. Retry shortly.',
+  }[billingStatus];
+  const headers = new Headers(denial.headers);
+  headers.set('Cache-Control', 'no-store');
+  headers.set('Content-Type', 'application/json');
+
+  return new Response(
+    JSON.stringify({
+      jsonrpc: '2.0',
+      id: id ?? null,
+      error: {
+        // -32002 is the confirmed-lapse code (HTTP 403, no WWW-Authenticate).
+        // -32001 stays reserved for authentication failures at HTTP 401 per
+        // docs/mcp-error-catalog.mdx — reusing it here sent doc-following
+        // agents into a pointless OAuth re-auth loop.
+        code: retryable ? -32603 : -32002,
+        message,
+        data: { code: billingStatus },
+      },
+    }),
+    { status: denial.status, headers },
+  );
 }
 
 export async function resolveAuthContext(
@@ -209,10 +330,21 @@ export async function resolveAuthContext(
   if (candidateKey.startsWith('wm_')) {
     let userKey: { userId: string } | null = null;
     try {
+      // Identity is not known until after this Convex-backed lookup, so the
+      // normal per-user MCP limit cannot protect it. Bound rotating unknown
+      // wm_ guesses by client IP first; otherwise each unique key evades the
+      // per-hash negative cache and reaches the auth backend.
+      const validationGuardResponse = await deps.guardUserApiKeyValidation(req, corsHeaders);
+      if (validationGuardResponse) {
+        return {
+          ok: false,
+          response: userKeyValidationBackpressureResponse(validationGuardResponse, corsHeaders),
+        };
+      }
       userKey = await deps.validateUserApiKey(candidateKey);
     } catch {
-      // Production validateUserApiKey fail-softs to null; a throw means the
-      // auth backend itself is unreachable — 503 mirrors the bearer path.
+      // validateUserApiKey throws UserApiKeyUnavailableError when Convex is
+      // unreachable/misconfigured — 503 mirrors the bearer path (not 401).
       return {
         ok: false,
         response: new Response(
@@ -237,7 +369,10 @@ export async function resolveAuthContext(
 
 /**
  * Pro-only pre-checks: validate Convex row + cross-user-binding + entitlement
- * re-check. Returns null on success; a 401 Response on any check failure.
+ * re-check. On success the result also carries the plan's daily MCP allowance
+ * (plan 2026-07-25-001 U3) — this is the one place on the gated path that has
+ * the entitlement object in hand, so resolving it here spares the dispatcher a
+ * second Convex round-trip.
  */
 export async function runProPreChecks(
   context: Extract<McpAuthContext, { kind: 'pro' }>,
@@ -245,7 +380,7 @@ export async function runProPreChecks(
   resourceMetadataUrl: string,
   corsHeaders: Record<string, string>,
   ctx?: { waitUntil: (p: Promise<unknown>) => void },
-): Promise<Response | null> {
+): Promise<McpPreCheckResult> {
   // F12: Pro path is unusable without MCP_INTERNAL_HMAC_SECRET — every
   // tool fetch will throw inside buildAuthHeaders. Surface the misconfig
   // at auth-resolution time so operators see a single clear 503 rather
@@ -256,10 +391,10 @@ export async function runProPreChecks(
       tags: { route: 'api/mcp', step: 'pro-secret-preflight' },
       ctx,
     });
-    return new Response(
+    return { ok: false, response: new Response(
       JSON.stringify({ jsonrpc: '2.0', id: null, error: { code: -32603, message: 'Service temporarily unavailable, retry in a moment.' } }),
       { status: 503, headers: withMcpNoStore({ 'Content-Type': 'application/json', 'Retry-After': '5', ...corsHeaders }) },
-    );
+    ) };
   }
 
   // #4860: this await was the only unguarded step on the gated path — the
@@ -271,16 +406,16 @@ export async function runProPreChecks(
     validation = await deps.validateProMcpToken(context.mcpTokenId);
   } catch (err) {
     captureSilentError(err, { tags: { route: 'api/mcp', step: 'pro-token-validate' }, ctx });
-    return new Response(
+    return { ok: false, response: new Response(
       JSON.stringify({ jsonrpc: '2.0', id: null, error: { code: -32603, message: 'Service temporarily unavailable, retry in a moment.' } }),
       { status: 503, headers: withMcpNoStore({ 'Content-Type': 'application/json', 'Retry-After': '5', ...corsHeaders }) },
-    );
+    ) };
   }
   if (!validation || validation.userId !== context.userId) {
-    return new Response(
+    return { ok: false, response: new Response(
       JSON.stringify({ jsonrpc: '2.0', id: null, error: { code: -32001, message: 'MCP authorization revoked. Re-authorize at https://worldmonitor.app/mcp-grant.' } }),
       { status: 401, headers: withMcpNoStore({ 'Content-Type': 'application/json', 'WWW-Authenticate': wwwAuthHeader(resourceMetadataUrl, 'invalid_token'), ...corsHeaders }) },
-    );
+    ) };
   }
 
   return checkMcpEntitlementGate(context.userId, deps, resourceMetadataUrl, corsHeaders, 'pro-entitlement-recheck', ctx);
@@ -289,8 +424,17 @@ export async function runProPreChecks(
 /**
  * Shared mcpAccess entitlement gate for identity-resolved contexts (pro AND
  * user_key). Fail-closed per memory `entitlement-signal-server-outlier-sweep`.
- * Returns null when the owner has an active tier>=1 + mcpAccess entitlement;
- * a 401 Response otherwise.
+ * Passes when the owner has an active tier>=1 + mcpAccess entitlement; rejects
+ * with a 401 Response otherwise.
+ *
+ * A passing result also reports `mcpDailyLimit`, read straight off the
+ * entitlement this call already fetched — but only for plan-driven plan
+ * families (`resolvePlanDrivenMcpAllowance`): API-tier subscribers reach this
+ * gate through the same OAuth door, and their catalog allowance must not
+ * out-rank the 50/day their `user_key` is capped at. A row with no
+ * `planLimits` (legacy shape) or a non-plan-driven plan reports `undefined`,
+ * which the quota layer resolves to the plan default — the entitlement is
+ * NOT re-fetched to fill the gap.
  */
 async function checkMcpEntitlementGate(
   userId: string,
@@ -299,11 +443,11 @@ async function checkMcpEntitlementGate(
   corsHeaders: Record<string, string>,
   sentryStep: string,
   ctx?: { waitUntil: (p: Promise<unknown>) => void },
-): Promise<Response | null> {
-  const rejected = () => new Response(
+): Promise<McpPreCheckResult> {
+  const rejected = (): McpPreCheckResult => ({ ok: false, response: new Response(
     JSON.stringify({ jsonrpc: '2.0', id: null, error: { code: -32001, message: 'Subscription not active.' } }),
     { status: 401, headers: withMcpNoStore({ 'Content-Type': 'application/json', 'WWW-Authenticate': wwwAuthHeader(resourceMetadataUrl, 'invalid_token'), ...corsHeaders }) },
-  );
+  ) });
 
   let ent: Awaited<ReturnType<typeof deps.getEntitlements>> = null;
   try {
@@ -312,13 +456,21 @@ async function checkMcpEntitlementGate(
     captureSilentError(err, { tags: { route: 'api/mcp', step: sentryStep }, ctx });
     return rejected();
   }
-  const tier = ent?.features?.tier ?? 0;
-  const mcpAccess = ent?.features?.mcpAccess === true;
-  const validUntil = ent?.validUntil ?? 0;
-  if (!ent || tier < 1 || !mcpAccess || validUntil < Date.now()) {
-    return rejected();
+  const passed = (): McpPreCheckResult => ({
+    ok: true,
+    mcpDailyLimit: resolvePlanDrivenMcpAllowance(ent?.planKey, ent?.features?.planLimits?.mcpCallsPerDay),
+  });
+  // Single-source Pro MCP decision. A current fallback entitlement still wins
+  // over billing uncertainty; this caller keeps the JSON-RPC denial rendering.
+  const gate = checkProMcpAccess(ent, Date.now(), {
+    backendConfigured: isEntitlementBackendConfigured(),
+  });
+  if (!gate) {
+    return passed();
   }
-  return null;
+  const billingDenial = getMcpBillingVerificationDenial(ent, corsHeaders);
+  if (billingDenial) return { ok: false, response: billingDenial };
+  return rejected();
 }
 
 /**
@@ -334,8 +486,14 @@ export async function runUserKeyPreChecks(
   resourceMetadataUrl: string,
   corsHeaders: Record<string, string>,
   ctx?: { waitUntil: (p: Promise<unknown>) => void },
-): Promise<Response | null> {
-  return checkMcpEntitlementGate(context.userId, deps, resourceMetadataUrl, corsHeaders, 'user-key-entitlement', ctx);
+): Promise<McpPreCheckResult> {
+  const gate = await checkMcpEntitlementGate(context.userId, deps, resourceMetadataUrl, corsHeaders, 'user-key-entitlement', ctx);
+  // KTD6: the entitlement verdict applies, the plan's MCP allowance does NOT.
+  // user_key callers stay on the hardcoded daily cap whatever their API plan
+  // advertises — raising API-tier MCP allowances is a deliberate follow-up, and
+  // dropping the limit HERE (rather than guarding at the metering site) keeps
+  // one place to change when that follow-up lands.
+  return gate.ok ? { ok: true } : gate;
 }
 
 /**
@@ -351,14 +509,15 @@ export async function runContextPreChecks(
   resourceMetadataUrl: string,
   corsHeaders: Record<string, string>,
   ctx?: { waitUntil: (p: Promise<unknown>) => void },
-): Promise<Response | null> {
+): Promise<McpPreCheckResult> {
   if (context.kind === 'pro') {
     return runProPreChecks(context, deps, resourceMetadataUrl, corsHeaders, ctx);
   }
   if (context.kind === 'user_key') {
     return runUserKeyPreChecks(context, deps, resourceMetadataUrl, corsHeaders, ctx);
   }
-  return null;
+  // env_key: operator-owned, ungated, and never metered by the daily counter.
+  return { ok: true };
 }
 
 /** Per-minute rate limit. Both paths fail-OPEN on Upstash error (graceful);

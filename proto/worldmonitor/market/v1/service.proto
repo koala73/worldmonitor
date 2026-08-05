@@ -81,7 +81,7 @@ service MarketService {
     option (sebuf.http.config) = {path: "/get-stock-analysis-history", method: HTTP_METHOD_GET};
   }
 
-  // BacktestStock replays premium stock-analysis signals over recent price history.
+  // BacktestStock replays the technical-only stock signal over recent price history.
   rpc BacktestStock(BacktestStockRequest) returns (BacktestStockResponse) {
     option (sebuf.http.config) = {path: "/backtest-stock", method: HTTP_METHOD_GET};
   }

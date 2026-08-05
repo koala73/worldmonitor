@@ -19,6 +19,10 @@ export interface ShippingIndex {
   unit: string;
   history: ShippingRatePoint[];
   spikeAlert: boolean;
+  periodChangePct?: number;
+  periodChangeBasis?: PeriodChangeBasis;
+  priorPeriodValue?: number;
+  priorPeriodDate?: string;
 }
 
 export interface ShippingRatePoint {
@@ -48,6 +52,7 @@ export interface ChokepointInfo {
   description: string;
   aisDisruptions: number;
   directions: string[];
+  /** @deprecated */
   directionalDwt: DirectionalDwt[];
   transitSummary?: TransitSummary;
   flowEstimate?: FlowEstimate;
@@ -97,7 +102,7 @@ export interface FlowEstimate {
   baselineMbd: number;
   flowRatio: number;
   disrupted: boolean;
-  source: string;
+  source: FlowSource;
   hazardAlertLevel: string;
   hazardAlertName: string;
 }
@@ -632,9 +637,22 @@ export interface EnergyDisruptionSource {
   sourceType: string;
 }
 
+export interface GetChinaCorridorControlTowersRequest {
+}
+
+export interface GetChinaCorridorControlTowersResponse {
+  payloadJson: string;
+  generatedAt: string;
+  upstreamUnavailable: boolean;
+}
+
 export type CorridorStatus = "CORRIDOR_STATUS_UNSPECIFIED" | "CORRIDOR_STATUS_ACTIVE" | "CORRIDOR_STATUS_PROPOSED" | "CORRIDOR_STATUS_UNAVAILABLE";
 
 export type DependencyFlag = "DEPENDENCY_FLAG_UNSPECIFIED" | "DEPENDENCY_FLAG_SINGLE_SOURCE_CRITICAL" | "DEPENDENCY_FLAG_SINGLE_CORRIDOR_CRITICAL" | "DEPENDENCY_FLAG_COMPOUND_RISK" | "DEPENDENCY_FLAG_DIVERSIFIABLE";
+
+export type FlowSource = "FLOW_SOURCE_UNSPECIFIED" | "portwatch-dwt" | "portwatch-counts";
+
+export type PeriodChangeBasis = "PERIOD_CHANGE_BASIS_UNSPECIFIED" | "publisher_reported" | "derived_from_prior_period_level";
 
 export type WarRiskTier = "WAR_RISK_TIER_UNSPECIFIED" | "WAR_RISK_TIER_NORMAL" | "WAR_RISK_TIER_ELEVATED" | "WAR_RISK_TIER_HIGH" | "WAR_RISK_TIER_CRITICAL" | "WAR_RISK_TIER_WAR_ZONE";
 
@@ -703,6 +721,7 @@ export interface SupplyChainServiceHandler {
   listFuelShortages(ctx: ServerContext, req: ListFuelShortagesRequest): Promise<ListFuelShortagesResponse>;
   getFuelShortageDetail(ctx: ServerContext, req: GetFuelShortageDetailRequest): Promise<GetFuelShortageDetailResponse>;
   listEnergyDisruptions(ctx: ServerContext, req: ListEnergyDisruptionsRequest): Promise<ListEnergyDisruptionsResponse>;
+  getChinaCorridorControlTowers(ctx: ServerContext, req: GetChinaCorridorControlTowersRequest): Promise<GetChinaCorridorControlTowersResponse>;
 }
 
 export function createSupplyChainServiceRoutes(
@@ -1606,6 +1625,43 @@ export function createSupplyChainServiceRoutes(
 
           const result = await handler.listEnergyDisruptions(ctx, body);
           return new Response(JSON.stringify(result as ListEnergyDisruptionsResponse), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          });
+        } catch (err: unknown) {
+          if (err instanceof ValidationError) {
+            return new Response(JSON.stringify({ violations: err.violations }), {
+              status: 400,
+              headers: { "Content-Type": "application/json" },
+            });
+          }
+          if (options?.onError) {
+            return options.onError(err, req);
+          }
+          const message = err instanceof Error ? err.message : String(err);
+          return new Response(JSON.stringify({ message }), {
+            status: 500,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+      },
+    },
+    {
+      method: "GET",
+      path: "/api/supply-chain/v1/get-china-corridor-control-towers",
+      handler: async (req: Request): Promise<Response> => {
+        try {
+          const pathParams: Record<string, string> = {};
+          const body = {} as GetChinaCorridorControlTowersRequest;
+
+          const ctx: ServerContext = {
+            request: req,
+            pathParams,
+            headers: Object.fromEntries(req.headers.entries()),
+          };
+
+          const result = await handler.getChinaCorridorControlTowers(ctx, body);
+          return new Response(JSON.stringify(result as GetChinaCorridorControlTowersResponse), {
             status: 200,
             headers: { "Content-Type": "application/json" },
           });

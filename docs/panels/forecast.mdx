@@ -104,6 +104,22 @@ Probability projections are expanded to 24h, 7d, and 30d with domain curves. Mar
 
 Trend is serialized as a string, not an enum. The current values are `rising`, `falling`, and `stable`, based on a +/- `0.05` probability delta versus the prior forecast snapshot.
 
+## Shadow bet-engine evaluation lane
+
+World Monitor also runs a **shadow-only** forecasting lane at `forecast:bets:history:v1`. It never writes `forecast:predictions:v2`, so its bets do not appear in the AI Forecasts panel. The purpose is to measure candidate generation methods against resolved outcomes before allowing them into the user-facing forecast stream.
+
+The lane now includes a dedicated geopolitical prediction-market family:
+
+- It selects liquid geopolitical markets whose settlement is 2–210 days away. The general market family retains the shorter 2–45 day window.
+- The two families form a disjoint partition by market slug, so the same venue market cannot become two separate bets.
+- Geopolitical candidates rank first for the optional ensemble stage, but the attempt budget reserves room for faster-resolving energy, commodity, general-market, and macro families.
+- Identity and settlement use the venue slug rather than the mutable title. The hard resolution spec reads the settlement feed at the market deadline and resolves whether the YES price crossed 50%.
+- Results remain tagged `generationOrigin: "bet_engine"` so the scorecard can compare that lane with the canonical forecast generator instead of mixing their records.
+
+Each shadow bet retains its empirical or thin-history `baselineProbability`. When `FORECAST_BETS_ENSEMBLE=1` is explicitly enabled, a bounded three-pass LLM ensemble may replace the working probability for top-ranked new attempts while leaving the baseline attached for Brier-score comparison. The ensemble is off by default; partial passes are labeled `ensemble_partial` and are eligible for a later upgrade rather than being treated as a completed ensemble.
+
+This separation is deliberate: prediction-market liquidity is useful calibration evidence, but shipping a new family directly into the panel before it accumulates settlement history would confuse implementation completeness with demonstrated forecast skill.
+
 ## Resolution spec
 
 Every published forecast carries a **resolution spec** — a machine-checkable contract that defines what "came true" means at resolution time. The spec is either `hard` (auto-resolvable by comparing a metric from the same WorldMonitor feed the detector scored from) or `judged` (a resolution question for a later LLM judge, still with a hard deadline). The deadline is always present, encoded in epoch milliseconds: emission time plus the forecast's stated horizon — except prediction-market forecasts, which resolve at the market's own end date when it has one.

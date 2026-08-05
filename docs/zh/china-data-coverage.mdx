@@ -1,0 +1,121 @@
+---
+title: "中国数据覆盖"
+description: "WorldMonitor 中国数据管线、公共界面、来源状态、更新频率、新鲜度与访问边界的完整清单。"
+---
+
+本页是 WorldMonitor 中国数据的总入口。它说明已上线和明确阻止的来源契约，
+并不表示每个上游来源此刻都健康。当前传输与内容健康通过 `/api/health`
+中的中国覆盖投影呈现。`/api/seed-health` 只报告中国覆盖 evaluator
+本身是否近期运行；新鲜 evaluator heartbeat 不证明中国内容健康。
+
+## 覆盖清单
+
+| 管线 | 来源与方法 | 主要界面 | 更新契约 |
+| --- | --- | --- | --- |
+| 全球中国投影 | BIS、IMF、中国能源脊柱、UN Comtrade reporter 156、CCFI、中国市场指数、中国新闻源、八个审核航空枢纽、HKO 与西太平洋灾害 | 中国国家摘要与 operator 健康 | 按来源更新；每小时评估 |
+| 官方宏观 | NBS 与 SAFE 的修订感知观测；PBoC 和 GACC 候选项保持显式不可用 | REST 快照与 Pro MCP `get_economic_data` 的 `china-macro` dataset | 36 小时 |
+| 官方发布日历 | NBS 发布日历，以及由 ChinaMoney/CFETS 公告核验的暂定 PBoC LPR 日期 | 中国宏观 bootstrap 与 Pro MCP `get_economic_data` 的 `china-release-calendar` dataset | 36 小时 |
+| 政策与执法 | CAC、SAMR、MIIT、MOFCOM、NDRC、PBOC 官方文件 | 中国国家简报与 `chinaPolicyEvents` bootstrap | 6 小时 |
+| 台海活动 | 台湾国防部每日声明；日本统合幕僚监部背景单独归因 | Force Posture 与中国决策信号 | 3 小时 |
+| 企业披露 | 经审核发行人篮子的 SSE、SZSE 公共元数据；HKEX 明确被阻止 | `chinaCorporateDisclosures` bootstrap 与中国决策信号 | 30 分钟 |
+| 物流走廊 | 由六个具名来源族组成的四条审核走廊 | REST/UI 详情；MCP 接收受限决策信号摘要 | 按请求；健康聚合缓存 5 分钟 |
+| 活动 nowcast | 官方宏观版本与七个审核代理指标族的确定性比较 | REST/UI 详情；MCP 接收受限决策信号摘要 | 按请求；健康结果缓存 15 分钟 |
+| 决策信号组合 | 宏观、政策、台海、披露、走廊与 nowcast 的受限组合 | 国家简报、公共 RPC、bootstrap 与 Pro MCP | 15 分钟 |
+| 双边 HS4 连续性 | 审核国家/战略产品注册表的年度 UN Comtrade 进口篮 | PRO `GET /api/supply-chain/v1/get-country-products` 与航线暴露工作流 | `0 6 1 * *` |
+
+## 健康投影注册表
+
+中国健康投影跟踪以下稳定契约。`launched` 表示该管线已纳入中国投影，
+但不会覆盖它的实时新鲜度或内容状态。
+
+| 契约 ID | 覆盖 | 上线状态 |
+| --- | --- | --- |
+| `economic.bis-policy` | BIS 政策利率 | `launched` |
+| `economic.imf-macro` | IMF 宏观快照 | `launched` |
+| `energy.jodi-oil` | JODI 石油 | `blocked` — `CHINA_UPSTREAM_ROW_UNAVAILABLE` |
+| `energy.jodi-gas` | JODI 天然气 | `blocked` — `CHINA_UPSTREAM_ROW_UNAVAILABLE` |
+| `energy.spine` | 中国能源脊柱 | `launched` |
+| `trade.comtrade-reporter-156` | UN Comtrade reporter 156 | `launched` |
+| `supply-chain.ccfi` | 中国出口集装箱运价指数 | `launched` |
+| `market.china-index` | 中国国家市场指数 | `launched` |
+| `market.china-corporate-disclosures` | SSE/SZSE 官方企业披露 | `launched` |
+| `news.china` | 中国新闻摘要 | `launched` |
+| `aviation.china-hubs` | 八个审核中国航空枢纽 | `launched` |
+| `macro.china-snapshot` | 规范化中国宏观快照 | `launched` |
+| `macro.china-release-calendar` | 中国发布日历 | `launched` |
+| `policy.official-events` | 官方政策与执法事件 | `launched` |
+| `hazards.western-pacific-cyclones` | 西太平洋气旋身份 | `launched` |
+| `hazards.hko-warnings` | 香港天文台警报 | `launched` |
+| `military.cross-strait-activity` | 官方台海活动基线 | `launched` |
+
+JODI 仍可用于现有全球能源产品。其中国石油与天然气契约保持阻止，
+因为审核后的上游国家索引目前没有发布实质性的 `CN` 行。因此，
+健康的全球 JODI heartbeat 不能被呈现为中国覆盖。
+
+详细方法与来源契约：
+
+- [官方宏观与政策](/zh/china-official-macro-policy)
+- [企业披露](/zh/china-corporate-disclosures)
+- [物流走廊](/zh/china-logistics-corridors)
+- [跨领域决策信号](/zh/china-decision-signals)
+- [活动 nowcast 方法](/zh/methodology/china-activity-nowcast)
+- [共享溯源契约](/zh/decision-signal-provenance)
+
+## 状态与缺失值
+
+来源请求成功不等于内容可用。中国健康检查会分别评估传输新鲜度和内容新鲜度。
+成功请求仍可能发布过期、部分、空或时间戳未知的内容。
+
+公共契约使用显式状态：
+
+- `available` 或 `healthy` 表示所需负载通过领域验证和新鲜度规则；
+- `partial` 或 `degraded` 表示部分审核覆盖缺失、过期或无效，但其他证据仍可用；
+- `stale` 表示最后有效观测超出内容预算；
+- `unavailable` 表示没有可发布的有效观测；
+- `blocked` 表示来源被刻意禁止上线，通常因为 robots、条款、传输或来源实质性审核未通过。
+
+缺失类别绝不会被转换为零、正常、不变或当前。保留最后良好值时，会保留原始
+观测时间，并同时报告当前传输失败。
+
+## 双边 HS4 进口篮
+
+双边存储覆盖 `scripts/shared/comtrade-strategic-products.json` 中 20 个经过审核的
+`bilateralHs4Code`。每个国家分片包含按 HS4 产品划分的年度进口额和主要出口伙伴，
+用于国家暴露、航线影响、多部门冲击以及 PRO `get-country-products` 路由。
+详细双边数据行不进入匿名中国摘要。
+
+认证 Comtrade 路由对两个 HS4 批次分别发送一个从 `Y-2` 到 `Y-5` 的四年窗口。
+规范化器按“产品 + 伙伴”保留最新年份，因此响应不会静默混合不同年份。
+缺少 `COMTRADE_API_KEYS` 时，公共 preview 路由不接受年份列表，因此依次尝试
+`Y-2` 和 `Y-3`。
+
+生产计划被明确限制在配额内：
+
+| 控制项 | 契约 |
+| --- | --- |
+| Railway cron | `0 6 1 * *` — 每月第一天 06:00 UTC |
+| 提供商配额 | 每月 500 次带 key 请求 |
+| Seeder 请求预算 | 480 |
+| 新鲜度门禁 | 24 天；仅显式 `FORCE_RESEED=true` 可绕过 |
+| 国家负载 TTL | 40 天 |
+| 健康过期阈值 | 35 天 |
+| 覆盖下限 | 110 个国家分片 |
+
+低于 110 个分片的运行写入 `partial` 元数据，而不会声称完全成功。失败 reporter
+最多连续两次运行保留已有分片；之后允许分片过期，使按需公共回退可以再次探测。
+限流、配额耗尽和请求预算耗尽会发布部分覆盖并停止运行，不会用空负载覆盖最后良好数据。
+
+## 访问边界
+
+- 国家摘要、走廊状态、决策信号摘要、溯源与聚合健康通过受限公共界面提供。
+- 详细走廊控制塔与活动 nowcast 证据只通过 REST/UI 提供。MCP 没有这两个路由的
+  专用工具；Pro MCP 通过 `get_china_decision_signals` 接收其受限摘要。
+- Pro MCP 通过 `get_economic_data` 的 `china-macro` 或
+  `china-release-calendar` dataset 读取规范宏观与发布日历缓存。
+- 详细双边 HS4 产品行和航线暴露仅限 PRO。
+- Pro MCP 决策信号工具获得与公共组合相同的受限条目和溯源，不获得原始交易所文件或不受限来源扩展。
+- 代理凭据、逐次请求原始诊断、缓存名称和详细新鲜度阈值仅限 operator。
+  公共文档只说明配置键与选择语义，不公开其值。
+
+官方发布者身份不等于独立验证。发布者身份、提取置信度、分类置信度、佐证和
+新鲜度始终是独立声明。

@@ -59,6 +59,27 @@
       "removal_issue": null
     },
     {
+      "path": "api/mcp/billing-denial.ts",
+      "category": "internal-helper",
+      "reason": "Typed billing-denial propagation for MCP tool _execute fetches (#4770): BillingDenialError + header-detection helpers so a gateway 403/503 billing denial survives dispatch's catch-all instead of flattening into a generic -32603. Pure helper module for the external-protocol MCP handler family above — exports no route.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
+      "path": "api/mcp/downstream.ts",
+      "category": "internal-helper",
+      "reason": "Canonical sibling-request routing and credential-safe downstream error classification for MCP RPC tools (#5514). Pure helper module for the external-protocol MCP handler family above — exports no route.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
+      "path": "api/mcp/source-unavailable.ts",
+      "category": "internal-helper",
+      "reason": "Typed analysis-source outage propagation for MCP composite tools: preserves bounded cache-key diagnostics in JSON-RPC error.data without exposing source payloads. Pure helper module for the external-protocol MCP handler family above — exports no route.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
       "path": "api/mcp/usage.ts",
       "category": "external-protocol",
       "reason": "MCP wm_api_usage emission (#4866) — phase-to-reason mapper + ctx.waitUntil RequestEvent emitter for the /mcp funnel. Ops/observability plumbing for the same external-protocol handler, not a JSON data API; reuses server/_shared/usage.ts builders.",
@@ -73,9 +94,30 @@
       "removal_issue": null
     },
     {
+      "path": "api/mcp/registry/analysis-tools.ts",
+      "category": "external-protocol",
+      "reason": "MCP TOOL_REGISTRY composite-analysis tool entries and their cache orchestration. Extracted from rpc-tools.ts to keep the external-protocol registry maintainable; exports no JSON data route.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
       "path": "api/mcp/registry/rpc-tools.ts",
       "category": "external-protocol",
       "reason": "MCP TOOL_REGISTRY RPC-tool entries (with _execute, incl. describe_tool). Extracted from api/mcp.ts during the structural split; same external-protocol constraint as the parent shim.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
+      "path": "api/mcp/registry/company-intel-tools.ts",
+      "category": "external-protocol",
+      "reason": "MCP TOOL_REGISTRY corporate-intelligence tool entry and its nested output schema. Extracted from rpc-tools.ts to keep the external-protocol registry maintainable; exports no JSON data route.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
+      "path": "api/mcp/registry/nlp-tools.ts",
+      "category": "external-protocol",
+      "reason": "MCP TOOL_REGISTRY on-demand NLP tool entries (classify_event, extract_entities, get_news_clusters, get_keyword_spikes). Extracted from rpc-tools.ts so the registry file is not also the home of digest adaptation, entity aggregation, and story-accumulator key knowledge; same external-protocol constraint as its sibling registry modules.",
       "owner": "@SebastienMelki",
       "removal_issue": null
     },
@@ -258,6 +300,13 @@
       "path": "api/mcp-proxy.ts",
       "category": "external-protocol",
       "reason": "Proxy for the MCP transport — same shape constraint as api/mcp.ts. Renamed .js → .ts in PR #3768 to unlock the isCallerPremium import from server/.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
+      "path": "api/docs-mcp.ts",
+      "category": "external-protocol",
+      "reason": "First-party facade for the docs MCP server (served at /docs/mcp ahead of the Mintlify rewrite) — JSON-RPC 2.0 / MCP streamable-HTTP envelope dictated by the MCP spec. Proxies worldmonitor.mintlify.dev/docs/mcp verbatim, answering malformed bodies with -32700/-32600 locally and lifting the upstream's protocol-level tool-call failures (result.isError + code -32601/-32602) into proper top-level JSON-RPC error objects. Anonymous like the upstream; per-IP limit registered in ENDPOINT_RATE_POLICIES and enforced in-handler via checkScopedRateLimit.",
       "owner": "@SebastienMelki",
       "removal_issue": null
     },
@@ -447,6 +496,13 @@
       "removal_issue": null
     },
     {
+      "path": "api/analytics-health.js",
+      "category": "ops-admin",
+      "reason": "Anonymous, bounded analytics collector health counter ingress. It accepts no event or identity payload and aggregates operator telemetry in Redis; not a product API.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
       "path": "api/seed-health.js",
       "category": "ops-admin",
       "reason": "Cron-triggered data-freshness check for feed seeds. Operator tool, not a user-facing API.",
@@ -553,6 +609,13 @@
       "removal_issue": null
     },
     {
+      "path": "api/internal/china-exchange-egress.js",
+      "category": "internal-helper",
+      "reason": "Fixed-target SZSE metadata egress for the Railway corporate-disclosure seed (#5771). RELAY_SHARED_SECRET-authenticated, POST-only, and constrained to the reviewed issuer, channel, page, and 92-day window; it is deployment plumbing for one source adapter rather than a user-facing data API.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
       "path": "api/internal/mcp-grant-mint.ts",
       "category": "internal-helper",
       "reason": "Apex-domain bridge endpoint for the cross-subdomain Pro MCP authorization flow (plan 2026-05-10-001 U3). POST {nonce} from the Clerk-protected /mcp-grant SPA on worldmonitor.app; returns a fixed-host redirect URL with a HMAC-signed grant token to api.worldmonitor.app/oauth/authorize-pro. Shape is an implementation detail of the bounce-via-apex consent flow — exposing it as a versioned product API would publish internal OAuth plumbing.",
@@ -583,7 +646,7 @@
     {
       "path": "api/user/mcp-quota.ts",
       "category": "internal-helper",
-      "reason": "Settings-UI-only read of the caller's Pro MCP daily-quota counter (plan 2026-05-10-001 U9). Clerk-authenticated; reads the SAME `mcp:pro-usage:<userId>:<YYYY-MM-DD>` Redis key that api/mcp.ts U7 writes via INCR-first reservation. Returns `{used, limit:50, resetsAt}` — informational, not authoritative; the hard cap is enforced server-side at INCR time. Shape exists purely so the Connected MCP clients tab can show `X / 50 used today, resets in <countdown>` without exposing the underlying Redis schema. Modeling as a sebuf RPC would publish a per-user counter implementation detail as user-facing API surface for a single-feature display widget.",
+      "reason": "Settings-UI-only read of the caller's Pro MCP daily-quota counter (plan 2026-05-10-001 U9). Clerk-authenticated; reads the SAME `mcp:pro-usage:<userId>:<YYYY-MM-DD>` Redis key that api/mcp.ts U7 writes via INCR-first reservation. Returns `{used, limit, resetsAt}` where `limit` is the caller's plan allowance resolved through api/mcp/quota.ts's `resolveDailyLimit` (`null` = unlimited, plan 2026-07-25-001 U3b) — informational, not authoritative; the hard cap is enforced server-side at INCR time. Shape exists purely so the Connected MCP clients tab can show `X / <plan limit> used today, resets in <countdown>` without exposing the underlying Redis schema. Modeling as a sebuf RPC would publish a per-user counter implementation detail as user-facing API surface for a single-feature display widget.",
       "owner": "@SebastienMelki",
       "removal_issue": null
     },
@@ -729,6 +792,13 @@
       "reason": "Migrating to analyst/v1.WidgetComplete in commit 9 of #3207. Blocked on sebuf#150.",
       "owner": "@SebastienMelki",
       "removal_issue": "#3207"
+    },
+    {
+      "path": "api/correlation-runtime-mode.js",
+      "category": "ops-admin",
+      "reason": "Public no-store read of the operator-controlled correlation runtime mode. This three-value control-plane decision is consumed by both browser and Railway seeder paths; it is not product data, has no write surface, and must remain independently switchable without a deployment.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
     },
     {
       "path": "api/skills/fetch-agentskills.ts",

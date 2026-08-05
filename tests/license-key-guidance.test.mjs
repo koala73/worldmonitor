@@ -10,7 +10,7 @@ test('license-key help documents the real creation and recovery flow', () => {
   assert.match(guide, /Select \*\*Settings\*\*/);
   assert.match(guide, /Open the \*\*API Keys\*\* tab/);
   assert.match(guide, /API Starter[^\n]+API Business/);
-  assert.match(guide, /Dashboard Pro does not include manual API keys/);
+  assert.match(guide, /Dashboard Pro and Pro Business do not include manual API keys/);
   assert.match(guide, /full key is shown only once/i);
   assert.match(guide, /Revoke the key whose full value you lost/);
   assert.match(guide, /never send a complete key/i);

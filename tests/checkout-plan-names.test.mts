@@ -26,6 +26,14 @@ describe('resolvePlanDisplayName', () => {
     assert.equal(resolvePlanDisplayName('pro_annual'), 'Pro Annual');
   });
 
+  it('maps pro_business_monthly to "Pro Business Monthly"', () => {
+    assert.equal(resolvePlanDisplayName('pro_business_monthly'), 'Pro Business Monthly');
+  });
+
+  it('maps pro_business_annual to "Pro Business Annual"', () => {
+    assert.equal(resolvePlanDisplayName('pro_business_annual'), 'Pro Business Annual');
+  });
+
   it('maps api_starter to "API Starter"', () => {
     assert.equal(resolvePlanDisplayName('api_starter'), 'API Starter');
   });
@@ -66,13 +74,15 @@ describe('resolvePlanDisplayName', () => {
     assert.equal(result, 'Pro');
   });
 
-  it('whitelist covers all 4 shipped tiers', () => {
+  it('whitelist covers all 6 shipped plan keys', () => {
     // Smoke check so a future rename or removal is caught here rather
     // than silently producing "Pro" for a real tier.
     assert.ok(KNOWN_PLAN_KEYS.includes('pro_monthly'));
     assert.ok(KNOWN_PLAN_KEYS.includes('pro_annual'));
+    assert.ok(KNOWN_PLAN_KEYS.includes('pro_business_monthly'));
+    assert.ok(KNOWN_PLAN_KEYS.includes('pro_business_annual'));
     assert.ok(KNOWN_PLAN_KEYS.includes('api_starter'));
     assert.ok(KNOWN_PLAN_KEYS.includes('api_business'));
-    assert.equal(KNOWN_PLAN_KEYS.length, 4);
+    assert.equal(KNOWN_PLAN_KEYS.length, 6);
   });
 });

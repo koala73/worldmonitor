@@ -35,6 +35,35 @@ test('health registers and classifies per-source global tender freshness', () =>
   assert.equal(entry.records, 12);
 });
 
+test('SAM health allows the effective paced cadence plus one hourly jitter gate', () => {
+  const { classifyKey, SEED_META, STANDALONE_KEYS } = __testing__;
+  const name = 'globalTendersSam';
+  const dataKey = STANDALONE_KEYS[name];
+  const metaKey = SEED_META[name].key;
+  const now = Date.parse('2026-07-22T12:00:00Z');
+
+  assert.equal(SEED_META.globalTendersSam.maxStaleMin, 240);
+  for (const source of ['Ted', 'ContractsFinder', 'CanadaBuys', 'Gets', 'WorldBank']) {
+    assert.equal(SEED_META[`globalTenders${source}`].maxStaleMin, 180, `${source} keeps the hourly source SLA`);
+  }
+
+  const classifyAtAge = (ageMin) => classifyKey(name, dataKey, { allowOnDemand: true }, {
+    keyStrens: new Map([[dataKey, 128]]),
+    keyErrors: new Map(),
+    keyMetaValues: new Map([[metaKey, JSON.stringify({
+      fetchedAt: now - ageMin * 60_000,
+      recordCount: 1,
+      sourceState: 'ok',
+      stale: false,
+    })]]),
+    keyMetaErrors: new Map(),
+    now,
+  });
+
+  assert.equal(classifyAtAge(181).status, 'OK', 'normal post-180min scheduler jitter must not false-alarm');
+  assert.equal(classifyAtAge(241).status, 'STALE_SEED', 'a genuinely missed paced refresh must still warn');
+});
+
 // An adapter the deployment never opted into is not a fault. fetchSam writes
 // sourceState:'unavailable' when SAM_GOV_API_KEY is absent — the only place any
 // producer emits that state. Grading it identically to a broken source (#5266

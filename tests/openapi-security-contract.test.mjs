@@ -383,6 +383,9 @@ function assertAuthContract(spec, label) {
           `${opLabel}: public op must set security: [] (opt out of auth)`,
         );
         assert.equal(op.responses?.['401'], undefined, `${opLabel}: public op must not carry a 401`);
+        if (!PUBLIC_FORBIDDEN_GATES.has(path)) {
+          assert.equal(op.responses?.['403'], undefined, `${opLabel}: public op without a declared gate must not carry a 403`);
+        }
         continue;
       }
       const r401 = op.responses?.['401'];

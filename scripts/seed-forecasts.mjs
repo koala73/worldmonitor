@@ -7,6 +7,7 @@ import { readFileSync } from 'node:fs';
 import { loadEnvFile, runSeed, CHROME_UA, withRetry, parseRetryAfterMs, getResponseHeader, isRetryableHttpStatus } from './_seed-utils.mjs';
 import { compactForecastDashboardPayload } from './_forecast-dashboard.mjs';
 import { unwrapEnvelope } from './_seed-envelope-source.mjs';
+import { allBootstrapMarkets } from './_prediction-classify.mjs';
 import { tagRegions } from './_prediction-scoring.mjs';
 import { attachResolutionSpecs } from './_forecast-resolution.mjs';
 import { assessFunnelDiversity } from './_forecast-funnel.mjs';
@@ -2437,7 +2438,10 @@ function capMarketCalibrationProbability(domain, probability) {
 
 function detectFromPredictionMarkets(inputs) {
   const predictions = [];
-  const markets = inputs.predictionMarkets?.geopolitical || [];
+  // All three pools (#5733). This detector scores any market whose title tags a
+  // region, so it wants the whole universe; `.geopolitical` only meant that
+  // while the producer's pools were near-duplicates.
+  const markets = allBootstrapMarkets(inputs.predictionMarkets);
 
   for (const m of markets) {
     if (!Number.isFinite(m?.yesPrice)) continue;
@@ -2607,7 +2611,11 @@ function computeProjections(predictions) {
 }
 
 function calibrateWithMarkets(predictions, markets) {
-  if (!markets?.geopolitical) return;
+  // All three pools (#5733): a prediction is calibrated against whichever market
+  // best matches its region and title, and the best anchor is often a macro,
+  // rates, or commodity line that now lives outside the geopolitical pool.
+  const marketUniverse = allBootstrapMarkets(markets);
+  if (marketUniverse.length === 0) return;
   const stats = {
     applied: 0,
     noPrice: 0,
@@ -2624,7 +2632,7 @@ function calibrateWithMarkets(predictions, markets) {
     const titleTokens = extractMeaningfulTokens(pred.title, regionTerms);
     const predictionDeEscalatoryOutcome = predictionYesOutcomeLooksDeEscalatory(pred);
     if (keywords.length === 0 && regionTerms.length === 0) continue;
-    const candidates = markets.geopolitical
+    const candidates = marketUniverse
       .map(m => {
         const mRegions = tagRegions(m.title);
         const sameMacroRegion = keywords.length > 0 && mRegions.some(r => keywords.includes(r));

@@ -6,17 +6,20 @@
 // 120MB XML download against Railway's 512MB container limit.
 import sax from 'sax';
 
-import { CHROME_UA, loadEnvFile, runSeed, verifySeedKey, writeExtraKeyWithMeta } from './_seed-utils.mjs';
+import { loadEnvFile, runSeed, verifySeedKey, writeExtraKeyWithMeta } from './_seed-utils.mjs';
+import { fetchOfacSourceResponse } from './_sanctions-source.mjs';
 
 loadEnvFile(import.meta.url);
 
 const CANONICAL_KEY = 'sanctions:pressure:v1';
 const STATE_KEY = 'sanctions:pressure:state:v1';
 const ENTITY_INDEX_KEY = 'sanctions:entities:v1';
+const ENTITY_INDEX_META_KEY = 'seed-meta:sanctions:entities';
 // Full ISO2 -> count map consumed by CII/country-risk scoring; do not replace
 // with the top-pressure display list written under CANONICAL_KEY.countries.
 const COUNTRY_COUNTS_KEY = 'sanctions:country-counts:v1';
-const CACHE_TTL = 15 * 60 * 60; // 15h — 3h buffer over 12h cron cadence (was 12h = 0 buffer)
+const COUNTRY_COUNTS_META_KEY = 'seed-meta:sanctions:country-counts';
+const CACHE_TTL = 18 * 60 * 60; // 18h — 3× live 6h cron; remains queryable after the 12h freshness alarm
 // Compact entity type codes for the lookup index (saves space vs full enum strings)
 const ET_CODE = {
   SANCTIONS_ENTITY_TYPE_VESSEL: 'vessel',
@@ -25,7 +28,6 @@ const ET_CODE = {
   SANCTIONS_ENTITY_TYPE_ENTITY: 'entity',
 };
 const DEFAULT_RECENT_LIMIT = 60;
-const OFAC_TIMEOUT_MS = 45_000;
 const PROGRAM_CODE_RE = /^[A-Z0-9][A-Z0-9-]{1,24}$/;
 
 const OFAC_SOURCES = [
@@ -120,11 +122,7 @@ function buildProgramPressure(entries) {
 async function fetchSource(source) {
   console.log(`  Fetching OFAC ${source.label}...`);
   const t0 = Date.now();
-  const response = await fetch(source.url, {
-    headers: { 'User-Agent': CHROME_UA },
-    signal: AbortSignal.timeout(OFAC_TIMEOUT_MS),
-  });
-  if (!response.ok) throw new Error(`OFAC ${source.label} HTTP ${response.status}`);
+  const response = await fetchOfacSourceResponse(source.url);
 
   return new Promise((resolve, reject) => {
     // strict=true: case-sensitive tag names. xmlns=false: we strip prefixes manually.
@@ -553,6 +551,11 @@ export function declareRecords(data) {
 
 runSeed('sanctions', 'pressure', CANONICAL_KEY, fetchSanctionsPressure, {
   ttlSeconds: CACHE_TTL,
+  // The bounded direct/proxy/signed recovery ladder can spend about 7 minutes
+  // across both serial XML sources. Keep its fetch deadline explicit and the
+  // lock alive longer so a slow recovery cannot leave a second run racing it.
+  lockTtlMs: 600_000,
+  fetchPhaseTimeoutMs: 480_000,
   validateFn: validate,
   sourceVersion: 'ofac-sls-advanced-xml-v1',
   recordCount: (data) => data.totalCount ?? 0,
@@ -569,6 +572,15 @@ runSeed('sanctions', 'pressure', CANONICAL_KEY, fetchSanctionsPressure, {
       transform: (data) => data._state,
     },
   ],
+  // afterPublish owns these companion keys, so runSeed cannot infer them from
+  // extraKeys. Preserve their data and health metadata with the canonical
+  // last-good cohort when a later OFAC fetch fails.
+  preserveKeys: [
+    ENTITY_INDEX_KEY,
+    ENTITY_INDEX_META_KEY,
+    COUNTRY_COUNTS_KEY,
+    COUNTRY_COUNTS_META_KEY,
+  ],
   afterPublish: async (data, _ctx) => {
     // Write entity lookup index with seed-meta so health.js can monitor it.
     // Uses writeExtraKeyWithMeta rather than extraKeys because runSeed's extraKeys
@@ -579,6 +591,7 @@ runSeed('sanctions', 'pressure', CANONICAL_KEY, fetchSanctionsPressure, {
         data._entityIndex,
         CACHE_TTL,
         data._entityIndex.length,
+        ENTITY_INDEX_META_KEY,
       );
     }
     // Write full ISO2→count map for per-country sanctions lookup (no top-12 truncation).
@@ -588,6 +601,7 @@ runSeed('sanctions', 'pressure', CANONICAL_KEY, fetchSanctionsPressure, {
         data._countryCounts,
         CACHE_TTL,
         Object.keys(data._countryCounts).length,
+        COUNTRY_COUNTS_META_KEY,
       );
     }
     delete data._state;

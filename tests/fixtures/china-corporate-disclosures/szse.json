@@ -1,0 +1,49 @@
+{
+  "announceCount": 4,
+  "data": [
+    {
+      "id": "8b000001-0000-0000-0000-000000000001",
+      "annId": 1225400001,
+      "title": "宁德时代：关于股票停牌的公告",
+      "publishTime": "2026-07-12 00:00:00",
+      "attachPath": "/disc/disk03/finalpage/2026-07-12/8b000001-0000-0000-0000-000000000001.PDF",
+      "attachFormat": "PDF",
+      "attachSize": 121,
+      "secCode": ["300750"],
+      "secName": ["宁德时代"]
+    },
+    {
+      "id": "8b000002-0000-0000-0000-000000000002",
+      "annId": 1225400002,
+      "title": "宁德时代：关于公司股票复牌的公告",
+      "publishTime": "2026-07-13 00:00:00",
+      "attachPath": "/disc/disk03/finalpage/2026-07-13/8b000002-0000-0000-0000-000000000002.PDF",
+      "attachFormat": "PDF",
+      "attachSize": 118,
+      "secCode": ["300750"],
+      "secName": ["宁德时代"]
+    },
+    {
+      "id": "8b000003-0000-0000-0000-000000000003",
+      "annId": 1225400003,
+      "title": "宁德时代：关于股票交易异常波动及风险提示的公告",
+      "publishTime": "2026-07-14 00:00:00",
+      "attachPath": "/disc/disk03/finalpage/2026-07-14/8b000003-0000-0000-0000-000000000003.PDF",
+      "attachFormat": "PDF",
+      "attachSize": 131,
+      "secCode": ["300750"],
+      "secName": ["宁德时代"]
+    },
+    {
+      "id": "8b000004-0000-0000-0000-000000000004",
+      "annId": 1225400004,
+      "title": "宁德时代：关于召开2025年度业绩说明会的公告",
+      "publishTime": "2026-07-15 00:00:00",
+      "attachPath": "/disc/disk03/finalpage/2026-07-15/8b000004-0000-0000-0000-000000000004.PDF",
+      "attachFormat": "PDF",
+      "attachSize": 99,
+      "secCode": ["300750"],
+      "secName": ["宁德时代"]
+    }
+  ]
+}

@@ -8,7 +8,7 @@ import type {
 } from '../../../../src/generated/server/worldmonitor/military/v1/service_server';
 
 import { isMilitaryCallsign, isMilitaryHex, detectAircraftType, UPSTREAM_TIMEOUT_MS } from './_shared';
-import { cachedFetchJson, getRawJson } from '../../../_shared/redis';
+import { cachedFetchJson, getRawJson, readCachedJson } from '../../../_shared/redis';
 import { markNoCacheResponse } from '../../../_shared/response-headers';
 import { getRelayBaseUrl, getRelayHeaders } from '../../../_shared/relay';
 
@@ -25,6 +25,24 @@ interface RequestBounds {
   north: number;
   west: number;
   east: number;
+}
+
+// The scheduled military-flight snapshot contains exactly these two producer
+// regions (scripts/seed-military-flights.mjs QUERY_REGIONS). It is authoritative
+// only when one region fully contains the requested bbox; otherwise using it
+// would silently turn uncovered geography into an empty result.
+const LIVE_SEED_COVERAGE: readonly RequestBounds[] = [
+  { south: 10, north: 46, west: 107, east: 143 },
+  { south: 13, north: 85, west: -10, east: 57 },
+];
+
+function liveSeedCovers(bounds: RequestBounds): boolean {
+  return LIVE_SEED_COVERAGE.some((region) =>
+    region.south <= bounds.south
+    && region.north >= bounds.north
+    && region.west <= bounds.west
+    && region.east >= bounds.east
+  );
 }
 
 
@@ -47,6 +65,54 @@ function filterFlightsToBounds(
     if (lat == null || lon == null) return false;
     return lat >= bounds.south && lat <= bounds.north && lon >= bounds.west && lon <= bounds.east;
   });
+}
+
+// Pagination is bounded on every request: page_size documents a 1-100 range,
+// and 0 / omitted / malformed / out-of-range inputs fall back to the default
+// so the public endpoint never streams an unbounded response. The cursor is an
+// opaque decimal offset into the exact-bbox-filtered result; empty or malformed
+// cursors start at the first page. Internal callers that need the full dataset
+// follow next_cursor (see src/services/military-flights.ts:fetchViaProto).
+const DEFAULT_PAGE_SIZE = 100;
+const MAX_PAGE_SIZE = 100;
+
+function resolvePageSize(pageSize: number | undefined): number {
+  if (typeof pageSize !== 'number' || !Number.isInteger(pageSize) || pageSize <= 0) {
+    return DEFAULT_PAGE_SIZE;
+  }
+  return Math.min(pageSize, MAX_PAGE_SIZE);
+}
+
+function resolveOffset(cursor: string | undefined): number {
+  if (typeof cursor !== 'string' || !/^\d+$/.test(cursor)) return 0;
+  const offset = Number(cursor);
+  return Number.isSafeInteger(offset) && offset >= 0 ? offset : 0;
+}
+
+function emptyResponse(): ListMilitaryFlightsResponse {
+  return { flights: [], clusters: [], pagination: { nextCursor: '', totalCount: 0 } };
+}
+
+// Filter the cached quantized-cell snapshot to the exact request bbox, THEN
+// page it. Ordering must not depend on page size or cursor, so the shared
+// snapshot's stable order is preserved and only sliced here.
+function paginateResponse(
+  flights: ListMilitaryFlightsResponse['flights'],
+  clusters: ListMilitaryFlightsResponse['clusters'],
+  bounds: RequestBounds,
+  req: ListMilitaryFlightsRequest,
+): ListMilitaryFlightsResponse {
+  const filtered = filterFlightsToBounds(flights, bounds);
+  const pageSize = resolvePageSize(req.pageSize);
+  const offset = resolveOffset(req.cursor);
+  const page = filtered.slice(offset, offset + pageSize);
+  const nextOffset = offset + page.length;
+  const nextCursor = nextOffset < filtered.length ? String(nextOffset) : '';
+  return {
+    flights: page,
+    clusters: clusters ?? [],
+    pagination: { nextCursor, totalCount: filtered.length },
+  };
 }
 
 const AIRCRAFT_TYPE_MAP: Record<string, string> = {
@@ -78,7 +144,7 @@ const CONFIDENCE_MAP: Record<string, string> = {
   low: 'MILITARY_CONFIDENCE_LOW',
 };
 
-interface StaleFlight {
+interface SeedFlight {
   id?: string;
   callsign?: string;
   hexCode?: string;
@@ -104,8 +170,8 @@ interface StaleFlight {
   note?: string;
 }
 
-interface StalePayload {
-  flights?: StaleFlight[];
+interface SeedPayload {
+  flights?: SeedFlight[];
   fetchedAt?: number;
 }
 
@@ -116,7 +182,7 @@ interface StalePayload {
  * hexCode is canonicalized to uppercase per the invariant documented on
  * MilitaryFlight.hex_code in military_flight.proto.
  */
-function staleToProto(f: StaleFlight): ListMilitaryFlightsResponse['flights'][number] | null {
+function seedToProto(f: SeedFlight): ListMilitaryFlightsResponse['flights'][number] | null {
   if (f.lat == null || f.lon == null) return null;
   const icao = (f.hexCode || f.id || '').toUpperCase();
   if (!icao) return null;
@@ -147,6 +213,52 @@ function staleToProto(f: StaleFlight): ListMilitaryFlightsResponse['flights'][nu
   };
 }
 
+function seedPayloadToProto(raw: SeedPayload | null): ListMilitaryFlightsResponse['flights'] | null {
+  if (!raw || !Array.isArray(raw.flights)) return null;
+  if (raw.flights.length === 0) return [];
+  const flights = raw.flights
+    .map(seedToProto)
+    .filter((flight): flight is NonNullable<typeof flight> => flight != null);
+  return flights.length > 0 ? flights : null;
+}
+
+const LIVE_SEED_NEG_TTL_MS = 30_000;
+let liveSeedNegUntil = 0;
+let liveSeedNegStatus: 'miss' | 'error' = 'miss';
+type LiveSeedRead =
+  | { status: 'hit'; flights: ListMilitaryFlightsResponse['flights'] }
+  | { status: 'miss' | 'error' };
+let liveSeedReadPromise: Promise<LiveSeedRead> | null = null;
+
+async function fetchLiveSeedSnapshot(): Promise<LiveSeedRead> {
+  const now = Date.now();
+  if (now < liveSeedNegUntil) return { status: liveSeedNegStatus };
+  if (liveSeedReadPromise) return liveSeedReadPromise;
+
+  liveSeedReadPromise = (async () => {
+    const read = await readCachedJson(REDIS_CACHE_KEY, true);
+    if (read.status === 'error') {
+      liveSeedNegStatus = 'error';
+      liveSeedNegUntil = now + LIVE_SEED_NEG_TTL_MS;
+      return { status: 'error' };
+    }
+    const flights = read.status === 'hit'
+      ? seedPayloadToProto(read.value as SeedPayload)
+      : null;
+    if (flights === null) {
+      liveSeedNegStatus = 'miss';
+      liveSeedNegUntil = now + LIVE_SEED_NEG_TTL_MS;
+      return { status: 'miss' };
+    }
+    return { status: 'hit', flights };
+  })();
+  try {
+    return await liveSeedReadPromise;
+  } finally {
+    liveSeedReadPromise = null;
+  }
+}
+
 // Negative cache for the stale Redis read — mirrors the legacy
 // /api/military-flights handler's NEG_TTL=30_000ms. When the live fetch fails
 // AND the stale key is also empty/unparseable, suppress further Redis reads
@@ -159,6 +271,9 @@ let staleNegUntil = 0;
 // Test seam — exposed for unit tests that need to drive the suppression
 // window without sleeping. Not exported from the module's public API.
 export function _resetStaleNegativeCacheForTests(): void {
+  liveSeedNegUntil = 0;
+  liveSeedNegStatus = 'miss';
+  liveSeedReadPromise = null;
   staleNegUntil = 0;
 }
 
@@ -166,15 +281,9 @@ async function fetchStaleFallback(): Promise<ListMilitaryFlightsResponse['flight
   const now = Date.now();
   if (now < staleNegUntil) return null;
   try {
-    const raw = (await getRawJson(REDIS_STALE_KEY)) as StalePayload | null;
-    if (!raw || !Array.isArray(raw.flights) || raw.flights.length === 0) {
-      staleNegUntil = now + STALE_NEG_TTL_MS;
-      return null;
-    }
-    const flights = raw.flights
-      .map(staleToProto)
-      .filter((f): f is NonNullable<typeof f> => f != null);
-    if (flights.length === 0) {
+    const raw = (await getRawJson(REDIS_STALE_KEY)) as SeedPayload | null;
+    const flights = seedPayloadToProto(raw);
+    if (!flights || flights.length === 0) {
       staleNegUntil = now + STALE_NEG_TTL_MS;
       return null;
     }
@@ -190,7 +299,7 @@ export async function listMilitaryFlights(
   req: ListMilitaryFlightsRequest,
 ): Promise<ListMilitaryFlightsResponse> {
   try {
-    if (!req.neLat && !req.neLon && !req.swLat && !req.swLon) return { flights: [], clusters: [], pagination: undefined };
+    if (!req.neLat && !req.neLon && !req.swLat && !req.swLon) return emptyResponse();
     const requestBounds = normalizeBounds(req);
 
     // Quantize bbox to a 1° grid so nearby map views share cache entries.
@@ -201,12 +310,38 @@ export async function listMilitaryFlights(
       quantize(req.neLat, BBOX_GRID_STEP),
       quantize(req.neLon, BBOX_GRID_STEP),
     ].join(':');
-    const cacheKey = `${REDIS_CACHE_KEY}:${quantizedBB}:${req.operator || ''}:${req.aircraftType || ''}:${req.pageSize || 0}`;
+    // Key by the quantized bbox only. The cached value is the complete
+    // expanded-cell snapshot, so page size and cursor must NOT fragment it —
+    // every page/cursor for the same cell shares one upstream fetch and one
+    // entry, and pagination is applied per-request after retrieval.
+    const cacheKey = `${REDIS_CACHE_KEY}:${quantizedBB}:${req.operator || ''}:${req.aircraftType || ''}`;
 
     const fullResult = await cachedFetchJson<ListMilitaryFlightsResponse>(
       cacheKey,
       REDIS_CACHE_TTL,
       async () => {
+        // The scheduled seeder is the single routine authenticated OpenSky
+        // writer. Cache its unpaginated regional snapshot under the existing
+        // bbox key so every cursor reads one stable version. Requests outside
+        // the producer's declared coverage continue to request-specific
+        // recovery instead of receiving a falsely authoritative empty result.
+        // The producer deliberately preserves its last-good snapshot during an
+        // upstream outage. Keep serving that snapshot (with each flight's old
+        // lastSeenAt intact) while seed health reports the stale fetchedAt;
+        // reopening per-viewer OpenSky recovery here recreates the credit fanout.
+        if (liveSeedCovers(requestBounds)) {
+          const seeded = await fetchLiveSeedSnapshot();
+          if (seeded.status === 'hit') {
+            return { flights: seeded.flights, clusters: [], pagination: undefined };
+          }
+          if (seeded.status === 'error') {
+            // A Redis command/read failure is not proof the snapshot is
+            // missing. Throw before any provider call so cachedFetchJson's
+            // bounded negative path prevents per-bbox OpenSky amplification.
+            throw new Error('military live seed read failed');
+          }
+        }
+
         const isSidecar = (process.env.LOCAL_API_MODE || '').includes('sidecar');
         const relayBase = isSidecar ? null : getRelayBaseUrl();
         const baseUrl = isSidecar ? 'https://opensky-network.org/api/states/all' : relayBase ? relayBase + '/opensky' : null;
@@ -291,14 +426,14 @@ export async function listMilitaryFlights(
       // fallback when OpenSky / the relay hiccups.
       const staleFlights = await fetchStaleFallback();
       if (staleFlights && staleFlights.length > 0) {
-        return { flights: filterFlightsToBounds(staleFlights, requestBounds), clusters: [], pagination: undefined };
+        return paginateResponse(staleFlights, [], requestBounds, req);
       }
       markNoCacheResponse(ctx.request);
-      return { flights: [], clusters: [], pagination: undefined };
+      return emptyResponse();
     }
-    return { ...fullResult, flights: filterFlightsToBounds(fullResult.flights, requestBounds) };
+    return paginateResponse(fullResult.flights, fullResult.clusters, requestBounds, req);
   } catch {
     markNoCacheResponse(ctx.request);
-    return { flights: [], clusters: [], pagination: undefined };
+    return emptyResponse();
   }
 }

@@ -24,7 +24,6 @@ import { checkRateLimit } from './_rate-limit.js';
 import { jsonResponse } from './_json-response.js';
 // @ts-expect-error — JS module, no declaration file
 import { captureSilentError } from './_sentry-edge.js';
-// @ts-expect-error — JS module, no declaration file
 import { readRawJsonFromUpstash, setCachedData } from './_upstash-json.js';
 
 interface FinnhubSearchResult {

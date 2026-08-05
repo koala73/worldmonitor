@@ -8,7 +8,13 @@
  * `server/_shared/pro-mcp-token.ts` so a writer/reader drift cannot occur.
  *
  * Response shape:
- *   200 { used: number, limit: 50, resetsAt: <ISO at next UTC midnight> }
+ *   200 { used: number, limit: number | null, resetsAt: <ISO at next UTC midnight> }
+ *
+ * `limit` is the caller's PLAN allowance (plan 2026-07-25-001 U3b), resolved
+ * from `features.planLimits.mcpCallsPerDay` through the SAME `resolveDailyLimit`
+ * that `api/mcp/quota.ts` enforces with — `null` means unlimited. Before U3b
+ * this reported a hardcoded 50, so a Pro Business user at 120 of 250 read
+ * "50 / 50" in Settings while enforcement served them fine.
  *
  * Edge cases:
  *   - First call of the UTC day: Redis key missing → `used: 0`.
@@ -17,6 +23,9 @@
  *     better surfaced as "0 today" than as a 500).
  *   - Redis transient: log + return `used: 0`. The settings UI is best-effort
  *     informational; we never want a broken Redis to block the settings tab.
+ *   - Entitlement lookup unavailable (null, or throwing): fall back to the
+ *     pre-U3b behaviour (50). Same cost-protection direction as enforcement,
+ *     and a lookup blip must never 500 a previously-working endpoint.
  *
  * Status codes:
  *   - 200 OK on success
@@ -33,9 +42,10 @@ import { getCorsHeaders } from '../_cors.js';
 // @ts-expect-error — JS module, no declaration file
 import { captureSilentError } from '../_sentry-edge.js';
 import { resolveClerkSession } from '../../server/_shared/auth-session';
+import { getEntitlements } from '../../server/_shared/entitlement-check';
+import { resolveDailyLimit, resolvePlanDrivenMcpAllowance } from '../mcp/quota';
 import {
   dailyCounterKey,
-  PRO_DAILY_QUOTA_LIMIT,
   secondsUntilUtcMidnight,
 } from '../../server/_shared/pro-mcp-token';
 
@@ -49,6 +59,17 @@ export interface QuotaDeps {
    * exist. Throws on transport failure — the caller fail-softs to "0 used".
    */
   redisGet: (key: string) => Promise<string | null>;
+  /**
+   * Cached entitlement read for the plan allowance. Only `planKey` and
+   * `features.planLimits.mcpCallsPerDay` are consumed; null/throw fall back
+   * to the plan default via `resolveDailyLimit`.
+   */
+  getEntitlements: (userId: string) => Promise<{
+    planKey?: string;
+    features?: {
+      planLimits?: { mcpCallsPerDay?: number | null };
+    };
+  } | null>;
   /** Injectable for deterministic tests. */
   now: () => Date;
 }
@@ -97,6 +118,27 @@ export async function quotaHandler(req: Request, deps: QuotaDeps): Promise<Respo
   const now = deps.now();
   const key = dailyCounterKey(userId, now);
 
+  // Plan allowance first — `used` is clamped to THIS number, not to the
+  // historical 50. An unreadable entitlement leaves `planDailyLimit`
+  // undefined, which resolveDailyLimit turns into the plan default. The
+  // plan-family gate mirrors enforcement (`checkMcpEntitlementGate`): an
+  // API-tier plan's catalog allowance is NOT what the meter applies, so it
+  // must not be what this endpoint displays.
+  let planDailyLimit: number | null | undefined;
+  try {
+    const ent = await deps.getEntitlements(userId);
+    planDailyLimit = resolvePlanDrivenMcpAllowance(ent?.planKey, ent?.features?.planLimits?.mcpCallsPerDay);
+  } catch (err) {
+    console.warn(
+      '[mcp-quota] entitlement lookup failed:',
+      err instanceof Error ? err.message : String(err),
+    );
+    captureSilentError(err, {
+      tags: { route: 'api/user/mcp-quota', step: 'entitlements' },
+    });
+  }
+  const limit = resolveDailyLimit(planDailyLimit);
+
   let raw: string | null = null;
   try {
     raw = await deps.redisGet(key);
@@ -116,9 +158,11 @@ export async function quotaHandler(req: Request, deps: QuotaDeps): Promise<Respo
   if (raw !== null) {
     const n = Number(raw);
     if (Number.isFinite(n) && n >= 0) {
-      // Cap displayed value at the hard limit so a stale-rollover or test
-      // injection cannot show "73 / 50".
-      used = Math.min(Math.floor(n), PRO_DAILY_QUOTA_LIMIT);
+      // Cap displayed value at the resolved limit so a stale-rollover or test
+      // injection cannot show "73 / 50". Unlimited plans have nothing to clamp
+      // to — the raw counter IS the display value there.
+      const floored = Math.floor(n);
+      used = limit === null ? floored : Math.min(floored, limit);
     }
   }
 
@@ -130,7 +174,7 @@ export async function quotaHandler(req: Request, deps: QuotaDeps): Promise<Respo
   const resetsAt = new Date(resetsAtMs).toISOString();
 
   return new Response(
-    JSON.stringify({ used, limit: PRO_DAILY_QUOTA_LIMIT, resetsAt }),
+    JSON.stringify({ used, limit, resetsAt }),
     { status: 200, headers: jsonHeaders },
   );
 }
@@ -139,6 +183,7 @@ export default async function handler(req: Request): Promise<Response> {
   return quotaHandler(req, {
     resolveUserId: async (r) => (await resolveClerkSession(r))?.userId ?? null,
     redisGet: rawRedisGetString,
+    getEntitlements,
     now: () => new Date(),
   });
 }

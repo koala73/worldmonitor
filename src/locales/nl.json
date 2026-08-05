@@ -730,6 +730,8 @@
       "relatedAssetsNear": "Gerelateerde activa in de buurt van {{location}}",
       "summaryError": "Samenvatting kon niet worden gemaakt",
       "summaryFailed": "Samenvatting mislukt",
+      "sourceCoverage": "{{covered}}/{{total}} bronnen",
+      "sourceCoverageHint": "Toont {{covered}} van {{total}} ingeschakelde bronnen — dit paneel wisselt bij elke verversing van bron",
       "sortBy": "Sorteren op",
       "sortNewest": "Nieuwste",
       "sortRelevance": "Relevantie"
@@ -1019,7 +1021,7 @@
       "fytdLabel": "FY{{year}} YTD",
       "vsPriorFy": "vs FY{{year}}",
       "sourceWto": "WTO",
-      "sourceTreasury": "US Treasury",
+      "sourceTreasury": "Amerikaans ministerie van Financiën",
       "colDate": "Datum",
       "colMonthly": "Maandelijks",
       "colFytd": "FY YTD",
@@ -1083,8 +1085,8 @@
       "sectionFollowing": "Following",
       "sectionAll": "All",
       "sourceStates": {
-        "degraded": "degraded",
-        "stale": "stale"
+        "degraded": "gedegradeerd",
+        "stale": "verouderd"
       }
     },
     "gdeltIntel": {
@@ -1193,10 +1195,10 @@
         "minutesAgo": "{{count}}m ago",
         "hoursAgo": "{{count}}h ago"
       },
-      "cachedCiiStatus": "Cached CII {{states}}",
+      "cachedCiiStatus": "Gecachede CII {{states}}",
       "sourceStates": {
-        "degraded": "degraded",
-        "stale": "stale"
+        "degraded": "gedegradeerd",
+        "stale": "verouderd"
       },
       "dataFreshness": "Data Freshness",
       "sourcesDetail": "{{active}}/{{total}} sources"
@@ -1277,7 +1279,8 @@
       "newsSignals": "{{news}} nieuws • {{signals}} signalen",
       "provenanceTitle": "Dekking herkomst: hoeveel opgenomen verhalen en verschillende bronnen deze samenvatting is geselecteerd uit",
       "compiledFrom": "Samengesteld uit {{stories}} verhalen uit {{sources}} bronnen",
-      "briefFreshness": "Gegenereerd {{minutes}}m geleden · nieuwste bron {{hours}}h oud"
+      "briefFreshness": "Gegenereerd {{minutes}}m geleden · nieuwste bron {{hours}}h oud",
+      "briefStoryDetails": "Story details ({{count}})"
     },
     "techHubs": {
       "infoTooltip": "<strong>Tech Hub-activiteit</strong><br>Toont tech-hubs met de meeste nieuwsactiviteit.<br><br><em>Activiteitsniveaus:</em><br>• <span style=\"color: {{highColor}}\">Hoog</span> — Breaking news of 50+ score<br>• <span style=\"color: {{elevatedColor}}\">Verhoogd</span> — Score 20-49<br>• <span style=\"color: {{lowColor}}\">Laag</span> — Score lager dan 20<br><br>Klik op een hub om naar de locatie ervan te zoomen."
@@ -1515,7 +1518,26 @@
       "trend": "Trend",
       "trending": "TREND",
       "velocity": "Snelheid",
-      "wallets": "Wallets"
+      "wallets": "Wallets",
+      "benchmarkTitle": "Wereldwijde schenkingsbenchmarks",
+      "benchmarkInfoTooltip": "<strong>Wereldwijde schenkingsbenchmarks</strong> Gepubliceerde platform- en institutionele claims met bronperioden en verificatiestatus. Geannualiseerde cijfers zijn schattingen, geen live-activiteit.",
+      "status": {
+        "published": "Gepubliceerde benchmarks met geverifieerde brondekking.",
+        "partial": "Gepubliceerde benchmarks met gedeeltelijke brondekking.",
+        "legacy": "Oude momentopname; brondetails niet beschikbaar.",
+        "cached": "Gecachede momentopname tonen; vernieuwen niet beschikbaar."
+      },
+      "trackedAnnualized": "Bijgehouden platformschenkingen — geannualiseerde schatting",
+      "annualizedDaily": "Dagelijkse geannualiseerde schatting",
+      "atLeast": "Minstens",
+      "about": "Ongeveer",
+      "sourceNotVerified": "Bron niet geverifieerd",
+      "reportedCumulative": "Gerapporteerd cumulatief totaal",
+      "sourcePeriod": "{{source}} · {{period}}",
+      "benchmark": "Gepubliceerde benchmark",
+      "sourcesMethodology": "Bronnen en methodologie",
+      "methodologyIntro": "Alleen geverifieerde jaarlijkse of verdedigbaar geannualiseerde platformclaims komen in de kop. Cumulatieve en institutionele cijfers blijven afzonderlijke context.",
+      "partialEstimate": "Gedeeltelijk geverifieerde schatting"
     },
     "supplyChain": {
       "chokepoints": "Knelpunten",
@@ -1852,7 +1874,11 @@
       "infoTooltip": "<strong>Disaster Cascade</strong> Detecteert convergerende natuurramp- en infrastructuursignalen:<ul><li>Correleert aardbevingen, bosbranden, overstromingen en weerextremen</li><li>Volgt cascadische effecten op infrastructuur en toeleveringsketens</li><li>Markeert regio's met samengesteld risicorisico</li></ul>Klik op een kaart om naar de getroffen regio in te zoomen."
     },
     "markets": {
-      "infoTooltip": "<strong>Markten</strong> Real-time aandelenindices, aandelen en cryptoprijzen. Pas uw watchlist aan met de knop Watchlist. Sparklines tonen recente prijstrend."
+      "infoTooltip": "<strong>Markten</strong> Real-time aandelenindices, aandelen en cryptoprijzen. Pas uw watchlist aan met de knop Watchlist. Sparklines tonen recente prijstrend.",
+      "chart": {
+        "title": "{{symbol}} prijsgrafiek",
+        "close": "Grafiek sluiten"
+      }
     },
     "heatmap": {
       "infoTooltip": "<strong>Sector Heatmap</strong> S&P 500 sectorprestatie in één oogopslag. Kleurintensiteit weerspiegelt de omvang van dagelijkse verandering. Groen = winsten, Rood = verlies."
@@ -1914,11 +1940,101 @@
       "cta": "Upgrade naar Pro →",
       "dismiss": "Verwijderen"
     },
+    "billingState": {
+      "onHoldDesc": "Betaling mislukt. Werk je betaalmethode bij om premium toegang te herstellen.",
+      "onHoldBannerMessage": "Betaling mislukt. Werk je betaalmethode bij om je abonnement actief te houden.",
+      "updatePayment": "Betaling bijwerken",
+      "renewalPendingDesc": "We controleren de verlenging van je abonnement. Premium toegang wordt automatisch hersteld zodra deze is bevestigd.",
+      "refreshStatus": "Status vernieuwen",
+      "renewalFailedDesc": "We konden de verlenging van je abonnement niet verifiëren. Beheer je facturering of neem contact op met support als het probleem aanhoudt.",
+      "manageBilling": "Facturering beheren",
+      "lapsedDesc": "Je Pro-abonnement is beëindigd. Abonneer je opnieuw om premium toegang terug te krijgen.",
+      "resubscribe": "Opnieuw abonneren"
+    },
     "checkoutFailureBanner": {
       "message": "Betaling kon niet worden voltooid. Er is geen bedrag in rekening gebracht.",
       "retry": "Opnieuw proberen",
       "retrying": "Opnieuw proberen…",
       "dismiss": "Verwijderen"
+    },
+    "proActivation": {
+      "badge": "PRO",
+      "progress": "Stap {{current}} van {{total}}",
+      "closeLabel": "Installatie overslaan",
+      "ariaLabel": "Pro-activering instellen",
+      "signedInAs": "Aangemeld als {{email}}",
+      "steps": {
+        "brief": {
+          "heading": "Je dagelijkse brief, elke ochtend",
+          "body": "Een samengestelde intelligence-brief in je inbox elke ochtend — de signalen van de nacht die ertoe doen, samengevat in vijf minuten lezen.",
+          "confirmCta": "Mijn ochtendbrief inschakelen",
+          "confirming": "Inschakelen…",
+          "doneNote": "Je ochtendbrief loopt al.",
+          "scheduleNote": "We behouden je huidige bezorgtijd.",
+          "summaryLabel": "Ochtendbrief",
+          "summaryVerified": "Aan — start met je volgende ochtendbrief.",
+          "deliverAt": "Bezorgen om",
+          "previewLoading": "Voorbeeld van je eerste brief wordt voorbereid…",
+          "previewLabel": "De brief van vanochtend"
+        },
+        "alerts": {
+          "heading": "Kritieke meldingen",
+          "body": "Krijg een melding in je browser wanneer er iets groots gebeurt — escalerende conflicten, marktschokken, nieuwe sancties. Pas de frequentie op elk moment aan in Instellingen.",
+          "confirmCta": "Meldingen inschakelen",
+          "confirming": "Inschakelen…",
+          "doneNote": "Browsermeldingen staan al aan.",
+          "blockedNote": "Meldingen zijn geblokkeerd in je browser. Schakel ze in bij de sitegegevens van je browser om meldingen te ontvangen.",
+          "declinedNote": "Geen probleem — we sturen geen browsermeldingen. Je kunt ze later inschakelen via de sitegegevens van je browser.",
+          "summaryLabel": "Kritieke meldingen",
+          "summaryVerified": "Aan — kritieke signalen bereiken je browser."
+        },
+        "power": {
+          "heading": "Jouw Pro-toolkit",
+          "body": "Aangepaste widgets, MCP-verbindingen en de AI-onderzoeker zijn ontgrendeld. Bouw het dashboard dat je echt in de gaten wilt houden.",
+          "confirmCta": "Pro-tools verkennen",
+          "confirming": "Openen…",
+          "doneNote": "Je gebruikt je Pro-tools al.",
+          "summaryLabel": "Pro-toolkit",
+          "summaryVerified": "Ontgrendeld en klaar wanneer jij dat bent.",
+          "channelsNote": "Heb je liever Telegram, Slack, Discord of een webhook?",
+          "pointers": {
+            "search": "Het hele dashboard doorzoeken",
+            "widgets": "Een aangepaste widget maken",
+            "analyst": "Stel de AI-analist een vraag",
+            "mcpClients": "MCP instellen",
+            "channels": "Stel deze in bij de meldingsinstellingen"
+          }
+        }
+      },
+      "status": {
+        "pending": "Niet ingesteld",
+        "inFlight": "Instellen…",
+        "verified": "Gereed",
+        "failed": "Het is niet gelukt",
+        "blocked": "Geblokkeerd",
+        "unavailable": "Niet beschikbaar",
+        "blockedNote": "Dit is momenteel niet beschikbaar — je kunt het later instellen via instellingen.",
+        "unavailableNote": "Dit is niet beschikbaar op je apparaat — je kunt het later instellen.",
+        "failedBody": "Er is iets misgegaan. Probeer het opnieuw of stel het later in via instellingen.",
+        "retry": "Opnieuw proberen"
+      },
+      "actions": {
+        "skip": "Voorlopig overslaan",
+        "continue": "Doorgaan"
+      },
+      "summary": {
+        "heading": "Alles is ingesteld",
+        "subVerified": "Dit draait nu op je account.",
+        "subPending": "Je kunt de installatie op elk moment afronden via instellingen.",
+        "linePending": "Nog niet ingesteld — rond dit op elk moment af in instellingen.",
+        "lineFailed": "Dit konden we niet instellen — probeer het opnieuw via instellingen.",
+        "finish": "Naar mijn dashboard"
+      },
+      "chip": {
+        "message": "Rond de installatie van je Pro-account af.",
+        "action": "Installatie afronden",
+        "dismissLabel": "Sluiten"
+      }
     },
     "frameworkSelector": {
       "label": "Analyseframework",
@@ -2093,43 +2209,59 @@
       }
     },
     "mobileNav": {
-      "panelCategories": "Panel categories"
+      "panelCategories": "Panelcategorieën"
     },
     "panelFreshness": {
       "status": {
-        "fresh": "Fresh",
-        "stale": "Stale",
-        "veryStale": "Very stale",
-        "noData": "No data",
-        "disabled": "Disabled",
-        "error": "Error"
+        "fresh": "Actueel",
+        "stale": "Verouderd",
+        "veryStale": "Zeer verouderd",
+        "noData": "Geen gegevens",
+        "disabled": "Uitgeschakeld",
+        "error": "Fout"
       },
       "labelWithAge": "{{status}} {{age}}",
-      "title": "Data freshness: {{status}}. {{sources}}",
+      "title": "Gegevensversheid: {{status}}. {{sources}}",
       "sourceDetail": "{{name}}: {{status}}, {{update}}",
       "sourceDetailWithHealth": "{{name}}: {{status}}, {{update}}, {{detail}}",
-      "lastUpdated": "last updated {{time}}",
-      "neverUpdated": "never updated",
+      "lastUpdated": "laatst bijgewerkt {{time}}",
+      "neverUpdated": "nooit bijgewerkt",
       "health": {
-        "partialCoverage": "partial coverage",
-        "contentStale": "content stale",
-        "seedStale": "seed stale",
-        "noSourceData": "no source data",
-        "sourceErrorReported": "source error reported",
-        "freshnessStoreUnavailable": "freshness store unavailable",
-        "freshnessStoreDegraded": "freshness store degraded"
+        "partialCoverage": "gedeeltelijke dekking",
+        "contentStale": "inhoud verouderd",
+        "seedStale": "seed verouderd",
+        "noSourceData": "geen brongegevens",
+        "sourceErrorReported": "bronfout gemeld",
+        "freshnessStoreUnavailable": "versheidsopslag niet beschikbaar",
+        "freshnessStoreDegraded": "versheidsopslag gedegradeerd"
       },
       "time": {
-        "never": "never",
-        "justNow": "just now",
-        "minutesAgo": "{{count}}m ago",
-        "hoursAgo": "{{count}}h ago",
-        "daysAgo": "{{count}}d ago",
-        "compactNow": "now",
+        "never": "nooit",
+        "justNow": "zojuist",
+        "minutesAgo": "{{count}}m geleden",
+        "hoursAgo": "{{count}}u geleden",
+        "daysAgo": "{{count}}d geleden",
+        "compactNow": "nu",
         "compactMinutes": "{{count}}m",
-        "compactHours": "{{count}}h",
+        "compactHours": "{{count}}u",
         "compactDays": "{{count}}d"
       }
+    },
+    "exportGate": {
+      "signedOutDesc": "Meld u aan om dashboardgegevens te exporteren als CSV, JSON of PDF.",
+      "upgradeDesc": "Gegevensexport (CSV, JSON, PDF) is inbegrepen bij Pro Business.",
+      "upgradeCta": "Upgraden naar Pro Business",
+      "lockedAriaLabel": "Gegevens exporteren — vergrendeld. {{reason}}",
+      "unlockedAnnouncement": "Gegevensexport ontgrendeld.",
+      "preparingPdf": "PDF voorbereiden…",
+      "pdfFailed": "Het PDF-rapport kon niet worden gegenereerd. Probeer het opnieuw of gebruik de JSON-export."
+    },
+    "tabCap": {
+      "signedOutDesc": "Werkruimten zonder aanmelding zijn beperkt tot {{cap}} dashboardtabbladen. Meld u aan om meer toe te voegen.",
+      "upgradeDesc": "U heeft uw limiet van {{cap}} dashboardtabbladen bereikt.",
+      "upgradeCta": "Upgraden voor meer",
+      "lockedAriaLabel": "Tabblad toevoegen — vergrendeld. {{reason}}",
+      "unlockedAnnouncement": "Limiet voor dashboardtabbladen opgeheven."
     }
   },
   "popups": {
@@ -2861,7 +2993,7 @@
     "panelCatCommodityEcon": "Economie & Handel",
     "panelCatHappyNews": "Goed Nieuws",
     "panelCatHappyPlanet": "Planeet & Geven",
-    "embed": "Embed"
+    "embed": "Insluiten"
   },
   "countryBrief": {
     "identifying": "Land identificeren...",
@@ -2993,17 +3125,20 @@
     "geocodeFailed": "Kon geen land op deze locatie identificeren",
     "retryBtn": "Opnieuw proberen",
     "closeBtn": "Sluiten",
-    "loadingResilienceScore": "Loading resilience score…",
-    "resilienceScoreUnavailable": "Resilience score unavailable.",
+    "loadingResilienceScore": "Veerkrachtscore laden…",
+    "resilienceScoreUnavailable": "Veerkrachtscore niet beschikbaar.",
     "china": {
       "title": "Landenoverzicht China",
       "description": "Actuele macro-, markt-, handels-, energie- en operationele beschikbaarheid uit bestaande publieke datacontracten.",
-      "macroPolicy": "Macro & beleid",
-      "marketCredit": "Markt & krediet",
-      "tradeSupply": "Handel & toeleveringsketen",
+      "policyEvents": "Beleid en handhaving",
       "energy": "Energie",
       "availability": "Gevaren & luchtvaart",
       "observed": "Per:",
+      "published": "Gepubliceerd:",
+      "effective": "Van kracht:",
+      "sectors": "Sectoren:",
+      "entities": "Entiteiten:",
+      "translation": "Vertaling:",
       "source": "Bron:",
       "imfGrowth": "IMF-groeiprognose",
       "creditGdp": "Krediet t.o.v. bbp",
@@ -3012,8 +3147,6 @@
       "gasDemand": "Gasvraag",
       "energyMix": "Stroommix",
       "coal": "steenkool",
-      "aviationAvailability": "Beschikbaarheid luchtvaart",
-      "hazardAvailability": "Beschikbaarheid gevaren",
       "noMajorDisruptions": "Geen grote verstoringen gemeld",
       "activeDisruptions_one": "{{count}} actieve verstoring",
       "activeDisruptions_other": "{{count}} actieve verstoringen",
@@ -3025,18 +3158,21 @@
       "ccfiSource": "Shanghai Shipping Exchange",
       "comtradeSource": "UN Comtrade, rapporteur 156",
       "sourceUnavailable": "Bron niet beschikbaar",
-      "macroUnavailable": "Macro- en beleidsgegevens zijn momenteel niet beschikbaar.",
-      "marketUnavailable": "Markt- en kredietgegevens zijn momenteel niet beschikbaar.",
-      "tradeUnavailable": "Handels- en toeleveringsketengegevens zijn momenteel niet beschikbaar.",
-      "energyUnavailable": "Energiegegevens zijn momenteel niet beschikbaar.",
-      "availabilityUnavailable": "Gegevens over gevaren en luchtvaart zijn momenteel niet beschikbaar.",
+      "policyUnavailable": "Official policy and enforcement events are currently unavailable.",
+      "policyPartial": "{{count}} official agencies are temporarily degraded.",
       "status": {
         "loading": "Laden",
         "available": "Beschikbaar",
         "partial": "Gedeeltelijk",
         "stale": "Verouderd",
         "unavailable": "Niet beschikbaar"
-      }
+      },
+      "macroSignals": "Macrosignalen",
+      "crossStraitActivity": "Activiteit over de straat",
+      "corporateDisclosures": "Bedrijfsbekendmakingen",
+      "corridorConditions": "Corridoromstandigheden",
+      "activityNowcast": "Activiteit nowcast",
+      "decisionSignalsUnavailable": "De momentopname van beslissingssignalen van China is momenteel niet beschikbaar."
     }
   },
   "preferences": {
@@ -3189,16 +3325,42 @@
     "visualizationFailed": "Visualisatie mislukt"
   },
   "dashboardTabs": {
-    "ariaLabel": "Dashboard tabs",
-    "defaultName": "Main",
-    "newTabName": "New Tab",
-    "newTabCreated": "New tab created",
-    "tabDeleted": "Tab \"{{name}}\" deleted",
-    "addTab": "Add tab",
-    "addTabTitle": "New tab (starts with the default panels)",
-    "renameHint": "{{name}} — double-click to rename",
-    "deleteTab": "Delete tab",
-    "deleteTabAria": "Delete tab {{name}}",
-    "tabNameAria": "Tab name"
+    "ariaLabel": "Dashboardtabbladen",
+    "defaultName": "Hoofd",
+    "newTabName": "Nieuw tabblad",
+    "newTabCreated": "Nieuw tabblad aangemaakt",
+    "tabDeleted": "Tabblad \"{{name}}\" verwijderd",
+    "addTab": "Tabblad toevoegen",
+    "addTabTitle": "Nieuw tabblad (begint met de standaardpanelen)",
+    "renameHint": "{{name}} — dubbelklik om te hernoemen",
+    "deleteTab": "Tabblad verwijderen",
+    "deleteTabAria": "Tabblad {{name}} verwijderen",
+    "tabNameAria": "Tabbladnaam"
+  },
+  "theaterPresets": {
+    "label": "Dekkingspresets",
+    "applied": "Preset {{preset}} toegepast: {{count}} bronnen ingeschakeld",
+    "alreadyApplied": "Preset {{preset}} is al toegepast",
+    "ukraineWar": {
+      "label": "Oorlog in Oekraïne",
+      "description": "Oekraïense hoofdmedia, onafhankelijke Russische pers en bronnen voor frontbeoordeling inschakelen"
+    },
+    "indoPacific": {
+      "label": "Indo-Pacific / Taiwan",
+      "description": "Veiligheidsbronnen over Taiwan, Pakistan en Zuidoost-Azië inschakelen"
+    },
+    "sahelWestAfrica": {
+      "label": "Sahel en West-Afrika",
+      "description": "Lokale bronnen uit de Sahel, Nigeria en West-Afrika inschakelen"
+    },
+    "caucasusCentralAsia": {
+      "label": "Kaukasus en Centraal-Azië",
+      "description": "Regionale bronnen uit de Zuidelijke Kaukasus en Centraal-Azië inschakelen"
+    },
+    "middleEastFlashpoints": {
+      "label": "Spanningshaarden in het Midden-Oosten",
+      "description": "Bronnen over Iran, Israël, de Golf en Koerdische regio's inschakelen"
+    },
+    "unavailable": "Preset {{preset}} is niet beschikbaar met je huidige panelen"
   }
 }

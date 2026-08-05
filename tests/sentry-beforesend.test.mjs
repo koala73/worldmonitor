@@ -594,6 +594,32 @@ describe('existing beforeSend filters', () => {
     assert.equal(beforeSend(event), null, 'Extension chain-ending-in-window.fetch fetch failure should be suppressed');
   });
 
+  it('suppresses bare "Failed to fetch" when the extension fetch frame carries an alias annotation (WORLDMONITOR-Y8)', () => {
+    // Real WORLDMONITOR-Y8 stack (Adjust SDK injectScriptAdjust.js, the same
+    // extension already named in the SG gate): Sentry renders the frame whose
+    // function was reached through an alias as `<name> [<annotation>]`, so the
+    // wrapper surfaces as `window.fetch [<annotation>]`. The SG function match
+    // is anchored, so the trailing annotation made it miss and the identical
+    // wrapper class re-surfaced as a new issue.
+    const event = makeEvent('Failed to fetch', 'TypeError', [
+      { filename: '/assets/panel-storage-RVfx_Amx.js', lineno: 2, function: 'Ln' },
+      { filename: 'chrome-extension://bkkbcggnhapdmkeljlodobbkopceiche/injectScriptAdjust.js', lineno: 1, function: 'window.fetch [as originalFetch]' },
+      { filename: '/assets/widget-store-B60Ai24W.js', lineno: 2, function: 'window.fetch' },
+    ]);
+    assert.equal(beforeSend(event), null, 'alias-annotated extension window.fetch frame should be suppressed');
+  });
+
+  it('does NOT suppress when only the ALIAS half of an extension frame looks like fetch', () => {
+    // Precision guard for the annotation strip above: the meaningful name is the
+    // one BEFORE the bracket. An extension frame whose own function is unrelated
+    // must not qualify just because it was stored under a fetch-ish property.
+    const event = makeEvent('Failed to fetch', 'TypeError', [
+      { filename: '/assets/panels-wF5GXf0N.js', lineno: 100, function: 'MyApiCall' },
+      { filename: 'chrome-extension://abcdefghijklmnopabcdefghijklmnop/inject.js', lineno: 1, function: 'trackEvent [as fetch]' },
+    ]);
+    assert.ok(beforeSend(event) !== null, 'alias-only fetch resemblance must not trigger SG suppression');
+  });
+
   it('does NOT suppress bare "Failed to fetch" with a first-party frame and a NON-fetch extension frame', () => {
     // Precision guard for WORLDMONITOR-SG: an extension frame whose function is
     // not a fetch wrapper is NOT evidence the extension owns the orphan fetch
@@ -895,6 +921,39 @@ describe('existing beforeSend filters', () => {
       firstPartyFrame('src/services/stream.ts', 'onmessage'),
     ]);
     assert.ok(beforeSend(event) !== null, 'first-party onmessage regression must surface');
+  });
+
+  // WORLDMONITOR-RA: SnapTube (Android video-downloader in-app WebView) JS bridge
+  // parses its own `undefined` payload. `/SnapTube/` already sits in ignoreErrors,
+  // but that layer matches the MESSAGE only — here the attribution lives purely in a
+  // frame function, so it needs the stack-aware layer.
+  it('suppresses SyntaxError "is not valid JSON" from the SnapTube WebView bridge', () => {
+    const event = makeEvent('"undefined" is not valid JSON', 'SyntaxError', [
+      { filename: '/assets/sentry-DMxp_zBn.js', lineno: 488, function: 'r' },
+      { filename: '<anonymous>', lineno: 1, function: 'SnapTube.value' },
+      { filename: '<anonymous>', lineno: 1, function: 'Object.jsReceiveMessages' },
+      { filename: '<anonymous>', lineno: 1, function: 'JSON.parse' },
+    ]);
+    assert.equal(beforeSend(event), null);
+  });
+
+  it('does NOT suppress SnapTube-shaped JSON errors when a first-party frame is present', () => {
+    const event = makeEvent('"undefined" is not valid JSON', 'SyntaxError', [
+      firstPartyFrame('src/services/panel-storage.ts', 'readCached'),
+      { filename: '<anonymous>', lineno: 1, function: 'SnapTube.value' },
+    ]);
+    assert.ok(beforeSend(event) !== null, 'first-party JSON.parse regression must surface');
+  });
+
+  it('does NOT suppress "is not valid JSON" from an unnamed anonymous bridge', () => {
+    const event = makeEvent('"undefined" is not valid JSON', 'SyntaxError', [
+      { filename: '<anonymous>', lineno: 1, function: 'e.value' },
+      { filename: '<anonymous>', lineno: 1, function: 'JSON.parse' },
+    ]);
+    assert.ok(
+      beforeSend(event) !== null,
+      'suppression must key off the named SnapTube bridge, not bare !hasFirstParty',
+    );
   });
 
   // WORLDMONITOR-NR: deck.gl/maplibre internal null-access on Layer.isHidden
@@ -1311,5 +1370,80 @@ describe('`Failed to fetch (abacus.worldmonitor.app)` — Umami beacon (WORLDMON
     // gate for our data-serving API — a real outage still has to reach Sentry.
     const event = makeEvent('Failed to fetch (api.worldmonitor.app)', 'TypeError', whStack);
     assert.ok(beforeSend(event) !== null, 'API-outage canary must never be masked by the beacon allowlist');
+  });
+});
+
+// ─── WORLDMONITOR-Y4: bare minified trampoline hop in a DebugBear stack ───────
+//
+// Third build-rename of the VC/VQ wrapper. Vite emitted one hop of the
+// `window.fetch` trampoline as a bare minified `t`, which no fetch-anchored
+// pattern matches, so the identical class re-surfaced as a new issue. The
+// tolerance is bounded to ≤2 chars inside the two fetch-free chunks; the VQ
+// safety tests above (named receiver, `fetchContent`, non-allowlisted chunk)
+// still hold and are what stop this from becoming a blanket chunk allowlist.
+describe('sentry beforeSend — Y4 bare minified trampoline hop', () => {
+  const y4Stack = [
+    { filename: '/lpMwA9KpC6pf.js', lineno: 8, function: null },
+    { filename: '/lpMwA9KpC6pf.js', lineno: 1, function: null },
+    { filename: '/lpMwA9KpC6pf.js', lineno: 8, function: null },
+    { filename: '/lpMwA9KpC6pf.js', lineno: 1, function: null },
+    { filename: '/lpMwA9KpC6pf.js', lineno: 1, function: 'e' },
+    { filename: '/assets/panel-storage-91sIzezL.js', lineno: 2, function: 't' },
+    { filename: '/assets/widget-store-MD1xhCc9.js', lineno: 2, function: 'window.fetch' },
+    { filename: '/assets/panel-storage-91sIzezL.js', lineno: 2, function: 'Pi.window.fetch' },
+  ];
+
+  it('suppresses the exact Y4 production stack', () => {
+    assert.equal(beforeSend(makeEvent('Failed to fetch', 'TypeError', y4Stack)), null,
+      'a bare minified hop is the same DebugBear wrapper class as VC/VQ');
+  });
+
+  it('does NOT suppress a longer minified name in the same chunk', () => {
+    // The bound is what separates a trampoline hop from a real minified caller.
+    const event = makeEvent('Failed to fetch', 'TypeError', [
+      { filename: '/lpMwA9KpC6pf.js', lineno: 1, function: 'e' },
+      { filename: '/assets/panel-storage-91sIzezL.js', lineno: 2, function: 'loadPanels' },
+    ]);
+    assert.ok(beforeSend(event) !== null, 'a named function in the chunk is a real caller');
+  });
+
+  it('does NOT suppress a bare minified frame without a DebugBear frame present', () => {
+    // The collector frame is the reason these trampolines appear at all.
+    const event = makeEvent('Failed to fetch', 'TypeError', [
+      { filename: '/assets/panel-storage-91sIzezL.js', lineno: 2, function: 't' },
+    ]);
+    assert.ok(beforeSend(event) !== null, 'no collector frame means no trampoline explanation');
+  });
+});
+
+// ─── WORLDMONITOR-WK: zero-frame RangeError confined to iOS ───────────────────
+//
+// 23 events / 20 users, 100% iOS, 21 inside the Google app's in-app WebView.
+// A blown stack is exactly when the SDK cannot collect frames, so zero frames
+// alone proves nothing — the OS gate is the load-bearing half.
+describe('sentry beforeSend — WK iOS zero-frame call-stack overflow', () => {
+  const withOs = (event, name) => ({ ...event, contexts: { os: { name } } });
+
+  it('suppresses the exact WK shape on iOS', () => {
+    const event = withOs(makeEvent('Maximum call stack size exceeded.', 'RangeError', []), 'iOS');
+    assert.equal(beforeSend(event), null, 'iOS in-app WebView recursion is not our bundle');
+  });
+
+  it('does NOT suppress the same message on a desktop OS', () => {
+    const event = withOs(makeEvent('Maximum call stack size exceeded.', 'RangeError', []), 'Mac OS X');
+    assert.ok(beforeSend(event) !== null, 'a real recursion regression must still reach Sentry');
+  });
+
+  it('does NOT suppress an iOS call-stack overflow that carries a first-party frame', () => {
+    const event = withOs(
+      makeEvent('Maximum call stack size exceeded.', 'RangeError', [firstPartyFrame()]),
+      'iOS',
+    );
+    assert.ok(beforeSend(event) !== null, 'an attributable recursion is signal, not noise');
+  });
+
+  it('does NOT suppress an unrelated zero-frame iOS RangeError', () => {
+    const event = withOs(makeEvent('Invalid array length', 'RangeError', []), 'iOS');
+    assert.ok(beforeSend(event) !== null, 'the gate is scoped to the call-stack message');
   });
 });

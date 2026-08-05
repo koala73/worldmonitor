@@ -873,7 +873,7 @@ paths:
             tags:
                 - InfrastructureService
             summary: ListTemporalAnomalies
-            description: ListTemporalAnomalies returns server-computed temporal anomalies for news and satellite_fires.
+            description: ListTemporalAnomalies returns computed news and satellite-fire anomalies with scores, observed values, baselines, tracked signal types, and computation time.
             operationId: ListTemporalAnomalies
             parameters:
                 - name: jmespath

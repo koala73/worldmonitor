@@ -36,6 +36,23 @@ Authenticated REST API keys (`wm_…`) are limited **per account**, not per IP �
 - The per-minute burst, daily allowance, and ceiling are all **per account** (shared across all of an account's `wm_…` keys), so issuing more keys does not raise your limit. (Operator-issued Enterprise keys are the exception — each is rate-limited independently.)
 - Need a higher limit? **Contact support** to raise your plan's allowance.
 
+## Dashboard AI quota
+
+Dashboard and direct REST AI operations use a separate daily budget from MCP. The counter resets at **00:00 UTC**.
+
+| Plan | Dashboard-AI requests/day |
+|------|----------------------------|
+| **Free / signed out** | **0** — protected AI routes require Pro authentication |
+| **Pro** | **500** |
+| **Pro Business** | **2,500** |
+| **API Starter** | **1,000** |
+| **API Business** | **10,000** |
+| **Enterprise** | unlimited |
+
+Free and signed-out dashboard users keep the normal keyword/cache fallback for feed enrichment; they do not consume the paid direct-AI budget. These limits are independent of the MCP allowances above.
+
+Signed-out callers are rejected outright, and Pro-gated AI routes deny free accounts before any spend. Separately from these plan allowances, a small non-plan safety floor of **50 requests/day** applies to any caller whose paid entitlement cannot be confirmed at request time — a lapsed subscription, or a transient entitlement-lookup outage. It exists so an outage degrades gracefully instead of rejecting paying customers; it is not an allowance any plan includes, and it is never larger than the smallest paid allowance.
+
 ## OAuth endpoints
 
 | Endpoint | Limit | Window | Scope |
@@ -65,7 +82,7 @@ Other write endpoints (`/api/brief/share-url`, `/api/notification-channels`, `/a
 
 These mostly use the default public API limit. Cache headers vary by endpoint:
 
-- `GET /api/bootstrap` — browser/session responses keep the default cache policy: all-keys responses use `Cache-Control: public, s-maxage=600, stale-while-revalidate=120, stale-if-error=900` plus fast-tier `CDN-Cache-Control`; explicit `?tier=fast` / `?tier=slow` requests use browser `max-age=60` / `max-age=300` and CDN `s-maxage=600` / `s-maxage=7200`. Key-authenticated responses use `Cache-Control: no-store` and do not emit CDN cache headers. User API key validation also has a fail-closed fixed 60 s per-IP pre-validation limit of 600 attempts.
+- `GET /api/bootstrap` — only the explicitly-marked `?...&public=1` URLs are shared-cacheable. `?tier=fast&public=1` / `?tier=slow&public=1` use browser `max-age=60` / `max-age=300` and CDN `s-maxage=600` / `s-maxage=7200`. Single-key public URLs: on-demand keys (`?keys=<onDemandName>&public=1`) inherit the slow profile — browser `max-age=300`, CDN `s-maxage=7200` — unless the key declares its own, which today only `chinaDecisionSignals` does (browser `max-age=60`, CDN `s-maxage=900`); `?keys=weatherAlerts&public=1` uses `Cache-Control: public, s-maxage=600, stale-while-revalidate=120, stale-if-error=900` with the fast-tier CDN shield. Every other shape — key-authenticated, session-authenticated, the unmarked `?tier=...` URLs, and the anonymous `?keys=weatherAlerts` path — uses `Cache-Control: no-store` and emits no CDN cache headers, so a credentialed URL can never be answered from a shared cache. User API key validation also has a fail-closed fixed 60 s per-IP pre-validation limit of 600 attempts.
 - `GET /api/health` — `private, no-store, max-age=0` plus `CDN-Cache-Control: no-store`.
 - `GET /api/version` — `public, s-maxage=300, stale-while-revalidate=60, stale-if-error=3600`.
 

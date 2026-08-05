@@ -4,40 +4,66 @@ package worldmonitor.intelligence.v1;
 
 import "sebuf/http/annotations.proto";
 
-// Request to fetch enrichment data for a company.
-// NOTE: This endpoint is DISABLED — the handler returns an empty stub regardless of
-// input. Requires either domain (e.g. "github.com") or name (e.g. "GitHub") to pass
-// validation, but no enrichment is performed.
+// Request to fetch enrichment data for a company. Provide a ticker (the
+// strongest match — an exact SEC registry key) or a name, which resolves only
+// when it identifies exactly one filer.
 message GetCompanyEnrichmentRequest {
-  // Company domain to enrich, such as "github.com".
-  string domain = 1 [(sebuf.http.query) = {name: "domain"}];
-  // Company name to enrich when a domain is not available.
+  // Deprecated compatibility input. Domain attribution remains disabled and
+  // returns the legacy empty stub; use ticker or name for verified CIK lookup.
+  string domain = 1 [deprecated = true, (sebuf.http.query) = {name: "domain"}];
+
+  // Company name, such as "Apple Inc".
   string name = 2 [(sebuf.http.query) = {name: "name"}];
+  // Exchange ticker symbol, such as "AAPL". Preferred lookup key.
+  string ticker = 3 [(sebuf.http.query) = {name: "ticker"}];
 }
 
-// Company enrichment data. DISABLED: the handler returns an empty stub — `company`
-// echoes only the requested name/domain, and all other fields are empty/undefined.
+// Company enrichment composite aggregated from SEC EDGAR (identity + filings),
+// Finnhub (market profile + earnings surprises), and the news corpus (mentions).
 message GetCompanyEnrichmentResponse {
   EnrichedCompany company = 1;
-  EnrichedGithub github = 2;
-  repeated TechStackItem tech_stack = 3;
+  // Deprecated compatibility fields; always empty.
+  EnrichedGithub github = 2 [deprecated = true];
+  repeated TechStackItem tech_stack = 3 [deprecated = true];
   SecFilings sec_filings = 4;
-  repeated HNMention hacker_news_mentions = 5;
-  
+  repeated HNMention hacker_news_mentions = 5 [deprecated = true];
+
   // Unix timestamp in milliseconds when this data was fetched.
   int64 enriched_at_ms = 6 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
-  
-  // List of sources successfully reached (e.g. "github", "sec_edgar").
+
+  // List of sources successfully reached (e.g. "sec_edgar", "finnhub", "news").
   repeated string sources = 7;
+
+  // Exchange/market profile for the resolved ticker.
+  CompanyMarketProfile market = 8;
+
+  // Historical actual-vs-estimate EPS results, most recent first.
+  repeated EarningsSurprise earnings_surprises = 9;
+
+  // Recent news headlines mentioning the company, most recent first.
+  repeated CompanyNewsMention news_mentions = 10;
+
+  // True when identity could not be resolved because the SEC registry was
+  // unreadable, or when a resolved company's enrichment sources all failed.
+  // Responses with this set are never cached.
+  bool unavailable = 11;
 }
 
 message EnrichedCompany {
   string name = 1;
   string domain = 2;
+  // Industry classification (SEC SIC description).
   string description = 3;
+  // Business location, such as "Cupertino, CA".
   string location = 4;
   string website = 5;
-  int32 founded = 6;
+  // Deprecated compatibility field; always 0 because no authoritative source
+  // in this composite provides founding year.
+  int32 founded = 6 [deprecated = true];
+  // SEC Central Index Key (zero-padded 10 digits), empty when no EDGAR match.
+  string cik = 7;
+  // Resolved primary ticker symbol.
+  string ticker = 8;
 }
 
 message EnrichedGithub {
@@ -52,7 +78,51 @@ message TechStackItem {
   float confidence = 3;
 }
 
+message CompanyMarketProfile {
+  string exchange = 1;
+  // Industry classification from Finnhub.
+  string industry = 2;
+  // Market capitalization in millions of USD.
+  double market_cap_musd = 3;
+  // IPO date (YYYY-MM-DD), empty when unknown.
+  string ipo_date = 4;
+  string logo_url = 5;
+  // Company headquarters country code.
+  string country = 6;
+  string currency = 7;
+}
+
+message EarningsSurprise {
+  // Fiscal period end date (YYYY-MM-DD).
+  string period = 1;
+  double actual_eps = 2;
+  double estimate_eps = 3;
+  // actual minus estimate.
+  double surprise = 4;
+  double surprise_percent = 5;
+  int32 year = 6;
+  int32 quarter = 7;
+}
+
+message CompanyNewsMention {
+  string title = 1;
+  string url = 2;
+  string source = 3;
+
+  // Unix timestamp in milliseconds when the story was published (0 when unknown).
+  int64 published_at_ms = 4 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
+}
+
+message HNMention {
+  string title = 1;
+  string url = 2;
+  int32 points = 3;
+  int32 comments = 4;
+  int64 created_at_ms = 5 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
+}
+
 message SecFilings {
+  // Total filings known for this CIK in the recent EDGAR submissions window.
   int32 total_filings = 1;
   repeated SecFiling recent_filings = 2;
 }
@@ -61,14 +131,8 @@ message SecFiling {
   string form = 1;
   string file_date = 2; // ISO 8601 date (YYYY-MM-DD)
   string description = 3;
-}
-
-message HNMention {
-  string title = 1;
-  string url = 2;
-  int32 points = 3;
-  int32 comments = 4;
-  
-  // Unix timestamp in milliseconds when the post was created.
-  int64 created_at_ms = 5 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
+  // Link to the filing index on sec.gov.
+  string url = 4;
+  // 8-K item codes disclosed in this filing (e.g. "2.02"), empty for other forms.
+  repeated string items = 5;
 }

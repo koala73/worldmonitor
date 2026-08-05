@@ -16,6 +16,14 @@ const DEFAULT_ANON_CLAIM_TOKEN_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const MIN_ANON_CLAIM_TOKEN_TTL_MS = 60 * 60 * 1000;
 const MAX_ANON_CLAIM_TOKEN_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 
+// Business Pro seat-invite tokens (#4634/#4635). Fixed 14-day TTL — the locked
+// pending-invite expiry (a pending grant counts against the owner's seat cap
+// until it lapses, then frees the slot). Kept as a constant (not env-tunable)
+// because it must stay in lockstep with the `businessProGrants.expiresAt` the
+// issuing mutation stamps (U3).
+const BUSINESS_INVITE_TOKEN_VERSION = "v1";
+const BUSINESS_INVITE_TOKEN_TTL_MS = 14 * 24 * 60 * 60 * 1000;
+
 function getSigningKey(): string {
   const key = process.env.DODO_IDENTITY_SIGNING_SECRET;
   if (!key) {
@@ -127,6 +135,55 @@ export async function verifyAnonClaimToken(
   if (!Number.isSafeInteger(expiresAt) || expiresAt <= Date.now()) return false;
   try {
     const expected = await signPayload(`anon-claim:${ANON_CLAIM_TOKEN_VERSION}:${anonId}:${expiresAt}`);
+    return timingSafeEqualHex(expected, signature);
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Signs a server-verifiable invite token for a business Pro seat grant. Mirrors
+ * `signAnonClaimToken`: HMAC-SHA256 over a domain-separated payload
+ * (`business-invite:` prefix so it cannot be replayed as an anon-claim token or
+ * `wm_user_id_sig`), embedding the token version and expiry. The token binds to
+ * the `businessProGrants` document id — the signature does not verify for any
+ * other grantId — and expires after the 14-day pending-invite window.
+ *
+ * @throws If grantId is empty or contains a `.` (the token delimiter).
+ */
+export async function signBusinessInviteToken(grantId: string): Promise<string> {
+  if (!grantId || grantId.length === 0) {
+    throw new Error("[identity-signing] business invite token requires a non-empty grantId");
+  }
+  if (grantId.includes(".")) {
+    throw new Error('[identity-signing] business invite grantId must not contain "."');
+  }
+  const expiresAt = Date.now() + BUSINESS_INVITE_TOKEN_TTL_MS;
+  const signature = await signPayload(
+    `business-invite:${BUSINESS_INVITE_TOKEN_VERSION}:${grantId}:${expiresAt}`,
+  );
+  return `${BUSINESS_INVITE_TOKEN_VERSION}.${expiresAt}.${signature}`;
+}
+
+/**
+ * Verifies a business Pro seat-invite token against the expected grant id.
+ * Expired, malformed, wrong-version, tampered, or wrong-grant tokens fail closed.
+ */
+export async function verifyBusinessInviteToken(
+  grantId: string,
+  token: string | undefined,
+): Promise<boolean> {
+  if (!token || !grantId || grantId.length === 0) return false;
+  const [version, expiresAtRaw, signature, ...extra] = token.split(".");
+  if (version !== BUSINESS_INVITE_TOKEN_VERSION || extra.length > 0) return false;
+  if (typeof expiresAtRaw !== "string" || typeof signature !== "string") return false;
+  if (!/^\d+$/.test(expiresAtRaw) || !signature) return false;
+  const expiresAt = Number(expiresAtRaw);
+  if (!Number.isSafeInteger(expiresAt) || expiresAt <= Date.now()) return false;
+  try {
+    const expected = await signPayload(
+      `business-invite:${BUSINESS_INVITE_TOKEN_VERSION}:${grantId}:${expiresAt}`,
+    );
     return timingSafeEqualHex(expected, signature);
   } catch {
     return false;

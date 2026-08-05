@@ -62,7 +62,7 @@ World Monitor is a real-time global intelligence dashboard built as a TypeScript
 | AIS Relay | Railway | WebSocket proxy (AIS stream), seed loops (market, aviation, GPSJAM, risk scores, UCDP, positive events), RSS proxy, OREF polling |
 | Consumer Prices | Railway | Containerized price scrapers (Playwright, per-country baskets) + Redis publisher for the consumer-prices dataset |
 | Redis | Upstash | Cache layer with stampede protection, seed-meta freshness tracking, rate limiting |
-| Convex | Convex Cloud | Contact form submissions, waitlist registrations |
+| Convex | Convex Cloud | Billing/entitlements (Dodo), user state and API keys, broadcast/email, contact + waitlist forms, historical intelligence memory (vector search) |
 | Documentation | Mintlify | Public docs, proxied through Vercel at `/docs` |
 | Desktop App | Tauri 2.x | macOS (ARM64, x64), Windows (x64), Linux (x64, ARM64) with bundled Node.js sidecar |
 | Container Image | GHCR | Multi-arch Docker image (nginx serving built SPA, proxies API to upstream) |
@@ -92,7 +92,7 @@ World Monitor is a real-time global intelligence dashboard built as a TypeScript
 
 ### Component Model
 
-All panels extend the `Panel` base class (105 classes across `src/components`). Panels render via `setContent(html)` (debounced 150ms) and use event delegation on a stable `this.content` element. Panels support resizable row/col spans persisted to localStorage.
+All panels extend the `Panel` base class (107 classes across `src/components`). Panels render via `setContent(html)` (debounced 150ms) and use event delegation on a stable `this.content` element. Panels support resizable row/col spans persisted to localStorage.
 
 ### Dual Map System
 
@@ -367,10 +367,16 @@ Runs before every `git push`:
 | `pro-bundle-freshness.yml` | PR (pro bundle changes) | Committed pro data bundle artifacts are fresh |
 | `feed-validation.yml` | PR (feed changes), daily cron | RSS feed reachability and validation |
 | `mcp-live-smoke.yml` | 6-hourly cron, push to main (smoke paths), manual | Anonymous strict-client walk of the production MCP surface on apex + www (capability walk, auth wall, OAuth endpoint routing — #4937/#4938 regression net) |
+| `live-api-cache-auth.yml` | 6-hourly cron, push to main (sweep paths), manual | Production cache/auth posture sweep: fake auth stays no-store and is never a cached 200, anonymous public surfaces stay cacheable, MCP/OAuth surfaces stay protocol-valid (#4497 regression net; suite was inert until #5379 wired the gate on, and the step fails if it executes 0 assertions) |
+| `china-decision-parity-live.yml` | 6-hourly cron, push to main (audit paths), manual (optional staging URL) | Live half of the China decision-signal parity audit: probes the deployed composition RPC and the public `chinaDecisionSignals` bootstrap projection for the six-domain contract and a canonical snapshot under one hour old (#5643 — the probe existed but nothing invoked it, and `--require-live` keeps a lost `--url` from passing vacuously) |
 | `security-audit.yml` | PR, push to main, daily cron, manual | Production dependency audits for every tracked `package-lock.json` workspace, failing on unbaselined high/critical advisories |
-| `seed-freshness-monitor.yml` | 15-minute cron, manual | Checks production seed metadata freshness after a green main gate and fails on stale seed sources |
+| `seed-freshness-monitor.yml` | 15-minute cron, manual | Enforces production ingestion acceptance after a green scheduled main gate; fails on every actionable compact-health problem except explicitly on-demand sources without grading production before Railway deploys or runs |
+| `railway-deploy-trigger.yml` | 15-minute cron (offset from the freshness monitor), manual | Reconciles the Railway fleet forward: deploys each service whose dependency closure changed since the commit it is running, gated on main's own `gate` status rather than on Railway's reading of the whole check suite — a scheduled workflow re-reporting a failure onto main's head SHA otherwise defers every service's build (#6142) |
+| `analytics-collector-monitor.yml` | 15-minute cron, manual | Probes the self-hosted Umami collector directly (heartbeat, tracker script, ingest route) and fails when events are being dropped — Railway reported a green deployment through the 4-day #5565 blackout, so deployment status is not trusted here |
+| `umami-storage-monitor.yml` | 15-minute cron, manual | Reads the Umami Postgres Railway volume without mutation, caches a bounded history, and fails on capacity or projected days-to-full thresholds |
 | `contributor-trust.yml` | PR | Gates untrusted first-time-contributor runs |
 | `deploy-gate.yml` | After Test/Typecheck/Security Audit complete | Aggregates required smoke-gate statuses onto the head SHA for branch protection |
+| `indexnow-submit.yml` | Successful Production deployment, manual | Submits deployment-relevant canonical URLs to IndexNow only after their host-specific ownership keys are directly reachable |
 | `convex-deploy.yml` | Push to main, manual | Deploys Convex backend functions |
 | `deploy-worker.yml` | Push to main (worker paths), manual | Deploys the `api-cors-preflight` Cloudflare Worker |
 | `build-desktop.yml` | Release tag, push, manual | Multi-platform Tauri build, code signing (macOS), AppImage library stripping (Linux), smoke test |
@@ -379,7 +385,15 @@ Runs before every `git push`:
 | `publish-python.yml` | `py-v*` tag, manual | Tests and publishes the `worldmonitor-sdk` PyPI package (`sdk/python/`) via OIDC trusted publishing (no token) with attestations |
 | `publish-ruby.yml` | `gem-v*` tag, manual | Tests and publishes the `worldmonitor` gem (`sdk/ruby/`) via RubyGems OIDC trusted publishing (no token) |
 | `publish-go.yml` | `sdk/go/v*` tag, manual | Vets/tests the Go SDK module (`sdk/go/`) at the tag and warms proxy.golang.org so the version is go-gettable and indexed on pkg.go.dev |
-| `test-linux-app.yml` | Manual | Linux AppImage build + headless smoke test with screenshot verification |
+| `test-linux-app.yml` | Twice-weekly schedule (Mon/Thu 05:23 UTC), manual | Desktop Canary (Linux): installed-app build + launch, hard-fails on crashed app, unreachable sidecar, or blank render (#5902) |
+
+The Railway `umami` runtime is built from `Dockerfile.umami`, which pins the
+upstream v3.2.0 release and applies the reviewed session-data upsert fix.
+The separate `umami-retention` cron uses `Dockerfile.umami-retention` and the
+bounded SQL contract. The old collector is drained to zero before the patched
+image runs its schema migration as a monitored one-off; schema verification,
+patched-runtime write acceptance, and retention are independent operational
+gates.
 
 **Source files**: `.github/workflows/`, `.husky/pre-push`. The workflow list is CI-checked against `.github/workflows/*.yml` by `npm run docs:check` — a new workflow file must be added to this table.
 
@@ -395,7 +409,7 @@ Runs before every `git push`:
 ├── blog-site/              Static blog (built into public/blog/)
 ├── cli/                    Official `worldmonitor` npm CLI (zero-dep ESM, MCP-first; published via cli-v* tag)
 ├── consumer-prices-core/   Consumer-price collection service (Playwright scrapers, per-country baskets; Railway/Docker)
-├── convex/                 Convex backend (contact form, waitlist)
+├── convex/                 Convex backend (billing/entitlements, user state, broadcast, forms, intel history)
 ├── data/                   Static data (telegram channels, OREF threat translations, gamma irradiators)
 ├── deploy/                 Deployment configs (nginx)
 ├── docker/                 Dockerfile + nginx config for Railway

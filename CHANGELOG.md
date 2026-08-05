@@ -6,6 +6,32 @@ All notable changes to World Monitor are documented here.
 
 ### Changed
 
+- **Corporate intelligence is live; `get-company-enrichment` and
+  `list-company-signals` are no longer deprecated** (#5695). Both
+  `/api/intelligence/v1/get-company-enrichment` and
+  `/api/intelligence/v1/list-company-signals` previously returned an empty stub
+  (disabled in #3777 because the old domain-slug attribution heuristic
+  fabricated company intelligence — issues #3754/#3755). They now aggregate real
+  data behind authoritative SEC ticker→CIK resolution: EDGAR identity and recent
+  filings, Finnhub market profile and earnings surprises, and recent news
+  mentions. A company that does not resolve in the SEC registry returns an empty
+  envelope with `sources: []` rather than a guess. Verified lookup keys are
+  `ticker` and `name` — a `name` resolves solely when it identifies exactly one
+  filer. The legacy `domain` request field remains deprecated for v1 wire
+  compatibility and returns the same empty, non-attributing stub as before.
+  Legacy response fields `github`, `techStack`, `hackerNewsMentions`, and
+  `company.founded` likewise remain deprecated and empty.
+  **Added:** `market`, `earningsSurprises`, `newsMentions`, `company.cik`,
+  `company.ticker`, filing `url`/`items` on enrichment; `cik` on signals (empty
+  CIK distinguishes "no such company" from "resolved but quiet"); a `ticker`
+  query param on both. Two new endpoints ship alongside:
+  `/api/intelligence/v1/search-sec-filings` (EDGAR full-text search) and
+  `/api/intelligence/v1/list-material-events` (market-wide 8-K material-event
+  stream). All four are exposed through the new `get_company_intelligence` MCP
+  tool. Earnings surprises remain enrichment facts; they are not emitted as
+  time-ordered signals because Finnhub's `period` is a fiscal period end, not an
+  authoritative report timestamp.
+
 - **CII formula `v8`** — fixed dead UCDP conflict-floor attribution. The server
   scorer read non-existent `intensity_level` / `type_of_violence` fields from the
   cached `conflict:ucdp-events:v1` feed (whose rows actually carry `violenceType`,
@@ -68,6 +94,7 @@ All notable changes to World Monitor are documented here.
 
 ### Added
 
+- **Pro Business tier ($49.99/month · $499/year, #5604)** — a commercial-license plan between Pro and the API plans, covering client work, internal tools and reporting. Dashboard data export (CSV, JSON, and a new PDF report) is now an entitlement of the plans that carry data export — Pro Business, both API plans, and Enterprise — instead of being open to every visitor; the export control stays visible and explains what unlocks it. Dashboard tabs are capped when a tab is created (3 Free / 10 Pro / 25 Pro Business) and existing tabs are never pruned. MCP + SDK daily quotas are now plan-driven (50/day on Pro, 250/day on Pro Business). `/pro` moves to a five-plan grid with a personal/commercial axis and an Enterprise band. Pro and Pro Business are separate products, so a Pro subscriber upgrades by cancelling in the billing portal and starting the Pro Business checkout — the app walks through both steps.
 - **Global inflation (all countries)** — the Consumer Prices panel gains a **World** tab surfacing IMF WEO official annual CPI inflation for every reporting economy (~195 countries), sorted highest-first, leading with year-over-year period-average inflation and an end-of-period secondary column, plus a country filter and severity colour bands. Reuses the already-hydrated `imfMacro` bootstrap bundle (no new network). Discoverable via CMD+K — typing "inflation", "global inflation", or "inflation by country" lands directly on the tab through the new `panel:consumer-prices@world` deep-link command.
 - **Unified OpenAPI bundle** — `docs/api/worldmonitor.openapi.yaml` is now emitted alongside per-service specs, merging every WorldMonitor RPC into a single OpenAPI 3.1 document (190 operations). Powered by sebuf v0.11.1's origin-level bundle support ([SebastienMelki/sebuf#158](https://github.com/SebastienMelki/sebuf/issues/158)). Bumps `SEBUF_VERSION` in the Makefile from v0.7.0 to v0.11.1 — rerun `make install-plugins` after pulling.
 - **Route Explorer**: standalone full-screen modal (CMD+K) for planning shipments between any two countries. Includes Current/Alternatives/Land/Impact tabs, keyboard-first navigation, URL state sharing, strategic-product trade data, dependency flags, and free-tier blur with public route highlight (#2980, #2982, #2994, #2996, #2997, #2998)

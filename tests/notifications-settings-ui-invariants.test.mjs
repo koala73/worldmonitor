@@ -251,4 +251,31 @@ describe('watchlist tickers — client save + re-sync plumbing (#4922 U3)', () =
       're-sync must be gated on PRO tier client-side before hitting the API',
     );
   });
+
+  /**
+   * #5622/#5646: the server requires a BILLED entitlement row for notification
+   * writes (api/notification-channels.ts), and the reason that is a coherent
+   * product decision rather than a dead end is that the client draws the same
+   * line — it gates this panel on the Convex entitlement snapshot, not on the
+   * Clerk role.
+   *
+   * `isProUser()` (src/services/widget-store.ts) DOES accept the Clerk role
+   * alone and is used elsewhere for panel unlocks. Using it here would unlock
+   * the notifications UI for a complimentary/tester grant whose every write the
+   * server answers with 403 — the mismatch that produces a dead end. Pin the
+   * gate so that swap cannot happen silently.
+   */
+  it('gates the notifications panel on the entitlement snapshot, not the Clerk role', () => {
+    assert.match(
+      src,
+      /const isPro = !!host\.isSignedIn && hasTier\(1\)/,
+      'the panel must gate on hasTier(1) so client and server agree on who may write',
+    );
+    assert.doesNotMatch(
+      src,
+      /isProUser\(/,
+      'isProUser() accepts the Clerk role alone; using it here would unlock the UI '
+      + 'for accounts whose writes api/notification-channels.ts answers with 403',
+    );
+  });
 });

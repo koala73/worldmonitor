@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import { h, ensureNoopenerRel, replaceChildren, safeHtml } from '../src/utils/dom-utils.ts';
+import { ensureNoopenerRel, getFocusableElements, h, replaceChildren, safeHtml } from '../src/utils/dom-utils.ts';
 import { createBrowserEnvironment, MiniNode } from './helpers/mini-dom.mts';
 
 class TestElement {
@@ -245,6 +245,50 @@ describe('dom-utils safe link helpers', () => {
 
       assert.equal(anchor.getAttribute('rel'), 'nofollow ugc noopener noreferrer');
       assert.equal(anchor.getAttribute('onclick'), null);
+    });
+  });
+});
+
+describe('dom-utils getFocusableElements', () => {
+  it('includes enabled buttons, href anchors, and tabindex="0" while excluding disabled, aria-hidden, and tabindex="-1" matches', () => {
+    withBrowserDom(() => {
+      const container = document.createElement('div');
+      document.body.appendChild(container);
+
+      const enabledButton = document.createElement('button');
+      const disabledButton = document.createElement('button');
+      disabledButton.setAttribute('disabled', 'disabled');
+      const link = document.createElement('a');
+      link.setAttribute('href', '#');
+      const hiddenButton = document.createElement('button');
+      hiddenButton.setAttribute('aria-hidden', 'true');
+      const tabbableDiv = document.createElement('div');
+      tabbableDiv.setAttribute('tabindex', '0');
+      const untabbableDiv = document.createElement('div');
+      untabbableDiv.setAttribute('tabindex', '-1');
+
+      container.append(enabledButton, disabledButton, link, hiddenButton, tabbableDiv, untabbableDiv);
+
+      const result = getFocusableElements(container as unknown as ParentNode);
+
+      assert.equal(result.length, 3);
+      assert.equal(result[0], enabledButton);
+      assert.equal(result[1], link);
+      assert.equal(result[2], tabbableDiv);
+    });
+  });
+
+  it('excludes elements with no offsetParent (disconnected from the document)', () => {
+    withBrowserDom(() => {
+      // Not appended to document.body, so isConnected (and thus offsetParent) is false —
+      // mirrors an undisplayed/detached element that would otherwise match the selector.
+      const floatingContainer = document.createElement('div');
+      const button = document.createElement('button');
+      floatingContainer.appendChild(button);
+
+      const result = getFocusableElements(floatingContainer as unknown as ParentNode);
+
+      assert.equal(result.length, 0);
     });
   });
 });

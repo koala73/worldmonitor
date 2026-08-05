@@ -3,6 +3,7 @@
 
 import { pathToFileURL } from 'node:url';
 import { CHROME_UA, loadEnvFile, runSeed } from './_seed-utils.mjs';
+import { decodeHtmlEntities } from './_html-entities.mjs';
 
 loadEnvFile(import.meta.url);
 
@@ -42,19 +43,11 @@ const REGULATORY_FEEDS = [
   { agency: 'FINRA', url: 'http://feeds.finra.org/FINRANotices' },
 ];
 
+// Single-pass decode via the shared helper: `&amp;` must not decode before
+// the other entities (`&amp;lt;` must stay `&lt;`, not become `<`), and
+// out-of-range numeric references are dropped instead of throwing.
 function decodeEntities(input) {
-  if (!input) return '';
-  const named = input
-    .replace(/&amp;/gi, '&')
-    .replace(/&lt;/gi, '<')
-    .replace(/&gt;/gi, '>')
-    .replace(/&quot;/gi, '"')
-    .replace(/&apos;/gi, "'")
-    .replace(/&nbsp;/gi, ' ');
-
-  return named
-    .replace(/&#(\d+);/g, (_, code) => String.fromCodePoint(Number(code)))
-    .replace(/&#x([0-9a-f]+);/gi, (_, code) => String.fromCodePoint(parseInt(code, 16)));
+  return decodeHtmlEntities(input);
 }
 
 function stripHtml(input) {
@@ -326,10 +319,18 @@ async function main(fetchImpl = DEFAULT_FETCH, runSeedImpl = runSeed) {
 const isDirectRun = process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href;
 
 if (isDirectRun) {
-  main().catch((err) => {
-    console.error(`FETCH FAILED: ${err.message || err}`);
-    process.exit(1);
-  });
+  // Terminal success marker. Emitted from .then() so it can ONLY print after main() has fully
+  // resolved — a throw anywhere inside, including a late publish step, skips it. Any marker
+  // written INSIDE main() would print before later work and could vouch for a run that then
+  // died (exactly how #6092 stayed invisible). Format mirrors runSeed() so the crash
+  // diagnostic recognises it; without it a clean run is indistinguishable from a silent death.
+  const __runStartedAt = Date.now();
+  main()
+    .then(() => console.log(`\n=== Done (${Date.now() - __runStartedAt}ms) ===`))
+    .catch((err) => {
+      console.error(`FETCH FAILED: ${err.message || err}`);
+      process.exit(1);
+    });
 }
 
 export {

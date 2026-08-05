@@ -9,7 +9,12 @@
 import { Panel } from './Panel';
 import { t } from '@/services/i18n';
 import * as d3 from 'd3';
-import type { RenewableEnergyData, RegionRenewableData, CapacitySeries } from '@/services/renewable-energy-data';
+import type {
+  RenewableEnergyFetchResult,
+  RegionRenewableData,
+  CapacitySeries,
+} from '@/services/renewable-energy-data';
+import { describeFreshness } from '@/services/persistent-cache';
 import { getCSSColor } from '@/utils';
 import { replaceChildren } from '@/utils/dom-utils';
 
@@ -21,11 +26,18 @@ export class RenewableEnergyPanel extends Panel {
   /**
    * Set data and render the full panel: gauge + sparkline + regional breakdown.
    */
-  public setData(data: RenewableEnergyData): void {
+  public setData(result: RenewableEnergyFetchResult): void {
     replaceChildren(this.content);
+    const { data, state, cachedAt } = result;
 
-    // Empty state
-    if (data.globalPercentage === 0 && !data.regions?.length) {
+    if (state === 'cached') {
+      this.setDataBadge('cached', cachedAt === null ? undefined : describeFreshness(cachedAt));
+    } else {
+      this.setDataBadge(state);
+    }
+
+    // Fail closed when neither live nor bounded last-known-good data exists.
+    if (data === null || (data.globalPercentage === 0 && !data.regions?.length)) {
       const empty = document.createElement('div');
       empty.className = 'renewable-empty';
       Object.assign(empty.style, {

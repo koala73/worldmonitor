@@ -30,8 +30,17 @@ import {
   createDefaultCheckoutTransportDeps,
   postCreateCheckout,
 } from './checkout-transport';
+import {
+  checkoutRetryAtMs,
+  checkoutRetryRemainingSeconds,
+  parseCheckoutRetryAfterSeconds,
+} from './checkout-rate-limit';
 import { DASHBOARD_CHECKOUT_SUCCESS_URL, DASHBOARD_CHECKOUT_RETURN_URL } from '../routes';
 import fallbackTiers from '../generated/tiers.json';
+import {
+  getContentAttributionForAnalytics,
+  withContentAttribution,
+} from '../../../shared/content-attribution';
 
 let checkoutInFlight = false;
 
@@ -108,15 +117,16 @@ function flushPendingFunnelEvents(): boolean {
 }
 
 function trackFunnelEvent(event: string, data?: Record<string, unknown>): void {
+  const enrichedData = withContentAttribution(data, getContentAttributionForAnalytics());
   try {
     const umami = getUmami();
     if (umami) {
-      umami.track(event, data);
+      umami.track(event, enrichedData);
       return;
     }
     if (pendingFunnelEvents.length >= FUNNEL_QUEUE_LIMIT) pendingFunnelEvents.shift();
-    pendingFunnelEvents.push({ event, data });
-    persistFunnelEventForReplay(event, data);
+    pendingFunnelEvents.push({ event, data: enrichedData });
+    persistFunnelEventForReplay(event, enrichedData);
     if (funnelFlushTimer === null) {
       let attempts = 0;
       funnelFlushTimer = window.setInterval(() => {
@@ -131,6 +141,12 @@ function trackFunnelEvent(event: string, data?: Record<string, unknown>): void {
   } catch {
     /* no-op — analytics can never break checkout */
   }
+}
+
+/** Record the first /pro pageview reached through a content handoff. */
+export function trackContentHandoff(): void {
+  if (!getContentAttributionForAnalytics()) return;
+  trackFunnelEvent('content-handoff');
 }
 
 /**
@@ -152,8 +168,9 @@ function bucketProductIdForAnalytics(productId: string): string {
 }
 
 /**
- * Phase machine for the checkout flow. Only `creating_checkout` drives
- * UI lock state. `awaiting_auth` is intentionally not exposed — while
+ * Phase machine for the checkout flow. `creating_checkout` drives the clicked
+ * CTA spinner; `rate_limited` disables every paid CTA until Retry-After
+ * expires. `awaiting_auth` is intentionally not exposed — while
  * the Clerk modal is open the pricing section is covered by the modal
  * backdrop, so a service-level UI signal for that window adds no user-
  * visible value and creates lifecycle-recovery problems (watchdogs,
@@ -165,13 +182,17 @@ function bucketProductIdForAnalytics(productId: string): string {
  *   creating_checkout:  post-auth, inside doCheckout's try/finally;
  *                       the clicked tier's CTA shows spinner, siblings
  *                       stay clickable (any click simply updates intent)
+ *   rate_limited:       provider cooldown; every paid CTA stays disabled
+ *                       until retryAtMs and no checkout request is sent
  */
 export type CheckoutPhase =
   | { kind: 'idle' }
-  | { kind: 'creating_checkout'; productId: string };
+  | { kind: 'creating_checkout'; productId: string }
+  | { kind: 'rate_limited'; retryAtMs: number };
 
 let _phase: CheckoutPhase = { kind: 'idle' };
 const phaseSubscribers = new Set<(phase: CheckoutPhase) => void>();
+let checkoutRateLimitTimer: number | null = null;
 
 function setPhase(phase: CheckoutPhase): void {
   _phase = phase;
@@ -184,6 +205,26 @@ export function subscribeCheckoutPhase(cb: (phase: CheckoutPhase) => void): () =
   phaseSubscribers.add(cb);
   cb(_phase);
   return () => { phaseSubscribers.delete(cb); };
+}
+
+function currentCheckoutRateLimitSeconds(): number {
+  if (_phase.kind !== 'rate_limited') return 0;
+  return checkoutRetryRemainingSeconds(Date.now(), _phase.retryAtMs);
+}
+
+function activateCheckoutRateLimit(retryAfterHeader: string | null): number {
+  const retryAfterSeconds = parseCheckoutRetryAfterSeconds(retryAfterHeader);
+  const retryAtMs = checkoutRetryAtMs(Date.now(), retryAfterSeconds);
+  if (checkoutRateLimitTimer) window.clearTimeout(checkoutRateLimitTimer);
+  setPhase({ kind: 'rate_limited', retryAtMs });
+  checkoutRateLimitTimer = window.setTimeout(() => {
+    checkoutRateLimitTimer = null;
+    if (_phase.kind === 'rate_limited' && currentCheckoutRateLimitSeconds() === 0) {
+      setPhase({ kind: 'idle' });
+    }
+  }, retryAfterSeconds * 1_000);
+  showCheckoutRateLimitToast(retryAfterSeconds);
+  return retryAfterSeconds;
 }
 
 /**
@@ -474,6 +515,12 @@ async function doCheckout(
   productId: string,
   options: { referralCode?: string; discountCode?: string; bypassPendingGuard?: boolean },
 ): Promise<boolean> {
+  const cooldownSeconds = currentCheckoutRateLimitSeconds();
+  if (cooldownSeconds > 0) {
+    showCheckoutRateLimitToast(cooldownSeconds);
+    return false;
+  }
+  if (_phase.kind === 'rate_limited') setPhase({ kind: 'idle' });
   if (checkoutInFlight) return false;
   checkoutInFlight = true;
   // Phase transitions to creating_checkout ONLY here, not in
@@ -533,7 +580,16 @@ async function doCheckout(
     if (!resp.ok) {
       const err = await resp.json().catch(() => ({}));
       console.error('[checkout] Edge error:', resp.status, err);
-      if (resp.status === 409 && err?.error === ACTIVE_SUBSCRIPTION_EXISTS) {
+      if (resp.status === 429) {
+        const retryAfterSeconds = activateCheckoutRateLimit(
+          resp.headers.get('Retry-After'),
+        );
+        Sentry.captureMessage('Checkout temporarily rate limited', {
+          level: 'info',
+          tags: { surface: 'pro-marketing', code: 'rate_limited' },
+          extra: { retryAfterSeconds },
+        });
+      } else if (resp.status === 409 && err?.error === ACTIVE_SUBSCRIPTION_EXISTS) {
         // Confirm with the user before taking them to the portal.
         // Uses the whitelisted plan name ONLY — raw server message is
         // logged to Sentry above but never rendered. Dialog is inline
@@ -548,6 +604,9 @@ async function doCheckout(
         const planKey = err?.subscription?.planKey;
         showProDuplicateSubscriptionDialog({
           planDisplayName: resolveProPlanDisplayName(planKey),
+          // Picks the guided cancel-then-rebuy copy for the Pro → Pro Business
+          // pairing; every other pairing keeps the portal line.
+          targetProductId: productId,
           onConfirm: async () => {
             // Pre-open the tab SYNCHRONOUSLY inside the click handler
             // BEFORE any await so the popup blocker treats it as a
@@ -625,7 +684,7 @@ async function doCheckout(
   } finally {
     checkoutInFlight = false;
     unmountCheckoutInterstitial();
-    setPhase({ kind: 'idle' });
+    if (_phase.kind === 'creating_checkout') setPhase({ kind: 'idle' });
   }
 }
 
@@ -737,6 +796,37 @@ function showCheckoutLoadingToast(): void {
   setTimeout(() => toast.remove(), 5_000);
 }
 
+function showCheckoutRateLimitToast(retryAfterSeconds: number): void {
+  const id = 'wm-checkout-rate-limit-toast';
+  document.getElementById(id)?.remove();
+  const toast = document.createElement('div');
+  toast.id = id;
+  toast.setAttribute('role', 'alert');
+  Object.assign(toast.style, {
+    position: 'fixed',
+    top: '20px',
+    left: '50%',
+    transform: 'translateX(-50%)',
+    zIndex: '99995',
+    background: 'rgba(127, 29, 29, 0.97)',
+    color: '#fff',
+    padding: '10px 18px',
+    borderRadius: '6px',
+    border: '1px solid rgba(248, 113, 113, 0.55)',
+    fontSize: '13px',
+    fontFamily: "'SF Mono', Monaco, 'Cascadia Code', 'Fira Code', monospace",
+    boxShadow: '0 4px 16px rgba(0,0,0,0.4)',
+  });
+  toast.textContent = `Checkout is temporarily rate limited. Try again in ${retryAfterSeconds} ${
+    retryAfterSeconds === 1 ? 'second' : 'seconds'
+  }.`;
+  document.body.appendChild(toast);
+  window.setTimeout(
+    () => toast.remove(),
+    Math.min(retryAfterSeconds * 1_000, 10_000),
+  );
+}
+
 async function getAuthToken(): Promise<string | null> {
   const c = await ensureClerk().catch(() => null);
   if (!c) return null;
@@ -815,6 +905,8 @@ async function openBillingPortal(token: string, preopened?: Window | null): Prom
 const PRO_PLAN_DISPLAY_NAMES: Readonly<Record<string, string>> = {
   pro_monthly: 'Pro Monthly',
   pro_annual: 'Pro Annual',
+  pro_business_monthly: 'Pro Business Monthly',
+  pro_business_annual: 'Pro Business Annual',
   api_starter: 'API Starter',
   api_business: 'API Business',
 };
@@ -824,10 +916,36 @@ function resolveProPlanDisplayName(planKey: unknown): string {
   return PRO_PLAN_DISPLAY_NAMES[planKey] ?? 'Pro';
 }
 
+/**
+ * Pro Business product ids, read from the same generated tier data as
+ * KNOWN_PRODUCT_IDS rather than hardcoded — the set is empty until the tier is
+ * published, which is also when a Pro Business checkout becomes reachable from
+ * /pro. Blocking a Pro subscriber's Pro Business checkout is the one 409 the
+ * billing portal cannot resolve (separate Dodo products, not an updatable
+ * collection), so it gets guided cancel-then-rebuy copy instead.
+ */
+const PRO_BUSINESS_PRODUCT_IDS: ReadonlySet<string> = new Set(
+  (fallbackTiers as Array<{ name?: string; monthlyProductId?: string; annualProductId?: string }>)
+    .filter((tier) => tier.name === 'Pro Business')
+    .flatMap((tier) => [tier.monthlyProductId, tier.annualProductId])
+    .filter((id): id is string => typeof id === 'string' && id.length > 0),
+);
+
 interface ProDuplicateDialogOptions {
   planDisplayName: string;
+  /** Product the blocked checkout was for — selects the copy variant. */
+  targetProductId?: string;
   onConfirm: () => void;
   onDismiss: () => void;
+}
+
+/** Mirrors src/services/checkout-duplicate-dialog.ts — keep the copy in sync. */
+function proDuplicateBodyHtml(options: ProDuplicateDialogOptions): string {
+  const plan = escapeHtml(options.planDisplayName);
+  if (options.targetProductId !== undefined && PRO_BUSINESS_PRODUCT_IDS.has(options.targetProductId)) {
+    return `Your account already has an active ${plan} subscription. Pro Business is a separate plan, so the upgrade takes two steps: cancel ${plan} in the billing portal, then start the Pro Business checkout again — you don't have to wait for your current term to end. Your ${plan} access continues until the term you've already paid for runs out, and Pro Business starts a new billing cycle as soon as you buy it. Need a hand? Email <a href="mailto:support@worldmonitor.app" style="color:#44ff88;">support@worldmonitor.app</a>.`;
+  }
+  return `Your account already has an active ${plan} subscription. Open the billing portal to manage it — you won't be charged twice.`;
 }
 
 const PRO_DUP_DIALOG_ID = 'wm-pro-duplicate-subscription-dialog';
@@ -867,7 +985,7 @@ function showProDuplicateSubscriptionDialog(options: ProDuplicateDialogOptions):
   card.innerHTML = `
     <h2 style="font-size:16px;font-weight:600;margin:0 0 10px 0;color:#fff;">Subscription already active</h2>
     <p style="font-size:13px;line-height:1.5;margin:0 0 18px 0;color:#c8c8c8;">
-      Your account already has an active ${escapeHtml(options.planDisplayName)} subscription. Open the billing portal to manage it — you won't be charged twice.
+      ${proDuplicateBodyHtml(options)}
     </p>
     <div style="display:flex;justify-content:flex-end;gap:10px;">
       <button id="${PRO_DUP_DIALOG_ID}-dismiss" type="button" style="background:transparent;color:#aaa;border:1px solid #2a2a2a;border-radius:4px;padding:8px 14px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;">Dismiss</button>

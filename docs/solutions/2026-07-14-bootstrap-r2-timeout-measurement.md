@@ -1,10 +1,49 @@
 # Bootstrap R2 timeout measurement
 
-**Status:** instrumented, operational measurement blocked
+**Status:** CONCLUDED — **KTD7 NO-GO** (2026-07-24). R2-origin serving abandoned; the bootstrap-egress
+objective is met instead by the KV storage-primitive path (see Verdict). Serving constants in
+`api/_bootstrap-r2.js` remain `null` and Redis remains authoritative — production was never affected.
 
-This is the evidence record for issue #5300 U3a. It remains incomplete until the production
-calibration and independent validation windows pass every gate below. The serving constants in
-`api/_bootstrap-r2.js` remain `null`; Redis remains authoritative.
+This was the evidence record for issue #5300 U3a (Vercel Edge → R2 serving). It never reached a go:
+the calibration and validation gates below stayed blocked, and a 2026-07-24 review established that
+the blocker is a **feasibility failure, not an incomplete measurement window**. The pending/zero
+tables that follow are retained as the audit trail of *why* the gates never cleared.
+
+## Verdict: KTD7 no-go
+
+**The architecture cannot pass.** R2 is single-region (bucket in ENAM), so every far-region read is a
+cross-planet round trip. Per the 2026-07-24 review analysis, using p95 as the conservative
+mobile-tail overhead:
+
+- Fast overhead 778 ms → `C_happy(fast)` = 1200 − 778 = **422 ms**. Even the best regions exceed at
+  the maximum allowable timeout: `iad1` 34/1,326 = **2.56%**, `cle1` 36/1,302 = **2.76%** — against a
+  required **≤0.2%**. Distant regions reach ~96%.
+- Since every valid `T(fast)` must be ≤422 ms, no *smaller* timeout can improve that result, and more
+  samples cannot repair a feasibility failure. This is the exact zero-savings-plus-added-latency
+  outcome KTD7 exists to prevent.
+
+**Independently verified 2026-07-24** (not from the review, checked against the tree/Axiom):
+`BOOTSTRAP_R2_TIMEOUT_MS_FAST` and `_SLOW` are still `null`; `bootstrap_r2_shadow` spans 19 Vercel
+execution regions; no regional cohort reached n ≥ 2,000; slow cohorts would take months at current
+rates. The DebugBear-specific overhead figures above are the review's analysis and were not
+independently re-derived here.
+
+**Does not reopen #5300.** #5300 closed 2026-07-14 as complete — its accepted savings came from the
+demand-driven / compaction work, not this experiment. The R2 sub-exploration (under #5338) is
+abandoned, not a regression of #5300.
+
+**Surviving path — the objective is still met.** The bootstrap-egress goal is pursued via the KV
+storage-primitive cutover: a Cloudflare Worker serving from globally-replicated Workers KV (evidence:
+`docs/solutions/2026-07-16-bootstrap-kv-verify.md`). KV reads are local-POP, avoiding the exact
+single-region hop that sank R2 — measured at 99.6–99.7% of global reads under the 1200 ms budget vs
+the incumbent's ~84%. KV serving remains flag-gated off; production still serves from Redis.
+
+**Follow-up applied:** `DEBUGBEAR_RUM_SAMPLE_RATE` dropped 100 → 10 — full RUM sampling existed to
+feed this measurement and had overrun the DebugBear monthly quota (~529k/500k).
+
+---
+
+_Historical record of the blocked gates (never cleared):_
 
 ## Instrumented contract
 

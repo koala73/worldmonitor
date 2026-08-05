@@ -3,7 +3,7 @@ import { motion } from 'motion/react';
 export const SectionHeading = ({ eyebrow, title, subtitle }: { eyebrow: string; title: string; subtitle?: string }) => (
   <motion.div
     className="text-center mb-14"
-    initial={{ opacity: 0, y: 16 }}
+    initial={false}
     whileInView={{ opacity: 1, y: 0 }}
     viewport={{ once: true, margin: '-80px' }}
     transition={{ duration: 0.5 }}

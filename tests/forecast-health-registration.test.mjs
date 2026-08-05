@@ -11,6 +11,13 @@ describe('forecast resolution health registration', () => {
     assert.equal(__testing__.SEED_META.forecastScorecard.key, 'seed-meta:forecast:scorecard');
   });
 
+  it('registers the prediction-market settlement feed seed-meta (#5525)', () => {
+    // The settlement feed is written every resolver run by updateMarketSettlements;
+    // without health registration a broken venue path only surfaces as 14d-late VOIDs.
+    assert.equal(__testing__.SEED_META.forecastMarketsResolution.key, 'seed-meta:prediction:markets-resolution');
+    assert.equal(__testing__.SEED_META.forecastMarketsResolution.maxStaleMin, 2160);
+  });
+
   it('registers the funnel-diversity guardrail (#5233) as a standalone health check', () => {
     // data key + companion seed-meta must stay paired so a collapsed funnel
     // (seed-meta status:'error') surfaces via classifyKey's seedError path.

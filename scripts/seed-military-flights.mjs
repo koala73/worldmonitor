@@ -2,7 +2,7 @@
 
 import { loadEnvFile, CHROME_UA, getRedisCredentials, acquireLockSafely, releaseLock, withRetry, writeFreshnessMetadata, logSeedResult, verifySeedKey, extendExistingTtl } from './_seed-utils.mjs';
 import { summarizeMilitaryTheaters, buildMilitarySurges, appendMilitaryHistory } from './_military-surges.mjs';
-import { unwrapEnvelope } from './_seed-envelope-source.mjs';
+import { buildEnvelope, unwrapEnvelope } from './_seed-envelope-source.mjs';
 import { pathToFileURL } from 'node:url';
 import { createRequire } from 'node:module';
 
@@ -1349,12 +1349,36 @@ async function main() {
       assessedAt,
     }));
     const posturePayload = { theaters };
-    await redisSet(url, token, THEATER_POSTURE_LIVE_KEY, posturePayload, THEATER_POSTURE_LIVE_TTL);
-    await redisSet(url, token, THEATER_POSTURE_STALE_KEY, posturePayload, THEATER_POSTURE_STALE_TTL);
-    await redisSet(url, token, THEATER_POSTURE_BACKUP_KEY, posturePayload, THEATER_POSTURE_BACKUP_TTL);
-    await redisSet(url, token, 'seed-meta:theater-posture', { fetchedAt: assessedAt, recordCount: theaterFlights.length, sourceVersion: source || '' }, 604800);
+    // Derived from `theaters`, which is already in scope here, so it must NOT live inside the
+    // theater-posture lock block below: `forecastInputsPayload.stats` reads it unconditionally,
+    // including on the lock-skipped branch. #6092 wrapped the publish in `else { try { … } }` and
+    // carried this declaration in with it, leaving the consumer referencing a block-scoped const
+    // -> `PUBLISH FAILED: elevated is not defined` on 100% of runs.
     const elevated = theaters.filter((t) => t.postureLevel !== 'normal').length;
-    console.log(`  Theater posture: ${theaters.length} theaters (${elevated} elevated)`);
+    const theaterPostureLockResult = await acquireLockSafely('theater-posture', runId, 120_000, { label: 'theater-posture' });
+    if (theaterPostureLockResult.skipped || !theaterPostureLockResult.locked) {
+      console.log(`  SKIPPED: theater posture publication (${theaterPostureLockResult.skipped ? 'Redis unavailable during lock acquisition' : 'another producer in progress'})`);
+    } else {
+      try {
+        const publicationId = `seed-military-flights:${runId}`;
+        const postureEnvelope = buildEnvelope({
+          fetchedAt: assessedAt,
+          recordCount: theaters.length,
+          sourceVersion: 'theater-posture',
+          schemaVersion: 1,
+          state: 'OK',
+          groupId: publicationId,
+          data: posturePayload,
+        });
+        await redisSet(url, token, THEATER_POSTURE_LIVE_KEY, postureEnvelope, THEATER_POSTURE_LIVE_TTL);
+        await redisSet(url, token, THEATER_POSTURE_STALE_KEY, postureEnvelope, THEATER_POSTURE_STALE_TTL);
+        await redisSet(url, token, THEATER_POSTURE_BACKUP_KEY, postureEnvelope, THEATER_POSTURE_BACKUP_TTL);
+        await redisSet(url, token, 'seed-meta:theater-posture', { fetchedAt: assessedAt, recordCount: theaterFlights.length, sourceVersion: source || '', producer: 'seed-military-flights', publicationId }, 604800);
+        console.log(`  Theater posture: ${theaters.length} theaters (${elevated} elevated)`);
+      } finally {
+        await releaseLock('theater-posture', runId);
+      }
+    }
 
     const priorSurgeHistory = ((await redisGet(url, token, MILITARY_SURGES_HISTORY_KEY))?.history || []);
     const theaterActivity = summarizeMilitaryTheaters(flights, POSTURE_THEATERS, assessedAt);

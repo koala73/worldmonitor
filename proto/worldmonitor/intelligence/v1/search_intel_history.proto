@@ -1,0 +1,73 @@
+syntax = "proto3";
+
+package worldmonitor.intelligence.v1;
+
+import "buf/validate/validate.proto";
+import "sebuf/http/annotations.proto";
+import "worldmonitor/intelligence/v1/intel_history_record.proto";
+
+// SearchIntelHistoryRequest asks for stored historical intelligence events
+// semantically similar to a free-text query. The handler embeds `query` and
+// runs a vector search over convex/intelHistory.ts; the optional filters
+// narrow the candidate set before ranking.
+message SearchIntelHistoryRequest {
+  // Free-text search query, e.g. "artillery strikes near Kharkiv". Embedded
+  // with the same model and normalization the seed writer used, so query and
+  // stored vectors are comparable.
+  string query = 1 [
+    (buf.validate.field).required = true,
+    (buf.validate.field).string.min_len = 2,
+    (buf.validate.field).string.max_len = 500
+  ];
+
+  // Restrict to one producing domain. Empty searches every domain.
+  string domain = 2 [
+    (buf.validate.field).string.pattern = "^(conflict|military|energy)?$"
+  ];
+
+  // Restrict to one ISO 3166-1 alpha-2 country. Empty searches every country.
+  string country = 3 [
+    (buf.validate.field).string.pattern = "^([A-Z]{2})?$"
+  ];
+
+  // Earliest occurred_at to consider, Unix epoch milliseconds, inclusive.
+  // 0 or omitted means no lower bound.
+  int64 from = 4 [
+    (buf.validate.field).int64.gte = 0,
+    (sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER
+  ];
+
+  // Latest occurred_at to consider, Unix epoch milliseconds, inclusive.
+  // 0 or omitted means no upper bound.
+  int64 to = 5 [
+    (buf.validate.field).int64.gte = 0,
+    (sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER
+  ];
+
+  // Maximum matches to return. Defaults to 20 server-side when omitted or
+  // <= 0; the handler caps it at 64, the SEARCH_MAX_LIMIT the Convex action
+  // clamps to (convex/intelHistory.ts).
+  int32 limit = 6 [
+    (buf.validate.field).int32.gte = 0,
+    (buf.validate.field).int32.lte = 64
+  ];
+}
+
+// SearchIntelHistoryResponse returns the matching historical events, most
+// similar first.
+message SearchIntelHistoryResponse {
+  // Matches ordered by descending similarity. Empty means no stored event
+  // passed the filters — check upstream_unavailable to tell that apart from
+  // a failed lookup.
+  repeated IntelHistoryRecord records = 1;
+  // Echo of the search query, so a caller multiplexing requests can pair a
+  // response back to its input.
+  string query = 2;
+  // True when a bounded candidate window may omit further matches.
+  bool partial = 3;
+  // True when the embedding provider or the history store could not be
+  // reached. The gateway reads this flag out of the body and switches the
+  // response to Cache-Control: no-store, so a transient outage is never
+  // pinned as a false-empty result for the tier's full TTL.
+  bool upstream_unavailable = 4;
+}

@@ -8,9 +8,9 @@
  * and assert only the GATEWAY wiring at server/gateway.ts:1034 — the parts the
  * reviewers flagged as defect-prone:
  *   - eligibility via isUserApiKey (user keys carry NO keyCheck.kind)
- *   - the per-IP bypass is ENFORCE-only (shadow keeps per-IP active)
+ *   - the global fallback bypass is ENFORCE-only (shadow keeps it active)
  *   - ordering + 429 shape
- *   - downgraded / ineligible keys fall through to per-IP
+ *   - downgraded / ineligible keys are rejected before limiting
  */
 
 import { describe, test, expect, vi, beforeEach, afterEach } from "vitest";
@@ -23,16 +23,17 @@ vi.mock("../_shared/api-key-rate-limit", () => ({
   reserveDailyMeter: (...a: unknown[]) => reserveDailyMeter(...a),
   rateLimitHeaders: () => ({ "X-RateLimit-Limit": "60", "Retry-After": "30" }),
   ENTERPRISE_API_RATE_LIMIT: 1000,
-  CEILING_MULTIPLIER: 10,
 }));
 
-// --- Stub the per-IP layer: spy whether checkRateLimit runs ------------------
+// --- Stub the global fallback layer: spy whether checkRateLimit runs --------
 const checkRateLimit = vi.fn().mockResolvedValue(null);
+const checkFailClosedScopedIpRateLimit = vi.fn().mockResolvedValue(null);
 vi.mock("../_shared/rate-limit", async (importActual) => {
   const actual = await importActual<typeof import("../_shared/rate-limit")>();
   return {
     ...actual,
     checkRateLimit: (...a: unknown[]) => checkRateLimit(...a),
+    checkFailClosedScopedIpRateLimit: (...a: unknown[]) => checkFailClosedScopedIpRateLimit(...a),
     checkEndpointRateLimit: vi.fn().mockResolvedValue(null),
     hasEndpointRatePolicy: () => false,
   };
@@ -54,12 +55,16 @@ const STARTER = {
   validUntil: Date.now() + 86_400_000,
 };
 let entitlement: typeof STARTER | { planKey: string; features: Record<string, unknown>; validUntil: number } | null = STARTER;
-vi.mock("../_shared/entitlement-check", () => ({
-  getRequiredTier: () => null, // not tier-gated
-  checkEntitlement: vi.fn().mockResolvedValue(null), // passes
-  checkEntitlementDetailed: vi.fn().mockResolvedValue({ response: null, entitlements: null }), // passes
-  getEntitlements: vi.fn(async () => entitlement),
-}));
+vi.mock("../_shared/entitlement-check", async (importActual) => {
+  const actual = await importActual<typeof import("../_shared/entitlement-check")>();
+  return {
+    ...actual,
+    getRequiredTier: () => null, // not tier-gated
+    checkEntitlement: vi.fn().mockResolvedValue(null), // passes
+    checkEntitlementDetailed: vi.fn().mockResolvedValue({ response: null, entitlements: null }), // passes
+    getEntitlements: vi.fn(async () => entitlement),
+  };
+});
 
 // --- Stub user-key validation: a valid wm_ key resolves to a userId ----------
 vi.mock("../_shared/user-api-key", () => ({
@@ -97,12 +102,13 @@ beforeEach(() => {
   checkBurst.mockReset().mockResolvedValue({ ok: true });
   reserveDailyMeter.mockReset().mockResolvedValue({
     count: 1,
-    overCeiling: false,
+    overLimit: false,
     metered: true,
     retryAfterSec: 100,
     rollback: async () => {},
   });
   checkRateLimit.mockClear().mockResolvedValue(null);
+  checkFailClosedScopedIpRateLimit.mockReset().mockResolvedValue(null);
   delete process.env.UPSTASH_REDIS_REST_URL;
   delete process.env.UPSTASH_REDIS_REST_TOKEN;
 });
@@ -130,21 +136,25 @@ describe("#3199 U4 — gateway per-account rate-limit wiring", () => {
     expect(checkRateLimit).not.toHaveBeenCalled();
   });
 
-  test("SHADOW + burst trip → served (200) and per-IP checkRateLimit STILL runs", async () => {
+  test("SHADOW + burst trip → served (200) and principal global fallback still runs", async () => {
     delete process.env.API_RATE_LIMIT_ENFORCE; // shadow (default)
     checkBurst.mockResolvedValue({ ok: false, limit: 60, reset: Date.now() + 30_000 });
 
     const res = await makeGateway()(userKeyRequest(), ctx);
     expect(res.status).toBe(200);
-    expect(checkRateLimit).toHaveBeenCalledTimes(1); // protection retained in shadow
+    expect(checkRateLimit).toHaveBeenCalledWith(
+      expect.any(Request),
+      expect.any(Object),
+      { principalUserId: "acct_starter" },
+    ); // protection retained in shadow, isolated by the validated key owner
   });
 
-  test("ENFORCE + over-ceiling → 429, meter rolled back, per-IP bypassed", async () => {
+  test("ENFORCE + over daily limit → 429, meter rolled back, per-IP bypassed", async () => {
     process.env.API_RATE_LIMIT_ENFORCE = "true";
     const rollback = vi.fn(async () => {});
     reserveDailyMeter.mockResolvedValue({
       count: 10_001,
-      overCeiling: true,
+      overLimit: true,
       metered: true,
       retryAfterSec: 100,
       rollback,
@@ -154,6 +164,39 @@ describe("#3199 U4 — gateway per-account rate-limit wiring", () => {
     expect(res.status).toBe(429);
     expect(rollback).toHaveBeenCalledTimes(1);
     expect(checkRateLimit).not.toHaveBeenCalled();
+  });
+
+  test("#4635 U4 — ENFORCE burst 429 → informative body (plan, limit, limit_type, upgrade_url)", async () => {
+    process.env.API_RATE_LIMIT_ENFORCE = "true";
+    checkBurst.mockResolvedValue({ ok: false, limit: 60, reset: Date.now() + 30_000 });
+
+    const res = await makeGateway()(userKeyRequest(), ctx);
+    expect(res.status).toBe(429);
+    const body = await res.json();
+    expect(body).toMatchObject({
+      plan: "api_starter",
+      limit: 60,
+      limit_type: "per_minute",
+      upgrade_url: expect.any(String),
+    });
+    expect(typeof body.reset).toBe("string");
+  });
+
+  test("#4635 U4 — ENFORCE daily 429 → informative body names the sold limit + daily type", async () => {
+    process.env.API_RATE_LIMIT_ENFORCE = "true";
+    reserveDailyMeter.mockResolvedValue({
+      count: 1_001, overLimit: true, metered: true, retryAfterSec: 100, rollback: async () => {},
+    });
+
+    const res = await makeGateway()(userKeyRequest(), ctx);
+    expect(res.status).toBe(429);
+    const body = await res.json();
+    expect(body).toMatchObject({
+      plan: "api_starter",
+      limit: 1000,
+      limit_type: "daily",
+      upgrade_url: expect.any(String),
+    });
   });
 
   test("ENFORCE + within limits → served, per-IP bypassed", async () => {

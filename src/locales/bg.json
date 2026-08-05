@@ -129,17 +129,20 @@
       "currencies": "Валути",
       "area": "Площ"
     },
-    "loadingResilienceScore": "Loading resilience score…",
-    "resilienceScoreUnavailable": "Resilience score unavailable.",
+    "loadingResilienceScore": "Зареждане на оценката за устойчивост…",
+    "resilienceScoreUnavailable": "Оценката за устойчивост не е налична.",
     "china": {
       "title": "Преглед на държава: Китай",
       "description": "Текущо състояние на макроикономика, пазар, търговия, енергетика и оперативна наличност от съществуващите публични договори за данни.",
-      "macroPolicy": "Макро и политика",
-      "marketCredit": "Пазар и кредит",
-      "tradeSupply": "Търговия и вериги на доставки",
+      "policyEvents": "Политика и прилагане",
       "energy": "Енергетика",
       "availability": "Опасности и авиация",
       "observed": "Към:",
+      "published": "Публикувано:",
+      "effective": "В сила:",
+      "sectors": "Сектори:",
+      "entities": "Субекти:",
+      "translation": "Превод:",
       "source": "Източник:",
       "imfGrowth": "Прогноза за растеж на МВФ",
       "creditGdp": "Кредит към БВП",
@@ -148,8 +151,6 @@
       "gasDemand": "Търсене на газ",
       "energyMix": "Електроенергиен микс",
       "coal": "въглища",
-      "aviationAvailability": "Наличност на авиацията",
-      "hazardAvailability": "Наличност на опасностите",
       "noMajorDisruptions": "Няма съобщени сериозни смущения",
       "activeDisruptions_one": "{{count}} активно прекъсване",
       "activeDisruptions_other": "{{count}} активни прекъсвания",
@@ -161,18 +162,21 @@
       "ccfiSource": "Шанхайска корабна борса",
       "comtradeSource": "UN Comtrade, докладваща страна 156",
       "sourceUnavailable": "Източникът не е наличен",
-      "macroUnavailable": "Макроикономическите и политическите данни в момента не са налични.",
-      "marketUnavailable": "Пазарните и кредитните данни в момента не са налични.",
-      "tradeUnavailable": "Данните за търговия и вериги на доставки в момента не са налични.",
-      "energyUnavailable": "Енергийните данни в момента не са налични.",
-      "availabilityUnavailable": "Данните за опасности и авиация в момента не са налични.",
+      "policyUnavailable": "Official policy and enforcement events are currently unavailable.",
+      "policyPartial": "{{count}} official agencies are temporarily degraded.",
       "status": {
         "loading": "Зареждане",
         "available": "Налично",
         "partial": "Частично",
         "stale": "Остаряло",
         "unavailable": "Неналично"
-      }
+      },
+      "macroSignals": "Макро сигнали",
+      "crossStraitActivity": "Активност през протока",
+      "corporateDisclosures": "Корпоративни оповестявания",
+      "corridorConditions": "Условия в коридора",
+      "activityNowcast": "Нокаст на активността",
+      "decisionSignalsUnavailable": "Снимката на сигналите за решения на Китай в момента не е налична."
     }
   },
   "header": {
@@ -253,7 +257,7 @@
     "panelCatCommodityEcon": "Економија & Трговија",
     "panelCatHappyNews": "Добри Вести",
     "panelCatHappyPlanet": "Планета & Давање",
-    "embed": "Embed"
+    "embed": "Вграждане"
   },
   "panels": {
     "liveNews": "Живи новини",
@@ -1268,8 +1272,8 @@
       "sectionFollowing": "Following",
       "sectionAll": "All",
       "sourceStates": {
-        "degraded": "degraded",
-        "stale": "stale"
+        "degraded": "деградирал",
+        "stale": "остарял"
       }
     },
     "insights": {
@@ -1348,7 +1352,8 @@
       "newsSignals": "{{news}} новини • {{signals}} сигнали",
       "provenanceTitle": "Произход на обхвата: колко включени истории и отделни източници е избрано от този преглед",
       "compiledFrom": "Събрано от {{stories}} истории в {{sources}} източници",
-      "briefFreshness": "Генериран преди {{minutes}}м · най-нов източник {{hours}}ч стар"
+      "briefFreshness": "Генериран преди {{minutes}}м · най-нов източник {{hours}}ч стар",
+      "briefStoryDetails": "Story details ({{count}})"
     },
     "settings": {
       "exportSettings": "Експорт на настройки",
@@ -1426,10 +1431,10 @@
         "hoursAgo": "{{count}}h преди"
       },
       "infoTooltip": "<strong>Методология</strong> Композитен резултат (0-100), смесване:<ul><li>50% нестабилност на държави (топ 5 претегляни)</li><li>30% географска конвергенция зони</li><li>20% инцидентите на инфраструктура</li></ul>Авто-обновлява всеки 5 минути.",
-      "cachedCiiStatus": "Cached CII {{states}}",
+      "cachedCiiStatus": "Кеширан CII {{states}}",
       "sourceStates": {
-        "degraded": "degraded",
-        "stale": "stale"
+        "degraded": "деградирал",
+        "stale": "остарял"
       },
       "dataFreshness": "Data Freshness",
       "sourcesDetail": "{{active}}/{{total}} sources"
@@ -1556,7 +1561,26 @@
       "cafIndex": "CAF индекс",
       "candidGrants": "Candid дарения",
       "dataLag": "Лаг на данни",
-      "infoTooltip": "<strong>Глобалнен индекс на дарения активност</strong> Композитен индекс на проследяване на личното дарение в платформи за краудфинансиране и крипто портфейли.<ul><li><strong>Платформи</strong>: GoFundMe, GlobalGiving, JustGiving кампания вземане на проба</li><li><strong>Крипто</strong>: На-верига благодателност портфейл приливане (Endaoment, дарение блок)</li><li><strong>Институционален</strong>: OECD ODA, CAF световен индекс дарения, Candid дарения</li></ul>Индекс е посока (не точни суми). Комбинира живо вземане на проба с публикувани годишни доклади."
+      "infoTooltip": "<strong>Глобалнен индекс на дарения активност</strong> Композитен индекс на проследяване на личното дарение в платформи за краудфинансиране и крипто портфейли.<ul><li><strong>Платформи</strong>: GoFundMe, GlobalGiving, JustGiving кампания вземане на проба</li><li><strong>Крипто</strong>: На-верига благодателност портфейл приливане (Endaoment, дарение блок)</li><li><strong>Институционален</strong>: OECD ODA, CAF световен индекс дарения, Candid дарения</li></ul>Индекс е посока (не точни суми). Комбинира живо вземане на проба с публикувани годишни доклади.",
+      "benchmarkTitle": "Глобални показатели за дарения",
+      "benchmarkInfoTooltip": "<strong>Глобални показатели за дарения</strong> Публикувани твърдения на платформи и институции с периоди на източници и статус на верификация. Годишните данни са оценки, а не активност в реално време.",
+      "status": {
+        "published": "Публикувани показатели с верифицирано покритие на източници.",
+        "partial": "Публикувани показатели с частично покритие на източници.",
+        "legacy": "Стара снимка; детайли за източника не са налични.",
+        "cached": "Показва се кеширана снимка; обновяването не е налично."
+      },
+      "trackedAnnualized": "Проследявани дарения на платформа — годишна оценка",
+      "annualizedDaily": "Дневна годишна оценка",
+      "atLeast": "Поне",
+      "about": "Около",
+      "sourceNotVerified": "Източникът не е верифициран",
+      "reportedCumulative": "Отчетен кумулативен общ сбор",
+      "sourcePeriod": "{{source}} · {{period}}",
+      "benchmark": "Публикуван показател",
+      "sourcesMethodology": "Източници и методология",
+      "methodologyIntro": "В заглавието влизат само верифицирани годишни или защитимо анюализирани твърдения на платформи. Кумулативните и институционалните данни остават отделен контекст.",
+      "partialEstimate": "Частично верифицирана оценка"
     },
     "displacement": {
       "refugees": "Бежанци",
@@ -1596,6 +1620,8 @@
       "summaryFailed": "Неуспешно резюме",
       "sources": "{{count}} върши",
       "relatedAssetsNear": "Свързани активи близо до {{location}}",
+      "sourceCoverage": "{{covered}}/{{total}} източника",
+      "sourceCoverageHint": "Показва {{covered}} от {{total}} активни източника — този панел редува източниците си при всяко обновяване",
       "sortBy": "Сортиране по",
       "sortNewest": "Най-нови",
       "sortRelevance": "Релевантност"
@@ -2108,7 +2134,11 @@
       "infoTooltip": "<strong>Каскада от災害</strong> Открива конвергиращи сигнали от природни бедствия и инфраструктура:<ul><li>Корелира земетресения, горски пожари, наводнения и екстремни времеви явления</li><li>Проследява каскадни ефекти на инфраструктура и верига на доставки</li><li>Подчертава региони с натрупан риск от бедствия</li></ul>Кликнете върху карта, за да увеличите мащаба на засегнатия регион."
     },
     "markets": {
-      "infoTooltip": "<strong>Пазари</strong> Цени в реално време на фондови индекси, акции и крипто. Персонализирайте списъка си с наблюдавани стойности с помощта на бутона Списък на наблюдаване. Спарклайните показват скорошния тренд на цената."
+      "infoTooltip": "<strong>Пазари</strong> Цени в реално време на фондови индекси, акции и крипто. Персонализирайте списъка си с наблюдавани стойности с помощта на бутона Списък на наблюдаване. Спарклайните показват скорошния тренд на цената.",
+      "chart": {
+        "title": "Ценова диаграма {{symbol}}",
+        "close": "Затвори диаграмата"
+      }
     },
     "heatmap": {
       "infoTooltip": "<strong>Хартата на топлината на секторите</strong> Производителност на секторите на S&P 500 с един поглед. Интензивността на цвета отразява величината на дневната промяна. Зелено = печалби, Червено = загуби."
@@ -2170,11 +2200,101 @@
       "cta": "Надстройка към Pro →",
       "dismiss": "Отхвърляне"
     },
+    "billingState": {
+      "onHoldDesc": "Плащането е неуспешно. Актуализирайте начина си на плащане, за да възстановите премиум достъпа.",
+      "onHoldBannerMessage": "Плащането е неуспешно. Актуализирайте начина си на плащане, за да запазите абонамента си активен.",
+      "updatePayment": "Актуализиране на плащането",
+      "renewalPendingDesc": "Проверяваме подновяването на абонамента ви. Премиум достъпът ще бъде възстановен автоматично след потвърждение.",
+      "refreshStatus": "Опресняване на статуса",
+      "renewalFailedDesc": "Не успяхме да проверим подновяването на абонамента ви. Управлявайте фактурирането или се свържете с поддръжката, ако проблемът продължи.",
+      "manageBilling": "Управление на фактурирането",
+      "lapsedDesc": "Вашият Pro абонамент е изтекъл. Абонирайте се отново, за да възстановите премиум достъпа.",
+      "resubscribe": "Абониране отново"
+    },
     "checkoutFailureBanner": {
       "message": "Плащането не можа да бъде завършено. Не е направена такса.",
       "retry": "Опитайте отново",
       "retrying": "Повторен опит…",
       "dismiss": "Отхвърляне"
+    },
+    "proActivation": {
+      "badge": "PRO",
+      "progress": "Стъпка {{current}} от {{total}}",
+      "closeLabel": "Пропусни настройката",
+      "ariaLabel": "Настройка на активирането на Pro",
+      "signedInAs": "Влезли сте като {{email}}",
+      "steps": {
+        "brief": {
+          "heading": "Вашият ежедневен брифинг, всяка сутрин",
+          "body": "Подбран разузнавателен брифинг във входящата ви поща всяка сутрин — важните сигнали от нощта, сведени до петминутно четиво.",
+          "confirmCta": "Включи моя сутрешен брифинг",
+          "confirming": "Включване…",
+          "doneNote": "Сутрешният ви брифинг вече работи.",
+          "scheduleNote": "Ще запазим текущото ви време за доставка.",
+          "summaryLabel": "Сутрешен брифинг",
+          "summaryVerified": "Включен — стартира от следващия ви сутрешен брифинг.",
+          "deliverAt": "Доставка в",
+          "previewLoading": "Подготвяме преглед на първия ви брифинг…",
+          "previewLabel": "Брифингът за тази сутрин"
+        },
+        "alerts": {
+          "heading": "Критични сигнали",
+          "body": "Получавайте известие в браузъра си, когато се случи нещо голямо — ескалации на конфликти, пазарни сътресения, нови санкции. Настройте честотата по всяко време в Настройки.",
+          "confirmCta": "Включи сигналите",
+          "confirming": "Включване…",
+          "doneNote": "Известията в браузъра вече са включени.",
+          "blockedNote": "Известията са блокирани в браузъра ви. Включете ги в настройките на сайта на браузъра си, за да получавате сигнали.",
+          "declinedNote": "Няма проблем — няма да изпращаме известия в браузъра. Можете да ги включите по-късно от настройките на сайта на браузъра си.",
+          "summaryLabel": "Критични сигнали",
+          "summaryVerified": "Включени — критичните сигнали ще достигат до браузъра ви."
+        },
+        "power": {
+          "heading": "Вашият Pro инструментариум",
+          "body": "Персонализирани уиджети, MCP връзки и AI изследователят са отключени. Изградете таблото, което наистина искате да следите.",
+          "confirmCta": "Разгледай Pro инструментите",
+          "confirming": "Отваряне…",
+          "doneNote": "Вече използвате Pro инструментите си.",
+          "summaryLabel": "Pro инструментариум",
+          "summaryVerified": "Отключен и готов, когато сте готови и вие.",
+          "channelsNote": "Предпочитате Telegram, Slack, Discord или уебхук?",
+          "pointers": {
+            "search": "Търси в цялото табло",
+            "widgets": "Създай персонализиран уиджет",
+            "analyst": "Попитай AI анализатора",
+            "mcpClients": "Настрой MCP",
+            "channels": "Настройте ги в настройките за известия"
+          }
+        }
+      },
+      "status": {
+        "pending": "Не е настроено",
+        "inFlight": "Настройване…",
+        "verified": "Готово",
+        "failed": "Не проработи",
+        "blocked": "Блокирано",
+        "unavailable": "Не е налично",
+        "blockedNote": "Това не е налично в момента — можете да го настроите по-късно от настройките.",
+        "unavailableNote": "Това не е налично на вашето устройство — можете да го настроите по-късно.",
+        "failedBody": "Нещо се обърка. Можете да опитате отново или да го настроите по-късно от настройките.",
+        "retry": "Опитай отново"
+      },
+      "actions": {
+        "skip": "Пропусни засега",
+        "continue": "Продължи"
+      },
+      "summary": {
+        "heading": "Всичко е готово",
+        "subVerified": "Ето какво работи във вашия акаунт.",
+        "subPending": "Можете да завършите настройката по всяко време от настройките.",
+        "linePending": "Все още не е настроено — довършете го по всяко време в настройките.",
+        "lineFailed": "Не успяхме да настроим това — опитайте отново от настройките.",
+        "finish": "Към моето табло"
+      },
+      "chip": {
+        "message": "Довършете настройката на своя Pro акаунт.",
+        "action": "Довърши настройката",
+        "dismissLabel": "Отхвърли"
+      }
     },
     "frameworkSelector": {
       "label": "Рамка за анализ",
@@ -2349,43 +2469,59 @@
       }
     },
     "mobileNav": {
-      "panelCategories": "Panel categories"
+      "panelCategories": "Категории панели"
     },
     "panelFreshness": {
       "status": {
-        "fresh": "Fresh",
-        "stale": "Stale",
-        "veryStale": "Very stale",
-        "noData": "No data",
-        "disabled": "Disabled",
-        "error": "Error"
+        "fresh": "Актуално",
+        "stale": "Остаряло",
+        "veryStale": "Много остаряло",
+        "noData": "Няма данни",
+        "disabled": "Деактивирано",
+        "error": "Грешка"
       },
       "labelWithAge": "{{status}} {{age}}",
-      "title": "Data freshness: {{status}}. {{sources}}",
+      "title": "Актуалност на данните: {{status}}. {{sources}}",
       "sourceDetail": "{{name}}: {{status}}, {{update}}",
       "sourceDetailWithHealth": "{{name}}: {{status}}, {{update}}, {{detail}}",
-      "lastUpdated": "last updated {{time}}",
-      "neverUpdated": "never updated",
+      "lastUpdated": "последна актуализация {{time}}",
+      "neverUpdated": "никога не е актуализирано",
       "health": {
-        "partialCoverage": "partial coverage",
-        "contentStale": "content stale",
-        "seedStale": "seed stale",
-        "noSourceData": "no source data",
-        "sourceErrorReported": "source error reported",
-        "freshnessStoreUnavailable": "freshness store unavailable",
-        "freshnessStoreDegraded": "freshness store degraded"
+        "partialCoverage": "частично покритие",
+        "contentStale": "съдържанието е остаряло",
+        "seedStale": "seed е остарял",
+        "noSourceData": "няма данни от извор",
+        "sourceErrorReported": "докладвана грешка в извора",
+        "freshnessStoreUnavailable": "хранилището за актуалност не е налично",
+        "freshnessStoreDegraded": "хранилището за актуалност е деградирало"
       },
       "time": {
-        "never": "never",
-        "justNow": "just now",
-        "minutesAgo": "{{count}}m ago",
-        "hoursAgo": "{{count}}h ago",
-        "daysAgo": "{{count}}d ago",
-        "compactNow": "now",
-        "compactMinutes": "{{count}}m",
-        "compactHours": "{{count}}h",
-        "compactDays": "{{count}}d"
+        "never": "никога",
+        "justNow": "преди малко",
+        "minutesAgo": "преди {{count}}м",
+        "hoursAgo": "преди {{count}}ч",
+        "daysAgo": "преди {{count}}д",
+        "compactNow": "сега",
+        "compactMinutes": "{{count}}м",
+        "compactHours": "{{count}}ч",
+        "compactDays": "{{count}}д"
       }
+    },
+    "exportGate": {
+      "signedOutDesc": "Влезте, за да експортирате данните от таблото като CSV, JSON или PDF.",
+      "upgradeDesc": "Експортирането на данни (CSV, JSON, PDF) е включено в Pro Business.",
+      "upgradeCta": "Надградете до Pro Business",
+      "lockedAriaLabel": "Експортирай данни — заключено. {{reason}}",
+      "unlockedAnnouncement": "Експортирането на данни е отключено.",
+      "preparingPdf": "Подготовка на PDF…",
+      "pdfFailed": "PDF докладът не можа да бъде генериран. Опитайте отново или използвайте JSON експорт."
+    },
+    "tabCap": {
+      "signedOutDesc": "Работните пространства без вход са ограничени до {{cap}} раздела. Влезте, за да добавите още.",
+      "upgradeDesc": "Достигнахте лимита от {{cap}} раздела на таблото.",
+      "upgradeCta": "Надградете за повече",
+      "lockedAriaLabel": "Добави раздел — заключено. {{reason}}",
+      "unlockedAnnouncement": "Лимитът на разделите на таблото е премахнат."
     }
   },
   "popups": {
@@ -3189,16 +3325,42 @@
     "visualizationFailed": "Визуализацията не успя"
   },
   "dashboardTabs": {
-    "ariaLabel": "Dashboard tabs",
-    "defaultName": "Main",
-    "newTabName": "New Tab",
-    "newTabCreated": "New tab created",
-    "tabDeleted": "Tab \"{{name}}\" deleted",
-    "addTab": "Add tab",
-    "addTabTitle": "New tab (starts with the default panels)",
-    "renameHint": "{{name}} — double-click to rename",
-    "deleteTab": "Delete tab",
-    "deleteTabAria": "Delete tab {{name}}",
-    "tabNameAria": "Tab name"
+    "ariaLabel": "Раздели на таблото",
+    "defaultName": "Основен",
+    "newTabName": "Нов раздел",
+    "newTabCreated": "Нов раздел е създаден",
+    "tabDeleted": "Разделът \"{{name}}\" е изтрит",
+    "addTab": "Добави раздел",
+    "addTabTitle": "Нов раздел (започва с панелите по подразбиране)",
+    "renameHint": "{{name}} — щракнете двукратно за преименуване",
+    "deleteTab": "Изтрий раздела",
+    "deleteTabAria": "Изтрий раздел {{name}}",
+    "tabNameAria": "Име на раздела"
+  },
+  "theaterPresets": {
+    "label": "Пакети за покритие",
+    "applied": "Пакетът {{preset}} е приложен: активирани са {{count}} източника",
+    "alreadyApplied": "Пакетът {{preset}} вече е приложен",
+    "ukraineWar": {
+      "label": "Войната в Украйна",
+      "description": "Активирайте основни украински медии, независим руски печат и източници за оценка на фронта"
+    },
+    "indoPacific": {
+      "label": "Индо-Тихоокеански регион / Тайван",
+      "description": "Активирайте източници за сигурността в Тайван, Пакистан и Югоизточна Азия"
+    },
+    "sahelWestAfrica": {
+      "label": "Сахел и Западна Африка",
+      "description": "Активирайте местни източници от Сахел, Нигерия и Западна Африка"
+    },
+    "caucasusCentralAsia": {
+      "label": "Кавказ и Централна Азия",
+      "description": "Активирайте регионални източници от Южен Кавказ и Централна Азия"
+    },
+    "middleEastFlashpoints": {
+      "label": "Точки на напрежение в Близкия изток",
+      "description": "Активирайте източници за Иран, Израел, Персийския залив и кюрдските региони"
+    },
+    "unavailable": "Пакетът {{preset}} не е наличен с текущите ви панели"
   }
 }

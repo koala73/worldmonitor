@@ -129,17 +129,20 @@
       "currencies": "Währungen",
       "area": "Fläche"
     },
-    "loadingResilienceScore": "Loading resilience score…",
-    "resilienceScoreUnavailable": "Resilience score unavailable.",
+    "loadingResilienceScore": "Resilienz-Score wird geladen…",
+    "resilienceScoreUnavailable": "Resilienz-Score nicht verfügbar.",
     "china": {
       "title": "China-Länderüberblick",
       "description": "Aktuelle Makro-, Markt-, Handels-, Energie- und Betriebsverfügbarkeitsdaten aus bestehenden öffentlichen Datenverträgen.",
-      "macroPolicy": "Makro & Politik",
-      "marketCredit": "Markt & Kredit",
-      "tradeSupply": "Handel & Lieferkette",
+      "policyEvents": "Politik & Durchsetzung",
       "energy": "Energie",
       "availability": "Gefahren & Luftfahrt",
       "observed": "Stand:",
+      "published": "Veröffentlicht:",
+      "effective": "Gültig:",
+      "sectors": "Sektoren:",
+      "entities": "Einheiten:",
+      "translation": "Übersetzung:",
       "source": "Quelle:",
       "imfGrowth": "IWF-Wachstumsprognose",
       "creditGdp": "Kredit im Verhältnis zum BIP",
@@ -148,8 +151,6 @@
       "gasDemand": "Gasnachfrage",
       "energyMix": "Strommix",
       "coal": "Kohle",
-      "aviationAvailability": "Luftfahrt-Verfügbarkeit",
-      "hazardAvailability": "Gefahren-Verfügbarkeit",
       "noMajorDisruptions": "Keine größeren Störungen gemeldet",
       "activeDisruptions_one": "{{count}} aktive Störung",
       "activeDisruptions_other": "{{count}} aktive Störungen",
@@ -161,18 +162,21 @@
       "ccfiSource": "Shanghai Shipping Exchange",
       "comtradeSource": "UN Comtrade, Berichtsland 156",
       "sourceUnavailable": "Quelle nicht verfügbar",
-      "macroUnavailable": "Makro- und Politikdaten sind derzeit nicht verfügbar.",
-      "marketUnavailable": "Markt- und Kreditdaten sind derzeit nicht verfügbar.",
-      "tradeUnavailable": "Handels- und Lieferkettendaten sind derzeit nicht verfügbar.",
-      "energyUnavailable": "Energiedaten sind derzeit nicht verfügbar.",
-      "availabilityUnavailable": "Gefahren- und Luftfahrtdaten sind derzeit nicht verfügbar.",
+      "policyUnavailable": "Official policy and enforcement events are currently unavailable.",
+      "policyPartial": "{{count}} official agencies are temporarily degraded.",
       "status": {
         "loading": "Wird geladen",
         "available": "Verfügbar",
         "partial": "Teilweise",
         "stale": "Veraltet",
         "unavailable": "Nicht verfügbar"
-      }
+      },
+      "macroSignals": "Makro-Signale",
+      "crossStraitActivity": "Aktivitäten über die Meerenge",
+      "corporateDisclosures": "Unternehmensoffenlegungen",
+      "corridorConditions": "Korridor-Bedingungen",
+      "activityNowcast": "Aktivitäts-Nowcast",
+      "decisionSignalsUnavailable": "Der China-Entscheidungssignal-Snapshot ist derzeit nicht verfügbar."
     }
   },
   "header": {
@@ -253,7 +257,7 @@
     "panelCatCommodityEcon": "Wirtschaft & Handel",
     "panelCatHappyNews": "Gute Nachrichten",
     "panelCatHappyPlanet": "Planet & Spenden",
-    "embed": "Embed"
+    "embed": "Einbetten"
   },
   "panels": {
     "liveNews": "Live-Nachrichten",
@@ -871,7 +875,7 @@
       "fytdLabel": "FY{{year}} YTD",
       "vsPriorFy": "gegenüber FY{{year}}",
       "sourceWto": "WTO",
-      "sourceTreasury": "US Treasury",
+      "sourceTreasury": "US-Finanzministerium",
       "colDate": "Datum",
       "colMonthly": "Monatlich",
       "colFytd": "FY YTD",
@@ -1135,6 +1139,8 @@
       "relatedAssetsNear": "Zugehörige Vermögenswerte in der Nähe von {{location}}",
       "summaryError": "Zusammenfassung konnte nicht erstellt werden",
       "summaryFailed": "Zusammenfassung fehlgeschlagen",
+      "sourceCoverage": "{{covered}}/{{total}} Quellen",
+      "sourceCoverageHint": "Zeigt {{covered}} von {{total}} aktivierten Quellen — dieses Panel wechselt seine Quellen bei jeder Aktualisierung",
       "sortBy": "Sortieren nach",
       "sortNewest": "Neueste",
       "sortRelevance": "Relevanz"
@@ -1417,7 +1423,26 @@
       "cafIndex": "CAF-Index",
       "candidGrants": "Candid-Zuschüsse",
       "dataLag": "Datenverzögerung",
-      "infoTooltip": "<strong>Globaler Spendenaktivitätsindex</strong> Zusammengesetzter Index zur Verfolgung persönlicher Spenden über Crowdfunding-Plattformen und Krypto-Wallets.<ul><li><strong>Plattformen</strong>: GoFundMe, GlobalGiving, JustGiving Kampagnenstichproben</li><li><strong>Krypto</strong>: On-Chain-Spenden-Wallet-Zuflüsse (Endaoment, Giving Block)</li><li><strong>Institutionell</strong>: OECD ODA, CAF World Giving Index, Candid-Zuschüsse</li></ul>Der Index ist richtungsweisend (keine exakten Dollarbeträge). Kombiniert Live-Stichproben mit veröffentlichten Jahresberichten."
+      "infoTooltip": "<strong>Globaler Spendenaktivitätsindex</strong> Zusammengesetzter Index zur Verfolgung persönlicher Spenden über Crowdfunding-Plattformen und Krypto-Wallets.<ul><li><strong>Plattformen</strong>: GoFundMe, GlobalGiving, JustGiving Kampagnenstichproben</li><li><strong>Krypto</strong>: On-Chain-Spenden-Wallet-Zuflüsse (Endaoment, Giving Block)</li><li><strong>Institutionell</strong>: OECD ODA, CAF World Giving Index, Candid-Zuschüsse</li></ul>Der Index ist richtungsweisend (keine exakten Dollarbeträge). Kombiniert Live-Stichproben mit veröffentlichten Jahresberichten.",
+      "benchmarkTitle": "Globale Spendenreferenzen",
+      "benchmarkInfoTooltip": "<strong>Globale Spendenreferenzen</strong> Veröffentlichte Plattform- und Institutionsangaben mit Quellzeiträumen und Verifizierungsstatus. Annualisierte Zahlen sind Schätzungen, keine Live-Aktivität.",
+      "status": {
+        "published": "Veröffentlichte Referenzen mit verifizierter Quellenabdeckung.",
+        "partial": "Veröffentlichte Referenzen mit teilweiser Quellenabdeckung.",
+        "legacy": "Legacy-Snapshot; Quellendetails nicht verfügbar.",
+        "cached": "Zeigt einen zwischengespeicherten Snapshot; Aktualisierung nicht verfügbar."
+      },
+      "trackedAnnualized": "Verfolgte Plattformspenden — annualisierte Schätzung",
+      "annualizedDaily": "Annualisierte Tagesschätzung",
+      "atLeast": "Mindestens",
+      "about": "Etwa",
+      "sourceNotVerified": "Quelle nicht verifiziert",
+      "reportedCumulative": "Gemeldete kumulative Summe",
+      "sourcePeriod": "{{source}} · {{period}}",
+      "benchmark": "Veröffentlichte Referenz",
+      "sourcesMethodology": "Quellen & Methodik",
+      "methodologyIntro": "Nur verifizierte jährliche oder vertretbar annualisierte Plattformangaben fließen in die Headline ein. Kumulative und institutionelle Zahlen bleiben separater Kontext.",
+      "partialEstimate": "Teilweise verifizierte Schätzung"
     },
     "displacement": {
       "refugees": "Flüchtlinge",
@@ -1454,12 +1479,12 @@
       "sectionFollowing": "Following",
       "sectionAll": "All",
       "sourceStates": {
-        "degraded": "degraded",
-        "stale": "stale"
+        "degraded": "beeinträchtigt",
+        "stale": "veraltet"
       }
     },
     "gdeltIntel": {
-      "infoTooltip": "<strong>News Intelligence</strong> Globale Nachrichtenüberwachung in Echtzeit:<ul><li>Kuratierte Themenkategorien (Konflikte, Cyber ​​usw.)</li><li>Artikel aus über 100 Sprachen übersetzt</li><li>Aktualisierungen alle 15 Minuten</li><li>14-day media tone &amp; volume trend per topic</li></ul>Quelle: GDELT-Projekt (gdeltproject.org)"
+      "infoTooltip": "<strong>News Intelligence</strong> Globale Nachrichtenüberwachung in Echtzeit:<ul><li>Kuratierte Themenkategorien (Konflikte, Cyber usw.)</li><li>Artikel aus über 100 Sprachen übersetzt</li><li>Aktualisierungen alle 15 Minuten</li><li>14-day media tone &amp; volume trend per topic</li></ul>Quelle: GDELT-Projekt (gdeltproject.org)"
     },
     "telegramIntel": {
       "infoTooltip": "Echtzeit-Signale aus überwachten Telegram-OSINT-Kanälen",
@@ -1564,10 +1589,10 @@
         "minutesAgo": "{{count}}m ago",
         "hoursAgo": "{{count}}h ago"
       },
-      "cachedCiiStatus": "Cached CII {{states}}",
+      "cachedCiiStatus": "Zwischengespeicherter CII {{states}}",
       "sourceStates": {
-        "degraded": "degraded",
-        "stale": "stale"
+        "degraded": "beeinträchtigt",
+        "stale": "veraltet"
       },
       "dataFreshness": "Data Freshness",
       "sourcesDetail": "{{active}}/{{total}} sources"
@@ -1648,7 +1673,8 @@
       "newsSignals": "{{news}} Nachrichten • {{signals}} Signale",
       "provenanceTitle": "Abdeckungsherkunft: Anzahl der erfassten Stories und unterschiedlichen Quellen, aus denen dieser Brief ausgewählt wurde",
       "compiledFrom": "Zusammengestellt aus {{stories}} Geschichten über {{sources}} Quellen",
-      "briefFreshness": "Generiert vor {{minutes}}m · neueste Quelle {{hours}}h alt"
+      "briefFreshness": "Generiert vor {{minutes}}m · neueste Quelle {{hours}}h alt",
+      "briefStoryDetails": "Story details ({{count}})"
     },
     "etfFlows": {
       "unavailable": "ETF-Daten vorübergehend nicht verfügbar",
@@ -2108,7 +2134,11 @@
       "infoTooltip": "<strong>Katastrophen-Kaskadeneffekte</strong> Erkennt konvergierende Signale natürlicher Katastrophen und Infrastruktur:<ul><li>Korreliert Erdbeben, Waldbrände, Überschwemmungen und Wetterextreme</li><li>Verfolgt kaskadierende Effekte auf Infrastruktur und Lieferketten</li><li>Hebt Regionen mit zusammengesetztem Katastrophenrisiko hervor</li></ul>Klicken Sie auf eine Karte, um die betroffene Region zu vergrößern."
     },
     "markets": {
-      "infoTooltip": "<strong>Märkte</strong> Echtzeit-Börsenindizes, Aktien und Kryptowährungspreise. Passen Sie Ihre Beobachtungsliste mit der Schaltfläche Beobachtungsliste an. Sparklines zeigen aktuelle Preistrendentwicklung."
+      "infoTooltip": "<strong>Märkte</strong> Echtzeit-Börsenindizes, Aktien und Kryptowährungspreise. Passen Sie Ihre Beobachtungsliste mit der Schaltfläche Beobachtungsliste an. Sparklines zeigen aktuelle Preistrendentwicklung.",
+      "chart": {
+        "title": "{{symbol}} Preisdiagramm",
+        "close": "Diagramm schließen"
+      }
     },
     "heatmap": {
       "infoTooltip": "<strong>Sektor-Heatmap</strong> S&P 500 Sektorenleistung auf einen Blick. Die Farbintensität spiegelt die Größe der täglichen Veränderung wider. Grün = Gewinne, Rot = Verluste."
@@ -2170,11 +2200,101 @@
       "cta": "Upgrade auf Pro →",
       "dismiss": "Verwerfen"
     },
+    "billingState": {
+      "onHoldDesc": "Zahlung fehlgeschlagen. Aktualisieren Sie Ihre Zahlungsmethode, um den Premium-Zugriff wiederherzustellen.",
+      "onHoldBannerMessage": "Zahlung fehlgeschlagen. Aktualisieren Sie Ihre Zahlungsmethode, damit Ihr Abonnement aktiv bleibt.",
+      "updatePayment": "Zahlungsmethode aktualisieren",
+      "renewalPendingDesc": "Wir überprüfen die Verlängerung Ihres Abonnements. Der Premium-Zugriff wird nach Bestätigung automatisch wiederhergestellt.",
+      "refreshStatus": "Status aktualisieren",
+      "renewalFailedDesc": "Die Verlängerung Ihres Abonnements konnte nicht überprüft werden. Verwalten Sie Ihre Abrechnung oder kontaktieren Sie den Support, falls das Problem weiterhin besteht.",
+      "manageBilling": "Abrechnung verwalten",
+      "lapsedDesc": "Ihr Pro-Abonnement ist abgelaufen. Abonnieren Sie erneut, um den Premium-Zugriff wiederzuerlangen.",
+      "resubscribe": "Erneut abonnieren"
+    },
     "checkoutFailureBanner": {
       "message": "Zahlung konnte nicht abgeschlossen werden. Es wurde keine Gebühr eingezogen.",
       "retry": "Erneut versuchen",
       "retrying": "Wird erneut versucht…",
       "dismiss": "Verwerfen"
+    },
+    "proActivation": {
+      "badge": "PRO",
+      "progress": "Schritt {{current}} von {{total}}",
+      "closeLabel": "Einrichtung überspringen",
+      "ariaLabel": "Pro-Aktivierung einrichten",
+      "signedInAs": "Angemeldet als {{email}}",
+      "steps": {
+        "brief": {
+          "heading": "Ihr tägliches Briefing, jeden Morgen",
+          "body": "Ein kuratiertes Intelligence-Briefing jeden Morgen in Ihrem Posteingang — die wichtigen Signale der Nacht, destilliert auf eine Fünf-Minuten-Lektüre.",
+          "confirmCta": "Mein Morgen-Briefing aktivieren",
+          "confirming": "Wird aktiviert…",
+          "doneNote": "Ihr Morgen-Briefing läuft bereits.",
+          "scheduleNote": "Wir behalten Ihre aktuelle Zustellzeit bei.",
+          "summaryLabel": "Morgen-Briefing",
+          "summaryVerified": "Aktiv — startet mit Ihrem nächsten Morgen-Briefing.",
+          "deliverAt": "Zustellung um",
+          "previewLoading": "Vorschau Ihres ersten Briefings wird vorbereitet…",
+          "previewLabel": "Das heutige Briefing"
+        },
+        "alerts": {
+          "heading": "Kritische Warnmeldungen",
+          "body": "Werden Sie in Ihrem Browser benachrichtigt, wenn etwas Großes passiert — Konflikteskalationen, Marktschocks, neue Sanktionen. Passen Sie die Häufigkeit jederzeit in den Einstellungen an.",
+          "confirmCta": "Warnmeldungen aktivieren",
+          "confirming": "Wird aktiviert…",
+          "doneNote": "Browser-Warnmeldungen sind bereits aktiv.",
+          "blockedNote": "Benachrichtigungen sind in Ihrem Browser blockiert. Aktivieren Sie sie in den Website-Einstellungen Ihres Browsers, um Warnmeldungen zu erhalten.",
+          "declinedNote": "Kein Problem — wir senden keine Browser-Warnmeldungen. Sie können sie später in den Website-Einstellungen Ihres Browsers aktivieren.",
+          "summaryLabel": "Kritische Warnmeldungen",
+          "summaryVerified": "Aktiv — kritische Signale erreichen Ihren Browser."
+        },
+        "power": {
+          "heading": "Ihr Pro-Toolkit",
+          "body": "Individuelle Widgets, MCP-Verbindungen und der KI-Researcher sind freigeschaltet. Bauen Sie sich das Dashboard, das Sie wirklich im Blick behalten wollen.",
+          "confirmCta": "Pro-Tools entdecken",
+          "confirming": "Wird geöffnet…",
+          "doneNote": "Sie nutzen Ihre Pro-Tools bereits.",
+          "summaryLabel": "Pro-Toolkit",
+          "summaryVerified": "Freigeschaltet und einsatzbereit, wenn Sie es sind.",
+          "channelsNote": "Lieber Telegram, Slack, Discord oder ein Webhook?",
+          "pointers": {
+            "search": "Das gesamte Dashboard durchsuchen",
+            "widgets": "Ein individuelles Widget erstellen",
+            "analyst": "Den KI-Analysten fragen",
+            "mcpClients": "MCP einrichten",
+            "channels": "In den Benachrichtigungseinstellungen einrichten"
+          }
+        }
+      },
+      "status": {
+        "pending": "Nicht eingerichtet",
+        "inFlight": "Wird eingerichtet…",
+        "verified": "Bereit",
+        "failed": "Hat nicht funktioniert",
+        "blocked": "Blockiert",
+        "unavailable": "Nicht verfügbar",
+        "blockedNote": "Das ist gerade nicht verfügbar — Sie können es später in den Einstellungen einrichten.",
+        "unavailableNote": "Das ist auf Ihrem Gerät nicht verfügbar — Sie können es später einrichten.",
+        "failedBody": "Etwas ist schiefgelaufen. Versuchen Sie es erneut oder richten Sie es später in den Einstellungen ein.",
+        "retry": "Erneut versuchen"
+      },
+      "actions": {
+        "skip": "Vorerst überspringen",
+        "continue": "Weiter"
+      },
+      "summary": {
+        "heading": "Alles eingerichtet",
+        "subVerified": "Das läuft jetzt auf Ihrem Konto.",
+        "subPending": "Sie können die Einrichtung jederzeit in den Einstellungen abschließen.",
+        "linePending": "Noch nicht eingerichtet — jederzeit in den Einstellungen abschließbar.",
+        "lineFailed": "Das konnten wir nicht einrichten — versuchen Sie es erneut in den Einstellungen.",
+        "finish": "Zu meinem Dashboard"
+      },
+      "chip": {
+        "message": "Schließen Sie die Einrichtung Ihres Pro-Kontos ab.",
+        "action": "Einrichtung abschließen",
+        "dismissLabel": "Schließen"
+      }
     },
     "frameworkSelector": {
       "label": "Analysisframework",
@@ -2349,43 +2469,59 @@
       }
     },
     "mobileNav": {
-      "panelCategories": "Panel categories"
+      "panelCategories": "Panel-Kategorien"
     },
     "panelFreshness": {
       "status": {
-        "fresh": "Fresh",
-        "stale": "Stale",
-        "veryStale": "Very stale",
-        "noData": "No data",
-        "disabled": "Disabled",
-        "error": "Error"
+        "fresh": "Aktuell",
+        "stale": "Veraltet",
+        "veryStale": "Sehr veraltet",
+        "noData": "Keine Daten",
+        "disabled": "Deaktiviert",
+        "error": "Fehler"
       },
       "labelWithAge": "{{status}} {{age}}",
-      "title": "Data freshness: {{status}}. {{sources}}",
+      "title": "Datenaktualität: {{status}}. {{sources}}",
       "sourceDetail": "{{name}}: {{status}}, {{update}}",
       "sourceDetailWithHealth": "{{name}}: {{status}}, {{update}}, {{detail}}",
-      "lastUpdated": "last updated {{time}}",
-      "neverUpdated": "never updated",
+      "lastUpdated": "zuletzt aktualisiert {{time}}",
+      "neverUpdated": "nie aktualisiert",
       "health": {
-        "partialCoverage": "partial coverage",
-        "contentStale": "content stale",
-        "seedStale": "seed stale",
-        "noSourceData": "no source data",
-        "sourceErrorReported": "source error reported",
-        "freshnessStoreUnavailable": "freshness store unavailable",
-        "freshnessStoreDegraded": "freshness store degraded"
+        "partialCoverage": "teilweise Abdeckung",
+        "contentStale": "Inhalt veraltet",
+        "seedStale": "Seed veraltet",
+        "noSourceData": "keine Quelldaten",
+        "sourceErrorReported": "Quellfehler gemeldet",
+        "freshnessStoreUnavailable": "Aktualitätsspeicher nicht verfügbar",
+        "freshnessStoreDegraded": "Aktualitätsspeicher beeinträchtigt"
       },
       "time": {
-        "never": "never",
-        "justNow": "just now",
-        "minutesAgo": "{{count}}m ago",
-        "hoursAgo": "{{count}}h ago",
-        "daysAgo": "{{count}}d ago",
-        "compactNow": "now",
+        "never": "nie",
+        "justNow": "gerade eben",
+        "minutesAgo": "vor {{count}}m",
+        "hoursAgo": "vor {{count}}h",
+        "daysAgo": "vor {{count}}T",
+        "compactNow": "jetzt",
         "compactMinutes": "{{count}}m",
         "compactHours": "{{count}}h",
-        "compactDays": "{{count}}d"
+        "compactDays": "{{count}}T"
       }
+    },
+    "exportGate": {
+      "signedOutDesc": "Melden Sie sich an, um Dashboard-Daten als CSV, JSON oder PDF zu exportieren.",
+      "upgradeDesc": "Datenexport (CSV, JSON, PDF) ist in Pro Business enthalten.",
+      "upgradeCta": "Auf Pro Business upgraden",
+      "lockedAriaLabel": "Daten exportieren — gesperrt. {{reason}}",
+      "unlockedAnnouncement": "Datenexport entsperrt.",
+      "preparingPdf": "PDF wird vorbereitet…",
+      "pdfFailed": "Der PDF-Bericht konnte nicht erstellt werden. Versuchen Sie es erneut oder verwenden Sie den JSON-Export."
+    },
+    "tabCap": {
+      "signedOutDesc": "Abgemeldete Arbeitsbereiche sind auf {{cap}} Dashboard-Tabs beschränkt. Melden Sie sich an, um weitere hinzuzufügen.",
+      "upgradeDesc": "Sie haben Ihr Limit von {{cap}} Dashboard-Tabs erreicht.",
+      "upgradeCta": "Für mehr upgraden",
+      "lockedAriaLabel": "Tab hinzufügen — gesperrt. {{reason}}",
+      "unlockedAnnouncement": "Dashboard-Tab-Limit aufgehoben."
     }
   },
   "popups": {
@@ -3189,16 +3325,42 @@
     "visualizationFailed": "Visualisierung fehlgeschlagen"
   },
   "dashboardTabs": {
-    "ariaLabel": "Dashboard tabs",
-    "defaultName": "Main",
-    "newTabName": "New Tab",
-    "newTabCreated": "New tab created",
-    "tabDeleted": "Tab \"{{name}}\" deleted",
-    "addTab": "Add tab",
-    "addTabTitle": "New tab (starts with the default panels)",
-    "renameHint": "{{name}} — double-click to rename",
-    "deleteTab": "Delete tab",
-    "deleteTabAria": "Delete tab {{name}}",
-    "tabNameAria": "Tab name"
+    "ariaLabel": "Dashboard-Tabs",
+    "defaultName": "Haupt",
+    "newTabName": "Neuer Tab",
+    "newTabCreated": "Neuer Tab erstellt",
+    "tabDeleted": "Tab \"{{name}}\" gelöscht",
+    "addTab": "Tab hinzufügen",
+    "addTabTitle": "Neuer Tab (startet mit den Standard-Panels)",
+    "renameHint": "{{name}} — Doppelklick zum Umbenennen",
+    "deleteTab": "Tab löschen",
+    "deleteTabAria": "Tab {{name}} löschen",
+    "tabNameAria": "Tab-Name"
+  },
+  "theaterPresets": {
+    "label": "Abdeckungspakete",
+    "applied": "{{preset}}-Paket angewendet: {{count}} Quellen aktiviert",
+    "alreadyApplied": "Das {{preset}}-Paket ist bereits angewendet",
+    "ukraineWar": {
+      "label": "Ukraine-Krieg",
+      "description": "Ukrainische Primärmedien, unabhängige russische Presse und Quellen zur Frontbewertung aktivieren"
+    },
+    "indoPacific": {
+      "label": "Indopazifik / Taiwan",
+      "description": "Sicherheitsquellen zu Taiwan, Pakistan und Südostasien aktivieren"
+    },
+    "sahelWestAfrica": {
+      "label": "Sahel und Westafrika",
+      "description": "Lokale Quellen aus dem Sahel, Nigeria und Westafrika aktivieren"
+    },
+    "caucasusCentralAsia": {
+      "label": "Kaukasus und Zentralasien",
+      "description": "Regionale Quellen aus dem Südkaukasus und Zentralasien aktivieren"
+    },
+    "middleEastFlashpoints": {
+      "label": "Krisenherde im Nahen Osten",
+      "description": "Quellen zu Iran, Israel, dem Golf und kurdischen Regionen aktivieren"
+    },
+    "unavailable": "Das {{preset}}-Paket ist mit den aktuellen Panels nicht verfügbar"
   }
 }

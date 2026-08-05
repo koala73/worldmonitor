@@ -129,17 +129,20 @@
       "currencies": "Валюты",
       "area": "Площадь"
     },
-    "loadingResilienceScore": "Loading resilience score…",
-    "resilienceScoreUnavailable": "Resilience score unavailable.",
+    "loadingResilienceScore": "Загрузка оценки устойчивости…",
+    "resilienceScoreUnavailable": "Оценка устойчивости недоступна.",
     "china": {
       "title": "Обзор по Китаю",
       "description": "Текущие макроэкономика, рынок, торговля, энергетика и операционная доступность на основе существующих публичных контрактов данных.",
-      "macroPolicy": "Макро и политика",
-      "marketCredit": "Рынок и кредит",
-      "tradeSupply": "Торговля и цепочки поставок",
+      "policyEvents": "Политика и правоприменение",
       "energy": "Энергетика",
       "availability": "Опасности и авиация",
       "observed": "По состоянию на:",
+      "published": "Опубликовано:",
+      "effective": "Вступает в силу:",
+      "sectors": "Секторы:",
+      "entities": "Организации:",
+      "translation": "Перевод:",
       "source": "Источник:",
       "imfGrowth": "Прогноз роста МВФ",
       "creditGdp": "Кредит к ВВП",
@@ -148,8 +151,6 @@
       "gasDemand": "Спрос на газ",
       "energyMix": "Структура энергобаланса",
       "coal": "уголь",
-      "aviationAvailability": "Доступность авиации",
-      "hazardAvailability": "Доступность данных об опасностях",
       "noMajorDisruptions": "Существенных сбоев не зарегистрировано",
       "activeDisruptions_one": "{{count}} активный сбой",
       "activeDisruptions_few": "{{count}} активных сбоя",
@@ -165,18 +166,21 @@
       "ccfiSource": "Шанхайская судоходная биржа",
       "comtradeSource": "ООН Comtrade, отчитывающаяся сторона 156",
       "sourceUnavailable": "Источник недоступен",
-      "macroUnavailable": "Данные по макроэкономике и политике временно недоступны.",
-      "marketUnavailable": "Данные по рынку и кредиту временно недоступны.",
-      "tradeUnavailable": "Данные по торговле и цепочкам поставок временно недоступны.",
-      "energyUnavailable": "Данные по энергетике временно недоступны.",
-      "availabilityUnavailable": "Данные об опасностях и авиации временно недоступны.",
+      "policyUnavailable": "Official policy and enforcement events are currently unavailable.",
+      "policyPartial": "{{count}} official agencies are temporarily degraded.",
       "status": {
         "loading": "Загрузка",
         "available": "Доступно",
         "partial": "Частично",
         "stale": "Устарело",
         "unavailable": "Недоступно"
-      }
+      },
+      "macroSignals": "Макросигналы",
+      "crossStraitActivity": "Активность через пролив",
+      "corporateDisclosures": "Корпоративные раскрытия",
+      "corridorConditions": "Условия в коридоре",
+      "activityNowcast": "Нокаст активности",
+      "decisionSignalsUnavailable": "Снимок сигналов принятия решений Китая в настоящее время недоступен."
     }
   },
   "header": {
@@ -257,7 +261,7 @@
     "panelCatCommodityEcon": "Экономика и торговля",
     "panelCatHappyNews": "Хорошие новости",
     "panelCatHappyPlanet": "Планета и благотворительность",
-    "embed": "Embed"
+    "embed": "Встроить"
   },
   "panels": {
     "liveNews": "Новости в реальном времени",
@@ -887,7 +891,7 @@
       "fytdLabel": "ФГ{{year}} с начала года",
       "vsPriorFy": "в сравнении с ФГ{{year}}",
       "sourceWto": "ВТО",
-      "sourceTreasury": "Казначейство США",
+      "sourceTreasury": "Министерство финансов США",
       "colDate": "Дата",
       "colMonthly": "Ежемесячно",
       "colFytd": "ФГ с начала года",
@@ -1272,8 +1276,8 @@
       "sectionFollowing": "Following",
       "sectionAll": "All",
       "sourceStates": {
-        "degraded": "degraded",
-        "stale": "stale"
+        "degraded": "деградировавший",
+        "stale": "устаревший"
       }
     },
     "insights": {
@@ -1354,7 +1358,8 @@
       "sources_many": "{{count}} источников",
       "provenanceTitle": "Происхождение охвата: количество полученных историй и отдельных источников, из которых была выбрана эта сводка",
       "compiledFrom": "Собрано из {{stories}} историй из {{sources}} источников",
-      "briefFreshness": "Сгенерировано {{minutes}}м назад · последний источник {{hours}}ч старый"
+      "briefFreshness": "Сгенерировано {{minutes}}м назад · последний источник {{hours}}ч старый",
+      "briefStoryDetails": "Story details ({{count}})"
     },
     "settings": {
       "exportSettings": "Экспорт настроек",
@@ -1432,10 +1437,10 @@
         "hoursAgo": "{{count}}h ago"
       },
       "infoTooltip": "<strong>Методология</strong> Составная оценка (0-100) на основе:<ul><li>50% Нестабильность стран (топ-5, взвешенные)</li><li>30% Географические зоны конвергенции</li><li>20% Инфраструктурные инциденты</li></ul>Автообновление каждые 5 минут.",
-      "cachedCiiStatus": "Cached CII {{states}}",
+      "cachedCiiStatus": "Кэшированный CII {{states}}",
       "sourceStates": {
-        "degraded": "degraded",
-        "stale": "stale"
+        "degraded": "деградировавший",
+        "stale": "устаревший"
       },
       "dataFreshness": "Data Freshness",
       "sourcesDetail": "{{active}}/{{total}} sources"
@@ -1562,7 +1567,26 @@
       "cafIndex": "Индекс CAF",
       "candidGrants": "Гранты Candid",
       "dataLag": "Задержка данных",
-      "infoTooltip": "<strong>Глобальный индекс благотворительной активности</strong> Композитный индекс отслеживания частных пожертвований через краудфандинговые платформы и крипто-кошельки.<ul><li><strong>Платформы</strong>: Выборка кампаний GoFundMe, GlobalGiving, JustGiving</li><li><strong>Крипто</strong>: Ончейн-поступления в благотворительные кошельки (Endaoment, Giving Block)</li><li><strong>Институциональные</strong>: OECD ODA, CAF World Giving Index, гранты Candid</li></ul>Индекс показывает направление, а не точные суммы. Сочетает живую выборку с опубликованными годовыми отчётами."
+      "infoTooltip": "<strong>Глобальный индекс благотворительной активности</strong> Композитный индекс отслеживания частных пожертвований через краудфандинговые платформы и крипто-кошельки.<ul><li><strong>Платформы</strong>: Выборка кампаний GoFundMe, GlobalGiving, JustGiving</li><li><strong>Крипто</strong>: Ончейн-поступления в благотворительные кошельки (Endaoment, Giving Block)</li><li><strong>Институциональные</strong>: OECD ODA, CAF World Giving Index, гранты Candid</li></ul>Индекс показывает направление, а не точные суммы. Сочетает живую выборку с опубликованными годовыми отчётами.",
+      "benchmarkTitle": "Глобальные ориентиры пожертвований",
+      "benchmarkInfoTooltip": "<strong>Глобальные ориентиры пожертвований</strong> Опубликованные заявления платформ и организаций с периодами источников и статусом проверки. Годовые цифры являются оценками, а не активностью в реальном времени.",
+      "status": {
+        "published": "Опубликованные ориентиры с проверенным охватом источников.",
+        "partial": "Опубликованные ориентиры с частичным охватом источников.",
+        "legacy": "Устаревший снимок; сведения об источнике недоступны.",
+        "cached": "Отображается кэшированный снимок; обновление недоступно."
+      },
+      "trackedAnnualized": "Отслеживаемые пожертвования платформы — годовая оценка",
+      "annualizedDaily": "Дневная годовая оценка",
+      "atLeast": "Не менее",
+      "about": "Около",
+      "sourceNotVerified": "Источник не проверен",
+      "reportedCumulative": "Заявленный совокупный итог",
+      "sourcePeriod": "{{source}} · {{period}}",
+      "benchmark": "Опубликованный ориентир",
+      "sourcesMethodology": "Источники и методология",
+      "methodologyIntro": "В заголовок включаются только проверенные ежегодные или обоснованно годовые заявления платформ. Совокупные и институциональные цифры остаются отдельным контекстом.",
+      "partialEstimate": "Частично проверенная оценка"
     },
     "displacement": {
       "refugees": "Беженцы",
@@ -1602,6 +1626,8 @@
       "summaryFailed": "Ошибка формирования сводки",
       "sources": "{{count}} источников",
       "relatedAssetsNear": "Связанные объекты вблизи {{location}}",
+      "sourceCoverage": "{{covered}}/{{total}} источников",
+      "sourceCoverageHint": "Показано {{covered}} из {{total}} включённых источников — эта панель чередует свои источники при каждом обновлении",
       "sortBy": "Сортировать по",
       "sortNewest": "Новейшие",
       "sortRelevance": "Релевантности"
@@ -2126,7 +2152,11 @@
       "infoTooltip": "<strong>Disaster Cascade</strong> Обнаруживает сходящиеся сигналы природных бедствий и инфраструктуры:<ul><li>Коррелирует землетрясения, лесные пожары, наводнения и экстремальную погоду</li><li>Отслеживает каскадные эффекты на инфраструктуру и цепи поставок</li><li>Выделяет регионы с сопутствующим риском бедствий</li></ul>Нажмите на карточку, чтобы увеличить затронутый регион."
     },
     "markets": {
-      "infoTooltip": "<strong>Markets</strong> Котировки индексов в реальном времени, акции и цены крипто. Настройте свой список отслеживания с помощью кнопки Список отслеживания. Спарклайны показывают недавний ценовой тренд."
+      "infoTooltip": "<strong>Markets</strong> Котировки индексов в реальном времени, акции и цены крипто. Настройте свой список отслеживания с помощью кнопки Список отслеживания. Спарклайны показывают недавний ценовой тренд.",
+      "chart": {
+        "title": "График цены {{symbol}}",
+        "close": "Закрыть график"
+      }
     },
     "heatmap": {
       "infoTooltip": "<strong>Sector Heatmap</strong> Производительность секторов S&P 500 с первого взгляда. Интенсивность цвета отражает величину дневного изменения. Зеленый = прибыль, Красный = убытки."
@@ -2188,11 +2218,101 @@
       "cta": "Перейти на Pro →",
       "dismiss": "Отклонить"
     },
+    "billingState": {
+      "onHoldDesc": "Платёж не прошёл. Обновите способ оплаты, чтобы восстановить премиум-доступ.",
+      "onHoldBannerMessage": "Платёж не прошёл. Обновите способ оплаты, чтобы ваша подписка оставалась активной.",
+      "updatePayment": "Обновить оплату",
+      "renewalPendingDesc": "Мы проверяем продление вашей подписки. Премиум-доступ будет автоматически восстановлен после подтверждения.",
+      "refreshStatus": "Обновить статус",
+      "renewalFailedDesc": "Не удалось проверить продление вашей подписки. Управляйте оплатой или обратитесь в поддержку, если проблема сохраняется.",
+      "manageBilling": "Управление оплатой",
+      "lapsedDesc": "Ваша подписка Pro завершилась. Подпишитесь снова, чтобы вернуть премиум-доступ.",
+      "resubscribe": "Подписаться снова"
+    },
     "checkoutFailureBanner": {
       "message": "Платеж не удалось завершить. Никаких списаний не было.",
       "retry": "Попробовать снова",
       "retrying": "Повтор…",
       "dismiss": "Отклонить"
+    },
+    "proActivation": {
+      "badge": "PRO",
+      "progress": "Шаг {{current}} из {{total}}",
+      "closeLabel": "Пропустить настройку",
+      "ariaLabel": "Настройка активации Pro",
+      "signedInAs": "Вход выполнен как {{email}}",
+      "steps": {
+        "brief": {
+          "heading": "Ваш ежедневный брифинг каждое утро",
+          "body": "Подготовленный аналитический брифинг в вашем почтовом ящике каждое утро — важные ночные сигналы, сжатые до пятиминутного чтения.",
+          "confirmCta": "Включить мой утренний брифинг",
+          "confirming": "Включение…",
+          "doneNote": "Ваш утренний брифинг уже запущен.",
+          "scheduleNote": "Мы сохраним текущее время доставки.",
+          "summaryLabel": "Утренний брифинг",
+          "summaryVerified": "Включено — начнётся со следующего утреннего брифинга.",
+          "deliverAt": "Доставка в",
+          "previewLoading": "Готовим предпросмотр вашего первого брифинга…",
+          "previewLabel": "Брифинг этого утра"
+        },
+        "alerts": {
+          "heading": "Критические оповещения",
+          "body": "Получайте уведомление в браузере, когда происходит что-то важное — эскалация конфликтов, рыночные потрясения, новые санкции. Настройте частоту в любое время в Настройках.",
+          "confirmCta": "Включить оповещения",
+          "confirming": "Включение…",
+          "doneNote": "Оповещения браузера уже включены.",
+          "blockedNote": "Уведомления заблокированы в вашем браузере. Включите их в настройках сайта в браузере, чтобы получать оповещения.",
+          "declinedNote": "Не проблема — мы не будем отправлять оповещения браузера. Вы можете включить их позже в настройках сайта в браузере.",
+          "summaryLabel": "Критические оповещения",
+          "summaryVerified": "Включено — критические сигналы будут доходить до вашего браузера."
+        },
+        "power": {
+          "heading": "Ваш набор инструментов Pro",
+          "body": "Пользовательские виджеты, подключения MCP и AI-исследователь разблокированы. Постройте панель, за которой вы действительно хотите следить.",
+          "confirmCta": "Изучить инструменты Pro",
+          "confirming": "Открытие…",
+          "doneNote": "Вы уже используете свои инструменты Pro.",
+          "summaryLabel": "Набор инструментов Pro",
+          "summaryVerified": "Разблокировано и готово, когда будете готовы вы.",
+          "channelsNote": "Предпочитаете Telegram, Slack, Discord или вебхук?",
+          "pointers": {
+            "search": "Искать по всей панели",
+            "widgets": "Создать пользовательский виджет",
+            "analyst": "Спросить AI-аналитика",
+            "mcpClients": "Настроить MCP",
+            "channels": "Настройте их в настройках уведомлений"
+          }
+        }
+      },
+      "status": {
+        "pending": "Не настроено",
+        "inFlight": "Настройка…",
+        "verified": "Готово",
+        "failed": "Не сработало",
+        "blocked": "Заблокировано",
+        "unavailable": "Недоступно",
+        "blockedNote": "Сейчас это недоступно — вы можете настроить это позже в настройках.",
+        "unavailableNote": "Это недоступно на вашем устройстве — вы можете настроить это позже.",
+        "failedBody": "Что-то пошло не так. Вы можете попробовать снова или настроить это позже в настройках.",
+        "retry": "Попробовать снова"
+      },
+      "actions": {
+        "skip": "Пропустить пока",
+        "continue": "Продолжить"
+      },
+      "summary": {
+        "heading": "Всё готово",
+        "subVerified": "Вот что работает в вашем аккаунте.",
+        "subPending": "Вы можете завершить настройку в любое время в настройках.",
+        "linePending": "Пока не настроено — завершите в любое время в настройках.",
+        "lineFailed": "Нам не удалось это настроить — попробуйте снова в настройках.",
+        "finish": "Перейти к моей панели"
+      },
+      "chip": {
+        "message": "Завершите настройку своего аккаунта Pro.",
+        "action": "Завершить настройку",
+        "dismissLabel": "Отклонить"
+      }
     },
     "frameworkSelector": {
       "label": "Фреймворк анализа",
@@ -2385,43 +2505,59 @@
       }
     },
     "mobileNav": {
-      "panelCategories": "Panel categories"
+      "panelCategories": "Категории панелей"
     },
     "panelFreshness": {
       "status": {
-        "fresh": "Fresh",
-        "stale": "Stale",
-        "veryStale": "Very stale",
-        "noData": "No data",
-        "disabled": "Disabled",
-        "error": "Error"
+        "fresh": "Актуально",
+        "stale": "Устарело",
+        "veryStale": "Очень устарело",
+        "noData": "Нет данных",
+        "disabled": "Отключено",
+        "error": "Ошибка"
       },
       "labelWithAge": "{{status}} {{age}}",
-      "title": "Data freshness: {{status}}. {{sources}}",
+      "title": "Актуальность данных: {{status}}. {{sources}}",
       "sourceDetail": "{{name}}: {{status}}, {{update}}",
       "sourceDetailWithHealth": "{{name}}: {{status}}, {{update}}, {{detail}}",
-      "lastUpdated": "last updated {{time}}",
-      "neverUpdated": "never updated",
+      "lastUpdated": "последнее обновление {{time}}",
+      "neverUpdated": "никогда не обновлялось",
       "health": {
-        "partialCoverage": "partial coverage",
-        "contentStale": "content stale",
-        "seedStale": "seed stale",
-        "noSourceData": "no source data",
-        "sourceErrorReported": "source error reported",
-        "freshnessStoreUnavailable": "freshness store unavailable",
-        "freshnessStoreDegraded": "freshness store degraded"
+        "partialCoverage": "частичное покрытие",
+        "contentStale": "контент устарел",
+        "seedStale": "seed устарел",
+        "noSourceData": "нет данных источника",
+        "sourceErrorReported": "сообщена ошибка источника",
+        "freshnessStoreUnavailable": "хранилище свежести недоступно",
+        "freshnessStoreDegraded": "хранилище свежести деградировало"
       },
       "time": {
-        "never": "never",
-        "justNow": "just now",
-        "minutesAgo": "{{count}}m ago",
-        "hoursAgo": "{{count}}h ago",
-        "daysAgo": "{{count}}d ago",
-        "compactNow": "now",
-        "compactMinutes": "{{count}}m",
-        "compactHours": "{{count}}h",
-        "compactDays": "{{count}}d"
+        "never": "никогда",
+        "justNow": "только что",
+        "minutesAgo": "{{count}}м назад",
+        "hoursAgo": "{{count}}ч назад",
+        "daysAgo": "{{count}}д назад",
+        "compactNow": "сейчас",
+        "compactMinutes": "{{count}}м",
+        "compactHours": "{{count}}ч",
+        "compactDays": "{{count}}д"
       }
+    },
+    "exportGate": {
+      "signedOutDesc": "Войдите, чтобы экспортировать данные панели в CSV, JSON или PDF.",
+      "upgradeDesc": "Экспорт данных (CSV, JSON, PDF) включён в Pro Business.",
+      "upgradeCta": "Перейти на Pro Business",
+      "lockedAriaLabel": "Экспорт данных — заблокировано. {{reason}}",
+      "unlockedAnnouncement": "Экспорт данных разблокирован.",
+      "preparingPdf": "Подготовка PDF…",
+      "pdfFailed": "Не удалось создать отчёт PDF. Повторите попытку или используйте экспорт JSON."
+    },
+    "tabCap": {
+      "signedOutDesc": "Рабочие пространства без входа ограничены {{cap}} вкладками панели. Войдите, чтобы добавить больше.",
+      "upgradeDesc": "Вы достигли лимита {{cap}} вкладок панели.",
+      "upgradeCta": "Обновить для большего",
+      "lockedAriaLabel": "Добавить вкладку — заблокировано. {{reason}}",
+      "unlockedAnnouncement": "Лимит вкладок панели снят."
     }
   },
   "popups": {
@@ -3225,16 +3361,42 @@
     "visualizationFailed": "Ошибка визуализации"
   },
   "dashboardTabs": {
-    "ariaLabel": "Dashboard tabs",
-    "defaultName": "Main",
-    "newTabName": "New Tab",
-    "newTabCreated": "New tab created",
-    "tabDeleted": "Tab \"{{name}}\" deleted",
-    "addTab": "Add tab",
-    "addTabTitle": "New tab (starts with the default panels)",
-    "renameHint": "{{name}} — double-click to rename",
-    "deleteTab": "Delete tab",
-    "deleteTabAria": "Delete tab {{name}}",
-    "tabNameAria": "Tab name"
+    "ariaLabel": "Вкладки панели",
+    "defaultName": "Главная",
+    "newTabName": "Новая вкладка",
+    "newTabCreated": "Новая вкладка создана",
+    "tabDeleted": "Вкладка \"{{name}}\" удалена",
+    "addTab": "Добавить вкладку",
+    "addTabTitle": "Новая вкладка (начинается с панелей по умолчанию)",
+    "renameHint": "{{name}} — двойной клик для переименования",
+    "deleteTab": "Удалить вкладку",
+    "deleteTabAria": "Удалить вкладку {{name}}",
+    "tabNameAria": "Название вкладки"
+  },
+  "theaterPresets": {
+    "label": "Пакеты покрытия",
+    "applied": "Пакет {{preset}} применён: включено источников — {{count}}",
+    "alreadyApplied": "Пакет {{preset}} уже применён",
+    "ukraineWar": {
+      "label": "Война в Украине",
+      "description": "Включить основные украинские СМИ, независимую российскую прессу и источники оценки ситуации на фронте"
+    },
+    "indoPacific": {
+      "label": "Индо-Тихоокеанский регион / Тайвань",
+      "description": "Включить источники по безопасности Тайваня, Пакистана и Юго-Восточной Азии"
+    },
+    "sahelWestAfrica": {
+      "label": "Сахель и Западная Африка",
+      "description": "Включить местные источники из Сахеля, Нигерии и Западной Африки"
+    },
+    "caucasusCentralAsia": {
+      "label": "Кавказ и Центральная Азия",
+      "description": "Включить региональные источники Южного Кавказа и Центральной Азии"
+    },
+    "middleEastFlashpoints": {
+      "label": "Очаги напряжённости на Ближнем Востоке",
+      "description": "Включить источники по Ирану, Израилю, странам Залива и курдским регионам"
+    },
+    "unavailable": "Пакет {{preset}} недоступен при текущем наборе панелей"
   }
 }

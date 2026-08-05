@@ -9,6 +9,7 @@
 const { strict: assert } = require('node:assert');
 const http = require('node:http');
 const test = require('node:test');
+const { nextBackoffMs } = require('./_ingestion-coverage.cjs');
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -443,4 +444,15 @@ test('RSS proxy: stale-on-error resolves in-flight (no hang)', async (_t) => {
   assert.equal(proxy.inFlight.size, 0, 'In-flight map should be empty after settlement');
 
   proxy.server.close();
+});
+
+test('RSS fallback exhaustion: repeated failures stop at the bounded cooldown cap', () => {
+  const delays = [0, 1, 2, 3, 4, 5].map((failures) => nextBackoffMs(failures, 60_000, 900_000));
+  // Each delay is deterministic-base ±25% jitter, capped at maxMs.
+  assert.ok(delays[0] >= 45_000 && delays[0] <= 75_000, `delay[0]=${delays[0]} out of range`);
+  assert.ok(delays[1] >= 90_000 && delays[1] <= 150_000, `delay[1]=${delays[1]} out of range`);
+  assert.ok(delays[2] >= 180_000 && delays[2] <= 300_000, `delay[2]=${delays[2]} out of range`);
+  assert.ok(delays[3] >= 360_000 && delays[3] <= 600_000, `delay[3]=${delays[3]} out of range`);
+  assert.ok(delays[4] >= 675_000 && delays[4] <= 900_000, `delay[4]=${delays[4]} out of range (capped)`);
+  assert.ok(delays[5] >= 675_000 && delays[5] <= 900_000, `delay[5]=${delays[5]} out of range (capped)`);
 });
