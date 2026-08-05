@@ -288,6 +288,10 @@ const mcpCountSurfaces = [
   'blog-site/src/content/blog/build-on-worldmonitor-developer-api-open-source.md',
   'blog-site/src/content/blog/worldmonitor-mcp-server-ai-agents-real-time-intelligence.md',
   'blog-site/src/content/blog/worldmonitor-is-not-palantir.md',
+  // Says "a Model Context Protocol server with 59 live tools" — its only
+  // "<n> tools" occurrence, so replaceMcpToolCounts heals it here instead of
+  // leaving a tool-count bump to red the blog contract test and be hand-fixed.
+  'blog-site/src/content/blog/what-is-worldmonitor-real-time-global-intelligence.md',
   'docs/cli.mdx',
   'docs/mcp-overview.mdx',
   'docs/mcp-quickstart.mdx',

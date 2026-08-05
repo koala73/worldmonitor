@@ -723,6 +723,14 @@ function claims(s) {
     { file: 'public/llms-full.txt', re: /Streamable HTTP, (\d+)\s+tools/, value: s.mcpToolCount },
     { file: 'public/llms-full.txt', re: /MCP server endpoint, (\d+)\s+tools/, value: s.mcpToolCount },
     { file: 'public/ai-search.md', re: /- (\d+)\s+MCP tools/, value: s.mcpToolCount },
+    { file: 'public/ai-search.md', re: /- (\d+)\s+supported languages/, value: s.locales },
+    // The rest of ai-search.md's Data Coverage bullets that have a generated
+    // source of truth. The locale line above is the one that had already
+    // drifted (24 vs 26) precisely because nothing pinned it; these siblings
+    // were one capability change away from the same fate.
+    { file: 'public/ai-search.md', re: /- (\d+)\s+map layer types/, value: s.layerDefinitions },
+    { file: 'public/ai-search.md', re: /- (\d+)\s+live Country Instability Index countries/, value: s.tier1Countries },
+    { file: 'public/ai-search.md', re: /- (\d+)-country resilience rankings/, value: s.rankableUniverseCountries },
     { file: 'public/sdks.md', re: /every one of the (\d+)\s+\[MCP tools\]/, value: s.mcpToolCount },
     { file: 'public/agent.txt', re: /(\d+)\s+tools; tools\/list for the live inventory/, value: s.mcpToolCount },
     { file: 'public/pricing.md', re: /MCP access and (\d+)\s+tools under one key/, value: s.mcpToolCount },
@@ -792,8 +800,22 @@ function claims(s) {
     { file: 'blog-site/src/content/blog/build-on-worldmonitor-developer-api-open-source.md', re: /Protocol Buffers \((\d+)\s+files\)/, value: s.protoFiles },
     { file: 'blog-site/src/content/blog/build-on-worldmonitor-developer-api-open-source.md', re: /worldmonitor\)\. (\d+)\s+services, \d+\s+proto files, and a global/, value: s.protoServices },
     { file: 'blog-site/src/content/blog/build-on-worldmonitor-developer-api-open-source.md', re: /worldmonitor\)\. \d+\s+services, (\d+)\s+proto files, and a global/, value: s.protoFiles },
-    { file: 'blog-site/src/content/blog/what-is-worldmonitor-real-time-global-intelligence.md', re: /typed APIs \((\d+)\s+proto files, \d+\s+services\)/, value: s.protoFiles },
-    { file: 'blog-site/src/content/blog/what-is-worldmonitor-real-time-global-intelligence.md', re: /typed APIs \(\d+\s+proto files, (\d+)\s+services\)/, value: s.protoServices },
+    { file: 'blog-site/src/content/blog/what-is-worldmonitor-real-time-global-intelligence.md', re: /generated from (\d+)\s+Protocol Buffer definitions into \d+\s+REST service specifications/, value: s.protoFiles },
+    { file: 'blog-site/src/content/blog/what-is-worldmonitor-real-time-global-intelligence.md', re: /generated from \d+\s+Protocol Buffer definitions into (\d+)\s+REST service specifications/, value: s.protoServices },
+    // The explainer's remaining capability counts. These live here rather than
+    // in tests/blog-seo-contract.test.mjs because the `unit` job that runs it is
+    // gated on changes.code, whose filter drops every .md path — the contract
+    // guarding this markdown page skipped the markdown-only PRs most likely to
+    // break it. docs-stats is always-on. Shape assertions that a numeric pin
+    // cannot express live in validateCategoryExplainerCopy below.
+    { file: 'blog-site/src/content/blog/what-is-worldmonitor-real-time-global-intelligence.md', re: /(\d+)\+\s+curated news feeds/, value: s.feedDefinitions, min: true },
+    { file: 'blog-site/src/content/blog/what-is-worldmonitor-real-time-global-intelligence.md', re: /(\d+)\s+map-layer types/, value: s.layerDefinitions },
+    { file: 'blog-site/src/content/blog/what-is-worldmonitor-real-time-global-intelligence.md', re: /(\d+)\s+Tier-1 countries/, value: s.tier1Countries },
+    { file: 'blog-site/src/content/blog/what-is-worldmonitor-real-time-global-intelligence.md', re: /\*\*(\d+)-country\*\* public Country Resilience Index universe/, value: s.rankableUniverseCountries },
+    { file: 'blog-site/src/content/blog/what-is-worldmonitor-real-time-global-intelligence.md', re: /(\d+)\s+stock exchanges/, value: s.stockExchangeCount },
+    { file: 'blog-site/src/content/blog/what-is-worldmonitor-real-time-global-intelligence.md', re: /(\d+)\s+central-bank or supranational institutions/, value: s.centralBankInstitutionCount },
+    { file: 'blog-site/src/content/blog/what-is-worldmonitor-real-time-global-intelligence.md', re: /(\d+)\s+interface languages/, value: s.locales },
+    { file: 'blog-site/src/content/blog/what-is-worldmonitor-real-time-global-intelligence.md', re: /Model Context Protocol server with (\d+)\s+live tools/, value: s.mcpToolCount },
     { file: 'blog-site/src/content/blog/ai-powered-intelligence-without-the-cloud.md', re: /architecture \((\d+)\s+proto files, \d+\s+typed services\)/, value: s.protoFiles },
     { file: 'blog-site/src/content/blog/ai-powered-intelligence-without-the-cloud.md', re: /architecture \(\d+\s+proto files, (\d+)\s+typed services\)/, value: s.protoServices },
     { file: 'blog-site/src/content/blog/worldmonitor-vs-traditional-intelligence-tools.md', re: /using the (\d+)\s+typed API services/, value: s.protoServices },
@@ -1094,6 +1116,10 @@ export const PLAN_LAYER_COPY_SURFACES = [
   'docs/zh/accounts.mdx',
   'pro-test/src/locales/en.json',
   'pro-test/welcome.html',
+  // The category explainer names the free-tier layer boundary too ("Every
+  // layer except the Resilience layer is available on the free plan"), so it
+  // has to be re-pointed alongside the pricing surfaces when the lock set moves.
+  'blog-site/src/content/blog/what-is-worldmonitor-real-time-global-intelligence.md',
 ];
 
 /** The single web-locked layer the copy above is written around. */
@@ -1126,6 +1152,116 @@ export function validatePlanLayerEntitlementCopy(stats, readFile = read) {
   return failures;
 }
 
+/**
+ * The category explainer's answer-first shape (#6217).
+ *
+ * The explainer is the site's primary "what is this product" page and is
+ * written to be quoted verbatim by answer engines, so its shape is a contract:
+ * a self-contained definition before any narrative, the variant count matching
+ * the generated registry, the methodology/pricing links a citation needs, and
+ * none of the stale claims the rewrite retired.
+ *
+ * This lives here rather than in tests/blog-seo-contract.test.mjs because that
+ * file only runs in the `unit` job, which is gated on `changes.code == 'true'`
+ * and whose filter drops every `.md` path — so the contract guarding a markdown
+ * page did not run on the markdown-only PRs most likely to break it. The
+ * docs-stats job is always-on for exactly this reason.
+ *
+ * Purely numeric facts belong in claims() above, not here; this covers only
+ * what a "doc says N, code says N" pin cannot express.
+ */
+export const CATEGORY_EXPLAINER_PATH =
+  'blog-site/src/content/blog/what-is-worldmonitor-real-time-global-intelligence.md';
+
+const CATEGORY_EXPLAINER_OPENING =
+  /^World Monitor is a \*\*free, open-source, real-time global intelligence dashboard\*\*/;
+// Wide enough that ordinary copy edits pass; narrow enough that the definition
+// cannot decay into a one-liner or swell back into the old narrative lede.
+const CATEGORY_EXPLAINER_OPENING_WORDS = { min: 35, max: 80 };
+const COUNT_WORDS = ['zero', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten'];
+const CATEGORY_EXPLAINER_REQUIRED_LINKS = [
+  'https://www.worldmonitor.app/docs/data-sources',
+  'https://www.worldmonitor.app/pricing.md',
+  '/blog/glossary/',
+];
+// The paid tiers must stay named. The page previously claimed there was no
+// tier above free at all, so silence here is the regression, not just an
+// omission — an answer engine quoting it would tell readers Pro does not exist.
+const CATEGORY_EXPLAINER_REQUIRED_COPY = [
+  [/paid Pro, API, and Enterprise plans/i, 'the paid Pro/API/Enterprise tiers'],
+];
+// Claims the rewrite retired because the code had moved on. A revert or a
+// copy-paste from an older post silently reintroduces them.
+const CATEGORY_EXPLAINER_RETIRED_COPY = [
+  [/Five Dashboards/, 'the retired five-variant count'],
+  [/no "enterprise tier"/, 'the retired "no enterprise tier" claim'],
+  [/React \+ TypeScript/, 'the retired React frontend stack (the web app uses Preact)'],
+  [/baseline risk \(40%\)[\s\S]*?unrest indicators \(20%\)/, 'the retired CII weight breakdown'],
+];
+
+export function validateCategoryExplainerCopy(stats, readFile = read) {
+  const file = CATEGORY_EXPLAINER_PATH;
+  let text;
+  try {
+    text = readFile(file);
+  } catch {
+    return [`${file}: file not found`];
+  }
+
+  const frontmatter = text.match(/^---\n[\s\S]*?\n---\n/);
+  if (!frontmatter) return [`${file}: missing frontmatter`];
+  const body = text.slice(frontmatter[0].length);
+  const failures = [];
+
+  // Locate the opening by its first H2 rather than a line count, and fail
+  // loudly when there is none — an indexOf(-1) slice would silently treat the
+  // whole page as the "opening" and the word-count check would read as noise.
+  const firstHeading = body.indexOf('\n## ');
+  if (firstHeading === -1) {
+    failures.push(`${file}: no H2 section, so the answer-first opening cannot be located`);
+  } else {
+    const opening = body.slice(0, firstHeading).trim();
+    if (!CATEGORY_EXPLAINER_OPENING.test(opening)) {
+      failures.push(`${file}: must open with the self-contained "World Monitor is a **free, open-source, real-time global intelligence dashboard**" definition`);
+    }
+    const words = opening.split(/\s+/).filter(Boolean).length;
+    const { min, max } = CATEGORY_EXPLAINER_OPENING_WORDS;
+    if (words < min || words > max) {
+      failures.push(`${file}: answer-first opening is ${words} words, expected ${min}-${max}`);
+    }
+  }
+
+  // The variant count is spelled out in the copy, so no numeric claims() regex
+  // can reach it. Derive the word from the registry anyway: with "Six" pinned
+  // as a literal, variantCount=7 left this the one capability claim in the
+  // contract that stayed green while every numeric sibling went red.
+  const variantWord = COUNT_WORDS[stats.variantCount];
+  if (!variantWord) {
+    failures.push(`${file}: no spelled-out word for variantCount ${stats.variantCount} — extend COUNT_WORDS`);
+  } else if (!new RegExp(`\\b${variantWord} dashboard variants\\b`, 'i').test(body)) {
+    failures.push(`${file}: copy must say "${variantWord} dashboard variants" to match variantCount ${stats.variantCount}`);
+  }
+  // The count word alone stays true if a variant is added to the enumeration
+  // without moving the count, or dropped out of it.
+  const variantList = body.match(/dashboard variants\*\*: (.+)/);
+  if (!variantList) {
+    failures.push(`${file}: missing the enumerated dashboard-variant list`);
+  } else if (variantList[1].split(',').length !== stats.variantCount) {
+    failures.push(`${file}: enumerates ${variantList[1].split(',').length} dashboard variants, code has ${stats.variantCount} — ${variantList[1]}`);
+  }
+
+  for (const link of CATEGORY_EXPLAINER_REQUIRED_LINKS) {
+    if (!body.includes(link)) failures.push(`${file}: citation surface must link ${link}`);
+  }
+  for (const [pattern, what] of CATEGORY_EXPLAINER_REQUIRED_COPY) {
+    if (!pattern.test(body)) failures.push(`${file}: must still name ${what}`);
+  }
+  for (const [pattern, what] of CATEGORY_EXPLAINER_RETIRED_COPY) {
+    if (pattern.test(body)) failures.push(`${file}: reintroduces ${what}`);
+  }
+  return failures;
+}
+
 // The --check validator set. Exported and iterated rather than called as four
 // separate lines in main() so the wiring is data a test can assert: every
 // validator here is unit-tested against its own fixtures, but nothing caught a
@@ -1137,6 +1273,7 @@ const DOC_VALIDATORS = [
   validateMcpAppsDocs,
   validateBootstrapCacheDocs,
   validatePlanLayerEntitlementCopy,
+  validateCategoryExplainerCopy,
 ];
 
 function main() {

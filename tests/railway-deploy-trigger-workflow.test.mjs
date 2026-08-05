@@ -6,7 +6,7 @@
 // the workflow still reported success.
 
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { describe, it } from 'node:test';
 import { fileURLToPath } from 'node:url';
@@ -205,6 +205,67 @@ describe('Railway deploy trigger workflow', () => {
     return minutes;
   }
 
+  it('contains no empty GitHub expression, which fails the whole file to parse', () => {
+    // Cost a full cycle. An EMPTY GitHub expression — the opener, whitespace,
+    // the closer — written inside a shell COMMENT in a `run:` block is still
+    // seen by GitHub's expression parser, which scans the entire block scalar,
+    // and it rejects the workflow with "An expression was expected". (The
+    // literal is deliberately not written here: this test would then flag its
+    // own source.) The consequences are exactly the failure mode this file exists
+    // to prevent, one level up: a workflow that fails to parse publishes NO
+    // check run, so the PR stays green, it is absent from the deploy gate's
+    // required list, and every trigger — event, cron and dispatch alike — stops
+    // producing runs. Observed as run 30981164081: conclusion=failure, zero
+    // jobs, and `name` reported as the file path instead of the workflow name.
+    //
+    // The `yaml` parser this file uses accepts it, so nothing else in CI can
+    // catch this. Scan every workflow, not just this one.
+    const workflowDir = resolve(repoRoot, '.github/workflows');
+    const offenders = [];
+    for (const file of readdirSync(workflowDir).filter((name) => /\.ya?ml$/.test(name))) {
+      const text = readFileSync(resolve(workflowDir, file), 'utf8');
+      text.split('\n').forEach((line, index) => {
+        if (/\$\{\{\s*\}\}/.test(line)) offenders.push(`${file}:${index + 1}`);
+      });
+    }
+    assert.deepEqual(offenders, [], 'empty GitHub expression(s) found; these make the workflow unparseable');
+  });
+
+  it('reconciles when the gate it waits on has just resolved', () => {
+    // #6203: a 5-minute cron on this repository is not a cadence we have.
+    // Measured over the 2h03m after e2db6b6a9 the workflow got ONE scheduled
+    // run against ~24 expected ticks, because GitHub drops high-frequency
+    // schedules under load — and the fleet sat 19.5h behind a green badge.
+    //
+    // Deploy Gate completing on main is both immediate and immune to schedule
+    // throttling, and it fires exactly when the `gate` status this workflow
+    // reads has just been written. Chain depth is Test -> Deploy Gate -> here,
+    // which is inside GitHub's three-level workflow_run limit.
+    const trigger = workflow.on?.workflow_run;
+    assert.ok(trigger, 'the reconciler must be driven by an event, not by a schedule alone');
+    assert.deepEqual(trigger.workflows, ['Deploy Gate']);
+    assert.deepEqual(trigger.types, ['completed']);
+    assert.deepEqual(
+      trigger.branches,
+      ['main'],
+      'every PR head would otherwise wake the fleet reconciler',
+    );
+  });
+
+  it('keeps the cron only as a slow backstop, never as the primary cadence', () => {
+    // The cron survives the one failure an event trigger cannot self-heal (a
+    // webhook outage, #6064) and nothing else. Asking for it more often than
+    // hourly is asking for the tick GitHub already proved it drops, and it
+    // would re-establish the burst this workflow's concurrency group exists to
+    // collapse.
+    const ours = minutesOf(workflow);
+    assert.equal(
+      ours.size,
+      1,
+      `the backstop must fire at most once an hour; it fires on ${ours.size} minute(s) past the hour`,
+    );
+  });
+
   it('runs on a schedule offset from the freshness monitor', () => {
     // Both make one Railway API call per service across a 77-service fleet;
     // sharing a minute is how one of them starts getting rate limited.
@@ -232,6 +293,104 @@ describe('Railway deploy trigger workflow', () => {
         `"${step.name}" talks to Railway but is not given RAILWAY_PROJECT_ID`,
       );
     }
+  });
+
+  it('says out loud when a run declined to deploy anything', () => {
+    // #6203's second half. "Reconciled the fleet" and "skipped every step that
+    // does work" are both `success` at the workflow-status level, so the fleet
+    // can sit stranded behind a green badge. The distinction has to be written
+    // somewhere a human reads without opening the raw log.
+    const report = stepNamed('Report what this run did');
+    assert.equal(String(report.if), 'always()', 'the outcome report must survive a failed step');
+    assert.match(report.run, /GITHUB_STEP_SUMMARY/, 'the outcome must reach the job summary');
+    assert.match(report.run, /::warning::/, 'a declined run must raise an annotation, not just a log line');
+
+    // It can only tell the two apart if it is given the deploy step's outcome,
+    // which needs that step to carry an id.
+    const deploy = stepNamed('Trigger deploys for services this merge changed');
+    assert.ok(deploy.id, 'the deploying step must be addressable by the outcome report');
+    assert.ok(
+      Object.values(report.env ?? {}).some(
+        (value) => String(value).includes(`steps.${deploy.id}.outcome`),
+      ),
+      'the outcome report must read the deploying step\'s outcome',
+    );
+  });
+
+  it('never asks the age question on a run whose own deploy just succeeded', () => {
+    // The scan reads COMPLETED runs and excludes this one, so a run that just
+    // reconciled cannot see its own work. After a drought past the threshold —
+    // the exact recovery this workflow exists for — the run that FIXED the
+    // fleet would report it stale and go red.
+    //
+    // And a red run here is not cosmetic: this workflow's runs carry a main
+    // commit as head_sha, so the failure lands in that commit's check suite,
+    // which is the `CI check suite failed` reason Railway uses to defer every
+    // service. The alarm would cause the outage it detects.
+    const step = steps.find((candidate) => String(candidate.run ?? '')
+      .includes('check-railway-reconcile-age.mjs'));
+    const deploy = stepNamed('Trigger deploys for services this merge changed');
+    assert.match(
+      String(step.if),
+      /always\(\)/,
+      'the age check must still run on a declined run — that is the case it exists for',
+    );
+    assert.ok(
+      String(step.if).includes(`steps.${deploy.id}.outcome != 'success'`),
+      'the age check must be skipped when this run already reconciled the fleet',
+    );
+  });
+
+  it('reads its own run history, which needs the actions scope', () => {
+    assert.equal(
+      workflow.permissions?.actions,
+      'read',
+      'reading this workflow\'s own runs requires actions: read',
+    );
+  });
+
+  it('keeps the age check warn-only on a dry run, in two explicit arms', () => {
+    // One interpolated flag would have to agree with the env var forever; the
+    // day they diverge the arm that still runs is the one that stays quiet.
+    const step = steps.find((candidate) => String(candidate.run ?? '')
+      .includes('check-railway-reconcile-age.mjs'));
+    assert.match(String(step.env?.WARN_ONLY ?? ''), /inputs\.dryRun/);
+    assert.match(step.run, /--warn-only/, 'the dry-run arm must pass --warn-only');
+    assert.match(
+      step.run,
+      /check-railway-reconcile-age\.mjs\s*$/m,
+      'the non-dry-run arm must invoke the check without --warn-only',
+    );
+  });
+
+  it('surfaces a failed age check in the summary a human reads', () => {
+    // Otherwise a run can be red for "the fleet is un-reconciled" while its
+    // job summary reads as an ordinary decline.
+    const report = stepNamed('Report what this run did');
+    const step = steps.find((candidate) => String(candidate.run ?? '')
+      .includes('check-railway-reconcile-age.mjs'));
+    assert.ok(step.id, 'the age check must be addressable by the outcome report');
+    assert.ok(
+      Object.values(report.env ?? {}).some(
+        (value) => String(value).includes(`steps.${step.id}.outcome`),
+      ),
+      'the outcome report must read the age check\'s outcome',
+    );
+  });
+
+  it('fails when the fleet has gone un-reconciled longer than the backstop tolerates', () => {
+    // The existing escalation only fires on a PENDING gate, and only when this
+    // workflow runs — which is the precondition that failed. This one asks the
+    // question that does not depend on why: when did anything last reconcile?
+    const step = steps.find((candidate) => String(candidate.run ?? '')
+      .includes('check-railway-reconcile-age.mjs'));
+    assert.ok(step, 'the workflow must check how long the fleet has gone un-reconciled');
+    assert.ok(step.env?.GH_TOKEN, 'the age check reads this workflow\'s own run history');
+    assert.equal(
+      step['continue-on-error'],
+      undefined,
+      'an un-reconciled fleet must red the run, not be swallowed',
+    );
   });
 
   it('runs against the environment that holds the production Railway token', () => {

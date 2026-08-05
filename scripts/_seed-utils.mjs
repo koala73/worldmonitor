@@ -184,8 +184,9 @@ export function getBundleRunStartedAtMs() {
   return Number.isFinite(raw) && raw > 0 ? raw : null;
 }
 
-// Canonical FX fallback rates — used when Yahoo Finance returns null/zero.
-// Single source of truth shared by seed-bigmac, seed-grocery-basket, seed-fx-rates.
+// Point-of-use FX recovery constants — used by conversion seeds when Yahoo fails
+// or a gap cannot be retried in budget. Canonical seed-fx-rates must NOT fill
+// shared:fx-rates:v1 with these values (publish nulls + fallbackCurrencies instead).
 // EGP: 0.0192 is the most recently observed live rate (2026-03-21 seed run).
 export const SHARED_FX_FALLBACKS = {
   USD: 1, GBP: 1.2700, EUR: 1.0850, JPY: 0.0067, CHF: 1.1300,
@@ -766,15 +767,28 @@ const MAX_RETRY_AFTER_MS = 60_000;
  * those predate this helper; consolidating them is a separate refactor.
  */
 export function parseRetryAfterMs(value) {
+  const parsed = parseRetryAfterUncappedMs(value);
+  return parsed == null ? null : Math.min(parsed, MAX_RETRY_AFTER_MS);
+}
+
+/**
+ * #6110: the same parse WITHOUT the `MAX_RETRY_AFTER_MS` cap.
+ *
+ * The cap exists so a stuck header cannot park a bundle past its timeout — it
+ * bounds how long we SLEEP. But it also erases how far out the server actually
+ * pushed us, and that magnitude is exactly what tells us a retry is pointless:
+ * groq's daily-quota 429 asks for 1213s, which the cap flattens to 60s. Judging
+ * futility on the capped value silently reinstates the bug for any caller whose
+ * remaining budget is >= 60s.
+ *
+ * So: sleep on the capped value, judge on the uncapped one.
+ */
+function parseRetryAfterUncappedMs(value) {
   if (!value) return null;
   const seconds = Number(value);
-  if (Number.isFinite(seconds) && seconds > 0) {
-    return Math.min(seconds * 1000, MAX_RETRY_AFTER_MS);
-  }
+  if (Number.isFinite(seconds) && seconds > 0) return seconds * 1000;
   const retryAt = Date.parse(value);
-  if (Number.isFinite(retryAt)) {
-    return Math.min(Math.max(retryAt - Date.now(), 1000), MAX_RETRY_AFTER_MS);
-  }
+  if (Number.isFinite(retryAt)) return Math.max(retryAt - Date.now(), 1000);
   return null;
 }
 
@@ -825,21 +839,65 @@ export function isRetryableHttpStatus(status) {
 /**
  * Build an Error from a non-ok provider response for use with `withRetry`.
  * Tags `nonRetryable` for permanent statuses and attaches a capped
- * `retryAfterMs` hint when the server sent one:
- *   - `maxRetryAfterMs` caps a generous server hint (e.g. a 10s ceiling).
- *   - `capMs` (the caller's remaining wall-clock budget) caps it further and,
- *     when <= 0, marks the error non-retryable so the loop stops instead of
- *     sleeping past its deadline.
+ * `retryAfterMs` hint when the server sent one.
+ *
+ * Three knobs, and the distinction between them is the whole point:
+ *   - `maxRetryAfterMs` — a policy CEILING ("never sleep longer than this").
+ *     Clamping is legitimate: the server's hint may be conservative, so an
+ *     earlier retry can still succeed.
+ *   - `capMs` — also a ceiling, plus "when <= 0 there is no time left at all,
+ *     so stop". Kept exactly as-is: scripts/_seed-history.mjs passes a fixed
+ *     `RELAY_RETRY_AFTER_CAP_MS` here, so it is NOT a remaining-budget signal.
+ *   - `remainingBudgetMs` (#6110) — the wall clock the caller actually has
+ *     left. This one can produce a VERDICT, not just a clamp: if the server's
+ *     own hint meets or exceeds it, no retry inside this run can succeed, so
+ *     the error is nonRetryable and the caller falls through immediately with
+ *     its budget intact instead of sleeping against a wall that cannot move.
+ *     Equality is futile too: sleeping the full remainder leaves usableBudget
+ *     at 0, so the next withRetry attempt throws createLlmBudgetError and
+ *     aborts the whole provider waterfall rather than failing over.
+ *
+ * Why the verdict matters — production, seed-insights 2026-08-03 12:10Z/12:20Z:
+ * groq answered 429 with "tokens per day (TPD): Limit 100000, Used 100000 …
+ * try again in 20m13.92s". That 1213s hint was clamped to the 10s ceiling and
+ * retried twice, spending 20s of a 60s LLM budget (and of a 120s seed lock) on
+ * a daily quota that could not reset for another 20 minutes. Those cycles ran
+ * 30-36s against 7-17s for healthy ones, and the run still ended with nothing.
  */
-export function httpRetryError(resp, { maxRetryAfterMs, capMs } = {}) {
+export function httpRetryError(resp, { maxRetryAfterMs, capMs, remainingBudgetMs } = {}) {
   const status = resp?.status;
   const err = new Error(`HTTP ${status}`);
   err.status = status;
   err.nonRetryable = !isRetryableHttpStatus(status);
-  let retryAfterMs = parseRetryAfterMs(getResponseHeader(resp?.headers, 'Retry-After'));
+  const rawHeader = getResponseHeader(resp?.headers, 'Retry-After');
+  const uncappedRetryAfterMs = parseRetryAfterUncappedMs(rawHeader);
+  let retryAfterMs = parseRetryAfterMs(rawHeader);
   if (retryAfterMs != null) {
+    // #6110: judge futility on the UNCAPPED hint. Every ceiling in play here —
+    // MAX_RETRY_AFTER_MS at parse time, then maxRetryAfterMs and capMs below —
+    // answers "how long may we sleep", never "is sleeping worth anything". Only
+    // the uncapped hint carries the magnitude that settles that, and comparing
+    // the capped value instead would reinstate this very bug for any caller
+    // whose budget is >= MAX_RETRY_AFTER_MS (groq's 1213s reads as 60s there).
+    // `>=`: equality is futile for waterfall callers. Sleeping a hint that
+    // equals the remaining budget spends the whole remainder; the next
+    // withRetry attempt hits usableBudgetMs() <= 0 → createLlmBudgetError and
+    // aborts every later provider. Fail-fast keeps the budget for fallthrough.
+    if (Number.isFinite(remainingBudgetMs) && uncappedRetryAfterMs >= Math.max(0, remainingBudgetMs)) {
+      err.nonRetryable = true;
+      // Keep the UNCAPPED hint even though we will not sleep on it: only the
+      // raw magnitude separates "quota exhausted for 20 minutes" from
+      // "throttled for 2 seconds" in the log. The sleep path below still uses
+      // the capped parse. withRetry checks nonRetryable before ever reading
+      // retryAfterMs, so attaching the uncapped value here cannot cause a sleep.
+      err.retryAfterMs = uncappedRetryAfterMs;
+      return err;
+    }
     if (Number.isFinite(maxRetryAfterMs)) retryAfterMs = Math.min(retryAfterMs, maxRetryAfterMs);
     if (Number.isFinite(capMs)) retryAfterMs = Math.min(retryAfterMs, Math.max(0, capMs));
+    // No `remainingBudgetMs` clamp here on purpose: the early return above
+    // already guarantees hint < budget, and the ceilings only shrink it
+    // further. Adding one would be dead code that reads like a safeguard.
     if (retryAfterMs > 0) err.retryAfterMs = retryAfterMs;
     else err.nonRetryable = true;
   }
@@ -1482,6 +1540,47 @@ export async function processItemRoute({
   return { localPrice, sourceSite, routeUpdate, routeDelete };
 }
 
+// Five 8s timeouts plus four 150ms gaps take at most 40.6s, leaving ample
+// headroom inside downstream seeds' 240s fetch-phase deadline.
+const MAX_POINT_OF_USE_FX_REQUESTS = 5;
+
+function isFinitePositiveRate(value) {
+  return Number.isFinite(value) && value > 0;
+}
+
+/**
+ * Cap Yahoo recovery work for conversion seeds. Currencies beyond the budget are
+ * not attempted: prefer a finite prior/cache rate when present (still marked as
+ * fallback provenance — unattempted is not live), else the caller fallback table.
+ * @param {Record<string, string>} fxSymbols
+ * @param {Record<string, number>} [fallbacks]
+ * @param {Record<string, unknown>} [priorRates] rates already on hand (e.g. cache)
+ */
+async function fetchPointOfUseFxRates(fxSymbols, fallbacks = {}, priorRates = {}) {
+  const attemptedSymbols = {};
+  const deferredCurrencies = [];
+  let requestCount = 0;
+
+  for (const [currency, symbol] of Object.entries(fxSymbols)) {
+    if (currency === 'USD' || requestCount < MAX_POINT_OF_USE_FX_REQUESTS) {
+      attemptedSymbols[currency] = symbol;
+      if (currency !== 'USD') requestCount += 1;
+    } else {
+      deferredCurrencies.push(currency);
+    }
+  }
+
+  const result = await fetchYahooFxRatesWithProvenance(attemptedSymbols, fallbacks);
+  for (const currency of deferredCurrencies) {
+    const prior = priorRates[currency];
+    result.rates[currency] = isFinitePositiveRate(prior)
+      ? prior
+      : (fallbacks[currency] ?? null);
+  }
+  result.fallbackCurrencies.push(...deferredCurrencies);
+  return result;
+}
+
 /**
  * Shared FX rates cache — reads from Redis `shared:fx-rates:v1` (4h TTL).
  * Falls back to fetching from Yahoo Finance if the key is missing/expired.
@@ -1499,45 +1598,84 @@ export async function getSharedFxRates(fxSymbols, fallbacks) {
     const cached = await redisGet(url, token, SHARED_KEY);
     if (cached && typeof cached === 'object' && Object.keys(cached).length > 0) {
       console.log('  FX rates: loaded from shared cache');
-      // Fill any missing currencies this seed needs using Yahoo or fallback
-      const missing = Object.keys(fxSymbols).filter(c => cached[c] == null);
+      const hasValidFallbackProvenance = (
+        Array.isArray(cached.fallbackCurrencies)
+        && cached.fallbackCurrencies.every(c => typeof c === 'string')
+      );
+      const cachedFallbacks = new Set(hasValidFallbackProvenance ? cached.fallbackCurrencies : []);
+      // The canonical seed publishes failed Yahoo quotes as null. Retry only
+      // the gaps this consumer needs, then use its fallback table at the point
+      // of use so direct readers never mistake constants for live quotes. A
+      // markerless legacy snapshot may itself contain fallback constants, so
+      // none of its requested non-USD values are trusted as live.
+      const missing = Object.keys(fxSymbols).filter(c => (
+        c !== 'USD'
+        && (!hasValidFallbackProvenance || cached[c] == null || cachedFallbacks.has(c))
+      ));
       if (missing.length === 0) return cached;
       console.log(`  FX rates: fetching ${missing.length} missing currencies from Yahoo`);
-      const extra = await fetchYahooFxRates(
+      const extra = await fetchPointOfUseFxRates(
         Object.fromEntries(missing.map(c => [c, fxSymbols[c]])),
         fallbacks,
+        cached,
       );
-      return { ...cached, ...extra };
+      const retried = new Set(missing);
+      const fallbackCurrencies = [
+        ...[...cachedFallbacks].filter(c => !retried.has(c)),
+        ...extra.fallbackCurrencies,
+      ];
+      return {
+        ...cached,
+        ...extra.rates,
+        fallbackCurrencies: [...new Set(fallbackCurrencies)],
+      };
     }
   } catch {
     // Cache read failed — fall through to live fetch
   }
 
   console.log('  FX rates: cache miss — fetching from Yahoo Finance');
-  return fetchYahooFxRates(fxSymbols, fallbacks);
+  const result = await fetchPointOfUseFxRates(fxSymbols, fallbacks);
+  return { ...result.rates, fallbackCurrencies: result.fallbackCurrencies };
 }
 
-export async function fetchYahooFxRates(fxSymbols, fallbacks) {
+/**
+ * Fetch USD-per-unit Yahoo FX quotes and record which currencies used the
+ * caller-provided fallback table. The provenance is based on the actual fetch
+ * outcome, never float equality with the fallback constant.
+ */
+export async function fetchYahooFxRatesWithProvenance(fxSymbols, fallbacks = {}) {
   const rates = {};
+  const fallbackCurrencies = [];
+  let requestsRemaining = Object.keys(fxSymbols).filter(currency => currency !== 'USD').length;
   for (const [currency, symbol] of Object.entries(fxSymbols)) {
     if (currency === 'USD') { rates['USD'] = 1.0; continue; }
+    let price = null;
     try {
       const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}`;
       const resp = await fetch(url, {
         headers: { 'User-Agent': CHROME_UA },
         signal: AbortSignal.timeout(8_000),
       });
-      if (!resp.ok) { rates[currency] = fallbacks[currency] ?? null; continue; }
-      const data = await resp.json();
-      const price = data?.chart?.result?.[0]?.meta?.regularMarketPrice;
-      rates[currency] = (price != null && price > 0) ? price : (fallbacks[currency] ?? null);
-    } catch {
+      if (resp.ok) {
+        const data = await resp.json();
+        price = data?.chart?.result?.[0]?.meta?.regularMarketPrice;
+      }
+    } catch {}
+    if (isFinitePositiveRate(price)) {
+      rates[currency] = price;
+    } else {
       rates[currency] = fallbacks[currency] ?? null;
+      fallbackCurrencies.push(currency);
     }
-    await new Promise(r => setTimeout(r, 100));
+    requestsRemaining -= 1;
+    if (requestsRemaining > 0) await sleep(150);
   }
   console.log('  FX rates fetched:', JSON.stringify(rates));
-  return rates;
+  if (fallbackCurrencies.length > 0) {
+    console.warn(`  FX rates using fallbacks (${fallbackCurrencies.length}): ${fallbackCurrencies.join(', ')}`);
+  }
+  return { rates, fallbackCurrencies };
 }
 
 /**

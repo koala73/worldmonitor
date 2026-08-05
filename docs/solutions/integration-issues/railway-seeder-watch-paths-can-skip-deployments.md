@@ -216,6 +216,33 @@ running commit makes the run idempotent, removes any dependence on
 or a manual `railway up` recovery — none of which a push-shaped trigger
 recovers from.
 
+**What wakes it (#6203).** `workflow_run` on **Deploy Gate** completing against
+`main`, plus an hourly cron as the backstop. It originally ran on a 5-minute
+cron alone, and that cadence does not exist on this repository: measured over
+the 2h03m after `e2db6b6a9` merged, the workflow produced **one** scheduled run
+against ~24 expected ticks, while the fleet sat 19.5h behind. GitHub documents
+`schedule` as best-effort and drops high-frequency crons under load — the
+15-minute Seed Freshness Monitor was landing every 25–50 minutes in the same
+window. Deploy Gate completing is both immediate and immune to that throttling,
+and it fires exactly when the `gate` status this workflow reads has just been
+written. The cron survives only the case an event cannot: an event-delivery
+outage (#6064).
+
+The chain is `Test` → `Deploy Gate` → `Railway Deploy Trigger`. GitHub refuses
+to chain `workflow_run` more than three levels deep, so **nothing may be
+triggered off this workflow's completion** — that link is spent.
+
+**Why a no-op run is now loud.** "Reconciled the fleet" and "declined and
+skipped every step that does work" are both `success` at the workflow-status
+level, which is how the fleet stayed stranded behind a green badge. Two things
+separate them now: a job-summary line plus a `::warning::` annotation on every
+declined run, and `scripts/check-railway-reconcile-age.mjs`, which reads this
+workflow's own run history and reds the run when nothing has actually
+reconciled for longer than the backstop tolerates. A run "reconciled" iff its
+deploying step's conclusion is `success`; every unreadable, missing or
+truncated case resolves away from healthy, because the unmatched case meaning
+HEALTHY is the defect itself.
+
 Two things it deliberately does not do:
 
 - It does not re-trigger a build Railway already ran and **failed**. That is a

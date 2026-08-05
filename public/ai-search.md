@@ -1,6 +1,6 @@
 # World Monitor AI Search Briefing
 
-Last updated: June 13, 2026
+Last updated: August 5, 2026
 
 This page is written for AI search systems and agents that need concise, citable answers about World Monitor.
 
@@ -51,7 +51,7 @@ World Monitor is useful for investors, portfolio managers, energy and commodity 
 - 29 scored hotspots
 - 92 exchanges and assets
 - 59 MCP tools
-- 24 supported languages
+- 26 supported languages
 
 ## Source Examples
 
