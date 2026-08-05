@@ -27,13 +27,17 @@ interface RequestBounds {
   east: number;
 }
 
-// The scheduled military-flight snapshot contains exactly these two producer
-// regions (scripts/seed-military-flights.mjs QUERY_REGIONS). It is authoritative
-// only when one region fully contains the requested bbox; otherwise using it
-// would silently turn uncovered geography into an empty result.
+// The scheduled military-flight snapshot is GLOBAL: scripts/seed-military-flights.mjs
+// issues one bbox-less OpenSky /states/all per run (#6222), so every viewport is
+// inside the producer's declared coverage.
+//
+// This must stay in lockstep with the producer's query shape. While the producer
+// queried two regional bboxes, this listed exactly those two, and any viewport
+// outside them fell through to per-viewer authenticated OpenSky recovery below —
+// an unbounded credit fanout on top of the seeder's own spend. Narrowing the
+// producer again without narrowing this would silently republish that fanout.
 const LIVE_SEED_COVERAGE: readonly RequestBounds[] = [
-  { south: 10, north: 46, west: 107, east: 143 },
-  { south: 13, north: 85, west: -10, east: 57 },
+  { south: -90, north: 90, west: -180, east: 180 },
 ];
 
 function liveSeedCovers(bounds: RequestBounds): boolean {
