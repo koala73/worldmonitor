@@ -1141,7 +1141,7 @@ describe('closure detection layers', () => {
       // scripts/ais-relay.cjs runs seed-climate-news.mjs via execFile with no
       // import statement anywhere between them, so the spawned script AND its
       // subgraph are reachable only through the literal + fixed-point layers.
-      const entry = registry.find((e) => e.service === 'relay');
+      const entry = registry.find((e) => e.service === 'ais-relay');
       const { runtimeFiles } = resolveRuntimeSurface(entry, repoRoot);
       assert.ok(runtimeFiles.has('scripts/seed-climate-news.mjs'), 'the spawned script');
       assert.ok(runtimeFiles.has('scripts/_climate-news-helpers.mjs'), 'and what IT imports');
@@ -1151,7 +1151,7 @@ describe('closure detection layers', () => {
       // shared/ exists at the repository root and under scripts/. ais-relay.cjs
       // resolves `../shared` FIRST, so stopping at the first resolving base
       // watched the copy the service does not load.
-      const entry = registry.find((e) => e.service === 'relay');
+      const entry = registry.find((e) => e.service === 'ais-relay');
       const watched = new Set(entry.watchPatterns);
       assert.ok(watched.has('shared/stocks.json'), 'the copy requireShared actually loads');
       assert.ok(watched.has('scripts/shared/stocks.json'), 'and the mirrored sibling');
