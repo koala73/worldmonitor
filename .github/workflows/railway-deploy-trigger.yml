@@ -24,15 +24,51 @@ name: Railway Deploy Trigger
 # none of which a push-shaped trigger recovers from.
 
 on:
+  # THE PRIMARY CADENCE (#6203). Deploy Gate completing on main is the moment
+  # the `gate` status this workflow reads has just been written, so reconciling
+  # here is both immediate and immune to schedule throttling.
+  #
+  # It replaces a 5-minute cron that did not fire. Measured over the 2h03m
+  # after e2db6b6a9 merged, this workflow produced ONE scheduled run against
+  # ~24 expected ticks — GitHub documents `schedule` as best-effort and drops
+  # high-frequency crons under load, and the same window shows the 15-minute
+  # Seed Freshness Monitor landing every 25-50 minutes. A 5-minute cron is not
+  # a cadence this repository has.
+  #
+  # `branches: [main]` filters on the TRIGGERING run's branch, so every PR's
+  # Deploy Gate run is excluded and only main's reaches here. Deploy Gate's own
+  # 30-minute sweep runs carry the default branch, which makes them a second
+  # backstop for free.
+  #
+  # A fork PR whose branch happens to be named `main` also passes that filter.
+  # It is harmless and needs no extra guard: nothing below reads the event. The
+  # job resolves its own `git rev-parse origin/main` and refuses to deploy
+  # unless THAT commit carries a green `gate`, so the worst a fork can cause is
+  # one extra idempotent reconcile of the real main.
+  #
+  # Chain depth is Test -> Deploy Gate -> here. GitHub refuses to chain
+  # workflow_run more than three levels deep, so this is the last link
+  # available: nothing may be triggered off THIS workflow's completion.
+  #
+  # Deliberately NOT filtered on the Deploy Gate run's own conclusion. That
+  # conclusion says whether the gate job executed, not what verdict it posted,
+  # and this workflow re-reads the `gate` status itself in the first step. A
+  # conclusion filter would only add a way to miss a reconcile.
+  workflow_run:
+    workflows: ["Deploy Gate"]
+    types: [completed]
+    branches: [main]
   schedule:
-    # Every 5 minutes, offset from the Seed Freshness Monitor's :00/:15/:30/:45.
+    # BACKSTOP ONLY, and slow on purpose. The event above is what reconciles;
+    # this covers the one failure it cannot self-heal — a webhook/event-delivery
+    # outage (#6064). Asking for it more often re-orders the same tick GitHub
+    # already proved it drops, and would re-establish the burst the concurrency
+    # group below exists to collapse.
     #
-    # This cadence is what the fleet-wide deployment query bought. A sweep used
-    # to cost 79 Railway API calls; it now costs 9, so running 3x more often
-    # still lands at roughly a third of the old load — and the interval IS the
-    # worst-case lag for the cohort Railway defers on a red check suite, which
-    # is the whole reason this workflow exists.
-    - cron: '2,7,12,17,22,27,32,37,42,47,52,57 * * * *'
+    # :37 is clear of the Seed Freshness Monitor's :00/:15/:30/:45 — both fan
+    # out across the whole fleet and sharing a minute is how one starts getting
+    # rate limited.
+    - cron: '37 * * * *'
   workflow_dispatch:
     inputs:
       dryRun:
@@ -44,6 +80,13 @@ on:
 # sweep leaves half the fleet triggered with no record of where it stopped. A
 # superseding run would re-derive the same plan anyway, so queueing costs
 # nothing but interrupting costs a partial deploy.
+#
+# This is also what makes the event trigger above safe to fire often. A merge
+# completes four Deploy Gate runs (Test, Typecheck, Lint Code, Security Audit
+# each trigger one), and GitHub cancels the previously PENDING member of a
+# concurrency group when a new run queues — so a burst collapses to one running
+# plus one queued reconcile rather than a backlog. The reconciler is idempotent,
+# so the collapsed runs cost nothing.
 concurrency:
   group: railway-deploy-trigger
   cancel-in-progress: false
@@ -51,6 +94,9 @@ concurrency:
 permissions:
   contents: read
   statuses: read
+  # Reads this workflow's OWN run history, which is the only record of whether
+  # a run reconciled or declined (#6203).
+  actions: read
 
 jobs:
   trigger:
@@ -162,6 +208,7 @@ jobs:
       # the fleet is falling behind — which is exactly when the gate is not
       # green and the deploy step below is correctly refusing to run.
       - name: Preview what would be deployed
+        id: preview
         if: github.event_name == 'workflow_dispatch' && inputs.dryRun
         env:
           RAILWAY_TOKEN: ${{ secrets.RAILWAY_PRODUCTION_TOKEN }}
@@ -173,6 +220,7 @@ jobs:
       # returned no deployment id all mean services stayed behind while this
       # workflow reported that it had handled them.
       - name: Trigger deploys for services this merge changed
+        id: deploy
         if: steps.head.outputs.gate == 'success' && !(github.event_name == 'workflow_dispatch' && inputs.dryRun)
         env:
           RAILWAY_TOKEN: ${{ secrets.RAILWAY_PRODUCTION_TOKEN }}
@@ -180,3 +228,71 @@ jobs:
           # so `railway status` must be told which project to answer for.
           RAILWAY_PROJECT_ID: ${{ vars.RAILWAY_PROJECT_ID }}
         run: node scripts/trigger-railway-deploys.mjs --head "${{ steps.head.outputs.sha }}"
+
+      # Deliberately AFTER the deploy and `always()`: this is a diagnostic about
+      # the workflow's own health, and running it first would let a GitHub API
+      # hiccup stop the reconcile it exists to protect. `always()` is what makes
+      # it fire on the runs that matter — the ones that declined and did nothing.
+      #
+      # This is the check that does not depend on WHY. The gate escalation above
+      # only fires on a pending gate and only when this workflow runs, which is
+      # the precondition that failed in #6203.
+      - name: Check how long the fleet has gone un-reconciled
+        if: always()
+        # Bounded well under the job budget. The scan stops at the first run
+        # that reconciled, so the healthy path is two API calls — but the
+        # pathological "nothing in the last 30 runs" path is 30 of them, and
+        # this must surface as its own alarm rather than as the job hitting
+        # timeout-minutes with the reason buried.
+        timeout-minutes: 3
+        env:
+          GH_TOKEN: ${{ github.token }}
+          # A dry run is an operator diagnosing; report the staleness but do not
+          # red their preview for it.
+          WARN_ONLY: ${{ github.event_name == 'workflow_dispatch' && inputs.dryRun }}
+        run: |
+          # Two explicit arms rather than an interpolated flag: a `${{ }}`
+          # ternary spliced into the command line has to agree with the env var
+          # above forever, and the day they diverge the arm that still runs is
+          # the one that stays quiet.
+          if [ "${WARN_ONLY:-false}" = "true" ]; then
+            node scripts/check-railway-reconcile-age.mjs --warn-only
+          else
+            node scripts/check-railway-reconcile-age.mjs
+          fi
+
+      # "Reconciled the fleet" and "skipped every step that does work" are both
+      # `success` at the workflow-status level, which is how the fleet sat
+      # stranded behind a green badge for 19.5h (#6203). Write the difference
+      # somewhere a human reads without opening the raw log.
+      - name: Report what this run did
+        if: always()
+        env:
+          GATE: ${{ steps.head.outputs.gate }}
+          HEAD_SHA: ${{ steps.head.outputs.sha }}
+          DEPLOY_OUTCOME: ${{ steps.deploy.outcome }}
+          PREVIEW_OUTCOME: ${{ steps.preview.outcome }}
+        run: |
+          short="${HEAD_SHA:0:9}"
+          case "$DEPLOY_OUTCOME" in
+            success)
+              summary="Reconciled the fleet against \`$short\` (gate=$GATE)."
+              echo "::notice::$summary"
+              ;;
+            failure)
+              summary="**Reconcile FAILED** against \`$short\` — services named in the log above stayed behind."
+              ;;
+            *)
+              if [ "$PREVIEW_OUTCOME" = "success" ]; then
+                summary="Previewed \`$short\` only; this run deployed nothing by request."
+                echo "::notice::$summary"
+              else
+                summary="**Declined to reconcile.** main's head \`$short\` has gate=\`$GATE\`, so no service was deployed by this run."
+                # A warning, not a notice: this is the outcome that used to be
+                # indistinguishable from a successful sweep.
+                echo "::warning::Declined to reconcile ${short}: gate=$GATE. No service was deployed by this run."
+              fi
+              ;;
+          esac
+          echo "### Railway deploy trigger" >> "$GITHUB_STEP_SUMMARY"
+          echo "$summary" >> "$GITHUB_STEP_SUMMARY"

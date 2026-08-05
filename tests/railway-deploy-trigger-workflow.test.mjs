@@ -205,6 +205,41 @@ describe('Railway deploy trigger workflow', () => {
     return minutes;
   }
 
+  it('reconciles when the gate it waits on has just resolved', () => {
+    // #6203: a 5-minute cron on this repository is not a cadence we have.
+    // Measured over the 2h03m after e2db6b6a9 the workflow got ONE scheduled
+    // run against ~24 expected ticks, because GitHub drops high-frequency
+    // schedules under load — and the fleet sat 19.5h behind a green badge.
+    //
+    // Deploy Gate completing on main is both immediate and immune to schedule
+    // throttling, and it fires exactly when the `gate` status this workflow
+    // reads has just been written. Chain depth is Test -> Deploy Gate -> here,
+    // which is inside GitHub's three-level workflow_run limit.
+    const trigger = workflow.on?.workflow_run;
+    assert.ok(trigger, 'the reconciler must be driven by an event, not by a schedule alone');
+    assert.deepEqual(trigger.workflows, ['Deploy Gate']);
+    assert.deepEqual(trigger.types, ['completed']);
+    assert.deepEqual(
+      trigger.branches,
+      ['main'],
+      'every PR head would otherwise wake the fleet reconciler',
+    );
+  });
+
+  it('keeps the cron only as a slow backstop, never as the primary cadence', () => {
+    // The cron survives the one failure an event trigger cannot self-heal (a
+    // webhook outage, #6064) and nothing else. Asking for it more often than
+    // hourly is asking for the tick GitHub already proved it drops, and it
+    // would re-establish the burst this workflow's concurrency group exists to
+    // collapse.
+    const ours = minutesOf(workflow);
+    assert.equal(
+      ours.size,
+      1,
+      `the backstop must fire at most once an hour; it fires on ${ours.size} minute(s) past the hour`,
+    );
+  });
+
   it('runs on a schedule offset from the freshness monitor', () => {
     // Both make one Railway API call per service across a 77-service fleet;
     // sharing a minute is how one of them starts getting rate limited.
@@ -232,6 +267,43 @@ describe('Railway deploy trigger workflow', () => {
         `"${step.name}" talks to Railway but is not given RAILWAY_PROJECT_ID`,
       );
     }
+  });
+
+  it('says out loud when a run declined to deploy anything', () => {
+    // #6203's second half. "Reconciled the fleet" and "skipped every step that
+    // does work" are both `success` at the workflow-status level, so the fleet
+    // can sit stranded behind a green badge. The distinction has to be written
+    // somewhere a human reads without opening the raw log.
+    const report = stepNamed('Report what this run did');
+    assert.equal(String(report.if), 'always()', 'the outcome report must survive a failed step');
+    assert.match(report.run, /GITHUB_STEP_SUMMARY/, 'the outcome must reach the job summary');
+    assert.match(report.run, /::warning::/, 'a declined run must raise an annotation, not just a log line');
+
+    // It can only tell the two apart if it is given the deploy step's outcome,
+    // which needs that step to carry an id.
+    const deploy = stepNamed('Trigger deploys for services this merge changed');
+    assert.ok(deploy.id, 'the deploying step must be addressable by the outcome report');
+    assert.ok(
+      Object.values(report.env ?? {}).some(
+        (value) => String(value).includes(`steps.${deploy.id}.outcome`),
+      ),
+      'the outcome report must read the deploying step\'s outcome',
+    );
+  });
+
+  it('fails when the fleet has gone un-reconciled longer than the backstop tolerates', () => {
+    // The existing escalation only fires on a PENDING gate, and only when this
+    // workflow runs — which is the precondition that failed. This one asks the
+    // question that does not depend on why: when did anything last reconcile?
+    const step = steps.find((candidate) => String(candidate.run ?? '')
+      .includes('check-railway-reconcile-age.mjs'));
+    assert.ok(step, 'the workflow must check how long the fleet has gone un-reconciled');
+    assert.ok(step.env?.GH_TOKEN, 'the age check reads this workflow\'s own run history');
+    assert.equal(
+      step['continue-on-error'],
+      undefined,
+      'an un-reconciled fleet must red the run, not be swallowed',
+    );
   });
 
   it('runs against the environment that holds the production Railway token', () => {
