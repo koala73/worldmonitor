@@ -20,6 +20,9 @@ import { AUTO_MATCH_THRESHOLD, type ValidatorResult } from '../adapters/validato
 import {
   classifyValidatorOutcome,
   createScrapeRunStatement,
+  isRunBudgetExhausted,
+  resolveRunBudgetMs,
+  resolveRunStatus,
   updateScrapeRunStatement,
 } from './scrape-coverage.js';
 
@@ -143,7 +146,27 @@ export async function scrapeRetailer(slug: string) {
 
   const delay = config.rateLimit?.delayBetweenRequestsMs ?? 2_000;
 
+  // Wall-clock ceiling for one retailer's target loop. Each candidate URL can
+  // now cost two bounded provider calls (Firecrawl, then the opt-in Exa
+  // fallback), so a provider brown-out that never trips the 2-strike cooldowns
+  // — every call slow but eventually answering — can run far past the cron
+  // slot. Without this the only stop is an external kill, which skips
+  // updateScrapeRun entirely and strands the row at status='running'; the
+  // active-run query has no age bound, so that row is served indefinitely.
+  // Stopping ourselves keeps the run's own accounting honest: whatever was
+  // scraped is committed and the status lands on 'partial'.
+  const runBudgetMs = resolveRunBudgetMs(process.env.CONSUMER_PRICES_RUN_BUDGET_MS);
+  const runStartedAt = Date.now();
+  let budgetExhausted = false;
+
   for (const target of targets) {
+    if (isRunBudgetExhausted(runStartedAt, Date.now(), runBudgetMs)) {
+      budgetExhausted = true;
+      logger.warn(
+        `  [budget] ${slug}: run budget ${runBudgetMs}ms exhausted after ${pagesAttempted}/${targets.length} targets — stopping early`,
+      );
+      break;
+    }
     pagesAttempted++;
     const isDirect = target.metadata?.direct === true;
     const pinnedProductId = target.metadata?.pinnedProductId as string | undefined;
@@ -305,7 +328,7 @@ export async function scrapeRetailer(slug: string) {
     if (pagesAttempted < targets.length) await sleep(delay);
   }
 
-  const status = errorsCount === 0 ? 'completed' : pagesSucceeded > 0 ? 'partial' : 'failed';
+  const status = resolveRunStatus(errorsCount, pagesSucceeded, budgetExhausted);
   await updateScrapeRun(runId, status, pagesAttempted, pagesSucceeded, errorsCount, rejectedCount);
   logger.info(`Run ${runId} finished: ${status} (${pagesSucceeded}/${pagesAttempted} pages, rejected=${rejectedCount})`);
 

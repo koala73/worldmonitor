@@ -24,6 +24,24 @@ interface FirecrawlExtractResponse {
   error?: string;
 }
 
+/** Transport headroom added to a server-side render budget. */
+export const ABORT_HEADROOM_MS = 5_000;
+
+/**
+ * Client abort deadline for an extraction call.
+ *
+ * Must be strictly greater than the render budget sent in the request body:
+ * the client clock starts before the request leaves the process and also
+ * covers DNS, TLS, Firecrawl's queueing and the response transfer, so with
+ * equal deadlines the client always wins. A page that uses its full render
+ * allowance would then be aborted before its successful response could
+ * arrive, Firecrawl's own timeout error would be unreachable, and two such
+ * pages open the caller's per-scrape Firecrawl cooldown.
+ */
+export function extractAbortMs(timeoutMs?: number): number {
+  return (timeoutMs ?? 30_000) + ABORT_HEADROOM_MS;
+}
+
 export class FirecrawlProvider implements AcquisitionProvider {
   readonly name = 'firecrawl' as const;
 
@@ -35,6 +53,7 @@ export class FirecrawlProvider implements AcquisitionProvider {
     return {
       Authorization: `Bearer ${this.apiKey}`,
       'Content-Type': 'application/json',
+      'User-Agent': 'worldmonitor-consumer-prices/1.0',
     };
   }
 
@@ -119,13 +138,20 @@ export class FirecrawlProvider implements AcquisitionProvider {
         extract: { schema: jsonSchema, ...(schema.prompt ? { prompt: schema.prompt } : {}) },
         timeout: opts.timeout ?? 30_000,
       }),
-      signal: AbortSignal.timeout(opts.timeout ?? 30_000),
+      signal: AbortSignal.timeout(extractAbortMs(opts.timeout)),
     });
 
     if (!resp.ok) throw new Error(`Firecrawl extract failed: HTTP ${resp.status}`);
 
     const data = (await resp.json()) as FirecrawlExtractResponse;
-    if (!data.success || !data.data || !data.data.extract) {
+    // Throw ONLY for a provider-side failure (quota exhausted, rate limited,
+    // bad request) — those are transport conditions the caller's cooldown
+    // should count. A successful call that simply found nothing to extract is
+    // a PAGE-level outcome: return empty so the caller records `missing-price`
+    // and moves to the next candidate URL without accruing an outage streak.
+    // Conflating the two lets two ordinary no-product pages disable Firecrawl
+    // for the rest of the scrape, on every retailer, not just opted-in ones.
+    if (!data.success) {
       throw new Error(`Firecrawl extract error: ${data.error ?? 'unknown'}`);
     }
 

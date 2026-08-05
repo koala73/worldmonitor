@@ -77,15 +77,16 @@ export function extractSizeHint(canonicalName: string): string | null {
   return `${sizeValue}${sizeUnit} (approx. ${Math.round(baseQuantity)}${baseUnit})`;
 }
 
-/**
- * Safe host boundary check. Prevents evilluluhypermarket.com from passing
- * when allowedHost is luluhypermarket.com.
- */
+/** Merge the base host with configured aliases into a deduped, lowercased allowlist. */
 export function normalizeAllowedHosts(baseHost: string | readonly string[], aliases: readonly string[] = []): string[] {
   const hosts = typeof baseHost === 'string' ? [baseHost, ...aliases] : [...baseHost, ...aliases];
   return [...new Set(hosts.map((host) => host.trim().toLowerCase()).filter(Boolean))];
 }
 
+/**
+ * Safe host boundary check. Prevents evilluluhypermarket.com from passing
+ * when allowedHost is luluhypermarket.com.
+ */
 export function isAllowedHost(url: string, allowedHost: string | readonly string[]): boolean {
   try {
     const { hostname, protocol } = new URL(url);
@@ -109,7 +110,10 @@ export function looksLikeQuantityAsPrice(
   fallbackSizeText?: string,
 ): boolean {
   if (item.baseUnit === 'ct' || !Number.isFinite(price) || price < 20) return false;
-  const parsed = parseSize(sizeText ?? fallbackSizeText);
+  // Fall back to the canonical size whenever the provider's sizeText does not
+  // PARSE, not merely when it is absent: `??` would accept `''` or `'400 gm'`
+  // (UNIT_MAP has no `gm`/`pack`) as a present size and silently skip the check.
+  const parsed = parseSize(sizeText) ?? parseSize(fallbackSizeText);
   if (!parsed || parsed.baseUnit !== item.baseUnit || parsed.baseQuantity < 100) return false;
   return Math.abs(price - parsed.baseQuantity) < 0.005;
 }
@@ -425,19 +429,37 @@ export class SearchAdapter implements RetailerAdapter {
         continue;
       }
 
-      if (data.currency && data.currency.toUpperCase() !== currency.toUpperCase()) {
-        failures.push({ provider, reason: 'currency-mismatch', detail: `${data.currency}≠${currency}` });
+      const extractedCurrency = data.currency?.trim();
+
+      // The schema marks `currency` required and non-nullable, so an omission is
+      // an off-contract response, not a normal one. Under strict mode that is a
+      // rejection rather than a pass — for a multi-market host the currency is
+      // the last market discriminator behind `urlPathMustContain`, and a silent
+      // skip here stamps the retailer's configured currency on a foreign price.
+      // The other provider may still report it, so this escalates.
+      if (strictMode && !extractedCurrency) {
+        failures.push({ provider, reason: 'currency-mismatch', detail: 'missing-currency' });
         continue;
+      }
+
+      if (extractedCurrency && extractedCurrency.toUpperCase() !== currency.toUpperCase()) {
+        failures.push({ provider, reason: 'currency-mismatch', detail: `${extractedCurrency}≠${currency}` });
+        // The PAGE is priced in another currency; a second extractor reading the
+        // same page cannot change that, so stop escalating and try the next URL.
+        break;
       }
 
       if (!isTitlePlausible(canonicalName, data.productName)) {
         failures.push({ provider, reason: 'title-mismatch', detail: data.productName ?? 'missing productName' });
+        // Escalates: an extractor can misread the title (grabbing a carousel or
+        // recommendation heading) on the correct product page.
         continue;
       }
 
       if (strictMode && !itemConstraints) {
         failures.push({ provider, reason: 'validator-rejected', detail: 'missing-item-constraints' });
-        continue;
+        // A config/plumbing gap, not an extraction problem — retrying is pointless.
+        break;
       }
 
       if (strictMode && looksLikeQuantityAsPrice(price, data.sizeText, validationConstraints, canonicalName)) {
@@ -465,7 +487,9 @@ export class SearchAdapter implements RetailerAdapter {
 
       if (strictMode && !validator.ok) {
         failures.push({ provider, reason: 'validator-rejected', detail: validator.reasons.join(',') || 'unknown' });
-        continue;
+        // The validator judged the PAGE's product/size wrong. Both extractors
+        // read the same page, so escalating just doubles the paid call.
+        break;
       }
 
       // Shadow-mode: the strict validator runs alongside the legacy boolean gate
@@ -480,7 +504,7 @@ export class SearchAdapter implements RetailerAdapter {
       // inStockFromPrice: some retailers (e.g. BigBasket) gate on delivery pincode, not product
       // availability. Firecrawl misreads the gate as out-of-stock. If price > 0, treat as in-stock.
       if (ctx.config.searchConfig?.inStockFromPrice && price > 0) {
-        ctx.logger.info(`  [search:extract] ${canonicalName}: inStockFromPrice override (price=${price})`);
+        ctx.logger.info(`  [search:extract] ${ctx.config.slug}/${canonicalName}: inStockFromPrice override (price=${price})`);
         data.inStock = true;
       }
 
@@ -510,7 +534,7 @@ export class SearchAdapter implements RetailerAdapter {
         if (attempt.result) {
           const result = attempt.result;
           ctx.logger.info(
-            `  [search:pin] ${canonicalName}: price=${result.extracted.price} ${result.extracted.currency} provider=${result.provider} from ${target.url}`,
+            `  [search:pin] ${ctx.config.slug}/${canonicalName}: price=${result.extracted.price} ${result.extracted.currency} provider=${result.provider} from ${target.url}`,
           );
           return {
             url: target.url,
@@ -532,10 +556,10 @@ export class SearchAdapter implements RetailerAdapter {
           };
         }
         ctx.logger.warn(
-          `  [search:pin] ${canonicalName}: pin extraction failed (${formatExtractionFailures(attempt.failures)}), falling back to Exa`,
+          `  [search:pin] ${ctx.config.slug}/${canonicalName}: pin extraction failed (${formatExtractionFailures(attempt.failures)}), falling back to Exa`,
         );
       } catch (err) {
-        ctx.logger.warn(`  [search:pin] ${canonicalName}: pin fetch error, falling back to Exa: ${err}`);
+        ctx.logger.warn(`  [search:pin] ${ctx.config.slug}/${canonicalName}: pin fetch error, falling back to Exa: ${err}`);
       }
     }
 
@@ -547,10 +571,17 @@ export class SearchAdapter implements RetailerAdapter {
       );
     }
 
-    if (this.exaDiscoveryCooldownOpen || this.exaExtractionCooldownOpen) {
-      const cooldownKind = this.exaDiscoveryCooldownOpen ? 'discovery' : 'extraction';
+    // Only the DISCOVERY cooldown can abort the target: Exa is the sole URL
+    // discovery provider, so without it there is nothing to extract from. An
+    // Exa *extraction* cooldown must not abort — Firecrawl is the primary
+    // extractor and is frequently healthy at that moment (its own streak resets
+    // on every success), and `_extractFromUrl` already skips the cooled-down
+    // provider per candidate. Aborting here would turn a fallback outage into
+    // a whole-basket loss, which is the COVERAGE_PARTIAL this adapter exists
+    // to prevent.
+    if (this.exaDiscoveryCooldownOpen) {
       throw new SearchTargetError(
-        `Exa ${cooldownKind} cooldown is open for "${canonicalName}"`,
+        `Exa discovery cooldown is open for "${canonicalName}"`,
         0,
         [{ provider: 'exa', reason: 'provider-cooldown' }],
       );
@@ -583,10 +614,13 @@ export class SearchAdapter implements RetailerAdapter {
       if (this.exaDiscoveryFailureStreak >= 2) {
         this.exaDiscoveryCooldownOpen = true;
         ctx.logger.warn(
-          `  [search:provider-cooldown] ${ctx.config.slug}: Exa discovery disabled for the remainder of this scrape after ${this.exaDiscoveryFailureStreak} consecutive errors`,
+          `  [search:provider-cooldown] ${ctx.config.slug}: Exa discovery disabled for the remainder of this scrape after ${this.exaDiscoveryFailureStreak} consecutive errors (last: ${detail})`,
         );
       }
-      throw new SearchTargetError(`Exa search failed for "${canonicalName}"`, 0, [
+      // Carry `detail` into the message: nothing downstream reads `.failures`,
+      // so without it the log cannot tell an auth failure from a rate limit
+      // from a timeout — the distinction the cooldown exists to surface.
+      throw new SearchTargetError(`Exa search failed for "${canonicalName}": ${detail}`, 0, [
         { provider: 'exa', reason: 'provider-error', detail },
       ]);
     }
@@ -610,7 +644,7 @@ export class SearchAdapter implements RetailerAdapter {
     const safeUrls = [...new Set(discoveredUrls)].filter((url) => !attemptedUrls.has(url));
 
     ctx.logger.info(
-      `  [search:discovery] ${canonicalName}: ${exaResults.length} URLs from Exa, ${safeUrls.length} passed host/path check`,
+      `  [search:discovery] ${ctx.config.slug}/${canonicalName}: ${exaResults.length} URLs from Exa, ${safeUrls.length} passed host/path check`,
     );
 
     if (safeUrls.length === 0) {
@@ -622,7 +656,7 @@ export class SearchAdapter implements RetailerAdapter {
       const sample = exaResults.slice(0, 5).map((r) => r.url).filter(Boolean).join(' | ');
       const excludedPinnedUrl = attemptedUrls.size > 0 && discoveredUrls.some((url) => attemptedUrls.has(url));
       ctx.logger.warn(
-        `  [search:discovery] ${canonicalName}: 0 of ${exaResults.length} URLs passed filter (hosts=${hostAllowlist.join('|')}, path=${pathFilters.length ? pathFilters.join('|') : '<none>'}${requiredSegments.length ? `, required=${requiredSegments.join('+')}` : ''}${excludedPinnedUrl ? ', pinned URL already attempted' : ''}). Rejected: ${sample}`,
+        `  [search:discovery] ${ctx.config.slug}/${canonicalName}: 0 of ${exaResults.length} URLs passed filter (hosts=${hostAllowlist.join('|')}, path=${pathFilters.length ? pathFilters.join('|') : '<none>'}${requiredSegments.length ? `, required=${requiredSegments.join('+')}` : ''}${excludedPinnedUrl ? ', pinned URL already attempted' : ''}). Rejected: ${sample}`,
       );
       if (excludedPinnedUrl) {
         throw new Error(`Exa: all ${exaResults.length} results repeated the pinned URL already attempted for "${canonicalName}"`);
@@ -649,11 +683,11 @@ export class SearchAdapter implements RetailerAdapter {
           break;
         }
         ctx.logger.warn(
-          `  [search:extract] ${canonicalName}: rejected ${url} (${formatExtractionFailures(attempt.failures)}), trying next`,
+          `  [search:extract] ${ctx.config.slug}/${canonicalName}: rejected ${url} (${formatExtractionFailures(attempt.failures)}), trying next`,
         );
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
-        ctx.logger.warn(`  [search:extract] ${canonicalName}: extraction error on ${url}: ${msg}`);
+        ctx.logger.warn(`  [search:extract] ${ctx.config.slug}/${canonicalName}: extraction error on ${url}: ${msg}`);
         failures.push({ provider: 'firecrawl', reason: 'provider-error', detail: msg });
       }
     }
@@ -661,13 +695,22 @@ export class SearchAdapter implements RetailerAdapter {
     if (picked === null) {
       throw new SearchTargetError(
         `All ${safeUrls.length} URLs failed extraction for "${canonicalName}". Last: ${formatExtractionFailures(failures.slice(-3))}`,
-        failures.some(({ reason }) => REJECTION_FAILURES.has(reason)) ? 1 : 0,
+        // Only retailers that opted into the strict validator contribute to
+        // `rejected_count`. Before this adapter change the metric was
+        // structurally always 0 for non-pin search targets, so emitting it
+        // fleet-wide would put a step change on ~20 retailers this work does
+        // not touch — and `rejected_count` is one of the signals used to judge
+        // whether the recovery worked.
+        ctx.config.searchConfig?.requireStrictValidator === true &&
+        failures.some(({ reason }) => REJECTION_FAILURES.has(reason))
+          ? 1
+          : 0,
         failures,
       );
     }
 
     ctx.logger.info(
-      `  [search:extract] ${canonicalName}: price=${picked.extracted.price} ${picked.extracted.currency} provider=${picked.provider} from ${usedUrl}`,
+      `  [search:extract] ${ctx.config.slug}/${canonicalName}: price=${picked.extracted.price} ${picked.extracted.currency} provider=${picked.provider} from ${usedUrl}`,
     );
 
     return {

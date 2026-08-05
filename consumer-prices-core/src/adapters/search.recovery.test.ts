@@ -164,7 +164,10 @@ describe('SearchAdapter recovery path', () => {
     expect(firecrawl.extract).toHaveBeenCalledTimes(3);
   });
 
-  it('keeps Exa extraction cooldown independent from successful discovery', async () => {
+  // An Exa EXTRACTION cooldown must not abort the target: Exa is only the
+  // fallback there, and Firecrawl — the primary extractor — is often healthy.
+  // Aborting would turn a fallback outage into a whole-basket loss.
+  it('keeps discovery and Firecrawl running after the Exa extraction cooldown opens', async () => {
     const exa = {
       search: vi.fn().mockResolvedValue([{ url: 'https://coldstorage.com.sg/en/p/bread/i/1.html' }]),
       extract: vi.fn().mockRejectedValue(new Error('Exa extraction timeout')),
@@ -173,14 +176,43 @@ describe('SearchAdapter recovery path', () => {
       extract: vi.fn().mockResolvedValue({ data: {} }),
     } as unknown as FirecrawlProvider;
     const adapter = new SearchAdapter(exa, firecrawl);
-    const context = makeContext(makeConfig());
+    const context = makeContext(makeConfig({ allowedHosts: ['www.coldstorage.com.sg'] }));
 
     await expect(adapter.fetchTarget(context, makeTarget())).rejects.toThrow('failed extraction');
     await expect(adapter.fetchTarget(context, makeTarget())).rejects.toThrow('failed extraction');
-    await expect(adapter.fetchTarget(context, makeTarget())).rejects.toThrow('extraction cooldown');
+    // Third target still runs discovery and still reaches Firecrawl; only the
+    // cooled-down fallback is skipped.
+    await expect(adapter.fetchTarget(context, makeTarget())).rejects.toThrow('failed extraction');
+
+    expect(exa.search).toHaveBeenCalledTimes(3);
+    expect(firecrawl.extract).toHaveBeenCalledTimes(3);
+    expect(exa.extract).toHaveBeenCalledTimes(2);
+  });
+
+  // Exa is the ONLY discovery provider, so its discovery cooldown does abort.
+  it('still aborts the target when the Exa discovery cooldown is open', async () => {
+    const exa = {
+      search: vi.fn().mockRejectedValue(new Error('Exa search HTTP 503')),
+      extract: vi.fn(),
+    } as unknown as ExaProvider;
+    const firecrawl = { extract: vi.fn() } as unknown as FirecrawlProvider;
+    const adapter = new SearchAdapter(exa, firecrawl);
+    const context = makeContext(makeConfig({ allowedHosts: ['www.coldstorage.com.sg'] }));
+
+    await expect(adapter.fetchTarget(context, makeTarget())).rejects.toThrow('Exa search failed');
+    await expect(adapter.fetchTarget(context, makeTarget())).rejects.toThrow('Exa search failed');
+    await expect(adapter.fetchTarget(context, makeTarget())).rejects.toThrow('discovery cooldown');
 
     expect(exa.search).toHaveBeenCalledTimes(2);
-    expect(exa.extract).toHaveBeenCalledTimes(2);
+  });
+
+  it('carries the provider error detail into the thrown discovery message', async () => {
+    const exa = { search: vi.fn().mockRejectedValue(new Error('Exa search HTTP 401 unauthorized')) } as unknown as ExaProvider;
+    const adapter = new SearchAdapter(exa, { extract: vi.fn() } as unknown as FirecrawlProvider);
+
+    await expect(
+      adapter.fetchTarget(makeContext(makeConfig({ allowedHosts: ['www.coldstorage.com.sg'] })), makeTarget()),
+    ).rejects.toThrow('HTTP 401 unauthorized');
   });
 
   it('does not rediscover after Firecrawl cooldown when no extraction fallback is configured', async () => {
@@ -244,10 +276,41 @@ describe('SearchAdapter recovery path', () => {
 
     expect(error).toBeInstanceOf(SearchTargetError);
     expect(error).toMatchObject({ rejectedCount: 1 });
-    expect((error as SearchTargetError).failures.map(({ reason }) => reason)).toEqual([
-      'validator-rejected',
-      'validator-rejected',
-    ]);
+    // One rejection, not two: the validator judged the PAGE wrong, and both
+    // extractors read the same page, so escalating would just double the cost.
+    expect((error as SearchTargetError).failures.map(({ reason }) => reason)).toEqual(['validator-rejected']);
+    expect(exa.extract).not.toHaveBeenCalled();
+  });
+
+  // rejected_count was structurally always 0 for non-pin search targets before
+  // this adapter change, so only opted-in retailers may start reporting it.
+  it('reports rejectedCount only for retailers that opted into strict validation', async () => {
+    // Use title-mismatch: it fires for every retailer regardless of strict
+    // mode, so `requireStrictValidator` is the only variable between the two.
+    const wrongProduct = {
+      data: { productName: 'Garden Sunflower Seeds 1kg', price: 9.95, currency: 'SGD', sizeText: '400g' },
+    };
+    const build = (requireStrictValidator: boolean) => {
+      const exa = {
+        search: vi.fn().mockResolvedValue([{ url: 'https://coldstorage.com.sg/en/p/bread/i/1.html' }]),
+        extract: vi.fn().mockResolvedValue(wrongProduct),
+      } as unknown as ExaProvider;
+      const firecrawl = { extract: vi.fn().mockResolvedValue(wrongProduct) } as unknown as FirecrawlProvider;
+      return {
+        adapter: new SearchAdapter(exa, firecrawl),
+        context: makeContext(
+          makeConfig({ allowedHosts: ['www.coldstorage.com.sg'], requireStrictValidator, extractionFallback: 'none' }),
+        ),
+      };
+    };
+
+    const strict = build(true);
+    const strictErr = await strict.adapter.fetchTarget(strict.context, makeTarget()).catch((e: unknown) => e);
+    expect((strictErr as SearchTargetError).rejectedCount).toBe(1);
+
+    const shadow = build(false);
+    const shadowErr = await shadow.adapter.fetchTarget(shadow.context, makeTarget()).catch((e: unknown) => e);
+    expect((shadowErr as SearchTargetError).rejectedCount).toBe(0);
   });
 
   it('rejects a quantity-like price when the extractor omits sizeText', async () => {
@@ -521,6 +584,96 @@ describe('SearchAdapter recovery path', () => {
   it('pins the shipped Noon market scope in YAML', () => {
     expect(loadRetailerConfig('noon_sa').searchConfig?.urlPathMustContain).toEqual(['/saudi-en/']);
     expect(loadRetailerConfig('noon_grocery_ae').searchConfig?.urlPathMustContain).toEqual(['/uae-en/']);
+  });
+
+  // The opt-in boundary itself: without this, deleting the
+  // `extractionFallback === 'exa'` guard leaves the whole suite green while
+  // every non-opted-in retailer starts paying for a second provider.
+  it('never calls the fallback extractor when extractionFallback is none', async () => {
+    const exa = {
+      search: vi.fn().mockResolvedValue([{ url: 'https://coldstorage.com.sg/en/p/bread/i/1.html' }]),
+      extract: vi.fn().mockResolvedValue({ data: {} }),
+    } as unknown as ExaProvider;
+    const firecrawl = { extract: vi.fn().mockResolvedValue({ data: {} }) } as unknown as FirecrawlProvider;
+    const adapter = new SearchAdapter(exa, firecrawl);
+    const context = makeContext(makeConfig({ allowedHosts: ['www.coldstorage.com.sg'], extractionFallback: 'none' }));
+
+    await expect(adapter.fetchTarget(context, makeTarget())).rejects.toThrow('failed extraction');
+
+    expect(firecrawl.extract).toHaveBeenCalledOnce();
+    expect(exa.extract).not.toHaveBeenCalled();
+  });
+
+  it('rejects a strict-mode hit whose size is missing everywhere', async () => {
+    const extracted = { data: { productName: 'Fresh Bread', price: 4.95, currency: 'SGD' } };
+    const exa = {
+      search: vi.fn().mockResolvedValue([{ url: 'https://coldstorage.com.sg/en/p/bread/i/1.html' }]),
+      extract: vi.fn().mockResolvedValue(extracted),
+    } as unknown as ExaProvider;
+    const firecrawl = { extract: vi.fn().mockResolvedValue(extracted) } as unknown as FirecrawlProvider;
+    const adapter = new SearchAdapter(exa, firecrawl);
+    const target = { ...makeTarget(), metadata: { ...makeTarget().metadata, canonicalName: 'Fresh Bread' } };
+
+    const error = await adapter
+      .fetchTarget(makeContext(makeConfig({ allowedHosts: ['www.coldstorage.com.sg'] })), target)
+      .catch((err: unknown) => err);
+
+    expect((error as SearchTargetError).failures.map(({ detail }) => detail)).toContain('missing-size');
+  });
+
+  it('rejects a foreign-currency page and does not escalate to the fallback', async () => {
+    const extracted = {
+      data: { productName: 'Meadows Enriched White Bread', price: 4.95, currency: 'AED', sizeText: '400g' },
+    };
+    const exa = {
+      search: vi.fn().mockResolvedValue([{ url: 'https://coldstorage.com.sg/en/p/bread/i/1.html' }]),
+      extract: vi.fn().mockResolvedValue(extracted),
+    } as unknown as ExaProvider;
+    const firecrawl = { extract: vi.fn().mockResolvedValue(extracted) } as unknown as FirecrawlProvider;
+    const adapter = new SearchAdapter(exa, firecrawl);
+
+    const error = await adapter
+      .fetchTarget(makeContext(makeConfig({ allowedHosts: ['www.coldstorage.com.sg'] })), makeTarget())
+      .catch((err: unknown) => err);
+
+    expect((error as SearchTargetError).failures.map(({ reason }) => reason)).toEqual(['currency-mismatch']);
+    // The page is priced in AED; a second extractor reading it cannot help.
+    expect(exa.extract).not.toHaveBeenCalled();
+  });
+
+  it('rejects a strict-mode hit whose currency the extractor omitted', async () => {
+    const extracted = { data: { productName: 'Meadows Enriched White Bread', price: 4.95, sizeText: '400g' } };
+    const exa = {
+      search: vi.fn().mockResolvedValue([{ url: 'https://coldstorage.com.sg/en/p/bread/i/1.html' }]),
+      extract: vi.fn().mockResolvedValue(extracted),
+    } as unknown as ExaProvider;
+    const firecrawl = { extract: vi.fn().mockResolvedValue(extracted) } as unknown as FirecrawlProvider;
+    const adapter = new SearchAdapter(exa, firecrawl);
+
+    const error = await adapter
+      .fetchTarget(makeContext(makeConfig({ allowedHosts: ['www.coldstorage.com.sg'] })), makeTarget())
+      .catch((err: unknown) => err);
+
+    expect((error as SearchTargetError).failures.map(({ detail }) => detail)).toEqual([
+      'missing-currency',
+      'missing-currency',
+    ]);
+  });
+
+  it("rejects a non-grocery JioMart /p/ URL under the shipped policy", async () => {
+    const exa = {
+      search: vi.fn().mockResolvedValue([{ url: 'https://www.jiomart.com/p/electronics/television-55-inch/123' }]),
+    } as unknown as ExaProvider;
+    const firecrawl = { extract: vi.fn() } as unknown as FirecrawlProvider;
+    const adapter = new SearchAdapter(exa, firecrawl);
+    const config = loadRetailerConfig('jiomart_in');
+    const target = {
+      ...makeTarget(),
+      metadata: { ...makeTarget().metadata, domain: 'www.jiomart.com', currency: 'INR' },
+    };
+
+    await expect(adapter.fetchTarget(makeContext(config), target)).rejects.toThrow('host/path check');
+    expect(firecrawl.extract).not.toHaveBeenCalled();
   });
 
   // Pins bypass discovery entirely, so a pin stored on a foreign storefront
