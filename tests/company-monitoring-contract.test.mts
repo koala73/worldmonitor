@@ -232,6 +232,75 @@ describe('Company Monitoring limits and rollout controls', () => {
     assert.ok(checked > 0, 'expected at least one injector contract to map onto a generated rule');
   });
 
+  it('keeps the filter vocabularies identical between the normalizers and the published patterns', async () => {
+    // The accepted-alias vocabulary is written twice: as *_BY_INPUT maps backing the
+    // normalizers, and as a regex alternation in the OpenAPI injector. Nothing compared
+    // them, so adding a value to the proto enum could leave the spec advertising a
+    // filter the runtime rejects (or the runtime accepting one the spec never documents).
+    // Expand the published pattern and require exact set equality with what the
+    // normalizer actually accepts, in BOTH directions.
+    const { COMPANY_MONITORING_OPENAPI_QUERY_ITEM_CONTRACTS } = await import(
+      '../scripts/openapi-inject-company-monitoring-contract.mjs'
+    );
+
+    // `^(?:a|b|PREFIX_(?:X|Y))$` -> ['a', 'b', 'PREFIX_X', 'PREFIX_Y']
+    const expand = (pattern: string): string[] => {
+      const body = pattern.replace(/^\^\(\?:/, '').replace(/\)\$$/, '');
+      const parts: string[] = [];
+      let depth = 0;
+      let current = '';
+      for (let i = 0; i < body.length; i += 1) {
+        const ch = body[i];
+        if (ch === '(') depth += 1;
+        if (ch === ')') depth -= 1;
+        if (ch === '|' && depth === 0) { parts.push(current); current = ''; continue; }
+        current += ch;
+      }
+      parts.push(current);
+      return parts.flatMap((part) => {
+        const nested = part.match(/^(.*)\(\?:(.*)\)$/);
+        if (!nested) return [part];
+        return nested[2].split('|').map((suffix) => `${nested[1]}${suffix}`);
+      });
+    };
+
+    const normalizers: Record<string, (values: readonly string[]) => string[]> = {
+      '/api/company-monitoring/v1/list-monitored-companies|lifecycle': normalizeMonitoredCompanyLifecycleFilters,
+      '/api/company-monitoring/v1/list-monitored-companies|coverage': normalizeCoverageFilters,
+      '/api/company-monitoring/v1/list-company-event-impacts|direction': normalizeImpactDirectionFilters,
+      '/api/company-monitoring/v1/list-company-event-impacts|lifecycle': normalizeImpactLifecycleFilters,
+    };
+
+    let compared = 0;
+    for (const [path, parameterName, contract] of COMPANY_MONITORING_OPENAPI_QUERY_ITEM_CONTRACTS as Array<
+      [string, string, { pattern?: string }]
+    >) {
+      const normalize = normalizers[`${path}|${parameterName}`];
+      if (!normalize || !contract.pattern) continue;
+      compared += 1;
+
+      const published = expand(contract.pattern);
+      assert.ok(published.length >= 3, `${parameterName}: pattern expansion looks wrong (${published.length})`);
+
+      // Every value the spec advertises must be accepted by the runtime normalizer.
+      for (const value of published) {
+        assert.doesNotThrow(
+          () => normalize([value]),
+          `${path} ${parameterName}: spec advertises "${value}" but the normalizer rejects it`,
+        );
+      }
+      // And the normalizer must accept nothing the spec does not advertise.
+      for (const value of ['definitely_not_a_state', 'ACTIVE', 'active ', '__proto__']) {
+        if (published.includes(value)) continue;
+        assert.throws(
+          () => normalize([value]),
+          `${path} ${parameterName}: normalizer accepts "${value}" which the published pattern rejects`,
+        );
+      }
+    }
+    assert.equal(compared, 4, 'expected all four filter vocabularies to be cross-checked');
+  });
+
   it('keeps every provider and product surface independently dark', () => {
     assert.deepEqual(COMPANY_MONITORING_ROLLOUT_FLAGS, {
       exaProvider: false,
