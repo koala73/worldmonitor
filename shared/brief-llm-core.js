@@ -544,9 +544,13 @@ function extractProperNounSequencesWithMeta(text) {
   const sentences = preprocessed.split(/[.!?]+\s+|\n+/);
 
   const sequences = [];
+  // #6109: which non-empty sentence are we in? Only the FIRST one can carry the
+  // sentence-initial allowance — see the `firstSentence` note at its use site.
+  let sentenceOrdinal = -1;
   for (const rawSentence of sentences) {
     const sentence = rawSentence.trim();
     if (!sentence) continue;
+    sentenceOrdinal += 1;
 
     // Tokenize: keep alphanumeric runs + apostrophes + hyphens
     // (preserves "Mar-a-Lago", "O'Brien").
@@ -555,6 +559,8 @@ function extractProperNounSequencesWithMeta(text) {
 
     let current = [];
     let currentStartedSentence = false; // #6109: did `current` open this sentence?
+    let currentAllCaps = false; // #6109: was its first token a deliberate ALL-CAPS acronym?
+    let currentFirstSentence = false; // #6109: is `current` in the FIRST sentence?
     let bridgeBuffer = []; // joiners pending — kept only if another proper noun follows
     let firstToken = true;
 
@@ -604,21 +610,31 @@ function extractProperNounSequencesWithMeta(text) {
           current.push(...bridgeBuffer);
         }
         bridgeBuffer = [];
-        if (current.length === 0) currentStartedSentence = atSentenceStart;
+        if (current.length === 0) {
+          currentStartedSentence = atSentenceStart;
+          // #6109: sentence position can force the FIRST letter to be a capital;
+          // it cannot force the interior ones. An ALL-CAPS token ("WHO", "US",
+          // "SWIFT", "ICE") is therefore a deliberate acronym, not orthography,
+          // so the sentence-initial allowance must not apply to it.
+          currentAllCaps = isAllCapsAcronym;
+          currentFirstSentence = sentenceOrdinal === 0;
+        }
         // Use the punctuation/possessive-stripped form so "Beirut's"
         // lands as "beirut", matching the headline's "Beirut".
         current.push(tokenForLookup.toLowerCase());
       } else {
         // Lowercase non-joiner — ends current sequence.
         if (current.length > 0) {
-          sequences.push({ tokens: current, sentenceInitial: currentStartedSentence });
+          sequences.push({ tokens: current, sentenceInitial: currentStartedSentence, allCaps: currentAllCaps, firstSentence: currentFirstSentence });
           current = [];
           currentStartedSentence = false;
+          currentAllCaps = false;
+          currentFirstSentence = false;
         }
         bridgeBuffer = [];
       }
     }
-    if (current.length > 0) sequences.push({ tokens: current, sentenceInitial: currentStartedSentence });
+    if (current.length > 0) sequences.push({ tokens: current, sentenceInitial: currentStartedSentence, allCaps: currentAllCaps, firstSentence: currentFirstSentence });
   }
 
   return sequences;
@@ -647,10 +663,39 @@ function extractProperNounSequencesWithMeta(text) {
 // Excluding a month costs nothing when the source really does name it: the
 // normal capitalized-sequence path already grounds that case. This only removes
 // the lowercase-source fallback, which for a month is never the right read.
+// Adversarial review widened this from months alone to the whole homograph
+// class: a token that is an ordinary lowercase word in a wire story AND a
+// distinct named entity when capitalized. Each entry below was demonstrated as
+// a live false-accept against origin/main, with a realistic newswire source:
+//   turkey  "prices for turkey soar before the holiday"   -> "Turkey rejected…"
+//   china   "tariffs on fine china"                       -> "China imposed…"
+//   bill    "the senate defense bill heads to the floor"  -> "Bill passed…"
+//   polish  "ministers race to polish the package"        -> "Poland readied…"
+//   march / may  (the original month pair)
+// These are NOT reachable via the ACRONYM/DEMONYM tables — 'china' and 'turkey'
+// are not keys there — so the source-capitalization gate in groundTokenSet
+// cannot close them; only an explicit block can.
+//
+// Scope rule for adding to this list: the word must plausibly appear LOWERCASE
+// in a geopolitical wire story while also naming a state, person, org, or date
+// when capitalized. It is deliberately short — the general amnesty is the
+// point, and every entry here is a case where capitalization carries the
+// meaning rather than mere sentence position.
 const SENTENCE_INITIAL_ALLOWANCE_BLOCKED = new Set([
+  // Months — a bare month is not a date fact to extractNumericFacts, so nothing
+  // else catches "the march on the capital" licensing "March saw fighting".
   'january', 'jan', 'february', 'feb', 'march', 'mar', 'april', 'apr', 'may',
   'june', 'jun', 'july', 'jul', 'august', 'aug', 'september', 'sept', 'sep',
   'october', 'oct', 'november', 'nov', 'december', 'dec',
+  // States and nationals that double as common words.
+  'turkey', 'china', 'chad', 'jordan', 'georgia', 'polish', 'dutch', 'thai',
+  // Person names that double as common words.
+  'bill', 'mark', 'will', 'frank', 'rose', 'grant',
+  // Brands and outlets that double as common words. Adversarial review
+  // published "Apple cut its regional orders" grounded only by "apple prices",
+  // and found Post/Guard/State/Sun still licensed across 73 live headlines.
+  'apple', 'amazon', 'shell', 'orange', 'target', 'meta', 'gap', 'visa',
+  'post', 'guard', 'state', 'sun', 'times', 'page', 'ford',
 ]);
 
 function groundTokenSet(text) {
@@ -660,7 +705,23 @@ function groundTokenSet(text) {
     if (!raw) continue;
     const stripped = raw.replace(/[.,;:'’]+$/g, '').replace(/['’]s$/i, '');
     const token = (stripped || raw).toLowerCase();
-    if (token) out.add(normalizeToken(token));
+    if (!token) continue;
+    // Do NOT let the acronym/demonym tables promote a token the source wrote in
+    // LOWERCASE. Eight ordinary English words collide with an organization or
+    // nation identity — who->WHO, us->US, sec->SEC, pentagon->DOD, and the
+    // demonyms polish->Poland, thai->Thailand, dutch->Netherlands,
+    // chinese->China. Without this, a source reading "Officials who briefed
+    // reporters…" grounds a lead reading "WHO warned…", publishing an invented
+    // attribution under the default enforce mode. Verified against origin/main:
+    // all eight flipped from reject to accept.
+    //
+    // Same reasoning as the month exclusion above, one axis wider: for these
+    // tokens the capital IS the identity, so the "case carries no signal"
+    // premise does not hold. A source that CAPITALIZES the word still gets the
+    // promotion, so "Israeli jets" -> "Israel struck" keeps working.
+    const sourceCapitalized = /^\p{Lu}/u.test(stripped || raw);
+    if (!sourceCapitalized && (ACRONYM_NORMALIZE.has(token) || DEMONYM_NORMALIZE.has(token))) continue;
+    out.add(normalizeToken(token));
   }
   return out;
 }
@@ -733,10 +794,24 @@ export function validateNoHallucinatedProperNouns(summary, headline) {
   let summaryEntries, headlineSequences, headlineTokens;
   try {
     summaryEntries = extractProperNounSequencesWithMeta(summary)
-      .map((entry) => ({ tokens: normalizeSequence(entry.tokens), sentenceInitial: entry.sentenceInitial }));
+      .map((entry) => ({
+        tokens: normalizeSequence(entry.tokens),
+        sentenceInitial: entry.sentenceInitial,
+        allCaps: entry.allCaps,
+        firstSentence: entry.firstSentence,
+      }));
     headlineSequences = extractProperNounSequences(headline).map(normalizeSequence);
     headlineTokens = groundTokenSet(headline);
-  } catch {
+  } catch (err) {
+    // #6109: this catch fails the gate OPEN — every claim is accepted. That is
+    // the deliberate "ship the LLM output rather than fall back on confusion"
+    // stance, but it must never be SILENT: adversarial review caught a
+    // transient bad save in which the extractor threw and the validator
+    // returned ok:true for all 19 fixtures in a battery, must-reject cases
+    // included, with nothing in the log. A dead gate and a healthy gate looked
+    // identical. Warn so the difference is visible, matching the pattern used
+    // by checkLeadGrounding below.
+    console.warn(`[brief_grounding] proper-noun extraction threw (${err?.message ?? err}) — accepting unvalidated`);
     return { ok: true };
   }
 
@@ -744,7 +819,7 @@ export function validateNoHallucinatedProperNouns(summary, headline) {
 
   // For each summary sequence, check whether at least one contiguous
   // subsequence of it appears in some headline sequence.
-  for (const { tokens: summarySeq, sentenceInitial } of summaryEntries) {
+  for (const { tokens: summarySeq, sentenceInitial, allCaps, firstSentence } of summaryEntries) {
     let found = false;
     for (const headlineSeq of headlineSequences) {
       if (containsSubsequence(headlineSeq, summarySeq)) {
@@ -774,6 +849,8 @@ export function validateNoHallucinatedProperNouns(summary, headline) {
     if (
       !found
       && sentenceInitial
+      && firstSentence
+      && !allCaps
       && summarySeq.length === 1
       && !SENTENCE_INITIAL_ALLOWANCE_BLOCKED.has(summarySeq[0])
       && headlineTokens.has(summarySeq[0])

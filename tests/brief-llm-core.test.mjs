@@ -649,6 +649,81 @@ describe('validateNoHallucinatedProperNouns — May 19 regression + class', () =
     assert.equal(validateNoHallucinatedProperNouns(summary, ground).ok, true);
   });
 
+  // Found by adversarial review (two reviewers independently). groundTokenSet
+  // ran EVERY source word through ACRONYM_NORMALIZE / DEMONYM_NORMALIZE, so the
+  // relative pronoun "who" entered the ground set as the canonical WHO and the
+  // object pronoun "us" as US — letting the lead attribute a claim to an
+  // organization the source never mentioned. Verified as a live false-accept
+  // against origin/main. The table promotion is now refused for a token the
+  // source wrote in lowercase.
+  it('does not let the lowercase pronoun "who" ground a claim attributed to WHO', () => {
+    const ground = 'Doctors who treated cholera patients flee Sudan violence';
+    const summary = 'WHO warned of cholera spreading in Sudan [1].';
+    assert.equal(validateNoHallucinatedProperNouns(summary, ground).ok, false);
+  });
+
+  it('does not let the lowercase pronoun "us" ground a claim about the US', () => {
+    const ground = 'they ambushed us near the border';
+    const summary = 'US forces were ambushed near the border [1].';
+    assert.equal(validateNoHallucinatedProperNouns(summary, ground).ok, false);
+  });
+
+  it('still promotes a CAPITALIZED demonym in the source', () => {
+    // The gate is on the source's capitalization, not on the table itself.
+    const ground = 'Israeli jets struck the depot';
+    const summary = 'Israel struck the depot overnight [1].';
+    assert.equal(validateNoHallucinatedProperNouns(summary, ground).ok, true);
+  });
+
+  it('does not promote a LOWERCASE demonym into its nation', () => {
+    // Discriminates the groundTokenSet capitalization gate specifically: the
+    // only proper-noun candidate here is "Israel", and the source writes the
+    // demonym lowercase, so the table must not promote it.
+    const ground = 'israeli jets struck the depot overnight';
+    const summary = 'Israel struck the depot overnight [1].';
+    assert.equal(validateNoHallucinatedProperNouns(summary, ground).ok, false);
+  });
+
+  // Sentence position can force the FIRST letter to be a capital; it cannot
+  // force the interior ones. An ALL-CAPS token is a deliberate acronym, so the
+  // allowance's premise does not cover it.
+  // These two must contain NO other ungrounded proper noun, or they reject for
+  // the wrong reason and stay green with the all-caps guard deleted. A first
+  // draft used "SWIFT access for Russian banks…" and rejected on "Russian".
+  it('does not extend the allowance to an ALL-CAPS acronym at sentence start', () => {
+    const ground = 'EU vows swift response to the incident';
+    const summary = 'SWIFT curbs took effect at midnight [1].';
+    assert.equal(validateNoHallucinatedProperNouns(summary, ground).ok, false);
+  });
+
+  it('does not let "ice storm" ground an ICE agency claim', () => {
+    const ground = 'the region was crippled by ice storm damage';
+    const summary = 'ICE raids continued through the night [1].';
+    assert.equal(validateNoHallucinatedProperNouns(summary, ground).ok, false);
+  });
+
+  // The homograph class the month blocklist opened: a state or person name that
+  // is also an ordinary lowercase word in a wire story. Neither 'china' nor
+  // 'turkey' is in the acronym/demonym tables, so the source-capitalization
+  // gate above cannot close these — only the explicit block does.
+  it('does not let "fine china" ground a claim about China', () => {
+    const ground = 'tariffs on fine china rose sharply at auction last week';
+    const summary = 'China imposed new export controls overnight [1].';
+    assert.equal(validateNoHallucinatedProperNouns(summary, ground).ok, false);
+  });
+
+  it('does not let "turkey" the bird ground a claim about Turkey', () => {
+    const ground = 'prices for turkey soar before the holiday';
+    const summary = 'Turkey rejected the proposal outright [1].';
+    assert.equal(validateNoHallucinatedProperNouns(summary, ground).ok, false);
+  });
+
+  it('does not let a legislative "bill" ground a person named Bill', () => {
+    const ground = 'the senate defense bill heads to the floor';
+    const summary = 'Bill passed the chamber unopposed [1].';
+    assert.equal(validateNoHallucinatedProperNouns(summary, ground).ok, false);
+  });
+
   it('does not relax multi-token sequences whose tokens are individually present', () => {
     // Both "Swat" and "Pakistan" appear in the source, but never adjacently.
     // The contiguous-match rule is what stops the model from fusing two

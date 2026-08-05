@@ -381,6 +381,56 @@ describe('composeSynthesizedBrief acronym followed by its citation (#5947)', () 
     assert.notEqual(composeSynthesizedBrief(endOfLead, topStories, { validatorMode: 'enforce' }), null);
   });
 
+  // #6109 adversarial review: the sentence-initial amnesty was reachable
+  // MID-CLAUSE by manufacturing a boundary the validator's own splitter honors
+  // but the caller's does not. The validator splits on /[.!?]+\s+|\n+/, so a
+  // bare newline (or a lowercase abbreviation like "vs.") turns an arbitrary
+  // capital into a "sentence-initial" token and hands it the amnesty. The
+  // reviewer published "Apple cut its regional orders" grounded only by
+  // "apple prices" this way — defeating the very guard the unit tests pin.
+  // Fixed by requiring the FIRST sentence, not merely a sentence start.
+  // These run through the real composer because that is where it published.
+  describe('#6109 amnesty is not reachable via a synthetic sentence boundary', () => {
+    const topStories = [
+      {
+        primaryTitle: 'Regional apple prices rose sharply in Chile last quarter, growers say',
+        primarySource: 'Reuters',
+        primaryLink: 'http://apple',
+        sources: ['Reuters', 'AP News'],
+        memberTitles: ['Regional apple prices rose sharply in Chile last quarter, growers say'],
+      },
+    ];
+    const lines = [{ n: 1, text: 'Regional apple prices rose sharply in Chile [1]' }];
+
+    it('rejects a lead smuggling a capital past a bare newline', () => {
+      const smuggled = JSON.stringify({
+        lead: 'Chile reported grower losses [1].\nApple cut its regional orders [1].',
+        lines,
+      });
+      assert.equal(
+        composeSynthesizedBrief(smuggled, topStories, { validatorMode: 'enforce' }),
+        null,
+        '"apple" the fruit must not license "Apple" the company via a newline',
+      );
+    });
+
+    it('rejects a lead smuggling a capital past a lowercase abbreviation', () => {
+      const smuggled = JSON.stringify({
+        lead: 'Chile grower losses mounted vs. Apple regional orders [1].',
+        lines,
+      });
+      assert.equal(composeSynthesizedBrief(smuggled, topStories, { validatorMode: 'enforce' }), null);
+    });
+
+    it('still composes the legitimate sentence-initial case end-to-end', () => {
+      const legit = JSON.stringify({
+        lead: 'Prices rose sharply in Chile last quarter [1].',
+        lines,
+      });
+      assert.notEqual(composeSynthesizedBrief(legit, topStories, { validatorMode: 'enforce' }), null);
+    });
+  });
+
   it('treats a bracketed year after the acronym as prose, not a citation', () => {
     // verifyCitationIndexes deliberately leaves 4-digit brackets as prose, and
     // \d{1,3} cannot match one — so "[2026]" must not license a collapse. The
