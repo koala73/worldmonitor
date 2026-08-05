@@ -1,0 +1,81 @@
+name: Perf — styleLayout budget
+
+# The #4536 gate. docs/perf/desktop-mainthread-baseline-2026-07-02.md:103 names
+# the styleLayout share as the forced-reflow gate, and until now nothing
+# enforced it — while tests/measure-*-mainthread.test.mts ran green in CI
+# asserting fixture parsing only, which reads as coverage.
+#
+# Scheduled rather than per-PR on purpose. The harness needs a real browser
+# against a deployed page, and KTD1 (both baseline docs) is that lab ABSOLUTES
+# are host-contention contaminated — the same URL has scored 28/57/85. A
+# per-PR latency gate on shared runners would be flaky and get muted. The
+# SHARE is stable across hosts and throttle levels, so gating that on a
+# cadence against production is the measurement the doc actually prescribes.
+
+on:
+  schedule:
+    # Twice daily. The signal is a structural share, not a fast-moving number.
+    - cron: '17 6,18 * * *'
+  workflow_dispatch:
+    inputs:
+      url:
+        description: Page to measure
+        required: false
+        default: https://www.worldmonitor.app/dashboard
+      max_pct:
+        description: styleLayout budget, percent of attributed main-thread self-time
+        required: false
+        default: '28'
+
+concurrency:
+  group: perf-style-layout-budget
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  measure:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '24'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Capture desktop main-thread decomposition
+        id: capture
+        # cpu 1 matches the committed baseline capture. Failure here is
+        # environmental (page down, browser launch failed), and the gate below
+        # treats a missing/empty report as "could not measure", not as a pass.
+        continue-on-error: true
+        run: |
+          node scripts/measure-desktop-mainthread.mjs \
+            "${{ github.event.inputs.url || 'https://www.worldmonitor.app/dashboard' }}" \
+            --cpu 1 --settle 15000 --json > style-layout-report.json
+
+      - name: Enforce the styleLayout budget
+        run: |
+          if [ ! -s style-layout-report.json ]; then
+            echo "[style-layout-budget] WARNING — harness produced no report; treating as unmeasured"
+            exit 0
+          fi
+          node scripts/check-style-layout-budget.mjs style-layout-report.json \
+            --max-pct "${{ github.event.inputs.max_pct || '28' }}"
+
+      - name: Upload decomposition
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: style-layout-report
+          path: style-layout-report.json
+          if-no-files-found: warn
+          retention-days: 14
