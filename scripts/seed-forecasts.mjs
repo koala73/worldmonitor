@@ -836,6 +836,25 @@ async function redisGet(url, token, key) {
   try { return unwrapEnvelope(JSON.parse(data.result)).data; } catch { return null; }
 }
 
+// redisGet collapses "key absent" and "read failed" into the same null — a
+// non-ok HTTP response returns null and only a transport error throws. That is
+// right for best-effort cache reads, but wrong for any caller that DERIVES
+// STATE FROM ABSENCE: the market_implications failure writer resets its miss
+// streak when it sees no previous meta, so a transient Upstash 5xx would read
+// as "no misses recorded" and quietly restart the count — suppressing the
+// escalation exactly when Redis is unhealthy too. This variant returns null
+// only for a PROVEN miss and throws on everything else.
+async function redisGetOrThrow(url, token, key) {
+  if (_testRedisStore) return _testRedisStore[key] ?? null;
+  const raw = await redisCommand(url, token, ['GET', key]); // throws on non-ok
+  if (raw?.result == null) return null;
+  try {
+    return unwrapEnvelope(JSON.parse(raw.result)).data;
+  } catch (err) {
+    throw new Error(`Redis GET ${key} returned unparseable JSON: ${err.message}`);
+  }
+}
+
 async function redisDel(url, token, key) {
   return redisCommand(url, token, ['DEL', key]);
 }
@@ -17073,12 +17092,14 @@ function marketImplicationsMetaErrorReason(reason) {
 // Closed failure vocabulary surfaced to /api/health as
 // seed-meta.lastSynthesisFailureCode. api/health.js validates against a
 // matching pattern, so a code added here needs the pattern widened there.
-const MARKET_IMPLICATIONS_FAILURE_CODES = Object.freeze({
+// Exported so that coupling is enforced by a test rather than by this comment
+// (see tests/market-implications-seed-health.test.mjs).
+export const MARKET_IMPLICATIONS_FAILURE_CODES = Object.freeze({
   llm_no_response: 'MARKET_IMPLICATIONS_LLM_NO_RESPONSE',
   no_parseable_cards: 'MARKET_IMPLICATIONS_NO_PARSEABLE_CARDS',
   all_cards_failed_validation: 'MARKET_IMPLICATIONS_VALIDATION',
 });
-const MARKET_IMPLICATIONS_UNKNOWN_FAILURE_CODE = 'MARKET_IMPLICATIONS_UNKNOWN';
+export const MARKET_IMPLICATIONS_UNKNOWN_FAILURE_CODE = 'MARKET_IMPLICATIONS_UNKNOWN';
 // Matches INSIGHTS_MAX_CONSECUTIVE_FAILURES and api/health.js's own clamp: the
 // streak is a signal, not a counter anyone reads past the warn threshold.
 const MARKET_IMPLICATIONS_MAX_CONSECUTIVE_FAILURES = 100;
@@ -17130,7 +17151,11 @@ export function buildMarketImplicationsFailureMeta({
 
   const previousFailures = Number.isInteger(previous.consecutiveFailures) && previous.consecutiveFailures > 0
     ? previous.consecutiveFailures
-    : 0;
+    // A pre-contract meta carries no streak field, but `status:'error'` is
+    // itself the record of a prior miss. Counting it as zero would undercount
+    // the streak across the deploy boundary and delay the first escalation by
+    // a full cron tick.
+    : (previous.status === 'error' ? 1 : 0);
   const previousSuccessAt = Number.isFinite(previous.lastSuccessAt) && previous.lastSuccessAt > 0
     ? previous.lastSuccessAt
     : null;
@@ -17178,11 +17203,13 @@ async function writeMarketImplicationsFailureMeta(reason) {
   let previousMeta = null;
   let lastGoodPayload = null;
   try {
-    previousMeta = await redisGet(url, token, MARKET_IMPLICATIONS_META_KEY);
-    lastGoodPayload = await redisGet(url, token, MARKET_IMPLICATIONS_KEY);
+    previousMeta = await redisGetOrThrow(url, token, MARKET_IMPLICATIONS_META_KEY);
+    lastGoodPayload = await redisGetOrThrow(url, token, MARKET_IMPLICATIONS_KEY);
   } catch (err) {
-    // Fail closed: an unread last-good is an unproven last-good, so this
-    // degrades into the immediate-error branch rather than softening blind.
+    // Fail closed: an unread last-good is an unproven last-good, and an unread
+    // streak is not a cleared streak. Both degrade into the immediate-error
+    // branch rather than softening the alarm on an unverified assumption —
+    // hence redisGetOrThrow, which does not disguise a read failure as a miss.
     console.warn(`  [MarketImplications] last-good read failed during failure write: ${err.message}`);
     previousMeta = null;
     lastGoodPayload = null;

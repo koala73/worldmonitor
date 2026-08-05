@@ -100,6 +100,44 @@ test('run-budget starve preserves last-good and does NOT write a SEED_ERROR', as
   );
 });
 
+test('a starve landing on an already-degraded meta neither clears nor advances the streak', async () => {
+  // The boundary between the two mechanisms: a prior LLM miss recorded a
+  // streak, and the NEXT tick is starved rather than attempted. A starve is
+  // not a miss (nothing was tried) and not a success (nothing was published),
+  // so it must leave the record exactly as it found it — clearing it would
+  // erase the escalation, incrementing it would alarm on contention.
+  const store = {};
+  __setRedisStoreForTests(store);
+  seedLastGood(store);
+  store['seed-meta:intelligence:market-implications'] = {
+    fetchedAt: 1783340000000,
+    recordCount: 1,
+    status: 'ok',
+    lastAttemptAt: 1783340000000,
+    lastSuccessAt: 1783340000000,
+    consecutiveFailures: 1,
+    lastSynthesisFailureCode: 'MARKET_IMPLICATIONS_LLM_NO_RESPONSE',
+  };
+
+  __setForecastLlmRunDeadlineForTests(Date.now() - 1000);
+  const redisCommands = [];
+  global.fetch = async (_url, init = {}) => {
+    redisCommands.push(JSON.parse(String(init.body || '[]')));
+    return { ok: true, status: 200, json: async () => ({ result: 1 }), text: async () => '' };
+  };
+
+  await buildAndSeedMarketImplications({});
+
+  const meta = store['seed-meta:intelligence:market-implications'];
+  assert.equal(meta.consecutiveFailures, 1, 'a starve must not reset a real miss streak — that would erase the pending escalation');
+  assert.equal(meta.lastSynthesisFailureCode, 'MARKET_IMPLICATIONS_LLM_NO_RESPONSE', 'nor drop the reason');
+  assert.equal(meta.fetchedAt, 1783340000000, 'nor advance the content clock');
+  assert.ok(
+    redisCommands.some((command) => command[0] === 'EXPIRE' && command[1] === 'seed-meta:intelligence:market-implications'),
+    'the degraded meta is TTL-refreshed rather than rewritten, so the diagnostics survive',
+  );
+});
+
 test('run-budget starve restores stale OK meta when previous tick wrote SEED_ERROR', async () => {
   const store = {};
   __setRedisStoreForTests(store);

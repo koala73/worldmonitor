@@ -25,11 +25,14 @@ import {
   buildAndSeedMarketImplications,
   buildMarketImplicationsFailureMeta,
   buildMarketImplicationsFingerprint,
+  MARKET_IMPLICATIONS_FAILURE_CODES,
+  MARKET_IMPLICATIONS_UNKNOWN_FAILURE_CODE,
   __setRedisStoreForTests,
   __setForecastLlmTransportForTests,
   __setForecastLlmRunDeadlineForTests,
   __setForecastLlmCallOverrideForTests,
 } from '../scripts/seed-forecasts.mjs';
+import { __testing__ as healthTesting } from '../api/health.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const seederSource = readFileSync(resolve(here, '../scripts/seed-forecasts.mjs'), 'utf8');
@@ -40,6 +43,7 @@ const CARDS_KEY = 'intelligence:market-implications:v1';
 const ENV_KEYS = [
   'OPENROUTER_API_KEY', 'GROQ_API_KEY',
   'FORECAST_LLM_MARKET_IMPLICATIONS_PROVIDER_ORDER', 'FORECAST_LLM_PROVIDER_ORDER',
+  'UPSTASH_REDIS_REST_URL', 'UPSTASH_REDIS_REST_TOKEN',
 ];
 const originalEnv = Object.fromEntries(ENV_KEYS.map((k) => [k, process.env[k]]));
 const realFetch = global.fetch;
@@ -280,6 +284,87 @@ test('every LLM-failure guard routes through the same degrade-or-error writer', 
   }
 });
 
+// ── an unreadable streak is not a cleared streak ────────────────────────────
+// These run against the real HTTP path (no store shim) because the defect
+// lives in the transport: redisGet returns null for BOTH "key absent" and
+// "read failed" — a non-ok response never throws. The failure writer DERIVES
+// the streak from absence, so a plain redisGet would read a transient Upstash
+// 5xx as "no misses recorded" and quietly restart the count, suppressing the
+// escalation exactly when Redis is unhealthy too.
+
+function armFailingRedisRead(failingKey, previousMeta, { fault = 'http-500' } = {}) {
+  process.env.UPSTASH_REDIS_REST_URL = 'http://redis.test';
+  process.env.UPSTASH_REDIS_REST_TOKEN = 'test-token';
+  const writes = [];
+  global.fetch = async (input, init = {}) => {
+    const url = String(input);
+    const body = init.body ? JSON.parse(String(init.body)) : null;
+    const ok = (result) => ({ ok: true, status: 200, json: async () => ({ result }), text: async () => '' });
+    // Reads arrive either as GET /get/<key> (redisGet) or as a POST ['GET', key]
+    // (redisCommand); handle both so this test cannot pass by transport shape.
+    const key = url.includes('/get/')
+      ? decodeURIComponent(url.split('/get/')[1])
+      : (body?.[0] === 'GET' ? body[1] : null);
+    if (key === failingKey) {
+      // 'corrupt' is the quieter fault: HTTP 200 carrying a body that will not
+      // parse. It must fail closed exactly like a 5xx rather than reading as
+      // an empty key.
+      return fault === 'corrupt'
+        ? ok('{"cards": [truncated mid-write')
+        : { ok: false, status: 500, json: async () => ({}), text: async () => 'upstash 500' };
+    }
+    if (key === META_KEY) return ok(JSON.stringify(previousMeta));
+    if (key === CARDS_KEY) return ok(JSON.stringify({ cards: SERVED_CARDS, generatedAt: SERVED_GENERATED_AT, model: 'm' }));
+    if (key) return ok(null); // stage-cache lookup
+    if (body?.[0] === 'SET') { writes.push({ key: body[1], value: JSON.parse(body[2]) }); return ok('OK'); }
+    return ok(1); // EXPIRE and friends
+  };
+  __setForecastLlmRunDeadlineForTests(Date.now() + 60_000);
+  __setForecastLlmCallOverrideForTests(() => ({ text: '', model: '', provider: '', failureReason: 'provider_failed' }));
+  return writes;
+}
+
+test('an unreadable previous meta fails closed instead of restarting the streak', async () => {
+  const writes = armFailingRedisRead(META_KEY, {
+    fetchedAt: SERVED_MS, recordCount: 5, status: 'ok',
+    lastSuccessAt: SERVED_MS, consecutiveFailures: 4,
+  });
+
+  await buildAndSeedMarketImplications({});
+
+  const metaWrite = writes.find((w) => w.key === META_KEY);
+  assert.ok(metaWrite, 'the failure writer must still record something');
+  assert.equal(metaWrite.value.status, 'error', 'a streak we cannot read is not a streak we may clear');
+  assert.notEqual(metaWrite.value.consecutiveFailures, 1, 'silently restarting at 1 would erase four recorded misses');
+});
+
+test('a corrupt meta body fails closed rather than reading as an empty key', async () => {
+  const writes = armFailingRedisRead(
+    META_KEY,
+    { fetchedAt: SERVED_MS, recordCount: 5, status: 'ok', consecutiveFailures: 4 },
+    { fault: 'corrupt' },
+  );
+
+  await buildAndSeedMarketImplications({});
+
+  const metaWrite = writes.find((w) => w.key === META_KEY);
+  assert.ok(metaWrite);
+  assert.equal(metaWrite.value.status, 'error', 'a 200 carrying garbage is still not proof the streak is zero');
+  assert.notEqual(metaWrite.value.consecutiveFailures, 1);
+});
+
+test('an unreadable last-good payload fails closed too', async () => {
+  const writes = armFailingRedisRead(CARDS_KEY, {
+    fetchedAt: SERVED_MS, recordCount: 5, status: 'ok', consecutiveFailures: 4,
+  });
+
+  await buildAndSeedMarketImplications({});
+
+  const metaWrite = writes.find((w) => w.key === META_KEY);
+  assert.ok(metaWrite);
+  assert.equal(metaWrite.value.status, 'error', 'cards we cannot read cannot justify softening the alarm');
+});
+
 // ── the decision itself, exercised directly ─────────────────────────────────
 // Cases the three live call sites cannot reach: an unmapped reason, and the
 // pre-contract meta shape that exists in Redis right now.
@@ -296,10 +381,13 @@ test('an unmapped failure reason normalizes rather than emitting a raw string', 
   assert.equal(meta.consecutiveFailures, 1, 'and the miss still counts');
 });
 
-test('a pre-contract meta still reports a last success', () => {
-  // The meta shape in Redis today has no lastSuccessAt field. Deriving it from
-  // the payload being served keeps the first post-deploy failure from looking
-  // like a producer that never once succeeded.
+test('a pre-contract error meta counts as the miss it recorded', () => {
+  // The meta shape in Redis today is `{recordCount:0, status:'error'}` with no
+  // streak field. It is still the record of a real miss, so the first
+  // post-deploy failure is the SECOND consecutive one — counting it as the
+  // first would undercount across the deploy boundary and delay escalation by
+  // a full cron tick. lastSuccessAt is derived from the served payload so the
+  // same legacy meta does not read as a producer that never succeeded.
   const meta = buildMarketImplicationsFailureMeta({
     previousMeta: { fetchedAt: Date.now(), recordCount: 0, status: 'error', errorReason: 'llm_no_response' },
     lastGoodPayload: { cards: SERVED_CARDS, generatedAt: SERVED_GENERATED_AT },
@@ -309,7 +397,7 @@ test('a pre-contract meta still reports a last success', () => {
 
   assert.equal(meta.status, 'ok');
   assert.equal(meta.lastSuccessAt, SERVED_MS, 'the served payload is itself the proof of an earlier publish');
-  assert.equal(meta.consecutiveFailures, 1, 'a legacy error meta carries no streak, so this is the first counted miss');
+  assert.equal(meta.consecutiveFailures, 2, 'the legacy error meta IS a recorded prior miss');
 });
 
 test('a corrupt streak value cannot poison the counter', () => {
@@ -322,6 +410,46 @@ test('a corrupt streak value cannot poison the counter', () => {
     });
     assert.equal(meta.consecutiveFailures, 1, `previous streak ${String(poison)} must reset to a clean count`);
   }
+});
+
+test('every code the seeder can emit is one /api/health will accept', () => {
+  // The producer's vocabulary and health's validation pattern live in
+  // different files and different deploy targets. Health DROPS a code that
+  // fails its pattern, so drift is silent — the streak would still escalate
+  // but the operator would lose the reason. Assert the coupling instead of
+  // documenting it: this reads both real definitions, so adding a code on one
+  // side without the other turns this red.
+  const { failureCodePattern } = healthTesting.SEED_META.marketImplications.synthesisFailure;
+  const emittable = [...Object.values(MARKET_IMPLICATIONS_FAILURE_CODES), MARKET_IMPLICATIONS_UNKNOWN_FAILURE_CODE];
+  assert.ok(emittable.length >= 4, 'guard against an accidentally empty vocabulary making this vacuous');
+  for (const code of emittable) {
+    assert.ok(failureCodePattern.test(code), `health would silently drop the seeder's ${code}`);
+  }
+});
+
+test('a failure, a recovery, and a fresh failure keep the streak honest across runs', () => {
+  // Each single-run test pins one transition. This walks the sequence the
+  // hourly cron actually produces, so a reset that only works on a fixture
+  // shaped by hand cannot pass.
+  const payload = { cards: SERVED_CARDS, generatedAt: SERVED_GENERATED_AT };
+  const first = buildMarketImplicationsFailureMeta({
+    previousMeta: { fetchedAt: SERVED_MS, recordCount: 5, status: 'ok', consecutiveFailures: 0, lastSuccessAt: SERVED_MS },
+    lastGoodPayload: payload, reason: 'llm_no_response', nowMs: SERVED_MS + 3_600_000,
+  });
+  assert.equal(first.consecutiveFailures, 1);
+
+  const second = buildMarketImplicationsFailureMeta({
+    previousMeta: first, lastGoodPayload: payload, reason: 'llm_no_response', nowMs: SERVED_MS + 7_200_000,
+  });
+  assert.equal(second.consecutiveFailures, 2, 'the streak accumulates off its own prior output, not just a hand-built fixture');
+
+  // A real publish lands: the seeder writes success meta, which must clear it.
+  const recovered = { fetchedAt: SERVED_MS + 10_800_000, recordCount: 3, status: 'ok', lastAttemptAt: SERVED_MS + 10_800_000, lastSuccessAt: SERVED_MS + 10_800_000, consecutiveFailures: 0, lastSynthesisFailureCode: null };
+  const third = buildMarketImplicationsFailureMeta({
+    previousMeta: recovered, lastGoodPayload: payload, reason: 'llm_no_response', nowMs: SERVED_MS + 14_400_000,
+  });
+  assert.equal(third.consecutiveFailures, 1, 'a recovery resets the count — the next miss starts over, it does not resume at 3');
+  assert.equal(third.lastSuccessAt, SERVED_MS + 10_800_000, 'and the recovery timestamp survives the next miss');
 });
 
 test('market_implications runs before the best-effort R2 trace export (#4978 tail-stage budget)', () => {

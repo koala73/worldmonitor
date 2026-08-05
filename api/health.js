@@ -1466,7 +1466,15 @@ function classifyKey(name, redisKey, opts, ctx) {
     status = 'SEED_ERROR';
   }
   else if (sourceBlocked && hasData && records > 0 && seedStale !== true) status = 'SOURCE_BLOCKED';
-  else if (synthesisFailure?.warning) status = 'SEED_ERROR';
+  // `hasData` guard: a producer-failure warning describes degraded-BUT-SERVING
+  // — the LKG is still on the page while generation retries. When the data key
+  // is gone there is nothing being served, and the absence verdict below
+  // (EMPTY/crit) is both stronger and more accurate. Without this guard the
+  // 7-day seed-meta outlives the shorter-lived data key, so a producer that
+  // failed once and then stopped reports warn instead of crit for the rest of
+  // the week — the exact softening the ON_DEMAND_KEYS policy block above was
+  // written to prevent for marketImplications.
+  else if (synthesisFailure?.warning && hasData) status = 'SEED_ERROR';
   else if (seedError) status = 'SEED_ERROR';
   else if (!hasData) {
     if (cascadeCovered) status = 'OK_CASCADE';

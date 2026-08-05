@@ -389,6 +389,59 @@ test('classifyKey: market-implications age escalation still fires with no failur
   assert.equal(STATUS_COUNTS[entry.status], 'warn');
 });
 
+test('classifyKey: a failure streak must not downgrade a vanished panel from EMPTY to a warn', () => {
+  // The canonical key holds 180min; the seed-meta holds 7 days. So a cron that
+  // dies right after a miss leaves a failure-bearing meta pointing at a panel
+  // that emptied hours ago. A producer-failure warning describes
+  // degraded-but-serving — when nothing is served at all, the stronger
+  // absence verdict has to win, or a blank homepage panel reports warn
+  // instead of crit for the rest of the week.
+  const entry = classifyKey(
+    'marketImplications',
+    STANDALONE_KEYS.marketImplications,
+    { allowOnDemand: false },
+    makeCtx({
+      strens: {}, // canonical key expired -> panel is blank
+      metaValues: {
+        [SEED_META.marketImplications.key]: JSON.stringify({
+          fetchedAt: NOW - 190 * ONE_MIN_MS,
+          recordCount: 5,
+          status: 'ok',
+          lastAttemptAt: NOW - 185 * ONE_MIN_MS,
+          lastSuccessAt: NOW - 190 * ONE_MIN_MS,
+          consecutiveFailures: 1,
+          lastSynthesisFailureCode: 'MARKET_IMPLICATIONS_LLM_NO_RESPONSE',
+        }),
+      },
+    }),
+  );
+
+  assert.equal(entry.status, 'EMPTY');
+  assert.equal(STATUS_COUNTS[entry.status], 'crit', 'an absent homepage panel is a crit, per the ON_DEMAND_KEYS policy block');
+});
+
+test('classifyKey: an insights failure streak likewise cannot mask a vanished LKG', () => {
+  // Same precedence, asserted on the other key that carries this contract, so
+  // the fix is not silently market-implications-only.
+  const entry = classifyKey(
+    'newsInsights',
+    BOOTSTRAP_KEYS.newsInsights,
+    { allowOnDemand: false },
+    makeCtx({
+      strens: {},
+      metaValues: {
+        [SEED_META.newsInsights.key]: seedMeta({
+          lastAttemptAt: NOW - 2 * ONE_MIN_MS,
+          consecutiveFailures: 2,
+          lastSynthesisFailureCode: 'INSIGHTS_SYNTHESIS_PARSE',
+        }),
+      },
+    }),
+  );
+
+  assert.equal(entry.status, 'EMPTY');
+});
+
 test('classifyKey: a market-implications run with nothing servable still errors immediately', () => {
   // The producer's fail-closed branch: no last-good cards to hold a content
   // clock against, so it writes the zero-record error meta and health must
