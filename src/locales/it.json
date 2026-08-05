@@ -367,7 +367,8 @@
     "consumerPrices": "Prezzi al Consumo",
     "fearGreed": "Paura e Avidità",
     "marketBreadth": "Ampiezza di Mercato",
-    "climateNews": "Notizie Clima"
+    "climateNews": "Notizie Clima",
+    "fx": "Tassi di cambio"
   },
   "commands": {
     "prefixes": {
@@ -2540,6 +2541,27 @@
       "upgradeCta": "Esegui l'upgrade per di più",
       "lockedAriaLabel": "Aggiungi scheda — bloccato. {{reason}}",
       "unlockedAnnouncement": "Limite schede del dashboard rimosso."
+    },
+    "fx": {
+      "infoTooltip": "<strong>Tassi di cambio</strong> Stress valutario e tassi spot:<ul><li>FX Stress classifica 45 valute in base al peggior drawdown da picco a minimo negli ultimi 24 mesi, insieme alla variazione a 12 mesi</li><li>La copertura include ARS, TRY, EGP, NGN, PKR e UAH — valute omesse dai set di riferimento della BIS e della BCE</li><li>Spot elenca i tassi rispetto al dollaro USA e i tassi di riferimento dell'euro della BCE separatamente, poiché i due sono quotati su basi diverse</li></ul>Fonti: Yahoo Finance e Banca centrale europea.",
+      "tabs": {
+        "stress": "Stress valutario",
+        "spot": "Spot"
+      },
+      "currency": "Valuta",
+      "pair": "Coppia",
+      "rate": "Tasso",
+      "yoy": "12m",
+      "drawdown": "Drawdown 24m",
+      "peakToTrough": "Picco → Minimo",
+      "change1d": "1d",
+      "perUsd": "Per 1 USD",
+      "usdPerUnit": "USD per unità",
+      "usdBase": "Rispetto al dollaro USA",
+      "eurBase": "Tassi di riferimento euro della BCE",
+      "stressedCount": "{{stressed}} di {{total}} valute sotto il {{threshold}}",
+      "sourceYahoo": "Fonte: Yahoo Finance",
+      "sourceEcb": "Fonte: BCE"
     }
   },
   "popups": {

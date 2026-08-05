@@ -63,6 +63,7 @@ import type { GulfEconomiesPanel } from '@/components/GulfEconomiesPanel';
 import type { GroceryBasketPanel } from '@/components/GroceryBasketPanel';
 import type { BigMacPanel } from '@/components/BigMacPanel';
 import type { FuelPricesPanel } from '@/components/FuelPricesPanel';
+import type { FxPanel } from '@/components/FxPanel';
 import type { FaoFoodPriceIndexPanel } from '@/components/FaoFoodPriceIndexPanel';
 import type { OilInventoriesPanel } from '@/components/OilInventoriesPanel';
 import type { PipelineStatusPanel } from '@/components/PipelineStatusPanel';
@@ -620,6 +621,10 @@ export class App {
     if (shouldPrime('fuel-prices')) {
       const panel = this.state.panels['fuel-prices'] as FuelPricesPanel | undefined;
       if (panel) primeTask('fuel-prices', () => panel.fetchData());
+    }
+    if (shouldPrime('fx')) {
+      const panel = this.state.panels['fx'] as FxPanel | undefined;
+      if (panel) primeTask('fx', () => panel.fetchData());
     }
     if (shouldPrime('fao-food-price-index')) {
       const panel = this.state.panels['fao-food-price-index'] as FaoFoodPriceIndexPanel | undefined;
@@ -2879,6 +2884,13 @@ export class App {
       () => (this.state.panels['fuel-prices'] as FuelPricesPanel).fetchData(),
       REFRESH_INTERVALS.fuelPrices,
       () => this.isPanelNearViewport('fuel-prices')
+    );
+
+    this.refreshScheduler.scheduleRefresh(
+      'fx',
+      () => (this.state.panels['fx'] as FxPanel).fetchData(),
+      REFRESH_INTERVALS.fx,
+      () => this.isPanelNearViewport('fx')
     );
 
     this.refreshScheduler.scheduleRefresh(

@@ -434,7 +434,8 @@
     "consumerPrices": "Consumer Prices",
     "fearGreed": "Fear & Greed",
     "marketBreadth": "Market Breadth",
-    "climateNews": "Climate News"
+    "climateNews": "Climate News",
+    "fx": "Курси валют"
   },
   "commands": {
     "prefixes": {
@@ -2591,6 +2592,27 @@
         "compactHours": "{{count}}h",
         "compactDays": "{{count}}d"
       }
+    },
+    "fx": {
+      "infoTooltip": "<strong>Курси валют</strong> Стрес валют і спотові курси:<ul><li>FX Stress ранжирує 45 валют за найгіршим падінням від піку до дна за останні 24 місяці, поряд зі змінами за 12 місяців</li><li>Охоплення включає ARS, TRY, EGP, NGN, PKR та UAH — валути, які референтні набори BIS та ECB не включають</li><li>Спотові курси наведені окремо проти долара США та референтних курсів євро ECB, оскільки вони котируються на різних базах</li></ul>Джерела: Yahoo Finance та Європейський центральний банк.",
+      "tabs": {
+        "stress": "FX Stress",
+        "spot": "Спот"
+      },
+      "currency": "Валюта",
+      "pair": "Пара",
+      "rate": "Курс",
+      "yoy": "12м",
+      "drawdown": "Падіння за 24м",
+      "peakToTrough": "Пік → Дно",
+      "change1d": "1д",
+      "perUsd": "За 1 USD",
+      "usdPerUnit": "USD за одиницю",
+      "usdBase": "Проти долара США",
+      "eurBase": "Референтні курси євро ECB",
+      "stressedCount": "{{stressed}} з {{total}} валют нижче {{threshold}}",
+      "sourceYahoo": "Джерело: Yahoo Finance",
+      "sourceEcb": "Джерело: ECB"
     }
   },
   "popups": {

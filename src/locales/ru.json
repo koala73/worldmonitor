@@ -369,7 +369,8 @@
     "consumerPrices": "Потребительские цены",
     "fearGreed": "Страх и жадность",
     "marketBreadth": "Ширина рынка",
-    "climateNews": "Новости климата"
+    "climateNews": "Новости климата",
+    "fx": "Курсы валют"
   },
   "commands": {
     "prefixes": {
@@ -2558,6 +2559,27 @@
       "upgradeCta": "Обновить для большего",
       "lockedAriaLabel": "Добавить вкладку — заблокировано. {{reason}}",
       "unlockedAnnouncement": "Лимит вкладок панели снят."
+    },
+    "fx": {
+      "infoTooltip": "<strong>Курсы валют</strong> Стресс-тесты валют и спот-курсы:<ul><li>FX Stress ранжирует 45 валют по наихудшему падению от пика до дна за последние 24 месяца, наряду с изменением за 12 месяцев</li><li>Охватывает ARS, TRY, EGP, NGN, PKR и UAH — валюты, которые не включены в справочные наборы BIS и ECB</li><li>Spot содержит курсы против доллара США и справочные курсы евро ECB отдельно, так как они котируются на разных базах</li></ul>Источники: Yahoo Finance и Европейский центральный банк.",
+      "tabs": {
+        "stress": "FX Stress",
+        "spot": "Спот"
+      },
+      "currency": "Валюта",
+      "pair": "Пара",
+      "rate": "Курс",
+      "yoy": "12м",
+      "drawdown": "Падение за 24м",
+      "peakToTrough": "Пик → Дно",
+      "change1d": "1д",
+      "perUsd": "За 1 USD",
+      "usdPerUnit": "USD за единицу",
+      "usdBase": "Против доллара США",
+      "eurBase": "Справочные курсы евро ECB",
+      "stressedCount": "{{stressed}} из {{total}} валют ниже {{threshold}}",
+      "sourceYahoo": "Источник: Yahoo Finance",
+      "sourceEcb": "Источник: ECB"
     }
   },
   "popups": {

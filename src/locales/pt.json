@@ -105,7 +105,8 @@
     "consumerPrices": "Preços ao Consumidor",
     "fearGreed": "Medo e Ganância",
     "marketBreadth": "Amplitude de Mercado",
-    "climateNews": "Notícias Climáticas"
+    "climateNews": "Notícias Climáticas",
+    "fx": "Taxas de Câmbio"
   },
   "commands": {
     "prefixes": {
@@ -2278,6 +2279,27 @@
       "upgradeCta": "Atualizar para mais",
       "lockedAriaLabel": "Adicionar separador — bloqueado. {{reason}}",
       "unlockedAnnouncement": "Limite de separadores do painel removido."
+    },
+    "fx": {
+      "infoTooltip": "<strong>Taxas de Câmbio</strong> Stress cambial e taxas spot:<ul><li>FX Stress classifica 45 moedas pela pior queda máxima em 24 meses, juntamente com a variação de 12 meses</li><li>A cobertura inclui ARS, TRY, EGP, NGN, PKR e UAH — moedas omitidas dos conjuntos de referência do BIS e ECB</li><li>Spot lista as taxas em relação ao dólar americano e as taxas de referência do euro do ECB separadamente, porque os dois são cotados em bases diferentes</li></ul>Fontes: Yahoo Finance e Banco Central Europeu.",
+      "tabs": {
+        "stress": "FX Stress",
+        "spot": "Spot"
+      },
+      "currency": "Moeda",
+      "pair": "Par",
+      "rate": "Taxa",
+      "yoy": "12m",
+      "drawdown": "Queda em 24m",
+      "peakToTrough": "Pico → Vale",
+      "change1d": "1d",
+      "perUsd": "Por 1 USD",
+      "usdPerUnit": "USD por unidade",
+      "usdBase": "Contra o dólar americano",
+      "eurBase": "Taxas de referência do euro do ECB",
+      "stressedCount": "{{stressed}} de {{total}} moedas abaixo de {{threshold}}",
+      "sourceYahoo": "Fonte: Yahoo Finance",
+      "sourceEcb": "Fonte: ECB"
     }
   },
   "popups": {

@@ -434,7 +434,8 @@
     "consumerPrices": "Consumer Prices",
     "fearGreed": "Fear & Greed",
     "marketBreadth": "Market Breadth",
-    "climateNews": "Climate News"
+    "climateNews": "Climate News",
+    "fx": "نرخ‌های ارز"
   },
   "commands": {
     "prefixes": {
@@ -2591,6 +2592,27 @@
       "upgradeCta": "ارتقا برای بیشتر",
       "lockedAriaLabel": "افزودن برگه — قفل‌شده. {{reason}}",
       "unlockedAnnouncement": "محدودیت برگه‌های داشبورد برداشته شد."
+    },
+    "fx": {
+      "infoTooltip": "<strong>نرخ‌های ارز</strong> تنش ارزی و نرخ‌های پایه:<ul><li>تنش ارزی (FX Stress) ۴۵ ارز را بر اساس بدترین کاهش قله‌به‌دره در ۲۴ ماه گذشته، همراه با تغییر ۱۲ ماهه رتبه‌بندی می‌کند</li><li>پوشش شامل ARS، TRY، EGP، NGN، PKR و UAH است — ارزهایی که مجموعه‌های ارجاعی BIS و ECB حذف کرده‌اند</li><li>نرخ‌های پایه نرخ‌ها را در برابر دلار آمریکایی و نرخ‌های ارجاعی یورو ECB به‌طور جداگانه فهرست می‌کند، زیرا این دو از مبانی مختلفی نقل قول می‌شوند</li></ul>منابع: Yahoo Finance و بانک مرکزی اروپا.",
+      "tabs": {
+        "stress": "تنش ارزی",
+        "spot": "نرخ پایه"
+      },
+      "currency": "ارز",
+      "pair": "جفت ارزی",
+      "rate": "نرخ",
+      "yoy": "۱۲ ماه",
+      "drawdown": "کاهش ۲۴ ماهه",
+      "peakToTrough": "قله → دره",
+      "change1d": "۱ روز",
+      "perUsd": "به ازای ۱ دلار آمریکایی",
+      "usdPerUnit": "دلار آمریکایی به ازای هر واحد",
+      "usdBase": "در برابر دلار آمریکایی",
+      "eurBase": "نرخ‌های ارجاعی یورو ECB",
+      "stressedCount": "{{stressed}} از {{total}} ارز زیر {{threshold}}",
+      "sourceYahoo": "منبع: Yahoo Finance",
+      "sourceEcb": "منبع: ECB"
     }
   },
   "popups": {

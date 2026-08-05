@@ -367,7 +367,8 @@
     "consumerPrices": "Prix à la consommation",
     "fearGreed": "Peur & Avidité",
     "marketBreadth": "Étendue du marché",
-    "climateNews": "Actualités climatiques"
+    "climateNews": "Actualités climatiques",
+    "fx": "Taux de Change"
   },
   "commands": {
     "prefixes": {
@@ -2540,6 +2541,27 @@
       "upgradeCta": "Passer à la version supérieure",
       "lockedAriaLabel": "Ajouter un onglet — verrouillé. {{reason}}",
       "unlockedAnnouncement": "Limite d'onglets du tableau de bord levée."
+    },
+    "fx": {
+      "infoTooltip": "<strong>Taux de Change</strong> Stress de devises et taux au comptant :<ul><li>FX Stress classe 45 devises selon leur pire baisse crête à creux sur les 24 derniers mois, avec le changement sur 12 mois</li><li>La couverture inclut l'ARS, TRY, EGP, NGN, PKR et UAH — des devises omises par les ensembles de référence de la BRI et de la BCE</li><li>Le comptant répertorie les taux par rapport au dollar américain et aux taux de référence de l'euro de la BCE séparément, car les deux sont cotés sur des bases différentes</li></ul>Sources : Yahoo Finance et la Banque centrale européenne.",
+      "tabs": {
+        "stress": "FX Stress",
+        "spot": "Comptant"
+      },
+      "currency": "Devise",
+      "pair": "Paire",
+      "rate": "Taux",
+      "yoy": "12m",
+      "drawdown": "Baisse sur 24m",
+      "peakToTrough": "Crête → Creux",
+      "change1d": "1j",
+      "perUsd": "Par 1 USD",
+      "usdPerUnit": "USD par unité",
+      "usdBase": "Contre le dollar américain",
+      "eurBase": "Taux de référence euro de la BCE",
+      "stressedCount": "{{stressed}} sur {{total}} devises sous {{threshold}}",
+      "sourceYahoo": "Source : Yahoo Finance",
+      "sourceEcb": "Source : BCE"
     }
   },
   "popups": {

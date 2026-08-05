@@ -2388,18 +2388,14 @@ export class DataLoaderManager implements AppModule {
       // Load ECB FX rates for CommoditiesPanel FX tab
       if (commoditiesPanel) {
         try {
-          const { getEcbFxRatesData } = await import('@/services/economic');
+          const { getEcbFxRatesData, toEurSpotRows } = await import('@/services/economic');
           const fxResp = await getEcbFxRatesData();
           if (!fxResp.unavailable && fxResp.rates?.length) {
-            const EUR_FX_ORDER = ['USD', 'GBP', 'JPY', 'CHF', 'CAD', 'CNY', 'AUD'];
-            const orderedRates = EUR_FX_ORDER
-              .map(ccy => fxResp.rates.find(r => r.pair === `EUR${ccy}`))
-              .filter((r): r is NonNullable<typeof r> => r != null);
-            commoditiesPanel.updateFxRates(orderedRates.map(r => ({
-              currency: r.pair.slice(3), // EURUSD -> USD
-              rate: r.rate,
-              change1d: r.change1d ?? null,
-            })));
+            // Shared with the FX panel (#6199) so the pair list and its display
+            // order live in one place. This tab previously kept a private
+            // EUR_FX_ORDER literal; the two would have drifted the moment the
+            // seeder published an eighth pair.
+            commoditiesPanel.updateFxRates(toEurSpotRows(fxResp.rates));
           }
         } catch {
           // FX tab is optional, ignore failures

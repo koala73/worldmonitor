@@ -365,7 +365,8 @@
     "consumerPrices": "Τιμές Καταναλωτή",
     "fearGreed": "Fear & Greed",
     "marketBreadth": "Market Breadth",
-    "climateNews": "Ειδήσεις για το Κλίμα"
+    "climateNews": "Ειδήσεις για το Κλίμα",
+    "fx": "Ισοτιμίες Συναλλάγματος"
   },
   "commands": {
     "prefixes": {
@@ -2522,6 +2523,27 @@
       "upgradeCta": "Αναβάθμιση για περισσότερα",
       "lockedAriaLabel": "Προσθήκη καρτέλας — κλειδωμένο. {{reason}}",
       "unlockedAnnouncement": "Το όριο καρτελών πίνακα ελέγχου αρθρώθηκε."
+    },
+    "fx": {
+      "infoTooltip": "<strong>Ισοτιμίες Συναλλάγματος</strong> Stress συναλλάγματος και spot rates:<ul><li>FX Stress κατατάσσει 45 νομίσματα ανά τη χειρότερη μέγιστη πτώση τους τα τελευταία 24 μήνες, αναφορικά με την αλλαγή 12 μηνών</li><li>Η κάλυψη περιλαμβάνει ARS, TRY, EGP, NGN, PKR και UAH — νομίσματα που δεν περιλαμβάνονται στα σετ αναφοράς της BIS και ECB</li><li>Spot παραθέτει ισοτιμίες έναντι του δολαρίου ΗΠΑ και των ισοτιμιών αναφοράς ευρώ ECB ξεχωριστά, καθώς οι δύο προέρχονται από διαφορετικές βάσεις</li></ul>Πηγές: Yahoo Finance και European Central Bank.",
+      "tabs": {
+        "stress": "FX Stress",
+        "spot": "Spot"
+      },
+      "currency": "Νόμισμα",
+      "pair": "Ζεύγος",
+      "rate": "Ισοτιμία",
+      "yoy": "12m",
+      "drawdown": "Πτώση 24m",
+      "peakToTrough": "Κορυφή → Κατώφλι",
+      "change1d": "1d",
+      "perUsd": "Ανά 1 USD",
+      "usdPerUnit": "USD ανά μονάδα",
+      "usdBase": "Έναντι του δολαρίου ΗΠΑ",
+      "eurBase": "Ισοτιμίες αναφοράς ευρώ ECB",
+      "stressedCount": "{{stressed}} από {{total}} νομίσματα κάτω του {{threshold}}",
+      "sourceYahoo": "Πηγή: Yahoo Finance",
+      "sourceEcb": "Πηγή: ECB"
     }
   },
   "popups": {

@@ -207,6 +207,7 @@ export const DEFERRED_PANEL_NATURAL_FOOTPRINTS: Readonly<Record<string, Deferred
   'energy-crisis': { rowSpan: 2 },
   'energy-disruptions': { rowSpan: 2 },
   'fuel-shortages': { rowSpan: 2 },
+  fx: { rowSpan: 2 },
   'gdelt-intel': { rowSpan: 2 },
   'internet-disruptions': { rowSpan: 2 },
   'live-news': { className: 'panel-wide' },
@@ -2363,6 +2364,9 @@ export class PanelLayoutManager implements AppModule {
     );
     this.lazyPanel('bigmac', () =>
       this.importPanel('bigmac', () => import('@/components/BigMacPanel'), 'BigMacPanel', (BigMacPanel) => new BigMacPanel()),
+    );
+    this.lazyPanel('fx', () =>
+      this.importPanel('fx', () => import('@/components/FxPanel'), 'FxPanel', (FxPanel) => new FxPanel()),
     );
     this.lazyPanel('fuel-prices', () =>
       this.importPanel('fuel-prices', () => import('@/components/FuelPricesPanel'), 'FuelPricesPanel', (FuelPricesPanel) => new FuelPricesPanel()),

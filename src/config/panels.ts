@@ -97,6 +97,10 @@ const FULL_PANELS: Record<string, PanelConfig> = {
   'consumer-prices': { name: 'Consumer Prices', enabled: false, priority: 2 },
   'grocery-basket': { name: 'Grocery Index', enabled: false, priority: 2 },
   'bigmac': { name: 'Big Mac Index', enabled: false, priority: 2 },
+  // Distinct from the `forex` key, which is an RSS news feed, not a rate
+  // surface. Opt-in per #6199; being per-variant, it can go default-on in
+  // FINANCE_PANELS later without changing any other variant.
+  fx: { name: 'FX Rates', enabled: false, priority: 2 },
   'fuel-prices': { name: 'Fuel Prices', enabled: false, priority: 2 },
   'fao-food-price-index': { name: 'FAO Food Price Index', enabled: false, priority: 2 },
   'etf-flows': { name: 'BTC ETF Tracker', enabled: true, priority: 2 },
@@ -445,6 +449,7 @@ const FINANCE_PANELS: Record<string, PanelConfig> = {
   'daily-market-brief': { name: 'Daily Market Brief', enabled: true, priority: 1, premium: 'locked' },
   'markets-news': { name: 'Markets News', enabled: true, priority: 2 },
   forex: { name: 'Forex & Currencies', enabled: true, priority: 1 },
+  fx: { name: 'FX Rates', enabled: false, priority: 2 },
   bonds: { name: 'Fixed Income', enabled: true, priority: 1 },
   commodities: { name: 'Metals & Materials', enabled: true, priority: 1 },
   'energy-complex': { name: 'Energy Complex', enabled: true, priority: 1 },
@@ -1435,7 +1440,7 @@ export const PANEL_CATEGORY_MAP: Record<string, { labelKey: string; panelKeys: s
   },
   marketsFinance: {
     labelKey: 'header.panelCatMarketsFinance',
-    panelKeys: ['commodities', 'energy-complex', 'energy-risk-overview', 'pipeline-status', 'storage-facility-map', 'oil-inventories', 'fuel-prices', 'chokepoint-strip', 'fuel-shortages', 'energy-disruptions', 'hormuz-tracker', 'energy-crisis', 'markets', 'economic', 'global-procurement', 'trade-policy', 'sanctions-pressure', 'supply-chain', 'china-corridors', 'china-activity-nowcast', 'finance', 'polymarket', 'macro-signals', 'gulf-economies', 'etf-flows', 'stablecoins', 'crypto', 'heatmap', 'aaii-sentiment', 'cot-positioning', 'earnings-calendar', 'economic-calendar', 'fear-greed', 'fsi', 'macro-tiles', 'market-breadth', 'liquidity-shifts', 'national-debt', 'positioning-247', 'wsb-ticker-scanner', 'yield-curve', 'gold-intelligence', 'bigmac', 'market-implications'],
+    panelKeys: ['commodities', 'energy-complex', 'energy-risk-overview', 'pipeline-status', 'storage-facility-map', 'oil-inventories', 'fuel-prices', 'chokepoint-strip', 'fuel-shortages', 'energy-disruptions', 'hormuz-tracker', 'energy-crisis', 'markets', 'economic', 'global-procurement', 'trade-policy', 'sanctions-pressure', 'supply-chain', 'china-corridors', 'china-activity-nowcast', 'finance', 'polymarket', 'macro-signals', 'gulf-economies', 'etf-flows', 'stablecoins', 'crypto', 'heatmap', 'aaii-sentiment', 'cot-positioning', 'earnings-calendar', 'economic-calendar', 'fear-greed', 'fsi', 'macro-tiles', 'market-breadth', 'liquidity-shifts', 'national-debt', 'positioning-247', 'wsb-ticker-scanner', 'yield-curve', 'gold-intelligence', 'bigmac', 'fx', 'market-implications'],
     variants: ['full', 'energy'],
   },
   topical: {
@@ -1479,7 +1484,7 @@ export const PANEL_CATEGORY_MAP: Record<string, { labelKey: string; panelKeys: s
   },
   fixedIncomeFx: {
     labelKey: 'header.panelCatFixedIncomeFx',
-    panelKeys: ['forex', 'bonds'],
+    panelKeys: ['forex', 'fx', 'bonds'],
     variants: ['finance'],
   },
   finCommodities: {

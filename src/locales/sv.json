@@ -105,7 +105,8 @@
     "consumerPrices": "Konsumentpriser",
     "fearGreed": "Rädsla & Girighet",
     "marketBreadth": "Marknadsbredd",
-    "climateNews": "Klimatnyheter"
+    "climateNews": "Klimatnyheter",
+    "fx": "Valutakurser"
   },
   "commands": {
     "prefixes": {
@@ -2262,6 +2263,27 @@
       "upgradeCta": "Uppgradera för mer",
       "lockedAriaLabel": "Lägg till flik — låst. {{reason}}",
       "unlockedAnnouncement": "Gränsen för instrumentpanelflikar upphävd."
+    },
+    "fx": {
+      "infoTooltip": "<strong>Valutakurser</strong> Valutastress och avistakurser:<ul><li>FX Stress rangordnar 45 valutor efter deras värsta topp-till-dal-nedgång under de senaste 24 månaderna, tillsammans med 12-månadersförändringen</li><li>Täckningen inkluderar ARS, TRY, EGP, NGN, PKR och UAH — valutor som BIS och ECB:s referensuppsättningar utesluter</li><li>Spot listar kurser mot US-dollarn och ECB:s euroreferencekurser separat, eftersom de två är noterade från olika baser</li></ul>Källor: Yahoo Finance och Europeiska centralbanken.",
+      "tabs": {
+        "stress": "Valutastress",
+        "spot": "Avista"
+      },
+      "currency": "Valuta",
+      "pair": "Valutapar",
+      "rate": "Kurs",
+      "yoy": "12m",
+      "drawdown": "24m Nedgång",
+      "peakToTrough": "Topp → Dal",
+      "change1d": "1d",
+      "perUsd": "Per 1 USD",
+      "usdPerUnit": "USD per enhet",
+      "usdBase": "Mot US-dollarn",
+      "eurBase": "ECB:s euroreferencekurser",
+      "stressedCount": "{{stressed}} av {{total}} valutor under {{threshold}}",
+      "sourceYahoo": "Källa: Yahoo Finance",
+      "sourceEcb": "Källa: ECB"
     }
   },
   "popups": {

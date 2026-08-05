@@ -365,7 +365,8 @@
     "consumerPrices": "Giá tiêu dùng",
     "fearGreed": "Sợ hãi & Tham lam",
     "marketBreadth": "Độ rộng Thị trường",
-    "climateNews": "Tin tức về Khí hậu"
+    "climateNews": "Tin tức về Khí hậu",
+    "fx": "Tỷ Giá Ngoại Tệ"
   },
   "commands": {
     "prefixes": {
@@ -2522,6 +2523,27 @@
       "upgradeCta": "Nâng cấp để có thêm",
       "lockedAriaLabel": "Thêm tab — đã khóa. {{reason}}",
       "unlockedAnnouncement": "Giới hạn tab bảng điều khiển đã được dỡ bỏ."
+    },
+    "fx": {
+      "infoTooltip": "<strong>Tỷ Giá Ngoại Tệ</strong> Áp lực và tỷ giá ghi danh của ngoại tệ:<ul><li>FX Stress xếp hạng 45 đồng tiền theo mức sụt giảm peak-to-trough tồi tệ nhất trong 24 tháng qua, kèm theo thay đổi 12 tháng</li><li>Bao gồm ARS, TRY, EGP, NGN, PKR và UAH — các đồng tiền mà các bộ tham chiếu của BIS và ECB không đưa vào</li><li>Spot liệt kê tỷ giá so với đô la Mỹ và tỷ giá tham chiếu euro của ECB riêng biệt, vì cả hai được định giá từ những cơ sở khác nhau</li></ul>Nguồn: Yahoo Finance và Ngân hàng Trung ương Châu Âu.",
+      "tabs": {
+        "stress": "FX Stress",
+        "spot": "Spot"
+      },
+      "currency": "Đồng Tiền",
+      "pair": "Cặp Ngoại Tệ",
+      "rate": "Tỷ Giá",
+      "yoy": "12 tháng",
+      "drawdown": "Mức Sụt Giảm 24 tháng",
+      "peakToTrough": "Peak → Trough",
+      "change1d": "1 ngày",
+      "perUsd": "Trên 1 USD",
+      "usdPerUnit": "USD trên mỗi đơn vị",
+      "usdBase": "So với đô la Mỹ",
+      "eurBase": "Tỷ giá tham chiếu euro của ECB",
+      "stressedCount": "{{stressed}} trên {{total}} đồng tiền dưới {{threshold}}",
+      "sourceYahoo": "Nguồn: Yahoo Finance",
+      "sourceEcb": "Nguồn: ECB"
     }
   },
   "popups": {

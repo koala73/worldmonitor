@@ -367,7 +367,8 @@
     "airlineIntel": "✈️ Inteligencia Aeroportuaria",
     "consumerPrices": "Precios al Consumidor",
     "marketBreadth": "Amplitud de Mercado",
-    "climateNews": "Noticias de Clima"
+    "climateNews": "Noticias de Clima",
+    "fx": "Tipos de Cambio"
   },
   "commands": {
     "prefixes": {
@@ -2540,6 +2541,27 @@
       "upgradeCta": "Actualizar para obtener más",
       "lockedAriaLabel": "Agregar pestaña — bloqueado. {{reason}}",
       "unlockedAnnouncement": "Límite de pestañas del panel eliminado."
+    },
+    "fx": {
+      "infoTooltip": "<strong>Tipos de Cambio</strong> Estrés cambiario y tipos spot:<ul><li>FX Stress clasifica 45 monedas por su mayor caída acumulada en los últimos 24 meses, junto con el cambio en 12 meses</li><li>La cobertura incluye ARS, TRY, EGP, NGN, PKR y UAH — monedas que los conjuntos de referencia del BIS y BCE omiten</li><li>Spot lista los tipos frente al dólar estadounidense y los tipos de referencia del euro del BCE por separado, porque se cotizan desde bases diferentes</li></ul>Fuentes: Yahoo Finance y el Banco Central Europeo.",
+      "tabs": {
+        "stress": "Estrés Cambiario",
+        "spot": "Spot"
+      },
+      "currency": "Moneda",
+      "pair": "Par",
+      "rate": "Tipo",
+      "yoy": "12m",
+      "drawdown": "Caída 24m",
+      "peakToTrough": "Máximo → Mínimo",
+      "change1d": "1d",
+      "perUsd": "Por 1 USD",
+      "usdPerUnit": "USD por unidad",
+      "usdBase": "Frente al dólar estadounidense",
+      "eurBase": "Tipos de referencia del euro BCE",
+      "stressedCount": "{{stressed}} de {{total}} monedas por debajo de {{threshold}}",
+      "sourceYahoo": "Fuente: Yahoo Finance",
+      "sourceEcb": "Fuente: BCE"
     }
   },
   "popups": {

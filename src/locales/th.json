@@ -365,7 +365,8 @@
     "consumerPrices": "ราคาผู้บริโภค",
     "fearGreed": "ความกลัวและความโลภ",
     "marketBreadth": "ความกว้างของตลาด",
-    "climateNews": "ข่าวสภาพอากาศ"
+    "climateNews": "ข่าวสภาพอากาศ",
+    "fx": "อัตราแลกเปลี่ยน"
   },
   "commands": {
     "prefixes": {
@@ -2522,6 +2523,27 @@
       "upgradeCta": "อัปเกรดเพื่อรับเพิ่มเติม",
       "lockedAriaLabel": "เพิ่มแท็บ — ล็อกอยู่ {{reason}}",
       "unlockedAnnouncement": "ยกเลิกขีดจำกัดแท็บแดชบอร์ดแล้ว"
+    },
+    "fx": {
+      "infoTooltip": "<strong>อัตราแลกเปลี่ยน</strong> ความเครียดของ通货 และอัตราสปอต:<ul><li>FX Stress จัดอันดับ 45 สกุลเงินตามการลดลงแบบ peak-to-trough ที่เลวร้ายที่สุดในช่วง 24 เดือนที่ผ่านมา พร้อมกับการเปลี่ยนแปลงใน 12 เดือน</li><li>ครอบคลุม ARS, TRY, EGP, NGN, PKR และ UAH — สกุลเงินที่ชุดอ้างอิงของ BIS และ ECB ไม่รวม</li><li>Spot แสดงอัตราต่อดอลลาร์สหรัฐและอัตราอ้างอิงยูโรของ ECB แยกกัน เพราะทั้งสองมาจากฐานต่างกัน</li></ul>แหล่งที่มา: Yahoo Finance และธนาคารกลางยุโรป",
+      "tabs": {
+        "stress": "FX Stress",
+        "spot": "Spot"
+      },
+      "currency": "สกุลเงิน",
+      "pair": "คู่สกุลเงิน",
+      "rate": "อัตรา",
+      "yoy": "12 เดือน",
+      "drawdown": "การลดลง 24 เดือน",
+      "peakToTrough": "จากสูงสุดถึงต่ำสุด",
+      "change1d": "1 วัน",
+      "perUsd": "ต่อ 1 ดอลลาร์สหรัฐ",
+      "usdPerUnit": "ดอลลาร์สหรัฐต่อหน่วย",
+      "usdBase": "เทียบกับดอลลาร์สหรัฐ",
+      "eurBase": "อัตราอ้างอิงยูโรของ ECB",
+      "stressedCount": "{{stressed}} จาก {{total}} สกุลเงินลดลงต่ำกว่า {{threshold}}",
+      "sourceYahoo": "แหล่งที่มา: Yahoo Finance",
+      "sourceEcb": "แหล่งที่มา: ECB"
     }
   },
   "popups": {

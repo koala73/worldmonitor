@@ -198,7 +198,7 @@ const EXCLUDED_FROM_MCP = new Map([
   ['bls:series:v1',
     'deferred to a future labor-statistics tool (per plan U7 expected exclusions). BLS economic series already partially surfaced via FRED bundles in get_economic_data.'],
   ['economic:fx:yoy:v1',
-    'deferred: derived FX year-over-year cache; underlying ECB FX rates already exposed via get_economic_data (economic:ecb-fx-rates:v1).'],
+    'deferred to a future FX tool. The previous reason here claimed ECB FX already covered this and was wrong on the facts (#6199): economic:ecb-fx-rates:v1 carries seven majors (USD GBP JPY CHF CAD CNY AUD) while this key carries 45 currencies including ARS, TRY, EGP, NGN, PKR, UAH and LBP — precisely the currencies whose collapses this key measures, and none of which ECB quotes. It now has a dashboard consumer (the FX panel) but still no MCP tool.'],
   ['intelligence:satellites:tle:v1',
     'deferred to a future space-domain tool. Not in v1 brainstorm inventory.'],
   ['intelligence:pizzint:seed:v1',

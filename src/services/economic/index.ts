@@ -16,6 +16,7 @@ import { isFeatureAvailable } from '../runtime-config';
 import { dataFreshness } from '../data-freshness';
 import { ensureHydrated, getHydratedData } from '@/services/bootstrap';
 import { mergeCbrPolicyRate } from './cbr-policy-rate';
+import { toEurSpotRows, toFxStressRows, toUsdSpotRows, type FxPanelRows } from './fx-rates';
 import { toApiUrl } from '@/services/runtime';
 import { hasPremiumAccess } from '@/services/panel-gating';
 import { EconomicServiceClient } from '@/services/generated-rpc-clients';
@@ -845,6 +846,43 @@ export async function getEcbFxRatesData(): Promise<GetEcbFxRatesResponse> {
   } catch {
     return emptyEcbFxRatesFallback;
   }
+}
+
+// ========================================================================
+// FX panel (#6199)
+// ========================================================================
+
+export type { FxEurSpotRow, FxPanelRows, FxStressRow, FxUsdSpotRow } from './fx-rates';
+// Re-exported as a value: the CommoditiesPanel FX tab uses it too, so both
+// surfaces order the same ECB pairs from one definition (#6199).
+export { EUR_FX_ORDER, toEurSpotRows } from './fx-rates';
+
+/**
+ * Assemble the three payloads the FX panel renders.
+ *
+ * `fxYoy` and `sharedFxRates` are on-demand tier keys, so they arrive via
+ * `ensureHydrated` (the credential-less per-key bootstrap URL) rather than
+ * riding a tier every visitor downloads — the panel is opt-in, so most sessions
+ * never ask for either.
+ *
+ * All three are settled independently and every failure degrades to an empty
+ * list for that tab alone: a dead Yahoo seeder must not blank the ECB rates,
+ * and vice versa. `getEcbFxRatesData` is safe to call even when the
+ * CommoditiesPanel already called it — it checks the hydration cache first and
+ * is behind a 4h circuit-breaker cache.
+ */
+export async function getFxPanelData(): Promise<FxPanelRows> {
+  const [stressPayload, usdPayload, ecb] = await Promise.all([
+    ensureHydrated('fxYoy').catch(() => undefined),
+    ensureHydrated('sharedFxRates').catch(() => undefined),
+    getEcbFxRatesData().catch(() => null),
+  ]);
+
+  return {
+    stress: toFxStressRows(stressPayload),
+    usd: toUsdSpotRows(usdPayload),
+    eur: ecb && !ecb.unavailable ? toEurSpotRows(ecb.rates) : [],
+  };
 }
 
 // ========================================================================

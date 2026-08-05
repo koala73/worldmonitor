@@ -365,7 +365,8 @@
     "consumerPrices": "消費者物価",
     "fearGreed": "恐怖と貪欲",
     "marketBreadth": "市場の広がり",
-    "climateNews": "気候ニュース"
+    "climateNews": "気候ニュース",
+    "fx": "為替レート"
   },
   "commands": {
     "prefixes": {
@@ -2522,6 +2523,27 @@
       "upgradeCta": "さらに追加するにはアップグレード",
       "lockedAriaLabel": "タブを追加 — ロック済み。{{reason}}",
       "unlockedAnnouncement": "ダッシュボードタブの制限が解除されました。"
+    },
+    "fx": {
+      "infoTooltip": "<strong>為替レート</strong> 通貨ストレスとスポットレート:<ul><li>FX Stressは45通貨をこの24ヶ月間の最悪のピークからの落ち込み幅でランク付けし、12ヶ月の変化を表示します</li><li>カバレッジにはARS、TRY、EGP、NGN、PKR、UAHが含まれます — BISとECBの参照セットでは省略されている通貨です</li><li>スポットはUSドルおよびECBユーロ参照レートのレートを別々に表示します。異なるベースから引用されているためです</li></ul>出典: Yahoo FinanceおよびEuropean Central Bank",
+      "tabs": {
+        "stress": "FX Stress",
+        "spot": "スポット"
+      },
+      "currency": "通貨",
+      "pair": "通貨ペア",
+      "rate": "レート",
+      "yoy": "12ヶ月",
+      "drawdown": "24ヶ月 落ち込み幅",
+      "peakToTrough": "ピーク → ボトム",
+      "change1d": "1日",
+      "perUsd": "1 USD当たり",
+      "usdPerUnit": "単位当たりUSD",
+      "usdBase": "USドル建て",
+      "eurBase": "ECBユーロ参照レート",
+      "stressedCount": "{{stressed}}/{{total}}通貨が{{threshold}}を下回る",
+      "sourceYahoo": "出典: Yahoo Finance",
+      "sourceEcb": "出典: ECB"
     }
   },
   "popups": {

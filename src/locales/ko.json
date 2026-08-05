@@ -365,7 +365,8 @@
     "consumerPrices": "소비자 물가",
     "fearGreed": "공포 & 탐욕",
     "marketBreadth": "시장 폭",
-    "climateNews": "기후 뉴스"
+    "climateNews": "기후 뉴스",
+    "fx": "환율"
   },
   "commands": {
     "prefixes": {
@@ -2522,6 +2523,27 @@
       "upgradeCta": "더 많은 탭을 위해 업그레이드",
       "lockedAriaLabel": "탭 추가 — 잠김. {{reason}}",
       "unlockedAnnouncement": "대시보드 탭 한도가 해제되었습니다."
+    },
+    "fx": {
+      "infoTooltip": "<strong>환율</strong> 통화 스트레스 및 현물 환율:<ul><li>FX Stress는 45개 통화의 최악의 고점에서 저점까지의 하락률을 지난 24개월 동안 순위 매기고, 12개월 변화를 함께 표시합니다</li><li>범위에는 BIS 및 ECB 참조 세트에서 생략한 ARS, TRY, EGP, NGN, PKR, UAH 통화가 포함됩니다</li><li>Spot은 미국 달러 대비 환율과 ECB 유로 참조 환율을 별도로 표시하는데, 이는 두 환율이 서로 다른 기준에서 인용되기 때문입니다</li></ul>출처: Yahoo Finance 및 유럽중앙은행.",
+      "tabs": {
+        "stress": "FX Stress",
+        "spot": "Spot"
+      },
+      "currency": "통화",
+      "pair": "통화쌍",
+      "rate": "환율",
+      "yoy": "12개월",
+      "drawdown": "24개월 하락률",
+      "peakToTrough": "고점 → 저점",
+      "change1d": "1일",
+      "perUsd": "1 USD당",
+      "usdPerUnit": "단위당 USD",
+      "usdBase": "미국 달러 대비",
+      "eurBase": "ECB 유로 참조 환율",
+      "stressedCount": "{{stressed}}개/{{total}}개 통화 {{threshold}} 초과",
+      "sourceYahoo": "출처: Yahoo Finance",
+      "sourceEcb": "출처: ECB"
     }
   },
   "popups": {

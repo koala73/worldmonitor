@@ -434,7 +434,8 @@
     "consumerPrices": "उपभोक्ता कीमतें",
     "fearGreed": "डर और लालच",
     "marketBreadth": "बाजार की पहुंच",
-    "climateNews": "जलवायु समाचार"
+    "climateNews": "जलवायु समाचार",
+    "fx": "FX दरें"
   },
   "commands": {
     "prefixes": {
@@ -2591,6 +2592,27 @@
       "upgradeCta": "अधिक के लिए अपग्रेड करें",
       "lockedAriaLabel": "टैब जोड़ें — लॉक्ड। {{reason}}",
       "unlockedAnnouncement": "डैशबोर्ड टैब सीमा हटाई गई।"
+    },
+    "fx": {
+      "infoTooltip": "<strong>FX दरें</strong> मुद्रा तनाव और स्पॉट दरें:<ul><li>FX Stress 45 मुद्राओं को पिछले 24 महीनों में उनके सबसे खराब शिखर-से-गर्त ड्रॉडाउन के आधार पर रैंक करता है, साथ ही 12 महीने का परिवर्तन भी दिखाता है</li><li>कवरेज में ARS, TRY, EGP, NGN, PKR और UAH शामिल हैं — ऐसी मुद्राएं जिन्हें BIS और ECB संदर्भ सेट छोड़ देते हैं</li><li>Spot दरें अमेरिकी डॉलर और ECB यूरो संदर्भ दरों के विरुद्ध अलग-अलग सूचीबद्ध करता है, क्योंकि दोनों को विभिन्न आधारों से उद्धृत किया जाता है</li></ul>स्रोत: Yahoo Finance और European Central Bank।",
+      "tabs": {
+        "stress": "FX Stress",
+        "spot": "Spot"
+      },
+      "currency": "मुद्रा",
+      "pair": "जोड़ी",
+      "rate": "दर",
+      "yoy": "12m",
+      "drawdown": "24m ड्रॉडाउन",
+      "peakToTrough": "शिखर → गर्त",
+      "change1d": "1d",
+      "perUsd": "प्रति 1 USD",
+      "usdPerUnit": "प्रति इकाई USD",
+      "usdBase": "अमेरिकी डॉलर के विरुद्ध",
+      "eurBase": "ECB यूरो संदर्भ दरें",
+      "stressedCount": "{{threshold}} से अधिक {{stressed}} में से {{total}} मुद्राएं",
+      "sourceYahoo": "स्रोत: Yahoo Finance",
+      "sourceEcb": "स्रोत: ECB"
     }
   },
   "popups": {

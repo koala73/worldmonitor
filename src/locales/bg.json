@@ -365,7 +365,8 @@
     "consumerPrices": "Цени на Потрошувачи",
     "fearGreed": "Страв & Алчност",
     "marketBreadth": "Пазарна Ширина",
-    "climateNews": "Климатски Вести"
+    "climateNews": "Климатски Вести",
+    "fx": "Валутни курсове"
   },
   "commands": {
     "prefixes": {
@@ -2522,6 +2523,27 @@
       "upgradeCta": "Надградете за повече",
       "lockedAriaLabel": "Добави раздел — заключено. {{reason}}",
       "unlockedAnnouncement": "Лимитът на разделите на таблото е премахнат."
+    },
+    "fx": {
+      "infoTooltip": "<strong>Валутни курсове</strong> Стрес на валутите и спот курсове:<ul><li>FX Stress класира 45 валути според най-големия им спад от пик към дъно за последните 24 месеца, заедно с промяната за 12 месеца</li><li>Покритието включва ARS, TRY, EGP, NGN, PKR и UAH — валути, които наборите за справка на BIS и ECB пропускат</li><li>Спот списъкът показва курсове спрямо американския долар и еврото на ECB отделно, тъй като двата са котирани от различни бази</li></ul>Източници: Yahoo Finance и Европейска централна банка.",
+      "tabs": {
+        "stress": "FX Stress",
+        "spot": "Спот"
+      },
+      "currency": "Валута",
+      "pair": "Валутна двойка",
+      "rate": "Курс",
+      "yoy": "12м",
+      "drawdown": "Спад за 24м",
+      "peakToTrough": "Пик → Дъно",
+      "change1d": "1д",
+      "perUsd": "На 1 USD",
+      "usdPerUnit": "USD за единица",
+      "usdBase": "Спрямо американския долар",
+      "eurBase": "Референтни курсове на ECB за евро",
+      "stressedCount": "{{stressed}} от {{total}} валути под {{threshold}}",
+      "sourceYahoo": "Източник: Yahoo Finance",
+      "sourceEcb": "Източник: ECB"
     }
   },
   "popups": {
