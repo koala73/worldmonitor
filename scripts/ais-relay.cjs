@@ -4046,11 +4046,6 @@ const POSTURE_THEATERS = [
   { id: 'yemen-redsea-theater', bounds: { north: 22, south: 11, east: 54, west: 32 }, thresholds: { elevated: 4, critical: 10 }, strikeIndicators: { minTankers: 1, minAwacs: 1, minFighters: 3 } },
 ];
 
-const THEATER_QUERY_REGIONS = [
-  { name: 'WESTERN', lamin: 10, lamax: 66, lomin: 9, lomax: 66 },
-  { name: 'PACIFIC', lamin: 4, lamax: 44, lomin: 104, lomax: 133 },
-];
-
 // In-memory index of recently-seen Wingbits positions, keyed by ICAO24.
 // Populated on every successful bbox response; served for callsign-only lookups.
 // Entries expire after 5 minutes (Wingbits data is live, stale beyond that is misleading).
@@ -4305,34 +4300,49 @@ async function handleWingbitsTrackRequest(req, res) {
   }
 }
 
+// ONE global /states/all per cycle, not one query per theater region. OpenSky
+// bills by bounding-box area with a flat top tier — every bbox above 400 sq°
+// costs 4 credits, the same as a global query — so the previous WESTERN+PACIFIC
+// pair (3,192 and 1,160 sq°) spent 8 credits/cycle for less coverage than 4
+// buys. The proxy already treats a bbox-less request as a valid global query
+// (normalizeOpenSkyBbox returns the ',,,' cache key). See
+// docs/solutions/integration-issues/opensky-bbox-area-billing-flat-top-tier.md (#6222).
 async function fetchTheaterFlightsFromOpenSky() {
   const seenIds = new Set();
   const allFlights = [];
-  for (const region of THEATER_QUERY_REGIONS) {
-    const params = `lamin=${region.lamin}&lamax=${region.lamax}&lomin=${region.lomin}&lomax=${region.lomax}`;
-    const resp = await fetch(`http://localhost:${relayBoundPort}/opensky?${params}`, {
-      headers: { 'User-Agent': CHROME_UA, ...(RELAY_SHARED_SECRET ? { 'x-relay-key': RELAY_SHARED_SECRET } : {}) },
-      signal: AbortSignal.timeout(20_000),
+  const resp = await fetch(`http://localhost:${relayBoundPort}/opensky`, {
+    headers: { 'User-Agent': CHROME_UA, ...(RELAY_SHARED_SECRET ? { 'x-relay-key': RELAY_SHARED_SECRET } : {}) },
+    signal: AbortSignal.timeout(20_000),
+  });
+  if (!resp.ok) throw new Error(`OpenSky proxy ${resp.status} for GLOBAL`);
+  const data = await resp.json();
+  if (!data.states) return allFlights;
+  for (const state of data.states) {
+    const [icao24, callsign, , , , lon, lat, altitude, onGround, velocity, heading] = state;
+    if (lat == null || lon == null || onGround) continue;
+    if (!theaterIsMilCallsign(callsign)) continue;
+    // Filter to theater bounds, matching fetchTheaterFlightsFromAdsbLol. The
+    // query is global now, so without this the returned count would mean
+    // "military aircraft worldwide" for this source and "military aircraft in
+    // theater" for the other two — and seedTheaterPosture attributes the cycle
+    // on `flights.length > 0`, so OpenSky would claim cycles in which it fed
+    // no theater at all.
+    const inTheater = POSTURE_THEATERS.some((t) =>
+      lat >= t.bounds.south && lat <= t.bounds.north &&
+      lon >= t.bounds.west && lon <= t.bounds.east
+    );
+    if (!inTheater) continue;
+    if (seenIds.has(icao24)) continue;
+    seenIds.add(icao24);
+    allFlights.push({
+      id: icao24,
+      callsign: (callsign || '').trim(),
+      lat, lon,
+      altitude: altitude || 0,
+      heading: heading || 0,
+      speed: velocity || 0,
+      aircraftType: theaterDetectAircraftType(callsign),
     });
-    if (!resp.ok) throw new Error(`OpenSky proxy ${resp.status} for ${region.name}`);
-    const data = await resp.json();
-    if (!data.states) continue;
-    for (const state of data.states) {
-      const [icao24, callsign, , , , lon, lat, altitude, onGround, velocity, heading] = state;
-      if (lat == null || lon == null || onGround) continue;
-      if (!theaterIsMilCallsign(callsign)) continue;
-      if (seenIds.has(icao24)) continue;
-      seenIds.add(icao24);
-      allFlights.push({
-        id: icao24,
-        callsign: (callsign || '').trim(),
-        lat, lon,
-        altitude: altitude || 0,
-        heading: heading || 0,
-        speed: velocity || 0,
-        aircraftType: theaterDetectAircraftType(callsign),
-      });
-    }
   }
   return allFlights;
 }
