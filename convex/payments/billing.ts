@@ -17,6 +17,7 @@ import type { Subscription as DodoSubscription } from "dodopayments/resources/su
 import type { Doc, Id } from "../_generated/dataModel";
 import { resolveUserId, requireUserId } from "../lib/auth";
 import { getFeaturesForPlan } from "../lib/entitlements";
+import { syncCompanyMonitoringAccountFromEntitlement } from "../companyMonitoring/accounts";
 import { ANON_ID_V4_REGEX, verifyAnonClaimToken } from "../lib/identitySigning";
 import { PLAN_PRECEDENCE, PRODUCT_CATALOG, resolveProductToPlan } from "../config/productCatalog";
 import { proActivationStepIdValidator } from "../constants";
@@ -3929,6 +3930,8 @@ export const grantComplimentaryEntitlement = internalMutation({
         updatedAt: now,
       });
     }
+
+    await syncCompanyMonitoringAccountFromEntitlement(ctx, args.userId);
 
     console.log(
       `[billing] grantComplimentaryEntitlement userId=${args.userId} planKey=${args.planKey} days=${args.days} validUntil=${new Date(validUntil).toISOString()}${args.reason ? ` reason="${args.reason}"` : ""}`,

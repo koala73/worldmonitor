@@ -1020,6 +1020,96 @@ export default defineSchema({
     .index("by_dodoProductId", ["dodoProductId"])
     .index("by_planKey", ["planKey"]),
 
+  // Company Monitoring's account root. The persistence contract deliberately keeps
+  // surface to this table plus company and claim rows: imports are replayed
+  // from company-row idempotency fields, and purge progress lives on the root.
+  companyMonitoringAccounts: defineTable({
+    logicalAccountId: v.string(),
+    ownerUserId: v.optional(v.string()),
+    ownerFenceHash: v.string(),
+    lifecycle: v.union(
+      v.literal("entitled"),
+      v.literal("entitlement_lapsed"),
+      v.literal("denied"),
+    ),
+    terminalReason: v.optional(v.union(v.literal("owner_deleted"), v.literal("account_deleted"))),
+    entitlementDigest: v.optional(v.string()),
+    lifecycleSequence: v.number(),
+    companyCount: v.optional(v.number()),
+    companyLimit: v.optional(v.number()),
+    snapshotGeneration: v.optional(v.number()),
+    purgeGeneration: v.number(),
+    purgePhase: v.union(
+      v.literal("none"),
+      v.literal("pending"),
+      v.literal("companies"),
+      v.literal("finalizing"),
+      v.literal("complete"),
+    ),
+    destructivePurgeStarted: v.boolean(),
+    pendingReactivation: v.boolean(),
+    purgeCursor: v.optional(v.string()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_logicalAccountId", ["logicalAccountId"])
+    .index("by_ownerUserId", ["ownerUserId"])
+    .index("by_ownerFenceHash", ["ownerFenceHash"])
+    .index("by_lifecycle", ["lifecycle"]),
+
+  companyMonitoringCompanies: defineTable({
+    ownerAccountId: v.string(),
+    companyId: v.string(),
+    name: v.optional(v.string()),
+    sortName: v.optional(v.string()),
+    domicileCountry: v.optional(v.union(v.literal("US"), v.literal("GB"))),
+    customerReference: v.optional(v.string()),
+    lifecycle: v.union(v.literal("active"), v.literal("paused"), v.literal("removed")),
+    coverageState: v.optional(v.literal("awaiting_first_scan")),
+    observationState: v.optional(v.literal("unknown")),
+    snapshotGeneration: v.number(),
+    directRequestId: v.optional(v.string()),
+    directFingerprint: v.optional(v.string()),
+    clientImportId: v.optional(v.string()),
+    importOrdinal: v.optional(v.number()),
+    importFingerprint: v.optional(v.string()),
+    purgeGeneration: v.number(),
+    purgePhase: v.union(v.literal("none"), v.literal("payload"), v.literal("complete")),
+    removedAt: v.optional(v.number()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_account_companyId", ["ownerAccountId", "companyId"])
+    .index("by_account_lifecycle_sortName", ["ownerAccountId", "lifecycle", "sortName"])
+    .index("by_account_customerReference", ["ownerAccountId", "customerReference"])
+    .index("by_account_customerReference_lifecycle", ["ownerAccountId", "customerReference", "lifecycle"])
+    .index("by_account_directRequestId", ["ownerAccountId", "directRequestId"])
+    .index("by_account_import_tuple", ["ownerAccountId", "clientImportId", "importOrdinal"])
+    .index("by_account_purge", ["ownerAccountId", "purgeGeneration", "purgePhase"]),
+
+  companyMonitoringClaims: defineTable({
+    ownerAccountId: v.string(),
+    companyId: v.string(),
+    claimId: v.string(),
+    type: v.union(
+      v.literal("alias"),
+      v.literal("domain"),
+      v.literal("legal_identifier"),
+      v.literal("x_account_id"),
+      v.literal("x_handle"),
+      v.literal("location"),
+      v.literal("customer_reference"),
+    ),
+    value: v.string(),
+    provenance: v.literal("customer"),
+    trustState: v.literal("unverified"),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_account_company", ["ownerAccountId", "companyId"])
+    .index("by_account_company_claimId", ["ownerAccountId", "companyId", "claimId"])
+    .index("by_account_type_value", ["ownerAccountId", "type", "value"]),
+
   userApiKeys: defineTable({
     userId: v.string(),
     name: v.string(),
@@ -1028,8 +1118,11 @@ export default defineSchema({
     createdAt: v.number(),
     lastUsedAt: v.optional(v.number()),
     revokedAt: v.optional(v.number()),
+    scopes: v.optional(v.array(v.string())),
+    companyMonitoringAccountId: v.optional(v.string()),
   })
     .index("by_userId", ["userId"])
+    .index("by_userId_revokedAt", ["userId", "revokedAt"])
     .index("by_keyHash", ["keyHash"]),
 
   // Non-key Pro MCP identity rows. One row per OAuth grant for a Pro user.
