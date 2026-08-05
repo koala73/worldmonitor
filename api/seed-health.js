@@ -427,7 +427,9 @@ async function getSeedBatch(entries) {
   return { metaMap, probeMap, activatedMap, contentFreshnessActivatedMap };
 }
 
-export async function handleSeedHealth(req, { now = Date.now() } = {}) {
+export async function handleSeedHealth(req, options = {}) {
+  const hasInjectedClock = Object.hasOwn(options, 'now');
+  const now = hasInjectedClock ? options.now : Date.now();
   if (isDisallowedOrigin(req))
     return new Response('Forbidden', { status: 403 });
 
@@ -450,6 +452,12 @@ export async function handleSeedHealth(req, { now = Date.now() } = {}) {
   } catch {
     return jsonResponse({ error: 'Redis unavailable' }, 503, cors);
   }
+
+  // Content-freshness activation deadlines are evaluated against the clock at
+  // which the Redis batch finished. A production request that crosses the
+  // deadline while awaiting Redis must not preserve its request-start grace;
+  // injected clocks stay fixed so unit tests remain deterministic.
+  const evaluationNow = hasInjectedClock ? now : Date.now();
 
   const seeds = {};
   let staleCount = 0;
@@ -492,7 +500,7 @@ export async function handleSeedHealth(req, { now = Date.now() } = {}) {
       continue;
     }
 
-    const ageMs = now - (meta.fetchedAt || 0);
+    const ageMs = evaluationNow - (meta.fetchedAt || 0);
     const recordCount = parseFiniteRecordCount(meta.recordCount);
     const poolCounts = parsePoolCounts(meta.poolCounts, cfg.minPoolCounts);
     const recordCoveragePartial = cfg.minRecordCount != null
@@ -524,7 +532,7 @@ export async function handleSeedHealth(req, { now = Date.now() } = {}) {
     const contentFreshness = buildContentFreshnessAssessment(
       meta,
       cfg.requireContentFreshness,
-      now,
+      evaluationNow,
     );
     // Grace requires POSITIVE proof (#6095): the marker was READ and came back
     // absent. An unreadable marker is unknown state, not evidence of a producer
@@ -539,7 +547,7 @@ export async function handleSeedHealth(req, { now = Date.now() } = {}) {
       ? getActiveContentFreshnessActivationWindow(
         cfg.contentFreshnessActivationKey,
         contentFreshnessActivatedMap.get(domain),
-        now,
+        evaluationNow,
       )
       : null;
     const contentFreshnessPending = contentFreshnessActivationWindow !== null;
@@ -634,7 +642,7 @@ export async function handleSeedHealth(req, { now = Date.now() } = {}) {
 
   const httpStatus = overall === 'healthy' ? 200 : overall === 'warning' ? 200 : 503;
 
-  return jsonResponse({ overall, seeds, checkedAt: now }, httpStatus, {
+  return jsonResponse({ overall, seeds, checkedAt: evaluationNow }, httpStatus, {
     ...cors,
     'Cache-Control': 'no-cache',
   });

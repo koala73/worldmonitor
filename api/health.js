@@ -2163,6 +2163,12 @@ export async function handleHealth(req, ctx, options = {}) {
     }, 503, headers);
   }
 
+  // Content-freshness activation deadlines are evaluated against the clock at
+  // which the full sweep finished. A production request that crosses the
+  // deadline while awaiting Redis must not preserve its request-start grace;
+  // injected clocks stay fixed so unit tests remain deterministic.
+  const evaluationNow = snapshotNow();
+
   // keyStrens: byte length per data key (0 = missing/empty/sentinel)
   // keyErrors: per-command Redis errors so we can surface REDIS_PARTIAL
   const keyStrens = new Map();
@@ -2196,7 +2202,14 @@ export async function handleHealth(req, ctx, options = {}) {
   const chinaCoverageResult = results[allDataKeys.length + allMetaKeys.length + activationEntries.length];
   const chinaCoverageRaw = chinaCoverageResult?.error ? null : chinaCoverageResult?.result;
 
-  const classifyCtx = { keyStrens, keyErrors, keyMetaValues, keyMetaErrors, activationStates, now };
+  const classifyCtx = {
+    keyStrens,
+    keyErrors,
+    keyMetaValues,
+    keyMetaErrors,
+    activationStates,
+    now: evaluationNow,
+  };
   const checks = {};
   const contentFreshnessPendingUntil = {};
   const counts = { ok: 0, warn: 0, onDemandWarn: 0, staleContent: 0, rolloutPending: 0, crit: 0 };
@@ -2241,7 +2254,7 @@ export async function handleHealth(req, ctx, options = {}) {
     const { problemKeys, sigKeys } = collectFailureLogProblems(checks);
     console.log('[health] %s problems=[%s]', overall, problemKeys.join(', '));
     const failureLogEntry = {
-      at: new Date(now).toISOString(),
+      at: new Date(evaluationNow).toISOString(),
       status: overall,
       critCount,
       warnCount: realWarnCount,
@@ -2299,7 +2312,7 @@ export async function handleHealth(req, ctx, options = {}) {
         : {}),
       crit: critCount,
     },
-    checkedAt: new Date(now).toISOString(),
+    checkedAt: new Date(evaluationNow).toISOString(),
     checks,
   };
 

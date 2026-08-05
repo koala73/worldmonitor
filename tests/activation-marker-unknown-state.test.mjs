@@ -54,7 +54,11 @@ const FEED_HEALTH_META_KEY = SEED_META.newsFeedHealth.key;
 const FEED_HEALTH_DOMAIN = 'news:feed-health';
 
 const realFetch = globalThis.fetch;
-afterEach(() => { globalThis.fetch = realFetch; });
+const realDateNow = Date.now;
+afterEach(() => {
+  globalThis.fetch = realFetch;
+  Date.now = realDateNow;
+});
 
 // The marker read outcomes the three surfaces must agree on. `absent` is the
 // only one that earns the grace.
@@ -85,6 +89,7 @@ function installHealthPipelineMock(
     truncateBeforeActivation = false,
     malformedPipelineBody,
     now = TEST_NOW,
+    onFetch,
   } = {},
 ) {
   const empty = new Set(emptyDataKeys);
@@ -118,6 +123,9 @@ function installHealthPipelineMock(
     const body = truncateBeforeActivation && firstActivation !== -1
       ? results.slice(0, firstActivation)
       : results;
+    if (typeof onFetch === 'function' && commands.some(([op]) => op === 'STRLEN' || op === 'LLEN')) {
+      onFetch();
+    }
     return new Response(JSON.stringify(body), { status: 200 });
   };
 }
@@ -125,9 +133,10 @@ function installHealthPipelineMock(
 async function healthResponseFor(markerEntries, options) {
   installHealthPipelineMock(markerEntries, options);
   const now = options?.now ?? TEST_NOW;
+  const handlerOptions = options?.useProductionClock ? undefined : { now };
   const res = await handleHealth(new Request('https://api.worldmonitor.app/api/health', {
     headers: { 'x-worldmonitor-key': 'test-health-admin-key' },
-  }), undefined, { now });
+  }), undefined, handlerOptions);
   return { res, body: await res.json() };
 }
 
@@ -159,6 +168,30 @@ describe('#6095 — /api/health treats an unreadable activation marker as unknow
       PORTWATCH_PENDING_UNTIL,
       'the sweep must accumulate per-check deadlines into the summary map',
     );
+  });
+
+  it('classifies against the wall clock after the live Redis sweep completes', async () => {
+    let clock = CONTENT_FRESHNESS_ROLLOUT_UNTIL_MS[PORTWATCH_MARKER] - 1;
+    Date.now = () => clock;
+
+    const { body } = await healthResponseFor(
+      { [PORTWATCH_MARKER]: ABSENT },
+      {
+        useProductionClock: true,
+        onFetch: () => {
+          clock = CONTENT_FRESHNESS_ROLLOUT_UNTIL_MS[PORTWATCH_MARKER] + 1;
+        },
+      },
+    );
+
+    assert.equal(
+      body.checks?.portwatchPortActivity?.status,
+      'COVERAGE_DEGRADED',
+      'a sweep that crosses the deadline must use the post-read strict verdict',
+    );
+    assert.equal(body.checks?.portwatchPortActivity?.contentFreshnessPendingUntil, undefined);
+    assert.equal(body.summary?.contentFreshnessPendingUntil, undefined);
+    assert.equal(body.checkedAt, new Date(clock).toISOString());
   });
 
   it('fails closed once the marker proves the producer has published the block', async () => {
@@ -302,7 +335,7 @@ describe('#6115 — readExistsFlags is the shared three-valued marker parser', (
 
 function installSeedHealthPipelineMock(
   markerEntries,
-  { missingMetaKeys = [], malformedPipelineBody, now = TEST_NOW } = {},
+  { missingMetaKeys = [], malformedPipelineBody, now = TEST_NOW, onFetch } = {},
 ) {
   const missing = new Set(missingMetaKeys);
   globalThis.fetch = async (_url, init) => {
@@ -320,6 +353,7 @@ function installSeedHealthPipelineMock(
       return { result: JSON.stringify({ fetchedAt: now, recordCount: 10_000 }) };
     });
     const body = malformedPipelineBody === undefined ? results : malformedPipelineBody;
+    if (typeof onFetch === 'function') onFetch();
     return new Response(JSON.stringify(body), {
       status: 200,
       headers: { 'Content-Type': 'application/json' },
@@ -330,9 +364,10 @@ function installSeedHealthPipelineMock(
 async function seedHealthResponseFor(markerEntries, options) {
   installSeedHealthPipelineMock(markerEntries, options);
   const now = options?.now ?? TEST_NOW;
+  const handlerOptions = options?.useProductionClock ? undefined : { now };
   const res = await handleSeedHealth(new Request('https://api.worldmonitor.app/api/seed-health', {
     headers: { 'X-WorldMonitor-Key': 'test-health-admin-key' },
-  }), { now });
+  }), handlerOptions);
   return { res, body: await res.json() };
 }
 
@@ -352,6 +387,31 @@ describe('#6095 — /api/seed-health treats an unreadable activation marker as u
     assert.equal(entry?.stale, false);
     assert.equal(entry?.contentFreshness, undefined, 'a graced block publishes no content verdict');
     assert.equal(entry?.contentFreshnessPendingUntil, PORTWATCH_PENDING_UNTIL);
+  });
+
+  it('classifies against the wall clock after the Redis batch completes', async () => {
+    let clock = CONTENT_FRESHNESS_ROLLOUT_UNTIL_MS[PORTWATCH_MARKER] - 1;
+    Date.now = () => clock;
+
+    const { body } = await seedHealthResponseFor(
+      { [PORTWATCH_MARKER]: ABSENT },
+      {
+        useProductionClock: true,
+        onFetch: () => {
+          clock = CONTENT_FRESHNESS_ROLLOUT_UNTIL_MS[PORTWATCH_MARKER] + 1;
+        },
+      },
+    );
+    const entry = body.seeds?.[PORTWATCH_DOMAIN];
+
+    assert.equal(
+      entry?.status,
+      'coverage_degraded',
+      'a batch that crosses the deadline must use the post-read strict verdict',
+    );
+    assert.equal(entry?.stale, true);
+    assert.equal(entry?.contentFreshnessPendingUntil, undefined);
+    assert.equal(body.checkedAt, clock);
   });
 
   it('fails closed once the marker proves the producer has published the block', async () => {
