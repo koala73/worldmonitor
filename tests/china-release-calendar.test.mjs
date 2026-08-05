@@ -5,7 +5,10 @@ import { resolve } from 'node:path';
 
 import {
   NBS_CALENDAR_INDEX_URL,
+  NBS_REQUEST_TIMEOUT_MS,
+  NBS_TOTAL_FETCH_BUDGET_MS,
   NBS_TRANSIENT_FETCH_ATTEMPTS,
+  NBS_TRANSIENT_RETRY_DELAY_MS,
   buildLprCandidates,
   fetchChinaReleaseCalendar,
   mergeVerifiedLprDates,
@@ -180,25 +183,84 @@ describe('China official release calendar', () => {
     assert.equal(rejectedError.nonRetryable, true);
   });
 
-  it('pins the NBS transient retry budget so the fetch phase stays inside the seeder lock', () => {
-    // Asserted as a literal on purpose: every other retry test compares against
-    // the imported constant, so raising it would move those assertions with it
-    // and silently widen the budget. seed-china-release-calendar.mjs holds a
-    // 180s lock inside a 240s bundle section, and each attempt carries its own
-    // 20s AbortSignal timeout across two independently-retried NBS URLs
-    // (2 x (3 x 20s + 1.5s backoff) + 20s ChinaMoney = ~143s). Raising this
-    // past 3 blows the lock — raise lockTtlMs first.
+  it('bounds the worst-case NBS fetch phase well inside the seeder lock', () => {
+    // Asserted against literals on purpose: every other retry test compares
+    // against the imported constants, so raising one would move those
+    // assertions with it and silently widen the budget. Pinning the numbers
+    // here is what makes this test constrain the budget rather than restate it.
     assert.equal(NBS_TRANSIENT_FETCH_ATTEMPTS, 3);
+    assert.equal(NBS_REQUEST_TIMEOUT_MS, 20_000);
+    assert.equal(NBS_TRANSIENT_RETRY_DELAY_MS, 500);
+    assert.equal(NBS_TOTAL_FETCH_BUDGET_MS, 75_000);
+
+    // seed-china-release-calendar.mjs holds a 180s lock inside a 240s bundle
+    // section. The wall-clock budget spans both NBS URLs, and the deadline is
+    // checked BEFORE sleeping, so the worst case is the budget plus one
+    // already-in-flight request, then the single ChinaMoney call.
+    const SEEDER_LOCK_TTL_MS = 180_000;
+    const BUNDLE_SECTION_TIMEOUT_MS = 240_000;
+    const CHINAMONEY_TIMEOUT_MS = 20_000;
+    const worstCaseFetchMs = NBS_TOTAL_FETCH_BUDGET_MS + NBS_REQUEST_TIMEOUT_MS + CHINAMONEY_TIMEOUT_MS;
+
+    assert.equal(worstCaseFetchMs, 115_000);
+    // Leave the publish phase at least a third of the lock: atomicPublish makes
+    // several retried Redis round trips after the fetch returns.
+    assert.ok(
+      worstCaseFetchMs <= SEEDER_LOCK_TTL_MS * (2 / 3),
+      `worst-case fetch ${worstCaseFetchMs}ms leaves too little of the ${SEEDER_LOCK_TTL_MS}ms lock for publish`,
+    );
+    assert.ok(worstCaseFetchMs < BUNDLE_SECTION_TIMEOUT_MS / 2);
+  });
+
+  it('stops retrying once the shared NBS wall-clock budget is spent', async () => {
+    // A host that hangs must not spend the calendar page's share of the budget.
+    // Simulated by advancing past the deadline rather than sleeping 75s.
+    const requests = [];
+    const realNow = Date.now;
+    let elapsed = 0;
+    Date.now = () => realNow() + elapsed;
+    try {
+      await assert.rejects(
+        fetchChinaReleaseCalendar({
+          now: Date.parse('2026-07-13T00:00:00Z'),
+          fetchFn: async (url) => {
+            requests.push(String(url));
+            elapsed += NBS_TOTAL_FETCH_BUDGET_MS; // first attempt burns the budget
+            throw new TypeError('fetch failed');
+          },
+          onDecision: () => {},
+        }),
+        (error) => /NBS_REQUIRED_SOURCE_UNAVAILABLE:FETCH_FAILED/.test(error.message),
+      );
+    } finally {
+      Date.now = realNow;
+    }
+    // Budget exhausted after attempt 1, so attempts 2 and 3 never fire even
+    // though the failure was transient and the attempt budget allowed them.
+    assert.equal(requests.length, 1);
   });
 
   // Node surfaces a bad chain either as a bare error carrying `code` or wrapped
   // in a TypeError whose `cause` carries it; both must fail closed.
+  // Each code-based fixture deliberately carries a NEUTRAL message with no
+  // certificate wording. Real Node errors do carry both, but pairing them here
+  // would let the message backstop mask the code set: dropping a code from
+  // PERMANENT_TLS_CODES would still pass. The neutral message isolates the arm
+  // under test, so each code has to earn its own place. The last fixture is the
+  // mirror image — message wording, no code — covering the backstop itself.
+  const codeError = (code) => Object.assign(new TypeError('fetch failed'), {
+    cause: Object.assign(new Error('connection terminated'), { code }),
+  });
   for (const [shape, makeError] of [
-    ['cause.code', () => Object.assign(new TypeError('fetch failed'), {
-      cause: Object.assign(new Error('unable to verify the first certificate'), { code: 'SELF_SIGNED_CERT_IN_CHAIN' }),
-    })],
+    ['cause.code', () => codeError('SELF_SIGNED_CERT_IN_CHAIN')],
     ['top-level code', () => Object.assign(new Error('fetch failed'), { code: 'SELF_SIGNED_CERT_IN_CHAIN' })],
-    ['message only', () => new TypeError('self signed certificate in certificate chain')],
+    // An expired or misissued cert is just as permanent as a self-signed one:
+    // the peer is not provably who it claims to be, so a retry only repeats the
+    // request against that same untrusted peer.
+    ['expired cert', () => codeError('CERT_HAS_EXPIRED')],
+    ['hostname mismatch', () => codeError('ERR_TLS_CERT_ALTNAME_INVALID')],
+    ['unverifiable leaf', () => codeError('UNABLE_TO_VERIFY_LEAF_SIGNATURE')],
+    ['message backstop, no code', () => new TypeError('self signed certificate in certificate chain')],
   ]) {
     it(`fails closed on a certificate-chain error (${shape}) instead of retrying an intercepted connection`, async () => {
       const requests = [];

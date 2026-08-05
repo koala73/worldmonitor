@@ -6,11 +6,19 @@ export const NBS_CALENDAR_INDEX_URL = 'https://www.stats.gov.cn/english/PressRel
 // (= exactly 2 intervals) freshness budget. Its sibling fetcher for the same
 // host — china-macro/source-runtime.mjs `fetchText` — already retries transient
 // throws once, which is why seed-china-macro stayed healthy through the same
-// window that took this calendar stale. 3 attempts x 20s + 1.5s backoff = 61.5s
-// per URL; the two NBS URLs plus the 20s ChinaMoney call cap the fetch phase at
-// ~143s, inside both lockTtlMs (180s) and the bundle section timeout (240s).
+// window that took this calendar stale.
+//
+// The retry spend is bounded by a WALL-CLOCK budget across both NBS URLs, not
+// by attempt count alone. Attempts x per-request timeout would put the ceiling
+// at 2 x 3 x 20s = 120s, which leaves too little of the seeder's 180s lockTtlMs
+// for the publish phase. In practice a transient failure fails fast (a DNS or
+// connection-refused round trip is ~500ms, so 3 attempts cost ~1.7s including
+// backoff) — the 20s ceiling only binds when the host hangs, and that is
+// exactly the case the budget caps.
 export const NBS_TRANSIENT_FETCH_ATTEMPTS = 3;
-const NBS_TRANSIENT_RETRY_DELAY_MS = 500;
+export const NBS_REQUEST_TIMEOUT_MS = 20_000;
+export const NBS_TRANSIENT_RETRY_DELAY_MS = 500;
+export const NBS_TOTAL_FETCH_BUDGET_MS = 75_000;
 export const CHINAMONEY_LPR_URL = 'https://www.chinamoney.com.cn/chinese/bklpr/?tab=2';
 export const CHINAMONEY_LPR_NOTICE_API = 'https://www.chinamoney.com.cn/ags/ms/cm-s-notice-query/contentsinshorttime';
 // Official LPR market-notice channel resolved by ChinaMoney's public
@@ -152,11 +160,29 @@ function requiredSourceError(prefix, reason) {
 async function fetchText(fetchFn, url) {
   const response = await fetchFn(url, {
     headers: { Accept: 'text/html,application/xhtml+xml', 'User-Agent': 'WorldMonitor/2.10 (+https://worldmonitor.app)' },
-    signal: AbortSignal.timeout(20_000),
+    signal: AbortSignal.timeout(NBS_REQUEST_TIMEOUT_MS),
   });
   if (!response.ok) throw Object.assign(new Error(`HTTP_${response.status}`), { status: response.status });
   return response.text();
 }
+
+// Certificate VALIDATION failures are permanent: they mean the peer is not who
+// it claims to be (interception, or an expired/misissued cert), and retrying
+// only repeats the request against that same untrusted peer. Handshake/reset
+// errors are deliberately absent — those are ordinary transport noise.
+const PERMANENT_TLS_CODES = new Set([
+  'SELF_SIGNED_CERT_IN_CHAIN',
+  'DEPTH_ZERO_SELF_SIGNED_CERT',
+  'UNABLE_TO_VERIFY_LEAF_SIGNATURE',
+  'UNABLE_TO_GET_ISSUER_CERT',
+  'UNABLE_TO_GET_ISSUER_CERT_LOCALLY',
+  'CERT_HAS_EXPIRED',
+  'CERT_NOT_YET_VALID',
+  'CERT_SIGNATURE_FAILURE',
+  'CERT_UNTRUSTED',
+  'CERT_REVOKED',
+  'ERR_TLS_CERT_ALTNAME_INVALID',
+]);
 
 /**
  * A fetch that never produced a response — DNS failure, TLS reset, socket
@@ -169,27 +195,30 @@ function isTransientFetchFailure(error) {
   if (Number.isInteger(error?.status)) {
     return error.status === 408 || error.status === 429 || (error.status >= 500 && error.status <= 599);
   }
-  // A bad certificate chain means the connection is being intercepted, not that
-  // the network hiccuped — fail closed immediately, as the sibling fetcher does.
+  if (PERMANENT_TLS_CODES.has(error?.code) || PERMANENT_TLS_CODES.has(error?.cause?.code)) return false;
+  // Message backstop for runtimes that surface a cert failure without a code.
+  // Anchored alternatives only — no nested quantifiers to backtrack on.
   const certMessage = `${String(error?.message)} ${String(error?.cause?.message)}`;
-  if (
-    error?.code === 'SELF_SIGNED_CERT_IN_CHAIN'
-    || error?.cause?.code === 'SELF_SIGNED_CERT_IN_CHAIN'
-    || /self signed certificate|certificate chain/i.test(certMessage)
-  ) {
+  if (/self.signed certificate|certificate chain|certificate has expired|unable to verify|altname/i.test(certMessage)) {
     return false;
   }
   return true;
 }
 
-async function fetchTextWithTransientRetry(fetchFn, url, onAttempt) {
+async function fetchTextWithTransientRetry(fetchFn, url, onAttempt, deadlineAt) {
   for (let attempt = 1; ; attempt++) {
     onAttempt();
     try {
       return await fetchText(fetchFn, url);
     } catch (error) {
       if (attempt >= NBS_TRANSIENT_FETCH_ATTEMPTS || !isTransientFetchFailure(error)) throw error;
-      await new Promise((resolve) => setTimeout(resolve, NBS_TRANSIENT_RETRY_DELAY_MS * attempt));
+      const backoffMs = NBS_TRANSIENT_RETRY_DELAY_MS * attempt;
+      // The budget spans BOTH NBS URLs, so a host that hangs on the index
+      // cannot spend the calendar page's share and push the fetch phase into
+      // the publish half of lockTtlMs. Give up rather than start an attempt
+      // that cannot finish inside the budget.
+      if (Date.now() + backoffMs >= deadlineAt) throw error;
+      await new Promise((resolve) => setTimeout(resolve, backoffMs));
     }
   }
 }
@@ -242,7 +271,13 @@ export async function fetchChinaReleaseCalendar({
   let nbsRequestCount = 0;
   // Counted per ATTEMPT, not per URL: a retry is a real request against an
   // official host, so the audited requestCount has to include it.
-  const fetchNbsText = (url) => fetchTextWithTransientRetry(fetchFn, url, () => { nbsRequestCount += 1; });
+  const nbsDeadlineAt = Date.now() + NBS_TOTAL_FETCH_BUDGET_MS;
+  const fetchNbsText = (url) => fetchTextWithTransientRetry(
+    fetchFn,
+    url,
+    () => { nbsRequestCount += 1; },
+    nbsDeadlineAt,
+  );
   try {
     const indexHtml = await fetchNbsText(NBS_CALENDAR_INDEX_URL);
     const calendarUrl = currentCalendarLink(indexHtml, year);
