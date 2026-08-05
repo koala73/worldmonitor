@@ -170,7 +170,9 @@ export const PUBLIC_PRODUCT_FACTS = {
     "variants": 6,
     "mapLayers": 56,
     "feedDefinitions": 628,
-    "freshnessTrackedSourceGroups": 35
+    "freshnessTrackedSourceGroups": 35,
+    "sourceAttributionHosts": 528,
+    "sourceAttributionProviders": 526
   }
 };
 

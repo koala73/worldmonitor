@@ -17,6 +17,7 @@
 import { readFileSync, readdirSync, writeFileSync, mkdirSync } from 'node:fs';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { dirname, join } from 'node:path';
+import { buildSourceAttributionStats } from './source-attribution.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const read = (p) => readFileSync(join(ROOT, p), 'utf8');
@@ -533,6 +534,13 @@ function computeStats() {
   // ---- Feed definitions (src/config/feeds.ts) — floor metric ----
   const feedDefinitions = (read('src/config/feeds.ts').match(/name:\s*'/g) || []).length;
 
+  // ---- Source attribution inventory (scripts/server/api/src URL contracts) ----
+  // Keep this separate from the feed-label count: one provider can expose
+  // several feed URLs, while a structured endpoint may never appear in the
+  // curated-feed registry. The attribution checker owns manifest coverage;
+  // docs-stats pins the public count surfaces to the same live number.
+  const sourceAttribution = buildSourceAttributionStats({ rootDir: ROOT });
+
   // ---- Operational source counts used by data-source and methodology docs ----
   const airportCount = (read('src/config/airports.ts').match(/\biata:\s*'/g) || []).length;
 
@@ -624,6 +632,8 @@ function computeStats() {
     freshnessSources,
     freshnessRequiredForRisk,
     feedDefinitions,
+    sourceAttribution,
+    sourceAttributionHosts: sourceAttribution.activeHosts,
     airportCount,
     stockExchangeCount,
     centralBankInstitutionCount,
@@ -655,9 +665,12 @@ function claims(s) {
     { file: 'README.md', re: /(\d+)\s+languages/, value: s.locales },
     { file: 'public/llms.txt', re: /(\d+)\s+languages with RTL support/, value: s.locales },
     { file: 'public/llms-full.txt', re: /(\d+)\s+languages with RTL support/, value: s.locales },
+    { file: 'public/llms-full.txt', re: /(\d+)\+\s+observed upstream hosts/, value: s.sourceAttributionHosts },
     { file: 'README.md', re: /(\d+)\+\s+curated news feeds/, value: s.feedDefinitions, min: true },
+    { file: 'README.md', re: /(\d+)\+\s+observed upstream hosts/, value: s.sourceAttributionHosts },
     { file: 'README.md', re: /(\d+)\s+stock exchanges/, value: s.stockExchangeCount },
     { file: 'docs/overview.mdx', re: /(\d+)\+\s+curated news feeds/, value: s.feedDefinitions, min: true },
+    { file: 'docs/overview.mdx', re: /(\d+)\+\s+observed upstream hosts/, value: s.sourceAttributionHosts },
 
     // ---- Translated READMEs ----
     // Same claims as README.md, pinned in each language. Without these the
@@ -668,7 +681,9 @@ function claims(s) {
     { file: 'README.zh-CN.md', re: /(\d+)\s*项服务/, value: s.protoServices },
     { file: 'README.zh-CN.md', re: /(\d+)\s*种语言/, value: s.locales },
     { file: 'README.zh-CN.md', re: /(\d+)\+\s*精选新闻源/, value: s.feedDefinitions, min: true },
+    { file: 'README.zh-CN.md', re: /(\d+)\+\s*个外部上游主机/, value: s.sourceAttributionHosts, min: true },
     { file: 'README.zh-CN.md', re: /(\d+)\s*家证券交易所/, value: s.stockExchangeCount },
+    { file: 'README.ja-JP.md', re: /(\d+)\s*以上の外部プロバイダー/, value: s.sourceAttribution.providerCount, min: true },
     { file: 'README.ja-JP.md', re: /(\d+)\s*種類のマップレイヤー/, value: s.layerDefinitions },
     { file: 'README.ja-JP.md', re: /Protocol Buffers \((\d+)\s*proto/, value: s.protoFiles },
     { file: 'README.ja-JP.md', re: /(\d+)\s*サービス\)/, value: s.protoServices },
@@ -685,6 +700,7 @@ function claims(s) {
     { file: 'AGENTS.md', re: /requires buf \+ sebuf (v\d+\.\d+\.\d+) plugins/, value: s.sebufVersion },
 
     { file: 'ARCHITECTURE.md', re: /base class \((\d+)\s+classes\b/, value: s.panelClasses },
+    { file: 'ARCHITECTURE.md', re: /(\d+)\+\s+observed upstream hosts/, value: s.sourceAttributionHosts },
     { file: 'CONTRIBUTING.md', re: /Service and message definitions across (\d+)\s+domains/, value: s.protoDomainFolders },
     { file: 'CONTRIBUTING.md', re: /produces (\d+)\s+app variants/, value: s.variantCount },
     { file: 'CONTRIBUTING.md', re: /UI components — (\d+)\s+top-level TypeScript component files/, value: s.componentTopLevelTsFiles },
@@ -694,6 +710,7 @@ function claims(s) {
     { file: 'CONTRIBUTING.md', re: /expand our (\d+)\+\s+feed collection/, value: s.feedDefinitions, min: true },
     { file: 'SECURITY.md', re: /All (\d+)\s+domain APIs are served through Sebuf/, value: s.serverDomains },
     { file: 'index.html', re: /"(\d+)\s+language support with RTL"/, value: s.locales },
+    { file: 'index.html', re: /(\d+)\+\s+observed upstream hosts/, value: s.sourceAttributionHosts },
 
     { file: 'docs/architecture.mdx', re: /(\d+)\s+service domains, and (?:\d+)\s+map layers/, value: s.protoServices },
     { file: 'docs/architecture.mdx', re: /(\d+)\s+map layers\./, value: s.layerDefinitions },
@@ -729,6 +746,7 @@ function claims(s) {
     // drifted (24 vs 26) precisely because nothing pinned it; these siblings
     // were one capability change away from the same fate.
     { file: 'public/ai-search.md', re: /- (\d+)\s+map layer types/, value: s.layerDefinitions },
+    { file: 'public/ai-search.md', re: /- (\d+)\+\s+observed upstream hosts/, value: s.sourceAttributionHosts },
     { file: 'public/ai-search.md', re: /- (\d+)\s+live Country Instability Index countries/, value: s.tier1Countries },
     { file: 'public/ai-search.md', re: /- (\d+)-country resilience rankings/, value: s.rankableUniverseCountries },
     { file: 'public/sdks.md', re: /every one of the (\d+)\s+\[MCP tools\]/, value: s.mcpToolCount },
@@ -742,15 +760,22 @@ function claims(s) {
     { file: 'pro-test/src/locales/en.json', re: /(\d+)\s+MCP tools — risk scores/, value: s.mcpToolCount },
     { file: 'pro-test/src/locales/en.json', re: /One key\. (\d+)\s+MCP tools/, value: s.mcpToolCount },
     { file: 'pro-test/src/locales/en.json', re: /SDKs — (\d+)\s+tools under one key/, value: s.mcpToolCount },
+    { file: 'pro-test/src/locales/en.json', re: /"freeF2": "500\+ feeds, (\d+)\+ sources/, value: s.sourceAttributionHosts, min: true },
+    { file: 'pro-test/src/locales/en.json', re: /"s3v": "(\d+)\+"/, value: s.sourceAttribution.providerCount, min: true },
+    { file: 'pro-test/src/locales/en.json', re: /"a3": "(\d+)\+ providers/, value: s.sourceAttribution.providerCount, min: true },
 
     // ---- Map layers in plan copy (#5387) ----
     // Plan copy quotes the registry TOTAL and names the Pro-only layer; it never
     // quotes a free total (see the lockedLayerKeys comment in computeStats).
     // validatePlanLayerEntitlementCopy asserts the naming half.
-    { file: 'public/home.md', re: /(\d+)\s+data layers and \d+\+\s+curated news feeds/, value: s.layerDefinitions },
+    { file: 'public/home.md', re: /(\d+)\s+data layers, \d+\+\s+observed upstream hosts, and \d+\+\s+curated news feeds/, value: s.layerDefinitions },
+    { file: 'public/home.md', re: /(\d+)\+\s+observed upstream hosts/, value: s.sourceAttributionHosts },
+    { file: 'middleware.ts', re: /(\d+)\+\s+observed upstream hosts/, value: s.sourceAttributionHosts },
     { file: 'public/pricing.md', re: /Includes: (\d+)\s+map layers \(all free except Resilience/, value: s.layerDefinitions },
+    { file: 'public/pricing.md', re: /(\d+)\+\s+observed upstream hosts/, value: s.sourceAttributionHosts },
     { file: 'public/pricing.md', re: /"(\d+)\s+map layers \(Resilience is Pro\)"/, value: s.layerDefinitions },
     { file: 'docs/pricing.mdx', re: /\*\*Free\*\* — (\d+)\s+map layers \(all free except Resilience/, value: s.layerDefinitions },
+    { file: 'docs/pricing.mdx', re: /(\d+)\+\s+observed upstream hosts/, value: s.sourceAttributionHosts },
     { file: 'docs/accounts.mdx', re: /(\d+)\s+map layers \(all but the Pro-only Resilience layer\)/, value: s.layerDefinitions },
     { file: 'docs/zh/pricing.mdx', re: /\*\*Free\*\* — (\d+)\s*个地图图层/, value: s.layerDefinitions },
     { file: 'docs/zh/accounts.mdx', re: /Free 套餐下列出的所有功能 — (\d+)\s*个地图图层/, value: s.layerDefinitions },
@@ -768,6 +793,7 @@ function claims(s) {
     { file: 'public/mcp-server.md', re: /server ships \*\*(\d+)\s+tools\*\*/, value: s.mcpToolCount },
 
     { file: 'docs/data-sources.mdx', re: /monitors (\d+)\s+data sources/, value: s.freshnessSources },
+    { file: 'docs/data-sources.mdx', re: /\*\*(\d+) active upstream hosts\*\*/, value: s.sourceAttributionHosts },
     { file: 'docs/data-sources.mdx', re: /across (\d+)\s+monitored airports/, value: s.airportCount },
     { file: 'docs/data-sources.mdx', re: /^(\d+)\s+airports across 5 regions/m, value: s.airportCount },
     { file: 'docs/data-sources.mdx', re: /(\d+)\s+global stock exchanges/, value: s.stockExchangeCount },
@@ -809,6 +835,7 @@ function claims(s) {
     // break it. docs-stats is always-on. Shape assertions that a numeric pin
     // cannot express live in validateCategoryExplainerCopy below.
     { file: 'blog-site/src/content/blog/what-is-worldmonitor-real-time-global-intelligence.md', re: /(\d+)\+\s+curated news feeds/, value: s.feedDefinitions, min: true },
+    { file: 'blog-site/src/content/blog/what-is-worldmonitor-real-time-global-intelligence.md', re: /(\d+)\+\s+observed upstream hosts/, value: s.sourceAttributionHosts },
     { file: 'blog-site/src/content/blog/what-is-worldmonitor-real-time-global-intelligence.md', re: /(\d+)\s+map-layer types/, value: s.layerDefinitions },
     { file: 'blog-site/src/content/blog/what-is-worldmonitor-real-time-global-intelligence.md', re: /(\d+)\s+Tier-1 countries/, value: s.tier1Countries },
     { file: 'blog-site/src/content/blog/what-is-worldmonitor-real-time-global-intelligence.md', re: /\*\*(\d+)-country\*\* public Country Resilience Index universe/, value: s.rankableUniverseCountries },

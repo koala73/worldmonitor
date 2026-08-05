@@ -36,6 +36,8 @@
     "product:facts:check": "node --import tsx scripts/generate-public-product-facts.mjs --check",
     "docs:stats": "node scripts/docs-stats.mjs",
     "docs:check": "node scripts/docs-stats.mjs --check",
+    "sources:generate": "node scripts/source-attribution.mjs --write",
+    "sources:check": "node scripts/source-attribution.mjs --check",
     "dev": "vite",
     "dev:tech": "cross-env VITE_VARIANT=tech vite",
     "dev:finance": "cross-env VITE_VARIANT=finance vite",

@@ -89,6 +89,11 @@ describe('public product facts generation contract', () => {
     assert.equal(sharedFacts.product.primaryCtaLabel, 'View Pro plans');
     assert.equal(sharedFacts.currency, 'USD');
     assert.equal(sharedFacts.capabilities.mcpTools, registryToolCount());
+    assert.equal(sharedFacts.capabilities.sourceAttributionHosts, readJson('docs/generated/stats.json').sourceAttributionHosts);
+    assert.equal(
+      sharedFacts.capabilities.sourceAttributionProviders,
+      readJson('docs/generated/stats.json').sourceAttribution.providerCount,
+    );
     const serverCardNames = readJson('public/.well-known/mcp/server-card.json')
       .tools
       .map((tool) => tool.name);
@@ -139,6 +144,29 @@ describe('public product facts generation contract', () => {
       }
     }
     assert.ok(claimCount >= 25, 'expected exact MCP counts across the public acquisition corpus');
+  });
+
+  it('keeps translated source/provider counts aligned with the audited inventory', () => {
+    const facts = readJson('shared/product-facts.generated.json');
+    const expectedProviders = facts.capabilities.sourceAttributionProviders;
+    const expectedHosts = facts.capabilities.sourceAttributionHosts;
+    const localePaths = readdirSync(join(ROOT, 'pro-test/src/locales'))
+      .filter((name) => name.endsWith('.json'));
+    for (const name of localePaths) {
+      const locale = readJson(`pro-test/src/locales/${name}`);
+      const sourceClaim = locale.twoPath?.freeF2?.match(/\b\d+\+/g)?.[1]?.replace('+', '');
+      assert.equal(Number(sourceClaim), expectedHosts, `${name}: source count`);
+      assert.equal(Number.parseInt(locale.welcome?.depth?.s3v, 10), expectedProviders, `${name}: stat tile provider count`);
+      const providerClaim = locale.welcome?.faq?.a3?.match(/\d+(?=\+|以上|개\s*이상)/)?.[0];
+      assert.equal(Number(providerClaim), expectedProviders, `${name}: FAQ provider count`);
+    }
+    const baseline = readJson('scripts/locale-baselines/pro-test.json');
+    assert.equal(Number(baseline['twoPath.freeF2']?.match(/\d+(?=\+ sources)/)?.[0]), expectedHosts, 'locale baseline source count');
+    for (const path of ['pro-test/welcome.html', 'public/pro/welcome.html']) {
+      const source = read(path);
+      assert.doesNotMatch(source, /\b60\+ other live providers\b/);
+      assert.match(source, new RegExp(`\\b${expectedProviders}\\+ providers\\b`));
+    }
   });
 
   it('removes stale waitlist lifecycle terms from current acquisition surfaces', () => {

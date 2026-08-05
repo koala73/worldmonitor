@@ -157,6 +157,8 @@ jobs:
           fi
       - name: Doc claims match code
         run: node scripts/docs-stats.mjs --check
+      - name: Source attribution inventory is current
+        run: node scripts/source-attribution.mjs --check
 
   unit:
     needs: changes
