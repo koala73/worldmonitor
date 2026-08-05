@@ -127,6 +127,8 @@
     "test:convex": "vitest run --config vitest.config.mts",
     "test:dom": "vitest run --config vitest.dom.config.mts",
     "typecheck:dom-tests": "tsc --noEmit -p tsconfig.dom-tests.json",
+    "typecheck:contract-tests": "tsc --noEmit -p tsconfig.contract-tests.json",
+    "company-monitoring:digest": "tsx scripts/recompute-company-monitoring-digest.mjs",
     "test:convex:watch": "vitest --config vitest.config.mts"
   },
   "devDependencies": {
