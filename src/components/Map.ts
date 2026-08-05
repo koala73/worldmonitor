@@ -74,6 +74,7 @@ import {
   startCountryClickGesture,
   updateCountryClickGestureDrag,
 } from './map-interaction-guard';
+import { resolveClusterGlContext } from './map-cluster-gl';
 
 
 export type TimeRange = '1h' | '6h' | '24h' | '48h' | '7d' | 'all';
@@ -1127,10 +1128,11 @@ export class MapComponent {
   }
 
   private initClusterRenderer(): void {
-    // WebGL clustering disabled - just get context for clearing canvas
-    const gl = this.clusterCanvas.getContext('webgl');
-    if (!gl) return;
-    this.clusterGl = gl;
+    // WebGL clustering disabled - just get context for clearing canvas.
+    // resolveClusterGlContext() rejects the truthy-but-method-less stub that
+    // canvas fingerprint blockers return, which used to crash the whole
+    // dynamic-layer render pass from clearClusterCanvas() (WORLDMONITOR-YG/YH).
+    this.clusterGl = resolveClusterGlContext(this.clusterCanvas);
   }
 
   private clearClusterCanvas(): void {
