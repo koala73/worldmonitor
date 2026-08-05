@@ -363,12 +363,16 @@ describe('SearchAdapter recovery path', () => {
   });
 
   it('loads the diagnosed retailer route policies from YAML', () => {
+    // Routes verified live against each retailer on 2026-08-05 (#6182).
+    // jiomart_in moved OFF `/p/groceries/`, which now answers 200 with a
+    // "We couldn't find the page" SPA shell on every sampled URL; coldstorage_sg
+    // serves a second legacy `/product/<slug>` route alongside the catalogue one.
     const recoveryPolicies = [
-      ['jiomart_in', '/p/groceries/', 'www.jiomart.com'],
+      ['jiomart_in', '/product/', 'www.jiomart.com'],
       ['noon_grocery_ae', ['/p/', '/now-product/'], 'minutes.noon.com'],
       ['noon_sa', ['/p/', '/now-product/'], 'minutes.noon.com'],
       ['carrefour_sa', '/p/', 'www.carrefourksa.com'],
-      ['coldstorage_sg', '/p/', 'www.coldstorage.com.sg'],
+      ['coldstorage_sg', ['/p/', '/product/'], 'www.coldstorage.com.sg'],
     ] as const;
 
     for (const [slug, path, alias] of recoveryPolicies) {
