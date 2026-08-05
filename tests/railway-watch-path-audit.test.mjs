@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync, statSync } from 'node:fs';
 import { dirname, relative, resolve } from 'node:path';
 import { describe, it } from 'node:test';
 import { fileURLToPath } from 'node:url';
@@ -143,6 +143,123 @@ function extractFileReadDependencies(files, repoRootDir) {
     }
   }
   return dependencies;
+}
+
+// A quoted filename with a data or script extension, optionally relative-prefixed.
+const LITERAL_PATH_RE = /['"`]((?:\.{1,2}\/)*[\w-][\w./-]*\.(?:json|ya?ml|csv|txt|sql|mjs|cjs|js))['"`]/gu;
+const SCRIPT_EXTENSION_RE = /\.[cm]?js$/u;
+
+// Where a bare literal filename inside `file` can plausibly resolve.
+//
+// Deliberately a SMALL fixed set of siblings rather than a repository-wide
+// search by basename: these are the directories the seeders actually reach for,
+// and a wider net would start claiming unrelated files that happen to share a
+// name. Over-claiming here costs a build; under-claiming strands a service.
+function literalBasesFor(file) {
+  const dir = dirname(file);
+  return [
+    dir,
+    resolve(dir, 'data'),
+    resolve(dir, 'shared'),
+    resolve(dir, '..', 'shared'),
+    resolve(dir, '..', 'data'),
+  ];
+}
+
+/**
+ * Files named by a string literal, whatever the call around it looks like.
+ *
+ * extractFileReadDependencies below matches two exact call SHAPES, and the
+ * fleet uses more than two. All of these evade it, and each one was a service
+ * that would have sat on stale code forever:
+ *
+ *   scripts/_energy-disruption-registry.mjs:37  readFileSync(resolve(__dirname, 'data', 'x.json'))
+ *   scripts/shared/rankable-universe.mjs:47     const P = resolve(here, 'x.json'); readFileSync(P)
+ *   scripts/shared/swf-manifest-loader.mjs:27   the same, for a .yaml manifest
+ *   scripts/ais-relay.cjs:56                    require(path.join(__dirname, '..', 'shared', name))
+ *
+ * Matching the LITERAL rather than the call is what makes this robust: a new
+ * seeder inventing a fourth way to build a path is still covered, because the
+ * filename has to appear somewhere.
+ */
+function extractLiteralPathDependencies(files, repoRootDir) {
+  const found = new Set();
+  for (const file of files) {
+    if (!/\.[cm]?[jt]s$/u.test(file)) continue;
+    const source = stripComments(readFileSync(file, 'utf8'));
+    for (const match of source.matchAll(LITERAL_PATH_RE)) {
+      // EVERY base that resolves, never the first one. shared/ is mirrored at
+      // the repository root AND under scripts/ — `stocks.json` exists in both —
+      // and scripts/ais-relay.cjs:56 resolves `../shared` FIRST while this list
+      // reaches scripts/shared first. Stopping at one match picked the copy the
+      // service does not load, which watches a file that never changes while the
+      // one it reads goes unwatched. Claiming both costs a build; guessing
+      // strands the service.
+      for (const base of literalBasesFor(file)) {
+        const candidate = resolve(base, match[1]);
+        if (!candidate.startsWith(repoRootDir)) continue;
+        if (!existsSync(candidate) || !statSync(candidate).isFile()) continue;
+        found.add(candidate);
+      }
+    }
+  }
+  return found;
+}
+
+/**
+ * A service's full runtime surface: the import graph, plus everything reached by
+ * a mechanism the import graph cannot express.
+ *
+ * Iterates to a fixed point because a literal naming an executable script is a
+ * SPAWN edge, and the spawned file's whole import subgraph ships in the image.
+ * scripts/ais-relay.cjs:6367/:6442 runs
+ * `execFile(process.execPath, [path.join(__dirname, 'seed-climate-news.mjs')])`,
+ * so seed-climate-news.mjs and everything IT imports — _seed-utils.mjs and
+ * lib/llm-telemetry.cjs among them, which Dockerfile.relay calls
+ * startup-crash-critical — are relay's dependencies with no import statement
+ * anywhere connecting them. Feed such a literal back as a walk root and repeat.
+ */
+function resolveRuntimeSurface(entry, repoRootDir) {
+  const scriptsDir = resolve(repoRootDir, 'scripts');
+  const entryPath = resolve(repoRootDir, entry.entry);
+  const roots = new Set([
+    entryPath,
+    ...extractBundleMembers(readFileSync(entryPath, 'utf8'))
+      .map((member) => resolve(repoRootDir, 'scripts', member)),
+  ]);
+
+  let visited = new Set();
+  let unresolved = [];
+  let literals = new Set();
+  let converged = false;
+  // Bounded: each pass must ADD a root to continue, and the root set is bounded
+  // by the repository. The cap only stops a pathological cycle from hanging CI —
+  // and hitting it is reported rather than accepted, because an unconverged walk
+  // yields a closure that is too NARROW, the one direction that strands a
+  // service.
+  for (let pass = 0; pass < 8 && !converged; pass += 1) {
+    ({ visited, unresolved } = walkContainerGraph([...roots], {
+      repoRoot: repoRootDir,
+      copyRootDirs: [scriptsDir, repoRootDir],
+      dynamicRootDirs: [scriptsDir],
+      installedPackages: new Set(),
+      hasTsx: false,
+    }));
+    literals = extractLiteralPathDependencies(visited, repoRootDir);
+    const before = roots.size;
+    for (const file of literals) {
+      if (SCRIPT_EXTENSION_RE.test(file)) roots.add(file);
+    }
+    converged = roots.size === before;
+  }
+
+  const runtimeFiles = new Set([
+    ...[...visited].map((file) => relative(repoRootDir, file)),
+    ...extractSharedConfigDependencies(visited, entry.deployMode),
+    ...extractFileReadDependencies(visited, repoRootDir),
+    ...[...literals].map((file) => relative(repoRootDir, file)),
+  ]);
+  return { visited, unresolved, runtimeFiles, converged };
 }
 
 function extractSharedConfigDependencies(files, deployMode) {
@@ -943,28 +1060,14 @@ describe('critical ingestion Railway registry contract', () => {
         );
       }
 
-      const entryPath = resolve(repoRoot, entry.entry);
-      const source = readFileSync(entryPath, 'utf8');
-      const roots = [
-        entryPath,
-        ...extractBundleMembers(source).map((member) => resolve(repoRoot, 'scripts', member)),
-      ];
-      const scriptsDir = resolve(repoRoot, 'scripts');
-      const { visited, unresolved } = walkContainerGraph(roots, {
-        repoRoot,
-        copyRootDirs: [scriptsDir, repoRoot],
-        dynamicRootDirs: [scriptsDir],
-        installedPackages: new Set(),
-        hasTsx: false,
-      });
+      const { unresolved, runtimeFiles, converged } = resolveRuntimeSurface(entry, repoRoot);
       assert.deepEqual(unresolved, [], `${serviceName} runtime graph must resolve`);
+      assert.ok(
+        converged,
+        `${serviceName} spawn-edge walk did not reach a fixed point; its closure is incomplete`,
+      );
 
       const watched = new Set(entry.watchPatterns);
-      const runtimeFiles = new Set([
-        ...[...visited].map((file) => relative(repoRoot, file)),
-        ...extractSharedConfigDependencies(visited, entry.deployMode),
-        ...extractFileReadDependencies(visited, repoRoot),
-      ]);
       const missingRuntimeFiles = [...runtimeFiles]
         .filter((file) => !watched.has(file))
         .sort();
