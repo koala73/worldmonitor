@@ -184,7 +184,7 @@ test('relay handlers expose bounded Google/OpenSky cooldowns and RSS fallback me
     assert.equal(aisEmpty.status, 200);
 
     const health = JSON.parse((await get(port, '/health')).body);
-    assert.equal(health.status, 'ok');
+    assert.equal(health.status, 'degraded', 'top-level JSON status must not hide degraded ingestion');
     assert.equal(health.ingestion.status, 'degraded');
     assert.equal(health.ingestion.aisSnapshot.served, 0);
     assert.equal(health.ingestion.aisSnapshot.connected, false);

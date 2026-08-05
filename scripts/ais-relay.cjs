@@ -64,14 +64,16 @@ const RSS_ALLOWED_DOMAINS = new Set(requireShared('rss-allowed-domains.cjs'));
 const _heapStats = v8.getHeapStatistics();
 console.log(`[Relay] Heap limit: ${(_heapStats.heap_size_limit / 1024 / 1024).toFixed(0)}MB`);
 
-const AISSTREAM_URL = 'wss://stream.aisstream.io/v0/stream';
+const RELAY_TEST_MODE = process.env.RELAY_TEST_MODE === 'true';
+const AISSTREAM_URL = RELAY_TEST_MODE && process.env.AISSTREAM_URL
+  ? process.env.AISSTREAM_URL
+  : 'wss://stream.aisstream.io/v0/stream';
 const API_KEY = process.env.AISSTREAM_API_KEY || process.env.VITE_AISSTREAM_API_KEY;
 const PORT = process.env.PORT || 3004;
 // Actual bound port, resolved at listen time. Self-requests must use this:
 // with PORT=0 (ephemeral bind, used by tests) the env value is not the port
 // the server listens on, and `http://localhost:0` fails outright.
 let relayBoundPort = PORT;
-const RELAY_TEST_MODE = process.env.RELAY_TEST_MODE === 'true';
 
 if (!API_KEY) {
   console.warn('[Relay] AIS disabled: AISSTREAM_API_KEY is not set (other relay and seed services remain available)');
@@ -718,9 +720,20 @@ async function publishNotificationEvent({ eventType, payload, severity, variant,
 let upstreamSocket = null;
 let upstreamReconnectTimer = null;
 let upstreamReconnectFailures = 0;
+let upstreamReconnectAt = 0;
+let upstreamCurrentPositionReady = false;
 let relayShuttingDown = false;
 const AIS_RECONNECT_BASE_MS = 5_000;
 const AIS_RECONNECT_MAX_MS = 5 * 60 * 1000;
+const aisUpstreamMetrics = {
+  connectionAttempts: 0,
+  success: 0,
+  throttle: 0,
+  terminalFailure: 0,
+  lastSuccessAt: 0,
+  lastFailureAt: 0,
+  lastFailure: null,
+};
 let upstreamPaused = false;
 let upstreamQueue = [];
 let upstreamQueueReadIndex = 0;
@@ -7228,6 +7241,21 @@ function getRelayRollingMetrics() {
       requestSpacingMs: OPENSKY_REQUEST_SPACING_MS,
     },
     ais: {
+      enabled: !!API_KEY,
+      connected: upstreamSocket?.readyState === WebSocket.OPEN,
+      connectionAttemptsSinceBoot: aisUpstreamMetrics.connectionAttempts,
+      successfulConnectionsSinceBoot: aisUpstreamMetrics.success,
+      throttlesSinceBoot: aisUpstreamMetrics.throttle,
+      terminalFailuresSinceBoot: aisUpstreamMetrics.terminalFailure,
+      reconnectFailures: upstreamReconnectFailures,
+      reconnectCooldownRemainingMs: Math.max(0, upstreamReconnectAt - nowMs),
+      lastSuccessAt: aisUpstreamMetrics.lastSuccessAt
+        ? new Date(aisUpstreamMetrics.lastSuccessAt).toISOString()
+        : null,
+      lastFailureAt: aisUpstreamMetrics.lastFailureAt
+        ? new Date(aisUpstreamMetrics.lastFailureAt).toISOString()
+        : null,
+      lastFailure: aisUpstreamMetrics.lastFailure,
       queueMax: rollup.queueMax,
       currentQueue: getUpstreamQueueSize(),
       drops: rollup.drops,
@@ -7583,16 +7611,17 @@ function processRawUpstreamMessage(raw) {
     console.log(`[Relay] ${messageCount} msgs, ${clients.size} ws-clients, ${vessels.size} vessels, queue=${getUpstreamQueueSize()}, dropped=${droppedMessages}, rss=${(mem.rss / 1024 / 1024).toFixed(0)}MB heap=${(mem.heapUsed / 1024 / 1024).toFixed(0)}MB, cache: opensky=${openskyResponseCache.size} opensky_neg=${openskyNegativeCache.size} rss_feed=${rssResponseCache.size} rss_backoff=${rssFailureCount.size}`);
   }
 
+  let acceptedType = null;
   try {
     const parsed = JSON.parse(raw);
     if (parsed?.MessageType === 'PositionReport') {
-      processPositionReportForSnapshot(parsed);
+      if (processPositionReportForSnapshot(parsed)) acceptedType = 'position';
     } else if (parsed?.MessageType === 'ShipStaticData') {
       // Cache ShipType + ShipName by MMSI so subsequent PositionReports
       // can classify the vessel as a tanker. AISStream broadcasts static
       // data ~every 6 min per vessel; in steady state the cache covers
       // most active MMSIs within minutes of relay startup.
-      processShipStaticDataForMeta(parsed);
+      if (processShipStaticDataForMeta(parsed)) acceptedType = 'static';
     }
   } catch {
     // Ignore malformed upstream payloads
@@ -7611,6 +7640,8 @@ function processRawUpstreamMessage(raw) {
       }
     }
   }
+
+  return acceptedType;
 }
 
 function processShipStaticDataForMeta(data) {
@@ -7618,14 +7649,14 @@ function processShipStaticDataForMeta(data) {
   // CallSign, dimensions. We only need ShipType + ShipName for classification.
   const meta = data?.MetaData;
   const sd = data?.Message?.ShipStaticData;
-  if (!meta || !sd) return;
+  if (!meta || !sd) return false;
   // MMSI fallback: AISStream's PositionReport wrapper puts MMSI under
   // MetaData.MMSI, but the ShipStaticData payload sample shows MMSI mirrored
   // as `UserID` on the message body itself. Read MetaData.MMSI first (the
   // documented wrapper field), then fall back to the message-body field so
   // a wrapper schema variant doesn't silently re-empty vesselMeta.
   const mmsi = String(meta.MMSI || sd.UserID || '');
-  if (!mmsi) return;
+  if (!mmsi) return false;
   // ShipType lives in the message body, not MetaData, on Type 5 frames.
   // Gate on `> 0` (not just `Number.isFinite`) so that Number(null) === 0
   // and AIS code 0 ("Not available" per ITU-R M.1371) don't overwrite a
@@ -7633,25 +7664,26 @@ function processShipStaticDataForMeta(data) {
   // {Type: 85} then later {Type: null} would be downgraded to non-tanker
   // because the second write replaces the first with shipType=0.
   const shipType = Number(sd.Type);
-  if (!Number.isFinite(shipType) || shipType <= 0) return;
+  if (!Number.isFinite(shipType) || shipType <= 0) return false;
   vesselMeta.set(mmsi, {
     shipType,
     shipName: (sd.Name || meta.ShipName || '').trim(),
     lastSeen: Date.now(),
   });
+  return true;
 }
 
 function processPositionReportForSnapshot(data) {
   const meta = data?.MetaData;
   const pos = data?.Message?.PositionReport;
-  if (!meta || !pos) return;
+  if (!meta || !pos) return false;
 
   const mmsi = String(meta.MMSI || '');
-  if (!mmsi) return;
+  if (!mmsi) return false;
 
   const lat = Number.isFinite(pos.Latitude) ? pos.Latitude : meta.latitude;
   const lon = Number.isFinite(pos.Longitude) ? pos.Longitude : meta.longitude;
-  if (!Number.isFinite(lat) || !Number.isFinite(lon)) return;
+  if (!Number.isFinite(lat) || !Number.isFinite(lon)) return false;
 
   const now = Date.now();
 
@@ -7739,6 +7771,7 @@ function processPositionReportForSnapshot(data) {
       timestamp: now,
     });
   }
+  return true;
 }
 
 function cleanupAggregates() {
@@ -8029,6 +8062,7 @@ function buildSnapshot() {
     timestamp: new Date(now).toISOString(),
     status: {
       connected: upstreamSocket?.readyState === WebSocket.OPEN,
+      currentPositionReady: upstreamCurrentPositionReady,
       vessels: vessels.size,
       messages: messageCount,
       clients: clients.size,
@@ -8059,13 +8093,15 @@ function buildSnapshot() {
 
 function recordAisSnapshotAvailability(snapshot) {
   const connected = upstreamSocket?.readyState === WebSocket.OPEN;
-  const hasData = Number(snapshot?.status?.vessels) > 0 || Number(snapshot?.status?.messages) > 0;
-  if (connected && hasData) {
+  // messageCount is process-lifetime telemetry, not current snapshot coverage.
+  // Only an actually served vessel set keeps the maritime surface available.
+  const hasData = Number(snapshot?.status?.vessels) > 0;
+  if (connected && upstreamCurrentPositionReady && hasData) {
     recordRelayOutcome('aisSnapshot', 'success');
     incrementRelayMetric('aisSnapshotServed');
     return 'fresh';
   }
-  if (!connected && hasData) {
+  if (hasData) {
     recordRelayOutcome('aisSnapshot', 'fallback');
     incrementRelayMetric('aisSnapshotServed');
     return 'stale';
@@ -10003,10 +10039,24 @@ const server = http.createServer(async (req, res) => {
   if (pathname === '/health' || pathname === '/') {
     const mem = process.memoryUsage();
     const ingestion = getRelayRollingMetrics();
-    const aisSnapshotDegraded = ingestion.aisSnapshot.requests > 0 && ingestion.aisSnapshot.served === 0;
+    const aisConnected = upstreamSocket?.readyState === WebSocket.OPEN;
+    const aisHasData = vessels.size > 0;
+    const aisSnapshotDegraded = !!API_KEY && (
+      !aisConnected
+      || !upstreamCurrentPositionReady
+      || !aisHasData
+      || (ingestion.aisSnapshot.requests > 0 && ingestion.aisSnapshot.served === 0)
+    );
     const ingestionDegraded = ingestion.aviation.coverage.status === 'degraded'
       || ingestion.rss.coverage.status === 'degraded'
       || aisSnapshotDegraded;
+    const healthStatus = ingestionDegraded ? 'degraded' : 'ok';
+    let aisSnapshotStatus = 'disabled';
+    if (API_KEY && aisSnapshotDegraded) {
+      aisSnapshotStatus = 'degraded';
+    } else if (API_KEY) {
+      aisSnapshotStatus = 'ok';
+    }
     // ⚠ SECURITY — read before adding fields to this response.
     //
     // /health is in `isPublicRoute` (no auth check). Fields here are
@@ -10038,17 +10088,21 @@ const server = http.createServer(async (req, res) => {
     // response. The `ais-relay-health-no-secret-recon` test asserts the
     // removed fields don't reappear here.
     sendCompressed(req, res, 200, { 'Content-Type': 'application/json' }, JSON.stringify({
-      // Keep the historical liveness status stable for Railway probes; the
-      // ingestion verdict is explicit below so monitors can alert without
-      // turning an application-level coverage dip into a process outage.
-      status: 'ok',
+      // Keep HTTP 200 for Railway process-liveness probes, but never publish a
+      // false-green JSON verdict when configured AIS ingestion has no usable data.
+      status: healthStatus,
       ingestion: {
-        status: ingestionDegraded ? 'degraded' : 'ok',
+        status: healthStatus,
         aviation: ingestion.aviation,
         rss: ingestion.rss,
         aisSnapshot: {
           ...ingestion.aisSnapshot,
-          connected: upstreamSocket?.readyState === WebSocket.OPEN,
+          enabled: !!API_KEY,
+          status: aisSnapshotStatus,
+          connected: aisConnected,
+          hasData: aisHasData,
+          currentPositionReady: upstreamCurrentPositionReady,
+          upstream: ingestion.ais,
         },
       },
       clients: clients.size,
@@ -12054,8 +12108,10 @@ function scheduleUpstreamReconnect() {
   if (relayShuttingDown || upstreamReconnectTimer || !API_KEY) return;
   const delayMs = nextBackoffMs(upstreamReconnectFailures, AIS_RECONNECT_BASE_MS, AIS_RECONNECT_MAX_MS);
   upstreamReconnectFailures++;
+  upstreamReconnectAt = Date.now() + delayMs;
   upstreamReconnectTimer = setTimeout(() => {
     upstreamReconnectTimer = null;
+    upstreamReconnectAt = 0;
     connectUpstream();
   }, delayMs);
   upstreamReconnectTimer.unref?.();
@@ -12064,19 +12120,24 @@ function scheduleUpstreamReconnect() {
 
 function connectUpstream() {
   if (!API_KEY) return;
+  // Snapshot and downstream WebSocket traffic may call this while a provider
+  // cooldown is active. Preserve the scheduled exponential backoff instead of
+  // letting request traffic turn one upstream 429 into a reconnect storm.
+  if (upstreamReconnectTimer) return;
 
-  if (upstreamReconnectTimer) {
-    clearTimeout(upstreamReconnectTimer);
-    upstreamReconnectTimer = null;
-  }
-
-  // Skip if already connected or connecting
-  if (upstreamSocket?.readyState === WebSocket.OPEN ||
-      upstreamSocket?.readyState === WebSocket.CONNECTING) return;
+  // The close handler owns socket release. Even CLOSING/CLOSED sockets remain
+  // current until that handler clears them, preventing request traffic from
+  // replacing a failed socket during the error-to-close gap.
+  if (upstreamSocket) return;
 
   console.log('[Relay] Connecting to aisstream.io...');
+  aisUpstreamMetrics.connectionAttempts++;
   const socket = new WebSocket(AISSTREAM_URL);
+  let socketServedData = false;
+  let socketFailureRecorded = false;
   upstreamSocket = socket;
+  upstreamCurrentPositionReady = false;
+  lastSnapshotAt = 0;
   clearUpstreamQueue();
   upstreamPaused = false;
 
@@ -12102,7 +12163,23 @@ function connectUpstream() {
            Date.now() - startedAt < UPSTREAM_DRAIN_BUDGET_MS) {
       const raw = dequeueUpstreamMessage();
       if (!raw) break;
-      processRawUpstreamMessage(raw);
+      const acceptedType = processRawUpstreamMessage(raw);
+      if (acceptedType) {
+        // A successful WebSocket upgrade or arbitrary JSON frame is not AIS
+        // recovery. Only a validated frame accepted into relay state resets
+        // provider failure telemetry and reconnect backoff.
+        if (!socketServedData) {
+          socketServedData = true;
+          aisUpstreamMetrics.success++;
+          aisUpstreamMetrics.lastSuccessAt = Date.now();
+          aisUpstreamMetrics.lastFailure = null;
+        }
+        upstreamReconnectFailures = 0;
+        if (acceptedType === 'position' && !upstreamCurrentPositionReady) {
+          upstreamCurrentPositionReady = true;
+          lastSnapshotAt = 0;
+        }
+      }
       processed++;
     }
 
@@ -12128,7 +12205,6 @@ function connectUpstream() {
       return;
     }
     console.log('[Relay] Connected to aisstream.io');
-    upstreamReconnectFailures = 0;
     socket.send(JSON.stringify({
       APIKey: API_KEY,
       BoundingBoxes: [[[-90, -180], [90, 180]]],
@@ -12163,7 +12239,14 @@ function connectUpstream() {
 
   socket.on('close', () => {
     if (upstreamSocket === socket) {
+      if (!relayShuttingDown && !socketFailureRecorded) {
+        aisUpstreamMetrics.terminalFailure++;
+        aisUpstreamMetrics.lastFailureAt = Date.now();
+        aisUpstreamMetrics.lastFailure = socketServedData ? 'disconnected' : 'closed_without_data';
+      }
       upstreamSocket = null;
+      upstreamCurrentPositionReady = false;
+      lastSnapshotAt = 0;
       clearUpstreamQueue();
       upstreamPaused = false;
       console.log('[Relay] Disconnected');
@@ -12172,6 +12255,13 @@ function connectUpstream() {
   });
 
   socket.on('error', (err) => {
+    if (!socketFailureRecorded) {
+      socketFailureRecorded = true;
+      const throttled = /\b429\b/.test(String(err?.message || ''));
+      aisUpstreamMetrics[throttled ? 'throttle' : 'terminalFailure']++;
+      aisUpstreamMetrics.lastFailureAt = Date.now();
+      aisUpstreamMetrics.lastFailure = throttled ? 'http_429' : 'connection_error';
+    }
     console.error('[Relay] Upstream error:', err.message);
   });
 }
@@ -12278,6 +12368,7 @@ async function gracefulShutdown(signal) {
   if (upstreamReconnectTimer) {
     clearTimeout(upstreamReconnectTimer);
     upstreamReconnectTimer = null;
+    upstreamReconnectAt = 0;
   }
   console.log(`[Relay] ${signal} received — shutting down`);
   if (telegramState.client) {
