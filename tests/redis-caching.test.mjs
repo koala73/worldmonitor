@@ -2309,6 +2309,7 @@ describe('military flights bbox behavior', { concurrency: 1 }, () => {
           return jsonResponse({
             result: JSON.stringify({
               flights: [{ id: 'stale1', callsign: 'RCH777', lat: 40.5, lon: -99.5 }],
+              coverage: 'global',
               fetchedAt: Date.now(),
             }),
           });
@@ -2344,6 +2345,64 @@ describe('military flights bbox behavior', { concurrency: 1 }, () => {
       cleanup();
       globalThis.fetch = originalFetch;
       restoreEnv();
+    }
+  });
+
+  it('rejects stale snapshots that do not cover a global request after a live Redis error', async () => {
+    for (const coverage of [undefined, 'regional']) {
+      const { module, cleanup } = await importListMilitaryFlights();
+      module._resetStaleNegativeCacheForTests();
+      const restoreEnv = withEnv({
+        UPSTASH_REDIS_REST_URL: 'https://redis.test',
+        UPSTASH_REDIS_REST_TOKEN: 'token',
+        LOCAL_API_MODE: undefined,
+        WS_RELAY_URL: 'wss://relay.test',
+        VERCEL_ENV: undefined,
+        VERCEL_GIT_COMMIT_SHA: undefined,
+      });
+      const originalFetch = globalThis.fetch;
+      let openskyCalls = 0;
+
+      globalThis.fetch = async (url, init) => {
+        const raw = String(url);
+        if (raw.includes('/get/')) {
+          const key = decodeURIComponent(raw.split('/get/')[1] || '');
+          if (key === 'military:flights:v1') throw new Error('redis timeout');
+          if (key === 'military:flights:stale:v1') {
+            return jsonResponse({
+              result: JSON.stringify({
+                flights: [{ id: 'regional-stale', callsign: 'RCH777', lat: 40.5, lon: -99.5 }],
+                ...(coverage ? { coverage } : {}),
+                fetchedAt: Date.now(),
+              }),
+            });
+          }
+          return jsonResponse({ result: null });
+        }
+        if (isSetRequest(url, init)) return jsonResponse({ result: 'OK' });
+        if (raw.includes('/opensky')) {
+          openskyCalls += 1;
+          return jsonResponse({ states: [] });
+        }
+        throw new Error(`Unexpected fetch URL: ${raw}`);
+      };
+
+      try {
+        const result = await module.listMilitaryFlights(
+          { request: new Request('https://wm.test/api/military/v1/list-military-flights') },
+          { swLat: -90, swLon: -180, neLat: 90, neLon: 180 },
+        );
+        assert.equal(openskyCalls, 0, `${coverage ?? 'unstamped'} stale coverage must fail closed`);
+        assert.deepEqual(
+          result,
+          { flights: [], clusters: [], pagination: { nextCursor: '', totalCount: 0 } },
+          `${coverage ?? 'unstamped'} stale coverage is not authoritative for a global request`,
+        );
+      } finally {
+        cleanup();
+        globalThis.fetch = originalFetch;
+        restoreEnv();
+      }
     }
   });
 
@@ -2389,6 +2448,44 @@ describe('military flights bbox behavior', { concurrency: 1 }, () => {
       assert.equal(liveSeedReads, 1, 'the global snapshot must be consulted before provider recovery');
       assert.equal(openskyCalls, 1, 'a snapshot miss must still reach request-specific recovery');
       assert.deepEqual(result.flights.map((flight) => flight.id), ['OUTSIDE-REGION']);
+    } finally {
+      cleanup();
+      globalThis.fetch = originalFetch;
+      restoreEnv();
+    }
+  });
+
+  it('keeps global request recovery within legal OpenSky bounds', async () => {
+    const { module, cleanup } = await importListMilitaryFlights();
+    const restoreEnv = withEnv({
+      LOCAL_API_MODE: 'sidecar',
+      WS_RELAY_URL: undefined,
+      UPSTASH_REDIS_REST_URL: undefined,
+      UPSTASH_REDIS_REST_TOKEN: undefined,
+    });
+    const originalFetch = globalThis.fetch;
+    let recoveryUrl;
+
+    globalThis.fetch = async (url) => {
+      recoveryUrl = new URL(String(url));
+      return jsonResponse({
+        states: [['north-america', 'RCH401', null, null, null, -99.5, 40.5, 20000, false, 300, 90]],
+      });
+    };
+
+    try {
+      const result = await module.listMilitaryFlights({}, {
+        swLat: -90,
+        swLon: -180,
+        neLat: 90,
+        neLon: 180,
+      });
+
+      assert.deepEqual(result.flights.map((flight) => flight.id), ['NORTH-AMERICA']);
+      assert.equal(recoveryUrl?.searchParams.get('lamin'), '-90');
+      assert.equal(recoveryUrl?.searchParams.get('lamax'), '90');
+      assert.equal(recoveryUrl?.searchParams.get('lomin'), '-180');
+      assert.equal(recoveryUrl?.searchParams.get('lomax'), '180');
     } finally {
       cleanup();
       globalThis.fetch = originalFetch;
@@ -2686,6 +2783,7 @@ describe('military flights bbox behavior', { concurrency: 1 }, () => {
     const originalFetch = globalThis.fetch;
 
     const stalePayload = {
+      coverage: 'global',
       flights: [
         { id: 'stale-first', callsign: 'RCH201', lat: 10.1, lon: 10.1 },
         { id: 'stale-outside', callsign: 'RCH202', lat: 9.9, lon: 10.2 },

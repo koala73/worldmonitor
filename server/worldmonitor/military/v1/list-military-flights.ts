@@ -18,6 +18,7 @@ const REDIS_STALE_KEY = 'military:flights:stale:v1';
 
 /** Snap a coordinate to a grid step so nearby bbox values share cache entries. */
 const quantize = (v: number, step: number) => Math.round(v / step) * step;
+const clamp = (v: number, min: number, max: number) => Math.min(max, Math.max(min, v));
 const BBOX_GRID_STEP = 1; // 1-degree grid (~111 km at equator)
 
 interface RequestBounds {
@@ -300,7 +301,12 @@ export function _resetStaleNegativeCacheForTests(): void {
   staleNegUntil = 0;
 }
 
-async function fetchStaleFallback(): Promise<ListMilitaryFlightsResponse['flights'] | null> {
+interface StaleSeedSnapshot {
+  flights: ListMilitaryFlightsResponse['flights'];
+  coverage: SeedCoverage;
+}
+
+async function fetchStaleFallback(): Promise<StaleSeedSnapshot | null> {
   const now = Date.now();
   if (now < staleNegUntil) return null;
   try {
@@ -310,7 +316,10 @@ async function fetchStaleFallback(): Promise<ListMilitaryFlightsResponse['flight
       staleNegUntil = now + STALE_NEG_TTL_MS;
       return null;
     }
-    return flights;
+    return {
+      flights,
+      coverage: raw?.coverage === 'global' ? 'global' : 'regional',
+    };
   } catch {
     staleNegUntil = now + STALE_NEG_TTL_MS;
     return null;
@@ -377,10 +386,10 @@ export async function listMilitaryFlights(
         if (!baseUrl) return null;
 
         const fetchBB = {
-          lamin: quantize(req.swLat, BBOX_GRID_STEP) - BBOX_GRID_STEP / 2,
-          lamax: quantize(req.neLat, BBOX_GRID_STEP) + BBOX_GRID_STEP / 2,
-          lomin: quantize(req.swLon, BBOX_GRID_STEP) - BBOX_GRID_STEP / 2,
-          lomax: quantize(req.neLon, BBOX_GRID_STEP) + BBOX_GRID_STEP / 2,
+          lamin: clamp(quantize(req.swLat, BBOX_GRID_STEP) - BBOX_GRID_STEP / 2, -90, 90),
+          lamax: clamp(quantize(req.neLat, BBOX_GRID_STEP) + BBOX_GRID_STEP / 2, -90, 90),
+          lomin: clamp(quantize(req.swLon, BBOX_GRID_STEP) - BBOX_GRID_STEP / 2, -180, 180),
+          lomax: clamp(quantize(req.neLon, BBOX_GRID_STEP) + BBOX_GRID_STEP / 2, -180, 180),
         };
         const params = new URLSearchParams();
         params.set('lamin', String(fetchBB.lamin));
@@ -452,9 +461,9 @@ export async function listMilitaryFlights(
       // The seed cron (scripts/seed-military-flights.mjs) writes both keys
       // every run; stale has a 24h TTL versus 10min live, so it's the right
       // fallback when OpenSky / the relay hiccups.
-      const staleFlights = await fetchStaleFallback();
-      if (staleFlights && staleFlights.length > 0) {
-        return paginateResponse(staleFlights, [], requestBounds, req);
+      const stale = await fetchStaleFallback();
+      if (stale && seedCovers(stale.coverage, requestBounds)) {
+        return paginateResponse(stale.flights, [], requestBounds, req);
       }
       markNoCacheResponse(ctx.request);
       return emptyResponse();
@@ -473,9 +482,10 @@ export async function listMilitaryFlights(
     // live-seed read, so skipping stale here blanks the entire map rather than
     // the two former producer regions. fetchStaleFallback swallows its own
     // errors and returns null, so it cannot re-throw into this handler.
-    const staleFlights = await fetchStaleFallback();
-    if (staleFlights && staleFlights.length > 0) {
-      return paginateResponse(staleFlights, [], normalizeBounds(req), req);
+    const requestBounds = normalizeBounds(req);
+    const stale = await fetchStaleFallback();
+    if (stale && seedCovers(stale.coverage, requestBounds)) {
+      return paginateResponse(stale.flights, [], requestBounds, req);
     }
     markNoCacheResponse(ctx.request);
     return emptyResponse();
