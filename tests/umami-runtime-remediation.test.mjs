@@ -232,7 +232,7 @@ describe('Umami runtime remediation (#6024)', () => {
       deployMode: 'dockerfile',
       dockerfile: 'Dockerfile.umami-retention',
       service: 'umami-retention',
-      lifecycle: 'planned',
+      lifecycle: 'active',
       requiredEnv: ['PGHOST', 'PGPORT', 'PGDATABASE', 'PGUSER', 'PGPASSWORD'],
       watchPatterns: [
         'scripts/umami-retention.sql',
