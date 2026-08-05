@@ -69,3 +69,59 @@ export function orderByRecency(deployments) {
 export function newestRunning(orderedDeployments) {
   return orderedDeployments.find((deployment) => RUNNING_STATUSES.includes(deployment?.status));
 }
+
+/**
+ * Accumulate a fleet-wide, newest-first deployment stream into per-service
+ * histories, and decide when enough of it has been read.
+ *
+ * Pure, so the stopping rule can be tested without paging anything. The rule
+ * has to satisfy BOTH questions its callers ask, and they bottom out at
+ * different depths:
+ *
+ *   1. "what is this service running" — needs each service's newest RUNNING
+ *      record. Slow-ticking services surface late, so this is what sets the
+ *      depth (measured: 6 pages of 500 for a 78-service fleet).
+ *   2. "did Railway take head" — needs any record carrying headSha. Those can
+ *      only exist at or after head's commit time, so once the stream is older
+ *      than that, no later page can hold one.
+ *
+ * A service still missing a RUNNING record when paging stops is `unresolved` —
+ * NOT "a service with no deployments". Conflating those would let an exhausted
+ * page budget fabricate NEVER_DEPLOYED for a healthy service, which is the same
+ * fail-open shape as every other bug in this file's history. The caller falls
+ * back to a direct per-service read for those.
+ */
+export function createFleetAccumulator({ serviceIds, notBefore = Number.NEGATIVE_INFINITY }) {
+  const wanted = new Set(serviceIds);
+  const byService = new Map(wanted.size > 0 ? [...wanted].map((id) => [id, []]) : []);
+  const covered = new Set();
+  let oldestSeen = Number.POSITIVE_INFINITY;
+  let exhausted = false;
+
+  return {
+    absorb(nodes) {
+      for (const node of nodes ?? []) {
+        const at = createdAtMs(node);
+        if (at < oldestSeen) oldestSeen = at;
+        const id = node?.serviceId;
+        if (!wanted.has(id)) continue;
+        byService.get(id).push(node);
+        if (RUNNING_STATUSES.includes(node?.status)) covered.add(id);
+      }
+    },
+    markExhausted() { exhausted = true; },
+    /** Every service located AND the stream is older than head — or there is no more stream. */
+    get done() {
+      return exhausted || (covered.size === wanted.size && oldestSeen < notBefore);
+    },
+    result() {
+      return {
+        byService,
+        // Exhausting the stream proves a service genuinely has no running
+        // deployment; running out of budget proves nothing.
+        unresolved: exhausted ? [] : [...wanted].filter((id) => !covered.has(id)),
+        oldestSeen,
+      };
+    },
+  };
+}

@@ -120,6 +120,35 @@ export function readEnvironmentConfig(environment) {
   return config;
 }
 
+/**
+ * The environment's id, for the deploy mutation.
+ *
+ * `--project` is not optional on a CI runner. A clean runner has no `.railway`
+ * link, and a bare `railway status --json` answers "No linked project found" —
+ * which JSON.parse then fails on, at the moment of deploying. Every other call
+ * this script makes (service list, environment config, deployment list) is
+ * proven to work on just the project-scoped RAILWAY_TOKEN by the freshness
+ * monitor that has been running them every 15 minutes; `railway status` is the
+ * one call that workflow passes `--project` to, and this had been the only
+ * place in the new code without that precedent.
+ */
+export function resolveEnvironmentId(environmentName, projectId = process.env.RAILWAY_PROJECT_ID) {
+  const status = JSON.parse(runRailway([
+    'status',
+    ...(projectId ? ['--project', projectId] : []),
+    '--environment', environmentName,
+    '--json',
+  ]));
+  const nodes = (status?.environments?.edges ?? []).map((edge) => edge?.node).filter(Boolean);
+  const match = nodes.find((node) => node.name === environmentName);
+  if (!match?.id) {
+    throw new Error(
+      `no environment named ${environmentName} in this Railway project (saw ${nodes.map((node) => node.name).join(', ') || 'none'})`,
+    );
+  }
+  return match.id;
+}
+
 /** One service's deployment history, newest first, up to `window` records. */
 export async function readDeployments(service, environment, window) {
   const { stdout } = await execFileAsync('railway', [
@@ -134,6 +163,162 @@ export async function readDeployments(service, environment, window) {
     '--json',
   ], { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024, timeout: RAILWAY_CALL_TIMEOUT_MS });
   return JSON.parse(stdout);
+}
+
+// One page of the fleet-wide stream. 500 is what the measured 78-service fleet
+// needed 6 of to surface every service's newest running deployment; larger
+// pages mostly buy depth for the slow-ticking tail, which the per-service
+// fallback handles more cheaply.
+// Declaration order below is not call order: readDeploymentsForFleet uses
+// readDeployments and mapWithConcurrency, which are hoisted function
+// declarations defined further down.
+export const FLEET_PAGE_SIZE = 500;
+
+// Bounded so a pathological fleet cannot page forever. Whatever is still
+// unresolved at the cap falls back to a direct read rather than being guessed.
+export const FLEET_MAX_PAGES = 10;
+
+const FLEET_QUERY = `query FleetDeployments($input: DeploymentListInput!, $first: Int, $after: String) {
+  deployments(input: $input, first: $first, after: $after) {
+    pageInfo { hasNextPage endCursor }
+    edges { node { id status createdAt serviceId meta } }
+  }
+}`;
+
+/** Run one GraphQL document through the Railway CLI and return `data`. */
+export function runRailwayApi(query, variables) {
+  const stdout = runRailway(['api', query, '--variables', JSON.stringify(variables), '--compact']);
+  // `railway api` can print advisory lines before the payload; the JSON document
+  // is the first line that parses.
+  for (const line of stdout.split('\n')) {
+    if (!line.trim().startsWith('{')) continue;
+    const parsed = JSON.parse(line);
+    if (Array.isArray(parsed?.errors) && parsed.errors.length > 0) {
+      throw new Error(parsed.errors.map((error) => error?.message ?? String(error)).join('; '));
+    }
+    if (parsed?.data) return parsed.data;
+  }
+  throw new Error('railway api returned no JSON payload');
+}
+
+/**
+ * Every repository service's recent deployment history, in a handful of calls
+ * instead of one per service.
+ *
+ * `deployments(input: {projectId, environmentId})` is a single newest-first
+ * stream across the whole environment, so the 77 per-service round trips that
+ * made a sweep take ~7 minutes collapse to ~6 pages and ~16 seconds. That is
+ * what makes running the reconciler often affordable.
+ *
+ * Returns `unresolved` for services the budget did not reach; the caller reads
+ * those directly. This is an optimisation with a proven fallback, never a new
+ * hard dependency — a project id we cannot determine, or a query that fails,
+ * degrades to the per-service path rather than to a wrong answer.
+ */
+export async function readFleetDeployments({
+  projectId,
+  environmentId,
+  serviceIds,
+  notBefore,
+  pageSize = FLEET_PAGE_SIZE,
+  maxPages = FLEET_MAX_PAGES,
+  api = runRailwayApi,
+  accumulatorFactory,
+}) {
+  const accumulator = accumulatorFactory({ serviceIds, notBefore });
+  let after = null;
+  let pages = 0;
+  let records = 0;
+  while (pages < maxPages) {
+    const data = api(FLEET_QUERY, {
+      input: { projectId, environmentId },
+      first: pageSize,
+      ...(after ? { after } : {}),
+    });
+    const connection = data?.deployments;
+    if (!connection?.edges) throw new Error('railway api returned no deployments connection');
+    pages += 1;
+    records += connection.edges.length;
+    accumulator.absorb(connection.edges.map((edge) => edge?.node).filter(Boolean));
+    if (!connection.pageInfo?.hasNextPage) {
+      accumulator.markExhausted();
+      break;
+    }
+    if (accumulator.done) break;
+    after = connection.pageInfo.endCursor;
+  }
+  return { ...accumulator.result(), pages, records };
+}
+
+/**
+ * Deployment history for every service, by whichever route is available.
+ *
+ * Tries the one-query fleet stream, then fills any gap with direct per-service
+ * reads. Both callers use this so neither carries its own fetch strategy — the
+ * duplication that had already let them disagree about which record is running.
+ *
+ * Returns a Map of serviceId -> { deployments, error }. `error` non-null means
+ * that service could not be read at all; callers must report it rather than
+ * treat it as an empty history.
+ */
+export async function readDeploymentsForFleet({
+  services,
+  environment,
+  environmentId = null,
+  projectId = process.env.RAILWAY_PROJECT_ID,
+  window,
+  concurrency = DEFAULT_CONCURRENCY,
+  notBefore = Number.NEGATIVE_INFINITY,
+  accumulatorFactory,
+  onRoute = () => {},
+}) {
+  const byId = new Map(services.map((service) => [service.id, service]));
+  const results = new Map();
+  let needDirect = services;
+
+  if (projectId && environmentId && accumulatorFactory) {
+    try {
+      const fleet = await readFleetDeployments({
+        projectId,
+        environmentId,
+        serviceIds: [...byId.keys()],
+        notBefore,
+        accumulatorFactory,
+      });
+      for (const [serviceId, deployments] of fleet.byService) {
+        if (fleet.unresolved.includes(serviceId)) continue;
+        // Trim to the SAME per-service window the direct read uses. The fleet
+        // stream is bounded globally, not per service, so a busy service can
+        // arrive with hundreds of records where `readDeployments` would have
+        // returned `window`. Leaving them in silently changes what the
+        // classifier sees — and every extra SKIPPED record costs a `git show`,
+        // which is what actually dominates a sweep's wall clock.
+        results.set(serviceId, { deployments: deployments.slice(0, window), error: null });
+      }
+      needDirect = fleet.unresolved.map((serviceId) => byId.get(serviceId)).filter(Boolean);
+      onRoute({ route: 'fleet', pages: fleet.pages, records: fleet.records, fellBack: needDirect.length });
+    } catch (error) {
+      // The proven path is still there. Degrade to it rather than to a guess.
+      onRoute({ route: 'per-service', reason: error instanceof Error ? error.message : String(error) });
+      needDirect = services;
+      results.clear();
+    }
+  } else {
+    onRoute({ route: 'per-service', reason: 'no project/environment id available' });
+  }
+
+  await mapWithConcurrency(needDirect, concurrency, async (service) => {
+    try {
+      results.set(service.id, { deployments: await readDeployments(service, environment, window), error: null });
+    } catch (error) {
+      results.set(service.id, {
+        deployments: null,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  });
+
+  return results;
 }
 
 /** Run `worker` over `items` with at most `limit` in flight, preserving order. */

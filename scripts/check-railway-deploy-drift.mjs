@@ -35,8 +35,9 @@ import {
   DEFAULT_CONCURRENCY,
   mapWithConcurrency,
   readArgument,
-  readDeployments,
+  readDeploymentsForFleet,
   readEnvironmentConfig,
+  resolveEnvironmentId,
   readRepositoryServices,
   runRailway,
 } from './railway-cli.mjs';
@@ -45,6 +46,7 @@ import {
   IN_FLIGHT_STATUSES,
   REJECTED_STATUS,
   RUNNING_STATUSES,
+  createFleetAccumulator,
   createdAtMs,
   isKnownStatus,
   newestRunning,
@@ -52,6 +54,7 @@ import {
 } from './railway-deployments.mjs';
 import {
   changeReachesService,
+  createAncestryResolver,
   createChangedPathsReader,
   createCommitPathsReader,
   isLegitimatePathSkip,
@@ -559,14 +562,15 @@ async function main() {
   // and when the object is missing (a shallow checkout that never fetched the
   // commit). Both collapse to "cannot prove it", which keeps the service
   // reported rather than excused.
-  const isAncestor = (ancestor, descendant) => {
-    try {
-      runGit(['merge-base', '--is-ancestor', ancestor, descendant]);
-      return true;
-    } catch {
-      return false;
-    }
-  };
+  // Memoised, and sharing the trigger's resolver so both files answer ancestry
+  // the same way. Not an optimisation detail: supersededBySource() calls this
+  // once per outstanding rejection inside a filter, so an unmemoised version
+  // spawns `git merge-base` thousands of times per sweep — each one blocking
+  // the event loop — and that, not the Railway API, is what made this check
+  // take minutes. 'unknown' collapses to false here, preserving the existing
+  // "cannot prove it keeps the service reported" behaviour.
+  const ancestry = createAncestryResolver({ git: runGit });
+  const isAncestor = (ancestor, descendant) => ancestry(ancestor, descendant) === 'yes';
   // The newest commit that has been available longer than the build grace.
   // On a checkout too shallow to reach back that far, rev-list answers with
   // nothing and this falls back to head — the stricter reading.
@@ -591,14 +595,34 @@ async function main() {
   const changedPathsSince = createChangedPathsReader(headSha, { git: runGit });
   const changedPathsIn = createCommitPathsReader({ git: runGit });
 
+  // One fleet-wide query instead of 77, which is what took this check ~7
+  // minutes against a 15-minute interval. Falls back per service for anything
+  // the stream does not reach.
+  let headCommittedAt = Number.NEGATIVE_INFINITY;
+  try {
+    headCommittedAt = Number(runGit(['show', '-s', '--format=%ct', headSha])) * 1000;
+  } catch {
+    // Unknown head time pages to the service-coverage rule alone.
+  }
+  const histories = await readDeploymentsForFleet({
+    services,
+    environment,
+    environmentId: (() => { try { return resolveEnvironmentId(environment); } catch { return null; } })(),
+    window,
+    concurrency,
+    notBefore: headCommittedAt,
+    accumulatorFactory: createFleetAccumulator,
+    onRoute: (route) => {
+      // stderr, not stdout: --json must remain one parseable document, and a
+      // human progress line in front of it breaks every machine consumer.
+      console.error(route.route === 'fleet'
+        ? `Read ${services.length} service histories in ${route.pages} fleet page(s) (${route.records} records), ${route.fellBack} direct fallback(s).`
+        : `Reading service histories one at a time: ${route.reason}`);
+    },
+  });
+
   const results = (await mapWithConcurrency(services, concurrency, async (service) => {
-    let deployments = null;
-    let error = null;
-    try {
-      deployments = await readDeployments(service, environment, window);
-    } catch (queryError) {
-      error = queryError instanceof Error ? queryError.message : String(queryError);
-    }
+    const { deployments, error } = histories.get(service.id) ?? { deployments: null, error: 'no history was read for this service' };
     return classifyServiceDeploy({
       service: service.name,
       deployments,

@@ -25,9 +25,14 @@ name: Railway Deploy Trigger
 
 on:
   schedule:
-    # Offset from the Seed Freshness Monitor's :00/:15/:30/:45 so the two do not
-    # queue 77 Railway API calls each against the same minute.
-    - cron: '7,22,37,52 * * * *'
+    # Every 5 minutes, offset from the Seed Freshness Monitor's :00/:15/:30/:45.
+    #
+    # This cadence is what the fleet-wide deployment query bought. A sweep used
+    # to cost 79 Railway API calls; it now costs 9, so running 3x more often
+    # still lands at roughly a third of the old load — and the interval IS the
+    # worst-case lag for the cohort Railway defers on a red check suite, which
+    # is the whole reason this workflow exists.
+    - cron: '2,7,12,17,22,27,32,37,42,47,52,57 * * * *'
   workflow_dispatch:
     inputs:
       dryRun:

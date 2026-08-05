@@ -49,14 +49,16 @@ import {
   DEFAULT_CONCURRENCY,
   mapWithConcurrency,
   readArgument,
-  readDeployments,
+  readDeploymentsForFleet,
   readEnvironmentConfig,
+  resolveEnvironmentId,
   readRepositoryServices,
   runGit,
   runRailway,
 } from './railway-cli.mjs';
 import {
   REJECTED_STATUS,
+  createFleetAccumulator,
   isKnownStatus,
   newestRunning,
   orderByRecency,
@@ -314,34 +316,6 @@ export function summarizeDeployPlan(plans) {
 
 
 
-/**
- * The environment's id, for the deploy mutation.
- *
- * `--project` is not optional on a CI runner. A clean runner has no `.railway`
- * link, and a bare `railway status --json` answers "No linked project found" —
- * which JSON.parse then fails on, at the moment of deploying. Every other call
- * this script makes (service list, environment config, deployment list) is
- * proven to work on just the project-scoped RAILWAY_TOKEN by the freshness
- * monitor that has been running them every 15 minutes; `railway status` is the
- * one call that workflow passes `--project` to, and this had been the only
- * place in the new code without that precedent.
- */
-function resolveEnvironmentId(environmentName, projectId = process.env.RAILWAY_PROJECT_ID) {
-  const status = JSON.parse(runRailway([
-    'status',
-    ...(projectId ? ['--project', projectId] : []),
-    '--environment', environmentName,
-    '--json',
-  ]));
-  const nodes = (status?.environments?.edges ?? []).map((edge) => edge?.node).filter(Boolean);
-  const match = nodes.find((node) => node.name === environmentName);
-  if (!match?.id) {
-    throw new Error(
-      `no environment named ${environmentName} in this Railway project (saw ${nodes.map((node) => node.name).join(', ') || 'none'})`,
-    );
-  }
-  return match.id;
-}
 
 // serviceInstanceDeployV2 pins the exact commit and returns the deployment id,
 // which is what makes the trigger verifiable: `railway up` records no commit at
@@ -468,16 +442,41 @@ async function main() {
     fetchMissing: (sha) => runGit(['fetch', '--quiet', '--no-tags', 'origin', sha]),
   });
 
-  const plans = (await mapWithConcurrency(repositoryServices, concurrency, async (service) => {
-    let deployments = null;
-    let readError = null;
+  // One fleet-wide query instead of one call per service, falling back to the
+  // per-service path for anything it does not reach. Head's commit time is the
+  // depth the stream must reach for "did Railway take head" to be answerable.
+  let headCommittedAt = Number.NEGATIVE_INFINITY;
+  try {
+    headCommittedAt = Number(runGit(['show', '-s', '--format=%ct', headSha])) * 1000;
+  } catch {
+    // Unknown head time means page to the service-coverage rule alone.
+  }
+  const environmentIdForReads = (() => {
     try {
-      deployments = await readDeployments(service, environment, window);
-    } catch (error) {
-      // Keep the reason. A bare catch reds the run with "the deployment history
-      // could not be read" and no way to tell a 429 from an auth failure.
-      readError = error instanceof Error ? error.message : String(error);
+      return resolveEnvironmentId(environment);
+    } catch {
+      return null;
     }
+  })();
+  const histories = await readDeploymentsForFleet({
+    services: repositoryServices,
+    environment,
+    environmentId: environmentIdForReads,
+    window,
+    concurrency,
+    notBefore: headCommittedAt,
+    accumulatorFactory: createFleetAccumulator,
+    onRoute: (route) => {
+      // stderr, not stdout: --json must remain one parseable document, and a
+      // human progress line in front of it breaks every machine consumer.
+      console.error(route.route === 'fleet'
+        ? `Read ${repositoryServices.length} service histories in ${route.pages} fleet page(s) (${route.records} records), ${route.fellBack} direct fallback(s).`
+        : `Reading service histories one at a time: ${route.reason}`);
+    },
+  });
+
+  const plans = (await mapWithConcurrency(repositoryServices, concurrency, async (service) => {
+    const { deployments, error: readError } = histories.get(service.id) ?? { deployments: null, error: 'no history was read for this service' };
     return planServiceDeploy({
       service: service.name,
       serviceId: service.id,
