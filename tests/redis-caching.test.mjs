@@ -2186,6 +2186,8 @@ describe('military flights bbox behavior', { concurrency: 1 }, () => {
           return jsonResponse({
             result: JSON.stringify({
               flights: [{ id: 'americas', callsign: 'RCH401', lat: 40.5, lon: -99.5 }],
+              // OpenSky contributed this cycle, so the producer stamped global.
+              coverage: 'global',
               fetchedAt: Date.now(),
             }),
           });
@@ -2216,6 +2218,66 @@ describe('military flights bbox behavior', { concurrency: 1 }, () => {
       );
       // Hex codes are canonicalized to uppercase on the way out.
       assert.deepEqual(result.flights.map((flight) => flight.id), ['AMERICAS']);
+    } finally {
+      cleanup();
+      globalThis.fetch = originalFetch;
+      restoreEnv();
+    }
+  });
+
+  it('does not answer an out-of-region viewport from a REGIONAL snapshot (OpenSky tier down)', async () => {
+    const { module, cleanup } = await importListMilitaryFlights();
+    const restoreEnv = withEnv({
+      UPSTASH_REDIS_REST_URL: 'https://redis.test',
+      UPSTASH_REDIS_REST_TOKEN: 'token',
+      LOCAL_API_MODE: undefined,
+      WS_RELAY_URL: 'wss://relay.test',
+      VERCEL_ENV: undefined,
+      VERCEL_GIT_COMMIT_SHA: undefined,
+    });
+    const originalFetch = globalThis.fetch;
+    let openskyCalls = 0;
+
+    globalThis.fetch = async (url, init) => {
+      const raw = String(url);
+      if (raw.includes('/get/')) {
+        const key = decodeURIComponent(raw.split('/get/')[1] || '');
+        if (key === 'military:flights:v1') {
+          // OpenSky contributed nothing this cycle, so the producer only had
+          // Wingbits — which queries the two regional boxes. It says so.
+          return jsonResponse({
+            result: JSON.stringify({
+              flights: [{ id: 'inregion', callsign: 'RCH301', lat: 20.2, lon: 10.2 }],
+              coverage: 'regional',
+              fetchedAt: Date.now(),
+            }),
+          });
+        }
+        return jsonResponse({ result: null });
+      }
+      if (isSetRequest(url, init)) return jsonResponse({ result: 'OK' });
+      if (raw.includes('/opensky')) {
+        openskyCalls += 1;
+        return jsonResponse({
+          states: [['recovered', 'RCH401', null, null, null, -99.5, 40.5, 20000, false, 300, 90]],
+        });
+      }
+      throw new Error(`Unexpected fetch URL: ${raw}`);
+    };
+
+    try {
+      const result = await module.listMilitaryFlights(
+        { request: new Request('https://wm.test/api/military/v1/list-military-flights') },
+        americasRequest,
+      );
+      // A regional snapshot is NOT authoritative over North America. Answering
+      // from it would silently turn uncovered geography into an empty map for
+      // the whole duration of an OpenSky outage.
+      assert.equal(
+        openskyCalls, 1,
+        'a viewport outside a REGIONAL snapshot must fall through to request-specific recovery',
+      );
+      assert.deepEqual(result.flights.map((f) => f.id), ['RECOVERED']);
     } finally {
       cleanup();
       globalThis.fetch = originalFetch;

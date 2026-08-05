@@ -27,26 +27,34 @@ interface RequestBounds {
   east: number;
 }
 
-// The scheduled military-flight snapshot is declared GLOBAL: scripts/seed-military-flights.mjs
-// issues one bbox-less OpenSky /states/all per run (#6222), so every viewport is
-// inside the producer's declared coverage and must not re-open per-viewer recovery.
+// Coverage is a property of the SNAPSHOT, not of the producer's query shape.
 //
-// Content vs declaration: Wingbits still POSTs only PACIFIC+WESTERN areas. When
-// OpenSky fails but Wingbits succeeds, the published snapshot can be regionally
-// sparse while this list still claims planet-wide coverage — out-of-region
-// viewports then get an authoritative empty (credit-safe) rather than recovery.
-// Keep this lockstep with the OpenSky query shape, not with Wingbits boxes.
+// scripts/seed-military-flights.mjs issues one bbox-less OpenSky /states/all per
+// run (#6222), but its tier-1 source (Wingbits) still queries the two regional
+// boxes below. So a cycle where OpenSky returned nothing publishes REGIONAL data
+// however global the intent was. Treating that as global would answer a viewport
+// over the Americas with an authoritative empty for the entire duration of an
+// OpenSky outage, instead of falling through to per-viewer recovery — the exact
+// "uncovered geography becomes an empty result" failure this guard exists to stop.
 //
-// While the producer queried two regional OpenSky bboxes, this listed exactly
-// those two, and any viewport outside them fell through to per-viewer
-// authenticated OpenSky recovery — an unbounded credit fanout. Narrowing the
-// producer again without narrowing this would silently republish that fanout.
-const LIVE_SEED_COVERAGE: readonly RequestBounds[] = [
+// The producer therefore stamps its real coverage into the payload and this reads
+// it. A payload without the field predates that change and is treated as regional,
+// which is the conservative reading during rollout.
+const GLOBAL_COVERAGE: readonly RequestBounds[] = [
   { south: -90, north: 90, west: -180, east: 180 },
 ];
 
-function liveSeedCovers(bounds: RequestBounds): boolean {
-  return LIVE_SEED_COVERAGE.some((region) =>
+// The producer's tier-1 (Wingbits) query regions — mirrors QUERY_REGIONS in
+// scripts/seed-military-flights.mjs. This is what a snapshot covers when the
+// global tier contributed nothing.
+const REGIONAL_COVERAGE: readonly RequestBounds[] = [
+  { south: 10, north: 46, west: 107, east: 143 },
+  { south: 13, north: 85, west: -10, east: 57 },
+];
+
+function seedCovers(coverage: SeedCoverage, bounds: RequestBounds): boolean {
+  const regions = coverage === 'global' ? GLOBAL_COVERAGE : REGIONAL_COVERAGE;
+  return regions.some((region) =>
     region.south <= bounds.south
     && region.north >= bounds.north
     && region.west <= bounds.west
@@ -179,9 +187,13 @@ interface SeedFlight {
   note?: string;
 }
 
+/** What geography a published snapshot actually covers — see seedCovers above. */
+type SeedCoverage = 'global' | 'regional';
+
 interface SeedPayload {
   flights?: SeedFlight[];
   fetchedAt?: number;
+  coverage?: SeedCoverage;
 }
 
 /**
@@ -235,7 +247,7 @@ const LIVE_SEED_NEG_TTL_MS = 30_000;
 let liveSeedNegUntil = 0;
 let liveSeedNegStatus: 'miss' | 'error' = 'miss';
 type LiveSeedRead =
-  | { status: 'hit'; flights: ListMilitaryFlightsResponse['flights'] }
+  | { status: 'hit'; flights: ListMilitaryFlightsResponse['flights']; coverage: SeedCoverage }
   | { status: 'miss' | 'error' };
 let liveSeedReadPromise: Promise<LiveSeedRead> | null = null;
 
@@ -251,15 +263,17 @@ async function fetchLiveSeedSnapshot(): Promise<LiveSeedRead> {
       liveSeedNegUntil = now + LIVE_SEED_NEG_TTL_MS;
       return { status: 'error' };
     }
-    const flights = read.status === 'hit'
-      ? seedPayloadToProto(read.value as SeedPayload)
-      : null;
+    const payload = read.status === 'hit' ? (read.value as SeedPayload) : null;
+    const flights = payload ? seedPayloadToProto(payload) : null;
     if (flights === null) {
       liveSeedNegStatus = 'miss';
       liveSeedNegUntil = now + LIVE_SEED_NEG_TTL_MS;
       return { status: 'miss' };
     }
-    return { status: 'hit', flights };
+    // An absent field predates the producer stamping coverage; regional is the
+    // conservative reading, and it is what the payload actually covered then.
+    const coverage: SeedCoverage = payload?.coverage === 'global' ? 'global' : 'regional';
+    return { status: 'hit', flights, coverage };
   })();
   try {
     return await liveSeedReadPromise;
@@ -338,18 +352,23 @@ export async function listMilitaryFlights(
         // upstream outage. Keep serving that snapshot (with each flight's old
         // lastSeenAt intact) while seed health reports the stale fetchedAt;
         // reopening per-viewer OpenSky recovery here recreates the credit fanout.
-        if (liveSeedCovers(requestBounds)) {
-          const seeded = await fetchLiveSeedSnapshot();
-          if (seeded.status === 'hit') {
-            return { flights: seeded.flights, clusters: [], pagination: undefined };
-          }
-          if (seeded.status === 'error') {
-            // A Redis command/read failure is not proof the snapshot is
-            // missing. Throw before any provider call so cachedFetchJson's
-            // bounded negative path prevents per-bbox OpenSky amplification.
-            throw new Error('military live seed read failed');
-          }
+        // Read first, THEN judge coverage: what the snapshot covers is a property
+        // of the payload (the producer stamps it), not of this module's constants.
+        const seeded = await fetchLiveSeedSnapshot();
+        if (seeded.status === 'error') {
+          // A Redis command/read failure is not proof the snapshot is
+          // missing. Throw before any provider call so cachedFetchJson's
+          // bounded negative path prevents per-bbox OpenSky amplification.
+          // The outer catch consults the 24h stale key before giving up.
+          throw new Error('military live seed read failed');
         }
+        if (seeded.status === 'hit' && seedCovers(seeded.coverage, requestBounds)) {
+          return { flights: seeded.flights, clusters: [], pagination: undefined };
+        }
+        // A miss, or a hit whose coverage does not contain this request (a
+        // regional snapshot asked about the Americas), falls through to
+        // request-specific recovery rather than returning a falsely
+        // authoritative empty.
 
         const isSidecar = (process.env.LOCAL_API_MODE || '').includes('sidecar');
         const relayBase = isSidecar ? null : getRelayBaseUrl();

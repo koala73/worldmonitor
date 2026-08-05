@@ -42,9 +42,7 @@ const FORECAST_REFRESH_REQUEST_TTL = 60 * 60;
 const OPENSKY_PROXY_AUTH = process.env.OPENSKY_PROXY_AUTH || process.env.PROXY_URL || '';
 const PROXY_ENABLED = !!OPENSKY_PROXY_AUTH;
 
-// ── Wingbits query regions ─────────────────────────────────
-// OpenSky is a single global /states/all (#6222). These boxes remain the
-// Wingbits multi-area POST shape only — not OpenSky bboxes.
+// ── Query Regions ──────────────────────────────────────────
 const QUERY_REGIONS = [
   { name: 'PACIFIC', lamin: 10, lamax: 46, lomin: 107, lomax: 143 },
   { name: 'WESTERN', lamin: 13, lamax: 85, lomin: -10, lomax: 57 },
@@ -558,6 +556,10 @@ function clearOpenSkyToken() {
   openskyTokenExpiry = 0;
 }
 
+function isOpenSkyRateLimitedError(error) {
+  return /HTTP 429\b/i.test(String(error?.message || error || ''));
+}
+
 function isOpenSkyUnauthorizedError(error) {
   return /HTTP 401\b/i.test(String(error?.message || error || ''));
 }
@@ -680,6 +682,14 @@ async function fetchOpenSkyAuthenticated() {
           if (attempt === 0) continue;
         }
         if (!PROXY_ENABLED) throw directError;
+        // Never retry a 429 through the proxy. The quota is per ACCOUNT, and both
+        // paths carry the same bearer token — a different egress IP cannot change
+        // the verdict, so the retry is guaranteed to fail while still costing a
+        // request, proxy bandwidth, and latency on every cycle of a multi-hour
+        // exhaustion window. It also bounds the double-spend window: a direct
+        // request that OpenSky served but that failed client-side has already
+        // debited its credits, and retrying debits them again (#6222).
+        if (isOpenSkyRateLimitedError(directError)) throw directError;
         try {
           data = await proxyFetchJson(url, { headers });
           return { states: data.states || [], status: `success:proxy` };
@@ -1296,7 +1306,23 @@ async function main() {
 
   try {
     const assessedAt = Date.now();
-    const payload = { flights, fetchedAt: assessedAt, stats: { total: flights.length, byType }, classificationAudit };
+    // Declare the snapshot's ACTUAL geographic coverage, not the producer's intent.
+    // Tier 1 (Wingbits) queries QUERY_REGIONS — the two regional boxes. Only tier 2
+    // (OpenSky) is global. So when OpenSky returns nothing, this payload covers two
+    // regions no matter what the query shape aspires to.
+    //
+    // The consumer widens its authoritative-empty guard on this field. Publishing an
+    // unconditional 'global' would make list-military-flights answer a viewport over
+    // the Americas with an authoritative empty during any OpenSky outage, instead of
+    // falling through to per-viewer recovery (#6222).
+    const openSkyContributed = fetchSources.regions.some((region) => region.statesSeen > 0);
+    const payload = {
+      flights,
+      fetchedAt: assessedAt,
+      coverage: openSkyContributed ? 'global' : 'regional',
+      stats: { total: flights.length, byType },
+      classificationAudit,
+    };
 
     await redisSet(url, token, LIVE_KEY, payload, LIVE_TTL);
     await redisSet(url, token, STALE_KEY, payload, STALE_TTL);

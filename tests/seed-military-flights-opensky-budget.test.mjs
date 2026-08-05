@@ -144,6 +144,36 @@ test('spends exactly one OpenSky request even when the authenticated call fails'
   );
 });
 
+test('does not retry a 429 through the residential proxy', async () => {
+  // The quota is per ACCOUNT and both paths send the same bearer token, so a
+  // different egress IP cannot change a 429 — the retry is guaranteed futile
+  // while still costing a request, proxy bandwidth, and latency on every cycle
+  // of a multi-hour exhaustion window.
+  //
+  // Counting globalThis.fetch calls CANNOT see this: proxyFetchJson goes through
+  // _proxy-utils.cjs, which opens raw sockets and never touches globalThis.fetch.
+  // A request-count assertion here would pass with the guard removed. The
+  // observable signal is the recorded status — the proxy path stringifies BOTH
+  // errors as `direct=... | proxy=...`, so its absence proves the proxy was
+  // never attempted.
+  process.env.OPENSKY_PROXY_AUTH = 'http://user:pass@proxy.test:8080';
+  const mod = await import(`../scripts/seed-military-flights.mjs?proxy=${Date.now()}`);
+  install({ openSkyStatus: 429 });
+  try {
+    const { fetchSources } = await mod.fetchAllStates();
+    const status = fetchSources.regions[0]?.authStatus || '';
+    assert.match(status, /429/, `expected a recorded 429, got: ${status}`);
+    assert.ok(
+      !status.includes('proxy='),
+      `A 429 was retried through the residential proxy (status: ${status}). The quota is ` +
+      'per-account and both paths send the same bearer token, so a different egress IP ' +
+      'cannot change the verdict (#6222).',
+    );
+  } finally {
+    delete process.env.OPENSKY_PROXY_AUTH;
+  }
+});
+
 test('never falls back to an unauthenticated OpenSky request', async () => {
   // Anonymous OpenSky is 400 credits/day PER IP on shared Railway/Vercel egress,
   // so it can essentially never succeed — it only adds a timeout to the failure path.
