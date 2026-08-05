@@ -44,6 +44,72 @@ const NIXPACKS_BUILD_FILES = Object.freeze([
   'scripts/nixpacks.toml',
 ]);
 
+// A `nixpacks-root-repo` service builds from the repository root, so it reads
+// the ROOT nixpacks.toml — and that file runs `npm ci`, `npm install` AND
+// `npm install --prefix scripts`, so BOTH dependency trees are build inputs.
+// None of these appear in any import graph, which is exactly why they have to
+// be named: a lockfile bump changes the image and nothing in the walk notices.
+const ROOT_NIXPACKS_BUILD_FILES = Object.freeze([
+  'nixpacks.toml',
+  'package.json',
+  'package-lock.json',
+  'scripts/package.json',
+  'scripts/package-lock.json',
+]);
+
+const INSTALL_MANIFESTS = Object.freeze([
+  'scripts/package.json',
+  'scripts/package-lock.json',
+  'package.json',
+  'package-lock.json',
+]);
+
+/**
+ * Which dependency manifests a Dockerfile installs from.
+ *
+ * Exact token match on its own COPY lines, never a substring: `COPY
+ * package.json` and `COPY scripts/package.json` are different build inputs, and
+ * a substring test would report the root manifest for every image that copies
+ * the scripts one.
+ */
+function manifestsCopiedBy(dockerfileSource) {
+  const copied = new Set();
+  for (const line of dockerfileSource.split('\n')) {
+    if (!/^\s*COPY\b/.test(line)) continue;
+    for (const token of line.trim().split(/\s+/).slice(1)) {
+      if (token.startsWith('--')) continue;
+      if (INSTALL_MANIFESTS.includes(token)) copied.add(token);
+    }
+  }
+  return copied;
+}
+
+/**
+ * The BUILD inputs a service's closure must name, on top of its runtime graph.
+ *
+ * One definition, used for both directions of the contract below: every member
+ * must be watched, and a watched member is never "stale" for not appearing in
+ * the import graph — by construction none of them ever does.
+ */
+function buildInputsFor(entry, repoRootDir) {
+  const inputs = new Set();
+  if (entry.deployMode === 'nixpacks-root-scripts') {
+    for (const file of NIXPACKS_BUILD_FILES) inputs.add(file);
+  }
+  if (entry.deployMode === 'nixpacks-root-repo') {
+    for (const file of ROOT_NIXPACKS_BUILD_FILES) inputs.add(file);
+  }
+  if (entry.dockerfile) {
+    inputs.add(entry.dockerfile);
+    // Derived from the Dockerfile itself rather than assumed per mode: these
+    // images differ, and one that pins its tooling inline (tsx@x.y.z with
+    // --no-package-lock) genuinely has no manifest dependency to watch.
+    const source = readFileSync(resolve(repoRootDir, entry.dockerfile), 'utf8');
+    for (const manifest of manifestsCopiedBy(source)) inputs.add(manifest);
+  }
+  return inputs;
+}
+
 // walkContainerGraph only follows import/require/dynamic-import edges, so a data
 // file pulled in with fs is invisible to it -- and one already is:
 // scripts/seed-supply-chain-trade.mjs reads scripts/shared/un-to-iso2.json via
@@ -912,10 +978,9 @@ describe('critical ingestion Railway registry contract', () => {
       // import graph lingers forever in a hand-typed 44-entry array, rebuilding
       // the service on changes it no longer depends on -- the exact cost the
       // exact-path registry was introduced to eliminate.
+      const buildInputs = buildInputsFor(entry, repoRoot);
       const staleWatchedFiles = [...watched]
-        .filter((file) => !runtimeFiles.has(file)
-          && file !== entry.dockerfile
-          && !NIXPACKS_BUILD_FILES.includes(file))
+        .filter((file) => !runtimeFiles.has(file) && !buildInputs.has(file))
         .sort();
       assert.deepEqual(
         staleWatchedFiles,
@@ -923,14 +988,18 @@ describe('critical ingestion Railway registry contract', () => {
         `${serviceName} watchPatterns contain paths that are no longer runtime dependencies`,
       );
 
-      if (entry.deployMode === 'nixpacks-root-scripts') {
-        for (const buildFile of NIXPACKS_BUILD_FILES) {
-          assert.ok(watched.has(buildFile), `${serviceName} must watch ${buildFile}`);
-        }
-      }
-      if (entry.dockerfile) {
-        assert.ok(watched.has(entry.dockerfile), `${serviceName} must watch its Dockerfile`);
-      }
+      // The other direction. A build input that is not watched is a manifest or
+      // build config whose change rebuilds the image without ever triggering
+      // the build — the silently-skipped deployment this registry exists to
+      // prevent, in the one class the import walk is blind to.
+      const missingBuildInputs = [...buildInputs]
+        .filter((file) => !watched.has(file))
+        .sort();
+      assert.deepEqual(
+        missingBuildInputs,
+        [],
+        `${serviceName} watchPatterns omit build inputs`,
+      );
     });
   }
 });
