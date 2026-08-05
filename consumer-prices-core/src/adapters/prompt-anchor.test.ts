@@ -48,7 +48,13 @@ function capturePrompt(canonicalName: string): string {
     baseUrl: 'https://www.noon.com',
     enabled: true,
     discovery: { mode: 'search', seeds: [], maxPages: 20 },
-    searchConfig: { numResults: 3, urlPathContains: '/p/' },
+    searchConfig: {
+      numResults: 3,
+      urlPathContains: '/p/',
+      inStockFromPrice: false,
+      extractionFallback: 'none',
+      requireStrictValidator: false,
+    },
   } as RetailerConfig;
 
   const ctx: AdapterContext = { config, runId: 'r', logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() } };
