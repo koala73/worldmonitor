@@ -40,14 +40,23 @@ import filterParamContracts from '../shared/openapi-filter-param-contracts.json'
 import fixture from './fixtures/prediction-markets-raw-candidates.json' with { type: 'json' };
 
 const RAW = fixture.markets;
+const FIXTURE_NOW = Date.parse('2026-08-04T00:00:00Z');
 
 // The seeder's REAL pool-building path — buildBootstrapPools is what
 // seed-prediction-markets.mjs calls, not a replica of it. This matters: an
 // earlier version of this file re-implemented the partition-then-rank wiring
 // locally, which meant reverting the seeder to the #5733 shape
 // (`filterAndScore(markets, null)` for geopolitical) left the whole suite green.
+function buildFixtureBootstrap(markets) {
+  return buildBootstrapPools(markets, { now: FIXTURE_NOW });
+}
+
 function buildPools(markets) {
-  return buildBootstrapPools(markets).pools;
+  return buildFixtureBootstrap(markets).pools;
+}
+
+function filterFixtureMarkets(tagFilter, limit = 25) {
+  return filterAndScore(RAW, tagFilter, limit, FIXTURE_NOW);
 }
 
 function titles(pool) {
@@ -62,9 +71,9 @@ describe('#5733 fixture actually exhibits the bug (guards the assertions below f
   const FINANCE_TAGS = predictionTags.finance;
 
   const legacy = {
-    geopolitical: filterAndScore(RAW, null),
-    tech: filterAndScore(RAW, (m) => m.tags?.some((t) => TECH_TAGS.includes(t))),
-    finance: filterAndScore(RAW, (m) => m.source === 'kalshi' || m.tags?.some((t) => FINANCE_TAGS.includes(t))),
+    geopolitical: filterFixtureMarkets(null),
+    tech: filterFixtureMarkets((m) => m.tags?.some((t) => TECH_TAGS.includes(t))),
+    finance: filterFixtureMarkets((m) => m.source === 'kalshi' || m.tags?.some((t) => FINANCE_TAGS.includes(t))),
   };
 
   it('the legacy geopolitical pool was an unfiltered draw from every category', () => {
@@ -336,7 +345,7 @@ describe('poolIntegrityViolations (the publish gate)', () => {
 
   it('catches the legacy unfiltered geopolitical pool wholesale', () => {
     const violations = poolIntegrityViolations({
-      geopolitical: filterAndScore(RAW, null),
+      geopolitical: filterFixtureMarkets(null),
       tech: [],
       finance: [],
     });
@@ -423,7 +432,7 @@ describe('dedupeMarkets (upstream fan-out must not freeze the feed)', () => {
     // Same url, but tags that classify differently — geo by tag vs tech by tag.
     const asGeo = { ...geo, tags: ['geopolitics'], volume: 2_000_000 };
     const asTech = { ...geo, tags: ['ai'], volume: 1_000_000 };
-    const { pools } = buildBootstrapPools([...RAW, asTech, asGeo]);
+    const { pools } = buildFixtureBootstrap([...RAW, asTech, asGeo]);
     assert.deepEqual(poolIntegrityViolations(pools), []);
     const appearances = CATEGORIES.flatMap((c) => pools[c]).filter((m) => marketIdentity(m) === marketIdentity(geo));
     assert.equal(appearances.length, 1, 'the straddling duplicate must be published exactly once');
@@ -431,8 +440,8 @@ describe('dedupeMarkets (upstream fan-out must not freeze the feed)', () => {
 
   it('reports how many duplicates it dropped so the seeder can log it', () => {
     const twin = { ...geo, volume: 1 };
-    assert.equal(buildBootstrapPools([...RAW, twin]).duplicatesDropped, 1);
-    assert.equal(buildBootstrapPools(RAW).duplicatesDropped, 0);
+    assert.equal(buildFixtureBootstrap([...RAW, twin]).duplicatesDropped, 1);
+    assert.equal(buildFixtureBootstrap(RAW).duplicatesDropped, 0);
   });
 });
 
@@ -451,7 +460,7 @@ describe('per-pool ranking: relaxation and truncation', () => {
 
   it('truncates a pool above the 25 cap, dropping the lowest-ranked entries', () => {
     // 30 tech candidates -> the published tech pool caps at 25.
-    const { pools, classified } = buildBootstrapPools(synth(30, { tag: 'ai', price: 60 }));
+    const { pools, classified } = buildFixtureBootstrap(synth(30, { tag: 'ai', price: 60 }));
     assert.equal(classified.tech, 30);
     assert.equal(pools.tech.length, 25);
     assert.deepEqual(poolIntegrityViolations(pools), []);
@@ -460,14 +469,14 @@ describe('per-pool ranking: relaxation and truncation', () => {
   it('relaxes the price band for a pool under 15, as filterAndScore intends', () => {
     // yesPrice 7 fails the strict [10,90] band but passes relaxed [5,95]; with
     // only 3 candidates the pool is under the 15 threshold so relaxation fires.
-    const { pools } = buildBootstrapPools(synth(3, { tag: 'ai', price: 7 }));
+    const { pools } = buildFixtureBootstrap(synth(3, { tag: 'ai', price: 7 }));
     assert.equal(pools.tech.length, 3, 'narrow pools relax rather than publish empty');
   });
 
   it('does NOT relax a pool that already has 15+ strict passers', () => {
     const strict = synth(20, { tag: 'ai', price: 60 });
     const edge = synth(1, { tag: 'ai', price: 7 }).map((m) => ({ ...m, url: `${m.url}-edge`, title: 'Edge at 7 percent' }));
-    const { pools } = buildBootstrapPools([...strict, ...edge]);
+    const { pools } = buildFixtureBootstrap([...strict, ...edge]);
     assert.ok(!pools.tech.some((m) => m.title === 'Edge at 7 percent'));
   });
 
@@ -475,7 +484,7 @@ describe('per-pool ranking: relaxation and truncation', () => {
     // 40 tech candidates + 2 geo: pre-fix a single ranked list would let the
     // tech flood bury both geo markets; per-pool caps keep geo addressable.
     const geoTwo = RAW.filter((m) => classifyMarket(m) === 'geopolitical').slice(0, 2);
-    const { pools } = buildBootstrapPools([...synth(40, { tag: 'ai', price: 60, volume: 90_000_000 }), ...geoTwo]);
+    const { pools } = buildFixtureBootstrap([...synth(40, { tag: 'ai', price: 60, volume: 90_000_000 }), ...geoTwo]);
     assert.equal(pools.geopolitical.length, 2);
     assert.equal(pools.tech.length, 25);
   });
@@ -545,9 +554,9 @@ describe('validateBootstrapPayload (the seeder\'s validateFn)', () => {
   it('rejects a payload whose pools are mislabeled — the #5733 regression gate', () => {
     // The exact pre-fix shape: geopolitical is an unfiltered copy of everything.
     const legacyShaped = {
-      geopolitical: filterAndScore(RAW, null),
-      tech: filterAndScore(RAW, (m) => m.tags?.some((t) => predictionTags.tech.includes(t))),
-      finance: filterAndScore(RAW, (m) => m.source === 'kalshi' || m.tags?.some((t) => predictionTags.finance.includes(t))),
+      geopolitical: filterFixtureMarkets(null),
+      tech: filterFixtureMarkets((m) => m.tags?.some((t) => predictionTags.tech.includes(t))),
+      finance: filterFixtureMarkets((m) => m.source === 'kalshi' || m.tags?.some((t) => predictionTags.finance.includes(t))),
     };
     assert.equal(validateBootstrapPayload(legacyShaped, silent), false);
   });

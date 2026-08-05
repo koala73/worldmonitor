@@ -194,12 +194,19 @@ browser, the Vercel API, or the storage monitor.
 ## Retention runner
 
 `Dockerfile.umami-retention` packages only a digest-pinned PostgreSQL client and
-the reviewed retention SQL. Once its registry lifecycle becomes active,
-Railway runs it at minutes 7, 22, 37, and 52 of each hour. Four bounded
-10,000-row batches per hour can retire up to 960,000 eligible event rows per
-day, safely above the roughly 300,000 events/day
-observed before #6024. A once-daily 10,000-row tick would run successfully
-while permanently falling behind, so it is not an acceptable schedule.
+the reviewed retention SQL. Its registry lifecycle is active, so Railway runs it
+at minutes 7, 22, 37, and 52 of each hour. Four bounded 10,000-row batches per
+hour can retire up to 960,000 eligible event rows per day. A once-daily
+10,000-row tick would run successfully while permanently falling behind, so it
+is not an acceptable schedule.
+
+Size the schedule against the rate rows **cross** the 90-day boundary, not
+against intake. Those are different numbers whenever traffic is growing: when
+retention was activated (#6148) the collector took 591,244 events/day while only
+134,653/day aged past 90 days, because the boundary was still sweeping through
+much quieter traffic from three months earlier. Intake is the figure that
+matters for the steady state — once the boundary reaches present-day volume,
+eligibility converges on it, and 960,000/day has to stay above it.
 
 Provision the Railway `umami-retention` service from the repository root with
 `/Dockerfile.umami-retention`. Configure `PGHOST`, `PGPORT`, `PGDATABASE`,
@@ -212,13 +219,14 @@ the SQL file's transaction and statement timeouts cover work after connection.
 The image invokes `psql -X` with `ON_ERROR_STOP=1`, so a missing connection
 variable, connection timeout, or any SQL failure exits the cron non-zero.
 
-The registry deliberately marks this service as `lifecycle: planned`. Planned
-entries remain subject to static Dockerfile and registry checks, but the live
-Railway audit neither requires the service to exist nor reconciles its cron.
-Provision the service and complete the manual tick while it is planned. Only
-after the runtime migration, write canary, and manual retention gate are green
-may a separate reviewed change set `lifecycle: active`; that activation makes
-the live audit require the service and reconcile the recorded schedule.
+The registry marks this service `lifecycle: active`, so the live Railway audit
+requires it to exist and reconciles its cron. It was `planned` until #6148: a
+planned entry stays subject to the static Dockerfile and registry checks while
+the live audit neither requires the service nor reconciles its schedule, which
+is what lets the service be provisioned and manually gated before activation.
+Keep that order for any future runner — provision and complete the manual tick
+while planned, and only set `lifecycle: active` in a separate reviewed change
+once the runtime migration, write canary, and manual retention gate are green.
 
 Before enabling the recurring schedule, run one manual tick after the backup
 and record its duration, deleted-row counts, database CPU, and lock waits. Then
@@ -226,6 +234,18 @@ enable `7,22,37,52 * * * *` and observe at least four consecutive ticks. Stop
 the cron if lock waits or collector latency rise; already completed bounded
 deletes remain committed, and no further rows are touched while the cron is
 disabled.
+
+Two Railway mechanics decide whether that schedule is really running, and both
+fail quietly:
+
+- **The cron scheduler reads the active deployment's manifest, not the service
+  config.** A `serviceInstanceUpdate` that sets `cronSchedule` returns success
+  and reads back correctly from `railway environment config` while the
+  deployment keeps firing on its old schedule. Redeploy after changing it, then
+  confirm the schedule on the *deployment* manifest rather than the service.
+- **A cron tick does not create a deployment record.** It re-runs the active
+  deployment, so a tick is visible in that deployment's runtime logs and in the
+  data — never as a new row in the deployments list.
 
 The runtime-image migration and the retention runner are separate gates. Do
 not start retention until the composite-index migration has succeeded and the
