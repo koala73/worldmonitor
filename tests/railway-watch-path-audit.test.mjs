@@ -15,6 +15,7 @@ import {
 } from '../scripts/audit-railway-watch-paths.mjs';
 import {
   extractBundleMembers,
+  parseDockerfileCopy,
   stripComments,
   walkContainerGraph,
 } from './_lib/import-graph-walk.mjs';
@@ -207,6 +208,36 @@ function extractLiteralPathDependencies(files, repoRootDir) {
 }
 
 /**
+ * The resolution model a Dockerfile-built container actually runs under.
+ *
+ * Hardcoding `hasTsx: false` and scripts-only dynamic roots was wrong for
+ * exactly one service, and wrong in the direction that strands it.
+ * Dockerfile.seed-bundle-resilience-validation installs tsx and COPYs
+ * `server/`, and scripts/validate-resilience-sensitivity.mjs:169-185
+ * dynamic-imports four `../server/worldmonitor/resilience/v1/*.ts` modules. A
+ * scripts-only, tsx-less walk cannot follow one of those edges, so the derived
+ * closure contained ZERO server/ paths — and this service was previously
+ * unmanaged, i.e. protected by the broad fallback. Narrowing it would have
+ * removed that floor and stopped server/ changes from ever rebuilding the
+ * image, under a green "complete closure" check.
+ *
+ * Derived from the image rather than assumed, and read with the same
+ * tests/_lib parser the sibling container guards use, so all of them read a
+ * Dockerfile identically. tests/resilience-validation-import-graph.test.mjs
+ * independently pins this same container as tsx + server/.
+ */
+function dockerfileContainerContract(dockerfileName, repoRootDir) {
+  const source = readFileSync(resolve(repoRootDir, dockerfileName), 'utf8');
+  const directories = [...parseDockerfileCopy(source).directories];
+  return {
+    // Anything the image copies in is somewhere a dynamic import can land.
+    dynamicRoots: directories.map((directory) => resolve(repoRootDir, directory)),
+    hasTsx: /^RUN\s+npm\s+install\b[^\n]*\stsx@/m.test(source)
+      || /^ENV\s+NODE_OPTIONS="[^"]*tsx[^"]*"/m.test(source),
+  };
+}
+
+/**
  * A service's full runtime surface: the import graph, plus everything reached by
  * a mechanism the import graph cannot express.
  *
@@ -228,6 +259,14 @@ function resolveRuntimeSurface(entry, repoRootDir) {
       .map((member) => resolve(repoRootDir, 'scripts', member)),
   ]);
 
+  // Containment stays permissive at the repository root on purpose: including
+  // a file the image does not ship costs a build, excluding one the image DOES
+  // ship strands the service. Only the dynamic-follow roots and the loader
+  // model come from the image, because those decide which edges exist at all.
+  const container = entry.dockerfile
+    ? dockerfileContainerContract(entry.dockerfile, repoRootDir)
+    : { dynamicRoots: [scriptsDir], hasTsx: false };
+
   let visited = new Set();
   let unresolved = [];
   let literals = new Set();
@@ -241,9 +280,9 @@ function resolveRuntimeSurface(entry, repoRootDir) {
     ({ visited, unresolved } = walkContainerGraph([...roots], {
       repoRoot: repoRootDir,
       copyRootDirs: [scriptsDir, repoRootDir],
-      dynamicRootDirs: [scriptsDir],
+      dynamicRootDirs: container.dynamicRoots,
       installedPackages: new Set(),
-      hasTsx: false,
+      hasTsx: container.hasTsx,
     }));
     literals = extractLiteralPathDependencies(visited, repoRootDir);
     const before = roots.size;
@@ -963,6 +1002,171 @@ describe('audit CLI argument parsing', () => {
     assert.throws(() => readArgument(['node', 's', '--environment'], '--environment', 'production'), /requires a value/);
     assert.throws(() => readArgument(['node', 's', '--environment', '--apply'], '--environment', 'production'), /requires a value/);
     assert.throws(() => readArgument(['node', 's', '--environment='], '--environment', 'production'), /requires a value/);
+  });
+});
+
+// Verify-the-verifier. Every layer below feeds ONE fleet-wide equality check,
+// and a layer that silently stops detecting makes both sides of that equality
+// shrink together on the next regeneration. These fixtures pin each layer's
+// behaviour directly, so a broken detector fails here rather than passing a
+// co-evolved comparison.
+describe('closure detection layers', () => {
+  const registry = JSON.parse(
+    readFileSync(resolve(repoRoot, 'scripts/railway-services.json'), 'utf8'),
+  );
+
+  describe('the container model derived from a Dockerfile', () => {
+    it('detects the tsx loader and the dynamic roots the image copies in', () => {
+      // scripts/validate-resilience-sensitivity.mjs dynamic-imports
+      // ../server/worldmonitor/resilience/v1/*.ts. Without tsx and a server/
+      // dynamic root the walk cannot follow those edges, and the derived
+      // closure silently loses the entire server graph.
+      const contract = dockerfileContainerContract(
+        'Dockerfile.seed-bundle-resilience-validation',
+        repoRoot,
+      );
+      assert.equal(contract.hasTsx, true, 'this image installs tsx and sets NODE_OPTIONS');
+      assert.ok(
+        contract.dynamicRoots.some((dir) => dir.endsWith('/server')),
+        'server/ is COPYd into this image, so dynamic imports can land there',
+      );
+    });
+
+    it('reports no tsx for an image that does not use it', () => {
+      // A blanket `hasTsx: true` would resolve .ts specifiers for containers
+      // that would crash on them, so this must not be a constant.
+      const contract = dockerfileContainerContract('Dockerfile.relay', repoRoot);
+      assert.equal(contract.hasTsx, false);
+    });
+  });
+
+  describe('the manifests a Dockerfile installs from', () => {
+    it('matches whole COPY tokens, never substrings', () => {
+      // `package.json` is a suffix of `scripts/package.json`. A substring test
+      // reports the ROOT manifest for every image that copies the scripts one,
+      // which watches a file the image never reads while the real one may go
+      // unwatched.
+      assert.deepEqual(
+        [...manifestsCopiedBy('COPY scripts/package.json scripts/package-lock.json ./scripts/\n')].sort(),
+        ['scripts/package-lock.json', 'scripts/package.json'],
+      );
+      assert.deepEqual(
+        [...manifestsCopiedBy('COPY package.json package-lock.json ./\n')].sort(),
+        ['package-lock.json', 'package.json'],
+      );
+    });
+
+    it('finds nothing in an image that pins its tooling inline', () => {
+      // Dockerfile.seed-bundle-resilience-validation installs tsx@4.21.0 with
+      // --no-package-lock and copies no manifest, so it genuinely has no
+      // manifest dependency to watch. Inventing one would be a permanent
+      // false "stale watch path".
+      assert.deepEqual([...manifestsCopiedBy('RUN npm install --no-package-lock tsx@4.21.0\n')], []);
+      assert.deepEqual([...manifestsCopiedBy('COPY --from=source /upstream/package.json ./\n')], []);
+    });
+  });
+
+  describe('the build inputs each deploy mode contributes', () => {
+    it('gives a scripts-rooted nixpacks service its own three build files', () => {
+      assert.deepEqual(
+        [...buildInputsFor({ deployMode: 'nixpacks-root-scripts' }, repoRoot)].sort(),
+        ['scripts/nixpacks.toml', 'scripts/package-lock.json', 'scripts/package.json'],
+      );
+    });
+
+    it('gives a repo-rooted nixpacks service BOTH dependency trees', () => {
+      // The ROOT nixpacks.toml runs `npm ci`, `npm install` AND
+      // `npm install --prefix scripts`, so a bump in either tree rebuilds the
+      // image while appearing in no import graph.
+      assert.deepEqual(
+        [...buildInputsFor({ deployMode: 'nixpacks-root-repo' }, repoRoot)].sort(),
+        [
+          'nixpacks.toml',
+          'package-lock.json',
+          'package.json',
+          'scripts/package-lock.json',
+          'scripts/package.json',
+        ],
+      );
+    });
+
+    it('gives a Dockerfile service its Dockerfile plus only the manifests it copies', () => {
+      const relay = [...buildInputsFor(
+        { deployMode: 'dockerfile', dockerfile: 'Dockerfile.relay' },
+        repoRoot,
+      )].sort();
+      assert.deepEqual(relay, [
+        'Dockerfile.relay',
+        'scripts/package-lock.json',
+        'scripts/package.json',
+      ]);
+
+      // The contrast case, in the same test so the two cannot drift apart: an
+      // image that installs nothing from a manifest gets only its Dockerfile.
+      assert.deepEqual(
+        [...buildInputsFor(
+          { deployMode: 'dockerfile', dockerfile: 'Dockerfile.seed-bundle-resilience-validation' },
+          repoRoot,
+        )],
+        ['Dockerfile.seed-bundle-resilience-validation'],
+      );
+    });
+  });
+
+  describe('the runtime surface', () => {
+    it('reaches the server TypeScript graph of the tsx container', () => {
+      // The exact regression #6204's second review found: a scripts-only,
+      // tsx-less walk returned ZERO server/ paths for this service, and it had
+      // just lost the broad fallback that was covering for that.
+      const entry = registry.find((e) => e.service === 'seed-bundle-resilience-validation');
+      const { runtimeFiles } = resolveRuntimeSurface(entry, repoRoot);
+      for (const pinned of [
+        'server/worldmonitor/resilience/v1/_dimension-scorers.ts',
+        'server/worldmonitor/resilience/v1/_shared.ts',
+        'server/worldmonitor/resilience/v1/_pillar-membership.ts',
+        'server/worldmonitor/resilience/v1/_indicator-registry.ts',
+        // Reached only THROUGH the server graph — proof the walk followed the
+        // edge rather than merely listing the four dynamic-import targets.
+        'server/_shared/redis.ts',
+      ]) {
+        assert.ok(runtimeFiles.has(pinned), `runtime surface must reach ${pinned}`);
+        assert.ok(
+          new Set(entry.watchPatterns).has(pinned),
+          `${entry.service} must watch ${pinned}`,
+        );
+      }
+    });
+
+    it('follows a spawned script into its own imports', () => {
+      // scripts/ais-relay.cjs runs seed-climate-news.mjs via execFile with no
+      // import statement anywhere between them, so the spawned script AND its
+      // subgraph are reachable only through the literal + fixed-point layers.
+      const entry = registry.find((e) => e.service === 'relay');
+      const { runtimeFiles } = resolveRuntimeSurface(entry, repoRoot);
+      assert.ok(runtimeFiles.has('scripts/seed-climate-news.mjs'), 'the spawned script');
+      assert.ok(runtimeFiles.has('scripts/_climate-news-helpers.mjs'), 'and what IT imports');
+    });
+
+    it('claims both copies of a file that shared/ mirrors', () => {
+      // shared/ exists at the repository root and under scripts/. ais-relay.cjs
+      // resolves `../shared` FIRST, so stopping at the first resolving base
+      // watched the copy the service does not load.
+      const entry = registry.find((e) => e.service === 'relay');
+      const watched = new Set(entry.watchPatterns);
+      assert.ok(watched.has('shared/stocks.json'), 'the copy requireShared actually loads');
+      assert.ok(watched.has('scripts/shared/stocks.json'), 'and the mirrored sibling');
+    });
+  });
+
+  it('reports a build input that is watched by nobody', () => {
+    // The positive case for the missing-build-inputs direction, which is new
+    // and had only ever been observed passing.
+    const entry = { deployMode: 'nixpacks-root-scripts' };
+    const watched = new Set(['scripts/package.json']);
+    const missing = [...buildInputsFor(entry, repoRoot)]
+      .filter((file) => !watched.has(file))
+      .sort();
+    assert.deepEqual(missing, ['scripts/nixpacks.toml', 'scripts/package-lock.json']);
   });
 });
 
