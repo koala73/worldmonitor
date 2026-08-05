@@ -573,6 +573,67 @@ describe('validateNoHallucinatedProperNouns — May 19 regression + class', () =
     assert.ok(!flat.includes('j'));
   });
 
+  // #6109: a common noun capitalized ONLY because it opens the sentence carries
+  // no proper-noun signal — orthography forced the capital. The source has the
+  // same word lowercase mid-sentence, so it is not extracted as a proper noun
+  // there and the summary's copy was flagged as invented, rejecting the whole
+  // brief. Observed live in both arms of a 40-pair A/B, so it is not a
+  // prompt artifact. SENTENCE_START_AMBIGUOUS cannot fix this by enumeration:
+  // covering every English common noun would also swallow the real proper nouns
+  // ("Trump said…", "Israel announced…") that the list deliberately lets pass.
+  it('accepts a sentence-initial common noun that appears lowercased in the source', () => {
+    const ground = 'After Donald Trump latest U-turn, uncertainty remains over the diplomatic path';
+    const summary = 'Uncertainty persists over the diplomatic path [6].';
+    assert.equal(
+      validateNoHallucinatedProperNouns(summary, ground).ok,
+      true,
+      '"uncertainty" is present in the source — capitalization is forced by sentence position',
+    );
+  });
+
+  it('still rejects a sentence-initial proper noun absent from the source', () => {
+    const ground = 'After Donald Trump latest U-turn, uncertainty remains over the diplomatic path';
+    const summary = 'Belarus escalated its posture overnight [6].';
+    assert.equal(
+      validateNoHallucinatedProperNouns(summary, ground).ok,
+      false,
+      'sentence-initial position must not become a blanket amnesty',
+    );
+  });
+
+  // The two guards below must ISOLATE the condition they pin. An earlier
+  // version of each rejected for an unrelated reason (a different ungrounded
+  // token earlier in the sentence short-circuited the loop), so both stayed
+  // green under a mutant that deleted the very narrowing they claim to protect.
+  // Each lead below is built so the token under test is the ONLY candidate.
+  it('still rejects a MID-sentence capitalized word even when the source has it lowercased', () => {
+    // The source says "apple" the fruit; the summary means Apple the company.
+    // Mid-sentence capitalization is a deliberate signal, not orthography, so
+    // the sentence-initial allowance must NOT extend here. "The" is a
+    // sentence-start stopword, so "Apple" is the only candidate in the lead.
+    const ground = 'regional apple prices rose sharply last quarter';
+    const summary = 'The Apple harvest disappointed growers [1].';
+    assert.equal(
+      validateNoHallucinatedProperNouns(summary, ground).ok,
+      false,
+      'dropping the sentence-initial narrowing would wrongly accept this',
+    );
+  });
+
+  it('does not relax multi-token sequences whose tokens are individually present', () => {
+    // Both "Swat" and "Pakistan" appear in the source, but never adjacently.
+    // The contiguous-match rule is what stops the model from fusing two
+    // separate entities into one it was never given; the single-token
+    // narrowing is what keeps that rule reachable.
+    const ground = 'Pakistan condemned the bombing near a police station in Swat';
+    const summary = 'Swat Pakistan reported 19 deaths [8].';
+    assert.equal(
+      validateNoHallucinatedProperNouns(summary, ground).ok,
+      false,
+      'dropping the single-token narrowing would wrongly accept this',
+    );
+  });
+
   it('defensive: malformed inputs return ok (do not throw)', () => {
     assert.doesNotThrow(() => validateNoHallucinatedProperNouns(undefined, "x"));
     assert.equal(validateNoHallucinatedProperNouns(undefined, "x").ok, true);

@@ -516,6 +516,24 @@ function normalizeDottedAcronyms(text) {
 }
 
 export function extractProperNounSequences(text) {
+  return extractProperNounSequencesWithMeta(text).map((entry) => entry.tokens);
+}
+
+/**
+ * #6109: same extraction, but each sequence also reports whether it began at
+ * the FIRST token of its sentence. That distinction matters because a capital
+ * in that position is forced by orthography and therefore carries no
+ * proper-noun signal, while a capital anywhere else is a deliberate choice by
+ * the writer. `validateNoHallucinatedProperNouns` uses it to stop flagging a
+ * common noun the source already contains in lowercase.
+ *
+ * Internal on purpose — `extractProperNounSequences` keeps its `string[][]`
+ * public shape (declared in brief-llm-core.d.ts and asserted by tests).
+ *
+ * @param {string} text
+ * @returns {{ tokens: string[], sentenceInitial: boolean }[]}
+ */
+function extractProperNounSequencesWithMeta(text) {
   if (typeof text !== 'string' || text.length === 0) return [];
 
   // Normalize dotted acronyms BEFORE sentence-splitting so "U.S." isn't
@@ -536,6 +554,7 @@ export function extractProperNounSequences(text) {
     if (tokens.length === 0) continue;
 
     let current = [];
+    let currentStartedSentence = false; // #6109: did `current` open this sentence?
     let bridgeBuffer = []; // joiners pending — kept only if another proper noun follows
     let firstToken = true;
 
@@ -571,6 +590,7 @@ export function extractProperNounSequences(text) {
         firstToken = false;
         continue;
       }
+      const atSentenceStart = firstToken;
       firstToken = false;
 
       if (isJoiner) {
@@ -584,22 +604,45 @@ export function extractProperNounSequences(text) {
           current.push(...bridgeBuffer);
         }
         bridgeBuffer = [];
+        if (current.length === 0) currentStartedSentence = atSentenceStart;
         // Use the punctuation/possessive-stripped form so "Beirut's"
         // lands as "beirut", matching the headline's "Beirut".
         current.push(tokenForLookup.toLowerCase());
       } else {
         // Lowercase non-joiner — ends current sequence.
         if (current.length > 0) {
-          sequences.push(current);
+          sequences.push({ tokens: current, sentenceInitial: currentStartedSentence });
           current = [];
+          currentStartedSentence = false;
         }
         bridgeBuffer = [];
       }
     }
-    if (current.length > 0) sequences.push(current);
+    if (current.length > 0) sequences.push({ tokens: current, sentenceInitial: currentStartedSentence });
   }
 
   return sequences;
+}
+
+/**
+ * #6109: the ground text's full lowercased token set, tokenized and stripped
+ * exactly as extractProperNounSequencesWithMeta does so the two compare
+ * apples-to-apples, then acronym/demonym-normalized like a single-token
+ * sequence. Used ONLY for the sentence-initial single-token allowance below —
+ * it answers "does this word appear in the source at all?", which capitalized
+ * proper-noun extraction cannot, because the source may carry the same word
+ * lowercase mid-sentence.
+ */
+function groundTokenSet(text) {
+  const out = new Set();
+  if (typeof text !== 'string' || text.length === 0) return out;
+  for (const raw of normalizeDottedAcronyms(text).split(/[^\p{L}\p{N}'’-]+/u)) {
+    if (!raw) continue;
+    const stripped = raw.replace(/[.,;:'’]+$/g, '').replace(/['’]s$/i, '');
+    const token = (stripped || raw).toLowerCase();
+    if (token) out.add(normalizeToken(token));
+  }
+  return out;
 }
 
 /**
@@ -667,19 +710,21 @@ export function validateNoHallucinatedProperNouns(summary, headline) {
   if (typeof summary !== 'string' || summary.length === 0) return { ok: true };
   if (typeof headline !== 'string' || headline.length === 0) return { ok: true };
 
-  let summarySequences, headlineSequences;
+  let summaryEntries, headlineSequences, headlineTokens;
   try {
-    summarySequences = extractProperNounSequences(summary).map(normalizeSequence);
+    summaryEntries = extractProperNounSequencesWithMeta(summary)
+      .map((entry) => ({ tokens: normalizeSequence(entry.tokens), sentenceInitial: entry.sentenceInitial }));
     headlineSequences = extractProperNounSequences(headline).map(normalizeSequence);
+    headlineTokens = groundTokenSet(headline);
   } catch {
     return { ok: true };
   }
 
-  if (summarySequences.length === 0) return { ok: true };
+  if (summaryEntries.length === 0) return { ok: true };
 
   // For each summary sequence, check whether at least one contiguous
   // subsequence of it appears in some headline sequence.
-  for (const summarySeq of summarySequences) {
+  for (const { tokens: summarySeq, sentenceInitial } of summaryEntries) {
     let found = false;
     for (const headlineSeq of headlineSequences) {
       if (containsSubsequence(headlineSeq, summarySeq)) {
@@ -693,6 +738,21 @@ export function validateNoHallucinatedProperNouns(summary, headline) {
         found = true;
         break;
       }
+    }
+    // #6109: a SINGLE token that opens its sentence is capitalized by
+    // orthography, not by choice, so its capital proves nothing about
+    // proper-noun-hood. Ground it against the source's full token set, which
+    // sees the word even when the source writes it lowercase mid-sentence
+    // ("…uncertainty remains over…" -> "Uncertainty persists over…").
+    //
+    // Deliberately narrow on both axes. MULTI-token sequences keep the strict
+    // contiguous rule, so "Swat, Pakistan" against a source naming only Swat
+    // still rejects. And MID-sentence capitals keep it too, because there the
+    // capital IS a deliberate signal — that is what stops a source reading
+    // "apple prices" from licensing "Apple" the company. Presence in the
+    // source is the definition of not-invented; case never was.
+    if (!found && sentenceInitial && summarySeq.length === 1 && headlineTokens.has(summarySeq[0])) {
+      found = true;
     }
     if (!found) {
       return { ok: false, hallucinated: summarySeq };
