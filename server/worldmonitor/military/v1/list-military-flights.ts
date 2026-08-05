@@ -437,6 +437,22 @@ export async function listMilitaryFlights(
     }
     return paginateResponse(fullResult.flights, fullResult.clusters, requestBounds, req);
   } catch {
+    // Reaching here means the live path was abandoned before any provider call —
+    // most often the deliberate 'live seed read failed' throw above, which exists
+    // to keep a Redis blip from opening per-bbox OpenSky amplification.
+    //
+    // That throw skipped the `if (!fullResult)` stale branch below, so the 24h
+    // stale key was never consulted. Reading it is another Redis GET, not a
+    // provider call, so it spends no OpenSky credit and is precisely what that
+    // key exists for. This matters much more since #6222 widened
+    // LIVE_SEED_COVERAGE to global: every viewport now routes through the
+    // live-seed read, so skipping stale here blanks the entire map rather than
+    // the two former producer regions. fetchStaleFallback swallows its own
+    // errors and returns null, so it cannot re-throw into this handler.
+    const staleFlights = await fetchStaleFallback();
+    if (staleFlights && staleFlights.length > 0) {
+      return paginateResponse(staleFlights, [], normalizeBounds(req), req);
+    }
     markNoCacheResponse(ctx.request);
     return emptyResponse();
   }

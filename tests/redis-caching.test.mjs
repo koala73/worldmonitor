@@ -2223,6 +2223,68 @@ describe('military flights bbox behavior', { concurrency: 1 }, () => {
     }
   });
 
+  it('falls back to the 24h stale key when the live-seed read errors, without touching OpenSky', async () => {
+    const { module, cleanup } = await importListMilitaryFlights();
+    const restoreEnv = withEnv({
+      UPSTASH_REDIS_REST_URL: 'https://redis.test',
+      UPSTASH_REDIS_REST_TOKEN: 'token',
+      LOCAL_API_MODE: undefined,
+      WS_RELAY_URL: 'wss://relay.test',
+      VERCEL_ENV: undefined,
+      VERCEL_GIT_COMMIT_SHA: undefined,
+    });
+    const originalFetch = globalThis.fetch;
+    let openskyCalls = 0;
+
+    globalThis.fetch = async (url, init) => {
+      const raw = String(url);
+      if (raw.includes('/get/')) {
+        const key = decodeURIComponent(raw.split('/get/')[1] || '');
+        // A Redis command failure on the LIVE key — not a miss. readCachedJson
+        // turns a thrown fetch into { status: 'error' }.
+        if (key === 'military:flights:v1') throw new Error('redis timeout');
+        if (key === 'military:flights:stale:v1') {
+          return jsonResponse({
+            result: JSON.stringify({
+              flights: [{ id: 'stale1', callsign: 'RCH777', lat: 40.5, lon: -99.5 }],
+              fetchedAt: Date.now(),
+            }),
+          });
+        }
+        return jsonResponse({ result: null });
+      }
+      if (isSetRequest(url, init)) return jsonResponse({ result: 'OK' });
+      if (raw.includes('/opensky')) {
+        openskyCalls += 1;
+        return jsonResponse({ states: [] });
+      }
+      throw new Error(`Unexpected fetch URL: ${raw}`);
+    };
+
+    try {
+      const result = await module.listMilitaryFlights(
+        { request: new Request('https://wm.test/api/military/v1/list-military-flights') },
+        americasRequest,
+      );
+      // The live-seed read deliberately throws on a Redis error rather than
+      // calling a provider, so per-bbox OpenSky amplification stays closed.
+      // But reading the 24h stale key is another Redis GET, not a provider
+      // call — it costs no credit and is exactly what that key exists for.
+      // Since #6222 made coverage global, EVERY viewport routes through the
+      // live-seed read, so skipping stale here blanks the whole map rather
+      // than the two former regions.
+      assert.equal(openskyCalls, 0, 'a Redis error must not open a provider call');
+      assert.deepEqual(
+        result.flights.map((flight) => flight.id), ['STALE1'],
+        'a Redis error on the live key must still serve the 24h stale snapshot',
+      );
+    } finally {
+      cleanup();
+      globalThis.fetch = originalFetch;
+      restoreEnv();
+    }
+  });
+
   it('still uses request-specific recovery when the seed snapshot is missing', async () => {
     const { module, cleanup } = await importListMilitaryFlights();
     const restoreEnv = withEnv({
