@@ -654,9 +654,13 @@ async function getOpenSkyToken() {
   }
 }
 
-async function fetchOpenSkyAuthenticated(region) {
-  const params = `lamin=${region.lamin}&lamax=${region.lamax}&lomin=${region.lomin}&lomax=${region.lomax}&extended=1`;
-  const url = `${OPENSKY_BASE}/states/all?${params}`;
+// One GLOBAL /states/all per run. OpenSky bills this endpoint by bounding-box
+// area with a flat top tier — anything above 400 sq° costs 4 credits, exactly
+// what a global query costs — so the previous PACIFIC+WESTERN pair (1,296 and
+// 4,824 sq°) spent 8 credits/run for strictly less coverage than 4 buys. See
+// docs/solutions/integration-issues/opensky-bbox-area-billing-flat-top-tier.md (#6222).
+async function fetchOpenSkyAuthenticated() {
+  const url = `${OPENSKY_BASE}/states/all?extended=1`;
 
   for (let attempt = 0; attempt < 2; attempt += 1) {
     const token = await getOpenSkyToken();
@@ -693,71 +697,35 @@ async function fetchOpenSkyAuthenticated(region) {
   return { states: null, status: getOpenSkyAuthStatus() };
 }
 
-async function fetchOpenSkyAnonymous(region) {
-  const params = `lamin=${region.lamin}&lamax=${region.lamax}&lomin=${region.lomin}&lomax=${region.lomax}`;
-  const url = `${OPENSKY_BASE}/states/all?${params}`;
-
-  try {
-    const data = await fetchJsonDirect(url);
-    return { states: data.states || [], status: 'success:direct' };
-  } catch (directError) {
-    if (!PROXY_ENABLED) {
-      throw new Error(`error:${redactProxy(directError.message)}`);
-    }
-    try {
-      const data = await proxyFetchJson(url);
-      return { states: data.states || [], status: 'success:proxy' };
-    } catch (proxyError) {
-      throw new Error(`error:direct=${redactProxy(directError.message)} | proxy=${redactProxy(proxyError.message)}`);
-    }
-  }
-}
-
-async function fetchOpenSkyRegion(region, { source, fetchSources, seenIds, allStates }) {
+// No anonymous fallback. OpenSky's unauthenticated tier is 400 credits/day PER
+// IP, and this seeder runs from Railway's shared egress pool alongside every
+// other tenant on that address — it can essentially never succeed, and each
+// attempt added a full timeout to the failure path (#6222).
+async function fetchOpenSkyGlobal({ source, fetchSources, seenIds, allStates }) {
   let states = null;
   const regionSource = {
-    name: region.name,
+    name: 'GLOBAL',
     authStatus: getOpenSkyAuthStatus(),
-    anonStatus: 'not_needed',
     statesSeen: 0,
     statesAdded: 0,
   };
 
   try {
-    const authResult = await fetchOpenSkyAuthenticated(region);
+    const authResult = await fetchOpenSkyAuthenticated();
     states = authResult?.states || null;
     regionSource.authStatus = authResult?.status || regionSource.authStatus;
     if (states && states.length > 0) {
       if (source.value === 'none') source.value = 'opensky-auth';
       fetchSources.openSkyAuthSuccess = true;
       regionSource.statesSeen = states.length;
-      console.log(`  [OpenSky Auth] ${region.name}: ${states.length} states`);
+      console.log(`  [OpenSky Auth] GLOBAL: ${states.length} states`);
     } else if (regionSource.authStatus.startsWith('success:')) {
       fetchSources.openSkyAuthSuccess = true;
       regionSource.authStatus = regionSource.authStatus.replace('success:', 'empty:');
     }
   } catch (e) {
     regionSource.authStatus = `error:${redactProxy(e.message)}`;
-    console.warn(`  [OpenSky Auth] ${region.name}: ${redactProxy(e.message)}`);
-  }
-
-  if (!states || states.length === 0) {
-    try {
-      const anonResult = await fetchOpenSkyAnonymous(region);
-      states = anonResult?.states || null;
-      regionSource.anonStatus = anonResult?.status || regionSource.anonStatus;
-      if (states && states.length > 0) {
-        if (source.value === 'none') source.value = 'opensky-anon';
-        fetchSources.openSkyAnonFallbackUsed = true;
-        regionSource.statesSeen = states.length;
-        console.log(`  [OpenSky Anon] ${region.name}: ${states.length} states`);
-      } else if (regionSource.anonStatus.startsWith('success:')) {
-        regionSource.anonStatus = regionSource.anonStatus.replace('success:', 'empty:');
-      }
-    } catch (e) {
-      regionSource.anonStatus = `error:${redactProxy(e.message)}`;
-      console.warn(`  [OpenSky Anon] ${region.name}: ${redactProxy(e.message)}`);
-    }
+    console.warn(`  [OpenSky Auth] GLOBAL: ${redactProxy(e.message)}`);
   }
 
   if (states) {
@@ -770,7 +738,10 @@ async function fetchOpenSkyRegion(region, { source, fetchSources, seenIds, allSt
       added++;
     }
     regionSource.statesAdded = added;
-    if (added > 0) console.log(`  [OpenSky] +${added} new from ${region.name} (total: ${allStates.length})`);
+    // `+N new` is the empirical value of this tier: aircraft Wingbits never
+    // saw. It is why OpenSky must NOT be gated behind Wingbits success — the
+    // merge is additive, not a replacement (#6222).
+    if (added > 0) console.log(`  [OpenSky] +${added} new from GLOBAL (total: ${allStates.length})`);
   }
 
   fetchSources.regions.push(regionSource);
@@ -867,7 +838,6 @@ async function fetchAllStates() {
     oauthConfigured,
     proxyEnabled: PROXY_ENABLED,
     openSkyAuthSuccess: false,
-    openSkyAnonFallbackUsed: false,
     regions: [],
   };
 
@@ -889,9 +859,11 @@ async function fetchAllStates() {
     console.warn(`  [Wingbits] ${e.message}`);
   }
 
-  for (const region of QUERY_REGIONS) {
-    await fetchOpenSkyRegion(region, { source, fetchSources, seenIds, allStates });
-  }
+  // Tier 2: OpenSky — ONE global query, always. Not gated on Wingbits success:
+  // states merge additively by icao24 above, so this contributes aircraft
+  // Wingbits never saw. Gating it would delete that coverage, and a degraded
+  // but non-empty Wingbits response would satisfy the gate (#6222).
+  await fetchOpenSkyGlobal({ source, fetchSources, seenIds, allStates });
 
   return { allStates, source: source.value, fetchSources };
 }
@@ -1280,10 +1252,10 @@ async function main() {
     if (classificationAudit) {
       console.log(`  [Audit] unknownRate=${classificationAudit.unknownTypeRate} hexOnly=${classificationAudit.hexOnlyAdmissions} rejected=${classificationAudit.rejectedFlights}`);
       console.log(
-        `  [Source] wingbits=${fetchSources.wingbitsUsed ? 'yes' : 'no'} oauthConfigured=${fetchSources.oauthConfigured ? 'yes' : 'no'} authSuccess=${fetchSources.openSkyAuthSuccess ? 'yes' : 'no'} anonFallback=${fetchSources.openSkyAnonFallbackUsed ? 'yes' : 'no'}`,
+        `  [Source] wingbits=${fetchSources.wingbitsUsed ? 'yes' : 'no'} oauthConfigured=${fetchSources.oauthConfigured ? 'yes' : 'no'} authSuccess=${fetchSources.openSkyAuthSuccess ? 'yes' : 'no'}`,
       );
       console.log(
-        `  [Source] regions=${fetchSources.regions.map((region) => `${region.name}:auth=${region.authStatus},anon=${region.anonStatus},seen=${region.statesSeen},added=${region.statesAdded}`).join(' | ')}`,
+        `  [Source] regions=${fetchSources.regions.map((region) => `${region.name}:auth=${region.authStatus},seen=${region.statesSeen},added=${region.statesAdded}`).join(' | ')}`,
       );
       console.log(
         `  [Audit] waterfall raw=${classificationAudit.stageWaterfall.rawStates} pos=${classificationAudit.stageWaterfall.positionEligible} candidate=${classificationAudit.stageWaterfall.candidateStates} admitted=${classificationAudit.stageWaterfall.admittedFlights} typed=${classificationAudit.stageWaterfall.typedFlights}`,
@@ -1457,4 +1429,9 @@ export {
   deriveOperatorFromSourceMeta,
   deriveTrustedPlaOperatorFromSourceMeta,
   filterMilitaryFlights,
+  // Test seam: the OpenSky credit budget (#6222) is a property of how many
+  // requests this function issues and with what bbox, which is unobservable
+  // from the published payload. Exported so tests can assert the request
+  // shape directly rather than grepping source text.
+  fetchAllStates,
 };
