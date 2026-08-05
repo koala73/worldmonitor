@@ -354,6 +354,33 @@ The distinction from Variant Host is load-bearing rather than cosmetic. One desk
 
 The sequence of published releases the update and download surfaces can address. There is exactly one for desktop, because those surfaces resolve the newest published release rather than searching by name — so a second, differently-named line is unservable by construction no matter how it is built or tagged. Publication is therefore the point at which a release becomes visible to every installed client at once, which is why a release is assembled privately and made visible only once every artifact it advertises exists. See also: Desktop Variant Selection.
 
+## China Market Access
+
+### Northbound Turnover
+
+The daily value of Stock Connect trading in mainland A-shares, counted in both
+directions: buys and sells added together. It is a measure of how much foreign
+participation occurred, never of how much capital arrived. The distinction is
+load-bearing because the exchanges once published the buy and sell legs
+separately — so net inflow was derivable — and stopped, leaving only the
+combined figure. A surface that labels this "flow", "net buy", or "inflow" is
+not merely imprecise, it reports a number that means something else entirely.
+Any net-flow figure quoted today is a vendor's reconstruction, not exchange
+truth. See also: Trade-Date Agreement.
+
+### Trade-Date Agreement
+
+The requirement that two independent publishers of the same daily series report
+the *same* session before their values may be combined. It serves two purposes
+at once: it prevents the arithmetic error of summing different days, and it
+detects a frozen publisher on the very next run — a source that keeps answering
+with a stale session disagrees immediately, rather than waiting out a staleness
+budget while looking alive. Because the correctness guard and the liveness
+alarm are the same check, the monitoring cannot be disabled without also
+breaking the sum. It applies only to sources that genuinely share a publication
+clock; series on different schedules would disagree constantly and the check
+would degrade into noise.
+
 ## Flagged ambiguities
 
 - *"Pool"* had been used for both a labelled market category and the complete set of markets — these are distinct. A pool is always a labelled subset; the complete set has no pool and must be requested as an explicit union.
