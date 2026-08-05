@@ -320,7 +320,15 @@ function parseBootstrapKeyTiers(source = read('shared/bootstrap-tier-keys.js')) 
   ]) {
     const block = source.match(new RegExp(`const ${constName} = new Set\\(\\[([\\s\\S]*?)\\n\\]\\);`));
     if (!block) throw new Error(`docs-stats: could not parse ${constName} in shared/bootstrap-tier-keys.js`);
-    for (const m of block[1].matchAll(/'([^']+)'/g)) {
+    // Drop `//` comments before scanning for quoted names. The quote matcher
+    // cannot tell a key from prose, so one apostrophe in a rationale comment
+    // ("the tab's list") opens a phantom string that swallows everything up to
+    // the next apostrophe and registers it as a duplicate key — reported as
+    // `key ", " is registered in both on-demand and on-demand tiers`, which
+    // names neither the real cause nor the offending line. These Sets hold bare
+    // string literals only, so there is no `//` inside a key to protect.
+    const entries = block[1].replace(/\/\/[^\n]*/g, '');
+    for (const m of entries.matchAll(/'([^']+)'/g)) {
       // Last-write-wins would make this parser disagree with the runtime in the
       // one case that matters: tierForKey() tests fast FIRST, so a key in both
       // FAST and ON_DEMAND resolves to fast at runtime and would resolve to
