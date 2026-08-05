@@ -152,21 +152,31 @@ PortWatch 缓存条目，但规范国家列表和健康的 seed-meta
 原始计数反推判定；`expectedCriticalCountries` 会与生产者声明的集合一并发布。
 
 由于边缘函数在合并后数分钟内即完成重新部署，而生产者是 12 小时 cron，缺失块的情形
-只能获得有界的部署顺序放宽。持久标记
+曾获得有界的部署顺序放宽。持久标记
 `seed-activated:supply_chain:portwatch-ports:content-freshness` 只有在编译进代码的窗口
 `2026-08-03T10:24:42Z` → `2026-08-04T06:00:00Z` 内才能授予放宽：这代表 schema 发布后
-一个完整的生产者周期，外加六小时调度余量。该放宽**仅覆盖缺失**：只要块存在就一定会被
-评估；标记存在后，块消失将故障关闭。截止时间到达或之后，即使干净的 `EXISTS=0` 也不再
-足够，缺失块会报告为 `COVERAGE_DEGRADED`。
+一个完整的生产者周期，外加六小时调度余量。
 
-该放宽还需要**肯定的证据**，而不仅仅是"没有标记"。`EXISTS` 读取是三值的：读到且存在
-会撤销放宽，读到且缺失只能在窗口内授予放宽，而读取**失败**或 pipeline 条目格式错误属于
-未知状态，不授予任何放宽。处于等待状态的健康条目会发布
+**该窗口已经关闭，PortWatch 的放宽已被永久用尽。** 干净的 `EXISTS=0` 不再放宽任何内容：
+缺失的 PortWatch 内容块一律报告为 `COVERAGE_DEGRADED`。该窗口保留在源码中，仅作为
+"授予了什么、到何时为止"的审计记录，并且刻意**不**重新开启：生产者此后已经发布了该块，
+重新授予放宽只会撤销
+[#6111](https://github.com/koala73/worldmonitor/issues/6111) 所要求的那道界限。
+
+因此在稳定状态下，**`contentFreshnessPendingUntil` 根本不会被发布。** 它只在某个键的窗口
+处于开启状态时出现；就今天而言，这意味着只有在 `api/_content-freshness.js` 的
+`CONTENT_FRESHNESS_ROLLOUT` 中为新部署的内容 schema 增加**新条目**时才会出现。新增条目后，
+下述各个接口都会自动发布该截止时间；不要去延长 PortWatch 那一条。
+
+当某个窗口确实开启时，该放宽仍需要**肯定的证据**，而不仅仅是"没有标记"。`EXISTS` 读取是
+三值的：读到且存在会撤销放宽，读到且缺失只能在窗口内授予放宽，而读取**失败**或 pipeline
+条目格式错误属于未知状态，不授予任何放宽。处于等待状态的健康条目会发布
 `contentFreshnessPendingUntil`；紧凑健康响应会在
 `summary.contentFreshnessPendingUntil` 中按键重复同一截止时间，因此无需阅读实现即可审计
-这一界限。`/api/seed-health` 的 PortWatch 条目也会发布同一截止时间，MCP 的 `stale` 布尔值
+这一界限。`/api/seed-health` 的对应条目也会发布同一截止时间，MCP 的 `stale` 布尔值
 使用同一共享窗口，并在缓存工具输出中通过可选顶层字段
 `contentFreshnessPendingUntil` 暴露该截止时间；缓存刷新路径也不会在截止时间之后继续提供旧快照。
+该放宽**仅覆盖缺失**：只要块存在就一定会被评估；标记存在后，块消失将故障关闭。
 
 `/api/seed-health` 中 `cfg.activationKey` 的 `pending-activation` 路径（以及
 `/api/health` 中对应的 `ON_DEMAND` 策略）有意保持独立，不复用这个 PortWatch 窗口。这些标记

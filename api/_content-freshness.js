@@ -30,10 +30,26 @@ function entityList(value) {
 }
 
 // #6111 — content-freshness activation is a deployment-order bridge, not a
-// permanent exemption. The producer publishes on a 12h Railway cron; this
-// window starts when the schema shipped and ends after the first complete cron
-// window plus six hours of scheduling slack. Keep the source timestamps here
-// so health, seed-health, and MCP cannot silently invent different deadlines.
+// permanent exemption. The producer publishes on a 12h Railway cron; a window
+// starts when the schema shipped and ends after the first complete cron window
+// plus six hours of scheduling slack. Keep the source timestamps here so
+// health, seed-health, and MCP cannot silently invent different deadlines.
+//
+// The PortWatch entry below is SPENT: its window closed 2026-08-04T06:00:00Z,
+// and the producer has since published the block (the activation marker reads
+// EXISTS=1 in production), so the grace path is unreachable on two independent
+// grounds. It is retained as the audit record of what was granted and until
+// when. Do NOT extend it to re-open the softening — that is precisely the
+// unbounded grace #6111 exists to end, and every consumer already fails closed
+// without it. `getActiveContentFreshnessActivationWindow` therefore returns
+// null for every input today, and `contentFreshnessPendingUntil` is not
+// emitted on any surface.
+//
+// To bridge a FUTURE content schema, add a new entry keyed by its activation
+// marker with `from` = the deploy timestamp and `until` = one full producer
+// interval plus slack AFTER it. Compute both against the actual deploy time:
+// a window authored earlier in a review cycle can elapse before merge, which
+// ships a bridge that never carries anything.
 export const PORTWATCH_CONTENT_FRESHNESS_ACTIVATION_KEY =
   'seed-activated:supply_chain:portwatch-ports:content-freshness';
 
