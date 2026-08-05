@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { loadEnvFile, loadSharedConfig, sleep, CHROME_UA, runSeed, parseYahooChart, writeExtraKey, extendExistingTtl, readCanonicalEnvelopeMeta, readSeedSnapshot, writeFreshnessMetadata } from './_seed-utils.mjs';
+import { loadEnvFile, loadSharedConfig, sleep, CHROME_UA, runSeed, parseYahooChart, writeExtraKey, extendExistingTtl, extendExistingTtlDetailed, readCanonicalEnvelopeMeta, readSeedSnapshot, writeFreshnessMetadata, writeFreshnessMetadataSafely } from './_seed-utils.mjs';
 import { fetchYahooJson } from './_yahoo-fetch.mjs';
 import { fetchAvBulkQuotes } from './_shared-av.mjs';
 import { buildCountryStockIndexSnapshot, countryStockIndexKey, loadCountryStockIndexes } from './_country-stock-index.mjs';
@@ -145,9 +145,27 @@ export function declareRecords(data) {
 if (!isMultiMarketEquityTradingDay()) {
   const lastGood = await readCanonicalEnvelopeMeta(CANONICAL_KEY);
   if (lastGood) {
-    const extended = await extendExistingTtl([CANONICAL_KEY, 'seed-meta:market:stocks', RPC_KEY, ...COUNTRY_STOCK_INDEX_KEYS], CACHE_TTL);
+    // Gate the fast path on the canonical keys ONLY. Country-index keys are
+    // best-effort by design — several countries in the enum have no
+    // Yahoo-serviceable symbol, so their keys legitimately never exist, and
+    // requiring all 45 to extend would make this branch never confirm and
+    // force a full fetch on every closed day.
+    const extended = await extendExistingTtl([CANONICAL_KEY, 'seed-meta:market:stocks', RPC_KEY], CACHE_TTL);
     if (extended) {
+      const countryTtl = await extendExistingTtlDetailed(COUNTRY_STOCK_INDEX_KEYS, CACHE_TTL);
       await writeFreshnessMetadata('market', 'stocks', lastGood.recordCount, lastGood.sourceVersion || 'alphavantage+finnhub+yahoo', CACHE_TTL);
+      // The country-index caches were just TTL-extended alongside the canonical
+      // keys, so their freshness must be refreshed on this path too — otherwise
+      // seed-meta ages across a 60h+ weekend and alarms on data that is present
+      // and deliberately preserved. recordCount is the count actually extended,
+      // never the size of the work-list.
+      await writeFreshnessMetadataSafely(
+        'market',
+        'country-indexes',
+        countryTtl.extendedKeys.length,
+        'yahoo',
+        CACHE_TTL,
+      );
       console.log(`[seed-market-quotes] Tracked equity markets closed (US session=${getUsEquitySession()}) — skipping upstream fetch, extended TTL`);
       process.exit(0);
     }
@@ -171,6 +189,12 @@ async function writeRequiredCompanionKeys(data) {
  * outage — so each leg preserves its own last-good TTL and the pass reports a
  * summary instead of throwing. Countries that fail here still answer via the
  * RPC's own live fetch, which remains as a gap-filler.
+ *
+ * Because the pass never throws, it MUST publish its own freshness metadata:
+ * without it a run where every country failed would leave
+ * `seed-meta:market:stocks` fresh and health green while the country-index
+ * caches quietly expired — the RPC would silently revert to fetching Yahoo per
+ * request, which is the exact regression this seeding exists to prevent.
  */
 async function writeCountryStockIndexes() {
   const failures = [];
@@ -203,6 +227,18 @@ async function writeCountryStockIndexes() {
   } else {
     console.log(`[seed-market-quotes] Country index refresh: ${seeded}/${COUNTRY_STOCK_INDEXES.length} seeded`);
   }
+
+  // recordCount is what /api/health thresholds on, so it must be the count that
+  // actually landed in Redis, never the size of the work-list.
+  await writeFreshnessMetadataSafely(
+    'market',
+    'country-indexes',
+    seeded,
+    'yahoo',
+    CACHE_TTL,
+  );
+
+  return seeded;
 }
 
 runSeed('market', 'stocks', CANONICAL_KEY, fetchMarketQuotes, {

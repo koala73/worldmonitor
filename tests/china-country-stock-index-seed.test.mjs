@@ -67,7 +67,10 @@ test('the Railway market seed maintains every country cache alongside its public
   assert.match(source, /Country index refresh/);
   assert.match(source, /await extendExistingTtl\(\[key\], CACHE_TTL\)/);
   assert.match(source, /await writeExtraKey\(key, snapshot, CACHE_TTL\)/);
-  assert.match(source, /extendExistingTtl\(\[CANONICAL_KEY, 'seed-meta:market:stocks', RPC_KEY, \.\.\.COUNTRY_STOCK_INDEX_KEYS\]/);
+  // The country keys are extended best-effort via extendExistingTtlDetailed
+  // rather than gating the canonical fast path — see
+  // tests/country-stock-index-health.test.mjs for why.
+  assert.match(source, /extendExistingTtlDetailed\(COUNTRY_STOCK_INDEX_KEYS, CACHE_TTL\)/);
   assert.match(handlerSource, /const REDIS_CACHE_KEY = 'market:stock-index:rpc:v1';/);
   assert.match(handlerSource, /const RAILWAY_SEEDED_COUNTRY_INDEX_KEY_PREFIX = 'market:stock-index:v1:';/);
   assert.match(handlerSource, /getCachedJson\(railwaySeededKey\(code\), true\)/);
