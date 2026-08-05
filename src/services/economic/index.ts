@@ -865,11 +865,25 @@ export { EUR_FX_ORDER, toEurSpotRows } from './fx-rates';
  * riding a tier every visitor downloads — the panel is opt-in, so most sessions
  * never ask for either.
  *
- * All three are settled independently and every failure degrades to an empty
- * list for that tab alone: a dead Yahoo seeder must not blank the ECB rates,
- * and vice versa. `getEcbFxRatesData` is safe to call even when the
- * CommoditiesPanel already called it — it checks the hydration cache first and
- * is behind a 4h circuit-breaker cache.
+ * A dead source must not blank its siblings, but the `.catch()` clauses below
+ * are NOT what delivers that — both readers already swallow their own errors
+ * (`ensureHydrated` returns undefined on fetch/timeout/parse failure;
+ * `getEcbFxRatesData` catches internally and returns its `unavailable: true`
+ * fallback), so neither can reject and the catches never fire. They are kept
+ * only so a future reader that starts throwing cannot take the whole load down
+ * inside `Promise.all`. `getEcbFxRatesData` is also safe to call when the
+ * CommoditiesPanel already did — it checks the hydration cache first and sits
+ * behind a 4h circuit-breaker cache.
+ *
+ * KNOWN LIMIT — read `degraded` as "returned nothing", not "was unreachable".
+ * Only the ECB path carries a real failure signal (`unavailable`), and it
+ * folds in naturally because an unavailable response yields zero rows. The two
+ * `ensureHydrated` keys have no such signal: undefined means transport failure
+ * and cache miss alike, so for them an empty result is *inferred* to be an
+ * outage. That inference is sound here only because none of the three has a
+ * plausible genuine empty — 45 currencies, 47 USD rates, 7 ECB pairs. Do not
+ * copy this shape to a source whose empty state is legitimate; fixing it
+ * properly means teaching `ensureHydrated` to distinguish miss from failure.
  */
 export async function getFxPanelData(): Promise<FxPanelRows> {
   const [stressPayload, usdPayload, ecb] = await Promise.all([

@@ -528,8 +528,13 @@ export class CommoditiesPanel extends Panel {
     if (this._tab === 'fx' && hasFx) {
       const items = this._fxRates.map(r => {
         const change = r.change1d ?? null;
-        const changeStr = change !== null ? `${change >= 0 ? '+' : ''}${change.toFixed(4)}` : '';
-        const changeClass = change === null ? '' : change >= 0 ? 'change-positive' : 'change-negative';
+        // Zero is signless and neutral, matching the FX panel (#6199). The
+        // seeder writes 0 both for "unchanged" and for "no prior observation"
+        // (scripts/seed-ecb-fx-rates.mjs), so a green "+0.0000" claims a gain
+        // that may not even be a measurement. These two surfaces render the
+        // same seeded field and must not disagree about it.
+        const changeStr = change !== null ? `${change > 0 ? '+' : ''}${change.toFixed(4)}` : '';
+        const changeClass = change === null || change === 0 ? '' : change > 0 ? 'change-positive' : 'change-negative';
         return `<div class="commodity-item">
           <div class="commodity-name">EUR/${escapeHtml(r.currency)}</div>
           <div class="commodity-price">${escapeHtml(r.rate.toFixed(4))}</div>

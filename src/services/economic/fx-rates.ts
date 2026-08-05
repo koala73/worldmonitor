@@ -179,11 +179,15 @@ export function toFxStressRows(payload: unknown): FxStressRow[] {
     const currency = nonEmptyString(entry.currency);
     if (countryCode === null || currency === null) continue;
     const drawdown24m = finiteNumber(entry.drawdown24m);
-    // A drawdown is a peak-to-trough loss: zero or negative, never positive
-    // (`scripts/seed-fx-yoy.mjs` seeds 0 and only lowers it). A positive value
-    // is a malformed record, and rendering it would paint a green "+7.0%" gain
-    // into a column that can only ever show a loss.
-    if (drawdown24m === null || drawdown24m > 0) continue;
+    // A drawdown is a peak-to-trough loss expressed as a percentage of the
+    // peak, so it is bounded to [-100, 0]: zero or negative because
+    // `scripts/seed-fx-yoy.mjs` seeds 0 and only lowers it, and never past
+    // -100 because a rate cannot fall by more than all of itself (the seeder
+    // rejects non-positive closes, so the trough is always > 0). Anything
+    // outside that range is a malformed record — a positive would paint a green
+    // "+7.0%" gain into a loss-only column, and a -250% would render a decline
+    // that cannot physically have happened.
+    if (drawdown24m === null || drawdown24m > 0 || drawdown24m < -100) continue;
 
     rows.push({
       countryCode,
@@ -206,17 +210,21 @@ export function toFxStressRows(payload: unknown): FxStressRow[] {
 }
 
 /**
-/**
  * Project the flat `shared:fx-rates:v1` map onto USD spot rows.
  *
- * The null/zero guard below is defensive, NOT the failure path it looks like:
- * `seed-fx-rates.mjs:52` writes `fallbacks[currency] ?? null`, but
- * `SHARED_FX_FALLBACKS` (`scripts/_seed-utils.mjs:190-201`) covers all 47
- * currencies, so a failed fetch silently publishes a hardcoded constant rather
- * than null. Those constants are indistinguishable from a real quote at this
- * layer and are presently rendered as live rates — see #6220. The fix belongs
- * in the seeder, which also feeds the bigmac and grocery-basket conversions,
- * so it is deliberately not attempted here.
+ * The null guard is load-bearing, not defensive. `buildFxRatesPayload`
+ * (`scripts/seed-fx-rates.mjs`) writes `payload[currency] = null` for every
+ * currency whose live fetch failed and lists them under `fallbackCurrencies`,
+ * so a null here means "this rate is a hardcoded constant, not a quote" — and
+ * dropping it is exactly right. Rendering those constants as live rates under a
+ * "Source: Yahoo Finance" heading was the defect #6220 reported and #6233 fixed
+ * upstream; consuming the null is how this panel inherits that fix.
+ *
+ * `fallbackCurrencies` itself rides in the same flat map as a top-level array.
+ * It is skipped by name below purely to document that the map is not uniformly
+ * currency-keyed — an array already fails the numeric check, so removing the
+ * skip changes no behaviour today. It is here for the reader and for a future
+ * where that metadata is not an array.
  *
  * @param payload the `shared:fx-rates:v1` value, enveloped or not
  */
@@ -228,6 +236,8 @@ export function toUsdSpotRows(payload: unknown): FxUsdSpotRow[] {
   for (const [currency, value] of Object.entries(unwrapped)) {
     // The dollar's own row would read "1 USD = 1 USD".
     if (currency === 'USD') continue;
+    // Provenance metadata, not a rate (see the note above).
+    if (currency === 'fallbackCurrencies') continue;
     const usdPerUnit = finiteNumber(value);
     if (usdPerUnit === null || usdPerUnit <= 0) continue;
     // Check the inverse itself, not just its input: a positive denormal

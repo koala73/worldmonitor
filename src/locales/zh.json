@@ -2541,7 +2541,7 @@
       "usdPerUnit": "每单位美元",
       "usdBase": "兑美元",
       "eurBase": "ECB欧元参考汇率",
-      "stressedCount": "{{stressed}}/{{total}}种货币跌幅超过{{threshold}}",
+      "stressedCount": "{{total}}种货币中{{stressed}}种低于{{threshold}}",
       "sourceYahoo": "数据来源：Yahoo Finance",
       "sourceEcb": "数据来源：ECB",
       "degraded": "暂时不可用：{{sources}}。即将重试。",

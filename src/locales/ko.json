@@ -2541,7 +2541,7 @@
       "usdPerUnit": "단위당 USD",
       "usdBase": "미국 달러 대비",
       "eurBase": "ECB 유로 참조 환율",
-      "stressedCount": "{{stressed}}개/{{total}}개 통화 {{threshold}} 초과",
+      "stressedCount": "{{total}}개 중 {{stressed}}개 통화가 {{threshold}} 미만",
       "sourceYahoo": "출처: Yahoo Finance",
       "sourceEcb": "출처: ECB",
       "degraded": "현재 사용 불가: {{sources}}. 곧 다시 시도합니다.",

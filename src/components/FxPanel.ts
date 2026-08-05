@@ -83,6 +83,7 @@ export class FxPanel extends Panel {
   /** True when the tab-fallback moved us, not the user. See render(). */
   private tabForced = false;
   private loaded = false;
+  private inFlight = false;
   private degradedRetryTimer: ReturnType<typeof setTimeout> | null = null;
 
   constructor() {
@@ -106,6 +107,13 @@ export class FxPanel extends Panel {
    * `scheduleRefresh` callback latches that refresh lane permanently.
    */
   public async fetchData(): Promise<void> {
+    // Three independent triggers reach this — the 6h scheduler, Panel's error
+    // countdown, and the degraded retry — so overlapping calls are likelier
+    // here than in a panel with only the scheduler. Released in a `finally`;
+    // every call it makes is timeout-bounded, so the promise always settles and
+    // the latch cannot stick.
+    if (this.inFlight) return;
+    this.inFlight = true;
     try {
       const { getFxPanelData } = await import('@/services/economic');
       const data = await getFxPanelData();
@@ -115,6 +123,8 @@ export class FxPanel extends Panel {
       if (this.isAbortError(err)) return;
       if (!this.element?.isConnected) return;
       this.showError(t('common.failedMarketData'), () => void this.fetchData());
+    } finally {
+      this.inFlight = false;
     }
   }
 

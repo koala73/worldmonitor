@@ -392,6 +392,48 @@ describe('partial outage', () => {
   });
 });
 
+describe('concurrency', () => {
+  it('collapses overlapping fetches instead of running them in parallel', async () => {
+    // The scheduler, the error countdown and the degraded retry can all fire
+    // near each other; without the latch they race and the last to resolve wins.
+    //
+    // The load MUST be held open to prove anything. An immediately-resolving
+    // mock lets each call finish before the next begins, so the calls never
+    // actually overlap and the assertion passes with the latch deleted — this
+    // test was vacuous until the deferred promise below was introduced.
+    await mount(rows());
+    expect(mockGetFxPanelData).toHaveBeenCalledTimes(1);
+
+    let release!: (value: ReturnType<typeof rows>) => void;
+    mockGetFxPanelData.mockImplementation(
+      () => new Promise((resolve) => { release = resolve; }),
+    );
+
+    const first = panel.fetchData();
+    // fetchData awaits a dynamic import before it reaches the loader, so a
+    // single microtask is not enough to get it in flight.
+    await vi.advanceTimersByTimeAsync(0);
+    const second = panel.fetchData();   // starts while the first is still open
+    const third = panel.fetchData();
+
+    expect(mockGetFxPanelData).toHaveBeenCalledTimes(2);  // mount + first only
+
+    release(rows());
+    await Promise.all([first, second, third]);
+    expect(mockGetFxPanelData).toHaveBeenCalledTimes(2);
+  });
+
+  it('releases the latch after a failure, so the panel can recover', async () => {
+    // A latch left set on the error path would wedge the panel permanently —
+    // the same shape as the refresh-scheduler in-flight bug this repo has hit.
+    await mount(new Error('boom'));
+    mockGetFxPanelData.mockResolvedValue(rows());
+    await panel.fetchData();
+    await flush();
+    expect(dataRows()).toHaveLength(3);
+  });
+});
+
 describe('failure', () => {
   it('shows an error state that auto-retries into the loader, not a blank panel', async () => {
     vi.useFakeTimers();

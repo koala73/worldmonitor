@@ -622,16 +622,27 @@ describe('panel-config guardrails', () => {
   // attach — App.ts's primeTask table is the sole near-viewport kickoff path."
   // The FX panel (#6199) shipped with exactly this gap; three reviewers found
   // it independently. This turns that class of bug into a build failure.
-  it('every panel refreshed on a timer is also primed on first mount', () => {
+  // SCOPE: only the `() => (this.state.panels['x'] as X).fetchData()` shape —
+  // a panel that owns its own fetch and is refreshed on a timer. App.ts has ~45
+  // scheduleRefresh calls; the rest drive services, engines or multi-panel
+  // loaders (correlation-engine, intelligence, health-freshness, news, …) whose
+  // priming contract is different and is NOT asserted here. Broadening to those
+  // needs a per-callback audit, not a wider regex — a wider regex would just
+  // manufacture failures for callbacks that never had this contract.
+  it('every panel that self-fetches on a timer is also primed on first mount', () => {
     const scheduled = [...appSrc.matchAll(
       /scheduleRefresh\(\s*'([a-z0-9-]+)',\s*\(\)\s*=>\s*\(this\.state\.panels\['[a-z0-9-]+'\][^)]*\)\.fetchData\(\)/g,
     )].map((m) => m[1]);
     const primed = new Set([...appSrc.matchAll(/primeTask\('([a-z0-9-]+)'/g)].map((m) => m[1]));
 
-    // Sanity floors: a source-regex guard whose pattern silently stops matching
-    // passes vacuously, which is the failure mode it exists to prevent.
-    assert.ok(scheduled.length >= 20, `matched only ${scheduled.length} scheduled panels — the scheduleRefresh pattern broke`);
-    assert.ok(primed.size >= 20, `matched only ${primed.size} primeTask entries — the primeTask pattern broke`);
+    // Exact counts, not floors. A floor lets the pattern rot silently: if a
+    // refactor changed the call shape so only 20 of 27 still matched, a `>= 20`
+    // floor would stay green while seven panels quietly left the guard. Bump
+    // these when you add or remove a self-fetching timer-refreshed panel —
+    // being made to notice is the point. (Same convention as the OpenAPI
+    // surface-count assertions in tests/openapi-examples-contract.test.mjs.)
+    assert.equal(scheduled.length, 27, `expected 27 self-fetching scheduled panels, matched ${scheduled.length} — either a panel was added/removed (bump this) or the scheduleRefresh pattern stopped matching (fix the regex)`);
+    assert.equal(primed.size, 40, `expected 40 primeTask entries, matched ${primed.size} — either the prime table changed (bump this) or the primeTask pattern stopped matching (fix the regex)`);
 
     const unprimed = scheduled.filter((id) => !primed.has(id)).sort();
     assert.deepStrictEqual(

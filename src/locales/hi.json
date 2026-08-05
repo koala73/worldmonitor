@@ -2610,7 +2610,7 @@
       "usdPerUnit": "प्रति इकाई USD",
       "usdBase": "अमेरिकी डॉलर के विरुद्ध",
       "eurBase": "ECB यूरो संदर्भ दरें",
-      "stressedCount": "{{threshold}} से अधिक {{stressed}} में से {{total}} मुद्राएं",
+      "stressedCount": "{{total}} में से {{stressed}} मुद्राएं {{threshold}} से नीचे",
       "sourceYahoo": "स्रोत: Yahoo Finance",
       "sourceEcb": "स्रोत: ECB",
       "degraded": "अभी उपलब्ध नहीं: {{sources}}। शीघ्र ही पुनः प्रयास किया जा रहा है।",

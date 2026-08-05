@@ -105,6 +105,18 @@ test('drops records that cannot be rendered rather than emitting NaN rows', () =
   assert.deepEqual(rows.map((r) => r.currency), ['ARS']);
 });
 
+test('rejects a drawdown outside the physically possible [-100, 0] range', () => {
+  // A drawdown is a percentage of the peak, and the seeder rejects non-positive
+  // closes, so the trough is always > 0 — a loss past -100% cannot happen and a
+  // record claiming one is malformed. -100 exactly is the boundary and stays.
+  const rows = toFxStressRows(yoyPayload([
+    yoyRecord({ currency: 'DEEP', countryCode: 'ZZ', drawdown24m: -250 }),
+    yoyRecord({ currency: 'EDGE', countryCode: 'ZY', drawdown24m: -100 }),
+    yoyRecord({ currency: 'PAST', countryCode: 'ZX', drawdown24m: -100.1 }),
+  ]));
+  assert.deepEqual(rows.map((r) => r.currency), ['EDGE']);
+});
+
 test('rejects a positive drawdown as malformed, but keeps a zero one', () => {
   // A peak-to-trough loss cannot be positive: seed-fx-yoy.mjs seeds
   // worstDrawdown = 0 and only ever lowers it. A positive value means the
@@ -193,6 +205,24 @@ test('drops unusable USD values instead of rendering 0 or Infinity', () => {
   for (const row of rows) assert.ok(Number.isFinite(row.unitsPerUsd), `${row.currency} inverted to a non-finite value`);
 });
 
+test('drops fallback-sourced currencies and the provenance array itself', () => {
+  // The real post-#6233 shape: seed-fx-rates.mjs nulls every currency whose
+  // live fetch failed and lists them under `fallbackCurrencies`, so a null here
+  // means "hardcoded constant, not a quote". Rendering those as live rates
+  // under a Yahoo heading was #6220. `fallbackCurrencies` rides in the same
+  // flat map and must never be mistaken for a currency.
+  const rows = toUsdSpotRows({
+    USD: 1,
+    JPY: 0.0067,
+    GBP: 1.27,
+    KRW: null,
+    VND: null,
+    fallbackCurrencies: ['KRW', 'VND'],
+  });
+  assert.deepEqual(rows.map((r) => r.currency), ['GBP', 'JPY']);
+  assert.equal(rows.some((r) => r.currency === 'fallbackCurrencies'), false);
+});
+
 test('sorts USD spot rows alphabetically for a scannable table', () => {
   assert.deepEqual(
     toUsdSpotRows(USD_PAYLOAD).map((r) => r.currency),
@@ -269,6 +299,19 @@ test('maps ECB pairs to EUR-base rows in the established display order', () => {
   const jpy = rows.find((r) => r.currency === 'JPY');
   assert.equal(jpy.rate, 171.2, 'one euro is many yen');
   assert.equal(jpy.change1d, -0.31);
+});
+
+test('appends an unranked pair after the seven, rather than dropping it', () => {
+  // The rank fallback (MAX_SAFE_INTEGER for a pair outside EUR_FX_ORDER) was
+  // untested: every other fixture uses ranked pairs, so deleting it changed
+  // nothing. If the ECB seeder ever publishes an eighth pair it must surface
+  // here rather than vanish — and must not jump ahead of the curated seven.
+  const rows = toEurSpotRows([
+    { pair: 'EURSEK', rate: 11.2, change1d: 0.03 },
+    { pair: 'EURJPY', rate: 171.2, change1d: -0.31 },
+    { pair: 'EURUSD', rate: 1.148, change1d: 0.12 },
+  ]);
+  assert.deepEqual(rows.map((r) => r.currency), ['USD', 'JPY', 'SEK']);
 });
 
 test('preserves a zero change1d instead of collapsing it to null', () => {
