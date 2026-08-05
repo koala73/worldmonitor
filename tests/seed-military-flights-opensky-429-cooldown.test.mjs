@@ -226,10 +226,16 @@ test('the next run issues ZERO OpenSky requests while the deadline is in the fut
     'Wingbits coverage disappeared during the OpenSky cooldown. Skipping OpenSky must degrade to ' +
     'Wingbits-only, never to an empty publish (#6241).',
   );
+  // Anchored on the `quota-cooldown:<n>s` shape, not a bare /cooldown/. The
+  // in-process token backoff reports the plain string 'cooldown' from
+  // getOpenSkyAuthStatus(), so a loose match would accept a run that skipped for
+  // an entirely different reason and never consulted the persisted deadline.
   assert.match(
     fetchSources.regions[0]?.authStatus || '',
-    /cooldown/i,
-    `Expected the GLOBAL region to record a cooldown status, got: ${fetchSources.regions[0]?.authStatus}`,
+    /^quota-cooldown:\d+s$/,
+    `Expected the GLOBAL region to record a persisted quota cooldown with its remaining seconds, ` +
+    `got: ${fetchSources.regions[0]?.authStatus}. A bare 'cooldown' is the in-process auth backoff, ` +
+    'which is a different mechanism with a different lifetime (#6241).',
   );
 });
 
@@ -413,6 +419,63 @@ test('a proxy-gateway 429 is not mistaken for an OpenSky lockout', async () => {
   assert.equal(
     isOpenSkyRateLimitedError(Object.assign(new Error('HTTP 429: quota'), { status: 429 })), true,
     'A real OpenSky 429 must still be classified as rate-limited.',
+  );
+});
+
+test('a run with NO Redis credentials degrades instead of exiting', async () => {
+  // This is the entire reason getOptionalRedisCredentials exists rather than the
+  // shared getRedisCredentials, which process.exit(1)s on missing creds. Every
+  // other test sets UPSTASH_* at module scope, so without this case swapping in
+  // the shared reader would hard-kill credential-less runs with the suite green.
+  const url = process.env.UPSTASH_REDIS_REST_URL;
+  const token = process.env.UPSTASH_REDIS_REST_TOKEN;
+  delete process.env.UPSTASH_REDIS_REST_URL;
+  delete process.env.UPSTASH_REDIS_REST_TOKEN;
+  try {
+    install({ openSkyStatus: 429, retryAfterSeconds: 22_688 });
+    const { allStates } = await (await freshSeeder()).fetchAllStates();
+
+    assert.ok(
+      allStates.map((s) => s[0]).includes(WINGBITS_ONLY),
+      'A credential-less run did not publish. The cooldown is an optimisation; with nowhere to ' +
+      'persist it the run must still degrade to Wingbits, not die (#6241).',
+    );
+    assert.equal(
+      calls.filter((c) => new URL(c.url).host === REDIS_HOST).length, 0,
+      'A credential-less run still issued Redis calls — the credential guard is not short-circuiting.',
+    );
+  } finally {
+    process.env.UPSTASH_REDIS_REST_URL = url;
+    process.env.UPSTASH_REDIS_REST_TOKEN = token;
+  }
+});
+
+test('the key TTL still outlives the deadline at the 24h clamp boundary', async () => {
+  // The TTL is `ceil(cooldownMs/1000) + 60`. Every other test exercises it at
+  // 22,688s; the interesting point is the clamp, where cooldownMs is pinned to
+  // the maximum and an off-by-one in either expression expires the key while the
+  // deadline it guards is still in the future.
+  install({ openSkyStatus: 429, retryAfterSeconds: 7 * 24 * 3_600 }); // a week -> clamps to 24h
+  await (await freshSeeder()).fetchAllStates();
+
+  const record = readCooldownRecord();
+  const entry = redisStore.get(COOLDOWN_KEY);
+
+  // Assert against the persisted values, not wall-clock deltas: the elapsed
+  // milliseconds between the fixture and the write would otherwise decide
+  // whether a boundary assertion rounds past the clamp.
+  assert.equal(
+    record.cooldownMs, 86_400_000,
+    `A one-week retry-after produced a ${record.cooldownMs}ms cooldown; it must clamp to 24h (#6241).`,
+  );
+  assert.equal(
+    record.retryAfterSeconds, 86_400,
+    'The persisted retry-after must be the clamped value the deadline was actually derived from.',
+  );
+  assert.ok(
+    entry.ttl > record.cooldownMs / 1000,
+    `Key TTL ${entry.ttl}s does not outlive the ${record.cooldownMs / 1000}s cooldown at the clamp ` +
+    'boundary. The key would expire mid-cooldown and the seeder would resume hammering (#6241).',
   );
 });
 
