@@ -308,6 +308,11 @@ function proxyFetch(url, proxyConfig, {
             location: resp.headers.location || '',
             buffer,
             contentType: resp.headers['content-type'] || '',
+            // Additive: callers that only read ok/status/location/buffer/contentType
+            // are unaffected. Rate-limit headers (Retry-After and vendor variants)
+            // are lost forever otherwise, so a 429 that arrives through the tunnel
+            // cannot say how long the lockout lasts (#6241).
+            headers: resp.headers,
           }),
           rejectOnce,
         );

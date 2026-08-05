@@ -172,6 +172,14 @@ describe('proxy utilities', () => {
       location: 'https://trusted.example/signed.xml',
       buffer: Buffer.from('redirect'),
       contentType: 'text/plain',
+      // The full header map rides along so callers can read headers this shape
+      // does not promote to a named field — rate-limit headers on a 429 are the
+      // motivating case, and dropping them silently downgrades an OpenSky quota
+      // cooldown from the advertised window to a short fallback (#6241).
+      headers: {
+        location: 'https://trusted.example/signed.xml',
+        'content-type': 'text/plain',
+      },
     });
     assert.equal(redirectHarness.destroyed(), 1);
 
