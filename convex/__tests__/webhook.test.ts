@@ -745,12 +745,14 @@ describe("webhook processWebhookEvent", () => {
     expect(paymentEvents[0].status).toBe("failed");
   });
 
-  test("payment.failed for a wholly unknown customer still fails closed, naming the inputs it tried", async () => {
+  // Previously this asserted the mutation threw. That was wrong in production:
+  // the identity lookup is deterministic, so every one of Dodo's 8 retries
+  // failed identically and a buyer abandoning 3DS raised a "delivery
+  // permanently failed" alert. No charge settled, so there is nothing to
+  // record — acknowledge it. See isChargedEventType in unattributedPayments.ts.
+  test("payment.failed for a wholly unknown customer is acknowledged, not dead-lettered", async () => {
     const t = convexTest(schema, modules);
 
-    // No customers row, no subscriptions row, unsigned metadata: genuinely
-    // unattributable, so the webhook must keep throwing (dead-letter + Dodo
-    // retry) rather than silently dropping a payment record.
     const payload = makePaymentPayload("payment.failed", {
       payment_id: "pay_unattributable",
       subscription_id: "sub_unattributable",
@@ -758,19 +760,49 @@ describe("webhook processWebhookEvent", () => {
       metadata: {},
     });
 
-    await expect(
-      t.mutation(internal.payments.webhookMutations.processWebhookEvent, {
-        webhookId: "wh_ya_unattributable",
-        eventType: "payment.failed",
-        rawPayload: payload,
-        timestamp: BASE_TIMESTAMP,
-      }),
-    ).rejects.toThrow(/dodoCustomerId="cust_unattributable"/);
+    await t.mutation(internal.payments.webhookMutations.processWebhookEvent, {
+      webhookId: "wh_ya_unattributable",
+      eventType: "payment.failed",
+      rawPayload: payload,
+      timestamp: BASE_TIMESTAMP,
+    });
 
+    // Still records nothing — there is no user to attribute the row to.
     const paymentEvents = await t.run(async (ctx) => {
       return ctx.db.query("paymentEvents").collect();
     });
     expect(paymentEvents).toHaveLength(0);
+  });
+
+  test("payment.succeeded for a wholly unknown customer is captured for attribution", async () => {
+    const t = convexTest(schema, modules);
+
+    // Money moved. It must never be silently discarded — but throwing only
+    // burned Dodo's retries and lost it, so it is captured durably instead and
+    // flagged `charged` for the ops alert. See unattributed-payments.test.ts.
+    const payload = makePaymentPayload("payment.succeeded", {
+      payment_id: "pay_unattributable_paid",
+      subscription_id: "sub_unattributable_paid",
+      customer: { customer_id: "cust_unattributable", email: "nobody@example.com" },
+      metadata: {},
+    });
+
+    await t.mutation(internal.payments.webhookMutations.processWebhookEvent, {
+      webhookId: "wh_ya_unattributable_paid",
+      eventType: "payment.succeeded",
+      rawPayload: payload,
+      timestamp: BASE_TIMESTAMP,
+    });
+
+    const { paymentEvents, unattributed } = await t.run(async (ctx) => ({
+      paymentEvents: await ctx.db.query("paymentEvents").collect(),
+      unattributed: await ctx.db.query("unattributedPaymentEvents").collect(),
+    }));
+    // No paymentEvents row — it requires a userId we do not have.
+    expect(paymentEvents).toHaveLength(0);
+    expect(unattributed).toHaveLength(1);
+    expect(unattributed[0].charged).toBe(true);
+    expect(unattributed[0].dodoCustomerId).toBe("cust_unattributable");
   });
 
   // #5056 — entitlement lifecycle integrity across claim, active webhook, and dispute races.

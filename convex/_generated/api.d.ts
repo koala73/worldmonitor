@@ -51,6 +51,7 @@ import type * as payments_checkout from "../payments/checkout.js";
 import type * as payments_seedProductPlans from "../payments/seedProductPlans.js";
 import type * as payments_subscriptionEmails from "../payments/subscriptionEmails.js";
 import type * as payments_subscriptionHelpers from "../payments/subscriptionHelpers.js";
+import type * as payments_unattributedPayments from "../payments/unattributedPayments.js";
 import type * as payments_webhookHandlers from "../payments/webhookHandlers.js";
 import type * as payments_webhookMutations from "../payments/webhookMutations.js";
 import type * as registerInterest from "../registerInterest.js";
@@ -109,6 +110,7 @@ declare const fullApi: ApiFromModules<{
   "payments/seedProductPlans": typeof payments_seedProductPlans;
   "payments/subscriptionEmails": typeof payments_subscriptionEmails;
   "payments/subscriptionHelpers": typeof payments_subscriptionHelpers;
+  "payments/unattributedPayments": typeof payments_unattributedPayments;
   "payments/webhookHandlers": typeof payments_webhookHandlers;
   "payments/webhookMutations": typeof payments_webhookMutations;
   registerInterest: typeof registerInterest;
