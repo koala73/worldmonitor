@@ -5,6 +5,8 @@
 // version-locked prediction sets to produce aggregate forecasts and deterministic score reports.
 import { createHash } from 'node:crypto';
 import {
+  GOLD_DIRECTION_VALUES,
+  GOLD_MATERIALITY_VALUES,
   OPAQUE_EXAMPLE_ID,
   adaptiveExpectedCalibrationError,
   asNumber,
@@ -174,14 +176,7 @@ export type CalibrationMetricReport = {
 
 export type Stage3MetricReport = RateMetricReport | CalibrationMetricReport;
 
-export type Stage3MetricId =
-  | 'published_material_impact_precision'
-  | 'published_company_attribution_precision'
-  | 'direction_accuracy_overall'
-  | 'direction_accuracy_positive'
-  | 'direction_accuracy_negative'
-  | 'direction_accuracy_mixed'
-  | 'confidence_calibration_stage3';
+export type Stage3MetricId = (typeof STAGE3_METRIC_IDS)[number];
 
 export type ScoreReport = {
   schemaVersion: 'cm_blind_score_report_v1';
@@ -271,9 +266,8 @@ export class BlindEvaluationError extends Error {
 }
 
 const DIRECTIONS: Direction[] = ['positive', 'negative', 'mixed'];
-const MATERIALITIES: Materiality[] = ['material', 'immaterial'];
 const VERSION = /^[a-z0-9]+(?:[._-][a-z0-9]+)*$/;
-const STAGE3_METRIC_IDS: Stage3MetricId[] = [
+const STAGE3_METRIC_IDS = [
   'published_material_impact_precision',
   'published_company_attribution_precision',
   'direction_accuracy_overall',
@@ -281,7 +275,7 @@ const STAGE3_METRIC_IDS: Stage3MetricId[] = [
   'direction_accuracy_negative',
   'direction_accuracy_mixed',
   'confidence_calibration_stage3',
-];
+] as const;
 const EVALUATION_VERSION_FIELDS = [
   ['protocolVersion', 'protocol_version'],
   ['policyVersion', 'policy_version'],
@@ -316,6 +310,91 @@ const FORECAST_VERSIONS_KEYS = new Set([
   'targetGoldLabelVersion',
   'curatorAccessVersion',
 ]);
+const BLIND_EXAMPLE_KEYS = new Set([
+  'opaqueExampleId',
+  'occurrenceDigest',
+  'contentFingerprint',
+  'corporateFamilyDigest',
+  'sourceOriginDigest',
+]);
+const CORPUS_KEYS = new Set([
+  'schemaVersion',
+  'corpusVersion',
+  'purpose',
+  'status',
+  'protocolVersion',
+  'policyVersion',
+  'modelVersion',
+  'queryVersion',
+  'curatorAccessVersion',
+  'lockedAt',
+  'forecastSha256',
+  'sealedGoldLabelsSha256',
+  'continuation',
+  'precommittedExpansion',
+  'examples',
+]);
+const CONTINUATION_KEYS = new Set([
+  'parentCorpusVersion',
+  'parentCorpusSha256',
+  'parentReportSha256',
+  'reason',
+]);
+const PRECOMMITTED_EXPANSION_KEYS = new Set(['manifestSha256', 'exampleCount']);
+const GOLD_LABEL_SET_KEYS = new Set([
+  'schemaVersion',
+  'corpusVersion',
+  'goldLabelVersion',
+  'curatorAccessVersion',
+  'labels',
+]);
+const GOLD_LABEL_KEYS = new Set([
+  'opaqueExampleId',
+  'publicationEligible',
+  'goldMateriality',
+  'goldDirection',
+  'canonicalCorporateFamilyDigest',
+  'customerUseful',
+]);
+const PREDICTION_SET_KEYS = new Set([
+  'schemaVersion',
+  'corpusVersion',
+  'corpusSha256',
+  'protocolVersion',
+  'policyVersion',
+  'modelVersion',
+  'queryVersion',
+  'parentPredictionSetSha256',
+  'parentGoldLabelSetSha256',
+  'predictions',
+]);
+const PREDICTION_KEYS = new Set([
+  'opaqueExampleId',
+  'discovered',
+  'publish',
+  'predictedMateriality',
+  'predictedDirection',
+  'attributedCorporateFamilyDigest',
+  'confidence',
+  'latencyMs',
+  'costUsd',
+]);
+const CANDIDATE_STRATA_KEYS = new Set([
+  'total',
+  'publicationEligible',
+  'publicationEligibleRate',
+  'eligibleDirections',
+]);
+const PILOT_REALIZED_RATES_KEYS = new Set([
+  'publishedDecisionRate',
+  'correctlyAttributedMaterialRateOverall',
+  'correctlyAttributedMaterialRateByDirection',
+]);
+const DENOMINATOR_FORECAST_KEYS = new Set(['minimum', 'estimated', 'gap']);
+const FORECAST_GAP_KEYS = new Set(['metricId', 'missing']);
+const RECOMMENDED_GROWTH_KEYS = new Set(['totalExamples', 'eligibleByDirection']);
+const DIRECTION_KEYS = new Set<string>(DIRECTIONS);
+const STAGE3_METRIC_KEYS = new Set<string>(STAGE3_METRIC_IDS);
 
 function fail(code: string): never {
   throw new BlindEvaluationError(code);
@@ -330,9 +409,285 @@ function finiteNonNegative(value: unknown, code: string): number {
   return value;
 }
 
+function exactObject(value: unknown, keys: Set<string>, code: string): JsonObject {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) fail(code);
+  const candidate = value as JsonObject;
+  if (!hasExactKeys(candidate, keys)) fail(code);
+  return candidate;
+}
+
+function nonNegativeInteger(value: unknown, code: string): number {
+  if (!Number.isInteger(value) || (value as number) < 0) fail(code);
+  return value as number;
+}
+
+function rate(value: unknown, code: string): number {
+  if (typeof value !== 'number' || !Number.isFinite(value) || value < 0 || value > 1) fail(code);
+  return value;
+}
+
+function nullableEvidenceDigest(value: unknown, code: string): void {
+  if (value !== null && !isEvidenceDigest(value)) fail(code);
+}
+
 function requireVersion(value: unknown, code: string): string {
   if (typeof value !== 'string' || !VERSION.test(value)) fail(code);
   return value;
+}
+
+function validateBlindExampleArtifact(value: unknown): asserts value is BlindExample {
+  const example = exactObject(value, BLIND_EXAMPLE_KEYS, 'example_field_forbidden');
+  if (!OPAQUE_EXAMPLE_ID.test(String(example.opaqueExampleId ?? ''))) fail('example_id_invalid');
+  for (const [field, code] of [
+    ['occurrenceDigest', 'example_occurrence_digest_invalid'],
+    ['contentFingerprint', 'example_content_fingerprint_digest_invalid'],
+    ['corporateFamilyDigest', 'example_corporate_family_digest_invalid'],
+    ['sourceOriginDigest', 'example_source_origin_digest_invalid'],
+  ] as const) {
+    if (!isEvidenceDigest(example[field])) fail(code);
+  }
+}
+
+export function validateExpansionManifestArtifact(value: unknown): asserts value is BlindExample[] {
+  if (!Array.isArray(value) || value.length === 0) fail('expansion_examples_missing');
+  for (const example of value) validateBlindExampleArtifact(example);
+  assertUniqueExampleDimensions(value as BlindExample[]);
+}
+
+export function validateBlindCorpusArtifact(value: unknown): asserts value is BlindCorpus {
+  const corpus = exactObject(value, CORPUS_KEYS, 'corpus_field_forbidden');
+  if (corpus.schemaVersion !== 'cm_blind_corpus_v1') fail('corpus_schema_version_invalid');
+  requireVersion(corpus.corpusVersion, 'corpus_version_invalid');
+  requireVersion(corpus.protocolVersion, 'corpus_protocol_version_invalid');
+  requireVersion(corpus.policyVersion, 'corpus_policy_version_invalid');
+  requireVersion(corpus.modelVersion, 'corpus_model_version_invalid');
+  requireVersion(corpus.queryVersion, 'corpus_query_version_invalid');
+  requireVersion(corpus.curatorAccessVersion, 'curator_access_version_invalid');
+  if (!['pilot', 'tracer_gate', 'stage3_gate'].includes(String(corpus.purpose))) {
+    if (corpus.purpose === 'stage4_gate') fail('stage4_out_of_scope');
+    fail('corpus_purpose_invalid');
+  }
+  if (corpus.status === 'locked') {
+    if (typeof corpus.lockedAt !== 'string' || parseRfc3339Timestamp(corpus.lockedAt) === null) {
+      fail('corpus_lock_timestamp_invalid');
+    }
+  } else if (corpus.status === 'draft') {
+    if (corpus.lockedAt !== null) fail('draft_corpus_has_lock_timestamp');
+  } else {
+    fail('corpus_status_invalid');
+  }
+  nullableEvidenceDigest(corpus.forecastSha256, 'forecast_digest_invalid');
+  nullableEvidenceDigest(corpus.sealedGoldLabelsSha256, 'sealed_gold_digest_invalid');
+  if (corpus.continuation !== null) {
+    const continuation = exactObject(
+      corpus.continuation,
+      CONTINUATION_KEYS,
+      'continuation_field_forbidden',
+    );
+    requireVersion(continuation.parentCorpusVersion, 'continuation_parent_corpus_version_invalid');
+    if (!isEvidenceDigest(continuation.parentCorpusSha256)) fail('continuation_parent_corpus_digest_invalid');
+    if (!isEvidenceDigest(continuation.parentReportSha256)) fail('continuation_parent_report_digest_invalid');
+    if (continuation.reason !== 'denominator_shortfall') fail('continuation_reason_invalid');
+  }
+  if (corpus.precommittedExpansion !== null) {
+    const expansion = exactObject(
+      corpus.precommittedExpansion,
+      PRECOMMITTED_EXPANSION_KEYS,
+      'precommitted_expansion_field_forbidden',
+    );
+    if (!isEvidenceDigest(expansion.manifestSha256)) fail('precommitted_expansion_digest_invalid');
+    if (nonNegativeInteger(expansion.exampleCount, 'precommitted_expansion_count_invalid') === 0) {
+      fail('precommitted_expansion_count_invalid');
+    }
+  }
+  if (!Array.isArray(corpus.examples) || corpus.examples.length === 0) fail('corpus_examples_missing');
+  for (const example of corpus.examples) validateBlindExampleArtifact(example);
+  assertUniqueExampleDimensions(corpus.examples as BlindExample[]);
+}
+
+export function validateGoldLabelSetArtifact(value: unknown): asserts value is GoldLabelSet {
+  const gold = exactObject(value, GOLD_LABEL_SET_KEYS, 'gold_field_forbidden');
+  if (gold.schemaVersion !== 'cm_gold_labels_v1') fail('gold_schema_version_invalid');
+  requireVersion(gold.corpusVersion, 'gold_corpus_version_invalid');
+  requireVersion(gold.goldLabelVersion, 'gold_label_version_invalid');
+  requireVersion(gold.curatorAccessVersion, 'gold_curator_access_version_invalid');
+  if (!Array.isArray(gold.labels) || gold.labels.length === 0) fail('gold_labels_missing');
+  for (const value of gold.labels) {
+    const label = exactObject(value, GOLD_LABEL_KEYS, 'gold_label_field_forbidden');
+    if (!OPAQUE_EXAMPLE_ID.test(String(label.opaqueExampleId ?? ''))) fail('gold_example_id_invalid');
+    if (typeof label.publicationEligible !== 'boolean') fail('gold_publication_eligibility_invalid');
+    if (typeof label.goldMateriality !== 'string'
+      || !GOLD_MATERIALITY_VALUES.has(label.goldMateriality)) fail('gold_materiality_invalid');
+    if (typeof label.goldDirection !== 'string'
+      || !GOLD_DIRECTION_VALUES.has(label.goldDirection)) fail('gold_direction_invalid');
+    if (!isEvidenceDigest(label.canonicalCorporateFamilyDigest)) fail('gold_corporate_family_digest_invalid');
+    if (label.customerUseful !== null && typeof label.customerUseful !== 'boolean') {
+      fail('gold_customer_usefulness_invalid');
+    }
+  }
+}
+
+export function validatePredictionSetArtifact(value: unknown): asserts value is PredictionSet {
+  const set = exactObject(value, PREDICTION_SET_KEYS, 'prediction_set_field_forbidden');
+  if (set.schemaVersion !== 'cm_predictions_v1') fail('prediction_schema_version_invalid');
+  requireVersion(set.corpusVersion, 'prediction_corpus_version_invalid');
+  requireVersion(set.protocolVersion, 'prediction_protocol_version_invalid');
+  requireVersion(set.policyVersion, 'prediction_policy_version_invalid');
+  requireVersion(set.modelVersion, 'prediction_model_version_invalid');
+  requireVersion(set.queryVersion, 'prediction_query_version_invalid');
+  if (!isEvidenceDigest(set.corpusSha256)) fail('prediction_corpus_digest_invalid');
+  nullableEvidenceDigest(set.parentPredictionSetSha256, 'parent_prediction_set_digest_invalid');
+  nullableEvidenceDigest(set.parentGoldLabelSetSha256, 'parent_gold_label_set_digest_invalid');
+  if (!Array.isArray(set.predictions) || set.predictions.length === 0) fail('predictions_missing');
+  for (const value of set.predictions) {
+    const prediction = exactObject(value, PREDICTION_KEYS, 'prediction_field_forbidden');
+    if (!OPAQUE_EXAMPLE_ID.test(String(prediction.opaqueExampleId ?? ''))) fail('prediction_example_id_invalid');
+    if (typeof prediction.discovered !== 'boolean' || typeof prediction.publish !== 'boolean') {
+      fail('prediction_boolean_invalid');
+    }
+    if (typeof prediction.predictedMateriality !== 'string'
+      || !GOLD_MATERIALITY_VALUES.has(prediction.predictedMateriality)) fail('predicted_materiality_invalid');
+    if (prediction.predictedDirection !== null
+      && (typeof prediction.predictedDirection !== 'string'
+        || !GOLD_DIRECTION_VALUES.has(prediction.predictedDirection))) {
+      fail('predicted_direction_invalid');
+    }
+    nullableEvidenceDigest(prediction.attributedCorporateFamilyDigest, 'prediction_attribution_digest_invalid');
+    rate(prediction.confidence, 'prediction_confidence_invalid');
+    finiteNonNegative(prediction.latencyMs, 'prediction_latency_invalid');
+    finiteNonNegative(prediction.costUsd, 'prediction_cost_invalid');
+  }
+}
+
+function validateDirectionRecord(
+  value: unknown,
+  code: string,
+  validate: (child: unknown) => number,
+): Record<Direction, number> {
+  const record = exactObject(value, DIRECTION_KEYS, code);
+  for (const direction of DIRECTIONS) validate(record[direction]);
+  return record as Record<Direction, number>;
+}
+
+export function validateBlindForecastArtifact(value: unknown): asserts value is BlindForecast {
+  const forecast = exactObject(value, FORECAST_KEYS, 'forecast_field_forbidden');
+  if (forecast.schemaVersion !== 'cm_blind_forecast_v1' || forecast.gating !== false) {
+    fail('forecast_schema_invalid');
+  }
+  if (forecast.status !== 'forecast_ok' && forecast.status !== 'forecast_warning') {
+    fail('forecast_status_invalid');
+  }
+  if (forecast.stage4Excluded !== true) fail('forecast_stage4_exclusion_invalid');
+  requireVersion(forecast.protocolVersion, 'forecast_protocol_version_invalid');
+  requireVersion(forecast.pilotCorpusVersion, 'forecast_pilot_corpus_version_invalid');
+  requireVersion(forecast.targetCorpusVersion, 'forecast_target_corpus_version_invalid');
+  for (const [field, code] of [
+    ['approvedThresholdsSha256', 'forecast_approved_threshold_digest_invalid'],
+    ['pilotCorpusSha256', 'forecast_pilot_corpus_digest_invalid'],
+    ['targetCandidateSha256', 'forecast_target_candidate_digest_invalid'],
+    ['targetGoldLabelSetSha256', 'forecast_target_gold_label_set_digest_invalid'],
+  ] as const) {
+    if (!isEvidenceDigest(forecast[field])) fail(code);
+  }
+
+  const forecastVersions = exactObject(
+    forecast.versions,
+    FORECAST_VERSIONS_KEYS,
+    'forecast_versions_field_forbidden',
+  );
+  for (const field of FORECAST_VERSIONS_KEYS) {
+    requireVersion(forecastVersions[field], `forecast_${field}_invalid`);
+  }
+
+  const candidate = exactObject(
+    forecast.candidateStrata,
+    CANDIDATE_STRATA_KEYS,
+    'forecast_candidate_strata_field_forbidden',
+  );
+  const total = nonNegativeInteger(candidate.total, 'forecast_candidate_total_invalid');
+  if (total === 0) fail('forecast_candidate_total_invalid');
+  const eligible = nonNegativeInteger(
+    candidate.publicationEligible,
+    'forecast_candidate_eligible_invalid',
+  );
+  if (eligible > total) fail('forecast_candidate_eligible_invalid');
+  const eligibleRate = rate(candidate.publicationEligibleRate, 'forecast_candidate_rate_invalid');
+  if (eligibleRate !== eligible / total) fail('forecast_candidate_rate_invalid');
+  const directions = validateDirectionRecord(
+    candidate.eligibleDirections,
+    'forecast_candidate_directions_invalid',
+    (child) => nonNegativeInteger(child, 'forecast_candidate_direction_count_invalid'),
+  );
+  if (DIRECTIONS.reduce((sum, direction) => sum + directions[direction], 0) !== eligible) {
+    fail('forecast_candidate_directions_invalid');
+  }
+
+  const pilotRates = exactObject(
+    forecast.pilotRealizedRates,
+    PILOT_REALIZED_RATES_KEYS,
+    'forecast_pilot_rates_field_forbidden',
+  );
+  rate(pilotRates.publishedDecisionRate, 'forecast_pilot_rate_invalid');
+  rate(pilotRates.correctlyAttributedMaterialRateOverall, 'forecast_pilot_rate_invalid');
+  validateDirectionRecord(
+    pilotRates.correctlyAttributedMaterialRateByDirection,
+    'forecast_pilot_direction_rates_invalid',
+    (child) => rate(child, 'forecast_pilot_rate_invalid'),
+  );
+
+  const denominatorForecasts = exactObject(
+    forecast.denominatorForecasts,
+    STAGE3_METRIC_KEYS,
+    'forecast_denominator_metrics_invalid',
+  );
+  const expectedGaps: Array<{ metricId: Stage3MetricId; missing: number }> = [];
+  for (const metricId of STAGE3_METRIC_IDS) {
+    const denominator = exactObject(
+      denominatorForecasts[metricId],
+      DENOMINATOR_FORECAST_KEYS,
+      'forecast_denominator_field_forbidden',
+    );
+    const minimum = nonNegativeInteger(denominator.minimum, 'forecast_denominator_minimum_invalid');
+    const estimated = finiteNonNegative(denominator.estimated, 'forecast_denominator_estimate_invalid');
+    const gap = finiteNonNegative(denominator.gap, 'forecast_denominator_gap_invalid');
+    if (gap !== Math.max(0, minimum - estimated)) fail('forecast_denominator_gap_invalid');
+    if (gap > 0) expectedGaps.push({ metricId, missing: gap });
+  }
+
+  if (!Array.isArray(forecast.gaps)) fail('forecast_gaps_invalid');
+  const gaps = forecast.gaps.map((value) => {
+    const gap = exactObject(value, FORECAST_GAP_KEYS, 'forecast_gap_field_forbidden');
+    if (!STAGE3_METRIC_KEYS.has(String(gap.metricId))) fail('forecast_gap_metric_invalid');
+    const missing = finiteNonNegative(gap.missing, 'forecast_gap_missing_invalid');
+    if (missing <= 0) fail('forecast_gap_missing_invalid');
+    return { metricId: gap.metricId as Stage3MetricId, missing };
+  });
+  if (canonicalJson(gaps) !== canonicalJson(expectedGaps)) fail('forecast_gaps_inconsistent');
+  if ((gaps.length === 0) !== (forecast.status === 'forecast_ok')) {
+    fail('forecast_status_inconsistent');
+  }
+
+  const growth = exactObject(
+    forecast.recommendedUntouchedGrowth,
+    RECOMMENDED_GROWTH_KEYS,
+    'forecast_growth_field_forbidden',
+  );
+  if (growth.totalExamples !== null) {
+    nonNegativeInteger(growth.totalExamples, 'forecast_total_growth_invalid');
+  }
+  const eligibleGrowth = exactObject(
+    growth.eligibleByDirection,
+    DIRECTION_KEYS,
+    'forecast_growth_directions_invalid',
+  );
+  for (const direction of DIRECTIONS) {
+    if (eligibleGrowth[direction] !== null) {
+      nonNegativeInteger(eligibleGrowth[direction], 'forecast_direction_growth_invalid');
+    }
+  }
+  if (canonicalJson(forecast).includes(OPAQUE_EXAMPLE_ID_PREFIX)) {
+    fail('forecast_contains_example_id');
+  }
 }
 
 function normalizedGoldLabelSet(gold: GoldLabelSet): GoldLabelSet {
@@ -444,25 +799,11 @@ function stage4MinimumExamples(stage4: JsonObject): number {
   return asNumber(stage4.minimumDenominator, 'confidence_calibration_stage4.minimumDenominator');
 }
 
-function validateBlindExample(example: BlindExample): void {
-  if (!OPAQUE_EXAMPLE_ID.test(example.opaqueExampleId)) fail('example_id_invalid');
-  for (const [field, digest] of [
-    ['occurrence', example.occurrenceDigest],
-    ['content_fingerprint', example.contentFingerprint],
-    ['corporate_family', example.corporateFamilyDigest],
-    ['source_origin', example.sourceOriginDigest],
-  ] as const) {
-    if (!isEvidenceDigest(digest)) fail(`example_${field}_digest_invalid`);
-  }
-}
-
 function assertUniqueExampleDimensions(examples: BlindExample[]): void {
   const dimensions = [
     'opaqueExampleId',
     'occurrenceDigest',
     'contentFingerprint',
-    'corporateFamilyDigest',
-    'sourceOriginDigest',
   ] as const;
   for (const dimension of dimensions) {
     const seen = new Set<string>();
@@ -474,46 +815,13 @@ function assertUniqueExampleDimensions(examples: BlindExample[]): void {
 }
 
 function validateCorpusShape(corpus: BlindCorpus, protocolVersion: string): void {
-  if (corpus.schemaVersion !== 'cm_blind_corpus_v1') fail('corpus_schema_version_invalid');
-  requireVersion(corpus.corpusVersion, 'corpus_version_invalid');
-  requireVersion(corpus.protocolVersion, 'corpus_protocol_version_invalid');
-  requireVersion(corpus.policyVersion, 'corpus_policy_version_invalid');
-  requireVersion(corpus.modelVersion, 'corpus_model_version_invalid');
-  requireVersion(corpus.queryVersion, 'corpus_query_version_invalid');
-  requireVersion(corpus.curatorAccessVersion, 'curator_access_version_invalid');
+  validateBlindCorpusArtifact(corpus);
   if (corpus.protocolVersion !== protocolVersion) fail('corpus_protocol_version_mismatch');
-  if ((corpus.purpose as string) === 'stage4_gate') fail('stage4_out_of_scope');
-  if (!['pilot', 'tracer_gate', 'stage3_gate'].includes(corpus.purpose)) fail('corpus_purpose_invalid');
-  if (!Array.isArray(corpus.examples) || corpus.examples.length === 0) fail('corpus_examples_missing');
-  for (const example of corpus.examples) validateBlindExample(example);
-  assertUniqueExampleDimensions(corpus.examples);
   if (corpus.purpose === 'tracer_gate' && corpus.examples.length < 100) {
     fail('tracer_corpus_below_100');
   }
   if (corpus.purpose === 'stage3_gate' && corpus.examples.length < 200) {
     fail('stage3_corpus_below_200');
-  }
-  if (corpus.status === 'locked') {
-    if (parseRfc3339Timestamp(corpus.lockedAt) === null) fail('corpus_lock_timestamp_invalid');
-  } else if (corpus.status === 'draft') {
-    if (corpus.lockedAt !== null) fail('draft_corpus_has_lock_timestamp');
-  } else {
-    fail('corpus_status_invalid');
-  }
-  if (corpus.sealedGoldLabelsSha256 !== null && !isEvidenceDigest(corpus.sealedGoldLabelsSha256)) {
-    fail('sealed_gold_digest_invalid');
-  }
-  if (corpus.forecastSha256 !== null && !isEvidenceDigest(corpus.forecastSha256)) {
-    fail('forecast_digest_invalid');
-  }
-  if (corpus.precommittedExpansion !== null) {
-    if (!isEvidenceDigest(corpus.precommittedExpansion.manifestSha256)) {
-      fail('precommitted_expansion_digest_invalid');
-    }
-    if (!Number.isInteger(corpus.precommittedExpansion.exampleCount)
-      || corpus.precommittedExpansion.exampleCount <= 0) {
-      fail('precommitted_expansion_count_invalid');
-    }
   }
 }
 
@@ -527,10 +835,23 @@ function validateLockedCorpus(corpus: BlindCorpus, protocolVersion: string, expe
   if (corpus.sealedGoldLabelsSha256 === null) fail('locked_corpus_gold_digest_missing');
 }
 
+function validateLockedPilotCorpus(
+  corpus: BlindCorpus,
+  protocolVersion: string,
+  expectedDigest: string,
+): void {
+  validateCorpusShape(corpus, protocolVersion);
+  if (corpus.purpose !== 'pilot' || corpus.status !== 'locked') {
+    fail('forecast_pilot_not_version_locked');
+  }
+  if (!isEvidenceDigest(expectedDigest)) fail('expected_pilot_corpus_digest_invalid');
+  if (computeBlindCorpusDigest(corpus) !== expectedDigest) fail('pilot_corpus_mutated_after_lock');
+  if (corpus.sealedGoldLabelsSha256 === null) fail('locked_pilot_gold_digest_missing');
+}
+
 function validateGoldLabels(corpus: BlindCorpus, gold: GoldLabelSet): Map<string, GoldLabel> {
-  if (gold.schemaVersion !== 'cm_gold_labels_v1') fail('gold_schema_version_invalid');
+  validateGoldLabelSetArtifact(gold);
   if (gold.corpusVersion !== corpus.corpusVersion) fail('gold_corpus_version_mismatch');
-  requireVersion(gold.goldLabelVersion, 'gold_label_version_invalid');
   if (gold.curatorAccessVersion !== corpus.curatorAccessVersion) fail('curator_access_version_mismatch');
   if (computeGoldLabelSetDigest(gold) !== corpus.sealedGoldLabelsSha256) fail('sealed_gold_digest_mismatch');
   if (gold.labels.length !== corpus.examples.length) fail('gold_label_count_mismatch');
@@ -539,12 +860,6 @@ function validateGoldLabels(corpus: BlindCorpus, gold: GoldLabelSet): Map<string
   for (const label of gold.labels) {
     const example = examplesById.get(label.opaqueExampleId);
     if (!example || labelsById.has(label.opaqueExampleId)) fail('gold_label_membership_mismatch');
-    if (typeof label.publicationEligible !== 'boolean') fail('gold_publication_eligibility_invalid');
-    if (!MATERIALITIES.includes(label.goldMateriality)) fail('gold_materiality_invalid');
-    if (!DIRECTIONS.includes(label.goldDirection)) fail('gold_direction_invalid');
-    if (label.customerUseful !== null && typeof label.customerUseful !== 'boolean') {
-      fail('gold_customer_usefulness_invalid');
-    }
     if (label.canonicalCorporateFamilyDigest !== example.corporateFamilyDigest) {
       fail('gold_corporate_family_mismatch');
     }
@@ -554,7 +869,7 @@ function validateGoldLabels(corpus: BlindCorpus, gold: GoldLabelSet): Map<string
 }
 
 function validatePredictionSet(corpus: BlindCorpus, predictions: PredictionSet): Map<string, Prediction> {
-  if (predictions.schemaVersion !== 'cm_predictions_v1') fail('prediction_schema_version_invalid');
+  validatePredictionSetArtifact(predictions);
   if (predictions.corpusVersion !== corpus.corpusVersion) fail('prediction_corpus_version_mismatch');
   for (const [field, code] of EVALUATION_VERSION_FIELDS) {
     if (predictions[field] !== corpus[field]) fail(`prediction_${code}_mismatch`);
@@ -567,31 +882,12 @@ function validatePredictionSet(corpus: BlindCorpus, predictions: PredictionSet):
     if (!exampleIds.has(prediction.opaqueExampleId) || byId.has(prediction.opaqueExampleId)) {
       fail('prediction_membership_mismatch');
     }
-    if (typeof prediction.discovered !== 'boolean' || typeof prediction.publish !== 'boolean') {
-      fail('prediction_boolean_invalid');
-    }
     if (!prediction.discovered && prediction.publish) fail('undiscovered_prediction_published');
-    if (!MATERIALITIES.includes(prediction.predictedMateriality)) fail('predicted_materiality_invalid');
-    if (prediction.predictedDirection !== null && !DIRECTIONS.includes(prediction.predictedDirection)) {
-      fail('predicted_direction_invalid');
-    }
     if (prediction.publish
       && (prediction.predictedDirection === null
         || !isEvidenceDigest(prediction.attributedCorporateFamilyDigest))) {
       fail('published_prediction_incomplete');
     }
-    if (prediction.attributedCorporateFamilyDigest !== null
-      && !isEvidenceDigest(prediction.attributedCorporateFamilyDigest)) {
-      fail('prediction_attribution_digest_invalid');
-    }
-    if (typeof prediction.confidence !== 'number'
-      || !Number.isFinite(prediction.confidence)
-      || prediction.confidence < 0
-      || prediction.confidence > 1) {
-      fail('prediction_confidence_invalid');
-    }
-    finiteNonNegative(prediction.latencyMs, 'prediction_latency_invalid');
-    finiteNonNegative(prediction.costUsd, 'prediction_cost_invalid');
     byId.set(prediction.opaqueExampleId, prediction);
   }
   return byId;
@@ -624,18 +920,21 @@ export function forecastBlindEvaluation(input: {
   protocol: JsonObject;
   anchors: { approvedThresholdDigest: string };
   pilotCorpus: BlindCorpus;
+  expectedPilotCorpusSha256: string;
   pilotGoldLabels: GoldLabelSet;
   pilotPredictions: PredictionSet;
   targetCorpus: BlindCorpus;
   targetGoldLabels: GoldLabelSet;
+  targetExpansion?: BlindExample[];
 }): BlindForecast {
   const admission = validateApprovedProtocol(input.protocol, input.anchors.approvedThresholdDigest);
   const definitions = metricDefinitions(admission);
-  validateCorpusShape(input.pilotCorpus, String(input.protocol.protocolVersion));
+  validateLockedPilotCorpus(
+    input.pilotCorpus,
+    String(input.protocol.protocolVersion),
+    input.expectedPilotCorpusSha256,
+  );
   validateCorpusShape(input.targetCorpus, String(input.protocol.protocolVersion));
-  if (input.pilotCorpus.purpose !== 'pilot' || input.pilotCorpus.status !== 'locked') {
-    fail('forecast_pilot_not_version_locked');
-  }
   if (input.targetCorpus.purpose === 'pilot') fail('forecast_target_must_be_gate');
   if (input.targetCorpus.status !== 'draft') fail('forecast_must_precede_target_freeze');
   assertVersionsMatch(input.pilotCorpus, input.targetCorpus, 'pilot_target');
@@ -646,6 +945,25 @@ export function forecastBlindEvaluation(input: {
   const pilotPredictions = validatePredictionSet(input.pilotCorpus, input.pilotPredictions);
   const targetLabels = validateGoldLabels(input.targetCorpus, input.targetGoldLabels);
 
+  const precommit = input.targetCorpus.precommittedExpansion;
+  if (precommit === null) {
+    if (input.targetExpansion !== undefined) fail('forecast_expansion_not_precommitted');
+  } else {
+    if (input.targetExpansion === undefined) fail('forecast_expansion_rows_missing');
+    validateExpansionManifestArtifact(input.targetExpansion);
+    if (input.targetExpansion.length !== precommit.exampleCount) {
+      fail('forecast_expansion_count_mismatch');
+    }
+    if (computeExpansionManifestDigest(input.targetExpansion) !== precommit.manifestSha256) {
+      fail('forecast_expansion_manifest_mismatch');
+    }
+    assertUniqueExampleDimensions([...input.targetCorpus.examples, ...input.targetExpansion]);
+  }
+  const targetAndExpansion = [
+    ...input.targetCorpus.examples,
+    ...(input.targetExpansion ?? []),
+  ];
+
   const overlapFields = [
     'occurrenceDigest',
     'contentFingerprint',
@@ -654,7 +972,7 @@ export function forecastBlindEvaluation(input: {
   ] as const;
   for (const field of overlapFields) {
     const pilotValues = new Set(input.pilotCorpus.examples.map((example) => example[field]));
-    if (input.targetCorpus.examples.some((example) => pilotValues.has(example[field]))) {
+    if (targetAndExpansion.some((example) => pilotValues.has(example[field]))) {
       fail(`pilot_gate_overlap_${field}`);
     }
   }
@@ -666,21 +984,16 @@ export function forecastBlindEvaluation(input: {
   // over-projects by 1/P(material|eligible) and can report forecast_ok for a short corpus.
   const targetDirectionCounts: Record<Direction, number> = { positive: 0, negative: 0, mixed: 0 };
   const targetMaterialDirectionCounts: Record<Direction, number> = { positive: 0, negative: 0, mixed: 0 };
-  let targetEligible = 0;
-  let targetMaterialEligible = 0;
   for (const label of targetLabels.values()) {
     if (label.publicationEligible) {
-      targetEligible += 1;
       targetDirectionCounts[label.goldDirection] += 1;
       if (label.goldMateriality === 'material') {
-        targetMaterialEligible += 1;
         targetMaterialDirectionCounts[label.goldDirection] += 1;
       }
     }
   }
 
   let published = 0;
-  let correctlyAttributedMaterial = 0;
   const pilotDirectionEligible: Record<Direction, number> = { positive: 0, negative: 0, mixed: 0 };
   const pilotDirectionCorrect: Record<Direction, number> = { positive: 0, negative: 0, mixed: 0 };
   for (const [exampleId, label] of pilotLabels) {
@@ -690,11 +1003,15 @@ export function forecastBlindEvaluation(input: {
       pilotDirectionEligible[label.goldDirection] += 1;
       if (prediction.publish
         && prediction.attributedCorporateFamilyDigest === label.canonicalCorporateFamilyDigest) {
-        correctlyAttributedMaterial += 1;
         pilotDirectionCorrect[label.goldDirection] += 1;
       }
     }
   }
+  const targetEligible = DIRECTIONS.reduce((sum, direction) => sum + targetDirectionCounts[direction], 0);
+  const correctlyAttributedMaterial = DIRECTIONS.reduce(
+    (sum, direction) => sum + pilotDirectionCorrect[direction],
+    0,
+  );
   const publishedRate = published / input.pilotCorpus.examples.length;
   const correctlyAttributedRate = correctlyAttributedMaterial / input.pilotCorpus.examples.length;
   const directionRates = Object.fromEntries(DIRECTIONS.map((direction) => [
@@ -747,28 +1064,22 @@ export function forecastBlindEvaluation(input: {
     ceilGrowth(denominatorForecasts.published_material_impact_precision.gap, publishedRate),
     ceilGrowth(denominatorForecasts.published_company_attribution_precision.gap, publishedRate),
   ]);
+  const targetWeightedOverallRate = expectedDirectionOverall / input.targetCorpus.examples.length;
   const overallGrowth = ceilGrowth(
     denominatorForecasts.direction_accuracy_overall.gap,
-    correctlyAttributedRate,
+    targetWeightedOverallRate,
   );
-  const eligibleGrowthValues = Object.values(eligibleGrowth);
-  // eligibleGrowth is denominated in ELIGIBLE-AND-MATERIAL rows (directionRates divides by
-  // pilotDirectionEligible), while publishedGrowth/overallGrowth are denominated in TOTAL
-  // examples (publishedRate/correctlyAttributedRate divide by the whole pilot corpus). Convert
-  // before taking the max, or totalExamples under-states growth by 1/materialEligibleRate
-  // whenever a direction stratum dominates. Assumption, matching the one expectedPublished
-  // already makes: untouched growth arrives at the candidate's own eligible-and-material rate.
-  const materialEligibleRate = targetMaterialEligible / input.targetCorpus.examples.length;
-  const eligibleRowGrowth = eligibleGrowthValues.some((value) => value === null)
-    ? null
-    : (eligibleGrowthValues as number[]).reduce((sum, value) => sum + value, 0);
-  const directionGrowth = eligibleRowGrowth === null
-    ? null
-    : eligibleRowGrowth === 0
-      ? 0
-      : materialEligibleRate <= 0
-        ? null
-        : Math.ceil(eligibleRowGrowth / materialEligibleRate);
+  // Each direction gap is a required count of successful arrivals. Convert it through that
+  // direction's candidate-specific arrival rate; summing eligible-row gaps and dividing through
+  // one overall rate hides sparse strata. The overall metric uses the candidate-weighted mixture.
+  const directionGrowth = Object.fromEntries(DIRECTIONS.map((direction) => [
+    direction,
+    ceilGrowth(
+      denominatorForecasts[`direction_accuracy_${direction}`].gap,
+      targetMaterialDirectionCounts[direction]
+        / input.targetCorpus.examples.length * directionRates[direction],
+    ),
+  ])) as Record<Direction, number | null>;
 
   return {
     schemaVersion: 'cm_blind_forecast_v1',
@@ -777,7 +1088,7 @@ export function forecastBlindEvaluation(input: {
     protocolVersion: String(input.protocol.protocolVersion),
     approvedThresholdsSha256: input.anchors.approvedThresholdDigest,
     pilotCorpusVersion: input.pilotCorpus.corpusVersion,
-    pilotCorpusSha256: computeBlindCorpusDigest(input.pilotCorpus),
+    pilotCorpusSha256: input.expectedPilotCorpusSha256,
     targetCorpusVersion: input.targetCorpus.corpusVersion,
     targetCandidateSha256: computeBlindCorpusCandidateDigest(input.targetCorpus),
     targetGoldLabelSetSha256: computeGoldLabelSetDigest(input.targetGoldLabels),
@@ -803,7 +1114,11 @@ export function forecastBlindEvaluation(input: {
     denominatorForecasts,
     gaps,
     recommendedUntouchedGrowth: {
-      totalExamples: maximumFiniteGrowth([publishedGrowth, overallGrowth, directionGrowth]),
+      totalExamples: maximumFiniteGrowth([
+        publishedGrowth,
+        overallGrowth,
+        ...Object.values(directionGrowth),
+      ]),
       eligibleByDirection: eligibleGrowth,
     },
     stage4Excluded: true,
@@ -821,27 +1136,7 @@ function validateForecast(input: {
   };
 }): void {
   const { corpus, forecast, approvedThresholdDigest } = input;
-  if (forecast.schemaVersion !== 'cm_blind_forecast_v1' || forecast.gating !== false) {
-    fail('forecast_schema_invalid');
-  }
-  // The forecast is embedded verbatim in the durable report, so its shape is part of what
-  // gets recorded. Gate it the way the sibling module gates every pinned container, and
-  // enforce the fields whose literal types would otherwise be erased at runtime.
-  if (!hasExactKeys(forecast as unknown as JsonObject, FORECAST_KEYS)) {
-    fail('forecast_field_forbidden');
-  }
-  if (!hasExactKeys(forecast.versions as unknown as JsonObject, FORECAST_VERSIONS_KEYS)) {
-    fail('forecast_versions_field_forbidden');
-  }
-  if (forecast.status !== 'forecast_ok' && forecast.status !== 'forecast_warning') {
-    fail('forecast_status_invalid');
-  }
-  if (forecast.stage4Excluded !== true) fail('forecast_stage4_exclusion_invalid');
-  // Aggregate-only: no per-example identity may ride into the report through this blob.
-  // OPAQUE_EXAMPLE_ID is anchored, so match on the id prefix across the serialized blob.
-  if (canonicalJson(forecast).includes(OPAQUE_EXAMPLE_ID_PREFIX)) {
-    fail('forecast_contains_example_id');
-  }
+  validateBlindForecastArtifact(forecast);
   if (forecast.approvedThresholdsSha256 !== approvedThresholdDigest) fail('forecast_protocol_digest_mismatch');
   if (forecast.protocolVersion !== corpus.protocolVersion) fail('forecast_protocol_version_mismatch');
   for (const [field, code] of [
@@ -888,15 +1183,13 @@ function validateContinuation(input: {
   predictions: PredictionSet;
   previous: {
     corpus: BlindCorpus;
+    expectedCorpusSha256: string;
     goldLabels: GoldLabelSet;
     predictions: PredictionSet;
     report: ScoreReport;
   };
-}): void {
+}): { labels: Map<string, GoldLabel>; predictions: Map<string, Prediction> } {
   const { corpus, goldLabels, predictions, previous } = input;
-  const samePolicy = EVALUATION_VERSION_FIELDS
-    .every(([field]) => corpus[field] === previous.corpus[field]);
-  if (!samePolicy) fail('continuation_version_mismatch');
   // The curator-access contract is as much a frozen version as policy/model/query: a
   // continuation that changes who may see what is not the same evaluation.
   if (corpus.curatorAccessVersion !== previous.corpus.curatorAccessVersion) {
@@ -911,9 +1204,8 @@ function validateContinuation(input: {
   if (previous.report.outcome !== 'incomplete') fail('continuation_requires_incomplete_parent');
   if (corpus.continuation === null) fail('fresh_corpus_retry_forbidden');
   const reference = corpus.continuation;
-  if (reference.reason !== 'denominator_shortfall'
-    || reference.parentCorpusVersion !== previous.corpus.corpusVersion
-    || reference.parentCorpusSha256 !== computeBlindCorpusDigest(previous.corpus)
+  if (reference.parentCorpusVersion !== previous.corpus.corpusVersion
+    || reference.parentCorpusSha256 !== previous.expectedCorpusSha256
     || reference.parentReportSha256 !== previous.report.reportSha256) {
     fail('continuation_parent_mismatch');
   }
@@ -942,14 +1234,15 @@ function validateContinuation(input: {
   if (previousGoldDigest !== previous.report.goldLabelSetSha256) {
     fail('previous_gold_label_set_digest_mismatch');
   }
-  validatePredictionSet(previous.corpus, previous.predictions);
-  validateGoldLabels(previous.corpus, previous.goldLabels);
+  const previousPredictions = validatePredictionSet(previous.corpus, previous.predictions);
+  const previousLabels = validateGoldLabels(previous.corpus, previous.goldLabels);
   if (predictions.parentPredictionSetSha256 !== previousPredictionDigest
     || predictions.parentGoldLabelSetSha256 !== previousGoldDigest) {
     fail('continuation_parent_score_set_mismatch');
   }
   assertPreservedRows(previous.predictions.predictions, predictions.predictions, 'continuation_changed_scored_prediction');
   assertPreservedRows(previous.goldLabels.labels, goldLabels.labels, 'continuation_changed_scored_gold_label');
+  return { labels: previousLabels, predictions: previousPredictions };
 }
 
 function percentileNearestRank(sorted: number[], percentile: number): number {
@@ -1048,7 +1341,6 @@ function computeScoredAggregates(
   const calibrationExamples: CalibrationExample[] = [];
   let published = 0;
   let publishedMaterial = 0;
-  let publishedAttributionCorrect = 0;
   let discoveryDenominator = 0;
   let discoveredEligible = 0;
   let usefulnessDenominator = 0;
@@ -1064,14 +1356,13 @@ function computeScoredAggregates(
       discoveryDenominator += 1;
       if (prediction.discovered) discoveredEligible += 1;
     }
+    const attributionCorrect = prediction.attributedCorporateFamilyDigest
+      === label.canonicalCorporateFamilyDigest;
     if (prediction.publish) {
       published += 1;
       if (label.goldMateriality === 'material') publishedMaterial += 1;
-      const attributionCorrect = prediction.attributedCorporateFamilyDigest
-        === label.canonicalCorporateFamilyDigest;
       if (attributionCorrect) {
         attribution.correct += 1;
-        publishedAttributionCorrect += 1;
       } else {
         attribution.incorrect += 1;
       }
@@ -1079,7 +1370,9 @@ function computeScoredAggregates(
         usefulnessDenominator += 1;
         if (label.customerUseful) usefulnessNumerator += 1;
       }
-      if (label.goldMateriality === 'material' && attributionCorrect) {
+      if (label.publicationEligible
+        && label.goldMateriality === 'material'
+        && attributionCorrect) {
         directionDenominators[label.goldDirection] += 1;
         if (prediction.predictedDirection === label.goldDirection) {
           directionCorrect[label.goldDirection] += 1;
@@ -1093,8 +1386,6 @@ function computeScoredAggregates(
     materiality[label.goldMateriality][prediction.predictedMateriality] += 1;
     direction[label.goldDirection][prediction.predictedDirection ?? 'none'] += 1;
 
-    const attributionCorrect = prediction.attributedCorporateFamilyDigest
-      === label.canonicalCorporateFamilyDigest;
     const publishCorrect = prediction.publish === label.publicationEligible;
     const detailCorrect = !prediction.publish || (
       prediction.predictedMateriality === label.goldMateriality
@@ -1133,7 +1424,7 @@ function computeScoredAggregates(
     ),
     published_company_attribution_precision: buildRateMetric(
       admission, definitions.stage3.published_company_attribution_precision,
-      published, publishedAttributionCorrect,
+      published, attribution.correct,
     ),
     direction_accuracy_overall: buildRateMetric(
       admission, definitions.stage3.direction_accuracy_overall,
@@ -1208,6 +1499,7 @@ export function scoreBlindEvaluation(input: {
   forecast: BlindForecast;
   previous?: {
     corpus: BlindCorpus;
+    expectedCorpusSha256: string;
     goldLabels: GoldLabelSet;
     predictions: PredictionSet;
     report: ScoreReport;
@@ -1221,6 +1513,20 @@ export function scoreBlindEvaluation(input: {
     fail('continuation_parent_inputs_missing');
   }
   if (input.previous) {
+    if (!EVALUATION_VERSION_FIELDS.every(([field]) =>
+      input.corpus[field] === input.previous!.corpus[field])) {
+      fail('continuation_version_mismatch');
+    }
+    validateLockedCorpus(
+      input.previous.corpus,
+      protocolVersion,
+      input.previous.expectedCorpusSha256,
+    );
+    if (input.corpus.continuation !== null) {
+      const previousLockedAt = parseRfc3339Timestamp(input.previous.corpus.lockedAt)!;
+      const childLockedAt = parseRfc3339Timestamp(input.corpus.lockedAt)!;
+      if (previousLockedAt >= childLockedAt) fail('continuation_parent_lock_not_before_child');
+    }
     if (input.previous.report.schemaVersion !== 'cm_blind_score_report_v1') {
       fail('previous_report_schema_version_invalid');
     }
@@ -1230,10 +1536,10 @@ export function scoreBlindEvaluation(input: {
       fail('previous_report_digest_invalid');
     }
     if (input.previous.report.corpus.version !== input.previous.corpus.corpusVersion
-      || input.previous.report.corpus.sha256 !== computeBlindCorpusDigest(input.previous.corpus)) {
+      || input.previous.report.corpus.sha256 !== input.previous.expectedCorpusSha256) {
       fail('previous_report_corpus_mismatch');
     }
-    validateContinuation({
+    const previousSets = validateContinuation({
       corpus: input.corpus,
       goldLabels: input.goldLabels,
       predictions: input.predictions,
@@ -1260,8 +1566,8 @@ export function scoreBlindEvaluation(input: {
       admission,
       definitions,
       input.previous.corpus,
-      validateGoldLabels(input.previous.corpus, input.previous.goldLabels),
-      validatePredictionSet(input.previous.corpus, input.previous.predictions),
+      previousSets.labels,
+      previousSets.predictions,
     );
     if (parentScored.outcome !== input.previous.report.outcome) {
       fail('previous_report_outcome_not_reproducible');
@@ -1269,7 +1575,6 @@ export function scoreBlindEvaluation(input: {
     if (canonicalJson(parentScored.reasons) !== canonicalJson(input.previous.report.reasons)) {
       fail('previous_report_reasons_not_reproducible');
     }
-    if (parentScored.outcome !== 'incomplete') fail('continuation_requires_incomplete_parent');
   }
   const labels = validateGoldLabels(input.corpus, input.goldLabels);
   const predictions = validatePredictionSet(input.corpus, input.predictions);

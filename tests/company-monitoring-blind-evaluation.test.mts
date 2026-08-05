@@ -158,7 +158,11 @@ function setSealedGold(corpus: BlindCorpus, gold: GoldLabelSet): BlindCorpus {
   return { ...corpus, sealedGoldLabelsSha256: computeGoldLabelSetDigest(gold) };
 }
 
-function makeForecast(targetDraft: BlindCorpus, targetGold: GoldLabelSet): BlindForecast {
+function makeForecast(
+  targetDraft: BlindCorpus,
+  targetGold: GoldLabelSet,
+  targetExpansion?: BlindExample[],
+): BlindForecast {
   let pilot = baseCorpus('pilot', 'pilot', 200, 'locked', 10_000);
   const pilotGold = labelsFor(pilot, 120);
   pilot = setSealedGold(pilot, pilotGold);
@@ -167,10 +171,12 @@ function makeForecast(targetDraft: BlindCorpus, targetGold: GoldLabelSet): Blind
     protocol,
     anchors,
     pilotCorpus: pilot,
+    expectedPilotCorpusSha256: computeBlindCorpusDigest(pilot),
     pilotGoldLabels: pilotGold,
     pilotPredictions,
     targetCorpus: targetDraft,
     targetGoldLabels: targetGold,
+    targetExpansion,
   });
 }
 
@@ -202,22 +208,22 @@ function lockedBundle(options: {
       },
     };
   }
-  let gold = labelsFor(draft, eligibleCount, options.materialCount ?? eligibleCount);
+  const gold = labelsFor(draft, eligibleCount, options.materialCount ?? eligibleCount);
   draft = setSealedGold(draft, gold);
-  const forecast = makeForecast(draft, gold);
+  const forecast = makeForecast(draft, gold, options.precommittedExpansion);
   const corpus: BlindCorpus = {
     ...draft,
     status: 'locked',
     lockedAt: '2026-08-05T02:00:00.000Z',
     forecastSha256: computeForecastDigest(forecast),
   };
-  gold = { ...gold, corpusVersion: corpus.corpusVersion };
   const predictions = predictionsFor(corpus, gold, options);
   return { corpus, gold, predictions, forecast };
 }
 
 function score(bundle: ReturnType<typeof lockedBundle>, previous?: {
   corpus: BlindCorpus;
+  expectedCorpusSha256: string;
   goldLabels: GoldLabelSet;
   predictions: PredictionSet;
   report: ScoreReport;
@@ -244,6 +250,7 @@ function continuationScenario(options: {
   childBundle: ReturnType<typeof lockedBundle>;
   previous: {
     corpus: BlindCorpus;
+    expectedCorpusSha256: string;
     goldLabels: GoldLabelSet;
     predictions: PredictionSet;
     report: ScoreReport;
@@ -299,11 +306,31 @@ function continuationScenario(options: {
     childBundle,
     previous: {
       corpus: previousBundle.corpus,
+      expectedCorpusSha256: computeBlindCorpusDigest(previousBundle.corpus),
       goldLabels: previousBundle.gold,
       predictions: previousBundle.predictions,
       report: previousReport,
     },
   };
+}
+
+function rebindContinuationParent(
+  scenario: ReturnType<typeof continuationScenario>,
+  mutate: (corpus: BlindCorpus) => void,
+): { childBundle: ReturnType<typeof lockedBundle>; previous: typeof scenario.previous } {
+  const childBundle = structuredClone(scenario.childBundle);
+  const previous = structuredClone(scenario.previous);
+  mutate(previous.corpus);
+  previous.expectedCorpusSha256 = computeBlindCorpusDigest(previous.corpus);
+  previous.predictions.corpusSha256 = previous.expectedCorpusSha256;
+  previous.report.corpus.sha256 = previous.expectedCorpusSha256;
+  previous.report.predictionSetSha256 = computePredictionSetDigest(previous.predictions);
+  previous.report.reportSha256 = computeScoreReportDigest(previous.report);
+  childBundle.corpus.continuation!.parentCorpusSha256 = previous.expectedCorpusSha256;
+  childBundle.corpus.continuation!.parentReportSha256 = previous.report.reportSha256;
+  childBundle.predictions.parentPredictionSetSha256 = previous.report.predictionSetSha256;
+  childBundle.predictions.corpusSha256 = computeBlindCorpusDigest(childBundle.corpus);
+  return { childBundle, previous };
 }
 
 describe('Company Monitoring blind evaluation forecast', () => {
@@ -358,6 +385,7 @@ describe('Company Monitoring blind evaluation forecast', () => {
         protocol,
         anchors,
         pilotCorpus: pilot,
+        expectedPilotCorpusSha256: computeBlindCorpusDigest(pilot),
         pilotGoldLabels: pilotGold,
         pilotPredictions,
         targetCorpus: overlapping,
@@ -369,6 +397,7 @@ describe('Company Monitoring blind evaluation forecast', () => {
       protocol,
       anchors,
       pilotCorpus: pilot,
+      expectedPilotCorpusSha256: computeBlindCorpusDigest(pilot),
       pilotGoldLabels: pilotGold,
       pilotPredictions: predictionsFor(target, targetGold),
       targetCorpus: target,
@@ -388,6 +417,7 @@ describe('Company Monitoring blind evaluation forecast', () => {
       protocol,
       anchors,
       pilotCorpus: pilot,
+      expectedPilotCorpusSha256: computeBlindCorpusDigest(pilot),
       pilotGoldLabels: pilotGold,
       pilotPredictions,
       targetCorpus: target,
@@ -440,6 +470,7 @@ describe('Company Monitoring blind evaluation forecast', () => {
       protocol,
       anchors,
       pilotCorpus: pilot,
+      expectedPilotCorpusSha256: computeBlindCorpusDigest(pilot),
       pilotGoldLabels: pilotGold,
       pilotPredictions: predictionsFor(pilot, pilotGold),
       targetCorpus: target,
@@ -452,6 +483,145 @@ describe('Company Monitoring blind evaluation forecast', () => {
       negative: null,
       mixed: null,
     });
+  });
+
+  it('holds the pilot corpus digest independently of resealed pilot artifacts', () => {
+    let pilot = baseCorpus('anchored-pilot', 'pilot', 200, 'locked', 100_000);
+    const pilotGold = labelsFor(pilot, 120);
+    pilot = setSealedGold(pilot, pilotGold);
+    const expectedPilotCorpusSha256 = computeBlindCorpusDigest(pilot);
+    const mutatedPilot = structuredClone(pilot);
+    mutatedPilot.examples[0]!.contentFingerprint = syntheticDigest('resealed-pilot-content');
+    const mutatedPredictions = predictionsFor(mutatedPilot, pilotGold);
+    let target = baseCorpus('anchored-target', 'stage3_gate', 200, 'draft', 110_000);
+    const targetGold = labelsFor(target, 105);
+    target = setSealedGold(target, targetGold);
+
+    assert.throws(() => forecastBlindEvaluation({
+      protocol,
+      anchors,
+      pilotCorpus: mutatedPilot,
+      expectedPilotCorpusSha256,
+      pilotGoldLabels: pilotGold,
+      pilotPredictions: mutatedPredictions,
+      targetCorpus: target,
+      targetGoldLabels: targetGold,
+    }), expectCode('pilot_corpus_mutated_after_lock'));
+  });
+
+  it('converts balanced and skewed direction gaps through candidate-specific arrival rates', () => {
+    let balanced = baseCorpus('balanced-growth', 'stage3_gate', 200, 'draft', 120_000);
+    const balancedGold = labelsFor(balanced, 150, 60);
+    balanced = setSealedGold(balanced, balancedGold);
+    assert.equal(makeForecast(balanced, balancedGold).recommendedUntouchedGrowth.totalExamples, 50);
+
+    let skewed = baseCorpus('skewed-growth', 'stage3_gate', 200, 'draft', 130_000);
+    const skewedGold = labelsFor(skewed, 100, 100);
+    skewedGold.labels.forEach((label, index) => {
+      if (index < 10) label.goldDirection = 'positive';
+      else if (index < 80) label.goldDirection = 'negative';
+      else if (index < 100) label.goldDirection = 'mixed';
+    });
+    skewed = setSealedGold(skewed, skewedGold);
+    assert.equal(makeForecast(skewed, skewedGold).recommendedUntouchedGrowth.totalExamples, 300);
+  });
+
+  it('requires and validates precommitted expansion rows before forecasting', () => {
+    let pilot = baseCorpus('expansion-pilot', 'pilot', 200, 'locked', 140_000);
+    const pilotGold = labelsFor(pilot, 120);
+    pilot = setSealedGold(pilot, pilotGold);
+    const pilotPredictions = predictionsFor(pilot, pilotGold);
+    const expansion = examples('forecast-expansion', 60, 150_000);
+    let target = baseCorpus('expansion-target', 'stage3_gate', 200, 'draft', 160_000);
+    target.precommittedExpansion = {
+      manifestSha256: computeExpansionManifestDigest(expansion),
+      exampleCount: expansion.length,
+    };
+    const targetGold = labelsFor(target, 105);
+    target = setSealedGold(target, targetGold);
+    const forecastInput = {
+      protocol,
+      anchors,
+      pilotCorpus: pilot,
+      expectedPilotCorpusSha256: computeBlindCorpusDigest(pilot),
+      pilotGoldLabels: pilotGold,
+      pilotPredictions,
+      targetCorpus: target,
+      targetGoldLabels: targetGold,
+    };
+
+    assert.throws(
+      () => forecastBlindEvaluation(forecastInput),
+      expectCode('forecast_expansion_rows_missing'),
+    );
+    assert.doesNotThrow(() => forecastBlindEvaluation({ ...forecastInput, targetExpansion: expansion }));
+
+    for (const dimension of [
+      'occurrenceDigest',
+      'contentFingerprint',
+      'corporateFamilyDigest',
+      'sourceOriginDigest',
+    ] as const) {
+      const overlapping = structuredClone(expansion);
+      overlapping[0]![dimension] = pilot.examples[0]![dimension];
+      const overlappingTarget = structuredClone(target);
+      overlappingTarget.precommittedExpansion = {
+        manifestSha256: computeExpansionManifestDigest(overlapping),
+        exampleCount: overlapping.length,
+      };
+      assert.throws(() => forecastBlindEvaluation({
+        ...forecastInput,
+        targetCorpus: overlappingTarget,
+        targetExpansion: overlapping,
+      }), expectCode(`pilot_gate_overlap_${dimension}`));
+    }
+
+    for (const dimension of ['opaqueExampleId', 'occurrenceDigest', 'contentFingerprint'] as const) {
+      const duplicate = structuredClone(expansion);
+      duplicate[0]![dimension] = target.examples[0]![dimension];
+      const duplicateTarget = structuredClone(target);
+      duplicateTarget.precommittedExpansion = {
+        manifestSha256: computeExpansionManifestDigest(duplicate),
+        exampleCount: duplicate.length,
+      };
+      assert.throws(() => forecastBlindEvaluation({
+        ...forecastInput,
+        targetCorpus: duplicateTarget,
+        targetExpansion: duplicate,
+      }), expectCode(`corpus_duplicate_${dimension}`));
+    }
+
+    const wrongCount = structuredClone(target);
+    wrongCount.precommittedExpansion!.exampleCount -= 1;
+    assert.throws(() => forecastBlindEvaluation({
+      ...forecastInput,
+      targetCorpus: wrongCount,
+      targetExpansion: expansion,
+    }), expectCode('forecast_expansion_count_mismatch'));
+
+    const wrongManifest = structuredClone(target);
+    wrongManifest.precommittedExpansion!.manifestSha256 = syntheticDigest('wrong-expansion-manifest');
+    assert.throws(() => forecastBlindEvaluation({
+      ...forecastInput,
+      targetCorpus: wrongManifest,
+      targetExpansion: expansion,
+    }), expectCode('forecast_expansion_manifest_mismatch'));
+
+    const noPrecommit = { ...target, precommittedExpansion: null };
+    assert.throws(() => forecastBlindEvaluation({
+      ...forecastInput,
+      targetCorpus: noPrecommit,
+      targetExpansion: expansion,
+    }), expectCode('forecast_expansion_not_precommitted'));
+  });
+
+  it('allows company and source strata to repeat within one corpus', () => {
+    let target = baseCorpus('repeated-strata', 'stage3_gate', 200, 'draft', 170_000);
+    target.examples[1]!.corporateFamilyDigest = target.examples[0]!.corporateFamilyDigest;
+    target.examples[1]!.sourceOriginDigest = target.examples[0]!.sourceOriginDigest;
+    const gold = labelsFor(target, 105);
+    target = setSealedGold(target, gold);
+    assert.doesNotThrow(() => makeForecast(target, gold));
   });
 });
 
@@ -636,6 +806,28 @@ describe('Company Monitoring deterministic blind scorer', () => {
     assert.equal(canonicalReportJson(report), canonicalReportJson(score(reordered)));
   });
 
+  it('does not let published ineligible false positives inflate direction denominators', () => {
+    const bundle = lockedBundle({ namespace: 'direction-false-positive' });
+    const ineligibleIndex = 105;
+    const label = bundle.gold.labels[ineligibleIndex]!;
+    label.goldMateriality = 'material';
+    bundle.corpus.sealedGoldLabelsSha256 = computeGoldLabelSetDigest(bundle.gold);
+    bundle.forecast.targetGoldLabelSetSha256 = computeGoldLabelSetDigest(bundle.gold);
+    bundle.corpus.forecastSha256 = computeForecastDigest(bundle.forecast);
+
+    const prediction = bundle.predictions.predictions[ineligibleIndex]!;
+    prediction.discovered = true;
+    prediction.publish = true;
+    prediction.predictedMateriality = 'material';
+    prediction.predictedDirection = label.goldDirection;
+    prediction.attributedCorporateFamilyDigest = label.canonicalCorporateFamilyDigest;
+    bundle.predictions.corpusSha256 = computeBlindCorpusDigest(bundle.corpus);
+
+    const report = score(bundle);
+    assert.equal(report.confusionMatrices.publication.falsePositive, 1);
+    assert.equal(report.metrics.direction_accuracy_positive.denominator, 35);
+  });
+
   it('returns blocking incomplete before fail whenever any frozen denominator is short', () => {
     const bundle = lockedBundle({ publishLimit: 90, mistakes: 20 });
     const report = score(bundle);
@@ -661,21 +853,13 @@ describe('Company Monitoring deterministic blind scorer', () => {
 
   it('rejects duplicate identity dimensions across corpus rows', () => {
     for (const dimension of [
+      'opaqueExampleId',
       'occurrenceDigest',
       'contentFingerprint',
-      'corporateFamilyDigest',
-      'sourceOriginDigest',
     ] as const) {
       const bundle = lockedBundle({ namespace: `dup-${dimension.toLowerCase()}` });
       const mutated = structuredClone(bundle);
       mutated.corpus.examples[1]![dimension] = mutated.corpus.examples[0]![dimension];
-      if (dimension === 'corporateFamilyDigest') {
-        // Keep the gold set consistent so the rejection isolates the duplicate guard rather
-        // than tripping gold_corporate_family_mismatch first.
-        mutated.gold.labels[1]!.canonicalCorporateFamilyDigest =
-          mutated.corpus.examples[1]!.corporateFamilyDigest;
-        mutated.corpus.sealedGoldLabelsSha256 = computeGoldLabelSetDigest(mutated.gold);
-      }
       assert.throws(() => scoreBlindEvaluation({
         protocol,
         anchors,
@@ -795,6 +979,34 @@ describe('Company Monitoring deterministic blind scorer', () => {
     const badStage4 = structuredClone(bundle);
     (badStage4.forecast as unknown as JsonObject).stage4Excluded = false;
     assert.throws(() => score(reseal(badStage4)), expectCode('forecast_stage4_exclusion_invalid'));
+
+    const nestedEvidence = structuredClone(bundle);
+    (nestedEvidence.forecast.candidateStrata as unknown as JsonObject).rawContent = 'private evidence';
+    assert.throws(
+      () => score(reseal(nestedEvidence)),
+      expectCode('forecast_candidate_strata_field_forbidden'),
+    );
+
+    const malformedRate = structuredClone(bundle);
+    malformedRate.forecast.pilotRealizedRates.publishedDecisionRate = 2;
+    assert.throws(
+      () => score(reseal(malformedRate)),
+      expectCode('forecast_pilot_rate_invalid'),
+    );
+
+    const inconsistentGap = structuredClone(bundle);
+    inconsistentGap.forecast.denominatorForecasts.direction_accuracy_positive.gap = 1;
+    assert.throws(
+      () => score(reseal(inconsistentGap)),
+      expectCode('forecast_denominator_gap_invalid'),
+    );
+
+    const inconsistentStatus = structuredClone(bundle);
+    inconsistentStatus.forecast.status = 'forecast_warning';
+    assert.throws(
+      () => score(reseal(inconsistentStatus)),
+      expectCode('forecast_status_inconsistent'),
+    );
   });
 
   it('rejects Stage 4 corpora in this v1 lane', () => {
@@ -897,6 +1109,7 @@ describe('Company Monitoring cumulative continuation', () => {
 
     assert.throws(() => score(child, {
       corpus: scenario.previousBundle.corpus,
+      expectedCorpusSha256: computeBlindCorpusDigest(scenario.previousBundle.corpus),
       goldLabels: scenario.previousBundle.gold,
       predictions: scenario.previousBundle.predictions,
       report: forgedReport,
@@ -970,9 +1183,75 @@ describe('Company Monitoring cumulative continuation', () => {
       expectCode('previous_gold_label_set_digest_mismatch'),
     );
   });
+
+  it('requires the retained parent digest independently of the parent artifact', () => {
+    const scenario = continuationScenario({ namespace: 'parent-anchor' });
+    const previous = {
+      ...scenario.previous,
+      expectedCorpusSha256: syntheticDigest('wrong-parent-anchor'),
+    };
+    assert.throws(
+      () => score(scenario.childBundle, previous),
+      expectCode('corpus_mutated_after_lock'),
+    );
+  });
+
+  it('rejects resealed draft and invalid-lock parents', () => {
+    const draftScenario = continuationScenario({ namespace: 'draft-parent' });
+    const draft = rebindContinuationParent(draftScenario, (corpus) => {
+      corpus.status = 'draft';
+      corpus.lockedAt = null;
+    });
+    assert.throws(
+      () => score(draft.childBundle, draft.previous),
+      expectCode('corpus_not_locked'),
+    );
+
+    const invalidLockScenario = continuationScenario({ namespace: 'invalid-lock-parent' });
+    const invalidLock = rebindContinuationParent(invalidLockScenario, (corpus) => {
+      corpus.lockedAt = 'not-a-timestamp';
+    });
+    assert.throws(
+      () => score(invalidLock.childBundle, invalidLock.previous),
+      expectCode('corpus_lock_timestamp_invalid'),
+    );
+  });
+
+  it('requires the parent lock to strictly precede the child lock', () => {
+    const scenario = continuationScenario({ namespace: 'lock-order' });
+    const rebound = rebindContinuationParent(scenario, (corpus) => {
+      corpus.lockedAt = '2026-08-05T04:00:00.000Z';
+    });
+    assert.throws(
+      () => score(rebound.childBundle, rebound.previous),
+      expectCode('continuation_parent_lock_not_before_child'),
+    );
+  });
 });
 
 describe('Company Monitoring blind evaluation CLI', () => {
+  it('requires the independently retained pilot digest for forecast', () => {
+    const result = spawnSync(
+      fileURLToPath(new URL('../node_modules/.bin/tsx', import.meta.url)),
+      [
+        fileURLToPath(new URL('../scripts/company-monitoring-blind-evaluation.mts', import.meta.url)),
+        'forecast',
+        '--protocol', fileURLToPath(
+          new URL('./fixtures/company-monitoring-evaluation/protocol.json', import.meta.url),
+        ),
+        '--approved-threshold-digest', APPROVED_THRESHOLD_DIGEST,
+        '--pilot-corpus', 'unused.json',
+        '--pilot-gold', 'unused.json',
+        '--pilot-predictions', 'unused.json',
+        '--target-corpus', 'unused.json',
+        '--target-gold', 'unused.json',
+      ],
+      { encoding: 'utf8' },
+    );
+    assert.equal(result.status, 1);
+    assert.match(result.stderr, /missing required option: --expected-pilot-corpus-digest/);
+  });
+
   it('refuses to seal an artifact under the wrong digest command', () => {
     const result = spawnSync(
       fileURLToPath(new URL('../node_modules/.bin/tsx', import.meta.url)),
@@ -985,6 +1264,77 @@ describe('Company Monitoring blind evaluation CLI', () => {
     );
     assert.equal(result.status, 1);
     assert.match(result.stderr, /digest-corpus input schema invalid/);
+  });
+
+  it('rejects incomplete and nested-field artifacts in every digest command', () => {
+    const workspace = mkdtempSync(join(tmpdir(), 'cm-blind-digest-cli-'));
+    const cli = fileURLToPath(new URL('../scripts/company-monitoring-blind-evaluation.mts', import.meta.url));
+    const tsx = fileURLToPath(new URL('../node_modules/.bin/tsx', import.meta.url));
+    const bundle = lockedBundle({ namespace: 'digest-shapes' });
+    const expansion = examples('digest-expansion', 2, 180_000);
+    const cases = [
+      {
+        command: 'digest-corpus',
+        value: bundle.corpus,
+        remove: (value: unknown) => { delete (value as JsonObject).purpose; },
+        nest: (value: unknown) => {
+          ((value as BlindCorpus).examples[0] as unknown as JsonObject).rawContent = 'private';
+        },
+      },
+      {
+        command: 'digest-gold',
+        value: bundle.gold,
+        remove: (value: unknown) => { delete (value as JsonObject).goldLabelVersion; },
+        nest: (value: unknown) => {
+          ((value as GoldLabelSet).labels[0] as unknown as JsonObject).sourceUrl = 'https://private.invalid';
+        },
+      },
+      {
+        command: 'digest-predictions',
+        value: bundle.predictions,
+        remove: (value: unknown) => { delete (value as JsonObject).modelVersion; },
+        nest: (value: unknown) => {
+          ((value as PredictionSet).predictions[0] as unknown as JsonObject).prompt = 'private';
+        },
+      },
+      {
+        command: 'digest-forecast',
+        value: bundle.forecast,
+        remove: (value: unknown) => { delete (value as JsonObject).status; },
+        nest: (value: unknown) => {
+          ((value as BlindForecast).candidateStrata as unknown as JsonObject).rawContent = 'private';
+        },
+      },
+      {
+        command: 'digest-expansion',
+        value: expansion,
+        remove: (value: unknown) => {
+          delete (((value as BlindExample[])[0] as unknown) as JsonObject).occurrenceDigest;
+        },
+        nest: (value: unknown) => {
+          (((value as BlindExample[])[0] as unknown) as JsonObject).sourceUrl = 'https://private.invalid';
+        },
+      },
+    ];
+    const run = (command: string, value: unknown, name: string) => {
+      const path = join(workspace, `${name}.json`);
+      writeFileSync(path, JSON.stringify(value));
+      return spawnSync(tsx, [cli, command, path], { encoding: 'utf8' });
+    };
+
+    try {
+      for (const testCase of cases) {
+        const incomplete = structuredClone(testCase.value);
+        testCase.remove(incomplete);
+        assert.equal(run(testCase.command, incomplete, `${testCase.command}-missing`).status, 1);
+
+        const nested = structuredClone(testCase.value);
+        testCase.nest(nested);
+        assert.equal(run(testCase.command, nested, `${testCase.command}-nested`).status, 1);
+      }
+    } finally {
+      rmSync(workspace, { recursive: true, force: true });
+    }
   });
 
   it('separates a passing gate, a rejected gate, and an engine error by exit code', () => {
@@ -1043,7 +1393,7 @@ describe('Company Monitoring blind evaluation CLI', () => {
     }
   });
 
-  it('requires all four continuation inputs together', () => {
+  it('requires all five continuation inputs together', () => {
     const result = spawnSync(
       fileURLToPath(new URL('../node_modules/.bin/tsx', import.meta.url)),
       [
@@ -1057,10 +1407,13 @@ describe('Company Monitoring blind evaluation CLI', () => {
         '--predictions', 'unused.json',
         '--forecast', 'unused.json',
         '--previous-corpus', 'unused.json',
+        '--previous-gold', 'unused.json',
+        '--previous-predictions', 'unused.json',
+        '--previous-report', 'unused.json',
       ],
       { encoding: 'utf8' },
     );
     assert.equal(result.status, 1);
-    assert.match(result.stderr, /continuation requires all four --previous-\* inputs/);
+    assert.match(result.stderr, /continuation requires all five previous inputs/);
   });
 });

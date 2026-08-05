@@ -18,7 +18,9 @@ Every forecast and score must receive:
 - the approved `tests/fixtures/company-monitoring-evaluation/protocol.json`;
 - the independently held approved-threshold SHA-256 anchor;
 - explicit corpus, policy, model, and query versions; and
-- the digest of the frozen corpus supplied independently of that corpus file.
+- the digest of every frozen corpus supplied independently of its corpus file:
+  `--expected-pilot-corpus-digest` for forecast, `--expected-corpus-digest`
+  for score, and `--expected-previous-corpus-digest` for a continuation parent.
 
 The engine recomputes the protocol threshold digest and fails before scoring if
 the protocol is missing, changed, unapproved, or not frozen. It reads all metric
@@ -50,9 +52,13 @@ applicable approval.
 1. Lock a pilot corpus and its prediction set to the approved protocol and the
    exact policy, model, and query versions.
 2. Build an untouched draft gate corpus. Before locking it, the curator runs the
-   forecast against the locked pilot. The engine rejects any overlap by
-   occurrence, content fingerprint, corporate family, or source origin, and it
-   rejects predictions for the candidate gate as forecast input.
+   forecast against the locked pilot and its independently retained digest. If
+   the draft precommits an expansion, the curator must supply those actual rows
+   to forecast too. The engine verifies their count and manifest, checks combined
+   occurrence/content/opaque-ID uniqueness, and rejects target-or-expansion
+   overlap with the pilot by occurrence, content fingerprint, corporate family,
+   or source origin. It rejects predictions for the candidate gate as forecast
+   input.
 3. Inspect the aggregate candidate strata. The Stage 3 candidate should be
    roughly half publication-eligible with enough eligible positive, negative,
    and mixed rows to make all frozen denominator floors feasible. Because
@@ -83,7 +89,9 @@ applicable approval.
    over the retained parent corpus, gold labels, and predictions and rejects the
    continuation unless the re-derived outcome and reasons match what the parent
    report claims, and unless the parent was scored under this same approved
-   protocol and threshold anchor.
+   protocol and threshold anchor. The parent is independently digest-anchored,
+   must itself be a valid locked corpus, and must have locked strictly before the
+   child.
 
 ## Offline commands
 
@@ -95,16 +103,23 @@ npm run company-monitoring:blind-evaluation -- forecast \
   --protocol tests/fixtures/company-monitoring-evaluation/protocol.json \
   --approved-threshold-digest "$APPROVED_DIGEST" \
   --pilot-corpus /private/path/pilot-corpus.json \
+  --expected-pilot-corpus-digest "$FROZEN_PILOT_CORPUS_DIGEST" \
   --pilot-gold /private/path/pilot-gold.json \
   --pilot-predictions /private/path/pilot-predictions.json \
   --target-corpus /private/path/draft-stage3-corpus.json \
-  --target-gold /private/path/stage3-gold.json
+  --target-gold /private/path/stage3-gold.json \
+  --target-expansion /private/path/precommitted-expansion.json
 ```
+
+Omit `--target-expansion` when the target corpus has
+`precommittedExpansion: null`; supplying it in that case is an error. A target
+with a non-null precommit requires the matching rows.
 
 `score` takes the same `--protocol` and `--approved-threshold-digest` authority
 inputs as `forecast`, plus explicit `--corpus`, `--expected-corpus-digest`,
-`--gold`, `--predictions`, and `--forecast` paths. A cumulative run must also
-provide all four `--previous-*` inputs.
+`--gold`, `--predictions`, and `--forecast` paths. A cumulative score must also
+provide the previous corpus, its independently retained digest, gold labels,
+predictions, and report.
 
 ```bash
 npm run company-monitoring:blind-evaluation -- score \
@@ -117,6 +132,16 @@ npm run company-monitoring:blind-evaluation -- score \
   --forecast /private/path/stage3-forecast.json
 ```
 
+A cumulative invocation adds:
+
+```bash
+  --previous-corpus /private/path/parent-corpus.json \
+  --expected-previous-corpus-digest "$FROZEN_PARENT_CORPUS_DIGEST" \
+  --previous-gold /private/path/parent-gold.json \
+  --previous-predictions /private/path/parent-predictions.json \
+  --previous-report /private/path/parent-report.json
+```
+
 Exit codes are part of the contract, so a wrapper can never read a rejected gate
 as success:
 
@@ -126,12 +151,15 @@ as success:
 | `1` | the engine refused to score: bad input, tampered evidence, or a usage error |
 | `2` | the engine scored and the outcome is `fail` or `incomplete` |
 
-Digest-only commands seal each artifact before it crosses an access boundary.
-Each maps to the corpus field that consumes it:
+Digest-only commands first apply a closed-world syntactic schema: every object
+and nested row must have exactly the declared keys, required literal and
+primitive types must be valid, and corpus, gold, prediction, forecast, and
+expansion rows cannot carry undeclared raw evidence. Only then is the artifact
+sealed. Each command maps to the corpus field that consumes its digest:
 
 | Command | Produces | Consumed by |
 |---------|----------|-------------|
-| `digest-corpus` | the frozen corpus digest | `--expected-corpus-digest`, and `continuation.parentCorpusSha256` on a child |
+| `digest-corpus` | the frozen corpus digest | forecast's pilot anchor, score's target/parent anchor, and `continuation.parentCorpusSha256` on a child |
 | `digest-gold` | the sealed gold-label digest | `corpus.sealedGoldLabelsSha256` |
 | `digest-forecast` | the aggregate forecast digest | `corpus.forecastSha256` |
 | `digest-expansion` | the precommitted expansion manifest digest | `corpus.precommittedExpansion.manifestSha256` |

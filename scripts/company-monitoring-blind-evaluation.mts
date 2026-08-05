@@ -10,6 +10,11 @@ import {
   computePredictionSetDigest,
   forecastBlindEvaluation,
   scoreBlindEvaluation,
+  validateBlindCorpusArtifact,
+  validateBlindForecastArtifact,
+  validateExpansionManifestArtifact,
+  validateGoldLabelSetArtifact,
+  validatePredictionSetArtifact,
   type BlindCorpus,
   type BlindExample,
   type BlindForecast,
@@ -25,8 +30,8 @@ type Command = 'forecast' | 'score' | 'digest-corpus' | 'digest-gold'
 function usage(): never {
   throw new Error([
     'usage:',
-    '  company-monitoring:blind-evaluation forecast --protocol FILE --approved-threshold-digest SHA256 --pilot-corpus FILE --pilot-gold FILE --pilot-predictions FILE --target-corpus FILE --target-gold FILE',
-    '  company-monitoring:blind-evaluation score --protocol FILE --approved-threshold-digest SHA256 --corpus FILE --expected-corpus-digest SHA256 --gold FILE --predictions FILE --forecast FILE [--previous-corpus FILE --previous-gold FILE --previous-predictions FILE --previous-report FILE]',
+    '  company-monitoring:blind-evaluation forecast --protocol FILE --approved-threshold-digest SHA256 --pilot-corpus FILE --expected-pilot-corpus-digest SHA256 --pilot-gold FILE --pilot-predictions FILE --target-corpus FILE --target-gold FILE [--target-expansion FILE]',
+    '  company-monitoring:blind-evaluation score --protocol FILE --approved-threshold-digest SHA256 --corpus FILE --expected-corpus-digest SHA256 --gold FILE --predictions FILE --forecast FILE [--previous-corpus FILE --expected-previous-corpus-digest SHA256 --previous-gold FILE --previous-predictions FILE --previous-report FILE]',
     '  company-monitoring:blind-evaluation digest-corpus|digest-gold|digest-predictions|digest-forecast|digest-expansion FILE',
   ].join('\n'));
 }
@@ -60,37 +65,50 @@ function readJson<T>(path: string): T {
   return JSON.parse(readFileSync(path, 'utf8')) as T;
 }
 
+type ArtifactValidator<T> = (value: unknown) => asserts value is T;
+
+function digestArtifact<T>(
+  path: string,
+  command: string,
+  validate: ArtifactValidator<T>,
+  digest: (value: T) => string,
+): string {
+  const value = readJson<unknown>(path);
+  try {
+    validate(value);
+  } catch {
+    throw new Error(`${command} input schema invalid`);
+  }
+  return digest(value);
+}
+
 function digestCommand(command: Command, values: string[]): string {
   if (values.length !== 1) usage();
   const path = values[0]!;
   if (command === 'digest-corpus') {
-    const value = readJson<BlindCorpus>(path);
-    if (value.schemaVersion !== 'cm_blind_corpus_v1') throw new Error('digest-corpus input schema invalid');
-    return computeBlindCorpusDigest(value);
+    return digestArtifact<BlindCorpus>(
+      path, command, validateBlindCorpusArtifact, computeBlindCorpusDigest,
+    );
   }
   if (command === 'digest-gold') {
-    const value = readJson<GoldLabelSet>(path);
-    if (value.schemaVersion !== 'cm_gold_labels_v1') throw new Error('digest-gold input schema invalid');
-    return computeGoldLabelSetDigest(value);
+    return digestArtifact<GoldLabelSet>(
+      path, command, validateGoldLabelSetArtifact, computeGoldLabelSetDigest,
+    );
   }
   if (command === 'digest-predictions') {
-    const value = readJson<PredictionSet>(path);
-    if (value.schemaVersion !== 'cm_predictions_v1') {
-      throw new Error('digest-predictions input schema invalid');
-    }
-    return computePredictionSetDigest(value);
+    return digestArtifact<PredictionSet>(
+      path, command, validatePredictionSetArtifact, computePredictionSetDigest,
+    );
   }
   if (command === 'digest-forecast') {
-    const value = readJson<BlindForecast>(path);
-    if (value.schemaVersion !== 'cm_blind_forecast_v1') {
-      throw new Error('digest-forecast input schema invalid');
-    }
-    return computeForecastDigest(value);
+    return digestArtifact<BlindForecast>(
+      path, command, validateBlindForecastArtifact, computeForecastDigest,
+    );
   }
   if (command === 'digest-expansion') {
-    const value = readJson<BlindExample[]>(path);
-    if (!Array.isArray(value)) throw new Error('digest-expansion input schema invalid');
-    return computeExpansionManifestDigest(value);
+    return digestArtifact<BlindExample[]>(
+      path, command, validateExpansionManifestArtifact, computeExpansionManifestDigest,
+    );
   }
   usage();
 }
@@ -101,19 +119,25 @@ function forecast(values: string[]): string {
     'protocol',
     'approved-threshold-digest',
     'pilot-corpus',
+    'expected-pilot-corpus-digest',
     'pilot-gold',
     'pilot-predictions',
     'target-corpus',
     'target-gold',
+    'target-expansion',
   ]);
   return canonicalJson(forecastBlindEvaluation({
     protocol: readJson<JsonObject>(required(options, 'protocol')),
     anchors: { approvedThresholdDigest: required(options, 'approved-threshold-digest') },
+    expectedPilotCorpusSha256: required(options, 'expected-pilot-corpus-digest'),
     pilotCorpus: readJson<BlindCorpus>(required(options, 'pilot-corpus')),
     pilotGoldLabels: readJson<GoldLabelSet>(required(options, 'pilot-gold')),
     pilotPredictions: readJson<PredictionSet>(required(options, 'pilot-predictions')),
     targetCorpus: readJson<BlindCorpus>(required(options, 'target-corpus')),
     targetGoldLabels: readJson<GoldLabelSet>(required(options, 'target-gold')),
+    targetExpansion: options.has('target-expansion')
+      ? readJson<BlindExample[]>(required(options, 'target-expansion'))
+      : undefined,
   }));
 }
 
@@ -128,22 +152,25 @@ function score(values: string[]): { json: string; outcome: ScoreReport['outcome'
     'predictions',
     'forecast',
     'previous-corpus',
+    'expected-previous-corpus-digest',
     'previous-gold',
     'previous-predictions',
     'previous-report',
   ]);
   const previousNames = [
     'previous-corpus',
+    'expected-previous-corpus-digest',
     'previous-gold',
     'previous-predictions',
     'previous-report',
   ];
   const previousCount = previousNames.filter((name) => options.has(name)).length;
   if (previousCount !== 0 && previousCount !== previousNames.length) {
-    throw new Error('continuation requires all four --previous-* inputs');
+    throw new Error('continuation requires all five previous inputs including the retained digest');
   }
   const previous = previousCount === 0 ? undefined : {
     corpus: readJson<BlindCorpus>(required(options, 'previous-corpus')),
+    expectedCorpusSha256: required(options, 'expected-previous-corpus-digest'),
     goldLabels: readJson<GoldLabelSet>(required(options, 'previous-gold')),
     predictions: readJson<PredictionSet>(required(options, 'previous-predictions')),
     report: readJson<ScoreReport>(required(options, 'previous-report')),
