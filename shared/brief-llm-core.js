@@ -633,6 +633,26 @@ function extractProperNounSequencesWithMeta(text) {
  * proper-noun extraction cannot, because the source may carry the same word
  * lowercase mid-sentence.
  */
+// #6109: months are excluded from the sentence-initial allowance below. For
+// every other word a capital at sentence start is pure orthography — but for a
+// month the capital is exactly what separates a CALENDAR CLAIM from an ordinary
+// word ("the march on the capital" -> "March saw heavy fighting"; "officials
+// may authorise" -> "May brought strikes"). Verified against origin/main: the
+// allowance without this newly ACCEPTED both, where the old code rejected them.
+// The date validator does not cover it either — extractNumericFacts only reads
+// a month adjacent to a day or year, so a bare "March" is not a date fact. The
+// repo has flagged this collision class before (the anchor-token note on "May":
+// Theresa May / May Day / the month all land on one token).
+//
+// Excluding a month costs nothing when the source really does name it: the
+// normal capitalized-sequence path already grounds that case. This only removes
+// the lowercase-source fallback, which for a month is never the right read.
+const SENTENCE_INITIAL_ALLOWANCE_BLOCKED = new Set([
+  'january', 'jan', 'february', 'feb', 'march', 'mar', 'april', 'apr', 'may',
+  'june', 'jun', 'july', 'jul', 'august', 'aug', 'september', 'sept', 'sep',
+  'october', 'oct', 'november', 'nov', 'december', 'dec',
+]);
+
 function groundTokenSet(text) {
   const out = new Set();
   if (typeof text !== 'string' || text.length === 0) return out;
@@ -751,7 +771,13 @@ export function validateNoHallucinatedProperNouns(summary, headline) {
     // capital IS a deliberate signal — that is what stops a source reading
     // "apple prices" from licensing "Apple" the company. Presence in the
     // source is the definition of not-invented; case never was.
-    if (!found && sentenceInitial && summarySeq.length === 1 && headlineTokens.has(summarySeq[0])) {
+    if (
+      !found
+      && sentenceInitial
+      && summarySeq.length === 1
+      && !SENTENCE_INITIAL_ALLOWANCE_BLOCKED.has(summarySeq[0])
+      && headlineTokens.has(summarySeq[0])
+    ) {
       found = true;
     }
     if (!found) {

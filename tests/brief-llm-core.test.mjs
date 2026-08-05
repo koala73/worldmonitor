@@ -620,6 +620,35 @@ describe('validateNoHallucinatedProperNouns — May 19 regression + class', () =
     );
   });
 
+  // Months are the one class where the capital is NOT mere orthography: it
+  // separates a calendar claim from an ordinary word. Caught by diffing this
+  // change against origin/main — the first version of the allowance newly
+  // ACCEPTED both of these, where the old code rejected them. The date
+  // validator does not cover a bare month (it needs an adjacent day/year).
+  it('does not let a sentence-initial month be grounded by a lowercase homograph', () => {
+    const ground = 'the march on the capital continued overnight';
+    const summary = 'March saw heavy fighting in the capital [1].';
+    assert.equal(
+      validateNoHallucinatedProperNouns(summary, ground).ok,
+      false,
+      '"march" the noun must not license "March" the month',
+    );
+  });
+
+  it('does not let a sentence-initial "May" be grounded by the modal verb', () => {
+    const ground = 'officials may authorise the strike';
+    const summary = 'May brought renewed strikes [1].';
+    assert.equal(validateNoHallucinatedProperNouns(summary, ground).ok, false);
+  });
+
+  it('still accepts a month the source actually names', () => {
+    // The exclusion costs nothing here: the normal capitalized-sequence path
+    // grounds it, so blocking the lowercase fallback changes no real month.
+    const ground = 'March 5 offensive began at dawn';
+    const summary = 'March operations continued into the night [1].';
+    assert.equal(validateNoHallucinatedProperNouns(summary, ground).ok, true);
+  });
+
   it('does not relax multi-token sequences whose tokens are individually present', () => {
     // Both "Swat" and "Pakistan" appear in the source, but never adjacently.
     // The contiguous-match rule is what stops the model from fusing two
