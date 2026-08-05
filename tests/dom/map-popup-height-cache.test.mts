@@ -57,7 +57,6 @@ function quake(x = 100, y = 100) {
 beforeEach(() => {
   // Desktop: isMobileDevice() is innerWidth <= 768, and the mobile sheet path
   // skips positioning entirely — a mobile viewport would make these vacuous.
-  window.happyDOM?.setViewport?.({ width: 1280, height: 900 });
   Object.defineProperty(window, 'innerWidth', { value: 1280, configurable: true });
   Object.defineProperty(window, 'innerHeight', { value: 900, configurable: true });
 

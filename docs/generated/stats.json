@@ -69,6 +69,7 @@
     "lint.yml",
     "live-api-cache-auth.yml",
     "mcp-live-smoke.yml",
+    "perf-style-layout-budget.yml",
     "pro-bundle-freshness.yml",
     "proto-check.yml",
     "publish-cli.yml",
@@ -83,7 +84,7 @@
     "typecheck.yml",
     "umami-storage-monitor.yml"
   ],
-  "workflowCount": 27,
+  "workflowCount": 28,
   "freshnessSources": 35,
   "freshnessRequiredForRisk": 2,
   "feedDefinitions": 628,
