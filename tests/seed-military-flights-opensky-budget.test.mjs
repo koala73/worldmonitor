@@ -127,6 +127,23 @@ test('OpenSky-only aircraft still reach the merged set when Wingbits already suc
   );
 });
 
+test('spends exactly one OpenSky request even when the authenticated call fails', async () => {
+  // The other request-count assertion runs against a SUCCEEDING fixture, so it never
+  // executes the failure branch — and the anonymity assertion below only counts
+  // requests without an Authorization header. Between them, a second *authenticated*
+  // request added on the failure path (a retry, say) would pass every other test here.
+  // Since the whole point is a credit budget, that is the most likely careless
+  // re-addition, so pin total spend on the failure path too.
+  install({ openSkyStatus: 429 });
+  await fetchAllStates();
+  const os = openSkyDataCalls();
+  assert.equal(
+    os.length, 1,
+    `A failing OpenSky call spent ${os.length} requests; expected 1. Retrying a 429 spends ` +
+    'another credit against an already-exhausted budget (#6222).',
+  );
+});
+
 test('never falls back to an unauthenticated OpenSky request', async () => {
   // Anonymous OpenSky is 400 credits/day PER IP on shared Railway/Vercel egress,
   // so it can essentially never succeed — it only adds a timeout to the failure path.

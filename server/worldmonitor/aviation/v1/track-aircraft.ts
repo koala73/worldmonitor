@@ -140,10 +140,17 @@ export async function trackAircraft(
                         console.warn(`[Aviation] OpenSky bbox relay failed: ${err instanceof Error ? err.message : err}`);
                     }
 
-                    // Both relay paths exhausted. The 6s + 6s sequential timeouts now leave
-                    // 13s of headroom under the Vercel initial-response ceiling for cache I/O
-                    // and response serialization, up from 7s before the anonymous tier was
-                    // removed (#6222).
+                    // Both relay paths exhausted. Removing the anonymous tier returns 6s to
+                    // this branch: a bbox-only request now spends at most 6s + 6s here.
+                    //
+                    // That is NOT the worst case for the handler. The generated GET decoder
+                    // coerces missing bbox params to 0 rather than leaving them null, so an
+                    // icao24 lookup also satisfies the `req.swLat != null` guard above, runs
+                    // this block against a degenerate 0,0,0,0 bbox, and then falls through to
+                    // the 8s icao24 tier below — 20s total, measured. That ladder (and the
+                    // wasted authenticated relay call on a bbox nobody asked for) predates
+                    // #6222 and is tracked separately; do not read the 12s above as the
+                    // handler's ceiling.
                 }
 
                 // For icao24-only queries, try OpenSky relay then Wingbits
