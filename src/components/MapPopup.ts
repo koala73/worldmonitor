@@ -275,6 +275,14 @@ export class MapPopup {
     // Append to body to avoid container overflow clipping
     document.body.appendChild(this.popup);
 
+    // Reconcile the cached height against reality on the next frame. Deliberately
+    // after the click task has ended: this read forces layout, and keeping it out
+    // of the handler is the whole point of the cache.
+    if (!this.isMobileSheet) {
+      const popupType = data.type;
+      requestAnimationFrame(() => this.refreshHeightCache(popupType));
+    }
+
     // Mount transit chart for waterway popups after DOM insertion
     if (data.type === 'waterway') {
       const waterway = data.data as StrategicWaterway;
@@ -469,14 +477,32 @@ export class MapPopup {
     }, 200);
   }
 
+  /**
+   * Measured desktop popup height, keyed by popup type (#4487 INP).
+   *
+   * Reading `offsetHeight` forces a synchronous layout of the whole document,
+   * and this ran inside the click handler of every marker across all three map
+   * renderers — the append/measure/remove dance below was a full layout flush on
+   * the very task INP measures. Heights are near-constant per popup type, so the
+   * first popup of a type pays the measurement and every later one reuses it.
+   *
+   * Static so the cache survives the per-open `MapPopup` churn. A stale entry is
+   * self-correcting in the direction that matters: an under-estimate is pulled
+   * back by `clampPopupToViewport`, and `refreshHeightCache` re-measures after
+   * paint — off the interaction critical path — so the entry converges.
+   */
+  private static readonly heightByType = new Map<string, number>();
+
   private positionDesktopPopup(data: PopupData, containerRect: DOMRect): void {
     if (!this.popup) return;
 
-    const popupWidth = 380;
-    const bottomBuffer = 50; // Buffer from viewport bottom
-    const topBuffer = 60; // Header height
+    const cached = MapPopup.heightByType.get(data.type);
+    if (cached !== undefined) {
+      this.applyDesktopPosition(data, containerRect, cached);
+      return;
+    }
 
-    // Temporarily append popup off-screen to measure actual height
+    // First popup of this type: measure off-screen, then remember it.
     this.popup.style.visibility = 'hidden';
     this.popup.style.top = '0';
     this.popup.style.left = '-9999px';
@@ -484,6 +510,30 @@ export class MapPopup {
     const popupHeight = this.popup.offsetHeight;
     document.body.removeChild(this.popup);
     this.popup.style.visibility = '';
+    MapPopup.heightByType.set(data.type, popupHeight);
+
+    this.applyDesktopPosition(data, containerRect, popupHeight);
+  }
+
+  /**
+   * Re-measure the open popup and update the type cache. Called after the popup
+   * has been appended and painted, so the `offsetHeight` read cannot land in the
+   * click task. Also clamps, since a too-small cached height is what would have
+   * pushed the popup past the viewport bottom.
+   */
+  private refreshHeightCache(type: string): void {
+    if (!this.popup || this.isMobileSheet) return;
+    const measured = this.popup.offsetHeight;
+    if (measured > 0) MapPopup.heightByType.set(type, measured);
+    this.clampPopupToViewport();
+  }
+
+  private applyDesktopPosition(data: PopupData, containerRect: DOMRect, popupHeight: number): void {
+    if (!this.popup) return;
+
+    const popupWidth = 380;
+    const bottomBuffer = 50; // Buffer from viewport bottom
+    const topBuffer = 60; // Header height
 
     // Convert container-relative coords to viewport coords
     const viewportX = containerRect.left + data.x;
