@@ -272,6 +272,17 @@ export const ENDPOINT_RATE_POLICIES: Record<string, EndpointRatePolicy> = {
   '/api/intelligence/v1/get-company-enrichment': { limit: 30, window: '60 s' },
   '/api/intelligence/v1/list-company-signals': { limit: 30, window: '60 s' },
   '/api/intelligence/v1/search-sec-filings': { limit: 30, window: '60 s' },
+  // Public market/economic provider proxies (#6236): caller-controlled symbols,
+  // countries, indicators, and year ranges create unbounded cache-key
+  // cardinality, so cache misses must not inherit the global fail-open budget.
+  // analyze-stock is stricter because one miss can fan out to Finnhub plus the
+  // Exa -> Brave -> SerpAPI search ladder; the other routes make one upstream
+  // provider request per miss and use the standard 30/min proxy budget.
+  '/api/market/v1/analyze-stock': { limit: 10, window: '60 s' },
+  '/api/market/v1/backtest-stock': { limit: 30, window: '60 s' },
+  '/api/market/v1/get-insider-transactions': { limit: 30, window: '60 s' },
+  '/api/market/v1/get-country-stock-index': { limit: 30, window: '60 s' },
+  '/api/economic/v1/list-world-bank-indicators': { limit: 30, window: '60 s' },
   // Company Monitoring is contract-only and remains unrouted until #6003
   // passes, but generated mutation routes still need a fail-closed policy
   // before any later lane can wire them. Import can carry 100 rows, so keep its
@@ -365,6 +376,21 @@ export const FAIL_CLOSED_ENDPOINT_RATE_POLICY_REQUIRED: Record<string, RateLimit
   },
   '/api/intelligence/v1/search-sec-filings': {
     reason: 'Full-text filing search proxies SEC EDGAR on cache miss with unbounded query cardinality.',
+  },
+  '/api/market/v1/analyze-stock': {
+    reason: 'Per-symbol analysis can fan out to Finnhub plus the Exa, Brave, and SerpAPI search ladder on cache miss.',
+  },
+  '/api/market/v1/backtest-stock': {
+    reason: 'Per-symbol backtests proxy scraped Yahoo Finance data with unbounded symbol cardinality.',
+  },
+  '/api/market/v1/get-insider-transactions': {
+    reason: 'Per-symbol insider lookups proxy the paid Finnhub provider on cache miss.',
+  },
+  '/api/market/v1/get-country-stock-index': {
+    reason: 'Per-country stock-index lookups proxy Yahoo Finance on cache miss.',
+  },
+  '/api/economic/v1/list-world-bank-indicators': {
+    reason: 'Caller-controlled indicator, country, and year inputs proxy World Bank on cache miss.',
   },
   '/api/company-monitoring/v1/create-monitored-company': {
     reason: 'Account-scoped portfolio mutation must not become fail-open when its dark contract is wired.',

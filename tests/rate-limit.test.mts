@@ -304,6 +304,41 @@ describe('rate-limit fail-open / fail-closed posture (#3531 M9)', () => {
     );
   });
 
+  it('paid-provider market routes each have explicit fail-closed policies (#6236)', async () => {
+    delete process.env.UPSTASH_REDIS_REST_URL;
+    delete process.env.UPSTASH_REDIS_REST_TOKEN;
+    const mod = await importFreshRateLimitModule();
+    const expectedPolicies = new Map([
+      ['/api/market/v1/analyze-stock', { limit: 10, window: '60 s' }],
+      ['/api/market/v1/backtest-stock', { limit: 30, window: '60 s' }],
+      ['/api/market/v1/get-insider-transactions', { limit: 30, window: '60 s' }],
+      ['/api/market/v1/get-country-stock-index', { limit: 30, window: '60 s' }],
+      ['/api/economic/v1/list-world-bank-indicators', { limit: 30, window: '60 s' }],
+    ] as const);
+
+    for (const [pathname, expectedPolicy] of expectedPolicies) {
+      assert.deepEqual(
+        ENDPOINT_RATE_POLICIES[pathname],
+        expectedPolicy,
+        `${pathname} must keep its provider-proxy budget`,
+      );
+      assert.ok(
+        pathname in FAIL_CLOSED_ENDPOINT_RATE_POLICY_REQUIRED,
+        `${pathname} must stay in the fail-closed requirement registry`,
+      );
+
+      const res = await mod.checkEndpointRateLimit(
+        makeRequest({ 'cf-connecting-ip': '203.0.113.7' }),
+        pathname,
+        {},
+      );
+
+      assert.ok(res, `${pathname} must fail closed without Redis config`);
+      assert.equal(res.status, 503);
+      assert.equal(res.headers.get('X-RateLimit-Mode'), 'degraded');
+    }
+  });
+
   it('checkEndpointRateLimit keeps unrecognised paths unguarded even with fail-closed defaults', async () => {
     delete process.env.UPSTASH_REDIS_REST_URL;
     delete process.env.UPSTASH_REDIS_REST_TOKEN;
