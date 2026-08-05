@@ -1427,16 +1427,20 @@ function calculateTheaterPostures(flights) {
 }
 
 // ── Redis Write ────────────────────────────────────────────
-async function redisSet(url, token, key, value, ttl) {
+export async function redisSet(url, token, key, value, ttl) {
   const payload = JSON.stringify(value);
   const cmd = ttl ? ['SET', key, payload, 'EX', ttl] : ['SET', key, payload];
   const resp = await fetch(url, {
     method: 'POST',
-    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', 'User-Agent': CHROME_UA },
     body: JSON.stringify(cmd),
     signal: AbortSignal.timeout(10_000),
   });
   if (!resp.ok) throw new Error(`Redis SET ${key} failed: HTTP ${resp.status}`);
+  const body = await resp.json();
+  if (body && typeof body === 'object' && Object.hasOwn(body, 'error')) {
+    throw new Error(`Redis SET ${key} rejected by Upstash: ${String(body.error)}`);
+  }
 }
 
 async function redisDel(url, token, key) {
