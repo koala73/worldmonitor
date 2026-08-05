@@ -184,8 +184,9 @@ export function getBundleRunStartedAtMs() {
   return Number.isFinite(raw) && raw > 0 ? raw : null;
 }
 
-// Canonical FX fallback rates — used when Yahoo Finance returns null/zero.
-// Single source of truth shared by seed-bigmac, seed-grocery-basket, seed-fx-rates.
+// Point-of-use FX recovery constants — used by conversion seeds when Yahoo fails
+// or a gap cannot be retried in budget. Canonical seed-fx-rates must NOT fill
+// shared:fx-rates:v1 with these values (publish nulls + fallbackCurrencies instead).
 // EGP: 0.0192 is the most recently observed live rate (2026-03-21 seed run).
 export const SHARED_FX_FALLBACKS = {
   USD: 1, GBP: 1.2700, EUR: 1.0850, JPY: 0.0067, CHF: 1.1300,
@@ -1543,7 +1544,19 @@ export async function processItemRoute({
 // headroom inside downstream seeds' 240s fetch-phase deadline.
 const MAX_POINT_OF_USE_FX_REQUESTS = 5;
 
-async function fetchPointOfUseFxRates(fxSymbols, fallbacks = {}) {
+function isFinitePositiveRate(value) {
+  return Number.isFinite(value) && value > 0;
+}
+
+/**
+ * Cap Yahoo recovery work for conversion seeds. Currencies beyond the budget are
+ * not attempted: prefer a finite prior/cache rate when present (still marked as
+ * fallback provenance — unattempted is not live), else the caller fallback table.
+ * @param {Record<string, string>} fxSymbols
+ * @param {Record<string, number>} [fallbacks]
+ * @param {Record<string, unknown>} [priorRates] rates already on hand (e.g. cache)
+ */
+async function fetchPointOfUseFxRates(fxSymbols, fallbacks = {}, priorRates = {}) {
   const attemptedSymbols = {};
   const deferredCurrencies = [];
   let requestCount = 0;
@@ -1559,7 +1572,10 @@ async function fetchPointOfUseFxRates(fxSymbols, fallbacks = {}) {
 
   const result = await fetchYahooFxRatesWithProvenance(attemptedSymbols, fallbacks);
   for (const currency of deferredCurrencies) {
-    result.rates[currency] = fallbacks[currency] ?? null;
+    const prior = priorRates[currency];
+    result.rates[currency] = isFinitePositiveRate(prior)
+      ? prior
+      : (fallbacks[currency] ?? null);
   }
   result.fallbackCurrencies.push(...deferredCurrencies);
   return result;
@@ -1601,6 +1617,7 @@ export async function getSharedFxRates(fxSymbols, fallbacks) {
       const extra = await fetchPointOfUseFxRates(
         Object.fromEntries(missing.map(c => [c, fxSymbols[c]])),
         fallbacks,
+        cached,
       );
       const retried = new Set(missing);
       const fallbackCurrencies = [
@@ -1645,7 +1662,7 @@ export async function fetchYahooFxRatesWithProvenance(fxSymbols, fallbacks = {})
         price = data?.chart?.result?.[0]?.meta?.regularMarketPrice;
       }
     } catch {}
-    if (Number.isFinite(price) && price > 0) {
+    if (isFinitePositiveRate(price)) {
       rates[currency] = price;
     } else {
       rates[currency] = fallbacks[currency] ?? null;
@@ -1659,10 +1676,6 @@ export async function fetchYahooFxRatesWithProvenance(fxSymbols, fallbacks = {})
     console.warn(`  FX rates using fallbacks (${fallbackCurrencies.length}): ${fallbackCurrencies.join(', ')}`);
   }
   return { rates, fallbackCurrencies };
-}
-
-export async function fetchYahooFxRates(fxSymbols, fallbacks) {
-  return (await fetchYahooFxRatesWithProvenance(fxSymbols, fallbacks)).rates;
 }
 
 /**

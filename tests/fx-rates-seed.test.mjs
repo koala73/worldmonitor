@@ -207,4 +207,118 @@ describe('shared FX fallback provenance', () => {
     assert.equal(result.KRW, SHARED_FX_FALLBACKS.KRW);
     assert.deepEqual(result.fallbackCurrencies, ['KRW']);
   });
+
+  test('markerless cap keeps finite cached rates for deferred currencies', async () => {
+    process.env.UPSTASH_REDIS_REST_URL = 'https://redis.example';
+    process.env.UPSTASH_REDIS_REST_TOKEN = 'test-token';
+    // Distinct from SHARED_FX_FALLBACKS so clobber vs retain is observable.
+    const cachedLive = {
+      EUR: 1.11, JPY: 0.0069, KRW: 0.00075, AUD: 0.66, CAD: 0.75, NZD: 0.61, CNY: 0.139,
+    };
+    let yahooCalls = 0;
+    globalThis.fetch = async (url) => {
+      if (String(url).startsWith('https://redis.example/get/')) {
+        return new Response(JSON.stringify({
+          result: JSON.stringify({ USD: 1, ...cachedLive }),
+        }), { status: 200 });
+      }
+      yahooCalls += 1;
+      return new Response(JSON.stringify({
+        chart: { result: [{ meta: { regularMarketPrice: 0.5 } }] },
+      }), { status: 200 });
+    };
+
+    const currencies = Object.keys(cachedLive);
+    const result = await getSharedFxRates(
+      Object.fromEntries(['USD', ...currencies].map((c) => [c, `${c}USD=X`])),
+      SHARED_FX_FALLBACKS,
+    );
+
+    assert.equal(yahooCalls, 5);
+    assert.deepEqual(result.fallbackCurrencies, ['NZD', 'CNY']);
+    // Attempted: live Yahoo. Deferred: retain prior cache, not SHARED_FX_FALLBACKS.
+    assert.equal(result.EUR, 0.5);
+    assert.equal(result.NZD, cachedLive.NZD);
+    assert.equal(result.CNY, cachedLive.CNY);
+    assert.notEqual(result.NZD, SHARED_FX_FALLBACKS.NZD);
+  });
+
+  test('validateFxPayload rejects provenance/value mismatches and markerless maps', () => {
+    const rates = Object.fromEntries(ALL_CURRENCIES.map((currency) => [currency, 0.5]));
+    rates.USD = 1;
+
+    const nonNullListed = buildFxRatesPayload({ rates, fallbackCurrencies: ['KRW'] });
+    nonNullListed.KRW = 0.0007;
+    assert.equal(validateFxPayload(nonNullListed), false);
+
+    const nullUnlisted = { ...rates, KRW: null, fallbackCurrencies: [] };
+    assert.equal(validateFxPayload(nullUnlisted), false);
+
+    const duplicateMarkers = { ...rates, KRW: null, fallbackCurrencies: ['KRW', 'KRW'] };
+    assert.equal(validateFxPayload(duplicateMarkers), false);
+    assert.equal(declareRecords(duplicateMarkers), 0);
+
+    const usdMarker = { ...rates, fallbackCurrencies: ['USD'] };
+    assert.equal(validateFxPayload(usdMarker), false);
+
+    const markerless = { ...rates }; // schema-v1 shape
+    assert.equal(validateFxPayload(markerless), false);
+    assert.equal(declareRecords(markerless), 0);
+
+    assert.equal(validateFxPayload(null), false);
+    assert.equal(validateFxPayload([]), false);
+  });
+
+  test('non-finite Yahoo prices mark provenance fallbacks', async () => {
+    const prices = [0, -1, Number.NaN, '1.2', null];
+    let i = 0;
+    globalThis.fetch = async () => {
+      const price = prices[i++];
+      if (price === null) {
+        return new Response(JSON.stringify({ chart: { result: [{ meta: {} }] } }), { status: 200 });
+      }
+      return new Response(JSON.stringify({
+        chart: { result: [{ meta: { regularMarketPrice: price } }] },
+      }), { status: 200 });
+    };
+
+    const symbols = {
+      USD: 'USDUSD=X',
+      A: 'AUSD=X',
+      B: 'BUSD=X',
+      C: 'CUSD=X',
+      D: 'DUSD=X',
+      E: 'EUSD=X',
+    };
+    const result = await fetchYahooFxRatesWithProvenance(symbols, { A: 1, B: 2, C: 3, D: 4, E: 5 });
+    assert.deepEqual(result.fallbackCurrencies, ['A', 'B', 'C', 'D', 'E']);
+    assert.equal(result.rates.A, 1);
+    assert.equal(result.rates.E, 5);
+  });
+
+  test('cold cache miss still caps Yahoo recovery at five requests', async () => {
+    process.env.UPSTASH_REDIS_REST_URL = 'https://redis.example';
+    process.env.UPSTASH_REDIS_REST_TOKEN = 'test-token';
+    const currencies = ['EUR', 'JPY', 'KRW', 'AUD', 'CAD', 'NZD', 'CNY'];
+    let yahooCalls = 0;
+    globalThis.fetch = async (url) => {
+      if (String(url).startsWith('https://redis.example/get/')) {
+        return new Response(JSON.stringify({ result: null }), { status: 200 });
+      }
+      yahooCalls += 1;
+      return new Response(JSON.stringify({
+        chart: { result: [{ meta: { regularMarketPrice: 0.5 } }] },
+      }), { status: 200 });
+    };
+
+    const result = await getSharedFxRates(
+      Object.fromEntries(['USD', ...currencies].map((c) => [c, `${c}USD=X`])),
+      SHARED_FX_FALLBACKS,
+    );
+
+    assert.equal(yahooCalls, 5);
+    assert.deepEqual(result.fallbackCurrencies, ['NZD', 'CNY']);
+    assert.equal(result.EUR, 0.5);
+    assert.equal(result.NZD, SHARED_FX_FALLBACKS.NZD);
+  });
 });
