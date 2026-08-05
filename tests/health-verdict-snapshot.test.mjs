@@ -14,6 +14,7 @@ const {
   HEALTH_VERDICT_SNAPSHOT_TTL_SECONDS,
   HEALTH_VERDICT_REFRESH_LOCK_KEY: HEALTH_REFRESH_LOCK_KEY,
   HEALTH_VERDICT_REFRESH_WAIT_MS,
+  snapshotTtlSeconds,
 } = __testing__;
 const realFetch = globalThis.fetch;
 const realSetTimeout = globalThis.setTimeout;
@@ -520,5 +521,77 @@ test('does not serve a full or compact snapshot after content-freshness grace ex
     assert.equal(response.status, 503);
     assert.equal(body.status, 'REDIS_DOWN');
     assert.ok(calls.some((commands) => commands.length > 1), 'expired cache must fall through to a fresh sweep');
+  }
+});
+
+// The verdict cache must never outlive a softening deadline it publishes.
+// Reading is already guarded (hasExpiredActivationGrace), but a guarded READ
+// still costs a full ~390-command sweep per concurrent waiter, because the
+// refresh wait budget is shorter than a sweep. Expiring the KEY at the deadline
+// converts that into an ordinary cache miss, which the refresh lock serialises.
+test('snapshot TTL is the full 60s when no deadline is published', () => {
+  const now = Date.parse('2026-08-03T12:00:00.000Z');
+  assert.equal(snapshotTtlSeconds(healthySnapshot(new Date(now).toISOString()), now), 60);
+  assert.equal(snapshotTtlSeconds({ summary: {}, checks: {} }, now), 60);
+  // A non-ROLLOUT_PENDING entry carrying a stray rolloutPendingUntil is not a
+  // published promise; only the pending status makes it one.
+  assert.equal(
+    snapshotTtlSeconds({ checks: { a: { status: 'OK', rolloutPendingUntil: new Date(now + 5_000).toISOString() } } }, now),
+    60,
+  );
+});
+
+test('snapshot TTL is clamped down to the nearest activation deadline', () => {
+  const now = Date.parse('2026-08-03T12:00:00.000Z');
+  const at = (ms) => new Date(now + ms).toISOString();
+
+  // Content deadline on a per-check entry.
+  assert.equal(snapshotTtlSeconds({ checks: { a: { status: 'OK', contentFreshnessPendingUntil: at(30_000) } } }, now), 30);
+  // Rollout deadline, which only counts on a ROLLOUT_PENDING entry.
+  assert.equal(snapshotTtlSeconds({ checks: { a: { status: 'ROLLOUT_PENDING', rolloutPendingUntil: at(10_000) } } }, now), 10);
+  // Compact shape: deadlines live under `summary`, because a graced check is OK
+  // and therefore absent from `problems` entirely.
+  assert.equal(snapshotTtlSeconds({ problems: {}, summary: { contentFreshnessPendingUntil: { a: at(25_000) } } }, now), 25);
+  // The EARLIEST wins across shapes and sources.
+  assert.equal(
+    snapshotTtlSeconds({
+      checks: { a: { status: 'ROLLOUT_PENDING', rolloutPendingUntil: at(40_000) }, b: { status: 'OK', contentFreshnessPendingUntil: at(15_000) } },
+      summary: { contentFreshnessPendingUntil: { b: at(15_000), c: at(50_000) } },
+    }, now),
+    15,
+  );
+  // Beyond the base TTL the base TTL still caps it.
+  assert.equal(snapshotTtlSeconds({ checks: { a: { status: 'OK', contentFreshnessPendingUntil: at(600_000) } } }, now), 60);
+});
+
+test('snapshot TTL floors rather than rounds, so the key dies before the deadline', () => {
+  const now = Date.parse('2026-08-03T12:00:00.000Z');
+  // 30.9s away must be 30, never 31 — a key that outlives its own deadline is
+  // the exact thing this is preventing.
+  assert.equal(
+    snapshotTtlSeconds({ checks: { a: { status: 'OK', contentFreshnessPendingUntil: new Date(now + 30_900).toISOString() } } }, now),
+    30,
+  );
+});
+
+test('a malformed or already-passed deadline collapses the TTL to its floor', () => {
+  const now = Date.parse('2026-08-03T12:00:00.000Z');
+  const cases = [
+    ['unparseable', 'not-a-date'],
+    ['non-string', 12345],
+    ['null', null],
+    ['already expired', new Date(now - 60_000).toISOString()],
+  ];
+  for (const [label, value] of cases) {
+    assert.equal(
+      snapshotTtlSeconds({ checks: { a: { status: 'OK', contentFreshnessPendingUntil: value } } }, now),
+      1,
+      `${label} must evict fast, not pin a snapshot every reader will refuse`,
+    );
+    assert.equal(
+      snapshotTtlSeconds({ summary: { contentFreshnessPendingUntil: { a: value } } }, now),
+      1,
+      `${label} must behave identically on the compact shape`,
+    );
   }
 });

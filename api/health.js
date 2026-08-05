@@ -1785,6 +1785,58 @@ function hasExpiredRolloutPending(snapshot, now) {
 }
 
 /**
+ * The earliest activation deadline this snapshot promises, or Infinity when it
+ * promises none. A malformed deadline resolves to `now` — the same fail-closed
+ * reading isExpiredDeadline applies — so a corrupt value shortens the TTL
+ * instead of pinning a snapshot no reader will accept.
+ */
+function nearestActivationDeadlineMs(snapshot, now) {
+  let nearest = Infinity;
+  const consider = (raw) => {
+    const parsed = Date.parse(typeof raw === 'string' ? raw : '');
+    const deadline = Number.isFinite(parsed) ? parsed : now;
+    if (deadline < nearest) nearest = deadline;
+  };
+  const entries = snapshot?.checks ?? snapshot?.problems;
+  if (entries && typeof entries === 'object') {
+    for (const entry of Object.values(entries)) {
+      if (entry?.status === 'ROLLOUT_PENDING') consider(entry.rolloutPendingUntil);
+      if (Object.prototype.hasOwnProperty.call(entry ?? {}, 'contentFreshnessPendingUntil')) {
+        consider(entry.contentFreshnessPendingUntil);
+      }
+    }
+  }
+  const summaryDeadlines = snapshot?.summary?.contentFreshnessPendingUntil;
+  if (summaryDeadlines && typeof summaryDeadlines === 'object') {
+    for (const deadline of Object.values(summaryDeadlines)) consider(deadline);
+  }
+  return nearest;
+}
+
+/**
+ * Cache lifetime for a verdict snapshot: the normal 60s, SHORTENED so the entry
+ * cannot outlive any softening deadline it publishes.
+ *
+ * Without this, a snapshot written just before a deadline stays cacheable for
+ * the full minute, every reader correctly refuses it via hasExpiredActivationGrace,
+ * and — because the refresh wait budget (3s) is shorter than a ~390-command
+ * sweep — each concurrent waiter then falls through to its OWN sweep. Expiring
+ * the key AT the deadline turns that into an ordinary cache miss, which the
+ * existing lock already serialises to one sweep.
+ *
+ * Floor, never ceil: the entry must die at or before the deadline, not after.
+ * Redis EX has a 1s granularity, so a sub-second overhang remains possible —
+ * which is why hasExpiredActivationGrace stays as the read-side backstop rather
+ * than being replaced by this.
+ */
+function snapshotTtlSeconds(snapshot, now) {
+  const nearest = nearestActivationDeadlineMs(snapshot, now);
+  if (nearest === Infinity) return HEALTH_VERDICT_SNAPSHOT_TTL_SECONDS;
+  const secondsUntilDeadline = Math.floor((nearest - now) / 1_000);
+  return Math.min(HEALTH_VERDICT_SNAPSHOT_TTL_SECONDS, Math.max(1, secondsUntilDeadline));
+}
+
+/**
  * Bucket counts -> the endpoint's overall verdict.
  *
  * Extracted from the handler so it is reachable from tests. It used to be inline
@@ -2256,20 +2308,23 @@ export async function handleHealth(req, ctx, options = {}) {
   // live verdict just computed; the next request will retry by sweeping.
   // Both snapshots are written by the SAME sweep, in one pipeline, so the compact
   // form can never disagree with the full one or outlive it.
+  // Both keys share one TTL for the same reason they share one sweep: they
+  // carry the same deadlines, so they must stop being servable together.
+  const snapshotTtl = String(snapshotTtlSeconds(verdictSnapshot, snapshotNow()));
   const snapshotWriteResult = await redisPipeline([
     [
       'SET',
       HEALTH_VERDICT_SNAPSHOT_KEY,
       JSON.stringify(verdictSnapshot),
       'EX',
-      String(HEALTH_VERDICT_SNAPSHOT_TTL_SECONDS),
+      snapshotTtl,
     ],
     [
       'SET',
       HEALTH_VERDICT_COMPACT_SNAPSHOT_KEY,
       JSON.stringify(buildCompactVerdictSnapshot(verdictSnapshot)),
       'EX',
-      String(HEALTH_VERDICT_SNAPSHOT_TTL_SECONDS),
+      snapshotTtl,
     ],
   ], 4_000).catch(() => null);
   const snapshotWriteFailed = !snapshotWriteResult
@@ -2313,6 +2368,7 @@ export const __testing__ = {
   computeOverallStatus,
   hasExpiredRolloutPending,
   hasExpiredActivationGrace,
+  snapshotTtlSeconds,
   CONSUMER_PRICE_HEALTH_MARKETS,
   consumerPriceCoverageActivationKey,
   consumerPriceCoverageHealthName,

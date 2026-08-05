@@ -541,3 +541,63 @@ describe('#6095 — every activation marker is claimed by exactly one policy', (
     );
   });
 });
+
+// The read-side guard (hasExpiredActivationGrace) refuses an expired softening,
+// but refusing still costs a full ~390-command sweep per concurrent waiter,
+// because the refresh wait budget is shorter than a sweep. The write side must
+// therefore stop the snapshot from outliving the deadline in the first place,
+// so the deadline lands as an ordinary cache MISS that the refresh lock
+// serialises to one sweep.
+describe('#6152 review — the verdict cache cannot outlive the deadline it publishes', () => {
+  const DEADLINE = CONTENT_FRESHNESS_ROLLOUT_UNTIL_MS[PORTWATCH_MARKER];
+
+  async function snapshotWritesAt(now) {
+    installHealthPipelineMock({ [PORTWATCH_MARKER]: ABSENT }, { now });
+    const inner = globalThis.fetch;
+    const sets = [];
+    globalThis.fetch = async (url, init) => {
+      for (const command of JSON.parse(init.body)) {
+        // Snapshot writes only — the refresh lock is also a `health:verdict:*`
+        // SET and carries its own unrelated TTL.
+        const key = String(command[1]);
+        if (command[0] === 'SET' && key.startsWith('health:verdict') && !key.includes('refresh-lock')) {
+          sets.push(command);
+        }
+      }
+      return inner(url, init);
+    };
+    const res = await handleHealth(new Request('https://api.worldmonitor.app/api/health', {
+      headers: { 'x-worldmonitor-key': 'test-health-admin-key' },
+    }), undefined, { now });
+    const body = await res.json();
+    return { sets, body };
+  }
+
+  it('shortens the TTL to the remaining grace, on both snapshot keys', async () => {
+    const now = DEADLINE - 30_000;
+    const { sets, body } = await snapshotWritesAt(now);
+
+    assert.equal(
+      body.summary?.contentFreshnessPendingUntil?.portwatchPortActivity,
+      new Date(DEADLINE).toISOString(),
+      'precondition: this sweep really did publish a deadline',
+    );
+    assert.equal(sets.length, 2, 'one sweep writes the full and compact snapshots together');
+    for (const command of sets) {
+      assert.deepEqual(
+        command.slice(3),
+        ['EX', '30'],
+        'a snapshot promising 30s of grace must not be cacheable for the full 60s',
+      );
+    }
+  });
+
+  it('keeps the full TTL once no deadline is published', async () => {
+    // Past the window the grace is gone, so the sweep publishes no deadline and
+    // there is nothing for the TTL to be clamped to.
+    const { sets, body } = await snapshotWritesAt(DEADLINE + 60_000);
+    assert.equal(body.summary?.contentFreshnessPendingUntil, undefined);
+    assert.equal(sets.length, 2);
+    for (const command of sets) assert.deepEqual(command.slice(3), ['EX', '60']);
+  });
+});
