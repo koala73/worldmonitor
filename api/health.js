@@ -462,6 +462,11 @@ const SEED_META = {
       warnAfterConsecutive: 2,
       warnAfterAgeMin: 20,
       warnWithoutSuccess: true,
+      // Declared explicitly rather than relying on readSeedMeta's fallback:
+      // an omitted pattern silently DROPS every code the producer writes, so
+      // the contract is only safe if each key names its own vocabulary. A test
+      // asserts every synthesisFailure entry declares one.
+      failureCodePattern: /^INSIGHTS_SYNTHESIS_(PARSE|GATE|MISSING_CLUSTER|PROVIDER)$/,
     },
   },
   // #4920: daily GH Actions cadence; 2880 = 2x — one fully missed day alarms

@@ -389,6 +389,26 @@ test('classifyKey: market-implications age escalation still fires with no failur
   assert.equal(STATUS_COUNTS[entry.status], 'warn');
 });
 
+test('every synthesisFailure key declares its own failure-code vocabulary', () => {
+  // readSeedMeta falls back to the insights pattern when a key omits
+  // failureCodePattern, which would silently DROP every code a third producer
+  // writes — its streak would still escalate, but the reason would vanish.
+  // The fallback stays for safety; this is the guard that stops a new key
+  // from depending on it.
+  const withContract = Object.entries(SEED_META).filter(([, cfg]) => cfg?.synthesisFailure);
+  assert.ok(withContract.length >= 2, 'guard against this passing because the mechanism disappeared');
+  for (const [name, cfg] of withContract) {
+    assert.ok(
+      cfg.synthesisFailure.failureCodePattern instanceof RegExp,
+      `${name} must declare its own failureCodePattern, not inherit the insights default`,
+    );
+    assert.ok(
+      !cfg.synthesisFailure.failureCodePattern.global,
+      `${name}'s pattern must not be /g — a stateful lastIndex makes .test() alternate between true and false`,
+    );
+  }
+});
+
 test('classifyKey: a failure streak must not downgrade a vanished panel from EMPTY to a warn', () => {
   // The canonical key holds 180min; the seed-meta holds 7 days. So a cron that
   // dies right after a miss leaves a failure-bearing meta pointing at a panel

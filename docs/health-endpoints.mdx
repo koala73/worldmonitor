@@ -107,11 +107,39 @@ Keys are grouped into three tiers that determine alert severity:
 | `COVERAGE_PARTIAL` | Warn | Aggregate records or a required subgroup is below the key's declared coverage floor (for example, 139/174 PortWatch countries or an empty prediction-market pool) |
 | `COVERAGE_DEGRADED` | Warn | The producer's own coverage diagnostics are missing, or its completion ratio is below the key's `minSuccessRate` (for example, a consumer-price market that completed 4 of 12 retailer pages) |
 | `ROLLOUT_PENDING` | Warn | A newly deployed schema whose producer has not reached its first scheduled run yet. **Bounded**: the entry carries a `rolloutPendingUntil` deadline compiled into `api/health.js`, and the state becomes `EMPTY` (crit) once that passes or once the producer writes its durable activation marker. Counted in `summary.rolloutPending` |
-| `SEED_ERROR` | Warn | `seed-meta` reports `status: "error"` from the last seed run |
+| `SEED_ERROR` | Warn | `seed-meta` reports `status: "error"` from the last seed run, **or** a producer that serves last-known-good has failed often enough to cross its declared failure contract (see below) |
 | `REDIS_PARTIAL` | Warn | A single per-command Redis error on this key's STRLEN/GET (not a full outage) |
 | `EMPTY_ON_DEMAND` | Warn | On-demand key has no data yet (expected until first request); counted in `summary.onDemandWarn` |
 | `EMPTY` | Crit | Bootstrap or seeded standalone key has no data |
 | `EMPTY_DATA` | Crit | Key exists but contains zero records (and 0 is not a valid state for it) |
+
+### Producers That Serve Last-Known-Good
+
+Some producers are expected to miss individual runs — an LLM synthesis stage
+whose provider times out, for example — while the payload they last published
+stays useful for hours. For these keys a single miss is not an outage, so the
+producer does **not** write `status: "error"`. Instead it holds `fetchedAt` at
+the vintage it is still serving, reports `recordCount` for those served
+records, and records the miss as diagnostics:
+
+| Field | Meaning |
+|-------|---------|
+| `consecutiveFailures` | Misses since the last successful publish; reset to 0 on success |
+| `lastAttemptAt` | When the producer last tried, successfully or not |
+| `lastSuccessAt` | When it last published |
+| `servedGeneratedAt` | Vintage of the payload currently being served |
+| `lastSynthesisFailureCode` | Why the last attempt failed, from a closed per-key vocabulary |
+
+Each such key declares thresholds sized to its own cadence, and health reports
+`SEED_ERROR` once either is crossed: `warnAfterConsecutive` misses in a row, or
+`warnAfterAgeMin` since the last attempt with a miss on record. Because
+`fetchedAt` is **not** advanced by a miss, the ordinary `maxStaleMin` age gate
+keeps escalating independently — a producer that stops entirely still ages into
+`STALE_SEED`. A miss with nothing left to serve skips all of this and writes
+`status: "error"` immediately, and a failure streak never outranks a missing
+data key, which is still `EMPTY` (crit).
+
+Two keys use this contract today: `newsInsights` and `marketImplications`.
 
 ### China Coverage Projection
 

@@ -17203,8 +17203,14 @@ async function writeMarketImplicationsFailureMeta(reason) {
   let previousMeta = null;
   let lastGoodPayload = null;
   try {
-    previousMeta = await redisGetOrThrow(url, token, MARKET_IMPLICATIONS_META_KEY);
-    lastGoodPayload = await redisGetOrThrow(url, token, MARKET_IMPLICATIONS_KEY);
+    // Concurrent, not sequential: the two reads are independent, and this runs
+    // at the tail of a run already bounded by the 240s seed lock. Serializing
+    // them doubles the worst case to ~20s when Redis is degraded — which is
+    // precisely the case where the LLM has probably just failed too.
+    [previousMeta, lastGoodPayload] = await Promise.all([
+      redisGetOrThrow(url, token, MARKET_IMPLICATIONS_META_KEY),
+      redisGetOrThrow(url, token, MARKET_IMPLICATIONS_KEY),
+    ]);
   } catch (err) {
     // Fail closed: an unread last-good is an unproven last-good, and an unread
     // streak is not a cleared streak. Both degrade into the immediate-error
