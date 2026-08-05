@@ -5,6 +5,7 @@ import type { Doc } from "../_generated/dataModel";
 import {
   ANON_ID_V4_REGEX,
   companyMonitoringOwnerFenceCandidates,
+  tryCompanyMonitoringOwnerFenceCandidates,
   type CompanyMonitoringOwnerFenceCandidates,
 } from "../lib/identitySigning";
 import { COMPANY_MONITORING_LIMITS } from "../../shared/company-monitoring-contract";
@@ -118,8 +119,22 @@ export async function syncCompanyMonitoringAccountFromEntitlement(
   // Browser UUID purchases are deliberately invisible to Company Monitoring
   // until claimSubscription has recomputed the real authenticated owner.
   if (ANON_ID_V4_REGEX.test(userId)) return null;
+  // Resolve the fence BEFORE canonicalEntitlement, which performs this
+  // transaction's first write (its deliberate same-value serialization patch).
+  // Convex has no savepoints, so bailing out after any write would commit
+  // partial state; bailing here commits nothing. A misconfigured keyring must
+  // degrade Company Monitoring, never abort the entitlement write this runs
+  // inside — a config fault is not transient, so the caller's retry would fail
+  // identically forever. Genuine data conflicts below still throw.
+  const resolved = await tryCompanyMonitoringOwnerFenceCandidates(userId);
+  if (!resolved.ok) {
+    console.error(
+      `[companyMonitoring] owner fence unavailable; skipping account sync for ${userId}: ${resolved.reason}`,
+    );
+    return null;
+  }
   const canonical = await canonicalEntitlement(ctx, userId);
-  const ownerFence = await companyMonitoringOwnerFenceCandidates(userId);
+  const ownerFence = resolved.fence;
   const ownerFenceHash = ownerFence.current;
   const match = await findAccountByOwnerFence(ctx, ownerFence);
   let existing = match?.account ?? null;

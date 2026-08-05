@@ -185,6 +185,36 @@ export async function signCompanyMonitoringOwnerFence(userId: string): Promise<s
   return (await companyMonitoringOwnerFenceCandidates(userId)).current;
 }
 
+export type CompanyMonitoringOwnerFenceResolution =
+  | { ok: true; fence: CompanyMonitoringOwnerFenceCandidates }
+  | { ok: false; reason: string };
+
+/**
+ * Non-throwing variant for callers that must not abort their transaction when
+ * the fence keyring is misconfigured.
+ *
+ * `companyMonitoringOwnerFenceCandidates` throws for pure configuration
+ * reasons — an unset or whitespace-padded COMPANY_MONITORING_OWNER_FENCE_SECRET,
+ * or a malformed COMPANY_MONITORING_OWNER_FENCE_PREVIOUS_SECRETS keyring. Its
+ * one production caller runs inside the entitlement transaction, so an
+ * unhandled throw there rolls back a paying customer's entitlement write and
+ * keeps doing so on every Dodo retry, because a config fault is not transient.
+ *
+ * The try/catch lives HERE, wrapping a pure function, rather than at the call
+ * site: Convex has no savepoints, so catching around code that has already
+ * written would commit that partial state. Wrapping a function that never
+ * touches `ctx` makes the degrade path free of that hazard.
+ */
+export async function tryCompanyMonitoringOwnerFenceCandidates(
+  userId: string,
+): Promise<CompanyMonitoringOwnerFenceResolution> {
+  try {
+    return { ok: true, fence: await companyMonitoringOwnerFenceCandidates(userId) };
+  } catch (error) {
+    return { ok: false, reason: error instanceof Error ? error.message : String(error) };
+  }
+}
+
 /**
  * Verifies that a userId + signature pair is valid.
  * Returns true if the signature matches, false otherwise.

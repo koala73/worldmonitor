@@ -192,7 +192,12 @@ export async function upsertEntitlements(
   }
 
   // Company Monitoring account state is part of the entitlement transaction: the
-  // canonical row and its one account root commit together or not at all.
+  // canonical row and its one account root commit together or not at all —
+  // whenever the owner fence is resolvable. A misconfigured fence keyring
+  // degrades Company Monitoring (logged, root skipped, converges on the next
+  // entitlement write) instead of rolling back this entitlement write, because
+  // a config fault would otherwise fail every Dodo retry identically. Data
+  // conflicts inside the sync still propagate and still abort the transaction.
   await syncCompanyMonitoringAccountFromEntitlement(ctx, userId);
 
   // ACCEPTED BOUND: cache sync runs after mutation commits. If scheduler
