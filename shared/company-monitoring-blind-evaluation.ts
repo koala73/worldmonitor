@@ -121,6 +121,8 @@ export type BlindForecast = {
   pilotCorpusVersion: string;
   pilotCorpusSha256: string;
   targetCorpusVersion: string;
+  targetCandidateSha256: string;
+  targetGoldLabelSetSha256: string;
   versions: {
     policyVersion: string;
     modelVersion: string;
@@ -316,6 +318,16 @@ function normalizedPredictionSet(predictions: PredictionSet): PredictionSet {
 
 export function computeBlindCorpusDigest(corpus: BlindCorpus): string {
   return sha256(canonicalJson(corpus));
+}
+
+function computeBlindCorpusCandidateDigest(corpus: BlindCorpus): string {
+  return sha256(canonicalJson({
+    ...corpus,
+    status: 'draft',
+    lockedAt: null,
+    forecastSha256: null,
+    sealedGoldLabelsSha256: null,
+  }));
 }
 
 export function computeGoldLabelSetDigest(gold: GoldLabelSet): string {
@@ -703,6 +715,8 @@ export function forecastBlindEvaluation(input: {
     pilotCorpusVersion: input.pilotCorpus.corpusVersion,
     pilotCorpusSha256: computeBlindCorpusDigest(input.pilotCorpus),
     targetCorpusVersion: input.targetCorpus.corpusVersion,
+    targetCandidateSha256: computeBlindCorpusCandidateDigest(input.targetCorpus),
+    targetGoldLabelSetSha256: computeGoldLabelSetDigest(input.targetGoldLabels),
     versions: {
       policyVersion: input.targetCorpus.policyVersion,
       modelVersion: input.targetCorpus.modelVersion,
@@ -732,7 +746,17 @@ export function forecastBlindEvaluation(input: {
   };
 }
 
-function validateForecast(corpus: BlindCorpus, forecast: BlindForecast, approvedThresholdDigest: string): void {
+function validateForecast(input: {
+  corpus: BlindCorpus;
+  goldLabels: GoldLabelSet;
+  forecast: BlindForecast;
+  approvedThresholdDigest: string;
+  previous?: {
+    corpus: BlindCorpus;
+    goldLabels: GoldLabelSet;
+  };
+}): void {
+  const { corpus, forecast, approvedThresholdDigest } = input;
   if (forecast.schemaVersion !== 'cm_blind_forecast_v1' || forecast.gating !== false) {
     fail('forecast_schema_invalid');
   }
@@ -746,8 +770,21 @@ function validateForecast(corpus: BlindCorpus, forecast: BlindForecast, approved
   ] as const) {
     if (forecast.versions[field] !== corpus[field]) fail(`forecast_${code}_mismatch`);
   }
-  const allowedTargetVersion = corpus.continuation?.parentCorpusVersion ?? corpus.corpusVersion;
-  if (forecast.targetCorpusVersion !== allowedTargetVersion) fail('forecast_target_corpus_version_mismatch');
+  const targetCorpus = corpus.continuation === null ? corpus : input.previous?.corpus;
+  const targetGoldLabels = corpus.continuation === null ? input.goldLabels : input.previous?.goldLabels;
+  if (!targetCorpus || !targetGoldLabels) fail('continuation_parent_inputs_missing');
+  if (forecast.targetCorpusVersion !== targetCorpus.corpusVersion) {
+    fail('forecast_target_corpus_version_mismatch');
+  }
+  if (forecast.targetCandidateSha256 !== computeBlindCorpusCandidateDigest(targetCorpus)) {
+    fail('forecast_target_candidate_mismatch');
+  }
+  if (forecast.versions.targetGoldLabelVersion !== targetGoldLabels.goldLabelVersion) {
+    fail('forecast_target_gold_label_version_mismatch');
+  }
+  if (forecast.targetGoldLabelSetSha256 !== computeGoldLabelSetDigest(targetGoldLabels)) {
+    fail('forecast_target_gold_label_set_mismatch');
+  }
   if (computeForecastDigest(forecast) !== corpus.forecastSha256) fail('forecast_digest_mismatch');
 }
 
@@ -777,7 +814,7 @@ function validateContinuation(input: {
   const { corpus, goldLabels, predictions, previous } = input;
   const samePolicy = EVALUATION_VERSION_FIELDS
     .every(([field]) => corpus[field] === previous.corpus[field]);
-  if (!samePolicy) return;
+  if (!samePolicy) fail('continuation_version_mismatch');
   if (previous.report.outcome !== 'incomplete') fail('continuation_requires_incomplete_parent');
   if (corpus.continuation === null) fail('fresh_corpus_retry_forbidden');
   const reference = corpus.continuation;
@@ -803,6 +840,14 @@ function validateContinuation(input: {
   }
   const previousPredictionDigest = computePredictionSetDigest(previous.predictions);
   const previousGoldDigest = computeGoldLabelSetDigest(previous.goldLabels);
+  if (previousPredictionDigest !== previous.report.predictionSetSha256) {
+    fail('previous_prediction_set_digest_mismatch');
+  }
+  if (previousGoldDigest !== previous.report.goldLabelSetSha256) {
+    fail('previous_gold_label_set_digest_mismatch');
+  }
+  validatePredictionSet(previous.corpus, previous.predictions);
+  validateGoldLabels(previous.corpus, previous.goldLabels);
   if (predictions.parentPredictionSetSha256 !== previousPredictionDigest
     || predictions.parentGoldLabelSetSha256 !== previousGoldDigest) {
     fail('continuation_parent_score_set_mismatch');
@@ -911,7 +956,13 @@ export function scoreBlindEvaluation(input: {
   }
   const labels = validateGoldLabels(input.corpus, input.goldLabels);
   const predictions = validatePredictionSet(input.corpus, input.predictions);
-  validateForecast(input.corpus, input.forecast, input.anchors.approvedThresholdDigest);
+  validateForecast({
+    corpus: input.corpus,
+    goldLabels: input.goldLabels,
+    forecast: input.forecast,
+    approvedThresholdDigest: input.anchors.approvedThresholdDigest,
+    previous: input.previous,
+  });
 
   const publication = { truePositive: 0, falsePositive: 0, trueNegative: 0, falseNegative: 0 };
   const materiality = emptyMaterialityMatrix();

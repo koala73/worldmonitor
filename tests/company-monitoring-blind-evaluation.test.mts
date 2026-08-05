@@ -24,6 +24,7 @@ import {
 } from '../shared/company-monitoring-blind-evaluation.ts';
 import {
   syntheticDigest,
+  thresholdDigest,
   type JsonObject,
 } from '../shared/company-monitoring-evaluation.ts';
 
@@ -221,6 +222,74 @@ function score(bundle: ReturnType<typeof lockedBundle>, previous?: {
   });
 }
 
+function continuationScenario(): {
+  previousBundle: ReturnType<typeof lockedBundle>;
+  previousReport: ScoreReport;
+  childBundle: ReturnType<typeof lockedBundle>;
+  previous: {
+    corpus: BlindCorpus;
+    goldLabels: GoldLabelSet;
+    predictions: PredictionSet;
+    report: ScoreReport;
+  };
+} {
+  const expansion = examples('expansion', 60, 40_000);
+  const previousBundle = lockedBundle({
+    namespace: 'continuation-base',
+    eligibleCount: 90,
+    publishLimit: 90,
+    precommittedExpansion: expansion,
+  });
+  const previousReport = score(previousBundle);
+  const childCorpus: BlindCorpus = {
+    ...previousBundle.corpus,
+    corpusVersion: 'cm_corpus_continuation_v2',
+    lockedAt: '2026-08-05T03:00:00.000Z',
+    continuation: {
+      parentCorpusVersion: previousBundle.corpus.corpusVersion,
+      parentCorpusSha256: computeBlindCorpusDigest(previousBundle.corpus),
+      parentReportSha256: previousReport.reportSha256,
+      reason: 'denominator_shortfall',
+    },
+    precommittedExpansion: null,
+    examples: [...previousBundle.corpus.examples, ...expansion],
+  };
+  let childGold = labelsFor(childCorpus, 150);
+  const preservedLabels = new Map(previousBundle.gold.labels.map((label) => [label.opaqueExampleId, label]));
+  childGold = {
+    ...childGold,
+    labels: childGold.labels.map((label) => preservedLabels.get(label.opaqueExampleId) ?? label),
+  };
+  childCorpus.sealedGoldLabelsSha256 = computeGoldLabelSetDigest(childGold);
+  const childPredictions = predictionsFor(childCorpus, childGold);
+  childPredictions.parentPredictionSetSha256 = computePredictionSetDigest(previousBundle.predictions);
+  childPredictions.parentGoldLabelSetSha256 = computeGoldLabelSetDigest(previousBundle.gold);
+  const preservedPredictions = new Map(
+    previousBundle.predictions.predictions.map((prediction) => [prediction.opaqueExampleId, prediction]),
+  );
+  childPredictions.predictions = childPredictions.predictions.map(
+    (prediction) => preservedPredictions.get(prediction.opaqueExampleId) ?? prediction,
+  );
+  childPredictions.corpusSha256 = computeBlindCorpusDigest(childCorpus);
+  const childBundle = {
+    corpus: childCorpus,
+    gold: childGold,
+    predictions: childPredictions,
+    forecast: previousBundle.forecast,
+  };
+  return {
+    previousBundle,
+    previousReport,
+    childBundle,
+    previous: {
+      corpus: previousBundle.corpus,
+      goldLabels: previousBundle.gold,
+      predictions: previousBundle.predictions,
+      report: previousReport,
+    },
+  };
+}
+
 describe('Company Monitoring blind evaluation forecast', () => {
   it('uses only a locked, version-matched, four-way-disjoint pilot and returns aggregate forecasts', () => {
     let target = baseCorpus('forecast-target', 'stage3_gate', 200, 'draft');
@@ -386,6 +455,62 @@ describe('Company Monitoring deterministic blind scorer', () => {
     }), expectCode('corpus_mutated_after_lock'));
   });
 
+  it('binds a forecast to the exact pre-lock target candidate and sealed gold set', () => {
+    const candidateA = lockedBundle({ namespace: 'forecast-candidate-a' });
+    const candidateBCorpus: BlindCorpus = {
+      ...candidateA.corpus,
+      examples: examples('forecast-candidate-b', 200, 60_000),
+    };
+    const candidateBGold = labelsFor(candidateBCorpus, 105);
+    candidateBCorpus.sealedGoldLabelsSha256 = computeGoldLabelSetDigest(candidateBGold);
+    candidateBCorpus.forecastSha256 = computeForecastDigest(candidateA.forecast);
+    const candidateBPredictions = predictionsFor(candidateBCorpus, candidateBGold);
+
+    assert.throws(() => scoreBlindEvaluation({
+      protocol,
+      anchors,
+      corpus: candidateBCorpus,
+      expectedCorpusSha256: computeBlindCorpusDigest(candidateBCorpus),
+      goldLabels: candidateBGold,
+      predictions: candidateBPredictions,
+      forecast: candidateA.forecast,
+    }), expectCode('forecast_target_candidate_mismatch'));
+
+    const goldMutationCorpus = structuredClone(candidateA.corpus);
+    const goldMutation = structuredClone(candidateA.gold);
+    goldMutation.labels[0]!.customerUseful = true;
+    goldMutationCorpus.sealedGoldLabelsSha256 = computeGoldLabelSetDigest(goldMutation);
+    goldMutationCorpus.forecastSha256 = computeForecastDigest(candidateA.forecast);
+    const goldMutationPredictions = predictionsFor(goldMutationCorpus, goldMutation);
+    assert.throws(() => scoreBlindEvaluation({
+      protocol,
+      anchors,
+      corpus: goldMutationCorpus,
+      expectedCorpusSha256: computeBlindCorpusDigest(goldMutationCorpus),
+      goldLabels: goldMutation,
+      predictions: goldMutationPredictions,
+      forecast: candidateA.forecast,
+    }), expectCode('forecast_target_gold_label_set_mismatch'));
+
+    const goldVersionCorpus = structuredClone(candidateA.corpus);
+    const goldVersion = {
+      ...structuredClone(candidateA.gold),
+      goldLabelVersion: 'cm_corpus_forecast-candidate-a_v1_gold_v2',
+    };
+    goldVersionCorpus.sealedGoldLabelsSha256 = computeGoldLabelSetDigest(goldVersion);
+    goldVersionCorpus.forecastSha256 = computeForecastDigest(candidateA.forecast);
+    const goldVersionPredictions = predictionsFor(goldVersionCorpus, goldVersion);
+    assert.throws(() => scoreBlindEvaluation({
+      protocol,
+      anchors,
+      corpus: goldVersionCorpus,
+      expectedCorpusSha256: computeBlindCorpusDigest(goldVersionCorpus),
+      goldLabels: goldVersion,
+      predictions: goldVersionPredictions,
+      forecast: candidateA.forecast,
+    }), expectCode('forecast_target_gold_label_version_mismatch'));
+  });
+
   it('emits a byte-stable complete report with exact bounds, matrices, latency, cost, and Stage 4 exclusion', () => {
     const bundle = lockedBundle();
     const report = score(bundle);
@@ -448,81 +573,78 @@ describe('Company Monitoring deterministic blind scorer', () => {
 
 describe('Company Monitoring cumulative continuation', () => {
   it('retains every scored row, appends only the precommitted untouched expansion, and rescores cumulatively', () => {
-    const expansion = examples('expansion', 60, 40_000);
-    const previousBundle = lockedBundle({
-      namespace: 'continuation-base',
-      eligibleCount: 90,
-      publishLimit: 90,
-      precommittedExpansion: expansion,
-    });
-    const previousReport = score(previousBundle);
+    const { previousBundle, previousReport, childBundle, previous } = continuationScenario();
     assert.equal(previousReport.outcome, 'incomplete');
-
-    const childCorpus: BlindCorpus = {
-      ...previousBundle.corpus,
-      corpusVersion: 'cm_corpus_continuation_v2',
-      lockedAt: '2026-08-05T03:00:00.000Z',
-      continuation: {
-        parentCorpusVersion: previousBundle.corpus.corpusVersion,
-        parentCorpusSha256: computeBlindCorpusDigest(previousBundle.corpus),
-        parentReportSha256: previousReport.reportSha256,
-        reason: 'denominator_shortfall',
-      },
-      precommittedExpansion: null,
-      examples: [...previousBundle.corpus.examples, ...expansion],
-    };
-    let childGold = labelsFor(childCorpus, 150);
-    const preservedLabels = new Map(previousBundle.gold.labels.map((label) => [label.opaqueExampleId, label]));
-    childGold = {
-      ...childGold,
-      labels: childGold.labels.map((label) => preservedLabels.get(label.opaqueExampleId) ?? label),
-    };
-    childCorpus.sealedGoldLabelsSha256 = computeGoldLabelSetDigest(childGold);
-    const childPredictions = predictionsFor(childCorpus, childGold);
-    const previousPredictionDigest = computePredictionSetDigest(previousBundle.predictions);
-    const previousGoldDigest = computeGoldLabelSetDigest(previousBundle.gold);
-    childPredictions.parentPredictionSetSha256 = previousPredictionDigest;
-    childPredictions.parentGoldLabelSetSha256 = previousGoldDigest;
-    const preservedPredictions = new Map(
-      previousBundle.predictions.predictions.map((prediction) => [prediction.opaqueExampleId, prediction]),
-    );
-    childPredictions.predictions = childPredictions.predictions.map(
-      (prediction) => preservedPredictions.get(prediction.opaqueExampleId) ?? prediction,
-    );
-    childPredictions.corpusSha256 = computeBlindCorpusDigest(childCorpus);
-    const childBundle = {
-      corpus: childCorpus,
-      gold: childGold,
-      predictions: childPredictions,
-      forecast: previousBundle.forecast,
-    };
     assert.throws(() => score(childBundle), expectCode('continuation_parent_inputs_missing'));
-    const childReport = score(childBundle, {
-      corpus: previousBundle.corpus,
-      goldLabels: previousBundle.gold,
-      predictions: previousBundle.predictions,
-      report: previousReport,
-    });
+    const childReport = score(childBundle, previous);
     assert.equal(childReport.corpus.exampleCount, 260);
     assert.equal(childReport.corpus.parentCorpusVersion, previousBundle.corpus.corpusVersion);
 
     const dropped = structuredClone(childBundle);
     dropped.corpus.examples.splice(0, 1);
     dropped.predictions.corpusSha256 = computeBlindCorpusDigest(dropped.corpus);
-    assert.throws(() => score(dropped, {
-      corpus: previousBundle.corpus,
-      goldLabels: previousBundle.gold,
-      predictions: previousBundle.predictions,
-      report: previousReport,
-    }), expectCode('continuation_dropped_scored_example'));
+    assert.throws(() => score(dropped, previous), expectCode('continuation_dropped_scored_example'));
 
     const freshRetry = lockedBundle({ namespace: 'fresh-retry', eligibleCount: 150 });
-    assert.throws(() => score(freshRetry, {
-      corpus: previousBundle.corpus,
-      goldLabels: previousBundle.gold,
-      predictions: previousBundle.predictions,
-      report: previousReport,
-    }), expectCode('fresh_corpus_retry_forbidden'));
+    assert.throws(() => score(freshRetry, previous), expectCode('fresh_corpus_retry_forbidden'));
+  });
+
+  it('rejects continuation under drift in every frozen evaluation version', () => {
+    const versionDrifts = [
+      ['protocolVersion', 'cm_eval_v2'],
+      ['policyVersion', 'cm_policy_v2'],
+      ['modelVersion', 'deepseek_v4_flash_2026_08_06'],
+      ['queryVersion', 'cm_query_v2'],
+    ] as const;
+
+    for (const [field, driftedVersion] of versionDrifts) {
+      const { childBundle, previous } = continuationScenario();
+      const drifted = structuredClone(childBundle);
+      const driftedProtocol = structuredClone(protocol);
+      const driftedAnchors = { ...anchors };
+      drifted.corpus[field] = driftedVersion;
+      drifted.predictions[field] = driftedVersion;
+      if (field === 'protocolVersion') {
+        drifted.forecast.protocolVersion = driftedVersion;
+        driftedProtocol.protocolVersion = driftedVersion;
+        const digest = thresholdDigest(driftedProtocol);
+        (driftedProtocol.approval as JsonObject).approvedThresholdsSha256 = digest;
+        driftedAnchors.approvedThresholdDigest = digest;
+      } else {
+        drifted.forecast.versions[field] = driftedVersion;
+      }
+      drifted.corpus.forecastSha256 = computeForecastDigest(drifted.forecast);
+      drifted.predictions.corpusSha256 = computeBlindCorpusDigest(drifted.corpus);
+
+      assert.throws(() => scoreBlindEvaluation({
+        protocol: driftedProtocol,
+        anchors: driftedAnchors,
+        corpus: drifted.corpus,
+        expectedCorpusSha256: computeBlindCorpusDigest(drifted.corpus),
+        goldLabels: drifted.gold,
+        predictions: drifted.predictions,
+        forecast: drifted.forecast,
+        previous,
+      }), expectCode('continuation_version_mismatch'), field);
+    }
+  });
+
+  it('rejects supplied parent score sets that do not match the retained parent report', () => {
+    const predictionMutation = continuationScenario();
+    const mutatedPredictions = structuredClone(predictionMutation.previous);
+    mutatedPredictions.predictions.predictions[0]!.confidence = 0.42;
+    assert.throws(
+      () => score(predictionMutation.childBundle, mutatedPredictions),
+      expectCode('previous_prediction_set_digest_mismatch'),
+    );
+
+    const goldMutation = continuationScenario();
+    const mutatedGold = structuredClone(goldMutation.previous);
+    mutatedGold.goldLabels.labels[0]!.customerUseful = true;
+    assert.throws(
+      () => score(goldMutation.childBundle, mutatedGold),
+      expectCode('previous_gold_label_set_digest_mismatch'),
+    );
   });
 });
 
