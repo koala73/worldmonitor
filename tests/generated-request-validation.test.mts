@@ -356,3 +356,74 @@ describe('generated request validation', () => {
     assert.match(viteConfig, /validateRequest:\s*validateGeneratedRequest/);
   });
 });
+
+describe('enum and string-bound validation branches', () => {
+  const company = (overrides: Record<string, unknown> = {}) => ({
+    company: { name: 'Example Holdings', domicileCountry: 'DOMICILE_COUNTRY_US', aliases: [], ...overrides },
+  });
+
+  it('rejects the numeric proto3-JSON enum form with an actionable message', () => {
+    // Deliberately narrower than canonical proto3 JSON: the generated server types are
+    // string unions and the published OpenAPI documents only the name form, so accepting
+    // an integer here would hand a handler a value it is not typed for. Pinned so the
+    // decision cannot be reversed silently.
+    assert.deepEqual(
+      validateGeneratedRequest('createMonitoredCompany', company({ domicileCountry: 1 })),
+      [{
+        field: 'company.domicileCountry',
+        description: 'value must be an enum name (this API does not accept the numeric proto3-JSON enum form)',
+      }],
+    );
+  });
+
+  it('rejects an undeclared enum name even without enum.defined_only', () => {
+    assert.deepEqual(
+      validateGeneratedRequest('createMonitoredCompany', company({ domicileCountry: 'DOMICILE_COUNTRY_ZZ' })),
+      [{ field: 'company.domicileCountry', description: 'enum value must be defined' }],
+    );
+  });
+
+  it('enforces enum.not_in on the patch domicile field', () => {
+    // The only field exercising the generator's number->name reverse lookup end to end.
+    assert.deepEqual(
+      validateGeneratedRequest('updateMonitoredCompany', {
+        companyId: 'cm_company_01ARZ3NDEKTSV4RRFFQ69G5FAV',
+        patch: { domicileCountry: 'DOMICILE_COUNTRY_UNSPECIFIED' },
+      }),
+      [{
+        field: 'patch.domicileCountry',
+        description: 'enum value must not be DOMICILE_COUNTRY_UNSPECIFIED',
+      }],
+    );
+  });
+
+  it('rejects a present-but-empty patch name, matching create', () => {
+    assert.deepEqual(
+      validateGeneratedRequest('updateMonitoredCompany', {
+        companyId: 'cm_company_01ARZ3NDEKTSV4RRFFQ69G5FAV',
+        patch: { name: '' },
+      }),
+      [{ field: 'patch.name', description: 'string length must be at least 1' }],
+    );
+  });
+
+  it('accepts a name at exactly the UTF-8 byte ceiling and rejects one byte over', () => {
+    // 128 x 'é' = exactly 256 bytes; the existing test only covered a well-over case.
+    // A clean request returns undefined, not an empty array.
+    assert.equal(validateGeneratedRequest('createMonitoredCompany', company({ name: 'é'.repeat(128) })), undefined);
+    assert.deepEqual(
+      validateGeneratedRequest('createMonitoredCompany', company({ name: `${'é'.repeat(128)}a` })),
+      [{ field: 'company.name', description: 'string UTF-8 length must be at most 256 bytes' }],
+    );
+  });
+
+  it('counts astral surrogate pairs as their UTF-8 byte length', () => {
+    // 65 x U+1F600 = 260 bytes across 130 UTF-16 code units; the fast path must fall
+    // through to the encoder rather than answering from `.length`.
+    assert.deepEqual(
+      validateGeneratedRequest('createMonitoredCompany', company({ name: '\u{1F600}'.repeat(65) })),
+      [{ field: 'company.name', description: 'string UTF-8 length must be at most 256 bytes' }],
+    );
+    assert.equal(validateGeneratedRequest('createMonitoredCompany', company({ name: '\u{1F600}'.repeat(64) })), undefined);
+  });
+});

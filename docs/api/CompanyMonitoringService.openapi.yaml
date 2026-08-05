@@ -534,7 +534,7 @@ paths:
                                     "locations":
                                         - "example"
                                     "name": "WorldMonitor Analyst"
-                                  "ordinal": 1
+                                  "ordinal": 0
                         schema:
                             $ref: '#/components/schemas/ImportMonitoredCompanyBatchRequest'
                 required: true
@@ -549,7 +549,7 @@ paths:
                                 "replayedCount": 1
                                 "results":
                                     - "companyId": "cm_company_01ARZ3NDEKTSV4RRFFQ69G5FAV"
-                                      "ordinal": 1
+                                      "ordinal": 0
                                       "outcome": "COMPANY_IMPORT_ROW_OUTCOME_CREATED"
                                       "reasonCode": "example"
                             schema:
@@ -1234,11 +1234,11 @@ paths:
                                 "companyCount": 1
                                 "companyLimit": 500
                                 "featureFlags":
-                                    "alerts": true
-                                    "exaProvider": true
-                                    "publication": true
-                                    "restWrites": true
-                                    "ui": true
+                                    "alerts": false
+                                    "exaProvider": false
+                                    "publication": false
+                                    "restWrites": false
+                                    "ui": false
                                 "snapshotGeneration": "1717200000000"
                             schema:
                                 $ref: '#/components/schemas/GetCompanyMonitoringStatusResponse'
@@ -1599,6 +1599,11 @@ components:
             properties:
                 name:
                     type: string
+                    minLength: 1
+                    description: |-
+                        Present-but-empty is rejected, matching MonitoredCompanyInput.name. A patch must not
+                         be able to blank a field the response models as non-optional; clearing a name would
+                         need an explicit clear mask, which this contract does not define.
                 domicileCountry:
                     type: string
                     enum:

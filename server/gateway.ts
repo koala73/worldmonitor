@@ -60,6 +60,7 @@ import {
   beginIdempotency,
   peekIdempotency,
   IDEMPOTENCY_HEADER,
+  IDEMPOTENCY_EXEMPT_RPC_PATHS,
   IDEMPOTENT_REPLAYED_HEADER,
   type IdempotencyOutcome,
 } from './_shared/idempotency';
@@ -1641,8 +1642,15 @@ export function createDomainGateway(
     // (compat block above) are already GET here and are skipped. Scope by the
     // resolved principal so a key can never replay another caller's response.
     // Fail-open: any Redis issue proceeds without idempotency (see the module).
+    // Routes in IDEMPOTENCY_EXEMPT_RPC_PATHS own their own retry semantics (per-row
+    // outcomes recomputed against current state), so generic whole-response replay would
+    // violate their contract. The published OpenAPI already omits the parameter for them;
+    // ignore the header here too, otherwise a client that sends it anyway still gets the
+    // replay the spec says it cannot.
     let idempotency: IdempotencyOutcome | null = null;
-    const hasIdempotencyKey = request.method === 'POST' && request.headers.has(IDEMPOTENCY_HEADER);
+    const hasIdempotencyKey = request.method === 'POST'
+      && request.headers.has(IDEMPOTENCY_HEADER)
+      && !IDEMPOTENCY_EXEMPT_RPC_PATHS.has(pathname);
     const idScope = identityForScope.principal_id ?? identityForScope.customer_id;
     const idempotencyScope = idScope ? `${identityForScope.auth_kind}:${idScope}` : null;
 

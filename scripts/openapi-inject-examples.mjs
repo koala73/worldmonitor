@@ -32,6 +32,10 @@ const JSON_MEDIA = 'application/json';
 const HTTP_METHODS = new Set(['get', 'post', 'put', 'delete', 'patch', 'options', 'head']);
 const MAX_OBJECT_DEPTH = 6;
 const MAX_OPTIONAL_PROPERTIES = 5;
+
+// Object keys whose boolean members are rollout gates, not status fields. Their example
+// value must be `false` (the shipped default), never the generic `true`.
+const FLAG_CONTAINER_KEYS = new Set(['featureflags', 'rolloutflags']);
 const CHINA_CORRIDOR_PATH = '/api/supply-chain/v1/get-china-corridor-control-towers';
 const CHINA_DECISION_SIGNALS_PATH = '/api/intelligence/v1/get-china-decision-signals';
 
@@ -585,7 +589,13 @@ function stringExample(name, schema = {}, context = {}) {
 function numberExample(name, schema = {}, integer = false) {
   const key = normalizeKey(name);
   let value = integer ? 1 : 1.5;
-  if (key.includes('page') || key.includes('limit')) value = 25;
+  // A zero-based position must example as 0. The generic `1` published an import-batch
+  // example whose single row had ordinal 1, which the batch contract rejects outright
+  // ("batch ordinals must be contiguous from 0") — a copy-pasteable 400.
+  // Deliberately `ordinal` only, NOT `index`: in this repo `index` is a price index
+  // (base = 100) on ConsumerPricesService, where 0 is a nonsense example value.
+  if (key === 'ordinal') value = 0;
+  else if (key.includes('page') || key.includes('limit')) value = 25;
   else if (key.includes('days')) value = 7;
   else if (key.includes('closuredays')) value = 30;
   else if (key === 'lat' || key.endsWith('lat') || key.includes('latitude')) value = 40.7128;
@@ -791,7 +801,9 @@ function exampleForSchema(schema, spec, context = {}, depth = 0, seen = new Set(
     }
     const out = {};
     for (const key of keys) {
-      out[key] = exampleForSchema(props[key], spec, { ...context, name: key }, depth + 1, seen);
+      // Carry the container's own key so a leaf can tell what block it belongs to
+      // (a feature-flag boolean must not inherit the generic `true` default).
+      out[key] = exampleForSchema(props[key], spec, { ...context, name: key, parent: name }, depth + 1, seen);
     }
     return out;
   }
@@ -803,6 +815,12 @@ function exampleForSchema(schema, spec, context = {}, depth = 0, seen = new Set(
     // unreadable — a 200 example with unavailable:true is a contract footgun.
     const key = normalizeKey(name || context.name || '');
     if (key === 'unavailable' || key.endsWith('unavailable')) return false;
+    // Rollout/feature flags default OFF. The generic `true` default is wrong for a
+    // block whose whole design is "every gate starts false and flips one at a time":
+    // it published an example showing Company Monitoring mostly-enabled next to
+    // accessState DISABLED — a state the product cannot actually be in, and the exact
+    // opposite of the invariant the flags exist to hold.
+    if (FLAG_CONTAINER_KEYS.has(normalizeKey(context.parent || ''))) return false;
     return true;
   }
   return stringExample(name, schema, context);

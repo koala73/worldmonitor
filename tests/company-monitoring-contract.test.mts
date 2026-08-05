@@ -30,7 +30,10 @@ import {
   ENDPOINT_RATE_POLICIES,
   FAIL_CLOSED_ENDPOINT_RATE_POLICY_REQUIRED,
 } from '../server/_shared/rate-limit.ts';
-import { GENERATED_REQUEST_TYPES } from '../src/generated/server/request_validation.ts';
+import {
+  GENERATED_MESSAGE_RULES,
+  GENERATED_REQUEST_TYPES,
+} from '../src/generated/server/request_validation.ts';
 
 const root = resolve(import.meta.dirname, '..');
 
@@ -142,6 +145,91 @@ describe('Company Monitoring limits and rollout controls', () => {
       maxCursorTtlMs: 86_400_000,
       maxCursorClockSkewMs: 60_000,
     });
+  });
+
+  it('keeps the hand-written limits equal to the proto-derived validator rules', () => {
+    // The assertion above only proves the TS constant matches a copy of itself. These
+    // helpers are what a future handler calls, while the wire is enforced by the
+    // generated table — so widening a proto limit without updating the constant would
+    // leave the normalizer rejecting requests the API accepts, with the suite green.
+    // GENERATED_MESSAGE_RULES is regenerated from the proto on every `make generate`,
+    // so it cannot drift independently.
+    const rules = GENERATED_MESSAGE_RULES as Record<
+      string,
+      { fields: Record<string, { stringMaxBytes?: number; stringMinLen?: number; repeatedMaxItems?: number; numberLte?: number }> }
+    >;
+    const field = (message: string, name: string) => {
+      const rule = rules[`worldmonitor.company_monitoring.v1.${message}`]?.fields?.[name];
+      assert.ok(rule, `${message}.${name} missing from the generated validation table`);
+      return rule;
+    };
+
+    const input = 'MonitoredCompanyInput';
+    assert.equal(field(input, 'name').stringMaxBytes, COMPANY_MONITORING_LIMITS.maxNameBytes);
+    assert.equal(field(input, 'customerReference').stringMaxBytes, COMPANY_MONITORING_LIMITS.maxCustomerReferenceBytes);
+    assert.equal(field(input, 'aliases').stringMaxBytes, COMPANY_MONITORING_LIMITS.maxAliasBytes);
+    assert.equal(field(input, 'aliases').repeatedMaxItems, COMPANY_MONITORING_LIMITS.maxAliases);
+    assert.equal(field(input, 'domains').stringMaxBytes, COMPANY_MONITORING_LIMITS.maxDomainBytes);
+    assert.equal(field(input, 'domains').repeatedMaxItems, COMPANY_MONITORING_LIMITS.maxDomains);
+    assert.equal(field(input, 'identifiers').stringMaxBytes, COMPANY_MONITORING_LIMITS.maxIdentifierBytes);
+    assert.equal(field(input, 'identifiers').repeatedMaxItems, COMPANY_MONITORING_LIMITS.maxIdentifiers);
+    assert.equal(field(input, 'xHandles').stringMaxBytes, COMPANY_MONITORING_LIMITS.maxXHandleInputBytes);
+    assert.equal(field(input, 'xHandles').repeatedMaxItems, COMPANY_MONITORING_LIMITS.maxXHandles);
+    assert.equal(field(input, 'locations').stringMaxBytes, COMPANY_MONITORING_LIMITS.maxLocationBytes);
+    assert.equal(field(input, 'locations').repeatedMaxItems, COMPANY_MONITORING_LIMITS.maxLocations);
+
+    const batch = 'ImportMonitoredCompanyBatchRequest';
+    assert.equal(field(batch, 'rows').repeatedMaxItems, COMPANY_MONITORING_LIMITS.maxImportRows);
+    assert.equal(field(batch, 'clientImportId').stringMaxBytes, COMPANY_MONITORING_LIMITS.maxClientImportIdBytes);
+
+    assert.equal(
+      field('ListMonitoredCompaniesRequest', 'cursor').stringMaxBytes,
+      COMPANY_MONITORING_LIMITS.maxCursorBytes,
+    );
+    assert.equal(
+      field('ListMonitoredCompaniesRequest', 'pageSize').numberLte,
+      COMPANY_MONITORING_LIMITS.maxPageSize,
+    );
+  });
+
+  it('keeps the OpenAPI injector constants equal to the proto-derived validator rules', async () => {
+    // The injector hand-copies each item constraint out of the .proto because
+    // protoc-gen-openapiv3 emits them wrongly, and its own suite compares the generated
+    // spec to those same literals — injector output against injector input. Anchor them
+    // to GENERATED_MESSAGE_RULES, which IS regenerated from the proto every
+    // `make generate`, so a proto edit the injector did not follow fails here.
+    // (Lives in this .mts suite because the injector's own suite is plain .mjs and
+    // cannot import the generated TypeScript.)
+    const { COMPANY_MONITORING_OPENAPI_ITEM_CONTRACTS } = await import(
+      '../scripts/openapi-inject-company-monitoring-contract.mjs'
+    );
+    const rules = GENERATED_MESSAGE_RULES as Record<
+      string,
+      { fields: Record<string, { stringPattern?: string; stringMinLen?: number; stringMaxBytes?: number }> }
+    >;
+
+    let checked = 0;
+    for (const [schemaName, propertyName, contract] of COMPANY_MONITORING_OPENAPI_ITEM_CONTRACTS as Array<
+      [string, string, Record<string, unknown>]
+    >) {
+      const rule = rules[`worldmonitor.company_monitoring.v1.${schemaName}`]?.fields?.[propertyName];
+      if (!rule) continue; // query-only shapes are covered by the injector's own suite
+      checked += 1;
+      if (contract.pattern !== undefined) {
+        assert.equal(contract.pattern, rule.stringPattern, `${schemaName}.${propertyName} pattern drifted from the proto`);
+      }
+      if (contract.minLength !== undefined) {
+        assert.equal(contract.minLength, rule.stringMinLen, `${schemaName}.${propertyName} minLength drifted from the proto`);
+      }
+      if (contract['x-max-utf8-bytes'] !== undefined) {
+        assert.equal(
+          contract['x-max-utf8-bytes'],
+          rule.stringMaxBytes,
+          `${schemaName}.${propertyName} byte ceiling drifted from the proto`,
+        );
+      }
+    }
+    assert.ok(checked > 0, 'expected at least one injector contract to map onto a generated rule');
   });
 
   it('keeps every provider and product surface independently dark', () => {
@@ -364,20 +452,68 @@ describe('Company Monitoring identity, confidence, and lifecycle invariants', ()
   });
 
   it('allows corrections and retractions but keeps terminal states terminal', () => {
-    assert.doesNotThrow(() => assertLifecycleTransition('admitted', 'corrected'));
-    assert.doesNotThrow(() => assertLifecycleTransition('corrected', 'retracted'));
+    assert.doesNotThrow(() => assertLifecycleTransition('impact', 'admitted', 'corrected'));
+    assert.doesNotThrow(() => assertLifecycleTransition('impact', 'corrected', 'retracted'));
     assert.throws(
-      () => assertLifecycleTransition('retracted', 'admitted'),
+      () => assertLifecycleTransition('impact', 'retracted', 'admitted'),
       /invalid lifecycle transition: retracted -> admitted/,
     );
     assert.throws(
-      () => assertLifecycleTransition('removed', 'active'),
+      () => assertLifecycleTransition('company', 'removed', 'active'),
       /invalid lifecycle transition: removed -> active/,
     );
     assert.throws(
-      () => assertLifecycleTransition('__proto__', 'active'),
-      /invalid lifecycle transition: __proto__ -> active/,
+      () => assertLifecycleTransition('company', '__proto__', 'active'),
+      /invalid company lifecycle state: __proto__/,
     );
+  });
+
+  it('treats a set to the current state as a no-op success, not an error', () => {
+    // SetMonitoredCompanyState is a *set*: the natural caller is a reconciliation loop
+    // ("ensure every company is active"), which would otherwise error on every
+    // already-correct row. The published route carries an Idempotency-Key contract, but
+    // a plain retry — or one past the 24h window — re-enters the state machine.
+    assert.doesNotThrow(() => assertLifecycleTransition('company', 'active', 'active'));
+    assert.doesNotThrow(() => assertLifecycleTransition('company', 'paused', 'paused'));
+    assert.doesNotThrow(() => assertLifecycleTransition('company', 'removed', 'removed'));
+  });
+
+  it('validates against the named machine, never the union of both', () => {
+    // 'active' is a company state and 'corrected' an impact state. Inferring the machine
+    // from the from-state made cross-machine calls pass by accident whenever the two
+    // vocabularies happened not to collide.
+    assert.throws(
+      () => assertLifecycleTransition('impact', 'active', 'paused'),
+      /invalid impact lifecycle state: active/,
+    );
+    assert.throws(
+      () => assertLifecycleTransition('company', 'corrected', 'retracted'),
+      /invalid company lifecycle state: corrected/,
+    );
+  });
+
+  it('rejects inherited keys in the claim and filter vocabularies', () => {
+    // The suite's original hostile-key probe pointed at assertLifecycleTransition, which
+    // is Map-backed and was already immune. These two lookups are plain object literals,
+    // where a truthiness check accepted `__proto__`/`constructor` and returned a
+    // non-string that silently violated the declared return type.
+    for (const hostile of ['__proto__', 'constructor', 'toString', 'hasOwnProperty']) {
+      assert.throws(
+        () => normalizeCompanyClaimInput({ type: hostile as never, value: 'anything' }),
+        /company claim type is invalid/,
+        `claim type ${hostile} must be rejected`,
+      );
+      assert.throws(
+        () => normalizeMonitoredCompanyLifecycleFilters([hostile]),
+        /lifecycles contains an unsupported value/,
+        `lifecycle filter ${hostile} must be rejected`,
+      );
+      assert.throws(
+        () => normalizeCoverageFilters([hostile]),
+        /coverageStates contains an unsupported value/,
+        `coverage filter ${hostile} must be rejected`,
+      );
+    }
   });
 
   it('normalizes typed claims and enforces the aggregate claim budget', () => {

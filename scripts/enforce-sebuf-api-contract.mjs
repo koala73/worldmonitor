@@ -29,12 +29,13 @@ const API_DIR = join(ROOT, 'api');
 const GEN_SERVER_DIR = join(ROOT, 'src/generated/server/worldmonitor');
 const MANIFEST_PATH = join(API_DIR, 'api-route-exceptions.json');
 
-// Contract-first services may exist before their runtime is allowed to route.
-// Keep this list narrow and self-expiring: each entry must name the issue whose
-// acceptance removes the exception, and the checks below reject stale entries.
-const DEFERRED_GENERATED_SERVICES = new Map([
-  ['company_monitoring/v1', '#6003'],
-]);
+// Contract-first services that may exist before their runtime is allowed to route.
+// The list and its staleness rules live in scripts/lib/sebuf-deferred-services.mjs so
+// they can be unit-tested without executing this gate's top-level scan.
+import {
+  DEFERRED_GENERATED_SERVICES,
+  collectDeferredServiceViolations,
+} from './lib/sebuf-deferred-services.mjs';
 
 const VALID_CATEGORIES = new Set([
   'external-protocol',
@@ -307,20 +308,16 @@ if (existsSync(GEN_SERVER_DIR)) {
   }
 }
 
-for (const [key, removalIssue] of DEFERRED_GENERATED_SERVICES) {
-  if (!seenGeneratedServices.has(key)) {
-    violation(
-      'scripts/enforce-sebuf-api-contract.mjs',
-      `deferred generated service ${key} no longer exists`,
-      `Remove its DEFERRED_GENERATED_SERVICES entry (tracked by ${removalIssue}).`,
-    );
-  } else if (seenGatewayDomains.has(key)) {
-    violation(
-      'scripts/enforce-sebuf-api-contract.mjs',
-      `deferred generated service ${key} now has an HTTP gateway`,
-      `Remove its DEFERRED_GENERATED_SERVICES entry (tracked by ${removalIssue}).`,
-    );
-  }
+for (const deferredViolation of collectDeferredServiceViolations({
+  deferred: DEFERRED_GENERATED_SERVICES,
+  seenGeneratedServices,
+  seenGatewayDomains,
+  // Distinguishes "the service was deleted" from "nothing has been generated in this
+  // tree yet" — those need opposite fixes, and an empty set alone cannot tell them apart.
+  generatedTreePresent: existsSync(GEN_SERVER_DIR),
+  today: new Date().toISOString().slice(0, 10),
+})) {
+  violation(deferredViolation.file, deferredViolation.message, deferredViolation.remedy);
 }
 
 // --- Proto query-param implementation guard ---

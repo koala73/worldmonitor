@@ -168,7 +168,11 @@ export interface NormalizedCompanyClaimInput {
 
 export function normalizeCompanyClaimInput(input: CompanyClaimInput): NormalizedCompanyClaimInput {
   if (!input || typeof input !== 'object') throw new Error('company claim is required');
-  const type = COMPANY_CLAIM_TYPE_BY_INPUT[input.type];
+  // Own-property lookup: a plain object literal inherits `__proto__`, `constructor`,
+  // `toString`, etc., and a truthiness check would let those through as a "valid" type.
+  const type = Object.hasOwn(COMPANY_CLAIM_TYPE_BY_INPUT, input.type)
+    ? COMPANY_CLAIM_TYPE_BY_INPUT[input.type]
+    : undefined;
   if (!type) throw new Error('company claim type is invalid');
 
   let value: string;
@@ -235,9 +239,9 @@ export interface NormalizedCompanyImportRow extends NormalizedMonitoredCompanyIn
 export function normalizeMonitoredCompanyInput(input: MonitoredCompanyInput): NormalizedMonitoredCompanyInput {
   if (!input || typeof input !== 'object') throw new Error('company input is required');
   const domicileInput = String(input.domicileCountry ?? '').trim().toUpperCase();
-  const domicileCountry = DOMICILE_COUNTRY_BY_INPUT[
-    domicileInput as keyof typeof DOMICILE_COUNTRY_BY_INPUT
-  ];
+  const domicileCountry = Object.hasOwn(DOMICILE_COUNTRY_BY_INPUT, domicileInput)
+    ? DOMICILE_COUNTRY_BY_INPUT[domicileInput as keyof typeof DOMICILE_COUNTRY_BY_INPUT]
+    : undefined;
   if (!domicileCountry) {
     throw new Error('domicileCountry must be US or GB');
   }
@@ -371,20 +375,48 @@ export function validateConfidenceAxes(
   return axes;
 }
 
+// SetMonitoredCompanyState is a *set* operation, so setting a company to the state it
+// is already in is a no-op success, not an error: the natural client is a reconciliation
+// loop ("ensure every company in my portfolio is active"), and rejecting the no-op would
+// error on every already-correct row. Self-transitions are therefore listed explicitly
+// on every company state, mirroring the impact machine's existing 'corrected' ->
+// 'corrected'. 'removed' remains terminal in the sense that it has no outward edge.
 const COMPANY_LIFECYCLE_TRANSITIONS = new Map<string, readonly string[]>([
-  ['active', ['paused', 'removed']],
-  ['paused', ['active', 'removed']],
-  ['removed', []],
+  ['active', ['active', 'paused', 'removed']],
+  ['paused', ['active', 'paused', 'removed']],
+  ['removed', ['removed']],
 ]);
+// The impact machine is event-driven (a correction or retraction is recorded, not
+// "set"), so only 'corrected' -> 'corrected' is meaningful; re-admitting or
+// re-retracting is not, and stays rejected.
 const IMPACT_LIFECYCLE_TRANSITIONS = new Map<string, readonly string[]>([
   ['admitted', ['corrected', 'retracted']],
   ['corrected', ['corrected', 'retracted']],
   ['retracted', []],
 ]);
 
-export function assertLifecycleTransition(from: string, to: string): void {
-  const transitions = COMPANY_LIFECYCLE_TRANSITIONS.get(from) ?? IMPACT_LIFECYCLE_TRANSITIONS.get(from);
-  if (!transitions?.includes(to)) {
+const LIFECYCLE_MACHINES = {
+  company: COMPANY_LIFECYCLE_TRANSITIONS,
+  impact: IMPACT_LIFECYCLE_TRANSITIONS,
+} as const;
+
+export type LifecycleMachine = keyof typeof LIFECYCLE_MACHINES;
+
+/**
+ * Validates a lifecycle transition against ONE named state machine.
+ *
+ * The machine is an explicit parameter rather than being inferred from `from`: the two
+ * vocabularies are disjoint today, but inferring would silently validate an impact
+ * transition against the company table the moment either machine gains a shared state
+ * name, and nothing would flag it.
+ */
+export function assertLifecycleTransition(machine: LifecycleMachine, from: string, to: string): void {
+  const table = LIFECYCLE_MACHINES[machine];
+  if (!table) throw new Error(`unknown lifecycle machine: ${machine}`);
+  if (!table.has(from)) {
+    throw new Error(`invalid ${machine} lifecycle state: ${from}`);
+  }
+  if (!table.get(from)?.includes(to)) {
     throw new Error(`invalid lifecycle transition: ${from} -> ${to}`);
   }
 }
@@ -450,7 +482,12 @@ function normalizeFilterValues(
 ): string[] {
   if (!Array.isArray(values)) throw new Error(`${field} must be a list`);
   const normalized = values.map((value) => {
-    if (typeof value !== 'string' || !vocabulary[value]) throw new Error(`${field} contains an unsupported value`);
+    // Own-property lookup — see normalizeCompanyClaimInput. A truthiness check on a
+    // plain object literal accepts inherited keys like `__proto__` and `constructor`
+    // and returns a non-string, silently violating this function's own return type.
+    if (typeof value !== 'string' || !Object.hasOwn(vocabulary, value)) {
+      throw new Error(`${field} contains an unsupported value`);
+    }
     return vocabulary[value];
   });
   return [...new Set(normalized)].sort();

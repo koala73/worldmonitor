@@ -11,6 +11,7 @@ import { readFileSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { serialize } from './lib/openapi-codegen.mjs';
+import { isMainModule } from './lib/main-module.mjs';
 
 const scriptPath = fileURLToPath(import.meta.url);
 const root = resolve(dirname(scriptPath), '..');
@@ -239,7 +240,10 @@ export function injectCompanyMonitoringOpenApi({ check = false } = {}) {
   return changed;
 }
 
-if (resolve(process.argv[1] ?? '') === scriptPath) {
+// realpath BOTH sides — `resolve()` does not follow symlinks, so on a symlinked checkout
+// (/tmp -> /private/tmp) the naive comparison is false and this script silently exits 0
+// having done nothing, which the --check gate reads as "the specs are faithful".
+if (isMainModule(import.meta.url, process.argv[1])) {
   const changed = injectCompanyMonitoringOpenApi({ check: CHECK });
   if (CHECK && changed.length > 0) {
     for (const path of changed) console.error(`${path} is missing Company Monitoring OpenAPI constraints`);

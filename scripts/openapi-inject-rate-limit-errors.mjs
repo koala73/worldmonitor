@@ -14,7 +14,7 @@
 import { readFileSync, writeFileSync, readdirSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { eq, serialize } from './lib/openapi-codegen.mjs';
+import { eq, serialize, readIdempotencyExemptPaths } from './lib/openapi-codegen.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const apiDir = process.env.WM_OPENAPI_API_DIR
@@ -114,9 +114,10 @@ const DEFAULT_ERROR_RESPONSE = {
 
 const POST_400_DESCRIPTION = 'Validation error, invalid Idempotency-Key header, or malformed JSON request body';
 const POST_400_DESCRIPTION_WITHOUT_IDEMPOTENCY = 'Validation error or malformed JSON request body';
-const IDEMPOTENCY_EXEMPT_PATHS = new Set([
-  '/api/company-monitoring/v1/import-monitored-company-batch',
-]);
+// Same source of truth the idempotency injector and the gateway use — see
+// readIdempotencyExemptPaths. Restating the literal here is what let the parameter and
+// this 400 description drift apart in opposite directions with every check still green.
+const IDEMPOTENCY_EXEMPT_PATHS = readIdempotencyExemptPaths();
 
 function clone(value) {
   return JSON.parse(JSON.stringify(value));

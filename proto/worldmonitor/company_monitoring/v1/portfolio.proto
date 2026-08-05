@@ -16,7 +16,13 @@ message CreateMonitoredCompanyResponse {
 }
 
 message MonitoredCompanyPatch {
-  optional string name = 1 [(buf.validate.field).string.max_bytes = 256];
+  // Present-but-empty is rejected, matching MonitoredCompanyInput.name. A patch must not
+  // be able to blank a field the response models as non-optional; clearing a name would
+  // need an explicit clear mask, which this contract does not define.
+  optional string name = 1 [
+    (buf.validate.field).string.min_len = 1,
+    (buf.validate.field).string.max_bytes = 256
+  ];
   optional DomicileCountry domicile_country = 2 [
     (buf.validate.field).enum.defined_only = true,
     (buf.validate.field).enum.not_in = 0

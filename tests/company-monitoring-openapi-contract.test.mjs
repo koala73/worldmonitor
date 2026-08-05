@@ -31,6 +31,10 @@ const specs = [
 
 const CURSOR_PATTERN = /^cmc1\.[A-Za-z0-9_-]{16,1536}\.[A-Za-z0-9_-]{43}$/;
 
+// NOTE: the injector's hand-copied constraints are cross-checked against the
+// proto-derived GENERATED_MESSAGE_RULES in tests/company-monitoring-contract.test.mts —
+// that check needs the generated .ts and this suite is plain .mjs (no TS loader).
+
 describe('Company Monitoring generated OpenAPI contract', () => {
   for (const [label, spec, prefix] of specs) {
     it(`${label} preserves repeated-string item constraints`, () => {

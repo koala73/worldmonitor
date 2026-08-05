@@ -447,6 +447,25 @@ export function readPremiumRpcPaths() {
   return [...block[1].matchAll(/'([^']+)'/g)].map((m) => m[1]);
 }
 
+/**
+ * Routes the gateway excludes from generic idempotency replay, read from the runtime's
+ * own Set so the published spec cannot claim an Idempotency-Key contract the runtime
+ * does not honour (or vice versa). Consumed by openapi-inject-idempotency.mjs (whether
+ * to inject the parameter), openapi-inject-rate-limit-errors.mjs (whether the 400
+ * mentions the header), and tests/openapi-idempotency-contract.test.mjs.
+ *
+ * Unlike the parsers above this one may legitimately be EMPTY, so it fails closed only
+ * on a parse miss — an empty Set means "no route is exempt", which is a valid state.
+ */
+export function readIdempotencyExemptPaths() {
+  const src = readFileSync(resolve(root, 'server/_shared/idempotency.ts'), 'utf8');
+  const block = src.match(/IDEMPOTENCY_EXEMPT_RPC_PATHS\s*=\s*new Set<string>\(\[([\s\S]*?)\]\)/);
+  if (!block) {
+    throw new Error('could not locate IDEMPOTENCY_EXEMPT_RPC_PATHS in server/_shared/idempotency.ts');
+  }
+  return new Set([...block[1].matchAll(/'([^']+)'/g)].map((m) => m[1]));
+}
+
 function readConstStringArray(src, name) {
   const block = src.match(new RegExp(`${name}\\s*=\\s*\\[([\\s\\S]*?)\\]\\s*as const`));
   return block ? [...block[1].matchAll(/'([^']+)'/g)].map((match) => match[1]) : [];

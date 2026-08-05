@@ -5,6 +5,7 @@ import { execFileSync } from 'node:child_process';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { load as loadYaml } from 'js-yaml';
+import { readIdempotencyExemptPaths } from '../scripts/lib/openapi-codegen.mjs';
 
 // Guards the Idempotency-Key header parameter injected by
 // scripts/openapi-inject-idempotency.mjs onto every POST (mutation) operation.
@@ -24,9 +25,10 @@ const serviceYaml = readdirSync(apiDir)
   .sort();
 
 const IDEMPOTENCY_PATTERN = '^[\\x21-\\x7E]{1,255}$';
-const IDEMPOTENCY_EXEMPT_PATHS = new Set([
-  '/api/company-monitoring/v1/import-monitored-company-batch',
-]);
+// Read the runtime's Set, not a copy: this test is the thing that would have to CATCH a
+// drift between the gateway and the two injectors, so it must not hold a third literal
+// that can drift alongside them.
+const IDEMPOTENCY_EXEMPT_PATHS = readIdempotencyExemptPaths();
 
 function idempotencyParam(op) {
   return (op?.parameters ?? []).find(
@@ -127,6 +129,14 @@ function assertApplicationIdempotencyOnly(op, label) {
     assert.equal(response.headers?.['Idempotency-Key'], undefined, `${label} must not echo a generic idempotency key`);
     assert.equal(response.headers?.['Idempotent-Replayed'], undefined, `${label} must not advertise whole-response replay`);
   }
+  // The parameter list and the 400 prose are written by two different injectors. Check
+  // them against each other, not each against its own copy of the exempt set: an edit to
+  // the rate-limit injector alone is otherwise invisible to every check in the repo.
+  assert.doesNotMatch(
+    op.responses?.['400']?.description ?? '',
+    /Idempotency-Key/,
+    `${label} 400 must not blame a header the operation does not accept`,
+  );
 }
 
 function assertOperationIdempotency(path, op, label) {
@@ -136,6 +146,12 @@ function assertOperationIdempotency(path, op, label) {
   }
   assertIdempotencyParam(idempotencyParam(op), label);
   assertIdempotencyResponses(op, label);
+  // Mirror assertion: a non-exempt POST advertises the header, so its 400 must say so.
+  assert.match(
+    op.responses?.['400']?.description ?? '',
+    /Idempotency-Key/,
+    `${label} 400 must document the Idempotency-Key failure mode it accepts`,
+  );
 }
 
 describe('OpenAPI Idempotency-Key contract', () => {
