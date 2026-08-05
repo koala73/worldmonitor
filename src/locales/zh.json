@@ -2543,7 +2543,13 @@
       "eurBase": "ECB欧元参考汇率",
       "stressedCount": "{{stressed}}/{{total}}种货币跌幅超过{{threshold}}",
       "sourceYahoo": "数据来源：Yahoo Finance",
-      "sourceEcb": "数据来源：ECB"
+      "sourceEcb": "数据来源：ECB",
+      "degraded": "暂时不可用：{{sources}}。即将重试。",
+      "source": {
+        "stress": "外汇压力",
+        "usd": "美元汇率",
+        "eur": "欧洲央行欧元汇率"
+      }
     }
   },
   "popups": {

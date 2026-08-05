@@ -5,7 +5,14 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const appSrc = readFileSync(resolve(__dirname, '../src/App.ts'), 'utf-8');
+const appSrcRaw = readFileSync(resolve(__dirname, '../src/App.ts'), 'utf-8');
+// Comment-stripped view for guards that assert a registration EXISTS. Scanning
+// raw text lets a commented-out block satisfy the guard, which is the exact
+// vacuous-pass this class of source-regex check is written to prevent — a
+// panel commented out for debugging would ship dead with CI green.
+// Line comments only: `//` inside a string literal is not a concern in the
+// call-shape patterns these guards match.
+const appSrc = appSrcRaw.replace(/^\s*\/\/.*$/gm, '');
 const panelLayoutSrc = readFileSync(resolve(__dirname, '../src/app/panel-layout.ts'), 'utf-8');
 const panelsSrc = readFileSync(resolve(__dirname, '../src/config/panels.ts'), 'utf-8');
 const commandsSrc = readFileSync(resolve(__dirname, '../src/config/commands.ts'), 'utf-8');

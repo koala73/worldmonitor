@@ -2579,7 +2579,13 @@
       "eurBase": "Referenční kurzy eura ECB",
       "stressedCount": "{{stressed}} z {{total}} měn pod {{threshold}}",
       "sourceYahoo": "Zdroj: Yahoo Finance",
-      "sourceEcb": "Zdroj: ECB"
+      "sourceEcb": "Zdroj: ECB",
+      "degraded": "Momentálně nedostupné: {{sources}}. Opakování za chvíli.",
+      "source": {
+        "stress": "Stres směnného kurzu",
+        "usd": "Kurzy amerického dolaru",
+        "eur": "Kurzy eura ECB"
+      }
     }
   },
   "popups": {

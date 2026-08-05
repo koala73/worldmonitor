@@ -16,7 +16,7 @@ import { isFeatureAvailable } from '../runtime-config';
 import { dataFreshness } from '../data-freshness';
 import { ensureHydrated, getHydratedData } from '@/services/bootstrap';
 import { mergeCbrPolicyRate } from './cbr-policy-rate';
-import { toEurSpotRows, toFxStressRows, toUsdSpotRows, type FxPanelRows } from './fx-rates';
+import { degradedSources, toEurSpotRows, toFxStressRows, toUsdSpotRows, type FxPanelRows } from './fx-rates';
 import { toApiUrl } from '@/services/runtime';
 import { hasPremiumAccess } from '@/services/panel-gating';
 import { EconomicServiceClient } from '@/services/generated-rpc-clients';
@@ -852,7 +852,7 @@ export async function getEcbFxRatesData(): Promise<GetEcbFxRatesResponse> {
 // FX panel (#6199)
 // ========================================================================
 
-export type { FxEurSpotRow, FxPanelRows, FxStressRow, FxUsdSpotRow } from './fx-rates';
+export type { FxEurSpotRow, FxPanelRows, FxSourceId, FxStressRow, FxUsdSpotRow } from './fx-rates';
 // Re-exported as a value: the CommoditiesPanel FX tab uses it too, so both
 // surfaces order the same ECB pairs from one definition (#6199).
 export { EUR_FX_ORDER, toEurSpotRows } from './fx-rates';
@@ -878,11 +878,16 @@ export async function getFxPanelData(): Promise<FxPanelRows> {
     getEcbFxRatesData().catch(() => null),
   ]);
 
-  return {
-    stress: toFxStressRows(stressPayload),
-    usd: toUsdSpotRows(usdPayload),
-    eur: ecb && !ecb.unavailable ? toEurSpotRows(ecb.rates) : [],
-  };
+  const stress = toFxStressRows(stressPayload);
+  const usd = toUsdSpotRows(usdPayload);
+  const eur = ecb && !ecb.unavailable ? toEurSpotRows(ecb.rates) : [];
+
+  // An empty source is reported, not silently dropped. `ensureHydrated` returns
+  // undefined for a transport failure and for a miss alike, so we cannot say
+  // which — but none of these three has a plausible genuine empty, so an empty
+  // one is a source that is down. The panel needs to know so it can say the
+  // table is missing and retry, instead of rendering as though it never existed.
+  return { stress, usd, eur, degraded: degradedSources({ stress, usd, eur }) };
 }
 
 // ========================================================================

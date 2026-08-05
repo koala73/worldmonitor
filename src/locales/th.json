@@ -2543,7 +2543,13 @@
       "eurBase": "อัตราอ้างอิงยูโรของ ECB",
       "stressedCount": "{{stressed}} จาก {{total}} สกุลเงินลดลงต่ำกว่า {{threshold}}",
       "sourceYahoo": "แหล่งที่มา: Yahoo Finance",
-      "sourceEcb": "แหล่งที่มา: ECB"
+      "sourceEcb": "แหล่งที่มา: ECB",
+      "degraded": "ไม่พร้อมใช้งานในขณะนี้: {{sources}} จะลองใหม่ในไม่ช้า",
+      "source": {
+        "stress": "ความเครียด FX",
+        "usd": "อัตราดอลลาร์สหรัฐ",
+        "eur": "อัตราユーโรของ ECB"
+      }
     }
   },
   "popups": {

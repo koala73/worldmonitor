@@ -2283,7 +2283,13 @@
       "eurBase": "ECB-euroreferentiekoersen",
       "stressedCount": "{{stressed}} van {{total}} valuta's onder {{threshold}}",
       "sourceYahoo": "Bron: Yahoo Finance",
-      "sourceEcb": "Bron: ECB"
+      "sourceEcb": "Bron: ECB",
+      "degraded": "Momenteel niet beschikbaar: {{sources}}. Wordt binnenkort opnieuw geprobeerd.",
+      "source": {
+        "stress": "FX-stress",
+        "usd": "Koersen Amerikaanse dollar",
+        "eur": "ECB eurodeelnemers"
+      }
     }
   },
   "popups": {

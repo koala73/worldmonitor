@@ -2561,7 +2561,13 @@
       "eurBase": "Cursuri de referință euro ECB",
       "stressedCount": "{{stressed}} din {{total}} monede sub {{threshold}}",
       "sourceYahoo": "Sursă: Yahoo Finance",
-      "sourceEcb": "Sursă: ECB"
+      "sourceEcb": "Sursă: ECB",
+      "degraded": "Indisponibil în acest moment: {{sources}}. Reîncercarea în curând.",
+      "source": {
+        "stress": "Stres FX",
+        "usd": "Ratele dolarului american",
+        "eur": "Ratele euro ale BCE"
+      }
     }
   },
   "popups": {

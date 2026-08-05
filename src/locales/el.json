@@ -2543,7 +2543,13 @@
       "eurBase": "Ισοτιμίες αναφοράς ευρώ ECB",
       "stressedCount": "{{stressed}} από {{total}} νομίσματα κάτω του {{threshold}}",
       "sourceYahoo": "Πηγή: Yahoo Finance",
-      "sourceEcb": "Πηγή: ECB"
+      "sourceEcb": "Πηγή: ECB",
+      "degraded": "Προς το παρόν μη διαθέσιμο: {{sources}}. Επανάληψη σε λίγο.",
+      "source": {
+        "stress": "Ένταση συναλλάγματος",
+        "usd": "Ισοτιμίες δολαρίου ΗΠΑ",
+        "eur": "Ισοτιμίες ευρώ ΕΚΤ"
+      }
     }
   },
   "popups": {

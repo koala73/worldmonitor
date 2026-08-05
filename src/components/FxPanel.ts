@@ -4,7 +4,7 @@ import { joinSafeHtml, safeHtml } from '@/utils/sanitize';
 import type { SafeHtml } from '@/utils/sanitize';
 
 import { FX_STRESS_THRESHOLD_PCT } from '@/services/economic/fx-rates';
-import type { FxEurSpotRow, FxPanelRows, FxStressRow, FxUsdSpotRow } from '@/services/economic/fx-rates';
+import type { FxEurSpotRow, FxPanelRows, FxSourceId, FxStressRow, FxUsdSpotRow } from '@/services/economic/fx-rates';
 
 /**
  * FX panel — issue #6199.
@@ -64,12 +64,26 @@ function changeClass(value: number): string {
   return 'fx-flat';
 }
 
+/**
+ * Delay before re-reading a source that came back empty. Long enough not to
+ * hammer a struggling upstream, short enough that a transient blip does not
+ * cost the user the six hours until the next scheduled refresh.
+ */
+const DEGRADED_RETRY_MS = 60_000;
+
+/** The stress tab is the panel's reason to exist, so it is where we land. */
+const DEFAULT_TAB: FxTabId = 'stress';
+
 export class FxPanel extends Panel {
   private stress: FxStressRow[] = [];
   private usd: FxUsdSpotRow[] = [];
   private eur: FxEurSpotRow[] = [];
-  private tab: FxTabId = 'stress';
+  private degraded: FxSourceId[] = [];
+  private tab: FxTabId = DEFAULT_TAB;
+  /** True when the tab-fallback moved us, not the user. See render(). */
+  private tabForced = false;
   private loaded = false;
+  private degradedRetryTimer: ReturnType<typeof setTimeout> | null = null;
 
   constructor() {
     super({
@@ -108,14 +122,49 @@ export class FxPanel extends Panel {
     this.stress = data.stress;
     this.usd = data.usd;
     this.eur = data.eur;
+    this.degraded = data.degraded;
     this.loaded = true;
     this.render();
+    this.scheduleDegradedRetry();
+  }
+
+  /**
+   * Re-read after a partial outage.
+   *
+   * The all-empty case takes the error path, which brings its own retry. A
+   * PARTIAL outage does not: the panel renders the surviving tables, the tab
+   * guard may even switch away from the missing one, and nothing looks wrong —
+   * so without this the dead source stays dead until the 6h tick. One delayed
+   * retry, replaced (never stacked) on each load and cleared on destroy.
+   */
+  private scheduleDegradedRetry(): void {
+    this.clearDegradedRetry();
+    if (this.degraded.length === 0) return;
+    this.degradedRetryTimer = setTimeout(() => {
+      this.degradedRetryTimer = null;
+      if (!this.element?.isConnected) return;
+      void this.fetchData();
+    }, DEGRADED_RETRY_MS);
+  }
+
+  private clearDegradedRetry(): void {
+    if (this.degradedRetryTimer !== null) {
+      clearTimeout(this.degradedRetryTimer);
+      this.degradedRetryTimer = null;
+    }
+  }
+
+  public destroy(): void {
+    this.clearDegradedRetry();
+    super.destroy();
   }
 
   private handleClick(e: Event): void {
     const tab = (e.target as HTMLElement).closest('.panel-tab') as HTMLElement | null;
     if (!tab?.dataset.tab) return;
     this.tab = tab.dataset.tab as FxTabId;
+    // An explicit choice — never override it on a later refresh.
+    this.tabForced = false;
     this.render();
   }
 
@@ -142,14 +191,38 @@ export class FxPanel extends Panel {
       return;
     }
 
+    // Return to the default tab once its source recovers, but ONLY if we were
+    // the ones who moved off it. A tab the user picked is their choice and must
+    // survive a refresh; a tab we forced them onto during an outage should not
+    // outlive the outage, or the retry restores the data and leaves them parked
+    // somewhere they never chose.
+    if (this.tabForced && this.tab !== DEFAULT_TAB && this.hasStress()) {
+      this.tab = DEFAULT_TAB;
+      this.tabForced = false;
+    }
+
     // Never leave the panel on a tab with nothing behind it — a seeder outage
     // on one key would otherwise render an empty body while the other tab has
     // data one click away that the reader has no reason to look for.
-    if (this.tab === 'stress' && !this.hasStress()) this.tab = 'spot';
-    if (this.tab === 'spot' && !this.hasSpot()) this.tab = 'stress';
+    if (this.tab === 'stress' && !this.hasStress()) { this.tab = 'spot'; this.tabForced = true; }
+    if (this.tab === 'spot' && !this.hasSpot()) { this.tab = 'stress'; this.tabForced = true; }
 
     const body = this.tab === 'stress' ? this.renderStress() : this.renderSpot();
-    this.setSafeContent(safeHtml`${this.renderTabs()}${body}`);
+    this.setSafeContent(safeHtml`${this.renderTabs()}${body}${this.renderDegradedNotice()}`);
+  }
+
+  /**
+   * Name the sources that came back with nothing.
+   *
+   * Without this a dead source is indistinguishable from one that was never
+   * part of the panel — the tab simply is not there, and a reader has no reason
+   * to suspect anything is missing. Only rendered on a PARTIAL outage; the
+   * all-empty case took the error path before reaching here.
+   */
+  private renderDegradedNotice(): SafeHtml {
+    if (this.degraded.length === 0) return safeHtml``;
+    const names = this.degraded.map((id) => t(`components.fx.source.${id}`)).join(', ');
+    return safeHtml`<div class="fx-degraded">${t('components.fx.degraded', { sources: names })}</div>`;
   }
 
   private renderTabs(): SafeHtml {
@@ -197,10 +270,17 @@ export class FxPanel extends Panel {
         </tr>`;
     }));
 
-    const asOf = this.stress.reduce<string | null>(
-      (newest, r) => (r.asOf && (newest === null || r.asOf > newest) ? r.asOf : newest),
-      null,
-    );
+    // Rows can disagree: each `asOf` is that currency's own newest Yahoo bar,
+    // and the seeder skips a currency whose fetch failed rather than failing the
+    // run. Showing only the newest would present the freshest row's date as the
+    // whole table's freshness, hiding a currency frozen days earlier — so when
+    // they differ, show the span.
+    const dates = this.stress.map((r) => r.asOf).filter((d): d is string => d !== null);
+    const oldest = dates.length > 0 ? dates.reduce((a, b) => (a < b ? a : b)) : null;
+    const newest = dates.length > 0 ? dates.reduce((a, b) => (a > b ? a : b)) : null;
+    const asOf = oldest === null || newest === null
+      ? null
+      : oldest === newest ? newest : `${oldest} → ${newest}`;
     const stressedCount = this.stress.filter((r) => r.stressed).length;
 
     return safeHtml`

@@ -2579,7 +2579,13 @@
       "eurBase": "Referencyjne kursy euro EBC",
       "stressedCount": "{{stressed}} z {{total}} walut poniżej {{threshold}}",
       "sourceYahoo": "Źródło: Yahoo Finance",
-      "sourceEcb": "Źródło: EBC"
+      "sourceEcb": "Źródło: EBC",
+      "degraded": "Niedostępne teraz: {{sources}}. Ponowna próba za chwilę.",
+      "source": {
+        "stress": "Stres walutowy",
+        "usd": "Kursy dolara USD",
+        "eur": "Kursy euro ECB"
+      }
     }
   },
   "popups": {

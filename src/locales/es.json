@@ -2561,7 +2561,13 @@
       "eurBase": "Tipos de referencia del euro BCE",
       "stressedCount": "{{stressed}} de {{total}} monedas por debajo de {{threshold}}",
       "sourceYahoo": "Fuente: Yahoo Finance",
-      "sourceEcb": "Fuente: BCE"
+      "sourceEcb": "Fuente: BCE",
+      "degraded": "No disponible en este momento: {{sources}}. Reintentando en breve.",
+      "source": {
+        "stress": "Estrés del tipo de cambio",
+        "usd": "Tipos de cambio del dólar estadounidense",
+        "eur": "Tipos de cambio del euro del BCE"
+      }
     }
   },
   "popups": {

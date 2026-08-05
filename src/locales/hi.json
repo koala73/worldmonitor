@@ -2612,7 +2612,13 @@
       "eurBase": "ECB यूरो संदर्भ दरें",
       "stressedCount": "{{threshold}} से अधिक {{stressed}} में से {{total}} मुद्राएं",
       "sourceYahoo": "स्रोत: Yahoo Finance",
-      "sourceEcb": "स्रोत: ECB"
+      "sourceEcb": "स्रोत: ECB",
+      "degraded": "अभी उपलब्ध नहीं: {{sources}}। शीघ्र ही पुनः प्रयास किया जा रहा है।",
+      "source": {
+        "stress": "FX स्ट्रेस",
+        "usd": "US डॉलर दरें",
+        "eur": "ECB यूरो दरें"
+      }
     }
   },
   "popups": {

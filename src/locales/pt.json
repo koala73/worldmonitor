@@ -2299,7 +2299,13 @@
       "eurBase": "Taxas de referência do euro do ECB",
       "stressedCount": "{{stressed}} de {{total}} moedas abaixo de {{threshold}}",
       "sourceYahoo": "Fonte: Yahoo Finance",
-      "sourceEcb": "Fonte: ECB"
+      "sourceEcb": "Fonte: ECB",
+      "degraded": "Indisponível no momento: {{sources}}. Tentando novamente em breve.",
+      "source": {
+        "stress": "Estresse cambial",
+        "usd": "Cotações do dólar americano",
+        "eur": "Cotações do euro do BCE"
+      }
     }
   },
   "popups": {

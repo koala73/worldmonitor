@@ -17,7 +17,7 @@
 
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { toEurSpotRows, toFxStressRows, toUsdSpotRows } from '@/services/economic/fx-rates';
+import { degradedSources, toEurSpotRows, toFxStressRows, toUsdSpotRows } from '@/services/economic/fx-rates';
 
 import { initTestI18n, tt } from './helpers/i18n.mts';
 
@@ -61,11 +61,10 @@ const ECB_RATES = [
  */
 function rows(overrides: { yoy?: unknown; usd?: unknown; ecb?: unknown } = {}) {
   const { yoy = YOY_PAYLOAD, usd = USD_PAYLOAD, ecb = ECB_RATES } = overrides;
-  return {
-    stress: toFxStressRows(yoy),
-    usd: toUsdSpotRows(usd),
-    eur: toEurSpotRows(ecb),
-  };
+  const rowSet = { stress: toFxStressRows(yoy), usd: toUsdSpotRows(usd), eur: toEurSpotRows(ecb) };
+  // The REAL function getFxPanelData uses — reimplementing it here would let the
+  // panel tests pass against logic production does not run.
+  return { ...rowSet, degraded: degradedSources(rowSet) };
 }
 
 let panel: InstanceType<typeof FxPanel>;
@@ -184,6 +183,26 @@ describe('FX stress tab', () => {
     expect(window).toContain('0.0006900');
     expect(ars?.querySelector('.fx-window-dates')?.textContent).toContain('2024-09-01');
     expect(ars?.querySelector('.fx-window-dates')?.textContent).toContain('2026-07-01');
+  });
+
+  it('shows a date span when rows disagree, not just the freshest date', async () => {
+    // Each asOf is that currency's own newest Yahoo bar and the seeder skips a
+    // failed currency rather than failing the run, so showing only the newest
+    // would present the freshest row's date as the whole table's freshness and
+    // hide a currency frozen a week earlier.
+    await mount(rows({
+      yoy: { rates: [
+        { countryCode: 'AR', currency: 'ARS', yoyChange: -38, drawdown24m: -41, asOf: '2026-08-01' },
+        { countryCode: 'TR', currency: 'TRY', yoyChange: -28, drawdown24m: -30, asOf: '2026-07-24' },
+      ] },
+    }));
+    expect(body()).toContain('2026-07-24 → 2026-08-01');
+  });
+
+  it('shows a single date when every row agrees', async () => {
+    await mount(rows());
+    expect(body()).toContain('2026-08-01');
+    expect(body()).not.toContain('→ 2026-08-01');
   });
 
   it('counts the stressed currencies against the full set', async () => {
@@ -311,6 +330,65 @@ describe('tab fallback when a source is empty', () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+});
+
+describe('partial outage', () => {
+  it('names the dead source instead of dropping its table silently', async () => {
+    // Without the notice, a dead fx:yoy seed is indistinguishable from a panel
+    // that never had a stress tab — the tab guard even switches away from it,
+    // so nothing looks wrong and the reader has no reason to suspect a gap.
+    await mount(rows({ yoy: { rates: [] } }));
+    const notice = panel.getElement().querySelector('.fx-degraded');
+    expect(notice).not.toBeNull();
+    expect(notice?.textContent).toContain(tt('components.fx.source.stress'));
+    // ...and does not accuse the sources that are actually fine
+    expect(notice?.textContent).not.toContain(tt('components.fx.source.eur'));
+  });
+
+  it('does not show the notice when every source is healthy', async () => {
+    await mount(rows());
+    expect(panel.getElement().querySelector('.fx-degraded')).toBeNull();
+  });
+
+  it('retries a partial outage instead of waiting out the 6h refresh', async () => {
+    // The all-empty case gets a retry from the error state. A partial outage
+    // renders fine and would otherwise leave the dead source dead until the
+    // next scheduled tick.
+    await mount(rows({ yoy: { rates: [] } }));
+    expect(mockGetFxPanelData).toHaveBeenCalledTimes(1);
+
+    mockGetFxPanelData.mockResolvedValue(rows());
+    await vi.advanceTimersByTimeAsync(61_000);
+    expect(mockGetFxPanelData).toHaveBeenCalledTimes(2);
+    expect(panel.getElement().querySelector('.fx-degraded')).toBeNull();
+    // ...and lands the reader back on the tab the outage forced them off,
+    // rather than leaving them parked on Spot with the recovered data hidden.
+    expect(activeTab()?.dataset.tab).toBe('stress');
+    expect(dataRows()).toHaveLength(3);
+  });
+
+  it('does not override a tab the user chose, even one they re-picked mid-outage', async () => {
+    // This has to start from a FORCED tab, or it proves nothing: with healthy
+    // data tabForced is already false, so the restore branch never runs and the
+    // assertion holds no matter what handleClick does.
+    await mount(rows({ yoy: { rates: [] } }));      // forced onto spot
+    expect(activeTab()?.dataset.tab).toBe('spot');
+
+    await clickTab('spot');                          // user deliberately picks it
+    await reload(rows());                            // stress recovers
+
+    // Their choice outranks the restore — they stay on Spot.
+    expect(activeTab()?.dataset.tab).toBe('spot');
+    expect(tabs()).toHaveLength(2);                  // and stress is available again
+  });
+
+  it('stops retrying once the panel is destroyed', async () => {
+    // A timer that outlives the panel is a leak that keeps refetching forever.
+    await mount(rows({ yoy: { rates: [] } }));
+    panel.destroy();
+    await vi.advanceTimersByTimeAsync(61_000);
+    expect(mockGetFxPanelData).toHaveBeenCalledTimes(1);
   });
 });
 

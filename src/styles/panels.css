@@ -3848,3 +3848,11 @@ a.hub-top-story {
   font-size: 9px;
   color: var(--text-dim);
 }
+/* Names a source that returned nothing, so a missing table reads as an outage
+   rather than as a surface that never existed. */
+.fx-degraded {
+  padding: 6px;
+  font-size: 9px;
+  color: var(--negative, #f87171);
+  opacity: 0.85;
+}

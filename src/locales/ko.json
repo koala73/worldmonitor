@@ -2543,7 +2543,13 @@
       "eurBase": "ECB 유로 참조 환율",
       "stressedCount": "{{stressed}}개/{{total}}개 통화 {{threshold}} 초과",
       "sourceYahoo": "출처: Yahoo Finance",
-      "sourceEcb": "출처: ECB"
+      "sourceEcb": "출처: ECB",
+      "degraded": "현재 사용 불가: {{sources}}. 곧 다시 시도합니다.",
+      "source": {
+        "stress": "FX 스트레스",
+        "usd": "미국 달러 환율",
+        "eur": "ECB 유로 환율"
+      }
     }
   },
   "popups": {

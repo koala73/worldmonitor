@@ -2543,7 +2543,13 @@
       "eurBase": "Референтни курсове на ECB за евро",
       "stressedCount": "{{stressed}} от {{total}} валути под {{threshold}}",
       "sourceYahoo": "Източник: Yahoo Finance",
-      "sourceEcb": "Източник: ECB"
+      "sourceEcb": "Източник: ECB",
+      "degraded": "Недостъпна е в момента: {{sources}}. Преопитване след малко.",
+      "source": {
+        "stress": "FX стрес",
+        "usd": "Курсове на US долара",
+        "eur": "Курсове на евро на ECB"
+      }
     }
   },
   "popups": {

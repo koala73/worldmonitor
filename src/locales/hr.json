@@ -2798,7 +2798,13 @@
       "eurBase": "ECB euro referentni tečajevi",
       "stressedCount": "{{stressed}} od {{total}} valuta ispod {{threshold}}",
       "sourceYahoo": "Izvor: Yahoo Finance",
-      "sourceEcb": "Izvor: ECB"
+      "sourceEcb": "Izvor: ECB",
+      "degraded": "Trenutno nedostupno: {{sources}}. Pokušaj uskoro.",
+      "source": {
+        "stress": "FX stres",
+        "usd": "Tečajevi američkog dolara",
+        "eur": "Tečajevi eura ECB-a"
+      }
     }
   },
   "popups": {

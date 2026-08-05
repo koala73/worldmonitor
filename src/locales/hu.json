@@ -2612,7 +2612,13 @@
       "eurBase": "ECB euró referenciaárfolyamok",
       "stressedCount": "{{stressed}} / {{total}} deviza {{threshold}} alatt",
       "sourceYahoo": "Forrás: Yahoo Finance",
-      "sourceEcb": "Forrás: ECB"
+      "sourceEcb": "Forrás: ECB",
+      "degraded": "Jelenleg nem elérhető: {{sources}}. Hamarosan újra próbálkozunk.",
+      "source": {
+        "stress": "FX stressz",
+        "usd": "USD árfolyamok",
+        "eur": "ECB euró árfolyamok"
+      }
     }
   },
   "popups": {

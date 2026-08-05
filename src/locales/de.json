@@ -2543,7 +2543,13 @@
       "eurBase": "EZB-Euro-Referenzkurse",
       "stressedCount": "{{stressed}} von {{total}} Währungen unter {{threshold}}",
       "sourceYahoo": "Quelle: Yahoo Finance",
-      "sourceEcb": "Quelle: EZB"
+      "sourceEcb": "Quelle: EZB",
+      "degraded": "Momentan nicht verfügbar: {{sources}}. Wird in Kürze erneut versucht.",
+      "source": {
+        "stress": "FX-Belastung",
+        "usd": "USD-Wechselkurse",
+        "eur": "EZB-Eurokurse"
+      }
     }
   },
   "popups": {

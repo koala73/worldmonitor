@@ -2612,7 +2612,13 @@
       "eurBase": "نرخ‌های ارجاعی یورو ECB",
       "stressedCount": "{{stressed}} از {{total}} ارز زیر {{threshold}}",
       "sourceYahoo": "منبع: Yahoo Finance",
-      "sourceEcb": "منبع: ECB"
+      "sourceEcb": "منبع: ECB",
+      "degraded": "در حال حاضر در دسترس نیست: {{sources}}. به زودی دوباره تلاش می‌شود.",
+      "source": {
+        "stress": "تنش ارز",
+        "usd": "نرخ دلار آمریکا",
+        "eur": "نرخ یورو بانک مرکزی اروپا"
+      }
     }
   },
   "popups": {

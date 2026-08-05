@@ -2611,6 +2611,12 @@
       "usdBase": "Against the US dollar",
       "eurBase": "ECB euro reference rates",
       "stressedCount": "{{stressed}} of {{total}} currencies past {{threshold}}",
+      "degraded": "Unavailable right now: {{sources}}. Retrying shortly.",
+      "source": {
+        "stress": "FX stress",
+        "usd": "US dollar rates",
+        "eur": "ECB euro rates"
+      },
       "sourceYahoo": "Source: Yahoo Finance",
       "sourceEcb": "Source: ECB"
     }

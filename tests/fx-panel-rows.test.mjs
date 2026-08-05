@@ -17,6 +17,7 @@ import assert from 'node:assert/strict';
 
 import {
   FX_STRESS_THRESHOLD_PCT,
+  degradedSources,
   toFxStressRows,
   toUsdSpotRows,
   toEurSpotRows,
@@ -204,6 +205,46 @@ test('tolerates a raw envelope and rejects unusable USD payloads', () => {
   for (const bad of [undefined, null, {}, [], 'x', 42]) {
     assert.deepEqual(toUsdSpotRows(bad), [], `expected [] for ${JSON.stringify(bad)}`);
   }
+});
+
+// ─── degraded-source detection ─────────────────────────────────────────────────
+//
+// The client loaders return the same value for a transport failure and a cache
+// miss, so "this source is empty" is the only signal available. None of the
+// three has a plausible genuine empty — 45 currencies, 47 USD rates, 7 ECB
+// pairs — so an empty one is a dead one, and that inference is what drives the
+// panel's degraded notice and its retry.
+
+test('names exactly the sources that came back empty', () => {
+  const full = { stress: [{}], usd: [{}], eur: [{}] };
+  assert.deepEqual(degradedSources(full), []);
+  assert.deepEqual(degradedSources({ ...full, stress: [] }), ['stress']);
+  assert.deepEqual(degradedSources({ ...full, usd: [] }), ['usd']);
+  assert.deepEqual(degradedSources({ ...full, eur: [] }), ['eur']);
+});
+
+test('reports every empty source, not just the first', () => {
+  // A one-source-only report would leave the panel silently omitting a table
+  // it never named.
+  assert.deepEqual(
+    degradedSources({ stress: [], usd: [], eur: [] }),
+    ['stress', 'usd', 'eur'],
+  );
+  assert.deepEqual(degradedSources({ stress: [], usd: [{}], eur: [] }), ['stress', 'eur']);
+});
+
+// ─── freshness span ────────────────────────────────────────────────────────────
+
+test('stress rows can disagree on asOf — the mapper preserves each row date', () => {
+  // The seeder fetches per currency and skips a failed one rather than failing
+  // the run, so a frozen currency keeps an older `asOf` while its neighbours
+  // advance. The panel needs both ends to show a span instead of presenting the
+  // freshest row's date as the whole table's freshness.
+  const rows = toFxStressRows(yoyPayload([
+    yoyRecord({ currency: 'ARS', drawdown24m: -41, asOf: '2026-08-01' }),
+    yoyRecord({ currency: 'TRY', drawdown24m: -30, asOf: '2026-07-24' }),
+  ]));
+  assert.deepEqual(rows.map((r) => r.asOf), ['2026-08-01', '2026-07-24']);
 });
 
 // ─── economic:ecb-fx-rates:v1 ──────────────────────────────────────────────────

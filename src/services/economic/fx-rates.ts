@@ -71,10 +71,22 @@ export type FxEurSpotRow = {
  * so the service layer that assembles it does not have to import from
  * `src/components/` — a direction `npm run lint:boundaries` rejects.
  */
+export type FxSourceId = 'stress' | 'usd' | 'eur';
+
 export type FxPanelRows = {
   stress: FxStressRow[];
   usd: FxUsdSpotRow[];
   eur: FxEurSpotRow[];
+  /**
+   * Sources that yielded no usable rows this load.
+   *
+   * Each of the three is implausible as a genuine empty — 45 currencies, 47 USD
+   * rates, 7 ECB pairs — so an empty one means that source is down, and the
+   * loaders cannot tell us apart from a miss. Naming them lets the panel say a
+   * table is *missing* rather than silently rendering as if it never existed,
+   * and lets it retry instead of waiting out the 6h refresh.
+   */
+  degraded: FxSourceId[];
 };
 
 /**
@@ -92,6 +104,22 @@ export const FX_STRESS_THRESHOLD_PCT = -15;
  * private copy — the duplication issue #6199 flags.
  */
 export const EUR_FX_ORDER = ['USD', 'GBP', 'JPY', 'CHF', 'CAD', 'CNY', 'AUD'] as const;
+
+/**
+ * Which of the three sources came back with nothing.
+ *
+ * Extracted as a pure function so it is testable: the client loaders return the
+ * same value for a transport failure and a cache miss, so this reasoning — that
+ * an empty source is a dead source, because none of the three has a plausible
+ * genuine empty — is the whole basis for the panel's degraded notice and retry.
+ */
+export function degradedSources(rows: Omit<FxPanelRows, 'degraded'>): FxSourceId[] {
+  const degraded: FxSourceId[] = [];
+  if (rows.stress.length === 0) degraded.push('stress');
+  if (rows.usd.length === 0) degraded.push('usd');
+  if (rows.eur.length === 0) degraded.push('eur');
+  return degraded;
+}
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);

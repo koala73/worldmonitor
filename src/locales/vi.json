@@ -2543,7 +2543,13 @@
       "eurBase": "Tỷ giá tham chiếu euro của ECB",
       "stressedCount": "{{stressed}} trên {{total}} đồng tiền dưới {{threshold}}",
       "sourceYahoo": "Nguồn: Yahoo Finance",
-      "sourceEcb": "Nguồn: ECB"
+      "sourceEcb": "Nguồn: ECB",
+      "degraded": "Hiện không khả dụng: {{sources}}. Sẽ thử lại trong giây lát.",
+      "source": {
+        "stress": "Áp lực FX",
+        "usd": "Tỷ giá đô la Mỹ",
+        "eur": "Tỷ giá euro của ECB"
+      }
     }
   },
   "popups": {

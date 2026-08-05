@@ -2543,7 +2543,13 @@
       "eurBase": "ECB euro referans oranları",
       "stressedCount": "{{stressed}}/{{total}} para biriminin {{threshold}} altında",
       "sourceYahoo": "Kaynak: Yahoo Finance",
-      "sourceEcb": "Kaynak: ECB"
+      "sourceEcb": "Kaynak: ECB",
+      "degraded": "Şu anda kullanılamıyor: {{sources}}. Kısa sürede yeniden denenecek.",
+      "source": {
+        "stress": "FX stres",
+        "usd": "ABD doları kurları",
+        "eur": "ECB euro kurları"
+      }
     }
   },
   "popups": {

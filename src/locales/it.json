@@ -2561,7 +2561,13 @@
       "eurBase": "Tassi di riferimento euro della BCE",
       "stressedCount": "{{stressed}} di {{total}} valute sotto il {{threshold}}",
       "sourceYahoo": "Fonte: Yahoo Finance",
-      "sourceEcb": "Fonte: BCE"
+      "sourceEcb": "Fonte: BCE",
+      "degraded": "Al momento non disponibile: {{sources}}. Nuovo tentativo tra poco.",
+      "source": {
+        "stress": "Stress FX",
+        "usd": "Tassi del dollaro USA",
+        "eur": "Tassi euro BCE"
+      }
     }
   },
   "popups": {

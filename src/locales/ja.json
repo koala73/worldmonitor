@@ -2543,7 +2543,13 @@
       "eurBase": "ECBユーロ参照レート",
       "stressedCount": "{{stressed}}/{{total}}通貨が{{threshold}}を下回る",
       "sourceYahoo": "出典: Yahoo Finance",
-      "sourceEcb": "出典: ECB"
+      "sourceEcb": "出典: ECB",
+      "degraded": "現在利用できません: {{sources}}。間もなく再試行します。",
+      "source": {
+        "stress": "FX ストレス",
+        "usd": "米ドルレート",
+        "eur": "ECB ユーロレート"
+      }
     }
   },
   "popups": {

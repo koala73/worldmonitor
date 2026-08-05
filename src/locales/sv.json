@@ -2283,7 +2283,13 @@
       "eurBase": "ECB:s euroreferencekurser",
       "stressedCount": "{{stressed}} av {{total}} valutor under {{threshold}}",
       "sourceYahoo": "Källa: Yahoo Finance",
-      "sourceEcb": "Källa: ECB"
+      "sourceEcb": "Källa: ECB",
+      "degraded": "Otillgänglig just nu: {{sources}}. Försöker igen inom kort.",
+      "source": {
+        "stress": "FX-stress",
+        "usd": "USD-kurser",
+        "eur": "ECB-eurokurser"
+      }
     }
   },
   "popups": {
