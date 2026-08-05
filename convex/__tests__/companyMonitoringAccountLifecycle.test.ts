@@ -1,11 +1,12 @@
 import { convexTest } from "convex-test";
-import { describe, expect, test } from "vitest";
+import { describe, expect, test, vi } from "vitest";
 import { api, internal } from "../_generated/api";
 import { getFeaturesForPlan } from "../lib/entitlements";
 import {
   companyMonitoringOwnerFenceCandidates,
   signAnonClaimToken,
   signCompanyMonitoringOwnerFence,
+  signUserId,
 } from "../lib/identitySigning";
 import {
   accountFor,
@@ -14,20 +15,36 @@ import {
   FUTURE,
   grant,
   installCompanyMonitoringTestEnvironment,
-  INTERMEDIATE_SIGNING_SECRET,
+  INTERMEDIATE_OWNER_FENCE_SECRET,
   modules,
-  NEW_SIGNING_SECRET,
+  NEW_OWNER_FENCE_SECRET,
   NOW,
-  OLD_SIGNING_SECRET,
+  OLD_OWNER_FENCE_SECRET,
   OWNER_A,
   OWNER_B,
+  ROTATED_DODO_IDENTITY_SIGNING_SECRET,
   schema,
   setStoredEntitlement,
+  TEST_OWNER_FENCE_SECRET,
 } from "./companyMonitoringTestHelpers";
 
 installCompanyMonitoringTestEnvironment();
 
 describe("Company Monitoring account lifecycle", () => {
+  test("authenticated entitlement and account-root provisioning fail atomically", async () => {
+    const t = convexTest(schema, modules);
+    delete process.env.COMPANY_MONITORING_OWNER_FENCE_SECRET;
+
+    await expect(grant(t, OWNER_A)).rejects.toThrow(
+      /COMPANY_MONITORING_OWNER_FENCE_SECRET not set/,
+    );
+    const state = await t.run(async (ctx) => ({
+      entitlements: await ctx.db.query("entitlements").collect(),
+      accounts: await ctx.db.query("companyMonitoringAccounts").collect(),
+    }));
+    expect(state).toEqual({ entitlements: [], accounts: [] });
+  });
+
   test("authenticated grants create one immutable root and semantic replays do not advance sequence", async () => {
     const t = convexTest(schema, modules);
 
@@ -225,6 +242,7 @@ describe("Company Monitoring account lifecycle", () => {
 
     await setStoredEntitlement(t, OWNER_A, "free", NOW - 1);
     const lapsed = await accountFor(t, OWNER_A);
+    vi.setSystemTime(lapsed!.purgeAfter!);
     await t.mutation(CM.accounts.advanceAccountPurge, {
       ownerFenceHash: lapsed!.ownerFenceHash,
       purgeGeneration: lapsed!.purgeGeneration,
@@ -282,6 +300,7 @@ describe("Company Monitoring account lifecycle", () => {
       ownerFenceHash: lapsed!.ownerFenceHash,
       purgeGeneration: lapsed!.purgeGeneration,
     };
+    vi.setSystemTime(lapsed!.purgeAfter!);
     expect(await t.mutation(CM.accounts.advanceAccountPurge, purgeArgs)).toEqual({
       status: "started",
     });
@@ -369,6 +388,7 @@ describe("Company Monitoring account lifecycle", () => {
       ownerFenceHash: lapsed!.ownerFenceHash,
       purgeGeneration: lapsed!.purgeGeneration,
     };
+    vi.setSystemTime(lapsed!.purgeAfter!);
     expect(await t.mutation(CM.accounts.advanceAccountPurge, purgeArgs)).toEqual({
       status: "started",
     });
@@ -413,14 +433,24 @@ describe("Company Monitoring account lifecycle", () => {
     expect(await t.run(async (ctx) => ctx.db.query("companyMonitoringClaims").collect())).toEqual([]);
   }, 15_000);
 
-  test("owner-fence rotation finds and migrates an old nonterminal root", async () => {
+  test("Dodo identity-secret rotation cannot change a Company Monitoring owner fence", async () => {
+    const originalFence = await signCompanyMonitoringOwnerFence(OWNER_A);
+    const originalCheckoutSignature = await signUserId(OWNER_A);
+
+    process.env.DODO_IDENTITY_SIGNING_SECRET = ROTATED_DODO_IDENTITY_SIGNING_SECRET;
+
+    expect(await signCompanyMonitoringOwnerFence(OWNER_A)).toBe(originalFence);
+    expect(await signUserId(OWNER_A)).not.toBe(originalCheckoutSignature);
+  });
+
+  test("dedicated owner-fence rotation finds and migrates an old nonterminal root", async () => {
     const t = convexTest(schema, modules);
-    process.env.DODO_IDENTITY_SIGNING_SECRET = OLD_SIGNING_SECRET;
+    process.env.COMPANY_MONITORING_OWNER_FENCE_SECRET = OLD_OWNER_FENCE_SECRET;
     await grant(t, OWNER_A);
     const oldRoot = await accountFor(t, OWNER_A);
 
-    process.env.DODO_IDENTITY_SIGNING_SECRET = NEW_SIGNING_SECRET;
-    process.env.COMPANY_MONITORING_OWNER_FENCE_PREVIOUS_SECRETS = OLD_SIGNING_SECRET;
+    process.env.COMPANY_MONITORING_OWNER_FENCE_SECRET = NEW_OWNER_FENCE_SECRET;
+    process.env.COMPANY_MONITORING_OWNER_FENCE_PREVIOUS_SECRETS = OLD_OWNER_FENCE_SECRET;
     const currentFenceHash = await signCompanyMonitoringOwnerFence(OWNER_A);
     await t.mutation(CM.accounts.syncStoredEntitlement, { userId: OWNER_A });
 
@@ -440,24 +470,24 @@ describe("Company Monitoring account lifecycle", () => {
     )).toBeNull();
   });
 
-  test("owner-fence rotation keeps two historical tombstones discoverable in candidate order", async () => {
+  test("dedicated owner-fence rotation keeps two historical tombstones discoverable in candidate order", async () => {
     const t = convexTest(schema, modules);
-    process.env.DODO_IDENTITY_SIGNING_SECRET = OLD_SIGNING_SECRET;
+    process.env.COMPANY_MONITORING_OWNER_FENCE_SECRET = OLD_OWNER_FENCE_SECRET;
     await grant(t, OWNER_A);
     const oldestRoot = await accountFor(t, OWNER_A);
     const oldestFenceForOwnerA = await signCompanyMonitoringOwnerFence(OWNER_A);
     await t.mutation(CM.accounts.markOwnerDeleted, { ownerUserId: OWNER_A });
 
-    process.env.DODO_IDENTITY_SIGNING_SECRET = INTERMEDIATE_SIGNING_SECRET;
+    process.env.COMPANY_MONITORING_OWNER_FENCE_SECRET = INTERMEDIATE_OWNER_FENCE_SECRET;
     const intermediateFenceForOwnerA = await signCompanyMonitoringOwnerFence(OWNER_A);
     await grant(t, OWNER_B);
     const intermediateRoot = await accountFor(t, OWNER_B);
     await t.mutation(CM.accounts.markOwnerDeleted, { ownerUserId: OWNER_B });
 
-    process.env.DODO_IDENTITY_SIGNING_SECRET = NEW_SIGNING_SECRET;
+    process.env.COMPANY_MONITORING_OWNER_FENCE_SECRET = NEW_OWNER_FENCE_SECRET;
     const currentFenceForOwnerA = await signCompanyMonitoringOwnerFence(OWNER_A);
     process.env.COMPANY_MONITORING_OWNER_FENCE_PREVIOUS_SECRETS =
-      `${OLD_SIGNING_SECRET},${INTERMEDIATE_SIGNING_SECRET}`;
+      `${OLD_OWNER_FENCE_SECRET},${INTERMEDIATE_OWNER_FENCE_SECRET}`;
     expect((await companyMonitoringOwnerFenceCandidates(OWNER_A)).all).toEqual([
       currentFenceForOwnerA,
       oldestFenceForOwnerA,
@@ -489,13 +519,13 @@ describe("Company Monitoring account lifecycle", () => {
     });
   });
 
-  test("owner-fence rotation rejects split roots across current and previous keys", async () => {
+  test("dedicated owner-fence rotation rejects split roots across current and previous keys", async () => {
     const t = convexTest(schema, modules);
-    process.env.DODO_IDENTITY_SIGNING_SECRET = OLD_SIGNING_SECRET;
+    process.env.COMPANY_MONITORING_OWNER_FENCE_SECRET = OLD_OWNER_FENCE_SECRET;
     await grant(t, OWNER_A);
 
-    process.env.DODO_IDENTITY_SIGNING_SECRET = NEW_SIGNING_SECRET;
-    process.env.COMPANY_MONITORING_OWNER_FENCE_PREVIOUS_SECRETS = OLD_SIGNING_SECRET;
+    process.env.COMPANY_MONITORING_OWNER_FENCE_SECRET = NEW_OWNER_FENCE_SECRET;
+    process.env.COMPANY_MONITORING_OWNER_FENCE_PREVIOUS_SECRETS = OLD_OWNER_FENCE_SECRET;
     const currentFenceHash = await signCompanyMonitoringOwnerFence(OWNER_A);
     await t.run(async (ctx) => {
       await ctx.db.insert("companyMonitoringAccounts", {
@@ -519,16 +549,39 @@ describe("Company Monitoring account lifecycle", () => {
   });
 
   test.each([
+    ["missing current secret", undefined],
+    ["empty current secret", ""],
+    ["leading whitespace", ` ${TEST_OWNER_FENCE_SECRET}`],
+    ["trailing whitespace", `${TEST_OWNER_FENCE_SECRET} `],
+  ])("dedicated owner-fence rotation rejects %s", async (_caseName, currentSecret) => {
+    if (currentSecret === undefined) delete process.env.COMPANY_MONITORING_OWNER_FENCE_SECRET;
+    else process.env.COMPANY_MONITORING_OWNER_FENCE_SECRET = currentSecret;
+    await expect(signCompanyMonitoringOwnerFence(OWNER_A)).rejects.toThrow(
+      /COMPANY_MONITORING_OWNER_FENCE_SECRET (?:not set|is invalid)/,
+    );
+  });
+
+  test.each([
     ["empty history", ""],
-    ["blank history entry", `${OLD_SIGNING_SECRET},`],
-    ["surrounding whitespace", ` ${OLD_SIGNING_SECRET}`],
-    ["duplicate history", `${OLD_SIGNING_SECRET},${OLD_SIGNING_SECRET}`],
-    ["current key in history", `${OLD_SIGNING_SECRET},${NEW_SIGNING_SECRET}`],
+    ["blank history entry", `${OLD_OWNER_FENCE_SECRET},`],
+    ["surrounding whitespace", ` ${OLD_OWNER_FENCE_SECRET}`],
+    ["duplicate history", `${OLD_OWNER_FENCE_SECRET},${OLD_OWNER_FENCE_SECRET}`],
   ])("owner-fence rotation rejects %s", async (_caseName, previousSecrets) => {
-    process.env.DODO_IDENTITY_SIGNING_SECRET = NEW_SIGNING_SECRET;
+    process.env.COMPANY_MONITORING_OWNER_FENCE_SECRET = NEW_OWNER_FENCE_SECRET;
     process.env.COMPANY_MONITORING_OWNER_FENCE_PREVIOUS_SECRETS = previousSecrets;
     await expect(signCompanyMonitoringOwnerFence(OWNER_A)).rejects.toThrow(
-      /invalid|duplicate or current key/,
+      /invalid|duplicate key/,
     );
+  });
+
+  test("owner-fence rotation permits pre-staging the current key without duplicate candidates", async () => {
+    process.env.COMPANY_MONITORING_OWNER_FENCE_SECRET = NEW_OWNER_FENCE_SECRET;
+    process.env.COMPANY_MONITORING_OWNER_FENCE_PREVIOUS_SECRETS =
+      `${OLD_OWNER_FENCE_SECRET},${NEW_OWNER_FENCE_SECRET}`;
+
+    const candidates = await companyMonitoringOwnerFenceCandidates(OWNER_A);
+    expect(candidates.all).toHaveLength(2);
+    expect(new Set(candidates.all).size).toBe(2);
+    expect(candidates.all[0]).toBe(candidates.current);
   });
 });

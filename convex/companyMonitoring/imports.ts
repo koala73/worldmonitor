@@ -8,6 +8,10 @@ import {
 } from "../../shared/company-monitoring-contract";
 import { COMPANY_LIMIT, fingerprint, requireActiveAccount } from "./_shared";
 import { findNoopByCustomerReference, insertNormalizedCompany } from "./companies";
+import {
+  companyImportRowInputValidator,
+  normalizedCompanyImportRowValidator,
+} from "./validators";
 
 type ImportRowResult = {
   ordinal: number;
@@ -21,7 +25,7 @@ type ImportRowMutationResult = ImportRowResult & { companyCount: number };
 export const importCompanyRowForOwner = internalMutation({
   args: {
     ownerUserId: v.string(),
-    row: v.any(),
+    row: normalizedCompanyImportRowValidator,
     rowFingerprint: v.string(),
   },
   handler: async (ctx, args): Promise<ImportRowMutationResult> => {
@@ -100,7 +104,7 @@ export const importCompanyRowForOwner = internalMutation({
 });
 
 export const importCompaniesForOwner = internalAction({
-  args: { ownerUserId: v.string(), rows: v.array(v.any()) },
+  args: { ownerUserId: v.string(), rows: v.array(companyImportRowInputValidator) },
   handler: async (ctx, args) => {
     const rows = normalizeCompanyImportBatch(args.rows as CompanyImportRowInput[]);
     const rowFingerprints = await Promise.all(rows.map((row) => fingerprint(row)));

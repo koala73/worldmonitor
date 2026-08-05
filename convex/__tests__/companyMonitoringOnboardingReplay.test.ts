@@ -85,6 +85,59 @@ describe("bounded onboarding and replay", () => {
     expect(retried.status).toBe("created");
   });
 
+  test("Convex validators reject unexpected fields at every Company Monitoring write boundary", async () => {
+    const t = convexTest(schema, modules);
+    await grant(t, OWNER_A);
+
+    await expect(t.mutation(CM.companies.createCompanyForOwner, {
+      ownerUserId: OWNER_A,
+      clientRequestId: "validator-create-extra",
+      company: { ...company("Validator Create", "validator-create"), unexpected: "ignored-by-v-any" },
+    } as any)).rejects.toThrow();
+
+    const created = await t.mutation(CM.companies.createCompanyForOwner, {
+      ownerUserId: OWNER_A,
+      clientRequestId: "validator-valid-company",
+      company: company("Validator Valid", "validator-valid"),
+    });
+    await expect(t.mutation(CM.companies.updateCompanyForOwner, {
+      ownerUserId: OWNER_A,
+      companyId: created.companyId,
+      patch: { unexpected: "ignored-by-v-any" },
+    } as any)).rejects.toThrow();
+
+    await expect(t.action(CM.imports.importCompaniesForOwner, {
+      ownerUserId: OWNER_A,
+      rows: [{
+        ...company("Validator Import", "validator-import"),
+        clientImportId: "validator-import",
+        ordinal: 0,
+        unexpected: "ignored-by-v-any",
+      }],
+    } as any)).rejects.toThrow();
+
+    const normalizedRow = {
+      contractVersion: "cm-import-v1",
+      clientImportId: "validator-internal-import",
+      ordinal: 0,
+      name: "Validator Internal Import",
+      domicileCountry: "US",
+      aliases: [],
+      domains: [],
+      identifiers: [],
+      xHandles: [],
+      locations: [],
+      unexpected: "ignored-by-v-any",
+    };
+    await expect(t.mutation(CM.imports.importCompanyRowForOwner, {
+      ownerUserId: OWNER_A,
+      row: normalizedRow,
+      rowFingerprint: "validator-fingerprint",
+    } as any)).rejects.toThrow();
+
+    expect(await accountFor(t, OWNER_A)).toMatchObject({ companyCount: 1 });
+  });
+
   test("a full 100-row normalized import stays ordered and replay-safe", async () => {
     const t = convexTest(schema, modules);
     await grant(t, OWNER_A);
@@ -109,27 +162,30 @@ describe("bounded onboarding and replay", () => {
     );
 
     const root = await accountFor(t, OWNER_A);
+    const firstCompanyId = imported.results[0]?.companyId;
+    expect(firstCompanyId).toBeDefined();
     const stored = await t.run(async (ctx) => ({
       companies: await ctx.db
         .query("companyMonitoringCompanies")
         .withIndex("by_account_companyId", (q) => q.eq("ownerAccountId", root!.logicalAccountId))
         .collect(),
-      firstDomain: await ctx.db
+      firstCompanyClaims: await ctx.db
         .query("companyMonitoringClaims")
-        .withIndex("by_account_type_value", (q) =>
+        .withIndex("by_account_company", (q) =>
           q
             .eq("ownerAccountId", root!.logicalAccountId)
-            .eq("type", "domain")
-            .eq("value", "batch-0.example"),
+            .eq("companyId", firstCompanyId!),
         )
-        .unique(),
+        .collect(),
     }));
     expect(stored.companies).toHaveLength(100);
     expect(stored.companies.every((row) =>
       row.name === `Batch Company ${row.importOrdinal}` &&
       row.clientImportId === "full-normalized-batch"
     )).toBe(true);
-    expect(stored.firstDomain?.value).toBe("batch-0.example");
+    expect(stored.firstCompanyClaims).toEqual(expect.arrayContaining([
+      expect.objectContaining({ type: "domain", value: "batch-0.example" }),
+    ]));
 
     const replayed = await t.action(CM.imports.importCompaniesForOwner, {
       ownerUserId: OWNER_A,

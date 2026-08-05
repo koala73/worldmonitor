@@ -8,7 +8,6 @@ import {
   assertLogicalId,
   COMPANY_MONITORING_LIMITS,
   assertLifecycleTransition,
-  type CompanyClaimInput,
   type MonitoredCompanyInput,
   type NormalizedMonitoredCompanyInput,
 } from "../../shared/company-monitoring-contract";
@@ -21,6 +20,7 @@ import {
   requireActiveAccount,
   COMPANY_LIMIT,
 } from "./_shared";
+import { companyPatchValidator, monitoredCompanyInputValidator } from "./validators";
 
 type ReplayMetadata =
   | { directRequestId: string; directFingerprint: string }
@@ -88,7 +88,7 @@ export const createCompanyForOwner = internalMutation({
   args: {
     ownerUserId: v.string(),
     clientRequestId: v.string(),
-    company: v.any(),
+    company: monitoredCompanyInputValidator,
   },
   handler: async (ctx, args) => {
     const account = await requireActiveAccount(ctx, args.ownerUserId);
@@ -168,7 +168,7 @@ export const updateCompanyForOwner = internalMutation({
   args: {
     ownerUserId: v.string(),
     companyId: v.string(),
-    patch: v.any(),
+    patch: companyPatchValidator,
   },
   handler: async (ctx, args) => {
     const account = await requireActiveAccount(ctx, args.ownerUserId);
@@ -181,25 +181,9 @@ export const updateCompanyForOwner = internalMutation({
     if (!company || company.lifecycle === "removed" || !company.name || !company.domicileCountry) {
       throw new ConvexError("NOT_FOUND");
     }
-    if (!args.patch || typeof args.patch !== "object" || Array.isArray(args.patch)) {
-      throw new ConvexError("INVALID_COMPANY_PATCH");
-    }
-    const patch = args.patch as Record<string, unknown>;
-    const allowedFields = new Set([
-      "name",
-      "domicileCountry",
-      "customerReference",
-      "addClaims",
-      "removeClaimIds",
-    ]);
-    if (Object.keys(patch).some((field) => !allowedFields.has(field))) {
-      throw new ConvexError("INVALID_COMPANY_PATCH");
-    }
+    const patch = args.patch;
     const addClaimInputs = patch.addClaims ?? [];
     const removeClaimInputs = patch.removeClaimIds ?? [];
-    if (!Array.isArray(addClaimInputs) || !Array.isArray(removeClaimInputs)) {
-      throw new ConvexError("INVALID_COMPANY_PATCH");
-    }
     if (
       addClaimInputs.length > COMPANY_MONITORING_LIMITS.maxClaimsPerCompany ||
       removeClaimInputs.length > COMPANY_MONITORING_LIMITS.maxClaimsPerCompany
@@ -211,10 +195,10 @@ export const updateCompanyForOwner = internalMutation({
     const hasDomicile = Object.prototype.hasOwnProperty.call(patch, "domicileCountry");
     const hasCustomerReference = Object.prototype.hasOwnProperty.call(patch, "customerReference");
     const normalizedFields = normalizeMonitoredCompanyInput({
-      name: hasName ? patch.name as string : company.name,
-      domicileCountry: hasDomicile ? patch.domicileCountry as string : company.domicileCountry,
+      name: hasName ? patch.name! : company.name,
+      domicileCountry: hasDomicile ? patch.domicileCountry! : company.domicileCountry,
       customerReference: hasCustomerReference
-        ? patch.customerReference as string | undefined
+        ? patch.customerReference
         : company.customerReference,
     });
     if (hasCustomerReference && normalizedFields.customerReference) {
@@ -252,8 +236,7 @@ export const updateCompanyForOwner = internalMutation({
         .filter((claim) => !removeIds.has(claim.claimId))
         .map((claim) => `${claim.type}\u0000${claim.value}`),
     );
-    const normalizedAdditions = (addClaimInputs as CompanyClaimInput[])
-      .map(normalizeCompanyClaimInput);
+    const normalizedAdditions = addClaimInputs.map(normalizeCompanyClaimInput);
     if (hasCustomerReference && normalizedFields.customerReference) {
       normalizedAdditions.push({
         type: "customer_reference",
