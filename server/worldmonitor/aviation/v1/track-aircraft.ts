@@ -7,7 +7,10 @@ import type {
 import { getRelayBaseUrl, getRelayHeaders } from './_shared';
 import { cachedFetchJson } from '../../../_shared/redis';
 
-// 120s for anonymous OpenSky tier (~10 req/min limit); TODO: reduce to 10s on commercial tier
+// 120s. This TTL was originally sized for the anonymous OpenSky tier's ~10 req/min
+// ceiling; that tier was removed in #6222, so the binding constraint is now the shared
+// authenticated credit pool the relay draws on — a shorter TTL multiplies bbox misses
+// straight into it. Revisit only alongside that budget, not on its own.
 const CACHE_TTL = 120;
 // Callsign searches hit the relay's in-memory index (5min TTL); cache positive hits 60s,
 // negative hits 10s so a retry after panning into view returns fresh data quickly.
