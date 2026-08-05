@@ -1539,6 +1539,32 @@ export async function processItemRoute({
   return { localPrice, sourceSite, routeUpdate, routeDelete };
 }
 
+// Five 8s timeouts plus four 150ms gaps take at most 40.6s, leaving ample
+// headroom inside downstream seeds' 240s fetch-phase deadline.
+const MAX_POINT_OF_USE_FX_REQUESTS = 5;
+
+async function fetchPointOfUseFxRates(fxSymbols, fallbacks = {}) {
+  const attemptedSymbols = {};
+  const deferredCurrencies = [];
+  let requestCount = 0;
+
+  for (const [currency, symbol] of Object.entries(fxSymbols)) {
+    if (currency === 'USD' || requestCount < MAX_POINT_OF_USE_FX_REQUESTS) {
+      attemptedSymbols[currency] = symbol;
+      if (currency !== 'USD') requestCount += 1;
+    } else {
+      deferredCurrencies.push(currency);
+    }
+  }
+
+  const result = await fetchYahooFxRatesWithProvenance(attemptedSymbols, fallbacks);
+  for (const currency of deferredCurrencies) {
+    result.rates[currency] = fallbacks[currency] ?? null;
+  }
+  result.fallbackCurrencies.push(...deferredCurrencies);
+  return result;
+}
+
 /**
  * Shared FX rates cache — reads from Redis `shared:fx-rates:v1` (4h TTL).
  * Falls back to fetching from Yahoo Finance if the key is missing/expired.
@@ -1556,45 +1582,87 @@ export async function getSharedFxRates(fxSymbols, fallbacks) {
     const cached = await redisGet(url, token, SHARED_KEY);
     if (cached && typeof cached === 'object' && Object.keys(cached).length > 0) {
       console.log('  FX rates: loaded from shared cache');
-      // Fill any missing currencies this seed needs using Yahoo or fallback
-      const missing = Object.keys(fxSymbols).filter(c => cached[c] == null);
+      const hasValidFallbackProvenance = (
+        Array.isArray(cached.fallbackCurrencies)
+        && cached.fallbackCurrencies.every(c => typeof c === 'string')
+      );
+      const cachedFallbacks = new Set(hasValidFallbackProvenance ? cached.fallbackCurrencies : []);
+      // The canonical seed publishes failed Yahoo quotes as null. Retry only
+      // the gaps this consumer needs, then use its fallback table at the point
+      // of use so direct readers never mistake constants for live quotes. A
+      // markerless legacy snapshot may itself contain fallback constants, so
+      // none of its requested non-USD values are trusted as live.
+      const missing = Object.keys(fxSymbols).filter(c => (
+        c !== 'USD'
+        && (!hasValidFallbackProvenance || cached[c] == null || cachedFallbacks.has(c))
+      ));
       if (missing.length === 0) return cached;
       console.log(`  FX rates: fetching ${missing.length} missing currencies from Yahoo`);
-      const extra = await fetchYahooFxRates(
+      const extra = await fetchPointOfUseFxRates(
         Object.fromEntries(missing.map(c => [c, fxSymbols[c]])),
         fallbacks,
       );
-      return { ...cached, ...extra };
+      const retried = new Set(missing);
+      const fallbackCurrencies = [
+        ...[...cachedFallbacks].filter(c => !retried.has(c)),
+        ...extra.fallbackCurrencies,
+      ];
+      return {
+        ...cached,
+        ...extra.rates,
+        fallbackCurrencies: [...new Set(fallbackCurrencies)],
+      };
     }
   } catch {
     // Cache read failed — fall through to live fetch
   }
 
   console.log('  FX rates: cache miss — fetching from Yahoo Finance');
-  return fetchYahooFxRates(fxSymbols, fallbacks);
+  const result = await fetchPointOfUseFxRates(fxSymbols, fallbacks);
+  return { ...result.rates, fallbackCurrencies: result.fallbackCurrencies };
 }
 
-export async function fetchYahooFxRates(fxSymbols, fallbacks) {
+/**
+ * Fetch USD-per-unit Yahoo FX quotes and record which currencies used the
+ * caller-provided fallback table. The provenance is based on the actual fetch
+ * outcome, never float equality with the fallback constant.
+ */
+export async function fetchYahooFxRatesWithProvenance(fxSymbols, fallbacks = {}) {
   const rates = {};
+  const fallbackCurrencies = [];
+  let requestsRemaining = Object.keys(fxSymbols).filter(currency => currency !== 'USD').length;
   for (const [currency, symbol] of Object.entries(fxSymbols)) {
     if (currency === 'USD') { rates['USD'] = 1.0; continue; }
+    let price = null;
     try {
       const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}`;
       const resp = await fetch(url, {
         headers: { 'User-Agent': CHROME_UA },
         signal: AbortSignal.timeout(8_000),
       });
-      if (!resp.ok) { rates[currency] = fallbacks[currency] ?? null; continue; }
-      const data = await resp.json();
-      const price = data?.chart?.result?.[0]?.meta?.regularMarketPrice;
-      rates[currency] = (price != null && price > 0) ? price : (fallbacks[currency] ?? null);
-    } catch {
+      if (resp.ok) {
+        const data = await resp.json();
+        price = data?.chart?.result?.[0]?.meta?.regularMarketPrice;
+      }
+    } catch {}
+    if (Number.isFinite(price) && price > 0) {
+      rates[currency] = price;
+    } else {
       rates[currency] = fallbacks[currency] ?? null;
+      fallbackCurrencies.push(currency);
     }
-    await new Promise(r => setTimeout(r, 100));
+    requestsRemaining -= 1;
+    if (requestsRemaining > 0) await sleep(150);
   }
   console.log('  FX rates fetched:', JSON.stringify(rates));
-  return rates;
+  if (fallbackCurrencies.length > 0) {
+    console.warn(`  FX rates using fallbacks (${fallbackCurrencies.length}): ${fallbackCurrencies.join(', ')}`);
+  }
+  return { rates, fallbackCurrencies };
+}
+
+export async function fetchYahooFxRates(fxSymbols, fallbacks) {
+  return (await fetchYahooFxRatesWithProvenance(fxSymbols, fallbacks)).rates;
 }
 
 /**
