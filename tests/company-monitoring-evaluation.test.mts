@@ -25,7 +25,101 @@ const EXPECTED_BASELINE_REASONS = [
   'provider_policy_not_approved',
   'rediscovery_not_complete',
 ];
+// The approval digest is recomputable from the very file it constrains, so on its own it catches
+// accidental drift but is not an anchor against a deliberate coordinated edit (fixture threshold +
+// digest literal + approval field). These floors are therefore pinned here as independent literals,
+// exactly as EXPECTED_BASELINE_REASONS pins the STOP record: weakening a gate must show up as a
+// visible test-file edit, not as a fixture edit hidden behind a recomputed hash.
+const APPROVED_FLOORS = {
+  baseRate: {
+    minimumCompanyYears: 150,
+    minimumPointEstimate: 0.3,
+    minimumLowerBound: 0.2,
+    confidenceLevel: 0.9,
+  },
+  rediscovery: {
+    minimumPairs: 100,
+    minimumPointEstimate: 0.6,
+    minimumLowerBound: 0.5,
+    confidenceLevel: 0.9,
+  },
+  usefulness: {
+    externalCustomerCount: 2,
+    minimumIndependentCustomerCount: 1,
+    sharedImpactCount: 10,
+    minimumUsefulRatePerCustomer: 0.7,
+  },
+  maximumMonthlyCostUsd: 125,
+  portfolioSize: 500,
+};
+
+// Every top-level key must be declared as either digest-covered or deliberately digest-exempt.
+// frozenThresholds() is a hand-written projection, so without this a NEW top-level section would
+// silently escape the approved digest.
+const DIGEST_COVERED_TOP_LEVEL_KEYS = [
+  'protocolVersion',
+  'frozenAt',
+  'baseRate',
+  'rediscovery',
+  'historicalUsefulness',
+  'admissionQuality',
+  'economics',
+  'providerPolicy',
+  'changeControl',
+];
+const DIGEST_EXEMPT_TOP_LEVEL_KEYS = [
+  'approval',
+  'firstScoredRunStartedAt',
+  'syntheticVerification',
+  'stage0',
+];
+
+const ROOT_KEYS = new Set([...DIGEST_COVERED_TOP_LEVEL_KEYS, ...DIGEST_EXEMPT_TOP_LEVEL_KEYS]);
+const APPROVAL_KEYS = new Set([
+  'status',
+  'approverName',
+  'approverRole',
+  'approvedAt',
+  'approvalEvidence',
+  'approvedThresholdsSha256',
+]);
+const STAGE0_KEYS = new Set([
+  'evaluatedAt',
+  'decision',
+  'reasons',
+  'permittedImplementation',
+  'forbiddenUntilContinue',
+]);
+
 const SHA256 = /^[a-f0-9]{64}$/;
+// A digest is unverifiable from a unit test, but the degenerate self-certification shapes the
+// suite itself used to model a pass (a single hex character repeated 64 times) must not satisfy
+// an evidence gate.
+const DEGENERATE_DIGEST = /^([a-f0-9])\1{63}$/;
+
+function isEvidenceDigest(value: unknown): boolean {
+  const text = String(value ?? '');
+  return SHA256.test(text) && !DEGENERATE_DIGEST.test(text);
+}
+
+// Distinct, non-degenerate stand-ins for the synthetic transition fixtures. Deliberately not a
+// repeated single character: the suite must not model a pass using a shape a real gate rejects.
+function syntheticDigest(label: string): string {
+  return createHash('sha256').update(`synthetic-evidence:${label}`).digest('hex');
+}
+
+const RESULT_STATUS_VALUES = new Set(['not_run', 'incomplete', 'complete']);
+const RUNTIME_STATUS_VALUES = new Set(['blocked', 'approved']);
+
+// Every legitimate string in this fixture is a snake_case enum token, a 64-hex digest, an opaque
+// cm_* identifier, an RFC3339 timestamp, or one of a tiny set of codes. Free text is therefore made
+// unrepresentable rather than denied by name, so an unlisted key cannot smuggle a value through.
+const ALLOWED_FIXTURE_VALUE =
+  /^(?:[a-z0-9]+(?:_[a-z0-9]+)*|[a-f0-9]{64}|\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})|US|GB|USD)$/;
+// The only two free-text values the contract legitimately carries; both are pinned to exact
+// literals by evaluateStage0's named-approver check, so they cannot be used to smuggle content.
+const LITERAL_PINNED_KEYS = new Set(['approverName', 'approverRole']);
+
 const OPAQUE_IMPACT_SET_ID = /^cm_impact_set_[a-f0-9]{12}$/;
 const OPAQUE_IMPACT_ID = /^cm_impact_[a-f0-9]{12}$/;
 const OPAQUE_CUSTOMER_ID = /^cm_customer_[a-f0-9]{12}$/;
@@ -126,6 +220,9 @@ const SYNTHETIC_CALIBRATION_EXAMPLE_KEYS = new Set([
 ]);
 const GOLD_MATERIALITY_VALUES = new Set(['material', 'immaterial']);
 const GOLD_DIRECTION_VALUES = new Set(['positive', 'negative', 'mixed']);
+// Defence in depth only. The load-bearing control is the ALLOWED_FIXTURE_VALUE allow-list plus the
+// hasExactKeys pinning; this list is a second net, so it is matched on a normalized key
+// (case-folded, separators stripped) to stop company_name / company-name style variants dodging it.
 const RAW_EVIDENCE_KEYS = new Set([
   'company',
   'companyname',
@@ -141,7 +238,38 @@ const RAW_EVIDENCE_KEYS = new Set([
   'handle',
   'sourceurl',
   'canonicalurl',
+  'url',
+  'link',
+  'href',
+  'uri',
+  'email',
+  'phone',
+  'address',
+  'name',
+  'title',
+  'headline',
+  'summary',
+  'notes',
+  'text',
+  'excerpt',
+  'quote',
+  'snippet',
+  'portfolio',
+  'holdings',
+  'contact',
+  'ticker',
+  'isin',
+  'lei',
+  'cik',
+  'entity',
+  'firm',
+  'account',
+  'userid',
 ]);
+
+function normalizeKey(key: string): string {
+  return key.toLowerCase().replace(/[^a-z0-9]/g, '');
+}
 
 function compareCodePoints(left: string, right: string): number {
   const leftCodePoints = [...left];
@@ -298,7 +426,13 @@ function stratifiedBootstrapUpperBound(examples: CalibrationExample[], calibrati
     estimates.push(adaptiveExpectedCalibrationError(sample));
   }
   estimates.sort((left, right) => left - right);
-  return estimates[Math.ceil(confidence * iterations) - 1];
+  return percentileOrderStatistic(estimates, confidence, iterations);
+}
+
+// Extracted so the "-1" is directly observable. Asserting it through the bootstrap alone cannot
+// kill an off-by-one mutant, because the committed vector's 8999th and 9000th estimates are equal.
+function percentileOrderStatistic(sorted: number[], confidence: number, iterations: number): number {
+  return sorted[Math.ceil(confidence * iterations) - 1];
 }
 
 function frozenThresholds(candidate: JsonObject): JsonObject {
@@ -338,10 +472,10 @@ function evaluateBaseRate(candidate: JsonObject): { pass: boolean; reasons: stri
   const minimumLower = asNumber(thresholds.minimumLowerBound, 'baseRate.thresholds.minimumLowerBound');
   const confidence = asNumber(thresholds.confidenceLevel, 'baseRate.thresholds.confidenceLevel');
 
-  if (!SHA256.test(String(result.privateSelectionManifestSha256 ?? ''))) {
+  if (!isEvidenceDigest(result.privateSelectionManifestSha256)) {
     reasons.push('base_rate_private_manifest_digest_invalid');
   }
-  if (!SHA256.test(String(result.aggregateEvidenceSha256 ?? ''))) {
+  if (!isEvidenceDigest(result.aggregateEvidenceSha256)) {
     reasons.push('base_rate_aggregate_evidence_digest_invalid');
   }
   if (pointRecorded === null) reasons.push('base_rate_point_missing');
@@ -380,10 +514,10 @@ function evaluateRediscovery(candidate: JsonObject): { pass: boolean; reasons: s
   const minimumLower = asNumber(thresholds.minimumLowerBound, 'rediscovery.thresholds.minimumLowerBound');
   const confidence = asNumber(thresholds.confidenceLevel, 'rediscovery.thresholds.confidenceLevel');
 
-  if (!SHA256.test(String(result.privatePairManifestSha256 ?? ''))) {
+  if (!isEvidenceDigest(result.privatePairManifestSha256)) {
     reasons.push('rediscovery_private_manifest_digest_invalid');
   }
-  if (!SHA256.test(String(result.aggregateEvidenceSha256 ?? ''))) {
+  if (!isEvidenceDigest(result.aggregateEvidenceSha256)) {
     reasons.push('rediscovery_aggregate_evidence_digest_invalid');
   }
   if (pointRecorded === null) reasons.push('rediscovery_point_missing');
@@ -447,11 +581,26 @@ function evaluateHistoricalUsefulness(candidate: JsonObject): { pass: boolean; r
   if (!OPAQUE_IMPACT_SET_ID.test(String(result.impactSetId ?? ''))) {
     reasons.push('usefulness_impact_set_id_invalid');
   }
-  if (!SHA256.test(String(result.aggregateEvidenceSha256 ?? ''))) {
+  if (!isEvidenceDigest(result.aggregateEvidenceSha256)) {
     reasons.push('usefulness_aggregate_evidence_digest_invalid');
   }
+  // Derived from the frozen protocol rather than hardcoded, so amending the protocol through the
+  // sanctioned fixture+digest path cannot leave a stale bar silently enforcing the old rule.
+  const sharedImpactCount = asNumber(
+    usefulness.sharedImpactCount,
+    'historicalUsefulness.sharedImpactCount',
+  );
+  const externalCustomerCount = asNumber(
+    usefulness.externalCustomerCount,
+    'historicalUsefulness.externalCustomerCount',
+  );
+  const requiredUsefulPerCustomer = Math.ceil(
+    asNumber(usefulness.minimumUsefulRatePerCustomer, 'historicalUsefulness.minimumUsefulRatePerCustomer')
+      * sharedImpactCount,
+  );
+
   const impacts = Array.isArray(result.impacts) ? result.impacts.map((value) => asObject(value, 'impact')) : [];
-  if (impacts.length !== 10) reasons.push('usefulness_requires_same_ten_impacts');
+  if (impacts.length !== sharedImpactCount) reasons.push('usefulness_requires_same_ten_impacts');
   const impactIds = new Set<string>();
   const observedDirections = new Set<string>();
   for (const impact of impacts) {
@@ -460,7 +609,11 @@ function evaluateHistoricalUsefulness(candidate: JsonObject): { pass: boolean; r
       reasons.push('usefulness_impact_id_invalid');
     }
     impactIds.add(impactId);
-    observedDirections.add(String(impact.direction ?? ''));
+    const direction = String(impact.direction ?? '');
+    // Previously accumulated without validation, so arbitrary text could ride into the direction
+    // coverage check as long as the three required values were present somewhere in the set.
+    if (!GOLD_DIRECTION_VALUES.has(direction)) reasons.push('usefulness_impact_direction_invalid');
+    observedDirections.add(direction);
   }
   for (const direction of ['positive', 'negative', 'mixed']) {
     if (!observedDirections.has(direction)) reasons.push(`usefulness_result_missing_${direction}`);
@@ -469,7 +622,9 @@ function evaluateHistoricalUsefulness(candidate: JsonObject): { pass: boolean; r
   const customerJudgments = Array.isArray(result.customerJudgments)
     ? result.customerJudgments.map((value) => asObject(value, 'customerJudgment'))
     : [];
-  if (customerJudgments.length !== 2) reasons.push('usefulness_requires_two_external_customers');
+  if (customerJudgments.length !== externalCustomerCount) {
+    reasons.push('usefulness_requires_two_external_customers');
+  }
   const customerIds = new Set<string>();
   let independentCustomers = 0;
   for (const judgment of customerJudgments) {
@@ -481,7 +636,7 @@ function evaluateHistoricalUsefulness(candidate: JsonObject): { pass: boolean; r
     if (judgment.externalTargetCustomer !== true) {
       reasons.push('usefulness_requires_external_target_customers');
     }
-    if (!SHA256.test(String(judgment.qualificationEvidenceSha256 ?? ''))) {
+    if (!isEvidenceDigest(judgment.qualificationEvidenceSha256)) {
       reasons.push('usefulness_customer_qualification_evidence_invalid');
     }
     if (judgment.independent === true) independentCustomers += 1;
@@ -497,8 +652,12 @@ function evaluateHistoricalUsefulness(candidate: JsonObject): { pass: boolean; r
       if (label.useful === true) usefulCount += 1;
       else if (label.useful !== false && label.useful !== null) reasons.push('usefulness_label_invalid');
     }
-    if (labels.length !== 10 || labeledIds.size !== impactIds.size) reasons.push('usefulness_impact_set_mismatch');
-    if (usefulCount < 7) reasons.push('usefulness_customer_below_seven_of_ten');
+    if (labels.length !== sharedImpactCount || labeledIds.size !== impactIds.size) {
+      reasons.push('usefulness_impact_set_mismatch');
+    }
+    if (usefulCount < requiredUsefulPerCustomer) {
+      reasons.push('usefulness_customer_below_seven_of_ten');
+    }
   }
   if (independentCustomers < 1) reasons.push('usefulness_requires_independent_customer');
   return { pass: reasons.length === 0, reasons: [...new Set(reasons)] };
@@ -513,8 +672,19 @@ function evaluateAdmissionMetric(
   const minimumDenominator = asNumber(definition.minimumDenominator, 'metric.minimumDenominator');
   if (result.denominator < minimumDenominator) reasons.push('denominator_insufficient');
   if (definition.kind === 'rate') {
-    assert.equal(typeof result.numerator, 'number');
-    const point = result.numerator / result.denominator;
+    // Type was checked but range was not, so a numerator above the denominator produced a point
+    // estimate above 1 that cleared every floor.
+    const numerator = finiteNumber(result.numerator);
+    if (
+      numerator === null
+      || !Number.isInteger(numerator)
+      || numerator < 0
+      || numerator > result.denominator
+    ) {
+      reasons.push('numerator_invalid');
+      return { pass: false, reasons };
+    }
+    const point = numerator / result.denominator;
     const confidence = asNumber(admission.rateConfidenceLevel, 'admissionQuality.rateConfidenceLevel');
     const lower = exactBinomialLowerBound(result.numerator, result.denominator, confidence);
     if (point < asNumber(definition.minimumPointEstimate, 'metric.minimumPointEstimate')) {
@@ -629,6 +799,16 @@ function evaluateChronology(candidate: JsonObject): { pass: boolean; reasons: st
   if (approvedAt !== null && firstScore !== null && firstScore <= approvedAt) {
     reasons.push('approval_not_before_first_score');
   }
+  // approvedAt lives in the digest-exempt approval block, so anchor the ordering on the
+  // digest-covered frozenAt as well; otherwise an edit to approval alone moves the whole chain.
+  const frozenAt = parseRfc3339Timestamp(candidate.frozenAt);
+  if (frozenAt === null) reasons.push('protocol_frozen_timestamp_invalid');
+  if (frozenAt !== null && approvedAt !== null && frozenAt > approvedAt) {
+    reasons.push('protocol_not_frozen_before_approval');
+  }
+  if (frozenAt !== null && firstScore !== null && firstScore <= frozenAt) {
+    reasons.push('protocol_not_frozen_before_first_score');
+  }
   return { pass: reasons.length === 0, reasons };
 }
 
@@ -658,11 +838,11 @@ function evaluateProviderPolicy(candidate: JsonObject): { pass: boolean; reasons
   if (exaResult.status !== 'approved') {
     reasons.push('exa_paid_runtime_not_approved');
   }
-  if (!SHA256.test(String(exaResult.paidRuntimeApprovalEvidenceSha256 ?? ''))) {
+  if (!isEvidenceDigest(exaResult.paidRuntimeApprovalEvidenceSha256)) {
     reasons.push('exa_runtime_approval_evidence_missing');
   }
   if (xResult.status !== 'approved') reasons.push('x_paid_runtime_not_approved');
-  if (!SHA256.test(String(xResult.writtenCommercialUseApprovalEvidenceSha256 ?? ''))) {
+  if (!isEvidenceDigest(xResult.writtenCommercialUseApprovalEvidenceSha256)) {
     reasons.push('x_commercial_use_evidence_missing');
   }
   if (xResult.offlineContentComplianceEnforcedByRuntime !== true) {
@@ -757,6 +937,15 @@ function evaluateSyntheticVerificationSchema(candidate: JsonObject): {
 
 function evaluateEmpiricalResultSchemas(candidate: JsonObject): { pass: boolean; reasons: string[] } {
   const reasons: string[] = [];
+  // The root, approval and stage0 objects were previously the only unpinned containers in the
+  // fixture, so an arbitrary key planted in any of them was invisible to every schema check.
+  if (!hasExactKeys(candidate, ROOT_KEYS)) reasons.push('root_field_forbidden');
+  if (!hasExactKeys(asObject(candidate.approval, 'approval'), APPROVAL_KEYS)) {
+    reasons.push('approval_field_forbidden');
+  }
+  if (!hasExactKeys(asObject(candidate.stage0, 'stage0'), STAGE0_KEYS)) {
+    reasons.push('stage0_field_forbidden');
+  }
   const baseResult = asObject(asObject(candidate.baseRate, 'baseRate').result, 'baseRate.result');
   const rediscoveryResult = asObject(
     asObject(candidate.rediscovery, 'rediscovery').result,
@@ -770,6 +959,21 @@ function evaluateEmpiricalResultSchemas(candidate: JsonObject): { pass: boolean;
     asObject(candidate.providerPolicy, 'providerPolicy').result,
     'providerPolicy.result',
   );
+  // Statuses were only ever compared for inequality against one expected value, so an unknown or
+  // free-text status was indistinguishable from a legitimate not-yet-run state.
+  for (const [label, statusHolder, allowed] of [
+    ['base_rate', baseResult, RESULT_STATUS_VALUES],
+    ['rediscovery', rediscoveryResult, RESULT_STATUS_VALUES],
+    ['usefulness', usefulnessResult, RESULT_STATUS_VALUES],
+    ['provider_runtime', providerResult, RUNTIME_STATUS_VALUES],
+    ['provider_exa', asObject(providerResult.exa, 'providerResult.exa'), RUNTIME_STATUS_VALUES],
+    ['provider_x', asObject(providerResult.x, 'providerResult.x'), RUNTIME_STATUS_VALUES],
+    ['provider_model', asObject(providerResult.model, 'providerResult.model'), RUNTIME_STATUS_VALUES],
+  ] as [string, JsonObject, Set<string>][]) {
+    if (!allowed.has(String(statusHolder.status ?? ''))) {
+      reasons.push(`${label}_status_invalid`);
+    }
+  }
   if (!hasExactKeys(baseResult, BASE_RATE_RESULT_KEYS)) {
     reasons.push('base_rate_result_field_forbidden');
   }
@@ -886,14 +1090,14 @@ function walk(value: unknown, visit: (key: string | null, child: unknown) => voi
 function validateProtocolFixture(candidate: JsonObject): void {
   assert.equal(evaluateEmpiricalResultSchemas(candidate).pass, true);
   walk(candidate, (key, value) => {
-    if (key) assert.equal(RAW_EVIDENCE_KEYS.has(key.toLowerCase()), false, `raw fixture field: ${key}`);
-    if (typeof value === 'string') {
-      assert.doesNotMatch(value, /https?:\/\//i, 'fixtures must not contain URLs');
-      assert.doesNotMatch(
-        value,
-        /\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/i,
-        'fixtures must not contain email addresses',
-      );
+    if (key) {
+      assert.equal(RAW_EVIDENCE_KEYS.has(normalizeKey(key)), false, `raw fixture field: ${key}`);
+    }
+    if (typeof value === 'string' && !(key && LITERAL_PINNED_KEYS.has(key))) {
+      // Allow-list, not deny-list: a bare domain, a protocol-relative //host, an s3:// URI, an
+      // @handle, a phone number or a free-text company name all pass a URL/email deny-list, and
+      // none of them can be represented here.
+      assert.match(value, ALLOWED_FIXTURE_VALUE, `unconstrained fixture string: ${value}`);
     }
   });
   const synthetic = asObject(candidate.syntheticVerification, 'syntheticVerification');
@@ -928,21 +1132,55 @@ function completeSyntheticUsefulness(candidate: JsonObject): void {
         {
           customerId: 'cm_customer_000000000001',
           externalTargetCustomer: true,
-          qualificationEvidenceSha256: '3'.repeat(64),
+          qualificationEvidenceSha256: syntheticDigest('customer_one_qualification'),
           independent: true,
           labels: labels(7),
         },
         {
           customerId: 'cm_customer_000000000002',
           externalTargetCustomer: true,
-          qualificationEvidenceSha256: '4'.repeat(64),
+          qualificationEvidenceSha256: syntheticDigest('customer_two_qualification'),
           independent: false,
           labels: labels(8),
         },
       ],
-      aggregateEvidenceSha256: 'c'.repeat(64),
+      aggregateEvidenceSha256: syntheticDigest('usefulness_aggregate'),
     },
   );
+}
+
+function usefulnessResultOf(candidate: JsonObject): JsonObject {
+  return asObject(
+    asObject(candidate.historicalUsefulness, 'historicalUsefulness').result,
+    'historicalUsefulness.result',
+  );
+}
+
+function usefulnessImpacts(candidate: JsonObject): JsonObject[] {
+  return usefulnessResultOf(candidate).impacts as JsonObject[];
+}
+
+function usefulnessJudgments(candidate: JsonObject): JsonObject[] {
+  return usefulnessResultOf(candidate).customerJudgments as JsonObject[];
+}
+
+function providerResultOf(candidate: JsonObject): JsonObject {
+  return asObject(
+    asObject(candidate.providerPolicy, 'providerPolicy').result,
+    'providerPolicy.result',
+  );
+}
+
+function providersOf(candidate: JsonObject): { exa: JsonObject; x: JsonObject; model: JsonObject } {
+  const providers = asObject(
+    asObject(candidate.providerPolicy, 'providerPolicy').providers,
+    'providerPolicy.providers',
+  );
+  return {
+    exa: asObject(providers.exa, 'providers.exa'),
+    x: asObject(providers.x, 'providers.x'),
+    model: asObject(providers.model, 'providers.model'),
+  };
 }
 
 function makePassingSyntheticCandidate(): JsonObject {
@@ -962,8 +1200,8 @@ function makePassingSyntheticCandidate(): JsonObject {
       150,
       asNumber(baseThresholds.confidenceLevel, 'baseRate confidence'),
     ),
-    privateSelectionManifestSha256: 'a'.repeat(64),
-    aggregateEvidenceSha256: 'b'.repeat(64),
+    privateSelectionManifestSha256: syntheticDigest('base_rate_private_manifest'),
+    aggregateEvidenceSha256: syntheticDigest('base_rate_aggregate'),
   });
   Object.assign(
     asObject(asObject(candidate.rediscovery, 'rediscovery').result, 'rediscovery.result'),
@@ -977,8 +1215,8 @@ function makePassingSyntheticCandidate(): JsonObject {
         100,
         asNumber(rediscoveryThresholds.confidenceLevel, 'rediscovery confidence'),
       ),
-      privatePairManifestSha256: 'd'.repeat(64),
-      aggregateEvidenceSha256: 'e'.repeat(64),
+      privatePairManifestSha256: syntheticDigest('rediscovery_private_manifest'),
+      aggregateEvidenceSha256: syntheticDigest('rediscovery_aggregate'),
     },
   );
   completeSyntheticUsefulness(candidate);
@@ -990,11 +1228,11 @@ function makePassingSyntheticCandidate(): JsonObject {
   providerResult.status = 'approved';
   Object.assign(asObject(providerResult.exa, 'exa'), {
     status: 'approved',
-    paidRuntimeApprovalEvidenceSha256: '1'.repeat(64),
+    paidRuntimeApprovalEvidenceSha256: syntheticDigest('exa_paid_runtime_approval'),
   });
   Object.assign(asObject(providerResult.x, 'x'), {
     status: 'approved',
-    writtenCommercialUseApprovalEvidenceSha256: '2'.repeat(64),
+    writtenCommercialUseApprovalEvidenceSha256: syntheticDigest('x_commercial_use_approval'),
     offlineContentComplianceEnforcedByRuntime: true,
     modelTrainingProhibitionEnforcedByRuntime: true,
   });
@@ -1357,5 +1595,397 @@ describe('Company Monitoring U0 evaluation contract', () => {
       asObject(asObject(protocol.historicalUsefulness, 'historicalUsefulness').result, 'result').status,
       'not_run',
     );
+  });
+
+  it('pins every frozen floor to an independent literal, not just to the digest', () => {
+    const baseThresholds = asObject(asObject(protocol.baseRate, 'baseRate').thresholds, 'thresholds');
+    const rediscoveryThresholds = asObject(
+      asObject(protocol.rediscovery, 'rediscovery').thresholds,
+      'thresholds',
+    );
+    const usefulness = asObject(protocol.historicalUsefulness, 'historicalUsefulness');
+    const economics = asObject(protocol.economics, 'economics');
+
+    assert.deepEqual(withoutKey(baseThresholds, 'boundMethod'), APPROVED_FLOORS.baseRate);
+    assert.deepEqual(withoutKey(rediscoveryThresholds, 'boundMethod'), APPROVED_FLOORS.rediscovery);
+    assert.equal(economics.maximumMonthlyCostUsd, APPROVED_FLOORS.maximumMonthlyCostUsd);
+    assert.equal(economics.portfolioSize, APPROVED_FLOORS.portfolioSize);
+    for (const [field, expected] of Object.entries(APPROVED_FLOORS.usefulness)) {
+      assert.equal(usefulness[field], expected, `usefulness.${field}`);
+    }
+  });
+
+  it('declares every top-level protocol key as digest-covered or digest-exempt', () => {
+    assert.deepEqual(Object.keys(protocol).sort(), [...ROOT_KEYS].sort());
+    assert.deepEqual(
+      Object.keys(frozenThresholds(protocol)).sort(),
+      [...DIGEST_COVERED_TOP_LEVEL_KEYS].sort(),
+    );
+    // A new top-level section must fail loudly rather than silently escape the projection.
+    const extended = structuredClone(protocol);
+    extended.paidProviderRuntimeEnabled = true;
+    assert.equal(thresholdDigest(extended), APPROVED_THRESHOLD_DIGEST);
+    assert.ok(evaluateStage0(extended).reasons.includes('root_field_forbidden'));
+    assert.equal(evaluateStage0(extended).decision, 'stop');
+  });
+
+  it('rejects unknown keys planted in the root, approval, or stage0 objects', () => {
+    for (const [container, reason] of [
+      [null, 'root_field_forbidden'],
+      ['approval', 'approval_field_forbidden'],
+      ['stage0', 'stage0_field_forbidden'],
+    ] as [string | null, string][]) {
+      const candidate = structuredClone(protocol);
+      const target = container === null ? candidate : asObject(candidate[container], container);
+      target.notes = 'raw_value_forbidden';
+      assert.ok(
+        evaluateEmpiricalResultSchemas(candidate).reasons.includes(reason),
+        `expected ${reason}`,
+      );
+      assert.throws(() => validateProtocolFixture(candidate));
+    }
+  });
+
+  it('rejects identifying values that a URL and email deny-list would admit', () => {
+    for (const leak of [
+      'acme-holdings.com',
+      'www.acme.com/brief',
+      '//cdn.acme.com/report',
+      's3://acme-private/portfolio.json',
+      '@acmeholdings',
+      '+1 415 555 0134',
+      'Acme Holdings Inc',
+      'analyst at acme dot com',
+      '1600 Pennsylvania Ave',
+      'ACME:NASDAQ',
+    ]) {
+      const candidate = structuredClone(protocol);
+      asObject(candidate.approval, 'approval').approvalEvidence = leak;
+      assert.throws(
+        () => validateProtocolFixture(candidate),
+        `leak payload admitted: ${leak}`,
+      );
+    }
+  });
+
+  it('rejects an unlisted raw-evidence key even where no exact-key pin applies', () => {
+    // The original privacy test planted only already-listed names into a hasExactKeys-pinned
+    // object, so it passed even with the deny list emptied. This one targets the deny list itself.
+    const candidate = structuredClone(protocol);
+    asObject(asObject(candidate.baseRate, 'baseRate').population, 'population').company_name = 'acme';
+    assert.throws(() => validateProtocolFixture(candidate), /raw fixture field/);
+  });
+
+  it('refuses degenerate and reused evidence digests', () => {
+    assert.equal(isEvidenceDigest('a'.repeat(64)), false);
+    assert.equal(isEvidenceDigest('0'.repeat(64)), false);
+    assert.equal(isEvidenceDigest(syntheticDigest('sample')), true);
+    assert.equal(isEvidenceDigest('not-a-digest'), false);
+
+    const candidate = makePassingSyntheticCandidate();
+    assert.equal(evaluateStage0(candidate).decision, 'continue');
+    asObject(asObject(candidate.baseRate, 'baseRate').result, 'result')
+      .aggregateEvidenceSha256 = 'f'.repeat(64);
+    assert.ok(
+      evaluateBaseRate(candidate).reasons.includes('base_rate_aggregate_evidence_digest_invalid'),
+    );
+    assert.equal(evaluateStage0(candidate).decision, 'stop');
+  });
+
+  it('rejects results whose point estimate falls below the frozen floor', () => {
+    const baseCandidate = makePassingSyntheticCandidate();
+    const baseResult = asObject(
+      asObject(baseCandidate.baseRate, 'baseRate').result,
+      'baseRate.result',
+    );
+    Object.assign(baseResult, {
+      companyYears: 150,
+      materialEventCount: 44,
+      pointEstimate: 44 / 150,
+      lowerBound: exactPoissonRateLowerBound(44, 150, 0.9),
+    });
+    assert.ok(evaluateBaseRate(baseCandidate).reasons.includes('base_rate_point_below_floor'));
+    assert.equal(evaluateStage0(baseCandidate).decision, 'stop');
+
+    const rediscoveryCandidate = makePassingSyntheticCandidate();
+    const rediscoveryResult = asObject(
+      asObject(rediscoveryCandidate.rediscovery, 'rediscovery').result,
+      'rediscovery.result',
+    );
+    Object.assign(rediscoveryResult, {
+      pairCount: 100,
+      rediscoveredCount: 59,
+      pointEstimate: 0.59,
+      lowerBound: exactBinomialLowerBound(59, 100, 0.9),
+    });
+    assert.ok(
+      evaluateRediscovery(rediscoveryCandidate).reasons.includes('rediscovery_point_below_floor'),
+    );
+    assert.equal(evaluateStage0(rediscoveryCandidate).decision, 'stop');
+  });
+
+  it('documents that each lower-bound floor is subsumed by its point floor at the minimum denominator', () => {
+    // At the frozen minimum denominator, a result sitting exactly on the point floor already clears
+    // its lower-bound floor, and the bound only tightens as the denominator grows. The lower-bound
+    // guards therefore cannot fail a result that passes the point floor -- they are a backstop, not
+    // an independent gate. If a future protocol raises a lower-bound floor past this point, this
+    // test fails and the relationship must be re-derived rather than silently inverted.
+    const baseLower = exactPoissonRateLowerBound(45, 150, APPROVED_FLOORS.baseRate.confidenceLevel);
+    assert.equal(45 / 150, APPROVED_FLOORS.baseRate.minimumPointEstimate);
+    assert.ok(baseLower > APPROVED_FLOORS.baseRate.minimumLowerBound, `base lower ${baseLower}`);
+
+    const rediscoveryLower = exactBinomialLowerBound(
+      60,
+      100,
+      APPROVED_FLOORS.rediscovery.confidenceLevel,
+    );
+    assert.equal(60 / 100, APPROVED_FLOORS.rediscovery.minimumPointEstimate);
+    assert.ok(
+      rediscoveryLower > APPROVED_FLOORS.rediscovery.minimumLowerBound,
+      `rediscovery lower ${rediscoveryLower}`,
+    );
+  });
+
+  it('rejects forged recorded values, not just missing ones', () => {
+    const passing = makePassingSyntheticCandidate();
+    const cases: [string, string, string, number][] = [
+      ['baseRate', 'pointEstimate', 'base_rate_point_mismatch', 1e-6],
+      ['baseRate', 'lowerBound', 'base_rate_lower_bound_mismatch', 0.05],
+      ['rediscovery', 'pointEstimate', 'rediscovery_point_mismatch', 1e-6],
+      ['rediscovery', 'lowerBound', 'rediscovery_lower_bound_mismatch', 0.05],
+    ];
+    for (const [gate, field, reason, delta] of cases) {
+      const candidate = structuredClone(passing);
+      const result = asObject(asObject(candidate[gate], gate).result, `${gate}.result`);
+      result[field] = asNumber(result[field], field) + delta;
+      const evaluation = gate === 'baseRate'
+        ? evaluateBaseRate(candidate)
+        : evaluateRediscovery(candidate);
+      assert.ok(evaluation.reasons.includes(reason), `expected ${reason}`);
+      assert.equal(evaluateStage0(candidate).decision, 'stop');
+    }
+  });
+
+  it('stops on every individual Stage 0 guard, not just the two already covered', () => {
+    const cases: [string, (candidate: JsonObject) => void, string][] = [
+      ['approval status', (c) => { asObject(c.approval, 'approval').status = 'pending'; }, 'product_owner_approval_missing'],
+      ['approver name', (c) => { asObject(c.approval, 'approval').approverName = 'Someone Else'; }, 'named_product_owner_approval_missing'],
+      ['recorded digest', (c) => { asObject(c.approval, 'approval').approvedThresholdsSha256 = syntheticDigest('wrong'); }, 'approved_threshold_digest_mismatch'],
+      ['frozen threshold', (c) => { asObject(asObject(c.baseRate, 'baseRate').thresholds, 'thresholds').minimumPointEstimate = 0.1; }, 'frozen_threshold_digest_mismatch'],
+      ['admission freeze', (c) => { asObject(c.admissionQuality, 'admissionQuality').status = 'draft'; }, 'admission_contract_not_frozen'],
+      ['cost arithmetic', (c) => { asObject(c.economics, 'economics').modeledMonthlyCostUsd = 1; }, 'economics_arithmetic_mismatch'],
+      ['cost ceiling', (c) => { asObject(asObject(c.economics, 'economics').assumptions, 'assumptions').allocatedInfrastructureUsd = 500; }, 'economics_above_ceiling'],
+      ['chronology wiring', (c) => { c.firstScoredRunStartedAt = asObject(c.approval, 'approval').approvedAt; }, 'approval_not_before_first_score'],
+      ['schema wiring', (c) => { asObject(asObject(c.baseRate, 'baseRate').result, 'result').companyName = 'acme'; }, 'base_rate_result_field_forbidden'],
+      ['provider policy', (c) => { asObject(asObject(asObject(c.providerPolicy, 'providerPolicy').result, 'result').model, 'model').zeroDataRetentionEnforcedByRuntime = false; }, 'provider_policy_not_approved'],
+      ['status enum', (c) => { asObject(asObject(c.baseRate, 'baseRate').result, 'result').status = 'looks_fine'; }, 'base_rate_status_invalid'],
+    ];
+    for (const [label, mutate, reason] of cases) {
+      const candidate = makePassingSyntheticCandidate();
+      assert.equal(evaluateStage0(candidate).decision, 'continue', `${label}: control`);
+      mutate(candidate);
+      const evaluation = evaluateStage0(candidate);
+      assert.ok(evaluation.reasons.includes(reason), `${label}: expected ${reason}, got ${evaluation.reasons.join(',')}`);
+      assert.equal(evaluation.decision, 'stop', `${label}: decision`);
+    }
+  });
+
+  it('enforces every usefulness protocol and identity guard', () => {
+    const cases: [(candidate: JsonObject) => void, string][] = [
+      [(c) => { asObject(c.historicalUsefulness, 'historicalUsefulness').status = 'draft'; }, 'usefulness_protocol_not_frozen'],
+      [(c) => { asObject(c.historicalUsefulness, 'historicalUsefulness').minimumUsefulRatePerCustomer = 0.5; }, 'usefulness_rate_changed'],
+      [(c) => { asObject(c.historicalUsefulness, 'historicalUsefulness').internalAnalystMayApprove = true; }, 'usefulness_internal_analyst_forbidden'],
+      [(c) => {
+        for (const judgment of usefulnessJudgments(c)) judgment.independent = false;
+      }, 'usefulness_requires_independent_customer'],
+      [(c) => {
+        asObject(usefulnessJudgments(c)[0], 'judgment').qualificationEvidenceSha256 = null;
+      }, 'usefulness_customer_qualification_evidence_invalid'],
+      [(c) => {
+        asObject(usefulnessImpacts(c)[0], 'impact').direction = 'sideways';
+      }, 'usefulness_impact_direction_invalid'],
+    ];
+    for (const [mutate, reason] of cases) {
+      const candidate = makePassingSyntheticCandidate();
+      assert.equal(evaluateHistoricalUsefulness(candidate).pass, true, 'control');
+      mutate(candidate);
+      assert.ok(
+        evaluateHistoricalUsefulness(candidate).reasons.includes(reason),
+        `expected ${reason}`,
+      );
+      assert.equal(evaluateStage0(candidate).decision, 'stop');
+    }
+  });
+
+  it('derives the per-customer useful bar from the frozen rate rather than a literal', () => {
+    // Discriminating case: with the rate amended to 0.5 the bar becomes ceil(0.5 * 10) = 5, so a
+    // customer at 5/10 must NOT trip the below-bar reason. A hardcoded `usefulCount < 7` would
+    // still fire here, which is exactly the silent staleness this derivation removes. The protocol
+    // pin still reports the amendment separately via usefulness_rate_changed.
+    const candidate = makePassingSyntheticCandidate();
+    const usefulness = asObject(candidate.historicalUsefulness, 'historicalUsefulness');
+    usefulness.minimumUsefulRatePerCustomer = 0.5;
+    for (const judgment of usefulnessJudgments(candidate)) {
+      const labels = judgment.labels as JsonObject[];
+      for (const [index, label] of labels.entries()) label.useful = index < 5;
+    }
+    const reasons = evaluateHistoricalUsefulness(candidate).reasons;
+    assert.equal(reasons.includes('usefulness_customer_below_seven_of_ten'), false);
+    assert.ok(reasons.includes('usefulness_rate_changed'));
+
+    // And one below the derived bar still fails.
+    for (const judgment of usefulnessJudgments(candidate)) {
+      const labels = judgment.labels as JsonObject[];
+      for (const [index, label] of labels.entries()) label.useful = index < 4;
+    }
+    assert.ok(
+      evaluateHistoricalUsefulness(candidate).reasons.includes('usefulness_customer_below_seven_of_ten'),
+    );
+  });
+
+  it('enforces the calibration ceilings, not only the rate floors', () => {
+    const admission = asObject(protocol.admissionQuality, 'admissionQuality');
+    const stage3 = asObject(
+      (admission.metrics as JsonObject[]).find((metric) => metric.id === 'confidence_calibration_stage3'),
+      'confidence_calibration_stage3',
+    );
+    assert.equal(stage3.kind, 'calibration');
+    assert.equal(
+      evaluateAdmissionMetric(admission, stage3, { denominator: 200, pointEstimate: 0.09, upperBound: 0.14 }).pass,
+      true,
+    );
+    assert.ok(
+      evaluateAdmissionMetric(admission, stage3, { denominator: 200, pointEstimate: 0.11, upperBound: 0.14 })
+        .reasons.includes('point_above_ceiling'),
+    );
+    assert.ok(
+      evaluateAdmissionMetric(admission, stage3, { denominator: 200, pointEstimate: 0.09, upperBound: 0.16 })
+        .reasons.includes('upper_bound_above_ceiling'),
+    );
+    assert.ok(
+      evaluateAdmissionMetric(admission, stage3, { denominator: 199, pointEstimate: 0.09, upperBound: 0.14 })
+        .reasons.includes('denominator_insufficient'),
+    );
+    // A missing measurement must fail closed rather than read as zero error.
+    assert.ok(
+      evaluateAdmissionMetric(admission, stage3, { denominator: 200 }).reasons.includes('point_above_ceiling'),
+    );
+
+    const precision = asObject(
+      (admission.metrics as JsonObject[]).find((metric) => metric.id === 'published_material_impact_precision'),
+      'published_material_impact_precision',
+    );
+    assert.ok(
+      evaluateAdmissionMetric(admission, precision, { denominator: 100, numerator: 101 })
+        .reasons.includes('numerator_invalid'),
+    );
+  });
+
+  it('pins the bootstrap percentile order statistic', () => {
+    const distinct = Array.from({ length: 10_000 }, (_, index) => index);
+    assert.equal(percentileOrderStatistic(distinct, 0.9, 10_000), 8_999);
+    assert.equal(percentileOrderStatistic(distinct, 0.5, 10_000), 4_999);
+    assert.equal(percentileOrderStatistic([0, 1, 2, 3], 0.5, 4), 1);
+  });
+
+  it('rejects an over-budget cost package', () => {
+    const candidate = structuredClone(protocol);
+    const economics = asObject(candidate.economics, 'economics');
+    asObject(economics.assumptions, 'assumptions').allocatedInfrastructureUsd = 500;
+    const recomputed = modeledMonthlyCost(candidate);
+    economics.modeledMonthlyCostUsd = recomputed;
+    economics.modeledMonthlyCostPerCompanyUsd = recomputed
+      / asNumber(economics.portfolioSize, 'portfolioSize');
+    const reasons = evaluateStage0(candidate).reasons;
+    assert.ok(reasons.includes('economics_above_ceiling'));
+    assert.equal(reasons.includes('economics_arithmetic_mismatch'), false);
+  });
+
+  it('rejects a forbidden field in every pinned result container', () => {
+    const cases: [(candidate: JsonObject) => void, string][] = [
+      [(c) => { asObject(asObject(c.rediscovery, 'rediscovery').result, 'result').note = 'x'; }, 'rediscovery_result_field_forbidden'],
+      [(c) => { asObject(asObject(c.historicalUsefulness, 'historicalUsefulness').result, 'result').note = 'x'; }, 'usefulness_result_field_forbidden'],
+      [(c) => { asObject(usefulnessImpacts(c)[0], 'impact').note = 'x'; }, 'usefulness_impact_field_forbidden'],
+      [(c) => { asObject(usefulnessJudgments(c)[0], 'judgment').note = 'x'; }, 'usefulness_customer_field_forbidden'],
+      [(c) => {
+        (asObject(usefulnessJudgments(c)[0], 'judgment').labels as JsonObject[])[0].note = 'x';
+      }, 'usefulness_label_field_forbidden'],
+      [(c) => { providerResultOf(c).note = 'x'; }, 'provider_result_field_forbidden'],
+      [(c) => { asObject(providerResultOf(c).exa, 'exa').note = 'x'; }, 'exa_result_field_forbidden'],
+      [(c) => { asObject(providerResultOf(c).x, 'x').note = 'x'; }, 'x_result_field_forbidden'],
+      [(c) => { asObject(providerResultOf(c).model, 'model').note = 'x'; }, 'model_result_field_forbidden'],
+    ];
+    for (const [mutate, reason] of cases) {
+      const candidate = makePassingSyntheticCandidate();
+      mutate(candidate);
+      assert.ok(
+        evaluateEmpiricalResultSchemas(candidate).reasons.includes(reason),
+        `expected ${reason}`,
+      );
+    }
+  });
+
+  it('rejects a weakened provider policy declaration, not only a weakened result', () => {
+    const cases: [(candidate: JsonObject) => void, string][] = [
+      [(c) => { providersOf(c).exa.evaluationStatus = 'pending'; }, 'exa_evaluation_policy_invalid'],
+      [(c) => { providersOf(c).exa.paidRuntimeApprovalRequired = false; }, 'exa_evaluation_policy_invalid'],
+      [(c) => { providersOf(c).x.commercialApprovalRequired = false; }, 'x_runtime_policy_invalid'],
+      [(c) => { providersOf(c).x.modelTrainingOnXContent = 'permitted'; }, 'x_runtime_policy_invalid'],
+      [(c) => { providersOf(c).model.zeroDataRetentionRequired = false; }, 'model_zdr_not_enforced'],
+      [(c) => { providersOf(c).model.trainingOnPromptsAllowed = true; }, 'model_no_training_not_enforced'],
+      [(c) => { providersOf(c).model.reasoningEnabled = true; }, 'model_no_reasoning_not_enforced'],
+      [(c) => { providersOf(c).model.modelAndProviderVersionMustBePinned = false; }, 'model_route_not_pinned'],
+    ];
+    for (const [mutate, reason] of cases) {
+      const candidate = makePassingSyntheticCandidate();
+      assert.equal(evaluateProviderPolicy(candidate).pass, true, 'control');
+      mutate(candidate);
+      assert.ok(evaluateProviderPolicy(candidate).reasons.includes(reason), `expected ${reason}`);
+      assert.equal(evaluateStage0(candidate).decision, 'stop');
+    }
+  });
+
+  it('anchors the scoring chronology on the digest-covered frozenAt', () => {
+    const invalidFrozen = makePassingSyntheticCandidate();
+    invalidFrozen.frozenAt = 'not-a-timestamp';
+    assert.ok(evaluateChronology(invalidFrozen).reasons.includes('protocol_frozen_timestamp_invalid'));
+
+    const frozenAfterApproval = makePassingSyntheticCandidate();
+    frozenAfterApproval.frozenAt = '2026-09-01T00:00:00.000Z';
+    assert.ok(
+      evaluateChronology(frozenAfterApproval).reasons.includes('protocol_not_frozen_before_approval'),
+    );
+
+    const scoredBeforeFreeze = makePassingSyntheticCandidate();
+    scoredBeforeFreeze.firstScoredRunStartedAt = '2026-08-04T00:00:00.000Z';
+    assert.ok(
+      evaluateChronology(scoredBeforeFreeze).reasons.includes('protocol_not_frozen_before_first_score'),
+    );
+
+    assert.equal(evaluateChronology(makePassingSyntheticCandidate()).pass, true);
+  });
+
+  it('parses RFC3339 boundaries the chronology gate depends on', () => {
+    for (const valid of [
+      '2026-08-05T00:00:00Z',
+      '2026-08-05T00:00:00.000Z',
+      '2024-02-29T12:00:00Z',
+      '2026-08-05T00:00:00+05:30',
+      '2026-08-05T23:59:59-05:30',
+    ]) {
+      assert.notEqual(parseRfc3339Timestamp(valid), null, `expected valid: ${valid}`);
+    }
+    for (const invalid of [
+      '2023-02-29T00:00:00Z',
+      '2026-13-01T00:00:00Z',
+      '2026-08-05T24:00:00Z',
+      '2026-08-32T00:00:00Z',
+      '2026-08-05',
+      'not-a-timestamp',
+      42,
+      null,
+    ]) {
+      assert.equal(parseRfc3339Timestamp(invalid), null, `expected invalid: ${String(invalid)}`);
+    }
   });
 });
