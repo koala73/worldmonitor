@@ -187,6 +187,37 @@ merge's marginal value stops being a matter of opinion. Do that before entertain
 gating proposal — and note that while the account is quota-exhausted the number reads zero for
 reasons that have nothing to do with the merge's value.
 
+### The fix's own defect: coverage declared from intent, not content
+
+Widening the query made a downstream guard wrong, and it took a review pass to see it.
+
+`list-military-flights.ts` keeps a `LIVE_SEED_COVERAGE` list describing what the published
+snapshot is authoritative over. Outside it, a request falls through to per-viewer recovery;
+inside it, an empty result is returned as authoritative. The first cut of this fix set that list
+to the whole planet, reasoning that the producer now issues a global query.
+
+That reasoning skips a step. **The producer's tier 1 (Wingbits) still queries the two regional
+boxes; only tier 2 (OpenSky) is global.** So a cycle where OpenSky contributes nothing publishes
+*regional* data no matter how global the query shape is — and the consumer, trusting the query
+shape, would answer a viewport over the Americas with an authoritative empty for the entire
+duration of an OpenSky outage. Since the account was quota-exhausted at the time, that was the
+live state, not a corner case.
+
+The fix is to make the producer state what it actually has:
+
+```js
+const openSkyContributed = fetchSources.regions.some((region) => region.statesSeen > 0);
+const payload = { flights, coverage: openSkyContributed ? 'global' : 'regional', /* … */ };
+```
+
+and to read that field instead of a module constant — which also means checking coverage
+**after** the snapshot read rather than before it. An absent field reads as `regional`: the
+conservative choice, and accurate for payloads written before the field existed.
+
+Production confirmed both states within one session: `coverage: regional` with
+`openskyStates=0` while quota-exhausted, flipping to `coverage: global` with 12,847 states once
+credits refilled.
+
 ## Why This Works
 
 The billing tier is flat above 400 sq°, so the marginal cost of widening a large box to the
@@ -201,6 +232,20 @@ publication is healthy and correctly attributed to the primary — the very attr
 
 ## Prevention
 
+- **A coverage guard must declare what the payload CONTAINS, not what the producer's query
+  shape aspires to.** Whenever a consumer decides "an empty result here is authoritative" from a
+  constant that mirrors the producer's configuration, the two drift the moment any tier of the
+  producer degrades — and the failure is an empty surface presented as fact, which no freshness
+  check catches because the record is fresh. Have the producer stamp its actual coverage into
+  the payload and have the consumer read it. The tell that you have this bug: the producer has
+  *multiple* sources with *different* footprints, and the guard names only the widest one.
+- **Widening a producer is a data-migration event for anything holding a baseline.** Rolling
+  statistics compare new snapshots against old ones; a coverage change steps the inputs without
+  touching the code that compares them, so previously-invisible entities appear as a surge. The
+  durable fix is to stamp a coverage epoch on each stored snapshot and refuse cross-epoch
+  comparison. The manual substitute — flushing the history at cutover — works, but only if it
+  fires on the **actual data transition**, not on deploy: deploying while the widening tier is
+  still down just rebuilds the same narrow baseline before the real step-up arrives.
 - **Read the upstream's cost function before sizing a request, not after.** For any metered
   API, find the tier table and check whether the parameter you are tuning actually crosses a
   boundary. A "smaller = cheaper" intuition is wrong wherever billing is tiered and flat-topped.
