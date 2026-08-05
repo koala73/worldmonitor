@@ -43,6 +43,7 @@ export async function executeTool(
 ): Promise<{
   cached_at: string | null;
   stale: boolean;
+  activationUnknown?: true;
   contentFreshnessPendingUntil?: string;
   data: Record<string, unknown>;
 }> {
@@ -79,7 +80,18 @@ export async function executeTool(
   // map, so evaluateFreshness evaluates the block and fails closed rather than
   // granting a grace that would never expire.
   const activationStates = readExistsFlags(activationResults, activationKeys);
-  if (activationKeys.length > 0 && activationStates.size !== activationKeys.length) {
+  // A marker this tool needed could not be read, so `stale` below was computed
+  // WITHOUT knowing whether the producer has ever published. Both health
+  // surfaces publish exactly this as `activationUnknown` (api/health.js,
+  // api/seed-health.js) for a reason api/health.js states outright: otherwise a
+  // verdict resting on an unreadable marker is byte-identical to one resting on
+  // evidence, and the two need different remediations. MCP alarmed on this but
+  // told its CALLER nothing — `stale: true` looked the same whether the marker
+  // was unreadable, the producer regressed, or the grace window closed. One
+  // boolean drives both the alarm and the wire field so they cannot drift.
+  const activationUnknown = activationKeys.length > 0
+    && activationStates.size !== activationKeys.length;
+  if (activationUnknown) {
     captureSilentError(new Error('mcp activation marker read failed'), {
       tags: { route: 'api/mcp', step: 'activation-marker', tool: tool.name },
     });
@@ -164,6 +176,7 @@ export async function executeTool(
   return {
     cached_at,
     stale,
+    ...(activationUnknown ? { activationUnknown: true } : {}),
     ...(contentFreshnessPendingUntil === undefined ? {} : { contentFreshnessPendingUntil }),
     data: result,
   };

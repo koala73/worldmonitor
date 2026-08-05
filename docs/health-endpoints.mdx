@@ -300,6 +300,15 @@ never published — two different remediations (check Upstash for per-command
 errors, versus check why the producer stopped writing). The flag reports which
 evidence the verdict used; it never softens or hardens anything by itself.
 
+MCP cache tools publish the same flag on their envelope for the same reason. A
+tool that consults an activation marker and cannot read it returns
+`activationUnknown: true` alongside `stale`, so a caller can tell an unreadable
+marker from a producer that regressed — previously that failure was reported
+only to Sentry and the two were indistinguishable on the wire. Like
+`contentFreshnessPendingUntil` the field is optional: it is declared on every
+cache envelope, but only a tool whose freshness check names a
+`contentFreshnessActivationKey` can ever populate it.
+
 The seeder reserves cold-fetch slots for the decision-critical countries so they
 refresh every run they are a cache miss. The content budget deliberately spans
 two full producer rotations: `ceil(174 / 30)` runs at a 12-hour cadence is

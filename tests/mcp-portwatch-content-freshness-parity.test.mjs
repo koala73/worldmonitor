@@ -385,6 +385,16 @@ describe('#6080 — the mirror claim in cache-tools.ts is enforced', () => {
     assert.equal(deadline?.format, 'date-time');
   });
 
+  it('advertises the optional activationUnknown flag on cache envelopes', () => {
+    const tool = CACHE_TOOLS.find((candidate) => candidate.name === 'get_chokepoint_status');
+    const flag = tool?.outputSchema?.properties?.activationUnknown;
+
+    assert.equal(flag?.type, 'boolean');
+    // Optional like the deadline: the envelope is uniform across cache tools,
+    // but only a tool declaring an activation key can ever populate either.
+    assert.deepEqual(tool?.outputSchema?.required, ['cached_at', 'stale', 'data']);
+  });
+
   // Acceptance: "confirm no other tool's `stale` flips as a side effect".
   // Walks the WHOLE registry, not just CACHE_TOOLS: the RPC and analysis tools
   // build their own FreshnessCheck arrays and call evaluateFreshness without
@@ -669,6 +679,60 @@ describe('#6080 — executeTool reads the activation marker', () => {
       true,
       'an entry without a result is unknown state, not a marker that is absent',
     );
+  });
+
+  // MCP used to alarm on an unreadable marker but tell its CALLER nothing:
+  // `stale: true` was byte-identical whether the marker was unreadable, the
+  // producer regressed, or the grace window closed. Both health surfaces have
+  // published `activationUnknown` for exactly this since #6095; these pin that
+  // MCP now agrees, and — just as importantly — that it stays QUIET when the
+  // marker was read cleanly, so the flag means "unreadable", not "not graced".
+  describe('activationUnknown mirrors the health surfaces', () => {
+    const UNREADABLE = [
+      ['an errored entry', { activationEntryError: true }],
+      ['an entry with no result', { activationEntryEmpty: true }],
+      ['a malformed pipeline body', { malformedPipelineBody: {} }],
+      ['a wrong-length pipeline body', { malformedPipelineBody: [] }],
+      ['a failed pipeline read', { failActivationRead: true }],
+    ];
+    for (const [label, options] of UNREADABLE) {
+      it(`flags ${label} as unknown`, async () => {
+        const result = await runWithRedis(baseKeys(blockLessMeta(NOW), NOW), { ...options, now: NOW });
+        assert.equal(result.activationUnknown, true, `${label} must be visible to the caller, not only to Sentry`);
+        assert.equal(result.stale, true, 'and it must still fail closed');
+      });
+    }
+
+    for (const [label, options] of [
+      ['read and present', { markers: [ACTIVATION_KEY] }],
+      ['read and absent', {}],
+    ]) {
+      it(`stays absent when the marker was ${label}`, async () => {
+        const result = await runWithRedis(baseKeys(blockLessMeta(NOW), NOW), { ...options, now: NOW });
+        assert.equal(
+          result.activationUnknown,
+          undefined,
+          'a marker that WAS read must never look unreadable',
+        );
+      });
+    }
+
+    // A tool with no activation contract has no marker to fail to read, so the
+    // field must never appear on the ~30 other cache tools.
+    it('never appears for a tool that consults no activation marker', async () => {
+      const bare = { ...CHOKEPOINT, _freshnessChecks: [{ key: 'seed-meta:supply_chain:transit-summaries', maxStaleMin: 30 }] };
+      const originalFetch = globalThis.fetch;
+      globalThis.fetch = async (url) => {
+        if (String(url).endsWith('/pipeline')) throw new Error('no activation key: no pipeline read should happen');
+        return new Response(JSON.stringify({ result: JSON.stringify({ fetchedAt: NOW - 60_000, recordCount: 1 }) }), { status: 200 });
+      };
+      try {
+        const result = await executeTool(bare, {}, NOW);
+        assert.equal(result.activationUnknown, undefined);
+      } finally {
+        globalThis.fetch = originalFetch;
+      }
+    });
   });
 
   for (const [label, malformedPipelineBody] of [
