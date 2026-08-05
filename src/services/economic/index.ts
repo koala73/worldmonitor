@@ -14,7 +14,8 @@ import { createCircuitBreaker } from '@/utils';
 import { getCSSColor } from '@/utils';
 import { isFeatureAvailable } from '../runtime-config';
 import { dataFreshness } from '../data-freshness';
-import { getHydratedData } from '@/services/bootstrap';
+import { ensureHydrated, getHydratedData } from '@/services/bootstrap';
+import { mergeCbrPolicyRate } from './cbr-policy-rate';
 import { toApiUrl } from '@/services/runtime';
 import { hasPremiumAccess } from '@/services/panel-gating';
 import { EconomicServiceClient } from '@/services/generated-rpc-clients';
@@ -798,6 +799,13 @@ export async function fetchBisData(): Promise<BisData> {
   const hEer = getHydratedData('bisExchange') as GetBisExchangeRatesResponse | undefined;
   const hCredit = getHydratedData('bisCredit') as GetBisCreditResponse | undefined;
 
+  // BIS WS_CBPOL has no Russia (scripts/seed-bis-data.mjs covers 12 banks and the
+  // CBR is not one), so the key rate comes from its own seeder and is appended to
+  // the same list. Deliberately not awaited alongside the BIS calls below: this
+  // is a supplementary row, and a slow or missing CBR key must never delay or
+  // fail the twelve rows that BIS does supply.
+  const cbrPayload = ensureHydrated('cbrRates').catch(() => undefined);
+
   try {
     const [policy, eer, credit] = await Promise.all([
       hPolicy?.rates?.length ? Promise.resolve(hPolicy) : bisPolicyBreaker.execute(() => client.getBisPolicyRates({}, { signal: AbortSignal.timeout(20_000) }), emptyBisPolicyFallback, { shouldCache: (r) => (r.rates?.length ?? 0) > 0 }),
@@ -805,7 +813,7 @@ export async function fetchBisData(): Promise<BisData> {
       hCredit?.entries?.length ? Promise.resolve(hCredit) : bisCreditBreaker.execute(() => client.getBisCredit({}, { signal: AbortSignal.timeout(20_000) }), emptyBisCreditFallback, { shouldCache: (r) => (r.entries?.length ?? 0) > 0 }),
     ]);
     return {
-      policyRates: policy.rates ?? [],
+      policyRates: mergeCbrPolicyRate(policy.rates, await cbrPayload),
       exchangeRates: eer.rates ?? [],
       creditToGdp: credit.entries ?? [],
       fetchedAt: new Date(),
