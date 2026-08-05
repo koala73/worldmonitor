@@ -212,6 +212,96 @@ describe('China official release calendar', () => {
     assert.ok(worstCaseFetchMs < BUNDLE_SECTION_TIMEOUT_MS / 2);
   });
 
+  it('shares one wall-clock budget across both NBS URLs rather than giving each a fresh one', async () => {
+    // The whole point of a shared deadline: a host that hangs on the index must
+    // not leave the calendar page a full budget. Without this the index could
+    // burn 75s and the calendar page start another 75s, doubling the ceiling
+    // the seeder's lock was sized against.
+    let calendarPageAttempts = 0;
+    const realNow = Date.now;
+    let elapsed = 0;
+    Date.now = () => realNow() + elapsed;
+    try {
+      await assert.rejects(
+        fetchChinaReleaseCalendar({
+          now: Date.parse('2026-07-13T00:00:00Z'),
+          sleepFn: async () => {},
+          fetchFn: async (url) => {
+            if (String(url) === NBS_CALENDAR_INDEX_URL) {
+              // Index succeeds, but leaves less than one backoff of budget.
+              elapsed += NBS_TOTAL_FETCH_BUDGET_MS - (NBS_TRANSIENT_RETRY_DELAY_MS - 100);
+              return new Response('<a href="calendar.html">2026 release calendar</a>');
+            }
+            calendarPageAttempts += 1;
+            throw new TypeError('fetch failed');
+          },
+          onDecision: () => {},
+        }),
+        (error) => /NBS_REQUIRED_SOURCE_UNAVAILABLE:FETCH_FAILED/.test(error.message),
+      );
+    } finally {
+      Date.now = realNow;
+    }
+    // The calendar page gets ONE attempt because the index already spent the
+    // shared budget. A per-URL budget would have handed it a fresh 75s and all
+    // NBS_TRANSIENT_FETCH_ATTEMPTS tries.
+    assert.equal(calendarPageAttempts, 1);
+    assert.ok(calendarPageAttempts < NBS_TRANSIENT_FETCH_ATTEMPTS);
+  });
+
+  it('grows the backoff with each attempt and never undercuts the host Retry-After hint', async () => {
+    const slept = [];
+    let indexAttempts = 0;
+    let pageAttempts = 0;
+    const calendar = await fetchChinaReleaseCalendar({
+      now: Date.parse('2026-07-13T00:00:00Z'),
+      sleepFn: async (ms) => { slept.push(ms); },
+      fetchFn: async (url) => {
+        if (String(url) === NBS_CALENDAR_INDEX_URL) {
+          indexAttempts += 1;
+          // Two BARE transient failures, so the growth term is observable on
+          // its own. Pairing growth with a Retry-After hint would hide it —
+          // the hint dominates the max() and a flat delay would look identical.
+          if (indexAttempts <= 2) return new Response('', { status: 503 });
+          return new Response('<a href="calendar.html">2026 release calendar</a>');
+        }
+        if (String(url).endsWith('calendar.html')) {
+          pageAttempts += 1;
+          if (pageAttempts === 1) return new Response('', { status: 503, headers: { 'Retry-After': '5' } });
+          return new Response(fixture('nbs-calendar.html'));
+        }
+        return new Response(fixture('chinamoney-lpr.json'), { headers: { 'Content-Type': 'application/json' } });
+      },
+      onDecision: () => {},
+    });
+    assert.ok(calendar.events.some((event) => event.kind === 'nbs'));
+    // 500 then 1000 proves the growth term; 5000 proves the host's hint wins
+    // over the 500ms the schedule would have used for a first retry.
+    assert.deepEqual(slept, [500, 1_000, 5_000]);
+  });
+
+  for (const status of [408, 429]) {
+    it(`retries a transient NBS ${status}`, async () => {
+      const indexRequests = [];
+      const calendar = await fetchChinaReleaseCalendar({
+        now: Date.parse('2026-07-13T00:00:00Z'),
+        sleepFn: async () => {},
+        fetchFn: async (url) => {
+          if (String(url) === NBS_CALENDAR_INDEX_URL) {
+            indexRequests.push(status);
+            if (indexRequests.length === 1) return new Response('', { status });
+            return new Response('<a href="calendar.html">2026 release calendar</a>');
+          }
+          if (String(url).endsWith('calendar.html')) return new Response(fixture('nbs-calendar.html'));
+          return new Response(fixture('chinamoney-lpr.json'), { headers: { 'Content-Type': 'application/json' } });
+        },
+        onDecision: () => {},
+      });
+      assert.ok(calendar.events.some((event) => event.kind === 'nbs'));
+      assert.equal(indexRequests.length, 2);
+    });
+  }
+
   it('stops retrying once the shared NBS wall-clock budget is spent', async () => {
     // A host that hangs must not spend the calendar page's share of the budget.
     // Simulated by advancing past the deadline rather than sleeping 75s.

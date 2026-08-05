@@ -157,12 +157,29 @@ function requiredSourceError(prefix, reason) {
   return Object.assign(new Error(`${prefix}:${reason}`), { reason, nonRetryable: true });
 }
 
+/** `Retry-After` is either delta-seconds or an HTTP date. Null when absent or unparseable. */
+function parseRetryAfterMs(value) {
+  if (!value) return null;
+  const seconds = Number(value);
+  if (Number.isFinite(seconds)) return Math.max(0, seconds * 1_000);
+  const retryAt = Date.parse(value);
+  return Number.isFinite(retryAt) ? Math.max(0, retryAt - Date.now()) : null;
+}
+
 async function fetchText(fetchFn, url) {
   const response = await fetchFn(url, {
     headers: { Accept: 'text/html,application/xhtml+xml', 'User-Agent': 'WorldMonitor/2.10 (+https://worldmonitor.app)' },
     signal: AbortSignal.timeout(NBS_REQUEST_TIMEOUT_MS),
   });
-  if (!response.ok) throw Object.assign(new Error(`HTTP_${response.status}`), { status: response.status });
+  if (!response.ok) {
+    const error = Object.assign(new Error(`HTTP_${response.status}`), { status: response.status });
+    // Carry the host's own backoff request out of the response, which is
+    // otherwise discarded here — the retry loop cannot honor a hint it never
+    // sees, and both sibling helpers (source-runtime.mjs, _seed-utils.mjs) do.
+    const retryAfterMs = parseRetryAfterMs(response.headers?.get?.('Retry-After'));
+    if (retryAfterMs != null) error.retryAfterMs = retryAfterMs;
+    throw error;
+  }
   return response.text();
 }
 
@@ -205,20 +222,23 @@ function isTransientFetchFailure(error) {
   return true;
 }
 
-async function fetchTextWithTransientRetry(fetchFn, url, onAttempt, deadlineAt) {
+async function fetchTextWithTransientRetry(fetchFn, url, { onAttempt, deadlineAt, sleepFn }) {
   for (let attempt = 1; ; attempt++) {
     onAttempt();
     try {
       return await fetchText(fetchFn, url);
     } catch (error) {
       if (attempt >= NBS_TRANSIENT_FETCH_ATTEMPTS || !isTransientFetchFailure(error)) throw error;
-      const backoffMs = NBS_TRANSIENT_RETRY_DELAY_MS * attempt;
+      // Grows with the attempt, but never undercuts an explicit Retry-After
+      // from the host. An unreasonably long hint is not slept off — it trips
+      // the deadline below and the run gives up, which is the honest outcome.
+      const backoffMs = Math.max(NBS_TRANSIENT_RETRY_DELAY_MS * attempt, error?.retryAfterMs ?? 0);
       // The budget spans BOTH NBS URLs, so a host that hangs on the index
       // cannot spend the calendar page's share and push the fetch phase into
       // the publish half of lockTtlMs. Give up rather than start an attempt
       // that cannot finish inside the budget.
       if (Date.now() + backoffMs >= deadlineAt) throw error;
-      await new Promise((resolve) => setTimeout(resolve, backoffMs));
+      await sleepFn(backoffMs);
     }
   }
 }
@@ -260,6 +280,7 @@ export function currentCalendarLink(indexHtml, year) {
 export async function fetchChinaReleaseCalendar({
   now = Date.now(),
   fetchFn = globalThis.fetch,
+  sleepFn = (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
   onDecision = (entry) => console.log(JSON.stringify({ event: 'china_calendar_source_preflight', ...entry })),
 } = {}) {
   const checkedAt = new Date(now).toISOString();
@@ -272,12 +293,11 @@ export async function fetchChinaReleaseCalendar({
   // Counted per ATTEMPT, not per URL: a retry is a real request against an
   // official host, so the audited requestCount has to include it.
   const nbsDeadlineAt = Date.now() + NBS_TOTAL_FETCH_BUDGET_MS;
-  const fetchNbsText = (url) => fetchTextWithTransientRetry(
-    fetchFn,
-    url,
-    () => { nbsRequestCount += 1; },
-    nbsDeadlineAt,
-  );
+  const fetchNbsText = (url) => fetchTextWithTransientRetry(fetchFn, url, {
+    onAttempt: () => { nbsRequestCount += 1; },
+    deadlineAt: nbsDeadlineAt,
+    sleepFn,
+  });
   try {
     const indexHtml = await fetchNbsText(NBS_CALENDAR_INDEX_URL);
     const calendarUrl = currentCalendarLink(indexHtml, year);
