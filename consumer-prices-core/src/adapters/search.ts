@@ -134,6 +134,28 @@ export function matchesAnyPathFilter(url: string, filters: string[]): boolean {
   return filters.some((p) => url.includes(p));
 }
 
+/**
+ * AND-ed market scope, layered on top of `matchesAnyPathFilter`'s OR.
+ *
+ * A multi-market host serves several storefronts from one hostname — noon.com
+ * fronts /saudi-en/, /uae-en/ and Egypt on both www.noon.com and
+ * minutes.noon.com — so the host allowlist cannot separate them, and
+ * `urlPathContains` cannot either: it is an OR, and on www.noon.com the locale
+ * is the first path segment while the product route (`/p/`) is the last, so no
+ * single substring spans both. Every listed segment must appear, and matching
+ * is on `pathname` only so a locale echoed in a query string cannot satisfy it.
+ * An unparseable URL fails closed.
+ */
+export function matchesRequiredPathSegments(url: string, segments: string[]): boolean {
+  if (segments.length === 0) return true;
+  try {
+    const { pathname } = new URL(url);
+    return segments.every((segment) => pathname.includes(segment));
+  } catch {
+    return false;
+  }
+}
+
 interface ExtractedProduct {
   productName?: string;
   price?: number;
@@ -247,6 +269,10 @@ export class SearchAdapter implements RetailerAdapter {
     const baskets = loadAllBasketConfigs().filter((b) => b.marketCode === ctx.config.marketCode);
     const domain = new URL(ctx.config.baseUrl).hostname;
     const allowedHosts = normalizeAllowedHosts(domain, ctx.config.searchConfig?.allowedHosts);
+    // Pins outlive config changes, so a pin stored while a looser policy was
+    // live would keep being scraped directly and bypass discovery entirely.
+    // The market scope has to apply here too, not just to discovered URLs.
+    const requiredSegments = ctx.config.searchConfig?.urlPathMustContain ?? [];
     const targets: Target[] = [];
 
     for (const basket of baskets) {
@@ -261,7 +287,11 @@ export class SearchAdapter implements RetailerAdapter {
           substitutionGroup: item.substitutionGroup,
         };
 
-        if (pinned && isAllowedHost(pinned.sourceUrl, allowedHosts)) {
+        if (
+          pinned &&
+          isAllowedHost(pinned.sourceUrl, allowedHosts) &&
+          matchesRequiredPathSegments(pinned.sourceUrl, requiredSegments)
+        ) {
           targets.push({
             id: item.id,
             url: pinned.sourceUrl,
@@ -279,7 +309,10 @@ export class SearchAdapter implements RetailerAdapter {
           });
         } else {
           if (pinned) {
-            ctx.logger.warn(`  [pin] rejected stored URL for "${item.canonicalName}" (host mismatch): ${pinned.sourceUrl}`);
+            const pinReason = isAllowedHost(pinned.sourceUrl, allowedHosts) ? 'market scope' : 'host mismatch';
+            ctx.logger.warn(
+              `  [pin] rejected stored URL for "${item.canonicalName}" (${pinReason}): ${pinned.sourceUrl}`,
+            );
           }
           targets.push({
             id: item.id,
@@ -563,10 +596,17 @@ export class SearchAdapter implements RetailerAdapter {
     }
 
     const pathFilters = normalizePathFilters(cfg?.urlPathContains);
+    const requiredSegments = cfg?.urlPathMustContain ?? [];
     const attemptedUrls = direct ? new Set([target.url]) : new Set<string>();
     const discoveredUrls = exaResults
       .map((r) => r.url)
-      .filter((url) => !!url && isAllowedHost(url, hostAllowlist) && matchesAnyPathFilter(url, pathFilters));
+      .filter(
+        (url) =>
+          !!url &&
+          isAllowedHost(url, hostAllowlist) &&
+          matchesAnyPathFilter(url, pathFilters) &&
+          matchesRequiredPathSegments(url, requiredSegments),
+      );
     const safeUrls = [...new Set(discoveredUrls)].filter((url) => !attemptedUrls.has(url));
 
     ctx.logger.info(
@@ -582,13 +622,13 @@ export class SearchAdapter implements RetailerAdapter {
       const sample = exaResults.slice(0, 5).map((r) => r.url).filter(Boolean).join(' | ');
       const excludedPinnedUrl = attemptedUrls.size > 0 && discoveredUrls.some((url) => attemptedUrls.has(url));
       ctx.logger.warn(
-        `  [search:discovery] ${canonicalName}: 0 of ${exaResults.length} URLs passed filter (hosts=${hostAllowlist.join('|')}, path=${pathFilters.length ? pathFilters.join('|') : '<none>'}${excludedPinnedUrl ? ', pinned URL already attempted' : ''}). Rejected: ${sample}`,
+        `  [search:discovery] ${canonicalName}: 0 of ${exaResults.length} URLs passed filter (hosts=${hostAllowlist.join('|')}, path=${pathFilters.length ? pathFilters.join('|') : '<none>'}${requiredSegments.length ? `, required=${requiredSegments.join('+')}` : ''}${excludedPinnedUrl ? ', pinned URL already attempted' : ''}). Rejected: ${sample}`,
       );
       if (excludedPinnedUrl) {
         throw new Error(`Exa: all ${exaResults.length} results repeated the pinned URL already attempted for "${canonicalName}"`);
       }
       throw new Error(
-        `Exa: all ${exaResults.length} results failed host/path check (expected hostnames: ${hostAllowlist.join('|')}${pathFilters.length ? `, path: *${pathFilters.join('|')}*` : ''})`,
+        `Exa: all ${exaResults.length} results failed host/path check (expected hostnames: ${hostAllowlist.join('|')}${pathFilters.length ? `, path: *${pathFilters.join('|')}*` : ''}${requiredSegments.length ? `, required path: ${requiredSegments.join('+')}` : ''})`,
       );
     }
 

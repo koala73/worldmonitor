@@ -5,6 +5,7 @@ import {
   normalizeAllowedHosts,
   normalizePathFilters,
   matchesAnyPathFilter,
+  matchesRequiredPathSegments,
   looksLikeQuantityAsPrice,
 } from './search.js';
 
@@ -141,6 +142,45 @@ describe('matchesAnyPathFilter', () => {
     expect(matchesAnyPathFilter('https://mercado.carrefour.com.br/promocoes/semana', filters)).toBe(true);
     expect(matchesAnyPathFilter('https://mercado.carrefour.com.br/pages/about', filters)).toBe(true);
     expect(matchesAnyPathFilter('https://mercado.carrefour.com.br/popular/today', filters)).toBe(true);
+  });
+});
+
+describe('matchesRequiredPathSegments', () => {
+  it('passes any URL when no segments are configured', () => {
+    expect(matchesRequiredPathSegments('https://www.noon.com/uae-en/milk/N1/p/', [])).toBe(true);
+  });
+
+  it('admits the configured storefront on both noon hosts', () => {
+    expect(matchesRequiredPathSegments('https://www.noon.com/saudi-en/milk/N1/p/', ['/saudi-en/'])).toBe(true);
+    expect(matchesRequiredPathSegments('https://minutes.noon.com/saudi-en/now-product/milk-1', ['/saudi-en/'])).toBe(
+      true,
+    );
+  });
+
+  it('rejects a foreign storefront on the same hosts', () => {
+    expect(matchesRequiredPathSegments('https://www.noon.com/uae-en/milk/N1/p/', ['/saudi-en/'])).toBe(false);
+    expect(matchesRequiredPathSegments('https://minutes.noon.com/egypt-en/now-product/milk-1', ['/saudi-en/'])).toBe(
+      false,
+    );
+  });
+
+  it('matches the pathname only, so query and fragment cannot satisfy it', () => {
+    expect(matchesRequiredPathSegments('https://www.noon.com/uae-en/milk/N1/p/?ref=/saudi-en/', ['/saudi-en/'])).toBe(
+      false,
+    );
+    expect(matchesRequiredPathSegments('https://www.noon.com/uae-en/milk/N1/p/#/saudi-en/', ['/saudi-en/'])).toBe(
+      false,
+    );
+  });
+
+  it('requires every listed segment, not any', () => {
+    expect(matchesRequiredPathSegments('https://x.example/saudi-en/p/', ['/saudi-en/', '/grocery/'])).toBe(false);
+    expect(matchesRequiredPathSegments('https://x.example/saudi-en/grocery/p/', ['/saudi-en/', '/grocery/'])).toBe(true);
+  });
+
+  it('fails closed on a malformed URL', () => {
+    expect(matchesRequiredPathSegments('not-a-url', ['/saudi-en/'])).toBe(false);
+    expect(matchesRequiredPathSegments('', ['/saudi-en/'])).toBe(false);
   });
 });
 

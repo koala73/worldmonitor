@@ -443,4 +443,108 @@ describe('SearchAdapter recovery path', () => {
       expect(firecrawl.extract).not.toHaveBeenCalled();
     }
   });
+
+  // noon.com serves several storefronts from one host pair. The route filters
+  // (`/p/`, `/now-product/`) are an OR, so they cannot also express "and only
+  // the SA storefront" — `urlPathMustContain` carries that market scope.
+  // Both fixture URLs are host-allowed and route-allowed here, so the locale
+  // segment is the only thing that can reject them.
+  function noonTarget() {
+    const target = makeTarget();
+    return { ...target, metadata: { ...target.metadata, domain: 'www.noon.com' } };
+  }
+
+  function noonConfig(market: string) {
+    const config = makeConfig({
+      allowedHosts: ['minutes.noon.com'],
+      urlPathContains: ['/p/', '/now-product/'],
+      urlPathMustContain: [market],
+      extractionFallback: 'none',
+    });
+    config.baseUrl = 'https://www.noon.com';
+    return config;
+  }
+
+  it('rejects cross-storefront Noon product URLs for the configured market', async () => {
+    for (const fixture of [
+      { slug: 'noon_sa', market: '/saudi-en/', foreign: 'uae-en' },
+      { slug: 'noon_grocery_ae', market: '/uae-en/', foreign: 'saudi-en' },
+    ]) {
+      const exa = {
+        search: vi.fn().mockResolvedValue([
+          { url: `https://www.noon.com/${fixture.foreign}/fresh-milk/N123/p/` },
+          { url: `https://minutes.noon.com/${fixture.foreign}/now-product/milk-1` },
+        ]),
+      } as unknown as ExaProvider;
+      const firecrawl = { extract: vi.fn() } as unknown as FirecrawlProvider;
+      const adapter = new SearchAdapter(exa, firecrawl);
+      const config = noonConfig(fixture.market);
+      config.slug = fixture.slug;
+
+      await expect(adapter.fetchTarget(makeContext(config), noonTarget())).rejects.toThrow('host/path check');
+      expect(firecrawl.extract, fixture.slug).not.toHaveBeenCalled();
+    }
+  });
+
+  it('still admits same-storefront Noon product URLs on both hosts', async () => {
+    for (const url of [
+      'https://www.noon.com/saudi-en/fresh-milk/N123/p/',
+      'https://minutes.noon.com/saudi-en/now-product/milk-1',
+    ]) {
+      const exa = { search: vi.fn().mockResolvedValue([{ url }]) } as unknown as ExaProvider;
+      const firecrawl = {
+        extract: vi.fn().mockResolvedValue({
+          data: { productName: 'Meadows Enriched White Bread', price: 4.95, currency: 'SGD', sizeText: '400g' },
+        }),
+      } as unknown as FirecrawlProvider;
+      const adapter = new SearchAdapter(exa, firecrawl);
+
+      const result = await adapter.fetchTarget(makeContext(noonConfig('/saudi-en/')), noonTarget());
+      expect(result.url, url).toBe(url);
+    }
+  });
+
+  // A locale segment in the query string must not satisfy the market scope.
+  it('matches the market segment against the pathname, not the query string', async () => {
+    const exa = {
+      search: vi.fn().mockResolvedValue([{ url: 'https://www.noon.com/uae-en/milk/N1/p/?ref=/saudi-en/' }]),
+    } as unknown as ExaProvider;
+    const firecrawl = { extract: vi.fn() } as unknown as FirecrawlProvider;
+    const adapter = new SearchAdapter(exa, firecrawl);
+
+    await expect(adapter.fetchTarget(makeContext(noonConfig('/saudi-en/')), noonTarget())).rejects.toThrow(
+      'host/path check',
+    );
+    expect(firecrawl.extract).not.toHaveBeenCalled();
+  });
+
+  it('pins the shipped Noon market scope in YAML', () => {
+    expect(loadRetailerConfig('noon_sa').searchConfig?.urlPathMustContain).toEqual(['/saudi-en/']);
+    expect(loadRetailerConfig('noon_grocery_ae').searchConfig?.urlPathMustContain).toEqual(['/uae-en/']);
+  });
+
+  // Pins bypass discovery entirely, so a pin stored on a foreign storefront
+  // while the scope was missing would keep being scraped directly.
+  it('drops a stored pin that points at another storefront', async () => {
+    const adapter = new SearchAdapter({} as unknown as ExaProvider, {} as unknown as FirecrawlProvider);
+    const config = loadRetailerConfig('noon_sa');
+    const context = makeContext(config);
+    const pinKey = 'essentials-sa:Eggs Fresh 12 Pack';
+
+    const foreign = await adapter.discoverTargets({
+      ...context,
+      pinnedUrls: new Map([[pinKey, { sourceUrl: 'https://minutes.noon.com/uae-en/now-product/eggs-1', productId: 'p1', matchId: 'm1' }]]),
+    } as unknown as AdapterContext);
+    const foreignTarget = foreign.find((t) => t.metadata?.canonicalName === 'Eggs Fresh 12 Pack');
+    expect(foreignTarget?.metadata?.direct).toBe(false);
+    expect(context.logger.warn).toHaveBeenCalledWith(expect.stringContaining('market scope'));
+
+    const native = await adapter.discoverTargets({
+      ...makeContext(config),
+      pinnedUrls: new Map([[pinKey, { sourceUrl: 'https://minutes.noon.com/saudi-en/now-product/eggs-1', productId: 'p1', matchId: 'm1' }]]),
+    } as unknown as AdapterContext);
+    const nativeTarget = native.find((t) => t.metadata?.canonicalName === 'Eggs Fresh 12 Pack');
+    expect(nativeTarget?.metadata?.direct).toBe(true);
+    expect(nativeTarget?.url).toBe('https://minutes.noon.com/saudi-en/now-product/eggs-1');
+  });
 });
