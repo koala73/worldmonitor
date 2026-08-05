@@ -100,14 +100,14 @@ export function scoreMarket(m) {
   return (conviction * 0.5) + (Math.min(vol, 1) * 0.5);
 }
 
-export function isExpired(endDate) {
+export function isExpired(endDate, now = Date.now()) {
   if (!endDate) return false;
   const ms = Date.parse(endDate);
-  return Number.isFinite(ms) && ms < Date.now();
+  return Number.isFinite(ms) && ms < now;
 }
 
-export function filterAndScore(candidates, tagFilter, limit = 25) {
-  let filtered = candidates.filter(m => !isExpired(m.endDate));
+export function filterAndScore(candidates, tagFilter, limit = 25, now = Date.now()) {
+  let filtered = candidates.filter(m => !isExpired(m.endDate, now));
   if (tagFilter) filtered = filtered.filter(tagFilter);
 
   let result = filtered.filter(m => shouldInclude(m));
