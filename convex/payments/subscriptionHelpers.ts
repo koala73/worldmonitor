@@ -22,6 +22,7 @@ import {
   verifyUserId,
 } from "../lib/identitySigning";
 import { DEV_USER_ID, isDev } from "../lib/auth";
+import { syncCompanyMonitoringAccountFromEntitlement } from "../companyMonitoring/accounts";
 import { isChargedEventType, recordUnattributedEvent } from "./unattributedPayments";
 
 // ---------------------------------------------------------------------------
@@ -194,6 +195,10 @@ export async function upsertEntitlements(
       });
     }
   }
+
+  // Company Monitoring account state is part of the entitlement transaction: the
+  // canonical row and its one account root commit together or not at all.
+  await syncCompanyMonitoringAccountFromEntitlement(ctx, userId);
 
   // ACCEPTED BOUND: cache sync runs after mutation commits. If scheduler
   // fails to enqueue, stale cache survives up to ENTITLEMENT_CACHE_TTL_SECONDS
@@ -402,6 +407,7 @@ export async function recomputeEntitlementFromAllSubs(
     console.log(
       `[subscriptionHelpers] recompute for ${userId} — comp floor active until ${new Date(entitlement.compUntil).toISOString()}, preserving entitlement`,
     );
+    await syncCompanyMonitoringAccountFromEntitlement(ctx, userId);
     return;
   }
 

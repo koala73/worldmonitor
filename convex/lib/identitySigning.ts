@@ -23,6 +23,9 @@ const MAX_ANON_CLAIM_TOKEN_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 // issuing mutation stamps (U3).
 const BUSINESS_INVITE_TOKEN_VERSION = "v1";
 const BUSINESS_INVITE_TOKEN_TTL_MS = 14 * 24 * 60 * 60 * 1000;
+const COMPANY_MONITORING_OWNER_FENCE_VERSION = "v1";
+const COMPANY_MONITORING_OWNER_FENCE_PREVIOUS_SECRETS_ENV =
+  "COMPANY_MONITORING_OWNER_FENCE_PREVIOUS_SECRETS";
 
 // Checkout login-email tokens (#6335). Carry the Clerk login email as it was at
 // checkout time so the webhook does not have to trust `users.email`, which is
@@ -73,8 +76,7 @@ function getSigningKey(): string {
   return key;
 }
 
-async function signPayload(payload: string): Promise<string> {
-  const key = getSigningKey();
+async function signPayloadWithKey(payload: string, key: string): Promise<string> {
   const encoder = new TextEncoder();
 
   const cryptoKey = await crypto.subtle.importKey(
@@ -94,6 +96,10 @@ async function signPayload(payload: string): Promise<string> {
   return Array.from(new Uint8Array(signature))
     .map((b) => b.toString(16).padStart(2, "0"))
     .join("");
+}
+
+async function signPayload(payload: string): Promise<string> {
+  return signPayloadWithKey(payload, getSigningKey());
 }
 
 function timingSafeEqualHex(expected: string, actual: string): boolean {
@@ -122,6 +128,77 @@ function getAnonClaimTokenTtlMs(): number {
  */
 export async function signUserId(userId: string): Promise<string> {
   return signPayload(userId);
+}
+
+/**
+ * Stable, keyed owner fence for Company Monitoring account roots.
+ *
+ * The domain separator prevents this value being replayed as checkout
+ * metadata. Keeping the fence after owner/account deletion lets a delayed
+ * entitlement activation find the terminal tombstone without retaining the
+ * Clerk owner id on that tombstone.
+ */
+export interface CompanyMonitoringOwnerFenceCandidates {
+  current: string;
+  all: readonly string[];
+}
+
+/**
+ * Returns the current fence first, followed by every explicitly configured
+ * predecessor that must remain discoverable.
+ *
+ * Rotation order is deliberate: before rotating DODO_IDENTITY_SIGNING_SECRET,
+ * append its current value to the comma-separated
+ * COMPANY_MONITORING_OWNER_FENCE_PREVIOUS_SECRETS keyring and deploy that
+ * configuration. Then rotate the current secret. Retain every historical key
+ * while tombstones created with it must remain replay-fenced: ownerless
+ * terminal rows cannot be bulk migrated without retaining reversible identity.
+ * Nonterminal roots are opportunistically migrated by entitlement sync.
+ */
+export async function companyMonitoringOwnerFenceCandidates(
+  userId: string,
+): Promise<CompanyMonitoringOwnerFenceCandidates> {
+  if (!userId) {
+    throw new Error("[identity-signing] Company Monitoring owner fence requires a userId");
+  }
+  const currentKey = getSigningKey();
+  if (currentKey.trim() !== currentKey) {
+    throw new Error("[identity-signing] DODO_IDENTITY_SIGNING_SECRET is invalid");
+  }
+  const previousKeysRaw = process.env[COMPANY_MONITORING_OWNER_FENCE_PREVIOUS_SECRETS_ENV];
+  const previousKeys = previousKeysRaw === undefined ? [] : previousKeysRaw.split(",");
+  if (
+    previousKeysRaw !== undefined &&
+    (!previousKeysRaw ||
+      previousKeysRaw.trim() !== previousKeysRaw ||
+      previousKeys.some((key) => !key || key.trim() !== key))
+  ) {
+    throw new Error(
+      `[identity-signing] ${COMPANY_MONITORING_OWNER_FENCE_PREVIOUS_SECRETS_ENV} is invalid`,
+    );
+  }
+  const seenKeys = new Set([currentKey]);
+  for (const previousKey of previousKeys) {
+    if (seenKeys.has(previousKey)) {
+      throw new Error(
+        `[identity-signing] ${COMPANY_MONITORING_OWNER_FENCE_PREVIOUS_SECRETS_ENV} contains a duplicate or current key`,
+      );
+    }
+    seenKeys.add(previousKey);
+  }
+
+  const payload = `company-monitoring-owner:${COMPANY_MONITORING_OWNER_FENCE_VERSION}:${userId}`;
+  const keys = [currentKey, ...previousKeys];
+  const all = await Promise.all(keys.map((key) => signPayloadWithKey(payload, key)));
+  const [current] = all;
+  if (!current) {
+    throw new Error("[identity-signing] Company Monitoring owner fence keyring is empty");
+  }
+  return { current, all };
+}
+
+export async function signCompanyMonitoringOwnerFence(userId: string): Promise<string> {
+  return (await companyMonitoringOwnerFenceCandidates(userId)).current;
 }
 
 /**
