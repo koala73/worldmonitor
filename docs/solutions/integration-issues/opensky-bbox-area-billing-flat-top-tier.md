@@ -68,6 +68,26 @@ and a permanently rate-limited account, not a broken panel.
 
 ## Solution
 
+### The 4-credit global query, measured
+
+One global `/states/all?extended=1`, issued 2026-08-05 against the anonymous tier from a
+residential IP (a separate 400/day-per-IP pool, so it cost production nothing):
+
+```
+HTTP 200   X-Rate-Limit-Remaining: 396      <- 400 - 4: the flat top tier, confirmed live
+7,680 state vectors | 0.96 MB | 4.11 s wall clock
+```
+
+Two things worth keeping. First, the **4-credit price is confirmed empirically**, not just
+from the docs — a global query debited exactly 4 from a fresh 400. Second, the response is
+far smaller than a "whole planet" query sounds: **0.96 MB in 4.11 s**, which is 27% of the
+seeder's 15s `fetchJsonDirect` budget with 10.9s of headroom. Collapsing regional bboxes into
+a global query is not a payload-size trade.
+
+Measuring this needed no production credentials and no deploy. When an account is quota-locked,
+the anonymous per-IP tier from a developer machine still answers the shape questions — only
+the account-specific questions require the real credentials.
+
 ### The billing rule that makes this a bug
 
 `/states/all` is priced by **bounding-box area**, and the top tier is **flat**
