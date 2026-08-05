@@ -11,13 +11,16 @@ export const FUTURE = NOW + 30 * 24 * 60 * 60 * 1000;
 export const OWNER_A = "user_company_monitoring_a";
 export const OWNER_B = "user_company_monitoring_b";
 export const CM = internal.companyMonitoring;
-export const TEST_SIGNING_SECRET = "test-company-monitoring-owner-fence-secret";
-export const OLD_SIGNING_SECRET = "old-company-monitoring-owner-fence-secret";
-export const INTERMEDIATE_SIGNING_SECRET = "intermediate-company-monitoring-owner-fence-secret";
-export const NEW_SIGNING_SECRET = "new-company-monitoring-owner-fence-secret";
+export const TEST_DODO_IDENTITY_SIGNING_SECRET = "test-dodo-identity-signing-secret";
+export const ROTATED_DODO_IDENTITY_SIGNING_SECRET = "rotated-dodo-identity-signing-secret";
+export const TEST_OWNER_FENCE_SECRET = "test-company-monitoring-owner-fence-secret";
+export const OLD_OWNER_FENCE_SECRET = "old-company-monitoring-owner-fence-secret";
+export const INTERMEDIATE_OWNER_FENCE_SECRET = "intermediate-company-monitoring-owner-fence-secret";
+export const NEW_OWNER_FENCE_SECRET = "new-company-monitoring-owner-fence-secret";
 
 const MUTATED_ENV_KEYS = [
   "DODO_IDENTITY_SIGNING_SECRET",
+  "COMPANY_MONITORING_OWNER_FENCE_SECRET",
   "COMPANY_MONITORING_OWNER_FENCE_PREVIOUS_SECRETS",
   "UPSTASH_REDIS_REST_URL",
   "UPSTASH_REDIS_REST_TOKEN",
@@ -92,7 +95,8 @@ export function installCompanyMonitoringTestEnvironment() {
     vi.useFakeTimers();
     vi.setSystemTime(NOW);
     for (const key of MUTATED_ENV_KEYS) delete process.env[key];
-    process.env.DODO_IDENTITY_SIGNING_SECRET = TEST_SIGNING_SECRET;
+    process.env.DODO_IDENTITY_SIGNING_SECRET = TEST_DODO_IDENTITY_SIGNING_SECRET;
+    process.env.COMPANY_MONITORING_OWNER_FENCE_SECRET = TEST_OWNER_FENCE_SECRET;
   });
 
   afterEach(() => {

@@ -251,7 +251,7 @@ test('valid user key validation uses cached hash result without Convex', async (
   }, { redisCache: { [`user-api-key:${keyHash}`]: { userId: 'cached_owner' } } });
 });
 
-test('preview deploy user-key cache matches server Redis prefix for invalidation parity', async () => {
+test('preview deploy user-key cache matches the server Redis namespace', async () => {
   const keyHash = await sha256HexForTest(USER_KEY);
   const expectedCacheKey = `preview:abcdef12:user-api-key:${keyHash}`;
 

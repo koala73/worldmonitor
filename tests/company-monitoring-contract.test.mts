@@ -38,6 +38,19 @@ import {
 const root = resolve(import.meta.dirname, '..');
 
 describe('Company Monitoring RPC contract', () => {
+  it('keeps the self-contained Edge API-key scope mirror in contract parity', () => {
+    const apiKeySource = readFileSync(resolve(root, 'api/_user-api-key.js'), 'utf8');
+    const declaration = apiKeySource.match(
+      /const COMPANY_MONITORING_SCOPES = new Set\(\[([^\]]+)]\);/,
+    );
+    assert.ok(declaration, 'Edge API-key scope mirror must remain a literal Set declaration');
+    const edgeScopes = [...declaration[1]!.matchAll(/'([^']+)'/g)]
+      .map((match) => match[1])
+      .sort();
+    const contractScopes = [...new Set(Object.values(COMPANY_MONITORING_RPC_SCOPES))].sort();
+    assert.deepEqual(edgeScopes, contractScopes);
+  });
+
   it('defines the exact ten account-scoped RPCs with independent read/write scopes', () => {
     assert.deepEqual(COMPANY_MONITORING_RPC_SCOPES, {
       CreateMonitoredCompany: 'company_monitoring:write',

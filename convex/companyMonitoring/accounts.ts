@@ -20,12 +20,20 @@ const PURGE_BATCH_SIZE = Math.floor(
   (PURGE_TRANSACTION_DOCUMENT_LIMIT - PURGE_TRANSACTION_DOCUMENT_HEADROOM) /
     PURGE_DOCUMENTS_PER_COMPANY,
 );
+// Ordinary billing lapses wait one full day before destructive work. This
+// matches the daily missed-renewal reconciliation bound: a lost successful
+// renewal webhook gets one authoritative Dodo sweep before customer data is
+// scrubbed. Explicit owner/account deletion bypasses this grace.
+const ORDINARY_LAPSE_PURGE_GRACE_MS = 24 * 60 * 60 * 1000;
+const STALLED_PURGE_AGE_MS = 60 * 60 * 1000;
+const STALLED_PURGE_REAPER_BATCH_SIZE = 50;
+const REAPABLE_PURGE_PHASES = ["finalizing", "companies", "pending"] as const;
 
 async function canonicalEntitlement(ctx: MutationCtx, userId: string) {
   const entitlement = await ctx.db
     .query("entitlements")
     .withIndex("by_userId", (q) => q.eq("userId", userId))
-    .unique();
+    .first();
   if (!entitlement) return { active: false as const, digest: await fingerprint({ active: false }) };
 
   // The entitlement row is also the pre-existing serialization document for
@@ -74,9 +82,10 @@ async function scheduleAccountPurge(
   ctx: MutationCtx,
   ownerFenceHash: string,
   purgeGeneration: number,
+  delayMs = 0,
 ) {
   await ctx.scheduler.runAfter(
-    0,
+    Math.max(0, delayMs),
     (internal as any).companyMonitoring.accounts.advanceAccountPurge,
     { ownerFenceHash, purgeGeneration },
   );
@@ -149,7 +158,10 @@ export async function syncCompanyMonitoringAccountFromEntitlement(
     if (existing.purgePhase !== "none" && existing.purgePhase !== "complete") {
       // Jobs scheduled before rotation still carry the old hash and will become
       // stale after migration. Seed the same generation under the current key.
-      await scheduleAccountPurge(ctx, ownerFenceHash, existing.purgeGeneration);
+      const delayMs = existing.purgePhase === "pending" && existing.purgeAfter
+        ? existing.purgeAfter - Date.now()
+        : 0;
+      await scheduleAccountPurge(ctx, ownerFenceHash, existing.purgeGeneration, delayMs);
     }
     existing = (await ctx.db.get(existing._id)) ?? existing;
   }
@@ -176,6 +188,7 @@ export async function syncCompanyMonitoringAccountFromEntitlement(
       purgePhase: "none",
       destructivePurgeStarted: false,
       pendingReactivation: false,
+      purgeAfter: undefined,
       purgeCursor: undefined,
       updatedAt: now,
     });
@@ -212,6 +225,7 @@ export async function syncCompanyMonitoringAccountFromEntitlement(
         purgePhase: "none",
         destructivePurgeStarted: false,
         pendingReactivation: false,
+        purgeAfter: undefined,
         updatedAt: now,
       });
       await scheduleScopedKeyCacheInvalidation(ctx, userId);
@@ -237,6 +251,7 @@ export async function syncCompanyMonitoringAccountFromEntitlement(
 
   if (semanticChanged || existing.lifecycle === "entitled") {
     const purgeGeneration = existing.purgeGeneration + 1;
+    const purgeAfter = now + ORDINARY_LAPSE_PURGE_GRACE_MS;
     await ctx.db.patch(existing._id, {
       lifecycle: "entitlement_lapsed",
       entitlementDigest: canonical.digest,
@@ -245,10 +260,16 @@ export async function syncCompanyMonitoringAccountFromEntitlement(
       purgePhase: "pending",
       destructivePurgeStarted: false,
       pendingReactivation: false,
+      purgeAfter,
       updatedAt: now,
     });
     await scheduleScopedKeyCacheInvalidation(ctx, userId);
-    await scheduleAccountPurge(ctx, ownerFenceHash, purgeGeneration);
+    await scheduleAccountPurge(
+      ctx,
+      ownerFenceHash,
+      purgeGeneration,
+      ORDINARY_LAPSE_PURGE_GRACE_MS,
+    );
   }
   return ctx.db.get(existing._id);
 }
@@ -285,6 +306,7 @@ async function terminalize(
       purgePhase: "pending",
       destructivePurgeStarted: true,
       pendingReactivation: false,
+      purgeAfter: undefined,
       createdAt: now,
       updatedAt: now,
     });
@@ -308,6 +330,7 @@ async function terminalize(
     purgePhase: "pending",
     destructivePurgeStarted: true,
     pendingReactivation: false,
+    purgeAfter: undefined,
     purgeCursor: undefined,
     updatedAt: now,
   });
@@ -347,9 +370,26 @@ export const advanceAccountPurge = internalMutation({
 
     const now = Date.now();
     if (account.purgePhase === "pending") {
+      const isOrdinaryLapse = !account.terminalReason && account.lifecycle !== "denied";
+      const purgeAfter = account.purgeAfter ?? account.updatedAt + ORDINARY_LAPSE_PURGE_GRACE_MS;
+      if (isOrdinaryLapse && account.purgeAfter === undefined) {
+        // Backfill a deadline for any pending row written before purgeAfter was
+        // introduced. Do not move updatedAt: the reaper still needs its age.
+        await ctx.db.patch(account._id, { purgeAfter });
+      }
+      if (isOrdinaryLapse && now < purgeAfter) {
+        await scheduleAccountPurge(
+          ctx,
+          args.ownerFenceHash,
+          args.purgeGeneration,
+          purgeAfter - now,
+        );
+        return { status: "waiting", purgeAfter };
+      }
       await ctx.db.patch(account._id, {
         purgePhase: "companies",
         destructivePurgeStarted: true,
+        purgeAfter: undefined,
         updatedAt: now,
       });
       await scheduleAccountPurge(ctx, args.ownerFenceHash, args.purgeGeneration);
@@ -374,6 +414,11 @@ export const advanceAccountPurge = internalMutation({
           sortName: undefined,
           domicileCountry: undefined,
           customerReference: undefined,
+          directRequestId: undefined,
+          directFingerprint: undefined,
+          clientImportId: undefined,
+          importOrdinal: undefined,
+          importFingerprint: undefined,
           lifecycle: "removed",
           coverageState: undefined,
           observationState: undefined,
@@ -395,15 +440,24 @@ export const advanceAccountPurge = internalMutation({
     }
 
     if (account.purgePhase === "finalizing") {
-      if (account.pendingReactivation && account.ownerUserId && !account.terminalReason) {
+      const canonical = account.ownerUserId && !account.terminalReason
+        ? await canonicalEntitlement(ctx, account.ownerUserId)
+        : null;
+      const canonicalChanged = Boolean(
+        canonical && account.entitlementDigest !== canonical.digest,
+      );
+      if (account.pendingReactivation && account.ownerUserId && canonical?.active) {
         await ctx.db.patch(account._id, {
           lifecycle: "entitled",
+          entitlementDigest: canonical.digest,
+          lifecycleSequence: account.lifecycleSequence + (canonicalChanged ? 1 : 0),
           companyCount: 0,
           companyLimit: COMPANY_LIMIT,
           snapshotGeneration: (account.snapshotGeneration ?? 0) + 1,
           purgePhase: "none",
           destructivePurgeStarted: false,
           pendingReactivation: false,
+          purgeAfter: undefined,
           purgeCursor: undefined,
           updatedAt: now,
         });
@@ -416,8 +470,11 @@ export const advanceAccountPurge = internalMutation({
         snapshotGeneration: account.terminalReason
           ? undefined
           : (account.snapshotGeneration ?? 0) + 1,
+        entitlementDigest: canonical?.digest ?? account.entitlementDigest,
+        lifecycleSequence: account.lifecycleSequence + (canonicalChanged ? 1 : 0),
         purgePhase: "complete",
         pendingReactivation: false,
+        purgeAfter: undefined,
         purgeCursor: undefined,
         updatedAt: now,
       });
@@ -425,5 +482,49 @@ export const advanceAccountPurge = internalMutation({
     }
 
     return { status: "complete" };
+  },
+});
+
+/** Hourly bounded recovery for purge jobs lost after their account transition. */
+export const reapStalledAccountPurges = internalMutation({
+  args: {},
+  handler: async (ctx) => {
+    const now = Date.now();
+    const staleBefore = now - STALLED_PURGE_AGE_MS;
+    let remaining = STALLED_PURGE_REAPER_BATCH_SIZE;
+    let scanned = 0;
+    let scheduled = 0;
+    let deferred = 0;
+
+    for (const purgePhase of REAPABLE_PURGE_PHASES) {
+      if (remaining === 0) break;
+      const accounts = await ctx.db
+        .query("companyMonitoringAccounts")
+        .withIndex("by_purgePhase_updatedAt", (q) =>
+          q.eq("purgePhase", purgePhase).lt("updatedAt", staleBefore),
+        )
+        .take(remaining);
+      scanned += accounts.length;
+      remaining -= accounts.length;
+
+      for (const account of accounts) {
+        if (purgePhase === "pending" && !account.terminalReason) {
+          const purgeAfter = account.purgeAfter ??
+            account.updatedAt + ORDINARY_LAPSE_PURGE_GRACE_MS;
+          if (account.purgeAfter === undefined) {
+            await ctx.db.patch(account._id, { purgeAfter });
+          }
+          if (now < purgeAfter) {
+            deferred += 1;
+            continue;
+          }
+        }
+        await ctx.db.patch(account._id, { updatedAt: now });
+        await scheduleAccountPurge(ctx, account.ownerFenceHash, account.purgeGeneration);
+        scheduled += 1;
+      }
+    }
+
+    return { scanned, scheduled, deferred };
   },
 });

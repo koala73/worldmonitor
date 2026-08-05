@@ -23,6 +23,16 @@ crons.hourly(
   {},
 );
 
+// Bounded recovery for Company Monitoring purge generations whose scheduled
+// continuation was dropped. The mutation independently enforces the ordinary
+// lapse purgeAfter deadline, so an hourly wake cannot bypass the 24h grace.
+crons.hourly(
+  "company-monitoring-stalled-purge-reaper",
+  { minuteUTC: 37 },
+  internal.companyMonitoring.accounts.reapStalledAccountPurges,
+  {},
+);
+
 // PRO-launch broadcast ramp runner. Wakes once a day at 13:00 UTC
 // (~9am ET / 6am PT / 3pm CET — early enough that any kill-gate
 // trip can be triaged within US business hours, late enough that

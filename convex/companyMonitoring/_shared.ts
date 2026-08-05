@@ -55,7 +55,7 @@ export async function activeAccountForOwner(
     ? ctx.db
         .query("entitlements")
         .withIndex("by_userId", (q) => q.eq("userId", ownerUserId))
-        .unique()
+        .first()
     : Promise.resolve(knownEntitlement);
   const [account, entitlement] = await Promise.all([
     ctx.db

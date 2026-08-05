@@ -27,14 +27,6 @@ function getEntitlementKey(userId: string): string {
   return `entitlements:${envPrefix}:${userId}`;
 }
 
-/** Mirrors the Vercel Redis namespace used by both user API-key validators. */
-function getServerRedisKeyPrefix(): string {
-  const env = process.env.VERCEL_ENV;
-  if (!env || env === "production") return "";
-  const sha = process.env.VERCEL_GIT_COMMIT_SHA?.slice(0, 8) || "dev";
-  return `${env}:${sha}:`;
-}
-
 /**
  * Writes a user's entitlements to Redis via Upstash REST API.
  *
@@ -227,10 +219,12 @@ export const invalidateUserApiKeyCaches = internalAction({
       );
     }
     if (args.keyHashes.length === 0) return;
-    const keyPrefix = getServerRedisKeyPrefix();
+    // Convex actions do not inherit Vercel deployment metadata. Lifecycle
+    // invalidation therefore targets the production, unprefixed namespace;
+    // preview-key namespacing remains local to the Vercel validators.
     const commands = args.keyHashes.flatMap((keyHash) => [
-      ["DEL", `${keyPrefix}user-api-key:${keyHash}`],
-      ["DEL", `${keyPrefix}bootstrap-user-api-key-invalid:${keyHash}`],
+      ["DEL", `user-api-key:${keyHash}`],
+      ["DEL", `bootstrap-user-api-key-invalid:${keyHash}`],
     ]);
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), REDIS_FETCH_TIMEOUT_MS);

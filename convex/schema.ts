@@ -1048,6 +1048,7 @@ export default defineSchema({
     ),
     destructivePurgeStarted: v.boolean(),
     pendingReactivation: v.boolean(),
+    purgeAfter: v.optional(v.number()),
     purgeCursor: v.optional(v.string()),
     createdAt: v.number(),
     updatedAt: v.number(),
@@ -1055,7 +1056,7 @@ export default defineSchema({
     .index("by_logicalAccountId", ["logicalAccountId"])
     .index("by_ownerUserId", ["ownerUserId"])
     .index("by_ownerFenceHash", ["ownerFenceHash"])
-    .index("by_lifecycle", ["lifecycle"]),
+    .index("by_purgePhase_updatedAt", ["purgePhase", "updatedAt"]),
 
   companyMonitoringCompanies: defineTable({
     ownerAccountId: v.string(),
@@ -1081,11 +1082,9 @@ export default defineSchema({
   })
     .index("by_account_companyId", ["ownerAccountId", "companyId"])
     .index("by_account_lifecycle_sortName", ["ownerAccountId", "lifecycle", "sortName"])
-    .index("by_account_customerReference", ["ownerAccountId", "customerReference"])
     .index("by_account_customerReference_lifecycle", ["ownerAccountId", "customerReference", "lifecycle"])
     .index("by_account_directRequestId", ["ownerAccountId", "directRequestId"])
-    .index("by_account_import_tuple", ["ownerAccountId", "clientImportId", "importOrdinal"])
-    .index("by_account_purge", ["ownerAccountId", "purgeGeneration", "purgePhase"]),
+    .index("by_account_import_tuple", ["ownerAccountId", "clientImportId", "importOrdinal"]),
 
   companyMonitoringClaims: defineTable({
     ownerAccountId: v.string(),
@@ -1106,9 +1105,7 @@ export default defineSchema({
     createdAt: v.number(),
     updatedAt: v.number(),
   })
-    .index("by_account_company", ["ownerAccountId", "companyId"])
-    .index("by_account_company_claimId", ["ownerAccountId", "companyId", "claimId"])
-    .index("by_account_type_value", ["ownerAccountId", "type", "value"]),
+    .index("by_account_company", ["ownerAccountId", "companyId"]),
 
   userApiKeys: defineTable({
     userId: v.string(),

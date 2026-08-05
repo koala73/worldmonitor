@@ -145,7 +145,7 @@ describe("account-bound Company Monitoring API-key scopes", () => {
     });
   });
 
-  test("preview warm-cache invalidation prefixes both keys with the deployment SHA", async () => {
+  test("Convex invalidation ignores Vercel preview metadata and targets production bare keys", async () => {
     const t = convexTest(schema, modules);
     process.env.UPSTASH_REDIS_REST_URL = "https://redis.example";
     process.env.UPSTASH_REDIS_REST_TOKEN = "test-token";
@@ -162,8 +162,8 @@ describe("account-bound Company Monitoring API-key scopes", () => {
     });
     const [, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
     expect(JSON.parse(String(init.body))).toEqual([
-      ["DEL", `preview:abcdef12:user-api-key:${"d".repeat(64)}`],
-      ["DEL", `preview:abcdef12:bootstrap-user-api-key-invalid:${"d".repeat(64)}`],
+      ["DEL", `user-api-key:${"d".repeat(64)}`],
+      ["DEL", `bootstrap-user-api-key-invalid:${"d".repeat(64)}`],
     ]);
   });
 
