@@ -11,6 +11,34 @@ interface CityEntry {
   marketClose?: number;
 }
 
+/**
+ * Cached per-row element handles plus the last value written to each, so the
+ * 1 Hz tick can patch text/class/style in place instead of rebuilding markup.
+ *
+ * Only `time` changes every second. The bar width moves ~every 86 s (0.1% of a
+ * day), the timezone label daily, and day/night and market status a couple of
+ * times a day — so a value-diff on each keeps the steady-state tick down to one
+ * `textContent` write per city.
+ */
+interface ClockRefs {
+  city: CityEntry;
+  row: HTMLElement;
+  time: HTMLElement;
+  bar: HTMLElement;
+  tz: HTMLElement;
+  status: HTMLElement | null;
+  last: {
+    time: string;
+    barWidth: string;
+    tz: string;
+    isDay: boolean | null;
+    isOpen: boolean | null;
+    /** `${dayOfWeek}|${hour}` the cached abbreviation was resolved for. */
+    abbrKey: string;
+    abbr: string;
+  };
+}
+
 const WORLD_CITIES: CityEntry[] = [
   { id: 'new-york', city: 'New York', label: 'NYSE', timezone: 'America/New_York', marketOpen: 9, marketClose: 16 },
   { id: 'chicago', city: 'Chicago', label: 'CME', timezone: 'America/Chicago', marketOpen: 8, marketClose: 15 },
@@ -142,6 +170,8 @@ export class WorldClockPanel extends Panel {
   private dragging = false;
   private dragCityId: string | null = null;
   private dragStartY = 0;
+  /** Populated once per structural render; empty while the settings view is up. */
+  private clockRefs = new Map<string, ClockRefs>();
 
   constructor() {
     super({ id: 'world-clock', title: 'World Clock', trackActivity: false, infoTooltip: t('components.worldClock.infoTooltip') });
@@ -173,8 +203,12 @@ export class WorldClockPanel extends Panel {
 
     this.setupDragHandlers();
     this.renderClocks();
+    // Patch the live values in place (#4487 INP): rebuilding the whole clock
+    // face once a second replaced every node and forced style+layout+paint on a
+    // 1 s cadence forever, which lands in the input-delay window of any
+    // interaction sharing it. Structure only changes on city add/remove/reorder.
     this.tickInterval = setInterval(() => {
-      if (!this.showingSettings && !this.dragging) this.renderClocks();
+      if (!this.showingSettings && !this.dragging) this.tickClocks();
     }, 1000);
   }
 
@@ -206,7 +240,13 @@ export class WorldClockPanel extends Panel {
       html += '</div>';
     }
     html += '</div>';
-    this.setSafeContent(unsafeRawHtml(html, 'legacy Panel.setContent() migration'));
+    // The settings view replaces the clock rows outright, so the cached row
+    // handles are about to detach. Drop them; leaving the settings view calls
+    // renderClocks(), which rebinds.
+    this.setSafeContent(
+      unsafeRawHtml(html, 'legacy Panel.setContent() migration'),
+      () => this.clockRefs.clear(),
+    );
   }
 
   private setupDragHandlers(): void {
@@ -285,7 +325,10 @@ export class WorldClockPanel extends Panel {
       .filter((c): c is CityEntry => !!c);
 
     if (sorted.length === 0) {
-      this.setSafeContent(unsafeRawHtml('<div class="wc-empty">No cities selected. Click \u2699 to add cities.</div>', 'legacy Panel.setContent() migration'));
+      this.setSafeContent(
+        unsafeRawHtml('<div class="wc-empty">No cities selected. Click \u2699 to add cities.</div>', 'legacy Panel.setContent() migration'),
+        () => this.clockRefs.clear(),
+      );
       return;
     }
 
@@ -313,7 +356,108 @@ export class WorldClockPanel extends Panel {
       html += `<div class="${rowCls.join(' ')}" data-city-id="${city.id}"><div class="wc-drag-handle" title="Drag to reorder">\u22EE</div><div class="wc-info"><div class="wc-name">${city.city}${isHome ? '<span class="wc-home-tag">\u2302</span>' : ''}</div><div class="wc-detail"><span class="wc-exchange">${city.label}</span>${statusHtml}</div></div><div class="wc-clock"><div class="wc-time">${pad2(h)}:${pad2(m)}:${pad2(s)}</div><div class="wc-tz"><div class="wc-bar-wrap"><div class="wc-bar ${isDay ? 'day' : 'night'}" style="width:${pct.toFixed(1)}%"></div></div><span>${dayOfWeek} ${abbr}</span></div></div></div>`;
     }
     html += '</div>';
-    this.setSafeContent(unsafeRawHtml(html, 'legacy Panel.setContent() migration'));
+    // Cache handles only once the debounced write has actually committed —
+    // querying before that would bind to the outgoing subtree.
+    this.setSafeContent(
+      unsafeRawHtml(html, 'legacy Panel.setContent() migration'),
+      () => this.cacheClockRefs(sorted),
+    );
+  }
+
+  /** Bind one `ClockRefs` per rendered row. Silently skips rows that are absent. */
+  private cacheClockRefs(cities: CityEntry[]): void {
+    this.clockRefs.clear();
+    const container = this.content.querySelector<HTMLElement>('.wc-container');
+    if (!container) return;
+
+    for (const city of cities) {
+      const row = container.querySelector<HTMLElement>(`.wc-row[data-city-id="${city.id}"]`);
+      if (!row) continue;
+      const time = row.querySelector<HTMLElement>('.wc-time');
+      const bar = row.querySelector<HTMLElement>('.wc-bar');
+      const tz = row.querySelector<HTMLElement>('.wc-tz > span');
+      if (!time || !bar || !tz) continue;
+
+      this.clockRefs.set(city.id, {
+        city,
+        row,
+        time,
+        bar,
+        tz,
+        status: row.querySelector<HTMLElement>('.wc-status'),
+        last: {
+          time: time.textContent ?? '',
+          barWidth: bar.style.width,
+          tz: tz.textContent ?? '',
+          isDay: null,
+          isOpen: null,
+          abbrKey: '',
+          abbr: '',
+        },
+      });
+    }
+  }
+
+  /**
+   * One second of work: recompute each city's clock and write back only the
+   * values that actually changed. No node is created, removed or replaced.
+   */
+  private tickClocks(): void {
+    for (const refs of this.clockRefs.values()) {
+      const { city, last } = refs;
+      const { h, m, s, dayOfWeek } = getTimeInZone(city.timezone);
+
+      const time = `${pad2(h)}:${pad2(m)}:${pad2(s)}`;
+      if (last.time !== time) {
+        refs.time.textContent = time;
+        last.time = time;
+      }
+
+      const barWidth = `${(((h * 3600 + m * 60 + s) / 86400) * 100).toFixed(1)}%`;
+      if (last.barWidth !== barWidth) {
+        refs.bar.style.width = barWidth;
+        last.barWidth = barWidth;
+      }
+
+      const isDay = h >= 6 && h < 20;
+      if (last.isDay !== isDay) {
+        refs.row.classList.toggle('wc-night', !isDay);
+        refs.bar.classList.toggle('day', isDay);
+        refs.bar.classList.toggle('night', !isDay);
+        last.isDay = isDay;
+      }
+
+      // `getTzAbbr` builds an Intl.DateTimeFormat, so resolve it only when the
+      // hour rolls over — a DST shift always lands on an hour boundary.
+      const abbrKey = `${dayOfWeek}|${h}`;
+      if (last.abbrKey !== abbrKey) {
+        last.abbrKey = abbrKey;
+        last.abbr = getTzAbbr(city.timezone);
+      }
+      const tz = `${dayOfWeek} ${last.abbr}`;
+      if (last.tz !== tz) {
+        refs.tz.textContent = tz;
+        last.tz = tz;
+      }
+
+      if (refs.status && city.marketOpen !== undefined && city.marketClose !== undefined) {
+        const isOpen = dayOfWeek !== 'Sat' && dayOfWeek !== 'Sun'
+          && h >= city.marketOpen && h < city.marketClose;
+        if (last.isOpen !== isOpen) {
+          const state = isOpen ? 'open' : 'closed';
+          refs.status.className = `wc-status ${state}`;
+          const dot = refs.status.firstElementChild;
+          if (dot) dot.className = `wc-dot ${state}`;
+          // The label is a bare text node after the dot; replace its value so
+          // the dot element survives (setting textContent would delete it).
+          const label = refs.status.lastChild;
+          if (label && label.nodeType === Node.TEXT_NODE) {
+            label.nodeValue = isOpen ? 'OPEN' : 'CLSD';
+          }
+          last.isOpen = isOpen;
+        }
+      }
+    }
   }
 
   destroy(): void {
@@ -321,6 +465,7 @@ export class WorldClockPanel extends Panel {
       clearInterval(this.tickInterval);
       this.tickInterval = null;
     }
+    this.clockRefs.clear();
     super.destroy();
   }
 }
