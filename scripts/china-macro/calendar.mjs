@@ -1,6 +1,16 @@
 import { decodeHtmlEntities } from '../_html-entities.mjs';
 
 export const NBS_CALENDAR_INDEX_URL = 'https://www.stats.gov.cn/english/PressRelease/ReleaseCalendar/';
+// NBS is a REQUIRED source: any failure aborts the whole run, so a single
+// transient socket error costs a full 36h refresh interval against a 4,320min
+// (= exactly 2 intervals) freshness budget. Its sibling fetcher for the same
+// host — china-macro/source-runtime.mjs `fetchText` — already retries transient
+// throws once, which is why seed-china-macro stayed healthy through the same
+// window that took this calendar stale. 3 attempts x 20s + 1.5s backoff = 61.5s
+// per URL; the two NBS URLs plus the 20s ChinaMoney call cap the fetch phase at
+// ~143s, inside both lockTtlMs (180s) and the bundle section timeout (240s).
+export const NBS_TRANSIENT_FETCH_ATTEMPTS = 3;
+const NBS_TRANSIENT_RETRY_DELAY_MS = 500;
 export const CHINAMONEY_LPR_URL = 'https://www.chinamoney.com.cn/chinese/bklpr/?tab=2';
 export const CHINAMONEY_LPR_NOTICE_API = 'https://www.chinamoney.com.cn/ags/ms/cm-s-notice-query/contentsinshorttime';
 // Official LPR market-notice channel resolved by ChinaMoney's public
@@ -148,6 +158,42 @@ async function fetchText(fetchFn, url) {
   return response.text();
 }
 
+/**
+ * A fetch that never produced a response — DNS failure, TLS reset, socket
+ * hang-up, AbortSignal timeout — is the transient class this retry exists for.
+ * A response that arrived carries the verdict in its status: 408/429/5xx are
+ * worth another attempt, every other status is a permanent client error and
+ * retrying it would only triple the load on an official government host.
+ */
+function isTransientFetchFailure(error) {
+  if (Number.isInteger(error?.status)) {
+    return error.status === 408 || error.status === 429 || (error.status >= 500 && error.status <= 599);
+  }
+  // A bad certificate chain means the connection is being intercepted, not that
+  // the network hiccuped — fail closed immediately, as the sibling fetcher does.
+  const certMessage = `${String(error?.message)} ${String(error?.cause?.message)}`;
+  if (
+    error?.code === 'SELF_SIGNED_CERT_IN_CHAIN'
+    || error?.cause?.code === 'SELF_SIGNED_CERT_IN_CHAIN'
+    || /self signed certificate|certificate chain/i.test(certMessage)
+  ) {
+    return false;
+  }
+  return true;
+}
+
+async function fetchTextWithTransientRetry(fetchFn, url, onAttempt) {
+  for (let attempt = 1; ; attempt++) {
+    onAttempt();
+    try {
+      return await fetchText(fetchFn, url);
+    } catch (error) {
+      if (attempt >= NBS_TRANSIENT_FETCH_ATTEMPTS || !isTransientFetchFailure(error)) throw error;
+      await new Promise((resolve) => setTimeout(resolve, NBS_TRANSIENT_RETRY_DELAY_MS * attempt));
+    }
+  }
+}
+
 async function fetchChinaMoneyNotices(fetchFn) {
   const response = await fetchFn(CHINAMONEY_LPR_NOTICE_API, {
     method: 'POST',
@@ -194,12 +240,13 @@ export async function fetchChinaReleaseCalendar({
 
   let nbsEvents = [];
   let nbsRequestCount = 0;
+  // Counted per ATTEMPT, not per URL: a retry is a real request against an
+  // official host, so the audited requestCount has to include it.
+  const fetchNbsText = (url) => fetchTextWithTransientRetry(fetchFn, url, () => { nbsRequestCount += 1; });
   try {
-    nbsRequestCount += 1;
-    const indexHtml = await fetchText(fetchFn, NBS_CALENDAR_INDEX_URL);
+    const indexHtml = await fetchNbsText(NBS_CALENDAR_INDEX_URL);
     const calendarUrl = currentCalendarLink(indexHtml, year);
-    if (calendarUrl !== NBS_CALENDAR_INDEX_URL) nbsRequestCount += 1;
-    const calendarHtml = calendarUrl === NBS_CALENDAR_INDEX_URL ? indexHtml : await fetchText(fetchFn, calendarUrl);
+    const calendarHtml = calendarUrl === NBS_CALENDAR_INDEX_URL ? indexHtml : await fetchNbsText(calendarUrl);
     nbsEvents = parseNbsReleaseCalendar(calendarHtml, year, calendarUrl);
     if (nbsEvents.length === 0) {
       throw Object.assign(new Error('NO_NBS_EVENTS'), { reason: 'NO_NBS_EVENTS' });
