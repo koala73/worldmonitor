@@ -15,6 +15,7 @@ import { getRelayBaseUrl, getRelayHeaders } from '../../../_shared/relay';
 const REDIS_CACHE_KEY = 'military:flights:v1';
 const REDIS_CACHE_TTL = 600; // 10 min — reduce upstream API pressure
 const REDIS_STALE_KEY = 'military:flights:stale:v1';
+const STABLE_STALE_CACHE_KEY = 'military:flights:stable-stale:v1';
 const STALE_SNAPSHOT_CACHE_TTL = 120; // Bind a bounded cursor traversal to one snapshot.
 const STALE_SNAPSHOT_NEG_TTL = 30;
 
@@ -308,8 +309,8 @@ type StaleSnapshotCacheEntry =
   | { status: 'hit'; result: ListMilitaryFlightsResponse; coverage: SeedCoverage }
   | { status: 'miss' };
 
-const staleSnapshotLocalCache = new Map<string, { entry: StaleSnapshotCacheEntry; expiresAt: number }>();
-const staleSnapshotInflight = new Map<string, Promise<StaleSnapshotCacheEntry>>();
+let staleSnapshotLocalCache: { entry: StaleSnapshotCacheEntry; expiresAt: number } | null = null;
+let staleSnapshotInflight: Promise<StaleSnapshotCacheEntry> | null = null;
 
 // Test seam — exposed for unit tests that need to drive the suppression
 // window without sleeping. Not exported from the module's public API.
@@ -318,8 +319,8 @@ export function _resetStaleNegativeCacheForTests(): void {
   liveSeedNegStatus = 'miss';
   liveSeedReadPromise = null;
   staleNegUntil = 0;
-  staleSnapshotLocalCache.clear();
-  staleSnapshotInflight.clear();
+  staleSnapshotLocalCache = null;
+  staleSnapshotInflight = null;
 }
 
 interface StaleSeedSnapshot {
@@ -364,51 +365,56 @@ function staleResultForBounds(
   entry: StaleSnapshotCacheEntry,
   requestBounds: RequestBounds,
 ): ListMilitaryFlightsResponse | null {
-  return entry.status === 'hit' && seedCovers(entry.coverage, requestBounds) ? entry.result : null;
+  if (entry.status !== 'hit') return null;
+  if (seedCovers(entry.coverage, requestBounds)) return entry.result;
+
+  // The dashboard deliberately asks for the full legal world. If only a
+  // regional last-good snapshot survived, serving its in-bounds rows is more
+  // useful than blanking every region. Narrow requests outside that declared
+  // coverage still fail closed, so an uncovered viewport is never presented as
+  // an authoritative empty result.
+  const isGlobalRequest = requestBounds.south === -90
+    && requestBounds.north === 90
+    && requestBounds.west === -180
+    && requestBounds.east === 180;
+  return isGlobalRequest ? entry.result : null;
 }
 
 // Stale is a mutable root key, while pagination uses numeric offsets. Cache the
-// unpaginated snapshot plus its declared coverage per bbox/filter scope so a
-// seeder write cannot make later cursor pages slice a different ordering. Every
-// cache hit still rechecks exact request bounds against that coverage. Misses use
-// the legacy 30s suppression window; snapshots live for two minutes, comfortably
-// past the bounded traversal without extending the 24h root snapshot itself.
+// unpaginated snapshot plus its declared coverage under one fixed key so a
+// seeder write cannot make later cursor pages slice a different ordering. The
+// root snapshot is bbox/filter independent; using derived public-input keys here
+// would duplicate full snapshots and make isolate state unbounded. Every cache
+// hit still rechecks exact request bounds against coverage. Misses use the legacy
+// 30s suppression window; snapshots live for two minutes, comfortably past the
+// bounded traversal without extending the 24h root snapshot itself.
 async function fetchStableStaleSnapshot(
-  cacheKey: string,
   requestBounds: RequestBounds,
 ): Promise<ListMilitaryFlightsResponse | null> {
-  const staleCacheKey = `${cacheKey}:stale`;
   const now = Date.now();
-  const local = staleSnapshotLocalCache.get(staleCacheKey);
+  const local = staleSnapshotLocalCache;
   if (local && local.expiresAt > now) {
     return staleResultForBounds(local.entry, requestBounds);
   }
-  if (local) staleSnapshotLocalCache.delete(staleCacheKey);
+  staleSnapshotLocalCache = null;
 
-  const cached = await readCachedJson(staleCacheKey);
-  if (cached.status === 'hit') {
-    const entry = parseStaleSnapshotCacheEntry(cached.value);
-    if (entry) {
-      const ttl = entry.status === 'hit' ? STALE_SNAPSHOT_CACHE_TTL : STALE_SNAPSHOT_NEG_TTL;
-      staleSnapshotLocalCache.set(staleCacheKey, { entry, expiresAt: now + ttl * 1_000 });
-      return staleResultForBounds(entry, requestBounds);
-    }
-  }
-
-  // Another caller may have populated the isolate cache while this request
-  // awaited Redis. Recheck before starting a second root-key read.
-  const refreshedLocal = staleSnapshotLocalCache.get(staleCacheKey);
-  if (refreshedLocal && refreshedLocal.expiresAt > Date.now()) {
-    return staleResultForBounds(refreshedLocal.entry, requestBounds);
-  }
-
-  const existing = staleSnapshotInflight.get(staleCacheKey);
+  const existing = staleSnapshotInflight;
   if (existing) {
     const entry = await existing;
     return staleResultForBounds(entry, requestBounds);
   }
 
   const promise = (async (): Promise<StaleSnapshotCacheEntry> => {
+    const cached = await readCachedJson(STABLE_STALE_CACHE_KEY);
+    if (cached.status === 'hit') {
+      const entry = parseStaleSnapshotCacheEntry(cached.value);
+      if (entry) {
+        const ttl = entry.status === 'hit' ? STALE_SNAPSHOT_CACHE_TTL : STALE_SNAPSHOT_NEG_TTL;
+        staleSnapshotLocalCache = { entry, expiresAt: Date.now() + ttl * 1_000 };
+        return entry;
+      }
+    }
+
     const stale = await fetchStaleFallback();
     const entry: StaleSnapshotCacheEntry = stale
       ? {
@@ -418,14 +424,14 @@ async function fetchStableStaleSnapshot(
       }
       : { status: 'miss' };
     const ttl = entry.status === 'hit' ? STALE_SNAPSHOT_CACHE_TTL : STALE_SNAPSHOT_NEG_TTL;
-    staleSnapshotLocalCache.set(staleCacheKey, { entry, expiresAt: Date.now() + ttl * 1_000 });
-    await setCachedJson(staleCacheKey, entry, ttl);
+    staleSnapshotLocalCache = { entry, expiresAt: Date.now() + ttl * 1_000 };
+    await setCachedJson(STABLE_STALE_CACHE_KEY, entry, ttl);
     return entry;
   })().finally(() => {
-    staleSnapshotInflight.delete(staleCacheKey);
+    staleSnapshotInflight = null;
   });
 
-  staleSnapshotInflight.set(staleCacheKey, promise);
+  staleSnapshotInflight = promise;
   const entry = await promise;
   return staleResultForBounds(entry, requestBounds);
 }
@@ -560,7 +566,7 @@ export async function listMilitaryFlights(
       // The seed cron (scripts/seed-military-flights.mjs) writes both keys
       // every run; stale has a 24h TTL versus 10min live, so it's the right
       // fallback when OpenSky / the relay hiccups.
-      const staleResult = await fetchStableStaleSnapshot(cacheKey, requestBounds);
+      const staleResult = await fetchStableStaleSnapshot(requestBounds);
       if (staleResult) {
         return paginateResponse(staleResult.flights, staleResult.clusters, requestBounds, req);
       }
@@ -582,7 +588,7 @@ export async function listMilitaryFlights(
     // the two former producer regions. The accepted stale snapshot is cached
     // unpaginated so every cursor in the bounded traversal slices one version.
     const requestBounds = normalizeBounds(req);
-    const staleResult = await fetchStableStaleSnapshot(buildCacheKey(req), requestBounds);
+    const staleResult = await fetchStableStaleSnapshot(requestBounds);
     if (staleResult) {
       return paginateResponse(staleResult.flights, staleResult.clusters, requestBounds, req);
     }
