@@ -109,6 +109,43 @@ function setNested(obj, dotted, value) {
   cur[last.value] = value;
 }
 
+// A UI string arrives at the translator as a bare label with no surrounding screen, so
+// every domain term that is also an everyday word gets read in its everyday sense. That is
+// not a hypothetical: the German locale shipped "mil. vessels" as "Mil. Gefäße" (blood
+// vessels), "active strikes" as "aktive Streiks" (labour strikes), "matches" as
+// "Streichhölzer" (matchsticks) and "TRACKED VESSELS" as "RAUPENSCHIFFE" (caterpillar-
+// tracked ships). Naming the intended sense once, for every locale, is what stops it —
+// the alternative is 25 locales each rediscovering the same wrong reading.
+const DOMAIN_GLOSSARY = [
+  'strike = a military/air strike, never a labour strike',
+  'vessel = a ship',
+  'tracked = monitored/followed, never caterpillar tracks',
+  'intelligence = reconnaissance and intelligence reporting (OSINT), never IQ or cleverness',
+  'brief / briefing = a short situation report, never a letter or a legal filing',
+  'coverage (of stories, sources, news) = press/news reporting, not technical signal coverage',
+  'watch (DPRK Watch, Central Bank Watch, WATCH level) = monitoring, never a timepiece',
+  'theater / theatre = a military theatre of operations, never a playhouse',
+  'fighter = a fighter aircraft, never a person who fights',
+  'carrier = an airline in aviation contexts, an aircraft carrier in naval ones, never a courier',
+  'shipping = maritime transport and freight, never parcel delivery',
+  'host (displacement data) = a country hosting refugees, never a party host',
+  'match = a search hit, never a matchstick or a sports fixture',
+  'accelerator = a startup accelerator, never a particle accelerator or a pedal',
+  'irradiator = an industrial gamma irradiation facility',
+  'power (power plant, TOTAL POWER) = electrical power/output, never political might',
+  'asset (related assets) = a piece of infrastructure, not only a financial asset',
+  'flow (ETF flows, net flow) = capital moving in or out, not a fluid current',
+  'close (market close, Closes) = the closing price or closing date, not the verb "to close"',
+  'movers = the biggest gainers and losers, not people or vehicles that move',
+  'designation (sanctions) = adding an entity to a sanctions list',
+  'story = a news item, not a work of fiction',
+  'cancelled (flight) = the airline annulled the flight, not a customer cancelling an order',
+  'staged (settings) = queued, awaiting save, never theatrical staging',
+  'dismiss (a banner, alert, finding) = hide it, never reject or repudiate it',
+  'default = the standard preset value, not a financial default',
+  'spot, spread, long, short, hedge, perp, open interest, drawdown = finance terms; keep the established term of the target language, which is often the English one',
+].map((line) => `   - ${line}`).join('\n');
+
 async function translateBatch(client, langName, batch) {
   const items = batch.map(([k, v]) => `${k}\t${v}`).join('\n');
   const prompt = `You are a professional UI translator. Translate the following English UI strings to ${langName}.
@@ -122,6 +159,9 @@ CRITICAL RULES:
 6. Translate naturally for a software UI: concise, idiomatic, no over-formal phrasing.
 7. For Arabic, use modern standard Arabic (MSA). For Chinese, use Simplified Chinese.
 8. i18next plural variants: keys ending in _zero, _one, _two, _few, _many, or _other are CLDR plural forms of the same noun. Inflect the noun's morphology to match the CLDR plural category named by the suffix for the target locale, following the standard CLDR plural rules for that language (which include teen-case exceptions — do NOT use simplified "2-4" / "5+" rules of thumb; follow CLDR exactly). Safe per-suffix semantics that always hold: _one = singular form; _two = dual form (Arabic and a few others); _zero = the zero-count form (Arabic). Keep {{count}} in the translation even when the morphology itself encodes the count (i18next convention).
+9. This is an OSINT / geopolitics / markets dashboard. The strings are labels torn out of that context, so the everyday reading of a word is usually the wrong one. Translate these terms in the sense given here:
+${DOMAIN_GLOSSARY}
+10. Product, brand and dataset names stay untranslated: Product Hunt, Techmeme, Big Mac Index, Smartraveller, GDELT, Polymarket, Hyperliquid, OpenSky, Cloudflare Radar, World Monitor. The same holds for the app's own component names a translation cannot rename: sidecar, widget, panel, dashboard, feed.
 
 Input (key<TAB>english):
 ${items}
