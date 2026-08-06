@@ -311,7 +311,7 @@ export function classifyFailureReason(reason: unknown): string {
     if (reason.name === 'AbortError' || reason.name === 'TimeoutError') return 'timeout';
     const m = reason.message.match(/^HTTP (\d+)/);
     if (m) return `http_${m[1]}`;
-    if (/auth|secret|key|unauthorized|forbidden/i.test(reason.message)) return 'auth_error';
+    if (/\b(auth|secret|key|unauthorized|forbidden)\b/i.test(reason.message)) return 'auth_error';
     return 'error';
   }
   return reason == null ? 'unknown' : String(reason);
