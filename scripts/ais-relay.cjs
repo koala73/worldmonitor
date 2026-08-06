@@ -721,10 +721,20 @@ let upstreamSocket = null;
 let upstreamReconnectTimer = null;
 let upstreamReconnectFailures = 0;
 let upstreamReconnectAt = 0;
-let upstreamCurrentPositionReady = false;
+let upstreamLastPositionAt = 0;
 let relayShuttingDown = false;
 const AIS_RECONNECT_BASE_MS = 5_000;
 const AIS_RECONNECT_MAX_MS = 5 * 60 * 1000;
+const AIS_HANDSHAKE_TIMEOUT_MS = safeInt(
+  process.env.AIS_HANDSHAKE_TIMEOUT_MS,
+  30_000,
+  1_000,
+);
+const AIS_POSITION_FRESHNESS_MS = safeInt(
+  process.env.AIS_POSITION_FRESHNESS_MS,
+  5 * 60 * 1000,
+  1_000,
+);
 const aisUpstreamMetrics = {
   connectionAttempts: 0,
   success: 0,
@@ -743,6 +753,18 @@ let messageCount = 0;
 let droppedMessages = 0;
 const requestRateBuckets = new Map(); // key: route:ip -> { count, resetAt }
 const logThrottleState = new Map(); // key: event key -> timestamp
+
+function getAisPositionFreshness(nowMs = Date.now()) {
+  const positionAgeMs = upstreamLastPositionAt
+    ? Math.max(0, nowMs - upstreamLastPositionAt)
+    : null;
+  return {
+    currentPositionReady: upstreamSocket?.readyState === WebSocket.OPEN
+      && positionAgeMs !== null
+      && positionAgeMs <= AIS_POSITION_FRESHNESS_MS,
+    positionAgeMs,
+  };
+}
 
 // Safe response: guard against "headers already sent" crashes
 function safeEnd(res, statusCode, headers, body) {
@@ -7176,6 +7198,7 @@ function getRelayRollingMetrics() {
   const dedupCount = rollup.openskyDedup + rollup.openskyDedupNeg + rollup.openskyDedupEmpty;
   const cacheServedCount = rollup.openskyCacheHit + rollup.openskyNegativeHit + dedupCount;
   const nowMs = Date.now();
+  const aisPositionFreshness = getAisPositionFreshness(nowMs);
   const openskyProviderBlocked = nowMs < openskyGlobal429Until;
   const observedOpenSkyCoverage = summarizeServedCoverage({
     requests: rollup.openskyRequests,
@@ -7243,6 +7266,9 @@ function getRelayRollingMetrics() {
     ais: {
       enabled: !!API_KEY,
       connected: upstreamSocket?.readyState === WebSocket.OPEN,
+      currentPositionReady: aisPositionFreshness.currentPositionReady,
+      positionAgeMs: aisPositionFreshness.positionAgeMs,
+      positionFreshnessMs: AIS_POSITION_FRESHNESS_MS,
       connectionAttemptsSinceBoot: aisUpstreamMetrics.connectionAttempts,
       successfulConnectionsSinceBoot: aisUpstreamMetrics.success,
       throttlesSinceBoot: aisUpstreamMetrics.throttle,
@@ -7684,6 +7710,7 @@ function processPositionReportForSnapshot(data) {
   const lat = Number.isFinite(pos.Latitude) ? pos.Latitude : meta.latitude;
   const lon = Number.isFinite(pos.Longitude) ? pos.Longitude : meta.longitude;
   if (!Number.isFinite(lat) || !Number.isFinite(lon)) return false;
+  if (lat < -90 || lat > 90 || lon < -180 || lon > 180) return false;
 
   const now = Date.now();
 
@@ -8050,7 +8077,10 @@ function getTankerReportsSnapshot(bbox) {
 
 function buildSnapshot() {
   const now = Date.now();
-  if (lastSnapshot && now - lastSnapshotAt < Math.floor(SNAPSHOT_INTERVAL_MS / 2)) {
+  const aisPositionFreshness = getAisPositionFreshness(now);
+  if (lastSnapshot
+      && lastSnapshot.status.currentPositionReady === aisPositionFreshness.currentPositionReady
+      && now - lastSnapshotAt < Math.floor(SNAPSHOT_INTERVAL_MS / 2)) {
     return lastSnapshot;
   }
 
@@ -8062,7 +8092,7 @@ function buildSnapshot() {
     timestamp: new Date(now).toISOString(),
     status: {
       connected: upstreamSocket?.readyState === WebSocket.OPEN,
-      currentPositionReady: upstreamCurrentPositionReady,
+      currentPositionReady: aisPositionFreshness.currentPositionReady,
       vessels: vessels.size,
       messages: messageCount,
       clients: clients.size,
@@ -8083,20 +8113,33 @@ function buildSnapshot() {
   // Pre-compress both variants asynchronously (zero CPU on request path)
   const baseBuf = Buffer.from(lastSnapshotJson);
   const candBuf = Buffer.from(lastSnapshotWithCandJson);
-  zlib.gzip(baseBuf, (err, buf) => { if (!err) lastSnapshotGzip = buf; });
-  zlib.gzip(candBuf, (err, buf) => { if (!err) lastSnapshotWithCandGzip = buf; });
-  zlib.brotliCompress(baseBuf, { params: { [zlib.constants.BROTLI_PARAM_QUALITY]: 4 } }, (err, buf) => { if (!err) lastSnapshotBrotli = buf; });
-  zlib.brotliCompress(candBuf, { params: { [zlib.constants.BROTLI_PARAM_QUALITY]: 4 } }, (err, buf) => { if (!err) lastSnapshotWithCandBrotli = buf; });
+  const compressionSequence = snapshotSequence;
+  lastSnapshotGzip = null;
+  lastSnapshotWithCandGzip = null;
+  lastSnapshotBrotli = null;
+  lastSnapshotWithCandBrotli = null;
+  zlib.gzip(baseBuf, (err, buf) => {
+    if (!err && snapshotSequence === compressionSequence) lastSnapshotGzip = buf;
+  });
+  zlib.gzip(candBuf, (err, buf) => {
+    if (!err && snapshotSequence === compressionSequence) lastSnapshotWithCandGzip = buf;
+  });
+  zlib.brotliCompress(baseBuf, { params: { [zlib.constants.BROTLI_PARAM_QUALITY]: 4 } }, (err, buf) => {
+    if (!err && snapshotSequence === compressionSequence) lastSnapshotBrotli = buf;
+  });
+  zlib.brotliCompress(candBuf, { params: { [zlib.constants.BROTLI_PARAM_QUALITY]: 4 } }, (err, buf) => {
+    if (!err && snapshotSequence === compressionSequence) lastSnapshotWithCandBrotli = buf;
+  });
 
   return lastSnapshot;
 }
 
 function recordAisSnapshotAvailability(snapshot) {
-  const connected = upstreamSocket?.readyState === WebSocket.OPEN;
+  const connected = snapshot?.status?.connected === true;
   // messageCount is process-lifetime telemetry, not current snapshot coverage.
   // Only an actually served vessel set keeps the maritime surface available.
   const hasData = Number(snapshot?.status?.vessels) > 0;
-  if (connected && upstreamCurrentPositionReady && hasData) {
+  if (connected && snapshot?.status?.currentPositionReady === true && hasData) {
     recordRelayOutcome('aisSnapshot', 'success');
     incrementRelayMetric('aisSnapshotServed');
     return 'fresh';
@@ -10039,11 +10082,15 @@ const server = http.createServer(async (req, res) => {
   if (pathname === '/health' || pathname === '/') {
     const mem = process.memoryUsage();
     const ingestion = getRelayRollingMetrics();
-    const aisConnected = upstreamSocket?.readyState === WebSocket.OPEN;
+    const {
+      enabled: aisEnabled,
+      connected: aisConnected,
+      currentPositionReady: aisCurrentPositionReady,
+    } = ingestion.ais;
     const aisHasData = vessels.size > 0;
-    const aisSnapshotDegraded = !!API_KEY && (
+    const aisSnapshotDegraded = aisEnabled && (
       !aisConnected
-      || !upstreamCurrentPositionReady
+      || !aisCurrentPositionReady
       || !aisHasData
       || (ingestion.aisSnapshot.requests > 0 && ingestion.aisSnapshot.served === 0)
     );
@@ -10052,9 +10099,9 @@ const server = http.createServer(async (req, res) => {
       || aisSnapshotDegraded;
     const healthStatus = ingestionDegraded ? 'degraded' : 'ok';
     let aisSnapshotStatus = 'disabled';
-    if (API_KEY && aisSnapshotDegraded) {
+    if (aisEnabled && aisSnapshotDegraded) {
       aisSnapshotStatus = 'degraded';
-    } else if (API_KEY) {
+    } else if (aisEnabled) {
       aisSnapshotStatus = 'ok';
     }
     // ⚠ SECURITY — read before adding fields to this response.
@@ -10097,11 +10144,11 @@ const server = http.createServer(async (req, res) => {
         rss: ingestion.rss,
         aisSnapshot: {
           ...ingestion.aisSnapshot,
-          enabled: !!API_KEY,
+          enabled: aisEnabled,
           status: aisSnapshotStatus,
           connected: aisConnected,
           hasData: aisHasData,
-          currentPositionReady: upstreamCurrentPositionReady,
+          currentPositionReady: aisCurrentPositionReady,
           upstream: ingestion.ais,
         },
       },
@@ -12132,14 +12179,45 @@ function connectUpstream() {
 
   console.log('[Relay] Connecting to aisstream.io...');
   aisUpstreamMetrics.connectionAttempts++;
-  const socket = new WebSocket(AISSTREAM_URL);
+  const socket = new WebSocket(AISSTREAM_URL, {
+    handshakeTimeout: AIS_HANDSHAKE_TIMEOUT_MS,
+  });
   let socketServedData = false;
   let socketFailureRecorded = false;
+  let socketOpenedAt = 0;
+  let socketPositionTimedOut = false;
+  let positionWatchdogTimer = null;
   upstreamSocket = socket;
-  upstreamCurrentPositionReady = false;
+  upstreamLastPositionAt = 0;
   lastSnapshotAt = 0;
   clearUpstreamQueue();
   upstreamPaused = false;
+
+  const clearPositionWatchdog = () => {
+    if (!positionWatchdogTimer) return;
+    clearTimeout(positionWatchdogTimer);
+    positionWatchdogTimer = null;
+  };
+
+  const armPositionWatchdog = () => {
+    clearPositionWatchdog();
+    if (upstreamSocket !== socket || socket.readyState !== WebSocket.OPEN || !socketOpenedAt) return;
+    const lastPositionOrOpenAt = upstreamLastPositionAt || socketOpenedAt;
+    const remainingMs = Math.max(1, lastPositionOrOpenAt + AIS_POSITION_FRESHNESS_MS - Date.now());
+    positionWatchdogTimer = setTimeout(() => {
+      positionWatchdogTimer = null;
+      if (upstreamSocket !== socket || socket.readyState !== WebSocket.OPEN) return;
+      const latestPositionOrOpenAt = upstreamLastPositionAt || socketOpenedAt;
+      if (Date.now() - latestPositionOrOpenAt < AIS_POSITION_FRESHNESS_MS) {
+        armPositionWatchdog();
+        return;
+      }
+      socketPositionTimedOut = true;
+      console.warn(`[Relay] AIS position stream timed out after ${AIS_POSITION_FRESHNESS_MS}ms; reconnecting`);
+      socket.terminate();
+    }, remainingMs);
+    positionWatchdogTimer.unref?.();
+  };
 
   const scheduleUpstreamDrain = () => {
     if (upstreamDrainScheduled) return;
@@ -12175,9 +12253,11 @@ function connectUpstream() {
           aisUpstreamMetrics.lastFailure = null;
         }
         upstreamReconnectFailures = 0;
-        if (acceptedType === 'position' && !upstreamCurrentPositionReady) {
-          upstreamCurrentPositionReady = true;
-          lastSnapshotAt = 0;
+        if (acceptedType === 'position') {
+          const wasCurrentPositionReady = getAisPositionFreshness().currentPositionReady;
+          upstreamLastPositionAt = Date.now();
+          armPositionWatchdog();
+          if (!wasCurrentPositionReady) lastSnapshotAt = 0;
         }
       }
       processed++;
@@ -12205,6 +12285,8 @@ function connectUpstream() {
       return;
     }
     console.log('[Relay] Connected to aisstream.io');
+    socketOpenedAt = Date.now();
+    armPositionWatchdog();
     socket.send(JSON.stringify({
       APIKey: API_KEY,
       BoundingBoxes: [[[-90, -180], [90, 180]]],
@@ -12239,13 +12321,16 @@ function connectUpstream() {
 
   socket.on('close', () => {
     if (upstreamSocket === socket) {
+      clearPositionWatchdog();
       if (!relayShuttingDown && !socketFailureRecorded) {
         aisUpstreamMetrics.terminalFailure++;
         aisUpstreamMetrics.lastFailureAt = Date.now();
-        aisUpstreamMetrics.lastFailure = socketServedData ? 'disconnected' : 'closed_without_data';
+        aisUpstreamMetrics.lastFailure = socketPositionTimedOut
+          ? 'position_timeout'
+          : (socketServedData ? 'disconnected' : 'closed_without_data');
       }
       upstreamSocket = null;
-      upstreamCurrentPositionReady = false;
+      upstreamLastPositionAt = 0;
       lastSnapshotAt = 0;
       clearUpstreamQueue();
       upstreamPaused = false;

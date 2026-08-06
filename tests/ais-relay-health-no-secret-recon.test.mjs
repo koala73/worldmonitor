@@ -174,8 +174,8 @@ describe('ais-relay reconnect backoff contract (#5945)', () => {
     assert.match(body, /const hasData = Number\(snapshot\?\.status\?\.vessels\) > 0;/);
     assert.match(
       body,
-      /if \(connected && upstreamCurrentPositionReady && hasData\)/,
-      'fresh availability requires a valid PositionReport from the current connection',
+      /if \(connected && snapshot\?\.status\?\.currentPositionReady === true && hasData\)/,
+      'fresh availability must match the current-position readiness encoded in the served snapshot',
     );
     assert.doesNotMatch(body, /status\?\.messages/, 'old messages cannot keep an empty snapshot green forever');
   });

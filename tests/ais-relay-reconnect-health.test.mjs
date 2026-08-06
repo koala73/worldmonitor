@@ -2,13 +2,20 @@ import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import { once } from 'node:events';
 import http from 'node:http';
+import net from 'node:net';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { test } from 'node:test';
+import { brotliDecompressSync, gunzipSync } from 'node:zlib';
 import { WebSocketServer } from 'ws';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const relayScript = path.resolve(here, '..', 'scripts', 'ais-relay.cjs');
+const delayedCompressionHook = path.resolve(
+  here,
+  'fixtures',
+  'delay-first-ais-snapshot-compression.cjs',
+);
 
 async function listen(server) {
   server.listen(0, '127.0.0.1');
@@ -21,10 +28,15 @@ function get(port, pathname, headers = {}) {
     const req = http.get({ host: '127.0.0.1', port, path: pathname, headers }, (res) => {
       const chunks = [];
       res.on('data', (chunk) => chunks.push(chunk));
-      res.on('end', () => resolve({
-        status: res.statusCode,
-        body: Buffer.concat(chunks).toString('utf8'),
-      }));
+      res.on('end', () => {
+        const rawBody = Buffer.concat(chunks);
+        resolve({
+          status: res.statusCode,
+          headers: res.headers,
+          rawBody,
+          body: rawBody.toString('utf8'),
+        });
+      });
     });
     req.on('error', reject);
   });
@@ -55,10 +67,25 @@ async function waitForAsync(predicate, description, timeoutMs = 20_000) {
   throw new Error(`timed out waiting for ${description}`);
 }
 
-async function getJson(port, pathname, headers = {}) {
+function parseJsonResponse(response) {
+  let body = response.rawBody;
+  if (response.headers['content-encoding'] === 'gzip') {
+    body = gunzipSync(body);
+  } else if (response.headers['content-encoding'] === 'br') {
+    body = brotliDecompressSync(body);
+  }
+  return JSON.parse(body.toString('utf8'));
+}
+
+async function getJsonResponse(port, pathname, headers = {}) {
   const response = await get(port, pathname, headers);
   assert.equal(response.status, 200);
-  return JSON.parse(response.body);
+  return { json: parseJsonResponse(response), response };
+}
+
+async function getJson(port, pathname, headers = {}) {
+  const { json } = await getJsonResponse(port, pathname, headers);
+  return json;
 }
 
 async function stopChild(child) {
@@ -149,6 +176,108 @@ test('AISstream 429 keeps one reconnect cooldown under snapshot traffic and degr
   assert.ok(upstreamHealth.reconnectCooldownRemainingMs > 0);
 });
 
+test('non-429 handshake errors record one terminal failure and keep the reconnect cooldown', async (t) => {
+  let upstreamAttempts = 0;
+  const upstream = net.createServer((socket) => {
+    upstreamAttempts++;
+    socket.destroy();
+  });
+  const upstreamPort = await listen(upstream);
+  t.after(() => new Promise((resolve) => upstream.close(resolve)));
+
+  const child = spawn(process.execPath, [relayScript], {
+    env: {
+      ...process.env,
+      AISSTREAM_API_KEY: 'test-key',
+      AISSTREAM_URL: `ws://127.0.0.1:${upstreamPort}/stream`,
+      RELAY_SHARED_SECRET: 'relay-secret',
+      RELAY_TEST_MODE: 'true',
+      NODE_ENV: 'test',
+      PORT: '0',
+    },
+    stdio: ['ignore', 'pipe', 'pipe'],
+  });
+  t.after(() => stopChild(child));
+
+  let output = '';
+  child.stdout.on('data', (chunk) => { output += chunk.toString('utf8'); });
+  child.stderr.on('data', (chunk) => { output += chunk.toString('utf8'); });
+  await waitFor(() => output.includes('WebSocket relay on port'), 'relay startup');
+  const portMatch = output.match(/WebSocket relay on port (\d+)/);
+  assert.ok(portMatch, `expected bound relay port in startup output:\n${output}`);
+  const relayPort = Number(portMatch[1]);
+  const auth = { 'x-relay-key': 'relay-secret' };
+
+  await getJson(relayPort, '/ais/snapshot', auth);
+  const failedHealth = await waitForAsync(async () => {
+    const health = await getJson(relayPort, '/health');
+    return health.ingestion.aisSnapshot.upstream.lastFailure === 'connection_error'
+      && health.ingestion.aisSnapshot.upstream.reconnectCooldownRemainingMs > 0
+      ? health
+      : null;
+  }, 'non-429 handshake failure');
+  assert.equal(failedHealth.status, 'degraded');
+  assert.equal(failedHealth.ingestion.aisSnapshot.upstream.connectionAttemptsSinceBoot, 1);
+  assert.equal(failedHealth.ingestion.aisSnapshot.upstream.terminalFailuresSinceBoot, 1);
+
+  for (let i = 0; i < 5; i++) await getJson(relayPort, '/ais/snapshot', auth);
+  assert.equal(upstreamAttempts, 1, 'snapshot traffic must preserve the error reconnect cooldown');
+});
+
+test('stalled WebSocket handshakes time out into the bounded reconnect schedule', async (t) => {
+  let upstreamAttempts = 0;
+  const upstreamSockets = new Set();
+  const upstream = net.createServer((socket) => {
+    upstreamAttempts++;
+    upstreamSockets.add(socket);
+    socket.on('close', () => upstreamSockets.delete(socket));
+  });
+  const upstreamPort = await listen(upstream);
+  t.after(async () => {
+    for (const socket of upstreamSockets) socket.destroy();
+    await new Promise((resolve) => upstream.close(resolve));
+  });
+
+  const child = spawn(process.execPath, [relayScript], {
+    env: {
+      ...process.env,
+      AISSTREAM_API_KEY: 'test-key',
+      AISSTREAM_URL: `ws://127.0.0.1:${upstreamPort}/stream`,
+      AIS_HANDSHAKE_TIMEOUT_MS: '1000',
+      RELAY_SHARED_SECRET: 'relay-secret',
+      RELAY_TEST_MODE: 'true',
+      NODE_ENV: 'test',
+      PORT: '0',
+    },
+    stdio: ['ignore', 'pipe', 'pipe'],
+  });
+  t.after(() => stopChild(child));
+
+  let output = '';
+  child.stdout.on('data', (chunk) => { output += chunk.toString('utf8'); });
+  child.stderr.on('data', (chunk) => { output += chunk.toString('utf8'); });
+  await waitFor(() => output.includes('WebSocket relay on port'), 'relay startup');
+  const portMatch = output.match(/WebSocket relay on port (\d+)/);
+  assert.ok(portMatch, `expected bound relay port in startup output:\n${output}`);
+  const relayPort = Number(portMatch[1]);
+  const auth = { 'x-relay-key': 'relay-secret' };
+
+  await getJson(relayPort, '/ais/snapshot', auth);
+  const timedOutHealth = await waitForAsync(async () => {
+    const health = await getJson(relayPort, '/health');
+    return health.ingestion.aisSnapshot.upstream.lastFailure === 'connection_error'
+      && health.ingestion.aisSnapshot.upstream.reconnectCooldownRemainingMs > 0
+      ? health
+      : null;
+  }, 'stalled handshake timeout', 5_000);
+
+  assert.equal(timedOutHealth.status, 'degraded');
+  assert.equal(timedOutHealth.ingestion.aisSnapshot.upstream.connectionAttemptsSinceBoot, 1);
+  assert.equal(timedOutHealth.ingestion.aisSnapshot.upstream.terminalFailuresSinceBoot, 1);
+  for (let i = 0; i < 5; i++) await getJson(relayPort, '/ais/snapshot', auth);
+  assert.equal(upstreamAttempts, 1, 'snapshot traffic must preserve the timeout reconnect cooldown');
+});
+
 test('AIS recovery requires an accepted frame and snapshot freshness requires a current PositionReport', async (t) => {
   let upstreamAttempts = 0;
   const upstreamSockets = [];
@@ -160,12 +289,39 @@ test('AIS recovery requires an accepted frame and snapshot freshness requires a 
     socket.once('message', () => {
       if (attempt === 2) {
         socket.send(JSON.stringify({ MessageType: 'Heartbeat', status: 'ok' }));
+        socket.send(JSON.stringify({
+          MessageType: 'PositionReport',
+          MetaData: { MMSI: '222000222', ShipName: 'INVALID POSITION' },
+          Message: {
+            PositionReport: {
+              Latitude: 91,
+              Longitude: 181,
+              Sog: 12,
+              Cog: 90,
+              TrueHeading: 90,
+            },
+          },
+        }));
+        return;
+      }
+      if (attempt === 3) {
+        socket.send(JSON.stringify({
+          MessageType: 'ShipStaticData',
+          MetaData: { MMSI: '222000222', ShipName: 'STATIC ONLY' },
+          Message: {
+            ShipStaticData: {
+              UserID: 222000222,
+              Type: 85,
+              Name: 'STATIC ONLY',
+            },
+          },
+        }));
         return;
       }
       socket.send(JSON.stringify({
         MessageType: 'PositionReport',
         MetaData: {
-          MMSI: attempt === 1 ? '111000111' : '333000333',
+          MMSI: attempt === 1 ? '111000111' : '444000444',
           ShipName: `TEST ${attempt}`,
         },
         Message: {
@@ -223,6 +379,15 @@ test('AIS recovery requires an accepted frame and snapshot freshness requires a 
   assert.equal(initiallyHealthy.ingestion.aisSnapshot.upstream.successfulConnectionsSinceBoot, 1);
   assert.equal(initiallyHealthy.ingestion.aisSnapshot.upstream.reconnectFailures, 0);
   const messagesBeforeJunk = initiallyHealthy.messages;
+  for (const encoding of ['gzip', 'br']) {
+    await waitForAsync(async () => {
+      const { response } = await getJsonResponse(relayPort, '/ais/snapshot', {
+        ...auth,
+        'accept-encoding': encoding,
+      });
+      return response.headers['content-encoding'] === encoding;
+    }, `initial ${encoding} snapshot cache`);
+  }
 
   upstreamSockets[1].close();
   const retainedFallback = await waitForAsync(async () => {
@@ -231,7 +396,10 @@ test('AIS recovery requires an accepted frame and snapshot freshness requires a 
         || health.ingestion.aisSnapshot.upstream.terminalFailuresSinceBoot !== 1) {
       return null;
     }
-    const snapshot = await getJson(relayPort, '/ais/snapshot', auth);
+    const { json: snapshot } = await getJsonResponse(relayPort, '/ais/snapshot', {
+      ...auth,
+      'accept-encoding': 'gzip',
+    });
     return { snapshot, health };
   }, 'degraded retained-data fallback after first disconnect');
   assert.equal(retainedFallback.snapshot.status.vessels, 1);
@@ -244,7 +412,7 @@ test('AIS recovery requires an accepted frame and snapshot freshness requires a 
     if (upstreamAttempts !== 2) return null;
     const health = await getJson(relayPort, '/health');
     return health.messages > messagesBeforeJunk ? health : null;
-  }, 'junk frame on the second connection');
+  }, 'junk and invalid-position frames on the second connection');
   assert.equal(junkHealth.status, 'degraded');
   assert.equal(junkHealth.ingestion.aisSnapshot.currentPositionReady, false);
   assert.equal(junkHealth.ingestion.aisSnapshot.upstream.successfulConnectionsSinceBoot, 1);
@@ -261,8 +429,217 @@ test('AIS recovery requires an accepted frame and snapshot freshness requires a 
   assert.equal(terminalFailure.ingestion.aisSnapshot.upstream.lastFailure, 'closed_without_data');
   assert.equal(terminalFailure.ingestion.aisSnapshot.upstream.reconnectFailures, 2);
 
-  const recovered = await waitForAsync(async () => {
+  const staticOnly = await waitForAsync(async () => {
     if (upstreamAttempts !== 3) return null;
+    const health = await getJson(relayPort, '/health');
+    return health.status === 'degraded'
+      && !health.ingestion.aisSnapshot.currentPositionReady
+      && health.ingestion.aisSnapshot.upstream.successfulConnectionsSinceBoot === 2
+      ? health
+      : null;
+  }, 'accepted ShipStaticData without current-position readiness', 25_000);
+  assert.equal(staticOnly.ingestion.aisSnapshot.upstream.reconnectFailures, 0);
+  assert.equal(staticOnly.ingestion.aisSnapshot.upstream.lastFailure, null);
+  await waitForAsync(async () => {
+    const { response } = await getJsonResponse(relayPort, '/ais/snapshot', {
+      ...auth,
+      'accept-encoding': 'br',
+    });
+    return response.headers['content-encoding'] === 'br';
+  }, 'static-only Brotli snapshot cache');
+
+  upstreamSockets[3].close();
+  const staticDisconnect = await waitForAsync(async () => {
+    const health = await getJson(relayPort, '/health');
+    return health.ingestion.aisSnapshot.upstream.terminalFailuresSinceBoot === 3
+      ? health
+      : null;
+  }, 'terminal failure after the static-data connection');
+  assert.equal(staticDisconnect.ingestion.aisSnapshot.upstream.lastFailure, 'disconnected');
+  assert.equal(staticDisconnect.ingestion.aisSnapshot.upstream.reconnectFailures, 1);
+
+  const recovered = await waitForAsync(async () => {
+    if (upstreamAttempts !== 4) return null;
+    const health = await getJson(relayPort, '/health');
+    return health.status === 'ok'
+      && health.ingestion.aisSnapshot.currentPositionReady
+      && health.ingestion.aisSnapshot.upstream.successfulConnectionsSinceBoot === 3
+      ? health
+      : null;
+  }, 'valid PositionReport recovery after static-only connection', 30_000);
+  const { json: recoveredSnapshot } = await getJsonResponse(relayPort, '/ais/snapshot', {
+    ...auth,
+    'accept-encoding': 'br',
+  });
+  assert.equal(recoveredSnapshot.status.currentPositionReady, true);
+  assert.equal(recovered.ingestion.aisSnapshot.upstream.reconnectFailures, 0);
+  assert.equal(recovered.ingestion.aisSnapshot.upstream.lastFailure, null);
+});
+
+test('late compression callbacks cannot overwrite a newer AIS snapshot generation', async (t) => {
+  let upstreamSocket;
+  const upstream = http.createServer();
+  const upstreamWss = new WebSocketServer({ server: upstream });
+  upstreamWss.on('connection', (socket) => {
+    upstreamSocket = socket;
+  });
+  const upstreamPort = await listen(upstream);
+
+  const child = spawn(process.execPath, [relayScript], {
+    env: {
+      ...process.env,
+      AISSTREAM_API_KEY: 'test-key',
+      AISSTREAM_URL: `ws://127.0.0.1:${upstreamPort}/stream`,
+      AIS_SNAPSHOT_INTERVAL_MS: '60000',
+      NODE_OPTIONS: [
+        process.env.NODE_OPTIONS,
+        `--require=${delayedCompressionHook}`,
+      ].filter(Boolean).join(' '),
+      RELAY_SHARED_SECRET: 'relay-secret',
+      RELAY_TEST_MODE: 'true',
+      NODE_ENV: 'test',
+      PORT: '0',
+    },
+    stdio: ['ignore', 'pipe', 'pipe'],
+  });
+  t.after(async () => {
+    await stopChild(child);
+    upstreamSocket?.terminate();
+    await new Promise((resolve) => upstreamWss.close(resolve));
+    await new Promise((resolve) => upstream.close(resolve));
+  });
+
+  let output = '';
+  child.stdout.on('data', (chunk) => { output += chunk.toString('utf8'); });
+  child.stderr.on('data', (chunk) => { output += chunk.toString('utf8'); });
+  await waitFor(() => output.includes('WebSocket relay on port'), 'relay startup');
+  const portMatch = output.match(/WebSocket relay on port (\d+)/);
+  assert.ok(portMatch, `expected bound relay port in startup output:\n${output}`);
+  const relayPort = Number(portMatch[1]);
+  const auth = { 'x-relay-key': 'relay-secret' };
+  const initial = await getJson(relayPort, '/ais/snapshot', auth);
+  assert.equal(initial.status.currentPositionReady, false);
+  await waitFor(
+    () => upstreamSocket?.readyState === 1,
+    'upstream WebSocket connection',
+  );
+
+  upstreamSocket.send(JSON.stringify({
+    MessageType: 'PositionReport',
+    MetaData: { MMSI: '666000666', ShipName: 'NEW GENERATION' },
+    Message: {
+      PositionReport: {
+        Latitude: 25,
+        Longitude: 55,
+        Sog: 12,
+        Cog: 90,
+        TrueHeading: 90,
+      },
+    },
+  }));
+
+  await waitForAsync(async () => {
+    const health = await getJson(relayPort, '/health');
+    return health.ingestion.aisSnapshot.currentPositionReady;
+  }, 'newer position-ready generation');
+  const current = await getJson(relayPort, '/ais/snapshot', auth);
+  assert.equal(current.status.currentPositionReady, true);
+  await new Promise((resolve) => setTimeout(resolve, 650));
+
+  for (const encoding of ['gzip', 'br']) {
+    const { json, response } = await getJsonResponse(relayPort, '/ais/snapshot', {
+      ...auth,
+      'accept-encoding': encoding,
+    });
+    assert.equal(response.headers['content-encoding'], encoding);
+    assert.equal(json.status.currentPositionReady, true);
+    assert.equal(json.status.vessels, 1);
+  }
+});
+
+test('AIS health expires an open stream that stops delivering current positions', async (t) => {
+  let upstreamAttempts = 0;
+  const upstreamSockets = [];
+  const upstream = http.createServer();
+  const upstreamWss = new WebSocketServer({ server: upstream });
+  upstreamWss.on('connection', (socket) => {
+    const attempt = ++upstreamAttempts;
+    upstreamSockets.push(socket);
+    socket.once('message', () => {
+      socket.send(JSON.stringify({
+        MessageType: 'PositionReport',
+        MetaData: { MMSI: `55500055${attempt}`, ShipName: `SILENT STREAM ${attempt}` },
+        Message: {
+          PositionReport: {
+            Latitude: 25,
+            Longitude: 55,
+            Sog: 12,
+            Cog: 90,
+            TrueHeading: 90,
+          },
+        },
+      }));
+    });
+  });
+  const upstreamPort = await listen(upstream);
+
+  const child = spawn(process.execPath, [relayScript], {
+    env: {
+      ...process.env,
+      AISSTREAM_API_KEY: 'test-key',
+      AISSTREAM_URL: `ws://127.0.0.1:${upstreamPort}/stream`,
+      AIS_POSITION_FRESHNESS_MS: '1000',
+      AIS_SNAPSHOT_INTERVAL_MS: '2000',
+      RELAY_SHARED_SECRET: 'relay-secret',
+      RELAY_TEST_MODE: 'true',
+      NODE_ENV: 'test',
+      PORT: '0',
+    },
+    stdio: ['ignore', 'pipe', 'pipe'],
+  });
+  t.after(async () => {
+    await stopChild(child);
+    for (const socket of upstreamSockets) socket.terminate();
+    await new Promise((resolve) => upstreamWss.close(resolve));
+    await new Promise((resolve) => upstream.close(resolve));
+  });
+
+  let output = '';
+  child.stdout.on('data', (chunk) => { output += chunk.toString('utf8'); });
+  child.stderr.on('data', (chunk) => { output += chunk.toString('utf8'); });
+  await waitFor(() => output.includes('WebSocket relay on port'), 'relay startup');
+  const portMatch = output.match(/WebSocket relay on port (\d+)/);
+  assert.ok(portMatch, `expected bound relay port in startup output:\n${output}`);
+  const relayPort = Number(portMatch[1]);
+  const auth = { 'x-relay-key': 'relay-secret' };
+
+  await getJson(relayPort, '/ais/snapshot', auth);
+  await waitForAsync(async () => {
+    await getJson(relayPort, '/ais/snapshot', auth);
+    const health = await getJson(relayPort, '/health');
+    return health.status === 'ok' && health.ingestion.aisSnapshot.currentPositionReady;
+  }, 'initial current position');
+
+  const timedOut = await waitForAsync(async () => {
+    const health = await getJson(relayPort, '/health');
+    return health.status === 'degraded'
+      && health.ingestion.aisSnapshot.hasData
+      && !health.ingestion.aisSnapshot.currentPositionReady
+      && health.ingestion.aisSnapshot.upstream.lastFailure === 'position_timeout'
+      ? health
+      : null;
+  }, 'position-silent stream timeout', 5_000);
+  assert.equal(timedOut.ingestion.aisSnapshot.connected, false);
+  assert.equal(timedOut.ingestion.aisSnapshot.upstream.terminalFailuresSinceBoot, 1);
+  assert.equal(timedOut.ingestion.aisSnapshot.upstream.reconnectFailures, 1);
+
+  const snapshot = await getJson(relayPort, '/ais/snapshot', auth);
+  assert.equal(snapshot.status.connected, false);
+  assert.equal(snapshot.status.currentPositionReady, false);
+  assert.equal(snapshot.status.vessels, 1);
+
+  const recovered = await waitForAsync(async () => {
+    if (upstreamAttempts !== 2) return null;
     await getJson(relayPort, '/ais/snapshot', auth);
     const health = await getJson(relayPort, '/health');
     return health.status === 'ok'
@@ -270,7 +647,6 @@ test('AIS recovery requires an accepted frame and snapshot freshness requires a 
       && health.ingestion.aisSnapshot.upstream.successfulConnectionsSinceBoot === 2
       ? health
       : null;
-  }, 'valid PositionReport recovery after terminal failure', 25_000);
+  }, 'bounded reconnect after position timeout', 8_000);
   assert.equal(recovered.ingestion.aisSnapshot.upstream.reconnectFailures, 0);
-  assert.equal(recovered.ingestion.aisSnapshot.upstream.lastFailure, null);
 });
