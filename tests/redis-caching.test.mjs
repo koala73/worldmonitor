@@ -2348,6 +2348,69 @@ describe('military flights bbox behavior', { concurrency: 1 }, () => {
     }
   });
 
+  it('keeps stale cursor pagination on one cached snapshot while the root rotates', async () => {
+    const { module, cleanup } = await importListMilitaryFlights();
+    module._resetStaleNegativeCacheForTests();
+    const restoreEnv = withEnv({
+      UPSTASH_REDIS_REST_URL: 'https://redis.test',
+      UPSTASH_REDIS_REST_TOKEN: 'token',
+      LOCAL_API_MODE: undefined,
+      WS_RELAY_URL: 'wss://relay.test',
+      VERCEL_ENV: undefined,
+      VERCEL_GIT_COMMIT_SHA: undefined,
+    });
+    const originalFetch = globalThis.fetch;
+    const store = new Map();
+    let staleRootReads = 0;
+
+    globalThis.fetch = async (url, init) => {
+      const raw = String(url);
+      if (raw.includes('/get/')) {
+        const key = decodeURIComponent(raw.split('/get/')[1] || '');
+        if (key === 'military:flights:v1') throw new Error('redis timeout');
+        if (key === 'military:flights:stale:v1') {
+          staleRootReads += 1;
+          const flights = staleRootReads === 1
+            ? [
+              { id: 'stale-a', callsign: 'RCH701', lat: 40.2, lon: -99.8 },
+              { id: 'stale-b', callsign: 'RCH702', lat: 40.3, lon: -99.7 },
+            ]
+            : [{ id: 'stale-new', callsign: 'RCH799', lat: 40.4, lon: -99.6 }];
+          return jsonResponse({
+            result: JSON.stringify({ flights, coverage: 'global', fetchedAt: Date.now() }),
+          });
+        }
+        return jsonResponse({ result: store.get(key) ?? null });
+      }
+      if (isSetRequest(url, init)) {
+        const { key, value } = parseSetRequest(url, init);
+        store.set(key, value);
+        return jsonResponse({ result: 'OK' });
+      }
+      if (raw.includes('/opensky')) throw new Error('OpenSky must stay closed on a live Redis error');
+      throw new Error(`Unexpected fetch URL: ${raw}`);
+    };
+
+    try {
+      const ctx = { request: new Request('https://wm.test/api/military/v1/list-military-flights') };
+      const first = await module.listMilitaryFlights(ctx, { ...americasRequest, pageSize: 1, cursor: '' });
+      module._resetStaleNegativeCacheForTests();
+      const second = await module.listMilitaryFlights(ctx, {
+        ...americasRequest,
+        pageSize: 1,
+        cursor: first.pagination?.nextCursor ?? '',
+      });
+
+      assert.deepEqual(first.flights.map((flight) => flight.id), ['STALE-A']);
+      assert.deepEqual(second.flights.map((flight) => flight.id), ['STALE-B']);
+      assert.equal(staleRootReads, 1, 'continuation pages must use the cached stale snapshot');
+    } finally {
+      cleanup();
+      globalThis.fetch = originalFetch;
+      restoreEnv();
+    }
+  });
+
   it('rejects stale snapshots that do not cover a global request after a live Redis error', async () => {
     for (const coverage of [undefined, 'regional']) {
       const { module, cleanup } = await importListMilitaryFlights();
@@ -2393,6 +2456,64 @@ describe('military flights bbox behavior', { concurrency: 1 }, () => {
           { swLat: -90, swLon: -180, neLat: 90, neLon: 180 },
         );
         assert.equal(openskyCalls, 0, `${coverage ?? 'unstamped'} stale coverage must fail closed`);
+        assert.deepEqual(
+          result,
+          { flights: [], clusters: [], pagination: { nextCursor: '', totalCount: 0 } },
+          `${coverage ?? 'unstamped'} stale coverage is not authoritative for a global request`,
+        );
+      } finally {
+        cleanup();
+        globalThis.fetch = originalFetch;
+        restoreEnv();
+      }
+    }
+  });
+
+  it('rejects stale snapshots that do not cover a global request after non-throw recovery failure', async () => {
+    for (const coverage of [undefined, 'regional']) {
+      const { module, cleanup } = await importListMilitaryFlights();
+      module._resetStaleNegativeCacheForTests();
+      const restoreEnv = withEnv({
+        UPSTASH_REDIS_REST_URL: 'https://redis.test',
+        UPSTASH_REDIS_REST_TOKEN: 'token',
+        LOCAL_API_MODE: undefined,
+        WS_RELAY_URL: 'wss://relay.test',
+        VERCEL_ENV: undefined,
+        VERCEL_GIT_COMMIT_SHA: undefined,
+      });
+      const originalFetch = globalThis.fetch;
+      let openskyCalls = 0;
+
+      globalThis.fetch = async (url, init) => {
+        const raw = String(url);
+        if (raw.includes('/get/')) {
+          const key = decodeURIComponent(raw.split('/get/')[1] || '');
+          if (key === 'military:flights:v1') return jsonResponse({ result: null });
+          if (key === 'military:flights:stale:v1') {
+            return jsonResponse({
+              result: JSON.stringify({
+                flights: [{ id: 'regional-stale', callsign: 'RCH777', lat: 40.5, lon: -99.5 }],
+                ...(coverage ? { coverage } : {}),
+                fetchedAt: Date.now(),
+              }),
+            });
+          }
+          return jsonResponse({ result: null });
+        }
+        if (isSetRequest(url, init)) return jsonResponse({ result: 'OK' });
+        if (raw.includes('/opensky')) {
+          openskyCalls += 1;
+          return jsonResponse({ states: [] });
+        }
+        throw new Error(`Unexpected fetch URL: ${raw}`);
+      };
+
+      try {
+        const result = await module.listMilitaryFlights(
+          { request: new Request('https://wm.test/api/military/v1/list-military-flights') },
+          { swLat: -90, swLon: -180, neLat: 90, neLon: 180 },
+        );
+        assert.equal(openskyCalls, 1, 'a live miss must attempt one bounded provider recovery');
         assert.deepEqual(
           result,
           { flights: [], clusters: [], pagination: { nextCursor: '', totalCount: 0 } },
@@ -2469,7 +2590,7 @@ describe('military flights bbox behavior', { concurrency: 1 }, () => {
     globalThis.fetch = async (url) => {
       recoveryUrl = new URL(String(url));
       return jsonResponse({
-        states: [['north-america', 'RCH401', null, null, null, -99.5, 40.5, 20000, false, 300, 90]],
+        states: [['north-america', 'RCH401', null, null, null, -99.5, 40.5, 10000, false, 250, 90, 5]],
       });
     };
 
@@ -2486,6 +2607,15 @@ describe('military flights bbox behavior', { concurrency: 1 }, () => {
       assert.equal(recoveryUrl?.searchParams.get('lamax'), '90');
       assert.equal(recoveryUrl?.searchParams.get('lomin'), '-180');
       assert.equal(recoveryUrl?.searchParams.get('lomax'), '180');
+      assert.deepEqual(
+        {
+          altitude: result.flights[0]?.altitude,
+          speed: result.flights[0]?.speed,
+          verticalRate: result.flights[0]?.verticalRate,
+        },
+        { altitude: 32808, speed: 486, verticalRate: 984 },
+        'global recovery must preserve the feet, knots, and feet/minute proto contract',
+      );
     } finally {
       cleanup();
       globalThis.fetch = originalFetch;
