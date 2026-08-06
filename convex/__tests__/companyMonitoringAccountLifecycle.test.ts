@@ -14,6 +14,7 @@ import {
   company,
   FUTURE,
   grant,
+  grantProvisioned,
   installCompanyMonitoringTestEnvironment,
   INTERMEDIATE_OWNER_FENCE_SECRET,
   modules,
@@ -31,56 +32,150 @@ import {
 installCompanyMonitoringTestEnvironment();
 
 describe("Company Monitoring account lifecycle", () => {
+  // #6256 acceptance criterion, proven by ablation rather than by asserting an
+  // absence: with the fence secret deleted, ANY Company Monitoring work on this
+  // path would throw. The grant succeeding is positive evidence that the
+  // entitlement write never reached Company Monitoring at all.
   test.each([
-    ["missing fence secret", () => {
-      delete process.env.COMPANY_MONITORING_OWNER_FENCE_SECRET;
+    ["grantComplimentaryEntitlement", async (t: ReturnType<typeof convexTest>) => {
+      await grant(t, OWNER_A);
     }],
-    ["malformed fence keyring", () => {
-      process.env.COMPANY_MONITORING_OWNER_FENCE_PREVIOUS_SECRETS = `${TEST_OWNER_FENCE_SECRET},`;
+    ["a Dodo subscription webhook", async (t: ReturnType<typeof convexTest>) => {
+      await t.run(async (ctx) => {
+        await ctx.db.insert("productPlans", {
+          dodoProductId: "pdt-decoupled",
+          planKey: "pro_monthly",
+          displayName: "Pro Monthly",
+          isActive: true,
+        });
+      });
+      await t.mutation(internal.payments.webhookMutations.processWebhookEvent, {
+        webhookId: "wh-decoupled",
+        eventType: "subscription.active",
+        rawPayload: {
+          type: "subscription.active",
+          business_id: "biz-test",
+          timestamp: new Date(NOW).toISOString(),
+          data: {
+            payload_type: "Subscription",
+            subscription_id: "sub-decoupled",
+            product_id: "pdt-decoupled",
+            status: "active",
+            previous_billing_date: new Date(NOW - 1000).toISOString(),
+            next_billing_date: new Date(FUTURE).toISOString(),
+            customer: { customer_id: "cust-decoupled", email: "owner@example.com" },
+            // Unsigned wm_user_id is deliberately ignored by attribution, so
+            // the event would land unattributed and write no entitlement.
+            metadata: {
+              wm_user_id: OWNER_A,
+              wm_user_id_sig: await signUserId(OWNER_A),
+            },
+          },
+        },
+        timestamp: NOW,
+      });
     }],
   ])(
-    "a %s degrades Company Monitoring instead of rolling back the entitlement write",
-    async (_caseName, breakConfig) => {
+    "%s performs no Company Monitoring work for a user with no root",
+    async (_caseName, writeEntitlement) => {
       const t = convexTest(schema, modules);
-      const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
-      breakConfig();
+      delete process.env.COMPANY_MONITORING_OWNER_FENCE_SECRET;
 
-      // The entitlement write must survive: this runs inside the Dodo webhook
-      // transaction, and a config fault fails every retry identically.
-      await expect(grant(t, OWNER_A)).resolves.not.toThrow();
+      await expect(writeEntitlement(t)).resolves.not.toThrow();
 
       const state = await t.run(async (ctx) => ({
         entitlements: await ctx.db.query("entitlements").collect(),
         accounts: await ctx.db.query("companyMonitoringAccounts").collect(),
       }));
-      expect(state.entitlements).toHaveLength(1);
+      expect(state.entitlements.length).toBeGreaterThan(0);
       expect(state.accounts).toEqual([]);
-      expect(consoleError).toHaveBeenCalledWith(
-        expect.stringContaining("owner fence unavailable"),
-      );
     },
   );
 
-  test("the account root converges on the next entitlement write once config is repaired", async () => {
+  test("first authenticated use provisions the root the entitlement write did not", async () => {
     const t = convexTest(schema, modules);
-    vi.spyOn(console, "error").mockImplementation(() => undefined);
-    delete process.env.COMPANY_MONITORING_OWNER_FENCE_SECRET;
-
     await grant(t, OWNER_A);
     expect(await accountFor(t, OWNER_A)).toBeNull();
 
-    process.env.COMPANY_MONITORING_OWNER_FENCE_SECRET = TEST_OWNER_FENCE_SECRET;
-    await t.mutation(CM.accounts.syncStoredEntitlement, { userId: OWNER_A });
+    const created = await t.mutation(CM.companies.createCompanyForOwner, {
+      ownerUserId: OWNER_A,
+      clientRequestId: "first-use",
+      company: company("First Use", "first-use"),
+    });
+
+    expect(created.status).toBe("created");
     expect(await accountFor(t, OWNER_A)).toMatchObject({
       ownerUserId: OWNER_A,
       lifecycle: "entitled",
       lifecycleSequence: 1,
+      companyCount: 1,
+    });
+  });
+
+  test("first use cannot resurrect a deleted owner", async () => {
+    const t = convexTest(schema, modules);
+    await grantProvisioned(t, OWNER_A);
+    await t.mutation(CM.accounts.markOwnerDeleted, { ownerUserId: OWNER_A });
+
+    // Re-entitled, then tries to use the feature: the tombstone must still win.
+    await grant(t, OWNER_A);
+    await expect(
+      t.mutation(CM.companies.createCompanyForOwner, {
+        ownerUserId: OWNER_A,
+        clientRequestId: "post-deletion",
+        company: company("Post Deletion", "post-deletion"),
+      }),
+    ).rejects.toThrow(/COMPANY_MONITORING_ACCESS_DENIED/);
+    expect(await accountFor(t, OWNER_A)).toBeNull();
+  });
+
+  test("the reconciler lapses an entitled root whose entitlement expired", async () => {
+    const t = convexTest(schema, modules);
+    await grantProvisioned(t, OWNER_A);
+    expect(await accountFor(t, OWNER_A)).toMatchObject({ lifecycle: "entitled" });
+
+    // Expire the entitlement WITHOUT driving the sync — exactly what happens now
+    // that billing no longer pushes into Company Monitoring.
+    await t.run(async (ctx) => {
+      const row = await ctx.db
+        .query("entitlements")
+        .withIndex("by_userId", (q) => q.eq("userId", OWNER_A))
+        .unique();
+      await ctx.db.patch(row!._id, { planKey: "free", validUntil: NOW - 1 });
+    });
+    expect(await accountFor(t, OWNER_A)).toMatchObject({ lifecycle: "entitled" });
+
+    // The root must age past the recheck window before the reconciler sees it.
+    vi.setSystemTime(NOW + 2 * 60 * 60 * 1000);
+    const result = await t.mutation(CM.accounts.reconcileAccountEntitlements, {});
+
+    expect(result).toMatchObject({ scanned: 1, lapsed: 1 });
+    expect(await accountFor(t, OWNER_A)).toMatchObject({
+      lifecycle: "entitlement_lapsed",
+      purgePhase: "pending",
+    });
+  });
+
+  test("the reconciler leaves a still-entitled root alone", async () => {
+    const t = convexTest(schema, modules);
+    await grantProvisioned(t, OWNER_A);
+    const before = await accountFor(t, OWNER_A);
+
+    vi.setSystemTime(NOW + 2 * 60 * 60 * 1000);
+    const result = await t.mutation(CM.accounts.reconcileAccountEntitlements, {});
+
+    expect(result).toMatchObject({ scanned: 1, lapsed: 0 });
+    const after = await accountFor(t, OWNER_A);
+    expect(after).toMatchObject({
+      lifecycle: "entitled",
+      lifecycleSequence: before!.lifecycleSequence,
+      purgePhase: "none",
     });
   });
 
   test("explicit owner deletion still fails loudly on a misconfigured fence", async () => {
     const t = convexTest(schema, modules);
-    await grant(t, OWNER_A);
+    await grantProvisioned(t, OWNER_A);
     delete process.env.COMPANY_MONITORING_OWNER_FENCE_SECRET;
 
     // terminalize keeps the throwing accessor: deletion is an explicit
@@ -93,7 +188,7 @@ describe("Company Monitoring account lifecycle", () => {
   test("authenticated grants create one immutable root and semantic replays do not advance sequence", async () => {
     const t = convexTest(schema, modules);
 
-    await grant(t, OWNER_A);
+    await grantProvisioned(t, OWNER_A);
     const first = await accountFor(t, OWNER_A);
     expect(first).toMatchObject({
       ownerUserId: OWNER_A,
@@ -138,14 +233,26 @@ describe("Company Monitoring account lifecycle", () => {
       api.payments.billing.claimSubscription,
       { anonId, claimToken },
     );
+
+    // Claiming moves the entitlement to the real owner but provisions nothing:
+    // it is still an entitlement write (#6256). The anon id must never gain a
+    // root either, before or after the claim.
+    expect(await accountFor(t, realOwner)).toBeNull();
+    expect(await accountFor(t, anonId)).toBeNull();
+
+    // The claimed owner can then provision on first use — the anon id cannot,
+    // because ANON_ID_V4_REGEX still fences it out of the state machine.
+    await t.mutation(CM.accounts.syncStoredEntitlement, { userId: realOwner });
     expect(await accountFor(t, realOwner)).toMatchObject({
       ownerUserId: realOwner,
       lifecycle: "entitled",
       lifecycleSequence: 1,
     });
+    await t.mutation(CM.accounts.syncStoredEntitlement, { userId: anonId });
+    expect(await accountFor(t, anonId)).toBeNull();
   });
 
-  test("dispute loss recomputes the canonical root synchronously", async () => {
+  test("dispute loss lapses the root through the reconciler, not the webhook", async () => {
     const t = convexTest(schema, modules);
     await t.run(async (ctx) => {
       await ctx.db.insert("subscriptions", {
@@ -188,6 +295,16 @@ describe("Company Monitoring account lifecycle", () => {
       },
       timestamp: NOW + 1000,
     });
+
+    // The webhook revokes the entitlement but must not touch the root (#6256).
+    expect(await accountFor(t, OWNER_A)).toMatchObject({
+      lifecycle: "entitled",
+      lifecycleSequence: 1,
+    });
+
+    // The reconciler is what converges it.
+    vi.setSystemTime(NOW + 2 * 60 * 60 * 1000);
+    await t.mutation(CM.accounts.reconcileAccountEntitlements, {});
     expect(await accountFor(t, OWNER_A)).toMatchObject({
       lifecycle: "entitlement_lapsed",
       lifecycleSequence: 2,
@@ -197,7 +314,7 @@ describe("Company Monitoring account lifecycle", () => {
 
   test("lapse can reactivate before destructive purge but not after owner deletion", async () => {
     const t = convexTest(schema, modules);
-    await grant(t, OWNER_A);
+    await grantProvisioned(t, OWNER_A);
     const original = await accountFor(t, OWNER_A);
 
     await setStoredEntitlement(t, OWNER_A, "free", NOW - 1);
@@ -256,7 +373,7 @@ describe("Company Monitoring account lifecycle", () => {
 
   test("account deletion is the same durable terminal fence", async () => {
     const t = convexTest(schema, modules);
-    await grant(t, OWNER_A);
+    await grantProvisioned(t, OWNER_A);
     const original = await accountFor(t, OWNER_A);
     await t.mutation(CM.accounts.markAccountDeleted, {
       ownerAccountId: original!.logicalAccountId,
@@ -278,7 +395,7 @@ describe("Company Monitoring account lifecycle", () => {
 
   test("re-entitlement during destructive purge waits for the fenced generation to finish", async () => {
     const t = convexTest(schema, modules);
-    await grant(t, OWNER_A);
+    await grantProvisioned(t, OWNER_A);
     await t.mutation(CM.companies.createCompanyForOwner, {
       ownerUserId: OWNER_A,
       clientRequestId: "before-purge",
@@ -331,7 +448,7 @@ describe("Company Monitoring account lifecycle", () => {
 
   test("re-entitlement after completed destructive purge restores a clean reusable root", async () => {
     const t = convexTest(schema, modules);
-    await grant(t, OWNER_A);
+    await grantProvisioned(t, OWNER_A);
     const original = await accountFor(t, OWNER_A);
     const removedByPurge = await t.mutation(CM.companies.createCompanyForOwner, {
       ownerUserId: OWNER_A,
@@ -390,7 +507,7 @@ describe("Company Monitoring account lifecycle", () => {
 
   test("dense destructive purge continues across the bounded 93-company page", async () => {
     const t = convexTest(schema, modules);
-    await grant(t, OWNER_A);
+    await grantProvisioned(t, OWNER_A);
     const root = await accountFor(t, OWNER_A);
     await t.run(async (ctx) => {
       for (let i = 0; i < 94; i += 1) {
@@ -491,7 +608,7 @@ describe("Company Monitoring account lifecycle", () => {
   test("dedicated owner-fence rotation finds and migrates an old nonterminal root", async () => {
     const t = convexTest(schema, modules);
     process.env.COMPANY_MONITORING_OWNER_FENCE_SECRET = OLD_OWNER_FENCE_SECRET;
-    await grant(t, OWNER_A);
+    await grantProvisioned(t, OWNER_A);
     const oldRoot = await accountFor(t, OWNER_A);
 
     process.env.COMPANY_MONITORING_OWNER_FENCE_SECRET = NEW_OWNER_FENCE_SECRET;
@@ -518,14 +635,14 @@ describe("Company Monitoring account lifecycle", () => {
   test("dedicated owner-fence rotation keeps two historical tombstones discoverable in candidate order", async () => {
     const t = convexTest(schema, modules);
     process.env.COMPANY_MONITORING_OWNER_FENCE_SECRET = OLD_OWNER_FENCE_SECRET;
-    await grant(t, OWNER_A);
+    await grantProvisioned(t, OWNER_A);
     const oldestRoot = await accountFor(t, OWNER_A);
     const oldestFenceForOwnerA = await signCompanyMonitoringOwnerFence(OWNER_A);
     await t.mutation(CM.accounts.markOwnerDeleted, { ownerUserId: OWNER_A });
 
     process.env.COMPANY_MONITORING_OWNER_FENCE_SECRET = INTERMEDIATE_OWNER_FENCE_SECRET;
     const intermediateFenceForOwnerA = await signCompanyMonitoringOwnerFence(OWNER_A);
-    await grant(t, OWNER_B);
+    await grantProvisioned(t, OWNER_B);
     const intermediateRoot = await accountFor(t, OWNER_B);
     await t.mutation(CM.accounts.markOwnerDeleted, { ownerUserId: OWNER_B });
 
@@ -567,7 +684,7 @@ describe("Company Monitoring account lifecycle", () => {
   test("dedicated owner-fence rotation rejects split roots across current and previous keys", async () => {
     const t = convexTest(schema, modules);
     process.env.COMPANY_MONITORING_OWNER_FENCE_SECRET = OLD_OWNER_FENCE_SECRET;
-    await grant(t, OWNER_A);
+    await grantProvisioned(t, OWNER_A);
 
     process.env.COMPANY_MONITORING_OWNER_FENCE_SECRET = NEW_OWNER_FENCE_SECRET;
     process.env.COMPANY_MONITORING_OWNER_FENCE_PREVIOUS_SECRETS = OLD_OWNER_FENCE_SECRET;

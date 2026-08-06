@@ -5,6 +5,7 @@ import {
   CM,
   company,
   grant,
+  grantProvisioned,
   installCompanyMonitoringTestEnvironment,
   modules,
   NOW,
@@ -18,7 +19,7 @@ installCompanyMonitoringTestEnvironment();
 describe("bounded onboarding and replay", () => {
   test("concurrent final-slot requests admit exactly one and preserve count parity", async () => {
     const t = convexTest(schema, modules);
-    await grant(t, OWNER_A);
+    await grantProvisioned(t, OWNER_A);
     const root = await accountFor(t, OWNER_A);
     await t.run(async (ctx) => {
       for (let i = 0; i < 499; i += 1) {
@@ -87,7 +88,7 @@ describe("bounded onboarding and replay", () => {
 
   test("Convex validators reject unexpected fields at every Company Monitoring write boundary", async () => {
     const t = convexTest(schema, modules);
-    await grant(t, OWNER_A);
+    await grantProvisioned(t, OWNER_A);
 
     await expect(t.mutation(CM.companies.createCompanyForOwner, {
       ownerUserId: OWNER_A,
@@ -140,7 +141,7 @@ describe("bounded onboarding and replay", () => {
 
   test("a full 100-row normalized import stays ordered and replay-safe", async () => {
     const t = convexTest(schema, modules);
-    await grant(t, OWNER_A);
+    await grantProvisioned(t, OWNER_A);
     const rows = Array.from({ length: 100 }, (_, ordinal) => ({
       ...company(`Batch Company ${ordinal}`, `batch-${ordinal}`),
       name: `  Batch Company ${ordinal}  `,
@@ -203,7 +204,7 @@ describe("bounded onboarding and replay", () => {
 
   test("committed direct and import rows replay, changed tuples conflict, and no-ops reevaluate", async () => {
     const t = convexTest(schema, modules);
-    await grant(t, OWNER_A);
+    await grantProvisioned(t, OWNER_A);
 
     const first = await t.mutation(CM.companies.createCompanyForOwner, {
       ownerUserId: OWNER_A,
@@ -290,8 +291,8 @@ describe("bounded onboarding and replay", () => {
 
   test("removal is immediately hidden, idempotent, cleans claims, and fences cross-account IDs", async () => {
     const t = convexTest(schema, modules);
-    await grant(t, OWNER_A);
-    await grant(t, OWNER_B);
+    await grantProvisioned(t, OWNER_A);
+    await grantProvisioned(t, OWNER_B);
     const created = await t.mutation(CM.companies.createCompanyForOwner, {
       ownerUserId: OWNER_A,
       clientRequestId: "remove-1",
@@ -382,7 +383,7 @@ describe("bounded onboarding and replay", () => {
 
   test("active-paused-active transitions advance snapshots once and self-transitions are no-ops", async () => {
     const t = convexTest(schema, modules);
-    await grant(t, OWNER_A);
+    await grantProvisioned(t, OWNER_A);
     const created = await t.mutation(CM.companies.createCompanyForOwner, {
       ownerUserId: OWNER_A,
       clientRequestId: "state-transitions",
@@ -448,8 +449,8 @@ describe("bounded onboarding and replay", () => {
 
   test("company updates keep claims account-bound, normalized, and budgeted", async () => {
     const t = convexTest(schema, modules);
-    await grant(t, OWNER_A);
-    await grant(t, OWNER_B);
+    await grantProvisioned(t, OWNER_A);
+    await grantProvisioned(t, OWNER_B);
     const createdA = await t.mutation(CM.companies.createCompanyForOwner, {
       ownerUserId: OWNER_A,
       clientRequestId: "update-a",

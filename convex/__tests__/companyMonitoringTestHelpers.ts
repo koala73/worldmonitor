@@ -57,6 +57,23 @@ export async function grant(
   });
 }
 
+/**
+ * Grant an entitlement AND provision the account root.
+ *
+ * `grant` alone deliberately provisions nothing (#6256) — entitlement writes no
+ * longer touch Company Monitoring. Tests that need a root as a *precondition*
+ * use this; tests asserting the decoupling itself use bare `grant`.
+ */
+export async function grantProvisioned(
+  t: ReturnType<typeof convexTest>,
+  userId: string,
+  planKey = "api_starter",
+) {
+  const result = await grant(t, userId, planKey);
+  await t.mutation(CM.accounts.syncStoredEntitlement, { userId });
+  return result;
+}
+
 export async function setStoredEntitlement(
   t: ReturnType<typeof convexTest>,
   userId: string,

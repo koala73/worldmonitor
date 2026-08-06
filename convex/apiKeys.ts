@@ -2,6 +2,7 @@ import { ConvexError, v } from "convex/values";
 import { internalMutation, internalQuery, mutation, query } from "./_generated/server";
 import { requireUserId, resolveUserId } from "./lib/auth";
 import { activeAccountForOwner } from "./companyMonitoring/_shared";
+import { ensureActiveAccount } from "./companyMonitoring/accounts";
 import {
   COMPANY_MONITORING_RPC_SCOPES,
   type CompanyMonitoringApiScope,
@@ -64,8 +65,10 @@ export const createApiKey = mutation({
     }
 
     const scopes = normalizeCompanyMonitoringScopes(args.scopes);
+    // Issuing a scoped key is a first-use entry point, so it provisions the
+    // root. Requesting no scopes must stay entirely off Company Monitoring.
     const companyMonitoringAccount = scopes
-      ? await activeAccountForOwner(ctx, userId, entitlement)
+      ? await ensureActiveAccount(ctx, userId, entitlement)
       : null;
     if (scopes && !companyMonitoringAccount) {
       throw new ConvexError("COMPANY_MONITORING_ACCESS_DENIED");

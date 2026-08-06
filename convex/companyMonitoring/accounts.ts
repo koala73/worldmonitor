@@ -5,11 +5,16 @@ import type { Doc } from "../_generated/dataModel";
 import {
   ANON_ID_V4_REGEX,
   companyMonitoringOwnerFenceCandidates,
-  tryCompanyMonitoringOwnerFenceCandidates,
   type CompanyMonitoringOwnerFenceCandidates,
 } from "../lib/identitySigning";
 import { COMPANY_MONITORING_LIMITS } from "../../shared/company-monitoring-contract";
-import { COMPANY_LIMIT, deleteCompanyClaims, fingerprint, logicalId } from "./_shared";
+import {
+  activeAccountForOwner,
+  COMPANY_LIMIT,
+  deleteCompanyClaims,
+  fingerprint,
+  logicalId,
+} from "./_shared";
 
 const PURGE_TRANSACTION_DOCUMENT_LIMIT = 8_192;
 // Reserve room for the account read/write, the lookahead company, scheduler
@@ -28,6 +33,11 @@ const PURGE_BATCH_SIZE = Math.floor(
 const ORDINARY_LAPSE_PURGE_GRACE_MS = 24 * 60 * 60 * 1000;
 const STALLED_PURGE_AGE_MS = 60 * 60 * 1000;
 const STALLED_PURGE_REAPER_BATCH_SIZE = 50;
+// Entitled roots are re-derived from the entitlements row on this cadence.
+// Detection latency is bounded by (age + cron period) and is absorbed by the
+// 24h purgeAfter grace that already delays destructive work.
+const ENTITLED_RECHECK_AGE_MS = 60 * 60 * 1000;
+const ENTITLED_RECHECK_BATCH_SIZE = 50;
 const REAPABLE_PURGE_PHASES = ["finalizing", "companies", "pending"] as const;
 
 async function canonicalEntitlement(ctx: MutationCtx, userId: string) {
@@ -119,22 +129,13 @@ export async function syncCompanyMonitoringAccountFromEntitlement(
   // Browser UUID purchases are deliberately invisible to Company Monitoring
   // until claimSubscription has recomputed the real authenticated owner.
   if (ANON_ID_V4_REGEX.test(userId)) return null;
-  // Resolve the fence BEFORE canonicalEntitlement, which performs this
-  // transaction's first write (its deliberate same-value serialization patch).
-  // Convex has no savepoints, so bailing out after any write would commit
-  // partial state; bailing here commits nothing. A misconfigured keyring must
-  // degrade Company Monitoring, never abort the entitlement write this runs
-  // inside — a config fault is not transient, so the caller's retry would fail
-  // identically forever. Genuine data conflicts below still throw.
-  const resolved = await tryCompanyMonitoringOwnerFenceCandidates(userId);
-  if (!resolved.ok) {
-    console.error(
-      `[companyMonitoring] owner fence unavailable; skipping account sync for ${userId}: ${resolved.reason}`,
-    );
-    return null;
-  }
+  // Throws on a misconfigured fence keyring, which is correct now that this
+  // runs only from Company Monitoring's own entry points (#6256): the caller is
+  // actively using the feature, so failing loudly beats silently skipping.
+  // The degrade path this used to need existed only because entitlement writes
+  // called in here.
   const canonical = await canonicalEntitlement(ctx, userId);
-  const ownerFence = resolved.fence;
+  const ownerFence = await companyMonitoringOwnerFenceCandidates(userId);
   const ownerFenceHash = ownerFence.current;
   const match = await findAccountByOwnerFence(ctx, ownerFence);
   let existing = match?.account ?? null;
@@ -289,11 +290,42 @@ export async function syncCompanyMonitoringAccountFromEntitlement(
   return ctx.db.get(existing._id);
 }
 
-/** Internal repair/test seam; production entitlement writers call the helper directly. */
+/** Internal repair/test seam; nothing on the entitlement write path calls this. */
 export const syncStoredEntitlement = internalMutation({
   args: { userId: v.string() },
   handler: async (ctx, args) => syncCompanyMonitoringAccountFromEntitlement(ctx, args.userId),
 });
+
+/**
+ * Resolve the caller's account root, provisioning it on first use.
+ *
+ * This is the lazy half of #6256: entitlement writes no longer push a root at
+ * every subscriber, so the root is created the first time someone actually
+ * uses Company Monitoring. Mutation-only by construction — `activeAccountForOwner`
+ * stays the read-only resolver for query callers such as
+ * `apiKeys.validateKeyByHash`, which cannot write.
+ *
+ * Provisioning delegates to the same state machine the reaper uses, so a
+ * terminal tombstone still refuses to yield an active account: the sync returns
+ * the terminal row untouched and the re-resolve below rejects it.
+ */
+export async function ensureActiveAccount(
+  ctx: MutationCtx,
+  ownerUserId: string,
+  knownEntitlement?: Doc<"entitlements"> | null,
+) {
+  const existing = await activeAccountForOwner(ctx, ownerUserId, knownEntitlement);
+  if (existing) return existing;
+  await syncCompanyMonitoringAccountFromEntitlement(ctx, ownerUserId);
+  return activeAccountForOwner(ctx, ownerUserId, knownEntitlement);
+}
+
+/** `requireActiveAccount` for the entry points that may provision. */
+export async function requireProvisionedAccount(ctx: MutationCtx, ownerUserId: string) {
+  const account = await ensureActiveAccount(ctx, ownerUserId);
+  if (!account) throw new ConvexError("COMPANY_MONITORING_ACCESS_DENIED");
+  return account;
+}
 
 async function terminalize(
   ctx: MutationCtx,
@@ -541,5 +573,52 @@ export const reapStalledAccountPurges = internalMutation({
     }
 
     return { scanned, scheduled, deferred };
+  },
+});
+
+/**
+ * Pull-side replacement for the entitlement-write push removed in #6256.
+ *
+ * Scans entitled roots oldest-first and re-derives each owner's canonical
+ * entitlement. `syncCompanyMonitoringAccountFromEntitlement` is the same state
+ * machine first-use provisioning calls, so a lapse transitions and schedules
+ * purge here exactly as it used to when billing drove it.
+ *
+ * Scanning `companyMonitoringAccounts` rather than `entitlements` is the whole
+ * point: this table holds only owners who actually use the feature, so
+ * subscribers who never touch Company Monitoring cost nothing.
+ */
+export const reconcileAccountEntitlements = internalMutation({
+  args: {},
+  handler: async (ctx) => {
+    const now = Date.now();
+    const staleBefore = now - ENTITLED_RECHECK_AGE_MS;
+    const accounts = await ctx.db
+      .query("companyMonitoringAccounts")
+      .withIndex("by_lifecycle_updatedAt", (q) =>
+        q.eq("lifecycle", "entitled").lt("updatedAt", staleBefore),
+      )
+      .take(ENTITLED_RECHECK_BATCH_SIZE);
+
+    let scanned = 0;
+    let lapsed = 0;
+    for (const account of accounts) {
+      scanned += 1;
+      const ownerUserId = account.ownerUserId;
+      // A terminal row never carries an owner; skip rather than resurrect.
+      if (!ownerUserId || account.terminalReason) continue;
+      const before = account.lifecycle;
+      const synced = await syncCompanyMonitoringAccountFromEntitlement(ctx, ownerUserId);
+      if (synced && synced.lifecycle !== before) lapsed += 1;
+      // Always advance the cursor, including for still-entitled rows the sync
+      // left untouched — otherwise the same 50 rows are rescanned every tick
+      // and newer ones are never reached.
+      const current = await ctx.db.get(account._id);
+      if (current && current.updatedAt < now) {
+        await ctx.db.patch(account._id, { updatedAt: now });
+      }
+    }
+
+    return { scanned, lapsed };
   },
 });

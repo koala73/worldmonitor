@@ -7,6 +7,7 @@ import {
   company,
   FUTURE,
   grant,
+  grantProvisioned,
   installCompanyMonitoringTestEnvironment,
   modules,
   NOW,
@@ -54,7 +55,7 @@ describe("Company Monitoring purge persistence", () => {
 
   test("ordinary lapse waits 24 hours while terminal deletion bypasses grace", async () => {
     const t = convexTest(schema, modules);
-    await grant(t, OWNER_A);
+    await grantProvisioned(t, OWNER_A);
     await t.mutation(CM.companies.createCompanyForOwner, {
       ownerUserId: OWNER_A,
       clientRequestId: "grace-company",
@@ -175,7 +176,7 @@ describe("Company Monitoring purge persistence", () => {
 
   test("account purge clears replay metadata while individual removal retains it", async () => {
     const t = convexTest(schema, modules);
-    await grant(t, OWNER_A);
+    await grantProvisioned(t, OWNER_A);
     const root = await accountFor(t, OWNER_A);
     const direct = await t.mutation(CM.companies.createCompanyForOwner, {
       ownerUserId: OWNER_A,
@@ -266,7 +267,7 @@ describe("Company Monitoring purge persistence", () => {
 
   test("finalization rechecks entitlement and clears stale pending reactivation", async () => {
     const t = convexTest(schema, modules);
-    await grant(t, OWNER_A);
+    await grantProvisioned(t, OWNER_A);
     await t.mutation(CM.companies.createCompanyForOwner, {
       ownerUserId: OWNER_A,
       clientRequestId: "stale-reactivation-company",

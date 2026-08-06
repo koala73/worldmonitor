@@ -20,6 +20,7 @@ import {
   requireActiveAccount,
   COMPANY_LIMIT,
 } from "./_shared";
+import { requireProvisionedAccount } from "./accounts";
 import { companyPatchValidator, monitoredCompanyInputValidator } from "./validators";
 
 type ReplayMetadata =
@@ -84,6 +85,9 @@ export async function findNoopByCustomerReference(
   return active ?? paused;
 }
 
+// Adding the first company is a first-use entry point, so it provisions the
+// root; update/setState/list resolve read-only because a company cannot exist
+// without one.
 export const createCompanyForOwner = internalMutation({
   args: {
     ownerUserId: v.string(),
@@ -91,7 +95,7 @@ export const createCompanyForOwner = internalMutation({
     company: monitoredCompanyInputValidator,
   },
   handler: async (ctx, args) => {
-    const account = await requireActiveAccount(ctx, args.ownerUserId);
+    const account = await requireProvisionedAccount(ctx, args.ownerUserId);
     const clientRequestId = normalizeRequestId(args.clientRequestId);
     const company = normalizeMonitoredCompanyInput(args.company as MonitoredCompanyInput);
     const directFingerprint = await fingerprint({ version: "cm-direct-v1", company });
