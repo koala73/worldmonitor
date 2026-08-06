@@ -22,10 +22,39 @@ const DEFAULT_SECTOR_VALUATION_BUDGET_MS = 60_000;
 // which issuing it is pointless, BATCH_BUDGET_MS the ceiling it may consume.
 const BATCH_MIN_BUDGET_MS = 2_000;
 const BATCH_BUDGET_MS = 15_000;
+// Yahoo's quote fundamentals cache is populated PER RESIDENTIAL EXIT IP: across
+// 10 rotated Decodo exits, 7 answered HTTP 200 while omitting trailingPE for a
+// stable subset of sector ETFs and 3 served it. With p(good) ~= 0.3, four exits
+// clear ~76% of cycles and the last-good snapshot covers the residual. Raising
+// this trades proxy bandwidth -- which is metered, and whose exhaustion has
+// taken the seeder fleet down before -- for diminishing coverage.
+const DEFAULT_MAX_EXIT_ATTEMPTS = 4;
+// Where the exit that last returned complete fundamentals is remembered, so the
+// steady-state cost is one proxy request set per cycle rather than ~3.3.
+const PREFERRED_EXIT_KEY = 'market:sectors:valuations:proxy-exit';
+const PREFERRED_EXIT_TTL = 24 * 3600;
 const CURL_PROCESS_GRACE_MS = 5_000;
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+// Session and cooldown state is keyed by exit, and the relay is a long-running
+// process whose preferred exit walks forward over days, so these maps would grow
+// without bound. Evicting the oldest insertion is safe: a dropped entry costs one
+// cookie+crumb bootstrap or one forgotten cooldown, never correctness.
+const MAX_TRACKED_EXIT_STATES = 64;
+
+function boundedMapGet(map, key, create) {
+  const existing = map.get(key);
+  if (existing) return existing;
+  if (map.size >= MAX_TRACKED_EXIT_STATES) {
+    const oldest = map.keys().next();
+    if (!oldest.done) map.delete(oldest.value);
+  }
+  const value = create();
+  map.set(key, value);
+  return value;
 }
 
 function requestHttpsText(
@@ -399,11 +428,20 @@ async function fetchYahooV7QuoteProxy(symbol, { userAgent, proxy, timeoutMs = 15
 
 async function collectV7Valuations(
   symbols,
-  { userAgent, resolveProxyString, sleepFn = sleep, client, deadlineAt = null, now = Date.now } = {},
+  {
+    userAgent,
+    resolveProxyString,
+    sleepFn = sleep,
+    client,
+    deadlineAt = null,
+    now = Date.now,
+    preferredExitAttempt = 0,
+  } = {},
 ) {
   const freshVals = {};
   const diagnostics = [];
   const valuationSources = new Set();
+  let winningExitAttempt = null;
   for (const s of symbols) {
     let result;
     if (deadlineAt != null && now() >= deadlineAt) {
@@ -450,10 +488,15 @@ async function collectV7Valuations(
   // one bounded batch. Use the batch shape only for symbols still uncovered;
   // the normal per-symbol route remains the primary path and its diagnostics
   // stay intact.
+  // Prefer the exit-rotating batch: the omission it recovers from is a property
+  // of the exit IP, so a single-exit batch can only ever re-read the same
+  // partial cache. fetchV7BatchDetailed remains the path for clients that
+  // predate rotation.
   const batchSymbols = symbols.filter((symbol) => !freshVals[symbol]);
+  const rotatingBatch = typeof client?.fetchV7BatchAcrossExits === 'function';
   if (
     batchSymbols.length > 0
-    && client?.fetchV7BatchDetailed
+    && (rotatingBatch || client?.fetchV7BatchDetailed)
     // Require a real slice of budget, not merely "not yet expired": this route
     // runs BEFORE the quoteSummary tier, so an uncapped slow batch would eat
     // the remainder and starve the alternative source entirely.
@@ -462,9 +505,22 @@ async function collectV7Valuations(
     let batchResult = null;
     let batchError = null;
     try {
-      batchResult = await client.fetchV7BatchDetailed(batchSymbols, {
+      const batchOptions = {
         deadlineAt: deadlineAt == null ? null : Math.min(deadlineAt, now() + BATCH_BUDGET_MS),
-      });
+      };
+      batchResult = rotatingBatch
+        ? await client.fetchV7BatchAcrossExits(batchSymbols, {
+          ...batchOptions,
+          startExitAttempt: preferredExitAttempt,
+        })
+        : await client.fetchV7BatchDetailed(batchSymbols, batchOptions);
+      // Record the best exit even on a PARTIAL cycle. A remembered exit that has
+      // gone bad would otherwise never be replaced -- every cycle would restart
+      // there, fail, and pay the full rotation again until the 24h TTL lapsed.
+      // Learning from a partial run is what lets a poisoned preference heal.
+      if (Number.isInteger(batchResult?.bestExitAttempt)) {
+        winningExitAttempt = batchResult.bestExitAttempt;
+      }
     } catch (error) {
       batchResult = null;
       batchError = boundedFailure(error?.message || error?.name);
@@ -490,6 +546,16 @@ async function collectV7Valuations(
           ? 'batch_error'
           : outcome?.kind || transportDiagnostic?.responseClass || batchResult?.kind || 'failed',
         ...(outcome?.missingFields?.length ? { missingFields: outcome.missingFields } : {}),
+        // For a recovered symbol, the exit that actually served IT -- not the
+        // batch's last attempt, which belongs to whichever symbol rotated
+        // longest. For one still missing, how many exits were tried, so an
+        // operator can tell "Yahoo has no such field" from "we ran out of
+        // exits": the whole distinction this route exists to make.
+        ...(Number.isInteger(batchResult?.exitBySymbol?.[symbol])
+          ? { exitAttempt: batchResult.exitBySymbol[symbol] }
+          : Number.isInteger(batchResult?.exitsTried)
+            ? { exitAttemptsTried: batchResult.exitsTried }
+            : {}),
         ...(failure ? { failure: boundedFailure(failure) } : {}),
       };
       const entry = diagnostics.find((item) => item.symbol === symbol);
@@ -506,7 +572,12 @@ async function collectV7Valuations(
       }
     }
   }
-  return { valuations: freshVals, diagnostics, valuationSources: [...valuationSources] };
+  return {
+    valuations: freshVals,
+    diagnostics,
+    valuationSources: [...valuationSources],
+    ...(winningExitAttempt != null ? { winningExitAttempt } : {}),
+  };
 }
 
 function mergeReturnMetrics(freshVals, lastGoodValuations) {
@@ -627,6 +698,19 @@ function parseQuoteSummary(body, expectedSymbol = null) {
   };
 }
 
+// How many exits in a row may fail durably before rotation gives up for this
+// cycle. One retry survives a single flaky exit; more than that is a provider
+// problem no amount of rotation fixes.
+const MAX_CONSECUTIVE_EXIT_FAILURES = 2;
+
+/**
+ * Route-level failures that are evidence about the transport or the provider
+ * rather than about one exit's cached payload.
+ */
+function isDurableRouteFailure(kind) {
+  return kind === 'failed' || kind === 'cooldown' || kind === 'deadline_exceeded';
+}
+
 /** Parse kinds that are symbol-local (not evidence the route/session is dead). */
 function isNonDurableParseKind(kind) {
   return kind === 'no_data'
@@ -671,6 +755,11 @@ class YahooQuoteSummaryClient {
   constructor({
     userAgent = 'Mozilla/5.0',
     resolveProxyString = () => '',
+    // Optional. When supplied, a batch whose 200 response omits the fundamentals
+    // block can be retried on a DIFFERENT residential exit -- see
+    // fetchV7BatchAcrossExits. Absent, the client keeps its single-exit behaviour.
+    resolveProxyStringForAttempt = null,
+    maxExitAttempts = DEFAULT_MAX_EXIT_ATTEMPTS,
     directRequest = requestHttpsText,
     proxyRequest = requestCurlText,
     now = Date.now,
@@ -682,6 +771,10 @@ class YahooQuoteSummaryClient {
   } = {}) {
     this.userAgent = userAgent;
     this.resolveProxyString = resolveProxyString;
+    this.resolveProxyStringForAttempt = resolveProxyStringForAttempt;
+    this.maxExitAttempts = Number.isInteger(maxExitAttempts) && maxExitAttempts > 0
+      ? maxExitAttempts
+      : DEFAULT_MAX_EXIT_ATTEMPTS;
     this.directRequest = directRequest;
     this.proxyRequest = proxyRequest;
     this.now = now;
@@ -691,11 +784,20 @@ class YahooQuoteSummaryClient {
     this.sleep = sleepFn;
     this.logger = logger;
     // Transport-level session only (cookie+crumb). Route cooldowns live in routeStates.
-    this.states = {
-      direct: { session: null, sessionPromise: null },
-      proxy: { session: null, sessionPromise: null },
-    };
+    // Keyed by transport AND exit: a Yahoo crumb is bound to the cookie that
+    // minted it and both are tied to the originating IP, so a session minted on
+    // one residential exit does not authenticate on another. Sharing one 'proxy'
+    // slot across rotated exits would send exit A's crumb from exit B.
+    this.sessionStates = new Map();
     this.routeStates = new Map();
+  }
+
+  _getSessionState(transport, proxy) {
+    return boundedMapGet(
+      this.sessionStates,
+      `${transport}:${proxy || ''}`,
+      () => ({ session: null, sessionPromise: null }),
+    );
   }
 
   async _request(transport, url, headers, proxy, { timeoutMs, deadlineAt = null } = {}) {
@@ -770,7 +872,7 @@ class YahooQuoteSummaryClient {
   }
 
   async _getSession(transport, proxy, forceRefresh = false, { deadlineAt = null } = {}) {
-    const state = this.states[transport];
+    const state = this._getSessionState(transport, proxy);
     if (forceRefresh) state.session = null;
     if (
       state.session
@@ -787,14 +889,19 @@ class YahooQuoteSummaryClient {
     }
   }
 
-  _getRouteState(route, transport) {
-    const key = `${route}:${transport}`;
-    let state = this.routeStates.get(key);
-    if (!state) {
-      state = { cooldownUntil: 0 };
-      this.routeStates.set(key, state);
-    }
-    return state;
+  /**
+   * Cooldowns are per (route, transport, EXIT). A durable failure on one
+   * residential exit is not evidence the endpoint is dead everywhere, and a
+   * shared cooldown would let one bad exit suppress the very rotation that
+   * recovers from it. With a single pinned exit this is identical to the old
+   * per-(route, transport) key.
+   */
+  _getRouteState(route, transport, proxy = '') {
+    return boundedMapGet(
+      this.routeStates,
+      `${route}:${transport}:${proxy || ''}`,
+      () => ({ cooldownUntil: 0 }),
+    );
   }
 
   async _fetchVia(
@@ -811,7 +918,7 @@ class YahooQuoteSummaryClient {
     // SHARING cooldown state with the endpoint it actually calls. The batch
     // route hits the same v7 URL/session as the per-symbol route, so a durable
     // failure there must suppress it too.
-    const routeState = this._getRouteState(healthKey || route, transport);
+    const routeState = this._getRouteState(healthKey || route, transport, proxy);
     if (this.now() < routeState.cooldownUntil) {
       return {
         kind: 'cooldown',
@@ -923,7 +1030,7 @@ class YahooQuoteSummaryClient {
     // Shared transport session (cookie+crumb) is only invalidated on auth failure.
     // Parse/5xx/timeout leave the session reusable by sibling routes under budget.
     if (authInvalidating) {
-      this.states[transport].session = null;
+      this._getSessionState(transport, proxy).session = null;
     }
 
     // Durable route health failure: cool this route:transport only.
@@ -957,19 +1064,35 @@ class YahooQuoteSummaryClient {
     };
   }
 
-  async _fetchRoute(route, symbol, { buildUrl, parseResponse, source, deadlineAt = null, healthKey = null }) {
+  async _fetchRoute(route, symbol, {
+    buildUrl,
+    parseResponse,
+    source,
+    deadlineAt = null,
+    healthKey = null,
+    // When set, use THIS exit for the proxy leg instead of the configured one.
+    proxyOverride = null,
+    // Rotation retries have already had their direct leg on the first attempt;
+    // repeating it would re-read the same Railway IP that already came back
+    // truncated, for no new information and one wasted request per exit.
+    skipDirect = false,
+  }) {
     const diagnostics = [];
-    const direct = await this._fetchVia(
-      route,
-      'direct',
-      symbol,
-      '',
-      { buildUrl, parseResponse, source: `${source}_direct`, deadlineAt, healthKey },
-    );
-    diagnostics.push(direct.diagnostic);
-    if (direct.kind === 'success') return { ...direct, diagnostics };
+    const direct = skipDirect
+      ? { kind: 'skipped', value: null, diagnostic: null }
+      : await this._fetchVia(
+        route,
+        'direct',
+        symbol,
+        '',
+        { buildUrl, parseResponse, source: `${source}_direct`, deadlineAt, healthKey },
+      );
+    if (!skipDirect) {
+      diagnostics.push(direct.diagnostic);
+      if (direct.kind === 'success') return { ...direct, diagnostics };
+    }
 
-    const proxy = this.resolveProxyString();
+    const proxy = proxyOverride == null ? this.resolveProxyString() : proxyOverride;
     if (!proxy) return { ...direct, diagnostics };
     const proxied = await this._fetchVia(
       route,
@@ -989,12 +1112,16 @@ class YahooQuoteSummaryClient {
     if (directValuations || proxiedValuations) {
       const valuations = { ...(directValuations || {}), ...(proxiedValuations || {}) };
       if (Object.keys(valuations).length > 0) {
+        // Attribute to the leg that actually supplied rows. An empty `{}` from
+        // the proxy leg is still truthy, so testing the map's existence
+        // published proxy provenance for rows the direct leg fetched.
+        const proxyContributed = Object.keys(proxiedValuations || {}).length > 0;
         return {
           kind: 'success',
           value: {
             valuations,
             outcomes: { ...(direct.value?.outcomes || {}), ...(proxied.value?.outcomes || {}) },
-            source: proxiedValuations ? proxied.value?.source : direct.value?.source,
+            source: proxyContributed ? proxied.value?.source : direct.value?.source,
           },
           diagnostic: proxied.diagnostic,
           diagnostics,
@@ -1052,6 +1179,142 @@ class YahooQuoteSummaryClient {
       // per-symbol route has already found durably dead.
       healthKey: 'v7Quote',
     });
+  }
+
+  /**
+   * Fetch the v7 batch, rotating residential exits until every requested symbol
+   * carries fundamentals or the attempt/budget cap is hit.
+   *
+   * This exists because the failure it answers is invisible to ordinary retry
+   * logic: Yahoo returns HTTP 200 with the fundamentals key-group simply absent
+   * for a stable subset of ETFs, and which subset depends on the EXIT IP, not on
+   * the request. Re-issuing against the same pinned exit reads the same partial
+   * cache every time -- the seeder did exactly that for 46 of 61 cycles.
+   *
+   * Only the exits actually needed are used: coverage is re-checked before each
+   * attempt and only the still-uncovered symbols are re-requested, so a good
+   * first exit costs exactly one proxy request set.
+   *
+   * @returns {{kind: string, value: {valuations: object, outcomes: object, source: string|null},
+   *            diagnostics: object[], exitAttempt: number|null}}
+   */
+  async fetchV7BatchAcrossExits(symbols, { deadlineAt = null, startExitAttempt = 0 } = {}) {
+    const requested = [...new Set(symbols)].filter(Boolean);
+    const valuations = {};
+    const outcomes = {};
+    const diagnostics = [];
+    // Which exit actually served each symbol. A single batch-wide value would be
+    // a lie whenever rotation kept going for other symbols: a row recovered on
+    // exit 1 would be reported against exit 3.
+    const exitBySymbol = {};
+    let source = null;
+    let exitAttempt = null;
+    let exitsTried = 0;
+    let lastKind = 'no_data';
+
+    const canRotate = typeof this.resolveProxyStringForAttempt === 'function';
+    const maxAttempts = canRotate ? this.maxExitAttempts : 1;
+    const start = Number.isInteger(startExitAttempt) && startExitAttempt >= 0
+      ? startExitAttempt
+      : 0;
+
+    let previousProxy = null;
+    let consecutiveDurableFailures = 0;
+    for (let i = 0; i < maxAttempts; i++) {
+      const remaining = requested.filter((symbol) => !valuations[symbol]);
+      if (remaining.length === 0) break;
+      if (deadlineAt != null && this.now() >= deadlineAt) break;
+
+      const attempt = start + i;
+      const proxyOverride = canRotate ? this.resolveProxyStringForAttempt(attempt) : null;
+      // Nothing to rotate onto: either no proxy is configured, or the provider
+      // returned the same route again (non-Decodo providers and Decodo's
+      // rotating ports are not per-attempt addressable). Re-querying the exit
+      // that just truncated cannot change the answer, and the request is billed
+      // regardless.
+      if (i > 0 && (!proxyOverride || proxyOverride === previousProxy)) break;
+      previousProxy = proxyOverride;
+      exitAttempt = attempt;
+      exitsTried += 1;
+      const result = await this._fetchRoute('v7QuoteBatch', remaining.join(','), {
+        buildUrl: (tickers, crumb) => {
+          const query = new URLSearchParams({ symbols: tickers, crumb });
+          return `${YAHOO_V7_QUOTE_URL}?${query}`;
+        },
+        parseResponse: (body) => parseV7QuoteBatch(body, remaining),
+        source: 'yahoo_v7_quote_authenticated',
+        deadlineAt,
+        // Same URL and session shape as the per-symbol route, so on a given exit
+        // a durable failure there must suppress this too. Cooldown state is
+        // per-exit, so this shares with the per-symbol route only on the exit
+        // they have in common -- attempt 0, which resolves to the same string
+        // resolveProxyString returns.
+        healthKey: 'v7Quote',
+        proxyOverride,
+        skipDirect: i > 0,
+      });
+
+      for (const diagnostic of result?.diagnostics || []) {
+        if (diagnostic) diagnostics.push(diagnostic);
+      }
+      lastKind = result?.kind || lastKind;
+
+      // Rotation exists to escape a TRUNCATED 200 -- a payload defect that is a
+      // property of the exit. A durable transport/auth failure is usually a
+      // property of the PROVIDER (a Decodo quota 407 or credential expiry fails
+      // identically on every exit), and per-exit cooldowns no longer suppress
+      // that the way one shared key did. Allow a single retry so one flaky exit
+      // is still survivable, then stop rather than probing the whole pool every
+      // cycle against a provider that is down.
+      if (isDurableRouteFailure(result?.kind)) {
+        consecutiveDurableFailures += 1;
+        if (consecutiveDurableFailures >= MAX_CONSECUTIVE_EXIT_FAILURES) break;
+      } else {
+        consecutiveDurableFailures = 0;
+      }
+
+      Object.assign(outcomes, result?.value?.outcomes || {});
+      for (const [symbol, value] of Object.entries(result?.value?.valuations || {})) {
+        if (valuations[symbol]) continue;
+        valuations[symbol] = value;
+        exitBySymbol[symbol] = attempt;
+        if (result.value.source) source = result.value.source;
+      }
+    }
+
+    const covered = Object.keys(valuations).length;
+    let kind = lastKind;
+    if (covered === requested.length && covered > 0) kind = 'success';
+    else if (covered > 0) kind = 'partial';
+
+    // The exit worth starting from next time is the one that covered the MOST
+    // symbols -- not `exitAttempt`, which is merely the last one tried. When
+    // coverage is assembled across exits, remembering the last one starts the
+    // next cycle on an exit that serves only the tail of the set and rotates
+    // fruitlessly for the rest. Ties go to the earliest exit so the choice is
+    // deterministic.
+    const coverageByExit = new Map();
+    for (const attempt of Object.values(exitBySymbol)) {
+      coverageByExit.set(attempt, (coverageByExit.get(attempt) || 0) + 1);
+    }
+    let bestExitAttempt = null;
+    let bestCoverage = 0;
+    for (const [attempt, count] of [...coverageByExit.entries()].sort((a, b) => a[0] - b[0])) {
+      if (count > bestCoverage) {
+        bestCoverage = count;
+        bestExitAttempt = attempt;
+      }
+    }
+
+    return {
+      kind,
+      value: { valuations, outcomes, ...(source ? { source } : {}) },
+      diagnostics,
+      exitAttempt,
+      bestExitAttempt,
+      exitBySymbol,
+      exitsTried,
+    };
   }
 
   async fetchV7(symbol) {
@@ -1147,6 +1410,57 @@ function buildSectorValuationCoverage({
   };
 }
 
+/**
+ * Read the remembered good exit. Anything malformed degrades to exit 0 (the
+ * configured route) rather than propagating a bad index into the rotation: a
+ * fractional or negative attempt would resolve to a port outside the provider's
+ * sticky range, i.e. no proxy at all.
+ */
+async function readPreferredExit(upstashGet) {
+  if (typeof upstashGet !== 'function') return { attempt: 0, savedAt: null };
+  try {
+    const raw = await upstashGet(PREFERRED_EXIT_KEY);
+    const attempt = raw && typeof raw === 'object' ? raw.attempt : null;
+    if (!Number.isInteger(attempt) || attempt < 0) return { attempt: 0, savedAt: null };
+    const savedAt = Number.isFinite(raw.savedAt) ? raw.savedAt : null;
+    return { attempt, savedAt };
+  } catch (error) {
+    // A cold preference costs one extra rotation, never the cycle.
+    console.warn('[Sector] preferred proxy exit read failed', {
+      failure: boundedFailure(error?.message || error?.name),
+    });
+    return { attempt: 0, savedAt: null };
+  }
+}
+
+/**
+ * Persist the winning exit when it changed, or when a still-good preference is
+ * far enough into its TTL to be worth renewing.
+ *
+ * Writing only on change would let a working exit expire and be rediscovered
+ * every TTL at the cost of extra rotations; writing every cycle would churn the
+ * key 288 times a day for no new information. Renewing past the half-life gets
+ * both.
+ */
+async function persistPreferredExit(upstashSet, winningExitAttempt, previous, now) {
+  if (typeof upstashSet !== 'function') return;
+  if (!Number.isInteger(winningExitAttempt)) return;
+  const changed = winningExitAttempt !== previous.attempt;
+  const dueForRenewal = !Number.isFinite(previous.savedAt)
+    || (now() - previous.savedAt) > (PREFERRED_EXIT_TTL * 1000) / 2;
+  if (!changed && !dueForRenewal) return;
+  try {
+    const ok = await upstashSet(
+      PREFERRED_EXIT_KEY,
+      { attempt: winningExitAttempt, savedAt: now() },
+      PREFERRED_EXIT_TTL,
+    );
+    if (!ok) console.warn('[Sector] preferred proxy exit write failed');
+  } catch {
+    console.warn('[Sector] preferred proxy exit write failed');
+  }
+}
+
 async function collectSectorValuations({
   symbols,
   fetchValue,
@@ -1166,6 +1480,19 @@ async function collectSectorValuations({
     ? now() + Math.max(1, maxDurationMs)
     : null;
 
+  // Which residential exit last returned complete fundamentals. Starting there
+  // makes the steady-state cost one proxy request set per cycle instead of the
+  // ~3.3 a blind rotation averages; proxy bandwidth is metered and exhausting
+  // it has taken the seeder fleet down before.
+  //
+  // Only read it when something can act on it: a client without exit rotation
+  // would spend a Redis round-trip per cycle on a value it cannot use.
+  const canRotateExits = Boolean(v7UserAgent)
+    && typeof v7Client?.fetchV7BatchAcrossExits === 'function';
+  const preferredExit = canRotateExits
+    ? await readPreferredExit(upstashGet)
+    : { attempt: 0, savedAt: null };
+
   // Tier 1: v7/finance/quote for P/E and beta
   const v7Result = v7UserAgent ? await collectV7Valuations(symbols, {
     userAgent: v7UserAgent,
@@ -1174,7 +1501,11 @@ async function collectSectorValuations({
     client: v7Client,
     deadlineAt,
     now,
+    preferredExitAttempt: preferredExit.attempt,
   }) : {};
+  if (canRotateExits) {
+    await persistPreferredExit(upstashSet, v7Result.winningExitAttempt, preferredExit, now);
+  }
   const v7Vals = v7Result.valuations || {};
   const valuationDiagnostics = v7Result.diagnostics || [];
   for (const source of v7Result.valuationSources || []) valuationSources.add(source);

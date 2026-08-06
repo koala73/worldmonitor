@@ -24,7 +24,7 @@ const { execFile } = require('child_process');
 const crypto = require('crypto');
 const v8 = require('v8');
 const { WebSocketServer, WebSocket } = require('ws');
-const { parseProxyConfig, resolveProxyString } = require('./_proxy-utils.cjs');
+const { parseProxyConfig, resolveProxyString, resolveProxyStringForAttempt } = require('./_proxy-utils.cjs');
 const {
   YahooQuoteSummaryClient,
   buildSectorSeedMeta,
@@ -2126,6 +2126,10 @@ function fetchYahooChartDirect(symbol, query = '') {
 const _yahooQuoteSummaryClient = new YahooQuoteSummaryClient({
   userAgent: CHROME_UA,
   resolveProxyString,
+  // Yahoo's quote fundamentals cache is populated per residential exit IP, so a
+  // 200 response can omit trailingPE for a stable subset of ETFs no matter how
+  // often the same exit is retried. Rotation is the only recovery.
+  resolveProxyStringForAttempt,
   cooldownMs: _YAHOO_PROXY_COOLDOWN_MS,
   logger: {
     warn(message, { transport }) {

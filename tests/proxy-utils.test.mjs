@@ -10,6 +10,7 @@ const {
   parseProxyConfigForAttempt,
   proxyFetch,
   resolveProxyString,
+  resolveProxyStringForAttempt,
 } = createRequire(import.meta.url)('../scripts/_proxy-utils.cjs');
 
 function proxyFetchHarness(response, { maxResponseBytes = Infinity } = {}) {
@@ -134,6 +135,57 @@ describe('proxy utilities', () => {
         1,
       ).port,
       443,
+    );
+  });
+
+  it('rotates the curl proxy string onto a distinct Decodo sticky exit per attempt', () => {
+    const decodo = 'gate.decodo.com:10001:proxy-user:proxy-secret';
+
+    // Attempt 0 must be byte-identical to the non-rotating resolver, so adopting
+    // rotation cannot silently move the default route onto a different exit.
+    assert.equal(resolveProxyStringForAttempt(0, decodo), resolveProxyString(decodo));
+    assert.equal(
+      resolveProxyStringForAttempt(0, decodo),
+      'proxy-user:proxy-secret@us.decodo.com:10001',
+    );
+    assert.equal(
+      resolveProxyStringForAttempt(1, decodo),
+      'proxy-user:proxy-secret@us.decodo.com:10002',
+    );
+    assert.equal(
+      resolveProxyStringForAttempt(3, decodo),
+      'proxy-user:proxy-secret@us.decodo.com:10004',
+    );
+    // Sticky ports wrap rather than escaping the provider's assigned range.
+    assert.equal(
+      resolveProxyStringForAttempt(1, 'gate.decodo.com:49999:proxy-user:proxy-secret'),
+      'proxy-user:proxy-secret@us.decodo.com:10001',
+    );
+
+    // Rotating (non-sticky) Decodo ports and every other provider keep their
+    // configured route: advancing the port there would point at nothing.
+    assert.equal(
+      resolveProxyStringForAttempt(2, 'gate.decodo.com:10000:proxy-user:proxy-secret'),
+      'proxy-user:proxy-secret@us.decodo.com:10000',
+    );
+    assert.equal(
+      resolveProxyStringForAttempt(2, 'https://proxy-user:proxy-secret@proxy.test:443'),
+      'proxy-user:proxy-secret@proxy.test:443',
+    );
+    assert.equal(resolveProxyStringForAttempt(2, ''), '');
+  });
+
+  it('reads the attempt as the first argument so a proxy string cannot land in it', () => {
+    // resolveProxyString takes the raw config first; this one takes the attempt.
+    // Passing a config where the attempt belongs must not be parsed as a route.
+    assert.equal(
+      resolveProxyStringForAttempt('gate.decodo.com:10001:proxy-user:proxy-secret', ''),
+      '',
+    );
+    // A non-numeric attempt degrades to the configured exit rather than NaN.
+    assert.equal(
+      resolveProxyStringForAttempt(undefined, 'gate.decodo.com:10001:u:p'),
+      'u:p@us.decodo.com:10001',
     );
   });
 
