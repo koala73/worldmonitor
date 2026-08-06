@@ -117,6 +117,13 @@ export function validateAcceptanceBaseline(baseline) {
  * clear-on-recovery failure would make the monitor red on exactly the runs that
  * prove things improved. `expiresAt` is the anti-rot mechanism instead: the
  * whole baseline must be re-reviewed on a date, or the gate fails.
+ *
+ * The expiry governs SUPPRESSIONS, so a baseline that acknowledges nothing
+ * cannot expire — there is no suppression left to outlive its cause, and a
+ * date-triggered failure over an empty list is a red monitor with nothing to
+ * review. That case is reachable: pruning the last recovered entry empties the
+ * file, and this repository has already watched a permanently-red monitor hide
+ * live drift (#6087).
  */
 export function applyAcceptanceBaseline(problems, baseline, now = Date.now()) {
   validateAcceptanceBaseline(baseline);
@@ -139,7 +146,7 @@ export function applyAcceptanceBaseline(problems, baseline, now = Date.now()) {
   const cleared = baseline.acknowledged
     .filter((entry) => !seen.has(`${entry.name}:${entry.status}`))
     .map((entry) => ({ name: entry.name, status: entry.status, issue: entry.issue }));
-  const expired = Date.parse(baseline.expiresAt) < now;
+  const expired = baseline.acknowledged.length > 0 && Date.parse(baseline.expiresAt) < now;
   return { blocking, acknowledged, cleared, expired, expiresAt: baseline.expiresAt };
 }
 

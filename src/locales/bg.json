@@ -1132,7 +1132,7 @@
         "ucdpEvents": "События от въоръжени конфликти",
         "displacementFlows": "Потоци на преместване",
         "climateAnomalies": "Климатични аномалии",
-        "weatherAlerts": "Météo алерти",
+        "weatherAlerts": "Метеорологични предупреждения за САЩ (NWS)",
         "strategicWaterways": "Стратегически водни пътища",
         "economicCenters": "Икономически центрове",
         "criticalMinerals": "Критични минерали",
@@ -1213,7 +1213,7 @@
           "infraDatacenters": "Клъстери за AI изчисления >=10 000 GPU",
           "infraOutages": "Прекъсвания на интернет и сривове на услуги",
           "naturalEventsTech": "Земетресения, бури, пожари (могат да засегнат центрове за данни)",
-          "weatherAlerts": "Предупреждения за тежки метеорологични условия",
+          "weatherAlerts": "Предупреждения за опасно време в САЩ (NWS)",
           "economicCenters": "Фондови борси и централни банки",
           "countriesOverlay": "Наслагване на имена на държави",
           "financeExchanges": "Основни световни борси по пазарен ранг",
@@ -1225,7 +1225,7 @@
           "financeOutages": "Интернет смущения, които могат да засегнат пазарните операции",
           "financeCyberThreats": "Инциденти със сигурността около финансова инфраструктура",
           "macroWaterways": "Стратегически тесни места за транспорт на суровини",
-          "weatherAlertsMarket": "Тежки метеорологични събития с пазарно значение",
+          "weatherAlertsMarket": "Опасни метеорологични явления в САЩ с пазарно значение (NWS)",
           "naturalEventsMacro": "Земетресения, пожари, наводнения и други природни бедствия",
           "timeRecent": "Филтриране на времеви данни до последните часове",
           "timeExtended": "Показване на данни за последната седмица, месец или всички",
@@ -2890,7 +2890,7 @@
       "heading": "ПОСОКА",
       "hexCode": "HEX КОД",
       "squawk": "SQUAWK",
-      "attribution": "Източник: OpenSky Network"
+      "attribution": "Източник: adsb.lol (ODbL) · OpenSky Network"
     },
     "militaryVessel": {
       "aisDark": "AIS ТЪМНО",

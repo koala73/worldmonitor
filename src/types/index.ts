@@ -883,6 +883,7 @@ export type MilitaryOperator =
 
 export interface MilitaryFlight {
   id: string;
+  source?: string;
   callsign: string;
   hexCode: string;             // ICAO 24-bit address
   registration?: string;

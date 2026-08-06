@@ -174,7 +174,7 @@ Unique layers: 29 stock exchanges, 19 financial centers, 14 central-bank and sup
 
 ## Data Sources
 
-The live inventory currently covers 528+ observed upstream hosts. The [data-source catalog](https://www.worldmonitor.app/docs/data-sources) records each host's observed surface, license posture, required attribution, and review status.
+The live inventory currently covers 530+ observed upstream hosts. The [data-source catalog](https://www.worldmonitor.app/docs/data-sources) records each host's observed surface, license posture, required attribution, and review status.
 
 - ACLED (Armed Conflict Location & Event Data): Protests, riots, conflicts — 30-day window, tokenized API
 - GDELT (Global Database of Events, Language, and Tone): Geo-events, protest keywords, topic feeds

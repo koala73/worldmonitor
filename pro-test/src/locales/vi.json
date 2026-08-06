@@ -48,7 +48,7 @@
     "entF10": "Triển khai đám mây, on-premises hoặc air-gapped",
     "entF11": "Onboarding và hỗ trợ chuyên trách",
     "entCta": "Liên hệ kinh doanh",
-    "freeF2": "500+ nguồn cấp dữ liệu, 528+ nguồn, 50+ lớp bản đồ"
+    "freeF2": "500+ nguồn cấp dữ liệu, 530+ nguồn, 50+ lớp bản đồ"
   },
   "whyUpgrade": {
     "title": "Tại sao nâng cấp",
@@ -565,7 +565,7 @@
       "s1l": "Lớp bản đồ",
       "s2v": "500+",
       "s2l": "Nguồn cấp dữ liệu được sắp xếp",
-      "s3v": "526+",
+      "s3v": "528+",
       "s3l": "Nhà cung cấp dữ liệu",
       "s4v": "13",
       "s4l": "Điểm choke · AIS trực tiếp",
@@ -651,7 +651,7 @@
       "q2": "Bảng điều khiển trí tuệ toàn cầu là gì?",
       "a2": "Một chế độ xem trực tiếp duy nhất hợp nhất các tín hiệu mà hầu hết các công cụ giữ riêng: sự kiện xung đột, theo dõi tàu và máy bay, các điểm nghẽn vận chuyển, vệ tinh, cáp dưới biển, đường ống, thị trường và mối đe doạ mạng — trên một bản đồ thế giới thời gian thực, với điểm số AI và tóm tắt ở trên cùng. World Monitor là một cái miễn phí.",
       "q3": "Dữ liệu đến từ đâu?",
-      "a3": "526+ nhà cung cấp, được đặt tên: ACLED và UCDP cho xung đột, AISStream cho tàu trực tiếp, OpenSky cho máy bay, NASA FIRMS cho cháy, USGS cho động đất, IMF, BIS, FRED và Finnhub cho thị trường và macro — cộng với 500+ nguồn cấp tin tức được tuyển chọn. Mọi bảng điều khiển trích dẫn các nguồn và dấu thời gian của nó theo hàng.",
+      "a3": "528+ nhà cung cấp, được đặt tên: ACLED và UCDP cho xung đột, AISStream cho tàu trực tiếp, OpenSky cho máy bay, NASA FIRMS cho cháy, USGS cho động đất, IMF, BIS, FRED và Finnhub cho thị trường và macro — cộng với 500+ nguồn cấp tin tức được tuyển chọn. Mọi bảng điều khiển trích dẫn các nguồn và dấu thời gian của nó theo hàng.",
       "q4": "Tôi có thể theo dõi các điểm nghẽn như Hormuz hoặc Bab el-Mandeb trong thời gian thực không?",
       "a4": "Có. 13 điểm nghẽn được theo dõi với số lượng tàu AIS trực tiếp, thay đổi vận chuyển tuần trên tuần và điểm số gián đoạn — và các bất thường mật độ được gắn cờ so với đường cơ sở lăn của mỗi eo biển.",
       "q5": "Điều này khác với bản đồ xung đột như Liveuamap như thế nào?",

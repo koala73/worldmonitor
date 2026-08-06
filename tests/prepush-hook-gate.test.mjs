@@ -169,6 +169,99 @@ function makeFixture({ branchFiles = {}, scriptsCjs = true, failAttestMode = nul
 }
 
 /**
+ * A real linked worktree whose shared config points at the main checkout's
+ * hook. The main hook has a poisoned body after the identity tripwire, so a
+ * successful push proves the tripwire handed off to the feature worktree's
+ * hook instead of continuing in the foreign copy.
+ */
+function pushWithPoisonedSharedHooksPath() {
+  const id = fixtureCount++;
+  const base = join(WORK, `poisoned-hooks-${id}`);
+  const main = join(base, 'main');
+  const worktree = join(base, 'feature');
+  const remote = join(base, 'remote.git');
+  const { bin, log } = makeStubs(join(base, 'aux'));
+  const env = hookEnv(bin);
+  delete env.WM_ALLOW_FOREIGN_HOOKS;
+
+  // The identity repair must run the real bootstrap helper. Every later node
+  // call in the 500-line gate stays stubbed, as in makeFixture().
+  const nodeStub = join(bin, 'node');
+  writeFileSync(
+    nodeStub,
+    `#!/bin/sh\n` +
+      `case "$1" in\n` +
+      `  */scripts/bootstrap-worktree.mjs) exec ${JSON.stringify(process.execPath)} "$@" ;;\n` +
+      `esac\n` +
+      STUB_BODY('node', log).replace('#!/bin/sh\n', ''),
+  );
+  chmodSync(nodeStub, 0o755);
+
+  const git = (cwd, args) => execFileSync('git', args, { cwd, env, encoding: 'utf8' }).trim();
+  mkdirSync(main, { recursive: true });
+  execFileSync('git', ['init', '--quiet', '--bare', remote], { env });
+  git(main, ['init', '--quiet', '--initial-branch=main', '.']);
+  git(main, ['config', 'user.email', 'prepush-hook@example.invalid']);
+  git(main, ['config', 'user.name', 'Prepush Hook Fixture']);
+  git(main, ['remote', 'add', 'origin', remote]);
+
+  for (const dir of ['.husky', 'scripts', 'node_modules']) {
+    mkdirSync(join(main, dir), { recursive: true });
+  }
+  copyFileSync(HOOK, join(main, '.husky', 'pre-push'));
+  for (const script of [
+    'bootstrap-worktree.mjs',
+    'check-local-secret-dumps.mjs',
+    'prepush-attest.sh',
+    'prepush-changed-tests.sh',
+  ]) {
+    copyFileSync(join(REPO_ROOT, 'scripts', script), join(main, 'scripts', script));
+  }
+  writeFileSync(join(main, 'package.json'), '{"name":"fixture"}\n');
+  writeFileSync(join(main, 'README.md'), 'base\n');
+  git(main, ['add', '-A']);
+  git(main, ['commit', '--quiet', '-m', 'base']);
+  git(main, ['push', '--quiet', '--set-upstream', 'origin', 'main']);
+  git(main, ['worktree', 'add', '--quiet', '-b', 'feature', worktree]);
+  mkdirSync(join(worktree, 'node_modules'), { recursive: true });
+  writeFileSync(join(worktree, 'README.md'), 'feature\n');
+  git(worktree, ['add', 'README.md']);
+  git(worktree, ['commit', '--quiet', '-m', 'feature']);
+
+  const foreignHook = join(main, '.husky', 'pre-push');
+  const originalHook = readFileSync(foreignHook, 'utf8');
+  const poisonedHook = originalHook.replace(
+    '\necho "Checking for local environment dumps..."',
+    '\necho "FOREIGN HOOK BODY RAN"\nexit 97\n\necho "Checking for local environment dumps..."',
+  );
+  assert.notEqual(poisonedHook, originalHook, 'fixture must poison the foreign hook body');
+  writeFileSync(foreignHook, poisonedHook);
+  git(main, ['config', 'core.hooksPath', join(main, '.husky')]);
+
+  let status = 0;
+  let output = '';
+  try {
+    output = execFileSync('git', ['push', '--set-upstream', 'origin', 'HEAD:feature'], {
+      cwd: worktree,
+      env,
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+  } catch (error) {
+    status = error.status;
+    output = `${error.stdout ?? ''}${error.stderr ?? ''}`;
+  }
+
+  return {
+    status,
+    output,
+    hooksPath: git(worktree, ['config', '--get', 'core.hooksPath']),
+    localHead: git(worktree, ['rev-parse', 'HEAD']),
+    remoteHead: git(worktree, ['ls-remote', '--heads', 'origin', 'feature']).split(/\s+/)[0] || '',
+  };
+}
+
+/**
  * The argument list of EVERY `npx tsx --test ...` the hook issued, in order.
  * All of them, not just the first: asserting one invocation cannot see a
  * second, duplicate dispatch — which is the failure the TESTS_CHANGED dedup
@@ -187,6 +280,18 @@ function tsxRuns(invocations) {
   }
   return runs;
 }
+
+describe('a poisoned shared hooksPath self-heals at push time (#6104)', () => {
+  test('repairs the shared value and runs this worktree hook in the same push', () => {
+    const result = pushWithPoisonedSharedHooksPath();
+
+    assert.equal(result.status, 0, result.output);
+    assert.equal(result.hooksPath, '.husky');
+    assert.equal(result.remoteHead, result.localHead);
+    assert.match(result.output, /repairing shared hooksPath/);
+    assert.doesNotMatch(result.output, /FOREIGN HOOK BODY RAN/);
+  });
+});
 
 describe('a clean push runs the changed tests and attests the tree', () => {
   test('dispatches the changed test and caches HEAD^{tree}', () => {
