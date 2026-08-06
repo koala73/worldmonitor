@@ -111,12 +111,25 @@ export async function buildAuthHeaders(
   url: string,
   body: BodyInit | null | undefined,
 ): Promise<Record<string, string>> {
+  // Self-hosted Docker only: a tool's `_execute` derives its base URL from
+  // `new URL(req.url).origin`, which inside the container is the SIDECAR
+  // (127.0.0.1:46123) — not nginx. Its internal fetch therefore never passes
+  // through the proxy that adds `Authorization: Bearer ${LOCAL_API_TOKEN}`, so
+  // the sidecar's global auth gate 401s it and the tool surfaces the opaque
+  // "Internal error: data fetch failed". Re-attach the transport token here;
+  // `resolveAuthContext` above knows to ignore it, and it is only ever sent to
+  // our own loopback sidecar. Unset (hence absent) on Vercel/hosted.
+  const sidecarToken = process.env.LOCAL_API_TOKEN;
+  const transportAuth: Record<string, string> = sidecarToken
+    ? { Authorization: `Bearer ${sidecarToken}` }
+    : {};
+
   if (context.kind === 'env_key' || context.kind === 'user_key') {
     // user_key (#4859): the downstream REST gateway validates the raw key
     // itself (Convex hash lookup + the #4611 apiAccess gate + per-account
     // limits), so usage attributes to the key owner exactly like a direct
     // REST call — no internal-HMAC identity smuggling needed.
-    return { 'X-WorldMonitor-Key': context.apiKey };
+    return { 'X-WorldMonitor-Key': context.apiKey, ...transportAuth };
   }
   // context.kind === 'pro'
   const secret = process.env.MCP_INTERNAL_HMAC_SECRET ?? '';
@@ -278,7 +291,28 @@ export async function resolveAuthContext(
   resourceMetadataUrl: string,
   corsHeaders: Record<string, string>,
 ): Promise<AuthResolution | AuthResolutionRejected> {
-  const authHeader = req.headers.get('Authorization') ?? '';
+  const rawAuthHeader = req.headers.get('Authorization') ?? '';
+
+  // Self-hosted Docker only: `docker/nginx.conf` sets
+  // `proxy_set_header Authorization "Bearer ${LOCAL_API_TOKEN}"` on every /api/
+  // request, because the sidecar's global auth gate
+  // (src-tauri/sidecar/local-api-server.mjs) rejects anything without it. That
+  // token is transport auth between nginx and the sidecar — it is not an MCP
+  // credential — but the bearer branch below treats ANY bearer as an OAuth
+  // token, fails to resolve it, and 401s before reaching the
+  // `X-WorldMonitor-Key` branch that `WORLDMONITOR_VALID_KEYS` exists to serve.
+  // Since nginx OVERWRITES the header rather than adding it, no client can work
+  // around this: remove it and the sidecar gate rejects you, keep it and MCP
+  // rejects you, so /api/mcp is unreachable on every self-hosted deployment.
+  //
+  // Recognising our own transport token and falling through costs nothing:
+  // a caller presenting it has already cleared the sidecar gate, and still
+  // needs a valid WORLDMONITOR_VALID_KEYS entry to authenticate here. On
+  // Vercel/hosted, LOCAL_API_TOKEN is unset and this is a no-op.
+  const sidecarToken = process.env.LOCAL_API_TOKEN;
+  const authHeader =
+    sidecarToken && rawAuthHeader === `Bearer ${sidecarToken}` ? '' : rawAuthHeader;
+
   if (authHeader.startsWith('Bearer ')) {
     const token = authHeader.slice(7).trim();
     let context: McpAuthContext | null;
