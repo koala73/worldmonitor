@@ -1,18 +1,8 @@
-// Shared transport PRIMITIVES for the mainland Chinese exchange hosts
+// Shared transport primitives for the mainland Chinese exchange hosts
 // (query.sse.com.cn, www.szse.cn), extracted from
 // china-corporate-disclosures/adapters.mjs so a second consumer --
-// china-stock-connect -- reuses the proxy hop, the edge hop, the bounded reads
-// and the failure classification instead of reimplementing them. Behaviour is
-// unchanged; china-corporate-disclosures re-exports the two names that were
-// already part of its public surface.
-//
-// SCOPE: the primitives are shared, the CASCADE is not. Each consumer still
-// sequences direct -> proxy -> edge itself, because their shapes differ (a
-// single request per issuer vs a bounded walk over candidate trade dates with a
-// sticky hop and a shared wall-clock budget). That leaves the fallback ORDER
-// written in two places; consolidating it means rewriting a launched seeder's
-// cascade and is deliberately not done here. If you change retry or fallback
-// semantics, change both.
+// china-stock-connect -- reuses the proxy hop, the bounded reads, and the
+// failure classification instead of reimplementing them.
 
 import { createRequire } from 'node:module';
 
@@ -22,13 +12,6 @@ const {
 } = createRequire(import.meta.url)('./_proxy-utils.cjs');
 
 export { proxyFetch };
-
-export const CHINA_EXCHANGE_EDGE_EGRESS_URL = 'https://api.worldmonitor.app/api/internal/china-exchange-egress';
-export const CHINA_EXCHANGE_EDGE_ERROR_CODES = new Set([
-  'upstream_timeout',
-  'upstream_fetch_failed',
-  'upstream_response_too_large',
-]);
 
 export function sourceError(code, cause) {
   const error = new Error(code, cause ? { cause } : undefined);
@@ -203,108 +186,4 @@ export async function fetchViaConfiguredProxy(input, init, {
   });
 }
 
-export function resolveChinaExchangeEdgeEgress(env = process.env) {
-  const isRailwayProduction = env.RAILWAY_ENVIRONMENT === 'production'
-    || env.RAILWAY_ENVIRONMENT_NAME === 'production';
-  const secret = String(env.RELAY_SHARED_SECRET || '');
-  if (!isRailwayProduction || !secret) return null;
-  return { url: CHINA_EXCHANGE_EDGE_EGRESS_URL, secret };
-}
 
-function normalizedResponseContentType(response) {
-  return String(response?.headers?.get?.('content-type') || '')
-    .split(';', 1)[0]
-    .trim()
-    .toLowerCase();
-}
-
-function edgeFailureDiagnostic(response, rawContentType = normalizedResponseContentType(response)) {
-  const cfRay = String(response?.headers?.get?.('cf-ray') || '');
-  const vercelId = String(response?.headers?.get?.('x-vercel-id') || '');
-  const rawServer = String(response?.headers?.get?.('server') || '').toLowerCase();
-  const server = rawServer === 'cloudflare' || rawServer === 'vercel'
-    ? rawServer
-    : null;
-  const safeCfRay = /^[a-f0-9]{8,32}-[A-Z]{3}$/u.test(cfRay) ? cfRay : null;
-  const safeVercelId = /^[A-Za-z0-9:_-]{1,96}$/u.test(vercelId) ? vercelId : null;
-  // contentType is emitted even when no intermediary identifies itself: it is
-  // already collapsed to the enum below, so it carries no intermediary-controlled
-  // text, and an unrecognised box terminating the connection is exactly the case
-  // where "did this come from our handler?" is hardest to answer from the code.
-  const contentType = ['application/json', 'text/html', 'text/plain'].includes(rawContentType)
-    ? rawContentType
-    : rawContentType
-      ? 'other'
-      : 'missing';
-  return {
-    contentType,
-    ...(server ? { server } : {}),
-    ...(safeCfRay ? { cfRay: safeCfRay } : {}),
-    ...(safeVercelId ? { vercelId: safeVercelId } : {}),
-  };
-}
-
-async function readEdgeEgressFailure(response, maxBytes, diagnostic) {
-  const fallback = `HTTP_${Number(response?.status) || 0}`;
-  const contentType = normalizedResponseContentType(response);
-  if (contentType !== 'application/json') {
-    try {
-      await response?.body?.cancel?.();
-    } catch {
-      // A diagnostic must never fail because an intermediary body could not be cancelled.
-    }
-    return { code: fallback, diagnostic };
-  }
-  try {
-    const bytes = await readBoundedResponseBytes(response, maxBytes);
-    const payload = JSON.parse(new TextDecoder().decode(bytes));
-    return {
-      code: CHINA_EXCHANGE_EDGE_ERROR_CODES.has(payload?.error)
-        ? payload.error
-        : fallback,
-      diagnostic,
-    };
-  } catch {
-    return { code: fallback, diagnostic };
-  }
-}
-
-export async function fetchViaEdgeEgress(_input, init, {
-  edgeEgress,
-  maxBytes,
-  edgeRequestFn,
-  onDiagnostic,
-}) {
-  const response = await edgeRequestFn(edgeEgress.url, {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${edgeEgress.secret}`,
-      'Content-Type': 'application/json',
-      'User-Agent': 'WorldMonitor/2.10 (+https://worldmonitor.app)',
-    },
-    body: init?.body,
-    redirect: 'error',
-    signal: init?.signal,
-  });
-  // Captured before branching on status. A 2xx interstitial -- an HTML challenge
-  // page, or a 200 whose body is not the JSON envelope -- fails downstream in the
-  // caller's parser as MALFORMED_RESPONSE, and reporting it through onDiagnostic
-  // here is the only way that error reaches the decision log carrying the routing
-  // metadata that separates an intermediary from our own handler.
-  const diagnostic = edgeFailureDiagnostic(response);
-  if (diagnostic) onDiagnostic?.(diagnostic);
-  if (!response.ok) {
-    const failure = await readEdgeEgressFailure(response, maxBytes, diagnostic);
-    const error = sourceError(failure.code);
-    if (failure.diagnostic) error.edgeFailureDiagnostic = failure.diagnostic;
-    throw error;
-  }
-  const bytes = await readBoundedResponseBytes(response, maxBytes);
-  return new Response(bytes, {
-    status: response.status,
-    headers: {
-      'Content-Length': String(bytes.byteLength),
-      'Content-Type': response.headers.get('content-type') || 'application/json',
-    },
-  });
-}

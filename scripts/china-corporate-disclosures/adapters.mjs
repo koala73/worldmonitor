@@ -2,10 +2,8 @@ import {
   assertMetadataResponse,
   errorCodeFor,
   fetchViaConfiguredProxy,
-  fetchViaEdgeEgress,
   proxyFetch,
   readBoundedJsonResponse,
-  resolveChinaExchangeEdgeEgress,
   shouldProxyExchangeFailure,
   shouldRetryExchangeProxyFailure,
   sourceError,
@@ -18,7 +16,7 @@ import {
 
 // Both names were part of this module's public surface before the transport was
 // extracted; keep re-exporting them so existing importers stay unchanged.
-export { readBoundedJsonResponse, resolveChinaExchangeEdgeEgress };
+export { readBoundedJsonResponse };
 
 export const CHINA_CORPORATE_DISCLOSURE_KEY = 'market:china:corporate-disclosures:v1';
 
@@ -95,12 +93,10 @@ export const OFFICIAL_EXCHANGE_SOURCE_CONTRACTS = Object.freeze({
     maxRequestsPerRun: 4,
     maxDirectRequestsPerRun: 1,
     maxProxyRequestsPerRun: 2,
-    maxEdgeRequestsPerRun: 1,
     transportRecoverySuccessRuns: SZSE_TRANSPORT_RECOVERY_SUCCESS_RUNS,
-    fallbackPolicy: 'direct_then_proxy_then_edge_on_transport_failure',
+    fallbackPolicy: 'direct_then_proxy_on_transport_failure',
     // SZSE_PROXY_URL is an optional source-specific override; Railway requires
-    // the shared PROXY_URL fallback and the fixed edge hop's
-    // RELAY_SHARED_SECRET at the bundle boundary.
+    // the shared PROXY_URL fallback at the bundle boundary.
     proxyEnvironmentVariable: 'SZSE_PROXY_URL',
     maxResponseBytes: 131_072,
     redirectPolicy: 'error',
@@ -180,13 +176,12 @@ const SSE_PAGE_SIZE = 100;
 const SSE_DIRECT_TIMEOUT_MS = 20_000;
 const SSE_PROXY_TIMEOUT_MS = 12_000;
 const SZSE_PAGE_SIZE = 50;
-// Worst case (direct, two proxy attempts, then edge fallback all time out) this
+// Worst case (direct, two proxy attempts all time out) this
 // source can take about 55s before the bundle moves on. Keep this comfortably
 // inside the per-section timeoutMs configured in seed-bundle-market-backup.mjs.
 const SZSE_DIRECT_TIMEOUT_MS = 15_000;
 const SZSE_PROXY_TIMEOUT_MS = 12_000;
 const SZSE_PROXY_RETRY_DELAY_MS = 250;
-const SZSE_EDGE_TIMEOUT_MS = 16_000;
 export const CHINA_CORPORATE_DISCLOSURE_MAX_NETWORK_MS = (
   Math.ceil(
     OFFICIAL_EXCHANGE_SOURCE_CONTRACTS.sse.maxDirectRequestsPerRun
@@ -200,7 +195,6 @@ export const CHINA_CORPORATE_DISCLOSURE_MAX_NETWORK_MS = (
   + OFFICIAL_EXCHANGE_SOURCE_CONTRACTS.szse.maxProxyRequestsPerRun * SZSE_PROXY_TIMEOUT_MS
   + (OFFICIAL_EXCHANGE_SOURCE_CONTRACTS.szse.maxProxyRequestsPerRun - 1)
     * SZSE_PROXY_RETRY_DELAY_MS
-  + OFFICIAL_EXCHANGE_SOURCE_CONTRACTS.szse.maxEdgeRequestsPerRun * SZSE_EDGE_TIMEOUT_MS
 );
 const LAUNCHED_SOURCE_FETCHERS = Object.freeze([
   Object.freeze(['sse', fetchSseAnnouncements]),
@@ -528,7 +522,6 @@ async function fetchSseAnnouncements(fetchFn, now, {
 
 async function fetchSzseAnnouncements(fetchFn, now, {
   proxyFetchFn = null,
-  edgeFetchFn = null,
 } = {}) {
   const contract = OFFICIAL_EXCHANGE_SOURCE_CONTRACTS.szse;
   const { begin, end } = dateWindow(now);
@@ -609,32 +602,6 @@ async function fetchSzseAnnouncements(fetchFn, now, {
         }
       }
       proxyFailureReason = proxyError ? transportFailureReason(proxyError) : null;
-    }
-
-    if (!fetched && edgeFetchFn) {
-      transportPath = 'edge';
-      requestCount += 1;
-      // A 2xx interstitial throws downstream of edgeFetchFn, so the diagnostic
-      // cannot ride on that error -- it is reported out through this sink while
-      // the response is still in hand.
-      let edgeDiagnostic = null;
-      try {
-        fetched = await request(
-          (input, init) => edgeFetchFn(input, init, (entry) => { edgeDiagnostic = entry; }),
-          SZSE_EDGE_TIMEOUT_MS,
-        );
-      } catch (edgeError) {
-        const failure = sourceError(errorCodeFor(edgeError), edgeError);
-        failure.requestCount = requestCount;
-        failure.transportPath = transportPath;
-        failure.fallbackReason = fallbackReason;
-        if (proxyFailureReason) failure.proxyFailureReason = proxyFailureReason;
-        if (proxyExitPorts.length) failure.proxyExitPorts = [...proxyExitPorts];
-        failure.edgeFailureReason = transportFailureReason(edgeError);
-        const diagnostic = edgeError?.edgeFailureDiagnostic ?? edgeDiagnostic;
-        if (diagnostic) failure.edgeFailureDiagnostic = diagnostic;
-        throw failure;
-      }
     }
 
     if (!fetched && proxyError) {
@@ -920,9 +887,6 @@ function sourceStates(outcomes, previousSnapshot, previousTransportFailures, gen
       ...(outcome?.fallbackReason ? { fallbackReason: outcome.fallbackReason } : {}),
       ...(outcome?.proxyFailureReason
         ? { proxyFailureReason: outcome.proxyFailureReason }
-        : {}),
-      ...(outcome?.edgeFailureReason
-        ? { edgeFailureReason: outcome.edgeFailureReason }
         : {}),
       emptyResultCount,
       transportReliability,
@@ -1289,9 +1253,6 @@ export function buildChinaCorporateDisclosureSnapshot({
       ...(contract.maxProxyRequestsPerRun
         ? { maxProxyRequestsPerRun: contract.maxProxyRequestsPerRun }
         : {}),
-      ...(contract.maxEdgeRequestsPerRun
-        ? { maxEdgeRequestsPerRun: contract.maxEdgeRequestsPerRun }
-        : {}),
       ...(contract.transportRecoverySuccessRuns
         ? { transportRecoverySuccessRuns: contract.transportRecoverySuccessRuns }
         : {}),
@@ -1317,8 +1278,6 @@ export async function fetchChinaCorporateDisclosureSnapshot({
   proxyUrl = process.env.SZSE_PROXY_URL || process.env.PROXY_URL || '',
   sseProxyUrl = process.env.SSE_PROXY_URL || proxyUrl,
   proxyRequestFn = proxyFetch,
-  edgeEgress = undefined,
-  edgeRequestFn = globalThis.fetch,
   now = Date.now(),
   previousSnapshot = null,
   previousTransportFailures = {},
@@ -1344,17 +1303,6 @@ export async function fetchChinaCorporateDisclosureSnapshot({
     OFFICIAL_EXCHANGE_SOURCE_CONTRACTS.szse,
     SZSE_PROXY_TIMEOUT_MS,
   );
-  const resolvedEdgeEgress = edgeEgress === undefined
-    ? resolveChinaExchangeEdgeEgress()
-    : edgeEgress;
-  const resolvedEdgeFetchFn = resolvedEdgeEgress?.url && resolvedEdgeEgress?.secret
-    ? (input, init, onDiagnostic = undefined) => fetchViaEdgeEgress(input, init, {
-        edgeEgress: resolvedEdgeEgress,
-        maxBytes: OFFICIAL_EXCHANGE_SOURCE_CONTRACTS.szse.maxResponseBytes,
-        edgeRequestFn,
-        onDiagnostic,
-      })
-    : null;
   const outcomes = [];
   for (const [sourceId, fetchSource] of LAUNCHED_SOURCE_FETCHERS) {
     let requestCount = 0;
@@ -1368,7 +1316,6 @@ export async function fetchChinaCorporateDisclosureSnapshot({
           : sourceId === 'szse'
             ? resolvedSzseProxyFetchFn
             : null,
-        edgeFetchFn: sourceId === 'szse' ? resolvedEdgeFetchFn : null,
       });
       outcomes.push(outcome);
     } catch (error) {
@@ -1381,12 +1328,6 @@ export async function fetchChinaCorporateDisclosureSnapshot({
         ...(error?.fallbackReason ? { fallbackReason: error.fallbackReason } : {}),
         ...(error?.proxyFailureReason
           ? { proxyFailureReason: error.proxyFailureReason }
-          : {}),
-        ...(error?.edgeFailureReason
-          ? { edgeFailureReason: error.edgeFailureReason }
-          : {}),
-        ...(error?.edgeFailureDiagnostic
-          ? { edgeFailureDiagnostic: error.edgeFailureDiagnostic }
           : {}),
         ...(error?.proxyExitPorts?.length
           ? { proxyExitPorts: error.proxyExitPorts }
@@ -1432,12 +1373,6 @@ export async function fetchChinaCorporateDisclosureSnapshot({
       ...(source.fallbackReason ? { fallbackReason: source.fallbackReason } : {}),
       ...(source.proxyFailureReason
         ? { proxyFailureReason: source.proxyFailureReason }
-        : {}),
-      ...(source.edgeFailureReason
-        ? { edgeFailureReason: source.edgeFailureReason }
-        : {}),
-      ...(outcome?.edgeFailureDiagnostic
-        ? { edgeFailureDiagnostic: outcome.edgeFailureDiagnostic }
         : {}),
       ...(outcome?.proxyExitPorts?.length
         ? {
