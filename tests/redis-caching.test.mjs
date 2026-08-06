@@ -2638,8 +2638,8 @@ describe('military flights bbox behavior', { concurrency: 1 }, () => {
             result: JSON.stringify({
               coverage: 'global',
               flights: [
-                { id: 'first-cell', callsign: 'RCH701', lat: 10.5, lon: 10.5 },
-                { id: 'second-cell', callsign: 'RCH702', lat: 20.5, lon: 10.5 },
+                { hexCode: 'first-cell', callsign: 'RCH701', lat: 10.5, lon: 10.5 },
+                { hexCode: 'second-cell', callsign: 'RCH702', lat: 20.5, lon: 10.5 },
               ],
             }),
           });
@@ -2723,8 +2723,8 @@ describe('military flights bbox behavior', { concurrency: 1 }, () => {
             result: JSON.stringify({
               coverage: 'global',
               flights: [
-                { id: 'first-cell', callsign: 'RCH801', lat: 10.5, lon: 10.5 },
-                { id: 'second-cell', callsign: 'RCH802', lat: 20.5, lon: 10.5 },
+                { hexCode: 'first-cell', callsign: 'RCH801', lat: 10.5, lon: 10.5 },
+                { hexCode: 'second-cell', callsign: 'RCH802', lat: 20.5, lon: 10.5 },
               ],
             }),
           });
@@ -2793,7 +2793,7 @@ describe('military flights bbox behavior', { concurrency: 1 }, () => {
           return jsonResponse({
             result: JSON.stringify({
               coverage: 'global',
-              flights: [{ id: 'rebuilt', callsign: 'RCH901', lat: 10.5, lon: 10.5 }],
+              flights: [{ hexCode: 'rebuilt', callsign: 'RCH901', lat: 10.5, lon: 10.5 }],
             }),
           });
         }
@@ -2843,8 +2843,8 @@ describe('military flights bbox behavior', { concurrency: 1 }, () => {
             return jsonResponse({
               result: JSON.stringify({
                 flights: [
-                  { id: 'regional-stale', callsign: 'RCH777', lat: 20.5, lon: 10.5 },
-                  { id: 'outside-world', callsign: 'RCH778', lat: 91, lon: 10.5 },
+                  { hexCode: 'regional-stale', callsign: 'RCH777', lat: 20.5, lon: 10.5 },
+                  { hexCode: 'outside-world', callsign: 'RCH778', lat: 91, lon: 10.5 },
                 ],
                 ...(coverage ? { coverage } : {}),
                 fetchedAt: Date.now(),
@@ -2914,8 +2914,8 @@ describe('military flights bbox behavior', { concurrency: 1 }, () => {
             return jsonResponse({
               result: JSON.stringify({
                 flights: [
-                  { id: 'regional-stale', callsign: 'RCH777', lat: 20.5, lon: 10.5 },
-                  { id: 'outside-world', callsign: 'RCH778', lat: 91, lon: 10.5 },
+                  { hexCode: 'regional-stale', callsign: 'RCH777', lat: 20.5, lon: 10.5 },
+                  { hexCode: 'outside-world', callsign: 'RCH778', lat: 91, lon: 10.5 },
                 ],
                 ...(coverage ? { coverage } : {}),
                 fetchedAt: Date.now(),
