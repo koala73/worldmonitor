@@ -5,6 +5,7 @@ import { secondsUntilUtcMidnight } from '../../server/_shared/pro-mcp-token';
 import { getMcpBillingVerificationDenial } from './auth';
 import { BillingDenialError } from './billing-denial';
 import {
+  BothSourcesFailedError,
   createMcpToolExecutionContext,
   downstreamErrorTags,
 } from './downstream';
@@ -356,6 +357,7 @@ export async function dispatchToolsCall(
     const isExpectedDenial = err instanceof BillingDenialError;
     const isExpectedSourceOutage = err instanceof McpSourceUnavailableError;
     const downstreamTags = downstreamErrorTags(err);
+    const isBothFailed = err instanceof BothSourcesFailedError;
     const log = isClient4xx || isExpectedDenial || isExpectedSourceOutage ? console.warn : console.error;
     log('[mcp] tool execution error:', err);
     captureSilentError(err, {
@@ -370,6 +372,12 @@ export async function dispatchToolsCall(
         } : {}),
         ...downstreamTags,
       },
+      ...(isBothFailed ? {
+        extra: {
+          civilian_failure_detail: err.civilianFailureDetail,
+          military_failure_detail: err.militaryFailureDetail,
+        },
+      } : {}),
       ctx,
       // Split the api/mcp catch-all (WORLDMONITOR-T8) into per-tool,
       // per-status groups — see api/mcp/error-fingerprint.ts.
