@@ -107,7 +107,13 @@ export async function trackAircraft(
                 // empty one — is authoritative for that viewport, so do not also debit the
                 // shared authenticated OpenSky account. OpenSky is recovery-only when the
                 // Wingbits request itself fails.
-                if (!isCallsignOnly && relayBase && req.swLat != null && req.neLat != null) {
+                //
+                // Skip a degenerate (zero-span) bbox. The generated GET decoder coerces
+                // absent query params to 0 rather than leaving them null, so an icao24-only
+                // request would otherwise issue a real authenticated bbox relay call for
+                // `lamin=0&lomin=0&lamax=0&lomax=0` before reaching its own 8s tier.
+                if (!isCallsignOnly && relayBase && req.swLat != null && req.neLat != null
+                    && (req.swLat !== req.neLat || req.swLon !== req.neLon)) {
                     const wbUrl = `${relayBase}/wingbits/track?lamin=${req.swLat}&lomin=${req.swLon}&lamax=${req.neLat}&lomax=${req.neLon}`;
                     try {
                         const wbResp = await fetch(wbUrl, {
@@ -140,17 +146,9 @@ export async function trackAircraft(
                         console.warn(`[Aviation] OpenSky bbox relay failed: ${err instanceof Error ? err.message : err}`);
                     }
 
-                    // Both relay paths exhausted. Removing the anonymous tier returns 6s to
-                    // this branch: a bbox-only request now spends at most 6s + 6s here.
-                    //
-                    // That is NOT the worst case for the handler. The generated GET decoder
-                    // coerces missing bbox params to 0 rather than leaving them null, so an
-                    // icao24 lookup also satisfies the `req.swLat != null` guard above, runs
-                    // this block against a degenerate 0,0,0,0 bbox, and then falls through to
-                    // the 8s icao24 tier below — 20s total, measured. That ladder (and the
-                    // wasted authenticated relay call on a bbox nobody asked for) predates
-                    // #6222 and is tracked separately; do not read the 12s above as the
-                    // handler's ceiling.
+                    // Both relay paths exhausted. A bbox-only request now spends at most
+                    // 6s + 6s here. An icao24-only request is also nondegenerate-bbox-gated
+                    // so it skips this block entirely and goes straight to its own 8s tier.
                 }
 
                 // For icao24-only queries, try OpenSky relay then Wingbits
