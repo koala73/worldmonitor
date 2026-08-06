@@ -239,10 +239,12 @@ describe('layer explanation metadata', () => {
       weather.limitations.some(limitation => /outside the United States/i.test(limitation)),
       'weather limitations must state that official warnings outside the United States are absent',
     );
-    assert.deepEqual(
-      weather.evidence,
-      ['scripts/ais-relay.cjs', 'api/health.js', 'src/services/weather.ts'],
-    );
+    // Require the citations this card's claims actually rest on, without pinning the array
+    // exactly — the v1 loop above already asserts every evidence path exists on disk, so a
+    // later addition stays covered instead of reddening this assertion.
+    for (const path of ['scripts/ais-relay.cjs', 'api/health.js', 'src/services/weather.ts']) {
+      assert.ok(weather.evidence.includes(path), `weather evidence must cite ${path}`);
+    }
   });
 
   test('curated explanations are not accidentally added outside the declared v1 set', () => {

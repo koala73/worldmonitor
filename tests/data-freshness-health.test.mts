@@ -39,11 +39,21 @@ describe('health freshness ingestion', () => {
       }),
     });
 
+    const weatherGap = getIntelligenceGaps().find(gap => gap.source === 'weather');
+
     assert.equal(dataFreshness.getSource('weather')?.name, 'US Weather Alerts (NWS)');
-    assert.match(
-      getIntelligenceGaps().find(gap => gap.source === 'weather')?.message ?? '',
-      /US National Weather Service \(NWS\)/,
-    );
+    assert.match(weatherGap?.message ?? '', /US National Weather Service \(NWS\)/);
+
+    // The two assertions above are satisfied by DataFreshnessTracker's constructor alone:
+    // it pre-seeds every SOURCE_METADATA entry with `name` and status 'no_data', and
+    // getIntelligenceGaps() admits 'no_data' with a static per-source message. Without the
+    // two below, this test passes verbatim with the refreshDataFreshnessFromHealth() call
+    // above deleted — an inert fixture. Only a SEED_ERROR that actually routed through
+    // recordSeedHealth sets lastError, which calculateStatus turns into status 'error' and
+    // getIntelligenceGaps escalates to 'critical' (weather is requiredForRisk: false, so
+    // constructor state yields 'warning').
+    assert.equal(dataFreshness.getSource('weather')?.status, 'error');
+    assert.equal(weatherGap?.severity, 'critical');
   });
 
   it('hydrates dataFreshness from /api/health cadence metadata', async () => {

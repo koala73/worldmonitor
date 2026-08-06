@@ -195,7 +195,7 @@ export const LAYER_EXPLANATIONS: Partial<Record<keyof MapLayers, LayerExplanatio
       'Low-severity GDACS alerts are filtered out to keep the map readable.',
       'EONET wildfires are freshness-filtered, so older open events may not appear as active map points.',
     ],
-    related: ['Natural Events layer popups', 'Weather Alerts', 'Country brief natural signals'],
+    related: ['Natural Events layer popups', 'US Weather Alerts (NWS)', 'Country brief natural signals'],
     evidence: ['docs/data-sources.mdx', 'docs/architecture.mdx', 'server/worldmonitor/natural/v1/list-natural-events.ts'],
   },
   weather: {
