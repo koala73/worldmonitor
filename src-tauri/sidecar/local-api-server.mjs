@@ -1737,6 +1737,7 @@ async function dispatch(requestUrl, req, routes, context) {
 
     const body = ['GET', 'HEAD'].includes(req.method) ? undefined : await readBody(req);
     const hdrs = toHeaders(req.headers, { stripOrigin: true });
+    hdrs.delete('Authorization');
     hdrs.set('Origin', `http://127.0.0.1:${context.port}`);
     // The transport credential authenticates the nginx/sidecar hop only. Do
     // not expose it to route handlers, where Authorization is caller identity
