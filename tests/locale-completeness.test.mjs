@@ -38,4 +38,20 @@ describe('locale completeness', () => {
       );
     });
   }
+
+  for (const file of ['en.json', ...localeFiles]) {
+    it(`${file} discloses NWS coverage for every weather layer label`, () => {
+      const locale = JSON.parse(readFileSync(join(LOCALES_DIR, file), 'utf8'));
+      const values = [
+        locale.components.deckgl.layers.weatherAlerts,
+        locale.components.deckgl.layerHelp.descriptions.weatherAlerts,
+        locale.components.deckgl.layerHelp.descriptions.weatherAlertsMarket,
+      ];
+
+      for (const value of values) {
+        assert.equal(typeof value, 'string');
+        assert.match(value, /NWS/i, `${file} weather coverage copy must identify NWS`);
+      }
+    });
+  }
 });

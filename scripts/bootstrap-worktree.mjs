@@ -85,7 +85,7 @@ Options:
                       from git's common .git directory.
   --cache <dir>       npm cache directory. Default: ${DEFAULT_NPM_CACHE}
   --skip-env          Do not create env symlinks.
-  --skip-install      Do not run npm ci when node_modules is missing.
+  --skip-install      Do not run npm ci, even when installation is not verified.
   --force-install     Run npm ci even when node_modules already exists.
   --ignore-scripts    Pass --ignore-scripts to npm ci for docs/test-only work.
   --dry-run           Print what would happen without changing files.
@@ -202,7 +202,7 @@ export function shouldInstallDependencies({
   forceInstall = false,
   rootDir = process.cwd(),
 } = {}) {
-  return forceInstall || !existsSync(resolve(rootDir, 'node_modules'));
+  return forceInstall || !existsSync(resolve(rootDir, 'node_modules/.package-lock.json'));
 }
 
 export function installDependencies({
@@ -454,7 +454,7 @@ export function bootstrapWorktree(options = {}) {
         rootDir,
       });
     } else {
-      log('[worktree] node_modules present; skipping npm ci');
+      log('[worktree] verified npm install present; skipping npm ci');
     }
   }
 
