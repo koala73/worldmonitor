@@ -335,7 +335,7 @@
       "references": [
         {
           "path": "scripts/ais-relay.cjs",
-          "line": 3220
+          "line": 3255
         },
         {
           "path": "scripts/seed-cyber-threats.mjs",
@@ -349,16 +349,43 @@
     },
     {
       "host": "api.adsb.lol",
-      "provider": "api.adsb.lol",
+      "provider": "adsb.lol",
       "kind": "structured",
       "observed": true,
-      "license": "Provider terms for this upstream API/dataset; verify before redistribution",
-      "attribution": "Credit api.adsb.lol and link to the original upstream API/dataset.",
-      "status": "terms-review",
+      "license": "Open Database License (ODbL) 1.0",
+      "attribution": "adsb.lol; preserve ODbL attribution and link to https://adsb.lol/.",
+      "status": "reviewed",
       "references": [
         {
           "path": "scripts/ais-relay.cjs",
-          "line": 4352
+          "line": 4387
+        },
+        {
+          "path": "scripts/seed-military-flights.mjs",
+          "line": 47
+        },
+        {
+          "path": "src/components/MapPopup.ts",
+          "line": 82
+        }
+      ]
+    },
+    {
+      "host": "api.airplanes.live",
+      "provider": "airplanes.live",
+      "kind": "structured",
+      "observed": true,
+      "license": "Public API restricted to non-commercial use; 1 request/second limit",
+      "attribution": "airplanes.live; link to https://airplanes.live/api-guide/ and comply with its non-commercial restriction.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "scripts/seed-military-flights.mjs",
+          "line": 48
+        },
+        {
+          "path": "src/components/MapPopup.ts",
+          "line": 83
         }
       ]
     },
@@ -388,7 +415,7 @@
       "references": [
         {
           "path": "scripts/ais-relay.cjs",
-          "line": 9615
+          "line": 9694
         },
         {
           "path": "scripts/seed-aviation.mjs",
@@ -503,7 +530,7 @@
       "references": [
         {
           "path": "scripts/ais-relay.cjs",
-          "line": 2663
+          "line": 2698
         }
       ]
     },
@@ -522,7 +549,7 @@
         },
         {
           "path": "scripts/ais-relay.cjs",
-          "line": 2567
+          "line": 2602
         },
         {
           "path": "server/worldmonitor/market/v1/_shared.ts",
@@ -641,7 +668,7 @@
       "references": [
         {
           "path": "scripts/ais-relay.cjs",
-          "line": 11427
+          "line": 11528
         },
         {
           "path": "scripts/seed-bigmac.mjs",
@@ -789,7 +816,7 @@
       "references": [
         {
           "path": "scripts/_seed-utils.mjs",
-          "line": 1301
+          "line": 1311
         },
         {
           "path": "scripts/seed-gold-cb-reserves.mjs",
@@ -955,7 +982,7 @@
       "references": [
         {
           "path": "scripts/seed-global-tenders.mjs",
-          "line": 124
+          "line": 182
         }
       ]
     },
@@ -970,7 +997,7 @@
       "references": [
         {
           "path": "scripts/ais-relay.cjs",
-          "line": 5983
+          "line": 6018
         }
       ]
     },
@@ -985,7 +1012,7 @@
       "references": [
         {
           "path": "scripts/ais-relay.cjs",
-          "line": 11456
+          "line": 11557
         },
         {
           "path": "server/worldmonitor/market/v1/stock-news-search.ts",
@@ -1038,7 +1065,7 @@
       "references": [
         {
           "path": "scripts/seed-global-tenders.mjs",
-          "line": 136
+          "line": 199
         }
       ]
     },
@@ -1095,7 +1122,7 @@
       "references": [
         {
           "path": "scripts/ais-relay.cjs",
-          "line": 135
+          "line": 137
         }
       ]
     },
@@ -1129,7 +1156,7 @@
       "references": [
         {
           "path": "scripts/ais-relay.cjs",
-          "line": 4914
+          "line": 4949
         },
         {
           "path": "scripts/seed-usa-spending.mjs",
@@ -1178,11 +1205,11 @@
       "references": [
         {
           "path": "scripts/ais-relay.cjs",
-          "line": 4774
+          "line": 4809
         },
         {
           "path": "scripts/seed-weather-alerts.mjs",
-          "line": 7
+          "line": 15
         }
       ]
     },
@@ -1216,23 +1243,23 @@
       "references": [
         {
           "path": "scripts/ais-relay.cjs",
-          "line": 5355
+          "line": 5390
         },
         {
           "path": "scripts/ais-relay.cjs",
-          "line": 5418
+          "line": 5453
         },
         {
           "path": "scripts/ais-relay.cjs",
-          "line": 5443
+          "line": 5478
         },
         {
           "path": "scripts/ais-relay.cjs",
-          "line": 9088
+          "line": 9167
         },
         {
           "path": "scripts/ais-relay.cjs",
-          "line": 9170
+          "line": 9249
         },
         {
           "path": "scripts/seed-bis-lbs.mjs",
@@ -1307,19 +1334,15 @@
         },
         {
           "path": "scripts/ais-relay.cjs",
-          "line": 3704
+          "line": 3739
         },
         {
           "path": "scripts/ais-relay.cjs",
-          "line": 3935
+          "line": 3970
         },
         {
           "path": "scripts/ais-relay.cjs",
-          "line": 4661
-        },
-        {
-          "path": "scripts/ais-relay.cjs",
-          "line": 4697
+          "line": 4696
         },
         {
           "path": "scripts/ais-relay.cjs",
@@ -1327,7 +1350,11 @@
         },
         {
           "path": "scripts/ais-relay.cjs",
-          "line": 11758
+          "line": 4767
+        },
+        {
+          "path": "scripts/ais-relay.cjs",
+          "line": 11859
         },
         {
           "path": "scripts/audit-resilience-cohorts.mjs",
@@ -1536,7 +1563,7 @@
       "references": [
         {
           "path": "scripts/seed-military-flights.mjs",
-          "line": 560
+          "line": 594
         }
       ]
     },
@@ -1774,7 +1801,7 @@
       "references": [
         {
           "path": "scripts/seed-global-tenders.mjs",
-          "line": 25
+          "line": 27
         }
       ]
     },
@@ -1849,7 +1876,7 @@
       "references": [
         {
           "path": "scripts/ais-relay.cjs",
-          "line": 11980
+          "line": 12081
         },
         {
           "path": "server/_shared/brief-carousel-render.ts",
@@ -1887,7 +1914,7 @@
       "references": [
         {
           "path": "scripts/ais-relay.cjs",
-          "line": 1945
+          "line": 1980
         }
       ]
     },
@@ -2039,7 +2066,7 @@
       "references": [
         {
           "path": "scripts/ais-relay.cjs",
-          "line": 5110
+          "line": 5145
         },
         {
           "path": "scripts/seed-research.mjs",
@@ -2180,11 +2207,11 @@
       "references": [
         {
           "path": "scripts/ais-relay.cjs",
-          "line": 5560
+          "line": 5595
         },
         {
           "path": "scripts/ais-relay.cjs",
-          "line": 5586
+          "line": 5621
         }
       ]
     },
@@ -2218,19 +2245,19 @@
       "references": [
         {
           "path": "scripts/ais-relay.cjs",
-          "line": 4142
+          "line": 4177
         },
         {
           "path": "scripts/ais-relay.cjs",
-          "line": 4231
+          "line": 4266
         },
         {
           "path": "scripts/ais-relay.cjs",
-          "line": 4414
+          "line": 4449
         },
         {
           "path": "scripts/seed-military-flights.mjs",
-          "line": 559
+          "line": 593
         },
         {
           "path": "server/worldmonitor/military/v1/_wingbits-aircraft-details.ts",
@@ -2465,7 +2492,7 @@
       "references": [
         {
           "path": "scripts/ais-relay.cjs",
-          "line": 9846
+          "line": 9925
         },
         {
           "path": "scripts/seed-aviation.mjs",
@@ -2537,7 +2564,7 @@
       "references": [
         {
           "path": "scripts/ais-relay.cjs",
-          "line": 5105
+          "line": 5140
         },
         {
           "path": "scripts/seed-research.mjs",
@@ -3598,7 +3625,7 @@
         },
         {
           "path": "scripts/ais-relay.cjs",
-          "line": 2156
+          "line": 2191
         },
         {
           "path": "scripts/seed-earnings-calendar.mjs",
@@ -3766,7 +3793,7 @@
         },
         {
           "path": "scripts/ais-relay.cjs",
-          "line": 9323
+          "line": 9402
         },
         {
           "path": "scripts/seed-prediction-markets.mjs",
@@ -4764,7 +4791,7 @@
         },
         {
           "path": "scripts/ais-relay.cjs",
-          "line": 6648
+          "line": 6683
         }
       ]
     },
@@ -4847,63 +4874,63 @@
       "references": [
         {
           "path": "scripts/ais-relay.cjs",
-          "line": 4115
+          "line": 4150
         },
         {
           "path": "scripts/ais-relay.cjs",
-          "line": 4313
+          "line": 4348
         },
         {
           "path": "scripts/ais-relay.cjs",
-          "line": 8873
+          "line": 8952
         },
         {
           "path": "scripts/ais-relay.cjs",
-          "line": 9057
+          "line": 9136
         },
         {
           "path": "scripts/ais-relay.cjs",
-          "line": 9074
+          "line": 9153
         },
         {
           "path": "scripts/ais-relay.cjs",
-          "line": 9380
+          "line": 9459
         },
         {
           "path": "scripts/ais-relay.cjs",
-          "line": 9510
+          "line": 9589
         },
         {
           "path": "scripts/ais-relay.cjs",
-          "line": 9601
+          "line": 9680
         },
         {
           "path": "scripts/ais-relay.cjs",
-          "line": 9723
+          "line": 9802
         },
         {
           "path": "scripts/ais-relay.cjs",
-          "line": 9826
+          "line": 9905
         },
         {
           "path": "scripts/ais-relay.cjs",
-          "line": 10123
+          "line": 10224
         },
         {
           "path": "scripts/ais-relay.cjs",
-          "line": 10253
+          "line": 10354
         },
         {
           "path": "scripts/ais-relay.cjs",
-          "line": 10285
+          "line": 10386
         },
         {
           "path": "scripts/ais-relay.cjs",
-          "line": 10915
+          "line": 11016
         },
         {
           "path": "scripts/ais-relay.cjs",
-          "line": 10999
+          "line": 11100
         },
         {
           "path": "server/worldmonitor/research/v1/list-tech-events.ts",
@@ -6952,11 +6979,11 @@
       "references": [
         {
           "path": "scripts/ais-relay.cjs",
-          "line": 5663
+          "line": 5698
         },
         {
           "path": "scripts/ais-relay.cjs",
-          "line": 5708
+          "line": 5743
         }
       ]
     },
@@ -7111,7 +7138,7 @@
       "references": [
         {
           "path": "scripts/ais-relay.cjs",
-          "line": 6021
+          "line": 6056
         }
       ]
     },
@@ -7185,6 +7212,25 @@
       ]
     },
     {
+      "host": "opendata.adsb.fi",
+      "provider": "adsb.fi Open Data",
+      "kind": "structured",
+      "observed": true,
+      "license": "Public API restricted to personal, non-commercial use; 1 request/second limit",
+      "attribution": "adsb.fi; cite and link to https://github.com/adsbfi/opendata and comply with its non-commercial restriction.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "scripts/seed-military-flights.mjs",
+          "line": 49
+        },
+        {
+          "path": "src/components/MapPopup.ts",
+          "line": 84
+        }
+      ]
+    },
+    {
       "host": "openrouter.ai",
       "provider": "openrouter.ai",
       "kind": "structured",
@@ -7210,19 +7256,23 @@
       "references": [
         {
           "path": "scripts/ais-relay.cjs",
-          "line": 8997
+          "line": 9076
         },
         {
           "path": "scripts/seed-military-flights.mjs",
-          "line": 558
+          "line": 592
         },
         {
           "path": "server/worldmonitor/military/v1/list-military-flights.ts",
-          "line": 375
+          "line": 486
         },
         {
           "path": "src/components/MapPopup.ts",
           "line": 74
+        },
+        {
+          "path": "src/components/MapPopup.ts",
+          "line": 86
         }
       ]
     },
@@ -7505,7 +7555,7 @@
       "references": [
         {
           "path": "scripts/ais-relay.cjs",
-          "line": 2660
+          "line": 2695
         }
       ]
     },
@@ -7701,7 +7751,7 @@
       "references": [
         {
           "path": "scripts/_seed-utils.mjs",
-          "line": 1655
+          "line": 1665
         },
         {
           "path": "scripts/_yahoo-fetch.mjs",
@@ -7721,19 +7771,19 @@
         },
         {
           "path": "scripts/ais-relay.cjs",
-          "line": 2079
+          "line": 2114
         },
         {
           "path": "scripts/ais-relay.cjs",
-          "line": 2104
+          "line": 2139
         },
         {
           "path": "scripts/ais-relay.cjs",
-          "line": 2523
+          "line": 2558
         },
         {
           "path": "scripts/ais-relay.cjs",
-          "line": 9530
+          "line": 9609
         },
         {
           "path": "scripts/seed-commodity-quotes.mjs",
@@ -7876,7 +7926,7 @@
       "references": [
         {
           "path": "scripts/ais-relay.cjs",
-          "line": 3180
+          "line": 3215
         },
         {
           "path": "scripts/fetch-country-boundary-overrides.mjs",
@@ -7934,11 +7984,11 @@
       "references": [
         {
           "path": "scripts/ais-relay.cjs",
-          "line": 6130
+          "line": 6165
         },
         {
           "path": "scripts/ais-relay.cjs",
-          "line": 6308
+          "line": 6343
         },
         {
           "path": "src/services/story-share.ts",
@@ -8309,7 +8359,7 @@
       "references": [
         {
           "path": "scripts/seed-global-tenders.mjs",
-          "line": 248
+          "line": 311
         }
       ]
     },
@@ -8912,7 +8962,7 @@
       "references": [
         {
           "path": "scripts/ais-relay.cjs",
-          "line": 904
+          "line": 939
         },
         {
           "path": "server/worldmonitor/leads/v1/register-interest.ts",
@@ -9131,7 +9181,7 @@
         },
         {
           "path": "scripts/ais-relay.cjs",
-          "line": 6649
+          "line": 6684
         }
       ]
     },
@@ -9509,11 +9559,11 @@
       "references": [
         {
           "path": "scripts/ais-relay.cjs",
-          "line": 1649
+          "line": 1684
         },
         {
           "path": "scripts/ais-relay.cjs",
-          "line": 8306
+          "line": 8385
         },
         {
           "path": "scripts/seed-ucdp-events.mjs",
@@ -9551,7 +9601,7 @@
       "references": [
         {
           "path": "scripts/ais-relay.cjs",
-          "line": 3151
+          "line": 3186
         },
         {
           "path": "scripts/seed-cyber-threats.mjs",
@@ -9582,7 +9632,7 @@
         },
         {
           "path": "scripts/ais-relay.cjs",
-          "line": 132
+          "line": 134
         }
       ]
     },
@@ -9829,7 +9879,7 @@
       "references": [
         {
           "path": "scripts/ais-relay.cjs",
-          "line": 5111
+          "line": 5146
         },
         {
           "path": "scripts/seed-research.mjs",
@@ -9853,6 +9903,10 @@
         {
           "path": "src/components/MapPopup.ts",
           "line": 71
+        },
+        {
+          "path": "src/components/MapPopup.ts",
+          "line": 85
         }
       ]
     },
@@ -9962,11 +10016,11 @@
         },
         {
           "path": "scripts/china-macro/calendar.mjs",
-          "line": 144
+          "line": 171
         },
         {
           "path": "scripts/china-macro/calendar.mjs",
-          "line": 157
+          "line": 297
         },
         {
           "path": "scripts/china-macro/source-runtime.mjs",
@@ -10094,15 +10148,15 @@
         },
         {
           "path": "src/services/premium-fetch.ts",
-          "line": 76
+          "line": 80
         },
         {
           "path": "src/services/premium-fetch.ts",
-          "line": 106
+          "line": 110
         },
         {
           "path": "src/services/premium-fetch.ts",
-          "line": 119
+          "line": 123
         },
         {
           "path": "src/services/runtime.ts",
@@ -10793,11 +10847,11 @@
       "references": [
         {
           "path": "scripts/china-macro/calendar.mjs",
-          "line": 4
+          "line": 22
         },
         {
           "path": "scripts/china-macro/calendar.mjs",
-          "line": 5
+          "line": 23
         }
       ]
     },
@@ -10981,7 +11035,7 @@
       "references": [
         {
           "path": "scripts/seed-global-tenders.mjs",
-          "line": 156
+          "line": 219
         }
       ]
     },
@@ -11724,7 +11778,7 @@
       "references": [
         {
           "path": "scripts/seed-global-tenders.mjs",
-          "line": 24
+          "line": 26
         }
       ]
     },
@@ -11739,7 +11793,7 @@
       "references": [
         {
           "path": "scripts/ais-relay.cjs",
-          "line": 5108
+          "line": 5143
         },
         {
           "path": "scripts/seed-research.mjs",
@@ -11873,11 +11927,11 @@
       "references": [
         {
           "path": "scripts/ais-relay.cjs",
-          "line": 10649
+          "line": 10750
         },
         {
           "path": "scripts/ais-relay.cjs",
-          "line": 10650
+          "line": 10751
         },
         {
           "path": "src/components/AviationCommandBar.ts",
@@ -11889,7 +11943,7 @@
         },
         {
           "path": "src/components/MapPopup.ts",
-          "line": 1311
+          "line": 1327
         }
       ]
     },
@@ -12583,7 +12637,7 @@
       "references": [
         {
           "path": "scripts/ais-relay.cjs",
-          "line": 4993
+          "line": 5028
         }
       ]
     },
@@ -12749,15 +12803,15 @@
       "references": [
         {
           "path": "scripts/ais-relay.cjs",
-          "line": 137
+          "line": 139
         },
         {
           "path": "scripts/ais-relay.cjs",
-          "line": 138
+          "line": 140
         },
         {
           "path": "scripts/ais-relay.cjs",
-          "line": 1182
+          "line": 1217
         }
       ]
     },
@@ -12825,11 +12879,11 @@
       "references": [
         {
           "path": "scripts/ais-relay.cjs",
-          "line": 6520
+          "line": 6555
         },
         {
           "path": "scripts/ais-relay.cjs",
-          "line": 6521
+          "line": 6556
         },
         {
           "path": "scripts/seed-conflict-intel.mjs",
@@ -13046,11 +13100,11 @@
       "references": [
         {
           "path": "scripts/ais-relay.cjs",
-          "line": 5875
+          "line": 5910
         },
         {
           "path": "scripts/ais-relay.cjs",
-          "line": 6027
+          "line": 6062
         }
       ]
     },
@@ -13480,7 +13534,7 @@
         },
         {
           "path": "scripts/china-macro/calendar.mjs",
-          "line": 177
+          "line": 317
         },
         {
           "path": "scripts/china-macro/source-contracts.mjs",
@@ -13650,7 +13704,7 @@
       "references": [
         {
           "path": "scripts/ais-relay.cjs",
-          "line": 5104
+          "line": 5139
         },
         {
           "path": "scripts/seed-research.mjs",
@@ -13739,7 +13793,7 @@
       "references": [
         {
           "path": "scripts/seed-global-tenders.mjs",
-          "line": 273
+          "line": 336
         }
       ]
     },
@@ -13958,7 +14012,7 @@
       "references": [
         {
           "path": "scripts/ais-relay.cjs",
-          "line": 5109
+          "line": 5144
         },
         {
           "path": "scripts/seed-research.mjs",
@@ -14447,11 +14501,11 @@
         },
         {
           "path": "scripts/ais-relay.cjs",
-          "line": 9733
+          "line": 9812
         },
         {
           "path": "scripts/ais-relay.cjs",
-          "line": 9768
+          "line": 9847
         },
         {
           "path": "server/worldmonitor/aviation/v1/get-youtube-live-stream-info.ts",

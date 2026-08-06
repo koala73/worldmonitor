@@ -18,7 +18,6 @@ export function sourceError(code, cause) {
   error.code = code;
   return error;
 }
-
 async function readBoundedResponseBytes(response, maxBytes) {
   const contentLength = Number(response?.headers?.get?.('content-length'));
   if (Number.isFinite(contentLength) && contentLength > maxBytes) {
@@ -185,5 +184,3 @@ export async function fetchViaConfiguredProxy(input, init, {
     },
   });
 }
-
-

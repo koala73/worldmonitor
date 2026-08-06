@@ -1275,7 +1275,7 @@
         "ucdpEvents": "सशस्त्र संघर्ष घटनाएं",
         "displacementFlows": "स्थानांतरण प्रवाह",
         "climateAnomalies": "जलवायु असामान्यता",
-        "weatherAlerts": "मौसम अलर्ट",
+        "weatherAlerts": "अमेरिका के मौसम अलर्ट (NWS)",
         "strategicWaterways": "चोकपॉइंट",
         "economicCenters": "आर्थिक केंद्र",
         "criticalMinerals": "महत्वपूर्ण खनिज",
@@ -1354,7 +1354,7 @@
           "infraDatacenters": "एआई कंप्यूट क्लस्टर (>=10,000 GPU)",
           "infraOutages": "इंटरनेट ब्लैकआउट और सेवा व्यवधान",
           "naturalEventsTech": "भूकंप, तूफान, आग (डेटा केंद्र प्रभावित कर सकते हैं)",
-          "weatherAlerts": "कठोर मौसम अलर्ट",
+          "weatherAlerts": "अमेरिका में गंभीर मौसम अलर्ट (NWS)",
           "economicCenters": "शेयर बाजार और केंद्रीय बैंक",
           "countriesOverlay": "देश नाम ओवरले",
           "financeExchanges": "मुख्य वैश्विक एक्सचेंज",
@@ -1366,7 +1366,7 @@
           "financeOutages": "इंटरनेट व्यवधान जो बाजार संचालन को प्रभावित कर सकते हैं",
           "financeCyberThreats": "वित्तीय इन्फ्रास्ट्रक्चर से जुड़े सुरक्षा घटनाएं",
           "macroWaterways": "कमोडिटी शिपिंग के रणनीतिक चोकपॉइंट",
-          "weatherAlertsMarket": "बाजार से संबंधित कठोर मौसम घटनाएं",
+          "weatherAlertsMarket": "अमेरिका में बाजार से संबंधित गंभीर मौसम घटनाएं (NWS)",
           "naturalEventsMacro": "भूकंप, आग, बाढ़ और अन्य प्राकृतिक व्यवधान",
           "timeRecent": "समय-आधारित डेटा को हाल के घंटों तक फ़िल्टर करें",
           "timeExtended": "पिछले सप्ताह, महीने या सभी समय का डेटा दिखाएं",
@@ -2959,7 +2959,7 @@
       "heading": "दिशा",
       "hexCode": "हेक्स कोड",
       "squawk": "स्क्वॉक",
-      "attribution": "स्रोत: OpenSky नेटवर्क"
+      "attribution": "स्रोत: adsb.lol (ODbL) · OpenSky Network"
     },
     "militaryVessel": {
       "aisDark": "AIS डार्क",

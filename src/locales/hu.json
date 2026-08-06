@@ -1275,7 +1275,7 @@
         "ucdpEvents": "Fegyveres konfliktus események",
         "displacementFlows": "Kényszermigrációs áramlások",
         "climateAnomalies": "Éghajlati anomáliák",
-        "weatherAlerts": "Időjárási riasztások",
+        "weatherAlerts": "Egyesült államokbeli időjárási riasztások (NWS)",
         "strategicWaterways": "Szűk átjárók",
         "economicCenters": "Gazdasági központok",
         "criticalMinerals": "Kritikus ásványok",
@@ -1354,7 +1354,7 @@
           "infraDatacenters": "AI számítási fürtök >=10 000 GPU-val",
           "infraOutages": "Internet leállások és szolgáltatáskiesések",
           "naturalEventsTech": "Földrengések, viharok, tüzek (adatközpontokat érinthetnek)",
-          "weatherAlerts": "Súlyos időjárási figyelmeztetések",
+          "weatherAlerts": "Súlyos időjárási figyelmeztetések az Egyesült Államokban (NWS)",
           "economicCenters": "Értéktőzsdék és központi bankok",
           "countriesOverlay": "Ország név átfedések",
           "financeExchanges": "Fő globális tőzsdék piaci szint szerint",
@@ -1366,7 +1366,7 @@
           "financeOutages": "Internet-kiesések, amelyek hatással lehetnek a piaci működésre",
           "financeCyberThreats": "Biztonsági incidensek a pénzügyi infrastruktúra körül",
           "macroWaterways": "Stratégiai szűk keresztmetszetek az áruszállításhoz",
-          "weatherAlertsMarket": "Súlyos időjárási események piaci relevanciával",
+          "weatherAlertsMarket": "Piaci jelentőségű súlyos időjárási események az Egyesült Államokban (NWS)",
           "naturalEventsMacro": "Földrengések, tüzek, árvizek és egyéb természeti katasztrófák",
           "timeRecent": "Időalapú adatok szűrése az utóbbi órákra",
           "timeExtended": "Adatok megjelenítése az elmúlt hétből, hónapból vagy minden időből",
@@ -2959,7 +2959,7 @@
       "heading": "IRÁNY",
       "hexCode": "HEX KÓD",
       "squawk": "SQUAWK",
-      "attribution": "Forrás: OpenSky Network"
+      "attribution": "Forrás: adsb.lol (ODbL) · OpenSky Network"
     },
     "militaryVessel": {
       "aisDark": "AIS SÖTÉT",

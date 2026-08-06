@@ -85,9 +85,17 @@ Activity near 12 major naval installations is tracked:
 
 Vessels within 50km of these bases are flagged, enabling detection of unusual activity patterns.
 
-## Aircraft Tracking (OpenSky)
+## Aircraft Tracking (adsb.lol + OpenSky)
 
-Military aircraft are tracked via the OpenSky Network using ADS-B data. OpenSky blocks unauthenticated requests from cloud provider IPs (Vercel, Railway, AWS), so aircraft tracking requires a relay server with credentials.
+Military aircraft are tracked via multiple ADS-B networks. The primary source is **adsb.lol** (`api.adsb.lol/v2/mil`), which returns military-filtered aircraft globally with no API key required. **Wingbits** can supplement the global response in its configured regions. OpenSky is fully disabled in the centralized military-flight seeder, so every cron cycle consumes zero metered OpenSky credits. Optional point-query gap-fill from **airplanes.live** and **adsb.fi** is disabled by default because both public APIs restrict use to non-commercial deployments; an eligible operator must explicitly enable it with `WM_ENABLE_NONCOMMERCIAL_ADSB_GAP_FILL=1`.
+
+**Sources**:
+
+- adsb.lol — primary, keyless, ODbL-licensed
+- Wingbits — keyed regional supplement
+- airplanes.live — optional non-commercial point-query gap-fill (1 request/second)
+- adsb.fi — optional personal/non-commercial point-query gap-fill (1 request/second)
+- OpenSky Network — legacy per-request service recovery only; disabled in the seeder
 
 **Authentication**:
 
@@ -477,7 +485,7 @@ Theater posture computations run on edge servers with Redis caching:
 
 | Cache Type | TTL | Purpose |
 |------------|-----|---------|
-| **Active cache** | 5 minutes | Matches OpenSky refresh rate |
+| **Active cache** | 5 minutes | Matches the military-flight seeder cadence |
 | **Stale cache** | 1 hour | Fallback when upstream APIs fail |
 
-This ensures consistent data across all users and minimizes redundant API calls to OpenSky Network.
+This ensures consistent data across all users while keeping provider calls in the centralized seeder.
