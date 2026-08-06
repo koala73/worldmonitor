@@ -22,7 +22,6 @@ import {
   verifyUserId,
 } from "../lib/identitySigning";
 import { DEV_USER_ID, isDev } from "../lib/auth";
-import { syncCompanyMonitoringAccountFromEntitlement } from "../companyMonitoring/accounts";
 import { isChargedEventType, recordUnattributedEvent } from "./unattributedPayments";
 
 // ---------------------------------------------------------------------------
@@ -196,14 +195,13 @@ export async function upsertEntitlements(
     }
   }
 
-  // Company Monitoring account state is part of the entitlement transaction: the
-  // canonical row and its one account root commit together or not at all —
-  // whenever the owner fence is resolvable. A misconfigured fence keyring
-  // degrades Company Monitoring (logged, root skipped, converges on the next
-  // entitlement write) instead of rolling back this entitlement write, because
-  // a config fault would otherwise fail every Dodo retry identically. Data
-  // conflicts inside the sync still propagate and still abort the transaction.
-  await syncCompanyMonitoringAccountFromEntitlement(ctx, userId);
+  // Company Monitoring deliberately does NOT run here (#6256). It is a
+  // segment feature, and this is the one entitlement-write path every
+  // subscriber traverses; provisioning from here charged all of them for its
+  // queries, an extra write, and 1+N HMACs, and let any fault inside it —
+  // including a config typo that fails every retry identically — roll back a
+  // paying customer's entitlement. Roots are provisioned on first authenticated
+  // use, and lapses are reconciled by the reaper cron.
 
   // ACCEPTED BOUND: cache sync runs after mutation commits. If scheduler
   // fails to enqueue, stale cache survives up to ENTITLEMENT_CACHE_TTL_SECONDS
@@ -412,7 +410,6 @@ export async function recomputeEntitlementFromAllSubs(
     console.log(
       `[subscriptionHelpers] recompute for ${userId} — comp floor active until ${new Date(entitlement.compUntil).toISOString()}, preserving entitlement`,
     );
-    await syncCompanyMonitoringAccountFromEntitlement(ctx, userId);
     return;
   }
 

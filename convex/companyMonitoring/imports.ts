@@ -6,7 +6,8 @@ import {
   type CompanyImportRowInput,
   type NormalizedCompanyImportRow,
 } from "../../shared/company-monitoring-contract";
-import { COMPANY_LIMIT, fingerprint, requireActiveAccount } from "./_shared";
+import { COMPANY_LIMIT, fingerprint } from "./_shared";
+import { requireProvisionedAccount } from "./accounts";
 import { findNoopByCustomerReference, insertNormalizedCompany } from "./companies";
 import {
   companyImportRowInputValidator,
@@ -29,7 +30,7 @@ export const importCompanyRowForOwner = internalMutation({
     rowFingerprint: v.string(),
   },
   handler: async (ctx, args): Promise<ImportRowMutationResult> => {
-    const account = await requireActiveAccount(ctx, args.ownerUserId);
+    const account = await requireProvisionedAccount(ctx, args.ownerUserId);
     const row = args.row as NormalizedCompanyImportRow;
     const companyCount = account.companyCount ?? 0;
     const replay = await ctx.db

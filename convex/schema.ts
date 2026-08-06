@@ -1056,7 +1056,11 @@ export default defineSchema({
     .index("by_logicalAccountId", ["logicalAccountId"])
     .index("by_ownerUserId", ["ownerUserId"])
     .index("by_ownerFenceHash", ["ownerFenceHash"])
-    .index("by_purgePhase_updatedAt", ["purgePhase", "updatedAt"]),
+    .index("by_purgePhase_updatedAt", ["purgePhase", "updatedAt"])
+    // Consumer: accounts.reconcileAccountEntitlements. Entitlement writes no
+    // longer push lapses (#6256), so the reconciler pulls them by scanning
+    // entitled roots oldest-first.
+    .index("by_lifecycle_updatedAt", ["lifecycle", "updatedAt"]),
 
   companyMonitoringCompanies: defineTable({
     ownerAccountId: v.string(),

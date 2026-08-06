@@ -5,6 +5,7 @@ import {
   accountFor,
   company,
   grant,
+  grantProvisioned,
   installCompanyMonitoringTestEnvironment,
   modules,
   NOW,
@@ -18,7 +19,7 @@ installCompanyMonitoringTestEnvironment();
 describe("account-bound Company Monitoring API-key scopes", () => {
   test("scoped keys carry the exact active account binding and stale activation fails closed", async () => {
     const t = convexTest(schema, modules);
-    await grant(t, OWNER_A, "api_starter");
+    await grantProvisioned(t, OWNER_A, "api_starter");
     const account = await accountFor(t, OWNER_A);
 
     const key = await t.withIdentity({ subject: OWNER_A, tokenIdentifier: `clerk|${OWNER_A}` }).mutation(
@@ -77,7 +78,7 @@ describe("account-bound Company Monitoring API-key scopes", () => {
 
   test("token-only lifecycle invalidation is scheduled and fails before fetch", async () => {
     const t = convexTest(schema, modules);
-    await grant(t, OWNER_A);
+    await grantProvisioned(t, OWNER_A);
     const account = await accountFor(t, OWNER_A);
     await t.run(async (ctx) => {
       await ctx.db.insert("userApiKeys", {
