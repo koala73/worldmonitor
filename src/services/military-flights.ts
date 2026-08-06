@@ -121,6 +121,7 @@ function mapProtoFlight(pf: ProtoMilitaryFlight, nowDate: Date): MilitaryFlight 
 
   return {
     id: pf.id,
+    source: pf.source || undefined,
     callsign: pf.callsign,
     hexCode: pf.hexCode,
     registration: pf.registration || undefined,

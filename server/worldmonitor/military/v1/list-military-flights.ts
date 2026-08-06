@@ -29,13 +29,11 @@ interface RequestBounds {
 
 // Coverage is a property of the SNAPSHOT, not of the producer's query shape.
 //
-// scripts/seed-military-flights.mjs issues one bbox-less OpenSky /states/all per
-// run (#6222), but its tier-1 source (Wingbits) still queries the two regional
-// boxes below. So a cycle where OpenSky returned nothing publishes REGIONAL data
-// however global the intent was. Treating that as global would answer a viewport
-// over the Americas with an authoritative empty for the entire duration of an
-// OpenSky outage, instead of falling through to per-viewer recovery — the exact
-// "uncovered geography becomes an empty result" failure this guard exists to stop.
+// scripts/seed-military-flights.mjs normally receives a bbox-less global
+// military snapshot from adsb.lol. Wingbits and optional point-query gap-fill
+// are regional. OpenSky remains only handler-level recovery when no authoritative
+// seed covers the viewport. Treating a regional cycle as global would create
+// authoritative empty viewports.
 //
 // The producer therefore stamps its real coverage into the payload and this reads
 // it. A payload without the field predates that change and is treated as regional,
@@ -44,9 +42,7 @@ const GLOBAL_COVERAGE: readonly RequestBounds[] = [
   { south: -90, north: 90, west: -180, east: 180 },
 ];
 
-// The producer's tier-1 (Wingbits) query regions — mirrors QUERY_REGIONS in
-// scripts/seed-military-flights.mjs. This is what a snapshot covers when the
-// global tier contributed nothing.
+// The producer's Wingbits query regions — mirrors QUERY_REGIONS in the seeder.
 const REGIONAL_COVERAGE: readonly RequestBounds[] = [
   { south: 10, north: 46, west: 107, east: 143 },
   { south: 13, north: 85, west: -10, east: 57 },
@@ -185,6 +181,7 @@ interface SeedFlight {
   confidence?: string;
   isInteresting?: boolean;
   note?: string;
+  sourceMeta?: { source?: string };
 }
 
 /** What geography a published snapshot actually covers — see seedCovers above. */
@@ -208,7 +205,7 @@ function seedToProto(f: SeedFlight): ListMilitaryFlightsResponse['flights'][numb
   const icao = (f.hexCode || f.id || '').toUpperCase();
   if (!icao) return null;
   return {
-    id: icao,
+    id: (f.id || icao).trim(),
     callsign: (f.callsign || '').trim(),
     hexCode: icao,
     registration: f.registration || '',
@@ -231,6 +228,7 @@ function seedToProto(f: SeedFlight): ListMilitaryFlightsResponse['flights'][numb
     isInteresting: f.isInteresting ?? false,
     note: f.note || '',
     enrichment: undefined,
+    source: f.sourceMeta?.source || '',
   };
 }
 
@@ -439,6 +437,7 @@ export async function listMilitaryFlights(
             isInteresting: false,
             note: '',
             enrichment: undefined,
+            source: 'opensky',
           });
         }
 

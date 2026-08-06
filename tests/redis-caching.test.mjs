@@ -1923,7 +1923,14 @@ describe('military flights bbox behavior', { concurrency: 1 }, () => {
           return jsonResponse({
             result: JSON.stringify({
               flights: [
-                { id: 'seed-in', callsign: 'RCH301', lat: 20.2, lon: 10.2 },
+                {
+                  id: 'adsb-ae0301',
+                  hexCode: 'AE0301',
+                  callsign: 'RCH301',
+                  lat: 20.2,
+                  lon: 10.2,
+                  sourceMeta: { source: 'adsb.lol' },
+                },
                 { id: 'seed-out', callsign: 'RCH302', lat: 22.2, lon: 10.2 },
               ],
               fetchedAt: Date.now(),
@@ -1948,7 +1955,9 @@ describe('military flights bbox behavior', { concurrency: 1 }, () => {
       assert.match(redisKeys[0], /^military:flights:v1:/, 'the stable bbox snapshot cache must be checked first');
       assert.equal(redisKeys[1], 'military:flights:v1', 'a bbox cache miss must read the canonical seed');
       assert.equal(openskyCalls, 0, 'live seed coverage should prevent an OpenSky fetch');
-      assert.deepEqual(result.flights.map((flight) => flight.id), ['SEED-IN']);
+      assert.deepEqual(result.flights.map((flight) => flight.id), ['adsb-ae0301']);
+      assert.equal(result.flights[0].hexCode, 'AE0301');
+      assert.equal(result.flights[0].source, 'adsb.lol');
     } finally {
       cleanup();
       globalThis.fetch = originalFetch;
@@ -2145,8 +2154,8 @@ describe('military flights bbox behavior', { concurrency: 1 }, () => {
         pageSize: 1,
         cursor: first.pagination?.nextCursor ?? '',
       });
-      assert.deepEqual(first.flights.map((flight) => flight.id), ['SEED-A']);
-      assert.deepEqual(second.flights.map((flight) => flight.id), ['SEED-B']);
+      assert.deepEqual(first.flights.map((flight) => flight.id), ['seed-a']);
+      assert.deepEqual(second.flights.map((flight) => flight.id), ['seed-b']);
       assert.equal(rootReads, 1, 'continuation pages must stay on the cached unpaginated snapshot');
     } finally {
       cleanup();
@@ -2216,8 +2225,9 @@ describe('military flights bbox behavior', { concurrency: 1 }, () => {
         `a viewport inside the global seed coverage spent ${openskyCalls} OpenSky request(s); ` +
         'per-viewer recovery must not run when the snapshot covers the request.',
       );
-      // Hex codes are canonicalized to uppercase on the way out.
-      assert.deepEqual(result.flights.map((flight) => flight.id), ['AMERICAS']);
+      // Provider IDs are opaque and preserve their original case; hexCode is
+      // canonicalized separately when the producer supplies it.
+      assert.deepEqual(result.flights.map((flight) => flight.id), ['americas']);
     } finally {
       cleanup();
       globalThis.fetch = originalFetch;
@@ -2337,7 +2347,7 @@ describe('military flights bbox behavior', { concurrency: 1 }, () => {
       // than the two former regions.
       assert.equal(openskyCalls, 0, 'a Redis error must not open a provider call');
       assert.deepEqual(
-        result.flights.map((flight) => flight.id), ['STALE1'],
+        result.flights.map((flight) => flight.id), ['stale1'],
         'a Redis error on the live key must still serve the 24h stale snapshot',
       );
     } finally {
@@ -2720,9 +2730,9 @@ describe('military flights bbox behavior', { concurrency: 1 }, () => {
         cursor: first.pagination?.nextCursor ?? '',
       });
 
-      assert.deepEqual(first.flights.map((flight) => flight.id), ['STALE-FIRST', 'STALE-SECOND']);
+      assert.deepEqual(first.flights.map((flight) => flight.id), ['stale-first', 'stale-second']);
       assert.deepEqual(first.pagination, { nextCursor: '2', totalCount: 3 });
-      assert.deepEqual(second.flights.map((flight) => flight.id), ['STALE-THIRD']);
+      assert.deepEqual(second.flights.map((flight) => flight.id), ['stale-third']);
       assert.deepEqual(second.pagination, { nextCursor: '', totalCount: 3 });
     } finally {
       cleanup();

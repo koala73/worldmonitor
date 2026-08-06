@@ -349,12 +349,12 @@
     },
     {
       "host": "api.adsb.lol",
-      "provider": "api.adsb.lol",
+      "provider": "adsb.lol",
       "kind": "structured",
       "observed": true,
-      "license": "Provider terms for this upstream API/dataset; verify before redistribution",
-      "attribution": "Credit api.adsb.lol and link to the original upstream API/dataset.",
-      "status": "terms-review",
+      "license": "Open Database License (ODbL) 1.0",
+      "attribution": "adsb.lol; preserve ODbL attribution and link to https://adsb.lol/.",
+      "status": "reviewed",
       "references": [
         {
           "path": "scripts/ais-relay.cjs",
@@ -363,21 +363,29 @@
         {
           "path": "scripts/seed-military-flights.mjs",
           "line": 47
+        },
+        {
+          "path": "src/components/MapPopup.ts",
+          "line": 82
         }
       ]
     },
     {
       "host": "api.airplanes.live",
-      "provider": "api.airplanes.live",
+      "provider": "airplanes.live",
       "kind": "structured",
       "observed": true,
-      "license": "Provider terms for this upstream API/dataset; verify before redistribution",
-      "attribution": "Credit api.airplanes.live and link to the original upstream API/dataset.",
+      "license": "Public API restricted to non-commercial use; 1 request/second limit",
+      "attribution": "airplanes.live; link to https://airplanes.live/api-guide/ and comply with its non-commercial restriction.",
       "status": "terms-review",
       "references": [
         {
           "path": "scripts/seed-military-flights.mjs",
           "line": 48
+        },
+        {
+          "path": "src/components/MapPopup.ts",
+          "line": 83
         }
       ]
     },
@@ -1559,7 +1567,7 @@
       "references": [
         {
           "path": "scripts/seed-military-flights.mjs",
-          "line": 580
+          "line": 594
         }
       ]
     },
@@ -2253,7 +2261,7 @@
         },
         {
           "path": "scripts/seed-military-flights.mjs",
-          "line": 579
+          "line": 593
         },
         {
           "path": "server/worldmonitor/military/v1/_wingbits-aircraft-details.ts",
@@ -7209,16 +7217,20 @@
     },
     {
       "host": "opendata.adsb.fi",
-      "provider": "opendata.adsb.fi",
+      "provider": "adsb.fi Open Data",
       "kind": "structured",
       "observed": true,
-      "license": "Provider terms for this upstream API/dataset; verify before redistribution",
-      "attribution": "Credit opendata.adsb.fi and link to the original upstream API/dataset.",
+      "license": "Public API restricted to personal, non-commercial use; 1 request/second limit",
+      "attribution": "adsb.fi; cite and link to https://github.com/adsbfi/opendata and comply with its non-commercial restriction.",
       "status": "terms-review",
       "references": [
         {
           "path": "scripts/seed-military-flights.mjs",
           "line": 49
+        },
+        {
+          "path": "src/components/MapPopup.ts",
+          "line": 84
         }
       ]
     },
@@ -7252,15 +7264,19 @@
         },
         {
           "path": "scripts/seed-military-flights.mjs",
-          "line": 578
+          "line": 592
         },
         {
           "path": "server/worldmonitor/military/v1/list-military-flights.ts",
-          "line": 375
+          "line": 373
         },
         {
           "path": "src/components/MapPopup.ts",
           "line": 74
+        },
+        {
+          "path": "src/components/MapPopup.ts",
+          "line": 86
         }
       ]
     },
@@ -9891,6 +9907,10 @@
         {
           "path": "src/components/MapPopup.ts",
           "line": 71
+        },
+        {
+          "path": "src/components/MapPopup.ts",
+          "line": 85
         }
       ]
     },
@@ -11931,7 +11951,7 @@
         },
         {
           "path": "src/components/MapPopup.ts",
-          "line": 1311
+          "line": 1327
         }
       ]
     },
