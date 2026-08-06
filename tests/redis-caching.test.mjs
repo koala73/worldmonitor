@@ -2591,8 +2591,8 @@ describe('military flights bbox behavior', { concurrency: 1 }, () => {
         cursor: first.pagination?.nextCursor ?? '',
       });
 
-      assert.deepEqual(first.flights.map((flight) => flight.id), ['STALE-A']);
-      assert.deepEqual(second.flights.map((flight) => flight.id), ['STALE-B']);
+      assert.deepEqual(first.flights.map((flight) => flight.id), ['stale-a']);
+      assert.deepEqual(second.flights.map((flight) => flight.id), ['stale-b']);
       assert.equal(staleRootReads, 1, 'continuation pages must use the cached stale snapshot');
     } finally {
       cleanup();
