@@ -19,25 +19,30 @@
  * Any numeric literal in the prompt is an anchor the model can emit verbatim,
  * so assert there is none rather than blocklisting the one value we caught.
  */
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { SearchAdapter } from './search.js';
-import type { ExaProvider } from '../acquisition/exa.js';
-import type { FirecrawlProvider } from '../acquisition/firecrawl.js';
+import { ExaProvider } from '../acquisition/exa.js';
+import { FirecrawlProvider } from '../acquisition/firecrawl.js';
+import type { ExtractSchema } from '../acquisition/types.js';
 import type { AdapterContext } from './types.js';
 import type { RetailerConfig } from '../config/types.js';
 
-function capturePrompt(canonicalName: string): string {
-  let prompt = '';
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
+
+async function captureSchema(canonicalName: string): Promise<ExtractSchema> {
+  const captured: { schema?: ExtractSchema } = {};
   const firecrawl = {
-    extract: vi.fn().mockImplementation((_url: string, schema: { prompt: string }) => {
-      prompt = schema.prompt;
+    extract: vi.fn().mockImplementation((_url: string, schema: ExtractSchema) => {
+      captured.schema = schema;
       return Promise.resolve({ data: { productName: canonicalName, price: 4.2, currency: 'AED', sizeText: '1L' } });
     }),
-  } as unknown as FirecrawlProvider;
+  } as unknown as InstanceType<typeof FirecrawlProvider>;
   const exa = {
     search: vi.fn().mockResolvedValue([{ url: 'https://www.noon.com/uae-en/milk/p/' }]),
     extract: vi.fn(),
-  } as unknown as ExaProvider;
+  } as unknown as InstanceType<typeof ExaProvider>;
 
   const config = {
     slug: 'noon_grocery_ae',
@@ -72,12 +77,15 @@ function capturePrompt(canonicalName: string): string {
     },
   };
 
-  return new SearchAdapter(exa, firecrawl).fetchTarget(ctx, target).then(() => prompt) as unknown as string;
+  await new SearchAdapter(exa, firecrawl).fetchTarget(ctx, target);
+  if (!captured.schema) throw new Error('SearchAdapter did not send an extraction schema');
+  return captured.schema;
 }
 
 describe('extraction prompt', () => {
   it('contains no numeric price example the model can emit verbatim', async () => {
-    const prompt = await (capturePrompt('Full Fat Fresh Milk 1L') as unknown as Promise<string>);
+    const schema = await captureSchema('Full Fat Fresh Milk 1L');
+    const prompt = schema.prompt ?? '';
 
     // Anti-vacuity: an uncaptured prompt is the empty string, which trivially
     // contains no decimal literal and would make the assertion below pass while
@@ -95,8 +103,56 @@ describe('extraction prompt', () => {
     expect(decimalLiterals).toEqual([]);
   });
 
+  it('keeps numeric examples out of the serialized Exa request', async () => {
+    const productName = 'Full Fat Fresh Milk';
+    const schema = await captureSchema(productName);
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({ results: [{ summary: { productName, price: null, currency: 'AED' } }] }),
+        { status: 200 },
+      ),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    await new ExaProvider('test-key').extract('https://www.noon.com/uae-en/milk/p/', schema);
+
+    const request = fetchMock.mock.calls[0]?.[1] as RequestInit;
+    const body = JSON.parse(String(request.body)) as {
+      summary: { query: string; schema: { properties: Record<string, { description: string }> } };
+    };
+    expect(body.summary.query).toContain('Extract the retail price');
+    expect(body.summary.query).toContain('price (number)');
+    expect(body.summary.query.match(/\d/g) ?? []).toEqual([]);
+    expect(JSON.stringify(body.summary.schema.properties).match(/\d/g) ?? []).toEqual([]);
+  });
+
+  it('keeps numeric examples out of the serialized Firecrawl request', async () => {
+    const productName = 'Full Fat Fresh Milk';
+    const schema = await captureSchema(productName);
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ success: true, data: { extract: { productName, price: null } } }), {
+        status: 200,
+      }),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    await new FirecrawlProvider('test-key').extract('https://www.noon.com/uae-en/milk/p/', schema);
+
+    const request = fetchMock.mock.calls[0]?.[1] as RequestInit;
+    const body = JSON.parse(String(request.body)) as {
+      extract: { prompt: string; schema: { properties: Record<string, { description: string }> } };
+    };
+    const fieldDescriptions = Object.values(body.extract.schema.properties)
+      .map((property) => property.description)
+      .join(' ');
+    expect(body.extract.prompt).toBe(schema.prompt);
+    expect(body.extract.prompt).toContain('Extract the retail price');
+    expect(fieldDescriptions).toContain('Retail price');
+    expect(`${body.extract.prompt} ${fieldDescriptions}`.match(/\d/g) ?? []).toEqual([]);
+  });
+
   it('still tells the extractor how to handle a split price', async () => {
-    const prompt = await (capturePrompt('Full Fat Fresh Milk 1L') as unknown as Promise<string>);
+    const prompt = (await captureSchema('Full Fat Fresh Milk 1L')).prompt ?? '';
     expect(prompt.toLowerCase()).toContain('split');
   });
 });

@@ -12,7 +12,14 @@
 import { ExaProvider } from '../acquisition/exa.js';
 import { loadAllBasketConfigs, loadRetailerConfig } from '../config/loader.js';
 import { MARKET_NAMES } from './market-names.js';
-import { isAllowedHost, matchesAnyPathFilter, matchesRequiredPathSegments, normalizeAllowedHosts, normalizePathFilters } from './search.js';
+import {
+  buildExaDiscoveryRequest,
+  isAllowedHost,
+  matchesAnyPathFilter,
+  matchesRequiredPathSegments,
+  normalizeAllowedHosts,
+  normalizePathFilters,
+} from './search.js';
 
 const DEFAULT_SLUGS = ['jiomart_in', 'noon_grocery_ae', 'noon_sa', 'carrefour_sa', 'coldstorage_sg'];
 const slugs = process.argv.slice(2).length > 0 ? process.argv.slice(2) : DEFAULT_SLUGS;
@@ -53,19 +60,19 @@ for (const slug of slugs) {
 
   for (const basket of baskets) {
     for (const item of basket.items) {
-      const query = sc?.queryTemplate
-        ? sc.queryTemplate
-            .replace('{canonicalName}', item.canonicalName)
-            .replace('{category}', item.category)
-            .replace('{currency}', cfg.currencyCode)
-            .replace('{market}', marketName)
-            .trim()
-        : `${item.canonicalName} grocery ${marketName} ${cfg.currencyCode}`.trim();
+      const request = buildExaDiscoveryRequest({
+        searchConfig: sc,
+        canonicalName: item.canonicalName,
+        category: item.category,
+        currency: cfg.currencyCode,
+        marketName,
+        includeDomains: hosts,
+      });
 
       let urls: string[] = [];
       let err: string | null = null;
       try {
-        const res = await exa.search(query, { numResults: sc?.numResults ?? 3, includeDomains: hosts, timeout: 30_000 });
+        const res = await exa.search(request.query, request.options);
         urls = res.map((r) => r.url).filter(Boolean);
       } catch (e) {
         err = e instanceof Error ? e.message : String(e);

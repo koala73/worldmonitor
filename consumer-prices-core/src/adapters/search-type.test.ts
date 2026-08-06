@@ -14,7 +14,7 @@
  * global default, because neural still wins where the index is current.
  */
 import { describe, expect, it, vi } from 'vitest';
-import { SearchAdapter } from './search.js';
+import { buildExaDiscoveryRequest, SearchAdapter } from './search.js';
 import { loadRetailerConfig } from '../config/loader.js';
 import type { ExaProvider } from '../acquisition/exa.js';
 import type { FirecrawlProvider } from '../acquisition/firecrawl.js';
@@ -52,6 +52,29 @@ function targetFor(config: RetailerConfig) {
 }
 
 describe('searchConfig.searchType', () => {
+  it('builds one request contract for production and discovery diagnostics', () => {
+    const config = loadRetailerConfig('jiomart_in');
+
+    const request = buildExaDiscoveryRequest({
+      searchConfig: config.searchConfig,
+      canonicalName: 'Onions 1kg',
+      category: 'onions',
+      currency: config.currencyCode,
+      marketName: 'India',
+      includeDomains: ['www.jiomart.com'],
+    });
+
+    expect(request).toEqual({
+      query: 'Onions 1kg onions grocery food India INR price',
+      options: {
+        numResults: 10,
+        includeDomains: ['www.jiomart.com'],
+        type: 'keyword',
+        timeout: 30_000,
+      },
+    });
+  });
+
   it('forwards the configured search mode to Exa discovery', async () => {
     const config = loadRetailerConfig('jiomart_in');
     const search = vi.fn().mockResolvedValue([{ url: 'https://www.jiomart.com/product/onion-1-kg-pack-mffneb-7550741' }]);

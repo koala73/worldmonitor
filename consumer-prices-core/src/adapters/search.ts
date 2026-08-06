@@ -24,7 +24,7 @@ import { MARKET_NAMES } from './market-names.js';
 import { parseSize } from '../normalizers/size.js';
 import { validateSearchHit, type ValidatorResult } from './validator.js';
 import type { BasketItem } from '../config/types.js';
-import type { AcquisitionProviderName } from '../acquisition/types.js';
+import type { AcquisitionProviderName, SearchOptions } from '../acquisition/types.js';
 
 /** Packaging/container words that are not product identity tokens. */
 const PACKAGING_WORDS = new Set(['pack', 'box', 'bag', 'container', 'bottle', 'can', 'jar', 'tin', 'set', 'kit', 'bundle']);
@@ -158,6 +158,38 @@ export function matchesRequiredPathSegments(url: string, segments: string[]): bo
   } catch {
     return false;
   }
+}
+
+/** Build the exact Exa discovery request shared by production and diagnostics. */
+export function buildExaDiscoveryRequest(input: {
+  searchConfig: RetailerConfig['searchConfig'];
+  canonicalName: string;
+  category: string;
+  currency: string;
+  marketName: string;
+  includeDomains: string[];
+}): { query: string; options: SearchOptions } {
+  const { searchConfig, canonicalName, category, currency, marketName, includeDomains } = input;
+  const query = searchConfig?.queryTemplate
+    ? searchConfig.queryTemplate
+        .replace('{canonicalName}', canonicalName)
+        .replace('{category}', category)
+        .replace('{currency}', currency)
+        .replace('{market}', marketName)
+        .trim()
+    : `${canonicalName} grocery ${marketName} ${currency}`.trim();
+
+  return {
+    query,
+    options: {
+      numResults: searchConfig?.numResults ?? 3,
+      includeDomains,
+      // Omitted unless configured so retailers on the provider default are
+      // untouched; ExaProvider.search falls back to neural on undefined.
+      ...(searchConfig?.searchType ? { type: searchConfig.searchType } : {}),
+      timeout: 30_000,
+    },
+  };
 }
 
 interface ExtractedProduct {
@@ -359,13 +391,16 @@ export class SearchAdapter implements RetailerAdapter {
       // currency, title and strict-validator gates alike. Describe the split
       // layout in words instead.
       prompt: `Extract the retail price of THIS specific product from the main product section of the page.${sizeClause} The price may be rendered split across separate elements, with the whole-currency part and the fractional part in different nodes; join them into one number. Never invent, estimate, or complete a price: read every digit off the page, and if the main product's price is not printed on the page return null for price. ONLY extract the price shown for the main product itself. If the page shows "Out of Stock" and no price is displayed for the main product, return null for price — do NOT use prices from related products, recommendations, or carousels. If the page is an error, "not found", or empty-state page, return null for price. Return the product name EXACTLY as printed on the page (never restate the product you were asked to find), the numeric price in ${currency} (null if not shown), the currency code, whether it is in stock, and the size or quantity shown on the page.`,
+      // Field descriptions are model-visible too: Exa appends them to the
+      // summary query and Firecrawl sends them in the extraction schema. Keep
+      // every description free of worked numeric examples for the same reason.
       fields: {
         productName: { type: 'string' as const, required: true, description: 'Name or title of the product' },
         price: {
           type: 'number' as const,
           required: true,
           nullable: true,
-          description: `Retail price in ${currency} as a single number (e.g. 4.69)`,
+          description: `Retail price in ${currency}, expressed as one numeric value`,
         },
         currency: { type: 'string' as const, required: true, description: `Currency code, should be ${currency}` },
         inStock: {
@@ -376,7 +411,7 @@ export class SearchAdapter implements RetailerAdapter {
         sizeText: {
           type: 'string' as const,
           required: false,
-          description: 'Size or quantity shown on the page (e.g. "32 oz", "1 gallon", "24 pack")',
+          description: 'Size or quantity exactly as shown on the page',
         },
       },
     };
@@ -596,27 +631,19 @@ export class SearchAdapter implements RetailerAdapter {
 
     const marketName = MARKET_NAMES[ctx.config.marketCode] ?? ctx.config.marketCode.toUpperCase();
     const cfg = ctx.config.searchConfig;
-
-    const searchQuery = cfg?.queryTemplate
-      ? cfg.queryTemplate
-          .replace('{canonicalName}', canonicalName)
-          .replace('{category}', target.category)
-          .replace('{currency}', currency)
-          .replace('{market}', marketName)
-          .trim()
-      : `${canonicalName} grocery ${marketName} ${currency}`.trim();
+    const discoveryRequest = buildExaDiscoveryRequest({
+      searchConfig: cfg,
+      canonicalName,
+      category: target.category,
+      currency,
+      marketName,
+      includeDomains: hostAllowlist,
+    });
 
     // Stage 1: Exa URL discovery
     let exaResults;
     try {
-      exaResults = await this.exa.search(searchQuery, {
-        numResults: cfg?.numResults ?? 3,
-        includeDomains: hostAllowlist,
-        // Omitted unless configured so retailers on the provider default are
-        // untouched; ExaProvider.search falls back to neural on undefined.
-        ...(cfg?.searchType ? { type: cfg.searchType } : {}),
-        timeout: 30_000,
-      });
+      exaResults = await this.exa.search(discoveryRequest.query, discoveryRequest.options);
       this.exaDiscoveryFailureStreak = 0;
     } catch (err) {
       const detail = err instanceof Error ? err.message : String(err);
