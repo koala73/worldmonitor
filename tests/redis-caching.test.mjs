@@ -1921,6 +1921,84 @@ describe('aviation aircraft provider priority', { concurrency: 1 }, () => {
     }
   });
 
+  it('returns positions from the icao24 tier when the relay responds with data', async () => {
+    const { module, cleanup } = await importTrackAircraft();
+    const restoreEnv = withEnv({
+      WS_RELAY_URL: 'wss://relay.test',
+      UPSTASH_REDIS_REST_URL: undefined,
+      UPSTASH_REDIS_REST_TOKEN: undefined,
+    });
+    const originalFetch = globalThis.fetch;
+
+    globalThis.fetch = async (url) => {
+      const raw = String(url);
+      if (raw.includes('/opensky/states/all') && raw.includes('icao24=')) {
+        return jsonResponse({
+          states: [['4b1805', 'TEST1', null, null, null, 10.5, 20.5, 30000, false, 420, 180]],
+        });
+      }
+      return jsonResponse({}, false);
+    };
+
+    try {
+      const result = await module.trackAircraft({}, {
+        icao24: '4b1805',
+        swLat: 0,
+        swLon: 0,
+        neLat: 0,
+        neLon: 0,
+      });
+      assert.equal(result.source, 'opensky');
+      assert.equal(result.positions.length, 1);
+      assert.equal(result.positions[0].icao24, '4b1805');
+      assert.equal(result.positions[0].lat, 20.5);
+      assert.equal(result.positions[0].lon, 10.5);
+    } finally {
+      cleanup();
+      globalThis.fetch = originalFetch;
+      restoreEnv();
+    }
+  });
+
+  it('treats an asymmetric bbox (equal lat, different lon) as non-degenerate', async () => {
+    const { module, cleanup } = await importTrackAircraft();
+    const restoreEnv = withEnv({
+      WS_RELAY_URL: 'wss://relay.test',
+      UPSTASH_REDIS_REST_URL: undefined,
+      UPSTASH_REDIS_REST_TOKEN: undefined,
+    });
+    const originalFetch = globalThis.fetch;
+    let wingbitsCalls = 0;
+
+    globalThis.fetch = async (url) => {
+      const raw = String(url);
+      if (raw.includes('/wingbits/track') && raw.includes('lamin=')) {
+        wingbitsCalls += 1;
+        return jsonResponse({ positions: [{ icao24: 'abc', lat: 20.5, lon: 10.5 }], source: 'wingbits' }, true);
+      }
+      return jsonResponse({}, false);
+    };
+
+    try {
+      const result = await module.trackAircraft({}, {
+        icao24: '',
+        callsign: '',
+        swLat: 10,
+        swLon: 10,
+        neLat: 10,
+        neLon: 15,
+      });
+      // Equal lat (10===10) but different lon (10!==15) → non-degenerate → bbox block runs
+      assert.equal(wingbitsCalls, 1, 'asymmetric bbox must trigger Wingbits');
+      assert.equal(result.source, 'wingbits');
+      assert.equal(result.positions.length, 1);
+    } finally {
+      cleanup();
+      globalThis.fetch = originalFetch;
+      restoreEnv();
+    }
+  });
+
   it('keeps the all-provider failure path inside the edge response deadline', async () => {
     const { module, cleanup } = await importTrackAircraft();
     const restoreEnv = withEnv({
