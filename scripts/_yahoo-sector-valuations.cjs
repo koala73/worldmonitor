@@ -21,16 +21,28 @@ const DEFAULT_SECTOR_VALUATION_BUDGET_MS = 60_000;
 // slice rather than the whole remainder: BATCH_MIN_BUDGET_MS is the floor below
 // which issuing it is pointless, BATCH_BUDGET_MS the ceiling it may consume.
 const BATCH_MIN_BUDGET_MS = 2_000;
-const BATCH_BUDGET_MS = 15_000;
+// Sized against the MEASURED cost of one exit through a residential proxy:
+// cookie + crumb + quote runs ~7s, so the previous 15s ceiling admitted only two
+// exits and DEFAULT_MAX_EXIT_ATTEMPTS was unreachable in production -- the cap
+// that actually bound rotation was this budget, not the attempt count. 30s fits
+// four and still leaves half the 60s valuation budget for the quoteSummary tier,
+// which only runs for symbols the batch failed to cover.
+const BATCH_BUDGET_MS = 30_000;
 // Yahoo's quote fundamentals cache is populated PER RESIDENTIAL EXIT IP: across
 // 10 rotated Decodo exits, 7 answered HTTP 200 while omitting trailingPE for a
-// stable subset of sector ETFs and 3 served it. With p(good) ~= 0.3, four exits
-// clear ~76% of cycles and the last-good snapshot covers the residual. Raising
-// this trades proxy bandwidth -- which is metered, and whose exhaustion has
-// taken the seeder fleet down before -- for diminishing coverage.
+// stable subset of sector ETFs and 3 served it.
+//
+// Note this is NOT an independent 1-(0.7)^4 draw per cycle: the window is
+// deterministic (start..start+3 from the remembered exit), so a window whose
+// exits are all bad stays bad on repeat. That is why an exhausted window
+// advances the remembered start rather than re-probing itself -- the exploration
+// across cycles, not the width of any single window, is what finds a good exit.
+// Raising this widens one cycle's search at the cost of proxy bandwidth, which
+// is metered and whose exhaustion has taken the seeder fleet down before.
 const DEFAULT_MAX_EXIT_ATTEMPTS = 4;
-// Where the exit that last returned complete fundamentals is remembered, so the
-// steady-state cost is one proxy request set per cycle rather than ~3.3.
+// Where the exit that last served complete fundamentals is remembered, so the
+// BATCH TIER's own search cost drops from ~3.3 request sets to 1. This does not
+// change the per-symbol tier above it, which still uses the configured exit.
 const PREFERRED_EXIT_KEY = 'market:sectors:valuations:proxy-exit';
 const PREFERRED_EXIT_TTL = 24 * 3600;
 const CURL_PROCESS_GRACE_MS = 5_000;
@@ -492,6 +504,14 @@ async function collectV7Valuations(
   // of the exit IP, so a single-exit batch can only ever re-read the same
   // partial cache. fetchV7BatchDetailed remains the path for clients that
   // predate rotation.
+  // KNOWN GAP: the per-symbol loop above still reaches the proxy on the
+  // CONFIGURED exit, not the remembered one, so on a cycle whose pinned exit is
+  // truncating it spends a handful of proxy requests that cannot recover those
+  // symbols before this batch runs. Routing that leg through the remembered exit
+  // (or dropping it and letting everything uncovered fall to this batch) would
+  // remove the waste, but it would also stop the batch running on healthy
+  // cycles -- and the batch is what refreshes the remembered exit. That is a
+  // design change with its own failure modes, deliberately not bundled here.
   const batchSymbols = symbols.filter((symbol) => !freshVals[symbol]);
   const rotatingBatch = typeof client?.fetchV7BatchAcrossExits === 'function';
   if (
@@ -520,6 +540,12 @@ async function collectV7Valuations(
       // Learning from a partial run is what lets a poisoned preference heal.
       if (Number.isInteger(batchResult?.bestExitAttempt)) {
         winningExitAttempt = batchResult.bestExitAttempt;
+      } else if (batchResult?.exitsTried > 0) {
+        // Nothing in this window worked. The window is deterministic
+        // (start..start+N), so repeating it re-probes the same dead exits every
+        // cycle forever. Step past what was just disproved so the search
+        // actually explores the pool instead of hammering one slice of it.
+        winningExitAttempt = preferredExitAttempt + batchResult.exitsTried;
       }
     } catch (error) {
       batchResult = null;
@@ -1480,10 +1506,10 @@ async function collectSectorValuations({
     ? now() + Math.max(1, maxDurationMs)
     : null;
 
-  // Which residential exit last returned complete fundamentals. Starting there
-  // makes the steady-state cost one proxy request set per cycle instead of the
-  // ~3.3 a blind rotation averages; proxy bandwidth is metered and exhausting
-  // it has taken the seeder fleet down before.
+  // Which residential exit last served complete fundamentals. Starting there
+  // collapses the BATCH TIER's search from the ~3.3 exits a blind rotation
+  // averages to 1. It does not change the per-symbol tier below, which still
+  // uses the configured exit -- see the follow-up noted on that loop.
   //
   // Only read it when something can act on it: a client without exit rotation
   // would spend a Redis round-trip per cycle on a value it cannot use.

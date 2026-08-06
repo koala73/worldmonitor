@@ -168,9 +168,23 @@ describe('authenticated Yahoo quoteSummary integration (static analysis)', () =>
     const construction = src.slice(
       src.indexOf('new YahooQuoteSummaryClient({'),
       src.indexOf('function fetchYahooQuoteSummary('),
-    );
+    )
+      // Comments in this region mention the resolver by name; matching them
+      // would pass even with the property itself deleted.
+      .split('\n')
+      .filter((line) => !line.trim().startsWith('//'))
+      .join('\n');
     assert.ok(construction.length > 0, 'client construction not found');
-    assert.match(construction, /\bresolveProxyStringForAttempt\b/);
+    // Require the SHORTHAND form. A bare name match also accepts
+    // `resolveProxyStringForAttempt: resolveProxyString` -- right key, wrong
+    // function, rotation silently dead -- which is the likelier mutation than
+    // deleting the line outright.
+    assert.match(construction, /\bresolveProxyStringForAttempt\s*,/);
+    assert.doesNotMatch(
+      construction,
+      /\bresolveProxyStringForAttempt\s*:/,
+      'the rotating resolver must be passed itself, not aliased to another function',
+    );
     assert.match(
       src,
       /require\('\.\/_proxy-utils\.cjs'\)/,
@@ -884,6 +898,8 @@ describe('proxy exit preference', () => {
             // The real client nominates the exit that covered the most symbols;
             // here one exit covers them all, so it is both.
             bestExitAttempt: attempt,
+            exitsTried: attempt - startExitAttempt + 1,
+            exitBySymbol: Object.fromEntries(requested.map((s) => [s, attempt])),
             value: {
               source: 'yahoo_v7_quote_authenticated_proxy',
               valuations: Object.fromEntries(requested.map((s) => [s, { trailingPE: 25 }])),
@@ -897,6 +913,7 @@ describe('proxy exit preference', () => {
           exitAttempt: startExitAttempt + 3,
           // Nothing was covered, so no exit is worth nominating.
           bestExitAttempt: null,
+          exitsTried: 4,
           value: {
             valuations: {},
             outcomes: Object.fromEntries(requested.map((s) => [s, { kind: 'missing_fields' }])),
@@ -942,7 +959,55 @@ describe('proxy exit preference', () => {
     const exitWrite = writes.find((w) => w.key === PREFERRED_EXIT_KEY);
     assert.ok(exitWrite, 'the winning exit is persisted');
     assert.equal(exitWrite.value.attempt, 2);
-    assert.ok(exitWrite.ttl > 0, 'the preference expires rather than pinning a dead exit forever');
+    // Assert the real TTL, not merely truthiness: `ttl: 1` would satisfy `> 0`
+    // while expiring immediately and defeating the point of remembering it.
+    assert.equal(exitWrite.ttl, 24 * 3600, 'the preference lives a day, not a moment');
+  });
+
+  it('publishes the serving exit per symbol in the diagnostics', async () => {
+    // These fields are what lets an operator tell "Yahoo has no such field" from
+    // "we ran out of exits". Nothing asserted them, so a rename or a dropped
+    // field would ship silently.
+    const client = rotatingClient({ goodExit: 2, symbols: ['XLK', 'SMH'] });
+    const result = await collectSectorValuations({
+      symbols: ['XLK', 'SMH'],
+      fetchValue: async () => { throw new Error('quoteSummary must not run when the batch recovers'); },
+      parseValue: (raw) => raw?.value ?? null,
+      sleepFn: async () => {},
+      v7UserAgent: 'test-agent',
+      v7Client: client,
+      upstashGet: async () => null,
+      upstashSet: async () => true,
+    });
+
+    const batchOutcomes = (result.valuationDiagnostics || [])
+      .flatMap((entry) => entry.outcomes)
+      .filter((outcome) => outcome.route === 'v7QuoteBatch');
+    assert.ok(batchOutcomes.length > 0, 'the batch route reports diagnostics');
+    for (const outcome of batchOutcomes) {
+      assert.equal(outcome.exitAttempt, 2, 'the exit that served the symbol is named');
+    }
+  });
+
+  it('keeps publishing valuations when the preference write fails', async () => {
+    const client = rotatingClient({ goodExit: 0, symbols: ['XLK', 'SMH'] });
+    const result = await collectSectorValuations({
+      symbols: ['XLK', 'SMH'],
+      fetchValue: async () => { throw new Error('quoteSummary must not run when the batch recovers'); },
+      parseValue: (raw) => raw?.value ?? null,
+      sleepFn: async () => {},
+      v7UserAgent: 'test-agent',
+      v7Client: client,
+      // Stored exit 1 is stale; exit 0 is the one that works, so the run both
+      // recovers AND tries to rewrite the preference -- which then fails.
+      upstashGet: async (key) => (key === PREFERRED_EXIT_KEY ? { attempt: 0 } : null),
+      upstashSet: async (key) => {
+        if (key === PREFERRED_EXIT_KEY) throw new Error('redis down');
+        return true;
+      },
+    });
+
+    assert.equal(result.valuationCount, 2, 'a failed preference write never costs the cycle');
   });
 
   it('does not rewrite a fresh preference when the cached exit still works', async () => {
@@ -994,6 +1059,37 @@ describe('proxy exit preference', () => {
     assert.ok(exitWrite, 'an aging preference is renewed');
     assert.equal(exitWrite.value.attempt, 3, 'renewal keeps the same working exit');
     assert.equal(exitWrite.value.savedAt, now, 'renewal restamps the clock');
+  });
+
+  it('advances the window when no exit in it covered anything', async () => {
+    // The rotation window is deterministic: attempts run start..start+N. If
+    // nothing in that window ever serves the symbols, and only a full success
+    // writes the preference, the seeder re-probes the identical four ports every
+    // five minutes forever -- burning metered proxy bandwidth and never
+    // discovering the good exits that exist elsewhere in the pool.
+    const writes = [];
+    const client = rotatingClient({ goodExit: 999, symbols: ['XLK', 'SMH'] });
+    await collectSectorValuations({
+      symbols: ['XLK', 'SMH'],
+      fetchValue: async () => null,
+      parseValue: () => null,
+      sleepFn: async () => {},
+      v7UserAgent: 'test-agent',
+      v7Client: client,
+      upstashGet: async (key) => (
+        key === PREFERRED_EXIT_KEY ? { attempt: 4, savedAt: 1_700_000_000_000 } : null
+      ),
+      upstashSet: async (key, value, ttl) => { writes.push({ key, value, ttl }); return true; },
+      now: () => 1_700_000_000_000,
+    });
+
+    const exitWrite = writes.find((w) => w.key === PREFERRED_EXIT_KEY);
+    assert.ok(exitWrite, 'an exhausted window must be recorded so the next cycle moves on');
+    assert.equal(
+      exitWrite.value.attempt,
+      8,
+      'the next cycle starts past the four exits this one already proved bad',
+    );
   });
 
   it('ignores a malformed or out-of-range remembered exit', async () => {

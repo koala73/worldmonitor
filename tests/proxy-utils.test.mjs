@@ -177,15 +177,47 @@ describe('proxy utilities', () => {
 
   it('reads the attempt as the first argument so a proxy string cannot land in it', () => {
     // resolveProxyString takes the raw config first; this one takes the attempt.
-    // Passing a config where the attempt belongs must not be parsed as a route.
+    // A swapped call must degrade to the configured exit, not to a port computed
+    // from a string.
+    //
+    // `raw` is deliberately NON-empty here. With raw = '' the assertion proves
+    // nothing: parseProxyConfig returns null on a falsy raw before `attempt` is
+    // ever read, so the result is '' whether the coercion exists or not.
     assert.equal(
-      resolveProxyStringForAttempt('gate.decodo.com:10001:proxy-user:proxy-secret', ''),
-      '',
-    );
-    // A non-numeric attempt degrades to the configured exit rather than NaN.
-    assert.equal(
-      resolveProxyStringForAttempt(undefined, 'gate.decodo.com:10001:u:p'),
+      resolveProxyStringForAttempt(
+        'gate.decodo.com:10001:proxy-user:proxy-secret',
+        'gate.decodo.com:10001:u:p',
+      ),
       'u:p@us.decodo.com:10001',
+      'a proxy string in the attempt slot degrades to attempt 0',
+    );
+    // Every other non-numeric attempt degrades the same way rather than
+    // producing NaN, which would resolve to a port outside the sticky range.
+    for (const badAttempt of [undefined, null, NaN, 'two', {}, [], Infinity]) {
+      assert.equal(
+        resolveProxyStringForAttempt(badAttempt, 'gate.decodo.com:10001:u:p'),
+        'u:p@us.decodo.com:10001',
+        `attempt=${String(badAttempt)}`,
+      );
+    }
+    // A negative attempt clamps forward, never below the sticky floor.
+    assert.equal(
+      resolveProxyStringForAttempt(-5, 'gate.decodo.com:10001:u:p'),
+      'u:p@us.decodo.com:10001',
+    );
+    // A fractional attempt truncates rather than producing a fractional port.
+    assert.equal(
+      resolveProxyStringForAttempt(2.9, 'gate.decodo.com:10001:u:p'),
+      'u:p@us.decodo.com:10003',
+    );
+  });
+
+  it('leaves a Decodo port above the sticky range unrotated', () => {
+    // parseProxyConfigForAttempt excludes both sides of the sticky range in one
+    // condition; only the below-minimum side had coverage.
+    assert.equal(
+      resolveProxyStringForAttempt(2, 'gate.decodo.com:50000:proxy-user:proxy-secret'),
+      'proxy-user:proxy-secret@us.decodo.com:50000',
     );
   });
 

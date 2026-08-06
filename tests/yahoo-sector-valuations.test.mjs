@@ -1436,6 +1436,35 @@ describe('YahooQuoteSummaryClient exit rotation', () => {
     assert.ok(seen.includes('exit-1'), 'the next exit is still reachable');
   });
 
+  it('falls back to the default cap for out-of-range maxExitAttempts', async () => {
+    // Every other test passes 3, 6, or 8, so the clamp branch was never executed.
+    // A 0 slipping through would disable rotation entirely and silently restore
+    // the pinned-exit behaviour this whole change exists to remove.
+    for (const [configured, expectedAttempts] of [[0, 4], [-1, 4], [2.5, 4], [1, 1], [2, 2]]) {
+      const harness = exitHarness({
+        badExits: Array.from({ length: 12 }, (_, i) => `exit-${i}`),
+        truncated: TRUNCATED,
+      });
+      const client = new YahooQuoteSummaryClient({
+        directRequest: harness.directRequest,
+        proxyRequest: harness.proxyRequest,
+        resolveProxyString: () => 'exit-0',
+        resolveProxyStringForAttempt: (attempt) => `exit-${attempt}`,
+        maxExitAttempts: configured,
+        sleepFn: async () => {},
+        logger: { warn: () => {} },
+      });
+
+      const result = await client.fetchV7BatchAcrossExits(SECTORS);
+
+      assert.equal(
+        result.exitsTried,
+        expectedAttempts,
+        `maxExitAttempts: ${configured}`,
+      );
+    }
+  });
+
   it('gives up quickly when every exit fails the same way', async () => {
     // A Decodo quota 407 or credential expiry fails identically on every exit.
     // Per-exit cooldowns no longer suppress that the way one shared key did, so
@@ -1444,7 +1473,7 @@ describe('YahooQuoteSummaryClient exit rotation', () => {
     const attempts = [];
     const client = new YahooQuoteSummaryClient({
       directRequest: async () => { throw new Error('no direct'); },
-      proxyRequest: async (url, options) => {
+      proxyRequest: async (_url, options) => {
         attempts.push(String(options?.proxy || ''));
         return { status: 407, headers: {}, body: '' };
       },
