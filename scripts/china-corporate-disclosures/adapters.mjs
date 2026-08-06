@@ -90,7 +90,7 @@ export const OFFICIAL_EXCHANGE_SOURCE_CONTRACTS = Object.freeze({
     metadataEndpoint: 'https://www.szse.cn/api/disc/announcement/annList',
     metadataHost: 'www.szse.cn',
     documentHosts: CHINA_DISCLOSURE_DOCUMENT_HOSTS.SZSE,
-    maxRequestsPerRun: 4,
+    maxRequestsPerRun: 3,
     maxDirectRequestsPerRun: 1,
     maxProxyRequestsPerRun: 2,
     transportRecoverySuccessRuns: SZSE_TRANSPORT_RECOVERY_SUCCESS_RUNS,

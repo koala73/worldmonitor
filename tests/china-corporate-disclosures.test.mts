@@ -103,7 +103,7 @@ describe('official China corporate disclosures (#5577)', () => {
     assert.ok(timeoutMatch, 'China disclosure bundle section must declare timeoutMs');
     const sectionTimeoutMs = Number(timeoutMatch[1].replaceAll('_', ''));
 
-    assert.equal(CHINA_CORPORATE_DISCLOSURE_MAX_NETWORK_MS, 119_250);
+    assert.equal(CHINA_CORPORATE_DISCLOSURE_MAX_NETWORK_MS, 103_250);
     assert.ok(
       sectionTimeoutMs - CHINA_CORPORATE_DISCLOSURE_MAX_NETWORK_MS >= 20_000,
       'network attempts must leave at least 20s for startup, parsing, publication, and shutdown',
@@ -1108,7 +1108,7 @@ describe('official China corporate disclosures (#5577)', () => {
     assert.equal(szse?.requestCount, 2);
     assert.equal(szse?.transportPath, 'proxy');
     assert.equal(szse?.fallbackReason, 'UND_ERR_CONNECT_TIMEOUT');
-    assert.equal(OFFICIAL_EXCHANGE_SOURCE_CONTRACTS.szse.maxRequestsPerRun, 4);
+    assert.equal(OFFICIAL_EXCHANGE_SOURCE_CONTRACTS.szse.maxRequestsPerRun, 3);
     assert.equal(OFFICIAL_EXCHANGE_SOURCE_CONTRACTS.szse.maxDirectRequestsPerRun, 1);
     assert.equal(OFFICIAL_EXCHANGE_SOURCE_CONTRACTS.szse.maxProxyRequestsPerRun, 2);
     assert.equal(
