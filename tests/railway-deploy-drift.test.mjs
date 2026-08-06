@@ -657,14 +657,37 @@ describe('Railway deploy drift summary', () => {
 
   // Anti-rot: a suppression that outlives its cause is how a fleet ends up
   // silently a week behind with a green monitor.
+  //
+  // `c` is acknowledged AND present in the fleet on purpose: that leaves
+  // `blocking` and `missing` both empty, so the expiry is the ONLY thing that
+  // can make this run fail. A fixture that also blocked or went missing would
+  // pass with the expiry check deleted.
   it('fails once the baseline expires, even with nothing else wrong', () => {
+    const summary = summarizeDeployDrift(
+      results.slice(0, 3),
+      baseline([{ name: 'c', status: 'REJECTED_PUSH', issue: 6141 }], '2026-08-01'),
+      NOW,
+    );
+    assert.deepEqual(summary.blocking, []);
+    assert.deepEqual(summary.missing, []);
+    assert.equal(summary.expired, true);
+    assert.equal(summary.ok, false);
+  });
+
+  // The companion to the rule above, and the reason pruning the last entry is
+  // safe: the expiry governs SUPPRESSIONS. With none left there is nothing to
+  // re-review, so a passed date must not redden a monitor whose whole fleet is
+  // on head — this file is emptied the moment the fleet recovers (#6064), and a
+  // date-triggered failure over an empty list is noise that trains people to
+  // ignore this check.
+  it('does not expire a baseline that suppresses nothing', () => {
     const summary = summarizeDeployDrift(
       results.slice(0, 2),
       baseline([], '2026-08-01'),
       NOW,
     );
-    assert.equal(summary.expired, true);
-    assert.equal(summary.ok, false);
+    assert.equal(summary.expired, false);
+    assert.equal(summary.ok, true);
   });
 });
 
