@@ -23,6 +23,15 @@ export { getClientIp, hasCloudflareTransitProof, UNKNOWN_CLIENT_IP } from './cli
 // resilient default untouched. Mirrors the retry:false already shipped on the
 // MCP limiter to unblock the suite (PR #3963).
 const REDIS_TEST_RETRY_OPTS: { retry?: false } = process.env.NODE_TEST_CONTEXT ? { retry: false } : {};
+// @upstash/ratelimit v2 returns an allow-shaped result with reason="timeout"
+// when this deadline wins the Redis race. Endpoint policies inspect that
+// reason below and fail closed; keeping the SDK timeout enabled bounds the
+// outage latency instead of waiting for the platform function timeout.
+const ENDPOINT_RATE_LIMIT_TIMEOUT_MS = process.env.NODE_TEST_CONTEXT ? 25 : 5_000;
+// Abort the underlying Upstash fetch just before the SDK's availability-first
+// race expires. Without this, the SDK returns its timeout result but leaves the
+// Redis request alive in the isolate for an unbounded transport stall.
+const ENDPOINT_REDIS_ABORT_TIMEOUT_MS = process.env.NODE_TEST_CONTEXT ? 20 : 4_500;
 
 let ratelimit: Ratelimit | null = null;
 const GLOBAL_RATE_LIMIT = 600;
@@ -66,9 +75,19 @@ function rateLimitErrorLevel(stage: string, msg: string): 'warning' | 'error' {
   return 'error';
 }
 
+const RATE_LIMIT_SENTRY_DEDUP_MS = 60_000;
+const lastRateLimitSentryCaptureAt = new Map<string, number>();
+
 function logRateLimitDegraded(stage: string, err: unknown): void {
   const msg = err instanceof Error ? err.message : String(err);
   console.error(`[rate-limit] redis-error stage=${stage} msg=${msg}`);
+  // Keep every occurrence in provider logs, but emit at most one Sentry event
+  // per limiter stage per minute from this isolate. A Redis outage otherwise
+  // turns every fail-closed request into another identical ingestion event.
+  const now = Date.now();
+  const lastCaptureAt = lastRateLimitSentryCaptureAt.get(stage);
+  if (lastCaptureAt !== undefined && now - lastCaptureAt < RATE_LIMIT_SENTRY_DEDUP_MS) return;
+  lastRateLimitSentryCaptureAt.set(stage, now);
   captureSilentError(err, {
     tags: { surface: 'server', component: 'rate-limit', stage },
     fingerprint: ['rate-limit', 'redis-error', stage],
@@ -273,14 +292,16 @@ export const ENDPOINT_RATE_POLICIES: Record<string, EndpointRatePolicy> = {
   '/api/intelligence/v1/list-company-signals': { limit: 30, window: '60 s' },
   '/api/intelligence/v1/search-sec-filings': { limit: 30, window: '60 s' },
   // Public market/economic provider proxies (#6236): caller-controlled symbols,
-  // countries, indicators, and year ranges create unbounded cache-key
-  // cardinality, so cache misses must not inherit the global fail-open budget.
-  // analyze-stock is stricter because one miss can fan out to Finnhub plus the
-  // Exa -> Brave -> SerpAPI search ladder; the other routes make one upstream
-  // provider request per miss and use the standard 30/min proxy budget.
-  '/api/market/v1/analyze-stock': { limit: 10, window: '60 s' },
-  '/api/market/v1/backtest-stock': { limit: 30, window: '60 s' },
-  '/api/market/v1/get-insider-transactions': { limit: 30, window: '60 s' },
+  // indicators, and year ranges create unbounded cache-key cardinality; the
+  // country-index route is bounded to the 45-country contract but still
+  // proxies Yahoo Finance on a cache miss. None may inherit the global
+  // fail-open budget. The dashboard can legitimately fan out across 50 Pro
+  // watchlist symbols, so those three per-symbol routes admit one full load
+  // plus headroom. analyze-stock remains separately constrained by the
+  // fail-closed per-user daily direct-LLM quota.
+  '/api/market/v1/analyze-stock': { limit: 60, window: '60 s' },
+  '/api/market/v1/backtest-stock': { limit: 60, window: '60 s' },
+  '/api/market/v1/get-insider-transactions': { limit: 60, window: '60 s' },
   '/api/market/v1/get-country-stock-index': { limit: 30, window: '60 s' },
   '/api/economic/v1/list-world-bank-indicators': { limit: 30, window: '60 s' },
   // Company Monitoring is contract-only and remains unrouted until #6003
@@ -484,10 +505,16 @@ function getEndpointRatelimit(pathname: string): Ratelimit | null {
   if (!url || !token) return null;
 
   const rl = new Ratelimit({
-    redis: new Redis({ url, token, ...REDIS_TEST_RETRY_OPTS }),
+    redis: new Redis({
+      url,
+      token,
+      ...REDIS_TEST_RETRY_OPTS,
+      signal: () => AbortSignal.timeout(ENDPOINT_REDIS_ABORT_TIMEOUT_MS),
+    }),
     limiter: Ratelimit.slidingWindow(policy.limit, policy.window),
     prefix: 'rl:ep',
     analytics: false,
+    timeout: ENDPOINT_RATE_LIMIT_TIMEOUT_MS,
   });
   endpointLimiters.set(pathname, rl);
   return rl;
@@ -520,7 +547,14 @@ export async function checkEndpointRateLimit(request: Request, pathname: string,
   if (!policy) return null;
 
   try {
-    const { success, limit, reset } = await limitWithFallback(rl, `${pathname}:${identifier}`, `rl:ep:fw:${pathname}:${identifier}`, policy.limit, durationToSeconds(policy.window));
+    const result = await limitWithFallback(rl, `${pathname}:${identifier}`, `rl:ep:fw:${pathname}:${identifier}`, policy.limit, durationToSeconds(policy.window));
+    // @upstash/ratelimit v2's timeout is intentionally availability-first:
+    // it resolves { success: true, reason: 'timeout' }. Explicit endpoint
+    // policies are the abuse defence, so that result is degraded, not an allow.
+    if (result.reason === 'timeout') {
+      throw new Error('Upstash endpoint rate-limit decision timed out');
+    }
+    const { success, limit, reset } = result;
 
     if (!success) {
       return tooManyRequestsResponse(limit, reset, corsHeaders, durationToSeconds(policy.window));
@@ -635,5 +669,6 @@ export function __resetRateLimitForTest(): void {
   endpointLimiters.clear();
   scopedLimiters.clear();
   scopedMissingConfigStages.clear();
+  lastRateLimitSentryCaptureAt.clear();
   resetRateLimitFallbackForTest();
 }

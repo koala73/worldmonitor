@@ -309,9 +309,9 @@ describe('rate-limit fail-open / fail-closed posture (#3531 M9)', () => {
     delete process.env.UPSTASH_REDIS_REST_TOKEN;
     const mod = await importFreshRateLimitModule();
     const expectedPolicies = new Map([
-      ['/api/market/v1/analyze-stock', { limit: 10, window: '60 s' }],
-      ['/api/market/v1/backtest-stock', { limit: 30, window: '60 s' }],
-      ['/api/market/v1/get-insider-transactions', { limit: 30, window: '60 s' }],
+      ['/api/market/v1/analyze-stock', { limit: 60, window: '60 s' }],
+      ['/api/market/v1/backtest-stock', { limit: 60, window: '60 s' }],
+      ['/api/market/v1/get-insider-transactions', { limit: 60, window: '60 s' }],
       ['/api/market/v1/get-country-stock-index', { limit: 30, window: '60 s' }],
       ['/api/economic/v1/list-world-bank-indicators', { limit: 30, window: '60 s' }],
     ] as const);
@@ -337,6 +337,51 @@ describe('rate-limit fail-open / fail-closed posture (#3531 M9)', () => {
       assert.equal(res.status, 503);
       assert.equal(res.headers.get('X-RateLimit-Mode'), 'degraded');
     }
+  });
+
+  it('paid-provider endpoint policies fail closed when Redis ignores abort until the SDK timeout (#6236)', async () => {
+    process.env.UPSTASH_REDIS_REST_URL = 'https://fake-upstash.example';
+    process.env.UPSTASH_REDIS_REST_TOKEN = 'fake-token';
+    globalThis.fetch = (() => new Promise<Response>(() => {})) as typeof fetch;
+    const mod = await importFreshRateLimitModule();
+
+    const res = await mod.checkEndpointRateLimit(
+      makeRequest({ 'x-real-ip': '203.0.113.7' }),
+      '/api/market/v1/get-insider-transactions',
+      { 'Access-Control-Allow-Origin': 'https://worldmonitor.app' },
+    );
+
+    assert.ok(res, 'a timed-out limiter decision must not use the SDK allow fallback');
+    assert.equal(res.status, 503);
+    assert.equal(res.headers.get('X-RateLimit-Mode'), 'degraded');
+    assert.equal(res.headers.get('Access-Control-Allow-Origin'), 'https://worldmonitor.app');
+  });
+
+  it('paid-provider endpoint policies abort a stalled Redis fetch before failing closed (#6236)', async () => {
+    process.env.UPSTASH_REDIS_REST_URL = 'https://fake-upstash.example';
+    process.env.UPSTASH_REDIS_REST_TOKEN = 'fake-token';
+    let fetchAborted = false;
+    globalThis.fetch = ((_input: RequestInfo | URL, init?: RequestInit) =>
+      new Promise<Response>((_resolve, reject) => {
+        const signal = init?.signal;
+        const abort = () => {
+          fetchAborted = true;
+          reject(signal?.reason ?? new DOMException('Aborted', 'AbortError'));
+        };
+        if (signal?.aborted) abort();
+        else signal?.addEventListener('abort', abort, { once: true });
+      })) as typeof fetch;
+    const mod = await importFreshRateLimitModule();
+
+    const res = await mod.checkEndpointRateLimit(
+      makeRequest({ 'x-real-ip': '203.0.113.7' }),
+      '/api/market/v1/get-insider-transactions',
+      {},
+    );
+
+    assert.equal(fetchAborted, true, 'the Redis transport must be cancelled, not left pending');
+    assert.equal(res?.status, 503);
+    assert.equal(res.headers.get('X-RateLimit-Mode'), 'degraded');
   });
 
   it('checkEndpointRateLimit keeps unrecognised paths unguarded even with fail-closed defaults', async () => {
@@ -384,6 +429,8 @@ describe('rate-limit fail-open / fail-closed posture (#3531 M9)', () => {
     assert.match(src, /captureSilentError\(err,\s*\{/);
     assert.match(src, /surface:\s*'server'/);
     assert.match(src, /fingerprint:\s*\['rate-limit',\s*'redis-error',\s*stage\]/);
+    assert.match(src, /lastRateLimitSentryCaptureAt\.get\(stage\)/);
+    assert.match(src, /lastCaptureAt !== undefined && now - lastCaptureAt < RATE_LIMIT_SENTRY_DEDUP_MS/);
   });
 
   it('checkScopedRateLimit reports and captures degraded missing-config once per scope', async () => {
