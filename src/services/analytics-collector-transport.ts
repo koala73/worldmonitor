@@ -83,7 +83,26 @@ export class CollectorDeliveryError extends Error {
   }
 }
 
-const COLLECTOR_QUEUE_LIMIT = 25;
+/**
+ * Depth of the serialization queue in front of the single in-flight slot.
+ *
+ * MUST stay >= `UMAMI_QUEUE_LIMIT` in `src/services/analytics.ts`. That buffer
+ * holds calls made before the tracker script loads, and `flushPendingUmamiCalls`
+ * splices and dispatches ALL of them in one synchronous loop — so the deferred
+ * buffer's capacity is delivered to this queue as a single burst. While this was
+ * 25 against a 50-deep buffer, a full flush shed ~half its events as
+ * `queue-overflow` before they ever reached the network: not backpressure
+ * against a slow collector, but a self-inflicted drop from two limits that were
+ * never reconciled (WORLDMONITOR-Y3, 2230 events / 1747 users). Raising the
+ * queue depth does NOT raise concurrency — writes still drain one at a time,
+ * which is what keeps umami#4183 contention off the collector.
+ * `tests/analytics-queue-capacity.test.mjs` fails if the two drift apart again.
+ *
+ * Exported so overflow tests can size their input from the real bound instead
+ * of a literal — a hardcoded "fill past 25" silently stops overflowing the
+ * moment this changes, and the test then passes while asserting nothing.
+ */
+export const COLLECTOR_QUEUE_LIMIT = 50;
 const HEALTH_WINDOW_MS = 60_000;
 const REQUEST_TIMEOUT_MS = 20_000;
 
@@ -494,6 +513,18 @@ function emitCollectorFailureToSentry(
   try {
     enqueueSentryCall((s) => s.captureMessage('Umami collector write failed', {
       level: 'warning',
+      // Tags do not split issues — without a fingerprint, Sentry groups on the
+      // fixed message and folds all five `kind`s into one. That is how the
+      // ad-blocker population (`network`, unactionable by design) buried a
+      // `queue-overflow` count that was our own dropped writes, in a single
+      // 2230-event issue nobody could read a cause out of (WORLDMONITOR-Y3).
+      // Cardinality stays bounded: 5 kinds x the small status set.
+      fingerprint: [
+        'analytics-collector',
+        'write-failed',
+        failure.kind,
+        String(failure.status ?? 'none'),
+      ],
       tags: {
         kind: 'analytics_collector_write_failed',
         failureKind: failure.kind,

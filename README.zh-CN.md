@@ -111,7 +111,7 @@ npm run dev:energy     # energy.worldmonitor.app
 | **前端** | Vanilla TypeScript、Vite、globe.gl + Three.js、deck.gl + MapLibre GL |
 | **桌面** | Tauri 2（Rust）与 Node.js sidecar |
 | **AI/ML** | Ollama / Groq / OpenRouter、Transformers.js（浏览器端） |
-| **API 契约** | Protocol Buffers（290 个 proto、35 项服务）、sebuf HTTP 注解 |
+| **API 契约** | Protocol Buffers（295 个 proto、36 项服务）、sebuf HTTP 注解 |
 | **部署** | Vercel Edge Functions（60+）、Railway 中继、Tauri、PWA |
 | **缓存** | Redis（Upstash）、3 层缓存、CDN、service worker |
 
@@ -147,7 +147,7 @@ World Monitor 同时为智能体、脚本和浏览器而构建：
 
 ## 数据源
 
-WorldMonitor 汇聚来自地缘政治、金融、能源、气候、航空、网络、军事、基础设施和新闻情报领域的 65+ 个外部提供商与 API；其内容通过 500+ 个精选信息流呈现，并由覆盖 35 个来源组的新鲜度监控器追踪。有关提供商、信息流层级和采集方法，请参阅完整的[数据源目录](https://www.worldmonitor.app/docs/zh/data-sources)。
+WorldMonitor 汇聚来自地缘政治、金融、能源、气候、航空、网络、军事、基础设施和新闻情报领域的 528+ 个外部上游主机；其内容通过 500+ 个精选信息流呈现，并由覆盖 35 个来源组的新鲜度监控器追踪。有关提供商、信息流层级和采集方法，请参阅完整的[数据源目录](https://www.worldmonitor.app/docs/zh/data-sources)。
 
 ---
 

@@ -573,6 +573,171 @@ describe('validateNoHallucinatedProperNouns — May 19 regression + class', () =
     assert.ok(!flat.includes('j'));
   });
 
+  // #6109: a common noun capitalized ONLY because it opens the sentence carries
+  // no proper-noun signal — orthography forced the capital. The source has the
+  // same word lowercase mid-sentence, so it is not extracted as a proper noun
+  // there and the summary's copy was flagged as invented, rejecting the whole
+  // brief. Observed live in both arms of a 40-pair A/B, so it is not a
+  // prompt artifact. SENTENCE_START_AMBIGUOUS cannot fix this by enumeration:
+  // covering every English common noun would also swallow the real proper nouns
+  // ("Trump said…", "Israel announced…") that the list deliberately lets pass.
+  it('accepts a sentence-initial common noun that appears lowercased in the source', () => {
+    const ground = 'After Donald Trump latest U-turn, uncertainty remains over the diplomatic path';
+    const summary = 'Uncertainty persists over the diplomatic path [6].';
+    assert.equal(
+      validateNoHallucinatedProperNouns(summary, ground).ok,
+      true,
+      '"uncertainty" is present in the source — capitalization is forced by sentence position',
+    );
+  });
+
+  it('still rejects a sentence-initial proper noun absent from the source', () => {
+    const ground = 'After Donald Trump latest U-turn, uncertainty remains over the diplomatic path';
+    const summary = 'Belarus escalated its posture overnight [6].';
+    assert.equal(
+      validateNoHallucinatedProperNouns(summary, ground).ok,
+      false,
+      'sentence-initial position must not become a blanket amnesty',
+    );
+  });
+
+  // The two guards below must ISOLATE the condition they pin. An earlier
+  // version of each rejected for an unrelated reason (a different ungrounded
+  // token earlier in the sentence short-circuited the loop), so both stayed
+  // green under a mutant that deleted the very narrowing they claim to protect.
+  // Each lead below is built so the token under test is the ONLY candidate.
+  it('still rejects a MID-sentence capitalized word even when the source has it lowercased', () => {
+    // The source says "apple" the fruit; the summary means Apple the company.
+    // Mid-sentence capitalization is a deliberate signal, not orthography, so
+    // the sentence-initial allowance must NOT extend here. "The" is a
+    // sentence-start stopword, so "Apple" is the only candidate in the lead.
+    const ground = 'regional apple prices rose sharply last quarter';
+    const summary = 'The Apple harvest disappointed growers [1].';
+    assert.equal(
+      validateNoHallucinatedProperNouns(summary, ground).ok,
+      false,
+      'dropping the sentence-initial narrowing would wrongly accept this',
+    );
+  });
+
+  // Months are the one class where the capital is NOT mere orthography: it
+  // separates a calendar claim from an ordinary word. Caught by diffing this
+  // change against origin/main — the first version of the allowance newly
+  // ACCEPTED both of these, where the old code rejected them. The date
+  // validator does not cover a bare month (it needs an adjacent day/year).
+  it('does not let a sentence-initial month be grounded by a lowercase homograph', () => {
+    const ground = 'the march on the capital continued overnight';
+    const summary = 'March saw heavy fighting in the capital [1].';
+    assert.equal(
+      validateNoHallucinatedProperNouns(summary, ground).ok,
+      false,
+      '"march" the noun must not license "March" the month',
+    );
+  });
+
+  it('does not let a sentence-initial "May" be grounded by the modal verb', () => {
+    const ground = 'officials may authorise the strike';
+    const summary = 'May brought renewed strikes [1].';
+    assert.equal(validateNoHallucinatedProperNouns(summary, ground).ok, false);
+  });
+
+  it('still accepts a month the source actually names', () => {
+    // The exclusion costs nothing here: the normal capitalized-sequence path
+    // grounds it, so blocking the lowercase fallback changes no real month.
+    const ground = 'March 5 offensive began at dawn';
+    const summary = 'March operations continued into the night [1].';
+    assert.equal(validateNoHallucinatedProperNouns(summary, ground).ok, true);
+  });
+
+  // Found by adversarial review (two reviewers independently). groundTokenSet
+  // ran EVERY source word through ACRONYM_NORMALIZE / DEMONYM_NORMALIZE, so the
+  // relative pronoun "who" entered the ground set as the canonical WHO and the
+  // object pronoun "us" as US — letting the lead attribute a claim to an
+  // organization the source never mentioned. Verified as a live false-accept
+  // against origin/main. The table promotion is now refused for a token the
+  // source wrote in lowercase.
+  it('does not let the lowercase pronoun "who" ground a claim attributed to WHO', () => {
+    const ground = 'Doctors who treated cholera patients flee Sudan violence';
+    const summary = 'WHO warned of cholera spreading in Sudan [1].';
+    assert.equal(validateNoHallucinatedProperNouns(summary, ground).ok, false);
+  });
+
+  it('does not let the lowercase pronoun "us" ground a claim about the US', () => {
+    const ground = 'they ambushed us near the border';
+    const summary = 'US forces were ambushed near the border [1].';
+    assert.equal(validateNoHallucinatedProperNouns(summary, ground).ok, false);
+  });
+
+  it('still promotes a CAPITALIZED demonym in the source', () => {
+    // The gate is on the source's capitalization, not on the table itself.
+    const ground = 'Israeli jets struck the depot';
+    const summary = 'Israel struck the depot overnight [1].';
+    assert.equal(validateNoHallucinatedProperNouns(summary, ground).ok, true);
+  });
+
+  it('does not promote a LOWERCASE demonym into its nation', () => {
+    // Discriminates the groundTokenSet capitalization gate specifically: the
+    // only proper-noun candidate here is "Israel", and the source writes the
+    // demonym lowercase, so the table must not promote it.
+    const ground = 'israeli jets struck the depot overnight';
+    const summary = 'Israel struck the depot overnight [1].';
+    assert.equal(validateNoHallucinatedProperNouns(summary, ground).ok, false);
+  });
+
+  // Sentence position can force the FIRST letter to be a capital; it cannot
+  // force the interior ones. An ALL-CAPS token is a deliberate acronym, so the
+  // allowance's premise does not cover it.
+  // These two must contain NO other ungrounded proper noun, or they reject for
+  // the wrong reason and stay green with the all-caps guard deleted. A first
+  // draft used "SWIFT access for Russian banks…" and rejected on "Russian".
+  it('does not extend the allowance to an ALL-CAPS acronym at sentence start', () => {
+    const ground = 'EU vows swift response to the incident';
+    const summary = 'SWIFT curbs took effect at midnight [1].';
+    assert.equal(validateNoHallucinatedProperNouns(summary, ground).ok, false);
+  });
+
+  it('does not let "ice storm" ground an ICE agency claim', () => {
+    const ground = 'the region was crippled by ice storm damage';
+    const summary = 'ICE raids continued through the night [1].';
+    assert.equal(validateNoHallucinatedProperNouns(summary, ground).ok, false);
+  });
+
+  // The homograph class the month blocklist opened: a state or person name that
+  // is also an ordinary lowercase word in a wire story. Neither 'china' nor
+  // 'turkey' is in the acronym/demonym tables, so the source-capitalization
+  // gate above cannot close these — only the explicit block does.
+  it('does not let "fine china" ground a claim about China', () => {
+    const ground = 'tariffs on fine china rose sharply at auction last week';
+    const summary = 'China imposed new export controls overnight [1].';
+    assert.equal(validateNoHallucinatedProperNouns(summary, ground).ok, false);
+  });
+
+  it('does not let "turkey" the bird ground a claim about Turkey', () => {
+    const ground = 'prices for turkey soar before the holiday';
+    const summary = 'Turkey rejected the proposal outright [1].';
+    assert.equal(validateNoHallucinatedProperNouns(summary, ground).ok, false);
+  });
+
+  it('does not let a legislative "bill" ground a person named Bill', () => {
+    const ground = 'the senate defense bill heads to the floor';
+    const summary = 'Bill passed the chamber unopposed [1].';
+    assert.equal(validateNoHallucinatedProperNouns(summary, ground).ok, false);
+  });
+
+  it('does not relax multi-token sequences whose tokens are individually present', () => {
+    // Both "Swat" and "Pakistan" appear in the source, but never adjacently.
+    // The contiguous-match rule is what stops the model from fusing two
+    // separate entities into one it was never given; the single-token
+    // narrowing is what keeps that rule reachable.
+    const ground = 'Pakistan condemned the bombing near a police station in Swat';
+    const summary = 'Swat Pakistan reported 19 deaths [8].';
+    assert.equal(
+      validateNoHallucinatedProperNouns(summary, ground).ok,
+      false,
+      'dropping the single-token narrowing would wrongly accept this',
+    );
+  });
+
   it('defensive: malformed inputs return ok (do not throw)', () => {
     assert.doesNotThrow(() => validateNoHallucinatedProperNouns(undefined, "x"));
     assert.equal(validateNoHallucinatedProperNouns(undefined, "x").ok, true);

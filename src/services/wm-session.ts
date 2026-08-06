@@ -15,6 +15,7 @@
 import { getCanonicalApiOrigin, toApiUrl } from './runtime';
 import { PREMIUM_RPC_PATHS } from '@/shared/premium-paths';
 import { hasPremiumIntent } from './premium-intent';
+import type { WmSessionDeadReason } from './wm-session-copy';
 import { isPublicSharedRpcRequest } from '@/shared/public-rpc-cache';
 import { enqueueSentryCall } from '@/bootstrap/sentry-defer';
 import { PUBLIC_WEATHER_BOOTSTRAP_KEY, bootstrapTierKeyNames } from '../../shared/bootstrap-tier-keys.js';
@@ -71,7 +72,7 @@ const PUBLIC_SINGLE_KEY_BOOTSTRAP_KEYS = new Set([
 ]);
 export const WM_SESSION_DEGRADED_EVENT = 'wm-session-degraded';
 
-type WmSessionDeadReason = 'mint_failed' | 'retry_401' | 'cookie_not_persisted';
+export type WmSessionDegradedDetail = { reason: WmSessionDeadReason };
 
 // Whether a mint in THIS page session has already handed the browser a cookie.
 // The next mint must arrive carrying it — `/api/wm-session` reports that as
@@ -318,7 +319,13 @@ function markWmSessionDead(reason: WmSessionDeadReason, rawPath: string): void {
     ));
   } catch { /* best-effort telemetry */ }
   if (typeof window !== 'undefined' && typeof window.dispatchEvent === 'function') {
-    window.dispatchEvent(new Event(WM_SESSION_DEGRADED_EVENT));
+    // The reason rides the event so the toast can name the right remedy. A
+    // plain `Event` forced one blanket message, which told the majority of
+    // affected users to check a cookie setting that was never the cause
+    // (WORLDMONITOR-WG residual — see describeWmSessionDegradation).
+    window.dispatchEvent(
+      new CustomEvent<WmSessionDegradedDetail>(WM_SESSION_DEGRADED_EVENT, { detail: { reason } }),
+    );
   }
 }
 

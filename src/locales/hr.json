@@ -446,7 +446,8 @@
     "consumerPrices": "Cijene za Potrošače",
     "fearGreed": "Strah & Pohlepa",
     "marketBreadth": "Širina Tržišta",
-    "climateNews": "Klimatske Vijesti"
+    "climateNews": "Klimatske Vijesti",
+    "fx": "Devizni tečajevi"
   },
   "commands": {
     "prefixes": {
@@ -1400,7 +1401,7 @@
         "ucdpEvents": "Događaji Oružanih Konfliktaa",
         "displacementFlows": "Tokovi Raseljenih",
         "climateAnomalies": "Klimatske Anomalije",
-        "weatherAlerts": "Vremenske Upozorenja",
+        "weatherAlerts": "Vremenska upozorenja za SAD (NWS)",
         "strategicWaterways": "Uska Grla",
         "economicCenters": "Ekonomski Centri",
         "criticalMinerals": "Kritični Minerali",
@@ -1479,7 +1480,7 @@
           "infraDatacenters": "AI compute klasteri >=10.000 GPU-a",
           "infraOutages": "Internetske crne točke i prekidi usluga",
           "naturalEventsTech": "Zemljotresi, oluje, požari (mogu utjecati na podatkovne centre)",
-          "weatherAlerts": "Upozorenja za ekstremne vremenske prilike",
+          "weatherAlerts": "Upozorenja za ekstremne vremenske prilike u SAD-u (NWS)",
           "economicCenters": "Berzanske bolnice i središnje banke",
           "countriesOverlay": "Oznake imena država",
           "financeExchanges": "Glavne svjetske berze po razredu tržišta",
@@ -1491,7 +1492,7 @@
           "financeOutages": "Internetski prekidi koji mogu utjecati na rad tržišta",
           "financeCyberThreats": "Sigurnosni incidenti oko financijske infrastrukture",
           "macroWaterways": "Strateška uska grla za robno brodarstvo",
-          "weatherAlertsMarket": "Ekstremne vremenske prilike s relevancijom za tržište",
+          "weatherAlertsMarket": "Ekstremne vremenske prilike u SAD-u važne za tržište (NWS)",
           "naturalEventsMacro": "Zemljotresi, požari, poplave i ostali prirodni poremećaji",
           "timeRecent": "Filtriraj vremenski ovisne podatke na nedavne sate",
           "timeExtended": "Prikaži podatke iz prošlog tjedna, mjeseca ili cijelog vremena",
@@ -2777,6 +2778,33 @@
       "upgradeCta": "Nadogradi za više",
       "lockedAriaLabel": "Dodaj karticu — zaključano. {{reason}}",
       "unlockedAnnouncement": "Ograničenje kartica nadzorne ploče ukinuto."
+    },
+    "fx": {
+      "infoTooltip": "<strong>Devizni tečajevi</strong> Valutni stres i spot tečajevi:<ul><li>FX Stress rangira 45 valuta prema njihovom najvećem pada od vrha do dna tijekom posljednjih 24 mjeseca, zajedno s promjenom u 12 mjeseci</li><li>Pokrivenost uključuje ARS, TRY, EGP, NGN, PKR i UAH — valute koje BIS i ECB referentni skupovi ne uključuju</li><li>Spot navodi tečajeve prema američkom dolaru i ECB euro referentnim tečajevima odvojeno, jer se ta dva kotiraju iz različitih baza</li></ul>Izvori: Yahoo Finance i Europska središnja banka.",
+      "tabs": {
+        "stress": "Valutni stres",
+        "spot": "Spot"
+      },
+      "currency": "Valuta",
+      "pair": "Par",
+      "rate": "Tečaj",
+      "yoy": "12m",
+      "drawdown": "24m pad",
+      "peakToTrough": "Vrhunac → dno",
+      "change1d": "1d",
+      "perUsd": "Po 1 USD",
+      "usdPerUnit": "USD po jedinici",
+      "usdBase": "Prema američkom dolaru",
+      "eurBase": "ECB euro referentni tečajevi",
+      "stressedCount": "{{stressed}} od {{total}} valuta ispod {{threshold}}",
+      "sourceYahoo": "Izvor: Yahoo Finance",
+      "sourceEcb": "Izvor: ECB",
+      "degraded": "Trenutno nedostupno: {{sources}}. Pokušaj uskoro.",
+      "source": {
+        "stress": "FX stres",
+        "usd": "Tečajevi američkog dolara",
+        "eur": "Tečajevi eura ECB-a"
+      }
     }
   },
   "popups": {
@@ -3140,7 +3168,7 @@
       "heading": "SMJER",
       "hexCode": "HEX KÔD",
       "squawk": "SQUAWK",
-      "attribution": "Izvor: OpenSky Network"
+      "attribution": "Izvor: adsb.lol (ODbL) · OpenSky Network"
     },
     "militaryVessel": {
       "aisDark": "AIS NEVIDLJIV",

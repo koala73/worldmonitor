@@ -199,7 +199,7 @@ npx @modelcontextprotocol/inspector https://worldmonitor.app/mcp
 
 ## Tool catalog
 
-The server exposes 59 tools. Most are cache-reads over pre-seeded Redis keys (sub-second). The slower, non-cache paths are the seven live LLM/external-API tools (`get_world_brief`, `get_country_brief`, `analyze_situation`, `generate_forecasts`, `search_flights`, `search_flight_prices_by_date`, `classify_event`) plus the live geo RPC tools (`get_airspace`, `get_maritime_activity`), the bounded canonical procurement proxy (`get_procurement_opportunities`), the corporate-intelligence proxy (`get_company_intelligence`), the canonical China decision-signal RPC (`get_china_decision_signals`), and the three durable-history RPCs (`search_intel_history`, `get_intel_timeline`, `get_similar_events`). The on-demand NLP utilities (`classify_event`, `extract_entities`, `get_news_clusters`, `get_keyword_spikes`) accept bounded caller text or compute over live seeded data; all but `classify_event` are fully deterministic. One (`describe_tool`, added v1.5.0) returns the full uncompressed definition of any other tool — useful when the compressed `tools/list` description is ambiguous; exempt from the Pro daily quota.
+The server exposes 59 tools. Most are cache-reads over pre-seeded Redis keys (sub-second). The slower, non-cache paths are the six live LLM/external-API tools (`get_country_brief`, `analyze_situation`, `generate_forecasts`, `search_flights`, `search_flight_prices_by_date`, `classify_event`) plus the live geo RPC tools (`get_airspace`, `get_maritime_activity`), the bounded canonical procurement proxy (`get_procurement_opportunities`), the corporate-intelligence proxy (`get_company_intelligence`), the canonical China decision-signal RPC (`get_china_decision_signals`), and the three durable-history RPCs (`search_intel_history`, `get_intel_timeline`, `get_similar_events`). `get_world_brief` reads the dashboard's precomputed, citation-grounded `news:insights:v1` snapshot and does not make a request-time LLM call. The on-demand NLP utilities (`classify_event`, `extract_entities`, `get_news_clusters`, `get_keyword_spikes`) accept bounded caller text or compute over live seeded data; all but `classify_event` are fully deterministic. One (`describe_tool`, added v1.5.0) returns the full uncompressed definition of any other tool — useful when the compressed `tools/list` description is ambiguous; exempt from the Pro daily quota.
 
 <Tip>
 For per-tool parameters, freshness budgets, timeouts, and concrete `curl` examples, see the [MCP Tools Reference](/mcp-tools-reference). For payload projection — every tool accepts an optional `jmespath` argument that typically cuts response size by 80-95% — see the [JMESPath guide](/mcp-jmespath).
@@ -297,11 +297,11 @@ Every record's `title`, `summary` and `sourceUrl` are verbatim third-party feed 
 |------|-------------|
 | `get_displacement_data` | Refugee and IDP counts by country (UNHCR annual data). |
 
-### AI intelligence (live LLM)
+### AI intelligence
 
 | Tool | Description | Cost |
 |------|-------------|------|
-| `get_world_brief` | AI-summarized world intel brief with structured source links. Optional `geo_context` param. | LLM |
+| `get_world_brief` | Precomputed citation-grounded world intel brief from the same `news:insights:v1` snapshot used by the dashboard. `geo_context` is retained for compatibility and does not refocus the seeded snapshot. | Cache |
 | `get_country_brief` | Per-country geopolitical + economic assessment with structured source links. Supports analytical frameworks. | LLM |
 | `analyze_situation` | Ad-hoc geopolitical deduction from a query + context. Returns confidence + supporting signals. | LLM |
 | `generate_forecasts` | Fresh probability estimates (bypasses cache). | LLM |
@@ -363,7 +363,6 @@ Reverse lookup workflow:
 | `get_prediction_markets` | `GET /api/prediction/v1/list-prediction-markets` |
 | `get_forecast_predictions` | `GET /api/forecast/v1/get-forecasts` |
 | `get_forecast_scorecard` | `GET /api/forecast/v1/get-forecast-scorecard` |
-| `get_world_brief` | `GET /api/news/v1/list-feed-digest`<br/>`POST /api/news/v1/summarize-article` |
 | `classify_event` | `GET /api/intelligence/v1/classify-event` |
 | `extract_entities` | `GET /api/news/v1/list-feed-digest` |
 | `get_news_clusters` | `GET /api/news/v1/list-feed-digest` |
@@ -374,6 +373,7 @@ Reverse lookup workflow:
 Tools with no declared API paths still return data via `tools/call`, but they should not be read as REST equivalents:
 
 - **Cache-backed bootstrap aggregates** — read Redis keys seeded directly by Railway crons (e.g. `get_aviation_status`, `get_cyber_threats`, `get_country_macro`, the three EU Eurostat tools).
+- **Seeded synthesis snapshots** — `get_world_brief` reads the dashboard's accepted `news:insights:v1` payload through the bootstrap path; it has no direct REST-equivalent operation or request-time LLM call.
 - **Static in-memory registries** — filter a constant bundled with the MCP server's edge binary, no upstream call at all (e.g. `get_commodity_geo`).
 - **Live tools without a public OpenAPI row** — runtime proxies an HTTP call whose method drifts from the public spec, where a sibling tool already covers the spec-declared method (e.g. `generate_forecasts` POSTs `/api/forecast/v1/get-forecasts` while `get_forecast_predictions` owns the GET).
 
@@ -443,7 +443,7 @@ The server supports [MCP Apps](https://modelcontextprotocol.io/extensions/apps/b
 | UI resource URI | Linked tool | Renders |
 |-----------------|-------------|---------|
 | `ui://worldmonitor/country-risk.html` | `get_country_risk` | CII score, unrest/conflict/security/news component breakdown, travel-advisory level, and OFAC sanctions exposure. |
-| `ui://worldmonitor/world-brief.html` | `get_world_brief` | The AI-summarised global intelligence brief as readable paragraphs, plus grounding headlines and source articles. |
+| `ui://worldmonitor/world-brief.html` | `get_world_brief` | The precomputed, citation-grounded global intelligence brief as readable paragraphs, plus grounding headlines and source articles. |
 | `ui://worldmonitor/country-brief.html` | `get_country_brief` | The AI-synthesised per-country brief as paragraphs, with the analytical framework lens and grounding sources. |
 | `ui://worldmonitor/market-radar.html` | `get_market_data` | The Fear & Greed composite plus per-asset-class quote tables (equities, commodities, crypto, Gulf, sectors) with signed, colour-coded change. |
 | `ui://worldmonitor/chokepoint-monitor.html` | `get_chokepoint_status` | Per-chokepoint rolling transit summaries (today's count, week-over-week change, tanker split) with a risk-level badge. |

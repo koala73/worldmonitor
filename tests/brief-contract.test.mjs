@@ -18,6 +18,7 @@ import {
   leadGroundsAgainstStory,
   extractAnchorTokens,
   validateNoHallucinatedFacts,
+  validateNoHallucinatedProperNouns,
 } from '../shared/brief-llm-core.js';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -511,5 +512,52 @@ describe('fragmented-cluster leads (#6001)', () => {
     // The no-invention floor is untouched — merging is now legal, inventing is not.
     assert.match(prompt, /Do not invent proper nouns/);
     assert.match(prompt, /ONLY facts present/);
+  });
+
+  // #5947: "U.S." followed by a CAPITALIZED word ("U.S. President Trump") is
+  // genuinely ambiguous — the splitter cannot tell it from a sentence boundary
+  // and must fail closed, so the whole brief is rejected. That ambiguity only
+  // exists because of the periods, so the prompt removes it at the source.
+  //
+  // Evidence, stated honestly: on a live digest where the shape occurred, 9 of
+  // 24 samples were rejected on the fragment "Iran denied U.S." and none were
+  // once this rule was added — but that pair of runs was NOT controlled for
+  // digest rotation, so it is not a clean effect measurement. A 40-pair
+  // interleaved A/B on one digest later measured the rule as neutral (29/35 vs
+  // 31/36) — on a digest where the shape never appeared, so it could only have
+  // shown harm, not benefit. The rule is kept because it is mechanistically
+  // sound (no periods -> the ambiguity class cannot arise) and measured
+  // harmless, NOT because a controlled run proved it helps.
+  it('system prompt tells the model to write acronyms without periods', () => {
+    const prompt = synthesisSystemPrompt('2026-08-03');
+    assert.match(prompt, /acronyms WITHOUT periods/i);
+    assert.match(prompt, /"US"/, 'the bare form must be shown, not just described');
+  });
+
+  it('system prompt forbids substituting a metonym for the actor the story names', () => {
+    // Observed live: the model wrote "not with Washington" against a story
+    // reading "but not US" — a proper noun the cited source never contains.
+    const prompt = synthesisSystemPrompt('2026-08-03');
+    assert.match(prompt, /Washington/, 'the substitution to avoid must be named concretely');
+  });
+
+  // The rule above is only safe because acronym grounding is canonicalized on
+  // BOTH sides: sources write "U.S." while the brief is now told to write "US".
+  // If normalizeDottedAcronyms stopped canonicalizing either side, the prompt
+  // change would start manufacturing hallucination flags instead of removing
+  // ambiguity — so pin the property the instruction depends on.
+  it('grounds a bare-acronym lead against a dotted-acronym source and vice versa', () => {
+    const dotted = 'U.S. Embassies Urge Citizens to Consider Leaving the Region';
+    const bare = 'US embassies urge citizens to consider leaving the region';
+    assert.equal(
+      validateNoHallucinatedProperNouns('US embassies urged citizens to leave [2].', dotted).ok,
+      true,
+      'writing "US" against a "U.S." source must not read as invention',
+    );
+    assert.equal(
+      validateNoHallucinatedProperNouns('U.S. embassies urged citizens to leave [2].', bare).ok,
+      true,
+      'the reverse must hold too — sources are inconsistent about the style',
+    );
   });
 });

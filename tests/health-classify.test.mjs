@@ -24,6 +24,7 @@ const {
   STANDALONE_KEYS,
   SEED_META,
   ON_DEMAND_KEYS,
+  ZERO_RECORD_DATA_OK_KEYS,
 } = __testing__;
 
 const NOW = 1_700_000_000_000;
@@ -660,6 +661,75 @@ test('issue #5055: validated seed-meta writers are registered in /api/health', (
     assert.equal(SEED_META[name]?.key, metaKey, `${name} seed-meta key`);
     assert.equal(SEED_META[name]?.maxStaleMin, maxStaleMin, `${name} maxStaleMin`);
   }
+});
+
+const ISSUE_6125_MILITARY_DOWNSTREAM_REGISTRATIONS = [
+  ['militaryForecastInputs', 'military:forecast-inputs:stale:v1', 'seed-meta:military-forecast-inputs'],
+  ['militarySurges', 'military:surges:stale:v1', 'seed-meta:military-surges'],
+];
+
+test('issue #6125: downstream military publish keys have strict 10-minute-cron budgets', () => {
+  for (const [name, dataKey, metaKey] of ISSUE_6125_MILITARY_DOWNSTREAM_REGISTRATIONS) {
+    assert.equal(STANDALONE_KEYS[name], dataKey, `${name} data key`);
+    assert.deepEqual(SEED_META[name], { key: metaKey, maxStaleMin: 30 }, `${name} health budget`);
+    assert.equal(ON_DEMAND_KEYS.has(name), false, `${name} must not be softened as on-demand`);
+  }
+});
+
+test('issue #6125: a mid-publish crash after the headline write makes downstream health non-OK', () => {
+  // Simulate the observed publish order: the headline flight snapshot and its
+  // health metadata advance, then the process dies before forecast-input and
+  // surge publication. The downstream checks must still alarm independently.
+  const headline = classifyKey(
+    'militaryFlights',
+    STANDALONE_KEYS.militaryFlights,
+    { allowOnDemand: true },
+    makeCtx({
+      strens: { [STANDALONE_KEYS.militaryFlights]: 4096 },
+      metaValues: { [SEED_META.militaryFlights.key]: seedMeta() },
+    }),
+  );
+  assert.equal(headline.status, 'OK');
+
+  for (const [name, dataKey] of ISSUE_6125_MILITARY_DOWNSTREAM_REGISTRATIONS) {
+    const missing = classifyKey(name, dataKey, { allowOnDemand: true }, makeCtx());
+    assert.equal(missing.status, 'EMPTY', `${name} must alarm when the late write never happened`);
+
+    const stale = classifyKey(
+      name,
+      dataKey,
+      { allowOnDemand: true },
+      makeCtx({
+        strens: { [dataKey]: 4096 },
+        metaValues: {
+          [SEED_META[name].key]: seedMeta({ fetchedAt: NOW - 31 * ONE_MIN_MS }),
+        },
+      }),
+    );
+    assert.equal(stale.status, 'STALE_SEED', `${name} must alarm when its prior snapshot ages past 30min`);
+  }
+});
+
+test('issue #6125: a fresh zero-surge snapshot is healthy, but a stale one still warns', () => {
+  const name = 'militarySurges';
+  const dataKey = STANDALONE_KEYS[name];
+  const metaKey = SEED_META[name].key;
+
+  assert.equal(ZERO_RECORD_DATA_OK_KEYS.has(name), true);
+
+  const fresh = classifyKey(name, dataKey, { allowOnDemand: true }, makeCtx({
+    strens: { [dataKey]: 256 },
+    metaValues: { [metaKey]: seedMeta({ recordCount: 0 }) },
+  }));
+  assert.equal(fresh.status, 'OK');
+  assert.equal(fresh.records, 0);
+
+  const stale = classifyKey(name, dataKey, { allowOnDemand: true }, makeCtx({
+    strens: { [dataKey]: 256 },
+    metaValues: { [metaKey]: seedMeta({ recordCount: 0, fetchedAt: NOW - 31 * ONE_MIN_MS }) },
+  }));
+  assert.equal(stale.status, 'STALE_SEED');
+  assert.equal(stale.records, 0);
 });
 
 test('HKO warning snapshots are classified through their matching seed-meta key', () => {

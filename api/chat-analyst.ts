@@ -54,11 +54,16 @@ function json(body: unknown, status: number, cors: Record<string, string>): Resp
   });
 }
 
-function directLlmQuotaError(status: 429 | 503, retryAfterSec: number, cors: Record<string, string>): Response {
+function directLlmQuotaError(
+  status: 429 | 503,
+  retryAfterSec: number,
+  cors: Record<string, string>,
+  limit = DIRECT_LLM_DAILY_QUOTA_LIMIT,
+): Response {
   const body = status === 429
     ? {
         error: 'Direct LLM daily quota exceeded',
-        limit: DIRECT_LLM_DAILY_QUOTA_LIMIT,
+        limit,
         resetsAt: 'next UTC midnight',
       }
     : { error: 'Direct LLM quota unavailable' };
@@ -143,9 +148,10 @@ export default async function handler(req: Request): Promise<Response> {
       }
       return json({ error: 'Pro subscription required' }, 403, corsHeaders);
     }
-    if (!premiumIdentity.quotaExempt) {
+    if (!premiumIdentity.quotaExempt && premiumIdentity.directLlmDailyLimit !== null) {
       const reservation = await reserveDirectLlmQuota({
         userId: premiumIdentity.userId,
+        limit: premiumIdentity.directLlmDailyLimit,
         pipeline: (cmds) => runRedisPipeline(cmds, true),
       });
       if (!reservation.ok) {
@@ -153,6 +159,7 @@ export default async function handler(req: Request): Promise<Response> {
           reservation.reason === 'cap-exceeded' ? 429 : 503,
           reservation.retryAfterSec,
           corsHeaders,
+          reservation.floor ?? DIRECT_LLM_DAILY_QUOTA_LIMIT,
         );
       }
     }

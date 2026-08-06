@@ -365,7 +365,8 @@
     "consumerPrices": "Tüketici Fiyatları",
     "fearGreed": "Korku & Açgözlülük",
     "marketBreadth": "Pazar Genişliği",
-    "climateNews": "İklim Haberleri"
+    "climateNews": "İklim Haberleri",
+    "fx": "Döviz Kurları"
   },
   "commands": {
     "prefixes": {
@@ -1131,7 +1132,7 @@
         "ucdpEvents": "UCDP Olaylari",
         "displacementFlows": "Yerinden Edilme Akislari",
         "climateAnomalies": "Iklim Anomalileri",
-        "weatherAlerts": "Hava Durumu Uyarilari",
+        "weatherAlerts": "ABD hava durumu uyarıları (NWS)",
         "strategicWaterways": "Stratejik Suyollari",
         "economicCenters": "Ekonomik Merkezler",
         "criticalMinerals": "Kritik Mineraller",
@@ -1212,7 +1213,7 @@
           "infraDatacenters": "10.000+ GPU'lu yapay zeka islem kumeleri",
           "infraOutages": "Internet kesintileri ve hizmet aksamalari",
           "naturalEventsTech": "Depremler, firtinalar, yanginlar (veri merkezlerini etkileyebilir)",
-          "weatherAlerts": "Siddetli hava durumu uyarilari",
+          "weatherAlerts": "ABD'deki şiddetli hava durumu uyarıları (NWS)",
           "economicCenters": "Borsalar ve merkez bankalari",
           "countriesOverlay": "Ulke adi katmanlari",
           "financeExchanges": "Piyasa katmanlarina gore buyuk kuresel borsalar",
@@ -1224,7 +1225,7 @@
           "financeOutages": "Piyasa operasyonlarini etkileyebilecek internet aksamalari",
           "financeCyberThreats": "Finansal altyapi cevresindeki guvenlik olaylari",
           "macroWaterways": "Emtia tasimaciligi icin stratejik darbogazlar",
-          "weatherAlertsMarket": "Piyasayla ilgili siddetli hava olaylari",
+          "weatherAlertsMarket": "ABD'de piyasayla ilgili şiddetli hava olayları (NWS)",
           "naturalEventsMacro": "Depremler, yanginlar, seller ve diger dogal afetler",
           "timeRecent": "Zamana bagli verileri son saatlere filtrele",
           "timeExtended": "Gecmis hafta, ay veya tum zamanlarin verilerini goster",
@@ -2522,6 +2523,33 @@
       "upgradeCta": "Daha fazlası için yükseltin",
       "lockedAriaLabel": "Sekme ekle — kilitli. {{reason}}",
       "unlockedAnnouncement": "Panel sekmesi limiti kaldırıldı."
+    },
+    "fx": {
+      "infoTooltip": "<strong>Döviz Kurları</strong> Para birimi stresi ve spot oranları:<ul><li>FX Stresi, 45 para birimini son 24 ayda en kötü zirve-dip düşüşüne ve 12 aylık değişime göre sıralar</li><li>Kapsam ARS, TRY, EGP, NGN, PKR ve UAH'ı içerir — BIS ve ECB referans setlerinin hariç tuttuğu para birimler</li><li>Spot, iki tabanın farklı kaynaklardan kote edildiği için, ABD doları ve ECB euro referans oranlarına karşı oranları ayrı ayrı listeler</li></ul>Kaynaklar: Yahoo Finance ve Avrupa Merkez Bankası.",
+      "tabs": {
+        "stress": "Döviz Stresi",
+        "spot": "Spot"
+      },
+      "currency": "Para Birimi",
+      "pair": "Çift",
+      "rate": "Oran",
+      "yoy": "12a",
+      "drawdown": "24a Düşüş",
+      "peakToTrough": "Zirve → Dip",
+      "change1d": "1g",
+      "perUsd": "1 USD başına",
+      "usdPerUnit": "Birim başına USD",
+      "usdBase": "ABD doları karşısında",
+      "eurBase": "ECB euro referans oranları",
+      "stressedCount": "{{stressed}}/{{total}} para biriminin {{threshold}} altında",
+      "sourceYahoo": "Kaynak: Yahoo Finance",
+      "sourceEcb": "Kaynak: ECB",
+      "degraded": "Şu anda kullanılamıyor: {{sources}}. Kısa sürede yeniden denenecek.",
+      "source": {
+        "stress": "FX stres",
+        "usd": "ABD doları kurları",
+        "eur": "ECB euro kurları"
+      }
     }
   },
   "popups": {
@@ -2862,7 +2890,7 @@
       "heading": "YON",
       "hexCode": "HEX KODU",
       "squawk": "SQUAWK",
-      "attribution": "Kaynak: OpenSky Network"
+      "attribution": "Kaynak: adsb.lol (ODbL) · OpenSky Network"
     },
     "militaryVessel": {
       "aisDark": "AIS KARANLIK",

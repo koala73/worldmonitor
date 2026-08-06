@@ -18,12 +18,14 @@ describe('get_market_data sector valuation coverage contract', () => {
     assert.deepEqual(
       Object.keys(coverage.properties || {}).sort(),
       [
+        'currentValuationCount',
         'expectedValuationCount',
         'fetchedAt',
         'lastGood',
         'source',
         'sourceStatus',
         'stale',
+        'staleValuationSymbols',
         'unavailableSymbols',
         'valuationCount',
         'valuationDiagnostics',
@@ -163,6 +165,95 @@ describe('get_market_data sector valuation coverage contract', () => {
       data.sectors.valuationCoverage.valuationDiagnostics.map((entry) => entry.symbol),
       ['XLK', 'SMH'],
     );
+  });
+
+  // The stored currentValuationCount is deliberately the WHOLE-snapshot value
+  // (8 of 12), not the value a narrowed view should carry. If _postFilter's
+  // recompute is deleted, the assertion below sees 8 and fails -- the earlier
+  // version of this test seeded the already-correct answer, so it passed
+  // whether or not the production code did anything.
+  it('recomputes current count for the narrowed view and keeps it partial', () => {
+    const tool = CACHE_TOOLS.find((candidate) => candidate.name === 'get_market_data');
+    assert.ok(tool?._postFilter);
+    const data = {
+      sectors: {
+        sectors: [{ symbol: 'XLK' }, { symbol: 'SMH' }],
+        valuations: {
+          XLK: { trailingPE: 25 },
+          SMH: { trailingPE: 35 },
+        },
+        valuationCoverage: {
+          valuationCount: 12,
+          expectedValuationCount: 12,
+          currentValuationCount: 8,
+          sourceStatus: 'partial',
+          fetchedAt: Date.now(),
+          staleValuationSymbols: ['SMH'],
+        },
+      },
+    };
+
+    tool._postFilter(data, { symbols: ['XLK', 'SMH'], limit: 0 });
+    assert.equal(data.sectors.valuationCoverage.valuationCount, 2);
+    assert.equal(data.sectors.valuationCoverage.expectedValuationCount, 2);
+    assert.equal(data.sectors.valuationCoverage.currentValuationCount, 1);
+    assert.equal(data.sectors.valuationCoverage.sourceStatus, 'partial');
+    assert.deepEqual(data.sectors.valuationCoverage.staleValuationSymbols, ['SMH']);
+  });
+
+  it('drops stale symbols outside the requested subset and omits an equal current count', () => {
+    const tool = CACHE_TOOLS.find((candidate) => candidate.name === 'get_market_data');
+    assert.ok(tool?._postFilter);
+    const data = {
+      sectors: {
+        sectors: [{ symbol: 'XLK' }, { symbol: 'SMH' }],
+        valuations: { XLK: { trailingPE: 25 }, SMH: { trailingPE: 35 } },
+        valuationCoverage: {
+          valuationCount: 12,
+          expectedValuationCount: 12,
+          currentValuationCount: 8,
+          sourceStatus: 'partial',
+          fetchedAt: Date.now(),
+          staleValuationSymbols: ['SMH'],
+        },
+      },
+    };
+
+    // Narrowed to a symbol that is entirely current: the view is complete, and
+    // currentValuationCount must be OMITTED because it equals valuationCount
+    // (the producer's own omit-when-equal contract).
+    tool._postFilter(data, { symbols: ['XLK'], limit: 0 });
+    assert.equal(data.sectors.valuationCoverage.valuationCount, 1);
+    assert.equal(data.sectors.valuationCoverage.sourceStatus, 'ok');
+    assert.equal(data.sectors.valuationCoverage.staleValuationSymbols, undefined);
+    assert.ok(
+      !('currentValuationCount' in data.sectors.valuationCoverage),
+      'currentValuationCount must be omitted when it equals valuationCount',
+    );
+  });
+
+  it('marks a narrowed view degraded when every requested symbol is stale', () => {
+    const tool = CACHE_TOOLS.find((candidate) => candidate.name === 'get_market_data');
+    assert.ok(tool?._postFilter);
+    const data = {
+      sectors: {
+        sectors: [{ symbol: 'SMH' }],
+        valuations: { SMH: { trailingPE: 35 } },
+        valuationCoverage: {
+          valuationCount: 12,
+          expectedValuationCount: 12,
+          currentValuationCount: 8,
+          sourceStatus: 'partial',
+          fetchedAt: Date.now(),
+          staleValuationSymbols: ['SMH'],
+        },
+      },
+    };
+
+    // Nothing in the requested set is current, so 'partial' would overstate it.
+    tool._postFilter(data, { symbols: ['SMH'], limit: 0 });
+    assert.equal(data.sectors.valuationCoverage.currentValuationCount, 0);
+    assert.equal(data.sectors.valuationCoverage.sourceStatus, 'degraded');
   });
 
   it('marks filtered coverage degraded when every requested sector symbol is unavailable', () => {

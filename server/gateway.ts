@@ -60,6 +60,7 @@ import {
   beginIdempotency,
   peekIdempotency,
   IDEMPOTENCY_HEADER,
+  IDEMPOTENCY_EXEMPT_RPC_PATHS,
   IDEMPOTENT_REPLAYED_HEADER,
   type IdempotencyOutcome,
 } from './_shared/idempotency';
@@ -72,6 +73,7 @@ import {
 import {
   DIRECT_LLM_DAILY_QUOTA_LIMIT,
   DIRECT_LLM_GATEWAY_QUOTA_PATHS,
+  resolveActiveDirectLlmLimit,
   reserveDirectLlmQuota,
 } from './_shared/direct-llm-quota';
 import {
@@ -414,6 +416,16 @@ const RPC_CACHE_TIER: Record<string, CacheTier> = {
   // GET /webhooks lists caller's webhooks — premium-gated; short-circuited to
   // slow-browser. Entry required by tests/route-cache-tier.test.mjs.
   '/api/v2/shipping/webhooks': 'slow-browser',
+
+  // Company Monitoring is account-private and remains unrouted until #6003.
+  // Keep every generated read no-store so future activation cannot inherit a
+  // shared CDN tier before its account isolation is proven end to end.
+  '/api/company-monitoring/v1/get-company-coverage': 'no-store',
+  '/api/company-monitoring/v1/get-company-material-event': 'no-store',
+  '/api/company-monitoring/v1/get-company-monitoring-status': 'no-store',
+  '/api/company-monitoring/v1/list-company-event-changes': 'no-store',
+  '/api/company-monitoring/v1/list-company-event-impacts': 'no-store',
+  '/api/company-monitoring/v1/list-monitored-companies': 'no-store',
 };
 
 import { PREMIUM_RPC_PATHS } from '../src/shared/premium-paths';
@@ -639,7 +651,7 @@ function createDirectLlmQuotaFailureResponse(
   if (reservation.reason === 'cap-exceeded') {
     return new Response(JSON.stringify({
       error: 'Direct LLM daily quota exceeded',
-      limit: DIRECT_LLM_DAILY_QUOTA_LIMIT,
+      limit: reservation.floor ?? DIRECT_LLM_DAILY_QUOTA_LIMIT,
       resetsAt: 'next UTC midnight',
     }), {
       status: 429,
@@ -1163,6 +1175,8 @@ export function createDomainGateway(
     // market allowlist to avoid JWKS lookup on every request.
     let sessionUserId: string | null = null;
     let sessionRole: 'free' | 'pro' | null = null;
+    let quotaEntitlements: CachedEntitlements | null = null;
+    let directLlmDailyLimit: number | null | undefined;
     if (isTierGated || requiresDirectLlmQuota || needsProFreshnessResolution) {
       const session = await resolveClerkSession(request);
       sessionUserId = session?.userId ?? null;
@@ -1489,6 +1503,7 @@ export function createDomainGateway(
       const entitlementCheck = await checkEntitlementDetailed(sessionUserId, pathname, corsHeaders, {
         clerkRole: sessionRole,
       });
+      quotaEntitlements = entitlementCheck.entitlements;
       recordUsageEntitlement(entitlementCheck.entitlements);
       const entitlementResponse = entitlementCheck.response;
       if (entitlementResponse) {
@@ -1551,6 +1566,7 @@ export function createDomainGateway(
             ? userKeyEntitlement
             : await getEntitlements(sessionUserId)
         );
+        quotaEntitlements = ent;
         recordUsageEntitlement(ent);
         if (ent && ent.features.tier >= 1 && ent.validUntil >= Date.now()) {
           rateLimitPrincipalUserId = sessionUserId;
@@ -1626,8 +1642,15 @@ export function createDomainGateway(
     // (compat block above) are already GET here and are skipped. Scope by the
     // resolved principal so a key can never replay another caller's response.
     // Fail-open: any Redis issue proceeds without idempotency (see the module).
+    // Routes in IDEMPOTENCY_EXEMPT_RPC_PATHS own their own retry semantics (per-row
+    // outcomes recomputed against current state), so generic whole-response replay would
+    // violate their contract. The published OpenAPI already omits the parameter for them;
+    // ignore the header here too, otherwise a client that sends it anyway still gets the
+    // replay the spec says it cannot.
     let idempotency: IdempotencyOutcome | null = null;
-    const hasIdempotencyKey = request.method === 'POST' && request.headers.has(IDEMPOTENCY_HEADER);
+    const hasIdempotencyKey = request.method === 'POST'
+      && request.headers.has(IDEMPOTENCY_HEADER)
+      && !IDEMPOTENCY_EXEMPT_RPC_PATHS.has(pathname);
     const idScope = identityForScope.principal_id ?? identityForScope.customer_id;
     const idempotencyScope = idScope ? `${identityForScope.auth_kind}:${idScope}` : null;
 
@@ -1840,18 +1863,41 @@ export function createDomainGateway(
         return createGatewayAuthErrorResponse(401, 'Pro authentication required', corsHeaders);
       }
 
-      const reservation = await reserveDirectLlmQuota({
-        userId: sessionUserId,
-        pipeline: (cmds) => runRedisPipeline(cmds, true),
-      });
-      if (!reservation.ok) {
-        const response = createDirectLlmQuotaFailureResponse(reservation, corsHeaders);
-        emitRequest(
-          response.status,
-          response.status === 429 ? 'rate_limit_429_direct_llm' : 'rate_limit_degraded',
-          null,
-        );
-        return response;
+      // Tier-1 legacy Clerk-role grants intentionally bypass the ordinary
+      // entitlement lookup. Re-read the cached row when available so Pro
+      // Business/API plans still receive their catalog-specific dashboard-AI
+      // allowance.
+      const ent = quotaEntitlements ?? (
+        userKeyEntitlement !== undefined
+          ? userKeyEntitlement
+          : await getEntitlements(sessionUserId)
+      );
+      if (ent) recordUsageEntitlement(ent);
+      // resolveActiveDirectLlmLimit — NOT the raw catalog read — decides this.
+      // A caller we cannot confirm as actively paid (free tier, lapsed row, no
+      // row, or a verification outage) must land on the unverified floor, never
+      // on the paid default: this endpoint spends real provider budget, and
+      // two of the DIRECT_LLM_GATEWAY_QUOTA_PATHS carry no tier gate at all.
+      directLlmDailyLimit = resolveActiveDirectLlmLimit(ent);
+
+      // Enterprise subscription rows carry an explicit null allowance. Do not
+      // hit Redis for those unlimited callers; static enterprise keys already
+      // bypass this block above.
+      if (directLlmDailyLimit !== null) {
+        const reservation = await reserveDirectLlmQuota({
+          userId: sessionUserId,
+          limit: directLlmDailyLimit,
+          pipeline: (cmds) => runRedisPipeline(cmds, true),
+        });
+        if (!reservation.ok) {
+          const response = createDirectLlmQuotaFailureResponse(reservation, corsHeaders);
+          emitRequest(
+            response.status,
+            response.status === 429 ? 'rate_limit_429_direct_llm' : 'rate_limit_degraded',
+            null,
+          );
+          return response;
+        }
       }
     }
 

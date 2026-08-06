@@ -503,7 +503,15 @@ async function callLLM(headline, options = {}) {
           signal: AbortSignal.timeout(Math.max(1, Math.min(provider.timeout, usable))),
         });
         if (!response.ok) {
-          throw httpRetryError(response, { maxRetryAfterMs: INSIGHTS_LLM_RETRY_AFTER_MAX_MS, capMs: usableBudgetMs() });
+          // #6110: `usableBudgetMs()` is a real remaining wall clock, so pass it
+          // as `remainingBudgetMs` — a hint longer than that (groq's daily-quota
+          // 429 asks for ~20 minutes) makes the error nonRetryable and we fall
+          // through to the next provider immediately, instead of clamping the
+          // hint to the ceiling and sleeping it away twice.
+          throw httpRetryError(response, {
+            maxRetryAfterMs: INSIGHTS_LLM_RETRY_AFTER_MAX_MS,
+            remainingBudgetMs: usableBudgetMs(),
+          });
         }
         return response;
       }, INSIGHTS_LLM_MAX_RETRIES, retryDelayMs);

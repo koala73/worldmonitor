@@ -434,7 +434,8 @@
     "consumerPrices": "Consumer Prices",
     "fearGreed": "Fear & Greed",
     "marketBreadth": "Market Breadth",
-    "climateNews": "Climate News"
+    "climateNews": "Climate News",
+    "fx": "نرخ‌های ارز"
   },
   "commands": {
     "prefixes": {
@@ -1274,7 +1275,7 @@
         "ucdpEvents": "Armed Conflict Events",
         "displacementFlows": "Displacement Flows",
         "climateAnomalies": "Climate Anomalies",
-        "weatherAlerts": "Weather Alerts",
+        "weatherAlerts": "هشدارهای آب‌وهوایی ایالات متحده (NWS)",
         "strategicWaterways": "Chokepoints",
         "economicCenters": "Economic Centers",
         "criticalMinerals": "Critical Minerals",
@@ -1353,7 +1354,7 @@
           "infraDatacenters": "AI compute clusters >=10,000 GPUs",
           "infraOutages": "Internet blackouts and service disruptions",
           "naturalEventsTech": "Earthquakes, storms, fires (may affect data centers)",
-          "weatherAlerts": "Severe weather alerts",
+          "weatherAlerts": "هشدارهای آب‌وهوای شدید در ایالات متحده (NWS)",
           "economicCenters": "Stock exchanges & central banks",
           "countriesOverlay": "Country name overlays",
           "financeExchanges": "Major global exchanges by market tier",
@@ -1365,7 +1366,7 @@
           "financeOutages": "Internet disruptions that can impact market operations",
           "financeCyberThreats": "Security events around financial infrastructure",
           "macroWaterways": "Strategic chokepoints for commodity shipping",
-          "weatherAlertsMarket": "Severe weather events with market relevance",
+          "weatherAlertsMarket": "رویدادهای آب‌وهوای شدید مرتبط با بازار در ایالات متحده (NWS)",
           "naturalEventsMacro": "Earthquakes, fires, floods, and other natural disruptions",
           "timeRecent": "Filter time-based data to recent hours",
           "timeExtended": "Show data from past week, month, or all time",
@@ -2591,6 +2592,33 @@
       "upgradeCta": "ارتقا برای بیشتر",
       "lockedAriaLabel": "افزودن برگه — قفل‌شده. {{reason}}",
       "unlockedAnnouncement": "محدودیت برگه‌های داشبورد برداشته شد."
+    },
+    "fx": {
+      "infoTooltip": "<strong>نرخ‌های ارز</strong> تنش ارزی و نرخ‌های پایه:<ul><li>تنش ارزی (FX Stress) ۴۵ ارز را بر اساس بدترین کاهش قله‌به‌دره در ۲۴ ماه گذشته، همراه با تغییر ۱۲ ماهه رتبه‌بندی می‌کند</li><li>پوشش شامل ARS، TRY، EGP، NGN، PKR و UAH است — ارزهایی که مجموعه‌های ارجاعی BIS و ECB حذف کرده‌اند</li><li>نرخ‌های پایه نرخ‌ها را در برابر دلار آمریکایی و نرخ‌های ارجاعی یورو ECB به‌طور جداگانه فهرست می‌کند، زیرا این دو از مبانی مختلفی نقل قول می‌شوند</li></ul>منابع: Yahoo Finance و بانک مرکزی اروپا.",
+      "tabs": {
+        "stress": "تنش ارزی",
+        "spot": "نرخ پایه"
+      },
+      "currency": "ارز",
+      "pair": "جفت ارزی",
+      "rate": "نرخ",
+      "yoy": "۱۲ ماه",
+      "drawdown": "کاهش ۲۴ ماهه",
+      "peakToTrough": "قله → دره",
+      "change1d": "۱ روز",
+      "perUsd": "به ازای ۱ دلار آمریکایی",
+      "usdPerUnit": "دلار آمریکایی به ازای هر واحد",
+      "usdBase": "در برابر دلار آمریکایی",
+      "eurBase": "نرخ‌های ارجاعی یورو ECB",
+      "stressedCount": "{{stressed}} از {{total}} ارز زیر {{threshold}}",
+      "sourceYahoo": "منبع: Yahoo Finance",
+      "sourceEcb": "منبع: ECB",
+      "degraded": "در حال حاضر در دسترس نیست: {{sources}}. به زودی دوباره تلاش می‌شود.",
+      "source": {
+        "stress": "تنش ارز",
+        "usd": "نرخ دلار آمریکا",
+        "eur": "نرخ یورو بانک مرکزی اروپا"
+      }
     }
   },
   "popups": {
@@ -2931,7 +2959,7 @@
       "heading": "HEADING",
       "hexCode": "HEX CODE",
       "squawk": "SQUAWK",
-      "attribution": "Source: OpenSky Network"
+      "attribution": "Source: adsb.lol (ODbL) · OpenSky Network"
     },
     "militaryVessel": {
       "aisDark": "AIS DARK",

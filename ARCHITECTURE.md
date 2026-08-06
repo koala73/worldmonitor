@@ -46,7 +46,7 @@ World Monitor is a real-time global intelligence dashboard built as a TypeScript
         │ CoinGeck│ │  FRED   │ │ FIRMS   │
         │   ...   │ │   ...   │ │   ...   │
         └─────────┘ └─────────┘ └─────────┘
-           65+ upstream providers and APIs
+           530+ observed upstream hosts
 ```
 
 **Source files**: `package.json`, `vercel.json`
@@ -92,7 +92,7 @@ World Monitor is a real-time global intelligence dashboard built as a TypeScript
 
 ### Component Model
 
-All panels extend the `Panel` base class (107 classes across `src/components`). Panels render via `setContent(html)` (debounced 150ms) and use event delegation on a stable `this.content` element. Panels support resizable row/col spans persisted to localStorage.
+All panels extend the `Panel` base class (108 classes across `src/components`). Panels render via `setContent(html)` (debounced 150ms) and use event delegation on a stable `this.content` element. Panels support resizable row/col spans persisted to localStorage.
 
 ### Dual Map System
 
@@ -371,8 +371,10 @@ Runs before every `git push`:
 | `china-decision-parity-live.yml` | 6-hourly cron, push to main (audit paths), manual (optional staging URL) | Live half of the China decision-signal parity audit: probes the deployed composition RPC and the public `chinaDecisionSignals` bootstrap projection for the six-domain contract and a canonical snapshot under one hour old (#5643 — the probe existed but nothing invoked it, and `--require-live` keeps a lost `--url` from passing vacuously) |
 | `security-audit.yml` | PR, push to main, daily cron, manual | Production dependency audits for every tracked `package-lock.json` workspace, failing on unbaselined high/critical advisories |
 | `seed-freshness-monitor.yml` | 15-minute cron, manual | Enforces production ingestion acceptance after a green scheduled main gate; fails on every actionable compact-health problem except explicitly on-demand sources without grading production before Railway deploys or runs |
+| `railway-deploy-trigger.yml` | 15-minute cron (offset from the freshness monitor), manual | Reconciles the Railway fleet forward: deploys each service whose dependency closure changed since the commit it is running, gated on main's own `gate` status rather than on Railway's reading of the whole check suite — a scheduled workflow re-reporting a failure onto main's head SHA otherwise defers every service's build (#6142) |
 | `analytics-collector-monitor.yml` | 15-minute cron, manual | Probes the self-hosted Umami collector directly (heartbeat, tracker script, ingest route) and fails when events are being dropped — Railway reported a green deployment through the 4-day #5565 blackout, so deployment status is not trusted here |
 | `umami-storage-monitor.yml` | 15-minute cron, manual | Reads the Umami Postgres Railway volume without mutation, caches a bounded history, and fails on capacity or projected days-to-full thresholds |
+| `perf-style-layout-budget.yml` | Twice-daily cron, manual (URL + budget inputs) | The #4536 forced-reflow gate the desktop main-thread baseline named but nothing enforced: captures `/dashboard` with the Playwright harness and fails when the `styleLayout` share of attributed main-thread self-time exceeds budget. Gates the *share*, not absolute ms, and runs scheduled rather than per-PR because lab absolutes are host-contention contaminated (KTD1) while the decomposition is stable. A report that measured nothing returns `unmeasured`, never a pass |
 | `contributor-trust.yml` | PR | Gates untrusted first-time-contributor runs |
 | `deploy-gate.yml` | After Test/Typecheck/Security Audit complete | Aggregates required smoke-gate statuses onto the head SHA for branch protection |
 | `indexnow-submit.yml` | Successful Production deployment, manual | Submits deployment-relevant canonical URLs to IndexNow only after their host-specific ownership keys are directly reachable |

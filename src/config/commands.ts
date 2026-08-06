@@ -189,6 +189,12 @@ export const COMMANDS: Command[] = [
   { id: 'panel:consumer-prices@world', keywords: ['inflation', 'global inflation', 'inflation by country', 'country inflation', 'inflation ranking', 'world inflation', 'imf inflation', 'highest inflation', 'cpi by country'], label: 'Panel: Global Inflation (by country)', icon: '\u{1F4C8}', category: 'panels' },
   { id: 'panel:grocery-basket', keywords: ['grocery', 'grocery basket', 'grocery index', 'food prices', 'supermarket'], label: 'Panel: Grocery Index', icon: '\u{1F96C}', category: 'panels' },
   { id: 'panel:bigmac', keywords: ['bigmac', 'big mac', 'big mac index', 'purchasing power parity', 'ppp'], label: 'Panel: Big Mac Index', icon: '\u{1F354}', category: 'panels' },
+  // Deliberately shares NO keyword with `panel:forex` (:240), which opens the
+  // currency NEWS feed under the same 'fx'/'currencies'/'exchange rates' terms.
+  // Duplicating those would put two same-icon entries side by side in CMD+K
+  // with nothing to tell them apart, so this one owns only the rate- and
+  // crisis-specific phrasing — the queries no headline feed can answer.
+  { id: 'panel:fx', keywords: ['fx rates', 'spot rates', 'currency stress', 'currency crisis', 'devaluation', 'depreciation', 'fx stress', 'drawdown'], label: 'Panel: FX Rates', icon: '\u{1F4C9}', category: 'panels' },
   { id: 'panel:fuel-prices', keywords: ['fuel prices', 'gas prices', 'gasoline', 'diesel', 'petrol', 'fuel cost', 'pump prices'], label: 'Panel: Fuel Prices', icon: '\u26FD', category: 'panels' },
   { id: 'panel:fao-food-price-index', keywords: ['fao', 'food price index', 'ffpi', 'food prices', 'cereals', 'fao food', 'global food prices', 'food inflation'], label: 'Panel: FAO Food Price Index', icon: '\u{1F33E}', category: 'panels' },
   { id: 'panel:national-debt', keywords: ['national debt', 'debt clock', 'government debt', 'deficit'], label: 'Panel: National Debt Clock', icon: '\u{1F4B8}', category: 'panels' },

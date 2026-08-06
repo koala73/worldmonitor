@@ -3746,3 +3746,113 @@ a.hub-top-story {
   color: var(--text-dim);
   font-size: 11px;
 }
+
+/* ----------------------------------------------------------
+   FX panel (#6199) — stress table + the two spot-rate tables
+   ---------------------------------------------------------- */
+.fx-scroll {
+  overflow-x: auto;
+  overflow-y: auto;
+  max-height: 100%;
+}
+.fx-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+.fx-table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--panel-bg, var(--bg));
+  padding: 4px 6px;
+  text-align: right;
+  font-weight: 600;
+  font-size: 9px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+}
+.fx-table td {
+  padding: 4px 6px;
+  text-align: right;
+  white-space: nowrap;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+}
+.fx-table th.fx-ccy,
+.fx-table td.fx-ccy {
+  text-align: left;
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  background: var(--panel-bg, var(--bg));
+}
+.fx-table thead th.fx-ccy {
+  z-index: 2;
+}
+.fx-ccy-code {
+  font-weight: 600;
+}
+.fx-ccy-country {
+  margin-left: 5px;
+  font-size: 9px;
+  color: var(--text-dim);
+}
+/* Currencies past the resilience methodology's -15% drawdown threshold. */
+.fx-table tbody tr.fx-stressed td.fx-ccy {
+  box-shadow: inset 2px 0 0 var(--negative, #f87171);
+}
+.fx-na {
+  color: var(--text-dim);
+  opacity: 0.5;
+}
+/* Exactly zero: neither a gain nor a loss. A drawdown can only ever be 0 or
+   negative, so painting 0 green would show an appreciation that cannot occur. */
+.fx-flat {
+  color: var(--text-dim);
+}
+.fx-window {
+  font-size: 9px;
+  color: var(--text-dim);
+}
+/* Rate above date: the magnitude of the collapse is the point, the window is
+   the qualifier. */
+.fx-window-rates,
+.fx-window-dates {
+  display: block;
+  white-space: nowrap;
+}
+.fx-window-rates {
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+.fx-window-dates {
+  opacity: 0.7;
+}
+/* The raw seeded direction, shown beside the conventional quote. */
+.fx-inverse {
+  color: var(--text-dim);
+}
+.fx-section-title {
+  padding: 8px 6px 4px;
+  font-size: 9px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+.fx-footer {
+  padding: 6px;
+  font-size: 9px;
+  color: var(--text-dim);
+}
+/* Names a source that returned nothing, so a missing table reads as an outage
+   rather than as a surface that never existed. */
+.fx-degraded {
+  padding: 6px;
+  font-size: 9px;
+  color: var(--negative, #f87171);
+  opacity: 0.85;
+}

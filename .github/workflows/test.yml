@@ -42,7 +42,7 @@ jobs:
             /^docs\/research\/seo-ai-visibility\// { count++; next }
             /\.md$/ { next }
             /^docs\// { next }
-            /^src-tauri\// && $0 !~ /^src-tauri\/sidecar\// { next }
+            /^src-tauri\// && $0 !~ /^src-tauri\/sidecar\// && $0 !~ /^src-tauri\/.*\.json$/ { next }
             /^CHANGELOG\.md$/ { next }
             /^LICENSE$/ { next }
             /^\.github\/workflows\/docker-publish\.yml$/ { next }
@@ -101,6 +101,13 @@ jobs:
           # skips src-tauri/ (non-sidecar), so before these outputs existed a
           # Rust/Tauri-config change ran zero PR CI and desktop breakage
           # surfaced only at the next release build — months later.
+          # Any `src-tauri/**/*.json` is carved back into `code`:
+          # tests/desktop-one-binary-model.test.mjs asserts on the set of Tauri
+          # bundle configs (#5908) and runs in `unit`. Without the carve-out,
+          # adding a per-variant config would skip its own gate — and the
+          # carve-out covers every JSON path, not just `tauri*.conf.json`, so a
+          # config parked at e.g. `src-tauri/profiles/commodity.json` cannot
+          # sneak past it either.
           # The sidecar handler bundle build lives in the `unit` job (gated on
           # `code`), NOT here: the bundled api/{domain}/v1/[rpc].ts handlers
           # import from src/ and server/ via the @/ alias, so the bundle's
@@ -150,6 +157,8 @@ jobs:
           fi
       - name: Doc claims match code
         run: node scripts/docs-stats.mjs --check
+      - name: Source attribution inventory is current
+        run: node scripts/source-attribution.mjs --check
 
   unit:
     needs: changes
@@ -319,20 +328,27 @@ jobs:
       - name: Desktop build env parity (#5905)
         # A VITE_ key missing from the Tauri build steps silently disables the
         # capability in every shipped build (sign-in, Pro, Cyber Threats were
-        # all dark this way). Also runs in `unit` — this leg covers workflow
-        # edits (build-desktop.yml is excluded from the `code` filter), the
-        # unit leg covers new import.meta.env.VITE_ reads added under src/.
+        # all dark this way). Also runs in `unit`: this leg is the one that
+        # fires for src-tauri/ Rust and capability edits, which the `code`
+        # filter skips (it carves back only `tauri*.conf.json`), while the unit
+        # leg covers new import.meta.env.VITE_ reads added under src/.
         run: node scripts/check-desktop-build-env.mjs
       - name: Tauri config and capability files parse
+        # One desktop binary ships (#5908), so there is exactly one tauri conf —
+        # the per-variant `tauri.tech/finance.conf.json` files were retired with
+        # the build legs that never published them. The floor still guards the
+        # vacuous-pass case where a broken glob finds nothing to validate.
         run: |
           node -e '
             const { readFileSync, readdirSync } = require("node:fs");
+            const confs = readdirSync("src-tauri").filter((f) => /^tauri.*\.conf\.json$/.test(f));
+            const capabilities = readdirSync("src-tauri/capabilities");
             const files = [
-              ...readdirSync("src-tauri").filter((f) => /^tauri.*\.conf\.json$/.test(f)).map((f) => `src-tauri/${f}`),
-              ...readdirSync("src-tauri/capabilities").map((f) => `src-tauri/capabilities/${f}`),
+              ...confs.map((f) => `src-tauri/${f}`),
+              ...capabilities.map((f) => `src-tauri/capabilities/${f}`),
             ];
-            if (files.length < 4) {
-              console.error(`expected at least 3 tauri conf files + capabilities, found ${files.length}: ${files.join(", ")}`);
+            if (confs.length !== 1 || capabilities.length < 3) {
+              console.error(`::error::expected exactly 1 tauri conf file (one published binary, #5908) and at least 3 capability files, found ${confs.length} conf + ${capabilities.length} capabilities: ${files.join(", ")}`);
               process.exit(1);
             }
             let failed = false;

@@ -40,6 +40,21 @@ Insufficient activity-nowcast groups retain their exact bounded
 `missingInputs` and `missingInputFamilies` diagnostics rather than discarding
 them with the absent derived item.
 
+Operator health counts **operationally covered** groups, and that count follows
+the same distinction. A group that is `unavailable` because of a
+`healthy_quiet_window` is covered: the exchange queries succeeded and contained
+no qualifying disclosure event, which is a quiet market rather than a broken
+source, and no operator action would change it. Its published state stays
+`unavailable` with zero items — the coverage rule never adds an event to a
+quiet group. Every other unavailable cause is a real source failure and stays
+uncovered, and a cause that is missing or malformed fails closed as uncovered
+rather than being assumed quiet.
+
+`/api/health` and `/api/seed-health` therefore report which groups are quiet,
+which are stale, and which are genuinely unavailable with their
+`unavailableCause`, so a shortfall identifies the source family that needs work
+instead of reading as an undifferentiated count.
+
 ## One contract across surfaces
 
 The same `china-decision-signals/v1` JSON contract backs:

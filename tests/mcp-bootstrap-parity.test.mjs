@@ -63,6 +63,8 @@ const EXCLUDED_FROM_MCP = new Map([
     'operational: Taiwan MND transport status, errors, and last-success time consumed by api/health.js; #5580 owns final MCP composition for the separately attributed official activity records.'],
   ['military:cross-strait-activity:v1:source:japan-mod',
     'operational: Japan Joint Staff transport status, errors, and last-success time consumed by api/health.js; #5580 owns final MCP composition for the separately attributed reviewed activity records.'],
+  ['market:china:stock-connect:v1',
+    'seeded and health-monitored only: #6155 delivers the SSE/SZSE Stock Connect turnover and margin data layer with no dashboard or MCP consumer yet. Exposing it now would advertise a slice whose framing still needs product review -- the series is GROSS northbound turnover, never the net flow the name suggests, because both exchanges stopped publishing the buy/sell split on 2024-08-16.'],
 
   // ===========================================================================
   // Intermediate / pipeline keys (data surfaces through a sibling tool)
@@ -70,7 +72,9 @@ const EXCLUDED_FROM_MCP = new Map([
   ['supply_chain:corridorrisk:v1',
     'intermediate: data flows through transit-summaries:v1 (matches api/health.js:461 ON_DEMAND_KEYS rationale; explicitly NOT bundled into get_chokepoint_status to avoid duplicate exposure).'],
   ['military:forecast-inputs:stale:v1',
-    'intermediate: seed-to-seed pipeline key, only populated after seed-military-flights runs (matches api/health.js:463 ON_DEMAND_KEYS rationale).'],
+    'intermediate: late-stage seed-to-seed pipeline output, health-monitored with its own freshness budget; no direct MCP slice exists.'],
+  ['military:surges:stale:v1',
+    'cascade-mirror: stale fallback of military:surges:v1, which is covered by get_military_surge; this copy is retained for the health freshness probe.'],
   ['intelligence:military-cii:v1',
     'intermediate: per-country military-presence aggregate (own/foreign flights+vessels, AIS disruption buckets) read by server/worldmonitor/intelligence/v1/get-risk-scores.ts to feed the CII Security component; surfaces transitively via the country-risk score returned by get_country_risk. Not a queryable MCP slice on its own.'],
   ['weather:hko-warnings:v1',
@@ -174,7 +178,7 @@ const EXCLUDED_FROM_MCP = new Map([
   ['economic:energy:v1:all',
     'deferred: strict health seed probe added by #5055; future economic-data MCP expansion can expose energy prices directly.'],
   ['shared:fx-rates:v1',
-    'deferred: strict health seed probe added by #5055; FX rates are shared infrastructure consumed by seeders and future economic MCP expansion.'],
+    'deferred to a future FX tool. Shared infrastructure consumed server-side by seeders for currency conversion, and since #6199 also rendered client-side by the FX panel Spot tab — but still exposed by no MCP tool.'],
   ['patents:defense:latest',
     'deferred: strict health seed probe added by #5055; future military or defense-innovation MCP expansion can expose patent summaries.'],
   ['conflict:acled:v1:all:0:0',
@@ -194,7 +198,7 @@ const EXCLUDED_FROM_MCP = new Map([
   ['bls:series:v1',
     'deferred to a future labor-statistics tool (per plan U7 expected exclusions). BLS economic series already partially surfaced via FRED bundles in get_economic_data.'],
   ['economic:fx:yoy:v1',
-    'deferred: derived FX year-over-year cache; underlying ECB FX rates already exposed via get_economic_data (economic:ecb-fx-rates:v1).'],
+    'deferred to a future FX tool. The previous reason here claimed ECB FX already covered this and was wrong on the facts (#6199): economic:ecb-fx-rates:v1 carries seven majors (USD GBP JPY CHF CAD CNY AUD) while this key carries 45 currencies including ARS, TRY, EGP, NGN, PKR, UAH and LBP — precisely the currencies whose collapses this key measures, and none of which ECB quotes. It now has a dashboard consumer (the FX panel) but still no MCP tool.'],
   ['intelligence:satellites:tle:v1',
     'deferred to a future space-domain tool. Not in v1 brainstorm inventory.'],
   ['intelligence:pizzint:seed:v1',

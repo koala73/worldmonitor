@@ -5,6 +5,13 @@ on:
     - cron: '*/15 * * * *'
   workflow_dispatch:
 
+# The drift check queries every service serially, so a slow run can outlast the
+# 15-minute interval. Superseding is correct for a read-only probe: the newer
+# run reads newer state and answers the same question better.
+concurrency:
+  group: seed-freshness-monitor
+  cancel-in-progress: true
+
 permissions:
   contents: read
   statuses: read
@@ -12,12 +19,28 @@ permissions:
 jobs:
   monitor:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    # Was 5, which predates the deploy-drift step: that step alone makes one
+    # service-list plus one deployment-list call per service (77 in production),
+    # each a CLI auth + GraphQL round trip. Per-call timeouts bound a hung call;
+    # this bounds the run.
+    timeout-minutes: 20
     environment:
       name: ingestion-acceptance-production
       deployment: false
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          # The deploy-drift check answers two questions from local history:
+          # "is this service running something newer than the head we read"
+          # (`git merge-base --is-ancestor`, for a merge that landed mid-run),
+          # and since #6142 "has anything that reaches this service changed
+          # since the commit it is running". The second needs the RUNNING commit
+          # to exist locally, and a service that is legitimately weeks behind on
+          # code it does not contain sits far outside any fixed depth — where
+          # the answer becomes CLOSURE_UNKNOWN, which reports. Full history with
+          # no blobs: `git diff --name-only` walks trees and never needs blobs.
+          fetch-depth: 0
+          filter: blob:none
 
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
@@ -68,5 +91,32 @@ jobs:
           RAILWAY_TOKEN: ${{ secrets.RAILWAY_PRODUCTION_TOKEN }}
         run: node scripts/audit-railway-watch-paths.mjs
 
+      # `if` is an explicit gate reference, not decoration. With default success()
+      # semantics this step was SKIPPED on every run from 2026-08-03 onward
+      # because the config audit above failed on one service's watch paths —
+      # so a single unrelated drift silently switched off data-freshness
+      # monitoring for the whole fleet. Each probe now reports independently and
+      # the only thing that can stop it is the fail-closed green-main gate.
       - name: Check ingestion operational acceptance
+        if: ${{ !cancelled() && steps.gate.conclusion != 'failure' }}
         run: node scripts/check-seed-freshness.mjs
+
+      # Last, and independently gated for the same reason compact health is.
+      #
+      # The audit above proves no service CAN silently skip a merge; this proves
+      # none actually did. Both are needed: a cleared filter does nothing for a
+      # webhook that stopped delivering (#6064), and this check catches that
+      # without knowing why.
+      - name: Check Railway deploy drift against main
+        if: ${{ !cancelled() && steps.gate.conclusion != 'failure' }}
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_PRODUCTION_TOKEN }}
+          RAILWAY_PROJECT_ID: ${{ vars.RAILWAY_PROJECT_ID }}
+        run: |
+          set -o pipefail
+          # Pick up commits merged since the checkout so a service that already
+          # built one of them reads as ahead rather than behind. Deliberately no
+          # --depth: passing one to a full clone SHALLOWS it, which would strand
+          # exactly the running commits the closure comparison needs.
+          git fetch --quiet origin main || true
+          node scripts/check-railway-deploy-drift.mjs

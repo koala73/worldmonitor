@@ -62,7 +62,7 @@
     },
     {
       "name": "get_economic_data",
-      "description": "China macro: official-only 12-series; 5 NBS/SAFE ingestible, PBoC/GACC unavailable, no proxies; see launchReady/status. Retained values expose transportStatus and transportFailureReason independently. Other economic data includes Fed Funds (FRED), economic and official NBS/PBoC release calendars, fuel prices, ECB FX rates, EU yield curves, earnings, COT positioning, energy storage, BIS household debt service ratios, and BIS residential/commercial property prices."
+      "description": "China macro: official-only 12-series; 5 NBS/SAFE ingestible, PBoC/GACC unavailable, no proxies; see launchReady/status. Retained values expose transportStatus and transportFailureReason independently. Other economic data includes Fed Funds (FRED), economic and official NBS/PBoC release calendars, fuel prices, ECB FX rates, Bank of Russia official rates (RUB per 1 unit of each listed currency, plus the CBR key policy rate), EU yield curves, earnings, COT positioning, energy storage, BIS household debt service ratios, and BIS residential/commercial property prices."
     },
     {
       "name": "get_country_macro",
@@ -162,7 +162,7 @@
     },
     {
       "name": "get_world_brief",
-      "description": "AI-generated world intelligence brief. Fetches the latest geopolitical headlines along with their RSS article bodies and produces a grounded LLM-summarized brief. Supply an optional geo_context to focus on a region or topic."
+      "description": "Citation-grounded world intelligence brief from the same precomputed news:insights:v1 snapshot used by the dashboard. The insights seeder applies corroboration, citation, and hallucination gates before publishing; this tool reads that accepted result without a request-time LLM call. The optional geo_context field is retained for client compatibility and does not alter the seeded global snapshot."
     },
     {
       "name": "get_country_brief",

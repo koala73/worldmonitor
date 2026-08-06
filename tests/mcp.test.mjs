@@ -2254,6 +2254,20 @@ describe('api/mcp.ts — PRO MCP Server', () => {
     const chokepointTransitsFetchedAt = Date.now() - 8 * 60_000;
     // portwatch-ports budget=2160min (36h) → 12h old (fresh)
     const portwatchPortsFetchedAt = Date.now() - 12 * 60 * 60_000;
+    const portwatchContentFreshness = {
+      assessedAt: Date.now(),
+      coveredCount: 174,
+      freshCount: 174,
+      staleCount: 0,
+      unknownCount: 0,
+      staleCountries: [],
+      criticalCountries: ['CN', 'HK'],
+      criticalFreshCount: 2,
+      criticalStaleCountries: [],
+      criticalMissingCountries: 0,
+      criticalOldestObservedAt: Date.now() - 12 * 60 * 60_000,
+      criticalOldestObservedCountry: 'CN',
+    };
     // chokepoint-baselines budget=576000min (400d) → 60d old (fresh; SECOND-OLDEST)
     const chokepointBaselinesFetchedAt = Date.now() - 60 * 24 * 60 * 60_000;
     // portwatch:chokepoints-ref budget=20160min (14d) → 7d old (fresh)
@@ -2261,8 +2275,17 @@ describe('api/mcp.ts — PRO MCP Server', () => {
     // chokepoint-flows budget=720min (12h) → 5h old (fresh)
     const chokepointFlowsFetchedAt = Date.now() - 5 * 60 * 60_000;
 
-    globalThis.fetch = async (url) => {
+    globalThis.fetch = async (url, init) => {
       const u = url.toString();
+      // #6080/#6111: get_chokepoint_status also reads its content-freshness
+      // activation marker via an EXISTS pipeline. This fixture includes a
+      // valid content report and answers 0 for the marker, so the test stays
+      // about transport/cardinality freshness without relying on grace after
+      // the compiled deployment-order deadline.
+      if (u.endsWith('/pipeline')) {
+        const commands = JSON.parse(init.body);
+        return new Response(JSON.stringify(commands.map(() => ({ result: 0 }))), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      }
       if (u.includes(`/get/${encodeURIComponent('supply_chain:transit-summaries:v1')}`)) {
         return new Response(JSON.stringify({ result: JSON.stringify(transitSummariesPayload) }), { status: 200, headers: { 'Content-Type': 'application/json' } });
       }
@@ -2288,7 +2311,11 @@ describe('api/mcp.ts — PRO MCP Server', () => {
         return new Response(JSON.stringify({ result: JSON.stringify({ fetchedAt: chokepointTransitsFetchedAt, recordCount: 13 }) }), { status: 200, headers: { 'Content-Type': 'application/json' } });
       }
       if (u.includes(`/get/${encodeURIComponent('seed-meta:supply_chain:portwatch-ports')}`)) {
-        return new Response(JSON.stringify({ result: JSON.stringify({ fetchedAt: portwatchPortsFetchedAt, recordCount: 200 }) }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+        return new Response(JSON.stringify({ result: JSON.stringify({
+          fetchedAt: portwatchPortsFetchedAt,
+          recordCount: 200,
+          contentFreshness: portwatchContentFreshness,
+        }) }), { status: 200, headers: { 'Content-Type': 'application/json' } });
       }
       if (u.includes(`/get/${encodeURIComponent('seed-meta:energy:chokepoint-baselines')}`)) {
         return new Response(JSON.stringify({ result: JSON.stringify({ fetchedAt: chokepointBaselinesFetchedAt, recordCount: 13 }) }), { status: 200, headers: { 'Content-Type': 'application/json' } });
@@ -2343,8 +2370,15 @@ describe('api/mcp.ts — PRO MCP Server', () => {
     // portwatch-ports budget=2160min (36h) → 100h old (clearly STALE)
     const portwatchPortsFetchedAt = Date.now() - 100 * 60 * 60_000;
 
-    globalThis.fetch = async (url) => {
+    globalThis.fetch = async (url, init) => {
       const u = url.toString();
+      // #6080/#6111: the marker is read through EXISTS and answers 0, but
+      // these block-less fixtures are intentionally evaluated after the
+      // compiled grace deadline, so the missing content remains strict.
+      if (u.endsWith('/pipeline')) {
+        const commands = JSON.parse(init.body);
+        return new Response(JSON.stringify(commands.map(() => ({ result: 0 }))), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      }
       if (u.includes(`/get/${encodeURIComponent('supply_chain:transit-summaries:v1')}`)) {
         return new Response(JSON.stringify({ result: JSON.stringify(transitSummariesPayload) }), { status: 200, headers: { 'Content-Type': 'application/json' } });
       }
@@ -2385,8 +2419,15 @@ describe('api/mcp.ts — PRO MCP Server', () => {
     const transitSummariesPayload = { chokepoints: { suez: { vesselsPast24h: 87 } } };
     const transitSummariesFetchedAt = Date.now() - 5 * 60_000;
 
-    globalThis.fetch = async (url) => {
+    globalThis.fetch = async (url, init) => {
       const u = url.toString();
+      // #6080/#6111: the marker is read through EXISTS and answers 0, but
+      // this block-less fixture is intentionally evaluated after the compiled
+      // grace deadline, so the missing content remains strict.
+      if (u.endsWith('/pipeline')) {
+        const commands = JSON.parse(init.body);
+        return new Response(JSON.stringify(commands.map(() => ({ result: 0 }))), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      }
       if (u.includes(`/get/${encodeURIComponent('supply_chain:transit-summaries:v1')}`)) {
         return new Response(JSON.stringify({ result: JSON.stringify(transitSummariesPayload) }), { status: 200, headers: { 'Content-Type': 'application/json' } });
       }

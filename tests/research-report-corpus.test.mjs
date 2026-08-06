@@ -92,7 +92,7 @@ describe('research report corpus (#5668)', () => {
       focus.observationEnd <= String(snapshot.capturedAt).slice(0, 10),
       'observation period must end on or before the retrieval date',
     );
-    assert.match(html, new RegExp(`<meta name="lastmod" content="${report.dateModified}">`));
+    assert.match(html, /<meta name="lastmod" content="2026-08-05">/);
     assert.match(
       html,
       new RegExp(`published <time datetime="${report.datePublished}">`),

@@ -26,8 +26,9 @@ import {
   type RuntimeFeatureId,
   type RuntimeSecretKey,
 } from '@/services/runtime-config';
-import { isDesktopRuntime, resolveLocalApiPort, startSmartPollLoop, type SmartPollLoopHandle } from '@/services/runtime';
-import { proxyLocalApiRequest, tryInvokeTauri, invokeTauri } from '@/services/tauri-bridge';
+import { resolveLocalApiPort, startSmartPollLoop, type SmartPollLoopHandle } from '@/services/runtime';
+import { proxyLocalApiRequest, tryInvokeTauri } from '@/services/tauri-bridge';
+import { openExternalUrl } from '@/services/external-navigation';
 import { escapeHtml } from '@/utils/sanitize';
 import { initI18n, t } from '@/services/i18n';
 import { applyStoredTheme } from '@/utils/theme-manager';
@@ -254,7 +255,7 @@ function initOverviewListeners(area: HTMLElement): void {
 
   area.querySelector('[data-wm-open-pro]')?.addEventListener('click', () => {
     const url = 'https://worldmonitor.app/pro';
-    void invokeTauri<void>('open_url', { url }).catch(() => window.open(url, '_blank', 'noopener,noreferrer'));
+    void openExternalUrl(url);
   });
 
   area.querySelectorAll<HTMLButtonElement>('.settings-ov-cat[data-section]').forEach(btn => {
@@ -471,11 +472,9 @@ function initFeatureSectionListeners(area: HTMLElement): void {
       e.preventDefault();
       const url = link.dataset.signupUrl;
       if (!url) return;
-      if (isDesktopRuntime()) {
-        void invokeTauri<void>('open_url', { url }).catch(() => window.open(url, '_blank', 'noopener,noreferrer'));
-      } else {
-        window.open(url, '_blank', 'noopener,noreferrer');
-      }
+      // Staged-but-unsaved secrets live in this panel; a same-tab navigation
+      // would discard them silently (#6137).
+      void openExternalUrl(url, null, { sameTabFallback: false });
     });
   });
 

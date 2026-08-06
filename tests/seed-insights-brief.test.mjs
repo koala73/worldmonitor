@@ -247,3 +247,208 @@ describe('composeSynthesizedBrief acronym boundaries fail closed (#5947 review)'
     assert.equal(composeSynthesizedBrief(terminalAcronym, topStories, { validatorMode: 'enforce' }), null);
   });
 });
+
+// #5947 (still degraded after #6019/#6030): a clause ENDING in a dotted acronym
+// carries its citation after the acronym — "not with the U.S. [2]." — which is
+// how the model writes it whenever the acronym is the object of the sentence.
+// The lowercase-only lookahead did not fire (the follower is '['), so the split
+// cut at the acronym, stranding an uncited fragment AND orphaning "[2]." into a
+// pseudo-sentence of its own. Measured against the live 2026-08-03T12:33Z
+// digest: 4 of 5 gate rejections in a 12-sample run had exactly this shape.
+//
+// A citation marker cannot begin a sentence, so this is provably mid-clause —
+// the same class of proof as the lowercase rule, NOT a relaxation of the
+// fail-closed policy above. Merging is also citation-neutral here: the fragment
+// is joined to its OWN trailing citation, never to another sentence's, so the
+// #4928 union hazard is not re-opened.
+describe('composeSynthesizedBrief acronym followed by its citation (#5947)', () => {
+  const topStories = [
+    {
+      primaryTitle: 'GCC condemns Iranian attacks on Kuwait',
+      primarySource: 'The National',
+      primaryLink: 'http://gcc',
+      sources: ['The National', 'Reuters'],
+      memberTitles: ['GCC condemns Iranian attacks on Kuwait'],
+    },
+    {
+      primaryTitle: 'U.S. Embassies Urge Citizens to Consider Leaving the Region',
+      primarySource: 'The Hindu',
+      primaryLink: 'http://embassies',
+      sources: ['The Hindu', 'AP News'],
+      memberTitles: ['U.S. Embassies Urge Citizens to Consider Leaving the Region'],
+    },
+  ];
+  const lines = [
+    { n: 1, text: 'GCC condemns Iranian attacks on Kuwait [1]' },
+    { n: 2, text: 'U.S. Embassies urge citizens to consider leaving the region [2]' },
+  ];
+
+  it('accepts a sentence whose citation follows a terminal dotted acronym', () => {
+    const citedAcronym = JSON.stringify({
+      lead: 'GCC states condemned Iranian attacks on Kuwait [1]. Citizens were urged to leave the region by the U.S. [2].',
+      lines,
+    });
+    const composed = composeSynthesizedBrief(citedAcronym, topStories, { validatorMode: 'enforce' });
+    assert.notEqual(composed, null, 'the clause owns the [2] that follows its acronym — it is not uncited');
+    assert.match(composed.lead, /U\.S\. \[2\]/, 'the published lead keeps its original punctuation');
+  });
+
+  it('still rejects an uncited sentence after an acronym that carries its citation', () => {
+    // The merge must join the fragment to its OWN citation only. A following
+    // sentence with no citation of its own stays a separate unit and rejects.
+    const trailingUncited = JSON.stringify({
+      lead: 'GCC states condemned Iranian attacks on Kuwait [1]. Citizens were urged to leave by the U.S. [2]. Analysts expect further escalation soon.',
+      lines,
+    });
+    assert.equal(composeSynthesizedBrief(trailingUncited, topStories, { validatorMode: 'enforce' }), null);
+  });
+
+  // Scoping must be pinned by a DISCRIMINATING pair, not a lone rejection.
+  // The first version of this test led with "Citizens were urged to leave…",
+  // and review showed it rejected on the sentence-initial "Citizens" — deleting
+  // the acronym entirely still rejected, so it never tested acronym scoping at
+  // all. Here "The" is a sentence-start stopword and "region" is lowercase, so
+  // the acronym is the ONLY proper noun in that sentence: the citation index is
+  // the sole variable and the verdict flips with it.
+  it('scopes the collapsed acronym to the story it cites (negative)', () => {
+    const misattributed = JSON.stringify({
+      lead: 'GCC states condemned Iranian attacks on Kuwait [1]. The region was pressured by the U.S. [1].',
+      lines,
+    });
+    assert.equal(
+      composeSynthesizedBrief(misattributed, topStories, { validatorMode: 'enforce' }),
+      null,
+      'story 1 never mentions the US — collapsing must not let it ground against story 2',
+    );
+  });
+
+  it('scopes the collapsed acronym to the story it cites (positive)', () => {
+    const grounded = JSON.stringify({
+      lead: 'GCC states condemned Iranian attacks on Kuwait [1]. The region was pressured by the U.S. [2].',
+      lines,
+    });
+    assert.notEqual(
+      composeSynthesizedBrief(grounded, topStories, { validatorMode: 'enforce' }),
+      null,
+      'identical text citing [2] must pass — only the citation index differs',
+    );
+  });
+
+  // Cross-model adversarial review (Codex) broke the first version of this fix,
+  // which matched a bare "[n]" with no requirement that it CLOSE the sentence.
+  // "…the U.S. [1] GCC condemned…[2]." then collapsed with no sentence
+  // terminator anywhere, so the split produced ONE unit citing {1,2} and each
+  // claim validated against the other's story — the #4928 misattribution this
+  // whole gate exists to prevent, re-opened by the fix meant to preserve it.
+  // These pin the fail-closed direction of the citation branch specifically:
+  // both go green under the old lowercase-only regex too, but they are the only
+  // tests that RED the over-permissive bare-marker version.
+  it('does not merge two sentences when the citation run does not close the first', () => {
+    const unioned = JSON.stringify({
+      lead: 'Citizens were urged to leave the region by the U.S. [1] GCC states condemned Iranian attacks on Kuwait [2].',
+      lines,
+    });
+    assert.equal(
+      composeSynthesizedBrief(unioned, topStories, { validatorMode: 'enforce' }),
+      null,
+      'a bare marker mid-lead must stay a boundary — merging would union {1,2}',
+    );
+  });
+
+  it('does not merge on an adjacent citation run that does not close the sentence', () => {
+    const adjacentUnioned = JSON.stringify({
+      lead: 'Citizens were urged to leave the region by the U.S. [1][2] GCC states condemned Iranian attacks on Kuwait [2].',
+      lines,
+    });
+    assert.equal(composeSynthesizedBrief(adjacentUnioned, topStories, { validatorMode: 'enforce' }), null);
+  });
+
+  it('accepts an adjacent citation run that does close the sentence', () => {
+    // The multi-citation shape the system prompt explicitly asks for ("[3][7]"),
+    // terminated — collapsing here joins the clause to citations it already owned.
+    const adjacentClosed = JSON.stringify({
+      lead: 'GCC states condemned Iranian attacks on Kuwait [1]. Citizens were urged to leave the region by the U.S. [1][2].',
+      lines,
+    });
+    assert.notEqual(composeSynthesizedBrief(adjacentClosed, topStories, { validatorMode: 'enforce' }), null);
+  });
+
+  it('accepts a citation run that closes the lead with no trailing punctuation', () => {
+    const endOfLead = JSON.stringify({
+      lead: 'GCC states condemned Iranian attacks on Kuwait [1]. Citizens were urged to leave the region by the U.S. [2]',
+      lines,
+    });
+    assert.notEqual(composeSynthesizedBrief(endOfLead, topStories, { validatorMode: 'enforce' }), null);
+  });
+
+  // #6109 adversarial review: the sentence-initial amnesty was reachable
+  // MID-CLAUSE by manufacturing a boundary the validator's own splitter honors
+  // but the caller's does not. The validator splits on /[.!?]+\s+|\n+/, so a
+  // bare newline (or a lowercase abbreviation like "vs.") turns an arbitrary
+  // capital into a "sentence-initial" token and hands it the amnesty. The
+  // reviewer published "Apple cut its regional orders" grounded only by
+  // "apple prices" this way — defeating the very guard the unit tests pin.
+  // Fixed by requiring the FIRST sentence, not merely a sentence start.
+  // These run through the real composer because that is where it published.
+  describe('#6109 amnesty is not reachable via a synthetic sentence boundary', () => {
+    const topStories = [
+      {
+        primaryTitle: 'Regional apple prices rose sharply in Chile last quarter, growers say',
+        primarySource: 'Reuters',
+        primaryLink: 'http://apple',
+        sources: ['Reuters', 'AP News'],
+        memberTitles: ['Regional apple prices rose sharply in Chile last quarter, growers say'],
+      },
+    ];
+    const lines = [{ n: 1, text: 'Regional apple prices rose sharply in Chile [1]' }];
+
+    it('rejects a lead smuggling a capital past a bare newline', () => {
+      const smuggled = JSON.stringify({
+        lead: 'Chile reported grower losses [1].\nApple cut its regional orders [1].',
+        lines,
+      });
+      assert.equal(
+        composeSynthesizedBrief(smuggled, topStories, { validatorMode: 'enforce' }),
+        null,
+        '"apple" the fruit must not license "Apple" the company via a newline',
+      );
+    });
+
+    it('rejects a lead smuggling a capital past a lowercase abbreviation', () => {
+      const smuggled = JSON.stringify({
+        lead: 'Chile grower losses mounted vs. Apple regional orders [1].',
+        lines,
+      });
+      assert.equal(composeSynthesizedBrief(smuggled, topStories, { validatorMode: 'enforce' }), null);
+    });
+
+    it('still composes the legitimate sentence-initial case end-to-end', () => {
+      const legit = JSON.stringify({
+        lead: 'Prices rose sharply in Chile last quarter [1].',
+        lines,
+      });
+      assert.notEqual(composeSynthesizedBrief(legit, topStories, { validatorMode: 'enforce' }), null);
+    });
+  });
+
+  it('treats a bracketed year after the acronym as prose, not a citation', () => {
+    // verifyCitationIndexes deliberately leaves 4-digit brackets as prose, and
+    // \d{1,3} cannot match one — so "[2026]" must not license a collapse. The
+    // fragment stays uncited and fails closed.
+    const bracketedYear = JSON.stringify({
+      lead: 'GCC states condemned Iranian attacks on Kuwait [1]. The region was pressured by the U.S. [2026].',
+      lines,
+    });
+    assert.equal(composeSynthesizedBrief(bracketedYear, topStories, { validatorMode: 'enforce' }), null);
+  });
+
+  it('stays closed when an out-of-range marker is stripped down to a bare one', () => {
+    // verifyCitationIndexes strips [999] BEFORE the split, so the gate sees
+    // "U.S. [2] GCC…" — a bare marker that must not collapse.
+    const strippedToBare = JSON.stringify({
+      lead: 'Citizens were urged to leave the region by the U.S. [999] [2] GCC states condemned Iranian attacks on Kuwait [1].',
+      lines,
+    });
+    assert.equal(composeSynthesizedBrief(strippedToBare, topStories, { validatorMode: 'enforce' }), null);
+  });
+});

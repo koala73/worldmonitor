@@ -64,10 +64,16 @@ const RSS_ALLOWED_DOMAINS = new Set(requireShared('rss-allowed-domains.cjs'));
 const _heapStats = v8.getHeapStatistics();
 console.log(`[Relay] Heap limit: ${(_heapStats.heap_size_limit / 1024 / 1024).toFixed(0)}MB`);
 
-const AISSTREAM_URL = 'wss://stream.aisstream.io/v0/stream';
+const RELAY_TEST_MODE = process.env.RELAY_TEST_MODE === 'true';
+const AISSTREAM_URL = RELAY_TEST_MODE && process.env.AISSTREAM_URL
+  ? process.env.AISSTREAM_URL
+  : 'wss://stream.aisstream.io/v0/stream';
 const API_KEY = process.env.AISSTREAM_API_KEY || process.env.VITE_AISSTREAM_API_KEY;
 const PORT = process.env.PORT || 3004;
-const RELAY_TEST_MODE = process.env.RELAY_TEST_MODE === 'true';
+// Actual bound port, resolved at listen time. Self-requests must use this:
+// with PORT=0 (ephemeral bind, used by tests) the env value is not the port
+// the server listens on, and `http://localhost:0` fails outright.
+let relayBoundPort = PORT;
 
 if (!API_KEY) {
   console.warn('[Relay] AIS disabled: AISSTREAM_API_KEY is not set (other relay and seed services remain available)');
@@ -557,6 +563,32 @@ function upstashDel(key) {
   });
 }
 
+function upstashReleaseLockIfOwner(key, owner) {
+  return new Promise((resolve) => {
+    if (!UPSTASH_ENABLED) return resolve(false);
+    const url = new URL('/', UPSTASH_REDIS_REST_URL);
+    const script = 'if redis.call("get",KEYS[1]) == ARGV[1] then return redis.call("del",KEYS[1]) else return 0 end';
+    const body = JSON.stringify(['EVAL', script, '1', key, owner]);
+    const req = UPSTASH_HTTP_MODULE.request(url, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${UPSTASH_REDIS_REST_TOKEN}`,
+        'Content-Type': 'application/json',
+      },
+      timeout: 5000,
+    }, (resp) => {
+      let data = '';
+      resp.on('data', (chunk) => { data += chunk; });
+      resp.on('end', () => {
+        try { resolve(Number(JSON.parse(data)?.result) === 1); } catch { resolve(false); }
+      });
+    });
+    req.on('error', () => resolve(false));
+    req.on('timeout', () => { req.destroy(); resolve(false); });
+    req.end(body);
+  });
+}
+
 // ─────────────────────────────────────────────────────────────
 // Seed envelope — canonical { _seed, data } shape. Mirrored from
 // scripts/_seed-envelope-source.mjs (ESM; can't be require()'d from CJS).
@@ -572,18 +604,19 @@ function buildEnvelope({ fetchedAt, recordCount, sourceVersion, schemaVersion, s
 }
 
 // Wrap `data` in a seed envelope and write to Redis at `key` with `ttlSeconds`.
-// meta: { recordCount, sourceVersion, schemaVersion?, state?, zeroOk? }
+// meta: { fetchedAt?, recordCount, sourceVersion, schemaVersion?, state?, zeroOk?, groupId? }
 //   - state: omit to derive ('OK_ZERO' when recordCount===0 && zeroOk, else 'OK')
 //   - schemaVersion: defaults to 1
 function envelopeWrite(key, data, ttlSeconds, meta) {
   const recordCount = Number(meta?.recordCount ?? 0) || 0;
   const state = meta?.state || (recordCount === 0 && meta?.zeroOk ? 'OK_ZERO' : 'OK');
   const envelope = buildEnvelope({
-    fetchedAt: Date.now(),
+    fetchedAt: meta?.fetchedAt ?? Date.now(),
     recordCount,
     sourceVersion: meta?.sourceVersion || 'ais-relay',
     schemaVersion: meta?.schemaVersion ?? 1,
     state,
+    groupId: meta?.groupId,
     data,
   });
   return upstashSet(key, envelope, ttlSeconds);
@@ -687,9 +720,30 @@ async function publishNotificationEvent({ eventType, payload, severity, variant,
 let upstreamSocket = null;
 let upstreamReconnectTimer = null;
 let upstreamReconnectFailures = 0;
+let upstreamReconnectAt = 0;
+let upstreamLastPositionAt = 0;
 let relayShuttingDown = false;
 const AIS_RECONNECT_BASE_MS = 5_000;
 const AIS_RECONNECT_MAX_MS = 5 * 60 * 1000;
+const AIS_HANDSHAKE_TIMEOUT_MS = safeInt(
+  process.env.AIS_HANDSHAKE_TIMEOUT_MS,
+  30_000,
+  1_000,
+);
+const AIS_POSITION_FRESHNESS_MS = safeInt(
+  process.env.AIS_POSITION_FRESHNESS_MS,
+  5 * 60 * 1000,
+  1_000,
+);
+const aisUpstreamMetrics = {
+  connectionAttempts: 0,
+  success: 0,
+  throttle: 0,
+  terminalFailure: 0,
+  lastSuccessAt: 0,
+  lastFailureAt: 0,
+  lastFailure: null,
+};
 let upstreamPaused = false;
 let upstreamQueue = [];
 let upstreamQueueReadIndex = 0;
@@ -699,6 +753,18 @@ let messageCount = 0;
 let droppedMessages = 0;
 const requestRateBuckets = new Map(); // key: route:ip -> { count, resetAt }
 const logThrottleState = new Map(); // key: event key -> timestamp
+
+function getAisPositionFreshness(nowMs = Date.now()) {
+  const positionAgeMs = upstreamLastPositionAt
+    ? Math.max(0, nowMs - upstreamLastPositionAt)
+    : null;
+  return {
+    currentPositionReady: upstreamSocket?.readyState === WebSocket.OPEN
+      && positionAgeMs !== null
+      && positionAgeMs <= AIS_POSITION_FRESHNESS_MS,
+    positionAgeMs,
+  };
+}
 
 // Safe response: guard against "headers already sent" crashes
 function safeEnd(res, statusCode, headers, body) {
@@ -2363,8 +2429,10 @@ async function seedSectorSummary() {
     valuationCount: valCount,
     unavailableSymbols,
     valuationDiagnostics,
+    currentValuationCount,
     lastGoodFetchedAt,
     lastGoodMetricsUsed,
+    lastGoodValuationSymbols,
   } = await collectSectorValuations({
     symbols: SECTOR_SYMBOLS,
     fetchValue: fetchYahooQuoteSummary,
@@ -2385,8 +2453,10 @@ async function seedSectorSummary() {
     sources: valuationSources,
     unavailableSymbols,
     valuationDiagnostics,
+    currentValuationCount,
     lastGoodFetchedAt,
     lastGoodMetricsUsed,
+    lastGoodValuationSymbols,
   });
   const { payload, meta: sectorMeta } = buildSectorValuationPublication({
     sectors,
@@ -2403,7 +2473,14 @@ async function seedSectorSummary() {
   const ok2 = await envelopeWrite(quotesKey, quotesPayload, MARKET_SEED_TTL, { recordCount: sectorQuotes.length, sourceVersion: 'market-sectors' });
   const persistedSectorMeta = buildSectorSeedMeta(sectorMeta, ok);
   const ok3 = await upstashSet('seed-meta:market:sectors', persistedSectorMeta, 604800);
-  console.log(`[Market] Seeded ${sectors.length}/${SECTOR_SYMBOLS.length} sectors, ${valCount}/${SECTOR_SYMBOLS.length} valuations (${valuationCoverage.sourceStatus}; redis: ${ok && ok2 && ok3 ? 'OK' : 'PARTIAL'})`);
+  // valCount includes records replayed from the last-good snapshot, so report
+  // the live count alongside it: "12/12 (partial)" during a total upstream
+  // outage reads as healthy coverage to anyone scanning the logs.
+  const liveCount = currentValuationCount == null ? valCount : currentValuationCount;
+  const valuationSummary = liveCount === valCount
+    ? `${valCount}/${SECTOR_SYMBOLS.length} valuations`
+    : `${valCount}/${SECTOR_SYMBOLS.length} valuations (${liveCount} live, ${valCount - liveCount} stale)`;
+  console.log(`[Market] Seeded ${sectors.length}/${SECTOR_SYMBOLS.length} sectors, ${valuationSummary} (${valuationCoverage.sourceStatus}; redis: ${ok && ok2 && ok3 ? 'OK' : 'PARTIAL'})`);
   return sectors.length;
 }
 
@@ -3929,6 +4006,8 @@ const THEATER_POSTURE_SEED_INTERVAL_MS = 600_000; // 10 min
 const THEATER_POSTURE_LIVE_KEY = 'theater-posture:sebuf:v1';
 const THEATER_POSTURE_STALE_KEY = 'theater_posture:sebuf:stale:v1';
 const THEATER_POSTURE_BACKUP_KEY = 'theater-posture:sebuf:backup:v1';
+const THEATER_POSTURE_LOCK_KEY = 'seed-lock:theater-posture';
+const THEATER_POSTURE_LOCK_TTL_SECONDS = 120;
 const THEATER_POSTURE_LIVE_TTL = 1200;   // 20 min — must outlive the 10-min seed interval (2x)
 const THEATER_POSTURE_STALE_TTL = 86400; // 24h
 const THEATER_POSTURE_BACKUP_TTL = 604800; // 7d
@@ -3987,6 +4066,8 @@ function theaterDetectAircraftType(callsign) {
 }
 
 const WINGBITS_MAX_BOX_NM = 2000;
+const WINGBITS_VIEWPORT_TILE_DEGREES = 30;
+const WINGBITS_MAX_VIEWPORT_AREAS = 36;
 
 const POSTURE_THEATERS = [
   { id: 'iran-theater', bounds: { north: 42, south: 20, east: 65, west: 30 }, thresholds: { elevated: 8, critical: 20 }, strikeIndicators: { minTankers: 2, minAwacs: 1, minFighters: 5 } },
@@ -3998,11 +4079,6 @@ const POSTURE_THEATERS = [
   { id: 'east-med-theater', bounds: { north: 37, south: 33, east: 37, west: 25 }, thresholds: { elevated: 4, critical: 10 }, strikeIndicators: { minTankers: 1, minAwacs: 1, minFighters: 3 } },
   { id: 'israel-gaza-theater', bounds: { north: 33, south: 29, east: 36, west: 33 }, thresholds: { elevated: 3, critical: 8 }, strikeIndicators: { minTankers: 1, minAwacs: 1, minFighters: 3 } },
   { id: 'yemen-redsea-theater', bounds: { north: 22, south: 11, east: 54, west: 32 }, thresholds: { elevated: 4, critical: 10 }, strikeIndicators: { minTankers: 1, minAwacs: 1, minFighters: 3 } },
-];
-
-const THEATER_QUERY_REGIONS = [
-  { name: 'WESTERN', lamin: 10, lamax: 66, lomin: 9, lomax: 66 },
-  { name: 'PACIFIC', lamin: 4, lamax: 44, lomin: 104, lomax: 133 },
 ];
 
 // In-memory index of recently-seen Wingbits positions, keyed by ICAO24.
@@ -4034,6 +4110,34 @@ function wingbitsIndexLookupCallsign(callsign) {
     if (cs.includes(callsign)) results.push(position);
   }
   return results;
+}
+
+function buildWingbitsViewportAreas(south, west, north, east) {
+  const latTiles = Math.max(1, Math.ceil((north - south) / WINGBITS_VIEWPORT_TILE_DEGREES));
+  const lonTiles = Math.max(1, Math.ceil((east - west) / WINGBITS_VIEWPORT_TILE_DEGREES));
+  if (latTiles * lonTiles > WINGBITS_MAX_VIEWPORT_AREAS) return null;
+
+  const areas = [];
+  for (let latIndex = 0; latIndex < latTiles; latIndex += 1) {
+    const tileSouth = south + latIndex * WINGBITS_VIEWPORT_TILE_DEGREES;
+    const tileNorth = Math.min(north, tileSouth + WINGBITS_VIEWPORT_TILE_DEGREES);
+    for (let lonIndex = 0; lonIndex < lonTiles; lonIndex += 1) {
+      const tileWest = west + lonIndex * WINGBITS_VIEWPORT_TILE_DEGREES;
+      const tileEast = Math.min(east, tileWest + WINGBITS_VIEWPORT_TILE_DEGREES);
+      const centerLat = (tileSouth + tileNorth) / 2;
+      const centerLon = (tileWest + tileEast) / 2;
+      areas.push({
+        alias: `viewport-${latIndex}-${lonIndex}`,
+        by: 'box',
+        la: centerLat,
+        lo: centerLon,
+        w: Math.max(1, Math.min((tileEast - tileWest) * 60 * Math.cos(centerLat * Math.PI / 180), WINGBITS_MAX_BOX_NM)),
+        h: Math.max(1, Math.min((tileNorth - tileSouth) * 60, WINGBITS_MAX_BOX_NM)),
+        unit: 'nm',
+      });
+    }
+  }
+  return areas;
 }
 
 async function handleWingbitsTrackRequest(req, res) {
@@ -4146,11 +4250,17 @@ async function handleWingbitsTrackRequest(req, res) {
   const clampedLamax = Math.max(-90, Math.min(90, lamax));
   const clampedLomin = Math.max(-180, Math.min(180, lomin));
   const clampedLomax = Math.max(-180, Math.min(180, lomax));
-  const centerLat = (clampedLamin + clampedLamax) / 2;
-  const centerLon = (clampedLomin + clampedLomax) / 2;
-  const widthNm = Math.min(Math.abs(clampedLomax - clampedLomin) * 60 * Math.cos(centerLat * Math.PI / 180), WINGBITS_MAX_BOX_NM);
-  const heightNm = Math.min(Math.abs(clampedLamax - clampedLamin) * 60, WINGBITS_MAX_BOX_NM);
-  const areas = [{ alias: 'viewport', by: 'box', la: centerLat, lo: centerLon, w: widthNm, h: heightNm, unit: 'nm' }];
+  const south = Math.min(clampedLamin, clampedLamax);
+  const north = Math.max(clampedLamin, clampedLamax);
+  const west = Math.min(clampedLomin, clampedLomax);
+  const east = Math.max(clampedLomin, clampedLomax);
+  const areas = buildWingbitsViewportAreas(south, west, north, east);
+  if (!areas) {
+    return safeEnd(res, 422, { 'Content-Type': 'application/json' }, JSON.stringify({
+      error: `Viewport requires more than ${WINGBITS_MAX_VIEWPORT_AREAS} Wingbits areas`,
+      positions: [],
+    }));
+  }
 
   try {
     const resp = await fetch('https://customer-api.wingbits.com/v1/flights', {
@@ -4189,9 +4299,13 @@ async function handleWingbitsTrackRequest(req, res) {
           const cs = (f.f || f.callsign || f.flight || '').trim().toUpperCase();
           if (!cs.includes(callsignFilter)) continue;
         }
-        seenIds.add(icao24);
         const lat = f.la ?? f.latitude ?? f.lat ?? 0;
         const lon = f.lo ?? f.longitude ?? f.lon ?? f.lng ?? 0;
+        // Multi-area requests overlap at tile edges. Deduplicate and retain
+        // only positions inside the original viewport so a successful
+        // Wingbits response is complete and authoritative for that bbox.
+        if (lat < south || lat > north || lon < west || lon > east) continue;
+        seenIds.add(icao24);
         positions.push({
           icao24,
           callsign: (f.f || f.callsign || f.flight || '').trim(),
@@ -4221,34 +4335,49 @@ async function handleWingbitsTrackRequest(req, res) {
   }
 }
 
+// ONE global /states/all per cycle, not one query per theater region. OpenSky
+// bills by bounding-box area with a flat top tier — every bbox above 400 sq°
+// costs 4 credits, the same as a global query — so the previous WESTERN+PACIFIC
+// pair (3,192 and 1,160 sq°) spent 8 credits/cycle for less coverage than 4
+// buys. The proxy already treats a bbox-less request as a valid global query
+// (normalizeOpenSkyBbox returns the ',,,' cache key). See
+// docs/solutions/integration-issues/opensky-bbox-area-billing-flat-top-tier.md (#6222).
 async function fetchTheaterFlightsFromOpenSky() {
   const seenIds = new Set();
   const allFlights = [];
-  for (const region of THEATER_QUERY_REGIONS) {
-    const params = `lamin=${region.lamin}&lamax=${region.lamax}&lomin=${region.lomin}&lomax=${region.lomax}`;
-    const resp = await fetch(`http://localhost:${PORT}/opensky?${params}`, {
-      headers: { 'User-Agent': CHROME_UA, ...(RELAY_SHARED_SECRET ? { 'x-relay-key': RELAY_SHARED_SECRET } : {}) },
-      signal: AbortSignal.timeout(20_000),
+  const resp = await fetch(`http://localhost:${relayBoundPort}/opensky`, {
+    headers: { 'User-Agent': CHROME_UA, ...(RELAY_SHARED_SECRET ? { 'x-relay-key': RELAY_SHARED_SECRET } : {}) },
+    signal: AbortSignal.timeout(20_000),
+  });
+  if (!resp.ok) throw new Error(`OpenSky proxy ${resp.status} for GLOBAL`);
+  const data = await resp.json();
+  if (!data.states) return allFlights;
+  for (const state of data.states) {
+    const [icao24, callsign, , , , lon, lat, altitude, onGround, velocity, heading] = state;
+    if (lat == null || lon == null || onGround) continue;
+    if (!theaterIsMilCallsign(callsign)) continue;
+    // Filter to theater bounds, matching fetchTheaterFlightsFromAdsbLol. The
+    // query is global now, so without this the returned count would mean
+    // "military aircraft worldwide" for this source and "military aircraft in
+    // theater" for the other two — and seedTheaterPosture attributes the cycle
+    // on `flights.length > 0`, so OpenSky would claim cycles in which it fed
+    // no theater at all.
+    const inTheater = POSTURE_THEATERS.some((t) =>
+      lat >= t.bounds.south && lat <= t.bounds.north &&
+      lon >= t.bounds.west && lon <= t.bounds.east
+    );
+    if (!inTheater) continue;
+    if (seenIds.has(icao24)) continue;
+    seenIds.add(icao24);
+    allFlights.push({
+      id: icao24,
+      callsign: (callsign || '').trim(),
+      lat, lon,
+      altitude: altitude || 0,
+      heading: heading || 0,
+      speed: velocity || 0,
+      aircraftType: theaterDetectAircraftType(callsign),
     });
-    if (!resp.ok) throw new Error(`OpenSky proxy ${resp.status} for ${region.name}`);
-    const data = await resp.json();
-    if (!data.states) continue;
-    for (const state of data.states) {
-      const [icao24, callsign, , , , lon, lat, altitude, onGround, velocity, heading] = state;
-      if (lat == null || lon == null || onGround) continue;
-      if (!theaterIsMilCallsign(callsign)) continue;
-      if (seenIds.has(icao24)) continue;
-      seenIds.add(icao24);
-      allFlights.push({
-        id: icao24,
-        callsign: (callsign || '').trim(),
-        lat, lon,
-        altitude: altitude || 0,
-        heading: heading || 0,
-        speed: velocity || 0,
-        aircraftType: theaterDetectAircraftType(callsign),
-      });
-    }
   }
   return allFlights;
 }
@@ -4264,7 +4393,11 @@ async function fetchTheaterFlightsFromAdsbLol() {
       return null;
     }
     const data = await resp.json();
-    const aircraft = data.ac || [];
+    if (!Array.isArray(data.ac)) {
+      console.warn('[adsb.lol] Malformed response: missing ac array');
+      return null;
+    }
+    const aircraft = data.ac;
     const flights = [];
     const seenIds = new Set();
     for (const a of aircraft) {
@@ -4409,37 +4542,92 @@ function calculateTheaterPostures(flights) {
     };
   });
 }
+// Which upstream actually produced the published theater flights. OpenSky is
+// heavily 429-throttled in production (#5945): a healthy publication served by
+// adsb.lol/Wingbits must stay attributable so fallback operation is never
+// mistaken for OpenSky recovery.
+const THEATER_POSTURE_SOURCE_COUNT_KEYS = Object.freeze({
+  opensky: 'opensky',
+  'adsb.lol': 'adsbLol',
+  wingbits: 'wingbits',
+  'vessel-only': 'vesselOnly',
+});
+const theaterPostureSourceCounts = { opensky: 0, adsbLol: 0, wingbits: 0, vesselOnly: 0 };
+let theaterPostureLastRun = null;
+
 async function seedTheaterPosture() {
   const t0 = Date.now();
   let flights = [];
-  try {
-    flights = await fetchTheaterFlightsFromOpenSky();
-  } catch (e) {
-    console.warn(`[TheaterPosture] OpenSky failed: ${e?.message || e}`);
-  }
-  if (flights.length === 0) {
-    const adsbLol = await fetchTheaterFlightsFromAdsbLol();
-    if (adsbLol !== null) {
-      // null = fetch error (fall through to Wingbits); [] = success, no theater traffic (stop here)
-      flights = adsbLol;
+  let flightSource = 'vessel-only';
+  const adsbLol = await fetchTheaterFlightsFromAdsbLol();
+  if (adsbLol !== null) {
+    // null = fetch error (fall through); [] = success, no theater traffic (stop here).
+    // adsb.lol is the normal theater source so this background loop does not
+    // independently consume the authenticated OpenSky daily credit pool.
+    flights = adsbLol;
+    if (flights.length > 0) flightSource = 'adsb.lol';
+  } else {
+    const wb = await fetchTheaterFlightsFromWingbits();
+    if (wb && wb.length > 0) {
+      flights = wb;
+      flightSource = 'wingbits';
     } else {
-      const wb = await fetchTheaterFlightsFromWingbits();
-      if (wb && wb.length > 0) flights = wb;
+      try {
+        flights = await fetchTheaterFlightsFromOpenSky();
+        if (flights.length > 0) flightSource = 'opensky';
+      } catch (e) {
+        console.warn(`[TheaterPosture] OpenSky failed: ${e?.message || e}`);
+      }
     }
   }
   if (flights.length === 0) {
-    console.warn('[TheaterPosture] No military flights from OpenSky, adsb.lol, or Wingbits — continuing with vessel-only posture');
+    console.warn('[TheaterPosture] No military flights from adsb.lol, OpenSky, or Wingbits — continuing with vessel-only posture');
   }
   const theaters = calculateTheaterPostures(flights);
   const totalVessels = theaters.reduce((sum, t) => sum + t.trackedVessels, 0);
   const payload = { theaters };
-  const ok1 = await envelopeWrite(THEATER_POSTURE_LIVE_KEY, payload, THEATER_POSTURE_LIVE_TTL, { recordCount: theaters.length, sourceVersion: 'theater-posture' });
-  const ok2 = await envelopeWrite(THEATER_POSTURE_STALE_KEY, payload, THEATER_POSTURE_STALE_TTL, { recordCount: theaters.length, sourceVersion: 'theater-posture' });
-  const ok3 = await envelopeWrite(THEATER_POSTURE_BACKUP_KEY, payload, THEATER_POSTURE_BACKUP_TTL, { recordCount: theaters.length, sourceVersion: 'theater-posture' });
-  await upstashSet('seed-meta:theater-posture', { fetchedAt: Date.now(), recordCount: flights.length + totalVessels }, 604800);
-  const elevated = theaters.filter((t) => t.postureLevel !== 'normal').length;
-  const elapsed = ((Date.now() - t0) / 1000).toFixed(1);
-  console.log(`[TheaterPosture] Seeded ${flights.length} mil flights, ${totalVessels} vessels, ${theaters.length} theaters (${elevated} elevated), redis: ${ok1 && ok2 && ok3 ? 'OK' : 'PARTIAL'} [${elapsed}s]`);
+  const publicationId = `ais-relay:${Date.now()}-${crypto.randomBytes(4).toString('hex')}`;
+  const lockResult = await upstashSetNx(THEATER_POSTURE_LOCK_KEY, publicationId, THEATER_POSTURE_LOCK_TTL_SECONDS);
+  if (lockResult !== 'new') {
+    console.warn(`[TheaterPosture] Skipping publication: shared seed lock is ${lockResult}`);
+    return;
+  }
+
+  try {
+    const publishedAt = Date.now();
+    const envelopeMeta = {
+      fetchedAt: publishedAt,
+      recordCount: theaters.length,
+      sourceVersion: 'theater-posture',
+      groupId: publicationId,
+    };
+    const ok1 = await envelopeWrite(THEATER_POSTURE_LIVE_KEY, payload, THEATER_POSTURE_LIVE_TTL, envelopeMeta);
+    const ok2 = await envelopeWrite(THEATER_POSTURE_STALE_KEY, payload, THEATER_POSTURE_STALE_TTL, envelopeMeta);
+    const ok3 = await envelopeWrite(THEATER_POSTURE_BACKUP_KEY, payload, THEATER_POSTURE_BACKUP_TTL, envelopeMeta);
+    // sourceVersion mirrors the shape seed-military-flights.mjs writes to this
+    // key; `producer` disambiguates the two writers, whose source vocabularies
+    // differ (the seeder's 'wingbits' is its Tier-1 normal path, ours is the
+    // last-resort fallback). publicationId pairs this metadata with the
+    // canonical envelope _seed.groupId for cross-producer consistency checks.
+    const seedMetaOk = await upstashSet('seed-meta:theater-posture', { fetchedAt: publishedAt, recordCount: flights.length + totalVessels, sourceVersion: flightSource, producer: 'ais-relay', publicationId }, 604800);
+    theaterPostureSourceCounts[THEATER_POSTURE_SOURCE_COUNT_KEYS[flightSource]] += 1;
+    theaterPostureLastRun = {
+      seededAt: new Date().toISOString(),
+      source: flightSource,
+      flightCount: flights.length,
+      vesselCount: totalVessels,
+      redisOk: ok1 && ok2 && ok3,
+      // Reported separately from redisOk: health gates staleness on the
+      // seed-meta key, so a failed attribution write must not hide behind
+      // three green envelope writes.
+      seedMetaOk,
+    };
+    const elevated = theaters.filter((t) => t.postureLevel !== 'normal').length;
+    const elapsed = ((Date.now() - t0) / 1000).toFixed(1);
+    console.log(`[TheaterPosture] Seeded ${flights.length} mil flights (source=${flightSource}), ${totalVessels} vessels, ${theaters.length} theaters (${elevated} elevated), redis: ${ok1 && ok2 && ok3 ? 'OK' : 'PARTIAL'}, seed-meta: ${seedMetaOk ? 'OK' : 'FAILED'} [${elapsed}s]`);
+  } finally {
+    await upstashReleaseLockIfOwner(THEATER_POSTURE_LOCK_KEY, publicationId);
+  }
 }
 
 function startTheaterPostureSeedLoop() {
@@ -7009,21 +7197,30 @@ function getRelayRollingMetrics() {
 
   const dedupCount = rollup.openskyDedup + rollup.openskyDedupNeg + rollup.openskyDedupEmpty;
   const cacheServedCount = rollup.openskyCacheHit + rollup.openskyNegativeHit + dedupCount;
-  const openskyCoverage = summarizeServedCoverage({
+  const nowMs = Date.now();
+  const aisPositionFreshness = getAisPositionFreshness(nowMs);
+  const openskyProviderBlocked = nowMs < openskyGlobal429Until;
+  const observedOpenSkyCoverage = summarizeServedCoverage({
     requests: rollup.openskyRequests,
     served: rollup.openskyServed,
     minimum: AVIATION_MIN_SERVED_COVERAGE,
   });
+  const openskyCoverage = openskyProviderBlocked
+    ? { ...observedOpenSkyCoverage, status: 'degraded' }
+    : observedOpenSkyCoverage;
   const googleFlightsCoverage = summarizeServedCoverage({
     requests: rollup.googleFlightsRequests,
     served: rollup.googleFlightsServed,
     minimum: AVIATION_MIN_SERVED_COVERAGE,
   });
-  const aviationCoverage = summarizeServedCoverage({
+  const observedAviationCoverage = summarizeServedCoverage({
     requests: rollup.openskyRequests + rollup.googleFlightsRequests,
     served: rollup.openskyServed + rollup.googleFlightsServed,
     minimum: AVIATION_MIN_SERVED_COVERAGE,
   });
+  const aviationCoverage = openskyProviderBlocked
+    ? { ...observedAviationCoverage, status: 'degraded' }
+    : observedAviationCoverage;
   const rssCoverage = summarizeServedCoverage({
     requests: rollup.rssRequests,
     served: rollup.rssServed,
@@ -7031,7 +7228,6 @@ function getRelayRollingMetrics() {
   });
   let rssBackoffActive = 0;
   let rssMaxBackoffRemainingMs = 0;
-  const nowMs = Date.now();
   for (const expiry of rssBackoffUntil.values()) {
     const remaining = Math.max(0, expiry - nowMs);
     if (remaining > 0) {
@@ -7060,10 +7256,32 @@ function getRelayRollingMetrics() {
       terminalFailure: rollup.openskyTerminalFailure,
       served: rollup.openskyServed,
       coverage: openskyCoverage,
-      global429CooldownRemainingMs: Math.max(0, openskyGlobal429Until - Date.now()),
+      global429CooldownRemainingMs: Math.max(0, openskyGlobal429Until - nowMs),
+      rateLimitRemaining: openskyRateLimitRemaining,
+      rateLimitRetryAt: openskyGlobal429Until ? new Date(openskyGlobal429Until).toISOString() : null,
+      lastSuccessAt: openskyLastSuccessAt ? new Date(openskyLastSuccessAt).toISOString() : null,
+      last429At: openskyLast429At ? new Date(openskyLast429At).toISOString() : null,
       requestSpacingMs: OPENSKY_REQUEST_SPACING_MS,
     },
     ais: {
+      enabled: !!API_KEY,
+      connected: upstreamSocket?.readyState === WebSocket.OPEN,
+      currentPositionReady: aisPositionFreshness.currentPositionReady,
+      positionAgeMs: aisPositionFreshness.positionAgeMs,
+      positionFreshnessMs: AIS_POSITION_FRESHNESS_MS,
+      connectionAttemptsSinceBoot: aisUpstreamMetrics.connectionAttempts,
+      successfulConnectionsSinceBoot: aisUpstreamMetrics.success,
+      throttlesSinceBoot: aisUpstreamMetrics.throttle,
+      terminalFailuresSinceBoot: aisUpstreamMetrics.terminalFailure,
+      reconnectFailures: upstreamReconnectFailures,
+      reconnectCooldownRemainingMs: Math.max(0, upstreamReconnectAt - nowMs),
+      lastSuccessAt: aisUpstreamMetrics.lastSuccessAt
+        ? new Date(aisUpstreamMetrics.lastSuccessAt).toISOString()
+        : null,
+      lastFailureAt: aisUpstreamMetrics.lastFailureAt
+        ? new Date(aisUpstreamMetrics.lastFailureAt).toISOString()
+        : null,
+      lastFailure: aisUpstreamMetrics.lastFailure,
       queueMax: rollup.queueMax,
       currentQueue: getUpstreamQueueSize(),
       drops: rollup.drops,
@@ -7078,6 +7296,17 @@ function getRelayRollingMetrics() {
     aviation: {
       coverage: aviationCoverage,
       minimumServedCoverage: AVIATION_MIN_SERVED_COVERAGE,
+    },
+    // Which upstream fed each theater-posture publication cycle. Kept separate
+    // from the opensky route counters above so healthy fallback publication
+    // (adsb.lol/Wingbits) is never read as OpenSky recovery (#5945). Unlike
+    // the sibling sections these are NOT rolling-window: the seed cadence
+    // (~10 min) exceeds the metrics window, so bucketed counts would read
+    // all-zero — sourceCountsSinceBoot is process-lifetime and lastRun
+    // (with seededAt) is the current-state signal.
+    theaterPosture: {
+      lastRun: theaterPostureLastRun,
+      sourceCountsSinceBoot: { ...theaterPostureSourceCounts },
     },
     googleFlights: {
       requests: rollup.googleFlightsRequests,
@@ -7408,16 +7637,17 @@ function processRawUpstreamMessage(raw) {
     console.log(`[Relay] ${messageCount} msgs, ${clients.size} ws-clients, ${vessels.size} vessels, queue=${getUpstreamQueueSize()}, dropped=${droppedMessages}, rss=${(mem.rss / 1024 / 1024).toFixed(0)}MB heap=${(mem.heapUsed / 1024 / 1024).toFixed(0)}MB, cache: opensky=${openskyResponseCache.size} opensky_neg=${openskyNegativeCache.size} rss_feed=${rssResponseCache.size} rss_backoff=${rssFailureCount.size}`);
   }
 
+  let acceptedType = null;
   try {
     const parsed = JSON.parse(raw);
     if (parsed?.MessageType === 'PositionReport') {
-      processPositionReportForSnapshot(parsed);
+      if (processPositionReportForSnapshot(parsed)) acceptedType = 'position';
     } else if (parsed?.MessageType === 'ShipStaticData') {
       // Cache ShipType + ShipName by MMSI so subsequent PositionReports
       // can classify the vessel as a tanker. AISStream broadcasts static
       // data ~every 6 min per vessel; in steady state the cache covers
       // most active MMSIs within minutes of relay startup.
-      processShipStaticDataForMeta(parsed);
+      if (processShipStaticDataForMeta(parsed)) acceptedType = 'static';
     }
   } catch {
     // Ignore malformed upstream payloads
@@ -7436,6 +7666,8 @@ function processRawUpstreamMessage(raw) {
       }
     }
   }
+
+  return acceptedType;
 }
 
 function processShipStaticDataForMeta(data) {
@@ -7443,14 +7675,14 @@ function processShipStaticDataForMeta(data) {
   // CallSign, dimensions. We only need ShipType + ShipName for classification.
   const meta = data?.MetaData;
   const sd = data?.Message?.ShipStaticData;
-  if (!meta || !sd) return;
+  if (!meta || !sd) return false;
   // MMSI fallback: AISStream's PositionReport wrapper puts MMSI under
   // MetaData.MMSI, but the ShipStaticData payload sample shows MMSI mirrored
   // as `UserID` on the message body itself. Read MetaData.MMSI first (the
   // documented wrapper field), then fall back to the message-body field so
   // a wrapper schema variant doesn't silently re-empty vesselMeta.
   const mmsi = String(meta.MMSI || sd.UserID || '');
-  if (!mmsi) return;
+  if (!mmsi) return false;
   // ShipType lives in the message body, not MetaData, on Type 5 frames.
   // Gate on `> 0` (not just `Number.isFinite`) so that Number(null) === 0
   // and AIS code 0 ("Not available" per ITU-R M.1371) don't overwrite a
@@ -7458,25 +7690,27 @@ function processShipStaticDataForMeta(data) {
   // {Type: 85} then later {Type: null} would be downgraded to non-tanker
   // because the second write replaces the first with shipType=0.
   const shipType = Number(sd.Type);
-  if (!Number.isFinite(shipType) || shipType <= 0) return;
+  if (!Number.isFinite(shipType) || shipType <= 0) return false;
   vesselMeta.set(mmsi, {
     shipType,
     shipName: (sd.Name || meta.ShipName || '').trim(),
     lastSeen: Date.now(),
   });
+  return true;
 }
 
 function processPositionReportForSnapshot(data) {
   const meta = data?.MetaData;
   const pos = data?.Message?.PositionReport;
-  if (!meta || !pos) return;
+  if (!meta || !pos) return false;
 
   const mmsi = String(meta.MMSI || '');
-  if (!mmsi) return;
+  if (!mmsi) return false;
 
   const lat = Number.isFinite(pos.Latitude) ? pos.Latitude : meta.latitude;
   const lon = Number.isFinite(pos.Longitude) ? pos.Longitude : meta.longitude;
-  if (!Number.isFinite(lat) || !Number.isFinite(lon)) return;
+  if (!Number.isFinite(lat) || !Number.isFinite(lon)) return false;
+  if (lat < -90 || lat > 90 || lon < -180 || lon > 180) return false;
 
   const now = Date.now();
 
@@ -7564,6 +7798,7 @@ function processPositionReportForSnapshot(data) {
       timestamp: now,
     });
   }
+  return true;
 }
 
 function cleanupAggregates() {
@@ -7842,7 +8077,10 @@ function getTankerReportsSnapshot(bbox) {
 
 function buildSnapshot() {
   const now = Date.now();
-  if (lastSnapshot && now - lastSnapshotAt < Math.floor(SNAPSHOT_INTERVAL_MS / 2)) {
+  const aisPositionFreshness = getAisPositionFreshness(now);
+  if (lastSnapshot
+      && lastSnapshot.status.currentPositionReady === aisPositionFreshness.currentPositionReady
+      && now - lastSnapshotAt < Math.floor(SNAPSHOT_INTERVAL_MS / 2)) {
     return lastSnapshot;
   }
 
@@ -7854,6 +8092,7 @@ function buildSnapshot() {
     timestamp: new Date(now).toISOString(),
     status: {
       connected: upstreamSocket?.readyState === WebSocket.OPEN,
+      currentPositionReady: aisPositionFreshness.currentPositionReady,
       vessels: vessels.size,
       messages: messageCount,
       clients: clients.size,
@@ -7874,23 +8113,38 @@ function buildSnapshot() {
   // Pre-compress both variants asynchronously (zero CPU on request path)
   const baseBuf = Buffer.from(lastSnapshotJson);
   const candBuf = Buffer.from(lastSnapshotWithCandJson);
-  zlib.gzip(baseBuf, (err, buf) => { if (!err) lastSnapshotGzip = buf; });
-  zlib.gzip(candBuf, (err, buf) => { if (!err) lastSnapshotWithCandGzip = buf; });
-  zlib.brotliCompress(baseBuf, { params: { [zlib.constants.BROTLI_PARAM_QUALITY]: 4 } }, (err, buf) => { if (!err) lastSnapshotBrotli = buf; });
-  zlib.brotliCompress(candBuf, { params: { [zlib.constants.BROTLI_PARAM_QUALITY]: 4 } }, (err, buf) => { if (!err) lastSnapshotWithCandBrotli = buf; });
+  const compressionSequence = snapshotSequence;
+  lastSnapshotGzip = null;
+  lastSnapshotWithCandGzip = null;
+  lastSnapshotBrotli = null;
+  lastSnapshotWithCandBrotli = null;
+  zlib.gzip(baseBuf, (err, buf) => {
+    if (!err && snapshotSequence === compressionSequence) lastSnapshotGzip = buf;
+  });
+  zlib.gzip(candBuf, (err, buf) => {
+    if (!err && snapshotSequence === compressionSequence) lastSnapshotWithCandGzip = buf;
+  });
+  zlib.brotliCompress(baseBuf, { params: { [zlib.constants.BROTLI_PARAM_QUALITY]: 4 } }, (err, buf) => {
+    if (!err && snapshotSequence === compressionSequence) lastSnapshotBrotli = buf;
+  });
+  zlib.brotliCompress(candBuf, { params: { [zlib.constants.BROTLI_PARAM_QUALITY]: 4 } }, (err, buf) => {
+    if (!err && snapshotSequence === compressionSequence) lastSnapshotWithCandBrotli = buf;
+  });
 
   return lastSnapshot;
 }
 
 function recordAisSnapshotAvailability(snapshot) {
-  const connected = upstreamSocket?.readyState === WebSocket.OPEN;
-  const hasData = Number(snapshot?.status?.vessels) > 0 || Number(snapshot?.status?.messages) > 0;
-  if (connected && hasData) {
+  const connected = snapshot?.status?.connected === true;
+  // messageCount is process-lifetime telemetry, not current snapshot coverage.
+  // Only an actually served vessel set keeps the maritime surface available.
+  const hasData = Number(snapshot?.status?.vessels) > 0;
+  if (connected && snapshot?.status?.currentPositionReady === true && hasData) {
     recordRelayOutcome('aisSnapshot', 'success');
     incrementRelayMetric('aisSnapshotServed');
     return 'fresh';
   }
-  if (!connected && hasData) {
+  if (hasData) {
     recordRelayOutcome('aisSnapshot', 'fallback');
     incrementRelayMetric('aisSnapshotServed');
     return 'stale';
@@ -8405,9 +8659,13 @@ const OPENSKY_AUTH_COOLDOWN_MS = 60000; // 1 min cooldown after auth failure
 // Global OpenSky rate limiter — serializes upstream requests and enforces 429 cooldown
 let openskyGlobal429Until = 0; // timestamp: block ALL upstream requests until this time
 const OPENSKY_429_COOLDOWN_MS = Number(process.env.OPENSKY_429_COOLDOWN_MS) || 90 * 1000; // 90s cooldown after any 429
+const OPENSKY_MAX_429_COOLDOWN_MS = 24 * 60 * 60 * 1000;
 const OPENSKY_REQUEST_SPACING_MS = Number(process.env.OPENSKY_REQUEST_SPACING_MS) || 2000; // 2s minimum between consecutive upstream requests
 let openskyLastUpstreamTime = 0;
 let openskyUpstreamQueue = Promise.resolve(); // serial chain — only 1 upstream request at a time
+let openskyRateLimitRemaining = null;
+let openskyLastSuccessAt = 0;
+let openskyLast429At = 0;
 
 async function getOpenSkyToken() {
   const clientId = process.env.OPENSKY_CLIENT_ID;
@@ -8586,6 +8844,17 @@ function _collectDecompressed(response) {
   });
 }
 
+function _readOpenSkyRateLimitHeaders(response) {
+  const remaining = Number(response.headers['x-rate-limit-remaining']);
+  const retryAfterSeconds = Number(response.headers['x-rate-limit-retry-after-seconds']);
+  return {
+    rateLimitRemaining: Number.isFinite(remaining) && remaining >= 0 ? Math.floor(remaining) : null,
+    retryAfterSeconds: Number.isFinite(retryAfterSeconds) && retryAfterSeconds > 0
+      ? Math.min(Math.ceil(retryAfterSeconds), OPENSKY_MAX_429_COOLDOWN_MS / 1000)
+      : null,
+  };
+}
+
 function _openskyRawFetch(url, token) {
   const parsed = new URL(url);
   const reqHeaders = {
@@ -8608,9 +8877,10 @@ function _openskyRawFetch(url, token) {
           headers: reqHeaders,
           timeout: 15000,
         }, (response) => {
+          const rateLimit = _readOpenSkyRateLimitHeaders(response);
           _collectDecompressed(response)
-            .then(data => resolve({ status: response.statusCode || 502, data }))
-            .catch(err => resolve({ status: 0, data: null, error: err }));
+            .then(data => resolve({ status: response.statusCode || 502, data, ...rateLimit }))
+            .catch(err => resolve({ status: response.statusCode || 502, data: null, error: err, ...rateLimit }));
         });
         request.on('error', (err) => resolve({ status: 0, data: null, error: err }));
         request.on('timeout', () => { request.destroy(); resolve({ status: 504, data: null, error: new Error('timeout') }); });
@@ -8625,9 +8895,10 @@ function _openskyRawFetch(url, token) {
       agent: httpsKeepAliveAgent,
       timeout: 15000,
     }, (response) => {
+      const rateLimit = _readOpenSkyRateLimitHeaders(response);
       _collectDecompressed(response)
-        .then(data => resolve({ status: response.statusCode || 502, data }))
-        .catch(err => resolve({ status: 0, data: null, error: err }));
+        .then(data => resolve({ status: response.statusCode || 502, data, ...rateLimit }))
+        .catch(err => resolve({ status: response.statusCode || 502, data: null, error: err, ...rateLimit }));
     });
     request.on('error', (err) => resolve({ status: 0, data: null, error: err }));
     request.on('timeout', () => { request.destroy(); resolve({ status: 504, data: null, error: new Error('timeout') }); });
@@ -8647,7 +8918,28 @@ function openskyQueuedFetch(url, token) {
       return { status: 429, data: JSON.stringify({ states: [], time: Date.now() }), rateLimited: true };
     }
     openskyLastUpstreamTime = Date.now();
-    return _openskyRawFetch(url, token);
+    incrementRelayMetric('openskyUpstreamFetches');
+    const result = await _openskyRawFetch(url, token);
+    const completedAt = Date.now();
+    if (result.rateLimitRemaining != null) {
+      openskyRateLimitRemaining = result.rateLimitRemaining;
+    }
+    if (result.status >= 200 && result.status < 300) {
+      openskyLastSuccessAt = completedAt;
+    }
+    if (result.status === 429) {
+      const providerCooldownMs = result.retryAfterSeconds == null
+        ? OPENSKY_429_COOLDOWN_MS
+        : result.retryAfterSeconds * 1000;
+      const cooldownMs = Math.min(
+        OPENSKY_MAX_429_COOLDOWN_MS,
+        Math.max(OPENSKY_429_COOLDOWN_MS, providerCooldownMs),
+      );
+      openskyGlobal429Until = Math.max(openskyGlobal429Until, completedAt + cooldownMs);
+      openskyLast429At = completedAt;
+      console.warn(`[Relay] OpenSky 429 — global cooldown ${Math.ceil(cooldownMs / 1000)}s (all bbox queries blocked)`);
+    }
+    return result;
   });
   openskyUpstreamQueue = job.catch(() => {});
   return job;
@@ -8787,8 +9079,6 @@ async function handleOpenSkyRequest(req, res, PORT) {
     }
 
     logThrottled('log', `opensky-miss:${cacheKey}`, '[Relay] OpenSky request (MISS):', openskyUrl);
-    incrementRelayMetric('openskyUpstreamFetches');
-
     // Serialized fetch — queued with spacing to prevent concurrent 429 storms
     const result = await openskyQueuedFetch(openskyUrl, token);
     const upstreamStatus = result.status || 502;
@@ -8800,11 +9090,6 @@ async function handleOpenSkyRequest(req, res, PORT) {
     if (upstreamStatus === 401) {
       openskyToken = null;
       openskyTokenExpiry = 0;
-    }
-
-    if (upstreamStatus === 429 && !result.rateLimited) {
-      openskyGlobal429Until = Date.now() + OPENSKY_429_COOLDOWN_MS;
-      console.warn(`[Relay] OpenSky 429 — global cooldown ${OPENSKY_429_COOLDOWN_MS / 1000}s (all bbox queries blocked)`);
     }
 
     if (upstreamStatus === 200 && result.data) {
@@ -9797,10 +10082,28 @@ const server = http.createServer(async (req, res) => {
   if (pathname === '/health' || pathname === '/') {
     const mem = process.memoryUsage();
     const ingestion = getRelayRollingMetrics();
-    const aisSnapshotDegraded = ingestion.aisSnapshot.requests > 0 && ingestion.aisSnapshot.served === 0;
+    const {
+      enabled: aisEnabled,
+      connected: aisConnected,
+      currentPositionReady: aisCurrentPositionReady,
+    } = ingestion.ais;
+    const aisHasData = vessels.size > 0;
+    const aisSnapshotDegraded = aisEnabled && (
+      !aisConnected
+      || !aisCurrentPositionReady
+      || !aisHasData
+      || (ingestion.aisSnapshot.requests > 0 && ingestion.aisSnapshot.served === 0)
+    );
     const ingestionDegraded = ingestion.aviation.coverage.status === 'degraded'
       || ingestion.rss.coverage.status === 'degraded'
       || aisSnapshotDegraded;
+    const healthStatus = ingestionDegraded ? 'degraded' : 'ok';
+    let aisSnapshotStatus = 'disabled';
+    if (aisEnabled && aisSnapshotDegraded) {
+      aisSnapshotStatus = 'degraded';
+    } else if (aisEnabled) {
+      aisSnapshotStatus = 'ok';
+    }
     // ⚠ SECURITY — read before adding fields to this response.
     //
     // /health is in `isPublicRoute` (no auth check). Fields here are
@@ -9832,17 +10135,21 @@ const server = http.createServer(async (req, res) => {
     // response. The `ais-relay-health-no-secret-recon` test asserts the
     // removed fields don't reappear here.
     sendCompressed(req, res, 200, { 'Content-Type': 'application/json' }, JSON.stringify({
-      // Keep the historical liveness status stable for Railway probes; the
-      // ingestion verdict is explicit below so monitors can alert without
-      // turning an application-level coverage dip into a process outage.
-      status: 'ok',
+      // Keep HTTP 200 for Railway process-liveness probes, but never publish a
+      // false-green JSON verdict when configured AIS ingestion has no usable data.
+      status: healthStatus,
       ingestion: {
-        status: ingestionDegraded ? 'degraded' : 'ok',
+        status: healthStatus,
         aviation: ingestion.aviation,
         rss: ingestion.rss,
         aisSnapshot: {
           ...ingestion.aisSnapshot,
-          connected: upstreamSocket?.readyState === WebSocket.OPEN,
+          enabled: aisEnabled,
+          status: aisSnapshotStatus,
+          connected: aisConnected,
+          hasData: aisHasData,
+          currentPositionReady: aisCurrentPositionReady,
+          upstream: ingestion.ais,
         },
       },
       clients: clients.size,
@@ -9901,6 +10208,14 @@ const server = http.createServer(async (req, res) => {
       'Content-Type': 'application/json',
       'Cache-Control': 'no-store',
     }, JSON.stringify(getRelayRollingMetrics()));
+  } else if (pathname === '/__test/seed-theater-posture' && RELAY_TEST_MODE) {
+    // Test-only seam: background seed loops are disabled in RELAY_TEST_MODE,
+    // so tests trigger a single theater-posture cycle explicitly.
+    await seedTheaterPosture();
+    return sendCompressed(req, res, 200, {
+      'Content-Type': 'application/json',
+      'Cache-Control': 'no-store',
+    }, JSON.stringify({ ok: true }));
   } else if (pathname.startsWith('/ais/snapshot')) {
     incrementRelayMetric('aisSnapshotRequests');
     // Aggregated AIS snapshot for server-side fanout — serve pre-serialized + pre-gzipped
@@ -9954,6 +10269,9 @@ const server = http.createServer(async (req, res) => {
     openskyTokenPromise = null;
     openskyAuthCooldownUntil = 0;
     openskyGlobal429Until = 0;
+    openskyRateLimitRemaining = null;
+    openskyLastSuccessAt = 0;
+    openskyLast429At = 0;
     openskyNegativeCache.clear();
     console.log('[Relay] OpenSky auth + rate-limit state reset via /opensky-reset');
     const tokenStart = Date.now();
@@ -11837,8 +12155,10 @@ function scheduleUpstreamReconnect() {
   if (relayShuttingDown || upstreamReconnectTimer || !API_KEY) return;
   const delayMs = nextBackoffMs(upstreamReconnectFailures, AIS_RECONNECT_BASE_MS, AIS_RECONNECT_MAX_MS);
   upstreamReconnectFailures++;
+  upstreamReconnectAt = Date.now() + delayMs;
   upstreamReconnectTimer = setTimeout(() => {
     upstreamReconnectTimer = null;
+    upstreamReconnectAt = 0;
     connectUpstream();
   }, delayMs);
   upstreamReconnectTimer.unref?.();
@@ -11847,21 +12167,57 @@ function scheduleUpstreamReconnect() {
 
 function connectUpstream() {
   if (!API_KEY) return;
+  // Snapshot and downstream WebSocket traffic may call this while a provider
+  // cooldown is active. Preserve the scheduled exponential backoff instead of
+  // letting request traffic turn one upstream 429 into a reconnect storm.
+  if (upstreamReconnectTimer) return;
 
-  if (upstreamReconnectTimer) {
-    clearTimeout(upstreamReconnectTimer);
-    upstreamReconnectTimer = null;
-  }
-
-  // Skip if already connected or connecting
-  if (upstreamSocket?.readyState === WebSocket.OPEN ||
-      upstreamSocket?.readyState === WebSocket.CONNECTING) return;
+  // The close handler owns socket release. Even CLOSING/CLOSED sockets remain
+  // current until that handler clears them, preventing request traffic from
+  // replacing a failed socket during the error-to-close gap.
+  if (upstreamSocket) return;
 
   console.log('[Relay] Connecting to aisstream.io...');
-  const socket = new WebSocket(AISSTREAM_URL);
+  aisUpstreamMetrics.connectionAttempts++;
+  const socket = new WebSocket(AISSTREAM_URL, {
+    handshakeTimeout: AIS_HANDSHAKE_TIMEOUT_MS,
+  });
+  let socketServedData = false;
+  let socketFailureRecorded = false;
+  let socketOpenedAt = 0;
+  let socketPositionTimedOut = false;
+  let positionWatchdogTimer = null;
   upstreamSocket = socket;
+  upstreamLastPositionAt = 0;
+  lastSnapshotAt = 0;
   clearUpstreamQueue();
   upstreamPaused = false;
+
+  const clearPositionWatchdog = () => {
+    if (!positionWatchdogTimer) return;
+    clearTimeout(positionWatchdogTimer);
+    positionWatchdogTimer = null;
+  };
+
+  const armPositionWatchdog = () => {
+    clearPositionWatchdog();
+    if (upstreamSocket !== socket || socket.readyState !== WebSocket.OPEN || !socketOpenedAt) return;
+    const lastPositionOrOpenAt = upstreamLastPositionAt || socketOpenedAt;
+    const remainingMs = Math.max(1, lastPositionOrOpenAt + AIS_POSITION_FRESHNESS_MS - Date.now());
+    positionWatchdogTimer = setTimeout(() => {
+      positionWatchdogTimer = null;
+      if (upstreamSocket !== socket || socket.readyState !== WebSocket.OPEN) return;
+      const latestPositionOrOpenAt = upstreamLastPositionAt || socketOpenedAt;
+      if (Date.now() - latestPositionOrOpenAt < AIS_POSITION_FRESHNESS_MS) {
+        armPositionWatchdog();
+        return;
+      }
+      socketPositionTimedOut = true;
+      console.warn(`[Relay] AIS position stream timed out after ${AIS_POSITION_FRESHNESS_MS}ms; reconnecting`);
+      socket.terminate();
+    }, remainingMs);
+    positionWatchdogTimer.unref?.();
+  };
 
   const scheduleUpstreamDrain = () => {
     if (upstreamDrainScheduled) return;
@@ -11885,7 +12241,25 @@ function connectUpstream() {
            Date.now() - startedAt < UPSTREAM_DRAIN_BUDGET_MS) {
       const raw = dequeueUpstreamMessage();
       if (!raw) break;
-      processRawUpstreamMessage(raw);
+      const acceptedType = processRawUpstreamMessage(raw);
+      if (acceptedType) {
+        // A successful WebSocket upgrade or arbitrary JSON frame is not AIS
+        // recovery. Only a validated frame accepted into relay state resets
+        // provider failure telemetry and reconnect backoff.
+        if (!socketServedData) {
+          socketServedData = true;
+          aisUpstreamMetrics.success++;
+          aisUpstreamMetrics.lastSuccessAt = Date.now();
+          aisUpstreamMetrics.lastFailure = null;
+        }
+        upstreamReconnectFailures = 0;
+        if (acceptedType === 'position') {
+          const wasCurrentPositionReady = getAisPositionFreshness().currentPositionReady;
+          upstreamLastPositionAt = Date.now();
+          armPositionWatchdog();
+          if (!wasCurrentPositionReady) lastSnapshotAt = 0;
+        }
+      }
       processed++;
     }
 
@@ -11911,7 +12285,8 @@ function connectUpstream() {
       return;
     }
     console.log('[Relay] Connected to aisstream.io');
-    upstreamReconnectFailures = 0;
+    socketOpenedAt = Date.now();
+    armPositionWatchdog();
     socket.send(JSON.stringify({
       APIKey: API_KEY,
       BoundingBoxes: [[[-90, -180], [90, 180]]],
@@ -11946,7 +12321,17 @@ function connectUpstream() {
 
   socket.on('close', () => {
     if (upstreamSocket === socket) {
+      clearPositionWatchdog();
+      if (!relayShuttingDown && !socketFailureRecorded) {
+        aisUpstreamMetrics.terminalFailure++;
+        aisUpstreamMetrics.lastFailureAt = Date.now();
+        aisUpstreamMetrics.lastFailure = socketPositionTimedOut
+          ? 'position_timeout'
+          : (socketServedData ? 'disconnected' : 'closed_without_data');
+      }
       upstreamSocket = null;
+      upstreamLastPositionAt = 0;
+      lastSnapshotAt = 0;
       clearUpstreamQueue();
       upstreamPaused = false;
       console.log('[Relay] Disconnected');
@@ -11955,6 +12340,13 @@ function connectUpstream() {
   });
 
   socket.on('error', (err) => {
+    if (!socketFailureRecorded) {
+      socketFailureRecorded = true;
+      const throttled = /\b429\b/.test(String(err?.message || ''));
+      aisUpstreamMetrics[throttled ? 'throttle' : 'terminalFailure']++;
+      aisUpstreamMetrics.lastFailureAt = Date.now();
+      aisUpstreamMetrics.lastFailure = throttled ? 'http_429' : 'connection_error';
+    }
     console.error('[Relay] Upstream error:', err.message);
   });
 }
@@ -11963,6 +12355,7 @@ const wss = new WebSocketServer({ server });
 
 server.listen(PORT, () => {
   const listeningPort = server.address()?.port || PORT;
+  relayBoundPort = listeningPort;
   console.log(`[Relay] WebSocket relay on port ${listeningPort} (OpenSky: ${OPENSKY_PROXY_ENABLED ? 'via proxy' : 'direct'})`);
   if (RELAY_TEST_MODE) {
     console.log('[Relay] Test mode enabled — background seed loops are disabled');
@@ -12060,6 +12453,7 @@ async function gracefulShutdown(signal) {
   if (upstreamReconnectTimer) {
     clearTimeout(upstreamReconnectTimer);
     upstreamReconnectTimer = null;
+    upstreamReconnectAt = 0;
   }
   console.log(`[Relay] ${signal} received — shutting down`);
   if (telegramState.client) {

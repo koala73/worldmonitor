@@ -118,7 +118,8 @@ Don't try to memorise the grammar from scratch — head to the [JMESPath guide](
 - **Movement & infrastructure** — `get_chokepoint_status`, `get_maritime_activity`, `get_airspace`, `get_aviation_status`, `search_flights`.
 - **Energy & macro** — `get_energy_intelligence`, `get_economic_data`, `get_country_macro`, `get_tariff_trends`, `get_eu_housing_cycle`, `get_eu_quarterly_gov_debt`, `get_eu_industrial_production`.
 - **Environment & health** — `get_climate_data`, `get_natural_disasters`, `get_radiation_data`, `get_health_signals`.
-- **AI synthesis** (live LLM, slower — 1–4 s) — `get_world_brief`, `get_country_brief`, `analyze_situation`, `generate_forecasts`.
+- **Precomputed AI intelligence** — `get_world_brief` (citation-grounded dashboard snapshot; refreshed by the insights seeder).
+- **AI synthesis** (live LLM, slower — 1–4 s) — `get_country_brief`, `analyze_situation`, `generate_forecasts`.
 
 Full per-tool parameters, freshness budgets, and `curl` examples are in the [MCP Tools Reference](/mcp-tools-reference). When the compressed `tools/list` description is ambiguous about a specific tool, call `describe_tool` with `tool_name: "<name>"` for the full uncompressed definition — it's exempt from the Pro daily quota, so use it freely while exploring.
 
@@ -138,7 +139,7 @@ The MCP handshake is invisible from the chat side, but here's the sequence so yo
 
 1. Claude Desktop reads `claude_desktop_config.json`, sees the WorldMonitor server, and on first use POSTs `initialize` to `https://worldmonitor.app/mcp`. The server responds with its capabilities, the negotiated protocol version (default `2025-06-18`, matching the static server card; clients pinned to `2025-03-26` still get `2025-03-26`), and a session-level `instructions` string that tells the model about the universal `jmespath` argument. Clients that advertise `text/event-stream` may receive this response as SSE with a resumable `Mcp-Session-Id` / `Last-Event-ID` cursor; clients that do not advertise SSE receive JSON. See [protocol negotiation](/mcp-overview#protocol-negotiation) and [Streamable HTTP responses](/mcp-overview#streamable-http-responses) for the rollout details.
 2. Claude Desktop calls `tools/list` and receives 59 compressed tool descriptions (`≤120` bytes per tool). The compressed form keeps `tools/list` cheap; `describe_tool` returns the full definition on demand.
-3. When you ask a question that needs live data, Claude picks a tool, calls `tools/call`, and inlines the response into its reply. Cache tools return in under a second; LLM-backed tools (`get_world_brief`, `analyze_situation`, etc.) take 1–4 s.
+3. When you ask a question that needs live data, Claude picks a tool, calls `tools/call`, and inlines the response into its reply. Cache-backed tools, including `get_world_brief`, return the accepted snapshot without a request-time LLM call; live LLM tools (`analyze_situation`, etc.) take 1–4 s.
 
 ## Server-side curl
 

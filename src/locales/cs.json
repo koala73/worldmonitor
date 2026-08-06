@@ -369,7 +369,8 @@
     "consumerPrices": "Ceny pro spotřebitele",
     "fearGreed": "Strach a chamtivost",
     "marketBreadth": "Šíře trhu",
-    "climateNews": "Zprávy o klimatu"
+    "climateNews": "Zprávy o klimatu",
+    "fx": "Kurzy měn"
   },
   "commands": {
     "prefixes": {
@@ -1123,7 +1124,7 @@
         "ucdpEvents": "UCDP události",
         "displacementFlows": "Toky vysídlení",
         "climateAnomalies": "Klimatické anomálie",
-        "weatherAlerts": "Upozornění na počasí",
+        "weatherAlerts": "Meteorologická varování pro USA (NWS)",
         "strategicWaterways": "Strategické vodní cesty",
         "economicCenters": "Ekonomická centra",
         "criticalMinerals": "Kritické minerály",
@@ -1204,7 +1205,7 @@
           "infraDatacenters": "Výpočetní clustery AI >=10 000 GPU",
           "infraOutages": "Výpadky internetu a narušení služeb",
           "naturalEventsTech": "Zemětřesení, bouře, požáry (mohou ovlivnit datová centra)",
-          "weatherAlerts": "Upozornění na extrémní počasí",
+          "weatherAlerts": "Varování před extrémním počasím v USA (NWS)",
           "economicCenters": "Burzy a centrální banky",
           "countriesOverlay": "Překryv názvů zemí",
           "financeExchanges": "Hlavní světové burzy podle úrovně trhu",
@@ -1216,7 +1217,7 @@
           "financeOutages": "Výpadky internetu, které mohou ovlivnit operace na trzích",
           "financeCyberThreats": "Bezpečnostní události kolem finanční infrastruktury",
           "macroWaterways": "Strategická úzká hrdla pro přepravu komodit",
-          "weatherAlertsMarket": "Události extrémního počasí s tržním významem",
+          "weatherAlertsMarket": "Události extrémního počasí v USA s tržním významem (NWS)",
           "naturalEventsMacro": "Zemětřesení, požáry, záplavy a další přírodní narušení",
           "timeRecent": "Filtrovat data na základě času za poslední hodiny",
           "timeExtended": "Zobrazit data z minulého týdne, měsíce nebo za celou dobu",
@@ -2558,6 +2559,33 @@
       "upgradeCta": "Upgradovat pro více",
       "lockedAriaLabel": "Přidat kartu — zamčeno. {{reason}}",
       "unlockedAnnouncement": "Limit karet řídicího panelu zrušen."
+    },
+    "fx": {
+      "infoTooltip": "<strong>Kurzy měn</strong> Stres měny a spotové kurzy:<ul><li>FX Stress řadí 45 měn podle jejich největšího poklesu od vrcholu k dnu za posledních 24 měsíců spolu se změnou za 12 měsíců</li><li>Pokrytí zahrnuje ARS, TRY, EGP, NGN, PKR a UAH — měny, které BIS a ECB vynechávají ze svých referenčních sad</li><li>Spot uvádí kurzy vůči dolaru a referenčnímu kurzu eura ECB zvlášť, protože obě sady vycházejí z různých základů</li></ul>Zdroje: Yahoo Finance a Evropská centrální banka.",
+      "tabs": {
+        "stress": "FX Stress",
+        "spot": "Spot"
+      },
+      "currency": "Měna",
+      "pair": "Pár",
+      "rate": "Kurs",
+      "yoy": "12m",
+      "drawdown": "24m pokles",
+      "peakToTrough": "Vrchol → Dno",
+      "change1d": "1d",
+      "perUsd": "Za 1 USD",
+      "usdPerUnit": "USD za jednotku",
+      "usdBase": "Vůči americkému dolaru",
+      "eurBase": "Referenční kurzy eura ECB",
+      "stressedCount": "{{stressed}} z {{total}} měn pod {{threshold}}",
+      "sourceYahoo": "Zdroj: Yahoo Finance",
+      "sourceEcb": "Zdroj: ECB",
+      "degraded": "Momentálně nedostupné: {{sources}}. Opakování za chvíli.",
+      "source": {
+        "stress": "Stres směnného kurzu",
+        "usd": "Kurzy amerického dolaru",
+        "eur": "Kurzy eura ECB"
+      }
     }
   },
   "popups": {
@@ -2890,7 +2918,7 @@
       "heading": "SMĚR",
       "hexCode": "HEX KÓD",
       "squawk": "SQUAWK",
-      "attribution": "Zdroj: Síť OpenSky"
+      "attribution": "Zdroj: adsb.lol (ODbL) · OpenSky Network"
     },
     "militaryVessel": {
       "aisDark": "AIS VYP",

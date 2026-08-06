@@ -1,12 +1,13 @@
 import { isDesktopRuntime } from '../services/runtime';
 import { invokeTauri } from '../services/tauri-bridge';
 import { t } from '../services/i18n';
-import { h, replaceChildren, safeHtml as sanitizeHtmlFragment, setTrustedHtml, trustedHtml } from '../utils/dom-utils';
+import { type DomChild, h, replaceChildren, safeHtml as sanitizeHtmlFragment, setTrustedHtml, trustedHtml } from '../utils/dom-utils';
 import { safeHtmlToString, type SafeHtml } from '@/utils/sanitize';
 import { trackPanelResized } from '@/services/analytics';
 import { getAiFlowSettings } from '@/services/ai-flow-settings';
 import { getSecretState } from '@/services/runtime-config';
 import { PanelGateReason } from '@/services/panel-gating';
+import { openExternalUrl } from '@/services/external-navigation';
 import { lockSvg, upgradeSvg } from '@/components/gate-icons';
 import { dataFreshness, type PanelFreshnessSummary } from '@/services/data-freshness';
 import { formatPanelFreshnessDisplay } from '@/services/panel-freshness-display';
@@ -140,6 +141,20 @@ export class Panel {
   private colSpanReconcileRaf: number | null = null;
   private readonly contentDebounceMs = 150;
   private pendingContentHtml: string | null = null;
+  /**
+   * The exact string last written by `setContentImmediate`, or `null` when the
+   * content was replaced by any other path (loading/error/locked states, clear,
+   * saved-content restore) and is therefore no longer a known string.
+   *
+   * Exists to keep the two content dirty-checks off `this.content.innerHTML`:
+   * reading that getter serializes the whole panel subtree to a string, and it
+   * was read twice per update — once to decide whether to schedule the write and
+   * again to decide whether to perform it. Panels re-render on every data tick,
+   * so that serialization was pure overhead on the render path. `null` compares
+   * unequal to any candidate, so an unknown state always falls through to a
+   * write — the safe direction.
+   */
+  private lastCommittedHtml: string | null = null;
   private contentDebounceTimer: ReturnType<typeof setTimeout> | null = null;
   private pendingContentCallback: (() => void) | null = null;
   private retryCallback: (() => void) | null = null;
@@ -864,7 +879,7 @@ export class Panel {
     if (this._locked) return;
     this.setErrorState(false);
     this.clearRetryCountdown();
-    replaceChildren(this.content,
+    this.replaceContent(
       h('div', { className: 'panel-loading' },
         h('div', { className: 'panel-loading-radar' },
           h('div', { className: 'panel-radar-sweep' }),
@@ -908,7 +923,7 @@ export class Panel {
         countdownEl.textContent = `${t('common.retrying')} (${remaining}s)`;
       }, 1000);
     }
-    replaceChildren(this.content, h('div', { className: 'panel-error-state' }, ...children));
+    this.replaceContent(h('div', { className: 'panel-error-state' }, ...children));
   }
 
   public resetRetryBackoff(): void {
@@ -956,7 +971,9 @@ export class Panel {
 
     const ctaBtn = h('button', { type: 'button', className: 'panel-locked-cta' }, 'Upgrade to Pro');
     if (isDesktopRuntime()) {
-      ctaBtn.addEventListener('click', () => void invokeTauri<void>('open_url', { url: 'https://worldmonitor.app/pro' }).catch(() => window.open('https://worldmonitor.app/pro', '_blank', 'noopener,noreferrer')));
+      ctaBtn.addEventListener('click', () => {
+        void openExternalUrl('https://worldmonitor.app/pro');
+      });
     } else {
       ctaBtn.addEventListener('click', () => {
         import('@/services/checkout').then(m => import('@/config/products').then(p => m.startCheckout(p.DEFAULT_UPGRADE_PRODUCT))).catch(() => {
@@ -966,7 +983,7 @@ export class Panel {
     }
     lockedChildren.push(ctaBtn);
 
-    replaceChildren(this.content, h('div', { className: 'panel-locked-state' }, ...lockedChildren));
+    this.replaceContent(h('div', { className: 'panel-locked-state' }, ...lockedChildren));
   }
 
   /**
@@ -1055,7 +1072,7 @@ export class Panel {
     const ctaBtn = h('button', { type: 'button', className: 'panel-locked-cta' }, entry.cta);
     ctaBtn.addEventListener('click', onAction);
 
-    replaceChildren(this.content, h('div', { className: 'panel-locked-state' }, iconEl, descEl, ctaBtn));
+    this.replaceContent(h('div', { className: 'panel-locked-state' }, iconEl, descEl, ctaBtn));
   }
 
   public unlockPanel(): void {
@@ -1074,10 +1091,10 @@ export class Panel {
     // ChatAnalystPanel, …) that would otherwise end up with an empty body.
     // Fall back to the legacy empty-content behaviour if nothing was saved.
     if (this._savedContent !== null) {
-      replaceChildren(this.content, ...this._savedContent);
+      this.replaceContent(...this._savedContent);
       this._savedContent = null;
     } else {
-      replaceChildren(this.content);
+      this.replaceContent();
     }
   }
 
@@ -1095,7 +1112,7 @@ export class Panel {
       clearTimeout(this.contentDebounceTimer);
       this.contentDebounceTimer = null;
     }
-    if (!this._locked) replaceChildren(this.content);
+    if (!this._locked) this.replaceContent();
   }
 
   // Capture this.content's current child nodes so unlockPanel can put them
@@ -1137,7 +1154,7 @@ export class Panel {
       }, 1000);
     }
 
-    replaceChildren(this.content,
+    this.replaceContent(
       h('div', { className: 'panel-error-state' }, ...children),
     );
   }
@@ -1174,7 +1191,7 @@ export class Panel {
         }, t('components.panel.openSettings')),
       );
     }
-    replaceChildren(this.content, msgEl);
+    this.replaceContent(msgEl);
   }
 
   public setCount(count: number): void {
@@ -1198,6 +1215,18 @@ export class Panel {
     }
   }
 
+  /**
+   * The single non-`setContentImmediate` way to replace panel content.
+   *
+   * Every such write invalidates `lastCommittedHtml`, so routing them through
+   * here makes that invariant structural instead of something each new call site
+   * has to remember. Do not call `replaceChildren(this.content, …)` directly.
+   */
+  private replaceContent(...children: DomChild[]): void {
+    replaceChildren(this.content, ...children);
+    this.lastCommittedHtml = null;
+  }
+
   public setSafeContent(html: SafeHtml, afterUpdate?: () => void): void {
     this.setContentHtml(safeHtmlToString(html), afterUpdate);
   }
@@ -1211,7 +1240,21 @@ export class Panel {
       if (afterUpdate) this.pendingContentCallback = afterUpdate;
       return;
     }
-    if (this.content.innerHTML === html) {
+    if (this.lastCommittedHtml === html) {
+      // The DOM already shows `html`, but a DIFFERENT write may still be queued
+      // behind the debounce — and returning without cancelling it lets that
+      // stale write land afterwards, permanently. World Clock reproduces it:
+      // open settings, then close within the debounce window, and the settings
+      // markup commits after the clock has been asked to come back (which also
+      // strands the cached row handles, so the clock stops ticking).
+      if (this.pendingContentHtml !== null) {
+        this.pendingContentHtml = null;
+        this.pendingContentCallback = null;
+        if (this.contentDebounceTimer) {
+          clearTimeout(this.contentDebounceTimer);
+          this.contentDebounceTimer = null;
+        }
+      }
       afterUpdate?.();
       return;
     }
@@ -1238,8 +1281,9 @@ export class Panel {
     this.pendingContentHtml = null;
     const afterUpdate = this.pendingContentCallback;
     this.pendingContentCallback = null;
-    if (this.content.innerHTML !== html) {
+    if (this.lastCommittedHtml !== html) {
       setTrustedHtml(this.content, trustedHtml(html, 'legacy direct innerHTML migration'));
+      this.lastCommittedHtml = html;
     }
     afterUpdate?.();
   }

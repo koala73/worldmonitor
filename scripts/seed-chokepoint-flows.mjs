@@ -61,6 +61,17 @@ function avg(arr) {
   return arr.reduce((s, v) => s + v, 0) / arr.length;
 }
 
+/**
+ * Coverage basis for a flow estimate, as the FlowSource proto enum's custom
+ * JSON names (#6101). Exported so the taxonomy gate can EXECUTE this decision
+ * rather than pattern-match the source text: a regex over the two literals
+ * extracts the same set whether the mapping is correct or inverted, so it
+ * cannot tell `useDwt -> dwt` from `useDwt -> counts`.
+ */
+export function resolveFlowSource(useDwt) {
+  return useDwt ? 'portwatch-dwt' : 'portwatch-counts';
+}
+
 export async function fetchAll() {
   const { url, token } = getRedisCredentials();
 
@@ -128,7 +139,7 @@ export async function fetchAll() {
       baselineMbd: baseline.mbd,
       flowRatio: Math.round(flowRatio * 1000) / 1000,
       disrupted,
-      source: useDwt ? 'portwatch-dwt' : 'portwatch-counts',
+      source: resolveFlowSource(useDwt),
       hazardAlertLevel: hazard?.alertLevel ?? null,
       hazardAlertName: hazard?.eventName ?? null,
     };

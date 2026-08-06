@@ -5,20 +5,32 @@
 # worktree's push to ANOTHER checkout's (possibly ancient) hook file — the
 # 2026-07-24 "pushes take 4 minutes and time out" incident (see
 # docs/solutions/performance-issues/git-push-timeout-stale-core-hookspath.md).
-# Bootstrap heals this too, but only when bootstrap runs; push time is the
-# moment that matters. Escape hatch for an intentional central-hook setup:
+# Bootstrap heals this too, but shared config can be poisoned again afterward.
+# At push time, reuse the same policy and hand off to this worktree's hook in
+# the same process. Escape hatch for an intentional central-hook setup:
 # WM_ALLOW_FOREIGN_HOOKS=1.
 if [ -z "${WM_ALLOW_FOREIGN_HOOKS:-}" ] && [ -n "${BASH_SOURCE[0]:-}" ]; then
   _hook_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd -P)
   _wt_root=$(cd "$(git rev-parse --show-toplevel 2>/dev/null)" 2>/dev/null && pwd -P)
   if [ -n "$_hook_dir" ] && [ -n "$_wt_root" ] && [ "$_hook_dir" != "$_wt_root/.husky" ]; then
+    # The normalizer verifies repository ownership before rewriting a shared
+    # absolute .husky path. It leaves deliberate or unverified hook dirs alone.
+    if node "$_wt_root/scripts/bootstrap-worktree.mjs" --hooks-only --root "$_wt_root"; then
+      _resolved_hooks_path=$(git config --get core.hooksPath 2>/dev/null || true)
+      if [ "$_resolved_hooks_path" = ".husky" ]; then
+        echo "[worktree] hooksPath repaired; continuing with $_wt_root/.husky/pre-push"
+        exec bash "$_wt_root/.husky/pre-push" "$@"
+      fi
+    fi
+
     echo "============================================================"
     echo "ERROR: pre-push hook is executing from OUTSIDE this worktree:"
     echo "  running:  $_hook_dir/pre-push"
     echo "  expected: $_wt_root/.husky/pre-push"
     echo "core.hooksPath resolves to another checkout, so pushes run that"
     echo "checkout's (possibly stale) gate instead of this branch's."
-    echo "Fix (once, for all worktrees):  git config core.hooksPath .husky"
+    echo "Automatic repair could not safely normalize core.hooksPath."
+    echo "For this repository's shared .husky path, run: git config core.hooksPath .husky"
     echo "Then check for a per-worktree override:"
     echo "  git config --show-origin core.hooksPath"
     echo "  (if origin is a config.worktree file: git config --worktree --unset core.hooksPath)"

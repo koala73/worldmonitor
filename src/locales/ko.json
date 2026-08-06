@@ -365,7 +365,8 @@
     "consumerPrices": "소비자 물가",
     "fearGreed": "공포 & 탐욕",
     "marketBreadth": "시장 폭",
-    "climateNews": "기후 뉴스"
+    "climateNews": "기후 뉴스",
+    "fx": "환율"
   },
   "commands": {
     "prefixes": {
@@ -1131,7 +1132,7 @@
         "ucdpEvents": "UCDP 사건",
         "displacementFlows": "난민 이동",
         "climateAnomalies": "기후 이상",
-        "weatherAlerts": "기상 경보",
+        "weatherAlerts": "미국 기상 경보(NWS)",
         "strategicWaterways": "전략 수로",
         "economicCenters": "경제 중심지",
         "criticalMinerals": "핵심 광물",
@@ -1212,7 +1213,7 @@
           "infraDatacenters": "GPU 10,000대 이상 AI 컴퓨팅 클러스터",
           "infraOutages": "인터넷 차단 및 서비스 중단",
           "naturalEventsTech": "지진, 폭풍, 화재 (데이터 센터 영향 가능)",
-          "weatherAlerts": "기상 특보",
+          "weatherAlerts": "미국의 악천후 경보(NWS)",
           "economicCenters": "증권거래소 및 중앙은행",
           "countriesOverlay": "국가명 오버레이",
           "financeExchanges": "시장 등급별 주요 글로벌 거래소",
@@ -1224,7 +1225,7 @@
           "financeOutages": "시장 운영에 영향을 줄 수 있는 인터넷 중단",
           "financeCyberThreats": "금융 인프라 관련 보안 이벤트",
           "macroWaterways": "원자재 해운의 전략적 병목 지점",
-          "weatherAlertsMarket": "시장 관련성이 있는 기상 특보",
+          "weatherAlertsMarket": "시장 관련성이 있는 미국의 악천후 현상(NWS)",
           "naturalEventsMacro": "지진, 화재, 홍수 및 기타 자연재해",
           "timeRecent": "시간 기반 데이터를 최근 시간대로 필터링",
           "timeExtended": "지난 주, 월, 전체 기간의 데이터 표시",
@@ -2522,6 +2523,33 @@
       "upgradeCta": "더 많은 탭을 위해 업그레이드",
       "lockedAriaLabel": "탭 추가 — 잠김. {{reason}}",
       "unlockedAnnouncement": "대시보드 탭 한도가 해제되었습니다."
+    },
+    "fx": {
+      "infoTooltip": "<strong>환율</strong> 통화 스트레스 및 현물 환율:<ul><li>FX Stress는 45개 통화의 최악의 고점에서 저점까지의 하락률을 지난 24개월 동안 순위 매기고, 12개월 변화를 함께 표시합니다</li><li>범위에는 BIS 및 ECB 참조 세트에서 생략한 ARS, TRY, EGP, NGN, PKR, UAH 통화가 포함됩니다</li><li>Spot은 미국 달러 대비 환율과 ECB 유로 참조 환율을 별도로 표시하는데, 이는 두 환율이 서로 다른 기준에서 인용되기 때문입니다</li></ul>출처: Yahoo Finance 및 유럽중앙은행.",
+      "tabs": {
+        "stress": "FX Stress",
+        "spot": "Spot"
+      },
+      "currency": "통화",
+      "pair": "통화쌍",
+      "rate": "환율",
+      "yoy": "12개월",
+      "drawdown": "24개월 하락률",
+      "peakToTrough": "고점 → 저점",
+      "change1d": "1일",
+      "perUsd": "1 USD당",
+      "usdPerUnit": "단위당 USD",
+      "usdBase": "미국 달러 대비",
+      "eurBase": "ECB 유로 참조 환율",
+      "stressedCount": "{{total}}개 중 {{stressed}}개 통화가 {{threshold}} 미만",
+      "sourceYahoo": "출처: Yahoo Finance",
+      "sourceEcb": "출처: ECB",
+      "degraded": "현재 사용 불가: {{sources}}. 곧 다시 시도합니다.",
+      "source": {
+        "stress": "FX 스트레스",
+        "usd": "미국 달러 환율",
+        "eur": "ECB 유로 환율"
+      }
     }
   },
   "popups": {
@@ -2862,7 +2890,7 @@
       "heading": "방위",
       "hexCode": "HEX 코드",
       "squawk": "스쿼크",
-      "attribution": "출처: OpenSky Network"
+      "attribution": "출처: adsb.lol (ODbL) · OpenSky Network"
     },
     "militaryVessel": {
       "aisDark": "AIS 소실",

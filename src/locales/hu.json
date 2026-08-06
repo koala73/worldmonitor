@@ -434,7 +434,8 @@
     "consumerPrices": "Fogyasztói árak",
     "fearGreed": "Félelem és mohóság",
     "marketBreadth": "Piaci szélesség",
-    "climateNews": "Klíma hírek"
+    "climateNews": "Klíma hírek",
+    "fx": "FX árfolyamok"
   },
   "commands": {
     "prefixes": {
@@ -1274,7 +1275,7 @@
         "ucdpEvents": "Fegyveres konfliktus események",
         "displacementFlows": "Kényszermigrációs áramlások",
         "climateAnomalies": "Éghajlati anomáliák",
-        "weatherAlerts": "Időjárási riasztások",
+        "weatherAlerts": "Egyesült államokbeli időjárási riasztások (NWS)",
         "strategicWaterways": "Szűk átjárók",
         "economicCenters": "Gazdasági központok",
         "criticalMinerals": "Kritikus ásványok",
@@ -1353,7 +1354,7 @@
           "infraDatacenters": "AI számítási fürtök >=10 000 GPU-val",
           "infraOutages": "Internet leállások és szolgáltatáskiesések",
           "naturalEventsTech": "Földrengések, viharok, tüzek (adatközpontokat érinthetnek)",
-          "weatherAlerts": "Súlyos időjárási figyelmeztetések",
+          "weatherAlerts": "Súlyos időjárási figyelmeztetések az Egyesült Államokban (NWS)",
           "economicCenters": "Értéktőzsdék és központi bankok",
           "countriesOverlay": "Ország név átfedések",
           "financeExchanges": "Fő globális tőzsdék piaci szint szerint",
@@ -1365,7 +1366,7 @@
           "financeOutages": "Internet-kiesések, amelyek hatással lehetnek a piaci működésre",
           "financeCyberThreats": "Biztonsági incidensek a pénzügyi infrastruktúra körül",
           "macroWaterways": "Stratégiai szűk keresztmetszetek az áruszállításhoz",
-          "weatherAlertsMarket": "Súlyos időjárási események piaci relevanciával",
+          "weatherAlertsMarket": "Piaci jelentőségű súlyos időjárási események az Egyesült Államokban (NWS)",
           "naturalEventsMacro": "Földrengések, tüzek, árvizek és egyéb természeti katasztrófák",
           "timeRecent": "Időalapú adatok szűrése az utóbbi órákra",
           "timeExtended": "Adatok megjelenítése az elmúlt hétből, hónapból vagy minden időből",
@@ -2591,6 +2592,33 @@
       "upgradeCta": "Frissítés többért",
       "lockedAriaLabel": "Fül hozzáadása — zárolva. {{reason}}",
       "unlockedAnnouncement": "Az irányítópult-fülek korlátja feloldva."
+    },
+    "fx": {
+      "infoTooltip": "<strong>FX árfolyamok</strong> Deviza stressz és spot árfolyamok:<ul><li>Az FX Stressz 45 devizát rangsorol az elmúlt 24 hónap alatt tapasztalt legnagyobb csúcs-csúcs visszaesésük alapján, a 12 hónapos változással együtt</li><li>A lefedettség magában foglalja az ARS, TRY, EGP, NGN, PKR és UAH devizákat — olyan valutákat, amelyeket a BIS és az ECB referenciahalmazai nem tartalmaznak</li><li>A Spot árfolyamok az amerikai dollárral és az ECB euró referenciaárfolyamai az alábbi okok miatt szerepelnek külön: a kettő különböző bázisokból származó ajánlatokból áll össze</li></ul>Források: Yahoo Finance és az Európai Központi Bank.",
+      "tabs": {
+        "stress": "FX Stressz",
+        "spot": "Spot"
+      },
+      "currency": "Deviza",
+      "pair": "Pár",
+      "rate": "Árfolyam",
+      "yoy": "12h",
+      "drawdown": "24h visszaesés",
+      "peakToTrough": "Csúcs → Mélypont",
+      "change1d": "1n",
+      "perUsd": "1 USD-ért",
+      "usdPerUnit": "USD egységenként",
+      "usdBase": "Az amerikai dollárral szemben",
+      "eurBase": "ECB euró referenciaárfolyamok",
+      "stressedCount": "{{stressed}} / {{total}} deviza {{threshold}} alatt",
+      "sourceYahoo": "Forrás: Yahoo Finance",
+      "sourceEcb": "Forrás: ECB",
+      "degraded": "Jelenleg nem elérhető: {{sources}}. Hamarosan újra próbálkozunk.",
+      "source": {
+        "stress": "FX stressz",
+        "usd": "USD árfolyamok",
+        "eur": "ECB euró árfolyamok"
+      }
     }
   },
   "popups": {
@@ -2931,7 +2959,7 @@
       "heading": "IRÁNY",
       "hexCode": "HEX KÓD",
       "squawk": "SQUAWK",
-      "attribution": "Forrás: OpenSky Network"
+      "attribution": "Forrás: adsb.lol (ODbL) · OpenSky Network"
     },
     "militaryVessel": {
       "aisDark": "AIS SÖTÉT",

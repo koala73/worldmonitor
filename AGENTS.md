@@ -4,7 +4,7 @@ Agent entry point for WorldMonitor. Read this first, then follow links for depth
 
 ## What This Project Is
 
-Real-time global intelligence dashboard. TypeScript SPA (Vite + Preact) with 181 top-level TypeScript component files, 80+ Vercel Edge API endpoint entries, a Tauri desktop app with Node.js sidecar, and a Railway relay service. Aggregates geopolitics, military, finance, climate, cyber, maritime, and aviation data across 35 freshness-tracked source groups.
+Real-time global intelligence dashboard. TypeScript SPA (Vite + Preact) with 183 top-level TypeScript component files, 80+ Vercel Edge API endpoint entries, a Tauri desktop app with Node.js sidecar, and a Railway relay service. Aggregates geopolitics, military, finance, climate, cyber, maritime, and aviation data across 35 freshness-tracked source groups.
 
 ## Repository Map
 
@@ -13,9 +13,9 @@ Real-time global intelligence dashboard. TypeScript SPA (Vite + Preact) with 181
 ├── src/                    # Browser SPA (TypeScript, class-based components)
 │   ├── app/                # App orchestration (data-loader, refresh-scheduler, panel-layout)
 │   ├── bootstrap/          # Startup/recovery (chunk reload, deferred Sentry, SW update)
-│   ├── components/         # 181 top-level TypeScript component files
+│   ├── components/         # 183 top-level TypeScript component files
 │   ├── config/             # Variant configs, panel/layer definitions, market symbols
-│   ├── services/           # Business logic (221 service modules and domain directories)
+│   ├── services/           # Business logic (224 service modules and domain directories)
 │   ├── shared/             # Cross-cutting helpers (premium paths, registries, staleness)
 │   ├── embed/              # Embeddable widget loader
 │   ├── styles/             # Global CSS (layers, themes, panel styles)
@@ -235,7 +235,7 @@ Heavy checks (`test:data`, typechecks, edge-bundle) must run **sequentially** in
 - Edge Functions cannot use `node:http`, `node:https`, `node:zlib`
 - Always include `User-Agent` header in server-side fetch calls
 - Yahoo Finance requests must be staggered (150ms delays)
-- New data sources MUST have bootstrap hydration wired in `api/bootstrap.js`
+- New data sources MUST have bootstrap hydration wired in `api/bootstrap.js` — unless nothing in `src/` renders them. A dataset with no dashboard consumer registers in `api/health.js` `STANDALONE_KEYS` instead and stays out of the tiered payload every client downloads; `tests/bootstrap.test.mjs` enforces the converse, that no tier key lacks a `getHydratedData`/`ensureHydrated` consumer. Once a panel does read one, promote it into `BOOTSTRAP_CACHE_KEYS` with a tier — `ON_DEMAND_KEY_NAMES` for an opt-in panel, so the payload is fetched per-key on render rather than riding a tier every visitor downloads (`fxYoy` and `sharedFxRates` went this way for the FX panel, #6199)
 - Redis seed scripts MUST write `seed-meta:<key>` for health monitoring
 - Seed credentials load only via `loadEnvFile()` (inert under test runtimes, resolves `.env.local` at the checkout root, `only:` narrows the keys) — never hand-roll a `.env` reader or resolve one from `$HOME` or an absolute literal. Note `worktree:bootstrap` symlinks the source checkout's `.env.local`, so a bootstrapped worktree shares real credentials when a seeder is actually run
 

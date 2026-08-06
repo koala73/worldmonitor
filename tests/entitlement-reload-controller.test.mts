@@ -259,8 +259,28 @@ describe('entitlement reload controller', () => {
 
     assert.match(
       panelLayout,
-      /createEntitlementReloadController\(\{\s*returnedFromCheckout,/,
+      /createEntitlementReloadController\(\{\s*returnedFromCheckout:\s*returnedFromAccountCheckout,/,
       'checkout-return seeding must flow into the guarded controller',
+    );
+    assert.match(
+      panelLayout,
+      /const returnedFromOverlayFlag = consumePostCheckoutFlag\(\)[\s\S]*?resolveCheckoutReturnRouting\(returnResult, returnedFromOverlayFlag\)/,
+      'checkout routing must consume the overlay flag through the guarded return classifier',
+    );
+    assert.match(
+      panelLayout,
+      /if\s*\(returnedFromAccountCheckout\)\s*\{[\s\S]*?markProActivationPending\([\s\S]*?clearCheckoutAttempt\('success'\)/,
+      'desktop acknowledgements must not seed onboarding or clear browser-local state',
+    );
+    assert.match(
+      panelLayout,
+      /waitForEntitlement:\s*!returnedFromDesktopBrowser,[\s\S]*?accountAgnostic:\s*returnedFromDesktopBrowser,[\s\S]*?email:\s*returnedFromDesktopBrowser\s*\?\s*null\s*:/,
+      'desktop acknowledgements must not wait on or identify an arbitrary browser account',
+    );
+    assert.match(
+      panelLayout,
+      /const entitlementActive =\s*state === null \? null : isEntitlementActive\(state, Date\.now\(\)\)[\s\S]*?this\.ctx\.isDesktopApp[\s\S]*?entitlementActive === true[\s\S]*?loadCheckoutAttempt\(\)[\s\S]*?clearCheckoutAttempt\('success'\)/,
+      'the desktop app must retire its own attempt/referral state when entitlement activates',
     );
     assert.match(
       panelLayout,
@@ -269,7 +289,7 @@ describe('entitlement reload controller', () => {
     );
     assert.match(
       panelLayout,
-      /onEntitlementChange\(\(state\) => \{\s*entitlementReloadController\.handleSnapshot\(\s*state === null \? null : isEntitlementActive\(state, Date\.now\(\)\),\s*getAuthState\(\)\.user\?\.id \?\? null,/,
+      /onEntitlementChange\(\(state\) => \{[\s\S]*?const entitlementActive =\s*state === null \? null : isEntitlementActive\(state, Date\.now\(\)\)[\s\S]*?entitlementReloadController\.handleSnapshot\(\s*entitlementActive,\s*getAuthState\(\)\.user\?\.id \?\? null,/,
       'the live watcher must preserve unavailable snapshots and scope the guard to the authenticated account',
     );
   });

@@ -434,7 +434,8 @@
     "consumerPrices": "उपभोक्ता कीमतें",
     "fearGreed": "डर और लालच",
     "marketBreadth": "बाजार की पहुंच",
-    "climateNews": "जलवायु समाचार"
+    "climateNews": "जलवायु समाचार",
+    "fx": "FX दरें"
   },
   "commands": {
     "prefixes": {
@@ -1274,7 +1275,7 @@
         "ucdpEvents": "सशस्त्र संघर्ष घटनाएं",
         "displacementFlows": "स्थानांतरण प्रवाह",
         "climateAnomalies": "जलवायु असामान्यता",
-        "weatherAlerts": "मौसम अलर्ट",
+        "weatherAlerts": "अमेरिका के मौसम अलर्ट (NWS)",
         "strategicWaterways": "चोकपॉइंट",
         "economicCenters": "आर्थिक केंद्र",
         "criticalMinerals": "महत्वपूर्ण खनिज",
@@ -1353,7 +1354,7 @@
           "infraDatacenters": "एआई कंप्यूट क्लस्टर (>=10,000 GPU)",
           "infraOutages": "इंटरनेट ब्लैकआउट और सेवा व्यवधान",
           "naturalEventsTech": "भूकंप, तूफान, आग (डेटा केंद्र प्रभावित कर सकते हैं)",
-          "weatherAlerts": "कठोर मौसम अलर्ट",
+          "weatherAlerts": "अमेरिका में गंभीर मौसम अलर्ट (NWS)",
           "economicCenters": "शेयर बाजार और केंद्रीय बैंक",
           "countriesOverlay": "देश नाम ओवरले",
           "financeExchanges": "मुख्य वैश्विक एक्सचेंज",
@@ -1365,7 +1366,7 @@
           "financeOutages": "इंटरनेट व्यवधान जो बाजार संचालन को प्रभावित कर सकते हैं",
           "financeCyberThreats": "वित्तीय इन्फ्रास्ट्रक्चर से जुड़े सुरक्षा घटनाएं",
           "macroWaterways": "कमोडिटी शिपिंग के रणनीतिक चोकपॉइंट",
-          "weatherAlertsMarket": "बाजार से संबंधित कठोर मौसम घटनाएं",
+          "weatherAlertsMarket": "अमेरिका में बाजार से संबंधित गंभीर मौसम घटनाएं (NWS)",
           "naturalEventsMacro": "भूकंप, आग, बाढ़ और अन्य प्राकृतिक व्यवधान",
           "timeRecent": "समय-आधारित डेटा को हाल के घंटों तक फ़िल्टर करें",
           "timeExtended": "पिछले सप्ताह, महीने या सभी समय का डेटा दिखाएं",
@@ -2591,6 +2592,33 @@
       "upgradeCta": "अधिक के लिए अपग्रेड करें",
       "lockedAriaLabel": "टैब जोड़ें — लॉक्ड। {{reason}}",
       "unlockedAnnouncement": "डैशबोर्ड टैब सीमा हटाई गई।"
+    },
+    "fx": {
+      "infoTooltip": "<strong>FX दरें</strong> मुद्रा तनाव और स्पॉट दरें:<ul><li>FX Stress 45 मुद्राओं को पिछले 24 महीनों में उनके सबसे खराब शिखर-से-गर्त ड्रॉडाउन के आधार पर रैंक करता है, साथ ही 12 महीने का परिवर्तन भी दिखाता है</li><li>कवरेज में ARS, TRY, EGP, NGN, PKR और UAH शामिल हैं — ऐसी मुद्राएं जिन्हें BIS और ECB संदर्भ सेट छोड़ देते हैं</li><li>Spot दरें अमेरिकी डॉलर और ECB यूरो संदर्भ दरों के विरुद्ध अलग-अलग सूचीबद्ध करता है, क्योंकि दोनों को विभिन्न आधारों से उद्धृत किया जाता है</li></ul>स्रोत: Yahoo Finance और European Central Bank।",
+      "tabs": {
+        "stress": "FX Stress",
+        "spot": "Spot"
+      },
+      "currency": "मुद्रा",
+      "pair": "जोड़ी",
+      "rate": "दर",
+      "yoy": "12m",
+      "drawdown": "24m ड्रॉडाउन",
+      "peakToTrough": "शिखर → गर्त",
+      "change1d": "1d",
+      "perUsd": "प्रति 1 USD",
+      "usdPerUnit": "प्रति इकाई USD",
+      "usdBase": "अमेरिकी डॉलर के विरुद्ध",
+      "eurBase": "ECB यूरो संदर्भ दरें",
+      "stressedCount": "{{total}} में से {{stressed}} मुद्राएं {{threshold}} से नीचे",
+      "sourceYahoo": "स्रोत: Yahoo Finance",
+      "sourceEcb": "स्रोत: ECB",
+      "degraded": "अभी उपलब्ध नहीं: {{sources}}। शीघ्र ही पुनः प्रयास किया जा रहा है।",
+      "source": {
+        "stress": "FX स्ट्रेस",
+        "usd": "US डॉलर दरें",
+        "eur": "ECB यूरो दरें"
+      }
     }
   },
   "popups": {
@@ -2931,7 +2959,7 @@
       "heading": "दिशा",
       "hexCode": "हेक्स कोड",
       "squawk": "स्क्वॉक",
-      "attribution": "स्रोत: OpenSky नेटवर्क"
+      "attribution": "स्रोत: adsb.lol (ODbL) · OpenSky Network"
     },
     "militaryVessel": {
       "aisDark": "AIS डार्क",

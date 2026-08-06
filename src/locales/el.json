@@ -365,7 +365,8 @@
     "consumerPrices": "Τιμές Καταναλωτή",
     "fearGreed": "Fear & Greed",
     "marketBreadth": "Market Breadth",
-    "climateNews": "Ειδήσεις για το Κλίμα"
+    "climateNews": "Ειδήσεις για το Κλίμα",
+    "fx": "Ισοτιμίες Συναλλάγματος"
   },
   "commands": {
     "prefixes": {
@@ -1131,7 +1132,7 @@
         "ucdpEvents": "Συμβάντα UCDP",
         "displacementFlows": "Ροές Εκτοπισμού",
         "climateAnomalies": "Κλιματικές Ανωμαλίες",
-        "weatherAlerts": "Καιρικές Προειδοποιήσεις",
+        "weatherAlerts": "Καιρικές προειδοποιήσεις ΗΠΑ (NWS)",
         "strategicWaterways": "Στρατηγικές Υδάτινες Οδοί",
         "economicCenters": "Οικονομικά Κέντρα",
         "criticalMinerals": "Κρίσιμα Ορυκτά",
@@ -1212,7 +1213,7 @@
           "infraDatacenters": "Συστοιχίες υπολογιστών AI >=10.000 GPUs",
           "infraOutages": "Blackout διαδικτύου και διακοπές υπηρεσιών",
           "naturalEventsTech": "Σεισμοί, καταιγίδες, πυρκαγιές (μπορεί να επηρεάσουν κέντρα δεδομένων)",
-          "weatherAlerts": "Σοβαρές καιρικές προειδοποιήσεις",
+          "weatherAlerts": "Προειδοποιήσεις έντονων καιρικών φαινομένων στις ΗΠΑ (NWS)",
           "economicCenters": "Χρηματιστήρια & κεντρικές τράπεζες",
           "countriesOverlay": "Επικαλύψεις ονομάτων χωρών",
           "financeExchanges": "Σημαντικά παγκόσμια χρηματιστήρια ανά βαθμίδα αγοράς",
@@ -1224,7 +1225,7 @@
           "financeOutages": "Διακοπές διαδικτύου που μπορούν να επηρεάσουν τις λειτουργίες αγοράς",
           "financeCyberThreats": "Γεγονότα ασφαλείας γύρω από χρηματοπιστωτικές υποδομές",
           "macroWaterways": "Στρατηγικά σημεία ελέγχου για ναυτιλία εμπορευμάτων",
-          "weatherAlertsMarket": "Σοβαρά καιρικά φαινόμενα με σημασία για τις αγορές",
+          "weatherAlertsMarket": "Έντονα καιρικά φαινόμενα στις ΗΠΑ με σημασία για τις αγορές (NWS)",
           "naturalEventsMacro": "Σεισμοί, πυρκαγιές, πλημμύρες και άλλες φυσικές καταστροφές",
           "timeRecent": "Φιλτράρισμα χρονικών δεδομένων σε πρόσφατες ώρες",
           "timeExtended": "Εμφάνιση δεδομένων από την προηγούμενη εβδομάδα, μήνα ή όλα",
@@ -2522,6 +2523,33 @@
       "upgradeCta": "Αναβάθμιση για περισσότερα",
       "lockedAriaLabel": "Προσθήκη καρτέλας — κλειδωμένο. {{reason}}",
       "unlockedAnnouncement": "Το όριο καρτελών πίνακα ελέγχου αρθρώθηκε."
+    },
+    "fx": {
+      "infoTooltip": "<strong>Ισοτιμίες Συναλλάγματος</strong> Stress συναλλάγματος και spot rates:<ul><li>FX Stress κατατάσσει 45 νομίσματα ανά τη χειρότερη μέγιστη πτώση τους τα τελευταία 24 μήνες, αναφορικά με την αλλαγή 12 μηνών</li><li>Η κάλυψη περιλαμβάνει ARS, TRY, EGP, NGN, PKR και UAH — νομίσματα που δεν περιλαμβάνονται στα σετ αναφοράς της BIS και ECB</li><li>Spot παραθέτει ισοτιμίες έναντι του δολαρίου ΗΠΑ και των ισοτιμιών αναφοράς ευρώ ECB ξεχωριστά, καθώς οι δύο προέρχονται από διαφορετικές βάσεις</li></ul>Πηγές: Yahoo Finance και European Central Bank.",
+      "tabs": {
+        "stress": "FX Stress",
+        "spot": "Spot"
+      },
+      "currency": "Νόμισμα",
+      "pair": "Ζεύγος",
+      "rate": "Ισοτιμία",
+      "yoy": "12m",
+      "drawdown": "Πτώση 24m",
+      "peakToTrough": "Κορυφή → Κατώφλι",
+      "change1d": "1d",
+      "perUsd": "Ανά 1 USD",
+      "usdPerUnit": "USD ανά μονάδα",
+      "usdBase": "Έναντι του δολαρίου ΗΠΑ",
+      "eurBase": "Ισοτιμίες αναφοράς ευρώ ECB",
+      "stressedCount": "{{stressed}} από {{total}} νομίσματα κάτω του {{threshold}}",
+      "sourceYahoo": "Πηγή: Yahoo Finance",
+      "sourceEcb": "Πηγή: ECB",
+      "degraded": "Προς το παρόν μη διαθέσιμο: {{sources}}. Επανάληψη σε λίγο.",
+      "source": {
+        "stress": "Ένταση συναλλάγματος",
+        "usd": "Ισοτιμίες δολαρίου ΗΠΑ",
+        "eur": "Ισοτιμίες ευρώ ΕΚΤ"
+      }
     }
   },
   "popups": {
@@ -2862,7 +2890,7 @@
       "heading": "ΠΟΡΕΙΑ",
       "hexCode": "HEX CODE",
       "squawk": "SQUAWK",
-      "attribution": "Πηγή: OpenSky Network"
+      "attribution": "Πηγή: adsb.lol (ODbL) · OpenSky Network"
     },
     "militaryVessel": {
       "aisDark": "AIS ΣΚΟΤΕΙΝΟ",

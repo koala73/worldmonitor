@@ -37,6 +37,12 @@ const RESEARCH_REPORTS_INDEX_PATH = 'shared/research-reports/index.mjs';
 export const CORPUS_GENERATOR_CONTENT_VERSION = '2026-07-27';
 const COUNTRY_PAGE_CONTENT_VERSION = '2026-07-28';
 const CHOKEPOINT_PAGE_CONTENT_VERSION = '2026-07-28';
+const DATASET_SCHEMA_CONTENT_VERSION = '2026-08-05';
+const DATASET_LICENSE = {
+  '@type': 'CreativeWork',
+  name: 'World Monitor Terms of Service (27 July 2026)',
+  url: 'https://www.worldmonitor.app/docs/terms',
+};
 const CHANGELOG_PAGE_SIZE = 2;
 const MAX_TOOL_LATITUDE_SPAN = 45;
 const MAX_TOOL_LONGITUDE_SPAN = 60;
@@ -751,6 +757,7 @@ export async function loadCorpusData({ rootDir = DEFAULT_ROOT } = {}) {
     resilience.capturedAt,
     CORPUS_GENERATOR_CONTENT_VERSION,
     COUNTRY_PAGE_CONTENT_VERSION,
+    DATASET_SCHEMA_CONTENT_VERSION,
   );
   const changelogLastmod = laterDate(
     gitFileLastmod(rootDir, CHANGELOG_PATH),
@@ -773,6 +780,7 @@ export async function loadCorpusData({ rootDir = DEFAULT_ROOT } = {}) {
   const researchLastmod = laterDate(
     ...researchReports.map(({ report }) => report.dateModified),
     CORPUS_GENERATOR_CONTENT_VERSION,
+    DATASET_SCHEMA_CONTENT_VERSION,
   );
 
   return {
@@ -1063,6 +1071,12 @@ function renderCountryPage({
         '@type': 'Dataset',
         name: `World Monitor Country Resilience snapshot for ${country.name}`,
         description: `A dated World Monitor Country Resilience Index snapshot for ${country.name}, with the overall score, rank, dimension coverage, confidence classification, and scoring methodology used for this page.`,
+        creator: {
+          '@type': 'Organization',
+          name: 'World Monitor',
+          url: 'https://www.worldmonitor.app/',
+        },
+        license: DATASET_LICENSE,
         datePublished: capturedAt,
         measurementTechnique: methodologyFormula,
       },

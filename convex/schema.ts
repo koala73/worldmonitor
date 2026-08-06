@@ -730,6 +730,9 @@ export default defineSchema({
         apiRequestsPerDay: v.union(v.number(), v.null()),
         apiBurstRequestsPerMinute: v.union(v.number(), v.null()),
         mcpCallsPerDay: v.union(v.number(), v.null()),
+        // Optional for entitlement rows written before the dashboard-AI
+        // dimension existed; the read-time catalog merge supplies it.
+        dashboardAiCallsPerDay: v.optional(v.union(v.number(), v.null())),
         mcpBurstRequestsPerMinute: v.union(v.number(), v.null()),
       })),
       prioritySupport: v.boolean(),
@@ -917,6 +920,54 @@ export default defineSchema({
     ),
     updatedAt: v.number(),
   }).index("by_key", ["key"]),
+
+  // Dodo events we received and authenticated but could not attribute to a
+  // user: no signed checkout metadata and no `customers` row. The canonical
+  // source is a Dodo *payment link* / dashboard-created subscription, which
+  // carries `metadata: {}` because only our own checkout attaches the signed
+  // `wm_user_id`.
+  //
+  // These are NOT `paymentWebhookFailures`. That table means "processing broke,
+  // Dodo should retry"; retrying this never helps, because the identity lookup
+  // is deterministic — all 8 attempts fail identically (2026-08-03). This table
+  // means "received intact, needs a human to say who it belongs to", and the
+  // webhook acknowledges 200 once the row is durably committed.
+  unattributedPaymentEvents: defineTable({
+    webhookId: v.string(),
+    eventType: v.string(),
+    // Did money actually move? Drives alert severity and whether we owe the
+    // buyer fulfillment. An abandoned 3DS attempt is a sales signal; a settled
+    // charge with nobody attached is a paid customer holding no access.
+    charged: v.boolean(),
+    dodoCustomerId: v.optional(v.string()),
+    dodoPaymentId: v.optional(v.string()),
+    dodoSubscriptionId: v.optional(v.string()),
+    dodoProductId: v.optional(v.string()),
+    // Contact details come straight from the Dodo payload — they are how an
+    // operator finds the human to talk to, and the only identity signal we have.
+    customerEmail: v.optional(v.string()),
+    customerName: v.optional(v.string()),
+    amount: v.optional(v.number()),
+    currency: v.optional(v.string()),
+    errorCode: v.optional(v.string()),
+    errorMessage: v.optional(v.string()),
+    rawPayload: v.any(),
+    eventTimestamp: v.number(),
+    receivedAt: v.number(),
+    lastSeenAt: v.number(),
+    occurrences: v.number(),
+    notifiedAt: v.optional(v.number()),
+    resolved: v.boolean(),
+    resolvedUserId: v.optional(v.string()),
+    resolvedAt: v.optional(v.number()),
+    resolutionNote: v.optional(v.string()),
+  })
+    .index("by_webhookId", ["webhookId"])
+    .index("by_resolved_lastSeenAt", ["resolved", "lastSeenAt"])
+    // Powers the per-customer notification throttle: a card-testing burst must
+    // not turn into one admin email per attempt.
+    .index("by_dodoCustomerId_lastSeenAt", ["dodoCustomerId", "lastSeenAt"])
+    .index("by_dodoSubscriptionId", ["dodoSubscriptionId"]),
 
   paymentEvents: defineTable({
     userId: v.string(),

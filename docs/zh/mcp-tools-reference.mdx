@@ -178,7 +178,7 @@ if ('_budget_exceeded' in parsed) {
 - **API 端点：** `GET /api/market/v1/get-fear-greed-index`, `GET /api/market/v1/get-sector-summary`, `GET /api/market/v1/list-commodity-quotes`, `GET /api/market/v1/list-crypto-quotes`, `GET /api/market/v1/list-etf-flows`, `GET /api/market/v1/list-gulf-quotes`, `GET /api/market/v1/list-market-quotes`
 - **类型：** 缓存读取 — 来自 Redis 引导缓存的亚秒级响应。
 - **新鲜度预算：** 标记 `stale: true` 前最多 **30 分钟**（由 seeder cron 的预期间隔设定）。
-- 板块 `valuationCoverage` 将写入年龄（`stale`）与完整度（`sourceStatus`：`ok`、`partial` 或 `degraded`）分开。提供 `symbols` 筛选时，`valuationCount` 与 `expectedValuationCount` 会按筛选结果计算。`unavailableSymbols` 列出没有当前估值的代码；`lastGood` 列出其收益指标来自旧快照的代码，并包含该快照时间戳。`valuationDiagnostics` 是按代码限制的路由元数据，展示独立的 direct/proxy 结果、响应类别和缺失字段，绝不包含凭据。
+- 板块 `valuationCoverage` 将写入年龄（`stale`）与完整度（`sourceStatus`：`ok`、`partial` 或 `degraded`）分开。`stale` 描述的是种子写入本身，而非单条记录——刚写入的负载中仍可能包含较旧的估值。提供 `symbols` 筛选时，`valuationCount` 与 `expectedValuationCount` 会按筛选结果计算。`valuationCount` 同时统计实时获取与回放的记录；`currentValuationCount` 给出本轮真正实时获取的子集，当所有记录均为最新时会省略该字段。`staleValuationSymbols` 列出来自旧快照的代码——这些代码在 `valuations` 中**确实**有数值，其年龄由 `lastGood.fetchedAt` 给出（上限为 7 天快照 TTL）。`unavailableSymbols` 列出完全没有发布估值的代码，与 `staleValuationSymbols` 互不相交。`lastGood` 同时涵盖整条记录与借用的收益指标，并包含该快照时间戳。当没有任何记录是最新时 `sourceStatus` 为 `degraded`，当部分记录陈旧或缺失时为 `partial`。`valuationDiagnostics` 是按代码限制的路由元数据，覆盖 `v7Quote`、`v7QuoteBatch` 与 `quoteSummary` 路由，展示独立的 direct/proxy 结果、响应类别和缺失字段，绝不包含凭据。
 
 <CodeGroup>
 
@@ -197,19 +197,20 @@ curl -s https://worldmonitor.app/mcp \
 
 ### `get_economic_data`
 
-宏观经济指标：联邦基金利率（FRED）、经济日历事件、燃料价格、ECB 外汇汇率、EU 收益率曲线、财报日历、COT 持仓、能源存储数据、BIS 家庭偿债比率（DSR，季度，约 40 个发达经济体家庭财务压力的领先指标），以及 BIS 住宅 + 商业地产价格指数（实际值，季度）。
+宏观经济指标：联邦基金利率（FRED）、经济日历事件、燃料价格、ECB 外汇汇率、俄罗斯央行官方卢布汇率与关键政策利率、EU 收益率曲线、财报日历、COT 持仓、能源存储数据、BIS 家庭偿债比率（DSR，季度，约 40 个发达经济体家庭财务压力的领先指标），以及 BIS 住宅 + 商业地产价格指数（实际值，季度）。
 
 **参数（工具特定）：**
 
 | 名称 | 类型 | 描述 |
 |------|------|-------------|
-| `dataset` | `array<string: fedfunds / econ-calendar / fuel-prices / ecb-fx-rates / yield-curve-eu / spending / earnings-calendar / cot / dsr / property-residential / property-commercial>` | 将响应限制为一个或多个子数据集。省略则返回完整经济捆绑包。 |
+| `dataset` | `array<string: fedfunds / econ-calendar / china-macro / china-release-calendar / fuel-prices / ecb-fx-rates / cbr-rates / yield-curve-eu / spending / earnings-calendar / cot / dsr / property-residential / property-commercial>` | 将响应限制为一个或多个子数据集。省略则返回完整经济捆绑包。 |
 | `country` | string | 将按国家键控的数据集（燃料价格、BIS DSR/地产、经济日历）筛选为一个 ISO 3166-1 alpha-2 代码。 |
 | `limit` | number | 将每个列表数据集（日历、支出、财报）限制为最多这么多项（默认 30，传 0 表示不限）。 |
 
 - **API 端点：** `GET /api/economic/v1/get-ecb-fx-rates`, `GET /api/economic/v1/get-economic-calendar`, `GET /api/economic/v1/get-eu-yield-curve`, `GET /api/economic/v1/list-fuel-prices`, `GET /api/market/v1/get-cot-positioning`, `GET /api/market/v1/list-earnings-calendar`
 - **类型：** 缓存读取 — 来自 Redis 引导缓存的亚秒级响应。
 - **新鲜度预算：** 标记 `stale: true` 前最多 **1 天**（由 seeder cron 的预期间隔设定）。
+- **分数据集提示：** 单一的 `stale` 标记仅由部分子数据集推导得出，并非逐数据集的保证。`cbr-rates` 不在其中——它每日发布，采用 3 天陈旧度预算与 14 天内容时效契约，二者均由 `/api/health` 监控，而非通过此标记。若特别关心该数据集的时效，请读取 `cbr-rates.effectiveDate`。
 
 <CodeGroup>
 
@@ -1164,6 +1165,7 @@ curl -s https://worldmonitor.app/mcp \
 - **API 端点：** `GET /api/intelligence/v1/get-country-port-activity`, `GET /api/supply-chain/v1/get-chokepoint-status`
 - **类型：** 缓存读取 — 来自 Redis 引导缓存的亚秒级响应。
 - **新鲜度预算（按切片）：** 当任意贡献切片超过其单独预算时标记 `stale: true` — 实时通行汇总（中继）**30 分钟**、PortWatch 港口活动 **36 小时**、咽喉流量 **12 小时**、PortWatch 咽喉参考 **14 天**，静态咽喉注册表/地理基准线最多 **~400 天**。捆绑包的 `cached_at` 反映最旧的贡献种子；`stale: true` 并不意味着所有数据都过时。
+- **按国家的内容新鲜度（PortWatch 切片）：** 当决策关键国家（`CN`/`HK`）自身的观测超过 **72 小时**时，`stale: true` 同样会被标记 —— 即使该次运行的心跳是新鲜的、且全部 174 个国家均已发布。只要上游 `max(date)` 未推进，seeder 就会复用缓存的国家载荷，因此传输时效与记录数都显示健康，而某个国家的数据已过时数日。这与 `/api/health` 对同一 seed 键给出的 `STALE_CONTENT` 判定一致 —— 参见[健康检查端点](/zh/health-endpoints)。`stale` 仍是单一布尔值，不会说明是哪个维度触发；指名过时国家的是 `/api/health`。
 
 <CodeGroup>
 
@@ -1747,21 +1749,21 @@ curl -s https://worldmonitor.app/mcp \
 
 </CodeGroup>
 
-## AI 情报（实时 LLM）
+## AI 情报
 
 ### `get_world_brief`
 
-AI 生成的世界情报简报。抓取最新地缘政治头条及其 RSS 文章正文，生成有据可依的 LLM 摘要简报。提供可选的 geo_context 以聚焦某个地区或主题。
+来自仪表板使用的预计算 `news:insights:v1` 快照的有引用依据的世界情报简报。洞察种子程序在发布前应用交叉印证、引用和幻觉检查；该工具读取已接受的结果，不会在请求时调用 LLM。可选的 `geo_context` 字段为兼容客户端保留，不会改变种子快照。
 
 **参数：**
 
 | 名称 | 类型 | 必填 | 描述 |
 |------|------|---------:|-------------|
-| `geo_context` | string | 否 | 可选的聚焦上下文（例如 "Middle East tensions"、"US-China trade war"） |
+| `geo_context` | string | 否 | 已弃用的兼容字段；预计算的全球快照不会按请求重新生成或聚焦。 |
 
-- **API 端点：** `GET /api/news/v1/list-feed-digest`, `POST /api/news/v1/summarize-article`
-- **类型：** 实时 RPC — 每次调用代理对 WorldMonitor API 的请求。最坏情况总预算 **~24s**（6s 摘要抓取 + 18s LLM 摘要，顺序执行）。
-- **来源：** 返回有界的 `sources` 数组，含来自作为依据输入发送的订阅源摘要条目的原始文章链接。URL 从订阅源数据复制，而非由 LLM 生成。
+- **API 端点：** `GET /api/infrastructure/v1/get-bootstrap-data?keys=insights` —— 通过已认证网关读取仪表板使用的同一 `news:insights:v1` payload。
+- **类型：** 缓存支撑的 RPC —— 返回最新的种子程序已接受快照，在缺失、过期或降级时 fail closed。不在请求时调用 LLM。
+- **来源：** 按生产者顺序返回种子 payload 发布的有界 `worldBriefSources` 数组。URL 从显式来源记录复制，而不是在 MCP 执行时生成；保留空 URL 回退项，避免引用编号错位。
 
 <CodeGroup>
 

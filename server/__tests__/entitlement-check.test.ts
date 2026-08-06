@@ -61,6 +61,18 @@ function makeEntitlements(tier: number, planKey = "free") {
       // but it is not reachable through a tier-only fixture. Deliberately NOT
       // part of the cache-staleness gate (undefined fail-opens at tier >= 2).
       dataExport: tier >= 2,
+      // #6105 added planLimits.dashboardAiCallsPerDay and, for exactly the
+      // reason mcpAccess above joined the gate, it is part of the
+      // cache-staleness check too: a cached row missing it would be served as
+      // fresh and silently resolve every paid tier above Pro to the Pro
+      // default. Fixtures must carry it to read as fresh.
+      planLimits: {
+        apiRequestsPerDay: tier >= 2 ? 1_000 : 0,
+        apiBurstRequestsPerMinute: tier >= 2 ? 60 : 0,
+        mcpCallsPerDay: tier >= 1 ? 50 : 0,
+        dashboardAiCallsPerDay: tier >= 1 ? 500 : 0,
+        mcpBurstRequestsPerMinute: tier >= 1 ? 60 : 0,
+      },
     },
     validUntil: FUTURE,
   };
@@ -661,6 +673,61 @@ describe("gateway entitlement check", () => {
       expect(fetchMock).toHaveBeenCalledTimes(0); // cache hit, no Convex call
     } finally {
       vi.unstubAllGlobals();
+    }
+  });
+
+  test("#6105 cache: entry WITHOUT planLimits.dashboardAiCallsPerDay is stale and refetches", async () => {
+    // A row cached before the dashboard-AI dimension shipped already satisfies
+    // the mcpAccess check, so without this gate it would be served as fresh --
+    // and Pro Business (2,500) / API Business (10,000) would silently enforce
+    // the 500 Pro default for the whole cache TTL. The window is NOT bounded by
+    // that TTL either: the Convex catalog deploy is a separate manual step from
+    // the edge deploy, so an edge-first release would under-serve every paid
+    // tier until Convex lands.
+    const preDimensionCache = {
+      planKey: "pro_business_monthly",
+      features: {
+        tier: 1,
+        apiAccess: false,
+        apiRateLimit: 0,
+        maxDashboards: 25,
+        prioritySupport: true,
+        exportFormats: ["csv", "json", "pdf"],
+        mcpAccess: true, // present -- passes the OLD gate on its own
+        planLimits: {
+          apiRequestsPerDay: 0,
+          apiBurstRequestsPerMinute: 0,
+          mcpCallsPerDay: 250,
+          mcpBurstRequestsPerMinute: 60,
+          // NO dashboardAiCallsPerDay -- pre-#6105 cache entry.
+        },
+      },
+      validUntil: FUTURE,
+    };
+    vi.mocked(getCachedJson).mockResolvedValueOnce(preDimensionCache);
+
+    const originalSiteUrl = process.env.CONVEX_SITE_URL;
+    const originalSecret = process.env.CONVEX_SERVER_SHARED_SECRET;
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify(makeEntitlements(1, "pro_business_monthly")), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
+    process.env.CONVEX_SITE_URL = "https://example-deployment.convex.site";
+    process.env.CONVEX_SERVER_SHARED_SECRET = "test-secret";
+    vi.stubGlobal("fetch", fetchMock);
+
+    try {
+      const result = await getEntitlements("user_pre_dimension");
+
+      // Fell through to Convex, which returns the merged shape.
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      expect(result?.features.planLimits?.dashboardAiCallsPerDay).toBe(500);
+    } finally {
+      vi.unstubAllGlobals();
+      process.env.CONVEX_SITE_URL = originalSiteUrl;
+      process.env.CONVEX_SERVER_SHARED_SECRET = originalSecret;
     }
   });
 

@@ -1,4 +1,6 @@
 import { CANONICAL_FEEDS, INTEL_SOURCES, SOURCE_REGION_MAP } from '@/config/feeds';
+import { WEB_APP_ORIGIN } from '@/config/web-origin';
+import { openExternalUrl } from '@/services/external-navigation';
 import { THEATER_PRESETS, getTheaterPreset, getTheaterPresetEnableList, resolveTheaterPresetSources, type TheaterPreset } from '@/config/theater-presets';
 import {
   PANEL_CATEGORY_MAP,
@@ -168,6 +170,13 @@ export class UnifiedSettings {
         // charge (prevent_change) leaves the customer on Starter.
         const reservedWin = prereserveBillingPortalTab();
         void openBillingPortal(reservedWin).then((result) => {
+          // The portal session exists but no window opened (native handoff
+          // refused and the browser fallback was blocked). Saying nothing here
+          // reads as a dead click on a paid feature.
+          if (result.outcome === 'open-failed') {
+            showToast('Could not open the billing portal. Please allow pop-ups and try again.');
+            return;
+          }
           if (result.outcome === 'no-customer') {
             showToast(
               'Subscription is managed outside Dodo. Email support@worldmonitor.app for help.',
@@ -188,6 +197,13 @@ export class UnifiedSettings {
           // (comp grant, restore race, or post-purge cancellation). Send
           // them somewhere actionable instead of leaving them in a
           // generic Dodo portal that won't recognise them.
+          // The portal session exists but no window opened (native handoff
+          // refused and the browser fallback was blocked). Saying nothing here
+          // reads as a dead click on a paid feature.
+          if (result.outcome === 'open-failed') {
+            showToast('Could not open the billing portal. Please allow pop-ups and try again.');
+            return;
+          }
           if (result.outcome === 'no-customer') {
             showToast(
               'Subscription is managed outside Dodo. Email support@worldmonitor.app for help.',
@@ -239,7 +255,9 @@ export class UnifiedSettings {
       const panelItem = target.closest<HTMLElement>('.panel-toggle-item');
       if (panelItem?.dataset.panel) {
         if (panelItem.dataset.proLocked) {
-          window.open('/pro', '_blank', 'noopener,noreferrer');
+          // Absolute + routed: a relative /pro resolves against tauri://localhost
+          // in the desktop WebView, where no such route is served (#5911).
+          void openExternalUrl(`${WEB_APP_ORIGIN}/pro`);
           return;
         }
         const panelKey = panelItem.dataset.panel;
@@ -959,6 +977,13 @@ export class UnifiedSettings {
       this.close();
       const reservedWin = prereserveBillingPortalTab();
       void openBillingPortal(reservedWin).then((result) => {
+        // The portal session exists but no window opened (native handoff
+        // refused and the browser fallback was blocked). Saying nothing here
+        // reads as a dead click on a paid feature.
+        if (result.outcome === 'open-failed') {
+          showToast('Could not open the billing portal. Please allow pop-ups and try again.');
+          return;
+        }
         if (result.outcome === 'no-customer') {
           showToast(
             'Subscription is managed outside Dodo. Email support@worldmonitor.app for help.',
@@ -969,11 +994,14 @@ export class UnifiedSettings {
     }
     this.close();
     if (this.config.isDesktopApp) {
-      window.open('https://worldmonitor.app/pro', '_blank', 'noopener,noreferrer');
+      // Desktop deliberately skips in-app checkout and sends the user to the
+      // pricing page — but a bare window.open only opens another WebView
+      // window. `openExternalUrl` hands it to the OS browser (#5911).
+      void openExternalUrl(`${WEB_APP_ORIGIN}/pro`);
       return;
     }
     import('@/services/checkout').then(m => import('@/config/products').then(p => m.startCheckout(p.DEFAULT_UPGRADE_PRODUCT))).catch(() => {
-      window.open('https://worldmonitor.app/pro', '_blank', 'noopener,noreferrer');
+      void openExternalUrl(`${WEB_APP_ORIGIN}/pro`);
     });
   }
 
@@ -1401,6 +1429,13 @@ export class UnifiedSettings {
     if (notice.ctaKind === 'billing_portal') {
       const reservedWin = prereserveBillingPortalTab();
       void openBillingPortal(reservedWin).then((result) => {
+        // The portal session exists but no window opened (native handoff
+        // refused and the browser fallback was blocked). Saying nothing here
+        // reads as a dead click on a paid feature.
+        if (result.outcome === 'open-failed') {
+          showToast('Could not open the billing portal. Please allow pop-ups and try again.');
+          return;
+        }
         if (result.outcome === 'no-customer') {
           showToast('Subscription is managed outside Dodo. Email support@worldmonitor.app for help.');
         }
@@ -1418,6 +1453,13 @@ export class UnifiedSettings {
       if (isEntitled()) {
         const reservedWin = prereserveBillingPortalTab();
         void openBillingPortal(reservedWin).then((result) => {
+          // The portal session exists but no window opened (native handoff
+          // refused and the browser fallback was blocked). Saying nothing here
+          // reads as a dead click on a paid feature.
+          if (result.outcome === 'open-failed') {
+            showToast('Could not open the billing portal. Please allow pop-ups and try again.');
+            return;
+          }
           if (result.outcome === 'no-customer') {
             showToast('Subscription is managed outside Dodo. Email support@worldmonitor.app for help.');
           }
@@ -1431,7 +1473,7 @@ export class UnifiedSettings {
           : p.DODO_PRODUCTS.PRO_MONTHLY;
         return m.startCheckout(product);
       })).catch(() => {
-        window.open('https://worldmonitor.app/pro', '_blank', 'noopener,noreferrer');
+        void openExternalUrl(`${WEB_APP_ORIGIN}/pro`);
       });
       return;
     }
@@ -1463,7 +1505,7 @@ export class UnifiedSettings {
         } else {
           this.close();
           import('@/services/checkout').then(m => import('@/config/products').then(p => m.startCheckout(p.DODO_PRODUCTS.API_STARTER_MONTHLY))).catch(() => {
-            window.open('https://worldmonitor.app/pro', '_blank', 'noopener,noreferrer');
+            void openExternalUrl(`${WEB_APP_ORIGIN}/pro`);
           });
         }
       });

@@ -31,16 +31,28 @@ const SUPPORTED_RULES = new Set([
   'string.len',
   'string.min_len',
   'string.max_len',
+  'string.max_bytes',
+  'string.const',
   'string.pattern',
+  'int32.const',
   'int32.gte',
   'int32.lte',
   'int64.gte',
   'int64.lte',
   'double.gte',
   'double.lte',
+  'enum.defined_only',
+  'enum.not_in',
   'repeated.min_items',
   'repeated.max_items',
+  'repeated.items.string.min_len',
+  'repeated.items.string.max_bytes',
+  'repeated.items.string.pattern',
 ]);
+// This response-only rule is safe for the repository-wide proto audit but has
+// no request-side runtime implementation. Reject it if a future request makes
+// it reachable instead of silently dropping the constraint.
+const RESPONSE_ONLY_RULES = new Set(['int32.const']);
 
 function walkProtoFiles(directory) {
   return readdirSync(directory, { withFileTypes: true })
@@ -224,14 +236,26 @@ function collectValidatedTypes(reachable) {
 
 function buildFieldRule(field) {
   const options = validationOptions(field);
+  for (const rule of Object.keys(options)) {
+    if (RESPONSE_ONLY_RULES.has(rule)) {
+      throw new Error(
+        `buf.validate rule ${rule} on request field ${field.parent.fullName}.${field.name} `
+        + 'is response-only; extend the runtime validator before using it on a request.',
+      );
+    }
+  }
+  const enumType = field.resolvedType instanceof protobuf.Enum ? field.resolvedType : null;
   const rule = {
-    kind: field.resolvedType instanceof protobuf.Type ? 'message' : field.type,
+    kind: field.resolvedType instanceof protobuf.Type ? 'message' : enumType ? 'enum' : field.type,
   };
 
   if (field.repeated) rule.repeated = true;
   if (field.options?.proto3_optional === true) rule.optional = true;
   if (field.resolvedType instanceof protobuf.Type) {
     rule.messageType = normalizedTypeName(field.resolvedType);
+  }
+  if (enumType) {
+    rule.enumValues = Object.keys(enumType.values);
   }
   if (field.type === 'int64') {
     rule.int64Encoding = field.options?.['(sebuf.http.int64_encoding)'] === 'INT64_ENCODING_NUMBER'
@@ -245,6 +269,8 @@ function buildFieldRule(field) {
     ['string.len', 'stringLen'],
     ['string.min_len', 'stringMinLen'],
     ['string.max_len', 'stringMaxLen'],
+    ['string.max_bytes', 'stringMaxBytes'],
+    ['string.const', 'stringConst'],
     ['string.pattern', 'stringPattern'],
     ['int32.gte', 'numberGte'],
     ['int32.lte', 'numberLte'],
@@ -252,11 +278,33 @@ function buildFieldRule(field) {
     ['int64.lte', 'numberLte'],
     ['double.gte', 'numberGte'],
     ['double.lte', 'numberLte'],
+    ['enum.defined_only', 'enumDefinedOnly'],
     ['repeated.min_items', 'repeatedMinItems'],
     ['repeated.max_items', 'repeatedMaxItems'],
+    ['repeated.items.string.min_len', 'stringMinLen'],
+    ['repeated.items.string.max_bytes', 'stringMaxBytes'],
+    ['repeated.items.string.pattern', 'stringPattern'],
   ];
   for (const [optionName, propertyName] of mappings) {
     if (Object.hasOwn(options, optionName)) rule[propertyName] = options[optionName];
+  }
+
+  if (enumType && Object.hasOwn(options, 'enum.not_in')) {
+    const numericValues = Array.isArray(options['enum.not_in'])
+      ? options['enum.not_in']
+      : [options['enum.not_in']];
+    const enumNameByNumber = new Map(
+      Object.entries(enumType.values).map(([name, value]) => [value, name]),
+    );
+    rule.enumNotIn = numericValues.map((value) => {
+      const name = enumNameByNumber.get(value);
+      if (!name) {
+        throw new Error(
+          `Unknown enum.not_in value ${value} on ${field.parent.fullName}.${field.name}.`,
+        );
+      }
+      return name;
+    });
   }
 
   if (rule.ignore != null && rule.ignore !== 'IGNORE_IF_ZERO_VALUE') {

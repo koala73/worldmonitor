@@ -9,6 +9,7 @@ import {
   buildSectorValuationCoverage,
   buildSectorValuationPublication,
   parseV7Quote,
+  parseV7QuoteBatch,
   parseCurlResponse,
   parseQuoteSummary,
   requestCurlText,
@@ -299,6 +300,34 @@ describe('parseQuoteSummary', () => {
 });
 
 describe('YahooQuoteSummaryClient', () => {
+  it('requests the price module so ETF quoteSummary responses carry symbol identity', async () => {
+    let summaryUrl = '';
+    const client = new YahooQuoteSummaryClient({
+      directRequest: async (url) => {
+        const kind = requestKind(url);
+        if (kind === 'cookie') return cookieResponse();
+        if (kind === 'crumb') return crumbResponse();
+        summaryUrl = url;
+        const response = valuationResponse('XLK');
+        const body = JSON.parse(response.body);
+        const result = body.quoteSummary.result[0];
+        delete result.symbol;
+        result.price = { symbol: 'XLK' };
+        return { ...response, body: JSON.stringify(body) };
+      },
+      resolveProxyString: () => '',
+      sleepFn: async () => {},
+    });
+
+    const result = await client.fetchDetailed('XLK');
+
+    assert.equal(result.kind, 'success');
+    assert.deepEqual(
+      new URL(summaryUrl).searchParams.get('modules')?.split(',').sort(),
+      ['defaultKeyStatistics', 'price', 'summaryDetail'],
+    );
+  });
+
   it('bounds direct and proxy Invalid Crumb retries, cools down, then recovers', async () => {
     let now = 1_700_000_000_000;
     let recovered = false;
@@ -704,6 +733,66 @@ describe('parseV7Quote', () => {
   });
 });
 
+describe('parseV7QuoteBatch', () => {
+  it('maps one authenticated batch response back to requested symbols', () => {
+    const result = parseV7QuoteBatch(JSON.stringify({
+      quoteResponse: {
+        result: [
+          { symbol: 'XLK', trailingPE: 25.3, beta: 1.05 },
+          { symbol: 'SMH', trailingPE: 37.2, beta: 1.2 },
+        ],
+      },
+    }), ['XLK', 'SMH']);
+
+    assert.equal(result.kind, 'success');
+    assert.equal(result.value.valuations.XLK.trailingPE, 25.3);
+    assert.equal(result.value.valuations.SMH.trailingPE, 37.2);
+  });
+
+  // A batch that covered only some requested symbols must NOT report route
+  // success: _fetchRoute returns on the first successful transport, so calling
+  // this 'success' would deny the uncovered symbols the proxy leg.
+  it('reports partial (not success) when some requested symbols are uncovered', () => {
+    const result = parseV7QuoteBatch(JSON.stringify({
+      quoteResponse: {
+        result: [
+          { symbol: 'XLK', trailingPE: 25.3, beta: 1.05 },
+          { symbol: 'SMH', trailingPE: 37.2, beta: 1.2 },
+        ],
+      },
+    }), ['XLK', 'SMH', 'XLV']);
+
+    assert.equal(result.kind, 'partial');
+    assert.equal(result.value.valuations.XLK.trailingPE, 25.3);
+    assert.equal(result.value.outcomes.XLV.kind, 'no_data');
+    assert.ok(!('XLV' in result.value.valuations));
+  });
+
+  it('reports a fully unmatched batch by its first outcome, not success', () => {
+    const result = parseV7QuoteBatch(JSON.stringify({
+      quoteResponse: { result: [{ symbol: 'SPY', trailingPE: 21 }] },
+    }), ['XLK', 'SMH']);
+
+    assert.equal(result.kind, 'no_data');
+    assert.deepEqual(result.value.valuations, {});
+    assert.equal(result.value.outcomes.XLK.kind, 'no_data');
+  });
+
+  it('classifies an upstream error envelope without inventing valuations', () => {
+    const result = parseV7QuoteBatch(JSON.stringify({
+      quoteResponse: { error: 'Invalid crumb', result: null },
+    }), ['XLK']);
+
+    assert.equal(result.kind, 'upstream_error');
+    assert.equal(result.failure, 'quote_response_error');
+    assert.equal(result.value, null);
+  });
+
+  it('returns invalid_json for a garbage body', () => {
+    assert.equal(parseV7QuoteBatch('<html>429</html>', ['XLK']).kind, 'invalid_json');
+  });
+});
+
 describe('parseCurlResponse', () => {
   it('ignores the proxy CONNECT preamble and parses the upstream response', () => {
     const parsed = parseCurlResponse([
@@ -810,6 +899,31 @@ describe('buildSectorValuationCoverage', () => {
       fetchedAt: fetchedAt - 60_000,
       stale: true,
       symbols: ['XLF'],
+    });
+  });
+
+  it('keeps coverage partial when stale last-good records fill missing symbols', () => {
+    const coverage = buildSectorValuationCoverage({
+      valuationCount: 12,
+      expectedCount: 12,
+      currentValuationCount: 8,
+      fetchedAt,
+      sources: ['yahoo_v7_quote_authenticated_direct'],
+      unavailableSymbols: ['SMH', 'XLK', 'XLV', 'XLY'],
+      lastGoodFetchedAt: fetchedAt - 60_000,
+      lastGoodValuationSymbols: ['SMH', 'XLK', 'XLV', 'XLY'],
+    });
+
+    assert.equal(coverage.valuationCount, 12);
+    assert.equal(coverage.currentValuationCount, 8);
+    assert.equal(coverage.sourceStatus, 'partial');
+    assert.equal(coverage.seedSourceState, 'partial');
+    assert.equal(coverage.errorCode, 'SECTOR_VALUATIONS_PARTIAL');
+    assert.deepEqual(coverage.staleValuationSymbols, ['SMH', 'XLK', 'XLV', 'XLY']);
+    assert.deepEqual(coverage.lastGood, {
+      fetchedAt: fetchedAt - 60_000,
+      stale: true,
+      symbols: ['SMH', 'XLK', 'XLV', 'XLY'],
     });
   });
 });

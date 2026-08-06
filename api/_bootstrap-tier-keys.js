@@ -101,6 +101,9 @@ export const BOOTSTRAP_CACHE_KEYS = Object.freeze({
   crudeInventories: 'economic:crude-inventories:v1',
   natGasStorage: 'economic:nat-gas-storage:v1',
   ecbFxRates: 'economic:ecb-fx-rates:v1',
+  cbrRates: 'economic:cbr-rates:v1',
+  fxYoy: 'economic:fx:yoy:v1',
+  sharedFxRates: 'shared:fx-rates:v1',
   euFsi: 'economic:fsi-eu:v1',
   shippingStress: 'supply_chain:shipping_stress:v1',
   socialVelocity: 'intelligence:social:reddit:v1',
@@ -179,11 +182,23 @@ const ON_DEMAND_KEY_NAMES = new Set([
   'cyberThreats',
   'chinaPolicyEvents', 'chinaDecisionSignals',
   'bisDsr', 'bisPropertyResidential', 'bisPropertyCommercial',
+  // One row of this feeds the Central Banks tab's policy-rate list, which BIS
+  // cannot supply for Russia. On-demand rather than tiered: the tab fetches it
+  // through the credential-less per-key URL when it renders, so the ~8KB never
+  // rides a payload every visitor downloads.
+  'cbrRates',
   'imfMacro', 'imfGrowth', 'imfLabor', 'imfExternal',
   'eurostatHousePrices', 'eurostatGovDebtQ', 'eurostatIndProd',
   'electricityPrices', 'jodiOil', 'chokepointBaselines',
   'portwatchChokepointsRef', 'portwatchPortActivity', 'sprPolicies',
   'energyDisruptions',
+  // Both back the opt-in FX panel (#6199). On-demand rather than tiered
+  // because that panel ships disabled by default: neither payload should ride
+  // a tier every visitor downloads to render a surface almost nobody has on.
+  // NOTE: no apostrophes in this block. scripts/docs-stats.mjs scans these
+  // Sets with a bare quote matcher, so one apostrophe in prose opens a phantom
+  // string and gets registered as a duplicate key.
+  'fxYoy', 'sharedFxRates',
 ]);
 
 /**

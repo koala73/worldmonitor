@@ -5,7 +5,7 @@ process.env.UPSTASH_REDIS_REST_URL = 'https://mock-upstash.test';
 process.env.UPSTASH_REDIS_REST_TOKEN = 'mock-token';
 process.env.WORLDMONITOR_VALID_KEYS = 'test-health-admin-key';
 
-const { default: handler, __testing__ } = await import('../api/health.js');
+const { default: handler, handleHealth, __testing__ } = await import('../api/health.js');
 
 const {
   HEALTH_VERDICT_SNAPSHOT_KEY: HEALTH_SNAPSHOT_KEY,
@@ -14,6 +14,7 @@ const {
   HEALTH_VERDICT_SNAPSHOT_TTL_SECONDS,
   HEALTH_VERDICT_REFRESH_LOCK_KEY: HEALTH_REFRESH_LOCK_KEY,
   HEALTH_VERDICT_REFRESH_WAIT_MS,
+  snapshotTtlSeconds,
 } = __testing__;
 const realFetch = globalThis.fetch;
 const realSetTimeout = globalThis.setTimeout;
@@ -35,7 +36,7 @@ function healthySnapshot(checkedAt = new Date().toISOString()) {
 }
 
 test('scopes health verdict Redis keys to non-production deployments', () => {
-  const baseKey = 'health:verdict:v1';
+  const baseKey = 'health:verdict:v2';
   const lockBaseKey = `${baseKey}:refresh-lock`;
 
   assert.equal(__testing__.healthVerdictRedisKey(baseKey, undefined, undefined), baseKey);
@@ -45,11 +46,11 @@ test('scopes health verdict Redis keys to non-production deployments', () => {
   );
   assert.equal(
     __testing__.healthVerdictRedisKey(baseKey, 'preview', '1234567890abcdef'),
-    'preview:12345678:health:verdict:v1',
+    'preview:12345678:health:verdict:v2',
   );
   assert.equal(
     __testing__.healthVerdictRedisKey(lockBaseKey, 'preview', undefined),
-    'preview:dev:health:verdict:v1:refresh-lock',
+    'preview:dev:health:verdict:v2:refresh-lock',
   );
 });
 
@@ -429,4 +430,168 @@ test('validates snapshot age after the Redis read completes', async () => {
   assert.equal(response.status, 200);
   assert.equal(sweepCount, 1, 'a snapshot that expires in flight must be recomputed');
   assert.notEqual(body.checkedAt, almostExpired.checkedAt);
+});
+
+test('serves the auditable content-freshness deadline from full and compact snapshots', async () => {
+  const now = Date.parse('2026-08-03T14:42:58.000Z');
+  const checkedAt = new Date(now - 30_000).toISOString();
+  const pendingUntil = '2026-08-04T06:00:00.000Z';
+  const snapshot = {
+    status: 'HEALTHY',
+    summary: {
+      total: 1,
+      ok: 1,
+      warn: 0,
+      onDemandWarn: 0,
+      staleContent: 0,
+      crit: 0,
+      contentFreshnessPendingUntil: { portwatchPortActivity: pendingUntil },
+    },
+    checkedAt,
+    checks: {
+      portwatchPortActivity: { status: 'OK', records: 174, contentFreshnessPendingUntil: pendingUntil },
+    },
+  };
+
+  for (const [query, key, headers] of [
+    ['?compact=1', HEALTH_COMPACT_SNAPSHOT_KEY, {}],
+    ['', HEALTH_SNAPSHOT_KEY, { 'x-worldmonitor-key': 'test-health-admin-key' }],
+  ]) {
+    globalThis.fetch = async (_url, init) => {
+      assert.deepEqual(JSON.parse(init.body), [['GET', key]]);
+      return new Response(JSON.stringify([{ result: JSON.stringify(
+        query === '?compact=1' ? buildCompactVerdictSnapshot(snapshot) : snapshot,
+      ) }]), { status: 200 });
+    };
+
+    const response = await handleHealth(new Request(`https://api.worldmonitor.app/api/health${query}`, { headers }), undefined, { now });
+    const body = await response.json();
+
+    assert.equal(response.status, 200);
+    assert.equal(
+      body.summary.contentFreshnessPendingUntil.portwatchPortActivity,
+      pendingUntil,
+    );
+    if (query === '?compact=1') assert.equal(body.checks, undefined);
+    else assert.equal(body.checks.portwatchPortActivity.contentFreshnessPendingUntil, pendingUntil);
+  }
+});
+
+test('does not serve a full or compact snapshot after content-freshness grace expires', async () => {
+  const now = Date.parse('2026-08-04T06:00:00.000Z');
+  const pendingUntil = new Date(now).toISOString();
+  const snapshot = {
+    status: 'HEALTHY',
+    summary: {
+      total: 1,
+      ok: 1,
+      warn: 0,
+      onDemandWarn: 0,
+      staleContent: 0,
+      crit: 0,
+      contentFreshnessPendingUntil: { portwatchPortActivity: pendingUntil },
+    },
+    checkedAt: new Date(now - 30_000).toISOString(),
+    checks: {
+      portwatchPortActivity: { status: 'OK', contentFreshnessPendingUntil: pendingUntil },
+    },
+  };
+
+  for (const [query, key, headers] of [
+    ['?compact=1', HEALTH_COMPACT_SNAPSHOT_KEY, {}],
+    ['', HEALTH_SNAPSHOT_KEY, { 'x-worldmonitor-key': 'test-health-admin-key' }],
+  ]) {
+    const calls = [];
+    globalThis.fetch = async (_url, init) => {
+      const commands = JSON.parse(init.body);
+      calls.push(commands);
+      if (commands.length === 1 && commands[0][0] === 'GET' && commands[0][1] === key) {
+        const value = query === '?compact=1' ? buildCompactVerdictSnapshot(snapshot) : snapshot;
+        return new Response(JSON.stringify([{ result: JSON.stringify(value) }]), { status: 200 });
+      }
+      if (commands.length === 1 && commands[0][0] === 'SET') {
+        return new Response(JSON.stringify([{ result: 'OK' }]), { status: 200 });
+      }
+      throw new Error('stop after proving the expired snapshot was not served');
+    };
+
+    const response = await handleHealth(new Request(`https://api.worldmonitor.app/api/health${query}`, { headers }), undefined, { now });
+    const body = await response.json();
+
+    assert.equal(response.status, 503);
+    assert.equal(body.status, 'REDIS_DOWN');
+    assert.ok(calls.some((commands) => commands.length > 1), 'expired cache must fall through to a fresh sweep');
+  }
+});
+
+// The verdict cache must never outlive a softening deadline it publishes.
+// Reading is already guarded (hasExpiredActivationGrace), but a guarded READ
+// still costs a full ~390-command sweep per concurrent waiter, because the
+// refresh wait budget is shorter than a sweep. Expiring the KEY at the deadline
+// converts that into an ordinary cache miss, which the refresh lock serialises.
+test('snapshot TTL is the full 60s when no deadline is published', () => {
+  const now = Date.parse('2026-08-03T12:00:00.000Z');
+  assert.equal(snapshotTtlSeconds(healthySnapshot(new Date(now).toISOString()), now), 60);
+  assert.equal(snapshotTtlSeconds({ summary: {}, checks: {} }, now), 60);
+  // A non-ROLLOUT_PENDING entry carrying a stray rolloutPendingUntil is not a
+  // published promise; only the pending status makes it one.
+  assert.equal(
+    snapshotTtlSeconds({ checks: { a: { status: 'OK', rolloutPendingUntil: new Date(now + 5_000).toISOString() } } }, now),
+    60,
+  );
+});
+
+test('snapshot TTL is clamped down to the nearest activation deadline', () => {
+  const now = Date.parse('2026-08-03T12:00:00.000Z');
+  const at = (ms) => new Date(now + ms).toISOString();
+
+  // Content deadline on a per-check entry.
+  assert.equal(snapshotTtlSeconds({ checks: { a: { status: 'OK', contentFreshnessPendingUntil: at(30_000) } } }, now), 30);
+  // Rollout deadline, which only counts on a ROLLOUT_PENDING entry.
+  assert.equal(snapshotTtlSeconds({ checks: { a: { status: 'ROLLOUT_PENDING', rolloutPendingUntil: at(10_000) } } }, now), 10);
+  // Compact shape: deadlines live under `summary`, because a graced check is OK
+  // and therefore absent from `problems` entirely.
+  assert.equal(snapshotTtlSeconds({ problems: {}, summary: { contentFreshnessPendingUntil: { a: at(25_000) } } }, now), 25);
+  // The EARLIEST wins across shapes and sources.
+  assert.equal(
+    snapshotTtlSeconds({
+      checks: { a: { status: 'ROLLOUT_PENDING', rolloutPendingUntil: at(40_000) }, b: { status: 'OK', contentFreshnessPendingUntil: at(15_000) } },
+      summary: { contentFreshnessPendingUntil: { b: at(15_000), c: at(50_000) } },
+    }, now),
+    15,
+  );
+  // Beyond the base TTL the base TTL still caps it.
+  assert.equal(snapshotTtlSeconds({ checks: { a: { status: 'OK', contentFreshnessPendingUntil: at(600_000) } } }, now), 60);
+});
+
+test('snapshot TTL floors rather than rounds, so the key dies before the deadline', () => {
+  const now = Date.parse('2026-08-03T12:00:00.000Z');
+  // 30.9s away must be 30, never 31 — a key that outlives its own deadline is
+  // the exact thing this is preventing.
+  assert.equal(
+    snapshotTtlSeconds({ checks: { a: { status: 'OK', contentFreshnessPendingUntil: new Date(now + 30_900).toISOString() } } }, now),
+    30,
+  );
+});
+
+test('a malformed or already-passed deadline collapses the TTL to its floor', () => {
+  const now = Date.parse('2026-08-03T12:00:00.000Z');
+  const cases = [
+    ['unparseable', 'not-a-date'],
+    ['non-string', 12345],
+    ['null', null],
+    ['already expired', new Date(now - 60_000).toISOString()],
+  ];
+  for (const [label, value] of cases) {
+    assert.equal(
+      snapshotTtlSeconds({ checks: { a: { status: 'OK', contentFreshnessPendingUntil: value } } }, now),
+      1,
+      `${label} must evict fast, not pin a snapshot every reader will refuse`,
+    );
+    assert.equal(
+      snapshotTtlSeconds({ summary: { contentFreshnessPendingUntil: { a: value } } }, now),
+      1,
+      `${label} must behave identically on the compact shape`,
+    );
+  }
 });

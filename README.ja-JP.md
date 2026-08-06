@@ -111,7 +111,7 @@ npm run dev:energy     # energy.worldmonitor.app
 | **フロントエンド** | Vanilla TypeScript、Vite、globe.gl + Three.js、deck.gl + MapLibre GL |
 | **デスクトップ** | Tauri 2 (Rust) + Node.js サイドカー |
 | **AI/ML** | Ollama / Groq / OpenRouter、Transformers.js (ブラウザ側) |
-| **API コントラクト** | Protocol Buffers (290 proto、35 サービス)、sebuf HTTP アノテーション |
+| **API コントラクト** | Protocol Buffers (295 proto、36 サービス)、sebuf HTTP アノテーション |
 | **デプロイ** | Vercel Edge Functions (60 以上)、Railway リレー、Tauri、PWA |
 | **キャッシュ** | Redis (Upstash)、3 層キャッシュ、CDN、Service Worker |
 
@@ -147,7 +147,7 @@ World Monitor はブラウザだけでなく、エージェントやスクリプ
 
 ## データソース
 
-WorldMonitor は、地政学、金融、エネルギー、気候、航空、サイバー、軍事、インフラ、ニュースインテリジェンスの各分野にわたる 65 以上の外部プロバイダーと API を集約しています。これらは 500 以上の厳選フィードを通じて提供され、35 のソースグループを対象とする鮮度モニターで追跡されています。プロバイダー、フィードのティア、収集方法の詳細は [データソースカタログ](https://www.worldmonitor.app/docs/data-sources) を参照してください。
+WorldMonitor は、地政学、金融、エネルギー、気候、航空、サイバー、軍事、インフラ、ニュースインテリジェンスの各分野にわたる 526 以上の外部プロバイダーと API を集約しています。これらは 500 以上の厳選フィードを通じて提供され、35 のソースグループを対象とする鮮度モニターで追跡されています。プロバイダー、フィードのティア、収集方法の詳細は [データソースカタログ](https://www.worldmonitor.app/docs/data-sources) を参照してください。
 
 ---
 

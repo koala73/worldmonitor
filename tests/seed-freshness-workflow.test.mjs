@@ -22,6 +22,10 @@ const workflowSource = readFileSync(
 const workflow = YAML.parse(workflowSource);
 const monitorSteps = workflow.jobs.monitor.steps;
 
+// The one condition allowed to stop a probe: the fail-closed green-main gate.
+// Anything else (an earlier probe failing) must leave the later probes running.
+const GATE_GUARD = "${{ !cancelled() && steps.gate.conclusion != 'failure' }}";
+
 function stepNamed(name) {
   const step = monitorSteps.find((candidate) => candidate.name === name);
   assert.ok(step, `seed freshness workflow must define "${name}"`);
@@ -164,11 +168,13 @@ describe('seed freshness workflow control plane', () => {
     assert.match(gate.run, /map\(select\(\.context == "gate"\)\) \| first/);
     assert.doesNotMatch(gate.run, /sort_by\(\.updated_at\)/);
     const acceptance = stepNamed('Check ingestion operational acceptance');
-    assert.equal(
-      acceptance.if,
-      undefined,
-      'default success() semantics must keep acceptance behind the fail-closed gate',
-    );
+    // Explicitly gated on the green-main check rather than on "every earlier
+    // step passed". Default success() semantics skipped this probe on every run
+    // from 2026-08-03, because an unrelated watch-path drift failed the config
+    // audit above it — one red step silently switched off data-freshness
+    // monitoring for the whole fleet.
+    assert.equal(acceptance.if, GATE_GUARD, 'acceptance must stay behind the fail-closed gate and nothing else');
+    assert.match(GATE_GUARD, /steps\.gate\.conclusion != 'failure'/);
     assert.equal(acceptance['continue-on-error'], undefined);
   });
 
@@ -201,6 +207,9 @@ describe('seed freshness workflow control plane', () => {
     const auditIndex = monitorSteps.findIndex(
       (step) => step.name === 'Audit Railway ingestion deployment controls',
     );
+    const driftIndex = monitorSteps.findIndex(
+      (step) => step.name === 'Check Railway deploy drift against main',
+    );
     const healthIndex = monitorSteps.findIndex(
       (step) => step.name === 'Check ingestion operational acceptance',
     );
@@ -209,6 +218,68 @@ describe('seed freshness workflow control plane', () => {
     assert.ok(
       installIndex < contextIndex && contextIndex < auditIndex && auditIndex < healthIndex,
       'Railway context and watch-path drift must be checked before compact health',
+    );
+    // Deploy drift runs LAST. It fails whenever any service is off head —
+    // including on a baseline expiry — and a failing step cancels the ones
+    // behind it, so ordering it before compact health would let a deploy-drift
+    // problem silently stop the data-health probe entirely.
+    assert.ok(
+      healthIndex < driftIndex,
+      'deploy drift must not be able to cancel the compact-health probe',
+    );
+
+    // Two questions need local history: `git merge-base --is-ancestor` for a
+    // merge that landed mid-run, and (#6142) the diff between the commit each
+    // service is RUNNING and head. The second is why a fixed depth no longer
+    // does — a service legitimately weeks behind on code it does not contain
+    // sits outside any of them, and an unreachable running commit reports as
+    // CLOSURE_UNKNOWN. Full history, no blobs.
+    assert.equal(
+      checkout.with?.['fetch-depth'],
+      0,
+      'the deploy-drift check needs history back to each service\'s running commit',
+    );
+    assert.equal(
+      checkout.with?.filter,
+      'blob:none',
+      'full history must be fetched without blobs — the closure diff walks trees only',
+    );
+
+    const drift = monitorSteps[driftIndex];
+    assert.equal(drift.env.RAILWAY_TOKEN, '${{ secrets.RAILWAY_PRODUCTION_TOKEN }}');
+    assert.equal(drift.env.RAILWAY_PROJECT_ID, '${{ vars.RAILWAY_PROJECT_ID }}');
+    assert.match(drift.run, /node scripts\/check-railway-deploy-drift\.mjs/);
+    assert.match(
+      drift.run,
+      /git fetch --quiet origin main/,
+      'a merge landing mid-run must be resolvable as ahead, not reported as behind',
+    );
+    // Passing --depth to a full clone SHALLOWS it, which would strand exactly
+    // the running commits the closure comparison needs — the checkout above
+    // fetches full history precisely so this cannot happen.
+    assert.doesNotMatch(
+      drift.run,
+      /git fetch[^\n]*--depth/,
+      're-fetching with a depth would re-shallow the full-history checkout',
+    );
+    assert.equal(
+      drift['continue-on-error'],
+      undefined,
+      'a merge that never reached production must fail the monitor, not annotate it',
+    );
+    // Gated on the green-main check only, exactly as compact health is: an
+    // earlier probe's failure must not be able to skip this one.
+    assert.equal(drift.if, GATE_GUARD, 'deploy drift stays behind the fail-closed gate and nothing else');
+
+    assert.equal(
+      workflow.jobs.monitor['timeout-minutes'],
+      20,
+      'the job budget must cover one Railway round trip per service',
+    );
+    assert.deepEqual(
+      workflow.concurrency,
+      { group: 'seed-freshness-monitor', 'cancel-in-progress': true },
+      'a run slower than the interval must be superseded, not stacked',
     );
 
     assert.match(

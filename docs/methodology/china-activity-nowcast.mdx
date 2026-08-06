@@ -37,7 +37,7 @@ freshness budget, alignment rule, and source declaration in
 
 | Family | First-version observation | Transformation | Frequency | Lag | Freshness budget |
 | --- | --- | --- | --- | --- | --- |
-| Freight | China Containerized Freight Index change | Published signed percentage change only | Weekly | None | 28 days |
+| Freight | China Containerized Freight Index change | Exchange-published percentage, or the change between two published period levels | Weekly | None | 28 days |
 | Maritime | Reviewed PortWatch trend deltas | Mean of finite configured-node trend deltas | Daily | None | 72 hours |
 | Aviation | Reviewed hub normal/disruption balance | Normal share minus disruption share | Intra-day | None | 180 minutes |
 | Energy | Published China demand change | Published signed percentage change only | Monthly | 30 days | 210 days |
@@ -53,9 +53,12 @@ contract publishes the required directional observation.
 
 ## Alignment and missingness
 
-The default comparison window is 90 days. The method selects the latest
-point-in-window observation for each registry entry after its documented lag
-has elapsed.
+The standalone evaluator defaults to a 90-day comparison window. The live API
+uses a 210-day window so the monthly energy series can honor its documented
+210-day freshness budget after the demand period is dated truthfully; the
+individual freshness budget still applies to every family. The method selects
+the latest point-in-window observation for each registry entry after its
+documented lag has elapsed.
 
 Forward-filling and interpolation are disabled for every family. The method
 does not fall back to an older observation when the newest point is stale,

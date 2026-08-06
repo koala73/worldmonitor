@@ -10,7 +10,7 @@ import { loadAllRetailerConfigs, loadRetailerConfig } from '../config/loader.js'
 import { initProviders, teardownAll } from '../acquisition/registry.js';
 import { GenericPlaywrightAdapter } from '../adapters/generic.js';
 import { ExaSearchAdapter } from '../adapters/exa-search.js';
-import { SearchAdapter } from '../adapters/search.js';
+import { SearchAdapter, SearchTargetError } from '../adapters/search.js';
 import { ExaProvider } from '../acquisition/exa.js';
 import { FirecrawlProvider } from '../acquisition/firecrawl.js';
 import type { AdapterContext } from '../adapters/types.js';
@@ -20,6 +20,9 @@ import { AUTO_MATCH_THRESHOLD, type ValidatorResult } from '../adapters/validato
 import {
   classifyValidatorOutcome,
   createScrapeRunStatement,
+  isRunBudgetExhausted,
+  resolveRunBudgetMs,
+  resolveRunStatus,
   updateScrapeRunStatement,
 } from './scrape-coverage.js';
 
@@ -143,7 +146,27 @@ export async function scrapeRetailer(slug: string) {
 
   const delay = config.rateLimit?.delayBetweenRequestsMs ?? 2_000;
 
+  // Wall-clock ceiling for one retailer's target loop. Each candidate URL can
+  // now cost two bounded provider calls (Firecrawl, then the opt-in Exa
+  // fallback), so a provider brown-out that never trips the 2-strike cooldowns
+  // — every call slow but eventually answering — can run far past the cron
+  // slot. Without this the only stop is an external kill, which skips
+  // updateScrapeRun entirely and strands the row at status='running'; the
+  // active-run query has no age bound, so that row is served indefinitely.
+  // Stopping ourselves keeps the run's own accounting honest: whatever was
+  // scraped is committed and the status lands on 'partial'.
+  const runBudgetMs = resolveRunBudgetMs(process.env.CONSUMER_PRICES_RUN_BUDGET_MS);
+  const runStartedAt = Date.now();
+  let budgetExhausted = false;
+
   for (const target of targets) {
+    if (isRunBudgetExhausted(runStartedAt, Date.now(), runBudgetMs)) {
+      budgetExhausted = true;
+      logger.warn(
+        `  [budget] ${slug}: run budget ${runBudgetMs}ms exhausted after ${pagesAttempted}/${targets.length} targets — stopping early`,
+      );
+      break;
+    }
     pagesAttempted++;
     const isDirect = target.metadata?.direct === true;
     const pinnedProductId = target.metadata?.pinnedProductId as string | undefined;
@@ -295,6 +318,7 @@ export async function scrapeRetailer(slug: string) {
       pagesSucceeded++;
     } catch (err) {
       errorsCount++;
+      if (err instanceof SearchTargetError) rejectedCount += err.rejectedCount;
       logger.error(`  [${target.id}] failed: ${err}`);
       if (isDirect && pinnedProductId && pinnedMatchId) {
         await handlePinError(pinnedProductId, pinnedMatchId, target.id);
@@ -304,7 +328,7 @@ export async function scrapeRetailer(slug: string) {
     if (pagesAttempted < targets.length) await sleep(delay);
   }
 
-  const status = errorsCount === 0 ? 'completed' : pagesSucceeded > 0 ? 'partial' : 'failed';
+  const status = resolveRunStatus(errorsCount, pagesSucceeded, budgetExhausted);
   await updateScrapeRun(runId, status, pagesAttempted, pagesSucceeded, errorsCount, rejectedCount);
   logger.info(`Run ${runId} finished: ${status} (${pagesSucceeded}/${pagesAttempted} pages, rejected=${rejectedCount})`);
 
@@ -380,4 +404,15 @@ async function main() {
 // process.exit() is required to flush lingering Playwright/Chromium handles
 // that would otherwise prevent the process from exiting naturally.
 // process.exitCode preserves failure signaling set in the catch block above.
-main().catch(() => { process.exitCode = 1; }).then(() => process.exit(process.exitCode ?? 0));
+const __runStartedAt = Date.now();
+main()
+  .then(() => {
+    // Terminal success marker (format mirrors runSeed() in scripts/_seed-utils.mjs) so the crash
+    // diagnostic can tell a clean run from a silent death; without it every run reads as unknown.
+    // main() CATCHES INTERNALLY and signals failure via process.exitCode, so it resolves even when
+    // the run failed — the guard is what stops this vouching for a failed scrape. Plain console.log
+    // rather than the logger: the marker must survive whatever transport/format the logger uses.
+    if (!process.exitCode) console.log(`\n=== Done (${Date.now() - __runStartedAt}ms) ===`);
+  })
+  .catch(() => { process.exitCode = 1; })
+  .then(() => process.exit(process.exitCode ?? 0));

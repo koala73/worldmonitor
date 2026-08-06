@@ -434,7 +434,8 @@
     "consumerPrices": "Consumer Prices",
     "fearGreed": "Fear & Greed",
     "marketBreadth": "Market Breadth",
-    "climateNews": "Climate News"
+    "climateNews": "Climate News",
+    "fx": "Курси валют"
   },
   "commands": {
     "prefixes": {
@@ -1274,7 +1275,7 @@
         "ucdpEvents": "Armed Conflict Events",
         "displacementFlows": "Displacement Flows",
         "climateAnomalies": "Climate Anomalies",
-        "weatherAlerts": "Weather Alerts",
+        "weatherAlerts": "Метеопопередження у США (NWS)",
         "strategicWaterways": "Chokepoints",
         "economicCenters": "Economic Centers",
         "criticalMinerals": "Critical Minerals",
@@ -1353,7 +1354,7 @@
           "infraDatacenters": "AI compute clusters >=10,000 GPUs",
           "infraOutages": "Internet blackouts and service disruptions",
           "naturalEventsTech": "Earthquakes, storms, fires (may affect data centers)",
-          "weatherAlerts": "Severe weather alerts",
+          "weatherAlerts": "Попередження про небезпечну погоду у США (NWS)",
           "economicCenters": "Stock exchanges & central banks",
           "countriesOverlay": "Country name overlays",
           "financeExchanges": "Major global exchanges by market tier",
@@ -1365,7 +1366,7 @@
           "financeOutages": "Internet disruptions that can impact market operations",
           "financeCyberThreats": "Security events around financial infrastructure",
           "macroWaterways": "Strategic chokepoints for commodity shipping",
-          "weatherAlertsMarket": "Severe weather events with market relevance",
+          "weatherAlertsMarket": "Небезпечні погодні явища у США, важливі для ринків (NWS)",
           "naturalEventsMacro": "Earthquakes, fires, floods, and other natural disruptions",
           "timeRecent": "Filter time-based data to recent hours",
           "timeExtended": "Show data from past week, month, or all time",
@@ -2591,6 +2592,33 @@
         "compactHours": "{{count}}h",
         "compactDays": "{{count}}d"
       }
+    },
+    "fx": {
+      "infoTooltip": "<strong>Курси валют</strong> Стрес валют і спотові курси:<ul><li>FX Stress ранжирує 45 валют за найгіршим падінням від піку до дна за останні 24 місяці, поряд зі змінами за 12 місяців</li><li>Охоплення включає ARS, TRY, EGP, NGN, PKR та UAH — валути, які референтні набори BIS та ECB не включають</li><li>Спотові курси наведені окремо проти долара США та референтних курсів євро ECB, оскільки вони котируються на різних базах</li></ul>Джерела: Yahoo Finance та Європейський центральний банк.",
+      "tabs": {
+        "stress": "FX Stress",
+        "spot": "Спот"
+      },
+      "currency": "Валюта",
+      "pair": "Пара",
+      "rate": "Курс",
+      "yoy": "12м",
+      "drawdown": "Падіння за 24м",
+      "peakToTrough": "Пік → Дно",
+      "change1d": "1д",
+      "perUsd": "За 1 USD",
+      "usdPerUnit": "USD за одиницю",
+      "usdBase": "Проти долара США",
+      "eurBase": "Референтні курси євро ECB",
+      "stressedCount": "{{stressed}} з {{total}} валют нижче {{threshold}}",
+      "sourceYahoo": "Джерело: Yahoo Finance",
+      "sourceEcb": "Джерело: ECB",
+      "degraded": "Недоступно зараз: {{sources}}. Повторна спроба незабаром.",
+      "source": {
+        "stress": "FX стрес",
+        "usd": "Курси US долара",
+        "eur": "Курси євро ECB"
+      }
     }
   },
   "popups": {
@@ -2931,7 +2959,7 @@
       "heading": "HEADING",
       "hexCode": "HEX CODE",
       "squawk": "SQUAWK",
-      "attribution": "Source: OpenSky Network"
+      "attribution": "Source: adsb.lol (ODbL) · OpenSky Network"
     },
     "militaryVessel": {
       "aisDark": "AIS DARK",

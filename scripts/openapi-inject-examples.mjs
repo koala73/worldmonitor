@@ -32,6 +32,10 @@ const JSON_MEDIA = 'application/json';
 const HTTP_METHODS = new Set(['get', 'post', 'put', 'delete', 'patch', 'options', 'head']);
 const MAX_OBJECT_DEPTH = 6;
 const MAX_OPTIONAL_PROPERTIES = 5;
+
+// Object keys whose boolean members are rollout gates, not status fields. Their example
+// value must be `false` (the shipped default), never the generic `true`.
+const FLAG_CONTAINER_KEYS = new Set(['featureflags', 'rolloutflags']);
 const CHINA_CORRIDOR_PATH = '/api/supply-chain/v1/get-china-corridor-control-towers';
 const CHINA_DECISION_SIGNALS_PATH = '/api/intelligence/v1/get-china-decision-signals';
 
@@ -474,8 +478,20 @@ function constrainedString(value, schema) {
 
 function patternString(pattern, key) {
   if (!pattern) return null;
+  if (pattern.startsWith('^cmc1\\.')) {
+    return `cmc1.${'a'.repeat(32)}.${'b'.repeat(43)}`;
+  }
+  if (pattern.includes('(?:www\\.)?') && pattern.includes('[A-Za-z0-9-]')) {
+    return 'example.com';
+  }
   const simpleAlternation = pattern.match(/^\^\(([^)]+)\)\$/);
   if (simpleAlternation) return simpleAlternation[1].split('|')[0];
+  const companyMonitoringLogicalId = pattern.match(
+    /^\^(cm_(?:company|claim|event|evidence|impact)_)\[0-9A-HJKMNP-TV-Z\]\{26\}\$$/,
+  );
+  if (companyMonitoringLogicalId) {
+    return `${companyMonitoringLogicalId[1]}01ARZ3NDEKTSV4RRFFQ69G5FAV`;
+  }
   if (/scenario:\[0-9\]\{13\}:\[a-z0-9\]\{8\}/.test(pattern) || pattern.includes('scenario:')) {
     return 'scenario:1717200000000:abcd1234';
   }
@@ -573,7 +589,13 @@ function stringExample(name, schema = {}, context = {}) {
 function numberExample(name, schema = {}, integer = false) {
   const key = normalizeKey(name);
   let value = integer ? 1 : 1.5;
-  if (key.includes('page') || key.includes('limit')) value = 25;
+  // A zero-based position must example as 0. The generic `1` published an import-batch
+  // example whose single row had ordinal 1, which the batch contract rejects outright
+  // ("batch ordinals must be contiguous from 0") — a copy-pasteable 400.
+  // Deliberately `ordinal` only, NOT `index`: in this repo `index` is a price index
+  // (base = 100) on ConsumerPricesService, where 0 is a nonsense example value.
+  if (key === 'ordinal') value = 0;
+  else if (key.includes('page') || key.includes('limit')) value = 25;
   else if (key.includes('days')) value = 7;
   else if (key.includes('closuredays')) value = 30;
   else if (key === 'lat' || key.endsWith('lat') || key.includes('latitude')) value = 40.7128;
@@ -654,6 +676,48 @@ function getCompanyEnrichmentExample() {
   };
 }
 
+// ShippingIndex has 12 properties and none are `required`, so the generic
+// builder's MAX_OPTIONAL_PROPERTIES cap keeps only the 5 alphabetically-first —
+// dropping the four decision-grade period-change fields (#6078) along with
+// previousValue/unit/spikeAlert. Curate it so the published example shows what
+// the endpoint actually returns, including the fail-closed shape where the
+// exchange published no comparable prior.
+function getShippingRatesExample() {
+  return {
+    indices: [
+      {
+        indexId: 'CCFI',
+        name: 'CCFI - China Container Freight',
+        currentValue: 1072.16,
+        previousValue: 1054.38,
+        changePct: 1.69,
+        unit: 'index',
+        history: [{ date: '2026-01-15', value: 1072.16 }],
+        spikeAlert: false,
+        periodChangePct: 1.69,
+        periodChangeBasis: 'publisher_reported',
+        priorPeriodValue: 1054.38,
+        priorPeriodDate: '2026-01-08',
+      },
+      {
+        // Fail-closed shape: the exchange published a level with no comparable
+        // prior, so the decision-grade fields are ABSENT (not 0, not null) while
+        // the legacy display fields still carry their fabricated fallback.
+        indexId: 'BDI',
+        name: 'BDI - Baltic Dry Index',
+        currentValue: 1972,
+        previousValue: 1972,
+        changePct: 0,
+        unit: 'index',
+        history: [{ date: '2026-01-15', value: 1972 }],
+        spikeAlert: false,
+      },
+    ],
+    fetchedAt: '2026-01-15T12:00:00Z',
+    upstreamUnavailable: false,
+  };
+}
+
 function exampleForSchema(schema, spec, context = {}, depth = 0, seen = new Set()) {
   if (!schema || typeof schema !== 'object') return 'example';
   const original = schema;
@@ -678,6 +742,13 @@ function exampleForSchema(schema, spec, context = {}, depth = 0, seen = new Set(
     && String(context.name ?? '').toLowerCase().endsWith('response')
   ) {
     return getCompanyEnrichmentExample();
+  }
+  if (
+    depth === 0
+    && String(context.operationId ?? '').toLowerCase() === 'getshippingrates'
+    && String(context.name ?? '').toLowerCase().endsWith('response')
+  ) {
+    return getShippingRatesExample();
   }
   const ref = original.$ref;
   if (ref) {
@@ -730,7 +801,9 @@ function exampleForSchema(schema, spec, context = {}, depth = 0, seen = new Set(
     }
     const out = {};
     for (const key of keys) {
-      out[key] = exampleForSchema(props[key], spec, { ...context, name: key }, depth + 1, seen);
+      // Carry the container's own key so a leaf can tell what block it belongs to
+      // (a feature-flag boolean must not inherit the generic `true` default).
+      out[key] = exampleForSchema(props[key], spec, { ...context, name: key, parent: name }, depth + 1, seen);
     }
     return out;
   }
@@ -742,6 +815,12 @@ function exampleForSchema(schema, spec, context = {}, depth = 0, seen = new Set(
     // unreadable — a 200 example with unavailable:true is a contract footgun.
     const key = normalizeKey(name || context.name || '');
     if (key === 'unavailable' || key.endsWith('unavailable')) return false;
+    // Rollout/feature flags default OFF. The generic `true` default is wrong for a
+    // block whose whole design is "every gate starts false and flips one at a time":
+    // it published an example showing Company Monitoring mostly-enabled next to
+    // accessState DISABLED — a state the product cannot actually be in, and the exact
+    // opposite of the invariant the flags exist to hold.
+    if (FLAG_CONTAINER_KEYS.has(normalizeKey(context.parent || ''))) return false;
     return true;
   }
   return stringExample(name, schema, context);

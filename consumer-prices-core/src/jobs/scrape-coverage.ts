@@ -50,3 +50,38 @@ export function classifyValidatorOutcome(
     errorCount: wasDirectHit ? 1 : 0,
   };
 }
+
+/** Default wall-clock ceiling for one retailer's target loop. */
+export const DEFAULT_RUN_BUDGET_MS = 20 * 60_000;
+
+/**
+ * Resolve the run budget from config. A non-numeric or non-positive value
+ * disables the ceiling rather than truncating every run instantly — a typo'd
+ * env var must not silently gut coverage.
+ */
+export function resolveRunBudgetMs(raw: string | undefined): number {
+  if (raw === undefined || raw === '') return DEFAULT_RUN_BUDGET_MS;
+  const parsed = Number(raw);
+  if (!Number.isFinite(parsed) || parsed <= 0) return Number.POSITIVE_INFINITY;
+  return parsed;
+}
+
+/** True once the target loop has spent its wall-clock budget. */
+export function isRunBudgetExhausted(startedAt: number, now: number, budgetMs: number): boolean {
+  if (!Number.isFinite(budgetMs)) return false;
+  return now - startedAt > budgetMs;
+}
+
+/**
+ * Terminal run status. A budget-truncated run is 'partial' even with zero
+ * errors: it never attempted every target, and reporting 'completed' would
+ * refresh the freshness marker while part of the basket was skipped.
+ */
+export function resolveRunStatus(
+  errorsCount: number,
+  pagesSucceeded: number,
+  budgetExhausted: boolean,
+): 'completed' | 'partial' | 'failed' {
+  if (errorsCount === 0 && !budgetExhausted) return 'completed';
+  return pagesSucceeded > 0 ? 'partial' : 'failed';
+}

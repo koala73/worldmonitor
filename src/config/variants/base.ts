@@ -53,6 +53,8 @@ export const REFRESH_INTERVALS = {
   gulfEconomies: 10 * 60 * 1000,
   groceryBasket: 6 * 60 * 60 * 1000,
   fuelPrices: 6 * 60 * 60 * 1000,
+  fx: 6 * 60 * 60 * 1000, // all three FX keys are daily seeds; 6h picks up the new bar without polling a static payload
+
   faoFoodPriceIndex: 24 * 60 * 60 * 1000, // monthly data; refresh daily is sufficient
   oilInventories: 5 * 60 * 1000, // EIA weekly + EU gas daily; 5min refresh
   climateNews: 30 * 60 * 1000, // seeded every 30min; match cadence

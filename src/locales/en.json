@@ -434,7 +434,8 @@
     "consumerPrices": "Consumer Prices",
     "fearGreed": "Fear & Greed",
     "marketBreadth": "Market Breadth",
-    "climateNews": "Climate News"
+    "climateNews": "Climate News",
+    "fx": "FX Rates"
   },
   "commands": {
     "prefixes": {
@@ -1274,7 +1275,7 @@
         "ucdpEvents": "Armed Conflict Events",
         "displacementFlows": "Displacement Flows",
         "climateAnomalies": "Climate Anomalies",
-        "weatherAlerts": "Weather Alerts",
+        "weatherAlerts": "US Weather Alerts (NWS)",
         "strategicWaterways": "Chokepoints",
         "economicCenters": "Economic Centers",
         "criticalMinerals": "Critical Minerals",
@@ -1353,7 +1354,7 @@
           "infraDatacenters": "AI compute clusters >=10,000 GPUs",
           "infraOutages": "Internet blackouts and service disruptions",
           "naturalEventsTech": "Earthquakes, storms, fires (may affect data centers)",
-          "weatherAlerts": "Severe weather alerts",
+          "weatherAlerts": "Severe weather alerts in the United States (NWS)",
           "economicCenters": "Stock exchanges & central banks",
           "countriesOverlay": "Country name overlays",
           "financeExchanges": "Major global exchanges by market tier",
@@ -1365,7 +1366,7 @@
           "financeOutages": "Internet disruptions that can impact market operations",
           "financeCyberThreats": "Security events around financial infrastructure",
           "macroWaterways": "Strategic chokepoints for commodity shipping",
-          "weatherAlertsMarket": "Severe weather events with market relevance",
+          "weatherAlertsMarket": "Severe weather events in the United States with market relevance (NWS)",
           "naturalEventsMacro": "Earthquakes, fires, floods, and other natural disruptions",
           "timeRecent": "Filter time-based data to recent hours",
           "timeExtended": "Show data from past week, month, or all time",
@@ -2591,6 +2592,33 @@
         "compactHours": "{{count}}h",
         "compactDays": "{{count}}d"
       }
+    },
+    "fx": {
+      "infoTooltip": "<strong>FX Rates</strong> Currency stress and spot rates:<ul><li>FX Stress ranks 45 currencies by their worst peak-to-trough drawdown over the last 24 months, alongside the 12-month change</li><li>Coverage includes ARS, TRY, EGP, NGN, PKR and UAH — currencies the BIS and ECB reference sets omit</li><li>Spot lists rates against the US dollar and the ECB euro reference rates separately, because the two are quoted from different bases</li></ul>Sources: Yahoo Finance and the European Central Bank.",
+      "tabs": {
+        "stress": "FX Stress",
+        "spot": "Spot"
+      },
+      "currency": "Currency",
+      "pair": "Pair",
+      "rate": "Rate",
+      "yoy": "12m",
+      "drawdown": "24m Drawdown",
+      "peakToTrough": "Peak → Trough",
+      "change1d": "1d",
+      "perUsd": "Per 1 USD",
+      "usdPerUnit": "USD per unit",
+      "usdBase": "Against the US dollar",
+      "eurBase": "ECB euro reference rates",
+      "stressedCount": "{{stressed}} of {{total}} currencies past {{threshold}}",
+      "degraded": "Unavailable right now: {{sources}}. Retrying shortly.",
+      "source": {
+        "stress": "FX stress",
+        "usd": "US dollar rates",
+        "eur": "ECB euro rates"
+      },
+      "sourceYahoo": "Source: Yahoo Finance",
+      "sourceEcb": "Source: ECB"
     }
   },
   "popups": {
@@ -2931,7 +2959,7 @@
       "heading": "HEADING",
       "hexCode": "HEX CODE",
       "squawk": "SQUAWK",
-      "attribution": "Source: OpenSky Network"
+      "attribution": "Source: adsb.lol (ODbL) · OpenSky Network"
     },
     "militaryVessel": {
       "aisDark": "AIS DARK",

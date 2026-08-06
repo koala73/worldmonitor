@@ -119,6 +119,7 @@ generate: clean ## Generate code from proto definitions
 	@# examples. Apply byte-/format-preserving injectors before deriving
 	@# examples so examples reflect the final schemas.
 	@node scripts/openapi-inject-security.mjs
+	@node scripts/openapi-inject-company-monitoring-contract.mjs
 	@node scripts/apply-openapi-filter-param-schemas.mjs
 	@node scripts/openapi-inject-required.mjs
 	@node scripts/openapi-inject-examples.mjs
@@ -134,7 +135,7 @@ generate: clean ## Generate code from proto definitions
 	@echo "Code generation complete!"
 
 breaking: ## Check for breaking changes against main
-	cd $(PROTO_DIR) && buf breaking --against '.git#branch=main,subdir=proto'
+	cd $(PROTO_DIR) && buf breaking --against '../.git#branch=origin/main,subdir=proto'
 
 format: ## Format protobuf files
 	cd $(PROTO_DIR) && buf format -w
