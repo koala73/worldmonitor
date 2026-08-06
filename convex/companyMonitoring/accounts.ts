@@ -39,6 +39,9 @@ const STALLED_PURGE_REAPER_BATCH_SIZE = 50;
 const ENTITLED_RECHECK_AGE_MS = 60 * 60 * 1000;
 const ENTITLED_RECHECK_BATCH_SIZE = 50;
 const REAPABLE_PURGE_PHASES = ["finalizing", "companies", "pending"] as const;
+// Both directions: "entitled" rows may need lapsing, "entitlement_lapsed" rows
+// may need restoring after a late renewal. "denied" is terminal and excluded.
+const RECONCILABLE_LIFECYCLES = ["entitled", "entitlement_lapsed"] as const;
 
 async function canonicalEntitlement(ctx: MutationCtx, userId: string) {
   const entitlement = await ctx.db
@@ -433,6 +436,18 @@ export const advanceAccountPurge = internalMutation({
         );
         return { status: "waiting", purgeAfter };
       }
+      // Last line of defence before anything irreversible. The 24h grace exists
+      // so a late renewal can land first, and entitlement writes no longer push
+      // that restoration in (#6256) — so re-derive it here rather than trusting
+      // a lifecycle set up to a full reconciler sweep ago. The finalizing branch
+      // already does this recheck; by then the payload is gone.
+      if (isOrdinaryLapse && account.ownerUserId) {
+        const canonical = await canonicalEntitlement(ctx, account.ownerUserId);
+        if (canonical.active) {
+          await syncCompanyMonitoringAccountFromEntitlement(ctx, account.ownerUserId);
+          return { status: "reactivated" };
+        }
+      }
       await ctx.db.patch(account._id, {
         purgePhase: "companies",
         destructivePurgeStarted: true,
@@ -593,32 +608,47 @@ export const reconcileAccountEntitlements = internalMutation({
   handler: async (ctx) => {
     const now = Date.now();
     const staleBefore = now - ENTITLED_RECHECK_AGE_MS;
-    const accounts = await ctx.db
-      .query("companyMonitoringAccounts")
-      .withIndex("by_lifecycle_updatedAt", (q) =>
-        q.eq("lifecycle", "entitled").lt("updatedAt", staleBefore),
-      )
-      .take(ENTITLED_RECHECK_BATCH_SIZE);
-
+    let remaining = ENTITLED_RECHECK_BATCH_SIZE;
     let scanned = 0;
-    let lapsed = 0;
-    for (const account of accounts) {
-      scanned += 1;
-      const ownerUserId = account.ownerUserId;
-      // A terminal row never carries an owner; skip rather than resurrect.
-      if (!ownerUserId || account.terminalReason) continue;
-      const before = account.lifecycle;
-      const synced = await syncCompanyMonitoringAccountFromEntitlement(ctx, ownerUserId);
-      if (synced && synced.lifecycle !== before) lapsed += 1;
-      // Always advance the cursor, including for still-entitled rows the sync
-      // left untouched — otherwise the same 50 rows are rescanned every tick
-      // and newer ones are never reached.
-      const current = await ctx.db.get(account._id);
-      if (current && current.updatedAt < now) {
+    let scheduled = 0;
+
+    // BOTH directions. Scanning only "entitled" would detect lapses and never
+    // undo one, and the entitlement write that used to restore a lapsed root is
+    // exactly what #6256 removed — a customer who re-subscribed after a late
+    // renewal would stay locked out until the purge scrubbed them.
+    for (const lifecycle of RECONCILABLE_LIFECYCLES) {
+      if (remaining === 0) break;
+      const accounts = await ctx.db
+        .query("companyMonitoringAccounts")
+        .withIndex("by_lifecycle_updatedAt", (q) =>
+          q.eq("lifecycle", lifecycle).lt("updatedAt", staleBefore),
+        )
+        .take(remaining);
+      remaining -= accounts.length;
+
+      for (const account of accounts) {
+        scanned += 1;
+        // Advance the cursor FIRST and unconditionally, including for rows we
+        // skip — otherwise a skipped row keeps its slot at the head of the
+        // index forever and starves everything behind it.
         await ctx.db.patch(account._id, { updatedAt: now });
+        const ownerUserId = account.ownerUserId;
+        // A terminal row never carries an owner; skip rather than resurrect.
+        if (!ownerUserId || account.terminalReason) continue;
+        // Schedule rather than sync inline: this is one transaction over 50
+        // rows, so an inline throw (a fence conflict is reachable) would roll
+        // back every cursor advance and stall lapse detection fleet-wide,
+        // permanently. Per-row scheduling costs one bad row per sweep instead.
+        // Same shape as reapStalledAccountPurges.
+        await ctx.scheduler.runAfter(
+          0,
+          (internal as any).companyMonitoring.accounts.syncStoredEntitlement,
+          { userId: ownerUserId },
+        );
+        scheduled += 1;
       }
     }
 
-    return { scanned, lapsed };
+    return { scanned, scheduled };
   },
 });

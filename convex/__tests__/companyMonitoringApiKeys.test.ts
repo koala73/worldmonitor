@@ -17,6 +17,33 @@ import {
 installCompanyMonitoringTestEnvironment();
 
 describe("account-bound Company Monitoring API-key scopes", () => {
+  test("issuing the first scoped key provisions the root, and an unscoped key does not", async () => {
+    const t = convexTest(schema, modules);
+    // Bare grant: the entitlement write no longer provisions anything (#6256).
+    await grant(t, OWNER_A, "api_starter");
+    expect(await accountFor(t, OWNER_A)).toBeNull();
+
+    // An unscoped key must stay entirely off Company Monitoring.
+    await t.withIdentity({ subject: OWNER_A, tokenIdentifier: `clerk|${OWNER_A}` }).mutation(
+      api.apiKeys.createApiKey,
+      { name: "generic", keyPrefix: "wm_ddddd", keyHash: "d".repeat(64) },
+    );
+    expect(await accountFor(t, OWNER_A)).toBeNull();
+
+    // Requesting scopes is a first-use entry point: it provisions.
+    const scoped = await t.withIdentity({ subject: OWNER_A, tokenIdentifier: `clerk|${OWNER_A}` })
+      .mutation(api.apiKeys.createApiKey, {
+        name: "company-monitoring",
+        keyPrefix: "wm_eeeee",
+        keyHash: "e".repeat(64),
+        scopes: ["company_monitoring:read"],
+      });
+
+    const account = await accountFor(t, OWNER_A);
+    expect(account).toMatchObject({ ownerUserId: OWNER_A, lifecycle: "entitled" });
+    expect(scoped.companyMonitoringAccountId).toBe(account?.logicalAccountId);
+  });
+
   test("scoped keys carry the exact active account binding and stale activation fails closed", async () => {
     const t = convexTest(schema, modules);
     await grantProvisioned(t, OWNER_A, "api_starter");
