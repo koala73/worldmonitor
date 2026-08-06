@@ -64,8 +64,11 @@ describe("Company Monitoring account lifecycle", () => {
             previous_billing_date: new Date(NOW - 1000).toISOString(),
             next_billing_date: new Date(FUTURE).toISOString(),
             customer: { customer_id: "cust-decoupled", email: "owner@example.com" },
-            // Unsigned wm_user_id is deliberately ignored by attribution, so
-            // the event would land unattributed and write no entitlement.
+            // Signed so tryResolveUserId attributes the event and a REAL
+            // entitlement is written — otherwise the event lands unattributed
+            // and the assertion below would pass vacuously. The point of this
+            // case is that a genuinely attributed entitlement write still does
+            // no Company Monitoring work.
             metadata: {
               wm_user_id: OWNER_A,
               wm_user_id_sig: await signUserId(OWNER_A),
@@ -149,7 +152,9 @@ describe("Company Monitoring account lifecycle", () => {
     vi.setSystemTime(NOW + 2 * 60 * 60 * 1000);
     const result = await t.mutation(CM.accounts.reconcileAccountEntitlements, {});
 
-    expect(result).toMatchObject({ scanned: 1, lapsed: 1 });
+    expect(result).toMatchObject({ scanned: 1, scheduled: 1 });
+    vi.advanceTimersByTime(1);
+    await t.finishInProgressScheduledFunctions();
     expect(await accountFor(t, OWNER_A)).toMatchObject({
       lifecycle: "entitlement_lapsed",
       purgePhase: "pending",
@@ -207,6 +212,193 @@ describe("Company Monitoring account lifecycle", () => {
     ).rejects.toThrow();
   });
 
+  // The regression both review lenses caught. The 24h grace exists so a late
+  // renewal can land before anything is scrubbed, and its only wire into
+  // Company Monitoring was the entitlement-write call #6256 removed. Without
+  // the purge-time recheck AND the lapsed-bucket scan, a customer who paid
+  // again stays locked out and then loses their portfolio.
+  test("a renewal during the grace window restores the root and cancels the purge", async () => {
+    const t = convexTest(schema, modules);
+    await grantProvisioned(t, OWNER_A);
+    await t.mutation(CM.companies.createCompanyForOwner, {
+      ownerUserId: OWNER_A,
+      clientRequestId: "pre-lapse",
+      company: company("Pre Lapse", "pre-lapse"),
+    });
+
+    // Renewal is late: entitlement expires and the reconciler lapses the root.
+    await t.run(async (ctx) => {
+      const row = await ctx.db
+        .query("entitlements")
+        .withIndex("by_userId", (q) => q.eq("userId", OWNER_A))
+        .unique();
+      await ctx.db.patch(row!._id, { planKey: "free", validUntil: NOW - 1 });
+    });
+    vi.setSystemTime(NOW + 2 * 60 * 60 * 1000);
+    await t.mutation(CM.accounts.reconcileAccountEntitlements, {});
+    vi.advanceTimersByTime(1);
+    await t.finishInProgressScheduledFunctions();
+    expect(await accountFor(t, OWNER_A)).toMatchObject({
+      lifecycle: "entitlement_lapsed",
+      purgePhase: "pending",
+    });
+
+    // The renewal lands — a raw entitlement write, exactly as production now
+    // does it, with nothing pushing into Company Monitoring.
+    await t.run(async (ctx) => {
+      const row = await ctx.db
+        .query("entitlements")
+        .withIndex("by_userId", (q) => q.eq("userId", OWNER_A))
+        .unique();
+      await ctx.db.patch(row!._id, {
+        planKey: "api_starter",
+        features: getFeaturesForPlan("api_starter"),
+        validUntil: NOW + 60 * 24 * 60 * 60 * 1000,
+      });
+    });
+
+    // The reconciler must restore it, not just detect lapses.
+    vi.setSystemTime(NOW + 4 * 60 * 60 * 1000);
+    await t.mutation(CM.accounts.reconcileAccountEntitlements, {});
+    vi.advanceTimersByTime(1);
+    await t.finishInProgressScheduledFunctions();
+    expect(await accountFor(t, OWNER_A)).toMatchObject({
+      lifecycle: "entitled",
+      purgePhase: "none",
+    });
+
+    // And the portfolio must have survived.
+    const companies = await t.query(CM.companies.listCompaniesForOwner, {
+      ownerUserId: OWNER_A,
+    });
+    expect(companies).toHaveLength(1);
+    expect(companies[0]).toMatchObject({ name: "Pre Lapse" });
+  });
+
+  test("purge refuses to start destroying data for an owner who has paid again", async () => {
+    const t = convexTest(schema, modules);
+    await grantProvisioned(t, OWNER_A);
+    await t.mutation(CM.companies.createCompanyForOwner, {
+      ownerUserId: OWNER_A,
+      clientRequestId: "paid-again",
+      company: company("Paid Again", "paid-again"),
+    });
+    const root = await accountFor(t, OWNER_A);
+
+    // Lapse it, then let the entitlement come back WITHOUT any reconciler run —
+    // the scheduled purge job is already armed and about to fire.
+    await setStoredEntitlement(t, OWNER_A, "free", NOW - 1);
+    expect(await accountFor(t, OWNER_A)).toMatchObject({ purgePhase: "pending" });
+    await t.run(async (ctx) => {
+      const row = await ctx.db
+        .query("entitlements")
+        .withIndex("by_userId", (q) => q.eq("userId", OWNER_A))
+        .unique();
+      await ctx.db.patch(row!._id, {
+        planKey: "api_starter",
+        features: getFeaturesForPlan("api_starter"),
+        validUntil: NOW + 60 * 24 * 60 * 60 * 1000,
+      });
+    });
+
+    // The armed job fires after the grace deadline. It must re-derive the
+    // entitlement and refuse rather than scrub a paying customer.
+    vi.setSystemTime(NOW + 25 * 60 * 60 * 1000);
+    const lapsed = await accountFor(t, OWNER_A);
+    const result = await t.mutation(CM.accounts.advanceAccountPurge, {
+      ownerFenceHash: lapsed!.ownerFenceHash,
+      purgeGeneration: lapsed!.purgeGeneration,
+    });
+
+    expect(result).toEqual({ status: "reactivated" });
+    expect(await accountFor(t, OWNER_A)).toMatchObject({
+      _id: root?._id,
+      lifecycle: "entitled",
+      destructivePurgeStarted: false,
+    });
+    const surviving = await t.query(CM.companies.listCompaniesForOwner, {
+      ownerUserId: OWNER_A,
+    });
+    expect(surviving).toHaveLength(1);
+    expect(surviving[0]).toMatchObject({ name: "Paid Again" });
+  });
+
+  test("the reconciler ignores a root that is not yet stale", async () => {
+    const t = convexTest(schema, modules);
+    await grantProvisioned(t, OWNER_A);
+    await t.run(async (ctx) => {
+      const row = await ctx.db
+        .query("entitlements")
+        .withIndex("by_userId", (q) => q.eq("userId", OWNER_A))
+        .unique();
+      await ctx.db.patch(row!._id, { planKey: "free", validUntil: NOW - 1 });
+    });
+
+    // No time jump: the root was touched at NOW, so it sits inside the
+    // ENTITLED_RECHECK_AGE_MS window. Without this case, deleting the
+    // .lt("updatedAt", staleBefore) clause would leave the suite green.
+    expect(await t.mutation(CM.accounts.reconcileAccountEntitlements, {}))
+      .toMatchObject({ scanned: 0, scheduled: 0 });
+    expect(await accountFor(t, OWNER_A)).toMatchObject({ lifecycle: "entitled" });
+
+    vi.setSystemTime(NOW + 2 * 60 * 60 * 1000);
+    expect(await t.mutation(CM.accounts.reconcileAccountEntitlements, {}))
+      .toMatchObject({ scanned: 1, scheduled: 1 });
+  });
+
+  test("the reconciler caps each tick at its batch size and resumes on the next", async () => {
+    const t = convexTest(schema, modules);
+    const staleAt = NOW - 2 * 60 * 60 * 1000;
+    // 51 entitled roots with no entitlement row: every one must lapse, so the
+    // only thing bounding the first tick is the batch cap.
+    // Real fence hashes: the reconciler re-resolves each row through
+    // findAccountByOwnerFence, so a synthetic hash would make it scan the row
+    // and then silently find nothing.
+    const fences = await Promise.all(
+      Array.from({ length: 51 }, (_, i) => signCompanyMonitoringOwnerFence(`user_batch_${i}`)),
+    );
+    await t.run(async (ctx) => {
+      for (let i = 0; i < 51; i += 1) {
+        await ctx.db.insert("companyMonitoringAccounts", {
+          logicalAccountId: `cm_account_batch_${String(i).padStart(20, "0")}`,
+          ownerUserId: `user_batch_${i}`,
+          ownerFenceHash: fences[i]!,
+          lifecycle: "entitled",
+          lifecycleSequence: 1,
+          companyCount: 0,
+          companyLimit: 500,
+          snapshotGeneration: 0,
+          purgeGeneration: 0,
+          purgePhase: "none",
+          destructivePurgeStarted: false,
+          pendingReactivation: false,
+          createdAt: staleAt,
+          updatedAt: staleAt,
+        });
+      }
+    });
+
+    const first = await t.mutation(CM.accounts.reconcileAccountEntitlements, {});
+    expect(first).toMatchObject({ scanned: 50 });
+    vi.advanceTimersByTime(1);
+    await t.finishInProgressScheduledFunctions();
+
+    // The cursor advance must let the 51st through rather than rescanning the
+    // same 50 forever.
+    const second = await t.mutation(CM.accounts.reconcileAccountEntitlements, {});
+    expect(second.scanned).toBeGreaterThan(0);
+    vi.advanceTimersByTime(1);
+    await t.finishInProgressScheduledFunctions();
+
+    const remaining = await t.run(async (ctx) =>
+      ctx.db
+        .query("companyMonitoringAccounts")
+        .withIndex("by_lifecycle_updatedAt", (q) => q.eq("lifecycle", "entitled"))
+        .collect(),
+    );
+    expect(remaining).toEqual([]);
+  });
+
   test("the reconciler leaves a still-entitled root alone", async () => {
     const t = convexTest(schema, modules);
     await grantProvisioned(t, OWNER_A);
@@ -215,7 +407,9 @@ describe("Company Monitoring account lifecycle", () => {
     vi.setSystemTime(NOW + 2 * 60 * 60 * 1000);
     const result = await t.mutation(CM.accounts.reconcileAccountEntitlements, {});
 
-    expect(result).toMatchObject({ scanned: 1, lapsed: 0 });
+    expect(result).toMatchObject({ scanned: 1, scheduled: 1 });
+    vi.advanceTimersByTime(1);
+    await t.finishInProgressScheduledFunctions();
     const after = await accountFor(t, OWNER_A);
     expect(after).toMatchObject({
       lifecycle: "entitled",
@@ -356,6 +550,8 @@ describe("Company Monitoring account lifecycle", () => {
     // The reconciler is what converges it.
     vi.setSystemTime(NOW + 2 * 60 * 60 * 1000);
     await t.mutation(CM.accounts.reconcileAccountEntitlements, {});
+    vi.advanceTimersByTime(1);
+    await t.finishInProgressScheduledFunctions();
     expect(await accountFor(t, OWNER_A)).toMatchObject({
       lifecycle: "entitlement_lapsed",
       lifecycleSequence: 2,
