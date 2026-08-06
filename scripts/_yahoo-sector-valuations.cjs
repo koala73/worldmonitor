@@ -40,11 +40,16 @@ const BATCH_BUDGET_MS = 30_000;
 // Raising this widens one cycle's search at the cost of proxy bandwidth, which
 // is metered and whose exhaustion has taken the seeder fleet down before.
 const DEFAULT_MAX_EXIT_ATTEMPTS = 4;
-// Where the exit that last served complete fundamentals is remembered, so the
-// BATCH TIER's own search cost drops from ~3.3 request sets to 1. This does not
-// change the per-symbol tier above it, which still uses the configured exit.
+// Where the BATCH TIER should start next: either the exit with the best full-set
+// coverage or the first exit after a fully exhausted search window. This does
+// not change the per-symbol tier above it, which still uses the configured exit.
 const PREFERRED_EXIT_KEY = 'market:sectors:valuations:proxy-exit';
 const PREFERRED_EXIT_TTL = 24 * 3600;
+// Redis carries the preference across processes and restarts. This process-local
+// copy keeps a live relay moving when an optional Redis write times out or is
+// temporarily unavailable; it is keyed by the long-lived client so tests and
+// independent collectors cannot leak state into one another.
+const LOCAL_PREFERRED_EXITS = new WeakMap();
 const CURL_PROCESS_GRACE_MS = 5_000;
 
 function sleep(ms) {
@@ -539,18 +544,22 @@ async function collectV7Valuations(
           startExitAttempt: preferredExitAttempt,
         })
         : await client.fetchV7BatchDetailed(batchSymbols, batchOptions);
-      // Record the best exit even on a PARTIAL cycle. A remembered exit that has
-      // gone bad would otherwise never be replaced -- every cycle would restart
-      // there, fail, and pay the full rotation again until the 24h TTL lapsed.
-      // Learning from a partial run is what lets a poisoned preference heal.
-      if (Number.isInteger(batchResult?.bestExitAttempt)) {
+      // A completed cycle may nominate the exit with the best full-set
+      // coverage. An exhausted deterministic window must move past every exit
+      // it disproved, even when one of them contributed a partial row. Provider
+      // failures, deadline exhaustion, and unrotatable routes say nothing about
+      // an untested exit and therefore do not move the preference.
+      if (
+        batchResult?.stopReason === 'complete'
+        && Number.isInteger(batchResult?.bestExitAttempt)
+      ) {
         winningExitAttempt = batchResult.bestExitAttempt;
-      } else if (batchResult?.exitsTried > 0) {
-        // Nothing in this window worked. The window is deterministic
-        // (start..start+N), so repeating it re-probes the same dead exits every
-        // cycle forever. Step past what was just disproved so the search
-        // actually explores the pool instead of hammering one slice of it.
-        winningExitAttempt = preferredExitAttempt + batchResult.exitsTried;
+      } else if (batchResult?.stopReason === 'attempt_cap_exhausted') {
+        if (Number.isInteger(batchResult?.lastExitAttempt)) {
+          winningExitAttempt = batchResult.lastExitAttempt + 1;
+        } else if (batchResult?.exitsTried > 0) {
+          winningExitAttempt = preferredExitAttempt + batchResult.exitsTried;
+        }
       }
     } catch (error) {
       batchResult = null;
@@ -559,18 +568,22 @@ async function collectV7Valuations(
     }
     const batchValues = batchResult?.value?.valuations;
     const batchOutcomes = batchResult?.value?.outcomes;
+    const batchTransportBySymbol = batchResult?.value?.transportBySymbol;
     const transportDiagnostic = batchResult?.diagnostics?.[batchResult.diagnostics.length - 1]
       || batchResult?.diagnostic;
     for (const symbol of batchSymbols) {
       const outcome = batchOutcomes?.[symbol];
       const failure = outcome?.failure || transportDiagnostic?.failure || batchError;
+      const symbolTransport = batchTransportBySymbol?.[symbol]
+        || transportDiagnostic?.transport;
+      const value = batchValues?.[symbol];
       const diagnostic = {
         // Labelled distinctly from the per-symbol 'v7Quote' route so an
         // operator can tell whether the batch fallback ran and whether it
         // helped. Cooldown state is still SHARED with 'v7Quote' -- see the
         // healthKey passed by fetchV7BatchDetailed.
         route: 'v7QuoteBatch',
-        ...(transportDiagnostic?.transport ? { transport: transportDiagnostic.transport } : {}),
+        ...(symbolTransport ? { transport: symbolTransport } : {}),
         ...(transportDiagnostic?.attempts != null ? { attempts: transportDiagnostic.attempts } : {}),
         ...(transportDiagnostic?.status != null ? { status: transportDiagnostic.status } : {}),
         responseClass: batchError
@@ -584,7 +597,7 @@ async function collectV7Valuations(
         // exits": the whole distinction this route exists to make.
         ...(Number.isInteger(batchResult?.exitBySymbol?.[symbol])
           ? { exitAttempt: batchResult.exitBySymbol[symbol] }
-          : Number.isInteger(batchResult?.exitsTried)
+          : !value && Number.isInteger(batchResult?.exitsTried)
             ? { exitAttemptsTried: batchResult.exitsTried }
             : {}),
         ...(failure ? { failure: boundedFailure(failure) } : {}),
@@ -593,13 +606,15 @@ async function collectV7Valuations(
       if (entry) entry.outcomes.push(diagnostic);
       else diagnostics.push({ symbol, outcomes: [diagnostic] });
 
-      const value = batchValues?.[symbol];
       if (value) {
+        const symbolSource = batchResult.value.sourceBySymbol?.[symbol]
+          || value.source
+          || batchResult.value.source;
         freshVals[symbol] = {
           ...value,
-          ...(batchResult.value.source ? { source: batchResult.value.source } : {}),
+          ...(symbolSource ? { source: symbolSource } : {}),
         };
-        if (batchResult.value.source) valuationSources.add(batchResult.value.source);
+        if (symbolSource) valuationSources.add(symbolSource);
       }
     }
   }
@@ -740,6 +755,26 @@ const MAX_CONSECUTIVE_EXIT_FAILURES = 2;
  */
 function isDurableRouteFailure(kind) {
   return kind === 'failed' || kind === 'cooldown' || kind === 'deadline_exceeded';
+}
+
+function withBatchProvenance(result, transport) {
+  const valuations = result?.value?.valuations;
+  if (!valuations || typeof valuations !== 'object') return result;
+  const source = result.value?.source;
+  const transportBySymbol = {};
+  const sourceBySymbol = {};
+  for (const symbol of Object.keys(valuations)) {
+    transportBySymbol[symbol] = transport;
+    if (source) sourceBySymbol[symbol] = source;
+  }
+  return {
+    ...result,
+    value: {
+      ...result.value,
+      transportBySymbol,
+      sourceBySymbol,
+    },
+  };
 }
 
 /** Parse kinds that are symbol-local (not evidence the route/session is dead). */
@@ -1118,13 +1153,28 @@ class YahooQuoteSummaryClient {
         '',
         { buildUrl, parseResponse, source: `${source}_direct`, deadlineAt, healthKey },
       );
+    const attributedDirect = withBatchProvenance(direct, 'direct');
     if (!skipDirect) {
       diagnostics.push(direct.diagnostic);
-      if (direct.kind === 'success') return { ...direct, diagnostics };
+      if (direct.kind === 'success') {
+        return {
+          ...attributedDirect,
+          diagnostics,
+          proxyAttempted: false,
+          proxyKind: 'not_attempted',
+        };
+      }
     }
 
     const proxy = proxyOverride == null ? this.resolveProxyString() : proxyOverride;
-    if (!proxy) return { ...direct, diagnostics };
+    if (!proxy) {
+      return {
+        ...attributedDirect,
+        diagnostics,
+        proxyAttempted: false,
+        proxyKind: 'no_route',
+      };
+    }
     const proxied = await this._fetchVia(
       route,
       'proxy',
@@ -1132,6 +1182,7 @@ class YahooQuoteSummaryClient {
       proxy,
       { buildUrl, parseResponse, source: `${source}_proxy`, deadlineAt, healthKey },
     );
+    const attributedProxy = withBatchProvenance(proxied, 'proxy');
     diagnostics.push(proxied.diagnostic);
 
     // Multi-symbol (batch) routes can come back partially covered on one
@@ -1143,24 +1194,48 @@ class YahooQuoteSummaryClient {
     if (directValuations || proxiedValuations) {
       const valuations = { ...(directValuations || {}), ...(proxiedValuations || {}) };
       if (Object.keys(valuations).length > 0) {
-        // Attribute to the leg that actually supplied rows. An empty `{}` from
-        // the proxy leg is still truthy, so testing the map's existence
-        // published proxy provenance for rows the direct leg fetched.
-        const proxyContributed = Object.keys(proxiedValuations || {}).length > 0;
+        const proxySymbols = new Set(Object.keys(proxiedValuations || {}));
+        const outcomes = { ...(direct.value?.outcomes || {}), ...(proxied.value?.outcomes || {}) };
+        const transportBySymbol = {};
+        const sourceBySymbol = {};
+        const contributingSources = new Set();
+        for (const symbol of Object.keys(valuations)) {
+          const viaProxy = proxySymbols.has(symbol);
+          const symbolSource = viaProxy ? proxied.value?.source : direct.value?.source;
+          transportBySymbol[symbol] = viaProxy ? 'proxy' : 'direct';
+          if (symbolSource) {
+            sourceBySymbol[symbol] = symbolSource;
+            contributingSources.add(symbolSource);
+          }
+          // A later proxy miss must not replace the successful direct outcome
+          // for a row that only the direct leg actually supplied.
+          if (!viaProxy && direct.value?.outcomes?.[symbol]) {
+            outcomes[symbol] = direct.value.outcomes[symbol];
+          }
+        }
+        const sources = [...contributingSources];
         return {
           kind: 'success',
           value: {
             valuations,
-            outcomes: { ...(direct.value?.outcomes || {}), ...(proxied.value?.outcomes || {}) },
-            source: proxyContributed ? proxied.value?.source : direct.value?.source,
+            outcomes,
+            transportBySymbol,
+            sourceBySymbol,
+            ...(sources.length === 1 ? { source: sources[0] } : {}),
           },
           diagnostic: proxied.diagnostic,
           diagnostics,
+          proxyAttempted: true,
+          proxyKind: proxied.kind,
         };
       }
     }
-    if (proxied.kind === 'success') return { ...proxied, diagnostics };
-    return { ...proxied, diagnostics };
+    return {
+      ...attributedProxy,
+      diagnostics,
+      proxyAttempted: true,
+      proxyKind: proxied.kind,
+    };
   }
 
   async fetchDetailed(symbol, { deadlineAt = null } = {}) {
@@ -1223,17 +1298,33 @@ class YahooQuoteSummaryClient {
    * cache every time -- the seeder did exactly that for 46 of 61 cycles.
    *
    * Only the exits actually needed are used: coverage is re-checked before each
-   * attempt and only the still-uncovered symbols are re-requested, so a good
-   * first exit costs exactly one proxy request set.
+   * attempt, so a good first exit costs exactly one proxy request set. Each exit
+   * is evaluated against the same original symbol set; otherwise a later exit
+   * is ranked only on the marginal tail the earlier exits missed, not on how
+   * useful it would be as the next cycle's starting point.
    *
-   * @returns {{kind: string, value: {valuations: object, outcomes: object, source: string|null},
+   * @returns {{kind: string, value: {valuations: object, outcomes: object,
+   *            source: string|null, transportBySymbol: object, sourceBySymbol: object},
    *            diagnostics: object[], lastExitAttempt: number|null,
-   *            bestExitAttempt: number|null, exitBySymbol: object, exitsTried: number}}
+   *            bestExitAttempt: number|null, exitBySymbol: object, exitsTried: number,
+   *            stopReason: string}}
    *          `bestExitAttempt` is the exit worth remembering; `lastExitAttempt`
    *          is only the last one tried and must not be persisted as a winner.
    */
   async fetchV7BatchAcrossExits(symbols, { deadlineAt = null, startExitAttempt = 0 } = {}) {
     const requested = [...new Set(symbols)].filter(Boolean);
+    if (requested.length === 0) {
+      return {
+        kind: 'no_data',
+        value: { valuations: {}, outcomes: {}, transportBySymbol: {}, sourceBySymbol: {} },
+        diagnostics: [],
+        lastExitAttempt: null,
+        bestExitAttempt: null,
+        exitBySymbol: {},
+        exitsTried: 0,
+        stopReason: 'complete',
+      };
+    }
     const valuations = {};
     const outcomes = {};
     const diagnostics = [];
@@ -1246,8 +1337,12 @@ class YahooQuoteSummaryClient {
     // `exitAttempt` to mean "which exit served THIS symbol". Two different
     // scopes under one key is how a future reader persists the wrong one.
     let lastExitAttempt = null;
+    const transportBySymbol = {};
+    const sourceBySymbol = {};
     let exitsTried = 0;
     let lastKind = 'no_data';
+    let stopReason = null;
+    const coverageByExit = new Map();
 
     const canRotate = typeof this.resolveProxyStringForAttempt === 'function';
     const maxAttempts = canRotate ? this.maxExitAttempts : 1;
@@ -1258,9 +1353,14 @@ class YahooQuoteSummaryClient {
     let previousProxy = null;
     let consecutiveDurableFailures = 0;
     for (let i = 0; i < maxAttempts; i++) {
-      const remaining = requested.filter((symbol) => !valuations[symbol]);
-      if (remaining.length === 0) break;
-      if (deadlineAt != null && this.now() >= deadlineAt) break;
+      if (Object.keys(valuations).length === requested.length && requested.length > 0) {
+        stopReason = 'complete';
+        break;
+      }
+      if (deadlineAt != null && this.now() >= deadlineAt) {
+        stopReason = 'deadline';
+        break;
+      }
 
       const attempt = start + i;
       const proxyOverride = canRotate ? this.resolveProxyStringForAttempt(attempt) : null;
@@ -1269,16 +1369,17 @@ class YahooQuoteSummaryClient {
       // rotating ports are not per-attempt addressable). Re-querying the exit
       // that just truncated cannot change the answer, and the request is billed
       // regardless.
-      if (i > 0 && (!proxyOverride || proxyOverride === previousProxy)) break;
+      if (i > 0 && (!proxyOverride || proxyOverride === previousProxy)) {
+        stopReason = proxyOverride ? 'repeated_route' : 'no_route';
+        break;
+      }
       previousProxy = proxyOverride;
-      lastExitAttempt = attempt;
-      exitsTried += 1;
-      const result = await this._fetchRoute('v7QuoteBatch', remaining.join(','), {
+      const result = await this._fetchRoute('v7QuoteBatch', requested.join(','), {
         buildUrl: (tickers, crumb) => {
           const query = new URLSearchParams({ symbols: tickers, crumb });
           return `${YAHOO_V7_QUOTE_URL}?${query}`;
         },
-        parseResponse: (body) => parseV7QuoteBatch(body, remaining),
+        parseResponse: (body) => parseV7QuoteBatch(body, requested),
         source: 'yahoo_v7_quote_authenticated',
         deadlineAt,
         // Same URL and session shape as the per-symbol route, so on a given exit
@@ -1296,6 +1397,51 @@ class YahooQuoteSummaryClient {
       }
       lastKind = result?.kind || lastKind;
 
+      const proxyAttempted = result?.proxyAttempted === true;
+      const proxyKind = result?.proxyKind || (proxyAttempted ? result?.kind : 'not_attempted');
+      if (proxyAttempted) {
+        lastExitAttempt = attempt;
+        exitsTried += 1;
+      }
+
+      const newlyCovered = new Set();
+      const resultValuations = result?.value?.valuations || {};
+      const attemptTransportBySymbol = result?.value?.transportBySymbol || {};
+      const attemptSourceBySymbol = result?.value?.sourceBySymbol || {};
+      let proxyCoverage = 0;
+      for (const [symbol, value] of Object.entries(resultValuations)) {
+        if (attemptTransportBySymbol[symbol] === 'proxy') proxyCoverage += 1;
+        if (valuations[symbol]) continue;
+        const symbolTransport = attemptTransportBySymbol[symbol];
+        const symbolSource = attemptSourceBySymbol[symbol] || value?.source || result.value?.source;
+        valuations[symbol] = {
+          ...value,
+          ...(symbolSource ? { source: symbolSource } : {}),
+        };
+        if (symbolTransport) transportBySymbol[symbol] = symbolTransport;
+        if (symbolSource) sourceBySymbol[symbol] = symbolSource;
+        newlyCovered.add(symbol);
+        if (symbolTransport === 'proxy') exitBySymbol[symbol] = attempt;
+      }
+      if (proxyAttempted) coverageByExit.set(attempt, proxyCoverage);
+
+      // Keep the outcome from the attempt that supplied a published row. Later
+      // exits are still evaluated for ranking, but their misses must not erase
+      // the successful outcome/provenance of an earlier contributor.
+      for (const [symbol, outcome] of Object.entries(result?.value?.outcomes || {})) {
+        if (newlyCovered.has(symbol) || !valuations[symbol]) outcomes[symbol] = outcome;
+      }
+
+      if (Object.keys(valuations).length === requested.length && requested.length > 0) {
+        stopReason = 'complete';
+        break;
+      }
+
+      if (proxyKind === 'deadline_exceeded') {
+        stopReason = 'deadline';
+        break;
+      }
+
       // Rotation exists to escape a TRUNCATED 200 -- a payload defect that is a
       // property of the exit. A durable transport/auth failure is usually a
       // property of the PROVIDER (a Decodo quota 407 or credential expiry fails
@@ -1303,19 +1449,19 @@ class YahooQuoteSummaryClient {
       // that the way one shared key did. Allow a single retry so one flaky exit
       // is still survivable, then stop rather than probing the whole pool every
       // cycle against a provider that is down.
-      if (isDurableRouteFailure(result?.kind)) {
+      if (isDurableRouteFailure(proxyKind)) {
         consecutiveDurableFailures += 1;
-        if (consecutiveDurableFailures >= MAX_CONSECUTIVE_EXIT_FAILURES) break;
+        if (consecutiveDurableFailures >= MAX_CONSECUTIVE_EXIT_FAILURES) {
+          stopReason = 'durable_failures';
+          break;
+        }
       } else {
         consecutiveDurableFailures = 0;
       }
 
-      Object.assign(outcomes, result?.value?.outcomes || {});
-      for (const [symbol, value] of Object.entries(result?.value?.valuations || {})) {
-        if (valuations[symbol]) continue;
-        valuations[symbol] = value;
-        exitBySymbol[symbol] = attempt;
-        if (result.value.source) source = result.value.source;
+      if (!proxyAttempted) {
+        stopReason = 'no_route';
+        break;
       }
     }
 
@@ -1324,16 +1470,23 @@ class YahooQuoteSummaryClient {
     if (covered === requested.length && covered > 0) kind = 'success';
     else if (covered > 0) kind = 'partial';
 
+    if (!stopReason) {
+      if (covered === requested.length && covered > 0) stopReason = 'complete';
+      // Completing the last allowed exit before the clock reaches its boundary
+      // still exhausts a deterministic search window. Classify that window as
+      // capped so the caller advances past it; deadline stops set inside the
+      // loop (before an attempt or reported by the proxy) remain deadlines.
+      else if (canRotate && exitsTried >= maxAttempts) stopReason = 'attempt_cap_exhausted';
+      else if (deadlineAt != null && this.now() >= deadlineAt) stopReason = 'deadline';
+      else stopReason = canRotate ? 'attempt_cap_exhausted' : 'single_exit';
+    }
+
     // The exit worth starting from next time is the one that covered the MOST
     // symbols -- not `lastExitAttempt`, which is merely the last one tried. When
     // coverage is assembled across exits, remembering the last one starts the
     // next cycle on an exit that serves only the tail of the set and rotates
     // fruitlessly for the rest. Ties go to the earliest exit so the choice is
     // deterministic.
-    const coverageByExit = new Map();
-    for (const attempt of Object.values(exitBySymbol)) {
-      coverageByExit.set(attempt, (coverageByExit.get(attempt) || 0) + 1);
-    }
     let bestExitAttempt = null;
     let bestCoverage = 0;
     for (const [attempt, count] of [...coverageByExit.entries()].sort((a, b) => a[0] - b[0])) {
@@ -1343,14 +1496,26 @@ class YahooQuoteSummaryClient {
       }
     }
 
+    const sources = [...new Set(
+      Object.values(valuations).map((value) => value?.source).filter(Boolean),
+    )];
+    if (sources.length === 1) source = sources[0];
+
     return {
       kind,
-      value: { valuations, outcomes, ...(source ? { source } : {}) },
+      value: {
+        valuations,
+        outcomes,
+        transportBySymbol,
+        sourceBySymbol,
+        ...(source ? { source } : {}),
+      },
       diagnostics,
       lastExitAttempt,
       bestExitAttempt,
       exitBySymbol,
       exitsTried,
+      stopReason,
     };
   }
 
@@ -1448,53 +1613,69 @@ function buildSectorValuationCoverage({
 }
 
 /**
- * Read the remembered good exit. Anything malformed degrades to exit 0 (the
- * configured route) rather than propagating a bad index into the rotation: a
- * fractional or negative attempt would resolve to a port outside the provider's
- * sticky range, i.e. no proxy at all.
+ * Read the remembered next starting exit. Anything malformed degrades to exit
+ * 0 (the configured route) rather than propagating a bad index into the
+ * rotation: a fractional or negative attempt would resolve to a port outside
+ * the provider's sticky range, i.e. no proxy at all.
  */
-async function readPreferredExit(upstashGet) {
-  if (typeof upstashGet !== 'function') return { attempt: 0, savedAt: null };
+function normalizePreferredExit(raw) {
+  const attempt = raw && typeof raw === 'object' ? raw.attempt : null;
+  if (!Number.isInteger(attempt) || attempt < 0) return null;
+  const savedAt = Number.isFinite(raw.savedAt) ? raw.savedAt : null;
+  const persistedAt = Number.isFinite(raw.persistedAt) ? raw.persistedAt : savedAt;
+  return { attempt, savedAt, persistedAt };
+}
+
+async function readPreferredExit(upstashGet, localPreference = null) {
+  const local = normalizePreferredExit(localPreference);
+  if (typeof upstashGet !== 'function') {
+    return local || { attempt: 0, savedAt: null, persistedAt: null };
+  }
   try {
     const raw = await upstashGet(PREFERRED_EXIT_KEY);
-    const attempt = raw && typeof raw === 'object' ? raw.attempt : null;
-    if (!Number.isInteger(attempt) || attempt < 0) return { attempt: 0, savedAt: null };
-    const savedAt = Number.isFinite(raw.savedAt) ? raw.savedAt : null;
-    return { attempt, savedAt };
+    const remote = normalizePreferredExit(raw);
+    if (
+      remote
+      && Number.isFinite(remote.savedAt)
+      && (!local || !Number.isFinite(local.savedAt) || remote.savedAt > local.savedAt)
+    ) return remote;
+    return local || remote || { attempt: 0, savedAt: null, persistedAt: null };
   } catch (error) {
     // A cold preference costs one extra rotation, never the cycle.
     console.warn('[Sector] preferred proxy exit read failed', {
       failure: boundedFailure(error?.message || error?.name),
     });
-    return { attempt: 0, savedAt: null };
+    return local || { attempt: 0, savedAt: null, persistedAt: null };
   }
 }
 
 /**
- * Persist the winning exit when it changed, or when a still-good preference is
- * far enough into its TTL to be worth renewing.
+ * Persist the next starting exit when it changed, or when a still-valid
+ * preference is far enough into its TTL to be worth renewing.
  *
  * Writing only on change would let a working exit expire and be rediscovered
  * every TTL at the cost of extra rotations; writing every cycle would churn the
  * key 288 times a day for no new information. Renewing past the half-life gets
  * both.
  */
-async function persistPreferredExit(upstashSet, winningExitAttempt, previous, now) {
-  if (typeof upstashSet !== 'function') return;
-  if (!Number.isInteger(winningExitAttempt)) return;
-  const changed = winningExitAttempt !== previous.attempt;
-  const dueForRenewal = !Number.isFinite(previous.savedAt)
-    || (now() - previous.savedAt) > (PREFERRED_EXIT_TTL * 1000) / 2;
-  if (!changed && !dueForRenewal) return;
+async function persistPreferredExit(upstashSet, next, previous, now) {
+  if (typeof upstashSet !== 'function') return null;
+  if (!Number.isInteger(next?.attempt)) return null;
+  const changed = next.attempt !== previous.attempt;
+  const dueForRenewal = !Number.isFinite(previous.persistedAt)
+    || (now() - previous.persistedAt) > (PREFERRED_EXIT_TTL * 1000) / 2;
+  if (!changed && !dueForRenewal) return null;
   try {
     const ok = await upstashSet(
       PREFERRED_EXIT_KEY,
-      { attempt: winningExitAttempt, savedAt: now() },
+      { attempt: next.attempt, savedAt: next.savedAt },
       PREFERRED_EXIT_TTL,
     );
     if (!ok) console.warn('[Sector] preferred proxy exit write failed');
+    return ok ? next.savedAt : null;
   } catch {
     console.warn('[Sector] preferred proxy exit write failed');
+    return null;
   }
 }
 
@@ -1517,18 +1698,29 @@ async function collectSectorValuations({
     ? now() + Math.max(1, maxDurationMs)
     : null;
 
-  // Which residential exit last served complete fundamentals. Starting there
-  // collapses the BATCH TIER's search from the ~3.3 exits a blind rotation
-  // averages to 1. It does not change the per-symbol tier below, which still
-  // uses the configured exit -- see the follow-up noted on that loop.
+  // The BATCH TIER's next starting exit may be either the best full-set coverage
+  // winner or the continuation after an exhausted window. A coverage winner
+  // collapses the ~3.3-exit blind search to 1; a continuation ensures the next
+  // cycle explores new exits. This does not change the per-symbol tier below,
+  // which still uses the configured exit -- see the follow-up noted on that
+  // loop.
   //
   // Only read it when something can act on it: a client without exit rotation
   // would spend a Redis round-trip per cycle on a value it cannot use.
   const canRotateExits = Boolean(v7UserAgent)
     && typeof v7Client?.fetchV7BatchAcrossExits === 'function';
   const preferredExit = canRotateExits
-    ? await readPreferredExit(upstashGet)
-    : { attempt: 0, savedAt: null };
+    ? await readPreferredExit(upstashGet, LOCAL_PREFERRED_EXITS.get(v7Client))
+    : { attempt: 0, savedAt: null, persistedAt: null };
+  if (canRotateExits) {
+    LOCAL_PREFERRED_EXITS.set(v7Client, {
+      ...preferredExit,
+      // A legacy Redis value without savedAt is still a valid cold-start
+      // preference. Timestamp the local observation so a later stale/untimed
+      // read cannot overwrite what this process learns.
+      savedAt: Number.isFinite(preferredExit.savedAt) ? preferredExit.savedAt : now(),
+    });
+  }
 
   // Tier 1: v7/finance/quote for P/E and beta
   const v7Result = v7UserAgent ? await collectV7Valuations(symbols, {
@@ -1540,8 +1732,22 @@ async function collectSectorValuations({
     now,
     preferredExitAttempt: preferredExit.attempt,
   }) : {};
-  if (canRotateExits) {
-    await persistPreferredExit(upstashSet, v7Result.winningExitAttempt, preferredExit, now);
+  let nextPreferredExit = null;
+  if (canRotateExits && Number.isInteger(v7Result.winningExitAttempt)) {
+    const learnedAt = now();
+    const currentLocal = LOCAL_PREFERRED_EXITS.get(v7Client);
+    const persistedAt = currentLocal?.attempt === v7Result.winningExitAttempt
+      ? currentLocal.persistedAt
+      : null;
+    nextPreferredExit = {
+      attempt: v7Result.winningExitAttempt,
+      savedAt: learnedAt,
+      persistedAt,
+    };
+    // Advance the live process before touching Redis. An optional SET failure
+    // must not make the next five-minute cycle repeat the same deterministic
+    // window.
+    LOCAL_PREFERRED_EXITS.set(v7Client, nextPreferredExit);
   }
   const v7Vals = v7Result.valuations || {};
   const valuationDiagnostics = v7Result.diagnostics || [];
@@ -1705,6 +1911,24 @@ async function collectSectorValuations({
   const reportedLastGoodFetchedAt = borrowedMetricsFetchedAt != null && Number.isFinite(lastGoodFetchedAt)
     ? Math.min(lastGoodFetchedAt, borrowedMetricsFetchedAt)
     : (borrowedMetricsFetchedAt ?? lastGoodFetchedAt);
+
+  // Preference durability is optional and must never spend the current-data
+  // deadline. Start it only after v7, quoteSummary, last-good reads, and the
+  // canonical snapshot write have finished; process-local state already keeps
+  // the next cycle moving if this write fails.
+  if (nextPreferredExit) {
+    void persistPreferredExit(upstashSet, nextPreferredExit, preferredExit, now)
+      .then((persistedAt) => {
+        if (!Number.isFinite(persistedAt)) return;
+        const current = LOCAL_PREFERRED_EXITS.get(v7Client);
+        if (
+          current?.attempt === nextPreferredExit.attempt
+          && current.savedAt === nextPreferredExit.savedAt
+        ) {
+          LOCAL_PREFERRED_EXITS.set(v7Client, { ...current, persistedAt });
+        }
+      });
+  }
 
   return {
     valuations,

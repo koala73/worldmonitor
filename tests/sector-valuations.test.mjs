@@ -388,6 +388,68 @@ describe('sector valuation collection', () => {
     assert.ok(result.valuationDiagnostics.every((entry) => entry.outcomes.some((outcome) => outcome.responseClass === 'success')));
   });
 
+  it('preserves per-symbol transport and source for a mixed direct/proxy batch', async () => {
+    const result = await collectSectorValuations({
+      symbols: ['XLK', 'SMH'],
+      fetchValue: async () => { throw new Error('quoteSummary must not run when the batch recovers'); },
+      parseValue: (raw) => raw?.value ?? null,
+      sleepFn: async () => {},
+      v7UserAgent: 'test-agent',
+      v7Client: {
+        fetchV7Detailed: async () => ({
+          kind: 'missing_fields',
+          value: null,
+          diagnostics: [{ route: 'v7Quote', transport: 'direct', responseClass: 'missing_fields' }],
+        }),
+        fetchV7BatchAcrossExits: async () => ({
+          kind: 'success',
+          stopReason: 'complete',
+          bestExitAttempt: 4,
+          lastExitAttempt: 4,
+          exitsTried: 1,
+          exitBySymbol: { SMH: 4 },
+          value: {
+            valuations: {
+              XLK: { trailingPE: 25, forwardPE: 22, beta: 1.1 },
+              SMH: { trailingPE: 37, forwardPE: 34, beta: 1.2 },
+            },
+            outcomes: {
+              XLK: { kind: 'success' },
+              SMH: { kind: 'success' },
+            },
+            transportBySymbol: {
+              XLK: 'direct',
+              SMH: 'proxy',
+            },
+            sourceBySymbol: {
+              XLK: 'yahoo_v7_quote_authenticated_direct',
+              SMH: 'yahoo_v7_quote_authenticated_proxy',
+            },
+          },
+          diagnostics: [{ route: 'v7QuoteBatch', transport: 'proxy', responseClass: 'success' }],
+        }),
+      },
+      upstashGet: async () => null,
+      upstashSet: async () => true,
+    });
+
+    const batchOutcomeBySymbol = Object.fromEntries(
+      result.valuationDiagnostics.map((entry) => [
+        entry.symbol,
+        entry.outcomes.find((outcome) => outcome.route === 'v7QuoteBatch'),
+      ]),
+    );
+    assert.equal(batchOutcomeBySymbol.XLK.transport, 'direct');
+    assert.equal(batchOutcomeBySymbol.XLK.exitAttempt, undefined);
+    assert.equal(batchOutcomeBySymbol.XLK.exitAttemptsTried, undefined);
+    assert.equal(batchOutcomeBySymbol.SMH.transport, 'proxy');
+    assert.equal(batchOutcomeBySymbol.SMH.exitAttempt, 4);
+    assert.deepEqual(
+      [...result.valuationSources].sort(),
+      ['yahoo_v7_quote_authenticated_direct', 'yahoo_v7_quote_authenticated_proxy'],
+    );
+  });
+
   it('records authenticated v7 coverage and explicit last-good metric provenance', async () => {
     const result = await collectSectorValuations({
       symbols: ['XLK'],
@@ -894,6 +956,7 @@ describe('proxy exit preference', () => {
           if (attempt !== goodExit) continue;
           return {
             kind: 'success',
+            stopReason: 'complete',
             exitAttempt: attempt,
             // The real client nominates the exit that covered the most symbols;
             // here one exit covers them all, so it is both.
@@ -910,6 +973,7 @@ describe('proxy exit preference', () => {
         }
         return {
           kind: 'missing_fields',
+          stopReason: 'attempt_cap_exhausted',
           exitAttempt: startExitAttempt + 3,
           // Nothing was covered, so no exit is worth nominating.
           bestExitAttempt: null,
@@ -1153,6 +1217,213 @@ describe('proxy exit preference', () => {
       8,
       'the next cycle starts past the four exits this one already proved bad',
     );
+  });
+
+  it('advances past an exhausted partial window instead of pinning its contributor', async () => {
+    const writes = [];
+    const client = {
+      fetchV7Detailed: async () => ({ kind: 'missing_fields', value: null, diagnostics: [] }),
+      fetchV7BatchAcrossExits: async (requested, { startExitAttempt }) => ({
+        kind: 'partial',
+        stopReason: 'attempt_cap_exhausted',
+        bestExitAttempt: startExitAttempt,
+        lastExitAttempt: startExitAttempt + 3,
+        exitsTried: 4,
+        exitBySymbol: { [requested[0]]: startExitAttempt },
+        value: {
+          valuations: { [requested[0]]: { trailingPE: 25, source: 'yahoo_v7_quote_authenticated_proxy' } },
+          outcomes: Object.fromEntries(requested.map((s) => [s, { kind: s === requested[0] ? 'success' : 'missing_fields' }])),
+        },
+        diagnostics: [],
+      }),
+    };
+
+    await collectSectorValuations({
+      symbols: ['XLK', 'SMH'],
+      fetchValue: async () => null,
+      parseValue: () => null,
+      sleepFn: async () => {},
+      v7UserAgent: 'test-agent',
+      v7Client: client,
+      upstashGet: async (key) => (
+        key === PREFERRED_EXIT_KEY ? { attempt: 4, savedAt: 1_700_000_000_000 } : null
+      ),
+      upstashSet: async (key, value, ttl) => { writes.push({ key, value, ttl }); return true; },
+      now: () => 1_700_000_000_000,
+    });
+
+    const exitWrite = writes.find((w) => w.key === PREFERRED_EXIT_KEY);
+    assert.equal(exitWrite?.value.attempt, 8, 'the next cycle starts after every exhausted exit');
+  });
+
+  it('does not advance the preference after a provider-wide failure', async () => {
+    const writes = [];
+    const client = {
+      fetchV7Detailed: async () => ({ kind: 'failed', value: null, diagnostics: [] }),
+      fetchV7BatchAcrossExits: async (requested) => ({
+        kind: 'failed',
+        stopReason: 'durable_failures',
+        bestExitAttempt: null,
+        lastExitAttempt: 8,
+        exitsTried: 2,
+        exitBySymbol: {},
+        value: {
+          valuations: {},
+          outcomes: Object.fromEntries(requested.map((s) => [s, { kind: 'failed' }])),
+        },
+        diagnostics: [],
+      }),
+    };
+
+    await collectSectorValuations({
+      symbols: ['XLK'],
+      fetchValue: async () => null,
+      parseValue: () => null,
+      sleepFn: async () => {},
+      v7UserAgent: 'test-agent',
+      v7Client: client,
+      upstashGet: async (key) => (key === PREFERRED_EXIT_KEY ? { attempt: 7 } : null),
+      upstashSet: async (key, value) => { writes.push({ key, value }); return true; },
+    });
+
+    assert.equal(
+      writes.some((write) => write.key === PREFERRED_EXIT_KEY),
+      false,
+      'provider failure is not evidence that an untested exit is better',
+    );
+  });
+
+  it('keeps process-local rotation progress when the preference write is unavailable', async () => {
+    const startsSeen = [];
+    const client = {
+      fetchV7Detailed: async () => ({ kind: 'missing_fields', value: null, diagnostics: [] }),
+      fetchV7BatchAcrossExits: async (requested, { startExitAttempt }) => {
+        startsSeen.push(startExitAttempt);
+        if (startExitAttempt === 0) {
+          return {
+            kind: 'missing_fields',
+            stopReason: 'attempt_cap_exhausted',
+            bestExitAttempt: null,
+            lastExitAttempt: 3,
+            exitsTried: 4,
+            exitBySymbol: {},
+            value: { valuations: {}, outcomes: { [requested[0]]: { kind: 'missing_fields' } } },
+            diagnostics: [],
+          };
+        }
+        return {
+          kind: 'success',
+          stopReason: 'complete',
+          bestExitAttempt: startExitAttempt,
+          lastExitAttempt: startExitAttempt,
+          exitsTried: 1,
+          exitBySymbol: { [requested[0]]: startExitAttempt },
+          value: {
+            valuations: { [requested[0]]: { trailingPE: 25, source: 'yahoo_v7_quote_authenticated_proxy' } },
+            outcomes: { [requested[0]]: { kind: 'success' } },
+          },
+          diagnostics: [],
+        };
+      },
+    };
+    const args = {
+      symbols: ['XLK'],
+      fetchValue: async () => null,
+      parseValue: () => null,
+      sleepFn: async () => {},
+      v7UserAgent: 'test-agent',
+      v7Client: client,
+      upstashGet: async () => null,
+      upstashSet: async () => false,
+    };
+
+    await collectSectorValuations(args);
+    const second = await collectSectorValuations(args);
+
+    assert.deepEqual(startsSeen, [0, 4]);
+    assert.equal(second.valuationCount, 1, 'the next local window can recover without Redis');
+  });
+
+  it('runs the current-data fallback before an optional preference write', async () => {
+    let now = 0;
+    const order = [];
+    const client = {
+      fetchV7Detailed: async () => ({ kind: 'missing_fields', value: null, diagnostics: [] }),
+      fetchV7BatchAcrossExits: async (requested) => ({
+        kind: 'partial',
+        stopReason: 'attempt_cap_exhausted',
+        bestExitAttempt: 0,
+        lastExitAttempt: 3,
+        exitsTried: 4,
+        exitBySymbol: { [requested[0]]: 0 },
+        value: {
+          valuations: { [requested[0]]: { trailingPE: 25, source: 'yahoo_v7_quote_authenticated_proxy' } },
+          outcomes: Object.fromEntries(requested.map((s) => [s, { kind: s === requested[0] ? 'success' : 'missing_fields' }])),
+        },
+        diagnostics: [],
+      }),
+    };
+
+    const result = await collectSectorValuations({
+      symbols: ['XLK', 'SMH'],
+      fetchValue: async () => {
+        order.push('fallback');
+        return { value: { trailingPE: 30 } };
+      },
+      parseValue: (raw) => raw?.value || null,
+      sleepFn: async () => {},
+      v7UserAgent: 'test-agent',
+      v7Client: client,
+      upstashGet: async () => null,
+      upstashSet: async (key) => {
+        if (key === PREFERRED_EXIT_KEY) {
+          order.push('preference');
+          now += 10_000;
+        }
+        return true;
+      },
+      maxDurationMs: 6_000,
+      now: () => now,
+    });
+
+    assert.equal(result.valuationCount, 2);
+    assert.deepEqual(order.slice(0, 2), ['fallback', 'preference']);
+  });
+
+  it('does not await an unresolved optional preference write', async () => {
+    const client = rotatingClient({ goodExit: 0, symbols: ['XLK'] });
+    let releasePreference;
+    let markPreferenceStarted;
+    const blockedPreference = new Promise((resolve) => { releasePreference = resolve; });
+    const preferenceStarted = new Promise((resolve) => { markPreferenceStarted = resolve; });
+    const collection = collectSectorValuations({
+      symbols: ['XLK'],
+      fetchValue: async () => { throw new Error('quoteSummary must not run when the batch recovers'); },
+      parseValue: (raw) => raw?.value ?? null,
+      sleepFn: async () => {},
+      v7UserAgent: 'test-agent',
+      v7Client: client,
+      upstashGet: async () => null,
+      upstashSet: async (key) => {
+        if (key !== PREFERRED_EXIT_KEY) return true;
+        markPreferenceStarted();
+        return blockedPreference;
+      },
+    });
+
+    try {
+      await preferenceStarted;
+      const stillBlocked = Symbol('preference write still blocked collection');
+      const result = await Promise.race([
+        collection,
+        new Promise((resolve) => setImmediate(() => resolve(stillBlocked))),
+      ]);
+      assert.notEqual(result, stillBlocked, 'collection must resolve without the preference SET');
+      assert.equal(result.valuationCount, 1);
+    } finally {
+      releasePreference(true);
+      await collection;
+    }
   });
 
   it('ignores a malformed or out-of-range remembered exit', async () => {
