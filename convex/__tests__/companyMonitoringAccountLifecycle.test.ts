@@ -156,6 +156,57 @@ describe("Company Monitoring account lifecycle", () => {
     });
   });
 
+  // The safety property the whole lazy design rests on. Moving lapse detection
+  // to an hourly cron opens a window where a root still reads "entitled" after
+  // the entitlement expired. That window is only acceptable because access is
+  // re-derived from the entitlements row on every call, so it delays purge
+  // SCHEDULING and never grants access. If this test goes green while
+  // activeAccountForOwner trusts account.lifecycle, the refactor is an
+  // access-control hole.
+  test("an expired entitlement denies access immediately, before the reconciler runs", async () => {
+    const t = convexTest(schema, modules);
+    await grantProvisioned(t, OWNER_A);
+    await t.mutation(CM.companies.createCompanyForOwner, {
+      ownerUserId: OWNER_A,
+      clientRequestId: "while-entitled",
+      company: company("While Entitled", "while-entitled"),
+    });
+
+    // Expire the entitlement without running the reconciler.
+    await t.run(async (ctx) => {
+      const row = await ctx.db
+        .query("entitlements")
+        .withIndex("by_userId", (q) => q.eq("userId", OWNER_A))
+        .unique();
+      await ctx.db.patch(row!._id, { planKey: "free", validUntil: NOW - 1 });
+    });
+    // The root is deliberately still stale-"entitled" at this point.
+    expect(await accountFor(t, OWNER_A)).toMatchObject({ lifecycle: "entitled" });
+
+    // Every surface must already refuse: writes, reads, and key issuance.
+    await expect(
+      t.mutation(CM.companies.createCompanyForOwner, {
+        ownerUserId: OWNER_A,
+        clientRequestId: "after-expiry",
+        company: company("After Expiry", "after-expiry"),
+      }),
+    ).rejects.toThrow(/COMPANY_MONITORING_ACCESS_DENIED/);
+    await expect(
+      t.query(CM.companies.listCompaniesForOwner, { ownerUserId: OWNER_A }),
+    ).rejects.toThrow(/COMPANY_MONITORING_ACCESS_DENIED/);
+    await expect(
+      t.withIdentity({ subject: OWNER_A, tokenIdentifier: `clerk|${OWNER_A}` }).mutation(
+        api.apiKeys.createApiKey,
+        {
+          name: "after-expiry",
+          keyPrefix: "wm_abcde",
+          keyHash: "a".repeat(64),
+          scopes: ["company_monitoring:read"],
+        },
+      ),
+    ).rejects.toThrow();
+  });
+
   test("the reconciler leaves a still-entitled root alone", async () => {
     const t = convexTest(schema, modules);
     await grantProvisioned(t, OWNER_A);
