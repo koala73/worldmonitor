@@ -1061,6 +1061,69 @@ describe('proxy exit preference', () => {
     assert.equal(exitWrite.value.savedAt, now, 'renewal restamps the clock');
   });
 
+  it('does not read the preference for a client that cannot rotate', async () => {
+    // The gate exists so a non-rotating client does not spend a Redis
+    // round-trip per cycle on a value it cannot act on. Nothing pinned it.
+    const reads = [];
+    await collectSectorValuations({
+      symbols: ['XLK'],
+      fetchValue: async () => null,
+      parseValue: () => null,
+      sleepFn: async () => {},
+      v7UserAgent: 'test-agent',
+      // No fetchV7BatchAcrossExits -- rotation is impossible for this client.
+      v7Client: {
+        fetchV7Detailed: async () => ({ kind: 'missing_fields', value: null, diagnostics: [] }),
+      },
+      upstashGet: async (key) => { reads.push(key); return null; },
+      upstashSet: async () => true,
+    });
+
+    assert.equal(
+      reads.filter((key) => key === PREFERRED_EXIT_KEY).length,
+      0,
+      'no preference read when nothing can use it',
+    );
+  });
+
+  it('deliberately leaves the per-symbol tier on the configured exit', async () => {
+    // Characterizes the KNOWN GAP documented in collectV7Valuations: the
+    // per-symbol tier is NOT given the remembered exit, because routing it there
+    // would stop the batch running on healthy cycles and the batch is what keeps
+    // the preference fresh. Pinning it means a future change in either direction
+    // is a visible decision rather than an accident. See issue #6279.
+    const perSymbolOptions = [];
+    const client = rotatingClient({ goodExit: 7, symbols: ['XLK', 'SMH'] });
+    const wrapped = {
+      ...client,
+      fetchV7Detailed: async (_symbol, options) => {
+        perSymbolOptions.push(options);
+        return { kind: 'missing_fields', value: null, diagnostics: [] };
+      },
+    };
+
+    await collectSectorValuations({
+      symbols: ['XLK', 'SMH'],
+      fetchValue: async () => null,
+      parseValue: () => null,
+      sleepFn: async () => {},
+      v7UserAgent: 'test-agent',
+      v7Client: wrapped,
+      upstashGet: async (key) => (key === PREFERRED_EXIT_KEY ? { attempt: 7 } : null),
+      upstashSet: async () => true,
+    });
+
+    assert.ok(perSymbolOptions.length > 0, 'the per-symbol tier ran');
+    for (const options of perSymbolOptions) {
+      assert.equal(
+        options?.startExitAttempt,
+        undefined,
+        'the per-symbol tier receives no exit override today',
+      );
+    }
+    assert.deepEqual(client.startsSeen, [7], 'only the batch consumes the remembered exit');
+  });
+
   it('advances the window when no exit in it covered anything', async () => {
     // The rotation window is deterministic: attempts run start..start+N. If
     // nothing in that window ever serves the symbols, and only a full success

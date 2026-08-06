@@ -1117,7 +1117,7 @@ describe('YahooQuoteSummaryClient exit rotation', () => {
       'every symbol is recovered once a good exit is reached',
     );
     assert.equal(result.value.valuations.XLK.trailingPE, 31.2);
-    assert.equal(result.exitAttempt, 2, 'reports the exit that completed coverage');
+    assert.equal(result.lastExitAttempt, 2, 'reports the exit that completed coverage');
     assert.deepEqual(harness.exitsTried(), ['exit-0', 'exit-1', 'exit-2']);
   });
 
@@ -1235,7 +1235,7 @@ describe('YahooQuoteSummaryClient exit rotation', () => {
 
     assert.equal(result.kind, 'success');
     assert.deepEqual(harness.exitsTried(), ['exit-2'], 'the cached exit is used first, not exit-0');
-    assert.equal(result.exitAttempt, 2);
+    assert.equal(result.lastExitAttempt, 2);
   });
 
   it('nominates the exit that covered the most symbols, not the last one tried', async () => {
@@ -1267,7 +1267,7 @@ describe('YahooQuoteSummaryClient exit rotation', () => {
 
     assert.equal(result.kind, 'success');
     assert.deepEqual(result.exitBySymbol, { XLK: 5, XLF: 5, XLV: 6 });
-    assert.equal(result.exitAttempt, 6, 'exitAttempt still reports the last exit tried');
+    assert.equal(result.lastExitAttempt, 6, 'lastExitAttempt reports the last exit tried');
     assert.equal(
       result.bestExitAttempt,
       5,

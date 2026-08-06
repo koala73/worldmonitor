@@ -502,8 +502,13 @@ async function collectV7Valuations(
   // stay intact.
   // Prefer the exit-rotating batch: the omission it recovers from is a property
   // of the exit IP, so a single-exit batch can only ever re-read the same
-  // partial cache. fetchV7BatchDetailed remains the path for clients that
-  // predate rotation.
+  // partial cache.
+  //
+  // The fetchV7BatchDetailed branch is NOT reachable from the production client
+  // -- YahooQuoteSummaryClient always defines fetchV7BatchAcrossExits, which
+  // degrades to a single attempt on its own when no rotator is wired. It exists
+  // for callers that inject a narrower client object (today: test doubles), so
+  // that supplying only the older method still works.
   // KNOWN GAP: the per-symbol loop above still reaches the proxy on the
   // CONFIGURED exit, not the remembered one, so on a cycle whose pinned exit is
   // truncating it spends a handful of proxy requests that cannot recover those
@@ -1222,7 +1227,10 @@ class YahooQuoteSummaryClient {
    * first exit costs exactly one proxy request set.
    *
    * @returns {{kind: string, value: {valuations: object, outcomes: object, source: string|null},
-   *            diagnostics: object[], exitAttempt: number|null}}
+   *            diagnostics: object[], lastExitAttempt: number|null,
+   *            bestExitAttempt: number|null, exitBySymbol: object, exitsTried: number}}
+   *          `bestExitAttempt` is the exit worth remembering; `lastExitAttempt`
+   *          is only the last one tried and must not be persisted as a winner.
    */
   async fetchV7BatchAcrossExits(symbols, { deadlineAt = null, startExitAttempt = 0 } = {}) {
     const requested = [...new Set(symbols)].filter(Boolean);
@@ -1234,7 +1242,10 @@ class YahooQuoteSummaryClient {
     // exit 1 would be reported against exit 3.
     const exitBySymbol = {};
     let source = null;
-    let exitAttempt = null;
+    // Named `last`, not `exit`, because the per-symbol diagnostic already uses
+    // `exitAttempt` to mean "which exit served THIS symbol". Two different
+    // scopes under one key is how a future reader persists the wrong one.
+    let lastExitAttempt = null;
     let exitsTried = 0;
     let lastKind = 'no_data';
 
@@ -1260,7 +1271,7 @@ class YahooQuoteSummaryClient {
       // regardless.
       if (i > 0 && (!proxyOverride || proxyOverride === previousProxy)) break;
       previousProxy = proxyOverride;
-      exitAttempt = attempt;
+      lastExitAttempt = attempt;
       exitsTried += 1;
       const result = await this._fetchRoute('v7QuoteBatch', remaining.join(','), {
         buildUrl: (tickers, crumb) => {
@@ -1314,7 +1325,7 @@ class YahooQuoteSummaryClient {
     else if (covered > 0) kind = 'partial';
 
     // The exit worth starting from next time is the one that covered the MOST
-    // symbols -- not `exitAttempt`, which is merely the last one tried. When
+    // symbols -- not `lastExitAttempt`, which is merely the last one tried. When
     // coverage is assembled across exits, remembering the last one starts the
     // next cycle on an exit that serves only the tail of the set and rotates
     // fruitlessly for the rest. Ties go to the earliest exit so the choice is
@@ -1336,7 +1347,7 @@ class YahooQuoteSummaryClient {
       kind,
       value: { valuations, outcomes, ...(source ? { source } : {}) },
       diagnostics,
-      exitAttempt,
+      lastExitAttempt,
       bestExitAttempt,
       exitBySymbol,
       exitsTried,
