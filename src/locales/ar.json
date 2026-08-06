@@ -1097,7 +1097,7 @@
         "ucdpEvents": "أحداث UCDP",
         "displacementFlows": "تدفقات النزوح",
         "climateAnomalies": "شذوذات مناخية",
-        "weatherAlerts": "تنبيهات الطقس",
+        "weatherAlerts": "تنبيهات الطقس في الولايات المتحدة (NWS)",
         "strategicWaterways": "ممرات مائية استراتيجية",
         "economicCenters": "مراكز اقتصادية",
         "criticalMinerals": "معادن حيوية",
@@ -1178,7 +1178,7 @@
           "infraDatacenters": "مجموعات حوسبة AI بـ 10,000+ GPU",
           "infraOutages": "انقطاعات الإنترنت وتعطل الخدمات",
           "naturalEventsTech": "زلازل وعواصف وحرائق (قد تؤثر على مراكز البيانات)",
-          "weatherAlerts": "تنبيهات طقس شديد",
+          "weatherAlerts": "تنبيهات الطقس الشديد في الولايات المتحدة (NWS)",
           "economicCenters": "بورصات وبنوك مركزية",
           "countriesOverlay": "طبقة أسماء الدول",
           "financeExchanges": "البورصات العالمية الرئيسية حسب الفئة السوقية",
@@ -1190,7 +1190,7 @@
           "financeOutages": "انقطاعات إنترنت قد تؤثر على عمليات الأسواق",
           "financeCyberThreats": "أحداث أمنية حول البنية التحتية المالية",
           "macroWaterways": "نقاط اختناق استراتيجية لشحن السلع",
-          "weatherAlertsMarket": "أحداث طقس شديد ذات صلة بالأسواق",
+          "weatherAlertsMarket": "أحداث الطقس الشديد في الولايات المتحدة ذات الصلة بالأسواق (NWS)",
           "naturalEventsMacro": "زلازل وحرائق وفيضانات وكوارث طبيعية أخرى",
           "timeRecent": "تصفية البيانات الزمنية للساعات الأخيرة",
           "timeExtended": "عرض بيانات الأسبوع أو الشهر الماضي أو الكل",
@@ -2954,7 +2954,7 @@
       "heading": "الاتجاه",
       "hexCode": "الرمز السداسي",
       "squawk": "رمز الاستجابة",
-      "attribution": "المصدر: OpenSky Network"
+      "attribution": "المصدر: adsb.lol (ODbL) · OpenSky Network"
     },
     "militaryVessel": {
       "aisDark": "AIS مظلم",

@@ -310,7 +310,11 @@ baselined still blocks" from acquiring two meanings — so a baselined
 `REJECTED_PUSH` that turns into `BEHIND` still fails the run, which is the case
 where someone cleared the filter and the service went stale anyway. Every entry
 carries an owner issue and the file carries an expiry, so a suppression cannot
-outlive its cause unnoticed.
+outlive its cause unnoticed. The expiry is scoped to suppressions and does not
+fire on an empty list — the drift baseline emptied on 2026-08-06 when `umami`
+recovered, and an expiry that reddened the monitor over zero entries would be a
+finding-free failure on a check whose whole value is that its reds mean
+something.
 
 `.github/workflows/seed-freshness-monitor.yml` runs the drift check in the step
 **Check Railway deploy drift against main**, between the config audit and the

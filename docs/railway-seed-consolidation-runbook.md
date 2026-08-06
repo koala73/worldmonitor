@@ -234,10 +234,14 @@ different verdict than the one baselined still blocks" cannot acquire two
 meanings. It held 62 `REJECTED_PUSH` entries — every filtered service — until
 [#6142](https://github.com/koala73/worldmonitor/issues/6142) made the check
 closure-aware; those were not degradations, they were the check demanding that a
-filtered service run head. Today only `umami` at `BEHIND` against #6064 remains.
+filtered service run head. The last remaining entry — `umami` at `BEHIND` against
+[#6064](https://github.com/koala73/worldmonitor/issues/6064) — was pruned on
+2026-08-06 once the service was running head again, so the file is now empty.
 Acknowledged entries are printed on every run and do not fail it, so a green
 monitor here means "nothing new went stale", not "every service is on head". A
-service that recovers is printed as `recovered` — prune it.
+service that recovers is printed as `recovered` — prune it. The expiry does not
+fire on an empty list: it exists to stop a suppression outliving its cause, and
+with nothing suppressed there is nothing to re-review.
 
 #### Recovering a stale service
 

@@ -13,7 +13,7 @@ paths:
             tags:
                 - MilitaryService
             summary: ListMilitaryFlights
-            description: ListMilitaryFlights returns paginated OpenSky military aircraft observations within a bounding box, including callsign, position, altitude and operator fields.
+            description: ListMilitaryFlights returns paginated military aircraft observations within a bounding box, including callsign, position, altitude, operator, and source fields.
             operationId: ListMilitaryFlights
             parameters:
                 - name: page_size
@@ -1413,9 +1413,12 @@ components:
                     description: Analyst note.
                 enrichment:
                     $ref: '#/components/schemas/FlightEnrichment'
+                source:
+                    type: string
+                    description: Provider that supplied this observation (for example, "adsb.lol" or "opensky").
             required:
                 - id
-            description: MilitaryFlight represents a tracked military aircraft from OpenSky or Wingbits.
+            description: MilitaryFlight represents a tracked military aircraft from the configured ADS-B providers.
         GeoCoordinates:
             type: object
             properties:

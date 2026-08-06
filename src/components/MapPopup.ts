@@ -76,6 +76,22 @@ function formatPositionSource(source: string): string {
   return escapeHtml(source);
 }
 
+function formatMilitaryFlightSource(source: string | undefined): string {
+  if (!source) return escapeHtml(t('popups.militaryFlight.attribution'));
+  const providers: Record<string, { label: string; url: string }> = {
+    'adsb.lol': { label: 'adsb.lol (ODbL)', url: 'https://api.adsb.lol' },
+    'airplanes.live': { label: 'airplanes.live', url: 'https://api.airplanes.live' },
+    'adsb.fi': { label: 'adsb.fi', url: 'https://opendata.adsb.fi' },
+    wingbits: { label: 'Wingbits', url: 'https://wingbits.com' },
+    opensky: { label: 'OpenSky Network', url: 'https://opensky-network.org' },
+  };
+  const provider = providers[source];
+  const renderedSource = provider
+    ? `<a href="${provider.url}" target="_blank" rel="noopener" style="color:inherit">${provider.label}</a>`
+    : escapeHtml(source);
+  return `${escapeHtml(t('popups.source'))}: ${renderedSource}`;
+}
+
 function fmtUtcTime(utc: string | undefined): string {
   if (!utc) return '\u2014';
   const d = new Date(utc.includes('T') ? utc : utc.replace(' ', 'T') + 'Z');
@@ -2842,7 +2858,7 @@ ${isFeatureAvailable('wingbitsEnrichment') ? '<div class="wingbits-live-section"
         </div>
         ${flight.note ? `<p class="popup-description">${note}</p>` : ''}
 ${isFeatureAvailable('wingbitsEnrichment') ? '<div class="wingbits-live-section"><div class="wingbits-live-loading" style="font-size:11px;opacity:0.5;padding:4px 0">Loading Wingbits live data…</div></div>' : ''}
-        <div class="popup-attribution">${t('popups.militaryFlight.attribution')}</div>
+        <div class="popup-attribution">${formatMilitaryFlightSource(flight.source)}</div>
       </div>
     `;
   }
