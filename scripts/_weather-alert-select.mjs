@@ -4,6 +4,13 @@
 
 export const MAX_ALERTS = 50;
 
+export function requireAlertFeatures(data) {
+  if (!Array.isArray(data?.features)) {
+    throw new TypeError('NWS API response is missing a features array');
+  }
+  return data.features;
+}
+
 export function extractCoordinates(geometry) {
   if (!geometry) return [];
   try {
@@ -55,6 +62,15 @@ function normalizeAlert(feature) {
 /** How many alerts clear the severity filter, before the cap is applied. */
 export function eligibleAlertCount(features) {
   return (Array.isArray(features) ? features : []).filter(isEligible).length;
+}
+
+export function formatTruncationWarning(eligible, kept) {
+  if (eligible <= kept) return null;
+  return `weather-alerts: kept ${kept}/${eligible} by severity rank (${eligible - kept} dropped)`;
+}
+
+export function validateSelectedAlerts(data) {
+  return Array.isArray(data?.alerts);
 }
 
 /**

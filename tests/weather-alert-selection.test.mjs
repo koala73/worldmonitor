@@ -1,12 +1,22 @@
 import { strict as assert } from 'node:assert';
+import { readFileSync } from 'node:fs';
 import { describe, it } from 'node:test';
 
 import {
   MAX_ALERTS,
   calculateCentroid,
+  eligibleAlertCount,
   extractCoordinates,
+  formatTruncationWarning,
+  requireAlertFeatures,
   selectAlerts,
+  validateSelectedAlerts,
 } from '../scripts/_weather-alert-select.mjs';
+
+const SEEDER_SOURCE = readFileSync(
+  new URL('../scripts/seed-weather-alerts.mjs', import.meta.url),
+  'utf8',
+);
 
 const POLYGON = {
   type: 'Polygon',
@@ -95,6 +105,26 @@ describe('weather alert selection', () => {
     assert.deepEqual(alerts.map(a => a.severity), ['Severe']);
   });
 
+  it('counts only eligible severities before applying the cap', () => {
+    const features = [
+      ...feedWithHighSeverityPastTheCap(),
+      feature('Unknown', 300),
+      feature('Unexpected', 301),
+      { id: 'missing', geometry: POLYGON, properties: { event: 'no severity' } },
+    ];
+
+    assert.equal(eligibleAlertCount(features), MAX_ALERTS + 6);
+  });
+
+  it('formats kept/eligible/dropped warning details only when truncation occurs', () => {
+    assert.equal(
+      formatTruncationWarning(MAX_ALERTS + 6, MAX_ALERTS),
+      `weather-alerts: kept ${MAX_ALERTS}/${MAX_ALERTS + 6} by severity rank (6 dropped)`,
+    );
+    assert.equal(formatTruncationWarning(MAX_ALERTS, MAX_ALERTS), null);
+    assert.equal(formatTruncationWarning(MAX_ALERTS - 1, MAX_ALERTS - 1), null);
+  });
+
   it('treats a missing severity property as Unknown and drops it', () => {
     const bare = { id: 'bare', geometry: POLYGON, properties: { event: 'no severity' } };
     assert.deepEqual(selectAlerts([bare, feature('Severe', 1)]).map(a => a.id), ['alert-1']);
@@ -121,6 +151,25 @@ describe('weather alert selection', () => {
   it('returns an empty list for a non-array input', () => {
     assert.deepEqual(selectAlerts(undefined), []);
     assert.deepEqual(selectAlerts(null), []);
+  });
+
+  it('accepts a successfully selected empty alert list', () => {
+    assert.equal(validateSelectedAlerts({ alerts: [] }), true);
+    assert.equal(validateSelectedAlerts({ alerts: null }), false);
+    assert.equal(validateSelectedAlerts({}), false);
+  });
+
+  it('registers selected-empty results as valid zero-record seed runs', () => {
+    assert.match(SEEDER_SOURCE, /validateFn:\s*validateSelectedAlerts/);
+    assert.match(SEEDER_SOURCE, /zeroIsValid:\s*true/);
+  });
+
+  it('requires the upstream payload to contain a features array', () => {
+    const features = [];
+    assert.equal(requireAlertFeatures({ features }), features);
+    assert.throws(() => requireAlertFeatures({}), /missing a features array/);
+    assert.throws(() => requireAlertFeatures({ features: null }), /missing a features array/);
+    assert.throws(() => requireAlertFeatures({ features: {} }), /missing a features array/);
   });
 
   it('extracts the outer ring of a MultiPolygon', () => {

@@ -1,7 +1,14 @@
 #!/usr/bin/env node
 
 import { loadEnvFile, CHROME_UA, runSeed } from './_seed-utils.mjs';
-import { MAX_ALERTS, eligibleAlertCount, selectAlerts } from './_weather-alert-select.mjs';
+import {
+  MAX_ALERTS,
+  eligibleAlertCount,
+  formatTruncationWarning,
+  requireAlertFeatures,
+  selectAlerts,
+  validateSelectedAlerts,
+} from './_weather-alert-select.mjs';
 
 loadEnvFile(import.meta.url);
 
@@ -17,19 +24,14 @@ async function fetchAlerts() {
   if (!resp.ok) throw new Error(`NWS API error: ${resp.status}`);
 
   const data = await resp.json();
-  const features = data.features || [];
+  const features = requireAlertFeatures(data);
 
   const eligible = eligibleAlertCount(features);
   const alerts = selectAlerts(features, MAX_ALERTS);
-  if (eligible > alerts.length) {
-    console.warn(`weather-alerts: kept ${alerts.length}/${eligible} by severity rank (${eligible - alerts.length} dropped)`);
-  }
+  const truncationWarning = formatTruncationWarning(eligible, alerts.length);
+  if (truncationWarning) console.warn(truncationWarning);
 
   return { alerts };
-}
-
-function validate(data) {
-  return Array.isArray(data?.alerts) && data.alerts.length >= 1;
 }
 
 export function declareRecords(data) {
@@ -37,11 +39,12 @@ export function declareRecords(data) {
 }
 
 runSeed('weather', 'alerts', CANONICAL_KEY, fetchAlerts, {
-  validateFn: validate,
+  validateFn: validateSelectedAlerts,
   ttlSeconds: CACHE_TTL,
   sourceVersion: 'nws-active',
 
   declareRecords,
+  zeroIsValid: true,
   schemaVersion: 1,
   maxStaleMin: 45,
 }).catch((err) => {
