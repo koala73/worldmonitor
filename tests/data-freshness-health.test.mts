@@ -4,7 +4,7 @@ import { resolve } from 'node:path';
 import { describe, it } from 'node:test';
 import { fileURLToPath } from 'node:url';
 
-import { dataFreshness } from '../src/services/data-freshness.ts';
+import { dataFreshness, getIntelligenceGaps } from '../src/services/data-freshness.ts';
 import {
   __resetHealthFreshnessForTests,
   HEALTH_CHECK_SOURCE_MAP,
@@ -22,6 +22,30 @@ function jsonResponse(body: unknown, status = 200): Response {
 }
 
 describe('health freshness ingestion', () => {
+  it('identifies the weather source and outage gap as US NWS coverage', async () => {
+    __resetHealthFreshnessForTests();
+    await refreshDataFreshnessFromHealth({
+      endpoint: '/api/health',
+      urlResolver: (path) => path,
+      fetchFn: async () => jsonResponse({
+        checkedAt: new Date().toISOString(),
+        checks: {
+          weatherAlerts: {
+            status: 'SEED_ERROR',
+            records: 0,
+            maxStaleMin: 45,
+          },
+        },
+      }),
+    });
+
+    assert.equal(dataFreshness.getSource('weather')?.name, 'US Weather Alerts (NWS)');
+    assert.match(
+      getIntelligenceGaps().find(gap => gap.source === 'weather')?.message ?? '',
+      /US National Weather Service \(NWS\)/,
+    );
+  });
+
   it('hydrates dataFreshness from /api/health cadence metadata', async () => {
     const checkedAtMs = Date.now();
     const applied = await refreshDataFreshnessFromHealth({

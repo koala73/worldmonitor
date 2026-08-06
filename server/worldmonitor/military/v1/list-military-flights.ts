@@ -8,16 +8,19 @@ import type {
 } from '../../../../src/generated/server/worldmonitor/military/v1/service_server';
 
 import { isMilitaryCallsign, isMilitaryHex, detectAircraftType, UPSTREAM_TIMEOUT_MS } from './_shared';
-import { cachedFetchJson, getRawJson, readCachedJson } from '../../../_shared/redis';
+import { cachedFetchJson, getRawJson, readCachedJson, setCachedJson } from '../../../_shared/redis';
 import { markNoCacheResponse } from '../../../_shared/response-headers';
 import { getRelayBaseUrl, getRelayHeaders } from '../../../_shared/relay';
 
 const REDIS_CACHE_KEY = 'military:flights:v1';
 const REDIS_CACHE_TTL = 600; // 10 min — reduce upstream API pressure
 const REDIS_STALE_KEY = 'military:flights:stale:v1';
+const STALE_SNAPSHOT_CACHE_TTL = 120; // Bind a bounded cursor traversal to one snapshot.
+const STALE_SNAPSHOT_NEG_TTL = 30;
 
 /** Snap a coordinate to a grid step so nearby bbox values share cache entries. */
 const quantize = (v: number, step: number) => Math.round(v / step) * step;
+const clamp = (v: number, min: number, max: number) => Math.min(max, Math.max(min, v));
 const BBOX_GRID_STEP = 1; // 1-degree grid (~111 km at equator)
 
 interface RequestBounds {
@@ -104,6 +107,16 @@ function resolveOffset(cursor: string | undefined): number {
 
 function emptyResponse(): ListMilitaryFlightsResponse {
   return { flights: [], clusters: [], pagination: { nextCursor: '', totalCount: 0 } };
+}
+
+function buildCacheKey(req: ListMilitaryFlightsRequest): string {
+  const quantizedBB = [
+    quantize(req.swLat, BBOX_GRID_STEP),
+    quantize(req.swLon, BBOX_GRID_STEP),
+    quantize(req.neLat, BBOX_GRID_STEP),
+    quantize(req.neLon, BBOX_GRID_STEP),
+  ].join(':');
+  return `${REDIS_CACHE_KEY}:${quantizedBB}:${req.operator || ''}:${req.aircraftType || ''}`;
 }
 
 // Filter the cached quantized-cell snapshot to the exact request bbox, THEN
@@ -289,6 +302,13 @@ async function fetchLiveSeedSnapshot(): Promise<LiveSeedRead> {
 const STALE_NEG_TTL_MS = 30_000;
 let staleNegUntil = 0;
 
+type StaleSnapshotCacheEntry =
+  | { status: 'hit'; result: ListMilitaryFlightsResponse; coverage: SeedCoverage }
+  | { status: 'miss' };
+
+const staleSnapshotLocalCache = new Map<string, { entry: StaleSnapshotCacheEntry; expiresAt: number }>();
+const staleSnapshotInflight = new Map<string, Promise<StaleSnapshotCacheEntry>>();
+
 // Test seam — exposed for unit tests that need to drive the suppression
 // window without sleeping. Not exported from the module's public API.
 export function _resetStaleNegativeCacheForTests(): void {
@@ -296,9 +316,16 @@ export function _resetStaleNegativeCacheForTests(): void {
   liveSeedNegStatus = 'miss';
   liveSeedReadPromise = null;
   staleNegUntil = 0;
+  staleSnapshotLocalCache.clear();
+  staleSnapshotInflight.clear();
 }
 
-async function fetchStaleFallback(): Promise<ListMilitaryFlightsResponse['flights'] | null> {
+interface StaleSeedSnapshot {
+  flights: ListMilitaryFlightsResponse['flights'];
+  coverage: SeedCoverage;
+}
+
+async function fetchStaleFallback(): Promise<StaleSeedSnapshot | null> {
   const now = Date.now();
   if (now < staleNegUntil) return null;
   try {
@@ -308,11 +335,97 @@ async function fetchStaleFallback(): Promise<ListMilitaryFlightsResponse['flight
       staleNegUntil = now + STALE_NEG_TTL_MS;
       return null;
     }
-    return flights;
+    return {
+      flights,
+      coverage: raw?.coverage === 'global' ? 'global' : 'regional',
+    };
   } catch {
     staleNegUntil = now + STALE_NEG_TTL_MS;
     return null;
   }
+}
+
+function parseStaleSnapshotCacheEntry(value: unknown): StaleSnapshotCacheEntry | null {
+  if (!value || typeof value !== 'object') return null;
+  const entry = value as Partial<StaleSnapshotCacheEntry>;
+  if (entry.status === 'miss') return { status: 'miss' };
+  if (
+    entry.status !== 'hit'
+    || !entry.result
+    || !Array.isArray(entry.result.flights)
+    || (entry.coverage !== 'global' && entry.coverage !== 'regional')
+  ) return null;
+  return { status: 'hit', result: entry.result, coverage: entry.coverage };
+}
+
+function staleResultForBounds(
+  entry: StaleSnapshotCacheEntry,
+  requestBounds: RequestBounds,
+): ListMilitaryFlightsResponse | null {
+  return entry.status === 'hit' && seedCovers(entry.coverage, requestBounds) ? entry.result : null;
+}
+
+// Stale is a mutable root key, while pagination uses numeric offsets. Cache the
+// unpaginated snapshot plus its declared coverage per bbox/filter scope so a
+// seeder write cannot make later cursor pages slice a different ordering. Every
+// cache hit still rechecks exact request bounds against that coverage. Misses use
+// the legacy 30s suppression window; snapshots live for two minutes, comfortably
+// past the bounded traversal without extending the 24h root snapshot itself.
+async function fetchStableStaleSnapshot(
+  cacheKey: string,
+  requestBounds: RequestBounds,
+): Promise<ListMilitaryFlightsResponse | null> {
+  const staleCacheKey = `${cacheKey}:stale`;
+  const now = Date.now();
+  const local = staleSnapshotLocalCache.get(staleCacheKey);
+  if (local && local.expiresAt > now) {
+    return staleResultForBounds(local.entry, requestBounds);
+  }
+  if (local) staleSnapshotLocalCache.delete(staleCacheKey);
+
+  const cached = await readCachedJson(staleCacheKey);
+  if (cached.status === 'hit') {
+    const entry = parseStaleSnapshotCacheEntry(cached.value);
+    if (entry) {
+      const ttl = entry.status === 'hit' ? STALE_SNAPSHOT_CACHE_TTL : STALE_SNAPSHOT_NEG_TTL;
+      staleSnapshotLocalCache.set(staleCacheKey, { entry, expiresAt: now + ttl * 1_000 });
+      return staleResultForBounds(entry, requestBounds);
+    }
+  }
+
+  // Another caller may have populated the isolate cache while this request
+  // awaited Redis. Recheck before starting a second root-key read.
+  const refreshedLocal = staleSnapshotLocalCache.get(staleCacheKey);
+  if (refreshedLocal && refreshedLocal.expiresAt > Date.now()) {
+    return staleResultForBounds(refreshedLocal.entry, requestBounds);
+  }
+
+  const existing = staleSnapshotInflight.get(staleCacheKey);
+  if (existing) {
+    const entry = await existing;
+    return staleResultForBounds(entry, requestBounds);
+  }
+
+  const promise = (async (): Promise<StaleSnapshotCacheEntry> => {
+    const stale = await fetchStaleFallback();
+    const entry: StaleSnapshotCacheEntry = stale
+      ? {
+        status: 'hit',
+        result: { flights: stale.flights, clusters: [], pagination: undefined },
+        coverage: stale.coverage,
+      }
+      : { status: 'miss' };
+    const ttl = entry.status === 'hit' ? STALE_SNAPSHOT_CACHE_TTL : STALE_SNAPSHOT_NEG_TTL;
+    staleSnapshotLocalCache.set(staleCacheKey, { entry, expiresAt: Date.now() + ttl * 1_000 });
+    await setCachedJson(staleCacheKey, entry, ttl);
+    return entry;
+  })().finally(() => {
+    staleSnapshotInflight.delete(staleCacheKey);
+  });
+
+  staleSnapshotInflight.set(staleCacheKey, promise);
+  const entry = await promise;
+  return staleResultForBounds(entry, requestBounds);
 }
 
 export async function listMilitaryFlights(
@@ -325,17 +438,11 @@ export async function listMilitaryFlights(
 
     // Quantize bbox to a 1° grid so nearby map views share cache entries.
     // Precise coordinates caused near-zero hit rate since every pan/zoom created a unique key.
-    const quantizedBB = [
-      quantize(req.swLat, BBOX_GRID_STEP),
-      quantize(req.swLon, BBOX_GRID_STEP),
-      quantize(req.neLat, BBOX_GRID_STEP),
-      quantize(req.neLon, BBOX_GRID_STEP),
-    ].join(':');
     // Key by the quantized bbox only. The cached value is the complete
     // expanded-cell snapshot, so page size and cursor must NOT fragment it —
     // every page/cursor for the same cell shares one upstream fetch and one
     // entry, and pagination is applied per-request after retrieval.
-    const cacheKey = `${REDIS_CACHE_KEY}:${quantizedBB}:${req.operator || ''}:${req.aircraftType || ''}`;
+    const cacheKey = buildCacheKey(req);
 
     const fullResult = await cachedFetchJson<ListMilitaryFlightsResponse>(
       cacheKey,
@@ -375,10 +482,10 @@ export async function listMilitaryFlights(
         if (!baseUrl) return null;
 
         const fetchBB = {
-          lamin: quantize(req.swLat, BBOX_GRID_STEP) - BBOX_GRID_STEP / 2,
-          lamax: quantize(req.neLat, BBOX_GRID_STEP) + BBOX_GRID_STEP / 2,
-          lomin: quantize(req.swLon, BBOX_GRID_STEP) - BBOX_GRID_STEP / 2,
-          lomax: quantize(req.neLon, BBOX_GRID_STEP) + BBOX_GRID_STEP / 2,
+          lamin: clamp(quantize(req.swLat, BBOX_GRID_STEP) - BBOX_GRID_STEP / 2, -90, 90),
+          lamax: clamp(quantize(req.neLat, BBOX_GRID_STEP) + BBOX_GRID_STEP / 2, -90, 90),
+          lomin: clamp(quantize(req.swLon, BBOX_GRID_STEP) - BBOX_GRID_STEP / 2, -180, 180),
+          lomax: clamp(quantize(req.neLon, BBOX_GRID_STEP) + BBOX_GRID_STEP / 2, -180, 180),
         };
         const params = new URLSearchParams();
         params.set('lamin', String(fetchBB.lamin));
@@ -399,8 +506,9 @@ export async function listMilitaryFlights(
 
         const flights: ListMilitaryFlightsResponse['flights'] = [];
         for (const state of data.states) {
-          const [icao24, callsign, , , , lon, lat, altitude, onGround, velocity, heading] = state as [
-            string, string, unknown, unknown, unknown, number | null, number | null, number | null, boolean, number | null, number | null,
+          const [icao24, callsign, , , , lon, lat, altitude, onGround, velocity, heading, verticalRate] = state as [
+            string, string, unknown, unknown, unknown, number | null, number | null, number | null, boolean,
+            number | null, number | null, number | null,
           ];
           if (lat == null || lon == null || onGround) continue;
           if (!isMilitaryCallsign(callsign) && !isMilitaryHex(icao24)) continue;
@@ -423,10 +531,10 @@ export async function listMilitaryFlights(
             operator: 'MILITARY_OPERATOR_OTHER',
             operatorCountry: '',
             location: { latitude: lat, longitude: lon },
-            altitude: altitude ?? 0,
+            altitude: altitude != null ? Math.round(altitude * 3.28084) : 0,
             heading: heading ?? 0,
-            speed: (velocity as number) ?? 0,
-            verticalRate: 0,
+            speed: velocity != null ? Math.round(velocity * 1.94384) : 0,
+            verticalRate: verticalRate != null ? Math.round(verticalRate * 196.85) : 0,
             onGround: false,
             squawk: '',
             origin: '',
@@ -451,9 +559,9 @@ export async function listMilitaryFlights(
       // The seed cron (scripts/seed-military-flights.mjs) writes both keys
       // every run; stale has a 24h TTL versus 10min live, so it's the right
       // fallback when OpenSky / the relay hiccups.
-      const staleFlights = await fetchStaleFallback();
-      if (staleFlights && staleFlights.length > 0) {
-        return paginateResponse(staleFlights, [], requestBounds, req);
+      const staleResult = await fetchStableStaleSnapshot(cacheKey, requestBounds);
+      if (staleResult) {
+        return paginateResponse(staleResult.flights, staleResult.clusters, requestBounds, req);
       }
       markNoCacheResponse(ctx.request);
       return emptyResponse();
@@ -470,11 +578,12 @@ export async function listMilitaryFlights(
     // key exists for. This matters much more since #6222 widened
     // LIVE_SEED_COVERAGE to global: every viewport now routes through the
     // live-seed read, so skipping stale here blanks the entire map rather than
-    // the two former producer regions. fetchStaleFallback swallows its own
-    // errors and returns null, so it cannot re-throw into this handler.
-    const staleFlights = await fetchStaleFallback();
-    if (staleFlights && staleFlights.length > 0) {
-      return paginateResponse(staleFlights, [], normalizeBounds(req), req);
+    // the two former producer regions. The accepted stale snapshot is cached
+    // unpaginated so every cursor in the bounded traversal slices one version.
+    const requestBounds = normalizeBounds(req);
+    const staleResult = await fetchStableStaleSnapshot(buildCacheKey(req), requestBounds);
+    if (staleResult) {
+      return paginateResponse(staleResult.flights, staleResult.clusters, requestBounds, req);
     }
     markNoCacheResponse(ctx.request);
     return emptyResponse();

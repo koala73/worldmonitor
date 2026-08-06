@@ -311,7 +311,7 @@ describe("gateway direct LLM quota", () => {
     );
   });
 
-  test("Pro bearer analyze-stock uses a principal-scoped global fallback bucket", async () => {
+  test("Pro bearer analyze-stock uses a principal-scoped endpoint bucket", async () => {
     const calls = { analyze: 0 };
     resolveClerkSession.mockResolvedValue({ userId: "user_pro", orgId: null, role: "pro" });
     validateApiKey.mockResolvedValue({ valid: false, required: true, error: "API key required" });
@@ -325,11 +325,13 @@ describe("gateway direct LLM quota", () => {
 
     expect(res.status).toBe(200);
     expect(calls.analyze).toBe(1);
-    expect(checkRateLimit).toHaveBeenCalledWith(
+    expect(checkEndpointRateLimit).toHaveBeenCalledWith(
       expect.any(Request),
+      ANALYZE_PATH,
       expect.any(Object),
       { principalUserId: "user_pro" },
     );
+    expect(checkRateLimit).not.toHaveBeenCalled();
   });
 
   test("active Pro freshness bearer uses a principal-scoped global fallback bucket", async () => {
@@ -402,14 +404,14 @@ describe("gateway direct LLM quota", () => {
   });
 
   test("global limiter 429s emit a distinct telemetry reason", async () => {
-    const calls = { analyze: 0 };
+    const calls = { quotes: 0 };
     resolveClerkSession.mockResolvedValue({ userId: "user_pro", orgId: null, role: "pro" });
     validateApiKey.mockResolvedValue({ valid: false, required: true, error: "API key required" });
     checkRateLimit.mockResolvedValue(json({ error: "Too many requests" }, 429));
     const recorder = makeRecordingCtx();
 
-    const res = await makeAnalyzeGateway(calls)(
-      req(`${ANALYZE_PATH}?symbol=AAPL`, {
+    const res = await makeMarketQuotesGateway(calls)(
+      req(`${MARKET_QUOTES_PATH}?symbols=AAPL`, {
         headers: { Authorization: "Bearer pro" },
       }),
       recorder.ctx,
@@ -418,11 +420,11 @@ describe("gateway direct LLM quota", () => {
 
     expect(res.status).toBe(429);
     expect(lastTelemetryReason()).toBe("rate_limit_429_global");
-    expect(calls.analyze).toBe(0);
+    expect(calls.quotes).toBe(0);
   });
 
   test("global limiter degradation keeps the degraded telemetry reason", async () => {
-    const calls = { analyze: 0 };
+    const calls = { quotes: 0 };
     resolveClerkSession.mockResolvedValue({ userId: "user_pro", orgId: null, role: "pro" });
     validateApiKey.mockResolvedValue({ valid: false, required: true, error: "API key required" });
     checkRateLimit.mockResolvedValue(new Response(
@@ -431,8 +433,8 @@ describe("gateway direct LLM quota", () => {
     ));
     const recorder = makeRecordingCtx();
 
-    const res = await makeAnalyzeGateway(calls)(
-      req(`${ANALYZE_PATH}?symbol=AAPL`, {
+    const res = await makeMarketQuotesGateway(calls)(
+      req(`${MARKET_QUOTES_PATH}?symbols=AAPL`, {
         headers: { Authorization: "Bearer pro" },
       }),
       recorder.ctx,
@@ -441,7 +443,7 @@ describe("gateway direct LLM quota", () => {
 
     expect(res.status).toBe(503);
     expect(lastTelemetryReason()).toBe("rate_limit_degraded");
-    expect(calls.analyze).toBe(0);
+    expect(calls.quotes).toBe(0);
   });
 
   test("direct LLM quota 429s emit a distinct telemetry reason", async () => {
