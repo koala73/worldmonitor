@@ -131,6 +131,18 @@ jobs:
         continue-on-error: true
         env:
           CONVEX_DEPLOY_KEY: ${{ secrets.CONVEX_DEPLOY_KEY }}
+      - id: repair_stale_on_hold_derived_state
+        name: Repair stale on_hold derived state (idempotent)
+        # GHSA-hw94-8c4h-m9qp bounded future entitlement recomputes, but rows
+        # already stranded by the old predicate need one production repair.
+        # The mutation preserves Dodo's on_hold status, fixes only derived
+        # entitlements/grants, and writes a durable completion marker after
+        # the bounded atomic pass succeeds. Running this after every deploy is
+        # therefore a cheap no-op once production has been repaired.
+        run: npx convex run --prod payments/repairStaleOnHoldDerivedState:run
+        continue-on-error: true
+        env:
+          CONVEX_DEPLOY_KEY: ${{ secrets.CONVEX_DEPLOY_KEY }}
       - id: seed_followed_countries_shards
         name: Seed followedCountries shards (idempotent)
         # The `followCountry` / `unfollowCountry` / `mergeAnonymousLocal`
@@ -162,8 +174,9 @@ jobs:
         run: |
           if [ "${{ steps.seed_dodo_webhook_failure_summary.outcome }}" != "success" ] \
             || [ "${{ steps.seed_intel_history_append_lock.outcome }}" != "success" ] \
+            || [ "${{ steps.repair_stale_on_hold_derived_state.outcome }}" != "success" ] \
             || [ "${{ steps.seed_followed_countries_shards.outcome }}" != "success" ] \
             || [ "${{ steps.seed_followed_countries_country_locks.outcome }}" != "success" ]; then
-            echo "::error::One or more post-deploy seeds failed; inspect the seed steps above"
+            echo "::error::One or more post-deploy repairs/seeds failed; inspect the steps above"
             exit 1
           fi

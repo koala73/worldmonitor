@@ -235,9 +235,21 @@ type SubscriptionRow = {
 };
 
 /**
- * A subscription is "still covering" the user when it is active, on-hold
- * (payment retry window — entitlement preserved per business policy), or
+ * A subscription is "still covering" the user when it is active, on-hold-
+ * but-paid-through (payment retry window — entitlement preserved per business
+ * policy, but never past the period the customer actually paid for), or
  * cancelled-but-paid-through (currentPeriodEnd in the future).
+ *
+ * `on_hold` MUST carry the same `currentPeriodEnd` bound as `cancelled`
+ * (GHSA-hw94-8c4h-m9qp): Dodo holds a payment-failed subscription in
+ * `on_hold` indefinitely until the customer fixes payment or the merchant
+ * cancels — no further webhook is guaranteed. Unbounded `on_hold` coverage
+ * let every entitlement recompute keep re-electing a long-dead hold as the
+ * "best covering sub", re-asserting its paid planKey (and, for
+ * `api_business`, keeping seat grants alive) months past the paid-through
+ * date. `active` stays unbounded on purpose: a late renewal webhook must not
+ * cut off a paying customer (renewal staleness is handled by the
+ * renewal-verification/reconciliation machinery, not here).
  */
 export function isCoveringAt<T extends Pick<SubscriptionRow, "status" | "currentPeriodEnd">>(
   s: T,
@@ -245,8 +257,7 @@ export function isCoveringAt<T extends Pick<SubscriptionRow, "status" | "current
 ): boolean {
   return (
     s.status === "active" ||
-    s.status === "on_hold" ||
-    (s.status === "cancelled" && s.currentPeriodEnd > at)
+    ((s.status === "on_hold" || s.status === "cancelled") && s.currentPeriodEnd > at)
   );
 }
 
@@ -1169,7 +1180,15 @@ export async function handleSubscriptionOnHold(
   console.warn(
     `[subscriptionHelpers] Subscription ${data.subscription_id} on hold -- payment failure`,
   );
-  // Do NOT revoke entitlements -- they remain valid until currentPeriodEnd
+
+  // Entitlements are NOT revoked immediately -- a paid-through hold keeps
+  // covering until currentPeriodEnd (isCoveringAt). The recompute clamps the
+  // entitlement's validUntil to the best covering sub, so if Dodo never sends
+  // another event for this sub (holds can sit forever), access still lapses
+  // at the paid-through boundary instead of being re-grantable past it
+  // (GHSA-hw94-8c4h-m9qp). A hold event arriving after currentPeriodEnd
+  // downgrades right away unless another sub still covers the user.
+  await recomputeEntitlementFromAllSubs(ctx, existing.userId, eventTimestamp);
 
   // Day-0 dunning email (#4932), same non-blocking scheduler pattern as the
   // welcome email. The action re-validates state (still on_hold, same
@@ -1194,11 +1213,11 @@ export async function handleSubscriptionOnHold(
  * revoked so they cannot be accepted against a lapsed Business. Idempotent —
  * already-revoked/expired rows are skipped.
  */
-async function revokeBusinessProGrantsForSubscription(
+export async function revokeBusinessProGrantsForSubscription(
   ctx: MutationCtx,
   dodoSubscriptionId: string,
   eventTimestamp: number,
-): Promise<{ revoked: number; failed: number }> {
+): Promise<{ checked: number; revoked: number; failed: number }> {
   const grants = await ctx.db
     .query("businessProGrants")
     .withIndex("by_businessSubscriptionId", (q) =>
@@ -1206,10 +1225,12 @@ async function revokeBusinessProGrantsForSubscription(
     )
     .collect();
 
+  let checked = 0;
   let revoked = 0;
   let failed = 0;
   for (const grant of grants) {
     if (grant.status !== "accepted" && grant.status !== "pending") continue;
+    checked += 1;
     // Per-invitee error isolation: this whole handler runs inside ONE atomic
     // Convex mutation transaction (shared with the caller's own subscription-
     // status patch). An unguarded throw here would roll back every grant
@@ -1245,7 +1266,7 @@ async function revokeBusinessProGrantsForSubscription(
       );
     }
   }
-  return { revoked, failed };
+  return { checked, revoked, failed };
 }
 
 /**
