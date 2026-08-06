@@ -160,6 +160,7 @@ describe('worktree bootstrap helper', () => {
       '/tmp/source',
       '--cache=/tmp/cache',
       '--skip-install',
+      '--hooks-only',
       '--ignore-scripts',
       '--dry-run',
     ]);
@@ -167,8 +168,25 @@ describe('worktree bootstrap helper', () => {
     assert.equal(options.envSource, '/tmp/source');
     assert.equal(options.cacheDir, '/tmp/cache');
     assert.equal(options.skipInstall, true);
+    assert.equal(options.hooksOnly, true);
     assert.equal(options.ignoreScripts, true);
     assert.equal(options.dryRun, true);
+  });
+
+  it('stops after hooks normalization in hooks-only mode', () => {
+    const root = makeTempDir();
+    writeFileSync(join(root, 'package.json'), '{}');
+    writeFileSync(join(root, '.env.vercel-export'), 'MUST_NOT_BE_SCANNED=1\n');
+    const logs = [];
+
+    assert.doesNotThrow(() => bootstrapWorktree({
+      forceInstall: true,
+      hooksOnly: true,
+      log: line => logs.push(line),
+      rootDir: root,
+    }));
+    assert.deepEqual(logs, []);
+    assert.equal(existsSync(join(root, 'node_modules')), false);
   });
 
   // A stale absolute core.hooksPath makes every worktree push run ANOTHER

@@ -25,6 +25,7 @@ export function parseArgs(argv = []) {
     envSource: process.env.WM_ENV_SOURCE || '',
     forceInstall: false,
     help: false,
+    hooksOnly: false,
     ignoreScripts: false,
     rootDir: process.cwd(),
     skipEnv: false,
@@ -52,6 +53,8 @@ export function parseArgs(argv = []) {
       options.skipInstall = true;
     } else if (arg === '--force-install') {
       options.forceInstall = true;
+    } else if (arg === '--hooks-only') {
+      options.hooksOnly = true;
     } else if (arg === '--ignore-scripts') {
       options.ignoreScripts = true;
     } else if (arg === '--env-source') {
@@ -87,6 +90,7 @@ Options:
   --skip-env          Do not create env symlinks.
   --skip-install      Do not run npm ci, even when installation is not verified.
   --force-install     Run npm ci even when node_modules already exists.
+  --hooks-only        Normalize core.hooksPath, then exit without other bootstrap work.
   --ignore-scripts    Pass --ignore-scripts to npm ci for docs/test-only work.
   --dry-run           Print what would happen without changing files.
   -h, --help          Show this help text.`);
@@ -425,13 +429,15 @@ export function normalizeWorktreeHooksPath({
 export function bootstrapWorktree(options = {}) {
   const rootDir = resolve(options.rootDir || process.cwd());
   const log = options.log || console.log;
-  const envSource = options.envSource
-    ? resolve(options.envSource)
-    : inferEnvSource(rootDir);
 
   assertProjectRoot(rootDir);
 
   normalizeWorktreeHooksPath({ dryRun: options.dryRun, log, rootDir });
+  if (options.hooksOnly) return;
+
+  const envSource = options.envSource
+    ? resolve(options.envSource)
+    : inferEnvSource(rootDir);
 
   if (!options.skipEnv) {
     linkEnvFiles({
