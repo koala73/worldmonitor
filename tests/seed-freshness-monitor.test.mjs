@@ -264,6 +264,15 @@ describe('scheduled seed freshness monitor', () => {
       assert.equal(applyAcceptanceBaseline([], baseline, at('2026-08-28')).expired, true);
     });
 
+    // The expiry exists to stop a SUPPRESSION outliving its cause. Pruning the
+    // last recovered entry empties the list, and a date-triggered failure over
+    // nothing is a red monitor with nothing to review — which is how people
+    // learn to ignore the check that is supposed to page them.
+    it('does not expire once the last suppression is pruned', () => {
+      const emptied = { ...baseline, acknowledged: [] };
+      assert.equal(applyAcceptanceBaseline([], emptied, at('2026-08-28')).expired, false);
+    });
+
     it('requires an owner issue and an expiry on every entry', () => {
       assert.throws(() => validateAcceptanceBaseline({ acknowledged: [] }), /expiresAt/);
       assert.throws(

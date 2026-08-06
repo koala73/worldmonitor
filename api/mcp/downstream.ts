@@ -296,6 +296,56 @@ export async function assertMcpToolFetchOk(
   );
 }
 
+/**
+ * Classify a PromiseSettledResult rejection reason into a short tag value.
+ *
+ * Returns one of:
+ *   `timeout`       — AbortSignal.timeout fired (AbortError)
+ *   `http_<status>` — upstream returned a non-ok HTTP status
+ *   `auth_error`    — buildAuthHeaders or similar auth-path failure
+ *   `error`         — generic Error subclass (message available in detail)
+ *   `unknown`       — non-Error rejection (string, undefined, etc.)
+ */
+export function classifyFailureReason(reason: unknown): string {
+  if (reason instanceof Error) {
+    if (reason.name === 'AbortError' || reason.name === 'TimeoutError') return 'timeout';
+    const m = reason.message.match(/^HTTP (\d+)/);
+    if (m) return `http_${m[1]}`;
+    if (/\b(auth|secret|key|unauthorized|forbidden)\b/i.test(reason.message)) return 'auth_error';
+    return 'error';
+  }
+  return reason == null ? 'unknown' : String(reason);
+}
+
+function formatErrorDetail(err: unknown): string {
+  if (err instanceof Error) return err.message;
+  if (typeof err === 'string') return err;
+  try { return JSON.stringify(err); } catch { return String(err); }
+}
+
+/**
+ * Typed error for `get_airspace` when both the civilian and military upstream
+ * sources fail. Carries the classified failure summary so dispatch can tag
+ * each side separately in Sentry and attach the full rejection reasons as
+ * extra data — distinguishing a shared-host outage (same failure on both
+ * sides) from two independent provider failures (different failures).
+ */
+export class BothSourcesFailedError extends Error {
+  readonly civilianFailure: string;
+  readonly militaryFailure: string;
+  readonly civilianFailureDetail: string;
+  readonly militaryFailureDetail: string;
+
+  constructor(civDetail: unknown, milDetail: unknown) {
+    super('Airspace data unavailable: both civilian and military sources failed');
+    this.name = 'BothSourcesFailedError';
+    this.civilianFailure = classifyFailureReason(civDetail);
+    this.militaryFailure = classifyFailureReason(milDetail);
+    this.civilianFailureDetail = formatErrorDetail(civDetail);
+    this.militaryFailureDetail = formatErrorDetail(milDetail);
+  }
+}
+
 export function downstreamErrorTags(
   error: unknown,
 ): Record<string, string> {
@@ -313,6 +363,12 @@ export function downstreamErrorTags(
       downstream_status: String(error.status),
       downstream_error_code: error.safeCode,
       downstream_response_marker: error.responseMarker,
+    };
+  }
+  if (error instanceof BothSourcesFailedError) {
+    return {
+      civilian_failure: error.civilianFailure,
+      military_failure: error.militaryFailure,
     };
   }
   return {};

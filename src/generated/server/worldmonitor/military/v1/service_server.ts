@@ -42,6 +42,7 @@ export interface MilitaryFlight {
   isInteresting: boolean;
   note: string;
   enrichment?: FlightEnrichment;
+  source: string;
 }
 
 export interface GeoCoordinates {

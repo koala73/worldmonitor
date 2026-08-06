@@ -55,6 +55,11 @@ function createHandler(options: { handlerCdnCacheHeader?: string; publicRouteBod
       path: '/api/market/v1/analyze-stock',
       handler: async () => new Response(JSON.stringify({ ok: true }), { status: 200 }),
     },
+    {
+      method: 'GET',
+      path: '/api/resilience/v1/get-resilience-score',
+      handler: async () => new Response(JSON.stringify({ ok: true }), { status: 200 }),
+    },
   ]);
 }
 
@@ -251,13 +256,16 @@ describe('gateway CDN origin policy', () => {
     process.env.WORLDMONITOR_VALID_KEYS = 'real-key-123';
     const handler = createHandler();
 
-    const noCreds = await handler(new Request('https://worldmonitor.app/api/market/v1/analyze-stock?symbol=AAPL', {
+    // Use a premium route without its own fail-closed provider budget. The
+    // analyze-stock limiter is covered separately by the rate-limit contract;
+    // this test is scoped to premium auth and CDN behavior with Redis absent.
+    const noCreds = await handler(new Request('https://worldmonitor.app/api/resilience/v1/get-resilience-score?countryCode=US', {
       headers: { Origin: 'https://worldmonitor.app' },
     }));
     assert.equal(noCreds.status, 401);
     assert.equal(noCreds.headers.get('Cache-Control'), 'no-store');
 
-    const withKey = await handler(new Request('https://worldmonitor.app/api/market/v1/analyze-stock?symbol=AAPL', {
+    const withKey = await handler(new Request('https://worldmonitor.app/api/resilience/v1/get-resilience-score?countryCode=US', {
       headers: {
         Origin: 'https://worldmonitor.app',
         'X-WorldMonitor-Key': 'real-key-123',
