@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { loadEnvFile, CHROME_UA, getRedisCredentials, acquireLockSafely, releaseLock, withRetry, writeFreshnessMetadata, logSeedResult, verifySeedKey, extendExistingTtl, getResponseHeader } from './_seed-utils.mjs';
+import { loadEnvFile, CHROME_UA, getRedisCredentials, parseRedisCommandResponse, redisCommand, acquireLockSafely, releaseLock, withRetry, writeFreshnessMetadata, logSeedResult, verifySeedKey, extendExistingTtl, getResponseHeader } from './_seed-utils.mjs';
 import { summarizeMilitaryTheaters, buildMilitarySurges, appendMilitaryHistory } from './_military-surges.mjs';
 import { buildEnvelope, unwrapEnvelope } from './_seed-envelope-source.mjs';
 import { pathToFileURL } from 'node:url';
@@ -1430,38 +1430,68 @@ function calculateTheaterPostures(flights) {
 export async function redisSet(url, token, key, value, ttl) {
   const payload = JSON.stringify(value);
   const cmd = ttl ? ['SET', key, payload, 'EX', ttl] : ['SET', key, payload];
-  const resp = await fetch(url, {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', 'User-Agent': CHROME_UA },
-    body: JSON.stringify(cmd),
-    signal: AbortSignal.timeout(10_000),
-  });
-  if (!resp.ok) throw new Error(`Redis SET ${key} failed: HTTP ${resp.status}`);
-  const body = await resp.json();
-  if (body && typeof body === 'object' && Object.hasOwn(body, 'error')) {
-    throw new Error(`Redis SET ${key} rejected by Upstash: ${String(body.error)}`);
+  await withRetry(() => redisCommand(url, token, cmd, {
+    label: `Redis SET ${key}`,
+    timeoutMs: 10_000,
+  }), 2, 1000);
+}
+
+export async function redisDel(url, token, key) {
+  await withRetry(() => redisCommand(url, token, ['DEL', key], {
+    label: `Redis DEL ${key}`,
+    timeoutMs: 10_000,
+  }), 2, 1000);
+}
+
+export async function redisGet(url, token, key) {
+  const data = await withRetry(async () => {
+    const resp = await fetch(`${url}/get/${encodeURIComponent(key)}`, {
+      headers: { Authorization: `Bearer ${token}`, 'User-Agent': CHROME_UA },
+      signal: AbortSignal.timeout(10_000),
+    });
+    return parseRedisCommandResponse(resp, `Redis GET ${key}`);
+  }, 2, 1000);
+  if (data.result == null) return null;
+  try {
+    return unwrapEnvelope(JSON.parse(data.result)).data;
+  } catch (cause) {
+    throw Object.assign(new Error(`Redis GET ${key} returned invalid stored JSON`), { cause });
   }
 }
 
-async function redisDel(url, token, key) {
-  const resp = await fetch(url, {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', 'User-Agent': CHROME_UA },
-    body: JSON.stringify(['DEL', key]),
-    signal: AbortSignal.timeout(10_000),
-  });
-  if (!resp.ok) throw new Error(`Redis DEL ${key} failed: HTTP ${resp.status}`);
-}
+const MILITARY_PUBLICATION_TTL_GROUPS = [
+  { keys: [LIVE_KEY, 'seed-meta:military:flights'], ttl: LIVE_TTL },
+  {
+    keys: [
+      STALE_KEY,
+      THEATER_POSTURE_STALE_KEY,
+      MILITARY_SURGES_STALE_KEY,
+      MILITARY_FORECAST_INPUTS_STALE_KEY,
+      MILITARY_CLASSIFICATION_AUDIT_STALE_KEY,
+      'seed-meta:theater-posture',
+      'seed-meta:military-forecast-inputs',
+      'seed-meta:military-surges',
+    ],
+    ttl: STALE_TTL,
+  },
+  {
+    keys: [
+      THEATER_POSTURE_LIVE_KEY,
+      MILITARY_FORECAST_INPUTS_LIVE_KEY,
+      MILITARY_CLASSIFICATION_AUDIT_LIVE_KEY,
+      MILITARY_SURGES_LIVE_KEY,
+    ],
+    ttl: THEATER_POSTURE_LIVE_TTL,
+  },
+  { keys: [THEATER_POSTURE_BACKUP_KEY, MILITARY_SURGES_HISTORY_KEY], ttl: THEATER_POSTURE_BACKUP_TTL },
+];
 
-async function redisGet(url, token, key) {
-  const resp = await fetch(`${url}/get/${encodeURIComponent(key)}`, {
-    headers: { Authorization: `Bearer ${token}` },
-    signal: AbortSignal.timeout(10_000),
-  });
-  if (!resp.ok) return null;
-  const data = await resp.json();
-  if (!data?.result) return null;
-  try { return unwrapEnvelope(JSON.parse(data.result)).data; } catch { return null; }
+export async function preserveMilitaryPublicationTtls() {
+  const results = [];
+  for (const group of MILITARY_PUBLICATION_TTL_GROUPS) {
+    results.push(await extendExistingTtl(group.keys, group.ttl));
+  }
+  return results.every(Boolean);
 }
 
 async function requestForecastRefreshIfEnabled(runId, assessedAt, source) {
@@ -1529,23 +1559,14 @@ async function main() {
   } catch (err) {
     await releaseLock('military:flights', runId);
     console.error(`  FETCH FAILED: ${err.message || err}`);
-    await extendExistingTtl([LIVE_KEY, 'seed-meta:military:flights'], LIVE_TTL);
-    await extendExistingTtl([STALE_KEY, THEATER_POSTURE_STALE_KEY, MILITARY_SURGES_STALE_KEY, MILITARY_FORECAST_INPUTS_STALE_KEY, MILITARY_CLASSIFICATION_AUDIT_STALE_KEY], STALE_TTL);
-    await extendExistingTtl([THEATER_POSTURE_LIVE_KEY, MILITARY_FORECAST_INPUTS_LIVE_KEY, MILITARY_CLASSIFICATION_AUDIT_LIVE_KEY], THEATER_POSTURE_LIVE_TTL);
-    await extendExistingTtl([THEATER_POSTURE_BACKUP_KEY], THEATER_POSTURE_BACKUP_TTL);
-    await extendExistingTtl([MILITARY_SURGES_LIVE_KEY], MILITARY_SURGES_LIVE_TTL);
+    await preserveMilitaryPublicationTtls();
     console.log(`\n=== Failed gracefully (${Math.round(Date.now() - startMs)}ms) ===`);
     process.exit(0);
   }
 
   if (flights.length === 0) {
     console.log('  SKIPPED: 0 military flights — extending existing TTLs');
-    await extendExistingTtl([LIVE_KEY, 'seed-meta:military:flights'], LIVE_TTL);
-    await extendExistingTtl([STALE_KEY, THEATER_POSTURE_STALE_KEY, MILITARY_SURGES_STALE_KEY, MILITARY_FORECAST_INPUTS_STALE_KEY, MILITARY_CLASSIFICATION_AUDIT_STALE_KEY], STALE_TTL);
-    await extendExistingTtl([THEATER_POSTURE_LIVE_KEY, MILITARY_FORECAST_INPUTS_LIVE_KEY, MILITARY_CLASSIFICATION_AUDIT_LIVE_KEY], THEATER_POSTURE_LIVE_TTL);
-    await extendExistingTtl([THEATER_POSTURE_BACKUP_KEY], THEATER_POSTURE_BACKUP_TTL);
-    await extendExistingTtl([MILITARY_SURGES_LIVE_KEY], MILITARY_SURGES_LIVE_TTL);
-    await extendExistingTtl(['seed-meta:theater-posture', 'seed-meta:military-forecast-inputs', 'seed-meta:military-surges'], STALE_TTL);
+    await preserveMilitaryPublicationTtls();
     await releaseLock('military:flights', runId);
     lockReleased = true;
     process.exit(0);
@@ -1680,6 +1701,10 @@ async function main() {
     const durationMs = Date.now() - startMs;
     logSeedResult('military', flights.length, durationMs);
     console.log(`\n=== Done (${Math.round(durationMs)}ms) ===`);
+  } catch (err) {
+    console.warn(`  Preserving last-good military keys after publish failure: ${err.message || err}`);
+    await preserveMilitaryPublicationTtls();
+    throw err;
   } finally {
     if (!lockReleased) await releaseLock('military:flights', runId);
   }
