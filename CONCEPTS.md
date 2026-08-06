@@ -401,4 +401,4 @@ would degrade into noise.
 
 - *"Pool"* had been used for both a labelled market category and the complete set of markets — these are distinct. A pool is always a labelled subset; the complete set has no pool and must be requested as an explicit union.
 - *"Variant"* resolves differently per surface — a served host on the web, a locally stored selection on desktop. Only the web sense is addressable by URL; a desktop artifact is never variant-specific, so a variant accompanying a desktop artifact request is an identity label rather than a selector.
-- *"wingbits"* as a publication source means opposite things from the two Theater Posture producers — the military-flights seeder's normal first-choice tier, but the relay loop's last-resort fallback. The recorded producer disambiguates which reading applies; never compare the token across producers.
+- *"wingbits"* as a publication source means different things across the two Theater Posture producers — the military-flights seeder's keyed regional supplement after adsb.lol, but the relay loop's last-resort fallback. The recorded producer disambiguates which reading applies; never compare the token across producers.

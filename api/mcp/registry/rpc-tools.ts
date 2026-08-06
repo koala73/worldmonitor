@@ -10,7 +10,7 @@ import { readJsonFromUpstash } from '../../_upstash-json.js';
 import { buildAuthHeaders } from '../auth';
 import { assertToolFetchOk, BillingDenialError, throwIfBillingDenial } from '../billing-denial';
 import { SUPPORTED_CONSUMER_PRICES_COUNTRIES } from '../constants';
-import { assertMcpToolFetchOk } from '../downstream';
+import { assertMcpToolFetchOk, BothSourcesFailedError } from '../downstream';
 import { evaluateFreshness } from '../freshness';
 import { McpSourceUnavailableError } from '../source-unavailable';
 import {
@@ -987,7 +987,7 @@ export const RPC_TOOLS: ToolDef[] = [
       const milOk = type === 'civilian' || milResult.status === 'fulfilled';
 
       // Both sources down — total outage, don't return misleading empty data
-      if (!civOk && !milOk) throw new Error('Airspace data unavailable: both civilian and military sources failed');
+      if (!civOk && !milOk) throw new BothSourcesFailedError(civResult.reason, milResult.reason);
 
       const civ = civResult.status === 'fulfilled' ? civResult.value : null;
       const mil = milResult.status === 'fulfilled' ? milResult.value : null;
