@@ -202,7 +202,7 @@ export const LAYER_EXPLANATIONS: Partial<Record<keyof MapLayers, LayerExplanatio
     coverage: 'curated',
     category: 'Aviation',
     purpose: 'Highlights airport disruption, closures, NOTAM-derived airspace issues, and live aircraft positions when tracking is available.',
-    source: 'FAA ASWS, AviationStack, ICAO NOTAMs, OpenSky/Wingbits aircraft tracking, and the aviation service.',
+    source: 'FAA ASWS, AviationStack, ICAO NOTAMs, adsb.lol (ODbL), Wingbits, OpenSky, and the aviation service.',
     freshness: 'Airport disruption seeds run on a 30-minute cadence; the aviation panel also refreshes operational views on a 5-minute polling cycle.',
     confidence: 'Best for disruption triage; individual live aircraft coverage depends on ADS-B availability and configured providers.',
     limitations: [

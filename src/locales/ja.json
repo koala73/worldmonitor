@@ -2890,7 +2890,7 @@
       "heading": "方位",
       "hexCode": "HEXコード",
       "squawk": "スコーク",
-      "attribution": "ソース: OpenSky Network"
+      "attribution": "ソース: adsb.lol (ODbL) · OpenSky Network"
     },
     "militaryVessel": {
       "aisDark": "AIS消失",

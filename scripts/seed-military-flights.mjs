@@ -43,6 +43,26 @@ const FORECAST_REFRESH_REQUEST_TTL = 60 * 60;
 const OPENSKY_PROXY_AUTH = process.env.OPENSKY_PROXY_AUTH || process.env.PROXY_URL || '';
 const PROXY_ENABLED = !!OPENSKY_PROXY_AUTH;
 
+// ── Keyless ADS-B Endpoints ───────────────────────────────
+const ADSBLOL_MIL_ENDPOINT = 'https://api.adsb.lol/v2/mil';
+const AIRPLANES_LIVE_POINT_ENDPOINT = 'https://api.airplanes.live/v2/point';
+const ADSB_FI_POINT_ENDPOINT = 'https://opendata.adsb.fi/api/v3';
+
+// ── Blind-spot Regions (outside the two OpenSky bboxes) ────
+const BLIND_SPOT_REGIONS = [
+  { name: 'Yekaterinburg', lat: 56.8, lon: 60.6, radiusNm: 250 },
+  { name: 'Novosibirsk',   lat: 55.0, lon: 82.9, radiusNm: 250 },
+  { name: 'Krasnoyarsk',   lat: 56.0, lon: 92.9, radiusNm: 250 },
+  { name: 'Vladivostok',   lat: 43.1, lon: 131.9, radiusNm: 250 },
+  { name: 'Urumqi',        lat: 43.8, lon: 87.6, radiusNm: 250 },
+  { name: 'Chengdu',       lat: 30.6, lon: 104.1, radiusNm: 250 },
+  { name: 'Lagos-Accra',   lat: 6.5,  lon: 3.4,  radiusNm: 250 },
+  { name: 'Addis Ababa',   lat: 9.0,  lon: 38.7, radiusNm: 250 },
+];
+
+// Stagger delays between gap-fill queries (ms)
+const GAP_FILL_STAGGER_MS = 150;
+
 // ── Query Regions ──────────────────────────────────────────
 const QUERY_REGIONS = [
   { name: 'PACIFIC', lamin: 10, lamax: 46, lomin: 107, lomax: 143 },
@@ -1071,13 +1091,230 @@ async function fetchWingbits() {
   return states;
 }
 
-// ── Fetch All States (Wingbits first, OpenSky supplements) ─
+// ── ADSB.lol /v2/mil (primary, keyless, global) ──────────
+function buildAdsbLolSourceMeta(flight) {
+  return {
+    source: 'adsb.lol',
+    rawKeys: Object.keys(flight || {}),
+    rawPreview: {
+      hex: flight?.hex || '',
+      flight: flight?.flight || '',
+      type: flight?.type || '',
+      r: flight?.r || '',
+      t: flight?.t || '',
+      desc: flight?.desc || '',
+      category: flight?.category || '',
+      dbFlags: flight?.dbFlags,
+    },
+    operatorName: '',
+    operatorCode: '',
+    ownerName: '',
+    aircraftModel: flight?.desc || flight?.t || '',
+    aircraftTypeLabel: flight?.t || '',
+    aircraftTypeCode: flight?.t || '',
+    aircraftDescription: flight?.desc || '',
+    registration: flight?.r || '',
+    originCountry: flight?.co || '',
+  };
+}
+
+async function fetchAdsbLol() {
+  console.log(`  [adsb.lol] GET ${ADSBLOL_MIL_ENDPOINT}`);
+  const resp = await fetch(ADSBLOL_MIL_ENDPOINT, {
+    headers: { Accept: 'application/json', 'User-Agent': CHROME_UA },
+    signal: AbortSignal.timeout(20_000),
+  });
+  if (!resp.ok) {
+    const body = await resp.text().catch(() => '');
+    throw new Error(`adsb.lol HTTP ${resp.status}: ${body.substring(0, 200)}`);
+  }
+  const data = await resp.json();
+  const aircraft = data.ac || [];
+  console.log(`  [adsb.lol] ${aircraft.length} military aircraft globally`);
+
+  const states = [];
+  const seenIds = new Set();
+  for (const a of aircraft) {
+    const icao24 = (a.hex || '').trim().replace(/~/g, '');
+    if (!icao24 || seenIds.has(icao24)) continue;
+    const lat = a.lat;
+    const lon = a.lon;
+    if (lat == null || lon == null) continue;
+    seenIds.add(icao24);
+
+    const callsign = (a.flight || '').trim();
+    const altBaro = a.alt_baro;
+    const onGround = typeof altBaro === 'string' && altBaro === 'ground' ? 1 : 0;
+    const altMeters = typeof altBaro === 'number' ? altBaro * 0.3048 : null;
+    const velocityMs = a.gs != null ? a.gs * 0.514444 : null;
+    const vertRateMs = a.baro_rate != null ? a.baro_rate * 0.00508 : null;
+    const lastContact = a.now || a.updated || Date.now() / 1000;
+
+    states.push([
+      icao24,
+      callsign,
+      a.co || '',
+      null,
+      lastContact,
+      lon,
+      lat,
+      altMeters,
+      onGround,
+      velocityMs,
+      a.track || 0,
+      vertRateMs,
+      null,
+      a.alt_geom != null ? a.alt_geom * 0.3048 : null,
+      a.squawk || null,
+      buildAdsbLolSourceMeta(a),
+    ]);
+  }
+  return states;
+}
+
+// ── Gap-fill: airplanes.live + adsb.fi point queries ──────
+function buildGapFillSourceMeta(flight, sourceName) {
+  return {
+    source: sourceName,
+    rawKeys: Object.keys(flight || {}),
+    rawPreview: {
+      hex: flight?.hex || '',
+      flight: flight?.flight || '',
+      type: flight?.type || '',
+      r: flight?.r || '',
+      t: flight?.t || '',
+      desc: flight?.desc || '',
+      category: flight?.category || '',
+    },
+    operatorName: '',
+    operatorCode: '',
+    ownerName: '',
+    aircraftModel: flight?.desc || flight?.t || '',
+    aircraftTypeLabel: flight?.t || '',
+    aircraftTypeCode: flight?.t || '',
+    aircraftDescription: flight?.desc || '',
+    registration: flight?.r || '',
+    originCountry: flight?.co || '',
+  };
+}
+
+async function fetchAirplanesLivePoint(lat, lon, radiusNm) {
+  const url = `${AIRPLANES_LIVE_POINT_ENDPOINT}/${lat}/${lon}/${radiusNm}`;
+  const resp = await fetch(url, {
+    headers: { Accept: 'application/json', 'User-Agent': CHROME_UA },
+    signal: AbortSignal.timeout(15_000),
+  });
+  if (!resp.ok) {
+    const body = await resp.text().catch(() => '');
+    throw new Error(`airplanes.live HTTP ${resp.status}: ${body.substring(0, 200)}`);
+  }
+  const data = await resp.json();
+  return data.ac || [];
+}
+
+async function fetchAdsbFiPoint(lat, lon, dist) {
+  const url = `${ADSB_FI_POINT_ENDPOINT}/lat/${lat}/lon/${lon}/dist/${dist}`;
+  const resp = await fetch(url, {
+    headers: { Accept: 'application/json', 'User-Agent': CHROME_UA },
+    signal: AbortSignal.timeout(15_000),
+  });
+  if (!resp.ok) {
+    const body = await resp.text().catch(() => '');
+    throw new Error(`adsb.fi HTTP ${resp.status}: ${body.substring(0, 200)}`);
+  }
+  const data = await resp.json();
+  return data.aircraft || [];
+}
+
+function convertToStates(aircraft, sourceName, seenIds, allStates) {
+  let added = 0;
+  for (const a of aircraft) {
+    const icao24 = (a.hex || '').trim().replace(/~/g, '');
+    if (!icao24 || seenIds.has(icao24)) continue;
+    const lat = a.lat;
+    const lon = a.lon;
+    if (lat == null || lon == null) continue;
+    seenIds.add(icao24);
+
+    const callsign = (a.flight || '').trim();
+    const altBaro = a.alt_baro;
+    const onGround = typeof altBaro === 'string' && altBaro === 'ground' ? 1 : 0;
+    const altMeters = typeof altBaro === 'number' ? altBaro * 0.3048 : null;
+    const velocityMs = a.gs != null ? a.gs * 0.514444 : null;
+    const vertRateMs = a.baro_rate != null ? a.baro_rate * 0.00508 : null;
+    const lastContact = a.now || a.updated || Date.now() / 1000;
+
+    allStates.push([
+      icao24,
+      callsign,
+      a.co || '',
+      null,
+      lastContact,
+      lon,
+      lat,
+      altMeters,
+      onGround,
+      velocityMs,
+      a.track || 0,
+      vertRateMs,
+      null,
+      a.alt_geom != null ? a.alt_geom * 0.3048 : null,
+      a.squawk || null,
+      buildGapFillSourceMeta(a, sourceName),
+    ]);
+    added++;
+  }
+  return added;
+}
+
+async function fetchGapFillStates(seenIds, allStates) {
+  let totalAdded = 0;
+  for (const region of BLIND_SPOT_REGIONS) {
+    const regionAdded = { airplanes: 0, adsbFi: 0 };
+
+    // airplanes.live point query
+    try {
+      const ac = await fetchAirplanesLivePoint(region.lat, region.lon, region.radiusNm);
+      const added = convertToStates(ac, 'airplanes.live', seenIds, allStates);
+      regionAdded.airplanes = added;
+      totalAdded += added;
+    } catch (e) {
+      console.warn(`  [airplanes.live] ${region.name}: ${e.message}`);
+    }
+
+    // Stagger before next query
+    await new Promise((r) => setTimeout(r, GAP_FILL_STAGGER_MS));
+
+    // adsb.fi point query
+    try {
+      const ac = await fetchAdsbFiPoint(region.lat, region.lon, region.radiusNm);
+      const added = convertToStates(ac, 'adsb.fi', seenIds, allStates);
+      regionAdded.adsbFi = added;
+      totalAdded += added;
+    } catch (e) {
+      console.warn(`  [adsb.fi] ${region.name}: ${e.message}`);
+    }
+
+    // Stagger before next region
+    await new Promise((r) => setTimeout(r, GAP_FILL_STAGGER_MS));
+
+    const total = regionAdded.airplanes + regionAdded.adsbFi;
+    if (total > 0) {
+      console.log(`  [Gap-fill] ${region.name}: +${total} (airplanes.live=${regionAdded.airplanes}, adsb.fi=${regionAdded.adsbFi})`);
+    }
+  }
+  return totalAdded;
+}
+
+// ── Fetch All States (adsb.lol primary, gap-fill supplements, OpenSky fallback) ─
 async function fetchAllStates() {
   const seenIds = new Set();
   const allStates = [];
   const source = { value: 'none' };
   const oauthConfigured = Boolean(process.env.OPENSKY_CLIENT_ID && process.env.OPENSKY_CLIENT_SECRET);
   const fetchSources = {
+    adsbLolUsed: false,
+    gapFillUsed: false,
     wingbitsUsed: false,
     oauthConfigured,
     proxyEnabled: PROXY_ENABLED,
@@ -1086,7 +1323,25 @@ async function fetchAllStates() {
     regions: [],
   };
 
-  // Tier 1: Wingbits — no proxy needed, fast, reliable
+  // Tier 1: adsb.lol /v2/mil — one keyless global call, covers blind spots
+  try {
+    const adsbStates = await fetchAdsbLol();
+    for (const state of adsbStates) {
+      const icao24 = state[0];
+      if (seenIds.has(icao24)) continue;
+      seenIds.add(icao24);
+      allStates.push(state);
+    }
+    if (adsbStates.length > 0) {
+      source.value = 'adsb.lol';
+      fetchSources.adsbLolUsed = true;
+      console.log(`  [adsb.lol] ${adsbStates.length} unique aircraft loaded`);
+    }
+  } catch (e) {
+    console.warn(`  [adsb.lol] ${e.message}`);
+  }
+
+  // Tier 2: Wingbits — keyed, regional
   try {
     const wbStates = await fetchWingbits();
     for (const state of wbStates) {
@@ -1096,7 +1351,7 @@ async function fetchAllStates() {
       allStates.push(state);
     }
     if (wbStates.length > 0) {
-      source.value = 'wingbits';
+      if (source.value === 'none') source.value = 'wingbits';
       fetchSources.wingbitsUsed = true;
       console.log(`  [Wingbits] ${wbStates.length} unique aircraft loaded`);
     }
@@ -1104,10 +1359,19 @@ async function fetchAllStates() {
     console.warn(`  [Wingbits] ${e.message}`);
   }
 
-  // Tier 2: OpenSky — ONE global query, always. Not gated on Wingbits success:
-  // states merge additively by icao24 above, so this contributes aircraft
-  // Wingbits never saw. Gating it would delete that coverage, and a degraded
-  // but non-empty Wingbits response would satisfy the gate (#6222).
+  // Tier 3: gap-fill blind-spot point queries (staggered, no 429s)
+  try {
+    const added = await fetchGapFillStates(seenIds, allStates);
+    if (added > 0) {
+      if (source.value === 'none') source.value = 'gap-fill';
+      fetchSources.gapFillUsed = true;
+    }
+  } catch (e) {
+    console.warn(`  [Gap-fill] ${e.message}`);
+  }
+
+  // Tier 4: OpenSky — metered fallback only (also supplies civil traffic
+  // outside adsb.lol's military-filtered view for hex-range admission)
   await fetchOpenSkyGlobal({ source, fetchSources, seenIds, allStates });
 
   return { allStates, source: source.value, fetchSources };
@@ -1300,6 +1564,16 @@ function classifyTrustedPlaSourceFlight(sourceOperator, sourceMeta) {
   };
 }
 
+function getSourcePrefix(state) {
+  const sourceMeta = state[15] || {};
+  const src = sourceMeta.source || '';
+  if (src === 'adsb.lol') return 'adsb';
+  if (src === 'airplanes.live') return 'apl';
+  if (src === 'adsb.fi') return 'adsbfi';
+  if (src === 'wingbits') return 'wingbits';
+  return 'opensky';
+}
+
 function buildMilitaryFlightRecord(state, classified, sourceHints) {
   const icao24 = state[0];
   const callsign = (state[1] || '').trim();
@@ -1312,9 +1586,10 @@ function buildMilitaryFlightRecord(state, classified, sourceHints) {
   const hotspot = getNearbyHotspot(lat, lon);
   const isInteresting = (hotspot && hotspot.priority === 'high') ||
     classified.aircraftType === 'bomber' || classified.aircraftType === 'reconnaissance' || classified.aircraftType === 'awacs';
+  const sourcePrefix = getSourcePrefix(state);
 
   return {
-    id: `opensky-${icao24}`,
+    id: `${sourcePrefix}-${icao24}`,
     callsign: callsign || `UNKN-${icao24.substring(0, 4).toUpperCase()}`,
     hexCode: icao24.toUpperCase(),
     lat,
@@ -1507,7 +1782,7 @@ async function main() {
     if (classificationAudit) {
       console.log(`  [Audit] unknownRate=${classificationAudit.unknownTypeRate} hexOnly=${classificationAudit.hexOnlyAdmissions} rejected=${classificationAudit.rejectedFlights}`);
       console.log(
-        `  [Source] wingbits=${fetchSources.wingbitsUsed ? 'yes' : 'no'} oauthConfigured=${fetchSources.oauthConfigured ? 'yes' : 'no'} authSuccess=${fetchSources.openSkyAuthSuccess ? 'yes' : 'no'}`,
+        `  [Source] adsbLol=${fetchSources.adsbLolUsed ? 'yes' : 'no'} gapFill=${fetchSources.gapFillUsed ? 'yes' : 'no'} wingbits=${fetchSources.wingbitsUsed ? 'yes' : 'no'} oauthConfigured=${fetchSources.oauthConfigured ? 'yes' : 'no'} authSuccess=${fetchSources.openSkyAuthSuccess ? 'yes' : 'no'}`,
       );
       console.log(
         `  [Source] regions=${fetchSources.regions.map((region) => `${region.name}:auth=${region.authStatus},seen=${region.statesSeen},added=${region.statesAdded}`).join(' | ')}`,

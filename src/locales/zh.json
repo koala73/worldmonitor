@@ -2890,7 +2890,7 @@
       "heading": "航向",
       "hexCode": "HEX代码",
       "squawk": "应答机代码",
-      "attribution": "来源：OpenSky Network"
+      "attribution": "来源：adsb.lol (ODbL) · OpenSky Network"
     },
     "militaryVessel": {
       "aisDark": "AIS信号消失",

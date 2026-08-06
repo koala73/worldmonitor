@@ -85,9 +85,16 @@ Activity near 12 major naval installations is tracked:
 
 Vessels within 50km of these bases are flagged, enabling detection of unusual activity patterns.
 
-## Aircraft Tracking (OpenSky)
+## Aircraft Tracking (adsb.lol + OpenSky)
 
-Military aircraft are tracked via the OpenSky Network using ADS-B data. OpenSky blocks unauthenticated requests from cloud provider IPs (Vercel, Railway, AWS), so aircraft tracking requires a relay server with credentials.
+Military aircraft are tracked via multiple ADS-B networks. The primary source is **adsb.lol** (`api.adsb.lol/v2/mil`), which returns military-filtered aircraft globally with no API key required. Gap-fill point queries from **airplanes.live** and **adsb.fi** target blind-spot regions (Russia, China, Africa) where bbox-based coverage is thin. The OpenSky Network serves as a legacy fallback for civil traffic that may still carry military hex codes outside the military-filtered view.
+
+**Sources**:
+
+- adsb.lol — primary, keyless, ODbL-licensed
+- airplanes.live — keyless, staggered point queries at blind-spot regions
+- adsb.fi — keyless, staggered point queries at blind-spot regions
+- OpenSky Network — legacy fallback (requires OAuth credentials via relay server)
 
 **Authentication**:
 
