@@ -23,6 +23,8 @@ export {
 import { hashString } from '../../../_shared/hash';
 export { hashString };
 
+import { buildNumberedList } from '../../../../src/utils/numbered-list';
+
 // ========================================================================
 // Headline deduplication (used by SummarizeArticle)
 // ========================================================================
@@ -136,13 +138,28 @@ Rules:
       : `Each headline is a separate story. What's the key pattern or risk?\n${headlineText}${intelSection}`;
   } else if (opts.mode === 'translate') {
     const targetLang = opts.variant;
-    systemPrompt = `You are a professional news translator. Translate the following news headlines/summaries into ${targetLang}.
+    if (uniqueHeadlines.length > 1) {
+      // Batch shape: numbered in, numbered out. The handler parses the
+      // response back into per-headline cache entries (parseNumberedList),
+      // so the output format rules here are load-bearing.
+      systemPrompt = `You are a professional news translator. Translate the following numbered news headlines/summaries into ${targetLang}.
+Rules:
+- Output ONLY a numbered list of translations matching the input numbers, one per line.
+- Keep each translation on a single line.
+- Maintain the original tone and journalistic style.
+- Do NOT add any conversational filler (e.g., "Here is the translation").
+- If a headline is already in ${targetLang}, return it as is.`;
+      userPrompt = `Translate to ${targetLang}:\n${buildNumberedList(uniqueHeadlines)}`;
+    } else {
+      // Single-headline prompt kept byte-identical to the legacy shape.
+      systemPrompt = `You are a professional news translator. Translate the following news headlines/summaries into ${targetLang}.
 Rules:
 - Maintain the original tone and journalistic style.
 - Do NOT add any conversational filler (e.g., "Here is the translation").
 - Output ONLY the translated text.
 - If the text is already in ${targetLang}, return it as is.`;
-    userPrompt = `Translate to ${targetLang}:\n${headlines[0]}`;
+      userPrompt = `Translate to ${targetLang}:\n${headlines[0]}`;
+    }
   } else {
     systemPrompt = isTechVariant
       ? `${dateContext}\n\nPick the most important tech headline and summarize it in 2 concise sentences (under 60 words). Each headline is a separate story - NEVER merge facts from different headlines. Focus on startups, AI, funding, products. Ignore politics unless directly about tech regulation.${langInstruction}`

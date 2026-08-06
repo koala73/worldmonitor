@@ -3259,7 +3259,9 @@
     "fontFamily": "Шрифт",
     "fontFamilyDesc": "Моноширинный для технического вида, системный по умолчанию для удобства чтения.",
     "fontMono": "Моноширинный",
-    "fontSystem": "Системный шрифт"
+    "fontSystem": "Системный шрифт",
+    "autoTranslateLabel": "Auto-translate headlines",
+    "autoTranslateDesc": "Automatically translate news headlines into your display language using AI"
   },
   "contextMenu": {
     "openCountryBrief": "Открыть обзор страны",

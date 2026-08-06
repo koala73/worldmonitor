@@ -1,4 +1,5 @@
 import { LANGUAGES, getCurrentLanguage, changeLanguage, t } from '@/services/i18n';
+import { warmBrowserTranslator } from '@/services/browser-translator';
 import { getAiFlowSettings, setAiFlowSetting, getStreamQuality, setStreamQuality, STREAM_QUALITY_OPTIONS } from '@/services/ai-flow-settings';
 import { getMapProvider, setMapProvider, MAP_PROVIDER_OPTIONS, MAP_THEME_OPTIONS, getMapTheme, setMapTheme, type MapProvider } from '@/config/basemap';
 import { getLiveStreamsAlwaysOn, setLiveStreamsAlwaysOn } from '@/services/live-stream-settings';
@@ -214,6 +215,8 @@ export function renderPreferences(host: PreferencesHost): PreferencesResult {
   if (currentLang === 'vi') {
     html += `<div class="ai-flow-toggle-desc">${t('components.languageSelector.mapLabelsFallbackVi')}</div>`;
   }
+
+  html += toggleRowHtml('us-auto-translate', t('preferences.autoTranslateLabel'), t('preferences.autoTranslateDesc'), settings.autoTranslate);
 
   html += `</div></details>`;
 
@@ -458,6 +461,9 @@ export function renderPreferences(host: PreferencesHost): PreferencesResult {
         }
         if (target.id === 'us-language') {
           trackLanguageChange(target.value);
+          // Inside the click gesture so the browser translator may start its
+          // language-pack download (Chromium gates downloads on activation).
+          if (target.value !== 'en') warmBrowserTranslator(target.value);
           void changeLanguage(target.value);
           return;
         }
@@ -485,6 +491,9 @@ export function renderPreferences(host: PreferencesHost): PreferencesResult {
           setAiFlowSetting('mapNewsFlash', target.checked);
         } else if (target.id === 'us-headline-memory') {
           setAiFlowSetting('headlineMemory', target.checked);
+        } else if (target.id === 'us-auto-translate') {
+          setAiFlowSetting('autoTranslate', target.checked);
+          if (target.checked) warmBrowserTranslator(getCurrentLanguage());
         } else if (target.id === 'us-badge-anim') {
           setAiFlowSetting('badgeAnimation', target.checked);
         }

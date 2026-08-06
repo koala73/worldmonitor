@@ -3223,7 +3223,9 @@
     "fontFamily": "Lettertype",
     "fontFamilyDesc": "Monospace voor een technische uitstraling, systeemstandaard voor gemakkelijker lezen.",
     "fontMono": "Monospace",
-    "fontSystem": "Systeemstandaard"
+    "fontSystem": "Systeemstandaard",
+    "autoTranslateLabel": "Auto-translate headlines",
+    "autoTranslateDesc": "Automatically translate news headlines into your display language using AI"
   },
   "contextMenu": {
     "openCountryBrief": "Landenoverzicht openen",

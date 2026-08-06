@@ -4,7 +4,7 @@ import type {
   SummarizeArticleResponse,
 } from '../../../../src/generated/server/worldmonitor/news/v1/service_server';
 
-import { cachedFetchJsonWithMeta } from '../../../_shared/redis';
+import { cachedFetchJsonWithMeta, getCachedJsonBatch, setCachedJson } from '../../../_shared/redis';
 import {
   CACHE_TTL_SECONDS,
   buildArticlePrompts,
@@ -12,6 +12,7 @@ import {
   getCacheKey,
   selectUniqueHeadlinePairs,
 } from './_shared';
+import { buildNumberedList, parseNumberedList } from '../../../../src/utils/numbered-list';
 import { CHROME_UA } from '../../../_shared/constants';
 import { isModelUsable, isProviderAvailable, recordModelFailure, recordModelSuccess } from '../../../_shared/llm-health';
 import { sanitizeHeadlinesLight, sanitizeForPrompt, sanitizeForPromptLine } from '../../../_shared/llm-sanitize.js';
@@ -31,7 +32,7 @@ import { buildLlmCallEvent, deliverUsageEvents } from '../../../_shared/usage';
 async function emitSummarizeLlmEvent(p: {
   provider: string; model: string; ok: boolean; durationMs: number;
   promptChars: number; usage?: { total_tokens?: number; prompt_tokens?: number; completion_tokens?: number };
-  reason?: string;
+  reason?: string; maxTokens?: number;
 }): Promise<void> {
   try {
     await deliverUsageEvents([buildLlmCallEvent({
@@ -44,7 +45,7 @@ async function emitSummarizeLlmEvent(p: {
       tokensPrompt: p.usage?.prompt_tokens ?? 0,
       tokensCompletion: p.usage?.completion_tokens ?? 0,
       promptChars: p.promptChars,
-      maxTokens: 100,
+      maxTokens: p.maxTokens ?? 100,
       fallbackIndex: 0,
       reason: p.reason,
     })]);
@@ -189,6 +190,22 @@ export async function summarizeArticle(
       status: 'SUMMARIZE_STATUS_ERROR',
       statusDetail: 'Headlines array required',
     };
+  }
+
+  if (mode === 'translate') {
+    // Positional (per-element) light sanitize: the shared `headlines` array
+    // above is sanitized array-level, which DROPS empty/stripped entries and
+    // would shift the numbered-response alignment against the request. Here
+    // an entry that sanitizes away must stay in place as '' (its response
+    // line stays blank and the client keeps the original text).
+    const positionalHeadlines = (req.headlines || [])
+      .slice(0, MAX_HEADLINES)
+      .map(h => typeof h === 'string' ? h.slice(0, MAX_HEADLINE_LEN) : '')
+      .map(h => sanitizeHeadlinesLight([h])[0] ?? '');
+    return translateHeadlines({
+      provider, model, apiUrl, providerHeaders, extraBody,
+      headlines: positionalHeadlines, variant, lang,
+    });
   }
 
   try {
@@ -381,4 +398,199 @@ export async function summarizeArticle(
       statusDetail: `${error.name}: ${error.message}`,
     };
   }
+}
+
+// ======================================================================
+// Translate mode: per-headline cache + one batched LLM call for misses
+// ======================================================================
+//
+// Unlike brief/analysis (one summary per headline SET), a translation is a
+// per-headline artifact — so caching whole batches under the sorted-top-5
+// batch key would both collide distinct batches and replay order-sensitive
+// numbered output against differently-ordered requests. Instead each unique
+// headline gets its own cache entry, keyed exactly like the legacy
+// single-headline translate request (getCacheKey([h], 'translate', '',
+// targetLang, lang)) so entries minted by the manual per-item translate
+// button and by batch requests are interchangeable. Only cache misses reach
+// the LLM, as one numbered-list prompt.
+//
+// Response contract: a single-headline request returns the bare translation
+// (legacy shape); a multi-headline request returns a numbered list aligned
+// 1:1 with the REQUEST order (duplicates repeated, untranslated slots left
+// empty so the client keeps the original text).
+
+interface TranslateDeps {
+  provider: string;
+  model: string;
+  apiUrl: string;
+  providerHeaders: Record<string, string>;
+  extraBody?: Record<string, unknown>;
+  /** Light-sanitized, length-bounded headlines (cache-key identity). */
+  headlines: string[];
+  /** Legacy wire shape: `variant` carries the target language. */
+  variant: string;
+  lang: string;
+}
+
+async function translateHeadlines(deps: TranslateDeps): Promise<SummarizeArticleResponse> {
+  const { provider, model, apiUrl, providerHeaders, extraBody, headlines, variant, lang } = deps;
+
+  const errorResponse = (message: string): SummarizeArticleResponse => ({
+    summary: '',
+    model: '',
+    provider,
+    tokens: 0,
+    fallback: true,
+    error: message,
+    errorType: '',
+    status: 'SUMMARIZE_STATUS_ERROR',
+    statusDetail: message,
+  });
+
+  // Dedup on the light-sanitized headline — the same identity the per-item
+  // cache key hashes, so duplicate inputs share one lookup/translation.
+  const uniques: string[] = [];
+  const uniqueIndexByHeadline = new Map<string, number>();
+  const inputToUnique: number[] = headlines.map((h) => {
+    const trimmed = h.trim();
+    if (!trimmed) return -1;
+    let idx = uniqueIndexByHeadline.get(trimmed);
+    if (idx === undefined) {
+      idx = uniques.length;
+      uniques.push(trimmed);
+      uniqueIndexByHeadline.set(trimmed, idx);
+    }
+    return idx;
+  });
+
+  if (uniques.length === 0) return errorResponse('Empty response');
+
+  const keys = uniques.map((h) => getCacheKey([h], 'translate', '', variant, lang));
+  const translations: Array<string | null> = new Array(uniques.length).fill(null);
+  try {
+    const cached = await getCachedJsonBatch(keys);
+    keys.forEach((key, i) => {
+      const entry = cached.get(key) as { summary?: unknown } | null | undefined;
+      const summary = entry && typeof entry.summary === 'string' ? entry.summary.trim() : '';
+      if (summary) translations[i] = summary;
+    });
+  } catch {
+    // Cache degradation → treat everything as a miss.
+  }
+
+  const missIndexes = translations
+    .map((t, i) => (t === null ? i : -1))
+    .filter((i) => i >= 0);
+  let llmModel = '';
+  let llmTokens = 0;
+
+  if (missIndexes.length > 0 && (await isProviderAvailable(apiUrl))) {
+    // Full injection sanitization at prompt-build time only, mirroring the
+    // summary path: cache keys stay light-sanitized, prompts get the strict
+    // pass. Entries the strict pass empties out are skipped (stay null).
+    const llmItems: Array<{ uniqueIndex: number; text: string }> = [];
+    for (const uniqueIndex of missIndexes) {
+      const text = (sanitizeHeadlines([uniques[uniqueIndex] ?? ''])[0] ?? '').trim();
+      if (text.length > 0) llmItems.push({ uniqueIndex, text });
+    }
+
+    if (llmItems.length > 0) {
+      const texts = llmItems.map((item) => item.text);
+      const { systemPrompt, userPrompt } = buildArticlePrompts(texts, texts, {
+        mode: 'translate',
+        geoContext: '',
+        variant,
+        lang,
+        bodies: [],
+      });
+      // 150 output tokens per headline: CJK/Cyrillic translations of a
+      // 500-char headline routinely exceed the summary path's flat 100.
+      const maxTokens = Math.min(1500, 150 * texts.length);
+      const llmStartMs = Date.now();
+      const llmPromptChars = systemPrompt.length + userPrompt.length;
+
+      try {
+        const response = await fetch(apiUrl, {
+          method: 'POST',
+          headers: { ...providerHeaders, 'User-Agent': CHROME_UA },
+          body: JSON.stringify({
+            model,
+            messages: [
+              { role: 'system', content: systemPrompt },
+              { role: 'user', content: userPrompt },
+            ],
+            temperature: 0.3,
+            max_tokens: maxTokens,
+            top_p: 0.9,
+            ...extraBody,
+          }),
+          signal: AbortSignal.timeout(25_000),
+        });
+
+        if (!response.ok) {
+          const errorText = await response.text();
+          console.error(`[SummarizeArticle:${provider}] translate API error:`, response.status, errorText);
+          await emitSummarizeLlmEvent({ provider, model, ok: false, durationMs: Date.now() - llmStartMs, promptChars: llmPromptChars, maxTokens, reason: `http_${response.status}` });
+          throw new Error(response.status === 429 ? 'Rate limited' : `${provider} API error`);
+        }
+
+        const data = await response.json() as any;
+        const usage = data.usage as { total_tokens?: number; prompt_tokens?: number; completion_tokens?: number } | undefined;
+        const message = data.choices?.[0]?.message;
+        const rawText = typeof message?.content === 'string' ? message.content.trim() : '';
+        const rawContent = stripThinkingTags(rawText);
+        const parsed = parseNumberedList(rawContent, texts.length);
+
+        for (const [slot, item] of llmItems.entries()) {
+          const translated = parsed[slot]?.trim();
+          if (!translated) continue;
+          translations[item.uniqueIndex] = translated;
+          const key = keys[item.uniqueIndex];
+          if (key) {
+            // Fire-and-forget: a failed cache write only costs a re-translate.
+            void setCachedJson(key, { summary: translated, model, tokens: 0 }, CACHE_TTL_SECONDS).catch(() => {});
+          }
+        }
+
+        llmModel = model;
+        llmTokens = usage?.total_tokens ?? 0;
+        const anyTranslated = parsed.some((p) => p && p.trim().length > 0);
+        await emitSummarizeLlmEvent({ provider, model, ok: anyTranslated, durationMs: Date.now() - llmStartMs, promptChars: llmPromptChars, usage, maxTokens, reason: anyTranslated ? '' : 'empty' });
+      } catch (err: unknown) {
+        // Partial results (cache hits) still ship below; a fully-failed
+        // request falls through to the error response so the client's
+        // provider chain can try the next provider.
+        const error = err instanceof Error ? err : new Error(String(err));
+        console.error(`[SummarizeArticle:${provider}] translate error:`, error.name, error.message);
+        if (!translations.some((t) => t !== null)) {
+          return {
+            ...errorResponse(error.message),
+            errorType: error.name,
+            statusDetail: `${error.name}: ${error.message}`,
+          };
+        }
+      }
+    }
+  }
+
+  if (!translations.some((t) => t !== null)) return errorResponse('Empty response');
+
+  // Compose in REQUEST order: duplicates repeat their unique translation,
+  // untranslated/empty slots stay blank lines (client keeps the original).
+  const lines = inputToUnique.map((uniqueIndex) =>
+    uniqueIndex >= 0 ? (translations[uniqueIndex] ?? '') : '');
+  const summary = headlines.length === 1 ? (lines[0] ?? '') : buildNumberedList(lines);
+  const allFromCache = missIndexes.length === 0;
+
+  return {
+    summary,
+    model: llmModel || model,
+    provider: allFromCache ? 'cache' : provider,
+    tokens: llmTokens,
+    fallback: false,
+    error: '',
+    errorType: '',
+    status: allFromCache ? 'SUMMARIZE_STATUS_CACHED' : 'SUMMARIZE_STATUS_SUCCESS',
+    statusDetail: '',
+  };
 }

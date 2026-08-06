@@ -3295,7 +3295,9 @@
     "fontFamily": "عائلة الخط",
     "fontFamilyDesc": "خط أحادي المسافة للمظهر التقني، أو الخط الافتراضي للقراءة الأسهل.",
     "fontMono": "أحادي المسافة",
-    "fontSystem": "الخط الافتراضي"
+    "fontSystem": "الخط الافتراضي",
+    "autoTranslateLabel": "Auto-translate headlines",
+    "autoTranslateDesc": "Automatically translate news headlines into your display language using AI"
   },
   "contextMenu": {
     "openCountryBrief": "فتح ملخص البلد",

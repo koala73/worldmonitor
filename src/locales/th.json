@@ -3223,7 +3223,9 @@
     "fontFamily": "ตระกูลฟอนต์",
     "fontFamilyDesc": "Monospace สำหรับลักษณะเทคนิค ฟอนต์เริ่มต้นของระบบสำหรับการอ่านที่ง่ายกว่า",
     "fontMono": "Monospace",
-    "fontSystem": "ค่าเริ่มต้นของระบบ"
+    "fontSystem": "ค่าเริ่มต้นของระบบ",
+    "autoTranslateLabel": "Auto-translate headlines",
+    "autoTranslateDesc": "Automatically translate news headlines into your display language using AI"
   },
   "contextMenu": {
     "openCountryBrief": "เปิดภาพรวมประเทศ",

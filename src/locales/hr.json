@@ -3512,7 +3512,9 @@
     "fontFamily": "Obitelj Fonta",
     "fontFamilyDesc": "Monospace za tehnički izgled, zadanu vrijednost sustava za lakše čitanje.",
     "fontMono": "Monospace",
-    "fontSystem": "Zadana vrijednost sustava"
+    "fontSystem": "Zadana vrijednost sustava",
+    "autoTranslateLabel": "Auto-translate headlines",
+    "autoTranslateDesc": "Automatically translate news headlines into your display language using AI"
   },
   "premium": {
     "pro": "PRO",

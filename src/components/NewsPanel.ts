@@ -9,6 +9,8 @@ import { analysisWorker, enrichWithVelocityML, getClusterAssetContext, MAX_DISTA
 import { SITE_VARIANT } from '@/config';
 import { t, getCurrentLanguage } from '@/services/i18n';
 import { track } from '@/services/analytics';
+import { getAiFlowSettings } from '@/services/ai-flow-settings';
+import { getCachedHeadlineTranslation, translateHeadlines } from '@/services/headline-translation';
 import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
 import {
   renderCorroboratingSourceRisk,
@@ -29,6 +31,10 @@ const VIRTUAL_SCROLL_THRESHOLD = 15;
 /** Summary cache TTL in milliseconds (10 minutes) */
 const SUMMARY_CACHE_TTL = 10 * 60 * 1000;
 
+/** Max headlines auto-translated per render (top of the list; keeps a
+ * many-panel dashboard under the summarize endpoint's 30/min budget) */
+const AUTO_TRANSLATE_MAX_HEADLINES = 12;
+
 /** Prepared cluster data for rendering */
 interface PreparedCluster {
   cluster: ClusteredEvent;
@@ -45,6 +51,8 @@ export class NewsPanel extends Panel {
   private onRelatedAssetsFocus?: (assets: RelatedAsset[], originLabel: string) => void;
   private onRelatedAssetsClear?: () => void;
   private isFirstRender = true;
+  /** One auto-translate request cycle at a time (see requestHeadlineTranslations). */
+  private headlineTranslationPending = false;
   /** Cluster ids that arrived while the user was away (#4923) — their NEW
    * ribbons persist until seen instead of expiring with the 2-min window. */
   private newSinceAwayIds = new Set<string>();
@@ -309,6 +317,50 @@ export class NewsPanel extends Panel {
     }
   }
 
+  /** True when headlines should render in the UI language. */
+  private isAutoTranslateActive(): boolean {
+    return getCurrentLanguage() !== 'en' && getAiFlowSettings().autoTranslate;
+  }
+
+  /** Cached translation for display, falling back to the original title. */
+  private displayTitle(title: string): string {
+    if (!this.isAutoTranslateActive()) return title;
+    return getCachedHeadlineTranslation(title, getCurrentLanguage()) ?? title;
+  }
+
+  /**
+   * Fetch translations for the top headlines that aren't cached yet, then
+   * re-render from the raw data so displayTitle() picks them up. The service
+   * layer dedups in-flight requests and cools down after total failure, and
+   * the pending flag keeps one request cycle per panel — so the
+   * request → re-render → request loop terminates as soon as a cycle brings
+   * in nothing new.
+   */
+  private requestHeadlineTranslations(titles: string[]): void {
+    if (!this.isAutoTranslateActive() || this.headlineTranslationPending) return;
+    const lang = getCurrentLanguage();
+    const missing = titles
+      .filter((title) => title.trim().length > 0 && getCachedHeadlineTranslation(title, lang) === null)
+      .slice(0, AUTO_TRANSLATE_MAX_HEADLINES);
+    if (missing.length === 0) return;
+
+    this.headlineTranslationPending = true;
+    void translateHeadlines(missing, lang)
+      .then((translated) => {
+        this.headlineTranslationPending = false;
+        if (translated.size === 0 || !this.element?.isConnected) return;
+        if (getCurrentLanguage() !== lang) return; // language changed mid-flight
+        if (this.lastRawClusters) {
+          this.renderClusters(this.lastRawClusters);
+        } else if (this.lastRawItems) {
+          this.renderFlat(this.lastRawItems);
+        }
+      })
+      .catch(() => {
+        this.headlineTranslationPending = false;
+      });
+  }
+
   private async handleTranslate(element: HTMLElement, text: string): Promise<void> {
     const currentLang = getCurrentLanguage();
     if (currentLang === 'en') return; // Assume news is mostly English, no need to translate if UI is English (or add detection later)
@@ -551,7 +603,7 @@ export class NewsPanel extends Panel {
           ${item.storyMeta?.phase === 'sustained' ? '<span class="phase-badge sustained">ONGOING</span>' : ''}
           ${item.isAlert ? '<span class="alert-tag">ALERT</span>' : ''}
         </div>
-        <a class="item-title" href="${sanitizeUrl(item.link)}" target="_blank" rel="noopener">${escapeHtml(item.title)}</a>
+        <a class="item-title" href="${sanitizeUrl(item.link)}" target="_blank" rel="noopener">${escapeHtml(this.displayTitle(item.title))}</a>
         ${item.snippet ? `<div class="item-snippet">${escapeHtml(item.snippet.length > 200 ? item.snippet.slice(0, 200).replace(/\s+\S*$/, '') + '…' : item.snippet)}</div>` : ''}
         <div class="item-time">
           ${formatTime(item.pubDate)}
@@ -563,6 +615,11 @@ export class NewsPanel extends Panel {
       .join('');
 
     this.setSafeContent(unsafeRawHtml(html, 'legacy Panel.setContent() migration'));
+    // Only English-source items: the on-device translator pair is en→UI-lang,
+    // and non-English items already render with their lang badge.
+    this.requestHeadlineTranslations(
+      sorted.filter((item) => !item.lang || item.lang === 'en').map((item) => item.title),
+    );
   }
 
   private renderClusters(clusters: ClusteredEvent[]): void {
@@ -649,6 +706,9 @@ export class NewsPanel extends Panel {
       this.setSafeContent(unsafeRawHtml(html, 'legacy Panel.setContent() migration'));
     }
     this.refreshRelatedAssetsAfterLazyTables(sorted);
+    this.requestHeadlineTranslations(
+      sorted.filter((cluster) => !cluster.lang || cluster.lang === 'en').map((cluster) => cluster.primaryTitle),
+    );
   }
 
   private refreshRelatedAssetsAfterLazyTables(clusters: ClusteredEvent[]): void {
@@ -803,7 +863,7 @@ export class NewsPanel extends Panel {
           ${categoryBadge}
           ${riskBadge}
         </div>
-        <a class="item-title" href="${sanitizeUrl(cluster.primaryLink)}" target="_blank" rel="noopener">${escapeHtml(cluster.primaryTitle)}</a>
+        <a class="item-title" href="${sanitizeUrl(cluster.primaryLink)}" target="_blank" rel="noopener">${escapeHtml(this.displayTitle(cluster.primaryTitle))}</a>
         <div class="cluster-meta">
           <span class="top-sources">${topSourcesHtml}</span>
           <span class="item-time">${formatTime(cluster.lastUpdated)}</span>

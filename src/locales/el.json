@@ -3223,7 +3223,9 @@
     "fontFamily": "Οικογένεια Γραμματοσειράς",
     "fontFamilyDesc": "Monospace για τεχνικό περιβάλλον, προεπιλογή συστήματος για ευκολότερη ανάγνωση.",
     "fontMono": "Monospace",
-    "fontSystem": "Προεπιλογή Συστήματος"
+    "fontSystem": "Προεπιλογή Συστήματος",
+    "autoTranslateLabel": "Auto-translate headlines",
+    "autoTranslateDesc": "Automatically translate news headlines into your display language using AI"
   },
   "contextMenu": {
     "openCountryBrief": "Άνοιγμα επισκόπησης χώρας",

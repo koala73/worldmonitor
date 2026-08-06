@@ -3223,7 +3223,9 @@
     "fontFamily": "Họ phông chữ",
     "fontFamilyDesc": "Monospace cho giao diện kỹ thuật, phông chữ hệ thống mặc định để dễ đọc hơn.",
     "fontMono": "Monospace",
-    "fontSystem": "Phông chữ hệ thống"
+    "fontSystem": "Phông chữ hệ thống",
+    "autoTranslateLabel": "Auto-translate headlines",
+    "autoTranslateDesc": "Automatically translate news headlines into your display language using AI"
   },
   "contextMenu": {
     "openCountryBrief": "Mở tổng quan quốc gia",

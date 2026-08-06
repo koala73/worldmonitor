@@ -13,6 +13,7 @@ const STORAGE_KEY_CLOUD_LLM = 'wm-ai-flow-cloud-llm';
 const STORAGE_KEY_MAP_NEWS_FLASH = 'wm-map-news-flash';
 const STORAGE_KEY_HEADLINE_MEMORY = 'wm-headline-memory';
 const STORAGE_KEY_BADGE_ANIMATION = 'wm-badge-animation';
+const STORAGE_KEY_AUTO_TRANSLATE = 'wm-auto-translate-headlines';
 const STORAGE_KEY_STREAM_QUALITY = 'wm-stream-quality';
 const EVENT_NAME = 'ai-flow-changed';
 const STREAM_QUALITY_EVENT = 'stream-quality-changed';
@@ -23,6 +24,8 @@ export interface AiFlowSettings {
   mapNewsFlash: boolean;
   headlineMemory: boolean;
   badgeAnimation: boolean;
+  /** Auto-translate news headlines into the UI language (no-op when the UI language is English). */
+  autoTranslate: boolean;
 }
 
 function readBool(key: string, defaultValue: boolean): boolean {
@@ -49,6 +52,7 @@ const STORAGE_KEY_MAP: Record<keyof AiFlowSettings, string> = {
   mapNewsFlash: STORAGE_KEY_MAP_NEWS_FLASH,
   headlineMemory: STORAGE_KEY_HEADLINE_MEMORY,
   badgeAnimation: STORAGE_KEY_BADGE_ANIMATION,
+  autoTranslate: STORAGE_KEY_AUTO_TRANSLATE,
 };
 
 const DEFAULTS: AiFlowSettings = {
@@ -57,6 +61,7 @@ const DEFAULTS: AiFlowSettings = {
   mapNewsFlash: true,
   headlineMemory: false,
   badgeAnimation: false,
+  autoTranslate: true,
 };
 
 export function getAiFlowSettings(): AiFlowSettings {
@@ -66,6 +71,7 @@ export function getAiFlowSettings(): AiFlowSettings {
     mapNewsFlash: readBool(STORAGE_KEY_MAP_NEWS_FLASH, DEFAULTS.mapNewsFlash),
     headlineMemory: readBool(STORAGE_KEY_HEADLINE_MEMORY, DEFAULTS.headlineMemory),
     badgeAnimation: readBool(STORAGE_KEY_BADGE_ANIMATION, DEFAULTS.badgeAnimation),
+    autoTranslate: readBool(STORAGE_KEY_AUTO_TRANSLATE, DEFAULTS.autoTranslate),
   };
 }
 

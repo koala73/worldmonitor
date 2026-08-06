@@ -3241,7 +3241,9 @@
     "fontFamily": "Familie de fonturi",
     "fontFamilyDesc": "Monospace pentru aspect tehnic, font implicit pentru citire mai ușoară.",
     "fontMono": "Monospace",
-    "fontSystem": "Font implicit"
+    "fontSystem": "Font implicit",
+    "autoTranslateLabel": "Auto-translate headlines",
+    "autoTranslateDesc": "Automatically translate news headlines into your display language using AI"
   },
   "contextMenu": {
     "openCountryBrief": "Deschide prezentarea țării",
