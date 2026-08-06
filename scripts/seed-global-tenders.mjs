@@ -34,7 +34,15 @@ function fetchResponseTransport(url, { timeoutMs, ...fetchOptions }) {
 }
 
 function samIpv4ResponseTransport(httpsGetFn = httpsGet) {
-  return (url, { headers, timeoutMs }) => new Promise((resolve, reject) => {
+  return (url, { headers, timeoutMs, method, body }) => new Promise((resolve, reject) => {
+    if ((method != null && String(method).toUpperCase() !== 'GET') || body != null) {
+      const error = new Error('SAM native HTTPS transport only supports GET requests without a body');
+      error.nonRetryable = true;
+      reject(error);
+      return;
+    }
+    // Intentionally do not follow redirects: forwarding api_key to another
+    // location could disclose it, and SAM routing changes should stay visible.
     const request = httpsGetFn(url, {
       family: 4,
       headers,
@@ -47,12 +55,19 @@ function samIpv4ResponseTransport(httpsGetFn = httpsGet) {
             if (item !== undefined) responseHeaders.append(name, String(item));
           }
         }
-        resolve(new Response(Readable.toWeb(response), {
-          status: response.statusCode || 500,
+        const status = response.statusCode ?? 500;
+        const responseBody = status === 204 || status === 205 || status === 304
+          ? null
+          : Readable.toWeb(response);
+        resolve(new Response(responseBody, {
+          status,
           headers: responseHeaders,
         }));
       } catch (error) {
-        reject(error);
+        response.destroy();
+        const responseError = error instanceof Error ? error : new Error(String(error));
+        responseError.nonRetryable = true;
+        reject(responseError);
       }
     });
     request.on('error', reject);
@@ -99,8 +114,6 @@ function createSamFetchJson(httpsGetFn = httpsGet) {
   const transport = samIpv4ResponseTransport(httpsGetFn);
   return async (url, options = {}) => (await fetchResponse(url, options, transport)).json();
 }
-
-const fetchSamJson = createSamFetchJson();
 
 export const __testing__ = { createSamFetchJson };
 
@@ -149,7 +162,7 @@ function previousSamResult(previousSnapshot, now) {
   return { status, records, lastSuccessMs };
 }
 
-export async function fetchSam({ apiKey = process.env.SAM_GOV_API_KEY, now = Date.now(), fetchJsonFn = fetchSamJson, previousSnapshot = null } = {}) {
+export async function fetchSam({ apiKey = process.env.SAM_GOV_API_KEY, now = Date.now(), fetchJsonFn, httpsGetFn = httpsGet, previousSnapshot = null } = {}) {
   if (!apiKey) return { records: [], status: sourceStatus('sam', 'unavailable', [], 'SAM_GOV_API_KEY is not configured', now) };
   const prior = previousSamResult(previousSnapshot, now);
   if (prior && now - prior.lastSuccessMs < SAM_MIN_FETCH_INTERVAL_MS) {
@@ -174,7 +187,7 @@ export async function fetchSam({ apiKey = process.env.SAM_GOV_API_KEY, now = Dat
   // api.sam.gov publishes IPv6 addresses, but Railway's container network does
   // not currently have a working IPv6 route. Force the source's official IPv4
   // endpoints so native fetch does not repeatedly select a doomed address.
-  const payload = await fetchJsonFn(url, {
+  const payload = await (fetchJsonFn ?? createSamFetchJson(httpsGetFn))(url, {
     retry429: false,
   });
   if (!Array.isArray(payload?.opportunitiesData)) throw new Error('SAM response is missing opportunitiesData');
