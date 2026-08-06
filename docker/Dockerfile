@@ -34,7 +34,7 @@ RUN npm run build:crawlable-corpus && npm run build:sitemap && npx tsc && npx vi
 
 
 # Stage 2: Serve the built assets from nginx.
-FROM nginx:alpine@sha256:54f2a904c251d5a34adf545a72d32515a15e08418dae0266e23be2e18c66fefa AS runtime
+FROM nginx:alpine@sha256:4a73073bd557c65b759505da037898b61f1be6cbcc3c2c3aeac22d2a470c1752 AS runtime
 
 WORKDIR /usr/share/nginx/html
 
