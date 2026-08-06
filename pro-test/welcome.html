@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <!-- WebMCP — in-page agent tools on the homepage (worldmonitor.app).
-         Registers a small tool set via navigator.modelContext.registerTool so
+         Registers a small tool set via document.modelContext.registerTool so
          browser-based AI agents (Chrome/Edge WebMCP, agent-readiness scanners)
          that land on the apex page can act on and discover World Monitor
          WITHOUT executing the dashboard SPA — the SPA registers its own richer
@@ -13,17 +13,14 @@
          https://webmachinelearning.github.io/webmcp/. Registers synchronously at
          parse time when the provider is already present (native WebMCP), and
          retries once on DOMContentLoaded/load for a provider installed later
-         (e.g. a scanner polyfill); the `registered` guard keeps it idempotent, and
-         it is a no-op in browsers without navigator.modelContext. The MCP server is
+         (e.g. a scanner polyfill); the registration guard keeps it idempotent, and
+         it is a no-op in browsers without document.modelContext. The MCP server is
          the remote HTTP (Streamable HTTP) transport at https://worldmonitor.app/mcp
          — getWorldMonitorMcpEndpoint hands agents that endpoint. The nonce is added
          by Vite (html.cspNonce) at build time, so this inline script needs no CSP
          script-src hash (deploy-config.test). -->
     <script>
       (function () {
-        function text(t, isError) {
-          return { content: [{ type: 'text', text: t }], isError: !!isError };
-        }
         var MONITORS = {
           world: 'https://www.worldmonitor.app/dashboard',
           tech: 'https://tech.worldmonitor.app/dashboard',
@@ -35,6 +32,7 @@
         var tools = [
           {
             name: 'launchWorldMonitor',
+            title: 'Launch World Monitor',
             description: 'Open the live World Monitor intelligence dashboard in this tab. Optionally choose a specialized monitor variant (world, tech, finance, commodity, energy, happy). Navigates to the real-time map — conflicts, markets, shipping chokepoints, flights and cyber on one surface.',
             inputSchema: {
               type: 'object',
@@ -47,6 +45,7 @@
               },
               additionalProperties: false
             },
+            annotations: { readOnlyHint: false },
             execute: function (args) {
               var key = args && typeof args.monitor === 'string' ? args.monitor.toLowerCase() : 'world';
               // Own-property lookup only — self-validate here rather than trust the
@@ -58,50 +57,62 @@
               try {
                 window.location.assign(url);
               } catch (e) {
-                return Promise.resolve(text('Could not open the dashboard: ' + ((e && e.message) || e), true));
+                throw new Error('World Monitor could not open the dashboard.');
               }
-              return Promise.resolve(text('Opening the ' + key + ' monitor: ' + url));
+              return 'Opening the ' + key + ' monitor: ' + url;
             }
           },
           {
             name: 'getWorldMonitorMcpEndpoint',
+            title: 'Get World Monitor MCP Endpoint',
             description: "Return connection details for World Monitor's remote MCP server so an agent can pull live geopolitical, market, maritime, aviation, cyber and economic intelligence directly. Includes the Streamable HTTP endpoint, the discovery server card, and supported auth modes.",
             inputSchema: { type: 'object', properties: {}, additionalProperties: false },
+            annotations: { readOnlyHint: true },
             execute: function () {
               // No tool count here — the live server card is the source of truth
               // (a hardcoded number would drift). Agents read the catalog from it.
-              return Promise.resolve(text(JSON.stringify({
+              return {
                 endpoint: 'https://worldmonitor.app/mcp',
                 transport: 'streamableHttp',
                 serverCard: 'https://worldmonitor.app/.well-known/mcp/server-card.json',
                 auth: ['OAuth 2.1 bearer (Authorization: Bearer <token>)', 'API key (X-WorldMonitor-Key: wm_...)'],
                 publicDiscovery: 'initialize, tools/list and notifications/initialized are servable without credentials'
-              }, null, 2)));
+              };
             }
           }
         ];
+        var registrationStarted = false;
         var registered = false;
         function register() {
-          if (registered) return;
-          var provider = typeof navigator !== 'undefined' ? navigator.modelContext : null;
-          if (!provider) return;
+          if (registrationStarted || registered) return;
+          var provider = null;
           try {
-            if (typeof provider.registerTool === 'function') {
-              for (var i = 0; i < tools.length; i++) provider.registerTool(tools[i]);
-              registered = true;
-            } else if (typeof provider.provideContext === 'function') {
-              provider.provideContext({ tools: tools });
-              registered = true;
-            }
+            provider = typeof document !== 'undefined' ? document.modelContext : null;
           } catch (e) {
-            /* Progressive enhancement — never break page load for an optional API. */
+            return;
           }
+          if (!provider || typeof provider.registerTool !== 'function') return;
+          registrationStarted = true;
+          var registrations = [];
+          for (var i = 0; i < tools.length; i++) {
+            try {
+              registrations.push(Promise.resolve(provider.registerTool(tools[i])).then(
+                function () { return true; },
+                function () { return false; }
+              ));
+            } catch (e) {
+              registrations.push(Promise.resolve(false));
+            }
+          }
+          Promise.all(registrations).then(function (accepted) {
+            registered = accepted.some(function (value) { return value; });
+          });
         }
         register();
         // Retry once for a provider installed after this head script runs (e.g. a
-        // scanner polyfill injected around DOMContentLoaded). The `registered`
+        // scanner polyfill injected around DOMContentLoaded). The registration
         // guard keeps it idempotent — a present-at-parse provider never re-registers.
-        if (!registered && typeof document !== 'undefined' && document.addEventListener) {
+        if (!registrationStarted && typeof document !== 'undefined' && document.addEventListener) {
           document.addEventListener('DOMContentLoaded', register, { once: true });
           if (typeof window !== 'undefined' && window.addEventListener) {
             window.addEventListener('load', register, { once: true });

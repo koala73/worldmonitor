@@ -122,6 +122,7 @@ const EVENTS = {
   'mcp-panel-add': true,
   // WebMCP (in-page agent tool surface)
   'webmcp-registered': true,
+  'webmcp-registration-failed': true,
   'webmcp-tool-invoked': true,
   // Route Explorer
   'route-explorer:opened': true,

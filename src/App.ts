@@ -244,9 +244,9 @@ export class App {
   // target panel exists.
   private uiReady!: Promise<void>;
   private resolveUiReady!: () => void;
-  // Returned by registerWebMcpTools when running in a registerTool-capable
-  // browser — aborting it unregisters every tool. destroy() triggers it
-  // so that test harnesses / same-document re-inits don't accumulate
+  // Returned by registerWebMcpTools in browser runtimes — aborting it removes
+  // late-provider listeners and unregisters every accepted tool. destroy()
+  // triggers it so test harnesses / same-document re-inits don't accumulate
   // duplicate registrations.
   private webMcpController: AbortController | null = null;
   private visiblePanelPrimed = new Set<string>();
@@ -1547,7 +1547,7 @@ export class App {
 
     // WebMCP — register synchronously before any init awaits so agent
     // scanners (isitagentready.com, in-browser agents) find the tools on
-    // their first probe. No-op in browsers without navigator.modelContext.
+    // their first probe. No-op in browsers without document.modelContext.
     // Bindings await `this.uiReady` (resolves after Phase-4 UI init) so
     // a tool invoked during the startup window waits for the target
     // panel to exist instead of throwing. A 10s timeout keeps a genuinely
