@@ -185,21 +185,51 @@ async function fetchText(fetchFn, url) {
 
 // Certificate VALIDATION failures are permanent: they mean the peer is not who
 // it claims to be (interception, or an expired/misissued cert), and retrying
-// only repeats the request against that same untrusted peer. Handshake/reset
-// errors are deliberately absent — those are ordinary transport noise.
-const PERMANENT_TLS_CODES = new Set([
+// only repeats the request against that same untrusted peer. This is OpenSSL's
+// verify-step family as Node surfaces it, plus Node's own altname code.
+// Handshake/reset/timeout codes are deliberately absent — those are ordinary
+// transport noise and are exactly what the retry exists for.
+export const PERMANENT_TLS_CODES = new Set([
   'SELF_SIGNED_CERT_IN_CHAIN',
   'DEPTH_ZERO_SELF_SIGNED_CERT',
   'UNABLE_TO_VERIFY_LEAF_SIGNATURE',
   'UNABLE_TO_GET_ISSUER_CERT',
   'UNABLE_TO_GET_ISSUER_CERT_LOCALLY',
+  'UNABLE_TO_GET_CRL',
+  'UNABLE_TO_DECRYPT_CERT_SIGNATURE',
+  'UNABLE_TO_DECRYPT_CRL_SIGNATURE',
+  'UNABLE_TO_DECODE_ISSUER_PUBLIC_KEY',
   'CERT_HAS_EXPIRED',
   'CERT_NOT_YET_VALID',
   'CERT_SIGNATURE_FAILURE',
   'CERT_UNTRUSTED',
   'CERT_REVOKED',
+  'CERT_REJECTED',
+  'CERT_CHAIN_TOO_LONG',
+  'CRL_SIGNATURE_FAILURE',
+  'CRL_HAS_EXPIRED',
+  'CRL_NOT_YET_VALID',
+  'ERROR_IN_CERT_NOT_BEFORE_FIELD',
+  'ERROR_IN_CERT_NOT_AFTER_FIELD',
+  'INVALID_CA',
+  'INVALID_PURPOSE',
+  'PATH_LENGTH_EXCEEDED',
+  'HOSTNAME_MISMATCH',
   'ERR_TLS_CERT_ALTNAME_INVALID',
 ]);
+
+/** Reason recorded when the peer's certificate failed validation. */
+export const TLS_CERT_UNTRUSTED_REASON = 'TLS_CERT_UNTRUSTED';
+/** Reason recorded when the shared NBS wall-clock budget ran out mid-retry. */
+export const FETCH_BUDGET_EXHAUSTED_REASON = 'FETCH_BUDGET_EXHAUSTED';
+
+function isCertificateValidationFailure(error) {
+  if (PERMANENT_TLS_CODES.has(error?.code) || PERMANENT_TLS_CODES.has(error?.cause?.code)) return true;
+  // Message backstop for runtimes that surface a cert failure without a code.
+  // Anchored alternatives only — no nested quantifiers to backtrack on.
+  const certMessage = `${String(error?.message)} ${String(error?.cause?.message)}`;
+  return /self.signed certificate|certificate chain|certificate has expired|unable to verify|altname/i.test(certMessage);
+}
 
 /**
  * A fetch that never produced a response — DNS failure, TLS reset, socket
@@ -212,14 +242,22 @@ function isTransientFetchFailure(error) {
   if (Number.isInteger(error?.status)) {
     return error.status === 408 || error.status === 429 || (error.status >= 500 && error.status <= 599);
   }
-  if (PERMANENT_TLS_CODES.has(error?.code) || PERMANENT_TLS_CODES.has(error?.cause?.code)) return false;
-  // Message backstop for runtimes that surface a cert failure without a code.
-  // Anchored alternatives only — no nested quantifiers to backtrack on.
-  const certMessage = `${String(error?.message)} ${String(error?.cause?.message)}`;
-  if (/self.signed certificate|certificate chain|certificate has expired|unable to verify|altname/i.test(certMessage)) {
-    return false;
+  return !isCertificateValidationFailure(error);
+}
+
+/**
+ * Record WHY we stopped, so an operator can tell an intercepted connection or a
+ * spent budget from an ordinary socket blip. `reasonFor` prefers `error.reason`
+ * over its generic FETCH_FAILED fallback, and all three land in the audited
+ * `china_calendar_source_preflight` decision record.
+ */
+function tagReason(error, reason) {
+  try {
+    if (error && !error.reason) error.reason = reason;
+  } catch {
+    // A frozen error keeps the generic reason; never mask the original failure.
   }
-  return true;
+  return error;
 }
 
 async function fetchTextWithTransientRetry(fetchFn, url, { onAttempt, deadlineAt, sleepFn }) {
@@ -228,16 +266,23 @@ async function fetchTextWithTransientRetry(fetchFn, url, { onAttempt, deadlineAt
     try {
       return await fetchText(fetchFn, url);
     } catch (error) {
+      if (isCertificateValidationFailure(error)) throw tagReason(error, TLS_CERT_UNTRUSTED_REASON);
       if (attempt >= NBS_TRANSIENT_FETCH_ATTEMPTS || !isTransientFetchFailure(error)) throw error;
       // Grows with the attempt, but never undercuts an explicit Retry-After
-      // from the host. An unreasonably long hint is not slept off — it trips
-      // the deadline below and the run gives up, which is the honest outcome.
+      // from the host. An over-long hint is not slept off and is not silently
+      // shortened either — honoring it would breach the budget, so the run
+      // gives up and the next scheduled run tries again.
       const backoffMs = Math.max(NBS_TRANSIENT_RETRY_DELAY_MS * attempt, error?.retryAfterMs ?? 0);
-      // The budget spans BOTH NBS URLs, so a host that hangs on the index
-      // cannot spend the calendar page's share and push the fetch phase into
-      // the publish half of lockTtlMs. Give up rather than start an attempt
-      // that cannot finish inside the budget.
-      if (Date.now() + backoffMs >= deadlineAt) throw error;
+      // Reserve the next attempt's full timeout. Gating on the sleep's END is
+      // not enough: an attempt that merely STARTS before the deadline can run
+      // NBS_REQUEST_TIMEOUT_MS past it, and if it succeeds there, the second
+      // URL's first attempt (never gated) adds another. That path measured
+      // 134s against a claimed 115s ceiling. Reserving the timeout makes every
+      // gated attempt END inside the budget, so the ceiling is deadline + one
+      // ungated first attempt per URL.
+      if (Date.now() + backoffMs + NBS_REQUEST_TIMEOUT_MS > deadlineAt) {
+        throw tagReason(error, FETCH_BUDGET_EXHAUSTED_REASON);
+      }
       await sleepFn(backoffMs);
     }
   }
