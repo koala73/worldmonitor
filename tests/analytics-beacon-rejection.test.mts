@@ -947,17 +947,18 @@ describe('collector request timeout compatibility (#6086)', () => {
     assert.ok(composed.aborted, 'caller cancellation must propagate through the composed signal');
   });
 
-  // The test above asserts the SHAPE of the native signal (it exists, it is not
-  // the caller's raw signal, caller aborts reach it) — none of which requires a
-  // deadline to be in the composition at all. `AbortSignal.any([existing,
-  // existing])` satisfies every one of its assertions, and that mutant IS #6086:
-  // the deadline silently dropped on the branch almost all real traffic takes.
+  // The test above asserts the SHAPE of the native signals (they exist, the
+  // composed signal is not the caller's raw signal, caller aborts reach it) —
+  // none of which requires either signal to carry a live deadline.
+  // `new AbortController().signal` on the no-caller branch and
+  // `AbortSignal.any([existing, existing])` on the caller branch both satisfy
+  // those assertions, and both mutants ARE #6086: the deadline silently drops.
   //
   // Proving the deadline is live means firing it, which the real
   // `AbortSignal.timeout` gives no handle on — hence the controllable stand-in.
-  // The branch under test is `withTimeout`'s native composition either way; what
-  // is stubbed is only the clock, not the code path.
-  it('fires the deadline half of the native composition, not just the caller half', async () => {
+  // Both branches under test are `withTimeout`'s native paths; what is stubbed
+  // is only the clock, not the code path.
+  it('fires the native deadline with and without a caller signal', async () => {
     const timeoutDescriptor = Object.getOwnPropertyDescriptor(AbortSignal, 'timeout');
     const deadlines: { ms: number; controller: AbortController }[] = [];
     Object.defineProperty(AbortSignal, 'timeout', {
@@ -978,23 +979,31 @@ describe('collector request timeout compatibility (#6086)', () => {
     installCollectorFetchGate();
 
     try {
-      const caller = new AbortController();
-      const stalled = window.fetch(UMAMI_SEND_URL, collectorEventInit(caller.signal));
-      const queued = window.fetch(UMAMI_SEND_URL, collectorEventInit());
-      await drainPromiseHandlers();
+      const scenarios = [
+        { label: 'without a caller signal', caller: undefined },
+        { label: 'with a caller signal', caller: new AbortController() },
+      ] as const;
 
-      assert.equal(deadlines.length, 1, 'the native composition must request a collector deadline');
-      assert.equal(deadlines[0]?.ms, 20_000, 'the composed deadline must be the collector bound');
-      assert.equal(calls, 1, 'the second write waits for the stalled request');
+      for (const { label, caller } of scenarios) {
+        calls = 0;
+        deadlines.length = 0;
+        const stalled = window.fetch(UMAMI_SEND_URL, collectorEventInit(caller?.signal));
+        const queued = window.fetch(UMAMI_SEND_URL, collectorEventInit());
+        await drainPromiseHandlers();
 
-      // Fire the DEADLINE, never the caller signal. If the composition dropped
-      // the timeout half, nothing aborts and both awaits below hang.
-      deadlines[0]?.controller.abort(createNativeTimeoutError());
+        assert.equal(deadlines.length, 1, `${label}: the native path must request a collector deadline`);
+        assert.equal(deadlines[0]?.ms, 20_000, `${label}: the deadline must be the collector bound`);
+        assert.equal(calls, 1, `${label}: the second write waits for the stalled request`);
 
-      await assert.rejects(stalled, { name: 'TimeoutError' });
-      assert.equal((await queued).status, 200);
-      assert.equal(calls, 2, 'the native deadline must release the serialized queue');
-      assert.equal(caller.signal.aborted, false, 'the caller signal was never the thing aborted');
+        // Fire the DEADLINE, never the caller signal. If either native branch
+        // substituted a non-timing signal, nothing aborts and both awaits hang.
+        deadlines[0]?.controller.abort(createNativeTimeoutError());
+
+        await assert.rejects(stalled, { name: 'TimeoutError' });
+        assert.equal((await queued).status, 200);
+        assert.equal(calls, 2, `${label}: the native deadline must release the serialized queue`);
+        if (caller) assert.equal(caller.signal.aborted, false, 'the caller signal was never the thing aborted');
+      }
     } finally {
       if (timeoutDescriptor) Object.defineProperty(AbortSignal, 'timeout', timeoutDescriptor);
     }
