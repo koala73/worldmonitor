@@ -75,10 +75,14 @@ export class ExaProvider implements AcquisitionProvider {
       properties: Object.fromEntries(
         Object.entries(schema.fields).map(([key, field]) => [
           key,
-          {
-            type: field.nullable ? [field.type, 'null'] : field.type,
-            description: field.description,
-          },
+          // Exa's /contents validator accepts only a SCALAR `type`. The JSON
+          // Schema `type: [T, 'null']` union form is rejected outright with
+          // HTTP 400 INVALID_REQUEST_BODY, which silently disabled every
+          // nullable extraction (#6182). Express nullability with `anyOf`,
+          // which Exa accepts and which returns a genuine null price.
+          field.nullable
+            ? { anyOf: [{ type: field.type }, { type: 'null' }], description: field.description }
+            : { type: field.type, description: field.description },
         ]),
       ),
       required: Object.entries(schema.fields)
