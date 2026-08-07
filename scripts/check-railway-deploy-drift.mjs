@@ -114,6 +114,7 @@ export const DEFAULT_DEPLOYMENT_WINDOW = 50;
 // from all of them reported 62 healthy services as rejected pushes, which is
 // how the baseline came to acknowledge most of the fleet (#6142).
 const HEALTHY_VERDICTS = new Set(['CURRENT', 'CURRENT_FOR_CLOSURE', 'AHEAD', 'PENDING_BUILD']);
+const STRICT_TERMINAL_VERDICTS = new Set(['CURRENT', 'CURRENT_FOR_CLOSURE', 'AHEAD']);
 
 export function isProblemVerdict(verdict) {
   return !HEALTHY_VERDICTS.has(verdict);
@@ -469,6 +470,70 @@ export function summarizeDeployDrift(results, baseline = null, now = Date.now())
   };
 }
 
+// Recovery acceptance is intentionally stricter than the recurring monitor.
+// The monitor may call a young build healthy and may split known problems
+// through a reviewed baseline. A reconciliation generation is terminal only
+// when every repository service is positively current for the exact head (or a
+// proven descendant/closure-equivalent). It therefore accepts no baseline and
+// gives PENDING_BUILD no terminal meaning.
+export function summarizeStrictDeployDrift(
+  results,
+  expectedServices,
+  { isOnAuthorizedMainLineage = null } = {},
+) {
+  if (!Array.isArray(expectedServices) || expectedServices.length === 0
+    || expectedServices.some((name) => typeof name !== 'string' || name.length === 0)) {
+    throw new TypeError('strict drift requires a non-empty expected service list');
+  }
+  if (new Set(expectedServices).size !== expectedServices.length) {
+    throw new TypeError('strict drift expected service names must be unique');
+  }
+  if (!Array.isArray(results)) throw new TypeError('strict drift results must be an array');
+
+  const expected = new Set(expectedServices);
+  const seen = new Set();
+  const duplicates = new Set();
+  const unexpected = [];
+  const blocking = [];
+  for (const result of results) {
+    const service = result?.service;
+    if (typeof service !== 'string' || service.length === 0) {
+      blocking.push({ service: null, verdict: 'INVALID_RESULT', detail: 'result has no service name' });
+      continue;
+    }
+    if (seen.has(service)) duplicates.add(service);
+    seen.add(service);
+    if (!expected.has(service)) unexpected.push(service);
+    if (result.verdict === 'AHEAD'
+      && (typeof isOnAuthorizedMainLineage !== 'function'
+        || isOnAuthorizedMainLineage(result.runningSha) !== true)) {
+      blocking.push({
+        ...result,
+        verdict: 'AHEAD_LINEAGE_UNPROVEN',
+        detail: 'the running descendant is not proven reachable from the authorized main ref',
+      });
+    } else if (!STRICT_TERMINAL_VERDICTS.has(result.verdict)) {
+      blocking.push(result);
+    }
+  }
+  const missing = [...expected].filter((service) => !seen.has(service)).sort();
+  const duplicateNames = [...duplicates].sort();
+  const unexpectedNames = [...new Set(unexpected)].sort();
+  return {
+    ok: blocking.length === 0
+      && missing.length === 0
+      && duplicateNames.length === 0
+      && unexpectedNames.length === 0
+      && results.length === expectedServices.length,
+    checked: results.length,
+    expected: expectedServices.length,
+    blocking,
+    missing,
+    duplicates: duplicateNames,
+    unexpected: unexpectedNames,
+  };
+}
+
 const GIT_CALL_TIMEOUT_MS = 30_000;
 
 function runGit(args) {
@@ -547,6 +612,7 @@ function printReport(results, summary, headSha, graceSha, { verbose = false } = 
 
 async function main() {
   const asJson = process.argv.includes('--json');
+  const strict = process.argv.includes('--strict');
   const environment = readArgument(process.argv, '--environment', DEFAULT_ENVIRONMENT);
   const window = Number(readArgument(process.argv, '--window', String(DEFAULT_DEPLOYMENT_WINDOW)));
   const graceMinutes = Number(
@@ -571,6 +637,16 @@ async function main() {
   // "cannot prove it keeps the service reported" behaviour.
   const ancestry = createAncestryResolver({ git: runGit });
   const isAncestor = (ancestor, descendant) => ancestry(ancestor, descendant) === 'yes';
+  let authorizedMainSha = null;
+  if (strict) {
+    try {
+      authorizedMainSha = runGit(['rev-parse', '--verify', 'origin/main^{commit}']);
+    } catch {
+      // Strict AHEAD acceptance needs a positive repository-lineage proof. A
+      // missing/stale ref is not fatal for exact CURRENT results, but every
+      // AHEAD result will fail closed in summarizeStrictDeployDrift below.
+    }
+  }
   // The newest commit that has been available longer than the build grace.
   // On a checkout too shallow to reach back that far, rev-list answers with
   // nothing and this falls back to head — the stricter reading.
@@ -639,9 +715,20 @@ async function main() {
     });
   })).sort((left, right) => left.service.localeCompare(right.service));
 
-  const summary = summarizeDeployDrift(results, JSON.parse(readFileSync(BASELINE_URL, 'utf8')));
+  const summary = strict
+    ? summarizeStrictDeployDrift(results, services.map((service) => service.name).sort(), {
+      isOnAuthorizedMainLineage: (runningSha) => authorizedMainSha !== null
+        && ancestry(runningSha, authorizedMainSha) === 'yes',
+    })
+    : summarizeDeployDrift(results, JSON.parse(readFileSync(BASELINE_URL, 'utf8')));
   if (asJson) console.log(JSON.stringify({ environment, headSha, graceSha, summary, results }, null, 2));
-  else printReport(results, summary, headSha, graceSha, { verbose: process.argv.includes('--verbose') });
+  else if (strict) {
+    console.log(`Strict Railway deploy-drift check: head=${headSha.slice(0, 9)} services=${results.length}`);
+    for (const problem of summary.blocking) {
+      console.error(`- ${problem.service ?? 'unknown'} [${problem.verdict}] ${problem.detail ?? ''}`);
+    }
+    for (const service of summary.missing) console.error(`- ${service} [MISSING] was not positively classified`);
+  } else printReport(results, summary, headSha, graceSha, { verbose: process.argv.includes('--verbose') });
   if (!summary.ok) process.exitCode = 1;
 }
 

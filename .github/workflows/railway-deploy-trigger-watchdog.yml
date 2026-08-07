@@ -1,0 +1,284 @@
+name: Railway Deploy Trigger Watchdog
+
+on:
+  schedule:
+    - cron: '8,23,38,53 * * * *'
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: 'Classify only, or exercise the same guarded dispatch decision'
+        required: true
+        type: choice
+        default: classify
+        options:
+          - classify
+          - dispatch
+
+concurrency:
+  group: railway-deploy-trigger-watchdog
+  cancel-in-progress: false
+
+permissions: {}
+
+jobs:
+  reject_non_main:
+    if: github.ref != 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions: {}
+    steps:
+      - name: Reject non-main watchdog invocation
+        run: |
+          echo "::error::Railway deploy trigger watchdog must run from refs/heads/main"
+          exit 1
+
+  classify:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment:
+      name: ingestion-acceptance-production-watchdog
+      deployment: false
+    permissions:
+      actions: read
+      contents: read
+      statuses: read
+    outputs:
+      dispatch_authorized: ${{ steps.controller.outputs.dispatch_authorized }}
+      expected_head_sha: ${{ steps.controller.outputs.expected_head_sha }}
+      recovery_attempt_id: ${{ steps.controller.outputs.recovery_attempt_id }}
+      prior_id: ${{ steps.controller.outputs.prior_id }}
+      outcome: ${{ steps.controller.outputs.outcome }}
+    steps:
+      - name: Check out the watchdog classifier
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          persist-credentials: false
+          ref: refs/heads/main
+
+      - name: Classify stale reconciliation and create an authorized hold
+        id: controller
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RAILWAY_RECONCILE_CONTROL_URL: ${{ vars.RAILWAY_RECONCILE_CONTROL_URL }}
+          RAILWAY_RECONCILE_WATCHDOG_HMAC: ${{ secrets.RAILWAY_RECONCILE_WATCHDOG_HMAC }}
+          AUTO_RECOVERY_ENABLED: ${{ vars.RAILWAY_RECONCILE_CUTOVER_ACTIVE == 'true' && vars.RAILWAY_RECONCILE_AUTO_RECOVERY_ENABLED == 'true' && (github.event_name == 'schedule' || inputs.mode == 'dispatch') }}
+        run: >-
+          node scripts/dispatch-stale-railway-reconcile.mjs
+          --phase classify
+          --auto-recovery-enabled "$AUTO_RECOVERY_ENABLED"
+
+  dispatch:
+    name: Dispatch authorized recovery
+    needs: classify
+    if: github.ref == 'refs/heads/main' && github.run_attempt == 1 && needs.classify.outputs.dispatch_authorized == 'true' && vars.RAILWAY_RECONCILE_CUTOVER_ACTIVE == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      actions: write
+      contents: read
+      statuses: read
+    outputs:
+      workflow_run_id: ${{ steps.verify.outputs.workflow_run_id }}
+      run_attempt: ${{ steps.verify.outputs.run_attempt }}
+    steps:
+      - name: Revalidate exact main and green gate
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EXPECTED_HEAD_SHA: ${{ needs.classify.outputs.expected_head_sha }}
+        run: |
+          set -euo pipefail
+          if [[ ! "$EXPECTED_HEAD_SHA" =~ ^[0-9a-fA-F]{40}$ ]]; then
+            echo "::error::Authorized head is not an exact commit SHA."
+            exit 1
+          fi
+          ref_response=$(mktemp)
+          status_response=$(mktemp)
+          trap 'rm -f "$ref_response" "$status_response"' EXIT
+          if ! ref_status=$(curl --fail-with-body --silent --show-error \
+              --connect-timeout 5 \
+              --max-time 15 \
+              --header "Authorization: Bearer $GH_TOKEN" \
+              --header 'Accept: application/vnd.github+json' \
+              --header 'X-GitHub-Api-Version: 2026-03-10' \
+              --output "$ref_response" \
+              --write-out '%{http_code}' \
+              "https://api.github.com/repos/$GITHUB_REPOSITORY/git/ref/heads/main"); then
+            echo "::error::Exact main preflight was unreadable."
+            exit 1
+          fi
+          if [ "$ref_status" != '200' ]; then
+            echo "::error::Exact main preflight did not return HTTP 200."
+            exit 1
+          fi
+          actual_head=$(jq -er '.object.sha' "$ref_response")
+          if [ "$actual_head" != "$EXPECTED_HEAD_SHA" ]; then
+            echo "::error::Main moved after the durable dispatch hold was authorized."
+            exit 1
+          fi
+          if ! gate_status=$(curl --fail-with-body --silent --show-error \
+              --connect-timeout 5 \
+              --max-time 15 \
+              --header "Authorization: Bearer $GH_TOKEN" \
+              --header 'Accept: application/vnd.github+json' \
+              --header 'X-GitHub-Api-Version: 2026-03-10' \
+              --output "$status_response" \
+              --write-out '%{http_code}' \
+              "https://api.github.com/repos/$GITHUB_REPOSITORY/commits/$EXPECTED_HEAD_SHA/status?per_page=100"); then
+            echo "::error::Exact gate preflight was unreadable."
+            exit 1
+          fi
+          if [ "$gate_status" != '200' ]; then
+            echo "::error::Exact gate preflight did not return HTTP 200."
+            exit 1
+          fi
+          if ! jq -e '
+              (.statuses | type) == "array"
+              and ([.statuses[] | select(.context == "gate")] | length) == 1
+              and ([.statuses[] | select(.context == "gate")][0].state == "success")
+            ' "$status_response" >/dev/null; then
+            echo "::error::The authorized head no longer has one exact green gate status."
+            exit 1
+          fi
+
+      - name: Dispatch exact Railway deploy-trigger run
+        id: dispatch
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EXPECTED_HEAD_SHA: ${{ needs.classify.outputs.expected_head_sha }}
+          RECOVERY_ATTEMPT_ID: ${{ needs.classify.outputs.recovery_attempt_id }}
+        run: |
+          set -euo pipefail
+          if [[ ! "$EXPECTED_HEAD_SHA" =~ ^[0-9a-fA-F]{40}$ ]]; then
+            echo "::error::Authorized head is not an exact commit SHA."
+            exit 1
+          fi
+          if [[ ! "$RECOVERY_ATTEMPT_ID" =~ ^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$ ]]; then
+            echo "::error::Recovery attempt ID is invalid."
+            exit 1
+          fi
+          payload=$(jq -nc \
+            --arg head "$EXPECTED_HEAD_SHA" \
+            --arg recovery "$RECOVERY_ATTEMPT_ID" \
+            '{ref:"main",return_run_details:true,inputs:{recovery_attempt_id:$recovery,expected_head_sha:$head}}')
+          response_file=$(mktemp)
+          trap 'rm -f "$response_file"' EXIT
+          if ! http_status=$(curl --fail-with-body --silent --show-error \
+              --connect-timeout 5 \
+              --max-time 15 \
+              --request POST \
+              --header "Authorization: Bearer $GH_TOKEN" \
+              --header 'Accept: application/vnd.github+json' \
+              --header 'Content-Type: application/json' \
+              --header 'X-GitHub-Api-Version: 2026-03-10' \
+              --output "$response_file" \
+              --write-out '%{http_code}' \
+              --data "$payload" \
+              "https://api.github.com/repos/$GITHUB_REPOSITORY/actions/workflows/railway-deploy-trigger.yml/dispatches"); then
+            echo "::error::GitHub dispatch did not return a definitive response; the durable hold remains unresolved."
+            exit 1
+          fi
+          if [ "$http_status" != '200' ]; then
+            echo "::error::GitHub dispatch did not return the required run-details response."
+            exit 1
+          fi
+          workflow_run_id=$(jq -er '
+              if type == "object"
+                and (.workflow_run_id | type) == "number"
+                and .workflow_run_id > 0
+                and .workflow_run_id == (.workflow_run_id | floor)
+              then (.workflow_run_id | tostring)
+              else error("invalid workflow dispatch response")
+              end
+            ' "$response_file")
+          if [[ ! "$workflow_run_id" =~ ^[1-9][0-9]{0,23}$ ]]; then
+            echo "::error::GitHub returned an invalid workflow_run_id."
+            exit 1
+          fi
+          echo "dispatched_workflow_run_id=$workflow_run_id" >> "$GITHUB_OUTPUT"
+
+      - name: Verify exact dispatched Railway run
+        id: verify
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EXPECTED_HEAD_SHA: ${{ needs.classify.outputs.expected_head_sha }}
+          WORKFLOW_RUN_ID: ${{ steps.dispatch.outputs.dispatched_workflow_run_id }}
+        run: |
+          set -euo pipefail
+          if [[ ! "$EXPECTED_HEAD_SHA" =~ ^[0-9a-fA-F]{40}$ ]]; then
+            echo "::error::Authorized head is not an exact commit SHA."
+            exit 1
+          fi
+          if [[ ! "$WORKFLOW_RUN_ID" =~ ^[1-9][0-9]{0,23}$ ]]; then
+            echo "::error::Dispatched workflow run ID is invalid."
+            exit 1
+          fi
+          run_response=$(mktemp)
+          trap 'rm -f "$run_response"' EXIT
+          if ! run_status=$(curl --fail-with-body --silent --show-error \
+              --connect-timeout 5 \
+              --max-time 15 \
+              --header "Authorization: Bearer $GH_TOKEN" \
+              --header 'Accept: application/vnd.github+json' \
+              --header 'X-GitHub-Api-Version: 2026-03-10' \
+              --output "$run_response" \
+              --write-out '%{http_code}' \
+              "https://api.github.com/repos/$GITHUB_REPOSITORY/actions/runs/$WORKFLOW_RUN_ID"); then
+            echo "::error::The exact dispatched run could not be read; the durable hold remains unresolved."
+            exit 1
+          fi
+          if [ "$run_status" != '200' ]; then
+            echo "::error::The exact dispatched run did not return HTTP 200; the durable hold remains unresolved."
+            exit 1
+          fi
+          if ! jq -e \
+              --arg run_id "$WORKFLOW_RUN_ID" \
+              --arg expected_head "$EXPECTED_HEAD_SHA" '
+              type == "object"
+              and ((.id | tostring) == $run_id)
+              and (.event == "workflow_dispatch")
+              and (.head_branch == "main")
+              and (.head_sha == $expected_head)
+              and (.run_attempt == 1)
+              and ((.path | type) == "string")
+              and ((.path | split("@")[0]) == ".github/workflows/railway-deploy-trigger.yml")
+            ' "$run_response" >/dev/null; then
+            echo "::error::GitHub returned a run that does not exactly match the authorized target."
+            exit 1
+          fi
+          echo "workflow_run_id=$WORKFLOW_RUN_ID" >> "$GITHUB_OUTPUT"
+          echo "run_attempt=1" >> "$GITHUB_OUTPUT"
+
+  bind:
+    name: Bind exact dispatched run to recovery hold
+    needs: [classify, dispatch]
+    if: github.ref == 'refs/heads/main' && needs.classify.outputs.dispatch_authorized == 'true' && vars.RAILWAY_RECONCILE_CUTOVER_ACTIVE == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    environment:
+      name: ingestion-acceptance-production-watchdog
+      deployment: false
+    permissions:
+      contents: read
+    steps:
+      - name: Check out the exact authorized revision for binding
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+          ref: ${{ needs.classify.outputs.expected_head_sha }}
+
+      - name: Bind exact dispatched run to durable hold
+        env:
+          RAILWAY_RECONCILE_CONTROL_URL: ${{ vars.RAILWAY_RECONCILE_CONTROL_URL }}
+          RAILWAY_RECONCILE_WATCHDOG_HMAC: ${{ secrets.RAILWAY_RECONCILE_WATCHDOG_HMAC }}
+          EXPECTED_HEAD_SHA: ${{ needs.classify.outputs.expected_head_sha }}
+          RECOVERY_ATTEMPT_ID: ${{ needs.classify.outputs.recovery_attempt_id }}
+          WORKFLOW_RUN_ID: ${{ needs.dispatch.outputs.workflow_run_id }}
+          RUN_ATTEMPT: ${{ needs.dispatch.outputs.run_attempt }}
+        run: >-
+          node scripts/dispatch-stale-railway-reconcile.mjs
+          --phase bind
+          --expected-head-sha "$EXPECTED_HEAD_SHA"
+          --recovery-attempt-id "$RECOVERY_ATTEMPT_ID"
+          --workflow-run-id "$WORKFLOW_RUN_ID"
+          --run-attempt "$RUN_ATTEMPT"

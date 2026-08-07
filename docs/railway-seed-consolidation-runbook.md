@@ -123,6 +123,49 @@ use the broader account-scoped `RAILWAY_API_TOKEN`. Missing or inaccessible
 context intentionally fails the acceptance run rather than silently skipping
 the live audit.
 
+### Reconciliation control-plane provisioning
+
+The reconciliation controller is a dedicated Cloudflare Worker backed by one
+SQLite Durable Object. Its foundation can be deployed while the existing
+Railway trigger remains unchanged: keep both
+`RAILWAY_RECONCILE_CUTOVER_ACTIVE` and
+`RAILWAY_RECONCILE_AUTO_RECOVERY_ENABLED` set to `false` until the lease-aware
+target workflow has landed and the legacy trigger has been disabled and
+drained.
+
+Provision these GitHub Actions environments with a `main`-only deployment
+branch policy:
+
+Set the non-secret repository variable `RAILWAY_RECONCILE_CONTROL_URL` to the
+dedicated HTTPS origin compiled into the shipped control client; the client
+rejects every other host even if a workflow variable is misconfigured.
+
+| Environment | Capability |
+|---|---|
+| `railway-reconcile-control-production` | Cloudflare deploy token, account ID, fixed control scope, and all four pairwise-distinct HMAC values |
+| `ingestion-acceptance-production-watchdog` | Watchdog HMAC only; no Railway credential |
+| `ingestion-acceptance-production-verification` | Read-only Railway Viewer token, project ID, and GitHub read evidence |
+| `ingestion-acceptance-production-breakglass` | Operator HMAC plus the same Viewer-only Railway access; require independent reviewers and prevent self-review |
+
+The ordinary lease-aware mutation and verifier jobs receive only their own
+HMAC roles in their separately protected environments. The Viewer token must
+not be able to deploy, redeploy, edit configuration, or approve Railway work.
+The protected resolver deliberately repeats the GitHub, convergence, and
+provider-inactivity reads after environment approval; the earlier proof is not
+fresh enough to authorize a state transition by itself.
+
+`GET /version` proves only that the expected Worker revision propagated.
+Authenticated `/v1/watchdog/status` is the readiness check because it also
+opens the canonical Durable Object and exercises the deployed watchdog HMAC.
+
+HMAC rotation is a coordinated maintenance operation. First disable automatic
+recovery, confirm authenticated status has no lease, barrier, or dispatch hold,
+and confirm no target mutation or verifier job is active. Then update the
+Worker and the one matching consumer environment together and repeat both the
+version and authenticated status probes. Never rotate across an active lease,
+hold, or barrier: the old run would lose its only authorization path and the
+result would require protected operator recovery.
+
 ### Bootstrap R2 publisher contract
 
 The public bootstrap tiers use the dedicated private bucket
@@ -245,17 +288,22 @@ with nothing suppressed there is nothing to re-review.
 
 #### Recovering a stale service
 
-Use the deploy trigger. It builds the service from git at an exact commit, so
-the resulting deployment carries a SHA the drift check can compare:
+Use the **Railway Deploy Trigger** workflow. Its manual dry-run reports the
+closure plan without mutation; a normal manual dispatch runs the same
+green-`main` authorization as the automatic path. Do not run the trigger script
+directly for production recovery:
 
 ```bash
+# Local inspection only; this cannot authorize a production mutation.
 node scripts/trigger-railway-deploys.mjs --only <service-name> --dry-run
-node scripts/trigger-railway-deploys.mjs --only <service-name>
 ```
 
-It is a no-op for a service that is already current, and omitting `--only`
-reconciles the whole fleet, so it is safe to run at any time. Three guards make
-it safe to run from any checkout:
+The workflow builds from an exact green `main` commit, so the resulting
+deployment carries a SHA the drift check can compare. It is a no-op for a
+service Railway already took. After the lease-aware cutover, non-dry-run direct
+invocation fails closed: only the protected workflow can acquire the 30-minute
+non-renewing owner lease and bind the attempt manifest. The script's remaining
+local guarantees are still useful for previews:
 
 - The deployed commit defaults to **`origin/main`**, never your local `HEAD`, so
   standing on a feature branch cannot ship it to production.
@@ -264,15 +312,51 @@ it safe to run from any checkout:
   selecting nothing — a typo that reported "no service needs a build" would read
   exactly like a healthy fleet.
 
-Run `git fetch origin` first so `origin/main` is current.
+Run `git fetch origin` before a local preview so `origin/main` is current.
+
+The reconciliation control plane deliberately separates two failures:
+
+- A runner-less or pre-mutation attempt owns no unbounded GitHub lock. Once any
+  bounded `LEASED`/`PREPARED` lease expires and no dispatch hold is ambiguous,
+  the independent watchdog can dispatch a replacement. It never cancels the
+  old run.
+- Once `MUTATION_STARTED` is durable, a project/environment-wide barrier blocks
+  every automatic head until the exact result passes terminal deployment
+  convergence plus strict zero drift, or the protected **Railway Reconcile
+  Manual Recovery** workflow records an audited resolution. Lease expiry alone
+  never clears this barrier.
+
+The watchdog is observe-only unless both `RAILWAY_RECONCILE_CUTOVER_ACTIVE` and
+`RAILWAY_RECONCILE_AUTO_RECOVERY_ENABLED` are exactly `true`. The first flag is
+the hard fence against dispatching the legacy target contract; the second is
+the operational recovery switch. `RECOVERY_AUTHORIZED` means the controller
+persisted a one-use dispatch hold but has not yet dispatched it;
+`RECOVERY_DISPATCHED` means GitHub accepted the request and the controller
+durably bound its exact workflow run and attempt. A green
+watchdog run means only that observation did not poison `main`; authoritative
+success is the replacement's final strict-acceptance step, including a verified
+no-op. The run summary prints the current prior attempt or hold ID for protected
+manual recovery.
+
+The observer inventories run summaries from the preceding 24 hours, then reads
+attempt jobs only for active, recent, durably referenced, or non-success
+terminal runs. It follows at
+most 10 pages, makes at most 250 GitHub API requests, and bounds each request to
+10 seconds. Durable barriers and dispatch holds remain authoritative beyond
+that window; exhausting any read budget defers recovery rather than dispatching
+on partial history.
 
 Do **not** use `railway redeploy`: Railway documents it as rebuilding the most
 recent deployment with the same code, so it cannot pick up a newer fixed commit.
 
-`railway up` remains the last resort for a service whose git source is broken.
-It uploads the current working directory, so run it only from a **clean detached
-worktree at `origin/main`** — never from your own worktree, or you deploy
-uncommitted state to production:
+`railway up` is not an ordinary recovery path. If the control plane itself is
+unavailable, first disable every automated mutation entrant, inventory all
+mutation jobs, wait for them to terminate, and preserve the durable state. A
+separately audited manual action may be considered only after the 30-minute
+lease plus the documented 5-minute termination grace, 1-minute clock/network
+margin, and 6-minute safety margin have elapsed. Time does not override a
+restored `MUTATION_STARTED` barrier. If an approved break-glass recovery still
+requires `railway up`, use a **clean detached worktree at `origin/main`**:
 
 ```bash
 git fetch origin
