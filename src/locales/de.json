@@ -1354,7 +1354,7 @@
       "none": "Keine aktuellen Aufklärungserkenntnisse",
       "monitoring": "ÜBERWACHUNG",
       "scanning": "Suche nach Korrelationen und Anomalien...",
-      "reviewRecommended": "{{count}} Geheimdienstergebnisse – Überprüfung empfohlen",
+      "reviewRecommended": "{{count}} Aufklärungserkenntnisse – Überprüfung empfohlen",
       "count": "{{count}} Aufklärungserkenntnis",
       "detected": "{{count}} ERKANNT",
       "critical": "{{count}} KRITISCH",
@@ -2593,7 +2593,7 @@
     "gpsJamming": {
       "title": "GPS/GNSS-Störung",
       "navPerformance": "Betroffene Luftfahrzeuge",
-      "samples": "Anzahl betroffen",
+      "samples": "Anzahl betroffener Luftfahrzeuge",
       "aircraft": "Gesichtete Luftfahrzeuge",
       "h3Hex": "H3 Hex"
     },
@@ -3340,7 +3340,7 @@
     "toolArgs": "Argumente (JSON)",
     "panelTitle": "Panel-Titel",
     "panelTitlePlaceholder": "Mein MCP-Panel",
-    "refreshEvery": "Aktualisieren alle",
+    "refreshEvery": "Alle aktualisieren",
     "seconds": "Sekunden",
     "addPanel": "Panel hinzufügen",
     "configure": "MCP konfigurieren",
