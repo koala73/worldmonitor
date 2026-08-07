@@ -720,11 +720,36 @@ async function publishNotificationEvent({ eventType, payload, severity, variant,
 let upstreamSocket = null;
 let upstreamReconnectTimer = null;
 let upstreamReconnectFailures = 0;
+let upstreamConsecutiveThrottles = 0;
 let upstreamReconnectAt = 0;
 let upstreamLastPositionAt = 0;
 let relayShuttingDown = false;
-const AIS_RECONNECT_BASE_MS = 5_000;
-const AIS_RECONNECT_MAX_MS = 5 * 60 * 1000;
+// Floors are deliberate: this change exists to stop the relay hammering a
+// provider that is rejecting it, so the tunables must not open a config path to
+// hammer harder. 50ms/100ms stay well below any production value while leaving
+// the ladder compressible under test.
+const AIS_RECONNECT_BASE_MS = safeInt(process.env.AIS_RECONNECT_BASE_MS, 5_000, 50);
+const AIS_RECONNECT_MAX_MS = safeInt(process.env.AIS_RECONNECT_MAX_MS, 5 * 60 * 1000, 100);
+// A 429 on the WebSocket upgrade means the provider is rate-limiting this egress
+// IP, not that the stream failed transiently: the rejection lands before the API
+// key is ever sent. Knocking every AIS_RECONNECT_MAX_MS keeps ~288 refused
+// requests/day inside the provider's sliding window, which can sustain the block
+// we are waiting out. Sustained throttling therefore escalates to a much longer
+// ceiling; any non-throttle outcome clears it so ordinary disconnects keep the
+// responsive schedule.
+//
+// Clamped at or above the ordinary ceiling: a smaller value would make
+// escalation *shorten* the wait and reconnect more aggressively while throttled,
+// which is the exact inverse of the intent.
+const AIS_THROTTLE_RECONNECT_MAX_MS = Math.max(
+  AIS_RECONNECT_MAX_MS,
+  safeInt(process.env.AIS_THROTTLE_RECONNECT_MAX_MS, 30 * 60 * 1000, 100),
+);
+const AIS_THROTTLE_ESCALATE_AFTER = safeInt(
+  process.env.AIS_THROTTLE_ESCALATE_AFTER,
+  5,
+  1,
+);
 const AIS_HANDSHAKE_TIMEOUT_MS = safeInt(
   process.env.AIS_HANDSHAKE_TIMEOUT_MS,
   30_000,
@@ -753,6 +778,10 @@ let messageCount = 0;
 let droppedMessages = 0;
 const requestRateBuckets = new Map(); // key: route:ip -> { count, resetAt }
 const logThrottleState = new Map(); // key: event key -> timestamp
+
+function isAisThrottleEscalated() {
+  return upstreamConsecutiveThrottles >= AIS_THROTTLE_ESCALATE_AFTER;
+}
 
 function getAisPositionFreshness(nowMs = Date.now()) {
   const positionAgeMs = upstreamLastPositionAt
@@ -7278,6 +7307,8 @@ function getRelayRollingMetrics() {
       throttlesSinceBoot: aisUpstreamMetrics.throttle,
       terminalFailuresSinceBoot: aisUpstreamMetrics.terminalFailure,
       reconnectFailures: upstreamReconnectFailures,
+      consecutiveThrottles: upstreamConsecutiveThrottles,
+      throttleEscalated: isAisThrottleEscalated(),
       reconnectCooldownRemainingMs: Math.max(0, upstreamReconnectAt - nowMs),
       lastSuccessAt: aisUpstreamMetrics.lastSuccessAt
         ? new Date(aisUpstreamMetrics.lastSuccessAt).toISOString()
@@ -12157,7 +12188,9 @@ function switchTab(btn, key) {
 
 function scheduleUpstreamReconnect() {
   if (relayShuttingDown || upstreamReconnectTimer || !API_KEY) return;
-  const delayMs = nextBackoffMs(upstreamReconnectFailures, AIS_RECONNECT_BASE_MS, AIS_RECONNECT_MAX_MS);
+  const throttleEscalated = isAisThrottleEscalated();
+  const ceilingMs = throttleEscalated ? AIS_THROTTLE_RECONNECT_MAX_MS : AIS_RECONNECT_MAX_MS;
+  const delayMs = nextBackoffMs(upstreamReconnectFailures, AIS_RECONNECT_BASE_MS, ceilingMs);
   upstreamReconnectFailures++;
   upstreamReconnectAt = Date.now() + delayMs;
   upstreamReconnectTimer = setTimeout(() => {
@@ -12166,7 +12199,10 @@ function scheduleUpstreamReconnect() {
     connectUpstream();
   }, delayMs);
   upstreamReconnectTimer.unref?.();
-  console.log(`[Relay] AIS reconnect scheduled in ${Math.ceil(delayMs / 1000)}s (attempt=${upstreamReconnectFailures})`);
+  const escalationNote = throttleEscalated
+    ? ` [throttle-escalated after ${upstreamConsecutiveThrottles} consecutive 429s]`
+    : '';
+  console.log(`[Relay] AIS reconnect scheduled in ${Math.ceil(delayMs / 1000)}s (attempt=${upstreamReconnectFailures})${escalationNote}`);
 }
 
 function connectUpstream() {
@@ -12257,6 +12293,7 @@ function connectUpstream() {
           aisUpstreamMetrics.lastFailure = null;
         }
         upstreamReconnectFailures = 0;
+        upstreamConsecutiveThrottles = 0;
         if (acceptedType === 'position') {
           const wasCurrentPositionReady = getAisPositionFreshness().currentPositionReady;
           upstreamLastPositionAt = Date.now();
@@ -12332,6 +12369,8 @@ function connectUpstream() {
         aisUpstreamMetrics.lastFailure = socketPositionTimedOut
           ? 'position_timeout'
           : (socketServedData ? 'disconnected' : 'closed_without_data');
+        // A close with no recorded error is by definition not a throttle.
+        upstreamConsecutiveThrottles = 0;
       }
       upstreamSocket = null;
       upstreamLastPositionAt = 0;
@@ -12350,6 +12389,9 @@ function connectUpstream() {
       aisUpstreamMetrics[throttled ? 'throttle' : 'terminalFailure']++;
       aisUpstreamMetrics.lastFailureAt = Date.now();
       aisUpstreamMetrics.lastFailure = throttled ? 'http_429' : 'connection_error';
+      // Only an unbroken run of 429s escalates the ceiling; a different failure
+      // means we are no longer being rate-limited and the ordinary schedule applies.
+      upstreamConsecutiveThrottles = throttled ? upstreamConsecutiveThrottles + 1 : 0;
     }
     console.error('[Relay] Upstream error:', err.message);
   });
