@@ -225,6 +225,7 @@ export function hasTier(minTier: number): boolean {
  * snapshot they control — `currentState` is module-private and has no setter,
  * so the alternative is re-implementing these three conditions in a mock,
  * where they silently drift the moment this rule changes (#5632).
+ * @internal Only intended to be called by `isEntitled()` and test seams.
  */
 export function isEntitlementActive(
   state: EntitlementState | null,
