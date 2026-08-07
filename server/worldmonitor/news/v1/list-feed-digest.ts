@@ -14,6 +14,7 @@ import { sha256Hex } from '../../../_shared/hash';
 import { CHROME_UA } from '../../../_shared/constants';
 import {
   isServerFeedReachableForLanguage,
+  orderServerFeedEntries,
   VARIANT_FEEDS,
   INTEL_SOURCES,
   type ServerFeed,
@@ -54,6 +55,8 @@ const POST_FETCH_HEADROOM_MS = 15_000;
 const RESPONSE_GUARD_BAND_MS = 3_000;
 const OVERALL_DEADLINE_MS = VERCEL_INITIAL_RESPONSE_LIMIT_MS - POST_FETCH_HEADROOM_MS;
 const BATCH_CONCURRENCY = 20;
+
+type DigestFeedEntry = { category: string; feed: ServerFeed };
 
 // U3 — hard freshness floor (default 96h, env override NEWS_MAX_AGE_HOURS).
 // Items older than this are dropped before scoring. The 24h `recencyScore`
@@ -1278,8 +1281,36 @@ async function writeStoryTracking(items: ParsedItem[], variant: string, lang: st
   await runRedisPipeline([['EXPIRE', accKey, DIGEST_ACCUMULATOR_TTL]]);
 }
 
-async function buildDigest(variant: string, lang: string): Promise<ListFeedDigestResponse> {
+function buildDigestFeedBatches(variant: string, lang: string): {
+  allEntries: DigestFeedEntry[];
+  batches: DigestFeedEntry[][];
+} {
   const feedsByCategory = VARIANT_FEEDS[variant] ?? {};
+  const allEntries: DigestFeedEntry[] = [];
+
+  for (const [category, feeds] of Object.entries(feedsByCategory)) {
+    const filtered = feeds.filter(f => isServerFeedReachableForLanguage(f, lang));
+    for (const feed of filtered) {
+      allEntries.push({ category, feed });
+    }
+  }
+
+  if (variant === 'full') {
+    const filteredIntel = INTEL_SOURCES.filter(f => isServerFeedReachableForLanguage(f, lang));
+    for (const feed of filteredIntel) {
+      allEntries.push({ category: 'intel', feed });
+    }
+  }
+
+  const orderedEntries = orderServerFeedEntries(allEntries);
+  const batches: DigestFeedEntry[][] = [];
+  for (let i = 0; i < orderedEntries.length; i += BATCH_CONCURRENCY) {
+    batches.push(orderedEntries.slice(i, i + BATCH_CONCURRENCY));
+  }
+  return { allEntries, batches };
+}
+
+async function buildDigest(variant: string, lang: string): Promise<ListFeedDigestResponse> {
   const feedStatuses: Record<string, string> = {};
   // #4920 coverage ledger: count every silent drop gate so "how much did
   // we NOT show" is a queryable number instead of a feeling.
@@ -1290,31 +1321,16 @@ async function buildDigest(variant: string, lang: string): Promise<ListFeedDiges
   const deadlineTimeout = setTimeout(() => deadlineController.abort(), OVERALL_DEADLINE_MS);
 
   try {
-    const allEntries: Array<{ category: string; feed: ServerFeed }> = [];
-
-    for (const [category, feeds] of Object.entries(feedsByCategory)) {
-      const filtered = feeds.filter(f => isServerFeedReachableForLanguage(f, lang));
-      for (const feed of filtered) {
-        allEntries.push({ category, feed });
-      }
-    }
-
-    if (variant === 'full') {
-      const filteredIntel = INTEL_SOURCES.filter(f => isServerFeedReachableForLanguage(f, lang));
-      for (const feed of filteredIntel) {
-        allEntries.push({ category: 'intel', feed });
-      }
-    }
+    const { allEntries, batches } = buildDigestFeedBatches(variant, lang);
 
     const results = new Map<string, ParsedItem[]>();
     // Track feeds that actually completed (with or without items) so we can
     // distinguish a genuine timeout (never ran) from a successful empty fetch.
     const completedFeeds = new Set<string>();
 
-    for (let i = 0; i < allEntries.length; i += BATCH_CONCURRENCY) {
+    for (const batch of batches) {
       if (deadlineController.signal.aborted) break;
 
-      const batch = allEntries.slice(i, i + BATCH_CONCURRENCY);
       const settled = await Promise.allSettled(
         batch.map(async ({ category, feed }) => {
           const result = await fetchAndParseRss(feed, variant, deadlineController.signal);
@@ -1591,6 +1607,7 @@ async function buildDigest(variant: string, lang: string): Promise<ListFeedDiges
 
 /** Internal exports for unit tests only — do not import in production code. */
 export const __testing__ = {
+  buildDigestFeedBatches,
   parseRssXml,
   decodeXmlEntities,
   extractDescription,

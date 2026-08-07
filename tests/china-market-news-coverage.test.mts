@@ -4,12 +4,17 @@ import { dirname, resolve } from 'node:path';
 import { describe, it } from 'node:test';
 import { fileURLToPath } from 'node:url';
 
-import { VARIANT_FEEDS } from '../server/worldmonitor/news/v1/_feeds.ts';
+import {
+  orderServerFeedEntries,
+  VARIANT_FEEDS,
+} from '../server/worldmonitor/news/v1/_feeds.ts';
+import { __testing__ as digestTesting } from '../server/worldmonitor/news/v1/list-feed-digest.ts';
 import { SOURCE_PROPAGANDA_RISK } from '../shared/source-provenance.ts';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const readText = (path: string) => readFileSync(resolve(root, path), 'utf8');
 const readJson = <T>(path: string): T => JSON.parse(readText(path)) as T;
+const { buildDigestFeedBatches } = digestTesting;
 
 interface StockEntry {
   symbol: string;
@@ -148,5 +153,27 @@ describe('China client/server news digest parity (#5272)', () => {
     assert.equal(readText('scripts/shared/source-tiers.json'), readText('shared/source-tiers.json'));
     assert.equal(SOURCE_PROPAGANDA_RISK.Xinhua?.risk, 'high');
     assert.equal(SOURCE_PROPAGANDA_RISK.Xinhua?.stateAffiliated, 'China');
+  });
+
+  it('starts all China coverage feeds before ordinary full-digest feeds', () => {
+    const { batches } = buildDigestFeedBatches('full', 'en');
+    const firstBatch = batches[0] ?? [];
+
+    assert.deepEqual(
+      firstBatch.slice(0, 3).map(({ feed }) => feed.name).sort(),
+      ['Xinhua', 'MIIT (China)', 'MOFCOM (China)'].sort(),
+    );
+    assert.notEqual(firstBatch[3]?.feed.name, 'Xinhua');
+    assert.notEqual(firstBatch[3]?.feed.name, 'MIIT (China)');
+    assert.notEqual(firstBatch[3]?.feed.name, 'MOFCOM (China)');
+
+    const ordinaryEntries = [
+      { category: 'test', feed: { name: 'ordinary-first', url: 'https://example.test/first' } },
+      { category: 'test', feed: { name: 'ordinary-second', url: 'https://example.test/second' } },
+    ];
+    assert.deepEqual(
+      orderServerFeedEntries([...ordinaryEntries].reverse()).map(({ feed }) => feed.name),
+      ['ordinary-second', 'ordinary-first'],
+    );
   });
 });

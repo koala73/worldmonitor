@@ -3,6 +3,12 @@ export interface ServerFeed {
   url: string;
   lang?: string;
   strategicDefault?: boolean;
+  /**
+   * Positive values start earlier in a cold digest build. This is a fetch
+   * scheduling hint only; it does not affect ranking, source tier, or UI
+   * default selection.
+   */
+  deadlinePriority?: number;
 }
 
 export function isServerFeedReachableForLanguage(
@@ -10,6 +16,23 @@ export function isServerFeedReachableForLanguage(
   language: string,
 ): boolean {
   return !feed.lang || feed.lang === language || !!feed.strategicDefault;
+}
+
+export function orderServerFeedEntries<T extends {
+  feed: Pick<ServerFeed, 'deadlinePriority'>;
+}>(entries: readonly T[]): T[] {
+  return entries
+    .map((entry, index) => ({ entry, index }))
+    .sort((a, b) => {
+      const aPriority = Number.isFinite(a.entry.feed.deadlinePriority)
+        ? a.entry.feed.deadlinePriority!
+        : 0;
+      const bPriority = Number.isFinite(b.entry.feed.deadlinePriority)
+        ? b.entry.feed.deadlinePriority!
+        : 0;
+      return bPriority - aPriority || a.index - b.index;
+    })
+    .map(({ entry }) => entry);
 }
 
 const gn = (q: string) =>
@@ -259,10 +282,13 @@ export const VARIANT_FEEDS: Record<string, Record<string, ServerFeed[]>> = {
       { name: 'South China Morning Post', url: gn('site:scmp.com when:2d') },
       { name: 'The Hindu', url: 'https://www.thehindu.com/feeder/default.rss' },
       { name: 'Asia News', url: gn('site:asianews.it when:3d') },
-      { name: 'Xinhua', url: gn('site:xinhuanet.com OR Xinhua when:1d') },
+      // China coverage feeds must start before the full digest's later
+      // batches. Otherwise a slow cold build can report timeout for an
+      // otherwise healthy source while the seed transport remains fresh.
+      { name: 'Xinhua', url: gn('site:xinhuanet.com OR Xinhua when:1d'), deadlinePriority: 100 },
       { name: 'Asahi Shimbun', url: 'https://www.asahi.com/rss/asahi/newsheadlines.rdf', lang: 'ja', strategicDefault: true },
-      { name: 'MIIT (China)', url: gnLocale('site:miit.gov.cn when:7d', 'zh-CN', 'CN', 'CN:zh-Hans'), lang: 'zh', strategicDefault: true },
-      { name: 'MOFCOM (China)', url: gnLocale('site:mofcom.gov.cn when:7d', 'zh-CN', 'CN', 'CN:zh-Hans'), lang: 'zh', strategicDefault: true },
+      { name: 'MIIT (China)', url: gnLocale('site:miit.gov.cn when:7d', 'zh-CN', 'CN', 'CN:zh-Hans'), lang: 'zh', strategicDefault: true, deadlinePriority: 100 },
+      { name: 'MOFCOM (China)', url: gnLocale('site:mofcom.gov.cn when:7d', 'zh-CN', 'CN', 'CN:zh-Hans'), lang: 'zh', strategicDefault: true, deadlinePriority: 100 },
       { name: 'Bangkok Post', url: gn('site:bangkokpost.com when:1d'), lang: 'th', strategicDefault: true },
       { name: 'VnExpress', url: 'https://vnexpress.net/rss/tin-moi-nhat.rss', lang: 'vi', strategicDefault: true },
       { name: 'Yonhap News', url: 'https://www.yonhapnewstv.co.kr/browse/feed/', lang: 'ko', strategicDefault: true },
