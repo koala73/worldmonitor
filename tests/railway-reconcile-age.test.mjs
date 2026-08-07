@@ -313,7 +313,10 @@ describe('the cross-file names this scanner depends on', () => {
     // The scanner's whole signal is this string. If the workflow renames the
     // step, every run reads as "did not reconcile" — which alarms rather than
     // going quiet, but alarms forever for the wrong reason.
-    const names = workflow.jobs.trigger.steps.map((step) => step.name);
+    const names = Object.values(workflow.jobs)
+      .flatMap((job) => job.steps ?? [])
+      .map((step) => step.name)
+      .filter(Boolean);
     assert.ok(
       names.includes(RECONCILE_STEP_NAME),
       `RECONCILE_STEP_NAME ${JSON.stringify(RECONCILE_STEP_NAME)} names no step in the workflow; it has ${JSON.stringify(names)}`,

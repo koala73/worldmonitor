@@ -21,7 +21,7 @@
 // asks the question that does not depend on why: when did a run last actually
 // reconcile? The answer comes from the workflow's own run history, because a
 // run that reconciled and a run that declined differ only in whether the
-// deploying STEP ran.
+// strict terminal acceptance STEP ran.
 //
 // DIRECTION OF FAILURE
 //
@@ -42,7 +42,7 @@ import { REPOSITORY, readArgument } from './railway-cli.mjs';
 // because a rename here would make every run read as "did not reconcile" —
 // which alarms rather than going quiet, but alarms forever for the wrong
 // reason.
-export const RECONCILE_STEP_NAME = 'Trigger deploys for services this merge changed';
+export const RECONCILE_STEP_NAME = 'Finalize exact Railway reconciliation acceptance';
 
 export const DEFAULT_WORKFLOW_FILE = 'railway-deploy-trigger.yml';
 

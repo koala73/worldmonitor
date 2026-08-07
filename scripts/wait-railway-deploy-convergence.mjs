@@ -213,12 +213,13 @@ function runStrictDrift(headSha, environment, timeoutMs) {
   return parsed.summary;
 }
 
-async function main() {
-  const manifestPath = readArgument(process.argv, '--manifest', null);
-  const expectedHead = readArgument(process.argv, '--head', null);
-  const environment = readArgument(process.argv, '--environment', 'production');
-  if (!manifestPath || !expectedHead) throw new Error('--manifest and --head are required');
-  const manifest = validateResultManifest(JSON.parse(readFileSync(manifestPath, 'utf8')));
+export async function verifyRailwayManifest({
+  manifest: uncheckedManifest,
+  expectedHead,
+  environment = 'production',
+  deadlineMs = DEFAULT_CONVERGENCE_DEADLINE_MS,
+}) {
+  const manifest = validateResultManifest(uncheckedManifest);
   if (process.env.RAILWAY_PROJECT_ID !== manifest.intent.projectId) {
     throw new Error('manifest project does not match RAILWAY_PROJECT_ID');
   }
@@ -227,9 +228,10 @@ async function main() {
   }
   const services = readRepositoryServices(environment);
   const byId = new Map(services.map((service) => [service.id, service]));
-  const result = await waitForRailwayDeployConvergence({
+  return waitForRailwayDeployConvergence({
     manifest,
     expectedHead,
+    deadlineMs,
     readDeployment: async (entry) => {
       const service = byId.get(entry.serviceId);
       if (!service || service.name !== entry.service) return null;
@@ -240,6 +242,18 @@ async function main() {
     verifyStrictDrift: async ({ headSha, remainingMs }) => (
       runStrictDrift(headSha, environment, remainingMs)
     ),
+  });
+}
+
+async function main() {
+  const manifestPath = readArgument(process.argv, '--manifest', null);
+  const expectedHead = readArgument(process.argv, '--head', null);
+  const environment = readArgument(process.argv, '--environment', 'production');
+  if (!manifestPath || !expectedHead) throw new Error('--manifest and --head are required');
+  const result = await verifyRailwayManifest({
+    manifest: JSON.parse(readFileSync(manifestPath, 'utf8')),
+    expectedHead,
+    environment,
   });
   console.log(JSON.stringify(result));
 }
