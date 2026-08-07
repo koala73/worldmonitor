@@ -116,6 +116,13 @@ export class FirecrawlProvider implements AcquisitionProvider {
     schema: ExtractSchema,
     opts: FetchOptions = {},
   ): Promise<ExtractResult<T>> {
+    // Nullable is encoded DIFFERENTLY here than in ExaProvider.extract, and the
+    // divergence is deliberate — do not "unify" these without re-testing both
+    // providers live. Firecrawl accepts the JSON Schema `type: [T,'null']`
+    // union (verified: HTTP 200, extract returned). Exa's /contents validator
+    // rejects an array `type` outright with HTTP 400 INVALID_REQUEST_BODY, so
+    // it must use `anyOf` instead (#6182 — that mismatch silently disabled
+    // every Exa extraction call and, after two failures, the whole fallback).
     const jsonSchema: Record<string, unknown> = {
       type: 'object',
       properties: Object.fromEntries(
