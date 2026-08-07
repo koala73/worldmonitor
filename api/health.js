@@ -1616,7 +1616,7 @@ function classifyKey(name, redisKey, opts, ctx) {
     if (synthesisFailure.synthesisFailureAgeMin != null && synthesisFailure.consecutiveFailures > 0) {
       entry.synthesisFailureAgeMin = synthesisFailure.synthesisFailureAgeMin;
     }
-    if (status === 'SEED_ERROR' && synthesisFailure.lastSynthesisFailureCode) {
+    if (synthesisFailure.lastSynthesisFailureCode) {
       entry.lastSynthesisFailureCode = synthesisFailure.lastSynthesisFailureCode;
     }
   }

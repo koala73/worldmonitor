@@ -133,11 +133,12 @@ records, and records the miss as diagnostics:
 Each such key declares thresholds sized to its own cadence, and health reports
 `SEED_ERROR` once either is crossed: `warnAfterConsecutive` misses in a row, or
 `warnAfterAgeMin` since the last attempt with a miss on record. Because
-`fetchedAt` is **not** advanced by a miss, the ordinary `maxStaleMin` age gate
-keeps escalating independently — a producer that stops entirely still ages into
-`STALE_SEED`. A miss with nothing left to serve skips all of this and writes
-`status: "error"` immediately, and a failure streak never outranks a missing
-data key, which is still `EMPTY` (crit).
+`fetchedAt` is **not** advanced by a miss. A producer that stops after recording
+a miss therefore reports `SEED_ERROR` while retained data is still available,
+then escalates to `EMPTY` (crit) once the canonical data key disappears. A miss
+with nothing left to serve skips all of this and writes `status: "error"`
+immediately, and a failure streak never outranks a missing data key, which is
+still `EMPTY` (crit).
 
 Two keys use this contract today: `newsInsights` and `marketImplications`.
 

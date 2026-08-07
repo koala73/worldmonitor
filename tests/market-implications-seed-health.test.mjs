@@ -309,6 +309,9 @@ function armFailingRedisRead(failingKey, previousMeta, { fault = 'http-500' } = 
       // 'corrupt' is the quieter fault: HTTP 200 carrying a body that will not
       // parse. It must fail closed exactly like a 5xx rather than reading as
       // an empty key.
+      if (fault === 'missing-result') {
+        return { ok: true, status: 200, json: async () => ({}), text: async () => '' };
+      }
       return fault === 'corrupt'
         ? ok('{"cards": [truncated mid-write')
         : { ok: false, status: 500, json: async () => ({}), text: async () => 'upstash 500' };
@@ -338,6 +341,19 @@ test('an unreadable previous meta fails closed instead of restarting the streak'
   assert.notEqual(metaWrite.value.consecutiveFailures, 1, 'silently restarting at 1 would erase four recorded misses');
 });
 
+test('an HTTP 200 Redis response missing result fails closed', async () => {
+  const writes = armFailingRedisRead(META_KEY, {
+    fetchedAt: SERVED_MS, recordCount: 5, status: 'ok', consecutiveFailures: 4,
+  }, { fault: 'missing-result' });
+
+  await buildAndSeedMarketImplications({});
+
+  const metaWrite = writes.find((w) => w.key === META_KEY);
+  assert.ok(metaWrite, 'the failure writer must still record an error meta');
+  assert.equal(metaWrite.value.status, 'error', 'missing result is not proof of a Redis miss');
+  assert.equal(metaWrite.value.recordCount, 0, 'an unreadable response must not justify retained cards');
+});
+
 test('a corrupt meta body fails closed rather than reading as an empty key', async () => {
   const writes = armFailingRedisRead(
     META_KEY,
@@ -363,6 +379,55 @@ test('an unreadable last-good payload fails closed too', async () => {
   const metaWrite = writes.find((w) => w.key === META_KEY);
   assert.ok(metaWrite);
   assert.equal(metaWrite.value.status, 'error', 'cards we cannot read cannot justify softening the alarm');
+});
+
+test('a semantically malformed last-good card payload fails closed', () => {
+  const meta = buildMarketImplicationsFailureMeta({
+    previousMeta: { fetchedAt: SERVED_MS, recordCount: 5, status: 'ok' },
+    lastGoodPayload: {
+      cards: [{ ticker: 'NOT A TICKER', direction: 'LONG', timeframe: '1M', confidence: 'HIGH', title: 'A valid-looking title', narrative: 'This narrative is long enough to pass its minimum length.' }],
+      generatedAt: SERVED_GENERATED_AT,
+    },
+    reason: 'llm_no_response',
+    nowMs: SERVED_MS + 60_000,
+  });
+
+  assert.equal(meta.status, 'error', 'a non-card entry must not be retained as last-good data');
+  assert.equal(meta.recordCount, 0);
+});
+
+test('a future-dated last-good payload fails closed beyond the clock-skew allowance', () => {
+  const nowMs = SERVED_MS + 60 * 60 * 1000;
+  const futureGeneratedAt = new Date(nowMs + 5 * 60 * 1000 + 1).toISOString();
+  const meta = buildMarketImplicationsFailureMeta({
+    previousMeta: { fetchedAt: SERVED_MS, recordCount: 5, status: 'ok' },
+    lastGoodPayload: { cards: SERVED_CARDS, generatedAt: futureGeneratedAt },
+    reason: 'llm_no_response',
+    nowMs,
+  });
+
+  assert.equal(meta.status, 'error', 'a future content clock must not pin the retained-data age gate');
+  assert.equal(meta.recordCount, 0);
+
+  const withinSkew = buildMarketImplicationsFailureMeta({
+    previousMeta: { fetchedAt: SERVED_MS, recordCount: 5, status: 'ok' },
+    lastGoodPayload: { cards: SERVED_CARDS, generatedAt: new Date(nowMs + 2 * 60 * 1000).toISOString() },
+    reason: 'llm_no_response',
+    nowMs,
+  });
+  assert.equal(withinSkew.status, 'ok', 'a small explicit clock skew remains retainable');
+});
+
+test('a valid dynamic live-ticker card remains retainable without a ticker read', () => {
+  const meta = buildMarketImplicationsFailureMeta({
+    previousMeta: { fetchedAt: SERVED_MS, recordCount: 1, status: 'ok' },
+    lastGoodPayload: { cards: [{ ...SERVED_CARDS[0], ticker: 'NFLX' }], generatedAt: SERVED_GENERATED_AT },
+    reason: 'llm_no_response',
+    nowMs: SERVED_MS + 60_000,
+  });
+
+  assert.equal(meta.status, 'ok', 'valid runtime-added equity symbols must survive a provider miss');
+  assert.equal(meta.recordCount, 1);
 });
 
 // ── the decision itself, exercised directly ─────────────────────────────────

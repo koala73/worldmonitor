@@ -223,6 +223,7 @@ test('classifyKey: one recent insights synthesis failure stays OK within the war
   assert.equal(entry.status, 'OK');
   assert.equal(STATUS_COUNTS[entry.status], 'ok');
   assert.equal(entry.consecutiveFailures, 1);
+  assert.equal(entry.lastSynthesisFailureCode, 'INSIGHTS_SYNTHESIS_GATE');
 });
 
 test('classifyKey: an old single insights synthesis failure warns by age', () => {
@@ -309,6 +310,7 @@ test('classifyKey: one market-implications LLM miss over fresh served cards stay
   assert.equal(STATUS_COUNTS[entry.status], 'ok');
   assert.equal(entry.records, 5);
   assert.equal(entry.consecutiveFailures, 1, 'the miss is still reported, it just is not an alarm yet');
+  assert.equal(entry.lastSynthesisFailureCode, 'MARKET_IMPLICATIONS_LLM_NO_RESPONSE');
 });
 
 test('classifyKey: two consecutive market-implications misses warn with the reason attached', () => {
