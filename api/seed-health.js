@@ -99,6 +99,17 @@ const SEED_DOMAINS = {
   'market:sectors':           { key: 'seed-meta:market:sectors',           intervalMin: 15 },
   'aviation:faa':             { key: 'seed-meta:aviation:faa',             intervalMin: 45 },
   'news:insights':            { key: 'seed-meta:news:insights',            intervalMin: 15 },
+  // #6263: the sibling of news:insights above, and registered on the same
+  // terms. Hourly tail LLM stage in seed-forecasts; intervalMin*2 = 120min,
+  // the api/health.js marketImplications budget. Both keys also carry a
+  // `synthesisFailure` contract in api/health.js that escalates on consecutive
+  // misses — this endpoint models neither key's streak, so within the 120min
+  // window it reports `ok` where /api/health may already report SEED_ERROR.
+  // That is the same coarse-vs-detailed split news:insights has always had,
+  // not a new divergence: the producer holds `fetchedAt` at the vintage it is
+  // still serving, so a stage that stops entirely still ages into `stale` here
+  // on exactly the budget above.
+  'intelligence:market-implications': { key: 'seed-meta:intelligence:market-implications', intervalMin: 60 },
   'positive-events:geo':      { key: 'seed-meta:positive-events:geo',      intervalMin: 30 },
   'intelligence:risk-scores': { key: 'seed-meta:intelligence:risk-scores', intervalMin: 15 }, // CII warm-ping every 8min; intervalMin*2 = 30min, aligned with api/health.js riskScores.
   'conflict:iran-events':     { key: 'seed-meta:conflict:iran-events',     intervalMin: 5040 },
