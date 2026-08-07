@@ -247,6 +247,39 @@ test('deploy-before-cron: absent coverage key inside the window is ROLLOUT_PENDI
   );
 });
 
+test('a rollout-pending key still reports a producer fault it recorded (#6263)', () => {
+  // #6263 made the producer-fault verdict and the absent-data verdict compete
+  // on severity, with ties going to the fault. ROLLOUT_PENDING and SEED_ERROR
+  // are both `warn`, so this is a pure tie — and the whole point of resolving
+  // it toward the fault is that only the fault carries a cause. Softening here
+  // would say "the producer has not run yet" about a producer that ran and
+  // reported failing.
+  const entry = classifyCoverage(US, {
+    now: BEFORE_DEADLINE,
+    metaValues: {
+      [SEED_META[US].key]: {
+        fetchedAt: BEFORE_DEADLINE - 60_000,
+        recordCount: 0,
+        status: 'error',
+        errorCode: 'COVERAGE_PUBLISH_FAILED',
+      },
+    },
+  });
+
+  assert.equal(entry.status, 'SEED_ERROR');
+  assert.equal(STATUS_COUNTS[entry.status], 'warn');
+  assert.equal(
+    entry.errorCode,
+    'COVERAGE_PUBLISH_FAILED',
+    'the cause is the only thing separating this from ROLLOUT_PENDING — it must reach the payload',
+  );
+  assert.equal(
+    entry.rolloutPendingUntil,
+    undefined,
+    'the key is not being excused, so it must not advertise a rollout deadline',
+  );
+});
+
 // #6095 kept ROLLOUT_PENDING soft when the marker read FAILS, deliberately and
 // for a different reason than the content-freshness gate (which fails closed).
 // makeCtx models a clean sweep, so every marker gets an entry and the unknown

@@ -136,10 +136,14 @@ records, and records the miss as diagnostics:
 <Warning>
 On these keys, `records` and `status` describe **what is being served**, not
 how the last run went. A key reporting `status: "OK"` with `records: 5` and
-`consecutiveFailures: 2` means five cards are on the page and the last two
-attempts to refresh them failed. Read the diagnostics above for run outcomes;
-reading `status` alone will tell you the panel is fine, which is true, and
-nothing about the producer behind it.
+`consecutiveFailures: 1` means five cards are on the page and the last attempt
+to refresh them failed. Read the diagnostics above for run outcomes; reading
+`status` alone will tell you the panel is fine, which is true, and nothing
+about the producer behind it.
+
+That independence has a ceiling. Once the streak reaches the key's
+`warnAfterConsecutive` — 2 for both keys today — the status itself becomes
+`SEED_ERROR`, so a streak of 1 is the largest one that can coexist with `OK`.
 </Warning>
 
 Each such key declares thresholds sized to its own cadence, and health reports
@@ -177,9 +181,11 @@ the pair that carries a cause. Concretely:
   none of which should be able to silence a fault the producer actually
   reported.
 
-`errorCode` and `lastSynthesisFailureCode` are published whenever the producer
-recorded one, including when the missing-data verdict wins. An escalation to
-crit never costs you the reason.
+`errorCode` and `lastSynthesisFailureCode` are published whenever a fault of the
+`SEED_ERROR` kind fired and the producer recorded a code — including when the
+missing-data verdict outranks that fault and the status ends up `EMPTY`. An
+escalation to crit never costs you the reason. (`SOURCE_BLOCKED` publishes
+neither; its cause is the status itself.)
 
 ### China Coverage Projection
 

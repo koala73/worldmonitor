@@ -579,6 +579,27 @@ test('classifyKey: a blocked source with no data escalates like every other faul
 
   assert.equal(blockedAndAbsent('humanitarianSummary').status, 'EMPTY');
   assert.equal(blockedAndAbsent('crossStraitActivityJapanMod').status, 'EMPTY');
+
+  // Both landing on EMPTY proves they AGREE, but not that the blocked fault
+  // still fires at all — a guard that dropped it entirely would produce the
+  // same pair. Pin the other direction on the same key: with data present, the
+  // non-Japan blocked arm still yields its fault.
+  const blockedWithData = classifyKey(
+    'humanitarianSummary',
+    STANDALONE_KEYS.humanitarianSummary,
+    { allowOnDemand: false },
+    makeCtx({
+      strens: { [STANDALONE_KEYS.humanitarianSummary]: 2048 },
+      metaValues: {
+        [SEED_META.humanitarianSummary.key]: JSON.stringify({
+          fetchedAt: NOW - ONE_MIN_MS,
+          recordCount: 4,
+          sourceState: 'blocked',
+        }),
+      },
+    }),
+  );
+  assert.equal(blockedWithData.status, 'SEED_ERROR');
 });
 
 test('classifyKey: a collapsed forecast funnel keeps SEED_ERROR when its payload is absent', () => {
@@ -631,7 +652,24 @@ test('classifyKey: a fresh degraded funnel source is not silently OK when its pa
   );
 
   assert.equal(entry.status, 'SEED_ERROR');
-  assert.notEqual(STATUS_COUNTS[entry.status], 'ok');
+  // The absence verdict this beat, asserted directly: with the fault removed
+  // the very same fixture resolves to a green OK, so the fault is doing all the
+  // work here and a guard that skipped it would ship a silent pass.
+  const withoutFault = classifyKey(
+    'forecastFunnel',
+    STANDALONE_KEYS.forecastFunnel,
+    { allowOnDemand: false },
+    makeCtx({
+      strens: {},
+      metaValues: {
+        [SEED_META.forecastFunnel.key]: JSON.stringify({
+          fetchedAt: NOW - ONE_MIN_MS,
+          recordCount: 0,
+        }),
+      },
+    }),
+  );
+  assert.equal(withoutFault.status, 'OK');
 });
 
 test('classifyKey: cascade coverage does not hide a producer error on the covered key', () => {
@@ -657,6 +695,162 @@ test('classifyKey: cascade coverage does not hide a producer error on the covere
   );
 
   assert.equal(entry.status, 'SEED_ERROR');
+});
+
+test('classifyKey: a compact projection that must always publish is EMPTY when it errors with no payload', () => {
+  // MISSING_DATA_IS_FAILURE_KEYS members publish a canonical payload on every
+  // successful cycle, so a vanished payload is a real publish failure. The set
+  // is also a subset of EMPTY_DATA_OK_KEYS, whose absence verdict is only
+  // STALE_SEED — so if the strict arm is skipped, the fault ties the softer
+  // verdict and wins, and the key reports warn.
+  //
+  // The arm is skipped exactly when `seedStale === true`, and readSeedMeta
+  // SYNTHESIZES that on the `status:'error'` return as a fault marker rather
+  // than measuring it. Reading a fault marker as "the meta aged out" is what
+  // let #6263's own headline case — a `status:'error'` seed-meta over a
+  // vanished panel — survive on all eight of these keys.
+  const entry = classifyKey(
+    'crossStraitActivityBootstrap',
+    STANDALONE_KEYS.crossStraitActivityBootstrap,
+    { allowOnDemand: false },
+    makeCtx({
+      strens: {},
+      metaValues: {
+        [SEED_META.crossStraitActivityBootstrap.key]: JSON.stringify({
+          fetchedAt: NOW - ONE_MIN_MS,
+          recordCount: 0,
+          status: 'error',
+          errorReason: 'publish_failed',
+        }),
+      },
+    }),
+  );
+
+  assert.equal(entry.status, 'EMPTY');
+  assert.equal(STATUS_COUNTS[entry.status], 'crit');
+});
+
+test('classifyKey: both fault paths agree for one physical state on a strict projection', () => {
+  // The parity that finding above turns on. `status:'error'` and a non-ok
+  // `sourceState` are two ways to say "the producer is failing", and
+  // readSeedMeta treats them differently — the first forces seedStale true, the
+  // second measures it. Same key, same absent payload, same fault: the verdict
+  // must not depend on which dialect the producer used.
+  const classifyWith = (meta) => classifyKey(
+    'wildfiresBootstrap',
+    STANDALONE_KEYS.wildfiresBootstrap,
+    { allowOnDemand: false },
+    makeCtx({
+      strens: {},
+      metaValues: {
+        [SEED_META.wildfiresBootstrap.key]: JSON.stringify({
+          fetchedAt: NOW - ONE_MIN_MS,
+          recordCount: 0,
+          ...meta,
+        }),
+      },
+    }),
+  );
+
+  assert.equal(
+    classifyWith({ status: 'error', errorReason: 'publish_failed' }).status,
+    classifyWith({ sourceState: 'error' }).status,
+    'a producer reporting failure via status:error must classify like one reporting it via sourceState',
+  );
+});
+
+test('classifyKey: a strict projection that has never published keeps its STALE_SEED grace', () => {
+  // The other side of the same guard, and the reason it cannot simply be
+  // deleted: before the producer's first run the payload is absent with no
+  // fault recorded, and EMPTY (crit) would be a false alarm on a key that is
+  // merely new. Only a REPORTED fault revokes the grace — absence alone does
+  // not.
+  const entry = classifyKey(
+    'wildfiresBootstrap',
+    STANDALONE_KEYS.wildfiresBootstrap,
+    { allowOnDemand: false },
+    makeCtx({
+      strens: {},
+      metaValues: {
+        [SEED_META.wildfiresBootstrap.key]: JSON.stringify({
+          fetchedAt: NOW - 10_000 * ONE_MIN_MS, // long past maxStaleMin
+          recordCount: 0,
+        }),
+      },
+    }),
+  );
+
+  assert.equal(entry.status, 'STALE_SEED');
+  assert.equal(STATUS_COUNTS[entry.status], 'warn');
+});
+
+test('classifyKey: an unconfigured adapter publishes no fault and no cause', () => {
+  // NOT_CONFIGURED means "this deployment never opted into the adapter", so
+  // there is nothing to be degraded ABOUT — the fault is skipped entirely
+  // rather than merely losing the verdict. Without the `!sourceUnavailable`
+  // guard the fault still fires, and a green NOT_CONFIGURED entry ships
+  // diagnostic codes for a producer this deployment does not run.
+  const entry = classifyKey(
+    'marketImplications',
+    STANDALONE_KEYS.marketImplications,
+    { allowOnDemand: false },
+    makeCtx({
+      strens: { [STANDALONE_KEYS.marketImplications]: 4096 },
+      metaValues: {
+        [SEED_META.marketImplications.key]: JSON.stringify({
+          fetchedAt: NOW - ONE_MIN_MS,
+          recordCount: 5,
+          sourceState: 'unavailable',
+          errorCode: 'PRODUCER_FAILED',
+          lastAttemptAt: NOW - ONE_MIN_MS,
+          lastSuccessAt: NOW - 200 * ONE_MIN_MS,
+          consecutiveFailures: 3,
+          lastSynthesisFailureCode: 'MARKET_IMPLICATIONS_LLM_NO_RESPONSE',
+        }),
+      },
+    }),
+  );
+
+  assert.equal(entry.status, 'NOT_CONFIGURED');
+  assert.equal(STATUS_COUNTS[entry.status], 'ok');
+  assert.equal(Object.hasOwn(entry, 'errorCode'), false, 'an unconfigured adapter has no fault to explain');
+  assert.equal(Object.hasOwn(entry, 'lastSynthesisFailureCode'), false);
+});
+
+test('classifyKey: a fault outranks every served-data verdict it precedes', () => {
+  // The refactor hoisted the fault arms out of the status if/else chain into a
+  // precomputed `fault`, and only the placement of `else if (fault)` keeps them
+  // ahead of the records===0 / staleness / coverage arms. Nothing else pins
+  // that ordering, so a reordering would go unnoticed — most visibly as
+  // EMPTY_DATA, which is what a mis-ordered fault arm produces for the
+  // zero-record case.
+  const withData = (over) => classifyKey(
+    'gdeltIntel',
+    BOOTSTRAP_KEYS.gdeltIntel,
+    { allowOnDemand: false },
+    makeCtx({
+      strens: { [BOOTSTRAP_KEYS.gdeltIntel]: 4096 },
+      metaValues: {
+        'seed-meta:intelligence:gdelt-intel': JSON.stringify({
+          fetchedAt: NOW - ONE_MIN_MS,
+          recordCount: 5,
+          ...over,
+        }),
+      },
+    }),
+  );
+
+  assert.equal(withData({ status: 'error' }).status, 'SEED_ERROR', 'fault beats a healthy served payload');
+  assert.equal(
+    withData({ status: 'error', recordCount: 0 }).status,
+    'SEED_ERROR',
+    'fault beats EMPTY_DATA — a zero-record payload under a reported fault is the fault, not a separate finding',
+  );
+  assert.equal(
+    withData({ sourceState: 'error', fetchedAt: NOW - 10_000 * ONE_MIN_MS }).status,
+    'SEED_ERROR',
+    'fault beats STALE_SEED',
+  );
 });
 
 test('classifyKey: an on-demand key with an error seed-meta keeps the error verdict', () => {

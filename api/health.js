@@ -1494,7 +1494,21 @@ function classifyKey(name, redisKey, opts, ctx) {
     // stopped is simultaneously "faulting" and "serving nothing".
     let absent;
     if (cascadeCovered) absent = 'OK_CASCADE';
-    else if (MISSING_DATA_IS_FAILURE_KEYS.has(name) && hasMeta && seedStale !== true) absent = 'EMPTY';
+    // `seedStale !== true` buys the pre-first-publish grace: before the
+    // producer's first run the payload is absent through no fault, and every
+    // key in this set is also in EMPTY_DATA_OK_KEYS, so the fallthrough reports
+    // STALE_SEED (warn) instead of a false-critical EMPTY.
+    //
+    // A REPORTED FAULT revokes that grace, because it is proof the producer did
+    // run. Without the `|| fault` clause this arm reads a fault as aging and
+    // hands the key to the EMPTY_DATA_OK arm, whose STALE_SEED merely TIES the
+    // fault — so the tie-break returns SEED_ERROR and the key reports warn.
+    // That is #6263's own headline case surviving the fix: readSeedMeta
+    // SYNTHESIZES `seedStale: true` on the `status:'error'` return as a fault
+    // marker rather than measuring it, so all eight of these keys kept the old
+    // warn on that path while the sibling `sourceState` path (where staleness
+    // IS measured) correctly reported EMPTY. One physical state, two verdicts.
+    else if (MISSING_DATA_IS_FAILURE_KEYS.has(name) && hasMeta && (seedStale !== true || fault)) absent = 'EMPTY';
     else if (EMPTY_DATA_OK_KEYS.has(name)) absent = seedStale === true ? 'STALE_SEED' : 'OK';
     else if (isOnDemand) absent = 'EMPTY_ON_DEMAND';
     // Deliberately the ONLY branch rollout softening touches: an absent data
