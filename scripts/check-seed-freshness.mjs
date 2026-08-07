@@ -112,11 +112,11 @@ export function validateAcceptanceBaseline(baseline) {
  *
  * `blocking` fails the gate. `acknowledged` is a known-degraded source with an
  * owner issue, reported but not fatal. `cleared` is a baseline entry that no
- * longer appears in health — reported as a prompt to prune, but deliberately
- * NOT fatal, because several of these sources flap between polls and a
- * clear-on-recovery failure would make the monitor red on exactly the runs that
- * prove things improved. `expiresAt` is the anti-rot mechanism instead: the
- * whole baseline must be re-reviewed on a date, or the gate fails.
+ * longer appears in health at all — reported as a prompt to prune, but
+ * deliberately NOT fatal, because several of these sources flap between polls
+ * and a clear-on-recovery failure would make the monitor red on exactly the
+ * runs that prove things improved. `expiresAt` is the anti-rot mechanism
+ * instead: the whole baseline must be re-reviewed on a date, or the gate fails.
  *
  * The expiry governs SUPPRESSIONS, so a baseline that acknowledges nothing
  * cannot expire — there is no suppression left to outlive its cause, and a
@@ -124,12 +124,23 @@ export function validateAcceptanceBaseline(baseline) {
  * review. That case is reachable: pruning the last recovered entry empties the
  * file, and this repository has already watched a permanently-red monitor hide
  * live drift (#6087).
+ *
+ * `escalated` is the third case, and it exists because the other two are not
+ * exhaustive. Acknowledgment is keyed on `name:status`, so a source that gets
+ * WORSE stops matching its entry exactly like one that recovers — and folding
+ * both into `cleared` told the operator to delete a suppression for a source
+ * that is still broken, in the same run that failed the gate on its new status.
+ * #6263 made that reachable fleet-wide: a faulting key whose data key also
+ * expires now moves SEED_ERROR -> EMPTY. The worse status still lands in
+ * `blocking` (an escalation is never suppressed); this bucket only stops the
+ * report from calling it a recovery.
  */
 export function applyAcceptanceBaseline(problems, baseline, now = Date.now()) {
   validateAcceptanceBaseline(baseline);
   const accepted = new Map(
     baseline.acknowledged.map((entry) => [`${entry.name}:${entry.status}`, entry]),
   );
+  const observedByName = new Map(problems.map((problem) => [problem.name, problem.status]));
   const seen = new Set();
   const blocking = [];
   const acknowledged = [];
@@ -143,11 +154,20 @@ export function applyAcceptanceBaseline(problems, baseline, now = Date.now()) {
       blocking.push(problem);
     }
   }
-  const cleared = baseline.acknowledged
-    .filter((entry) => !seen.has(`${entry.name}:${entry.status}`))
+  const unmatched = baseline.acknowledged.filter((entry) => !seen.has(`${entry.name}:${entry.status}`));
+  const cleared = unmatched
+    .filter((entry) => !observedByName.has(entry.name))
     .map((entry) => ({ name: entry.name, status: entry.status, issue: entry.issue }));
+  const escalated = unmatched
+    .filter((entry) => observedByName.has(entry.name))
+    .map((entry) => ({
+      name: entry.name,
+      status: entry.status,
+      observedStatus: observedByName.get(entry.name),
+      issue: entry.issue,
+    }));
   const expired = baseline.acknowledged.length > 0 && Date.parse(baseline.expiresAt) < now;
-  return { blocking, acknowledged, cleared, expired, expiresAt: baseline.expiresAt };
+  return { blocking, acknowledged, cleared, escalated, expired, expiresAt: baseline.expiresAt };
 }
 
 function readAcceptanceBaseline() {
@@ -168,11 +188,17 @@ function describeProblem(problem) {
  * list, and no assertion over the pure split functions could have seen it.
  */
 export function formatAcceptanceReport(
-  { blocking, acknowledged, cleared, expired, expiresAt },
+  { blocking, acknowledged, cleared, escalated = [], expired, expiresAt },
   checkedAt,
 ) {
   const info = [
     ...acknowledged.map((problem) => `- acknowledged (#${problem.issue}): ${describeProblem(problem)}`),
+    // Deliberately carries NO pruning advice. The suppression is still live —
+    // its source got worse, not better — and the new status is already in
+    // `blocking` above. Telling an operator to delete the entry here would
+    // retire the owner record for an active fault.
+    ...escalated.map((entry) =>
+      `- escalated (#${entry.issue}): ${entry.name} ${entry.status} -> ${entry.observedStatus}; the baselined status is no longer what this source reports. Re-review the suppression against the worse state before changing it.`),
     ...cleared.map((entry) =>
       `- recovered: ${entry.name}:${entry.status} no longer reported; remove it from scripts/seed-freshness-baseline.json (#${entry.issue}).`),
   ];

@@ -259,6 +259,48 @@ describe('scheduled seed freshness monitor', () => {
       assert.equal(result.blocking.length, 0);
     });
 
+    it('calls a baselined source that changed status escalated, never recovered (#6263)', () => {
+      // The acknowledgment is keyed on name:status, so a source that gets WORSE
+      // stops matching exactly like one that recovers. Both then land in the
+      // same "no longer reported" bucket, and the report tells the operator to
+      // delete a suppression for a source that is still broken — while the same
+      // run fails the gate on the new status. #6263 made this reachable: a
+      // blocked source whose data key also expires moves SEED_ERROR -> EMPTY.
+      const result = applyAcceptanceBaseline(
+        [{ name: 'crossStraitActivityJapanMod', status: 'EMPTY' }],
+        baseline,
+        at('2026-08-01'),
+      );
+
+      assert.equal(
+        result.cleared.some((entry) => entry.name === 'crossStraitActivityJapanMod'),
+        false,
+        'the source is still reporting a problem, so it has not recovered',
+      );
+      assert.deepEqual(result.escalated, [
+        { name: 'crossStraitActivityJapanMod', status: 'SEED_ERROR', observedStatus: 'EMPTY', issue: 5714 },
+      ]);
+      assert.deepEqual(
+        result.blocking.map((p) => p.status),
+        ['EMPTY'],
+        'the unacknowledged worse status still blocks — escalation is reported, never suppressed',
+      );
+    });
+
+    it('still reports a genuinely recovered source as recovered', () => {
+      // The other side of the same split: absent from the problem set entirely
+      // is the only thing that counts as recovery.
+      const result = applyAcceptanceBaseline(
+        [{ name: 'gdeltIntel', status: 'SEED_ERROR' }],
+        baseline,
+        at('2026-08-01'),
+      );
+      assert.deepEqual(result.cleared, [
+        { name: 'crossStraitActivityJapanMod', status: 'SEED_ERROR', issue: 5714 },
+      ]);
+      assert.deepEqual(result.escalated, []);
+    });
+
     it('expires so the baseline cannot silently become permanent', () => {
       assert.equal(applyAcceptanceBaseline([], baseline, at('2026-08-26')).expired, false);
       assert.equal(applyAcceptanceBaseline([], baseline, at('2026-08-28')).expired, true);
@@ -354,7 +396,7 @@ describe('scheduled seed freshness monitor', () => {
       name: 'supplyChainTrade', status: 'STALE_SEED', records: 3, seedAgeMin: 900, maxStaleMin: 360,
     };
     const baselineResult = (overrides) => ({
-      blocking: [], acknowledged: [], cleared: [], expired: false, expiresAt: '2026-08-27', ...overrides,
+      blocking: [], acknowledged: [], cleared: [], escalated: [], expired: false, expiresAt: '2026-08-27', ...overrides,
     });
 
     it('names every blocking problem, not just the count', () => {
@@ -405,6 +447,30 @@ describe('scheduled seed freshness monitor', () => {
       assert.match(report.info[0], /acknowledged \(#5766\): gdeltIntel: status=SEED_ERROR records=1/);
       assert.match(report.info[1], /recovered: shippingRates:STALE_SEED/);
       assert.match(report.info[2], /acceptance passed at 2026-07-28T12:00:00Z.*\(1 acknowledged\)/);
+    });
+
+    it('never tells the operator to prune a suppression for a source that escalated', () => {
+      const report = formatAcceptanceReport(
+        baselineResult({
+          blocking: [{ name: 'crossStraitActivityJapanMod', status: 'EMPTY', records: 0 }],
+          escalated: [{
+            name: 'crossStraitActivityJapanMod',
+            status: 'SEED_ERROR',
+            observedStatus: 'EMPTY',
+            issue: 5714,
+          }],
+        }),
+        '2026-07-28T12:00:00Z',
+      );
+
+      assert.equal(report.failed, true, 'the worse status is unacknowledged and must still fail the gate');
+      const escalation = report.info.find((line) => line.includes('crossStraitActivityJapanMod'));
+      assert.match(escalation, /escalated .*SEED_ERROR -> EMPTY/);
+      assert.doesNotMatch(
+        escalation,
+        /remove it from|recovered/,
+        'pruning advice on an escalation is how a live suppression gets deleted',
+      );
     });
   });
 
