@@ -832,6 +832,69 @@ describe('CI workflow coverage', () => {
     }
   });
 
+  it('keeps the aggregate verdict list in step with the audit matrix', () => {
+    // The aggregate decides pass/fail by looking for one verdict file per matrix
+    // entry. If the two lists drift, a lockfile that never ran silently stops
+    // being counted and the aggregate reports success — a fail-open. Pin them
+    // to each other.
+    const matrixNames = Array.from(
+      securityAuditWorkflow.matchAll(/^\s+- name: (\S+)\n\s+path:/gm),
+      ([, value]) => value.trim(),
+    ).sort();
+    const aggregateNames = (securityAuditWorkflow.match(/^\s+AUDIT_NAMES:\s*'([^']+)'/m)?.[1] ?? '')
+      .split(/\s+/)
+      .filter(Boolean)
+      .sort();
+
+    assert.ok(matrixNames.length > 0, 'security-audit.yml must define audit matrix entries');
+    assert.deepEqual(
+      aggregateNames,
+      matrixNames,
+      'the security-audit aggregate must require a verdict from exactly the audit-lockfile matrix entries',
+    );
+  });
+
+  it('separates an unaudited lockfile from a real dependency finding', () => {
+    // A GitHub Actions outage (2026-08-06: "Failed to resolve action download
+    // info") kills the matrix job before it audits anything. The aggregate must
+    // report that as an incomplete run, not as "audits failed".
+    assert.match(
+      securityAuditWorkflow,
+      /if-no-files-found: ignore/,
+      'security-audit.yml must upload a per-lockfile verdict artifact',
+    );
+    assert.match(
+      securityAuditWorkflow,
+      /uses: actions\/download-artifact@[0-9a-f]{40}/,
+      'the security-audit aggregate must download the per-lockfile verdicts',
+    );
+    assert.match(
+      securityAuditWorkflow,
+      /No audit verdict was produced for/,
+      'the aggregate must name the lockfiles that produced no verdict',
+    );
+  });
+
+  it('gives the audit gate the base ref it needs to attribute new advisories', () => {
+    // Without a base ref every finding is "inherited", so a PR that genuinely
+    // introduces a vulnerable dependency would only warn.
+    assert.match(
+      securityAuditWorkflow,
+      /AUDIT_BASE_REF: \$\{\{ github\.event_name == 'pull_request'/,
+      'security-audit.yml must pass the PR base sha to the audit gate',
+    );
+    assert.match(
+      securityAuditWorkflow,
+      /git fetch --no-tags --depth=1 origin \$\{\{ github\.event\.pull_request\.base\.sha \}\}/,
+      'security-audit.yml must fetch the base commit so the base lockfile is readable',
+    );
+    assert.match(
+      securityAuditScript,
+      /collectIntroducedIds/,
+      'the audit gate must compute which advisories the change introduced',
+    );
+  });
+
   it('keeps Docker base images pinned to immutable digests', () => {
     const failures: string[] = [];
 
