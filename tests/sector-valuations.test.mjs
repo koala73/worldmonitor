@@ -159,6 +159,42 @@ describe('authenticated Yahoo quoteSummary integration (static analysis)', () =>
     // The operator log must not report replayed records as live coverage.
     assert.match(sectorSeedSrc, /live, \$\{valCount - liveCount\} stale/);
   });
+
+  it('hands the relay client a rotating exit resolver, not just the pinned one', () => {
+    // Anchored to the constructor call: a bare name match would pass on any
+    // stray mention, and the whole defect this guards is a resolver that exists
+    // but never reaches the client. The behavioural proof that the client USES
+    // it lives in the exit-rotation suite; this guards only the passthrough.
+    const construction = src.slice(
+      src.indexOf('new YahooQuoteSummaryClient({'),
+      src.indexOf('function fetchYahooQuoteSummary('),
+    )
+      // Comments in this region mention the resolver by name; matching them
+      // would pass even with the property itself deleted.
+      .split('\n')
+      .filter((line) => !line.trim().startsWith('//'))
+      .join('\n');
+    assert.ok(construction.length > 0, 'client construction not found');
+    // Require the SHORTHAND form. A bare name match also accepts
+    // `resolveProxyStringForAttempt: resolveProxyString` -- right key, wrong
+    // function, rotation silently dead -- which is the likelier mutation than
+    // deleting the line outright.
+    assert.match(construction, /\bresolveProxyStringForAttempt\s*,/);
+    assert.doesNotMatch(
+      construction,
+      /\bresolveProxyStringForAttempt\s*:/,
+      'the rotating resolver must be passed itself, not aliased to another function',
+    );
+    assert.match(
+      src,
+      /require\('\.\/_proxy-utils\.cjs'\)/,
+    );
+    assert.match(
+      src.slice(0, src.indexOf('\n', src.indexOf("require('./_proxy-utils.cjs')"))),
+      /resolveProxyStringForAttempt/,
+      'the rotating resolver must actually be imported',
+    );
+  });
 });
 
 describe('sector valuation collection', () => {
@@ -350,6 +386,68 @@ describe('sector valuation collection', () => {
     assert.equal(result.valuationCount, 2);
     assert.deepEqual(result.valuationSources, ['yahoo_v7_quote_authenticated_direct']);
     assert.ok(result.valuationDiagnostics.every((entry) => entry.outcomes.some((outcome) => outcome.responseClass === 'success')));
+  });
+
+  it('preserves per-symbol transport and source for a mixed direct/proxy batch', async () => {
+    const result = await collectSectorValuations({
+      symbols: ['XLK', 'SMH'],
+      fetchValue: async () => { throw new Error('quoteSummary must not run when the batch recovers'); },
+      parseValue: (raw) => raw?.value ?? null,
+      sleepFn: async () => {},
+      v7UserAgent: 'test-agent',
+      v7Client: {
+        fetchV7Detailed: async () => ({
+          kind: 'missing_fields',
+          value: null,
+          diagnostics: [{ route: 'v7Quote', transport: 'direct', responseClass: 'missing_fields' }],
+        }),
+        fetchV7BatchAcrossExits: async () => ({
+          kind: 'success',
+          stopReason: 'complete',
+          bestExitAttempt: 4,
+          lastExitAttempt: 4,
+          exitsTried: 1,
+          exitBySymbol: { SMH: 4 },
+          value: {
+            valuations: {
+              XLK: { trailingPE: 25, forwardPE: 22, beta: 1.1 },
+              SMH: { trailingPE: 37, forwardPE: 34, beta: 1.2 },
+            },
+            outcomes: {
+              XLK: { kind: 'success' },
+              SMH: { kind: 'success' },
+            },
+            transportBySymbol: {
+              XLK: 'direct',
+              SMH: 'proxy',
+            },
+            sourceBySymbol: {
+              XLK: 'yahoo_v7_quote_authenticated_direct',
+              SMH: 'yahoo_v7_quote_authenticated_proxy',
+            },
+          },
+          diagnostics: [{ route: 'v7QuoteBatch', transport: 'proxy', responseClass: 'success' }],
+        }),
+      },
+      upstashGet: async () => null,
+      upstashSet: async () => true,
+    });
+
+    const batchOutcomeBySymbol = Object.fromEntries(
+      result.valuationDiagnostics.map((entry) => [
+        entry.symbol,
+        entry.outcomes.find((outcome) => outcome.route === 'v7QuoteBatch'),
+      ]),
+    );
+    assert.equal(batchOutcomeBySymbol.XLK.transport, 'direct');
+    assert.equal(batchOutcomeBySymbol.XLK.exitAttempt, undefined);
+    assert.equal(batchOutcomeBySymbol.XLK.exitAttemptsTried, undefined);
+    assert.equal(batchOutcomeBySymbol.SMH.transport, 'proxy');
+    assert.equal(batchOutcomeBySymbol.SMH.exitAttempt, 4);
+    assert.deepEqual(
+      [...result.valuationSources].sort(),
+      ['yahoo_v7_quote_authenticated_direct', 'yahoo_v7_quote_authenticated_proxy'],
+    );
   });
 
   it('records authenticated v7 coverage and explicit last-good metric provenance', async () => {
@@ -834,6 +932,540 @@ describe('mergeReturnMetrics', () => {
     const fresh = { XLK: { trailingPE: 25 } };
     mergeReturnMetrics(fresh, null);
     assert.equal(fresh.XLK.trailingPE, 25);
+  });
+});
+
+describe('proxy exit preference', () => {
+  const PREFERRED_EXIT_KEY = 'market:sectors:valuations:proxy-exit';
+
+  // A batch client that only serves fundamentals from `goodExit`, recording the
+  // exits it was asked to start from.
+  function rotatingClient({ goodExit, symbols }) {
+    const startsSeen = [];
+    return {
+      startsSeen,
+      fetchV7Detailed: async () => ({
+        kind: 'missing_fields',
+        value: null,
+        diagnostics: [{ route: 'v7Quote', transport: 'direct', responseClass: 'missing_fields' }],
+      }),
+      fetchV7BatchAcrossExits: async (requested, { startExitAttempt = 0 } = {}) => {
+        startsSeen.push(startExitAttempt);
+        // Walk exits from the start point exactly as the real client does.
+        for (let attempt = startExitAttempt; attempt < startExitAttempt + 4; attempt++) {
+          if (attempt !== goodExit) continue;
+          return {
+            kind: 'success',
+            stopReason: 'complete',
+            exitAttempt: attempt,
+            // The real client nominates the exit that covered the most symbols;
+            // here one exit covers them all, so it is both.
+            bestExitAttempt: attempt,
+            exitsTried: attempt - startExitAttempt + 1,
+            exitBySymbol: Object.fromEntries(requested.map((s) => [s, attempt])),
+            value: {
+              source: 'yahoo_v7_quote_authenticated_proxy',
+              valuations: Object.fromEntries(requested.map((s) => [s, { trailingPE: 25 }])),
+              outcomes: Object.fromEntries(requested.map((s) => [s, { kind: 'success' }])),
+            },
+            diagnostics: [{ route: 'v7QuoteBatch', transport: 'proxy', responseClass: 'success' }],
+          };
+        }
+        return {
+          kind: 'missing_fields',
+          stopReason: 'attempt_cap_exhausted',
+          exitAttempt: startExitAttempt + 3,
+          // Nothing was covered, so no exit is worth nominating.
+          bestExitAttempt: null,
+          exitsTried: 4,
+          value: {
+            valuations: {},
+            outcomes: Object.fromEntries(requested.map((s) => [s, { kind: 'missing_fields' }])),
+          },
+          diagnostics: [{ route: 'v7QuoteBatch', transport: 'proxy', responseClass: 'missing_fields' }],
+        };
+      },
+      symbols,
+    };
+  }
+
+  it('starts rotation at the remembered exit instead of the pinned default', async () => {
+    const client = rotatingClient({ goodExit: 5, symbols: ['XLK', 'SMH'] });
+    const result = await collectSectorValuations({
+      symbols: ['XLK', 'SMH'],
+      fetchValue: async () => { throw new Error('quoteSummary must not run when the batch recovers'); },
+      parseValue: (raw) => raw?.value ?? null,
+      sleepFn: async () => {},
+      v7UserAgent: 'test-agent',
+      v7Client: client,
+      upstashGet: async (key) => (key === PREFERRED_EXIT_KEY ? { attempt: 5 } : null),
+      upstashSet: async () => true,
+    });
+
+    assert.deepEqual(client.startsSeen, [5], 'the cached exit is tried first');
+    assert.equal(result.valuationCount, 2);
+  });
+
+  it('remembers a newly discovered good exit so the next cycle costs one request set', async () => {
+    const writes = [];
+    const client = rotatingClient({ goodExit: 2, symbols: ['XLK', 'SMH'] });
+    await collectSectorValuations({
+      symbols: ['XLK', 'SMH'],
+      fetchValue: async () => { throw new Error('quoteSummary must not run when the batch recovers'); },
+      parseValue: (raw) => raw?.value ?? null,
+      sleepFn: async () => {},
+      v7UserAgent: 'test-agent',
+      v7Client: client,
+      upstashGet: async () => null,
+      upstashSet: async (key, value, ttl) => { writes.push({ key, value, ttl }); return true; },
+    });
+
+    const exitWrite = writes.find((w) => w.key === PREFERRED_EXIT_KEY);
+    assert.ok(exitWrite, 'the winning exit is persisted');
+    assert.equal(exitWrite.value.attempt, 2);
+    // Assert the real TTL, not merely truthiness: `ttl: 1` would satisfy `> 0`
+    // while expiring immediately and defeating the point of remembering it.
+    assert.equal(exitWrite.ttl, 24 * 3600, 'the preference lives a day, not a moment');
+  });
+
+  it('publishes the serving exit per symbol in the diagnostics', async () => {
+    // These fields are what lets an operator tell "Yahoo has no such field" from
+    // "we ran out of exits". Nothing asserted them, so a rename or a dropped
+    // field would ship silently.
+    const client = rotatingClient({ goodExit: 2, symbols: ['XLK', 'SMH'] });
+    const result = await collectSectorValuations({
+      symbols: ['XLK', 'SMH'],
+      fetchValue: async () => { throw new Error('quoteSummary must not run when the batch recovers'); },
+      parseValue: (raw) => raw?.value ?? null,
+      sleepFn: async () => {},
+      v7UserAgent: 'test-agent',
+      v7Client: client,
+      upstashGet: async () => null,
+      upstashSet: async () => true,
+    });
+
+    const batchOutcomes = (result.valuationDiagnostics || [])
+      .flatMap((entry) => entry.outcomes)
+      .filter((outcome) => outcome.route === 'v7QuoteBatch');
+    assert.ok(batchOutcomes.length > 0, 'the batch route reports diagnostics');
+    for (const outcome of batchOutcomes) {
+      assert.equal(outcome.exitAttempt, 2, 'the exit that served the symbol is named');
+    }
+  });
+
+  it('keeps publishing valuations when the preference write fails', async () => {
+    const client = rotatingClient({ goodExit: 0, symbols: ['XLK', 'SMH'] });
+    const result = await collectSectorValuations({
+      symbols: ['XLK', 'SMH'],
+      fetchValue: async () => { throw new Error('quoteSummary must not run when the batch recovers'); },
+      parseValue: (raw) => raw?.value ?? null,
+      sleepFn: async () => {},
+      v7UserAgent: 'test-agent',
+      v7Client: client,
+      // Stored exit 1 is stale; exit 0 is the one that works, so the run both
+      // recovers AND tries to rewrite the preference -- which then fails.
+      upstashGet: async (key) => (key === PREFERRED_EXIT_KEY ? { attempt: 0 } : null),
+      upstashSet: async (key) => {
+        if (key === PREFERRED_EXIT_KEY) throw new Error('redis down');
+        return true;
+      },
+    });
+
+    assert.equal(result.valuationCount, 2, 'a failed preference write never costs the cycle');
+  });
+
+  it('does not rewrite a fresh preference when the cached exit still works', async () => {
+    const writes = [];
+    const now = 1_700_000_000_000;
+    const client = rotatingClient({ goodExit: 3, symbols: ['XLK', 'SMH'] });
+    await collectSectorValuations({
+      symbols: ['XLK', 'SMH'],
+      fetchValue: async () => { throw new Error('quoteSummary must not run when the batch recovers'); },
+      parseValue: (raw) => raw?.value ?? null,
+      sleepFn: async () => {},
+      v7UserAgent: 'test-agent',
+      v7Client: client,
+      now: () => now,
+      upstashGet: async (key) => (
+        key === PREFERRED_EXIT_KEY ? { attempt: 3, savedAt: now - 60_000 } : null
+      ),
+      upstashSet: async (key, value, ttl) => { writes.push({ key, value, ttl }); return true; },
+    });
+
+    assert.equal(
+      writes.filter((w) => w.key === PREFERRED_EXIT_KEY).length,
+      0,
+      'an unchanged, fresh preference must not be rewritten every five minutes',
+    );
+  });
+
+  it('renews a still-good preference before its TTL forgets a working exit', async () => {
+    const writes = [];
+    const now = 1_700_000_000_000;
+    const client = rotatingClient({ goodExit: 3, symbols: ['XLK', 'SMH'] });
+    await collectSectorValuations({
+      symbols: ['XLK', 'SMH'],
+      fetchValue: async () => { throw new Error('quoteSummary must not run when the batch recovers'); },
+      parseValue: (raw) => raw?.value ?? null,
+      sleepFn: async () => {},
+      v7UserAgent: 'test-agent',
+      v7Client: client,
+      now: () => now,
+      // Past the 24h key's half-life: without renewal the preference expires and
+      // the next cold cycle pays the full rotation cost to rediscover exit 3.
+      upstashGet: async (key) => (
+        key === PREFERRED_EXIT_KEY ? { attempt: 3, savedAt: now - 20 * 3600 * 1000 } : null
+      ),
+      upstashSet: async (key, value, ttl) => { writes.push({ key, value, ttl }); return true; },
+    });
+
+    const exitWrite = writes.find((w) => w.key === PREFERRED_EXIT_KEY);
+    assert.ok(exitWrite, 'an aging preference is renewed');
+    assert.equal(exitWrite.value.attempt, 3, 'renewal keeps the same working exit');
+    assert.equal(exitWrite.value.savedAt, now, 'renewal restamps the clock');
+  });
+
+  it('does not read the preference for a client that cannot rotate', async () => {
+    // The gate exists so a non-rotating client does not spend a Redis
+    // round-trip per cycle on a value it cannot act on. Nothing pinned it.
+    const reads = [];
+    await collectSectorValuations({
+      symbols: ['XLK'],
+      fetchValue: async () => null,
+      parseValue: () => null,
+      sleepFn: async () => {},
+      v7UserAgent: 'test-agent',
+      // No fetchV7BatchAcrossExits -- rotation is impossible for this client.
+      v7Client: {
+        fetchV7Detailed: async () => ({ kind: 'missing_fields', value: null, diagnostics: [] }),
+      },
+      upstashGet: async (key) => { reads.push(key); return null; },
+      upstashSet: async () => true,
+    });
+
+    assert.equal(
+      reads.filter((key) => key === PREFERRED_EXIT_KEY).length,
+      0,
+      'no preference read when nothing can use it',
+    );
+  });
+
+  it('deliberately leaves the per-symbol tier on the configured exit', async () => {
+    // Characterizes the KNOWN GAP documented in collectV7Valuations: the
+    // per-symbol tier is NOT given the remembered exit, because routing it there
+    // would stop the batch running on healthy cycles and the batch is what keeps
+    // the preference fresh. Pinning it means a future change in either direction
+    // is a visible decision rather than an accident. See issue #6279.
+    const perSymbolOptions = [];
+    const client = rotatingClient({ goodExit: 7, symbols: ['XLK', 'SMH'] });
+    const wrapped = {
+      ...client,
+      fetchV7Detailed: async (_symbol, options) => {
+        perSymbolOptions.push(options);
+        return { kind: 'missing_fields', value: null, diagnostics: [] };
+      },
+    };
+
+    await collectSectorValuations({
+      symbols: ['XLK', 'SMH'],
+      fetchValue: async () => null,
+      parseValue: () => null,
+      sleepFn: async () => {},
+      v7UserAgent: 'test-agent',
+      v7Client: wrapped,
+      upstashGet: async (key) => (key === PREFERRED_EXIT_KEY ? { attempt: 7 } : null),
+      upstashSet: async () => true,
+    });
+
+    assert.ok(perSymbolOptions.length > 0, 'the per-symbol tier ran');
+    for (const options of perSymbolOptions) {
+      assert.equal(
+        options?.startExitAttempt,
+        undefined,
+        'the per-symbol tier receives no exit override today',
+      );
+    }
+    assert.deepEqual(client.startsSeen, [7], 'only the batch consumes the remembered exit');
+  });
+
+  it('advances the window when no exit in it covered anything', async () => {
+    // The rotation window is deterministic: attempts run start..start+N. If
+    // nothing in that window ever serves the symbols, and only a full success
+    // writes the preference, the seeder re-probes the identical four ports every
+    // five minutes forever -- burning metered proxy bandwidth and never
+    // discovering the good exits that exist elsewhere in the pool.
+    const writes = [];
+    const client = rotatingClient({ goodExit: 999, symbols: ['XLK', 'SMH'] });
+    await collectSectorValuations({
+      symbols: ['XLK', 'SMH'],
+      fetchValue: async () => null,
+      parseValue: () => null,
+      sleepFn: async () => {},
+      v7UserAgent: 'test-agent',
+      v7Client: client,
+      upstashGet: async (key) => (
+        key === PREFERRED_EXIT_KEY ? { attempt: 4, savedAt: 1_700_000_000_000 } : null
+      ),
+      upstashSet: async (key, value, ttl) => { writes.push({ key, value, ttl }); return true; },
+      now: () => 1_700_000_000_000,
+    });
+
+    const exitWrite = writes.find((w) => w.key === PREFERRED_EXIT_KEY);
+    assert.ok(exitWrite, 'an exhausted window must be recorded so the next cycle moves on');
+    assert.equal(
+      exitWrite.value.attempt,
+      8,
+      'the next cycle starts past the four exits this one already proved bad',
+    );
+  });
+
+  it('advances past an exhausted partial window instead of pinning its contributor', async () => {
+    const writes = [];
+    const client = {
+      fetchV7Detailed: async () => ({ kind: 'missing_fields', value: null, diagnostics: [] }),
+      fetchV7BatchAcrossExits: async (requested, { startExitAttempt }) => ({
+        kind: 'partial',
+        stopReason: 'attempt_cap_exhausted',
+        bestExitAttempt: startExitAttempt,
+        lastExitAttempt: startExitAttempt + 3,
+        exitsTried: 4,
+        exitBySymbol: { [requested[0]]: startExitAttempt },
+        value: {
+          valuations: { [requested[0]]: { trailingPE: 25, source: 'yahoo_v7_quote_authenticated_proxy' } },
+          outcomes: Object.fromEntries(requested.map((s) => [s, { kind: s === requested[0] ? 'success' : 'missing_fields' }])),
+        },
+        diagnostics: [],
+      }),
+    };
+
+    await collectSectorValuations({
+      symbols: ['XLK', 'SMH'],
+      fetchValue: async () => null,
+      parseValue: () => null,
+      sleepFn: async () => {},
+      v7UserAgent: 'test-agent',
+      v7Client: client,
+      upstashGet: async (key) => (
+        key === PREFERRED_EXIT_KEY ? { attempt: 4, savedAt: 1_700_000_000_000 } : null
+      ),
+      upstashSet: async (key, value, ttl) => { writes.push({ key, value, ttl }); return true; },
+      now: () => 1_700_000_000_000,
+    });
+
+    const exitWrite = writes.find((w) => w.key === PREFERRED_EXIT_KEY);
+    assert.equal(exitWrite?.value.attempt, 8, 'the next cycle starts after every exhausted exit');
+  });
+
+  it('does not advance the preference after a provider-wide failure', async () => {
+    const writes = [];
+    const client = {
+      fetchV7Detailed: async () => ({ kind: 'failed', value: null, diagnostics: [] }),
+      fetchV7BatchAcrossExits: async (requested) => ({
+        kind: 'failed',
+        stopReason: 'durable_failures',
+        bestExitAttempt: null,
+        lastExitAttempt: 8,
+        exitsTried: 2,
+        exitBySymbol: {},
+        value: {
+          valuations: {},
+          outcomes: Object.fromEntries(requested.map((s) => [s, { kind: 'failed' }])),
+        },
+        diagnostics: [],
+      }),
+    };
+
+    await collectSectorValuations({
+      symbols: ['XLK'],
+      fetchValue: async () => null,
+      parseValue: () => null,
+      sleepFn: async () => {},
+      v7UserAgent: 'test-agent',
+      v7Client: client,
+      upstashGet: async (key) => (key === PREFERRED_EXIT_KEY ? { attempt: 7 } : null),
+      upstashSet: async (key, value) => { writes.push({ key, value }); return true; },
+    });
+
+    assert.equal(
+      writes.some((write) => write.key === PREFERRED_EXIT_KEY),
+      false,
+      'provider failure is not evidence that an untested exit is better',
+    );
+  });
+
+  it('keeps process-local rotation progress when the preference write is unavailable', async () => {
+    const startsSeen = [];
+    const client = {
+      fetchV7Detailed: async () => ({ kind: 'missing_fields', value: null, diagnostics: [] }),
+      fetchV7BatchAcrossExits: async (requested, { startExitAttempt }) => {
+        startsSeen.push(startExitAttempt);
+        if (startExitAttempt === 0) {
+          return {
+            kind: 'missing_fields',
+            stopReason: 'attempt_cap_exhausted',
+            bestExitAttempt: null,
+            lastExitAttempt: 3,
+            exitsTried: 4,
+            exitBySymbol: {},
+            value: { valuations: {}, outcomes: { [requested[0]]: { kind: 'missing_fields' } } },
+            diagnostics: [],
+          };
+        }
+        return {
+          kind: 'success',
+          stopReason: 'complete',
+          bestExitAttempt: startExitAttempt,
+          lastExitAttempt: startExitAttempt,
+          exitsTried: 1,
+          exitBySymbol: { [requested[0]]: startExitAttempt },
+          value: {
+            valuations: { [requested[0]]: { trailingPE: 25, source: 'yahoo_v7_quote_authenticated_proxy' } },
+            outcomes: { [requested[0]]: { kind: 'success' } },
+          },
+          diagnostics: [],
+        };
+      },
+    };
+    const args = {
+      symbols: ['XLK'],
+      fetchValue: async () => null,
+      parseValue: () => null,
+      sleepFn: async () => {},
+      v7UserAgent: 'test-agent',
+      v7Client: client,
+      upstashGet: async () => null,
+      upstashSet: async () => false,
+    };
+
+    await collectSectorValuations(args);
+    const second = await collectSectorValuations(args);
+
+    assert.deepEqual(startsSeen, [0, 4]);
+    assert.equal(second.valuationCount, 1, 'the next local window can recover without Redis');
+  });
+
+  it('runs the current-data fallback before an optional preference write', async () => {
+    let now = 0;
+    const order = [];
+    const client = {
+      fetchV7Detailed: async () => ({ kind: 'missing_fields', value: null, diagnostics: [] }),
+      fetchV7BatchAcrossExits: async (requested) => ({
+        kind: 'partial',
+        stopReason: 'attempt_cap_exhausted',
+        bestExitAttempt: 0,
+        lastExitAttempt: 3,
+        exitsTried: 4,
+        exitBySymbol: { [requested[0]]: 0 },
+        value: {
+          valuations: { [requested[0]]: { trailingPE: 25, source: 'yahoo_v7_quote_authenticated_proxy' } },
+          outcomes: Object.fromEntries(requested.map((s) => [s, { kind: s === requested[0] ? 'success' : 'missing_fields' }])),
+        },
+        diagnostics: [],
+      }),
+    };
+
+    const result = await collectSectorValuations({
+      symbols: ['XLK', 'SMH'],
+      fetchValue: async () => {
+        order.push('fallback');
+        return { value: { trailingPE: 30 } };
+      },
+      parseValue: (raw) => raw?.value || null,
+      sleepFn: async () => {},
+      v7UserAgent: 'test-agent',
+      v7Client: client,
+      upstashGet: async () => null,
+      upstashSet: async (key) => {
+        if (key === PREFERRED_EXIT_KEY) {
+          order.push('preference');
+          now += 10_000;
+        }
+        return true;
+      },
+      maxDurationMs: 6_000,
+      now: () => now,
+    });
+
+    assert.equal(result.valuationCount, 2);
+    assert.deepEqual(order.slice(0, 2), ['fallback', 'preference']);
+  });
+
+  it('does not await an unresolved optional preference write', async () => {
+    const client = rotatingClient({ goodExit: 0, symbols: ['XLK'] });
+    let releasePreference;
+    let markPreferenceStarted;
+    const blockedPreference = new Promise((resolve) => { releasePreference = resolve; });
+    const preferenceStarted = new Promise((resolve) => { markPreferenceStarted = resolve; });
+    const collection = collectSectorValuations({
+      symbols: ['XLK'],
+      fetchValue: async () => { throw new Error('quoteSummary must not run when the batch recovers'); },
+      parseValue: (raw) => raw?.value ?? null,
+      sleepFn: async () => {},
+      v7UserAgent: 'test-agent',
+      v7Client: client,
+      upstashGet: async () => null,
+      upstashSet: async (key) => {
+        if (key !== PREFERRED_EXIT_KEY) return true;
+        markPreferenceStarted();
+        return blockedPreference;
+      },
+    });
+
+    try {
+      await preferenceStarted;
+      const stillBlocked = Symbol('preference write still blocked collection');
+      const result = await Promise.race([
+        collection,
+        new Promise((resolve) => setImmediate(() => resolve(stillBlocked))),
+      ]);
+      assert.notEqual(result, stillBlocked, 'collection must resolve without the preference SET');
+      assert.equal(result.valuationCount, 1);
+    } finally {
+      releasePreference(true);
+      await collection;
+    }
+  });
+
+  it('ignores a malformed or out-of-range remembered exit', async () => {
+    for (const stored of [{ attempt: -1 }, { attempt: 'exit-2' }, { attempt: 1.5 }, {}, 'nonsense']) {
+      const client = rotatingClient({ goodExit: 0, symbols: ['XLK'] });
+      const result = await collectSectorValuations({
+        symbols: ['XLK'],
+        fetchValue: async () => null,
+        parseValue: () => null,
+        sleepFn: async () => {},
+        v7UserAgent: 'test-agent',
+        v7Client: client,
+        upstashGet: async (key) => (key === PREFERRED_EXIT_KEY ? stored : null),
+        upstashSet: async () => true,
+      });
+      assert.deepEqual(
+        client.startsSeen,
+        [0],
+        `stored ${JSON.stringify(stored)} must fall back to the default exit`,
+      );
+      assert.equal(result.valuationCount, 1);
+    }
+  });
+
+  it('survives a preference read failure without losing the cycle', async () => {
+    const client = rotatingClient({ goodExit: 0, symbols: ['XLK'] });
+    const result = await collectSectorValuations({
+      symbols: ['XLK'],
+      fetchValue: async () => null,
+      parseValue: () => null,
+      sleepFn: async () => {},
+      v7UserAgent: 'test-agent',
+      v7Client: client,
+      upstashGet: async (key) => {
+        if (key === PREFERRED_EXIT_KEY) throw new Error('redis down');
+        return null;
+      },
+      upstashSet: async () => true,
+    });
+
+    assert.deepEqual(client.startsSeen, [0]);
+    assert.equal(result.valuationCount, 1, 'valuations still publish when the preference is unreadable');
   });
 });
 

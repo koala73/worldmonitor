@@ -2675,15 +2675,15 @@ describe('military flights bbox behavior', { concurrency: 1 }, () => {
         });
       }
 
-      assert.deepEqual(first.flights.map((flight) => flight.id), ['first-cell']);
-      assert.deepEqual(collisionShaped.flights.map((flight) => flight.id), ['second-cell']);
+      assert.deepEqual(first.flights.map((flight) => flight.id), ['FIRST-CELL']);
+      assert.deepEqual(collisionShaped.flights.map((flight) => flight.id), ['SECOND-CELL']);
       assert.equal(stableCacheReads, 1, 'unexpired isolate state must bypass repeated stable-snapshot Redis reads');
       assert.equal(staleRootReads, 1, 'bbox/filter sweeps must share one bbox-independent stale root read');
       assert.deepEqual([...snapshotWriteKeys], [stableStaleCacheKey], 'public filter text cannot create or collide with stale snapshot keys');
 
       now += 121_000;
       const afterExpiry = await module.listMilitaryFlights(ctx, { ...request, operator: 'after-expiry' });
-      assert.deepEqual(afterExpiry.flights.map((flight) => flight.id), ['first-cell']);
+      assert.deepEqual(afterExpiry.flights.map((flight) => flight.id), ['FIRST-CELL']);
       assert.equal(stableCacheReads, 2, 'expired isolate state must re-read the shared Redis snapshot');
       assert.equal(staleRootReads, 1, 'a valid shared Redis snapshot avoids another mutable-root read after local expiry');
     } finally {
@@ -2752,8 +2752,8 @@ describe('military flights bbox behavior', { concurrency: 1 }, () => {
       assert.equal(readsBeforeRelease, 1, 'different bbox callers must join one in-flight stale-root read');
       assert.equal(staleRootReads, 1);
       assert.equal(snapshotWrites, 1);
-      assert.deepEqual(first.flights.map((flight) => flight.id), ['first-cell']);
-      assert.deepEqual(second.flights.map((flight) => flight.id), ['second-cell']);
+      assert.deepEqual(first.flights.map((flight) => flight.id), ['FIRST-CELL']);
+      assert.deepEqual(second.flights.map((flight) => flight.id), ['SECOND-CELL']);
     } finally {
       cleanup();
       releaseStaleRoot?.();
@@ -2811,7 +2811,7 @@ describe('military flights bbox behavior', { concurrency: 1 }, () => {
       );
       assert.equal(stableCacheReads, 1);
       assert.equal(staleRootReads, 1, 'malformed cached entries must not block root-snapshot recovery');
-      assert.deepEqual(result.flights.map((flight) => flight.id), ['rebuilt']);
+      assert.deepEqual(result.flights.map((flight) => flight.id), ['REBUILT']);
     } finally {
       cleanup();
       globalThis.fetch = originalFetch;
@@ -2879,7 +2879,7 @@ describe('military flights bbox behavior', { concurrency: 1 }, () => {
         assert.equal(openskyCalls, 0, `${coverage ?? 'unstamped'} stale recovery must not open a provider call`);
         assert.deepEqual(
           result.flights.map((flight) => flight.id),
-          ['regional-stale'],
+          ['REGIONAL-STALE'],
           `${coverage ?? 'unstamped'} regional rows inside the real global bbox must survive without admitting invalid coordinates`,
         );
       } finally {
@@ -2940,7 +2940,7 @@ describe('military flights bbox behavior', { concurrency: 1 }, () => {
         assert.equal(openskyCalls, 1, 'a live miss must attempt one bounded provider recovery');
         assert.deepEqual(
           result.flights.map((flight) => flight.id),
-          ['regional-stale'],
+          ['REGIONAL-STALE'],
           `${coverage ?? 'unstamped'} regional fallback must keep the global map useful after provider recovery fails`,
         );
       } finally {

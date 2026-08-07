@@ -40,8 +40,41 @@ describe('ExaProvider.extract', () => {
       };
     };
     expect(body.summary.query).toContain('Extract the grocery price.');
-    expect(body.summary.schema.properties.price.type).toEqual(['number', 'null']);
+    expect(body.summary.schema.properties.price).toEqual({
+      anyOf: [{ type: 'number' }, { type: 'null' }],
+      description: 'Retail price',
+    });
     expect(body.summary.schema.required).toEqual(['productName', 'price']);
+  });
+
+  // Regression lock for #6182. Exa's /contents validator requires `type` to be a
+  // scalar; a `type: ['number','null']` array is rejected with
+  // HTTP 400 INVALID_REQUEST_BODY ("expected \"string\" at
+  // summary.schema.properties.price.type or ... or expected \"null\" at ...").
+  // Because every nullable field emits that array, EVERY Exa extraction call
+  // 400s, and two consecutive failures open the per-scrape Exa cooldown — so the
+  // opt-in fallback for the priority retailers never ran once. Verified live:
+  // the array form returns 400 while this anyOf form returns 200 with a real
+  // null price. A mocked fetch cannot see that 400, so assert the wire shape.
+  it('never emits an array-valued "type" that Exa rejects', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ results: [{ summary: '{"productName":"x","price":null}' }] }), { status: 200 }),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    await new ExaProvider('test-key').extract('https://retailer.example/p/bread', schema);
+
+    const body = JSON.parse(String((fetchMock.mock.calls[0]?.[1] as RequestInit).body)) as unknown;
+    const arrayTypes: string[] = [];
+    const walk = (node: unknown, path: string): void => {
+      if (!node || typeof node !== 'object') return;
+      for (const [key, value] of Object.entries(node as Record<string, unknown>)) {
+        if (key === 'type' && Array.isArray(value)) arrayTypes.push(`${path}.${key}`);
+        walk(value, `${path}.${key}`);
+      }
+    };
+    walk(body, '$');
+    expect(arrayTypes).toEqual([]);
   });
 
   it('maps bounded Exa search results and forwards the host policy', async () => {

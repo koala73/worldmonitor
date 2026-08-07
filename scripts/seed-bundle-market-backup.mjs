@@ -6,7 +6,7 @@ await runBundle('market-backup', [
   { label: 'Hyperliquid-Flow', script: 'seed-hyperliquid-flow.mjs', seedMetaKey: 'market:hyperliquid-flow', canonicalKey: 'market:hyperliquid:flow:v1', intervalMs: 5 * MIN, timeoutMs: 60_000 },
   { label: 'Stablecoin-Markets', script: 'seed-stablecoin-markets.mjs', seedMetaKey: 'market:stablecoins', canonicalKey: 'market:stablecoins:v1', intervalMs: 10 * MIN, timeoutMs: 120_000 },
   { label: 'ETF-Flows', script: 'seed-etf-flows.mjs', seedMetaKey: 'market:etf-flows', canonicalKey: 'market:etf-flows:v1', intervalMs: 15 * MIN, timeoutMs: 120_000 },
-  { label: 'China-Corporate-Disclosures', script: 'seed-china-corporate-disclosures.mjs', seedMetaKey: 'market:china-corporate-disclosures', canonicalKey: 'market:china:corporate-disclosures:v1', intervalMs: 30 * MIN, timeoutMs: 150_000, requiredEnv: ['RELAY_SHARED_SECRET'] },
+  { label: 'China-Corporate-Disclosures', script: 'seed-china-corporate-disclosures.mjs', seedMetaKey: 'market:china-corporate-disclosures', canonicalKey: 'market:china:corporate-disclosures:v1', intervalMs: 30 * MIN, timeoutMs: 150_000 },
   // SSE/SZSE publish both series once per session (margin on a T+1 lag), so an
   // hourly cadence is retries, not extra data. timeoutMs clears the adapter's
   // own CHINA_STOCK_CONNECT_MAX_NETWORK_MS worst case (179s). No relay secret:
