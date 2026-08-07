@@ -916,7 +916,64 @@ test('mutated acceptance clears only its exact matching global barrier', async (
   assert.equal(next.attempt.generation, 2);
 });
 
-test('verifier failure after mutation records MANUAL_REQUIRED and preserves the barrier', async () => {
+test('exact verifier proof can retire only an expired lease after a lost owner release', async () => {
+  const { clock, control } = makeControl();
+  const lease = await acquireLease(control, clock, {
+    headSha: 'd'.repeat(40),
+  });
+  const ownerFields = {
+    version: 1,
+    attemptId: lease.attempt.attemptId,
+    ownerId: lease.attempt.ownerId,
+    leaseCapability: lease.leaseCapability,
+    headSha: lease.attempt.headSha,
+  };
+  const intentDigest = 'd'.repeat(64);
+  const resultDigest = 'e'.repeat(64);
+  assert.equal((await send(control, clock, '/v1/mutation/prepare', 'mutation', {
+    ...ownerFields,
+    intentDigest,
+  })).status, 200);
+  assert.equal((await send(control, clock, '/v1/mutation/start', 'mutation', {
+    ...ownerFields,
+    intentDigest,
+    minTtlMs: 10 * 60 * 1000,
+  })).status, 200);
+  assert.equal((await send(control, clock, '/v1/mutation/bind-result', 'mutation', {
+    ...ownerFields,
+    intentDigest,
+    resultKind: 'MUTATED',
+    resultDigest,
+    minTtlMs: 1,
+  })).status, 200);
+
+  const stillActive = await send(control, clock, '/v1/verifier/accept', 'verifier', {
+    version: 1,
+    attemptId: lease.attempt.attemptId,
+    headSha: lease.attempt.headSha,
+    intentDigest,
+    resultDigest,
+  });
+  assert.equal(stillActive.status, 409);
+  assert.equal((await responseBody(stillActive)).error.code, 'LEASE_STILL_ACTIVE');
+  assert.notEqual((await responseBody(await getStatus(control, clock))).barrier, null);
+
+  clock.now = lease.leaseExpiresAt + 1;
+  const accepted = await send(control, clock, '/v1/verifier/accept', 'verifier', {
+    version: 1,
+    attemptId: lease.attempt.attemptId,
+    headSha: lease.attempt.headSha,
+    intentDigest,
+    resultDigest,
+  });
+  assert.equal(accepted.status, 200);
+  const snapshot = await responseBody(await getStatus(control, clock));
+  assert.equal(snapshot.lease, null);
+  assert.equal(snapshot.currentAttempt.state, 'TERMINAL_ACCEPTED');
+  assert.equal(snapshot.barrier, null);
+});
+
+test('verifier failure after an expired mutation lease records MANUAL_REQUIRED and preserves the barrier', async () => {
   const { clock, control } = makeControl();
   const lease = await acquireLease(control, clock, {
     headSha: '4'.repeat(40),
@@ -938,7 +995,7 @@ test('verifier failure after mutation records MANUAL_REQUIRED and preserves the 
     intentDigest,
     minTtlMs: 10 * 60 * 1000,
   })).status, 200);
-  assert.equal((await send(control, clock, '/v1/mutation/release', 'mutation', ownerFields)).status, 200);
+  clock.now = lease.leaseExpiresAt + 1;
 
   const failed = await send(control, clock, '/v1/verifier/fail', 'verifier', {
     version: 1,
@@ -952,6 +1009,7 @@ test('verifier failure after mutation records MANUAL_REQUIRED and preserves the 
   assert.equal(failedData.attempt.state, 'MANUAL_REQUIRED');
   assert.equal(failedData.attempt.closedReason, 'CONVERGENCE_TIMEOUT');
   assert.equal(failedData.barrier.attemptId, lease.attempt.attemptId);
+  assert.equal((await responseBody(await getStatus(control, clock))).lease, null);
 
   clock.now = lease.leaseExpiresAt + 24 * 60 * 60 * 1000;
   const blocked = await send(control, clock, '/v1/mutation/acquire', 'mutation', {

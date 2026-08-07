@@ -963,7 +963,15 @@ async function accept(storage, body, now, operationDigest) {
   if (meta.latestAttemptId !== attemptId || attempt.generation !== meta.generation) {
     reject(409, 'ATTEMPT_SUPERSEDED');
   }
-  if (meta.currentLease?.attemptId === attemptId) reject(409, 'LEASE_STILL_ACTIVE');
+  if (meta.currentLease?.attemptId === attemptId) {
+    if (meta.currentLease.expiresAt > now) reject(409, 'LEASE_STILL_ACTIVE');
+    // A lost release response must not turn the non-renewing lease into a
+    // permanent verifier lock. Once expiry has removed every mutation right,
+    // exact digest-bound terminal proof may retire the stale lease record and
+    // finalize this same generation. The attempt and any mutation barrier stay
+    // intact until the verifier decision below succeeds.
+    meta.currentLease = null;
+  }
 
   if (attempt.resultKind === 'NO_MUTATION') {
     if (attempt.state !== 'PREPARED') reject(409, 'INVALID_ATTEMPT_TRANSITION');
@@ -1048,7 +1056,13 @@ async function failVerification(storage, body, now) {
   if (meta.latestAttemptId !== attemptId || attempt.generation !== meta.generation) {
     reject(409, 'ATTEMPT_SUPERSEDED');
   }
-  if (meta.currentLease?.attemptId === attemptId) reject(409, 'LEASE_STILL_ACTIVE');
+  if (meta.currentLease?.attemptId === attemptId) {
+    if (meta.currentLease.expiresAt > now) reject(409, 'LEASE_STILL_ACTIVE');
+    // Failure finalization has the same lost-release recovery boundary as
+    // acceptance: expiry removes mutation authority, but does not clear a
+    // mutation barrier or rewrite the attempt's evidence.
+    meta.currentLease = null;
+  }
 
   let outcome;
   if (attempt.state === 'MUTATION_STARTED') {
@@ -1073,6 +1087,7 @@ async function failVerification(storage, body, now) {
   attempt.closedAt = now;
   attempt.verifierFailedAt = now;
   await storage.put(attemptKey(attemptId), attempt);
+  await storage.put(META_KEY, meta);
   return {
     status: 200,
     outcome,
