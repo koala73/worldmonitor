@@ -44,6 +44,10 @@ jobs:
             path: docker
             package_json: docker/runtime-package.json
             lockfile: docker/runtime-package-lock.json
+          - name: railway-reconcile-control
+            path: workers/railway-reconcile-control
+            package_json: workers/railway-reconcile-control/package.json
+            lockfile: workers/railway-reconcile-control/package-lock.json
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
       # The introduced-vs-inherited split needs the base commit in the object
@@ -100,7 +104,7 @@ jobs:
           AUDIT_RESULT: ${{ needs.audit-lockfile.result }}
           # Names must match the audit-lockfile matrix exactly; the
           # ci-workflow-coverage test asserts they do.
-          AUDIT_NAMES: 'root scripts consumer-prices-core blog-site pro-test docker-runtime'
+          AUDIT_NAMES: 'root scripts consumer-prices-core blog-site pro-test docker-runtime railway-reconcile-control'
           FAIL_ON_OUTAGE: ${{ github.event_name == 'schedule' && '1' || '0' }}
         run: |
           if [ "$AUDIT_RESULT" = "cancelled" ]; then
