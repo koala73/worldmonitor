@@ -26,15 +26,18 @@
     "refused a push that DID reach the service, which is a real failure.",
     "",
     "expiresAt forces a re-review of the whole file. A stale-deploy suppression that",
-    "outlives its cause is how a fleet ends up silently a week behind."
+    "outlives its cause is how a fleet ends up silently a week behind. It does not fire",
+    "on an EMPTY list -- with nothing suppressed there is nothing to re-review, and a",
+    "red monitor with no finding behind it is how people learn to ignore this check.",
+    "",
+    "The list is empty as of 2026-08-06. It held one entry: `umami` at BEHIND against",
+    "#6064, the GitHub integration that stopped delivering pushes to the analytics",
+    "collector. The check reported it `recovered` once umami was running head again,",
+    "and the reconciler in .github/workflows/railway-deploy-trigger.yml is now what",
+    "keeps it there -- it judges each service against the commit it is RUNNING, so a",
+    "webhook that goes quiet again self-heals on the next reconcile instead of needing",
+    "an entry here."
   ],
   "expiresAt": "2026-09-04",
-  "acknowledged": [
-    {
-      "name": "umami",
-      "status": "BEHIND",
-      "issue": 6064,
-      "reason": "The analytics collector stopped receiving deployments from the GitHub integration on 2026-08-03. Its watch paths are already empty, so this is the webhook-side sibling of #6141 rather than a filter rejection -- and the failure that proves this check must not key on the filter: no SKIPPED record exists, and the service is a day behind head."
-    }
-  ]
+  "acknowledged": []
 }

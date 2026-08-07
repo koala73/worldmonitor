@@ -16,6 +16,7 @@ import { join } from 'node:path';
 
 import {
   assertNoForbiddenEnvDumps,
+  bootstrapWorktree,
   decideHooksPathAction,
   linkEnvFiles,
   normalizeWorktreeHooksPath,
@@ -101,14 +102,56 @@ describe('worktree bootstrap helper', () => {
     );
   });
 
-  it('detects missing dependencies from node_modules absence', () => {
+  it('requires installation when node_modules is absent', () => {
     const root = makeTempDir();
 
     assert.equal(shouldInstallDependencies({ rootDir: root }), true);
+  });
+
+  it('requires installation for an empty node_modules directory', () => {
+    const root = makeTempDir();
 
     mkdirSync(join(root, 'node_modules'));
+    assert.equal(shouldInstallDependencies({ rootDir: root }), true);
+  });
+
+  it('requires installation for a partial node_modules directory', () => {
+    const root = makeTempDir();
+    mkdirSync(join(root, 'node_modules'));
+
+    writeFileSync(join(root, 'node_modules', 'some-package'), 'partial');
+    assert.equal(shouldInstallDependencies({ rootDir: root }), true);
+  });
+
+  it('skips only a completed installation unless forced', () => {
+    const root = makeTempDir();
+    mkdirSync(join(root, 'node_modules'));
+
+    writeFileSync(join(root, 'node_modules', '.package-lock.json'), '{}');
     assert.equal(shouldInstallDependencies({ rootDir: root }), false);
     assert.equal(shouldInstallDependencies({ forceInstall: true, rootDir: root }), true);
+  });
+
+  it('logs verified completion when skipping and npm ci when installing', () => {
+    const root = makeTempDir();
+    writeFileSync(join(root, 'package.json'), '{}');
+    const logs = [];
+
+    bootstrapWorktree({ dryRun: true, rootDir: root, skipEnv: true, log: line => logs.push(line) });
+    assert.deepEqual(logs, [
+      '[worktree] would run: npm ci --cache /tmp/worldmonitor-npm-cache',
+      '[worktree] bootstrap complete',
+    ]);
+
+    mkdirSync(join(root, 'node_modules'));
+    writeFileSync(join(root, 'node_modules', '.package-lock.json'), '{}');
+    logs.length = 0;
+
+    bootstrapWorktree({ rootDir: root, skipEnv: true, log: line => logs.push(line) });
+    assert.deepEqual(logs, [
+      '[worktree] verified npm install present; skipping npm ci',
+      '[worktree] bootstrap complete',
+    ]);
   });
 
   it('parses bootstrap flags', () => {
@@ -117,6 +160,7 @@ describe('worktree bootstrap helper', () => {
       '/tmp/source',
       '--cache=/tmp/cache',
       '--skip-install',
+      '--hooks-only',
       '--ignore-scripts',
       '--dry-run',
     ]);
@@ -124,8 +168,25 @@ describe('worktree bootstrap helper', () => {
     assert.equal(options.envSource, '/tmp/source');
     assert.equal(options.cacheDir, '/tmp/cache');
     assert.equal(options.skipInstall, true);
+    assert.equal(options.hooksOnly, true);
     assert.equal(options.ignoreScripts, true);
     assert.equal(options.dryRun, true);
+  });
+
+  it('stops after hooks normalization in hooks-only mode', () => {
+    const root = makeTempDir();
+    writeFileSync(join(root, 'package.json'), '{}');
+    writeFileSync(join(root, '.env.vercel-export'), 'MUST_NOT_BE_SCANNED=1\n');
+    const logs = [];
+
+    assert.doesNotThrow(() => bootstrapWorktree({
+      forceInstall: true,
+      hooksOnly: true,
+      log: line => logs.push(line),
+      rootDir: root,
+    }));
+    assert.deepEqual(logs, []);
+    assert.equal(existsSync(join(root, 'node_modules')), false);
   });
 
   // A stale absolute core.hooksPath makes every worktree push run ANOTHER

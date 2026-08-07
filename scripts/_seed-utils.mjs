@@ -350,16 +350,11 @@ export function getRedisCredentials() {
   return { url, token };
 }
 
-async function redisCommand(url, token, command) {
-  const resp = await fetch(url, {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify(command),
-    signal: AbortSignal.timeout(15_000),
-  });
+export async function parseRedisCommandResponse(resp, label = 'Redis command') {
   if (!resp.ok) {
-    const text = await resp.text().catch(() => '');
-    const err = new Error(`Redis command failed: HTTP ${resp.status} — ${text.slice(0, 200)}`);
+    const text = typeof resp.text === 'function' ? await resp.text().catch(() => '') : '';
+    const detail = text ? ` — ${text.slice(0, 200)}` : '';
+    const err = new Error(`${label} failed: HTTP ${resp.status}${detail}`);
     // Tag errors so callers wrapping in withRetry know whether to back off.
     // Permanent 4xx (auth, payload-too-large, etc.) won't recover on retry —
     // mark non-retryable so withRetry exits the loop in ~10ms instead of
@@ -370,13 +365,40 @@ async function redisCommand(url, token, command) {
     if (PERMANENT_4XX_STATUSES.has(resp.status)) {
       err.nonRetryable = true;
     } else if (resp.status === 429) {
-      const retryAfterMs = parseRetryAfterMs(resp.headers.get('retry-after'));
+      const retryAfterMs = parseRetryAfterMs(getResponseHeader(resp.headers, 'Retry-After'));
       if (retryAfterMs != null) err.retryAfterMs = retryAfterMs;
     }
     err.httpStatus = resp.status;
     throw err;
   }
-  return resp.json();
+  let body;
+  try {
+    body = await resp.json();
+  } catch (cause) {
+    throw Object.assign(new Error(`${label} returned invalid JSON (HTTP ${resp.status})`), { cause });
+  }
+  if (!body || typeof body !== 'object' || Array.isArray(body)) {
+    throw new Error(`${label} returned an unexpected Upstash response`);
+  }
+  if (body.error != null) {
+    throw new Error(`${label} rejected by Upstash: ${String(body.error)}`);
+  }
+  if (!Object.hasOwn(body, 'result')) {
+    throw new Error(`${label} returned an Upstash response without a result`);
+  }
+  return body;
+}
+
+export async function redisCommand(url, token, command, options = {}) {
+  const commandName = String(command?.[0] || 'command').toUpperCase();
+  const label = options.label || `Redis ${commandName}`;
+  const resp = await fetch(url, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', 'User-Agent': CHROME_UA },
+    body: JSON.stringify(command),
+    signal: AbortSignal.timeout(options.timeoutMs ?? 15_000),
+  });
+  return parseRedisCommandResponse(resp, label);
 }
 
 async function redisGet(url, token, key) {
@@ -743,13 +765,13 @@ export async function readCanonicalEnvelopeMeta(canonicalKey) {
 // caller's request shape, not server load:
 //   400 malformed query   401 bad auth      403 forbidden
 //   404 missing path      410 permanently gone
-//   422 semantic error    451 legal block
+//   413 payload too large 422 semantic error    451 legal block
 // 408 Request Timeout and 429 Too Many Requests are deliberately excluded —
 // both are explicit "back off and retry" signals, often paired with a
 // Retry-After header. Tagging them nonRetryable would convert transient
 // rate-limits into immediate seed failures (especially under parallel
 // fetches like seed-imf-* WEO bundles).
-export const PERMANENT_4XX_STATUSES = new Set([400, 401, 403, 404, 410, 422, 451]);
+export const PERMANENT_4XX_STATUSES = new Set([400, 401, 403, 404, 410, 413, 422, 451]);
 
 // sysexits.h EX_TEMPFAIL: fetch failed, last-good TTL was extended, and the
 // bundle runner should retry/report non-OK without treating the seeder as a
@@ -973,22 +995,10 @@ export async function writeExtraKey(key, data, ttl, envelopeMeta) {
   // (auth, payload-too-large) fail fast; 429 honors Retry-After. Mirrors the
   // redisCommand / atomicPublish contract (seed-gdelt-intel PUBLISH_TIMEOUT fix).
   await withRetry(async () => {
-    const resp = await fetch(url, {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', 'User-Agent': CHROME_UA },
-      body: JSON.stringify(['SET', key, payload, 'EX', ttl]),
-      signal: AbortSignal.timeout(10_000),
+    await redisCommand(url, token, ['SET', key, payload, 'EX', ttl], {
+      label: `Extra key ${key}`,
+      timeoutMs: 10_000,
     });
-    if (!resp.ok) {
-      const err = new Error(`Extra key ${key}: write failed (HTTP ${resp.status})`);
-      if (PERMANENT_4XX_STATUSES.has(resp.status)) {
-        err.nonRetryable = true;
-      } else if (resp.status === 429) {
-        const retryAfterMs = parseRetryAfterMs(getResponseHeader(resp.headers, 'Retry-After'));
-        if (retryAfterMs != null) err.retryAfterMs = retryAfterMs;
-      }
-      throw err;
-    }
   }, 2, 1000);
   console.log(`  Extra key ${key}: written`);
 }

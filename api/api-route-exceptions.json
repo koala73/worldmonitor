@@ -609,13 +609,6 @@
       "removal_issue": null
     },
     {
-      "path": "api/internal/china-exchange-egress.js",
-      "category": "internal-helper",
-      "reason": "Fixed-target SZSE metadata egress for the Railway corporate-disclosure seed (#5771). RELAY_SHARED_SECRET-authenticated, POST-only, and constrained to the reviewed issuer, channel, page, and 92-day window; it is deployment plumbing for one source adapter rather than a user-facing data API.",
-      "owner": "@SebastienMelki",
-      "removal_issue": null
-    },
-    {
       "path": "api/internal/mcp-grant-mint.ts",
       "category": "internal-helper",
       "reason": "Apex-domain bridge endpoint for the cross-subdomain Pro MCP authorization flow (plan 2026-05-10-001 U3). POST {nonce} from the Clerk-protected /mcp-grant SPA on worldmonitor.app; returns a fixed-host redirect URL with a HMAC-signed grant token to api.worldmonitor.app/oauth/authorize-pro. Shape is an implementation detail of the bounce-via-apex consent flow — exposing it as a versioned product API would publish internal OAuth plumbing.",

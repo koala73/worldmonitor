@@ -14,7 +14,7 @@ import {
 
 describe('PERMANENT_4XX_STATUSES classification', () => {
   it('includes the request-shape errors that retrying cannot fix', () => {
-    for (const code of [400, 401, 403, 404, 410, 422, 451]) {
+    for (const code of [400, 401, 403, 404, 410, 413, 422, 451]) {
       assert.equal(PERMANENT_4XX_STATUSES.has(code), true, `expected ${code} permanent`);
     }
   });

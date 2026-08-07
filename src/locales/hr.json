@@ -1401,7 +1401,7 @@
         "ucdpEvents": "Događaji Oružanih Konfliktaa",
         "displacementFlows": "Tokovi Raseljenih",
         "climateAnomalies": "Klimatske Anomalije",
-        "weatherAlerts": "Vremenske Upozorenja",
+        "weatherAlerts": "Vremenska upozorenja za SAD (NWS)",
         "strategicWaterways": "Uska Grla",
         "economicCenters": "Ekonomski Centri",
         "criticalMinerals": "Kritični Minerali",
@@ -1480,7 +1480,7 @@
           "infraDatacenters": "AI compute klasteri >=10.000 GPU-a",
           "infraOutages": "Internetske crne točke i prekidi usluga",
           "naturalEventsTech": "Zemljotresi, oluje, požari (mogu utjecati na podatkovne centre)",
-          "weatherAlerts": "Upozorenja za ekstremne vremenske prilike",
+          "weatherAlerts": "Upozorenja za ekstremne vremenske prilike u SAD-u (NWS)",
           "economicCenters": "Berzanske bolnice i središnje banke",
           "countriesOverlay": "Oznake imena država",
           "financeExchanges": "Glavne svjetske berze po razredu tržišta",
@@ -1492,7 +1492,7 @@
           "financeOutages": "Internetski prekidi koji mogu utjecati na rad tržišta",
           "financeCyberThreats": "Sigurnosni incidenti oko financijske infrastrukture",
           "macroWaterways": "Strateška uska grla za robno brodarstvo",
-          "weatherAlertsMarket": "Ekstremne vremenske prilike s relevancijom za tržište",
+          "weatherAlertsMarket": "Ekstremne vremenske prilike u SAD-u važne za tržište (NWS)",
           "naturalEventsMacro": "Zemljotresi, požari, poplave i ostali prirodni poremećaji",
           "timeRecent": "Filtriraj vremenski ovisne podatke na nedavne sate",
           "timeExtended": "Prikaži podatke iz prošlog tjedna, mjeseca ili cijelog vremena",
@@ -3168,7 +3168,7 @@
       "heading": "SMJER",
       "hexCode": "HEX KÔD",
       "squawk": "SQUAWK",
-      "attribution": "Izvor: OpenSky Network"
+      "attribution": "Izvor: adsb.lol (ODbL) · OpenSky Network"
     },
     "militaryVessel": {
       "aisDark": "AIS NEVIDLJIV",
