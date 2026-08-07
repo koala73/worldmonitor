@@ -116,9 +116,40 @@ function resolveProxyString(raw = process.env.PROXY_URL || '') {
   //   - a prefix match rewrites ANY `gate.*` host, so an unrelated proxy would be
   //     redirected to a Decodo endpoint with its credentials attached. Matching
   //     the one host we actually mean keeps every other provider untouched.
+  return curlProxyString(cfg);
+}
+
+/** Shared by resolveProxyString and resolveProxyStringForAttempt. */
+function curlProxyString(cfg) {
   const normalizedHost = String(cfg.host || '').toLowerCase().replace(/\.$/u, '');
   const host = normalizedHost === DECODO_GATE_HOST ? DECODO_CURL_HOST : cfg.host;
   return cfg.auth ? `${cfg.auth}@${host}:${cfg.port}` : `${host}:${cfg.port}`;
+}
+
+/**
+ * resolveProxyString, but advancing Decodo sticky sessions so each attempt lands
+ * on a DIFFERENT residential exit IP.
+ *
+ * Some upstreams answer HTTP 200 with a payload whose completeness depends on
+ * the exit IP rather than on the request. Yahoo's quote fundamentals cache is
+ * one: measured across 10 rotated Decodo exits, 7 omitted `trailingPE` entirely
+ * for a stable subset of ETFs while 3 served it. Retrying a pinned exit re-reads
+ * the same partial cache forever, so recovery requires moving exits, not
+ * re-requesting.
+ *
+ * `attempt` is deliberately the FIRST parameter: resolveProxyString takes the
+ * raw config first, and a mistaken resolveProxyStringForAttempt(proxyString)
+ * must not silently parse the config as an attempt index and return a route
+ * built from `undefined`.
+ *
+ * Non-sticky Decodo ports and every other provider are returned unrotated —
+ * advancing their port would point at a closed door.
+ */
+function resolveProxyStringForAttempt(attempt = 0, raw = process.env.PROXY_URL || '') {
+  const index = Number.isFinite(Number(attempt)) ? Math.max(0, Math.trunc(Number(attempt))) : 0;
+  const cfg = parseProxyConfigForAttempt(raw, index);
+  if (!cfg) return '';
+  return curlProxyString(cfg);
 }
 
 /**
@@ -330,6 +361,7 @@ module.exports = {
   resolveProxyConfig,
   resolveProxyConfigWithFallback,
   resolveProxyString,
+  resolveProxyStringForAttempt,
   resolveProxyStringConnect,
   proxyConnectTunnel,
   proxyFetch,
