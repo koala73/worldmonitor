@@ -112,7 +112,7 @@ Keys are grouped into three tiers that determine alert severity:
 | `SEED_ERROR` | Warn | `seed-meta` reports `status: "error"` from the last seed run, **or** a producer that serves last-known-good has failed often enough to cross its declared failure contract (see below) |
 | `REDIS_PARTIAL` | Warn | A single per-command Redis error on this key's STRLEN/GET (not a full outage) |
 | `EMPTY_ON_DEMAND` | Warn | On-demand key has no data yet (expected until first request); counted in `summary.onDemandWarn` |
-| `EMPTY` | Crit | Bootstrap or seeded standalone key has no data |
+| `EMPTY` | Crit | Bootstrap or seeded standalone key has no data. Outranks any concurrent producer fault, which would otherwise report the softer `SEED_ERROR` (see below) |
 | `EMPTY_DATA` | Crit | Key exists but contains zero records (and 0 is not a valid state for it) |
 
 ### Producers That Serve Last-Known-Good
@@ -129,20 +129,57 @@ records, and records the miss as diagnostics:
 | `consecutiveFailures` | Misses since the last successful publish; reset to 0 on success |
 | `lastAttemptAt` | When the producer last tried, successfully or not |
 | `lastSuccessAt` | When it last published |
+| `synthesisFailureAgeMin` | Minutes since `lastAttemptAt`. Emitted only while a streak is open, so it reads as "how long this failure has gone without a follow-up attempt" — a growing value means the stage has stopped running, not that it is retrying |
 | `servedGeneratedAt` | Vintage of the payload currently being served |
 | `lastSynthesisFailureCode` | Why the last attempt failed, from a closed per-key vocabulary |
+
+<Warning>
+On these keys, `records` and `status` describe **what is being served**, not
+how the last run went. A key reporting `status: "OK"` with `records: 5` and
+`consecutiveFailures: 2` means five cards are on the page and the last two
+attempts to refresh them failed. Read the diagnostics above for run outcomes;
+reading `status` alone will tell you the panel is fine, which is true, and
+nothing about the producer behind it.
+</Warning>
 
 Each such key declares thresholds sized to its own cadence, and health reports
 `SEED_ERROR` once either is crossed: `warnAfterConsecutive` misses in a row, or
 `warnAfterAgeMin` since the last attempt with a miss on record. Because
-`fetchedAt` is **not** advanced by a miss. A producer that stops after recording
-a miss therefore reports `SEED_ERROR` while retained data is still available,
-then escalates to `EMPTY` (crit) once the canonical data key disappears. A miss
-with nothing left to serve skips all of this and writes `status: "error"`
-immediately, and a failure streak never outranks a missing data key, which is
-still `EMPTY` (crit).
+`fetchedAt` is **not** advanced by a miss, the ordinary `maxStaleMin` age gate
+keeps escalating independently — a producer that stops entirely still ages into
+`STALE_SEED`. A producer that stops after recording a miss therefore reports
+`SEED_ERROR` while retained data is still available. A miss with nothing left to
+serve skips all of this and writes `status: "error"` immediately. What happens
+once the canonical data key itself disappears is not specific to this contract —
+see the fleet-wide rule below.
 
 Two keys use this contract today: `newsInsights` and `marketImplications`.
+
+### Producer Faults vs. Missing Data
+
+`seed-meta` outlives the data key it describes — 7 days against hours for most
+canonical keys — so a producer that faulted once and then stopped leaves health
+holding two true statements at the same time: *the producer is unhappy* and
+*nothing is being served*. Every fault signal is affected, not just the
+last-known-good contract above: `status: "error"`, a non-`ok` `sourceState`, a
+blocked source, and a crossed failure streak.
+
+**The stronger verdict wins, and ties go to the fault** — it is the only one of
+the pair that carries a cause. Concretely:
+
+- A blank key whose absence is critical reports `EMPTY` (crit), never
+  `SEED_ERROR` (warn). Without this rule a vanished homepage panel would report
+  a warning for the seed-meta's full 7-day life.
+- A blank key whose absence is *not* critical keeps `SEED_ERROR`. This covers
+  keys where an empty payload is a valid state (`OK`/`STALE_SEED`), keys
+  covered by a cascade sibling (`OK_CASCADE`), on-demand keys
+  (`EMPTY_ON_DEMAND`), and keys inside a rollout window (`ROLLOUT_PENDING`) —
+  none of which should be able to silence a fault the producer actually
+  reported.
+
+`errorCode` and `lastSynthesisFailureCode` are published whenever the producer
+recorded one, including when the missing-data verdict wins. An escalation to
+crit never costs you the reason.
 
 ### China Coverage Projection
 
@@ -530,7 +567,7 @@ A seed is considered stale when its age exceeds **2x the configured interval**. 
 | Predictions, military flights | 8 | 16 |
 | Market quotes, earthquakes, unrest | 15 | 30 |
 | ETF flows, stablecoins, chokepoints | 30 | 60 |
-| Service statuses, spending, wildfires | 60 | 120 |
+| Service statuses, spending, wildfires, market implications | 60 | 120 |
 | Shipping rates, satellites | 90-120 | 180-240 |
 | GPS jamming, displacement | 360 | 720 |
 | Iran events, UCDP | 210-5040 | 420-10080 |
