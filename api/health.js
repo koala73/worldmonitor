@@ -1464,20 +1464,21 @@ function classifyKey(name, redisKey, opts, ctx) {
   // arms so the missing-data branch below can weigh them against the absence
   // verdict instead of being pre-empted by them (#6263).
   //
-  // Left null for an unconfigured adapter, which by the NOT_CONFIGURED rule
-  // below has nothing to be degraded ABOUT — so it also publishes no cause.
+  // Skipped entirely for an unconfigured adapter, which by the NOT_CONFIGURED
+  // rule below has nothing to be degraded ABOUT — so it also publishes no cause.
   let fault = null;
-  if (sourceUnavailable) fault = null;
-  else if (sourceBlocked && name !== 'crossStraitActivityJapanMod') {
-    // Keep the fleet-wide escape hatch narrow: only the Japan MOD adapter has
-    // a reviewed-data contract and explicit two-path proof for this state.
-    fault = 'SEED_ERROR';
+  if (!sourceUnavailable) {
+    if (sourceBlocked && name !== 'crossStraitActivityJapanMod') {
+      // Keep the fleet-wide escape hatch narrow: only the Japan MOD adapter has
+      // a reviewed-data contract and explicit two-path proof for this state.
+      fault = 'SEED_ERROR';
+    }
+    else if (sourceBlocked && hasData && records > 0 && seedStale !== true) fault = 'SOURCE_BLOCKED';
+    // A producer-failure warning describes degraded-BUT-SERVING — the LKG is
+    // still on the page while generation retries.
+    else if (synthesisFailure?.warning) fault = 'SEED_ERROR';
+    else if (seedError) fault = 'SEED_ERROR';
   }
-  else if (sourceBlocked && hasData && records > 0 && seedStale !== true) fault = 'SOURCE_BLOCKED';
-  // A producer-failure warning describes degraded-BUT-SERVING — the LKG is
-  // still on the page while generation retries.
-  else if (synthesisFailure?.warning) fault = 'SEED_ERROR';
-  else if (seedError) fault = 'SEED_ERROR';
 
   let status;
   // Precedes every fault branch: an adapter this deployment never configured has

@@ -2,6 +2,11 @@
 // api/seed-health.js while its sibling `news:insights` was registered, so the
 // operator endpoint could not report the key at all.
 //
+// Not to be confused with tests/market-implications-seed-health.test.mjs,
+// which covers the PRODUCER side — scripts/seed-forecasts.mjs's failure-meta
+// contract as read by api/health.js. This file covers only the /api/seed-health
+// registration and the freshness budget that endpoint applies to the key.
+//
 // Registered on the same terms as that sibling: a coarse age view whose
 // intervalMin*2 budget must equal the api/health.js `marketImplications`
 // budget. Asserted BEHAVIORALLY — the endpoint is driven at the boundary and
