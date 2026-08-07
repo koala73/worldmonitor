@@ -181,11 +181,13 @@ the pair that carries a cause. Concretely:
   none of which should be able to silence a fault the producer actually
   reported.
 
-`errorCode` and `lastSynthesisFailureCode` are published whenever a fault of the
-`SEED_ERROR` kind fired and the producer recorded a code — including when the
-missing-data verdict outranks that fault and the status ends up `EMPTY`. An
-escalation to crit never costs you the reason. (`SOURCE_BLOCKED` publishes
-neither; its cause is the status itself.)
+`errorCode` is published whenever a fault of the `SEED_ERROR` kind fired and the
+producer recorded a code — including when the missing-data verdict outranks that
+fault and the status ends up `EMPTY`. An escalation to crit never costs you the
+reason. (`SOURCE_BLOCKED` publishes no `errorCode`; its cause is the status
+itself.) `lastSynthesisFailureCode` is broader still: like the other
+last-known-good diagnostics above, it is published on every status whenever the
+producer recorded one.
 
 ### China Coverage Projection
 

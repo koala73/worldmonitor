@@ -784,12 +784,16 @@ test('classifyKey: a strict projection that has never published keeps its STALE_
   assert.equal(STATUS_COUNTS[entry.status], 'warn');
 });
 
-test('classifyKey: an unconfigured adapter publishes no fault and no cause', () => {
+test('classifyKey: an unconfigured adapter raises no fault and publishes no errorCode', () => {
   // NOT_CONFIGURED means "this deployment never opted into the adapter", so
   // there is nothing to be degraded ABOUT — the fault is skipped entirely
   // rather than merely losing the verdict. Without the `!sourceUnavailable`
-  // guard the fault still fires, and a green NOT_CONFIGURED entry ships
-  // diagnostic codes for a producer this deployment does not run.
+  // guard the fault still fires, and a green NOT_CONFIGURED entry ships an
+  // errorCode for a producer this deployment does not run.
+  //
+  // Asserted on `errorCode` only. `lastSynthesisFailureCode` is deliberately
+  // ungated upstream — it rides with consecutiveFailures/lastAttemptAt, which
+  // publish on every status — so its presence here is correct, not a leak.
   const entry = classifyKey(
     'marketImplications',
     STANDALONE_KEYS.marketImplications,
@@ -814,7 +818,6 @@ test('classifyKey: an unconfigured adapter publishes no fault and no cause', () 
   assert.equal(entry.status, 'NOT_CONFIGURED');
   assert.equal(STATUS_COUNTS[entry.status], 'ok');
   assert.equal(Object.hasOwn(entry, 'errorCode'), false, 'an unconfigured adapter has no fault to explain');
-  assert.equal(Object.hasOwn(entry, 'lastSynthesisFailureCode'), false);
 });
 
 test('classifyKey: a fault outranks every served-data verdict it precedes', () => {
