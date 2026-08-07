@@ -20,7 +20,7 @@ const root = resolve(import.meta.dirname, '..');
 const read = (path: string) => readFileSync(resolve(root, path), 'utf8');
 
 describe('China Stock Connect production registration (#6155)', () => {
-  it('schedules the seeder inside the market-backup bundle with edge auth declared', () => {
+  it('schedules the seeder inside the market-backup bundle without declaring the edge relay secret', () => {
     const bundle = read('scripts/seed-bundle-market-backup.mjs');
     const member = /\{[^\n]*'China-Stock-Connect'[^\n]*\}/u.exec(bundle)?.[0] ?? '';
     assert.match(member, /script:\s*'seed-china-stock-connect\.mjs'/u);
@@ -36,8 +36,8 @@ describe('China Stock Connect production registration (#6155)', () => {
       bundle,
       /'China-Stock-Connect'[^}]*canonicalKey:\s*'market:china:stock-connect:v1'/,
     );
-    // The bundle-wide requiredEnv is unchanged: RELAY_SHARED_SECRET and
-    // PROXY_URL were already mandatory for other members, and SZSE_PROXY_URL
+    // The bundle-wide requiredEnv no longer carries RELAY_SHARED_SECRET since
+    // the China Corporate Disclosures edge hop was retired. SZSE_PROXY_URL
     // stays undeclared because the adapter falls back to PROXY_URL.
     const railwayServices = JSON.parse(read('scripts/railway-services.json')) as Array<{
       service: string;
@@ -47,7 +47,7 @@ describe('China Stock Connect production registration (#6155)', () => {
     const marketBackup = railwayServices.find(
       (entry) => entry.service === 'seed-bundle-market-backup',
     );
-    assert.deepEqual(marketBackup?.requiredEnv, ['PROXY_URL', 'RELAY_SHARED_SECRET']);
+    assert.deepEqual(marketBackup?.requiredEnv, ['PROXY_URL']);
     for (const path of [
       'scripts/_china-exchange-transport.mjs',
       'scripts/china-stock-connect/adapters.mjs',

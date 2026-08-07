@@ -1209,7 +1209,7 @@
         },
         {
           "path": "scripts/seed-weather-alerts.mjs",
-          "line": 7
+          "line": 15
         }
       ]
     },
@@ -1331,10 +1331,6 @@
         {
           "path": "api/mcp/downstream.ts",
           "line": 8
-        },
-        {
-          "path": "scripts/_china-exchange-transport.mjs",
-          "line": 26
         },
         {
           "path": "scripts/ais-relay.cjs",
@@ -7268,7 +7264,7 @@
         },
         {
           "path": "server/worldmonitor/military/v1/list-military-flights.ts",
-          "line": 480
+          "line": 486
         },
         {
           "path": "src/components/MapPopup.ts",
@@ -7725,7 +7721,7 @@
       "references": [
         {
           "path": "scripts/china-corporate-disclosures/adapters.mjs",
-          "line": 48
+          "line": 46
         }
       ]
     },
@@ -9969,10 +9965,6 @@
         {
           "path": "api/fwdstart.js",
           "line": 123
-        },
-        {
-          "path": "api/internal/china-exchange-egress.js",
-          "line": 154
         },
         {
           "path": "api/not-found.ts",
@@ -13657,14 +13649,6 @@
       "attribution": "Credit www.szse.cn and link to the original upstream API/dataset.",
       "status": "terms-review",
       "references": [
-        {
-          "path": "api/internal/china-exchange-egress.js",
-          "line": 6
-        },
-        {
-          "path": "api/internal/china-exchange-egress.js",
-          "line": 152
-        },
         {
           "path": "scripts/china-stock-connect/adapters.mjs",
           "line": 201
