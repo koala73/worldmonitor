@@ -82,16 +82,13 @@ SZSE: SZSE_PROXY_URL → PROXY_URL
 Decodo sticky gateway 端口。
 
 SSE 最多使用四个直接请求和四个代理请求，并限制并发。SZSE 使用一次直接尝试、
-最多两次符合条件的不同 gateway 端口代理尝试，然后使用固定
-`https://api.worldmonitor.app/api/internal/china-exchange-egress` edge hop。
-Edge hop 通过 `RELAY_SHARED_SECRET` 鉴权；该 secret 不会发送给交易所。
+最多两次符合条件的不同 gateway 端口代理尝试。
 
 回退顺序只用于传输失败。能证明应用层响应的 HTTP 或 schema 结果会被记录，不会
 触发无界路线猜测。SZSE 需要连续两次成功运行才能清除持久传输失败状态。
 
 `SSE_PROXY_URL` 是可选 SSE 专用覆盖；`SZSE_PROXY_URL` 是可选共享中国出口；
 只有对应来源专用设置缺失时才会选择 `PROXY_URL`，且其他市场 bundle 成员仍要求该变量。
-`RELAY_SHARED_SECRET` 是固定 edge 回退的必需配置。
 
 ## 覆盖与健康
 
