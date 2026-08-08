@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 import { loadEnvFile, runSeed, getRedisCredentials, loadSharedConfig } from './_seed-utils.mjs';
+import { unwrapEnvelope } from './_seed-envelope-source.mjs';
 import { resolveIso2, normalizeCountryToken } from './_country-resolver.mjs';
 import {
   CORRELATION_RUNTIME_MODE_KEY,
@@ -14,7 +15,7 @@ const CACHE_TTL = 1200; // 20min — outlives maxStaleMin:15 with buffer (cron r
 const MIN_CORRELATION_CARDS = 1;
 const CORRELATION_CARD_DOMAINS = ['military', 'escalation', 'economic', 'disaster'];
 
-const INPUT_KEYS = [
+export const INPUT_KEYS = [
   'military:flights:v1',
   'military:flights:stale:v1',
   'unrest:events:v1',
@@ -26,7 +27,28 @@ const INPUT_KEYS = [
   'news:insights:v1',
 ];
 
-async function fetchInputData() {
+// Reject preserved contract envelopes past the age each source seeder itself
+// declares. runSeed extends a last-good key on an upstream failure without
+// advancing `_seed.fetchedAt` (scripts/_seed-utils.mjs), so unwrapping without
+// this gate would revive stale observations and stamp them into cards dated
+// `computedAt: Date.now()`. Every value here is that source's own
+// `maxStaleMin`, not a number chosen at this call site; the five keys shared
+// with seed-cross-source-signals.mjs carry the same budgets it uses.
+//
+// The two `military:flights` keys are absent on purpose: seed-military-flights.mjs
+// never migrated to runSeed and writes them bare, so they carry no `_seed` for
+// this gate to read.
+const SOURCE_MAX_AGE_MIN = Object.freeze({
+  'unrest:events:v1': 120,                // scripts/seed-unrest-events.mjs
+  'infra:outages:v1': 30,                 // scripts/seed-internet-outages.mjs
+  'seismology:earthquakes:v1': 30,        // scripts/seed-earthquakes.mjs
+  'market:stocks-bootstrap:v1': 30,       // scripts/seed-market-quotes.mjs
+  'market:commodities-bootstrap:v1': 30,  // scripts/seed-commodity-quotes.mjs
+  'market:crypto:v1': 30,                 // scripts/seed-crypto-quotes.mjs
+  'news:insights:v1': 30,                 // scripts/seed-insights.mjs
+});
+
+export async function fetchInputData() {
   const { url, token } = getRedisCredentials();
   const pipeline = INPUT_KEYS.map(k => ['GET', k]);
   const resp = await fetch(`${url}/pipeline`, {
@@ -40,9 +62,31 @@ async function fetchInputData() {
   const data = {};
   for (let i = 0; i < INPUT_KEYS.length; i++) {
     const raw = results[i]?.result;
-    if (raw) {
-      try { data[INPUT_KEYS[i]] = JSON.parse(raw); } catch { /* skip */ }
-    }
+    if (!raw) continue;
+    const key = INPUT_KEYS[i];
+    try {
+      // Seven of these nine keys are written by contract-mode seeders, which
+      // store `{ _seed, data }` (scripts/_seed-utils.mjs). Parsing without
+      // unwrapping handed computeCorrelation the envelope, so every
+      // `payload.<field>` read below was undefined and three of the four
+      // domains silently produced no signals at all — #5870 is the same defect
+      // one seeder over. unwrapEnvelope only unwraps when `_seed.fetchedAt` is
+      // a number, so the bare `military:flights` keys pass through unchanged.
+      //
+      // JSON.parse stays outside unwrapEnvelope on purpose: it accepts a raw
+      // string, but on a parse failure it returns that string as `data`, which
+      // would register a malformed value as a found key and defeat the
+      // "no input data" tripwire in computeCorrelation.
+      const { _seed, data: payload } = unwrapEnvelope(JSON.parse(raw));
+      if (payload == null) continue;
+      const maxAgeMin = SOURCE_MAX_AGE_MIN[key];
+      if (
+        _seed &&
+        maxAgeMin != null &&
+        Date.now() - _seed.fetchedAt > maxAgeMin * 60_000
+      ) continue;
+      data[key] = payload;
+    } catch { /* skip malformed */ }
   }
   return data;
 }
