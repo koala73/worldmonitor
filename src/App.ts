@@ -747,10 +747,10 @@ export class App {
       primeTask('supplyChain', () => this.dataLoader.loadSupplyChain());
     }
     if (shouldPrime('china-corridors')) {
-      primeTask('chinaCorridors', () => this.dataLoader.loadChinaCorridors());
+      primeTask('chinaCorridors', () => this.dataLoader.loadChinaCorridors({ skipIfPopulated: true }));
     }
     if (shouldPrime('china-activity-nowcast')) {
-      primeTask('chinaActivityNowcast', () => this.dataLoader.loadChinaActivityNowcast());
+      primeTask('chinaActivityNowcast', () => this.dataLoader.loadChinaActivityNowcast({ skipIfPopulated: true }));
     }
     if (shouldPrime('cross-source-signals')) {
       primeTask('crossSourceSignals', () => this.dataLoader.loadCrossSourceSignals());
