@@ -481,4 +481,12 @@ describe('pre-push wiring: the hook must consume these decisions', () => {
       'a plain three-dot --name-only read silently drops C-quoted paths',
     );
   });
+
+  test('delegates edge entry discovery to the tracked-file checker', () => {
+    has(
+      /^\s*node scripts\/check-edge-function-bundles\.mjs \|\| exit 1$/m,
+      'pre-push must use the same edge checker as CI',
+    );
+    lacks(/find api\/ -name "\*\.js"/, 'working-tree globs rediscover ignored sidecar bundles');
+  });
 });
