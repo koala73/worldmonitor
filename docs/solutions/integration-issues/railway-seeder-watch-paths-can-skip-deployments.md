@@ -232,16 +232,61 @@ The chain is `Test` → `Deploy Gate` → `Railway Deploy Trigger`. GitHub refus
 to chain `workflow_run` more than three levels deep, so **nothing may be
 triggered off this workflow's completion** — that link is spent.
 
-**Why a no-op run is now loud.** "Reconciled the fleet" and "declined and
-skipped every step that does work" are both `success` at the workflow-status
-level, which is how the fleet stayed stranded behind a green badge. Two things
-separate them now: a job-summary line plus a `::warning::` annotation on every
-declined run, and `scripts/check-railway-reconcile-age.mjs`, which reads this
-workflow's own run history and reds the run when nothing has actually
-reconciled for longer than the backstop tolerates. A run "reconciled" iff its
-deploying step's conclusion is `success`; every unreadable, missing or
-truncated case resolves away from healthy, because the unmatched case meaning
-HEALTHY is the defect itself.
+**Why workflow success is not reconciliation success.** "Railway returned a
+deployment ID", "nothing needed a build", and "the fleet reached terminal
+zero-drift convergence" can all end in a green GitHub workflow unless the
+acceptance boundary is explicit. The lease-aware design records a versioned
+intent/result digest chain, waits every triggered or adopted deployment to an
+allowed terminal state, then runs strict exact-head drift with no pending-build
+acceptance and no baseline suppression. Only the final strict-acceptance step
+refreshes reconciliation liveness. A verified no-op also reaches terminal
+acceptance; a skipped/contended/trigger-only run does not.
+
+The liveness observer is a separate **Railway Deploy Trigger Watchdog** on an
+offset best-effort schedule. It remains observe-only unless both the
+lease-aware target cutover flag and `RAILWAY_RECONCILE_AUTO_RECOVERY_ENABLED`
+are exactly true. `RECOVERY_AUTHORIZED` names the durable-hold boundary before
+the actions-write job; it is not reported as observe-only or dispatched. When
+enabled, the watchdog may dispatch one correlated replacement for stale green
+`main`, but has no
+code path to cancel, force-cancel, rerun, or approve an existing run. A
+runner-less orphan may remain visible forever without blocking production: it
+owns no workflow-level production lock and any later runner must contend for
+the same bounded Durable Object lease.
+
+GitHub evidence is bounded instead of rescanning the permanent Actions archive.
+The watchdog combines a 24-hour target-workflow summary window with separate
+queries for every active status, repeats the active sweep around the history
+read, and defers if that inventory changes. It hydrates attempt jobs only for
+active, recent, durably referenced, or non-success terminal runs, under a
+10-page ceiling, 250-request ceiling, and 10-second per-request timeout. The
+protected recovery reader uses exact run IDs when supplied and applies its own
+page/request/time bounds. An exhausted budget fails closed.
+
+The dormant control-plane foundation does not retire the existing
+`scripts/check-railway-reconcile-age.mjs` alarm: the unchanged target workflow
+and Seed Freshness Monitor continue to require a recent successful reconcile.
+Only the lease-aware cutover transfers stale-run ownership to the independent
+watchdog, and that cutover must land before either activation flag is enabled.
+
+The safety boundary changes at the first possible provider call. A dead
+`LEASED`/`PREPARED` owner becomes recoverable only after its fixed lease expires.
+`MUTATION_STARTED` raises one project/environment-wide barrier which lease
+expiry cannot clear; failed or unreadable terminal verification leaves every
+automatic head blocked until matching strict proof or the protected **Railway
+Reconcile Manual Recovery** workflow records an immutable, evidence-bound
+resolution. Pre-action observer faults warn without adding another red check to
+`main`; post-mutation verification remains truthfully failing.
+
+Rollout is credential-fenced, not inferred from merged YAML. The control Worker,
+watchdog, verifier primitives, and manual surface land dormant first. The target
+workflow remains on its legacy credential/concurrency contract until operators
+disable it, drain every legacy run, provision the protected environments and
+independent route credentials, revoke the legacy Railway token, and land the
+lease-aware cutover. Keep `RAILWAY_RECONCILE_CUTOVER_ACTIVE=false` through that
+drain; operator-authorized retries fail before changing control state while the
+target still has the legacy input contract. CI green before those gates is
+readiness, not deployed or production-verified recovery.
 
 Two things it deliberately does not do:
 

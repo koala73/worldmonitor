@@ -1,0 +1,300 @@
+name: Railway Reconcile Manual Recovery
+run-name: Railway recovery · ${{ inputs.decision }} · run ${{ github.run_id }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      decision:
+        description: Closed operator decision
+        required: true
+        type: choice
+        options:
+          - resolve_pre_mutation_hold
+          - accept_observed_convergence
+          - authorize_current_main_retry
+      prior_id:
+        description: Exact prior attempt or dispatch-hold ID
+        required: true
+        type: string
+      expected_current_head:
+        description: Exact 40-character current main SHA
+        required: true
+        type: string
+      approver:
+        description: Independent audit approver identity; environment protection verifies it externally
+        required: true
+        type: string
+      reason:
+        description: Sanitized 10-240 character audit reason
+        required: true
+        type: string
+      evidence_json:
+        description: Closed decision-specific evidence JSON
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  actions: read
+  statuses: read
+
+jobs:
+  reject_non_main:
+    if: github.ref != 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions: {}
+    steps:
+      - name: Reject non-main recovery invocation
+        run: |
+          echo "::error::Railway reconciliation recovery must run from refs/heads/main"
+          exit 1
+
+  proof:
+    name: Read-only recovery proof
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    environment:
+      name: ingestion-acceptance-production-verification
+      deployment: false
+    permissions:
+      contents: read
+      actions: read
+      statuses: read
+    steps:
+      - name: Reject retry authorization before lease-aware cutover
+        if: inputs.decision == 'authorize_current_main_retry' && vars.RAILWAY_RECONCILE_CUTOVER_ACTIVE != 'true'
+        run: |
+          echo "::error::The lease-aware target workflow cutover is not active."
+          exit 1
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v5
+        with:
+          fetch-depth: 0
+          filter: blob:none
+          persist-credentials: false
+          ref: refs/heads/main
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '24'
+      - name: Install pinned Railway Viewer CLI
+        if: inputs.decision != 'resolve_pre_mutation_hold'
+        run: npm install --global @railway/cli@5.30.1
+      - name: Prove exact green main, inactive old work, and read-only Railway state
+        id: proof
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_RECONCILE_VIEWER_TOKEN }}
+          RAILWAY_PROJECT_ID: ${{ vars.RAILWAY_PROJECT_ID }}
+          RECOVERY_DECISION: ${{ inputs.decision }}
+          RECOVERY_PRIOR_ID: ${{ inputs.prior_id }}
+          RECOVERY_EXPECTED_HEAD: ${{ inputs.expected_current_head }}
+          RECOVERY_REASON: ${{ inputs.reason }}
+          RECOVERY_ACTOR: ${{ github.actor }}
+          RECOVERY_APPROVER: ${{ inputs.approver }}
+          RECOVERY_EVIDENCE_JSON: ${{ inputs.evidence_json }}
+          GITHUB_TRIGGERING_ACTOR: ${{ github.triggering_actor }}
+        run: node scripts/resolve-railway-reconcile-control.mjs proof
+
+  resolve:
+    name: Protected operator resolution
+    needs: [proof]
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    # GitHub does not expose the approving reviewer identity as a trustworthy
+    # workflow expression. The required approver input is an audit assertion,
+    # not a claim that YAML discovered the live reviewer. Required reviewers,
+    # prevent-self-review, and live reviewer identity/evidence are an
+    # EXTERNAL PROVISIONING GATE. YAML proves only the environment target.
+    environment:
+      name: ingestion-acceptance-production-breakglass
+      deployment: false
+    permissions:
+      contents: read
+      actions: read
+      statuses: read
+    outputs:
+      dispatch_authorized: ${{ steps.resolve.outputs.dispatch_authorized }}
+      expected_head: ${{ steps.resolve.outputs.expected_head }}
+      recovery_attempt_id: ${{ steps.resolve.outputs.recovery_attempt_id }}
+      superseding_generation: ${{ steps.resolve.outputs.superseding_generation }}
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v5
+        with:
+          fetch-depth: 0
+          filter: blob:none
+          persist-credentials: false
+          ref: refs/heads/main
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '24'
+      - name: Install pinned Railway Viewer CLI
+        if: inputs.decision != 'resolve_pre_mutation_hold'
+        run: npm install --global @railway/cli@5.30.1
+      - name: Record immutable operator resolution
+        id: resolve
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RAILWAY_RECONCILE_CONTROL_URL: ${{ vars.RAILWAY_RECONCILE_CONTROL_URL }}
+          RAILWAY_RECONCILE_OPERATOR_HMAC: ${{ secrets.RAILWAY_RECONCILE_OPERATOR_HMAC }}
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_RECONCILE_VIEWER_TOKEN }}
+          RAILWAY_PROJECT_ID: ${{ vars.RAILWAY_PROJECT_ID }}
+          RECOVERY_DECISION: ${{ inputs.decision }}
+          RECOVERY_PRIOR_ID: ${{ inputs.prior_id }}
+          RECOVERY_EXPECTED_HEAD: ${{ inputs.expected_current_head }}
+          RECOVERY_REASON: ${{ inputs.reason }}
+          RECOVERY_ACTOR: ${{ github.actor }}
+          RECOVERY_APPROVER: ${{ inputs.approver }}
+          RECOVERY_EVIDENCE_JSON: ${{ inputs.evidence_json }}
+          GITHUB_TRIGGERING_ACTOR: ${{ github.triggering_actor }}
+        run: node scripts/resolve-railway-reconcile-control.mjs resolve
+
+  dispatch-retry:
+    name: Dispatch ordinary lease-aware retry
+    needs: [resolve]
+    if: github.ref == 'refs/heads/main' && github.run_attempt == 1 && needs.resolve.outputs.dispatch_authorized == 'true' && vars.RAILWAY_RECONCILE_CUTOVER_ACTIVE == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      actions: write
+      contents: read
+      statuses: read
+    outputs:
+      outcome: ${{ steps.dispatch.outputs.outcome }}
+      workflow_run_id: ${{ steps.dispatch.outputs.workflow_run_id }}
+      run_attempt: ${{ steps.dispatch.outputs.run_attempt }}
+      rejection: ${{ steps.dispatch.outputs.rejection }}
+    steps:
+      # This write-capable job has no control credential or Railway secret.
+      - name: Check out the exact authorized dispatch helper
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+          ref: ${{ needs.resolve.outputs.expected_head }}
+      - name: Dispatch correlated superseding generation
+        id: dispatch
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EXPECTED_HEAD: ${{ needs.resolve.outputs.expected_head }}
+          RECOVERY_ATTEMPT_ID: ${{ needs.resolve.outputs.recovery_attempt_id }}
+        run: >-
+          node scripts/dispatch-stale-railway-reconcile.mjs
+          --phase dispatch
+          --expected-head-sha "$EXPECTED_HEAD"
+          --recovery-attempt-id "$RECOVERY_ATTEMPT_ID"
+      - name: Record definitive pre-dispatch rejection
+        if: steps.dispatch.outputs.outcome == 'PRE_DISPATCH_NOT_STARTED'
+        run: echo "Definitive pre-dispatch rejection recorded for protected retry."
+      - name: Record definitive GitHub dispatch rejection
+        if: steps.dispatch.outputs.outcome == 'DISPATCH_CONFIRMED_REJECTED'
+        run: echo "Definitive GitHub dispatch rejection recorded for protected retry."
+
+  reject-dispatched-run:
+    name: Close definitively rejected retry hold
+    needs: [resolve, dispatch-retry]
+    if: >-
+      always()
+      && github.ref == 'refs/heads/main'
+      && needs.dispatch-retry.result == 'success'
+      && (needs.dispatch-retry.outputs.outcome == 'PRE_DISPATCH_NOT_STARTED'
+        || needs.dispatch-retry.outputs.outcome == 'DISPATCH_CONFIRMED_REJECTED')
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    environment:
+      name: ingestion-acceptance-production-watchdog
+      deployment: false
+    permissions:
+      contents: read
+    steps:
+      - name: Check out the exact authorized rejection helper
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+          ref: ${{ needs.resolve.outputs.expected_head }}
+      - name: Close the exact durable dispatch hold
+        env:
+          RAILWAY_RECONCILE_CONTROL_URL: ${{ vars.RAILWAY_RECONCILE_CONTROL_URL }}
+          RAILWAY_RECONCILE_WATCHDOG_HMAC: ${{ secrets.RAILWAY_RECONCILE_WATCHDOG_HMAC }}
+          EXPECTED_HEAD: ${{ needs.resolve.outputs.expected_head }}
+          RECOVERY_ATTEMPT_ID: ${{ needs.resolve.outputs.recovery_attempt_id }}
+          REJECTION: ${{ needs.dispatch-retry.outputs.rejection }}
+        run: >-
+          node scripts/dispatch-stale-railway-reconcile.mjs
+          --phase reject
+          --expected-head-sha "$EXPECTED_HEAD"
+          --recovery-attempt-id "$RECOVERY_ATTEMPT_ID"
+          --rejection "$REJECTION"
+      - name: Report definitive dispatch rejection
+        run: |
+          echo "::error::GitHub definitively rejected the authorized retry. The durable hold was closed."
+          exit 1
+
+  bind-dispatched-run:
+    name: Bind exact dispatched run to recovery hold
+    needs: [resolve, dispatch-retry]
+    if: github.ref == 'refs/heads/main' && needs.dispatch-retry.outputs.outcome == 'RECOVERY_DISPATCH_ACCEPTED' && vars.RAILWAY_RECONCILE_CUTOVER_ACTIVE == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    environment:
+      name: ingestion-acceptance-production-watchdog
+      deployment: false
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v5
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+          ref: ${{ needs.resolve.outputs.expected_head }}
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '24'
+      - name: Bind exact dispatched run to durable hold
+        env:
+          RAILWAY_RECONCILE_CONTROL_URL: ${{ vars.RAILWAY_RECONCILE_CONTROL_URL }}
+          RAILWAY_RECONCILE_WATCHDOG_HMAC: ${{ secrets.RAILWAY_RECONCILE_WATCHDOG_HMAC }}
+          EXPECTED_HEAD: ${{ needs.resolve.outputs.expected_head }}
+          RECOVERY_ATTEMPT_ID: ${{ needs.resolve.outputs.recovery_attempt_id }}
+          WORKFLOW_RUN_ID: ${{ needs.dispatch-retry.outputs.workflow_run_id }}
+          RUN_ATTEMPT: ${{ needs.dispatch-retry.outputs.run_attempt }}
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE'
+          import { RailwayReconcileControlClient } from './scripts/railway-reconcile-control-client.mjs';
+
+          const runAttempt = Number(process.env.RUN_ATTEMPT);
+          if (!/^[0-9a-f]{40}$/i.test(process.env.EXPECTED_HEAD ?? '')) {
+            throw new Error('expected head must be an exact commit SHA');
+          }
+          if (!/^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$/.test(process.env.RECOVERY_ATTEMPT_ID ?? '')) {
+            throw new Error('recovery attempt id is invalid');
+          }
+          if (!/^[1-9][0-9]{0,23}$/.test(process.env.WORKFLOW_RUN_ID ?? '')) {
+            throw new Error('workflow run id is invalid');
+          }
+          if (runAttempt !== 1) throw new Error('manual recovery must bind run attempt 1');
+
+          const client = new RailwayReconcileControlClient({
+            baseUrl: process.env.RAILWAY_RECONCILE_CONTROL_URL,
+            role: 'watchdog',
+            secret: process.env.RAILWAY_RECONCILE_WATCHDOG_HMAC,
+          });
+          const response = await client.bindRun({
+            recoveryAttemptId: process.env.RECOVERY_ATTEMPT_ID,
+            headSha: process.env.EXPECTED_HEAD,
+            runId: process.env.WORKFLOW_RUN_ID,
+            runAttempt,
+          });
+          const hold = response.data?.dispatchHold;
+          if (response.outcome !== 'DISPATCH_RUN_BOUND'
+            || hold?.state !== 'RUN_BOUND'
+            || hold?.recoveryAttemptId !== process.env.RECOVERY_ATTEMPT_ID
+            || hold?.headSha !== process.env.EXPECTED_HEAD
+            || hold?.runId !== process.env.WORKFLOW_RUN_ID
+            || hold?.runAttempt !== runAttempt) {
+            throw new Error('controller did not confirm the exact RUN_BOUND transition');
+          }
+          console.log('RUN_BOUND');
+          NODE

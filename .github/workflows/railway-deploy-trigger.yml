@@ -1,4 +1,7 @@
 name: Railway Deploy Trigger
+run-name: >-
+  Railway reconcile ${{ github.event_name == 'workflow_dispatch' && inputs.recovery_attempt_id || github.event_name }}
+  @ ${{ github.event_name == 'workflow_dispatch' && inputs.expected_head_sha || github.sha }}
 
 # Builds the Railway services a merge actually changed, from CI (#6142).
 #
@@ -81,6 +84,15 @@ on:
         description: 'Report what would be deployed without deploying it'
         type: boolean
         default: false
+      recovery_attempt_id:
+        description: 'Durable watchdog recovery ID, or none for an ordinary manual run'
+        type: string
+        required: true
+        default: 'none'
+      expected_head_sha:
+        description: 'Exact current green main SHA authorized for this run'
+        type: string
+        required: true
 
 # Never cancel a run in progress: this one mutates production, and a cancelled
 # sweep leaves half the fleet triggered with no record of where it stopped. A

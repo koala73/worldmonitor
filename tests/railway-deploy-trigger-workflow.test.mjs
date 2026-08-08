@@ -13,6 +13,8 @@ import { fileURLToPath } from 'node:url';
 
 import YAML from 'yaml';
 
+import { MUTATION_BOUNDARY_STEP_NAMES } from '../scripts/resolve-railway-reconcile-control.mjs';
+
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const source = readFileSync(resolve(repoRoot, '.github/workflows/railway-deploy-trigger.yml'), 'utf8');
 const workflow = YAML.parse(source);
@@ -27,6 +29,14 @@ function stepNamed(name) {
 const GATE_GUARD = "steps.head.outputs.gate == 'success'";
 
 describe('Railway deploy trigger workflow', () => {
+  it('emits a mutation step recognized by protected pre-mutation recovery', () => {
+    const recognized = steps.filter((step) => MUTATION_BOUNDARY_STEP_NAMES.includes(step.name));
+    assert.deepEqual(
+      recognized.map((step) => step.name),
+      ['Trigger deploys for services this merge changed'],
+    );
+  });
+
   it('requires main\'s required gates to be green before it can deploy', () => {
     // The whole design is "replace Railway's blunt whole-check-suite rule with
     // the repository's own required-gate rule". Losing this guard does not

@@ -380,6 +380,9 @@ Runs before every `git push`:
 | `indexnow-submit.yml` | Successful Production deployment, manual | Submits deployment-relevant canonical URLs to IndexNow only after their host-specific ownership keys are directly reachable |
 | `convex-deploy.yml` | Push to main, manual | Deploys Convex backend functions |
 | `deploy-worker.yml` | Push to main (worker paths), manual | Deploys the `api-cors-preflight` Cloudflare Worker |
+| `deploy-railway-reconcile-control.yml` | Push to main (control-plane paths), manual | Tests and deploys the isolated SQLite-backed Durable Object used for Railway reconciliation leases, attempts, dispatch holds, and the global mutation-uncertain barrier; deployment does not itself activate the trigger cutover |
+| `railway-deploy-trigger-watchdog.yml` | 15-minute offset cron, manual | Independently classifies reconcile liveness with bounded GitHub history; observe-only until both cutover and recovery flags are enabled, and then may dispatch one fenced replacement without cancelling, rerunning, or approving any existing production run |
+| `railway-reconcile-manual-recovery.yml` | Protected manual dispatch only | Evidence-bound break-glass resolution for ambiguous dispatch holds or post-mutation barriers; records immutable supersession and delegates any retry to the ordinary lease-aware workflow rather than carrying a Railway deploy token |
 | `build-desktop.yml` | Release tag, push, manual | Multi-platform Tauri build, code signing (macOS), AppImage library stripping (Linux), smoke test |
 | `docker-publish.yml` | Release, manual | Multi-arch image (amd64, arm64) pushed to GHCR |
 | `publish-cli.yml` | `cli-v*` tag, manual | Tests and publishes the `worldmonitor` npm CLI (`cli/`) via OIDC trusted publishing (no token) with provenance |

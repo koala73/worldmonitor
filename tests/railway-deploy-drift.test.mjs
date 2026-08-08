@@ -20,6 +20,7 @@ import {
   isProblemVerdict,
   missingBaselinedServices,
   summarizeDeployDrift,
+  summarizeStrictDeployDrift,
 } from '../scripts/check-railway-deploy-drift.mjs';
 import { validateAcceptanceBaseline } from '../scripts/check-seed-freshness.mjs';
 import { resolveServiceClosure } from '../scripts/railway-deploy-closure.mjs';
@@ -753,6 +754,72 @@ describe('the shipped deploy-drift baseline', () => {
   it('names services exactly rather than by pattern', () => {
     for (const entry of baseline.acknowledged) {
       assert.doesNotMatch(entry.name, /[*?[\]]/, `${entry.name} must be an exact service name`);
+    }
+  });
+});
+
+describe('strict terminal reconciliation drift', () => {
+  const result = (service, verdict) => ({ service, verdict, detail: verdict });
+
+  it('accepts only positive terminal current states with complete fleet coverage', () => {
+    const summary = summarizeStrictDeployDrift([
+      result('a', 'CURRENT'),
+      result('b', 'CURRENT_FOR_CLOSURE'),
+      { ...result('c', 'AHEAD'), runningSha: NEWER },
+    ], ['a', 'b', 'c'], {
+      isOnAuthorizedMainLineage: (sha) => sha === NEWER,
+    });
+    assert.equal(summary.ok, true);
+    assert.deepEqual(summary.missing, []);
+    assert.deepEqual(summary.blocking, []);
+  });
+
+  it('rejects an AHEAD descendant unless strict mode proves it is on authorized main', () => {
+    const arbitraryDescendant = { ...result('a', 'AHEAD'), runningSha: NEWER };
+    const unproven = summarizeStrictDeployDrift([arbitraryDescendant], ['a']);
+    assert.equal(unproven.ok, false);
+    assert.equal(unproven.blocking[0].verdict, 'AHEAD_LINEAGE_UNPROVEN');
+
+    const offMain = summarizeStrictDeployDrift([arbitraryDescendant], ['a'], {
+      isOnAuthorizedMainLineage: () => false,
+    });
+    assert.equal(offMain.ok, false);
+    assert.equal(offMain.blocking[0].verdict, 'AHEAD_LINEAGE_UNPROVEN');
+
+    const ordinary = summarizeDeployDrift([arbitraryDescendant]);
+    assert.equal(ordinary.ok, true);
+    assert.deepEqual(ordinary.blocking, []);
+  });
+
+  it('rejects pending builds, baselineable problems, duplicates, and omitted services', () => {
+    const pending = summarizeStrictDeployDrift([result('a', 'PENDING_BUILD')], ['a']);
+    assert.equal(pending.ok, false);
+    assert.equal(pending.blocking[0].verdict, 'PENDING_BUILD');
+
+    const omitted = summarizeStrictDeployDrift([result('a', 'CURRENT')], ['a', 'b']);
+    assert.equal(omitted.ok, false);
+    assert.deepEqual(omitted.missing, ['b']);
+
+    const duplicate = summarizeStrictDeployDrift([
+      result('a', 'CURRENT'),
+      result('a', 'CURRENT'),
+    ], ['a']);
+    assert.equal(duplicate.ok, false);
+    assert.deepEqual(duplicate.duplicates, ['a']);
+
+    const baselinedInOrdinaryMonitor = summarizeStrictDeployDrift([
+      result('a', 'BUILD_FAILED'),
+    ], ['a']);
+    assert.equal(baselinedInOrdinaryMonitor.ok, false);
+    assert.equal(baselinedInOrdinaryMonitor.blocking[0].verdict, 'BUILD_FAILED');
+  });
+
+  it('fails closed on an empty or malformed expected fleet', () => {
+    for (const expected of [[], null, ['a', 'a'], ['']]) {
+      assert.throws(
+        () => summarizeStrictDeployDrift([], expected),
+        /expected service|unique|non-empty/i,
+      );
     }
   });
 });
