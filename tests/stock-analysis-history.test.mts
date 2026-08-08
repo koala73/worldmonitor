@@ -1,11 +1,25 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { afterEach, describe, it } from 'node:test';
 
 import {
   getLatestStockAnalysisSnapshots,
+  getMissingOrStaleStockAnalysisSymbols,
+  hasFreshStockAnalysisHistory,
   mergeStockAnalysisHistory,
+  STOCK_ANALYSIS_FRESH_MS,
   type StockAnalysisSnapshot,
 } from '../src/services/stock-analysis-history.ts';
+import {
+  getStockAnalysisRatingAction,
+  getStockAnalysisRatingBullishFactors,
+  getStockAnalysisRatingConfidence,
+  getStockAnalysisRatingRiskFactors,
+  getStockAnalysisRatingScore,
+  getStockAnalysisRatingSignal,
+  getStockAnalysisRatingSummary,
+  getStockAnalysisRatingWhyNow,
+} from '../src/services/stock-analysis-rating.ts';
 import { analyzeStock } from '../server/worldmonitor/market/v1/analyze-stock.ts';
 import { getStockAnalysisHistory } from '../server/worldmonitor/market/v1/get-stock-analysis-history.ts';
 import { MarketServiceClient } from '../src/generated/client/worldmonitor/market/v1/service_client.ts';
@@ -63,7 +77,7 @@ function createRedisAwareFetch() {
     sortedSets.set(key, next);
   };
 
-  return (async (input: RequestInfo | URL, init?: RequestInit) => {
+  const fetchImpl = (async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
 
     if (url.includes('query1.finance.yahoo.com')) {
@@ -85,6 +99,15 @@ function createRedisAwareFetch() {
         const value = decodeURIComponent(parts[3] || '');
         redis.set(key, value);
         return new Response(JSON.stringify({ result: 'OK' }), { status: 200 });
+      }
+      if (parsed.pathname === '/') {
+        const command = JSON.parse(typeof init?.body === 'string' ? init.body : '[]') as string[];
+        const [verb, key = '', value = ''] = command;
+        if (verb === 'SET') {
+          redis.set(key, value);
+          return new Response(JSON.stringify({ result: 'OK' }), { status: 200 });
+        }
+        throw new Error(`Unexpected POST / command: ${verb}`);
       }
       if (parsed.pathname === '/pipeline') {
         const commands = JSON.parse(typeof init?.body === 'string' ? init.body : '[]') as string[][];
@@ -125,6 +148,8 @@ function createRedisAwareFetch() {
 
     throw new Error(`Unexpected URL: ${url}`);
   }) as typeof fetch;
+
+  return { fetch: fetchImpl, redis, sortedSets };
 }
 
 afterEach(() => {
@@ -140,8 +165,15 @@ function makeSnapshot(
   generatedAt: string,
   signalScore: number,
   signal = 'Buy',
+  options: {
+    withAnalystFields?: boolean;
+    withFundamentals?: boolean;
+    withCompositeScore?: boolean;
+    withoutRatingSignal?: boolean;
+    withoutRatingNarrative?: boolean;
+  } = {},
 ): StockAnalysisSnapshot {
-  return {
+  const base: StockAnalysisSnapshot = {
     available: true,
     symbol,
     name: symbol,
@@ -151,6 +183,13 @@ function makeSnapshot(
     changePercent: 1.2,
     signalScore,
     signal,
+    ratingSignal: signal,
+    ratingSummary: `${symbol} summary`,
+    ratingAction: 'Wait for confirmation.',
+    ratingConfidence: 'Medium',
+    ratingWhyNow: 'Composite evidence is improving.',
+    ratingBullishFactors: ['Fundamental quality is supportive.'],
+    ratingRiskFactors: ['Composite setup needs confirmation.'],
     trendStatus: 'Bull',
     volumeStatus: 'Normal',
     macdStatus: 'Bullish',
@@ -187,8 +226,31 @@ function makeSnapshot(
     analysisAt: Date.parse(generatedAt),
     stopLoss: 95,
     takeProfit: 110,
-    engineVersion: 'v2',
+    engineVersion: 'v3-composite',
+    recentUpgrades: [],
   };
+  if (options.withAnalystFields) {
+    base.analystConsensus = { strongBuy: 1, buy: 2, hold: 3, sell: 0, strongSell: 0, total: 6, period: '0m' };
+    base.priceTarget = { mean: 150, median: 152, high: 180, low: 130, current: 145, numberOfAnalysts: 6 };
+  }
+  if (options.withFundamentals) {
+    base.fundamentals = {};
+  }
+  if (options.withCompositeScore) {
+    base.compositeScore = signalScore;
+  }
+  if (options.withoutRatingSignal) {
+    delete (base as Partial<StockAnalysisSnapshot>).ratingSignal;
+  }
+  if (options.withoutRatingNarrative) {
+    delete (base as Partial<StockAnalysisSnapshot>).ratingSummary;
+    delete (base as Partial<StockAnalysisSnapshot>).ratingAction;
+    delete (base as Partial<StockAnalysisSnapshot>).ratingConfidence;
+    delete (base as Partial<StockAnalysisSnapshot>).ratingWhyNow;
+    delete (base as Partial<StockAnalysisSnapshot>).ratingBullishFactors;
+    delete (base as Partial<StockAnalysisSnapshot>).ratingRiskFactors;
+  }
+  return base;
 }
 
 describe('stock analysis history helpers', () => {
@@ -247,13 +309,161 @@ describe('stock analysis history helpers', () => {
     assert.equal(latest[0]?.symbol, 'AAPL');
     assert.equal(latest[1]?.symbol, 'MSFT');
   });
+
+  it('treats time-fresh snapshots that lack analyst fields as stale so a refetch is forced', () => {
+    const recent = new Date(Date.now() - 60_000).toISOString();
+    const history = {
+      AAPL: [makeSnapshot('AAPL', recent, 70)],
+    };
+
+    assert.equal(hasFreshStockAnalysisHistory(history, ['AAPL']), false);
+    assert.deepEqual(getMissingOrStaleStockAnalysisSymbols(history, ['AAPL']), ['AAPL']);
+  });
+
+  it('treats time-fresh analyst snapshots without fundamentals as stale', () => {
+    const recent = new Date(Date.now() - 60_000).toISOString();
+    const history = {
+      AAPL: [makeSnapshot('AAPL', recent, 70, 'Buy', { withAnalystFields: true })],
+    };
+
+    assert.equal(hasFreshStockAnalysisHistory(history, ['AAPL']), false);
+    assert.deepEqual(getMissingOrStaleStockAnalysisSymbols(history, ['AAPL']), ['AAPL']);
+  });
+
+  it('treats fresh snapshots with the current analyst and fundamentals schema as truly fresh', () => {
+    const recent = new Date(Date.now() - 60_000).toISOString();
+    const history = {
+      AAPL: [makeSnapshot('AAPL', recent, 70, 'Buy', {
+        withAnalystFields: true,
+        withFundamentals: true,
+        withCompositeScore: true,
+      })],
+    };
+
+    assert.equal(hasFreshStockAnalysisHistory(history, ['AAPL']), true);
+    assert.deepEqual(getMissingOrStaleStockAnalysisSymbols(history, ['AAPL']), []);
+  });
+
+  it('treats a time-fresh snapshot without the additive rating signal as stale', () => {
+    const recent = new Date(Date.now() - 60_000).toISOString();
+    const history = {
+      AAPL: [makeSnapshot('AAPL', recent, 70, 'Buy', {
+        withAnalystFields: true,
+        withFundamentals: true,
+        withCompositeScore: true,
+        withoutRatingSignal: true,
+      })],
+    };
+
+    assert.equal(hasFreshStockAnalysisHistory(history, ['AAPL']), false);
+    assert.deepEqual(getMissingOrStaleStockAnalysisSymbols(history, ['AAPL']), ['AAPL']);
+  });
+
+  it('treats a time-fresh snapshot without the additive rating narrative as stale', () => {
+    const recent = new Date(Date.now() - 60_000).toISOString();
+    const history = {
+      AAPL: [makeSnapshot('AAPL', recent, 70, 'Buy', {
+        withAnalystFields: true,
+        withFundamentals: true,
+        withCompositeScore: true,
+        withoutRatingNarrative: true,
+      })],
+    };
+
+    assert.equal(hasFreshStockAnalysisHistory(history, ['AAPL']), false);
+    assert.deepEqual(getMissingOrStaleStockAnalysisSymbols(history, ['AAPL']), ['AAPL']);
+  });
+
+  it('treats a time-fresh pre-composite snapshot as stale', () => {
+    const recent = new Date(Date.now() - 60_000).toISOString();
+    const history = {
+      AAPL: [makeSnapshot('AAPL', recent, 70, 'Buy', {
+        withAnalystFields: true,
+        withFundamentals: true,
+      })],
+    };
+
+    assert.equal(hasFreshStockAnalysisHistory(history, ['AAPL']), false);
+    assert.deepEqual(getMissingOrStaleStockAnalysisSymbols(history, ['AAPL']), ['AAPL']);
+  });
+
+  it('still treats time-stale snapshots as stale even with analyst fields', () => {
+    const stale = new Date(Date.now() - (STOCK_ANALYSIS_FRESH_MS * 2)).toISOString();
+    const history = {
+      AAPL: [makeSnapshot('AAPL', stale, 70, 'Buy', {
+        withAnalystFields: true,
+        withFundamentals: true,
+        withCompositeScore: true,
+      })],
+    };
+
+    assert.equal(hasFreshStockAnalysisHistory(history, ['AAPL']), false);
+    assert.deepEqual(getMissingOrStaleStockAnalysisSymbols(history, ['AAPL']), ['AAPL']);
+  });
+});
+
+describe('stock analysis rating presentation', () => {
+  it('prefers the composite rating score and falls back for legacy records', () => {
+    assert.equal(getStockAnalysisRatingScore({ signalScore: 78, compositeScore: 57 }), 57);
+    assert.equal(getStockAnalysisRatingScore({ signalScore: 78 }), 78);
+  });
+
+  it('prefers the additive rating signal and falls back for legacy records', () => {
+    assert.equal(getStockAnalysisRatingSignal({ signal: 'Strong buy', ratingSignal: 'Hold' }), 'Hold');
+    assert.equal(getStockAnalysisRatingSignal({ signal: 'Strong buy' }), 'Strong buy');
+  });
+
+  it('prefers additive rating narrative fields and falls back for legacy records', () => {
+    assert.equal(getStockAnalysisRatingSummary({ summary: 'Technical', ratingSummary: 'Composite' }), 'Composite');
+    assert.equal(getStockAnalysisRatingSummary({ summary: 'Technical' }), 'Technical');
+    assert.equal(getStockAnalysisRatingAction({ action: 'Technical action', ratingAction: 'Composite action' }), 'Composite action');
+    assert.equal(getStockAnalysisRatingAction({ action: 'Technical action' }), 'Technical action');
+    assert.equal(getStockAnalysisRatingConfidence({ confidence: 'High', ratingConfidence: 'Medium' }), 'Medium');
+    assert.equal(getStockAnalysisRatingConfidence({ confidence: 'High' }), 'High');
+    assert.equal(getStockAnalysisRatingWhyNow({ whyNow: 'Technical', ratingWhyNow: 'Composite' }), 'Composite');
+    assert.equal(getStockAnalysisRatingWhyNow({ whyNow: 'Technical' }), 'Technical');
+    assert.deepEqual(
+      getStockAnalysisRatingBullishFactors({ bullishFactors: ['Technical'], ratingBullishFactors: ['Composite'] }),
+      ['Composite'],
+    );
+    assert.deepEqual(getStockAnalysisRatingBullishFactors({ bullishFactors: ['Technical'] }), ['Technical']);
+    assert.deepEqual(
+      getStockAnalysisRatingRiskFactors({ riskFactors: ['Technical'], ratingRiskFactors: ['Composite'] }),
+      ['Composite'],
+    );
+    assert.deepEqual(getStockAnalysisRatingRiskFactors({ riskFactors: ['Technical'] }), ['Technical']);
+  });
+
+  it('does not use raw technical fields for unlabeled panel rating surfaces', () => {
+    const source = readFileSync(
+      new URL('../src/components/StockAnalysisPanel.ts', import.meta.url),
+      'utf8',
+    );
+
+    assert.match(source, /getStockAnalysisRatingScore/);
+    assert.match(source, /getStockAnalysisRatingSignal/);
+    assert.match(source, /getStockAnalysisRatingSummary/);
+    assert.match(source, /getStockAnalysisRatingAction/);
+    assert.match(source, /getStockAnalysisRatingConfidence/);
+    assert.match(source, /getStockAnalysisRatingWhyNow/);
+    assert.match(source, /getStockAnalysisRatingBullishFactors/);
+    assert.match(source, /getStockAnalysisRatingRiskFactors/);
+    assert.doesNotMatch(source, /\bitem\.signalScore\b/);
+    assert.doesNotMatch(source, /\bitem\.signal\b/);
+    assert.doesNotMatch(source, /\bitem\.summary\b/);
+    assert.doesNotMatch(source, /\bitem\.action\b/);
+    assert.doesNotMatch(source, /\bitem\.confidence\b/);
+    assert.doesNotMatch(source, /\bitem\.whyNow\b/);
+    assert.doesNotMatch(source, /\bitem\.bullishFactors\b/);
+    assert.doesNotMatch(source, /\bitem\.riskFactors\b/);
+  });
 });
 
 describe('server-backed stock analysis history', () => {
   it('stores fresh analysis snapshots in Redis and serves them back in batch', async () => {
     process.env.UPSTASH_REDIS_REST_URL = 'https://redis.example';
     process.env.UPSTASH_REDIS_REST_TOKEN = 'token';
-    globalThis.fetch = createRedisAwareFetch();
+    globalThis.fetch = createRedisAwareFetch().fetch;
 
     const analysis = await analyzeStock({} as never, {
       symbol: 'AAPL',
@@ -273,6 +483,36 @@ describe('server-backed stock analysis history', () => {
     assert.equal(history.items[0]?.symbol, 'AAPL');
     assert.equal(history.items[0]?.snapshots.length, 1);
     assert.equal(history.items[0]?.snapshots[0]?.signal, analysis.signal);
+    assert.equal(history.items[0]?.snapshots[0]?.ratingSignal, analysis.ratingSignal);
+  });
+
+  it('does not replay retained snapshots from the pre-rating-signal v4 namespace', async () => {
+    process.env.UPSTASH_REDIS_REST_URL = 'https://redis.example';
+    process.env.UPSTASH_REDIS_REST_TOKEN = 'token';
+    const state = createRedisAwareFetch();
+    globalThis.fetch = state.fetch;
+
+    const legacy = makeSnapshot('AAPL', new Date().toISOString(), 78, 'Strong buy', {
+      withAnalystFields: true,
+      withFundamentals: true,
+    });
+    const analysisId = 'legacy-v4-analysis';
+    state.sortedSets.set('market:stock-analysis-history:index:v4:AAPL:news', [{
+      member: analysisId,
+      score: legacy.analysisAt,
+    }]);
+    state.redis.set(`market:stock-analysis-history:item:v4:${analysisId}`, JSON.stringify({
+      ...legacy,
+      analysisId,
+    }));
+
+    const history = await getStockAnalysisHistory({} as never, {
+      symbols: 'AAPL' as never,
+      limitPerSymbol: 4,
+      includeNews: true,
+    });
+
+    assert.deepEqual(history.items, []);
   });
 });
 
@@ -292,7 +532,7 @@ describe('MarketServiceClient getStockAnalysisHistory', () => {
     });
 
     assert.match(requestedUrl, /\/api\/market\/v1\/get-stock-analysis-history\?/);
-    assert.match(requestedUrl, /symbols=AAPL%2CMSFT|symbols=AAPL,MSFT/);
+    assert.match(requestedUrl, /symbols=AAPL&symbols=MSFT/);
     assert.match(requestedUrl, /limit_per_symbol=4/);
     assert.match(requestedUrl, /include_news=true/);
   });

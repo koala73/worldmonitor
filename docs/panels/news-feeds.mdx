@@ -1,0 +1,152 @@
+---
+title: "News Feeds"
+description: "Catalogue of regional, topical, and variant-specific news-feed panels — content-stream surfaces sharing a common framework with scoped filters."
+---
+
+Every variant of WorldMonitor ships a set of **content-stream panels** — regional news, topical news, tech / startup feeds, finance and commodity streams, energy headlines, and happy-variant feel-good streams. They share a common panel framework: ranked headlines, source attribution, activity tracking, and Cmd+K / custom-monitor highlighting. This page is the collective reference so the per-panel behaviour is findable without writing one page per feed.
+
+Every panel name in the tables below is also registered in at least one `*_PANELS` block in `src/config/panels.ts`. When you open a panel and the content is empty, check [Data Sources](/data-sources) and the global [health endpoint](/health-endpoints) for the underlying feed's status.
+
+For the scoring, freshness, dedupe, story tracking, brief filtering, cooldown,
+LLM, and bias controls shared across these feeds, see the canonical
+[News Digest and Briefing methodology](/methodology/news-digest-and-briefing).
+
+## Regional news
+
+Regional panels scope the world to one macro-region's news stream, with language coverage and source curation optimised for that region. They share the `regional news` family in the geopolitical variant and appear in the Cmd+K "News" group.
+
+| Panel id | Title | Variants |
+|---|---|---|
+| `politics` | World News | Full / tech / finance / commodity |
+| `us` | United States | Full |
+| `europe` | Europe | Full |
+| `middleeast` | Middle East | Full |
+| `africa` | Africa | Full |
+| `latam` | Latin America | Full |
+| `asia` | Asia-Pacific | Full |
+
+All free. Source curation and entitlement live in `src/config/variants/full.ts` (and equivalents).
+
+## Topical news
+
+Topic-scoped news feeds — each panel is the canonical news view for its domain. Topical panels are usually paired with the matching intelligence / data panel (e.g. Crypto News next to Crypto Sectors).
+
+| Panel id | Title | Typical variant |
+|---|---|---|
+| `economic-news` | Economic News | Full / finance / commodity |
+| `markets-news` | Markets News | Finance |
+| `crypto-news` | Crypto News | Finance |
+| `climate-news` | Climate News | Full / commodity |
+| `mining-news` | Mining News | Commodity |
+| `commodity-news` | Commodity News | Commodity |
+| `commodities-news` | Commodities News | Finance |
+
+All free.
+
+## Tech / startup streams (tech variant)
+
+The tech variant ships a large family of content streams covering the startup ecosystem, infrastructure trends, and tech-policy signals. They appear in the tech variant's panel grid and are reachable from Cmd+K.
+
+| Panel id | Title |
+|---|---|
+| `startups` | Startups & VC |
+| `unicorns` | Unicorns |
+| `accelerators` | Accelerators & Demo Days |
+| `regionalStartups` | Global Startup News |
+| `fintech` | Fintech & Trading Tech |
+| `ipo` | IPO & SPAC |
+| `layoffs` | Layoffs Tracker |
+| `producthunt` | Product Hunt |
+| `thinktanks` | Think Tanks |
+| `vcblogs` | VC Insights & Essays |
+| `defense-patents` | R&D Signal |
+| `ai-regulation` | AI Regulation Dashboard |
+| `tech-hubs` | Hot Tech Hubs |
+| `ai` | AI/ML News / AI/ML |
+| `cloud` | Cloud |
+| `hardware` | Hardware |
+| `dev` | Dev tools |
+| `security` | Security |
+| `github` | GitHub |
+
+All free. Specific sub-feeds are configured in `src/config/variants/tech.ts`.
+
+## Finance streams (finance variant)
+
+The finance variant's content-stream panels are tighter and market-focused.
+
+| Panel id | Title |
+|---|---|
+| `bonds` | Bonds |
+| `centralbanks` | Central Bank Watch |
+| `derivatives` | Derivatives & Options |
+| `forex` | Forex |
+| `institutional` | Institutional |
+| `policy` | Policy |
+| `fin-regulation` | Financial Regulation |
+| `commodity-regulation` | Regulation & Policy |
+| `analysis` | Market Analysis |
+
+All free. Stream configuration lives in `src/config/variants/finance.ts`.
+
+## Energy streams (energy variant)
+
+The energy variant ships a focused set of content streams for live energy
+headlines, oil and gas markets, and supply-chain chokepoints. The site has
+client-side `ENERGY_FEEDS`; the server digest currently normalises
+`variant=energy` to `full`, so energy-only categories can use direct per-feed
+fallback when they are absent from the digest.
+
+| Panel id | Title |
+|---|---|
+| `live-news` | Energy Headlines |
+| `energy` | Energy Markets News |
+| `supply-chain` | Chokepoints & Routes |
+
+All free. Stream configuration lives in `src/config/variants/energy.ts` and
+`src/config/feeds.ts`.
+
+## Happy variant feeds
+
+The happy variant (positive-news product) replaces conflict-centric feeds with a curated set of constructive-news surfaces.
+
+| Panel id | Title |
+|---|---|
+| `species` | Conservation Wins |
+| `breakthroughs` | Scientific Breakthroughs |
+| `progress` | Progress Signals |
+| `spotlight` | Spotlight |
+| `giving` | Giving & Philanthropy |
+| `digest` | Daily Digest |
+| `events` | Positive Events |
+| `funding` | Funding |
+| `counters` | Live Counters |
+| `gov` | Government Action |
+| `renewable` | Renewable Energy |
+
+All free. Stream configuration lives in `src/config/variants/happy.ts`.
+
+## Shared behaviour across all news panels
+
+- **Activity tracking** — newly arrived items get the standard new-item visual treatment.
+- **Custom Monitor highlighting** — matching articles surface their [monitor](/panels/monitors) colour as an accent (including inside clusters).
+- **Cmd+K discoverability** — each panel is searchable by its title and category.
+- **Free by default** — none of the news-feed panels are PRO-gated.
+
+### Backed by endpoints
+
+| Feed family | Endpoint | Notes |
+|---|---|---|
+| Digest feed | `GET /api/news/v1/list-feed-digest` | Pre-aggregated RSS digest by site variant. |
+| Summary cache lookup | `GET /api/news/v1/summarize-article-cache` | Cache-only GET for deterministic article-summary keys; use `POST /api/news/v1/summarize-article` to generate. |
+| arXiv papers | `GET /api/research/v1/list-arxiv-papers` | ResearchService academic-paper feed. |
+| Trending repos | `GET /api/research/v1/list-trending-repos` | ResearchService GitHub trending feed. |
+| Hacker News items | `GET /api/research/v1/list-hackernews-items` | ResearchService Hacker News feed. |
+| Giving activity | `GET /api/giving/v1/get-giving-summary` | Global personal-giving and philanthropy summary used by happy-variant giving surfaces. |
+
+## Related
+
+- [Signal Intelligence](/signal-intelligence) — structural overview of how news feeds are classified, deduplicated, and ranked.
+- [News Digest and Briefing methodology](/methodology/news-digest-and-briefing) — canonical scoring, freshness, story tracking, brief filtering, cooldown, LLM, and bias controls.
+- [Data Sources](/data-sources) — the server digest feed inventory and broader upstream source list.
+- [My Monitors](/panels/monitors) — how keyword monitors work across news feeds.

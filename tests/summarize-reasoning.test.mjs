@@ -253,8 +253,13 @@ describe('Fix 3: hasReasoningPreamble', () => {
 describe('Fix 4: cache version bump', () => {
   const src = readSrc('src/utils/summary-cache-key.ts');
 
-  it('CACHE_VERSION is v5', () => {
-    assert.match(src, /CACHE_VERSION\s*=\s*'v5'/,
-      'CACHE_VERSION must be v5 to invalidate entries from old conflating prompts');
+  it('CACHE_VERSION is v9', () => {
+    // Bumped v8 → v9 on 2026-08-01 (#5969): prompt generation and cache
+    // identity now select the same first five unique, non-empty headlines in
+    // request order, so v8 rows keyed over the old sort-before-cap window
+    // must not be served. (v7 → v8 on 2026-07-06 for the DeepSeek cutover,
+    // #4944; v6 → v7 on 2026-07-05 for pair-dedup, #4914.)
+    assert.match(src, /CACHE_VERSION\s*=\s*'v9'/,
+      'CACHE_VERSION must be v9 to retire rows keyed over the pre-#5969 selection window');
   });
 });

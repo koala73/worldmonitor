@@ -1,0 +1,122 @@
+name: China Decision Parity Live Probe
+
+# Runs the LIVE half of scripts/audit-china-decision-parity.mjs against deployed
+# production.
+#
+# Why this workflow exists (#5643): #5639 shipped the audit with two halves and
+# described a "static Railway/staging audit" as something that had been
+# confirmed. Only the static half was ever automated (it runs inside
+# tests/china-decision-parity-audit.test.mjs under `npm run test:data`).
+# `probeChinaDecisionParity` — the leg that actually talks to a deployed URL —
+# was referenced by nothing in the repo: no Makefile target, no npm script, no
+# workflow. The capability was well-tested against mocked fetches and had never
+# executed against a real deployment. It did not even work: the probe sent no
+# User-Agent, so Cloudflare's managed challenge answered Node's default `node`
+# UA with an HTML 403 on both probed routes (reproduced against production
+# 2026-07-26, fixed in the same change as this workflow).
+#
+# What the probe asserts against LIVE production, neither of which any in-process
+# test can reach — both depend on deployed edge config and on the Railway
+# derived-signals bundle actually having published:
+#   - the public composition RPC answers 200 with a payload that satisfies the
+#     published six-domain contract (schema version, ordered group ids, group
+#     states, per-item provenance, and the three access tiers).
+#   - the public `chinaDecisionSignals` bootstrap projection answers 200 with
+#     the same contract and a canonical snapshot no older than one hour, which
+#     is the seeder's 15-minute refresh cadence with slack.
+# Probe output is sanitized by construction to route status, latency, generation
+# time, and group states — never env vars, keys, Redis values, or source
+# documents.
+#
+# `--require-live` is what keeps this from silently becoming the very gap it
+# closes: without it, a workflow that lost its `--url` would run the static half
+# only and still exit 0, reporting a staging audit that never happened.
+#
+# No `npm ci`: the script's import graph is Node builtins plus local
+# scripts/*.mjs files, so it runs under plain `node` on the Node 24 runner.
+#
+# Triggers:
+#   - schedule (every 6h at :11, offset from mcp-live-smoke's :23 and
+#     live-api-cache-auth's :47 so the three live probes do not hit production
+#     from the same runner range in the same minute): what this guards is set by
+#     deployed edge config and seeder health, which drift independently of
+#     commits. 4 runs/day x 2 requests is negligible against the anonymous
+#     rate limit.
+#   - push to main touching the audit script, its source-structure helpers, or
+#     this workflow: validates edits on merge.
+#   - workflow_dispatch, optionally against a staging base URL: this is the
+#     "after staging is deployed" step in docs/china-decision-signals.mdx.
+# NOT pull_request: the target is a deployment, not PR code — a PR run could
+# neither exercise its own changes nor fail for reasons the PR caused. The
+# static half already runs on every PR via `npm run test:data`.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'scripts/audit-china-decision-parity.mjs'
+      - 'scripts/lib/js-source-structure.mjs'
+      # The audit imports validateChinaDecisionSignalSnapshot from the seeder
+      # for both the access-gating truth table and the live probe's contract
+      # check, so a change there changes what this workflow asserts.
+      - 'scripts/seed-china-decision-signals.mjs'
+      # Same rule, one indirection further out: since #5647 the audit derives
+      # CHINA_DECISION_PARITY_MANIFEST — every group id and provenance family it
+      # asserts — from the wire contract rather than a local literal. Editing
+      # either the reader or the manifest it parses silently changes this
+      # workflow's assertions, which is exactly the class of unwatched drift
+      # #5643 exists to close.
+      - 'scripts/lib/openapi-codegen.mjs'
+      - 'shared/china-decision-signal-manifest.ts'
+      - '.github/workflows/china-decision-parity-live.yml'
+  schedule:
+    - cron: '11 */6 * * *'
+  workflow_dispatch:
+    inputs:
+      base_url:
+        description: 'Public base URL to probe (defaults to production)'
+        required: false
+        default: 'https://www.worldmonitor.app'
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    # Two requests at a 15s per-request ceiling, plus checkout/setup-node.
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '24'
+
+      - name: Audit China decision-signal parity against the deployment
+        env:
+          BASE_URL: ${{ github.event.inputs.base_url || 'https://www.worldmonitor.app' }}
+        run: |
+          set -o pipefail
+          node scripts/audit-china-decision-parity.mjs \
+            --require-live \
+            --url "$BASE_URL" | tee /tmp/china-decision-parity.json
+
+      # Independent of the script's own exit code: if a future refactor ever
+      # lets the audit exit 0 without having probed, this still fails. The bug
+      # this workflow exists to close was exactly "the gate reported success for
+      # work it never did".
+      - name: Confirm both halves actually reported
+        run: |
+          node -e '
+            const { readFileSync } = require("node:fs");
+            const result = JSON.parse(readFileSync("/tmp/china-decision-parity.json", "utf8"));
+            if (result.static?.ok !== true) {
+              console.error("::error::Static China decision-signal parity audit did not pass.");
+              process.exit(1);
+            }
+            if (result.live?.ok !== true) {
+              console.error("::error::Live China decision-signal probe did not run or did not pass.");
+              process.exit(1);
+            }
+            console.log(`China decision parity OK: ${Object.keys(result.live.groupStates).length} domains live.`);
+          '

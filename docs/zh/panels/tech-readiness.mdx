@@ -1,0 +1,36 @@
+---
+title: "科技准备度指数"
+description: "国家层面的科技准备度综合排名面板，每一行带国旗标签，数据来源于 bootstrap 预热的世界银行指标缓存，通过 Economic service 服务端聚合。面板每 6 小时自动刷新一次，帮助分析师快速比较各市场在科技基础设施、人才储备与技术采用方面的结构性优势与差距。"
+---
+
+**Tech Readiness Index** 面板（内部 id `tech-readiness`）按综合科技准备度分数对国家排名 — 当你想衡量"哪些市场在科技基础设施、人才和采用方面结构性地处于有利位置？"时所需的那种比较视图。
+
+## 面板显示内容
+
+一个带国旗、ISO-3 代码和分数的国家排名列表。国旗 emoji 来自 `src/components/TechReadinessPanel.ts:6` 中约 60 个 ISO-3 代码的内置映射；该列表之外的国家仍出现在排名中，但没有国旗。
+
+面板在内存中持有完整的 `TechReadinessScore[]` 并在刷新时重新渲染。面板标题中的计数徽章显示排名中有多少个国家（`showCount: true`）。
+
+面板 id 为 `tech-readiness`；规范组件为 `src/components/TechReadinessPanel.ts`。标题从 i18n 解析（`panels.techReadiness`）。
+
+## 如何访问
+
+- **Cmd+K**：输入 *tech readiness* 或 *tech index*。
+- **按变体的可用性**：在 **full/geopolitical**（`priority: 2`）和 **tech**（`priority: 1`）变体中注册并默认启用。在 finance、commodity 或 happy 变体中不存在。来源：`src/config/panels.ts` 中 `FULL_PANELS`（`:105`）和 `TECH_PANELS`（`:276`）的 `'tech-readiness'` 条目。
+
+## 数据来源
+
+- `@/services/economic` 中的 `getTechReadinessRankings()` — 可用时读取 bootstrap 水合的 `techReadiness` 数据，然后回退到 `GET /api/bootstrap?keys=techReadiness`。
+- 数据由 World Bank 指标种子管道预计算；前端不直接调用 World Bank API。
+
+## 刷新频率
+
+面板内 **6 小时**（`src/components/TechReadinessPanel.ts:26` 中的 `REFRESH_INTERVAL = 6 * 60 * 60 * 1000`）。如果排名非空且不到 6 小时，面板跳过重新获取；间隔后重新触发显式刷新。
+
+## 层级与门控
+
+**免费。** 两个变体注册中均无 `premium` 标志。bootstrap 水合/回退路径是公开的。
+
+## API 参考
+
+- [平台端点](/zh/api-platform#bootstrap) — 涵盖 `/api/bootstrap`，包括诸如 `techReadiness` 的按键水合。

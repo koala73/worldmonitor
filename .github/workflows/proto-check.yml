@@ -6,6 +6,7 @@ on:
       - 'proto/**'
       - 'src/generated/**'
       - 'docs/api/**'
+      - 'scripts/generate-request-validation.mjs'
       - 'Makefile'
       - '.github/workflows/proto-check.yml'
 
@@ -13,19 +14,50 @@ permissions:
   contents: read
 
 jobs:
+  proto-breaking:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        # buf compares the checked-out proto tree with the main baseline.
+        # Full history keeps that Git-backed reference from resolving vacuously.
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
+        with:
+          go-version: '1.26'
+          cache: false
+
+      - name: Install buf
+        run: make install-buf
+        env:
+          GOPROXY: direct
+
+      - name: Check for breaking proto changes
+        run: make breaking
+
   proto-freshness:
     if: github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
 
-      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+      - uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6
         with:
-          go-version: '1.23'
+          node-version: '24'
+          cache: 'npm'
+
+      - name: Install Node dependencies
+        run: npm ci --ignore-scripts
+
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
+        with:
+          # setup-go v6 uses GOTOOLCHAIN=local; match the pinned sebuf toolchain requirement.
+          go-version: '1.26'
           cache: false
 
       - name: Cache Go binaries (buf, protoc plugins)
-        uses: actions/cache@cdf6c1fa76f9f475f3d7449005a359c84ca0f306 # v5
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
         with:
           path: ~/go/bin
           key: go-bin-${{ runner.os }}-${{ hashFiles('Makefile') }}

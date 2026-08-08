@@ -1,9 +1,81 @@
 #!/usr/bin/env node
 
-import xlsx from 'xlsx';
-import { loadEnvFile, CHROME_UA, runSeed, readSeedSnapshot, getSharedFxRates, SHARED_FX_FALLBACKS } from './_seed-utils.mjs';
+import ExcelJS from 'exceljs';
+import { loadEnvFile, CHROME_UA, runSeed, readSeedSnapshot, getSharedFxRates, SHARED_FX_FALLBACKS, resolveProxyForConnect, httpsProxyFetchRaw } from './_seed-utils.mjs';
 
 loadEnvFile(import.meta.url);
+
+const _proxyAuth = resolveProxyForConnect();
+
+// Startup diagnostic — makes silent proxy misconfig immediately visible in logs.
+if (_proxyAuth) {
+  const hostHint = _proxyAuth.split('@').pop().split(':')[0];
+  console.log(`  [PROXY] configured via PROXY_URL (host=${hostHint})`);
+} else {
+  console.warn(`  [PROXY] NOT configured — PROXY_URL empty; datacenter-blocked sources (NZ/BR/MX) will fail`);
+}
+
+async function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+// Retry wrapper: 3 attempts, 1.5s/3s backoff. Use for all upstream calls so a
+// single transient 5xx/network blip on a publish-gating source (US/GB/MY/EU)
+// doesn't reject the whole weekly snapshot. baseDelayMs is injectable for tests.
+export async function withFuelRetry(label, fn, { tries = 3, baseDelayMs = 1500 } = {}) {
+  let lastErr;
+  for (let i = 1; i <= tries; i++) {
+    try {
+      return await fn();
+    } catch (err) {
+      lastErr = err;
+      if (i < tries) {
+        const delay = baseDelayMs * i;
+        console.warn(`  [${label}] attempt ${i}/${tries} failed (${err.message}) — retry in ${delay}ms`);
+        await sleep(delay);
+      }
+    }
+  }
+  throw lastErr;
+}
+
+async function fetchDirect(url, { timeoutMs, accept }) {
+  const r = await globalThis.fetch(url, {
+    headers: { 'User-Agent': CHROME_UA, Accept: accept },
+    signal: AbortSignal.timeout(timeoutMs),
+  });
+  if (!r.ok) throw new Error(`HTTP ${r.status}`);
+  return r;
+}
+
+async function fetchViaProxy(url, { timeoutMs, accept }) {
+  if (!_proxyAuth) throw new Error('proxy not configured');
+  const { buffer, contentType } = await httpsProxyFetchRaw(url, _proxyAuth, { accept, timeoutMs });
+  return new Response(buffer, { headers: { 'Content-Type': contentType || 'text/plain' } });
+}
+
+// Direct-first: try direct, fall back to proxy. Use for sources that usually work.
+async function fetchWithProxyFallback(url, { timeoutMs = 20_000, accept = 'text/csv,text/plain,*/*' } = {}) {
+  try {
+    return await fetchDirect(url, { timeoutMs, accept });
+  } catch (directErr) {
+    if (!_proxyAuth) throw directErr;
+    console.warn(`    direct failed (${directErr.message}) — retrying via proxy`);
+    return await fetchViaProxy(url, { timeoutMs, accept });
+  }
+}
+
+// Proxy-first: try proxy, fall back to direct. Use for sources known to block
+// datacenter IPs (NZ MBIE via Cloudflare, gov.br TLS failures from Railway,
+// MX CRE with intermittent IPv4 routing). Saves a failed direct call every run.
+async function fetchWithProxyPreferred(url, { timeoutMs = 20_000, accept = 'text/csv,text/plain,*/*' } = {}) {
+  if (_proxyAuth) {
+    try {
+      return await fetchViaProxy(url, { timeoutMs, accept });
+    } catch (proxyErr) {
+      console.warn(`    proxy failed (${proxyErr.message}) — falling back to direct`);
+    }
+  }
+  return await fetchDirect(url, { timeoutMs, accept });
+}
 
 const CANONICAL_KEY = 'economic:fuel-prices:v1';
 const CACHE_TTL = 864000; // 10 days — weekly seed with 3-day cron-drift buffer
@@ -20,7 +92,7 @@ const USD_L_MAX = 3.50;
 // EU country name to ISO2 mapping
 const EU_COUNTRY_MAP = {
   'Austria': 'AT', 'Belgium': 'BE', 'Bulgaria': 'BG', 'Croatia': 'HR',
-  'Cyprus': 'CY', 'Czech Republic': 'CZ', 'Denmark': 'DK', 'Estonia': 'EE',
+  'Cyprus': 'CY', 'Czech Republic': 'CZ', 'Czechia': 'CZ', 'Denmark': 'DK', 'Estonia': 'EE',
   'Finland': 'FI', 'France': 'FR', 'Germany': 'DE', 'Greece': 'GR',
   'Hungary': 'HU', 'Ireland': 'IE', 'Italy': 'IT', 'Latvia': 'LV',
   'Lithuania': 'LT', 'Luxembourg': 'LU', 'Malta': 'MT', 'Netherlands': 'NL',
@@ -72,14 +144,19 @@ function isSaneUsd(usdPrice) {
 async function fetchMalaysia() {
   try {
     const url = 'https://api.data.gov.my/data-catalogue?id=fuelprice&limit=20&sort=-date';
-    const resp = await globalThis.fetch(url, {
-      headers: { 'User-Agent': CHROME_UA },
-      signal: AbortSignal.timeout(20000),
+    // MY is a critical + untolerated source — retry transient errors so one blip
+    // doesn't reject the whole publish.
+    const resp = await withFuelRetry('MY', async () => {
+      const r = await globalThis.fetch(url, {
+        headers: { 'User-Agent': CHROME_UA },
+        signal: AbortSignal.timeout(20000),
+      });
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      return r;
     });
-    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
     const data = await resp.json();
     if (!Array.isArray(data) || data.length === 0) return [];
-    const row = data[0];
+    const row = data.find(r => r.series_type === 'level') ?? data[0];
     const observedAt = row.date ?? '';
     const ron95 = typeof row.ron95 === 'number' ? row.ron95 : null;
     const diesel = typeof row.diesel === 'number' ? row.diesel : null;
@@ -141,39 +218,35 @@ async function fetchSpain() {
   }
 }
 
+// MX: datos.gob.mx/v2 went unresponsive in 2026 — IPv4 connect hangs forever
+// even from residential IPs. Switched to CRE's publicacionexterna XML feed,
+// which publishes daily station-level prices (regular/premium/diesel in MXN/L).
 async function fetchMexico() {
+  const url = 'https://publicacionexterna.azurewebsites.net/publicaciones/prices';
   try {
-    const url = 'https://api.datos.gob.mx/v2/precio.gasolina.publico?pageSize=1000';
-    console.log(`  [MX] API: ${url}`);
-    const resp = await globalThis.fetch(url, {
-      headers: { 'User-Agent': CHROME_UA },
-      signal: AbortSignal.timeout(20000),
-    });
-    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-    const data = await resp.json();
-    const results = data?.results;
-    if (!Array.isArray(results) || results.length === 0) return [];
-
-    const dates = results.map(r => r.fecha_aplicacion).filter(Boolean);
-    if (dates.length === 0) return [];
-    const maxDate = dates.sort().reverse()[0];
-    const latest = results.filter(r => r.fecha_aplicacion === maxDate);
-
-    const regularPrices = latest.map(r => parseFloat(r.precio_gasolina_regular)).filter(v => !isNaN(v) && v > 0);
-    const dieselPrices = latest.map(r => parseFloat(r.precio_diesel)).filter(v => !isNaN(v) && v > 0);
-
-    const avgRegular = regularPrices.length > 0
-      ? +(regularPrices.reduce((a, b) => a + b, 0) / regularPrices.length).toFixed(4)
-      : null;
-    const avgDiesel = dieselPrices.length > 0
-      ? +(dieselPrices.reduce((a, b) => a + b, 0) / dieselPrices.length).toFixed(4)
-      : null;
-
-    console.log(`  [MX] Regular=${avgRegular} MXN/L, Diesel=${avgDiesel} MXN/L (${latest.length} entries, date=${maxDate})`);
+    console.log(`  [MX] CRE XML: ${url}`);
+    const resp = await withFuelRetry('MX', () =>
+      fetchWithProxyPreferred(url, { accept: 'application/xml,text/xml,*/*', timeoutMs: 30000 }),
+    );
+    const xml = await resp.text();
+    const re = (type) => new RegExp(`<gas_price\\s+type="${type}">([\\d.]+)</gas_price>`, 'g');
+    const collect = (type) => [...xml.matchAll(re(type))].map(m => parseFloat(m[1]))
+      .filter(v => Number.isFinite(v) && v > 5 && v < 100); // MXN/L sanity (5 < v < 100)
+    const regular = collect('regular');
+    const diesel = collect('diesel');
+    if (!regular.length && !diesel.length) {
+      console.warn(`  [MX] CRE returned ${xml.length} bytes but no usable <gas_price> rows`);
+      return [];
+    }
+    const avg = (a) => a.length ? +(a.reduce((s, v) => s + v, 0) / a.length).toFixed(4) : null;
+    const avgRegular = avg(regular);
+    const avgDiesel = avg(diesel);
+    const observedAt = new Date().toISOString().slice(0, 10);
+    console.log(`  [MX] Regular=${avgRegular} MXN/L (${regular.length}), Diesel=${avgDiesel} MXN/L (${diesel.length})`);
     return [{
       code: 'MX', name: 'Mexico', currency: 'MXN', flag: '🇲🇽',
-      gasoline: avgRegular != null ? { localPrice: avgRegular, grade: 'Regular', source: 'datos.gob.mx', observedAt: maxDate } : null,
-      diesel: avgDiesel != null ? { localPrice: avgDiesel, grade: 'Diesel', source: 'datos.gob.mx', observedAt: maxDate } : null,
+      gasoline: avgRegular != null ? { localPrice: avgRegular, grade: 'Regular', source: 'cre.gob.mx', observedAt } : null,
+      diesel: avgDiesel != null ? { localPrice: avgDiesel, grade: 'Diesel', source: 'cre.gob.mx', observedAt } : null,
     }];
   } catch (err) {
     console.warn(`  [MX] fetchMexico error: ${err.message}`);
@@ -181,7 +254,7 @@ async function fetchMexico() {
   }
 }
 
-async function fetchUS_EIA() {
+export async function fetchUS_EIA({ baseDelayMs } = {}) {
   try {
     const apiKey = process.env.EIA_API_KEY || '';
     if (!apiKey) {
@@ -190,11 +263,16 @@ async function fetchUS_EIA() {
     }
     const url = `https://api.eia.gov/v2/petroleum/pri/gnd/data/?api_key=${apiKey}&data[]=value&facets[series][]=EMM_EPMR_PTE_NUS_DPG&facets[series][]=EMD_EPD2DXL0_PTE_NUS_DPG&sort[0][column]=period&sort[0][direction]=desc&length=4`;
     console.log(`  [US] Fetching EIA: ${url.replace(/api_key=[^&]+/, 'api_key=***')}`);
-    const resp = await globalThis.fetch(url, {
-      headers: { 'User-Agent': CHROME_UA },
-      signal: AbortSignal.timeout(20000),
-    });
-    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    // EIA's gateway intermittently 502s. US is a critical + untolerated source,
+    // so a single unretried blip rejects the whole publish — retry transient errors.
+    const resp = await withFuelRetry('US', async () => {
+      const r = await globalThis.fetch(url, {
+        headers: { 'User-Agent': CHROME_UA },
+        signal: AbortSignal.timeout(20000),
+      });
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      return r;
+    }, { baseDelayMs });
     const data = await resp.json();
     const rows = data?.response?.data;
     if (!Array.isArray(rows) || rows.length === 0) return [];
@@ -252,24 +330,45 @@ function parseEUPrice(raw) {
 async function fetchEU_CSV() {
   try {
     console.log(`  [EU] Fetching XLSX from EC document store`);
-    const resp = await globalThis.fetch(EU_XLSX_URL, {
-      headers: { 'User-Agent': CHROME_UA },
-      signal: AbortSignal.timeout(60000),
+    // EU-CSV supplies 27 of the ≥30 countries the publish gate requires, so a
+    // transient failure here also rejects the whole snapshot — retry it.
+    const resp = await withFuelRetry('EU', async () => {
+      const r = await globalThis.fetch(EU_XLSX_URL, {
+        headers: { 'User-Agent': CHROME_UA },
+        signal: AbortSignal.timeout(60000),
+      });
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      return r;
     });
-    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
 
     const buf = Buffer.from(await resp.arrayBuffer());
-    const workbook = xlsx.read(buf, { type: 'buffer' });
-    console.log(`  [EU] XLSX sheets: ${workbook.SheetNames.join(', ')}`);
+    const workbook = new ExcelJS.Workbook();
+    await workbook.xlsx.load(buf);
+    const sheetNames = workbook.worksheets.map(ws => ws.name);
+    console.log(`  [EU] XLSX sheets: ${sheetNames.join(', ')}`);
 
     // Find the "with taxes" sheet, or fall back to first sheet
-    const sheetName = workbook.SheetNames.find(n => /with.tax/i.test(n))
-      ?? workbook.SheetNames.find(n => /price/i.test(n))
-      ?? workbook.SheetNames[0];
-    const sheet = workbook.Sheets[sheetName];
+    const sheetName = sheetNames.find(n => /with.tax/i.test(n))
+      ?? sheetNames.find(n => /price/i.test(n))
+      ?? sheetNames[0];
+    const sheet = workbook.getWorksheet(sheetName);
 
-    // raw: false → all cells as formatted strings; defval: '' for empty cells
-    const rows = xlsx.utils.sheet_to_json(sheet, { header: 1, raw: false, defval: '' });
+    // Convert to array-of-arrays (like xlsx's header:1 mode)
+    const rows = [];
+    sheet.eachRow({ includeEmpty: true }, (row) => {
+      rows.push(row.values.slice(1).map(v => {
+        if (v == null) return '';
+        if (v instanceof Date) {
+          const d = v.getUTCDate().toString().padStart(2, '0');
+          const m = (v.getUTCMonth() + 1).toString().padStart(2, '0');
+          return `${d}/${m}/${v.getUTCFullYear()}`;
+        }
+        if (typeof v === 'object' && Array.isArray(v.richText)) {
+          return v.richText.map(rt => rt.text ?? '').join('');
+        }
+        return String(v);
+      }));
+    });
 
     // EU Oil Bulletin XLSX format (confirmed from live file):
     // Row 0: "in EUR" | "Euro-super 95 (I)" | "Gas oil automobile..." | ...  ← column headers
@@ -386,15 +485,17 @@ async function fetchBrazil() {
   try {
     console.log(`  [BR] gas CSV: ${GAS_URL}`);
     console.log(`  [BR] dsl CSV: ${DSL_URL}`);
-    // Use allSettled so a 429 on the diesel CSV doesn't discard gasoline data
+    // Use allSettled so a 429 on the diesel CSV doesn't discard gasoline data.
+    // gov.br returns generic undici "fetch failed" from Railway IPs — proxy-preferred + retry
+    // is the only path that consistently works from datacenter networks.
     const [gasResult, dslResult] = await Promise.allSettled([
-      globalThis.fetch(GAS_URL, { headers: { 'User-Agent': CHROME_UA }, signal: AbortSignal.timeout(30000) })
-        .then(r => r.ok ? r.text() : Promise.reject(new Error(`Gas HTTP ${r.status}`))),
-      globalThis.fetch(DSL_URL, { headers: { 'User-Agent': CHROME_UA }, signal: AbortSignal.timeout(30000) })
-        .then(r => r.ok ? r.text() : Promise.reject(new Error(`Dsl HTTP ${r.status}`))),
+      withFuelRetry('BR-gas', () => fetchWithProxyPreferred(GAS_URL, { timeoutMs: 30000 }))
+        .then(r => r.text()),
+      withFuelRetry('BR-dsl', () => fetchWithProxyPreferred(DSL_URL, { timeoutMs: 30000 }))
+        .then(r => r.text()),
     ]);
-    if (gasResult.status === 'rejected') console.warn(`  [BR] gas CSV failed: ${gasResult.reason.message}`);
-    if (dslResult.status === 'rejected') console.warn(`  [BR] dsl CSV failed: ${dslResult.reason.message}`);
+    if (gasResult.status === 'rejected') console.warn(`  [BR] gas CSV failed after retries: ${gasResult.reason?.message || gasResult.reason}`);
+    if (dslResult.status === 'rejected') console.warn(`  [BR] dsl CSV failed after retries: ${dslResult.reason?.message || dslResult.reason}`);
 
     const gas = gasResult.status === 'fulfilled' ? nationalMean(gasResult.value, 'GASOLINA', 'valor de venda') : null;
     const dsl = dslResult.status === 'fulfilled' ? nationalMean(dslResult.value, 'DIESEL', 'valor de venda') : null;
@@ -418,11 +519,8 @@ async function fetchNewZealand() {
   const url = 'https://www.mbie.govt.nz/assets/Data-Files/Energy/Weekly-fuel-price-monitoring/weekly-table.csv';
   try {
     console.log(`  [NZ] CSV: ${url}`);
-    const resp = await globalThis.fetch(url, {
-      headers: { 'User-Agent': CHROME_UA },
-      signal: AbortSignal.timeout(20000),
-    });
-    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    // MBIE's CDN 403s Railway datacenter IPs (Cloudflare IP reputation). Proxy-preferred + retry.
+    const resp = await withFuelRetry('NZ', () => fetchWithProxyPreferred(url, { timeoutMs: 30000 }));
     const text = await resp.text();
     const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
     if (lines.length < 2) return [];
@@ -469,74 +567,119 @@ async function fetchNewZealand() {
   }
 }
 
-async function fetchUK_ModeA() {
-  // CMA voluntary scheme: each retailer hosts their own JSON feed. No auth required.
-  // Prices in pence/litre (integer). Divide by 100 -> GBP/litre.
-  // E10 = standard unleaded (gasoline), B7 = standard diesel.
-  // Aggregate across all working retailers for a national average.
-  const RETAILER_URLS = [
-    'https://storelocator.asda.com/fuel_prices_data.json',
-    'https://www.bp.com/en_gb/united-kingdom/home/fuelprices/fuel_prices_data.json',
-    'https://jetlocal.co.uk/fuel_prices_data.json',
-    'https://fuel.motorfuelgroup.com/fuel_prices_data.json',
-    'https://api.sainsburys.co.uk/v1/exports/latest/fuel_prices_data.json',
-    'https://www.morrisons.com/fuel-prices/fuel.json',
-  ];
+async function fetchUK_DESNZ() {
+  // Gov.uk DESNZ weekly road fuel prices CSV. Published weekly, covers 2018-present.
+  // ULSP = unleaded petrol (gasoline), ULSD = diesel. Prices in pence/litre.
+  // URL changes weekly; discover via Content API.
+  try {
+    console.log('  [GB] Discovering DESNZ CSV URL...');
+    // GB is a critical + untolerated source — retry both the discovery call and
+    // the CSV fetch so one transient blip doesn't reject the whole publish.
+    const apiResp = await withFuelRetry('GB-api', async () => {
+      const r = await globalThis.fetch('https://www.gov.uk/api/content/government/statistics/weekly-road-fuel-prices', {
+        headers: { 'User-Agent': CHROME_UA }, signal: AbortSignal.timeout(15000),
+      });
+      if (!r.ok) throw new Error(`Content API HTTP ${r.status}`);
+      return r;
+    });
+    const apiData = await apiResp.json();
+    const csvAttach = apiData?.details?.attachments?.find(a => a.content_type?.includes('csv') && a.title?.includes('2018'));
+    if (!csvAttach?.url) throw new Error('CSV attachment not found in Content API');
 
-  const allE10 = [];
-  const allB7 = [];
-  let observedAt = new Date().toISOString().slice(0, 10);
+    const csvResp = await withFuelRetry('GB-csv', async () => {
+      const r = await globalThis.fetch(csvAttach.url, {
+        headers: { 'User-Agent': CHROME_UA }, signal: AbortSignal.timeout(20000),
+      });
+      if (!r.ok) throw new Error(`CSV HTTP ${r.status}`);
+      return r;
+    });
+    const lines = (await csvResp.text()).split('\n').filter(l => l.trim());
+    // Header: Date,ULSP Pump price pence/litre,ULSD Pump price pence/litre,...
+    const dataLines = lines.slice(1).filter(l => l.split(',').length >= 3);
+    if (!dataLines.length) throw new Error('No data rows in CSV');
 
-  const results = await Promise.allSettled(
-    RETAILER_URLS.map(url =>
-      globalThis.fetch(url, { headers: { 'User-Agent': CHROME_UA }, signal: AbortSignal.timeout(15000) })
-        .then(r => r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status} ${url}`)))
-    )
-  );
+    const lastLine = dataLines.at(-1).split(',');
+    const dateStr = lastLine[0]?.trim();
+    const ulsp = parseFloat(lastLine[1]);
+    const ulsd = parseFloat(lastLine[2]);
+    const gasPrice = ulsp > 0 ? +(ulsp / 100).toFixed(4) : null;
+    const dslPrice = ulsd > 0 ? +(ulsd / 100).toFixed(4) : null;
 
-  for (let i = 0; i < results.length; i++) {
-    const r = results[i];
-    if (r.status === 'rejected') {
-      console.warn(`  [UK] ${RETAILER_URLS[i]}: ${r.reason?.message ?? r.reason}`);
-      continue;
-    }
-    const body = r.value;
-    // CMA format: { last_updated, stations: [{ prices: { E10, B7, ... } }] }
-    const stations = body?.stations ?? body?.data ?? [];
-    if (!Array.isArray(stations)) continue;
-    if (body.last_updated) {
-      // CMA feeds use "DD/MM/YYYY HH:mm:ss" — convert to ISO YYYY-MM-DD for comparison
-      const raw = String(body.last_updated);
-      const ddmmyyyy = raw.match(/^(\d{2})\/(\d{2})\/(\d{4})/);
-      const iso = ddmmyyyy ? `${ddmmyyyy[3]}-${ddmmyyyy[2]}-${ddmmyyyy[1]}` : raw.slice(0, 10);
-      if (iso > observedAt) observedAt = iso;
-    }
-    for (const s of stations) {
-      const prices = s?.prices ?? s?.fuel_prices ?? {};
-      const e10 = prices?.E10 ?? prices?.['E10_STANDARD'];
-      const b7 = prices?.B7 ?? prices?.['B7_STANDARD'];
-      if (e10 > 0) allE10.push(e10);
-      if (b7 > 0) allB7.push(b7);
-    }
-  }
+    // Parse DD/MM/YYYY -> YYYY-MM-DD
+    const dm = dateStr?.match(/(\d{2})\/(\d{2})\/(\d{4})/);
+    const observedAt = dm ? `${dm[3]}-${dm[2]}-${dm[1]}` : dateStr;
 
-  if (!allE10.length && !allB7.length) {
-    console.warn('  [UK] No stations with E10/B7 data from any retailer');
+    console.log(`  [GB] ULSP=${gasPrice} GBP/L, ULSD=${dslPrice} GBP/L (${observedAt})`);
+    return [{
+      code: 'GB', name: 'United Kingdom', currency: 'GBP', flag: '🇬🇧',
+      gasoline: gasPrice != null ? { localPrice: gasPrice, grade: 'E10', source: 'gov.uk/desnz', observedAt } : null,
+      diesel: dslPrice != null ? { localPrice: dslPrice, grade: 'B7', source: 'gov.uk/desnz', observedAt } : null,
+    }];
+  } catch (err) {
+    console.warn(`  [GB] fetchUK_DESNZ error: ${err.message}`);
     return [];
   }
-
-  // Prices are in pence/litre -> divide by 100 for GBP/litre
-  const avgE10 = allE10.length ? +(allE10.reduce((a, b) => a + b, 0) / allE10.length / 100).toFixed(4) : null;
-  const avgB7 = allB7.length ? +(allB7.reduce((a, b) => a + b, 0) / allB7.length / 100).toFixed(4) : null;
-
-  console.log(`  [GB] E10=${avgE10} GBP/L (${allE10.length} stations), B7=${avgB7} GBP/L (${allB7.length} stations)`);
-  return [{
-    code: 'GB', name: 'United Kingdom', currency: 'GBP', flag: '🇬🇧',
-    gasoline: avgE10 != null ? { localPrice: avgE10, grade: 'E10', source: 'gov.uk/fuel-finder', observedAt } : null,
-    diesel: avgB7 != null ? { localPrice: avgB7, grade: 'B7', source: 'gov.uk/fuel-finder', observedAt } : null,
-  }];
 }
 
+// Pure helpers exported for unit testing. Must stay above the isMain guard
+// so `import` from tests doesn't trigger the imperative seed run below.
+
+// Extract per-station MXN/L prices from the CRE XML feed. Used by fetchMexico.
+// Filters to the sane range (5..100 MXN/L) to drop placeholder/test rows.
+export function parseCREStationPrices(xml) {
+  const re = (type) => new RegExp(`<gas_price\\s+type="${type}">([\\d.]+)</gas_price>`, 'g');
+  const collect = (type) => [...xml.matchAll(re(type))].map(m => parseFloat(m[1]))
+    .filter(v => Number.isFinite(v) && v > 5 && v < 100);
+  return { regular: collect('regular'), diesel: collect('diesel') };
+}
+
+// Sources whose failure must not gate publish. Brazil ANP (gov.br) is
+// unreachable from Railway IPs both ways: Decodo proxy 403s all .gov.br
+// CONNECTs by policy, and direct fetch fails undici TLS handshake. Until a
+// working route is found, gating publish on Brazil's freshness means every
+// run exits 1 → Railway "Deployment crashed" banner + STALE_SEED flip.
+//
+// New Zealand (MBIE) joined this set 2026-06-01: mbie.govt.nz moved its ENTIRE
+// domain (apex, data page, and the weekly-table.csv asset) behind an Incapsula
+// (Imperva) JS bot-wall ~2026-05-20. It now returns HTTP 200 text/html (~212B,
+// `_Incapsula_Resource` stub) instead of the CSV — verified blocked from a
+// residential IP, a datacenter IP, AND the Decodo residential proxy, so the
+// older "proxy-preferred + retry" path (written for an IP-reputation 403)
+// cannot pass it. A plain fetch can't solve a JS challenge from any IP, and
+// data.govt.nz / figure.nz fallbacks are also Incapsula-walled. Until NZ is
+// restored via a headless/challenge-solver fetch (tracked separately), gating
+// publish on NZ rejected the whole multi-source fuel-prices snapshot every run
+// (validation failed → seed-meta never refreshed → 12d STALE_SEED), even though
+// ≥30 countries + US/GB/MY were present. fetchNewZealand() still runs and
+// carries NZ automatically the moment the source returns CSV again.
+const TOLERATED_FAILURES = new Set(['Brazil', 'New Zealand']);
+
+// Publish gate. Exported so tests can lock in the contract.
+//
+// All entries in `countries` are FRESH from this run (no stale-carry-forward —
+// that was removed after review: carrying previous-week's data as if current
+// created a freshness bug because the proto/UI have no badge for staleness).
+// A degraded run that can't meet this gate fails publish; the 10-day cache TTL
+// serves the last healthy snapshot and health flips to STALE_SEED after its
+// maxStaleMin window.
+//
+// Contract:
+//   - ≥30 countries (EU-CSV alone is 27 + at least 3 of US/GB/MY/BR/MX/NZ).
+//   - US + GB + MY present (each uniquely covers a non-EU region).
+//   - No untolerated failed sources — partial failures of critical regions
+//     must not publish as healthy, but TOLERATED_FAILURES (e.g. structurally
+//     unreachable Brazil ANP) don't gate publish.
+export function validateFuel(d) {
+  const codes = new Set((d?.countries ?? []).map(c => c.code));
+  const total = d?.countries?.length ?? 0;
+  const criticalPresent = ['US', 'GB', 'MY'].every(code => codes.has(code));
+  const untoleratedFailures = Array.isArray(d?.failedSources)
+    ? d.failedSources.filter(name => !TOLERATED_FAILURES.has(name))
+    : [];
+  return total >= 30 && criticalPresent && untoleratedFailures.length === 0;
+}
+
+async function main() {
 const prevSnapshot = await readSeedSnapshot(`${CANONICAL_KEY}:prev`);
 
 const fxSymbols = {};
@@ -549,17 +692,17 @@ console.log('  [FX] Rates loaded:', Object.keys(fxRates).join(', '));
 
 const fetchResults = await Promise.allSettled([
   fetchMalaysia(),
-  fetchSpain(),
   fetchMexico(),
   fetchUS_EIA(),
   fetchEU_CSV(),
   fetchBrazil(),
   fetchNewZealand(),
-  fetchUK_ModeA(),
+  fetchUK_DESNZ(),
 ]);
 
-const sourceNames = ['Malaysia', 'Spain', 'Mexico', 'US-EIA', 'EU-CSV', 'Brazil', 'New Zealand', 'UK-ModeA'];
+const sourceNames = ['Malaysia', 'Mexico', 'US-EIA', 'EU-CSV', 'Brazil', 'New Zealand', 'UK-DESNZ'];
 let successfulSources = 0;
+const failedSources = [];
 
 const countryMap = new Map();
 
@@ -592,16 +735,38 @@ function mergeCountry(entry, fxRates) {
 
 for (let i = 0; i < fetchResults.length; i++) {
   const result = fetchResults[i];
+  const name = sourceNames[i];
   if (result.status === 'fulfilled' && result.value.length > 0) {
     successfulSources++;
     for (const entry of result.value) {
       mergeCountry(entry, fxRates);
     }
-    console.log(`  [SOURCE] ${sourceNames[i]}: ${result.value.length} countries`);
-  } else if (result.status === 'rejected') {
-    console.warn(`  [SOURCE] ${sourceNames[i]}: rejected — ${result.reason}`);
+    console.log(`  [SOURCE] ${name}: ${result.value.length} countries`);
   } else {
-    console.warn(`  [SOURCE] ${sourceNames[i]}: 0 countries`);
+    failedSources.push(name);
+    if (result.status === 'rejected') {
+      console.warn(`  [SOURCE] ${name}: rejected — ${result.reason?.message || result.reason}`);
+    } else {
+      console.warn(`  [SOURCE] ${name}: 0 countries`);
+    }
+  }
+}
+
+// Stale-carry-forward was removed after review: it inserted week-old data
+// into the published payload with a `stale:true` field that no proto schema
+// or panel knew how to render, so BR/MX/NZ carried-forward entries would
+// display as ordinary current prices. That's a freshness bug, not resilience.
+//
+// Instead: on partial failure, the strict validator (≥30 countries + US/GB/MY
+// + no failed sources) rejects the publish. The 10-day cache TTL keeps the
+// last healthy snapshot serving the panel, and health flips to STALE_SEED
+// once maxStaleMin is exceeded — a correct, visible failure signal.
+if (failedSources.length > 0) {
+  const untolerated = failedSources.filter(n => !TOLERATED_FAILURES.has(n));
+  if (untolerated.length > 0) {
+    console.warn(`  [DEGRADED] ${failedSources.length} source(s) failed this run (${untolerated.length} untolerated) — publish will be rejected by validator, previous snapshot will continue serving until cache TTL`);
+  } else {
+    console.warn(`  [DEGRADED] ${failedSources.length} tolerated source(s) failed (${failedSources.join(', ')}) — publishing without them`);
   }
 }
 
@@ -628,7 +793,7 @@ if (hasPrevData && prevTooRecent) {
   console.warn(`  [WoW] Skipping WoW — previous snapshot is only ${Math.round(prevAge / 3600000)}h old (need 144h+)`);
 }
 
-let wowAvailable = hasPrevData && !prevTooRecent;
+const wowAvailable = hasPrevData && !prevTooRecent;
 
 if (wowAvailable) {
   const prevMap = new Map(prevSnapshot.countries.map(c => [c.code, c]));
@@ -636,8 +801,7 @@ if (wowAvailable) {
     const prev = prevMap.get(country.code);
     if (!prev) continue;
 
-    if (country.gasoline && prev.gasoline?.usdPrice > 0 && country.gasoline.usdPrice > 0
-        && country.gasoline.observedAt !== prev.gasoline?.observedAt) {
+    if (country.gasoline && prev.gasoline?.usdPrice > 0 && country.gasoline.usdPrice > 0) {
       const raw = +((country.gasoline.usdPrice - prev.gasoline.usdPrice) / prev.gasoline.usdPrice * 100).toFixed(2);
       if (Math.abs(raw) > WOW_ANOMALY_THRESHOLD) {
         console.warn(`  [WoW] ANOMALY ${country.flag} ${country.name} gasoline: ${raw}% — omitting`);
@@ -645,8 +809,7 @@ if (wowAvailable) {
         country.gasoline.wowPct = raw;
       }
     }
-    if (country.diesel && prev.diesel?.usdPrice > 0 && country.diesel.usdPrice > 0
-        && country.diesel.observedAt !== prev.diesel?.observedAt) {
+    if (country.diesel && prev.diesel?.usdPrice > 0 && country.diesel.usdPrice > 0) {
       const raw = +((country.diesel.usdPrice - prev.diesel.usdPrice) / prev.diesel.usdPrice * 100).toFixed(2);
       if (Math.abs(raw) > WOW_ANOMALY_THRESHOLD) {
         console.warn(`  [WoW] ANOMALY ${country.flag} ${country.name} diesel: ${raw}% — omitting`);
@@ -657,7 +820,7 @@ if (wowAvailable) {
   }
 }
 
-// Compute cheapest/most-expensive
+// All entries are fresh this run (carry-forward removed).
 const withGasoline = countries.filter(c => c.gasoline?.usdPrice > 0);
 const withDiesel = countries.filter(c => c.diesel?.usdPrice > 0);
 
@@ -674,7 +837,12 @@ const mostExpensiveDiesel = withDiesel.length
   ? withDiesel.reduce((a, b) => a.diesel.usdPrice > b.diesel.usdPrice ? a : b).code
   : '';
 
-console.log(`\n  Summary: ${countries.length} countries, ${successfulSources} sources`);
+const allSourcesFresh = failedSources.length === 0;
+const untoleratedFailures = failedSources.filter(name => !TOLERATED_FAILURES.has(name));
+const publishBlocking = untoleratedFailures.length > 0;
+console.log(`\n  Summary: ${countries.length} countries, ${successfulSources}/${sourceNames.length} sources`);
+if (publishBlocking) console.warn(`  [FRESHNESS] Failed sources this run: ${failedSources.join(', ')} — publish will be rejected, prev snapshot keeps serving`);
+else if (!allSourcesFresh) console.warn(`  [FRESHNESS] Tolerated failures this run: ${failedSources.join(', ')} — publishing without them; :prev will rotate`);
 console.log(`  Cheapest gasoline: ${cheapestGasoline}, Cheapest diesel: ${cheapestDiesel}`);
 console.log(`  Most expensive gasoline: ${mostExpensiveGasoline}, Most expensive diesel: ${mostExpensiveDiesel}`);
 
@@ -688,16 +856,45 @@ const data = {
   wowAvailable,
   prevFetchedAt: wowAvailable ? (prevSnapshot.fetchedAt ?? '') : '',
   sourceCount: successfulSources,
+  totalSources: sourceNames.length,
+  failedSources,
   countryCount: countries.length,
+  allSourcesFresh,
 };
+
+// Rotate :prev when no untolerated source failed. Tolerated-only failures
+// (e.g. Brazil ANP unreachable) drop those countries from the published
+// snapshot entirely, so rotating is safe — next week has no prev entry to
+// compare against, so no false ~0% WoW. Blocking failures (untolerated)
+// still freeze :prev to preserve WoW integrity, since the panel would
+// otherwise compare fresh-this-week to stale-carried-last-week = ~0%.
+const rotatePrev = !publishBlocking;
+if (!rotatePrev) console.warn(`  [:prev] Skipping rotation — WoW integrity preserved for next run`);
+
+const declareRecords = (d) => d?.countries?.length || 0;
 
 await runSeed('economic', 'fuel-prices', CANONICAL_KEY, async () => data, {
   ttlSeconds: CACHE_TTL,
-  validateFn: (d) => d?.countries?.length >= 1,
+  validateFn: validateFuel,
+  emptyDataIsFailure: true,
   recordCount: (d) => d?.countries?.length || 0,
-  extraKeys: [{
+  declareRecords,
+  sourceVersion: 'multi-source-fuel-prices-v1',
+  schemaVersion: 1,
+  maxStaleMin: 10080,
+  extraKeys: (wowAvailable && rotatePrev) ? [{
     key: `${CANONICAL_KEY}:prev`,
     transform: () => data,
     ttl: CACHE_TTL * 2,
-  }],
+    declareRecords,
+  }] : [],
 });
+}
+
+if (process.argv[1]?.endsWith('seed-fuel-prices.mjs')) {
+  main().catch((err) => {
+    const cause = err.cause ? ` (cause: ${err.cause.message || err.cause.code || err.cause})` : '';
+    console.error('FATAL:', (err.message || err) + cause);
+    process.exit(1);
+  });
+}

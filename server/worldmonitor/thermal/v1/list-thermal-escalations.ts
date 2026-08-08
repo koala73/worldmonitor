@@ -29,6 +29,7 @@ const emptyResponse: ListThermalEscalationsResponse = {
   observationWindowHours: 24,
   sourceVersion: 'thermal-escalation-v1',
   clusters: [],
+  dataAvailable: false,
   summary: {
     clusterCount: 0,
     elevatedCount: 0,
@@ -60,6 +61,7 @@ export const listThermalEscalations: ThermalServiceHandler['listThermalEscalatio
 
   return {
     ...seeded,
+    dataAvailable: true,
     clusters: sliced,
     summary,
   };

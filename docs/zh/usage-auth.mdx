@@ -1,0 +1,101 @@
+---
+title: "身份验证"
+description: "World Monitor 支持的三种认证模式 — 浏览器会话来源、API 密钥与 OAuth bearer 令牌 — 以及服务端如何强制校验套餐权限、配额与端点访问范围，帮助开发者根据客户端类型、agent 集成与后端服务场景选择认证方式，并了解 Clerk 身份层与 entitlements 校验的工作原理。"
+---
+
+WorldMonitor 有四种身份验证模式。具体使用哪一种取决于你的调用方式。
+
+## 认证矩阵
+
+| 模式 | 请求头 | 使用方 | 在哪些端点上受信任？ |
+|------|--------|---------|------------------------------|
+| **浏览器会话** | `wm-session` HttpOnly cookie | 仪表盘浏览器读取 | 未设置 `forceKey: true` 的公开端点。 |
+| **API 密钥** | `X-WorldMonitor-Key: wm_0123456789abcdef0123456789abcdef01234567` | 服务器到服务器、脚本、SDK | 用户 API 密钥覆盖有权益的 API 访问；运营方签发的企业密钥覆盖内部/合作伙伴访问。 |
+| **OAuth bearer** | `Authorization: Bearer <oauth-token>` | MCP 客户端（Claude、Cursor、Inspector） | `/api/mcp`。处理器也接受直接的 `X-WorldMonitor-Key` 替代 OAuth 令牌 — 详见 [MCP](/zh/mcp-overview#authentication)。 |
+| **Clerk 会话 JWT** | `Authorization: Bearer <clerk-jwt>` | 已认证的浏览器用户 | 用户专属路由：`/api/latest-brief`、`/api/user-prefs`、`/api/notification-channels`、`/api/brief/share-url` 等。 |
+
+## `forceKey: true` — 哪些端点会忽略浏览器会话 cookie？
+
+部分端点会明确拒绝匿名浏览器会话 cookie，即使在仪表盘内部也要求使用用户 API 密钥、企业 API 密钥或 Pro Clerk bearer：
+
+- `/api/v2/shipping/route-intelligence`
+- `/api/v2/shipping/webhooks`
+- `/api/widget-agent`
+- 供应商 / 合作伙伴端点
+
+对于这些端点，你**必须**发送 API 密钥；`X-WorldMonitor-Key` 是规范请求头。
+
+## 浏览器会话模式
+
+CORS 决定浏览器是否被允许读取响应，但 `Origin` 不是身份验证。浏览器公开读取使用由 `/api/wm-session` 签发的短期 `wms_` 会话令牌进行身份验证，该令牌携带在 `wm-session` HttpOnly cookie 中。
+
+- 允许的来源会收到 `Access-Control-Allow-Origin: <echoed>` 并可使用带凭证的浏览器 cookie。
+- 不允许的来源在路由体运行前被边缘函数守卫拒绝。
+- 无 `Origin` 头的请求（如 `curl` 或服务器到服务器调用）不会被 CORS 阻止；它们仍需路由的正常凭证。
+
+来源模式详见 [CORS](/zh/cors)。
+
+<Warning>
+**一个 Cloudflare Worker**（`api-cors-preflight`）是 `api.worldmonitor.app` 的权威 CORS 处理器 — 它会覆盖 `_cors.js` 与 `vercel.json`。若要修改来源规则，请在 Cloudflare 仪表盘中修改。
+</Warning>
+
+## API 密钥模式
+
+### 生成密钥
+
+API 套餐订阅用户在订阅时会自动获得密钥。如需轮换，请联系支持团队。
+
+### 使用方式
+
+```
+X-WorldMonitor-Key: wm_0123456789abcdef0123456789abcdef01234567
+```
+
+用户签发的密钥恰好为 `wm_` 后跟 40 个小写十六进制字符。企业密钥是不透明的运营方签发字符串，仅带外分发。请勿将密钥放入客户端代码 — 如需从浏览器调用 `forceKey` 端点，请使用服务端代理。
+
+`X-WorldMonitor-Key` 是规范请求头。API 密钥认证的端点也接受 `X-Api-Key` 作为别名，以兼容通用 API 客户端，包括使用 `validateApiKey()` 的独立边缘函数和网关支持的路由。除非端点明确文档化该形式，否则请勿将用户 API 密钥作为 bearer 令牌或查询字符串参数发送。
+
+对于 `/api/bootstrap`，服务器端调用方应使用 `https://api.worldmonitor.app/api/bootstrap` 配合上述任一 API 密钥请求头。标准服务器到服务器访问无需独立网关主机、令牌交换步骤、激活步骤或 IP 白名单要求。该端点的匿名天气路径（`?keys=weatherAlerts`）仅在**未发送密钥请求头时**公开 — 一旦附加 `X-WorldMonitor-Key`/`X-Api-Key`，即使是天气请求也会被校验，因此无当前 API 访问权限的密钥会返回 `403` 而非回退到匿名数据。该 URL 返回 `no-store` 正是为了保证这一点：它不会被缓存，因此无效密钥始终会抵达源站。若需要经 CDN 缓存的天气读取，请改用显式公开的 `?keys=weatherAlerts&public=1`，它对所有调用方返回同一份共享负载，并按设计忽略凭据。
+
+### 服务端校验
+
+Edge Function 会调用 `validateApiKey(req, { forceKey?: boolean })`：
+
+1. 桌面来源必须在 `X-WorldMonitor-Key` 中发送企业密钥。
+2. 若 `forceKey` 为 false，有效的 `wms_` 浏览器会话 cookie 即可满足匿名/公开门控。
+3. 企业密钥会与 `WORLDMONITOR_VALID_KEYS` 进行比对。
+4. 形如 `wm_` + 40 位十六进制的用户密钥会与用户密钥表和当前 `apiAccess` 权益进行校验。网关支持的路由使用网关回退；`/api/bootstrap` 在其 Edge 安全平台助手中执行相同的用户密钥查找。
+5. 若以上均未通过 → 返回 401。
+
+## OAuth bearer（仅限 MCP）
+
+完整流程见 [OAuth 2.1 Server](/zh/api-oauth)。客户端配置详见 [MCP](/zh/mcp-overview)。
+
+## Clerk 会话（已认证的仪表盘）
+
+仪表盘会将 Clerk 的 `__session` cookie 换取 JWT，并在用户专属 API 调用中带上：
+
+```
+Authorization: Bearer eyJhbGc...
+```
+
+服务端校验使用 `jose` 与缓存的 JWKS — 无需每次请求都回访 Clerk。实现位于 `server/auth-session.ts`。完整细节详见 [身份验证概览](/zh/authentication)。
+
+## 权益 / 分层门控
+
+**有效的密钥 ≠ PRO。** 身份验证与权益是正交的。每个 PRO 门控的端点都会额外运行一次 `isCallerPremium(req)` 校验（`server/_shared/premium-check.ts`），该校验**不接受** `Origin` 或匿名浏览器会话作为 PRO 的凭证。
+
+`isCallerPremium` 仅在以下任一条件成立时返回 true：
+
+- 一个有效的 `X-WorldMonitor-Key`（来自 `WORLDMONITOR_VALID_KEYS` 的环境变量允许列表，或某个用户自有的、Convex 记录中带有 `apiAccess` 权益的 `wm_` 前缀密钥），**或者**
+- 一个 Clerk `Authorization: Bearer …` 令牌，且用户角色为 `pro` 或 Dodo 权益分层 ≥ 1。
+
+在浏览器端，`premiumFetch()`（`src/services/premium-fetch.ts`）会在每次请求中自动注入其中一种凭证。桌面应用使用运行时配置中的 `WORLDMONITOR_API_KEY`。服务器到服务器调用方必须显式发送该请求头。
+
+| 分层 | 访问权限 |
+|------|--------|
+| 匿名 | 仅公开读取（冲突、自然灾害、市场基础数据） |
+| 已登录免费版 | 同匿名 + 用户偏好设置 |
+| PRO | 所有端点、MCP、AI Brief、Shipping v2、Scenarios |
+
+分层在每次调用时从 Convex 解析，因此订阅状态变更会在下一次请求时生效（在缓存失效之后）。

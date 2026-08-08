@@ -1,0 +1,57 @@
+---
+title: "关于 World Monitor：开源 OSINT 仪表盘"
+description: "深入了解 World Monitor 背后的故事：由 Anghami 联合创始人 Elie Habib 独立打造的开源实时全球情报仪表盘，目前已被 170 多个国家的记者、分析师、研究人员与政策制定者使用，聚合冲突、航运、能源与市场信号，让开源情报（OSINT）与地缘政治监测触手可及。"
+---
+
+World Monitor 是一个免费的实时全球情报仪表盘。它将 500 多个实时数据源——冲突事件、军用航班、船舶动向、卫星火点探测、市场数据、航运咽喉要道、互联网中断、网络信号和自然灾害——融合到一张实时的世界地图上，并在其上叠加 AI 分析。核心仪表盘对所有人开放，无需注册。
+
+## 起源
+
+{/* REVIEW: traction figures below are sourced from press coverage (Jan–2026 onward) and the live GitHub count at time of writing. Refresh to current numbers before or after merge if you want them exact. */}
+
+World Monitor 始于 2026 年 1 月的一个周末项目。Elie Habib——音乐流媒体平台 Anghami 的联合创始人兼 CEO——在短短几天内构建了第一个版本，以验证能否将一天纷乱的地缘政治新闻在一张地图上呈现得清晰易读。他公开发布了一次，随后便将注意力转向别处。
+
+但它并未就此沉寂。随着 2026 年全球局势不断升级，该仪表盘在第一周就触达了数十万用户，此后更增长到遍布 170 多个国家的数百万人——其中大多数人远非通常的情报工具用户群体。如今它已是 GitHub 上星标最多的开源 OSINT 项目之一，拥有 60,000+ 星标。
+
+## 它的独特之处
+
+World Monitor 没有新闻编辑室，也没有人工编辑。取而代之，它依靠方法论：
+
+- **聚合胜于噪声。** 任何信息在浮现为警报之前，都会与多个独立来源交叉核对，因此单一未经证实的报道不会变成头条。
+- **分级的来源层级。** 通讯社和官方渠道（路透社、美联社、五角大楼、联合国）的级别高于主要广播机构（BBC、半岛电视台），后者又高于专业的开源情报机构（Bellingcat）——并始终保持来源溯源可见。
+- **广度集于一处。** ADS-B 飞机应答机、AIS 海事位置、ACLED 与 UCDP 冲突数据集、NASA 火点探测、GPS 干扰与中断数据、预测市场以及大宗商品价格，全部汇聚在同一个地球仪上。
+- **国家不稳定指数。** 每个国家都根据基线风险、动荡、安全事件和信息流速被评为 0–100 分，并实时调整。
+- **AI 是叠加，而非替代。** 自动化简报、国家风险和预测都由底层信号生成——而非出自聊天机器人的臆想。
+
+专门的变体将同一引擎聚焦于某个主题：[Tech](https://tech.worldmonitor.app)、[Finance](https://finance.worldmonitor.app)、[Commodity](https://commodity.worldmonitor.app)、[Energy](https://energy.worldmonitor.app) 和 [Happy](https://happy.worldmonitor.app)（仅正面新闻）。
+
+## 使命
+
+了解世界的态势感知不应需要一台五位数价格的终端。World Monitor 的目标是让可信的实时全球情报——那种通常只为政府、基金和新闻编辑室保留的情报——人人只需一个浏览器即可获取。
+
+## 由谁打造
+
+World Monitor 由 [Elie Habib](https://x.com/eliehabib) 打造，他是 Anghami 的联合创始人兼 CEO——Anghami 是首家在纳斯达克上市的阿拉伯科技公司。[WIRED](https://www.wired.com/story/world-monitor-elie-habib/) 报道了他在 World Monitor 上的工作及其起源。
+
+该平台以 AGPL-3.0-only 开源——参见[许可证](/zh/license)和[商标政策](/zh/trademark-policy)。
+
+## 媒体报道
+
+- [WIRED — 一位音乐流媒体 CEO 如何在业余时间打造出一张开源的全球威胁地图](https://www.wired.com/story/world-monitor-elie-habib/)
+- [The Economic Times — 上帝视角：AI 战争仪表盘的崛起](https://m.economictimes.com/tech/artificial-intelligence/gods-view-the-rise-of-ai-war-dashboards/articleshow/129553559.cms)
+- [Arabian Business — Anghami 联合创始人追踪全球危机的 AI 工具吸引数百万用户](https://www.arabianbusiness.com/business/technology/exclusive-anghami-co-founders-ai-tool-tracking-global-crises-draws-millions-of-users)
+- [Entrepreneur Middle East — Elie Habib 如何打造 World Monitor 以实时追踪全球事件](https://mena.entrepreneur.com/business-news/how-elie-habib-built-world-monitor-to-track-global-events-in-real-time)
+- [Silicon Canals — Anghami CEO 的副业项目如今拥有 200 万用户](https://siliconcanals.com/sc-n-anghami-ceos-side-project-world-monitor-now-has-2-million-users-tracking-conflicts-in-real-time/)
+- [L'Orient Today — Anghami CEO 的副业项目如何成为地缘政治研究的首选](https://today.lorientlejour.com/article/1496089/world-monitor-how-anghami-ceos-side-project-became-a-go-to-for-geopolitics-research.html)
+
+## 探索
+
+- [仪表盘](https://www.worldmonitor.app) — 实时地图
+- [Pro](https://www.worldmonitor.app/pro) — 更深入的信号、更多 AI 简报、一个研究助手
+- [文档](https://www.worldmonitor.app/docs) — API、MCP 与平台指南
+- [GitHub](https://github.com/koala73/worldmonitor) — 源代码与问题追踪
+- [博客](https://www.worldmonitor.app/blog) — 分析与产品更新
+
+## 联系
+
+一般咨询与支持：[support@worldmonitor.app](mailto:support@worldmonitor.app)。企业与合作：[enterprise@worldmonitor.app](mailto:enterprise@worldmonitor.app)。所有渠道请参见[支持与联系](/zh/support)。

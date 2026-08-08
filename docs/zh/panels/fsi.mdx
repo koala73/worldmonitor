@@ -1,0 +1,59 @@
+---
+title: "金融压力"
+description: "金融压力面板整合美国堪萨斯城联储金融压力指数 KCFSI 与欧洲央行欧盟金融压力指标 CISS，构建涵盖信用利差、股市波动率、银行间同业拆借流动性、汇率承压与债券收益率曲线等 11 项子指标的复合压力评分，附按压力级别着色的可视化解读与宏观背景注释，用于识别系统性金融风险与市场恐慌拐点。"
+---
+
+**Financial Stress** 面板（内部 id `fsi`）在单次读取中展示两个平行压力复合 — 一个面向美国，一个面向欧盟 — 让分析师看到金融市场压力何时在两个锚点间共同运动。
+
+## 面板显示内容
+
+两个并排读取：
+
+- **US KCFSI** — 堪萨斯城联储金融压力指数：由收益率利差、波动率和交叉相关性构建的 11 指标复合。正值表示高于平均压力；负值表示低于平均。
+- **EU FSI** — 欧央行的欧盟金融压力指标。
+
+每次读取包含：
+
+- **当前水平**，带标签（`Low Stress` / `Moderate Stress` / `Elevated Stress` / `High Stress`）。
+- **颜色分桶指示器** — 低位绿色（`#27ae60`），中位橙色（`#f39c12`），升高焦橙色（`#e67e22`），高位深红色（`#c0392b`）（`src/components/FSIPanel.ts` 中的 `fsiLabelColor()`）。
+- **解读字符串**，解释当前水平对金融状况的含义（`fsiInterpretation()`）。
+
+面板 id 为 `fsi`；规范组件为 `src/components/FSIPanel.ts`。标题来自 i18n；配置名："Financial Stress"。
+
+## 如何访问
+
+- **Cmd+K**：输入 *fsi*、*financial stress* 或 *kcfsi*。
+- **按变体的可用性**：在 **full/geopolitical** 变体中注册（默认禁用 — 需手动启用，`enabled: false, priority: 2`），在 **finance** 变体中默认启用（`priority: 1`）。在 tech、commodity 或 happy 变体中不存在。来源：`src/config/panels.ts` 中 `FULL_PANELS`（`:108` 附近）和 `FINANCE_PANELS` 的 `'fsi'` 条目。
+
+## 数据来源
+
+面板直接使用生成的 RPC 客户端，并优先采用 bootstrap 水合值再发起全新调用。
+
+| 读数 | 方法 + 路由 | 供给 |
+|---|---|---|
+| US KCFSI | `GET /api/market/v1/get-fear-greed-index` | 来自 Fear & Greed 载荷的 KCFSI 值与市场压力输入；经 `fearGreedIndex` bootstrap 优先。 |
+| EU FSI | `GET /api/economic/v1/get-eu-fsi` | ECB CISS `SS_CIN` 最新值与历史；经 `euFsi` bootstrap 优先。 |
+
+上游 KCFSI 数据来自堪萨斯城联邦储备银行；EU FSI 来自 ECB CISS `SS_CIN` 日度序列，即遗留 `SS_CI` 序列的现役继任者。
+
+EU FSI 标签分桶直接跟随播种的 CISS 值：
+
+| ECB CISS `SS_CIN` 值 | 标签 |
+|---:|---|
+| `< 0.2` | Low Stress |
+| `>= 0.2` and `< 0.4` | Moderate Stress |
+| `>= 0.4` and `< 0.6` | Elevated Stress |
+| `>= 0.6` | High Stress |
+
+## 刷新频率
+
+KCFSI 为每周（由 KC 联储发布）。EU FSI 从 ECB CISS `SS_CIN` 日度序列每日播种。面板在挂载时读取水合快照；无轮询。
+
+## 层级与门控
+
+**免费。** 两个变体注册中均无 `premium` 标志。两个后端 RPC 均为公开的。
+
+## API 参考
+
+- [Economic service](/api/EconomicService.openapi.yaml) — 包括 `GetEuFsi` 和更广泛的宏观族。
+- [Markets service](/api/MarketService.openapi.yaml) — 包括 KCFSI 序列。

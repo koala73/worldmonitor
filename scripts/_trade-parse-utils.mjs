@@ -3,6 +3,8 @@
  * Extracted so test files can import directly without new Function() hacks.
  */
 
+import { decodeHtmlEntities } from './_html-entities.mjs';
+
 export const BUDGET_LAB_TARIFFS_URL = 'https://budgetlab.yale.edu/research/tracking-economic-effects-tariffs';
 
 const MONTH_MAP = {
@@ -12,15 +14,14 @@ const MONTH_MAP = {
 };
 
 export function htmlToPlainText(html) {
-  return String(html ?? '')
+  const stripped = String(html ?? '')
     .replace(/<script[\s\S]*?<\/script>/gi, ' ')
     .replace(/<style[\s\S]*?<\/style>/gi, ' ')
     .replace(/<!--[\s\S]*?-->/g, ' ')
-    .replace(/<\/?[A-Za-z][A-Za-z0-9:-]*(?:\s[^<>]*?)?>/g, ' ')
-    .replace(/&nbsp;/gi, ' ')
-    .replace(/&amp;/gi, '&')
-    .replace(/&quot;/gi, '"')
-    .replace(/&#39;/gi, '\'')
+    .replace(/<\/?[A-Za-z][A-Za-z0-9:-]*(?:\s[^<>]*?)?>/g, ' ');
+  // Single-pass decode: chained &amp;-first replaces would decode two levels
+  // (e.g. `&amp;quot;` -> `"`), and out-of-range numeric refs must not throw.
+  return decodeHtmlEntities(stripped)
     .replace(/\s+/g, ' ')
     .trim();
 }
@@ -57,6 +58,7 @@ export function parseBudgetLabEffectiveTariffHtml(html) {
 
   const updatedAt = toIsoDate(text.match(/\bUpdated:\s*([A-Za-z]+\s+\d{1,2},\s+\d{4})/i)?.[1] ?? '');
   const patterns = [
+    /effective tariff rate (?:stood at|was|is)\s+(\d+(?:\.\d+)?)%/i,
     /effective tariff rate reaching\s+(\d+(?:\.\d+)?)%\s+in\s+([A-Za-z]+\s+\d{4})/i,
     /average effective (?:u\.s\.\s*)?tariff rate[^.]{0,180}?\bto\s+(\d+(?:\.\d+)?)%[^.]{0,180}?\b(?:in|by)\s+([A-Za-z]+\s+\d{4})/i,
     /average effective (?:u\.s\.\s*)?tariff rate[^.]{0,180}?\bto\s+(\d+(?:\.\d+)?)%/i,

@@ -1,0 +1,22 @@
+syntax = "proto3";
+
+package worldmonitor.climate.v1;
+
+import "sebuf/http/annotations.proto";
+import "worldmonitor/climate/v1/climate_news_item.proto";
+
+message ListClimateNewsRequest {}
+
+message ListClimateNewsResponse {
+  // Climate news items from the last successful seed snapshot.
+  repeated ClimateNewsItem items = 1;
+
+  // Time the seed snapshot was fetched, as Unix epoch milliseconds. A value of
+  // 0 means the snapshot is unavailable/degraded, not that there are
+  // confirmed zero climate headlines.
+  int64 fetched_at = 2 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
+
+  // True when items came from a seed snapshot. False means an empty payload is
+  // graceful degradation because the snapshot is unavailable.
+  bool data_available = 3;
+}

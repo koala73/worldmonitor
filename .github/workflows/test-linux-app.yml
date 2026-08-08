@@ -1,10 +1,24 @@
-name: 'Test Linux App'
+name: 'Desktop Canary (Linux)'
+
+# Scheduled installed-app canary (#5902): builds the desktop app from current
+# main, launches the packaged AppImage, and asserts sidecar readiness plus
+# rendered (non-blank) content. A green `Build Desktop App` run alone proves
+# the bundle compiles, not that the installed app works — this canary is the
+# drift alarm between releases. Also dispatchable on demand.
 
 on:
   workflow_dispatch:
+  schedule:
+    # Twice weekly (Mon/Thu 05:23 UTC): frequent enough to surface desktop
+    # drift well inside a 30-day release-freshness target without paying the
+    # ~40min build on every merge.
+    - cron: '23 5 * * 1,4'
 
+# Group by event too: without it, a manual dispatch on main would cancel an
+# in-flight scheduled canary run (both share github.ref = main), silently
+# voiding that canary firing.
 concurrency:
-  group: test-linux-app-${{ github.ref }}
+  group: test-linux-app-${{ github.ref }}-${{ github.event_name }}
   cancel-in-progress: true
 
 env:
@@ -18,12 +32,12 @@ jobs:
       contents: read
 
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
 
       - name: Setup Node.js
         uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6
         with:
-          node-version: '22'
+          node-version: '24'
           cache: 'npm'
 
       - name: Install Rust stable
@@ -32,7 +46,7 @@ jobs:
           toolchain: stable
 
       - name: Rust cache
-        uses: swatinem/rust-cache@ad397744b0d591a723ab90405b7247fac0e6b8db
+        uses: swatinem/rust-cache@779680da715d629ac1d338a641029a2f4372abb5
         with:
           workspaces: './src-tauri -> target'
           cache-on-failure: true
@@ -62,16 +76,60 @@ jobs:
           NODE_TARGET: 'x86_64-unknown-linux-gnu'
         run: bash scripts/download-node.sh --target "$NODE_TARGET"
 
+      - name: Client env preflight (#5905)
+        # The canary must not qualify an AppImage built without the client
+        # configuration that release artifacts require.
+        shell: bash
+        env:
+          VITE_VARIANT: full
+          VITE_DESKTOP_RUNTIME: '1'
+          VITE_WS_API_URL: https://worldmonitor.app
+          VITE_CLERK_PUBLISHABLE_KEY: ${{ secrets.VITE_CLERK_PUBLISHABLE_KEY }}
+          VITE_CONVEX_URL: ${{ secrets.CONVEX_URL }}
+          VITE_ENABLE_CYBER_LAYER: 'true'
+          VITE_WS_RELAY_URL: ${{ secrets.VITE_WS_RELAY_URL }}
+          VITE_PMTILES_URL_PUBLIC: ${{ secrets.VITE_PMTILES_URL_PUBLIC }}
+          CONVEX_URL: ${{ secrets.CONVEX_URL }}
+        run: |
+          MISSING=""
+          for k in VITE_VARIANT VITE_DESKTOP_RUNTIME VITE_WS_API_URL VITE_CLERK_PUBLISHABLE_KEY VITE_CONVEX_URL VITE_ENABLE_CYBER_LAYER VITE_WS_RELAY_URL VITE_PMTILES_URL_PUBLIC CONVEX_URL; do
+            [ -n "${!k}" ] || MISSING="$MISSING $k"
+          done
+          if [ -n "$MISSING" ]; then
+            echo "::error::Desktop canary requires non-empty client env:$MISSING (#5905)"
+            exit 1
+          fi
+
       - name: Build Tauri app
-        uses: tauri-apps/tauri-action@79c624843491f12ae9d63592534ed49df3bc4adb
+        uses: tauri-apps/tauri-action@73fb865345c54760d875b94642314f8c0c894afa
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           VITE_VARIANT: full
           VITE_DESKTOP_RUNTIME: '1'
+          # Match the release build env (build-desktop.yml) so the canary
+          # exercises the shipped configuration, not a drifted one — parity
+          # checked by scripts/check-desktop-build-env.mjs (#5905).
+          VITE_WS_API_URL: https://worldmonitor.app
+          VITE_CLERK_PUBLISHABLE_KEY: ${{ secrets.VITE_CLERK_PUBLISHABLE_KEY }}
+          VITE_CONVEX_URL: ${{ secrets.CONVEX_URL }}
+          VITE_ENABLE_CYBER_LAYER: 'true'
+          VITE_WS_RELAY_URL: ${{ secrets.VITE_WS_RELAY_URL }}
+          VITE_PMTILES_URL_PUBLIC: ${{ secrets.VITE_PMTILES_URL_PUBLIC }}
           CONVEX_URL: ${{ secrets.CONVEX_URL }}
         with:
           args: ''
           retryAttempts: 1
+
+      - name: Apply release AppImage post-processing
+        shell: bash
+        run: |
+          mapfile -t IMAGES < <(find src-tauri/target/release/bundle/appimage -name '*.AppImage')
+          if [ ${#IMAGES[@]} -ne 1 ]; then
+            echo "::error::Found ${#IMAGES[@]} AppImage files — expected exactly 1"
+            printf '  %s\n' "${IMAGES[@]}"
+            exit 1
+          fi
+          bash scripts/repack-linux-appimage.sh "${IMAGES[0]}" x86_64
 
       - name: Smoke-test AppImage
         shell: bash
@@ -90,24 +148,62 @@ jobs:
           set -x
           echo "DISPLAY=$DISPLAY WAYLAND_DISPLAY=${WAYLAND_DISPLAY:-unset}"
 
-          GDK_BACKEND=x11 "$APPIMAGE_ABS" --no-sandbox 2>&1 | tee /tmp/app.log &
+          # Redirect to the log file directly (no `| tee ... &`): with a
+          # backgrounded pipeline, $! would be tee's PID, and tee can outlive
+          # a crashed app while the spawned sidecar holds the pipe open — the
+          # crash gate below must track the app process itself.
+          GDK_BACKEND=x11 "$APPIMAGE_ABS" --no-sandbox > /tmp/app.log 2>&1 &
           APP_PID=$!
           sleep 20
+
+          # Sidecar readiness (#5902): the Rust shell spawns the bundled Node
+          # local API server on 127.0.0.1:46123 (DEFAULT_LOCAL_API_PORT in
+          # src-tauri/src/main.rs). Any HTTP status proves the sidecar is up
+          # and serving — unauthenticated requests may get 4xx, which is fine.
+          # The sidecar falls back to an OS-assigned port on EADDRINUSE, but a
+          # clean CI runner has 46123 free; if that assumption ever breaks the
+          # canary fails noisily (never silently passes).
+          # NOTE: no `|| echo 000` fallback on the curl — curl already prints
+          # 000 via -w on connection failure, and appending a second sentinel
+          # would make CODE "000000", which passes the != "000" check and
+          # reports a dead sidecar as ready.
+          SIDECAR_STATUS=unreachable
+          for i in $(seq 1 12); do
+            if CODE=$(curl -s -o /dev/null -w '%{http_code}' --max-time 3 \
+              "http://127.0.0.1:46123/api/local-traffic-log") &&
+              [[ "$CODE" =~ ^[1-5][0-9][0-9]$ ]]; then
+              SIDECAR_STATUS=ready
+              echo "sidecar responded with HTTP $CODE on attempt $i"
+              break
+            fi
+            sleep 5
+          done
+          echo "SIDECAR_STATUS=$SIDECAR_STATUS"
 
           # Screenshot via X11
           import -window root /tmp/screenshot.png 2>/dev/null || true
 
-          # Verify app is still running
-          if kill -0 $APP_PID 2>/dev/null; then
+          # Window info
+          xdotool search --name "" getwindowname 2>/dev/null | head -5 || true
+
+          if FINAL_CODE=$(curl -s -o /dev/null -w '%{http_code}' --max-time 3 \
+            "http://127.0.0.1:46123/api/local-traffic-log") &&
+            [[ "$FINAL_CODE" =~ ^[1-5][0-9][0-9]$ ]]; then
+            echo "SIDECAR_FINAL_STATUS=alive"
+            echo "sidecar remained alive with HTTP $FINAL_CODE"
+          else
+            echo "SIDECAR_FINAL_STATUS=dead"
+          fi
+
+          # Verify the app immediately before teardown, after the final sidecar
+          # probe, so neither liveness result can be stale when we report green.
+          if kill -0 "$APP_PID" 2>/dev/null; then
             echo "APP_STATUS=running"
           else
             echo "APP_STATUS=crashed"
             echo "--- App log ---"
             tail -50 /tmp/app.log || true
           fi
-
-          # Window info
-          xdotool search --name "" getwindowname 2>/dev/null | head -5 || true
 
           kill $APP_PID 2>/dev/null || true
           SCRIPT
@@ -119,7 +215,7 @@ jobs:
           # --- Try 1: xwfb-run (Xwayland on headless Wayland compositor) ---
           if command -v xwfb-run &>/dev/null; then
             echo "=== Using xwfb-run (Xwayland + headless compositor) ==="
-            timeout 90 xwfb-run -- bash /tmp/smoke-test.sh 2>&1 | tee /tmp/display-server.log || RESULT=$?
+            timeout 180 xwfb-run -- bash /tmp/smoke-test.sh 2>&1 | tee /tmp/display-server.log || RESULT=$?
           else
             echo "xwfb-run not found, skipping"
             RESULT=1
@@ -148,19 +244,43 @@ jobs:
           if grep -q "APP_STATUS=running" /tmp/display-server.log 2>/dev/null; then
             echo "✅ AppImage launched successfully"
           else
-            echo "⚠️ Could not determine app status"
+            echo "❌ Could not determine app status"
+            exit 1
           fi
 
-          # --- Check screenshot has non-black content ---
-          if [ -f screenshot.png ]; then
-            COLORS=$(identify -verbose screenshot.png 2>/dev/null | grep "Colors:" | awk '{print $2}')
-            echo "Screenshot unique colors: ${COLORS:-unknown}"
-            if [ "${COLORS:-0}" -le 5 ]; then
-              echo "⚠️ Screenshot appears blank (only $COLORS colors). App may not have rendered."
-            else
-              echo "✅ Screenshot has content ($COLORS unique colors)"
-            fi
+          # --- Sidecar readiness and final liveness are hard gates (#5902):
+          # a rendered shell with a dead sidecar is exactly the drift this
+          # canary exists to catch ---
+          if grep -q "SIDECAR_STATUS=ready" /tmp/display-server.log 2>/dev/null; then
+            echo "✅ Sidecar became ready on 127.0.0.1:46123"
+          else
+            echo "❌ Sidecar never responded on 127.0.0.1:46123"
+            echo "--- App log (last 50 lines) ---"
+            tail -50 /tmp/app.log 2>/dev/null || true
+            exit 1
           fi
+          if grep -q "SIDECAR_FINAL_STATUS=alive" /tmp/display-server.log 2>/dev/null; then
+            echo "✅ Sidecar remained alive through the observation window"
+          else
+            echo "❌ Sidecar became unreachable after its readiness response"
+            echo "--- App log (last 50 lines) ---"
+            tail -50 /tmp/app.log 2>/dev/null || true
+            exit 1
+          fi
+
+          # --- Rendered content is a hard gate: a blank window is a failure,
+          # not a warning — a green run must mean the app actually drew ---
+          if [ ! -f screenshot.png ]; then
+            echo "❌ No screenshot captured — cannot verify rendered content"
+            exit 1
+          fi
+          COLORS=$(identify -verbose screenshot.png 2>/dev/null | grep "Colors:" | awk '{print $2}')
+          echo "Screenshot unique colors: ${COLORS:-unknown}"
+          if [ "${COLORS:-0}" -le 5 ]; then
+            echo "❌ Screenshot appears blank (only ${COLORS:-0} colors). App did not render."
+            exit 1
+          fi
+          echo "✅ Screenshot has content ($COLORS unique colors)"
 
       - name: Upload smoke test screenshot
         if: always()

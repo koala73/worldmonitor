@@ -1,11 +1,12 @@
 ---
-title: "OSINT for Everyone: How World Monitor Democratizes Open Source Intelligence"
-description: "World Monitor brings professional-grade OSINT to everyone. 435+ feeds, live tracking, AI threat analysis, and 45 data layers in one free open source dashboard."
+title: "OSINT for Everyone: Open Source Intelligence with World Monitor"
+description: "World Monitor brings professional-grade OSINT to everyone. 500+ feeds, live tracking, AI threat analysis, and 56 map layers in one free open source dashboard."
 metaTitle: "OSINT for Everyone: Free Intelligence Dashboard"
 keywords: "OSINT tools free, open source intelligence software, OSINT dashboard, intelligence gathering tools, OSINT for beginners"
 audience: "OSINT researchers, security analysts, journalists, hobbyist investigators"
 heroImage: "/blog/images/blog/osint-for-everyone-open-source-intelligence-democratized.jpg"
 pubDate: "2026-02-17"
+modifiedDate: "2026-07-22"
 ---
 
 Open source intelligence used to require a dozen subscriptions, custom scrapers, and years of domain expertise. A professional OSINT analyst's browser might have 50+ tabs open at any given time: flight trackers, ship trackers, earthquake monitors, conflict databases, Telegram channels, RSS readers, and satellite imagery viewers.
@@ -16,24 +17,24 @@ World Monitor collapses that entire workflow into a single interactive dashboard
 
 If you've ever tried to monitor a developing situation, whether it's a military escalation, a natural disaster, or a supply chain disruption, you know the drill:
 
-1. Open FlightRadar24 for aircraft movements
-2. Open MarineTraffic for ship positions
-3. Open USGS for earthquake data
-4. Open ACLED for conflict events
-5. Open Liveuamap for real-time mapping
-6. Open Reuters, AP, and Al Jazeera for news
+1. Open [FlightRadar24](https://www.flightradar24.com/) for aircraft movements
+2. Open [MarineTraffic](https://www.marinetraffic.com/) for ship positions
+3. Open [USGS](https://earthquake.usgs.gov/) for earthquake data
+4. Open [ACLED](https://acleddata.com/) for conflict events
+5. Open [Liveuamap](https://liveuamap.com/) for real-time mapping
+6. Open [Reuters](https://www.reuters.com/), [AP](https://apnews.com/), and [Al Jazeera](https://www.aljazeera.com/) for news
 7. Open Telegram for raw OSINT channels
-8. Open Polymarket for prediction markets
-9. Open gpsjam.org for GPS interference
-10. Open NASA FIRMS for fire detection
+8. Open [Polymarket](https://polymarket.com/) for prediction markets
+9. Open [gpsjam.org](https://gpsjam.org/) for GPS interference
+10. Open [NASA FIRMS](https://firms.modaps.eosdis.nasa.gov/) for fire detection
 
 Each tool has its own interface, its own refresh cycle, its own learning curve. Cross-referencing between them is manual and slow. By the time you've built a picture, the situation has moved.
 
 World Monitor integrates all of these data sources (and many more) into a single, layered map with real-time updates. Learn more about [what World Monitor is and how it works](/blog/posts/what-is-worldmonitor-real-time-global-intelligence/).
 
-## 435+ Intelligence Feeds, Zero Configuration
+## 500+ Intelligence Feeds, Zero Configuration
 
-World Monitor aggregates **435+ RSS feeds** organized across 15 categories:
+World Monitor aggregates **500+ curated RSS feeds** organized across 15 categories:
 
 - Geopolitics and defense
 - Middle East and North Africa
@@ -136,8 +137,8 @@ Yes. Every feature, data source, and AI capability is available at no cost with 
 No. The interface is designed for analysts of all skill levels. Toggle layers on the sidebar, click data points for details, and use the Command Palette (Cmd+K) to search across all intelligence sources instantly.
 
 **How does World Monitor compare to traditional OSINT tools?**
-World Monitor consolidates 435+ feeds, live tracking, AI analysis, and 45 data layers into one dashboard. Traditional tools require juggling dozens of separate platforms. See our [detailed comparison with traditional intelligence tools](/blog/posts/worldmonitor-vs-traditional-intelligence-tools/).
+World Monitor consolidates 500+ feeds, live tracking, AI analysis, and 56 map layers into one dashboard. Traditional tools require juggling dozens of separate platforms. See our [detailed comparison with traditional intelligence tools](/blog/posts/worldmonitor-vs-traditional-intelligence-tools/).
 
 ---
 
-**Start your OSINT workflow at [worldmonitor.app](https://worldmonitor.app). Free, open source, and no login required.**
+**Start your OSINT workflow at [worldmonitor.app](https://www.worldmonitor.app). Free, open source, and no login required.**

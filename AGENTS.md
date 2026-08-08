@@ -4,7 +4,7 @@ Agent entry point for WorldMonitor. Read this first, then follow links for depth
 
 ## What This Project Is
 
-Real-time global intelligence dashboard. TypeScript SPA (Vite + Preact) with 86 panel components, 60+ Vercel Edge API endpoints, a Tauri desktop app with Node.js sidecar, and a Railway relay service. Aggregates 30+ external data sources (geopolitics, military, finance, climate, cyber, maritime, aviation).
+Real-time global intelligence dashboard. TypeScript SPA (Vite + Preact) with 183 top-level TypeScript component files, 80+ Vercel Edge API endpoint entries, a Tauri desktop app with Node.js sidecar, and a Railway relay service. Aggregates geopolitics, military, finance, climate, cyber, maritime, and aviation data across 35 freshness-tracked source groups.
 
 ## Repository Map
 
@@ -12,9 +12,16 @@ Real-time global intelligence dashboard. TypeScript SPA (Vite + Preact) with 86 
 .
 ├── src/                    # Browser SPA (TypeScript, class-based components)
 │   ├── app/                # App orchestration (data-loader, refresh-scheduler, panel-layout)
-│   ├── components/         # 86 UI panels + map components (Panel subclasses)
+│   ├── bootstrap/          # Startup/recovery (chunk reload, deferred Sentry, SW update)
+│   ├── components/         # 183 top-level TypeScript component files
 │   ├── config/             # Variant configs, panel/layer definitions, market symbols
-│   ├── services/           # Business logic (120+ service files, organized by domain)
+│   ├── services/           # Business logic (225 service modules and domain directories)
+│   ├── shared/             # Cross-cutting helpers (premium paths, registries, staleness)
+│   ├── embed/              # Embeddable widget loader
+│   ├── styles/             # Global CSS (layers, themes, panel styles)
+│   ├── shims/              # Runtime shims (child-process for sidecar)
+│   ├── data/               # Static JSON datasets (conservation, renewable, happiness)
+│   ├── e2e/                # Map test harnesses (consumed by Playwright specs)
 │   ├── types/              # TypeScript type definitions
 │   ├── utils/              # Shared utilities (circuit-breaker, theme, URL state, DOM)
 │   ├── workers/            # Web Workers (analysis, ML/ONNX, vector DB)
@@ -35,30 +42,62 @@ Real-time global intelligence dashboard. TypeScript SPA (Vite + Preact) with 86 
 │   ├── buf.yaml            # Buf configuration
 │   └── worldmonitor/       # Service definitions with HTTP annotations
 ├── shared/                 # Cross-platform data (JSON configs for markets, RSS domains)
+├── data/                   # Static data (telegram channels, OREF threat translations, gamma irradiators)
+├── public/                 # Static assets served as-is (favicons, textures, .well-known, llms.txt)
 ├── scripts/                # Seed scripts, build helpers, data fetchers
 ├── src-tauri/              # Tauri desktop shell (Rust + Node.js sidecar)
 │   └── sidecar/            # Node.js sidecar API server
+├── consumer-prices-core/   # Consumer-price scrapers (Playwright, per-country baskets; Railway/Docker)
+├── workers/                # Cloudflare Workers (edge CORS preflight for api.worldmonitor.app)
 ├── tests/                  # Unit/integration tests (node:test runner)
 ├── e2e/                    # Playwright E2E specs
+├── pro-test/               # Standalone Pro QA app (separate package)
 ├── docs/                   # Mintlify documentation site
+│   └── solutions/          # Documented solutions to past problems (bugs, patterns, practices) — YAML frontmatter (module, tags, problem_type)
 ├── docker/                 # Docker build for Railway services
-├── deploy/                 # Deployment configs
+├── deploy/                 # Deployment configs (nginx)
+├── CONCEPTS.md             # Shared domain vocabulary (entities, named processes, status concepts)
 └── blog-site/              # Static blog (built into public/blog/)
 ```
 
 ## How to Run
 
 ```bash
-npm install              # Install deps (also runs blog-site postinstall)
+npm ci                   # Deterministic install (also runs blog-site postinstall)
 npm run dev              # Start Vite dev server (full variant)
 npm run dev:tech         # Start tech-only variant
+npm run dev:energy       # Start energy-security variant
 npm run typecheck        # tsc --noEmit (strict mode)
 npm run typecheck:api    # Typecheck API layer separately
 npm run test:data        # Run unit/integration tests
 npm run test:sidecar     # Run sidecar + API handler tests
 npm run test:e2e         # Run all Playwright E2E tests
-make generate            # Regenerate proto stubs (requires buf + sebuf plugins)
+make generate            # Regenerate proto stubs + per-service & unified OpenAPI specs (requires buf + sebuf v0.11.1 plugins)
+npm run worktree:bootstrap          # Fresh worktree: link local env files + npm ci with tmp cache
+npm run worktree:bootstrap:test-only # Fresh docs/test worktree: same, but npm ci --ignore-scripts
+npm run worktree:env                # Link ignored local env files only
 ```
+
+## Fresh Worktree Bootstrap
+
+Worktrees usually start without ignored local state. When creating or entering one:
+
+1. Start from `origin/main` or the requested base, not a dirty local branch.
+2. Run `npm run worktree:bootstrap` before typecheck/tests. The helper links ignored `.env.local` / `.env` from the main worktree when Git can infer it, and installs deps with `npm ci --cache /tmp/worldmonitor-npm-cache`.
+3. If only docs/test tooling is needed and native postinstall work is unnecessary, use `npm run worktree:bootstrap:test-only`.
+4. If live credentials are unavailable, do not fabricate secrets. Run the non-credentialed checks you can and report the credential gate explicitly.
+
+Env rules:
+
+- Link only `.env.local` and `.env`. Never copy or link `.env.vercel-backup` or `.env.vercel-export`; the pre-push guard blocks those files even as symlinks.
+- Override env source discovery with `WM_ENV_SOURCE=/path/to/worldmonitor npm run worktree:env` when the main worktree cannot be inferred.
+- `.env*` files are ignored local state. Do not add, print, or summarize secret values.
+
+Validation hygiene:
+
+- Prefer `npm ci` over `npm install` in fresh worktrees. Use `npm_config_cache=/tmp/worldmonitor-npm-cache` for `npx` or install commands if cache ownership errors appear.
+- After bootstrap or pre-push, run `git status --short`. If dependency bootstrap changed lockfiles you did not intend to edit, remove those incidental changes before finalizing.
+- After install, prefer local tools such as `./node_modules/.bin/tsx --test ...` for focused TypeScript tests when `npx` is flaky.
 
 ## Architecture Rules
 
@@ -108,6 +147,7 @@ The app ships multiple variants with different panel/layer configurations:
 - `finance`: Financial markets focus
 - `commodity`: Commodity markets focus
 - `happy`: Positive news only
+- `energy`: Energy security, chokepoints, oil/gas, and disruption timelines
 
 Variant is set via `VITE_VARIANT` env var. Config lives in `src/config/variants/`.
 
@@ -156,20 +196,31 @@ Variant is set via `VITE_VARIANT` env var. Config lives in `src/config/variants/
 | `typecheck.yml` | PR + push to main | `tsc --noEmit` for src and API |
 | `lint.yml` | PR (markdown changes) | markdownlint-cli2 |
 | `proto-check.yml` | PR (proto changes) | Generated code freshness |
-| `build-desktop.yml` | Manual | Tauri desktop build |
-| `test-linux-app.yml` | Manual | Linux AppImage smoke test |
+| `build-desktop.yml` | `v*` tag, manual | Tauri desktop build |
+| `test-linux-app.yml` | Twice-weekly schedule, manual | Desktop Canary (Linux): release-processed AppImage smoke — crash, sidecar readiness/liveness, rendered content |
+| `test.yml` (`desktop-config`, `desktop-rust` jobs) | PR touching desktop-coupled paths | Desktop version consistency, AppImage post-processing syntax, Tauri config/capability parse, desktop build env parity (#5905, also in `unit`), `cargo test --locked` (#5902) |
 
 ## Pre-Push Hook
 
-Runs automatically before `git push`:
+Runs automatically before `git push`. Two tiers:
 
-1. TypeScript check (src + API)
-2. CJS syntax validation
-3. Edge function esbuild bundle check
-4. Edge function import guardrail test
-5. Markdown lint
-6. MDX lint (Mintlify compatibility)
-7. Version sync check
+**Always (state-dependent, fast — run even on a cache hit):** local Vercel env-dump guard, PR-state check (no pushes to merged/closed PR branches), branch-contamination guard (>20 commits ahead), `scripts/` lockfile sync.
+
+**Tree-dependent (skipped entirely on a green-tree cache hit):** Unicode safety and version sync (always run for uncached trees), plus the diff-scoped checks: TypeScript (frontend tsc on `src/`-surface changes; `typecheck:api` on `api/|server/|scripts/|src/generated/`; Convex tsc on `convex/`), CJS syntax, boundary/safe-html/Sentry-coverage/rate-limit/premium-fetch lints (each also fires when its own guardrail script changes), edge esbuild check (`api/|server/|src/generated/` — edge entries bundle-import server code), markdown/MDX lint, proto + pro-test bundle freshness, change-scoped tests. `package.json`/`tsconfig` changes — or an unresolvable `origin/main` diff — force everything (an unresolvable diff also bypasses the green-tree cache: a blind run trusts nothing, including prior attestations).
+
+**Green-tree cache:** a tree that passed the full gate is recorded (`$GIT_DIR/wm-prepush-green`); re-pushing the identical tree (remote failure, message-only amend) skips all tree-dependent checks — same tree, same result. Delete that file to force a full re-run.
+
+Heavy checks (`test:data`, typechecks, edge-bundle) must run **sequentially** in worktrees — parallel runs OOM (exit 137).
+
+## Shipping Velocity (Agent Workflow)
+
+- **Before starting work on an issue:** check for parallel/duplicate work first — `gh pr list --search "<issue#>"` AND `git worktree list` (background codex/claude sessions ship PRs under the same account).
+- **PR delivery authority:** a user request to implement, fix, or ship a scoped change authorizes creating and updating the ready PRs needed to deliver it, including corrective follow-up PRs discovered by review or CI, plus monitoring and repairing those PRs without additional per-PR confirmation. This authority is limited to the requested change and its delivery branches; review-only or diagnostic requests remain read-only.
+- **Merge authority is explicit and non-delegable:** never merge a PR, enable auto-merge, queue a merge, or run any equivalent GitHub merge action unless the user has explicitly requested that specific action in the current conversation. A request to implement, ship, push, create a PR, or monitor CI does **not** authorize merging. Wait for clear approval and report the ready state instead.
+- **PR push readiness is mandatory:** before every push, re-fetch the live PR head and base, verify the remote head has not advanced, and check GitHub mergeability. Do not push a branch that is behind, `CONFLICTING`, or `DIRTY`; update from the latest PR/base state and resolve conflicts first. A successful `git push` is not delivery completion.
+- **After pushing a PR:** start `gh pr checks <n> --watch` (or an equivalent bounded monitor), wait for all required CI checks to reach green, then re-fetch the PR head and verify GitHub reports no conflict (`mergeable: MERGEABLE` / clean merge state). If checks are pending, failing, or the PR becomes conflicting, keep repairing and re-checking; do not report the PR as ready or complete until both CI and mergeability are green. Never use `--no-verify` to bypass this gate or turn on auto-merge without the explicit approval above.
+- **docs/plans/ is gitignored** — plan documents are local working state and do not travel between worktrees or ship in PRs.
+- **PR-review verification:** never assert a finding is fixed/stale from memory — re-fetch the PR head SHA and diff the cited lines first.
 
 ## Deployment
 
@@ -184,8 +235,9 @@ Runs automatically before `git push`:
 - Edge Functions cannot use `node:http`, `node:https`, `node:zlib`
 - Always include `User-Agent` header in server-side fetch calls
 - Yahoo Finance requests must be staggered (150ms delays)
-- New data sources MUST have bootstrap hydration wired in `api/bootstrap.js`
+- New data sources MUST have bootstrap hydration wired in `api/bootstrap.js` — unless nothing in `src/` renders them. A dataset with no dashboard consumer registers in `api/health.js` `STANDALONE_KEYS` instead and stays out of the tiered payload every client downloads; `tests/bootstrap.test.mjs` enforces the converse, that no tier key lacks a `getHydratedData`/`ensureHydrated` consumer. Once a panel does read one, promote it into `BOOTSTRAP_CACHE_KEYS` with a tier — `ON_DEMAND_KEY_NAMES` for an opt-in panel, so the payload is fetched per-key on render rather than riding a tier every visitor downloads (`fxYoy` and `sharedFxRates` went this way for the FX panel, #6199)
 - Redis seed scripts MUST write `seed-meta:<key>` for health monitoring
+- Seed credentials load only via `loadEnvFile()` (inert under test runtimes, resolves `.env.local` at the checkout root, `only:` narrows the keys) — never hand-roll a `.env` reader or resolve one from `$HOME` or an absolute literal. Note `worktree:bootstrap` symlinks the source checkout's `.env.local`, so a bootstrapped worktree shares real credentials when a seeder is actually run
 
 ## External References
 

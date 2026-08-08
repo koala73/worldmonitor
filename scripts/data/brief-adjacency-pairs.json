@@ -1,0 +1,102 @@
+{
+  "meta": {
+    "doc": "Labeled adjacency pairs for brief topic-grouping evaluation. Read by scripts/sweep-topic-thresholds.mjs and scripts/brief-quality-report.mjs. Each pair carries two normalized headlines and an expected verdict ('cluster' or 'separate'). The harness matches by normalizeForEmbedding(title) against replay-log records, so titles must match what was actually embedded (apply the same wire-suffix-stripping as scripts/lib/brief-embedding.mjs:normalizeForEmbedding).",
+    "schema_version": 1,
+    "observed_briefs": [
+      "2026-04-24-2001 — first brief that surfaced the adjacency complaint (Iran-Iran-Iran split)",
+      "2026-04-25-0802 — first brief after PR #3387 merged; Iran cluster of size 6 plus 3 split-off Iran subtopics"
+    ],
+    "labeling_guidance": [
+      "cluster — these two stories cover the SAME news event or share so much narrative context that a reader would expect them to be adjacent in a daily brief.",
+      "separate — these two stories cover unrelated news events; clustering them would surface as a false adjacency to the reader.",
+      "Aim for a balanced ratio. 1:1 cluster:separate is healthy. Heavy-skew toward 'cluster' inflates recall numbers without measuring false-adjacency.",
+      "Add new pairs whenever a brief surfaces an adjacency outcome that was clearly right or clearly wrong. Treat this file as an append-only labeled corpus."
+    ]
+  },
+  "pairs": [
+    {
+      "title_a": "Pentagon chief Hegseth says US blockade on Iran 'going global'",
+      "title_b": "US Navy secretary fired amid Iran blockade",
+      "expected": "cluster",
+      "rationale": "Same event narrative — Hegseth + US Navy + Iran blockade. The 2026-04-24 brief had these adjacent; that adjacency should be preserved.",
+      "source_brief": "2026-04-24-2001"
+    },
+    {
+      "title_a": "Pentagon chief Hegseth says US blockade on Iran 'going global'",
+      "title_b": "US-Iran War Live Updates: Another US Aircraft Carrier Reaches Gulf, Joins 2 Already Operating There",
+      "expected": "cluster",
+      "rationale": "Same news cycle — US military escalation against Iran. Both name US naval/military assets and Iran. The 2026-04-24 brief split them (positions 1 vs 7), driving the original user complaint.",
+      "source_brief": "2026-04-24-2001"
+    },
+    {
+      "title_a": "36 serving military officers to be arraigned for coup plot against President Tinubu",
+      "title_b": "Behind Nigeria's murky coup plot — the money, the prayers and a Nollywood arrest",
+      "expected": "cluster",
+      "rationale": "Same event — Nigeria's coup plot. President Tinubu IS Nigeria. The 2026-04-24 brief split them across positions 4 and 6 with movie junk in between.",
+      "source_brief": "2026-04-24-2001"
+    },
+    {
+      "title_a": "Pentagon chief Hegseth says US blockade on Iran 'going global'",
+      "title_b": "Navy Secretary John Phelan fired amid tensions with Pete Hegseth as Iran war rages",
+      "expected": "cluster",
+      "rationale": "Same actor (Hegseth) + same news cycle (Iran war / US firings). The 2026-04-25 morning brief still split these (positions 1 vs 4) — proves the threshold-too-tight defect persists.",
+      "source_brief": "2026-04-25-0802"
+    },
+    {
+      "title_a": "Israel-Iran war LIVE: Iran's supreme leader Mojtaba Khamenei 'gravely wounded': NYT",
+      "title_b": "Iran war leaves seafarers stranded in the Gulf",
+      "expected": "cluster",
+      "rationale": "Both are Iran-war effect stories. Reasonable expectation that they appear adjacent in a daily brief about the same conflict.",
+      "source_brief": "2026-04-25-0802"
+    },
+    {
+      "title_a": "Iran war leaves seafarers stranded in the Gulf",
+      "title_b": "UAE pupils seek university places after exams scrapped due to Iran war",
+      "expected": "cluster",
+      "rationale": "Both are Iran-war regional-effect stories from Gulf countries. The 2026-04-25 brief split them across positions 8 and 11.",
+      "source_brief": "2026-04-25-0802"
+    },
+    {
+      "title_a": "ECB interest rate dilemma: Eurozone growth stalls as Iran war fuels inflation",
+      "title_b": "Iran war leaves seafarers stranded in the Gulf",
+      "expected": "cluster",
+      "rationale": "Both are Iran-war economic-effect stories. Different geographic angle (Europe vs Gulf) but same root narrative.",
+      "source_brief": "2026-04-25-0802"
+    },
+    {
+      "title_a": "Pentagon chief Hegseth says US blockade on Iran 'going global'",
+      "title_b": "Average of 47 women and girls killed daily between 2023-2025 during Israel's war in Gaza, UN says",
+      "expected": "separate",
+      "rationale": "Different conflicts (US-Iran military vs Israel-Gaza humanitarian). Clustering would create a false adjacency that conflates two distinct news threads.",
+      "source_brief": "2026-04-24-2001"
+    },
+    {
+      "title_a": "Pentagon chief Hegseth says US blockade on Iran 'going global'",
+      "title_b": "Armenia marks 111th anniversary of Armenian genocide in Yerevan",
+      "expected": "separate",
+      "rationale": "Different topics, different geographies, different news cycles. Should NEVER cluster.",
+      "source_brief": "2026-04-24-2001"
+    },
+    {
+      "title_a": "Pentagon chief Hegseth says US blockade on Iran 'going global'",
+      "title_b": "Could the US military handle a monster invasion? Monarch: Legacy of Monsters begs the question",
+      "expected": "separate",
+      "rationale": "Anti-pair. The Apple TV+ show review should never cluster with real geopolitical news. (Separate classifier-hardening problem; included here as a hard-negative to keep the false-adjacency metric honest.)",
+      "source_brief": "2026-04-24-2001"
+    },
+    {
+      "title_a": "Israel-Iran war LIVE: Iran's supreme leader Mojtaba Khamenei 'gravely wounded': NYT",
+      "title_b": "Syrian authorities arrest main suspect in 2013 Tadamon massacre",
+      "expected": "separate",
+      "rationale": "Both Middle East but different countries, different events, different news cycles (Iran-war today vs 12-year-old Syrian war crime).",
+      "source_brief": "2026-04-25-0802"
+    },
+    {
+      "title_a": "Pentagon chief Hegseth says US blockade on Iran 'going global'",
+      "title_b": "How Israel targeted and killed Lebanese journalist Amal Khalil",
+      "expected": "separate",
+      "rationale": "Different conflicts, different perpetrators, different victims. Should NOT cluster even though both are Middle East / military.",
+      "source_brief": "2026-04-25-0802"
+    }
+  ]
+}

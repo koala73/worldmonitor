@@ -1,41 +1,70 @@
 ---
 import Base from '../layouts/Base.astro';
 import { getCollection } from 'astro:content';
+import { coverWebpSources } from '../lib/cover-webp';
 
 const posts = (await getCollection('blog')).sort(
-  (a, b) => b.data.pubDate.valueOf() - a.data.pubDate.valueOf()
+  (a, b) =>
+    Number(b.data.pinned ?? false) - Number(a.data.pinned ?? false) ||
+    b.data.pubDate.valueOf() - a.data.pubDate.valueOf()
 );
+
+// Committed covers have generated .webp / -640.webp siblings (guarded by
+// tests/blog-cover-webp.test.mjs); coverWebpSources() returns null when the
+// siblings don't exist (e.g. deploy-generated /blog/og/*.png covers). Cards
+// render at ~340-540px, so the 640w thumb covers 1x displays and the full
+// WebP covers high-DPI ones.
+
+const DEFAULT_AUTHOR = 'Elie Habib';
+const DEFAULT_AUTHOR_URL = 'https://www.worldmonitor.app/blog/authors/elie-habib/';
+const DEFAULT_AUTHOR_ID = `${DEFAULT_AUTHOR_URL}#person`;
 
 const jsonLd = {
   "@context": "https://schema.org",
   "@type": "Blog",
+  "@id": "https://www.worldmonitor.app/blog/#blog",
   "name": "World Monitor Blog",
-  "description": "Analysis, guides, and deep dives on real-time intelligence, OSINT, geopolitics, markets, and the open-source tools behind World Monitor.",
+  "description": "Evidence-led analysis and practical guides on real-time global intelligence, OSINT, geopolitics, markets, and the open-source tools behind World Monitor.",
   "url": "https://www.worldmonitor.app/blog/",
+  "inLanguage": "en-US",
   "publisher": {
     "@type": "Organization",
+    "@id": "https://www.worldmonitor.app/#organization",
     "name": "World Monitor",
-    "url": "https://worldmonitor.app",
+    "url": "https://www.worldmonitor.app",
     "logo": {
       "@type": "ImageObject",
       "url": "https://www.worldmonitor.app/favico/apple-touch-icon.png"
     }
   },
-  "blogPost": posts.map(post => ({
-    "@type": "BlogPosting",
-    "headline": post.data.title,
-    "description": post.data.description,
-    "datePublished": post.data.pubDate.toISOString(),
-    "url": `https://www.worldmonitor.app/blog/posts/${post.id}/`,
-    "image": post.data.heroImage ? `https://www.worldmonitor.app${post.data.heroImage}` : "https://www.worldmonitor.app/favico/og-image.png"
-  }))
+  "blogPost": posts.map(post => {
+    const authorName = post.data.author || DEFAULT_AUTHOR;
+    const authorUrl = post.data.authorUrl || (authorName === DEFAULT_AUTHOR ? DEFAULT_AUTHOR_URL : undefined);
+
+    return {
+      "@type": "BlogPosting",
+      "@id": `https://www.worldmonitor.app/blog/posts/${post.id}/#article`,
+      "headline": post.data.title,
+      "description": post.data.description,
+      "datePublished": post.data.pubDate.toISOString(),
+      ...(post.data.modifiedDate ? { "dateModified": post.data.modifiedDate.toISOString() } : {}),
+      "author": {
+        "@type": "Person",
+        "name": authorName,
+        ...(authorUrl ? { "url": authorUrl } : {}),
+        ...(authorName === DEFAULT_AUTHOR ? { "@id": DEFAULT_AUTHOR_ID } : {})
+      },
+      "url": `https://www.worldmonitor.app/blog/posts/${post.id}/`,
+      "image": post.data.heroImage ? `https://www.worldmonitor.app${post.data.heroImage}` : "https://www.worldmonitor.app/favico/og-image.png"
+    };
+  })
 };
 ---
 
 <Base
   title="World Monitor Blog"
-  description="Insights on real-time global intelligence, OSINT, geopolitics, markets, and the open-source tools that power situational awareness."
-  metaTitle="World Monitor Blog | Real-Time Intelligence, OSINT, Geopolitics & Markets"
+  description="Evidence-led analysis and practical guides on real-time global intelligence, OSINT, geopolitics, markets, and the open-source tools behind World Monitor."
+  metaTitle="World Monitor Blog | Intelligence & OSINT"
   jsonLd={jsonLd}
 >
   <div class="blog-hero">
@@ -50,19 +79,33 @@ const jsonLd = {
   </div>
   <div class="blog-list">
     <div class="post-grid">
-      {posts.map((post) => (
-        <a href={`/blog/posts/${post.id}/`} class="post-card">
+      {posts.map((post) => {
+        const cover = coverWebpSources(post.data.heroImage);
+        return (
+        <a href={`/blog/posts/${post.id}/`} class:list={['post-card', { pinned: post.data.pinned }]}>
           {post.data.heroImage && (
-            <img
-              src={post.data.heroImage}
-              alt={post.data.title}
-              class="post-card-img"
-              loading="lazy"
-              width="600"
-              height="315"
-            />
+            <picture>
+              {cover && (
+                <source
+                  type="image/webp"
+                  srcset={`${cover.webp640} 640w, ${cover.webp} 1200w`}
+                  sizes="(max-width: 740px) calc(100vw - 3rem), 350px"
+                />
+              )}
+              <img
+                src={post.data.heroImage}
+                alt={post.data.title}
+                class="post-card-img"
+                loading="lazy"
+                width="600"
+                height="315"
+              />
+            </picture>
           )}
-          <div class="tag">{post.data.audience}</div>
+          <div class="tag">
+            {post.data.pinned && <span class="pin">Pinned</span>}
+            {post.data.audience}
+          </div>
           <h2>{post.data.title}</h2>
           <p>{post.data.description}</p>
           <div class="meta">
@@ -75,7 +118,8 @@ const jsonLd = {
             </time>
           </div>
         </a>
-      ))}
+        );
+      })}
     </div>
   </div>
 </Base>

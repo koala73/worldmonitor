@@ -1,0 +1,17 @@
+syntax = "proto3";
+
+package worldmonitor.economic.v1;
+
+message GetChinaActivityNowcastRequest {}
+
+message GetChinaActivityNowcastResponse {
+  string generated_at = 1;
+  string method_version = 2;
+  string comparison_state = 3;
+  // True only when no official vintage or proxy contribution is available.
+  // Methodological insufficiency with otherwise healthy inputs remains false.
+  bool upstream_unavailable = 4;
+  // Canonical inspectable method payload. Numeric computation and state
+  // assignment are deterministic and validated before crossing this boundary.
+  string payload_json = 5;
+}

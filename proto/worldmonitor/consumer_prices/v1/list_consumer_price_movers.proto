@@ -11,8 +11,8 @@ message ListConsumerPriceMoversRequest {
   string market_code = 1 [(sebuf.http.query) = { name: "market_code" }];
   // range is one of "7d", "30d", "90d".
   string range = 2 [(sebuf.http.query) = { name: "range" }];
-  // limit caps the number of risers and fallers returned (default 10).
-  int32 limit = 3 [(sebuf.http.query) = { name: "limit" }];
+  // limit caps the number of risers and fallers returned.
+  int32 limit = 3 [(sebuf.http.query) = { name: "limit", required: true }];
   // category_slug filters to a single category when set.
   string category_slug = 4 [(sebuf.http.query) = { name: "category_slug" }];
 }

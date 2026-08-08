@@ -1,6 +1,7 @@
 import type { EconomicServiceClient } from '@/generated/client/worldmonitor/economic/v1/service_client';
 import { Panel } from './Panel';
-import { escapeHtml } from '@/utils/sanitize';
+import { t } from '@/services/i18n';
+import { escapeHtml, unsafeRawHtml } from '@/utils/sanitize';
 
 let _client: EconomicServiceClient | null = null;
 async function getEconomicClient(): Promise<EconomicServiceClient> {
@@ -89,7 +90,7 @@ export class EconomicCalendarPanel extends Panel {
   private _region: RegionFilter = 'all';
 
   constructor() {
-    super({ id: 'economic-calendar', title: 'Economic Calendar', showCount: false });
+    super({ id: 'economic-calendar', title: 'Economic Calendar', showCount: false, infoTooltip: t('components.economicCalendar.infoTooltip') });
     this.content.addEventListener('click', (e) => {
       const btn = (e.target as HTMLElement).closest<HTMLButtonElement>('button[data-region]');
       if (!btn) return;
@@ -230,6 +231,6 @@ export class EconomicCalendarPanel extends Panel {
       </table>
     </div>`;
 
-    this.setContent(html);
+    this.setSafeContent(unsafeRawHtml(html, 'legacy Panel.setContent() migration'));
   }
 }

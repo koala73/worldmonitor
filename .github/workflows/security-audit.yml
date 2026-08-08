@@ -1,0 +1,140 @@
+name: Security Audit
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  schedule:
+    - cron: '30 4 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  audit-lockfile:
+    name: audit-lockfile (${{ matrix.name }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: root
+            path: .
+            package_json: package.json
+            lockfile: package-lock.json
+          - name: scripts
+            path: scripts
+            package_json: scripts/package.json
+            lockfile: scripts/package-lock.json
+          - name: consumer-prices-core
+            path: consumer-prices-core
+            package_json: consumer-prices-core/package.json
+            lockfile: consumer-prices-core/package-lock.json
+          - name: blog-site
+            path: blog-site
+            package_json: blog-site/package.json
+            lockfile: blog-site/package-lock.json
+          - name: pro-test
+            path: pro-test
+            package_json: pro-test/package.json
+            lockfile: pro-test/package-lock.json
+          - name: docker-runtime
+            path: docker
+            package_json: docker/runtime-package.json
+            lockfile: docker/runtime-package-lock.json
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+      # The introduced-vs-inherited split needs the base commit in the object
+      # DB. checkout leaves a shallow merge ref, so fetch just that one commit.
+      - name: Fetch base commit
+        if: github.event_name == 'pull_request'
+        run: git fetch --no-tags --depth=1 origin ${{ github.event.pull_request.base.sha }}
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '24'
+      - name: Audit ${{ matrix.lockfile }}
+        env:
+          # Lifts the unauthenticated 60/hour limit on the advisory API used to
+          # date each finding for the grace clock.
+          GITHUB_TOKEN: ${{ github.token }}
+          AUDIT_STATUS_FILE: ${{ runner.temp }}/audit-status/${{ matrix.name }}.txt
+          AUDIT_BASE_REF: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || '' }}
+          # The daily sweep is the safety net, so it refuses to pass on an
+          # unaudited lockfile or an advisory whose age could not be resolved.
+          AUDIT_FAIL_ON_OUTAGE: ${{ github.event_name == 'schedule' && '1' || '0' }}
+        run: |
+          mkdir -p "${{ runner.temp }}/audit-status"
+          node .github/scripts/audit-production-dependencies.mjs \
+            --workspace "${{ matrix.path }}" \
+            --package-json "${{ matrix.package_json }}" \
+            --lockfile "${{ matrix.lockfile }}"
+      # always(): a blocking finding must still publish its verdict, otherwise
+      # the aggregate cannot tell it apart from a job that never ran.
+      - name: Upload audit verdict
+        if: always()
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: audit-status-${{ matrix.name }}
+          path: ${{ runner.temp }}/audit-status/${{ matrix.name }}.txt
+          if-no-files-found: ignore
+          retention-days: 1
+
+  security-audit:
+    name: security-audit
+    runs-on: ubuntu-latest
+    needs: audit-lockfile
+    if: ${{ always() }}
+    steps:
+      - name: Download audit verdicts
+        id: verdicts
+        continue-on-error: true
+        uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6
+        with:
+          pattern: audit-status-*
+          merge-multiple: true
+          path: audit-status
+      - name: Verify lockfile audits passed
+        env:
+          AUDIT_RESULT: ${{ needs.audit-lockfile.result }}
+          # Names must match the audit-lockfile matrix exactly; the
+          # ci-workflow-coverage test asserts they do.
+          AUDIT_NAMES: 'root scripts consumer-prices-core blog-site pro-test docker-runtime'
+          FAIL_ON_OUTAGE: ${{ github.event_name == 'schedule' && '1' || '0' }}
+        run: |
+          if [ "$AUDIT_RESULT" = "cancelled" ]; then
+            echo "::error::The dependency audit matrix was cancelled before every production lockfile was audited."
+            exit 1
+          fi
+
+          missing=""
+          failed=""
+          for name in $AUDIT_NAMES; do
+            file="audit-status/${name}.txt"
+            if [ ! -f "$file" ]; then
+              missing="${missing} ${name}"
+            elif grep -q '^failed$' "$file"; then
+              failed="${failed} ${name}"
+            fi
+          done
+
+          # A real verdict always wins over an incomplete matrix.
+          if [ -n "$failed" ]; then
+            echo "::error::Production dependency audit reported blocking advisories for:${failed}. Open the matrix job for the specific advisory and why it blocks."
+            exit 1
+          fi
+
+          if [ -n "$missing" ]; then
+            echo "::warning title=Audit did not complete::No audit verdict was produced for:${missing}. The job failed BEFORE it could audit anything (e.g. 'Failed to resolve action download info'), so this is a CI/runner outage, not a dependency finding."
+            if [ "$FAIL_ON_OUTAGE" = "1" ]; then
+              echo "::error::The scheduled sweep requires every production lockfile to be audited; re-run once the runner recovers."
+              exit 1
+            fi
+            exit 0
+          fi
+
+          if [ "$AUDIT_RESULT" != "success" ]; then
+            echo "::warning::The audit matrix reported '${AUDIT_RESULT}', but every lockfile published a passing verdict; the failure was outside the audit step."
+          fi
+          echo "Every production lockfile was audited with no blocking advisories."

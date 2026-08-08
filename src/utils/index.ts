@@ -19,7 +19,17 @@ export function formatTime(date: Date): string {
   }
 }
 
-export function formatPrice(price: number): string {
+// Live feeds occasionally omit numeric fields (undefined) rather than sending
+// null, and `null`/NaN/Infinity slip through call-site `!` assertions on
+// `number | null` fields. Shared guard so every formatter renders the
+// unavailable state instead of throwing or emitting misleading output
+// (WORLDMONITOR-SH).
+function isFiniteNumber(value: unknown): value is number {
+  return typeof value === 'number' && Number.isFinite(value);
+}
+
+export function formatPrice(price: number | null | undefined): string {
+  if (!isFiniteNumber(price)) return '--';
   if (price >= 1000) {
     return `$${price.toLocaleString(undefined, {
       minimumFractionDigits: 0,
@@ -32,16 +42,19 @@ export function formatPrice(price: number): string {
   })}`;
 }
 
-export function formatChange(change: number): string {
+export function formatChange(change: number | null | undefined): string {
+  if (!isFiniteNumber(change)) return '--';
   const sign = change >= 0 ? '+' : '';
   return `${sign}${change.toFixed(2)}%`;
 }
 
-export function getChangeClass(change: number): string {
+export function getChangeClass(change: number | null | undefined): string {
+  if (!isFiniteNumber(change)) return '';
   return change >= 0 ? 'up' : 'down';
 }
 
-export function getHeatmapClass(change: number): string {
+export function getHeatmapClass(change: number | null | undefined): string {
+  if (!isFiniteNumber(change)) return '';
   const abs = Math.abs(change);
   const direction = change >= 0 ? 'up' : 'down';
 
@@ -122,7 +135,6 @@ export function loadFromStorage<T>(key: string, defaultValue: T): T {
 }
 
 export function saveToStorage<T>(key: string, value: T): void {
-  if (isStorageQuotaExceeded()) return;
   try {
     localStorage.setItem(key, JSON.stringify(value));
   } catch (e) {
@@ -174,9 +186,9 @@ export function shuffle<T>(arr: T[]): T[] {
   return a;
 }
 
-export { proxyUrl, fetchWithProxy, rssProxyUrl } from './proxy';
-export { exportToJSON, exportToCSV, ExportPanel } from './export';
+export { proxyUrl, fetchWithProxy, hasNoStoreCacheDirective, rssProxyUrl } from './proxy';
 export { buildMapUrl, parseMapUrlState } from './urlState';
+export { withTimeout, TimeoutError } from './with-timeout';
 export type { ParsedMapUrlState } from './urlState';
 export { CircuitBreaker, createCircuitBreaker, getCircuitBreakerStatus, getCircuitBreakerCooldownInfo } from './circuit-breaker';
 export type { CircuitBreakerOptions } from './circuit-breaker';
@@ -185,7 +197,8 @@ export { getCSSColor, invalidateColorCache } from './theme-colors';
 export { getStoredTheme, getCurrentTheme, setTheme, applyStoredTheme, getThemePreference, setThemePreference } from './theme-manager';
 export type { Theme, ThemePreference } from './theme-manager';
 export { toFlagEmoji } from './country-flag';
+export { showToast } from './toast';
 
 import { getCurrentLanguage } from '../services/i18n';
-import { isStorageQuotaExceeded, isQuotaError, markStorageQuotaExceeded } from './storage-quota';
-export { isStorageQuotaExceeded, isQuotaError, markStorageQuotaExceeded };
+import { isQuotaError, markStorageQuotaExceeded } from './storage-quota';
+export { isStorageQuotaExceeded, isQuotaError, markStorageQuotaExceeded } from './storage-quota';

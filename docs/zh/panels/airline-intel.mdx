@@ -1,0 +1,65 @@
+---
+title: "航空情报"
+description: "航空情报面板整合 6 大标签页，涵盖机场实时运营状态、延误与取消统计、活跃航班航迹追踪、主要航空公司业绩指标、单架飞机 ADS-B 位置追踪、行业新闻聚合以及最便宜出行日期定价查询，由用户自定义的机场与航线关注列表驱动，为航旅规划、航空业分析与运营风险监控提供统一的一站式工作区。"
+---
+
+**Airline Intelligence** 面板（内部 id `airline-intel`）是仪表盘的民用航空指挥面。它跟踪用户策划的机场和航线关注列表，展示延误和取消严重性，追踪特定飞机，并可跨日期网格报出实时航班价格。设计为六个标签页，每个方面独立渲染，无需跨面板上下文切换。
+
+## 面板显示内容
+
+在共享的机场 + 航线关注列表控制下的六个标签页：
+
+| 标签页 id | 显示内容 |
+|---|---|
+| `ops` | 每个关注列表机场的机场运营摘要 — 通过 `FlightDelaySeverity` 的延误/取消严重性（`normal` / `minor` / `moderate` / `major` / `severe`，按颜色分桶）。 |
+| `flights` | 受关注机场的实时航班实例，附每航班状态徽章（`scheduled` / `boarding` / `departed` / `airborne` / `landed` / `arrived` / `cancelled` / `diverted` / `unknown`）和延误统计。 |
+| `airlines` | 每航空公司运营：`CarrierOps` — 延误率、取消率、准点率。 |
+| `tracking` | 追踪尾号的实时飞机位置（`PositionSample[]`），以及单航班状态查询。 |
+| `news` | 航空相关新闻条目（`AviationNewsItem[]`）。 |
+| `prices` | 特定行程的 Google Flights 报价和跨范围的最低日期价格网格。 |
+
+`TABS` 在 `src/components/AirlineIntelPanel.ts:54` 声明为 `['ops', 'flights', 'airlines', 'tracking', 'news', 'prices'] as const`。关注列表来自 `aviationWatchlist.get()` — 挂载时种子前 8 个机场和第一条航线。
+
+面板 id 为 `airline-intel`；规范组件为 `src/components/AirlineIntelPanel.ts`。标题从 i18n 解析（`panels.airlineIntel`）。
+
+## 如何访问
+
+- **Cmd+K**：输入 *airline*、*flight* 或 IATA 代码。
+- **按变体的可用性**：在 **full/geopolitical**（`priority: 2`）、**tech**（`priority: 2`）、**finance**（`priority: 2`）和 **commodity**（`priority: 2`）变体中注册并默认启用。在 happy 变体中不存在。来源：`src/config/panels.ts` 中 `FULL_PANELS`（`:104`）、`TECH_PANELS`（`:280`）、`FINANCE_PANELS`（`:471`）和 `COMMODITY_PANELS` 中的 `'airline-intel'` 条目。
+
+## 数据来源
+
+本面板使用 `@/services/aviation`，它包装了生成的 `AviationServiceClient`。航班延误告警可通过 bootstrap 水合优先到达；下方标签页专属调用为直接 REST RPC。
+
+### 支撑端点
+
+| 能力 | 端点 | 面板路径 |
+|---|---|---|
+| 机场延误告警 | `GET /api/aviation/v1/list-airport-delays` | bootstrap 支持的中断图层和服务兜底。 |
+| 机场运营摘要 | `GET /api/aviation/v1/get-airport-ops-summary` | 关注机场的 `ops` 标签页。 |
+| 机场航班实例 | `GET /api/aviation/v1/list-airport-flights` | 单个关注机场的 `flights` 标签页。 |
+| 航空公司延误/取消汇总 | `GET /api/aviation/v1/get-carrier-ops` | 关注机场的 `airlines` 标签页。 |
+| 特定航班状态 | `GET /api/aviation/v1/get-flight-status` | `tracking` 标签页查询。 |
+| 飞机位置追踪 | `GET /api/aviation/v1/track-aircraft` | `tracking` 标签页和民用空域地图工作流。 |
+| YouTube 直播流元数据 | `GET /api/aviation/v1/get-youtube-live-stream-info` | 航空直播流元数据的服务 RPC；不属于六标签页自动刷新循环。 |
+| 旧版航班报价 | `GET /api/aviation/v1/search-flight-prices` | 带 provider/degraded-state 元数据的直接报价搜索路径。 |
+| 航空新闻 | `GET /api/aviation/v1/list-aviation-news` | `news` 标签页。 |
+| Google Flights 行程搜索 | `GET /api/aviation/v1/search-google-flights` | `prices` 标签页显式搜索。 |
+| Google Flights 日期网格 | `GET /api/aviation/v1/search-google-dates` | `prices` 标签页最便宜日期网格。 |
+
+## 刷新频率
+
+`src/components/AirlineIntelPanel.ts` 中的三条不同刷新路径：
+
+- **自动刷新计时器** — 面板构造函数设置 **5 分钟 `setInterval`**（`5 * 60_000`）调用 `refresh()`，重新加载运营标签页和当前活动标签页。来源：约 173 行的构造函数（`setInterval(() => void this.refresh(), 5 * 60_000)`）。
+- **标签页切换** — 切换到 `ops`、`flights`、`airlines`、`tracking` 或 `news` 时仅在该标签页缓存为空时触发 `loadTab(tab)`。重复切换到已加载的标签页从内存重绘而不重新获取。
+- **价格标签页 — 仅显式获取** — `prices` 标签页被有意排除在标签页切换和自动刷新路径之外。价格**仅在显式搜索按钮点击时加载**（`refresh()` 助手在约 291 行以 `if (this.activeTab !== 'prices') void this.loadTab(this.activeTab)` 跳过价格；标签页切换守卫在约 287 行注释为 `prices tab: never auto-fetch — only on explicit search button click`）。
+
+## 层级与门控
+
+**免费。** 任何变体注册中均无 `premium` 标志。RPC 是公开的。
+
+## API 参考
+
+- [Aviation service](/api/AviationService.openapi.yaml) — 上述 11 个 RPC 的生成 OpenAPI。
+- 相关地图图层：[军事与民用航班追踪](/zh/military-tracking) 了解 `tracking` 标签页补充的实时航班覆盖。

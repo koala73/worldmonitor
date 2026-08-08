@@ -1,0 +1,84 @@
+---
+title: "官方 SDK"
+description: "面向 Python、Ruby、Go 和 JavaScript 的零依赖 SDK —— 无需手写 HTTP 调用即可脚本化国家简报、风险评分、事件流与 MCP 工具，SDK 提供类型化响应、内置认证与自动重试，帮助开发者在数据管线、Notebook 与 agent 工作流中集成 World Monitor 情报能力。"
+---
+
+World Monitor 在四个语言生态中提供官方客户端库。它们都是**零依赖**、MCP 优先的 [`worldmonitor` npm CLI](/zh/cli) 镜像：[MCP 服务器](/zh/mcp-overview)是实时且有文档的智能体接口（`tools/list` 公开；`tools/call` 需要用户 API 密钥），此外每个 SDK 都配有一个小型 REST 备用通道，用于主机相对路径和自托管场景。
+
+| 语言 | 软件包 | 安装 | 源码 |
+| --- | --- | --- | --- |
+| Python | [PyPI 上的 `worldmonitor-sdk`](https://pypi.org/project/worldmonitor-sdk/) | `pip install worldmonitor-sdk` | [`sdk/python/`](https://github.com/koala73/worldmonitor/tree/main/sdk/python) |
+| Ruby | [RubyGems 上的 `worldmonitor`](https://rubygems.org/gems/worldmonitor) | `gem install worldmonitor` | [`sdk/ruby/`](https://github.com/koala73/worldmonitor/tree/main/sdk/ruby) |
+| Go | [pkg.go.dev 上的 `github.com/koala73/worldmonitor/sdk/go`](https://pkg.go.dev/github.com/koala73/worldmonitor/sdk/go) | `go get github.com/koala73/worldmonitor/sdk/go` | [`sdk/go/`](https://github.com/koala73/worldmonitor/tree/main/sdk/go) |
+| JavaScript / CLI | [npm 上的 `worldmonitor`](https://www.npmjs.com/package/worldmonitor) | `npm install worldmonitor` | [`cli/`](https://github.com/koala73/worldmonitor/tree/main/cli) |
+
+每个软件包都将其主页设为 `worldmonitor.app`——你（或你的智能体）正是据此验证它是官方 SDK 而非仿冒品。
+
+## 共享设计
+
+四个客户端都以各语言的原生命名方式暴露相同的接口：
+
+- **任意 MCP 工具**——使用带命名参数的 `call_tool` / `CallTool`；返回结果是解包后的 JSON-RPC `result`。
+- **精选辅助方法**，覆盖流量最高的工具：世界简报、国家简报/风险、市场、冲突、网络、新闻、灾害、制裁、预测、海事。
+- **公开列表**——`list_tools`、`list_prompts`、`list_resources` 无需密钥。
+- **REST 备用通道**——针对 `api.worldmonitor.app` 的 `get("/api/…")` 和 `health()`。
+- **配置**方式：通过构造函数参数，或 `WORLDMONITOR_API_KEY`（别名 `WM_API_KEY`）、`WORLDMONITOR_BASE_URL` 和 `WORLDMONITOR_MCP_URL` 环境变量。
+- **错误**分为两类：MCP 错误（JSON-RPC `error` 对象，认证失败会附带密钥提示）和 API 错误（非 2xx 传输）。
+- 一个具描述性的 **User-Agent**（`worldmonitor-<lang>/<version>`）——API 边缘会拦截通用库代理，因此如果你 fork 了代码，请保留它。
+
+每个工具都接受一个可选的 `jmespath` 参数用于[服务端投影](/zh/mcp-jmespath)——通常可将响应大小削减 80–95%。
+
+## Python
+
+```python
+from worldmonitor_sdk import Client
+
+client = Client(api_key="wm_...")  # or set WORLDMONITOR_API_KEY
+client.list_tools()                # public — no key needed
+client.country_risk("IR")
+client.conflict_events(country="IR", limit=5)
+client.call_tool("get_market_data", asset_class="crypto")
+```
+
+## Ruby
+
+```ruby
+require "worldmonitor"
+
+client = WorldMonitor::Client.new(api_key: "wm_...")
+client.list_tools
+client.country_risk("IR")
+client.call_tool("get_market_data", asset_class: "crypto")
+```
+
+## Go
+
+```go
+client := worldmonitor.New("wm_...") // "" reads WORLDMONITOR_API_KEY
+tools, _ := client.ListTools(ctx)
+risk, _ := client.CountryRisk(ctx, "IR", nil)
+quotes, _ := client.CallTool(ctx, "get_market_data", worldmonitor.Args{"asset_class": "crypto"})
+```
+
+## JavaScript
+
+该 npm 软件包同时充当[命令行客户端](/zh/cli)和库：
+
+```js
+import { parseArgs, planRequest } from 'worldmonitor';
+import run from 'worldmonitor/run';
+```
+
+## 获取密钥
+
+数据调用（`tools/call`）需要用户 API 密钥——在 [worldmonitor.app/pro](https://www.worldmonitor.app/pro) 生成一个。有关密钥、OAuth 和浏览器会话的区别，请参见[身份验证](/zh/usage-auth)；各套餐的额度请参见[速率限制](/zh/usage-rate-limits)。
+
+## 发布（维护者）
+
+每个 SDK 通过 OIDC 可信发布独立进行版本管理和发布——无需长期有效的注册表令牌（npm 流程请参见 [CLI 发布手册](/zh/releasing-cli)）：
+
+- **Python：** 在 `sdk/python/pyproject.toml` 中提升 `version`，**并**在 `sdk/python/src/worldmonitor_sdk/__init__.py` 中提升 `__version__`，然后打上 `py-vX.Y.Z` 标签（工作流 `publish-python.yml`）。
+- **Ruby：** 在 `sdk/ruby/lib/worldmonitor/version.rb` 中提升 `WorldMonitor::VERSION`，然后打上 `gem-vX.Y.Z` 标签（工作流 `publish-ruby.yml`）。
+- **Go：** 在 `sdk/go/worldmonitor.go` 中提升 `Version`，然后打上 `sdk/go/vX.Y.Z` 标签（工作流 `publish-go.yml` 会验证并预热模块代理）。
+
+`tests/sdk-packages.test.mjs` 会在每个软件包上守护版本同步和 `worldmonitor.app` 主页元数据。

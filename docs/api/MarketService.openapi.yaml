@@ -2,6 +2,11 @@ openapi: 3.1.0
 info:
     title: MarketService API
     version: 1.0.0
+security:
+    - WorldMonitorKey: []
+    - ApiKeyHeader: []
+servers:
+    - url: https://api.worldmonitor.app
 paths:
     /api/market/v1/list-market-quotes:
         get:
@@ -15,6 +20,20 @@ paths:
                   in: query
                   description: Ticker symbols to retrieve (e.g., ["AAPL", "^GSPC"]). Empty returns defaults.
                   required: false
+                  style: form
+                  explode: true
+                  example:
+                      - "AAPL"
+                  schema:
+                    type: array
+                    items:
+                        type: string
+                - name: jmespath
+                  in: query
+                  description: |-
+                    Optional JMESPath expression applied server-side to project or reduce the JSON response before it is returned (mirrors the MCP jmespath argument). Invalid expressions, expressions larger than 1024 UTF-8 bytes, or projections that exceed the 256 KB output cap return HTTP 400 with a {_jmespath_error, original_keys} envelope. Grammar and worked examples: https://www.worldmonitor.app/docs/mcp-jmespath.
+                  required: false
+                  example: "keys(@)"
                   schema:
                     type: string
             responses:
@@ -22,6 +41,21 @@ paths:
                     description: Successful response
                     content:
                         application/json:
+                            example:
+                                "finnhubSkipped": true
+                                "quotes":
+                                    - "change": 1.5
+                                      "display": "example"
+                                      "name": "WorldMonitor Analyst"
+                                      "price": 75.25
+                                      "sparkline":
+                                          - 1.5
+                                      "symbol": "AAPL"
+                                "rateLimited": true
+                                "skipReason": "example"
+                                "unavailableSymbols":
+                                    - "reason": "MARKET_QUOTE_UNAVAILABLE_REASON_NOT_FOUND"
+                                      "symbol": "AAPL"
                             schema:
                                 $ref: '#/components/schemas/ListMarketQuotesResponse'
                 "400":
@@ -29,13 +63,54 @@ paths:
                     content:
                         application/json:
                             schema:
-                                $ref: '#/components/schemas/ValidationError'
-                default:
-                    description: Error response
+                                oneOf:
+                                    - $ref: '#/components/schemas/ValidationError'
+                                    - $ref: '#/components/schemas/JmespathProjectionError'
+                "401":
+                    description: Missing or invalid API key.
                     content:
                         application/json:
                             schema:
-                                $ref: '#/components/schemas/Error'
+                                $ref: '#/components/schemas/UnauthorizedError'
+                "403":
+                    description: API access requires an active subscription (the API key's subscription is inactive or expired).
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ForbiddenError'
+                "429":
+                    description: Rate limit exceeded.
+                    headers:
+                        X-RateLimit-Limit:
+                            description: Maximum requests allowed in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Remaining:
+                            description: Requests remaining in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Reset:
+                            description: Unix epoch milliseconds when the active rate-limit window resets.
+                            schema:
+                                type: string
+                        Retry-After:
+                            description: Seconds to wait before retrying the request.
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/RateLimitError'
+                default:
+                    description: Gateway or handler error response.
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/GatewayError'
     /api/market/v1/list-crypto-quotes:
         get:
             tags:
@@ -46,8 +121,25 @@ paths:
             parameters:
                 - name: ids
                   in: query
-                  description: Cryptocurrency IDs to retrieve (CoinGecko IDs). Empty returns defaults.
+                  description: |-
+                    Cryptocurrency IDs to retrieve (CoinGecko IDs). Empty returns the default
+                     crypto set. At most 25 IDs are accepted; the handler resolves them
+                     seed-first and fetches the remainder (gap) from the upstream provider.
                   required: false
+                  style: form
+                  explode: true
+                  example:
+                      - "example"
+                  schema:
+                    type: array
+                    items:
+                        type: string
+                - name: jmespath
+                  in: query
+                  description: |-
+                    Optional JMESPath expression applied server-side to project or reduce the JSON response before it is returned (mirrors the MCP jmespath argument). Invalid expressions, expressions larger than 1024 UTF-8 bytes, or projections that exceed the 256 KB output cap return HTTP 400 with a {_jmespath_error, original_keys} envelope. Grammar and worked examples: https://www.worldmonitor.app/docs/mcp-jmespath.
+                  required: false
+                  example: "keys(@)"
                   schema:
                     type: string
             responses:
@@ -55,6 +147,18 @@ paths:
                     description: Successful response
                     content:
                         application/json:
+                            example:
+                                "provider": "worldmonitor"
+                                "quotes":
+                                    - "change": 1.5
+                                      "change7d": 1.5
+                                      "name": "WorldMonitor Analyst"
+                                      "price": 75.25
+                                      "sparkline":
+                                          - 1.5
+                                      "symbol": "AAPL"
+                                "unresolvedIds":
+                                    - "example"
                             schema:
                                 $ref: '#/components/schemas/ListCryptoQuotesResponse'
                 "400":
@@ -62,25 +166,87 @@ paths:
                     content:
                         application/json:
                             schema:
-                                $ref: '#/components/schemas/ValidationError'
-                default:
-                    description: Error response
+                                oneOf:
+                                    - $ref: '#/components/schemas/ValidationError'
+                                    - $ref: '#/components/schemas/JmespathProjectionError'
+                "401":
+                    description: Missing or invalid API key.
                     content:
                         application/json:
                             schema:
-                                $ref: '#/components/schemas/Error'
+                                $ref: '#/components/schemas/UnauthorizedError'
+                "403":
+                    description: API access requires an active subscription (the API key's subscription is inactive or expired).
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ForbiddenError'
+                "429":
+                    description: Rate limit exceeded.
+                    headers:
+                        X-RateLimit-Limit:
+                            description: Maximum requests allowed in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Remaining:
+                            description: Requests remaining in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Reset:
+                            description: Unix epoch milliseconds when the active rate-limit window resets.
+                            schema:
+                                type: string
+                        Retry-After:
+                            description: Seconds to wait before retrying the request.
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/RateLimitError'
+                default:
+                    description: Gateway or handler error response.
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/GatewayError'
     /api/market/v1/list-commodity-quotes:
         get:
             tags:
                 - MarketService
             summary: ListCommodityQuotes
-            description: ListCommodityQuotes retrieves commodity price quotes from Yahoo Finance.
+            description: |-
+                ListCommodityQuotes retrieves commodity price quotes. Reads the seeded
+                 commodity snapshot; only symbols in the configured commodity set
+                 (shared/commodities.json) are supported.
             operationId: ListCommodityQuotes
             parameters:
                 - name: symbols
                   in: query
-                  description: Commodity symbols to retrieve (Yahoo symbols). Empty returns defaults.
+                  description: |-
+                    Commodity symbols to retrieve (Yahoo symbols). Empty returns the seed
+                     defaults. Only symbols in the configured commodity set
+                     (shared/commodities.json) are supported; requesting an unsupported
+                     symbol returns HTTP 400.
                   required: false
+                  style: form
+                  explode: true
+                  example:
+                      - "GC=F"
+                  schema:
+                    type: array
+                    items:
+                        type: string
+                - name: jmespath
+                  in: query
+                  description: |-
+                    Optional JMESPath expression applied server-side to project or reduce the JSON response before it is returned (mirrors the MCP jmespath argument). Invalid expressions, expressions larger than 1024 UTF-8 bytes, or projections that exceed the 256 KB output cap return HTTP 400 with a {_jmespath_error, original_keys} envelope. Grammar and worked examples: https://www.worldmonitor.app/docs/mcp-jmespath.
+                  required: false
+                  example: "keys(@)"
                   schema:
                     type: string
             responses:
@@ -88,6 +254,15 @@ paths:
                     description: Successful response
                     content:
                         application/json:
+                            example:
+                                "quotes":
+                                    - "change": 1.5
+                                      "display": "example"
+                                      "name": "WorldMonitor Analyst"
+                                      "price": 75.25
+                                      "sparkline":
+                                          - 1.5
+                                      "symbol": "GC=F"
                             schema:
                                 $ref: '#/components/schemas/ListCommodityQuotesResponse'
                 "400":
@@ -95,13 +270,54 @@ paths:
                     content:
                         application/json:
                             schema:
-                                $ref: '#/components/schemas/ValidationError'
-                default:
-                    description: Error response
+                                oneOf:
+                                    - $ref: '#/components/schemas/ValidationError'
+                                    - $ref: '#/components/schemas/JmespathProjectionError'
+                "401":
+                    description: Missing or invalid API key.
                     content:
                         application/json:
                             schema:
-                                $ref: '#/components/schemas/Error'
+                                $ref: '#/components/schemas/UnauthorizedError'
+                "403":
+                    description: API access requires an active subscription (the API key's subscription is inactive or expired).
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ForbiddenError'
+                "429":
+                    description: Rate limit exceeded.
+                    headers:
+                        X-RateLimit-Limit:
+                            description: Maximum requests allowed in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Remaining:
+                            description: Requests remaining in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Reset:
+                            description: Unix epoch milliseconds when the active rate-limit window resets.
+                            schema:
+                                type: string
+                        Retry-After:
+                            description: Seconds to wait before retrying the request.
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/RateLimitError'
+                default:
+                    description: Gateway or handler error response.
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/GatewayError'
     /api/market/v1/get-sector-summary:
         get:
             tags:
@@ -112,8 +328,19 @@ paths:
             parameters:
                 - name: period
                   in: query
-                  description: Time period for performance calculation (e.g., "1d", "1w", "1m"). Defaults to "1d".
+                  description: |-
+                    Time period for performance calculation (e.g., "1d", "1w", "1m"). Defaults to "1d".
+                     Accepted but currently ignored; no-op until this handler supports the parameter.
                   required: false
+                  example: "1d"
+                  schema:
+                    type: string
+                - name: jmespath
+                  in: query
+                  description: |-
+                    Optional JMESPath expression applied server-side to project or reduce the JSON response before it is returned (mirrors the MCP jmespath argument). Invalid expressions, expressions larger than 1024 UTF-8 bytes, or projections that exceed the 256 KB output cap return HTTP 400 with a {_jmespath_error, original_keys} envelope. Grammar and worked examples: https://www.worldmonitor.app/docs/mcp-jmespath.
+                  required: false
+                  example: "keys(@)"
                   schema:
                     type: string
             responses:
@@ -121,6 +348,11 @@ paths:
                     description: Successful response
                     content:
                         application/json:
+                            example:
+                                "sectors":
+                                    - "change": 1.5
+                                      "name": "WorldMonitor Analyst"
+                                      "symbol": "AAPL"
                             schema:
                                 $ref: '#/components/schemas/GetSectorSummaryResponse'
                 "400":
@@ -128,13 +360,54 @@ paths:
                     content:
                         application/json:
                             schema:
-                                $ref: '#/components/schemas/ValidationError'
-                default:
-                    description: Error response
+                                oneOf:
+                                    - $ref: '#/components/schemas/ValidationError'
+                                    - $ref: '#/components/schemas/JmespathProjectionError'
+                "401":
+                    description: Missing or invalid API key.
                     content:
                         application/json:
                             schema:
-                                $ref: '#/components/schemas/Error'
+                                $ref: '#/components/schemas/UnauthorizedError'
+                "403":
+                    description: API access requires an active subscription (the API key's subscription is inactive or expired).
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ForbiddenError'
+                "429":
+                    description: Rate limit exceeded.
+                    headers:
+                        X-RateLimit-Limit:
+                            description: Maximum requests allowed in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Remaining:
+                            description: Requests remaining in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Reset:
+                            description: Unix epoch milliseconds when the active rate-limit window resets.
+                            schema:
+                                type: string
+                        Retry-After:
+                            description: Seconds to wait before retrying the request.
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/RateLimitError'
+                default:
+                    description: Gateway or handler error response.
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/GatewayError'
     /api/market/v1/list-stablecoin-markets:
         get:
             tags:
@@ -145,8 +418,33 @@ paths:
             parameters:
                 - name: coins
                   in: query
-                  description: CoinGecko IDs to retrieve (e.g. "tether,usd-coin"). Empty returns defaults.
+                  description: |-
+                    CoinGecko IDs to retrieve (e.g. "tether,usd-coin"). Empty returns defaults.
+
+                     Repeated (`?coins=tether&coins=dai`) and comma-joined
+                     (`?coins=tether,dai`) forms are equivalent. IDs are trimmed, lowercased,
+                     and de-duplicated; the request is capped at 25 IDs. An ID that is not
+                     shaped like a CoinGecko ID, that overflows the cap, or that no provider
+                     can resolve is reported in `unresolved` rather than dropped.
+
+                     The empty (default) request is served from the seeded snapshot alone and
+                     never reaches an upstream provider. Naming IDs explicitly opts into a
+                     bounded, cached provider lookup for any ID the snapshot does not carry.
                   required: false
+                  style: form
+                  explode: true
+                  example:
+                      - "example"
+                  schema:
+                    type: array
+                    items:
+                        type: string
+                - name: jmespath
+                  in: query
+                  description: |-
+                    Optional JMESPath expression applied server-side to project or reduce the JSON response before it is returned (mirrors the MCP jmespath argument). Invalid expressions, expressions larger than 1024 UTF-8 bytes, or projections that exceed the 256 KB output cap return HTTP 400 with a {_jmespath_error, original_keys} envelope. Grammar and worked examples: https://www.worldmonitor.app/docs/mcp-jmespath.
+                  required: false
+                  example: "keys(@)"
                   schema:
                     type: string
             responses:
@@ -154,6 +452,26 @@ paths:
                     description: Successful response
                     content:
                         application/json:
+                            example:
+                                "dataStatus": "example"
+                                "stablecoins":
+                                    - "change24h": 1.5
+                                      "change7d": 1.5
+                                      "deviation": 1.5
+                                      "id": "example-id"
+                                      "image": "example"
+                                      "marketCap": 1.5
+                                      "symbol": "AAPL"
+                                "summary":
+                                    "coinCount": 1
+                                    "depeggedCount": 1
+                                    "healthStatus": "example"
+                                    "totalMarketCap": 1
+                                    "totalVolume24h": 1
+                                "timestamp": "2026-01-15T12:00:00Z"
+                                "unresolved":
+                                    - "id": "example-id"
+                                      "reason": "example"
                             schema:
                                 $ref: '#/components/schemas/ListStablecoinMarketsResponse'
                 "400":
@@ -161,13 +479,54 @@ paths:
                     content:
                         application/json:
                             schema:
-                                $ref: '#/components/schemas/ValidationError'
-                default:
-                    description: Error response
+                                oneOf:
+                                    - $ref: '#/components/schemas/ValidationError'
+                                    - $ref: '#/components/schemas/JmespathProjectionError'
+                "401":
+                    description: Missing or invalid API key.
                     content:
                         application/json:
                             schema:
-                                $ref: '#/components/schemas/Error'
+                                $ref: '#/components/schemas/UnauthorizedError'
+                "403":
+                    description: API access requires an active subscription (the API key's subscription is inactive or expired).
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ForbiddenError'
+                "429":
+                    description: Rate limit exceeded.
+                    headers:
+                        X-RateLimit-Limit:
+                            description: Maximum requests allowed in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Remaining:
+                            description: Requests remaining in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Reset:
+                            description: Unix epoch milliseconds when the active rate-limit window resets.
+                            schema:
+                                type: string
+                        Retry-After:
+                            description: Seconds to wait before retrying the request.
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/RateLimitError'
+                default:
+                    description: Gateway or handler error response.
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/GatewayError'
     /api/market/v1/list-etf-flows:
         get:
             tags:
@@ -175,11 +534,36 @@ paths:
             summary: ListEtfFlows
             description: ListEtfFlows retrieves BTC spot ETF flow estimates from Yahoo Finance.
             operationId: ListEtfFlows
+            parameters:
+                - name: jmespath
+                  in: query
+                  description: |-
+                    Optional JMESPath expression applied server-side to project or reduce the JSON response before it is returned (mirrors the MCP jmespath argument). Invalid expressions, expressions larger than 1024 UTF-8 bytes, or projections that exceed the 256 KB output cap return HTTP 400 with a {_jmespath_error, original_keys} envelope. Grammar and worked examples: https://www.worldmonitor.app/docs/mcp-jmespath.
+                  required: false
+                  example: "keys(@)"
+                  schema:
+                    type: string
             responses:
                 "200":
                     description: Successful response
                     content:
                         application/json:
+                            example:
+                                "etfs":
+                                    - "avgVolume": 1
+                                      "direction": "example"
+                                      "estFlow": 1
+                                      "issuer": "example"
+                                      "price": 75.25
+                                      "ticker": "AAPL"
+                                "rateLimited": true
+                                "summary":
+                                    "etfCount": 1
+                                    "inflowCount": 1
+                                    "netDirection": "example"
+                                    "outflowCount": 1
+                                    "totalEstFlow": 1
+                                "timestamp": "2026-01-15T12:00:00Z"
                             schema:
                                 $ref: '#/components/schemas/ListEtfFlowsResponse'
                 "400":
@@ -187,13 +571,54 @@ paths:
                     content:
                         application/json:
                             schema:
-                                $ref: '#/components/schemas/ValidationError'
-                default:
-                    description: Error response
+                                oneOf:
+                                    - $ref: '#/components/schemas/ValidationError'
+                                    - $ref: '#/components/schemas/JmespathProjectionError'
+                "401":
+                    description: Missing or invalid API key.
                     content:
                         application/json:
                             schema:
-                                $ref: '#/components/schemas/Error'
+                                $ref: '#/components/schemas/UnauthorizedError'
+                "403":
+                    description: API access requires an active subscription (the API key's subscription is inactive or expired).
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ForbiddenError'
+                "429":
+                    description: Rate limit exceeded.
+                    headers:
+                        X-RateLimit-Limit:
+                            description: Maximum requests allowed in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Remaining:
+                            description: Requests remaining in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Reset:
+                            description: Unix epoch milliseconds when the active rate-limit window resets.
+                            schema:
+                                type: string
+                        Retry-After:
+                            description: Seconds to wait before retrying the request.
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/RateLimitError'
+                default:
+                    description: Gateway or handler error response.
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/GatewayError'
     /api/market/v1/get-country-stock-index:
         get:
             tags:
@@ -205,7 +630,62 @@ paths:
                 - name: country_code
                   in: query
                   description: ISO 3166-1 alpha-2 country code (e.g., "US", "GB", "JP").
+                  required: true
+                  example: "US"
+                  schema:
+                    type: string
+                    enum:
+                        - 'US'
+                        - 'GB'
+                        - 'DE'
+                        - 'FR'
+                        - 'JP'
+                        - 'CN'
+                        - 'HK'
+                        - 'IN'
+                        - 'KR'
+                        - 'TW'
+                        - 'AU'
+                        - 'BR'
+                        - 'CA'
+                        - 'MX'
+                        - 'AR'
+                        - 'RU'
+                        - 'ZA'
+                        - 'SA'
+                        - 'AE'
+                        - 'IL'
+                        - 'TR'
+                        - 'PL'
+                        - 'NL'
+                        - 'CH'
+                        - 'ES'
+                        - 'IT'
+                        - 'SE'
+                        - 'NO'
+                        - 'SG'
+                        - 'TH'
+                        - 'MY'
+                        - 'ID'
+                        - 'PH'
+                        - 'NZ'
+                        - 'EG'
+                        - 'CL'
+                        - 'PE'
+                        - 'AT'
+                        - 'BE'
+                        - 'FI'
+                        - 'DK'
+                        - 'IE'
+                        - 'PT'
+                        - 'CZ'
+                        - 'HU'
+                - name: jmespath
+                  in: query
+                  description: |-
+                    Optional JMESPath expression applied server-side to project or reduce the JSON response before it is returned (mirrors the MCP jmespath argument). Invalid expressions, expressions larger than 1024 UTF-8 bytes, or projections that exceed the 256 KB output cap return HTTP 400 with a {_jmespath_error, original_keys} envelope. Grammar and worked examples: https://www.worldmonitor.app/docs/mcp-jmespath.
                   required: false
+                  example: "keys(@)"
                   schema:
                     type: string
             responses:
@@ -213,6 +693,12 @@ paths:
                     description: Successful response
                     content:
                         application/json:
+                            example:
+                                "available": true
+                                "code": "US"
+                                "currency": "USD"
+                                "fetchedAt": "2026-01-15T12:00:00Z"
+                                "indexName": "WorldMonitor Analyst"
                             schema:
                                 $ref: '#/components/schemas/GetCountryStockIndexResponse'
                 "400":
@@ -220,13 +706,54 @@ paths:
                     content:
                         application/json:
                             schema:
-                                $ref: '#/components/schemas/ValidationError'
-                default:
-                    description: Error response
+                                oneOf:
+                                    - $ref: '#/components/schemas/ValidationError'
+                                    - $ref: '#/components/schemas/JmespathProjectionError'
+                "401":
+                    description: Missing or invalid API key.
                     content:
                         application/json:
                             schema:
-                                $ref: '#/components/schemas/Error'
+                                $ref: '#/components/schemas/UnauthorizedError'
+                "403":
+                    description: API access requires an active subscription (the API key's subscription is inactive or expired).
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ForbiddenError'
+                "429":
+                    description: Rate limit exceeded.
+                    headers:
+                        X-RateLimit-Limit:
+                            description: Maximum requests allowed in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Remaining:
+                            description: Requests remaining in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Reset:
+                            description: Unix epoch milliseconds when the active rate-limit window resets.
+                            schema:
+                                type: string
+                        Retry-After:
+                            description: Seconds to wait before retrying the request.
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/RateLimitError'
+                default:
+                    description: Gateway or handler error response.
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/GatewayError'
     /api/market/v1/list-gulf-quotes:
         get:
             tags:
@@ -234,11 +761,28 @@ paths:
             summary: ListGulfQuotes
             description: ListGulfQuotes retrieves Gulf region market quotes (indices, currencies, oil).
             operationId: ListGulfQuotes
+            parameters:
+                - name: jmespath
+                  in: query
+                  description: |-
+                    Optional JMESPath expression applied server-side to project or reduce the JSON response before it is returned (mirrors the MCP jmespath argument). Invalid expressions, expressions larger than 1024 UTF-8 bytes, or projections that exceed the 256 KB output cap return HTTP 400 with a {_jmespath_error, original_keys} envelope. Grammar and worked examples: https://www.worldmonitor.app/docs/mcp-jmespath.
+                  required: false
+                  example: "keys(@)"
+                  schema:
+                    type: string
             responses:
                 "200":
                     description: Successful response
                     content:
                         application/json:
+                            example:
+                                "quotes":
+                                    - "change": 1.5
+                                      "country": "US"
+                                      "flag": "example"
+                                      "name": "WorldMonitor Analyst"
+                                      "price": 75.25
+                                "rateLimited": true
                             schema:
                                 $ref: '#/components/schemas/ListGulfQuotesResponse'
                 "400":
@@ -246,41 +790,111 @@ paths:
                     content:
                         application/json:
                             schema:
-                                $ref: '#/components/schemas/ValidationError'
-                default:
-                    description: Error response
+                                oneOf:
+                                    - $ref: '#/components/schemas/ValidationError'
+                                    - $ref: '#/components/schemas/JmespathProjectionError'
+                "401":
+                    description: Missing or invalid API key.
                     content:
                         application/json:
                             schema:
-                                $ref: '#/components/schemas/Error'
+                                $ref: '#/components/schemas/UnauthorizedError'
+                "403":
+                    description: API access requires an active subscription (the API key's subscription is inactive or expired).
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ForbiddenError'
+                "429":
+                    description: Rate limit exceeded.
+                    headers:
+                        X-RateLimit-Limit:
+                            description: Maximum requests allowed in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Remaining:
+                            description: Requests remaining in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Reset:
+                            description: Unix epoch milliseconds when the active rate-limit window resets.
+                            schema:
+                                type: string
+                        Retry-After:
+                            description: Seconds to wait before retrying the request.
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/RateLimitError'
+                default:
+                    description: Gateway or handler error response.
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/GatewayError'
     /api/market/v1/analyze-stock:
         get:
             tags:
                 - MarketService
             summary: AnalyzeStock
-            description: AnalyzeStock retrieves a premium stock analysis report with technicals, news, and AI synthesis.
+            description: AnalyzeStock retrieves a premium stock analysis report with technicals, news, and AI synthesis. PRO-gated. Requires entitlement tier >= 1.
             operationId: AnalyzeStock
+            security:
+                - WorldMonitorKey: []
+                - ApiKeyHeader: []
+                - BearerAuth: []
             parameters:
                 - name: symbol
                   in: query
-                  required: false
+                  description: Stock ticker symbol to analyze.
+                  required: true
+                  example: "AAPL"
                   schema:
                     type: string
                 - name: name
                   in: query
+                  description: Optional company display name used to disambiguate the symbol.
                   required: false
+                  example: "WorldMonitor Analyst"
                   schema:
                     type: string
                 - name: include_news
                   in: query
+                  description: Whether to include recent news in the stock analysis.
                   required: false
+                  example: true
                   schema:
                     type: boolean
+                - name: jmespath
+                  in: query
+                  description: |-
+                    Optional JMESPath expression applied server-side to project or reduce the JSON response before it is returned (mirrors the MCP jmespath argument). Invalid expressions, expressions larger than 1024 UTF-8 bytes, or projections that exceed the 256 KB output cap return HTTP 400 with a {_jmespath_error, original_keys} envelope. Grammar and worked examples: https://www.worldmonitor.app/docs/mcp-jmespath.
+                  required: false
+                  example: "keys(@)"
+                  schema:
+                    type: string
             responses:
                 "200":
                     description: Successful response
                     content:
                         application/json:
+                            example:
+                                "action": "example"
+                                "analysisAt": 1717200000000
+                                "analysisId": "example-id"
+                                "analystConsensus":
+                                    "buy": 1
+                                    "hold": 1
+                                    "period": "daily"
+                                    "sell": 1
+                                    "strongBuy": 1
+                                "atr": 1.5
                             schema:
                                 $ref: '#/components/schemas/AnalyzeStockResponse'
                 "400":
@@ -288,42 +902,120 @@ paths:
                     content:
                         application/json:
                             schema:
-                                $ref: '#/components/schemas/ValidationError'
-                default:
-                    description: Error response
+                                oneOf:
+                                    - $ref: '#/components/schemas/ValidationError'
+                                    - $ref: '#/components/schemas/JmespathProjectionError'
+                "401":
+                    description: Missing or invalid API key.
                     content:
                         application/json:
                             schema:
-                                $ref: '#/components/schemas/Error'
+                                $ref: '#/components/schemas/UnauthorizedError'
+                "403":
+                    description: PRO entitlement access denied.
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ForbiddenError'
+                "429":
+                    description: Rate limit exceeded.
+                    headers:
+                        X-RateLimit-Limit:
+                            description: Maximum requests allowed in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Remaining:
+                            description: Requests remaining in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Reset:
+                            description: Unix epoch milliseconds when the active rate-limit window resets.
+                            schema:
+                                type: string
+                        Retry-After:
+                            description: Seconds to wait before retrying the request.
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/RateLimitError'
+                default:
+                    description: Gateway or handler error response.
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/GatewayError'
     /api/market/v1/get-stock-analysis-history:
         get:
             tags:
                 - MarketService
             summary: GetStockAnalysisHistory
-            description: GetStockAnalysisHistory retrieves shared premium stock analysis history from the backend store.
+            description: GetStockAnalysisHistory retrieves shared premium stock analysis history from the backend store. PRO-gated. Requires entitlement tier >= 1.
             operationId: GetStockAnalysisHistory
+            security:
+                - WorldMonitorKey: []
+                - ApiKeyHeader: []
+                - BearerAuth: []
             parameters:
                 - name: symbols
                   in: query
+                  description: Stock ticker symbols whose stored analysis history should be returned.
                   required: false
+                  style: form
+                  explode: true
+                  example:
+                      - "AAPL"
                   schema:
-                    type: string
+                    type: array
+                    items:
+                        type: string
                 - name: limit_per_symbol
                   in: query
+                  description: Maximum number of history snapshots to return per symbol.
                   required: false
+                  example: 25
                   schema:
                     type: integer
                     format: int32
                 - name: include_news
                   in: query
+                  description: Whether history snapshots should include stored news summaries.
                   required: false
+                  example: true
                   schema:
                     type: boolean
+                - name: jmespath
+                  in: query
+                  description: |-
+                    Optional JMESPath expression applied server-side to project or reduce the JSON response before it is returned (mirrors the MCP jmespath argument). Invalid expressions, expressions larger than 1024 UTF-8 bytes, or projections that exceed the 256 KB output cap return HTTP 400 with a {_jmespath_error, original_keys} envelope. Grammar and worked examples: https://www.worldmonitor.app/docs/mcp-jmespath.
+                  required: false
+                  example: "keys(@)"
+                  schema:
+                    type: string
             responses:
                 "200":
                     description: Successful response
                     content:
                         application/json:
+                            example:
+                                "items":
+                                    - "snapshots":
+                                        - "action": "example"
+                                          "analysisAt": 1717200000000
+                                          "analysisId": "example-id"
+                                          "analystConsensus":
+                                              "buy": 1
+                                              "hold": 1
+                                              "period": "daily"
+                                              "sell": 1
+                                              "strongBuy": 1
+                                          "atr": 1.5
+                                      "symbol": "AAPL"
                             schema:
                                 $ref: '#/components/schemas/GetStockAnalysisHistoryResponse'
                 "400":
@@ -331,42 +1023,107 @@ paths:
                     content:
                         application/json:
                             schema:
-                                $ref: '#/components/schemas/ValidationError'
-                default:
-                    description: Error response
+                                oneOf:
+                                    - $ref: '#/components/schemas/ValidationError'
+                                    - $ref: '#/components/schemas/JmespathProjectionError'
+                "401":
+                    description: Missing or invalid API key.
                     content:
                         application/json:
                             schema:
-                                $ref: '#/components/schemas/Error'
+                                $ref: '#/components/schemas/UnauthorizedError'
+                "403":
+                    description: PRO entitlement access denied.
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ForbiddenError'
+                "429":
+                    description: Rate limit exceeded.
+                    headers:
+                        X-RateLimit-Limit:
+                            description: Maximum requests allowed in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Remaining:
+                            description: Requests remaining in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Reset:
+                            description: Unix epoch milliseconds when the active rate-limit window resets.
+                            schema:
+                                type: string
+                        Retry-After:
+                            description: Seconds to wait before retrying the request.
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/RateLimitError'
+                default:
+                    description: Gateway or handler error response.
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/GatewayError'
     /api/market/v1/backtest-stock:
         get:
             tags:
                 - MarketService
             summary: BacktestStock
-            description: BacktestStock replays premium stock-analysis signals over recent price history.
+            description: BacktestStock replays the technical-only stock signal over recent price history. PRO-gated. Requires entitlement tier >= 1.
             operationId: BacktestStock
+            security:
+                - WorldMonitorKey: []
+                - ApiKeyHeader: []
+                - BearerAuth: []
             parameters:
                 - name: symbol
                   in: query
-                  required: false
+                  description: Stock ticker symbol to backtest.
+                  required: true
+                  example: "AAPL"
                   schema:
                     type: string
                 - name: name
                   in: query
+                  description: Optional company display name used to disambiguate the symbol.
                   required: false
+                  example: "WorldMonitor Analyst"
                   schema:
                     type: string
                 - name: eval_window_days
                   in: query
+                  description: Evaluation window in days for simulated backtest outcomes.
                   required: false
+                  example: 7
                   schema:
                     type: integer
                     format: int32
+                - name: jmespath
+                  in: query
+                  description: |-
+                    Optional JMESPath expression applied server-side to project or reduce the JSON response before it is returned (mirrors the MCP jmespath argument). Invalid expressions, expressions larger than 1024 UTF-8 bytes, or projections that exceed the 256 KB output cap return HTTP 400 with a {_jmespath_error, original_keys} envelope. Grammar and worked examples: https://www.worldmonitor.app/docs/mcp-jmespath.
+                  required: false
+                  example: "keys(@)"
+                  schema:
+                    type: string
             responses:
                 "200":
                     description: Successful response
                     content:
                         application/json:
+                            example:
+                                "actionableEvaluations": 1
+                                "available": true
+                                "avgSimulatedReturnPct": 1.5
+                                "cumulativeSimulatedReturnPct": 1.5
+                                "currency": "USD"
                             schema:
                                 $ref: '#/components/schemas/BacktestStockResponse'
                 "400":
@@ -374,37 +1131,106 @@ paths:
                     content:
                         application/json:
                             schema:
-                                $ref: '#/components/schemas/ValidationError'
-                default:
-                    description: Error response
+                                oneOf:
+                                    - $ref: '#/components/schemas/ValidationError'
+                                    - $ref: '#/components/schemas/JmespathProjectionError'
+                "401":
+                    description: Missing or invalid API key.
                     content:
                         application/json:
                             schema:
-                                $ref: '#/components/schemas/Error'
+                                $ref: '#/components/schemas/UnauthorizedError'
+                "403":
+                    description: PRO entitlement access denied.
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ForbiddenError'
+                "429":
+                    description: Rate limit exceeded.
+                    headers:
+                        X-RateLimit-Limit:
+                            description: Maximum requests allowed in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Remaining:
+                            description: Requests remaining in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Reset:
+                            description: Unix epoch milliseconds when the active rate-limit window resets.
+                            schema:
+                                type: string
+                        Retry-After:
+                            description: Seconds to wait before retrying the request.
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/RateLimitError'
+                default:
+                    description: Gateway or handler error response.
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/GatewayError'
     /api/market/v1/list-stored-stock-backtests:
         get:
             tags:
                 - MarketService
             summary: ListStoredStockBacktests
-            description: ListStoredStockBacktests retrieves stored premium backtest snapshots from the backend store.
+            description: ListStoredStockBacktests retrieves stored premium backtest snapshots from the backend store. PRO-gated. Requires entitlement tier >= 1.
             operationId: ListStoredStockBacktests
+            security:
+                - WorldMonitorKey: []
+                - ApiKeyHeader: []
+                - BearerAuth: []
             parameters:
                 - name: symbols
                   in: query
+                  description: Stock ticker symbols whose stored backtests should be returned.
                   required: false
+                  style: form
+                  explode: true
+                  example:
+                      - "AAPL"
                   schema:
-                    type: string
+                    type: array
+                    items:
+                        type: string
                 - name: eval_window_days
                   in: query
+                  description: Evaluation window in days used by stored backtests.
                   required: false
+                  example: 7
                   schema:
                     type: integer
                     format: int32
+                - name: jmespath
+                  in: query
+                  description: |-
+                    Optional JMESPath expression applied server-side to project or reduce the JSON response before it is returned (mirrors the MCP jmespath argument). Invalid expressions, expressions larger than 1024 UTF-8 bytes, or projections that exceed the 256 KB output cap return HTTP 400 with a {_jmespath_error, original_keys} envelope. Grammar and worked examples: https://www.worldmonitor.app/docs/mcp-jmespath.
+                  required: false
+                  example: "keys(@)"
+                  schema:
+                    type: string
             responses:
                 "200":
                     description: Successful response
                     content:
                         application/json:
+                            example:
+                                "items":
+                                    - "actionableEvaluations": 1
+                                      "available": true
+                                      "avgSimulatedReturnPct": 1.5
+                                      "cumulativeSimulatedReturnPct": 1.5
+                                      "currency": "USD"
                             schema:
                                 $ref: '#/components/schemas/ListStoredStockBacktestsResponse'
                 "400":
@@ -412,13 +1238,54 @@ paths:
                     content:
                         application/json:
                             schema:
-                                $ref: '#/components/schemas/ValidationError'
-                default:
-                    description: Error response
+                                oneOf:
+                                    - $ref: '#/components/schemas/ValidationError'
+                                    - $ref: '#/components/schemas/JmespathProjectionError'
+                "401":
+                    description: Missing or invalid API key.
                     content:
                         application/json:
                             schema:
-                                $ref: '#/components/schemas/Error'
+                                $ref: '#/components/schemas/UnauthorizedError'
+                "403":
+                    description: PRO entitlement access denied.
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ForbiddenError'
+                "429":
+                    description: Rate limit exceeded.
+                    headers:
+                        X-RateLimit-Limit:
+                            description: Maximum requests allowed in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Remaining:
+                            description: Requests remaining in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Reset:
+                            description: Unix epoch milliseconds when the active rate-limit window resets.
+                            schema:
+                                type: string
+                        Retry-After:
+                            description: Seconds to wait before retrying the request.
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/RateLimitError'
+                default:
+                    description: Gateway or handler error response.
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/GatewayError'
     /api/market/v1/list-crypto-sectors:
         get:
             tags:
@@ -426,11 +1293,25 @@ paths:
             summary: ListCryptoSectors
             description: ListCryptoSectors retrieves crypto sector performance averages.
             operationId: ListCryptoSectors
+            parameters:
+                - name: jmespath
+                  in: query
+                  description: |-
+                    Optional JMESPath expression applied server-side to project or reduce the JSON response before it is returned (mirrors the MCP jmespath argument). Invalid expressions, expressions larger than 1024 UTF-8 bytes, or projections that exceed the 256 KB output cap return HTTP 400 with a {_jmespath_error, original_keys} envelope. Grammar and worked examples: https://www.worldmonitor.app/docs/mcp-jmespath.
+                  required: false
+                  example: "keys(@)"
+                  schema:
+                    type: string
             responses:
                 "200":
                     description: Successful response
                     content:
                         application/json:
+                            example:
+                                "sectors":
+                                    - "change": 1.5
+                                      "id": "example-id"
+                                      "name": "WorldMonitor Analyst"
                             schema:
                                 $ref: '#/components/schemas/ListCryptoSectorsResponse'
                 "400":
@@ -438,13 +1319,54 @@ paths:
                     content:
                         application/json:
                             schema:
-                                $ref: '#/components/schemas/ValidationError'
-                default:
-                    description: Error response
+                                oneOf:
+                                    - $ref: '#/components/schemas/ValidationError'
+                                    - $ref: '#/components/schemas/JmespathProjectionError'
+                "401":
+                    description: Missing or invalid API key.
                     content:
                         application/json:
                             schema:
-                                $ref: '#/components/schemas/Error'
+                                $ref: '#/components/schemas/UnauthorizedError'
+                "403":
+                    description: API access requires an active subscription (the API key's subscription is inactive or expired).
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ForbiddenError'
+                "429":
+                    description: Rate limit exceeded.
+                    headers:
+                        X-RateLimit-Limit:
+                            description: Maximum requests allowed in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Remaining:
+                            description: Requests remaining in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Reset:
+                            description: Unix epoch milliseconds when the active rate-limit window resets.
+                            schema:
+                                type: string
+                        Retry-After:
+                            description: Seconds to wait before retrying the request.
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/RateLimitError'
+                default:
+                    description: Gateway or handler error response.
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/GatewayError'
     /api/market/v1/list-defi-tokens:
         get:
             tags:
@@ -452,11 +1374,29 @@ paths:
             summary: ListDefiTokens
             description: ListDefiTokens retrieves DeFi token prices and changes.
             operationId: ListDefiTokens
+            parameters:
+                - name: jmespath
+                  in: query
+                  description: |-
+                    Optional JMESPath expression applied server-side to project or reduce the JSON response before it is returned (mirrors the MCP jmespath argument). Invalid expressions, expressions larger than 1024 UTF-8 bytes, or projections that exceed the 256 KB output cap return HTTP 400 with a {_jmespath_error, original_keys} envelope. Grammar and worked examples: https://www.worldmonitor.app/docs/mcp-jmespath.
+                  required: false
+                  example: "keys(@)"
+                  schema:
+                    type: string
             responses:
                 "200":
                     description: Successful response
                     content:
                         application/json:
+                            example:
+                                "tokens":
+                                    - "change": 1.5
+                                      "change7d": 1.5
+                                      "name": "WorldMonitor Analyst"
+                                      "price": 75.25
+                                      "sparkline":
+                                          - 1.5
+                                      "symbol": "AAPL"
                             schema:
                                 $ref: '#/components/schemas/ListDefiTokensResponse'
                 "400":
@@ -464,13 +1404,54 @@ paths:
                     content:
                         application/json:
                             schema:
-                                $ref: '#/components/schemas/ValidationError'
-                default:
-                    description: Error response
+                                oneOf:
+                                    - $ref: '#/components/schemas/ValidationError'
+                                    - $ref: '#/components/schemas/JmespathProjectionError'
+                "401":
+                    description: Missing or invalid API key.
                     content:
                         application/json:
                             schema:
-                                $ref: '#/components/schemas/Error'
+                                $ref: '#/components/schemas/UnauthorizedError'
+                "403":
+                    description: API access requires an active subscription (the API key's subscription is inactive or expired).
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ForbiddenError'
+                "429":
+                    description: Rate limit exceeded.
+                    headers:
+                        X-RateLimit-Limit:
+                            description: Maximum requests allowed in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Remaining:
+                            description: Requests remaining in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Reset:
+                            description: Unix epoch milliseconds when the active rate-limit window resets.
+                            schema:
+                                type: string
+                        Retry-After:
+                            description: Seconds to wait before retrying the request.
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/RateLimitError'
+                default:
+                    description: Gateway or handler error response.
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/GatewayError'
     /api/market/v1/list-ai-tokens:
         get:
             tags:
@@ -478,11 +1459,29 @@ paths:
             summary: ListAiTokens
             description: ListAiTokens retrieves AI-focused crypto token prices and changes.
             operationId: ListAiTokens
+            parameters:
+                - name: jmespath
+                  in: query
+                  description: |-
+                    Optional JMESPath expression applied server-side to project or reduce the JSON response before it is returned (mirrors the MCP jmespath argument). Invalid expressions, expressions larger than 1024 UTF-8 bytes, or projections that exceed the 256 KB output cap return HTTP 400 with a {_jmespath_error, original_keys} envelope. Grammar and worked examples: https://www.worldmonitor.app/docs/mcp-jmespath.
+                  required: false
+                  example: "keys(@)"
+                  schema:
+                    type: string
             responses:
                 "200":
                     description: Successful response
                     content:
                         application/json:
+                            example:
+                                "tokens":
+                                    - "change": 1.5
+                                      "change7d": 1.5
+                                      "name": "WorldMonitor Analyst"
+                                      "price": 75.25
+                                      "sparkline":
+                                          - 1.5
+                                      "symbol": "AAPL"
                             schema:
                                 $ref: '#/components/schemas/ListAiTokensResponse'
                 "400":
@@ -490,13 +1489,54 @@ paths:
                     content:
                         application/json:
                             schema:
-                                $ref: '#/components/schemas/ValidationError'
-                default:
-                    description: Error response
+                                oneOf:
+                                    - $ref: '#/components/schemas/ValidationError'
+                                    - $ref: '#/components/schemas/JmespathProjectionError'
+                "401":
+                    description: Missing or invalid API key.
                     content:
                         application/json:
                             schema:
-                                $ref: '#/components/schemas/Error'
+                                $ref: '#/components/schemas/UnauthorizedError'
+                "403":
+                    description: API access requires an active subscription (the API key's subscription is inactive or expired).
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ForbiddenError'
+                "429":
+                    description: Rate limit exceeded.
+                    headers:
+                        X-RateLimit-Limit:
+                            description: Maximum requests allowed in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Remaining:
+                            description: Requests remaining in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Reset:
+                            description: Unix epoch milliseconds when the active rate-limit window resets.
+                            schema:
+                                type: string
+                        Retry-After:
+                            description: Seconds to wait before retrying the request.
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/RateLimitError'
+                default:
+                    description: Gateway or handler error response.
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/GatewayError'
     /api/market/v1/list-other-tokens:
         get:
             tags:
@@ -504,11 +1544,29 @@ paths:
             summary: ListOtherTokens
             description: ListOtherTokens retrieves other/trending crypto token prices and changes.
             operationId: ListOtherTokens
+            parameters:
+                - name: jmespath
+                  in: query
+                  description: |-
+                    Optional JMESPath expression applied server-side to project or reduce the JSON response before it is returned (mirrors the MCP jmespath argument). Invalid expressions, expressions larger than 1024 UTF-8 bytes, or projections that exceed the 256 KB output cap return HTTP 400 with a {_jmespath_error, original_keys} envelope. Grammar and worked examples: https://www.worldmonitor.app/docs/mcp-jmespath.
+                  required: false
+                  example: "keys(@)"
+                  schema:
+                    type: string
             responses:
                 "200":
                     description: Successful response
                     content:
                         application/json:
+                            example:
+                                "tokens":
+                                    - "change": 1.5
+                                      "change7d": 1.5
+                                      "name": "WorldMonitor Analyst"
+                                      "price": 75.25
+                                      "sparkline":
+                                          - 1.5
+                                      "symbol": "AAPL"
                             schema:
                                 $ref: '#/components/schemas/ListOtherTokensResponse'
                 "400":
@@ -516,13 +1574,54 @@ paths:
                     content:
                         application/json:
                             schema:
-                                $ref: '#/components/schemas/ValidationError'
-                default:
-                    description: Error response
+                                oneOf:
+                                    - $ref: '#/components/schemas/ValidationError'
+                                    - $ref: '#/components/schemas/JmespathProjectionError'
+                "401":
+                    description: Missing or invalid API key.
                     content:
                         application/json:
                             schema:
-                                $ref: '#/components/schemas/Error'
+                                $ref: '#/components/schemas/UnauthorizedError'
+                "403":
+                    description: API access requires an active subscription (the API key's subscription is inactive or expired).
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ForbiddenError'
+                "429":
+                    description: Rate limit exceeded.
+                    headers:
+                        X-RateLimit-Limit:
+                            description: Maximum requests allowed in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Remaining:
+                            description: Requests remaining in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Reset:
+                            description: Unix epoch milliseconds when the active rate-limit window resets.
+                            schema:
+                                type: string
+                        Retry-After:
+                            description: Seconds to wait before retrying the request.
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/RateLimitError'
+                default:
+                    description: Gateway or handler error response.
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/GatewayError'
     /api/market/v1/get-fear-greed-index:
         get:
             tags:
@@ -530,11 +1629,31 @@ paths:
             summary: GetFearGreedIndex
             description: GetFearGreedIndex retrieves the composite Fear & Greed sentiment index.
             operationId: GetFearGreedIndex
+            parameters:
+                - name: jmespath
+                  in: query
+                  description: |-
+                    Optional JMESPath expression applied server-side to project or reduce the JSON response before it is returned (mirrors the MCP jmespath argument). Invalid expressions, expressions larger than 1024 UTF-8 bytes, or projections that exceed the 256 KB output cap return HTTP 400 with a {_jmespath_error, original_keys} envelope. Grammar and worked examples: https://www.worldmonitor.app/docs/mcp-jmespath.
+                  required: false
+                  example: "keys(@)"
+                  schema:
+                    type: string
             responses:
                 "200":
                     description: Successful response
                     content:
                         application/json:
+                            example:
+                                "aaiiBear": 1.5
+                                "aaiiBull": 1.5
+                                "breadth":
+                                    "contribution": 1.5
+                                    "degraded": true
+                                    "inputsJson": "example"
+                                    "score": 42.5
+                                    "weight": 1.5
+                                "cnnFearGreed": 1.5
+                                "cnnLabel": "example"
                             schema:
                                 $ref: '#/components/schemas/GetFearGreedIndexResponse'
                 "400":
@@ -542,13 +1661,54 @@ paths:
                     content:
                         application/json:
                             schema:
-                                $ref: '#/components/schemas/ValidationError'
-                default:
-                    description: Error response
+                                oneOf:
+                                    - $ref: '#/components/schemas/ValidationError'
+                                    - $ref: '#/components/schemas/JmespathProjectionError'
+                "401":
+                    description: Missing or invalid API key.
                     content:
                         application/json:
                             schema:
-                                $ref: '#/components/schemas/Error'
+                                $ref: '#/components/schemas/UnauthorizedError'
+                "403":
+                    description: API access requires an active subscription (the API key's subscription is inactive or expired).
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ForbiddenError'
+                "429":
+                    description: Rate limit exceeded.
+                    headers:
+                        X-RateLimit-Limit:
+                            description: Maximum requests allowed in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Remaining:
+                            description: Requests remaining in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Reset:
+                            description: Unix epoch milliseconds when the active rate-limit window resets.
+                            schema:
+                                type: string
+                        Retry-After:
+                            description: Seconds to wait before retrying the request.
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/RateLimitError'
+                default:
+                    description: Gateway or handler error response.
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/GatewayError'
     /api/market/v1/list-earnings-calendar:
         get:
             tags:
@@ -559,12 +1719,24 @@ paths:
             parameters:
                 - name: fromDate
                   in: query
+                  description: Accepted but currently ignored; no-op until this handler supports the parameter.
                   required: false
+                  example: "2026-01-15"
                   schema:
                     type: string
                 - name: toDate
                   in: query
+                  description: Accepted but currently ignored; no-op until this handler supports the parameter.
                   required: false
+                  example: "2026-01-15"
+                  schema:
+                    type: string
+                - name: jmespath
+                  in: query
+                  description: |-
+                    Optional JMESPath expression applied server-side to project or reduce the JSON response before it is returned (mirrors the MCP jmespath argument). Invalid expressions, expressions larger than 1024 UTF-8 bytes, or projections that exceed the 256 KB output cap return HTTP 400 with a {_jmespath_error, original_keys} envelope. Grammar and worked examples: https://www.worldmonitor.app/docs/mcp-jmespath.
+                  required: false
+                  example: "keys(@)"
                   schema:
                     type: string
             responses:
@@ -572,6 +1744,17 @@ paths:
                     description: Successful response
                     content:
                         application/json:
+                            example:
+                                "earnings":
+                                    - "company": "example"
+                                      "date": "2026-01-15"
+                                      "epsActual": 1.5
+                                      "epsEstimate": 1.5
+                                      "hasActuals": true
+                                "fromDate": "2026-01-15"
+                                "toDate": "2026-01-15"
+                                "total": 1
+                                "unavailable": false
                             schema:
                                 $ref: '#/components/schemas/ListEarningsCalendarResponse'
                 "400":
@@ -579,13 +1762,54 @@ paths:
                     content:
                         application/json:
                             schema:
-                                $ref: '#/components/schemas/ValidationError'
-                default:
-                    description: Error response
+                                oneOf:
+                                    - $ref: '#/components/schemas/ValidationError'
+                                    - $ref: '#/components/schemas/JmespathProjectionError'
+                "401":
+                    description: Missing or invalid API key.
                     content:
                         application/json:
                             schema:
-                                $ref: '#/components/schemas/Error'
+                                $ref: '#/components/schemas/UnauthorizedError'
+                "403":
+                    description: API access requires an active subscription (the API key's subscription is inactive or expired).
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ForbiddenError'
+                "429":
+                    description: Rate limit exceeded.
+                    headers:
+                        X-RateLimit-Limit:
+                            description: Maximum requests allowed in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Remaining:
+                            description: Requests remaining in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Reset:
+                            description: Unix epoch milliseconds when the active rate-limit window resets.
+                            schema:
+                                type: string
+                        Retry-After:
+                            description: Seconds to wait before retrying the request.
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/RateLimitError'
+                default:
+                    description: Gateway or handler error response.
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/GatewayError'
     /api/market/v1/get-cot-positioning:
         get:
             tags:
@@ -593,11 +1817,29 @@ paths:
             summary: GetCotPositioning
             description: GetCotPositioning retrieves CFTC COT institutional positioning data.
             operationId: GetCotPositioning
+            parameters:
+                - name: jmespath
+                  in: query
+                  description: |-
+                    Optional JMESPath expression applied server-side to project or reduce the JSON response before it is returned (mirrors the MCP jmespath argument). Invalid expressions, expressions larger than 1024 UTF-8 bytes, or projections that exceed the 256 KB output cap return HTTP 400 with a {_jmespath_error, original_keys} envelope. Grammar and worked examples: https://www.worldmonitor.app/docs/mcp-jmespath.
+                  required: false
+                  example: "keys(@)"
+                  schema:
+                    type: string
             responses:
                 "200":
                     description: Successful response
                     content:
                         application/json:
+                            example:
+                                "instruments":
+                                    - "assetManagerLong": "1717200000000"
+                                      "assetManagerShort": "1717200000000"
+                                      "code": "example"
+                                      "dealerLong": "1717200000000"
+                                      "dealerShort": "1717200000000"
+                                "reportDate": "2026-01-15"
+                                "unavailable": false
                             schema:
                                 $ref: '#/components/schemas/GetCotPositioningResponse'
                 "400":
@@ -605,15 +1847,483 @@ paths:
                     content:
                         application/json:
                             schema:
-                                $ref: '#/components/schemas/ValidationError'
-                default:
-                    description: Error response
+                                oneOf:
+                                    - $ref: '#/components/schemas/ValidationError'
+                                    - $ref: '#/components/schemas/JmespathProjectionError'
+                "401":
+                    description: Missing or invalid API key.
                     content:
                         application/json:
                             schema:
-                                $ref: '#/components/schemas/Error'
+                                $ref: '#/components/schemas/UnauthorizedError'
+                "403":
+                    description: API access requires an active subscription (the API key's subscription is inactive or expired).
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ForbiddenError'
+                "429":
+                    description: Rate limit exceeded.
+                    headers:
+                        X-RateLimit-Limit:
+                            description: Maximum requests allowed in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Remaining:
+                            description: Requests remaining in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Reset:
+                            description: Unix epoch milliseconds when the active rate-limit window resets.
+                            schema:
+                                type: string
+                        Retry-After:
+                            description: Seconds to wait before retrying the request.
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/RateLimitError'
+                default:
+                    description: Gateway or handler error response.
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/GatewayError'
+    /api/market/v1/get-insider-transactions:
+        get:
+            tags:
+                - MarketService
+            summary: GetInsiderTransactions
+            description: GetInsiderTransactions retrieves SEC insider buy/sell activity from Finnhub.
+            operationId: GetInsiderTransactions
+            parameters:
+                - name: symbol
+                  in: query
+                  description: Stock ticker symbol for insider transaction lookup.
+                  required: true
+                  example: "AAPL"
+                  schema:
+                    type: string
+                - name: jmespath
+                  in: query
+                  description: |-
+                    Optional JMESPath expression applied server-side to project or reduce the JSON response before it is returned (mirrors the MCP jmespath argument). Invalid expressions, expressions larger than 1024 UTF-8 bytes, or projections that exceed the 256 KB output cap return HTTP 400 with a {_jmespath_error, original_keys} envelope. Grammar and worked examples: https://www.worldmonitor.app/docs/mcp-jmespath.
+                  required: false
+                  example: "keys(@)"
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            example:
+                                "fetchedAt": "2026-01-15T12:00:00Z"
+                                "netValue": 1.5
+                                "symbol": "AAPL"
+                                "totalBuys": 1
+                                "totalSells": 1
+                            schema:
+                                $ref: '#/components/schemas/GetInsiderTransactionsResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/ValidationError'
+                                    - $ref: '#/components/schemas/JmespathProjectionError'
+                "401":
+                    description: Missing or invalid API key.
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/UnauthorizedError'
+                "403":
+                    description: API access requires an active subscription (the API key's subscription is inactive or expired).
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ForbiddenError'
+                "429":
+                    description: Rate limit exceeded.
+                    headers:
+                        X-RateLimit-Limit:
+                            description: Maximum requests allowed in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Remaining:
+                            description: Requests remaining in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Reset:
+                            description: Unix epoch milliseconds when the active rate-limit window resets.
+                            schema:
+                                type: string
+                        Retry-After:
+                            description: Seconds to wait before retrying the request.
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/RateLimitError'
+                default:
+                    description: Gateway or handler error response.
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/GatewayError'
+    /api/market/v1/get-market-breadth-history:
+        get:
+            tags:
+                - MarketService
+            summary: GetMarketBreadthHistory
+            description: GetMarketBreadthHistory retrieves historical % of S&P 500 stocks above 20/50/200-day SMAs.
+            operationId: GetMarketBreadthHistory
+            parameters:
+                - name: jmespath
+                  in: query
+                  description: |-
+                    Optional JMESPath expression applied server-side to project or reduce the JSON response before it is returned (mirrors the MCP jmespath argument). Invalid expressions, expressions larger than 1024 UTF-8 bytes, or projections that exceed the 256 KB output cap return HTTP 400 with a {_jmespath_error, original_keys} envelope. Grammar and worked examples: https://www.worldmonitor.app/docs/mcp-jmespath.
+                  required: false
+                  example: "keys(@)"
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            example:
+                                "currentPctAbove200d": 1.5
+                                "currentPctAbove20d": 1.5
+                                "currentPctAbove50d": 1.5
+                                "history":
+                                    - "date": "2026-01-15"
+                                      "pctAbove200d": 1.5
+                                      "pctAbove20d": 1.5
+                                      "pctAbove50d": 1.5
+                                "unavailable": false
+                            schema:
+                                $ref: '#/components/schemas/GetMarketBreadthHistoryResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/ValidationError'
+                                    - $ref: '#/components/schemas/JmespathProjectionError'
+                "401":
+                    description: Missing or invalid API key.
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/UnauthorizedError'
+                "403":
+                    description: API access requires an active subscription (the API key's subscription is inactive or expired).
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ForbiddenError'
+                "429":
+                    description: Rate limit exceeded.
+                    headers:
+                        X-RateLimit-Limit:
+                            description: Maximum requests allowed in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Remaining:
+                            description: Requests remaining in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Reset:
+                            description: Unix epoch milliseconds when the active rate-limit window resets.
+                            schema:
+                                type: string
+                        Retry-After:
+                            description: Seconds to wait before retrying the request.
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/RateLimitError'
+                default:
+                    description: Gateway or handler error response.
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/GatewayError'
+    /api/market/v1/get-gold-intelligence:
+        get:
+            tags:
+                - MarketService
+            summary: GetGoldIntelligence
+            description: GetGoldIntelligence retrieves gold pricing, cross-currency XAU, ratios, and CFTC positioning.
+            operationId: GetGoldIntelligence
+            parameters:
+                - name: jmespath
+                  in: query
+                  description: |-
+                    Optional JMESPath expression applied server-side to project or reduce the JSON response before it is returned (mirrors the MCP jmespath argument). Invalid expressions, expressions larger than 1024 UTF-8 bytes, or projections that exceed the 256 KB output cap return HTTP 400 with a {_jmespath_error, original_keys} envelope. Grammar and worked examples: https://www.worldmonitor.app/docs/mcp-jmespath.
+                  required: false
+                  example: "keys(@)"
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            example:
+                                "cbReserves":
+                                    "asOfMonth": "example"
+                                    "topBuyers12m":
+                                        - "deltaTonnes12m": 1.5
+                                          "iso3": "USA"
+                                          "name": "WorldMonitor Analyst"
+                                    "topHolders":
+                                        - "iso3": "USA"
+                                          "name": "WorldMonitor Analyst"
+                                          "pctOfReserves": 1.5
+                                          "tonnes": 1.5
+                                    "topSellers12m":
+                                        - "deltaTonnes12m": 1.5
+                                          "iso3": "USA"
+                                          "name": "WorldMonitor Analyst"
+                                    "totalTonnes": 1
+                                "cot":
+                                    "managedMoney":
+                                        "longPositions": "1717200000000"
+                                        "netPct": 1.5
+                                        "oiSharePct": 1.5
+                                        "shortPositions": "1717200000000"
+                                        "wowNetDelta": "1717200000000"
+                                    "nextReleaseDate": "2026-01-15"
+                                    "openInterest": "1717200000000"
+                                    "producerSwap":
+                                        "longPositions": "1717200000000"
+                                        "netPct": 1.5
+                                        "oiSharePct": 1.5
+                                        "shortPositions": "1717200000000"
+                                        "wowNetDelta": "1717200000000"
+                                    "reportDate": "2026-01-15"
+                                "crossCurrencyPrices":
+                                    - "currency": "USD"
+                                      "flag": "example"
+                                      "price": 75.25
+                                "drivers":
+                                    - "changePct": 1.5
+                                      "correlation30d": 1.5
+                                      "label": "example"
+                                      "symbol": "AAPL"
+                                      "value": 1.5
+                                "etfFlows":
+                                    "asOfDate": "2026-01-15"
+                                    "aumUsd": 1.5
+                                    "changeM1Pct": 1.5
+                                    "changeM1Tonnes": 1.5
+                                    "changeW1Pct": 1.5
+                            schema:
+                                $ref: '#/components/schemas/GetGoldIntelligenceResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/ValidationError'
+                                    - $ref: '#/components/schemas/JmespathProjectionError'
+                "401":
+                    description: Missing or invalid API key.
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/UnauthorizedError'
+                "403":
+                    description: API access requires an active subscription (the API key's subscription is inactive or expired).
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ForbiddenError'
+                "429":
+                    description: Rate limit exceeded.
+                    headers:
+                        X-RateLimit-Limit:
+                            description: Maximum requests allowed in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Remaining:
+                            description: Requests remaining in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Reset:
+                            description: Unix epoch milliseconds when the active rate-limit window resets.
+                            schema:
+                                type: string
+                        Retry-After:
+                            description: Seconds to wait before retrying the request.
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/RateLimitError'
+                default:
+                    description: Gateway or handler error response.
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/GatewayError'
+    /api/market/v1/get-hyperliquid-flow:
+        get:
+            tags:
+                - MarketService
+            summary: GetHyperliquidFlow
+            description: GetHyperliquidFlow retrieves Hyperliquid perp positioning flow (funding/OI/basis composite scores).
+            operationId: GetHyperliquidFlow
+            parameters:
+                - name: jmespath
+                  in: query
+                  description: |-
+                    Optional JMESPath expression applied server-side to project or reduce the JSON response before it is returned (mirrors the MCP jmespath argument). Invalid expressions, expressions larger than 1024 UTF-8 bytes, or projections that exceed the 256 KB output cap return HTTP 400 with a {_jmespath_error, original_keys} envelope. Grammar and worked examples: https://www.worldmonitor.app/docs/mcp-jmespath.
+                  required: false
+                  example: "keys(@)"
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            example:
+                                "assetCount": 1
+                                "assets":
+                                    - "alerts":
+                                        - "example"
+                                      "assetClass": "example"
+                                      "basisScore": 42.5
+                                      "composite": 1.5
+                                      "dayNotional": "example"
+                                "fetchedAt": "2026-01-15T12:00:00Z"
+                                "ts": "1717200000000"
+                                "unavailable": false
+                            schema:
+                                $ref: '#/components/schemas/GetHyperliquidFlowResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/ValidationError'
+                                    - $ref: '#/components/schemas/JmespathProjectionError'
+                "401":
+                    description: Missing or invalid API key.
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/UnauthorizedError'
+                "403":
+                    description: API access requires an active subscription (the API key's subscription is inactive or expired).
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ForbiddenError'
+                "429":
+                    description: Rate limit exceeded.
+                    headers:
+                        X-RateLimit-Limit:
+                            description: Maximum requests allowed in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Remaining:
+                            description: Requests remaining in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Reset:
+                            description: Unix epoch milliseconds when the active rate-limit window resets.
+                            schema:
+                                type: string
+                        Retry-After:
+                            description: Seconds to wait before retrying the request.
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/RateLimitError'
+                default:
+                    description: Gateway or handler error response.
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/GatewayError'
 components:
+    securitySchemes:
+        WorldMonitorKey:
+            type: apiKey
+            in: header
+            name: X-WorldMonitor-Key
+            description: User-issued WorldMonitor API key.
+        ApiKeyHeader:
+            type: apiKey
+            in: header
+            name: X-Api-Key
+            description: Alias header for the WorldMonitor API key (X-WorldMonitor-Key).
+        BearerAuth:
+            type: http
+            scheme: bearer
+            description: 'Bearer token: a Clerk-issued JWT for browser session flows, passed as Authorization: Bearer <token>.'
     schemas:
+        JmespathProjectionError:
+            description: Returned when a REST jmespath projection is invalid or exceeds the expression/output byte limits.
+            properties:
+                _jmespath_error:
+                    description: Projection error discriminator and details.
+                    type: string
+                original_keys:
+                    description: Top-level keys or shape of the unprojected response.
+                    items:
+                        type: string
+                    type: array
+            required:
+                - _jmespath_error
+                - original_keys
+            type: object
+        UnauthorizedError:
+            type: object
+            properties:
+                error:
+                    type: string
+                    description: Human-readable error message.
+            required:
+                - error
+            description: Returned when the API key is missing, malformed, or lacks current API access.
         Error:
             type: object
             properties:
@@ -621,6 +2331,56 @@ components:
                     type: string
                     description: Error message (e.g., 'user not found', 'database connection failed')
             description: Error is returned when a handler encounters an error. It contains a simple error message that the developer can customize.
+        InvalidRequestBodyError:
+            type: object
+            description: Returned when a JSON POST request body is empty or malformed.
+            properties:
+                message:
+                    type: string
+                    description: Invalid request body
+            required:
+                - message
+        GatewayError:
+            type: object
+            description: Returned by gateway infrastructure errors before an RPC handler runs, such as origin, routing, method, authentication, or quota checks.
+            properties:
+                error:
+                    oneOf:
+                        - type: string
+                        - type: object
+                          additionalProperties: true
+                    description: Gateway error reason or structured gateway failure details.
+            required:
+                - error
+        RateLimitError:
+            type: object
+            description: Returned when a gateway or handler rate limit rejects the request.
+            properties:
+                error:
+                    type: string
+                    description: Human-readable rate-limit failure reason.
+            required:
+                - error
+        ForbiddenError:
+            type: object
+            properties:
+                error:
+                    type: string
+                    description: Human-readable entitlement failure reason.
+                requiredTier:
+                    type: integer
+                    format: int32
+                    description: Minimum entitlement tier required for this endpoint.
+                currentTier:
+                    type: integer
+                    format: int32
+                    description: Caller entitlement tier when known.
+                planKey:
+                    type: string
+                    description: Caller plan key when known.
+            required:
+                - error
+            description: Returned when a PRO-gated endpoint denies access because the caller has no resolved authenticated user, entitlements cannot be verified, or the caller lacks the required entitlement tier.
         FieldViolation:
             type: object
             properties:
@@ -670,6 +2430,10 @@ components:
                 rateLimited:
                     type: boolean
                     description: True when the upstream API rate-limited the request.
+                unavailableSymbols:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/MarketQuoteUnavailable'
             description: ListMarketQuotesResponse contains stock and index quotes.
         MarketQuote:
             type: object
@@ -701,6 +2465,35 @@ components:
             required:
                 - symbol
             description: MarketQuote represents a stock or index quote from Finnhub or Yahoo Finance.
+        MarketQuoteUnavailable:
+            type: object
+            properties:
+                symbol:
+                    type: string
+                    minLength: 1
+                    description: The requested ticker symbol, normalized.
+                reason:
+                    type: string
+                    enum:
+                        - MARKET_QUOTE_UNAVAILABLE_REASON_UNSPECIFIED
+                        - MARKET_QUOTE_UNAVAILABLE_REASON_NOT_FOUND
+                        - MARKET_QUOTE_UNAVAILABLE_REASON_PROVIDER_ERROR
+                        - MARKET_QUOTE_UNAVAILABLE_REASON_PROVIDER_RATE_LIMITED
+                        - MARKET_QUOTE_UNAVAILABLE_REASON_PROVIDER_NOT_CONFIGURED
+                        - MARKET_QUOTE_UNAVAILABLE_REASON_REQUEST_LIMIT_EXCEEDED
+                        - MARKET_QUOTE_UNAVAILABLE_REASON_UPSTREAM_BUDGET_EXHAUSTED
+                        - MARKET_QUOTE_UNAVAILABLE_REASON_SEED_UNAVAILABLE
+                    description: |-
+                        MarketQuoteUnavailableReason explains why a requested symbol produced no quote.
+
+                         Requested symbols are resolved seed-first: the fixed Railway seed snapshot
+                         answers without any upstream call, and only the remaining symbols are looked
+                         up through the bounded, Redis-cached quote provider. Every symbol that
+                         survives normalization is accounted for by either a quote or one of these
+                         reasons — a requested symbol is never silently dropped.
+            required:
+                - symbol
+            description: MarketQuoteUnavailable reports a requested symbol that produced no quote.
         ListCryptoQuotesRequest:
             type: object
             properties:
@@ -708,7 +2501,12 @@ components:
                     type: array
                     items:
                         type: string
-                        description: Cryptocurrency IDs to retrieve (CoinGecko IDs). Empty returns defaults.
+                        maxItems: 25
+                        description: |-
+                            Cryptocurrency IDs to retrieve (CoinGecko IDs). Empty returns the default
+                             crypto set. At most 25 IDs are accepted; the handler resolves them
+                             seed-first and fetches the remainder (gap) from the upstream provider.
+                    maxItems: 25
             description: ListCryptoQuotesRequest specifies which cryptocurrencies to retrieve.
         ListCryptoQuotesResponse:
             type: object
@@ -717,6 +2515,19 @@ components:
                     type: array
                     items:
                         $ref: '#/components/schemas/CryptoQuote'
+                unresolvedIds:
+                    type: array
+                    items:
+                        type: string
+                        description: |-
+                            CoinGecko IDs that were requested but could not be resolved from the seed
+                             or the upstream provider. Omitted IDs are never silently dropped.
+                provider:
+                    type: string
+                    description: |-
+                        Data source for this response: "seed" (default set/seed hits only),
+                         "upstream" (at least one gap ID fetched from the provider), "mixed"
+                         (seed hits plus fetched gaps), or "degraded" (a gap fetch failed).
             description: ListCryptoQuotesResponse contains cryptocurrency quotes.
         CryptoQuote:
             type: object
@@ -756,7 +2567,11 @@ components:
                     type: array
                     items:
                         type: string
-                        description: Commodity symbols to retrieve (Yahoo symbols). Empty returns defaults.
+                        description: |-
+                            Commodity symbols to retrieve (Yahoo symbols). Empty returns the seed
+                             defaults. Only symbols in the configured commodity set
+                             (shared/commodities.json) are supported; requesting an unsupported
+                             symbol returns HTTP 400.
             description: ListCommodityQuotesRequest specifies which commodities to retrieve.
         ListCommodityQuotesResponse:
             type: object
@@ -801,7 +2616,9 @@ components:
             properties:
                 period:
                     type: string
-                    description: Time period for performance calculation (e.g., "1d", "1w", "1m"). Defaults to "1d".
+                    description: |-
+                        Time period for performance calculation (e.g., "1d", "1w", "1m"). Defaults to "1d".
+                         Accepted but currently ignored; no-op until this handler supports the parameter.
             description: GetSectorSummaryRequest specifies parameters for retrieving sector performance.
         GetSectorSummaryResponse:
             type: object
@@ -835,7 +2652,18 @@ components:
                     type: array
                     items:
                         type: string
-                        description: CoinGecko IDs to retrieve (e.g. "tether,usd-coin"). Empty returns defaults.
+                        description: |-
+                            CoinGecko IDs to retrieve (e.g. "tether,usd-coin"). Empty returns defaults.
+
+                             Repeated (`?coins=tether&coins=dai`) and comma-joined
+                             (`?coins=tether,dai`) forms are equivalent. IDs are trimmed, lowercased,
+                             and de-duplicated; the request is capped at 25 IDs. An ID that is not
+                             shaped like a CoinGecko ID, that overflows the cap, or that no provider
+                             can resolve is reported in `unresolved` rather than dropped.
+
+                             The empty (default) request is served from the seeded snapshot alone and
+                             never reaches an upstream provider. Naming IDs explicitly opts into a
+                             bounded, cached provider lookup for any ID the snapshot does not carry.
             description: ListStablecoinMarketsRequest specifies which stablecoins to retrieve.
         ListStablecoinMarketsResponse:
             type: object
@@ -849,6 +2677,18 @@ components:
                     type: array
                     items:
                         $ref: '#/components/schemas/Stablecoin'
+                unresolved:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/UnresolvedStablecoin'
+                dataStatus:
+                    type: string
+                    description: |-
+                        Coverage of THIS response, distinct from `summary.health_status` (which
+                         reports peg health, not data availability):
+                           "OK"          — every requested coin was returned.
+                           "PARTIAL"     — at least one coin returned, at least one unresolved.
+                           "UNAVAILABLE" — no coin data available.
             description: ListStablecoinMarketsResponse contains stablecoin market data.
         StablecoinSummary:
             type: object
@@ -922,6 +2762,23 @@ components:
                 - id
                 - symbol
             description: Stablecoin represents a single stablecoin with peg health data.
+        UnresolvedStablecoin:
+            type: object
+            properties:
+                id:
+                    type: string
+                    description: |-
+                        The requested ID, after trimming and lowercasing. Malformed IDs are
+                         reported as sent (normalized and truncated) so the caller can spot the typo.
+                reason:
+                    type: string
+                    description: |-
+                        Bounded vocabulary — anything outside this list is a contract violation:
+                           "INVALID_ID"     — not shaped like a CoinGecko ID.
+                           "OVER_CAP"       — beyond the per-request ID cap; never looked up.
+                           "NOT_FOUND"      — the provider answered, and has no such coin.
+                           "PROVIDER_ERROR" — the lookup failed, so the ID is unknown, not absent.
+            description: UnresolvedStablecoin explains why a requested ID is absent from the response.
         ListEtfFlowsRequest:
             type: object
             description: ListEtfFlowsRequest is empty; the handler uses a fixed list of BTC spot ETFs.
@@ -1091,11 +2948,14 @@ components:
                     type: string
                     maxLength: 32
                     minLength: 1
+                    description: Stock ticker symbol to analyze.
                 name:
                     type: string
                     maxLength: 120
+                    description: Optional company display name used to disambiguate the symbol.
                 includeNews:
                     type: boolean
+                    description: Whether to include recent news in the stock analysis.
             required:
                 - symbol
         AnalyzeStockResponse:
@@ -1120,8 +2980,14 @@ components:
                 signalScore:
                     type: number
                     format: double
+                    description: |-
+                        Technical-analysis score (0-100), retained as a stable pair with signal
+                         for clients that predate the fundamentals-blended rating.
                 signal:
                     type: string
+                    description: |-
+                        Technical-only signal paired with signal_score. New clients should use
+                         rating_signal with composite_score for the surfaced investment rating.
                 trendStatus:
                     type: string
                 volumeStatus:
@@ -1224,6 +3090,152 @@ components:
                     format: double
                 engineVersion:
                     type: string
+                analystConsensus:
+                    $ref: '#/components/schemas/AnalystConsensus'
+                priceTarget:
+                    $ref: '#/components/schemas/PriceTarget'
+                recentUpgrades:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/UpgradeDowngrade'
+                dividendYield:
+                    type: number
+                    format: double
+                trailingAnnualDividendRate:
+                    type: number
+                    format: double
+                exDividendDate:
+                    type: integer
+                    format: int64
+                    description: 'Warning: Values > 2^53 may lose precision in JavaScript'
+                payoutRatio:
+                    type: number
+                    format: double
+                dividendFrequency:
+                    type: string
+                dividendCagr:
+                    type: number
+                    format: double
+                marketSession:
+                    type: string
+                    description: |-
+                        US-equity trading session at analysis time: "regular", "pre", "post" or
+                         "closed". Empty when session detection does not apply (non-US symbols).
+                extendedPrice:
+                    type: number
+                    format: double
+                    description: |-
+                        Latest pre/post-market price from Yahoo extended-hours candles. Only set
+                         when market_session is "pre" or "post" and extended data is available.
+                extendedChangePercent:
+                    type: number
+                    format: double
+                    description: |-
+                        Extended-hours change % vs the last regular-session close. Only set when
+                         extended_price is set.
+                fundamentals:
+                    $ref: '#/components/schemas/Fundamentals'
+                fundamentalScore:
+                    type: number
+                    format: double
+                    description: |-
+                        Fundamental health score (0-100) blended from the quality/growth/leverage
+                         fundamentals above. Unset when too few fundamentals are available to score,
+                         in which case composite_score falls back to signal_score.
+                compositeScore:
+                    type: number
+                    format: double
+                    description: |-
+                        Blend of signal_score (technicals) and fundamental_score that drives
+                         rating_signal, so a Strong buy/sell no longer fires on price action alone.
+                         Equals signal_score when fundamental_score is unset.
+                nextEarningsDate:
+                    type: string
+                    description: |-
+                        Next scheduled earnings date (YYYY-MM-DD) plus consensus EPS / revenue for
+                         the symbol, joined from the market:earnings-calendar:v1 seed. Unset when the
+                         symbol has no upcoming (not-yet-reported) entry in the seed's ~2-week window.
+                         (61-62 are taken by a concurrent PR; using 63-65 to avoid a field collision.)
+                consensusEps:
+                    type: number
+                    format: double
+                consensusRevenue:
+                    type: number
+                    format: double
+                newsSentiment:
+                    type: number
+                    format: double
+                    description: |-
+                        LLM-derived news sentiment for the analyzed symbol: a signed score in
+                         [-1, 1] (-1 very bearish, 0 neutral / no material news, +1 very bullish),
+                         emitted by the same overlay model that already reads the headlines — no
+                         extra call. Omitted when the analysis falls back to rules (no LLM overlay).
+                         (69 avoids a field collision with in-flight PRs: 61-62 blend fundamentals
+                         into the rating, 63-65 are the merged earnings join, 66-68 are the in-flight
+                         risk-analytics PR.)
+                realizedVolatility:
+                    type: number
+                    format: double
+                    description: |-
+                        Risk analytics computed from the 6-month daily candles already fetched for
+                         the technical snapshot (no extra upstream call).
+                         (66-68 avoid a field collision: 61-62 are claimed by the in-flight PR that
+                         blends fundamentals into the rating, and 63-65 by the merged earnings join.)
+
+                         Annualized realized volatility — sample stdev of daily log returns × √252 —
+                         as a fractional ratio where 0.25 means 25%. 0 when history is insufficient.
+                atr:
+                    type: number
+                    format: double
+                    description: |-
+                        Wilder's 14-period Average True Range, in the response currency's price
+                         units. 0 when history is insufficient.
+                maxDrawdown:
+                    type: number
+                    format: double
+                    description: |-
+                        Maximum peak-to-trough drawdown over the window, as a non-positive fractional
+                         ratio where -0.25 means a 25% decline. 0 for a monotonically rising series.
+                ratingSignal:
+                    type: string
+                    description: |-
+                        Fundamentals-blended signal paired with composite_score. Kept separate
+                         from the legacy technical-only signal/signal_score pair so already-loaded
+                         web, desktop, and API clients never render a mixed-version rating.
+                ratingSummary:
+                    type: string
+                    description: |-
+                        Fundamentals-blended narrative paired with rating_signal/composite_score.
+                         Legacy summary remains paired with signal/signal_score during rollout.
+                ratingAction:
+                    type: string
+                    description: |-
+                        Fundamentals-blended action paired with rating_signal/composite_score.
+                         Legacy action remains paired with signal/signal_score during rollout.
+                ratingConfidence:
+                    type: string
+                    description: |-
+                        Fundamentals-blended confidence paired with rating_signal/composite_score.
+                         Legacy confidence remains paired with signal/signal_score during rollout.
+                ratingWhyNow:
+                    type: string
+                    description: |-
+                        Fundamentals-blended explanation paired with rating_signal/composite_score.
+                         Legacy why_now remains paired with signal/signal_score during rollout.
+                ratingBullishFactors:
+                    type: array
+                    items:
+                        type: string
+                        description: |-
+                            Fundamentals-aware positive factors supporting the composite rating.
+                             Legacy bullish_factors remain technical-only during rollout.
+                ratingRiskFactors:
+                    type: array
+                    items:
+                        type: string
+                        description: |-
+                            Fundamentals-aware risks supporting the composite rating.
+                             Legacy risk_factors remain technical-only during rollout.
         StockAnalysisHeadline:
             type: object
             properties:
@@ -1237,6 +3249,121 @@ components:
                     type: integer
                     format: int64
                     description: 'Warning: Values > 2^53 may lose precision in JavaScript'
+        AnalystConsensus:
+            type: object
+            properties:
+                strongBuy:
+                    type: integer
+                    format: int32
+                buy:
+                    type: integer
+                    format: int32
+                hold:
+                    type: integer
+                    format: int32
+                sell:
+                    type: integer
+                    format: int32
+                strongSell:
+                    type: integer
+                    format: int32
+                total:
+                    type: integer
+                    format: int32
+                period:
+                    type: string
+        PriceTarget:
+            type: object
+            properties:
+                high:
+                    type: number
+                    format: double
+                low:
+                    type: number
+                    format: double
+                mean:
+                    type: number
+                    format: double
+                median:
+                    type: number
+                    format: double
+                current:
+                    type: number
+                    format: double
+                numberOfAnalysts:
+                    type: integer
+                    format: int32
+        UpgradeDowngrade:
+            type: object
+            properties:
+                firm:
+                    type: string
+                toGrade:
+                    type: string
+                fromGrade:
+                    type: string
+                action:
+                    type: string
+                epochGradeDate:
+                    type: integer
+                    format: int64
+                    description: 'Warning: Values > 2^53 may lose precision in JavaScript'
+        Fundamentals:
+            type: object
+            properties:
+                profitMargin:
+                    type: number
+                    format: double
+                    description: Fractional ratio where 0.25 means 25%.
+                grossMargin:
+                    type: number
+                    format: double
+                    description: Fractional ratio where 0.25 means 25%.
+                operatingMargin:
+                    type: number
+                    format: double
+                    description: Fractional ratio where 0.25 means 25%.
+                returnOnEquity:
+                    type: number
+                    format: double
+                    description: Fractional ratio where 0.25 means 25%.
+                returnOnAssets:
+                    type: number
+                    format: double
+                    description: Fractional ratio where 0.25 means 25%.
+                revenueGrowth:
+                    type: number
+                    format: double
+                    description: Fractional ratio where 0.25 means 25%.
+                earningsGrowth:
+                    type: number
+                    format: double
+                    description: Fractional ratio where 0.25 means 25%.
+                debtToEquity:
+                    type: number
+                    format: double
+                    description: Normalized debt/equity ratio where 1.5 means debt is 1.5x equity.
+                totalCash:
+                    type: number
+                    format: double
+                    description: Latest Yahoo financialData value denominated in financial_currency.
+                totalDebt:
+                    type: number
+                    format: double
+                    description: Latest Yahoo financialData value denominated in financial_currency.
+                freeCashflow:
+                    type: number
+                    format: double
+                    description: Latest Yahoo financialData value denominated in financial_currency.
+                ebitda:
+                    type: number
+                    format: double
+                    description: Latest Yahoo financialData value denominated in financial_currency.
+                financialCurrency:
+                    type: string
+                    description: |-
+                        ISO 4217 currency used by the company's financial statements. This can
+                         differ from AnalyzeStockResponse.currency for ADRs and cross-listings.
         GetStockAnalysisHistoryRequest:
             type: object
             properties:
@@ -1244,13 +3371,16 @@ components:
                     type: array
                     items:
                         type: string
+                        description: Stock ticker symbols whose stored analysis history should be returned.
                 limitPerSymbol:
                     type: integer
                     maximum: 32
                     minimum: 1
                     format: int32
+                    description: Maximum number of history snapshots to return per symbol.
                 includeNews:
                     type: boolean
+                    description: Whether history snapshots should include stored news summaries.
         GetStockAnalysisHistoryResponse:
             type: object
             properties:
@@ -1274,14 +3404,17 @@ components:
                     type: string
                     maxLength: 32
                     minLength: 1
+                    description: Stock ticker symbol to backtest.
                 name:
                     type: string
                     maxLength: 120
+                    description: Optional company display name used to disambiguate the symbol.
                 evalWindowDays:
                     type: integer
                     maximum: 30
                     minimum: 3
                     format: int32
+                    description: Evaluation window in days for simulated backtest outcomes.
             required:
                 - symbol
         BacktestStockResponse:
@@ -1333,6 +3466,12 @@ components:
                         $ref: '#/components/schemas/BacktestStockEvaluation'
                 engineVersion:
                     type: string
+                ratingBasis:
+                    type: string
+                    description: |-
+                        "technical_only": historical Yahoo bars do not include point-in-time
+                         fundamentals, so this result must not be presented as a replay of the
+                         fundamentals-blended live rating.
         BacktestStockEvaluation:
             type: object
             properties:
@@ -1373,11 +3512,13 @@ components:
                     type: array
                     items:
                         type: string
+                        description: Stock ticker symbols whose stored backtests should be returned.
                 evalWindowDays:
                     type: integer
                     maximum: 30
                     minimum: 3
                     format: int32
+                    description: Evaluation window in days used by stored backtests.
         ListStoredStockBacktestsResponse:
             type: object
             properties:
@@ -1508,17 +3649,28 @@ components:
                     type: string
                 unavailable:
                     type: boolean
+                    description: |-
+                        True when the upstream or seed-backed variant is unavailable; empty payload fields
+                         are graceful degradation, not confirmed zero data.
                 fsiValue:
                     type: number
                     format: double
+                    description: |-
+                        Bespoke Fear & Greed header stress ratio, not the KCFSI/ECB FSI panel
+                         composite. Formula: (HYG / TLT) / (VIX * HY OAS / 100).
                 fsiLabel:
                     type: string
+                    description: |-
+                        Label for fsi_value: Low Stress (>=1.5), Moderate Stress (>=0.8),
+                         Elevated Stress (>=0.3), otherwise High Stress.
                 hygPrice:
                     type: number
                     format: double
+                    description: Latest HYG ETF price used in the Fear & Greed header stress ratio.
                 tltPrice:
                     type: number
                     format: double
+                    description: Latest TLT ETF price used in the Fear & Greed header stress ratio.
                 sectorPerformance:
                     type: array
                     items:
@@ -1554,8 +3706,10 @@ components:
             properties:
                 fromDate:
                     type: string
+                    description: Accepted but currently ignored; no-op until this handler supports the parameter.
                 toDate:
                     type: string
+                    description: Accepted but currently ignored; no-op until this handler supports the parameter.
         ListEarningsCalendarResponse:
             type: object
             properties:
@@ -1572,6 +3726,9 @@ components:
                     format: int32
                 unavailable:
                     type: boolean
+                    description: |-
+                        True when the upstream or seed-backed variant is unavailable; empty payload fields
+                         are graceful degradation, not confirmed zero data.
         EarningsEntry:
             type: object
             properties:
@@ -1612,6 +3769,9 @@ components:
                     type: string
                 unavailable:
                     type: boolean
+                    description: |-
+                        True when the upstream or seed-backed variant is unavailable; empty payload fields
+                         are graceful degradation, not confirmed zero data.
         CotInstrument:
             type: object
             properties:
@@ -1642,3 +3802,425 @@ components:
                 netPct:
                     type: number
                     format: double
+        GetInsiderTransactionsRequest:
+            type: object
+            properties:
+                symbol:
+                    type: string
+                    maxLength: 32
+                    minLength: 1
+                    description: Stock ticker symbol for insider transaction lookup.
+            required:
+                - symbol
+        GetInsiderTransactionsResponse:
+            type: object
+            properties:
+                unavailable:
+                    type: boolean
+                    description: |-
+                        True when the upstream or seed-backed variant is unavailable; empty payload fields
+                         are graceful degradation, not confirmed zero data.
+                symbol:
+                    type: string
+                totalBuys:
+                    type: number
+                    format: double
+                totalSells:
+                    type: number
+                    format: double
+                netValue:
+                    type: number
+                    format: double
+                transactions:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/InsiderTransaction'
+                fetchedAt:
+                    type: string
+        InsiderTransaction:
+            type: object
+            properties:
+                name:
+                    type: string
+                shares:
+                    type: integer
+                    format: int64
+                    description: 'Warning: Values > 2^53 may lose precision in JavaScript'
+                value:
+                    type: number
+                    format: double
+                transactionCode:
+                    type: string
+                transactionDate:
+                    type: string
+        GetMarketBreadthHistoryRequest:
+            type: object
+        GetMarketBreadthHistoryResponse:
+            type: object
+            properties:
+                currentPctAbove20d:
+                    type: number
+                    format: double
+                currentPctAbove50d:
+                    type: number
+                    format: double
+                currentPctAbove200d:
+                    type: number
+                    format: double
+                updatedAt:
+                    type: string
+                history:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/BreadthSnapshot'
+                unavailable:
+                    type: boolean
+                    description: |-
+                        True when the upstream or seed-backed variant is unavailable; empty payload fields
+                         are graceful degradation, not confirmed zero data.
+        BreadthSnapshot:
+            type: object
+            properties:
+                date:
+                    type: string
+                pctAbove20d:
+                    type: number
+                    format: double
+                    description: |-
+                        Optional so a missing/failed Barchart reading serializes as JSON null
+                         instead of collapsing to 0, which would render identically to a real 0%
+                         reading (severe market dislocation with no S&P stocks above SMA).
+                pctAbove50d:
+                    type: number
+                    format: double
+                pctAbove200d:
+                    type: number
+                    format: double
+        GetGoldIntelligenceRequest:
+            type: object
+        GetGoldIntelligenceResponse:
+            type: object
+            properties:
+                goldPrice:
+                    type: number
+                    format: double
+                goldChangePct:
+                    type: number
+                    format: double
+                goldSparkline:
+                    type: array
+                    items:
+                        type: number
+                        format: double
+                silverPrice:
+                    type: number
+                    format: double
+                platinumPrice:
+                    type: number
+                    format: double
+                palladiumPrice:
+                    type: number
+                    format: double
+                goldSilverRatio:
+                    type: number
+                    format: double
+                goldPlatinumPremiumPct:
+                    type: number
+                    format: double
+                crossCurrencyPrices:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/GoldCrossCurrencyPrice'
+                cot:
+                    $ref: '#/components/schemas/GoldCotPositioning'
+                updatedAt:
+                    type: string
+                unavailable:
+                    type: boolean
+                    description: |-
+                        True when the upstream or seed-backed variant is unavailable; empty payload fields
+                         are graceful degradation, not confirmed zero data.
+                session:
+                    $ref: '#/components/schemas/GoldSessionRange'
+                returns:
+                    $ref: '#/components/schemas/GoldReturns'
+                range52w:
+                    $ref: '#/components/schemas/GoldRange52w'
+                drivers:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/GoldDriver'
+                etfFlows:
+                    $ref: '#/components/schemas/GoldEtfFlows'
+                cbReserves:
+                    $ref: '#/components/schemas/GoldCbReserves'
+        GoldCrossCurrencyPrice:
+            type: object
+            properties:
+                currency:
+                    type: string
+                flag:
+                    type: string
+                price:
+                    type: number
+                    format: double
+        GoldCotPositioning:
+            type: object
+            properties:
+                reportDate:
+                    type: string
+                nextReleaseDate:
+                    type: string
+                openInterest:
+                    type: string
+                    format: int64
+                managedMoney:
+                    $ref: '#/components/schemas/GoldCotCategory'
+                producerSwap:
+                    $ref: '#/components/schemas/GoldCotCategory'
+        GoldCotCategory:
+            type: object
+            properties:
+                longPositions:
+                    type: string
+                    format: int64
+                shortPositions:
+                    type: string
+                    format: int64
+                netPct:
+                    type: number
+                    format: double
+                oiSharePct:
+                    type: number
+                    format: double
+                wowNetDelta:
+                    type: string
+                    format: int64
+        GoldSessionRange:
+            type: object
+            properties:
+                dayHigh:
+                    type: number
+                    format: double
+                dayLow:
+                    type: number
+                    format: double
+                prevClose:
+                    type: number
+                    format: double
+        GoldReturns:
+            type: object
+            properties:
+                w1:
+                    type: number
+                    format: double
+                m1:
+                    type: number
+                    format: double
+                ytd:
+                    type: number
+                    format: double
+                y1:
+                    type: number
+                    format: double
+        GoldRange52w:
+            type: object
+            properties:
+                hi:
+                    type: number
+                    format: double
+                lo:
+                    type: number
+                    format: double
+                positionPct:
+                    type: number
+                    format: double
+        GoldDriver:
+            type: object
+            properties:
+                symbol:
+                    type: string
+                label:
+                    type: string
+                value:
+                    type: number
+                    format: double
+                changePct:
+                    type: number
+                    format: double
+                correlation30d:
+                    type: number
+                    format: double
+        GoldEtfFlows:
+            type: object
+            properties:
+                asOfDate:
+                    type: string
+                tonnes:
+                    type: number
+                    format: double
+                aumUsd:
+                    type: number
+                    format: double
+                nav:
+                    type: number
+                    format: double
+                changeW1Tonnes:
+                    type: number
+                    format: double
+                changeM1Tonnes:
+                    type: number
+                    format: double
+                changeY1Tonnes:
+                    type: number
+                    format: double
+                changeW1Pct:
+                    type: number
+                    format: double
+                changeM1Pct:
+                    type: number
+                    format: double
+                changeY1Pct:
+                    type: number
+                    format: double
+                sparkline90d:
+                    type: array
+                    items:
+                        type: number
+                        format: double
+        GoldCbReserves:
+            type: object
+            properties:
+                asOfMonth:
+                    type: string
+                totalTonnes:
+                    type: number
+                    format: double
+                topHolders:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/GoldCbHolder'
+                topBuyers12m:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/GoldCbMover'
+                topSellers12m:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/GoldCbMover'
+        GoldCbHolder:
+            type: object
+            properties:
+                iso3:
+                    type: string
+                name:
+                    type: string
+                tonnes:
+                    type: number
+                    format: double
+                pctOfReserves:
+                    type: number
+                    format: double
+        GoldCbMover:
+            type: object
+            properties:
+                iso3:
+                    type: string
+                name:
+                    type: string
+                deltaTonnes12m:
+                    type: number
+                    format: double
+        GetHyperliquidFlowRequest:
+            type: object
+        GetHyperliquidFlowResponse:
+            type: object
+            properties:
+                ts:
+                    type: string
+                    format: int64
+                fetchedAt:
+                    type: string
+                warmup:
+                    type: boolean
+                assetCount:
+                    type: integer
+                    format: int32
+                assets:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/HyperliquidAssetFlow'
+                unavailable:
+                    type: boolean
+                    description: |-
+                        True when the upstream or seed-backed variant is unavailable; empty payload fields
+                         are graceful degradation, not confirmed zero data.
+        HyperliquidAssetFlow:
+            type: object
+            properties:
+                symbol:
+                    type: string
+                display:
+                    type: string
+                assetClass:
+                    type: string
+                group:
+                    type: string
+                funding:
+                    type: string
+                    description: Raw metrics (nullable as strings to preserve precision; "" = unavailable)
+                openInterest:
+                    type: string
+                markPx:
+                    type: string
+                oraclePx:
+                    type: string
+                dayNotional:
+                    type: string
+                fundingScore:
+                    type: number
+                    format: double
+                    description: Component scores 0-100
+                volumeScore:
+                    type: number
+                    format: double
+                oiScore:
+                    type: number
+                    format: double
+                basisScore:
+                    type: number
+                    format: double
+                composite:
+                    type: number
+                    format: double
+                sparkFunding:
+                    type: array
+                    items:
+                        type: number
+                        format: double
+                        description: Sparkline arrays (most recent last); up to 60 samples (5h @ 5min)
+                sparkOi:
+                    type: array
+                    items:
+                        type: number
+                        format: double
+                sparkScore:
+                    type: array
+                    items:
+                        type: number
+                        format: double
+                warmup:
+                    type: boolean
+                    description: State flags
+                stale:
+                    type: boolean
+                staleSince:
+                    type: string
+                    format: int64
+                missingPolls:
+                    type: integer
+                    format: int32
+                alerts:
+                    type: array
+                    items:
+                        type: string

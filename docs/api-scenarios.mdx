@@ -1,0 +1,186 @@
+---
+title: "Scenarios API"
+description: "Run pre-defined supply-chain disruption scenarios against a scoped country or the v1 seeded reporter set, then poll for worker-computed results."
+---
+
+The **scenarios** API is a PRO-only, job-queued surface on top of the WorldMonitor chokepoint + trade dataset. Callers enqueue a named scenario template against an optional country, then poll a job-id until the worker completes. If no country is supplied, v1 computes across the seeded reporter set only: `US`, `CN`, `RU`, `IR`, `IN`, and `TW`.
+
+<Info>
+This service is proto-backed and included in the published OpenAPI bundle — see `proto/worldmonitor/scenario/v1/service.proto` and `/api/ScenarioService.openapi.yaml`. This page adds migration notes and examples on top of the generated reference.
+</Info>
+
+<Note>
+**Legacy v1 URL aliases** — the sebuf migration (#3207) renamed the three v1 endpoints to align with the proto RPC names. The old URLs are preserved as thin aliases so existing integrations keep working:
+
+| Legacy URL | Canonical URL |
+|---|---|
+| `POST /api/scenario/v1/run` | `POST /api/scenario/v1/run-scenario` |
+| `GET /api/scenario/v1/status` | `GET /api/scenario/v1/get-scenario-status` |
+| `GET /api/scenario/v1/templates` | `GET /api/scenario/v1/list-scenario-templates` |
+
+Prefer the canonical URLs in new code — the aliases will retire at the next v1→v2 break (tracked in [#3282](https://github.com/koala73/worldmonitor/issues/3282)).
+</Note>
+
+## List templates
+
+### `GET /api/scenario/v1/list-scenario-templates`
+
+Returns the catalog of pre-defined scenario templates. Cached `public, max-age=3600`.
+
+**Response** — abbreviated example using one of the live shipped templates (`server/worldmonitor/supply-chain/v1/scenario-templates.ts`):
+```json
+{
+  "templates": [
+    {
+      "id": "hormuz-tanker-blockade",
+      "name": "Hormuz Strait Tanker Blockade",
+      "affectedChokepointIds": ["hormuz_strait"],
+      "disruptionPct": 100,
+      "durationDays": 14,
+      "affectedHs2": ["27", "29"],
+      "costShockMultiplier": 2.10
+    }
+  ]
+}
+```
+
+Other shipped templates at the time of writing: `taiwan-strait-full-closure`, `suez-bab-simultaneous`, `panama-drought-50pct`, `russia-baltic-grain-suspension`, `us-tariff-escalation-electronics`. Use the live `/list-scenario-templates` response as the source of truth — the set grows over time. `affectedHs2: []` on the wire means the scenario affects ALL sectors (the registry's `null` sentinel, which `repeated string` cannot carry directly).
+
+## Run a scenario
+
+### `POST /api/scenario/v1/run-scenario`
+
+Enqueues a job. Returns the assigned `jobId` the caller must poll.
+
+- **Auth**: PRO entitlement required. Granted by either (a) a valid `X-WorldMonitor-Key` (env key from `WORLDMONITOR_VALID_KEYS`, or a user-owned `wm_`-prefixed key whose owner has the `apiAccess` entitlement), **or** (b) a Clerk bearer token whose user has role `pro` or Dodo entitlement tier ≥ 1. A trusted browser Origin alone is **not** sufficient — `isCallerPremium()` in `server/_shared/premium-check.ts` only counts explicit credentials. Browser calls work because `premiumFetch()` (`src/services/premium-fetch.ts`) injects one of the two credential forms on the caller's behalf.
+- **Rate limits**:
+  - 10 jobs / minute / IP (enforced at the gateway via `ENDPOINT_RATE_POLICIES` in `server/_shared/rate-limit.ts`)
+  - Queue backpressure checks the pending Redis list before enqueue; depth `> 100` is rejected with `429`, so depth `100` can still accept one more job.
+
+**Request**:
+```json
+{
+  "scenarioId": "hormuz-tanker-blockade",
+  "iso2": "US"
+}
+```
+
+- `scenarioId` — id from `/list-scenario-templates`. Required.
+- `iso2` — optional ISO-3166-1 alpha-2 (uppercase). Scopes the scenario to one country. Empty string means the worker uses the v1 seeded reporter set: `US`, `CN`, `RU`, `IR`, `IN`, and `TW`.
+
+**Response (`202 Accepted`)**:
+```json
+{
+  "jobId": "scenario:1713456789012:a1b2c3d4",
+  "status": "pending",
+  "statusUrl": "/api/scenario/v1/get-scenario-status?jobId=scenario%3A1713456789012%3Aa1b2c3d4"
+}
+```
+
+- `statusUrl` — server-computed convenience URL. Callers that don't want to hardcode the status path can follow this directly (it URL-encodes the `jobId`).
+- `Location` response header — carries the same poll URL as `statusUrl`, per the standard REST async-job pattern (`202` + `Location` → poll until terminal).
+
+<Note>
+**Status-code history (v1 → v1 → v1)** — the pre-sebuf-migration endpoint returned `202 Accepted` on successful enqueue; the sebuf migration shifted it to `200 OK` (no per-RPC status-code configuration exists in sebuf's HTTP annotations). The original `202 Accepted` contract has since been **restored** — the gateway upgrades the generated 200 via a status-override side-channel and adds the `Location` header.
+
+Treat any `2xx` as enqueue success. The interim guidance to branch on response body shape (`response.body.status === "pending"`) instead of the status code remains valid, and `statusUrl` is preserved exactly as before.
+</Note>
+
+**Errors**:
+
+| Status | `message` | Cause |
+|--------|-----------|-------|
+| 400 | `Validation failed` (violations include `scenarioId`) | Missing or unknown `scenarioId` |
+| 400 | `Validation failed` (violations include `iso2`) | Malformed `iso2` |
+| 403 | `PRO subscription required` | Not PRO |
+| 405 | — | Method other than `POST` (enforced by sebuf service-config) |
+| 429 | `Too many requests` | Per-IP 10/min gateway rate limit |
+| 429 | `Scenario queue is at capacity, please try again later` | Pending queue depth is greater than 100 before enqueue |
+| 502 | `Failed to enqueue scenario job` | Redis enqueue failure |
+
+## Poll job status
+
+### `GET /api/scenario/v1/get-scenario-status?jobId=<jobId>`
+
+Returns the job's current state as written by the worker, or a synthesised `pending` stub while the job is still queued.
+
+- **Auth**: same as `/run-scenario`
+- **jobId format**: `scenario:{unix-ms}:{8-char-suffix}` — strictly validated to guard against path traversal
+
+**Status lifecycle**:
+
+| `status` | When |
+|---|---|
+| `pending` | Job enqueued but worker has not picked it up yet. Synthesised by the status handler when no Redis record exists. |
+| `processing` | Worker dequeued the job and started computing. |
+| `done` | Worker completed successfully; `result` is populated. |
+| `failed` | Worker hit a computation error; `error` is populated. |
+
+**Pending response (`200`)**:
+```json
+{ "status": "pending", "error": "" }
+```
+
+**Processing response (`200`)**:
+```json
+{ "status": "processing", "error": "" }
+```
+
+**Done response (`200`)** — `result` carries the worker's computed payload:
+
+```json
+{
+  "status": "done",
+  "error": "",
+  "result": {
+    "affectedChokepointIds": ["hormuz_strait"],
+    "topImpactCountries": [
+      { "iso2": "US", "totalImpact": 150.0, "impactPct": 100 }
+    ],
+    "template": {
+      "name": "hormuz_strait",
+      "disruptionPct": 100,
+      "durationDays": 14,
+      "costShockMultiplier": 2.10
+    }
+  }
+}
+```
+
+In the status payload, `template.name` is the worker-derived key: physical
+scenarios join affected chokepoint ids with `+`, while tariff-shock scenarios
+with no physical chokepoint use `tariff_shock`. It is not the catalog label.
+
+`totalImpact` is a relative weighted score, not a currency amount or USD import
+value. For physical chokepoint scenarios, the worker computes
+`exposureScore * (disruptionPct / 100) * costShockMultiplier` for each matching
+exposure entry, then sums by country. For tariff-shock scenarios with no
+affected chokepoint ids, it uses
+`vulnerabilityIndex * costShockMultiplier`. `impactPct` is each returned
+country's share of `max(maxReturnedTotalImpact, 1)`, capped at 100. That
+denominator floor means the top returned country can be below 100 when every
+returned `totalImpact` is below `1`.
+
+**Failed response (`200`)**:
+
+```json
+{ "status": "failed", "error": "computation_error" }
+```
+
+Poll loop: treat `pending` and `processing` as non-terminal; only `done` and `failed` are terminal. Both pending and processing can legitimately persist for several seconds under load.
+
+**Errors**:
+
+| Status | `message` | Cause |
+|--------|-----------|-------|
+| 400 | `Validation failed` (violations include `jobId`) | Missing or malformed `jobId` |
+| 403 | `PRO subscription required` | Not PRO |
+| 405 | — | Method other than `GET` (enforced by sebuf service-config) |
+| 502 | `Failed to fetch job status` | Redis read failure |
+
+## Polling strategy
+
+- First poll: ~1s after enqueue.
+- Subsequent polls: exponential backoff (1s → 2s → 4s, cap 10s).
+- Workers typically complete in 5-30 seconds depending on scenario complexity.
+- If still pending after 2 minutes, the job is probably dead — re-enqueue.

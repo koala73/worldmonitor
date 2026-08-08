@@ -14,11 +14,11 @@ import "worldmonitor/military/v1/get_wingbits_live_flight.proto";
 import "worldmonitor/military/v1/list_defense_patents.proto";
 
 // MilitaryService provides APIs for military flight and vessel tracking
-// sourced from OpenSky, Wingbits, and AIS data.
+// sourced from ADS-B providers, Wingbits enrichment, and AIS data.
 service MilitaryService {
   option (sebuf.http.service_config) = {base_path: "/api/military/v1"};
 
-  // ListMilitaryFlights retrieves tracked military aircraft from OpenSky and Wingbits.
+  // ListMilitaryFlights returns paginated military aircraft observations within a bounding box, including callsign, position, altitude, operator, and source fields.
   rpc ListMilitaryFlights(ListMilitaryFlightsRequest) returns (ListMilitaryFlightsResponse) {
     option (sebuf.http.config) = {path: "/list-military-flights", method: HTTP_METHOD_GET};
   }
@@ -58,7 +58,7 @@ service MilitaryService {
     option (sebuf.http.config) = {path: "/get-wingbits-live-flight", method: HTTP_METHOD_GET};
   }
 
-  // ListDefensePatents retrieves recent defense/dual-use patent filings from USPTO PatentsView.
+  // ListDefensePatents retrieves recent defense/dual-use patent filings from the USPTO Open Data Portal.
   rpc ListDefensePatents(ListDefensePatentsRequest) returns (ListDefensePatentsResponse) {
     option (sebuf.http.config) = {path: "/list-defense-patents", method: HTTP_METHOD_GET};
   }

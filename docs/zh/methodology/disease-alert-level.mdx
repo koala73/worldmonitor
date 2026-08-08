@@ -1,0 +1,53 @@
+---
+title: "疾病爆发警报级别"
+description: "疾病爆发面板如何基于对新闻条目标题与描述文本运行的关键词分类器，逐条推导出 ALERT、WARNING 与 WATCH 三级警报等级 —— 面向新闻编辑室、值班团队与公共卫生分析师的快速分诊与优先级排序工作流，而非取代临床或流行病学专业评估的替代方案，仅作为早期信号参考。"
+---
+
+"疾病爆发"面板为每个条目标注三个分类级别之一：**ALERT**、**WARNING** 或 **WATCH**。本页文档化该标签如何推导，以便该值可从面板显示的输入复现。
+
+## 编辑性权重
+
+级别由 `scripts/_disease-outbreaks-helpers.mjs::detectAlertLevel` 中的关键词分类器分配，该分类器在拼接的条目标题和描述中匹配整词 token（不区分大小写）。
+
+| 级别 | 关键词（任意匹配） |
+| --- | --- |
+| `alert` | `outbreak`, `emergency`, `epidemic`, `pandemic` |
+| `warning` | `warning`, `spread`, `cases increasing` |
+| `watch` | （无关键词匹配时的回退） |
+
+关键词集是**编辑性**的 — 它并非派生自已发布的分类索引（ECDC、WHO EWARN、ProMED）。请将该级别视为一种有态度的新闻编辑室分诊信号，而非临床评估。
+
+## 输入
+
+分类器看到的是经过按来源解析器规范化后的条目 `title` 与 `desc` 字段：
+
+- WHO Disease Outbreak News（`whoNormalizeItem`）
+- CDC HAN 和 Outbreak News Today RSS（`rssNormalizeItem`）
+- ThinkGlobalHealth 疾病追踪器，由 ProMED 来源的实时告警支持（`tghNormalizeItem`）
+
+没有数值评分权重。标签纯粹是分类的，面板中显示的顺序是 `alert > warning > watch`。
+
+## 已知限制
+
+1. **新闻编辑室措辞，而非流行病学。** 一份只使用"outbreak"一词的新闻稿会被提升到 `alert`，即便局势轻微。反过来，未被任何关键词描述的严重局势会落入 `watch`。
+2. **仅限英语关键词。** 非英语标题会系统性地低分类，直到来源在上游被翻译。
+3. **无多词上下文。** "False outbreak rumor" 仍会匹配 `outbreak` 并被提升到 `alert`。
+
+目前接受这些限制，因为来源信息流主要是英语新闻稿，且面板定位为"下一步看什么"的界面，而非风险评分。
+
+## 变更协议
+
+如果 `DISEASE_ALERT_KEYWORDS` 或 `DISEASE_WARNING_KEYWORDS` 中的关键词集发生变更：
+
+1. 在同一文件中提升 `ALERT_LEVEL_METHODOLOGY_VERSION`。种子器将其戳记到已发布的负载上为 `alertLevelMethodologyVersion`，因此版本提升会可观测地传播到客户端和规范化键。
+2. 更新上表以匹配。
+3. 在 `tests/disease-outbreaks-seed.test.mjs` 中添加一个回归测试，覆盖新关键词行为 + 至少一个预期不匹配（子串保护）。
+4. 在下一个版本的更新日志中记录该变更，以便在必要时使缓存 / 预渲染负载失效。
+
+## 另见
+
+- 来源：`scripts/_disease-outbreaks-helpers.mjs` → `detectAlertLevel`
+- 消费者：`src/components/DiseaseOutbreaksPanel.ts`
+- 测试：`tests/disease-outbreaks-seed.test.mjs`
+- 跟踪：[#3791](https://github.com/koala73/worldmonitor/issues/3791)
+- 模式参考：[CII 风险评分方法论](/zh/methodology/cii-risk-scores)（相同的披露模式，更大的范围）

@@ -6,6 +6,7 @@ loadEnvFile(import.meta.url);
 
 const CANONICAL_KEY_PREFIX = 'displacement:summary:v1';
 const CACHE_TTL = 86400; // 24 hours — UNHCR data is annual
+export const MIN_DISPLACEMENT_COUNTRIES = 100;
 
 const COUNTRY_CENTROIDS = {
   AFG: [33.9, 67.7], SYR: [35.0, 38.0], UKR: [48.4, 31.2], SDN: [15.5, 32.5],
@@ -213,23 +214,35 @@ async function fetchDisplacementSummary() {
   };
 }
 
-function validate(data) {
-  return (
+export function validate(data) {
+  return Boolean(
     data?.summary &&
     typeof data.summary.year === 'number' &&
     Array.isArray(data.summary.countries) &&
-    data.summary.countries.length >= 1
+    data.summary.countries.length >= MIN_DISPLACEMENT_COUNTRIES
   );
 }
 
 const currentYear = new Date().getFullYear();
 const canonicalKey = `${CANONICAL_KEY_PREFIX}:${currentYear}`;
 
-runSeed('displacement', 'summary', canonicalKey, fetchDisplacementSummary, {
+export function declareRecords(data) {
+  return data?.summary?.countries?.length ?? 0;
+}
+
+export const seedOptions = {
   validateFn: validate,
   ttlSeconds: CACHE_TTL,
   sourceVersion: `unhcr-${currentYear}`,
-}).catch((err) => {
-  const _cause = err.cause ? ` (cause: ${err.cause.message || err.cause.code || err.cause})` : ''; console.error('FATAL:', (err.message || err) + _cause);
-  process.exit(1);
-});
+  declareRecords,
+  schemaVersion: 1,
+  maxStaleMin: 3600,
+  emptyDataIsFailure: true,
+};
+
+if (process.argv[1]?.endsWith('seed-displacement-summary.mjs')) {
+  runSeed('displacement', 'summary', canonicalKey, fetchDisplacementSummary, seedOptions).catch((err) => {
+    const _cause = err.cause ? ` (cause: ${err.cause.message || err.cause.code || err.cause})` : ''; console.error('FATAL:', (err.message || err) + _cause);
+    process.exit(1);
+  });
+}

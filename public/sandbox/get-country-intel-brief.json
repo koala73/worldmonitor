@@ -1,0 +1,29 @@
+{
+  "$comment": "Sandbox fixture — a deterministic, schema-valid sample response derived from the published OpenAPI contract. No auth, no quota. Do not treat the payload as live data; call the production endpoint for real values. Guide: https://www.worldmonitor.app/docs/sandbox",
+  "sandbox": true,
+  "operation": {
+    "operationId": "GetCountryIntelBrief",
+    "method": "GET",
+    "path": "/api/intelligence/v1/get-country-intel-brief",
+    "summary": "GetCountryIntelBrief",
+    "productionUrl": "https://api.worldmonitor.app/api/intelligence/v1/get-country-intel-brief",
+    "service": "IntelligenceService"
+  },
+  "request": {
+    "query": {
+      "country_code": "US",
+      "framework": "example",
+      "jmespath": "keys(@)"
+    }
+  },
+  "response": {
+    "status": 200,
+    "body": {
+      "brief": "example",
+      "countryCode": "US",
+      "countryName": "US",
+      "generatedAt": 1717200000000,
+      "model": "example"
+    }
+  }
+}

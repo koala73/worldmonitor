@@ -1,11 +1,12 @@
 ---
 title: "Cmd+K: Search Everything on the Planet in Under a Second"
-description: "Fuzzy-search 195 countries, 25+ data layers, and 150+ commands with World Monitor's Cmd+K palette. Multilingual, keyboard-driven intelligence access."
-metaTitle: "Cmd+K Command Palette Search | World Monitor"
+description: "Fuzzy-search 195 countries, 56 map layers, and 150+ commands with World Monitor's Cmd+K palette. Multilingual, keyboard-driven intelligence access."
+metaTitle: "Cmd+K Intelligence Search Palette | World Monitor"
 keywords: "intelligence dashboard search, command palette dashboard, OSINT search tool, fast country intelligence lookup, keyboard-driven intelligence"
 audience: "Power users, analysts, developers, keyboard-first professionals"
 heroImage: "/blog/images/blog/command-palette-search-everything-instantly.jpg"
 pubDate: "2026-03-06"
+modifiedDate: "2026-07-22"
 ---
 
 You're monitoring a developing situation. News breaks about a military incident in the South China Sea. You need Taiwan's intelligence dossier, the military bases layer, the AIS maritime panel, and the strategic theater posture, right now.
@@ -18,7 +19,7 @@ World Monitor's command palette is a fuzzy-search interface that spans the entir
 
 ### Countries (195)
 
-Type any country name and instantly pull up its full intelligence dossier: CII score, active signals, AI analysis, infrastructure exposure, and 7-day timeline. Country names are searchable in all 21 supported languages, so typing "Allemagne" finds Germany, "Japón" finds Japan.
+Type any country name and instantly pull up its full intelligence dossier: CII score, active signals, AI analysis, infrastructure exposure, and 7-day timeline. Country names are searchable in all 25 supported languages, so typing "Allemagne" finds Germany, "Japón" finds Japan.
 
 ### Navigation (8 regional presets)
 
@@ -56,7 +57,7 @@ The command palette uses **case-insensitive fuzzy matching** with intelligent ra
 
 - Type "taiwan" → Shows Taiwan country brief, Taiwan Strait theater, nearby bases
 - Type "crypto" → Shows crypto panel, stablecoin monitor, BTC signals
-- Type "fire" → Shows NASA FIRMS layer, fire-related news
+- Type "fire" → Shows [NASA FIRMS](https://firms.modaps.eosdis.nasa.gov/) layer, fire-related news
 - Type "base" → Shows military bases layer
 - Type "iran" → Shows Iran country brief, Iran theater, Iran-related panels
 
@@ -64,7 +65,7 @@ Results are grouped by category (Navigate, Layers, Panels, View, Actions, Countr
 
 ## Multilingual Search
 
-With [21 languages supported](/blog/posts/worldmonitor-in-21-languages-global-intelligence-for-everyone/), the command palette adapts to your locale. Country names and common commands are searchable in:
+With [26 languages supported](/blog/posts/worldmonitor-in-21-languages-global-intelligence-for-everyone/), the command palette adapts to your locale. Country names and common commands are searchable in:
 
 English, French, German, Spanish, Italian, Portuguese, Dutch, Swedish, Polish, Czech, Romanian, Bulgarian, Greek, Russian, Turkish, Arabic, Chinese (Simplified), Japanese, Korean, Thai, Vietnamese
 
@@ -123,7 +124,7 @@ The command palette is panel-aware. When you have specific panels open, related 
 
 1. Cmd+K → "finance" preset → Enter
 2. Cmd+K → "macro" → Enter (7-signal radar)
-3. Cmd+K → "prediction" → Enter (Polymarket)
+3. Cmd+K → "prediction" → Enter ([Polymarket](https://polymarket.com/))
 4. Cmd+K → "commodity" → Enter (price panel)
 
 The command palette turns World Monitor from a visual dashboard into a queryable intelligence system. Ask it anything, get there instantly. Explore the [five dashboard variants](/blog/posts/five-dashboards-one-platform-worldmonitor-variants/) to see how the palette adapts to different operational contexts.
@@ -140,11 +141,11 @@ World Monitor's Cmd+K reduces the path from question to answer to a single searc
 Yes. On mobile, Cmd+K transforms into a touch-optimized search sheet with category chips, large touch targets, and swipe-to-dismiss. All 150+ commands and 195 countries remain accessible through a touch-first interface.
 
 **Can I search in languages other than English?**
-Absolutely. The command palette indexes country names and keywords in all 21 supported languages. You can type in Arabic, Japanese, Russian, or any other supported language and get accurate results.
+Absolutely. The command palette indexes country names and keywords in all 25 supported languages. You can type in Arabic, Japanese, Russian, or any other supported language and get accurate results.
 
 **How do I customize which commands appear first?**
 The palette is context-aware: it ranks results based on your currently active panels and layers. Your last 8 searches also appear at the top for quick access during fast-moving situations.
 
 ---
 
-**Try it now: open [worldmonitor.app](https://worldmonitor.app) and press Cmd+K. Your intelligence is one search away.**
+**Try it now: open [worldmonitor.app](https://www.worldmonitor.app) and press Cmd+K. Your intelligence is one search away.**

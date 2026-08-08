@@ -1,0 +1,19 @@
+{
+  "oil": [
+    "crude.importsKbd",
+    "gasoline.demandKbd",
+    "gasoline.importsKbd",
+    "diesel.demandKbd",
+    "diesel.importsKbd",
+    "jet.demandKbd",
+    "jet.importsKbd",
+    "lpg.demandKbd",
+    "lpg.importsKbd"
+  ],
+  "gas": [
+    "lngImportsTj",
+    "pipeImportsTj",
+    "totalDemandTj",
+    "lngShareOfImports"
+  ]
+}

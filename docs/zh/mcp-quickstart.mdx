@@ -1,0 +1,200 @@
+---
+title: "MCP 快速入门"
+description: "在五分钟内完成 Claude Desktop 与 WorldMonitor 的 MCP 集成对接，涵盖客户端安装、API 密钥认证配置、连接测试以及首次真实全球情报调用示例，快速上手实时新闻、市场与地缘冲突查询，构建你的第一个基于真实数据的 AI 情报助手工作流。"
+---
+
+WorldMonitor 通过 [Model Context Protocol](https://modelcontextprotocol.io) 暴露 59 个实时工具——市场、冲突事件、海事咽喉要道、航空、气候、AI 简报——。本页面是从零到在 Claude 中获得有用响应的最短路径。一旦此流程可行，[MCP Server 参考](/zh/mcp-overview)中的其他内容都是可选阅读。
+
+## 1. 选择一个套餐并获取凭证
+
+免费账户无法访问 MCP 服务器——OAuth 流程会返回 `403 INSUFFICIENT_TIER`。你需要以下其中之一：
+
+- **Pro**——使用你的 WorldMonitor 账户登录，无需管理密钥。每个 UTC 日 50 次配额消耗调用。
+- **API Starter / Business / Enterprise**——在你的客户端中粘贴用户签发的 `wm_…` 密钥，或使用与 Pro 相同的 OAuth 流程。`wm_…` MCP 调用在此 handler 中以 60 次请求 / 分钟 / 密钥限流；REST/API 套餐额度与 Pro/OAuth MCP 每日计数器相互独立。
+
+在 [worldmonitor.app/pro](https://www.worldmonitor.app/pro) 升级或生成密钥。本指南的其余部分假设使用 Claude Desktop + OAuth（最简单的路径）；如果你更愿意将 `wm_…` 密钥粘贴到 `curl` 脚本中，请跳到底部的[服务端 curl](#server-side-curl)。
+
+## 2. 将服务器添加到 Claude Desktop
+
+编辑 `~/Library/Application Support/Claude/claude_desktop_config.json`（macOS）或 Windows 上对应的 `%APPDATA%\Claude\claude_desktop_config.json`，并添加 `worldmonitor` 条目：
+
+```json
+{
+  "mcpServers": {
+    "worldmonitor": {
+      "url": "https://worldmonitor.app/mcp"
+    }
+  }
+}
+```
+
+重启 Claude Desktop。第一次在聊天中提到 WorldMonitor 时，Claude 会弹出 OAuth 同意屏幕——点击 **Sign in with WorldMonitor Pro**，在浏览器中进行身份验证，令牌将由 Claude 本地存储。你的文件系统中不会出现任何 API 密钥。
+
+<Tip>
+Cursor、Claude 网页版和 MCP Inspector 使用相同的 URL。每个客户端的确切配置字段请参见[客户端设置](/zh/mcp-overview#client-setup)。
+</Tip>
+
+### 替代方案：`mcp-remote` 桥
+
+较旧的 Claude Desktop 构建 —— 以及任何仅支持 stdio 的 MCP 客户端 —— 通过 [`mcp-remote`](https://www.npmjs.com/package/mcp-remote) 桥而非原生 `url` 字段连接：
+
+```json
+{
+  "mcpServers": {
+    "worldmonitor": {
+      "command": "npx",
+      "args": ["-y", "mcp-remote", "https://worldmonitor.app/mcp", "--header", "X-WorldMonitor-Key:wm_YOUR_KEY"]
+    }
+  }
+}
+```
+
+此设置有两点需要注意：
+
+- **显式附带你的凭证。** 服务器按设计匿名完成连接及所有发现（tools/prompts/resources 列表），因此 `mcp-remote` 在连接时永远不会看到 401 挑战，也不会自行启动其 OAuth 流程。若不带该头，连接看似健康但每个 `tools/call` 都会以 `401` 失败。请使用单参数形式 `X-WorldMonitor-Key:wm_…`，冒号后**不留空格** —— 它可规避 `args` 中带空格的客户端 / `npx` 参数转义 bug（`mcp-remote` 在 Windows 上的 Cursor 和 Claude Desktop 中有此记录）。
+- **偏好 OAuth？** 省略 `--header`：你的首次工具调用会返回触发 `mcp-remote` 浏览器同意流的 401 挑战（动态客户端注册在 `worldmonitor.app` 和 `www.worldmonitor.app` 上均可用）。较旧的 `mcp-remote` 版本处理这种会话中流程不如连接时那般可靠，因此若同意窗口始终未出现，上述显式密码头是确定性路径。
+
+## 3. 提出你的第一个问题
+
+在 Claude Desktop 中打开一个新对话并尝试：
+
+> _当前美国股市情绪如何？哪些行业今天领先或落后？_
+
+Claude 会从 WorldMonitor 工具集中选择 `get_market_data`，不带参数调用它，并用通俗的语言回答。原始工具响应是一个单一的 bootstrap 包，涵盖报价、行业 ETF、加密货币、海湾地区报价、ETF 资金流以及 WorldMonitor 恐惧贪婪综合指数。由于缓存工具在省略 `limit` 时会把列表 / 映射字段默认封顶在 30 项，这一首次响应是有意保持紧凑的；仅当你确实需要完整的 200+ 报价 / ~100 KB 市场包时才传入 `limit: 0`。典型延迟：**300–800 ms**（从 Redis 读取缓存，无上游 API 调用）。
+
+在幕后，工具调用如下所示：
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "method": "tools/call",
+  "params": { "name": "get_market_data", "arguments": {} }
+}
+```
+
+响应是一个标准的 MCP 内容块——一个单一文本块，其 `text` 字段是 JSON 载荷：
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "result": {
+    "content": [
+      { "type": "text", "text": "{\"cached_at\":\"2026-05-17T10:34:00.852Z\",\"stale\":false,\"data\":{\"stocks-bootstrap\":{...},\"sectors\":{...},\"fear-greed\":{...}}}" }
+    ],
+    "isError": false
+  }
+}
+```
+
+每个缓存工具的载荷中都会看到两个字段：
+
+- `cached_at`——最旧贡献数据点的 ISO 时间戳。用它来推断答案的新鲜度。
+- `stale`——当任何贡献的种子数据超过其新鲜度预算时为 `true`。告诉模型何时应为答案添加保留意见。
+
+## 4. 裁剪响应（必要时）
+
+即便有默认列表封顶，宽泛的缓存调用仍可能较大。对于单次调用没问题，但如果你在较长的对话中链式进行多次读取，会很快消耗上下文。每个工具都接受一个可选的 `jmespath` 参数，该参数在响应通过网络传输**之前**在服务端进行投影：
+
+```json
+{
+  "name": "get_market_data",
+  "arguments": {
+    "jmespath": "data.\"stocks-bootstrap\".quotes[?symbol=='AAPL' || symbol=='MSFT'].{s:symbol,p:price,chg:change}"
+  }
+}
+```
+
+同样的调用，响应约 120 字节而不是更宽泛的默认封顶市场包。JMESPath 对典型投影可将载荷削减 **80–95%**。如果你用 `limit: 0` 禁用默认封顶，投影会变得更加重要，因为 `get_market_data` 可返回完整的 200+ 报价 / ~100 KB 包。
+
+不要从零开始死记语法——前往 [JMESPath 指南](/zh/mcp-jmespath)查看 12 个实例，涵盖过滤器、投影、multiselect-hash 以及你实际会用到的其他切片操作。
+
+## 5. 浏览完整的工具目录
+
+`get_market_data` 是 59 个工具之一。其余工具涵盖：
+
+- **地缘政治与安全**——`get_conflict_events`、`get_country_risk`、`get_military_posture`、`get_cyber_threats`、`get_sanctions_data`、`get_news_intelligence`。
+- **移动与基础设施**——`get_chokepoint_status`、`get_maritime_activity`、`get_airspace`、`get_aviation_status`、`search_flights`。
+- **能源与宏观**——`get_energy_intelligence`、`get_economic_data`、`get_country_macro`、`get_tariff_trends`、`get_eu_housing_cycle`、`get_eu_quarterly_gov_debt`、`get_eu_industrial_production`。
+- **环境与健康**——`get_climate_data`、`get_natural_disasters`、`get_radiation_data`、`get_health_signals`。
+- **预计算 AI 情报** —— `get_world_brief`（有引用依据的仪表板快照，由洞察种子程序刷新）。
+- **AI 综合**（实时 LLM，较慢——1–4 秒）——`get_country_brief`、`analyze_situation`、`generate_forecasts`。
+
+完整的逐工具参数、新鲜度预算和 `curl` 示例请参见 [MCP 工具参考](/zh/mcp-tools-reference)。当压缩的 `tools/list` 描述对某个具体工具不明确时，调用 `describe_tool` 并传入 `tool_name: "<name>"` 获取完整的未压缩定义——它不计入 Pro 每日配额，因此在探索时可自由使用。
+
+## 故障排查与预期
+
+如果某个端点出现在 REST OpenAPI 文档中但未作为 MCP 工具出现，这通常是有意为之。MCP 暴露的是经过挑选的 agent 安全工具，而非每一个 REST 操作。某些 REST 路由被排除是因为它们会变更状态、触发逐调用 LLM 工作、在缓存未命中时抓取付费或高基数上游数据，或需要手动缓存键映射。
+
+要从你的客户端发现 MCP 能调用什么：
+
+- 调用 `tools/list` 获取当前工具名与压缩描述。
+- 当某个 `tools/list` 条目太短而无法自信选择时，调用 `describe_tool` 并传入 `tool_name`。
+- 当你从某个 REST 方法 / 路径出发，想知道是否存在确切的 MCP `_apiPaths` 映射时，请使用 [API 覆盖表](/zh/mcp-overview#api-coverage)。
+
+## 刚才发生了什么
+
+MCP 握手在聊天侧是不可见的，但以下是序列，以便你在出现问题时知道去哪里查看：
+
+1. Claude Desktop 读取 `claude_desktop_config.json`，发现 WorldMonitor 服务器，并在首次使用时向 `https://worldmonitor.app/mcp` POST `initialize`。服务器以其能力、协商后的协议版本（默认 `2025-06-18`，与静态服务器卡片一致；固定在 `2025-03-26` 的客户端仍得到 `2025-03-26`）和一个会话级 `instructions` 字符串作为响应，该字符串告诉模型通用的 `jmespath` 参数。通告 `text/event-stream` 的客户端可能以 SSE 形式接收此响应，并带有可恢复的 `Mcp-Session-Id` / `Last-Event-ID` 游标；未通告 SSE 的客户端接收 JSON。推出详情请参见[协议协商](/zh/mcp-overview#protocol-negotiation)和[可流式 HTTP 响应](/zh/mcp-overview#streamable-http-responses)。
+2. Claude Desktop 调用 `tools/list` 并接收 59 个压缩的工具描述（每个工具 `≤120` 字节）。压缩形式保持 `tools/list` 低成本；`describe_tool` 按需返回完整定义。
+3. 当你提出需要实时数据的问题时，Claude 选择一个工具，调用 `tools/call`，并将响应内联到其回复中。包括 `get_world_brief` 在内的缓存工具会返回已接受的快照，不会在请求时调用 LLM；实时 LLM 工具（`analyze_situation` 等）需要 1–4 秒。
+
+## 服务端 curl
+
+如果你更愿意跳过 OAuth 流程并从脚本驱动 MCP：
+
+```bash
+export WM_KEY="wm_0123456789abcdef0123456789abcdef01234567"  # API Starter+ key from worldmonitor.app/settings
+
+# 1. List tools (compressed descriptions)
+curl -s https://worldmonitor.app/mcp \
+  -H "X-WorldMonitor-Key: $WM_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}'
+
+# 2. Call a cache tool
+curl -s https://worldmonitor.app/mcp \
+  -H "X-WorldMonitor-Key: $WM_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "jsonrpc":"2.0","id":2,
+    "method":"tools/call",
+    "params":{"name":"get_market_data","arguments":{}}
+  }'
+
+# 3. Same call with a JMESPath projection (much smaller response).
+# Heredoc keeps the single-quoted JMESPath string literals readable —
+# wrapping the JSON in -d '...' would collide with the inner quotes.
+curl -s https://worldmonitor.app/mcp \
+  -H "X-WorldMonitor-Key: $WM_KEY" \
+  -H 'Content-Type: application/json' \
+  --data-binary @- <<'EOF'
+{
+  "jsonrpc":"2.0","id":3,
+  "method":"tools/call",
+  "params":{
+    "name":"get_market_data",
+    "arguments":{
+      "jmespath":"data.\"stocks-bootstrap\".quotes[?symbol=='AAPL' || symbol=='MSFT'].{s:symbol,p:price}"
+    }
+  }
+}
+EOF
+```
+
+`wm_…` 用户 API 密钥放在 `X-WorldMonitor-Key` 中，**而非**作为 `Bearer` 令牌——将其作为 bearer 发送会导致 OAuth 解析失败并返回 `401 invalid_token`。如果你已经拥有来自 `/api/oauth/token` 的 OAuth 访问令牌，请改用 `Authorization: Bearer $TOKEN`，并去掉 `X-WorldMonitor-Key` 头。
+
+## 接下来去哪里
+
+- **[JMESPath 指南](/zh/mcp-jmespath)**——针对真实响应形状的投影语法及 12 个实例。在你使用 MCP 的第二天之前阅读此页面；它会在一小时内通过节省的 token 回本。
+- **[MCP 工具参考](/zh/mcp-tools-reference)**——每个工具的逐工具参数、新鲜度预算、API 端点映射和 `curl` 示例。
+- **[MCP Server 参考](/zh/mcp-overview)**——认证模式、OAuth 设置、套餐与配额、错误代码和新鲜度模型。
+- **[命令行客户端](/zh/cli)**——偏好 shell？`npx worldmonitor tools` 可从你的终端或脚本驱动同样的工具，无需编写集成。
+- **[官方 SDK](/zh/sdks)**——偏好库？Python（`pip install worldmonitor-sdk`）、Ruby（`gem install worldmonitor`）和 Go（`go get github.com/koala73/worldmonitor/sdk/go`）的零依赖客户端用语言原生助手调用同样的工具。
+- **[认证概述](/zh/authentication)**——何时在 `X-WorldMonitor-Key` 中使用 API 密钥、OAuth 或浏览器会话。
+
+## 运维说明（面向运维人员，而非调用方）
+
+每次 `tools/call` 都会发出一条结构化遥测日志，标记为 `mcp.toolcall`，包含延迟、载荷字节数（JMESPath 前后）、`jmespath_used` 和 `budget_exceeded`。`initialize` 发出 `mcp.tools_list_emitted`，含工具计数与 tools-list 字节指标。如果你想要真实的 P95 与载荷大小追踪，请将 Vercel / 日志 drain 消费者指向这些行。对调用方可见的行为不受影响。

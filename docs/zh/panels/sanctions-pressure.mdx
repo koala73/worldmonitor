@@ -1,0 +1,45 @@
+---
+title: "制裁压力"
+description: "制裁压力面板整合美国财政部 OFAC SDN 名单与欧盟 Consolidated List 制裁指定数据，以国家级压力评分直观呈现全球制裁强度分布，并附最新新增条目、被指定船舶与航空器计数以及按制裁项目细分的走势，用于追踪出口管制、金融限制与二级制裁的动态演进。"
+---
+
+**Sanctions Pressure** 面板（内部 id `sanctions-pressure`）将 OFAC SDN 和 Consolidated 制裁列表转化为可操作的概览：哪些国家目前承受最大的指定压力、哪些项目在驱动它、以及自上次更新以来有什么变化。
+
+## 面板显示内容
+
+面板是一个紧凑的、面向分析师的面（`defaultRowSpan: 2`）：
+
+- **摘要栏** — 顶部三张卡片：**新增**（自上次更新以来的新指定 — 当 `> 0` 时高亮）、**船舶**（当前集合中的指定船舶）、**航空器**（指定航空器）。
+- **国家行** — 按制裁指定压力排名的前 8 个国家，每行显示国家标签、总指定计数和项目组合。
+- **项目行** — 按 OFAC 项目分组的指定（例如行业、反恐）。
+
+面板跟踪活动（`trackActivity: true`），因此新到达的指定获得标准的新条目视觉效果。
+
+面板 id 为 `sanctions-pressure`；规范组件为 `src/components/SanctionsPressurePanel.ts`。显示标题："Sanctions & Designations"（来自 `super({...})`）。
+
+## 如何访问
+
+- **Cmd+K**：输入 *sanctions* 或 *OFAC*。
+- **按变体的可用性**：在 **full/geopolitical**（priority 2）、**finance**（priority 1）和 **commodity**（priority 1）变体中注册并默认启用。在 tech 或 happy 变体中不存在。来源：`src/config/panels.ts` 中 `FULL_PANELS`、`FINANCE_PANELS`、`COMMODITY_PANELS` 的 `'sanctions-pressure'` 条目。
+
+## 数据来源
+
+来自 `@/services/sanctions-pressure` 的 `SanctionsPressureResult` 载荷，由以下支持：
+
+- **OFAC Specially Designated Nationals (SDN) list**
+- **OFAC Consolidated List**
+
+种子器拉取两者，标准化国家归属，统计船舶和航空器，并与前一个快照比较以计算 `newEntryCount`。
+
+## 刷新频率
+
+OFAC 以不规律频率（每日到每周）发布列表更新。面板读取最新快照；新鲜度通过 `newEntryCount` 间接展示。
+
+## 层级与门控
+
+**PRO 门控。** 该面板在其配置的变体中可见，但 sanctions-pressure RPC 需要 PRO 权益。免费或无权益的调用者会收到有文档记录的 `403` 响应，而非空的制裁载荷。
+
+## API 参考
+
+- [Sanctions service](/api/SanctionsService.openapi.yaml) — 制裁压力 + 实体搜索 RPC。
+- 相关：`GET /api/sanctions/v1/lookup-sanction-entity?q=...` — 对 OpenSanctions（实时）的模糊实体查询，OFAC 本地索引作为回退。

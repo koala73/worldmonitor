@@ -9,7 +9,8 @@ message GetEnergyCapacityRequest {
   // Empty returns all tracked sources (SUN, WND, COL).
   repeated string energy_sources = 1 [(sebuf.http.query) = { name: "energy_sources" }];
   // Number of years of historical data. Default 20 if not set.
-  int32 years = 2 [(sebuf.http.query) = { name: "years" }];
+  // Accepted but currently ignored; no-op until this handler supports the parameter.
+  int32 years = 2 [(sebuf.http.query) = { name: "years" }, (sebuf.http.unimplemented) = true];
 }
 
 message EnergyCapacityYear {

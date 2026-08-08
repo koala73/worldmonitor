@@ -1097,6 +1097,7 @@ tr.diag-err td { color: var(--settings-red); }
   font-size: 14px;
 }
 
+
 /* ── Responsive ── */
 @media (max-width: 860px) {
   .settings-sidebar {

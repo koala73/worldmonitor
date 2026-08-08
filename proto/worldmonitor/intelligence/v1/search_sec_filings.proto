@@ -1,0 +1,54 @@
+syntax = "proto3";
+
+package worldmonitor.intelligence.v1;
+
+import "buf/validate/validate.proto";
+import "sebuf/http/annotations.proto";
+
+// Request for a full-text search over SEC EDGAR filings.
+message SearchSecFilingsRequest {
+  // Full-text query, such as "material weakness" or a company name. Required.
+  string query = 1 [
+    (buf.validate.field).required = true,
+    (buf.validate.field).string.min_len = 1,
+    (sebuf.http.query) = {name: "query", required: true}
+  ];
+  // Comma-separated form-type filter, such as "8-K" or "10-K,10-Q".
+  string forms = 2 [(sebuf.http.query) = {name: "forms"}];
+  // Earliest filing date to include (YYYY-MM-DD).
+  string start_date = 3 [(sebuf.http.query) = {name: "start_date"}];
+  // Latest filing date to include (YYYY-MM-DD).
+  string end_date = 4 [(sebuf.http.query) = {name: "end_date"}];
+  // Maximum results to return (default 10, capped at 25).
+  int32 limit = 5 [(sebuf.http.query) = {name: "limit"}];
+}
+
+// Full-text search results from SEC EDGAR.
+message SearchSecFilingsResponse {
+  repeated SecFilingSearchResult results = 1;
+
+  // Total matching filings reported by EDGAR (may exceed the returned page).
+  int32 total = 2;
+
+  // True when the EDGAR search upstream could not be reached.
+  bool unavailable = 3;
+
+  // Unix timestamp in milliseconds when this result set was fetched.
+  int64 fetched_at_ms = 4 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
+}
+
+message SecFilingSearchResult {
+  // Filer display name, such as "Apple Inc. (AAPL) (CIK 0000320193)".
+  string company = 1;
+  // SEC Central Index Key of the primary filer (zero-padded 10 digits).
+  string cik = 2;
+  string form = 3;
+  // Filing date (YYYY-MM-DD).
+  string file_date = 4;
+  // 8-K item codes disclosed in this filing, empty for other forms.
+  repeated string items = 5;
+  // Link to the filing document on sec.gov.
+  string url = 6;
+  // EDGAR accession number, such as "0000320193-26-000123".
+  string accession = 7;
+}

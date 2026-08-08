@@ -1,0 +1,65 @@
+{
+  "cableHealth": {
+    "generatedAt": 1785232800000,
+    "cables": {
+      "seamewe6": {
+        "status": "CABLE_HEALTH_STATUS_FAULT",
+        "score": 0.9
+      },
+      "curie": {
+        "status": "CABLE_HEALTH_STATUS_OK",
+        "score": 0.1
+      }
+    }
+  },
+  "thermalEscalation": {
+    "clusters": [
+      {
+        "id": "persistent-zone",
+        "name": "Persistent zone",
+        "status": "THERMAL_STATUS_PERSISTENT",
+        "zScore": 4.2
+      },
+      {
+        "id": "spike-zone",
+        "name": "Spike zone",
+        "status": "THERMAL_STATUS_SPIKE",
+        "zScore": 3.1
+      },
+      {
+        "id": "elevated-zone",
+        "name": "Elevated zone",
+        "status": "THERMAL_STATUS_ELEVATED",
+        "zScore": 1.8
+      },
+      {
+        "id": "normal-zone",
+        "name": "Normal zone",
+        "status": "THERMAL_STATUS_NORMAL",
+        "zScore": 0.2
+      }
+    ]
+  },
+  "internetOutages": {
+    "outages": [
+      {
+        "country": "Sudan",
+        "severity": "OUTAGE_SEVERITY_TOTAL",
+        "detectedAt": 1785229200000,
+        "endedAt": 0
+      },
+      {
+        "country": "Example",
+        "severity": "OUTAGE_SEVERITY_MAJOR",
+        "detectedAt": 1785229200000,
+        "endedAt": 1785236400000
+      },
+      {
+        "country": "Partial",
+        "severity": "OUTAGE_SEVERITY_PARTIAL",
+        "detectedAt": 1785229200000,
+        "endedAt": 1785236400000
+      }
+    ]
+  }
+}

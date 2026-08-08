@@ -1,6 +1,7 @@
 import type { EconomicServiceClient } from '@/generated/client/worldmonitor/economic/v1/service_client';
 import { Panel } from './Panel';
-import { escapeHtml } from '@/utils/sanitize';
+import { t } from '@/services/i18n';
+import { escapeHtml, unsafeRawHtml } from '@/utils/sanitize';
 
 let _client: EconomicServiceClient | null = null;
 async function getEconomicClient(): Promise<EconomicServiceClient> {
@@ -234,7 +235,7 @@ export class YieldCurvePanel extends Panel {
   private _rateRows: RateRow[] = [];
 
   constructor() {
-    super({ id: 'yield-curve', title: 'Yield Curve & Rates', showCount: false });
+    super({ id: 'yield-curve', title: 'Yield Curve & Rates', showCount: false, infoTooltip: t('components.yieldCurve.infoTooltip') });
 
     this.content.addEventListener('click', (e) => {
       const btn = (e.target as HTMLElement).closest<HTMLElement>('[data-tab]');
@@ -301,7 +302,7 @@ export class YieldCurvePanel extends Panel {
     </div>`;
 
     if (this._tab === 'rates') {
-      this.setContent(`<div style="padding:10px 14px 6px">${tabBar}${renderRatesTab(this._rateRows)}</div>`);
+      this.setSafeContent(unsafeRawHtml(`<div style="padding:10px 14px 6px">${tabBar}${renderRatesTab(this._rateRows)}</div>`, 'legacy Panel.setContent() migration'));
       return;
     }
 
@@ -323,7 +324,7 @@ export class YieldCurvePanel extends Panel {
       ? `<span><svg width="20" height="4" style="vertical-align:middle"><line x1="0" y1="2" x2="20" y2="2" stroke="#2ecc71" stroke-width="1.5" stroke-dasharray="5,3"/></svg> EU (ECB AAA)</span>`
       : '';
 
-    this.setContent(`
+    this.setSafeContent(unsafeRawHtml(`
       <div style="padding:10px 14px 6px">
         ${tabBar}
         <div style="display:flex;align-items:center;margin-bottom:10px;gap:4px">
@@ -337,6 +338,6 @@ export class YieldCurvePanel extends Panel {
           ${ecbLegend}
           <span style="margin-left:auto">Source: FRED / ECB</span>
         </div>
-      </div>`);
+      </div>`, 'legacy Panel.setContent() migration'));
   }
 }

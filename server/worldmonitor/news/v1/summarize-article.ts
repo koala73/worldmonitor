@@ -7,16 +7,49 @@ import type {
 import { cachedFetchJsonWithMeta } from '../../../_shared/redis';
 import {
   CACHE_TTL_SECONDS,
-  deduplicateHeadlines,
   buildArticlePrompts,
   getProviderCredentials,
   getCacheKey,
+  selectUniqueHeadlinePairs,
 } from './_shared';
 import { CHROME_UA } from '../../../_shared/constants';
-import { isProviderAvailable } from '../../../_shared/llm-health';
-import { sanitizeHeadlinesLight, sanitizeHeadlines, sanitizeForPrompt } from '../../../_shared/llm-sanitize.js';
-import { isCallerPremium } from '../../../_shared/premium-check';
+import { isModelUsable, isProviderAvailable, recordModelFailure, recordModelSuccess } from '../../../_shared/llm-health';
+import { sanitizeHeadlinesLight, sanitizeForPrompt, sanitizeForPromptLine } from '../../../_shared/llm-sanitize.js';
+import {
+  getPremiumRpcBillingErrorType,
+  resolvePremiumCallerIdentity,
+} from '../../../_shared/premium-check';
+import {
+  markRetryableResponse,
+  setResponseHeader,
+} from '../../../_shared/response-headers';
 import { stripThinkingTags } from '../../../_shared/llm';
+import { buildLlmCallEvent, deliverUsageEvents } from '../../../_shared/usage';
+
+// Best-effort llm_call telemetry (#4895). This handler bypasses callLlm (the
+// client picks the provider), so it emits its own events.
+async function emitSummarizeLlmEvent(p: {
+  provider: string; model: string; ok: boolean; durationMs: number;
+  promptChars: number; usage?: { total_tokens?: number; prompt_tokens?: number; completion_tokens?: number };
+  reason?: string;
+}): Promise<void> {
+  try {
+    await deliverUsageEvents([buildLlmCallEvent({
+      provider: p.provider,
+      model: p.model,
+      stage: 'summarize-article',
+      ok: p.ok,
+      durationMs: p.durationMs,
+      tokensTotal: p.usage?.total_tokens ?? 0,
+      tokensPrompt: p.usage?.prompt_tokens ?? 0,
+      tokensCompletion: p.usage?.completion_tokens ?? 0,
+      promptChars: p.promptChars,
+      maxTokens: 100,
+      fallbackIndex: 0,
+      reason: p.reason,
+    })]);
+  } catch { /* telemetry must never affect the summary */ }
+}
 
 // ======================================================================
 // Reasoning preamble detection
@@ -39,27 +72,85 @@ export async function summarizeArticle(
   ctx: ServerContext,
   req: SummarizeArticleRequest,
 ): Promise<SummarizeArticleResponse> {
-  const isPremium = await isCallerPremium(ctx.request);
+  const premiumIdentity = await resolvePremiumCallerIdentity(ctx.request);
+  const isPremium = premiumIdentity.isPremium;
   const { provider, mode = 'brief', geoContext = '', variant = 'full', lang = 'en' } = req;
   const systemAppend = isPremium && typeof req.systemAppend === 'string' ? req.systemAppend : '';
+  const requiresPremium = mode !== 'translate';
 
   const MAX_HEADLINES = 10;
   const MAX_HEADLINE_LEN = 500;
   const MAX_GEO_CONTEXT_LEN = 2000;
+  const MAX_BODY_LEN = 400;
 
   // Bounded raw headlines — used for cache key so browser/server keys agree.
   // Only structural patterns stripped (delimiters, control chars); semantic
   // phrases kept intact to avoid mangling legitimate security news headlines.
-  const headlines = sanitizeHeadlinesLight(
-    (req.headlines || [])
-      .slice(0, MAX_HEADLINES)
-      .map(h => typeof h === 'string' ? h.slice(0, MAX_HEADLINE_LEN) : ''),
-  );
+  //
+  // Zip with bodies BEFORE dropping anything: sanitizeHeadlinesLight filters
+  // out entries that reduce to empty, so pairing bodies by index afterwards
+  // shifted every later body one slot left and grounded each headline on the
+  // PREVIOUS story's article text. Drop each headline together with its own
+  // body instead, so the 1:1 association survives the filter.
+  const rawBodiesIn = Array.isArray(req.bodies) ? req.bodies : [];
+  const intakePairs = (req.headlines || [])
+    .slice(0, MAX_HEADLINES)
+    .map((h, i) => ({
+      h: typeof h === 'string' ? h.slice(0, MAX_HEADLINE_LEN) : '',
+      b: rawBodiesIn[i],
+    }))
+    .map(p => ({ h: sanitizeHeadlinesLight([p.h])[0] ?? '', b: p.b }))
+    .filter(p => p.h.length > 0);
+
+  const headlines = intakePairs.map(p => p.h);
 
   // geoContext gets full injection sanitization — it is free-form user text.
   const sanitizedGeoContext = sanitizeForPrompt(
     typeof geoContext === 'string' ? geoContext.slice(0, MAX_GEO_CONTEXT_LEN) : '',
   );
+
+  // Bodies (RSS descriptions) paired 1:1 with headlines. Full injection
+  // sanitisation applied — bodies are untrusted upstream text identical in
+  // trust-level to geoContext. Taken from the zipped intake pairs above, so a
+  // headline dropped by light sanitisation takes its own body with it rather
+  // than shifting its successors'. Callers may omit bodies entirely (old
+  // path) or pass a shorter/longer array (handler tolerates).
+  const bodies = intakePairs.map(p =>
+    typeof p.b === 'string' ? sanitizeForPrompt(p.b.slice(0, MAX_BODY_LEN)) : '',
+  );
+
+  if (requiresPremium && !isPremium) {
+    const billingDenial = premiumIdentity.billingDenial;
+    if (billingDenial) {
+      if (billingDenial.retryable) {
+        markRetryableResponse(ctx.request);
+        setResponseHeader(ctx.request, 'Retry-After', String(billingDenial.retryAfterSeconds));
+        setResponseHeader(ctx.request, 'X-Billing-Verification', billingDenial.code);
+      }
+      return {
+        summary: '',
+        model: '',
+        provider,
+        tokens: 0,
+        fallback: true,
+        error: billingDenial.message,
+        errorType: getPremiumRpcBillingErrorType(billingDenial),
+        status: 'SUMMARIZE_STATUS_ERROR',
+        statusDetail: billingDenial.code,
+      };
+    }
+    return {
+      summary: '',
+      model: '',
+      provider: provider,
+      tokens: 0,
+      fallback: true,
+      error: 'Pro subscription required',
+      errorType: 'AuthError',
+      status: 'SUMMARIZE_STATUS_ERROR',
+      statusDetail: 'Pro subscription required',
+    };
+  }
 
   // Provider credential check
   const skipReasons: Record<string, string> = {
@@ -101,7 +192,7 @@ export async function summarizeArticle(
   }
 
   try {
-    const cacheKey = getCacheKey(headlines, mode, sanitizedGeoContext, variant, lang, systemAppend || undefined);
+    const cacheKey = getCacheKey(headlines, mode, sanitizedGeoContext, variant, lang, systemAppend || undefined, bodies);
 
     // Single atomic call — source tracking happens inside cachedFetchJsonWithMeta,
     // eliminating the TOCTOU race between a separate getCachedJson and cachedFetchJson.
@@ -109,19 +200,73 @@ export async function summarizeArticle(
       cacheKey,
       CACHE_TTL_SECONDS,
       async () => {
-        // Health gate inside fetcher — only runs on cache miss
         if (!(await isProviderAvailable(apiUrl))) return null;
         // Full injection sanitization applied at prompt-build time only.
         // Headlines are re-sanitized here (not at cache-key time) so that
         // the cache key stays aligned with the browser while the actual
         // prompt is protected against semantic injection phrases.
-        const promptHeadlines = sanitizeHeadlines(headlines);
-        const uniqueHeadlines = deduplicateHeadlines(promptHeadlines.slice(0, 5));
+        //
+        // Select the prompt window from the same headline/body pairs used by
+        // the cache key. Full prompt sanitization happens only after that
+        // bounded selection, so a sixth story cannot become prompt-relevant
+        // while remaining absent from cache identity if an earlier headline
+        // sanitizes to empty or aliases another selected headline.
+        const paired = headlines.map((h, i) => ({
+          h,
+          b: bodies[i] ?? '',
+        }));
+        const selectedPairs = selectUniqueHeadlinePairs(paired);
+        // sanitizeForPromptLine, not sanitizeForPrompt: the latter deliberately
+        // preserves a lone newline, and buildArticlePrompts joins headlines
+        // with '\n' as the item delimiter, so one embedded newline in a feed
+        // headline forges an extra numbered story the model reads as real.
+        const sanitizedPairs = selectedPairs.map((pair) => ({
+          h: sanitizeForPromptLine(pair.h),
+          b: pair.b,
+          // The pre-sanitization headline, i.e. the text the cache key is
+          // built from. Used to break alias ties the same way the key sorts.
+          keyH: pair.h,
+        }));
+        const nonEmpty = sanitizedPairs.filter((pair) => pair.h.length > 0);
+        // Sanitization can make two distinct selected headlines identical.
+        // Collapse that prompt-only alias without backfilling from outside the
+        // cache-key window — and choose the survivor by the same (headline,
+        // body) comparison buildSummaryCacheKey sorts on, NOT by arrival
+        // order. The key is order-insensitive within the window, so an
+        // arrival-order tie-break let the same key serve prompts grounded on
+        // different bodies depending on which order the headlines arrived in.
+        // Survivors keep request order for rendering; only the choice of
+        // survivor is normalized.
+        const aliasWinners = new Map<string, typeof nonEmpty[number]>();
+        for (const pair of nonEmpty) {
+          const current = aliasWinners.get(pair.h);
+          if (
+            !current
+            || pair.keyH < current.keyH
+            || (pair.keyH === current.keyH && pair.b < current.b)
+          ) {
+            aliasWinners.set(pair.h, pair);
+          }
+        }
+        const uniquePairs = nonEmpty.filter((pair) => aliasWinners.get(pair.h) === pair);
+        // Every selected headline sanitised away. Backfilling from outside the
+        // cache-key window would reopen the prompt/key divergence this
+        // selection exists to close, so reject instead: prompting the model
+        // with zero stories would cache an invented summary under a key that
+        // represents five real headlines. cacheFailures:false below keeps this
+        // out of Redis, matching the other rejections in this factory.
+        if (uniquePairs.length === 0) return null;
+        // Preserves the existing variable name for downstream prompt
+        // builder callers that expect the full sanitised-headline list.
+        const promptHeadlines = nonEmpty.map((p) => p.h);
+        const uniqueHeadlines = uniquePairs.map((p) => p.h);
+        const uniqueBodies = uniquePairs.map((p) => p.b);
         const { systemPrompt, userPrompt } = buildArticlePrompts(promptHeadlines, uniqueHeadlines, {
           mode,
           geoContext: sanitizedGeoContext,
           variant,
           lang,
+          bodies: uniqueBodies,
         });
 
         const sanitizedAppend = systemAppend ? sanitizeForPrompt(systemAppend) : '';
@@ -129,6 +274,8 @@ export async function summarizeArticle(
           ? `${systemPrompt}\n\n---\n\n${sanitizedAppend}`
           : systemPrompt;
 
+        const llmStartMs = Date.now();
+        const llmPromptChars = effectiveSystemPrompt.length + userPrompt.length;
         const response = await fetch(apiUrl, {
           method: 'POST',
           headers: { ...providerHeaders, 'User-Agent': CHROME_UA },
@@ -149,26 +296,46 @@ export async function summarizeArticle(
         if (!response.ok) {
           const errorText = await response.text();
           console.error(`[SummarizeArticle:${provider}] API error:`, response.status, errorText);
+          recordModelFailure(apiUrl, model, response.status, errorText);
+          await emitSummarizeLlmEvent({ provider, model, ok: false, durationMs: Date.now() - llmStartMs, promptChars: llmPromptChars, reason: `http_${response.status}` });
           throw new Error(response.status === 429 ? 'Rate limited' : `${provider} API error`);
         }
 
+        // HTTP success proves provider/model compatibility. Summary validation
+        // below is an application-level concern and must not preserve a stale
+        // model-rejection streak.
+        recordModelSuccess(apiUrl, model);
+
         const data = await response.json() as any;
         const tokens = (data.usage?.total_tokens as number) || 0;
+        const usage = data.usage as { total_tokens?: number; prompt_tokens?: number; completion_tokens?: number } | undefined;
         const message = data.choices?.[0]?.message;
         const rawText = typeof message?.content === 'string' ? message.content.trim() : '';
-        let rawContent = stripThinkingTags(rawText);
+        const rawContent = stripThinkingTags(rawText);
 
         if (['brief', 'analysis'].includes(mode) && rawContent.length < 20) {
           console.warn(`[SummarizeArticle:${provider}] Output too short after stripping (${rawContent.length} chars), rejecting`);
+          await emitSummarizeLlmEvent({ provider, model, ok: false, durationMs: Date.now() - llmStartMs, promptChars: llmPromptChars, usage, reason: 'stripped_empty' });
           return null;
         }
 
         if (['brief', 'analysis'].includes(mode) && hasReasoningPreamble(rawContent)) {
           console.warn(`[SummarizeArticle:${provider}] Reasoning preamble detected, rejecting`);
+          await emitSummarizeLlmEvent({ provider, model, ok: false, durationMs: Date.now() - llmStartMs, promptChars: llmPromptChars, usage, reason: 'validate_reject' });
           return null;
         }
 
+        await emitSummarizeLlmEvent({ provider, model, ok: Boolean(rawContent), durationMs: Date.now() - llmStartMs, promptChars: llmPromptChars, usage, reason: rawContent ? '' : 'empty' });
         return rawContent ? { summary: rawContent, model, tokens } : null;
+      },
+      undefined,
+      {
+        // This cache key is intentionally provider-independent so a successful
+        // summary can be reused across the client fallback chain. Provider-
+        // local failures and in-flight work must not suppress another provider.
+        shouldFetch: () => isModelUsable(apiUrl, model),
+        cacheFailures: false,
+        inflightKey: `${cacheKey}:${provider}:${model}`,
       },
     );
 

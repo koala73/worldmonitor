@@ -3,12 +3,17 @@ import { MCP_PRESETS } from '@/services/mcp-store';
 import { t } from '@/services/i18n';
 import { escapeHtml } from '@/utils/sanitize';
 import { proxyUrl } from '@/utils/proxy';
+import { premiumFetch } from '@/services/premium-fetch';
 import { track } from '@/services/analytics';
+import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
+
 
 interface McpConnectOptions {
   existingSpec?: McpPanelSpec;
   onComplete: (spec: McpPanelSpec) => void;
 }
+
+const MIN_MCP_REFRESH_S = 60;
 
 let overlay: HTMLElement | null = null;
 
@@ -85,7 +90,7 @@ export function openMcpConnectModal(options: McpConnectOptions): void {
   const initialApiKey = editSimpleKey ?? '';
   const initialRawHeader = initialSimpleMode ? '' : _headersToLine(existingHeaders);
 
-  modal.innerHTML = `
+  setTrustedHtml(modal, trustedHtml(`
     <div class="modal-header">
       <span class="modal-title">${escapeHtml(t('mcp.modalTitle'))}</span>
       <button class="modal-close" aria-label="${escapeHtml(t('common.close'))}">\u2715</button>
@@ -141,8 +146,8 @@ export function openMcpConnectModal(options: McpConnectOptions): void {
         </div>
         <div class="mcp-form-group mcp-refresh-group">
           <label class="mcp-label">${escapeHtml(t('mcp.refreshEvery'))}</label>
-          <input class="mcp-input mcp-refresh-input" type="number" min="10" max="86400"
-            value="${existing ? Math.round(existing.refreshIntervalMs / 1000) : 60}" />
+          <input class="mcp-input mcp-refresh-input" type="number" min="${MIN_MCP_REFRESH_S}" max="86400"
+            value="${existing ? Math.round(existing.refreshIntervalMs / 1000) : MIN_MCP_REFRESH_S}" />
           <span class="mcp-refresh-unit">${escapeHtml(t('mcp.seconds'))}</span>
         </div>
       </div>
@@ -151,7 +156,7 @@ export function openMcpConnectModal(options: McpConnectOptions): void {
       <button class="btn btn-ghost mcp-cancel-btn">${escapeHtml(t('common.cancel'))}</button>
       <button class="btn btn-primary mcp-add-btn" disabled>${escapeHtml(t('mcp.addPanel'))}</button>
     </div>
-  `;
+  `, "legacy direct innerHTML migration"));
 
   overlay.appendChild(modal);
   document.body.appendChild(overlay);
@@ -311,7 +316,7 @@ export function openMcpConnectModal(options: McpConnectOptions): void {
         toolConfig.style.display = '';
         addBtn.disabled = false;
         toolsSection.style.display = '';
-        toolsList.innerHTML = `<div class="mcp-tool-item selected"><span class="mcp-tool-name">${escapeHtml(presetTool)}</span></div>`;
+        setTrustedHtml(toolsList, trustedHtml(`<div class="mcp-tool-item selected"><span class="mcp-tool-name">${escapeHtml(presetTool)}</span></div>`, "legacy direct innerHTML migration"));
       }
     });
   });
@@ -323,7 +328,7 @@ export function openMcpConnectModal(options: McpConnectOptions): void {
       : '{}';
     toolConfig.style.display = '';
     toolsSection.style.display = '';
-    toolsList.innerHTML = `<div class="mcp-tool-item selected">${escapeHtml(existing.toolName)}</div>`;
+    setTrustedHtml(toolsList, trustedHtml(`<div class="mcp-tool-item selected">${escapeHtml(existing.toolName)}</div>`, "legacy direct innerHTML migration"));
     addBtn.disabled = false;
   }
 
@@ -342,17 +347,17 @@ export function openMcpConnectModal(options: McpConnectOptions): void {
   }
 
   function renderTools(list: McpToolDef[]): void {
-    toolsList.innerHTML = '';
+    setTrustedHtml(toolsList, trustedHtml('', "legacy direct innerHTML migration"));
     for (const tool of list) {
       const item = document.createElement('div');
       item.className = 'mcp-tool-item';
       const shortDesc = tool.description
         ? (tool.description.length > 100 ? tool.description.slice(0, 97) + '…' : tool.description)
         : '';
-      item.innerHTML = `
+      setTrustedHtml(item, trustedHtml(`
         <span class="mcp-tool-name">${escapeHtml(tool.name)}</span>
         ${shortDesc ? `<span class="mcp-tool-desc">${escapeHtml(shortDesc)}</span>` : ''}
-      `;
+      `, "legacy direct innerHTML migration"));
       item.addEventListener('click', () => {
         toolsList.querySelectorAll('.mcp-tool-item').forEach(el => el.classList.remove('selected'));
         item.classList.add('selected');
@@ -388,7 +393,11 @@ export function openMcpConnectModal(options: McpConnectOptions): void {
       const headers = getEffectiveHeaders();
       const qs = new URLSearchParams({ serverUrl });
       if (Object.keys(headers).length) qs.set('headers', JSON.stringify(headers));
-      const resp = await fetch(`${proxyUrl('/api/mcp-proxy')}?${qs}`, {
+      // premiumFetch attaches the Clerk Pro Bearer for normal web Pro
+      // users. /api/mcp-proxy is in PREMIUM_RPC_PATHS so the path gate
+      // fires; the server-side isCallerPremium check accepts Bearer,
+      // wm_ user keys, and enterprise keys (PR #3768).
+      const resp = await premiumFetch(`${proxyUrl('/api/mcp-proxy')}?${qs}`, {
         signal: AbortSignal.timeout(20_000),
       });
       const data = await resp.json() as { tools?: McpToolDef[]; error?: string };
@@ -428,7 +437,7 @@ export function openMcpConnectModal(options: McpConnectOptions): void {
       customHeaders: getEffectiveHeaders(),
       toolName: selectedTool.name,
       toolArgs,
-      refreshIntervalMs: Math.max(10, parseInt(refreshInput.value, 10) || 60) * 1000,
+      refreshIntervalMs: Math.max(MIN_MCP_REFRESH_S, parseInt(refreshInput.value, 10) || MIN_MCP_REFRESH_S) * 1000,
       createdAt: existing?.createdAt ?? Date.now(),
       updatedAt: Date.now(),
     };

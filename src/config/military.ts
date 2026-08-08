@@ -41,6 +41,34 @@ export const US_MILITARY_CALLSIGNS: CallsignPattern[] = [
   { pattern: '^EVAC', operator: 'usaf', aircraftType: 'transport', description: 'Aeromedical evacuation' },
   { pattern: '^MOOSE', operator: 'usaf', aircraftType: 'transport', description: 'C-17 operations' },
   { pattern: '^HERKY', operator: 'usaf', aircraftType: 'transport', description: 'C-130 operations' },
+  { pattern: '^ATLAS', operator: 'usaf', aircraftType: 'transport', description: 'C-17 strategic airlift' },
+  { pattern: '^HERC(?!KY)', operator: 'usaf', aircraftType: 'transport', description: 'C-130 Hercules' },
+  { pattern: '^STEEL', operator: 'usaf', aircraftType: 'transport', description: 'USAF transport/tanker' },
+  { pattern: '^CASA', operator: 'usaf', aircraftType: 'transport', description: 'C-295/CN-235 tactical transport' },
+  { pattern: '^COMET', operator: 'usaf', aircraftType: 'transport', description: 'USAF transport' },
+  { pattern: '^TITAN', operator: 'usaf', aircraftType: 'transport', description: 'Heavy airlift' },
+  { pattern: '^SPAR', operator: 'usaf', aircraftType: 'vip', description: 'Special Priority Air Resource (VIP)' },
+  { pattern: '^IRON', operator: 'usaf', description: 'USAF operations' },
+  { pattern: '^HOMER', operator: 'usaf', description: 'USAF operations' },
+  { pattern: '^SCORE', operator: 'usaf', description: 'USAF operations' },
+  { pattern: '^TOPCT', operator: 'usaf', aircraftType: 'tanker', description: 'KC-135/KC-46 tanker' },
+  { pattern: '^KNIFE', operator: 'usaf', aircraftType: 'special_ops', description: 'AC-130/MC-130 special ops' },
+  { pattern: '^CSAR', operator: 'usaf', aircraftType: 'helicopter', description: 'Combat search and rescue' },
+  { pattern: '^NITE', operator: 'usaf', aircraftType: 'special_ops', description: 'Night operations' },
+  { pattern: '^PACK', operator: 'usaf', aircraftType: 'fighter', description: 'Fighter/tactical ops' },
+  { pattern: '^DAGGER', operator: 'usaf', aircraftType: 'fighter', description: 'Fighter/special ops' },
+  { pattern: '^DEMON', operator: 'usaf', aircraftType: 'fighter', description: 'Fighter operations' },
+  { pattern: '^GHOST', operator: 'usaf', aircraftType: 'bomber', description: 'B-2 Spirit / stealth ops' },
+  { pattern: '^LANCE', operator: 'usaf', aircraftType: 'fighter', description: 'Fighter operations' },
+  { pattern: '^REBEL', operator: 'usaf', aircraftType: 'fighter', description: 'Fighter operations' },
+  { pattern: '^SKULL', operator: 'usaf', aircraftType: 'fighter', description: 'Fighter/bomber ops' },
+  { pattern: '^STORM', operator: 'usaf', aircraftType: 'fighter', description: 'Tactical operations' },
+  { pattern: '^SWORD', operator: 'usaf', aircraftType: 'fighter', description: 'Fighter operations' },
+  { pattern: '^WOLF', operator: 'usaf', aircraftType: 'fighter', description: 'Fighter/special ops' },
+  { pattern: '^RAGE', operator: 'usaf', aircraftType: 'fighter', description: 'Fighter/bomber ops' },
+  { pattern: '^THUD', operator: 'usaf', aircraftType: 'fighter', description: 'Tactical fighter' },
+  { pattern: '^ODIN', operator: 'usaf', description: 'USAF operations' },
+  { pattern: '^WRATH', operator: 'usaf', aircraftType: 'bomber', description: 'Bomber operations' },
 
   // US Navy
   { pattern: '^NAVY', operator: 'usn', description: 'US Navy aircraft' },
@@ -49,6 +77,9 @@ export const US_MILITARY_CALLSIGNS: CallsignPattern[] = [
   { pattern: '^TRIDENT', operator: 'usn', aircraftType: 'patrol', description: 'P-8 maritime patrol' },
   { pattern: '^RED', operator: 'usn', aircraftType: 'patrol', description: 'P-8/P-3 operations' },
   { pattern: '^BRONCO', operator: 'usn', aircraftType: 'fighter', description: 'F/A-18 operations' },
+  { pattern: '^RHINO', operator: 'usn', aircraftType: 'fighter', description: 'F/A-18E/F Super Hornet' },
+  { pattern: '^BOXER', operator: 'usn', description: 'USN operations' },
+  { pattern: '^ORCA', operator: 'usn', description: 'USN operations' },
 
   // US Marine Corps
   { pattern: '^MARINE', operator: 'usmc', description: 'USMC aircraft' },
@@ -59,6 +90,7 @@ export const US_MILITARY_CALLSIGNS: CallsignPattern[] = [
   { pattern: '^ARMY', operator: 'usa', description: 'US Army aircraft' },
   { pattern: '^PAT', operator: 'usa', aircraftType: 'transport', description: 'Priority air transport' },
   { pattern: '^DUSTOFF', operator: 'usa', aircraftType: 'helicopter', description: 'Medevac helicopters' },
+  { pattern: '^PUMA', operator: 'usa', aircraftType: 'helicopter', description: 'Army helicopter ops' },
 
   // US Coast Guard
   { pattern: '^COAST GUARD', operator: 'other', aircraftType: 'patrol', description: 'USCG aircraft' },
@@ -99,6 +131,7 @@ export const NATO_ALLIED_CALLSIGNS: CallsignPattern[] = [
   // Turkey
   { pattern: '^THK', operator: 'other', description: 'Turkish Air Force' },
   { pattern: '^TUR', operator: 'other', description: 'Turkish military' },
+  { pattern: '^TUAF', operator: 'other', description: 'Turkish Air Force' },
 
   // Saudi Arabia
   { pattern: '^SVA', operator: 'other', description: 'Saudi Air Force' },
@@ -107,9 +140,13 @@ export const NATO_ALLIED_CALLSIGNS: CallsignPattern[] = [
   // UAE
   { pattern: '^UAF', operator: 'other', description: 'UAE Air Force' },
 
+  // Qatar
+  { pattern: '^QAF', operator: 'other', description: 'Qatar Air Force' },
+
   // India
   { pattern: '^AIR INDIA ONE', operator: 'other', aircraftType: 'vip', description: 'Indian Air Force One' },
   { pattern: '^IAM', operator: 'other', description: 'Indian Air Force' },
+  { pattern: '^INDIA[0-9]', operator: 'other', description: 'Indian military (INDIA + flight number)' },
 
   // Japan ASDF
   { pattern: '^JPN', operator: 'other', description: 'Japan Self-Defense Force' },
@@ -126,13 +163,31 @@ export const NATO_ALLIED_CALLSIGNS: CallsignPattern[] = [
   // Canada
   { pattern: '^CANFORCE', operator: 'other', aircraftType: 'transport', description: 'Canadian Armed Forces' },
   { pattern: '^CFC', operator: 'other', description: 'Canadian Forces' },
+  { pattern: '^CAAF', operator: 'other', description: 'Canadian Armed Forces air' },
 
   // Italy
   { pattern: '^IAM', operator: 'other', description: 'Italian Air Force' },
   { pattern: '^ITALY', operator: 'other', description: 'Italian military' },
+  { pattern: '^MMF', operator: 'other', description: 'Italian Aeronautica Militare' },
+
+  // France (alternate)
+  { pattern: '^FRAF', operator: 'faf', description: 'French Air Force' },
 
   // Spain
   { pattern: '^AME', operator: 'other', description: 'Spanish Air Force' },
+
+  // Belgium
+  { pattern: '^BAF', operator: 'other', description: 'Belgian Air Force' },
+
+  // Norway
+  { pattern: '^NAF', operator: 'other', description: 'Norwegian Air Force' },
+  { pattern: '^NOAF', operator: 'other', description: 'Norwegian Air Force' },
+
+  // Denmark
+  { pattern: '^DNAF', operator: 'other', description: 'Danish Air Force' },
+
+  // Romania
+  { pattern: '^ROF', operator: 'other', description: 'Romanian Air Force' },
 
   // Poland
   { pattern: '^PLF', operator: 'other', description: 'Polish Air Force' },
@@ -155,9 +210,9 @@ export const ADVERSARY_CALLSIGNS: CallsignPattern[] = [
   { pattern: '^RUSSIAN', operator: 'vks', description: 'Russian military' },
 
   // Chinese PLA
-  { pattern: '^CCA', operator: 'plaaf', description: 'PLA Air Force' },
-  { pattern: '^CHH', operator: 'plan', description: 'PLA Navy Air' },
-  { pattern: '^CHINA', operator: 'plaaf', description: 'Chinese military' },
+  { pattern: '^PLAAF', operator: 'plaaf', description: 'PLA Air Force' },
+  { pattern: '^PLA[0-9]', operator: 'plaaf', description: 'PLA aircraft' },
+  { pattern: '^CHINA\\s?(AIR\\s?FORCE|MIL|NAVY)', operator: 'plaaf', description: 'Chinese military' },
 ];
 
 // All military callsign patterns combined
@@ -280,6 +335,18 @@ export const MILITARY_AIRCRAFT_TYPES: Record<string, { type: MilitaryAircraftTyp
  * These help identify military aircraft even without callsigns
  * Reference: https://www.ads-b.nl/icao.php
  */
+export const KNOWN_MILITARY_AIRCRAFT: Record<string, {
+  operator: MilitaryOperator;
+  country: string;
+  aircraftType: MilitaryAircraftType;
+}> = {
+  // Exact observed PLA aircraft; never expand this into China's national range.
+  '7A4262': { operator: 'plaaf', country: 'China', aircraftType: 'reconnaissance' },
+  '7A444F': { operator: 'plaaf', country: 'China', aircraftType: 'tanker' },
+  '7A446F': { operator: 'plaaf', country: 'China', aircraftType: 'transport' },
+  '7A4403': { operator: 'plaaf', country: 'China', aircraftType: 'transport' },
+};
+
 export const MILITARY_HEX_RANGES: { start: string; end: string; operator: MilitaryOperator; country: string }[] = [
   // United States DoD — civil N-numbers end at ADF7C7; everything above is military
   { start: 'ADF7C8', end: 'AFFFFF', operator: 'usaf', country: 'USA' },
@@ -461,8 +528,7 @@ export interface QueryRegion {
 }
 
 export const MILITARY_QUERY_REGIONS: QueryRegion[] = [
-  { name: 'PACIFIC', lamin: 10, lamax: 46, lomin: 107, lomax: 143 },
-  { name: 'WESTERN', lamin: 13, lamax: 85, lomin: -10, lomax: 57 },
+  { name: 'GLOBAL', lamin: -90, lamax: 90, lomin: -180, lomax: 180 },
 ];
 
 if (import.meta.env.DEV) {
@@ -656,11 +722,18 @@ export function identifyByAircraftType(typeCode: string): { type: MilitaryAircra
 /**
  * Helper to check if a hex code is in known military range
  */
-export function isKnownMilitaryHex(hexCode: string): { operator: MilitaryOperator; country: string } | undefined {
+export function isKnownMilitaryHex(hexCode: string): {
+  operator: MilitaryOperator;
+  country: string;
+  aircraftType?: MilitaryAircraftType;
+  confidence: 'high' | 'medium';
+} | undefined {
   const hex = hexCode.toUpperCase();
+  const exact = KNOWN_MILITARY_AIRCRAFT[hex];
+  if (exact) return { ...exact, confidence: 'high' };
   for (const range of MILITARY_HEX_RANGES) {
     if (hex >= range.start && hex <= range.end) {
-      return { operator: range.operator, country: range.country };
+      return { operator: range.operator, country: range.country, confidence: 'medium' };
     }
   }
   return undefined;

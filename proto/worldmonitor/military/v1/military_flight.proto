@@ -6,7 +6,7 @@ import "buf/validate/validate.proto";
 import "sebuf/http/annotations.proto";
 import "worldmonitor/core/v1/geo.proto";
 
-// MilitaryFlight represents a tracked military aircraft from OpenSky or Wingbits.
+// MilitaryFlight represents a tracked military aircraft from the configured ADS-B providers.
 message MilitaryFlight {
   // Unique flight identifier.
   string id = 1 [
@@ -15,7 +15,10 @@ message MilitaryFlight {
   ];
   // Aircraft callsign.
   string callsign = 2;
-  // ICAO 24-bit hex address.
+  // ICAO 24-bit hex address. Canonical form is UPPERCASE — seeders and
+  // handlers must uppercase before writing so hex-based lookups
+  // (src/services/military-flights.ts:getFlightByHex) match regardless of
+  // upstream source casing.
   string hex_code = 3;
   // Aircraft registration number.
   string registration = 4;
@@ -57,6 +60,8 @@ message MilitaryFlight {
   string note = 22;
   // Wingbits enrichment data.
   FlightEnrichment enrichment = 23;
+  // Provider that supplied this observation (for example, "adsb.lol" or "opensky").
+  string source = 24;
 }
 
 // FlightEnrichment contains additional data from Wingbits aircraft database.

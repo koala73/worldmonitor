@@ -1,0 +1,116 @@
+# =============================================================================
+# Digest notifications cron (consolidated: digest + brief compose + channel send)
+# =============================================================================
+# Runs scripts/seed-digest-notifications.mjs as a Railway cron (every 30 min).
+# The script now also owns the brief envelope write path — per-user
+# brief:{userId}:{issueDate} keys are produced here, and every channel
+# dispatch (email/telegram/slack/discord) gets a signed magazine URL CTA.
+#
+# Historical context: before 2026-04-18 this service built from the
+# scripts/ root with plain `npm ci`. The consolidation PR introduced
+# cross-directory imports (shared/*, server/_shared/*, api/*) so the
+# service now needs repo-root as build context with the specific
+# modules COPY'd in. The retired seed-brief-composer Dockerfile had
+# the same pattern.
+#
+# Required env (Railway service vars):
+#   UPSTASH_REDIS_REST_URL
+#   UPSTASH_REDIS_REST_TOKEN
+#   CONVEX_URL                    (or CONVEX_SITE_URL)
+#   RELAY_SHARED_SECRET
+#   RESEND_API_KEY
+#   TELEGRAM_BOT_TOKEN
+#   BRIEF_URL_SIGNING_SECRET      (brief compose disabled without this)
+#   WORLDMONITOR_PUBLIC_BASE_URL  (defaults to https://worldmonitor.app)
+# Optional:
+#   DIGEST_CRON_ENABLED=0         (kill switch for the whole cron)
+#   BRIEF_COMPOSE_ENABLED=0       (kill switch for just brief compose)
+#   AI_DIGEST_ENABLED=0           (kill switch for AI summary LLM call)
+# =============================================================================
+
+FROM node:24-alpine@sha256:a0b9bf06e4e6193cf7a0f58816cc935ff8c2a908f81e6f1a95432d679c54fbfd
+
+WORKDIR /app
+
+# The repo-root package.json has "type":"module" which tells Node to
+# parse .js files under shared/, server/_shared/, api/ as ESM. Inside
+# this image we don't ship the full root package.json (it would pull
+# in dev-deps metadata we don't need), but the .js files we DO ship
+# still need the nearest-pjson walk to resolve to an ESM declaration.
+# A minimal /app/package.json avoids "SyntaxError: Unexpected token
+# 'export'" at container startup.
+RUN printf '{"type":"module","private":true}\n' > /app/package.json
+
+# Install scripts/ runtime dependencies (resend, convex, etc.).
+COPY scripts/package.json scripts/package-lock.json ./scripts/
+RUN npm ci --prefix scripts --omit=dev
+
+# Digest cron + shared script helpers it imports via createRequire.
+COPY scripts/seed-digest-notifications.mjs ./scripts/
+COPY scripts/_digest-markdown.mjs ./scripts/
+COPY scripts/lib/ ./scripts/lib/
+# Sprint 1 / U4 operator one-shot — `clearDeliveredEntry` primitive
+# pairs with the delivered-log writer in scripts/lib/digest-delivered-
+# log.mjs (per skill_new_blocking_state_without_matching_clear_primitive).
+# Shipped here so an operator can `railway run node scripts/clear-
+# delivered-entry.mjs --user X --slot Y --cluster Z --reason "..."`
+# directly on the digest-notifications service container without
+# spinning up a separate one-off image. Read-only path: requires the
+# same UPSTASH_REDIS_REST_{URL,TOKEN} env this cron already has.
+COPY scripts/clear-delivered-entry.mjs ./scripts/
+
+# Brief envelope contract + filter + renderer assertion. These live
+# under shared/ and server/_shared/ in the repo and are imported from
+# scripts/lib/brief-compose.mjs. Keep this COPY list tight — adding
+# unrelated shared/* files expands the rebuild watch surface.
+COPY shared/brief-envelope.js shared/brief-envelope.d.ts ./shared/
+COPY shared/brief-filter.js shared/brief-filter.d.ts ./shared/
+# brief-filter.js imports url-classifier.js for the U7 institutional-static-
+# page denylist. Added in PR #3419 — without this COPY, the cron crashes at
+# startup with ERR_MODULE_NOT_FOUND on /app/shared/url-classifier.js.
+# See feedback_validation_docker_ship_full_scripts_dir.md — the tight COPY
+# list keeps biting whenever a shared/*.js file gets a new cross-file import.
+COPY shared/url-classifier.js ./shared/
+# brief-filter.js and digest compose paths import ephemeral-live-classifier.js
+# to drop expiring WATCH LIVE / live-event programming from delayed briefs.
+COPY shared/ephemeral-live-classifier.js shared/ephemeral-live-classifier.d.ts ./shared/
+# brief-filter.js imports diplomacy-keywords.json (canonical lead-coherence
+# keyword set). seed-digest-notifications.mjs ALSO imports it directly.
+# Without this COPY, the cron crashes at startup with ERR_MODULE_NOT_FOUND
+# on /app/shared/diplomacy-keywords.json. Guarded by
+# tests/dockerfile-digest-notifications-imports.test.mjs.
+COPY shared/diplomacy-keywords.json ./shared/
+# Watchlist story alerts (#4922 e): seed-digest-notifications.mjs extracts
+# tickers from scanned stories (shared/ticker-extract.js + stocks.json via
+# scripts/lib/watchlist-story-events.mjs) and enqueues watchlist_story_alert
+# events with the shared SET-NX scan-dedup helper. Guarded by
+# tests/dockerfile-digest-notifications-imports.test.mjs.
+COPY shared/ticker-extract.js shared/ticker-extract.d.ts ./shared/
+COPY shared/stocks.json ./shared/
+COPY scripts/shared/notification-dedup.cjs ./scripts/shared/
+COPY shared/brief-llm-core.js shared/brief-llm-core.d.ts ./shared/
+COPY server/_shared/brief-render.js server/_shared/brief-render.d.ts ./server/_shared/
+# llm-sanitize is imported by scripts/lib/brief-llm.mjs on the fallback
+# path (legacy whyMatters generator) to strip prompt-injection patterns
+# from story fields before they reach the LLM. Without this COPY, the
+# digest cron crashes at import with ERR_MODULE_NOT_FOUND once the cron
+# hits any story whose analyst endpoint call falls through to the
+# fallback. See feedback_validation_docker_ship_full_scripts_dir.md —
+# the cherry-pick pattern keeps biting when new cross-dir imports land.
+COPY server/_shared/llm-sanitize.js server/_shared/llm-sanitize.d.ts ./server/_shared/
+
+# opinion-classifier is imported directly by scripts/seed-digest-notifications.mjs
+# (buildDigest's read-time opinion filter — F3). Without this COPY the cron
+# crashes at import with ERR_MODULE_NOT_FOUND on startup.
+COPY server/_shared/opinion-classifier.js server/_shared/opinion-classifier.d.ts ./server/_shared/
+
+# feelgood-classifier is imported directly by scripts/seed-digest-notifications.mjs
+# (buildDigest's read-time feel-good filter — sibling to the opinion filter). Same
+# ERR_MODULE_NOT_FOUND failure mode if omitted.
+COPY server/_shared/feelgood-classifier.js server/_shared/feelgood-classifier.d.ts ./server/_shared/
+
+# Upstash REST helper (brief compose uses redisPipeline + readRawJson).
+COPY api/_upstash-json.js ./api/
+COPY api/_seed-envelope.js ./api/
+
+CMD ["node", "scripts/seed-digest-notifications.mjs"]

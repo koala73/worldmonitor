@@ -4,25 +4,35 @@ import type {
   ListComtradeFlowsResponse,
   ComtradeFlowRecord,
 } from '../../../../src/generated/server/worldmonitor/trade/v1/service_server';
+import filterParamContracts from '../../../../shared/openapi-filter-param-contracts.json';
+import strategicProductMetadata from '../../../../scripts/shared/comtrade-strategic-products.json';
 import { getCachedJsonBatch } from '../../../_shared/redis';
+import { isCallerPremium } from '../../../_shared/premium-check';
 
 const KEY_PREFIX = 'comtrade:flows';
 
-// Strategic reporters and commodities mirrored from the seed script.
-const REPORTERS = ['842', '156', '643', '364', '356', '158'];
-const CMD_CODES = ['2709', '2711', '7108', '8542', '9301'];
+// Strategic reporters are stable API defaults; commodities come from the same
+// reviewed HS2022 metadata consumed by both seeders.
+const REPORTERS = ['842', '156', '643', '364', '699', '490'];
+const CMD_CODES = strategicProductMetadata.products
+  .map((product) => product.tradeFlowCode)
+  .filter((code): code is string => typeof code === 'string' && code.length > 0);
+const CMD_CODE_RE = new RegExp(filterParamContracts.tradeComtradeCmdCodePattern);
 
 function isValidCode(c: string): boolean {
   return /^\d{1,10}$/.test(c);
 }
 
 export async function listComtradeFlows(
-  _ctx: ServerContext,
+  ctx: ServerContext,
   req: ListComtradeFlowsRequest,
 ): Promise<ListComtradeFlowsResponse> {
+  const isPro = await isCallerPremium(ctx.request);
+  if (!isPro) return { flows: [], fetchedAt: '', upstreamUnavailable: true };
+
   try {
     const reporters = req.reporterCode && isValidCode(req.reporterCode) ? [req.reporterCode] : REPORTERS;
-    const cmdCodes = req.cmdCode && /^\d{4,6}$/.test(req.cmdCode) ? [req.cmdCode] : CMD_CODES;
+    const cmdCodes = req.cmdCode && CMD_CODE_RE.test(req.cmdCode) ? [req.cmdCode] : CMD_CODES;
 
     const keys = reporters.flatMap((r) => cmdCodes.map((c) => `${KEY_PREFIX}:${r}:${c}`));
     const batch = await getCachedJsonBatch(keys);

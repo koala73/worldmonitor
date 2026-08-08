@@ -2,7 +2,7 @@ import { Panel } from './Panel';
 import type { FredSeries, BisData } from '@/services/economic';
 import { BLS_METRO_IDS } from '@/services/economic';
 import { t } from '@/services/i18n';
-import { escapeHtml } from '@/utils/sanitize';
+import { escapeHtml, unsafeRawHtml } from '@/utils/sanitize';
 import { isDesktopRuntime } from '@/services/runtime';
 import { isFeatureAvailable } from '@/services/runtime-config';
 import type { SpendingSummary } from '@/services/usa-spending';
@@ -223,7 +223,7 @@ export class EconomicPanel extends Panel {
         </button>
         ${hasSpending ? `
           <button class="panel-tab ${this.activeTab === 'spending' ? 'active' : ''}" data-tab="spending">
-            ${t('components.economic.gov')}
+            Recent awards
           </button>
         ` : ''}
         ${hasBis ? `
@@ -265,7 +265,7 @@ export class EconomicPanel extends Panel {
       ? this.lastUpdate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
       : '';
 
-    this.setContent(`
+    this.setSafeContent(unsafeRawHtml(`
       ${tabsHtml}
       <div class="economic-content">
         ${contentHtml}
@@ -273,7 +273,7 @@ export class EconomicPanel extends Panel {
       <div class="economic-footer">
         <span class="economic-source">${this.getSourceLabel()} • ${updateTime}</span>
       </div>
-    `);
+    `, 'legacy Panel.setContent() migration'));
   }
 
   private getSourceLabel(): string {

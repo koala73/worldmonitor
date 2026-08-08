@@ -1,0 +1,38 @@
+{
+  "_comment": "Hand-curated fallback for the root welcome live-teaser strip. Rendered immediately (and into the SEO prerender) while the live fetch runs; replaced in place when live data arrives. NEVER auto-refresh this file during `npm run build` — the pro-bundle-freshness CI gate rebuilds and diffs the committed bundle, so build-time network data would make builds nondeterministic. Refresh by hand when values drift too far from reality.",
+  "headlines": [
+    { "title": "Security council convenes emergency session on Red Sea shipping attacks", "source": "Reuters", "publishedAt": 0 },
+    { "title": "Major central banks signal divergence ahead of rate decisions", "source": "Financial Times", "publishedAt": 0 },
+    { "title": "Undersea cable disruption slows traffic across two regions", "source": "AP", "publishedAt": 0 },
+    { "title": "Satellite imagery shows expanded activity at contested border", "source": "BBC", "publishedAt": 0 }
+  ],
+  "cii": [
+    { "region": "UA", "combinedScore": 78, "trend": "TREND_DIRECTION_STABLE" },
+    { "region": "IL", "combinedScore": 71, "trend": "TREND_DIRECTION_RISING" },
+    { "region": "IR", "combinedScore": 66, "trend": "TREND_DIRECTION_RISING" },
+    { "region": "RU", "combinedScore": 62, "trend": "TREND_DIRECTION_STABLE" },
+    { "region": "PK", "combinedScore": 54, "trend": "TREND_DIRECTION_FALLING" }
+  ],
+  "chokepoints": [
+    { "name": "Bab el-Mandeb", "status": "red", "disruptionScore": 82 },
+    { "name": "Strait of Hormuz", "status": "yellow", "disruptionScore": 45 },
+    { "name": "Suez Canal", "status": "yellow", "disruptionScore": 38 },
+    { "name": "Panama Canal", "status": "green", "disruptionScore": 12 },
+    { "name": "Strait of Malacca", "status": "green", "disruptionScore": 8 }
+  ],
+  "chokepointTotal": 13,
+  "quotes": [
+    { "symbol": "^GSPC", "display": "S&P 500", "price": 6053.1, "change": 0.42, "sparkline": [5982, 5991, 6004, 5998, 6012, 6027, 6021, 6035, 6042, 6039, 6048, 6053] },
+    { "symbol": "^IXIC", "display": "Nasdaq", "price": 20231.8, "change": 0.67, "sparkline": [19980, 20012, 20045, 20010, 20092, 20135, 20108, 20156, 20182, 20163, 20205, 20232] },
+    { "symbol": "^VIX", "display": "VIX", "price": 18.42, "change": -2.15, "sparkline": [19.2, 19.0, 18.8, 18.9, 18.7, 18.6, 18.8, 18.5, 18.4, 18.6, 18.5, 18.4] },
+    { "symbol": "BTC", "display": "Bitcoin", "price": 104850, "change": -1.23, "sparkline": [106900, 106400, 106800, 106100, 105600, 105900, 105200, 104800, 105100, 104600, 104900, 104850] },
+    { "symbol": "ETH", "display": "Ethereum", "price": 2524, "change": -0.74, "sparkline": [2580, 2564, 2571, 2550, 2541, 2555, 2538, 2526, 2535, 2518, 2527, 2524] },
+    { "symbol": "CL=F", "display": "WTI crude", "price": 72.44, "change": 1.18, "sparkline": [71.2, 71.4, 71.1, 71.6, 71.9, 71.7, 72.1, 72.3, 72.0, 72.5, 72.2, 72.4] },
+    { "symbol": "BZ=F", "display": "Brent", "price": 76.18, "change": 1.04, "sparkline": [75.0, 75.2, 75.1, 75.5, 75.7, 75.6, 75.9, 76.1, 75.8, 76.2, 76.0, 76.2] },
+    { "symbol": "GC=F", "display": "Gold", "price": 3312.4, "change": 0.31, "sparkline": [3295, 3298, 3301, 3299, 3304, 3308, 3306, 3310, 3307, 3311, 3309, 3312] },
+    { "symbol": "HG=F", "display": "Copper", "price": 4.91, "change": 1.46, "sparkline": [4.78, 4.80, 4.79, 4.83, 4.86, 4.85, 4.88, 4.90, 4.87, 4.92, 4.90, 4.91] },
+    { "symbol": "NG=F", "display": "Nat gas", "price": 3.18, "change": -0.58, "sparkline": [3.24, 3.22, 3.25, 3.21, 3.20, 3.23, 3.19, 3.17, 3.18, 3.16, 3.19, 3.18] },
+    { "symbol": "EURUSD=X", "display": "EUR/USD", "price": 1.08, "change": 0.12, "sparkline": [1.076, 1.077, 1.077, 1.078, 1.079, 1.078, 1.080, 1.081, 1.080, 1.082, 1.081, 1.082] },
+    { "symbol": "USDJPY=X", "display": "USD/JPY", "price": 144.2, "change": -0.21, "sparkline": [144.8, 144.6, 144.7, 144.5, 144.4, 144.6, 144.3, 144.1, 144.2, 144.0, 144.3, 144.2] }
+  ]
+}

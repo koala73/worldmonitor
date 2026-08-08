@@ -1,0 +1,55 @@
+---
+title: "Storage Facility Methodology"
+description: "How World Monitor curates the world's critical oil & gas storage facilities: underground gas storage, LNG terminals, SPR caverns, and crude tank farms."
+---
+
+## Scope
+
+Release 1 launches with ~125 curated critical storage facilities, not a global census. Curation bias: facilities that move markets, not every tank farm on earth.
+
+- **Underground gas storage (UGS):** top European sites (Rehden, Bergermeer, Haidach, Chiren, etc.), US salt caverns.
+- **Strategic Petroleum Reserve caverns:** US SPR (Bryan Mound, Big Hill, West Hackberry, Bayou Choctaw), plus major non-US stockholding facilities where published.
+- **LNG import & export terminals:** Sabine Pass, Corpus Christi, Ras Laffan, Yamal LNG, Asian regas hubs.
+- **Crude oil tank farms:** major trading hubs (Cushing OK, Rotterdam, Singapore, Fujairah) where operator data is public.
+
+## Data sources
+
+- **[Global Energy Monitor](https://globalenergymonitor.org) — Storage Tracker** (CC-BY 4.0) for facility identity, geometry, capacity.
+- **GIE AGSI+ & ALSI** for EU gas / LNG fill % at facility granularity (where published).
+- **EIA Form EIA-191** for US UGS.
+- **EIA SPR weekly stock report** for US SPR-level inventory.
+- **Operator dashboards** where the facility publishes real-time or near-real-time fill %.
+
+## Fill % — published, not synthesized
+
+If an operator publishes fill %, we show it. If they don't, we show `not disclosed`. **We never synthesize, interpolate, or country-share a missing fill.**
+
+When fill data is unavailable at the facility level, the panel falls back to country-level aggregate (e.g. "DE gas storage: 62% overall; Rehden facility fill not disclosed") — both numbers labeled with their source.
+
+## Freshness SLA
+
+| Object | Target freshness | Stale policy |
+|--------|------------------|--------------|
+| Facility registry (identity, capacity, operator) | 35 days | Silent refresh |
+| Fill % where published | 24 hours | Fall back to country aggregate if stale |
+| Country aggregate (fallback) | 24 hours (gas) / weekly (oil SPR) | Show `stale` indicator if beyond SLA |
+
+## Known limits
+
+- Not every facility publishes fill %. We indicate "not disclosed" explicitly.
+- Capacity figures are typically nameplate, not current maximum working capacity. Working capacity tends to be 75–85% of nameplate for gas UGS.
+- No forecast of storage-days-to-empty here; that computation lands on the country energy drill-down once the disruption log ships in Week 3.
+
+## Attribution
+
+Storage-facility registry data derived from [Global Energy Monitor](https://globalenergymonitor.org) (CC-BY 4.0), GIE AGSI+/ALSI (registered API usage), and US EIA open data.
+
+## Corrections
+
+See [`/corrections`](/corrections) for the planned revision-log shape
+and submission policy. If a facility you operate is misrepresented, we
+treat corrections directly from the operator as top-tier evidence —
+open a GitHub issue at the
+[public repository](https://github.com/koala73/worldmonitor/issues).
+Automated `override`-trigger entries ship with the post-launch
+classifier; corrections are handled manually today.

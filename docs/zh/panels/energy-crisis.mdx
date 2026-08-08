@@ -1,0 +1,46 @@
+---
+title: "能源危机追踪器"
+description: "能源危机追踪器基于国际能源署 IEA 2026 Energy Crisis Policy Response Tracker 数据，系统梳理各国政府为应对中东冲突升级与霍尔木兹海峡供应中断而出台的能源节约措施、消费者补贴、燃料价格管制与战略储备释放政策，帮助分析师评估全球能源市场压力与政策响应节奏。"
+---
+
+**Energy Crisis Tracker** 面板（内部 id `energy-crisis`）展示 IEA 的 2026 年政策数据库：为应对中东冲突和霍尔木兹海峡驱动的能源供应中断而宣布的政府措施完整目录。根据 Hormuz Trade Tracker 的上下文，全球约 20% 的石油每日通过该海峡，因此政策面响应数据与供应面流量数据同等重要。
+
+## 面板显示内容
+
+一个可筛选的政策措施列表：
+
+- **类别筛选** — `all`（默认）加 `conservation`（"能源节约"）和 `consumer_support`（"消费者支持"）。
+- 每政策应用的**部门标签**：`transport`、`buildings`、`industry`、`electricity`、`agriculture`、`general`。
+- 每政策按颜色分桶的**状态类别**：`active`（`ecp-status-active`）、`planned`（`ecp-status-planned`）、`ended`（`ecp-status-ended`）。
+- **政策卡片**，包含国家、部门、类别、状态、公告日期和措施摘要。
+
+面板是宽面板（`defaultRowSpan: 2`）并显示计数徽章（`showCount: true`）。活动跟踪已开启（`trackActivity: true`），因此新添加的政策获得标准的新条目视觉效果。
+
+面板 id 为 `energy-crisis`；规范组件为 `src/components/EnergyCrisisPanel.ts`。显示标题："Energy Crisis Tracker"。
+
+## 如何访问
+
+- **Cmd+K**：输入 *energy crisis* 或 *IEA*。
+- **按变体的可用性**：仅在 **full/geopolitical** 变体中注册并默认启用（`priority: 2`）。在 tech、finance、commodity 或 happy 变体中不存在。来源：`src/config/panels.ts` 中 `FULL_PANELS` 的 `'energy-crisis'`。
+
+## 数据来源
+
+面板优先使用水合的 bootstrap 载荷（`energyCrisisPolicies`），回退到生成的 Economic service RPC。
+
+| 方法 + 路由 | 数据供给 |
+|---|---|
+| `GET /api/economic/v1/get-energy-crisis-policies` | IEA 2026 Energy Crisis Policy Response Tracker 政策，可按国家或类别筛选。 |
+
+根据面板内的信息工具提示，上游来源：**IEA 2026 Energy Crisis Policy Response Tracker**。追踪约 60 个国家的措施，近 200 个政策条目。
+
+## 刷新频率
+
+IEA 以每周到每月的频率发布更新。面板在挂载时读取缓存快照；无轮询计时器。
+
+## 层级与门控
+
+**免费。** `src/config/panels.ts` 中无 `premium` 标志。Economic service RPC 是公开的。
+
+## API 参考
+
+- [Economic service](/api/EconomicService.openapi.yaml) — 包括 `GetEnergyCrisisPolicies` 和更广泛的能源/宏观族。

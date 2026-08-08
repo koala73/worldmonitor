@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test';
+import { expect, test, type Page } from '@playwright/test';
 
 type MockWidgetResponse = {
   delayMs?: number;
@@ -10,6 +10,11 @@ type MockWidgetResponse = {
 const widgetKey = 'test-widget-key';
 const createPrompt = "Show me today's crude oil price versus gold";
 const modifyPrompt = 'Turn this into a flight delay summary instead';
+
+function expectLegacyWidgetHeaderIfPresent(headers: Record<string, string>): void {
+  const header = headers['x-widget-key'];
+  if (header !== undefined) expect(header).toBe(widgetKey);
+}
 
 function buildTallWidgetHtml(title: string, markerClass: string): string {
   const rows = Array.from({ length: 24 }, (_, index) => {
@@ -65,7 +70,7 @@ async function installWidgetAgentMocks(
       await new Promise((resolve) => setTimeout(resolve, healthDelayMs));
     }
 
-    expect(route.request().headers()['x-widget-key']).toBe(widgetKey);
+    expectLegacyWidgetHeaderIfPresent(route.request().headers());
     await route.fulfill({
       status: 200,
       contentType: 'application/json',
@@ -135,7 +140,7 @@ async function installProWidgetAgentMocks(
   proKeyConfigured = true,
 ): Promise<void> {
   await page.route('**/widget-agent/health', async (route) => {
-    expect(route.request().headers()['x-widget-key']).toBe(widgetKey);
+    expectLegacyWidgetHeaderIfPresent(route.request().headers());
     await route.fulfill({
       status: 200,
       contentType: 'application/json',
@@ -170,6 +175,20 @@ async function installProWidgetAgentMocks(
   });
 }
 
+async function closeMissionPresetPromptIfOpen(page: Page): Promise<void> {
+  const closeButton = page.locator('.mission-preset-popover [data-mission-close]');
+  if (await closeButton.isVisible({ timeout: 1_000 }).catch(() => false)) {
+    await closeButton.click({ force: true });
+    await expect(page.locator('.mission-preset-popover')).toBeHidden({ timeout: 5_000 });
+  }
+}
+
+async function clickWidgetBuilderBlock(page: Page, selector: string): Promise<void> {
+  await expect(page.locator(selector)).toBeVisible({ timeout: 30_000 });
+  await closeMissionPresetPromptIfOpen(page);
+  await page.locator(selector).click();
+}
+
 test.describe('AI widget builder', () => {
   test.beforeEach(async ({ page }) => {
     await page.addInitScript((key) => {
@@ -177,6 +196,7 @@ test.describe('AI widget builder', () => {
         localStorage.clear();
         sessionStorage.clear();
         localStorage.setItem('worldmonitor-variant', 'happy');
+        localStorage.setItem('worldmonitor-mission-preset-dismissed-v1', '1');
         localStorage.setItem('wm-widget-key', key);
         sessionStorage.setItem('__widget_e2e_init__', '1');
         return;
@@ -205,9 +225,7 @@ test.describe('AI widget builder', () => {
     );
 
     await page.goto('/');
-    await expect(page.locator('#panelsGrid .ai-widget-block')).toBeVisible({ timeout: 30000 });
-
-    await page.locator('#panelsGrid .ai-widget-block').click();
+    await clickWidgetBuilderBlock(page, '#panelsGrid .ai-widget-block');
 
     const modal = page.locator('.widget-chat-modal');
     const sendButton = modal.locator('.widget-chat-send');
@@ -309,9 +327,7 @@ test.describe('AI widget builder', () => {
     ], requestBodies);
 
     await page.goto('/');
-    await expect(page.locator('#panelsGrid .ai-widget-block')).toBeVisible({ timeout: 30000 });
-
-    await page.locator('#panelsGrid .ai-widget-block').click();
+    await clickWidgetBuilderBlock(page, '#panelsGrid .ai-widget-block');
     const modal = page.locator('.widget-chat-modal');
     await expect(modal.locator('.widget-chat-readiness')).toContainText('Connected to the widget agent');
 
@@ -452,8 +468,7 @@ test.describe('AI widget builder — PRO tier', () => {
     ]);
 
     await page.goto('/');
-    await expect(page.locator('#panelsGrid .ai-widget-block-pro')).toBeVisible({ timeout: 30000 });
-    await page.locator('#panelsGrid .ai-widget-block-pro').click();
+    await clickWidgetBuilderBlock(page, '#panelsGrid .ai-widget-block-pro');
 
     const modal = page.locator('.widget-chat-modal');
     await expect(modal).toBeVisible();
@@ -487,7 +502,7 @@ test.describe('AI widget builder — PRO tier', () => {
     expect(iframeHeight).toBeGreaterThanOrEqual(390);
   });
 
-  test('PRO widget stores HTML in wm-pro-html-{id} key and tier:pro in main array', async ({
+  test('PRO widget persists HTML in the main array and survives reload', async ({
     page,
   }) => {
     const proHtml = buildProWidgetBody('Crypto Table', 'pro-crypto');
@@ -500,8 +515,7 @@ test.describe('AI widget builder — PRO tier', () => {
     ]);
 
     await page.goto('/');
-    await expect(page.locator('#panelsGrid .ai-widget-block-pro')).toBeVisible({ timeout: 30000 });
-    await page.locator('#panelsGrid .ai-widget-block-pro').click();
+    await clickWidgetBuilderBlock(page, '#panelsGrid .ai-widget-block-pro');
 
     const modal = page.locator('.widget-chat-modal');
     await expect(modal.locator('.widget-chat-readiness')).toContainText('Connected', { timeout: 15000 });
@@ -528,11 +542,15 @@ test.describe('AI widget builder — PRO tier', () => {
     });
 
     expect(storage).not.toBeNull();
-    // Main array must have tier: 'pro' but NO html field
+    // Main array is canonical; the legacy side key should not be needed for new saves.
     expect(storage!.entry.tier).toBe('pro');
-    expect(storage!.entry.html).toBeUndefined();
-    // HTML must be in the separate key
-    expect(storage!.proHtmlStored).toContain('pro-crypto');
+    expect(storage!.entry.html).toContain('pro-crypto');
+    expect(storage!.proHtmlStored).toBeNull();
+
+    await page.reload();
+    await expect(page.locator('.custom-widget-panel', {
+      has: page.locator('.panel-title', { hasText: 'Crypto Table' }),
+    })).toBeVisible({ timeout: 20000 });
   });
 
   test('modify PRO widget: tier preserved, history passed to server', async ({ page }) => {
@@ -555,8 +573,7 @@ test.describe('AI widget builder — PRO tier', () => {
     );
 
     await page.goto('/');
-    await expect(page.locator('#panelsGrid .ai-widget-block-pro')).toBeVisible({ timeout: 30000 });
-    await page.locator('#panelsGrid .ai-widget-block-pro').click();
+    await clickWidgetBuilderBlock(page, '#panelsGrid .ai-widget-block-pro');
 
     const modal = page.locator('.widget-chat-modal');
     await expect(modal.locator('.widget-chat-readiness')).toContainText('Connected', { timeout: 15000 });
@@ -608,8 +625,7 @@ test.describe('AI widget builder — PRO tier', () => {
     await installProWidgetAgentMocks(page, [], [], false);
 
     await page.goto('/');
-    await expect(page.locator('#panelsGrid .ai-widget-block-pro')).toBeVisible({ timeout: 30000 });
-    await page.locator('#panelsGrid .ai-widget-block-pro').click();
+    await clickWidgetBuilderBlock(page, '#panelsGrid .ai-widget-block-pro');
 
     const modal = page.locator('.widget-chat-modal');
     await expect(modal).toBeVisible();

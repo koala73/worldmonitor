@@ -1,0 +1,42 @@
+---
+title: "My Monitors"
+description: "Personal keyword-alert system that highlights matching articles across every news panel — persisted in localStorage, no account required."
+---
+
+The **My Monitors** panel (internal id `monitors`) is the dashboard's personal keyword-alert surface. Enter comma-separated keywords, and any matching article across every news feed in the app lights up in your monitor's assigned colour — including articles inside clusters. Monitors persist across sessions via `localStorage`.
+
+The longer-form description of monitor behaviour lives in [Features → Custom Monitors](/features#custom-monitors); this page is the short panel reference.
+
+## What the panel shows
+
+- **Input row** — a text box for comma-separated keywords and an Add button. Pressing Enter in the input also adds the monitor.
+- **Monitor rows** — each registered monitor shows its keywords, its assigned colour chip, and a remove affordance.
+- **Color palette** — pulled from `MONITOR_COLORS` in `@/config`; each new monitor is assigned a colour automatically so rows stay visually distinct.
+
+Behaviour outside the panel:
+
+- Matching articles in **every news feed** (Live News, regional feeds, etc.) render with the monitor's colour as an accent.
+- Inside news **clusters**, child articles inherit the monitor colour so a monitor match is visible even when the cluster is collapsed.
+
+Panel id is `monitors`; canonical component is `src/components/MonitorPanel.ts`. Title from i18n (`panels.monitors`); config name: "My Monitors".
+
+## How you reach it
+
+- **Cmd+K**: type *monitor* or *keyword*.
+- **Availability by variant**: registered and enabled by default in the **full/geopolitical** (`priority: 2`), **tech** (`priority: 2`), **finance** (`priority: 2`), and **commodity** (`priority: 2`) variants. Not present in the happy variant. Source: `monitors` entries in `FULL_PANELS` (`:62`), `TECH_PANELS` (`:282`), `FINANCE_PANELS` (`:473`), `COMMODITY_PANELS` (`:775`) of `src/config/panels.ts`.
+
+## Data sources
+
+None — monitors are entirely client-side. Keyword lists persist to browser `localStorage` so they survive reloads without an account. Matching is a substring check applied in-app against incoming news items.
+
+## Refresh cadence
+
+Real-time, client-side: matches are applied as news items arrive; no polling or server-side cadence.
+
+## Tier & gating
+
+**Free.** No `premium` flag in any variant registration.
+
+## Related
+
+- [Features → Custom Monitors](/features#custom-monitors) — longer-form explanation of how monitors integrate with news feeds and clusters.

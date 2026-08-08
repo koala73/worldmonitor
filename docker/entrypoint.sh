@@ -14,5 +14,10 @@ if [ -d /run/secrets ]; then
 fi
 
 export LOCAL_API_PORT="${LOCAL_API_PORT:-46123}"
-envsubst '$LOCAL_API_PORT' < /etc/nginx/nginx.conf.template > /tmp/nginx.conf
+if [ -z "${LOCAL_API_TOKEN:-}" ]; then
+  LOCAL_API_TOKEN="$(node -e "console.log(require('node:crypto').randomBytes(32).toString('base64url'))")"
+  export LOCAL_API_TOKEN
+fi
+
+envsubst '$LOCAL_API_PORT $LOCAL_API_TOKEN' < /etc/nginx/nginx.conf.template > /tmp/nginx.conf
 exec /usr/bin/supervisord -c /etc/supervisor/conf.d/worldmonitor.conf

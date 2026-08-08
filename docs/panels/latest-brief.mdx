@@ -1,0 +1,77 @@
+---
+title: "Latest Brief"
+description: "The WorldMonitor AI intelligence brief, surfaced in the dashboard as a single card that links to a signed magazine-style reader and shareable public URL."
+---
+
+The **Latest Brief** panel is the dashboard surface for the WorldMonitor Brief — an AI-generated intelligence digest that synthesises the most significant events in the reader's configured digest window into a structured, source-attributed read. The default product cadence is daily, but digest rules can also produce twice-daily or weekly slots through `digestMode`. The panel simply mirrors the latest composed brief for the signed-in reader at the moment they open the dashboard.
+
+For the canonical pipeline details, see [News Digest and Briefing Methodology](/methodology/news-digest-and-briefing).
+
+## What the panel shows
+
+Three states are rendered, depending on the reader and the composer's progress:
+
+- **Ready** — a cover-card thumbnail, the brief's greeting, the edition's thread count, and a **Read brief →** button that opens the signed magazine URL in a new tab.
+- **Composing** — a soft empty state when the composer has not yet produced the current slot. The panel auto-refreshes on the next user-visible interaction; no manual retry is needed.
+- **Locked** — a premium-upgrade overlay drawn by the base panel framework when the reader does not meet the PRO gate.
+
+Panel id is `latest-brief`; canonical component is `src/components/LatestBriefPanel.ts`.
+
+## How you reach it
+
+- **Cmd+K** — type *brief* (matches "Panel: Latest Brief" in the command palette).
+- **Availability by variant**: registered and enabled by default in the **full/geopolitical**, **tech**, **finance**, and **commodity** variants (all of them as `premium: 'locked'`). Not present in the happy variant. Source: `FULL_PANELS`, `TECH_PANELS`, `FINANCE_PANELS`, `COMMODITY_PANELS` in `src/config/panels.ts`.
+
+Clicking **Read brief →** opens the full magazine-style reader in a new tab. Sharing the brief is a separate, explicit action — see [AI Brief Endpoints](/api-brief) for how share links are materialised.
+
+## Data sources
+
+The panel calls `GET /api/latest-brief` (Clerk JWT required, PRO gated). The response is either the ready payload (`issueDate`, `dateLong`, `greeting`, `threadCount`, `magazineUrl`) or a `{ status: "composing", issueDate }` stub. The signed `magazineUrl` is generated server-side — the HMAC signing secret never lives in the client bundle.
+
+The brief itself is composed by a Railway job from:
+
+- Curated news aggregates and GDELT signals
+- The intelligence, conflict, and markets caches
+- Per-reader personalisation if the user has configured preferences, including a followed-country lift that only reorders stories inside the same severity lane
+
+**Redis key shape** (for anyone inspecting the feature from the backend):
+
+- The composer writes the envelope to `brief:{userId}:{issueSlot}` — where `issueSlot` is computed by `issueSlotInTz(nowMs, userTz)`, so two same-day compose runs in different time-of-day slots produce distinct keys.
+- A **latest pointer** is written atomically alongside: `brief:latest:{userId}` → `{ "issueSlot": "<slot>" }`. Readers (the dashboard panel, the share-URL endpoint) resolve the current brief by reading the pointer first, then fetching the slot-keyed envelope.
+- TTL is 7 days on both keys; if the pointer is absent, the reader treats the user as having no recent brief.
+
+Reference: `scripts/seed-digest-notifications.mjs` (writer) and `api/latest-brief.ts` (reader).
+
+## Refresh cadence
+
+- **Composer**: the Railway digest cron composes for eligible users when their `digestMode` is due. Default is daily; twice-daily and weekly modes are supported by the same writer.
+- **Panel — ready state**: reads on panel load; subsequent reads happen only on user-visible refresh triggers. No polling timer while the brief is already displayed.
+- **Panel — composing state**: schedules a 60-second re-poll (`COMPOSING_POLL_MS = 60_000` in `src/components/LatestBriefPanel.ts`) so the panel transitions from `composing` to `ready` on the next composer tick without requiring a full page reload. The poll timer is cleared when the panel leaves the composing state.
+
+The panel follows the latest slot pointer rather than assuming a strictly
+calendar-daily edition. If the composer has not produced the current/requested
+slot yet, the panel shows `composing` and auto-promotes to `ready` once the
+composer writes the payload.
+
+## Personalisation and editorial exclusions
+
+Followed-country personalisation is a soft lift, not a filter and not a
+cross-severity promotion. The nominal `FOLLOWED_BIAS_MULTIPLIER` is `1.25`
+and is env-tunable, but the live composer applies it as a stable severity-lane
+sort: a followed-country story can move ahead of non-followed stories in the
+same lane, while lower-severity stories never jump above higher-severity
+stories. Free-tier readers can follow up to `3` countries.
+
+The brief excludes op-ed/opinion and analysis columns, feel-good/lifestyle
+items, and ephemeral live-coverage teasers such as "WATCH LIVE" pages. Those
+items can be acceptable in live news surfaces, but delayed briefs are meant to
+summarise durable event-driven intelligence.
+
+## Tier & gating
+
+Latest Brief is **PRO**. The panel is registered with `premium: 'locked'` in `src/config/panels.ts`, so free-tier readers see the upgrade overlay and never see the brief body. Verification runs server-side in `api/latest-brief.ts` — a valid Clerk JWT and an active PRO entitlement are both required; otherwise the endpoint returns `403 pro_required`. No content is exposed over the wire for non-PRO readers.
+
+## API reference
+
+- [AI Brief Endpoints](/api-brief) — covers `/api/latest-brief`, `/api/brief/share-url`, the public `/api/brief/public/{hash}` read, the per-user per-slot read, and the social-ready PNG carousel route.
+- [News Digest and Briefing Methodology](/methodology/news-digest-and-briefing) — source selection, deduplication, LLM grounding, and bias controls.

@@ -20,4 +20,14 @@ message GetDisplacementSummaryRequest {
 message GetDisplacementSummaryResponse {
   // The displacement summary.
   DisplacementSummary summary = 1;
+
+  // Time the seed or live fallback snapshot was fetched, as Unix epoch
+  // milliseconds. A value of 0 means the snapshot is unavailable/degraded, not
+  // that global displacement is zero.
+  int64 fetched_at = 2 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
+
+  // True when summary came from a seed snapshot or live fallback. False means
+  // an absent/empty summary is graceful degradation because the snapshot is
+  // unavailable.
+  bool data_available = 3;
 }

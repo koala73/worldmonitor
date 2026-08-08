@@ -1,0 +1,147 @@
+---
+title: "新闻源"
+description: "新闻源目录汇总 WorldMonitor 按区域、主题与平台变体划分的所有内容流面板，包括中东局势、亚太动态、欧洲事务、能源市场、金融资讯、军事冲突与前沿科技等垂直方向，各面板共享统一的框架、筛选、订阅与关键词高亮能力，并按主题或地理范围严格限定内容源，帮助用户快速定位相关实时新闻情报。"
+---
+
+WorldMonitor 的每个变体都附有一组**内容流面板** — 区域新闻、主题新闻、科技/创业源、金融和大宗商品流、能源头条和 happy 变体的正能量流。它们共享通用面板框架：排名标题、来源归属、活动追踪和 Cmd+K / 自定义监控器高亮。本页是集合参考，使每个面板的行为可查找，而无需为每个源写一页。
+
+以下表格中的每个面板名称也注册在 `src/config/panels.ts` 的至少一个 `*_PANELS` 块中。当你打开一个面板且内容为空时，请检查 [数据来源](/zh/data-sources) 和全局 [健康端点](/zh/health-endpoints) 了解底层源的状态。
+
+关于这些源共享的评分、新鲜度、去重、故事追踪、摘要过滤、冷却、LLM 和偏见控制，请参见权威的
+[新闻摘要与简报方法论](/zh/methodology/news-digest-and-briefing)。
+
+## 区域新闻
+
+区域面板将世界限定为一个大区的新闻流，语言覆盖和来源精选针对该区域优化。它们在 geopolitical 变体中共享 `regional news` 族，并出现在 Cmd+K 的 "News" 组中。
+
+| 面板 id | 标题 | 变体 |
+|---|---|---|
+| `politics` | 世界新闻 | Full / tech / finance / commodity |
+| `us` | 美国 | Full |
+| `europe` | 欧洲 | Full |
+| `middleeast` | 中东 | Full |
+| `africa` | 非洲 | Full |
+| `latam` | 拉丁美洲 | Full |
+| `asia` | 亚太 | Full |
+
+全部免费。来源精选和权限位于 `src/config/variants/full.ts`（及等价文件）。
+
+## 主题新闻
+
+按主题限定的新闻源 — 每个面板是其领域的规范新闻视图。主题面板通常与匹配的情报/数据面板配对（例如 Crypto News 旁边是 Crypto Sectors）。
+
+| 面板 id | 标题 | 典型变体 |
+|---|---|---|
+| `economic-news` | 经济新闻 | Full / finance / commodity |
+| `markets-news` | 市场新闻 | Finance |
+| `crypto-news` | 加密货币新闻 | Finance |
+| `climate-news` | 气候新闻 | Full / commodity |
+| `mining-news` | 矿业新闻 | Commodity |
+| `commodity-news` | 大宗商品新闻 | Commodity |
+| `commodities-news` | 商品新闻 | Finance |
+
+全部免费。
+
+## 科技/创业流（tech 变体）
+
+tech 变体附有大量覆盖创业生态、基础设施趋势和科技政策信号的内容流。它们出现在 tech 变体的面板网格中，可通过 Cmd+K 访问。
+
+| 面板 id | 标题 |
+|---|---|
+| `startups` | 创业与风投 |
+| `unicorns` | 独角兽 |
+| `accelerators` | 加速器与 Demo Day |
+| `regionalStartups` | 全球创业新闻 |
+| `fintech` | 金融科技与交易科技 |
+| `ipo` | IPO 与 SPAC |
+| `layoffs` | 裁员追踪器 |
+| `producthunt` | Product Hunt |
+| `thinktanks` | 智库 |
+| `vcblogs` | 风投洞察与随笔 |
+| `defense-patents` | 研发信号 |
+| `ai-regulation` | AI 监管仪表盘 |
+| `tech-hubs` | 科技热点 |
+| `ai` | AI/ML 新闻 / AI/ML |
+| `cloud` | 云计算 |
+| `hardware` | 硬件 |
+| `dev` | 开发工具 |
+| `security` | 安全 |
+| `github` | GitHub |
+
+全部免费。具体子源配置在 `src/config/variants/tech.ts`。
+
+## 金融流（finance 变体）
+
+finance 变体的内容流面板更紧凑、更市场导向。
+
+| 面板 id | 标题 |
+|---|---|
+| `bonds` | 债券 |
+| `centralbanks` | 央行观察 |
+| `derivatives` | 衍生品与期权 |
+| `forex` | 外汇 |
+| `institutional` | 机构 |
+| `policy` | 政策 |
+| `fin-regulation` | 金融监管 |
+| `commodity-regulation` | 监管与政策 |
+| `analysis` | 市场分析 |
+
+全部免费。流配置位于 `src/config/variants/finance.ts`。
+
+## 能源流（energy 变体）
+
+energy 变体附有一组聚焦的内容流，覆盖实时能源头条、油气市场和供应链咽喉要道。站点具有客户端
+`ENERGY_FEEDS`；服务器摘要当前将 `variant=energy` 规范化为 `full`，因此仅在摘要中缺失的能源专属类别可使用直接按源的兜底。
+
+| 面板 id | 标题 |
+|---|---|
+| `live-news` | 能源头条 |
+| `energy` | 能源市场新闻 |
+| `supply-chain` | 咽喉要道与航线 |
+
+全部免费。流配置位于 `src/config/variants/energy.ts` 和 `src/config/feeds.ts`。
+
+## Happy 变体源
+
+happy 变体（正能量新闻产品）以精选的建设性新闻面替代以冲突为中心的源。
+
+| 面板 id | 标题 |
+|---|---|
+| `species` | 保护胜利 |
+| `breakthroughs` | 科学突破 |
+| `progress` | 进步信号 |
+| `spotlight` | 聚光灯 |
+| `giving` | 捐赠与公益 |
+| `digest` | 每日摘要 |
+| `events` | 正面事件 |
+| `funding` | 融资 |
+| `counters` | 实时计数器 |
+| `gov` | 政府行动 |
+| `renewable` | 可再生能源 |
+
+全部免费。流配置位于 `src/config/variants/happy.ts`。
+
+## 所有新闻面板的共享行为
+
+- **活动追踪** — 新到达的条目获得标准的新条目视觉效果。
+- **自定义监控器高亮** — 匹配的文章以 [监控器](/zh/panels/monitors) 颜色作为强调色展示（包括聚类内）。
+- **Cmd+K 可发现性** — 每个面板可通过其标题和类别搜索。
+- **默认免费** — 没有新闻源面板是 PRO 门控的。
+
+### 支撑端点
+
+| 源族 | 端点 | 备注 |
+|---|---|---|
+| 摘要源 | `GET /api/news/v1/list-feed-digest` | 按站点变体预聚合的 RSS 摘要。 |
+| 摘要缓存查询 | `GET /api/news/v1/summarize-article-cache` | 用于确定性文章摘要键的仅缓存 GET；使用 `POST /api/news/v1/summarize-article` 生成。 |
+| arXiv 论文 | `GET /api/research/v1/list-arxiv-papers` | ResearchService 学术论文源。 |
+| 热门仓库 | `GET /api/research/v1/list-trending-repos` | ResearchService GitHub 热门源。 |
+| Hacker News 条目 | `GET /api/research/v1/list-hackernews-items` | ResearchService Hacker News 源。 |
+| 捐赠活动 | `GET /api/giving/v1/get-giving-summary` | happy 变体捐赠面使用的全球个人捐赠与公益摘要。 |
+
+## 相关
+
+- [信号情报](/zh/signal-intelligence) — 新闻源如何分类、去重和排名的结构性概述。
+- [新闻摘要与简报方法论](/zh/methodology/news-digest-and-briefing) — 权威的评分、新鲜度、故事追踪、摘要过滤、冷却、LLM 和偏见控制。
+- [数据来源](/zh/data-sources) — 服务器摘要源清单和更广泛的上游来源列表。
+- [我的监控器](/zh/panels/monitors) — 关键词监控器如何跨新闻源工作。

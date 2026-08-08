@@ -23,6 +23,13 @@ import { getEuGasStorage } from './get-eu-gas-storage';
 import { getEuYieldCurve } from './get-eu-yield-curve';
 import { getEuFsi } from './get-eu-fsi';
 import { getEconomicStress } from './get-economic-stress';
+import { getFaoFoodPriceIndex } from './get-fao-food-price-index';
+import { getOilStocksAnalysis } from './get-oil-stocks-analysis';
+import { getOilInventories } from './get-oil-inventories';
+import { getEnergyCrisisPolicies } from './get-energy-crisis-policies';
+import { listGlobalTenders } from './list-global-tenders';
+import { getChinaMacroSnapshot } from './get-china-macro-snapshot';
+import { getChinaActivityNowcast } from './get-china-activity-nowcast';
 
 export const economicHandler: EconomicServiceHandler = {
   getFredSeries,
@@ -48,4 +55,11 @@ export const economicHandler: EconomicServiceHandler = {
   getEuYieldCurve,
   getEuFsi,
   getEconomicStress,
+  getFaoFoodPriceIndex,
+  getOilStocksAnalysis,
+  getOilInventories,
+  getEnergyCrisisPolicies,
+  listGlobalTenders,
+  getChinaMacroSnapshot,
+  getChinaActivityNowcast,
 };

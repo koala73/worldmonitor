@@ -4,8 +4,17 @@ import type { IntelligenceCache } from '@/app/app-context';
 import type { GpsJamData } from '@/services/gps-interference';
 import type { ConvergenceCard } from '@/services/correlation-engine';
 import { t } from '@/services/i18n';
+import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
+import { showToast } from '@/utils/toast';
+import { buildDataReportDocument, printReportDocument, sanitizeExportData } from '@/utils/export-report';
+import { SUPPORTED_EXPORT_FORMATS, type DataExportFormat } from '@/services/gates/export-resolver';
 
-type ExportFormat = 'json' | 'csv';
+// Iran-events domain sunset (war ended 2026-07). Default OFF: omit the IRAN
+// EVENTS CSV block. Set VITE_ENABLE_IRAN_ATTACKS=true to restore. Guarded so
+// node:test never dereferences import.meta.env.
+const IRAN_ATTACKS_ENABLED = typeof window !== 'undefined' && import.meta.env.VITE_ENABLE_IRAN_ATTACKS === 'true';
+
+type ExportFormat = DataExportFormat;
 
 export interface ExportMeta {
   exportedAt: string;
@@ -27,42 +36,26 @@ export interface ExportData {
   monitors?: Monitor[];
 }
 
-// Strip LLM-derived threat annotations so AI does not feed back into itself.
-// Keyword and ML (local model) classifications are retained.
-function sanitizeNewsItem(item: NewsItem): NewsItem {
-  if (item.threat?.source !== 'llm') return item;
-  const { threat: _t, ...rest } = item;
-  return rest as NewsItem;
-}
-
-function sanitizeCluster(cluster: ClusteredEvent): ClusteredEvent {
-  return {
-    ...cluster,
-    threat: cluster.threat?.source === 'llm' ? undefined : cluster.threat,
-    allItems: cluster.allItems.map(sanitizeNewsItem),
-  };
-}
-
-function sanitizeData(data: ExportData): ExportData {
-  return {
-    ...data,
-    news: data.news?.map(sanitizeNewsItem),
-    newsClusters: data.newsClusters?.map(sanitizeCluster),
-    newsByCategory: data.newsByCategory
-      ? Object.fromEntries(
-          Object.entries(data.newsByCategory).map(([k, items]) => [k, items.map(sanitizeNewsItem)]),
-        )
-      : undefined,
-  };
-}
+// The LLM-annotation stripper lives in export-report.ts so all three exporters
+// (JSON, CSV, PDF) share one implementation and it can be unit-tested without
+// a DOM. Keyword and ML (local model) classifications are retained.
 
 export function exportToJSON(data: ExportData, filename = 'worldmonitor-export'): void {
-  const jsonStr = JSON.stringify(sanitizeData(data), null, 2);
+  const jsonStr = JSON.stringify(sanitizeExportData(data), null, 2);
   downloadFile(jsonStr, `${filename}.json`, 'application/json');
 }
 
+/**
+ * PDF v1 (KTD7): a printable DATA report, not a dashboard screenshot. The
+ * builder sanitizes and escapes internally; this wrapper only owns the print
+ * surface and its failure toast.
+ */
+export function exportToPDF(data: ExportData): Promise<void> {
+  return printReportDocument(buildDataReportDocument(data));
+}
+
 export function exportToCSV(data: ExportData, filename = 'worldmonitor-export'): void {
-  const clean = sanitizeData(data);
+  const clean = sanitizeExportData(data);
   const lines: string[] = [];
 
   lines.push(`# WorldMonitor Export — ${new Date(clean.timestamp).toISOString()}`);
@@ -163,7 +156,7 @@ export function exportToCSV(data: ExportData, filename = 'worldmonitor-export'):
       lines.push('');
     }
 
-    if (intel.iranEvents && intel.iranEvents.length > 0) {
+    if (IRAN_ATTACKS_ENABLED && intel.iranEvents && intel.iranEvents.length > 0) {
       lines.push('=== IRAN EVENTS ===');
       lines.push('Title,Category,Location,Severity,Timestamp');
       intel.iranEvents.forEach(e => {
@@ -289,6 +282,404 @@ export interface CountryBriefExport {
   generatedAt: string;
 }
 
+export interface CountryEvidenceSourceInput {
+  title?: string | null;
+  source?: string | null;
+  link?: string | null;
+  pubDate?: string | Date | null;
+}
+
+export interface CountryEvidenceBundleInput {
+  country: string;
+  code: string;
+  context?: string;
+  score?: number;
+  level?: string;
+  trend?: string;
+  components?: CountryBriefExport['components'];
+  signals?: Record<string, unknown>;
+  brief?: string;
+  headlines?: CountryEvidenceSourceInput[];
+  generatedAt?: string;
+  exportedAt?: string;
+  briefGeneratedAt?: string;
+  briefCached?: boolean;
+}
+
+export interface CountryEvidenceSignal {
+  label: string;
+  value: string;
+}
+
+export interface CountryEvidenceSource {
+  title: string;
+  publisher?: string;
+  url?: string;
+  publishedAt?: string;
+  freshness: string;
+  note?: string;
+}
+
+export interface CountryEvidenceBundle {
+  country: string;
+  code: string;
+  context: string;
+  exportedAt: string;
+  generatedAt?: string;
+  briefGeneratedAt?: string;
+  briefCacheStatus?: 'cached' | 'fresh';
+  score?: number;
+  level?: string;
+  trend?: string;
+  components?: CountryBriefExport['components'];
+  signals: CountryEvidenceSignal[];
+  brief?: string;
+  sources: CountryEvidenceSource[];
+  freshnessNotes: string[];
+  provenanceDisclaimer: string;
+}
+
+export const COUNTRY_EVIDENCE_PROVENANCE_DISCLAIMER =
+  'This WorldMonitor evidence bundle packages user-visible context and source metadata for analyst handoff. It is not a legal evidentiary record; verify source availability, timestamps, and claims before reuse.';
+
+const SIGNAL_LABELS: Record<string, string> = {
+  criticalNews: 'Critical news',
+  protests: 'Protests',
+  militaryFlights: 'Military flights nearby',
+  militaryVessels: 'Military vessels nearby',
+  militaryFlightsInCountry: 'Military flights inside borders',
+  militaryVesselsInCountry: 'Military vessels inside borders',
+  outages: 'Internet outages',
+  aisDisruptions: 'AIS disruptions',
+  satelliteFires: 'Satellite fires',
+  radiationAnomalies: 'Radiation anomalies',
+  temporalAnomalies: 'Temporal anomalies',
+  cyberThreats: 'Cyber threats',
+  earthquakes: 'Earthquakes',
+  displacementOutflow: 'Displacement outflow',
+  climateStress: 'Climate stress',
+  conflictEvents: 'Conflict events',
+  activeStrikes: 'Active strikes',
+  orefSirens: 'Active OREF sirens',
+  orefHistory24h: 'OREF sirens in 24h',
+  aviationDisruptions: 'Aviation disruptions',
+  travelAdvisories: 'Travel advisories',
+  travelAdvisoryMaxLevel: 'Maximum travel advisory',
+  gpsJammingHexes: 'GPS jamming zones',
+  thermalEscalations: 'Thermal escalations',
+  sanctionsDesignations: 'Sanctions designations',
+  sanctionsNewDesignations: 'New sanctions designations',
+};
+
+const SECRET_ASSIGNMENT_RE = /\b((?:[a-z0-9]+[_-])*(?:api[_-]?key|access[_-]?key(?:[_-]?id)?|secret(?:[_-]?access[_-]?key)?|client[_-]?secret|token|password|authorization|cookie|session))\b(\s*)([:=])(\s*)(["']?)([^"'\s,;]{6,})(["']?)/gi;
+const BEARER_RE = /\bBearer\s+[A-Za-z0-9._~+/=-]{12,}/g;
+const AWS_ACCESS_KEY_ID_RE = /\b(?:AKIA|ASIA)[A-Z0-9]{16}\b/g;
+const AWS_SECRET_ACCESS_KEY_RE = /\b(?=[A-Za-z0-9/+=]{40}\b)(?=[A-Za-z0-9/+=]{0,39}[A-Z])(?=[A-Za-z0-9/+=]{0,39}[a-z])(?=[A-Za-z0-9/+=]{0,39}\d)[A-Za-z0-9/+=]{40}\b/g;
+const COMMON_SECRET_RE = /\b(?:sk[-_][A-Za-z0-9_-]{12,}|wm_[A-Za-z0-9_=-]{12,}|ghp_[A-Za-z0-9_=-]{12,}|github_pat_[A-Za-z0-9_=-]{12,}|AIza[A-Za-z0-9_-]{20,}|xox[abprsc]-[A-Za-z0-9-]{10,})\b/g;
+const JWT_RE = /\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\b/g;
+const EMAIL_RE = /\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/gi;
+const USER_ID_RE = /\buser_[A-Za-z0-9_-]{6,}\b/g;
+const SECRET_URL_PARAM_NAME_RE = /(?:^|[_\-.])(?:api[_\-.]?key|access[_\-.]?key(?:[_\-.]?id)?|awsaccess[_\-.]?key(?:[_\-.]?id)?|secret(?:[_\-.]?access[_\-.]?key)?|client[_\-.]?secret|token|id[_\-.]?token|auth(?:orization)?|password|passwd|pwd|cookie|session|jwt|signature|sig|credential|key)(?:$|[_\-.])/i;
+
+function regexMatches(pattern: RegExp, value: string): boolean {
+  pattern.lastIndex = 0;
+  const matches = pattern.test(value);
+  pattern.lastIndex = 0;
+  return matches;
+}
+
+function isSecretishAssignmentValue(value: string): boolean {
+  const clean = value.trim();
+  if (
+    regexMatches(AWS_ACCESS_KEY_ID_RE, clean)
+    || regexMatches(AWS_SECRET_ACCESS_KEY_RE, clean)
+    || regexMatches(COMMON_SECRET_RE, clean)
+    || regexMatches(JWT_RE, clean)
+  ) {
+    return true;
+  }
+
+  if (clean.length < 16 || !/[A-Za-z]/.test(clean) || !/\d/.test(clean)) return false;
+  const classes = [
+    /[a-z]/.test(clean),
+    /[A-Z]/.test(clean),
+    /\d/.test(clean),
+    /[-_=+/]/.test(clean),
+  ].filter(Boolean).length;
+  return classes >= 3 || clean.length >= 24;
+}
+
+function sanitizeEvidenceText(value: unknown): string {
+  return String(value ?? '')
+    .replace(BEARER_RE, 'Bearer [redacted-secret]')
+    .replace(SECRET_ASSIGNMENT_RE, (match, key, beforeOperator, operator, afterOperator, openingQuote, secretValue, closingQuote) => {
+      if (operator === ':' && !isSecretishAssignmentValue(secretValue)) return match;
+      return `${key}${beforeOperator}${operator}${afterOperator}${openingQuote}[redacted-secret]${closingQuote}`;
+    })
+    .replace(AWS_ACCESS_KEY_ID_RE, '[redacted-secret]')
+    .replace(AWS_SECRET_ACCESS_KEY_RE, '[redacted-secret]')
+    .replace(COMMON_SECRET_RE, '[redacted-secret]')
+    .replace(JWT_RE, '[redacted-secret]')
+    .replace(EMAIL_RE, '[redacted-email]')
+    .replace(USER_ID_RE, '[redacted-user-id]')
+    .trim();
+}
+
+function isSensitiveUrlParamName(name: string): boolean {
+  const normalized = name
+    .replace(/([a-z0-9])([A-Z])/g, '$1_$2')
+    .toLowerCase();
+  return SECRET_URL_PARAM_NAME_RE.test(normalized);
+}
+
+function sanitizeEvidenceUrlSearchParams(parsed: URL): void {
+  if (!parsed.search) return;
+  const sanitized = new URLSearchParams();
+  let changed = false;
+  parsed.searchParams.forEach((value, key) => {
+    const sensitiveKey = isSensitiveUrlParamName(key);
+    const sanitizedValue = sensitiveKey ? '[redacted-secret]' : sanitizeEvidenceText(value);
+    if (sensitiveKey || sanitizedValue !== value) changed = true;
+    sanitized.append(key, sanitizedValue);
+  });
+  if (changed) parsed.search = sanitized.toString() ? `?${sanitized.toString()}` : '';
+}
+
+function sanitizeEvidenceUrlFragment(parsed: URL): void {
+  if (!parsed.hash) return;
+  const fragment = parsed.hash.slice(1);
+  const sanitized = sanitizeEvidenceText(fragment);
+  if (sanitized !== fragment) parsed.hash = sanitized;
+}
+
+function normalizeEvidenceUrl(value: unknown): string | undefined {
+  const raw = String(value ?? '').trim();
+  if (!raw) return undefined;
+  try {
+    const parsed = new URL(raw);
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return undefined;
+    if (parsed.username) parsed.username = '[redacted-user-id]';
+    if (parsed.password) parsed.password = '[redacted-secret]';
+    sanitizeEvidenceUrlSearchParams(parsed);
+    sanitizeEvidenceUrlFragment(parsed);
+    return parsed.toString().replace(/[()]/g, (char) => char === '(' ? '%28' : '%29');
+  } catch {
+    return undefined;
+  }
+}
+
+function normalizeIsoTimestamp(value: unknown): string | undefined {
+  if (!value) return undefined;
+  const date = value instanceof Date ? value : new Date(String(value));
+  const time = date.getTime();
+  return Number.isFinite(time) ? date.toISOString() : undefined;
+}
+
+function signalLabel(key: string): string {
+  return SIGNAL_LABELS[key] ?? key
+    .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
+    .replace(/[_-]+/g, ' ')
+    .replace(/\b\w/g, (char) => char.toUpperCase());
+}
+
+function buildEvidenceSignals(signals: Record<string, unknown> | undefined): CountryEvidenceSignal[] {
+  if (!signals) return [];
+  return Object.entries(signals)
+    .filter(([, value]) => {
+      if (typeof value === 'number') return value > 0;
+      if (typeof value === 'string') return value.trim().length > 0;
+      return value != null && value !== false;
+    })
+    .map(([key, value]) => ({
+      label: signalLabel(key),
+      value: sanitizeEvidenceText(value),
+    }));
+}
+
+function freshnessForSource(publishedAt: string | undefined, exportedAt: string): string {
+  if (!publishedAt) return 'Published timestamp unavailable; freshness could not be computed.';
+  const published = new Date(publishedAt).getTime();
+  const exported = new Date(exportedAt).getTime();
+  if (!Number.isFinite(published) || !Number.isFinite(exported)) {
+    return 'Published timestamp unavailable; freshness could not be computed.';
+  }
+  const ageMs = Math.max(0, exported - published);
+  const ageHours = Math.floor(ageMs / 3_600_000);
+  if (ageHours < 48) return `${ageHours}h old at export.`;
+  return `${Math.floor(ageHours / 24)}d old at export.`;
+}
+
+function buildEvidenceSources(
+  headlines: CountryEvidenceSourceInput[] | undefined,
+  exportedAt: string,
+): CountryEvidenceSource[] {
+  return (headlines ?? [])
+    .filter((headline) => Boolean(
+      sanitizeEvidenceText(headline.title)
+      || sanitizeEvidenceText(headline.source)
+      || normalizeEvidenceUrl(headline.link)
+      || normalizeIsoTimestamp(headline.pubDate),
+    ))
+    .map((headline, index) => {
+      const title = sanitizeEvidenceText(headline.title) || `Source ${index + 1} (title unavailable)`;
+      const publisher = sanitizeEvidenceText(headline.source) || undefined;
+      const url = normalizeEvidenceUrl(headline.link);
+      const publishedAt = normalizeIsoTimestamp(headline.pubDate);
+      const hadUnsafeOrMissingUrl = Boolean(headline.link) && !url;
+      return {
+        title,
+        publisher,
+        url,
+        publishedAt,
+        freshness: freshnessForSource(publishedAt, exportedAt),
+        note: url
+          ? undefined
+          : hadUnsafeOrMissingUrl
+            ? 'URL omitted because it was missing or unsafe.'
+            : 'URL unavailable; citation link was not provided.',
+      };
+    });
+}
+
+function buildFreshnessNotes(input: CountryEvidenceBundleInput, exportedAt: string): string[] {
+  const notes: string[] = [`Exported at ${exportedAt}.`];
+  const briefGeneratedAt = normalizeIsoTimestamp(input.briefGeneratedAt ?? input.generatedAt);
+  if (briefGeneratedAt) {
+    notes.push(`Brief generated at ${briefGeneratedAt}${input.briefCached === true ? ' from cache' : ''}.`);
+  } else {
+    notes.push('Brief generation timestamp unavailable.');
+  }
+  if (!input.headlines || input.headlines.length === 0) {
+    notes.push('No headline source list was available for this export.');
+  }
+  return notes;
+}
+
+function markdownListValue(value: string | number | undefined): string {
+  const clean = sanitizeEvidenceText(value);
+  return clean || 'Unavailable';
+}
+
+function escapeMarkdownLinkText(value: string): string {
+  return value.replace(/[[\]\\]/g, '\\$&');
+}
+
+function escapeMarkdownInline(value: string): string {
+  return sanitizeEvidenceText(value)
+    .replace(/\s+/g, ' ')
+    .replace(/([\\`*_{}\[\]()#+\-.!|<>])/g, '\\$1');
+}
+
+function renderQuotedEvidenceBlock(value: string): string[] {
+  return value.split(/\r?\n/).map((line) => `> ${line}`);
+}
+
+export function buildCountryEvidenceBundle(input: CountryEvidenceBundleInput): CountryEvidenceBundle {
+  const exportedAt = normalizeIsoTimestamp(input.exportedAt) ?? new Date().toISOString();
+  const generatedAt = normalizeIsoTimestamp(input.generatedAt);
+  const briefGeneratedAt = normalizeIsoTimestamp(input.briefGeneratedAt ?? input.generatedAt);
+  const brief = sanitizeEvidenceText(input.brief);
+  return {
+    country: sanitizeEvidenceText(input.country),
+    code: sanitizeEvidenceText(input.code).toUpperCase(),
+    context: sanitizeEvidenceText(input.context) || 'Country dossier',
+    exportedAt,
+    generatedAt,
+    briefGeneratedAt,
+    briefCacheStatus: input.briefCached === true ? 'cached' : input.briefCached === false ? 'fresh' : undefined,
+    score: input.score,
+    level: sanitizeEvidenceText(input.level) || undefined,
+    trend: sanitizeEvidenceText(input.trend) || undefined,
+    components: input.components,
+    signals: buildEvidenceSignals(input.signals),
+    brief: brief || undefined,
+    sources: buildEvidenceSources(input.headlines, exportedAt),
+    freshnessNotes: buildFreshnessNotes(input, exportedAt),
+    provenanceDisclaimer: COUNTRY_EVIDENCE_PROVENANCE_DISCLAIMER,
+  };
+}
+
+export function renderCountryEvidenceMarkdown(bundle: CountryEvidenceBundle): string {
+  const lines: string[] = [];
+  lines.push(`# WorldMonitor Evidence Bundle: ${bundle.country} (${bundle.code})`);
+  lines.push('');
+  lines.push(`- Context: ${markdownListValue(bundle.context)}`);
+  lines.push(`- Exported at: ${markdownListValue(bundle.exportedAt)}`);
+  if (bundle.generatedAt) lines.push(`- Bundle generated at: ${markdownListValue(bundle.generatedAt)}`);
+  if (bundle.briefGeneratedAt) {
+    const cacheSuffix = bundle.briefCacheStatus ? ` (${bundle.briefCacheStatus})` : '';
+    lines.push(`- Brief generated at: ${markdownListValue(bundle.briefGeneratedAt)}${cacheSuffix}`);
+  }
+  lines.push('');
+
+  lines.push('## Risk Context');
+  if (bundle.score != null) {
+    lines.push(`- Instability score: ${bundle.score}/100`);
+    lines.push(`- Level: ${markdownListValue(bundle.level)}`);
+    lines.push(`- Trend: ${markdownListValue(bundle.trend)}`);
+  } else {
+    lines.push('- Instability score: unavailable in this dossier.');
+  }
+  if (bundle.components) {
+    lines.push(`- Components: unrest ${bundle.components.unrest}, conflict ${bundle.components.conflict}, security ${bundle.components.security}, information ${bundle.components.information}`);
+  }
+  lines.push('');
+
+  lines.push('## Selected Signals');
+  if (bundle.signals.length > 0) {
+    bundle.signals.forEach((signal) => {
+      lines.push(`- ${signal.label}: ${signal.value}`);
+    });
+  } else {
+    lines.push('- No active signal counts were available in this dossier.');
+  }
+  lines.push('');
+
+  if (bundle.brief) {
+    lines.push('## Intelligence Brief');
+    lines.push('');
+    lines.push(...renderQuotedEvidenceBlock(bundle.brief));
+    lines.push('');
+  }
+
+  lines.push('## Sources');
+  if (bundle.sources.length > 0) {
+    bundle.sources.forEach((source, index) => {
+      const title = source.url
+        ? `[${escapeMarkdownLinkText(source.title)}](${source.url})`
+        : escapeMarkdownInline(source.title);
+      const label = `${index + 1}. ${title}`;
+      lines.push(label);
+      lines.push(`   - Publisher: ${escapeMarkdownInline(markdownListValue(source.publisher))}`);
+      lines.push(`   - Published at: ${markdownListValue(source.publishedAt)}`);
+      lines.push(`   - Freshness: ${source.freshness}`);
+      if (source.note) lines.push(`   - Note: ${source.note}`);
+    });
+  } else {
+    lines.push('- No source links were available for this export.');
+  }
+  lines.push('');
+
+  lines.push('## Freshness Notes');
+  bundle.freshnessNotes.forEach((note) => lines.push(`- ${note}`));
+  lines.push('');
+
+  lines.push('## Provenance Disclaimer');
+  lines.push(bundle.provenanceDisclaimer);
+  lines.push('');
+  return lines.join('\n');
+}
+
+export function exportCountryEvidenceMarkdown(data: CountryEvidenceBundleInput): void {
+  const bundle = buildCountryEvidenceBundle(data);
+  const timestamp = bundle.exportedAt.replace(/[:.]/g, '-');
+  downloadFile(
+    renderCountryEvidenceMarkdown(bundle),
+    `country-evidence-${bundle.code}-${timestamp}.md`,
+    'text/markdown;charset=utf-8',
+  );
+}
+
 export function exportCountryBriefJSON(data: CountryBriefExport): void {
   const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
   downloadFile(JSON.stringify(data, null, 2), `country-brief-${data.code}-${timestamp}.json`, 'application/json');
@@ -353,20 +744,32 @@ export class ExportPanel {
   private element: HTMLElement;
   private isOpen = false;
   private getData: () => ExportData;
+  private availableFormats = new Set<DataExportFormat>();
 
-  constructor(getDataFn: () => ExportData) {
+  constructor(getDataFn: () => ExportData, formats: readonly DataExportFormat[] = SUPPORTED_EXPORT_FORMATS) {
     this.getData = getDataFn;
     this.element = document.createElement('div');
     this.element.className = 'export-panel-container';
-    this.element.innerHTML = `
+    setTrustedHtml(this.element, trustedHtml(`
       <button class="export-btn" title="${t('common.exportData')}">⬇</button>
       <div class="export-menu hidden">
         <button class="export-option" data-format="csv">${t('common.exportCsv')}</button>
         <button class="export-option" data-format="json">${t('common.exportJson')}</button>
+        <button class="export-option" data-format="pdf">${t('common.exportPdf')}</button>
       </div>
-    `;
+    `, "legacy direct innerHTML migration"));
 
+    this.setAvailableFormats(formats);
     this.setupEventListeners();
+  }
+
+  /** Update the menu in place when a live entitlement snapshot changes. */
+  public setAvailableFormats(formats: readonly DataExportFormat[]): void {
+    this.availableFormats = new Set(formats);
+    this.element.querySelectorAll<HTMLButtonElement>('.export-option').forEach((button) => {
+      const format = button.dataset.format as DataExportFormat;
+      button.hidden = !this.availableFormats.has(format);
+    });
   }
 
   private setupEventListeners(): void {
@@ -387,12 +790,41 @@ export class ExportPanel {
 
     this.element.querySelectorAll('.export-option').forEach(option => {
       option.addEventListener('click', () => {
-        const format = (option as HTMLElement).dataset.format as ExportFormat;
+        const button = option as HTMLButtonElement;
+        const format = button.dataset.format as ExportFormat;
+        if (!this.availableFormats.has(format)) return;
+        if (format === 'pdf') {
+          // The report renders and prints asynchronously, so the menu stays
+          // open with the option in a busy state until it settles — and a
+          // failure surfaces a toast instead of the source pattern's silence.
+          void this.exportPdfWithFeedback(button, menu);
+          return;
+        }
         this.export(format);
         this.isOpen = false;
         menu.classList.add('hidden');
       });
     });
+  }
+
+  private async exportPdfWithFeedback(button: HTMLButtonElement, menu: Element): Promise<void> {
+    if (button.disabled) return;
+    const label = button.textContent;
+    button.disabled = true;
+    button.classList.add('is-exporting');
+    button.textContent = t('components.exportGate.preparingPdf');
+    try {
+      await exportToPDF(this.getData());
+    } catch (err) {
+      console.warn('[export] PDF report failed:', err);
+      showToast(t('components.exportGate.pdfFailed'));
+    } finally {
+      button.disabled = false;
+      button.classList.remove('is-exporting');
+      button.textContent = label;
+      this.isOpen = false;
+      menu.classList.add('hidden');
+    }
   }
 
   private export(format: ExportFormat): void {

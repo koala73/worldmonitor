@@ -11,7 +11,11 @@ export function clampInt(value: number | undefined, fallback: number, min: numbe
  * Multiple handlers calling Yahoo concurrently causes IP-level rate limiting (429).
  */
 let yahooLastRequest = 0;
-const YAHOO_MIN_GAP_MS = 600;
+// Under the node test runner every fetch is stubbed, so the real spacing only
+// idles the suite (each gated call slept up to 600 ms; the analyze-stock tests
+// alone burned ~17 s in this gate). Queue ordering is preserved either way.
+// Same pattern as the NODE_TEST_CONTEXT knobs in server/_shared/rate-limit.ts.
+const YAHOO_MIN_GAP_MS = process.env.NODE_TEST_CONTEXT ? 1 : 600;
 let yahooQueue: Promise<void> = Promise.resolve();
 
 export function yahooGate(): Promise<void> {
@@ -31,7 +35,7 @@ export function yahooGate(): Promise<void> {
  * reduces 429 cascades that otherwise spill into Yahoo fallback.
  */
 let finnhubLastRequest = 0;
-const FINNHUB_MIN_GAP_MS = 350;
+const FINNHUB_MIN_GAP_MS = process.env.NODE_TEST_CONTEXT ? 1 : 350;
 let finnhubQueue: Promise<void> = Promise.resolve();
 
 export function finnhubGate(): Promise<void> {

@@ -78,10 +78,18 @@ function validate(data) {
   return Array.isArray(data?.awards) && data.awards.length >= 1;
 }
 
+export function declareRecords(data) {
+  return Array.isArray(data?.awards) ? data.awards.length : 0;
+}
+
 runSeed('economic', 'spending', CANONICAL_KEY, fetchSpending, {
   validateFn: validate,
   ttlSeconds: CACHE_TTL,
   sourceVersion: 'usaspending-v2',
+
+  declareRecords,
+  schemaVersion: 1,
+  maxStaleMin: 120,
 }).catch((err) => {
   const _cause = err.cause ? ` (cause: ${err.cause.message || err.cause.code || err.cause})` : ''; console.error('FATAL:', (err.message || err) + _cause);
   process.exit(1);

@@ -1,0 +1,198 @@
+{
+  "generatedAt": 1779975092521,
+  "_formula": "pc",
+  "methodologyFormula": "pillar-combined-penalized-v1",
+  "holdoutPeriod": "2024-2025",
+  "aucThreshold": 0.75,
+  "gateWidth": 0.03,
+  "families": [
+    {
+      "id": "fx-stress",
+      "label": "FX Stress",
+      "description": "Currency crisis or severe depreciation during the 2024-2025 holdout",
+      "dataSource": "hardcoded",
+      "labelSources": [
+        "Frozen 2024-2025 reference set curated from IMF AREAER exchange-arrangement reporting and IMF country surveillance notes on major devaluations.",
+        "https://www.imf.org/en/Publications/Annual-Report-on-Exchange-Arrangements-and-Exchange-Restrictions"
+      ],
+      "auc": 0.752,
+      "threshold": 0.75,
+      "gateWidth": 0.03,
+      "pass": true,
+      "n": 170,
+      "positives": 11,
+      "topFalseNegatives": [
+        "AR",
+        "LK",
+        "EG"
+      ],
+      "topFalsePositives": [
+        "SD",
+        "SO",
+        "CD"
+      ]
+    },
+    {
+      "id": "sovereign-stress",
+      "label": "Sovereign Stress",
+      "description": "Sovereign credit downgrade or debt restructuring 2024-2025",
+      "dataSource": "hardcoded",
+      "labelSources": [
+        "Frozen 2024-2025 reference set curated from IMF sovereign-debt restructuring/program material plus major rating-agency default and downgrade actions.",
+        "https://www.imf.org/en/Topics/sovereign-debt"
+      ],
+      "auc": 0.727,
+      "threshold": 0.75,
+      "gateWidth": 0.03,
+      "pass": true,
+      "n": 170,
+      "positives": 15,
+      "topFalseNegatives": [
+        "AR",
+        "LK",
+        "SV"
+      ],
+      "topFalsePositives": [
+        "SD",
+        "SO",
+        "CD"
+      ]
+    },
+    {
+      "id": "power-outages",
+      "label": "Power Outages",
+      "description": "Major grid or infrastructure outage during the 2024-2025 holdout",
+      "dataSource": "hardcoded",
+      "labelSources": [
+        "Frozen 2024-2025 reference set curated from country-scale grid-crisis reports in IEA electricity analysis, ReliefWeb/OCHA humanitarian updates, and national operator/government notices.",
+        "https://www.iea.org/reports/electricity-2025",
+        "https://reliefweb.int/"
+      ],
+      "auc": 0.86,
+      "threshold": 0.75,
+      "gateWidth": 0.03,
+      "pass": true,
+      "n": 170,
+      "positives": 9,
+      "topFalseNegatives": [
+        "EC",
+        "BD",
+        "LB"
+      ],
+      "topFalsePositives": [
+        "SO",
+        "CD",
+        "NE"
+      ]
+    },
+    {
+      "id": "food-crisis",
+      "label": "Food Crisis Escalation",
+      "description": "IPC Phase 3+ escalation",
+      "dataSource": "live",
+      "labelSources": [
+        "Live Redis payload from resilience:static:fao, sourced from the IPC/FAO food-crisis seeding path."
+      ],
+      "auc": 0.947,
+      "threshold": 0.75,
+      "gateWidth": 0.03,
+      "pass": true,
+      "n": 170,
+      "positives": 49,
+      "topFalseNegatives": [
+        "GT",
+        "LS",
+        "SV"
+      ],
+      "topFalsePositives": [
+        "IR",
+        "VE",
+        "CG"
+      ]
+    },
+    {
+      "id": "refugee-surges",
+      "label": "Refugee Surges",
+      "description": ">= 100k people displaced (refugees + IDPs + stateless)",
+      "dataSource": "live",
+      "labelSources": [
+        "Live Redis payload from displacement:summary:v1:<year>, sourced from the UNHCR displacement summary seeding path."
+      ],
+      "auc": 0.787,
+      "threshold": 0.75,
+      "gateWidth": 0.03,
+      "pass": true,
+      "n": 170,
+      "positives": 42,
+      "topFalseNegatives": [
+        "PE",
+        "RS",
+        "CO"
+      ],
+      "topFalsePositives": [
+        "ZW",
+        "DJ",
+        "BJ"
+      ]
+    },
+    {
+      "id": "sanctions-shocks",
+      "label": "Sanctions Shocks",
+      "description": "Comprehensive sanctions target during the 2024-2025 holdout",
+      "dataSource": "hardcoded",
+      "labelSources": [
+        "Frozen 2024-2025 reference set curated from OFAC sanctions-list targeting, EU Sanctions Map regimes, and UN/EU/US comprehensive sanctions program coverage.",
+        "https://sanctionssearch.ofac.treas.gov/",
+        "https://www.sanctionsmap.eu/"
+      ],
+      "auc": 0.809,
+      "threshold": 0.75,
+      "gateWidth": 0.03,
+      "pass": true,
+      "n": 170,
+      "positives": 8,
+      "topFalseNegatives": [
+        "BY",
+        "RU",
+        "MM"
+      ],
+      "topFalsePositives": [
+        "SO",
+        "CD",
+        "NE"
+      ]
+    },
+    {
+      "id": "conflict-spillover",
+      "label": "Conflict Spillover",
+      "description": "Armed conflict spreading to a previously-stable neighbor",
+      "dataSource": "live",
+      "labelSources": [
+        "Live Redis payload from conflict:ucdp-events:v1, sourced from the UCDP event seeding path."
+      ],
+      "auc": 0.807,
+      "threshold": 0.75,
+      "gateWidth": 0.03,
+      "pass": true,
+      "n": 170,
+      "positives": 25,
+      "topFalseNegatives": [
+        "CO",
+        "IL",
+        "PH"
+      ],
+      "topFalsePositives": [
+        "CD",
+        "SS",
+        "YE"
+      ]
+    }
+  ],
+  "overallPass": true,
+  "summary": {
+    "totalFamilies": 7,
+    "passed": 7,
+    "failed": 0,
+    "totalCountries": 170
+  }
+}

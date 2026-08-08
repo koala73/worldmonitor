@@ -1,8 +1,19 @@
-import type { EconomicServiceClient } from '@/generated/client/worldmonitor/economic/v1/service_client';
+import type {
+  EconomicServiceClient,
+  GetChinaMacroSnapshotResponse,
+} from '@/generated/client/worldmonitor/economic/v1/service_client';
 import { Panel } from './Panel';
-import { escapeHtml } from '@/utils/sanitize';
+import { t } from '@/services/i18n';
+import { escapeHtml, unsafeRawHtml } from '@/utils/sanitize';
 import { getEurostatCountryData } from '@/services/economic';
 import type { GetEurostatCountryDataResponse } from '@/services/economic';
+import { getHydratedData } from '@/services/bootstrap';
+import {
+  chinaTileHtml,
+  hasChinaMacroData,
+  isChinaLaunchReady,
+  normalizeHydratedChina,
+} from './macro-tiles-china';
 
 let _client: EconomicServiceClient | null = null;
 async function getEconomicClient(): Promise<EconomicServiceClient> {
@@ -14,7 +25,7 @@ async function getEconomicClient(): Promise<EconomicServiceClient> {
   return _client;
 }
 
-type Tab = 'us' | 'eu';
+type Tab = 'us' | 'eu' | 'cn';
 
 interface MacroTile {
   id: string;
@@ -57,10 +68,9 @@ function lastTwo(obs: { date: string; value: number }[]): { value: number | null
   return { value: last.value, prior: prev?.value ?? null, date: last.date };
 }
 
-function deltaColor(delta: number, lowerIsBetter: boolean, neutral: boolean): string {
-  if (neutral) return 'var(--text-dim)';
-  if (delta === 0) return 'var(--text-dim)';
-  return (lowerIsBetter ? delta < 0 : delta > 0) ? '#27ae60' : '#e74c3c';
+function deltaClass(delta: number, lowerIsBetter: boolean, neutral: boolean): string {
+  if (neutral || delta === 0) return 'neutral';
+  return (lowerIsBetter ? delta < 0 : delta > 0) ? 'positive' : 'negative';
 }
 
 function tileHtml(tile: MacroTile): string {
@@ -68,12 +78,14 @@ function tileHtml(tile: MacroTile): string {
   const delta = tile.value !== null && tile.prior !== null ? tile.value - tile.prior : null;
   const fmt = tile.deltaFormat ?? tile.format;
   const deltaStr = delta !== null ? `${delta >= 0 ? '+' : ''}${fmt(delta)} vs prior` : '';
-  const color = delta !== null ? deltaColor(delta, tile.lowerIsBetter, tile.neutral ?? false) : 'var(--text-dim)';
-  return `<div style="background:rgba(255,255,255,0.03);border:1px solid var(--border);border-radius:6px;padding:14px 12px;display:flex;flex-direction:column;gap:4px">
-    <div style="font-size:10px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.07em">${escapeHtml(tile.label)}</div>
-    <div style="font-size:28px;font-weight:700;color:var(--text);line-height:1.1;font-variant-numeric:tabular-nums">${val}</div>
-    ${deltaStr ? `<div style="font-size:11px;color:${color}">${escapeHtml(deltaStr)}</div>` : ''}
-    <div style="font-size:10px;color:var(--text-dim)">${escapeHtml(tile.date)}</div>
+  const changeClass = delta !== null ? deltaClass(delta, tile.lowerIsBetter, tile.neutral ?? false) : 'neutral';
+  return `<div class="macro-summary-card">
+    <div class="macro-summary-head">
+      <span class="indicator-name">${escapeHtml(tile.label)}</span>
+    </div>
+    <div class="macro-summary-value">${val}</div>
+    ${deltaStr ? `<div class="macro-summary-change ${changeClass}">${escapeHtml(deltaStr)}</div>` : ''}
+    <div class="indicator-date">${escapeHtml(tile.date)}</div>
   </div>`;
 }
 
@@ -122,16 +134,36 @@ export class MacroTilesPanel extends Panel {
   private _usTiles: MacroTile[] = [];
   private _eurostat: GetEurostatCountryDataResponse | null = null;
   private _estrObs: { date: string; value: number }[] = [];
+  private _china: GetChinaMacroSnapshotResponse | null = null;
 
   constructor() {
-    super({ id: 'macro-tiles', title: 'Macro Indicators', showCount: false });
+    super({ id: 'macro-tiles', title: 'Macro Indicators', showCount: false, infoTooltip: t('components.macroTiles.infoTooltip') });
 
     this.content.addEventListener('click', (e) => {
       const btn = (e.target as HTMLElement).closest<HTMLElement>('[data-tab]');
-      if (btn?.dataset.tab === 'us' || btn?.dataset.tab === 'eu') {
+      if (btn?.dataset.tab === 'us' || btn?.dataset.tab === 'eu' || btn?.dataset.tab === 'cn') {
         this._tab = btn.dataset.tab as Tab;
         this._render();
       }
+    });
+    this.content.addEventListener('keydown', (e) => {
+      if (!(e instanceof KeyboardEvent)) return;
+      const btn = (e.target as HTMLElement).closest<HTMLElement>('[role="tab"][data-tab]');
+      if (!btn || !['ArrowRight', 'ArrowLeft', 'Home', 'End'].includes(e.key)) return;
+      const tabs = this._availableTabs();
+      const current = tabs.indexOf(btn.dataset.tab as Tab);
+      if (current < 0) return;
+      e.preventDefault();
+      const next = e.key === 'Home'
+        ? tabs[0]
+        : e.key === 'End'
+          ? tabs[tabs.length - 1]
+          : tabs[(current + (e.key === 'ArrowRight' ? 1 : -1) + tabs.length) % tabs.length];
+      if (!next) return;
+      this._tab = next;
+      this._render(() => {
+        this.content.querySelector<HTMLElement>(`[data-tab="${next}"]`)?.focus();
+      });
     });
   }
 
@@ -139,12 +171,16 @@ export class MacroTilesPanel extends Panel {
     this.showLoading();
     try {
       const client = await getEconomicClient();
-      const [fredResp, eurostatResp] = await Promise.allSettled([
+      const hydratedMacro = getHydratedData('chinaMacro');
+      const hydratedCalendar = getHydratedData('chinaReleaseCalendar');
+      const hydratedChina = normalizeHydratedChina(hydratedMacro, hydratedCalendar);
+      const [fredResp, eurostatResp, chinaResp] = await Promise.allSettled([
         client.getFredSeriesBatch({
           seriesIds: ['CPIAUCSL', 'UNRATE', 'GDP', 'FEDFUNDS', 'ESTR'],
           limit: 14,
         }),
         getEurostatCountryData(),
+        hydratedChina ?? client.getChinaMacroSnapshot({}),
       ]);
 
       const results = fredResp.status === 'fulfilled' ? (fredResp.value.results ?? {}) : {};
@@ -153,6 +189,7 @@ export class MacroTilesPanel extends Panel {
       if (eurostatResp.status === 'fulfilled' && !eurostatResp.value.unavailable) {
         this._eurostat = eurostatResp.value;
       }
+      this._china = chinaResp.status === 'fulfilled' ? chinaResp.value : null;
 
       const cpi = cpiYoY(results['CPIAUCSL']?.observations ?? []);
       const unrate = lastTwo(results['UNRATE']?.observations ?? []);
@@ -166,10 +203,15 @@ export class MacroTilesPanel extends Panel {
         { id: 'fed', label: 'Fed Funds Rate', ...fed, lowerIsBetter: false, neutral: true, format: pctFmt },
       ];
 
-      if (!this._usTiles.some(t => t.value !== null)) {
+      const hasUs = this._usTiles.some(t => t.value !== null);
+      const hasEu = this._eurostat !== null;
+      const hasChina = hasChinaMacroData(this._china);
+      if (!hasUs && !hasEu && !hasChina) {
         if (!this._hasData) this.showError('Macro data unavailable', () => void this.fetchData());
         return false;
       }
+      if (!hasUs && this._tab === 'us') this._tab = hasChina ? 'cn' : 'eu';
+      if (!hasChina && this._tab === 'cn') this._tab = hasUs ? 'us' : 'eu';
 
       this._hasData = true;
       this._render();
@@ -180,25 +222,58 @@ export class MacroTilesPanel extends Panel {
     }
   }
 
-  private _render(): void {
-    const tabBar = `<div style="display:flex;gap:4px;margin-bottom:10px">
-      <button class="panel-tab${this._tab === 'us' ? ' active' : ''}" data-tab="us" style="font-size:11px;padding:3px 10px">US</button>
-      <button class="panel-tab${this._tab === 'eu' ? ' active' : ''}" data-tab="eu" style="font-size:11px;padding:3px 10px">Euro Area</button>
+  private _render(afterUpdate?: () => void): void {
+    const tabs = this._availableTabs();
+    const labels: Record<Tab, string> = { us: 'US', eu: 'Euro Area', cn: 'China' };
+    const tabBar = `<div class="panel-tabs macro-tiles-tabs" role="tablist" aria-label="Macro economy">
+      ${tabs.map((tab) => `<button type="button" id="macro-tiles-tab-${tab}" role="tab" aria-selected="${this._tab === tab}" aria-controls="macro-tiles-tabpanel" tabindex="${this._tab === tab ? '0' : '-1'}" class="panel-tab${this._tab === tab ? ' active' : ''}" data-tab="${tab}">${labels[tab]}</button>`).join('')}
     </div>`;
 
     let body: string;
     if (this._tab === 'us') {
-      body = `<div style="display:grid;grid-template-columns:repeat(2,1fr);gap:10px">${this._usTiles.map(tileHtml).join('')}</div>`;
-    } else {
+      body = `<div class="macro-summary-grid">${this._usTiles.map(tileHtml).join('')}</div>`;
+    } else if (this._tab === 'eu') {
       body = this._buildEuBody();
+    } else {
+      body = this._buildChinaBody();
     }
 
-    this.setContent(tabBar + body);
+    const labelledBy = `macro-tiles-tab-${this._tab}`;
+    this.setSafeContent(
+      unsafeRawHtml(`${tabBar}<div id="macro-tiles-tabpanel" class="macro-tiles-tabpanel" role="tabpanel" aria-labelledby="${labelledBy}">${body}</div>`, 'legacy Panel.setContent() migration'),
+      afterUpdate,
+    );
+  }
+
+  private _availableTabs(): Tab[] {
+    return hasChinaMacroData(this._china) ? ['us', 'eu', 'cn'] : ['us', 'eu'];
+  }
+
+  private _buildChinaBody(): string {
+    if (!hasChinaMacroData(this._china) || !this._china) {
+      return '<div class="macro-summary-empty">China macro data unavailable</div>';
+    }
+    const quality = isChinaLaunchReady(this._china)
+      ? ''
+      : '<div class="macro-quality-note macro-quality-note--degraded" role="status">Official China macro pulse is degraded; stale or delayed observations remain visible below.</div>';
+    const tiles = this._china.indicators.map(chinaTileHtml).join('');
+    const today = new Date().toISOString().slice(0, 10);
+    const events = this._china.releaseEvents
+      .filter((event) => event.countryCode === 'CN' && event.releaseDate >= today)
+      .sort((a, b) => a.releaseDate.localeCompare(b.releaseDate))
+      .slice(0, 3);
+    const calendar = events.length > 0
+      ? `<section class="macro-release-calendar" aria-label="China release calendar">
+          <div class="macro-release-calendar__heading">China release calendar</div>
+          ${events.map((event) => `<div class="macro-release-calendar__event"><span>${escapeHtml(event.event)}</span><span>${escapeHtml(event.releaseDate)} · ${escapeHtml(event.status)}</span></div>`).join('')}
+        </section>`
+      : '<div class="macro-release-calendar__empty">China release calendar unavailable</div>';
+    return `${quality}<div class="macro-summary-grid macro-summary-grid--china">${tiles}</div>${calendar}`;
   }
 
   private _buildEuBody(): string {
     if (!this._eurostat) {
-      return '<div style="padding:8px;color:var(--text-dim);font-size:12px">Euro Area data unavailable</div>';
+      return '<div class="macro-summary-empty">Euro Area data unavailable</div>';
     }
     const cpiAvg = euAvg(this._eurostat, 'cpi');
     const unAvg = euAvg(this._eurostat, 'unemployment');
@@ -213,10 +288,10 @@ export class MacroTilesPanel extends Panel {
     ];
 
     if (!euTiles.some(t => t.value !== null)) {
-      return '<div style="padding:8px;color:var(--text-dim);font-size:12px">Euro Area data unavailable</div>';
+      return '<div class="macro-summary-empty">Euro Area data unavailable</div>';
     }
 
-    return `<div style="display:grid;grid-template-columns:repeat(2,1fr);gap:10px">${euTiles.map(tileHtml).join('')}</div>
-      <div style="margin-top:8px;font-size:9px;color:var(--text-dim)">Eurostat · ECB · avg DE, FR, IT, ES</div>`;
+    return `<div class="macro-summary-grid">${euTiles.map(tileHtml).join('')}</div>
+      <div class="economic-source macro-summary-source">Eurostat · ECB · avg DE, FR, IT, ES</div>`;
   }
 }

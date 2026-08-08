@@ -4,343 +4,13 @@ import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
+import { createBrowserEnvironment } from './mini-dom.mts';
+
+export { createBrowserEnvironment };
+
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const root = resolve(__dirname, '..', '..');
 const entry = resolve(root, 'src/components/RuntimeConfigPanel.ts');
-
-class MiniClassList {
-  constructor() {
-    this.values = new Set();
-  }
-
-  add(...tokens) {
-    tokens.forEach((token) => this.values.add(token));
-  }
-
-  remove(...tokens) {
-    tokens.forEach((token) => this.values.delete(token));
-  }
-
-  contains(token) {
-    return this.values.has(token);
-  }
-
-  toggle(token, force) {
-    if (force === true) {
-      this.values.add(token);
-      return true;
-    }
-    if (force === false) {
-      this.values.delete(token);
-      return false;
-    }
-    if (this.values.has(token)) {
-      this.values.delete(token);
-      return false;
-    }
-    this.values.add(token);
-    return true;
-  }
-
-  setFromString(value) {
-    this.values = new Set(String(value).split(/\s+/).filter(Boolean));
-  }
-
-  toString() {
-    return Array.from(this.values).join(' ');
-  }
-}
-
-class MiniNode extends EventTarget {
-  constructor() {
-    super();
-    this.childNodes = [];
-    this.parentNode = null;
-    this.parentElement = null;
-  }
-
-  appendChild(child) {
-    if (child instanceof MiniDocumentFragment) {
-      const children = [...child.childNodes];
-      children.forEach((node) => this.appendChild(node));
-      return child;
-    }
-    if (child.parentNode) {
-      child.parentNode.removeChild(child);
-    }
-    child.parentNode = this;
-    child.parentElement = this instanceof MiniElement ? this : null;
-    this.childNodes.push(child);
-    return child;
-  }
-
-  removeChild(child) {
-    const index = this.childNodes.indexOf(child);
-    if (index >= 0) {
-      this.childNodes.splice(index, 1);
-      child.parentNode = null;
-      child.parentElement = null;
-    }
-    return child;
-  }
-
-  insertBefore(child, referenceNode) {
-    if (referenceNode == null) {
-      return this.appendChild(child);
-    }
-    if (child.parentNode) {
-      child.parentNode.removeChild(child);
-    }
-    const index = this.childNodes.indexOf(referenceNode);
-    if (index === -1) {
-      return this.appendChild(child);
-    }
-    child.parentNode = this;
-    child.parentElement = this instanceof MiniElement ? this : null;
-    this.childNodes.splice(index, 0, child);
-    return child;
-  }
-
-  get firstChild() {
-    return this.childNodes[0] ?? null;
-  }
-
-  get lastChild() {
-    return this.childNodes.at(-1) ?? null;
-  }
-
-  get textContent() {
-    return this.childNodes.map((child) => child.textContent ?? '').join('');
-  }
-
-  set textContent(value) {
-    this.childNodes = [new MiniText(value ?? '')];
-  }
-}
-
-class MiniText extends MiniNode {
-  constructor(value) {
-    super();
-    this.value = String(value);
-  }
-
-  get textContent() {
-    return this.value;
-  }
-
-  set textContent(value) {
-    this.value = String(value);
-  }
-
-  get outerHTML() {
-    return this.value;
-  }
-}
-
-class MiniDocumentFragment extends MiniNode {
-  get outerHTML() {
-    return this.childNodes.map((child) => child.outerHTML ?? child.textContent ?? '').join('');
-  }
-}
-
-class MiniElement extends MiniNode {
-  constructor(tagName) {
-    super();
-    this.tagName = tagName.toUpperCase();
-    this.attributes = new Map();
-    this.classList = new MiniClassList();
-    this.dataset = {};
-    this.style = {};
-    this._innerHTML = '';
-    this.id = '';
-    this.title = '';
-    this.disabled = false;
-  }
-
-  get className() {
-    return this.classList.toString();
-  }
-
-  set className(value) {
-    this.classList.setFromString(value);
-  }
-
-  get innerHTML() {
-    if (this._innerHTML) return this._innerHTML;
-    return this.childNodes.map((child) => child.outerHTML ?? child.textContent ?? '').join('');
-  }
-
-  set innerHTML(value) {
-    this._innerHTML = String(value);
-    this.childNodes = [];
-  }
-
-  appendChild(child) {
-    this._innerHTML = '';
-    return super.appendChild(child);
-  }
-
-  insertBefore(child, referenceNode) {
-    this._innerHTML = '';
-    return super.insertBefore(child, referenceNode);
-  }
-
-  removeChild(child) {
-    this._innerHTML = '';
-    return super.removeChild(child);
-  }
-
-  setAttribute(name, value) {
-    const stringValue = String(value);
-    this.attributes.set(name, stringValue);
-    if (name === 'class') {
-      this.className = stringValue;
-    } else if (name === 'id') {
-      this.id = stringValue;
-    } else if (name.startsWith('data-')) {
-      const key = name
-        .slice(5)
-        .split('-')
-        .map((part, index) => (index === 0 ? part : `${part[0]?.toUpperCase() ?? ''}${part.slice(1)}`))
-        .join('');
-      this.dataset[key] = stringValue;
-    }
-  }
-
-  getAttribute(name) {
-    return this.attributes.get(name) ?? null;
-  }
-
-  hasAttribute(name) {
-    return this.attributes.has(name);
-  }
-
-  removeAttribute(name) {
-    this.attributes.delete(name);
-    if (name === 'class') this.className = '';
-  }
-
-  querySelector() {
-    return null;
-  }
-
-  querySelectorAll() {
-    return [];
-  }
-
-  closest() {
-    return null;
-  }
-
-  remove() {
-    if (this.parentNode) {
-      this.parentNode.removeChild(this);
-    }
-  }
-
-  getBoundingClientRect() {
-    return { width: 1, height: 1, top: 0, left: 0, right: 1, bottom: 1 };
-  }
-
-  get nextElementSibling() {
-    if (!this.parentNode) return null;
-    const siblings = this.parentNode.childNodes.filter((child) => child instanceof MiniElement);
-    const index = siblings.indexOf(this);
-    return index >= 0 ? siblings[index + 1] ?? null : null;
-  }
-
-  get isConnected() {
-    let current = this.parentNode;
-    while (current) {
-      if (current === globalThis.document?.body || current === globalThis.document?.documentElement) {
-        return true;
-      }
-      current = current.parentNode;
-    }
-    return false;
-  }
-
-  get outerHTML() {
-    return `<${this.tagName.toLowerCase()}>${this.innerHTML}</${this.tagName.toLowerCase()}>`;
-  }
-}
-
-class MiniStorage {
-  constructor() {
-    this.values = new Map();
-  }
-
-  getItem(key) {
-    return this.values.has(key) ? this.values.get(key) : null;
-  }
-
-  setItem(key, value) {
-    this.values.set(key, String(value));
-  }
-
-  removeItem(key) {
-    this.values.delete(key);
-  }
-
-  clear() {
-    this.values.clear();
-  }
-}
-
-class MiniDocument extends EventTarget {
-  constructor() {
-    super();
-    this.documentElement = new MiniElement('html');
-    this.documentElement.clientHeight = 800;
-    this.documentElement.clientWidth = 1200;
-    this.body = new MiniElement('body');
-    this.documentElement.appendChild(this.body);
-  }
-
-  createElement(tagName) {
-    return new MiniElement(tagName);
-  }
-
-  createTextNode(value) {
-    return new MiniText(value);
-  }
-
-  createDocumentFragment() {
-    return new MiniDocumentFragment();
-  }
-}
-
-function createBrowserEnvironment() {
-  const document = new MiniDocument();
-  const localStorage = new MiniStorage();
-  const window = {
-    document,
-    localStorage,
-    innerHeight: 800,
-    innerWidth: 1200,
-    addEventListener() {},
-    removeEventListener() {},
-    open() {},
-    getComputedStyle() {
-      return {
-        display: '',
-        visibility: '',
-        gridTemplateColumns: 'none',
-        columnGap: '0',
-      };
-    },
-  };
-
-  return {
-    document,
-    localStorage,
-    window,
-    requestAnimationFrame() {
-      return 1;
-    },
-    cancelAnimationFrame() {},
-  };
-}
 
 function snapshotGlobal(name) {
   return {
@@ -471,13 +141,24 @@ async function loadRuntimeConfigPanel() {
         children.forEach((child) => append(el, child));
       }
 
+      export function trustedHtml(html) {
+        return String(html ?? '');
+      }
+
+      export function setTrustedHtml(el, html) {
+        el.innerHTML = String(html ?? '');
+      }
+
       export function safeHtml() {
         return document.createDocumentFragment();
       }
     `],
     ['analytics-stub', `export function trackPanelResized() {} export function trackFeatureToggle() {}`],
     ['ai-flow-settings-stub', `export function getAiFlowSettings() { return { badgeAnimation: false }; }`],
-    ['sanitize-stub', `export function escapeHtml(value) { return String(value); }`],
+    ['sanitize-stub', `
+      export function escapeHtml(value) { return String(value); }
+      export function safeHtmlToString(value) { return String(value ?? ''); }
+    `],
     ['ollama-models-stub', `export async function fetchOllamaModels() { return []; }`],
     ['settings-constants-stub', `
       export const SIGNUP_URLS = {};
@@ -488,6 +169,15 @@ async function loadRuntimeConfigPanel() {
       export const PanelGateReason = { NONE: 'none', ANONYMOUS: 'anonymous', UNVERIFIED: 'unverified', FREE_TIER: 'free_tier' };
       export function getPanelGateReason() { return PanelGateReason.NONE; }
     `],
+    ['dodo-checkout-stub', `
+      export const DodoPayments = {
+        Initialize() {},
+        Checkout: {
+          open() {},
+        },
+      };
+    `],
+    ['dodo-empty-stub', 'export {};'],
   ]);
 
   const aliasMap = new Map([
@@ -505,6 +195,10 @@ async function loadRuntimeConfigPanel() {
     ['@/services/ollama-models', 'ollama-models-stub'],
     ['@/services/settings-constants', 'settings-constants-stub'],
     ['@/services/panel-gating', 'panel-gating-stub'],
+    ['dodopayments-checkout', 'dodo-checkout-stub'],
+    ['dodopayments', 'dodo-empty-stub'],
+    ['@dodopayments/core', 'dodo-empty-stub'],
+    ['@dodopayments/convex', 'dodo-empty-stub'],
   ]);
 
   const plugin = {

@@ -15,7 +15,7 @@ Status:  · 🔄 Partial · ❌ Not started
 
 - **Impact:** 🔴 High | **Effort:** ~2 days
 - **Status:**  — `vite.config.ts` `manualChunks` splits panel components into a dedicated `panels` chunk, loaded in parallel with the main bundle for better caching and reduced initial parse time.
-- `App.ts` statically imports all 35+ panel components, bloating the main bundle to ~1.5 MB.
+- `App.ts` historically imported the panel surface statically, bloating the main bundle to ~1.5 MB before the panel chunking work.
 - Split each panel into a dynamic `import()` and only load when the user enables that panel.
 - **Implementation:** Wrap each panel constructor in `App.ts` with `await import('@/components/FooPanel')`. Use Vite's built-in chunk splitting.
 - **Expected gain:** Reduce initial JS payload by 40–60%.
@@ -107,7 +107,6 @@ Status:  · 🔄 Partial · ❌ Not started
 - **Status:**  — `src/utils/dom-utils.ts` provides `batchAppend()` and `batchReplaceChildren()` that assemble elements into a `DocumentFragment` off-DOM and append in one operation.
 - Several components build HTML strings and assign to `innerHTML`. For complex panels, pre-build a `DocumentFragment` off-DOM and append once.
 - **Expected gain:** Single reflow per panel update instead of multiple.
-
 
 ### PERF-012 — Remove Inline `<style>` Tags from Panel Renders
 
@@ -344,8 +343,8 @@ Status:  · 🔄 Partial · ❌ Not started
 ### PERF-040 — Move CII Calculation to Web Worker
 
 - **Impact:** 🟡 Medium | **Effort:** ~4 hours
-- **Status:**  — `src/workers/cii.worker.ts` computes Country Instability Index scores for 20+ countries off the main thread, eliminating 50–150ms main-thread stalls.
-- **Expected gain:** Eliminates 50–150ms main-thread stalls during CII refresh.
+- **Status:** Deprecated premise — the proposed CII worker file was never added. Published CII is server-authoritative v8 for 31 Tier-1 countries from `shared/cii-weights.ts`; the frontend normally renders cached risk scores and only uses `calculateCII()` as the local fallback path.
+- **Expected gain:** Re-open only with fresh profiling evidence that the local fallback path, not cached server-score ingestion, causes measurable main-thread stalls.
 
 ### PERF-041 — SharedArrayBuffer for Large Datasets
 

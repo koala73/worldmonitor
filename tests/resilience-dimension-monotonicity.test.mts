@@ -1,0 +1,266 @@
+// Monotonicity-test harness. Pins the direction of movement for the
+// highest-leverage indicators so PR 1 + PR 2 cannot accidentally flip
+// a sign silently. See
+// docs/plans/2026-04-22-001-fix-resilience-scorer-structural-bias-plan.md
+// §5 (PR 0 deliverable) and §6 (acceptance gate 8).
+//
+// Each test builds two synthetic `ResilienceSeedReader` fixtures that
+// differ only in the target indicator's value and asserts the dimension
+// score moves in the documented direction.
+//
+// Scope (minimum viable, expanded in PR 0.5 follow-ups):
+//   - scoreEnergy legacy rollback: dependency, gasShare, coalShare, renewShare,
+//     electricityConsumption. Active energy-v2 direction coverage lives in
+//     resilience-energy-v2.test.mts.
+//   - scoreReserveAdequacy: reserveMonths
+//   - scoreFiscalSpace: govRevenuePct, fiscalBalancePct, debtToGdpPct
+//   - scoreExternalDebtCoverage: debtToReservesRatio
+//   - scoreImportConcentration: hhi
+//   - scoreFoodWater: peopleInCrisis, phase
+//   - scoreGovernanceInstitutional: WGI mean
+//
+// The harness keeps each direction check explicit so future scorer
+// changes update the documented expectation next to the assertion.
+
+import assert from 'node:assert/strict';
+import { after, before, describe, it } from 'node:test';
+
+import {
+  scoreEnergy,
+  scoreLiquidReserveAdequacy,
+  scoreFiscalSpace,
+  scoreExternalDebtCoverage,
+  scoreImportConcentration,
+  scoreFoodWater,
+  scoreGovernanceInstitutional,
+  type ResilienceSeedReader,
+} from '../server/worldmonitor/resilience/v1/_dimension-scorers.ts';
+
+const TEST_ISO2 = 'XX';
+
+function makeStaticReader(staticRecord: unknown, overrides: Record<string, unknown> = {}): ResilienceSeedReader {
+  return async (key: string) => {
+    if (key === `resilience:static:${TEST_ISO2}`) return staticRecord;
+    if (key in overrides) return overrides[key];
+    return null;
+  };
+}
+
+function makeRecoveryReader(keyValueMap: Record<string, unknown>): ResilienceSeedReader {
+  return async (key: string) => keyValueMap[key] ?? null;
+}
+
+// PR 2 §3.4: scoreReserveAdequacy is retired. The monotonicity contract
+// moves to scoreLiquidReserveAdequacy — same source but 1..12 anchor.
+describe('resilience dimension monotonicity — scoreLiquidReserveAdequacy', () => {
+  it('higher reserveMonths → higher score', async () => {
+    const low = await scoreLiquidReserveAdequacy(TEST_ISO2, makeRecoveryReader({
+      'resilience:recovery:reserve-adequacy:v1': { countries: { [TEST_ISO2]: { reserveMonths: 2 } } },
+    }));
+    const high = await scoreLiquidReserveAdequacy(TEST_ISO2, makeRecoveryReader({
+      'resilience:recovery:reserve-adequacy:v1': { countries: { [TEST_ISO2]: { reserveMonths: 12 } } },
+    }));
+    assert.ok(high.score > low.score, `reserveMonths 2→12 should raise score; got ${low.score} → ${high.score}`);
+  });
+});
+
+describe('resilience dimension monotonicity — scoreFiscalSpace', () => {
+  const baseEntry = { govRevenuePct: 25, fiscalBalancePct: 0, debtToGdpPct: 60 };
+
+  async function scoreWith(override: Partial<typeof baseEntry>) {
+    return scoreFiscalSpace(TEST_ISO2, makeRecoveryReader({
+      'resilience:recovery:fiscal-space:v1': { countries: { [TEST_ISO2]: { ...baseEntry, ...override } } },
+    }));
+  }
+
+  it('higher govRevenuePct → higher score', async () => {
+    const low = await scoreWith({ govRevenuePct: 10 });
+    const high = await scoreWith({ govRevenuePct: 40 });
+    assert.ok(high.score > low.score, `govRevenuePct 10→40 should raise score; got ${low.score} → ${high.score}`);
+  });
+
+  it('higher fiscalBalancePct → higher score', async () => {
+    const low = await scoreWith({ fiscalBalancePct: -10 });
+    const high = await scoreWith({ fiscalBalancePct: 3 });
+    assert.ok(high.score > low.score, `fiscalBalancePct -10→3 should raise score; got ${low.score} → ${high.score}`);
+  });
+
+  it('higher debtToGdpPct → lower score', async () => {
+    const low = await scoreWith({ debtToGdpPct: 40 });
+    const high = await scoreWith({ debtToGdpPct: 140 });
+    assert.ok(low.score > high.score, `debtToGdpPct 40→140 should lower score; got ${low.score} → ${high.score}`);
+  });
+});
+
+describe('resilience dimension monotonicity — scoreExternalDebtCoverage', () => {
+  async function scoreWith(ratio: number) {
+    return scoreExternalDebtCoverage(TEST_ISO2, makeRecoveryReader({
+      'resilience:recovery:external-debt:v1': { countries: { [TEST_ISO2]: { debtToReservesRatio: ratio } } },
+    }));
+  }
+
+  it('higher debtToReservesRatio → lower score', async () => {
+    // PR 3 §3.5 point 3: goalpost is now lower-better worst=2 best=0
+    // (Greenspan-Guidotti anchor). Any ratio ≥ 2 clamps to 0, so pick
+    // values inside the discriminating band to get a meaningful gradient.
+    const good = await scoreWith(0.3);
+    const bad = await scoreWith(1.5);
+    assert.ok(good.score > bad.score, `debtToReservesRatio 0.3→1.5 should lower score; got ${good.score} → ${bad.score}`);
+  });
+});
+
+describe('resilience dimension monotonicity — scoreImportConcentration', () => {
+  async function scoreWith(hhi: number) {
+    return scoreImportConcentration(TEST_ISO2, makeRecoveryReader({
+      'resilience:recovery:import-hhi:v1': { countries: { [TEST_ISO2]: { hhi } } },
+    }));
+  }
+
+  it('higher hhi → lower score (more concentration = more exposure)', async () => {
+    // HHI payload is on a 0..1 scale (normalised before storage).
+    // 0.15 = diversified supplier base; 0.45 = concentrated.
+    const diversified = await scoreWith(0.15);
+    const concentrated = await scoreWith(0.45);
+    assert.ok(diversified.score > concentrated.score, `hhi 0.15→0.45 should lower score; got ${diversified.score} → ${concentrated.score}`);
+  });
+});
+
+describe('resilience dimension monotonicity — scoreGovernanceInstitutional', () => {
+  async function scoreWith(wgiMeanValue: number) {
+    // Static-record shape per `getStaticWgiValues`: `wgi.indicators.<WGI code>.value`.
+    const staticRecord = {
+      wgi: {
+        indicators: {
+          'VA.EST': { value: wgiMeanValue },
+          'PV.EST': { value: wgiMeanValue },
+          'GE.EST': { value: wgiMeanValue },
+          'RQ.EST': { value: wgiMeanValue },
+          'RL.EST': { value: wgiMeanValue },
+          'CC.EST': { value: wgiMeanValue },
+        },
+      },
+    };
+    return scoreGovernanceInstitutional(TEST_ISO2, makeStaticReader(staticRecord));
+  }
+
+  it('higher WGI mean → higher score', async () => {
+    const weak = await scoreWith(-1.5);
+    const strong = await scoreWith(1.5);
+    assert.ok(strong.score > weak.score, `WGI -1.5→1.5 should raise score; got ${weak.score} → ${strong.score}`);
+  });
+});
+
+describe('resilience dimension monotonicity — scoreFoodWater', () => {
+  async function scoreWith(override: Record<string, unknown>) {
+    const fao = { peopleInCrisis: 100, phase: 'Phase 1', ...override };
+    const staticRecord = { fao, aquastat: { waterStress: { value: 40 }, waterAvailability: { value: 2000 } } };
+    return scoreFoodWater(TEST_ISO2, makeStaticReader(staticRecord));
+  }
+
+  it('higher peopleInCrisis → lower score', async () => {
+    const healthy = await scoreWith({ peopleInCrisis: 1000 });
+    const crisis = await scoreWith({ peopleInCrisis: 5_000_000 });
+    assert.ok(healthy.score > crisis.score, `peopleInCrisis 1k→5M should lower score; got ${healthy.score} → ${crisis.score}`);
+  });
+
+  it('higher IPC phase → lower score', async () => {
+    const phase2 = await scoreWith({ phase: 'Phase 2' });
+    const phase5 = await scoreWith({ phase: 'Phase 5' });
+    assert.ok(phase2.score > phase5.score, `phase 2→5 should lower score; got ${phase2.score} → ${phase5.score}`);
+  });
+});
+
+describe('resilience dimension monotonicity — scoreEnergy legacy rollback construct', () => {
+  // These assertions intentionally force the rollback path with
+  // RESILIENCE_ENERGY_V2_ENABLED=false. Production now reports
+  // constructVersions.energy=v2; this block only guards the revert path
+  // kept behind the flag, while active-v2 invariants are pinned in
+  // resilience-energy-v2.test.mts.
+  const originalEnergyV2Flag = process.env.RESILIENCE_ENERGY_V2_ENABLED;
+
+  before(() => {
+    process.env.RESILIENCE_ENERGY_V2_ENABLED = 'false';
+  });
+
+  after(() => {
+    if (originalEnergyV2Flag == null) {
+      delete process.env.RESILIENCE_ENERGY_V2_ENABLED;
+      return;
+    }
+    process.env.RESILIENCE_ENERGY_V2_ENABLED = originalEnergyV2Flag;
+  });
+
+  function makeEnergyReader(overrides: {
+    staticRecord?: unknown;
+    mix?: unknown;
+    prices?: unknown;
+    storage?: unknown;
+  } = {}): ResilienceSeedReader {
+    const defaultStatic = {
+      iea: { energyImportDependency: { value: 30 } },
+      infrastructure: { indicators: { 'EG.USE.ELEC.KH.PC': { value: 3000 } } },
+    };
+    const defaultMix = { gasShare: 30, coalShare: 20, renewShare: 30 };
+    return async (key: string) => {
+      if (key === `resilience:static:${TEST_ISO2}`) return overrides.staticRecord ?? defaultStatic;
+      if (key === 'economic:energy:v1:all') return overrides.prices ?? null;
+      if (key === `energy:mix:v1:${TEST_ISO2}`) return overrides.mix ?? defaultMix;
+      if (key === `energy:gas-storage:v1:${TEST_ISO2}`) return overrides.storage ?? null;
+      return null;
+    };
+  }
+
+  it('legacy rollback: higher import dependency → lower score', async () => {
+    const selfSufficient = await scoreEnergy(TEST_ISO2, makeEnergyReader({
+      staticRecord: {
+        iea: { energyImportDependency: { value: 10 } },
+        infrastructure: { indicators: { 'EG.USE.ELEC.KH.PC': { value: 3000 } } },
+      },
+    }));
+    const dependent = await scoreEnergy(TEST_ISO2, makeEnergyReader({
+      staticRecord: {
+        iea: { energyImportDependency: { value: 90 } },
+        infrastructure: { indicators: { 'EG.USE.ELEC.KH.PC': { value: 3000 } } },
+      },
+    }));
+    assert.ok(selfSufficient.score > dependent.score, `legacy import dep 10→90 should lower score; got ${selfSufficient.score} → ${dependent.score}`);
+  });
+
+  it('legacy rollback: higher renewShare → higher score', async () => {
+    const low = await scoreEnergy(TEST_ISO2, makeEnergyReader({ mix: { gasShare: 30, coalShare: 20, renewShare: 5 } }));
+    const high = await scoreEnergy(TEST_ISO2, makeEnergyReader({ mix: { gasShare: 30, coalShare: 20, renewShare: 70 } }));
+    assert.ok(high.score > low.score, `legacy renewShare 5→70 should raise score; got ${low.score} → ${high.score}`);
+  });
+
+  it('legacy rollback: higher gasShare → lower score', async () => {
+    // Legacy v1 penalises gas generation share directly. Active v2 no
+    // longer treats standalone gasShare as a production methodology input.
+    const low = await scoreEnergy(TEST_ISO2, makeEnergyReader({ mix: { gasShare: 10, coalShare: 20, renewShare: 30 } }));
+    const high = await scoreEnergy(TEST_ISO2, makeEnergyReader({ mix: { gasShare: 70, coalShare: 20, renewShare: 30 } }));
+    assert.ok(low.score > high.score, `legacy gasShare 10→70 should lower score; got ${low.score} → ${high.score}`);
+  });
+
+  it('legacy rollback: higher coalShare → lower score', async () => {
+    const low = await scoreEnergy(TEST_ISO2, makeEnergyReader({ mix: { gasShare: 30, coalShare: 10, renewShare: 30 } }));
+    const high = await scoreEnergy(TEST_ISO2, makeEnergyReader({ mix: { gasShare: 30, coalShare: 70, renewShare: 30 } }));
+    assert.ok(low.score > high.score, `legacy coalShare 10→70 should lower score; got ${low.score} → ${high.score}`);
+  });
+
+  it('legacy rollback: higher electricityConsumption → higher score', async () => {
+    // Legacy v1 rewards per-capita electricity consumption as a crisis
+    // grid-health proxy. Active v2 removed this standalone indicator.
+    const low = await scoreEnergy(TEST_ISO2, makeEnergyReader({
+      staticRecord: {
+        iea: { energyImportDependency: { value: 30 } },
+        infrastructure: { indicators: { 'EG.USE.ELEC.KH.PC': { value: 500 } } },
+      },
+    }));
+    const high = await scoreEnergy(TEST_ISO2, makeEnergyReader({
+      staticRecord: {
+        iea: { energyImportDependency: { value: 30 } },
+        infrastructure: { indicators: { 'EG.USE.ELEC.KH.PC': { value: 7500 } } },
+      },
+    }));
+    assert.ok(high.score > low.score, `legacy electricityConsumption 500→7500 kWh/cap should raise score; got ${low.score} → ${high.score}`);
+  });
+});

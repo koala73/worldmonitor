@@ -243,9 +243,16 @@ class ParallelAnalysisService {
   }
 
   private scoreByEntities(entities: NEREntity[]): PerspectiveScore {
-    const locations = entities.filter(e => e.type.includes('LOC'));
-    const people = entities.filter(e => e.type.includes('PER'));
-    const orgs = entities.filter(e => e.type.includes('ORG'));
+    // Defensive: ML worker occasionally returns entities with missing
+    // `type`/`text` fields (observed in prod as TypeError: Cannot read
+    // properties of undefined reading 'includes' on the .filter below).
+    // Narrow to well-formed entries before any string access.
+    const safeEntities = entities.filter((e): e is NEREntity =>
+      typeof e?.type === 'string' && typeof e?.text === 'string'
+    );
+    const locations = safeEntities.filter(e => e.type.includes('LOC'));
+    const people = safeEntities.filter(e => e.type.includes('PER'));
+    const orgs = safeEntities.filter(e => e.type.includes('ORG'));
 
     const geopoliticalLocations = locations.filter(e =>
       FLASHPOINT_KEYWORDS.some(fp => e.text.toLowerCase().includes(fp))
@@ -272,7 +279,7 @@ class ParallelAnalysisService {
       reasons.push(`orgs(${orgs.map(e => e.text).join(',')})`);
     }
 
-    const entityDensity = entities.length;
+    const entityDensity = safeEntities.length;
     if (entityDensity > 3) {
       score += 0.15;
       reasons.push(`high-density(${entityDensity})`);
@@ -281,7 +288,7 @@ class ParallelAnalysisService {
     return {
       name: 'entities',
       score: Math.min(1, score),
-      confidence: entities.length > 0 ? 0.7 : 0.3,
+      confidence: safeEntities.length > 0 ? 0.7 : 0.3,
       reasoning: reasons.length > 0 ? reasons.join(' + ') : 'no significant entities',
     };
   }

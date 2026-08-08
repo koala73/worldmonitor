@@ -1,0 +1,20 @@
+# Bootstrap tier publisher for Railway.
+#
+# Railway always prefers a root Dockerfile when one exists, even when a service
+# is configured for Railpack. This dedicated image keeps the publisher isolated
+# from the web application's root Dockerfile while retaining repo-root access to
+# the shared bootstrap tier registry.
+
+FROM node:24-alpine@sha256:a0b9bf06e4e6193cf7a0f58816cc935ff8c2a908f81e6f1a95432d679c54fbfd
+
+WORKDIR /app
+
+COPY scripts/package.json scripts/package-lock.json ./scripts/
+RUN npm ci --prefix scripts --omit=dev --ignore-scripts
+
+COPY scripts/ ./scripts/
+COPY shared/ ./shared/
+
+USER node
+
+CMD ["node", "scripts/publish-bootstrap-tiers.mjs", "--loop"]

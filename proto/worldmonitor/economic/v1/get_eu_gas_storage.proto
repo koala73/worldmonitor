@@ -32,5 +32,7 @@ message GetEuGasStorageResponse {
   // Calendar date of the most recent data point (YYYY-MM-DD).
   string updated_at = 7;
   // True when upstream data is unavailable (fallback result).
+  // True when the upstream or seed-backed variant is unavailable; empty payload fields
+  // are graceful degradation, not confirmed zero data.
   bool unavailable = 8;
 }

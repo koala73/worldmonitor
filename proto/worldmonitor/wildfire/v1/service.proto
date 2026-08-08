@@ -10,6 +10,8 @@ service WildfireService {
   option (sebuf.http.service_config) = {base_path: "/api/wildfire/v1"};
 
   // ListFireDetections retrieves satellite-detected active fires from NASA FIRMS.
+  // Empty fire_detections with fetched_at=0 or data_available=false means the
+  // seed snapshot is unavailable/degraded, not that there are confirmed zero fires.
   rpc ListFireDetections(ListFireDetectionsRequest) returns (ListFireDetectionsResponse) {
     option (sebuf.http.config) = {path: "/list-fire-detections", method: HTTP_METHOD_GET};
   }

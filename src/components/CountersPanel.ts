@@ -1,4 +1,5 @@
 import { Panel } from './Panel';
+import { t } from '@/services/i18n';
 import {
   COUNTER_METRICS,
   getCounterValue,
@@ -26,7 +27,7 @@ export class CountersPanel extends Panel {
   private readonly desktopUpdateIntervalMs = 250;
 
   constructor() {
-    super({ id: 'counters', title: 'Live Counters', trackActivity: false });
+    super({ id: 'counters', title: 'Live Counters', trackActivity: false, infoTooltip: t('components.counters.infoTooltip') });
     this.createCounterGrid();
     if (this.desktopMode) {
       this.visibilityHandler = () => {

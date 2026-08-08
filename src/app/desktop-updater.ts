@@ -1,22 +1,24 @@
 import type { AppContext, AppModule } from '@/app/app-context';
 import { invokeTauri } from '@/services/tauri-bridge';
+import { openExternalUrl } from '@/services/external-navigation';
 import { trackUpdateShown, trackUpdateClicked, trackUpdateDismissed } from '@/services/analytics';
 import { escapeHtml } from '@/utils/sanitize';
 import { getDismissed, setDismissed } from '@/utils/cross-domain-storage';
+import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
+import { decideUpdateOutcome } from '@/utils/desktop-version';
+
 
 interface DesktopRuntimeInfo {
   os: string;
   arch: string;
 }
 
-type UpdaterOutcome = 'no_update' | 'update_available' | 'open_failed' | 'fetch_failed';
-type DesktopBuildVariant = 'full' | 'tech' | 'finance';
-
-const DESKTOP_BUILD_VARIANT: DesktopBuildVariant = (
-  import.meta.env.VITE_VARIANT === 'tech' || import.meta.env.VITE_VARIANT === 'finance'
-    ? import.meta.env.VITE_VARIANT
-    : 'full'
-);
+type UpdaterOutcome =
+  | 'no_update'
+  | 'update_available'
+  | 'open_failed'
+  | 'fetch_failed'
+  | 'version_unparsable';
 
 export class DesktopUpdater implements AppModule {
   private ctx: AppContext;
@@ -56,14 +58,10 @@ export class DesktopUpdater implements AppModule {
   }
 
   private logUpdaterOutcome(outcome: UpdaterOutcome, context: Record<string, unknown> = {}): void {
-    const logger = outcome === 'open_failed' || outcome === 'fetch_failed'
-      ? console.warn
-      : console.info;
+    const logger = outcome === 'no_update' || outcome === 'update_available'
+      ? console.info
+      : console.warn;
     logger('[updater]', outcome, context);
-  }
-
-  private getDesktopBuildVariant(): DesktopBuildVariant {
-    return DESKTOP_BUILD_VARIANT;
   }
 
   private async checkForUpdate(): Promise<void> {
@@ -83,8 +81,14 @@ export class DesktopUpdater implements AppModule {
       }
 
       const current = __APP_VERSION__;
-      if (!this.isNewerVersion(remote, current)) {
-        this.logUpdaterOutcome('no_update', { current, remote });
+      // #5908: three outcomes, not two. An unreadable version must never fall
+      // into "up to date" — the old `Number('0-tech')` -> NaN path did exactly
+      // that and logged `no_update`, so one malformed release stopped every
+      // client updating with no trace. The mapping lives in
+      // `decideUpdateOutcome` so a regression that collapses it fails a test.
+      const decision = decideUpdateOutcome(remote, current);
+      if (decision !== 'update_available') {
+        this.logUpdaterOutcome(decision, { current, remote });
         return;
       }
 
@@ -105,18 +109,6 @@ export class DesktopUpdater implements AppModule {
         error: error instanceof Error ? error.message : String(error),
       });
     }
-  }
-
-  private isNewerVersion(remote: string, current: string): boolean {
-    const r = remote.split('.').map(Number);
-    const c = current.split('.').map(Number);
-    for (let i = 0; i < Math.max(r.length, c.length); i++) {
-      const rv = r[i] ?? 0;
-      const cv = c[i] ?? 0;
-      if (rv > cv) return true;
-      if (rv < cv) return false;
-    }
-    return false;
   }
 
   private mapDesktopDownloadPlatform(os: string, arch: string): string | null {
@@ -150,11 +142,20 @@ export class DesktopUpdater implements AppModule {
       const runtimeInfo = await invokeTauri<DesktopRuntimeInfo>('get_desktop_runtime_info');
       const platform = this.mapDesktopDownloadPlatform(runtimeInfo.os, runtimeInfo.arch);
       if (platform) {
-        const variant = this.getDesktopBuildVariant();
-        return `https://api.worldmonitor.app/api/download?platform=${platform}&variant=${variant}`;
+        // #5908: one published desktop binary, variants switch in-app — so the
+        // download is chosen by OS/arch alone. There is no per-variant asset to
+        // disambiguate, and asking for one only ever produced a 302 to the
+        // releases page.
+        return `https://api.worldmonitor.app/api/download?platform=${platform}`;
       }
-    } catch {
-      // Silent fallback to release page when desktop runtime info is unavailable.
+    } catch (error) {
+      // Falls back to the release page, but says so: this is the same silent
+      // class as #5908 — the user still gets a link, so a broken runtime probe
+      // would otherwise degrade every download to the generic page unnoticed.
+      this.logUpdaterOutcome('fetch_failed', {
+        reason: 'runtime_info_unavailable',
+        error: error instanceof Error ? error.message : String(error),
+      });
     }
     return releaseUrl;
   }
@@ -169,7 +170,7 @@ export class DesktopUpdater implements AppModule {
     const toast = document.createElement('div');
     toast.className = 'update-toast';
     toast.dataset.version = version;
-    toast.innerHTML = `
+    setTrustedHtml(toast, trustedHtml(`
       <div class="update-toast-icon">
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
@@ -183,7 +184,7 @@ export class DesktopUpdater implements AppModule {
       </div>
       <button class="update-toast-action" data-action="download">Download</button>
       <button class="update-toast-dismiss" data-action="dismiss" aria-label="Dismiss">\u00d7</button>
-    `;
+    `, "legacy direct innerHTML migration"));
 
     const dismissToast = () => {
       setDismissed(`wm-update-dismissed-${version}`);
@@ -197,12 +198,15 @@ export class DesktopUpdater implements AppModule {
       if (action === 'download') {
         trackUpdateClicked(version);
         if (this.ctx.isDesktopApp) {
-          void invokeTauri<void>('open_url', { url }).catch((error) => {
-            this.logUpdaterOutcome('open_failed', { url, error: error instanceof Error ? error.message : String(error) });
-            window.open(url, '_blank', 'noopener');
-          });
+          void openExternalUrl(url)
+            .then((outcome) => {
+              if (outcome !== 'native') this.logUpdaterOutcome('open_failed', { url, outcome });
+            })
+            .catch((error) => {
+              this.logUpdaterOutcome('open_failed', { url, error: error instanceof Error ? error.message : String(error) });
+            });
         } else {
-          window.open(url, '_blank', 'noopener');
+          window.open(url, '_blank', 'noopener,noreferrer');
         }
         dismissToast();
       } else if (action === 'dismiss') {

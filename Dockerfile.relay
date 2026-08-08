@@ -7,7 +7,7 @@
 # Set AISSTREAM_API_KEY in docker-compose.yml or Railway env.
 # =============================================================================
 
-FROM node:22-alpine
+FROM node:24-alpine@sha256:a0b9bf06e4e6193cf7a0f58816cc935ff8c2a908f81e6f1a95432d679c54fbfd
 
 # curl required by OREF polling (Node.js JA3 fingerprint blocked by Akamai; curl passes)
 RUN apk add --no-cache curl
@@ -15,12 +15,71 @@ RUN apk add --no-cache curl
 WORKDIR /app
 
 # Install scripts/ runtime dependencies (telegram, ws, fast-xml-parser, etc.)
+# --ignore-scripts is the critical part: native helper packages such as
+# bufferutil/utf-8-validate can still resolve through websocket, but their
+# node-gyp-build install scripts won't run, so Alpine doesn't need Python/build
+# tools. --omit=optional also skips packages that are only optional in this
+# tree. ws/telegram fall back to pure JS when native helpers are unavailable.
+# Mirrors the main Dockerfile's stage-2 pattern.
 COPY scripts/package.json scripts/package-lock.json ./scripts/
-RUN npm ci --prefix scripts --omit=dev
+RUN npm ci --prefix scripts --omit=dev --omit=optional --ignore-scripts
 
-# Relay script and shared CJS helpers
+# Relay script and shared helpers
 COPY scripts/ais-relay.cjs ./scripts/ais-relay.cjs
+# Shared ingestion outcome/cooldown helpers imported by ais-relay.cjs.
+COPY scripts/_ingestion-coverage.cjs ./scripts/_ingestion-coverage.cjs
 COPY scripts/_proxy-utils.cjs ./scripts/_proxy-utils.cjs
+# Authenticated Yahoo sector valuation client required at relay startup.
+COPY scripts/_yahoo-sector-valuations.cjs ./scripts/_yahoo-sector-valuations.cjs
+COPY scripts/lib/usni-fleet-parser.cjs ./scripts/lib/usni-fleet-parser.cjs
+# llm-telemetry.cjs is transitively imported by _seed-utils.mjs (SIGTERM
+# telemetry flush, #4954) — missing it = silent startup crash in the image.
+COPY scripts/lib/llm-telemetry.cjs ./scripts/lib/llm-telemetry.cjs
+COPY scripts/shared/country-name-to-iso2.cjs ./scripts/shared/country-name-to-iso2.cjs
+# country-names.json backs the full name→ISO2 map (#5359 uniform country
+# scoping); required by country-name-to-iso2.cjs at startup.
+COPY scripts/shared/country-names.json ./scripts/shared/country-names.json
+# iso2-to-region.json backs regional_* country-scope matching in
+# notification-relay.cjs (#5359).
+COPY scripts/shared/iso2-to-region.json ./scripts/shared/iso2-to-region.json
+# notification-dedup.cjs is required by ais-relay.cjs and notification-relay.cjs
+# (Slot B dedup-material helper, #4985). Missing it = ERR_MODULE_NOT_FOUND at
+# relay startup. Guarded by tests/dockerfile-relay-imports.test.mjs.
+COPY scripts/shared/notification-dedup.cjs ./scripts/shared/notification-dedup.cjs
+# market-hours.cjs gates the equity portion of the relay market seed loop on
+# the US-equity session (#4922d). Missing it = ERR_MODULE_NOT_FOUND at startup.
+COPY scripts/shared/market-hours.cjs ./scripts/shared/market-hours.cjs
+# market-quote-refresh.cjs prevents partial upstream success from shrinking the
+# bootstrap basket and bounds Yahoo fallback cadence.
+COPY scripts/shared/market-quote-refresh.cjs ./scripts/shared/market-quote-refresh.cjs
+# closed-market-equity-maintenance.cjs keeps the closed-market TTL refresh
+# logic importable/testable for ais-relay.cjs. Missing it = startup crash.
+COPY scripts/shared/closed-market-equity-maintenance.cjs ./scripts/shared/closed-market-equity-maintenance.cjs
+# ucdp-candidate.cjs carries the GED Candidate discovery/merge shared with
+# scripts/seed-ucdp-events.mjs. Missing it = ERR_MODULE_NOT_FOUND at relay
+# startup (the require is top-level in the UCDP section).
+COPY scripts/shared/ucdp-candidate.cjs ./scripts/shared/ucdp-candidate.cjs
+COPY scripts/_seed-utils.mjs ./scripts/_seed-utils.mjs
+# _seed-envelope-source.mjs and _seed-contract.mjs are transitively imported
+# by _seed-utils.mjs (lines 9-10) and by seed-chokepoint-flows.mjs /
+# seed-ember-electricity.mjs directly. Missing them here = silent
+# ERR_MODULE_NOT_FOUND on every execFile invocation, which looks like a hung
+# Railway cron (the initial-seed path throws, the 6h setInterval keeps firing
+# but each child dies on import). tests/dockerfile-relay-imports.test.mjs
+# guards this COPY list against future regressions.
+COPY scripts/_seed-envelope-source.mjs ./scripts/_seed-envelope-source.mjs
+COPY scripts/_seed-contract.mjs ./scripts/_seed-contract.mjs
+# ais-relay dynamically imports this helper to write the China country index
+# companion cache from a one-month Yahoo chart.
+COPY scripts/_country-stock-index.mjs ./scripts/_country-stock-index.mjs
+COPY scripts/_country-resolver.mjs ./scripts/_country-resolver.mjs
+COPY scripts/_climate-news-helpers.mjs ./scripts/_climate-news-helpers.mjs
+# Shared single-pass entity decoder imported by seed-climate-news.mjs (and the
+# other seeders migrated in #5436). Same ERR_MODULE_NOT_FOUND risk as above.
+COPY scripts/_html-entities.mjs ./scripts/_html-entities.mjs
+COPY scripts/seed-climate-news.mjs ./scripts/seed-climate-news.mjs
+COPY scripts/seed-chokepoint-flows.mjs ./scripts/seed-chokepoint-flows.mjs
+COPY scripts/seed-ember-electricity.mjs ./scripts/seed-ember-electricity.mjs
 
 # Shared helper required by the relay (rss-allowed-domains.cjs)
 COPY shared/ ./shared/
@@ -30,7 +89,10 @@ COPY data/ ./data/
 
 EXPOSE 3004
 
+# Use 127.0.0.1, not localhost: localhost resolves to ::1 first, but the relay
+# server binds IPv4, so a localhost probe gets "connection refused". /health is
+# a public (unauthenticated) route in ais-relay.cjs.
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
-  CMD wget -qO- http://localhost:3004/health || exit 1
+  CMD wget -qO- http://127.0.0.1:3004/health >/dev/null 2>&1 || exit 1
 
 CMD ["node", "scripts/ais-relay.cjs"]

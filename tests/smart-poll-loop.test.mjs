@@ -5,7 +5,7 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const rawSrc = readFileSync(resolve(__dirname, '..', 'src', 'services', 'runtime.ts'), 'utf-8');
+const rawSrc = readFileSync(resolve(__dirname, '..', 'src', 'services', 'smart-poll-loop.ts'), 'utf-8');
 
 function stripTS(src) {
   let out = src;
@@ -537,7 +537,7 @@ describe('startSmartPollLoop', () => {
 
     it('abort errors do not trigger backoff', async () => {
       let calls = 0;
-      startSmartPollLoop((ctx) => {
+      startSmartPollLoop((_ctx) => {
         calls++;
         const err = new Error('aborted');
         err.name = 'AbortError';
@@ -556,7 +556,7 @@ describe('startSmartPollLoop', () => {
   describe('in-flight guard', () => {
     it('concurrent calls are deferred, not dropped', async () => {
       let calls = 0;
-      let resolvers = [];
+      const resolvers = [];
       const handle = startSmartPollLoop(() => {
         calls++;
         return new Promise(r => resolvers.push(r));
@@ -590,7 +590,7 @@ describe('startSmartPollLoop', () => {
       let subscribeCalls = 0;
       let unsubscribeCalls = 0;
       const fakeHub = {
-        subscribe(cb) {
+        subscribe(_cb) {
           subscribeCalls++;
           return () => { unsubscribeCalls++; };
         },

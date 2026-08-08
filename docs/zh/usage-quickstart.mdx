@@ -1,0 +1,77 @@
+---
+title: "快速开始"
+description: "一分钟内完成你的第一次 WorldMonitor API 调用 — 提供 curl、JavaScript 与 Python 三种语言的复制即用示例，涵盖认证头设置、请求参数、响应格式解析与错误处理入门，帮助开发者在最短时间内验证 API 密钥、跑通国家简报与风险评分端点，并顺利进入后续深入集成流程。"
+---
+
+## 1. 获取 API 密钥
+
+API Starter 与 API Business 订阅用户可从 **Dashboard → Settings → API Keys** 创建密钥。用户签发的密钥正好是 `wm_` 后跟 40 个小写十六进制字符，且仅显示一次。请参阅[查找或替换你的许可证 / API 密钥](/zh/api-keys)了解具体步骤或替换丢失的密钥。
+
+<Tip>
+仪表盘浏览器会话可在无用户 API 密钥的情况下调用受支持的公开端点。仅在服务器到服务器调用、不受信任的浏览器来源，以及显式要求 API 密钥的路由上才需要密钥。
+</Tip>
+
+## 2. 调用端点
+
+### curl
+
+```bash
+curl -s 'https://api.worldmonitor.app/api/conflict/v1/get-humanitarian-summary?country_code=SD' \
+  -H 'X-WorldMonitor-Key: wm_0123456789abcdef0123456789abcdef01234567'
+```
+
+### JavaScript（Node 或浏览器）
+
+```js
+const res = await fetch(
+  'https://api.worldmonitor.app/api/market/v1/list-market-quotes?symbols=AAPL&symbols=TSLA',
+  { headers: { 'X-WorldMonitor-Key': process.env.WM_KEY } }
+);
+const data = await res.json();
+console.log(data);
+```
+
+### Python
+
+```python
+import os, httpx
+
+r = httpx.get(
+    "https://api.worldmonitor.app/api/economic/v1/get-fred-series",
+    params={"series_id": "FEDFUNDS"},
+    headers={"X-WorldMonitor-Key": os.environ["WM_KEY"]},
+)
+r.raise_for_status()
+print(r.json())
+```
+
+## 3. 一次性全量水合
+
+对于仪表盘场景，可使用 `/api/bootstrap` 通过一次请求拉取所有已播种的缓存数据：
+
+```bash
+curl -s 'https://api.worldmonitor.app/api/bootstrap' \
+  -H 'X-WorldMonitor-Key: wm_0123456789abcdef0123456789abcdef01234567'
+```
+
+服务器到服务器调用使用相同的主机与请求头格式。`/api/bootstrap` 不需要单独的网关 URL、令牌交换、激活步骤或 IP 白名单。
+
+响应结构详见 [平台端点](/zh/api-platform#bootstrap)。
+
+## 4. 接入 MCP 客户端
+
+将任意兼容 MCP 的客户端指向服务器 URL — 客户端会自动处理 OAuth：
+
+```
+https://api.worldmonitor.app/api/mcp
+```
+
+针对具体客户端的配置详见 [MCP](/zh/mcp-overview)。
+
+## 下一步
+
+- [身份验证](/zh/usage-auth) — 三种认证模式详解
+- [速率限制](/zh/usage-rate-limits) — 各端点配额
+- [错误](/zh/usage-errors) — 响应结构与重试指南
+- [API 参考](/zh/api-reference) — 每个服务、RPC 及请求/响应 schema
+- [Agent 发现](/zh/agent-discovery) — 面向 AI agent 与代码生成工具：从一个根 URL 发现所有 OpenAPI / MCP / OAuth 接口

@@ -31,7 +31,7 @@ function extractPresets(src) {
   const end = src.indexOf('\nexport interface McpToolDef');
   if (start === -1 || end === -1) throw new Error('Could not locate MCP_PRESETS in mcp-store.ts');
   const arrSrc = src.slice(start, end);
-  const blocks = arrSrc.split(/\n  \{/).slice(1);
+  const blocks = arrSrc.split(/\n {2}\{/).slice(1);
   return blocks
     .map(block => ({
       name: /name: '([^']+)'/.exec(block)?.[1] ?? null,

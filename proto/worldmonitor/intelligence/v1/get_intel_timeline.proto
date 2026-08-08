@@ -1,0 +1,68 @@
+syntax = "proto3";
+
+package worldmonitor.intelligence.v1;
+
+import "buf/validate/validate.proto";
+import "sebuf/http/annotations.proto";
+import "worldmonitor/intelligence/v1/intel_history_record.proto";
+
+// GetIntelTimelineRequest asks for stored historical intelligence events in
+// reverse-chronological order. Unlike SearchIntelHistory this is a pure
+// index read — no embedding, no ranking.
+//
+// At least one of `domain` or `country` is required: those are the two
+// indexed scopes on the history table, and an unscoped read would be an
+// unbounded table scan. The handler rejects the unscoped case with HTTP 400.
+message GetIntelTimelineRequest {
+  // Restrict to one producing domain. Required unless `country` is set.
+  string domain = 1 [
+    (buf.validate.field).string.pattern = "^(conflict|military|energy)?$",
+    (sebuf.http.query) = {name: "domain"}
+  ];
+
+  // Restrict to one ISO 3166-1 alpha-2 country. Required unless `domain` is
+  // set. Supplying both narrows to their intersection.
+  string country = 2 [
+    (buf.validate.field).string.pattern = "^([A-Z]{2})?$",
+    (sebuf.http.query) = {name: "country"}
+  ];
+
+  // Earliest occurred_at to return, Unix epoch milliseconds, inclusive.
+  // 0 or omitted means no lower bound.
+  int64 from = 3 [
+    (buf.validate.field).int64.gte = 0,
+    (sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER,
+    (sebuf.http.query) = {name: "from"}
+  ];
+
+  // Latest occurred_at to return, Unix epoch milliseconds, inclusive.
+  // 0 or omitted means no upper bound.
+  int64 to = 4 [
+    (buf.validate.field).int64.gte = 0,
+    (sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER,
+    (sebuf.http.query) = {name: "to"}
+  ];
+
+  // Maximum events to return. Defaults to 50 server-side when omitted or
+  // <= 0; the handler caps it at 200, the TIMELINE_MAX_LIMIT the Convex
+  // query clamps to (convex/intelHistory.ts).
+  int32 limit = 5 [
+    (buf.validate.field).int32.gte = 0,
+    (buf.validate.field).int32.lte = 200,
+    (sebuf.http.query) = {name: "limit"}
+  ];
+}
+
+// GetIntelTimelineResponse returns the scoped history newest-first.
+message GetIntelTimelineResponse {
+  // Events ordered by descending occurred_at. Every record carries score = 0:
+  // a chronological read has no query vector to rank against.
+  repeated IntelHistoryRecord records = 1;
+  // True when the bounded post-filter candidate window may omit older events.
+  bool partial = 2;
+  // True when the history store could not be reached. The gateway reads this
+  // flag out of the body and switches the response to Cache-Control:
+  // no-store, so a transient outage is never pinned as a false-empty timeline
+  // for the tier's full TTL.
+  bool upstream_unavailable = 3;
+}

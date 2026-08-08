@@ -1,5 +1,5 @@
 ---
-title: "AI-Powered Intelligence Without the Cloud: World Monitor's Privacy-First Approach"
+title: "Private AI Intelligence: World Monitor Without the Cloud"
 description: "Run AI-powered intelligence analysis on your own hardware. World Monitor supports Ollama, LM Studio, and in-browser ML for private geopolitical analysis."
 metaTitle: "Local AI Intelligence Analysis | World Monitor"
 keywords: "local LLM intelligence, private AI analysis, offline intelligence tool, Ollama OSINT, privacy-first AI dashboard"
@@ -39,7 +39,7 @@ What runs locally:
 - **Threat classification:** Categorizing news events by threat type and severity
 - **AI Deduction:** Interactive geopolitical forecasting grounded in live data
 
-The desktop app (Tauri) discovers your local Ollama instance automatically. No configuration needed. Just install Ollama, pull a model, and open World Monitor.
+The desktop app ([Tauri](https://tauri.app/)) discovers your local [Ollama](https://ollama.com/) instance automatically. No configuration needed. Just install Ollama, pull a model, and open World Monitor.
 
 ### Tier 2: Groq (Llama 3.1 8B)
 
@@ -61,7 +61,7 @@ Beyond the LLM tiers, World Monitor runs several ML pipelines entirely in your b
 
 ### Named Entity Recognition (NER)
 
-Extracts people, organizations, locations, and dates from news headlines. Runs in a Web Worker using Transformers.js with ONNX models. Never touches a server.
+Extracts people, organizations, locations, and dates from news headlines. Runs in a Web Worker using [Transformers.js](https://huggingface.co/docs/transformers.js) with ONNX models. Never touches a server.
 
 ### Sentiment Analysis
 
@@ -138,7 +138,7 @@ Material non-public information (MNPI) requirements mean certain geopolitical an
 
 You don't have to take our word for the privacy claims. World Monitor is fully open source under AGPL-3.0. Every network call, every data flow, every AI prompt is in the codebase for you to audit. Developers can explore the full [typed API layer and proto-first architecture](/blog/posts/build-on-worldmonitor-developer-api-open-source/) to verify exactly how data flows through the system.
 
-The proto-first API architecture (92 proto files, 22 typed services) means even the API contracts are transparent. You can see exactly what data each endpoint expects and returns.
+The proto-first API architecture (295 proto files, 36 typed services) means even the API contracts are transparent. You can see exactly what data each endpoint expects and returns.
 
 ## Frequently Asked Questions
 
@@ -153,4 +153,4 @@ For most intelligence tasks, local models like Llama 3.1 70B produce comparable 
 
 ---
 
-**Run intelligence analysis on your own terms at [worldmonitor.app](https://worldmonitor.app). Install Ollama for fully private AI. No login, no tracking, no compromise.**
+**Run intelligence analysis on your own terms at [worldmonitor.app](https://www.worldmonitor.app). Install Ollama for fully private AI. No login, no tracking, no compromise.**

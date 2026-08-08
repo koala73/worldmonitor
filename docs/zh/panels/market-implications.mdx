@@ -1,0 +1,46 @@
+---
+title: "AI 市场影响"
+description: "AI 市场影响面板从当日全球新闻流与实时市场信号中推导做多、做空与对冲交易思路，为每一条建议附上明确的方向判断、置信度评分与详细的宏观经济传导路径解释，广泛覆盖股票、大宗商品、外汇与债券等主要资产类别，帮助专业交易员将地缘政治与宏观事件即时转化为可执行的策略级投资洞察。"
+---
+
+**AI Market Implications** 面板（内部 id `market-implications`）将今日的情报和市场流转化为结构化的、概率加权的交易思路。每张卡片有一个方向（`LONG` / `SHORT` / `HEDGE`）、一个置信度分桶（`HIGH` / `MEDIUM` / `LOW`），以及一条解释*为何*生成该信号的传导路径说明。
+
+<Warning>
+面板标题带有常驻免责声明："AI-generated trade signals for informational purposes only. Not investment advice. Always do your own research." — `src/components/MarketImplicationsPanel.ts` 中的 `DISCLAIMER` 常量。
+</Warning>
+
+## 面板显示内容
+
+一个市场影响卡片列表。每张卡片显示：
+
+- **方向** 徽章 — `LONG`（看涨）、`SHORT`（看跌）、`HEDGE`（中性/防御）。
+- **置信度** 徽章 — `HIGH` / `MEDIUM` / `LOW`。
+- **资产** — 代码或工具。
+- **理由** — 简短叙述段落。
+- **传导路径** — 从触发事件到指定资产的链路（`TransmissionNode[]`）。
+
+卡片上方有一个 **框架选择器** — 与其他 LLM 面板使用的 `FrameworkSelector` 相同 — 允许 PRO 用户在替代分析框架下重新运行分析。
+
+面板 id 为 `market-implications`；规范组件为 `src/components/MarketImplicationsPanel.ts`。标题见 `src/config/panels.ts:109`。
+
+## 如何访问
+
+- **Cmd+K**：输入 *market implications* 或 *trade signals*。
+- **按变体的可用性**：仅在 **full/geopolitical** 变体中注册并默认启用（`src/config/panels.ts:109` 处的 `premium: 'locked'`）。在 tech、finance、commodity 或 happy 变体中不存在。
+
+## 数据来源
+
+Market Implications 卡片由 Railway `seed-forecasts` cron 中的预测模拟管道产出：LLM 消费当日的情报、冲突和市场信号，输出结构化的 `MarketImplicationsData` 载荷。面板通过 `@/services/market-implications` 读取；新鲜度通过面板页脚中的 `describeFreshness()` 展示。
+
+## 刷新频率
+
+捆绑在约每小时运行一次的预测 cron 中。`api/health.js` 允许 `seed-meta:intelligence:market-implications` 最多 **120 分钟**（`maxStaleMin: 120`）— 标称间隔的 2 倍 — 后健康面才会升级告警。Market Implications 被视为软依赖种子（`marketImplications` 在 `api/health.js` 的 `DEGRADE_TO_WARN` 中），因为 LLM 步骤可能静默失败而不会损坏上游缓存。
+
+## 层级与门控
+
+**PRO（硬锁定）。** `src/config/panels.ts:109` 中的 `premium: 'locked'`。当存在有效的 `WORLDMONITOR_API_KEY` **或** `isPro` 为 true 时，`isPanelEntitled` 解锁该面板（`market-implications` 在 `src/config/panels.ts:973` 的 `apiKeyPanels` 允许列表中）。
+
+## API 参考
+
+- [Intelligence service](/api/IntelligenceService.openapi.yaml) — LLM 支持的情报服务族的后端 RPC。
+- 相关：[AI 预测](/zh/panels/forecast) — 同一 cron 产出预测源。

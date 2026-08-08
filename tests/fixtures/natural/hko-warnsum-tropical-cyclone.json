@@ -1,0 +1,9 @@
+{
+  "WTCSGNL": {
+    "name": "Tropical Cyclone Warning Signal, No. 3",
+    "code": "WTCSGNL",
+    "actionCode": "REISSUE",
+    "issueTime": "2026-07-13T10:00:00+08:00",
+    "updateTime": "2026-07-13T10:30:00+08:00"
+  }
+}

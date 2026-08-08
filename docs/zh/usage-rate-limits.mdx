@@ -1,0 +1,155 @@
+---
+title: "速率限制"
+description: "World Monitor API 中的按端点、按密钥、按 IP 三层速率限制说明 —— 涵盖响应头字段、429 状态码处理、配额窗口滑动逻辑，以及针对生产客户端的指数退避、抖动与重试队列指南，帮助开发者在高并发调用、批量抓取与 agent 自动化场景中稳定运行并避免触发保护机制。"
+---
+
+速率限制在 Vercel Edge 运行时上通过 Upstash Redis 计数器进行强制执行。除特别说明外，所有限制均为**60 秒滑动窗口**。
+
+## 默认公开 API 速率限制
+
+| 范围 | 限制 | 窗口 |
+|-------|-------|--------|
+| 按 IP（默认） | **600 次请求** | 60 秒 |
+
+适用于所有没有更严格覆盖规则的 `/api/*` 路由。由 `api/_rate-limit.js` / `api/_ip-rate-limit.js` 实现。
+
+## MCP 服务器
+
+| 范围 | 限制 | 窗口 |
+|-------|-------|--------|
+| 按 API 密钥（MCP 工具） | **60 次请求** | 60 秒 |
+
+详见 [MCP](/zh/mcp-overview)。
+
+## 按套餐的 API 速率限制
+
+已认证的 REST API 密钥（`wm_…`）按**账户**而非按 IP 限制 —— 共享出口 IP 之后的某个密钥不会被其他租户的流量限流，且一个账户的所有密钥共享同一额度。
+
+| 套餐 | 每分钟（突发） | 每日包含 | 超出每日额度之后 |
+|------|--------------------|----------------|----------------------------|
+| **API Starter** | **60** / 60 秒 | **1,000** / UTC 日 | 计量 —— 10,000 / 天硬停 |
+| **API Business** | **300** / 60 秒 | **10,000** / UTC 日 | 计量 —— 100,000 / 天硬停 |
+| **Enterprise** | **1,000** / 60 秒 | 不限 | — |
+
+- **每分钟**是硬性突发限制 —— 超出会立即返回 429。
+- **每日包含**是你的套餐额度；在 **00:00 UTC** 重置。超出部分是**计量而非拒绝** —— 基于用量的超额计费正在推出。在此之前，一个安全上限（包含额度的 10 倍）会以 429 封顶失控用量。
+- 每分钟突发、每日额度和上限均为**按账户**（在一个账户的所有 `wm_…` 密钥间共享），因此签发更多密钥不会提高你的限制。（运维签发的 Enterprise 密钥是例外 —— 每个密钥独立限流。）
+- 需要更高限制？**联系支持团队**提升你套餐的额度。
+
+## 仪表盘 AI 配额
+
+仪表盘与直接 REST AI 操作使用独立于 MCP 的每日额度。计数器在 **00:00 UTC** 重置。
+
+| 套餐 | 每日仪表盘 AI 请求数 |
+|------|----------------------|
+| **Free / 未登录** | **0** —— 受保护的 AI 路由需要 Pro 认证 |
+| **Pro** | **500** |
+| **Pro Business** | **2,500** |
+| **API Starter** | **1,000** |
+| **API Business** | **10,000** |
+| **Enterprise** | 不限 |
+
+Free 与未登录的仪表盘用户在信息流增强上仍可使用常规的关键词/缓存回退；他们不会消耗付费的直接 AI 额度。这些限制与上文的 MCP 额度相互独立。
+
+未登录的调用会被直接拒绝，受 Pro 保护的 AI 路由也会在产生任何花费之前拒绝免费账户。除上述套餐额度之外，对于在请求时无法确认其付费权益的调用方（订阅已失效，或权益查询出现暂时性故障），另有一个**每天 50 次请求**的非套餐安全下限。它的作用是让故障优雅降级，而不是拒绝付费客户；它不属于任何套餐包含的额度，且永远不会大于最小的付费额度。
+
+## OAuth 端点
+
+| 端点 | 限制 | 窗口 | 范围 |
+|----------|-------|--------|-------|
+| `POST /api/oauth/register` | 5 | 60 秒 | 按 IP |
+| `GET /api/oauth/authorize` | 10 | 60 秒 | 按 IP |
+| `POST /api/oauth/token` | 10 | 60 秒 | 按凭证 / 客户端 / IP 兜底 |
+
+与 `api/oauth/register.js`、`api/oauth/authorize.js` 和 `api/oauth/token.ts` 中的实现保持一致。
+
+对于 `/api/oauth/token`，限流器键在 `client_credentials` 下为 `client_secret` 哈希，其次为 `client_id`（若存在），仅当两个凭证标识均不可用时才回退到调用方 IP。
+
+在 OAuth 流程中超过以上任一限制都会导致 MCP 客户端连接握手失败 — 请等待 60 秒后重试。
+
+## 写入端点
+
+| 端点 | 限制 | 窗口 | 范围 |
+|----------|-------|--------|-------|
+| `POST /api/scenario/v1/run-scenario` | 10 | 60 秒 | 按 IP |
+| `POST /api/scenario/v1/run-scenario`（队列深度） | 100 在处理中 | — | 全局 |
+| `POST /api/leads/v1/register-interest` | 5 | 60 分钟 | 按 IP + Turnstile（桌面来源需要签名 HMAC 绕过） |
+| `POST /api/leads/v1/submit-contact` | 3 | 60 分钟 | 按 IP + Turnstile |
+
+其他写入端点（`/api/brief/share-url`、`/api/notification-channels`、`/api/create-checkout`、`/api/customer-portal` 等）回退使用上面的默认按 IP 限制。
+
+## Bootstrap / 健康 / 版本
+
+这些端点大多使用默认公开 API 限制。缓存头因端点而异：
+
+- `GET /api/bootstrap` — 只有显式标记的 `?...&public=1` URL 可被共享缓存。`?tier=fast&public=1` / `?tier=slow&public=1` 使用浏览器 `max-age=60` / `max-age=300` 和 CDN `s-maxage=600` / `s-maxage=7200`。单键公开 URL：on-demand 键（`?keys=<onDemandName>&public=1`）在未声明自有配置时继承 slow 配置 —— 浏览器 `max-age=300`、CDN `s-maxage=7200`；目前仅 `chinaDecisionSignals` 声明了自有配置（浏览器 `max-age=60`、CDN `s-maxage=900`）；`?keys=weatherAlerts&public=1` 使用 `Cache-Control: public, s-maxage=600, stale-while-revalidate=120, stale-if-error=900` 并配合 fast 层 CDN 屏蔽。其余所有形态 —— 密钥认证、会话认证、未标记的 `?tier=...` URL，以及匿名 `?keys=weatherAlerts` 路径 —— 均使用 `Cache-Control: no-store` 且不发出 CDN 缓存头，因此凭据 URL 永远不会由共享缓存应答。用户 API 密钥校验还有一个故障关闭的固定 60 秒按 IP 预校验限制，最多 600 次尝试。
+- `GET /api/health` — `private, no-store, max-age=0` 加上 `CDN-Cache-Control: no-store`。
+- `GET /api/version` — `public, s-maxage=300, stale-while-revalidate=60, stale-if-error=3600`。
+
+## 速率限制响应头（在 429 之前自我节流）
+
+每个 `/api/*` 响应 —— 无论成功还是错误 —— 都会通告 [IETF `RateLimit` 头字段](https://datatracker.ietf.org/doc/draft-ietf-httpapi-ratelimit-headers/)，以便 agent 在触发 429 **之前**自行控制节奏：
+
+```
+RateLimit-Policy: "default";q=600;w=60
+RateLimit-Limit: 600
+```
+
+- `RateLimit-Policy` —— 默认滑动窗口下 `w` 秒窗口内的适用额度（`q`）。更严格的按端点、按套餐和 OAuth 限制（见上表）适用于这些路由。
+- `RateLimit-Limit` —— 以裸整数形式给出的同一额度，供早于结构化字段草案的解析器使用。
+
+这些是静态通告，因此不会在热路径上增加延迟。出于向后兼容，也会发出遗留的 `X-RateLimit-*` 名称。
+
+## 被限制时的响应
+
+HTTP 429 还会携带实时的每窗口计数器（remaining 为 `0`；reset 和 `Retry-After` 为**增量秒数**）以及组合的 `RateLimit` 成员：
+
+```
+HTTP/1.1 429 Too Many Requests
+RateLimit-Policy: "default";q=<limit>;w=<window>
+RateLimit-Limit: <limit>
+RateLimit-Remaining: 0
+RateLimit-Reset: <seconds until reset>
+RateLimit: "default";r=0;t=<seconds until reset>
+Retry-After: <seconds>
+X-RateLimit-Limit: <limit>
+X-RateLimit-Remaining: 0
+X-RateLimit-Reset: <reset, ms since epoch>
+Content-Type: application/json
+
+{ "error": "Too many requests" }
+```
+
+注意 IETF `RateLimit-Reset`（以及组合 `RateLimit` 成员中的 `t` 值）是**剩余秒数**，而遗留的 `X-RateLimit-Reset` 是以**毫秒**为单位的绝对纪元时间。对于每日上限的 429，`Retry-After` 倒计时到下一个 00:00 UTC。
+
+## 重试指南
+
+- 遵守 `Retry-After`。不要在 429 上反复猛击。
+- 对于批量任务请控制节奏：默认按 IP 600 次/分钟，约为你提供 ~10 次/秒的余量。
+- 对于 MCP，60 次/分钟对对话式使用绰绰有余，但对脚本化批量抓取较为紧张 — 批量任务请优先使用 REST API。
+- 莫名其妙的 429 通常意味着你正在共享一个出口 IP（公司代理、CI runner）。如需提升按密钥的限制，请联系支持团队。
+
+## 客户通知与付费套餐上限
+
+API 与 MCP 套餐上限依据权益附带的产品目录限制进行跟踪：
+
+| 套餐 | API 请求 / 天 | API 突发 / 分钟 | MCP 调用 / 天 | MCP 突发 / 分钟 |
+|------|--------------------|--------------------|-----------------|--------------------|
+| Free | 0 | 0 | 0 | 0 |
+| Pro | 0 | 0 | 50 | 60 |
+| API Starter | 1,000 | 60 | 1,000 | 60 |
+| API Business | 10,000 | 300 | 10,000 | 300 |
+| Enterprise | 不限 | 1,000 | 不限 | 1,000 |
+
+当付费用户接近或超过以上任一限制时，WorldMonitor 会记录一条精简的 Convex 汇总并在设置中开启一条当前账户通知。每日计数读取自同一治理强制执行的按账户计量器，因此警告反映的用量数值与套餐计量口径一致。每日限制在 80% 时警告，并在 100% 时切换为超限；突发限制仅在持续压力下通知，而非单次孤立尖峰。
+
+若该通知仍然有效，一个由 Resend 支撑的生命周期流程会以有界节奏发送一封邮件。邮件与仪表盘通知会说明当前用量、相关套餐限制及可用选项：减少流量、等待重置、在存在自助路径时升级，或在下一层级非自助时联系支持。
+
+WorldMonitor **不会**因用户越过上限而自动升级、收取超额费用或将客户迁入 API Business。付费套餐的任何未来硬性强制执行必须先通过内部 `apiPlanLimitNotices.getEnforcementReadiness` 门控：无陈旧用量来源、无待处理 / 失败的邮件、且无被阻塞的自助升级路径。
+
+## 硬上限（非软限制）
+
+- Webhook 回调 URL 必须为 HTTPS（localhost 除外）。
+- `api/download` 文件大小限制约为每请求 50 MB。
+- 当待处理队列超过 **100** 时，`POST /api/scenario/v1/run-scenario` 会全局暂停接收新作业 — 返回 429。
+- `api/v2/shipping/webhooks` 的 TTL 为 **30 天** — 需重新注册以延长。

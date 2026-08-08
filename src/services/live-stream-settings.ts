@@ -1,8 +1,7 @@
 /**
  * Live stream playback preferences shared across Live News + Live Webcams.
  *
- * Default: Always On (no idle auto-pause). Users can enable Eco mode to
- * pause streams after inactivity to reduce CPU/bandwidth.
+ * Default: user intent required. Users can opt into command-center autoplay.
  */
 
 const STORAGE_KEY_LIVE_STREAMS_ALWAYS_ON = 'wm-live-streams-always-on';
@@ -27,7 +26,7 @@ function writeBool(key: string, value: boolean): void {
 }
 
 export function getLiveStreamsAlwaysOn(): boolean {
-  return readBool(STORAGE_KEY_LIVE_STREAMS_ALWAYS_ON, true);
+  return readBool(STORAGE_KEY_LIVE_STREAMS_ALWAYS_ON, false);
 }
 
 export function setLiveStreamsAlwaysOn(alwaysOn: boolean): void {

@@ -2,9 +2,39 @@ import { Panel } from './Panel';
 import { escapeHtml } from '@/services/forecast';
 import type { Forecast } from '@/services/forecast';
 import { t } from '@/services/i18n';
+import { getForecastMacroRegion } from '../../shared/forecast-macro-regions.js';
+import { unsafeRawHtml } from '@/utils/sanitize';
+import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
+import { mergeCachedCaseFiles, needsCaseFileRefetch, shouldFetchCaseFile } from './forecast-case-files';
 
 const DOMAINS = ['all', 'conflict', 'market', 'supply_chain', 'political', 'military', 'cyber', 'infrastructure'] as const;
 const PANEL_MIN_PROBABILITY = 0.1;
+
+interface ForecastSourceState {
+  generatedAt: number;
+  degraded: boolean;
+  stale: boolean;
+  error: string;
+}
+
+// Macro region pill values. Each non-empty id matches an entry in the
+// ForecastMacroRegionId union emitted by getForecastMacroRegion() (see
+// shared/forecast-macro-regions.js). Filtering is entirely client-side:
+// this.forecasts stays the full unfiltered set, and the render pipeline
+// applies the active macro region on every render so the filter survives
+// refresh-time updateForecasts() calls. The '' (empty) id means
+// "All Regions" — no filter applied. Forecasts whose region does not
+// classify (unknown or 'global') only appear under "All Regions".
+const FORECAST_REGIONS = [
+  { id: '', label: 'All Regions' },
+  { id: 'mena', label: 'MENA' },
+  { id: 'east-asia', label: 'East Asia' },
+  { id: 'europe', label: 'Europe' },
+  { id: 'south-asia', label: 'South Asia' },
+  { id: 'sub-saharan-africa', label: 'Africa' },
+  { id: 'latam', label: 'LatAm' },
+  { id: 'north-america', label: 'N. America' },
+] as const;
 
 const DOMAIN_LABELS: Record<string, string> = {
   all: 'All',
@@ -199,6 +229,7 @@ function injectStyles(): void {
     .fc-signal { color: var(--text-secondary, #a0a0a0); font-size: 11px; padding: 3px 0 3px 12px; line-height: 1.45; position: relative; margin-top: 2px; }
     .fc-signal::before { content: ''; position: absolute; left: 0; top: 9px; display: inline-block; width: 6px; height: 1px; background: var(--text-secondary, #555); }
     .fc-empty { padding: 20px; text-align: center; color: var(--text-secondary, #888); }
+    .fc-source-notice { margin: 6px 8px 0; padding: 6px 8px; border: 1px solid rgba(210,153,34,0.35); border-radius: 4px; color: #d29922; background: rgba(210,153,34,0.08); font-size: 10px; line-height: 1.35; }
 
     /* ── Simulation confidence sub-bar (Option D) ────────────────────────── */
     /* Thin colored underbar below the forecast title. Width encodes sim       */
@@ -209,13 +240,47 @@ function injectStyles(): void {
     .fc-prob-item:hover .fc-sim-bar { opacity: 0.9; }
     .fc-sim-label { font-size: 9px; display: none; margin-top: 2px; line-height: 1.2; }
     .fc-prob-item:hover .fc-sim-label { display: block; }
+
+    /* ── Simulation verdict chip ─────────────────────────────────────────── */
+    .fc-sim-chip { display: inline-flex; align-items: center; gap: 3px; padding: 1px 6px; border-radius: 3px; font-size: 9px; font-weight: 600; letter-spacing: 0.03em; white-space: nowrap; flex-shrink: 0; line-height: 1.6; }
+    .fc-sim-chip::before { content: ''; display: inline-block; width: 4px; height: 4px; border-radius: 50%; flex-shrink: 0; }
+    .fc-sim-chip--backed   { background: rgba(63,185,80,0.12);  color: #3fb950; border: 1px solid rgba(63,185,80,0.28); }
+    .fc-sim-chip--backed::before   { background: #3fb950; }
+    .fc-sim-chip--flagged  { background: rgba(210,153,34,0.12); color: #d29922; border: 1px solid rgba(210,153,34,0.28); }
+    .fc-sim-chip--flagged::before  { background: #d29922; }
+    .fc-sim-chip--skeptical { background: rgba(224,82,82,0.10); color: #e05252; border: 1px solid rgba(224,82,82,0.28); }
+    .fc-sim-chip--skeptical::before { background: #e05252; }
+    .fc-label-inner { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+    .fc-forecast-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   `;
   document.head.appendChild(style);
 }
 
 export class ForecastPanel extends Panel {
+  // Full unfiltered set from the server. The region + domain filters are
+  // applied on every render() — never mutate this by filtering, or refresh
+  // updates from data-loader will wipe the filter state.
   private forecasts: Forecast[] = [];
+  /** De-dupe guard for the dossier fetch. Cleared when a refresh brings a forecast we've never fetched. */
+  private caseFilesPromise: Promise<void> | null = null;
+  /**
+   * Dossiers already fetched, by forecast id. Survives refresh ticks: the bootstrap
+   * feed carries the LIST only, so without this cache a refresh would drop the dossier
+   * the user just opened and re-render the pane empty (#5300).
+   */
+  private caseFilesById = new Map<string, NonNullable<Forecast['caseFile']>>();
+  /**
+   * Every forecast id a completed fetch covered — including those that legitimately have
+   * no dossier. Tracked separately from `caseFilesById` so a dossier-less forecast counts
+   * as resolved: keying the refetch decision off a missing `caseFile` alone would refetch
+   * the whole feed on every click of such a pane.
+   */
+  private caseFilesFetchedIds = new Set<string>();
+  /** True once a fetch has completed successfully — so a refresh never cancels an in-flight one. */
+  private caseFilesSettled = false;
+  private sourceState: ForecastSourceState = { generatedAt: 0, degraded: false, stale: false, error: '' };
   private activeDomain: string = 'all';
+  private selectedRegion: string = '';
   private theaters: SimulationTheater[] = [];
   private expandedTheaterId: string | null = null;
 
@@ -228,6 +293,19 @@ export class ForecastPanel extends Panel {
       const filterBtn = target.closest('[data-fc-domain]') as HTMLElement | null;
       if (filterBtn) {
         this.activeDomain = filterBtn.dataset.fcDomain || 'all';
+        this.render();
+        return;
+      }
+
+      const regionBtn = target.closest('[data-fc-region]') as HTMLElement | null;
+      if (regionBtn) {
+        const nextRegion = regionBtn.dataset.fcRegion ?? '';
+        if (nextRegion === this.selectedRegion) return;
+        this.selectedRegion = nextRegion;
+        // Client-side filter only — no RPC fires. The next render() pulls
+        // from the full this.forecasts set and applies the macro region
+        // filter in getVisibleForecasts().
+        this.setCount(this.getVisibleForecasts().length);
         this.render();
         return;
       }
@@ -246,6 +324,14 @@ export class ForecastPanel extends Panel {
         const panelId = toggle.dataset.fcToggle;
         const detail = panelId ? item?.querySelector(`[data-fc-panel="${panelId}"]`) as HTMLElement | null : null;
         if (detail) detail.classList.toggle('fc-hidden');
+        // The bootstrap payload carries the LIST, not the dossiers — 78% of the old
+        // key was caseFile prose nobody expands (#5300). Fetch them the first time
+        // someone actually opens one; the feed is CDN-shielded, so this is cheap.
+        const forecastId = panelId?.startsWith('detail-') ? panelId.slice('detail-'.length) : '';
+        const forecast = forecastId ? this.forecasts.find((f) => f.id === forecastId) : undefined;
+        if (detail && shouldFetchCaseFile(forecast, !detail.classList.contains('fc-hidden'), !detail.innerHTML.trim())) {
+          void this.loadCaseFiles();
+        }
         return;
       }
 
@@ -260,11 +346,83 @@ export class ForecastPanel extends Panel {
     });
   }
 
-  updateForecasts(forecasts: Forecast[]): void {
-    this.forecasts = forecasts;
+  /**
+   * Fetch the evidence dossiers on first expand (#5300).
+   *
+   * The bootstrap payload is the dashboard LIST: `caseFile` was 78% of the old key —
+   * ~19,000 words of prose that were shipped to every visitor, downloaded on every
+   * page load, and parsed into hidden DOM during the LCP window, for content almost
+   * nobody opens. The full feed still carries them, and it is now CDN-shielded, so
+   * pulling it once when a user actually clicks "Analysis" is cheap.
+   *
+   * Failure is non-fatal: the detail pane just stays empty, exactly as it would if
+   * the seeder had produced no case file.
+   */
+  private async loadCaseFiles(): Promise<void> {
+    if (this.caseFilesPromise) return this.caseFilesPromise;
+
+    this.caseFilesPromise = (async () => {
+      try {
+        const { fetchForecastFeed } = await import('@/services/forecast');
+        const feed = await fetchForecastFeed();
+        for (const f of feed.forecasts) {
+          this.caseFilesFetchedIds.add(f.id);
+          if (f.caseFile) this.caseFilesById.set(f.id, f.caseFile);
+        }
+        this.caseFilesSettled = true;
+        this.forecasts = this.forecasts.map((f) => {
+          const caseFile = this.caseFilesById.get(f.id);
+          return !f.caseFile && caseFile ? { ...f, caseFile } : f;
+        });
+
+        // Patch the panes in place rather than calling render(). A full re-render
+        // rebuilds every detail div with its default `fc-hidden` class and would
+        // slam shut the pane the user just opened.
+        for (const f of this.forecasts) {
+          if (!f.caseFile) continue;
+          const pane = this.element.querySelector(
+            `[data-fc-panel="detail-${CSS.escape(f.id)}"]`,
+          ) as HTMLElement | null;
+          if (pane && !pane.innerHTML.trim()) {
+            // renderDetailBody() escapes every interpolated value (escapeHtml/renderList),
+            // exactly as it does on the eager path this replaces.
+            setTrustedHtml(pane, trustedHtml(this.renderDetailBody(f), 'ForecastPanel case-file detail; same escaped markup as the eager render path (#5300)'));
+          }
+        }
+      } catch {
+        // Leave the pane empty and allow a later retry.
+        this.caseFilesPromise = null;
+      }
+    })();
+
+    return this.caseFilesPromise;
+  }
+
+  updateForecasts(forecasts: Forecast[], sourceState?: Partial<ForecastSourceState>): void {
+    // Refresh ticks re-hydrate from the bootstrap feed, which carries the LIST without
+    // the dossiers (#5300). Re-merge anything already fetched, or the dossier the user
+    // has open would vanish on the next tick and re-render as an empty pane.
+    this.forecasts = mergeCachedCaseFiles(forecasts, this.caseFilesById);
+    // A refreshed list can introduce a forecast no completed fetch covered — drop the
+    // de-dupe latch so the next expand re-fetches it.
+    if (needsCaseFileRefetch(this.forecasts, this.caseFilesFetchedIds, this.caseFilesSettled)) {
+      this.caseFilesPromise = null;
+      this.caseFilesSettled = false;
+    }
+    this.sourceState = {
+      generatedAt: sourceState?.generatedAt ?? this.sourceState.generatedAt,
+      degraded: sourceState?.degraded === true,
+      stale: sourceState?.stale === true,
+      error: sourceState?.error || '',
+    };
     const visible = this.getVisibleForecasts();
     this.setCount(visible.length);
-    this.setDataBadge(visible.length > 0 ? 'live' : 'unavailable');
+    // Badge reflects fetch success (this.forecasts.length), not the filtered
+    // result. A user who picks a region with zero matches should still see
+    // the feed as "live" — the empty-state copy inside the panel communicates
+    // the filter miss. Tying the badge to the filter caused the panel to
+    // flip to "unavailable" on any empty region pill.
+    this.setDataBadge(this.forecasts.length > 0 && !this.sourceState.degraded ? 'live' : 'unavailable');
     this.render();
   }
 
@@ -276,14 +434,54 @@ export class ForecastPanel extends Panel {
     if (this.forecasts.length > 0) this.render();
   }
 
+  // Returns forecasts that pass the probability AND region filters. Domain
+  // filter is applied later in render() so the count reflects the prob+region
+  // view (matching what the user sees with 'All' domains selected). Keep this
+  // pure and idempotent — it reads from this.forecasts + this.selectedRegion
+  // and must survive arbitrary refresh-time updateForecasts() calls.
   private getVisibleForecasts(): Forecast[] {
-    return this.forecasts.filter(f => (f.probability || 0) >= PANEL_MIN_PROBABILITY);
+    const probFiltered = this.forecasts.filter(
+      f => (f.probability || 0) >= PANEL_MIN_PROBABILITY,
+    );
+    if (!this.selectedRegion) return probFiltered;
+    return probFiltered.filter(
+      f => getForecastMacroRegion(f.region) === this.selectedRegion,
+    );
   }
 
   private render(): void {
     const visibleForecasts = this.getVisibleForecasts();
+    const filtersHtml = DOMAINS.map(d =>
+      `<button class="fc-filter${d === this.activeDomain ? ' fc-active' : ''}" data-fc-domain="${d}">${DOMAIN_LABELS[d]}</button>`
+    ).join('');
+    const regionsHtml = FORECAST_REGIONS.map(r =>
+      `<button class="fc-filter${r.id === this.selectedRegion ? ' fc-active' : ''}" data-fc-region="${escapeHtml(r.id)}">${escapeHtml(r.label)}</button>`
+    ).join('');
+
     if (visibleForecasts.length === 0) {
-      this.setContent('<div class="fc-empty">No forecasts available</div>');
+      // Differentiate fetch-miss (this.forecasts.length === 0) from
+      // filter-miss (this.forecasts has rows but none match the current
+      // region/probability filter). The badge already reflects fetch success
+      // independently; this copy just helps the user understand why the
+      // list is empty so they can adjust the pill without thinking the feed
+      // is broken.
+      const hasAnyForecasts = this.forecasts.length > 0;
+      const emptyCopy = hasAnyForecasts
+        ? 'No forecasts match the current filter'
+        : this.sourceState.degraded
+          ? 'Forecast backend unavailable'
+          : this.sourceState.error
+            ? 'Forecast request failed'
+            : 'No forecasts available';
+      const sourceHtml = this.renderSourceNotice();
+      this.setSafeContent(unsafeRawHtml(`
+        <div class="fc-panel">
+          <div class="fc-filters">${filtersHtml}</div>
+          <div class="fc-filters">${regionsHtml}</div>
+          ${sourceHtml}
+          <div class="fc-empty">${escapeHtml(emptyCopy)}</div>
+        </div>
+      `, 'legacy Panel.setContent() migration'));
       return;
     }
 
@@ -291,22 +489,32 @@ export class ForecastPanel extends Panel {
       ? visibleForecasts
       : visibleForecasts.filter(f => f.domain === this.activeDomain);
 
-    const filtersHtml = DOMAINS.map(d =>
-      `<button class="fc-filter${d === this.activeDomain ? ' fc-active' : ''}" data-fc-domain="${d}">${DOMAIN_LABELS[d]}</button>`
-    ).join('');
-
     const nexusHtml = this.theaters.length > 0
       ? `<div class="fc-nexus">${this.renderNexus()}</div><div class="fc-section-label">Probability Bets</div>`
       : '';
     const tableHtml = this.renderProbTable(filtered);
+    const sourceHtml = this.renderSourceNotice();
 
-    this.setContent(`
+    this.setSafeContent(unsafeRawHtml(`
       <div class="fc-panel">
         <div class="fc-filters">${filtersHtml}</div>
+        <div class="fc-filters">${regionsHtml}</div>
+        ${sourceHtml}
         ${nexusHtml}
         ${tableHtml}
       </div>
-    `);
+    `, 'legacy Panel.setContent() migration'));
+  }
+
+  private renderSourceNotice(): string {
+    if (!this.sourceState.degraded && !this.sourceState.stale && !this.sourceState.error) return '';
+    const errorDetail = this.sourceState.degraded ? '' : this.sourceState.error.replace(/_/g, ' ');
+    const parts = [
+      this.sourceState.degraded ? 'Forecast source degraded' : '',
+      this.sourceState.stale ? 'stale cache' : '',
+      errorDetail,
+    ].filter(Boolean);
+    return `<div class="fc-source-notice">${escapeHtml(parts.join(' · '))}</div>`;
   }
 
   // ── NEXUS theater grid + expandable detail ──────────────────────────────
@@ -371,7 +579,7 @@ export class ForecastPanel extends Panel {
       const pctColor = p.confidence >= 0.65 ? '#3fb950' : p.confidence >= 0.45 ? '#d29922' : '#e05252';
       const actors = p.keyActors.map(a => `<span class="fc-actor-chip">${escapeHtml(a)}</span>`).join('');
       const typeTag = p.pathId ? `<span class="fc-path-type fc-path-type-${escapeHtml(p.pathId)}">${escapeHtml(PATH_ID_LABELS[p.pathId] ?? p.pathId)}</span>` : '';
-      const confText = p.confidence > 0 ? `${Math.round(p.confidence * 100)}% probability` : '—';
+      const confText = p.confidence > 0 ? `${Math.round(p.confidence * 100)}% confidence` : '—';
       return `
         <div class="fc-path-card">
           <div class="fc-path-label">${typeTag}${escapeHtml(p.label)}</div>
@@ -445,11 +653,12 @@ export class ForecastPanel extends Panel {
     const sigs = f.signals || [];
     const signalsHtml = sigs.length > 0
       ? sigs.map(s =>
-          `<div class="fc-signal">${escapeHtml(s.value.replace(/^[\s\u2013\u2014\-]+/, ''))}</div>`
+          `<div class="fc-signal">${escapeHtml(s.value.replace(/^[\s\u2013\u2014-]+/, ''))}</div>`
         ).join('')
       : '';
 
     const simBarHtml = this.renderSimBar(f);
+    const simChipHtml = this.renderSimChip(f);
     const demoted = f.demotedBySimulation ?? false;
 
     return `
@@ -457,7 +666,10 @@ export class ForecastPanel extends Panel {
         <div class="fc-prob-row"${demoted ? ' style="opacity:0.5"' : ''}>
           <div class="fc-prob-label"
                style="border-left:2px solid ${catColor}47;padding-left:6px">
-            ${escapeHtml(f.title)}
+            <div class="fc-label-inner">
+              <span class="fc-forecast-title">${escapeHtml(f.title)}</span>
+              ${simChipHtml}
+            </div>
             ${simBarHtml}
           </div>
           <div class="fc-bar-wrap">
@@ -476,7 +688,7 @@ export class ForecastPanel extends Panel {
           <span class="fc-toggle" data-fc-toggle="detail-${escapeHtml(f.id)}">Analysis</span>
           ${sigs.length > 0 ? `<span class="fc-toggle" data-fc-toggle="signals-${escapeHtml(f.id)}">Signals (${sigs.length})</span>` : ''}
         </div>
-        <div class="fc-detail fc-hidden" data-fc-panel="detail-${escapeHtml(f.id)}">${this.renderDetailBody(f)}</div>
+        <div class="fc-detail fc-hidden" data-fc-panel="detail-${escapeHtml(f.id)}">${f.caseFile ? this.renderDetailBody(f) : ''}</div>
         ${signalsHtml ? `<div class="fc-signals fc-hidden" data-fc-panel="signals-${escapeHtml(f.id)}">${signalsHtml}</div>` : ''}
       </div>
     `;
@@ -514,6 +726,21 @@ export class ForecastPanel extends Panel {
       <div class="fc-sim-bar" style="width:${barWidthPct}%;background:${barColor}"></div>
       <span class="fc-sim-label" style="color:${barColor}">${escapeHtml(labelText)}</span>
     </div>`;
+  }
+
+  // ── Simulation verdict chip ──────────────────────────────────────────────
+
+  private renderSimChip(f: Forecast): string {
+    const adj = f.simulationAdjustment ?? 0;
+    const demoted = f.demotedBySimulation ?? false;
+    if (demoted) {
+      return `<span class="fc-sim-chip fc-sim-chip--skeptical">AI skeptical</span>`;
+    }
+    if (adj === 0) return '';
+    if (adj > 0) {
+      return `<span class="fc-sim-chip fc-sim-chip--backed">AI backed</span>`;
+    }
+    return `<span class="fc-sim-chip fc-sim-chip--flagged">AI flagged</span>`;
   }
 
   // ── Detail sections (shared by rows) ────────────────────────────────────

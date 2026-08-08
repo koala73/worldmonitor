@@ -1,5 +1,6 @@
 import { Panel } from './Panel';
-import { escapeHtml } from '@/utils/sanitize';
+import { t } from '@/services/i18n';
+import { escapeHtml, unsafeRawHtml } from '@/utils/sanitize';
 import { fetchHormuzTracker } from '@/services/hormuz-tracker';
 import type { HormuzTrackerData, HormuzChart, HormuzSeries } from '@/services/hormuz-tracker';
 
@@ -16,7 +17,7 @@ function statusColor(status: string): string {
 }
 
 function barChart(series: HormuzSeries[], color: string, unit: string, width = 280, height = 52): string {
-  if (!series.length) return `<div style="height:${height}px;display:flex;align-items:center;color:var(--text-dim);font-size:10px">No data</div>`;
+  if (!series.length) return `<div style="height:${height}px;display:flex;align-items:center;color:var(--text-dim);font-size:10px">${escapeHtml(t('components.hormuzTracker.noData'))}</div>`;
 
   const max = Math.max(...series.map(p => p.value), 1);
   const barW = Math.max(2, Math.floor((width - series.length) / series.length));
@@ -43,9 +44,9 @@ function barChart(series: HormuzSeries[], color: string, unit: string, width = 2
 function renderChart(chart: HormuzChart, idx: number): string {
   const color = CHART_COLORS[idx % CHART_COLORS.length] ?? '#3498db';
   const last = chart.series[chart.series.length - 1];
-  const lastVal = last ? Number(last.value).toFixed(0) : 'N/A';
+  const lastVal = last ? Number(last.value).toFixed(0) : t('components.hormuzTracker.notAvailable');
   const lastDate = last ? last.date.slice(5) : '';
-  const unit = chart.label.includes('crude_oil') ? 'kt/day' : 'units';
+  const unit = chart.label.includes('crude_oil') ? t('components.hormuzTracker.units.ktPerDay') : t('components.hormuzTracker.units.generic');
 
   return `
     <div class="hz-chart" style="margin-bottom:12px">
@@ -62,7 +63,7 @@ export class HormuzPanel extends Panel {
   private tooltipBound = false;
 
   constructor() {
-    super({ id: 'hormuz-tracker', title: 'Hormuz Trade Tracker', showCount: false });
+    super({ id: 'hormuz-tracker', title: t('components.hormuzTracker.title'), showCount: false, infoTooltip: t('components.hormuzTracker.infoTooltip') });
   }
 
   public async fetchData(): Promise<boolean> {
@@ -70,7 +71,7 @@ export class HormuzPanel extends Panel {
     try {
       const data = await fetchHormuzTracker();
       if (!data) {
-        this.showError('Hormuz data unavailable', () => void this.fetchData());
+        this.showError(t('components.hormuzTracker.errors.unavailable'), () => void this.fetchData());
         return false;
       }
       this.data = data;
@@ -78,7 +79,7 @@ export class HormuzPanel extends Panel {
       this.bindTooltip();
       return true;
     } catch (e) {
-      this.showError(e instanceof Error ? e.message : 'Failed to load', () => void this.fetchData());
+      this.showError(e instanceof Error ? e.message : t('components.hormuzTracker.errors.failedToLoad'), () => void this.fetchData());
       return false;
     }
   }
@@ -116,7 +117,7 @@ export class HormuzPanel extends Panel {
 
     const charts = d.charts.length
       ? d.charts.map((c, i) => renderChart(c, i)).join('')
-      : '<div style="color:var(--text-dim);font-size:11px;padding:8px 0">Chart data unavailable</div>';
+      : `<div style="color:var(--text-dim);font-size:11px;padding:8px 0">${escapeHtml(t('components.hormuzTracker.chartUnavailable'))}</div>`;
 
     const dateStr = d.updatedDate ? `<span style="font-size:10px;color:var(--text-dim)">${escapeHtml(d.updatedDate)}</span>` : '';
 
@@ -129,10 +130,10 @@ export class HormuzPanel extends Panel {
         </div>
         <div>${charts}</div>
         <div style="margin-top:4px;font-size:9px;color:var(--text-dim)">
-          Source: <a href="${escapeHtml(d.attribution.url)}" target="_blank" rel="noopener" style="color:var(--text-dim);text-decoration:underline">${escapeHtml(d.attribution.source)}</a>
+          ${escapeHtml(t('components.hormuzTracker.sourcePrefix'))} <a href="${escapeHtml(d.attribution.url)}" target="_blank" rel="noopener" style="color:var(--text-dim);text-decoration:underline">${escapeHtml(d.attribution.source)}</a>
         </div>
       </div>`;
 
-    this.setContent(html);
+    this.setSafeContent(unsafeRawHtml(html, 'legacy Panel.setContent() migration'));
   }
 }

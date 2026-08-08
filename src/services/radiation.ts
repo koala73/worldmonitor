@@ -1,15 +1,8 @@
 import { createCircuitBreaker } from '@/utils';
 import { getRpcBaseUrl } from '@/services/rpc-client';
 import { getHydratedData } from '@/services/bootstrap';
-import {
-  RadiationServiceClient,
-  type RadiationConfidence as ProtoRadiationConfidence,
-  type RadiationFreshness as ProtoRadiationFreshness,
-  type RadiationObservation as ProtoRadiationObservation,
-  type RadiationSeverity as ProtoRadiationSeverity,
-  type RadiationSource as ProtoRadiationSource,
-  type ListRadiationObservationsResponse,
-} from '@/generated/client/worldmonitor/radiation/v1/service_client';
+import type { RadiationConfidence as ProtoRadiationConfidence, RadiationFreshness as ProtoRadiationFreshness, RadiationObservation as ProtoRadiationObservation, RadiationSeverity as ProtoRadiationSeverity, RadiationSource as ProtoRadiationSource, ListRadiationObservationsResponse } from '@/generated/client/worldmonitor/radiation/v1/service_client';
+import { RadiationServiceClient } from '@/services/generated-rpc-clients';
 
 export type RadiationFreshness = 'live' | 'recent' | 'historical';
 export type RadiationSeverity = 'normal' | 'elevated' | 'spike';

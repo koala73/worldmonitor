@@ -17,7 +17,7 @@ message ClimateAnomaly {
   worldmonitor.core.v1.GeoCoordinates location = 2;
   // Temperature deviation from normal in degrees Celsius.
   double temp_delta = 3;
-  // Precipitation deviation from normal as a percentage.
+  // Precipitation deviation from normal in millimeters.
   double precip_delta = 4;
   // Severity classification of the anomaly.
   AnomalySeverity severity = 5;

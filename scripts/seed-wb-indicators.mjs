@@ -10,11 +10,9 @@
  *   node scripts/seed-wb-indicators.mjs [--env production|preview|development] [--sha <sha>]
  */
 
-import { readFileSync, existsSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
-import { dirname, join } from 'node:path';
+import { join } from 'node:path';
+import { loadEnvFile } from './_seed-utils.mjs';
 
-const __dirname = dirname(fileURLToPath(import.meta.url));
 
 const BOOTSTRAP_KEY = 'economic:worldbank-techreadiness:v1';
 const PROGRESS_KEY = 'economic:worldbank-progress:v1';
@@ -77,27 +75,6 @@ function getKeyPrefix(env, sha) {
 function maskToken(token) {
   if (!token || token.length < 8) return '***';
   return token.slice(0, 4) + '***' + token.slice(-4);
-}
-
-function loadEnvFile() {
-  const envPath = join(__dirname, '..', '.env.local');
-  if (!existsSync(envPath)) return;
-
-  const lines = readFileSync(envPath, 'utf8').split('\n');
-  for (const line of lines) {
-    const trimmed = line.trim();
-    if (!trimmed || trimmed.startsWith('#')) continue;
-    const eqIdx = trimmed.indexOf('=');
-    if (eqIdx === -1) continue;
-    const key = trimmed.slice(0, eqIdx).trim();
-    let val = trimmed.slice(eqIdx + 1).trim();
-    if ((val.startsWith('"') && val.endsWith('"')) || (val.startsWith("'") && val.endsWith("'"))) {
-      val = val.slice(1, -1);
-    }
-    if (!process.env[key]) {
-      process.env[key] = val;
-    }
-  }
 }
 
 function sleep(ms) {
@@ -374,7 +351,7 @@ async function fetchRenewableData() {
 // ---------------------------------------------------------------------------
 
 async function main() {
-  loadEnvFile();
+  loadEnvFile(import.meta.url);
 
   const { env, sha } = parseArgs();
   const prefix = getKeyPrefix(env, sha);

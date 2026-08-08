@@ -2,22 +2,48 @@ openapi: 3.1.0
 info:
     title: ForecastService API
     version: 1.0.0
+security:
+    - WorldMonitorKey: []
+    - ApiKeyHeader: []
+servers:
+    - url: https://api.worldmonitor.app
 paths:
     /api/forecast/v1/get-forecasts:
         get:
             tags:
                 - ForecastService
             summary: GetForecasts
+            description: GetForecasts returns the latest generated probabilistic forecasts; the degraded flag distinguishes a backend outage from a healthy empty set.
             operationId: GetForecasts
             parameters:
                 - name: domain
                   in: query
+                  description: Forecast domain to retrieve, such as geopolitics, markets, or climate.
                   required: false
+                  example: "conflict"
                   schema:
                     type: string
+                    enum:
+                        - 'conflict'
+                        - 'market'
+                        - 'supply_chain'
+                        - 'political'
+                        - 'military'
+                        - 'cyber'
+                        - 'infrastructure'
                 - name: region
                   in: query
+                  description: Optional geographic or thematic region filter for forecasts.
                   required: false
+                  example: "example"
+                  schema:
+                    type: string
+                - name: jmespath
+                  in: query
+                  description: |-
+                    Optional JMESPath expression applied server-side to project or reduce the JSON response before it is returned (mirrors the MCP jmespath argument). Invalid expressions, expressions larger than 1024 UTF-8 bytes, or projections that exceed the 256 KB output cap return HTTP 400 with a {_jmespath_error, original_keys} envelope. Grammar and worked examples: https://www.worldmonitor.app/docs/mcp-jmespath.
+                  required: false
+                  example: "keys(@)"
                   schema:
                     type: string
             responses:
@@ -25,6 +51,44 @@ paths:
                     description: Successful response
                     content:
                         application/json:
+                            example:
+                                "degraded": true
+                                "error": "example"
+                                "forecasts":
+                                    - "calibration":
+                                        "drift": 1.5
+                                        "marketPrice": 75.25
+                                        "marketTitle": "example"
+                                        "source": "example"
+                                      "cascades":
+                                          - "domain": "example"
+                                            "effect": "example"
+                                            "probability": 1.5
+                                      "caseFile":
+                                          "actorLenses":
+                                              - "example"
+                                          "actors":
+                                              - "category": "cs.AI"
+                                                "constraints":
+                                                    - "example"
+                                                "id": "example-id"
+                                                "influenceScore": 42.5
+                                                "likelyActions":
+                                                    - "example"
+                                          "baseCase": "example"
+                                          "branches":
+                                              - "kind": "example"
+                                                "outcome": "example"
+                                                "projectedProbability": 1.5
+                                                "rounds":
+                                                    - {}
+                                                "summary": "Example WorldMonitor observation."
+                                          "changeItems":
+                                              - "example"
+                                      "confidence": 0.82
+                                      "createdAt": 1717200000000
+                                "generatedAt": 1717200000000
+                                "stale": true
                             schema:
                                 $ref: '#/components/schemas/GetForecastsResponse'
                 "400":
@@ -32,24 +96,68 @@ paths:
                     content:
                         application/json:
                             schema:
-                                $ref: '#/components/schemas/ValidationError'
-                default:
-                    description: Error response
+                                oneOf:
+                                    - $ref: '#/components/schemas/ValidationError'
+                                    - $ref: '#/components/schemas/JmespathProjectionError'
+                "401":
+                    description: Missing or invalid API key.
                     content:
                         application/json:
                             schema:
-                                $ref: '#/components/schemas/Error'
-    /api/forecast/v1/get-simulation-package:
+                                $ref: '#/components/schemas/UnauthorizedError'
+                "403":
+                    description: API access requires an active subscription (the API key's subscription is inactive or expired).
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ForbiddenError'
+                "429":
+                    description: Rate limit exceeded.
+                    headers:
+                        X-RateLimit-Limit:
+                            description: Maximum requests allowed in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Remaining:
+                            description: Requests remaining in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Reset:
+                            description: Unix epoch milliseconds when the active rate-limit window resets.
+                            schema:
+                                type: string
+                        Retry-After:
+                            description: Seconds to wait before retrying the request.
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/RateLimitError'
+                default:
+                    description: Gateway or handler error response.
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/GatewayError'
+    /api/forecast/v1/get-forecast-scorecard:
         get:
             tags:
                 - ForecastService
-            summary: GetSimulationPackage
-            operationId: GetSimulationPackage
+            summary: GetForecastScorecard
+            description: GetForecastScorecard returns the latest forecast resolution scorecard; degraded distinguishes a backend outage from a healthy empty scorecard.
+            operationId: GetForecastScorecard
             parameters:
-                - name: runId
+                - name: jmespath
                   in: query
-                  description: Currently ignored; always returns the latest package. Reserved for Phase 3 per-run lookup.
+                  description: |-
+                    Optional JMESPath expression applied server-side to project or reduce the JSON response before it is returned (mirrors the MCP jmespath argument). Invalid expressions, expressions larger than 1024 UTF-8 bytes, or projections that exceed the 256 KB output cap return HTTP 400 with a {_jmespath_error, original_keys} envelope. Grammar and worked examples: https://www.worldmonitor.app/docs/mcp-jmespath.
                   required: false
+                  example: "keys(@)"
                   schema:
                     type: string
             responses:
@@ -57,6 +165,120 @@ paths:
                     description: Successful response
                     content:
                         application/json:
+                            example:
+                                "byDomain":
+                                    - "brier": 1.5
+                                      "domain": "example"
+                                      "logScore": 42.5
+                                      "resolved": 1
+                                      "scored": 42
+                                "byGenerationOrigin":
+                                    - "brier": 1.5
+                                      "generationOrigin": "example"
+                                      "logScore": 42.5
+                                      "resolved": 1
+                                      "scored": 42
+                                "calibration":
+                                    - "brier": 1.5
+                                      "bucket": "example"
+                                      "count": 1
+                                      "maxProbability": 1.5
+                                      "minProbability": 1.5
+                                "degraded": true
+                                "error": "example"
+                            schema:
+                                $ref: '#/components/schemas/GetForecastScorecardResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/ValidationError'
+                                    - $ref: '#/components/schemas/JmespathProjectionError'
+                "401":
+                    description: Missing or invalid API key.
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/UnauthorizedError'
+                "403":
+                    description: API access requires an active subscription (the API key's subscription is inactive or expired).
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ForbiddenError'
+                "429":
+                    description: Rate limit exceeded.
+                    headers:
+                        X-RateLimit-Limit:
+                            description: Maximum requests allowed in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Remaining:
+                            description: Requests remaining in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Reset:
+                            description: Unix epoch milliseconds when the active rate-limit window resets.
+                            schema:
+                                type: string
+                        Retry-After:
+                            description: Seconds to wait before retrying the request.
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/RateLimitError'
+                default:
+                    description: Gateway or handler error response.
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/GatewayError'
+    /api/forecast/v1/get-simulation-package:
+        get:
+            tags:
+                - ForecastService
+            summary: GetSimulationPackage
+            description: GetSimulationPackage returns the latest forecast simulation package; the response note is populated when a supplied runId does not match the returned package.
+            operationId: GetSimulationPackage
+            parameters:
+                - name: runId
+                  in: query
+                  description: |-
+                    Optional run identifier. Does not select the package — the latest stored package is
+                     always returned regardless of this value. When supplied and it differs from the
+                     returned package's runId, the response `note` field is populated to warn that per-run
+                     filtering is not yet active. Reserved for Phase 3 per-run lookup.
+                  required: false
+                  example: "example-id"
+                  schema:
+                    type: string
+                - name: jmespath
+                  in: query
+                  description: |-
+                    Optional JMESPath expression applied server-side to project or reduce the JSON response before it is returned (mirrors the MCP jmespath argument). Invalid expressions, expressions larger than 1024 UTF-8 bytes, or projections that exceed the 256 KB output cap return HTTP 400 with a {_jmespath_error, original_keys} envelope. Grammar and worked examples: https://www.worldmonitor.app/docs/mcp-jmespath.
+                  required: false
+                  example: "keys(@)"
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            example:
+                                "error": "example"
+                                "found": true
+                                "generatedAt": 1717200000000
+                                "note": "example"
+                                "runId": "example-id"
                             schema:
                                 $ref: '#/components/schemas/GetSimulationPackageResponse'
                 "400":
@@ -64,27 +286,84 @@ paths:
                     content:
                         application/json:
                             schema:
-                                $ref: '#/components/schemas/ValidationError'
-                default:
-                    description: Error response
+                                oneOf:
+                                    - $ref: '#/components/schemas/ValidationError'
+                                    - $ref: '#/components/schemas/JmespathProjectionError'
+                "401":
+                    description: Missing or invalid API key.
                     content:
                         application/json:
                             schema:
-                                $ref: '#/components/schemas/Error'
+                                $ref: '#/components/schemas/UnauthorizedError'
+                "403":
+                    description: API access requires an active subscription (the API key's subscription is inactive or expired).
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ForbiddenError'
+                "429":
+                    description: Rate limit exceeded.
+                    headers:
+                        X-RateLimit-Limit:
+                            description: Maximum requests allowed in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Remaining:
+                            description: Requests remaining in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Reset:
+                            description: Unix epoch milliseconds when the active rate-limit window resets.
+                            schema:
+                                type: string
+                        Retry-After:
+                            description: Seconds to wait before retrying the request.
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/RateLimitError'
+                default:
+                    description: Gateway or handler error response.
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/GatewayError'
     /api/forecast/v1/get-simulation-outcome:
         get:
             tags:
                 - ForecastService
             summary: GetSimulationOutcome
+            description: GetSimulationOutcome returns the latest stored forecast simulation outcome; the response note is populated when a supplied runId does not match the returned outcome.
             operationId: GetSimulationOutcome
             parameters:
                 - name: runId
                   in: query
                   description: |-
-                    IMPORTANT: Currently a no-op. Always returns the latest available outcome regardless of runId.
-                     Per-run lookup is reserved for Phase 3. Check the response 'note' field when runId is supplied
-                     and you need to detect a mismatch between requested and returned run.
+                    Filter is active for outcomes within the 24h retention window (#3734).
+                     If runId is supplied:
+                       - Hit on the by-run key → returns that outcome, processing=false.
+                       - By-run lookup returns the tombstone (worker write transiently failed) →
+                         falls through to :latest with a 'note' describing the transient failure.
+                       - No by-run match but runId is in the queue → returns processing=true.
+                       - No match anywhere → falls back to :latest with a 'note' describing
+                         expiry-or-mismatch.
+                     If runId is empty: returns :latest (existing behavior).
                   required: false
+                  example: "example-id"
+                  schema:
+                    type: string
+                - name: jmespath
+                  in: query
+                  description: |-
+                    Optional JMESPath expression applied server-side to project or reduce the JSON response before it is returned (mirrors the MCP jmespath argument). Invalid expressions, expressions larger than 1024 UTF-8 bytes, or projections that exceed the 256 KB output cap return HTTP 400 with a {_jmespath_error, original_keys} envelope. Grammar and worked examples: https://www.worldmonitor.app/docs/mcp-jmespath.
+                  required: false
+                  example: "keys(@)"
                   schema:
                     type: string
             responses:
@@ -92,6 +371,12 @@ paths:
                     description: Successful response
                     content:
                         application/json:
+                            example:
+                                "allTheatersFailed": true
+                                "completionStatus": "example"
+                                "eligibleTheaterCount": 1
+                                "error": "example"
+                                "failedTheaterCount": 1
                             schema:
                                 $ref: '#/components/schemas/GetSimulationOutcomeResponse'
                 "400":
@@ -99,15 +384,256 @@ paths:
                     content:
                         application/json:
                             schema:
-                                $ref: '#/components/schemas/ValidationError'
-                default:
-                    description: Error response
+                                oneOf:
+                                    - $ref: '#/components/schemas/ValidationError'
+                                    - $ref: '#/components/schemas/JmespathProjectionError'
+                "401":
+                    description: Missing or invalid API key.
                     content:
                         application/json:
                             schema:
-                                $ref: '#/components/schemas/Error'
+                                $ref: '#/components/schemas/UnauthorizedError'
+                "403":
+                    description: API access requires an active subscription (the API key's subscription is inactive or expired).
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ForbiddenError'
+                "429":
+                    description: Rate limit exceeded.
+                    headers:
+                        X-RateLimit-Limit:
+                            description: Maximum requests allowed in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Remaining:
+                            description: Requests remaining in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Reset:
+                            description: Unix epoch milliseconds when the active rate-limit window resets.
+                            schema:
+                                type: string
+                        Retry-After:
+                            description: Seconds to wait before retrying the request.
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/RateLimitError'
+                default:
+                    description: Gateway or handler error response.
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/GatewayError'
+    /api/forecast/v1/trigger-simulation:
+        post:
+            parameters:
+                - name: Idempotency-Key
+                  in: header
+                  description: Optional client-generated idempotency key. Retrying a POST with the same key and an identical request body replays the original response (only the status, body, and Content-Type are reproduced) instead of re-executing; reusing the key with a different body is rejected with 422. For mutations this avoids duplicating the side effect, while for batch-read POSTs it replays a cached snapshot that can be up to 24 hours stale. Keys are scoped per authenticated caller (falling back to the source IP for unauthenticated endpoints) and retained for 24 hours.
+                  required: false
+                  example: "4f8b9c2e-1a3d-4b6f-8e0a-2c5d7f9b1e34"
+                  schema:
+                    type: string
+                    minLength: 1
+                    maxLength: 255
+                    pattern: "^[\\x21-\\x7E]{1,255}$"
+            tags:
+                - ForecastService
+            summary: TriggerSimulation
+            description: |-
+                TriggerSimulation enqueues a simulation task for the current
+                 SIMULATION_PACKAGE_LATEST_KEY package pointer. PRO-gated. The runId
+                 is server-derived; callers cannot supply one. The Railway worker
+                 (scripts/process-simulation-tasks.mjs) polls the queue and writes
+                 outcomes; callers poll GetSimulationOutcome with the returned runId
+                 to retrieve the result. Mirrors run-scenario.ts pattern. See #3734. Requires entitlement tier >= 1.
+            operationId: TriggerSimulation
+            security:
+                - WorldMonitorKey: []
+                - ApiKeyHeader: []
+                - BearerAuth: []
+            requestBody:
+                content:
+                    application/json:
+                        example:
+                            "clientVersion": "example"
+                        schema:
+                            $ref: '#/components/schemas/TriggerSimulationRequest'
+                required: true
+            responses:
+                "200":
+                    description: Successful response
+                    headers:
+                        Idempotency-Key:
+                            schema:
+                                type: string
+                            description: The idempotency key echoed from the request. Present only when the client opted into idempotency.
+                        Idempotent-Replayed:
+                            schema:
+                                type: boolean
+                            description: true when this response was replayed from an earlier request with the same key, false on the first (original) request. Present only when the client opted into idempotency.
+                    content:
+                        application/json:
+                            example:
+                                "pkgFingerprint": "example"
+                                "queued": true
+                                "reason": "example"
+                                "runId": "example-id"
+                            schema:
+                                $ref: '#/components/schemas/TriggerSimulationResponse'
+                "400":
+                    description: Validation error, invalid Idempotency-Key header, or malformed JSON request body
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/ValidationError'
+                                    - type: object
+                                      required:
+                                        - error
+                                        - message
+                                      properties:
+                                        error:
+                                            type: string
+                                        message:
+                                            type: string
+                                    - $ref: '#/components/schemas/InvalidRequestBodyError'
+                "409":
+                    description: A request with this Idempotency-Key is still being processed
+                    headers:
+                        Idempotency-Key:
+                            schema:
+                                type: string
+                            description: The idempotency key supplied by the client.
+                        Retry-After:
+                            schema:
+                                type: string
+                            description: Seconds to wait before retrying the in-flight request.
+                    content:
+                        application/json:
+                            schema:
+                                type: object
+                                required:
+                                    - error
+                                    - message
+                                properties:
+                                    error:
+                                        type: string
+                                    message:
+                                        type: string
+                "422":
+                    description: The Idempotency-Key was already used with a different request body
+                    headers:
+                        Idempotency-Key:
+                            schema:
+                                type: string
+                            description: The idempotency key supplied by the client.
+                    content:
+                        application/json:
+                            schema:
+                                type: object
+                                required:
+                                    - error
+                                    - message
+                                properties:
+                                    error:
+                                        type: string
+                                    message:
+                                        type: string
+                "401":
+                    description: Missing or invalid API key.
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/UnauthorizedError'
+                "403":
+                    description: PRO entitlement access denied.
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ForbiddenError'
+                "429":
+                    description: Rate limit exceeded.
+                    headers:
+                        X-RateLimit-Limit:
+                            description: Maximum requests allowed in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Remaining:
+                            description: Requests remaining in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Reset:
+                            description: Unix epoch milliseconds when the active rate-limit window resets.
+                            schema:
+                                type: string
+                        Retry-After:
+                            description: Seconds to wait before retrying the request.
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/RateLimitError'
+                default:
+                    description: Gateway or handler error response.
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/GatewayError'
 components:
+    securitySchemes:
+        WorldMonitorKey:
+            type: apiKey
+            in: header
+            name: X-WorldMonitor-Key
+            description: User-issued WorldMonitor API key.
+        ApiKeyHeader:
+            type: apiKey
+            in: header
+            name: X-Api-Key
+            description: Alias header for the WorldMonitor API key (X-WorldMonitor-Key).
+        BearerAuth:
+            type: http
+            scheme: bearer
+            description: 'Bearer token: a Clerk-issued JWT for browser session flows, passed as Authorization: Bearer <token>.'
     schemas:
+        JmespathProjectionError:
+            description: Returned when a REST jmespath projection is invalid or exceeds the expression/output byte limits.
+            properties:
+                _jmespath_error:
+                    description: Projection error discriminator and details.
+                    type: string
+                original_keys:
+                    description: Top-level keys or shape of the unprojected response.
+                    items:
+                        type: string
+                    type: array
+            required:
+                - _jmespath_error
+                - original_keys
+            type: object
+        UnauthorizedError:
+            type: object
+            properties:
+                error:
+                    type: string
+                    description: Human-readable error message.
+            required:
+                - error
+            description: Returned when the API key is missing, malformed, or lacks current API access.
         Error:
             type: object
             properties:
@@ -115,6 +641,56 @@ components:
                     type: string
                     description: Error message (e.g., 'user not found', 'database connection failed')
             description: Error is returned when a handler encounters an error. It contains a simple error message that the developer can customize.
+        InvalidRequestBodyError:
+            type: object
+            description: Returned when a JSON POST request body is empty or malformed.
+            properties:
+                message:
+                    type: string
+                    description: Invalid request body
+            required:
+                - message
+        GatewayError:
+            type: object
+            description: Returned by gateway infrastructure errors before an RPC handler runs, such as origin, routing, method, authentication, or quota checks.
+            properties:
+                error:
+                    oneOf:
+                        - type: string
+                        - type: object
+                          additionalProperties: true
+                    description: Gateway error reason or structured gateway failure details.
+            required:
+                - error
+        RateLimitError:
+            type: object
+            description: Returned when a gateway or handler rate limit rejects the request.
+            properties:
+                error:
+                    type: string
+                    description: Human-readable rate-limit failure reason.
+            required:
+                - error
+        ForbiddenError:
+            type: object
+            properties:
+                error:
+                    type: string
+                    description: Human-readable entitlement failure reason.
+                requiredTier:
+                    type: integer
+                    format: int32
+                    description: Minimum entitlement tier required for this endpoint.
+                currentTier:
+                    type: integer
+                    format: int32
+                    description: Caller entitlement tier when known.
+                planKey:
+                    type: string
+                    description: Caller plan key when known.
+            required:
+                - error
+            description: Returned when a PRO-gated endpoint denies access because the caller has no resolved authenticated user, entitlements cannot be verified, or the caller lacks the required entitlement tier.
         FieldViolation:
             type: object
             properties:
@@ -144,8 +720,10 @@ components:
             properties:
                 domain:
                     type: string
+                    description: Forecast domain to retrieve, such as geopolitics, markets, or climate.
                 region:
                     type: string
+                    description: Optional geographic or thematic region filter for forecasts.
         GetForecastsResponse:
             type: object
             properties:
@@ -157,6 +735,21 @@ components:
                     type: integer
                     format: int64
                     description: 'Warning: Values > 2^53 may lose precision in JavaScript'
+                degraded:
+                    type: boolean
+                    description: |-
+                        True when the forecast backend could not read the canonical cache.
+                         Distinguishes an outage from a healthy empty forecast set.
+                stale:
+                    type: boolean
+                    description: |-
+                        True when forecasts are served from a stale fallback. Currently false for
+                         this endpoint because get-forecasts does not have a stale fallback cache.
+                error:
+                    type: string
+                    description: |-
+                        Stable machine-readable reason when degraded=true, empty otherwise.
+                         Value: "forecast_backend_unavailable" on Redis/backend read failures.
         Forecast:
             type: object
             properties:
@@ -190,6 +783,11 @@ components:
                         $ref: '#/components/schemas/CascadeEffect'
                 trend:
                     type: string
+                    description: |-
+                        Forecast trend direction. Current values are "rising", "falling", and
+                         "stable". The seeder compares probability against the prior forecast
+                         snapshot and uses a +/-0.05 deadband: deltas above +0.05 are rising,
+                         below -0.05 are falling, and everything inside the band is stable.
                 priorProbability:
                     type: number
                     format: double
@@ -223,6 +821,8 @@ components:
                     format: double
                 demotedBySimulation:
                     type: boolean
+                resolution:
+                    $ref: '#/components/schemas/ResolutionSpec'
         ForecastSignal:
             type: object
             properties:
@@ -271,12 +871,20 @@ components:
                 h24:
                     type: number
                     format: double
+                    description: Projected 24-hour probability after domain-curve normalization.
                 d7:
                     type: number
                     format: double
+                    description: Projected 7-day probability after domain-curve normalization.
                 d30:
                     type: number
                     format: double
+                    description: Projected 30-day probability after domain-curve normalization.
+            description: |-
+                Projections contains bounded presentation-path probabilities derived from
+                 domain curves. Market forecasts are peak-anchored, so the projected value at
+                 the forecast's own time_horizon can intentionally differ from the headline
+                 probability; non-market forecasts preserve their emitted horizon as anchor.
         ForecastCase:
             type: object
             properties:
@@ -408,20 +1016,257 @@ components:
                 probabilityShift:
                     type: number
                     format: double
+        ResolutionSpec:
+            type: object
+            properties:
+                kind:
+                    type: string
+                metricKey:
+                    type: string
+                operator:
+                    type: string
+                threshold:
+                    type: number
+                    format: double
+                baselineValue:
+                    type: number
+                    format: double
+                window:
+                    type: string
+                deadline:
+                    type: integer
+                    format: int64
+                    description: 'Warning: Values > 2^53 may lose precision in JavaScript'
+                sourceFeed:
+                    type: string
+                question:
+                    type: string
+            description: |-
+                Machine-checkable resolution spec — makes a forecast a scoreable *bet*.
+                 Every forecast carries exactly one spec, either "hard" or "judged":
+                   - "hard":   auto-resolvable by a free metric comparison against a
+                               WorldMonitor feed the detector already scored from. Sets
+                               metric_key (feed + path expression), operator, threshold,
+                               window, and source_feed (a RESOLUTION_FEED_KEYS allowlist
+                               member). baseline_value is set only when operator is
+                               "crosses" (the emission-time metric value the move is
+                               measured from).
+                   - "judged": resolved by a later LLM judge against the question string;
+                               no numeric threshold, but still a resolution deadline.
+                 kind and operator are strings, not proto enums, mirroring the trend field
+                 above so a new operator/kind never requires a proto migration to land in
+                 the 45-day history. Current kind values are "hard" and "judged"; current
+                 operator values are ">=", "<=", and "crosses".
+                 kind and deadline are always set; every other field is optional and absent
+                 (persisted as JSON null) when it does not apply to the kind — a judged spec
+                 carries no threshold/baseline_value so "no threshold" is never confused
+                 with a real threshold of 0, and a hard spec carries no question.
+        GetForecastScorecardRequest:
+            type: object
+        GetForecastScorecardResponse:
+            type: object
+            properties:
+                schemaVersion:
+                    type: integer
+                    format: int32
+                generatedAt:
+                    type: integer
+                    format: int64
+                    description: 'Warning: Values > 2^53 may lose precision in JavaScript'
+                rollingWindowDays:
+                    type: integer
+                    format: int32
+                methodology:
+                    type: string
+                totals:
+                    $ref: '#/components/schemas/ScorecardTotals'
+                overall:
+                    $ref: '#/components/schemas/ScorecardSummary'
+                byDomain:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/ScorecardDomainGroup'
+                byGenerationOrigin:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/ScorecardGenerationOriginGroup'
+                calibration:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/ScorecardCalibrationBucket'
+                vsMarketSkill:
+                    $ref: '#/components/schemas/ScorecardMarketSkill'
+                degraded:
+                    type: boolean
+                stale:
+                    type: boolean
+                error:
+                    type: string
+                skill:
+                    $ref: '#/components/schemas/ScorecardSkill'
+        ScorecardTotals:
+            type: object
+            properties:
+                entries:
+                    type: integer
+                    format: int32
+                resolved:
+                    type: integer
+                    format: int32
+                pending:
+                    type: integer
+                    format: int32
+                pendingJudge:
+                    type: integer
+                    format: int32
+                scored:
+                    type: integer
+                    format: int32
+                void:
+                    type: integer
+                    format: int32
+                voidRate:
+                    type: number
+                    format: double
+                publicationCoverage:
+                    type: number
+                    format: double
+        ScorecardSummary:
+            type: object
+            properties:
+                count:
+                    type: integer
+                    format: int32
+                brier:
+                    type: number
+                    format: double
+                logScore:
+                    type: number
+                    format: double
+        ScorecardDomainGroup:
+            type: object
+            properties:
+                domain:
+                    type: string
+                resolved:
+                    type: integer
+                    format: int32
+                scored:
+                    type: integer
+                    format: int32
+                void:
+                    type: integer
+                    format: int32
+                voidRate:
+                    type: number
+                    format: double
+                brier:
+                    type: number
+                    format: double
+                logScore:
+                    type: number
+                    format: double
+        ScorecardGenerationOriginGroup:
+            type: object
+            properties:
+                generationOrigin:
+                    type: string
+                resolved:
+                    type: integer
+                    format: int32
+                scored:
+                    type: integer
+                    format: int32
+                void:
+                    type: integer
+                    format: int32
+                voidRate:
+                    type: number
+                    format: double
+                brier:
+                    type: number
+                    format: double
+                logScore:
+                    type: number
+                    format: double
+        ScorecardCalibrationBucket:
+            type: object
+            properties:
+                bucket:
+                    type: string
+                minProbability:
+                    type: number
+                    format: double
+                maxProbability:
+                    type: number
+                    format: double
+                count:
+                    type: integer
+                    format: int32
+                predictedMean:
+                    type: number
+                    format: double
+                realizedRate:
+                    type: number
+                    format: double
+                brier:
+                    type: number
+                    format: double
+        ScorecardMarketSkill:
+            type: object
+            properties:
+                count:
+                    type: integer
+                    format: int32
+                forecastBrier:
+                    type: number
+                    format: double
+                marketBrier:
+                    type: number
+                    format: double
+                brierDelta:
+                    type: number
+                    format: double
+        ScorecardSkill:
+            type: object
+            properties:
+                count:
+                    type: integer
+                    format: int32
+                brier:
+                    type: number
+                    format: double
+                logScore:
+                    type: number
+                    format: double
+                excludedScored:
+                    type: integer
+                    format: int32
+                excludedOrigins:
+                    type: array
+                    items:
+                        type: string
+            description: |-
+                Headline "real skill" summary: Brier/log score over scored entries whose
+                 generation origin is NOT synthetic backfill or an unpromoted shadow stream.
+                 count 0 with excluded_scored > 0 means the headline is unmeasurable because
+                 everything scored was synthetic — the honest signal for a collapsed funnel.
         GetSimulationPackageRequest:
             type: object
             properties:
                 runId:
                     type: string
-                    description: Currently ignored; always returns the latest package. Reserved for Phase 3 per-run lookup.
+                    description: |-
+                        Optional run identifier. Does not select the package — the latest stored package is
+                         always returned regardless of this value. When supplied and it differs from the
+                         returned package's runId, the response `note` field is populated to warn that per-run
+                         filtering is not yet active. Reserved for Phase 3 per-run lookup.
         GetSimulationPackageResponse:
             type: object
             properties:
                 found:
                     type: boolean
                 runId:
-                    type: string
-                pkgKey:
                     type: string
                 schemaVersion:
                     type: string
@@ -448,17 +1293,21 @@ components:
                 runId:
                     type: string
                     description: |-
-                        IMPORTANT: Currently a no-op. Always returns the latest available outcome regardless of runId.
-                         Per-run lookup is reserved for Phase 3. Check the response 'note' field when runId is supplied
-                         and you need to detect a mismatch between requested and returned run.
+                        Filter is active for outcomes within the 24h retention window (#3734).
+                         If runId is supplied:
+                           - Hit on the by-run key → returns that outcome, processing=false.
+                           - By-run lookup returns the tombstone (worker write transiently failed) →
+                             falls through to :latest with a 'note' describing the transient failure.
+                           - No by-run match but runId is in the queue → returns processing=true.
+                           - No match anywhere → falls back to :latest with a 'note' describing
+                             expiry-or-mismatch.
+                         If runId is empty: returns :latest (existing behavior).
         GetSimulationOutcomeResponse:
             type: object
             properties:
                 found:
                     type: boolean
                 runId:
-                    type: string
-                outcomeKey:
                     type: string
                 schemaVersion:
                     type: string
@@ -472,8 +1321,10 @@ components:
                 note:
                     type: string
                     description: |-
-                        Populated when req.runId was supplied but does not match the returned outcome's runId.
-                         Indicates that per-run filtering is not yet active and the latest outcome was returned instead.
+                        Populated when req.runId was supplied but does not match the returned outcome's runId,
+                         or when the by-run lookup returned a tombstone (Redis transient write failure).
+                         Distinguishes "your runId expired beyond 24h retention" from "by-run lookup failed
+                         (Redis transient); returned latest" so callers can react differently.
                 error:
                     type: string
                     description: |-
@@ -485,3 +1336,84 @@ components:
                         JSON-encoded array of theater summaries for the UI (populated when found=true).
                          Shape: Array<{ theaterId, theaterLabel, stateKind, topPaths: [{label, summary, confidence, keyActors}], dominantReactions, stabilizers, invalidators }>
                          Parse with JSON.parse() on the client. Empty string when found=false.
+                processing:
+                    type: boolean
+                    description: |-
+                        True when req.runId was supplied AND the runId is currently in the simulation
+                         queue (worker hasn't drained yet). Distinguishes "your run is processing"
+                         from "your run expired beyond retention" — both previously returned NOT_FOUND.
+                         Added in #3734 to prevent the 30-day demand experiment from being contaminated
+                         by the queued-vs-expired indistinguishability.
+                eligibleTheaterCount:
+                    type: integer
+                    format: int32
+                    description: Number of theaters eligible for simulation in the package used by this outcome.
+                failedTheaterCount:
+                    type: integer
+                    format: int32
+                    description: Number of eligible theaters that failed before producing a Round 2 result.
+                allTheatersFailed:
+                    type: boolean
+                    description: True when eligible_theater_count > 0 and no theater produced an outcome.
+                completionStatus:
+                    type: string
+                    description: |-
+                        Machine-readable completion status. Current values:
+                         "completed", "partial", "no_eligible_theaters", or "all_theaters_failed".
+        TriggerSimulationRequest:
+            type: object
+            properties:
+                clientVersion:
+                    type: string
+                    description: |-
+                        Optional opaque client-version string for debugging (e.g., "claude-
+                         desktop/0.6.1", "mcp-client/0.2"). Server LOGS this with the success
+                         breadcrumb but never persists or branches on it. Present primarily so
+                         the generated client/server code has at least one field to reference
+                         (sebuf v0.11.1 emits a typecheck-broken POST client for fully-empty
+                         request messages). Safe to omit; default empty string.
+            description: |-
+                TriggerSimulationRequest enqueues a simulation task for the current
+                 SIMULATION_PACKAGE_LATEST_KEY package pointer. Caller-supplied
+                 run_id is intentionally absent — the runId is server-derived from
+                 the package pointer (avoids lock-key collision, queue stuffing, and
+                 race against cron rotation). See #3734 / docs/plans/2026-05-18-003-
+                 feat-simulation-trigger-and-runid-filter-plan.md D1.
+        TriggerSimulationResponse:
+            type: object
+            properties:
+                queued:
+                    type: boolean
+                    description: |-
+                        True when the task was newly enqueued; false on idempotency hit or
+                         no_package.
+                runId:
+                    type: string
+                    description: |-
+                        Server-derived runId from SIMULATION_PACKAGE_LATEST_KEY. Empty
+                         string when reason='no_package' (no package pointer was available).
+                pkgFingerprint:
+                    type: string
+                    description: |-
+                        Opaque fingerprint of the simulation package input (first 16 hex
+                         chars of sha256 over the package's R2 object key). Stable identifier
+                         for drift detection across trigger/read calls — clients can compare
+                         this against the fingerprint inside the by-run outcome payload to
+                         detect cron rotation. Do NOT decode. Returns empty string when
+                         reason='no_package'.
+                reason:
+                    type: string
+                    description: |-
+                        External reason taxonomy:
+                           ''                  - happy path (queued=true)
+                           'no_package'        - SIMULATION_PACKAGE_LATEST_KEY pointer absent
+                           'already-handled'   - idempotency hit (covers both "already queued"
+                                                 and "already completed this cycle"; collapsed
+                                                 externally to avoid a cron-timing oracle —
+                                                 server logs retain the distinction).
+            description: |-
+                TriggerSimulationResponse carries the outcome of an enqueue attempt.
+                 On error states (premium gate, queue capacity, Redis transport), the
+                 handler throws ApiError with the appropriate HTTP status — there is
+                 NO error field on this message. All paths that return this message
+                 represent HTTP 200.

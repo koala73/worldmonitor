@@ -1,7 +1,7 @@
 import { Panel } from './Panel';
 import { sanitizeUrl } from '@/utils/sanitize';
 import { t } from '@/services/i18n';
-import { h, replaceChildren } from '@/utils/dom-utils';
+import { h, replaceChildren, setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
 import { miniSparkline } from '@/utils/sparkline';
 import {
   getIntelTopics,
@@ -107,13 +107,13 @@ export class GdeltIntelPanel extends Panel {
     const tonePrefix = lastTone < -1.5 ? '▼ ' : lastTone > 1.5 ? '▲ ' : '';
 
     const toneGroup = h('div', { className: 'gdelt-trend-group' });
-    toneGroup.innerHTML = miniSparkline(toneVals, toneChange, 60, 18);
+    setTrustedHtml(toneGroup, trustedHtml(miniSparkline(toneVals, toneChange, 60, 18), "legacy direct innerHTML migration"));
     toneGroup.appendChild(h('span', { className: `gdelt-trend-value ${toneBadgeClass}`.trim() }, `${tonePrefix}${lastTone.toFixed(1)}`));
     toneGroup.appendChild(h('span', { className: 'gdelt-trend-label' }, 'Tone'));
 
     const volGroup = h('div', { className: 'gdelt-trend-group' });
     if (volVals.length >= 2) {
-      volGroup.innerHTML = miniSparkline(volVals, 1, 60, 18);
+      setTrustedHtml(volGroup, trustedHtml(miniSparkline(volVals, 1, 60, 18), "legacy direct innerHTML migration"));
       const lastVol = volVals[volVals.length - 1] ?? 0;
       volGroup.appendChild(h('span', { className: 'gdelt-trend-value' }, String(Math.round(lastVol))));
       volGroup.appendChild(h('span', { className: 'gdelt-trend-label' }, 'Volume'));

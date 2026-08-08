@@ -11,7 +11,9 @@ message SummarizeArticleRequest {
     (buf.validate.field).required = true,
     (buf.validate.field).string.min_len = 1
   ];
-  // Headlines to summarize (max 8 used).
+  // Headlines to summarize. Up to 10 raw headlines are used for request
+  // identity/cache matching; the LLM prompt uses up to 5 unique, non-empty
+  // sanitized headline/body pairs.
   repeated string headlines = 2 [(buf.validate.field).repeated.min_items = 1];
   // Summarization mode: "brief", "analysis", "translate", "" (default).
   string mode = 3;
@@ -23,6 +25,13 @@ message SummarizeArticleRequest {
   string lang = 6;
   // Optional system prompt append for analytical framework instructions.
   string system_append = 7;
+  // Optional article bodies paired 1:1 with `headlines`. When bodies[i] is
+  // non-empty, the prompt interleaves it as grounding context under
+  // headlines[i]; when empty, behavior is identical to headline-only today.
+  // Callers may supply a shorter array; missing entries are treated as empty.
+  // Each body is subject to the same sanitisation as headlines before reaching
+  // the LLM prompt.
+  repeated string bodies = 8;
 }
 
 // SummarizeStatus indicates the outcome of a summarization request.

@@ -4,8 +4,9 @@ import { hasPremiumAccess } from '@/services/panel-gating';
 import { FrameworkSelector } from './FrameworkSelector';
 import type { DailyMarketBrief } from '@/services/daily-market-brief';
 import { describeFreshness } from '@/services/persistent-cache';
-import { escapeHtml } from '@/utils/sanitize';
+import { escapeHtml, unsafeRawHtml } from '@/utils/sanitize';
 import { getChangeClass } from '@/utils';
+import { createWatchlistButton } from './watchlist-modal';
 
 type BriefSource = 'live' | 'cached';
 
@@ -47,6 +48,7 @@ export class DailyMarketBriefPanel extends Panel {
     super({ id: 'daily-market-brief', title: 'Daily Market Brief', infoTooltip: t('components.dailyMarketBrief.infoTooltip'), premium: 'locked' });
     this.fwSelector = new FrameworkSelector({ panelId: 'daily-market-brief', isPremium: hasPremiumAccess(), panel: this, note: 'Applies to client-generated analysis only' });
     this.header.appendChild(this.fwSelector.el);
+    this.header.appendChild(createWatchlistButton('Edit Watchlist'));
   }
 
   public override destroy(): void {
@@ -105,7 +107,7 @@ export class DailyMarketBriefPanel extends Panel {
       </div>
     `;
 
-    this.setContent(html);
+    this.setSafeContent(unsafeRawHtml(html, 'legacy Panel.setContent() migration'));
   }
 
   public showUnavailable(message = 'The daily brief needs live market data before it can be generated.'): void {

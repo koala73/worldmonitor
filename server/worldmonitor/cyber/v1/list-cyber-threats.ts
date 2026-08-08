@@ -10,6 +10,7 @@ import type {
 } from '../../../../src/generated/server/worldmonitor/cyber/v1/service_server';
 
 import { getCachedJson } from '../../../_shared/redis';
+import { markNoStoreFallbackResponse } from '../../../_shared/response-headers';
 import {
   DEFAULT_LIMIT,
   MAX_LIMIT,
@@ -45,7 +46,7 @@ function filterSeededThreats(
 }
 
 export async function listCyberThreats(
-  _ctx: ServerContext,
+  ctx: ServerContext,
   req: ListCyberThreatsRequest,
 ): Promise<ListCyberThreatsResponse> {
   const empty: ListCyberThreatsResponse = { threats: [], pagination: { nextCursor: '', totalCount: 0 } };
@@ -55,7 +56,9 @@ export async function listCyberThreats(
     const offset = parseCursor(req.cursor);
 
     const seedData = await getCachedJson(SEED_CACHE_KEY, true) as Pick<ListCyberThreatsResponse, 'threats'> | null;
-    if (!seedData?.threats?.length) return empty;
+    if (!seedData || !Array.isArray(seedData.threats)) {
+      return markNoStoreFallbackResponse(ctx.request, empty);
+    }
 
     const allThreats = filterSeededThreats(seedData.threats, req);
     if (offset >= allThreats.length) return empty;
@@ -66,6 +69,6 @@ export async function listCyberThreats(
       pagination: { totalCount: allThreats.length, nextCursor: hasMore ? String(offset + pageSize) : '' },
     };
   } catch {
-    return empty;
+    return markNoStoreFallbackResponse(ctx.request, empty);
   }
 }

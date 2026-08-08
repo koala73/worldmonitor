@@ -1,0 +1,439 @@
+---
+title: "健康检查端点"
+description: "World Monitor 提供两个健康检查端点用于持续监控数据管道完整性与实时性，服务在 Vercel Edge Runtime 上以低延迟运行并查询 Redis (Upstash) 评估各数据源状态，帮助 SRE 与运维团队快速定位新闻、市场、海事等采集任务的中断与滞后。"
+---
+
+## `/api/health`
+
+主要健康检查端点。在单个管道调用中检查所有 Redis 支持的数据键和种子新鲜度元数据。
+
+**身份验证：** 紧凑健康检查（`?compact=1`）对正常运行时间和关键字监控器公开。详细健康检查（不带 `compact=1` 的 `/api/health`）和运维历史视图（`?history=1`）需要有效的运维/企业 API 密钥，因为它们会暴露规范的 Redis 键名、记录数和新鲜度阈值。浏览器来源仍须通过 `api/_cors.js` 中的 CORS 允许列表；无 `Origin` 头的请求（如服务器端监控器）仅在紧凑健康检查时被允许，除非包含运维密钥。健康响应从不缓存（`Cache-Control: private, no-store, max-age=0` 和 `CDN-Cache-Control: no-store`）。
+
+**HTTP 方法：** `GET`
+
+### 查询参数
+
+| 参数 | 取值 | 说明 |
+|-----------|--------|-------------|
+| `compact` | `1` | 省略每个键的详细信息；仅返回有问题的键 |
+
+### 响应状态码
+
+| HTTP 状态 | 总体状态 | 含义 |
+|-------------|---------------|---------|
+| `200` | `HEALTHY` | 所有检查正常，无警告 |
+| `200` | `WARNING` | 某些键过期或按需键为空，但无严重故障 |
+| `200` | `DEGRADED` | 关键键为空，但 ≤3% 的所有探测键 |
+| `200` | `UNHEALTHY` | 关键键为空，>3% 的所有探测键 |
+| `401` | - | 无有效运维/企业 API 密钥时请求详细健康检查或历史记录 |
+| `503` | `REDIS_DOWN` | 无法连接到 Redis —— 这是**唯一**返回非 200 状态码的状态 |
+
+> 总体健康判定位于 JSON 的 `status` 字段中，而非 HTTP 状态码。除 `REDIS_DOWN` 外的每种状态都返回 `200`，这样警告级别的种子抖动不会触发 HTTP 状态监控器的抖动（参见 PR #2699）。`REDIS_DOWN` 返回 `503`，因为当 Redis 不可达时，端点无法评估任何内容，所以普通的 HTTP 探测必须看到失败。
+
+### 响应体
+
+```json
+{
+  "status": "HEALTHY | WARNING | DEGRADED | UNHEALTHY | REDIS_DOWN",
+  "summary": {
+    "total": 257,
+    "ok": 257,
+    "warn": 0,
+    "onDemandWarn": 0,
+    "staleContent": 0,
+    "rolloutPending": 0,
+    "crit": 0
+  },
+  "checkedAt": "2026-08-07T08:25:57.776Z",
+  "checks": {
+    "earthquakes": {
+      "status": "OK",
+      "records": 142,
+      "seedAgeMin": 8,
+      "maxStaleMin": 30
+    }
+  }
+}
+```
+
+`summary` 字段：`total` 是每个探测键的一个条目，并随面板增加而增长 —— 请以你自己响应中的数值为准，而非本页示例。`warn` **不包括**按需为空的键 —— 这些键作为 `onDemandWarn` 单独显示，因此它们不会将总体判定推向 `WARNING`。`staleContent` 是 `warn` 的一个**子集**（种子器新鲜但上游订阅源停止推进），`rolloutPending` 是 `warn` 的另一个**子集**（新部署的 schema 仍处于其有界的「部署先于定时任务」窗口内）。只有 `crit`（`EMPTY`/`EMPTY_DATA`）会驱动 `DEGRADED`/`UNHEALTHY`。
+
+使用 `?compact=1` 时，`checks` 对象会被 `problems` 替换，仅包含非 OK 的键。
+
+### 消费价格来源覆盖率
+
+consumer-prices-core 服务会将每个市场的抓取覆盖率快照写入 `consumer-prices:coverage:<market>`，并把汇总完成率放入 `seed-meta`，因此 `/api/health` 能区分「一次新鲜的部分运行」和「生产者已停止」。部分结果仍可发布；被校验器拒绝的观测值绝不会仅仅为了提高覆盖率数字而被接纳。
+
+#### 覆盖率 schema 上线握手
+
+Edge 健康注册表随 PR 合并即刻部署，但它读取的键只能在 consumer-prices-core 的下一次每日抓取（02:00 UTC）→ 聚合（02:15）→ 发布（02:30）窗口之后才会出现。[#6059](https://github.com/koala73/worldmonitor/issues/6059) 用两道彼此独立、缺一不可的关卡关闭这个窗口：
+
+1. **激活（持久、单向）。** 每日发布器（`consumer-prices-core/src/jobs/publish.ts`，且仅限它）为某市场写入「确实尝试过页面」的覆盖率快照后，才会以**无 TTL** 的方式 `SET` `seed-activated:consumer-prices:coverage:v1:<market>`。手动兜底脚本 `scripts/seed-consumer-prices.mjs` 刻意**不会**写入该标记：它的覆盖率键只有 30 分钟 TTL，用一个 30 分钟的产物换取永久激活，会在数据过期后把该市场永久卡在无法恢复的 `EMPTY`（严重）状态。该标记一旦存在，该市场即永久转为严格判定——缺失、为空、过期或低于阈值的覆盖率，其分类与没有本握手时完全一致。真实但为空的快照（无启用零售商，或零售商从未运行）**不会**激活。键名中的 `v1` 是覆盖率 schema 版本，因此未来的 schema 变更会开启各自独立评审的新窗口，而不会继承旧形态已获得的激活。
+2. **截止时间（有界）。** 无论生产者是否运行过，软化都会在编译进 `api/health.js` 的每市场墙钟时间戳处停止。因此错过或失败的首次运行会在一个完整的抓取/聚合/发布周期内自行升级为 `EMPTY`（严重）。
+
+八个覆盖率检查在**所有**状态下都会附带 `activated` 字段（持久标记存在时为 true），因此上线进度可直接从响应体审计，无需手动探测 Redis 即可区分「已激活后损坏」与「从未运行」。
+
+仅当覆盖率键**完全缺失**时才会被软化。键一旦存在即说明生产者已运行，因此 `EMPTY_DATA`、`COVERAGE_DEGRADED`、`COVERAGE_PARTIAL` 与 `STALE_SEED` 均保持严格——覆盖率计数绝不合成，成功状态也绝不从无关的规范键推断。`scripts/check-seed-freshness.mjs` 会用墙钟时间重新校验每个 `rolloutPendingUntil`，而非信任状态字符串，因此已过期或无法解析的截止时间（以及缓存过旧的 compact 快照）都会照常上报问题。
+
+在窗口期内 `overall` 会变为 `WARNING`（绝不会是 `UNHEALTHY`）。
+
+### 键分类
+
+键被分为三个层级，决定告警严重程度：
+
+| 层级 | 为空时的严重程度 | 说明 |
+|------|-------------------|-------------|
+| **Bootstrap** | CRIT | 启动时所需的种子数据。为空表示仪表板缺少关键数据 |
+| **Standalone** | CRIT（种子填充）/ WARN（按需） | 由种子循环或 RPC 处理器填充。按需键在首次请求之前预期为空 |
+| **On-demand** | WARN | 由 RPC 调用懒加载填充。如果尚未有人请求数据，则为空是正常的 |
+
+### 每个键的状态
+
+| 状态 | 严重程度 | 含义 |
+|--------|----------|---------|
+| `OK` | 绿色 | 数据存在，种子新鲜 |
+| `OK_CASCADE` | 绿色 | 键为空但级联组中的同级键有数据（例如，战区态势后备链） |
+| `NOT_CONFIGURED` | 绿色 | 本部署从未为该可选数据源适配器配置凭据（生产者写入 `sourceState: "unavailable"`，例如未配置 `SAM_GOV_API_KEY` 的全球招标 SAM.gov 适配器）。这不是故障，也不计入问题；添加凭据后的首次运行即转为 `OK` |
+| `STALE_SEED` | 警告 | 数据存在但 `seed-meta` 年龄超过 `maxStaleMin` |
+| `STALE_CONTENT` | 警告 | 种子器新鲜但上游内容停止推进（冻结的订阅源）；计入 `summary.staleContent` |
+| `COVERAGE_PARTIAL` | 警告 | 总记录数或必需子组低于该键声明的覆盖率下限（例如 139/174 个 PortWatch 国家，或某个预测市场池为空） |
+| `COVERAGE_DEGRADED` | 警告 | 生产者自身的覆盖率诊断缺失，或其完成率低于该键的 `minSuccessRate`（例如某个消费价格市场仅完成 12 个零售商页面中的 4 个） |
+| `ROLLOUT_PENDING` | 警告 | 新部署的 schema，其生产者尚未到达首次计划运行。**有界**：该条目携带编译在 `api/health.js` 中的 `rolloutPendingUntil` 截止时间；一旦该时间过去，或生产者写入其持久激活标记，状态即变为 `EMPTY`（严重）。计入 `summary.rolloutPending` |
+| `SEED_ERROR` | 警告 | `seed-meta` 报告上次种子运行的 `status: "error"` |
+| `REDIS_PARTIAL` | 警告 | 该键的 STRLEN/GET 上出现单个每命令 Redis 错误（非完全中断） |
+| `EMPTY_ON_DEMAND` | 警告 | 按需键尚无数据（在首次请求之前为预期情况）；计入 `summary.onDemandWarn` |
+| `EMPTY` | 严重 | Bootstrap 或种子填充的独立键无数据 |
+| `EMPTY_DATA` | 严重 | 键存在但包含零条记录（且 0 对它来说不是有效状态） |
+
+### 级联组
+
+某些键使用后备链。如果任何同级键有数据，空的同类键报告 `OK_CASCADE`：
+
+- **战区态势：** `theaterPostureLive` -> `theaterPosture`（过期）-> `theaterPostureBackup`
+- **军事航班：** `militaryFlights` -> `militaryFlightsStale`
+- **流离失所：** `displacement`（当前 UTC 年）-> `displacementPrev`（上一年，覆盖新年种子运行之前的 1 月 1 日窗口）
+
+`riskScores` 有意比原始订阅源心跳更严格。其
+`recordCount` 是实时信号密度覆盖：CII 刷新期间存在的与评分相关的 Tier-1 冲突、新闻和网络信号系列的数量。
+冲突系列可由 ACLED 路径或 UCDP 事件订阅源满足，与 CII v8 评分器匹配。当这些订阅源可达但安静时，`riskScores` 仍可报告
+`COVERAGE_PARTIAL`；底层订阅源的新鲜度由订阅源特定健康条目跟踪，这些订阅源在这些条目中发布种子元数据。
+
+`portwatchPortActivity` 也使用 `minRecordCount`。低于 174 个国家的新鲜
+`seed-meta:supply_chain:portwatch-ports` 记录会报告
+`COVERAGE_PARTIAL` 而非 `OK`；部分运行仍可刷新按国家的
+PortWatch 缓存条目，但规范国家列表和健康的 seed-meta
+信号在完整 174 国覆盖恢复之前不会推进。
+
+`portwatchPortActivity` 另外还要求按国家的**内容**新鲜度，这与传输新鲜度
+和国家基数是不同的问题。只要上游 `max(date)` 未推进，seeder 就会复用已缓存的
+国家载荷，因此一次运行可以报告新鲜的心跳和完整的 174/174 国家列表，而某个
+国家的观测却已过时数天。为此生产者会发布 `contentFreshness` 块，检查判定为：
+
+| 条件 | 状态 |
+| --- | --- |
+| 每个决策关键国家都在 144 小时内容预算之内 | `OK` |
+| 决策关键国家超出预算、时间戳位于未来，或本次运行中完全缺失 | `STALE_CONTENT` |
+| 该块缺失、其计数缺失或算术上不自洽，或生产者声明的国家集合未覆盖健康检查所固定的集合 | `COVERAGE_DEGRADED` |
+
+判定依据是**决策关键**国家 —— 目前为 `CN` 和 `HK`，即中国物流走廊控制塔读取的
+两个国家 —— 而非全部 174 个。该集合由健康检查在自身配置中固定，而不是接受生产者
+声明的任意集合，因此生产者侧的改动无法悄然收窄告警范围：若从 seeder 列表中移除
+`CN`，否则就会在中国数据已过时数天的情况下报告 `OK`，而这正是本检查要捕获的故障。
+生产者声明的集合只要覆盖固定集合，额外多出的国家会被接受。144 小时预算同样由健康
+检查固定，生产者无法通过发布更宽的预算来把过期观测认证为新鲜。
+
+生产者的计数是 seeder 运行时刻的一次测量，而 seed 元数据仅在推进规范快照的 12 小时
+运行中才会重写。因此健康检查会将最旧的决策关键观测**按当前时间重新计龄**，而不是信任
+该计数：测量时仍在预算内、但在两次运行之间越过边界的观测同样会告警。线上的
+`criticalOldestAgeMinutes` 是重新计算的年龄，而非生产者写入的值。若某个块声称所有关键
+国家均为新鲜却不带可用的观测时间戳，则无法重新计龄，按不可用处理。
+
+`unusableReasons` 会指明具体是哪个条件失败（`declared_scope_narrowed`、
+`fresh_exceeds_covered`、`critical_observation_time_unusable` 等），使调用方无需从
+原始计数反推判定；`expectedCriticalCountries` 会与生产者声明的集合一并发布。
+
+由于边缘函数在合并后数分钟内即完成重新部署，而生产者是 12 小时 cron，缺失块的情形
+曾获得有界的部署顺序放宽。持久标记
+`seed-activated:supply_chain:portwatch-ports:content-freshness` 只有在编译进代码的窗口
+`2026-08-03T10:24:42Z` → `2026-08-04T06:00:00Z` 内才能授予放宽：这代表 schema 发布后
+一个完整的生产者周期，外加六小时调度余量。
+
+**该窗口已经关闭，PortWatch 的放宽已被永久用尽。** 干净的 `EXISTS=0` 不再放宽任何内容：
+缺失的 PortWatch 内容块一律报告为 `COVERAGE_DEGRADED`。该窗口保留在源码中，仅作为
+"授予了什么、到何时为止"的审计记录，并且刻意**不**重新开启：生产者此后已经发布了该块，
+重新授予放宽只会撤销
+[#6111](https://github.com/koala73/worldmonitor/issues/6111) 所要求的那道界限。
+
+因此在稳定状态下，**`contentFreshnessPendingUntil` 根本不会被发布。** 它只在某个键的窗口
+处于开启状态时出现；就今天而言，这意味着只有在 `api/_content-freshness.js` 的
+`CONTENT_FRESHNESS_ROLLOUT` 中为新部署的内容 schema 增加**新条目**时才会出现。新增条目后，
+下述各个接口都会自动发布该截止时间；不要去延长 PortWatch 那一条。
+
+当某个窗口确实开启时，该放宽仍需要**肯定的证据**，而不仅仅是"没有标记"。`EXISTS` 读取是
+三值的：读到且存在会撤销放宽，读到且缺失只能在窗口内授予放宽，而读取**失败**或 pipeline
+条目格式错误属于未知状态，不授予任何放宽。处于等待状态的健康条目会发布
+`contentFreshnessPendingUntil`；紧凑健康响应会在
+`summary.contentFreshnessPendingUntil` 中按键重复同一截止时间，因此无需阅读实现即可审计
+这一界限。`/api/seed-health` 的对应条目也会发布同一截止时间，MCP 的 `stale` 布尔值
+使用同一共享窗口，并在缓存工具输出中通过可选顶层字段
+`contentFreshnessPendingUntil` 暴露该截止时间；缓存刷新路径也不会在截止时间之后继续提供旧快照。
+该放宽**仅覆盖缺失**：只要块存在就一定会被评估；标记存在后，块消失将故障关闭。
+
+`/api/seed-health` 中 `cfg.activationKey` 的 `pending-activation` 路径（以及
+`/api/health` 中对应的 `ON_DEMAND` 策略）有意保持独立，不复用这个 PortWatch 窗口。这些标记
+表示可选或由运维触发的生产者；对它们而言“生产者从未运行，因此没有元数据”是预期状态，不能
+从一个统一的生产者周期推导安全的截止时间。该路径不会放宽已经存在元数据的内容新鲜度故障。
+有计划的内容 schema 必须使用 `contentFreshnessActivation` 及其经过审查的窗口。以上关闭了
+[#6111](https://github.com/koala73/worldmonitor/issues/6111) 所指出的干净缺失激活漏洞。
+
+任何判定依据来自"无法读取的标记"的检查项都会携带 `activationUnknown: true`，两个端点、
+所有状态下皆然。否则无论是标记读取失败还是生产者确实从未发布过，载荷完全相同 —— 而这
+是两种不同的处置方式（去 Upstash 查每条命令的错误，还是去查生产者为何停止写入）。该标志
+只说明判定所依据的证据；它本身既不放宽也不收紧任何判定。
+
+出于同样的理由，MCP 缓存工具也会在其信封中发布该标志。若某个工具需要查询激活标记却无法读取，
+它会在 `stale` 之外一并返回 `activationUnknown: true`，使调用方能够区分"标记无法读取"与
+"生产者出现回归" —— 此前这类失败只上报给 Sentry，在协议层面二者完全无法区分。与
+`contentFreshnessPendingUntil` 一样，该字段是可选的：它声明在每个缓存信封上，但只有其新鲜度
+检查声明了 `contentFreshnessActivationKey` 的工具才可能真正填充它。
+
+seeder 会为决策关键国家保留冷取槽位，使其在每次成为缓存未命中的运行中都被刷新。内容
+预算刻意覆盖两次完整生产者轮换：12 小时节奏下 `ceil(174 / 30)` 次运行约 72 小时，
+距离 144 小时告警还留有 72 小时余量。保留槽位仍然重要，因为许多国家同时成为未命中时，
+它可以避免 CN/HK 排在有界队列的尾部。
+
+刷新截止时间使用内容时钟，而不是检索时间戳。即使上游数据未变化，成功重取也会更新
+`fetchedAt`，但会保留 `contentAsOfChangedAt`，因此冻结的数据仍会继续进入决策关键刷新队列，
+不会被最近一次检索隐藏。如果上游仍未推进，检查保持 `STALE_CONTENT` 恰恰是在正确工作：
+内容确实已过时，seeder 无法修复，告警报告的是上游中断而非内部轮换延迟。全局范围的内容过时在设计上属于常态：seeder 每次
+12 小时运行最多刷新 30 个国家，因此完整轮换约需 72 小时；两轮预算为正常队尾延迟保留
+余量，而不会把它变成可操作的故障。对此告警只会产生一个长亮且无法处置的警告。全局计数（`coveredCount`、
+`freshCount`、`staleCount`、`unknownCount`、有界的 `staleCountries` 列表，以及
+最旧观测及其年龄）仍会发布以供查看；只有关键子集会改变状态。
+
+该 144 小时预算刻意与 `china-corridor-source-adapters.ts` 对 PortWatch 观测所用的
+预算保持一致，因此本告警是在解释中国活动 nowcast 的 `marked_stale` 排除，而不是
+与之矛盾。健康检查在边界上取闭区间，并将未来时间戳视为过时 —— 两者都比数据闸门
+更保守一步：告警的触发不应晚于它所保护的契约。
+
+同一 seed-meta 键的 MCP 新鲜度信封同样携带该维度。`get_chokepoint_status` 声明了
+完全相同的固定范围、预算与激活标记，并调用同一个评估器 —— 因此它以上文所述的同一个
+`contentAsOfChangedAt` 时钟计龄，MCP 消费者不可能对本端点判定为 `STALE_CONTENT`
+的键读到 `stale: false`。该一致性是逐字段断言的，而非仅靠注释声明；两者读取激活标记
+时也都使用 `EXISTS`，因此其存储值不可能让两个面产生分歧。
+
+`/api/seed-health` 在其自身的 `supply_chain:portwatch-ports` 条目上镜像同一份契约：
+本端点报告 `COVERAGE_DEGRADED` 时它报告 `coverage_degraded`，本端点报告
+`STALE_CONTENT` 时它报告 `stale_content`。三个面都以三值方式读取标记，且仅在"读到且
+缺失"时才授予放宽。有一个测试循环会把每种标记结果（读到存在、读到缺失、无法读取）与
+决定判定的各种块形态（新鲜、内容过时、缺失、存在但不可用）交叉，同时驱动这三个面，
+并且钉住的是预期判定与上述状态名映射，而不仅仅是它们彼此一致。
+
+MCP 调用方看到的仍是单一布尔值：`stale` 不会说明是*哪个*维度失败，因此 `/api/health`
+仍是唯一会指名过时国家的面。
+
+两侧读取同一个时钟，且它不是抓取时间戳。二者均以 `contentAsOfChangedAt` 计龄 ——
+该时间戳仅在上游自身的 `max(date)` 推进时才推进；仅当载荷写于该字段存在之前时，
+才回退到 `fetchedAt`。这一点很关键：seeder 会在某国缓存超过 `MAX_CACHE_AGE_MS`
+后对其强制重抓，而该次重抓会在内容未变的情况下重置 `fetchedAt`。因此若以
+`fetchedAt` 计龄，在每个缓存生命周期中都会有一个预算窗口把已冻结的观测当作当前
+数据采纳 —— 这正是本检查所要终结的"以传输代替内容"替换，只不过发生在其下一层。
+
+具名实体仅对运维可见。`contentFreshness` 与 `chinaDecisionSignals` 的分组明细会
+从匿名 `?compact=1` 投影中剥离，保留状态但不暴露具体哪个来源已降级。
+
+`predictionMarkets` 还要求 `geopolitical`、`tech` 和 `finance`
+每个发布池中至少有一个市场。其种子元数据会发布 `poolCounts`；
+计数缺失、格式错误或低于下限时，即使市场总数健康，也会报告
+`COVERAGE_PARTIAL`。
+
+### 过期阈值（maxStaleMin）
+
+`SEED_META` 中的部分阈值：
+
+| 领域 | 最大过期时间（分钟） | 说明 |
+|--------|----------------|-------|
+| 市场报价、加密货币、行业、地震、洞察 | 30 | 高频中继循环 / 关键事件数据 |
+| 军事航班 | 30 | 近实时跟踪 |
+| 预测、航班延误（FAA） | 90 | Polymarket / 机场快照 |
+| 动乱 | 120 | 45 分钟 cron，2 小时宽限期 |
+| 网络威胁 | 240 | APT 数据更新频率较低 |
+| 野火 | 360 | FIRMS NRT 在数小时内累积 |
+| 气候异常 | 540 | 3 小时 cron，3 倍节奏 |
+| BIS 扩展、World Bank、IMF | 2160-100800 | 机构数据，每周/每月/每年 |
+
+> 这些仅供参考；`api/health.js` 中的 `SEED_META` 是事实来源，每个条目都记录了其自身节奏的依据。
+
+### 示例请求
+
+```bash
+# Full health check (requires an operator API key)
+curl -s https://api.worldmonitor.app/api/health \
+  -H "X-WorldMonitor-Key: $WORLDMONITOR_API_KEY" | jq .
+
+# Compact (problems only)
+curl -s "https://api.worldmonitor.app/api/health?compact=1" | jq .
+
+# UptimeRobot / monitoring: check HTTP status code
+curl -o /dev/null -s -w "%{http_code}" "https://api.worldmonitor.app/api/health?compact=1"
+# Returns 503 only when Redis is unreachable (REDIS_DOWN); 200 for every other
+# state — the verdict (HEALTHY/WARNING/DEGRADED/UNHEALTHY) is in the body's `status`.
+```
+
+## `/api/seed-health`
+
+用于种子循环新鲜度的专用端点。仅检查 `seed-meta:*` 键，不获取实际数据负载。
+
+**身份验证：** 需要有效的 API 密钥或允许的来源。
+
+**HTTP 方法：** `GET`
+
+### 响应状态码
+
+| HTTP 状态 | 总体状态 | 含义 |
+|-------------|---------------|---------|
+| `200` | `healthy` | 所有种子循环按时报告 |
+| `200` | `warning` | 某些种子过期（年龄 > 2 倍间隔）或低于声明的覆盖率下限 |
+| `200` | `degraded` | 某些种子完全缺失 |
+| `401` | - | 无效或缺失的 API 密钥 |
+| `503` | - | Redis 不可用 |
+
+### 响应体
+
+```json
+{
+  "overall": "healthy | warning | degraded",
+  "checkedAt": 1710158400000,
+  "seeds": {
+    "seismology:earthquakes": {
+      "status": "ok",
+      "fetchedAt": 1710158100000,
+      "recordCount": 142,
+      "sourceVersion": null,
+      "ageMinutes": 5,
+      "stale": false
+    },
+    "market:stocks": {
+      "status": "stale",
+      "fetchedAt": 1710150000000,
+      "recordCount": 85,
+      "sourceVersion": null,
+      "ageMinutes": 140,
+      "stale": true
+    },
+    "supply_chain:portwatch-ports": {
+      "status": "coverage_partial",
+      "fetchedAt": 1710158100000,
+      "recordCount": 139,
+      "minRecordCount": 174,
+      "sourceVersion": null,
+      "ageMinutes": 5,
+      "stale": true
+    },
+    "prediction:markets": {
+      "status": "coverage_partial",
+      "fetchedAt": 1710158100000,
+      "recordCount": 87,
+      "poolCounts": {
+        "geopolitical": 52,
+        "tech": 0,
+        "finance": 35
+      },
+      "minPoolCounts": {
+        "geopolitical": 1,
+        "tech": 1,
+        "finance": 1
+      },
+      "coveragePartial": true,
+      "sourceVersion": null,
+      "ageMinutes": 5,
+      "stale": false
+    }
+  }
+}
+```
+
+### 过期逻辑
+
+当种子的年龄超过**配置间隔的 2 倍**时，即被视为过期。这考虑了 cron/中继计时的正常抖动。低于总量 `minRecordCount` 的种子会报告 `coverage_partial` 和 `stale: true`。低于预测市场 `minPoolCounts` 等子组下限的种子也会报告 `coverage_partial`，但只要生产者心跳仍然新鲜，就保持 `stale: false`，从而区分新鲜度与覆盖率。
+
+**消费者：** 以 `status` 和 `overall` 作为覆盖率的权威信号。不要只依赖 `stale`——池覆盖不足按设计保持 `stale: false`。当任一覆盖率下限失败时，条目还会设置 `coveragePartial: true`，以便只检查布尔字段的客户端仍能看到不足。
+
+| 领域 | 间隔（分钟） | 过期阈值（分钟） |
+|--------|---------------|-------------------|
+| 预测、军事航班 | 8 | 16 |
+| 市场报价、地震、动乱 | 15 | 30 |
+| ETF 资金流、稳定币、咽喉点 | 30 | 60 |
+| 服务状态、支出、野火 | 60 | 120 |
+| 航运费率、卫星 | 90-120 | 180-240 |
+| GPS 干扰、流离失所 | 360 | 720 |
+| 伊朗事件、UCDP | 210-5040 | 420-10080 |
+
+### 历史情报写入（`intel-history:*`）
+
+以 `intel-history:` 为前缀的领域**不**描述种子的规范化发布，而是跟踪该采集器在发布之后向历史情报库追加数据的链路是否仍然正常：
+
+| 领域 | 跟踪对象 |
+|--------|--------|
+| `intel-history:conflict:acled-intel` | 来自 `seed-conflict-intel` 的历史追加 |
+| `intel-history:military:cross-strait-activity` | 来自 `seed-cross-strait-activity` 的历史追加 |
+| `intel-history:energy:intelligence` | 来自 `seed-energy-intelligence` 的历史追加 |
+
+该追加按设计为「失败即放行」：它运行时规范化发布已经提交，因此追加失败绝不能让整次运行失败。这意味着采集器自身的条目（`conflict:acled-intel` 等）会保持 `ok`，而历史数据却在悄悄停止累积。这些条目就是那个独立信号：
+
+- `fetchedAt` 是最近一次**成功**追加的时间，而不是最近一次尝试的时间。抵达了中继的运行会推进它；什么都没送达的运行（所有分块被拒，或整体时间预算在首个请求发出前就耗尽）则不会。因此中继一旦损坏该时间戳就会冻结，于是条目按通常的 2 倍间隔规则变为 `stale`。
+- `status: "error"` 表示追加已连续两次运行失败——或者在首个刻度上，表示此前成功追加时存在的中继凭据现已被移除。
+- `lastErrorCode` 在存在失败原因时给出原因：`http_401`、`budget_exhausted`、`all_chunks_failed`、`config_removed`，或一个截断后的错误类名。若该写入链路从未失败过则不存在此字段。
+- `status: "not_configured"` 表示该部署**从未**拥有过中继凭据。它可见但绝不告警——除了配置中继之外，没有任何运维操作能消除该状态。成功追加之后再丢失凭据不属于此状态，那会报告 `error` 并附带 `lastErrorCode: "config_removed"`。
+- `recordCount` 是最近一次成功追加时中继接受的记录量。零是合法值：一次记录全部被去重的运行同样证明链路是通的。
+
+更细粒度的单次运行详情——`lastErrorReason`、`consecutiveFailures`、`missingConfig`，以及写入/去重/放弃的计数——**不会**由任一端点返回。它们保存在 Redis 记录 `intel-history:ingest-health:<domain>:<resource>:v1` 中，端点正是从该记录投影而来。
+
+若此处为 `stale` 或 `error` 而采集器条目为 `ok`，说明规范化数据没有问题，需要排查的是历史情报库。
+
+### 示例请求
+
+```bash
+curl -s https://api.worldmonitor.app/api/seed-health \
+  -H "Origin: https://worldmonitor.app" | jq .
+```
+
+## 与监控工具的集成
+
+### UptimeRobot
+
+使用 `/api/health?compact=1` 作为公开监控器 URL。HTTP 状态码仅区分 Redis 完全中断与其他所有情况：
+
+- `503` = `REDIS_DOWN`（Redis 不可达 —— 真正的硬中断）
+- `200` = 其他所有状态，包括 `DEGRADED` 和 `UNHEALTHY`
+
+因此，仅基于 HTTP 状态的监控器能捕获完全的后端中断，但**不能**捕获降级/不健康的数据。对于这些情况，请添加关键字监控器。
+
+将关键字监控器指向 `https://api.worldmonitor.app/api/health?compact=1`，并在紧凑令牌 `"status":"HEALTHY"`（冒号后无空格）从响应体中**缺失**时告警。紧凑模式序列化时不带缩进，因此无论格式如何，此确切令牌都是稳定的。
+
+> 裸 `/api/health` URL 现在是运维视图，无 API 密钥时返回 `401`。公开监控应始终使用 `?compact=1`。
+
+### 自定义告警
+
+解析 JSON 响应以构建细粒度告警：
+
+```bash
+# 对任何关键键告警
+STATUS=$(curl -s "https://api.worldmonitor.app/api/health?compact=1")
+CRIT=$(echo "$STATUS" | jq '.summary.crit')
+if [ "$CRIT" -gt 0 ]; then
+  echo "CRITICAL: $CRIT data keys empty"
+  echo "$STATUS" | jq '.problems'
+fi
+```
+
+## 端点之间的差异
+
+| 方面 | `/api/health` | `/api/seed-health` |
+|--------|--------------|-------------------|
+| **范围** | 数据键 + 种子元数据 | 仅种子元数据 |
+| **身份验证** | 无（公开） | API 密钥或允许的来源 |
+| **获取的数据** | 完整 Redis 值（用于计数记录） | 仅 `seed-meta:*` 键 |
+| **HTTP 503** | 仅 `REDIS_DOWN`（DEGRADED/UNHEALTHY 返回 200） | 否（除非 Redis 宕机，否则始终为 200） |
+| **最适合** | 正常运行时间监控、仪表板健康状态 | 调试种子循环问题 |
+| **响应大小** | 较大（每个探测键一个条目，含记录计数） | 较小（仅 seed-meta 领域） |

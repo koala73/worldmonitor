@@ -1,0 +1,155 @@
+---
+title: "Rate Limits"
+description: "Per-endpoint, per-key, and per-IP rate limits across the World Monitor API — headers, 429 handling, and backoff guidance for production clients."
+---
+
+Rate limits are enforced at the Vercel Edge runtime using Upstash Redis counters. All limits are **sliding 60-second windows** unless noted.
+
+## Default public API rate limit
+
+| Scope | Limit | Window |
+|-------|-------|--------|
+| Per IP (default) | **600 requests** | 60 s |
+
+Applies to all `/api/*` routes that don't have a stricter override. Implemented by `api/_rate-limit.js` / `api/_ip-rate-limit.js`.
+
+## MCP server
+
+| Scope | Limit | Window |
+|-------|-------|--------|
+| Per API key (MCP tools) | **60 requests** | 60 s |
+
+See [MCP](/mcp-overview) for details.
+
+## Per-plan API rate limits
+
+Authenticated REST API keys (`wm_…`) are limited **per account**, not per IP — a key behind a shared egress IP is not throttled by other tenants' traffic, and all of an account's keys share one allowance.
+
+| Plan | Per-minute (burst) | Daily included | Beyond the daily allowance |
+|------|--------------------|----------------|----------------------------|
+| **API Starter** | **60** / 60 s | **1,000** / UTC day | metered — hard stop at 10,000 / day |
+| **API Business** | **300** / 60 s | **10,000** / UTC day | metered — hard stop at 100,000 / day |
+| **Enterprise** | **1,000** / 60 s | unlimited | — |
+
+- **Per-minute** is a hard burst limit — exceeding it returns 429 immediately.
+- **Daily included** is your plan's allowance; it resets at **00:00 UTC**. Requests beyond it are **metered, not rejected** — usage-based overage billing is rolling out. Until then a safety ceiling (10× the included allowance) caps runaway usage with a 429.
+- The per-minute burst, daily allowance, and ceiling are all **per account** (shared across all of an account's `wm_…` keys), so issuing more keys does not raise your limit. (Operator-issued Enterprise keys are the exception — each is rate-limited independently.)
+- Need a higher limit? **Contact support** to raise your plan's allowance.
+
+## Dashboard AI quota
+
+Dashboard and direct REST AI operations use a separate daily budget from MCP. The counter resets at **00:00 UTC**.
+
+| Plan | Dashboard-AI requests/day |
+|------|----------------------------|
+| **Free / signed out** | **0** — protected AI routes require Pro authentication |
+| **Pro** | **500** |
+| **Pro Business** | **2,500** |
+| **API Starter** | **1,000** |
+| **API Business** | **10,000** |
+| **Enterprise** | unlimited |
+
+Free and signed-out dashboard users keep the normal keyword/cache fallback for feed enrichment; they do not consume the paid direct-AI budget. These limits are independent of the MCP allowances above.
+
+Signed-out callers are rejected outright, and Pro-gated AI routes deny free accounts before any spend. Separately from these plan allowances, a small non-plan safety floor of **50 requests/day** applies to any caller whose paid entitlement cannot be confirmed at request time — a lapsed subscription, or a transient entitlement-lookup outage. It exists so an outage degrades gracefully instead of rejecting paying customers; it is not an allowance any plan includes, and it is never larger than the smallest paid allowance.
+
+## OAuth endpoints
+
+| Endpoint | Limit | Window | Scope |
+|----------|-------|--------|-------|
+| `POST /api/oauth/register` | 5 | 60 s | Per IP |
+| `GET /api/oauth/authorize` | 10 | 60 s | Per IP |
+| `POST /api/oauth/token` | 10 | 60 s | Per credential / client / IP fallback |
+
+Matches the implementations in `api/oauth/register.js`, `api/oauth/authorize.js`, and `api/oauth/token.ts`.
+
+For `/api/oauth/token`, the limiter key is `client_secret` hash for `client_credentials`, then `client_id` when present, and only falls back to caller IP when neither credential identifier is available.
+
+Exceeding any of these during the OAuth flow will cause the MCP client to fail the connection handshake — wait 60 s and retry.
+
+## Write endpoints
+
+| Endpoint | Limit | Window | Scope |
+|----------|-------|--------|-------|
+| `POST /api/scenario/v1/run-scenario` | 10 | 60 s | Per IP |
+| `POST /api/scenario/v1/run-scenario` (queue depth) | 100 in-flight | — | Global |
+| `POST /api/leads/v1/register-interest` | 5 | 60 min | Per IP + Turnstile (desktop sources require signed HMAC bypass) |
+| `POST /api/leads/v1/submit-contact` | 3 | 60 min | Per IP + Turnstile |
+
+Other write endpoints (`/api/brief/share-url`, `/api/notification-channels`, `/api/create-checkout`, `/api/customer-portal`, etc.) fall back to the default per-IP limit above.
+
+## Bootstrap / health / version
+
+These mostly use the default public API limit. Cache headers vary by endpoint:
+
+- `GET /api/bootstrap` — only the explicitly-marked `?...&public=1` URLs are shared-cacheable. `?tier=fast&public=1` / `?tier=slow&public=1` use browser `max-age=60` / `max-age=300` and CDN `s-maxage=600` / `s-maxage=7200`. Single-key public URLs: on-demand keys (`?keys=<onDemandName>&public=1`) inherit the slow profile — browser `max-age=300`, CDN `s-maxage=7200` — unless the key declares its own, which today only `chinaDecisionSignals` does (browser `max-age=60`, CDN `s-maxage=900`); `?keys=weatherAlerts&public=1` uses `Cache-Control: public, s-maxage=600, stale-while-revalidate=120, stale-if-error=900` with the fast-tier CDN shield. Every other shape — key-authenticated, session-authenticated, the unmarked `?tier=...` URLs, and the anonymous `?keys=weatherAlerts` path — uses `Cache-Control: no-store` and emits no CDN cache headers, so a credentialed URL can never be answered from a shared cache. User API key validation also has a fail-closed fixed 60 s per-IP pre-validation limit of 600 attempts.
+- `GET /api/health` — `private, no-store, max-age=0` plus `CDN-Cache-Control: no-store`.
+- `GET /api/version` — `public, s-maxage=300, stale-while-revalidate=60, stale-if-error=3600`.
+
+## Rate limit response headers (self-throttle before a 429)
+
+Every `/api/*` response — success or error — advertises the [IETF `RateLimit` header fields](https://datatracker.ietf.org/doc/draft-ietf-httpapi-ratelimit-headers/) so an agent can pace itself **before** it trips a 429:
+
+```
+RateLimit-Policy: "default";q=600;w=60
+RateLimit-Limit: 600
+```
+
+- `RateLimit-Policy` — the applicable quota (`q`) over a window of `w` seconds for the default sliding window. Stricter per-endpoint, per-plan, and OAuth limits (see the tables above) apply on those routes.
+- `RateLimit-Limit` — the same quota as a bare integer, for parsers that predate the structured-field draft.
+
+These are static advertisements, so they add no latency on the hot path. The legacy `X-RateLimit-*` names are also emitted for back-compat.
+
+## Response when limited
+
+An HTTP 429 additionally carries the live per-window counters (remaining is `0`; the reset and `Retry-After` are **delta-seconds**) plus the combined `RateLimit` member:
+
+```
+HTTP/1.1 429 Too Many Requests
+RateLimit-Policy: "default";q=<limit>;w=<window>
+RateLimit-Limit: <limit>
+RateLimit-Remaining: 0
+RateLimit-Reset: <seconds until reset>
+RateLimit: "default";r=0;t=<seconds until reset>
+Retry-After: <seconds>
+X-RateLimit-Limit: <limit>
+X-RateLimit-Remaining: 0
+X-RateLimit-Reset: <reset, ms since epoch>
+Content-Type: application/json
+
+{ "error": "Too many requests" }
+```
+
+Note the IETF `RateLimit-Reset` (and the `t` value in the combined `RateLimit` member) is **seconds remaining**, whereas the legacy `X-RateLimit-Reset` is an absolute epoch in **milliseconds**. For a daily-ceiling 429 the `Retry-After` counts down to the next 00:00 UTC.
+
+## Retry guidance
+
+- Respect `Retry-After`. Don't pound on a 429.
+- For batch work, pace yourself: at 600 req/min/IP the default gives you ~10 req/s headroom.
+- For MCP, 60/min is generous for conversational use but tight for scripted batch fetches — prefer the REST API for batch.
+- Spurious 429s often mean you're sharing an egress IP (corporate proxy, CI runner). Contact support for a per-key limit bump if needed.
+
+## Customer notifications and paid-plan caps
+
+API and MCP plan caps are tracked against the product catalog limits that ship with entitlements:
+
+| Plan | API requests / day | API burst / minute | MCP calls / day | MCP burst / minute |
+|------|--------------------|--------------------|-----------------|--------------------|
+| Free | 0 | 0 | 0 | 0 |
+| Pro | 0 | 0 | 50 | 60 |
+| API Starter | 1,000 | 60 | 1,000 | 60 |
+| API Business | 10,000 | 300 | 10,000 | 300 |
+| Enterprise | Unlimited | 1,000 | Unlimited | 1,000 |
+
+When a paid user approaches or exceeds one of these limits, WorldMonitor records a compact Convex rollup and opens a current account notice in Settings. The daily count is read from the same per-account meter that governs enforcement, so a warning reflects the same usage number the plan is metered against. Daily limits warn at 80% and switch to over-limit at 100%; burst limits only notify on sustained pressure, not a single isolated spike.
+
+If the notice is still current, a Resend-backed lifecycle sends an email at a bounded cadence. The email and dashboard notice explain the current usage, the relevant plan limit, and the available options: reduce traffic, wait for reset, upgrade when a self-serve path exists, or contact support when the next tier is not self-serve.
+
+WorldMonitor does **not** automatically upgrade a user, charge for overages, or move a customer into API Business because they crossed a cap. Any future hard enforcement for paid plans must first pass the internal `apiPlanLimitNotices.getEnforcementReadiness` gate: no stale usage source, no pending/failed email, and no blocked self-serve upgrade path.
+
+## Hard caps (not soft limits)
+
+- Webhook callback URLs must be HTTPS (except localhost).
+- `api/download` file sizes capped at ~50 MB per request.
+- `POST /api/scenario/v1/run-scenario` globally pauses new jobs when the pending queue exceeds **100** — returns 429.
+- `api/v2/shipping/webhooks` TTL is **30 days** — re-register to extend.

@@ -111,9 +111,12 @@ describe('GlobeMap tooltip enrichment', () => {
     assert.ok(src.includes('Heading:'), 'flight tooltip must display Heading label');
   });
 
-  it('GPS jamming tooltip uses human-readable satellite label', () => {
-    assert.ok(src.includes('Avg satellites visible'), 'gpsjam must show readable label');
-    assert.ok(!src.includes('NP avg:'), 'gpsjam must not use cryptic NP avg label');
+  it('GPS jamming tooltip uses the gpsjam.org interference metric (% aircraft affected)', () => {
+    // Source reverted from Wingbits (np_avg / "satellites visible") to gpsjam.org,
+    // whose native metric is the share of aircraft reporting GPS interference.
+    assert.ok(src.includes('Aircraft affected'), 'gpsjam must show the readable % aircraft affected label');
+    assert.ok(!src.includes('NP avg:'), 'gpsjam must not use the cryptic NP avg label');
+    assert.ok(!src.includes('Avg satellites visible'), 'gpsjam.org has no satellite-visibility metric');
   });
 
   it('extends hide delay to 6s for rich tooltip kinds', () => {

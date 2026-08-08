@@ -1,0 +1,49 @@
+---
+title: "WM Analyst"
+description: "WM Analyst 是 WorldMonitor 的对话式 AI 分析师，直接调用平台实时缓存的地缘政治、金融市场、军事部署、区域情报与预测数据，即时回答用户关于当前形势、事件影响、传导路径与情景推演的临时问题，支持自然语言追问、来源溯源与跨面板上下文串联。"
+---
+
+**WM Analyst** 面板（内部 id `chat-analyst`）是仪表盘的对话式情报界面：一个聊天界面，你可以直接输入问题——"红海今天发生了什么？"、"哪些经济体对霍尔木兹海峡关闭最为脆弱？"——并获得基于实时 WorldMonitor 缓存的、具有来源感知的结构化回答。
+
+## 面板显示内容
+
+一个聊天记录界面，底部有输入框。消息通过 Markdown → HTML 管道渲染（`marked` + `DOMPurify` 消毒 + 后处理的分析师格式化）。历史记录限制为最近 20 轮对话（`src/components/ChatAnalystPanel.ts` 中的 `MAX_HISTORY = 20`）。
+
+面板级控件：
+
+- **快捷操作按钮** 位于面板顶部 — `Situation`（世界简报）、`Markets`、`Conflicts`、`Forecasts`、`Risk`。点击运行预构建查询。
+- **领域选择器** — `All` / `Geo` / `Market` / `Military`（及更多）。限定分析师提取的缓存范围。
+- **仪表盘控制** — 一个可选的 `Control dashboard` 开关，带 `Pause` 控制。启用时，经模式校验的分析师动作事件可聚焦已活跃的面板、移动地图视图或切换允许的地图图层。关闭或暂停时，回答仍会流式返回，但仪表盘动作会被跳过。
+- **输入框** — 自由文本输入；Enter 发送。
+
+面板 id 为 `chat-analyst`；规范组件为 `src/components/ChatAnalystPanel.ts`。标题 "WM Analyst" 见 `src/config/panels.ts:52`。
+
+## 如何访问
+
+- **Cmd+K**：输入 *analyst* 或 *ask*。
+- **按变体的可用性**：仅在 **full/geopolitical** 变体中注册并默认启用（`src/config/panels.ts:52` 处的 `premium: 'locked'`）。在 tech、finance、commodity 或 happy 变体中不存在。
+
+## 数据来源
+
+面板通过 `premiumFetch()` 向 `/api/chat-analyst`（由 `api/chat-analyst.ts` 支持的边缘函数）发送 POST 请求，该函数注入调用者的凭据（桌面端使用 `WORLDMONITOR_API_KEY`，浏览器端使用 Clerk bearer + PRO）。边缘函数从情报、冲突、市场、预测和风险缓存（限定在所选领域范围内）组合上下文，流式返回 token，面板增量渲染。
+
+没有独立的 `/chat-analyst/v1/*` RPC 接口 — 这是一个一等边缘端点，而非 proto 生成的 RPC。
+
+## 仪表盘控制动作
+
+仪表盘控制 v1 仅限应用内和进程内。`/api/chat-analyst` 可在回答旁流式返回已校验的动作事件，而 `src/app/agent-bus-applier.ts` 是唯一变更面板或地图的客户端写入边界。applier 在应用任何动作之前会强制执行权益检查、活跃面板存在性、地图可用性、变体允许的图层、渲染器可执行性以及高级图层门控。
+
+此版本不暴露外部 MCP 写入工具、Convex 动作队列和跨用户命令投递。
+
+## 刷新频率
+
+每次发送都是一次新的 LLM 调用 — 不缓存分析师回答。典型响应延迟为 3-15 秒，取决于问题复杂度和上游缓存新鲜度。
+
+## 层级与门控
+
+**PRO（硬锁定）。** `src/config/panels.ts:52` 中的 `premium: 'locked'`。当存在有效的 `WORLDMONITOR_API_KEY` **或** `isPro` 为 true 时，`isPanelEntitled` 解锁该面板（`src/config/panels.ts:973` — `apiKeyPanels` 允许列表包含 `chat-analyst`）。
+
+## API 参考
+
+- [AI 情报](/zh/ai-intelligence) — LLM 支持的分析师管道概述。
+- 对于脚本化使用，最接近的 MCP 等价物是 [`analyze_situation`](/zh/mcp-overview#ai-intelligence-live-llm) 和 [`get_world_brief`](/zh/mcp-overview#ai-intelligence-live-llm)。

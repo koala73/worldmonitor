@@ -35,7 +35,13 @@ export function scoreMatch(raw: RawProduct, canonical: CanonicalProduct): MatchR
 
   const rawCategory = (raw.categoryText ?? '').toLowerCase();
   const canonCategory = canonical.category.toLowerCase();
-  const categoryExact = rawCategory.includes(canonCategory) || canonCategory.includes(rawCategory);
+  // Guard against empty strings: `x.includes('')` is always true, so without
+  // this a product with no categoryText would count as an exact category match
+  // against every canonical product and wrongly earn the +20 bonus.
+  const categoryExact =
+    rawCategory.length > 0 &&
+    canonCategory.length > 0 &&
+    (rawCategory.includes(canonCategory) || canonCategory.includes(rawCategory));
   if (categoryExact) score += 20;
 
   const overlap = tokenOverlap(raw.rawTitle, canonical.canonicalName);

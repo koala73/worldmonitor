@@ -52,8 +52,42 @@ export const DiscoverySeedSchema = z.object({
 export const SearchConfigSchema = z.object({
   numResults: z.number().default(3),
   queryTemplate: z.string().optional(),
-  urlPathContains: z.string().optional(),
+  // Substring(s) that must appear in the URL path. Pass an array to accept
+  // multiple URL patterns (e.g. Carrefour BR uses both legacy `/produto/<slug>`
+  // and VTEX `<slug>/p` for product pages). A URL passes if it contains ANY
+  // of the listed substrings.
+  urlPathContains: z.union([z.string(), z.array(z.string()).min(1)]).optional(),
+  // Segment(s) that must ALL appear in the URL *pathname*, AND-ed on top of
+  // `urlPathContains`. `urlPathContains` is an OR over substrings, so it can
+  // express "is a product route" or "is this market's storefront" but never
+  // both — a multi-market host like noon.com (which serves /saudi-en/,
+  // /uae-en/ and Egypt from www.noon.com and minutes.noon.com) needs this to
+  // keep one storefront's prices out of another market's snapshot. Matched
+  // against `pathname` only, so a locale in a query string cannot satisfy it.
+  urlPathMustContain: z.array(z.string().min(1)).min(1).optional(),
+  // Explicit storefront aliases for provider results that are still owned by
+  // the configured retailer (for example minutes.noon.com). The base URL
+  // hostname is always allowed; aliases never broaden the check implicitly.
+  allowedHosts: z.array(z.string().min(1)).min(1).optional(),
+  // Exa discovery mode. Neural ranks by semantic similarity over Exa's crawled
+  // index, so a retailer that has MOVED its product routes keeps being served
+  // the retired ones (JioMart: neural returned 0 live `/product/` URLs across
+  // five items, keyword returned 33). Leave unset to keep the provider default;
+  // set `keyword` for retailers whose live routes the index has not caught up to.
+  searchType: z.enum(['neural', 'keyword']).optional(),
+  // Ceiling on how many discovered URLs one target may be extracted from.
+  // Separates discovery breadth from extraction cost: a retailer whose live
+  // route ranks low needs a wide `numResults`, but every extra candidate is up
+  // to two more paid provider calls on a page that may never yield a price.
+  // Unset keeps the historical behaviour of attempting every survivor.
+  maxExtractionCandidates: z.number().int().positive().optional(),
   inStockFromPrice: z.boolean().default(false),
+  // A single bounded provider fallback is opt-in per retailer. `none` keeps
+  // the historical Firecrawl-only extraction path.
+  extractionFallback: z.enum(['none', 'exa']).default('none'),
+  // Keep the strict validator opt-in while existing shadow-mode rollouts
+  // remain unchanged for unaffected retailers.
+  requireStrictValidator: z.boolean().default(false),
 });
 
 export const RetailerConfigSchema = z.object({
@@ -100,6 +134,11 @@ export const BasketItemSchema = z.object({
   substitutionGroup: z.string().optional(),
   minBaseQty: z.number().optional(),
   maxBaseQty: z.number().optional(),
+  // Lowercase tokens that, if present in an extracted productName, mark the hit
+  // as a class mismatch (e.g. "canned" for fresh tomatoes). Intended for obvious
+  // class errors; product-taxonomy distinctions like plain vs greek yogurt
+  // belong in separate substitutionGroup values, not here.
+  negativeTokens: z.array(z.string()).optional(),
   qualificationRules: z.record(z.string(), z.unknown()).optional(),
 });
 

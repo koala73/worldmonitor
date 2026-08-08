@@ -1,0 +1,22 @@
+.sc-war-risk-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 3px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.3px;
+  text-transform: uppercase;
+}
+.sc-war-risk-badge--war { background: rgba(220,38,38,0.15); color: #ef4444; border: 1px solid rgba(220,38,38,0.3); }
+.sc-war-risk-badge--critical { background: rgba(220,38,38,0.12); color: #f87171; border: 1px solid rgba(220,38,38,0.25); }
+.sc-war-risk-badge--high { background: rgba(249,115,22,0.12); color: #fb923c; border: 1px solid rgba(249,115,22,0.25); }
+.sc-war-risk-badge--elevated { background: rgba(234,179,8,0.12); color: #fbbf24; border: 1px solid rgba(234,179,8,0.25); }
+.sc-war-risk-badge--normal { background: rgba(100,116,139,0.1); color: #94a3b8; border: 1px solid rgba(100,116,139,0.2); }
+
+.sc-bypass-section { margin-top: 10px; }
+.sc-bypass-heading { font-size: 11px; font-weight: 600; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px; }
+.sc-bypass-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.sc-bypass-table th { color: #64748b; font-weight: 500; padding: 4px 6px; text-align: left; border-bottom: 1px solid rgba(100,116,139,0.15); }
+.sc-bypass-table td { padding: 4px 6px; border-bottom: 1px solid rgba(100,116,139,0.08); }
+.sc-bypass-loading, .sc-bypass-error { font-size: 12px; color: #64748b; padding: 8px 0; text-align: center; }
+.sc-bypass-gate { display: flex; align-items: center; gap: 8px; padding: 10px; background: rgba(100,116,139,0.06); border-radius: 6px; margin-top: 8px; font-size: 12px; color: #94a3b8; }

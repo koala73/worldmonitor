@@ -3,6 +3,7 @@ import type {
   GetChokepointStatusRequest,
   GetChokepointStatusResponse,
   ChokepointInfo,
+  FlowSource,
 } from '../../../../src/generated/server/worldmonitor/supply_chain/v1/service_server';
 
 import type {
@@ -15,22 +16,24 @@ import type {
 import { cachedFetchJson, getCachedJson, setCachedJson } from '../../../_shared/redis';
 import { listNavigationalWarnings } from '../../maritime/v1/list-navigational-warnings';
 import { getVesselSnapshot } from '../../maritime/v1/get-vessel-snapshot';
-import type { PortWatchData } from './_portwatch-upstream';
-import { CANONICAL_CHOKEPOINTS } from './_chokepoint-ids';
 // @ts-expect-error — .mjs module, no declaration file
-import { computeDisruptionScore, scoreToStatus, SEVERITY_SCORE, THREAT_LEVEL, detectTrafficAnomaly } from './_scoring.mjs';
-
-const REDIS_CACHE_KEY = 'supply_chain:chokepoints:v4';
+import { computeDisruptionScore, scoreToStatus, SEVERITY_SCORE, THREAT_LEVEL } from './_scoring.mjs';
+import { type ThreatLevel, threatLevelToWarRiskTier } from './_insurance-tier';
+import { CHOKEPOINT_STATUS_KEY as REDIS_CACHE_KEY } from '../../../_shared/cache-keys';
 const TRANSIT_SUMMARIES_KEY = 'supply_chain:transit-summaries:v1';
-const PORTWATCH_FALLBACK_KEY = 'supply_chain:portwatch:v1';
-const CORRIDORRISK_FALLBACK_KEY = 'supply_chain:corridorrisk:v1';
-const TRANSIT_COUNTS_FALLBACK_KEY = 'supply_chain:chokepoint_transits:v1';
+const FLOWS_KEY = 'energy:chokepoint-flows:v1';
+// NOTE: historical fallback via supply_chain:portwatch:v1 / corridorrisk / chokepoint_transits
+// was removed — those keys are ~500KB each, and reading them on top of the already-large
+// transit-summaries payload was causing Vercel-edge Redis timeouts (1.5s budget) and pinning
+// a silent zero-state cache. Today the ais-relay writer is authoritative for the compact
+// summary; if it's missing we fail-fast via upstreamUnavailable so cachedFetchJson writes
+// NEG_SENTINEL (120s) instead of caching a fake 5-min healthy-but-empty response.
+// See docs/plans/chokepoint-rpc-payload-split.md.
 const REDIS_CACHE_TTL = 300; // 5 min
 const THREAT_CONFIG_MAX_AGE_DAYS = 120;
 const NEARBY_CHOKEPOINT_RADIUS_KM = 300;
 const THREAT_CONFIG_STALE_NOTE = `Threat baseline last reviewed > ${THREAT_CONFIG_MAX_AGE_DAYS} days ago — review recommended`;
 
-type ThreatLevel = 'war_zone' | 'critical' | 'high' | 'elevated' | 'normal';
 type GeoCoordinates = { latitude: number; longitude: number };
 
 interface ChokepointConfig {
@@ -67,19 +70,25 @@ interface ChokepointConfig {
 
 type DirectionLabel = 'eastbound' | 'westbound' | 'northbound' | 'southbound';
 
+// Compact summary written by ais-relay.cjs — no history array; per-id history
+// lives in `supply_chain:transit-summaries:history:v1:{id}` and is served by
+// GetChokepointHistory on card expand.
 interface PreBuiltTransitSummary {
   todayTotal: number;
   todayTanker: number;
   todayCargo: number;
   todayOther: number;
   wowChangePct: number;
-  history: { date: string; tanker: number; cargo: number; other: number; total: number }[];
   riskLevel: string;
   incidentCount7d: number;
   disruptionPct: number;
   riskSummary: string;
   riskReportAction: string;
   anomaly: { dropPct: number; signal: boolean };
+  // Optional for back-compat: writers prior to the partial-coverage fix
+  // emitted no flag. Missing = treat as available (pre-fix writers only
+  // emitted summaries they had data for).
+  dataAvailable?: boolean;
 }
 
 interface TransitSummariesPayload {
@@ -239,45 +248,81 @@ interface ChokepointFetchResult {
   upstreamUnavailable: boolean;
 }
 
-interface CorridorRiskEntry { riskLevel: string; incidentCount7d: number; disruptionPct: number; riskSummary: string; riskReportAction: string }
-interface RelayTransitEntry { tanker: number; cargo: number; other: number; total: number }
-interface RelayTransitPayload { transits: Record<string, RelayTransitEntry>; fetchedAt: number }
+interface FlowEstimateEntry { currentMbd: number; baselineMbd: number; flowRatio: number; disrupted: boolean; source: string; hazardAlertLevel: string | null; hazardAlertName: string | null }
 
-function buildFallbackSummaries(
-  portwatch: PortWatchData | null,
-  corridorRisk: Record<string, CorridorRiskEntry> | null,
-  transitData: RelayTransitPayload | null,
-  chokepoints: ChokepointConfig[],
-): Record<string, PreBuiltTransitSummary> {
-  const summaries: Record<string, PreBuiltTransitSummary> = {};
-  const relayMap = new Map<string, RelayTransitEntry>();
-  if (transitData?.transits) {
-    for (const [relayName, entry] of Object.entries(transitData.transits)) {
-      const canonical = CANONICAL_CHOKEPOINTS.find(c => c.relayName === relayName);
-      if (canonical) relayMap.set(canonical.id, entry);
+/**
+ * The coverage bases seed-chokepoint-flows.mjs can emit. Declared as an
+ * EXHAUSTIVE record over the non-UNSPECIFIED FlowSource members so that adding
+ * a member to the proto is a compile error here. A plain `Set<FlowSource>`
+ * caught a typo but not an omission — the new member would simply be absent,
+ * and this handler would silently strip the very value the proto had just
+ * declared legal.
+ */
+const FLOW_SOURCE_MEMBERS: Record<Exclude<FlowSource, 'FLOW_SOURCE_UNSPECIFIED'>, true> = {
+  'portwatch-dwt': true,
+  'portwatch-counts': true,
+};
+
+const FLOW_SOURCES: ReadonlySet<string> = new Set(Object.keys(FLOW_SOURCE_MEMBERS));
+
+/**
+ * Narrow the seeder's `source` onto the FlowSource taxonomy the proto declares
+ * (#6101). `energy:chokepoint-flows:v1` is an untyped Redis blob written by a
+ * seeder that deploys independently of this handler, so the value here is not
+ * guaranteed to be one the published enum lists — and a closed taxonomy is only
+ * worth declaring if the response cannot carry a value outside it.
+ *
+ * Anything unrecognized collapses to FLOW_SOURCE_UNSPECIFIED, which is the
+ * declared way to say "not one of the known coverage bases" without inventing a
+ * value or dropping the field. The two real values pass through verbatim, so
+ * the wire is unchanged for every payload the current seeder produces.
+ *
+ * The collapse is logged because it is otherwise indistinguishable from a
+ * missing field: UNSPECIFIED is what an operator sees whether the seeder went
+ * quiet or shipped a third basis this deploy does not know about, and only the
+ * second case needs a proto change. Once per distinct value per instance — the
+ * re-narrow below runs on every warm request, so an unconditional warn would
+ * bill a log line per request for as long as the seeder kept emitting it.
+ */
+const warnedFlowSources = new Set<string>();
+
+function toFlowSource(value: unknown): FlowSource {
+  if (typeof value === 'string' && FLOW_SOURCES.has(value)) return value as FlowSource;
+  if (value !== undefined && value !== null && value !== '') {
+    const seen = String(value);
+    if (!warnedFlowSources.has(seen)) {
+      warnedFlowSources.add(seen);
+      console.warn('[chokepoint-status] flow source outside the FlowSource taxonomy:', seen);
     }
   }
-  for (const cp of chokepoints) {
-    const pw = portwatch?.[cp.id];
-    const cr = corridorRisk?.[cp.id];
-    const relay = relayMap.get(cp.id);
-    const anomaly = detectTrafficAnomaly(pw?.history ?? [], cp.threatLevel);
-    summaries[cp.id] = {
-      todayTotal: relay?.total ?? 0,
-      todayTanker: relay?.tanker ?? 0,
-      todayCargo: relay?.cargo ?? 0,
-      todayOther: relay?.other ?? 0,
-      wowChangePct: pw?.wowChangePct ?? 0,
-      history: pw?.history ?? [],
-      riskLevel: cr?.riskLevel ?? '',
-      incidentCount7d: cr?.incidentCount7d ?? 0,
-      disruptionPct: cr?.disruptionPct ?? 0,
-      riskSummary: cr?.riskSummary ?? '',
-      riskReportAction: cr?.riskReportAction ?? '',
-      anomaly,
-    };
-  }
-  return summaries;
+  return 'FLOW_SOURCE_UNSPECIFIED';
+}
+
+/**
+ * Re-narrow a response that came back from the outer cache.
+ *
+ * `toFlowSource` runs inside the cold-path builder, so on its own it leaves a
+ * window where `supply_chain:chokepoints:v4` still holds a blob written by an
+ * earlier deploy — served verbatim for the rest of the TTL, and read straight
+ * from that key by route-intelligence, get-bypass-options, both cost-shock
+ * handlers, get-route-explorer-lane and the bootstrap tier. Narrowing again at
+ * the return boundary makes "never serves a value outside the enum"
+ * unconditional instead of true only after the first cold rebuild. Idempotent,
+ * so the cold path is unaffected.
+ */
+function narrowServedSources(response: GetChokepointStatusResponse): GetChokepointStatusResponse {
+  // A cached blob from an older shape may not carry the array the type promises.
+  // Pass it through untouched rather than throwing into the degraded sentinel —
+  // that failure mode belongs to whoever wrote the blob, not to this narrowing.
+  if (!Array.isArray(response?.chokepoints)) return response;
+  return {
+    ...response,
+    chokepoints: response.chokepoints.map((cp) => (
+      cp.flowEstimate
+        ? { ...cp, flowEstimate: { ...cp.flowEstimate, source: toFlowSource(cp.flowEstimate.source) } }
+        : cp
+    )),
+  };
 }
 
 async function fetchChokepointData(): Promise<ChokepointFetchResult> {
@@ -286,28 +331,39 @@ async function fetchChokepointData(): Promise<ChokepointFetchResult> {
   let navFailed = false;
   let vesselFailed = false;
 
-  const [navResult, vesselResult, transitSummariesData] = await Promise.all([
+  const [navResult, vesselResult, transitSummariesData, flowsData] = await Promise.all([
     listNavigationalWarnings(ctx, { area: '', pageSize: 0, cursor: '' }).catch((): ListNavigationalWarningsResponse => { navFailed = true; return { warnings: [], pagination: undefined }; }),
-    getVesselSnapshot(ctx, { neLat: 90, neLon: 180, swLat: -90, swLon: -180 }).catch((): GetVesselSnapshotResponse => { vesselFailed = true; return { snapshot: undefined }; }),
+    // All-zero bbox = "no filter, full snapshot" per the new bbox extractor
+    // in get-vessel-snapshot.ts. Previously this passed (-90, -180, 90, 180)
+    // because the handler ignored bbox entirely; the new 10° max-bbox guard
+    // (added for the live-tanker contract) would reject that range. This
+    // call doesn't need bbox filtering — it wants the global density +
+    // disruption surface — so pass zeros and skip both candidate and tanker
+    // payload tiers.
+    getVesselSnapshot(ctx, { neLat: 0, neLon: 0, swLat: 0, swLon: 0, includeCandidates: false, includeTankers: false }).catch((): GetVesselSnapshotResponse => {
+      vesselFailed = true;
+      return { snapshot: undefined, fetchedAt: 0, dataAvailable: false };
+    }),
     getCachedJson(TRANSIT_SUMMARIES_KEY, true).catch(() => null) as Promise<TransitSummariesPayload | null>,
+    getCachedJson(FLOWS_KEY, true).catch(() => null) as Promise<Record<string, FlowEstimateEntry> | null>,
   ]);
 
-  let summaries = transitSummariesData?.summaries ?? {};
+  const summaries = transitSummariesData?.summaries ?? {};
+  const transitSummariesMissing = Object.keys(summaries).length === 0;
 
-  // Fallback: if pre-built summaries are empty, read raw upstream keys directly
-  if (Object.keys(summaries).length === 0) {
-    const [portwatch, corridorRisk, transitCounts] = await Promise.all([
-      getCachedJson(PORTWATCH_FALLBACK_KEY, true).catch(() => null) as Promise<PortWatchData | null>,
-      getCachedJson(CORRIDORRISK_FALLBACK_KEY, true).catch(() => null) as Promise<Record<string, CorridorRiskEntry> | null>,
-      getCachedJson(TRANSIT_COUNTS_FALLBACK_KEY, true).catch(() => null) as Promise<RelayTransitPayload | null>,
-    ]);
-    if (portwatch && Object.keys(portwatch).length > 0) {
-      summaries = buildFallbackSummaries(portwatch, corridorRisk, transitCounts, CHOKEPOINTS);
-    }
-  }
   const warnings = navResult.warnings || [];
   const disruptions: AisDisruption[] = vesselResult.snapshot?.disruptions || [];
-  const upstreamUnavailable = (navFailed && vesselFailed) || (navFailed && disruptions.length === 0) || (vesselFailed && warnings.length === 0);
+
+  // Treat a missing compact summary as upstream-unavailable so the outer
+  // cachedFetchJson caches NEG_SENTINEL (120s neg TTL) rather than pinning a
+  // healthy-but-zero response for the full REDIS_CACHE_TTL (5min). Before this
+  // gate, a single Redis read timeout silently published 13 zero-state
+  // chokepoints to supply_chain:chokepoints:v4 and the panel stayed empty
+  // until that cache expired. See docs/plans/chokepoint-rpc-payload-split.md.
+  const upstreamUnavailable = transitSummariesMissing
+    || (navFailed && vesselFailed)
+    || (navFailed && disruptions.length === 0)
+    || (vesselFailed && warnings.length === 0);
   const warningsByChokepoint = groupWarningsByChokepoint(warnings);
   const disruptionsByChokepoint = groupDisruptionsByChokepoint(disruptions);
   const threatConfigFresh = isThreatConfigFresh();
@@ -364,13 +420,29 @@ async function fetchChokepointData(): Promise<ChokepointFetchResult> {
         todayCargo: ts.todayCargo,
         todayOther: ts.todayOther,
         wowChangePct: ts.wowChangePct,
-        history: ts.history,
+        // History is served separately by GetChokepointHistory (lazy-loaded on
+        // card expand) — field stays declared for proto compat but is empty
+        // on the main status response.
+        history: [],
         riskLevel: ts.riskLevel,
         incidentCount7d: ts.incidentCount7d,
         disruptionPct: ts.disruptionPct,
         riskSummary: ts.riskSummary,
         riskReportAction: ts.riskReportAction,
-      } : { todayTotal: 0, todayTanker: 0, todayCargo: 0, todayOther: 0, wowChangePct: 0, history: [], riskLevel: '', incidentCount7d: 0, disruptionPct: 0, riskSummary: '', riskReportAction: '' },
+        // Default true for pre-fix writers (absence = covered). New writers
+        // explicitly emit false for canonical zero-state fills.
+        dataAvailable: ts.dataAvailable ?? true,
+      } : { todayTotal: 0, todayTanker: 0, todayCargo: 0, todayOther: 0, wowChangePct: 0, history: [], riskLevel: '', incidentCount7d: 0, disruptionPct: 0, riskSummary: '', riskReportAction: '', dataAvailable: false },
+      flowEstimate: flowsData?.[cp.id] ? {
+        currentMbd: flowsData[cp.id]!.currentMbd,
+        baselineMbd: flowsData[cp.id]!.baselineMbd,
+        flowRatio: flowsData[cp.id]!.flowRatio,
+        disrupted: flowsData[cp.id]!.disrupted,
+        source: toFlowSource(flowsData[cp.id]!.source),
+        hazardAlertLevel: flowsData[cp.id]!.hazardAlertLevel ?? '',
+        hazardAlertName: flowsData[cp.id]!.hazardAlertName ?? '',
+      } : undefined,
+      warRiskTier: threatLevelToWarRiskTier(cp.threatLevel),
     };
   });
 
@@ -388,14 +460,28 @@ export async function getChokepointStatus(
       async () => {
         const { chokepoints, upstreamUnavailable } = await fetchChokepointData();
         if (upstreamUnavailable) return null;
-        const response = { chokepoints, fetchedAt: new Date().toISOString(), upstreamUnavailable };
-        setCachedJson('seed-meta:supply_chain:chokepoints', { fetchedAt: Date.now(), recordCount: chokepoints.length }, 604800).catch(() => {});
+        // recordCount reflects the count of chokepoints with REAL upstream data
+        // (not the canonical shape size — always 13). Lets api/health.js
+        // distinguish 13/13 healthy from partial (e.g., 10/13) via the
+        // minRecordCount threshold. Before this, a partial portwatch failure
+        // showed as OK despite the UI rendering 3 zero-state rows.
+        const coveredCount = chokepoints.filter((c) => c.transitSummary?.dataAvailable !== false).length;
+        // Response-level signal: if any canonical chokepoint lost upstream,
+        // flip upstreamUnavailable so clients can show a partial-coverage
+        // banner without breaking the cached response (data still useful).
+        const partialCoverage = coveredCount < chokepoints.length;
+        const response = {
+          chokepoints,
+          fetchedAt: new Date().toISOString(),
+          upstreamUnavailable: upstreamUnavailable || partialCoverage,
+        };
+        setCachedJson('seed-meta:supply_chain:chokepoints', { fetchedAt: Date.now(), recordCount: coveredCount }, 604800).catch(() => {});
         return response;
       },
     );
 
-    return result ?? { chokepoints: [], fetchedAt: new Date().toISOString(), upstreamUnavailable: true };
+    return result ? narrowServedSources(result) : { chokepoints: [], fetchedAt: '', upstreamUnavailable: true };
   } catch {
-    return { chokepoints: [], fetchedAt: new Date().toISOString(), upstreamUnavailable: true };
+    return { chokepoints: [], fetchedAt: '', upstreamUnavailable: true };
   }
 }

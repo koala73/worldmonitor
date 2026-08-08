@@ -7,7 +7,10 @@ import "worldmonitor/military/v1/get_aircraft_details.proto";
 
 // GetAircraftDetailsBatchRequest looks up multiple aircraft by ICAO 24-bit hex.
 message GetAircraftDetailsBatchRequest {
-  // ICAO 24-bit hex addresses (lowercase). Max 20.
+  // ICAO 24-bit hex addresses (lowercase). Validation accepts up to 20, but the handler
+  // de-duplicates, sorts, and processes at most the first 10 addresses -- anything beyond
+  // that is silently discarded, so send at most 10 per call. The official browser client
+  // caps its own requests at the same bound.
   repeated string icao24s = 1 [
     (buf.validate.field).repeated.min_items = 1,
     (buf.validate.field).repeated.max_items = 20

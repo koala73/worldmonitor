@@ -1,0 +1,63 @@
+# Cloudflare Worker config for api-cors-preflight.
+# Deployed via `wrangler deploy` (manual) or .github/workflows/deploy-worker.yml (CI).
+# CF account_id is read from the CLOUDFLARE_ACCOUNT_ID env var so this file
+# stays publishable; CLOUDFLARE_API_TOKEN supplies auth.
+
+name = "api-cors-preflight"
+main = "src/index.js"
+compatibility_date = "2025-05-01"
+
+# Bind to api.worldmonitor.app/*. The route is the load-bearing config:
+# without it the Worker is uploaded but receives no traffic.
+[[routes]]
+pattern = "api.worldmonitor.app/*"
+zone_name = "worldmonitor.app"
+
+# Observability: surface Worker errors in CF dashboard logs.
+[observability]
+enabled = true
+
+# Bootstrap tier objects on Workers KV — read-only, for the U-K2 shadow measurement (#5338).
+# The publisher (Railway) writes these keys; here the Worker only reads them to time the read
+# per POP. Namespace id is config, not a secret.
+[[kv_namespaces]]
+binding = "BOOTSTRAP_KV"
+id = "40d42ec8064b4813ac87e61b43fb697f"
+
+# Shadow flag — "1" = measuring. The Worker shadow-reads BOOTSTRAP_KV per POP on public-tier
+# bootstrap GETs (in ctx.waitUntil; response untouched) and emits per-region latency to Axiom.
+# CORS behaviour is provably identical to "0" (byte-identical test). Flip back to "0" to stop.
+#
+# Serve flag (U-K4) — staged cutover of serving the public tier FROM KV via this Worker:
+#   "off"/unset = serve nothing (Phase-A shadow-only; deploy is inert).
+#   "slow"      = serve the slow tier only (safest first cutover).   <-- CURRENT (stage 1)
+#   "all"       = serve both public tiers.
+# Any miss/stale/invalid/error/timeout falls through to the Vercel/Redis origin (strictly additive).
+# Kill-switch = set back to "off" and redeploy. Once "all" is proven, flip BOOTSTRAP_KV_SHADOW to "0".
+#
+# Stage 1 ("off" -> "slow") on 2026-08-02. The U-K3 gate passed on 2026-07-16
+# (docs/solutions/2026-07-16-bootstrap-kv-verify.md); this is the flip it authorised, confirmed
+# against a fresh 7-day window (2026-07-26..2026-08-02, 1.51M shadow reads):
+#   * 99.945% servable — zero stale, zero miss, zero invalid across both tiers.
+#     The only non-servable outcomes were 830 probe-ceiling timeouts (0.055%) and 3 errors,
+#     and that 5s ceiling exists only in the shadow: the serving path hedges at 500ms and
+#     races origin instead, so those become origin fallbacks, i.e. today's behaviour.
+#   * slow tier p50 10ms / p95 286ms / p99 919ms; 99.53% under the 1200ms mobile budget,
+#     against the Redis incumbent's p95 1506ms and 87.76% under budget on the same window.
+#   * Once both tiers are cut over, the Upstash egress reduction is
+#     (0.62MB x fast-origin reads) + (1.76MB x slow-origin reads), with the two read counts
+#     summing to 24,683 origin executions/week. The evidence does not expose that tier split,
+#     so it supports only ~15.3-43.4 GB/week (all-fast to all-slow), not a ~21.1 GB/week point
+#     estimate. Redis still serves the origin — R2 is shadow-only.
+#
+# Why slow first even though fast is the bigger egress win: slow carries 67 keys to fast's 26 and
+# is the tier whose payload is 3x larger, so a KV regression shows up there most clearly — while
+# fast stays on Redis as the control. Under "slow", the fast tier keeps emitting bootstrap_kv_shadow
+# (see kv-shadow.js:143), so the comparison stays live during the soak.
+#
+# Stage 2 ("slow" -> "all") is a separate PR, gated on a soak of bootstrap_kv_serve showing
+# kv_outcome='served' dominant for tier=slow and no rise in fallbacks. Stage 3 flips
+# BOOTSTRAP_KV_SHADOW to "0" once "all" is proven — not before, or the comparison baseline is lost.
+[vars]
+BOOTSTRAP_KV_SHADOW = "1"
+BOOTSTRAP_KV_SERVE = "slow"

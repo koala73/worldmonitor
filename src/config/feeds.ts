@@ -1,466 +1,50 @@
 import type { Feed } from '@/types';
 import { SITE_VARIANT } from './variant';
 import { rssProxyUrl } from '@/utils';
+import { mergeCanonicalFeeds } from './feed-resolution';
+import {
+  getSourceProvenanceState,
+  type SourceProvenanceState,
+} from '../../shared/source-provenance';
 
 const rss = rssProxyUrl;
 const railwayRss = rssProxyUrl;
 
-// Source tier system for prioritization (lower = more authoritative)
-// Tier 1: Wire services - fastest, most reliable breaking news
-// Tier 2: Major outlets - high-quality journalism
-// Tier 3: Specialty sources - domain expertise
-// Tier 4: Aggregators & blogs - useful but less authoritative
-export const SOURCE_TIERS: Record<string, number> = {
-  // Tier 1 - Wire Services
-  'Reuters': 1,
-  'AP News': 1,
-  'AFP': 1,
-  'Bloomberg': 1,
-
-  // Tier 2 - Major Outlets
-  'BBC World': 2,
-  'BBC Middle East': 2,
-  'Guardian World': 2,
-  'Guardian ME': 2,
-  'NPR News': 2,
-  'CNN World': 2,
-  'CNBC': 2,
-  'MarketWatch': 2,
-  'Al Jazeera': 2,
-  'Financial Times': 2,
-  'Politico': 2,
-  'Axios': 2,
-  'EuroNews': 2,
-  'France 24': 2,
-  'Le Monde': 2,
-  // Spanish
-  'El País': 2,
-  'El Mundo': 2,
-  'BBC Mundo': 2,
-  // German
-  'Tagesschau': 1,
-  'Der Spiegel': 2,
-  'Die Zeit': 2,
-  'DW News': 2,
-  // Italian
-  'ANSA': 1,
-  'Corriere della Sera': 2,
-  'Repubblica': 2,
-  // Dutch
-  'NOS Nieuws': 1,
-  'NRC': 2,
-  'De Telegraaf': 2,
-  // Swedish
-  'SVT Nyheter': 1,
-  'Dagens Nyheter': 2,
-  'Svenska Dagbladet': 2,
-  'Reuters World': 1,
-  'Reuters Business': 1,
-  'Reuters US': 1,
-  'Fox News': 2,
-  'NBC News': 2,
-  'CBS News': 2,
-  'ABC News': 2,
-  'PBS NewsHour': 2,
-  'Wall Street Journal': 1,
-  'The Hill': 3,
-  'The National': 2,
-  'Yonhap News': 2,
-  'Chosun Ilbo': 2,
-  'OpenAI News': 3,
-  // Portuguese
-  'Brasil Paralelo': 2,
-
-  // Tier 1 - Official Government & International Orgs
-  'White House': 1,
-  'State Dept': 1,
-  'Pentagon': 1,
-  'UN News': 1,
-  'CISA': 1,
-  'Treasury': 2,
-  'DOJ': 2,
-  'DHS': 2,
-  'CDC': 2,
-  'FEMA': 2,
-
-  // Tier 3 - Specialty
-  'Defense One': 3,
-  'Breaking Defense': 3,
-  'The War Zone': 3,
-  'Defense News': 3,
-  'Janes': 3,
-  'Military Times': 2,
-  'Task & Purpose': 3,
-  'USNI News': 2,
-  'gCaptain': 3,
-  'Oryx OSINT': 2,
-  'UK MOD': 1,
-  'Foreign Policy': 3,
-  'The Diplomat': 3,
-  'Bellingcat': 3,
-  'Krebs Security': 3,
-  'Ransomware.live': 3,
-  'Federal Reserve': 3,
-  'SEC': 3,
-  'MIT Tech Review': 3,
-  'Ars Technica': 3,
-  'Atlantic Council': 3,
-  'Foreign Affairs': 3,
-  'CrisisWatch': 3,
-  'CSIS': 3,
-  'RAND': 3,
-  'Brookings': 3,
-  'Carnegie': 3,
-  'IAEA': 1,
-  'WHO': 1,
-  'UNHCR': 1,
-  'Xinhua': 3,
-  'TASS': 3,
-  'RT': 3,
-  'RT Russia': 3,
-  'Layoffs.fyi': 3,
-  'BBC Persian': 2,
-  'Iran International': 3,
-  'Fars News': 3,
-  'MIIT (China)': 1,
-  'MOFCOM (China)': 1,
-  // Turkish
-  'BBC Turkce': 2,
-  'DW Turkish': 2,
-  'Hurriyet': 2,
-  // Polish
-  'TVN24': 2,
-  'Polsat News': 2,
-  'Rzeczpospolita': 2,
-  // Russian (independent)
-  'BBC Russian': 2,
-  'Meduza': 2,
-  'Novaya Gazeta Europe': 2,
-  // Thai
-  'Bangkok Post': 2,
-  'Thai PBS': 2,
-  // Australian
-  'ABC News Australia': 2,
-  'Guardian Australia': 2,
-  // Vietnamese
-  'VnExpress': 2,
-  'Tuoi Tre News': 2,
-
-  // Tier 2 - Premium Startup/VC Sources
-  'Y Combinator Blog': 2,
-  'a16z Blog': 2,
-  'Sequoia Blog': 2,
-  'Crunchbase News': 2,
-  'CB Insights': 2,
-  'PitchBook News': 2,
-  'The Information': 2,
-
-  // Tier 3 - Regional/Specialty Startup Sources
-  'EU Startups': 3,
-  'Tech.eu': 3,
-  'Sifted (Europe)': 3,
-  'The Next Web': 3,
-  'Tech in Asia': 3,
-  'TechCabal (Africa)': 3,
-  'Inc42 (India)': 3,
-  'YourStory': 3,
-  'Paul Graham Essays': 2,
-  'Stratechery': 2,
-  // Asia - Regional
-  'e27 (SEA)': 3,
-  'DealStreetAsia': 3,
-  'Pandaily (China)': 3,
-  '36Kr English': 3,
-  'TechNode (China)': 3,
-  'China Tech News': 3,
-  'The Bridge (Japan)': 3,
-  'Japan Tech News': 3,
-  'Nikkei Tech': 2,
-  'NHK World': 2,
-  'Nikkei Asia': 2,
-  'Korea Tech News': 3,
-  'KED Global': 3,
-  'Entrackr (India)': 3,
-  'India Tech News': 3,
-  'Taiwan Tech News': 3,
-  'GloNewswire (Taiwan)': 4,
-  // LATAM
-  'La Silla Vacía': 3,
-  'LATAM Tech News': 3,
-  'Startups.co (LATAM)': 3,
-  'Contxto (LATAM)': 3,
-  'Brazil Tech News': 3,
-  'Mexico Tech News': 3,
-  'LATAM Fintech': 3,
-  // Africa & MENA
-  'Wamda (MENA)': 3,
-  'Magnitt': 3,
-  // Nigeria
-  'Premium Times': 2,
-  'Vanguard Nigeria': 2,
-  'Channels TV': 2,
-  'Daily Trust': 3,
-  'ThisDay': 2,
-  // Greek
-  'Kathimerini': 2,
-  'Naftemporiki': 2,
-  'in.gr': 3,
-  'iefimerida': 3,
-  'Proto Thema': 3,
-
-  // Tier 3 - Think Tanks
-  'Brookings Tech': 3,
-  'CSIS Tech': 3,
-  'MIT Tech Policy': 3,
-  'Stanford HAI': 2,
-  'AI Now Institute': 3,
-  'OECD Digital': 2,
-  'Bruegel (EU)': 3,
-  'Chatham House Tech': 3,
-  'ISEAS (Singapore)': 3,
-  'ORF Tech (India)': 3,
-  'RIETI (Japan)': 3,
-  'Lowy Institute': 3,
-  'China Tech Analysis': 3,
-  'DigiChina': 2,
-  // Security/Defense Think Tanks
-  'RUSI': 2,
-  'Wilson Center': 3,
-  'GMF': 3,
-  'Stimson Center': 3,
-  'CNAS': 2,
-  // Nuclear & Arms Control
-  'Arms Control Assn': 2,
-  'Bulletin of Atomic Scientists': 2,
-  // Food Security
-  'FAO GIEWS': 2,
-  'EU ISS': 3,
-  // New verified think tanks
-  'War on the Rocks': 2,
-  'AEI': 3,
-  'Responsible Statecraft': 3,
-  'FPRI': 3,
-  'Jamestown': 3,
-
-  // Tier 3 - Policy Sources
-  'Politico Tech': 2,
-  'AI Regulation': 3,
-  'Tech Antitrust': 3,
-  'EFF News': 3,
-  'EU Digital Policy': 3,
-  'Euractiv Digital': 3,
-  'EU Commission Digital': 2,
-  'China Tech Policy': 3,
-  'UK Tech Policy': 3,
-  'India Tech Policy': 3,
-
-  // Tier 2-3 - Podcasts & Newsletters
-  'Acquired Podcast': 2,
-  'All-In Podcast': 2,
-  'a16z Podcast': 2,
-  'This Week in Startups': 3,
-  'The Twenty Minute VC': 2,
-  'Lex Fridman Tech': 3,
-  'The Vergecast': 3,
-  'Decoder (Verge)': 3,
-  'Hard Fork (NYT)': 2,
-  'Pivot (Vox)': 2,
-  'Benedict Evans': 2,
-  'The Pragmatic Engineer': 2,
-  'Lenny Newsletter': 2,
-  'AI Podcast (NVIDIA)': 3,
-  'Gradient Dissent': 3,
-  'Eye on AI': 3,
-  'How I Built This': 2,
-  'Masters of Scale': 2,
-  'The Pitch': 3,
-
-  // Tier 4 - Aggregators
-  'Hacker News': 4,
-  'The Verge': 4,
-  'The Verge AI': 4,
-  'VentureBeat AI': 4,
-  'Yahoo Finance': 4,
-  'TechCrunch Layoffs': 4,
-  'ArXiv AI': 4,
-  'AI News': 4,
-  'Layoffs News': 4,
-
-  // Tier 2 - Positive News Sources (Happy variant)
-  'Good News Network': 2,
-  'Positive.News': 2,
-  'Reasons to be Cheerful': 2,
-  'Optimist Daily': 2,
-  'Yes! Magazine': 2,
-  'My Modern Met': 2,
-  'Upworthy': 3,
-  'DailyGood': 3,
-  'Good Good Good': 3,
-  'GOOD Magazine': 3,
-  'Sunny Skyz': 3,
-  'The Better India': 3,
-  'Mongabay': 3,
-  'Conservation Optimism': 3,
-  'Shareable': 3,
-  'GNN Heroes Spotlight': 3,
-  'GNN Science': 3,
-  'GNN Animals': 3,
-  'GNN Health': 3,
-  'GNN Heroes': 3,
-  'GNN Earth': 3,
-};
-
-export function getSourceTier(sourceName: string): number {
-  return SOURCE_TIERS[sourceName] ?? 4; // Default to tier 4 if unknown
-}
-
-export type SourceType = 'wire' | 'gov' | 'intel' | 'mainstream' | 'market' | 'tech' | 'other';
-
-export const SOURCE_TYPES: Record<string, SourceType> = {
-  // Wire services - fastest, most authoritative
-  'Reuters': 'wire', 'Reuters World': 'wire', 'Reuters Business': 'wire',
-  'AP News': 'wire', 'AFP': 'wire', 'Bloomberg': 'wire',
-
-  // Government & International Org sources
-  'White House': 'gov', 'State Dept': 'gov', 'Pentagon': 'gov',
-  'Treasury': 'gov', 'DOJ': 'gov', 'DHS': 'gov', 'CDC': 'gov',
-  'FEMA': 'gov', 'Federal Reserve': 'gov', 'SEC': 'gov',
-  'UN News': 'gov', 'CISA': 'gov',
-
-  // Intel/Defense specialty
-  'Defense One': 'intel', 'Breaking Defense': 'intel', 'The War Zone': 'intel',
-  'Defense News': 'intel', 'Janes': 'intel', 'Military Times': 'intel', 'Task & Purpose': 'intel',
-  'USNI News': 'intel', 'gCaptain': 'intel', 'Oryx OSINT': 'intel', 'UK MOD': 'gov',
-  'Bellingcat': 'intel', 'Krebs Security': 'intel',
-  'Foreign Policy': 'intel', 'The Diplomat': 'intel',
-  'Atlantic Council': 'intel', 'Foreign Affairs': 'intel',
-  'CrisisWatch': 'intel',
-  'CSIS': 'intel', 'RAND': 'intel', 'Brookings': 'intel', 'Carnegie': 'intel',
-  'IAEA': 'gov', 'WHO': 'gov', 'UNHCR': 'gov',
-  'Xinhua': 'wire', 'TASS': 'wire', 'RT': 'wire', 'RT Russia': 'wire',
-  'NHK World': 'mainstream', 'Nikkei Asia': 'market',
-
-  // Mainstream outlets
-  'BBC World': 'mainstream', 'BBC Middle East': 'mainstream',
-  'Guardian World': 'mainstream', 'Guardian ME': 'mainstream',
-  'NPR News': 'mainstream', 'Al Jazeera': 'mainstream',
-  'CNN World': 'mainstream', 'Politico': 'mainstream', 'Axios': 'mainstream',
-  'EuroNews': 'mainstream', 'France 24': 'mainstream', 'Le Monde': 'mainstream',
-  // European Addition
-  'El País': 'mainstream', 'El Mundo': 'mainstream', 'BBC Mundo': 'mainstream',
-  'Tagesschau': 'mainstream', 'Der Spiegel': 'mainstream', 'Die Zeit': 'mainstream', 'DW News': 'mainstream',
-  'ANSA': 'wire', 'Corriere della Sera': 'mainstream', 'Repubblica': 'mainstream',
-  'NOS Nieuws': 'mainstream', 'NRC': 'mainstream', 'De Telegraaf': 'mainstream',
-  'SVT Nyheter': 'mainstream', 'Dagens Nyheter': 'mainstream', 'Svenska Dagbladet': 'mainstream',
-  // Brazilian Addition
-  'Brasil Paralelo': 'mainstream',
-
-  // Market/Finance
-  'CNBC': 'market', 'MarketWatch': 'market', 'Yahoo Finance': 'market',
-  'Financial Times': 'market',
-
-  // Tech
-  'Hacker News': 'tech', 'Ars Technica': 'tech', 'The Verge': 'tech',
-  'The Verge AI': 'tech', 'MIT Tech Review': 'tech', 'TechCrunch Layoffs': 'tech',
-  'AI News': 'tech', 'ArXiv AI': 'tech', 'VentureBeat AI': 'tech',
-  'Layoffs.fyi': 'tech', 'Layoffs News': 'tech',
-
-  // Regional Tech Startups
-  'EU Startups': 'tech', 'Tech.eu': 'tech', 'Sifted (Europe)': 'tech',
-  'The Next Web': 'tech', 'Tech in Asia': 'tech', 'e27 (SEA)': 'tech',
-  'DealStreetAsia': 'tech', 'Pandaily (China)': 'tech', '36Kr English': 'tech',
-  'TechNode (China)': 'tech', 'The Bridge (Japan)': 'tech', 'Nikkei Tech': 'tech',
-  'Inc42 (India)': 'tech', 'YourStory': 'tech', 'TechCabal (Africa)': 'tech',
-  'Wamda (MENA)': 'tech', 'Magnitt': 'tech',
-
-  // Think Tanks & Policy
-  'Brookings Tech': 'intel', 'CSIS Tech': 'intel', 'Stanford HAI': 'intel',
-  'AI Now Institute': 'intel', 'OECD Digital': 'intel', 'Bruegel (EU)': 'intel',
-  'Chatham House Tech': 'intel', 'DigiChina': 'intel', 'Lowy Institute': 'intel',
-  'EFF News': 'intel', 'Politico Tech': 'intel',
-  // Security/Defense Think Tanks
-  'RUSI': 'intel', 'Wilson Center': 'intel', 'GMF': 'intel',
-  'Stimson Center': 'intel', 'CNAS': 'intel',
-  // Nuclear & Arms Control
-  'Arms Control Assn': 'intel', 'Bulletin of Atomic Scientists': 'intel',
-  // Food Security & Regional
-  'FAO GIEWS': 'gov', 'EU ISS': 'intel',
-  // New verified think tanks
-  'War on the Rocks': 'intel', 'AEI': 'intel', 'Responsible Statecraft': 'intel',
-  'FPRI': 'intel', 'Jamestown': 'intel',
-
-  // Podcasts & Newsletters
-  'Acquired Podcast': 'tech', 'All-In Podcast': 'tech', 'a16z Podcast': 'tech',
-  'This Week in Startups': 'tech', 'The Twenty Minute VC': 'tech',
-  'Hard Fork (NYT)': 'tech', 'Pivot (Vox)': 'tech', 'Stratechery': 'tech',
-  'Benedict Evans': 'tech', 'How I Built This': 'tech', 'Masters of Scale': 'tech',
-};
-
-export function getSourceType(sourceName: string): SourceType {
-  return SOURCE_TYPES[sourceName] ?? 'other';
-}
-
-// Propaganda risk assessment for sources (Quick Win #5)
-// 'high' = State-controlled media, known to push government narratives
-// 'medium' = State-affiliated or known editorial bias toward specific governments
-// 'low' = Independent journalism with editorial standards
-export type PropagandaRisk = 'low' | 'medium' | 'high';
-
-export interface SourceRiskProfile {
-  risk: PropagandaRisk;
-  stateAffiliated?: string;
-  knownBiases?: string[];
-  note?: string;
-}
-
-export const SOURCE_PROPAGANDA_RISK: Record<string, SourceRiskProfile> = {
-  // High risk - State-controlled media
-  'Xinhua': { risk: 'high', stateAffiliated: 'China', note: 'Official CCP news agency' },
-  'TASS': { risk: 'high', stateAffiliated: 'Russia', note: 'Russian state news agency' },
-  'RT': { risk: 'high', stateAffiliated: 'Russia', note: 'Russian state media, banned in EU' },
-  'RT Russia': { risk: 'high', stateAffiliated: 'Russia', note: 'Russian state media, Russia desk' },
-  'Sputnik': { risk: 'high', stateAffiliated: 'Russia', note: 'Russian state media' },
-  'CGTN': { risk: 'high', stateAffiliated: 'China', note: 'Chinese state broadcaster' },
-  'Press TV': { risk: 'high', stateAffiliated: 'Iran', note: 'Iranian state media' },
-  'KCNA': { risk: 'high', stateAffiliated: 'North Korea', note: 'North Korean state media' },
-
-  // Medium risk - State-affiliated or known bias
-  'Al Jazeera': { risk: 'medium', stateAffiliated: 'Qatar', note: 'Qatari state-funded, independent editorial' },
-  'Al Arabiya': { risk: 'medium', stateAffiliated: 'Saudi Arabia', note: 'Saudi-owned, reflects Gulf perspective' },
-  'TRT World': { risk: 'medium', stateAffiliated: 'Turkey', note: 'Turkish state broadcaster' },
-  'France 24': { risk: 'medium', stateAffiliated: 'France', note: 'French state-funded, editorially independent' },
-  'EuroNews': { risk: 'low', note: 'European public broadcaster consortium', knownBiases: ['Pro-EU'] },
-  'Le Monde': { risk: 'low', note: 'French newspaper of record' },
-  'DW News': { risk: 'medium', stateAffiliated: 'Germany', note: 'German state-funded, editorially independent' },
-  'Voice of America': { risk: 'medium', stateAffiliated: 'USA', note: 'US government-funded' },
-  'Kyiv Independent': { risk: 'medium', knownBiases: ['Pro-Ukraine'], note: 'Ukrainian perspective on Russia-Ukraine war' },
-  'Moscow Times': { risk: 'medium', knownBiases: ['Anti-Kremlin'], note: 'Independent, critical of Russian government' },
-
-  // Low risk - Independent with editorial standards (explicit)
-  'Reuters': { risk: 'low', note: 'Wire service, strict editorial standards' },
-  'AP News': { risk: 'low', note: 'Wire service, nonprofit cooperative' },
-  'AFP': { risk: 'low', note: 'Wire service, editorially independent' },
-  'BBC World': { risk: 'low', note: 'Public broadcaster, editorial independence charter' },
-  'BBC Middle East': { risk: 'low', note: 'Public broadcaster, editorial independence charter' },
-  'Guardian World': { risk: 'low', knownBiases: ['Center-left'], note: 'Scott Trust ownership, no shareholders' },
-  'Financial Times': { risk: 'low', note: 'Business focus, Nikkei-owned' },
-  'Bellingcat': { risk: 'low', note: 'Open-source investigations, methodology transparent' },
-  'Brasil Paralelo': { risk: 'low', note: 'Independent media company: no political ties, no public funding, 100% subscriber-funded.' },
-};
-
-export function getSourcePropagandaRisk(sourceName: string): SourceRiskProfile {
-  return SOURCE_PROPAGANDA_RISK[sourceName] ?? { risk: 'low' };
-}
-
-export function isStateAffiliatedSource(sourceName: string): boolean {
-  const profile = SOURCE_PROPAGANDA_RISK[sourceName];
-  return !!profile?.stateAffiliated;
-}
+// Source tier system — canonical definition lives in server/_shared/source-tiers.ts
+// so server-side code can import it without pulling in client-only modules.
+export { SOURCE_TIERS, getSourceTier } from '../../server/_shared/source-tiers';
+export {
+  SOURCE_PROPAGANDA_RISK,
+  SOURCE_TYPES,
+  UNREVIEWED_SOURCE_RISK,
+  describePropagandaBadge,
+  getSourcePropagandaRisk,
+  getSourceProvenanceState,
+  getSourceTierBadgeTitle,
+  getSourceType,
+  hasDeclaredPropagandaRisk,
+  hasDeclaredSourceType,
+  hasReviewedPropagandaRisk,
+  hasReviewedSourceType,
+  isStateAffiliatedSource,
+} from '../../shared/source-provenance';
+export type {
+  PropagandaRisk,
+  SourceProvenanceState,
+  SourceRiskProfile,
+  SourceType,
+} from '../../shared/source-provenance';
 
 let _sourcePanelMap: Map<string, string> | null = null;
 export function getSourcePanelId(sourceName: string): string {
   if (!_sourcePanelMap) {
     _sourcePanelMap = new Map();
+    // Seed with CANONICAL_FEEDS first so a source belonging to a cross-variant
+    // custom panel still resolves to its real panel. The active-variant FEEDS
+    // pass below then overwrites, so the active preset wins any collision.
+    for (const [category, feeds] of Object.entries(CANONICAL_FEEDS)) {
+      for (const feed of feeds) _sourcePanelMap.set(feed.name, category);
+    }
     for (const [category, feeds] of Object.entries(FEEDS)) {
       for (const feed of feeds) _sourcePanelMap.set(feed.name, category);
     }
@@ -469,7 +53,9 @@ export function getSourcePanelId(sourceName: string): string {
   return _sourcePanelMap.get(sourceName) ?? 'politics';
 }
 
-const FULL_FEEDS: Record<string, Feed[]> = {
+// Exported for the geographic coverage audit (scripts/geo-coverage-health.mjs,
+// #5957) — the full-variant news catalog is the reference set the audit counts.
+export const FULL_FEEDS: Record<string, Feed[]> = {
   politics: [
     { name: 'BBC World', url: rss('https://feeds.bbci.co.uk/news/world/rss.xml') },
     { name: 'Guardian World', url: rss('https://www.theguardian.com/world/rss') },
@@ -489,6 +75,13 @@ const FULL_FEEDS: Record<string, Feed[]> = {
     { name: 'The Hill', url: rss('https://thehill.com/news/feed') },
     { name: 'Axios', url: rss('https://api.axios.com/feed/') },
     { name: 'Fox News', url: rss('https://moxie.foxnews.com/google-publisher/us.xml') },
+    // Canada + North America key-country pack (#5960). CA is a North America
+    // keyCountry but had zero dedicated catalog sources. CBC World is the
+    // EN-default (noise-acceptable public broadcaster); Globe and Global News
+    // stay catalog opt-in. Canadian Press has no usable public RSS/GNews feed.
+    { name: 'CBC News', url: rss('https://www.cbc.ca/webfeed/rss/rss-world') },
+    { name: 'Globe and Mail', url: rss('https://www.theglobeandmail.com/arc/outboundfeeds/rss/category/canada/?outputType=xml') },
+    { name: 'Global News', url: rss('https://globalnews.ca/feed/') },
   ],
   europe: [
     {
@@ -542,29 +135,125 @@ const FULL_FEEDS: Record<string, Feed[]> = {
     { name: 'SVT Nyheter', url: rss('https://www.svt.se/nyheter/rss.xml'), lang: 'sv' },
     { name: 'Dagens Nyheter', url: rss('https://www.dn.se/rss/'), lang: 'sv' },
     { name: 'Svenska Dagbladet', url: rss('https://www.svd.se/feed/articles.rss'), lang: 'sv' },
+    // Arctic / Nordic security pack (#5960) — High North + Nordics beyond Sweden.
+    // no/da/fi are not UI locales, so native Nordics are left unscoped (no lang
+    // tag) so EN analysts can enable them. Yle News + Arctic Today are English.
+    { name: 'Yle News', url: rss('https://yle.fi/rss/news') },
+    { name: 'NRK', url: rss('https://www.nrk.no/nyheter/siste.rss') },
+    { name: 'Aftenposten', url: rss('https://www.aftenposten.no/rss') },
+    { name: 'DR Nyheder', url: rss('https://www.dr.dk/nyheder/service/feeds/allenyheder') },
+    // High North specialty (Berlingske/High North News lack reliable public RSS).
+    { name: 'Arctic Today', url: rss('https://news.google.com/rss/search?q=site:arctictoday.com+when:14d&hl=en-US&gl=US&ceid=US:en') },
     // Turkish (TR)
     { name: 'BBC Turkce', url: rss('https://feeds.bbci.co.uk/turkce/rss.xml'), lang: 'tr' },
     { name: 'DW Turkish', url: rss('https://rss.dw.com/xml/rss-tur-all'), lang: 'tr' },
-    { name: 'Hurriyet', url: rss('https://www.hurriyet.com.tr/rss/anasayfa'), lang: 'tr' },
-    // Polish (PL)
-    { name: 'TVN24', url: rss('https://tvn24.pl/swiat.xml'), lang: 'pl' },
-    { name: 'Polsat News', url: rss('https://www.polsatnews.pl/rss/wszystkie.xml'), lang: 'pl' },
-    { name: 'Rzeczpospolita', url: rss('https://www.rp.pl/rss_main'), lang: 'pl' },
+    { name: 'Hurriyet', url: rss('https://www.hurriyet.com.tr/rss/anasayfa'), lang: 'tr', strategicDefault: true },
+    // Daily Sabah (EN) — Turkey EN path improvement (#5952). English-language,
+    // no lang tag, so EN digests include it as a default-on flank source.
+    { name: 'Daily Sabah', url: rss('https://www.dailysabah.com/rss/home-page') },
+    // Polish (PL) — TVN24 / Rzeczpospolita are EN-default frontline sources (#5949).
+    // Their native RSS feeds are used for both locales: the Google News site
+    // queries previously used for EN returned HTTP 200 with no <item> nodes.
+    // No `lang` tag so isFeedInLanguage / server digests do not drop them for EN.
+    // Polsat News — strategic default via `strategicDefault: true` (#5958).
+    { name: 'TVN24', url: {
+      en: rss('https://tvn24.pl/swiat.xml'),
+      pl: rss('https://tvn24.pl/swiat.xml'),
+    } },
+    { name: 'Polsat News', url: rss('https://www.polsatnews.pl/rss/wszystkie.xml'), lang: 'pl', strategicDefault: true },
+    { name: 'Rzeczpospolita', url: {
+      en: rss('https://www.rp.pl/rss_main'),
+      pl: rss('https://www.rp.pl/rss_main'),
+    } },
+    // Hungarian (HU) — V4 / CEE coverage. Locale-gated for hu users only,
+    // matching the Tagesschau (de) / ANSA (it) / NOS Nieuws (nl) / SVT (sv)
+    // convention. `hu` is registered as a supported locale in src/services/i18n.ts.
+    { name: 'Telex', url: rss('https://telex.hu/rss'), lang: 'hu' },
+    { name: 'Index.hu', url: rss('https://index.hu/24ora/rss'), lang: 'hu' },
+    { name: 'HVG', url: rss('https://hvg.hu/rss'), lang: 'hu' },
+    { name: '444.hu', url: rss('https://444.hu/feed'), lang: 'hu' },
+    { name: '24.hu', url: rss('https://24.hu/feed/'), lang: 'hu' },
+    { name: 'Híradó', url: rss('https://news.google.com/rss/search?q=site:hirado.hu+when:2d&hl=hu&gl=HU&ceid=HU:hu'), lang: 'hu' },
+    { name: 'Portfolio.hu', url: rss('https://portfolio.hu/rss/all.xml'), lang: 'hu' },
+    { name: 'ATV', url: rss('https://www.atv.hu/rss'), lang: 'hu' },
+    // Czech (CS) — V4 balance with Hungary (#5952). Locale-boosted for cs users.
+    { name: 'Seznam Zprávy', url: rss('https://www.seznamzpravy.cz/rss'), lang: 'cs' },
+    // Croatian (HR) — mainstream + investigative
+    { name: 'N1 Croatia', url: rss('https://n1info.hr/feed/'), lang: 'hr' },
+    { name: 'Index.hr', url: rss('https://www.index.hr/rss'), lang: 'hr' },
+    { name: 'Jutarnji list', url: rss('https://www.jutarnji.hr/feed'), lang: 'hr' },
+    { name: 'Balkan Insight', url: rss('https://balkaninsight.com/feed/') },
+    // Romanian (RO) — Eastern flank (#5952). Locale-boosted for ro users.
+    { name: 'Digi24', url: rss('https://www.digi24.ro/rss'), lang: 'ro' },
+    { name: 'HotNews', url: rss('https://www.hotnews.ro/rss'), lang: 'ro' },
+    { name: 'G4Media', url: rss('https://www.g4media.ro/feed/'), lang: 'ro' },
+    // Bulgarian (BG) — Black Sea flank (#5952). Locale-boosted for bg users.
+    { name: 'Dnevnik', url: rss('https://www.dnevnik.bg/rss/'), lang: 'bg' },
     // Greek (EL)
-    { name: 'Kathimerini', url: rss('https://news.google.com/rss/search?q=site:kathimerini.gr+when:2d&hl=el&gl=GR&ceid=GR:el'), lang: 'el' },
+    { name: 'Kathimerini', url: rss('https://news.google.com/rss/search?q=site:kathimerini.gr+when:2d&hl=el&gl=GR&ceid=GR:el'), lang: 'el', strategicDefault: true },
     { name: 'Naftemporiki', url: rss('https://www.naftemporiki.gr/feed/'), lang: 'el' },
     { name: 'in.gr', url: rss('https://www.in.gr/feed/'), lang: 'el' },
     { name: 'iefimerida', url: rss('https://www.iefimerida.gr/rss.xml'), lang: 'el' },
     { name: 'Proto Thema', url: rss('https://news.google.com/rss/search?q=site:protothema.gr+when:2d&hl=el&gl=GR&ceid=GR:el'), lang: 'el' },
-    // Russia & Ukraine (independent sources)
+    // Baltic states — Eastern flank (#5952). English-language Baltic news
+    // services (no lang tag) so EN digests can include them as flank sources.
+    { name: 'ERR News', url: rss('https://news.err.ee/rss') },
+    { name: 'LRT English', url: rss('https://www.lrt.lt/en/news-in-english?rss') },
+    { name: 'LSM English', url: rss('https://eng.lsm.lv/rss/') },
+    // Russia & Ukraine — EN default balance rule (#5950):
+    // For DEFAULT_ENABLED_SOURCES.europe (EN full-variant path), keep at least:
+    //   ≥1 dedicated UA primary (today: Kyiv Independent)
+    //   ≥1 independent RU (today: Meduza and/or Moscow Times)
+    // Never default-enable TASS / RT / RT Russia (state propaganda; catalog opt-in only).
+    // Default EN path must not be “Western wires + RU state media only.”
+    // Independent / exile / UA outlets below are eligible for defaults; state media is not.
     { name: 'BBC Russian', url: rss('https://feeds.bbci.co.uk/russian/rss.xml'), lang: 'ru' },
-    { name: 'Meduza', url: rss('https://meduza.io/rss/all'), lang: 'ru' },
+    // Meduza: multi-URL so EN digests use the English RSS (no lang gate); RU UI keeps Russian.
+    { name: 'Meduza', url: {
+      en: rss('https://meduza.io/rss/en/all'),
+      ru: rss('https://meduza.io/rss/all'),
+    } },
     { name: 'Novaya Gazeta Europe', url: rss('https://novayagazeta.eu/feed/rss'), lang: 'ru' },
     { name: 'TASS', url: rss('https://news.google.com/rss/search?q=site:tass.com+OR+TASS+Russia+when:1d&hl=en-US&gl=US&ceid=US:en') },
     { name: 'RT', url: rss('https://www.rt.com/rss/') },
     { name: 'RT Russia', url: rss('https://www.rt.com/rss/russia/') },
+    // English-language (no lang tag) — always EN-digest-reachable
     { name: 'Kyiv Independent', url: rss('https://news.google.com/rss/search?q=site:kyivindependent.com+when:3d&hl=en-US&gl=US&ceid=US:en') },
+    // Ukraine depth pack (#5951) — local institutional + independent sources.
+    // Ukrinform / Suspilne are multi-URL so EN digests keep the English edition
+    // while `uk` UI users get UA-language Google News (locale boost via url key).
+    { name: 'Ukrinform', url: {
+      en: rss('https://news.google.com/rss/search?q=site:ukrinform.net+when:3d&hl=en-US&gl=US&ceid=US:en'),
+      uk: rss('https://news.google.com/rss/search?q=site:ukrinform.ua+when:3d&hl=uk&gl=UA&ceid=UA:uk'),
+    } },
+    { name: 'Suspilne', url: {
+      en: rss('https://news.google.com/rss/search?q=site:suspilne.media+when:2d&hl=en-US&gl=US&ceid=US:en'),
+      uk: rss('https://news.google.com/rss/search?q=site:suspilne.media+when:2d&hl=uk&gl=UA&ceid=UA:uk'),
+    } },
+    { name: 'Ukrainska Pravda EN', url: rss('https://news.google.com/rss/search?q=site:euromaidanpress.com+when:2d&hl=en-US&gl=US&ceid=US:en') },
+    { name: 'NV EN', url: rss('https://news.google.com/rss/search?q=site:english.nv.ua+when:2d&hl=en-US&gl=US&ceid=US:en') },
+    { name: 'Hromadske EN', url: rss('https://news.google.com/rss/search?q=site:hromadske.ua+when:3d&hl=en-US&gl=US&ceid=US:en') },
+    // Ukrainian (uk) — native-language pack for uk locale (#5959).
+    // Locale-gated like Telex (hu) / Digi24 (ro): not EN default-on.
+    { name: 'Ukrainska Pravda', url: rss('https://news.google.com/rss/search?q=site:pravda.com.ua+when:2d&hl=uk&gl=UA&ceid=UA:uk'), lang: 'uk' },
+    { name: 'Hromadske', url: rss('https://news.google.com/rss/search?q=site:hromadske.ua+when:3d&hl=uk&gl=UA&ceid=UA:uk'), lang: 'uk' },
+    { name: 'Bihus.Info', url: rss('https://news.google.com/rss/search?q=site:bihus.info+when:7d&hl=uk&gl=UA&ceid=UA:uk'), lang: 'uk' },
+    { name: 'Slidstvo.Info', url: rss('https://news.google.com/rss/search?q=site:slidstvo.info+when:7d&hl=uk&gl=UA&ceid=UA:uk'), lang: 'uk' },
+    { name: 'ZN.UA', url: rss('https://news.google.com/rss/search?q=site:zn.ua+when:3d&hl=uk&gl=UA&ceid=UA:uk'), lang: 'uk' },
     { name: 'Moscow Times', url: rss('https://www.themoscowtimes.com/rss/news') },
+    // Caucasus (#5953) — secondary Russian periphery / BRI hinterland
+    { name: 'Civil.ge', url: rss('https://civil.ge/feed/') },
+    { name: 'OC Media', url: rss('https://oc-media.org/feed/') },
+    { name: 'JAMnews', url: rss('https://jam-news.net/feed/') },
+    // Risk-tagged state wires — Azertag (Azerbaijan) / Armenpress (Armenia)
+    { name: 'Azertag', url: rss('https://news.google.com/rss/search?q=site:azertag.az+when:3d&hl=en-US&gl=US&ceid=US:en') },
+    { name: 'Armenpress', url: rss('https://news.google.com/rss/search?q=site:armenpress.am+when:3d&hl=en-US&gl=US&ceid=US:en') },
+    // Belarus / Moldova (#5953) — secondary pressure line
+    { name: 'Zerkalo', url: rss('https://news.google.com/rss/search?q=site:zerkalo.io+when:2d&hl=en-US&gl=US&ceid=US:en') },
+    // NewsMaker removed its English feed; keep the live native Russian feed
+    // locale-scoped instead of default-enabling a 404 or mislabeled content.
+    { name: 'NewsMaker', url: rss('https://newsmaker.md/feed'), lang: 'ru' },
+    { name: 'Ziarul de Gardă', url: rss('https://www.zdg.md/feed/'), lang: 'ro' },
   ],
   middleeast: [
     { name: 'BBC Middle East', url: rss('https://feeds.bbci.co.uk/news/world/middle_east/rss.xml') },
@@ -573,10 +262,14 @@ const FULL_FEEDS: Record<string, Feed[]> = {
     { name: 'Al Arabiya', url: { en: rss('https://news.google.com/rss/search?q=site:english.alarabiya.net+when:2d&hl=en-US&gl=US&ceid=US:en'), ar: rss('https://www.alarabiya.net/tools/mrss/?cat=main') } },
     // Arab News and Times of Israel removed — 403 from cloud IPs
     { name: 'Guardian ME', url: rss('https://www.theguardian.com/world/middleeast/rss') },
-    { name: 'BBC Persian', url: rss('http://feeds.bbci.co.uk/persian/tv-and-radio-37434376/rss.xml') },
+    { name: 'BBC Persian', url: rss('https://feeds.bbci.co.uk/persian/rss.xml') },
     { name: 'Iran International', url: rss('https://news.google.com/rss/search?q=site:iranintl.com+when:2d&hl=en-US&gl=US&ceid=US:en') },
     { name: 'Fars News', url: rss('https://news.google.com/rss/search?q=site:farsnews.ir+when:2d&hl=en-US&gl=US&ceid=US:en') },
+    { name: 'IRNA', url: rss('https://en.irna.ir/rss') },
+    { name: 'Mehr News', url: rss('https://en.mehrnews.com/rss') },
     { name: 'Haaretz', url: rss('https://news.google.com/rss/search?q=site:haaretz.com+when:7d&hl=en-US&gl=US&ceid=US:en') },
+    { name: 'Jerusalem Post', url: rss('https://www.jpost.com/rss/rssfeedsheadlines.aspx') },
+    { name: 'Ynetnews', url: rss('https://www.ynetnews.com/Integration/StoryRss3089.xml') },
     { name: 'Arab News', url: rss('https://news.google.com/rss/search?q=site:arabnews.com+when:7d&hl=en-US&gl=US&ceid=US:en') },
     { name: 'The National', url: rss('https://news.google.com/rss/search?q=site:thenationalnews.com+when:2d&hl=en-US&gl=US&ceid=US:en') },
     { name: 'Oman Observer', url: rss('https://www.omanobserver.om/rssFeed/1') },
@@ -642,6 +335,8 @@ const FULL_FEEDS: Record<string, Feed[]> = {
     { name: 'FPRI', url: rss('https://www.fpri.org/feed/') },
     // Jamestown Foundation - Eurasia/China/Terrorism analysis
     { name: 'Jamestown', url: rss('https://jamestown.org/feed/') },
+    // ISW — Institute for the Study of War, daily Ukraine frontline operational assessments
+    { name: 'ISW', url: rss('https://news.google.com/rss/search?q=site:understandingwar.org+when:2d&hl=en-US&gl=US&ceid=US:en') },
   ],
   crisis: [
     { name: 'CrisisWatch', url: rss('https://www.crisisgroup.org/rss') },
@@ -654,7 +349,7 @@ const FULL_FEEDS: Record<string, Feed[]> = {
     { name: 'Sahel Crisis', url: rss('https://news.google.com/rss/search?q=(Sahel+OR+Mali+OR+Niger+OR+"Burkina+Faso"+OR+Wagner)+when:3d&hl=en-US&gl=US&ceid=US:en') },
     { name: 'News24', url: rss('https://feeds.news24.com/articles/news24/TopStories/rss') },
     { name: 'BBC Africa', url: rss('https://feeds.bbci.co.uk/news/world/africa/rss.xml') },
-    { name: 'Jeune Afrique', url: rss('https://www.jeuneafrique.com/feed/'), lang: 'fr' },
+    { name: 'Jeune Afrique', url: rss('https://www.jeuneafrique.com/feed/'), lang: 'fr', strategicDefault: true },
     { name: 'Africanews', url: { en: rss('https://www.africanews.com/feed/rss'), fr: rss('https://fr.africanews.com/feed/rss') } },
     { name: 'BBC Afrique', url: rss('https://www.bbc.com/afrique/index.xml'), lang: 'fr' },
     // Nigeria
@@ -663,6 +358,21 @@ const FULL_FEEDS: Record<string, Feed[]> = {
     { name: 'Channels TV', url: rss('https://www.channelstv.com/feed/') },
     { name: 'Daily Trust', url: rss('https://dailytrust.com/feed/') },
     { name: 'ThisDay', url: rss('https://www.thisdaylive.com/feed') },
+    // Horn of Africa
+    { name: 'Radio Tamazuj', url: rss('https://www.radiotamazuj.org/en/feed') },
+    { name: 'The Reporter Ethiopia', url: rss('https://www.thereporterethiopia.com/feed/') },
+    { name: 'Ethiopia Insight', url: rss('https://www.ethiopia-insight.com/feed/') },
+    { name: 'Dabanga Sudan', url: rss('https://www.dabangasudan.org/en/feed') },
+    { name: 'Hiiraan Online', url: rss('https://news.google.com/rss/search?q=site%3Ahiiraan.com%20when%3A7d&hl=en-US&gl=US&ceid=US:en') },
+    // DRC / Great Lakes
+    { name: 'Actualite.cd', url: rss('https://actualite.cd/feed'), lang: 'fr' },
+    { name: 'Radio Okapi', url: rss('https://www.radiookapi.net/rss.xml'), lang: 'fr' },
+    // West Africa beyond Nigeria
+    { name: 'MyJoyOnline', url: rss('https://www.myjoyonline.com/feed/') },
+    { name: 'Citi Newsroom', url: rss('https://news.google.com/rss/search?q=site%3Acitinewsroom.com%20when%3A7d&hl=en-US&gl=US&ceid=US:en') },
+    { name: 'Le Quotidien', url: rss('https://lequotidien.sn/feed/'), lang: 'fr' },
+    // Pan-African
+    { name: 'RFI Afrique', url: rss('https://www.rfi.fr/en/africa/rss') },
   ],
   latam: [
     { name: 'Latin America', url: rss('https://news.google.com/rss/search?q=(Brazil+OR+Mexico+OR+Argentina+OR+Venezuela+OR+Colombia)+when:2d&hl=en-US&gl=US&ceid=US:en') },
@@ -696,28 +406,50 @@ const FULL_FEEDS: Record<string, Feed[]> = {
     { name: 'Xinhua', url: rss('https://news.google.com/rss/search?q=site:xinhuanet.com+OR+Xinhua+when:1d&hl=en-US&gl=US&ceid=US:en') },
     { name: 'Japan Today', url: rss('https://japantoday.com/feed/atom') },
     { name: 'Nikkei Asia', url: rss('https://news.google.com/rss/search?q=site:asia.nikkei.com+when:3d&hl=en-US&gl=US&ceid=US:en') },
-    { name: 'Asahi Shimbun', url: rss('https://www.asahi.com/rss/asahi/newsheadlines.rdf'), lang: 'ja' },
+    { name: 'Asahi Shimbun', url: rss('https://www.asahi.com/rss/asahi/newsheadlines.rdf'), lang: 'ja', strategicDefault: true },
     { name: 'The Hindu', url: rss('https://www.thehindu.com/news/national/feeder/default.rss'), lang: 'en' },
     { name: 'Indian Express', url: rss('https://indianexpress.com/section/india/feed/') },
     { name: 'NDTV', url: rss('https://feeds.feedburner.com/ndtvnews-top-stories') },
     { name: 'India News Network', url: rss('https://news.google.com/rss/search?q=India+diplomacy+foreign+policy+news&hl=en&gl=US&ceid=US:en') },
+    // Hindi (HI) — mainstream national coverage boosted for Hindi locale users
+    { name: 'BBC Hindi', url: rss('https://feeds.bbci.co.uk/hindi/rss.xml'), lang: 'hi' },
+    { name: 'Aaj Tak', url: rss('https://www.aajtak.in/rssfeeds/?id=home'), lang: 'hi' },
+    { name: 'NDTV India', url: rss('https://feeds.feedburner.com/ndtvkhabar-latest'), lang: 'hi' },
+    { name: 'Amar Ujala', url: rss('https://www.amarujala.com/rss/national.xml'), lang: 'hi' },
     { name: 'CNA', url: rss('https://www.channelnewsasia.com/api/v1/rss-outbound-feed?_format=xml') },
-    { name: 'MIIT (China)', url: rss('https://news.google.com/rss/search?q=site:miit.gov.cn+when:7d&hl=zh-CN&gl=CN&ceid=CN:zh-Hans'), lang: 'zh' },
-    { name: 'MOFCOM (China)', url: rss('https://news.google.com/rss/search?q=site:mofcom.gov.cn+when:7d&hl=zh-CN&gl=CN&ceid=CN:zh-Hans'), lang: 'zh' },
+    { name: 'MIIT (China)', url: rss('https://news.google.com/rss/search?q=site:miit.gov.cn+when:7d&hl=zh-CN&gl=CN&ceid=CN:zh-Hans'), lang: 'zh', strategicDefault: true },
+    { name: 'MOFCOM (China)', url: rss('https://news.google.com/rss/search?q=site:mofcom.gov.cn+when:7d&hl=zh-CN&gl=CN&ceid=CN:zh-Hans'), lang: 'zh', strategicDefault: true },
     // Thailand
-    { name: 'Bangkok Post', url: rss('https://news.google.com/rss/search?q=site:bangkokpost.com+when:1d&hl=en-US&gl=US&ceid=US:en'), lang: 'th' },
+    { name: 'Bangkok Post', url: rss('https://news.google.com/rss/search?q=site:bangkokpost.com+when:1d&hl=en-US&gl=US&ceid=US:en'), lang: 'th', strategicDefault: true },
     { name: 'Thai PBS', url: rss('https://news.google.com/rss/search?q=Thai+PBS+World+news&hl=en&gl=US&ceid=US:en'), lang: 'th' },
     // Vietnam
-    { name: 'VnExpress', url: rss('https://vnexpress.net/rss/tin-moi-nhat.rss'), lang: 'vi' },
+    { name: 'VnExpress', url: rss('https://vnexpress.net/rss/tin-moi-nhat.rss'), lang: 'vi', strategicDefault: true },
     { name: 'Tuoi Tre News', url: rss('https://tuoitrenews.vn/rss'), lang: 'vi' },
     // Korea
-    { name: 'Yonhap News', url: rss('https://www.yonhapnewstv.co.kr/browse/feed/'), lang: 'ko' },
+    { name: 'Yonhap News', url: rss('https://www.yonhapnewstv.co.kr/browse/feed/'), lang: 'ko', strategicDefault: true },
     { name: 'Chosun Ilbo', url: rss('https://www.chosun.com/arc/outboundfeeds/rss/?outputType=xml'), lang: 'ko' },
     // Australia
     { name: 'ABC News Australia', url: rss('https://www.abc.net.au/news/feed/2942460/rss.xml') },
     { name: 'Guardian Australia', url: rss('https://www.theguardian.com/australia-news/rss') },
     // Pacific Islands
     { name: 'Island Times (Palau)', url: rss('https://islandtimes.org/feed/') },
+    // Central Asia (#5953) — Russia rear area, China BRI, sanctions leakage
+    { name: 'Eurasianet', url: rss('https://eurasianet.org/rss') },
+    { name: 'RFE/RL Central Asia', url: rss('https://news.google.com/rss/search?q=site:rferl.org+Central+Asia+when:3d&hl=en-US&gl=US&ceid=US:en') },
+    { name: 'The Astana Times', url: rss('https://astanatimes.com/feed/') },
+    { name: 'The Times of Central Asia', url: rss('https://timesca.com/feed/') },
+    // Taiwan (#5954)
+    { name: 'Focus Taiwan', url: rss('https://news.google.com/rss/search?q=site%3Afocustaiwan.tw%20when%3A3d&hl=en-US&gl=US&ceid=US:en') },
+    { name: 'Taipei Times', url: rss('https://news.google.com/rss/search?q=site%3Ataipeitimes.com%20when%3A3d&hl=en-US&gl=US&ceid=US:en') },
+    { name: 'Taiwan News', url: rss('https://news.google.com/rss/search?q=site%3Ataiwannews.com.tw%20when%3A3d&hl=en-US&gl=US&ceid=US:en') },
+    // Pakistan (#5954)
+    { name: 'Dawn', url: rss('https://www.dawn.com/feeds/home/') },
+    { name: 'Geo News', url: rss('https://news.google.com/rss/search?q=site:geo.tv+when:2d&hl=en-US&gl=US&ceid=US:en') },
+    // SE Asia security (#5954)
+    { name: 'Jakarta Post', url: rss('https://news.google.com/rss/search?q=site%3Athejakartapost.com%20when%3A3d&hl=en-US&gl=US&ceid=US:en') },
+    { name: 'Rappler', url: rss('https://www.rappler.com/feed/') },
+    { name: 'The Star (Malaysia)', url: rss('https://news.google.com/rss/search?q=site%3Athestar.com.my%20when%3A3d&hl=en-US&gl=US&ceid=US:en') },
+    { name: 'Irrawaddy', url: rss('https://www.irrawaddy.com/feed/') },
   ],
   energy: [
     { name: 'Oil & Gas', url: rss('https://news.google.com/rss/search?q=(oil+price+OR+OPEC+OR+"natural+gas"+OR+pipeline+OR+LNG)+when:2d&hl=en-US&gl=US&ceid=US:en') },
@@ -897,7 +629,7 @@ const TECH_FEEDS: Record<string, Feed[]> = {
     { name: 'Seeking Alpha Tech', url: rss('https://seekingalpha.com/market_currents.xml') },
   ],
   hardware: [
-    { name: "Tom's Hardware", url: rss('https://www.tomshardware.com/feeds/all') },
+    { name: "Tom's Hardware", url: rss('https://www.tomshardware.com/feeds.xml') },
     { name: 'SemiAnalysis', url: rss('https://news.google.com/rss/search?q=site:semianalysis.com+when:7d&hl=en-US&gl=US&ceid=US:en') },
     { name: 'Semiconductor News', url: rss('https://news.google.com/rss/search?q=semiconductor+OR+chip+OR+TSMC+OR+NVIDIA+OR+Intel+when:3d&hl=en-US&gl=US&ceid=US:en') },
   ],
@@ -985,7 +717,13 @@ const FINANCE_FEEDS: Record<string, Feed[]> = {
     { name: 'Crypto News', url: rss('https://news.google.com/rss/search?q=(bitcoin+OR+ethereum+OR+crypto+OR+"digital+assets")+when:1d&hl=en-US&gl=US&ceid=US:en') },
     { name: 'DeFi News', url: rss('https://news.google.com/rss/search?q=(DeFi+OR+"decentralized+finance"+OR+DEX+OR+"yield+farming")+when:3d&hl=en-US&gl=US&ceid=US:en') },
     { name: 'Decrypt', url: rss('https://decrypt.co/feed') },
-    { name: 'Blockworks', url: rss('https://blockworks.co/feed') },
+    // Blockworks REMOVED (PR #3715 review): blockworks.co/feed is
+    // Cloudflare-blocked from both Vercel edge AND Railway egress, AND Google
+    // News returns 0 items for site:blockworks.co at every probed time window
+    // (publisher likely blocks Googlebot on the same wholesale tier — so the
+    // Google News fallback we tried first is a silent placeholder). The Block
+    // (above) covers the same institutional-crypto territory; no coverage
+    // lost. Also removed from the server feeds (_feeds.ts) for parity.
     { name: 'The Defiant', url: rss('https://thedefiant.io/feed') },
     { name: 'Bitcoin Magazine', url: rss('https://bitcoinmagazine.com/feed') },
     { name: 'DL News', url: rss('https://news.google.com/rss/search?q=site:dlnews.com+when:3d&hl=en-US&gl=US&ceid=US:en') },
@@ -1025,7 +763,7 @@ const FINANCE_FEEDS: Record<string, Feed[]> = {
     { name: 'Trading Tech', url: rss('https://news.google.com/rss/search?q=("algorithmic+trading"+OR+"trading+platform"+OR+"quantitative+finance")+when:7d&hl=en-US&gl=US&ceid=US:en') },
     { name: 'Blockchain Finance', url: rss('https://news.google.com/rss/search?q=("blockchain+finance"+OR+"tokenization"+OR+"digital+securities"+OR+CBDC)+when:7d&hl=en-US&gl=US&ceid=US:en') },
   ],
-  regulation: [
+  'fin-regulation': [
     { name: 'SEC', url: rss('https://www.sec.gov/news/pressreleases.rss') },
     { name: 'Financial Regulation', url: rss('https://news.google.com/rss/search?q=(SEC+OR+CFTC+OR+FINRA+OR+FCA)+regulation+OR+enforcement+when:3d&hl=en-US&gl=US&ceid=US:en') },
     { name: 'Banking Rules', url: rss('https://news.google.com/rss/search?q=(Basel+OR+"capital+requirements"+OR+"banking+regulation")+when:7d&hl=en-US&gl=US&ceid=US:en') },
@@ -1067,7 +805,7 @@ const HAPPY_FEEDS: Record<string, Feed[]> = {
   science: [
     { name: 'GNN Science', url: rss('https://www.goodnewsnetwork.org/category/news/science/feed/') },
     { name: 'ScienceDaily', url: rss('https://www.sciencedaily.com/rss/all.xml') },
-    { name: 'Nature News', url: rss('https://feeds.nature.com/nature/rss/current') },
+    { name: 'Nature News', url: rss('https://www.nature.com/nature.rss') },
     { name: 'Live Science', url: rss('https://www.livescience.com/feeds.xml') },
     { name: 'New Scientist', url: rss('https://www.newscientist.com/feed/home/') },
     { name: 'Singularity Hub', url: rss('https://singularityhub.com/feed/') },
@@ -1096,24 +834,41 @@ const HAPPY_FEEDS: Record<string, Feed[]> = {
 // Commodity variant feeds (from commodity.ts)
 const COMMODITY_FEEDS: Record<string, Feed[]> = {
   'commodity-news': [
-    { name: 'Kitco News', url: rss('https://www.kitco.com/rss/KitcoNews.xml') },
+    // Kitco shut down their public RSS feeds in 2025 (every /rss/*, /news/feed,
+    // /news/category/*/feed path now returns an HTML SPA page, not XML). Fall
+    // back to Google News scoped to site:kitco.com, matching the pattern used
+    // by TASS / Kyiv Independent / Telegraaf elsewhere in this file.
+    { name: 'Kitco News', url: rss('https://news.google.com/rss/search?q=site:kitco.com+(gold+OR+silver+OR+metals)+when:1d&hl=en-US&gl=US&ceid=US:en') },
     { name: 'Mining.com', url: rss('https://www.mining.com/feed/') },
     { name: 'Bloomberg Commodities', url: rss('https://news.google.com/rss/search?q=site:bloomberg.com+commodities+OR+metals+OR+mining+when:1d&hl=en-US&gl=US&ceid=US:en') },
     { name: 'Reuters Commodities', url: rss('https://news.google.com/rss/search?q=site:reuters.com+commodities+OR+metals+OR+mining+when:1d&hl=en-US&gl=US&ceid=US:en') },
     { name: 'S&P Global Commodity', url: rss('https://news.google.com/rss/search?q=site:spglobal.com+commodities+metals+when:3d&hl=en-US&gl=US&ceid=US:en') },
-    { name: 'Commodity Trade Mantra', url: rss('https://www.commoditytrademantra.com/feed/') },
+    // Commodity Trade Mantra REMOVED (PR #3715 review):
+    // commoditytrademantra.com wholesale-403s any direct fetch AND Google News
+    // returns 0 items for site:commoditytrademantra.com at every probed time
+    // window (publisher effectively not indexed by Google News). commodity-news
+    // still has Mining.com / Bloomberg / Reuters / S&P Global / CNBC —
+    // coverage isn't lost.
     { name: 'CNBC Commodities', url: rss('https://news.google.com/rss/search?q=site:cnbc.com+(commodities+OR+metals+OR+gold+OR+copper)+when:1d&hl=en-US&gl=US&ceid=US:en') },
   ],
   'gold-silver': [
-    { name: 'Kitco Gold', url: rss('https://www.kitco.com/rss/KitcoGold.xml') },
+    // Kitco RSS shutdown (see Kitco News comment in commodity-news above).
+    // Gold-scoped Google News query targeting site:kitco.com.
+    { name: 'Kitco Gold', url: rss('https://news.google.com/rss/search?q=site:kitco.com+gold+when:1d&hl=en-US&gl=US&ceid=US:en') },
     { name: 'Gold Price News', url: rss('https://news.google.com/rss/search?q=(gold+price+OR+"gold+market"+OR+bullion+OR+LBMA)+when:1d&hl=en-US&gl=US&ceid=US:en') },
     { name: 'Silver Price News', url: rss('https://news.google.com/rss/search?q=(silver+price+OR+"silver+market"+OR+"silver+futures")+when:2d&hl=en-US&gl=US&ceid=US:en') },
     { name: 'Precious Metals', url: rss('https://news.google.com/rss/search?q=("precious+metals"+OR+platinum+OR+palladium+OR+"gold+ETF"+OR+GLD+OR+SLV)+when:2d&hl=en-US&gl=US&ceid=US:en') },
     { name: 'World Gold Council', url: rss('https://news.google.com/rss/search?q="World+Gold+Council"+OR+"central+bank+gold"+OR+"gold+reserves"+when:7d&hl=en-US&gl=US&ceid=US:en') },
-    { name: 'GoldSeek', url: rss('https://news.goldseek.com/GoldSeek/rss.xml') },
-    { name: 'SilverSeek', url: rss('https://news.silverseek.com/SilverSeek/rss.xml') },
+    // GoldSeek + SilverSeek moved their feeds from the `news.*` subdomain to
+    // the apex domain (the old subdomain returns 404; the apex /rss.xml on
+    // both returns application/rss+xml).
+    { name: 'GoldSeek', url: rss('https://www.goldseek.com/rss.xml') },
+    { name: 'SilverSeek', url: rss('https://www.silverseek.com/rss.xml') },
     { name: 'Gold Silver Worlds', url: rss('https://goldsilverworlds.com/feed/') },
-    { name: 'FX Empire Gold', url: rss('https://www.fxempire.com/api/v1/en/markets/commodity/Gold/news/feed') },
+    // The /api/v1/.../feed endpoint FX Empire used to expose was deprecated;
+    // their generic /feed now returns text/html, not RSS. Google News scoped
+    // to site:fxempire.com for gold articles.
+    { name: 'FX Empire Gold', url: rss('https://news.google.com/rss/search?q=site:fxempire.com+gold+when:1d&hl=en-US&gl=US&ceid=US:en') },
   ],
   energy: [
     { name: 'OilPrice.com', url: rss('https://oilprice.com/rss/main') },
@@ -1125,9 +880,16 @@ const COMMODITY_FEEDS: Record<string, Feed[]> = {
     { name: 'Reuters Energy', url: rss('https://news.google.com/rss/search?q=site:reuters.com+(oil+OR+gas+OR+energy)+when:1d&hl=en-US&gl=US&ceid=US:en') },
   ],
   'mining-news': [
-    { name: 'Mining Journal', url: rss('https://www.mining-journal.com/feed/') },
+    // mining-journal.com migrated to Kreatio CMS; /feed/ now returns
+    // text/html (the homepage SPA), not RSS — produces "Parse error for
+    // Mining Journal" in the client. Google News fallback.
+    { name: 'Mining Journal', url: rss('https://news.google.com/rss/search?q=site:mining-journal.com+when:2d&hl=en-US&gl=US&ceid=US:en') },
     { name: 'Northern Miner', url: rss('https://www.northernminer.com/feed/') },
-    { name: 'Mining Weekly', url: rss('https://www.miningweekly.com/rss/') },
+    // www.miningweekly.com domain-wide 403s every IP-based fetch (homepage
+    // included), not just Vercel edge — Railway relay likely wouldn't help.
+    // Google News scoped to site:miningweekly.com is the reliable path and
+    // matches the pattern used for other wholesale-blocked publishers.
+    { name: 'Mining Weekly', url: rss('https://news.google.com/rss/search?q=site:miningweekly.com+when:2d&hl=en-US&gl=US&ceid=US:en') },
     { name: 'Mining Technology', url: rss('https://www.mining-technology.com/feed/') },
     { name: 'Australian Mining', url: rss('https://www.australianmining.com.au/feed/') },
     { name: 'Mine Web (SNL)', url: rss('https://news.google.com/rss/search?q=("mining+company"+OR+"mine+production"+OR+"mining+operations")+when:2d&hl=en-US&gl=US&ceid=US:en') },
@@ -1186,6 +948,39 @@ const COMMODITY_FEEDS: Record<string, Feed[]> = {
   ],
 };
 
+// Energy variant feeds — energy.worldmonitor.app
+// Keys are matched against panel IDs in src/config/panels.ts ENERGY_PANELS +
+// brief news-category overrides in src/app/data-loader.ts. Keep in sync when
+// ENERGY_PANELS changes.
+const ENERGY_FEEDS: Record<string, Feed[]> = {
+  'live-news': [
+    { name: 'OilPrice.com',          url: rss('https://oilprice.com/rss/main') },
+    { name: 'Rigzone',               url: rss('https://www.rigzone.com/news/rss/rigzone_latest.aspx') },
+    { name: 'Reuters Energy',        url: rss('https://news.google.com/rss/search?q=site:reuters.com+(oil+OR+gas+OR+energy+OR+OPEC+OR+pipeline+OR+LNG)+when:1d&hl=en-US&gl=US&ceid=US:en') },
+    { name: 'Bloomberg Energy',      url: rss('https://news.google.com/rss/search?q=site:bloomberg.com+(oil+OR+gas+OR+energy+OR+pipeline+OR+LNG)+when:1d&hl=en-US&gl=US&ceid=US:en') },
+    { name: 'FT Energy',             url: rss('https://news.google.com/rss/search?q=site:ft.com+(oil+OR+gas+OR+energy+OR+LNG+OR+OPEC)+when:1d&hl=en-US&gl=US&ceid=US:en') },
+    { name: 'IEA News',              url: rss('https://news.google.com/rss/search?q=site:iea.org+(oil+OR+gas+OR+energy)+when:3d&hl=en-US&gl=US&ceid=US:en') },
+    { name: 'S&P Global Platts',     url: rss('https://news.google.com/rss/search?q=site:spglobal.com+(oil+OR+gas+OR+LNG+OR+pipeline)+when:2d&hl=en-US&gl=US&ceid=US:en') },
+  ],
+  energy: [
+    { name: 'OilPrice.com',          url: rss('https://oilprice.com/rss/main') },
+    { name: 'Rigzone',               url: rss('https://www.rigzone.com/news/rss/rigzone_latest.aspx') },
+    { name: 'EIA Press Room',        url: rss('https://www.eia.gov/rss/press_room.xml') },
+    { name: 'OPEC & Crude',          url: rss('https://news.google.com/rss/search?q=(OPEC+OR+"oil+price"+OR+"crude+oil"+OR+WTI+OR+Brent+OR+"oil+production"+OR+"oil+inventory")+when:1d&hl=en-US&gl=US&ceid=US:en') },
+    { name: 'Natural Gas & LNG',     url: rss('https://news.google.com/rss/search?q=("natural+gas"+OR+LNG+OR+"gas+price"+OR+"Henry+Hub"+OR+TTF+OR+JKM+OR+"LNG+cargo")+when:1d&hl=en-US&gl=US&ceid=US:en') },
+    { name: 'Pipelines & Chokepoints', url: rss('https://news.google.com/rss/search?q=(pipeline+OR+Druzhba+OR+"Nord+Stream"+OR+TurkStream+OR+"Strait+of+Hormuz"+OR+"Bab+el-Mandeb"+OR+"Suez+Canal"+OR+"Power+of+Siberia")+when:2d&hl=en-US&gl=US&ceid=US:en') },
+    { name: 'Energy Crisis & Shortages', url: rss('https://news.google.com/rss/search?q=("fuel+shortage"+OR+"gas+shortage"+OR+"diesel+shortage"+OR+"jet+fuel+shortage"+OR+"energy+crisis"+OR+rationing+OR+"petrol+shortage")+when:2d&hl=en-US&gl=US&ceid=US:en') },
+    { name: 'Refinery & Disruptions', url: rss('https://news.google.com/rss/search?q=(refinery+OR+"refinery+outage"+OR+"force+majeure"+OR+"pipeline+sabotage"+OR+"pipeline+attack")+when:2d&hl=en-US&gl=US&ceid=US:en') },
+    { name: 'Energy Intel',          url: rss('https://news.google.com/rss/search?q=(energy+commodities+OR+"energy+market"+OR+"energy+prices"+OR+"energy+security")+when:2d&hl=en-US&gl=US&ceid=US:en') },
+  ],
+  'supply-chain': [
+    { name: 'Tanker & Shipping', url: rss('https://news.google.com/rss/search?q=(tanker+OR+VLCC+OR+Suezmax+OR+Aframax+OR+"oil+shipping"+OR+"LNG+carrier"+OR+"shadow+fleet")+when:2d&hl=en-US&gl=US&ceid=US:en') },
+    { name: 'Strategic Chokepoints', url: rss('https://news.google.com/rss/search?q=("Strait+of+Hormuz"+OR+"Strait+of+Malacca"+OR+"Bab+el-Mandeb"+OR+"Suez+Canal"+OR+"Panama+Canal"+OR+"Turkish+Straits"+OR+"Danish+Straits")+when:2d&hl=en-US&gl=US&ceid=US:en') },
+    { name: 'Energy Sanctions',  url: rss('https://news.google.com/rss/search?q=("oil+sanctions"+OR+"gas+sanctions"+OR+"price+cap"+OR+"energy+embargo"+OR+"LNG+sanctions")+when:3d&hl=en-US&gl=US&ceid=US:en') },
+    { name: 'Port & Terminal',   url: rss('https://news.google.com/rss/search?q=("LNG+terminal"+OR+"crude+terminal"+OR+"oil+port"+OR+"Ras+Laffan"+OR+"Sabine+Pass"+OR+"Rotterdam+oil")+when:3d&hl=en-US&gl=US&ceid=US:en') },
+  ],
+};
+
 // Variant-aware exports
 export const FEEDS = SITE_VARIANT === 'tech'
   ? TECH_FEEDS
@@ -1195,7 +990,25 @@ export const FEEDS = SITE_VARIANT === 'tech'
       ? HAPPY_FEEDS
       : SITE_VARIANT === 'commodity'
         ? COMMODITY_FEEDS
-        : FULL_FEEDS;
+        : SITE_VARIANT === 'energy'
+          ? ENERGY_FEEDS
+          : FULL_FEEDS;
+
+// Canonical category→feeds map: the union of every variant's feed set.
+// `FEEDS` (above) is just the active variant's PRESET; users freely customize
+// their panel set, so any enabled news panel must be able to resolve its feeds
+// regardless of which variant it "belongs" to. Consumers:
+//  • data-loader `loadNews()` — loads preset categories + custom enabled panels
+//  • panel-layout — creates a NewsPanel for any enabled category, not just preset
+// See src/config/feed-resolution.ts for the merge + resolution helpers.
+export const CANONICAL_FEEDS: Record<string, Feed[]> = mergeCanonicalFeeds([
+  FULL_FEEDS,
+  TECH_FEEDS,
+  FINANCE_FEEDS,
+  COMMODITY_FEEDS,
+  ENERGY_FEEDS,
+  HAPPY_FEEDS,
+]);
 
 export const SOURCE_REGION_MAP: Record<string, { labelKey: string; feedKeys: string[] }> = {
   // Full (geopolitical) variant regions
@@ -1226,7 +1039,7 @@ export const SOURCE_REGION_MAP: Record<string, { labelKey: string; feedKeys: str
   cryptoDigital: { labelKey: 'header.sourceRegionCryptoDigital', feedKeys: ['crypto', 'fintech'] },
   centralBanksEcon: { labelKey: 'header.sourceRegionCentralBanks', feedKeys: ['centralbanks', 'economic'] },
   dealsCorpFin: { labelKey: 'header.sourceRegionDeals', feedKeys: ['institutional', 'derivatives'] },
-  finRegulation: { labelKey: 'header.sourceRegionFinRegulation', feedKeys: ['regulation'] },
+  finRegulation: { labelKey: 'header.sourceRegionFinRegulation', feedKeys: ['fin-regulation'] },
   gulfMena: { labelKey: 'header.sourceRegionGulfMena', feedKeys: ['gccNews'] },
 };
 
@@ -1241,6 +1054,15 @@ export const INTEL_SOURCES: Feed[] = [
   { name: 'USNI News', url: rss('https://news.google.com/rss/search?q=site:news.usni.org+when:3d&hl=en-US&gl=US&ceid=US:en'), type: 'defense' },
   { name: 'gCaptain', url: rss('https://gcaptain.com/feed/'), type: 'defense' },
   { name: 'Oryx OSINT', url: rss('https://www.oryxspioenkop.com/feeds/posts/default?alt=rss'), type: 'defense' },
+  // Declared LAST in the defense group on purpose. The free-tier source cap
+  // (selectSourcesUnderCap, FREE_MAX_SOURCES) fills category buckets round-robin
+  // in DECLARATION ORDER, and the intel bucket only gets a handful of slots — so
+  // inserting a new name near the top silently evicts whichever default-enabled
+  // source it pushes past the cap. That eviction is written back into
+  // worldmonitor-disabled-feeds and cloud-synced rather than recomputed, so it
+  // never recovers. Appending makes a new source absorb its own cap cost instead
+  // of deleting an existing one from every free-tier user (#5405 review).
+  { name: 'Breaking Defense', url: rss('https://breakingdefense.com/feed/'), type: 'defense' },
   { name: 'UK MOD', url: rss('https://www.gov.uk/government/organisations/ministry-of-defence.atom'), type: 'defense' },
   { name: 'CSIS', url: rss('https://news.google.com/rss/search?q=site:csis.org&hl=en&gl=US&ceid=US:en'), type: 'defense' },
 
@@ -1277,24 +1099,281 @@ export const INTEL_SOURCES: Feed[] = [
   // Economic & Food Security (Tier 2)
   { name: 'FAO News', url: rss('https://www.fao.org/feeds/fao-newsroom-rss'), type: 'economic' },
   { name: 'FAO GIEWS', url: rss('https://news.google.com/rss/search?q=site:fao.org+GIEWS+food+security+when:30d&hl=en-US&gl=US&ceid=US:en'), type: 'economic' },
+
+  // Investigative Journalism & Accountability
+  // Cross-border corruption & organized crime investigations (Panama Papers, Pandora Papers)
+  { name: 'OCCRP', url: rss('https://www.occrp.org/en/feed'), type: 'investigative' },
+  // Atlantic Council Digital Forensic Research Lab — disinformation/influence operations
+  { name: 'DFRLab', url: rss('https://dfrlab.org/feed/'), type: 'investigative' },
+  // European investigative collective — migration, extremism, accountability
+  { name: 'Lighthouse Reports', url: rss('https://www.lighthousereports.com/feed/'), type: 'investigative' },
+  // Africa-focused: war crimes, illicit finance, sanctions evasion
+  { name: 'The Sentry', url: rss('https://thesentry.org/feed/'), type: 'investigative' },
+  // Global Initiative Against Transnational Organized Crime
+  { name: 'GITOC', url: rss('https://globalinitiative.net/feed/'), type: 'investigative' },
+  // V4/CEE investigative network (OCCRP member)
+  { name: 'VSquare', url: rss('https://vsquare.org/feed/'), type: 'investigative' },
+  // German investigative journalism & fact-checking nonprofit
+  { name: 'Correctiv', url: rss('https://correctiv.org/feed/'), type: 'investigative' },
+
   { name: 'EU ISS', url: rss('https://news.google.com/rss/search?q=site:iss.europa.eu+when:7d&hl=en-US&gl=US&ceid=US:en'), type: 'intl' },
 ];
 
-// Default-enabled sources per panel (Tier 1+2 priority, ≥8 per panel)
+/** Unique configured feed names across every variant map + intel sources. */
+export function listConfiguredFeedNames(): string[] {
+  const names = new Set<string>();
+  for (const feeds of Object.values(CANONICAL_FEEDS)) {
+    for (const feed of feeds) names.add(feed.name);
+  }
+  for (const feed of INTEL_SOURCES) names.add(feed.name);
+  return [...names].sort((a, b) => a.localeCompare(b));
+}
+
+/**
+ * Provenance state for a configured feed.
+ * `reviewed` = present in SOURCE_PROPAGANDA_RISK (any risk including explicit low).
+ * `unknown` = not yet reviewed — API still returns a definite profile via getSourcePropagandaRisk.
+ */
+export function getFeedProvenanceState(sourceName: string): SourceProvenanceState {
+  return getSourceProvenanceState(sourceName);
+}
+
+/**
+ * Ukraine-war frontline + UA/RU balance sources that free-tier source-cap
+ * must not strip (#5949, #5950). Passed to `selectSourcesUnderCap` as
+ * `protectedNames` so round-robin late-in-bucket ordering cannot drop the
+ * dedicated UA primary / independent RU / PL frontline set for free EN users.
+ * Keep in sync with DEFAULT_ENABLED_SOURCES.europe frontline additions and
+ * the one-shot migration in App.ts (`worldmonitor-frontline-europe-enable-v1`).
+ */
+export const FRONTLINE_EUROPE_PROTECTED_SOURCES = [
+  'Kyiv Independent',
+  'TVN24',
+  'Rzeczpospolita',
+  'Meduza',
+  'Moscow Times',
+  'Ukrainska Pravda EN',
+  'NV EN',
+] as const;
+
+const EASTERN_FLANK_EN_DEFAULT_SOURCES = [
+  'Daily Sabah',
+  'ERR News',
+] as const;
+
+const AFRICA_DEPTH_EN_DEFAULT_SOURCES = [
+  'Hiiraan Online',
+  'RFI Afrique',
+] as const;
+
+const CAUCASUS_EN_DEFAULT_SOURCES = [
+  'Civil.ge',
+  'OC Media',
+] as const;
+
+const CENTRAL_ASIA_EN_DEFAULT_SOURCES = [
+  'Eurasianet',
+  'The Astana Times',
+] as const;
+
+const INDO_PACIFIC_EN_DEFAULT_SOURCES = [
+  'Focus Taiwan',
+  'Dawn',
+  'Rappler',
+] as const;
+
+/** Current editorial defaults introduced by the four regional feed PRs. */
+export const REGIONAL_FEED_ROLLOUT_DEFAULT_SOURCES = [
+  ...EASTERN_FLANK_EN_DEFAULT_SOURCES,
+  ...CAUCASUS_EN_DEFAULT_SOURCES,
+  ...CENTRAL_ASIA_EN_DEFAULT_SOURCES,
+  ...INDO_PACIFIC_EN_DEFAULT_SOURCES,
+  ...AFRICA_DEPTH_EN_DEFAULT_SOURCES,
+] as const;
+
+/**
+ * Current opt-in sources introduced by the same rollout wave. Persisted
+ * denylist profiles need these names inserted by the schema-5 migration;
+ * otherwise a newly cataloged source is implicitly enabled for every returner.
+ */
+export const REGIONAL_FEED_ROLLOUT_OPT_IN_SOURCES = [
+  'Seznam Zprávy', 'Digi24', 'HotNews', 'G4Media', 'Dnevnik',
+  'LRT English', 'LSM English',
+  'JAMnews', 'Azertag', 'Armenpress', 'Zerkalo', 'NewsMaker', 'Ziarul de Gardă',
+  'Radio Tamazuj', 'The Reporter Ethiopia', 'Actualite.cd', 'Radio Okapi',
+  'MyJoyOnline', 'Le Quotidien', 'RFE/RL Central Asia', 'The Times of Central Asia',
+  'Taipei Times', 'Taiwan News', 'Geo News', 'Jakarta Post',
+  'The Star (Malaysia)', 'Irrawaddy',
+  'Ethiopia Insight', 'Dabanga Sudan', 'Citi Newsroom',
+] as const;
+
+/** Canada pack (#5960) — EN default-on for North America keyCountry CA. */
+export const CANADA_EN_DEFAULT_SOURCES = [
+  'CBC News',
+] as const;
+
+/**
+ * Catalog opt-in sources from the Canada + Arctic/Nordic pack (#5960).
+ * Persisted denylist profiles must insert these on first boot after the pack
+ * lands — otherwise newly cataloged names are implicitly enabled for every
+ * returner (denylist semantics). CBC stays out so default-on can enable it.
+ */
+export const CANADA_ARCTIC_OPT_IN_SOURCES = [
+  'Globe and Mail',
+  'Global News',
+  'Yle News',
+  'NRK',
+  'Aftenposten',
+  'DR Nyheder',
+  'Arctic Today',
+] as const;
+
+/** Chronological feed introductions used to reconstruct untouched cap states. */
+export const REGIONAL_FEED_ROLLOUT_STAGES = [
+  {
+    introducedNames: [
+      'Civil.ge', 'OC Media', 'JAMnews', 'Azertag', 'Armenpress', 'Zerkalo',
+      'NewsMaker', 'Ziarul de Gardă', 'Radio Tamazuj', 'The Reporter Ethiopia',
+      'Actualite.cd', 'Radio Okapi', 'MyJoyOnline', 'Le Quotidien',
+      'Eurasianet', 'RFE/RL Central Asia', 'The Astana Times', 'The Times of Central Asia',
+    ],
+    protectedNames: [...FRONTLINE_EUROPE_PROTECTED_SOURCES],
+  },
+  {
+    introducedNames: [
+      'Focus Taiwan', 'Taipei Times', 'Taiwan News', 'Dawn', 'Geo News',
+      'Jakarta Post', 'Rappler', 'The Star (Malaysia)', 'Irrawaddy',
+    ],
+    protectedNames: [...FRONTLINE_EUROPE_PROTECTED_SOURCES],
+  },
+  {
+    introducedNames: [
+      'Daily Sabah', 'Seznam Zprávy', 'Digi24', 'HotNews', 'G4Media',
+      'Dnevnik', 'ERR News', 'LRT English', 'LSM English',
+    ],
+    protectedNames: [
+      ...FRONTLINE_EUROPE_PROTECTED_SOURCES,
+      ...EASTERN_FLANK_EN_DEFAULT_SOURCES,
+    ],
+  },
+  {
+    introducedNames: [
+      'Ethiopia Insight', 'Dabanga Sudan', 'Hiiraan Online', 'Citi Newsroom', 'RFI Afrique',
+    ],
+    protectedNames: [
+      ...FRONTLINE_EUROPE_PROTECTED_SOURCES,
+      ...EASTERN_FLANK_EN_DEFAULT_SOURCES,
+      ...AFRICA_DEPTH_EN_DEFAULT_SOURCES,
+    ],
+  },
+  {
+    // #5960 is newer than the schema-5 regional wave. Keeping its names in a
+    // final chronological stage removes them from every pre-pack fingerprint
+    // while still allowing current-cap states to be reconstructed after it.
+    introducedNames: [
+      ...CANADA_EN_DEFAULT_SOURCES,
+      ...CANADA_ARCTIC_OPT_IN_SOURCES,
+    ],
+    protectedNames: [
+      ...FRONTLINE_EUROPE_PROTECTED_SOURCES,
+      ...REGIONAL_FEED_ROLLOUT_DEFAULT_SOURCES,
+      ...CANADA_EN_DEFAULT_SOURCES,
+    ],
+  },
+] as const;
+
+/**
+ * Editorially required EN defaults that must survive the free-tier source cap.
+ * Keep the narrower frontline set above for its one-shot migration contract;
+ * this broader set is only for current cap selection.
+ */
+export const FREE_CAP_PROTECTED_SOURCES = [
+  ...FRONTLINE_EUROPE_PROTECTED_SOURCES,
+  ...REGIONAL_FEED_ROLLOUT_DEFAULT_SOURCES,
+  ...CANADA_EN_DEFAULT_SOURCES,
+] as const;
+
+/**
+ * Sources that are default-enabled for every UI language.
+ *
+ * This is derived from the feed declarations so a strategic source cannot be
+ * added to the client reachability path without also entering the canonical
+ * default-enabled set and the free-tier protection path.
+ */
+export function getStrategicDefaultSources(): Set<string> {
+  const strategic = new Set<string>();
+  for (const feeds of Object.values(FULL_FEEDS)) {
+    for (const feed of feeds) {
+      if (feed.strategicDefault) strategic.add(feed.name);
+    }
+  }
+  for (const feed of INTEL_SOURCES) {
+    if (feed.strategicDefault) strategic.add(feed.name);
+  }
+  return strategic;
+}
+
+/**
+ * Default sources enabled for every user on first boot.
+ *
+ * Two separate concepts control whether a feed is visible to a user:
+ *
+ * **Locale boost** — feeds tagged with `lang: <code>` are auto-enabled for
+ * users whose UI language matches that code (e.g. Hungarian users see Telex).
+ * This is the `getLocaleBoostedSources()` mechanism. It only fires for non-EN
+ * locales — English is the baseline, not "boosted".
+ *
+ * **Strategic defaults** — feeds tagged `strategicDefault: true` are always
+ * default-enabled regardless of UI language. These carry local-depth coverage
+ * of active wars, frontline NATO states, and Tier-1 Indo-Pacific flashpoints
+ * that every intel audience should see (e.g. Asahi Shimbun for Japan, Yonhap
+ * for Korea, Jeune Afrique for the Sahel). They are declared on the feed
+ * config itself and collected by `getStrategicDefaultSources()` so the
+ * bootstrap, cap, and fetch-language paths share one source of truth.
+ *
+ * A feed can be both locale-boosted AND a strategic default (e.g. a Polish
+ * source is boosted for PL users and strategic-default for every locale).
+ * The `strategicDefault` flag also makes the feed bypass `filterFeedsByLanguage`
+ * so it is fetched regardless of the user's UI language.
+ */
 export const DEFAULT_ENABLED_SOURCES: Record<string, string[]> = {
   politics: ['BBC World', 'Guardian World', 'AP News', 'Reuters World', 'CNN World'],
-  us: ['Reuters US', 'NPR News', 'PBS NewsHour', 'ABC News', 'CBS News', 'NBC News', 'Wall Street Journal', 'Politico', 'The Hill'],
-  europe: ['France 24', 'EuroNews', 'Le Monde', 'DW News', 'Tagesschau', 'ANSA', 'NOS Nieuws', 'SVT Nyheter'],
-  middleeast: ['BBC Middle East', 'Al Jazeera', 'Al Arabiya', 'Guardian ME', 'BBC Persian', 'Iran International', 'Haaretz', 'Asharq News', 'The National'],
-  africa: ['BBC Africa', 'News24', 'Africanews', 'Jeune Afrique', 'Africa News', 'Premium Times', 'Channels TV', 'Sahel Crisis'],
+  // Canada pack (#5960): CBC News default-on for North America keyCountry CA
+  // (public broadcaster, world desk — noise-acceptable on the US-heavy panel).
+  // Globe and Mail + Global News remain catalog opt-in.
+  us: ['Reuters US', 'NPR News', 'PBS NewsHour', 'ABC News', 'CBS News', 'NBC News', 'Wall Street Journal', 'Politico', 'The Hill', 'CBC News'],
+  // Europe defaults — Ukraine war frontline (#5949) + UA/RU balance rule (#5950):
+  // ≥1 dedicated UA primary (Kyiv Independent) + ≥1 independent RU (Meduza, Moscow Times).
+  // PL frontline: TVN24 + Rzeczpospolita (not all three PL; noise control).
+  // TASS/RT never default-on. Extra UA outlets deferred to #5951.
+  // HU/EL locale packs remain locale-boosted only, not EN default-on.
+  // Eastern flank (#5952): Daily Sabah (EN Turkey) + ERR News (EN Baltic) as
+  // default-on; RO/BG/CS feeds stay locale-boosted (lang tags).
+  europe: [
+    'France 24', 'EuroNews', 'Le Monde', 'DW News', 'Tagesschau', 'ANSA', 'NOS Nieuws', 'SVT Nyheter', 'Balkan Insight',
+    ...EASTERN_FLANK_EN_DEFAULT_SOURCES,
+    ...FRONTLINE_EUROPE_PROTECTED_SOURCES,
+    // Periphery packs (#5953) — Caucasus, Belarus/Moldova
+    ...CAUCASUS_EN_DEFAULT_SOURCES,
+  ],
+
+  middleeast: ['BBC Middle East', 'Al Jazeera', 'Al Arabiya', 'Guardian ME', 'BBC Persian', 'Iran International', 'IRNA', 'Mehr News', 'Haaretz', 'Jerusalem Post', 'Ynetnews', 'Asharq News', 'The National'],
+  africa: [
+    'BBC Africa', 'News24', 'Africanews', 'Jeune Afrique', 'Africa News',
+    'Premium Times', 'Channels TV', 'Sahel Crisis',
+    ...AFRICA_DEPTH_EN_DEFAULT_SOURCES,
+  ],
   latam: ['BBC Latin America', 'Reuters LatAm', 'InSight Crime', 'Mexico News Daily', 'Clarín', 'Primicias', 'Infobae Americas', 'El Universo'],
-  asia: ['BBC Asia', 'The Diplomat', 'South China Morning Post', 'Reuters Asia', 'Nikkei Asia', 'CNA', 'Asia News', 'The Hindu'],
+asia: ['BBC Asia', 'The Diplomat', 'South China Morning Post', 'Reuters Asia', 'Nikkei Asia', 'CNA', 'Asia News', 'The Hindu',
+    ...CENTRAL_ASIA_EN_DEFAULT_SOURCES,
+    ...INDO_PACIFIC_EN_DEFAULT_SOURCES,
+  ],
   tech: ['Hacker News', 'Ars Technica', 'The Verge', 'MIT Tech Review'],
   ai: ['AI News', 'VentureBeat AI', 'The Verge AI', 'MIT Tech Review', 'ArXiv AI'],
   finance: ['CNBC', 'MarketWatch', 'Yahoo Finance', 'Financial Times', 'Reuters Business'],
   gov: ['White House', 'State Dept', 'Pentagon', 'UN News', 'CISA', 'Treasury', 'DOJ', 'CDC'],
   layoffs: ['Layoffs.fyi', 'TechCrunch Layoffs', 'Layoffs News'],
-  thinktanks: ['Foreign Policy', 'Atlantic Council', 'Foreign Affairs', 'CSIS', 'RAND', 'Brookings', 'Carnegie', 'War on the Rocks'],
+  thinktanks: ['Foreign Policy', 'Atlantic Council', 'Foreign Affairs', 'CSIS', 'RAND', 'Brookings', 'Carnegie', 'War on the Rocks', 'ISW'],
   crisis: ['CrisisWatch', 'IAEA', 'WHO', 'UNHCR'],
   energy: ['Oil & Gas', 'Nuclear Energy', 'Reuters Energy', 'Mining & Resources'],
 };
@@ -1304,15 +1383,27 @@ export const DEFAULT_ENABLED_INTEL: string[] = [
   'Military Times', 'USNI News', 'Bellingcat', 'Krebs Security',
 ];
 
-export function getAllDefaultEnabledSources(): Set<string> {
+function getExplicitDefaultEnabledSources(): Set<string> {
   const s = new Set<string>();
   for (const names of Object.values(DEFAULT_ENABLED_SOURCES)) names.forEach(n => s.add(n));
   DEFAULT_ENABLED_INTEL.forEach(n => s.add(n));
   return s;
 }
 
-/** Sources boosted by locale (feeds tagged with matching `lang` or multi-URL key). */
-export function getLocaleBoostedSources(locale: string): Set<string> {
+export function getAllDefaultEnabledSources(): Set<string> {
+  const s = getExplicitDefaultEnabledSources();
+  for (const name of getStrategicDefaultSources()) s.add(name);
+  return s;
+}
+
+/**
+ * Sources selected strictly by a non-English language match. Kept separate
+ * from strategic-default policy so historical preference migrations can
+ * reconstruct pre-rollout locale states deterministically. In particular, an
+ * English locale lookup must not implicitly enable every ordinary multi-URL
+ * feed that happens to expose an `en` URL.
+ */
+export function getLanguageMatchedSources(locale: string): Set<string> {
   const lang = (locale.split('-')[0] ?? 'en').toLowerCase();
   const boosted = new Set<string>();
   if (lang === 'en') return boosted;
@@ -1324,6 +1415,11 @@ export function getLocaleBoostedSources(locale: string): Set<string> {
   return boosted;
 }
 
+/** Sources boosted by locale (feeds tagged with matching `lang` or multi-URL key). */
+export function getLocaleBoostedSources(locale: string): Set<string> {
+  return getLanguageMatchedSources(locale);
+}
+
 export function computeDefaultDisabledSources(locale?: string): string[] {
   const enabled = getAllDefaultEnabledSources();
   if (locale) {
@@ -1333,6 +1429,61 @@ export function computeDefaultDisabledSources(locale?: string): string[] {
   for (const feeds of Object.values(FULL_FEEDS)) for (const f of feeds) all.add(f.name);
   for (const f of INTEL_SOURCES) all.add(f.name);
   return [...all].filter(name => !enabled.has(name));
+}
+
+/**
+ * Sources that were removed from DEFAULT_ENABLED_SOURCES during the regional
+ * feed rollout reconciliation (PR #6031). They were historically default-on
+ * and must remain in the reconstructed pre-strategic fingerprint so exact-set
+ * migration matching finds them in the enabled (not disabled) set.
+ */
+const PRE_ROLLOUT_RECONCILIATION_DEFAULTS = [
+  'Ukrainska Pravda EN',
+  'NV EN',
+  'NewsMaker',
+] as const;
+
+/**
+ * Reconstruct the source-reduction defaults from before strategic defaults
+ * became part of the canonical default-enabled set. This is used only by the
+ * exact-set migrations that repair profiles created before PR #6000.
+ */
+export function computePreStrategicDefaultDisabledSources(locale?: string): string[] {
+  const enabled = getExplicitDefaultEnabledSources();
+  for (const name of PRE_ROLLOUT_RECONCILIATION_DEFAULTS) enabled.add(name);
+  if (locale) {
+    for (const name of getLanguageMatchedSources(locale)) enabled.add(name);
+  }
+  const all = new Set<string>();
+  for (const feeds of Object.values(FULL_FEEDS)) for (const feed of feeds) all.add(feed.name);
+  for (const feed of INTEL_SOURCES) all.add(feed.name);
+  return [...all].filter((name) => !enabled.has(name));
+}
+
+/**
+ * Reconstruct the untouched default denylist immediately before PR #5976.
+ * Every later regional source is removed because it did not exist in that
+ * catalog; the remaining set can be compared exactly without hard-coding a
+ * large, brittle list of unrelated feed names.
+ */
+export function computePreRegionalFeedRolloutDefaultDisabledSources(locale?: string): string[] {
+  const introduced = new Set<string>(
+    REGIONAL_FEED_ROLLOUT_STAGES.flatMap((stage) => [...stage.introducedNames]),
+  );
+  return computePreStrategicDefaultDisabledSources(locale)
+    .filter((name) => !introduced.has(name));
+}
+
+/**
+ * The v3 source-reduction migration's pre-#5949 disabled set. This is used
+ * only for a conservative one-time frontline migration: an exact match means
+ * the profile still has the old untouched defaults, while any extra or
+ * missing entry is treated as a user-customized preference and left alone.
+ */
+export function computeLegacyDefaultDisabledSources(): string[] {
+  const disabled = new Set(computePreStrategicDefaultDisabledSources());
+  for (const name of FRONTLINE_EUROPE_PROTECTED_SOURCES) disabled.add(name);
+  return [...disabled];
 }
 
 export function getTotalFeedCount(): number {

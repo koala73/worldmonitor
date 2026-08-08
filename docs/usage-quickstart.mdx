@@ -1,0 +1,77 @@
+---
+title: "Quickstart"
+description: "Make your first World Monitor API call in under a minute with copy-paste examples in curl, JavaScript, and Python — includes auth and response format."
+---
+
+## 1. Get an API key
+
+API Starter and API Business subscribers create a key from **Dashboard → Settings → API Keys**. User-issued keys are exactly `wm_` followed by 40 lowercase hex characters and are shown only once. Follow [Find or replace your license / API key](/api-keys) for the exact steps or to replace a lost key.
+
+<Tip>
+The dashboard browser session can call supported public endpoints without a user API key. You need a key for server-to-server use, untrusted browser origins, and routes that explicitly require an API key.
+</Tip>
+
+## 2. Call an endpoint
+
+### curl
+
+```bash
+curl -s 'https://api.worldmonitor.app/api/conflict/v1/get-humanitarian-summary?country_code=SD' \
+  -H 'X-WorldMonitor-Key: wm_0123456789abcdef0123456789abcdef01234567'
+```
+
+### JavaScript (Node or browser)
+
+```js
+const res = await fetch(
+  'https://api.worldmonitor.app/api/market/v1/list-market-quotes?symbols=AAPL&symbols=TSLA',
+  { headers: { 'X-WorldMonitor-Key': process.env.WM_KEY } }
+);
+const data = await res.json();
+console.log(data);
+```
+
+### Python
+
+```python
+import os, httpx
+
+r = httpx.get(
+    "https://api.worldmonitor.app/api/economic/v1/get-fred-series",
+    params={"series_id": "FEDFUNDS"},
+    headers={"X-WorldMonitor-Key": os.environ["WM_KEY"]},
+)
+r.raise_for_status()
+print(r.json())
+```
+
+## 3. Hydrate everything at once
+
+For dashboards, use `/api/bootstrap` to pull all seeded caches in one request:
+
+```bash
+curl -s 'https://api.worldmonitor.app/api/bootstrap' \
+  -H 'X-WorldMonitor-Key: wm_0123456789abcdef0123456789abcdef01234567'
+```
+
+Use the same host and header form for server-to-server calls. `/api/bootstrap` does not require a separate gateway URL, token exchange, activation step, or IP allow-list.
+
+See [Platform endpoints](/api-platform#bootstrap) for the response shape.
+
+## 4. Plug into an MCP client
+
+Point any MCP-compatible client at the server URL — the client handles OAuth automatically:
+
+```
+https://api.worldmonitor.app/api/mcp
+```
+
+See [MCP](/mcp-overview) for client-specific setup.
+
+## Next
+
+- [Authentication](/usage-auth) — all three auth modes
+- [Rate limits](/usage-rate-limits) — per-endpoint caps
+- [Errors](/usage-errors) — response shapes and retry guidance
+- [API Reference](/api-reference) — every service, RPC, and request/response schema
+- [Agent Discovery](/agent-discovery) — for AI agents and codegen tools: discover all OpenAPI / MCP / OAuth surfaces from one root URL

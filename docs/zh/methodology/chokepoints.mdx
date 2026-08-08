@@ -1,0 +1,195 @@
+---
+title: "咽喉要道方法论"
+description: "World Monitor 如何对全球 13 个受监控的海事咽喉要道进行评分，其中包括基于 EIA 能源基线通行量校准的七项实时流量子集：霍尔木兹、马六甲、苏伊士、曼德海峡、土耳其海峡、丹麦海峡与巴拿马运河，详解评分算法权重、数据来源、更新频率与全球油气航运态势的方法论。"
+---
+
+## 我们追踪什么
+
+WorldMonitor 在规范咽喉要道注册表和 `GetChokepointStatus` RPC 中拥有 **13 个受监测水道**。状态 RPC 为每个规范 id 返回一行：
+`suez`、`malacca_strait`、`hormuz_strait`、`bab_el_mandeb`、`panama`、
+`taiwan_strait`、`cape_of_good_hope`、`gibraltar`、`bosphorus`、
+`korea_strait`、`dover_strait`、`kerch_strait` 和 `lombok_strait`。
+
+这 13 个中只有 **七个** 目前带有来自
+`energy:chokepoint-flows:v1` 的实时油气流量估算，因为当前 seeder 中只有这七个有 EIA 基线
+id：
+
+| 规范 id | 公开名称 | EIA 基线 id | 基线流量（mb/d） |
+|---|---|---|---:|
+| `hormuz_strait` | 霍尔木兹海峡 | `hormuz` | 21.0 |
+| `malacca_strait` | 马六甲海峡 | `malacca` | 17.2 |
+| `suez` | 苏伊士运河 / SUMED | `suez` | 7.6 |
+| `bab_el_mandeb` | 曼德海峡 | `babelm` | 6.2 |
+| `dover_strait` | 多佛尔海峡 | `danish` | 3.0 |
+| `bosphorus` | 博斯普鲁斯海峡 | `turkish` | 2.9 |
+| `panama` | 巴拿马运河 | `panama` | 0.9 |
+
+其余六个规范水道仍会接收通行汇总、航行警告、
+AIS 中断匹配、威胁分类、中断评分和战争风险等级，但在添加基线支撑的流量模型之前，`flowEstimate` 缺失。
+
+## 实时流量
+
+实时流量由 `scripts/seed-chokepoint-flows.mjs` 在上述七项
+子集上计算：
+
+1. 从 `supply_chain:portwatch:v1` 读取 PortWatch 历史。
+2. 选择信号：当先前窗口中至少一半的天数有 DWT 覆盖时，使用 `capTanker` 载重吨位；否则使用油轮计数。
+3. 将 `current7d` 计算为最近七天的平均值。
+4. 将 `baseline90d` 计算为先前窗口（最多 90 天，`history.slice(-97, -7)`）的平均值，要求至少 20 个基线天数。
+5. 计算 `flowRatio = clamp(current7d / baseline90d, 0, 1.5)`。
+6. 计算 `currentMbd = baselineMbd * flowRatio`，保留一位小数。
+
+因此，发布的比率是近期 7 天平均值相对于先前最多 90 天滚动基线的比值。`baselineMbd` 字段是年度 EIA 2023
+参考水平；用于将观测到的比率转换为 mb/d。钳制后流量比率可发布为基线的
+0% 到 150%。
+
+仅当 PortWatch 序列至少有 40 个总天数的历史时，实时流量才符合条件。通过该门槛后，seeder 仍要求至少三个近期天数、至少 20 个先前窗口基线天数，以及一个非稀疏基线：使用油轮载重吨位时至少
+1 个 DWT-天，或使用船舶计数时至少 0.5 个油轮计数。低于这些下限的行将被省略，而非
+报告为零流量。
+
+`disrupted` 布尔值与颜色徽章是分开的：当最近三个单独天数各自都低于相同 `baseline90d` 的 85% 时，它为 true。
+
+每个发布的流量估算还可能包含来自
+`portwatch:disruptions:active:v1` 的实时风险上下文。seeder 在受支持咽喉要道 500 公里范围内查找最近的活跃
+GDACS `RED` 或 `ORANGE` 警报，并将其作为 `hazardAlertLevel` 和 `hazardAlertName` 呈现。这只是标注：风险丰富化不会改变 `currentMbd`、`flowRatio` 或
+`disrupted` 计算。
+
+## 评分徽章
+
+`ChokepointInfo` 上公开的 `status` 字段是一个交通灯评分徽章：
+`green`、`yellow` 或 `red`。它不是运营关闭状态标签。
+
+评分为：
+
+```text
+disruptionScore = min(
+  100,
+  threatLevelWeight + warningComponent + aisComponent + anomalyBonus
+)
+```
+
+其中：
+
+- `threatLevelWeight` 是下文分类中的地缘政治基线权重。
+- `warningComponent = min(15, activeWarnings * 5)`。
+- `aisComponent = min(15, maxCongestionSeverity * 5)`，其中低/升高/高
+  AIS 拥堵严重度映射为 1/2/3。
+- `anomalyBonus = 10`，仅当通行历史显示相对于先前 30 天通行计数基线出现 50% 或更大的流量
+  下降，且威胁等级为 `war_zone` 或 `critical` 时。
+
+评分徽章阈值为：
+
+| 评分范围 | `status` |
+|---:|---|
+| `< 20` | `green` |
+| `20-49` | `yellow` |
+| `>= 50` | `red` |
+
+## 威胁分类
+
+地缘政治威胁基线在
+`server/worldmonitor/supply-chain/v1/get-chokepoint-status.ts` 中按咽喉要道分配，并在
+`server/worldmonitor/supply-chain/v1/_scoring.mjs` 中加权。
+
+| 威胁等级 | 权重 | 含义 |
+|---|---:|---|
+| `war_zone` | 70 | 活跃海战、封锁或海峡关闭 |
+| `critical` | 40 | 对商船的活跃攻击 |
+| `high` | 30 | 军事扣押风险或武装护航区 |
+| `elevated` | 15 | 军事紧张或争议水域 |
+| `normal` | 0 | 无重大军事威胁 |
+
+当前分配：
+
+| 规范 id | 公开名称 | 威胁等级 | 权重 | 战争风险枚举 |
+|---|---|---|---:|---|
+| `suez` | 苏伊士运河 | `high` | 30 | `WAR_RISK_TIER_HIGH` |
+| `malacca_strait` | 马六甲海峡 | `normal` | 0 | `WAR_RISK_TIER_NORMAL` |
+| `hormuz_strait` | 霍尔木兹海峡 | `war_zone` | 70 | `WAR_RISK_TIER_WAR_ZONE` |
+| `bab_el_mandeb` | 曼德海峡 | `critical` | 40 | `WAR_RISK_TIER_CRITICAL` |
+| `panama` | 巴拿马运河 | `normal` | 0 | `WAR_RISK_TIER_NORMAL` |
+| `taiwan_strait` | 台湾海峡 | `elevated` | 15 | `WAR_RISK_TIER_ELEVATED` |
+| `cape_of_good_hope` | 好望角 | `normal` | 0 | `WAR_RISK_TIER_NORMAL` |
+| `gibraltar` | 直布罗陀海峡 | `normal` | 0 | `WAR_RISK_TIER_NORMAL` |
+| `bosphorus` | 博斯普鲁斯海峡 | `elevated` | 15 | `WAR_RISK_TIER_ELEVATED` |
+| `korea_strait` | 朝鲜海峡 | `normal` | 0 | `WAR_RISK_TIER_NORMAL` |
+| `dover_strait` | 多佛尔海峡 | `normal` | 0 | `WAR_RISK_TIER_NORMAL` |
+| `kerch_strait` | 刻赤海峡 | `war_zone` | 70 | `WAR_RISK_TIER_WAR_ZONE` |
+| `lombok_strait` | 龙目海峡 | `normal` | 0 | `WAR_RISK_TIER_NORMAL` |
+
+## 通行异常
+
+`anomalyBonus` 的通行异常检测基于紧凑通行计数
+历史，而非实时 mb/d 流量模型。它将最近七次通行计数与转换为七天基线的前 30 天进行比较：
+
+```text
+baselineAvg7 = (sum(days -37..-8) / availableBaselineDays) * 7
+dropPct = round((baselineAvg7 - recent7) / baselineAvg7 * 100)
+signal = dropPct >= 50 AND threatLevel in {war_zone, critical}
+```
+
+若触发信号，处理器会附加一段描述，例如
+`Traffic down 55% vs 30-day baseline, vessels may be transiting dark (AIS off)`。
+异常路径在该比较之前设有门槛：它要求至少 37 天
+的紧凑通行计数历史，且归一化的七天基线至少为 14 次通行。稀疏基线不返回异常信号。
+
+## 国家敞口
+
+`GetCountryChokepointIndex` 返回一个国家与 HS2 章节的独立敞口模型。它受 Pro 限制，并缓存在
+`supply-chain:exposure:{ISO2}:{HS2}:v1`。
+
+当双边 HS4 进口产品可用时，敞口计算如下：
+
+```text
+productWeight = product.totalValue / totalSectorValue
+routeCoverage = overlappingRouteIds / chokepoint.routeIds.length
+contribution = routeCoverage * exporter.share * productWeight * 100
+```
+
+敞口按咽喉要道在匹配产品和顶级出口商间求和汇总。对于 HS2 `27`，`shockModelSupported = true` 的咽喉要道获得
+1.5 倍能源模型加成，上限为 100。
+
+当双边产品数据不可用时，回退评分为：
+
+```text
+exposureScore = overlappingCountryRouteIds / chokepoint.routeIds.length * 100
+```
+
+同样适用 HS2 `27` 支持能源加成和 100 上限。`vulnerabilityIndex` 是加权的前三名评分：
+
+```text
+top1 * 0.5 + top2 * 0.3 + top3 * 0.2
+```
+
+## 来源溯源
+
+咽喉要道状态结合了 Redis 支撑的通行汇总、流量估算、
+航行警告、AIS 中断匹配和静态威胁分类。如果某个规范咽喉要道在当前周期缺少上游通行覆盖，
+`transitSummary.dataAvailable` 为 false，并设置响应级别的
+`upstreamUnavailable` 标志，以便客户端渲染部分覆盖的 UI。
+
+刷新节奏：
+
+- `energy:chokepoint-flows:v1`：Railway 种子循环，每 6 小时。
+- `supply_chain:chokepoints:v4`：状态热点探测，每 30 分钟。
+- `supply_chain:transit-summaries:v1`：AIS 中继紧凑通行汇总。
+
+## 已知限制
+
+- 七个实时流量行由能源基线支撑；其余六个受监测
+  水道尚未发布 mb/d 估算。
+- 多佛尔海峡实时流量行当前映射到 EIA `danish` 基线 id。
+  请将 `baselineMbd` 视为来源参考，将 `id` 视为规范的
+  WorldMonitor 行 id。
+- AIS 和 PortWatch 覆盖在严重干扰或冲突密集
+  地区附近可能下降。缺失的上游覆盖以不可用数据呈现，而非
+  被合成为零交通。
+- 基线是用于 mb/d 转换的年度 EIA 参考水平。实时
+  比率本身使用近期 PortWatch 观测值与上文所述的先前滚动
+  基线窗口进行对比。
+
+## 更正
+
+请参阅 [`/corrections`](/zh/corrections) 了解计划的修订日志格式。如果您
+今天发现一个错误的数字，请在
+[公开仓库](https://github.com/koala73/worldmonitor/issues) 提交一个 GitHub issue。

@@ -1,0 +1,379 @@
+// Loader + validator for the SWF classification manifest at
+// scripts/shared/swf-classification-manifest.yaml.
+//
+// Co-located with the loader so the Railway recovery-bundle container
+// (rootDirectory=scripts/) ships the YAML alongside the code. The file
+// used to live under docs/methodology/ but that path isn't copied into
+// NIXPACKS builds with rootDirectory=scripts/, so the seeder crashed
+// with ENOENT on every Railway tick. Authors can still edit the file
+// directly; docs/methodology/country-resilience-index.mdx links to the
+// new location for external reference.
+//
+// Shared between the seeder (scripts/seed-sovereign-wealth.mjs), the
+// scorer unit tests, and the methodology-doc linter. Keep server-free
+// (no Redis, no env mutations) so the server scorer can import it too
+// once PR 2 lands its TypeScript counterpart.
+//
+// See plan §3.4 "Classification manifest and Norway example" for the
+// three-component haircut definitions. This loader is the
+// single-source-of-truth parser; do not hand-parse the YAML elsewhere.
+
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import { dirname, resolve } from 'node:path';
+import { parse as parseYaml } from 'yaml';
+
+const here = dirname(fileURLToPath(import.meta.url));
+const MANIFEST_PATH = resolve(here, './swf-classification-manifest.yaml');
+
+/**
+ * @typedef {Object} SwfClassification
+ * @property {number} access       0..1 inclusive
+ * @property {number} liquidity    0..1 inclusive
+ * @property {number} transparency 0..1 inclusive
+ * @property {number} [aumPctOfAudited]  OPTIONAL 0..1; multiplier applied
+ *                                       to the matched audited AUM, used
+ *                                       when one entry represents only a
+ *                                       fraction of a combined audited
+ *                                       fund (e.g. KIA-GRF vs KIA-FGF
+ *                                       split of audited KIA AUM).
+ * @property {boolean} [excludedOverlapsWithReserves] OPTIONAL; when true,
+ *                                       the seeder loads the entry for
+ *                                       documentation but EXCLUDES it
+ *                                       from buffer calculation. Used
+ *                                       for funds whose AUM is already
+ *                                       counted in central-bank FX
+ *                                       reserves (SAFE Investment Co,
+ *                                       HKMA Exchange Fund) to avoid
+ *                                       double-counting against the
+ *                                       reserveAdequacy /
+ *                                       liquidReserveAdequacy dims.
+ */
+
+/**
+ * @typedef {Object} SwfWikipediaHints
+ * @property {string} [abbrev]     matches the "Abbrev." column on the
+ *                                 Wikipedia `List_of_sovereign_wealth_funds`
+ *                                 article (case- and punctuation-normalized)
+ * @property {string} [fundName]   matches the "Fund name" column
+ * @property {string} [articleUrl] per-fund Wikipedia article URL used by the
+ *                                 Tier 3b infobox fallback when the list
+ *                                 article does not include the fund
+ *                                 (Temasek is the canonical case)
+ */
+
+/**
+ * @typedef {Object} SwfManifestEntry
+ * @property {string} country       ISO-3166-1 alpha-2
+ * @property {string} fund          short fund identifier (stable across runs)
+ * @property {string} displayName   human-readable fund name
+ * @property {SwfWikipediaHints} [wikipedia] optional lookup hints for the
+ *                                           Wikipedia fallback scraper
+ * @property {number} [aumUsd]      OPTIONAL primary-source AUM in USD.
+ *                                  When present AND `aumVerified === true`,
+ *                                  the seeder uses this value directly
+ *                                  instead of resolving via Wikipedia.
+ * @property {number} [aumYear]     OPTIONAL year of the primary-source
+ *                                  AUM disclosure (e.g. 2024).
+ * @property {boolean} [aumVerified] OPTIONAL primary-source-confirmed flag.
+ *                                  When false, the entry is loaded for
+ *                                  documentation but EXCLUDED from buffer
+ *                                  scoring (data-integrity rule).
+ * @property {SwfClassification} classification
+ * @property {{ access: string, liquidity: string, transparency: string,
+ *              [aum_pct_of_audited]: string,
+ *              [excluded_overlaps_with_reserves]: string }} rationale
+ * @property {string[]} sources
+ */
+
+/**
+ * @typedef {Object} SwfManifest
+ * @property {number} manifestVersion
+ * @property {string} lastReviewed
+ * @property {'PENDING'|'REVIEWED'} externalReviewStatus
+ * @property {SwfManifestEntry[]} funds
+ */
+
+function fail(msg) {
+  throw new Error(`[swf-manifest] ${msg}`);
+}
+
+function assertZeroToOne(value, path) {
+  if (typeof value !== 'number' || Number.isNaN(value) || value < 0 || value > 1) {
+    fail(`${path}: expected number in [0, 1], got ${JSON.stringify(value)}`);
+  }
+}
+
+function assertIso2(value, path) {
+  if (typeof value !== 'string' || !/^[A-Z]{2}$/.test(value)) {
+    fail(`${path}: expected ISO-3166-1 alpha-2 country code, got ${JSON.stringify(value)}`);
+  }
+}
+
+function assertNonEmptyString(value, path) {
+  if (typeof value !== 'string' || value.trim().length === 0) {
+    fail(`${path}: expected non-empty string, got ${JSON.stringify(value)}`);
+  }
+}
+
+function validateClassification(cls, path) {
+  if (!cls || typeof cls !== 'object') fail(`${path}: expected object`);
+  const c = /** @type {Record<string, unknown>} */ (cls);
+  assertZeroToOne(c.access,       `${path}.access`);
+  assertZeroToOne(c.liquidity,    `${path}.liquidity`);
+  assertZeroToOne(c.transparency, `${path}.transparency`);
+
+  // OPTIONAL: aum_pct_of_audited multiplier (KIA-GRF/FGF split case).
+  let aumPctOfAudited;
+  if (c.aum_pct_of_audited != null) {
+    if (typeof c.aum_pct_of_audited !== 'number'
+        || Number.isNaN(c.aum_pct_of_audited)
+        || c.aum_pct_of_audited <= 0
+        || c.aum_pct_of_audited > 1) {
+      fail(`${path}.aum_pct_of_audited: expected number in (0, 1], got ${JSON.stringify(c.aum_pct_of_audited)}`);
+    }
+    aumPctOfAudited = c.aum_pct_of_audited;
+  }
+
+  // OPTIONAL: excluded_overlaps_with_reserves flag (SAFE-IC / HKMA case).
+  let excludedOverlapsWithReserves;
+  if (c.excluded_overlaps_with_reserves != null) {
+    if (typeof c.excluded_overlaps_with_reserves !== 'boolean') {
+      fail(`${path}.excluded_overlaps_with_reserves: expected boolean, got ${JSON.stringify(c.excluded_overlaps_with_reserves)}`);
+    }
+    excludedOverlapsWithReserves = c.excluded_overlaps_with_reserves;
+  }
+
+  return {
+    access: c.access,
+    liquidity: c.liquidity,
+    transparency: c.transparency,
+    ...(aumPctOfAudited != null ? { aumPctOfAudited } : {}),
+    ...(excludedOverlapsWithReserves != null ? { excludedOverlapsWithReserves } : {}),
+  };
+}
+
+function validateRationale(rat, path) {
+  if (!rat || typeof rat !== 'object') fail(`${path}: expected object`);
+  const r = /** @type {Record<string, unknown>} */ (rat);
+  assertNonEmptyString(r.access,       `${path}.access`);
+  assertNonEmptyString(r.liquidity,    `${path}.liquidity`);
+  assertNonEmptyString(r.transparency, `${path}.transparency`);
+  // Optional rationale paragraphs for the new schema fields. Required
+  // ONLY when the corresponding classification field is present (paired
+  // with a rationale in validateFundEntry).
+  const out = { access: r.access, liquidity: r.liquidity, transparency: r.transparency };
+  if (r.aum_pct_of_audited != null) {
+    assertNonEmptyString(r.aum_pct_of_audited, `${path}.aum_pct_of_audited`);
+    out.aumPctOfAudited = r.aum_pct_of_audited;
+  }
+  if (r.excluded_overlaps_with_reserves != null) {
+    assertNonEmptyString(r.excluded_overlaps_with_reserves, `${path}.excluded_overlaps_with_reserves`);
+    out.excludedOverlapsWithReserves = r.excluded_overlaps_with_reserves;
+  }
+  return out;
+}
+
+function validateSources(sources, path) {
+  if (!Array.isArray(sources) || sources.length === 0) fail(`${path}: expected non-empty array`);
+  for (const [srcIdx, src] of sources.entries()) {
+    assertNonEmptyString(src, `${path}[${srcIdx}]`);
+  }
+  return sources.slice();
+}
+
+// Optional wikipedia hints — used by the Wikipedia fallback scraper
+// in scripts/seed-sovereign-wealth.mjs. Either `abbrev` or `fund_name`
+// must be present if the block is present (otherwise the scraper has
+// nothing to match against). `article_url` is optional and activates
+// the Tier 3b per-fund infobox fallback.
+function validateWikipediaHints(block, path) {
+  if (block == null) return undefined;
+  if (typeof block !== 'object') fail(`${path}: expected object`);
+  const w = /** @type {Record<string, unknown>} */ (block);
+  const abbrev = w.abbrev;
+  const fundName = w.fund_name;
+  const articleUrl = w.article_url;
+  if (abbrev != null && typeof abbrev !== 'string') {
+    fail(`${path}.abbrev: expected string, got ${JSON.stringify(abbrev)}`);
+  }
+  if (fundName != null && typeof fundName !== 'string') {
+    fail(`${path}.fund_name: expected string, got ${JSON.stringify(fundName)}`);
+  }
+  if (articleUrl != null) {
+    if (typeof articleUrl !== 'string') {
+      fail(`${path}.article_url: expected string, got ${JSON.stringify(articleUrl)}`);
+    }
+    if (!/^https:\/\/[a-z]{2,3}\.wikipedia\.org\//.test(articleUrl)) {
+      fail(`${path}.article_url: expected a https://<lang>.wikipedia.org/... URL, got ${JSON.stringify(articleUrl)}`);
+    }
+  }
+  if (!abbrev && !fundName) {
+    fail(`${path}: at least one of abbrev or fund_name must be provided`);
+  }
+  return {
+    ...(abbrev ? { abbrev } : {}),
+    ...(fundName ? { fundName } : {}),
+    ...(articleUrl ? { articleUrl } : {}),
+  };
+}
+
+function validateFundEntry(raw, idx, seenFundKeys) {
+  const path = `funds[${idx}]`;
+  if (!raw || typeof raw !== 'object') fail(`${path}: expected object`);
+  const f = /** @type {Record<string, unknown>} */ (raw);
+
+  // Misplacement gate. `aum_pct_of_audited` and
+  // `excluded_overlaps_with_reserves` are CLASSIFICATION fields.
+  // If they appear at the top level of a fund entry, the loader
+  // rejects with a clear error rather than silently accepting the
+  // misplaced field (which would be ignored by the schema and
+  // produce wrong scoring). Codex Round 1 #4.
+  if (f.aum_pct_of_audited !== undefined) {
+    fail(`${path}: aum_pct_of_audited must be placed under classification:, not top-level`);
+  }
+  if (f.excluded_overlaps_with_reserves !== undefined) {
+    fail(`${path}: excluded_overlaps_with_reserves must be placed under classification:, not top-level`);
+  }
+
+  assertIso2(f.country, `${path}.country`);
+  assertNonEmptyString(f.fund, `${path}.fund`);
+  assertNonEmptyString(f.display_name, `${path}.display_name`);
+
+  const dedupeKey = `${f.country}:${f.fund}`;
+  if (seenFundKeys.has(dedupeKey)) fail(`${path}: duplicate fund identifier ${dedupeKey}`);
+  seenFundKeys.add(dedupeKey);
+
+  // OPTIONAL primary-source AUM fields. When `aum_verified === true`
+  // AND `aum_usd` present, the seeder uses these directly without
+  // querying Wikipedia. When `aum_verified === false`, the entry
+  // is loaded for documentation but EXCLUDED from buffer scoring
+  // (data-integrity rule from plan §Phase 1A).
+  let aumUsd;
+  if (f.aum_usd != null) {
+    if (typeof f.aum_usd !== 'number' || !Number.isFinite(f.aum_usd) || f.aum_usd <= 0) {
+      fail(`${path}.aum_usd: expected positive finite number, got ${JSON.stringify(f.aum_usd)}`);
+    }
+    aumUsd = f.aum_usd;
+  }
+  let aumYear;
+  if (f.aum_year != null) {
+    if (typeof f.aum_year !== 'number' || !Number.isInteger(f.aum_year) || f.aum_year < 2000 || f.aum_year > 2100) {
+      fail(`${path}.aum_year: expected integer year in [2000, 2100], got ${JSON.stringify(f.aum_year)}`);
+    }
+    aumYear = f.aum_year;
+  }
+  let aumVerified;
+  if (f.aum_verified != null) {
+    if (typeof f.aum_verified !== 'boolean') {
+      fail(`${path}.aum_verified: expected boolean, got ${JSON.stringify(f.aum_verified)}`);
+    }
+    aumVerified = f.aum_verified;
+  }
+  // Coherence: if aum_verified === true, both aum_usd and aum_year MUST be present.
+  // (A "verified" entry without an actual value is meaningless.)
+  if (aumVerified === true && (aumUsd == null || aumYear == null)) {
+    fail(`${path}: aum_verified=true requires both aum_usd and aum_year to be present`);
+  }
+
+  const classification = validateClassification(f.classification, `${path}.classification`);
+  const rationale = validateRationale(f.rationale, `${path}.rationale`);
+  const sources = validateSources(f.sources, `${path}.sources`);
+  const wikipedia = validateWikipediaHints(f.wikipedia, `${path}.wikipedia`);
+
+  // Coherence: rationale MUST cover any classification field that is set.
+  if (classification.aumPctOfAudited != null && rationale.aumPctOfAudited == null) {
+    fail(`${path}.rationale.aum_pct_of_audited: required when classification.aum_pct_of_audited is set`);
+  }
+  if (classification.excludedOverlapsWithReserves === true && rationale.excludedOverlapsWithReserves == null) {
+    fail(`${path}.rationale.excluded_overlaps_with_reserves: required when classification.excluded_overlaps_with_reserves is true`);
+  }
+
+  return {
+    country: f.country,
+    fund: f.fund,
+    displayName: f.display_name,
+    ...(wikipedia ? { wikipedia } : {}),
+    ...(aumUsd != null ? { aumUsd } : {}),
+    ...(aumYear != null ? { aumYear } : {}),
+    ...(aumVerified != null ? { aumVerified } : {}),
+    classification,
+    rationale,
+    sources,
+  };
+}
+
+/**
+ * Validate and normalize a raw parsed manifest object into the
+ * documented schema. Fails loudly on any deviation — the manifest is
+ * supposed to be hand-maintained and reviewer-approved, so silent
+ * coercion would hide errors.
+ *
+ * @param {unknown} raw
+ * @returns {SwfManifest}
+ */
+export function validateManifest(raw) {
+  if (!raw || typeof raw !== 'object') fail('manifest root must be an object');
+  const obj = /** @type {Record<string, unknown>} */ (raw);
+
+  const manifestVersion = obj.manifest_version;
+  if (manifestVersion !== 1) fail(`manifest_version: expected 1, got ${JSON.stringify(manifestVersion)}`);
+
+  const lastReviewed = obj.last_reviewed;
+  if (!(lastReviewed instanceof Date) && typeof lastReviewed !== 'string') {
+    fail(`last_reviewed: expected ISO date string or Date, got ${JSON.stringify(lastReviewed)}`);
+  }
+  const lastReviewedStr = lastReviewed instanceof Date
+    ? lastReviewed.toISOString().slice(0, 10)
+    : lastReviewed;
+
+  const externalReviewStatus = obj.external_review_status;
+  if (externalReviewStatus !== 'PENDING' && externalReviewStatus !== 'REVIEWED') {
+    fail(`external_review_status: expected 'PENDING' or 'REVIEWED', got ${JSON.stringify(externalReviewStatus)}`);
+  }
+
+  const rawFunds = obj.funds;
+  if (!Array.isArray(rawFunds)) fail('funds: expected array');
+  if (rawFunds.length === 0) fail('funds: must list at least one fund');
+
+  const seenFundKeys = new Set();
+  const funds = rawFunds.map((raw, idx) => validateFundEntry(raw, idx, seenFundKeys));
+
+  return {
+    manifestVersion,
+    lastReviewed: lastReviewedStr,
+    externalReviewStatus,
+    funds,
+  };
+}
+
+/**
+ * Load + validate the manifest YAML from disk.
+ *
+ * @param {string} [path] optional override for tests
+ * @returns {SwfManifest}
+ */
+export function loadSwfManifest(path = MANIFEST_PATH) {
+  const raw = readFileSync(path, 'utf8');
+  const parsed = parseYaml(raw);
+  return validateManifest(parsed);
+}
+
+/**
+ * Index the manifest by ISO-2 country code so downstream callers can
+ * aggregate multiple funds per country without re-scanning the array.
+ *
+ * @param {SwfManifest} manifest
+ * @returns {Map<string, SwfManifestEntry[]>}
+ */
+export function groupFundsByCountry(manifest) {
+  const byCountry = new Map();
+  for (const fund of manifest.funds) {
+    const list = byCountry.get(fund.country) ?? [];
+    list.push(fund);
+    byCountry.set(fund.country, list);
+  }
+  return byCountry;
+}
+
+export const __TEST_ONLY = { MANIFEST_PATH };

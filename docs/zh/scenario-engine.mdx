@@ -1,0 +1,97 @@
+---
+title: "Scenario Engine"
+description: "运行预构建的供应链中断情景 — 覆盖武装冲突、制裁升级、关税冲击与极端天气事件 — 直接在交互式地图上查看哪些咽喉要道、行业板块与国家将受影响，Scenario Engine 帮助分析师、风控团队与政策研究人员在真实事件发生前完成压力测试、暴露度评估与情景对冲规划。"
+---
+
+Scenario Engine 将 WorldMonitor 的实时供应链图转化为交互式 what-if 工具。你不再问"今天这条航线状态如何"，而是选择一个命名的中断场景 — 霍尔木兹海峡关闭、巴拿马干旱、半导体关税冲击 — 引擎解析对咽喉要道、HS2 板块和当前已种子化的报告国的下游影响，然后将结果绘制到现有地图上。
+
+## 适用人群
+
+- **供应链和大宗商品团队** 针对命名事件对路由假设进行压力测试。
+- **风险和政策团队** 将地缘政治或环境场景转化为具体的国家暴露。
+- **领导层** 围绕"如果 X 发生，什么先崩？"构建谈论轨道。
+
+## 打开引擎
+
+Scenario Engine 位于主仪表盘的 **Supply Chain** 面板内。每个预构建场景模板渲染为一个触发按钮；点击场景启动异步作业，在结果到达后激活视觉覆盖。
+
+你也可以通过编程方式驱动它 — 请参见 [Scenarios API](/zh/api-scenarios) 了解 `/templates`、`/run` 和 `/status` 端点。
+
+## 场景模板
+
+模板在 `server/worldmonitor/supply-chain/v1/scenario-templates.ts` 中定义。每个模板有一个 `type`，取自一个小的精选集合，使场景可按类别浏览而非自由列表。
+
+当前发布的类型：
+
+| 类型 | 建模内容 |
+|---|---|
+| `conflict` | 由活跃冲突事件驱动的咽喉要道关闭或降级（台湾海峡全面关闭、苏伊士+曼德海峡同时、霍尔木兹油轮封锁）。 |
+| `weather` | 气候中断 — 例如巴拿马运河 50% 干旱场景。 |
+| `sanctions` | 针对性贸易限制（例如俄罗斯/波罗的海谷物暂停）。 |
+| `tariff_shock` | 突然关税行动及其成本传导（例如美国对电子产品加征关税升级）。 |
+
+每个模板声明其影响的咽喉要道（来自咽喉要道注册表的 ID）、持续时间（天）、受影响的 HS2 板块和成本冲击乘数。在模板列表的传输形态上，`affectedHs2: []` 表示所有 HS2 章节（注册表将该哨兵值存储为 `null`）。按原样运行模板 — v1 中没有滑块。`ScenarioType` 联合类型为 `infrastructure` 和 `pandemic` 类别留有空间，但目前没有这些类型的模板。
+
+## 返回内容
+
+完成的场景返回：
+
+- **受影响咽喉要道** — 哪些在地图上变红。
+- **影响排名** — 按 ISO-2 排序的受影响最大的已种子化报告国，按 worker 的相对加权影响分数排序。`totalImpact` 不是货币金额。
+- **模板回显** — worker 推导的模板键（`affectedChokepointIds.join('+')`，或无物理咽喉要道时的 `tariff_shock`）、持续时间、中断百分比和成本冲击乘数，使客户端无需重新查询目录即可渲染运行。状态结果不重复 `affectedHs2`；从 `/list-scenario-templates` 读取板块范围。
+- **摘要卡片** 注入 Supply Chain 面板，在停用场景前一直可见。
+
+UI 是状态驱动而非模态 — 激活场景在每个地图渲染器（deck.gl、globe、SVG 回退）上设置 `scenarioState`，使咽喉要道颜色和国家分级统计图反映中断，直到你停用。这由 `src/components/MapContainer.ts:1010` 的 `MapContainer.activateScenario` 协调，该函数显式 PRO 门控。
+
+## 层级与门控
+
+Scenario Engine 是 **PRO**。免费用户看到触发按钮但在激活时被阻止：记录 `scenario-engine` 门控命中事件，地图不重绘。`ScenarioService.RunScenario` 处理器也在边缘强制执行 PRO（`server/worldmonitor/scenario/v1/run-scenario.ts`）。
+
+API 侧的速率限制 — 10 个作业/分钟/IP，一旦待处理队列已超过 100 个作业即施加队列背压 — 记录在 [Scenarios API](/zh/api-scenarios#run-a-scenario) 中。
+
+## 自行运行
+
+工作流本质上是异步的 — 边缘函数入队作业，Railway worker 计算影响，结果被轮询回来：
+
+1. 打开 Supply Chain 面板。
+2. 点击场景触发按钮（模板名称）。
+3. 作业运行时按钮禁用（通常 5-30 秒）。
+4. 结果到达后，地图重绘，场景横幅前置于面板。横幅始终显示：⚠ 图标、场景名称、受影响最大的 5 个国家及每国影响百分比，以及 **×** 关闭控件。当场景的结果载荷包含模板参数（持续时间、中断百分比、成本冲击乘数）时，横幅额外渲染一个标签行（例如 `14d · +110% cost`）和一行标语，如 *"Simulating 14d / 100% closure / +110% cost on 1 chokepoint. Chokepoint card below shows projected score; map highlights disrupted routes."* 受影响的咽喉要道本身在地图和咽喉要道卡片上高亮，而非在横幅中按名称列出。
+5. 点击横幅上的 **×** 关闭控件（aria-label："Dismiss scenario"）清除场景状态 — 地图重绘回基线，面板重新渲染时不显示投影分数和红色边框标注。
+
+对于脚本化使用，请参见 [`POST /api/scenario/v1/run-scenario`](/zh/api-scenarios#run-a-scenario) — 入队，然后轮询 `GET /api/scenario/v1/get-scenario-status` 直到响应有终止状态（成功为 `"done"`，错误为 `"failed"`）。非终止状态为 `"pending"`（排队）和 `"processing"`（worker 已启动）；两者都可能持续数秒。请参见[状态生命周期表](/zh/api-scenarios#poll-job-status)了解完整合约。
+
+## Scenario Engine 背后的数据
+
+- **场景模板** — `server/worldmonitor/supply-chain/v1/scenario-templates.ts`。添加需要 proto 侧变更；目前不可由用户配置。
+- **作业队列** — Redis 列表 `scenario-queue:pending`；worker 结果落在 `scenario-result:{jobId}`。
+- **咽喉要道注册表** — 支持实时咽喉要道状态和 Route Explorer 的同一注册表，确保场景结果与产品其余部分视觉一致。
+- **贸易/影响数据** — 从 `supply-chain:exposure:{ISO2}:{HS2}:v1` 读取的 HS2 暴露缓存条目。如果省略 `iso2`，v1 仅计算已种子化的报告国集合：`US`、`CN`、`RU`、`IR`、`IN` 和 `TW`。提供 `iso2` 会将作业限定到该单个国家键。
+
+## 影响数学
+
+对于物理咽喉要道场景，每个匹配的暴露条目贡献：
+
+```text
+adjustedImpact = exposureScore * (disruptionPct / 100) * costShockMultiplier
+```
+
+对于无物理咽喉要道关闭的关税冲击场景，worker 使用
+国家缓存的 `vulnerabilityIndex` 作为暴露代理：
+
+```text
+adjustedImpact = vulnerabilityIndex * costShockMultiplier
+```
+
+worker 按国家对 `adjustedImpact` 求和，降序排序，并返回
+前 20 名。`impactPct` 是针对分母下限 `1` 的 0-100 份额，因此当每个返回的 `totalImpact` 都低于 `1` 时，返回的顶级国家可能低于 100：
+
+```text
+impactPct = round(countryTotalImpact / max(maxReturnedTotalImpact, 1) * 100)
+```
+
+## 相关工作流
+
+- [Route Explorer](/zh/route-explorer) — 针对*今天*的状态运行特定航线。
+- [Scenarios API](/zh/api-scenarios) — 底层 HTTP 合约。
+- [Supply Chain](/api/SupplyChainService.openapi.yaml) — 支持 Supply Chain 面板的更广泛服务。

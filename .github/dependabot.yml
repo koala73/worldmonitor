@@ -1,0 +1,35 @@
+version: 2
+updates:
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+
+  - package-ecosystem: "docker"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    ignore:
+      # Hold the Node base image at the current LTS major (24). Dependabot still
+      # proposes 24.x minor/patch bumps; moving to the next major (25/26) is a
+      # deliberate manual step once it reaches LTS. See PR #4709.
+      - dependency-name: "node"
+        update-types: ["version-update:semver-major"]
+
+  - package-ecosystem: "docker"
+    directory: "/docker"
+    schedule:
+      interval: "weekly"
+    ignore:
+      # Hold the Node base image at the current LTS major (24). See PR #4709.
+      - dependency-name: "node"
+        update-types: ["version-update:semver-major"]
+
+  - package-ecosystem: "docker"
+    directory: "/consumer-prices-core"
+    schedule:
+      interval: "weekly"
+    ignore:
+      # Hold the Node base image at the current LTS major (24). See PR #4709.
+      - dependency-name: "node"
+        update-types: ["version-update:semver-major"]

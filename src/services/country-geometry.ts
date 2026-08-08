@@ -1,4 +1,5 @@
 import type { FeatureCollection, Geometry, GeoJsonProperties, Position } from 'geojson';
+import { markLcpDebug } from '@/utils/lcp-debug';
 
 interface IndexedCountryGeometry {
   code: string;
@@ -251,6 +252,7 @@ async function ensureLoaded(): Promise<void> {
   loadPromise = (async () => {
     if (typeof fetch !== 'function') return;
 
+    markLcpDebug('wm:data:country-geometry-fetch-start');
     try {
       const response = await fetch(COUNTRY_GEOJSON_URL);
       if (!response.ok) {
@@ -264,6 +266,7 @@ async function ensureLoaded(): Promise<void> {
 
       loadedGeoJson = data;
       rebuildCountryIndex(data);
+      markLcpDebug('wm:data:country-geometry-fetch-ready', { features: data.features.length });
 
       // Apply optional higher-resolution boundary overrides (sourced from Natural Earth)
       try {
@@ -280,6 +283,7 @@ async function ensureLoaded(): Promise<void> {
         // Overrides optional; ignore fetch/parse errors
       }
     } catch (err) {
+      markLcpDebug('wm:data:country-geometry-fetch-error');
       console.warn('[country-geometry] Failed to load countries.geojson:', err);
     }
   })();
@@ -289,6 +293,16 @@ async function ensureLoaded(): Promise<void> {
 
 export async function preloadCountryGeometry(): Promise<void> {
   await ensureLoaded();
+}
+
+/**
+ * True once the base country GeoJSON has been parsed and indexed, i.e. when
+ * getCountryAtCoordinates can resolve precise hits. Used by the boot path to
+ * decide whether geometry-dependent CII attribution actually ran without
+ * precision geometry (and therefore needs a replay) — see #4512.
+ */
+export function isCountryGeometryLoaded(): boolean {
+  return loadedGeoJson !== null;
 }
 
 export async function getCountriesGeoJson(): Promise<FeatureCollection<Geometry> | null> {

@@ -6,6 +6,7 @@ keywords: "live webcams geopolitical hotspots, real-time city cameras, live stre
 audience: "OSINT analysts, journalists, security professionals, curious global citizens"
 heroImage: "/blog/images/blog/live-webcams-from-geopolitical-hotspots.jpg"
 pubDate: "2026-03-01"
+modifiedDate: "2026-07-22"
 ---
 
 When news breaks in a foreign capital, your first instinct is to look. Not at a headline. Not at a map. You want to see what's happening on the ground, right now.
@@ -61,7 +62,7 @@ World Monitor doesn't just embed video. The webcam panel includes intelligence-o
 
 **Grid View vs. Single View:** Toggle between a surveillance-style grid showing multiple feeds simultaneously and a single expanded view for detailed observation. On mobile, single view is forced for performance.
 
-**Eco-Idle Pause:** When you switch to another panel or minimize the browser, streams automatically pause to save bandwidth and CPU. They resume when you return. This matters when you're running 31 video feeds alongside a 3D globe with 45 data layers.
+**Eco-Idle Pause:** When you switch to another panel or minimize the browser, streams automatically pause to save bandwidth and CPU. They resume when you return. This matters when you're running 31 video feeds alongside a 3D globe with 56 map layers.
 
 **Fallback Retry Logic:** Streams go down. Governments block them. CDNs throttle them. World Monitor's player automatically retries failed streams with backoff, and the desktop app routes YouTube embeds through a custom relay to bypass origin restrictions.
 
@@ -94,10 +95,10 @@ The webcam becomes a ground-truth check against the signals.
 
 World Monitor also integrates **30+ live news video streams** from major broadcasters:
 
-- **Bloomberg TV** for real-time financial coverage
-- **Sky News** for UK/international breaking news
-- **Al Jazeera** for Middle East and global south perspective
-- **Reuters** and **CNN** for general breaking coverage
+- **[Bloomberg TV](https://www.bloomberg.com/live)** for real-time financial coverage
+- **[Sky News](https://news.sky.com/)** for UK/international breaking news
+- **[Al Jazeera](https://www.aljazeera.com/)** for Middle East and global south perspective
+- **[Reuters](https://www.reuters.com/)** and **[CNN](https://www.cnn.com/)** for general breaking coverage
 - **Regional broadcasters** for local context
 
 These streams use HLS (HTTP Live Streaming) and YouTube Live, with automatic quality adaptation for your connection speed.
@@ -145,4 +146,4 @@ Yes. The Tauri desktop app includes staggered iframe loading and a custom sideca
 
 ---
 
-**See the world in real time at [worldmonitor.app](https://worldmonitor.app). 31 live webcams, 30+ news streams, zero login required.**
+**See the world in real time at [worldmonitor.app](https://www.worldmonitor.app). 31 live webcams, 30+ news streams, zero login required.**

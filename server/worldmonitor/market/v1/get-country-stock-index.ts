@@ -8,71 +8,46 @@ import type {
   GetCountryStockIndexRequest,
   GetCountryStockIndexResponse,
 } from '../../../../src/generated/server/worldmonitor/market/v1/service_server';
+import filterParamContracts from '../../../../shared/openapi-filter-param-contracts.json';
 import { UPSTREAM_TIMEOUT_MS, type YahooChartResponse } from './_shared';
 import { CHROME_UA, yahooGate } from '../../../_shared/constants';
-import { cachedFetchJson } from '../../../_shared/redis';
+import { cachedFetchJson, getCachedJson } from '../../../_shared/redis';
 
 // ========================================================================
 // Country-to-index mapping
 // ========================================================================
 
-const COUNTRY_INDEX: Record<string, { symbol: string; name: string }> = {
-  US: { symbol: '^GSPC', name: 'S&P 500' },
-  GB: { symbol: '^FTSE', name: 'FTSE 100' },
-  DE: { symbol: '^GDAXI', name: 'DAX' },
-  FR: { symbol: '^FCHI', name: 'CAC 40' },
-  JP: { symbol: '^N225', name: 'Nikkei 225' },
-  CN: { symbol: '000001.SS', name: 'SSE Composite' },
-  HK: { symbol: '^HSI', name: 'Hang Seng' },
-  IN: { symbol: '^BSESN', name: 'BSE Sensex' },
-  KR: { symbol: '^KS11', name: 'KOSPI' },
-  TW: { symbol: '^TWII', name: 'TAIEX' },
-  AU: { symbol: '^AXJO', name: 'ASX 200' },
-  BR: { symbol: '^BVSP', name: 'Bovespa' },
-  CA: { symbol: '^GSPTSE', name: 'TSX Composite' },
-  MX: { symbol: '^MXX', name: 'IPC Mexico' },
-  AR: { symbol: '^MERV', name: 'MERVAL' },
-  RU: { symbol: 'IMOEX.ME', name: 'MOEX' },
-  ZA: { symbol: '^J203.JO', name: 'JSE All Share' },
-  SA: { symbol: '^TASI.SR', name: 'Tadawul' },
-  AE: { symbol: 'DFMGI.AE', name: 'DFM General' },
-  IL: { symbol: '^TA125.TA', name: 'TA-125' },
-  TR: { symbol: 'XU100.IS', name: 'BIST 100' },
-  PL: { symbol: '^WIG20', name: 'WIG 20' },
-  NL: { symbol: '^AEX', name: 'AEX' },
-  CH: { symbol: '^SSMI', name: 'SMI' },
-  ES: { symbol: '^IBEX', name: 'IBEX 35' },
-  IT: { symbol: 'FTSEMIB.MI', name: 'FTSE MIB' },
-  SE: { symbol: '^OMX', name: 'OMX Stockholm 30' },
-  NO: { symbol: '^OSEAX', name: 'Oslo All Share' },
-  SG: { symbol: '^STI', name: 'STI' },
-  TH: { symbol: '^SET.BK', name: 'SET' },
-  MY: { symbol: '^KLSE', name: 'KLCI' },
-  ID: { symbol: '^JKSE', name: 'Jakarta Composite' },
-  PH: { symbol: 'PSEI.PS', name: 'PSEi' },
-  NZ: { symbol: '^NZ50', name: 'NZX 50' },
-  EG: { symbol: '^EGX30.CA', name: 'EGX 30' },
-  CL: { symbol: '^IPSA', name: 'IPSA' },
-  PE: { symbol: '^SPBLPGPT', name: 'S&P Lima' },
-  AT: { symbol: '^ATX', name: 'ATX' },
-  BE: { symbol: '^BFX', name: 'BEL 20' },
-  FI: { symbol: '^OMXH25', name: 'OMX Helsinki 25' },
-  DK: { symbol: '^OMXC25', name: 'OMX Copenhagen 25' },
-  IE: { symbol: '^ISEQ', name: 'ISEQ Overall' },
-  PT: { symbol: '^PSI20', name: 'PSI 20' },
-  CZ: { symbol: '^PX', name: 'PX Prague' },
-  HU: { symbol: '^BUX', name: 'BUX' },
-};
+const COUNTRY_INDEX = filterParamContracts.marketCountryStockIndexes as Record<string, { symbol: string; name: string }>;
 
 // ========================================================================
 // Cache
 // ========================================================================
 
-const REDIS_CACHE_KEY = 'market:stock-index:v1';
+// Railway owns `market:stock-index:v1:<country>` for audit-backed snapshots.
+// Keep request-driven cachedFetchJson writes separate: a slow request that
+// ends in a negative sentinel must never overwrite the seed's last-good data.
+const REDIS_CACHE_KEY = 'market:stock-index:rpc:v1';
+const RAILWAY_SEEDED_COUNTRY_INDEX_KEY_PREFIX = 'market:stock-index:v1:';
 const REDIS_CACHE_TTL = 1800; // 30 min — weekly data, slow-moving
 
 const stockIndexCache: Record<string, { data: GetCountryStockIndexResponse; ts: number }> = {};
 const STOCK_INDEX_CACHE_TTL = 3_600_000; // 1 hour (in-memory fallback)
+
+function railwaySeededKey(code: string): string {
+  return `${RAILWAY_SEEDED_COUNTRY_INDEX_KEY_PREFIX}${code}`;
+}
+
+// The seed row must agree with the key it was read from. A payload whose
+// `code` differs is a mis-keyed write, not usable data — serving it would
+// answer one country's request with another country's index.
+function isAvailableCountryStockIndex(value: unknown, code: string): value is GetCountryStockIndexResponse {
+  return Boolean(
+    value
+    && typeof value === 'object'
+    && (value as GetCountryStockIndexResponse).available
+    && (value as GetCountryStockIndexResponse).code === code,
+  );
+}
 
 // ========================================================================
 // Handler
@@ -91,6 +66,18 @@ export async function getCountryStockIndex(
 
   const index = COUNTRY_INDEX[code];
   if (!index) return notAvailable;
+
+  // Railway seeds every country in the enum and writes without the Vercel
+  // environment prefix. Prefer that raw last-good payload before serving the
+  // RPC cache. The fallback cache below intentionally uses a separate key so a
+  // failed request cannot replace a seed-owned record with a negative sentinel.
+  // The live fetch below remains as a gap-filler for any country whose seed
+  // leg failed on the last run.
+  const railwaySnapshot = await getCachedJson(railwaySeededKey(code), true);
+  if (isAvailableCountryStockIndex(railwaySnapshot, code)) {
+    stockIndexCache[code] = { data: railwaySnapshot, ts: Date.now() };
+    return railwaySnapshot;
+  }
 
   const cached = stockIndexCache[code];
   if (cached && Date.now() - cached.ts < STOCK_INDEX_CACHE_TTL) return cached.data;

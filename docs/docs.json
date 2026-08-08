@@ -46,216 +46,865 @@
     ],
     "primary": {
       "type": "button",
-      "label": "Get Early Access",
-      "href": "https://www.worldmonitor.app/pro#waitlist"
+      "label": "View Pro plans",
+      "href": "https://www.worldmonitor.app/pro#pricing"
     }
   },
   "navigation": {
-    "tabs": [
+    "languages": [
       {
-        "tab": "Documentation",
-        "groups": [
+        "language": "en",
+        "tabs": [
           {
-            "group": "Getting Started",
-            "pages": [
-              "documentation",
-              "getting-started",
-              "architecture"
+            "tab": "Documentation",
+            "groups": [
+              {
+                "group": "Getting Started",
+                "pages": [
+                  "documentation",
+                  "getting-started",
+                  "architecture"
+                ]
+              },
+              {
+                "group": "Usage",
+                "pages": [
+                  "usage-quickstart",
+                  "usage-auth",
+                  "usage-rate-limits",
+                  "usage-errors",
+                  "sandbox",
+                  "pricing",
+                  "accounts",
+                  "api-keys",
+                  "support"
+                ]
+              },
+              {
+                "group": "Platform & Features",
+                "pages": [
+                  "overview",
+                  "features",
+                  "global-procurement-intelligence",
+                  "hotspots"
+                ]
+              },
+              {
+                "group": "Intelligence & Analysis",
+                "pages": [
+                  "signal-intelligence",
+                  "ai-intelligence",
+                  "china-data-coverage",
+                  "china-official-macro-policy",
+                  "china-corporate-disclosures",
+                  "china-logistics-corridors",
+                  "methodology/china-activity-nowcast",
+                  "methodology/news-digest-and-briefing",
+                  "country-instability-index",
+                  "methodology/country-resilience-index",
+                  "methodology/chokepoints",
+                  "methodology/pipelines",
+                  "methodology/storage",
+                  "methodology/shortages",
+                  "methodology/disruptions",
+                  "methodology/cii-risk-scores",
+                  "methodology/disease-alert-level",
+                  "methodology/thermal-escalation",
+                  "corrections",
+                  "geographic-convergence",
+                  "strategic-risk",
+                  "algorithms"
+                ]
+              },
+              {
+                "group": "Workflows",
+                "pages": [
+                  "embed-live-map",
+                  "route-explorer",
+                  "scenario-engine"
+                ]
+              },
+              {
+                "group": "Map Layers",
+                "pages": [
+                  "map-engine",
+                  "orbital-surveillance",
+                  "military-tracking",
+                  "maritime-intelligence",
+                  "natural-disasters",
+                  "infrastructure-cascade",
+                  "maps-and-geocoding",
+                  "webcam-layer"
+                ]
+              },
+              {
+                "group": "Finance",
+                "pages": [
+                  "finance-data",
+                  "premium-finance",
+                  "premium-finance-search"
+                ]
+              },
+              {
+                "group": "Panels — AI & PRO",
+                "pages": [
+                  "panels/latest-brief",
+                  "panels/forecast",
+                  "panels/chat-analyst",
+                  "panels/market-implications",
+                  "panels/deduction",
+                  "panels/daily-market-brief",
+                  "panels/regional-intelligence",
+                  "panels/strategic-posture",
+                  "panels/threat-timeline",
+                  "panels/stock-analysis",
+                  "panels/stock-backtest",
+                  "panels/wsb-ticker-scanner"
+                ]
+              },
+              {
+                "group": "Panels — Data & Tracking",
+                "pages": [
+                  "panels/consumer-prices",
+                  "panels/disease-outbreaks",
+                  "panels/radiation-watch",
+                  "panels/thermal-escalation",
+                  "panels/airline-intel",
+                  "panels/tech-readiness",
+                  "panels/trade-policy",
+                  "panels/supply-chain",
+                  "panels/sanctions-pressure",
+                  "panels/hormuz-tracker",
+                  "panels/energy-crisis",
+                  "panels/world-clock",
+                  "panels/monitors",
+                  "panels/oref-sirens",
+                  "panels/telegram-intel",
+                  "panels/fsi"
+                ]
+              },
+              {
+                "group": "Panels — Catalogues",
+                "pages": [
+                  "panels/news-feeds",
+                  "panels/indicators-and-signals"
+                ]
+              },
+              {
+                "group": "Desktop Application",
+                "pages": [
+                  "desktop-app"
+                ]
+              },
+              {
+                "group": "MCP & Integrations",
+                "pages": [
+                  "agent-discovery",
+                  "agent-skills",
+                  "mcp-quickstart",
+                  "cli",
+                  "sdks",
+                  "mcp-overview",
+                  "mcp-apps",
+                  "mcp-tools-reference",
+                  "mcp-jmespath",
+                  "mcp-error-catalog",
+                  "api-oauth",
+                  "api-notifications"
+                ]
+              },
+              {
+                "group": "HTTP API",
+                "pages": [
+                  "api-platform",
+                  "api-brief",
+                  "api-commerce",
+                  "api-scenarios",
+                  "api-shipping-v2",
+                  "api-proxies"
+                ]
+              },
+              {
+                "group": "Developer Guide",
+                "pages": [
+                  "contributing",
+                  "authentication",
+                  "adding-endpoints",
+                  "api-key-deployment",
+                  "releasing-cli",
+                  "release-packaging",
+                  "cors",
+                  "health-endpoints",
+                  "relay-parameters",
+                  "decision-signal-provenance",
+                  "china-decision-signals",
+                  "data-sources"
+                ]
+              },
+              {
+                "group": "Company",
+                "pages": [
+                  "about"
+                ]
+              },
+              {
+                "group": "Legal",
+                "pages": [
+                  "license",
+                  "trademark-policy",
+                  "privacy",
+                  "terms"
+                ]
+              }
             ]
           },
           {
-            "group": "Platform & Features",
-            "pages": [
-              "overview",
-              "features",
-              "hotspots"
+            "tab": "API Reference",
+            "groups": [
+              {
+                "group": "Overview",
+                "pages": [
+                  "api-reference",
+                  "api-versioning"
+                ]
+              },
+              {
+                "group": "Geopolitical",
+                "pages": [
+                  {
+                    "group": "Conflicts",
+                    "openapi": "api/ConflictService.openapi.yaml"
+                  },
+                  {
+                    "group": "Military",
+                    "openapi": "api/MilitaryService.openapi.yaml"
+                  },
+                  {
+                    "group": "Unrest",
+                    "openapi": "api/UnrestService.openapi.yaml"
+                  },
+                  {
+                    "group": "Intelligence",
+                    "openapi": "api/IntelligenceService.openapi.yaml"
+                  },
+                  {
+                    "group": "Displacement",
+                    "openapi": "api/DisplacementService.openapi.yaml"
+                  },
+                  {
+                    "group": "Cyber",
+                    "openapi": "api/CyberService.openapi.yaml"
+                  },
+                  {
+                    "group": "Sanctions",
+                    "openapi": "api/SanctionsService.openapi.yaml"
+                  }
+                ]
+              },
+              {
+                "group": "Natural Events",
+                "pages": [
+                  {
+                    "group": "Natural Disasters",
+                    "openapi": "api/NaturalService.openapi.yaml"
+                  },
+                  {
+                    "group": "Seismology",
+                    "openapi": "api/SeismologyService.openapi.yaml"
+                  },
+                  {
+                    "group": "Climate",
+                    "openapi": "api/ClimateService.openapi.yaml"
+                  },
+                  {
+                    "group": "Wildfires",
+                    "openapi": "api/WildfireService.openapi.yaml"
+                  },
+                  {
+                    "group": "Radiation",
+                    "openapi": "api/RadiationService.openapi.yaml"
+                  },
+                  {
+                    "group": "Thermal",
+                    "openapi": "api/ThermalService.openapi.yaml"
+                  }
+                ]
+              },
+              {
+                "group": "Economy & Markets",
+                "pages": [
+                  {
+                    "group": "Economic",
+                    "openapi": "api/EconomicService.openapi.yaml"
+                  },
+                  {
+                    "group": "Markets",
+                    "openapi": "api/MarketService.openapi.yaml"
+                  },
+                  {
+                    "group": "Trade",
+                    "openapi": "api/TradeService.openapi.yaml"
+                  },
+                  {
+                    "group": "Supply Chain",
+                    "openapi": "api/SupplyChainService.openapi.yaml"
+                  },
+                  {
+                    "group": "Consumer Prices",
+                    "openapi": "api/ConsumerPricesService.openapi.yaml"
+                  },
+                  {
+                    "group": "Predictions",
+                    "openapi": "api/PredictionService.openapi.yaml"
+                  },
+                  {
+                    "group": "Forecasts",
+                    "openapi": "api/ForecastService.openapi.yaml"
+                  },
+                  {
+                    "group": "Commerce",
+                    "openapi": "openapi/CommerceService.openapi.yaml"
+                  }
+                ]
+              },
+              {
+                "group": "Infrastructure & Transport",
+                "pages": [
+                  {
+                    "group": "Aviation",
+                    "openapi": "api/AviationService.openapi.yaml"
+                  },
+                  {
+                    "group": "Maritime",
+                    "openapi": "api/MaritimeService.openapi.yaml"
+                  },
+                  {
+                    "group": "Infrastructure",
+                    "openapi": "api/InfrastructureService.openapi.yaml"
+                  },
+                  {
+                    "group": "Resilience",
+                    "openapi": "api/ResilienceService.openapi.yaml"
+                  }
+                ]
+              },
+              {
+                "group": "Health & Environment",
+                "pages": [
+                  {
+                    "group": "Public Health",
+                    "openapi": "api/HealthService.openapi.yaml"
+                  },
+                  {
+                    "group": "Imagery",
+                    "openapi": "api/ImageryService.openapi.yaml"
+                  },
+                  {
+                    "group": "Webcams",
+                    "openapi": "api/WebcamService.openapi.yaml"
+                  }
+                ]
+              },
+              {
+                "group": "Other",
+                "pages": [
+                  {
+                    "group": "News",
+                    "openapi": "api/NewsService.openapi.yaml"
+                  },
+                  {
+                    "group": "Research",
+                    "openapi": "api/ResearchService.openapi.yaml"
+                  },
+                  {
+                    "group": "Positive Events",
+                    "openapi": "api/PositiveEventsService.openapi.yaml"
+                  },
+                  {
+                    "group": "Giving",
+                    "openapi": "api/GivingService.openapi.yaml"
+                  },
+                  {
+                    "group": "Batch",
+                    "openapi": "api/BatchService.openapi.yaml"
+                  }
+                ]
+              }
             ]
           },
           {
-            "group": "Intelligence & Analysis",
-            "pages": [
-              "signal-intelligence",
-              "ai-intelligence",
-              "country-instability-index",
-              "geographic-convergence",
-              "strategic-risk",
-              "algorithms"
-            ]
-          },
-          {
-            "group": "Map Layers",
-            "pages": [
-              "map-engine",
-              "orbital-surveillance",
-              "military-tracking",
-              "maritime-intelligence",
-              "natural-disasters",
-              "infrastructure-cascade",
-              "maps-and-geocoding",
-              "webcam-layer"
-            ]
-          },
-          {
-            "group": "Finance",
-            "pages": [
-              "finance-data",
-              "premium-finance",
-              "premium-finance-search"
-            ]
-          },
-          {
-            "group": "Desktop Application",
-            "pages": [
-              "desktop-app"
-            ]
-          },
-          {
-            "group": "Developer Guide",
-            "pages": [
-              "contributing",
-              "authentication",
-              "adding-endpoints",
-              "api-key-deployment",
-              "release-packaging",
-              "cors",
-              "health-endpoints",
-              "relay-parameters",
-              "data-sources"
-            ]
-          },
-          {
-            "group": "Legal",
-            "pages": [
-              "license"
+            "tab": "Changelog",
+            "groups": [
+              {
+                "group": "Changelog",
+                "pages": [
+                  "changelog"
+                ]
+              }
             ]
           }
         ]
       },
       {
-        "tab": "API Reference",
-        "groups": [
-          {
-            "group": "Geopolitical",
-            "pages": [
-              {
-                "group": "Conflicts",
-                "openapi": "api/ConflictService.openapi.yaml"
-              },
-              {
-                "group": "Military",
-                "openapi": "api/MilitaryService.openapi.yaml"
-              },
-              {
-                "group": "Unrest",
-                "openapi": "api/UnrestService.openapi.yaml"
-              },
-              {
-                "group": "Intelligence",
-                "openapi": "api/IntelligenceService.openapi.yaml"
-              },
-              {
-                "group": "Displacement",
-                "openapi": "api/DisplacementService.openapi.yaml"
-              },
-              {
-                "group": "Cyber",
-                "openapi": "api/CyberService.openapi.yaml"
-              }
-            ]
-          },
-          {
-            "group": "Natural Events",
-            "pages": [
-              {
-                "group": "Natural Disasters",
-                "openapi": "api/NaturalService.openapi.yaml"
-              },
-              {
-                "group": "Seismology",
-                "openapi": "api/SeismologyService.openapi.yaml"
-              },
-              {
-                "group": "Climate",
-                "openapi": "api/ClimateService.openapi.yaml"
-              },
-              {
-                "group": "Wildfires",
-                "openapi": "api/WildfireService.openapi.yaml"
-              }
-            ]
-          },
-          {
-            "group": "Economy & Markets",
-            "pages": [
-              {
-                "group": "Economic",
-                "openapi": "api/EconomicService.openapi.yaml"
-              },
-              {
-                "group": "Markets",
-                "openapi": "api/MarketService.openapi.yaml"
-              },
-              {
-                "group": "Trade",
-                "openapi": "api/TradeService.openapi.yaml"
-              },
-              {
-                "group": "Supply Chain",
-                "openapi": "api/SupplyChainService.openapi.yaml"
-              },
-              {
-                "group": "Predictions",
-                "openapi": "api/PredictionService.openapi.yaml"
-              }
-            ]
-          },
-          {
-            "group": "Infrastructure & Transport",
-            "pages": [
-              {
-                "group": "Aviation",
-                "openapi": "api/AviationService.openapi.yaml"
-              },
-              {
-                "group": "Maritime",
-                "openapi": "api/MaritimeService.openapi.yaml"
-              },
-              {
-                "group": "Infrastructure",
-                "openapi": "api/InfrastructureService.openapi.yaml"
-              }
-            ]
-          },
-          {
-            "group": "Other",
-            "pages": [
-              {
-                "group": "News",
-                "openapi": "api/NewsService.openapi.yaml"
-              },
-              {
-                "group": "Research",
-                "openapi": "api/ResearchService.openapi.yaml"
-              },
-              {
-                "group": "Positive Events",
-                "openapi": "api/PositiveEventsService.openapi.yaml"
-              },
-              {
-                "group": "Giving",
-                "openapi": "api/GivingService.openapi.yaml"
-              }
-            ]
+        "language": "zh-Hans",
+        "navbar": {
+          "links": [
+            {
+              "label": "博客",
+              "href": "https://www.worldmonitor.app/blog"
+            },
+            {
+              "label": "仪表盘",
+              "href": "https://www.worldmonitor.app"
+            },
+            {
+              "label": "Pro",
+              "href": "https://www.worldmonitor.app/pro"
+            },
+            {
+              "label": "GitHub",
+              "href": "https://github.com/koala73/worldmonitor"
+            }
+          ],
+          "primary": {
+            "type": "button",
+            "label": "查看 Pro 方案",
+            "href": "https://www.worldmonitor.app/pro#pricing"
           }
-        ]
-      },
-      {
-        "tab": "Changelog",
-        "groups": [
+        },
+        "footer": {
+          "socials": {
+            "github": "https://github.com/koala73/worldmonitor",
+            "discord": "https://discord.gg/re63kWKxaz",
+            "x": "https://x.com/worldmonitorai"
+          },
+          "links": [
+            {
+              "header": "World Monitor",
+              "items": [
+                {
+                  "label": "仪表盘",
+                  "href": "https://www.worldmonitor.app"
+                },
+                {
+                  "label": "Pro",
+                  "href": "https://www.worldmonitor.app/pro"
+                },
+                {
+                  "label": "博客",
+                  "href": "https://www.worldmonitor.app/blog"
+                }
+              ]
+            },
+            {
+              "header": "社区",
+              "items": [
+                {
+                  "label": "GitHub",
+                  "href": "https://github.com/koala73/worldmonitor"
+                },
+                {
+                  "label": "Discord",
+                  "href": "https://discord.gg/re63kWKxaz"
+                },
+                {
+                  "label": "X",
+                  "href": "https://x.com/worldmonitorai"
+                },
+                {
+                  "label": "状态",
+                  "href": "https://status.worldmonitor.app/"
+                }
+              ]
+            }
+          ]
+        },
+        "tabs": [
           {
-            "group": "Changelog",
-            "pages": [
-              "changelog"
+            "tab": "文档",
+            "groups": [
+              {
+                "group": "入门",
+                "pages": [
+                  "zh/documentation",
+                  "zh/getting-started",
+                  "zh/architecture"
+                ]
+              },
+              {
+                "group": "使用",
+                "pages": [
+                  "zh/usage-quickstart",
+                  "zh/usage-auth",
+                  "zh/usage-rate-limits",
+                  "zh/usage-errors",
+                  "zh/sandbox",
+                  "zh/pricing",
+                  "zh/accounts",
+                  "zh/api-keys",
+                  "zh/support"
+                ]
+              },
+              {
+                "group": "平台与功能",
+                "pages": [
+                  "zh/overview",
+                  "zh/features",
+                  "zh/hotspots"
+                ]
+              },
+              {
+                "group": "情报与分析",
+                "pages": [
+                  "zh/signal-intelligence",
+                  "zh/ai-intelligence",
+                  "zh/china-data-coverage",
+                  "zh/china-official-macro-policy",
+                  "zh/china-corporate-disclosures",
+                  "zh/china-logistics-corridors",
+                  "zh/methodology/china-activity-nowcast",
+                  "zh/methodology/news-digest-and-briefing",
+                  "zh/country-instability-index",
+                  "zh/methodology/country-resilience-index",
+                  "zh/methodology/chokepoints",
+                  "zh/methodology/pipelines",
+                  "zh/methodology/storage",
+                  "zh/methodology/shortages",
+                  "zh/methodology/disruptions",
+                  "zh/methodology/cii-risk-scores",
+                  "zh/methodology/disease-alert-level",
+                  "zh/methodology/thermal-escalation",
+                  "zh/corrections",
+                  "zh/geographic-convergence",
+                  "zh/strategic-risk",
+                  "zh/algorithms"
+                ]
+              },
+              {
+                "group": "工作流",
+                "pages": [
+                  "zh/embed-live-map",
+                  "zh/route-explorer",
+                  "zh/scenario-engine"
+                ]
+              },
+              {
+                "group": "地图图层",
+                "pages": [
+                  "zh/map-engine",
+                  "zh/orbital-surveillance",
+                  "zh/military-tracking",
+                  "zh/maritime-intelligence",
+                  "zh/natural-disasters",
+                  "zh/infrastructure-cascade",
+                  "zh/maps-and-geocoding",
+                  "zh/webcam-layer"
+                ]
+              },
+              {
+                "group": "金融",
+                "pages": [
+                  "zh/finance-data",
+                  "zh/premium-finance",
+                  "zh/premium-finance-search"
+                ]
+              },
+              {
+                "group": "面板 — AI 与 PRO",
+                "pages": [
+                  "zh/panels/latest-brief",
+                  "zh/panels/forecast",
+                  "zh/panels/chat-analyst",
+                  "zh/panels/market-implications",
+                  "zh/panels/deduction",
+                  "zh/panels/daily-market-brief",
+                  "zh/panels/regional-intelligence",
+                  "zh/panels/strategic-posture",
+                  "zh/panels/threat-timeline",
+                  "zh/panels/stock-analysis",
+                  "zh/panels/stock-backtest",
+                  "zh/panels/wsb-ticker-scanner"
+                ]
+              },
+              {
+                "group": "面板 — 数据与追踪",
+                "pages": [
+                  "zh/panels/consumer-prices",
+                  "zh/panels/disease-outbreaks",
+                  "zh/panels/radiation-watch",
+                  "zh/panels/thermal-escalation",
+                  "zh/panels/airline-intel",
+                  "zh/panels/tech-readiness",
+                  "zh/panels/trade-policy",
+                  "zh/panels/supply-chain",
+                  "zh/panels/sanctions-pressure",
+                  "zh/panels/hormuz-tracker",
+                  "zh/panels/energy-crisis",
+                  "zh/panels/world-clock",
+                  "zh/panels/monitors",
+                  "zh/panels/oref-sirens",
+                  "zh/panels/telegram-intel",
+                  "zh/panels/fsi"
+                ]
+              },
+              {
+                "group": "面板 — 目录",
+                "pages": [
+                  "zh/panels/news-feeds",
+                  "zh/panels/indicators-and-signals"
+                ]
+              },
+              {
+                "group": "桌面应用",
+                "pages": [
+                  "zh/desktop-app"
+                ]
+              },
+              {
+                "group": "MCP 与集成",
+                "pages": [
+                  "zh/agent-discovery",
+                  "zh/agent-skills",
+                  "zh/mcp-quickstart",
+                  "zh/cli",
+                  "zh/sdks",
+                  "zh/mcp-overview",
+                  "zh/mcp-apps",
+                  "zh/mcp-tools-reference",
+                  "zh/mcp-jmespath",
+                  "zh/mcp-error-catalog",
+                  "zh/api-oauth",
+                  "zh/api-notifications"
+                ]
+              },
+              {
+                "group": "HTTP API",
+                "pages": [
+                  "zh/api-platform",
+                  "zh/api-brief",
+                  "zh/api-commerce",
+                  "zh/api-scenarios",
+                  "zh/api-shipping-v2",
+                  "zh/api-proxies"
+                ]
+              },
+              {
+                "group": "开发者指南",
+                "pages": [
+                  "zh/contributing",
+                  "zh/authentication",
+                  "zh/adding-endpoints",
+                  "zh/api-key-deployment",
+                  "zh/releasing-cli",
+                  "zh/release-packaging",
+                  "zh/cors",
+                  "zh/health-endpoints",
+                  "zh/relay-parameters",
+                  "zh/decision-signal-provenance",
+                  "zh/china-decision-signals",
+                  "zh/data-sources"
+                ]
+              },
+              {
+                "group": "公司",
+                "pages": [
+                  "zh/about"
+                ]
+              },
+              {
+                "group": "法律",
+                "pages": [
+                  "zh/license",
+                  "zh/trademark-policy",
+                  "zh/privacy",
+                  "zh/terms"
+                ]
+              }
+            ]
+          },
+          {
+            "tab": "API 参考",
+            "groups": [
+              {
+                "group": "概览",
+                "pages": [
+                  "zh/api-reference",
+                  "zh/api-versioning"
+                ]
+              },
+              {
+                "group": "地缘政治",
+                "pages": [
+                  {
+                    "group": "冲突",
+                    "openapi": "api/ConflictService.openapi.yaml"
+                  },
+                  {
+                    "group": "军事",
+                    "openapi": "api/MilitaryService.openapi.yaml"
+                  },
+                  {
+                    "group": "动乱",
+                    "openapi": "api/UnrestService.openapi.yaml"
+                  },
+                  {
+                    "group": "情报",
+                    "openapi": "api/IntelligenceService.openapi.yaml"
+                  },
+                  {
+                    "group": "流离失所",
+                    "openapi": "api/DisplacementService.openapi.yaml"
+                  },
+                  {
+                    "group": "网络",
+                    "openapi": "api/CyberService.openapi.yaml"
+                  },
+                  {
+                    "group": "制裁",
+                    "openapi": "api/SanctionsService.openapi.yaml"
+                  }
+                ]
+              },
+              {
+                "group": "自然事件",
+                "pages": [
+                  {
+                    "group": "自然灾害",
+                    "openapi": "api/NaturalService.openapi.yaml"
+                  },
+                  {
+                    "group": "地震学",
+                    "openapi": "api/SeismologyService.openapi.yaml"
+                  },
+                  {
+                    "group": "气候",
+                    "openapi": "api/ClimateService.openapi.yaml"
+                  },
+                  {
+                    "group": "野火",
+                    "openapi": "api/WildfireService.openapi.yaml"
+                  },
+                  {
+                    "group": "辐射",
+                    "openapi": "api/RadiationService.openapi.yaml"
+                  },
+                  {
+                    "group": "热力",
+                    "openapi": "api/ThermalService.openapi.yaml"
+                  }
+                ]
+              },
+              {
+                "group": "经济与市场",
+                "pages": [
+                  {
+                    "group": "经济",
+                    "openapi": "api/EconomicService.openapi.yaml"
+                  },
+                  {
+                    "group": "市场",
+                    "openapi": "api/MarketService.openapi.yaml"
+                  },
+                  {
+                    "group": "贸易",
+                    "openapi": "api/TradeService.openapi.yaml"
+                  },
+                  {
+                    "group": "供应链",
+                    "openapi": "api/SupplyChainService.openapi.yaml"
+                  },
+                  {
+                    "group": "消费者价格",
+                    "openapi": "api/ConsumerPricesService.openapi.yaml"
+                  },
+                  {
+                    "group": "预测",
+                    "openapi": "api/PredictionService.openapi.yaml"
+                  },
+                  {
+                    "group": "预报",
+                    "openapi": "api/ForecastService.openapi.yaml"
+                  },
+                  {
+                    "group": "商业",
+                    "openapi": "openapi/CommerceService.openapi.yaml"
+                  }
+                ]
+              },
+              {
+                "group": "基础设施与交通",
+                "pages": [
+                  {
+                    "group": "航空",
+                    "openapi": "api/AviationService.openapi.yaml"
+                  },
+                  {
+                    "group": "海事",
+                    "openapi": "api/MaritimeService.openapi.yaml"
+                  },
+                  {
+                    "group": "基础设施",
+                    "openapi": "api/InfrastructureService.openapi.yaml"
+                  },
+                  {
+                    "group": "韧性",
+                    "openapi": "api/ResilienceService.openapi.yaml"
+                  }
+                ]
+              },
+              {
+                "group": "健康与环境",
+                "pages": [
+                  {
+                    "group": "公共卫生",
+                    "openapi": "api/HealthService.openapi.yaml"
+                  },
+                  {
+                    "group": "影像",
+                    "openapi": "api/ImageryService.openapi.yaml"
+                  },
+                  {
+                    "group": "网络摄像头",
+                    "openapi": "api/WebcamService.openapi.yaml"
+                  }
+                ]
+              },
+              {
+                "group": "其他",
+                "pages": [
+                  {
+                    "group": "新闻",
+                    "openapi": "api/NewsService.openapi.yaml"
+                  },
+                  {
+                    "group": "研究",
+                    "openapi": "api/ResearchService.openapi.yaml"
+                  },
+                  {
+                    "group": "正面事件",
+                    "openapi": "api/PositiveEventsService.openapi.yaml"
+                  },
+                  {
+                    "group": "捐赠",
+                    "openapi": "api/GivingService.openapi.yaml"
+                  },
+                  {
+                    "group": "批量",
+                    "openapi": "api/BatchService.openapi.yaml"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "tab": "更新日志",
+            "groups": [
+              {
+                "group": "更新日志",
+                "pages": [
+                  "zh/changelog"
+                ]
+              }
             ]
           }
         ]
@@ -308,5 +957,35 @@
         ]
       }
     ]
-  }
+  },
+  "redirects": [
+    {
+      "source": "/mcp-server",
+      "destination": "/mcp-overview"
+    },
+    {
+      "source": "/plans",
+      "destination": "/pricing"
+    },
+    {
+      "source": "/tiers",
+      "destination": "/pricing"
+    },
+    {
+      "source": "/rate-limit",
+      "destination": "/usage-rate-limits"
+    },
+    {
+      "source": "/rate-limits",
+      "destination": "/usage-rate-limits"
+    },
+    {
+      "source": "/mcp-api-key",
+      "destination": "/usage-auth"
+    },
+    {
+      "source": "/contact",
+      "destination": "/support"
+    }
+  ]
 }

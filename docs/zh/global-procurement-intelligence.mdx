@@ -1,0 +1,82 @@
+---
+title: "全球采购情报"
+description: "WorldMonitor 如何汇聚活跃公共招标机会、说明来源健康状态，并提供分页采购 API。"
+---
+
+WorldMonitor 将**开放机会**与历史**近期授标**分开处理。开放机会显示在独立的 **Global Procurement** 面板中，是面向未来、由定时种子任务维护的数据流；授标记录仍在 Economic 面板中来自 USASpending。
+
+Global Procurement 是 **Pro 功能**。免费用户会看到标准登录或升级门槛，RPC 还会在服务器端独立验证有效的一级订阅。浏览器仅在 Pro 权限有效时请求并保留招标数据；退出登录或降级会清除面板数据及其内存响应缓存。近期授标仍保留在免费的 Economic 面板中。
+
+Pro 用户可以搜索标题和描述，按买方、两位国家代码和来源筛选，选择排序方式，并分页浏览完整结果集。面板不会直接读取 Upstash，而是调用分页 RPC，由 RPC 读取规范化的种子快照。
+
+## 覆盖范围与新鲜度
+
+初始适配器读取官方公开采购来源：
+
+| 来源 | 覆盖范围 | 说明 |
+| --- | --- | --- |
+| SAM.gov | 美国 | 需要部署环境中的 `SAM_GOV_API_KEY`；未配置会显示为不可用，而不是零结果。 |
+| TED | 欧盟 | 来自 TED Search API 的公开采购公告。 |
+| Contracts Finder | 英国 | 已发布的 OCDS 招标记录。 |
+| CanadaBuys | 加拿大 | CanadaBuys 每日更新的官方联邦开放招标 CSV。 |
+| GETS | 新西兰 / 大洋洲 | 官方 GETS RSS 中当前开放的招标。 |
+| 世界银行采购公告 | 多边 / 全球 | 面向借款国的世界银行资助机会公告。 |
+
+Railway 种子任务每小时运行一次，并把规范快照写入 `economic:global-tenders:v1`。其三小时 TTL 能在单次任务失败时保留最近一次成功结果。若某个适配器失败，该来源最后一次成功的数据会与其他健康来源的结果一起保留，响应会报告 `availability: "partial"`；若全部适配器失败，则以 `availability: "stale"` 提供最后一次成功的数据。
+
+`availability` 的含义如下：
+
+- `available`：所有已配置适配器均成功且至少返回一条公告。
+- `empty`：已配置适配器均成功，但没有返回公告。
+- `partial`：至少一个适配器不可用或失败，另一个适配器成功。
+- `stale`：当前所有来源请求均失败，因此正在提供最后一次成功的数据。
+- `unavailable`：没有可用的新鲜规范快照。
+
+数据流响应会包含每个来源的状态、记录数、最近请求时间、最近成功时间和过期标记。每个来源的种子键也会独立注册到 `/api/health`。对未覆盖国家的筛选绝不会被解释为确认的零机会。
+
+## 部署配置
+
+只有美国 SAM.gov 适配器需要新凭据：
+
+1. 登录 [SAM.gov](https://sam.gov/)，打开 **Account Details**，输入账户密码以查看 API 密钥控件。
+2. 请求 **Public API Key**；SAM.gov 会在 Account Details 页面显示生成的密钥。
+3. 在运行 `node scripts/seed-bundle-relay-backup.mjs` 的 Railway 服务中添加 `SAM_GOV_API_KEY`。不要通过 `VITE_` 变量公开，也不要提交到仓库。
+
+官方步骤和请求限制见 [GSA Get Opportunities Public API 指南](https://open.gsa.gov/api/get-opportunities-public-api/)。TED、Contracts Finder、CanadaBuys、GETS 和世界银行无需 API 密钥。若未配置 `SAM_GOV_API_KEY`，只有 SAM 来源会显示为 `unavailable`，其他适配器仍会正常运行。
+
+不配置 SAM 是受支持的状态，而非降级：`/api/health` 会将该来源报告为 [`NOT_CONFIGURED`](/docs/health-endpoints)（绿色，不计入 `problems`），而不是错误。因此，从未申请 GSA 密钥的部署仍会得到干净的健康端点。添加密钥后，下一次种子运行即自动转为 `OK`，无需修改任何健康配置。
+
+### 澳大利亚：AusTender 适配器目前被上游阻塞
+
+目前无法安全地上线官方澳大利亚 `austender` 适配器：没有任何允许自动复用的 AusTender 机器可读接口发布开放机会记录所必需的截止时间。以下为截至 2026-07-13 的证据：
+
+- 官方 AusTender 当前 ATM RSS 数据流（`https://www.tenders.gov.au/public_data/rss/rss.xml`，由澳大利亚财政部在 [data.gov.au](https://data.gov.au/data/dataset/latest-approaches-to-markets-listed-on-austender) 注册）只发布公告标题、官方链接、自由文本描述和发布日期，不包含截止时间、买方或分类字段。
+- 官方 [AusTender OCDS API](https://github.com/austender/austender-ocds-api) 仅提供 2013 年以来已授予的合同公告，而非开放的市场招标（ATM）。
+- data.gov.au 上机器可读的开放 ATM 导出数据止于 2014 年 6 月。
+- 截止时间只出现在逐条公告的 HTML 页面上；提取它们意味着抓取 AusTender 网站——这不是文档化的机器可读复用接口，也被本数据流的非目标明确排除。
+
+本数据流绝不表示没有可验证未来截止时间的记录，因此澳大利亚覆盖保持缺失而不是被推断，也不会用新西兰 GETS 数据替代澳大利亚覆盖。按 `country=AU` 筛选时保持未观测国家的标准 `countryCoverage: "unknown"` 语义。一旦 AusTender 通过机器可读渠道发布截止时间，该适配器即可在不改动管道的情况下上线。
+
+## API
+
+`GET /api/economic/v1/list-global-tenders` 仅向 Pro 开放、有意采用分页，且**不会**进入启动批量载荷。它支持 `country`、重复的 `countries`、`region`、`source`、`status`、`buyer`、`published_from`、`published_to`、`deadline_from`、`deadline_to`、`min_value`、`max_value`、`currency`、`category`、`query`、`min_automation_score`、`page_size`、`cursor` 和 `sort`。
+
+支持的排序方式为 `newest`、`closing_soon`、`estimated_value` 和 `relevance`。`page_size` 最大为 100。响应包含已应用的筛选条件、游标、快照时间、可用性和各来源健康摘要。
+
+每条记录都含有稳定的 WorldMonitor ID（`source:sourceNoticeId`）、官方公告链接、来源公告 ID、上游提供时的金额字段、时间戳、分类数据和可追溯的来源名称。缺失的上游字段保持缺失，不会被推断填补。
+
+## MCP 工具
+
+`get_procurement_opportunities` 向已认证的 MCP 客户端暴露同一条规范路由；它绝不直接读取 `economic:global-tenders:v1`。其上下文预算有意设为**默认 10 条紧凑机会，最多 25 条**。它公开 `country`、重复的 `countries`、`source`、`query`、`buyer`、`deadline_from`、`deadline_to`、`sort`、`min_automation_score`、`page_size` 和 `cursor`。
+
+紧凑投影省略描述文本、资格要求和提交 URL，同时保留每条机会的官方 URL、来源、标题、买方、日期、金额、分类、领域、`participationMode` 和精简的 `automationFit`。它还保留游标分页、`total`、`appliedFilters`、`countryCoverage`、可用性、快照时间和来源健康摘要。25 条的 MCP 上限有意小于 REST 路由 100 条的上限。
+
+MCP 工具与 HTTP 路由一样仅限 Pro，且不属于 bootstrap。无筛选工具调用会保留所有开放机会；`min_automation_score` 始终是可选项。完整参数契约见 [MCP 工具参考](/zh/mcp-tools-reference#get_procurement_opportunities)。
+
+## 技术相关性
+
+`automationFit` 是针对软件、AI、数据、网络安全、自动化、云服务及相关术语的透明关键词相关性信号。它包含评分、分类版本、匹配理由和文本证据，**不是**法律意见或采购资格判断；除非上游来源明确提供，`participationMode` 始终为 `unknown`。
+
+可选的 `min_automation_score` 查询参数（1–100 的整数；超出上限会被截断，非整数值会被忽略）仅返回 `automationFit.score` 达到阈值的机会。它默认关闭，因此现有调用方继续收到所有匹配的开放机会；启用时会出现在响应的 `appliedFilters` 中。独立面板以 **Technology relevant only** 复选框提供该筛选。该筛选与每条记录的匹配理由仅表达关键词相关性证据，绝不表示任何 AI 系统、代理或供应商具有投标资格。
+
+仪表板只会在 URL 通过安全处理后显示官方公告链接，并会同时展示与来源提供机会详情对应的相关性理由。

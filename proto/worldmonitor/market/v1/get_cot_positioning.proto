@@ -22,5 +22,7 @@ message CotInstrument {
 message GetCotPositioningResponse {
   repeated CotInstrument instruments = 1;
   string report_date = 2;
+  // True when the upstream or seed-backed variant is unavailable; empty payload fields
+  // are graceful degradation, not confirmed zero data.
   bool unavailable = 3;
 }

@@ -1,11 +1,12 @@
 ---
-title: "Satellite Eyes: How World Monitor Brings Orbital Surveillance to Your Browser"
-description: "Access satellite imagery of geopolitical hotspots in World Monitor. Search by location, time, and cloud cover with STAC API, overlaid on 44 live intelligence layers."
-metaTitle: "Satellite Imagery for OSINT | World Monitor"
+title: "Satellite Imagery OSINT in Your Browser"
+description: "Access satellite imagery for geopolitical hotspots in World Monitor. Search by location, time, and cloud cover, then overlay it on live intelligence layers."
+metaTitle: "Satellite Imagery OSINT Dashboard | World Monitor"
 keywords: "satellite imagery OSINT, free satellite intelligence, orbital surveillance dashboard, STAC API satellite search, geopolitical satellite monitoring"
 audience: "OSINT analysts, remote sensing enthusiasts, defense researchers, environmental monitors"
 heroImage: "/blog/images/blog/satellite-imagery-orbital-surveillance.jpg"
 pubDate: "2026-02-28"
+modifiedDate: "2026-06-13"
 ---
 
 Satellite imagery used to require government clearance or a Maxar contract. Today, a growing constellation of Earth observation satellites captures the planet daily, and World Monitor brings that data directly into your intelligence workflow.
@@ -20,7 +21,7 @@ World Monitor's orbital surveillance layer overlays satellite imagery onto both 
 - Time-range queries to compare before and after events
 - Cloud coverage percentage so you know if the image is useful
 - Resolution metadata for assessing detail level
-- Seamless overlay with conflict data, military bases, and infrastructure layers
+- Smooth overlay with conflict data, military bases, and infrastructure layers
 
 ## STAC API: The Engine Behind the Imagery
 
@@ -46,7 +47,7 @@ After a reported strike on a pipeline, port, or datacenter, satellite imagery sh
 
 ### Environmental Monitoring
 
-Track deforestation, mining expansion, flooding, and fire damage. The NASA FIRMS fire layer shows active hotspots; satellite imagery shows the aftermath and extent. For more on natural hazard tracking, see [natural disaster monitoring with World Monitor](/blog/posts/natural-disaster-monitoring-earthquakes-fires-volcanoes/).
+Track deforestation, mining expansion, flooding, and fire damage. The [NASA FIRMS](https://firms.modaps.eosdis.nasa.gov/) fire layer shows active hotspots; satellite imagery shows the aftermath and extent. For more on natural hazard tracking, see [natural disaster monitoring with World Monitor](/blog/posts/natural-disaster-monitoring-earthquakes-fires-volcanoes/).
 
 ### Maritime Intelligence
 
@@ -71,7 +72,7 @@ The orbital layer becomes most powerful when combined with World Monitor's other
 | Port blockade | AIS + maritime + news | Ship congestion visualization |
 | Nuclear activity | Nuclear facilities + CII | Construction changes, thermal signatures |
 | Protest camp | Conflict + Telegram OSINT | Crowd size estimation, barricade placement |
-| Natural disaster | USGS + NASA FIRMS | Damage footprint, flood extent |
+| Natural disaster | [USGS](https://earthquake.usgs.gov/) + NASA FIRMS | Damage footprint, flood extent |
 
 No other free dashboard lets you overlay satellite imagery on top of real-time conflict data, military tracking, and AI-scored intelligence, in the same view. Explore the full [OSINT capabilities World Monitor offers](/blog/posts/osint-for-everyone-open-source-intelligence-democratized/).
 
@@ -118,4 +119,4 @@ Yes. Use the time-range query feature to pull imagery from different dates. This
 
 ---
 
-**Explore satellite imagery at [worldmonitor.app](https://worldmonitor.app). Toggle the orbital surveillance layer and see the world from above.**
+**Explore satellite imagery at [worldmonitor.app](https://www.worldmonitor.app). Toggle the orbital surveillance layer and see the world from above.**

@@ -1,0 +1,546 @@
+---
+title: "WorldMonitor MCP server: connect Claude, Cursor, and agents"
+description: "Connect Claude, Cursor, and other MCP-compatible clients to WorldMonitor's live global-intelligence data via the Model Context Protocol."
+---
+
+WorldMonitor exposes its intelligence stack as a [Model Context Protocol](https://modelcontextprotocol.io) server so any MCP-compatible client (Claude Desktop, Claude web, Cursor, MCP Inspector, custom agents) can pull live conflict, market, aviation, maritime, economic, and forecasting data directly into a model's context.
+
+<Tip>
+**New here?** The [MCP Quickstart](/mcp-quickstart) is a five-minute path from zero to a real tool call in Claude Desktop. Come back to this page for auth modes, plans, OAuth setup, and the full tool catalog.
+</Tip>
+
+<Info>
+**Pro and API tiers can both connect via OAuth — no API key required.** Pro subscribers click _"Sign in with WorldMonitor Pro"_ on the consent page; API Starter / Business / Enterprise users may sign in the same way OR paste a `wm_…` key. Free-tier users see a `403 INSUFFICIENT_TIER` at the OAuth step.
+</Info>
+
+All paid tiers share the same MCP server and the same 59 tools. The current hard MCP daily reservation is enforced only for OAuth contexts at the Pro counter: **50 quota-consuming `tools/call` / `resources/read` calls per UTC day**. API-key (`wm_…`) MCP clients are protected by the **60 requests/minute/key** limiter in this handler; broader API Starter / Business REST allowances are enforced outside the MCP daily reservation path. (`describe_tool`, the v1.5.0 metadata-lookup helper, is exempt from the Pro daily quota.)
+
+Pro subscribers can connect Claude Desktop / Cursor / claude.ai without ever pasting an API key — see [Pro sign-in flow](#pro-sign-in-flow) below. API Starter+ holders may continue to paste a `wm_…` key on the consent page (the original flow), or use the same OAuth path as Pro.
+
+## Endpoints
+
+| Endpoint | Purpose |
+|----------|---------|
+| `https://worldmonitor.app/mcp` | JSON-RPC server (Streamable HTTP transport; JSON responses by default, SSE responses when clients advertise `text/event-stream`; `initialize` defaults to protocol `2025-03-26`) |
+| `https://api.worldmonitor.app/api/oauth/register` | Dynamic Client Registration (RFC 7591) |
+| `https://api.worldmonitor.app/api/oauth/authorize` | OAuth 2.1 authorization endpoint (PKCE required) |
+| `https://api.worldmonitor.app/api/oauth/token` | Token endpoint (authorization_code + refresh_token) |
+| `https://api.worldmonitor.app/.well-known/oauth-authorization-server` | AS metadata (RFC 8414) |
+| `https://worldmonitor.app/.well-known/oauth-protected-resource` | Resource server metadata (RFC 9728) |
+
+Server identifier: `worldmonitor` v1.15.0.
+
+Registry listings: the server is published in the [official MCP registry](https://registry.modelcontextprotocol.io/v0/servers?search=worldmonitor) as `app.worldmonitor/mcp` — a domain-verified namespace, so clients that resolve servers through the registry get the same endpoint and metadata as the server card above — and listed on [Smithery](https://smithery.ai/servers/worldmonitor/wm-mcp) and [mcp.so](https://mcp.so/server/world-monitor).
+
+### Protocol negotiation
+
+WorldMonitor's static server card at `/.well-known/mcp/server-card.json` advertises protocol version `2025-06-18`, and the live `initialize` handshake negotiates it by default — so the advertised floor and the negotiated version stay in lock-step:
+
+- By default, `initialize` supports both `2025-03-26` and `2025-06-18`.
+- Clients requesting `2025-06-18` receive `2025-06-18`; clients pinned to `2025-03-26` continue receiving `2025-03-26`.
+- Setting `MCP_PROTOCOL_FLOOR_2025_06_18=off` pins the server back to the legacy `2025-03-26`-only floor; a client that then requests `2025-06-18` receives the safe default `2025-03-26`.
+
+Tool `outputSchema` metadata is emitted on `tools/list` regardless of the negotiated protocol version. Older `2025-03-26` clients should ignore unknown fields, while newer clients can use the schema immediately.
+
+### Streamable HTTP responses
+
+WorldMonitor supports the Streamable HTTP POST flow with either JSON or SSE responses:
+
+- Clients that omit `text/event-stream` from `Accept` receive the standard JSON-RPC JSON response body.
+- Clients that send `Accept: application/json, text/event-stream` can receive a `text/event-stream` response for successful JSON-RPC POSTs.
+- `initialize` SSE responses include `Mcp-Session-Id`; follow-up POSTs should send that same `Mcp-Session-Id` header.
+- Each SSE response carries the JSON-RPC result as a single `message` event with an event `id`. There is no leading empty priming event — per the WHATWG SSE spec an empty `data:` field still dispatches a `message` (with `data === ""`), which causes strict handshake scanners to fail on `JSON.parse("")`.
+- If the client disconnects after the sole event, it can reconnect by sending `GET /mcp` with `Accept: text/event-stream`, the same `Mcp-Session-Id`, and `Last-Event-ID`; resuming after the delivered event returns an empty stream. A client that dropped before receiving the event has no acknowledged `Last-Event-ID` and re-issues the POST instead.
+- A **bare `GET /mcp`** — one **without** `Last-Event-ID` — is a client opening the optional standalone server→client SSE stream. This stateless edge route offers no server-initiated stream, so it answers `405 Method Not Allowed` (advertising `Allow`), which the MCP spec defines as the graceful "no standalone stream" signal. MCP SDK clients handle this transparently and complete the handshake; the `GET` verb itself is reserved for the authenticated `Last-Event-ID` replay above.
+
+The replay buffer is in-memory and bounded per edge instance. Treat `Last-Event-ID` resume as loss-tolerant transport recovery, not durable message storage.
+
+## Authentication
+
+**Discovery is public.** `initialize`, `tools/list`, `prompts/list`, `prompts/get`, `resources/list`, `resources/templates/list`, `ping`, `logging/setLevel`, and the `notifications/initialized` handshake are servable **without credentials**, so any agent (or agent-readiness scanner) can connect to `https://worldmonitor.app/mcp`, read the server identity, and enumerate the full tool, prompt, and resource catalogs before authenticating — the same metadata already published in the static [server card](https://worldmonitor.app/.well-known/mcp/server-card.json). These methods return only public catalog metadata (names, descriptions, URIs / URI templates, static workflow-template prose — no data, no quota); every capability advertised by the anonymous `initialize` is anonymously exercisable, so a strict MCP client (Claude Desktop, `mcp-remote`, the reference SDKs) completes its full post-connect enumeration without stalling on an auth wall. `resources/read` of a **public** resource (a concrete, metadata-only freshness/health probe surfaced by `resources/list`, such as `worldmonitor://seed-meta/freshness`) is **also public and quota-free** — an anonymous agent can read it cleanly. Anonymous discovery is rate-limited to 60 requests/minute per client IP. Everything that returns data or spends quota (`tools/call`, and `resources/read` of a data-bearing **URI-template instantiation** — country risk, chokepoint status, market quote) still requires one of the two auth modes below. A credential presented on a discovery method is still validated (a bad key returns `401`, never a silent anonymous downgrade).
+
+The MCP handler accepts two auth modes, in priority order:
+
+1. **OAuth 2.1 bearer** — `Authorization: Bearer <token>` where `<token>` was issued by `/api/oauth/token`. This is what Claude Desktop, claude.ai, Cursor, and MCP Inspector use automatically. Required for any client that hits MCP from a browser origin.
+2. **Direct API key** — `X-WorldMonitor-Key: wm_0123456789abcdef0123456789abcdef01234567` for user-issued keys, or an opaque operator-issued enterprise key. Intended for server-side scripts, `curl`, and custom integrations. Do **not** send an API key as a `Bearer` token — it will fail OAuth resolution and return `401 invalid_token`.
+
+OAuth bearer requests re-check the resolved MCP token, user binding, and active entitlement before dispatch, so a subscription downgrade revokes OAuth MCP access on the next request. Direct `X-WorldMonitor-Key` requests validate the configured API key and then use the per-key limiter; their REST/API plan allowances are enforced outside the Pro/OAuth MCP daily reservation path.
+
+### Redirect URI allowlist
+
+Dynamic Client Registration is **not** open to arbitrary HTTPS redirects. Only these prefixes are accepted:
+
+- `https://claude.ai/api/mcp/auth_callback`
+- `https://claude.com/api/mcp/auth_callback`
+- `http://localhost:<port>` / `http://127.0.0.1:<port>` (any port) — for Claude Code, MCP Inspector, local development
+
+Other clients must proxy via one of these redirects or run locally.
+
+### Token lifetimes
+
+| Artifact | TTL |
+|----------|-----|
+| Authorization code | 10 min |
+| Access token | 1 hour |
+| Refresh token | 7 days |
+| Registered client record | 90 days (sliding) |
+
+## Pro sign-in flow
+
+Pro subscribers (and API Starter+ users who'd rather not paste a key) can authorize MCP clients via their existing WorldMonitor account — no API key needed.
+
+1. **Add the server URL** in your MCP client. The canonical entrypoint is:
+
+   ```
+   https://api.worldmonitor.app/mcp
+   ```
+
+   (`https://worldmonitor.app/mcp` works too — it proxies the same handler.)
+
+2. **Click "Sign in with WorldMonitor Pro"** on the consent page. This is the default CTA. You'll bounce through `worldmonitor.app/mcp-grant` (Clerk-protected — sign in if needed), then back to `api.worldmonitor.app/oauth/authorize-pro`, then to your client's redirect.
+
+3. **Done.** No `wm_…` key is created or stored on your machine. The client receives a standard OAuth 2.1 access token (1 h TTL, 7 d refresh).
+
+<Note>
+If the sign-in step reports that your subscription could not be verified — a `503` page, or `503 TIER_VERIFICATION_UNAVAILABLE` from the grant endpoints — that is transient and says nothing about your subscription. Wait the advertised `Retry-After` and start the connection again from your client; the authorization session is single-use, so restart it rather than reloading the page. A confirmed non-Pro account gets `403 INSUFFICIENT_TIER` instead, and a lapsed subscription gets `403` with `X-Billing-Verification: subscription_lapsed`. See [Error handling](/usage-errors).
+</Note>
+
+If you'd rather paste an API key (Starter+ / scripted clients), expand "Use API key instead" on the consent page and submit your `wm_` user key or operator-issued enterprise key — that path is unchanged.
+
+### Daily limit (Pro tier)
+
+- **50 quota-consuming calls per UTC day**, reset at 00:00 UTC.
+- `tools/call` and `resources/read` of a data-bearing **URI-template instantiation** consume the Pro daily quota, except the metadata helper `describe_tool`.
+- `initialize`, `tools/list`, `prompts/list`, `prompts/get`, `resources/list`, `resources/templates/list`, `logging/setLevel`, `notifications/initialized`, `ping`, and `describe_tool` do **not** count against the daily cap. `resources/read` of a **public** resource (a metadata-only freshness/health probe, e.g. `worldmonitor://seed-meta/freshness`) is likewise exempt — it carries no billable data.
+- Hitting the cap returns JSON-RPC error `-32029` plus HTTP `429` with a `Retry-After` header pointing at the next UTC midnight.
+- The cap is hard: concurrent `tools/call` or `resources/read` requests near the boundary use an atomic Redis reservation, so exactly the call that crosses 50 rejects.
+
+Need higher-volume scripted access? **API Starter** and **API Business** add a `wm_…` key option plus REST/API plan allowances, but `wm_…` MCP calls are not metered by the MCP daily reservation counter; they still have the 60/minute/key MCP throttle. For batch or high-volume workflows, prefer the REST/API endpoints or contact Enterprise — see [Plans & limits](#plans--limits).
+
+### Connected MCP clients
+
+Each authorization mints a separate row, so revoking Claude Desktop does not affect Cursor.
+
+- Manage connected clients in **[Settings → Connected MCP clients](https://worldmonitor.app/settings)**.
+- See the live `clientName` (e.g. "Claude", "Cursor"), `lastUsedAt`, and `createdAt` per token.
+- A revoke takes effect on the next MCP request (no positive cache).
+- Up to **5 active tokens per user**. The 6th authorization silently revokes the least-recently-used existing one.
+
+## Plans & limits
+
+| Plan | MCP access | Auth modes | MCP daily reservation | Notes |
+|------|------------|------------|-----------------------|-------|
+| **Free** | ❌ No | — | — | OAuth flow returns `403 INSUFFICIENT_TIER`. Upgrade at [worldmonitor.app/pro](https://www.worldmonitor.app/pro). |
+| **Pro** | ✅ Yes | OAuth only | **50 quota-consuming calls / UTC day** | Bounce-via-apex Clerk sign-in. No `wm_…` key needed or stored. |
+| **API Starter** | ✅ Yes | OAuth **or** `wm_…` key | OAuth contexts use the Pro counter; `wm_…` MCP calls have **no MCP daily reservation** | Standard developer-tier REST/API access. |
+| **API Business** | ✅ Yes | OAuth **or** `wm_…` key | OAuth contexts use the Pro counter; `wm_…` MCP calls have **no MCP daily reservation** | Higher REST/API throughput. |
+| **Enterprise** | ✅ Yes | OAuth **or** `wm_…` key | Custom; `wm_…` MCP calls have **no default MCP daily reservation** | Custom SLA available. |
+
+Per-minute throttling of 60 calls/minute/key (API-key clients) or 60/minute/user (OAuth contexts) protects against burst storms across all paid tiers. **The per-minute limiter runs before method dispatch, so every method (including `initialize`, `tools/list`, `prompts/list`, `resources/list`, `describe_tool`, etc.) counts toward 60/min.** Only the Pro/OAuth daily-quota cap is selective — that one is consumed exclusively by `tools/call` and `resources/read` reservations (see [Daily limit (Pro tier)](#daily-limit-pro-tier) above, and the [Error Catalog](/mcp-error-catalog#-32029--rate-limited-per-minute-or-daily) for the full method-exemption tables for both limits).
+
+OAuth 60/min is per-USER (a user with 3 Claude installations shares one 60/min pool); API-key 60/min is per-KEY (multiple keys = higher throughput).
+
+Hitting the Pro/OAuth daily quota returns JSON-RPC error `-32029` plus HTTP `429` with a `Retry-After` header pointing at the next UTC midnight. Hitting the per-minute limit returns the same error code with a short `Retry-After`.
+
+WorldMonitor also surfaces current MCP plan-limit notices in Settings and sends a bounded-cadence email when a paid user approaches or exceeds their plan allowance. Notices are informational and action-oriented: they offer retry/reset guidance, checkout when the next tier is self-serve, or support contact when it is not. They do not automatically upgrade the account or create overage charges.
+
+### Other rate limits
+
+- **OAuth authorize**: 10 requests / minute / IP
+- **OAuth token**: 10 requests / minute / IP
+- **Dynamic registration**: 5 registrations / minute / IP
+
+Exceeding any limit returns HTTP `429` with a `Retry-After` header.
+
+## Client setup
+
+### Claude Desktop
+
+`~/Library/Application Support/Claude/claude_desktop_config.json` (macOS) — use the remote MCP entry:
+
+```json
+{
+  "mcpServers": {
+    "worldmonitor": {
+      "url": "https://worldmonitor.app/mcp"
+    }
+  }
+}
+```
+
+Claude Desktop handles the OAuth flow automatically on first connection.
+
+### Claude web (claude.ai)
+
+Add via **Settings → Connectors → Add custom connector**:
+
+- Name: `WorldMonitor`
+- URL: `https://worldmonitor.app/mcp`
+
+### Cursor
+
+`~/.cursor/mcp.json`:
+
+```json
+{
+  "mcpServers": {
+    "worldmonitor": {
+      "url": "https://worldmonitor.app/mcp"
+    }
+  }
+}
+```
+
+### MCP Inspector (debugging)
+
+```bash
+npx @modelcontextprotocol/inspector https://worldmonitor.app/mcp
+```
+
+## Tool catalog
+
+The server exposes 59 tools. Most are cache-reads over pre-seeded Redis keys (sub-second). The slower, non-cache paths are the six live LLM/external-API tools (`get_country_brief`, `analyze_situation`, `generate_forecasts`, `search_flights`, `search_flight_prices_by_date`, `classify_event`) plus the live geo RPC tools (`get_airspace`, `get_maritime_activity`), the bounded canonical procurement proxy (`get_procurement_opportunities`), the corporate-intelligence proxy (`get_company_intelligence`), the canonical China decision-signal RPC (`get_china_decision_signals`), and the three durable-history RPCs (`search_intel_history`, `get_intel_timeline`, `get_similar_events`). `get_world_brief` reads the dashboard's precomputed, citation-grounded `news:insights:v1` snapshot and does not make a request-time LLM call. The on-demand NLP utilities (`classify_event`, `extract_entities`, `get_news_clusters`, `get_keyword_spikes`) accept bounded caller text or compute over live seeded data; all but `classify_event` are fully deterministic. One (`describe_tool`, added v1.5.0) returns the full uncompressed definition of any other tool — useful when the compressed `tools/list` description is ambiguous; exempt from the Pro daily quota.
+
+<Tip>
+For per-tool parameters, freshness budgets, timeouts, and concrete `curl` examples, see the [MCP Tools Reference](/mcp-tools-reference). For payload projection — every tool accepts an optional `jmespath` argument that typically cuts response size by 80-95% — see the [JMESPath guide](/mcp-jmespath).
+</Tip>
+
+### Markets & economy
+
+| Tool | Description |
+|------|-------------|
+| `get_market_data` | Equity quotes, commodity prices (incl. gold GC=F), crypto, FX, sector performance and valuation coverage, ETF flows, Gulf markets. Sector coverage separates write age from completeness and exposes bounded unavailable/last-good/direct-proxy diagnostics. |
+| `get_economic_data` | Fed Funds, economic calendar, fuel prices, ECB FX, EU yield curve, earnings, COT, energy storage, BIS DSR + property prices. |
+| `get_country_macro` | IMF WEO bundle per country: inflation, current account, GDP/capita, unemployment, savings-investment gap (~210 countries). |
+| `get_eu_housing_cycle` | Eurostat annual house price index (prc_hpi_a), 10-yr sparkline per EU member + EA20/EU27. |
+| `get_eu_quarterly_gov_debt` | Eurostat quarterly gross government debt (%GDP), 8-quarter sparkline. |
+| `get_eu_industrial_production` | Eurostat monthly industrial production index, 12-month sparkline. |
+| `get_prediction_markets` | Prediction markets with current probabilities: geopolitical/elections, tagged tech (AI/crypto/science), finance/economics or untagged fallback. |
+| `get_supply_chain_data` | Dry bulk shipping stress index, customs flows, COMTRADE bilateral trade. |
+| `get_tariff_trends` | Global trade and pricing indicators: US tariff trends (HTS-coded), BigMac index, FAO Food Price Index, and per-country national debt levels. |
+| `get_chokepoint_status` | Live maritime chokepoint status: per-chokepoint vessel transit counts (10-min cadence), rolling transit summaries, per-port activity, plus static reference data and flow aggregates. Covers Suez, Hormuz, Malacca, Bab-el-Mandeb, Panama, etc. |
+| `get_consumer_prices` | Per-country consumer-prices intelligence: 30-day overview, category-level inflation, retailer spread (essentials basket), top movers, and source freshness. Requires `country_code` (currently only `ae` is seeded). |
+| `get_procurement_opportunities` | Pro-gated canonical global procurement search; compact output defaults to 10 records and caps at 25. Keyword relevance is never bidding eligibility. |
+| `get_company_intelligence` | Verified per-company SEC intelligence: enrichment, timestamped signals, filing search, and market-wide material 8-K events. |
+| `get_commodity_geo` | 71 major mining sites worldwide (gold, silver, copper, lithium, uranium, coal). |
+
+### Energy
+
+| Tool | Description |
+|------|-------------|
+| `get_energy_intelligence` | Energy supply, prices, storage, disruptions, and policy: EIA petroleum stocks, electricity prices (Ember), gas storage (GIE), fuel shortages, fossil & renewable shares, active energy disruptions, government crisis policies. |
+
+### Geopolitical & security
+
+| Tool | Description |
+|------|-------------|
+| `get_conflict_events` | Active UCDP/Iran conflicts, unrest w/ geo-coords, country risk scores. |
+| `get_country_risk` | CII score 0-100, component breakdown, travel advisory, OFAC exposure per country. Fast, no LLM. |
+| `get_military_posture` | Theater posture + military risk scores. |
+| `get_cyber_threats` | URLhaus/Feodotracker malware IOCs, CISA KEV catalog, active C2 infra. |
+| `get_sanctions_data` | OFAC SDN entities + sanctions pressure scores by country. |
+| `get_news_intelligence` | AI-classified threat news, GDELT signals, cross-source intel. |
+| `get_positive_events` | Diplomatic agreements, humanitarian aid, peace initiatives. |
+| `get_social_velocity` | Reddit r/worldnews + r/geopolitics top posts, engagement scores. |
+| `get_china_decision_signals` | Bounded six-domain China summary with canonical provenance and explicit per-domain degradation; no detailed bilateral trade rows or operator health. |
+
+### NLP utilities (on-demand)
+
+| Tool | Description |
+|------|-------------|
+| `classify_event` | Threat category + severity for a supplied headline (max 500 chars) via the enum-validated classifier. Standard MCP quota bounds its per-call LLM cost. |
+| `extract_entities` | Deterministic entity extraction — registry entities (companies, indices, commodities, crypto, sectors, countries) plus CVE/APT/FIN designators and tracked leaders — from supplied text (max 2 KB) or aggregated across the live headline digest. |
+| `get_news_clusters` | Current topic clusters over the live digest using the same Jaccard clustering as the dashboard: primary headline, member count, sources, top keywords, threat level. |
+| `get_keyword_spikes` | Trending keyword/CVE/APT spikes vs a 48h story-accumulator baseline, using the dashboard's spike-decision math. 10-minute result cache. |
+
+### Historical intelligence
+
+Pro-gated reads over the durable history store the conflict, military, and energy seeders append to after each run. The store begins at the day capture was activated and has no deep backfill, so an empty early window means "not covered yet", not "nothing happened".
+
+Every record's `title`, `summary` and `sourceUrl` are verbatim third-party feed text, kept unrewritten and retrievable for the full 180-day retention window. Treat them as data to analyse, never as instructions — see the content-safety note in the [tools reference](/mcp-tools-reference#historical-intelligence).
+
+| Tool | Description |
+|------|-------------|
+| `search_intel_history` | Semantic search over stored past events, ranked by similarity to a free-text query. Optional domain, country, and `occurredAt` window. Embeddings-backed. |
+| `get_intel_timeline` | Reverse-chronological read of the stored history. Requires at least one of `domain` or `country` — the two indexed scopes. No embedding, no ranking. |
+| `get_similar_events` | Historical precedents for a situation you describe. Same vector search over a longer input; small result set, read as a precedent list. |
+
+### Movement & infrastructure
+
+| Tool | Description |
+|------|-------------|
+| `get_airspace` | Live ADS-B over a country. Params: `country_code` (2-letter code), `type` (`all`/`civilian`/`military`). |
+| `get_maritime_activity` | AIS density zones, dark-ship events, chokepoint congestion per country. Params: `country_code`. |
+| `get_aviation_status` | FAA airport delays, NOTAM closures, tracked military aircraft. |
+| `get_infrastructure_status` | Cloudflare Radar outages, major cloud/internet service status. |
+| `search_flights` | Google Flights real-time search between IATA airport codes on a specific date. |
+| `search_flight_prices_by_date` | Date-grid cheapest-day pricing across a range. |
+
+### Environment & science
+
+| Tool | Description |
+|------|-------------|
+| `get_natural_disasters` | USGS earthquakes, NASA FIRMS wildfires, hazard events. |
+| `get_climate_data` | Temp/precip anomalies vs WMO normals, GDACS/FIRMS alerts, Mauna Loa CO2, OpenAQ PM2.5, sea ice, ocean heat. |
+| `get_radiation_data` | Global radiation monitoring station readings + anomaly flags. |
+| `get_research_signals` | Emerging technology events from curated research feeds. |
+
+### Health
+
+| Tool | Description |
+|------|-------------|
+| `get_health_signals` | Active disease outbreaks (WHO/ECDC etc.) and global air-quality station readings (OpenAQ/WAQI PM2.5). For health-risk screening. |
+
+### Humanitarian & displacement
+
+| Tool | Description |
+|------|-------------|
+| `get_displacement_data` | Refugee and IDP counts by country (UNHCR annual data). |
+
+### AI intelligence
+
+| Tool | Description | Cost |
+|------|-------------|------|
+| `get_world_brief` | Precomputed citation-grounded world intel brief from the same `news:insights:v1` snapshot used by the dashboard. `geo_context` is retained for compatibility and does not refocus the seeded snapshot. | Cache |
+| `get_country_brief` | Per-country geopolitical + economic assessment with structured source links. Supports analytical frameworks. | LLM |
+| `analyze_situation` | Ad-hoc geopolitical deduction from a query + context. Returns confidence + supporting signals. | LLM |
+| `generate_forecasts` | Fresh probability estimates (bypasses cache). | LLM |
+| `get_forecast_predictions` | Pre-computed cached forecasts. Fast. | Cache |
+| `get_forecast_scorecard` | Cached forecast-resolution calibration and scorecard. | Cache |
+
+## API coverage
+
+An API endpoint is **MCP-exposed** only when the exact `METHOD /api/...` path is declared in a tool's registry `_apiPaths` entry. The table below is the human-facing rendering of those declarations from `api/mcp/registry/cache-tools.ts` and `api/mcp/registry/rpc-tools.ts`; it is narrower than the public OpenAPI catalog.
+
+A REST route can exist in OpenAPI and still be REST-only. The parity test keeps that distinction explicit: every public OpenAPI operation must either appear in `_apiPaths` or be listed in `tests/mcp-api-parity.test.mjs` with a categorized exclusion reason.
+
+The canonical current split is whatever this command prints:
+
+```bash
+./node_modules/.bin/tsx --test tests/mcp-api-parity.test.mjs
+```
+
+That output includes covered, excluded, and total operation counts. Treat the counts as moving inventory, not product copy; the test and registry are the source of truth.
+
+Reverse lookup workflow:
+
+1. Copy the exact method and path from the OpenAPI page, for example `GET /api/research/v1/list-tech-events`.
+2. Search this table. If the route appears, call the listed MCP tool.
+3. If it does not appear, the REST route is not exposed through MCP as an API-equivalent path. A cache-only MCP tool may still return related domain data, but it is not claiming that REST route.
+4. For code-level verification, search `_apiPaths` in `api/mcp/registry/cache-tools.ts` and `api/mcp/registry/rpc-tools.ts`; the parity test explains intentional REST-only exclusions.
+
+| MCP tool | API endpoints served |
+|----------|---------------------|
+| `get_market_data` | `GET /api/market/v1/get-fear-greed-index`<br/>`GET /api/market/v1/get-sector-summary`<br/>`GET /api/market/v1/list-commodity-quotes`<br/>`GET /api/market/v1/list-crypto-quotes`<br/>`GET /api/market/v1/list-etf-flows`<br/>`GET /api/market/v1/list-gulf-quotes`<br/>`GET /api/market/v1/list-market-quotes` |
+| `get_economic_data` | `GET /api/economic/v1/get-ecb-fx-rates`<br/>`GET /api/economic/v1/get-economic-calendar`<br/>`GET /api/economic/v1/get-eu-yield-curve`<br/>`GET /api/economic/v1/list-fuel-prices`<br/>`GET /api/market/v1/get-cot-positioning`<br/>`GET /api/market/v1/list-earnings-calendar` |
+| `get_tariff_trends` | `GET /api/economic/v1/get-fao-food-price-index`<br/>`GET /api/economic/v1/get-national-debt`<br/>`GET /api/economic/v1/list-bigmac-prices` |
+| `get_energy_intelligence` | `GET /api/economic/v1/get-energy-crisis-policies`<br/>`GET /api/supply-chain/v1/get-fuel-shortage-detail`<br/>`GET /api/supply-chain/v1/list-energy-disruptions`<br/>`GET /api/supply-chain/v1/list-fuel-shortages` |
+| `get_consumer_prices` | `GET /api/consumer-prices/v1/get-consumer-price-freshness`<br/>`GET /api/consumer-prices/v1/get-consumer-price-overview`<br/>`GET /api/consumer-prices/v1/list-consumer-price-categories`<br/>`GET /api/consumer-prices/v1/list-consumer-price-movers`<br/>`GET /api/consumer-prices/v1/list-retailer-price-spreads` |
+| `get_supply_chain_data` | `GET /api/supply-chain/v1/get-shipping-stress`<br/>`GET /api/trade/v1/get-customs-revenue` |
+| `get_chokepoint_status` | `GET /api/intelligence/v1/get-country-port-activity`<br/>`GET /api/supply-chain/v1/get-chokepoint-status` |
+| `get_climate_data` | `GET /api/climate/v1/get-co2-monitoring`<br/>`GET /api/climate/v1/get-ocean-ice-data`<br/>`GET /api/climate/v1/list-air-quality-data`<br/>`GET /api/climate/v1/list-climate-anomalies`<br/>`GET /api/climate/v1/list-climate-disasters`<br/>`GET /api/climate/v1/list-climate-news` |
+| `get_health_signals` | `GET /api/health/v1/list-air-quality-alerts`<br/>`GET /api/health/v1/list-disease-outbreaks` |
+| `get_conflict_events` | `GET /api/conflict/v1/list-iran-events`<br/>`GET /api/conflict/v1/list-ucdp-events`<br/>`GET /api/unrest/v1/list-unrest-events` |
+| `get_news_intelligence` | `GET /api/intelligence/v1/list-cross-source-signals`<br/>`GET /api/intelligence/v1/search-gdelt-documents` |
+| `get_country_risk` | `GET /api/intelligence/v1/get-country-risk` |
+| `get_country_brief` | `GET /api/intelligence/v1/get-country-intel-brief` |
+| `get_social_velocity` | `GET /api/intelligence/v1/get-social-velocity` |
+| `get_china_decision_signals` | `GET /api/intelligence/v1/get-china-decision-signals` |
+| `get_company_intelligence` | `GET /api/intelligence/v1/get-company-enrichment`<br/>`GET /api/intelligence/v1/list-company-signals`<br/>`GET /api/intelligence/v1/search-sec-filings`<br/>`GET /api/intelligence/v1/list-material-events` |
+| `search_intel_history` | `POST /api/intelligence/v1/search-intel-history` |
+| `get_intel_timeline` | `GET /api/intelligence/v1/get-intel-timeline` |
+| `get_similar_events` | `POST /api/intelligence/v1/get-similar-events` |
+| `get_natural_disasters` | `GET /api/natural/v1/list-natural-events`<br/>`GET /api/seismology/v1/list-earthquakes`<br/>`GET /api/wildfire/v1/list-fire-detections` |
+| `get_radiation_data` | `GET /api/radiation/v1/list-radiation-observations` |
+| `get_infrastructure_status` | `GET /api/infrastructure/v1/list-internet-outages` |
+| `get_airspace` | `GET /api/aviation/v1/track-aircraft`<br/>`GET /api/military/v1/list-military-flights` |
+| `get_maritime_activity` | `GET /api/maritime/v1/get-vessel-snapshot` |
+| `get_military_posture` | `GET /api/military/v1/get-theater-posture` |
+| `get_displacement_data` | `GET /api/displacement/v1/get-displacement-summary` |
+| `get_positive_events` | `GET /api/positive-events/v1/list-positive-geo-events` |
+| `get_sanctions_data` | `GET /api/sanctions/v1/list-sanctions-pressure`<br/>`GET /api/sanctions/v1/lookup-sanction-entity` |
+| `get_research_signals` | `GET /api/research/v1/list-tech-events` |
+| `get_prediction_markets` | `GET /api/prediction/v1/list-prediction-markets` |
+| `get_forecast_predictions` | `GET /api/forecast/v1/get-forecasts` |
+| `get_forecast_scorecard` | `GET /api/forecast/v1/get-forecast-scorecard` |
+| `classify_event` | `GET /api/intelligence/v1/classify-event` |
+| `extract_entities` | `GET /api/news/v1/list-feed-digest` |
+| `get_news_clusters` | `GET /api/news/v1/list-feed-digest` |
+| `analyze_situation` | `POST /api/intelligence/v1/deduct-situation` |
+| `search_flights` | `GET /api/aviation/v1/search-google-flights` |
+| `search_flight_prices_by_date` | `GET /api/aviation/v1/search-google-dates` |
+
+Tools with no declared API paths still return data via `tools/call`, but they should not be read as REST equivalents:
+
+- **Cache-backed bootstrap aggregates** — read Redis keys seeded directly by Railway crons (e.g. `get_aviation_status`, `get_cyber_threats`, `get_country_macro`, the three EU Eurostat tools).
+- **Seeded synthesis snapshots** — `get_world_brief` reads the dashboard's accepted `news:insights:v1` payload through the bootstrap path; it has no direct REST-equivalent operation or request-time LLM call.
+- **Static in-memory registries** — filter a constant bundled with the MCP server's edge binary, no upstream call at all (e.g. `get_commodity_geo`).
+- **Live tools without a public OpenAPI row** — runtime proxies an HTTP call whose method drifts from the public spec, where a sibling tool already covers the spec-declared method (e.g. `generate_forecasts` POSTs `/api/forecast/v1/get-forecasts` while `get_forecast_predictions` owns the GET).
+
+In this table, `covered` means a tool declares the exact operation in `_apiPaths`. Common REST-only exclusions in `tests/mcp-api-parity.test.mjs`:
+
+- **`mutating`** — writes, queues, webhooks, cache refreshes, or persistent side effects. Example: `GET /api/aviation/v1/list-airport-delays` is intentionally REST-only because the GET handler refreshes/persists airport-delay cache state; `get_aviation_status` exposes the already-seeded cache-backed snapshot instead.
+- **`llm-passthrough`** — direct per-call LLM work that needs a purpose-built cost/threat model before MCP exposure.
+- **`fetch-on-miss`** — may call paid or rate-limited upstreams when cache is cold, or accepts high-cardinality identifiers that are not cache-bundle friendly. Exclusion reasons must include one enforced secondary signal: `high-cardinality-input`, `paid-upstream`, or `llm-cost`. Examples: `GET /api/conflict/v1/list-acled-events`, `GET /api/infrastructure/v1/list-service-statuses`, `GET /api/supply-chain/v1/get-critical-minerals`, and `GET /api/aviation/v1/get-flight-status`.
+- **`admin`** — internal-only operations behind an explicit admin boundary, such as an admin key, internal-only middleware, or cron-only path.
+- **`manual-mapping`** — parameterized cache keys or inline Redis/Convex handlers need human triage. Examples: `GET /api/research/v1/list-arxiv-papers`, `GET /api/research/v1/list-trending-repos`, and `GET /api/research/v1/list-hackernews-items`; `get_research_signals` declares only `GET /api/research/v1/list-tech-events`.
+- **`deferred-to-future-tool`** — pure reads whose cache keys are not yet exposed by an MCP bundle. Example: `GET /api/cyber/v1/list-cyber-threats` is slated for a future expanded-domain tool rather than claimed by today's cache-backed `get_cyber_threats`.
+
+Current follow-up trackers:
+
+- [#4525](https://github.com/koala73/worldmonitor/issues/4525) — pure-read deferred MCP coverage candidates.
+- [#4526](https://github.com/koala73/worldmonitor/issues/4526) — manual mapping and fetch-on-miss triage.
+
+See the [Tool catalog](#tool-catalog) above for the complete list of 59 tools, or the [MCP Tools Reference](/mcp-tools-reference) for per-tool details.
+
+## Prompts and resources
+
+In addition to the 59 tools, WorldMonitor exposes MCP prompts and resources so clients can discover common workflows and address stable data slices without inventing tool plans from scratch.
+
+### Prompts
+
+`prompts/list` returns six workflow templates. `prompts/get` renders the selected template into a user message with the right `tools/call` sequence and pre-baked JMESPath projections.
+
+| Prompt | Purpose |
+|--------|---------|
+| `country-briefing` | Country risk, AI intelligence brief, and macro indicators for one ISO 3166-1 alpha-2 country. |
+| `energy-shock-watch` | Active energy disruptions, fuel shortages, and government crisis policies; optional country focus. |
+| `market-open-prep` | Lightweight equity, commodity, and crypto mover briefing for a market-open scan. |
+| `conflict-pulse` | Active UCDP conflict events plus alert-flagged top news, globally or for one country. |
+| `route-risk-check` | Maritime chokepoint transit summary and risk posture for one chokepoint. |
+| `freshness-audit` | Cache freshness check across market, energy, and chokepoint bootstrap envelopes. |
+
+`prompts/list` and `prompts/get` are metadata/workflow discovery methods: they are exempt from the Pro daily quota, though they still count toward the 60/minute per-minute limiter.
+
+### Resources
+
+Resources come in two tiers. **Concrete resources** are surfaced by `resources/list` and read anonymously and quota-free; **URI templates** (parameterised, data-bearing) are surfaced by `resources/templates/list` and each concrete instantiation reads under auth + the Pro daily quota.
+
+`resources/list` — concrete, anonymously readable, quota-free:
+
+| Resource URI | Backing data |
+|--------------|--------------|
+| `worldmonitor://seed-meta/freshness` | Stock market-data bootstrap write-age only: `cached_at` and `stale` for `seed-meta:market:stocks`. Does **not** certify sector valuation completeness — use `get_market_data` `valuationCoverage` (`sourceStatus`, unavailable/last-good/diagnostics). Cheap seeder health probe — no auth, no quota. |
+
+`resources/templates/list` — parameterised URI templates. Substitute the placeholder, then `resources/read` the concrete URI (auth required; consumes the Pro daily quota symmetrically with the equivalent `tools/call`):
+
+| Resource URI template | Backing data |
+|-----------------------|--------------|
+| `worldmonitor://countries/{iso2}/risk` | Country risk score, component breakdown, travel advisory, and sanctions exposure. `{iso2}` is lowercase alpha-2, for example `de` or `us`. |
+| `worldmonitor://chokepoints/{slug}/status` | Chokepoint transit summary and risk narrative. `{slug}` is one of the published kebab-case chokepoint slugs, such as `suez`, `strait-of-hormuz`, or `bab-el-mandeb`. |
+| `worldmonitor://markets/{symbol}/quote` | Single-symbol market quote slice. `{symbol}` is uppercase, for example `AAPL`, `GC=F`, or `BTC-USD`. |
+
+`resources/list` and `resources/templates/list` are metadata and do not consume the Pro daily quota. `resources/read` of a template instantiation intentionally consumes the same daily quota slot as the equivalent `tools/call`; it routes through the same dispatcher so a data-bearing resource cannot bypass the Pro cap. `resources/read` of a public (concrete) resource is quota-free — it returns only metadata. As with every MCP method, all of these still count toward the 60/minute limiter. For the exact `-32029` status/header differences between per-minute throttling and daily quota exhaustion, see the [MCP Error Catalog](/mcp-error-catalog#-32029--rate-limited-per-minute-or-daily).
+
+### MCP Apps (interactive UI)
+
+The server supports [MCP Apps](https://modelcontextprotocol.io/extensions/apps/build) (extension `io.modelcontextprotocol/ui`, spec `2026-01-26`) — interactive views a host renders in a sandboxed iframe when a linked tool is called. Three wire signals drive it:
+
+- **`initialize`** declares support in the handshake. The response's `capabilities.extensions` names the extension: `{"io.modelcontextprotocol/ui": {}}`. This is the negotiation signal a host (or agent-readiness scanner) reads to classify the endpoint as an MCP-App surface — the `tools/list` and `resources/list` entries below are the content it then renders.
+- **`tools/list`** advertises the linkage on the tool. Each UI-linked tool carries `_meta.ui.resourceUri` (and the deprecated flat `ui/resourceUri` alias) pointing at its UI resource.
+- **`resources/list`** surfaces the UI resources themselves, alongside the concrete data resource (the parameterised data templates live in `resources/templates/list`):
+
+| UI resource URI | Linked tool | Renders |
+|-----------------|-------------|---------|
+| `ui://worldmonitor/country-risk.html` | `get_country_risk` | CII score, unrest/conflict/security/news component breakdown, travel-advisory level, and OFAC sanctions exposure. |
+| `ui://worldmonitor/world-brief.html` | `get_world_brief` | The precomputed, citation-grounded global intelligence brief as readable paragraphs, plus grounding headlines and source articles. |
+| `ui://worldmonitor/country-brief.html` | `get_country_brief` | The AI-synthesised per-country brief as paragraphs, with the analytical framework lens and grounding sources. |
+| `ui://worldmonitor/market-radar.html` | `get_market_data` | The Fear & Greed composite plus per-asset-class quote tables (equities, commodities, crypto, Gulf, sectors) with signed, colour-coded change. |
+| `ui://worldmonitor/chokepoint-monitor.html` | `get_chokepoint_status` | Per-chokepoint rolling transit summaries (today's count, week-over-week change, tanker split) with a risk-level badge. |
+| `ui://worldmonitor/news-intelligence.html` | `get_news_intelligence` | AI-classified top stories with category, alert flag, country, and source. |
+| `ui://worldmonitor/conflict-events.html` | `get_conflict_events` | Active armed-conflict events (belligerents, violence type, country, fatalities, date) from the UCDP feed. |
+| `ui://worldmonitor/natural-disasters.html` | `get_natural_disasters` | Recent earthquakes (USGS magnitude, place, time) and active wildfires (NASA FIRMS), grouped. |
+| `ui://worldmonitor/prediction-markets.html` | `get_prediction_markets` | Active event-contract odds grouped by category (geopolitical, tech, finance) with a probability bar per market. |
+| `ui://worldmonitor/forecasts.html` | `get_forecast_predictions` | AI-generated geopolitical and economic forecasts as probability cards (title, domain, region). |
+
+All UI resources share `mimeType: text/html;profile=mcp-app`.
+
+`resources/read` on a `ui://` URI returns the self-contained HTML view. Unlike the data resources, a `ui://` read is **public and quota-exempt** — the template carries no data and spends no upstream call, so a host can preload it (and an agent-readiness scanner can fetch it) without credentials and without touching the Pro daily cap. The view is fully self-contained (no external assets) and communicates with the host over the standard MCP Apps `postMessage` bridge (`ui/initialize` → `ui/notifications/tool-result` → `ui/notifications/size-changed`).
+
+For the full MCP Apps contract — host flow, security posture, per-widget inventory, source files, and docs-stat drift checks — see [MCP Apps](/mcp-apps).
+
+## JSON-RPC example
+
+Server-side with a direct API key — send it as `X-WorldMonitor-Key`, **not** as a bearer token.
+
+```bash
+WM_KEY="wm_0123456789abcdef0123456789abcdef01234567"
+
+# 1. List tools
+curl -s https://worldmonitor.app/mcp \
+  -H "X-WorldMonitor-Key: $WM_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}'
+
+# 2. Call a cache tool
+curl -s https://worldmonitor.app/mcp \
+  -H "X-WorldMonitor-Key: $WM_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "jsonrpc":"2.0","id":2,
+    "method":"tools/call",
+    "params":{"name":"get_country_risk","arguments":{"country_code":"IR"}}
+  }'
+```
+
+If instead you've completed the OAuth flow and hold an access token from `/api/oauth/token`, pass it as `Authorization: Bearer $TOKEN`.
+
+## Response shape
+
+Tool responses use the standard MCP content block format:
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 2,
+  "result": {
+    "content": [
+      { "type": "text", "text": "{...json payload...}" }
+    ],
+    "isError": false
+  }
+}
+```
+
+For cache tools, the JSON payload includes `cached_at` (ISO timestamp of the oldest contributing data point) and `stale` (boolean — `true` when any contributing seed exceeded its per-key freshness budget) so the model can reason about freshness.
+
+## Data freshness
+
+All cache tools read from Redis keys written by Railway cron seeders. Typical freshness:
+
+| Domain | Typical freshness |
+|--------|-------------------|
+| Markets (intraday) | 1–5 min |
+| Flights (ADS-B) | 1–3 min |
+| Maritime (AIS) | 5–15 min |
+| Conflicts / unrest | 15–60 min |
+| Macro / BIS / Eurostat | daily–weekly |
+| IMF WEO | monthly |
+
+Seed-level health per key: [status.worldmonitor.app](https://status.worldmonitor.app/).
+
+## Errors
+
+The MCP handler signals failure on three independent layers — **HTTP status**, **JSON-RPC `error.code`**, and **soft-behavior envelopes inside `result.content[0].text`** — and a single failure can touch any combination.
+
+| Layer        | Common shapes                                                    | Where to look       |
+|--------------|------------------------------------------------------------------|---------------------|
+| HTTP status  | `200` (default for JSON-RPC), `401`, `429`, `503`                | `WWW-Authenticate` / `Retry-After` headers |
+| JSON-RPC     | `-32001` auth · `-32029` rate-limited · `-32602` bad params · `-32603` internal | `error.code` + `error.message`           |
+| Soft envelope | `_budget_exceeded` (response too big), `_jmespath_error` (projection failed) | `result.content[0].text` parsed as JSON |
+
+Triage from the outside in: HTTP status → JSON-RPC code → soft envelope. The full per-shape reference (trigger, paired status, recovery, example payload) lives in the [MCP Error Catalog](/mcp-error-catalog). A few high-frequency callouts:
+
+- **401 + `-32001`** carries a `WWW-Authenticate` header with `resource_metadata` pointing at `/.well-known/oauth-protected-resource`. RFC 9728-aware clients re-run the OAuth flow on this header automatically.
+- **429 + `-32029`** is the Pro daily cap (`Retry-After: <seconds-until-UTC-midnight>`). The per-minute rate limit returns `-32029` inside HTTP 200, not 429 — see the catalog for the distinction.
+- **Soft envelopes return HTTP 200** with no JSON-RPC `error` field — clients that inspect only the JSON-RPC layer will silently treat them as successes. Always parse `result.content[0].text` and check for a leading-underscore discriminator key (`_budget_exceeded`, `_jmespath_error`) before consuming the payload as data.
+
+## Related
+
+- [MCP Quickstart](/mcp-quickstart) — five-minute zero-to-first-call walkthrough
+- [JMESPath guide](/mcp-jmespath) — projection grammar + 12 worked examples
+- [MCP Tools Reference](/mcp-tools-reference) — per-tool parameters and `curl` examples
+- [MCP Error Catalog](/mcp-error-catalog) — every JSON-RPC code, HTTP status, and soft envelope the server emits
+- [Authentication overview](/authentication) — browser vs bearer vs OAuth
+- [API Reference](/api-reference) — the same data via REST
+- [Pro features](https://www.worldmonitor.app/pro)

@@ -9,21 +9,512 @@ permissions:
   contents: read
 
 jobs:
-  unit:
+  changes:
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: read
+    outputs:
+      code: ${{ steps.diff.outputs.code }}
+      digest: ${{ steps.diff.outputs.digest }}
+      validation: ${{ steps.diff.outputs.validation }}
+      umami: ${{ steps.diff.outputs.umami }}
+      consumer_prices: ${{ steps.diff.outputs.consumer_prices }}
+      desktop_config: ${{ steps.diff.outputs.desktop_config }}
+      desktop_rust: ${{ steps.diff.outputs.desktop_rust }}
+    steps:
+      - id: diff
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if [ "${{ github.event_name }}" = "push" ]; then
+            echo "code=true" >> "$GITHUB_OUTPUT"
+            echo "digest=true" >> "$GITHUB_OUTPUT"
+            echo "validation=true" >> "$GITHUB_OUTPUT"
+            echo "umami=true" >> "$GITHUB_OUTPUT"
+            echo "consumer_prices=true" >> "$GITHUB_OUTPUT"
+            echo "desktop_config=true" >> "$GITHUB_OUTPUT"
+            echo "desktop_rust=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          FILES=$(gh api "repos/${{ github.repository }}/pulls/${{ github.event.number }}/files" \
+            --paginate --jq '.[].filename')
+          CODE=$(echo "$FILES" | awk '
+            /^docs\/research\/seo-ai-visibility\// { count++; next }
+            /\.md$/ { next }
+            /^docs\// { next }
+            /^src-tauri\// && $0 !~ /^src-tauri\/sidecar\// && $0 !~ /^src-tauri\/.*\.json$/ { next }
+            /^CHANGELOG\.md$/ { next }
+            /^LICENSE$/ { next }
+            /^\.github\/workflows\/docker-publish\.yml$/ { next }
+            { count++ }
+            END { print count + 0 }
+          ')
+          echo "code=$( [ "$CODE" -gt 0 ] && echo true || echo false )" >> "$GITHUB_OUTPUT"
+          # digest-image job: build Dockerfile.digest-notifications when a PR
+          # touches its inputs (scripts/, shared/, server/_shared/, api/, the
+          # Dockerfile itself, or the root package manifest). Catches the
+          # cross-directory-import + native-dep breakage class documented in
+          # tests/dockerfile-digest-notifications-imports.test.mjs.
+          DIGEST=$(echo "$FILES" | awk '
+            /^(scripts\/|shared\/|server\/_shared\/|api\/|Dockerfile\.digest-notifications|package\.json|package-lock\.json)/ { count++ }
+            END { print count + 0 }
+          ')
+          echo "digest=$( [ "$DIGEST" -gt 0 ] && echo true || echo false )" >> "$GITHUB_OUTPUT"
+          # resilience-validation-smoke job: run the no-secrets artifact/schema
+          # and script-contract gate when the validation bundle, its Dockerfile,
+          # its committed artifacts, or its focused tests change.
+          VALIDATION=$(echo "$FILES" | awk '
+            /^Dockerfile\.seed-bundle-resilience-validation$/ { count++ }
+            /^docs\/methodology\/country-resilience-index\/validation\// { count++ }
+            /^package\.json$/ || /^package-lock\.json$/ { count++ }
+            /^scripts\/benchmark-resilience-external\.mjs$/ { count++ }
+            /^scripts\/backtest-resilience-outcomes\.mjs$/ { count++ }
+            /^scripts\/validate-resilience-sensitivity\.mjs$/ { count++ }
+            /^scripts\/seed-bundle-resilience-validation\.mjs$/ { count++ }
+            /^scripts\/_bundle-runner\.mjs$/ { count++ }
+            /^tests\/(resilience-validation-artifacts-schema|benchmark-resilience-external|backtest-resilience-outcomes|resilience-sensitivity-v2|seed-bundle-resilience-validation)\.test\.(mjs|mts)$/ { count++ }
+            END { print count + 0 }
+          ')
+          echo "validation=$( [ "$VALIDATION" -gt 0 ] && echo true || echo false )" >> "$GITHUB_OUTPUT"
+          # Umami's database race cannot be covered by the normal no-Docker
+          # unit suite. Run a real PostgreSQL gate only when its managed image,
+          # migration, patch, focused tests, or this workflow changes.
+          UMAMI=$(echo "$FILES" | awk '
+            /^Dockerfile\.umami$/ { count++ }
+            /^Dockerfile\.umami-retention$/ { count++ }
+            /^docker\/umami\// { count++ }
+            /^scripts\/umami-retention\.sql$/ { count++ }
+            /^tests\/umami-(runtime-remediation\.test|postgres-integration|runtime-write-probe)\.mjs$/ { count++ }
+            /^\.github\/workflows\/test\.yml$/ { count++ }
+            END { print count + 0 }
+          ')
+          echo "umami=$( [ "$UMAMI" -gt 0 ] && echo true || echo false )" >> "$GITHUB_OUTPUT"
+          # Consumer-prices-core has its own lockfile and Vitest suite, so run
+          # it whenever package code, tests, or its CI definition changes.
+          CONSUMER_PRICES=$(echo "$FILES" | awk '
+            /^consumer-prices-core\// { count++ }
+            /^\.github\/workflows\/test\.yml$/ { count++ }
+            END { print count + 0 }
+          ')
+          echo "consumer_prices=$( [ "$CONSUMER_PRICES" -gt 0 ] && echo true || echo false )" >> "$GITHUB_OUTPUT"
+          # Desktop drift gates (#5902). The `code` filter above deliberately
+          # skips src-tauri/ (non-sidecar), so before these outputs existed a
+          # Rust/Tauri-config change ran zero PR CI and desktop breakage
+          # surfaced only at the next release build — months later.
+          # Any `src-tauri/**/*.json` is carved back into `code`:
+          # tests/desktop-one-binary-model.test.mjs asserts on the set of Tauri
+          # bundle configs (#5908) and runs in `unit`. Without the carve-out,
+          # adding a per-variant config would skip its own gate — and the
+          # carve-out covers every JSON path, not just `tauri*.conf.json`, so a
+          # config parked at e.g. `src-tauri/profiles/commodity.json` cannot
+          # sneak past it either.
+          # The sidecar handler bundle build lives in the `unit` job (gated on
+          # `code`), NOT here: the bundled api/{domain}/v1/[rpc].ts handlers
+          # import from src/ and server/ via the @/ alias, so the bundle's
+          # real input graph is the whole code surface, and `code` is the
+          # filter that already tracks it.
+          DESKTOP_CONFIG=$(echo "$FILES" | awk '
+            /^src-tauri\// { count++; next }
+            /^package\.json$/ { count++; next }
+            /^scripts\/repack-linux-appimage\.sh$/ { count++; next }
+            /^scripts\/check-desktop-build-env\.mjs$/ { count++; next }
+            /^scripts\/sync-desktop-version\.mjs$/ { count++; next }
+            /^scripts\/check-rust-security-floors\.mjs$/ { count++; next }
+            /^\.github\/workflows\/.*\.ya?ml$/ { count++ }
+            END { print count + 0 }
+          ')
+          echo "desktop_config=$( [ "$DESKTOP_CONFIG" -gt 0 ] && echo true || echo false )" >> "$GITHUB_OUTPUT"
+          DESKTOP_RUST=$(echo "$FILES" | awk '
+            /^src-tauri\/sidecar\// { next }
+            /^src-tauri\// { count++; next }
+            /^\.github\/workflows\/test\.yml$/ { count++ }
+            END { print count + 0 }
+          ')
+          echo "desktop_rust=$( [ "$DESKTOP_RUST" -gt 0 ] && echo true || echo false )" >> "$GITHUB_OUTPUT"
+
+  docs-stats:
+    # Always-on: guards the capability counts quoted in README / ARCHITECTURE /
+    # docs against the code sources of truth. Runs on every PR/push (docs-only
+    # PRs set changes.code=false and skip `unit`, so this must not gate on it).
+    # Pure Node builtins — no npm install required.
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
-          node-version: '22'
+          node-version: '24'
+      - name: stats.json is tracked and current
+        # `git diff --exit-code` ignores untracked paths, so a PR that deletes
+        # the committed snapshot would regenerate it untracked and still pass.
+        # `git status --porcelain` reports stale (` M`), deleted (` D`), and
+        # untracked (`??`) alike, so it catches all three.
+        run: |
+          node scripts/docs-stats.mjs
+          if [ -n "$(git status --porcelain -- docs/generated/stats.json)" ]; then
+            echo '::error::docs/generated/stats.json is missing, untracked, or stale — run `npm run docs:stats` and commit it.'
+            git status --porcelain -- docs/generated/stats.json
+            exit 1
+          fi
+      - name: Doc claims match code
+        run: node scripts/docs-stats.mjs --check
+      - name: Source attribution inventory is current
+        run: node scripts/source-attribution.mjs --check
+
+  unit:
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '24'
           cache: 'npm'
       - run: npm ci
-      - run: npm run test:data
+      - name: Build dashboard artifacts for built-output tests
+        run: VITE_VARIANT=full ./node_modules/.bin/vite build
+      - run: WM_EXPECT_BUILT_OUTPUT=1 npm run test:data
       - name: Edge function bundle check
         run: |
-          find api/ -name "*.js" -not -name "_*" | while read f; do
+          # JS edge entries (existing loop, unchanged).
+          find api/ -name "*.js" -not -name "_*" -not -name "*.test.*" | while read f; do
             npx esbuild "$f" --bundle --format=esm --platform=browser --outfile=/dev/null || {
               echo "ERROR: esbuild failed to bundle $f"
               exit 1
             }
           done
+          # TS edge entries — opt-in allowlist. Most TS endpoints pull in
+          # loaders esbuild doesn't ship by default (e.g. @vercel/og WASM
+          # imports under api/brief/carousel/...), so we don't auto-include
+          # api/*.ts the way we do api/*.js. Add a new entry to this list
+          # ONLY after confirming `npx esbuild <file> --bundle --format=esm
+          # --platform=browser --outfile=/dev/null` succeeds locally.
+          for f in api/mcp.ts; do
+            npx esbuild "$f" --bundle --format=esm --platform=browser --outfile=/dev/null || {
+              echo "ERROR: esbuild failed to bundle $f"
+              exit 1
+            }
+          done
+      - name: Sidecar handler bundles build (#5902)
+        # The desktop sidecar loads esbuild-bundled api/{domain}/v1/[rpc].js
+        # handlers whose import graph spans src/ and server/ (via the @/
+        # alias) — before this step, that build ran only inside release
+        # builds, so a bundle-breaking change surfaced months later. The
+        # count assertion guards the vacuous-pass case: the build script
+        # exits 0 when its glob finds zero entry points, so "green" must
+        # also mean "every discovered domain actually produced a bundle".
+        run: |
+          node scripts/build-sidecar-sebuf.mjs
+          node scripts/build-sidecar-handlers.mjs
+          node -e '
+            const { readdirSync, existsSync } = require("node:fs");
+            const domains = readdirSync("api", { withFileTypes: true })
+              .filter((d) => d.isDirectory() && !["[domain]", "[[...path]]"].includes(d.name))
+              .filter((d) => existsSync(`api/${d.name}/v1/[rpc].ts`))
+              .map((d) => d.name);
+            const missing = domains.filter((d) => !existsSync(`api/${d}/v1/[rpc].js`));
+            if (domains.length === 0) {
+              console.error("::error::sidecar handler build found ZERO api/{domain}/v1/[rpc].ts entry points — the discovery glob is broken (vacuous pass)");
+              process.exit(1);
+            }
+            if (missing.length > 0) {
+              console.error(`::error::sidecar handler build produced no bundle for: ${missing.join(", ")}`);
+              process.exit(1);
+            }
+            console.log(`sidecar handler bundles ok: ${domains.length} domains`);
+          '
+      - name: Desktop build env parity (#5905)
+        # Twin of the desktop-config leg: here it fires when src/ gains a new
+        # import.meta.env.VITE_ read (code=true), forcing the author to
+        # classify it for desktop builds before it can silently miss them.
+        run: node scripts/check-desktop-build-env.mjs
+
+  consumer-prices:
+    needs: changes
+    if: needs.changes.outputs.consumer_prices == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '24'
+          cache: 'npm'
+          cache-dependency-path: consumer-prices-core/package-lock.json
+      - run: npm ci --prefix consumer-prices-core
+      - run: npm test --prefix consumer-prices-core
+
+  umami-postgres:
+    needs: changes
+    if: needs.changes.outputs.umami == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:17-alpine@sha256:742f40ea20b9ff2ff31db5458d127452988a2164df9e17441e191f3b72252193
+        env:
+          POSTGRES_DB: umami_integration
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready --username=postgres --dbname=umami_integration"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '24'
+      - name: Install PostgreSQL client
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes postgresql-client
+      - name: Build managed Umami images
+        run: |
+          docker build --file Dockerfile.umami --tag worldmonitor/umami:ci .
+          docker build --file Dockerfile.umami-retention --tag worldmonitor/umami-retention:ci .
+      - name: Exercise Umami migration and concurrent upserts
+        env:
+          UMAMI_TEST_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/umami_integration
+        run: node tests/umami-postgres-integration.mjs
+      - name: Probe the running image's write path (identify, concurrent upsert, event)
+        env:
+          UMAMI_TEST_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/umami_integration
+        run: node tests/umami-runtime-write-probe.mjs
+
+  sidecar:
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '24'
+          cache: 'npm'
+      - run: npm ci
+      - run: npm run test:sidecar
+
+  # Desktop drift gates (#5902): path-conditional so unrelated PRs skip them
+  # (deploy-gate counts "skipped" as passing). desktop-config is the cheap
+  # install-free surface — version consistency, release packaging script
+  # syntax, and Tauri config/capability parse (the sidecar bundle build lives
+  # in `unit`, whose `code` filter tracks the bundle's real src/server/api
+  # import graph).
+  # desktop-rust compiles and unit-tests the Tauri crate, which was
+  # previously untested until a release build.
+  desktop-config:
+    needs: changes
+    if: needs.changes.outputs.desktop_config == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '24'
+      - name: Desktop version consistency
+        run: |
+          node scripts/sync-desktop-version.mjs --check || {
+            echo '::error::Desktop versions out of sync — run `npm run version:sync` and commit the result.'
+            exit 1
+          }
+      - name: Linux AppImage post-processing script parses
+        run: bash -n scripts/repack-linux-appimage.sh
+      - name: Desktop build env parity (#5905)
+        # A VITE_ key missing from the Tauri build steps silently disables the
+        # capability in every shipped build (sign-in, Pro, Cyber Threats were
+        # all dark this way). Also runs in `unit`: this leg is the one that
+        # fires for src-tauri/ Rust and capability edits, which the `code`
+        # filter skips (it carves back only `tauri*.conf.json`), while the unit
+        # leg covers new import.meta.env.VITE_ reads added under src/.
+        run: node scripts/check-desktop-build-env.mjs
+      - name: Tauri config and capability files parse
+        # One desktop binary ships (#5908), so there is exactly one tauri conf —
+        # the per-variant `tauri.tech/finance.conf.json` files were retired with
+        # the build legs that never published them. The floor still guards the
+        # vacuous-pass case where a broken glob finds nothing to validate.
+        run: |
+          node -e '
+            const { readFileSync, readdirSync } = require("node:fs");
+            const confs = readdirSync("src-tauri").filter((f) => /^tauri.*\.conf\.json$/.test(f));
+            const capabilities = readdirSync("src-tauri/capabilities");
+            const files = [
+              ...confs.map((f) => `src-tauri/${f}`),
+              ...capabilities.map((f) => `src-tauri/capabilities/${f}`),
+            ];
+            if (confs.length !== 1 || capabilities.length < 3) {
+              console.error(`::error::expected exactly 1 tauri conf file (one published binary, #5908) and at least 3 capability files, found ${confs.length} conf + ${capabilities.length} capabilities: ${files.join(", ")}`);
+              process.exit(1);
+            }
+            let failed = false;
+            for (const f of files) {
+              try {
+                JSON.parse(readFileSync(f, "utf8"));
+                console.log(`ok ${f}`);
+              } catch (e) {
+                console.error(`::error file=${f}::invalid JSON in ${f}: ${e.message}`);
+                failed = true;
+              }
+            }
+            if (failed) process.exit(1);
+          '
+      - name: Rust dependency security floors (#5518)
+        # Cargo.lock decides what actually ships; the manifest constraint only
+        # bounds resolution. Nothing else in CI inspects it (security-audit
+        # covers npm lockfiles only), so without this a cargo update could
+        # silently drop the desktop app back onto a crate version with a known
+        # advisory.
+        run: node scripts/check-rust-security-floors.mjs
+
+  desktop-rust:
+    needs: changes
+    if: needs.changes.outputs.desktop_rust == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7
+        with:
+          toolchain: stable
+      - name: Rust cache
+        uses: swatinem/rust-cache@779680da715d629ac1d338a641029a2f4372abb5
+        with:
+          workspaces: './src-tauri -> target'
+          cache-on-failure: true
+      - name: Install Linux system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libappindicator3-dev \
+            librsvg2-dev \
+            patchelf
+      - name: cargo test
+        working-directory: src-tauri
+        # tauri-build's generate_context! requires frontendDist (../dist) to
+        # exist at compile time; an empty dir is sufficient for unit tests.
+        run: |
+          mkdir -p ../dist
+          cargo test --locked || {
+            echo '::error::desktop Rust tests failed — repro locally with: mkdir -p dist && cd src-tauri && cargo test --locked (the mkdir is required: tauri-build embeds ../dist at compile time).'
+            exit 1
+          }
+
+  convex-tests:
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '24'
+          cache: 'npm'
+      - run: npm ci
+      - run: npm run test:convex
+
+  # DOM-behavioral gate tests (#5634). Kept OUT of the `unit` job's tsx glob:
+  # the components under test import `@/services/i18n`, which uses
+  # `import.meta.glob` and therefore needs a Vite pipeline, and `test:data`
+  # already runs ~390 files in one tsx process.
+  dom-tests:
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '24'
+          cache: 'npm'
+      - run: npm ci
+      # `npm run typecheck` only covers src/, so these files would otherwise
+      # never be type-checked — the first run of this config caught four real
+      # type errors in them.
+      - run: npm run typecheck:dom-tests
+      - run: npm run test:dom
+
+  variant-smoke-full:
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
+    runs-on: ubuntu-latest
+    # No secrets are injected here. The smoke allows provider-level
+    # unavailable/stale states and gates app-level boot, variant, 401,
+    # page-error, and expected-panel invariants.
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '24'
+          cache: 'npm'
+      - run: npm ci
+      - name: Resolve Playwright version
+        id: playwright-version
+        run: echo "version=$(node -p "require('@playwright/test/package.json').version")" >> "$GITHUB_OUTPUT"
+      - name: Cache Playwright chromium
+        id: playwright-cache
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-chromium-${{ steps.playwright-version.outputs.version }}
+      - run: npx playwright install --with-deps chromium
+        if: steps.playwright-cache.outputs.cache-hit != 'true'
+      # The cache restores only browser binaries (~/.cache/ms-playwright), not
+      # the OS libraries --with-deps installs — and runners are fresh VMs, so a
+      # cache hit on an image that no longer ships a needed lib would fail at
+      # chromium launch. Exactly one apt pass runs either way: --with-deps on a
+      # miss (above), install-deps alone on a hit.
+      - run: npx playwright install-deps chromium
+        if: steps.playwright-cache.outputs.cache-hit == 'true'
+      # One invocation for all three smoke specs: each `playwright test` run
+      # boots its own vite dev server (reuseExistingServer is false), so three
+      # separate steps paid three boots; the specs are independent and share
+      # VITE_VARIANT=full. The set includes the news-budget guard (#5376) —
+      # named explicitly because nothing in CI runs the e2e/ glob, and a
+      # regression guard no job invokes reports green while the regression
+      # ships.
+      - run: npm run test:e2e:ci-smoke
+
+  resilience-validation-smoke:
+    needs: changes
+    if: needs.changes.outputs.code == 'true' || needs.changes.outputs.validation == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '24'
+          cache: 'npm'
+      - run: npm ci
+      - run: npm run test:resilience-validation-smoke
+
+  digest-image:
+    needs: changes
+    if: needs.changes.outputs.digest == 'true'
+    runs-on: ubuntu-latest
+    # docker build with the warm runner cache typically lands in ~90s.
+    # 20min cap catches base-image-pull stalls, npm-registry flakes, and
+    # native-dep compile failures without letting one bad PR check block
+    # the queue for an hour. The static BFS import test in test:data
+    # remains the load-bearing gate; this job is the integration smoke.
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+      - name: Build digest-notifications image (smoke)
+        # No push, no tag publish. Catches cross-directory-import breakage
+        # before it reaches main. Pairs with the BFS import test in
+        # tests/dockerfile-digest-notifications-imports.test.mjs — that test
+        # walks the import graph statically; this job actually executes the
+        # COPY+install steps and surfaces native-dep / package-lock issues
+        # the static walk can't see.
+        run: docker build -f Dockerfile.digest-notifications -t wm-digest .

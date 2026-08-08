@@ -19,7 +19,7 @@ function isPackagePointer(v: unknown): v is PackagePointer {
 }
 
 const NOT_FOUND: GetSimulationPackageResponse = {
-  found: false, runId: '', pkgKey: '', schemaVersion: '', theaterCount: 0, generatedAt: 0, note: '', error: '',
+  found: false, runId: '', schemaVersion: '', theaterCount: 0, generatedAt: 0, note: '', error: '',
 };
 
 export const getSimulationPackage: ForecastServiceHandler['getSimulationPackage'] = async (
@@ -36,7 +36,7 @@ export const getSimulationPackage: ForecastServiceHandler['getSimulationPackage'
     const note = req.runId && req.runId !== pointer.runId
       ? 'runId filter not yet active; returned package may differ from requested run'
       : '';
-    return { found: true, runId: pointer.runId, pkgKey: pointer.pkgKey, schemaVersion: pointer.schemaVersion, theaterCount: pointer.theaterCount, generatedAt: pointer.generatedAt, note, error: '' };
+    return { found: true, runId: pointer.runId, schemaVersion: pointer.schemaVersion, theaterCount: pointer.theaterCount, generatedAt: pointer.generatedAt, note, error: '' };
   } catch (err) {
     console.warn('[getSimulationPackage] Redis error:', err instanceof Error ? err.message : String(err));
     markNoCacheResponse(ctx.request); // don't cache error state

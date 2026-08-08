@@ -2,19 +2,28 @@ openapi: 3.1.0
 info:
     title: DisplacementService API
     version: 1.0.0
+security:
+    - WorldMonitorKey: []
+    - ApiKeyHeader: []
+servers:
+    - url: https://api.worldmonitor.app
 paths:
     /api/displacement/v1/get-displacement-summary:
         get:
             tags:
                 - DisplacementService
             summary: GetDisplacementSummary
-            description: GetDisplacementSummary retrieves global refugee and IDP statistics from UNHCR.
+            description: |-
+                GetDisplacementSummary retrieves global refugee and IDP statistics from UNHCR.
+                 Empty/absent summary with fetched_at=0 or data_available=false means the
+                 snapshot is unavailable/degraded, not that global displacement is zero.
             operationId: GetDisplacementSummary
             parameters:
                 - name: year
                   in: query
                   description: Data year to retrieve (e.g., 2023). Uses latest available if zero.
                   required: false
+                  example: 1
                   schema:
                     type: integer
                     format: int32
@@ -22,6 +31,7 @@ paths:
                   in: query
                   description: Maximum number of country entries to return.
                   required: false
+                  example: 25
                   schema:
                     type: integer
                     format: int32
@@ -29,14 +39,53 @@ paths:
                   in: query
                   description: Maximum number of displacement flows to return.
                   required: false
+                  example: 25
                   schema:
                     type: integer
                     format: int32
+                - name: jmespath
+                  in: query
+                  description: |-
+                    Optional JMESPath expression applied server-side to project or reduce the JSON response before it is returned (mirrors the MCP jmespath argument). Invalid expressions, expressions larger than 1024 UTF-8 bytes, or projections that exceed the 256 KB output cap return HTTP 400 with a {_jmespath_error, original_keys} envelope. Grammar and worked examples: https://www.worldmonitor.app/docs/mcp-jmespath.
+                  required: false
+                  example: "keys(@)"
+                  schema:
+                    type: string
             responses:
                 "200":
                     description: Successful response
                     content:
                         application/json:
+                            example:
+                                "dataAvailable": true
+                                "fetchedAt": 1717200000000
+                                "summary":
+                                    "countries":
+                                        - "asylumSeekers": 1
+                                          "code": "US"
+                                          "hostAsylumSeekers": 1
+                                          "hostRefugees": 1
+                                          "hostTotal": 1
+                                          "idps": 1
+                                    "globalTotals":
+                                        "asylumSeekers": 1
+                                        "idps": 1
+                                        "refugees": 1
+                                        "stateless": 1
+                                        "total": 1
+                                    "topFlows":
+                                        - "asylumCode": "US"
+                                          "asylumLocation":
+                                              "latitude": 40.7128
+                                              "longitude": -74.006
+                                          "asylumName": "WorldMonitor Analyst"
+                                          "originCode": "US"
+                                          "originLocation":
+                                              "latitude": 40.7128
+                                              "longitude": -74.006
+                                          "originName": "WorldMonitor Analyst"
+                                          "refugees": 1
+                                    "year": 1
                             schema:
                                 $ref: '#/components/schemas/GetDisplacementSummaryResponse'
                 "400":
@@ -44,13 +93,54 @@ paths:
                     content:
                         application/json:
                             schema:
-                                $ref: '#/components/schemas/ValidationError'
-                default:
-                    description: Error response
+                                oneOf:
+                                    - $ref: '#/components/schemas/ValidationError'
+                                    - $ref: '#/components/schemas/JmespathProjectionError'
+                "401":
+                    description: Missing or invalid API key.
                     content:
                         application/json:
                             schema:
-                                $ref: '#/components/schemas/Error'
+                                $ref: '#/components/schemas/UnauthorizedError'
+                "403":
+                    description: API access requires an active subscription (the API key's subscription is inactive or expired).
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ForbiddenError'
+                "429":
+                    description: Rate limit exceeded.
+                    headers:
+                        X-RateLimit-Limit:
+                            description: Maximum requests allowed in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Remaining:
+                            description: Requests remaining in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Reset:
+                            description: Unix epoch milliseconds when the active rate-limit window resets.
+                            schema:
+                                type: string
+                        Retry-After:
+                            description: Seconds to wait before retrying the request.
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/RateLimitError'
+                default:
+                    description: Gateway or handler error response.
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/GatewayError'
     /api/displacement/v1/get-population-exposure:
         get:
             tags:
@@ -63,12 +153,14 @@ paths:
                   in: query
                   description: 'Mode: "countries" (default) or "exposure".'
                   required: false
+                  example: "countries"
                   schema:
                     type: string
                 - name: lat
                   in: query
                   description: Latitude (required for exposure mode).
                   required: false
+                  example: 40.7128
                   schema:
                     type: number
                     format: double
@@ -76,6 +168,7 @@ paths:
                   in: query
                   description: Longitude (required for exposure mode).
                   required: false
+                  example: -74.006
                   schema:
                     type: number
                     format: double
@@ -83,14 +176,35 @@ paths:
                   in: query
                   description: Radius in km (required for exposure mode, defaults to 50).
                   required: false
+                  example: 1.5
                   schema:
                     type: number
                     format: double
+                - name: jmespath
+                  in: query
+                  description: |-
+                    Optional JMESPath expression applied server-side to project or reduce the JSON response before it is returned (mirrors the MCP jmespath argument). Invalid expressions, expressions larger than 1024 UTF-8 bytes, or projections that exceed the 256 KB output cap return HTTP 400 with a {_jmespath_error, original_keys} envelope. Grammar and worked examples: https://www.worldmonitor.app/docs/mcp-jmespath.
+                  required: false
+                  example: "keys(@)"
+                  schema:
+                    type: string
             responses:
                 "200":
                     description: Successful response
                     content:
                         application/json:
+                            example:
+                                "countries":
+                                    - "code": "US"
+                                      "densityPerKm2": 1
+                                      "name": "WorldMonitor Analyst"
+                                      "population": 1
+                                "exposure":
+                                    "densityPerKm2": 1
+                                    "exposedPopulation": 1
+                                    "exposureRadiusKm": 1.5
+                                    "nearestCountry": "US"
+                                "success": true
                             schema:
                                 $ref: '#/components/schemas/GetPopulationExposureResponse'
                 "400":
@@ -98,15 +212,91 @@ paths:
                     content:
                         application/json:
                             schema:
-                                $ref: '#/components/schemas/ValidationError'
-                default:
-                    description: Error response
+                                oneOf:
+                                    - $ref: '#/components/schemas/ValidationError'
+                                    - $ref: '#/components/schemas/JmespathProjectionError'
+                "401":
+                    description: Missing or invalid API key.
                     content:
                         application/json:
                             schema:
-                                $ref: '#/components/schemas/Error'
+                                $ref: '#/components/schemas/UnauthorizedError'
+                "403":
+                    description: API access requires an active subscription (the API key's subscription is inactive or expired).
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ForbiddenError'
+                "429":
+                    description: Rate limit exceeded.
+                    headers:
+                        X-RateLimit-Limit:
+                            description: Maximum requests allowed in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Remaining:
+                            description: Requests remaining in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Reset:
+                            description: Unix epoch milliseconds when the active rate-limit window resets.
+                            schema:
+                                type: string
+                        Retry-After:
+                            description: Seconds to wait before retrying the request.
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/RateLimitError'
+                default:
+                    description: Gateway or handler error response.
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/GatewayError'
 components:
+    securitySchemes:
+        WorldMonitorKey:
+            type: apiKey
+            in: header
+            name: X-WorldMonitor-Key
+            description: User-issued WorldMonitor API key.
+        ApiKeyHeader:
+            type: apiKey
+            in: header
+            name: X-Api-Key
+            description: Alias header for the WorldMonitor API key (X-WorldMonitor-Key).
     schemas:
+        JmespathProjectionError:
+            description: Returned when a REST jmespath projection is invalid or exceeds the expression/output byte limits.
+            properties:
+                _jmespath_error:
+                    description: Projection error discriminator and details.
+                    type: string
+                original_keys:
+                    description: Top-level keys or shape of the unprojected response.
+                    items:
+                        type: string
+                    type: array
+            required:
+                - _jmespath_error
+                - original_keys
+            type: object
+        UnauthorizedError:
+            type: object
+            properties:
+                error:
+                    type: string
+                    description: Human-readable error message.
+            required:
+                - error
+            description: Returned when the API key is missing, malformed, or lacks current API access.
         Error:
             type: object
             properties:
@@ -114,6 +304,56 @@ components:
                     type: string
                     description: Error message (e.g., 'user not found', 'database connection failed')
             description: Error is returned when a handler encounters an error. It contains a simple error message that the developer can customize.
+        InvalidRequestBodyError:
+            type: object
+            description: Returned when a JSON POST request body is empty or malformed.
+            properties:
+                message:
+                    type: string
+                    description: Invalid request body
+            required:
+                - message
+        GatewayError:
+            type: object
+            description: Returned by gateway infrastructure errors before an RPC handler runs, such as origin, routing, method, authentication, or quota checks.
+            properties:
+                error:
+                    oneOf:
+                        - type: string
+                        - type: object
+                          additionalProperties: true
+                    description: Gateway error reason or structured gateway failure details.
+            required:
+                - error
+        RateLimitError:
+            type: object
+            description: Returned when a gateway or handler rate limit rejects the request.
+            properties:
+                error:
+                    type: string
+                    description: Human-readable rate-limit failure reason.
+            required:
+                - error
+        ForbiddenError:
+            type: object
+            properties:
+                error:
+                    type: string
+                    description: Human-readable entitlement failure reason.
+                requiredTier:
+                    type: integer
+                    format: int32
+                    description: Minimum entitlement tier required for this endpoint.
+                currentTier:
+                    type: integer
+                    format: int32
+                    description: Caller entitlement tier when known.
+                planKey:
+                    type: string
+                    description: Caller plan key when known.
+            required:
+                - error
+            description: Returned when a PRO-gated endpoint denies access because the caller has no resolved authenticated user, entitlements cannot be verified, or the caller lacks the required entitlement tier.
         FieldViolation:
             type: object
             properties:
@@ -162,6 +402,19 @@ components:
             properties:
                 summary:
                     $ref: '#/components/schemas/DisplacementSummary'
+                fetchedAt:
+                    type: integer
+                    format: int64
+                    description: |-
+                        Time the seed or live fallback snapshot was fetched, as Unix epoch
+                         milliseconds. A value of 0 means the snapshot is unavailable/degraded, not
+                         that global displacement is zero.. Warning: Values > 2^53 may lose precision in JavaScript
+                dataAvailable:
+                    type: boolean
+                    description: |-
+                        True when summary came from a seed snapshot or live fallback. False means
+                         an absent/empty summary is graceful degradation because the snapshot is
+                         unavailable.
             description: GetDisplacementSummaryResponse contains the global displacement summary.
         DisplacementSummary:
             type: object

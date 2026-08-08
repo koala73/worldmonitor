@@ -1,16 +1,20 @@
 ---
 title: "Desktop Release Packaging Guide (Local, Reproducible)"
-description: "This guide provides reproducible local packaging steps for both desktop variants: full (World Monitor) and tech (Tech Monitor)."
+description: "Reproducible local packaging steps for the World Monitor desktop binary, including signing and notarization."
 ---
-This guide provides reproducible local packaging steps for both desktop variants:
+This guide provides reproducible local packaging steps for the desktop app.
 
-- **full** → `World Monitor`
-- **tech** → `Tech Monitor`
+**One binary ships.** `World Monitor` is the only desktop artifact, and every
+variant — tech, finance, commodity, energy, happy — is selected in-app after
+install and persists across restarts. There is no per-variant package, no
+per-variant tag, and no per-variant download.
 
-Variant identity is controlled by Tauri config:
+That is a deliberate constraint, not an omission: `/api/version` and
+`/api/download` resolve `/releases/latest`, which returns at most one release,
+so a second release line could never be served to users (#5908).
 
-- full: `src-tauri/tauri.conf.json`
-- tech: `src-tauri/tauri.tech.conf.json`
+Bundle identity is controlled by a single Tauri config,
+`src-tauri/tauri.conf.json` → `World Monitor` / `world-monitor`.
 
 ## Prerequisites
 
@@ -59,22 +63,20 @@ npm run desktop:package -- --help
 ### macOS (`.app` + `.dmg`)
 
 ```bash
-npm run desktop:package:macos:full
-npm run desktop:package:macos:tech
+npm run desktop:package:macos
 # or generic runner
-npm run desktop:package -- --os macos --variant full
+npm run desktop:package -- --os macos
 ```
 
 ### Windows (`.exe` + `.msi`)
 
 ```bash
-npm run desktop:package:windows:full
-npm run desktop:package:windows:tech
+npm run desktop:package:windows
 # or generic runner
-npm run desktop:package -- --os windows --variant tech
+npm run desktop:package -- --os windows
 ```
 
-Bundler targets are pinned in both Tauri configs and enforced by packaging scripts:
+Bundler targets are pinned in the Tauri config and enforced by packaging scripts:
 
 - macOS: `app,dmg`
 - Windows: `nsis,msi`
@@ -157,9 +159,9 @@ export APPLE_API_KEY_PATH="$HOME/.keys/AuthKey_ABC123DEFG.p8"
 Then run either standard or explicit sign script aliases:
 
 ```bash
-npm run desktop:package:macos:full
+npm run desktop:package:macos
 # or
-npm run desktop:package:macos:full:sign
+npm run desktop:package:macos:sign
 ```
 
 ### Windows Authenticode signing
@@ -177,22 +179,22 @@ $env:TAURI_BUNDLE_WINDOWS_CERTIFICATE_PASSWORD="<PFX_PASSWORD>"
 Then run either standard or explicit sign script aliases:
 
 ```powershell
-npm run desktop:package:windows:full
+npm run desktop:package:windows
 # or
-npm run desktop:package:windows:full:sign
+npm run desktop:package:windows:sign
 ```
 
-## Variant-aware outputs (names/icons)
+## Bundle identity (names/icons)
 
-- Full variant: `World Monitor` / `world-monitor`
-- Tech variant: `Tech Monitor` / `tech-monitor`
+`src-tauri/tauri.conf.json` → `World Monitor` / `world-monitor`, with
+`bundle.icon` pointing at the shared icon set. Every packaged build carries that
+identity regardless of which variant the user later switches to, so the window
+title and installed app name are always `World Monitor`.
 
-Distinct names are configured in Tauri:
-
-- `src-tauri/tauri.conf.json` → `World Monitor` / `world-monitor`
-- `src-tauri/tauri.tech.conf.json` → `Tech Monitor` / `tech-monitor`
-
-If you want variant-specific icons, set `bundle.icon` separately in each config and point each variant to dedicated icon assets.
+Adding a second `tauri.*.conf.json` to rebrand a variant is deliberately
+rejected by `tests/desktop-one-binary-model.test.mjs`: nothing publishes it, and
+the endpoints cannot serve it. Reopen the packaging model in #5902 first if a
+branded per-variant binary becomes a real requirement.
 
 ## Output locations
 
@@ -211,7 +213,7 @@ Common subfolders:
 
 ## Release checklist (clean machine)
 
-1. Build required OS + variant package(s).
+1. Build the package(s) for the required OS.
 2. Move artifacts to a clean machine (or fresh VM).
 3. Install/launch:
    - macOS: mount `.dmg`, drag app to Applications, launch.
@@ -220,8 +222,10 @@ Common subfolders:
    - App window opens without crash.
    - Map view renders.
    - Initial data loading path does not fatal-error.
-5. Validate variant identity:
-   - Window title and product name match expected variant.
+5. Validate bundle identity and in-app variant switching:
+   - Window title and product name are `World Monitor`.
+   - Switching to another variant reloads into that variant's panels/layers and
+     survives a restart.
 6. If signing was enabled:
    - Verify code-signing metadata in OS dialogs/properties.
    - Verify notarization/Gatekeeper acceptance on macOS.

@@ -1,0 +1,133 @@
+---
+title: "指标与信号"
+description: "指标与信号是 WorldMonitor 紧凑型市场指标面板、跨资产关联面板与杂项信号面的完整汇总目录，每张面板以精简的磁贴式布局呈现关键数值、趋势方向、变化幅度与阈值告警，与深度分析面板互为补充，帮助专业交易员在有限的屏幕空间内快速扫描宏观经济、板块轮动与市场情绪信号的即时读数。"
+---
+
+WorldMonitor 附有许多**磁贴式**指标、关联和信号面板 — 紧凑的面，每个显示一两个读数，设计为与深度分析面板组合使用。本页是集合参考，使每个磁贴可查找，而无需为每个面板写一页。
+
+当磁贴为空时，请检查 [数据来源](/zh/data-sources) 和 [健康端点](/zh/health-endpoints) 了解上游状态。
+
+## 情绪磁贴
+
+| 面板 id | 标题 | 显示内容 |
+|---|---|---|
+| `fear-greed` | 恐惧与贪婪 | CNN Fear & Greed Index 仪表盘（0-100）。 |
+| `positioning-247` | 24/7 持仓 | 常开持仓流信号。 |
+| `aaii-sentiment` | AAII 情绪 | AAII 看涨/看跌零售情绪调查（每周）。 |
+
+## 宏观磁贴
+
+| 面板 id | 标题 |
+|---|---|
+| `macro-tiles` | 宏观指标（CPI、失业率、GDP、政策利率；美国 + 欧元区） |
+| `yield-curve` | 收益率曲线 |
+| `national-debt` | 全球债务钟 |
+| `liquidity-shifts` | 流动性转移 |
+| `macro-signals` | 市场体制 / 市场雷达 |
+
+## 日历
+
+| 面板 id | 标题 |
+|---|---|
+| `earnings-calendar` | 财报日历（EPS 预期 vs 实际，超预期/不及预期） |
+| `economic-calendar` | 经济日历（CPI / NFP / GDP / PMI / 央行决议） |
+
+## 市场结构磁贴
+
+| 面板 id | 标题 |
+|---|---|
+| `market-breadth` | 市场广度 |
+| `etf-flows` | BTC ETF 追踪器 |
+| `cot-positioning` | COT 持仓 |
+
+## 大宗商品磁贴
+
+| 面板 id | 标题 |
+|---|---|
+| `energy-complex` | 能源综合 |
+| `oil-inventories` | 石油库存 |
+| `base-metals` | 基本金属 |
+| `gold-silver` | 黄金与白银 |
+| `gold-intelligence` | 黄金情报 |
+| `mining-companies` | 矿业公司 |
+| `critical-minerals` | 关键矿物 |
+| `fao-food-price-index` | FAO 食品价格指数 |
+| `grocery-basket` | 杂货指数 |
+| `bigmac` | 巨无霸指数 |
+| `fuel-prices` | 燃料价格 |
+
+## 加密货币磁贴
+
+| 面板 id | 标题 |
+|---|---|
+| `crypto-heatmap` | 加密板块 |
+| `ai-tokens` | AI 代币 |
+| `defi-tokens` | DeFi 代币 |
+| `other-tokens` | 山寨代币 |
+| `stablecoins` | 稳定币 |
+
+## 区域经济磁贴
+
+| 面板 id | 标题 |
+|---|---|
+| `gulf-economies` | 海湾经济体 / 海湾与 OPEC 经济体 |
+| `gcc-investments` | GCC 投资 / GCC 资源投资 |
+| `gccNews` | GCC 商业新闻 |
+
+## 关联面板
+
+这些面板在滚动窗口内可视化跨领域关联 — 用于发现体制转换和异常共同运动。
+
+| 面板 id | 标题 | 跨领域对 |
+|---|---|---|
+| `military-correlation` | 军事姿态 | 军事 × 事件 |
+| `escalation-correlation` | 升级监控 | 冲突/抗议事件（45%）+ 冲突关联中断（25%）+ 升级新闻严重度（30%），48 小时内 |
+| `economic-correlation` | 经济战 | 制裁 × 市场 |
+| `disaster-correlation` | 灾害级联 | 自然 × 基础设施 |
+| `cross-source-signals` | 跨源信号 | 多源信号一致性 |
+
+## 杂项信号
+
+| 面板 id | 标题 | 显示内容 |
+|---|---|---|
+| `geo-hubs` | 地缘热点 | 热点集中地图。 |
+| `social-velocity` | 社交速度 | Reddit r/worldnews + r/geopolitics 速度；与 MCP `get_social_velocity` 工具相同的数据源。 |
+| `population-exposure` | 人口暴露 | 活动事件缓冲区内的人口。 |
+| `satellite-fires` | 火灾 | 地图上的 FIRMS/VIIRS 热力探测。请参见 [热力升级](/zh/panels/thermal-escalation) 了解聚类 + 基线感知视图。 |
+| `ucdp-events` | UCDP 冲突事件 | UCDP 地理引用冲突事件数据集。 |
+| `internet-disruptions` | 互联网中断 | Cloudflare Radar 中断 + 服务状态。 |
+| `service-status` | 服务状态 | 互联网服务状态面。 |
+| `positive-feed` | 好消息源 | 精选建设性新闻流。 |
+| `live-webcams` | 实时网络摄像头 | 请参见 [网络摄像头图层](/zh/webcam-layer) 了解地图图层等价物。 |
+| `windy-webcams` | Windy 实时摄像头 | Windy.com 支持的摄像头。 |
+
+## 基础设施支撑的端点
+
+紧凑的基础设施磁贴使用生成的 InfrastructureService 客户端。`internet-disruptions`、DDoS 摘要、流量异常、`service-status` 以及服务端计算的时序异常会先读取 bootstrap 数据（可用时），再在 bootstrap 数据缺失、被过滤或过期时调用 REST RPC。IP 地理定位、反向地理编码、bootstrap 缓存读取和基线写入等工具路由属于数据面路由，而非独立磁贴。
+
+| 方法 | 路由 | 所供数据 |
+|--------|-------|---------------|
+| `GET` | `/api/infrastructure/v1/list-internet-outages` | 来自 Cloudflare Radar 的互联网中断地图/磁贴数据；`fetchInternetOutages()` 先用 bootstrap `outages`，再用此 RPC。 |
+| `GET` | `/api/infrastructure/v1/list-service-statuses` | 服务状态磁贴；`fetchServiceStatuses()` 先用 bootstrap `serviceStatuses`，再用此 RPC（可选状态过滤）。 |
+| `GET` | `/api/infrastructure/v1/get-cable-health` | 电缆图层与基础设施级联上下文；请参见 [Infrastructure Cascade Analysis](/zh/infrastructure-cascade) 了解电缆专属工作流。 |
+| `GET` | `/api/infrastructure/v1/get-temporal-baseline` | 对军用航班、船舶、抗议、AIS 间隙和卫星火灾等指标的客户端时序异常检查。 |
+| `GET` | `/api/infrastructure/v1/list-temporal-anomalies` | 新闻与卫星火灾的服务端计算时序异常；先消费 bootstrap `temporalAnomalies`，随后 `fetchLiveAnomalies()` 可调用此路由。 |
+| `GET` | `/api/infrastructure/v1/list-internet-ddos-attacks` | 来自 Cloudflare Radar 的 DDoS 攻击摘要；`fetchDdosAttacks()` 先用 bootstrap `ddosAttacks`，再用此 RPC。 |
+| `GET` | `/api/infrastructure/v1/list-internet-traffic-anomalies` | 来自 Cloudflare Radar 的流量异常事件；未过滤视图使用 bootstrap `trafficAnomalies`，而按国家过滤的读取调用此 RPC。 |
+| `GET` | `/api/infrastructure/v1/get-ip-geo` | 用于基础设施感知体验的调用方 IP 地理定位工具；无面板直接从其水合。 |
+| `GET` | `/api/infrastructure/v1/reverse-geocode` | 面向 API 使用者与 v1 调用方的坐标到地点查找工具；部分 UI 路径仍使用遗留的轻量 `/api/reverse-geocode` 助手。 |
+| `GET` | `/api/infrastructure/v1/get-bootstrap-data` | 针对所选 bootstrap/cache 键的批量缓存读取 RPC；补充顶层 bootstrap 水合路径。 |
+| `POST` | `/api/infrastructure/v1/record-baseline-snapshot` | 时序异常追踪使用的后台基线更新；它写入观测值，自身不渲染可见磁贴。 |
+
+## 共享行为
+
+- 以上所有面板均**免费**，除非另有说明 — 在 `src/config/panels.ts` 中无 `premium: 'locked'`。
+- 紧凑磁贴跨多个变体注册；按变体的注册决定磁贴是否默认启用。确认可用性时请直接检查 `src/config/panels.ts`。
+- 大多数磁贴式面板从 bootstrap 载荷（`getHydratedData(...)`）水合，并回退到新的 RPC 调用，使初始绘制即时完成。
+
+## 相关
+
+- [功能与界面](/zh/features) — 面板系统、Cmd+K 和布局的概述。
+- [数据来源](/zh/data-sources) — 服务端摘要源清单与更广泛的上游来源列表。
+- [金融数据](/zh/finance-data) — 金融磁贴族的更深入参考。
+- [国家不稳定指数](/zh/country-instability-index) 和 [国家韧性指数](/zh/methodology/country-resilience-index) — 国家级风险互补面。

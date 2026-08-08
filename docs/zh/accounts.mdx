@@ -1,0 +1,59 @@
+---
+title: "账户与注册"
+description: "详细说明 World Monitor 账户创建机制：免费仪表盘完全无需注册即可使用除 Resilience 之外的全部地图图层与 500+ 数据源；Pro 订阅与 API 密钥账户则通过浏览器中的 Clerk 注册流程创建，涵盖邮箱验证、单点登录、社交账号绑定、会话管理、多设备同步与套餐权益激活等常见问题。"
+---
+
+<Info>
+**免费仪表盘无需账户。** Free 套餐下列出的所有功能 — 56 个地图图层（仅 Resilience 图层需 Pro）、500+ 数据源、国家简报、监视列表 — 均可在 [worldmonitor.app](https://worldmonitor.app) 匿名使用。仅当你需要 Pro/API 功能或需要生成 API 密钥时才需创建账户。
+</Info>
+
+## 注册流程如何运作
+
+账户创建是一个交互式的浏览器流程，而非 API：
+
+1. 打开 [worldmonitor.app/pro](https://worldmonitor.app/pro) 并点击 **Sign up（注册）**（或使用仪表盘的登录按钮）。页面内会打开一个 [Clerk](https://clerk.com) 模态框 — 不存在独立的 `/sign-up` 表单页面；该 URL 提供的是应用外壳。
+2. 使用邮箱 + 密码或某个 OAuth 提供方（Google、GitHub）注册。邮箱注册会收到一个验证码；模态框会引导你完成整个过程。
+3. 免费账户本身不会在仪表盘上解锁任何额外功能 — 它是 Pro/API 订阅和 API 密钥所依附的身份标识。
+
+## 注册之后
+
+- **升级到 Pro、Pro Business 或 API** — 前往 [worldmonitor.app/pro](https://worldmonitor.app/pro)；结账通过 Dodo Payments 完成；参见[套餐与价格](/zh/pricing)。Pro 与 Pro Business 是两个独立产品：在两者之间切换需先在账单门户取消当前订阅，再发起新的结账。
+- **创建 API 密钥** — 订阅 API Starter 或 API Business 后，从 **Dashboard → Settings → API Keys（仪表盘 → 设置 → API 密钥）** 创建（`wm_` + 40 个十六进制字符）。完整的值仅显示一次；准确的步骤和恢复说明请参见[查找或替换你的许可证 / API 密钥](/zh/api-keys)。
+- **通过 OAuth 连接 agent**（而非使用密钥）：MCP 客户端（Claude Desktop 等）使用 OAuth 2.1 + PKCE 和动态客户端注册 — 无需手动折腾账户；自举式的发现链请参见 [auth.md](https://worldmonitor.app/auth.md)。
+
+## 在仪表盘中管理套餐与账单
+
+登录用户可从同一个头像菜单管理账户设置与账单：
+
+- **Plan & billing** 会直接打开已登录用户的账单标签页。
+- **Settings** 会打开常规设置标签页；账单标签页会与 Panels、Sources、Notifications、API Keys 以及符合条件时的 MCP 客户端设置并列显示。
+
+账单标签页会显示当前套餐以及真正影响使用的状态：有效订阅的续费日期、`on_hold` 状态下的付款操作、已取消订阅的可访问截止日期，或到期后的重新订阅路径。**Manage Billing** 会打开 Dodo 客户门户，用于管理付款方式、发票、Dodo 支持的套餐变更与取消。
+
+如果 Premium 权限来自邀请、测试密钥、API 密钥或其他外部授权，页面仍会解释该账户状态，但不会显示误导性的发票或付款操作。受邀团队成员的账单始终由套餐所有者管理。
+
+## API Business 团队席位
+
+API Business 对外提供 **5 个 Pro 许可证**：订阅所有者本人加最多 4 名同事。目前，自助式 **Business Seats** 管理器只针对月付 `api_business` 套餐完成实现。月付所有者可从 **头像 → Plan & billing → Business Seats** 管理 4 个邀请席位。年付 `api_business_annual` 套餐尚未显示该自助管理器；其当前所含席位的处理方式请联系支持团队。
+
+- 所有者账户必须使用公司邮箱域名；免费或一次性邮箱域名不能发出邀请。
+- 受邀者必须使用与所有者相同的公司邮箱域名。
+- 待接受与已接受的邀请都会计入 4 席上限。待接受链接会在 14 天后过期。
+- 接受邀请后，只要所有者的 API Business 订阅仍覆盖当前时间，受邀者就会获得 Pro 仪表盘权限。
+- 受邀者获得的是 Pro 权限，而不是 API Business 订阅所有权或账单门户权限。若受邀者已经拥有更高层级的订阅，则其自有订阅保持权威。
+- 移除席位会立即撤销授权。若所有者取消订阅，受邀权限只持续到所有者已付费周期结束。
+
+这是月付 API Business 所含 5 个许可证的自助管理路径。额外席位、跨域名团队、SSO/RBAC 或集中式工作区管理需要 Enterprise 协议。
+
+## 面向 agent
+
+- 你无法通过抓取页面来代表用户完成浏览器注册 — 该流程存在于客户端的 Clerk 模态框中。请引导用户前往 [worldmonitor.app/pro](https://worldmonitor.app/pro)。
+- 若要以 *agent* 身份使用你自己的凭证进行操作，请使用 [auth.md](https://worldmonitor.app/auth.md) 中的 OAuth 路径（匿名动态客户端注册，然后由人类在授权时同意）。
+- 价格、套餐门槛和配额均可机器读取：[`/pricing.md`](https://worldmonitor.app/pricing.md) 和 [`GET /api/product-catalog`](https://www.worldmonitor.app/api/product-catalog)。
+
+## 相关
+
+- [套餐与价格](/zh/pricing)
+- [API Business 商务契约](/zh/api-commerce)
+- [身份验证与使用](/zh/usage-auth)
+- [支持与联系](/zh/support)

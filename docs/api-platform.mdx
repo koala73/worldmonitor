@@ -1,0 +1,193 @@
+---
+title: "Platform Endpoints"
+description: "Bootstrap, health, version, cache-purge, and user-preference endpoints — the plumbing every World Monitor client talks to on startup and cleanup."
+---
+
+These endpoints are not part of a domain RPC service — they sit at the root of the API surface and handle platform concerns.
+
+## Bootstrap
+
+### `GET /api/bootstrap`
+
+Single round-trip hydration for the dashboard. Returns **all bootstrap-registered Redis cache keys** unwrapped from their seed envelopes in one response.
+
+- **Auth**: browser `wm-session` cookie, `X-WorldMonitor-Key`, or the `X-Api-Key` alias. User-issued keys are validated for current API access.
+- **Anonymous weather**: `?keys=weatherAlerts` is public **only when no API key header is sent**. If you attach `X-WorldMonitor-Key` / `X-Api-Key`, the request is fully validated even for weather — a malformed key returns `401`, a key without current API access returns `403`. Callers that always send a key must send a valid, entitled key (or omit the header to use the anonymous weather path). This URL is `no-store`, which is what makes that contract hold at the edge as well as the origin: nothing caches it, so an invalid key can never be answered by a warm anonymous entry.
+- **Public weather**: `?keys=weatherAlerts&public=1` is the CDN-cached weather read. Like `?tier=fast&public=1`, it returns the same shared seed payload to every caller and ignores any credentials you attach — a CDN hit precedes auth, so the marker is what lets the response be cached safely. Prefer it for high-volume anonymous reads; use the bare URL when you need your key validated.
+- **Server-to-server**: call `https://api.worldmonitor.app/api/bootstrap` directly with `X-WorldMonitor-Key: wm_...`. There is no separate gateway host, token exchange, activation step, or IP allow-list requirement for this endpoint.
+- **Cache**: only the explicitly-marked `?...&public=1` URLs are shared-cacheable, because only they answer every caller identically. `?tier=fast&public=1` / `?tier=slow&public=1` use browser `max-age=60` / `max-age=300` and CDN `s-maxage=600` / `s-maxage=7200`. Single-key public URLs: on-demand keys (`?keys=<onDemandName>&public=1`) inherit the slow profile — browser `max-age=300`, CDN `s-maxage=7200` — unless the key declares its own, which today only `chinaDecisionSignals` does (browser `max-age=60`, CDN `s-maxage=900`); `?keys=weatherAlerts&public=1` uses `Cache-Control: public, s-maxage=600, stale-while-revalidate=120, stale-if-error=900` with the fast-tier CDN shield. Everything else — key-authenticated, session-authenticated, the unmarked `?tier=...` URLs, and the anonymous `?keys=weatherAlerts` path — uses `Cache-Control: no-store` and emits no CDN cache headers. That split is deliberate: a CDN hit precedes auth, so a URL whose answer depends on credentials must never be cacheable.
+- **Rate limit**: user API key validation on this endpoint has a fail-closed fixed 60 s per-IP pre-validation limit of 600 attempts, separate from the default API sliding-window limiter.
+- **Shape**: `{ "data": { "earthquakes": ..., "outages": ..., "marketQuotes": ... }, "missing": [] }` — ~40+ unwrapped seeded-domain payloads nested under `data`, plus a `missing` list for cache keys not present in Redis.
+
+Use this on initial page load to avoid 40 parallel RPC calls.
+
+The on-demand tier includes `chinaDecisionSignals`, the bounded six-domain China
+country-summary contract. Its anonymous country/RPC representation, Pro MCP
+representation, and operator health registration share stable group IDs and
+provenance; see [China Decision Signals](/china-decision-signals).
+
+## Version
+
+### `GET /api/version`
+
+Returns the latest **GitHub Release** of `koala73/worldmonitor`. Used by the desktop app to detect a newer published release and prompt the user to update. It is **not** the currently-deployed Vercel commit.
+
+```json
+{
+  "version": "2.6.7",
+  "tag": "v2.6.7",
+  "url": "https://github.com/koala73/worldmonitor/releases/tag/v2.6.7",
+  "prerelease": false
+}
+```
+
+Cached `public, s-maxage=300, stale-while-revalidate=60, stale-if-error=3600`. Returns `502 { "error": "upstream" }` or `502 { "error": "fetch_failed" }` when the GitHub API is unreachable.
+
+## Cache purge
+
+### `POST /api/cache-purge`
+
+Internal. Invalidates Redis cache keys by explicit list or glob patterns.
+
+- **Auth**: `Authorization: Bearer $RELAY_SHARED_SECRET` (timing-safe compared). Anything else returns `401`.
+- **Body** (at least one of `keys` / `patterns` required):
+  ```json
+  {
+    "keys":     ["market:stocks-bootstrap:v1", "infra:outages:v1"],
+    "patterns": ["market:sectors:*"],
+    "dryRun":   false
+  }
+  ```
+- **Limits**: up to 20 explicit keys, up to 3 patterns (each must end in `*`, bare `*` rejected), up to 200 deletions total, up to 5 SCAN iterations per pattern.
+- **Safety**: keys with prefixes `rl:` / `__` are always skipped; patterns that would match `military:bases:*`, `conflict:iran-events:*`, `conflict:ucdp-events:*` (durable seeds) are skipped.
+- **Non-production**: on preview / development deploys, keys are auto-prefixed with `{env}:{git-sha}:` so purges can't affect production data.
+- **Response**:
+  ```json
+  { "matched": 4, "deleted": 4, "keys": ["..."], "dryRun": false, "truncated": false }
+  ```
+
+## Health
+
+### `GET /api/health`
+
+Aggregated freshness report for **all registered seed keys**. Returns `HEALTHY`, `WARNING`, `DEGRADED`, `UNHEALTHY`, or `REDIS_DOWN` in the JSON `status` field.
+
+All states except `REDIS_DOWN` return HTTP 200; `REDIS_DOWN` returns HTTP 503 because Redis was unreachable and the endpoint could not assess seed state. Responses are not cached (`private, no-store, max-age=0` plus `CDN-Cache-Control: no-store`).
+
+Monitor via UptimeRobot / Better Stack with `?compact=1` — alert on any status other than `HEALTHY`. The full detailed view requires an operator/enterprise API key because it includes canonical cache key names and freshness thresholds.
+
+```json
+{
+  "status": "HEALTHY",
+  "checkedAt": "2026-08-07T12:00:00Z",
+  "summary": {
+    "total": 257,
+    "ok": 257,
+    "warn": 0,
+    "onDemandWarn": 0,
+    "staleContent": 0,
+    "rolloutPending": 0,
+    "crit": 0
+  },
+  "checks": {
+    "marketQuotes": { "status": "OK", "records": 78, "seedAgeMin": 12 },
+    "earthquakes": { "status": "OK", "records": 142, "seedAgeMin": 8 }
+  }
+}
+```
+
+### `GET /api/seed-health`
+
+Parallel registry for Railway-cron-driven seeders with their own cadence thresholds. Distinct from `/api/health` — both must be updated when cadence changes. See [health endpoints](/health-endpoints).
+
+`chinaDecisionSignals` is refreshed by the derived-signals bundle every 15
+minutes. `/api/health` allows 60 minutes before `STALE_SEED`;
+`/api/seed-health` uses a 30-minute interval (60-minute alarm) so both operator
+surfaces agree.
+
+### `POST /api/seed-contract-probe`
+
+Internal probe that validates each seed producer's envelope shape matches its consumers. Returns violations if any consumer reads a field the producer no longer emits.
+
+## User preferences
+
+### `GET /api/user-prefs`
+
+### `POST /api/user-prefs`
+
+Per-user dashboard preferences (layout, toggles, filters). Clerk bearer required. Backed by Convex.
+
+```json
+{
+  "layout": "classic",
+  "enabledLayers": ["conflict", "aviation", "maritime"],
+  "defaultCountry": "US"
+}
+```
+
+- **Idempotency**: optional `Idempotency-Key` supported on `POST /api/user-prefs`. Retrying the same key with an identical body replays the original preferences response instead of applying the update again.
+
+## API key cache invalidation
+
+### `POST /api/invalidate-user-api-key-cache`
+
+Invalidates a user's entitlement cache after a subscription change (Dodo webhook → Convex → this endpoint). Internal — requires `RELAY_SHARED_SECRET`.
+
+## Geo utilities
+
+### `GET /api/geo?iso2=US`
+
+Returns country metadata: centroid, bbox, capital, ISO codes.
+
+### `GET /api/reverse-geocode?lat=40.7&lon=-74.0`
+
+Reverse geocodes a lat/lon to the nearest country + city using the bundled coordinate dataset.
+
+### `GET /api/data/city-coords?q=Tokyo`
+
+City name → coordinates lookup.
+
+## Utilities
+
+### `GET /api/download?platform=<id>&variant=<id>`
+
+Redirects to the matching asset on the latest GitHub release of `koala73/worldmonitor`. Returns `302` to the asset URL on success, or `302` to [releases/latest](https://github.com/koala73/worldmonitor/releases/latest) on any failure (unknown platform, no match, GitHub error).
+
+**`platform`** (required, exact string):
+
+| value | matches |
+|-------|---------|
+| `windows-exe` | `*_x64-setup.exe` |
+| `windows-msi` | `*_x64_en-US.msi` |
+| `macos-arm64` | `*_aarch64.dmg` |
+| `macos-x64` | `*_x64.dmg` (excluding `*setup*`) |
+| `linux-appimage` | `*_amd64.AppImage` |
+| `linux-appimage-arm64` | `*_aarch64.AppImage` |
+
+**`variant`** (optional): `full`, `world`, `tech`, `finance`, `commodity`, `energy`, `happy`.
+
+One desktop binary ships and every variant is selected in-app after install, so
+each supported value resolves to the same World Monitor asset for the requested
+platform — the parameter records which variant the caller came from, it does not
+select a different download. An unrecognized value redirects to
+[releases/latest](https://github.com/koala73/worldmonitor/releases/latest)
+without calling GitHub. Omitting `variant` resolves the same way a supported value does —
+the identity filter applies on every path, so a release carrying a stray asset that merely
+matches the platform suffix never wins.
+
+Caches the 302 for 5 minutes (`s-maxage=300`, `stale-while-revalidate=60`, `stale-if-error=600`).
+
+### `POST /api/leads/v1/submit-contact`
+
+Public enterprise contact form. Turnstile-verified, rate-limited per IP. Part of `LeadsService`.
+
+### `POST /api/leads/v1/register-interest`
+
+Captures email for Pro-waitlist signup. Writes to Convex and sends a confirmation email. Part of `LeadsService`.
+
+Browser callers must pass Turnstile. Desktop callers using `source: "desktop-settings"` bypass Turnstile only when the request is authenticated with the shared desktop secret:
+
+- `X-WorldMonitor-Desktop-Timestamp`: Unix epoch milliseconds, within 5 minutes of server time.
+- `X-WorldMonitor-Desktop-Signature`: `sha256=<hex HMAC-SHA256>`.
+
+The HMAC input is `<timestamp>\n<canonical JSON>`, where canonical JSON contains `email`, `source`, `appVersion`, `referredBy`, `website`, and `turnstileToken` in that order. Configure `WM_DESKTOP_SHARED_SECRET` on both the desktop sidecar and the cloud API. During rollout, `WM_DESKTOP_AUTH_ALLOW_LEGACY=true` only accepts unsigned legacy desktop requests while the cloud API has no `WM_DESKTOP_SHARED_SECRET` configured. Once the cloud secret is set, desktop requests fail closed unless they include a valid signature, still subject to the tighter desktop rate limit.

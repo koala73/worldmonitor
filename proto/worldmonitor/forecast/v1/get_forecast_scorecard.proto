@@ -1,0 +1,90 @@
+syntax = "proto3";
+
+package worldmonitor.forecast.v1;
+
+import "sebuf/http/annotations.proto";
+
+message GetForecastScorecardRequest {}
+
+message ScorecardTotals {
+  int32 entries = 1;
+  int32 resolved = 2;
+  int32 pending = 3;
+  int32 pending_judge = 4;
+  int32 scored = 5;
+  int32 void = 6;
+  double void_rate = 7;
+  double publication_coverage = 8;
+}
+
+message ScorecardSummary {
+  int32 count = 1;
+  double brier = 2;
+  double log_score = 3;
+}
+
+message ScorecardDomainGroup {
+  string domain = 1;
+  int32 resolved = 2;
+  int32 scored = 3;
+  int32 void = 4;
+  double void_rate = 5;
+  optional double brier = 6;
+  optional double log_score = 7;
+}
+
+message ScorecardGenerationOriginGroup {
+  string generation_origin = 1;
+  int32 resolved = 2;
+  int32 scored = 3;
+  int32 void = 4;
+  double void_rate = 5;
+  optional double brier = 6;
+  optional double log_score = 7;
+}
+
+message ScorecardCalibrationBucket {
+  string bucket = 1;
+  double min_probability = 2;
+  double max_probability = 3;
+  int32 count = 4;
+  optional double predicted_mean = 5;
+  optional double realized_rate = 6;
+  optional double brier = 7;
+}
+
+message ScorecardMarketSkill {
+  int32 count = 1;
+  double forecast_brier = 2;
+  double market_brier = 3;
+  double brier_delta = 4;
+}
+
+// Headline "real skill" summary: Brier/log score over scored entries whose
+// generation origin is NOT synthetic backfill or an unpromoted shadow stream.
+// count 0 with excluded_scored > 0 means the headline is unmeasurable because
+// everything scored was synthetic — the honest signal for a collapsed funnel.
+message ScorecardSkill {
+  int32 count = 1;
+  optional double brier = 2;
+  optional double log_score = 3;
+  int32 excluded_scored = 4;
+  repeated string excluded_origins = 5;
+}
+
+message GetForecastScorecardResponse {
+  int32 schema_version = 1;
+  int64 generated_at = 2 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
+  int32 rolling_window_days = 3;
+  string methodology = 4;
+  ScorecardTotals totals = 5;
+  ScorecardSummary overall = 6;
+  repeated ScorecardDomainGroup by_domain = 7;
+  repeated ScorecardGenerationOriginGroup by_generation_origin = 8;
+  repeated ScorecardCalibrationBucket calibration = 9;
+  ScorecardMarketSkill vs_market_skill = 10;
+  bool degraded = 11;
+  bool stale = 12;
+  string error = 13;
+  ScorecardSkill skill = 14;
+}

@@ -8,12 +8,17 @@ import type {
   TrendDirection,
 } from './types';
 import { haversineKm } from '@/utils/distance';
-import { IntelligenceServiceClient } from '@/generated/client/worldmonitor/intelligence/v1/service_client';
+
+import { premiumFetch } from '@/services/premium-fetch';
 import { hasPremiumAccess } from '@/services/panel-gating';
+import { IntelligenceServiceClient } from '@/services/generated-rpc-clients';
+import type { CorrelationRuntimeMode } from '@/services/correlation-runtime-mode';
 
 const LLM_SCORE_THRESHOLD = 60;
 const LLM_CACHE_TTL_MS = 30 * 60 * 1000; // 30 minutes
 const LLM_MAX_CONCURRENT = 3;
+const RUN_TARGET_MS = 100;
+const SLOW_RUNS_BEFORE_WARNING = 2;
 
 interface LlmCacheEntry {
   assessment: string;
@@ -25,13 +30,20 @@ export class CorrelationEngine {
   private cards: Map<string, ConvergenceCard[]> = new Map();
   private previousClusters: Map<string, ClusterState[]> = new Map();
   private llmCache: Map<string, LlmCacheEntry> = new Map();
-  private intelligenceClient: IntelligenceServiceClient;
+  private intelligenceClient: InstanceType<typeof IntelligenceServiceClient>;
   private running = false;
   private llmInFlight = 0;
+  private consecutiveSlowRuns = 0;
+  private peakSlowRunMs = 0;
+  private warnedForCurrentSlowStreak = false;
+  private runtimeMode: CorrelationRuntimeMode = 'legacy';
 
   constructor() {
-    // Use '' base URL — requests go to current origin, same as other panels
-    this.intelligenceClient = new IntelligenceServiceClient('');
+    // Use '' base URL — requests go to current origin, same as other panels.
+    // premiumFetch — deductSituation is in PREMIUM_RPC_PATHS. globalThis.fetch
+    // (the generated default) would 401 signed-in browser pros so the LLM
+    // assessment never lands. See #3242 review HIGH(new) #1 for the bug class.
+    this.intelligenceClient = new IntelligenceServiceClient('', { fetch: premiumFetch });
   }
 
   registerAdapter(adapter: DomainAdapter): void {
@@ -40,8 +52,19 @@ export class CorrelationEngine {
     this.previousClusters.set(adapter.domain, []);
   }
 
-  async run(ctx: AppContext): Promise<void> {
-    if (this.running) return;
+  /**
+   * Returns true when this call actually computed, false when it was skipped
+   * because a run was already in flight.
+   *
+   * The skip is not reachable today — this method's body contains no `await`,
+   * so `running` is never true across a yield point. The return value exists so
+   * the contract stays correct if that ever changes: callers must not publish
+   * `getCards()` after a skipped run, because on a first-run overlap the card
+   * map still holds its initial empty arrays and would blank live panels.
+   */
+  async run(ctx: AppContext, runtimeMode: CorrelationRuntimeMode = 'legacy'): Promise<boolean> {
+    if (this.running) return false;
+    this.runtimeMode = runtimeMode;
     this.running = true;
     try {
       this.pruneLlmCache();
@@ -70,9 +93,7 @@ export class CorrelationEngine {
       }
 
       const elapsed = performance.now() - t0;
-      if (elapsed > 100) {
-        console.warn(`[CorrelationEngine] run() took ${elapsed.toFixed(0)}ms (>100ms target)`);
-      }
+      this.recordRunDuration(elapsed);
 
       document.dispatchEvent(new CustomEvent('wm:correlation-updated', {
         detail: { domains: this.adapters.map(a => a.domain) },
@@ -80,6 +101,7 @@ export class CorrelationEngine {
     } finally {
       this.running = false;
     }
+    return true;
   }
 
   getCards(domain: string): ConvergenceCard[] {
@@ -88,6 +110,35 @@ export class CorrelationEngine {
 
   getAllCards(): ConvergenceCard[] {
     return Array.from(this.cards.values()).flat();
+  }
+
+  getRuntimeMode(): CorrelationRuntimeMode {
+    return this.runtimeMode;
+  }
+
+  private recordRunDuration(elapsedMs: number): void {
+    if (!Number.isFinite(elapsedMs) || elapsedMs <= RUN_TARGET_MS) {
+      this.consecutiveSlowRuns = 0;
+      this.peakSlowRunMs = 0;
+      this.warnedForCurrentSlowStreak = false;
+      return;
+    }
+
+    this.consecutiveSlowRuns++;
+    this.peakSlowRunMs = Math.max(this.peakSlowRunMs, elapsedMs);
+    if (
+      this.consecutiveSlowRuns < SLOW_RUNS_BEFORE_WARNING
+      || this.warnedForCurrentSlowStreak
+    ) {
+      return;
+    }
+
+    this.warnedForCurrentSlowStreak = true;
+    console.warn(
+      `[CorrelationEngine] run() exceeded ${RUN_TARGET_MS}ms for `
+      + `${this.consecutiveSlowRuns} consecutive runs `
+      + `(latest ${elapsedMs.toFixed(0)}ms, peak ${this.peakSlowRunMs.toFixed(0)}ms)`,
+    );
   }
 
   // ── Clustering ──────────────────────────────────────────────

@@ -1,0 +1,607 @@
+{
+  "source": "Curated from operator press releases, regulator filings, OFAC/EU sanctions lists, and major-wire coverage. Each event ties back to a seeded asset in pipelines-gas/oil.json or storage-facilities.json.",
+  "methodologyUrl": "/docs/methodology/disruptions",
+  "version": "v1",
+  "referenceYear": 2026,
+  "classifierVersion": "v1",
+  "events": {
+    "nord-stream-1-sabotage-2022": {
+      "id": "nord-stream-1-sabotage-2022",
+      "assetId": "nord-stream-1",
+      "assetType": "pipeline",
+      "eventType": "sabotage",
+      "startAt": "2022-09-26T00:00:00Z",
+      "endAt": null,
+      "capacityOfflineBcmYr": 55,
+      "capacityOfflineMbd": 0,
+      "causeChain": ["sabotage", "war"],
+      "shortDescription": "Submarine explosions rupture both Nord Stream 1 and 2 pipelines in Baltic Sea; operator declares force majeure.",
+      "sources": [
+        { "authority": "Nord Stream AG", "title": "Operator statement on incidents", "url": "https://www.nord-stream.com/press-info/", "date": "2022-09-27", "sourceType": "operator" },
+        { "authority": "BBC", "title": "Nord Stream explosions: What we know", "url": "https://www.bbc.com/news/world-europe-63044747", "date": "2022-09-29", "sourceType": "press" }
+      ],
+      "classifierVersion": "v1",
+      "classifierConfidence": 0.98,
+      "lastEvidenceUpdate": "2026-04-22T00:00:00Z"
+    },
+    "nord-stream-2-sabotage-2022": {
+      "id": "nord-stream-2-sabotage-2022",
+      "assetId": "nord-stream-2",
+      "assetType": "pipeline",
+      "eventType": "sabotage",
+      "startAt": "2022-09-26T00:00:00Z",
+      "endAt": null,
+      "capacityOfflineBcmYr": 55,
+      "capacityOfflineMbd": 0,
+      "causeChain": ["sabotage", "war"],
+      "shortDescription": "NS2 damaged alongside NS1; pipeline was never commercially operational due to German regulatory freeze.",
+      "sources": [
+        { "authority": "Danish Energy Agency", "title": "Leak observations", "url": "https://ens.dk/en", "date": "2022-09-27", "sourceType": "regulator" }
+      ],
+      "classifierVersion": "v1",
+      "classifierConfidence": 0.97,
+      "lastEvidenceUpdate": "2026-04-22T00:00:00Z"
+    },
+    "druzhba-n-poland-halt-2023": {
+      "id": "druzhba-n-poland-halt-2023",
+      "assetId": "druzhba-north",
+      "assetType": "pipeline",
+      "eventType": "sanction",
+      "startAt": "2023-02-25T00:00:00Z",
+      "endAt": null,
+      "capacityOfflineBcmYr": 0,
+      "capacityOfflineMbd": 0.3,
+      "causeChain": ["sanction", "policy"],
+      "shortDescription": "Poland and Germany halt crude flows from Russia; Druzhba North branch unused for commercial deliveries.",
+      "sources": [
+        { "authority": "EU Council", "title": "8th sanctions package on Russia", "url": "https://www.consilium.europa.eu/en/policies/sanctions/", "date": "2023-02-25", "sourceType": "regulator" },
+        { "authority": "Reuters", "title": "Germany, Poland cease Druzhba crude imports", "url": "https://www.reuters.com/business/energy/", "date": "2023-01-03", "sourceType": "press" }
+      ],
+      "classifierVersion": "v1",
+      "classifierConfidence": 0.95,
+      "lastEvidenceUpdate": "2026-04-22T00:00:00Z"
+    },
+    "cpc-force-majeure-2022": {
+      "id": "cpc-force-majeure-2022",
+      "assetId": "cpc",
+      "assetType": "pipeline",
+      "eventType": "mechanical",
+      "startAt": "2022-03-22T00:00:00Z",
+      "endAt": "2022-04-22T00:00:00Z",
+      "capacityOfflineBcmYr": 0,
+      "capacityOfflineMbd": 0.8,
+      "causeChain": ["logistics", "war"],
+      "shortDescription": "CPC's Novorossiysk loading buoys damaged in storm + war tensions; operator declares one-month force majeure.",
+      "sources": [
+        { "authority": "Caspian Pipeline Consortium", "title": "Buoy damage notice", "url": "https://www.cpc.ru/", "date": "2022-03-23", "sourceType": "operator" }
+      ],
+      "classifierVersion": "v1",
+      "classifierConfidence": 0.92,
+      "lastEvidenceUpdate": "2026-04-22T00:00:00Z"
+    },
+    "turkstream-maintenance-2024": {
+      "id": "turkstream-maintenance-2024",
+      "assetId": "turkstream",
+      "assetType": "pipeline",
+      "eventType": "maintenance",
+      "startAt": "2024-06-24T00:00:00Z",
+      "endAt": "2024-07-09T00:00:00Z",
+      "capacityOfflineBcmYr": 31.5,
+      "capacityOfflineMbd": 0,
+      "causeChain": ["logistics"],
+      "shortDescription": "Annual planned maintenance on both strings; supply suspended for ~2 weeks, resumed on schedule.",
+      "sources": [
+        { "authority": "Gazprom", "title": "Maintenance notice", "url": "https://www.gazprom.com/press/news/", "date": "2024-06-20", "sourceType": "operator" }
+      ],
+      "classifierVersion": "v1",
+      "classifierConfidence": 0.96,
+      "lastEvidenceUpdate": "2026-04-22T00:00:00Z"
+    },
+    "yamal-belarus-halt-2022": {
+      "id": "yamal-belarus-halt-2022",
+      "assetId": "yamal-europe",
+      "assetType": "pipeline",
+      "eventType": "sanction",
+      "startAt": "2022-05-12T00:00:00Z",
+      "endAt": null,
+      "capacityOfflineBcmYr": 33,
+      "capacityOfflineMbd": 0,
+      "causeChain": ["sanction", "policy"],
+      "shortDescription": "Russia cuts flows over EuRoPol GAZ sanctions; Yamal-Europe reversed to Poland→Belarus virtual reverse flow.",
+      "sources": [
+        { "authority": "PGNiG", "title": "Yamal flows halted", "url": "https://pgnig.pl/", "date": "2022-05-12", "sourceType": "operator" }
+      ],
+      "classifierVersion": "v1",
+      "classifierConfidence": 0.94,
+      "lastEvidenceUpdate": "2026-04-22T00:00:00Z"
+    },
+    "rehden-gas-sanction-2022": {
+      "id": "rehden-gas-sanction-2022",
+      "assetId": "rehden",
+      "assetType": "storage",
+      "eventType": "sanction",
+      "startAt": "2022-04-01T00:00:00Z",
+      "endAt": "2022-06-14T00:00:00Z",
+      "capacityOfflineBcmYr": 0,
+      "capacityOfflineMbd": 0,
+      "causeChain": ["sanction", "policy"],
+      "shortDescription": "Germany placed Gazprom Germania (operator of Rehden) under BNetzA trusteeship; operator sanctioned, facility regained access under new operator.",
+      "sources": [
+        { "authority": "BNetzA", "title": "Trusteeship decision", "url": "https://www.bundesnetzagentur.de/", "date": "2022-04-04", "sourceType": "regulator" }
+      ],
+      "classifierVersion": "v1",
+      "classifierConfidence": 0.93,
+      "lastEvidenceUpdate": "2026-04-22T00:00:00Z"
+    },
+    "arctic-lng-2-sanction-2023": {
+      "id": "arctic-lng-2-sanction-2023",
+      "assetId": "arctic-lng-2",
+      "assetType": "storage",
+      "eventType": "sanction",
+      "startAt": "2023-11-02T00:00:00Z",
+      "endAt": null,
+      "capacityOfflineBcmYr": 0,
+      "capacityOfflineMbd": 0,
+      "causeChain": ["sanction"],
+      "shortDescription": "OFAC designates Arctic LNG 2 LLC; foreign partners withdraw. Operations continue but commercial exports suspended.",
+      "sources": [
+        { "authority": "US Treasury OFAC", "title": "SDN designation — Arctic LNG 2 LLC", "url": "https://home.treasury.gov/news/press-releases/jy1871", "date": "2023-11-02", "sourceType": "regulator" }
+      ],
+      "classifierVersion": "v1",
+      "classifierConfidence": 0.96,
+      "lastEvidenceUpdate": "2026-04-22T00:00:00Z"
+    },
+    "espo-attack-2025": {
+      "id": "espo-attack-2025",
+      "assetId": "espo",
+      "assetType": "pipeline",
+      "eventType": "sabotage",
+      "startAt": "2025-08-14T00:00:00Z",
+      "endAt": "2025-08-18T00:00:00Z",
+      "capacityOfflineBcmYr": 0,
+      "capacityOfflineMbd": 1.6,
+      "causeChain": ["sabotage", "war"],
+      "shortDescription": "Drone strikes on Tynda and Bamovsk pumping stations; four-day throughput reduction to Daqing.",
+      "sources": [
+        { "authority": "Transneft", "title": "Pumping station incident", "url": "https://www.transneft.ru/", "date": "2025-08-15", "sourceType": "operator" }
+      ],
+      "classifierVersion": "v1",
+      "classifierConfidence": 0.88,
+      "lastEvidenceUpdate": "2026-04-22T00:00:00Z"
+    },
+    "btc-fire-2008": {
+      "id": "btc-fire-2008",
+      "assetId": "btc",
+      "assetType": "pipeline",
+      "eventType": "mechanical",
+      "startAt": "2008-08-05T00:00:00Z",
+      "endAt": "2008-08-25T00:00:00Z",
+      "capacityOfflineBcmYr": 0,
+      "capacityOfflineMbd": 1.0,
+      "causeChain": ["sabotage"],
+      "shortDescription": "BTC pipeline fire in Turkey; 20-day outage, claimed by PKK. Historical reference event.",
+      "sources": [
+        { "authority": "BP", "title": "BTC incident update", "url": "https://www.bp.com/en/global/corporate/news-and-insights/", "date": "2008-08-06", "sourceType": "operator" }
+      ],
+      "classifierVersion": "v1",
+      "classifierConfidence": 0.95,
+      "lastEvidenceUpdate": "2026-04-22T00:00:00Z"
+    },
+    "sabine-pass-hurricane-2024": {
+      "id": "sabine-pass-hurricane-2024",
+      "assetId": "sabine-pass",
+      "assetType": "storage",
+      "eventType": "weather",
+      "startAt": "2024-07-08T00:00:00Z",
+      "endAt": "2024-07-12T00:00:00Z",
+      "capacityOfflineBcmYr": 0,
+      "capacityOfflineMbd": 0,
+      "causeChain": ["logistics"],
+      "shortDescription": "Hurricane Beryl forces temporary shutdown and evacuation; minimal cargo delay, no lasting impact.",
+      "sources": [
+        { "authority": "Cheniere Energy", "title": "Operational update", "url": "https://www.cheniere.com/", "date": "2024-07-09", "sourceType": "operator" }
+      ],
+      "classifierVersion": "v1",
+      "classifierConfidence": 0.9,
+      "lastEvidenceUpdate": "2026-04-22T00:00:00Z"
+    },
+    "power-of-siberia-ramp-2023": {
+      "id": "power-of-siberia-ramp-2023",
+      "assetId": "power-of-siberia",
+      "assetType": "pipeline",
+      "eventType": "commercial",
+      "startAt": "2023-01-01T00:00:00Z",
+      "endAt": null,
+      "capacityOfflineBcmYr": 0,
+      "capacityOfflineMbd": 0,
+      "causeChain": ["policy"],
+      "shortDescription": "Flow volumes ramping toward 38 bcm/yr contracted level. Commercial / capacity-ramp event, not an outage.",
+      "sources": [
+        { "authority": "Gazprom", "title": "Power of Siberia throughput milestone", "url": "https://www.gazprom.com/projects/power-of-siberia/", "date": "2023-01-15", "sourceType": "operator" }
+      ],
+      "classifierVersion": "v1",
+      "classifierConfidence": 0.88,
+      "lastEvidenceUpdate": "2026-04-22T00:00:00Z"
+    },
+    "druzhba-contamination-2019": {
+      "id": "druzhba-contamination-2019", "assetId": "druzhba-north", "assetType": "pipeline",
+      "eventType": "mechanical", "startAt": "2019-04-19T00:00:00Z", "endAt": "2019-07-10T00:00:00Z",
+      "capacityOfflineBcmYr": 0, "capacityOfflineMbd": 1.0,
+      "causeChain": ["logistics"],
+      "shortDescription": "Organic chlorides contamination forced suspension of crude deliveries through Druzhba; cleanup took ~3 months.",
+      "sources": [ { "authority": "Transneft", "title": "Druzhba contamination statement", "url": "https://www.transneft.ru/", "date": "2019-04-25", "sourceType": "operator" } ],
+      "classifierVersion": "v1", "classifierConfidence": 0.95, "lastEvidenceUpdate": "2026-04-22T00:00:00Z"
+    },
+    "abqaiq-khurais-drone-strike-2019": {
+      "id": "abqaiq-khurais-drone-strike-2019", "assetId": "east-west-saudi", "assetType": "pipeline",
+      "eventType": "sabotage", "startAt": "2019-09-14T00:00:00Z", "endAt": "2019-09-25T00:00:00Z",
+      "capacityOfflineBcmYr": 0, "capacityOfflineMbd": 5.0,
+      "causeChain": ["sabotage", "war"],
+      "shortDescription": "Houthi-claimed drone + cruise missile attack on Abqaiq processing and Khurais field temporarily removed ~50% of Saudi crude processing capacity (headline 5.7 mbd figure reflects plant-level loss; capacityOffline capped at linked pipeline 5.0 mbd throughput ceiling).",
+      "sources": [
+        { "authority": "Saudi Aramco", "title": "Abqaiq attack statement", "url": "https://www.aramco.com/en/news-media/news/2019/abqaiq-khurais-update", "date": "2019-09-14", "sourceType": "operator" },
+        { "authority": "Reuters", "title": "Saudi Arabia oil attack", "url": "https://www.reuters.com/article/saudi-aramco-attacks/", "date": "2019-09-14", "sourceType": "press" }
+      ],
+      "classifierVersion": "v1", "classifierConfidence": 0.98, "lastEvidenceUpdate": "2026-04-22T00:00:00Z"
+    },
+    "btc-kurdistan-shutdown-2023": {
+      "id": "btc-kurdistan-shutdown-2023", "assetId": "kirkuk-ceyhan", "assetType": "pipeline",
+      "eventType": "sanction", "startAt": "2023-03-25T00:00:00Z", "endAt": null,
+      "capacityOfflineBcmYr": 0, "capacityOfflineMbd": 0.45,
+      "causeChain": ["sanction", "policy"],
+      "shortDescription": "ICC arbitration ruling against Turkey halted Iraq-Turkey oil pipeline exports from Kurdistan. Pipeline remains shut.",
+      "sources": [
+        { "authority": "Iraq Ministry of Oil", "title": "Kurdistan export suspension", "url": "https://oil.gov.iq/", "date": "2023-03-25", "sourceType": "regulator" },
+        { "authority": "Reuters", "title": "Iraq-Turkey ICC ruling", "url": "https://www.reuters.com/business/energy/", "date": "2023-03-25", "sourceType": "press" }
+      ],
+      "classifierVersion": "v1", "classifierConfidence": 0.95, "lastEvidenceUpdate": "2026-04-22T00:00:00Z"
+    },
+    "russia-price-cap-implementation-2022": {
+      "id": "russia-price-cap-implementation-2022", "assetId": "primorsk-crude-terminal", "assetType": "storage",
+      "eventType": "sanction", "startAt": "2022-12-05T00:00:00Z", "endAt": null,
+      "capacityOfflineBcmYr": 0, "capacityOfflineMbd": 0,
+      "causeChain": ["sanction", "policy"],
+      "shortDescription": "G7+EU $60/bbl price cap took effect on Russian seaborne crude; targeted tanker shipments from Baltic/Black Sea/Arctic export terminals (Primorsk, Ust-Luga, Novorossiysk); reshaped routing, shadow-fleet usage expanded. Linked to Primorsk (largest Baltic crude export terminal); ESPO pipeline leg to China was out of scope.",
+      "sources": [ { "authority": "US Treasury OFAC", "title": "Russian crude price cap guidance", "url": "https://home.treasury.gov/news/press-releases/jy1161", "date": "2022-12-05", "sourceType": "regulator" } ],
+      "classifierVersion": "v1", "classifierConfidence": 0.95, "lastEvidenceUpdate": "2026-04-22T00:00:00Z"
+    },
+    "eu-oil-embargo-2022": {
+      "id": "eu-oil-embargo-2022", "assetId": "druzhba-north", "assetType": "pipeline",
+      "eventType": "sanction", "startAt": "2022-06-03T00:00:00Z", "endAt": null,
+      "capacityOfflineBcmYr": 0, "capacityOfflineMbd": 0.5,
+      "causeChain": ["sanction"],
+      "shortDescription": "EU 6th sanctions package banned seaborne Russian crude and capped Druzhba pipeline crude imports to landlocked EU members; progressive reductions continuing.",
+      "sources": [ { "authority": "EU Council", "title": "Regulation 2022/879", "url": "https://eur-lex.europa.eu/legal-content/EN/TXT/?uri=CELEX%3A32022R0879", "date": "2022-06-03", "sourceType": "regulator" } ],
+      "classifierVersion": "v1", "classifierConfidence": 0.96, "lastEvidenceUpdate": "2026-04-22T00:00:00Z"
+    },
+    "pdvsa-designation-2019": {
+      "id": "pdvsa-designation-2019", "assetId": "venezuela-anzoategui-puerto-la-cruz", "assetType": "pipeline",
+      "eventType": "sanction", "startAt": "2019-01-28T00:00:00Z", "endAt": null,
+      "capacityOfflineBcmYr": 0, "capacityOfflineMbd": 0.5,
+      "causeChain": ["sanction"],
+      "shortDescription": "OFAC designated PDVSA; US refiners cut Venezuelan heavy crude intake, reshaping Latam flows.",
+      "sources": [ { "authority": "US Treasury OFAC", "title": "PDVSA designation", "url": "https://home.treasury.gov/news/press-releases/sm594", "date": "2019-01-28", "sourceType": "regulator" } ],
+      "classifierVersion": "v1", "classifierConfidence": 0.95, "lastEvidenceUpdate": "2026-04-22T00:00:00Z"
+    },
+    "keystone-milepost-14-leak-2022": {
+      "id": "keystone-milepost-14-leak-2022", "assetId": "keystone", "assetType": "pipeline",
+      "eventType": "mechanical", "startAt": "2022-12-07T00:00:00Z", "endAt": "2022-12-29T00:00:00Z",
+      "capacityOfflineBcmYr": 0, "capacityOfflineMbd": 0.62,
+      "causeChain": ["logistics"],
+      "shortDescription": "14,000-barrel crude spill in Washington County, Kansas — the largest onshore US crude spill since 2010. Keystone mainline shut 22 days.",
+      "sources": [
+        { "authority": "PHMSA", "title": "Keystone Milepost 14 incident report", "url": "https://www.phmsa.dot.gov/", "date": "2022-12-08", "sourceType": "regulator" },
+        { "authority": "TC Energy", "title": "Keystone incident response", "url": "https://www.tcenergy.com/", "date": "2022-12-07", "sourceType": "operator" }
+      ],
+      "classifierVersion": "v1", "classifierConfidence": 0.97, "lastEvidenceUpdate": "2026-04-22T00:00:00Z"
+    },
+    "hurricane-ida-lng-2021": {
+      "id": "hurricane-ida-lng-2021", "assetId": "sabine-pass", "assetType": "storage",
+      "eventType": "weather", "startAt": "2021-08-29T00:00:00Z", "endAt": "2021-09-07T00:00:00Z",
+      "capacityOfflineBcmYr": 0, "capacityOfflineMbd": 0,
+      "causeChain": ["logistics"],
+      "shortDescription": "Hurricane Ida forced shutdown of multiple Gulf-coast LNG terminals and gas-processing; cargoes delayed ~1 week.",
+      "sources": [
+        { "authority": "Cheniere Energy", "title": "Ida operational update", "url": "https://www.cheniere.com/", "date": "2021-08-30", "sourceType": "operator" }
+      ],
+      "classifierVersion": "v1", "classifierConfidence": 0.92, "lastEvidenceUpdate": "2026-04-22T00:00:00Z"
+    },
+    "cpc-blockage-threat-2022": {
+      "id": "cpc-blockage-threat-2022", "assetId": "cpc", "assetType": "pipeline",
+      "eventType": "commercial", "startAt": "2022-08-22T00:00:00Z", "endAt": "2022-08-31T00:00:00Z",
+      "capacityOfflineBcmYr": 0, "capacityOfflineMbd": 1.2,
+      "causeChain": ["policy", "war"],
+      "shortDescription": "Russian court ordered 30-day shutdown of CPC; overturned on appeal within weeks. Threatened ~1.2 mbd of Kazakh crude exports.",
+      "sources": [
+        { "authority": "Caspian Pipeline Consortium", "title": "CPC legal update", "url": "https://www.cpc.ru/", "date": "2022-08-25", "sourceType": "operator" }
+      ],
+      "classifierVersion": "v1", "classifierConfidence": 0.9, "lastEvidenceUpdate": "2026-04-22T00:00:00Z"
+    },
+    "russia-refinery-drone-strikes-2024": {
+      "id": "russia-refinery-drone-strikes-2024", "assetId": "bps-1", "assetType": "pipeline",
+      "eventType": "sabotage", "startAt": "2024-01-15T00:00:00Z", "endAt": null,
+      "capacityOfflineBcmYr": 0, "capacityOfflineMbd": 0.4,
+      "causeChain": ["sabotage", "war"],
+      "shortDescription": "Ukrainian drone strike series on Russian refineries (Tuapse, Ryazan, Volgograd, Nizhny Novgorod) through 2024-2025 — intermittent throughput reductions to Baltic export systems.",
+      "sources": [ { "authority": "Reuters", "title": "Russia refinery drone strikes", "url": "https://www.reuters.com/world/europe/", "date": "2024-02-01", "sourceType": "press" } ],
+      "classifierVersion": "v1", "classifierConfidence": 0.88, "lastEvidenceUpdate": "2026-04-22T00:00:00Z"
+    },
+    "houthi-red-sea-attacks-2024": {
+      "id": "houthi-red-sea-attacks-2024", "assetId": "sumed", "assetType": "pipeline",
+      "eventType": "war", "startAt": "2023-11-19T00:00:00Z", "endAt": null,
+      "capacityOfflineBcmYr": 0, "capacityOfflineMbd": 0,
+      "causeChain": ["war", "chokepoint"],
+      "shortDescription": "Houthi attacks on Red Sea shipping since Nov 2023 have driven tanker traffic around the Cape, boosting SuMed's role as Suez bypass. Contextual indirect effect; SuMed itself physically flowing.",
+      "sources": [
+        { "authority": "UK MTO", "title": "Red Sea advisories", "url": "https://www.ukmto.org/", "date": "2024-01-15", "sourceType": "regulator" }
+      ],
+      "classifierVersion": "v1", "classifierConfidence": 0.85, "lastEvidenceUpdate": "2026-04-22T00:00:00Z"
+    },
+    "russia-ukraine-oil-depot-strikes-2022": {
+      "id": "russia-ukraine-oil-depot-strikes-2022", "assetId": "druzhba-south", "assetType": "pipeline",
+      "eventType": "war", "startAt": "2022-03-25T00:00:00Z", "endAt": null,
+      "capacityOfflineBcmYr": 0, "capacityOfflineMbd": 0.08,
+      "causeChain": ["war", "sabotage"],
+      "shortDescription": "Russian strikes on Ukrainian fuel depots across 2022-2024 disrupted inland fuel distribution; Ukrainian side has periodically attacked Druzhba booster stations on Russian territory.",
+      "sources": [
+        { "authority": "AFP", "title": "Russia oil depot strikes Ukraine", "url": "https://www.afp.com/", "date": "2022-04-10", "sourceType": "press" }
+      ],
+      "classifierVersion": "v1", "classifierConfidence": 0.85, "lastEvidenceUpdate": "2026-04-22T00:00:00Z"
+    },
+    "gme-closure-2021": {
+      "id": "gme-closure-2021", "assetId": "meg-maghreb-europe", "assetType": "pipeline",
+      "eventType": "sanction", "startAt": "2021-10-31T00:00:00Z", "endAt": null,
+      "capacityOfflineBcmYr": 12, "capacityOfflineMbd": 0,
+      "causeChain": ["policy"],
+      "shortDescription": "Algeria declined to renew MEG contract amid diplomatic rupture with Morocco; pipeline closed end of Oct 2021. Morocco partially repurposed for reverse flow (Spain→Morocco LNG vaporisation).",
+      "sources": [ { "authority": "Sonatrach", "title": "MEG contract status", "url": "https://sonatrach.com/", "date": "2021-10-31", "sourceType": "operator" } ],
+      "classifierVersion": "v1", "classifierConfidence": 0.95, "lastEvidenceUpdate": "2026-04-22T00:00:00Z"
+    },
+    "ukraine-transit-end-2025": {
+      "id": "ukraine-transit-end-2025", "assetId": "progress-urengoy-uzhhorod", "assetType": "pipeline",
+      "eventType": "commercial", "startAt": "2025-01-01T00:00:00Z", "endAt": null,
+      "capacityOfflineBcmYr": 15, "capacityOfflineMbd": 0,
+      "causeChain": ["policy", "war"],
+      "shortDescription": "Ukraine allowed the 2019 transit agreement with Gazprom to expire; Russian gas transit via Sudzha halted 1 Jan 2025 ending a ~50-year era of Russian gas transit through Ukraine.",
+      "sources": [ { "authority": "Naftogaz", "title": "Transit agreement expiry statement", "url": "https://naftogaz.com/", "date": "2025-01-01", "sourceType": "operator" } ],
+      "classifierVersion": "v1", "classifierConfidence": 0.97, "lastEvidenceUpdate": "2026-04-22T00:00:00Z"
+    },
+    "eugal-dormant-since-2022": {
+      "id": "eugal-dormant-since-2022", "assetId": "eugal-pipeline-germany", "assetType": "pipeline",
+      "eventType": "commercial", "startAt": "2022-02-22T00:00:00Z", "endAt": null,
+      "capacityOfflineBcmYr": 55, "capacityOfflineMbd": 0,
+      "causeChain": ["sanction", "policy"],
+      "shortDescription": "Built to carry Nord Stream 2 gas into Central Europe; never reached commercial operation after German halt of NS2 certification (Feb 2022) and subsequent NS2 damage (Sep 2022).",
+      "sources": [ { "authority": "BNetzA", "title": "Nord Stream 2 certification halt", "url": "https://www.bundesnetzagentur.de/", "date": "2022-02-22", "sourceType": "regulator" } ],
+      "classifierVersion": "v1", "classifierConfidence": 0.95, "lastEvidenceUpdate": "2026-04-22T00:00:00Z"
+    },
+    "ipsa-nationalization-2001": {
+      "id": "ipsa-nationalization-2001", "assetId": "ipsa-2", "assetType": "pipeline",
+      "eventType": "sanction", "startAt": "2001-06-10T00:00:00Z", "endAt": null,
+      "capacityOfflineBcmYr": 0, "capacityOfflineMbd": 1.65,
+      "causeChain": ["policy", "war"],
+      "shortDescription": "Saudi Arabia nationalized IPSA-2 in 2001, 11 years after Iraq's invasion of Kuwait had shut the pipeline. Converted 2017 to natural-gas service (western segment).",
+      "sources": [ { "authority": "Saudi Aramco", "title": "IPSA nationalization statement", "url": "https://www.aramco.com/", "date": "2001-06-10", "sourceType": "operator" } ],
+      "classifierVersion": "v1", "classifierConfidence": 0.95, "lastEvidenceUpdate": "2026-04-22T00:00:00Z"
+    },
+    "keystone-xl-permit-revoked-2021": {
+      "id": "keystone-xl-permit-revoked-2021", "assetId": "keystone-xl-cancelled", "assetType": "pipeline",
+      "eventType": "commercial", "startAt": "2021-01-20T00:00:00Z", "endAt": "2021-06-09T00:00:00Z",
+      "capacityOfflineBcmYr": 0, "capacityOfflineMbd": 0.83,
+      "causeChain": ["policy"],
+      "shortDescription": "Biden administration revoked the presidential permit on day one; TC Energy terminated the project 9 Jun 2021 after extended uncertainty.",
+      "sources": [
+        { "authority": "White House", "title": "Executive Order on Keystone XL", "url": "https://www.whitehouse.gov/", "date": "2021-01-20", "sourceType": "regulator" },
+        { "authority": "TC Energy", "title": "Keystone XL termination", "url": "https://www.tcenergy.com/announcements/2021/2021-06-09-tc-energy-confirms-termination-of-keystone-xl-pipeline-project/", "date": "2021-06-09", "sourceType": "operator" }
+      ],
+      "classifierVersion": "v1", "classifierConfidence": 0.97, "lastEvidenceUpdate": "2026-04-22T00:00:00Z"
+    },
+    "forties-crack-2017": {
+      "id": "forties-crack-2017", "assetId": "forties-pipeline", "assetType": "pipeline",
+      "eventType": "mechanical", "startAt": "2017-12-11T00:00:00Z", "endAt": "2017-12-30T00:00:00Z",
+      "capacityOfflineBcmYr": 0, "capacityOfflineMbd": 0.45,
+      "causeChain": ["logistics"],
+      "shortDescription": "Hairline crack at Red Moss, Aberdeenshire forced ~3-week Forties Pipeline System shutdown; Brent benchmark tightened during outage.",
+      "sources": [ { "authority": "INEOS", "title": "Forties outage update", "url": "https://www.ineos.com/", "date": "2017-12-11", "sourceType": "operator" } ],
+      "classifierVersion": "v1", "classifierConfidence": 0.95, "lastEvidenceUpdate": "2026-04-22T00:00:00Z"
+    },
+    "nigeria-trans-niger-attacks-2024": {
+      "id": "nigeria-trans-niger-attacks-2024", "assetId": "nigeria-bonny-export", "assetType": "pipeline",
+      "eventType": "sabotage", "startAt": "2024-05-01T00:00:00Z", "endAt": null,
+      "capacityOfflineBcmYr": 0, "capacityOfflineMbd": 0.2,
+      "causeChain": ["sabotage"],
+      "shortDescription": "Trans Niger Pipeline (Bonny export system) chronic tap-ins + force-majeure declarations. Shell divested to Renaissance Africa Energy; disruption pattern continues.",
+      "sources": [ { "authority": "Shell Nigeria", "title": "SPDC Nigeria divestment", "url": "https://www.shell.com.ng/", "date": "2024-01-16", "sourceType": "operator" } ],
+      "classifierVersion": "v1", "classifierConfidence": 0.85, "lastEvidenceUpdate": "2026-04-22T00:00:00Z"
+    },
+    "bai-hassan-attack-2022": {
+      "id": "bai-hassan-attack-2022", "assetId": "iraq-bai-hassan", "assetType": "pipeline",
+      "eventType": "sabotage", "startAt": "2022-01-23T00:00:00Z", "endAt": "2022-01-25T00:00:00Z",
+      "capacityOfflineBcmYr": 0, "capacityOfflineMbd": 0.22,
+      "causeChain": ["sabotage"],
+      "shortDescription": "ISIS-claimed bombing at Bai Hassan oil field briefly halted throughput to Kirkuk export system.",
+      "sources": [ { "authority": "North Oil Company", "title": "Bai Hassan incident report", "url": "https://noc.oil.gov.iq/", "date": "2022-01-24", "sourceType": "operator" } ],
+      "classifierVersion": "v1", "classifierConfidence": 0.9, "lastEvidenceUpdate": "2026-04-22T00:00:00Z"
+    },
+    "sudan-pipeline-attacks-2023": {
+      "id": "sudan-pipeline-attacks-2023", "assetId": "greater-nile-petroleum", "assetType": "pipeline",
+      "eventType": "war", "startAt": "2023-04-15T00:00:00Z", "endAt": null,
+      "capacityOfflineBcmYr": 0, "capacityOfflineMbd": 0.15,
+      "causeChain": ["war"],
+      "shortDescription": "Sudan civil war has disrupted South Sudan's crude transit via Greater Nile pipeline; intermittent force-majeure, rising transit-fee disputes.",
+      "sources": [ { "authority": "Reuters", "title": "Sudan crude transit disruption", "url": "https://www.reuters.com/world/africa/", "date": "2024-02-15", "sourceType": "press" } ],
+      "classifierVersion": "v1", "classifierConfidence": 0.82, "lastEvidenceUpdate": "2026-04-22T00:00:00Z"
+    },
+    "ocensa-ocp-ecuador-suspensions-2022": {
+      "id": "ocensa-ocp-ecuador-suspensions-2022", "assetId": "ocp-ecuador", "assetType": "pipeline",
+      "eventType": "mechanical", "startAt": "2022-01-28T00:00:00Z", "endAt": "2022-02-12T00:00:00Z",
+      "capacityOfflineBcmYr": 0, "capacityOfflineMbd": 0.45,
+      "causeChain": ["logistics"],
+      "shortDescription": "Landslide rupture in Ecuador's Amazon region forced ~2-week OCP shutdown; repeated failures at kilometer 150-160 segment.",
+      "sources": [ { "authority": "OCP Ecuador", "title": "OCP force majeure declaration", "url": "https://www.ocpecuador.com/", "date": "2022-01-29", "sourceType": "operator" } ],
+      "classifierVersion": "v1", "classifierConfidence": 0.9, "lastEvidenceUpdate": "2026-04-22T00:00:00Z"
+    },
+    "antonio-ricaurte-halt-2015": {
+      "id": "antonio-ricaurte-halt-2015", "assetId": "antonio-ricaurte", "assetType": "pipeline",
+      "eventType": "commercial", "startAt": "2015-08-01T00:00:00Z", "endAt": null,
+      "capacityOfflineBcmYr": 5, "capacityOfflineMbd": 0,
+      "causeChain": ["policy"],
+      "shortDescription": "Venezuela halted gas imports from Colombia citing FX and commercial disputes; restart periodically floated but has not materialized.",
+      "sources": [ { "authority": "TGI Colombia", "title": "Antonio Ricaurte contract status", "url": "https://www.tgi.com.co/", "date": "2015-08-15", "sourceType": "operator" } ],
+      "classifierVersion": "v1", "classifierConfidence": 0.88, "lastEvidenceUpdate": "2026-04-22T00:00:00Z"
+    },
+    "langeled-brent-decommissioning-2020": {
+      "id": "langeled-brent-decommissioning-2020", "assetId": "brent-pipeline", "assetType": "pipeline",
+      "eventType": "commercial", "startAt": "2020-10-01T00:00:00Z", "endAt": null,
+      "capacityOfflineBcmYr": 0, "capacityOfflineMbd": 0.3,
+      "causeChain": ["logistics"],
+      "shortDescription": "Brent field in decommissioning phase; upstream supply into Brent System pipeline reduced to residual production volumes.",
+      "sources": [ { "authority": "Shell", "title": "Brent decommissioning", "url": "https://www.shell.com/about-us/projects-and-sites/brent-decommissioning.html", "date": "2020-10-01", "sourceType": "operator" } ],
+      "classifierVersion": "v1", "classifierConfidence": 0.9, "lastEvidenceUpdate": "2026-04-22T00:00:00Z"
+    },
+    "eacop-financing-2023": {
+      "id": "eacop-financing-2023", "assetId": "uganda-tanzania-eacop-planned", "assetType": "pipeline",
+      "eventType": "commercial", "startAt": "2023-09-01T00:00:00Z", "endAt": null,
+      "capacityOfflineBcmYr": 0, "capacityOfflineMbd": 0.216,
+      "causeChain": ["policy"],
+      "shortDescription": "Major Western banks + insurers publicly declined to finance EACOP citing climate and human-rights concerns; Chinese financial institutions filling gap. Schedule slips ongoing.",
+      "sources": [ { "authority": "EACOP Ltd", "title": "Financing milestone update", "url": "https://eacop.com/", "date": "2023-09-01", "sourceType": "operator" } ],
+      "classifierVersion": "v1", "classifierConfidence": 0.85, "lastEvidenceUpdate": "2026-04-22T00:00:00Z"
+    },
+    "arctic-lng-2-foreign-partner-withdrawal-2024": {
+      "id": "arctic-lng-2-foreign-partner-withdrawal-2024", "assetId": "arctic-lng-2", "assetType": "storage",
+      "eventType": "sanction", "startAt": "2024-01-01T00:00:00Z", "endAt": null,
+      "capacityOfflineBcmYr": 0, "capacityOfflineMbd": 0,
+      "causeChain": ["sanction"],
+      "shortDescription": "Following Nov 2023 OFAC designation, TotalEnergies and Japanese partners declared force majeure on Arctic LNG 2 JV stakes; commercial exports stalled.",
+      "sources": [ { "authority": "TotalEnergies", "title": "Arctic LNG 2 force majeure notice", "url": "https://totalenergies.com/", "date": "2024-01-15", "sourceType": "operator" } ],
+      "classifierVersion": "v1", "classifierConfidence": 0.92, "lastEvidenceUpdate": "2026-04-22T00:00:00Z"
+    },
+    "dolphin-qatar-uae-commercial-2024": {
+      "id": "dolphin-qatar-uae-commercial-2024", "assetId": "dolphin", "assetType": "pipeline",
+      "eventType": "commercial", "startAt": "2024-01-01T00:00:00Z", "endAt": null,
+      "capacityOfflineBcmYr": 0, "capacityOfflineMbd": 0,
+      "causeChain": ["policy"],
+      "shortDescription": "Dolphin long-term contract renegotiation ongoing as original 25-year deal approaches expiry in 2032; commercial event not an outage.",
+      "sources": [ { "authority": "QatarEnergy", "title": "Dolphin contract update", "url": "https://www.qatarenergy.qa/", "date": "2024-03-01", "sourceType": "operator" } ],
+      "classifierVersion": "v1", "classifierConfidence": 0.8, "lastEvidenceUpdate": "2026-04-22T00:00:00Z"
+    },
+    "trans-austria-gas-reduction-2022": {
+      "id": "trans-austria-gas-reduction-2022", "assetId": "trans-austria-gas", "assetType": "pipeline",
+      "eventType": "commercial", "startAt": "2022-09-01T00:00:00Z", "endAt": null,
+      "capacityOfflineBcmYr": 20, "capacityOfflineMbd": 0,
+      "causeChain": ["sanction", "policy"],
+      "shortDescription": "TAG throughput to Italy reduced as Gazprom flows dropped progressively across 2022; alternative supply (Azerbaijan via TAP) partially compensating.",
+      "sources": [ { "authority": "TAG GmbH", "title": "Operational update", "url": "https://www.taggmbh.at/", "date": "2022-10-01", "sourceType": "operator" } ],
+      "classifierVersion": "v1", "classifierConfidence": 0.85, "lastEvidenceUpdate": "2026-04-22T00:00:00Z"
+    },
+    "rotterdam-hub-low-water-2022": {
+      "id": "rotterdam-hub-low-water-2022", "assetId": "rotterdam-hub", "assetType": "storage",
+      "eventType": "weather", "startAt": "2022-07-15T00:00:00Z", "endAt": "2022-09-30T00:00:00Z",
+      "capacityOfflineBcmYr": 0, "capacityOfflineMbd": 0,
+      "causeChain": ["logistics"],
+      "shortDescription": "Rhine low-water disrupted barge-based distribution from ARA oil hub to inland German customers for ~2.5 months.",
+      "sources": [ { "authority": "Rijkswaterstaat / Port of Rotterdam", "title": "Rhine low-water navigation advisory", "url": "https://www.portofrotterdam.com/", "date": "2022-07-20", "sourceType": "regulator" } ],
+      "classifierVersion": "v1", "classifierConfidence": 0.88, "lastEvidenceUpdate": "2026-04-22T00:00:00Z"
+    },
+    "cushing-stocks-tank-bottoms-2022": {
+      "id": "cushing-stocks-tank-bottoms-2022", "assetId": "cushing-hub", "assetType": "storage",
+      "eventType": "commercial", "startAt": "2022-04-01T00:00:00Z", "endAt": "2022-12-31T00:00:00Z",
+      "capacityOfflineBcmYr": 0, "capacityOfflineMbd": 0,
+      "causeChain": ["logistics"],
+      "shortDescription": "Cushing stocks drew down to near tank-bottoms in late 2022 — levels below operational minimum; WTI benchmark structure affected.",
+      "sources": [ { "authority": "EIA", "title": "Cushing weekly stocks", "url": "https://www.eia.gov/petroleum/weekly/", "date": "2022-11-30", "sourceType": "regulator" } ],
+      "classifierVersion": "v1", "classifierConfidence": 0.92, "lastEvidenceUpdate": "2026-04-22T00:00:00Z"
+    },
+    "spr-drawdown-2022-2023": {
+      "id": "spr-drawdown-2022-2023", "assetId": "bryan-mound", "assetType": "storage",
+      "eventType": "commercial", "startAt": "2022-03-31T00:00:00Z", "endAt": "2023-07-31T00:00:00Z",
+      "capacityOfflineBcmYr": 0, "capacityOfflineMbd": 1.0,
+      "causeChain": ["policy"],
+      "shortDescription": "Biden administration ordered 180 million barrel SPR release — the largest ever; SPR levels fell to ~40-year lows by mid-2023.",
+      "sources": [ { "authority": "US DOE", "title": "SPR release authorization", "url": "https://www.energy.gov/fecm/articles/spr-release", "date": "2022-03-31", "sourceType": "regulator" } ],
+      "classifierVersion": "v1", "classifierConfidence": 0.96, "lastEvidenceUpdate": "2026-04-22T00:00:00Z"
+    },
+    "gladstone-lng-maintenance-2023": {
+      "id": "gladstone-lng-maintenance-2023", "assetId": "gladstone-lng", "assetType": "storage",
+      "eventType": "maintenance", "startAt": "2023-08-01T00:00:00Z", "endAt": "2023-09-15T00:00:00Z",
+      "capacityOfflineBcmYr": 0, "capacityOfflineMbd": 0,
+      "causeChain": ["logistics"],
+      "shortDescription": "Scheduled Gladstone LNG turnaround on one liquefaction train; ~6-week reduced cargo loadings.",
+      "sources": [ { "authority": "Santos", "title": "Gladstone LNG turnaround", "url": "https://www.santos.com/", "date": "2023-07-15", "sourceType": "operator" } ],
+      "classifierVersion": "v1", "classifierConfidence": 0.9, "lastEvidenceUpdate": "2026-04-22T00:00:00Z"
+    },
+    "zhoushan-storage-expansion-2023": {
+      "id": "zhoushan-storage-expansion-2023", "assetId": "zhoushan-hub", "assetType": "storage",
+      "eventType": "commercial", "startAt": "2023-01-01T00:00:00Z", "endAt": null,
+      "capacityOfflineBcmYr": 0, "capacityOfflineMbd": 0,
+      "causeChain": ["policy"],
+      "shortDescription": "China continued multi-phase crude storage expansion at Zhoushan base; exact capacity expansion not publicly disclosed (fill levels opaque).",
+      "sources": [ { "authority": "Reuters", "title": "China Zhoushan SPR expansion", "url": "https://www.reuters.com/world/china/", "date": "2023-05-10", "sourceType": "press" } ],
+      "classifierVersion": "v1", "classifierConfidence": 0.75, "lastEvidenceUpdate": "2026-04-22T00:00:00Z"
+    },
+    "fujairah-stockbuild-2024": {
+      "id": "fujairah-stockbuild-2024", "assetId": "fujairah-hub", "assetType": "storage",
+      "eventType": "commercial", "startAt": "2024-01-01T00:00:00Z", "endAt": null,
+      "capacityOfflineBcmYr": 0, "capacityOfflineMbd": 0,
+      "causeChain": ["logistics"],
+      "shortDescription": "Fujairah product stocks trended at multi-year highs through 2024 as Red Sea diversion of tankers boosted UAE intermediate storage demand.",
+      "sources": [ { "authority": "FEDCom", "title": "Fujairah weekly stocks", "url": "https://fedcom.ae/", "date": "2024-06-01", "sourceType": "regulator" } ],
+      "classifierVersion": "v1", "classifierConfidence": 0.82, "lastEvidenceUpdate": "2026-04-22T00:00:00Z"
+    },
+    "futtsu-lng-demand-decline-2024": {
+      "id": "futtsu-lng-demand-decline-2024", "assetId": "futtsu-lng", "assetType": "storage",
+      "eventType": "commercial", "startAt": "2024-01-01T00:00:00Z", "endAt": null,
+      "capacityOfflineBcmYr": 0, "capacityOfflineMbd": 0,
+      "causeChain": ["policy"],
+      "shortDescription": "JERA announced phased retirement of older Futtsu units as Japan's gas-fired generation mix shifts toward higher-efficiency units.",
+      "sources": [ { "authority": "JERA", "title": "Futtsu operational plan", "url": "https://www.jera.co.jp/", "date": "2024-11-01", "sourceType": "operator" } ],
+      "classifierVersion": "v1", "classifierConfidence": 0.8, "lastEvidenceUpdate": "2026-04-22T00:00:00Z"
+    },
+    "bolivia-diesel-import-cut-2023": {
+      "id": "bolivia-diesel-import-cut-2023", "assetId": "gasbol", "assetType": "pipeline",
+      "eventType": "commercial", "startAt": "2023-01-01T00:00:00Z", "endAt": null,
+      "capacityOfflineBcmYr": 3, "capacityOfflineMbd": 0,
+      "causeChain": ["upstream_refinery", "policy"],
+      "shortDescription": "Bolivia's gas production decline reduced export flows to Brazil and Argentina; GASBOL throughput reductions continuing.",
+      "sources": [ { "authority": "YPFB", "title": "Export volume update", "url": "https://www.ypfb.gob.bo/", "date": "2024-02-01", "sourceType": "operator" } ],
+      "classifierVersion": "v1", "classifierConfidence": 0.88, "lastEvidenceUpdate": "2026-04-22T00:00:00Z"
+    },
+    "myanmar-china-gas-reduced-2023": {
+      "id": "myanmar-china-gas-reduced-2023", "assetId": "myanmar-china-gas", "assetType": "pipeline",
+      "eventType": "commercial", "startAt": "2023-01-01T00:00:00Z", "endAt": null,
+      "capacityOfflineBcmYr": 2, "capacityOfflineMbd": 0,
+      "causeChain": ["policy", "war"],
+      "shortDescription": "Post-coup Myanmar gas production dispersion; offshore Shwe field throughput below contracted levels at various points.",
+      "sources": [ { "authority": "Reuters", "title": "Myanmar gas export volumes", "url": "https://www.reuters.com/world/asia-pacific/", "date": "2024-01-15", "sourceType": "press" } ],
+      "classifierVersion": "v1", "classifierConfidence": 0.78, "lastEvidenceUpdate": "2026-04-22T00:00:00Z"
+    },
+    "yamal-lng-arctic-sanctions-ongoing": {
+      "id": "yamal-lng-arctic-sanctions-ongoing", "assetId": "yamal-lng", "assetType": "storage",
+      "eventType": "sanction", "startAt": "2022-02-24T00:00:00Z", "endAt": null,
+      "capacityOfflineBcmYr": 0, "capacityOfflineMbd": 0,
+      "causeChain": ["sanction"],
+      "shortDescription": "Yamal LNG foreign partners retained stakes but ice-class carrier sanctions + Western insurance withdrawal restricted shipping options; Chinese financial flows substitute.",
+      "sources": [ { "authority": "Novatek", "title": "Yamal LNG shipping update", "url": "https://www.novatek.ru/", "date": "2024-02-15", "sourceType": "operator" } ],
+      "classifierVersion": "v1", "classifierConfidence": 0.85, "lastEvidenceUpdate": "2026-04-22T00:00:00Z"
+    },
+    "ogm-moldova-transit-2022": {
+      "id": "ogm-moldova-transit-2022", "assetId": "brotherhood-soyuz", "assetType": "pipeline",
+      "eventType": "sanction", "startAt": "2022-10-24T00:00:00Z", "endAt": null,
+      "capacityOfflineBcmYr": 0, "capacityOfflineMbd": 0,
+      "causeChain": ["policy"],
+      "shortDescription": "Transit-country energy-stability concerns as Russia cut gas volumes to Moldova during winter 2022-2023; contextual impact on Brotherhood-Soyuz throughput.",
+      "sources": [ { "authority": "Moldovagaz", "title": "Gas transit statement", "url": "https://www.moldovagaz.md/", "date": "2022-10-25", "sourceType": "operator" } ],
+      "classifierVersion": "v1", "classifierConfidence": 0.75, "lastEvidenceUpdate": "2026-04-22T00:00:00Z"
+    },
+    "yamal-europe-poland-halt-follow-on-2024": {
+      "id": "yamal-europe-poland-halt-follow-on-2024", "assetId": "yamal-europe", "assetType": "pipeline",
+      "eventType": "commercial", "startAt": "2022-05-12T00:00:00Z", "endAt": null,
+      "capacityOfflineBcmYr": 33, "capacityOfflineMbd": 0,
+      "causeChain": ["sanction", "policy"],
+      "shortDescription": "Yamal-Europe transit contract expired; reverse-flow arrangements via Poland→Belarus became the only residual use. Pipeline now operationally inactive for westbound flow.",
+      "sources": [ { "authority": "PGNiG", "title": "Yamal-Europe contract expiry", "url": "https://pgnig.pl/", "date": "2022-05-12", "sourceType": "operator" } ],
+      "classifierVersion": "v1", "classifierConfidence": 0.92, "lastEvidenceUpdate": "2026-04-22T00:00:00Z"
+    }
+  }
+}

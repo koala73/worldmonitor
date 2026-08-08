@@ -84,6 +84,534 @@
 }
 
 /* ----------------------------------------------------------
+   China Intelligence Panels
+   Keep the China surfaces on the same compact, source-led rhythm
+   as the rest of the dashboard. The panels still expose their
+   methodology, but operational state leads the reading order.
+   ---------------------------------------------------------- */
+.china-corridor-panel,
+.china-nowcast-view {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+  color: var(--text);
+}
+
+.panel-content:has(.china-corridor-panel) {
+  padding-top: 8px;
+}
+
+.panel-content > .china-corridor-panel:has(.china-corridor-filters) {
+  margin-inline: 0;
+}
+
+.china-corridor-compare {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.china-corridor-compare button {
+  display: block;
+  min-width: 0;
+  min-height: 56px;
+  padding: 8px;
+  text-align: left;
+  color: var(--text);
+  font: inherit;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  cursor: pointer;
+  transition-property: background-color, border-color, box-shadow;
+  transition-duration: 150ms;
+  transition-timing-function: ease-out;
+}
+
+.china-corridor-compare button:hover {
+  background: var(--surface-hover);
+  border-color: var(--border-strong);
+}
+
+.china-corridor-compare button[aria-selected="true"] {
+  padding-left: 7px;
+  border-left: 2px solid var(--accent);
+  border-color: var(--accent);
+  background: var(--overlay-subtle);
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+
+.china-corridor-compare strong,
+.china-corridor-compare small {
+  display: block;
+  overflow-wrap: anywhere;
+}
+
+.china-corridor-compare strong {
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.25;
+}
+
+.china-corridor-compare small {
+  margin-top: 4px;
+  color: var(--text-dim);
+  font-size: 9px;
+  line-height: 1.25;
+}
+
+.china-corridor-filters.panel-tabs {
+  min-width: 0;
+  padding: 2px 0 0;
+  background: transparent;
+  -webkit-mask-image: none;
+  mask-image: none;
+}
+
+.china-corridor-filter.panel-tab {
+  min-height: 32px;
+  padding: 6px 9px;
+  font-size: 10px;
+  transition-property: color, background-color, border-color;
+}
+
+.china-corridor-detail__heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 2px 0 7px;
+  border-bottom: 1px solid var(--border);
+}
+
+.china-corridor-detail__heading h3 {
+  margin: 0;
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.25;
+}
+
+.china-corridor-description {
+  max-width: 72ch;
+  margin: 4px 0 0;
+  color: var(--text-dim);
+  font-size: 10px;
+  line-height: 1.4;
+}
+
+.china-corridor-status {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  min-height: 18px;
+  padding: 2px 6px;
+  border: 1px solid currentColor;
+  border-radius: 3px;
+  font: 700 9px/1 var(--font-mono);
+  letter-spacing: .05em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.china-corridor-status--available {
+  color: var(--semantic-normal);
+}
+
+.china-corridor-status--partial,
+.china-corridor-status--stale {
+  color: var(--semantic-elevated);
+}
+
+.china-corridor-status--unavailable {
+  color: var(--text-dim);
+}
+
+.china-corridor-renderer-hint {
+  margin: 0;
+  padding: 6px 8px;
+  color: var(--semantic-elevated);
+  font-size: 10px;
+  line-height: 1.4;
+  background: color-mix(in srgb, var(--semantic-elevated) 8%, transparent);
+  border-left: 2px solid var(--semantic-elevated);
+}
+
+.china-corridor-conditions {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 6px;
+  margin-top: 7px;
+}
+
+.china-corridor-condition {
+  min-width: 0;
+  padding: 8px;
+  background: var(--overlay-subtle);
+  border: 1px solid var(--border);
+  border-left: 2px solid var(--border);
+  border-radius: 3px;
+}
+
+.china-corridor-condition[data-availability="available"] {
+  border-left-color: var(--semantic-normal);
+}
+
+.china-corridor-condition[data-availability="partial"],
+.china-corridor-condition[data-availability="stale"] {
+  border-left-color: var(--semantic-elevated);
+}
+
+.china-corridor-condition[data-availability="unavailable"] {
+  border-left-color: var(--text-dim);
+}
+
+.china-corridor-condition header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.china-corridor-condition h4 {
+  margin: 0;
+  color: var(--text);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.25;
+}
+
+.china-corridor-provider {
+  margin-top: 5px;
+  color: var(--text-dim);
+  font-size: 9px;
+  line-height: 1.3;
+  overflow-wrap: anywhere;
+}
+
+.china-corridor-sources {
+  display: grid;
+  gap: 6px;
+  margin: 7px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.china-corridor-source {
+  padding-top: 6px;
+  border-top: 1px solid var(--border-subtle);
+}
+
+.china-corridor-source__summary {
+  color: var(--text-secondary);
+  font-size: 10px;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.china-corridor-source__meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 7px;
+  margin-top: 4px;
+  color: var(--text-dim);
+  font-size: 8px;
+  line-height: 1.3;
+  overflow-wrap: anywhere;
+}
+
+.china-corridor-source__meta a {
+  color: var(--accent);
+}
+
+.china-corridor-missing {
+  grid-column: 1 / -1;
+  margin: 0;
+  padding: 8px;
+  color: var(--text-dim);
+  font-size: 10px;
+  line-height: 1.4;
+  background: var(--overlay-subtle);
+  border-left: 2px solid var(--border);
+}
+
+.china-nowcast-summary,
+.china-nowcast-official,
+.china-nowcast-method {
+  border: 1px solid var(--border);
+  background: var(--overlay-subtle);
+}
+
+.china-nowcast-summary {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(170px, .38fr);
+  gap: 10px;
+  align-items: center;
+  padding: 10px 12px;
+  border-left: 3px solid var(--text-muted);
+}
+
+.china-nowcast-summary--agreement {
+  border-left-color: var(--semantic-normal);
+}
+
+.china-nowcast-summary--proxy_leading_divergence,
+.china-nowcast-summary--official_leading_divergence {
+  border-left-color: var(--semantic-elevated);
+}
+
+.china-nowcast-summary--mixed_signals {
+  border-left-color: var(--semantic-info);
+}
+
+.china-nowcast-summary--insufficient_data {
+  border-left-color: var(--text-muted);
+}
+
+.china-nowcast-eyebrow,
+.china-nowcast-family {
+  display: block;
+  color: var(--text-dim);
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: .08em;
+  line-height: 1.25;
+  text-transform: uppercase;
+}
+
+.china-nowcast-summary h3 {
+  margin: 3px 0 0;
+  color: var(--text);
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+.china-nowcast-summary p,
+.china-nowcast-official p,
+.china-nowcast-contribution p,
+.china-nowcast-method p {
+  margin: 5px 0 0;
+  color: var(--text-secondary);
+  font-size: 10px;
+  line-height: 1.4;
+}
+
+.china-nowcast-confidence {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+  padding: 7px 9px;
+  background: var(--surface-hover);
+  border-left: 2px solid var(--border-strong);
+}
+
+.china-nowcast-confidence > span {
+  width: max-content;
+  padding: 2px 6px;
+  color: var(--text-secondary);
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  border: 1px solid currentColor;
+}
+
+.china-nowcast-confidence strong {
+  color: var(--text);
+  font-size: 11px;
+  line-height: 1.25;
+}
+
+.china-nowcast-confidence small {
+  color: var(--text-dim);
+  font-size: 9px;
+  line-height: 1.3;
+}
+
+.china-nowcast-official {
+  padding: 9px 11px;
+  border-left: 2px solid var(--accent);
+}
+
+.china-nowcast-official h4,
+.china-nowcast-contribution h4,
+.china-nowcast-method h4 {
+  margin: 3px 0 0;
+  color: var(--text);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+.china-nowcast-official dl,
+.china-nowcast-contribution dl {
+  margin: 7px 0 0;
+}
+
+.china-nowcast-official dl {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 7px 14px;
+}
+
+.china-nowcast-official dl div,
+.china-nowcast-contribution dl div {
+  min-width: 0;
+}
+
+.china-nowcast-official dt,
+.china-nowcast-contribution dt {
+  color: var(--text-dim);
+  font-size: 8px;
+  letter-spacing: .05em;
+  text-transform: uppercase;
+}
+
+.china-nowcast-official dd,
+.china-nowcast-contribution dd {
+  margin: 2px 0 0;
+  color: var(--text-secondary);
+  font-size: 9px;
+  line-height: 1.3;
+  overflow-wrap: anywhere;
+}
+
+.china-nowcast-contributions {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.china-nowcast-contribution {
+  min-width: 0;
+  padding: 8px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-left: 2px solid var(--border);
+  border-radius: 3px;
+}
+
+.china-nowcast-contribution--strengthening {
+  border-left-color: var(--semantic-normal);
+}
+
+.china-nowcast-contribution--weakening {
+  border-left-color: var(--semantic-critical);
+}
+
+.china-nowcast-contribution--unchanged {
+  border-left-color: var(--semantic-info);
+}
+
+.china-nowcast-contribution--excluded {
+  border-left-color: var(--text-muted);
+  opacity: .82;
+}
+
+.china-nowcast-contribution__heading {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, .9fr);
+  gap: 7px;
+  align-items: start;
+}
+
+.china-nowcast-contribution__state {
+  color: var(--text-secondary);
+  font-size: 9px;
+  line-height: 1.3;
+  text-align: right;
+  overflow-wrap: anywhere;
+}
+
+.china-nowcast-contribution dl {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px 10px;
+}
+
+.china-nowcast-contribution a {
+  color: var(--accent);
+}
+
+.china-nowcast-method {
+  overflow: hidden;
+}
+
+.china-nowcast-method summary {
+  padding: 8px 10px;
+  color: var(--text-secondary);
+  font-size: 10px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.china-nowcast-method__grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  padding: 0 10px 10px;
+  border-top: 1px solid var(--border-subtle);
+}
+
+.china-nowcast-method ul {
+  margin: 6px 0 0;
+  padding-left: 16px;
+  color: var(--text-secondary);
+  font-size: 9px;
+}
+
+.china-nowcast-method li {
+  margin: 3px 0;
+  line-height: 1.35;
+}
+
+.china-nowcast-method li span {
+  display: block;
+  color: var(--text-dim);
+  font-size: 9px;
+}
+
+@media (max-width: 900px) {
+  .china-corridor-compare {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .china-nowcast-contributions,
+  .china-nowcast-method__grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 720px) {
+  .china-corridor-detail__heading {
+    display: block;
+  }
+
+  .china-corridor-detail__heading .china-corridor-status {
+    margin-top: 6px;
+  }
+
+  .china-nowcast-summary,
+  .china-nowcast-contributions,
+  .china-nowcast-method__grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .china-nowcast-contribution__heading {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .china-nowcast-contribution__state {
+    text-align: left;
+  }
+
+  .china-nowcast-official dl {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+/* ----------------------------------------------------------
    Satellite Fires Panel
    ---------------------------------------------------------- */
 .fires-panel-content {
@@ -137,6 +665,29 @@
 
 .fire-totals td {
   color: var(--accent);
+  font-weight: 600;
+}
+
+.fires-explosion-badge {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 1px 5px;
+  border-radius: 8px;
+  background: var(--threat-critical);
+  color: var(--bg);
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1.4;
+  vertical-align: middle;
+}
+
+.fires-explosion-alert {
+  padding: 6px 8px;
+  margin-top: 4px;
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--threat-critical) 12%, transparent);
+  color: var(--threat-critical);
+  font-size: 11px;
   font-weight: 600;
 }
 
@@ -697,207 +1248,203 @@
 }
 
 /* ----------------------------------------------------------
-   Giving Panel (Global Giving Activity Index)
+   Giving Panel (published benchmarks and provenance)
    ---------------------------------------------------------- */
 .giving-panel-content {
   font-size: 12px;
+  min-width: 0;
+}
+
+.giving-status {
+  margin-bottom: 8px;
+  padding: 7px 9px;
+  border: 1px solid color-mix(in srgb, var(--accent) 28%, var(--border));
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+  color: var(--text-secondary);
+  line-height: 1.35;
+}
+
+.giving-status-cached-refresh-unavailable,
+.giving-status-available-but-legacy {
+  border-color: color-mix(in srgb, var(--semantic-elevated) 35%, var(--border));
+  background: color-mix(in srgb, var(--semantic-elevated) 9%, transparent);
 }
 
 .giving-stats-grid {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
   gap: 6px;
   margin-bottom: 8px;
 }
 
 .giving-stat-box {
-  background: var(--overlay-subtle);
+  min-width: 0;
+  padding: 8px;
   border: 1px solid var(--border);
   border-radius: 4px;
-  padding: 8px 6px;
-  text-align: center;
+  background: var(--overlay-subtle);
+  text-align: left;
 }
 
-.giving-stat-value {
+.giving-stat-value,
+.giving-benchmark-value {
   display: block;
+  color: var(--text-secondary);
   font-size: 16px;
   font-weight: 700;
-  color: var(--text-secondary);
   font-variant-numeric: tabular-nums;
 }
 
-.giving-stat-label {
+.giving-stat-headline .giving-stat-value {
+  color: var(--accent);
+  font-size: 20px;
+}
+
+.giving-stat-label,
+.giving-benchmark-kind {
   display: block;
-  font-size: 9px;
-  color: var(--text-muted);
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
   margin-top: 2px;
+  color: var(--text-muted);
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.45px;
+  text-transform: uppercase;
 }
 
-.giving-stat-index .giving-stat-value {
-  font-size: 22px;
+.giving-source-meta {
+  display: block;
+  margin-top: 4px;
+  color: var(--text-muted);
+  font-size: 10px;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
 }
 
-/* giving-tabs: now uses shared .panel-tabs / .panel-tab */
+.giving-source-meta a,
+.giving-methodology-source a {
+  color: var(--accent);
+  text-decoration: none;
+}
+
+.giving-source-meta a:hover,
+.giving-methodology-source a:hover {
+  text-decoration: underline;
+}
 
 .giving-table {
   width: 100%;
   border-collapse: collapse;
+  table-layout: fixed;
 }
 
 .giving-table th {
-  text-align: left;
-  color: var(--text-muted);
-  font-weight: 600;
-  font-size: 10px;
-  text-transform: uppercase;
   padding: 4px 8px;
   border-bottom: 1px solid var(--border);
+  color: var(--text-muted);
+  font-size: 10px;
+  font-weight: 600;
+  text-align: left;
+  text-transform: uppercase;
+}
+
+.giving-table th:first-child,
+.giving-table td:first-child {
+  width: 30%;
 }
 
 .giving-table td {
-  padding: 5px 8px;
+  min-width: 0;
+  padding: 7px 8px;
   border-bottom: 1px solid var(--border-subtle);
   color: var(--text-secondary);
+  vertical-align: top;
+  overflow-wrap: anywhere;
 }
 
 .giving-row:hover {
   background: var(--surface-hover);
 }
 
-.giving-platform-name {
-  white-space: nowrap;
-  font-weight: 600;
-}
-
-.giving-platform-vol {
-  text-align: right;
-  font-variant-numeric: tabular-nums;
-  color: var(--accent);
-}
-
-.giving-platform-vel {
-  text-align: right;
-  font-variant-numeric: tabular-nums;
-}
-
-.giving-platform-fresh {
-  text-align: right;
-}
-
-.giving-fresh-badge {
-  font-size: 9px;
-  font-weight: 600;
-  padding: 2px 6px;
-  border-radius: 3px;
-  letter-spacing: 0.5px;
-}
-
-.giving-fresh-live {
-  background: color-mix(in srgb, var(--semantic-positive, #44ff88) 15%, transparent);
-  color: var(--semantic-positive, #44ff88);
-}
-
-.giving-fresh-daily {
-  background: color-mix(in srgb, var(--accent) 12%, transparent);
-  color: var(--accent);
-}
-
-.giving-fresh-weekly {
-  background: color-mix(in srgb, var(--semantic-elevated) 12%, transparent);
-  color: var(--semantic-elevated);
-}
-
-.giving-fresh-annual {
-  background: color-mix(in srgb, var(--text-muted) 10%, transparent);
-  color: var(--text-muted);
-}
-
-.giving-cat-table th:nth-child(2) {
-  text-align: right;
-}
-
+.giving-platform-name,
 .giving-cat-name {
-  white-space: nowrap;
+  font-weight: 600;
+  white-space: normal;
 }
 
-.giving-share-bar {
-  display: inline-block;
-  width: 60px;
-  height: 6px;
-  background: var(--border);
-  border-radius: 3px;
-  vertical-align: middle;
-  margin-right: 6px;
-}
-
-.giving-share-fill {
-  height: 100%;
-  border-radius: 3px;
-  background: var(--accent);
-}
-
-.giving-share-label {
-  font-variant-numeric: tabular-nums;
+.giving-unverified {
+  display: block;
+  color: var(--semantic-elevated);
   font-size: 11px;
-}
-
-.giving-trending-badge {
-  font-size: 8px;
-  font-weight: 700;
-  padding: 1px 4px;
-  border-radius: 2px;
-  background: color-mix(in srgb, var(--semantic-positive, #44ff88) 12%, transparent);
-  color: var(--semantic-positive, #44ff88);
-  letter-spacing: 0.5px;
-  vertical-align: middle;
-  margin-left: 4px;
-}
-
-.giving-crypto-content {}
-
-.giving-crypto-stats {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 6px;
-  margin-bottom: 10px;
-}
-
-.giving-crypto-receivers {}
-
-.giving-section-title {
-  font-size: 10px;
-  color: var(--text-muted);
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  margin-bottom: 4px;
   font-weight: 600;
 }
-
-.giving-receiver-list {
-  list-style: none;
-  padding: 0;
-  margin: 0;
-}
-
-.giving-receiver-list li {
-  padding: 3px 8px;
-  border-bottom: 1px solid var(--border-subtle);
-  color: var(--text-secondary);
-  font-size: 11px;
-}
-
-.giving-receiver-list li:last-child {
-  border-bottom: none;
-}
-
-.giving-inst-content {}
 
 .giving-inst-grid {
   display: grid;
-  grid-template-columns: repeat(2, 1fr);
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 6px;
+}
+
+.giving-methodology {
+  margin-top: 10px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+}
+
+.giving-methodology summary {
+  color: var(--text-secondary);
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.giving-methodology p {
+  margin: 7px 0;
+  color: var(--text-muted);
+  font-size: 10px;
+  line-height: 1.4;
+}
+
+.giving-methodology ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.giving-methodology-item {
+  display: grid;
+  gap: 2px;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.giving-methodology-source {
+  color: var(--text-secondary);
+  font-weight: 600;
+}
+
+.giving-methodology-note {
+  color: var(--text-muted);
+  font-size: 10px;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 768px) {
+  .giving-stats-grid,
+  .giving-inst-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .giving-table th:first-child,
+  .giving-table td:first-child {
+    width: 36%;
+  }
+
+  .giving-table th,
+  .giving-table td {
+    padding-inline: 5px;
+  }
 }
 
 /* ----------------------------------------------------------
@@ -1059,8 +1606,15 @@
   margin-left: auto;
 }
 
+.sa-body {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+}
+
 .sa-title {
-  display: block;
+  flex: 1;
+  min-width: 0;
   color: var(--text-secondary);
   text-decoration: none;
   font-size: 11px;
@@ -1073,9 +1627,10 @@
 }
 
 .sa-time {
+  flex-shrink: 0;
   font-size: 9px;
   color: var(--text-muted);
-  margin-top: 3px;
+  white-space: nowrap;
 }
 
 .sa-footer {
@@ -1145,6 +1700,21 @@
   background: var(--semantic-critical);
   animation: oref-pulse-anim 1.2s ease-in-out infinite;
   flex-shrink: 0;
+  position: relative;
+  overflow: visible;
+}
+
+.oref-pulse::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border: 1px solid color-mix(in srgb, var(--semantic-critical) 60%, transparent);
+  border-radius: inherit;
+  pointer-events: none;
+  transform: scale(1);
+  opacity: 0.6;
+  animation: oref-pulse-ring 1.2s ease-in-out infinite;
+  will-change: transform, opacity;
 }
 
 @keyframes oref-pulse-anim {
@@ -1152,12 +1722,24 @@
   0%,
   100% {
     opacity: 1;
-    box-shadow: 0 0 0 0 color-mix(in srgb, var(--semantic-critical) 60%, transparent);
   }
 
   50% {
     opacity: 0.6;
-    box-shadow: 0 0 0 6px transparent;
+  }
+}
+
+@keyframes oref-pulse-ring {
+
+  0%,
+  100% {
+    opacity: 0.6;
+    transform: scale(1);
+  }
+
+  50% {
+    opacity: 0;
+    transform: scale(2.2);
   }
 }
 
@@ -2180,6 +2762,22 @@
   z-index: 5;
 }
 
+.map-bottom-grid:empty {
+  flex: 0 0 0;
+  min-height: 0;
+  padding: 0;
+  border-top: none;
+  overflow: hidden;
+}
+
+body.panel-drag-active .map-bottom-grid:empty {
+  flex: 0 0 120px;
+  min-height: 120px;
+  padding: 12px;
+  border-top: 1px solid var(--border);
+  overflow-y: auto;
+}
+
 /* Base state for placeholder */
 .map-bottom-grid::after {
   content: 'Drop panels here to move them below the map';
@@ -2202,6 +2800,14 @@
   opacity: 0.4;
   pointer-events: none;
   transition: opacity 0.2s;
+}
+
+.map-bottom-grid:empty::after {
+  opacity: 0;
+}
+
+body.panel-drag-active .map-bottom-grid:empty::after {
+  opacity: 0.4;
 }
 
 /* Hide placeholder if there are panels */
@@ -2757,4 +3363,496 @@ a.hub-top-story {
 .hub-top-story:hover {
   opacity: 1;
   text-decoration: underline;
+}
+
+/* Climate News Panel */
+.climate-news-list {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  max-height: 380px;
+  overflow-y: auto;
+}
+
+.climate-news-card {
+  display: block;
+  padding: 8px 10px;
+  text-decoration: none;
+  color: inherit;
+  border-bottom: 1px solid var(--border-subtle);
+  transition: background 0.15s;
+}
+.climate-news-card:hover {
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.climate-news-card__header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 3px;
+}
+
+.climate-news-card__source {
+  font-size: 9px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--accent-green, #22c55e);
+  opacity: 0.8;
+}
+
+.climate-news-card__time {
+  font-size: 9px;
+  color: var(--text-faint);
+}
+
+.climate-news-card__title {
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 1.35;
+  color: var(--text-primary);
+  margin-bottom: 2px;
+}
+
+.climate-news-card__summary {
+  font-size: 10px;
+  line-height: 1.3;
+  color: var(--text-muted);
+  opacity: 0.7;
+}
+
+/* ── Latest Brief panel ───────────────────────────────────────────── */
+
+.latest-brief-card {
+  display: block;
+  text-decoration: none;
+  color: inherit;
+  overflow: hidden;
+  border-radius: 8px;
+  border: 1px solid var(--border-color, #222);
+  transition: transform 140ms ease, border-color 140ms ease;
+}
+.latest-brief-card--ready:hover {
+  transform: translateY(-1px);
+  border-color: var(--accent, #4ade80);
+}
+
+.latest-brief-cover {
+  background: #0a0a0a;
+  color: #f2ede4;
+  padding: 22px 22px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  position: relative;
+}
+.latest-brief-cover-logo {
+  width: 32px;
+  height: 32px;
+  opacity: 0.85;
+  margin-bottom: 6px;
+}
+.latest-brief-cover-logo svg {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+.latest-brief-cover-issue {
+  font-family: 'IBM Plex Mono', ui-monospace, monospace;
+  font-size: 11px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  opacity: 0.7;
+}
+.latest-brief-cover-title {
+  font-family: 'Playfair Display', Georgia, serif;
+  font-size: 26px;
+  font-weight: 900;
+  line-height: 0.95;
+  letter-spacing: -0.02em;
+}
+.latest-brief-cover-kicker {
+  margin-top: 10px;
+  font-size: 11px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: #8b3a1f;
+  font-family: 'IBM Plex Mono', ui-monospace, monospace;
+}
+
+.latest-brief-meta {
+  padding: 14px 16px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  background: var(--panel-bg, #161616);
+}
+.latest-brief-greeting {
+  font-family: 'Source Serif 4', Georgia, serif;
+  font-style: italic;
+  font-size: 14px;
+  color: var(--text-primary, #eee);
+  line-height: 1.3;
+}
+.latest-brief-cta {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: var(--accent, #4ade80);
+  white-space: nowrap;
+}
+
+/* Share button row (Phase 9 / Todo #223) */
+.latest-brief-share-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 16px 12px;
+  background: var(--panel-bg, #161616);
+  border-top: 1px solid rgba(255, 255, 255, 0.04);
+}
+.latest-brief-share {
+  font-family: 'IBM Plex Mono', ui-monospace, monospace;
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  font-weight: 600;
+  padding: 6px 12px;
+  background: transparent;
+  color: var(--text-primary, #eee);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 3px;
+  cursor: pointer;
+  transition: border-color 120ms ease, background-color 120ms ease;
+}
+.latest-brief-share:hover:not(:disabled) {
+  border-color: var(--accent, #4ade80);
+  background-color: rgba(74, 222, 128, 0.08);
+}
+.latest-brief-share:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.latest-brief-share-status {
+  font-family: 'IBM Plex Mono', ui-monospace, monospace;
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  color: var(--text-muted, #888);
+  white-space: nowrap;
+}
+
+.latest-brief-card--composing {
+  padding: 32px 20px;
+  text-align: center;
+  background: var(--panel-bg, #161616);
+}
+.latest-brief-logo {
+  width: 28px;
+  height: 28px;
+  margin: 0 auto 12px;
+  opacity: 0.6;
+  color: var(--text-muted, #888);
+}
+.latest-brief-logo svg,
+.latest-brief-empty-title {
+  display: block;
+}
+.latest-brief-empty-title {
+  font-weight: 600;
+  font-size: 13px;
+  margin-bottom: 4px;
+  color: var(--text-primary, #eee);
+}
+.latest-brief-empty-body {
+  font-size: 12px;
+  color: var(--text-muted, #888);
+  line-height: 1.5;
+  max-width: 36ch;
+  margin: 0 auto;
+}
+.latest-brief-empty {
+  padding: 24px 16px;
+  text-align: center;
+  color: var(--text-muted, #888);
+  font-size: 12px;
+}
+
+/* ----------------------------------------------------------
+   Watchlist Table View (StockAnalysisPanel, StockBacktestPanel)
+   Option B from watchlist-panel-playground.html — replaces the
+   one-long-card-per-symbol scroll with a sortable summary table
+   that expands inline on row click. Scales to 50+ symbols.
+   ---------------------------------------------------------- */
+.watchlist-table-view {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.watchlist-intro {
+  font-size: 12px;
+  color: var(--text-dim);
+  line-height: 1.5;
+  padding: 4px 0;
+}
+
+.watchlist-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 6px 0 10px;
+  border-bottom: 1px solid var(--border);
+}
+
+.watchlist-search {
+  width: 100%;
+  background: var(--input-bg, #1a1a1a);
+  border: 1px solid var(--border);
+  color: var(--text);
+  padding: 5px 8px;
+  font-family: inherit;
+  font-size: 11px;
+  border-radius: 3px;
+}
+.watchlist-search:focus {
+  outline: none;
+  border-color: var(--border-strong);
+}
+
+.watchlist-control-row {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.watchlist-pills {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+.watchlist-pill {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--text-dim);
+  padding: 3px 8px;
+  font-family: inherit;
+  font-size: 10px;
+  cursor: pointer;
+  border-radius: 10px;
+  transition: color 0.1s ease, border-color 0.1s ease, background 0.1s ease;
+}
+.watchlist-pill:hover {
+  color: var(--text);
+  border-color: var(--border-strong);
+}
+.watchlist-pill-active {
+  color: var(--accent);
+  background: var(--overlay-medium);
+  border-color: var(--border-strong);
+}
+
+.watchlist-sort {
+  margin-left: auto;
+  background: var(--input-bg, #1a1a1a);
+  border: 1px solid var(--border);
+  color: var(--text);
+  padding: 3px 6px;
+  font-family: inherit;
+  font-size: 11px;
+  border-radius: 3px;
+}
+
+.watchlist-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 11px;
+}
+.watchlist-table-scroll {
+  /* Source of truth for the virtual row height. MUST equal
+     VIRTUAL_ROW_HEIGHT_PX in WatchlistTableView.ts — the spacer pixel math and
+     the scroll→index mapping there assume every data row is exactly this tall. */
+  --watchlist-row-height: 33px;
+  max-height: min(58vh, 640px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.watchlist-table thead th {
+  text-align: left;
+  color: var(--text-dim);
+  font-weight: 500;
+  text-transform: uppercase;
+  font-size: 9px;
+  letter-spacing: 0.4px;
+  padding: 6px 4px;
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--panel-bg, var(--bg));
+}
+.watchlist-table thead th.watchlist-th-right {
+  text-align: right;
+}
+.watchlist-table thead th.watchlist-th-sortable {
+  cursor: pointer;
+  user-select: none;
+}
+.watchlist-table thead th.watchlist-th-sortable:hover {
+  color: var(--text);
+}
+.watchlist-table tbody tr.watchlist-row {
+  cursor: pointer;
+  border-bottom: 1px solid var(--border-subtle);
+  transition: background 0.1s ease;
+  /* Pin each data row to exactly one virtual row height so the virtualization
+     spacer math and scroll→index mapping cannot drift with cell content (e.g.
+     a wrapped long name on a narrow/mobile viewport). */
+  height: var(--watchlist-row-height, 33px);
+}
+.watchlist-table tbody tr.watchlist-row > td {
+  /* Keep cells single-line so a row can never grow past --watchlist-row-height. */
+  white-space: nowrap;
+  overflow: hidden;
+}
+.watchlist-table tbody tr.watchlist-row:hover {
+  background: var(--overlay-subtle);
+}
+.watchlist-table tbody tr.watchlist-row-expanded {
+  background: var(--overlay-light);
+}
+.watchlist-table tbody td {
+  padding: 6px 4px;
+}
+.watchlist-table tbody td.watchlist-td-right {
+  text-align: right;
+}
+.watchlist-table tbody tr.watchlist-detail-row > td {
+  padding: 0;
+  background: var(--bg);
+  border-bottom: 1px solid var(--border);
+}
+.watchlist-table tbody tr.watchlist-virtual-spacer > td {
+  pointer-events: none;
+}
+.watchlist-empty {
+  padding: 24px;
+  text-align: center;
+  color: var(--text-dim);
+  font-size: 11px;
+}
+
+/* ----------------------------------------------------------
+   FX panel (#6199) — stress table + the two spot-rate tables
+   ---------------------------------------------------------- */
+.fx-scroll {
+  overflow-x: auto;
+  overflow-y: auto;
+  max-height: 100%;
+}
+.fx-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+.fx-table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--panel-bg, var(--bg));
+  padding: 4px 6px;
+  text-align: right;
+  font-weight: 600;
+  font-size: 9px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+}
+.fx-table td {
+  padding: 4px 6px;
+  text-align: right;
+  white-space: nowrap;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+}
+.fx-table th.fx-ccy,
+.fx-table td.fx-ccy {
+  text-align: left;
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  background: var(--panel-bg, var(--bg));
+}
+.fx-table thead th.fx-ccy {
+  z-index: 2;
+}
+.fx-ccy-code {
+  font-weight: 600;
+}
+.fx-ccy-country {
+  margin-left: 5px;
+  font-size: 9px;
+  color: var(--text-dim);
+}
+/* Currencies past the resilience methodology's -15% drawdown threshold. */
+.fx-table tbody tr.fx-stressed td.fx-ccy {
+  box-shadow: inset 2px 0 0 var(--negative, #f87171);
+}
+.fx-na {
+  color: var(--text-dim);
+  opacity: 0.5;
+}
+/* Exactly zero: neither a gain nor a loss. A drawdown can only ever be 0 or
+   negative, so painting 0 green would show an appreciation that cannot occur. */
+.fx-flat {
+  color: var(--text-dim);
+}
+.fx-window {
+  font-size: 9px;
+  color: var(--text-dim);
+}
+/* Rate above date: the magnitude of the collapse is the point, the window is
+   the qualifier. */
+.fx-window-rates,
+.fx-window-dates {
+  display: block;
+  white-space: nowrap;
+}
+.fx-window-rates {
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+.fx-window-dates {
+  opacity: 0.7;
+}
+/* The raw seeded direction, shown beside the conventional quote. */
+.fx-inverse {
+  color: var(--text-dim);
+}
+.fx-section-title {
+  padding: 8px 6px 4px;
+  font-size: 9px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+.fx-footer {
+  padding: 6px;
+  font-size: 9px;
+  color: var(--text-dim);
+}
+/* Names a source that returned nothing, so a missing table reads as an outage
+   rather than as a surface that never existed. */
+.fx-degraded {
+  padding: 6px;
+  font-size: 9px;
+  color: var(--negative, #f87171);
+  opacity: 0.85;
 }

@@ -1,0 +1,110 @@
+syntax = "proto3";
+
+package worldmonitor.economic.v1;
+
+message GetChinaMacroSnapshotRequest {}
+
+message ChinaMacroIndicator {
+  // Kept as "indicator" for API compatibility; each row is a versioned,
+  // revision-aware official observation in cache schema v2.
+  string id = 1;
+  string label = 2;
+  string category = 3;
+  double value = 4;
+  bool has_value = 5;
+  double prior_value = 6;
+  bool has_prior_value = 7;
+  string unit = 8;
+  string observation_date = 9;
+  string source = 10;
+  string source_url = 11;
+  bool stale = 12;
+  string unavailable_reason = 13;
+  bool context_only = 14;
+  string geography = 15;
+  string seasonal_adjustment = 16;
+  string period_kind = 17;
+  string observation_period = 18;
+  string release_time = 19;
+  string retrieval_time = 20;
+  string direction = 21;
+  string direction_reason = 22;
+  string comparison_basis = 23;
+  double comparison_value = 24;
+  bool has_comparison_value = 25;
+  string revision_state = 26;
+  string vintage_id = 27;
+  int32 revision_sequence = 28;
+  // Canonical #5581 payload, validated before crossing the cache/API boundary.
+  string provenance_json = 29;
+  repeated ChinaMacroVintage vintages = 30;
+  string transport_status = 31;
+  string transport_failure_reason = 32;
+}
+
+message ChinaMacroVintage {
+  string vintage_id = 1;
+  int32 sequence = 2;
+  string state = 3;
+  double value = 4;
+  bool has_value = 5;
+  string observation_period = 6;
+  string period_kind = 7;
+  string release_time = 8;
+  string retrieval_time = 9;
+  string superseded_by = 10;
+  string provenance_json = 11;
+}
+
+message ChinaMacroSourceDecision {
+  string source = 1;
+  string host = 2;
+  string status = 3;
+  string reason = 4;
+  string checked_at = 5;
+  bool optional = 6;
+  int32 request_count = 7;
+  string publisher_id = 8;
+  string redirect_behavior = 9;
+  int32 request_budget = 10;
+  string robots_status = 11;
+  string terms_status = 12;
+  string source_url = 13;
+}
+
+message ChinaMacroPillarPulse {
+  string pillar = 1;
+  string direction = 2;
+  string reason = 3;
+  repeated string observation_ids = 4;
+}
+
+message ChinaReleaseEvent {
+  string id = 1;
+  string event = 2;
+  string country_code = 3;
+  string release_date = 4;
+  string release_time = 5;
+  string timezone = 6;
+  string kind = 7;
+  string status = 8;
+  string source = 9;
+  string source_url = 10;
+}
+
+message GetChinaMacroSnapshotResponse {
+  string country_code = 1;
+  string generated_at = 2;
+  string status = 3;
+  bool launch_ready = 4;
+  string content_observation_date = 5;
+  string latest_observation_date = 6;
+  repeated ChinaMacroIndicator indicators = 7;
+  repeated ChinaMacroSourceDecision source_decisions = 8;
+  repeated ChinaReleaseEvent release_events = 9;
+  // True when the seeded snapshot or release calendar is unavailable; callers
+  // should render the response as degraded rather than treating it as current.
+  bool unavailable = 10;
+  int32 schema_version = 11;
+  repeated ChinaMacroPillarPulse pillars = 12;
+}

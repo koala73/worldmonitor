@@ -7,8 +7,11 @@ import { IDLE_PAUSE_MS, STORAGE_KEYS, SITE_VARIANT } from '@/config';
 import { escapeHtml, sanitizeUrl } from '@/utils/sanitize';
 
 import { getStreamQuality } from '@/services/ai-flow-settings';
+import { getActiveLiveMedia, playAllLiveMedia, registerLiveMediaStarter, releaseLiveMediaPlayback, requestLiveMediaPlayback, stopLiveMediaPlayback, unregisterLiveMediaStarter, type LiveMediaStopReason } from '@/services/live-media-controller';
 import { getLiveStreamsAlwaysOn, subscribeLiveStreamsSettingsChange } from '@/services/live-stream-settings';
 import { track } from '@/services/analytics';
+import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
+
 
 // YouTube IFrame Player API types
 type YouTubePlayer = {
@@ -359,8 +362,8 @@ export class LiveNewsPanel extends Panel {
   private activeChannel!: LiveChannel;
   private channelSwitcher: HTMLElement | null = null;
   private isMuted = true;
-  private isPlaying = true;
-  private wasPlayingBeforeIdle = true;
+  private isPlaying = false;
+  private wasPlayingBeforeIdle = false;
   private muteBtn: HTMLButtonElement | null = null;
   private fullscreenBtn: HTMLButtonElement | null = null;
   private isFullscreen = false;
@@ -387,6 +390,7 @@ export class LiveNewsPanel extends Panel {
   // DIRECT_HLS_MAP channels use native <video> instead.
   private useDesktopEmbedProxy = isDesktopRuntime();
   private desktopEmbedIframe: HTMLIFrameElement | null = null;
+  private desktopEmbedSession: { iframe: HTMLIFrameElement; channelId: string; sessionToken: number } | null = null;
   private desktopEmbedRenderToken = 0;
   private suppressChannelClick = false;
   private boundMessageHandler!: (e: MessageEvent) => void;
@@ -403,10 +407,15 @@ export class LiveNewsPanel extends Panel {
   private hlsInstance: import('hls.js').default | null = null;
   private hlsFailureCooldown = new Map<string, number>();
   private readonly HLS_COOLDOWN_MS = 5 * 60 * 1000;
+  private liveMediaSessionToken = 0;
 
   private deferredInit = false;
   private lazyObserver: IntersectionObserver | null = null;
   private idleCallbackId: number | ReturnType<typeof setTimeout> | null = null;
+  // Play-all cascade: start this panel's channel, but never start a disabled or collapsed panel.
+  private readonly boundPlayAllStarter = () => {
+    if (this.canHostLiveMedia()) this.triggerInit();
+  };
 
   constructor() {
     super({ id: 'live-news', title: t('panels.liveNews'), className: 'panel-wide', closable: true, collapsible: true });
@@ -426,33 +435,72 @@ export class LiveNewsPanel extends Panel {
     this.setupLazyInit();
     this.setupIdleDetection();
     this.unsubscribeStreamSettings = subscribeLiveStreamsSettingsChange((alwaysOn) => {
+      const wasAlwaysOn = this.alwaysOn;
       this.alwaysOn = alwaysOn;
       this.applyIdleMode();
+      if (wasAlwaysOn && !alwaysOn) {
+        // Cancel any pending lazy-init so leaving always-on cannot auto-start playback without intent.
+        // Anything already playing keeps running — feeds coexist; eco-idle (re-armed below) will pause it.
+        if (this.lazyObserver) { this.lazyObserver.disconnect(); this.lazyObserver = null; }
+        if (this.idleCallbackId !== null) {
+          if ('cancelIdleCallback' in window) (window as any).cancelIdleCallback(this.idleCallbackId);
+          else clearTimeout(this.idleCallbackId as ReturnType<typeof setTimeout>);
+          this.idleCallbackId = null;
+        }
+      }
+      if (alwaysOn && !this.deferredInit && this.isPanelVisible()) {
+        this.startAlwaysOnPlaybackIfVisible();
+      } else if (alwaysOn && !this.deferredInit && !this.lazyObserver) {
+        this.setupLazyInit();
+      }
     });
+    registerLiveMediaStarter('live-news', this.boundPlayAllStarter);
     document.addEventListener('keydown', this.boundFullscreenEscHandler);
   }
 
+  private isPanelVisible(): boolean {
+    if (!this.element.isConnected) return false;
+    const rect = this.element.getBoundingClientRect();
+    return rect.width > 0 &&
+      rect.height > 0 &&
+      rect.bottom > 0 &&
+      rect.right > 0 &&
+      rect.top < window.innerHeight &&
+      rect.left < window.innerWidth;
+  }
+
   private renderPlaceholder(): void {
-    this.content.innerHTML = '';
+    this.deferredInit = false;
+    this.playerContainer = null;
+    this.playerElement = null;
+    setTrustedHtml(this.content, trustedHtml('', "legacy direct innerHTML migration"));
     const container = document.createElement('div');
-    container.className = 'live-news-placeholder';
-    container.style.cssText = 'display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;gap:12px;cursor:pointer;';
+    container.className = 'live-news-placeholder live-media-shell';
+
+    const status = document.createElement('div');
+    status.className = 'live-media-shell-status';
+    const dot = document.createElement('span');
+    dot.className = 'live-media-shell-dot';
+    const statusText = document.createElement('span');
+    statusText.textContent = t('components.liveNews.readyStatus') || 'Ready when you are';
+    status.append(dot, statusText);
 
     const label = document.createElement('div');
-    label.style.cssText = 'color:var(--text-secondary);font-size:13px;';
+    label.className = 'live-media-shell-title';
     label.textContent = this.getChannelDisplayName(this.activeChannel);
 
     const playBtn = document.createElement('button');
     playBtn.className = 'offline-retry';
-    playBtn.textContent = 'Load Player';
+    playBtn.textContent = t('components.liveNews.playLiveFeed') || 'Play live feed';
     playBtn.addEventListener('click', (e) => {
       e.stopPropagation();
-      this.triggerInit();
+      playAllLiveMedia();
     });
 
+    container.appendChild(status);
     container.appendChild(label);
     container.appendChild(playBtn);
-    container.addEventListener('click', () => this.triggerInit());
+    container.addEventListener('click', () => playAllLiveMedia());
     this.content.appendChild(container);
   }
 
@@ -462,6 +510,7 @@ export class LiveNewsPanel extends Panel {
         if (entries.some(e => e.isIntersecting)) {
           this.lazyObserver?.disconnect();
           this.lazyObserver = null;
+          if (!this.alwaysOn) return;
           if ('requestIdleCallback' in window) {
             this.idleCallbackId = (window as any).requestIdleCallback(
               () => { this.idleCallbackId = null; this.triggerInit(); },
@@ -486,7 +535,71 @@ export class LiveNewsPanel extends Panel {
       else clearTimeout(this.idleCallbackId as ReturnType<typeof setTimeout>);
       this.idleCallbackId = null;
     }
+    this.requestPlaybackForActiveChannel();
+  }
+
+  private requestPlaybackForActiveChannel(): void {
+    const streamId = this.activeChannel.id;
+    requestLiveMediaPlayback(
+      'live-news',
+      streamId,
+      () => this.startPlaybackForActiveChannel(),
+      (reason) => this.stopPlaybackFromController(reason),
+    );
+  }
+
+  private hasPlaybackIntent(): boolean {
+    return this.deferredInit ||
+      this.isPlaying ||
+      !!this.player ||
+      !!this.desktopEmbedIframe ||
+      !!this.nativeVideoElement ||
+      this.ownsLiveNewsMedia() ||
+      (this.alwaysOn && !document.hidden && this.isPanelVisible());
+  }
+
+  private ownsLiveMediaForChannel(channelId: string): boolean {
+    const activeMedia = getActiveLiveMedia('live-news');
+    return activeMedia?.panelId === 'live-news' && activeMedia.streamId === channelId;
+  }
+
+  private ownsLiveMediaSession(channelId: string, sessionToken: number): boolean {
+    return this.liveMediaSessionToken === sessionToken &&
+      this.activeChannel.id === channelId &&
+      this.ownsLiveMediaForChannel(channelId);
+  }
+
+  private ownsActiveLiveMedia(): boolean {
+    return this.ownsLiveMediaForChannel(this.activeChannel.id);
+  }
+
+  private ownsLiveNewsMedia(): boolean {
+    return getActiveLiveMedia('live-news')?.panelId === 'live-news';
+  }
+
+  private startAlwaysOnPlaybackIfVisible(): void {
+    if (!this.alwaysOn || document.hidden || !this.element.isConnected || !this.isPanelVisible()) return;
+    if (this.ownsActiveLiveMedia()) return;
+    this.requestPlaybackForActiveChannel();
+  }
+
+  private startPlaybackForActiveChannel(): void {
+    this.liveMediaSessionToken += 1;
+    this.isPlaying = true;
+    this.wasPlayingBeforeIdle = true;
+    this.updateLiveIndicator();
     this.renderPlayer();
+  }
+
+  private stopPlaybackFromController(reason: LiveMediaStopReason): void {
+    this.liveMediaSessionToken += 1;
+    const shouldResumeAfterIdle = reason === 'idle' && this.wasPlayingBeforeIdle;
+    this.isPlaying = false;
+    this.wasPlayingBeforeIdle = shouldResumeAfterIdle;
+    this.updateLiveIndicator();
+    this.destroyPlayer();
+    // Skip DOM work on a detached panel; destroy() already runs destroyPlayer().
+    if (this.element.isConnected) this.renderPlaceholder();
   }
 
   private saveChannels(): void {
@@ -517,7 +630,9 @@ export class LiveNewsPanel extends Panel {
 
   private setupBridgeMessageListener(): void {
     this.boundMessageHandler = (e: MessageEvent) => {
-      if (e.source !== this.desktopEmbedIframe?.contentWindow) return;
+      const session = this.desktopEmbedSession;
+      if (!session || e.source !== session.iframe.contentWindow) return;
+      if (!this.ownsLiveMediaSession(session.channelId, session.sessionToken)) return;
       const expected = this.embedOrigin;
       const localOrigin = getApiBaseUrl();
       if (e.origin !== expected && (!localOrigin || e.origin !== localOrigin)) return;
@@ -530,12 +645,13 @@ export class LiveNewsPanel extends Panel {
       } else if (msg.type === 'yt-error') {
         this.clearBotCheckTimeout();
         const code = Number(msg.code ?? 0);
-        if (code === 153 && this.activeChannel.fallbackVideoId &&
-          this.activeChannel.videoId !== this.activeChannel.fallbackVideoId) {
-          this.activeChannel.videoId = this.activeChannel.fallbackVideoId;
+        const channel = this.activeChannel;
+        if (code === 153 && channel.fallbackVideoId &&
+          channel.videoId !== channel.fallbackVideoId) {
+          channel.videoId = channel.fallbackVideoId;
           this.renderDesktopEmbed(true);
         } else {
-          this.showEmbedError(this.activeChannel, code);
+          this.showEmbedError(channel, code);
         }
       } else if (msg.type === 'yt-mute-state') {
         const muted = msg.muted === true;
@@ -585,9 +701,7 @@ export class LiveNewsPanel extends Panel {
         });
         this.idleDetectionEnabled = false;
       }
-      if (!document.hidden) {
-        this.resumeFromIdle();
-      }
+      this.startAlwaysOnPlaybackIfVisible();
       return;
     }
 
@@ -605,10 +719,9 @@ export class LiveNewsPanel extends Panel {
     // Suspend idle timer when hidden, resume when visible
     this.boundVisibilityHandler = () => {
       if (document.hidden) {
-        // Suspend idle timer so background playback isn't killed
         if (this.idleTimeout) clearTimeout(this.idleTimeout);
+        stopLiveMediaPlayback('live-news', 'hidden');
       } else {
-        this.resumeFromIdle();
         this.applyIdleMode();
       }
     };
@@ -626,12 +739,14 @@ export class LiveNewsPanel extends Panel {
   }
 
   private pauseForIdle(): void {
+    // Arm idle-resume only when actually playing; otherwise a stale flag could
+    // resurrect media the user never started (or paused) when the stop fires.
+    this.wasPlayingBeforeIdle = this.isPlaying;
     if (this.isPlaying) {
-      this.wasPlayingBeforeIdle = true;
       this.isPlaying = false;
       this.updateLiveIndicator();
     }
-    this.destroyPlayer();
+    stopLiveMediaPlayback('live-news', 'idle');
   }
 
   private stopMuteSyncPolling(): void {
@@ -679,13 +794,14 @@ export class LiveNewsPanel extends Panel {
     }
 
     this.desktopEmbedIframe = null;
+    this.desktopEmbedSession = null;
     this.desktopEmbedRenderToken += 1;
     this.isPlayerReady = false;
     this.currentVideoId = null;
 
     // Clear the container to remove player/iframe
     if (this.playerContainer) {
-      this.playerContainer.innerHTML = '';
+      setTrustedHtml(this.playerContainer, trustedHtml('', "legacy direct innerHTML migration"));
 
       if (!this.useDesktopEmbedProxy) {
         // Recreate player element for JS API mode
@@ -699,10 +815,9 @@ export class LiveNewsPanel extends Panel {
   }
 
   private resumeFromIdle(): void {
+    if (this.ownsActiveLiveMedia()) return;
     if (this.wasPlayingBeforeIdle && !this.isPlaying) {
-      this.isPlaying = true;
-      this.updateLiveIndicator();
-      void this.initializePlayer();
+      this.requestPlaybackForActiveChannel();
     }
   }
 
@@ -719,21 +834,18 @@ export class LiveNewsPanel extends Panel {
 
   private updateLiveIndicator(): void {
     if (!this.liveBtn) return;
-    this.liveBtn.innerHTML = this.isPlaying
+    setTrustedHtml(this.liveBtn, trustedHtml(this.isPlaying
       ? '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>'
-      : '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg>';
+      : '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg>', "legacy direct innerHTML migration"));
   }
 
   private togglePlayback(): void {
-    this.isPlaying = !this.isPlaying;
-    this.wasPlayingBeforeIdle = this.isPlaying;
-    this.updateLiveIndicator();
-    if (this.isPlaying && !this.player && !this.desktopEmbedIframe && !this.nativeVideoElement) {
-      this.ensurePlayerContainer();
-      void this.initializePlayer();
-    } else {
-      this.syncPlayerState();
+    if (this.isPlaying || this.player || this.desktopEmbedIframe || this.nativeVideoElement) {
+      stopLiveMediaPlayback('live-news', 'user-paused');
+      return;
     }
+
+    this.requestPlaybackForActiveChannel();
   }
 
   private createMuteButton(): void {
@@ -757,7 +869,7 @@ export class LiveNewsPanel extends Panel {
     this.fullscreenBtn = document.createElement('button');
     this.fullscreenBtn.className = 'live-mute-btn';
     this.fullscreenBtn.title = 'Fullscreen';
-    this.fullscreenBtn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 3H5a2 2 0 0 0-2 2v3"/><path d="M21 8V5a2 2 0 0 0-2-2h-3"/><path d="M3 16v3a2 2 0 0 0 2 2h3"/><path d="M16 21h3a2 2 0 0 0 2-2v-3"/></svg>';
+    setTrustedHtml(this.fullscreenBtn, trustedHtml('<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 3H5a2 2 0 0 0-2 2v3"/><path d="M21 8V5a2 2 0 0 0-2-2h-3"/><path d="M3 16v3a2 2 0 0 0 2 2h3"/><path d="M16 21h3a2 2 0 0 0 2-2v-3"/></svg>', "legacy direct innerHTML migration"));
     this.fullscreenBtn.addEventListener('click', (e) => {
       e.stopPropagation();
       track('live-news-fullscreen', { entering: !this.isFullscreen });
@@ -774,9 +886,9 @@ export class LiveNewsPanel extends Panel {
 
     if (this.fullscreenBtn) {
       this.fullscreenBtn.title = this.isFullscreen ? 'Exit fullscreen' : 'Fullscreen';
-      this.fullscreenBtn.innerHTML = this.isFullscreen
+      setTrustedHtml(this.fullscreenBtn, trustedHtml(this.isFullscreen
         ? '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 14h6v6"/><path d="M20 10h-6V4"/><path d="M14 10l7-7"/><path d="M3 21l7-7"/></svg>'
-        : '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 3H5a2 2 0 0 0-2 2v3"/><path d="M21 8V5a2 2 0 0 0-2-2h-3"/><path d="M3 16v3a2 2 0 0 0 2 2h3"/><path d="M16 21h3a2 2 0 0 0 2-2v-3"/></svg>';
+        : '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 3H5a2 2 0 0 0-2 2v3"/><path d="M21 8V5a2 2 0 0 0-2-2h-3"/><path d="M3 16v3a2 2 0 0 0 2 2h3"/><path d="M16 21h3a2 2 0 0 0 2-2v-3"/></svg>', "legacy direct innerHTML migration"));
     }
   }
 
@@ -786,9 +898,9 @@ export class LiveNewsPanel extends Panel {
 
   private updateMuteIcon(): void {
     if (!this.muteBtn) return;
-    this.muteBtn.innerHTML = this.isMuted
+    setTrustedHtml(this.muteBtn, trustedHtml(this.isMuted
       ? '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 5L6 9H2v6h4l5 4V5z"/><line x1="23" y1="9" x2="17" y2="15"/><line x1="17" y1="9" x2="23" y2="15"/></svg>'
-      : '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 5L6 9H2v6h4l5 4V5z"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/></svg>';
+      : '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 5L6 9H2v6h4l5 4V5z"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/></svg>', "legacy direct innerHTML migration"));
     this.muteBtn.classList.toggle('unmuted', !this.isMuted);
   }
 
@@ -894,8 +1006,7 @@ export class LiveNewsPanel extends Panel {
     openBtn.type = 'button';
     openBtn.className = 'live-news-settings-btn';
     openBtn.title = t('components.liveNews.channelSettings') ?? 'Channel Settings';
-    openBtn.innerHTML =
-      '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>';
+    setTrustedHtml(openBtn, trustedHtml('<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>', "legacy direct innerHTML migration"));
     openBtn.addEventListener('click', () => {
       this.openChannelManagementModal();
     });
@@ -917,7 +1028,7 @@ export class LiveNewsPanel extends Panel {
     closeBtn.type = 'button';
     closeBtn.className = 'live-channels-modal-close';
     closeBtn.setAttribute('aria-label', t('common.close') ?? 'Close');
-    closeBtn.innerHTML = '&times;';
+    setTrustedHtml(closeBtn, trustedHtml('&times;', "legacy direct innerHTML migration"));
 
     const container = document.createElement('div');
 
@@ -949,7 +1060,7 @@ export class LiveNewsPanel extends Panel {
 
   private refreshChannelSwitcher(): void {
     if (!this.channelSwitcher) return;
-    this.channelSwitcher.innerHTML = '';
+    setTrustedHtml(this.channelSwitcher, trustedHtml('', "legacy direct innerHTML migration"));
     for (const channel of this.channels) {
       this.channelSwitcher.appendChild(this.createChannelButton(channel));
     }
@@ -998,22 +1109,51 @@ export class LiveNewsPanel extends Panel {
     channel.hlsUrl = (!hlsCooldownActive && info.hlsUrl) ? info.hlsUrl : undefined;
   }
 
+  private clearChannelLoadingState(): void {
+    this.channelSwitcher?.querySelectorAll('.live-channel-btn.loading').forEach(btn => {
+      (btn as HTMLElement).classList.remove('loading');
+    });
+  }
+
   private async switchChannel(channel: LiveChannel): Promise<void> {
     if (channel.id === this.activeChannel.id) return;
 
     this.activeChannel = channel;
     saveToStorage(STORAGE_KEYS.activeChannel, channel.id);
+    const shouldStartMedia = this.hasPlaybackIntent();
+    const hadLiveNewsOwnership = this.ownsLiveNewsMedia();
 
     this.channelSwitcher?.querySelectorAll('.live-channel-btn').forEach(btn => {
       const btnEl = btn as HTMLElement;
       btnEl.classList.toggle('active', btnEl.dataset.channelId === channel.id);
-      if (btnEl.dataset.channelId === channel.id) {
+      if (shouldStartMedia && btnEl.dataset.channelId === channel.id) {
         btnEl.classList.add('loading');
       }
     });
 
+    if (!shouldStartMedia) {
+      this.channelSwitcher?.querySelectorAll('.live-channel-btn').forEach(btn => {
+        (btn as HTMLElement).classList.remove('loading', 'offline');
+      });
+      this.renderPlaceholder();
+      return;
+    }
+
     await this.resolveChannelVideo(channel);
     if (!this.element?.isConnected) return;
+    // Every early return below bails after the loading spinner was set; clear it
+    // so an interrupted/aborted switch doesn't leave a button spinning forever.
+    if (this.activeChannel.id !== channel.id) { this.clearChannelLoadingState(); return; }
+    if (hadLiveNewsOwnership && !this.ownsLiveNewsMedia()) {
+      this.clearChannelLoadingState();
+      this.renderPlaceholder();
+      return;
+    }
+    if (!this.hasPlaybackIntent()) {
+      this.clearChannelLoadingState();
+      this.renderPlaceholder();
+      return;
+    }
 
     this.channelSwitcher?.querySelectorAll('.live-channel-btn').forEach(btn => {
       const btnEl = btn as HTMLElement;
@@ -1023,40 +1163,19 @@ export class LiveNewsPanel extends Panel {
       }
     });
 
-    if (this.getDirectHlsUrl(channel.id) || this.getProxiedHlsUrl(channel.id) || channel.hlsUrl) {
-      void this.renderNativeHlsPlayer();
-      return;
-    }
-
-    if (!channel.videoId || !/^[\w-]{10,12}$/.test(channel.videoId)) {
-      this.showOfflineMessage(channel);
-      return;
-    }
-
-    if (this.useDesktopEmbedProxy) {
-      this.renderDesktopEmbed(true);
-      return;
-    }
-
-    if (!this.player) {
-      this.ensurePlayerContainer();
-      void this.initializePlayer();
-      return;
-    }
-
-    this.syncPlayerState();
+    this.requestPlaybackForActiveChannel();
   }
 
   private showOfflineMessage(channel: LiveChannel): void {
     this.destroyPlayer();
     const safeName = escapeHtml(channel.name);
-    this.content.innerHTML = `
-      <div class="live-offline">
+    setTrustedHtml(this.content, trustedHtml(`
+      <div class="live-offline live-offline-compact">
         <div class="offline-icon">📺</div>
         <div class="offline-text">${t('components.liveNews.notLive', { name: safeName })}</div>
         <button class="offline-retry" onclick="this.closest('.panel').querySelector('.live-channel-btn.active')?.click()">${t('common.retry')}</button>
       </div>
-    `;
+    `, "legacy direct innerHTML migration"));
   }
 
   private showEmbedError(channel: LiveChannel, errorCode: number): void {
@@ -1068,13 +1187,13 @@ export class LiveNewsPanel extends Panel {
       : 'https://www.youtube.com';
     const safeName = escapeHtml(channel.name);
 
-    this.content.innerHTML = `
-      <div class="live-offline">
+    setTrustedHtml(this.content, trustedHtml(`
+      <div class="live-offline live-offline-compact">
         <div class="offline-icon">!</div>
         <div class="offline-text">${t('components.liveNews.cannotEmbed', { name: safeName, code: String(errorCode) })}</div>
         <a class="offline-retry" href="${sanitizeUrl(watchUrl)}" target="_blank" rel="noopener noreferrer">${t('components.liveNews.openOnYouTube')}</a>
       </div>
-    `;
+    `, "legacy direct innerHTML migration"));
   }
 
   private renderPlayer(): void {
@@ -1084,7 +1203,7 @@ export class LiveNewsPanel extends Panel {
 
   private ensurePlayerContainer(): void {
     this.deferredInit = true;
-    this.content.innerHTML = '';
+    setTrustedHtml(this.content, trustedHtml('', "legacy direct innerHTML migration"));
     this.playerContainer = document.createElement('div');
     this.playerContainer.className = 'live-news-player';
 
@@ -1115,6 +1234,8 @@ export class LiveNewsPanel extends Panel {
   }
 
   private async renderDesktopEmbedAsync(force = false): Promise<void> {
+    const channelId = this.activeChannel.id;
+    const sessionToken = this.liveMediaSessionToken;
     const videoId = this.activeChannel.videoId;
     if (!videoId) {
       this.showOfflineMessage(this.activeChannel);
@@ -1140,7 +1261,9 @@ export class LiveNewsPanel extends Panel {
       return;
     }
 
-    this.playerContainer.innerHTML = '';
+    this.desktopEmbedIframe = null;
+    this.desktopEmbedSession = null;
+    setTrustedHtml(this.playerContainer, trustedHtml('', "legacy direct innerHTML migration"));
 
     // Use local sidecar embed — YouTube rejects tauri:// parent origin with error 153,
     // and Vercel WAF blocks cloud bridge iframe loads. The sidecar serves the embed from
@@ -1158,7 +1281,7 @@ export class LiveNewsPanel extends Panel {
     params.set('parentOrigin', window.location.origin);
     const embedUrl = `http://localhost:${getLocalApiPort()}/api/youtube-embed?${params.toString()}`;
 
-    if (renderToken !== this.desktopEmbedRenderToken) {
+    if (renderToken !== this.desktopEmbedRenderToken || !this.ownsLiveMediaSession(channelId, sessionToken)) {
       return;
     }
 
@@ -1174,19 +1297,21 @@ export class LiveNewsPanel extends Panel {
     iframe.referrerPolicy = 'strict-origin-when-cross-origin';
     iframe.setAttribute('loading', 'eager');
 
-    this.playerContainer.appendChild(iframe);
     this.desktopEmbedIframe = iframe;
+    this.desktopEmbedSession = { iframe, channelId, sessionToken };
+    this.playerContainer.appendChild(iframe);
     this.startBotCheckTimeout();
   }
 
   private async renderNativeHlsPlayer(): Promise<void> {
     const hlsUrl = this.getDirectHlsUrl(this.activeChannel.id) || this.getProxiedHlsUrl(this.activeChannel.id) || this.activeChannel.hlsUrl;
     if (!hlsUrl || !(hlsUrl.startsWith('https://') || hlsUrl.startsWith('http://127.0.0.1'))) return;
+    const sessionToken = this.liveMediaSessionToken;
 
     this.destroyPlayer();
     this.ensurePlayerContainer();
     if (!this.playerContainer) return;
-    this.playerContainer.innerHTML = '';
+    setTrustedHtml(this.playerContainer, trustedHtml('', "legacy direct innerHTML migration"));
 
     const video = document.createElement('video');
     video.className = 'live-news-native-video';
@@ -1211,7 +1336,7 @@ export class LiveNewsPanel extends Panel {
       this.hlsFailureCooldown.set(failedChannel.id, Date.now());
       failedChannel.hlsUrl = undefined;
 
-      if (this.activeChannel.id === failedChannel.id) {
+      if (this.ownsLiveMediaSession(failedChannel.id, sessionToken)) {
         this.ensurePlayerContainer();
         void this.initializePlayer();
       }
@@ -1225,7 +1350,7 @@ export class LiveNewsPanel extends Panel {
     } else {
       // Chrome / Firefox: lazy-load hls.js only when needed
       const { default: Hls } = await import('hls.js');
-      if (this.activeChannel.id !== failedChannel.id || !this.element?.isConnected) return;
+      if (!this.element?.isConnected || !this.ownsLiveMediaSession(failedChannel.id, sessionToken)) return;
       if (!Hls.isSupported()) {
         // No HLS support at all — fall through to YouTube
         onHlsFatalError();
@@ -1277,7 +1402,7 @@ export class LiveNewsPanel extends Panel {
       const wantUnmute = !this.isMuted;
       video.muted = true;
       video.play()?.then(() => {
-        if (wantUnmute && this.nativeVideoElement === video) {
+        if (wantUnmute && this.nativeVideoElement === video && this.ownsLiveMediaSession(failedChannel.id, sessionToken)) {
           video.muted = false;
         }
       }).catch(() => {});
@@ -1345,10 +1470,14 @@ export class LiveNewsPanel extends Panel {
   private async initializePlayer(): Promise<void> {
     if (!this.useDesktopEmbedProxy && !this.nativeVideoElement && this.player) return;
 
-    const useFallbackVideo = this.activeChannel.useFallbackOnly || this.forceFallbackVideoForNextInit;
+    const channel = this.activeChannel;
+    const channelId = channel.id;
+    const sessionToken = this.liveMediaSessionToken;
+    const useFallbackVideo = channel.useFallbackOnly || this.forceFallbackVideoForNextInit;
     this.forceFallbackVideoForNextInit = false;
-    await this.resolveChannelVideo(this.activeChannel, useFallbackVideo);
+    await this.resolveChannelVideo(channel, useFallbackVideo);
     if (!this.element?.isConnected) return;
+    if (!this.ownsLiveMediaSession(channelId, sessionToken)) return;
 
     if (this.getDirectHlsUrl(this.activeChannel.id) || this.getProxiedHlsUrl(this.activeChannel.id) || this.activeChannel.hlsUrl) {
       void this.renderNativeHlsPlayer();
@@ -1367,6 +1496,7 @@ export class LiveNewsPanel extends Panel {
 
     await LiveNewsPanel.loadYouTubeApi();
     if (!this.element?.isConnected) return;
+    if (!this.ownsLiveMediaSession(channelId, sessionToken)) return;
     if (this.player || !this.playerElement || !window.YT?.Player) return;
 
     // When YT.Player receives a DOM element it replaces that element in the
@@ -1406,6 +1536,8 @@ export class LiveNewsPanel extends Panel {
       observerTimeout = setTimeout(() => storageObserver.disconnect(), 10_000);
     }
 
+    const playerChannelId = this.activeChannel.id;
+    const playerSessionToken = this.liveMediaSessionToken;
     try {
       this.player = new window.YT!.Player(this.playerElementId, {
       host: 'https://www.youtube.com',
@@ -1425,6 +1557,7 @@ export class LiveNewsPanel extends Panel {
       },
       events: {
         onReady: () => {
+          if (!this.ownsLiveMediaSession(playerChannelId, playerSessionToken)) return;
           this.clearBotCheckTimeout();
           this.isPlayerReady = true;
           this.currentVideoId = this.activeChannel.videoId || null;
@@ -1436,6 +1569,7 @@ export class LiveNewsPanel extends Panel {
           this.startMuteSyncPolling();
         },
         onError: (event) => {
+          if (!this.ownsLiveMediaSession(playerChannelId, playerSessionToken)) return;
           this.clearBotCheckTimeout();
           const errorCode = Number(event?.data ?? 0);
 
@@ -1478,9 +1612,11 @@ export class LiveNewsPanel extends Panel {
 
   private startBotCheckTimeout(): void {
     this.clearBotCheckTimeout();
+    const channelId = this.activeChannel.id;
+    const sessionToken = this.liveMediaSessionToken;
     this.botCheckTimeout = setTimeout(() => {
       this.botCheckTimeout = null;
-      if (!this.isPlayerReady) {
+      if (!this.isPlayerReady && this.ownsLiveMediaSession(channelId, sessionToken)) {
         this.showBotCheckPrompt();
       }
     }, LiveNewsPanel.BOT_CHECK_TIMEOUT_MS);
@@ -1502,10 +1638,10 @@ export class LiveNewsPanel extends Panel {
       : 'https://www.youtube.com';
 
     this.destroyPlayer();
-    this.content.innerHTML = '';
+    setTrustedHtml(this.content, trustedHtml('', "legacy direct innerHTML migration"));
 
     const wrapper = document.createElement('div');
-    wrapper.className = 'live-offline';
+    wrapper.className = 'live-offline live-offline-compact';
 
     const icon = document.createElement('div');
     icon.className = 'offline-icon';
@@ -1554,10 +1690,10 @@ export class LiveNewsPanel extends Panel {
         const { tryInvokeTauri } = await import('@/services/tauri-bridge');
         await tryInvokeTauri('open_youtube_login');
       } catch {
-        window.open(youtubeLoginUrl, '_blank');
+        window.open(youtubeLoginUrl, '_blank', 'noopener,noreferrer');
       }
     } else {
-      window.open(youtubeLoginUrl, '_blank');
+      window.open(youtubeLoginUrl, '_blank', 'noopener,noreferrer');
     }
   }
 
@@ -1653,7 +1789,32 @@ export class LiveNewsPanel extends Panel {
     this.refreshChannelSwitcher();
   }
 
+  public stopLiveMediaForClose(): void {
+    this.liveMediaSessionToken += 1;
+    this.wasPlayingBeforeIdle = false;
+    if (this.idleTimeout) { clearTimeout(this.idleTimeout); this.idleTimeout = null; }
+    stopLiveMediaPlayback('live-news', 'destroyed');
+    if (this.player || this.desktopEmbedIframe || this.nativeVideoElement) {
+      this.isPlaying = false;
+      this.updateLiveIndicator();
+      this.destroyPlayer();
+      this.renderPlaceholder();
+    }
+  }
+
+  public resumeLiveMediaForShow(): void {
+    if (!this.alwaysOn) return;
+    if (this.isPanelVisible()) {
+      this.startAlwaysOnPlaybackIfVisible();
+    } else if (!this.lazyObserver) {
+      this.setupLazyInit();
+    }
+  }
+
   public destroy(): void {
+    this.liveMediaSessionToken += 1;
+    unregisterLiveMediaStarter('live-news', this.boundPlayAllStarter);
+    releaseLiveMediaPlayback('live-news');
     this.destroyPlayer();
     this.unsubscribeStreamSettings?.();
     this.unsubscribeStreamSettings = null;

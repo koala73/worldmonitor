@@ -5,6 +5,7 @@ import type {
 } from '../../../../src/generated/server/worldmonitor/military/v1/service_server';
 
 import { getCachedJson } from '../../../_shared/redis';
+import { markNoStoreFallbackResponse } from '../../../_shared/response-headers';
 
 const CACHE_KEY = 'theater-posture:sebuf:v1';
 const STALE_CACHE_KEY = 'theater_posture:sebuf:stale:v1';
@@ -16,7 +17,7 @@ const BACKUP_CACHE_KEY = 'theater-posture:sebuf:backup:v1';
 // Gold standard: Vercel reads, Railway writes.
 
 export async function getTheaterPosture(
-  _ctx: ServerContext,
+  ctx: ServerContext,
   _req: GetTheaterPostureRequest,
 ): Promise<GetTheaterPostureResponse> {
   try {
@@ -34,5 +35,5 @@ export async function getTheaterPosture(
     if (backup?.theaters?.length) return backup;
   } catch { /* empty */ }
 
-  return { theaters: [] };
+  return markNoStoreFallbackResponse(ctx.request, { theaters: [] });
 }

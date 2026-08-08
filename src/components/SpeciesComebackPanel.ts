@@ -12,7 +12,7 @@ import * as d3 from 'd3';
 import type { SpeciesRecovery } from '@/services/conservation-data';
 import { getCSSColor } from '@/utils';
 import { replaceChildren } from '@/utils/dom-utils';
-import { getLocale } from '@/services/i18n';
+import { t, getLocale } from '@/services/i18n';
 
 const SPARKLINE_MARGIN = { top: 4, right: 8, bottom: 16, left: 8 };
 const SPARKLINE_HEIGHT = 50;
@@ -39,7 +39,7 @@ const FALLBACK_IMAGE_SVG = 'data:image/svg+xml,' + encodeURIComponent(
 
 export class SpeciesComebackPanel extends Panel {
   constructor() {
-    super({ id: 'species', title: 'Conservation Wins', trackActivity: false });
+    super({ id: 'species', title: 'Conservation Wins', trackActivity: false, infoTooltip: t('components.conservationWins.infoTooltip') });
   }
 
   /**

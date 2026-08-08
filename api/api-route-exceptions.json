@@ -1,0 +1,804 @@
+{
+  "$comment": "Single source of truth for non-proto /api/ endpoints. All new JSON data APIs MUST use sebuf (proto → buf generate → handler). This manifest is the only escape hatch, and every entry is reviewed by @SebastienMelki (see .github/CODEOWNERS). Categories: external-protocol (MCP / OAuth — shape dictated by external spec), non-json (binary/HTML/image responses), upstream-proxy (raw pass-through of an external feed), ops-admin (health/cron/version — operator plumbing, not a product API), internal-helper (dashboard-internal bundle, not user-facing), deferred (should migrate eventually — must have a removal_issue), migration-pending (actively being migrated in an open PR — removed as its commit lands). See docs/adding-endpoints.mdx.",
+  "schema_version": 1,
+  "exceptions": [
+    {
+      "path": "api/ask.ts",
+      "category": "external-protocol",
+      "reason": "NLWeb /ask endpoint (Microsoft NLWeb protocol) — request/response envelope (_meta {response_type, version}, SSE start/result/complete event stream) dictated by the NLWeb spec, not something we can redefine as proto. Anonymous discovery answers over the public MCP tool catalog only; per-IP limit registered in ENDPOINT_RATE_POLICIES and enforced in-handler.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
+      "path": "api/a2a.ts",
+      "category": "external-protocol",
+      "reason": "A2A (Agent-to-Agent) JSON-RPC 2.0 endpoint behind /.well-known/agent-card.json — envelope and method surface (message/send, tasks/*) dictated by the A2A spec v0.3.0, not something we can redefine as proto. Anonymous concierge over the public MCP tool catalog + public freshness envelope only; per-IP limit registered in ENDPOINT_RATE_POLICIES and enforced in-handler.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
+      "path": "api/mcp.ts",
+      "category": "external-protocol",
+      "reason": "MCP streamable-HTTP transport — JSON-RPC 2.0 envelope dictated by the Model Context Protocol spec, not something we can or should redefine as proto. After the api/mcp.ts → api/mcp/ structural split, this file is a thin re-export shim that preserves the Vercel edge route URL and the public export surface; the actual handler and supporting modules live under api/mcp/ (each listed below).",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
+      "path": "api/mcp/handler.ts",
+      "category": "external-protocol",
+      "reason": "MCP transport handler — mcpHandler + default Vercel entry. Extracted from api/mcp.ts during the structural split; same external-protocol constraint as the parent shim.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
+      "path": "api/mcp/auth.ts",
+      "category": "external-protocol",
+      "reason": "MCP auth resolution (Bearer + X-WorldMonitor-Key), Pro pre-checks, rate-limiter init, and PRODUCTION_DEPS bundle for the MCP handler. Extracted from api/mcp.ts during the structural split; same external-protocol constraint as the parent shim.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
+      "path": "api/mcp/quota.ts",
+      "category": "external-protocol",
+      "reason": "MCP Pro daily-quota INCR-first reservation + F4 clamp loop. Extracted from api/mcp.ts during the structural split; same external-protocol constraint as the parent shim.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
+      "path": "api/mcp/dispatch.ts",
+      "category": "external-protocol",
+      "reason": "MCP tools/call dispatcher — executeTool (cache-tool path), dispatchToolsCall, per-tool budget gate, telemetry emission, F6 cache_all_null guard. Extracted from api/mcp.ts during the structural split; same external-protocol constraint as the parent shim.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
+      "path": "api/mcp/error-fingerprint.ts",
+      "category": "external-protocol",
+      "reason": "MCP Sentry grouping helper for tools/call capture sites. Keeps MCP external-protocol failures grouped by step, tool, and stable inner error signature without introducing a sebuf product API.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
+      "path": "api/mcp/billing-denial.ts",
+      "category": "internal-helper",
+      "reason": "Typed billing-denial propagation for MCP tool _execute fetches (#4770): BillingDenialError + header-detection helpers so a gateway 403/503 billing denial survives dispatch's catch-all instead of flattening into a generic -32603. Pure helper module for the external-protocol MCP handler family above — exports no route.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
+      "path": "api/mcp/downstream.ts",
+      "category": "internal-helper",
+      "reason": "Canonical sibling-request routing and credential-safe downstream error classification for MCP RPC tools (#5514). Pure helper module for the external-protocol MCP handler family above — exports no route.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
+      "path": "api/mcp/source-unavailable.ts",
+      "category": "internal-helper",
+      "reason": "Typed analysis-source outage propagation for MCP composite tools: preserves bounded cache-key diagnostics in JSON-RPC error.data without exposing source payloads. Pure helper module for the external-protocol MCP handler family above — exports no route.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
+      "path": "api/mcp/usage.ts",
+      "category": "external-protocol",
+      "reason": "MCP wm_api_usage emission (#4866) — phase-to-reason mapper + ctx.waitUntil RequestEvent emitter for the /mcp funnel. Ops/observability plumbing for the same external-protocol handler, not a JSON data API; reuses server/_shared/usage.ts builders.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
+      "path": "api/mcp/registry/cache-tools.ts",
+      "category": "external-protocol",
+      "reason": "MCP TOOL_REGISTRY cache-tool entries (no _execute). Extracted from api/mcp.ts during the structural split; same external-protocol constraint as the parent shim.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
+      "path": "api/mcp/registry/analysis-tools.ts",
+      "category": "external-protocol",
+      "reason": "MCP TOOL_REGISTRY composite-analysis tool entries and their cache orchestration. Extracted from rpc-tools.ts to keep the external-protocol registry maintainable; exports no JSON data route.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
+      "path": "api/mcp/registry/rpc-tools.ts",
+      "category": "external-protocol",
+      "reason": "MCP TOOL_REGISTRY RPC-tool entries (with _execute, incl. describe_tool). Extracted from api/mcp.ts during the structural split; same external-protocol constraint as the parent shim.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
+      "path": "api/mcp/registry/company-intel-tools.ts",
+      "category": "external-protocol",
+      "reason": "MCP TOOL_REGISTRY corporate-intelligence tool entry and its nested output schema. Extracted from rpc-tools.ts to keep the external-protocol registry maintainable; exports no JSON data route.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
+      "path": "api/mcp/registry/nlp-tools.ts",
+      "category": "external-protocol",
+      "reason": "MCP TOOL_REGISTRY on-demand NLP tool entries (classify_event, extract_entities, get_news_clusters, get_keyword_spikes). Extracted from rpc-tools.ts so the registry file is not also the home of digest adaptation, entity aggregation, and story-accumulator key knowledge; same external-protocol constraint as its sibling registry modules.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
+      "path": "api/mcp/registry/index.ts",
+      "category": "external-protocol",
+      "reason": "MCP TOOL_REGISTRY merge + buildPublicTool + SUMMARY_SCHEMA + TOOL_LIST_RESPONSE precompute + collision guard. Extracted from api/mcp.ts during the structural split; same external-protocol constraint as the parent shim.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
+      "path": "api/mcp/telemetry.ts",
+      "category": "external-protocol",
+      "reason": "MCP per-tools/call + per-initialize structured-log emission and the two closed-key telemetry allowlists (MCP_TOOLCALL_TELEMETRY_KEYS, MCP_TOOLS_LIST_TELEMETRY_KEYS). Extracted from api/mcp.ts during the structural split; same external-protocol constraint as the parent shim.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
+      "path": "api/mcp/constants.ts",
+      "category": "external-protocol",
+      "reason": "MCP protocol version negotiation (env-at-call-time), SERVER_NAME, SERVER_VERSION, SERVER_INSTRUCTIONS, MCP_LOG_LEVELS, byte caps. Extracted from api/mcp.ts during the structural split; same external-protocol constraint as the parent shim.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
+      "path": "api/security/report.js",
+      "category": "external-protocol",
+      "reason": "Browser Reporting API collector for COOP/COEP reports. Request body and content type are dictated by the Reporting API, not a product data API contract.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
+      "path": "api/mcp/freshness.ts",
+      "category": "external-protocol",
+      "reason": "MCP cache-tool freshness evaluation (evaluateFreshness) — drives the per-response cached_at + stale envelope fields. Extracted from api/mcp.ts during the structural split; same external-protocol constraint as the parent shim.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
+      "path": "api/mcp/jmespath.ts",
+      "category": "external-protocol",
+      "reason": "MCP universal JMESPath projection (applyJmespath + JMESPATH_SCHEMA) — two-gate input/output byte cap, soft-failure envelopes. Extracted from api/mcp.ts during the structural split; same external-protocol constraint as the parent shim.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
+      "path": "api/mcp/filters.ts",
+      "category": "external-protocol",
+      "reason": "MCP cache-tool _postFilter helpers (argStr/argNum/narrowNested/etc.), summarizeData, and cacheEnvelope schema builder. Extracted from api/mcp.ts during the structural split; same external-protocol constraint as the parent shim.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
+      "path": "api/mcp/utils.ts",
+      "category": "external-protocol",
+      "reason": "MCP utf8ByteLength + compressDescription — UTF-8 byte counting and tools/list description compression. Extracted from api/mcp.ts during the structural split; same external-protocol constraint as the parent shim.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
+      "path": "api/mcp/rpc.ts",
+      "category": "external-protocol",
+      "reason": "MCP JSON-RPC 2.0 envelope helpers (rpcOk + rpcError). Extracted from api/mcp.ts during the structural split; same external-protocol constraint as the parent shim.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
+      "path": "api/mcp/types.ts",
+      "category": "external-protocol",
+      "reason": "MCP shared type declarations (McpAuthContext, McpHandlerDeps, ToolDef union, etc.). Pure types — no runtime behaviour — but lives under api/mcp/ so the contract script requires a listing.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
+      "path": "api/mcp/prompts/index.ts",
+      "category": "external-protocol",
+      "reason": "MCP PROMPT_REGISTRY + buildPromptResponse + prompts/list public-shape projection. Workflow templates surfaced via prompts/list + prompts/get JSON-RPC methods, shape dictated by the MCP spec.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
+      "path": "api/mcp/resources/index.ts",
+      "category": "external-protocol",
+      "reason": "MCP resource registries (PUBLIC_RESOURCE_REGISTRY + TEMPLATE_RESOURCE_REGISTRY) + buildResourceResponse/buildPublicResourceResponse + resources/list + resources/templates/list public-shape projections. Read-only addressable URIs surfaced via the resources/list, resources/templates/list, and resources/read JSON-RPC methods, shape dictated by the MCP spec. Concrete public resources (metadata-only freshness probes) read anonymously + quota-free; data-bearing template instantiations route resources/read through dispatchToolsCall for auth-symmetric Pro daily-quota deduction.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
+      "path": "api/mcp/resources/slugs.ts",
+      "category": "external-protocol",
+      "reason": "Hand-curated kebab-case slug → matcher table for the worldmonitor://chokepoints/{slug}/status MCP resource URI. The stability contract: bookmarked URIs survive cache refreshes / upstream renames. Same external-protocol constraint as the resources index it backs.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
+      "path": "api/mcp/ui/registry.ts",
+      "category": "external-protocol",
+      "reason": "MCP Apps (extension io.modelcontextprotocol/ui) ui:// resource registry + buildUiResourceRead + resources/list public-shape projection. Serves static, data-free HTML app shells whose shape is dictated by the MCP Apps spec (mimeType text/html;profile=mcp-app); linked from tools via _meta.ui.resourceUri. Same external-protocol constraint as the sibling resources/index.ts.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
+      "path": "api/mcp/ui/country-risk-app.ts",
+      "category": "external-protocol",
+      "reason": "MCP Apps (io.modelcontextprotocol/ui) self-contained HTML app shell served verbatim as the ui://worldmonitor/country-risk.html resource. Exports an HTML string constant (no HTTP handler); the postMessage bridge protocol is dictated by the MCP Apps spec. Same external-protocol constraint as the ui/registry.ts it backs.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
+      "path": "api/mcp/ui/shell.ts",
+      "category": "external-protocol",
+      "reason": "MCP Apps (io.modelcontextprotocol/ui) shared app-shell builder — factors the DOCTYPE / 4-category CSP / dark-mode tokens / postMessage bridge every ui:// widget inlines. Exports HTML/meta builder functions (no HTTP handler); the bridge protocol + view CSP shape are dictated by the MCP Apps spec. Same external-protocol constraint as the ui/registry.ts it backs.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
+      "path": "api/mcp/ui/world-brief-app.ts",
+      "category": "external-protocol",
+      "reason": "MCP Apps (io.modelcontextprotocol/ui) self-contained HTML app shell served verbatim as the ui://worldmonitor/world-brief.html resource. Exports an HTML string constant (no HTTP handler); the postMessage bridge protocol is dictated by the MCP Apps spec. Same external-protocol constraint as the ui/registry.ts it backs.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
+      "path": "api/mcp/ui/country-brief-app.ts",
+      "category": "external-protocol",
+      "reason": "MCP Apps (io.modelcontextprotocol/ui) self-contained HTML app shell served verbatim as the ui://worldmonitor/country-brief.html resource. Exports an HTML string constant (no HTTP handler); the postMessage bridge protocol is dictated by the MCP Apps spec. Same external-protocol constraint as the ui/registry.ts it backs.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
+      "path": "api/mcp/ui/market-radar-app.ts",
+      "category": "external-protocol",
+      "reason": "MCP Apps (io.modelcontextprotocol/ui) self-contained HTML app shell served verbatim as the ui://worldmonitor/market-radar.html resource. Exports an HTML string constant (no HTTP handler); the postMessage bridge protocol is dictated by the MCP Apps spec. Same external-protocol constraint as the ui/registry.ts it backs.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
+      "path": "api/mcp/ui/chokepoint-monitor-app.ts",
+      "category": "external-protocol",
+      "reason": "MCP Apps (io.modelcontextprotocol/ui) self-contained HTML app shell served verbatim as the ui://worldmonitor/chokepoint-monitor.html resource. Exports an HTML string constant (no HTTP handler); the postMessage bridge protocol is dictated by the MCP Apps spec. Same external-protocol constraint as the ui/registry.ts it backs.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
+      "path": "api/mcp/ui/news-intelligence-app.ts",
+      "category": "external-protocol",
+      "reason": "MCP Apps (io.modelcontextprotocol/ui) self-contained HTML app shell served verbatim as the ui://worldmonitor/news-intelligence.html resource. Exports an HTML string constant (no HTTP handler); the postMessage bridge protocol is dictated by the MCP Apps spec. Same external-protocol constraint as the ui/registry.ts it backs.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
+      "path": "api/mcp/ui/conflict-events-app.ts",
+      "category": "external-protocol",
+      "reason": "MCP Apps (io.modelcontextprotocol/ui) self-contained HTML app shell served verbatim as the ui://worldmonitor/conflict-events.html resource. Exports an HTML string constant (no HTTP handler); the postMessage bridge protocol is dictated by the MCP Apps spec. Same external-protocol constraint as the ui/registry.ts it backs.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
+      "path": "api/mcp/ui/natural-disasters-app.ts",
+      "category": "external-protocol",
+      "reason": "MCP Apps (io.modelcontextprotocol/ui) self-contained HTML app shell served verbatim as the ui://worldmonitor/natural-disasters.html resource. Exports an HTML string constant (no HTTP handler); the postMessage bridge protocol is dictated by the MCP Apps spec. Same external-protocol constraint as the ui/registry.ts it backs.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
+      "path": "api/mcp/ui/prediction-markets-app.ts",
+      "category": "external-protocol",
+      "reason": "MCP Apps (io.modelcontextprotocol/ui) self-contained HTML app shell served verbatim as the ui://worldmonitor/prediction-markets.html resource. Exports an HTML string constant (no HTTP handler); the postMessage bridge protocol is dictated by the MCP Apps spec. Same external-protocol constraint as the ui/registry.ts it backs.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
+      "path": "api/mcp/ui/forecasts-app.ts",
+      "category": "external-protocol",
+      "reason": "MCP Apps (io.modelcontextprotocol/ui) self-contained HTML app shell served verbatim as the ui://worldmonitor/forecasts.html resource. Exports an HTML string constant (no HTTP handler); the postMessage bridge protocol is dictated by the MCP Apps spec. Same external-protocol constraint as the ui/registry.ts it backs.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
+      "path": "api/mcp-proxy.ts",
+      "category": "external-protocol",
+      "reason": "Proxy for the MCP transport — same shape constraint as api/mcp.ts. Renamed .js → .ts in PR #3768 to unlock the isCallerPremium import from server/.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
+      "path": "api/docs-mcp.ts",
+      "category": "external-protocol",
+      "reason": "First-party facade for the docs MCP server (served at /docs/mcp ahead of the Mintlify rewrite) — JSON-RPC 2.0 / MCP streamable-HTTP envelope dictated by the MCP spec. Proxies worldmonitor.mintlify.dev/docs/mcp verbatim, answering malformed bodies with -32700/-32600 locally and lifting the upstream's protocol-level tool-call failures (result.isError + code -32601/-32602) into proper top-level JSON-RPC error objects. Anonymous like the upstream; per-IP limit registered in ENDPOINT_RATE_POLICIES and enforced in-handler via checkScopedRateLimit.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
+      "path": "api/oauth/authorize.js",
+      "category": "external-protocol",
+      "reason": "OAuth 2.0 authorization endpoint. Response is an HTML consent page and 302 redirect; request/response shape is dictated by RFC 6749.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
+      "path": "api/oauth/register.js",
+      "category": "external-protocol",
+      "reason": "OAuth 2.0 dynamic client registration (RFC 7591). Shape fixed by the spec.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
+      "path": "api/oauth/token.ts",
+      "category": "external-protocol",
+      "reason": "OAuth 2.0 token endpoint (RFC 6749). application/x-www-form-urlencoded request body; shape fixed by the spec. TypeScript port (plan 2026-05-10-001 U6) added the McpAuthContext discriminated union for Pro vs env-key bearers; legacy bare-string token shape preserved verbatim.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
+      "path": "api/oauth/authorize-pro.ts",
+      "category": "external-protocol",
+      "reason": "OAuth 2.0 bounce-back from the apex /mcp-grant Clerk-protected consent flow (plan 2026-05-10-001 U5). GET-only edge handler that HMAC-verifies the signed grant, atomically consumes both `mcp-grant:<n>` and `oauth:nonce:<n>` Redis one-shots, issues a Convex `mcpProTokens` row, writes `oauth:code:<code>` with `{kind:'pro', userId, mcpTokenId, ...}`, and 302s to the registered redirect_uri. Response shape (HTML error pages + 302 redirect) is dictated by RFC 6749 — same external-protocol constraint as api/oauth/authorize.js.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
+      "path": "api/oauth-protected-resource.ts",
+      "category": "external-protocol",
+      "reason": "RFC 9728 OAuth Protected Resource metadata. Dynamic per-host to satisfy scanner origin-match rules — shape dictated by RFC 9728.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
+      "path": "api/oauth-authorization-server.ts",
+      "category": "external-protocol",
+      "reason": "RFC 8414 OAuth Authorization Server metadata + WorkOS auth.md agent_auth block. Dynamic per-host so issuer/endpoints match the request origin and align with the host-derived RFC 9728 PRM — shape dictated by RFC 8414 / workos.com/auth-md.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
+      "path": "api/http-message-signatures-directory.ts",
+      "category": "external-protocol",
+      "reason": "Web Bot Auth key directory (draft-meunier-web-bot-auth-architecture / http-message-signatures-directory). Publishes an Ed25519 JWK Set at /.well-known/http-message-signatures-directory; body shape and application/http-message-signatures-directory+json content-type are dictated by the spec. Dynamic per-request so nbf/exp roll a <=24h validity window.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
+      "path": "api/agent-auth.ts",
+      "category": "external-protocol",
+      "reason": "RFC 9728 agent-auth discovery challenge at /agent/auth. Returns 401 + WWW-Authenticate: Bearer resource_metadata=... (host-derived PRM pointer) so a GET-probing agent/scanner discovers the auth flow — /mcp's bare GET must stay 405 for the SSE handshake. Response is an auth challenge, not a JSON data API.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
+      "path": "api/discord/oauth/callback.ts",
+      "category": "external-protocol",
+      "reason": "Discord OAuth redirect target — response is an HTML popup-closer page, query-param shape fixed by Discord.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
+      "path": "api/discord/oauth/start.ts",
+      "category": "external-protocol",
+      "reason": "Discord OAuth initiator — issues 302 to Discord's authorize URL. Not a JSON API.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
+      "path": "api/slack/oauth/callback.ts",
+      "category": "external-protocol",
+      "reason": "Slack OAuth redirect target — HTML response with postMessage + window.close, query-param shape fixed by Slack.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
+      "path": "api/slack/oauth/start.ts",
+      "category": "external-protocol",
+      "reason": "Slack OAuth initiator — 302 to Slack's authorize URL. Not a JSON API.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+
+    {
+      "path": "api/download.js",
+      "category": "non-json",
+      "reason": "Binary file download (zip/csv/xlsx). Content-Type is not application/json.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
+      "path": "api/og-story.js",
+      "category": "non-json",
+      "reason": "Open Graph preview image (PNG via @vercel/og). Binary response.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
+      "path": "api/story.js",
+      "category": "non-json",
+      "reason": "Rendered HTML story page for social embeds — response is text/html, not JSON.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
+      "path": "api/youtube/embed.js",
+      "category": "non-json",
+      "reason": "YouTube oEmbed passthrough — shape dictated by YouTube's oEmbed response, served as-is.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
+      "path": "api/youtube/live.js",
+      "category": "non-json",
+      "reason": "Streams YouTube live metadata — chunked text response, not a typed JSON payload.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
+      "path": "api/brief/carousel/[userId]/[issueDate]/[page].ts",
+      "category": "non-json",
+      "reason": "Rendered carousel page image for brief social posts. Binary image response, dynamic path segments.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+
+    {
+      "path": "api/opensky.js",
+      "category": "upstream-proxy",
+      "reason": "Transparent proxy to OpenSky Network API. Shape is OpenSky's; we don't remodel it.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
+      "path": "api/polymarket.js",
+      "category": "upstream-proxy",
+      "reason": "Transparent proxy to Polymarket gamma API. Shape is Polymarket's.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
+      "path": "api/gpsjam.js",
+      "category": "upstream-proxy",
+      "reason": "Transparent proxy to gpsjam.org tile/feed. Shape is upstream's.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
+      "path": "api/oref-alerts.js",
+      "category": "upstream-proxy",
+      "reason": "Transparent proxy to Pikud HaOref (IDF Home Front Command) alert feed. Shape is upstream's.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
+      "path": "api/rss-proxy.js",
+      "category": "upstream-proxy",
+      "reason": "Generic RSS/Atom XML proxy for CORS-blocked feeds. Response is XML, not JSON.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
+      "path": "api/telegram-feed.js",
+      "category": "upstream-proxy",
+      "reason": "Telegram channel feed proxy — passes upstream MTProto-derived shape through.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
+      "path": "api/supply-chain/hormuz-tracker.js",
+      "category": "upstream-proxy",
+      "reason": "Transparent proxy to Hormuz strait AIS tracker feed. Shape is upstream's.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+
+    {
+      "path": "api/health.js",
+      "category": "ops-admin",
+      "reason": "Liveness probe hit by uptime monitor and load balancer. Not a product API; plain-text OK response.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
+      "path": "api/analytics-health.js",
+      "category": "ops-admin",
+      "reason": "Anonymous, bounded analytics collector health counter ingress. It accepts no event or identity payload and aggregates operator telemetry in Redis; not a product API.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
+      "path": "api/seed-health.js",
+      "category": "ops-admin",
+      "reason": "Cron-triggered data-freshness check for feed seeds. Operator tool, not a user-facing API.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
+      "path": "api/version.js",
+      "category": "ops-admin",
+      "reason": "Build-version probe for the desktop auto-updater. Tiny plain-JSON operator plumbing.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
+      "path": "api/not-found.ts",
+      "category": "ops-admin",
+      "reason": "Structured JSON 404 responder for unmatched /api/* paths (mounted by api/[...notfound].ts). Fixed-shape error envelope for agents/scanners in place of Vercel's native text/plain NOT_FOUND; not a product API.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
+      "path": "api/[...notfound].ts",
+      "category": "ops-admin",
+      "reason": "Filesystem catch-all mount for api/not-found.ts. Exists solely to preserve the structured JSON 404 for genuinely unmatched /api/* paths without using an afterFiles rewrite that can shadow dynamic sebuf gateways; not a product API.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
+      "path": "api/cache-purge.js",
+      "category": "ops-admin",
+      "reason": "Admin-gated cache invalidation endpoint. Internal operator action, not a product API.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
+      "path": "api/seed-contract-probe.ts",
+      "category": "ops-admin",
+      "reason": "Cron probe that verifies seed contract shapes against upstreams. Operator telemetry.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
+      "path": "api/wm-session.js",
+      "category": "ops-admin",
+      "reason": "Anonymous browser session-token mint. Single 2-field response ({token, exp}); a sebuf RPC would be over-engineering for an auth-bootstrap endpoint that the client calls once at boot. See PR #3557 / issue #3541 for the full bypass-closure rationale.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
+      "path": "api/invalidate-user-api-key-cache.ts",
+      "category": "ops-admin",
+      "reason": "Admin-gated cache bust for user API key lookups. Internal operator action.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
+      "path": "api/fwdstart.js",
+      "category": "ops-admin",
+      "reason": "Tauri desktop updater bootstrap — starts the sidecar forwarding flow. Operator plumbing, not JSON.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
+      "path": "api/notify.ts",
+      "category": "internal-helper",
+      "reason": "Authenticated PRO event-publish endpoint that validates Clerk bearer auth, rejects relay-internal control events, and enqueues accepted events outside sebuf because it is queue plumbing rather than a typed domain RPC.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+
+    {
+      "path": "api/bootstrap.js",
+      "category": "internal-helper",
+      "reason": "Aggregate seeded-cache hydration bundle assembled at request time. Kept outside sebuf because the shape is intentionally unversioned and aggregate, not a typed domain RPC; the added user-API-key validation does not change that shape.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
+      "path": "api/geo.js",
+      "category": "internal-helper",
+      "reason": "Lightweight IP-to-geo lookup wrapping Vercel's request.geo. Dashboard-internal helper; not worth a service of its own.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
+      "path": "api/reverse-geocode.js",
+      "category": "internal-helper",
+      "reason": "Reverse-geocode helper used only by the map layer for label rendering. Wraps an upstream provider; shape tracks upstream, not a versioned product contract.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
+      "path": "api/symbol-search.ts",
+      "category": "internal-helper",
+      "reason": "Stock-symbol typeahead used only by the watchlist editor — thin wrapper over Finnhub's /api/v1/search. Light filter (equity-type instruments) + field rename (symbol/description/displaySymbol -> symbol/name/display); shape tracks Finnhub, not a versioned product contract. Same constraint as api/reverse-geocode.js (UI-only helper wrapping an upstream provider). Could fold into MarketService as a SearchSymbol RPC — flagged for reviewer; kept as a helper so the watchlist-editor PR stays self-contained rather than coupling it to a proto regen.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
+      "path": "api/internal/brief-why-matters.ts",
+      "category": "internal-helper",
+      "reason": "LLM-enrichment helper for the brief pipeline. Cron-triggered from Railway under RELAY_SHARED_SECRET bearer auth — never reached by dashboards, desktop, or partners. Request/response shape is an implementation detail of the brief renderer; modeling it as a generated service would publish internal cron plumbing as user-facing API surface. Same shape constraint as api/notify.ts (also cron-only).",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
+      "path": "api/internal/mcp-grant-mint.ts",
+      "category": "internal-helper",
+      "reason": "Apex-domain bridge endpoint for the cross-subdomain Pro MCP authorization flow (plan 2026-05-10-001 U3). POST {nonce} from the Clerk-protected /mcp-grant SPA on worldmonitor.app; returns a fixed-host redirect URL with a HMAC-signed grant token to api.worldmonitor.app/oauth/authorize-pro. Shape is an implementation detail of the bounce-via-apex consent flow — exposing it as a versioned product API would publish internal OAuth plumbing.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
+      "path": "api/internal/mcp-grant-context.ts",
+      "category": "internal-helper",
+      "reason": "Read-only companion to api/internal/mcp-grant-mint.ts (plan 2026-05-10-001 U3). Returns the registered OAuth client_name + redirect host so the apex /mcp-grant SPA can show real client metadata (anti-phishing). Pro-gated; identical validation paths as the mint endpoint.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
+      "path": "api/data/city-coords.ts",
+      "category": "internal-helper",
+      "reason": "Static city-coordinates payload served from the deploy artifact. Returns a fixed reference table, not a queryable service.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
+      "path": "api/me/entitlement.ts",
+      "category": "internal-helper",
+      "reason": "Thin wrapper over the canonical server/_shared/premium-check.ts isCallerPremium helper — returns { isPro: boolean } for the /pro marketing bundle so it can swap upgrade CTAs for a dashboard link when the visitor is already a paying Pro user. Not a product data API: the authoritative gates live in panel-gating.ts (frontend), isCallerPremium (per-handler), and gateway.ts PREMIUM_RPC_PATHS (Bearer gate). This endpoint exists purely to let the separate pro-test bundle (no Convex client, no gateway client) ask the same question without reimplementing the two-signal check. Shape is unversioned by design — flip a boolean and ship.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
+      "path": "api/user/mcp-quota.ts",
+      "category": "internal-helper",
+      "reason": "Settings-UI-only read of the caller's Pro MCP daily-quota counter (plan 2026-05-10-001 U9). Clerk-authenticated; reads the SAME `mcp:pro-usage:<userId>:<YYYY-MM-DD>` Redis key that api/mcp.ts U7 writes via INCR-first reservation. Returns `{used, limit, resetsAt}` where `limit` is the caller's plan allowance resolved through api/mcp/quota.ts's `resolveDailyLimit` (`null` = unlimited, plan 2026-07-25-001 U3b) — informational, not authoritative; the hard cap is enforced server-side at INCR time. Shape exists purely so the Connected MCP clients tab can show `X / <plan limit> used today, resets in <countdown>` without exposing the underlying Redis schema. Modeling as a sebuf RPC would publish a per-user counter implementation detail as user-facing API surface for a single-feature display widget.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
+      "path": "api/user/mcp-revoke.ts",
+      "category": "internal-helper",
+      "reason": "Settings-UI revoke action for Pro MCP tokens (plan 2026-05-10-001 U9). Clerk-authenticated; forwards the verified-from-JWT userId to Convex /api/internal-revoke-pro-mcp-token (in-mutation tenancy gate validates `row.userId === userId`), then writes the `pro-mcp-token-neg:<tokenId>` sentinel so any in-flight bearer is invalidated within the 60s neg-cache window. Calls the internal HTTP route rather than the public mutation to (a) avoid ConvexHttpClient's no-default-timeout foot-gun (memory `convex-httpclient-no-default-timeout-bypasses-typed-503`) and (b) atomically pair with the cache-invalidation step. Plain `{tokenId}` request / `{ok:true}` response — modeling as a sebuf RPC would over-engineer a single-button settings action.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+
+    {
+      "path": "api/latest-brief.ts",
+      "category": "deferred",
+      "reason": "Returns the current user's latest brief. Auth-gated and Clerk-coupled; migrating requires modeling Brief in proto and auth context in handler. Deferred to brief/v1 service.",
+      "owner": "@SebastienMelki",
+      "removal_issue": "TBD"
+    },
+    {
+      "path": "api/brief/share-url.ts",
+      "category": "deferred",
+      "reason": "Creates a shareable public URL for a brief. Part of the brief/v1 service work.",
+      "owner": "@SebastienMelki",
+      "removal_issue": "TBD"
+    },
+    {
+      "path": "api/brief/public/[hash].ts",
+      "category": "deferred",
+      "reason": "Resolves a share hash to public-safe brief JSON. Part of the brief/v1 service work; dynamic path segment needs proto path-param modeling.",
+      "owner": "@SebastienMelki",
+      "removal_issue": "TBD"
+    },
+    {
+      "path": "api/brief/[userId]/[issueDate].ts",
+      "category": "deferred",
+      "reason": "Fetches a specific brief by user + frozen issue slot. Part of the brief/v1 service work.",
+      "owner": "@SebastienMelki",
+      "removal_issue": "TBD"
+    },
+    {
+      "path": "api/notification-channels.ts",
+      "category": "deferred",
+      "reason": "Lists / configures user notification channels. Auth-gated; migrating requires user/v1 or notifications/v1 service. Deferred until Clerk migration settles.",
+      "owner": "@SebastienMelki",
+      "removal_issue": "TBD"
+    },
+    {
+      "path": "api/user-prefs.ts",
+      "category": "deferred",
+      "reason": "Reads / writes user dashboard preferences. Auth-gated; part of user/v1 service work pending Clerk migration.",
+      "owner": "@SebastienMelki",
+      "removal_issue": "TBD"
+    },
+    {
+      "path": "api/create-checkout.ts",
+      "category": "deferred",
+      "reason": "Creates a Dodo Payments checkout session. Payments domain is still stabilizing (Clerk + Dodo integration); migrate once shape is frozen.",
+      "owner": "@SebastienMelki",
+      "removal_issue": "TBD"
+    },
+    {
+      "path": "api/customer-portal.ts",
+      "category": "deferred",
+      "reason": "Issues a Dodo customer-portal redirect URL. Paired with create-checkout.ts; migrate together.",
+      "owner": "@SebastienMelki",
+      "removal_issue": "TBD"
+    },
+    {
+      "path": "api/product-catalog.js",
+      "category": "deferred",
+      "reason": "Returns Dodo product catalog (pricing tiers). Migrate alongside the rest of the payments surface.",
+      "owner": "@SebastienMelki",
+      "removal_issue": "TBD"
+    },
+    {
+      "path": "api/referral/me.ts",
+      "category": "deferred",
+      "reason": "Returns the signed-in user's referral state. Auth-gated; part of user/v1 service.",
+      "owner": "@SebastienMelki",
+      "removal_issue": "TBD"
+    },
+
+    {
+      "path": "api/scenario/v1/run.ts",
+      "category": "deferred",
+      "reason": "URL-compat alias for POST /api/scenario/v1/run-scenario. Thin gateway wrapper that rewrites the documented pre-#3207 v1 URL to the canonical sebuf RPC path. Not a new endpoint — preserves the partner-documented wire contract. Retires at the next v1→v2 break.",
+      "owner": "@SebastienMelki",
+      "removal_issue": "#3282"
+    },
+    {
+      "path": "api/scenario/v1/status.ts",
+      "category": "deferred",
+      "reason": "URL-compat alias for GET /api/scenario/v1/get-scenario-status. See api/scenario/v1/run.ts for the same rationale.",
+      "owner": "@SebastienMelki",
+      "removal_issue": "#3282"
+    },
+    {
+      "path": "api/scenario/v1/templates.ts",
+      "category": "deferred",
+      "reason": "URL-compat alias for GET /api/scenario/v1/list-scenario-templates. See api/scenario/v1/run.ts for the same rationale.",
+      "owner": "@SebastienMelki",
+      "removal_issue": "#3282"
+    },
+    {
+      "path": "api/supply-chain/v1/country-products.ts",
+      "category": "deferred",
+      "reason": "URL-compat alias for GET /api/supply-chain/v1/get-country-products. See api/scenario/v1/run.ts for the same rationale.",
+      "owner": "@SebastienMelki",
+      "removal_issue": "#3282"
+    },
+    {
+      "path": "api/supply-chain/v1/multi-sector-cost-shock.ts",
+      "category": "deferred",
+      "reason": "URL-compat alias for GET /api/supply-chain/v1/get-multi-sector-cost-shock. See api/scenario/v1/run.ts for the same rationale.",
+      "owner": "@SebastienMelki",
+      "removal_issue": "#3282"
+    },
+
+    {
+      "path": "api/v2/shipping/webhooks/[subscriberId].ts",
+      "category": "migration-pending",
+      "reason": "Partner-facing path-parameter endpoint (GET status by subscriber id). Cannot migrate to sebuf yet — no path-param support in the annotation layer. Paired with the typed ShippingV2Service on the same base URL; tracked for eventual migration once sebuf path params are available.",
+      "owner": "@SebastienMelki",
+      "removal_issue": "#3207"
+    },
+    {
+      "path": "api/v2/shipping/webhooks/[subscriberId]/[action].ts",
+      "category": "migration-pending",
+      "reason": "Partner-facing path-parameter endpoints (POST rotate-secret, POST reactivate). Cannot migrate to sebuf yet — no path-param support. Paired with the typed ShippingV2Service; tracked for eventual migration once sebuf path params are available.",
+      "owner": "@SebastienMelki",
+      "removal_issue": "#3207"
+    },
+    {
+      "path": "api/chat-analyst.ts",
+      "category": "migration-pending",
+      "reason": "SSE streaming endpoint. Migrating to analyst/v1.ChatAnalyst (streaming RPC) in commit 9 of #3207. Blocked on sebuf#150 (TS-server SSE codegen).",
+      "owner": "@SebastienMelki",
+      "removal_issue": "#3207"
+    },
+    {
+      "path": "api/widget-agent.ts",
+      "category": "migration-pending",
+      "reason": "Migrating to analyst/v1.WidgetComplete in commit 9 of #3207. Blocked on sebuf#150.",
+      "owner": "@SebastienMelki",
+      "removal_issue": "#3207"
+    },
+    {
+      "path": "api/correlation-runtime-mode.js",
+      "category": "ops-admin",
+      "reason": "Public no-store read of the operator-controlled correlation runtime mode. This three-value control-plane decision is consumed by both browser and Railway seeder paths; it is not product data, has no write surface, and must remain independently switchable without a deployment.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
+      "path": "api/skills/fetch-agentskills.ts",
+      "category": "migration-pending",
+      "reason": "Migrating to analyst/v1.ListAgentSkills in commit 9 of #3207. Blocked on sebuf#150.",
+      "owner": "@SebastienMelki",
+      "removal_issue": "#3207"
+    }
+  ]
+}

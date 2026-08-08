@@ -1,0 +1,520 @@
+---
+title: "JMESPath 投影指南"
+description: "使用 JMESPath 投影表达式将 MCP 响应载荷体积精简 80-95%，显著降低 LLM 上下文占用与 token 成本。基于真实 WorldMonitor 响应结构的十二个完整实战示例解析，涵盖新闻、市场、海事等常见查询，帮助 Agent 开发者优化提示与工具调用效率。"
+---
+
+每个 WorldMonitor MCP 工具都接受一个可选的 `jmespath` 字符串参数。服务端会在任意工具级过滤器和 `summary` 参数**之后**应用该表达式，然后在序列化之前投影响应。一个选得好的投影通常能把载荷大小削减 **80–95%**——这是你在保持长 agent 循环不超出上下文窗口方面最有效的手段。
+
+本页是实用参考：先给出快速概览，然后针对三份真实抓取的工具响应给出十二个实例解析。至于语法本身，请依赖规范——[jmespath.org/specification.html](https://jmespath.org/specification.html)。回来看这里比重读规范更快。
+
+## 快速概览
+
+- 在任意 `tools/call` 上把表达式作为 `jmespath` 参数传入。表达式的根是**完整响应信封**——缓存工具的 `{ cached_at, stale, data: { … } }`——所以大多数表达式以 `data.<key>` 开头以触达载荷，而当你需要时，`cached_at` / `stale` 也能从同一根寻址。
+- **带连字符的键必须用双引号引用。** 大多数 WorldMonitor 工具都有带连字符的缓存键（`stocks-bootstrap`、`ucdp-events`、`etf-flows`、`fear-greed`、`transit-summaries`）。使用 `data."stocks-bootstrap".quotes[*].symbol`，而不是 `data.stocks-bootstrap.…`。
+- **数字和 JSON 字面量放在反引号里，字符串放在单引号里。** `[?deathsBest > \`5\`]`（数字），`[?country == 'Iraq']`（字符串）。混用会静默地把值解析成别的什么东西。
+- **两个服务端限制**保持 edge function 健康：
+  - 表达式本身：≤ **1024 字节**。
+  - 投影输出：≤ **256 KB**。
+
+  失败会在正常结果信封内返回 `{ _jmespath_error, original_keys, ... }`——工具调用在 JSON-RPC 层仍然成功（不会 `isError: true`），而 `original_keys` 回显未投影响应的顶层键名，让模型能在下一次调用中自我修正。
+
+下面用到的三种响应结构是 `tests/fixtures/jmespath-samples/` 下抓取的固件（会定期对生产 MCP 端点重新抓取）。它们是故意挑选的——大（~100 KB，使用 `limit: 0`）、中（~30 KB）、小（~10 KB）——以覆盖你实际会投影的各种大小档位。
+
+## REST API（`?jmespath=`）
+
+同样的投影在 REST API 上也可用：每个 `GET` 端点都接受一个可选的 `jmespath` **查询参数**，网关在返回前于服务端将其应用到 JSON 响应上。复用你已从 MCP 熟知的表达式即可，但有两点不同：
+
+- **表达式根是原始响应体**，而非 MCP 的 `{ cached_at, stale, data }` 信封——因此你直接投影载荷（`compositeScore`、`keys(@)`），无需 `data.` 前缀。
+- **一个错误、过长或过度展开的表达式返回 `HTTP 400`**，并携带相同的 `{ _jmespath_error, original_keys }` 主体（MCP 传输则是在 200 result 内软失败）。≤ 1024 字节表达式限制与 256 KB 投影输出上限完全一致。
+
+```bash
+curl "https://api.worldmonitor.app/api/market/v1/get-fear-greed-index?jmespath=compositeScore" \
+  -H "X-WorldMonitor-Key: $WORLDMONITOR_API_KEY"
+```
+
+## 十二个示例
+
+### 1. 钻取单个嵌套对象
+
+**意图。** 跳过股票列表，只从 `get_market_data` 取 WorldMonitor 恐慌贪婪综合得分。
+
+**工具调用：**
+
+```json
+{
+  "name": "get_market_data",
+  "arguments": {
+    "limit": 0,
+    "jmespath": "data.\"fear-greed\".composite"
+  }
+}
+```
+
+**未投影响应（~100 KB，使用 `limit: 0`）。** 数百条股票报价、每个板块、全部加密货币、每个海湾 ticker、完整的恐慌贪婪明细：
+
+```json
+{
+  "cached_at": "2026-05-17T10:34:00.852Z",
+  "stale": false,
+  "data": {
+    "stocks-bootstrap": { "quotes": [ /* 200+ entries */ ] },
+    "commodities-bootstrap": { "quotes": [ /* +sparkline arrays */ ] },
+    "crypto": { "quotes": [ /* … */ ] },
+    "sectors": { "sectors": [ /* … */ ] },
+    "etf-flows": { /* … */ },
+    "gulf-quotes": { /* … */ },
+    "fear-greed": {
+      "timestamp": "2026-05-17T06:01:06.163Z",
+      "composite": { "score": 66.5, "label": "Greed", "previous": 67.3 },
+      "categories": { "sentiment": { "score": 55, "weight": 0.1, "inputs": { /* … */ } }, /* … */ }
+    }
+  }
+}
+```
+
+**投影后响应：**
+
+```json
+{ "score": 66.5, "label": "Greed", "previous": 67.3 }
+```
+
+**为什么有效。** 钻取就是点号路径导航。`data."fear-greed"` 引用了带连字符的键，然后 `.composite` 摘取嵌套对象。载荷里的其它所有内容——那 100 KB 的报价——根本不会经过网络传输。
+
+普通使用时省略 `limit: 0`：当省略 `limit` 时，缓存工具会把列表型和映射型字段默认封顶在 30 项。
+
+---
+
+### 2. 把每条记录精简到几个字段（multiselect-hash）
+
+**意图。** 从 `get_market_data` 取一份默认封顶股票报价的三行紧凑表：代码、价格、百分比变化。
+
+**工具调用：**
+
+```json
+{
+  "name": "get_market_data",
+  "arguments": {
+    "jmespath": "data.\"stocks-bootstrap\".quotes[0:3].{s:symbol,p:price,chg:change}"
+  }
+}
+```
+
+**未投影响应（相关切片）。** 每条报价还携带 `name`、`display` 和一个 `sparkline` 数组——这些对模型回答"今天什么动了"这类问题通常都用不到：
+
+```json
+[
+  { "symbol": "AAPL", "name": "AAPL", "display": "AAPL", "price": 300.23, "change": 0.6774, "sparkline": [] },
+  { "symbol": "AMZN", "name": "AMZN", "display": "AMZN", "price": 264.14, "change": -1.1526, "sparkline": [] }
+]
+```
+
+**投影后响应：**
+
+```json
+[
+  { "s": "AAPL", "p": 300.23, "chg": 0.6774 },
+  { "s": "AMZN", "p": 264.14, "chg": -1.1526 },
+  { "s": "AVGO", "p": 425.19, "chg": -3.3198 }
+]
+```
+
+**为什么有效。** `[*]` 投影跨每个数组元素；`{s:symbol, p:price, chg:change}` 是 multiselect-hash——它按你列出的字段为每个元素构造一个新对象。更短的输出键（`s`、`p`、`chg`）能再省几个字节；标准键（`symbol`、`price`、`change`）也行，如果你想要可读性的话。
+
+---
+
+### 3. 按数值比较器过滤
+
+**意图。** 从 `get_conflict_events` 只保留至少有一例确认死亡的 UCDP 事件。
+
+**工具调用：**
+
+```json
+{
+  "name": "get_conflict_events",
+  "arguments": {
+    "jmespath": "data.\"ucdp-events\".events[?deathsBest > `0`]"
+  }
+}
+```
+
+**未投影响应（相关切片）。** 许多 UCDP 条目记录的是 `deathsBest: 0` 的遭遇——政治事件、被拦截的袭击、未遂：
+
+```json
+[
+  { "id": "565175", "country": "Ecuador",        "deathsBest": 2,  "violenceType": "UCDP_VIOLENCE_TYPE_NON_STATE" },
+  { "id": "565999", "country": "DR Congo",       "deathsBest": 17, "violenceType": "UCDP_VIOLENCE_TYPE_ONE_SIDED" },
+  { "id": "568494", "country": "Iraq",           "deathsBest": 7,  "violenceType": "UCDP_VIOLENCE_TYPE_STATE_BASED" },
+  { "id": "560968", "country": "Ecuador",        "deathsBest": 0,  "violenceType": "UCDP_VIOLENCE_TYPE_NON_STATE" }
+]
+```
+
+**投影后响应：** `deathsBest: 0` 的条目被丢弃。
+
+**为什么有效。** `[?expr]` 是过滤投影；`>` 是数值比较器。**反引号包裹字面量**很关键——`[?deathsBest > 0]`（没有反引号）会把 `0` 当作标识符，JMESPath 会解析它但随后求值成 `null`，比较静默地返回零行。始终用反引号包裹数字和布尔字面量。
+
+---
+
+### 4. 按字符串相等过滤
+
+**意图。** 从 `get_conflict_events` 取每个 `country` 恰好为 `"Iraq"` 的 UCDP 事件。
+
+**工具调用：**
+
+```json
+{
+  "name": "get_conflict_events",
+  "arguments": {
+    "jmespath": "data.\"ucdp-events\".events[?country == 'Iraq']"
+  }
+}
+```
+
+**投影后响应：**
+
+```json
+[
+  {
+    "id": "568494",
+    "dateStart": 1735603200000,
+    "dateEnd": 1735603200000,
+    "location": {
+      "latitude": 34.820728,
+      "longitude": 44.361441
+    },
+    "country": "Iraq",
+    "sideA": "Government of Iraq",
+    "sideB": "IS",
+    "deathsBest": 7,
+    "deathsLow": 7,
+    "deathsHigh": 7,
+    "violenceType": "UCDP_VIOLENCE_TYPE_STATE_BASED",
+    "sourceOriginal": "the Iraqi Security Information Cell"
+  }
+]
+```
+
+**为什么有效。** 字符串字面量用**单引号**，不是双引号。双引号在 JMESPath 里表示"标识符"（与用来转义带连字符键如 `"stocks-bootstrap"` 的语法相同）。一个常见的初学者错误是 `[?country == "Iraq"]`，JMESPath 会把它解析为"把 `country` 与一个字面上名为 `Iraq` 的字段比较"，把右侧求值成 `null`，然后返回零行。
+
+---
+
+### 5. 数组投影——单字段的扁平列表
+
+**意图。** 从 `get_market_data` 取一份板块 ETF ticker 的扁平列表。
+
+**工具调用：**
+
+```json
+{
+  "name": "get_market_data",
+  "arguments": {
+    "jmespath": "data.sectors.sectors[*].symbol"
+  }
+}
+```
+
+**未投影响应（相关切片）：**
+
+```json
+{
+  "sectors": [
+    { "symbol": "XLK", "name": "XLK", "change": -1.805 },
+    { "symbol": "XLF", "name": "XLF", "change": -0.3704 },
+    { "symbol": "XLE", "name": "XLE", "change":  2.3592 }
+  ]
+}
+```
+
+**投影后响应：**
+
+```json
+["XLK","XLF","XLE","XLV","XLY","XLI","XLP","XLU","XLB","XLRE","XLC","SMH"]
+```
+
+**为什么有效。** `[*]` 投影跨每个数组元素，`.symbol` 依次应用到每个元素上。结果是一个仅含 symbol 字符串的数组——没有外层对象。
+
+---
+
+### 6. 切片——前 N 个元素
+
+**意图。** 从 `get_conflict_events` 只返回前五个 UCDP 事件。
+
+**工具调用：**
+
+```json
+{
+  "name": "get_conflict_events",
+  "arguments": {
+    "jmespath": "data.\"ucdp-events\".events[0:5]"
+  }
+}
+```
+
+**投影后响应：** 一个五元素数组，结构与未投影的 `events[]` 相同。
+
+**为什么有效。** `[start:stop]` 是切片投影（`stop` 不含）。也支持负索引和步长——`[-5:]` 取最后五个，`[::-1]` 反转，`[::2]` 隔一个取一个。切片在流水线里位于**过滤之后**——要切片过滤后的集合，用管道（见示例 12）。
+
+<Tip>
+**`limit` 与切片。** 缓存工具接受工具级 `limit` 参数，它会在投影**之前**给列表或映射型切片封顶（暴露列表 / 映射字段的缓存工具默认为 30）。`limit` 与 JMESPath 可组合：工具级封顶收窄候选集，然后你的 `[0:N]` 切片取前缀。当你想要全部数据并打算用 JMESPath 进一步投影时，传 `limit: 0` 来禁用工具级封顶。
+</Tip>
+
+---
+
+### 7. `length()` 用于计数
+
+**意图。** 默认封顶的最新一批里有多少个 UCDP 事件？
+
+**工具调用：**
+
+```json
+{
+  "name": "get_conflict_events",
+  "arguments": {
+    "jmespath": "length(data.\"ucdp-events\".events)"
+  }
+}
+```
+
+**投影后响应：**
+
+```json
+30
+```
+
+**为什么有效。** `length()` 是 JMESPath 内置函数之一；它作用于数组、字符串和对象（对对象返回键数）。适合在更长的调用之前做一次健全性检查——一次 `length()` 投影返回单个整数，不耗 token，能让模型在决定接下来投影什么之前先判断这批数据是否为空。
+
+因为本次调用省略了 `limit`，工具级默认封顶会在 JMESPath 之前应用，因此计数是封顶后的候选集（30）。当你需要改为计数完整底层批次时，请传入 `limit: 0`。
+
+---
+
+### 8. `sort_by` + 反转 + 切片——Top-N
+
+**意图。** 从 `get_conflict_events` 给我死亡数最高的三个 UCDP 事件，只要国家 + 死亡数。
+
+**工具调用：**
+
+```json
+{
+  "name": "get_conflict_events",
+  "arguments": {
+    "jmespath": "sort_by(data.\"ucdp-events\".events, &deathsBest) | reverse(@) | [0:3].{c:country, d:deathsBest}"
+  }
+}
+```
+
+**投影后响应：**
+
+```json
+[
+  { "c": "Ukraine",          "d": 30 },
+  { "c": "Somalia",          "d": 27 },
+  { "c": "DR Congo (Zaire)", "d": 17 }
+]
+```
+
+**为什么有效。** 用 `|` 串起三个阶段：
+
+1. `sort_by(events, &deathsBest)`——JMESPath 按升序排序；`&expr` 是**表达式引用**（排序键）。
+2. `reverse(@)`——把升序翻成降序。`@` 是当前节点。
+3. `[0:3].{...}`——切片取前三，再用 multiselect-hash 精简每行。
+
+这是"按某指标给我 Top-N"的主力写法。同样的写法适用于按百分比变化取 Top-N 市场、按 CII 得分取 Top-N 国家、按事件数取 Top-N 咽喉点。
+
+---
+
+### 9. 按枚举字符串字段过滤
+
+**意图。** 从 `get_conflict_events` 返回前五个被归类为国家间暴力（state-based violence）的 UCDP 事件——最高严重度档位。
+
+**工具调用：**
+
+```json
+{
+  "name": "get_conflict_events",
+  "arguments": {
+    "jmespath": "data.\"ucdp-events\".events[?violenceType == 'UCDP_VIOLENCE_TYPE_STATE_BASED'].{c:country, a:sideA, b:sideB, d:deathsBest} | [0:5]"
+  }
+}
+```
+
+**投影后响应：** 默认封顶固件中 14 条国家间暴力行里的前五条：
+
+```json
+[
+  { "c": "Iraq", "a": "Government of Iraq", "b": "IS", "d": 7 },
+  { "c": "Yemen (North Yemen)", "a": "Government of United Kingdom, Government of United States of America", "b": "Government of Yemen (North Yemen)", "d": 0 },
+  { "c": "Pakistan", "a": "Government of Pakistan", "b": "TTP", "d": 2 },
+  { "c": "Somalia", "a": "Government of Somalia", "b": "Al-Shabaab", "d": 10 },
+  { "c": "Ukraine", "a": "Government of Russia (Soviet Union)", "b": "Government of Ukraine", "d": 7 }
+]
+```
+
+**为什么有效。** 过滤和 multiselect-hash 在同一投影里从左到右组合——`[?...].{a:..., b:...}` 先过滤，再精简每个幸存行。大多数 WorldMonitor 响应使用大写下划线枚举字符串（`SEVERITY_LEVEL_HIGH`、`TREND_DIRECTION_STABLE`、`UCDP_VIOLENCE_TYPE_*`）；用 `==` 和单引号按原样搜索它们。
+
+---
+
+### 10. 对象即映射的导航
+
+**意图。** 从 `get_chokepoint_status` 只取霍尔木兹海峡的风险等级 + 7 天事件数。
+
+**工具调用：**
+
+```json
+{
+  "name": "get_chokepoint_status",
+  "arguments": {
+    "jmespath": "data.\"transit-summaries\".summaries.hormuz_strait.{risk:riskLevel, count:incidentCount7d}"
+  }
+}
+```
+
+**未投影响应（相关切片）。** 注意 `summaries` 是**以咽喉点名为键**（对象映射），而不是一个 `{name, ...}` 记录的数组：
+
+```json
+{
+  "transit-summaries": {
+    "summaries": {
+      "suez":          { "riskLevel": "critical", "incidentCount7d": 28,  "wowChangePct":   4.5, "riskSummary": "..." },
+      "hormuz_strait": { "riskLevel": "critical", "incidentCount7d": 627, "wowChangePct": -72.5, "riskSummary": "..." },
+      "panama":        { "riskLevel": "",         "incidentCount7d": 0,   "wowChangePct":   0.4, "riskSummary": "" }
+    }
+  }
+}
+```
+
+**投影后响应：**
+
+```json
+{ "risk": "critical", "count": 627 }
+```
+
+**为什么有效。** 对象即映射的结构在这个服务里随处可见——咽喉点、`fear-greed.categories` 内的权重、`get_eu_housing_cycle` 里以欧盟成员国为键的序列。把它们当作点号路径导航：已知键 → 直接用该键。如果你不知道键名，见下一个示例。
+
+---
+
+### 11. 对象即映射的投影——`*` 和 `keys()`
+
+**意图。** 从 `get_chokepoint_status` 列出每个当前评级为 "critical" 的咽喉点及其事件数。
+
+**工具调用：**
+
+```json
+{
+  "name": "get_chokepoint_status",
+  "arguments": {
+    "jmespath": "data.\"transit-summaries\".summaries.* | [?riskLevel == 'critical'].{risk:riskLevel, count:incidentCount7d}"
+  }
+}
+```
+
+**投影后响应：**
+
+```json
+[
+  { "risk": "critical", "count": 28  },
+  { "risk": "critical", "count": 627 },
+  { "risk": "critical", "count": 33  },
+  { "risk": "critical", "count": 735 },
+  { "risk": "critical", "count": 274 }
+]
+```
+
+**为什么有效。** `summaries.*` 把映射的**值**扁平化成数组——于是 `suez`、`hormuz_strait`、`bab_el_mandeb` 等变成可索引的数组元素。然后套用普通的 `[?…]` 过滤和 multiselect-hash。
+
+扁平化会丢掉原映射键（咽喉点名）。如果你也需要名字，用 `keys(data."transit-summaries".summaries)` 单独投影它们，或者接受这种结构错配并改用同级的 `chokepoint_transits.transits` 载荷——后者是以 `{tanker, cargo, other, total}` 为值、咽喉点名为键的映射——`keys(data.chokepoint_transits.transits)` 给你一份覆盖每个咽喉点的扁平列表。
+
+---
+
+### 12. 管道组合子——多阶段投影
+
+**意图。** 从 `get_conflict_events` 给我死亡数最高的前五个有死亡事件，含国家、死亡数和暴力类型。
+
+**工具调用：**
+
+```json
+{
+  "name": "get_conflict_events",
+  "arguments": {
+    "jmespath": "data.\"ucdp-events\".events[?deathsBest > `0`] | sort_by(@, &deathsBest) | reverse(@) | [0:5].{c:country, d:deathsBest, t:violenceType}"
+  }
+}
+```
+
+**投影后响应：**
+
+```json
+[
+  { "c": "Ukraine",          "d": 30, "t": "UCDP_VIOLENCE_TYPE_STATE_BASED" },
+  { "c": "Somalia",          "d": 27, "t": "UCDP_VIOLENCE_TYPE_STATE_BASED" },
+  { "c": "DR Congo (Zaire)", "d": 17, "t": "UCDP_VIOLENCE_TYPE_ONE_SIDED" },
+  { "c": "Somalia",          "d": 10, "t": "UCDP_VIOLENCE_TYPE_STATE_BASED" },
+  { "c": "Ukraine",          "d": 7,  "t": "UCDP_VIOLENCE_TYPE_STATE_BASED" }
+]
+```
+
+**为什么有效。** `|` 把上下文重置为"目前的结果"并开启一个新投影——于是过滤先跑，排序针对过滤后的集合（不是整个数组）跑，反转翻转它，切片取前五，multiselect-hash 精简每行。每当你需要在过滤*之后*（而非跨原数组）应用投影（比如 `sort_by`）时，管道就是对的工具。
+
+## 逃生舱
+
+### 取完整载荷（无投影）
+
+完全省略 `jmespath` 参数。当省略 `limit` 时，缓存工具会把列表或映射型字段默认封顶在 30 项；当你确实想要整批数据时，传 `limit: 0` 禁用该封顶：
+
+```json
+{
+  "name": "get_country_macro",
+  "arguments": { "limit": 0 }
+}
+```
+
+当你在抓取固件、跑一次性审计，或把响应喂给一个表现力更强的下游过滤器（你自己的 jq、一个 notebook）时，这是对的选择。对于日常的模型上下文，投影几乎总是更胜一筹。
+
+### `_budget_exceeded`——载荷太大时
+
+每个工具声明一个工具级输出预算（`_outputBudgetBytes`）。当某工具序列化后的响应在所有过滤、`summary` 和 JMESPath 都应用完**之后**仍超过该预算，服务端会返回这个信封而不是过大的载荷——仍在正常 MCP 结果里、仍是 HTTP 200、仍是 `isError: false`：
+
+```json
+{
+  "_budget_exceeded": true,
+  "budget_bytes": 65536,
+  "actual_bytes": 142337,
+  "hint": "Response still exceeds tool output budget after JMESPath projection. Use a more selective expression to project fewer fields, or apply tool-level filters to narrow the result set."
+}
+```
+
+恢复方式始终相同：**让投影更具选择性**，或在它之下叠加一层工具级过滤器（`country`、`since`、`limit`）。当这个信封触发时，Pro 每日配额会自动回滚——你不会为一个用不上的响应付一个配额槽。
+
+### `_jmespath_error`——投影本身失败时
+
+JMESPath 表达式可能以三种方式失败：表达式本身超过 1024 字节、语法非法，或一个失控的 multiselect-hash 撑爆 256 KB 输出上限。三种情况下你都会拿到这个信封——注意 `_jmespath_error` 是**字符串**（`<kind>: <details>`），不是对象：
+
+```json
+{
+  "_jmespath_error": "invalid_expression: Parse error at column 32: expected one of [LBRACKET, DOT]",
+  "original_keys": ["stocks-bootstrap", "commodities-bootstrap", "crypto", "sectors", "etf-flows", "gulf-quotes", "fear-greed"]
+}
+```
+
+`original_keys` 是未投影响应的顶层键——足以让模型在多一次调用里用修正后的表达式重试。一个坏表达式在适用该配额路径时**确实**每次尝试消耗一个 Pro/OAuth 每日配额槽；回显的 `original_keys` 正是为了让重试能自我修正而非瞎猜。三种类型（`expression_too_long`、`invalid_expression`、`projection_too_large`）及其精确判别字符串见 [MCP 错误目录](/zh/mcp-error-catalog#_jmespath_error--projection-failed)。
+
+## 投影的互补项
+
+### `summary: true` 标志
+
+每个缓存工具还接受一个通用的 `summary: true` 参数，它返回一个服务端构造的摘要而非完整载荷。数组变为 `{ count, sample }`，最多 3 个样本项；键数超过 5 的对象字段被视为实体映射，变为 `{ count, sample_keys }`，最多 3 个样本键。在以下情况使用：
+
+- 你想在设计投影之前快速核对一下这批数据里有什么——`summary: true` 用少量字段返回结构和档位计数。
+- 模型只需要聚合计数（"多少场活跃冲突？"、"多少个关键咽喉点？"）而非底层行。
+
+`summary: true` 与 `jmespath` 可组合：摘要先构造，投影再叠加其上。当你想要摘要的预聚合计数但只取其中部分类别时，把两者结合起来。
+
+### `describe_tool`
+
+当 `tools/list` 返回的压缩描述对某工具的响应结构含糊不清时，调用 `describe_tool({ tool_name: "get_market_data" })` 取完整未压缩定义。`describe_tool` 仅含元数据且**不计入 Pro 每日配额**——编写投影时尽管放心用。如果名字错了，响应是 `{ error: "unknown_tool", available: [...] }`，同样无配额成本。
+
+## 另请参阅
+
+- [JMESPath 规范](https://jmespath.org/specification.html)——权威语法参考。
+- [MCP 快速入门](/zh/mcp-quickstart)——五分钟从零到首次调用的入门。
+- [MCP 工具参考](/zh/mcp-tools-reference)——每个工具的参数、新鲜度预算和响应结构。
+- [MCP 服务器参考](/zh/mcp-overview)——认证、OAuth 设置、套餐、配额、错误。
+- [MCP 错误目录](/zh/mcp-error-catalog)——每个 JSON-RPC 代码、HTTP 状态和软信封（含 `_budget_exceeded` 和三种 `_jmespath_error` 类型）。

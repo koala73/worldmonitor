@@ -6,6 +6,7 @@ import type {
 } from '../../../../src/generated/server/worldmonitor/infrastructure/v1/service_server';
 
 import { getCachedJson, setCachedJson } from '../../../_shared/redis';
+import { resolveFireDetectionTotalCount } from '../../../../src/services/wildfires/payload';
 import {
   BASELINE_TTL,
   MIN_SAMPLES,
@@ -73,6 +74,24 @@ async function tryAcquireLock(): Promise<boolean> {
   }
 }
 
+function countSnapshotCoverage(snapshot: AnomalySnapshot): number {
+  if (Array.isArray(snapshot.trackedTypes)) return snapshot.trackedTypes.length;
+  if (Array.isArray(snapshot.anomalies)) return snapshot.anomalies.length;
+  return 0;
+}
+
+async function writeTemporalAnomaliesSeedMeta(snapshot: AnomalySnapshot): Promise<boolean> {
+  return setCachedJson('seed-meta:temporal:anomalies', {
+    fetchedAt: Date.now(),
+    recordCount: countSnapshotCoverage(snapshot),
+  }, 604800).catch(() => false);
+}
+
+async function refreshTemporalAnomaliesCacheHit(snapshot: AnomalySnapshot): Promise<void> {
+  const refreshed = await setCachedJson(TEMPORAL_ANOMALIES_KEY, snapshot, TEMPORAL_ANOMALIES_TTL).catch(() => false);
+  if (refreshed) await writeTemporalAnomaliesSeedMeta(snapshot);
+}
+
 export async function listTemporalAnomalies(
   _ctx: ServerContext,
   _req: ListTemporalAnomaliesRequest,
@@ -82,6 +101,7 @@ export async function listTemporalAnomalies(
     if (cached?.computedAt) {
       const age = Date.now() - new Date(cached.computedAt).getTime();
       if (age < TEMPORAL_ANOMALIES_TTL * 1000) {
+        await refreshTemporalAnomaliesCacheHit(cached);
         return cached;
       }
     }
@@ -108,8 +128,15 @@ export async function listTemporalAnomalies(
           const stories = (data as { topStories?: unknown[] })?.topStories;
           counts[type] = stories?.length ?? 0;
         } else if (type === 'satellite_fires') {
+          // wildfire:fires:v1 is itself capped at WILDFIRE_CANONICAL_DETECTION_LIMIT (#5866)
+          // and carries the pre-cap FIRMS total in `pagination`. Counting the array instead
+          // would saturate this baseline at the cap, silently flattening every fire-volume
+          // anomaly above it — the z-score would read "normal" during a record fire season.
           const fires = (data as { fireDetections?: unknown[] })?.fireDetections;
-          counts[type] = fires?.length ?? 0;
+          counts[type] = resolveFireDetectionTotalCount({
+            fireDetections: fires ?? [],
+            pagination: (data as { pagination?: { totalCount?: number } })?.pagination,
+          });
         }
       }
 
@@ -181,7 +208,10 @@ export async function listTemporalAnomalies(
         computedAt: now.toISOString(),
       };
 
-      await setCachedJson(TEMPORAL_ANOMALIES_KEY, snapshot, TEMPORAL_ANOMALIES_TTL);
+      const published = await setCachedJson(TEMPORAL_ANOMALIES_KEY, snapshot, TEMPORAL_ANOMALIES_TTL);
+      if (published) {
+        await writeTemporalAnomaliesSeedMeta(snapshot);
+      }
       return snapshot;
     }
   } catch {

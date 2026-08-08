@@ -2,9 +2,25 @@ openapi: 3.1.0
 info:
     title: NewsService API
     version: 1.0.0
+security:
+    - WorldMonitorKey: []
+    - ApiKeyHeader: []
+servers:
+    - url: https://api.worldmonitor.app
 paths:
     /api/news/v1/summarize-article:
         post:
+            parameters:
+                - name: Idempotency-Key
+                  in: header
+                  description: Optional client-generated idempotency key. Retrying a POST with the same key and an identical request body replays the original response (only the status, body, and Content-Type are reproduced) instead of re-executing; reusing the key with a different body is rejected with 422. For mutations this avoids duplicating the side effect, while for batch-read POSTs it replays a cached snapshot that can be up to 24 hours stale. Keys are scoped per authenticated caller (falling back to the source IP for unauthenticated endpoints) and retained for 24 hours.
+                  required: false
+                  example: "4f8b9c2e-1a3d-4b6f-8e0a-2c5d7f9b1e34"
+                  schema:
+                    type: string
+                    minLength: 1
+                    maxLength: 255
+                    pattern: "^[\\x21-\\x7E]{1,255}$"
             tags:
                 - NewsService
             summary: SummarizeArticle
@@ -13,28 +29,144 @@ paths:
             requestBody:
                 content:
                     application/json:
+                        example:
+                            "bodies":
+                                - "example"
+                            "geoContext": "example"
+                            "headlines":
+                                - "example"
+                            "lang": "en"
+                            "mode": "brief"
+                            "provider": "openrouter"
                         schema:
                             $ref: '#/components/schemas/SummarizeArticleRequest'
                 required: true
             responses:
                 "200":
                     description: Successful response
+                    headers:
+                        Idempotency-Key:
+                            schema:
+                                type: string
+                            description: The idempotency key echoed from the request. Present only when the client opted into idempotency.
+                        Idempotent-Replayed:
+                            schema:
+                                type: boolean
+                            description: true when this response was replayed from an earlier request with the same key, false on the first (original) request. Present only when the client opted into idempotency.
                     content:
                         application/json:
+                            example:
+                                "error": "example"
+                                "errorType": "all"
+                                "fallback": true
+                                "model": "example"
+                                "provider": "openrouter"
                             schema:
                                 $ref: '#/components/schemas/SummarizeArticleResponse'
                 "400":
-                    description: Validation error
+                    description: Validation error, invalid Idempotency-Key header, or malformed JSON request body
                     content:
                         application/json:
                             schema:
-                                $ref: '#/components/schemas/ValidationError'
+                                oneOf:
+                                    - $ref: '#/components/schemas/ValidationError'
+                                    - type: object
+                                      required:
+                                        - error
+                                        - message
+                                      properties:
+                                        error:
+                                            type: string
+                                        message:
+                                            type: string
+                                    - $ref: '#/components/schemas/InvalidRequestBodyError'
+                "409":
+                    description: A request with this Idempotency-Key is still being processed
+                    headers:
+                        Idempotency-Key:
+                            schema:
+                                type: string
+                            description: The idempotency key supplied by the client.
+                        Retry-After:
+                            schema:
+                                type: string
+                            description: Seconds to wait before retrying the in-flight request.
+                    content:
+                        application/json:
+                            schema:
+                                type: object
+                                required:
+                                    - error
+                                    - message
+                                properties:
+                                    error:
+                                        type: string
+                                    message:
+                                        type: string
+                "422":
+                    description: The Idempotency-Key was already used with a different request body
+                    headers:
+                        Idempotency-Key:
+                            schema:
+                                type: string
+                            description: The idempotency key supplied by the client.
+                    content:
+                        application/json:
+                            schema:
+                                type: object
+                                required:
+                                    - error
+                                    - message
+                                properties:
+                                    error:
+                                        type: string
+                                    message:
+                                        type: string
+                "401":
+                    description: Missing or invalid API key.
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/UnauthorizedError'
+                "403":
+                    description: API access requires an active subscription (the API key's subscription is inactive or expired).
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ForbiddenError'
+                "429":
+                    description: Rate limit exceeded.
+                    headers:
+                        X-RateLimit-Limit:
+                            description: Maximum requests allowed in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Remaining:
+                            description: Requests remaining in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Reset:
+                            description: Unix epoch milliseconds when the active rate-limit window resets.
+                            schema:
+                                type: string
+                        Retry-After:
+                            description: Seconds to wait before retrying the request.
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/RateLimitError'
                 default:
-                    description: Error response
+                    description: Gateway or handler error response.
                     content:
                         application/json:
                             schema:
-                                $ref: '#/components/schemas/Error'
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/GatewayError'
     /api/news/v1/summarize-article-cache:
         get:
             tags:
@@ -47,6 +179,16 @@ paths:
                   in: query
                   description: Deterministic cache key computed by buildSummaryCacheKey().
                   required: false
+                  example: "summary:v1:example-cache"
+                  schema:
+                    type: string
+                    pattern: '^summary:v\d+:[a-z0-9:_-]{3,120}$'
+                - name: jmespath
+                  in: query
+                  description: |-
+                    Optional JMESPath expression applied server-side to project or reduce the JSON response before it is returned (mirrors the MCP jmespath argument). Invalid expressions, expressions larger than 1024 UTF-8 bytes, or projections that exceed the 256 KB output cap return HTTP 400 with a {_jmespath_error, original_keys} envelope. Grammar and worked examples: https://www.worldmonitor.app/docs/mcp-jmespath.
+                  required: false
+                  example: "keys(@)"
                   schema:
                     type: string
             responses:
@@ -54,6 +196,12 @@ paths:
                     description: Successful response
                     content:
                         application/json:
+                            example:
+                                "error": "example"
+                                "errorType": "all"
+                                "fallback": true
+                                "model": "example"
+                                "provider": "openrouter"
                             schema:
                                 $ref: '#/components/schemas/SummarizeArticleResponse'
                 "400":
@@ -61,13 +209,54 @@ paths:
                     content:
                         application/json:
                             schema:
-                                $ref: '#/components/schemas/ValidationError'
-                default:
-                    description: Error response
+                                oneOf:
+                                    - $ref: '#/components/schemas/ValidationError'
+                                    - $ref: '#/components/schemas/JmespathProjectionError'
+                "401":
+                    description: Missing or invalid API key.
                     content:
                         application/json:
                             schema:
-                                $ref: '#/components/schemas/Error'
+                                $ref: '#/components/schemas/UnauthorizedError'
+                "403":
+                    description: API access requires an active subscription (the API key's subscription is inactive or expired).
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ForbiddenError'
+                "429":
+                    description: Rate limit exceeded.
+                    headers:
+                        X-RateLimit-Limit:
+                            description: Maximum requests allowed in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Remaining:
+                            description: Requests remaining in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Reset:
+                            description: Unix epoch milliseconds when the active rate-limit window resets.
+                            schema:
+                                type: string
+                        Retry-After:
+                            description: Seconds to wait before retrying the request.
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/RateLimitError'
+                default:
+                    description: Gateway or handler error response.
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/GatewayError'
     /api/news/v1/list-feed-digest:
         get:
             tags:
@@ -78,14 +267,24 @@ paths:
             parameters:
                 - name: variant
                   in: query
-                  description: 'Site variant: full, tech, finance, happy'
+                  description: 'Digest variant: full, tech, finance, happy, commodity. Unsupported site variants, including energy, currently fall back to full.'
                   required: false
+                  example: "example"
                   schema:
                     type: string
                 - name: lang
                   in: query
                   description: ISO 639-1 language code (en, fr, ar, etc.)
                   required: false
+                  example: "en"
+                  schema:
+                    type: string
+                - name: jmespath
+                  in: query
+                  description: |-
+                    Optional JMESPath expression applied server-side to project or reduce the JSON response before it is returned (mirrors the MCP jmespath argument). Invalid expressions, expressions larger than 1024 UTF-8 bytes, or projections that exceed the 256 KB output cap return HTTP 400 with a {_jmespath_error, original_keys} envelope. Grammar and worked examples: https://www.worldmonitor.app/docs/mcp-jmespath.
+                  required: false
+                  example: "keys(@)"
                   schema:
                     type: string
             responses:
@@ -93,6 +292,22 @@ paths:
                     description: Successful response
                     content:
                         application/json:
+                            example:
+                                "categories":
+                                    "exampleKey":
+                                        "items":
+                                            - "corroborationCount": 42
+                                              "importanceScore": 42
+                                              "isAlert": true
+                                              "link": "https://example.com/worldmonitor"
+                                              "location":
+                                                  "latitude": 40.7128
+                                                  "longitude": -74.006
+                                              "source": "example"
+                                              "title": "example"
+                                "feedStatuses":
+                                    "exampleKey": "example"
+                                "generatedAt": "2026-01-15T12:00:00Z"
                             schema:
                                 $ref: '#/components/schemas/ListFeedDigestResponse'
                 "400":
@@ -100,15 +315,91 @@ paths:
                     content:
                         application/json:
                             schema:
-                                $ref: '#/components/schemas/ValidationError'
-                default:
-                    description: Error response
+                                oneOf:
+                                    - $ref: '#/components/schemas/ValidationError'
+                                    - $ref: '#/components/schemas/JmespathProjectionError'
+                "401":
+                    description: Missing or invalid API key.
                     content:
                         application/json:
                             schema:
-                                $ref: '#/components/schemas/Error'
+                                $ref: '#/components/schemas/UnauthorizedError'
+                "403":
+                    description: API access requires an active subscription (the API key's subscription is inactive or expired).
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ForbiddenError'
+                "429":
+                    description: Rate limit exceeded.
+                    headers:
+                        X-RateLimit-Limit:
+                            description: Maximum requests allowed in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Remaining:
+                            description: Requests remaining in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Reset:
+                            description: Unix epoch milliseconds when the active rate-limit window resets.
+                            schema:
+                                type: string
+                        Retry-After:
+                            description: Seconds to wait before retrying the request.
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/RateLimitError'
+                default:
+                    description: Gateway or handler error response.
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/GatewayError'
 components:
+    securitySchemes:
+        WorldMonitorKey:
+            type: apiKey
+            in: header
+            name: X-WorldMonitor-Key
+            description: User-issued WorldMonitor API key.
+        ApiKeyHeader:
+            type: apiKey
+            in: header
+            name: X-Api-Key
+            description: Alias header for the WorldMonitor API key (X-WorldMonitor-Key).
     schemas:
+        JmespathProjectionError:
+            description: Returned when a REST jmespath projection is invalid or exceeds the expression/output byte limits.
+            properties:
+                _jmespath_error:
+                    description: Projection error discriminator and details.
+                    type: string
+                original_keys:
+                    description: Top-level keys or shape of the unprojected response.
+                    items:
+                        type: string
+                    type: array
+            required:
+                - _jmespath_error
+                - original_keys
+            type: object
+        UnauthorizedError:
+            type: object
+            properties:
+                error:
+                    type: string
+                    description: Human-readable error message.
+            required:
+                - error
+            description: Returned when the API key is missing, malformed, or lacks current API access.
         Error:
             type: object
             properties:
@@ -116,6 +407,56 @@ components:
                     type: string
                     description: Error message (e.g., 'user not found', 'database connection failed')
             description: Error is returned when a handler encounters an error. It contains a simple error message that the developer can customize.
+        InvalidRequestBodyError:
+            type: object
+            description: Returned when a JSON POST request body is empty or malformed.
+            properties:
+                message:
+                    type: string
+                    description: Invalid request body
+            required:
+                - message
+        GatewayError:
+            type: object
+            description: Returned by gateway infrastructure errors before an RPC handler runs, such as origin, routing, method, authentication, or quota checks.
+            properties:
+                error:
+                    oneOf:
+                        - type: string
+                        - type: object
+                          additionalProperties: true
+                    description: Gateway error reason or structured gateway failure details.
+            required:
+                - error
+        RateLimitError:
+            type: object
+            description: Returned when a gateway or handler rate limit rejects the request.
+            properties:
+                error:
+                    type: string
+                    description: Human-readable rate-limit failure reason.
+            required:
+                - error
+        ForbiddenError:
+            type: object
+            properties:
+                error:
+                    type: string
+                    description: Human-readable entitlement failure reason.
+                requiredTier:
+                    type: integer
+                    format: int32
+                    description: Minimum entitlement tier required for this endpoint.
+                currentTier:
+                    type: integer
+                    format: int32
+                    description: Caller entitlement tier when known.
+                planKey:
+                    type: string
+                    description: Caller plan key when known.
+            required:
+                - error
+            description: Returned when a PRO-gated endpoint denies access because the caller has no resolved authenticated user, entitlements cannot be verified, or the caller lacks the required entitlement tier.
         FieldViolation:
             type: object
             properties:
@@ -152,7 +493,10 @@ components:
                     items:
                         type: string
                         minItems: 1
-                        description: Headlines to summarize (max 8 used).
+                        description: |-
+                            Headlines to summarize. Up to 10 raw headlines are used for request
+                             identity/cache matching; the LLM prompt uses up to 5 unique, non-empty
+                             sanitized headline/body pairs.
                     minItems: 1
                 mode:
                     type: string
@@ -169,6 +513,17 @@ components:
                 systemAppend:
                     type: string
                     description: Optional system prompt append for analytical framework instructions.
+                bodies:
+                    type: array
+                    items:
+                        type: string
+                        description: |-
+                            Optional article bodies paired 1:1 with `headlines`. When bodies[i] is
+                             non-empty, the prompt interleaves it as grounding context under
+                             headlines[i]; when empty, behavior is identical to headline-only today.
+                             Callers may supply a shorter array; missing entries are treated as empty.
+                             Each body is subject to the same sanitisation as headlines before reaching
+                             the LLM prompt.
             required:
                 - provider
             description: SummarizeArticleRequest specifies parameters for LLM article summarization.
@@ -222,7 +577,7 @@ components:
             properties:
                 variant:
                     type: string
-                    description: 'Site variant: full, tech, finance, happy'
+                    description: 'Digest variant: full, tech, finance, happy, commodity. Unsupported site variants, including energy, currently fall back to full.'
                 lang:
                     type: string
                     description: ISO 639-1 language code (en, fr, ar, etc.)
@@ -240,7 +595,9 @@ components:
                         type: string
                     description: |-
                         Per-feed status — only non-ok states emitted; absent key implies ok.
-                         Values: empty (feed returned 0 items), timeout (timed out during fetch).
+                         Values: empty (feed returned 0 items), timeout (timed out during fetch),
+                         all-undated (every parsed item lacked a usable date), partial-undated
+                         (some parsed items lacked a usable date).
                 generatedAt:
                     type: string
                     description: ISO 8601 timestamp of when this digest was generated
@@ -293,6 +650,45 @@ components:
                 locationName:
                     type: string
                     description: Human-readable location name.
+                importanceScore:
+                    type: integer
+                    format: int32
+                    description: |-
+                        Composite importance score. The base 0-100 score uses severity × 55% +
+                         source tier × 20% + corroboration × 15% + recency × 10%, then may add an
+                         18-point diplomacy/flashpoint boost and 4 points per entity-level
+                         corroborating source, capped at five sources. The final score can exceed
+                         100; with current boosts it is approximately capped at 138.
+                corroborationCount:
+                    type: integer
+                    format: int32
+                    description: |-
+                        Number of distinct sources that reported the same story in this digest
+                         cycle. "Same story" is determined by edit-tolerant story-identity
+                         clustering (headlines describing one event with different wording,
+                         ordering, source suffixes, truncation, or morphology corroborate each
+                         other) — not exact-title matching. See shared/story-identity.js.
+                storyMeta:
+                    $ref: '#/components/schemas/StoryMeta'
+                snippet:
+                    type: string
+                    description: |-
+                        Cleaned article description from the RSS/Atom <description> /
+                         <content:encoded> / <summary> / <content> tag: HTML-stripped,
+                         entity-decoded, whitespace-normalised, clipped to 400 chars. Empty string
+                         when unavailable or indistinguishable from the headline — consumers must
+                         fall back to the headline for display/LLM grounding in that case.
+                tickers:
+                    type: array
+                    items:
+                        type: string
+                        maxItems: 8
+                        description: |-
+                            Equity ticker symbols mentioned by the story, extracted at ingest from
+                             cashtags ($AAPL) and the curated company dictionary
+                             (shared/stocks.json). Uppercase symbols, deduplicated, capped at 8.
+                             Empty when no tracked ticker is mentioned. See shared/ticker-extract.js.
+                    maxItems: 8
             required:
                 - source
                 - title
@@ -320,7 +716,9 @@ components:
                     description: Confidence score (0.0 to 1.0).
                 source:
                     type: string
-                    description: Classification source — "keyword", "ml", or "llm".
+                    description: |-
+                        Classification source — "keyword", "keyword-historical-downgrade", or
+                         "llm".
             description: ThreatClassification represents an AI-assessed threat level for a news item.
         GeoCoordinates:
             type: object
@@ -338,3 +736,32 @@ components:
                     format: double
                     description: Longitude in decimal degrees (-180 to 180).
             description: GeoCoordinates represents a geographic location using WGS84 coordinates.
+        StoryMeta:
+            type: object
+            properties:
+                firstSeen:
+                    type: integer
+                    format: int64
+                    description: 'Epoch ms when the story first appeared in any digest cycle.. Warning: Values > 2^53 may lose precision in JavaScript'
+                mentionCount:
+                    type: integer
+                    format: int32
+                    description: Total number of digest cycles in which this story appeared.
+                sourceCount:
+                    type: integer
+                    format: int32
+                    description: |-
+                        Number of unique sources reporting this story in the CURRENT digest
+                         cycle (batch corroboration from fuzzy story clustering, #4919;
+                         defaults to 1 for unclustered items). The cross-cycle Redis source
+                         set (story:sources:v1) feeds importance scoring, not this field.
+                phase:
+                    type: string
+                    enum:
+                        - STORY_PHASE_UNSPECIFIED
+                        - STORY_PHASE_BREAKING
+                        - STORY_PHASE_DEVELOPING
+                        - STORY_PHASE_SUSTAINED
+                        - STORY_PHASE_FADING
+                    description: StoryPhase represents the lifecycle stage of a tracked news story.
+            description: StoryMeta carries cross-cycle persistence data attached to each news item.

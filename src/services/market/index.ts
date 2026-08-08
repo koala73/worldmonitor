@@ -6,41 +6,34 @@
  */
 
 import { getRpcBaseUrl } from '@/services/rpc-client';
-import {
-  MarketServiceClient,
-  type ListMarketQuotesResponse,
-  type ListCommodityQuotesResponse,
-  type GetSectorSummaryResponse,
-  type ListCryptoQuotesResponse,
-  type ListCryptoSectorsResponse,
-  type CryptoSector,
-  type ListDefiTokensResponse,
-  type ListAiTokensResponse,
-  type ListOtherTokensResponse,
-  type MarketQuote as ProtoMarketQuote,
-  type CryptoQuote as ProtoCryptoQuote,
-} from '@/generated/client/worldmonitor/market/v1/service_client';
+import type { ListMarketQuotesResponse, ListCommodityQuotesResponse, GetSectorSummaryResponse, ListCryptoQuotesResponse, ListCryptoSectorsResponse, CryptoSector, ListDefiTokensResponse, ListAiTokensResponse, ListOtherTokensResponse, MarketQuote as ProtoMarketQuote, MarketQuoteUnavailable, CryptoQuote as ProtoCryptoQuote } from '@/generated/client/worldmonitor/market/v1/service_client';
 import type { MarketData, CryptoData, TokenData } from '@/types';
 import { createCircuitBreaker } from '@/utils/circuit-breaker';
 import { getHydratedData } from '@/services/bootstrap';
+import { MarketServiceClient } from '@/services/generated-rpc-clients';
+import { proFreshRpcFetch } from '@/services/premium-fetch';
 
 // ---- Client + Circuit Breakers ----
 
-const client = new MarketServiceClient(getRpcBaseUrl(), { fetch: (...args: Parameters<typeof fetch>) => globalThis.fetch(...args) });
+const client = new MarketServiceClient(getRpcBaseUrl(), { fetch: proFreshRpcFetch });
 const MARKET_QUOTES_CACHE_TTL_MS = 5 * 60 * 1000;
 const stockBreaker = createCircuitBreaker<ListMarketQuotesResponse>({ name: 'Market Quotes', cacheTtlMs: MARKET_QUOTES_CACHE_TTL_MS, persistCache: true });
 const commodityBreaker = createCircuitBreaker<ListCommodityQuotesResponse>({ name: 'Commodity Quotes', cacheTtlMs: MARKET_QUOTES_CACHE_TTL_MS, persistCache: true });
-const sectorBreaker = createCircuitBreaker<GetSectorSummaryResponse>({ name: 'Sector Summary', cacheTtlMs: MARKET_QUOTES_CACHE_TTL_MS, persistCache: true });
+const sectorBreaker = createCircuitBreaker<GetSectorSummaryResponse>({ name: 'Sector Summary v2', cacheTtlMs: MARKET_QUOTES_CACHE_TTL_MS, persistCache: true });
 const cryptoBreaker = createCircuitBreaker<ListCryptoQuotesResponse>({ name: 'Crypto Quotes', persistCache: true });
 const cryptoSectorsBreaker = createCircuitBreaker<ListCryptoSectorsResponse>({ name: 'Crypto Sectors', persistCache: true });
 const defiBreaker = createCircuitBreaker<ListDefiTokensResponse>({ name: 'DeFi Tokens', persistCache: true });
 const aiBreaker = createCircuitBreaker<ListAiTokensResponse>({ name: 'AI Tokens', persistCache: true });
 const otherBreaker = createCircuitBreaker<ListOtherTokensResponse>({ name: 'Other Tokens', persistCache: true });
 
-const emptyStockFallback: ListMarketQuotesResponse = { quotes: [], finnhubSkipped: false, skipReason: '', rateLimited: false };
+const emptyStockFallback: ListMarketQuotesResponse = { quotes: [], finnhubSkipped: false, skipReason: '', rateLimited: false, unavailableSymbols: [] };
 const emptyCommodityFallback: ListCommodityQuotesResponse = { quotes: [] };
 const emptySectorFallback: GetSectorSummaryResponse = { sectors: [] };
-const emptyCryptoFallback: ListCryptoQuotesResponse = { quotes: [] };
+const EMPTY_CRYPTO_FALLBACK: ListCryptoQuotesResponse = {
+  quotes: [],
+  unresolvedIds: [],
+  provider: 'degraded',
+};
 const emptyCryptoSectorsFallback: ListCryptoSectorsResponse = { sectors: [] };
 const emptyDefiTokensFallback: ListDefiTokensResponse = { tokens: [] };
 const emptyAiTokensFallback: ListAiTokensResponse = { tokens: [] };
@@ -78,6 +71,12 @@ export interface MarketFetchResult {
   skipped?: boolean;
   reason?: string;
   rateLimited?: boolean;
+  /**
+   * Requested symbols that produced no quote, each with a reason (#6305).
+   * A custom watchlist ticker the fixed seed does not carry used to vanish
+   * from `data` with no signal at all.
+   */
+  unavailableSymbols?: MarketQuoteUnavailable[];
 }
 
 // ========================================================================
@@ -143,6 +142,9 @@ export async function fetchMultipleStocks(
     skipped: resp.finnhubSkipped || undefined,
     reason: resp.skipReason || undefined,
     rateLimited: resp.rateLimited || undefined,
+    // `resp` can be the pre-#6305 breaker cache or the empty fallback, so
+    // treat a missing field as "nothing to report" rather than trusting it.
+    unavailableSymbols: resp.unavailableSymbols?.length ? resp.unavailableSymbols : undefined,
   };
 }
 
@@ -168,7 +170,11 @@ export function warmCommodityCache(quotes: ListCommodityQuotesResponse): void {
   commodityBreaker.recordSuccess(quotes, cacheKey);
 }
 
-/** Pre-warm the sector circuit-breaker cache from bootstrap hydration data. */
+/**
+ * Pre-warm the sector circuit-breaker cache from bootstrap hydration data.
+ * Valuations are included in the sector summary payload; clients pick them up
+ * on the next breaker refresh (5-min TTL) without a separate cache-bust.
+ */
 export function warmSectorCache(resp: GetSectorSummaryResponse): void {
   sectorBreaker.recordSuccess(resp);
 }
@@ -205,14 +211,22 @@ export async function fetchCommodityQuotes(
 }
 
 // ========================================================================
-// Sectors -- uses getSectorSummary (reads market:sectors:v1)
+// Sectors -- uses getSectorSummary (reads market:sectors:v2)
 // ========================================================================
 
 export async function fetchSectors(): Promise<GetSectorSummaryResponse> {
   return sectorBreaker.execute(async () => {
     return client.getSectorSummary({ period: '' });
   }, emptySectorFallback, {
-    shouldCache: (r: GetSectorSummaryResponse) => r.sectors.length > 0,
+    // Require sectors AND the valuations field to be present (not missing) so
+    // pre-PR payloads that lack the valuations key are never cached/replayed
+    // as stale data for the session. Empty object {} is OK (API may legitimately
+    // return zero valuations after Yahoo failures) but the key must exist.
+    shouldCache: (r: GetSectorSummaryResponse) => {
+      if (r.sectors.length === 0) return false;
+      const withValuations = r as GetSectorSummaryResponse & { valuations?: unknown };
+      return Object.prototype.hasOwnProperty.call(withValuations, 'valuations');
+    },
   });
 }
 
@@ -231,7 +245,7 @@ export async function fetchCrypto(): Promise<CryptoData[]> {
 
   const resp = await cryptoBreaker.execute(async () => {
     return client.listCryptoQuotes({ ids: [] }); // empty = all defaults
-  }, emptyCryptoFallback);
+  }, EMPTY_CRYPTO_FALLBACK);
 
   const results = resp.quotes
     .map(toCryptoData)

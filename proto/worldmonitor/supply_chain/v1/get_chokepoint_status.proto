@@ -7,7 +7,12 @@ import "worldmonitor/supply_chain/v1/supply_chain_data.proto";
 message GetChokepointStatusRequest {}
 
 message GetChokepointStatusResponse {
+  // Chokepoints from the last successful status snapshot.
   repeated ChokepointInfo chokepoints = 1;
+  // ISO-8601 time the status snapshot was fetched. Empty string with
+  // upstream_unavailable=true means the snapshot is unavailable/degraded.
   string fetched_at = 2;
+  // True when upstream seed/relay data is unavailable or partial. When true, an
+  // empty chokepoints array is graceful degradation, not confirmed zero data.
   bool upstream_unavailable = 3;
 }

@@ -4,7 +4,8 @@ import type { SecurityAdvisory } from '@/services/security-advisories';
 import type { TemporalAnomaly } from '@/services/temporal-baseline';
 import { tokenizeForMatch, matchKeyword } from '@/utils/keyword-match';
 import { INTEL_HOTSPOTS, CONFLICT_ZONES, STRATEGIC_WATERWAYS } from '@/config/geo';
-import { CURATED_COUNTRIES, DEFAULT_BASELINE_RISK, DEFAULT_EVENT_MULTIPLIER, getHotspotCountries } from '@/config/countries';
+import { CURATED_COUNTRIES, DEFAULT_BASELINE_RISK, DEFAULT_EVENT_MULTIPLIER } from '@/config/countries';
+import { getHotspotCountries } from '../../shared/hotspot-country-map';
 import { focalPointDetector } from './focal-point-detector';
 import type { ConflictEvent, UcdpConflictStatus, HapiConflictSummary } from './conflict';
 import type { CountryDisplacement } from '@/services/displacement';
@@ -22,7 +23,8 @@ export interface CountryScore {
   trend: 'rising' | 'stable' | 'falling';
   change24h: number;
   components: ComponentScores;
-  lastUpdated: Date;
+  // Null when the underlying source (cached proto) provided no timestamp. See #3800.
+  lastUpdated: Date | null;
 }
 
 export interface ComponentScores {
@@ -31,6 +33,13 @@ export interface ComponentScores {
   security: number;
   information: number;
 }
+
+// Keep these aligned with server/worldmonitor/intelligence/v1/_risk-config.ts.
+// The server remains authoritative for API scores; this legacy browser engine
+// still needs the same curve when it recalculates local CII state.
+const CII_CONFLICT_ACTIVITY_CAP = 70;
+const CII_CONFLICT_ACTIVITY_PIVOT = 4000;
+const CII_TREND_DEADBAND_POINTS = 1;
 
 interface CountryData {
   protests: SocialUnrestEvent[];
@@ -75,33 +84,43 @@ const LEARNING_DURATION_MS = 15 * 60 * 1000;
 let learningStartTime: number | null = null;
 let isLearningComplete = false;
 let hasCachedScoresAvailable = false;
-let intelligenceSignalsLoaded = false;
-
-export function setIntelligenceSignalsLoaded(): void {
-  intelligenceSignalsLoaded = true;
-}
-
-export function hasIntelligenceSignalsLoaded(): boolean {
-  return intelligenceSignalsLoaded;
-}
 
 export function hasAnyIntelligenceData(): boolean {
   for (const data of countryDataMap.values()) {
     if (
       data.conflicts.length > 0 ||
       data.protests.length > 0 ||
+      data.newsEvents.length > 0 ||
       data.strikes.length > 0 ||
       data.militaryFlights.length > 0 ||
       data.militaryVessels.length > 0 ||
       data.outages.length > 0 ||
+      data.aviationDisruptions.length > 0 ||
       data.ucdpStatus !== null ||
       data.hapiSummary !== null ||
+      data.displacementOutflow > 0 ||
       data.climateStress > 0 ||
+      data.orefAlertCount > 0 ||
+      data.orefHistoryCount24h > 0 ||
+      data.advisoryCount > 0 ||
+      data.advisoryMaxLevel !== null ||
       data.gpsJammingHighCount > 0 ||
       data.gpsJammingMediumCount > 0 ||
       data.aisDisruptionHighCount > 0 ||
       data.aisDisruptionElevatedCount > 0 ||
-      data.aisDisruptionLowCount > 0
+      data.aisDisruptionLowCount > 0 ||
+      data.satelliteFireCount > 0 ||
+      data.satelliteFireHighCount > 0 ||
+      data.cyberThreatCriticalCount > 0 ||
+      data.cyberThreatHighCount > 0 ||
+      data.cyberThreatMediumCount > 0 ||
+      data.temporalAnomalyCount > 0 ||
+      data.temporalAnomalyCriticalCount > 0 ||
+      data.earthquakeSignificantCount > 0 ||
+      data.earthquakeMajorCount > 0 ||
+      data.earthquakeSevereCount > 0 ||
+      data.sanctionsEntryCount > 0 ||
+      data.sanctionsNewEntryCount > 0
     ) {
       return true;
     }
@@ -135,6 +154,10 @@ export function isInLearningMode(): boolean {
   return true;
 }
 
+/**
+ * @deprecated Product code must consume canonical server CII scores through
+ * `cached-risk-scores`. Retained only for legacy local-engine regression tests.
+ */
 export function getLearningProgress(): { inLearning: boolean; remainingMinutes: number; progress: number } {
   if (hasCachedScoresAvailable || isLearningComplete) {
     return { inLearning: false, remainingMinutes: 0, progress: 100 };
@@ -225,7 +248,6 @@ export function clearCountryData(): void {
   countryDataMap.clear();
   hotspotActivityMap.clear();
   newsEventIndexMap.clear();
-  intelligenceSignalsLoaded = false;
 }
 
 export function getCountryData(code: string): CountryData | undefined {
@@ -314,8 +336,23 @@ export function ingestDisplacementForCII(countries: CountryDisplacement[]): void
 }
 
 const ZONE_COUNTRY_MAP: Record<string, string[]> = {
-  'Ukraine': ['UA'], 'Middle East': ['IR', 'IL', 'SA', 'SY', 'YE'],
-  'South Asia': ['PK', 'IN'], 'Myanmar': ['MM'],
+  'North America': ['US'],
+  'Ukraine': ['UA'],
+  'Europe': ['DE', 'FR', 'GB', 'PL', 'TR', 'UA'],
+  'East Asia': ['CN', 'TW', 'KP', 'KR', 'JP'],
+  'Middle East': ['IR', 'IL', 'SA', 'SY', 'YE', 'AE', 'IQ', 'LB', 'QA'],
+  'South Asia': ['IN', 'PK', 'MM', 'AF'],
+  'Russia': ['RU'],
+  'Myanmar': ['MM'],
+  'California': ['US'],
+  'Amazon': ['BR'],
+  'Latin America': ['VE', 'CU', 'MX', 'BR'],
+  'North Africa': ['EG'],
+  'Taiwan Strait': ['TW', 'CN'],
+  'Caribbean': ['CU', 'MX'],
+  'Mediterranean': ['TR', 'IL', 'SY', 'LB', 'EG'],
+  'Arctic': ['RU'],
+  'Tibetan Plateau': ['CN', 'IN'],
 };
 
 export function ingestClimateForCII(anomalies: ClimateAnomaly[]): void {
@@ -769,8 +806,8 @@ export function ingestSanctionsForCII(countries: CountrySanctionsPressure[]): vo
     const code = c.countryCode.toUpperCase();
     if (!countryDataMap.has(code)) countryDataMap.set(code, initCountryData());
     const data = countryDataMap.get(code)!;
-    data.sanctionsEntryCount = c.entryCount;
-    data.sanctionsNewEntryCount = c.newEntryCount;
+    data.sanctionsEntryCount += c.entryCount;
+    data.sanctionsNewEntryCount += c.newEntryCount;
   }
 }
 
@@ -787,6 +824,17 @@ function getSanctionsBoost(data: CountryData): number {
   let boost = count >= 2000 ? 12 : count >= 501 ? 8 : count >= 101 ? 5 : 3;
   if (data.sanctionsNewEntryCount > 0) boost += 2;
   return boost;
+}
+
+function logScaledScore(raw: number, cap: number, pivot: number): number {
+  const value = Math.max(0, raw);
+  if (value === 0) return 0;
+  return Math.min(cap, (Math.log1p(value) / Math.log1p(pivot)) * cap);
+}
+
+function getDisplacementBoost(totalDisplaced: number): number {
+  if (totalDisplaced <= 0) return 0;
+  return Math.min(20, Math.max(0, Math.round((Math.log10(totalDisplaced) - 5) * 8 + 4)));
 }
 
 function calcUnrestScore(data: CountryData, countryCode: string): number {
@@ -824,7 +872,7 @@ function calcUnrestScore(data: CountryData, countryCode: string): number {
   return Math.min(100, baseScore + fatalityBoost + severityBoost + outageBoost);
 }
 
-function calcNewsConflictFloor(data: CountryData, multiplier: number, now = Date.now()): number {
+function calcNewsConflictFloor(data: CountryData, now = Date.now()): number {
   const SIX_HOURS = 6 * 60 * 60 * 1000;
   const cutoff = now - SIX_HOURS;
 
@@ -850,7 +898,7 @@ function calcNewsConflictFloor(data: CountryData, multiplier: number, now = Date
 
   if (domains.size < 2 || !hasTrustedSource) return 0;
 
-  return Math.min(70, 60 * multiplier);
+  return 30 + Math.min(10, (recentConflictNews.length - 2) * 5);
 }
 
 function calcConflictScore(data: CountryData, countryCode: string): number {
@@ -864,7 +912,12 @@ function calcConflictScore(data: CountryData, countryCode: string): number {
     const civilianCount = events.filter(e => e.eventType === 'violence_against_civilians').length;
     const totalFatalities = events.reduce((sum, e) => sum + e.fatalities, 0);
 
-    const eventScore = Math.min(50, (battleCount * 3 + explosionCount * 4 + civilianCount * 5) * multiplier);
+    const eventActivityRaw = (battleCount * 3 + explosionCount * 4 + civilianCount * 5) * multiplier;
+    const eventScore = logScaledScore(
+      eventActivityRaw,
+      CII_CONFLICT_ACTIVITY_CAP,
+      CII_CONFLICT_ACTIVITY_PIVOT,
+    );
     const fatalityScore = Math.min(40, Math.sqrt(totalFatalities) * 5 * multiplier);
     const civilianBoost = civilianCount > 0 ? Math.min(10, civilianCount * 3) : 0;
     acledScore = eventScore + fatalityScore + civilianBoost;
@@ -873,12 +926,16 @@ function calcConflictScore(data: CountryData, countryCode: string): number {
   let hapiFallback = 0;
   if (events.length === 0 && data.hapiSummary) {
     const h = data.hapiSummary;
-    hapiFallback = Math.min(60, h.eventsPoliticalViolence * 3 * multiplier);
+    hapiFallback = logScaledScore(
+      h.eventsPoliticalViolence * 3 * multiplier,
+      CII_CONFLICT_ACTIVITY_CAP,
+      CII_CONFLICT_ACTIVITY_PIVOT,
+    );
   }
 
   let newsFloor = 0;
   if (events.length === 0 && hapiFallback === 0) {
-    newsFloor = calcNewsConflictFloor(data, multiplier);
+    newsFloor = calcNewsConflictFloor(data);
   }
 
   let strikeBoost = 0;
@@ -929,27 +986,21 @@ function calcSecurityScore(data: CountryData): number {
   return Math.min(100, flightScore + vesselScore + aviationScore + gpsJammingScore);
 }
 
-function calcInformationScore(data: CountryData, countryCode: string): number {
+function calcInformationScore(data: CountryData, _countryCode: string): number {
   const count = data.newsEvents.length;
   if (count === 0) return 0;
 
-  const multiplier = CURATED_COUNTRIES[countryCode]?.eventMultiplier ?? DEFAULT_EVENT_MULTIPLIER;
   const velocitySum = data.newsEvents.reduce((sum, e) => sum + (e.velocity?.sourcesPerHour || 0), 0);
   const avgVelocity = velocitySum / count;
 
-  const isHighVolume = multiplier < 0.7;
-  const adjustedCount = isHighVolume
-    ? Math.log2(count + 1) * multiplier * 3
-    : count * multiplier;
+  const baseScore = Math.min(40, count * 5);
 
-  const baseScore = Math.min(40, adjustedCount * 5);
-
-  const velocityThreshold = isHighVolume ? 5 : 2;
+  const velocityThreshold = 2;
   const velocityBoost = avgVelocity > velocityThreshold
-    ? Math.min(40, (avgVelocity - velocityThreshold) * 10 * multiplier)
+    ? Math.min(40, (avgVelocity - velocityThreshold) * 10)
     : 0;
 
-  const alertBoost = data.newsEvents.some(e => e.isAlert) ? 20 * multiplier : 0;
+  const alertBoost = data.newsEvents.some(e => e.isAlert) ? 20 : 0;
 
   return Math.min(100, baseScore + velocityBoost + alertBoost);
 }
@@ -966,11 +1017,63 @@ function getTrend(code: string, current: number): CountryScore['trend'] {
   const prev = previousScores.get(code);
   if (prev === undefined) return 'stable';
   const diff = current - prev;
-  if (diff >= 5) return 'rising';
-  if (diff <= -5) return 'falling';
+  // Keep the local fallback aligned with the server trend rule: strict +/-1
+  // deadband means whole-point scores need at least a two-point move to flip.
+  if (diff > CII_TREND_DEADBAND_POINTS) return 'rising';
+  if (diff < -CII_TREND_DEADBAND_POINTS) return 'falling';
   return 'stable';
 }
 
+function calculateCountryScoreSnapshot(
+  code: string,
+  data: CountryData,
+  focalUrgency: 'watch' | 'elevated' | 'critical' | null | undefined,
+): { score: number; components: ComponentScores } {
+  const baselineRisk = CURATED_COUNTRIES[code]?.baselineRisk ?? DEFAULT_BASELINE_RISK;
+
+  const components: ComponentScores = {
+    unrest: Math.round(calcUnrestScore(data, code)),
+    conflict: Math.round(calcConflictScore(data, code)),
+    security: Math.round(calcSecurityScore(data)),
+    information: Math.round(calcInformationScore(data, code)),
+  };
+
+  const eventScore = components.unrest * 0.25 + components.conflict * 0.30 + components.security * 0.20 + components.information * 0.25;
+  const hotspotBoost = getHotspotBoost(code);
+  const newsUrgencyBoost = components.information >= 70 ? 5
+    : components.information >= 50 ? 3
+    : 0;
+  const focalBoost = focalUrgency === 'critical' ? 8
+    : focalUrgency === 'elevated' ? 4
+    : 0;
+
+  const displacementBoost = getDisplacementBoost(data.displacementOutflow);
+  const climateBoost = data.climateStress;
+  const advisoryBoost = getAdvisoryBoost(data);
+  const supplementalSignalBoost = getSupplementalSignalBoost(data);
+  const blendedScore = baselineRisk * 0.4
+    + eventScore * 0.6
+    + hotspotBoost
+    + newsUrgencyBoost
+    + focalBoost
+    + displacementBoost
+    + climateBoost
+    + getOrefBlendBoost(code, data)
+    + advisoryBoost
+    + supplementalSignalBoost
+    + getEarthquakeBoost(data)
+    + getSanctionsBoost(data);
+
+  const floor = Math.max(getUcdpFloor(data), getAdvisoryFloor(data));
+  const score = Math.round(Math.min(100, Math.max(floor, blendedScore)));
+
+  return { score, components };
+}
+
+/**
+ * @deprecated Product code must consume canonical server CII scores through
+ * `cached-risk-scores`. Retained only for legacy local-engine regression tests.
+ */
 export function calculateCII(): CountryScore[] {
   const scores: CountryScore[] = [];
   const focalUrgencies = focalPointDetector.getCountryUrgencyMap();
@@ -983,37 +1086,7 @@ export function calculateCII(): CountryScore[] {
   for (const code of countryCodes) {
     const name = CURATED_COUNTRIES[code]?.name || getCountryNameByCode(code) || code;
     const data = countryDataMap.get(code) || initCountryData();
-    const baselineRisk = CURATED_COUNTRIES[code]?.baselineRisk ?? DEFAULT_BASELINE_RISK;
-
-    const components: ComponentScores = {
-      unrest: Math.round(calcUnrestScore(data, code)),
-      conflict: Math.round(calcConflictScore(data, code)),
-      security: Math.round(calcSecurityScore(data)),
-      information: Math.round(calcInformationScore(data, code)),
-    };
-
-    const eventScore = components.unrest * 0.25 + components.conflict * 0.30 + components.security * 0.20 + components.information * 0.25;
-
-    const hotspotBoost = getHotspotBoost(code);
-    const newsUrgencyBoost = components.information >= 70 ? 5
-      : components.information >= 50 ? 3
-      : 0;
-    const focalUrgency = focalUrgencies.get(code);
-    const focalBoost = focalUrgency === 'critical' ? 8
-      : focalUrgency === 'elevated' ? 4
-      : 0;
-
-    const displacementBoost = data.displacementOutflow >= 1_000_000 ? 8
-      : data.displacementOutflow >= 100_000 ? 4
-      : 0;
-    const climateBoost = data.climateStress;
-
-    const advisoryBoost = getAdvisoryBoost(data);
-    const supplementalSignalBoost = getSupplementalSignalBoost(data);
-    const blendedScore = baselineRisk * 0.4 + eventScore * 0.6 + hotspotBoost + newsUrgencyBoost + focalBoost + displacementBoost + climateBoost + getOrefBlendBoost(code, data) + advisoryBoost + supplementalSignalBoost + getEarthquakeBoost(data) + getSanctionsBoost(data);
-
-    const floor = Math.max(getUcdpFloor(data), getAdvisoryFloor(data));
-    const score = Math.round(Math.min(100, Math.max(floor, blendedScore)));
+    const { score, components } = calculateCountryScoreSnapshot(code, data, focalUrgencies.get(code));
 
     const prev = previousScores.get(code) ?? score;
 
@@ -1034,39 +1107,26 @@ export function calculateCII(): CountryScore[] {
   return scores.sort((a, b) => b.score - a.score);
 }
 
+/**
+ * @deprecated Product code must consume canonical server CII scores through
+ * `cached-risk-scores`. Retained only for legacy local-engine regression tests.
+ */
 export function getTopUnstableCountries(limit = 10): CountryScore[] {
   return calculateCII().slice(0, limit);
 }
 
+/**
+ * @deprecated Product code must consume canonical server CII scores through
+ * `cached-risk-scores`. Retained only for legacy local-engine regression tests.
+ */
 export function getCountryScore(code: string): number | null {
-  const data = countryDataMap.get(code);
+  const normalizedCode = code.toUpperCase();
+  const data = countryDataMap.get(normalizedCode);
   if (!data) return null;
 
-  const baselineRisk = CURATED_COUNTRIES[code]?.baselineRisk ?? DEFAULT_BASELINE_RISK;
-  const components: ComponentScores = {
-    unrest: calcUnrestScore(data, code),
-    conflict: calcConflictScore(data, code),
-    security: calcSecurityScore(data),
-    information: calcInformationScore(data, code),
-  };
-
-  const eventScore = components.unrest * 0.25 + components.conflict * 0.30 + components.security * 0.20 + components.information * 0.25;
-  const hotspotBoost = getHotspotBoost(code);
-  const newsUrgencyBoost = components.information >= 70 ? 5
-    : components.information >= 50 ? 3
-    : 0;
-  const focalUrgency = focalPointDetector.getCountryUrgency(code);
-  const focalBoost = focalUrgency === 'critical' ? 8
-    : focalUrgency === 'elevated' ? 4
-    : 0;
-  const displacementBoost = data.displacementOutflow >= 1_000_000 ? 8
-    : data.displacementOutflow >= 100_000 ? 4
-    : 0;
-  const climateBoost = data.climateStress;
-  const advisoryBoost = getAdvisoryBoost(data);
-  const supplementalSignalBoost = getSupplementalSignalBoost(data);
-  const blendedScore = baselineRisk * 0.4 + eventScore * 0.6 + hotspotBoost + newsUrgencyBoost + focalBoost + displacementBoost + climateBoost + getOrefBlendBoost(code, data) + advisoryBoost + supplementalSignalBoost;
-
-  const floor = Math.max(getUcdpFloor(data), getAdvisoryFloor(data));
-  return Math.round(Math.min(100, Math.max(floor, blendedScore)));
+  return calculateCountryScoreSnapshot(
+    normalizedCode,
+    data,
+    focalPointDetector.getCountryUrgency(normalizedCode),
+  ).score;
 }

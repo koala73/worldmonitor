@@ -1,8 +1,8 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync, readdirSync, existsSync } from 'node:fs';
+import { readFileSync, readdirSync, existsSync, statSync } from 'node:fs';
 import { dirname, resolve, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const root = resolve(__dirname, '..');
@@ -23,19 +23,45 @@ const oauthEdgeFunctions = readdirSync(apiOauthDir)
 
 const allEdgeFunctions = [...edgeFunctions, ...oauthEdgeFunctions];
 
-// ALL .js AND .ts files in api/ root — used for node: built-in checks.
-// Note: .ts edge functions (e.g. widget-agent.ts) are intentionally excluded from the
+// ALL .js AND .ts files under api/ (recursively) — used for node: built-in checks.
+// Note: .ts edge functions are intentionally excluded from the
 // module-isolation describe below because Vercel bundles them at build time, so
-// imports from '../server/' are valid. The node: built-in check still applies.
-const allApiFiles = [
-  ...readdirSync(apiDir)
-    .filter((f) => (f.endsWith('.js') || f.endsWith('.ts')) && !f.startsWith('_'))
-    .map((f) => ({ name: f, path: join(apiDir, f) })),
-  ...oauthEdgeFunctions,
-];
+// imports from '../server/' are valid. The node: built-in check still applies
+// regardless of depth, since Vercel Edge Runtime rejects node: imports at runtime.
+function walkApi(dir, relPrefix = '') {
+  const out = [];
+  for (const entry of readdirSync(dir)) {
+    if (entry.startsWith('_')) continue; // underscore helpers are not routed
+    const full = join(dir, entry);
+    const rel = relPrefix ? `${relPrefix}/${entry}` : entry;
+    if (statSync(full).isDirectory()) {
+      out.push(...walkApi(full, rel));
+    } else if (entry.endsWith('.js') || entry.endsWith('.ts')) {
+      out.push({ name: rel, path: full });
+    }
+  }
+  return out;
+}
+
+const allApiFiles = walkApi(apiDir);
 
 describe('scripts/shared/ stays in sync with shared/', () => {
-  const sharedFiles = readdirSync(sharedDir).filter((f) => f.endsWith('.json') || f.endsWith('.cjs'));
+  // Historical scope: .json (data) + .cjs (helpers).
+  // Explicit additions (must be mirrored): edge-safe modules the cron consumes
+  // (e.g. brief-llm-core.js + its .d.ts). Other .js files in shared/ are
+  // client-only and intentionally NOT mirrored — grow this list only when a
+  // new file is imported from `scripts/`.
+  const explicitMirroredFiles = new Set([
+    'brief-llm-core.js',
+    'brief-llm-core.d.ts',
+    'correlation-runtime-mode.js',
+    // U6/U7: pure URL classifier consumed by the brief filter (edge) AND
+    // by the audit script under scripts/. Must stay byte-identical.
+    'url-classifier.js',
+  ]);
+  const sharedFiles = readdirSync(sharedDir).filter(
+    (f) => f.endsWith('.json') || f.endsWith('.cjs') || explicitMirroredFiles.has(f),
+  );
   for (const file of sharedFiles) {
     it(`scripts/shared/${file} matches shared/${file}`, () => {
       const srcPath = join(scriptsSharedDir, file);
@@ -49,11 +75,23 @@ describe('scripts/shared/ stays in sync with shared/', () => {
 
 describe('Edge Function shared helpers resolve', () => {
   it('_rss-allowed-domains.js re-exports shared domain list', async () => {
-    const mod = await import(join(apiDir, '_rss-allowed-domains.js'));
+    const mod = await import(pathToFileURL(join(apiDir, '_rss-allowed-domains.js')).href);
     const domains = mod.default;
     assert.ok(Array.isArray(domains), 'Expected default export to be an array');
-    assert.ok(domains.length > 200, `Expected 200+ domains, got ${domains.length}`);
-    assert.ok(domains.includes('feeds.bbci.co.uk'), 'Expected BBC feed domain in list');
+    // Content parity, not just a smoke check. api/_rss-allowed-domains.js is a
+    // hand-maintained literal mirror of the shared JSON (Vercel edge esbuild
+    // cannot import JSON via import attributes, and api/*.js cannot import from
+    // ../shared), so this assertion is the only thing stopping it drifting from
+    // the source of truth. A domain added to shared/ but missed here 403s in the
+    // edge proxy while every other consumer works — the same silent-drift class
+    // the scripts/shared/ check above already guards against.
+    const shared = JSON.parse(readFileSync(join(sharedDir, 'rss-allowed-domains.json'), 'utf8'));
+    assert.deepStrictEqual(
+      domains,
+      shared,
+      'api/_rss-allowed-domains.js is out of sync with shared/rss-allowed-domains.json — ' +
+        'update the literal array in api/_rss-allowed-domains.js to match',
+    );
   });
 });
 
@@ -70,59 +108,10 @@ describe('Edge Function no node: built-ins', () => {
   }
 });
 
-describe('Legacy api/*.js endpoint allowlist', () => {
-  const ALLOWED_LEGACY_ENDPOINTS = new Set([
-    'ais-snapshot.js',
-    'bootstrap.js',
-    'cache-purge.js',
-    'contact.js',
-    'download.js',
-    'fwdstart.js',
-    'geo.js',
-    'gpsjam.js',
-    'health.js',
-    'military-flights.js',
-    'og-story.js',
-    'opensky.js',
-    'oref-alerts.js',
-    'polymarket.js',
-    'register-interest.js',
-    'reverse-geocode.js',
-    'mcp-proxy.js',
-    'rss-proxy.js',
-    'satellites.js',
-    'seed-health.js',
-    'story.js',
-    'telegram-feed.js',
-    'sanctions-entity-search.js',
-    'version.js',
-  ]);
-
-  const currentEndpoints = readdirSync(apiDir).filter(
-    (f) => f.endsWith('.js') && !f.startsWith('_'),
-  );
-
-  for (const file of currentEndpoints) {
-    it(`${file} is in the legacy endpoint allowlist`, () => {
-      assert.ok(
-        ALLOWED_LEGACY_ENDPOINTS.has(file),
-        `${file} is a new api/*.js endpoint not in the allowlist. ` +
-          'New data endpoints must use the sebuf protobuf RPC pattern ' +
-          '(proto definition → buf generate → handler in server/worldmonitor/{domain}/v1/ → wired in handler.ts). ' +
-          'If this is a non-data ops endpoint, add it to ALLOWED_LEGACY_ENDPOINTS in tests/edge-functions.test.mjs.',
-      );
-    });
-  }
-
-  it('allowlist has no stale entries (all listed files exist)', () => {
-    for (const file of ALLOWED_LEGACY_ENDPOINTS) {
-      assert.ok(
-        existsSync(join(apiDir, file)),
-        `${file} is in ALLOWED_LEGACY_ENDPOINTS but does not exist in api/ — remove it from the allowlist.`,
-      );
-    }
-  });
-});
+// The legacy api/*.js allowlist that previously lived here was replaced by
+// api/api-route-exceptions.json + scripts/enforce-sebuf-api-contract.mjs (see
+// docs/adding-endpoints.mdx). The new check covers nested paths and .ts files,
+// which this block missed.
 
 describe('reverse-geocode Redis write', () => {
   const geocodePath = join(apiDir, 'reverse-geocode.js');
@@ -192,6 +181,138 @@ describe('oauth/authorize.js consent page safety', () => {
   });
 });
 
+describe('api/slack/oauth/start.ts safety', () => {
+  const startPath = join(root, 'api', 'slack', 'oauth', 'start.ts');
+
+  it('uses crypto.getRandomValues for CSRF state (not Math.random)', () => {
+    const src = readFileSync(startPath, 'utf-8');
+    assert.ok(
+      src.includes('crypto.getRandomValues'),
+      'start.ts: CSRF state must use crypto.getRandomValues — Math.random is predictable and exploitable',
+    );
+    assert.ok(
+      !src.includes('Math.random'),
+      'start.ts: must not use Math.random for state generation',
+    );
+  });
+
+  it('stores state in Upstash with EX TTL via pipeline (atomic)', () => {
+    const src = readFileSync(startPath, 'utf-8');
+    assert.ok(
+      src.includes("'EX'") || src.includes('"EX"'),
+      "start.ts: Upstash state entry must include 'EX' TTL to auto-expire unused tokens",
+    );
+    assert.ok(
+      src.includes('/pipeline'),
+      'start.ts: must use Upstash pipeline endpoint for atomic state storage',
+    );
+  });
+
+  it('uses AbortSignal.timeout on Upstash pipeline fetch', () => {
+    const src = readFileSync(startPath, 'utf-8');
+    assert.ok(
+      src.includes('AbortSignal.timeout'),
+      'start.ts: Upstash pipeline fetch must have AbortSignal.timeout to prevent hanging edge isolates',
+    );
+  });
+
+  it('validates bearer token before generating state', () => {
+    const src = readFileSync(startPath, 'utf-8');
+    // validateBearerToken must appear before getRandomValues
+    const validateIdx = src.indexOf('validateBearerToken');
+    const randomIdx = src.indexOf('getRandomValues');
+    assert.ok(validateIdx !== -1, 'start.ts: must call validateBearerToken');
+    assert.ok(randomIdx !== -1, 'start.ts: must call getRandomValues');
+    assert.ok(
+      validateIdx < randomIdx,
+      'start.ts: validateBearerToken must come before getRandomValues — generate state only for authenticated users',
+    );
+  });
+});
+
+describe('api/slack/oauth/callback.ts safety', () => {
+  const callbackPath = join(root, 'api', 'slack', 'oauth', 'callback.ts');
+
+  it("uses '*' as postMessage targetOrigin (works on all WM subdomains and previews)", () => {
+    const src = readFileSync(callbackPath, 'utf-8');
+    assert.ok(
+      src.includes("APP_ORIGIN = '*'"),
+      "callback.ts: postMessage targetOrigin must be '*' so it works on tech/finance/happy subdomains and " +
+      'preview deployments — a hardcoded origin would silently drop messages on all other origins. ' +
+      "Security comes from the e.origin check in the listener, not from targetOrigin.",
+    );
+  });
+
+  it('HTML-escapes the error param before embedding in response body (no XSS)', () => {
+    const src = readFileSync(callbackPath, 'utf-8');
+    assert.ok(
+      src.includes('escapeHtml(error)'),
+      'callback.ts: error param from Slack redirect must be HTML-escaped before embedding in response body — raw interpolation is a reflected XSS vector',
+    );
+  });
+
+  it('atomically consumes CSRF state from Upstash (prevents concurrent replay)', () => {
+    const src = readFileSync(callbackPath, 'utf-8');
+    assert.ok(
+      src.includes('upstashGetDel'),
+      'callback.ts: must use a single atomic upstashGetDel operation to validate and consume state',
+    );
+    assert.ok(
+      src.includes('/getdel/'),
+      'callback.ts: state consumption must use Upstash GETDEL, not separate GET and DEL requests',
+    );
+    assert.ok(
+      !src.includes('/get/') && !src.includes('/del/'),
+      'callback.ts: split GET/DEL state consumption permits concurrent replay',
+    );
+  });
+
+  it('uses AbortSignal.timeout on all Upstash fetches', () => {
+    const src = readFileSync(callbackPath, 'utf-8');
+    // Both upstashGet and upstashDel must have timeouts — count occurrences
+    const timeoutCount = (src.match(/AbortSignal\.timeout/g) ?? []).length;
+    assert.ok(
+      timeoutCount >= 2,
+      `callback.ts: all Upstash fetches must have AbortSignal.timeout — found ${timeoutCount}, expected at least 2 (upstashGet + upstashDel)`,
+    );
+  });
+
+  it('does not redirect main window to Slack (dead-end fallback removed)', () => {
+    const src = readFileSync(callbackPath, 'utf-8');
+    assert.ok(
+      !src.includes('window.location.href'),
+      'callback.ts: must not redirect main window to Slack — without window.opener the user lands on a dead-end page. Show an allow-popups error instead.',
+    );
+  });
+});
+
+describe('vercel.json CSP: Slack OAuth callback has unsafe-inline override', () => {
+  const vercelJson = JSON.parse(readFileSync(join(root, 'vercel.json'), 'utf-8'));
+
+  it('vercel.json has a CSP override for /api/slack/oauth/callback allowing unsafe-inline scripts', () => {
+    const rule = vercelJson.headers?.find((r) => r.source === '/api/slack/oauth/callback');
+    assert.ok(rule, 'vercel.json: missing header rule for /api/slack/oauth/callback — the callback page serves inline JS (postMessage + window.close) which is blocked by the global CSP');
+    const csp = rule.headers?.find((h) => h.key === 'Content-Security-Policy');
+    assert.ok(csp, 'vercel.json: /api/slack/oauth/callback rule must include a Content-Security-Policy header');
+    assert.ok(
+      csp.value.includes("'unsafe-inline'"),
+      "vercel.json: /api/slack/oauth/callback CSP must include 'unsafe-inline' in script-src — the callback page uses an inline <script> to call postMessage and window.close()",
+    );
+  });
+
+  it('/api/slack/oauth/callback CSP override appears after the global CSP rule (must override it)', () => {
+    const headers = vercelJson.headers ?? [];
+    const globalIdx = headers.findIndex((r) => r.source === '/((?!docs|embed|embed\\.html).*)');
+    const callbackIdx = headers.findIndex((r) => r.source === '/api/slack/oauth/callback');
+    assert.ok(globalIdx !== -1, 'vercel.json: global CSP rule not found');
+    assert.ok(callbackIdx !== -1, 'vercel.json: callback CSP override not found');
+    assert.ok(
+      callbackIdx > globalIdx,
+      'vercel.json: /api/slack/oauth/callback CSP override must appear AFTER the global rule — Vercel applies rules in order and the last match wins',
+    );
+  });
+});
+
 describe('Edge Function module isolation', () => {
   for (const { name, path } of allEdgeFunctions) {
     it(`${name} does not import from ../server/ (Edge Functions cannot resolve cross-directory TS)`, () => {
@@ -211,3 +332,10 @@ describe('Edge Function module isolation', () => {
     });
   }
 });
+
+// Scenario endpoints (run / status / templates) were migrated from literal-filename
+// edge functions to ScenarioService RPCs in PR #3207 commit 7. See
+// tests/scenario-handler.test.mjs for the handler-level coverage that preserves
+// the security invariants (405/POST guard via sebuf service-config, scenarioId +
+// iso2 validation, JOB_ID_RE path-traversal guard, per-IP 10/min rate limit via
+// gateway, queue-depth backpressure, AbortSignal.timeout on Redis pipelines).

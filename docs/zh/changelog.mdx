@@ -1,0 +1,790 @@
+---
+title: "更新日志"
+description: "World Monitor 所有版本重要变更的完整发布记录：按语义化版本号有序组织，涵盖新增功能、错误修复、性能优化、UI 改进、API 新增与弃用端点、破坏性改动说明、安全公告及迁移指南，方便开发者、集成方与订阅用户跟踪产品演进、规划升级路径与查阅历史发布备注。"
+rss: true
+---
+
+World Monitor 的所有重要变更均记录于此。通过 [RSS](https://www.worldmonitor.app/docs/changelog/rss.xml) 订阅以获取最新动态。
+
+<Update label="Unreleased" description="Unreleased" tags={["Trade", "Intelligence", "Search", "Supply Chain", "Maritime", "Security", "MCP"]}>
+
+### 新增
+
+- **路线浏览器**：独立的全屏模态框（CMD+K），用于规划任意两个国家之间的货物运输。包含当前/备选/陆路/影响标签页，支持键盘优先导航、URL 状态分享、战略产品贸易数据、依赖标识，以及免费版模糊处理与公开路线高亮（#2980, #2982, #2994, #2996, #2997, #2998）
+- 贸易政策面板新增 **美国海关关税收入**，包含月度数据、财年至今（FYTD）同比对比，以及收入峰值高亮（#1663）
+- **安全旅行提醒金标准迁移**：Railway 定时任务种子每小时抓取 24 个政府 RSS 源，Vercel 仅读取 Redis（#1637）
+- **CMD+K 全面板覆盖**：全部 55 个面板现均可搜索（原为 31 个），包括 AI 预测、相关性面板、摄像头、流离失所、安全旅行提醒（#1656）
+- 咽喉要道过境情报接入 3 个免费数据源：IMF PortWatch、CorridorRisk、AISStream（#1560）
+- 监测的咽喉要道增至 13 个（原为 6 个）：新增好望角、直布罗陀、博斯普鲁斯海峡（合并达达尼尔海峡）、朝鲜海峡、多佛尔、刻赤、龙目海峡（#1560, #1572）
+- 可展开的咽喉要道卡片，集成 TradingView 轻量图表展示 180 天时间序列（#1560）
+- 在 Railway 中继上通过越线检测实现实时过境计数（#1560）
+- 用于预测调试的 R2 轨迹存储，通过 Cloudflare API 上传（#1655）
+- 在 Makefile generate 目标中注入 `@ts-nocheck`，以实现 CI proto 新鲜度校验对等（#1637）
+
+### 变更
+
+- **MCP 缓存工具默认上限**：`get_country_macro`、`get_eu_housing_cycle`、`get_eu_quarterly_gov_debt` 与 `get_eu_industrial_production` 现在省略 `limit` 时将返回的国家映射上限设为 30 条。这使这些工具与文档中其他缓存工具使用的 MCP `DEFAULT_LIST_LIMIT` 行为一致，但这是一项面向消费者的默认值变更：需要完整国家集合的集成必须显式传入 `limit: 0`。
+- **CII 公式 `v8`**：修复了失效的 UCDP 冲突下限归属。服务器评分器从缓存的 `conflict:ucdp-events:v1` feed 读取了不存在的 `intensity_level` / `type_of_violence` 字段（该 feed 的行实际携带 `violenceType`、`deathsBest` 与 `dateStart`），因此 UCDP 从未应用其战争（下限 70）/ 轻度冲突（下限 50）评分下限，也从未计入 `riskScores` 实时健康/缓存信号覆盖率。UCDP 现按国家在 2 年滚动窗口内分类（总死亡大于 1000 或事件数大于 100 时为战争；事件数大于 10 时为轻度冲突），与前端 `deriveUcdpClassifications` 启发式一致。分类器为该 2 年窗口配置，但 Redis 写入器目前抓取最新的 6 个 UCDP 页面，并保留来自 365 天滚动事件切片的至多 2,000 条映射事件；中继 `/ucdp-events` 读取器最多可抓取 12 个页面，但应用相同的 365 天过滤。在 UCDP 保留范围随生产 API 体量与 Redis 负载保障扩大之前，实时评分受种子输入约束。健康覆盖率指标的冲突族现由 ACLED API 路径或 UCDP 任一满足，因此当 UCDP 健康时，稀薄/空白的 ACLED 窗口不再将健康状态翻转为 `COVERAGE_PARTIAL`。活跃 UCDP 冲突国家（如 UA/PK/MX 获得战争下限）的 `combinedScore` 值上升；风险评分缓存键族迁移至 `risk:scores:sebuf:v8`，发出的 `methodology_version` 现为 `v8`；客户端应重新建立基线。
+- **CII 公式 `v7`**：第二批差距闭合的得分归属逻辑现已变更。坐标归属在成对边界规则之前先解决三方边界框重叠，因此 Punggye-ri 归属朝鲜（KP）而非中国（CN），Lublin 归属波兰（PL）而非乌克兰（UA）；种子镜像使用相同的解析器。定向探测还覆盖拉萨、加济安泰普、克尔曼沙阿、奎达/伊斯兰堡、达曼、塔布克、瑞丽、别洛戈尔斯克、北海道北部以及安曼。气候异常加成现已覆盖生产者发出的 `Europe`、`East Asia` 和 `Latin America` 区域，恢复了 KP/KR/JP/PL/DE/FR/GB/VE 的覆盖；未来未知区域可在可用时通过异常坐标进行回退。受影响记录的 `combinedScore` 值可能发生偏移，风险评分缓存键族迁移至 `risk:scores:sebuf:v7`，发出的 `methodology_version` 现为 `v7`；客户端应重新建立基线。剩余的坐标归属仍为矩形近似，并非完整的点在多边形内边界几何判定。
+- **CII 公式 `v6`**：得分归属逻辑现已作为一批次变更，涵盖国家文本、坐标和气候异常输入。种子与服务器端的国家解析器在 token/短语匹配、里奥格兰德美/墨边境段、朝鲜半岛西部非军事区、RU/UA、IN/PK、CN/RU 以及 RU/JP 边界框重叠上达成一致；`north korean` 归属朝鲜（KP），`taiwanese` 归属台湾（TW），而裸 `korean` 仍然歧义。气候异常现在将发出的生产者区域（`Ukraine`、`California`、`Amazon`、`Taiwan Strait`、`Caribbean` 等）输入 CII，并将枚举严重程度转换为数值气候加成尺度。受影响记录的 `combinedScore` 值可能发生偏移，风险评分缓存键族迁移至 `risk:scores:sebuf:v6`，发出的 `methodology_version` 现为 `v6`；客户端应重新建立基线。
+- **CII 公式 `v5`**：`dynamicScore` 现为 `-100..100` 范围内的有符号移动增量，来源于约 24 小时前的有效 CII 快照。正值表示风险上升，负值表示风险下降，`0` 表示稳定或无有效先前快照。浏览器回退趋势死区现已与服务器规则一致（`> 1` / `< -1`，对整点得分而言相当于两点阈值）。`combinedScore` 系数不变，风险评分缓存键族迁移至 `risk:scores:sebuf:v5`，发出的 `methodology_version` 现为 `v5`；此前将 `dynamicScore` 视为非负实时得分的客户端应重新建立基线。
+- **CII 方法论 v4**：复合不稳定指数（CII）的国家归属与数据源输入已收紧。文本归属现使用 token 精确匹配/短语匹配，已知边界框重叠通过显式启发式路由，地震种子使用 USGS 4.5 周（`4.5_week`）数据源，制裁评分读取完整国家计数映射。客户端影响：受影响国家的 `combinedScore` 值可能发生偏移，风险评分缓存键族迁移至 `risk:scores:sebuf:v4`，发出的 `methodology_version` 现为 `v4`。
+- **CII 公式 `v3`**：冲突事件活动度现采用对数标定校准，应用于最终分量封顶之前，保留中等与极端事件量之间的距离。浏览器 CII 路径现与服务器端流离失所对数斜坡匹配，而非旧的 `+4/+8` 分级；浏览器端新闻警报压力不再被各国 `eventMultiplier` 放大。公开的 `combinedScore` 值可能发生偏移，`methodology_version` 从 `v2` 升至 `v3`；基于此固定的客户端应重新建立基线。参见 `docs/methodology/cii-risk-scores.mdx`（#2457，以及 #3726 的方法论部分）。
+- **CII 权重唯一来源（#3789，#2457 的基础）**：`baselineRisk` 与 `eventMultiplier` 现来自一个共享系数表，服务器端风险评分与前端客户端 CII 渲染均使用该表。此前 7 个国家的前端/服务器漂移已对齐到已发布的服务器/API 值。此次重构未改变服务器/API 值；上述 `methodology_version` 升至 v3 源自校准变更，而非此次来源迁移。
+- **CII 公式 `v2`**：复合不稳定指数的 `Security`（安全）分量现除 GPS 干扰外，还评分军用航班、军用舰艇与航空中断。复合混合新增 `newsUrgencyBoost`、`earthquakeBoost`、`sanctionsBoost` 与 AIS 中断加成；`cyberBoost`/`fireBoost` 现按严重程度加权。公开的 `combinedScore` 值相应变化，`methodology_version` 从 `v1` 升至 `v2`；基于此固定的客户端应重新建立基线。
+
+- **Sebuf API 迁移（#3207）** — 场景与供应链端点已迁移至类型化 sebuf 契约。RPC URL 现从方法名派生；5 个重命名的 v1 URL 作为轻量别名保留可用，以便现有集成继续工作：
+  - `/api/scenario/v1/run` → `/api/scenario/v1/run-scenario`
+  - `/api/scenario/v1/status` → `/api/scenario/v1/get-scenario-status`
+  - `/api/scenario/v1/templates` → `/api/scenario/v1/list-scenario-templates`
+  - `/api/supply-chain/v1/country-products` → `/api/supply-chain/v1/get-country-products`
+  - `/api/supply-chain/v1/multi-sector-cost-shock` → `/api/supply-chain/v1/get-multi-sector-cost-shock`
+
+  这些别名将在下一次 v1→v2 破坏性变更时退役（追踪于 [#3282](https://github.com/koala73/worldmonitor/issues/3282)）。
+
+- `POST /api/scenario/v1/run-scenario` 在成功入队时**再次返回 `202 Accepted`**，恢复 sebuf 迁移前的契约（取代下方的 `200 OK` 条目）。响应现还携带一个 `Location` 头，指向 `get-scenario-status` 轮询 URL（与响应体 `statusUrl` 同值），完善标准 REST 异步任务模式。网关通过状态覆盖旁路将 sebuf 生成的 200 升级；错误状态码（400/403/429/502）不变。将任何 `2xx` 视为成功 —— 基于响应体 `status === "pending"` 分支判断的临时指南仍然有效。
+- `POST /api/scenario/v1/run-scenario` 现返回 `200 OK`，而非迁移前的 `202 Accepted`。sebuf 的 HTTP 注解不携带每个 RPC 的状态码。请基于响应体的 `status === "pending"` 判断，而非 `response.status === 202`。`statusUrl` 字段保留不变。
+
+### 安全
+
+- **CDN 缓存绕过已修复**：`CDN-Cache-Control` 头现仅对受信任来源（worldmonitor.app、Vercel 预览、Tauri）发送。无来源的服务器端请求始终调用边缘函数以执行 `validateApiKey`，防止外部爬虫获得缓存的 200 响应。
+- **Shipping v2 webhook 租户隔离（#3242）**：`POST /api/v2/shipping/webhooks` 与 `GET /api/v2/shipping/webhooks` 现强制执行 `validateApiKey(req, { forceKey: true })`，与同级的 `[subscriberId]{,/[action]}` 路由保持一致。若无此门控，已通过 Clerk 认证但无 API 密钥的 Pro 用户将坍缩到共享的 `'anon'` 指纹桶，从而看到或覆盖其他 `'anon'` 桶租户拥有的 webhook。
+
+### 修复
+
+- 贸易政策面板的 WTO 门控从面板级改为按标签页级，使收入标签页在桌面端无 WTO API 密钥时也能工作（#1663）
+- 冲突情报种子在无 ACLED 凭证时，当人道主义/PizzINT 数据可用时接受空事件从而成功运行（#1651）
+- 因顶层 `@aws-sdk/client-s3` 导入导致 seed-forecasts 崩溃的问题，通过惰性动态导入解决（#1654）
+- 恢复桌面端 bootstrap 超时（5s/8s），同时保留激进的 Web 端超时（1.2s/1.8s）（#1653）
+- Service Worker 导航回退为 NetworkOnly，以防止部署时缓存陈旧 HTML（#1653）
+- 修复 5 个服务的 Railway 种子监视路径（seed-insights、seed-unrest-events、seed-prediction-markets、seed-infra、seed-gpsjam）
+- 修复 PortWatch ArcGIS URL、字段名与咽喉要道名称映射（#1572）
+
+</Update>
+
+<Update label="v2.6.1 - March 11, 2026" description="v2.6.1" tags={["Blog", "Intelligence", "Satellite"]}>
+
+### 亮点
+
+- **博客平台** — 基于 Astro 的博客，位于 /blog，包含 16 篇 SEO 优化文章、OG 图片与站点页脚（#1401, #1405, #1409）
+- **国家情报** — 国家概况板块，附带右键上下文菜单（#1400）
+- **卫星影像大修** — 地球原生渲染、仅轮廓多边形、CSP 修复（#1381, #1385, #1376）
+
+### 新增
+
+- 位于 /blog 的 Astro 博客，包含 16 篇 SEO 文章与构建集成（#1401, #1403）
+- 博客重新设计，与 /pro 页面设计系统一致（#1405）
+- 博客 SEO、OG 图片、favicon 修复与站点页脚（#1409）
+- 情报面板的国家概况板块与右键上下文菜单（#1400）
+- 在轨道监视图层启用卫星影像面板（#1375）
+- 地球原生卫星影像，移除侧边栏面板（#1381）
+- 支持同义词的图层搜索过滤器（#1369）
+- 面板与添加面板区块上的关闭按钮（#1354）
+- 企业联系表单端点（#1365）
+- 商品与 happy 变体在所有页头版本上显示（#1407）
+
+### 修复
+
+- NOTAM 关闭信息合并入航空图层（#1408）
+- 情报深度分析布局重排，移除重复标题（#1404）
+- 卫星影像改为仅轮廓多边形，消除 alpha 叠加导致的蓝色色调（#1385）
+- 企业表单加固，增加必填字段与潜在客户资格判定（#1382）
+- 地理编码无法识别国家时，国家情报静默关闭（#1383）
+- 地球上小标记类型的命中目标放大（#1378）
+- 对现有用户隐藏影像面板，并修复视口重新获取死锁（#1377）
+- 修复卫星预览图片的 CSP 违规（#1376）
+- Safari TypeError 过滤与 Sentry 噪声模式（#1380）
+- 瑞典语区域 'avbruten' TypeError 变体过滤（#1402）
+- 卫星影像 STAC 后端修复，合并入轨道监视（#1364）
+- 航空 "Computed" 数据源替换为具体标签，降低缓存 TTL（#1374）
+- 所有标记工具提示上的关闭按钮与悬停暂停（#1371）
+- 从 LAYER_SYNONYMS 移除无效的 'satelliteImagery'（#1370）
+- 修复风险评分种子间隙与 seed-meta 键不匹配（#1366）
+- 新闻与摄像头面板间一致的 LIVE 页头模式（#1367）
+- 路径访问器回调中的地球空值守卫（#1372）
+- pre-push 钩子中的 node_modules 守卫，固定 Node 22（#1368）
+- 类型检查 CI 工作流：移除 paths-ignore，新增 push 触发器（#1373）
+- 从页头移除主题切换按钮（#1407）
+
+</Update>
+
+<Update label="v2.6.0 - March 09, 2026" description="v2.6.0" tags={["Satellite", "Finance", "Map", "Infrastructure", "Pro"]}>
+
+### 亮点
+
+- **轨道监视** — 实时卫星追踪图层，使用 TLE 传播（#1278）
+- **高级金融套件** — Pro 层级的股票分析工具（#1268）
+- **自托管底图** — 从 CARTO 迁移至 Cloudflare R2 上的 PMTiles（#1064）
+- **GPS 干扰 v2** — 从 gpsjam.org 迁移至 Wingbits API，使用 H3 六边形（#1240）
+- **军用航班大修** — 通过 Redis 种子 + 边缘处理器集中化，附带 OpenSky/Wingbits 回退（#1263, #1274, #1275, #1276）
+- **Pro 候补名单与落地页** — 推荐系统、Turnstile CAPTCHA、21 种语言本地化（#1140, #1187）
+- **服务器端 AI 分类** — 批量标题分类从客户端迁移到服务器端（#1195）
+- **商品变体** — 专注于商品的新应用变体，附带相关面板与图层（#1040, #1100）
+- **健康检查系统** — 全面的健康端点，附带自动 seed-meta 新鲜度追踪（#1091, #1127, #1128）
+
+### 新增
+
+- 轨道监视图层，通过 satellite.js 实现实时卫星追踪（#1278, #1281）
+- 面向 Pro 层级的高级金融股票分析套件（#1268）
+- GPS 干扰迁移至 Wingbits API，使用 H3 六边形网格（#1240）
+- 商品应用变体，附带专用面板与地图图层（#1040, #1100）
+- Pro 候补名单落地页，附带推荐系统与 Turnstile CAPTCHA（#1140）
+- Pro 落地页本地化 — 21 种语言（#1187）
+- Pro 页面重新定位为面向市场、宏观与地缘政治（#1261）
+- 通过 `?ref=` 链接访问时显示推荐邀请横幅（#1232）
+- 面向新闻标题的服务器端批量 AI 分类（#1195）
+- Cloudflare R2 上的自托管 PMTiles 底图，替代 CARTO（#1064）
+- 按提供商的地图主题选择器（#1101）
+- 地球视觉预设设置（地球 / 宇宙），附带纹理选择（#1090, #1076）
+- 面向 UptimeRobot 的全面健康检查端点（#1091）
+- 所有 RPC 处理器的自动 seed-meta 新鲜度追踪（#1127）
+- 通过 TeleGeography API 将海底电缆扩展至 86 条（#1224）
+- 巴阿冲突区与国家边界覆盖系统（#1150）
+- 苏丹与缅甸冲突区多边形改进（#1216）
+- 伊朗事件：新增 28 个位置坐标，48 小时 TTL（#1251）
+- 爱尔兰的科技总部数据（#1244）
+- BIS 数据种子任务（#1131）
+- 加密货币/稳定币数据的 CoinPaprika 回退（#1092）
+- Rudaw TV 直播流与 RSS 源（#1117）
+- 迪拜与利雅得加入默认机场监视列表（#1144）
+- Cmd+K：补齐 16 个缺失的图层开关（#1289），带类别列表的"查看全部命令"链接（#1270）
+- 所有外链上的 UTM 归因标签（#1233）
+- 性能警告对话框替代硬性图层限制（#1088）
+- 统一的错误/重试 UX，附带柔和样式与倒计时（#1115）
+- 设置重组为可折叠分组（#1110）
+- 带工具提示的重置布局按钮（#1267, #1250）
+- pre-push 钩子中的 Markdown 检查（#1166）
+
+### 变更
+
+- 军用航班通过 Redis 种子 + 边缘处理器模式集中化（#1263）
+- 军用航班种子，附带 OpenSky 匿名回退 + Wingbits 回退（#1274, #1275）
+- 战区态势直接在中继中计算，而非 ping Vercel RPC（#1259）
+- 国家 GeoJSON 由 R2 CDN 提供（#1164）
+- 将重复的市场数据列表合并为共享 JSON 配置（#1212）
+- 消除所有前端外部 API 调用 — 强制执行金标准模式（#1217）
+- WB 指标在 Railway 上播种，从不从前端调用（#1159, #1157）
+- 新闻 + 火灾的时间基线迁移到服务器端（#1194）
+- 面板创建由变体配置守卫（#1221）
+- 面板标签页样式在所有面板上统一为下划线模式（#1106, #1182, #1190, #1192）
+- 减少默认地图图层（#1141）
+- 分享对话框的关闭通过 cookie 在子域间持久化（#1286）
+- 全境冲突区使用实际国家几何（#1245）
+- 航空种子间隔减少至 1 小时（#1258）
+- 种子中用原生 Node.js HTTP CONNECT 隧道替代 curl（#1287）
+- 种子脚本使用来自 `scripts/shared/` 的 `_seed-utils.mjs` 共享配置（#1231, #1234）
+
+### 修复
+
+- **速率限制**：在 CF 代理后优先使用 `cf-connecting-ip` 而非 `x-real-ip`，以正确实现按用户限速（#1241）
+- **安全**：加固缓存键以防止注入与哈希冲突（#1103），为摘要端点设置按端点速率限制（#1161）
+- **地图**：防止未开启开关的幽灵图层渲染（#1264）、DeckGL 图层开关卡死（#1248）、底图失败时自动回退到 OpenFreeMap（#1109）、Carto 底图的 CORS 回退（#1142）、在 Tauri 中为 PMTiles 使用启用 CORS 的 R2 URL（#1119）、3D 模式下禁用 CII 不稳定图层（#1292）
+- **布局**：地图隐藏时协调超宽区域（#1246）、在缩放的桌面宽度下保持设置按钮可见（#1249）、切换变体前退出全屏（#1253）、初始加载时应用地图隐藏布局类（#1087）、刷新时保留面板列位置（#1170, #1108, #1112）
+- **面板**：事件委托在 setContent 防抖中存活（#1203）、用可选链守卫 RPC 响应数组访问（#1174）、清除卡住的错误页头并净化错误消息（#1175）、惰性面板竞态条件 + 服务器数据源间隙（#1113）、完整变体下科技就绪面板加载（#1208）、战略风险面板按钮监听器（#1214）、世界时钟主行绿色（#1202）、航空情报 CSS 网格布局（#1197）
+- **Pro/Turnstile**：显式渲染以修复组件竞态条件（#1189）、不可见组件支持（#1215）、CSP 允许 Turnstile（#1155）、处理 `already_registered` 状态（#1183）、企业表单错误时重置（#1222）、注册反馈与推荐码生成（#1229, #1228）、/pro 的无缓存页头（#1179）、正确的 API 端点路径（#1177）、www 重定向循环修复（#1198, #1201）
+- **SEO**：/pro 与主页面的全面改进（#1271）
+- **Railway**：移除导致 ENOENT 构建的自定义 railpack.json 安装步骤（#1296, #1290, #1288）
+- **航空**：修正取消率计算并新增 12 个机场（#1209）、统一 NOTAM 状态逻辑（#1225）
+- **Sentry**：分诊 26 个问题、修复 3 个 bug、新增 29 个噪声过滤器（#1173, #1098）
+- **健康**：将缺失的 seed-meta 视为过期（#1128）、解决 BIS 信用与战区态势警告（#1124）、新增 WB 种子循环（#1239）、UCDP 认证处理（#1252）
+- **国家简报**：格式化、重复与新闻上限修复（#1219）、防止地理编码失败时模态框卡住（#1134）
+- **经济**：为 BIS 与支出数据防御 undefined（#1162, #1169）
+- **摄像头**：在 Web 端检测被屏蔽的 YouTube 嵌入（#1107）、使用 iframe 加载事件回退（#1123）、MTV Lebanon 作为直播流（#1122）
+- **桌面**：恢复搁置的路由修复与统一错误 UX（#1160）、DRY 防抖、错误处理、重试上限（#1084）、防抖缓存写入、批量密钥推送、惰性面板（#1077）
+- **PWA**：针对 CF 缓存的 404 将 SW 清除键升至 v2（#1081）、首次访问时一次性 SW 清除（#1079）
+- **性能**：仅在添加图层时显示图层警告，而非移除时（#1265）、减少不必要的 Vercel 边缘调用（#1176）
+- **i18n**：将全部 20 种语言同步到 en.json — 零漂移（#1104）、修正地理编码错误键的缩进（#1147）
+- **洞察**：优雅退出、LKG 回退、切换到 Gemini 2.5 Flash（#1153, #1154）
+- **种子**：防止 API 配额消耗并遵守速率限制（#1167）、校验失败时优雅跳过写入（#1089）、所有 bootstrap 键的 seed-meta 追踪（#1163, #1138）
+
+</Update>
+
+<Update label="v2.5.25 - March 04, 2026" description="v2.5.25" tags={["Finance", "Infrastructure"]}>
+
+### 变更
+
+- **供应链 v2** — 将咽喉要道与矿物缓存键升至 v2；为 `ChokepointInfo` 新增 `aisDisruptions` 字段（proto、OpenAPI、生成的类型、处理器、UI 面板）；将 Malacca Strait 重命名为 Strait of Malacca；将咽喉要道 Redis TTL 从 15 分钟降至 5 分钟；扩展描述以始终显示警告 + AIS 中断计数；从关键矿物数据中移除镍与铜（聚焦出口管制矿物）；将主要生产商截取为前 3 名；为航运指数使用完整 FRED 系列名称；新增 `daily` 缓存层（86400 秒）并将矿物路由迁移至该层；将客户端断路器 TTL 与服务器 TTL 对齐；修复上游不可用横幅仅在无数据时显示；在 Vite 开发服务器插件中注册供应链路由
+- **缓存迁移**：旧的 `supply_chain:chokepoints:v1` 与 `supply_chain:minerals:v1` Redis 键不再被任何消费者读取 — 它们将通过 TTL 过期，无需任何操作
+
+</Update>
+
+<Update label="v2.5.24 - March 03, 2026" description="v2.5.24" tags={["Intelligence", "Security", "Performance", "UX"]}>
+
+### 亮点
+
+- **UCDP 冲突数据** — 集成乌普萨拉冲突数据项目，用于历史与进行中的武装冲突追踪（#760）
+- **国家简报分享** — 最大化模式、可分享 URL、原生浏览器分享按钮、展开的板块（#743, #854）
+- **统一 Vercel 部署** — 通过运行时变体检测将 4 个独立部署合并为 1 个（#756）
+- **CDN 性能大修** — POST→GET 转换、按域名边缘函数、分层 bootstrap，约 46% 出口流量减少（#753, #795, #838）
+- **安全加固** — CSP 脚本哈希替代 unsafe-inline、ID 使用 crypto.randomUUID()、XSS 安全的 i18n、Finnhub token 头（#781, #844, #861, #744）
+- **i18n 扩展** — 法语支持附带 Live TV 频道、硬编码英文字符串替换为翻译键（#794, #851, #839）
+
+### 新增
+
+- 用于武装冲突追踪的 UCDP（乌普萨拉冲突数据项目）集成（#760）
+- 伊朗与霍尔木兹海峡冲突区，升级乌克兰多边形（#731）
+- 播种 100 个伊朗战争事件，附带扩展的地理编码器（#792）
+- 国家简报最大化模式、可分享 URL、展开的板块与 i18n（#743）
+- 国家简报的原生浏览器分享按钮（#854）
+- 法语 i18n 支持，附带法语 Live TV 频道（#851）
+- 地理限制直播频道支持，恢复 WELT（#765）
+- 频道管理 UX — 从网格切换 + 显示所有频道（#745）
+- 命令面板：消歧地图与面板命令，将国家拆分为地图/简报（#736）
+- 命令面板：轮换的上下文提示替代静态空状态（#737）
+- 面向 Web 用户的下载应用按钮，附带下拉菜单（#734, #735）
+- 重置布局按钮，恢复默认面板尺寸与顺序（#801）
+- 系统状态移入设置（#735）
+- Vercel 定时任务预热 AviationStack 缓存（#776）
+- 运行时变体检测 — 将 4 个 Vercel 部署合并为 1 个（#756）
+- pre-push 钩子中的 CJS 语法检查（#769）
+
+### 修复
+
+- **安全**：XSS — 将 `t()` 调用包裹在 `escapeHtml()` 中（#861）、使用 `crypto.randomUUID()` 替代 `Math.random()` 生成 ID（#844）、将 Finnhub API 密钥从查询字符串移至 `X-Finnhub-Token` 头（#744）
+- **i18n**：将硬编码英文字符串替换为翻译键（#839）、i18n 改进（#794）
+- **市场**：解析逗号分隔的查询参数并对齐 Railway 缓存键（#856）、Railway 市场数据定时任务 + 补齐缺失的科技数据源类别（#850）、Yahoo 中继回退 + 针对被屏蔽数据源的 RSS 摘要中继（#835）、科技 UNAVAILABLE 数据源 + Yahoo 批量早退 + 行业热力图门控（#810）
+- **航空**：将 AviationStack 抓取迁移到 Railway 中继，减少至 40 个机场（#858）
+- **UI**：组件销毁时取消挂起的防抖调用（#848）、为异步操作防御陈旧 DOM 引用（#843）
+- **Sentry**：防御陈旧 DOM 引用、audio.play() 兼容性、新增 16 个噪声过滤器（#855）
+- **中继**：针对失败 RSS 数据源的指数退避（#853）、去重导致 Railway 容器崩溃的 UCDP 常量（#766）
+- **API**：移除拦截所有 RPC 路由的 `[domain]` 通配（#753 回归）（#785）、研究处理器的 pageSize 边界校验（#819）、对错误 HTTP 方法返回 405（#757）、网络威胁的分页游标（#754）
+- **冲突**：将伊朗事件缓存破坏升至 v7（#724）
+- **OREF**：防止 LLM 翻译缓存污染希伯来语→英语流水线（#733）、从 World Brief 输入中剥离翻译标签（#768）
+- **军事**：加固 USNI 舰队报告舰名正则（#805）
+- **Sidecar**：为 ACLED API 密钥校验探针添加必需参数（#804）
+- **宏观**：用 Mayer Multiple 替代硬编码的 BTC 挖矿阈值（#750）
+- **网络**：将 GeoIP 每 IP 超时从 3 秒降至 1.5 秒（#748）
+- **CSP**：为 Vercel 机器人挑战页面恢复 unsafe-inline（#788）、添加缺失的脚本哈希与金融变体（#798）
+- **运行时**：所有 /api/* 调用通过 CDN 边缘路由，而非直接访问 Vercel（#780）
+- **桌面**：从主机架构检测 Linux node 目标（#742）、加固 Windows 安装器更新路径 + 地图调整大小（#739）、点击下载后关闭更新提示（#738）、仅在外部打开有效的 http(s) 链接（#723）
+- **摄像头**：替换失效的特拉维夫直播流（#732）、替换陈旧的耶路撒冷源（#849）
+- Story 页头使用完整域名 WORLDMONITOR.APP（#799）
+- 在同一窗口而非新标签页中打开变体导航链接（#721）
+- 在拖拽调整大小时抑制地图渲染（#728）
+- 异步导入解析后将推断面板附加到 DOM（#764）
+- 在断路器中去重 stale-while-revalidate 后台抓取（#793）
+- CORS 回退、速率限制上调、RSS 代理白名单（#814）
+- 更新不可用流的错误消息（#759）
+
+### 性能
+
+- 对慢/快 bootstrap 数据分层，约 46% CDN 出口流量减少（#838）
+- 将 POST RPC 转换为 GET 以支持 CDN 缓存（#795）
+- 将单体边缘函数拆分为按域名的函数（#753）
+- 提高 CDN 缓存 TTL + 在所有边缘函数中新增 stale-if-error（#777）
+- 提高 oref-alerts 与 youtube/live 的 CDN 缓存 TTL（#791）
+- 在 RSS 代理中对 Vercel 屏蔽的域名跳过无用的直接抓取（#815）
+
+### 安全
+
+- 用脚本哈希替代 CSP unsafe-inline 并新增信任信号（#781）
+- 扩展 Permissions-Policy 并收紧 CSP connect-src（#779）
+
+### 变更
+
+- 扩展对更大屏幕的支持（#740）
+- 绿色下载按钮 + 退役滑动弹窗（#747）
+- 将共享中继助手提取到 `_relay.js`（#782）
+- 合并 `SummarizeArticleResponse` 状态字段（#813）
+- 将 `declare const process` 合并到共享的 `env.d.ts`（#752）
+- 将 `clampInt` 去重到 `server/_shared/constants`
+- 在错误映射器中为网络错误添加错误日志（#746）
+- Redis 错误日志 + 边缘函数超时减少（#749）
+
+</Update>
+
+<Update label="v2.5.21 - March 01, 2026" description="v2.5.21" tags={["Intelligence", "Aviation", "Military", "Infrastructure"]}>
+
+### 亮点
+
+- **伊朗袭击地图图层** — 带严重程度徽章的冲突事件、相关事件弹窗与 CII 集成（#511, #527, #547, #549）
+- **Telegram 情报面板** — 通过 MTProto 中继的 27 个精选 OSINT 频道（#550）
+- **OREF 以色列警报** — 实时警报，附带希伯来语→英语翻译与 24 小时历史 bootstrap（#545, #556, #582）
+- **GPS/GNSS 干扰图层** — 检测覆盖层，附带 CII 集成（#570）
+- **昼夜晨昏线** — 地图上的太阳晨昏线覆盖层（#529）
+- **突发新闻警报横幅** — 针对关键/高优先级 RSS 条目的音频警报，附带冷却绕过（#508, #516, #533）
+- **AviationStack 集成** — 128 个机场的全球航班延误，附带 NOTAM 关闭检测（#552, #581, #583）
+- **战略风险评分** — 战区态势 + 突发新闻接入评分算法（#584）
+
+### 新增
+
+- 伊朗袭击地图图层，附带冲突事件弹窗、严重程度徽章与优先级渲染（#511, #527, #549）
+- Telegram 情报面板，附带精选 OSINT 频道列表（#550, #600）
+- OREF 以色列警报面板，附带希伯来语到英语翻译（#545, #556）
+- 中继启动时 OREF 24 小时历史 bootstrap（#582）
+- GPS/GNSS 干扰检测地图图层 + CII 集成（#570）
+- 昼夜太阳晨昏线覆盖层（#529）
+- 针对关键/高优先级条目的突发新闻激活警报横幅，附带音频（#508）
+- 针对非美国机场的 AviationStack 集成 + NOTAM 关闭检测（#552, #581, #583）
+- RT（今日俄罗斯）HLS 直播流 + RSS 源（#585, #586）
+- 伊朗摄像头标签页，含 4 个源（#569, #572, #601）
+- CBC News 可选直播频道（#502）
+- 战略风险评分接入战区态势 + 突发新闻（#584）
+- CII 评分：安全旅行提醒、伊朗打击、OREF 警报、GPS 干扰（#547, #559, #570, #579）
+- 国家简报 + CII 信号覆盖扩展（#611）
+- 服务器端军事基地，含 12.5 万+ 条目 + 速率限制（#496）
+- 桌面设置中的 AVIATIONSTACK_API 密钥（#553）
+- 伊朗事件种子脚本与最新数据（#575）
+
+### 修复
+
+- **航空**：陈旧 IndexedDB 缓存失效 + 降低 CDN TTL（#607）、用直接缓存 + 取消分级替代损坏的锁（#591）、查询所有机场而非轮换批次（#557）、通过 Railway 中继路由 NOTAM（#599）、始终显示所有受监视机场（#603）
+- **Telegram**：AUTH_KEY_DUPLICATED 修复 — 锁存以停止重试刷屏（#543）、60 秒启动延迟（#587）、优雅关闭 + 轮询守卫（#562）、ESM 导入路径修复（#537, #542）、缺失的中继认证头（#590）
+- **中继**：Polymarket OOM 预防 — 断路器 + 并发限制器（#519）、请求去重（#513）、队列背压 + 响应切片（#593）、缓存雪崩修复（#592）、熔断开关（#523）；智能引号崩溃（#563）；优雅关闭（#562, #565）；OREF 使用 curl（#546, #567, #571）；maxBuffer ENOBUFS（#609）；rsshub.app 被屏蔽（#526）；ERR_HTTP_HEADERS_SENT 守卫（#509）；Telegram 内存清理（#531）
+- **实时新闻**：替换 7 个陈旧的 YouTube 回退 ID（#535, #538）、修复欧洲频道句柄（#541）、eNCA 句柄 + 移除 VTC NOW + CTI News（#604）、RT HLS 恢复（#610）、YouTube 代理认证对齐（#554, #555）、用于检测的住宅代理 + gzip（#551）
+- **突发新闻**：关键警报绕过冷却（#516）、填补关键词缺口（#517, #521）、虚假 pubDate 过滤器（#517）、移除 SESSION_START 门控（#533）
+- **威胁分类器**：军事/冲突关键词缺口 + 新闻到冲突的桥接（#514）、Groq 429 错峰（#520）
+- **地理**：基于分词的匹配以防止误报（#503）、枢纽索引中 60+ 个缺失位置（#528）
+- **伊朗**：CDN 缓存破坏流水线 v4（#524, #532, #544）、只读处理器（#518）、通过边界框消歧修复海湾误归属（#532）
+- **CII**：海湾国家打击误归属（#564）、军事行动的复合升级（#548）
+- **Bootstrap**：401/429 速率限制修复（#512）、hydration 缓存 + 轮询加固（#504）
+- **Sentry**：防御 YT 播放器方法 + GM/InvalidState 噪声（#602）、Android OEM WebView 桥接注入（#510）、setView 无效预设（#580）、beforeSend 空文件名泄露（#561）
+- 速率限制上调至 300 请求/分钟滑动窗口（#515）
+- Vercel 预览来源正则通用化 + 基地缓存键（#506）
+- 面向 Windows 兼容 npm 脚本的 cross-env（#499）
+- 下载横幅重新定位到右下角（#536）
+- 过滤陈旧/过期的 Polymarket 市场（#507）
+- 网络威胁 GeoIP 质心回退抖动改为确定性（#498）
+- polymarket 与 rss-proxy 的 cache-control 头加固（#613）
+
+### 性能
+
+- 服务器端军事基地抓取：防抖 + 静态边缘缓存层（#497）
+- RSS：刷新间隔上调至 10 分钟，缓存 TTL 上调至 20 分钟（#612）
+- Polymarket 缓存 TTL 上调至 10 分钟（#568）
+
+### 变更
+
+- 从 20 个服务文件中剥离 61 个调试 console.log 调用（#501）
+- 版本号升至 2.5.21（#605）
+
+</Update>
+
+<Update label="v2.5.20 - February 27, 2026" description="v2.5.20" tags={["Performance", "Security", "API"]}>
+
+### 新增
+
+- **边缘缓存**：完整的 Cloudflare 边缘缓存层覆盖，附带降级响应策略（#484）
+- **边缘缓存**：proxy.worldmonitor.app（#478）与 api.worldmonitor.app（#471）的 Cloudflare 边缘缓存
+- **边缘缓存**：分层边缘 Cache-Control 对齐上游 TTL（#474）
+- **API 迁移**：将 52 个 API 端点从 POST 转换为 GET 以支持边缘缓存（#468）
+- **网关**：可配置的 VITE_WS_API_URL + 加固 POST 到 GET 的垫片（#480）
+- **缓存**：cachedFetchJson 的负结果缓存（#466）
+- **安全旅行提醒**：带政府旅行提醒的新面板（#460）
+- **设置**：重新设计设置窗口，采用 VS Code 风格侧边栏布局（#461）
+
+### 修复
+
+- **商品面板**：之前显示的是股票而非商品 — 断路器 SWR 在 cacheTtlMs=0 时从另一个调用返回了陈旧数据（#483）
+- **分析**：在 PostHog ingest 重写中使用贪婪正则（#481）
+- **Sentry**：为 4 个未解决问题新增噪声过滤器（#479）
+- **网关**：为向后兼容将陈旧 POST 请求转换为 GET（#477）
+- **桌面**：启用点击播放 YouTube 嵌入 + CISA 数据源修复（#476）
+- **科技变体**：对 CISA 数据源使用 rss()，从 pre-push 钩子中移除构建（#475）
+- **安全旅行提醒**：通过 RSS 代理路由数据源以避免 CORS 阻断（#473）
+- **API 路由**：将 5 个路径参数端点迁移到查询参数以适配 Vercel 路由（#472）
+- **Beta**：启用 beta 模式时预加载 T5-small 模型
+- **脚本**：处理数据源名称正则中的转义撇号（#455）
+- **Wingbits**：在 /v1/flights 失败时新增 5 分钟退避（#459）
+- **Ollama**：剥离思考 token、提高 max_tokens、修复面板摘要缓存（#456）
+- **RSS/HLS**：RSS 数据源修复、HLS 原生播放、摘要缓存修复（#452）
+
+### 性能
+
+- **AIS 代理**：将 AIS 快照边缘 TTL 从 2 秒提高至 10 秒（#482）
+
+</Update>
+
+<Update label="v2.5.10 - February 26, 2026" description="v2.5.10" tags={["Finance", "Desktop", "UX"]}>
+
+### 修复
+
+- **Yahoo Finance 限速 UX**：当 Yahoo 返回 429 时，在市场、ETF、商品与行业面板上显示"已限速 — 稍后重试"，而非通用的"加载失败"（#407）
+- **顺序 Yahoo 调用**：在商品报价、ETF 资金流与宏观信号中用错峰批处理替代 `Promise.all`，以防止 429 限速（#406）
+- **行业热力图 Yahoo 回退**：当 `FINNHUB_API_KEY` 缺失时，行业数据现通过 Yahoo Finance 加载（#406）
+- **Finnhub 到 Yahoo 回退**：未配置 API 密钥时，市场报价将 Finnhub 符号通过 Yahoo 路由（#407）
+- **ETF 限速早退**：跳过重试循环并立即显示限速消息，而非等待 60 秒（#407）
+- **Sidecar 认证韧性**：重启后针对陈旧 sidecar token 的 401 重试 + token 刷新；用于设置窗口诊断的 `diagFetch` 认证助手（#407）
+- **详细模式切换持久化**：在 macOS 上将详细状态写入可写数据目录，而非只读应用包（#407）
+- **AI 摘要详细度**：将提示收紧为最多 2 句 / 60 词，`max_tokens` 从 150 降至 100（#404）
+- **设置模态框标题**：在所有 17 种语言中从"PANELS"重命名为"SETTINGS"（#403）
+- **Sentry 噪声过滤器**：新闻 ID 选择器的 CSS.escape()、player.destroy 守卫、11 个新 ignoreErrors 模式、blob: URL 扩展帧过滤器（#402）
+
+</Update>
+
+<Update label="v2.5.6 - February 23, 2026" description="v2.5.6" tags={["UX", "Performance", "Maritime"]}>
+
+### 新增
+
+- **希腊语（Ελληνικά）区域** — 全部 1,397 个 i18n 键的完整翻译（#256）
+- **尼日利亚 RSS 数据源** — 5 个新源：Premium Times、Vanguard、Channels TV、Daily Trust、ThisDay Live
+- **希腊语区域数据源** — Naftemporiki、in.gr、iefimerida.gr，用于希腊语新闻覆盖
+- **Brasil Paralelo 数据源** — 巴西新闻，附带 RSS 源与数据源层级（#260）
+
+### 性能
+
+- **AIS 中继优化** — 带可配水位线的背压队列、咽喉要道检测的空间索引（O(chokepoints) 对比 O(chokepoints × vessels)）、预序列化 + 预压缩的快照缓存，消除每请求的 JSON.stringify + gzip CPU 开销（#266）
+
+### 修复
+
+- **越南国旗国家代码** — 修正语言选择器中的国旗 emoji（#245）
+- **Sentry 噪声过滤器** — 新增 SW FetchEvent、PostHog ingest 模式；为 PostHog 分析启用 SW POST 方法（#246）
+- **Service Worker 同源路由** — 将 SW 路由模式限制为仅同源，防止跨源抓取拦截（#247, #251）
+- **社交预览机器人白名单** — 将 Twitterbot、facebookexternalhit 与其他爬虫加入 OG 图片资源白名单（#251）
+- **Tauri 的 Windows CORS** — 为 Windows 桌面构建允许来自 `tauri.localhost` 的 `http://` 来源（#262）
+- **Linux AppImage GLib 崩溃** — 通过捆绑兼容库修复较新发行版上的 GLib 符号不匹配（#263）
+
+</Update>
+
+<Update label="v2.5.2 - February 21, 2026" description="v2.5.2" tags={["Map", "UX"]}>
+
+### 修复
+
+- **QuotaExceededError 处理** — 检测存储配额耗尽并停止对 localStorage/IndexedDB 的进一步写入，而非静默失败；在持久缓存与工具存储间共享 `markStorageQuotaExceeded()` 标志
+- **deck.gl null.getProjection 崩溃** — 将 `setProps()` 调用包裹在 try/catch 中，以在防抖/RAF 回调中地图中途拆卸竞态下存活
+- **MapLibre "Style is not done loading"** — 在主题切换期间守卫 mousemove/mouseout 处理器中的 `setFilter()`
+- **YouTube 无效视频 ID** — 在传给 IFrame Player 构造函数前校验视频 ID 格式（`/^[\w-]&#123;10,12&#125;$/`）
+- **Vercel 空 SHA 跳过构建** — 守卫 `ignoreCommand` 以应对未设置的 `VERCEL_GIT_PREVIOUS_SHA`（首次部署、强制部署），此前该情况会导致 `git diff` 失败并取消构建
+- **Sentry 噪声过滤器** — 新增 7 个模式：iOS readonly property、SW FetchEvent、toLowerCase/trim/indexOf 注入、QuotaExceededError
+
+</Update>
+
+<Update label="v2.5.1 - February 20, 2026" description="v2.5.1" tags={["Performance", "Security", "API"]}>
+
+### 性能
+
+- **批量 FRED API 请求** — 前端现发送一个带逗号分隔序列 ID 的单一请求，而非 7 个并行边缘函数调用，消除 Vercel 25 秒超时
+- **并行 UCDP 页面抓取** — 用 Promise.all 替代顺序循环，最多 12 页，将抓取时间从最坏约 96 秒降至约 8 秒
+- **机器人防护中间件** — 阻止已知社交媒体爬虫访问 API 路由，减少不必要的边缘函数调用
+- **扩展 API 缓存 TTL** — country-intel 12h→24h、GDELT 2h→4h、核能 12h→24h；Vercel ignoreCommand 跳过非代码部署
+
+### 修复
+
+- **部分 UCDP 缓存污染** — 失败的页面抓取不再静默产生缓存 6 小时的不完整结果；部分结果在 Redis 与内存中均获得 10 分钟 TTL，并将 `partial: true` 标志传播到 CDN 缓存头
+- **FRED 上游错误掩盖** — 单序列失败现返回 502 而非空 200；批处理模式暴露每序列错误并在全部失败时返回 502
+- **Sentry `Load failed` 过滤器** — 将正则从 `^TypeError: Load failed$` 扩展为 `^TypeError: Load failed( \(.*\))?$`，以捕获带主机后缀的变体（如 gamma-api.polymarket.com）
+- **工具提示 XSS 加固** — 将面板信息工具提示的 `rawHtml()` 替换为 `safeHtml()` 白名单净化器
+- **UCDP 国家端点** — 添加缺失的 HTTP 方法守卫（OPTIONS/GET）
+- **中间件精确路径匹配** — 社交预览机器人白名单使用 `Set.has()` 而非 `startsWith()` 前缀匹配
+
+### 变更
+
+- FRED 批处理 API 支持最多 15 个逗号分隔序列 ID，附带去重
+- 缺失 FRED API 密钥时返回 200 并附带 `X-Data-Status: skipped-no-api-key` 头，而非静默空响应
+- LAYER_TO_SOURCE 配置从重复的内联映射提取为共享常量
+
+</Update>
+
+<Update label="v2.5.0 - February 20, 2026" description="v2.5.0" tags={["AI", "Desktop", "Security"]}>
+
+### 亮点
+
+**本地 LLM 支持（Ollama / LM Studio）** — 完全在你自己的硬件上运行 AI 摘要，零云依赖。桌面应用自动发现来自任何 OpenAI 兼容本地推理服务器（Ollama、LM Studio、llama.cpp、vLLM）的模型，并填充选择下拉菜单。四级回退链确保摘要始终生成：本地 LLM → Groq → OpenRouter → 浏览器端 T5。结合 Tauri 桌面应用，可实现完全气隙隔离的情报分析，数据不离开你的机器。
+
+### 新增
+
+- **Ollama / LM Studio 集成** — 通过 OpenAI 兼容的 `/v1/chat/completions` 端点实现本地 AI 摘要，附带自动模型发现、嵌入模型过滤，以及回退到手动文本输入
+- **四级摘要回退链** — Ollama（本地）→ Groq（云）→ OpenRouter（云）→ Transformers.js T5（浏览器），每级 5 秒超时后静默进入下一级
+- **共享摘要处理器工厂** — 三个 API 层级均使用相同逻辑进行标题去重（Jaccard >0.6）、变体感知提示、语言感知输出，以及 Redis 缓存（`summary:v3:&#123;mode&#125;:&#123;variant&#125;:&#123;lang&#125;:&#123;hash&#125;`）
+- **带 3 个标签页的设置窗口** — 专用 **LLMs** 标签页（Ollama 端点/模型、Groq、OpenRouter）、**API Keys** 标签页（12+ 数据源凭证）、**Debug &amp; Logs** 标签页（流量日志、详细模式、日志文件访问）。每个标签页运行独立的校验流水线
+- **合并的钥匙串保险库** — 所有桌面密钥作为单个 JSON blob 存储在一个 OS 钥匙串条目（`secrets-vault`）中，将应用启动时 macOS 钥匙串授权提示从 20+ 次减少到恰好 1 次。从单个条目一次性自动迁移并清理
+- **跨窗口密钥同步** — 在设置窗口保存凭证后立即通过 `localStorage` 广播同步到主仪表盘，无需重启应用
+- **API 密钥校验流水线** — 每个凭证针对其提供商的实际 API 端点进行校验。网络错误（超时、DNS 失败）软通过，以防止瞬时故障阻止密钥存储；仅明确的 401/403 标记密钥无效
+- **明文 URL 输入** — 端点 URL（Ollama API、中继 URL、模型名）在设置中显示为可读文本，而非掩码的密码点
+- **5 个新防务/情报 RSS 数据源** — Military Times、Task &amp; Purpose、USNI News、Oryx OSINT、英国国防部
+- **科贝赫核电站** — 添加到核设施地图图层（非洲唯一的商业反应堆，南非开普敦）
+- **隐私与离线架构**文档 — README 现详述三个隐私级别：全云、带云 API 的桌面、以及带 Ollama 的气隙本地
+- **AI 摘要链**文档 — README 包含提供商回退流程图，以及标题去重、变体感知提示与跨用户缓存去重的详细说明
+
+### 变更
+
+- AI 回退链现以 Ollama（本地）开始，再到云提供商
+- 功能开关从 14 个增至 15 个（新增 AI/Ollama）
+- 桌面架构使用合并的保险库，而非每密钥一个钥匙串条目
+- README 扩充约 85 行新内容，涵盖本地 LLM 支持、隐私架构、摘要链内部机制与桌面就绪框架
+
+### 修复
+
+- 设置中的 URL 与模型字段以明文显示，而非掩码的密码点
+- 针对 Ollama/LM Studio 响应格式差异加固 OpenAI 兼容端点流程（思考 token、缺失 `choices` 数组边界情况）
+- 针对 `getProjection()` 崩溃的 Sentry 空值守卫，附带 6 个额外噪声过滤器
+- 图层关闭时清除 PathLayer 缓存，以防止陈旧 WebGL 缓冲区渲染
+
+</Update>
+
+<Update label="v2.4.1 - February 19, 2026" description="v2.4.1" tags={["Map", "Infrastructure"]}>
+
+### 修复
+
+- **地图 PathLayer 缓存**：关闭时清除 PathLayer 以防止陈旧 WebGL 缓冲区
+- **Sentry 噪声**：针对 `getProjection()` 崩溃的空值守卫与 6 个额外噪声过滤器
+- **Markdown 文档**：解决文档文件中的 lint 错误
+
+</Update>
+
+<Update label="v2.4.0 - February 19, 2026" description="v2.4.0" tags={["UX", "Mobile", "Map"]}>
+
+### 新增
+
+- **实时摄像头面板**：来自全球热点地区的 2x2 网格 YouTube 实时摄像头源，附带区域过滤（中东、欧洲、亚太、美洲）、网格/单视图切换、空闲检测与完整 i18n 支持（#111）
+- **Linux 下载**：在下载横幅新增 `.AppImage` 选项
+
+### 变更
+
+- **移动端检测**：仅使用视口宽度进行移动端检测；支持触控的笔记本（如 ROG Flow X13）现获得桌面布局（#113）
+- **摄像头源**：精选特拉维夫、麦加、洛杉矶、迈阿密；替换失效的东京源；多样化 ALL 网格含耶路撒冷、德黑兰、基辅、华盛顿
+
+### 修复
+
+- **Le Monde RSS**：更新英文数据源 URL（`/en/rss/full.xml` → `/en/rss/une.xml`）以修复 404
+- **Workbox 预缓存**：将 `html` 添加到 `globPatterns`，使 `navigateFallback` 在离线 PWA 下工作
+- **面板排序**：一次性迁移确保现有用户的实时摄像头紧跟实时新闻之后
+- **移动端弹窗**：改进 sheet/触控/控件布局（#109）
+- **情报警报**：在移动端禁用以减少噪声（#110）
+- **RSS 代理**：将 8 个缺失域名加入白名单
+- **HTML 标签**：修复面板模板字符串中的畸形标签
+- **ML worker**：将 `unloadModel()` 包裹在 try/catch 中以防止未处理的超时拒绝
+- **YouTube 播放器**：对 `playVideo?.()` / `pauseVideo?.()` 使用可选链以应对初始化竞态
+- **面板拖拽**：在非 Element 事件目标上守卫 `.closest()`
+- **Beta 模式**：解决竞态条件与超时失败
+- **Sentry 噪声**：新增针对 Firefox `too much recursion`、maplibre `_layers`/`id`/`type` 空值崩溃的过滤器
+
+</Update>
+
+<Update label="v2.3.9 - February 18, 2026" description="v2.3.9" tags={["UX", "Infrastructure", "Desktop"]}>
+
+### 新增
+
+- **完整国际化（14 种语言）**：英语、法语、德语、西班牙语、意大利语、波兰语、葡萄牙语、荷兰语、瑞典语、俄语、阿拉伯语、简体中文、日语 — 每种含 1100+ 翻译键
+- **RTL 支持**：阿拉伯语区域使用 `dir="rtl"`，专用 RTL CSS 覆盖、区域语言代码规范化（如 `ar-SA` 正确触发 RTL）
+- **语言切换器**：应用内区域选择器，附带国旗图标，持久化到 localStorage
+- **i18n 基础设施**：i18next，附带浏览器语言检测与英语回退
+- **社区讨论组件**：浮动的胶囊按钮，链接到 GitHub Discussions，延迟出现并支持永久关闭
+- **Linux AppImage**：将 `ubuntu-22.04` 加入 CI 构建矩阵，附带 webkit2gtk/appindicator 依赖
+- **NHK World 与 Nikkei Asia**：新增 RSS 数据源以覆盖日本新闻
+- **情报发现徽章开关**：在 UI 中禁用发现徽章的选项
+
+### 变更
+
+- **零硬编码英语**：所有 UI 文本通过 `t()` 路由 — 面板、模态框、工具提示、弹窗、地图图例、警报模板、信号描述
+- **趋势专有名词检测**：改进句中大小写启发式，当 ML 分类器不可用时回退到全大写
+- **停用词抑制**：向趋势关键词过滤器添加缺失的英语停用词
+
+### 修复
+
+- **失效的 UTC 时钟**：移除永久显示 `--:--:-- UTC` 的 `#timeDisplay` 元素
+- **社区组件重复**：新增 DOM 幂等守卫，防止重复新闻刷新周期中出现重复组件
+- **设置帮助文本**：当翻译缺失时抑制原始 i18n 键路径渲染
+- **情报发现徽章**：修复切换状态与监听器生命周期
+- **上下文菜单样式**：恢复 intel-findings 上下文菜单样式
+- **CSS 主题变量**：定义缺失的 `--panel-bg` 与 `--panel-border` 变量
+
+</Update>
+
+<Update label="v2.3.8 - February 17, 2026" description="v2.3.8" tags={["Finance", "Desktop"]}>
+
+### 新增
+
+- **金融变体**：新增专用市场优先变体（`finance.worldmonitor.app`），附带以金融/交易为核心的数据源、面板与地图默认值
+- **金融桌面配置**：新增面向金融的桌面配置与构建配置文件，用于 Tauri 打包
+
+### 变更
+
+- **变体数据源加载**：`loadNews` 现动态枚举类别，并在变体间以有界并发分阶段进行类别抓取
+- **数据源韧性**：在 finance/full/tech 路径中用基于 Google News 的回退查询替代直接的 MarketWatch RSS 使用
+- **分类压力控制**：收紧 tech/full 的 AI 分类预算，并调优每数据源上限以减少启动突发压力
+- **时间线行为**：在地图与新闻面板间一致地接入时间线过滤
+- **AI 摘要默认值**：将 OpenRouter 摘要切换为自动路由的免费层级模型选择
+
+### 修复
+
+- **金融面板对等**：保留数据密集型面板，同时为金融新增新闻面板，而非移除核心数据界面
+- **桌面金融地图对等**：金融变体现可在桌面运行时运行一等 Deck.GL 地图/图层行为
+- **Polymarket 回退**：新增一次性直接连通性探针与记忆化回退，以防止反复的 `ERR_CONNECTION_RESET` 风暴
+- **FRED 回退行为**：缺失 `FRED_API_KEY` 时现返回优雅的空载荷，而非反复的硬 500
+- **预览 CSP 工具**：在 CSP 中允许 `https://vercel.live` 脚本，使 Vercel 预览反馈注入不被阻断
+- **趋势质量**：在关键词突增检测中抑制嘈杂的通用金融术语
+- **移动端 UX**：在移动设备上隐藏桌面下载提示
+
+</Update>
+
+<Update label="v2.3.7 - February 16, 2026" description="v2.3.7" tags={["UX", "Desktop", "Map"]}>
+
+### 新增
+
+- **完整亮色模式主题**：完整的亮/暗主题系统，附带 CSS 自定义属性、ThemeManager 模块、FOUC 预防，以及面向主题感知内联样式的 `getCSSColor()` 工具
+- **主题感知地图与图表**：Deck.GL 底图、覆盖图层与 CountryTimeline 图表实时响应主题变更
+- **亮/暗模式页头切换**：页头栏中的太阳/月亮图标，用于快速主题切换，替代重复的 UTC 时钟
+- **桌面更新检查器**：面向 macOS（ARM/Intel）与 Windows 的架构感知下载链接
+- **Tauri 安装器中捆绑 Node.js**：Sidecar 不再需要系统 Node.js
+- **Markdown 检查**：新增 markdownlint 配置与 CI 工作流
+
+### 变更
+
+- **面板模态框**：从"Settings"改回"Panels" — 因页头已有主题切换而移除冗余的 Appearance 板块
+- **默认面板**：默认启用 UCDP 冲突事件、UNHCR 流离失所、气候异常与人口暴露面板
+
+### 修复
+
+- **Tauri 桌面 CORS**：修复桌面应用请求的 CORS 问题
+- **市场面板**：跳过 Finnhub API 密钥时保持 Yahoo 支持的数据可见
+- **Windows UNC 路径**：净化 sidecar 脚本路径时保留扩展长度路径前缀
+- **亮色模式可读性**：为亮色模式对比度加深霓虹语义颜色与覆盖背景
+
+</Update>
+
+<Update label="v2.3.6 - February 16, 2026" description="v2.3.6" tags={["Desktop"]}>
+
+### 修复
+
+- **Windows 控制台窗口**：隐藏在 Windows 上随桌面应用一起出现的 `node.exe` 控制台窗口
+
+</Update>
+
+<Update label="v2.3.5 - February 16, 2026" description="v2.3.5" tags={["UX", "Desktop"]}>
+
+### 变更
+
+- **面板错误消息**：按面板区分错误消息，使用户看到上下文相关的指引而非通用失败
+- **桌面配置自动隐藏**：桌面配置面板在不相关的 Web 部署上自动隐藏
+
+</Update>
+
+<Update label="v2.3.4 - February 16, 2026" description="v2.3.4" tags={["Desktop"]}>
+
+### 修复
+
+- **Windows sidecar 崩溃**：传给 Node.js 前从路径中剥离 `\\?\` UNC 扩展长度前缀 — Windows 上 Tauri `resource_dir()` 返回带 UNC 前缀的路径，导致 Node.js 模块解析中出现 `EISDIR: lstat 'C:'`
+- **Windows sidecar CWD**：在 Node.js Command 上设置显式 `current_dir`，以防止 NSIS 快捷方式启动器产生裸盘符工作目录问题
+- **Sidecar 包作用域**：向 sidecar 目录添加带 `"type": "module"` 的 `package.json`，防止 Node.js 在 ESM 作用域解析期间向上遍历整个目录树
+
+</Update>
+
+<Update label="v2.3.3 - February 16, 2026" description="v2.3.3" tags={["Desktop", "Security"]}>
+
+### 修复
+
+- **钥匙串持久化**：为 `keyring` crate 启用 `apple-native`（macOS）与 `windows-native`（Windows）特性 — v3 默认不带任何平台后端，因此 API 密钥仅存储于内存，重启后丢失
+- **设置密钥校验**：API 密钥校验期间软通过网络错误，使瞬时 sidecar 故障不阻止保存
+- **韧性钥匙串读取**：在 `loadDesktopSecrets` 中使用 `Promise.allSettled`，使单个密钥失败不丢弃所有已加载密钥
+- **设置窗口能力**：将 `"settings"` 添加到 Tauri capabilities 窗口列表，用于核心插件权限
+- **输入保留**：在设置面板 DOM 重新渲染前捕获未保存的输入值
+
+</Update>
+
+<Update label="v2.3.0 - February 15, 2026" description="v2.3.0" tags={["Security", "Infrastructure"]}>
+
+### 安全
+
+- **CORS 加固**：收紧 Vercel 预览部署正则以阻断来源伪造（`worldmonitorEVIL.vercel.app`）
+- **Sidecar 认证绕过**：将 `/api/local-env-update` 置于 `LOCAL_API_TOKEN` 认证检查之后
+- **环境密钥白名单**：将 sidecar 环境变更限制为 18 个已知密钥（匹配 `SUPPORTED_SECRET_KEYS`）
+- **postMessage 校验**：在 LiveNewsPanel 中对传入消息添加 `origin` 与 `source` 检查
+- **postMessage targetOrigin**：用具体的嵌入来源替代通配符 `'*'`
+- **CORS 强制执行**：向 25+ 个缺失该检查的 API 端点添加 `isDisallowedOrigin()` 检查
+- **自定义 CORS 迁移**：将 `gdelt-geo` 与 `eia` 从自定义 CORS 迁移到共享 `_cors.js` 模块
+- **新增 CORS 覆盖**：向 `firms-fires`、`stock-index`、`youtube/live` 添加 CORS 头 + 来源检查
+- **YouTube 嵌入来源**：收紧 `youtube/embed.js` 中的 `ALLOWED_ORIGINS` 正则
+- **CSP 加固**：从 `index.html` 与 `tauri.conf.json` 的 `script-src` 中移除 `'unsafe-inline'`
+- **iframe 沙箱**：向 YouTube 嵌入 iframe 添加 `sandbox="allow-scripts allow-same-origin allow-presentation"`
+- **Meta 标签校验**：在 `parseStoryParams()` 中用正则白名单校验 URL 查询参数
+
+### 修复
+
+- **Service Worker 陈旧资源**：向 workbox 配置添加 `skipWaiting`、`clientsClaim` 与 `cleanupOutdatedCaches` — 修复用户在重新部署后持有缓存 SW 提供旧 HTML 时的 `NS_ERROR_CORRUPTED_CONTENT` / MIME 类型错误
+
+</Update>
+
+<Update label="v2.2.6 - February 14, 2026" description="v2.2.6" tags={["UX", "Infrastructure"]}>
+
+### 修复
+
+- 过滤趋势噪声并修复 sidecar 认证
+- 恢复科技变体面板
+- 从科技变体中移除 Market Radar 与 Economic Data 面板
+
+### 文档
+
+- 在支持板块添加开发者 X/Twitter 链接
+- 向 `.env.example` 添加网络威胁 API 密钥
+
+</Update>
+
+<Update label="v2.2.5 - February 13, 2026" description="v2.2.5" tags={["Security", "API"]}>
+
+### 安全
+
+- 将所有 Vercel 边缘函数迁移到 CORS 白名单
+- 将 Railway 中继 CORS 限制为仅允许的来源
+
+### 修复
+
+- 在 Web 上隐藏桌面配置面板
+- 通过 Railway 中继路由 World Bank 与 Polymarket
+
+</Update>
+
+<Update label="v2.2.3 - February 12, 2026" description="v2.2.3" tags={["Intelligence", "Map", "UX"]}>
+
+### 新增
+
+- 网络威胁情报地图图层（Feodo Tracker、URLhaus、C2IntelFeeds、OTX、AbuseIPDB）
+- 趋势关键词突增检测，端到端流程
+- 面向 Web 访客的下载桌面应用滑入横幅
+- Cmd+K 搜索中的国家简报
+
+### 变更
+
+- 重新设计 4 个面板，采用表格布局与作用域样式
+- 重新设计人口暴露面板并重排 UCDP 列
+- 大幅提高网络威胁地图密度
+
+### 修复
+
+- 解决固定地图与面板网格间的 z-index 冲突
+- 将地理富化上限设为 12 秒超时，防止重复下载横幅
+- 用 ipinfo.io/freeipapi.com 替代 ipwho.is/ipapi.co 进行地理富化
+- 加固趋势突增处理并优化热路径
+- 改进网络威胁工具提示/弹窗 UX 与点可见性
+
+</Update>
+
+<Update label="v2.2.2 - February 10, 2026" description="v2.2.2" tags={["Intelligence", "Performance", "UX"]}>
+
+### 新增
+
+- 全页国家简报页面，替代模态覆盖层
+- 面向平台特定安装器的下载重定向 API
+
+### 修复
+
+- 将国家名从 GeoJSON 规范化为标准 TIER1 名称
+- 收紧标题相关性、新增 Top News 板块、紧凑化市场
+- 在 Web 上隐藏桌面配置面板、修复无关的预测市场
+- 减弱气候异常热力图以停止遮挡其他图层
+- macOS：关闭时隐藏窗口而非退出
+
+### 性能
+
+- 减少脉冲动画循环带来的空闲 CPU
+- 加固 CI、缓存与地图聚类中的回归护栏
+
+</Update>
+
+<Update label="v2.2.1 - February 08, 2026" description="v2.2.1" tags={["Desktop", "Infrastructure"]}>
+
+### 修复
+
+- 统一变体命名并修复 PWA 磁贴缓存
+- Windows 设置窗口：异步命令、无菜单栏、无白闪
+- 限制 DeckGLMap 中的图层菜单高度
+- 在 CSP 中允许 Cloudflare Insights 脚本
+- 缺失 Apple 签名密钥时的 macOS 构建失败
+
+</Update>
+
+<Update label="v2.2.0 - February 07, 2026" description="v2.2.0" tags={["Desktop", "Map", "Intelligence"]}>
+
+v2.2 初始版本，支持多变体（World + Tech）、桌面应用（Tauri），以及全面的地缘政治情报功能。
+
+</Update>

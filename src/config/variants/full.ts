@@ -12,7 +12,8 @@ export * from '../irradiators';
 export * from '../pipelines';
 export * from '../ports';
 export * from '../military';
-export * from '../airports';
+// airports intentionally not re-exported here — keeps the airports table off the
+// eager variant/@/config barrel; AviationCommandBar imports it directly. (#4404)
 export * from '../entities';
 
 // Panel configuration for geopolitical analysis
@@ -105,13 +106,14 @@ export const DEFAULT_MAP_LAYERS: MapLayers = {
   tradeRoutes: false,
   iranAttacks: true,
   ciiChoropleth: false,
+  resilienceScore: false,
   dayNight: false,
   // Commodity variant layers (disabled in full variant)
   miningSites: false,
   processingPlants: false,
   commodityPorts: false,
   webcams: false,
-  weatherRadar: false, diseaseOutbreaks: false,
+  diseaseOutbreaks: false,
 };
 
 // Mobile-specific defaults for geopolitical
@@ -166,13 +168,14 @@ export const MOBILE_DEFAULT_MAP_LAYERS: MapLayers = {
   tradeRoutes: false,
   iranAttacks: true,
   ciiChoropleth: false,
+  resilienceScore: false,
   dayNight: false,
   // Commodity variant layers (disabled in full variant)
   miningSites: false,
   processingPlants: false,
   commodityPorts: false,
   webcams: false,
-  weatherRadar: false, diseaseOutbreaks: false,
+  diseaseOutbreaks: false,
 };
 
 export const VARIANT_CONFIG: VariantConfig = {

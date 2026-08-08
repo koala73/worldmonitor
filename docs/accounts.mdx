@@ -1,0 +1,59 @@
+---
+title: "Accounts & Sign-up"
+description: "How account creation works: the free dashboard needs no account; Pro/API accounts are created via the Clerk sign-up flow in a browser."
+---
+
+<Info>
+**The free dashboard requires no account.** Everything listed under the Free plan — 56 map layers (all but the Pro-only Resilience layer), 500+ feeds, country briefs, watchlists — works anonymously at [worldmonitor.app](https://worldmonitor.app). Create an account only when you want Pro/API features or need to mint an API key.
+</Info>
+
+## How sign-up works
+
+Account creation is an interactive browser flow, not an API:
+
+1. Open [worldmonitor.app/pro](https://worldmonitor.app/pro) and click **Sign up** (or use the dashboard's sign-in button). A [Clerk](https://clerk.com) modal opens inside the page — there is no standalone `/sign-up` form page; that URL serves the app shell.
+2. Register with email + password or an OAuth provider (Google, GitHub). Email registrations get a verification code; the modal walks through it.
+3. A free account by itself unlocks nothing extra on the dashboard — it is the identity that Pro/API subscriptions and API keys attach to.
+
+## After signing up
+
+- **Upgrade to Pro, Pro Business, or API** from [worldmonitor.app/pro](https://worldmonitor.app/pro) — checkout runs on Dodo Payments; see [Plans & Pricing](/pricing). Pro and Pro Business are separate products: moving from one to the other means cancelling the current subscription in the billing portal and starting the new checkout.
+- **Create an API key** from **Dashboard → Settings → API Keys** once subscribed to API Starter or API Business (`wm_` + 40 hex chars). The full value is shown only once; see [Find or replace your license / API key](/api-keys) for the exact steps and recovery instructions.
+- **Connect an agent via OAuth** instead of a key: MCP clients (Claude Desktop and others) use OAuth 2.1 + PKCE with dynamic client registration — no manual account dance; see [auth.md](https://worldmonitor.app/auth.md) for the self-bootstrapping discovery chain.
+
+## Plan and billing in the dashboard
+
+Signed-in users manage account settings and billing from the same avatar menu:
+
+- **Plan & billing** opens the signed-in billing tab directly.
+- **Settings** opens the general settings tab; the billing tab remains available alongside Panels, Sources, Notifications, API Keys, and eligible MCP-client settings.
+
+The billing tab shows the current plan and the state that matters operationally: renewal date for active subscriptions, payment action for `on_hold`, access-through date for a cancelled subscription, or a resubscribe path after expiry. **Manage Billing** opens the Dodo customer portal for payment methods, invoices, plan changes that Dodo supports, and cancellation.
+
+Users whose premium access comes from an invite, tester key, API key, or another external grant still see an explanation of that state, but no misleading invoice or payment action. An invited team member's billing remains with the plan owner.
+
+## API Business team seats
+
+API Business advertises **five Pro licenses total**: the subscription owner plus up to four teammates. The self-serve **Business Seats** manager is currently implemented for the monthly `api_business` plan. A monthly owner manages the four invite slots from **Avatar → Plan & billing → Business Seats**. The annual `api_business_annual` plan does not expose that self-serve manager yet; contact support for its current included-seat handling.
+
+- The owner's account must use a company email domain; free and disposable domains cannot issue invitations.
+- Invitees must use the same company email domain as the owner.
+- Pending and accepted invitations both count toward the four-seat limit. Pending links expire after 14 days.
+- Accepting an invitation grants the teammate Pro dashboard access for as long as the owner's API Business subscription remains covering.
+- The invitee receives Pro access, not ownership of the API Business subscription or its billing portal. A higher-tier subscription already owned by the invitee remains authoritative.
+- Removing a seat revokes the grant immediately. If the owner cancels, invited access continues only through the owner's paid-through date.
+
+This is the self-serve path for the five licenses included with monthly API Business. Additional seats, cross-domain teams, SSO/RBAC, or centralized workspace administration require an Enterprise agreement.
+
+## For agents
+
+- You cannot complete browser sign-up on a user's behalf by fetching pages — the flow lives in a client-side Clerk modal. Direct users to [worldmonitor.app/pro](https://worldmonitor.app/pro).
+- To act *as* an agent with your own credentials, use the OAuth path in [auth.md](https://worldmonitor.app/auth.md) (anonymous dynamic client registration, then a human consents at authorization time).
+- Pricing, plan gates, and quotas are machine-readable: [`/pricing.md`](https://worldmonitor.app/pricing.md) and [`GET /api/product-catalog`](https://www.worldmonitor.app/api/product-catalog).
+
+## Related
+
+- [Plans & Pricing](/pricing)
+- [API Business commerce contract](/api-commerce)
+- [Authentication & Usage](/usage-auth)
+- [Support & Contact](/support)

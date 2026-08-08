@@ -1,0 +1,349 @@
+---
+title: "入门指南：本地安装与配置 WorldMonitor"
+description: "在本地环境安装、配置并运行 WorldMonitor 的完整分步入门指南，全面涵盖 Next.js 与 React 技术栈概览、项目目录结构、Redis 与 Upstash 等必需的第三方 API 依赖、环境变量配置、开发调试技巧、生产部署要点以及首次启动运行的完整流程与常见问题排查。"
+---
+本指南涵盖在本地设置 WorldMonitor 所需的一切，从先决条件和安装到理解项目结构和 API 依赖。
+
+## 技术栈
+
+| 层 | 技术 | 用途 |
+|-------|------------|---------|
+| **语言** | TypeScript 5.x | 为 60+ 源文件提供类型安全 |
+| **构建** | Vite | 快速 HMR，优化的生产构建 |
+| **地图（桌面）** | deck.gl + MapLibre GL | 为大型数据集提供 WebGL 加速渲染 |
+| **地图（移动）** | D3.js + TopoJSON | SVG 备选以节省电池 |
+| **并发** | Web Workers | 主线程外聚类和关联 |
+| **AI/ML** | ONNX Runtime Web | 基于浏览器的离线推理用于摘要 |
+| **网络** | WebSocket + REST | 实时 AIS 流，其他 API 使用 HTTP |
+| **存储** | IndexedDB | 快照、基线（兆字节级状态） |
+| **偏好设置** | LocalStorage | 用户设置、监视器、面板顺序 |
+| **部署** | Vercel Edge | 全球分布的无服务器代理 |
+
+### 地图渲染架构
+
+地图使用针对每个平台优化的混合渲染策略：
+
+**桌面（deck.gl + MapLibre GL）**：
+
+- WebGL 加速图层可平滑处理数千个标记
+- MapLibre GL 提供底图瓦片（OpenStreetMap）
+- GeoJSON、散点图、路径和图标图层用于不同数据类型
+- 基于 GPU 的聚类和拾取以实现响应式交互
+
+**移动（D3.js + TopoJSON）**：
+
+- SVG 渲染以节省电池
+- 减少标记数量和简化图层
+- 触摸优化的交互，更大的命中区域
+- WebGL 不可用时自动降级
+
+### 关键库
+
+- **deck.gl**：高性能 WebGL 可视化图层
+- **MapLibre GL**：开源地图渲染引擎
+- **D3.js**：SVG 地图渲染、缩放行为（移动端备选）
+- **TopoJSON**：高效的地理数据编码
+- **ONNX Runtime**：基于浏览器的 ML 推理
+- **自定义 HTML 转义**：XSS 防护（DOMPurify 模式）
+
+### 不使用外部 UI 框架
+
+整个 UI 是手工制作的 DOM 操作，不使用 React、Vue 或 Angular。这使得包体积小（gzipped 后约 250KB），并提供对渲染性能的精细控制。
+
+### 构建时配置
+
+Vite 在构建时注入配置值，启用自动版本同步等功能：
+
+| 变量 | 来源 | 用途 |
+|----------|--------|---------|
+| `__APP_VERSION__` | `package.json` 版本字段 | 页眉显示当前版本 |
+
+这确保显示的版本始终与发布的包匹配，无需手动同步。
+
+```typescript
+// vite.config.ts
+define: {
+  __APP_VERSION__: JSON.stringify(pkg.version),
+}
+
+// App.ts
+const header = `World Monitor v${__APP_VERSION__}`;
+```
+
+## 安装
+
+WorldMonitor 有三种设置路径，具体取决于你要做什么。
+
+### 1. 仅应用本地开发
+
+运行 Vite 仪表盘，**无需环境变量**。可选的 API 密钥（见下文）可解锁额外的图层和数据源。
+
+```bash
+git clone https://github.com/koala73/worldmonitor.git
+cd worldmonitor
+npm install
+npm run dev          # http://localhost:5173
+```
+
+变体仪表盘可从同一检出运行：`npm run dev:tech`、`dev:finance`、`dev:commodity`、`dev:happy` 和 `dev:energy`。
+
+### 2. 贡献者 / 完整代码生成开发
+
+当你修改 `.proto` 合约或重新生成客户端时需要。**需要 Go 1.21+**（用于 `buf` CLI 和 sebuf protoc 插件）**以及 Node.js 22+**。
+
+```bash
+make install         # buf, sebuf plugins, npm deps, proto deps, Playwright browsers
+make generate        # regenerate TypeScript clients, servers, and OpenAPI docs
+npm run dev
+```
+
+每当修改 `.proto` 文件时，在构建或推送之前运行 `make generate` — 如果生成的输出与提交的文件不一致，CI 的 `proto-check.yml` 会失败。完整的 proto 工作流请参见[添加端点](/zh/adding-endpoints)。
+
+### 3. 自托管 Docker 栈
+
+完整的自托管栈（仪表盘 + Railway 式中继 + Redis + 种子脚本）需要 **Node.js 22+**、Docker 或 Podman，以及没有安全默认值的密钥 — `RELAY_SHARED_SECRET`、`REDIS_PASSWORD` 和 `REDIS_TOKEN` 必须在 `docker compose up` 之前设置。完整的操作步骤请参见仓库中的 `SELF_HOSTING.md` 指南。
+
+## API 依赖
+
+仪表盘从各种公共 API 和数据源获取数据：
+
+| 服务 | 数据 | 需要认证 |
+|---------|------|---------------|
+| RSS2JSON | 新闻源解析 | 否 |
+| Finnhub | 股票报价（主要） | 是（免费） |
+| Yahoo Finance | 股票指数和大宗商品（备份） | 否 |
+| CoinGecko | 加密货币价格 | 否 |
+| USGS | 地震数据 | 否 |
+| NASA EONET | 自然事件（风暴、火灾、火山、洪水） | 否 |
+| NWS | 天气警报 | 否 |
+| FRED | 经济指标（美联储数据） | 否 |
+| EIA | 石油分析（价格、产量、库存） | 是（免费） |
+| USASpending.gov | 联邦政府合同和拨款 | 否 |
+| Polymarket | 预测市场 | 否 |
+| ACLED | 武装冲突和抗议数据 | 是（免费） |
+| GDELT Geo | 新闻衍生的事件地理定位 + 紧张局势 | 否 |
+| GDELT Doc | 基于主题的情报源（网络、军事、核） | 否 |
+| FAA NASSTATUS | 机场延误状态 | 否 |
+| Cloudflare Radar | 互联网中断数据 | 是（免费） |
+| AISStream | 实时船舶位置 | 是（中继） |
+| OpenSky Network | 军用飞机追踪 | 是（免费） |
+| Wingbits | 飞机增强（所有者、运营方） | 是（免费） |
+| PizzINT | 五角大楼区域活动指标 | 否 |
+
+### 可选 API 密钥
+
+某些功能需要 API 凭证。没有它们，相应的图层会被隐藏：
+
+| 变量 | 服务 | 获取方式 |
+|----------|---------|------------|
+| `FINNHUB_API_KEY` | 股票报价（主要） | 在 [finnhub.io](https://finnhub.io/) 免费注册 |
+| `EIA_API_KEY` | 石油分析 | 在 [eia.gov/opendata](https://www.eia.gov/opendata/) 免费注册 |
+| `VITE_WS_RELAY_URL` | AIS 船舶追踪 | 部署 AIS 中继或使用托管服务 |
+| `VITE_OPENSKY_RELAY_URL` | 军用飞机 | 使用 OpenSky 凭证部署中继 |
+| `OPENSKY_CLIENT_ID` | OpenSky 认证（中继） | 在 [opensky-network.org](https://opensky-network.org) 免费注册 |
+| `OPENSKY_CLIENT_SECRET` | OpenSky 认证（中继） | 从 OpenSky 账户设置获取 API 密钥 |
+| `CLOUDFLARE_API_TOKEN` | 互联网中断 | 具备 Radar 访问权限的免费 Cloudflare 账户 |
+| `ACLED_ACCESS_TOKEN` | 抗议数据（服务器端） | 在 acleddata.com 免费注册 |
+| `WINGBITS_API_KEY` | 飞机增强 | 联系 [Wingbits](https://wingbits.com) 获取 API 访问权限 |
+
+仪表盘在没有这些密钥的情况下也能完全运行。受影响的图层只是不会显示。核心功能（新闻、市场、地震、天气）无需配置。
+
+## 项目结构
+
+```
+src/
+├── App.ts                    # Main application orchestrator
+├── main.ts                   # Entry point
+├── components/
+│   ├── DeckGLMap.ts          # WebGL map with deck.gl + MapLibre (desktop)
+│   ├── Map.ts                # D3.js SVG map (mobile fallback)
+│   ├── MapContainer.ts       # Map wrapper with platform detection
+│   ├── MapPopup.ts           # Contextual info popups
+│   ├── SearchModal.ts        # Universal search (Cmd+K)
+│   ├── SignalModal.ts        # Signal intelligence display with focal points
+│   ├── PizzIntIndicator.ts   # Pentagon Pizza Index display
+│   ├── VirtualList.ts        # Virtual/windowed scrolling
+│   ├── InsightsPanel.ts      # AI briefings + focal point display
+│   ├── EconomicPanel.ts      # FRED economic indicators
+│   ├── GdeltIntelPanel.ts    # Topic-based intelligence (cyber, military, etc.)
+│   ├── LiveNewsPanel.ts      # YouTube live news streams with channel switching
+│   ├── NewsPanel.ts          # News feed with clustering
+│   ├── MarketPanel.ts        # Stock/commodity display
+│   ├── MonitorPanel.ts       # Custom keyword monitors
+│   ├── CIIPanel.ts           # Country Instability Index display
+│   ├── CascadePanel.ts       # Infrastructure cascade analysis
+│   ├── StrategicRiskPanel.ts # Strategic risk overview dashboard
+│   ├── StrategicPosturePanel.ts # AI strategic posture with theater analysis
+│   ├── ServiceStatusPanel.ts # External service health monitoring
+│   └── ...
+├── config/
+│   ├── feeds.ts              # 500+ RSS feeds, source tiers, regional sources
+│   ├── geo.ts                # 30+ hotspots, conflicts, 86 cables, waterways, spaceports, minerals
+│   ├── pipelines.ts          # 88 oil & gas pipelines
+│   ├── ports.ts              # 62 strategic ports worldwide
+│   ├── bases-expanded.ts     # 226 military bases
+│   ├── ai-datacenters.ts     # 313 AI compute clusters (Epoch AI dataset)
+│   ├── airports.ts           # 111 airports across 5 regions
+│   ├── irradiators.ts        # IAEA gamma irradiator sites
+│   ├── nuclear-facilities.ts # Global nuclear infrastructure
+│   ├── markets.ts            # Stock symbols, sectors
+│   ├── entities.ts           # 66 entity definitions (companies, indices, commodities, countries)
+│   └── panels.ts             # Panel configs, layer defaults, mobile optimizations
+├── services/
+│   ├── ais.ts                # WebSocket vessel tracking with density analysis
+│   ├── military-vessels.ts   # Naval vessel identification and tracking
+│   ├── military-flights.ts   # Aircraft tracking via OpenSky relay
+│   ├── military-surge.ts     # Surge detection with news correlation
+│   ├── cached-theater-posture.ts # Theater posture API client with caching
+│   ├── wingbits.ts           # Aircraft enrichment (owner, operator, type)
+│   ├── pizzint.ts            # Pentagon Pizza Index + GDELT tensions
+│   ├── protests.ts           # ACLED + GDELT integration
+│   ├── gdelt-intel.ts        # GDELT Doc API topic intelligence
+│   ├── gdacs.ts              # UN GDACS disaster alerts
+│   ├── eonet.ts              # NASA EONET natural events + GDACS merge
+│   ├── flights.ts            # FAA delay parsing
+│   ├── outages.ts            # Cloudflare Radar integration
+│   ├── rss.ts                # RSS parsing with circuit breakers
+│   ├── markets.ts            # Finnhub, Yahoo Finance, CoinGecko
+│   ├── earthquakes.ts        # USGS integration
+│   ├── weather.ts            # NWS alerts
+│   ├── fred.ts               # Federal Reserve data
+│   ├── oil-analytics.ts      # EIA oil prices, production, inventory
+│   ├── usa-spending.ts       # USASpending.gov contracts & awards
+│   ├── polymarket.ts         # Prediction markets (filtered)
+│   ├── clustering.ts         # Jaccard similarity clustering
+│   ├── correlation.ts        # Signal detection engine
+│   ├── velocity.ts           # Velocity & sentiment analysis
+│   ├── related-assets.ts     # Infrastructure near news events
+│   ├── activity-tracker.ts   # New item detection & highlighting
+│   ├── analysis-worker.ts    # Web Worker manager
+│   ├── ml-worker.ts          # Browser ML inference (ONNX)
+│   ├── summarization.ts      # AI briefings with fallback chain
+│   ├── parallel-analysis.ts  # Concurrent headline analysis
+│   ├── storage.ts            # IndexedDB snapshots & baselines
+│   ├── data-freshness.ts     # Real-time data staleness tracking
+│   ├── signal-aggregator.ts  # Central signal collection & grouping
+│   ├── focal-point-detector.ts   # Intelligence synthesis layer
+│   ├── entity-index.ts       # Entity lookup maps (by alias, keyword, sector)
+│   ├── entity-extraction.ts  # News-to-entity matching for market correlation
+│   ├── country-instability.ts    # CII scoring algorithm
+│   ├── geo-convergence.ts        # Geographic convergence detection
+│   ├── infrastructure-cascade.ts # Dependency graph and cascade analysis
+│   └── cross-module-integration.ts # Unified alerts and strategic risk
+├── workers/
+│   └── analysis.worker.ts    # Off-thread clustering & correlation
+├── utils/
+│   ├── circuit-breaker.ts    # Fault tolerance pattern
+│   ├── sanitize.ts           # XSS prevention (escapeHtml, sanitizeUrl)
+│   ├── urlState.ts           # Shareable link encoding/decoding
+│   └── analysis-constants.ts # Shared thresholds for worker sync
+├── styles/
+└── types/
+api/                          # Vercel Edge Functions (two kinds, see Architecture)
+├── <domain>/v<N>/[rpc].ts    # Generated domain gateways — aviation, market,
+│                             #   conflict, climate, cyber, sanctions, maritime,
+│                             #   resilience, ... (34 proto-backed domains)
+├── bootstrap.js              # Two-tier Redis hydration for the SPA
+├── health/                   # Per-key freshness + cascade status
+├── mcp.ts / mcp-proxy.ts     # Model Context Protocol server endpoints
+├── create-checkout.ts        # Stripe checkout (hand-written operational)
+├── customer-portal.ts        # Stripe billing portal (hand-written operational)
+├── user-prefs.ts             # User preference sync (hand-written operational)
+└── notify.ts                 # Notification dispatch (hand-written operational)
+server/                       # Server-side handlers (bundled into Edge functions)
+├── gateway.ts                # createDomainGateway — per-domain Edge bundles
+├── worldmonitor/<domain>/    # 34 proto-backed domain handler implementations
+└── _shared/                  # Redis client, source tiers, shared utilities
+```
+
+旧版修订中描述的扁平 `api/*.js` 代理已被 proto 生成的领域网关取代。完整的请求路径请参见[架构](/zh/architecture)文档。
+
+## 数据归属
+
+本项目使用来自以下数据源的数据。请尊重其使用条款。
+
+### 飞机追踪
+
+数据由 [The OpenSky Network](https://opensky-network.org) 提供。如果你在出版物中使用此数据，请引用：
+
+> Matthias Schafer、Martin Strohmeier、Vincent Lenders、Ivan Martinovic 和 Matthias Wilhelm。"Bringing Up OpenSky: A Large-scale ADS-B Sensor Network for Research"。载于《第 13 届 IEEE/ACM 传感器网络信息处理国际研讨会（IPSN）论文集》，第 83-94 页，2014 年 4 月。
+
+### 冲突与抗议数据
+
+- **ACLED**：武装冲突位置与事件数据。来源：[ACLED](https://acleddata.com)。数据必须根据其[归属政策](https://acleddata.com/attributionpolicy/)进行归属。
+- **GDELT**：事件、语言和语调全球数据库。来源：[The GDELT Project](https://www.gdeltproject.org/)。
+
+### 金融数据
+
+- **股票报价**：由 [Finnhub](https://finnhub.io/) 提供（主要），[Yahoo Finance](https://finance.yahoo.com/) 作为指数和大宗商品的备份
+- **加密货币**：由 [CoinGecko API](https://www.coingecko.com/en/api) 提供
+- **经济指标**：数据来自 [FRED](https://fred.stlouisfed.org/)，圣路易斯联邦储备银行
+
+### 地球物理数据
+
+- **地震**：[美国地质调查局](https://earthquake.usgs.gov/)，ANSS 综合目录
+- **自然事件**：[NASA EONET](https://eonet.gsfc.nasa.gov/) — 地球观测自然事件追踪器（风暴、野火、火山、洪水）
+- **天气警报**：[国家气象局](https://www.weather.gov/) — 开放数据，免费使用
+
+### 基础设施与交通
+
+- **机场延误**：[FAA 空中交通管制系统指挥中心](https://www.fly.faa.gov/)
+- **船舶追踪**：[AISstream](https://aisstream.io/) 实时 AIS 数据
+- **互联网中断**：[Cloudflare Radar](https://radar.cloudflare.com/)（CC BY-NC 4.0）
+
+### 其他来源
+
+- **预测市场**：[Polymarket](https://polymarket.com/)
+
+## 致谢
+
+最初的仪表盘概念受 Reggie James（[@HipCityReg](https://x.com/HipCityReg/status/2009003048044220622)）启发，感谢他对综合态势感知工具的愿景。
+
+特别感谢 **[Wingbits](https://wingbits.com) 的 Yanal** 提供 API 访问权限以获取飞机增强数据，从而实现军用飞机分类和所有权追踪。
+
+感谢 **[@fai9al](https://github.com/fai9al)** 的启发和原始 PR，促成了 Tech Monitor 变体。
+
+## 限制与注意事项
+
+本项目是一个**概念验证**，展示使用公开数据可能实现的功能。虽然可用，但存在重要限制：
+
+### 数据完整性
+
+某些数据源需要付费账户才能获得完整访问：
+
+- **ACLED**：免费层有 API 限制；编程访问需要研究层
+- **OpenSky Network**：有速率限制；商业层提供更高配额
+- **卫星 AIS**：全球覆盖需要商业提供商（Spire、Kpler 等）
+
+仪表盘可在免费层下工作，但可能存在覆盖范围或更新频率方面的差距。
+
+### AIS 覆盖偏差
+
+船舶图层使用通过 [AISStream.io](https://aisstream.io) 的陆地 AIS 接收器。这造成了**地理偏差**：
+
+- **覆盖较强**：欧洲水域、大西洋、主要港口
+- **覆盖较弱**：中东、开阔海域、偏远地区
+
+陆地接收器只能检测到距岸约 50km 范围内的船舶。卫星 AIS（商业）提供真正的全球覆盖，但未包含在此免费实现中。
+
+### 被封锁的数据源
+
+某些发布商封锁来自云提供商（Vercel、Railway、AWS）的请求：
+
+- 来自某些媒体的 RSS 源可能因 403 错误而失败
+- 这是常见的反机器人措施，不是仪表盘的 bug
+- 受影响的源通过熔断器自动禁用
+
+系统会优雅降级。被封锁的源会被跳过，而其他源继续运行。
+
+## 许可证
+
+World Monitor 采用 [GNU Affero General Public License v3.0 (AGPL-3.0-only)](/zh/license) 许可。当你遵守其 copyleft 和源代码可用条款时，AGPL 允许商业使用。对于私有源代码或定制合同条款，可另行获取商业许可作为替代选项。完整详情请参见[许可证](/zh/license)页面。
+
+## 作者
+
+**Elie Habib**
+
+---
+
+*为态势感知和开源情报收集而构建。*

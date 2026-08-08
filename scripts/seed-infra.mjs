@@ -10,6 +10,7 @@
  * Seeded via warm-ping:
  * - list-service-statuses: pings 30 status pages, caches result
  * - get-cable-health: NGA warning analysis, caches cable health map
+ * - list-temporal-anomalies: computes temporal anomaly snapshot for forecasts
  *
  * NOT seeded (inherently on-demand):
  * - search-imagery: per-bbox/datetime STAC query (cache key is hash of params)
@@ -24,20 +25,41 @@ loadEnvFile(import.meta.url);
 const API_BASE = 'https://api.worldmonitor.app';
 const TIMEOUT = 30_000;
 
+// Defense-in-depth auth — Origin-trust alone broke globally on 2026-05-02
+// (CF/Vercel intermediaries can strip Origin and CF can cache the resulting
+// 401 for s-maxage, poisoning a POP). Send X-WorldMonitor-Key when configured;
+// fall through to Origin-only when unset to preserve local dev behaviour.
+// Set WORLDMONITOR_RELAY_KEY on the Railway service to a value already
+// present in Vercel's WORLDMONITOR_VALID_KEYS. Same pattern as ais-relay.cjs.
+const RELAY_API_KEY = process.env.WORLDMONITOR_RELAY_KEY || '';
+
+function warmPingHeaders() {
+  const h = {
+    'Content-Type': 'application/json',
+    'User-Agent': CHROME_UA,
+    Origin: 'https://worldmonitor.app',
+  };
+  if (RELAY_API_KEY) h['X-WorldMonitor-Key'] = RELAY_API_KEY;
+  return h;
+}
+
 async function warmPing(name, path) {
   try {
     const resp = await fetch(`${API_BASE}${path}`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'User-Agent': CHROME_UA, Origin: 'https://worldmonitor.app' },
+      headers: warmPingHeaders(),
       body: JSON.stringify({}),
       signal: AbortSignal.timeout(TIMEOUT),
     });
     if (!resp.ok) {
-      console.warn(`  ${name}: HTTP ${resp.status}`);
+      const keyNote = RELAY_API_KEY ? '' : ' (WORLDMONITOR_RELAY_KEY not set — Origin-only auth)';
+      console.warn(`  ${name}: HTTP ${resp.status}${keyNote}`);
       return false;
     }
     const data = await resp.json();
-    const count = data.statuses?.length ?? (data.cables ? Object.keys(data.cables).length : 0);
+    const count = data.statuses?.length
+      ?? data.anomalies?.length
+      ?? (data.cables ? Object.keys(data.cables).length : 0);
     console.log(`  ${name}: OK (${count} items)`);
     return true;
   } catch (e) {
@@ -53,6 +75,7 @@ async function main() {
   const results = await Promise.allSettled([
     warmPing('Service Statuses', '/api/infrastructure/v1/list-service-statuses'),
     warmPing('Cable Health', '/api/infrastructure/v1/get-cable-health'),
+    warmPing('Temporal Anomalies', '/api/infrastructure/v1/list-temporal-anomalies'),
   ]);
 
   for (const r of results) { if (r.status === 'rejected') console.warn(`  Warm-ping failed: ${r.reason?.message || r.reason}`); }
@@ -62,7 +85,17 @@ async function main() {
   const duration = Date.now() - start;
 
   console.log(`\n=== Done: ${ok}/${total} warm-pings OK (${duration}ms) ===`);
-  process.exit(ok > 0 ? 0 : 1);
+  if (ok === 0) {
+    // Distinct, grep-able marker so persistent auth/gateway breakage stays
+    // visible in Railway logs even though we exit 0. Set up a Railway log
+    // alert on this string instead of relying on container exit codes.
+    console.log('WARN: all warm-pings failed — cache is cold (check WORLDMONITOR_RELAY_KEY and gateway auth)');
+  }
+  // Best-effort cache warmer: a missed warm-ping is not a failure worth paging on.
+  // Upstream timeouts and transient 5xx happen routinely; exiting non-zero turned
+  // every blip into a Railway "Deploy crashed" email. Logs above still surface
+  // partial failures for investigation.
+  process.exit(0);
 }
 
 main();

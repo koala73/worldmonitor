@@ -1,0 +1,75 @@
+---
+title: "智能体技能目录"
+description: "通过 /.well-known/agent-skills/index.json 发现端点公布的 25 个 World Monitor 智能体技能人类可读目录，涵盖冲突监测、航运追踪、能源情报、市场信号、国家简报与风险评分等场景，方便 AI 智能体、LLM 与自动化工作流按需调用相应工具能力。"
+---
+
+该目录包含 25 个 World Monitor 智能体技能，面向那些需要聚焦、开箱即用的配方而非完整 OpenAPI 抓取的智能体。每个技能都是一个公开的 `SKILL.md` 文件，包含使用时机指引、认证结构、REST 示例、响应说明以及内容安全处理。
+
+机器可读的权威来源是 [`/.well-known/agent-skills/index.json`](https://worldmonitor.app/.well-known/agent-skills/index.json)。下方每一行都链接到所提供的配方，其 SHA-256 摘要固定在该清单中。
+
+## 调用模型
+
+当你的客户端能够动态发现工具时，使用 MCP 服务器：
+
+```text
+https://worldmonitor.app/mcp
+```
+
+当你想要技能文件中确切的配方调用时，使用 REST：
+
+```text
+https://api.worldmonitor.app
+X-WorldMonitor-Key: wm_<40-hex>
+```
+
+## 目录
+
+### 国家与战略风险
+
+| 技能 | 用途 | 配方 |
+|---|---|---|
+| `fetch-country-brief` | 获取某个国家当前由 AI 生成的战略情报简报，以 ISO 3166-1 alpha-2 代码为键。当用户请求特定国家当前地缘政治、经济或安全局势的摘要时使用。 | [SKILL.md](https://worldmonitor.app/.well-known/agent-skills/fetch-country-brief/SKILL.md) |
+| `fetch-resilience-score` | 获取单个国家的综合国家韧性评分（0-100）及其领域/支柱细分。当用户询问某个国家的韧性如何，或想要其数值化韧性评分、趋势或按领域细分时使用。 | [SKILL.md](https://worldmonitor.app/.well-known/agent-skills/fetch-resilience-score/SKILL.md) |
+| `check-country-risk` | 按 ISO 代码获取单个国家的综合国家风险情报——国家不稳定指数（CII）、旅行警示级别和现行制裁敞口。当用户询问某个国家当前风险或不稳定程度时使用。 | [SKILL.md](https://worldmonitor.app/.well-known/agent-skills/check-country-risk/SKILL.md) |
+
+### 冲突、不稳定与安全
+
+| 技能 | 用途 | 配方 |
+|---|---|---|
+| `track-conflict-events` | 获取带地理定位的武装冲突事件（UCDP），包含各方、死亡人数估计和暴力类型，可按国家和日期范围筛选。当用户询问某个国家或地区近期的战斗、袭击或冲突活动时使用。 | [SKILL.md](https://worldmonitor.app/.well-known/agent-skills/track-conflict-events/SKILL.md) |
+| `track-unrest-events` | 获取已采集的抗议、骚乱、罢工和内乱事件。当用户询问某个国家或近期某个时间窗口内是否发生社会动荡时使用。 | [SKILL.md](https://worldmonitor.app/.well-known/agent-skills/track-unrest-events/SKILL.md) |
+| `check-sanctions-pressure` | 获取规范化的 OFAC 制裁压力——认定摘要、近期新增，以及按国家/按项目的汇总（包括受制裁的船舶和飞机）。当用户询问哪些国家或项目面临制裁压力，或近期认定了什么时使用。 | [SKILL.md](https://worldmonitor.app/.well-known/agent-skills/check-sanctions-pressure/SKILL.md) |
+| `scan-cyber-threats` | 获取活跃的网络威胁情报——恶意软件 IOC、C2 基础设施和 CISA 已知被利用漏洞——可按类型、来源和严重性筛选。当用户询问当前网络威胁、IOC 或正在被主动利用的 CVE 时使用。 | [SKILL.md](https://worldmonitor.app/.well-known/agent-skills/scan-cyber-threats/SKILL.md) |
+
+### 市场、贸易与预测
+
+| 技能 | 用途 | 配方 |
+|---|---|---|
+| `get-market-quotes` | 获取实时的股票、指数和 ETF 报价，包含价格、涨跌和迷你走势图历史。当用户询问当前市场价格、某只股票表现如何，或想要快速的市场快照时使用。 | [SKILL.md](https://worldmonitor.app/.well-known/agent-skills/get-market-quotes/SKILL.md) |
+| `get-prediction-markets` | 获取活跃的预测市场合约（Polymarket），包含实时的 Yes 结果价格概率、成交量和截止日期，可按类别或关键词筛选。当用户询问某个地缘政治、经济或选举结果的市场赔率时使用。 | [SKILL.md](https://worldmonitor.app/.well-known/agent-skills/get-prediction-markets/SKILL.md) |
+| `track-tariff-trends` | 获取某个国家对的关税税率时间序列——按产品部门和年份的实施税率与约束税率，以及当前的有效关税税率。当用户询问两国之间关税如何变化，或某个部门适用何种税率时使用。 | [SKILL.md](https://worldmonitor.app/.well-known/agent-skills/track-tariff-trends/SKILL.md) |
+| `trace-trade-flows` | 获取带异常标记的战略性 UN Comtrade 大宗商品流。当用户询问谁在交易某种关键大宗商品、哪些流量急剧变化，或贸易敞口如何变化时使用。 | [SKILL.md](https://worldmonitor.app/.well-known/agent-skills/trace-trade-flows/SKILL.md) |
+| `check-forecast-signals` | 获取概率性预测及其记分卡背景。当用户询问 World Monitor 正在预测什么、概率如何变化，或预测的校准程度如何时使用。 | [SKILL.md](https://worldmonitor.app/.well-known/agent-skills/check-forecast-signals/SKILL.md) |
+
+### 海事、物流与能源
+
+| 技能 | 用途 | 配方 |
+|---|---|---|
+| `check-chokepoint-status` | 获取受监控的 13 个海上咽喉要道（苏伊士、霍尔木兹、马六甲、曼德海峡、巴拿马等）的实时中断状态。当用户询问某个海峡或运河当前是否中断、拥堵或适合航运时使用。 | [SKILL.md](https://worldmonitor.app/.well-known/agent-skills/check-chokepoint-status/SKILL.md) |
+| `track-vessel-traffic` | 获取某一时间点的 AIS 船舶交通快照，包含潜在中断候选和可选的油轮叠加层，可按边界框筛选。当用户询问某个区域内有哪些船舶，或海事交通是否中断时使用。 | [SKILL.md](https://worldmonitor.app/.well-known/agent-skills/track-vessel-traffic/SKILL.md) |
+| `monitor-supply-chain-stress` | 根据承运商和运费指标获取当前的航运市场压力。当用户询问供应链或集装箱航运当前是否承压时使用。 | [SKILL.md](https://worldmonitor.app/.well-known/agent-skills/monitor-supply-chain-stress/SKILL.md) |
+| `monitor-energy-disruptions` | 获取针对管道和存储设施的精选能源中断事件日志。当用户询问哪些能源资产处于中断、受制裁、离线或受关注状态时使用。 | [SKILL.md](https://worldmonitor.app/.well-known/agent-skills/monitor-energy-disruptions/SKILL.md) |
+| `assess-energy-shock` | 为某个国家和咽喉要道建模石油或天然气供应冲击敞口。当用户询问某次能源中断可能如何影响燃料供应、战略储备覆盖或成品油缺口时使用。 | [SKILL.md](https://worldmonitor.app/.well-known/agent-skills/assess-energy-shock/SKILL.md) |
+
+### 实时监控
+
+| 技能 | 用途 | 配方 |
+|---|---|---|
+| `fetch-news-digest` | 获取 World Monitor 500 多个精选新闻源的预聚合摘要，按类别分桶，包含每篇文章的威胁分类和警报标记。当用户询问当前新闻内容、想要按主题分类的头条，或需要一次时事扫描时使用。 | [SKILL.md](https://worldmonitor.app/.well-known/agent-skills/fetch-news-digest/SKILL.md) |
+| `check-airport-delays` | 获取全球当前的机场延误和取消警报——每个机场的延误类型、严重性、平均延误分钟数和受影响航班百分比。当用户询问某个机场是否延误、中断或出现取消时使用。 | [SKILL.md](https://worldmonitor.app/.well-known/agent-skills/check-airport-delays/SKILL.md) |
+| `track-military-flights` | 获取追踪到的军用飞机位置（OpenSky + Wingbits），包含呼号、机型、运营方、高度和活动聚类，可按边界框、运营方和机型筛选。当用户询问某个地区的军事空中活动时使用。 | [SKILL.md](https://worldmonitor.app/.well-known/agent-skills/track-military-flights/SKILL.md) |
+| `monitor-internet-outages` | 获取检测到的互联网中断（Cloudflare Radar），包含国家、原因、严重性和时间范围。当用户询问某个国家的互联网是否中断、被限速或遭遇关停时使用。 | [SKILL.md](https://worldmonitor.app/.well-known/agent-skills/monitor-internet-outages/SKILL.md) |
+| `monitor-webcams` | 在地图视口中发现实时网络摄像头，并解析缩略图或播放器 URL。当用户请求某个地点、路线、边境、港口或城市附近的视觉背景时使用。 | [SKILL.md](https://worldmonitor.app/.well-known/agent-skills/monitor-webcams/SKILL.md) |
+| `track-earthquakes` | 获取近期地震（USGS），包含震级、深度、位置，以及标记是否临近核试验场的关注评分。当用户询问近期地震活动，或某次地震是否为自然地震时使用。 | [SKILL.md](https://worldmonitor.app/.well-known/agent-skills/track-earthquakes/SKILL.md) |
+| `track-climate-hazards` | 获取与气候相关的灾害事件、异常和气候新闻。当用户询问洪水、气旋、干旱、热浪、野火或气候扰动时使用。 | [SKILL.md](https://worldmonitor.app/.well-known/agent-skills/track-climate-hazards/SKILL.md) |
+| `monitor-health-alerts` | 获取疾病爆发警报和 PM2.5 空气质量健康警告。当用户询问某个国家、城市或地区当前的公共健康风险时使用。 | [SKILL.md](https://worldmonitor.app/.well-known/agent-skills/monitor-health-alerts/SKILL.md) |

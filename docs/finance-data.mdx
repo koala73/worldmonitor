@@ -1,6 +1,6 @@
 ---
 title: "Finance & Market Data"
-description: "Market radar, Gulf FDI tracking, stablecoin monitoring, energy analytics, and trade policy intelligence in World Monitor."
+description: "Market radar, Gulf FDI tracking, stablecoin monitoring, energy analytics, and trade-policy intelligence surfaces exposed in the finance variant."
 ---
 
 For the premium stock-analysis product layer, see:
@@ -10,19 +10,103 @@ For the premium stock-analysis product layer, see:
 
 ---
 
+## Endpoint Discovery
+
+These tables are the human-facing route map for finance, market, macro, energy, and commodity surfaces. Full request and response schemas remain in the generated OpenAPI pages; methods and routes below are verified against `proto/worldmonitor/market/v1/service.proto` and `proto/worldmonitor/economic/v1/service.proto`. Unless noted, routes are generated sebuf REST RPCs under the service base path and may be bootstrap-hydrated before the live RPC fallback runs.
+
+### MarketService routes
+
+| Service area | Method + route | Feeds |
+|---|---|---|
+| Market quotes | `GET /api/market/v1/list-market-quotes` | Markets panel, customizable watchlist, equity / index quotes. |
+| Crypto quotes | `GET /api/market/v1/list-crypto-quotes` | Crypto panel defaults; bootstrap-first via `cryptoQuotes`. |
+| Commodity quotes | `GET /api/market/v1/list-commodity-quotes` | Commodities, Energy Risk Brent tile, gold / crude watchlists; bootstrap-first via `commodityQuotes`. Empty `symbols` returns the configured seed set; only seed-set symbols are supported. |
+| Sector summary | `GET /api/market/v1/get-sector-summary` | Sector heatmap and valuation context; bootstrap-first via `sectors`. |
+| Stablecoin markets | `GET /api/market/v1/list-stablecoin-markets` | Stablecoin peg-health panel; bootstrap-first via `stablecoinMarkets`. |
+| ETF flows | `GET /api/market/v1/list-etf-flows` | BTC spot ETF tracker; bootstrap-first via `etfFlows`. |
+| Country stock index | `GET /api/market/v1/get-country-stock-index` | Country Brief stock-index card for a selected country. |
+| Gulf quotes | `GET /api/market/v1/list-gulf-quotes` | Gulf Economies panel; bootstrap-first via `gulfQuotes`. |
+| Premium stock analysis | `GET /api/market/v1/analyze-stock` | PRO stock-analysis card with technicals, headlines, targets, and AI synthesis. |
+| Stock analysis history | `GET /api/market/v1/get-stock-analysis-history` | PRO cached/shared premium analysis ledger. |
+| Stock backtest | `GET /api/market/v1/backtest-stock` | PRO on-demand replay of the technical-only stock signal. |
+| Stored stock backtests | `GET /api/market/v1/list-stored-stock-backtests` | PRO Premium Backtesting panel stored snapshots. |
+| Crypto sectors | `GET /api/market/v1/list-crypto-sectors` | Crypto heatmap sector averages; bootstrap-first via `cryptoSectors`. |
+| DeFi tokens | `GET /api/market/v1/list-defi-tokens` | DeFi token tile; bootstrap-first via `defiTokens`. |
+| AI tokens | `GET /api/market/v1/list-ai-tokens` | AI token tile; bootstrap-first via `aiTokens`. |
+| Other tokens | `GET /api/market/v1/list-other-tokens` | Alt / trending token tile; bootstrap-first via `otherTokens`. |
+| Fear & Greed | `GET /api/market/v1/get-fear-greed-index` | Fear & Greed panel plus US KCFSI portion of Financial Stress; bootstrap-first via `fearGreedIndex`. |
+| Earnings calendar | `GET /api/market/v1/list-earnings-calendar` | Earnings Calendar tile. |
+| COT positioning | `GET /api/market/v1/get-cot-positioning` | COT Positioning tile and gold positioning context. |
+| PRO insider transactions | `GET /api/market/v1/get-insider-transactions` | Insider Activity section in the locked Premium Stock Analysis surface. |
+| Market breadth history | `GET /api/market/v1/get-market-breadth-history` | Market Breadth panel; bootstrap-first via `breadthHistory`. |
+| Gold intelligence | `GET /api/market/v1/get-gold-intelligence` | Gold Intelligence panel direct REST fetch. |
+| Hyperliquid flow | `GET /api/market/v1/get-hyperliquid-flow` | 24/7 Positioning panel; bootstrap-first via `hyperliquidFlow`. |
+
+### EconomicService routes
+
+| Service area | Method + route | Feeds |
+|---|---|---|
+| FRED single series | `GET /api/economic/v1/get-fred-series` | Single-series fallback for FRED-derived macro data. |
+| World Bank indicators | `GET /api/economic/v1/list-world-bank-indicators` | World Bank country indicators and tech-readiness data. |
+| Energy prices | `GET /api/economic/v1/get-energy-prices` | Oil & Energy analytics for WTI, Brent, production, and inventory metrics. |
+| Macro signals | `GET /api/economic/v1/get-macro-signals` | Market Radar / Macro Signals panel; bootstrap-first via `macroSignals`. |
+| China macro snapshot | `GET /api/economic/v1/get-china-macro-snapshot` | Revision-aware NBS/SAFE official observations and release-calendar context; see [China Official Macro and Policy](/china-official-macro-policy). |
+| China activity nowcast | `GET /api/economic/v1/get-china-activity-nowcast` | Deterministic official-vintage versus reviewed-proxy comparison; see [methodology](/methodology/china-activity-nowcast). |
+| Energy capacity | `GET /api/economic/v1/get-energy-capacity` | Installed solar, wind, and coal capacity timeseries. |
+| BIS policy rates | `GET /api/economic/v1/get-bis-policy-rates` | Economic panel BIS policy-rate table; bootstrap-first via `bisPolicy`. |
+| BIS exchange rates | `GET /api/economic/v1/get-bis-exchange-rates` | BIS real effective exchange-rate table; bootstrap-first via `bisExchange`. |
+| BIS credit | `GET /api/economic/v1/get-bis-credit` | BIS credit-to-GDP rankings; bootstrap-first via `bisCredit`. |
+| FRED batch | `POST /api/economic/v1/get-fred-series-batch` | Macro tiles and FRED dashboard series in one call. |
+| Grocery basket prices | `GET /api/economic/v1/list-grocery-basket-prices` | Grocery Index panel; bootstrap-first via `groceryBasket`. |
+| Big Mac prices | `GET /api/economic/v1/list-bigmac-prices` | Big Mac Index panel; bootstrap-first via `bigmac`. |
+| National debt | `GET /api/economic/v1/get-national-debt` | PRO Global Debt Clock panel; bootstrap-first via `nationalDebt`. |
+| Fuel prices | `GET /api/economic/v1/list-fuel-prices` | Fuel Prices panel; bootstrap-first via `fuelPrices`. |
+| BLS series | `GET /api/economic/v1/get-bls-series` | BLS-only payroll and Employment Cost Index series. |
+| Economic calendar | `GET /api/economic/v1/get-economic-calendar` | Economic Calendar tile. |
+| Crude inventories | `GET /api/economic/v1/get-crude-inventories` | Weekly EIA crude stockpile panel data; bootstrap-first via `crudeInventories`. |
+| Natural gas storage | `GET /api/economic/v1/get-nat-gas-storage` | Weekly EIA US working gas storage; bootstrap-first via `natGasStorage`. |
+| ECB FX rates | `GET /api/economic/v1/get-ecb-fx-rates` | ECB EUR reference-rate table; bootstrap-first via `ecbFxRates`. |
+| Eurostat country data | `GET /api/economic/v1/get-eurostat-country-data` | Macro tiles for EU CPI, unemployment, and GDP growth; bootstrap-first via `eurostatCountryData`. |
+| EU gas storage | `GET /api/economic/v1/get-eu-gas-storage` | Global Energy Risk Overview and Oil Inventories EU gas tile; bootstrap-first via `euGasStorage`. |
+| EU yield curve | `GET /api/economic/v1/get-eu-yield-curve` | Yield Curve panel. |
+| EU FSI | `GET /api/economic/v1/get-eu-fsi` | EU half of the Financial Stress panel; bootstrap-first via `euFsi`. |
+| Economic stress | `GET /api/economic/v1/get-economic-stress` | Economic Stress signal loaded by the data loader; bootstrap-first via `economicStress`. |
+| FAO food price index | `GET /api/economic/v1/get-fao-food-price-index` | FAO Food Price Index panel; bootstrap-first via `faoFoodPriceIndex`. |
+| Oil stocks analysis | `GET /api/economic/v1/get-oil-stocks-analysis` | IEA oil days-of-cover ranking in Oil Inventories; bootstrap-first via `oilStocksAnalysis`. |
+| Oil inventories composite | `GET /api/economic/v1/get-oil-inventories` | Oil Inventories panel direct REST fetch combining crude, SPR, gas storage, EU gas, IEA stocks, and refinery context. |
+| Energy crisis policies | `GET /api/economic/v1/get-energy-crisis-policies` | Energy Crisis Tracker; bootstrap-first via `energyCrisisPolicies`. |
+
 ## Market Monitoring
 
 ### Customizable Market Watchlist
 
-The Markets panel supports user-customizable stock and commodity symbol lists, allowing analysts to track specific instruments beyond the default index set. The watchlist accepts multiple formats:
+The shared Watchlist modal (reachable from Markets and each PRO market panel) has two coherent layers. The **built-in catalog** is an accessible, searchable region picker covering the default US, China, and India universe plus European, Asia-Pacific, GCC, and Americas instruments. Choosing a valid catalog subset replaces the built-in base; Reset restores the full 59-symbol default universe after Save. **Searchable additions** remain additive: typing a ticker or company name queries `/api/symbol-search` (a cached Finnhub search wrapper), and the analyst picks from resolved results. Existing additions remain visible as removable chips even after catalog customization.
 
-- **Index symbols**: `^GSPC`, `^DJI`, `^IXIC`
-- **Stock tickers**: `AAPL`, `BRK-B`, `NVDA`
-- **Commodities**: `GC=F` (gold), `CL=F` (crude oil)
-- **Crypto pairs**: `BTC-USD`, `ETH-USD`
-- **Friendly labels**: `TSLA|Tesla Inc` (pipe-separated display name)
+The picker resolves equities and indices through Finnhub search. Commodity and FX symbols in Yahoo notation (`GC=F`, `EURUSD=X`) are not watchlist material — they are served by their own RPCs against a fixed configured set, and the quote provider declines them rather than spending a lookup on a guaranteed miss.
 
-Symbols are entered via a modal dialog accessible from the Markets panel settings icon. The input accepts comma-separated, newline-separated, or `SYMBOL|Label` formats. Watchlist state is stored in `localStorage` as `wm-market-watchlist-v1` (max 50 symbols, deduplicated). Changes emit a `wm-market-watchlist-changed` CustomEvent for live synchronization across panels without page reload.
+The catalog subset is stored as `wm-market-catalog-selection-v1`; searchable additions are stored as `wm-market-watchlist-v1`, deduplicated by symbol and capped at **50 custom entries**. The cap bounds additions only — it never truncates the catalog base. Save writes both layers coherently and emits one `wm-market-watchlist-changed` event for live synchronization across Markets and premium analysis/backtest consumers. Cancel leaves both stored layers untouched, while Reset changes only modal working state until Save. Both keys participate in cloud sync and settings export/import.
+
+#### How a requested symbol is resolved
+
+`GET /api/market/v1/list-market-quotes` resolves symbols **seed-first**:
+
+1. Requested symbols are normalized, deduplicated, and bounded (120 per request).
+2. The fixed Railway seed snapshot (`market:stocks-bootstrap:v1`) answers everything it carries — **a seed hit performs no upstream request**.
+3. Only the remaining symbols reach the quote provider, through a Redis-cached per-symbol lookup bounded by count (10 per request), concurrency, and a wall-clock deadline. Repeat requests for the same symbol reuse the cached quote.
+4. Quotes are merged in requested order.
+5. Every requested symbol that produced no quote is returned in `unavailable` with a reason (`NOT_FOUND`, `PROVIDER_ERROR`, `PROVIDER_RATE_LIMITED`, `PROVIDER_NOT_CONFIGURED`, `REQUEST_LIMIT_EXCEEDED`, `UPSTREAM_BUDGET_EXHAUSTED`, `SEED_UNAVAILABLE`) and surfaced in the panel. Nothing is silently dropped.
+
+Transient provider failures are never cached — only a definitive "no such symbol" is. If the seed snapshot is missing or unreadable, the request reports `SEED_UNAVAILABLE` rather than falling through to the provider, so one degraded snapshot cannot amplify into a per-caller upstream fan-out. The endpoint carries an explicit fail-closed rate policy because it is provider-backed.
+
+#### Client parity
+
+| Client | Contract |
+| --- | --- |
+| Web dashboard | Calls the RPC directly. Full seed-first resolution, including custom symbols. |
+| Desktop (Tauri sidecar) | Force-proxies `/api/market/v1/*` to the cloud API, so it gets the identical contract and identical custom-symbol support. |
+| MCP `get_market_data` | **Intentionally different**: a fixed-universe read of the `market:stocks-bootstrap:v1` cache. It filters that snapshot by ticker and never gap-fetches, so it answers only symbols the Railway seeder carries. Use the RPC for arbitrary tickers. |
+
+Commodity futures on the watchlist (e.g. `GC=F`, `CL=F`) are served via market quotes when the Markets panel requests them. The dedicated commodity quotes RPC (`list-commodity-quotes`) is limited to the configured seed set in `shared/commodities.json` — empty `symbols` returns that full set; an unsupported symbol is rejected with HTTP 400 rather than silently dropped. Custom non-seed watchlist tickers are tracked separately (#6305).
 
 ### Macro Signal Analysis (Market Radar)
 
@@ -83,7 +167,19 @@ Five major stablecoins (USDT, USDC, DAI, FDUSD, USDe) are monitored via the Coin
 | 0.5% – 1.0% | SLIGHT DEPEG | Yellow    |
 | > 1.0%      | DEPEGGED     | Red       |
 
-The panel aggregates total stablecoin market cap, 24h volume, and an overall health status (HEALTHY / CAUTION / WARNING). The `coins` query parameter accepts a comma-separated list of CoinGecko IDs, validated against a `[a-z0-9-]+` regex to prevent injection.
+The panel aggregates total stablecoin market cap, 24h volume, and an overall health status (HEALTHY / CAUTION / WARNING).
+
+The `coins` query parameter selects which stablecoins to return. Repeated (`?coins=tether&coins=dai`) and comma-joined (`?coins=tether,dai`) forms are equivalent. IDs are trimmed, lowercased, de-duplicated, and validated against `^[a-z0-9][a-z0-9-]{0,63}$`; a request is capped at 25 IDs.
+
+Requesting nothing and requesting something cost different amounts, deliberately:
+
+- **Empty `coins`** returns the five seeded defaults from the cached snapshot and never calls an upstream provider.
+- **Named IDs** are answered from that snapshot where possible; only IDs the snapshot does not carry — including stablecoins outside the default five — reach CoinGecko, in one batched, rate-limited, separately cached lookup.
+
+The aggregate summary is recomputed over exactly the coins returned, so a subset request describes the subset. Two response fields report coverage:
+
+- `dataStatus` — `OK`, `PARTIAL`, or `UNAVAILABLE`. This is data coverage; `summary.healthStatus` is peg health, and the two are independent.
+- `unresolved` — one entry per requested ID missing from the response, with a reason: `INVALID_ID` (not shaped like a CoinGecko ID), `OVER_CAP` (beyond the 25-ID cap, never looked up), `NOT_FOUND` (the provider answered and has no such coin), or `PROVIDER_ERROR` (the lookup failed, so the ID is unknown rather than absent).
 
 ### BTC ETF Flow Estimation
 
@@ -130,7 +226,7 @@ Data is fetched through three dedicated BIS RPCs (`GetBisPolicyRates`, `GetBisEx
 
 ### WTO Trade Policy Intelligence
 
-The Trade Policy panel provides real-time visibility into global trade restrictions, tariffs, and barriers — critical for tracking economic warfare, sanctions impact, and supply chain disruption risk. Four data views are available:
+The Trade Policy panel provides real-time visibility into global trade restrictions, tariffs, and barriers — critical for tracking economic warfare, sanctions impact, and supply chain disruption risk. Six data views are available:
 
 | Tab | Data Source | Content |
 | --- | --- | --- |
@@ -139,8 +235,9 @@ The Trade Policy panel provides real-time visibility into global trade restricti
 | **Flows** | WTO trade statistics | Bilateral trade flow volumes with year-over-year change indicators |
 | **Barriers** | WTO SPS/TBT notifications | Sanitary, phytosanitary, and technical barriers to trade with status tracking |
 | **Revenue** | US Treasury Monthly Treasury Statement | Monthly US customs duties revenue with fiscal-year-to-date totals and year-over-year comparison |
+| **Comtrade** | UN Comtrade | Strategic commodity flow search with anomaly detection |
 
-The `trade/v1` proto service defines five RPCs. The four WTO RPCs each have their own circuit breaker (30-minute cache TTL) and `upstreamUnavailable` signaling for graceful degradation when WTO endpoints are temporarily unreachable. The fifth RPC (`GetCustomsRevenue`) serves US Treasury customs duties data from a Railway seed (free API, no key required). The panel is available on FULL and FINANCE variants. WTO data feeds into the data freshness tracker as `wto_trade`, and Treasury revenue as `treasury_revenue`, with intelligence gap warnings when either feed goes stale.
+The `trade/v1` proto service defines six RPCs. The WTO-backed restrictions, tariffs, flows, and barriers RPCs each have their own circuit breaker (30-minute cache TTL) and `upstreamUnavailable` signaling for graceful degradation when WTO endpoints are temporarily unreachable. `GetCustomsRevenue` serves US Treasury customs duties data from a Railway seed (free API, no key required), and `ListComtradeFlows` serves UN Comtrade strategic commodity flows. The panel is available on full/geopolitical, finance, and commodity variants. WTO data feeds into the data freshness tracker as `wto_trade`, and Treasury revenue as `treasury_revenue`, with intelligence gap warnings when either feed goes stale. For exact method, route, and gating notes, see [Trade Policy](/panels/trade-policy).
 
 The Revenue tab is particularly relevant during periods of active trade policy changes. US customs duties revenue spiked from approximately $7B/month (pre-2025) to $27-31B/month following the 2025-2026 tariff escalation. WTO annual tariff data lags by approximately one year, so the monthly Treasury revenue data provides near-real-time visibility into the actual fiscal impact of tariff policy. The Revenue tab shows a fiscal-year-to-date summary with a year-over-year comparison using matched fiscal month counts (e.g., FY2026 Oct-Feb vs FY2025 Oct-Feb), along with a monthly table highlighting months where revenue exceeds twice the prior-year monthly average. On desktop without a WTO API key, the Revenue tab is still accessible since Treasury data requires no authentication.
 
@@ -158,6 +255,6 @@ The Supply Chain panel provides real-time visibility into global logistics risk 
 
 **Critical Minerals tab** — applies the **Herfindahl-Hirschman Index (HHI)** to 2024 global production data for minerals critical to technology and defense manufacturing — lithium, cobalt, rare earths, gallium, germanium, and others. The HHI quantifies supply concentration risk: a market dominated by a single producer scores near 10,000, while a perfectly distributed market scores near 0. Each mineral displays the top 3 producing countries with market share percentages, flagging single-country dependencies that represent strategic vulnerability (e.g., China's dominance in rare earth processing). This tab uses static production data, cached for 24 hours with no external API dependency.
 
-The panel is available on the FULL (World Monitor) variant and integrates with the infrastructure cascade model — when a chokepoint disruption coincides with high mineral concentration risk for affected trade routes, the combined signal feeds into convergence detection.
+The panel is available on the full/geopolitical, finance, and commodity variants and integrates with the infrastructure cascade model — when a chokepoint disruption coincides with high mineral concentration risk for affected trade routes, the combined signal feeds into convergence detection.
 
 See also [Maritime Intelligence](/maritime-intelligence) for vessel tracking and dark ship detection.

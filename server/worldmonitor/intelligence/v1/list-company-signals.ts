@@ -1,203 +1,52 @@
 /**
- * RPC: listCompanySignals -- Discovers activity signals for a company from public sources.
- * Port from api/enrichment/signals.js
- * Sources: Hacker News, GitHub
+ * RPC: listCompanySignals — classified company signals from authoritative
+ * sources (issue #5695): SEC 8-K material events (tier 1) and recent news
+ * mentions (tier 3). Finnhub fiscal period ends remain enrichment facts; the
+ * endpoint does not misstate them as event timestamps.
+ *
+ * Identity resolves exclusively through the SEC ticker/name registry
+ * (server/_shared/sec-edgar) — no keyword or domain-slug guessing (the unsound
+ * heuristics removed in issues #3754/#3755, PR #3777). Engagement metrics are
+ * intentionally omitted: none of these sources provide real engagement data.
  */
 
 import type {
   ServerContext,
+  CompanySignal,
   ListCompanySignalsRequest,
   ListCompanySignalsResponse,
-  CompanySignal,
+  SignalSummary,
 } from '../../../../src/generated/server/worldmonitor/intelligence/v1/service_server';
 import { ValidationError } from '../../../../src/generated/server/worldmonitor/intelligence/v1/service_server';
-import { fetchJson } from '../../../_shared/fetch-json';
-import { cachedFetchJson } from '../../../_shared/redis';
+import {
+  MATERIAL_8K_ITEMS,
+  describeItemCodes,
+  fetchSecSubmissions,
+  filingIndexUrl,
+  resolveCompany,
+} from '../../../_shared/sec-edgar';
+import { fetchCompanyNewsMentions } from './_company-shared';
 
-interface HNAlgoliaSignalHit {
-  title?: string;
-  url?: string;
-  objectID?: string;
-  created_at?: string;
-  points?: number;
-  num_comments?: number;
-  comment_text?: string;
-  story_id?: number;
-}
+const FILING_SIGNAL_WINDOW_MS = 90 * 24 * 3600 * 1000;
+const MAX_SIGNALS = 30;
 
-interface HNAlgoliaSignalResponse {
-  hits: HNAlgoliaSignalHit[];
-}
-
-interface GitHubSignalRepo {
-  full_name?: string;
-  description?: string | null;
-  html_url?: string;
-  created_at?: string;
-  stargazers_count?: number;
-  forks_count?: number;
-}
-
-const SIGNAL_KEYWORDS: Record<string, string[]> = {
-  hiring_surge: ['hiring', "we're hiring", 'join our team', 'open positions', 'new roles', 'growing team'],
-  funding_event: ['raised', 'funding', 'series', 'investment', 'valuation', 'backed by'],
-  expansion_signal: ['expansion', 'new office', 'opening', 'entering market', 'new region', 'international'],
-  technology_adoption: ['migrating to', 'adopting', 'implementing', 'rolling out', 'tech stack', 'infrastructure'],
-  executive_movement: ['appointed', 'joins as', 'new ceo', 'new cto', 'new vp', 'leadership change', 'promoted to'],
-  financial_trigger: ['revenue', 'ipo', 'acquisition', 'merger', 'quarterly results', 'earnings'],
+// 8-K item code → signal classification for the highest-value disclosures.
+// Anything else material falls back to "Material Event".
+const SIGNAL_TYPE_BY_ITEM: Record<string, string> = {
+  '1.01': 'M&A / Agreement',
+  '1.02': 'M&A / Agreement',
+  '1.03': 'Bankruptcy',
+  '1.05': 'Cybersecurity Incident',
+  '2.01': 'M&A / Agreement',
+  '2.02': 'Financial Results',
+  '2.04': 'Debt Acceleration',
+  '2.06': 'Impairment',
+  '3.01': 'Delisting Risk',
+  '4.01': 'Accountant Change',
+  '4.02': 'Restatement',
+  '5.01': 'Control Change',
+  '5.02': 'Executive Change',
 };
-
-function classifySignal(text: string): string {
-  const lower = text.toLowerCase();
-  for (const [type, keywords] of Object.entries(SIGNAL_KEYWORDS)) {
-    for (const kw of keywords) {
-      if (lower.includes(kw)) return type;
-    }
-  }
-  return 'press_release';
-}
-
-function scoreSignalStrength(points: number, comments: number, recencyDays: number): string {
-  let score = 0;
-  if (points > 100) score += 3;
-  else if (points > 30) score += 2;
-  else score += 1;
-
-  if (comments > 50) score += 2;
-  else if (comments > 10) score += 1;
-
-  if (recencyDays <= 3) score += 3;
-  else if (recencyDays <= 7) score += 2;
-  else if (recencyDays <= 14) score += 1;
-
-  if (score >= 7) return 'critical';
-  if (score >= 5) return 'high';
-  if (score >= 3) return 'medium';
-  return 'low';
-}
-
-function toEventTimeMs(value: string | undefined): number {
-  if (!value) return 0;
-  const ms = new Date(value).getTime();
-  return Number.isFinite(ms) ? ms : 0;
-}
-
-function slugFromDomain(domain: string): string {
-  return domain.replace(/\.(com|io|co|org|net|ai|dev|app)$/, '').split('.').pop() || domain;
-}
-
-function hourBucket(): number {
-  return Math.floor(Date.now() / 3_600_000);
-}
-
-async function fetchHNSignals(companyName: string): Promise<CompanySignal[] | null> {
-  return cachedFetchJson<CompanySignal[]>(
-    `intel:signals:hn:${encodeURIComponent(companyName.toLowerCase())}:${hourBucket()}`,
-    1800,
-    async () => {
-      const thirtyDaysAgo = Math.floor(Date.now() / 1000) - 30 * 86400;
-      const data = await fetchJson<HNAlgoliaSignalResponse>(
-        `https://hn.algolia.com/api/v1/search_by_date?query=${encodeURIComponent(companyName)}&tags=story&hitsPerPage=20&numericFilters=created_at_i>${thirtyDaysAgo}`,
-      );
-      if (data === null || !data.hits) return null;
-
-      const now = Date.now();
-      return data.hits.map((h) => {
-        const ts = toEventTimeMs(h.created_at);
-        const recencyDays = (now - ts) / 86400000;
-        return {
-          type: classifySignal(h.title || ''),
-          title: h.title || '',
-          url: h.url || `https://news.ycombinator.com/item?id=${h.objectID || ''}`,
-          source: 'Hacker News',
-          sourceTier: 2,
-          timestampMs: ts,
-          strength: scoreSignalStrength(h.points || 0, h.num_comments || 0, recencyDays),
-          engagement: {
-            points: h.points || 0,
-            comments: h.num_comments || 0,
-            stars: 0,
-            forks: 0,
-            mentions: 0,
-          },
-        };
-      });
-    },
-  );
-}
-
-async function fetchGitHubSignals(orgName: string): Promise<CompanySignal[] | null> {
-  return cachedFetchJson<CompanySignal[]>(
-    `intel:signals:gh:${encodeURIComponent(orgName.toLowerCase())}:${hourBucket()}`,
-    3600,
-    async () => {
-      const repos = await fetchJson<GitHubSignalRepo[]>(`https://api.github.com/orgs/${encodeURIComponent(orgName)}/repos?sort=created&per_page=10`);
-      if (!Array.isArray(repos)) return null;
-
-      const now = Date.now();
-      const thirtyDaysAgo = now - 30 * 86400000;
-
-      return repos
-        .filter((r) => toEventTimeMs(r.created_at) > thirtyDaysAgo)
-        .map((r) => ({
-          type: 'technology_adoption',
-          title: `New repository: ${r.full_name || 'unknown'} - ${r.description || 'No description'}`,
-          url: r.html_url || '',
-          source: 'GitHub',
-          sourceTier: 2,
-          timestampMs: toEventTimeMs(r.created_at),
-          strength: (r.stargazers_count || 0) > 50 ? 'high' : (r.stargazers_count || 0) > 10 ? 'medium' : 'low',
-          engagement: {
-            points: 0,
-            comments: 0,
-            stars: r.stargazers_count || 0,
-            forks: r.forks_count || 0,
-            mentions: 0,
-          },
-        }));
-    },
-  );
-}
-
-async function fetchJobSignals(companyName: string): Promise<CompanySignal[] | null> {
-  return cachedFetchJson<CompanySignal[]>(
-    `intel:signals:jobs:${encodeURIComponent(companyName.toLowerCase())}:${hourBucket()}`,
-    1800,
-    async () => {
-      const sixtyDaysAgo = Math.floor(Date.now() / 1000) - 60 * 86400;
-      const data = await fetchJson<HNAlgoliaSignalResponse>(
-        `https://hn.algolia.com/api/v1/search?query=${encodeURIComponent(companyName)}&tags=comment,ask_hn&hitsPerPage=10&numericFilters=created_at_i>${sixtyDaysAgo}`,
-      );
-      if (data === null || !data.hits) return null;
-
-      const hiringComments = data.hits.filter((h) => {
-        const text = (h.comment_text || '').toLowerCase();
-        return text.includes('hiring') || text.includes('job') || text.includes('apply');
-      });
-
-      if (hiringComments.length === 0) return [];
-      const firstComment = hiringComments[0];
-      if (!firstComment) return [];
-
-      return [{
-        type: 'hiring_surge',
-        title: `${companyName} hiring activity (${hiringComments.length} mentions in HN hiring threads)`,
-        url: `https://news.ycombinator.com/item?id=${firstComment.story_id || ''}`,
-        source: 'HN Hiring Threads',
-        sourceTier: 3,
-        timestampMs: toEventTimeMs(firstComment.created_at),
-        strength: hiringComments.length >= 3 ? 'high' : 'medium',
-        engagement: {
-          points: 0,
-          comments: 0,
-          stars: 0,
-          forks: 0,
-          mentions: hiringComments.length,
-        },
-      }];
-    },
-  );
-}
 
 export async function listCompanySignals(
   _ctx: ServerContext,
@@ -205,37 +54,127 @@ export async function listCompanySignals(
 ): Promise<ListCompanySignalsResponse> {
   const company = req.company?.trim();
   const domain = req.domain?.trim().toLowerCase();
+  const ticker = req.ticker?.trim();
 
-  if (!company) {
-    throw new ValidationError([{ field: 'company', description: 'company is required' }]);
+  // Preserve the disabled v1 domain contract. Domain-derived attribution is
+  // still forbidden; callers using that deprecated field get an empty stub.
+  if (domain) return emptyResponse(company || '', false, domain);
+
+  if (!company && !ticker) {
+    throw new ValidationError([{ field: 'company', description: 'Provide ticker or company' }]);
   }
 
-  const orgName = domain ? slugFromDomain(domain) : company.toLowerCase().replace(/\s+/g, '');
+  const resolution = await resolveCompany({ ticker, name: company });
+  if (resolution.status !== 'ok') {
+    // "not_found" is a real, cacheable answer; "registry_unavailable" is a
+    // lookup failure and must not be cached as one.
+    return emptyResponse(
+      company || ticker?.toUpperCase() || '',
+      resolution.status === 'registry_unavailable',
+    );
+  }
+  const resolved = resolution.company;
 
-  const [hnSignals, githubSignals, jobSignals] = await Promise.all([
-    fetchHNSignals(company),
-    fetchGitHubSignals(orgName),
-    fetchJobSignals(company),
+  const [submissions, news] = await Promise.all([
+    fetchSecSubmissions(resolved.cik),
+    fetchCompanyNewsMentions(resolved.ticker, resolved.name),
   ]);
 
-  const allSignals = [...(hnSignals ?? []), ...(githubSignals ?? []), ...(jobSignals ?? [])]
-    .sort((a, b) => b.timestampMs - a.timestampMs);
+  const now = Date.now();
+  const signals: CompanySignal[] = [];
 
-  const signalTypeCounts: Record<string, number> = {};
-  for (const s of allSignals) {
-    signalTypeCounts[s.type] = (signalTypeCounts[s.type] || 0) + 1;
+  for (const filing of submissions?.filings ?? []) {
+    if (!filing.form.startsWith('8-K')) continue;
+    const materialItems = filing.items.filter(code => {
+      const item = MATERIAL_8K_ITEMS[code];
+      return item && item.materiality !== 'routine';
+    });
+    if (materialItems.length === 0) continue;
+    const timestampMs = Date.parse(filing.acceptanceDateTime || filing.filingDate) || 0;
+    if (timestampMs === 0 || now - timestampMs > FILING_SIGNAL_WINDOW_MS) continue;
+    // A filing like "2.02,5.02" carries both an earnings exhibit and an
+    // executive departure; the headline must be the material one, not whichever
+    // item code sorts first.
+    const primaryItem = (materialItems.find(code => MATERIAL_8K_ITEMS[code]?.materiality === 'high')
+      ?? materialItems[0]) as string;
+    signals.push({
+      type: SIGNAL_TYPE_BY_ITEM[primaryItem] ?? 'Material Event',
+      title: `${filing.form}: ${describeItemCodes(materialItems)}`,
+      url: filing.accessionNumber ? filingIndexUrl(resolved.cik, filing.accessionNumber) : '',
+      source: 'sec_edgar',
+      sourceTier: 1,
+      timestampMs,
+      strength: MATERIAL_8K_ITEMS[primaryItem]?.materiality === 'high' ? 'Strong' : 'Moderate',
+      engagement: undefined,
+    });
+  }
+
+  for (const mention of news?.mentions ?? []) {
+    signals.push({
+      type: 'News Mention',
+      title: mention.title,
+      url: mention.url,
+      source: mention.source || 'news',
+      sourceTier: 3,
+      timestampMs: mention.publishedAtMs,
+      strength: 'Emerging',
+      engagement: undefined,
+    });
+  }
+
+  signals.sort((a, b) => b.timestampMs - a.timestampMs);
+  const bounded = signals.slice(0, MAX_SIGNALS);
+
+  return {
+    company: resolved.name,
+    domain: '',
+    signals: bounded,
+    summary: summarize(bounded),
+    discoveredAtMs: now,
+    cik: resolved.cik,
+    // A resolved identity does not make the authoritative filing leg healthy.
+    // Keep partial news results, but tell the gateway/consumer that the answer
+    // cannot prove the SEC window is quiet (and therefore must not be cached).
+    unavailable: submissions == null,
+  };
+}
+
+function summarize(signals: CompanySignal[]): SignalSummary {
+  const byType: Record<string, number> = {};
+  const sources = new Set<string>();
+  const strengthRank: Record<string, number> = { Strong: 3, Moderate: 2, Emerging: 1, Marginal: 1 };
+  let strongest: CompanySignal | undefined;
+
+  for (const signal of signals) {
+    byType[signal.type] = (byType[signal.type] ?? 0) + 1;
+    sources.add(signal.source);
+    if (!strongest
+      || (strengthRank[signal.strength] ?? 0) > (strengthRank[strongest.strength] ?? 0)
+      || ((strengthRank[signal.strength] ?? 0) === (strengthRank[strongest.strength] ?? 0)
+        && (signal.sourceTier < strongest.sourceTier
+          || (signal.sourceTier === strongest.sourceTier && signal.timestampMs > strongest.timestampMs)))) {
+      strongest = signal;
+    }
   }
 
   return {
+    totalSignals: signals.length,
+    byType,
+    strongestSignal: strongest,
+    signalDiversity: sources.size,
+  };
+}
+
+function emptyResponse(company: string, unavailable = false, domain = ''): ListCompanySignalsResponse {
+  return {
     company,
-    domain: domain || '',
-    signals: allSignals,
-    summary: {
-      totalSignals: allSignals.length,
-      byType: signalTypeCounts,
-      strongestSignal: allSignals[0] || undefined,
-      signalDiversity: Object.keys(signalTypeCounts).length,
-    },
+    domain,
+    signals: [],
+    summary: summarize([]),
     discoveredAtMs: Date.now(),
+    // Empty CIK is the "did not resolve" discriminator; a resolved company with
+    // a quiet 90-day window returns its real CIK alongside zero signals.
+    cik: '',
+    unavailable,
   };
 }

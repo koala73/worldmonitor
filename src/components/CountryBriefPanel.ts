@@ -2,17 +2,22 @@ import type { CountryBriefSignals } from '@/types';
 import type { CountryScore } from '@/services/country-instability';
 import type { PredictionMarket } from '@/services/prediction';
 import type { NewsItem } from '@/types';
+import type { GetCountryChokepointIndexResponse, SectorExposureSummary, CountryProductsResponse, MultiSectorShockResponse } from '@/services/supply-chain';
+import type { BriefSource } from '@/utils/brief-sources';
+import type { DecisionSignalProvenance } from '../../shared/decision-signal-provenance-contract';
+import type { ChinaDecisionSignalGroupId } from '../../shared/china-decision-signals';
 
 export interface CountryIntelData {
   brief: string;
   country: string;
   code: string;
   cached?: boolean;
-  generatedAt?: string;
+  generatedAt?: string | number;
   error?: string;
   skipped?: boolean;
   reason?: string;
   fallback?: boolean;
+  sources?: BriefSource[];
 }
 
 export interface StockIndexData {
@@ -66,6 +71,39 @@ export interface CountryDeepDiveEconomicIndicator {
   source?: string;
 }
 
+export type ChinaCountrySummaryGroupId = ChinaDecisionSignalGroupId;
+export type ChinaCountrySummaryState = 'loading' | 'available' | 'partial' | 'stale' | 'unavailable';
+
+export interface ChinaCountrySummarySignal {
+  label: string;
+  value: string;
+  source: string;
+  sourceUrl?: string;
+  observedAt?: string;
+  publishedAt?: string;
+  effectiveAt?: string;
+  action?: string;
+  status?: string;
+  sectors?: string[];
+  entities?: string[];
+  translationState?: string;
+  publisherType?: string;
+  lineageId?: string;
+  provenance?: DecisionSignalProvenance;
+  stale: boolean;
+}
+
+export interface ChinaCountrySummaryGroup {
+  id: ChinaCountrySummaryGroupId;
+  state: ChinaCountrySummaryState;
+  signals: ChinaCountrySummarySignal[];
+  unavailableReason?: string;
+}
+
+export interface ChinaCountrySummaryData {
+  groups: ChinaCountrySummaryGroup[];
+}
+
 export interface CountryFactsData {
   headOfState: string;
   headOfStateTitle: string;
@@ -77,6 +115,84 @@ export interface CountryFactsData {
   currencies: string[];
   areaSqKm: number;
   countryName: string;
+}
+
+export interface CountryEnergyProfileData {
+  mixAvailable: boolean;
+  mixYear: number;
+  coalShare: number;
+  gasShare: number;
+  oilShare: number;
+  nuclearShare: number;
+  renewShare: number;
+  windShare: number;
+  solarShare: number;
+  hydroShare: number;
+  importShare: number;
+  gasStorageAvailable: boolean;
+  gasStorageFillPct: number;
+  gasStorageChange1d: number;
+  gasStorageTrend: string;
+  gasStorageDate: string;
+  electricityAvailable: boolean;
+  electricityPriceMwh: number;
+  electricitySource: string;
+  electricityDate: string;
+  jodiOilAvailable: boolean;
+  jodiOilDataMonth: string;
+  gasolineDemandKbd: number;
+  gasolineImportsKbd: number;
+  dieselDemandKbd: number;
+  dieselImportsKbd: number;
+  jetDemandKbd: number;
+  jetImportsKbd: number;
+  lpgDemandKbd: number;
+  lpgImportsKbd: number;
+  crudeImportsKbd: number;
+  jodiGasAvailable: boolean;
+  jodiGasDataMonth: string;
+  gasTotalDemandTj: number;
+  gasLngImportsTj: number;
+  gasPipeImportsTj: number;
+  gasLngShare: number;
+  ieaStocksAvailable: boolean;
+  ieaStocksDataMonth: string;
+  ieaDaysOfCover: number;
+  ieaNetExporter: boolean;
+  ieaBelowObligation: boolean;
+  emberFossilShare: number;
+  emberRenewShare: number;
+  emberNuclearShare: number;
+  emberCoalShare: number;
+  emberGasShare: number;
+  emberDemandTwh: number;
+  emberDataMonth: string;
+  emberAvailable: boolean;
+  sprRegime: string;
+  sprCapacityMb: number;
+  sprOperator: string;
+  sprIeaMember: boolean;
+  sprStockholdingModel: string;
+  sprNote: string;
+  sprSource: string;
+  sprAsOf: string;
+  sprAvailable: boolean;
+}
+
+export interface CountryPortActivityData {
+  available: boolean;
+  ports: {
+    portId: string;
+    portName: string;
+    lat: number;
+    lon: number;
+    tankerCalls30d: number;
+    trendDeltaPct: number;
+    importTankerDwt: number;
+    exportTankerDwt: number;
+    anomalySignal: boolean;
+  }[];
+  fetchedAt: string;
 }
 
 export interface CountryBriefPanel {
@@ -101,9 +217,24 @@ export interface CountryBriefPanel {
   updateSignalDetails?(details: CountryDeepDiveSignalDetails): void;
   updateMilitaryActivity?(summary: CountryDeepDiveMilitarySummary): void;
   updateEconomicIndicators?(indicators: CountryDeepDiveEconomicIndicator[]): void;
+  updateChinaCountrySummary?(data: ChinaCountrySummaryData): void;
   updateCountryFacts?(data: CountryFactsData): void;
+  updateEnergyProfile?(data: CountryEnergyProfileData): void;
+  updateMaritimeActivity?(data: CountryPortActivityData): void;
+  updateTradeExposure?(data: GetCountryChokepointIndexResponse | null, sectors?: SectorExposureSummary[]): void;
   maximize?(): void;
   minimize?(): void;
   getIsMaximized?(): boolean;
   onStateChange?(cb: (state: { visible: boolean; maximized: boolean }) => void): void;
+  updateNationalDebt?(entry: { debtToGdp: number; debtUsd: number; annualGrowth: number; source: string } | null): void;
+  updateSanctionsPressure?(data: { entryCount: number; sanctionsActive?: boolean } | null): void;
+  updateComtradeFlows?(flows: Array<{ partnerName: string; cmdDesc: string; tradeValueUsd: number; yoyChange: number }> | null): void;
+  updateTariffTrends?(data: { currentRate: number; trend: string; datapoints: Array<{ year: number; tariffRate: number }> } | null): void;
+  updateMultiSectorCostShock?(data: MultiSectorShockResponse | null): void;
+  updateProductImports?(data: CountryProductsResponse | null): void;
+  updateHousingCycle?(data: {
+    residential?: { indexValue: number; qoqChange: number | null; yoyChange: number | null; period: string } | null;
+    commercial?: { indexValue: number; qoqChange: number | null; yoyChange: number | null; period: string } | null;
+    dsr?: { dsrPct: number; change: number | null; period: string } | null;
+  } | null): void;
 }

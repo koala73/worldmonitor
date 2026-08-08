@@ -1,0 +1,44 @@
+[build-system]
+requires = ["hatchling>=1.24"]
+build-backend = "hatchling.build"
+
+[project]
+name = "worldmonitor-sdk"
+version = "0.1.1"
+description = "Official Python SDK for the World Monitor global-intelligence API — country briefs, risk scores, conflict/cyber/market/news feeds, and MCP tools without writing an HTTP integration."
+readme = "README.md"
+requires-python = ">=3.9"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{ name = "World Monitor" }]
+keywords = [
+  "worldmonitor",
+  "osint",
+  "geopolitics",
+  "intelligence",
+  "api-client",
+  "mcp",
+  "agent",
+]
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Intended Audience :: Developers",
+  "Intended Audience :: Science/Research",
+  "Operating System :: OS Independent",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3 :: Only",
+  "Topic :: Software Development :: Libraries :: Python Modules",
+]
+# Zero runtime dependencies — stdlib only, like the npm CLI it mirrors.
+dependencies = []
+
+# The Homepage URL is how agents (and agent-readiness scanners) verify this
+# package is the product's official SDK — keep it on the product domain.
+[project.urls]
+Homepage = "https://worldmonitor.app"
+Documentation = "https://www.worldmonitor.app/docs/sdks"
+Repository = "https://github.com/koala73/worldmonitor"
+Issues = "https://github.com/koala73/worldmonitor/issues"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/worldmonitor_sdk"]

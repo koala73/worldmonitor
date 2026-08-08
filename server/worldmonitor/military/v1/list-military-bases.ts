@@ -6,17 +6,12 @@ import type {
   MilitaryBaseCluster,
 } from '../../../../src/generated/server/worldmonitor/military/v1/service_server';
 
+import filterParamContracts from '../../../../shared/openapi-filter-param-contracts.json';
 import { cachedFetchJson, getCachedJson, geoSearchByBox, getHashFieldsBatch } from '../../../_shared/redis';
 import { markNoCacheResponse, setResponseHeader } from '../../../_shared/response-headers';
 
-const VALID_TYPES = new Set([
-  'us-nato', 'china', 'russia', 'uk', 'france', 'india', 'italy', 'uae', 'turkey', 'japan', 'other',
-]);
-const VALID_KINDS = new Set([
-  'base', 'airfield', 'naval_base', 'military', 'barracks', 'bunker', 'trench',
-  'training_area', 'checkpoint', 'shelter', 'ammunition', 'office', 'obstacle_course',
-  'nuclear_explosion_site', 'range',
-]);
+const VALID_TYPES = new Set(filterParamContracts.militaryBaseTypes);
+const VALID_KINDS = new Set(filterParamContracts.militaryBaseKinds);
 const COUNTRY_RE = /^[A-Z]{2}$/;
 
 const quantize = (v: number, step: number) => Math.round(v / step) * step;

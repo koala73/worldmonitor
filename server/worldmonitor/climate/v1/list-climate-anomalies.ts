@@ -1,6 +1,6 @@
 /**
  * ListClimateAnomalies RPC -- reads seeded climate data from Railway seed cache.
- * All external Open-Meteo API calls happen in seed-climate.mjs on Railway.
+ * All external Open-Meteo API calls happen in the climate seed scripts on Railway.
  */
 
 import type {
@@ -11,17 +11,20 @@ import type {
 } from '../../../../src/generated/server/worldmonitor/climate/v1/service_server';
 
 import { getCachedJson } from '../../../_shared/redis';
-
-const SEED_CACHE_KEY = 'climate:anomalies:v1';
+import { CLIMATE_ANOMALIES_KEY } from '../../../_shared/cache-keys';
+import { markNoStoreFallbackResponse } from '../../../_shared/response-headers';
 
 export const listClimateAnomalies: ClimateServiceHandler['listClimateAnomalies'] = async (
-  _ctx: ServerContext,
+  ctx: ServerContext,
   _req: ListClimateAnomaliesRequest,
 ): Promise<ListClimateAnomaliesResponse> => {
   try {
-    const result = await getCachedJson(SEED_CACHE_KEY, true) as ListClimateAnomaliesResponse | null;
-    return { anomalies: result?.anomalies || [], pagination: undefined };
+    const result = await getCachedJson(CLIMATE_ANOMALIES_KEY, true) as ListClimateAnomaliesResponse | null;
+    if (!result?.anomalies) {
+      return markNoStoreFallbackResponse(ctx.request, { anomalies: [], pagination: undefined });
+    }
+    return { anomalies: result.anomalies, pagination: result.pagination };
   } catch {
-    return { anomalies: [], pagination: undefined };
+    return markNoStoreFallbackResponse(ctx.request, { anomalies: [], pagination: undefined });
   }
 };

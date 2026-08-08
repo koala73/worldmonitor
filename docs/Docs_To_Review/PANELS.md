@@ -35,19 +35,25 @@ World Monitor uses a **config-driven panel system** where every dashboard tile �
 
 | Variant | Domain | Focus | Panel Count |
 |---------|--------|-------|-------------|
-| `full` | worldmonitor.io | Geopolitical intelligence, OSINT, defense | 37 |
-| `tech` | tech.worldmonitor.io | Technology, AI/ML, startups, VC | 34 |
-| `finance` | finance.worldmonitor.io | Markets, trading, macro, commodities | 29 |
+| `full` | worldmonitor.app | Geopolitical intelligence, OSINT, defense | 44 |
+| `tech` | tech.worldmonitor.app | Technology, AI/ML, startups, VC | Tech-focused |
+| `finance` | finance.worldmonitor.app | Markets, trading, macro, commodities | Finance-focused |
+| `commodity` | commodity.worldmonitor.app | Mining, metals, energy, supply chains | Commodity-focused |
+| `happy` | happy.worldmonitor.app | Positive news, breakthroughs, conservation | Happy-focused |
+| `energy` | energy.worldmonitor.app | Oil, gas, chokepoints, energy security | Energy-focused |
 
 ### Key Files
 
 | File | Purpose |
 |------|---------|
-| [`src/config/panels.ts`](../src/config/panels.ts) | Central panel & map-layer definitions for all three variants |
+| [`src/config/panels.ts`](../src/config/panels.ts) | Central panel & map-layer definitions for all six variants |
 | [`src/config/variants/base.ts`](../src/config/variants/base.ts) | Shared `VariantConfig` interface, `STORAGE_KEYS`, `MONITOR_COLORS`, API URLs |
 | [`src/config/variants/full.ts`](../src/config/variants/full.ts) | Full variant config with panels, layers, and feeds |
 | [`src/config/variants/tech.ts`](../src/config/variants/tech.ts) | Tech variant config |
 | [`src/config/variants/finance.ts`](../src/config/variants/finance.ts) | Finance variant config |
+| [`src/config/variants/commodity.ts`](../src/config/variants/commodity.ts) | Commodity variant config |
+| [`src/config/variants/happy.ts`](../src/config/variants/happy.ts) | Happy variant config |
+| [`src/config/variants/energy.ts`](../src/config/variants/energy.ts) | Energy variant config |
 | [`src/components/Panel.ts`](../src/components/Panel.ts) | Base `Panel` class (440 lines) — DOM, resize, badges, lifecycle |
 | [`src/components/NewsPanel.ts`](../src/components/NewsPanel.ts) | `NewsPanel` extending `Panel` — RSS-driven news tiles |
 | [`src/App.ts`](../src/App.ts) | Application shell — panel instantiation, data loading, settings modal |

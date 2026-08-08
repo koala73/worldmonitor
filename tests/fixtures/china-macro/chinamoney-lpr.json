@@ -1,0 +1,21 @@
+{
+  "head": { "rep_code": "200" },
+  "data": { "total": 3, "pageTotalSize": 1 },
+  "records": [
+    {
+      "title": "2026年6月22日全国银行间同业拆借中心受权公布贷款市场报价利率（LPR）公告",
+      "releaseDate": "2026-06-22",
+      "channelId": "3686"
+    },
+    {
+      "title": "全国银行间同业拆借中心受权发布贷款市场报价利率报价行名单",
+      "releaseDate": "2026-03-31",
+      "channelId": "3686"
+    },
+    {
+      "title": "2026年2月24日全国银行间同业拆借中心受权公布贷款市场报价利率（LPR）公告",
+      "releaseDate": "2026-02-24",
+      "channelId": "3686"
+    }
+  ]
+}

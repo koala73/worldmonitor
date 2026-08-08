@@ -5,11 +5,14 @@ import { parallelAnalysis, type AnalyzedHeadline } from '@/services/parallel-ana
 import { signalAggregator, type RegionalConvergence } from '@/services/signal-aggregator';
 import { focalPointDetector } from '@/services/focal-point-detector';
 import { stripOrefLabels } from '@/services/oref-alerts';
-import { ingestNewsForCII, getCountryScore } from '@/services/country-instability';
+import { ingestNewsForCII } from '@/services/country-instability';
+import { getCachedCountryScoreValue } from '@/services/cached-risk-scores';
 import { getTheaterPostureSummaries } from '@/services/military-surge';
 import { getCachedPosture } from '@/services/cached-theater-posture';
 import { isMobileDevice } from '@/utils';
-import { escapeHtml, sanitizeUrl } from '@/utils/sanitize';
+import { escapeHtml, sanitizeUrl, unsafeRawHtml } from '@/utils/sanitize';
+import { collectBriefSources, normalizeCachedBriefSources, renderBriefSourcesFooter, type BriefSource } from '@/utils/brief-sources';
+import { formatIntelBrief } from '@/utils/format-intel-brief';
 import { SITE_VARIANT } from '@/config';
 import { deletePersistentCache, getPersistentCache, setPersistentCache } from '@/services/persistent-cache';
 import { t } from '@/services/i18n';
@@ -18,16 +21,19 @@ import { getAiFlowSettings, isAnyAiProviderEnabled, subscribeAiFlowChange } from
 import { getActiveFrameworkForPanel, subscribeFrameworkChange } from '@/services/analysis-framework-store';
 import { hasPremiumAccess } from '@/services/panel-gating';
 import { FrameworkSelector } from './FrameworkSelector';
-import { getServerInsights, type ServerInsights, type ServerInsightStory } from '@/services/insights-loader';
+import { fetchServerInsights, getServerInsights, type ServerInsights, type ServerInsightStory } from '@/services/insights-loader';
 import { computeISQ, type SignalQuality, type SignalQualityInput } from '@/utils/signal-quality';
 import { extractEntitiesFromTitle } from '@/services/entity-extraction';
 import { getEntityIndex } from '@/services/entity-index';
 
 import type { ClusteredEvent, FocalPoint, MilitaryFlight } from '@/types';
 
+const getAuthoritativeCountryScore = getCachedCountryScoreValue;
+
 export class InsightsPanel extends Panel {
   private lastBriefUpdate = 0;
   private cachedBrief: string | null = null;
+  private cachedBriefSources: BriefSource[] = [];
   private lastMissedStories: AnalyzedHeadline[] = [];
   private lastConvergenceZones: RegionalConvergence[] = [];
   private lastFocalPoints: FocalPoint[] = [];
@@ -39,6 +45,10 @@ export class InsightsPanel extends Panel {
   private updateGeneration = 0;
   private static readonly BRIEF_COOLDOWN_MS = 120000; // 2 min cooldown (API has limits)
   private static readonly BRIEF_CACHE_KEY = 'summary:world-brief';
+  // #4928: the server synthesis cites up to 12 sources — capping the cached
+  // list at the legacy 6 orphans [7]/[8] citations on the early paint (#4890)
+  // and client cooldown renders. Keep read + write on this shared bound.
+  private static readonly BRIEF_CACHE_MAX_SOURCES = 12;
 
   constructor() {
     super({
@@ -61,8 +71,15 @@ export class InsightsPanel extends Panel {
       void this.updateInsights(this.lastClusters);
     });
 
-    this.fwSelector = new FrameworkSelector({ panelId: 'insights', isPremium: hasPremiumAccess(), panel: this, note: 'Applies to client-generated analysis only' });
+    this.fwSelector = new FrameworkSelector({ panelId: 'insights', isPremium: hasPremiumAccess(), panel: this, note: t('components.insights.frameworkNote') });
     this.header.appendChild(this.fwSelector.el);
+
+    // #4890: the World Brief text is the field LCP element in ~1/3 of desktop
+    // views but normally paints only after clusters + hydration + sentiment
+    // complete (p75 ~4.3s). Repeat visitors already have the previous brief in
+    // the persistent cache — paint it with the shell so the LCP text lands in
+    // the first paint window; the first real update pass overwrites it.
+    void this.paintCachedBriefEarly();
   }
 
   public setMilitaryFlights(flights: MilitaryFlight[]): void {
@@ -99,11 +116,36 @@ export class InsightsPanel extends Panel {
 
   private async loadBriefFromCache(): Promise<boolean> {
     if (this.cachedBrief) return false;
-    const entry = await getPersistentCache<{ summary: string }>(InsightsPanel.BRIEF_CACHE_KEY);
+    const entry = await getPersistentCache<{ summary: string; sources?: BriefSource[] }>(InsightsPanel.BRIEF_CACHE_KEY);
     if (!entry?.data?.summary) return false;
+    const { sources, legacySourceShape } = normalizeCachedBriefSources(entry.data, InsightsPanel.BRIEF_CACHE_MAX_SOURCES);
+    if (legacySourceShape) {
+      void deletePersistentCache(InsightsPanel.BRIEF_CACHE_KEY);
+      return false;
+    }
     this.cachedBrief = entry.data.summary;
+    this.cachedBriefSources = sources;
     this.lastBriefUpdate = entry.updatedAt;
     return true;
+  }
+
+  /**
+   * #4890: early-paint the persisted World Brief at construction time so the
+   * LCP text block exists at shell paint instead of after the full insights
+   * pipeline. Generation guards on BOTH sides of the async cache read keep
+   * this from clobbering a real updateInsights() pass that races the
+   * IndexedDB read (updateInsights bumps updateGeneration synchronously on
+   * entry, so a stale early paint can never land on top of real content).
+   */
+  private async paintCachedBriefEarly(): Promise<void> {
+    if (this.updateGeneration > 0) return;
+    await this.loadBriefFromCache();
+    if (this.updateGeneration > 0 || !this.cachedBrief) return;
+    this.setDataBadge('cached');
+    this.setSafeContent(unsafeRawHtml(
+      this.renderWorldBrief(this.cachedBrief, this.cachedBriefSources),
+      'renderWorldBrief formats and links the cached summary (#4890 early brief paint)',
+    ));
   }
 
   private extractISQInput(cluster: ClusteredEvent): SignalQualityInput {
@@ -166,7 +208,7 @@ export class InsightsPanel extends Panel {
 
   private setProgress(step: number, total: number, message: string): void {
     const percent = Math.round((step / total) * 100);
-    this.setContent(`
+    this.setSafeContent(unsafeRawHtml(`
       <div class="insights-progress">
         <div class="insights-progress-bar">
           <div class="insights-progress-fill" style="width: ${percent}%"></div>
@@ -176,7 +218,7 @@ export class InsightsPanel extends Panel {
           <span class="insights-progress-message">${message}</span>
         </div>
       </div>
-    `);
+    `, 'legacy Panel.setContent() migration'));
   }
 
   public async updateInsights(clusters: ClusteredEvent[]): Promise<void> {
@@ -185,7 +227,18 @@ export class InsightsPanel extends Panel {
     const thisGeneration = this.updateGeneration;
 
     // Try server-side pre-computed insights first (instant, works even without clusters)
-    const serverInsights = getServerInsights();
+    let serverInsights = getServerInsights();
+    if (!serverInsights) {
+      // Bootstrap hydration miss (mobile fast-tier abort on 4G, stale cache,
+      // or single-shot getHydratedData already consumed). On-demand refetch
+      // via the bootstrap key-filter endpoint covers all three cases —
+      // critical for mobile where the client-side LLM fallback is gated off,
+      // and a free win for desktop (no client LLM cost when server data is
+      // recoverable). Mirrors the AAIISentimentPanel pattern.
+      if (this.updateGeneration !== thisGeneration) return;
+      serverInsights = await fetchServerInsights();
+      if (this.updateGeneration !== thisGeneration) return;
+    }
     if (serverInsights) {
       await this.updateFromServer(serverInsights, clusters, thisGeneration);
       return;
@@ -193,14 +246,14 @@ export class InsightsPanel extends Panel {
 
     if (clusters.length === 0) {
       this.setDataBadge('unavailable');
-      this.setContent(`<div class="insights-empty">${t('components.insights.waitingForData')}</div>`);
+      this.setSafeContent(unsafeRawHtml(`<div class="insights-empty">${t('components.insights.waitingForData')}</div>`, 'legacy Panel.setContent() migration'));
       return;
     }
 
     // Fallback: full client-side pipeline (skip on mobile — too heavy)
     if (isMobileDevice()) {
       this.setDataBadge('unavailable');
-      this.setContent(`<div class="insights-empty">${t('components.insights.waitingForData')}</div>`);
+      this.setSafeContent(unsafeRawHtml(`<div class="insights-empty">${t('components.insights.waitingForData')}</div>`, 'legacy Panel.setContent() migration'));
       return;
     }
     await this.updateFromClient(clusters, thisGeneration);
@@ -221,7 +274,7 @@ export class InsightsPanel extends Panel {
       }
 
       // Step 1: Signal aggregation (client-side, depends on real-time map data)
-      this.setProgress(1, totalSteps, 'Loading server insights...');
+      this.setProgress(1, totalSteps, t('components.insights.loadingServerInsights'));
 
       let signalSummary: ReturnType<typeof signalAggregator.getSummary>;
       let focalSummary: ReturnType<typeof focalPointDetector.analyze>;
@@ -261,11 +314,11 @@ export class InsightsPanel extends Panel {
       const sortedStories = [...serverInsights.topStories].sort((a, b) => {
         const isqA = computeISQ(
           { sourceCount: a.sourceCount, isAlert: a.isAlert, threatLevel: a.threatLevel ?? undefined, countryCode: a.countryCode, velocity: a.velocity },
-          focalFnServer, getCountryScore, isFocalReadyServer,
+          focalFnServer, getAuthoritativeCountryScore, isFocalReadyServer,
         );
         const isqB = computeISQ(
           { sourceCount: b.sourceCount, isAlert: b.isAlert, threatLevel: b.threatLevel ?? undefined, countryCode: b.countryCode, velocity: b.velocity },
-          focalFnServer, getCountryScore, isFocalReadyServer,
+          focalFnServer, getAuthoritativeCountryScore, isFocalReadyServer,
         );
         return isqB.composite - isqA.composite;
       });
@@ -362,17 +415,26 @@ export class InsightsPanel extends Panel {
       const isFocalReady = () => (focalPointDetector.getLastSummary()?.topCountries.some(
         fp => fp.signalCount > 0 || fp.signalTypes.includes('active_strike')
       ) ?? false);
-      const importantItems = this.selectTopStories(clusters, 8, focalFn, getCountryScore, isFocalReady);
+      const importantItems = this.selectTopStories(clusters, 8, focalFn, getAuthoritativeCountryScore, isFocalReady);
       const importantClusters = importantItems.map(({ cluster }) => cluster);
 
       if (importantClusters.length === 0) {
-        this.setContent(`<div class="insights-empty">${t('components.insights.noStories')}</div>`);
+        this.setSafeContent(unsafeRawHtml(`<div class="insights-empty">${t('components.insights.noStories')}</div>`, 'legacy Panel.setContent() migration'));
         return;
       }
 
       // Cap titles sent to AI at 5 to reduce entity conflation in small models
       // Strip OREF translation labels (ALERT[id]:, AREAS[id]:) that may leak into cluster titles
       const titles = importantClusters.slice(0, 5).map(c => stripOrefLabels(c.primaryTitle));
+      const currentBriefSources = collectBriefSources(
+        importantClusters.slice(0, 5).map((cluster) => ({
+          primaryTitle: stripOrefLabels(cluster.primaryTitle),
+          primarySource: cluster.primarySource,
+          primaryLink: cluster.primaryLink,
+          pubDate: cluster.lastUpdated,
+        })),
+        6,
+      );
 
       // Step 2: Analyze sentiment (browser-based, fast)
       this.setProgress(2, totalSteps, t('components.insights.analyzingSentiment'));
@@ -396,19 +458,22 @@ export class InsightsPanel extends Panel {
         // Pass focal point context + theater posture to AI for correlation-aware summarization
         // Tech variant: no geopolitical context, just tech news summarization
         // Commodity variant: commodities-specific framing for gold/metals/energy markets
+        // Energy variant: energy-specific framing — pipelines, chokepoints, shortages, disruptions
         const theaterContext = SITE_VARIANT === 'full' ? this.getTheaterPostureContext() : '';
         let geoContext = SITE_VARIANT === 'full'
           ? (focalSummary.aiContext || signalSummary.aiContext) + theaterContext
           : SITE_VARIANT === 'commodity'
             ? 'You are generating a commodities market brief. Focus on gold and precious metals price movements, mining supply risks, energy market dynamics, and macro factors driving commodity prices. Highlight supply disruptions, geopolitical risks to mining regions, central bank gold activity, and USD/inflation trends.'
-            : '';
+            : SITE_VARIANT === 'energy'
+              ? 'You are generating a global energy-intelligence brief. Focus on physical supply: oil & gas pipeline status and disruptions (Druzhba, Nord Stream, TurkStream, Power of Siberia, CPC), chokepoint flow (Hormuz, Malacca, Suez, Bab el-Mandeb, Turkish Straits, Danish Straits, Panama), storage levels (EU gas, US SPR, IEA stocks, days-of-cover), fuel shortages (jet / petrol / diesel / heating oil), refinery outages, LNG flows, OPEC+ production signals, and sanctions impacts. Prefer physical constraints and evidence-grounded status changes over price commentary. Attribute every flow figure to its source (AIS calibration, operator disclosure, regulator data) — never ship a bare conclusion.'
+              : '';
         const insightsFw = getActiveFrameworkForPanel('insights');
         if (insightsFw) {
           geoContext = `${geoContext}\n\n---\nAnalytical Framework:\n${insightsFw.systemPromptAppend}`;
         }
         const result = await generateSummary(titles, (_step, _total, msg) => {
           // Show sub-progress for summarization
-          this.setProgress(3, totalSteps, `Generating brief: ${msg}`);
+          this.setProgress(3, totalSteps, t('components.insights.generatingBriefSub', { msg }));
         }, geoContext, undefined, summarizeOpts);
 
         if (this.updateGeneration !== thisGeneration) return;
@@ -416,22 +481,28 @@ export class InsightsPanel extends Panel {
         if (result) {
           worldBrief = result.summary;
           this.cachedBrief = worldBrief;
+          this.cachedBriefSources = currentBriefSources;
           this.lastBriefUpdate = now;
-          void setPersistentCache(InsightsPanel.BRIEF_CACHE_KEY, { summary: worldBrief });
+          void setPersistentCache(InsightsPanel.BRIEF_CACHE_KEY, { summary: worldBrief, sources: currentBriefSources });
         }
       } else {
-        this.setProgress(3, totalSteps, 'Using cached brief...');
+        this.setProgress(3, totalSteps, t('components.insights.usingCachedBrief'));
       }
 
       this.setDataBadge(worldBrief ? 'live' : 'unavailable');
 
       // Step 4: Wait for parallel analysis to complete
-      this.setProgress(4, totalSteps, 'Multi-perspective analysis...');
+      this.setProgress(4, totalSteps, t('components.insights.multiPerspectiveAnalysis'));
       await parallelPromise;
 
       if (this.updateGeneration !== thisGeneration) return;
 
-      this.renderInsights(importantItems, sentiments, worldBrief);
+      this.renderInsights(
+        importantItems,
+        sentiments,
+        worldBrief,
+        this.cachedBriefSources.length > 0 ? this.cachedBriefSources : currentBriefSources,
+      );
     } catch (error) {
       console.error('[InsightsPanel] Error:', error);
       this.showError();
@@ -441,10 +512,11 @@ export class InsightsPanel extends Panel {
   private renderInsights(
     items: Array<{ cluster: ClusteredEvent; isq: SignalQuality }>,
     sentiments: Array<{ label: string; score: number }> | null,
-    worldBrief: string | null
+    worldBrief: string | null,
+    worldBriefSources: BriefSource[] = [],
   ): void {
     const clusters = items.map(({ cluster }) => cluster);
-    const briefHtml = worldBrief ? this.renderWorldBrief(worldBrief) : '';
+    const briefHtml = worldBrief ? this.renderWorldBrief(worldBrief, worldBriefSources) : '';
     const focalPointsHtml = this.renderFocalPoints();
     const convergenceHtml = this.renderConvergenceZones();
     const sentimentOverview = this.renderSentimentOverview(sentiments);
@@ -452,44 +524,64 @@ export class InsightsPanel extends Panel {
     const statsHtml = this.renderStats(clusters);
     const missedHtml = this.renderMissedStories();
 
-    this.setContent(`
+    this.setSafeContent(unsafeRawHtml(`
       ${briefHtml}
       ${focalPointsHtml}
       ${convergenceHtml}
       ${sentimentOverview}
       ${statsHtml}
       <div class="insights-section">
-        <div class="insights-section-title">BREAKING & CONFIRMED</div>
+        <div class="insights-section-title">${t('components.insights.breakingConfirmed')}</div>
         ${breakingHtml}
       </div>
       ${missedHtml}
-    `);
+    `, 'legacy Panel.setContent() migration'));
   }
 
   private renderServerInsights(
     insights: ServerInsights,
     sentiments: Array<{ label: string; score: number }> | null,
   ): void {
-    const briefHtml = insights.worldBrief ? this.renderWorldBrief(insights.worldBrief) : '';
+    // #4928 external review: the synthesis cites up to 8 stories — a
+    // 6-source cap orphaned [7]/[8]. Cap to the payload's own citation
+    // index space (bounded at 12 defensively).
+    const worldBriefSources = collectBriefSources(
+      insights.worldBriefSources ?? [],
+      Math.min(12, Math.max(6, insights.worldBriefSources?.length ?? 6)),
+    );
+    const briefHtml = insights.worldBrief
+      ? this.renderWorldBrief(insights.worldBrief, worldBriefSources, this.renderBriefExtras(insights))
+      : '';
+    if (insights.worldBrief) {
+      // #4890: keep the persistent brief cache warm from the dominant server
+      // path (previously only the client-LLM fallback wrote it, so repeat
+      // visitors had an empty cache and nothing to early-paint at boot).
+      this.cachedBrief = insights.worldBrief;
+      this.cachedBriefSources = worldBriefSources;
+      this.lastBriefUpdate = Date.now();
+      void setPersistentCache(InsightsPanel.BRIEF_CACHE_KEY, { summary: insights.worldBrief, sources: this.cachedBriefSources });
+    }
     const focalPointsHtml = this.renderFocalPoints();
     const convergenceHtml = this.renderConvergenceZones();
     const sentimentOverview = this.renderSentimentOverview(sentiments);
     const storiesHtml = this.renderServerStories(insights.topStories, sentiments);
     const statsHtml = this.renderServerStats(insights);
+    const provenanceHtml = this.renderProvenance(insights);
     const missedHtml = this.renderMissedStories();
 
-    this.setContent(`
+    this.setSafeContent(unsafeRawHtml(`
       ${briefHtml}
       ${focalPointsHtml}
       ${convergenceHtml}
       ${sentimentOverview}
       ${statsHtml}
+      ${provenanceHtml}
       <div class="insights-section">
-        <div class="insights-section-title">BREAKING & CONFIRMED</div>
+        <div class="insights-section-title">${t('components.insights.breakingConfirmed')}</div>
         ${storiesHtml}
       </div>
       ${missedHtml}
-    `);
+    `, 'legacy Panel.setContent() migration'));
   }
 
   private renderServerStories(
@@ -504,13 +596,13 @@ export class InsightsPanel extends Panel {
       const badges: string[] = [];
 
       if (story.sourceCount >= 3) {
-        badges.push(`<span class="insight-badge confirmed">✓ ${story.sourceCount} sources</span>`);
+        badges.push(`<span class="insight-badge confirmed">✓ ${t('components.insights.sources', { count: story.sourceCount })}</span>`);
       } else if (story.sourceCount >= 2) {
-        badges.push(`<span class="insight-badge multi">${story.sourceCount} sources</span>`);
+        badges.push(`<span class="insight-badge multi">${t('components.insights.sources', { count: story.sourceCount })}</span>`);
       }
 
       if (story.isAlert) {
-        badges.push('<span class="insight-badge alert">⚠ ALERT</span>');
+        badges.push(`<span class="insight-badge alert">⚠ ${t('components.insights.alert')}</span>`);
       }
 
       const VALID_THREAT_LEVELS = ['critical', 'high', 'elevated', 'moderate', 'medium', 'low', 'info'];
@@ -531,30 +623,83 @@ export class InsightsPanel extends Panel {
     }).join('');
   }
 
+  private renderProvenance(insights: ServerInsights): string {
+    // #4920: the completeness stamp. Absent on pre-rollout payloads.
+    const prov = insights.provenance;
+    if (!prov || !prov.storiesConsidered) return '';
+    return `
+      <div class="insights-provenance" title="${t('components.insights.provenanceTitle')}">
+        ${t('components.insights.compiledFrom', {
+          stories: String(prov.storiesConsidered),
+          sources: String(prov.sourcesConsidered),
+        })}
+      </div>
+    `;
+  }
+
   private renderServerStats(insights: ServerInsights): string {
     return `
       <div class="insights-stats">
         <div class="insight-stat">
           <span class="insight-stat-value">${insights.multiSourceCount}</span>
-          <span class="insight-stat-label">Multi-source</span>
+          <span class="insight-stat-label">${t('components.insights.multiSource')}</span>
         </div>
         <div class="insight-stat">
           <span class="insight-stat-value">${insights.fastMovingCount}</span>
-          <span class="insight-stat-label">Fast-moving</span>
+          <span class="insight-stat-label">${t('components.insights.fastMoving')}</span>
         </div>
         <div class="insight-stat">
           <span class="insight-stat-value">${insights.clusterCount}</span>
-          <span class="insight-stat-label">Clusters</span>
+          <span class="insight-stat-label">${t('components.insights.clusters')}</span>
         </div>
       </div>
     `;
   }
 
-  private renderWorldBrief(brief: string): string {
+  /** #4921: cited per-story lines behind a disclosure + staleness footer. */
+  private renderBriefExtras(insights: ServerInsights): string {
+    const lines = Array.isArray(insights.briefStoryLines) ? insights.briefStoryLines : [];
+    const sources = insights.worldBriefSources ?? [];
+    const linesHtml = lines.length > 0
+      ? `<details class="insights-brief-details">
+          <summary>${escapeHtml(t('components.insights.briefStoryDetails', { count: String(lines.length) }))}</summary>
+          <ol class="insights-brief-lines">${lines
+            .map((line) => `<li>${formatIntelBrief(line.text, { sources })
+              .replace(/^<div class="brief-para">/, '')
+              .replace(/<\/div>$/, '')
+              .replace(/^<p>/, '')
+              .replace(/<\/p>$/, '')}</li>`)
+            .join('')}</ol>
+        </details>`
+      : '';
+    let footer = '';
+    const generatedMs = new Date(insights.generatedAt).getTime();
+    const newestMs = insights.sourceAgeRange?.newestMs;
+    // Pre-rollout payloads lack sourceAgeRange — omit the footer rather
+    // than rendering a literal "?h old" (#4928 external review P3).
+    if (Number.isFinite(generatedMs) && Number.isFinite(newestMs)) {
+      const agoMin = Math.max(0, Math.round((Date.now() - generatedMs) / 60000));
+      const newestAgeH = Math.max(0, Math.round((Date.now() - (newestMs as number)) / 3600000 * 10) / 10);
+      footer = `<div class="insights-brief-freshness">${t('components.insights.briefFreshness', {
+        minutes: String(agoMin),
+        hours: String(newestAgeH),
+      })}</div>`;
+    }
+    return linesHtml + footer;
+  }
+
+  private renderWorldBrief(brief: string, sources: BriefSource[] = [], extrasHtml = ''): string {
+    const heading =
+      SITE_VARIANT === 'tech'      ? `🚀 ${t('components.insights.briefTech')}`
+    : SITE_VARIANT === 'commodity' ? `⛏️ ${t('components.insights.briefCommodity')}`
+    : SITE_VARIANT === 'energy'    ? `⚡ ${t('components.insights.briefEnergy')}`
+    :                                `🌍 ${t('components.insights.briefWorld')}`;
     return `
       <div class="insights-brief">
-        <div class="insights-section-title">${SITE_VARIANT === 'tech' ? '🚀 TECH BRIEF' : SITE_VARIANT === 'commodity' ? '⛏️ COMMODITY BRIEF' : '🌍 WORLD BRIEF'}</div>
-        <div class="insights-brief-text">${escapeHtml(brief)}</div>
+        <div class="insights-section-title">${heading}</div>
+        <div class="insights-brief-text">${formatIntelBrief(brief, { sources })}</div>
+        ${extrasHtml}
+        ${renderBriefSourcesFooter(sources, { className: 'insights-brief-sources', maxSources: Math.max(6, sources.length) })}
       </div>
     `;
   }
@@ -580,9 +725,9 @@ export class InsightsPanel extends Panel {
       }
 
       if (cluster.sourceCount >= 3) {
-        badges.push(`<span class="insight-badge confirmed">✓ ${cluster.sourceCount} sources</span>`);
+        badges.push(`<span class="insight-badge confirmed">✓ ${t('components.insights.sources', { count: cluster.sourceCount })}</span>`);
       } else if (cluster.sourceCount >= 2) {
-        badges.push(`<span class="insight-badge multi">${cluster.sourceCount} sources</span>`);
+        badges.push(`<span class="insight-badge multi">${t('components.insights.sources', { count: cluster.sourceCount })}</span>`);
       }
 
       if (cluster.velocity && cluster.velocity.level !== 'normal') {
@@ -591,7 +736,7 @@ export class InsightsPanel extends Panel {
       }
 
       if (cluster.isAlert) {
-        badges.push('<span class="insight-badge alert">⚠ ALERT</span>');
+        badges.push(`<span class="insight-badge alert">⚠ ${t('components.insights.alert')}</span>`);
       }
 
       return `
@@ -620,13 +765,13 @@ export class InsightsPanel extends Panel {
     const neuPct = Math.round((neutral / total) * 100);
     const posPct = 100 - negPct - neuPct;
 
-    let toneLabel = 'Mixed';
+    let toneLabel = t('components.insights.toneMixed');
     let toneClass = 'neutral';
     if (negative > positive + neutral) {
-      toneLabel = 'Negative';
+      toneLabel = t('components.insights.toneNegative');
       toneClass = 'negative';
     } else if (positive > negative + neutral) {
-      toneLabel = 'Positive';
+      toneLabel = t('components.insights.tonePositive');
       toneClass = 'positive';
     }
 
@@ -642,7 +787,7 @@ export class InsightsPanel extends Panel {
           <span class="sentiment-label neutral">${neutral}</span>
           <span class="sentiment-label positive">${positive}</span>
         </div>
-        <div class="sentiment-tone ${toneClass}">Overall: ${toneLabel}</div>
+        <div class="sentiment-tone ${toneClass}">${t('components.insights.overall', { tone: toneLabel })}</div>
       </div>
     `;
   }
@@ -656,16 +801,16 @@ export class InsightsPanel extends Panel {
       <div class="insights-stats">
         <div class="insight-stat">
           <span class="insight-stat-value">${multiSource}</span>
-          <span class="insight-stat-label">Multi-source</span>
+          <span class="insight-stat-label">${t('components.insights.multiSource')}</span>
         </div>
         <div class="insight-stat">
           <span class="insight-stat-value">${fastMoving}</span>
-          <span class="insight-stat-label">Fast-moving</span>
+          <span class="insight-stat-label">${t('components.insights.fastMoving')}</span>
         </div>
         ${alerts > 0 ? `
         <div class="insight-stat alert">
           <span class="insight-stat-value">${alerts}</span>
-          <span class="insight-stat-label">Alerts</span>
+          <span class="insight-stat-label">${t('components.insights.alertsLabel')}</span>
         </div>
         ` : ''}
       </div>
@@ -704,7 +849,7 @@ export class InsightsPanel extends Panel {
 
     return `
       <div class="insights-section insights-missed">
-        <div class="insights-section-title">🎯 ML DETECTED</div>
+        <div class="insights-section-title">🎯 ${t('components.insights.mlDetected')}</div>
         ${storiesHtml}
       </div>
     `;
@@ -730,14 +875,14 @@ export class InsightsPanel extends Panel {
         <div class="convergence-zone">
           <div class="convergence-region">${icons} ${escapeHtml(zone.region)}</div>
           <div class="convergence-description">${escapeHtml(zone.description)}</div>
-          <div class="convergence-stats">${zone.signalTypes.length} signal types • ${zone.totalSignals} events</div>
+          <div class="convergence-stats">${t('components.insights.signalTypesEvents', { types: zone.signalTypes.length, events: zone.totalSignals })}</div>
         </div>
       `;
     }).join('');
 
     return `
       <div class="insights-section insights-convergence">
-        <div class="insights-section-title">📍 GEOGRAPHIC CONVERGENCE</div>
+        <div class="insights-section-title">📍 ${t('components.insights.geographicConvergence')}</div>
         ${zonesHtml}
       </div>
     `;
@@ -778,7 +923,7 @@ export class InsightsPanel extends Panel {
           </div>
           <div class="focal-point-signals">${icons}</div>
           <div class="focal-point-stats">
-            ${fp.newsMentions} news • ${fp.signalCount} signals
+            ${t('components.insights.newsSignals', { news: fp.newsMentions, signals: fp.signalCount })}
           </div>
           ${headlineText && headlineUrl ? `<a href="${headlineUrl}" target="_blank" rel="noopener" class="focal-point-headline">"${escapeHtml(headlineText)}..."</a>` : ''}
         </div>
@@ -787,20 +932,20 @@ export class InsightsPanel extends Panel {
 
     return `
       <div class="insights-section insights-focal">
-        <div class="insights-section-title">🎯 FOCAL POINTS</div>
+        <div class="insights-section-title">🎯 ${t('components.insights.focalPoints')}</div>
         ${focalPointsHtml}
       </div>
     `;
   }
 
   private renderDisabledState(): void {
-    this.setContent(`
+    this.setSafeContent(unsafeRawHtml(`
       <div class="insights-disabled">
         <div class="insights-disabled-icon">⚡</div>
         <div class="insights-disabled-title">${t('components.insights.insightsDisabledTitle')}</div>
         <div class="insights-disabled-hint">${t('components.insights.insightsDisabledHint')}</div>
       </div>
-    `);
+    `, 'legacy Panel.setContent() migration'));
   }
 
   private async onAiFlowChanged(): Promise<void> {

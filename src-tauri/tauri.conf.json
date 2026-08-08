@@ -2,7 +2,7 @@
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "World Monitor",
   "mainBinaryName": "world-monitor",
-  "version": "2.6.5",
+  "version": "2.10.0",
   "identifier": "app.worldmonitor.desktop",
   "build": {
     "beforeDevCommand": "npm run build:sidecar-sebuf && node scripts/build-sidecar-handlers.mjs && npm run dev",
@@ -29,7 +29,7 @@
       }
     ],
     "security": {
-      "csp": "default-src 'self'; connect-src 'self' https: http://localhost:5173 http://127.0.0.1:* ws: wss: blob: data: https://abacus.worldmonitor.app; img-src 'self' data: blob: https:; style-src 'self' 'unsafe-inline'; script-src 'self' 'wasm-unsafe-eval' https://www.youtube.com https://abacus.worldmonitor.app https://*.clerk.accounts.dev; worker-src 'self' blob:; font-src 'self' data: https:; media-src 'self' data: blob: https: http://127.0.0.1:* http://localhost:*; frame-src 'self' http://127.0.0.1:* http://localhost:* https://worldmonitor.app https://tech.worldmonitor.app https://finance.worldmonitor.app https://commodity.worldmonitor.app https://happy.worldmonitor.app https://www.youtube.com https://www.youtube-nocookie.com https://webcams.windy.com https://*.clerk.accounts.dev;"
+      "csp": "default-src 'self'; connect-src 'self' https: http://localhost:5173 http://127.0.0.1:* ws: wss: blob: data: https://abacus.worldmonitor.app; img-src 'self' data: blob: https:; style-src 'self' 'unsafe-inline'; script-src 'self' 'wasm-unsafe-eval' https://www.youtube.com https://abacus.worldmonitor.app https://*.clerk.accounts.dev; worker-src 'self' blob:; font-src 'self' data: https:; media-src 'self' data: blob: https: http://127.0.0.1:* http://localhost:*; frame-src 'self' http://127.0.0.1:* http://localhost:* https://worldmonitor.app https://tech.worldmonitor.app https://finance.worldmonitor.app https://commodity.worldmonitor.app https://happy.worldmonitor.app https://energy.worldmonitor.app https://www.youtube.com https://www.youtube-nocookie.com https://webcams.windy.com https://*.clerk.accounts.dev;"
     }
   },
   "bundle": {
@@ -42,8 +42,8 @@
       "appimage"
     ],
     "category": "Productivity",
-    "shortDescription": "World Monitor desktop app (supports World and Tech variants)",
-    "longDescription": "World Monitor desktop app for real-time global intelligence. Build with VITE_VARIANT=tech to package Tech Monitor branding and dataset defaults.",
+    "shortDescription": "World Monitor desktop app (all variants switchable in-app)",
+    "longDescription": "World Monitor desktop app for real-time global intelligence. Tech, finance, commodity, energy, and happy variants are selected in-app — one binary serves all of them.",
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",

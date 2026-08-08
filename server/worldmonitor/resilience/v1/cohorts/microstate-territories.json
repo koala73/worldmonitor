@@ -1,0 +1,5 @@
+{
+  "name": "microstate-territories",
+  "description": "Microstates and SARs/territories — sparse data, often inflated by current scoring. Used in resilience cohort anti-inversion test (plan 2026-04-26-002 §U1) as the structural anchor for 'at most 1 microstate-territory in the headline top 20 after the universe filter + per-capita normalization land'. Membership: small population (<1M typical) sovereign microstates AND non-sovereign SARs/territories; the test treats them as one cohort because the structural problem (sparse coverage / per-capita inflation / non-sovereign membership) is shared.",
+  "iso2": ["AD", "LI", "MC", "SM", "TV", "PW", "NR", "MO", "HK", "GL", "GI", "IM", "FK"]
+}

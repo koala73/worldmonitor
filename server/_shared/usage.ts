@@ -1,0 +1,614 @@
+/**
+ * Axiom-based API usage observability — emit-side primitives.
+ *
+ * - Builders accept allowlisted primitives only. Never accept Request, Response,
+ *   or untyped objects: future field additions then leak by structural impossibility.
+ * - emitUsageEvents fires via ctx.waitUntil so the Edge isolate cannot tear down
+ *   the unflushed POST. Direct fetch, 1.5s timeout, no retry.
+ * - Circuit breaker (5% failure / 5min sliding window) trips when delivery is broken.
+ * - Tripping logs once via console.error; drops thereafter are 1%-sampled console.warn.
+ * - Telemetry failure must not affect API availability or latency.
+ *
+ * Scoped to USAGE attribution. Sentry-edge already covers exceptions — do NOT
+ * emit error tracebacks here. Cross-link via sentry_trace_id field instead.
+ */
+
+import type { AuthKind } from './usage-identity';
+// client-ip (NOT rate-limit): this module is in the Railway seeders' static
+// import closure via redis.ts, and rate-limit.ts pulls @upstash/* packages
+// that seeder containers do not install (#5231).
+import { getClientIp, hasCloudflareTransitProof, UNKNOWN_CLIENT_IP } from './client-ip';
+
+const AXIOM_DATASET = 'wm_api_usage';
+// US region endpoint. EU workspaces would use api.eu.axiom.co.
+const AXIOM_INGEST_URL = `https://api.axiom.co/v1/datasets/${AXIOM_DATASET}/ingest`;
+const TELEMETRY_TIMEOUT_MS = 1_500;
+
+const CB_WINDOW_MS = 5 * 60 * 1_000;
+const CB_TRIP_FAILURE_RATIO = 0.05;
+const CB_MIN_SAMPLES = 20;
+const SAMPLED_DROP_LOG_RATE = 0.01;
+
+function isUsageEnabled(): boolean {
+  return process.env.USAGE_TELEMETRY === '1';
+}
+
+function isDevHeaderEnabled(): boolean {
+  return process.env.NODE_ENV !== 'production';
+}
+
+// ---------- Event shapes ----------
+
+export type CacheTier =
+  | 'fast'
+  | 'medium'
+  | 'slow'
+  | 'slow-browser'
+  | 'live-browser'
+  | 'static'
+  | 'daily'
+  | 'no-store'
+  | 'live';
+
+export type CacheStatus = 'miss' | 'fresh' | 'stale-while-revalidate' | 'neg-sentinel';
+
+export type ExecutionPlane = 'vercel-edge' | 'vercel-node' | 'railway-relay';
+
+export type OriginKind =
+  | 'browser-same-origin'
+  | 'browser-cross-origin'
+  | 'api-key'
+  | 'oauth'
+  | 'mcp'
+  | 'internal-cron';
+
+export type RequestReason =
+  | 'ok'
+  | 'origin_403'
+  | 'rate_limit_429'
+  | 'rate_limit_429_endpoint'
+  | 'rate_limit_429_global'
+  | 'rate_limit_429_direct_llm'
+  | 'rate_limit_degraded'
+  | 'preflight'
+  | 'auth_401'
+  | 'auth_403'
+  | 'tier_403'
+  | 'billing_verification_503'
+  // Transient Convex user-API-key validation outage (wm_ key path). Distinct
+  // from auth_401 so a backend blip is not counted as invalid credentials.
+  | 'validation_unavailable'
+  // F8/F14 (U7+U8 review pass): body-buffer / payload-size rejections.
+  // Distinct from auth_401 so telemetry separates malformed requests
+  // from auth failures.
+  | 'malformed_request'
+  // Fail-closed rejection when the internal-MCP replay-nonce cache (Redis)
+  // is unavailable so an atomic claim can't be made. Distinct from auth_401
+  // so a Redis outage is not conflated with genuine signature/auth failures.
+  | 'replay_cache_unavailable'
+  | 'unknown_route'
+  | 'method_not_allowed'
+  | 'cors_error'
+  // #3199 per-account API rate limit. `_429` = enforced reject; `_shadow` =
+  // would-have-rejected but served (shadow mode), threaded onto the single
+  // terminal success emit so the volume signal isn't double-counted.
+  | 'rl_min_429'
+  | 'rl_ceiling_429'
+  | 'rl_min_shadow'
+  | 'rl_ceiling_shadow'
+  // Idempotency-Key (server/_shared/idempotency.ts): a malformed key (400), a
+  // replayed response, an in-flight duplicate (409), or a key reused with a
+  // different body (422).
+  | 'idempotency_invalid'
+  | 'idempotent_replay'
+  | 'idempotency_conflict'
+  | 'idempotency_mismatch'
+  // #4866 — auth backend (Convex/Redis) unreachable during credential or
+  // entitlement resolution on /mcp: the caller was told 503 + Retry-After.
+  // Distinct from auth_401 so a backend outage never reads as a wave of
+  // invalid credentials.
+  | 'auth_unavailable';
+
+export interface RequestEvent {
+  _time: string;
+  event_type: 'request';
+  request_id: string;
+  domain: string;
+  route: string;
+  method: string;
+  status: number;
+  duration_ms: number;
+  req_bytes: number;
+  res_bytes: number;
+  customer_id: string | null;
+  principal_id: string | null;
+  auth_kind: AuthKind;
+  tier: number;
+  // #4572 — API plan attribution. planKey of the caller's entitlement
+  // (api_starter / api_business / enterprise / …) or null. Distinguishes
+  // Starter from Business (both tier 2) so the limit-abuse audit can compare
+  // each request to the customer's actual cap without an external lookup.
+  plan_key: string | null;
+  country: string | null;
+  ip_city: string | null;
+  ip_region: string | null;
+  execution_region: string | null;
+  execution_plane: ExecutionPlane;
+  origin_kind: OriginKind | null;
+  cache_tier: CacheTier | null;
+  ip: string | null;
+  user_agent: string | null;
+  ua_hash: string | null;
+  referer: string | null;
+  accept_language: string | null;
+  host: string | null;
+  sentry_trace_id: string | null;
+  reason: RequestReason;
+}
+
+export interface UpstreamEvent {
+  _time: string;
+  event_type: 'upstream';
+  request_id: string;
+  customer_id: string | null;
+  route: string;
+  tier: number;
+  provider: string;
+  operation: string;
+  host: string;
+  status: number;
+  duration_ms: number;
+  request_bytes: number;
+  response_bytes: number;
+  cache_status: CacheStatus;
+}
+
+// #4895 — per-completion LLM spend attribution. One event per PROVIDER
+// ATTEMPT (not per logical call): a fallback chain that re-sends the prompt
+// shows up as fallback_index 0..n, making retry amplification queryable.
+export interface LlmCallEvent {
+  _time: string;
+  event_type: 'llm_call';
+  provider: string;
+  model: string;
+  /** Caller surface tag, e.g. 'classify-event', 'country-intel-brief'. 'unknown' when untagged. */
+  stage: string;
+  ok: boolean;
+  duration_ms: number;
+  tokens_total: number;
+  tokens_prompt: number;
+  tokens_completion: number;
+  /** Input size in characters — recorded even when the provider omits usage. */
+  prompt_chars: number;
+  max_tokens: number;
+  /** 0 = first provider attempted; 1+ = fallbacks (each re-sends the full prompt). */
+  fallback_index: number;
+  /** '' on success; 'http_<status>' | 'timeout' | 'fetch_error' | 'empty' | 'stripped_empty' | 'validate_reject'. */
+  reason: string;
+}
+
+export type UsageEvent = RequestEvent | UpstreamEvent | LlmCallEvent;
+
+// ---------- Builders (allowlisted primitives only) ----------
+
+export function buildLlmCallEvent(p: {
+  provider: string;
+  model: string;
+  stage: string;
+  ok: boolean;
+  durationMs: number;
+  tokensTotal?: number;
+  tokensPrompt?: number;
+  tokensCompletion?: number;
+  promptChars: number;
+  maxTokens: number;
+  fallbackIndex: number;
+  reason?: string;
+}): LlmCallEvent {
+  return {
+    _time: new Date().toISOString(),
+    event_type: 'llm_call',
+    provider: p.provider,
+    model: p.model,
+    stage: p.stage,
+    ok: p.ok,
+    duration_ms: Math.round(p.durationMs),
+    tokens_total: p.tokensTotal ?? 0,
+    tokens_prompt: p.tokensPrompt ?? 0,
+    tokens_completion: p.tokensCompletion ?? 0,
+    prompt_chars: p.promptChars,
+    max_tokens: p.maxTokens,
+    fallback_index: p.fallbackIndex,
+    reason: p.reason ?? '',
+  };
+}
+
+export function buildRequestEvent(p: {
+  requestId: string;
+  domain: string;
+  route: string;
+  method: string;
+  status: number;
+  durationMs: number;
+  reqBytes: number;
+  resBytes: number;
+  customerId: string | null;
+  principalId: string | null;
+  authKind: AuthKind;
+  tier: number;
+  planKey: string | null;
+  country: string | null;
+  ipCity: string | null;
+  ipRegion: string | null;
+  executionRegion: string | null;
+  executionPlane: ExecutionPlane;
+  originKind: OriginKind | null;
+  cacheTier: CacheTier | null;
+  ip: string | null;
+  userAgent: string | null;
+  uaHash: string | null;
+  referer: string | null;
+  acceptLanguage: string | null;
+  host: string | null;
+  sentryTraceId: string | null;
+  reason: RequestReason;
+}): RequestEvent {
+  return {
+    _time: new Date().toISOString(),
+    event_type: 'request',
+    request_id: p.requestId,
+    domain: p.domain,
+    route: p.route,
+    method: p.method,
+    status: p.status,
+    duration_ms: p.durationMs,
+    req_bytes: p.reqBytes,
+    res_bytes: p.resBytes,
+    customer_id: p.customerId,
+    principal_id: p.principalId,
+    auth_kind: p.authKind,
+    tier: p.tier,
+    plan_key: p.planKey,
+    country: p.country,
+    ip_city: p.ipCity,
+    ip_region: p.ipRegion,
+    execution_region: p.executionRegion,
+    execution_plane: p.executionPlane,
+    origin_kind: p.originKind,
+    cache_tier: p.cacheTier,
+    ip: p.ip,
+    user_agent: p.userAgent,
+    ua_hash: p.uaHash,
+    referer: p.referer,
+    accept_language: p.acceptLanguage,
+    host: p.host,
+    sentry_trace_id: p.sentryTraceId,
+    reason: p.reason,
+  };
+}
+
+export function buildUpstreamEvent(p: {
+  requestId: string;
+  customerId: string | null;
+  route: string;
+  tier: number;
+  provider: string;
+  operation: string;
+  host: string;
+  status: number;
+  durationMs: number;
+  requestBytes: number;
+  responseBytes: number;
+  cacheStatus: CacheStatus;
+}): UpstreamEvent {
+  return {
+    _time: new Date().toISOString(),
+    event_type: 'upstream',
+    request_id: p.requestId,
+    customer_id: p.customerId,
+    route: p.route,
+    tier: p.tier,
+    provider: p.provider,
+    operation: p.operation,
+    host: p.host,
+    status: p.status,
+    duration_ms: p.durationMs,
+    request_bytes: p.requestBytes,
+    response_bytes: p.responseBytes,
+    cache_status: p.cacheStatus,
+  };
+}
+
+// ---------- Header-derived helpers (ok to take Request — these only read primitives) ----------
+
+// Cap free-form header values before they hit Axiom. A misbehaving or hostile
+// caller can send headers up to the runtime's per-header ceiling (8–32 KB);
+// without a bound, those records inflate storage and query cost long after
+// the request is gone. 512 chars covers ~99% of real UA / Referer / Accept-
+// Language / Host values without truncating anything observed in practice.
+const MAX_HEADER_FIELD_LEN = 512;
+
+function capHeaderValue(s: string | null): string | null {
+  if (s == null) return null;
+  return s.length > MAX_HEADER_FIELD_LEN ? s.slice(0, MAX_HEADER_FIELD_LEN) : s;
+}
+
+export function deriveRequestId(req: Request): string {
+  return req.headers.get('x-vercel-id') ?? '';
+}
+
+export function deriveExecutionRegion(req: Request): string | null {
+  const id = req.headers.get('x-vercel-id');
+  if (!id) return null;
+  const sep = id.indexOf('::');
+  return sep > 0 ? id.slice(0, sep) : null;
+}
+
+export function deriveCountry(req: Request): string | null {
+  // Cloudflare's client-country header is trustworthy only when the transform
+  // rule proves the request transited Cloudflare. Without that proof it is
+  // caller-controlled, so retain Vercel's connection-country fallback.
+  if (hasCloudflareTransitProof(req)) {
+    const country = req.headers.get('cf-ipcountry');
+    return (country && country !== 'T1' ? country : null) ?? req.headers.get('x-vercel-ip-country') ?? null;
+  }
+  return req.headers.get('x-vercel-ip-country') ?? null;
+}
+
+export function deriveIpCity(req: Request): string | null {
+  const raw = req.headers.get('x-vercel-ip-city');
+  if (!raw) return null;
+  // Vercel URL-encodes city names with spaces ("New%20York").
+  try {
+    return decodeURIComponent(raw);
+  } catch {
+    return raw;
+  }
+}
+
+export function deriveIpRegion(req: Request): string | null {
+  return req.headers.get('x-vercel-ip-country-region') ?? null;
+}
+
+// Reuse the same Cloudflare-proof gate as rate limiting: the client IP is only
+// trusted when the Transform Rule proves CF transit. Never use x-forwarded-for
+// for telemetry, as direct callers can forge it.
+export function deriveIp(req: Request): string | null {
+  const ip = getClientIp(req);
+  return ip === UNKNOWN_CLIENT_IP ? null : ip;
+}
+
+export function deriveUserAgent(req: Request): string | null {
+  return capHeaderValue(req.headers.get('user-agent'));
+}
+
+// Strip query and fragment before storing. Browsers send the full referring
+// URL, and password-reset / email-confirm / OAuth-callback links carry
+// short-lived credentials in their query string — the same reason the current
+// request's query string is deliberately not logged. Origin + pathname is
+// enough for traffic-source attribution.
+export function deriveReferer(req: Request): string | null {
+  const raw = req.headers.get('referer');
+  if (!raw) return null;
+  try {
+    const u = new URL(raw);
+    return capHeaderValue(`${u.origin}${u.pathname}`);
+  } catch {
+    return null;
+  }
+}
+
+export function deriveAcceptLanguage(req: Request): string | null {
+  return capHeaderValue(req.headers.get('accept-language'));
+}
+
+export function deriveHost(req: Request): string | null {
+  return capHeaderValue(req.headers.get('host'));
+}
+
+export function deriveReqBytes(req: Request): number {
+  const len = req.headers.get('content-length');
+  if (!len) return 0;
+  const n = Number(len);
+  return Number.isFinite(n) && n >= 0 ? n : 0;
+}
+
+export function deriveSentryTraceId(req: Request): string | null {
+  return req.headers.get('sentry-trace') ?? null;
+}
+
+// ua_hash: SHA-256(UA + monthly-rotated pepper). Pepper key: USAGE_UA_PEPPER.
+// If the pepper is unset we return null rather than a stable per-browser fingerprint.
+export async function deriveUaHash(req: Request): Promise<string | null> {
+  const pepper = process.env.USAGE_UA_PEPPER;
+  if (!pepper) return null;
+  const ua = req.headers.get('user-agent') ?? '';
+  if (!ua) return null;
+  const data = new TextEncoder().encode(`${pepper}|${ua}`);
+  const buf = await crypto.subtle.digest('SHA-256', data);
+  return Array.from(new Uint8Array(buf), (b) => b.toString(16).padStart(2, '0')).join('');
+}
+
+export function deriveOriginKind(req: Request): OriginKind | null {
+  const origin = req.headers.get('origin') ?? '';
+  const hasApiKey =
+    req.headers.has('x-worldmonitor-key') || req.headers.has('x-api-key');
+  const hasBearer = (req.headers.get('authorization') ?? '').startsWith('Bearer ');
+  if (hasApiKey) return 'api-key';
+  if (hasBearer) return 'oauth';
+  if (!origin) return null;
+  try {
+    const host = new URL(origin).host;
+    const reqHost = new URL(req.url).host;
+    return host === reqHost ? 'browser-same-origin' : 'browser-cross-origin';
+  } catch {
+    return 'browser-cross-origin';
+  }
+}
+
+// ---------- Circuit breaker ----------
+
+interface BreakerSample {
+  ts: number;
+  ok: boolean;
+}
+
+const breakerSamples: BreakerSample[] = [];
+let breakerTripped = false;
+let breakerLastNotifyTs = 0;
+
+function pruneOldSamples(now: number): void {
+  while (breakerSamples.length > 0 && now - breakerSamples[0]!.ts > CB_WINDOW_MS) {
+    breakerSamples.shift();
+  }
+}
+
+function recordSample(ok: boolean): void {
+  const now = Date.now();
+  pruneOldSamples(now);
+  breakerSamples.push({ ts: now, ok });
+
+  if (breakerSamples.length < CB_MIN_SAMPLES) {
+    breakerTripped = false;
+    return;
+  }
+  let failures = 0;
+  for (const s of breakerSamples) if (!s.ok) failures++;
+  const ratio = failures / breakerSamples.length;
+  const wasTripped = breakerTripped;
+  breakerTripped = ratio > CB_TRIP_FAILURE_RATIO;
+
+  if (breakerTripped && !wasTripped && now - breakerLastNotifyTs > CB_WINDOW_MS) {
+    breakerLastNotifyTs = now;
+    console.error('[usage-telemetry] circuit breaker tripped', {
+      ratio: ratio.toFixed(3),
+      samples: breakerSamples.length,
+    });
+  }
+}
+
+export function getTelemetryHealth(): 'ok' | 'degraded' | 'off' {
+  if (!isUsageEnabled()) return 'off';
+  return breakerTripped ? 'degraded' : 'ok';
+}
+
+export function maybeAttachDevHealthHeader(headers: Headers): void {
+  if (!isDevHeaderEnabled()) return;
+  headers.set('x-usage-telemetry', getTelemetryHealth());
+}
+
+// ---------- Implicit request scope (AsyncLocalStorage) ----------
+//
+// Per koala's review (#3381), this lets fetch helpers emit upstream events
+// without leaf handlers having to thread a usage hook through every call.
+// The gateway sets the scope before invoking matchedHandler; fetch helpers
+// (fetchJson, cachedFetchJsonWithMeta) read from it lazily.
+//
+// AsyncLocalStorage is loaded defensively. If the runtime ever rejects the
+// import (older Edge versions, sandboxed contexts), the scope helpers
+// degrade to no-ops and telemetry simply skips. The gateway request event
+// is unaffected — it never depended on ALS.
+
+export interface UsageScope {
+  ctx: WaitUntilCtx;
+  requestId: string;
+  customerId: string | null;
+  route: string;
+  tier: number;
+}
+
+type ALSLike<T> = {
+  run: <R>(store: T, fn: () => R) => R;
+  getStore: () => T | undefined;
+};
+
+let scopeStore: ALSLike<UsageScope> | null = null;
+
+async function getScopeStore(): Promise<ALSLike<UsageScope> | null> {
+  if (scopeStore) return scopeStore;
+  try {
+    const mod = await import('node:async_hooks');
+    scopeStore = new mod.AsyncLocalStorage<UsageScope>();
+    return scopeStore;
+  } catch {
+    return null;
+  }
+}
+
+export async function runWithUsageScope<R>(scope: UsageScope, fn: () => R | Promise<R>): Promise<R> {
+  const store = await getScopeStore();
+  if (!store) return fn();
+  return store.run(scope, fn) as R | Promise<R>;
+}
+
+export function getUsageScope(): UsageScope | undefined {
+  return scopeStore?.getStore();
+}
+
+// ---------- Sink ----------
+
+export async function sendToAxiom(events: UsageEvent[]): Promise<void> {
+  if (!isUsageEnabled()) return;
+  if (events.length === 0) return;
+  const token = process.env.AXIOM_API_TOKEN;
+  if (!token) {
+    if (Math.random() < SAMPLED_DROP_LOG_RATE) {
+      console.warn('[usage-telemetry] drop', { reason: 'no-token' });
+    }
+    return;
+  }
+  if (breakerTripped) {
+    if (Math.random() < SAMPLED_DROP_LOG_RATE) {
+      console.warn('[usage-telemetry] drop', { reason: 'breaker-open' });
+    }
+    return;
+  }
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), TELEMETRY_TIMEOUT_MS);
+  try {
+    const resp = await fetch(AXIOM_INGEST_URL, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(events),
+      signal: controller.signal,
+    });
+    if (!resp.ok) {
+      recordSample(false);
+      if (Math.random() < SAMPLED_DROP_LOG_RATE) {
+        console.warn('[usage-telemetry] drop', { reason: `http-${resp.status}` });
+      }
+      return;
+    }
+    recordSample(true);
+  } catch (err) {
+    recordSample(false);
+    if (Math.random() < SAMPLED_DROP_LOG_RATE) {
+      const reason = err instanceof Error && err.name === 'AbortError' ? 'timeout' : 'fetch-error';
+      console.warn('[usage-telemetry] drop', { reason });
+    }
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+export interface WaitUntilCtx {
+  waitUntil: (p: Promise<unknown>) => void;
+}
+
+export function emitUsageEvents(ctx: WaitUntilCtx, events: UsageEvent[]): void {
+  if (!isUsageEnabled() || events.length === 0) return;
+  ctx.waitUntil(sendToAxiom(events));
+}
+
+// Variant that returns the in-flight delivery promise instead of registering
+// it on a context. Use when the caller is already inside a single
+// ctx.waitUntil() chain and wants to await delivery synchronously to avoid a
+// nested waitUntil registration (which Edge runtimes may drop).
+export function deliverUsageEvents(events: UsageEvent[]): Promise<void> {
+  if (!isUsageEnabled() || events.length === 0) return Promise.resolve();
+  return sendToAxiom(events);
+}

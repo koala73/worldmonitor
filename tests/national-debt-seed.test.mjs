@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
 // Import only the pure compute function (no Redis, no fetch side-effects)
-import { computeEntries } from '../scripts/seed-national-debt.mjs';
+import { computeEntries, weoYearWindow } from '../scripts/seed-national-debt.mjs';
 
 const BASELINE_TS = Date.UTC(2024, 0, 1);
 
@@ -55,6 +55,39 @@ describe('computeEntries formula', () => {
 
     const entries = computeEntries(debtPct, gdp, {}, null);
     assert.equal(entries[0].baselineTs, BASELINE_TS);
+  });
+});
+
+describe('source label derives year from SDMX response', () => {
+  it('uses max year present when 2025 is returned', () => {
+    const debtPct = { GBR: { '2024': '100', '2025': '102' } };
+    const gdp = { GBR: { '2024': '3100' } };
+
+    const entries = computeEntries(debtPct, gdp, {}, null);
+    assert.equal(entries[0].source, 'IMF WEO 2025');
+  });
+
+  it('falls back to 2024 when only 2024 is present', () => {
+    const debtPct = { FRA: { '2024': '110' } };
+    const gdp = { FRA: { '2024': '2900' } };
+
+    const entries = computeEntries(debtPct, gdp, {}, null);
+    assert.equal(entries[0].source, 'IMF WEO 2024');
+  });
+
+  it('combines WEO year with Treasury label for USA override', () => {
+    const debtPct = { USA: { '2024': '120', '2025': '124' } };
+    const gdp = { USA: { '2024': '28000' } };
+    const entries = computeEntries(debtPct, gdp, {}, { debtUsd: 36e12, date: '2025-01-01' });
+    assert.equal(entries[0].source, 'IMF WEO 2025 + US Treasury FiscalData');
+  });
+
+  it('tracks future WEO vintages (2026) when SDMX returns them', () => {
+    const debtPct = { DEU: { '2024': '66', '2026': '68' } };
+    const gdp = { DEU: { '2024': '4500' } };
+    const entries = computeEntries(debtPct, gdp, {}, null);
+    assert.equal(entries.length, 1);
+    assert.equal(entries[0].source, 'IMF WEO 2026');
   });
 });
 
@@ -164,5 +197,24 @@ describe('country count with realistic fixture', () => {
 
     const entries = computeEntries(debtPct, gdp, {}, null);
     assert.ok(entries.length >= 150, `Expected >=150 entries, got ${entries.length}`);
+  });
+});
+
+describe('rolling WEO year window', () => {
+  it('includes current year and spans prev 2 and next 1', () => {
+    const now = new Date(Date.UTC(2026, 5, 1));
+    assert.deepEqual(weoYearWindow(now), ['2024', '2025', '2026', '2027']);
+  });
+
+  it('picks latest year per country, not hardcoded 2024', () => {
+    // Simulates a 2026 WEO vintage landing with 2025+2026 debt data and no 2024
+    const debtPct = { FRA: { '2025': '110', '2026': '112' } };
+    const gdp = { FRA: { '2026': '3000' } };
+    const entries = computeEntries(debtPct, gdp, {}, null);
+    assert.equal(entries.length, 1);
+    assert.equal(entries[0].source, 'IMF WEO 2026');
+    assert.ok(Math.abs(entries[0].debtToGdp - 112) < 0.001);
+    // baseline should track the vintage year, not be pinned to 2024
+    assert.equal(entries[0].baselineTs, Date.UTC(2026, 0, 1));
   });
 });

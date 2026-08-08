@@ -1,0 +1,9 @@
+{
+  "result": {
+    "datasize": 2,
+    "records": [
+      { "end_of_day": "2026-07-10", "cny": 1.0881 },
+      { "end_of_day": "2026-07-09", "cny": 1.0872 }
+    ]
+  }
+}

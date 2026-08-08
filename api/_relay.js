@@ -72,7 +72,7 @@ export function createRelayHandler(cfg) {
     }
 
     if (cfg.requireApiKey) {
-      const keyCheck = validateApiKey(req);
+      const keyCheck = await validateApiKey(req);
       if (keyCheck.required && !keyCheck.valid) {
         return jsonResponse({ error: keyCheck.error }, 401, corsHeaders);
       }

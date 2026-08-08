@@ -99,7 +99,7 @@ message VaccinationCoverageItem {
 
 **Sources:**
 
-- **OpenAQ API v3** (no key for basic): `https://api.openaq.org/v3/locations?limit=1000&parameters=pm25&bbox={bbox}`
+- **OpenAQ API v3** (`OPENAQ_API_KEY`): `https://api.openaq.org/v3/locations?limit=1000&parameters_id=2&bbox={bbox}`
   - Readings: `https://api.openaq.org/v3/sensors/{id}/measurements/daily`
   - 12,000+ stations globally, free tier sufficient
 - **WAQI (World Air Quality Index)** — city-level aggregation: `https://api.waqi.info/map/bounds/?latlng={bbox}&token={key}`
@@ -295,13 +295,13 @@ health: {
 | Service | Key Name | Free Tier |
 |---------|----------|-----------|
 | WAQI (air quality) | `WAQI_API_KEY` | 1000 req/day (sufficient for hourly city aggregation) |
-| OpenAQ | None required | Free, rate limit 60 req/min |
+| OpenAQ v3 (air quality) | `OPENAQ_API_KEY` | Required by current API docs |
 | WHO GHO API | None required | Free, public |
 | Our World in Data | None required | Free, public CSV |
 | Nextstrain | None required | Free, public JSON |
 | RSS feeds (all) | None required | Public |
 
-**Only 1 new API key required (WAQI)** — everything else is keyless.
+**At least 1 new API key is required (`OPENAQ_API_KEY`)**. `WAQI_API_KEY` remains optional; the seed still works with OpenAQ alone.
 
 ---
 
@@ -311,7 +311,7 @@ health: {
 2. **`seed-health-news.mjs`** — pure RSS aggregation, no key needed, fast win
 3. **`seed-pathogen-surveillance.mjs`** — Nextstrain JSON + WHO WER RSS
 4. **`seed-epidemic-trends.mjs`** — WHO GHO API (no key, daily data)
-5. **`seed-health-air-quality.mjs`** — OpenAQ (no key) + WAQI (1 key)
+5. **`seed-health-air-quality.mjs`** — OpenAQ (`OPENAQ_API_KEY`) + optional WAQI
 6. **`seed-vaccination-coverage.mjs`** — WHO immunization API (weekly, lowest priority)
 7. **Proto + handler additions** for each new RPC
 8. **MCP tool registration** `get_health_data`

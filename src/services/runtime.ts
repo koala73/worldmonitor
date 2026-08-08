@@ -1,9 +1,20 @@
 import { SITE_VARIANT } from '@/config/variant';
 import { getClerkToken } from '@/services/clerk';
+import { isDesktopRuntime } from './desktop-runtime';
+
+// The detector lives in a dependency-free leaf (#5911) so consumers that need
+// only the boolean do not pull this module's variant/Clerk graph. Re-exported
+// here because every existing caller imports it from `@/services/runtime`.
+export { detectDesktopRuntime, isDesktopRuntime, type RuntimeProbe } from './desktop-runtime';
 
 const ENV = (() => {
   try {
-    return import.meta.env ?? {};
+    return {
+      VITE_TAURI_API_BASE_URL: import.meta.env.VITE_TAURI_API_BASE_URL,
+      VITE_TAURI_REMOTE_API_BASE_URL: import.meta.env.VITE_TAURI_REMOTE_API_BASE_URL,
+      VITE_WS_API_URL: import.meta.env.VITE_WS_API_URL,
+      VITE_WS_RELAY_URL: import.meta.env.VITE_WS_RELAY_URL,
+    };
   } catch {
     return {} as Record<string, string | undefined>;
   }
@@ -11,7 +22,6 @@ const ENV = (() => {
 
 const WS_API_URL = ENV.VITE_WS_API_URL || '';
 const DEFAULT_WEB_API_URL = 'https://api.worldmonitor.app';
-const KEYED_CLOUD_API_PATTERN = /^\/api\/(?:[^/]+\/v1\/|bootstrap(?:\?|$)|polymarket(?:\?|$)|ais-snapshot(?:\?|$))/;
 
 const DEFAULT_REMOTE_HOSTS: Record<string, string> = {
   tech: WS_API_URL,
@@ -22,7 +32,6 @@ const DEFAULT_REMOTE_HOSTS: Record<string, string> = {
 };
 
 const DEFAULT_LOCAL_API_PORT = 46123;
-const FORCE_DESKTOP_RUNTIME = ENV.VITE_DESKTOP_RUNTIME === '1';
 
 let _resolvedPort: number | null = null;
 let _portPromise: Promise<number> | null = null;
@@ -54,57 +63,6 @@ export function getLocalApiPort(): number {
 
 function normalizeBaseUrl(baseUrl: string): string {
   return baseUrl.replace(/\/$/, '');
-}
-
-type RuntimeProbe = {
-  hasTauriGlobals: boolean;
-  userAgent: string;
-  locationProtocol: string;
-  locationHost: string;
-  locationOrigin: string;
-};
-
-export function detectDesktopRuntime(probe: RuntimeProbe): boolean {
-  const tauriInUserAgent = probe.userAgent.includes('Tauri');
-  const secureLocalhostOrigin = (
-    probe.locationProtocol === 'https:' && (
-      probe.locationHost === 'localhost' ||
-      probe.locationHost.startsWith('localhost:') ||
-      probe.locationHost === '127.0.0.1' ||
-      probe.locationHost.startsWith('127.0.0.1:')
-    )
-  );
-
-  // Tauri production windows can expose tauri-like hosts/schemes without
-  // always exposing bridge globals at first paint.
-  const tauriLikeLocation = (
-    probe.locationProtocol === 'tauri:' ||
-    probe.locationProtocol === 'asset:' ||
-    probe.locationHost === 'tauri.localhost' ||
-    probe.locationHost.endsWith('.tauri.localhost') ||
-    probe.locationOrigin.startsWith('tauri://') ||
-    secureLocalhostOrigin
-  );
-
-  return probe.hasTauriGlobals || tauriInUserAgent || tauriLikeLocation;
-}
-
-export function isDesktopRuntime(): boolean {
-  if (FORCE_DESKTOP_RUNTIME) {
-    return true;
-  }
-
-  if (typeof window === 'undefined') {
-    return false;
-  }
-
-  return detectDesktopRuntime({
-    hasTauriGlobals: '__TAURI_INTERNALS__' in window || '__TAURI__' in window,
-    userAgent: window.navigator?.userAgent ?? '',
-    locationProtocol: window.location?.protocol ?? '',
-    locationHost: window.location?.host ?? '',
-    locationOrigin: window.location?.origin ?? '',
-  });
 }
 
 export function getApiBaseUrl(): string {
@@ -257,270 +215,16 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-export type SmartPollReason = 'interval' | 'resume' | 'manual' | 'startup';
-
-export interface SmartPollContext {
-  signal?: AbortSignal;
-  reason: SmartPollReason;
-  isHidden: boolean;
-}
-
-export interface SmartPollOptions {
-  intervalMs: number;
-  hiddenIntervalMs?: number;
-  hiddenMultiplier?: number;
-  pauseWhenHidden?: boolean;
-  refreshOnVisible?: boolean;
-  runImmediately?: boolean;
-  shouldRun?: () => boolean;
-  maxBackoffMultiplier?: number;
-  jitterFraction?: number;
-  minIntervalMs?: number;
-  onError?: (error: unknown) => void;
-  visibilityDebounceMs?: number;
-  visibilityHub?: VisibilityHub;
-}
-
-export class VisibilityHub {
-  private listeners = new Set<() => void>();
-  private listening = false;
-  private handler: (() => void) | null = null;
-
-  subscribe(cb: () => void): () => void {
-    this.listeners.add(cb);
-    this.ensureListening();
-    return () => {
-      this.listeners.delete(cb);
-      if (this.listeners.size === 0) this.stopListening();
-    };
-  }
-
-  destroy(): void {
-    this.stopListening();
-    this.listeners.clear();
-  }
-
-  private ensureListening(): void {
-    if (this.listening || !hasVisibilityApi()) return;
-    this.handler = () => {
-      for (const cb of this.listeners) cb();
-    };
-    document.addEventListener('visibilitychange', this.handler);
-    this.listening = true;
-  }
-
-  private stopListening(): void {
-    if (!this.listening || !this.handler) return;
-    document.removeEventListener('visibilitychange', this.handler);
-    this.handler = null;
-    this.listening = false;
-  }
-}
-
-export interface SmartPollLoopHandle {
-  stop: () => void;
-  trigger: () => void;
-  isActive: () => boolean;
-}
-
-function isAbortError(error: unknown): boolean {
-  if (!error || typeof error !== 'object') return false;
-  const name = (error as { name?: string }).name;
-  return name === 'AbortError';
-}
-
-function hasVisibilityApi(): boolean {
-  return typeof document !== 'undefined'
-    && typeof document.addEventListener === 'function'
-    && typeof document.removeEventListener === 'function';
-}
-
-function isDocumentHidden(): boolean {
-  return hasVisibilityApi() && document.visibilityState === 'hidden';
-}
-
-export function startSmartPollLoop(
-  poll: (ctx: SmartPollContext) => Promise<boolean | void> | boolean | void,
-  opts: SmartPollOptions,
-): SmartPollLoopHandle {
-  const intervalMs = Math.max(1_000, Math.round(opts.intervalMs));
-  const hiddenMultiplier = Math.max(1, opts.hiddenMultiplier ?? 10);
-  const pauseWhenHidden = opts.pauseWhenHidden ?? false;
-  const refreshOnVisible = opts.refreshOnVisible ?? true;
-  const runImmediately = opts.runImmediately ?? false;
-  const shouldRun = opts.shouldRun;
-  const onError = opts.onError;
-  const maxBackoffMultiplier = Math.max(1, opts.maxBackoffMultiplier ?? 4);
-  const jitterFraction = Math.max(0, opts.jitterFraction ?? 0.1);
-  const minIntervalMs = Math.max(250, opts.minIntervalMs ?? 1_000);
-  const hiddenIntervalMs = opts.hiddenIntervalMs !== undefined
-    ? Math.max(minIntervalMs, Math.round(opts.hiddenIntervalMs))
-    : undefined;
-
-  const visibilityDebounceMs = Math.max(0, opts.visibilityDebounceMs ?? 300);
-
-  let active = true;
-  let timerId: ReturnType<typeof setTimeout> | null = null;
-  let visibilityDebounceTimer: ReturnType<typeof setTimeout> | null = null;
-  let inFlight = false;
-  let backoffMultiplier = 1;
-  let activeController: AbortController | null = null;
-
-  const clearTimer = () => {
-    if (!timerId) return;
-    clearTimeout(timerId);
-    timerId = null;
-  };
-
-  const baseDelayMs = (hidden: boolean): number | null => {
-    if (hidden) {
-      if (pauseWhenHidden) return null;
-      return hiddenIntervalMs ?? (intervalMs * hiddenMultiplier);
-    }
-    return intervalMs * backoffMultiplier;
-  };
-
-  const computeDelay = (baseMs: number): number => {
-    const jitterRange = baseMs * jitterFraction;
-    const jittered = baseMs + ((Math.random() * 2 - 1) * jitterRange);
-    return Math.max(minIntervalMs, Math.round(jittered));
-  };
-
-  const scheduleNext = () => {
-    if (!active) return;
-    clearTimer();
-    const base = baseDelayMs(isDocumentHidden());
-    if (base === null) return;
-    timerId = setTimeout(() => {
-      timerId = null;
-      void runOnce('interval');
-    }, computeDelay(base));
-  };
-
-  const runOnce = async (reason: SmartPollReason): Promise<void> => {
-    if (!active) return;
-
-    const hidden = isDocumentHidden();
-    if (hidden && pauseWhenHidden) {
-      scheduleNext();
-      return;
-    }
-    if (shouldRun && !shouldRun()) {
-      scheduleNext();
-      return;
-    }
-    if (inFlight) {
-      scheduleNext();
-      return;
-    }
-
-    inFlight = true;
-    const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
-    activeController = controller;
-
-    try {
-      const result = await poll({
-        signal: controller?.signal,
-        reason,
-        isHidden: hidden,
-      });
-
-      if (result === false) {
-        backoffMultiplier = Math.min(backoffMultiplier * 2, maxBackoffMultiplier);
-      } else {
-        backoffMultiplier = 1;
-      }
-    } catch (error) {
-      if (!controller?.signal.aborted && !isAbortError(error)) {
-        backoffMultiplier = Math.min(backoffMultiplier * 2, maxBackoffMultiplier);
-        if (onError) onError(error);
-      }
-    } finally {
-      if (activeController === controller) activeController = null;
-      inFlight = false;
-      scheduleNext();
-    }
-  };
-
-  const clearVisibilityDebounce = () => {
-    if (visibilityDebounceTimer) {
-      clearTimeout(visibilityDebounceTimer);
-      visibilityDebounceTimer = null;
-    }
-  };
-
-  const handleVisibilityChange = () => {
-    if (!active) return;
-    const hidden = isDocumentHidden();
-
-    if (hidden) {
-      if (pauseWhenHidden) {
-        clearTimer();
-        activeController?.abort();
-        return;
-      }
-      scheduleNext();
-      return;
-    }
-
-    if (refreshOnVisible) {
-      clearTimer();
-      void runOnce('resume');
-      return;
-    }
-
-    scheduleNext();
-  };
-
-  const onVisibilityChange = () => {
-    if (!active) return;
-    // Debounce rapid visibility toggles (e.g. fast alt-tab) to prevent
-    // request bursts. Hidden→pause is applied immediately so we don't
-    // keep polling after the tab disappears.
-    if (visibilityDebounceMs > 0 && !isDocumentHidden()) {
-      clearVisibilityDebounce();
-      visibilityDebounceTimer = setTimeout(handleVisibilityChange, visibilityDebounceMs);
-      return;
-    }
-    handleVisibilityChange();
-  };
-
-  let unsubVisibility: (() => void) | null = null;
-  if (opts.visibilityHub) {
-    unsubVisibility = opts.visibilityHub.subscribe(onVisibilityChange);
-  } else if (hasVisibilityApi()) {
-    document.addEventListener('visibilitychange', onVisibilityChange);
-  }
-
-  if (runImmediately) {
-    void runOnce('startup');
-  } else {
-    scheduleNext();
-  }
-
-  return {
-    stop: () => {
-      if (!active) return;
-      active = false;
-      clearTimer();
-      clearVisibilityDebounce();
-      activeController?.abort();
-      activeController = null;
-      if (unsubVisibility) {
-        unsubVisibility();
-        unsubVisibility = null;
-      } else if (hasVisibilityApi()) {
-        document.removeEventListener('visibilitychange', onVisibilityChange);
-      }
-    },
-    trigger: () => {
-      if (!active) return;
-      clearTimer();
-      void runOnce('manual');
-    },
-    isActive: () => active,
-  };
-}
+export {
+  startSmartPollLoop,
+  VisibilityHub,
+} from './smart-poll-loop';
+export type {
+  SmartPollContext,
+  SmartPollLoopHandle,
+  SmartPollOptions,
+  SmartPollReason,
+} from './smart-poll-loop';
 
 export async function waitForSidecarReady(timeoutMs = 3000): Promise<boolean> {
   const baseUrl = getApiBaseUrl();
@@ -546,25 +250,30 @@ function isLocalOnlyApiTarget(target: string): boolean {
 }
 
 function isKeyFreeApiTarget(target: string): boolean {
-  return target.startsWith('/api/register-interest') || target.startsWith('/api/version');
+  return target.startsWith('/api/register-interest')
+    || target.startsWith('/api/leads/v1/register-interest')
+    || target.startsWith('/api/leads/v1/submit-contact')
+    || target.startsWith('/api/version');
 }
 
 async function fetchLocalWithStartupRetry(
-  nativeFetch: typeof window.fetch,
-  localUrl: string,
+  target: string,
+  input: RequestInfo | URL,
   init?: RequestInit,
 ): Promise<Response> {
   const maxAttempts = 4;
   let lastError: unknown = null;
+  const signal = init?.signal ?? (input instanceof Request ? input.signal : undefined);
 
   for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
     try {
-      return await nativeFetch(localUrl, init);
+      const { proxyLocalApiRequest } = await import('@/services/tauri-bridge');
+      return await proxyLocalApiRequest(target, input, init);
     } catch (error) {
       lastError = error;
 
       // Preserve caller intent for aborted requests.
-      if (init?.signal?.aborted) {
+      if (signal?.aborted) {
         throw error;
       }
 
@@ -582,25 +291,10 @@ async function fetchLocalWithStartupRetry(
 }
 
 // ── Security threat model for the fetch patch ──────────────────────────
-// The LOCAL_API_TOKEN exists to prevent OTHER local processes from
-// accessing the sidecar on port 46123. The renderer IS the intended
-// client — injecting the token automatically is correct by design.
-//
-// If the renderer is compromised (XSS, supply chain), the attacker
-// already has access to strictly more powerful Tauri IPC commands
-// (get_all_secrets, set_secret, etc.) via window.__TAURI_INTERNALS__.
-// The fetch patch does not expand the attack surface beyond what IPC
-// already provides.
-//
-// Defense layers that protect the renderer trust boundary:
-//   1. CSP: script-src 'self' (no unsafe-inline/eval)
-//   2. IPC origin validation: sensitive commands gated to trusted windows
-//   3. Sidecar allowlists: env-update restricted to ALLOWED_ENV_KEYS
-//   4. DevTools disabled in production builds
-//
-// The token has a 5-minute TTL in the closure to limit exposure window
-// if IPC access is revoked mid-session.
-const TOKEN_TTL_MS = 5 * 60 * 1000;
+// The native process exclusively owns LOCAL_API_TOKEN. Renderer API calls are
+// proxied through a narrow native command that rejects sidecar configuration
+// routes, so a compromised page cannot read the token or mutate the secret
+// cache through the local HTTP control plane.
 
 export function installRuntimeFetchPatch(): void {
   if (!isDesktopRuntime() || typeof window === 'undefined' || (window as unknown as Record<string, unknown>).__wmFetchPatched) {
@@ -608,10 +302,6 @@ export function installRuntimeFetchPatch(): void {
   }
 
   const nativeFetch = window.fetch.bind(window);
-  let localApiToken: string | null = null;
-  let tokenFetchedAt = 0;
-  let authRetryCooldownUntil = 0; // suppress 401 retries after consecutive failures
-
   window.fetch = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
     const target = getApiTargetFromRequestInput(input);
     const debug = localStorage.getItem('wm-debug-log') === '1';
@@ -624,30 +314,6 @@ export function installRuntimeFetchPatch(): void {
       return nativeFetch(input, init);
     }
 
-    // Resolve dynamic sidecar port on first API call
-    if (_resolvedPort === null) {
-      try { await resolveLocalApiPort(); } catch { /* use default */ }
-    }
-
-    const tokenExpired = localApiToken && (Date.now() - tokenFetchedAt > TOKEN_TTL_MS);
-    if (!localApiToken || tokenExpired) {
-      try {
-        const { tryInvokeTauri } = await import('@/services/tauri-bridge');
-        localApiToken = await tryInvokeTauri<string>('get_local_api_token');
-        tokenFetchedAt = Date.now();
-      } catch {
-        localApiToken = null;
-        tokenFetchedAt = 0;
-      }
-    }
-
-    const headers = new Headers(init?.headers);
-    if (localApiToken) {
-      headers.set('Authorization', `Bearer ${localApiToken}`);
-    }
-    const localInit = { ...init, headers };
-
-    const localUrl = `${getApiBaseUrl()}${target}`;
     if (debug) console.log(`[fetch] intercept → ${target}`);
     let allowCloudFallback = !isLocalOnlyApiTarget(target);
 
@@ -670,47 +336,13 @@ export function installRuntimeFetchPatch(): void {
       }
       const cloudUrl = `${getRemoteApiBaseUrl()}${target}`;
       if (debug) console.log(`[fetch] cloud fallback → ${cloudUrl}`);
-      const cloudHeaders = new Headers(init?.headers);
-      if (KEYED_CLOUD_API_PATTERN.test(target)) {
-        const { getRuntimeConfigSnapshot } = await import('@/services/runtime-config');
-        const wmKeyValue = getRuntimeConfigSnapshot().secrets['WORLDMONITOR_API_KEY']?.value;
-        if (wmKeyValue) {
-          cloudHeaders.set('X-WorldMonitor-Key', wmKeyValue);
-        }
-      }
-      return nativeFetch(cloudUrl, { ...init, headers: cloudHeaders });
+      return nativeFetch(cloudUrl, init);
     };
 
     try {
       const t0 = performance.now();
-      let response = await fetchLocalWithStartupRetry(nativeFetch, localUrl, localInit);
+      const response = await fetchLocalWithStartupRetry(target, input, init);
       if (debug) console.log(`[fetch] ${target} → ${response.status} (${Math.round(performance.now() - t0)}ms)`);
-
-      // Token may be stale after a sidecar restart — refresh and retry once.
-      // Skip retry if we recently failed (avoid doubling every request during auth outages).
-      if (response.status === 401 && localApiToken && Date.now() > authRetryCooldownUntil) {
-        if (debug) console.log(`[fetch] 401 from sidecar, refreshing token and retrying`);
-        try {
-          const { tryInvokeTauri } = await import('@/services/tauri-bridge');
-          localApiToken = await tryInvokeTauri<string>('get_local_api_token');
-          tokenFetchedAt = Date.now();
-        } catch {
-          localApiToken = null;
-          tokenFetchedAt = 0;
-        }
-        if (localApiToken) {
-          const retryHeaders = new Headers(init?.headers);
-          retryHeaders.set('Authorization', `Bearer ${localApiToken}`);
-          response = await fetchLocalWithStartupRetry(nativeFetch, localUrl, { ...init, headers: retryHeaders });
-          if (debug) console.log(`[fetch] retry ${target} → ${response.status}`);
-          if (response.status === 401) {
-            authRetryCooldownUntil = Date.now() + 60_000;
-            if (debug) console.log(`[fetch] auth retry failed, suppressing retries for 60s`);
-          } else {
-            authRetryCooldownUntil = 0;
-          }
-        }
-      }
 
       if (!response.ok) {
         if (!allowCloudFallback) {
@@ -758,13 +390,16 @@ export function installWebApiRedirect(): void {
 
   const nativeFetch = window.fetch.bind(window);
   const shouldRedirectPath = (pathWithQuery: string): boolean => pathWithQuery.startsWith('/api/');
+  const withCredentials = (init?: RequestInit): RequestInit => (
+    { ...(init ?? {}), credentials: init?.credentials ?? 'include' }
+  );
 
   /**
    * For premium API paths, inject auth when the user has premium access but no
    * existing auth header is present. Priority order:
    *   1. Existing auth headers — left unchanged (API key users keep their flow)
    *   2. WORLDMONITOR_API_KEY from runtime config → X-WorldMonitor-Key
-   *   3. Tester key (wm-pro-key / wm-widget-key) → X-WorldMonitor-Key
+   *   3. Tester session (wm-pro-key / wm-widget-key HttpOnly cookie)
    *   4. Clerk Pro session → Authorization: Bearer <token>
    * Runs on every web deployment (with or without API base redirect).
    * Returns the original init unchanged for non-premium paths (zero overhead).
@@ -781,23 +416,22 @@ export function installWebApiRedirect(): void {
       const wmKey = getRuntimeConfigSnapshot().secrets['WORLDMONITOR_API_KEY']?.value;
       if (wmKey) {
         headers.set('X-WorldMonitor-Key', wmKey);
-        return { ...init, headers };
+        return { ...withCredentials(init), headers };
       }
     } catch { /* runtime-config unavailable — fall through */ }
-    // Tester key (wm-pro-key / wm-widget-key): forward as API key header.
-    // Must run BEFORE Clerk to prevent a free Clerk session from intercepting
-    // the request and returning 403 before the tester key is ever tried.
+    // Legacy test seam. In production, tester keys live in HttpOnly cookies
+    // and are sent through credentials: 'include'.
     const { getBrowserTesterKey } = await import('@/services/widget-store');
     const testerKey = getBrowserTesterKey();
     if (testerKey) {
       headers.set('X-WorldMonitor-Key', testerKey);
-      return { ...init, headers };
+      return { ...withCredentials(init), headers };
     }
     // Clerk Pro: inject Bearer token (fallback for users without a tester key)
     const token = await getClerkToken();
     if (token) {
       headers.set('Authorization', `Bearer ${token}`);
-      return { ...init, headers };
+      return { ...withCredentials(init), headers };
     }
     return init;
   };
@@ -830,26 +464,26 @@ export function installWebApiRedirect(): void {
         if (shouldRedirectPath(input)) {
           // Relative /api/... path — redirect to API base and inject auth.
           const enriched = await enrichInitForPremium(input, init);
-          return fetchWithRedirectFallback(`${API_BASE}${input}`, input, enriched);
+          return fetchWithRedirectFallback(`${API_BASE}${input}`, input, enriched ? withCredentials(enriched) : withCredentials(init));
         }
         // Absolute URL already targeting the API base (generated clients call fetch
         // with full URLs like https://api.worldmonitor.app/api/...) — just inject auth.
         if (input.startsWith(`${API_BASE}/api/`)) {
           const pathAndSearch = input.slice(API_BASE.length);
           const enriched = await enrichInitForPremium(pathAndSearch, init);
-          return nativeFetch(input, enriched ?? init);
+          return nativeFetch(input, enriched ? withCredentials(enriched) : withCredentials(init));
         }
       }
       if (input instanceof URL) {
         const pathAndSearch = `${input.pathname}${input.search}`;
         if (input.origin === window.location.origin && shouldRedirectPath(pathAndSearch)) {
           const enriched = await enrichInitForPremium(pathAndSearch, init);
-          return fetchWithRedirectFallback(new URL(`${API_BASE}${pathAndSearch}`), input, enriched);
+          return fetchWithRedirectFallback(new URL(`${API_BASE}${pathAndSearch}`), input, enriched ? withCredentials(enriched) : withCredentials(init));
         }
         // URL object already targeting the API base.
         if (input.origin === API_BASE && pathAndSearch.startsWith('/api/')) {
           const enriched = await enrichInitForPremium(pathAndSearch, init);
-          return nativeFetch(input, enriched ?? init);
+          return nativeFetch(input, enriched ? withCredentials(enriched) : withCredentials(init));
         }
       }
       if (input instanceof Request) {
@@ -860,13 +494,13 @@ export function installWebApiRedirect(): void {
           return fetchWithRedirectFallback(
             new Request(`${API_BASE}${pathAndSearch}`, input),
             input.clone(),
-            enriched,
+            enriched ? withCredentials(enriched) : withCredentials(init),
           );
         }
         // Request object already targeting the API base.
         if (u.origin === API_BASE && pathAndSearch.startsWith('/api/')) {
           const enriched = await enrichInitForPremium(pathAndSearch, init);
-          if (enriched) return nativeFetch(new Request(input, enriched));
+          return nativeFetch(new Request(input, enriched ? withCredentials(enriched) : withCredentials(init)));
         }
       }
       return nativeFetch(input, init);
@@ -877,12 +511,12 @@ export function installWebApiRedirect(): void {
       if (typeof input === 'string') {
         if (shouldRedirectPath(input)) {
           const enriched = await enrichInitForPremium(input, init);
-          return nativeFetch(input, enriched ?? init);
+          return nativeFetch(input, enriched ? withCredentials(enriched) : withCredentials(init));
         }
         if (input.startsWith(`${DEFAULT_WEB_API_URL}/api/`)) {
           const pathAndSearch = input.slice(DEFAULT_WEB_API_URL.length);
           const enriched = await enrichInitForPremium(pathAndSearch, init);
-          return nativeFetch(input, enriched ?? init);
+          return nativeFetch(input, enriched ? withCredentials(enriched) : withCredentials(init));
         }
       }
       if (input instanceof URL) {
@@ -890,7 +524,7 @@ export function installWebApiRedirect(): void {
         if ((input.origin === window.location.origin || input.origin === DEFAULT_WEB_API_URL)
             && (shouldRedirectPath(pathAndSearch) || pathAndSearch.startsWith('/api/'))) {
           const enriched = await enrichInitForPremium(pathAndSearch, init);
-          return nativeFetch(input, enriched ?? init);
+          return nativeFetch(input, enriched ? withCredentials(enriched) : withCredentials(init));
         }
       }
       if (input instanceof Request) {
@@ -899,7 +533,7 @@ export function installWebApiRedirect(): void {
         if ((u.origin === window.location.origin || u.origin === DEFAULT_WEB_API_URL)
             && (shouldRedirectPath(pathAndSearch) || pathAndSearch.startsWith('/api/'))) {
           const enriched = await enrichInitForPremium(pathAndSearch, init);
-          if (enriched) return nativeFetch(new Request(input, enriched));
+          return nativeFetch(new Request(input, enriched ? withCredentials(enriched) : withCredentials(init)));
         }
       }
       return nativeFetch(input, init);

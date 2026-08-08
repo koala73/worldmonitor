@@ -8,6 +8,7 @@ import "sebuf/http/annotations.proto";
 message GetBootstrapDataRequest {
   // Predefined tiers or specific keys.
   string tier = 1 [(sebuf.http.query) = {name: "tier"}];
+  // Specific bootstrap cache keys to fetch when tier is not sufficient.
   repeated string keys = 2 [(sebuf.http.query) = {name: "keys"}];
 }
 

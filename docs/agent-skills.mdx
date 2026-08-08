@@ -1,0 +1,75 @@
+---
+title: "Agent Skills Catalog"
+description: "Human-readable catalog of the 25 World Monitor agent skills advertised through the /.well-known/agent-skills/index.json discovery endpoint."
+---
+
+The catalog contains 25 World Monitor agent skills for agents that need a focused, ready-to-run recipe instead of a full OpenAPI crawl. Each skill is a public `SKILL.md` file with when-to-use guidance, auth shape, REST examples, response notes, and content-safety handling.
+
+The machine-readable source of truth is [`/.well-known/agent-skills/index.json`](https://worldmonitor.app/.well-known/agent-skills/index.json). Each row below links to the served recipe whose SHA-256 digest is pinned in that manifest.
+
+## Calling Model
+
+Use the MCP server when your client can discover tools dynamically:
+
+```text
+https://worldmonitor.app/mcp
+```
+
+Use REST when you want the exact recipe call from a skill file:
+
+```text
+https://api.worldmonitor.app
+X-WorldMonitor-Key: wm_<40-hex>
+```
+
+## Catalog
+
+### Country And Strategic Risk
+
+| Skill | Use it for | Recipe |
+|---|---|---|
+| `fetch-country-brief` | Retrieve the current AI-generated strategic intelligence brief for a country, keyed by ISO 3166-1 alpha-2 code. Use when the user asks for a summary of the current geopolitical, economic, or security situation in a specific country. | [SKILL.md](https://worldmonitor.app/.well-known/agent-skills/fetch-country-brief/SKILL.md) |
+| `fetch-resilience-score` | Retrieve the composite country resilience score (0-100) and its domain/pillar breakdown for a single country. Use when the user asks how resilient a country is, or wants its numeric resilience score, trend, or per-domain breakdown. | [SKILL.md](https://worldmonitor.app/.well-known/agent-skills/fetch-resilience-score/SKILL.md) |
+| `check-country-risk` | Retrieve composite country risk intelligence — Country Instability Index (CII), travel advisory level, and active sanctions exposure — for one country by ISO code. Use when the user asks how risky or unstable a country is right now. | [SKILL.md](https://worldmonitor.app/.well-known/agent-skills/check-country-risk/SKILL.md) |
+
+### Conflict, Instability, And Security
+
+| Skill | Use it for | Recipe |
+|---|---|---|
+| `track-conflict-events` | Retrieve geolocated armed-conflict events (UCDP) with parties, fatality estimates, and violence type, filterable by country and date range. Use when the user asks about recent fighting, attacks, or conflict activity in a country or region. | [SKILL.md](https://worldmonitor.app/.well-known/agent-skills/track-conflict-events/SKILL.md) |
+| `track-unrest-events` | Retrieve seeded protest, riot, strike, and civil unrest events. Use when the user asks whether social unrest is occurring in a country or over a recent time window. | [SKILL.md](https://worldmonitor.app/.well-known/agent-skills/track-unrest-events/SKILL.md) |
+| `check-sanctions-pressure` | Retrieve normalized OFAC sanctions pressure — designation summaries, recent additions, and per-country/per-program aggregates including sanctioned vessels and aircraft. Use when the user asks which countries or programs face sanctions pressure, or what was recently designated. | [SKILL.md](https://worldmonitor.app/.well-known/agent-skills/check-sanctions-pressure/SKILL.md) |
+| `scan-cyber-threats` | Retrieve active cyber-threat intelligence — malware IOCs, C2 infrastructure, and CISA known-exploited vulnerabilities — filterable by type, source, and severity. Use when the user asks about current cyber threats, IOCs, or actively exploited CVEs. | [SKILL.md](https://worldmonitor.app/.well-known/agent-skills/scan-cyber-threats/SKILL.md) |
+
+### Markets, Trade, And Forecasts
+
+| Skill | Use it for | Recipe |
+|---|---|---|
+| `get-market-quotes` | Retrieve real-time equity, index, and ETF quotes with price, change, and sparkline history. Use when the user asks for current market prices, how a ticker is doing, or a quick market snapshot. | [SKILL.md](https://worldmonitor.app/.well-known/agent-skills/get-market-quotes/SKILL.md) |
+| `get-prediction-markets` | Retrieve active prediction-market contracts (Polymarket) with live yes-price probabilities, volume, and close dates, filterable by category or keyword. Use when the user asks what the market odds are on a geopolitical, economic, or election outcome. | [SKILL.md](https://worldmonitor.app/.well-known/agent-skills/get-prediction-markets/SKILL.md) |
+| `track-tariff-trends` | Retrieve tariff-rate timeseries for a country pair — applied vs bound rates by product sector and year, plus the current effective tariff rate. Use when the user asks how tariffs between two countries have changed or what rate applies to a sector. | [SKILL.md](https://worldmonitor.app/.well-known/agent-skills/track-tariff-trends/SKILL.md) |
+| `trace-trade-flows` | Retrieve strategic UN Comtrade commodity flows with anomaly flags. Use when the user asks who trades a critical commodity, which flows changed sharply, or how trade exposure is shifting. | [SKILL.md](https://worldmonitor.app/.well-known/agent-skills/trace-trade-flows/SKILL.md) |
+| `check-forecast-signals` | Retrieve probabilistic forecasts and their scorecard context. Use when the user asks what World Monitor is forecasting, how probabilities shifted, or how calibrated the forecasts are. | [SKILL.md](https://worldmonitor.app/.well-known/agent-skills/check-forecast-signals/SKILL.md) |
+
+### Maritime, Logistics, And Energy
+
+| Skill | Use it for | Recipe |
+|---|---|---|
+| `check-chokepoint-status` | Retrieve live disruption status for the 13 monitored maritime chokepoints (Suez, Hormuz, Malacca, Bab el-Mandeb, Panama, and more). Use when the user asks whether a strait or canal is disrupted, congested, or safe for shipping right now. | [SKILL.md](https://worldmonitor.app/.well-known/agent-skills/check-chokepoint-status/SKILL.md) |
+| `track-vessel-traffic` | Retrieve a point-in-time AIS vessel-traffic snapshot with disruption candidates and optional tanker overlay, filterable by bounding box. Use when the user asks what ships are in an area, or whether maritime traffic is disrupted. | [SKILL.md](https://worldmonitor.app/.well-known/agent-skills/track-vessel-traffic/SKILL.md) |
+| `monitor-supply-chain-stress` | Retrieve current shipping market stress from carrier and freight indicators. Use when the user asks whether supply chains or container shipping are under pressure right now. | [SKILL.md](https://worldmonitor.app/.well-known/agent-skills/monitor-supply-chain-stress/SKILL.md) |
+| `monitor-energy-disruptions` | Retrieve the curated energy disruption event log for pipelines and storage facilities. Use when the user asks what energy assets are disrupted, sanctioned, offline, or under watch. | [SKILL.md](https://worldmonitor.app/.well-known/agent-skills/monitor-energy-disruptions/SKILL.md) |
+| `assess-energy-shock` | Model oil or gas supply shock exposure for a country and chokepoint. Use when the user asks how an energy disruption could affect fuel supply, strategic cover, or product deficits. | [SKILL.md](https://worldmonitor.app/.well-known/agent-skills/assess-energy-shock/SKILL.md) |
+
+### Live Monitoring
+
+| Skill | Use it for | Recipe |
+|---|---|---|
+| `fetch-news-digest` | Retrieve the pre-aggregated digest of World Monitor's 500+ curated news feeds, bucketed by category, with per-article threat classification and alert flags. Use when the user asks what's in the news right now, wants headlines by topic, or needs a current-events sweep. | [SKILL.md](https://worldmonitor.app/.well-known/agent-skills/fetch-news-digest/SKILL.md) |
+| `check-airport-delays` | Retrieve current airport delay and cancellation alerts worldwide — delay type, severity, average delay minutes, and affected-flight percentages per airport. Use when the user asks whether an airport is delayed, disrupted, or experiencing cancellations. | [SKILL.md](https://worldmonitor.app/.well-known/agent-skills/check-airport-delays/SKILL.md) |
+| `track-military-flights` | Retrieve tracked military aircraft positions (OpenSky + Wingbits) with callsign, type, operator, altitude, and activity clusters, filterable by bounding box, operator, and aircraft type. Use when the user asks about military air activity in a region. | [SKILL.md](https://worldmonitor.app/.well-known/agent-skills/track-military-flights/SKILL.md) |
+| `monitor-internet-outages` | Retrieve detected internet outages (Cloudflare Radar) with country, cause, severity, and time bounds. Use when the user asks whether a country's internet is down, throttled, or experiencing a shutdown. | [SKILL.md](https://worldmonitor.app/.well-known/agent-skills/monitor-internet-outages/SKILL.md) |
+| `monitor-webcams` | Discover live webcams in a map viewport and resolve thumbnails or player URLs. Use when the user asks for visual context near a location, route, border, port, or city. | [SKILL.md](https://worldmonitor.app/.well-known/agent-skills/monitor-webcams/SKILL.md) |
+| `track-earthquakes` | Retrieve recent earthquakes (USGS) with magnitude, depth, location, and a concern score that flags proximity to nuclear test sites. Use when the user asks about recent seismic activity or whether an earthquake was natural. | [SKILL.md](https://worldmonitor.app/.well-known/agent-skills/track-earthquakes/SKILL.md) |
+| `track-climate-hazards` | Retrieve climate-relevant disaster events, anomalies, and climate news. Use when the user asks about floods, cyclones, droughts, heatwaves, wildfires, or climate disruption. | [SKILL.md](https://worldmonitor.app/.well-known/agent-skills/track-climate-hazards/SKILL.md) |
+| `monitor-health-alerts` | Retrieve disease outbreak alerts and PM2.5 air-quality health warnings. Use when the user asks about current public-health risks in a country, city, or region. | [SKILL.md](https://worldmonitor.app/.well-known/agent-skills/monitor-health-alerts/SKILL.md) |

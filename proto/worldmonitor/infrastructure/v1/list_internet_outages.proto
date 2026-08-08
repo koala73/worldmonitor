@@ -13,9 +13,11 @@ message ListInternetOutagesRequest {
   // End of time range (inclusive), Unix epoch milliseconds.
   int64 end = 2 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER, (sebuf.http.query) = { name: "end" }];
   // Maximum items per page.
-  int32 page_size = 3 [(sebuf.http.query) = { name: "page_size" }];
+  // Accepted but currently ignored; no-op until this handler supports the parameter.
+  int32 page_size = 3 [(sebuf.http.query) = { name: "page_size" }, (sebuf.http.unimplemented) = true];
   // Cursor for next page.
-  string cursor = 4 [(sebuf.http.query) = { name: "cursor" }];
+  // Accepted but currently ignored; no-op until this handler supports the parameter.
+  string cursor = 4 [(sebuf.http.query) = { name: "cursor" }, (sebuf.http.unimplemented) = true];
   // Optional country filter (ISO 3166-1 alpha-2).
   string country = 5 [(sebuf.http.query) = { name: "country" }];
 }

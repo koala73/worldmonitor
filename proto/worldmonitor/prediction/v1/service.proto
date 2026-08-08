@@ -9,7 +9,9 @@ import "worldmonitor/prediction/v1/list_prediction_markets.proto";
 service PredictionService {
   option (sebuf.http.service_config) = {base_path: "/api/prediction/v1"};
 
-  // ListPredictionMarkets retrieves active prediction markets from Polymarket.
+  // ListPredictionMarkets retrieves active prediction markets from seeded market snapshots.
+  // Empty markets with fetched_at=0 or data_available=false means the seed
+  // snapshot is unavailable/degraded, not that there are confirmed zero markets.
   rpc ListPredictionMarkets(ListPredictionMarketsRequest) returns (ListPredictionMarketsResponse) {
     option (sebuf.http.config) = {path: "/list-prediction-markets", method: HTTP_METHOD_GET};
   }

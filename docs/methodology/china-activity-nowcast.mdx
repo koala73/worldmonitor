@@ -1,0 +1,140 @@
+---
+title: "China Activity Nowcast"
+description: "Deterministic comparison of revision-aware official activity releases with reviewed logistics, operational, commodity, and market proxies."
+---
+
+The China Activity Nowcast is a transparent directional comparison. It is not
+a replacement GDP estimate, a hidden-activity verification, or a China risk
+score. No language model participates in numeric computation, input
+eligibility, direction, confidence, or state assignment.
+
+The live method version is `china-activity-nowcast/v1`.
+
+## Official comparison series
+
+The first method version uses the revision-aware China macro contract and
+selects the newest eligible official activity observation at each evaluation
+time. An observation is eligible only when:
+
+- its observation period ends before publication;
+- publication precedes retrieval;
+- retrieval occurs no later than the evaluation time;
+- the exact vintage has valid source provenance;
+- the observation is available and not stale; and
+- its published directional comparison is strengthening, weakening, or
+  unchanged.
+
+The selected series, observation period, release time, retrieval time, and
+vintage ID remain visible in the API and panel. A historical evaluation can
+select only a vintage retrieved by that evaluation time. Later corrections
+cannot replace an earlier point-in-time value.
+
+## Reviewed proxy registry
+
+Every family has a reviewed rationale, unit, transformation, frequency, lag,
+freshness budget, alignment rule, and source declaration in
+`shared/china-activity-nowcast-registry.ts`.
+
+| Family | First-version observation | Transformation | Frequency | Lag | Freshness budget |
+| --- | --- | --- | --- | --- | --- |
+| Freight | China Containerized Freight Index change | Exchange-published percentage, or the change between two published period levels | Weekly | None | 28 days |
+| Maritime | Reviewed PortWatch trend deltas | Mean of finite configured-node trend deltas | Daily | None | 72 hours |
+| Aviation | Reviewed hub normal/disruption balance | Normal share minus disruption share | Intra-day | None | 180 minutes |
+| Energy | Published China demand change | Published signed percentage change only | Monthly | 30 days | 210 days |
+| Commodity | Copper and aluminium moves | Mean of finite published percentage changes | Daily | None | 180 minutes |
+| Corridor | Comparable corridor breadth change | Current family count minus a prior comparable snapshot | Daily | None | 72 hours |
+| Market | SSE Composite weekly move | Published signed percentage change | Daily | None | 10 days |
+
+The registry does not turn source coverage into activity. For example, an
+energy-spine payload that says JODI data is present does not establish demand
+direction. Likewise, a current CCFI level without a comparable prior is not a
+freight-rate change. Those inputs remain visibly excluded until the consumed
+contract publishes the required directional observation.
+
+## Alignment and missingness
+
+The standalone evaluator defaults to a 90-day comparison window. The live API
+uses a 210-day window so the monthly energy series can honor its documented
+210-day freshness budget after the demand period is dated truthfully; the
+individual freshness budget still applies to every family. The method selects
+the latest point-in-window observation for each registry entry after its
+documented lag has elapsed.
+
+Forward-filling and interpolation are disabled for every family. The method
+does not fall back to an older observation when the newest point is stale,
+structurally incomparable, unavailable, missing provenance, outside the
+window, or missing a required prior. Each such input has an exclusion reason;
+none becomes a neutral direction.
+
+## Directional states
+
+At least three eligible proxy families and one non-unchanged official vintage
+are required. Eligible non-flat proxy contributions establish a direction only
+when at least two thirds point the same way.
+
+The method emits exactly one of five states:
+
+- `agreement` — proxy consensus and the official direction match;
+- `proxy_leading_divergence` — proxy consensus differs and its median aligned
+  observation is later than the official observation period;
+- `official_leading_divergence` — proxy consensus differs but does not lead
+  the official period;
+- `mixed_signals` — enough families are present, but no two-thirds consensus
+  exists; or
+- `insufficient_data` — official or proxy-family coverage is below the method
+  requirement.
+
+Every included contribution keeps its transformed value, direction, time,
+source, and full registry metadata. The response deliberately has no aggregate
+activity score.
+
+## Confidence and sensitivity
+
+Confidence is categorical (`high`, `medium`, `low`, or `insufficient`) and
+reports eligible-family coverage. The method also recomputes the state after
+removing each proxy family. The panel shows whether that leave-one-family-out
+test changes the conclusion, making family dominance inspectable.
+
+## Historical evaluation
+
+`backtestChinaActivityNowcast()` evaluates an explicit sequence of historical
+times through the same point-in-time eligibility path. It reports:
+
+- attempted and evaluable rows;
+- coverage;
+- directional agreement among evaluable rows;
+- the official vintage used in each row; and
+- the comparison state and eligible-family count for each row.
+
+No-lookahead filtering applies to official revisions and proxy release and
+retrieval times. The live cache currently contains current-only snapshots, not
+a bounded historical proxy ledger. The public response therefore says
+historical evaluation is unavailable instead of fabricating a backtest from
+current values. Historical coverage becomes publishable only when such a
+ledger is retained and reviewed.
+
+## Cache and API behavior
+
+`GET /api/economic/v1/get-china-activity-nowcast` returns a small wrapper plus
+the canonical validated JSON payload. Healthy results use a 15-minute server
+cache. `insufficient_data` results are not positively cached, and the browser
+circuit breaker keeps no last-good copy that could hide a current outage or
+missing input. The wrapper's `upstream_unavailable` flag is true only when no
+official vintage or proxy contribution is available; otherwise healthy but
+non-directional inputs remain methodological insufficiency, not an outage.
+
+Detailed nowcast evidence is a REST/UI surface. MCP has no dedicated
+activity-nowcast tool; Pro MCP receives only its bounded contribution through
+`get_china_decision_signals`.
+
+The endpoint composes:
+
+- the official China macro snapshot;
+- the China corridor control-tower response;
+- the canonical commodity seed and its seed-health timestamp; and
+- the Railway-owned China stock-index snapshot.
+
+Dependency failures are isolated. The method can retain unaffected families,
+but total loss returns `insufficient_data` with all contributions excluded.
+Method-version changes require a new version string and new reproducibility
+fixtures rather than silently changing historical semantics.

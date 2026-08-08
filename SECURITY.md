@@ -48,11 +48,12 @@ World Monitor is a client-side intelligence dashboard that aggregates publicly a
 - **Desktop runtime**: API keys are stored in the OS keychain (macOS Keychain / Windows Credential Manager) via a consolidated vault entry, never on disk in plaintext
 - No API keys should ever be committed to the repository
 - Environment variables (`.env.local`) are gitignored
-- The RSS proxy uses domain allowlisting to prevent SSRF
+- The RSS proxy uses domain allowlisting to prevent SSRF. Both the Vercel Edge proxy and the Railway relay re-check the RSS allowlist on every redirect hop.
+- The Pro-gated MCP proxy accepts only HTTPS targets, resolves and rejects private/reserved A and AAAA answers immediately before each outbound request, and strips cloud-metadata headers. Vercel Edge `fetch` cannot pin its socket to the vetted address, so a narrow resolve-versus-connect DNS-rebinding window remains an accepted residual; closing it requires a Node-runtime/socket-pinning design (tracked in issue #5061).
 
 ### Edge Functions & Sebuf Handlers
 
-- All 17 domain APIs are served through Sebuf (a Proto-first RPC framework) via Vercel Edge Functions
+- All 35 domain APIs are served through Sebuf (a Proto-first RPC framework) via Vercel Edge Functions
 - Edge functions and handlers should validate/sanitize all input
 - CORS headers are configured per-function
 - Rate limiting and circuit breakers protect against abuse

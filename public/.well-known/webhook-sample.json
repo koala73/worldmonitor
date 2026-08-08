@@ -1,0 +1,21 @@
+{
+  "$comment": "Verifiable sample of a signed WorldMonitor webhook delivery. Use it to confirm your HMAC-SHA256 verification is correct BEFORE you register a live webhook: recompute the signature over the exact bytes of `body` and check it equals `signature`. The `secret` here is a fixed sample — a real subscription `secret` is returned once by POST /api/v2/shipping/webhooks (RegisterWebhook) and is never published.",
+  "description": "Signed webhook delivery verification fixture (HMAC-SHA256, X-WM-Signature).",
+  "documentation": "https://www.worldmonitor.app/docs/api-shipping-v2",
+  "event": "chokepoint.disruption",
+  "algorithm": "HMAC-SHA256",
+  "signatureHeader": "X-WM-Signature",
+  "signatureFormat": "sha256=<lowercase-hex>",
+  "eventHeader": "X-WM-Event",
+  "deliveryIdHeader": "X-WM-Delivery-Id",
+  "verify": "Compute 'sha256=' + hex(HMAC_SHA256(key=secret, message=body)) over the EXACT bytes of the `body` string below — do NOT re-parse or re-serialize the JSON, and use `secret` verbatim as the key (do not hex-decode it). The result must equal `signature`. Reject any live delivery whose recomputed signature does not match its X-WM-Signature header, compared in constant time.",
+  "secret": "41d3788561e87f16bf7868467b2f2bd4b222455c938926211415043db4e90536",
+  "body": "{\"subscriberId\":\"wh_1a2b3c4d5e6f7a8b9c0d1e2f\",\"chokepointId\":\"suez\",\"score\":72,\"alertThreshold\":50,\"triggeredAt\":\"2026-07-04T12:34:56Z\",\"reason\":\"Disruption score 72 crossed alert threshold 50\",\"details\":{\"trend\":\"rising\"}}",
+  "signature": "sha256=b5b49ba6f739c7f31f05d3391a9d71d50af754efdab7edbcb8df75c89efbc079",
+  "headers": {
+    "Content-Type": "application/json",
+    "X-WM-Signature": "sha256=b5b49ba6f739c7f31f05d3391a9d71d50af754efdab7edbcb8df75c89efbc079",
+    "X-WM-Event": "chokepoint.disruption",
+    "X-WM-Delivery-Id": "whd_1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d"
+  }
+}

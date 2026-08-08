@@ -1,0 +1,50 @@
+---
+title: "套餐与价格"
+description: "Free、Pro、Pro Business、API Starter、API Business 与 Enterprise 六档套餐 — 涵盖价格、配额、每档所包含的具体功能与技术支持范围，以及面向 agent 自动化的机器可读价格接口，帮助开发者、团队与企业客户根据情报调用量、SLA 需求与合规要求快速选择最合适的订阅方案。"
+---
+
+World Monitor 提供一个免费的公开仪表盘，以及面向分析师工作流、API 访问和组织部署的付费层级。
+
+<Info>
+**机器可读来源**（面向 agent 的规范来源）：
+- Markdown：[`/pricing.md`](https://worldmonitor.app/pricing.md)
+- 实时 JSON（层级、价格、Dodo 产品 ID）：[`GET /api/product-catalog`](https://www.worldmonitor.app/api/product-catalog) — 公开，无需密钥
+</Info>
+
+## 套餐
+
+| 套餐 | 价格 | 最适合 |
+|------|-------|----------|
+| **Free** | $0 — 无需注册 | 公开态势感知、OSINT 研究、新闻监测 |
+| **Pro** | $39.99/月 · $359.99/年 | WM Analyst 聊天、Scenario Engine（场景引擎）、AI 摘要、自定义小部件、MCP 访问 — 个人许可 |
+| **Pro Business** | $49.99/月 · $449.99/年 | 涵盖 Pro 的全部内容，并可用于客户项目、内部工具与报告 — 数据导出、25 个自定义仪表盘、250 次 MCP 调用/天、优先支持 |
+| **API Starter** | $99.99/月 · $899.99/年 | REST API + SDK、含许可证 / API 密钥、1,000 请求/天起始限额、webhook — 面向你所在组织的商用许可 |
+| **API Business** | $299.99/月 | 涵盖 API Starter 的全部内容、再分发权、300 请求/分钟、10,000 请求/天、含 5 个 Pro 许可证（同一公司邮箱）、优先支持 |
+| **Enterprise** | 定制 — [enterprise@worldmonitor.app](mailto:enterprise@worldmonitor.app) | 团队工作区、SSO/MFA/RBAC、白标、本地部署 / 气隙隔离 |
+
+上述价格与 `convex/config/productCatalog.ts`（`/api/product-catalog` 背后的唯一可信来源）保持一致；一项漂移防护测试确保本页面内容准确。
+
+## 各套餐包含的内容
+
+- **Free** — 56 个地图图层（除 Resilience 图层属于 Pro 外全部免费）、500+ 精选数据源、国家简报、热点、不稳定性评分、咽喉要道、级联分析、突发警报和监视列表，共 3 个仪表盘标签页。仪表盘的刷新频率通常为 5–15 分钟。
+- **Pro** — 涵盖 Free 的全部内容，外加跨 30+ 实时服务并带引用的 WM Analyst 聊天、Scenario Engine、Route Explorer（路线探索器）、个人 AI 摘要（每日 / 每日两次 / 每周，通过 Slack、Discord、Telegram、邮件、webhook 发送）、自定义小部件构建器（10 个自定义仪表盘）、Resilience 地图图层、每天 500 次仪表盘 AI 请求，以及 MCP 访问（一个密钥下 59 个工具，50 次调用/天）。个人许可。
+- **Pro Business** — 面向工作场景授权的 Pro 仪表盘：涵盖 Pro 的全部内容，外加可用于客户项目、内部工具与报告的商用许可、数据导出（CSV、JSON 和 PDF 报告）、25 个自定义仪表盘、每天 2,500 次仪表盘 AI 请求、250 次 MCP + SDK 调用/天，以及优先支持。Pro 与 Pro Business 是两个独立产品，不支持自助切换套餐 — 需先在账单门户取消 Pro，再发起 Pro Business 结账；已付费周期内的 Pro 访问权限保留至期末。
+- **API Starter** — 编程式访问：带结构化 JSON 和缓存标头的 REST API、官方 SDK（npm、PyPI、RubyGems、Go）、自助许可证 / API 密钥（桌面应用所需的 `wm_` 密钥 — 见 [API 密钥](/zh/api-keys)）、实时数据流，以及 webhook 通知（Starter 提供 5 条规则）。面向你所在组织的商用许可；若需向你的客户再分发数据，则需要 API Business。
+- **API Business** — 面向团队的高流量 API 层级：涵盖 API Starter 的全部内容，外加再分发权（可将我们的数据嵌入你所销售的产品中）、300 请求/分钟和 10,000 请求/天，含 5 个 Pro 许可证，以及优先支持。月付所有者可自助管理“所有者 + 4 人”的[同域名团队席位](/zh/accounts)；年付套餐尚未显示该管理器，其当前所含席位的处理方式请联系支持团队。Starter 客户可从账单门户升级（立即按比例计费）。
+- **Enterprise** — 涵盖 Pro 和 API 的全部内容，外加团队工作区、SSO/MFA/RBAC、专属支持、白标和可嵌入面板、SIEM 连接器、批量导出，以及云 / 专用租户 / 本地部署 / 气隙隔离部署。
+
+## 限额与超量
+
+速率限制默认是硬性限制：超出套餐配额会返回 HTTP `429`，并带有 `Retry-After` 和 `X-RateLimit-*` 标头。超出配额的用量会被拒绝 — 绝不会在你不知情的情况下计费。各端点的预算：[速率限制](/zh/usage-rate-limits)。
+
+需要更高的限额？请在 [worldmonitor.app/pro](https://worldmonitor.app/pro) 升级，或联系 [enterprise@worldmonitor.app](mailto:enterprise@worldmonitor.app)。
+
+## 购买和管理订阅
+
+结账通过 [Dodo Payments](https://dodopayments.com) 完成；权益数据存储在 Convex 中。可从 [worldmonitor.app/pro](https://worldmonitor.app/pro) 订阅；在同一页面的客户门户中管理账单（发票、取消、续订）。端点详情：[商务端点](/zh/api-commerce)。
+
+## 相关
+
+- [账户与注册](/zh/accounts) — 免费层完全无需账户
+- [身份验证与使用](/zh/usage-auth) — 密钥类型和认证矩阵
+- [速率限制](/zh/usage-rate-limits) — 各端点的请求预算

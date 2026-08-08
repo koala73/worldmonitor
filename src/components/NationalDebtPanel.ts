@@ -1,6 +1,6 @@
 import { Panel } from './Panel';
 import { getNationalDebtData, type NationalDebtEntry } from '@/services/economic';
-import { escapeHtml } from '@/utils/sanitize';
+import { escapeHtml, unsafeRawHtml } from '@/utils/sanitize';
 
 type SortMode = 'total' | 'gdp-ratio' | 'growth';
 
@@ -114,6 +114,13 @@ export class NationalDebtPanel extends Panel {
   private tickerInterval: ReturnType<typeof setInterval> | null = null;
   private tickerElements = new Map<string, HTMLElement>();
   private lastTickerValues = new Map<string, string>();
+  private connectRefreshQueued = false;
+  private connectionObserver: MutationObserver | null = null;
+  private connectRetryFrames = 0;
+  // Bounds the MutationObserver-less fallback retry so a never-connected panel
+  // cannot spin. Browsers always have MutationObserver, so this only caps the
+  // non-browser/SSR/test path.
+  private static readonly MAX_CONNECT_RETRY_FRAMES = 8;
   private readonly REFRESH_INTERVAL = 6 * 60 * 60 * 1000;
 
   constructor() {
@@ -157,6 +164,10 @@ export class NationalDebtPanel extends Panel {
   public async refresh(): Promise<void> {
     if (this.loading) return;
     if (Date.now() - this.lastFetch < this.REFRESH_INTERVAL && this.entries.length > 0) return;
+    if (!this.element?.isConnected) {
+      this.queueRefreshWhenConnected();
+      return;
+    }
 
     this.loading = true;
     this.showLoadingState();
@@ -164,10 +175,7 @@ export class NationalDebtPanel extends Panel {
     try {
       const data = await getNationalDebtData();
       if (!this.element?.isConnected) {
-        // Race condition: bootstrap data resolved synchronously before lazyPanel inserted
-        // the element into the DOM. Retry after the current paint cycle.
-        this.loading = false;
-        requestAnimationFrame(() => { void this.refresh(); });
+        this.queueRefreshWhenConnected();
         return;
       }
       this.entries = data.entries ?? [];
@@ -185,12 +193,69 @@ export class NationalDebtPanel extends Panel {
     }
   }
 
+  private queueRefreshWhenConnected(): void {
+    if (this.connectRefreshQueued) return;
+    this.connectRefreshQueued = true;
+
+    const refreshIfConnected = (): boolean => {
+      if (!this.element?.isConnected) return false;
+      this.connectRefreshQueued = false;
+      this.connectRetryFrames = 0;
+      this.connectionObserver?.disconnect();
+      this.connectionObserver = null;
+      void this.refresh();
+      return true;
+    };
+
+    if (refreshIfConnected()) return;
+
+    // The element is created detached and inserted later by panel-layout
+    // (mountPanelElement / deferPanelMount) into a grid this panel does not know
+    // up front — and the mount can be deferred arbitrarily late. A document-level
+    // observer is the only way to catch that connection without coupling the panel
+    // to specific grid ids (which would fail silently if a mount went elsewhere).
+    // It self-disconnects on the first connected callback.
+    if (typeof MutationObserver !== 'undefined') {
+      const target = document.body ?? document.documentElement;
+      if (target) {
+        const observer = new MutationObserver(() => { refreshIfConnected(); });
+        observer.observe(target, { childList: true, subtree: true });
+        this.connectionObserver = observer;
+        return;
+      }
+    }
+
+    // Fallback for environments without MutationObserver (non-browser/SSR/tests):
+    // poll on a bounded number of animation frames so a late insertion is still
+    // caught, but a never-connected panel can never loop forever.
+    const scheduleFrame = typeof requestAnimationFrame === 'function'
+      ? requestAnimationFrame
+      : (cb: FrameRequestCallback): number => {
+          globalThis.setTimeout(() => cb(Date.now()), 0);
+          return 0;
+        };
+    scheduleFrame(() => {
+      this.connectRefreshQueued = false;
+      if (this.element?.isConnected) {
+        this.connectRetryFrames = 0;
+        void this.refresh();
+        return;
+      }
+      if (this.connectRetryFrames >= NationalDebtPanel.MAX_CONNECT_RETRY_FRAMES) {
+        this.connectRetryFrames = 0;
+        return;
+      }
+      this.connectRetryFrames += 1;
+      this.queueRefreshWhenConnected();
+    });
+  }
+
   private showLoadingState(): void {
-    this.setContent(`
+    this.setSafeContent(unsafeRawHtml(`
       <div style="display:flex;align-items:center;justify-content:center;height:80px;color:var(--text-dim);font-size:13px;">
         Loading debt data from IMF...
       </div>
-    `);
+    `, 'legacy Panel.setContent() migration'));
   }
 
   private applyFilters(): void {
@@ -214,6 +279,18 @@ export class NationalDebtPanel extends Panel {
 
   private getGlobalDebt(): number {
     return this.entries.reduce((sum, e) => sum + getCurrentDebt(e), 0);
+  }
+
+  private getSourceLabel(): string {
+    // Prefer the richest source label present in the seeded entries (USA entry
+    // carries the combined "IMF WEO <year> + US Treasury FiscalData" string).
+    let best = '';
+    for (const e of this.entries) {
+      const s = e.source?.trim();
+      if (!s) continue;
+      if (s.length > best.length) best = s;
+    }
+    return best || 'IMF WEO';
   }
 
   private render(): void {
@@ -255,13 +332,13 @@ export class NationalDebtPanel extends Panel {
           <span class="debt-load-more-count">(${this.filteredEntries.length - this.visibleCount} remaining)</span>
         </button>` : ''}
         <div class="debt-footer">
-          <span class="debt-source">Source: IMF WEO 2024 + US Treasury FiscalData</span>
+          <span class="debt-source">Source: ${escapeHtml(this.getSourceLabel())}</span>
           <span class="debt-updated">Updated: ${new Date(this.lastFetch).toLocaleDateString()}</span>
         </div>
       </div>
     `;
 
-    this.setContent(html);
+    this.setSafeContent(unsafeRawHtml(html, 'legacy Panel.setContent() migration'));
   }
 
   private renderRow(entry: NationalDebtEntry, rank: number): string {
@@ -345,7 +422,11 @@ export class NationalDebtPanel extends Panel {
     this.startTicker();
   }
 
-  public destroy(): void {
+  public override destroy(): void {
+    this.connectionObserver?.disconnect();
+    this.connectionObserver = null;
+    this.connectRefreshQueued = false;
+    this.connectRetryFrames = 0;
     this.stopTicker();
     super.destroy();
   }

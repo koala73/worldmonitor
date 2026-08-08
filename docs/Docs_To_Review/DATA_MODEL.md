@@ -1105,7 +1105,7 @@ interface PanelConfig {
 
 ### MapLayers
 
-35+ boolean layer toggles that control which data overlays appear on the map.
+56 layer-definition keys, with variant-specific defaults controlling which data overlays appear on the map.
 
 ```typescript
 interface MapLayers {
@@ -1537,7 +1537,7 @@ Six monitored regions with their constituent country codes:
 
 ## 16. Map Data Models
 
-The map renders 35+ toggleable layers. Each layer is controlled by a boolean in `MapLayers`.
+The map defines 56 layer types. Each layer is controlled by a boolean in `MapLayers`, with variant-specific defaults determining which overlays are enabled at startup.
 
 ### Layer Keys
 

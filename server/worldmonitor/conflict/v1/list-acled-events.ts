@@ -18,16 +18,32 @@ import { fetchAcledCached } from '../../../_shared/acled';
 
 const REDIS_CACHE_KEY = 'conflict:acled:v1';
 const REDIS_CACHE_TTL = 900; // 15 min — ACLED rate-limited
+export const ACLED_DEFAULT_WINDOW_MS = 30 * 24 * 60 * 60 * 1000;
 
 const fallbackAcledCache = new Map<string, { data: ListAcledEventsResponse; ts: number }>();
 
-async function fetchAcledConflicts(req: ListAcledEventsRequest): Promise<AcledConflictEvent[]> {
+interface AcledEventWindow {
+  startMs: number;
+  endMs: number;
+}
+
+export function resolveAcledEventWindow(
+  req: Pick<ListAcledEventsRequest, 'start' | 'end'>,
+  now = Date.now(),
+): AcledEventWindow {
+  return {
+    startMs: req.start > 0 ? req.start : now - ACLED_DEFAULT_WINDOW_MS,
+    endMs: req.end > 0 ? req.end : now,
+  };
+}
+
+async function fetchAcledConflicts(
+  req: ListAcledEventsRequest,
+  window: AcledEventWindow,
+): Promise<AcledConflictEvent[]> {
   try {
-    const now = Date.now();
-    const startMs = req.start ?? (now - 30 * 24 * 60 * 60 * 1000);
-    const endMs = req.end ?? now;
-    const startDate = new Date(startMs).toISOString().split('T')[0]!;
-    const endDate = new Date(endMs).toISOString().split('T')[0]!;
+    const startDate = new Date(window.startMs).toISOString().split('T')[0]!;
+    const endDate = new Date(window.endMs).toISOString().split('T')[0]!;
 
     const rawEvents = await fetchAcledCached({
       eventTypes: 'Battles|Explosions/Remote violence|Violence against civilians',
@@ -65,13 +81,14 @@ export async function listAcledEvents(
   _ctx: ServerContext,
   req: ListAcledEventsRequest,
 ): Promise<ListAcledEventsResponse> {
-  const cacheKey = `${REDIS_CACHE_KEY}:${req.country || 'all'}:${req.start || 0}:${req.end || 0}`;
+  const window = resolveAcledEventWindow(req);
+  const cacheKey = `${REDIS_CACHE_KEY}:${req.country || 'all'}:${window.startMs}:${window.endMs}`;
   try {
     const result = await cachedFetchJson<ListAcledEventsResponse>(
       cacheKey,
       REDIS_CACHE_TTL,
       async () => {
-        const events = await fetchAcledConflicts(req);
+        const events = await fetchAcledConflicts(req, window);
         return events.length > 0 ? { events, pagination: undefined } : null;
       },
     );

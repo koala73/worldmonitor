@@ -17,6 +17,37 @@ export interface ActivityState {
 /** Duration to show "NEW" tag on items (2 minutes) */
 export const NEW_TAG_DURATION_MS = 2 * 60 * 1000;
 
+/**
+ * #4923: persisted read-state. Holds the timestamp of the user's previous
+ * visit so a returning session can distinguish "new since you were last
+ * here" from "new to this page load". Listed in CLOUD_SYNC_KEYS, so
+ * signed-in users get it synced across devices via cloud-prefs-sync with
+ * zero extra wiring here.
+ */
+export const READ_STATE_KEY = 'wm-read-state-v1';
+
+/** Throttle for lastVisitAt writes — markAsSeen fires per scroll/click. */
+const READ_STATE_PERSIST_INTERVAL_MS = 30 * 1000;
+
+interface PersistedReadState {
+  v: 1;
+  lastVisitAt: number;
+}
+
+/**
+ * #4926 external review: in sandboxed iframes / blocked-storage modes the
+ * `localStorage` accessor ITSELF throws (SecurityError) — `typeof` does
+ * not guard property-getter throws, only undeclared identifiers. All
+ * storage access goes through this helper; null = session-only mode.
+ */
+function getSafeLocalStorage(): Storage | null {
+  try {
+    return typeof localStorage === 'undefined' ? null : localStorage;
+  } catch {
+    return null;
+  }
+}
+
 /** Duration for highlight glow effect (30 seconds) */
 export const HIGHLIGHT_DURATION_MS = 30 * 1000;
 
@@ -24,11 +55,128 @@ class ActivityTracker {
   private panels: Map<string, ActivityState> = new Map();
   private observers: Map<string, IntersectionObserver> = new Map();
   private onChangeCallbacks: Map<string, (newCount: number) => void> = new Map();
+  /** lastVisitAt from the PREVIOUS session, read once at load (0 = none). */
+  private previousVisitAt = 0;
+  private lastPersistAt = 0;
+  /**
+   * #4926 external review (acknowledgement model): the persisted
+   * timestamp advances ONLY on genuine user interaction (scroll/click/
+   * visibility via markAsSeen) — never on the programmatic first-render
+   * markItemsSeen. A session with zero interaction persists NOTHING, so
+   * any number of reloads keeps away-stories NEW.
+   */
+  private lastInteractionAt: number | null = null;
+  private lifecycleInstalled = false;
+
+  constructor() {
+    // Constructor stays side-effect-light (a single localStorage read);
+    // window/document listeners install lazily on first register() —
+    // mirrors the repo's explicit-install convention (cloud-prefs-sync
+    // install()) without adding a bootstrap call site.
+    this.loadReadState();
+  }
+
+  private installLifecycleListeners(): void {
+    if (this.lifecycleInstalled || typeof window === 'undefined') return;
+    this.lifecycleInstalled = true;
+    // Flush on the way out so the next session's "previous visit" is
+    // accurate even if the throttle window was open. visibilitychange is
+    // the reliable signal on mobile Safari; beforeunload is the desktop
+    // belt-and-braces.
+    window.addEventListener('beforeunload', () => this.persistLastVisit(true));
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'hidden') this.persistLastVisit(true);
+    });
+    // Cross-device continuity: when cloud prefs land AFTER module load
+    // (sign-in mid-session, another device visited more recently), adopt
+    // the newer previous-visit timestamp — otherwise the cloud value is
+    // silently ignored until the next full reload.
+    window.addEventListener('wm:cloud-prefs-applied', (event) => {
+      const keys = (event as CustomEvent<{ keys?: string[] }>).detail?.keys;
+      if (Array.isArray(keys) && keys.includes(READ_STATE_KEY)) {
+        this.refreshPreviousVisitFromStorage();
+      }
+    });
+  }
+
+  /** Adopt a LATER previous-visit timestamp written by cloud sync. */
+  private refreshPreviousVisitFromStorage(): void {
+    const before = this.previousVisitAt;
+    const current = this.previousVisitAt;
+    this.previousVisitAt = 0;
+    this.loadReadState();
+    // Monotonic: another device's more recent visit advances the marker;
+    // an older cloud value must not resurrect already-seen NEW state.
+    if (this.previousVisitAt < current) this.previousVisitAt = current;
+    if (this.previousVisitAt !== before) this.lastPersistAt = 0;
+  }
+
+  private loadReadState(): void {
+    const storage = getSafeLocalStorage();
+    if (!storage) return;
+    try {
+      const raw = storage.getItem(READ_STATE_KEY);
+      if (!raw) return;
+      const parsed = JSON.parse(raw) as Partial<PersistedReadState>;
+      if (parsed && typeof parsed.lastVisitAt === 'number' && Number.isFinite(parsed.lastVisitAt)) {
+        // Clock-skew guard: a future timestamp (device clock jumped back
+        // after writing, or a corrupt cloud value) would blank every NEW
+        // tag for the whole session. Tolerate small skew, ignore beyond it.
+        const maxPlausible = Date.now() + 10 * 60 * 1000;
+        if (parsed.lastVisitAt <= maxPlausible) {
+          this.previousVisitAt = parsed.lastVisitAt;
+        }
+      }
+    } catch {
+      // Corrupt state degrades to "no previous visit" — old behavior.
+    }
+  }
+
+  /**
+   * Timestamp of the previous session's last activity (0 when unknown).
+   * Panels use this to keep items that arrived while the user was away
+   * flagged NEW on the first render instead of blanket-marking everything
+   * seen (#4923 — the "every visit is a stateless snapshot" bug).
+   */
+  getPreviousVisitTime(): number {
+    return this.previousVisitAt;
+  }
+
+  private persistLastVisit(force = false): void {
+    // Nothing to persist until the user actually interacted this session
+    // — flushing "now" on unload/hide would mark away-stories seen after
+    // a plain F5 with zero acknowledgement.
+    if (this.lastInteractionAt === null) return;
+    const storage = getSafeLocalStorage();
+    if (!storage) return;
+    const now = Date.now();
+    if (!force && now - this.lastPersistAt < READ_STATE_PERSIST_INTERVAL_MS) return;
+    this.lastPersistAt = now;
+    try {
+      const state: PersistedReadState = { v: 1, lastVisitAt: this.lastInteractionAt };
+      storage.setItem(READ_STATE_KEY, JSON.stringify(state));
+    } catch {
+      // Quota/privacy-mode failures degrade to session-only behavior.
+    }
+  }
+
+  /** Test hook: re-read persisted state after stubbing localStorage. */
+  _reloadReadStateForTests(): void {
+    this.previousVisitAt = 0;
+    this.lastPersistAt = 0;
+    this.lastInteractionAt = null;
+    this.loadReadState();
+  }
 
   /**
    * Initialize tracking for a panel
    */
   register(panelId: string): void {
+    this.installLifecycleListeners();
+    // Cloud prefs may have applied between module load and the first
+    // panel registering — re-read (monotonic) so the first partition
+    // sees a cross-device visit that landed in that window.
+    this.refreshPreviousVisitFromStorage();
     if (!this.panels.has(panelId)) {
       this.panels.set(panelId, {
         seenIds: new Set(),
@@ -96,11 +244,40 @@ class ActivityTracker {
 
     state.newCount = 0;
     state.lastInteraction = Date.now();
+    this.lastInteractionAt = Date.now();
+    this.persistLastVisit();
 
     // Notify listeners
     const callback = this.onChangeCallbacks.get(panelId);
     if (callback) {
       callback(0);
+    }
+  }
+
+  /**
+   * Mark a SUBSET of items as seen (#4923). Used on a returning user's
+   * first render: items older than the previous visit are seen, items
+   * that arrived while away keep their NEW state.
+   */
+  markItemsSeen(panelId: string, itemIds: string[]): void {
+    const state = this.panels.get(panelId);
+    if (!state) return;
+
+    for (const id of itemIds) {
+      state.seenIds.add(id);
+    }
+    let unseen = 0;
+    for (const id of state.firstSeenTime.keys()) {
+      if (!state.seenIds.has(id)) unseen++;
+    }
+    state.newCount = unseen;
+    state.lastInteraction = Date.now();
+    // Deliberately NO persistence here: this is programmatic bootstrap
+    // marking, not user acknowledgement (#4926 external review P1).
+
+    const callback = this.onChangeCallbacks.get(panelId);
+    if (callback) {
+      callback(state.newCount);
     }
   }
 

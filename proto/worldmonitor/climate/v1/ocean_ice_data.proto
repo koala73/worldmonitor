@@ -1,0 +1,23 @@
+syntax = "proto3";
+
+package worldmonitor.climate.v1;
+
+import "sebuf/http/annotations.proto";
+
+message OceanIceData {
+  double arctic_extent_mkm2 = 1;
+  double arctic_extent_anomaly_mkm2 = 2;
+  string arctic_trend = 3;
+  double sea_level_mm_above_1993 = 4;
+  double sea_level_annual_rise_mm = 5;
+  double ohc_0_700m_zj = 6;
+  double sst_anomaly_c = 7;
+  int64 measured_at = 8 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
+  repeated IceTrendPoint ice_trend_12m = 9;
+}
+
+message IceTrendPoint {
+  string month = 1;
+  double extent_mkm2 = 2;
+  double anomaly_mkm2 = 3;
+}

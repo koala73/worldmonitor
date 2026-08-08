@@ -1,0 +1,83 @@
+---
+title: "能源中断事件日志方法论"
+description: "World Monitor 如何在 Energy Atlas 地图图层中，针对全球油气管道与存储资产抽屉策展与维护能源中断事件日志，涵盖数据来源筛选、事件分类标准、地理归属逻辑、时间线呈现方法以及编辑审校流程，帮助能源分析师快速识别供应风险、异常事件与地缘影响面。"
+---
+
+## 范围
+
+中断事件日志（`energy:disruptions:v1`）是一个状态机历史记录，记录与 `energy:pipelines:gas:v1`、`energy:pipelines:oil:v1` 和 `energy:storage-facilities:v1` 中策展资产相关的停电、制裁、维护窗口、天气事件和商业里程碑。
+
+第 1 版发布一个策展的种子集，包含与同一登记表中资产相关联的显著历史和持续事件（Nord Stream 1/2 破坏、Druzhba 制裁、CPC 不可抗力、TurkStream 维护、ESPO 无人机袭击、Arctic LNG 2 OFAC 列名等）。该日志目前仅由人工策展；自动化的状态转换分类器已规划但尚未上线。
+
+## 数据形状
+
+每个事件都是一行，以稳定 id 为键：
+
+```ts
+{
+  id: string,
+  assetId: string,                // matches an id in the pipeline or storage registry
+  assetType: 'pipeline' | 'storage',
+  eventType: 'sabotage' | 'sanction' | 'maintenance' | 'mechanical' |
+             'weather' | 'commercial' | 'war' | 'other',
+  startAt: string,                // ISO8601
+  endAt: string | null,           // null when ongoing
+  capacityOfflineBcmYr: number,   // 0 when not applicable
+  capacityOfflineMbd: number,     // 0 when not applicable
+  causeChain: string[],           // primary cause first
+  shortDescription: string,
+  sources: Array<{
+    authority: string,
+    title: string,
+    url: string,                  // must be http(s)
+    date: string,                 // ISO8601
+    sourceType: 'regulator' | 'operator' | 'press' | 'ais-relay' | 'satellite',
+  }>,
+  classifierVersion: string,
+  classifierConfidence: number,   // 0..1
+  lastEvidenceUpdate: string,
+}
+```
+
+每个事件必须引用种子时存在于管道或存储登记表中的资产——不存在自由浮动的事件类。
+
+## 什么算作中断
+
+事件日志覆盖*状态转换*，而非日常吞吐噪声：
+
+- **破坏**：明确的物理袭击（Nord Stream 2022、ESPO 泵站 2025）。
+- **制裁**：监管机构列名或运营商被指定，迫使商业停运（Arctic LNG 2 OFAC 列名、Druzhba 北线政策停运）。
+- **维护**：已发布的开始/结束时间表的运营商维护窗口。
+- **机械**：非计划故障、不可抗力（CPC 浮筒损坏）。
+- **天气**：飓风/风暴导致的关停（Sabine Pass 飓风 Beryl）。
+- **商业**：实质性商业变化（Power of Siberia 容量爬坡）。
+- **战争**：战争驱动的运营变化（CPC、Yamal-Belarus）。
+
+正常的运营波动、常规提名和日内流量变化**不**是中断事件。它们保留在底层资产的证据包中，不在事件日志中。
+
+## 日志如何保持新鲜
+
+- **策展**：事件日志由 `scripts/seed-energy-disruptions.mjs` 按周 cron 刷新，读取 `scripts/data/energy-disruptions.json` 中手工撰写的 JSON。当新状态转换在各个资产的证据包中浮现时，由编辑审阅并添加行。请参阅 [`/corrections`](/zh/corrections) 了解计划中的审计界面形状，它将在自动分类器落地时跟踪未来的自动化状态转换条目（如果/当落地的话）。
+- **衰减**：持续事件（`endAt` 为 null）且 `lastEvidenceUpdate` 超过 30 天的，在面板抽屉中降级为"证据过时"处理；它们不会自动解决。
+
+## 证据来源纪律
+
+每个事件至少携带一个带有可公开验证 URL 的来源。`regulator` 和 `operator` 来源在分类器置信度权重方面优先于 `press`。`classifierConfidence` 字段是面向下游消费者的质量提示；它**不**门控显示——所有策展事件都会渲染。
+
+## 公开 API
+
+- `ListEnergyDisruptions` — `GET /api/supply-chain/v1/list-energy-disruptions`，支持可选的 `assetId` / `assetType` / `ongoingOnly` 查询切面。返回最新优先的事件。
+- 免费层。网关缓存层：`medium`。
+- 面板抽屉（`PipelineStatusPanel`、`StorageFacilityMapPanel`）在抽屉打开时惰性调用此 RPC，作用域限定于资产 id。
+
+## 分类器版本 + 自动修订日志
+
+每个事件都使用 `classifierVersion` 进行版本化。当规则变更（新增原因枚举、新事件类型、收紧置信度阈值）时，版本号递增并重新派生事件。先前的分类器版本仍可通过行上的 `classifierVersion` 字段读取——没有静默重写。
+
+变更计划在 [`/corrections`](/zh/corrections) 自动记录，每条记录包含 `{field, previousValue, newValue, trigger, sourcesUsed, classifierVersion}`——这是设计好的审计界面。事件日志本身是面向前方的；一旦分类器上线，修订日志将是日志如何演化的历史。
+
+## 相关方法论
+
+- [管道](./pipelines) — 登记表事件关联的对象。
+- [存储](./storage) — 存储设施同理。
+- [短缺](./shortages) — 互补图层，覆盖面向消费者的燃料短缺，而非上游资产事件。

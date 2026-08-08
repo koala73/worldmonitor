@@ -1,0 +1,78 @@
+---
+title: "Trade Policy"
+description: "Six-tab trade-policy surface covering restrictions, tariff trends, trade flows, non-tariff barriers, US customs revenue, and bilateral Comtrade flows."
+---
+
+The **Trade Policy** panel (internal id `trade-policy`) is the dashboard's go-to surface for live trade-policy context — what's getting restricted, where tariffs are moving, how flows are shifting, what barriers exist, and how US customs revenue is tracking as a real-time signal of tariff pass-through.
+
+## What the panel shows
+
+Six tabs across one data-dense panel (`defaultRowSpan: 2`):
+
+| Tab id | Shows |
+|---|---|
+| `restrictions` | Active trade restrictions — the default tab on mount. |
+| `tariffs` | Tariff trends (`TariffDataPoint[]`) and `EffectiveTariffRate` series. |
+| `flows` | Merchandise trade flows, reporter versus World — `GetTradeFlowsResponse`. |
+| `barriers` | Non-tariff barriers — `GetTradeBarriersResponse`. |
+| `revenue` | US Treasury customs revenue — monthly data with FYTD year-over-year comparison and spike highlighting. |
+| `comtrade` | Full Comtrade bilateral flow search — `ListComtradeFlowsResponse`. |
+
+`TabId` is the union `'restrictions' | 'tariffs' | 'flows' | 'barriers' | 'revenue' | 'comtrade'` (`src/components/TradePolicyPanel.ts:17`).
+
+Panel id is `trade-policy`; canonical component is `src/components/TradePolicyPanel.ts`. Title resolves from i18n (`panels.tradePolicy`).
+
+## How you reach it
+
+- **Cmd+K**: type *trade*, *tariff*, or *customs*.
+- **Availability by variant**: registered and enabled by default in the **full/geopolitical** (`priority: 1`), **finance** (`priority: 1`), and **commodity** (`priority: 1`) variants. Not present in the tech or happy variants. Source: `'trade-policy'` entries in `FULL_PANELS`, `FINANCE_PANELS`, `COMMODITY_PANELS` of `src/config/panels.ts`.
+
+## Data sources
+
+Six response shapes from `@/services/trade`, each backed by a generated sebuf REST RPC in `TradeService`. The panel shell is free; tariff trends and Comtrade calls use `premiumFetch` because those two paths are premium transport paths, while restrictions, flows, barriers, and customs revenue use the public client. Customs revenue also checks the bootstrap cache key `customsRevenue` before falling back to the RPC.
+
+| Tab | Method + route | Feeds |
+|---|---|---|
+| `restrictions` | `GET /api/trade/v1/get-trade-restrictions` | WTO restrictions list with country filters and upstream-unavailable state. |
+| `tariffs` | `GET /api/trade/v1/get-tariff-trends` | Premium tariff-rate timeseries between reporting and partner countries. |
+| `flows` | `GET /api/trade/v1/get-trade-flows` | Merchandise trade-flow rows and year-over-year context, reporter versus World. |
+| `barriers` | `GET /api/trade/v1/get-trade-barriers` | SPS/TBT barrier notifications filtered by country or measure type. |
+| `revenue` | `GET /api/trade/v1/get-customs-revenue` | US Treasury customs duties revenue; bootstrap-first via `customsRevenue`. |
+| `comtrade` | `GET /api/trade/v1/list-comtrade-flows` | Premium UN Comtrade strategic commodity flow search with anomaly flags. |
+
+The `revenue` tab's US-Treasury feed is particularly sensitive — see the changelog entry for "US Treasury customs revenue in Trade Policy panel" (`#1663`).
+
+### Trade-flow coverage
+
+`get-trade-flows` is served entirely from the Railway seed; it never calls WTO per request. What that seed contains is the whole supported space:
+
+- **Reporter** — any 3-digit UN M49 code the WTO `/reporters` endpoint advertises. Empty defaults to `840` (United States).
+- **Partner** — `000` (World) only. The WTO indicators behind these rows, `ITS_MTV_AX` and `ITS_MTV_AM`, publish a World total and answer HTTP 204 for every named partner, so no bilateral pair is obtainable. Empty defaults to `000`.
+- **Years** — `1`–`30`, inclusive of both endpoints (`years=10` returns 11 calendar years). The seed holds the full 30-year window per reporter and the handler slices it, so every lookback is served from the same fetch. `0` selects the default of `10`.
+
+A malformed code or an out-of-range `years` is rejected with HTTP 400 rather than silently replaced by a default. A well-formed request the seed cannot answer returns empty `flows` plus an `unavailableReason` from a closed vocabulary, so a coverage gap is distinguishable from a fault:
+
+`unavailableReason` is the `TradeFlowUnavailableReason` enum, so the closed set is discoverable from the OpenAPI schema rather than only from prose. Values are prefixed `TRADE_FLOW_UNAVAILABLE_REASON_`:
+
+| Suffix | `upstreamUnavailable` | Meaning |
+|---|---|---|
+| `UNSPECIFIED` | `false` | Rows served. |
+| `NOT_COVERED` | `false` | Well-formed, but this reporter/partner pair is outside seeded coverage. Nothing is broken; retrying will not help. |
+| `SEED_MISSING` | `true` | The pair is inside coverage but its cache entry is gone. |
+| `COVERAGE_UNKNOWN` | `true` | The coverage manifest could not be read, so neither of the above can be ruled out. |
+| `CACHE_UNAVAILABLE` | `true` | The cache read itself failed. |
+| `INVALID_REQUEST` | `false` | Codes were malformed (only reachable where request validation is bypassed). |
+
+Fleet-level coverage is published as the `tradeFlows` entry in `/api/health`, whose `records` count is the number of reporter/World pairs actually seeded; a shortfall reads `COVERAGE_PARTIAL`, while a stopped seeder reads `STALE_SEED`.
+
+## Refresh cadence
+
+Per-tab fetches on mount and on tab switch; no polling. Upstream seeders run on varying cadences per dataset (tariffs daily, Comtrade monthly).
+
+## Tier & gating
+
+**Panel shell is free.** No `premium` flag in variant registrations. The generated REST service is mixed: restrictions, flows, barriers, and customs revenue are public; `get-tariff-trends` and `list-comtrade-flows` are premium RPC paths and degrade to empty data without an entitled session or API key.
+
+## API reference
+
+- [Trade service](/api/TradeService.openapi.yaml) — full schemas and query parameters for the six tab-backing RPCs.

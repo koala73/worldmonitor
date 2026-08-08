@@ -6,19 +6,33 @@
   "scripts": {
     "start": "node ais-relay.cjs",
     "notification-relay": "node notification-relay.cjs",
-    "telegram:session": "node telegram/session-auth.mjs"
+    "telegram:session": "node telegram/session-auth.mjs",
+    "seed-bundle-regional": "node seed-bundle-regional.mjs"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.79.0",
-    "convex": "^1",
-    "resend": "^4",
-    "xlsx": "^0.18.5",
+    "@anthropic-ai/sdk": "^0.91.1",
     "@aws-sdk/client-s3": "^3.1009.0",
-    "sax": "^1.6.0",
+    "convex": "^1",
+    "exceljs": "^4.4.0",
+    "fast-xml-parser": "^5.8.0",
     "h3-js": "^4.2.1",
+    "papaparse": "^5.5.3",
+    "resend": "^4",
+    "sax": "^1.6.0",
     "telegram": "^2.22.2",
-    "ws": "^8.18.0",
-    "undici": "^7.0.0"
+    "tsx": "^4.21.0",
+    "undici": "^7.29.0",
+    "web-push": "^3.6.7",
+    "ws": "^8.21.0",
+    "yaml": "^2.8.3"
+  },
+  "overrides": {
+    "esbuild": "0.28.1",
+    "undici": "$undici",
+    "ws": "$ws",
+    "ip-address": "^10.3.1",
+    "brace-expansion@1": "^1.1.18",
+    "brace-expansion@2": "^2.1.4"
   },
   "engines": {
     "node": ">=20"

@@ -1,11 +1,12 @@
 ---
-title: "Track Global Conflicts in Real Time: World Monitor's Geopolitical Intelligence"
+title: "Track Global Conflicts in Real Time with World Monitor"
 description: "Monitor active conflicts, military movements, and geopolitical escalation in real time. World Monitor tracks 210+ bases across 9 theaters with live ADS-B data."
 metaTitle: "Track Global Conflicts in Real Time | World Monitor"
 keywords: "real-time conflict map, geopolitical intelligence map, military tracking dashboard, conflict monitoring tool, global conflict tracker"
 audience: "Geopolitical analysts, defense researchers, policy makers, journalists covering conflict"
 heroImage: "/blog/images/blog/track-global-conflicts-in-real-time.jpg"
 pubDate: "2026-02-14"
+modifiedDate: "2026-07-22"
 ---
 
 When a military escalation begins, the first 24 hours define the narrative. Analysts who see the signals early, the unusual flight patterns, the naval repositioning, the news velocity spike, have a decisive advantage over those waiting for the morning briefing.
@@ -18,8 +19,8 @@ World Monitor's core dashboard (worldmonitor.app) is designed around one questio
 
 The answer comes from layering multiple intelligence sources onto a single interactive 3D globe:
 
-- **ACLED conflict data** for armed clashes, protests, and political violence
-- **UCDP warfare events** for state-based and non-state conflicts
+- **[ACLED](https://acleddata.com/) conflict data** for armed clashes, protests, and political violence
+- **[UCDP](https://ucdp.uu.se/) warfare events** for state-based and non-state conflicts
 - **Live ADS-B tracking** for military aircraft positions
 - **AIS vessel monitoring** merged with USNI fleet reports for naval movements
 - **26 Telegram OSINT channels** for raw, low-latency intelligence
@@ -92,7 +93,7 @@ Each base includes facility type, operating nation, and strategic context. Overl
 
 Two of World Monitor's most operationally significant layers:
 
-**ADS-B (Aircraft):** Military and civilian aircraft transponder data from OpenSky, enriched by Wingbits for aircraft type identification. Filter for military callsigns to track reconnaissance flights, tanker orbits, and transport movements in real time.
+**ADS-B (Aircraft):** Military and civilian aircraft transponder data from [OpenSky](https://opensky-network.org/), enriched by [Wingbits](https://wingbits.com/) for aircraft type identification. Filter for military callsigns to track reconnaissance flights, tanker orbits, and transport movements in real time.
 
 **AIS (Maritime):** Ship positions from AISStream.io merged with editorial analysis from USNI Fleet Reports. This fusion gives you both the "where" (transponder position) and the "why" (fleet deployment context). Dark vessel detection flags ships that have gone silent, a common indicator of sanctions evasion or military operations.
 
@@ -105,8 +106,8 @@ World Monitor maps critical infrastructure alongside conflict data:
 - **Undersea cables** carrying 95% of intercontinental internet traffic
 - **Oil and gas pipelines** traversing conflict zones
 - **Nuclear facilities** and their proximity to active hostilities
-- **AI datacenters** (111 mapped globally)
-- **Strategic ports** (83) and airports (107)
+- **AI datacenters** (300+ mapped globally)
+- **Strategic ports** (60+) and airports (115)
 
 The Infrastructure Cascade panel shows what happens when a conflict zone overlaps with critical infrastructure. A pipeline through a hotspot, a cable landing station near an escalation zone. These second-order effects drive market moves and policy decisions.
 
@@ -166,4 +167,4 @@ The CII scores each country from 0 to 100 using four weighted components: baseli
 
 ---
 
-**Monitor developing situations at [worldmonitor.app](https://worldmonitor.app). Real-time geopolitical intelligence, free and open source.**
+**Monitor developing situations at [worldmonitor.app](https://www.worldmonitor.app). Real-time geopolitical intelligence, free and open source.**

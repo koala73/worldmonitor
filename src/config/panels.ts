@@ -4,8 +4,17 @@ import { SITE_VARIANT } from './variant';
 import { isDesktopRuntime } from '@/services/runtime';
 // boundary-ignore: getSecretState is a pure env/keychain probe with no service dependencies
 import { getSecretState } from '@/services/runtime-config';
+// boundary-ignore: isEntitled is a pure state check with no side effects
+import { isEntitled } from '@/services/entitlements';
 
 const _desktop = isDesktopRuntime();
+
+// Iran-events domain sunset (war ended 2026-07). Default OFF: iranAttacks is
+// disabled in every variant default so DEFAULT_MAP_LAYERS agrees with the gated
+// layer registry (getAllowedLayerKeys strips it). Guarded so node:test — where
+// import.meta.env is undefined — resolves it OFF at module load. See
+// map-layer-definitions.ts and tests/browser-bundle-secret-guard (allowlist).
+const IRAN_ATTACKS_ENABLED = typeof window !== 'undefined' && import.meta.env.VITE_ENABLE_IRAN_ATTACKS === 'true';
 
 // ============================================
 // FULL VARIANT (Geopolitical)
@@ -18,6 +27,7 @@ const FULL_PANELS: Record<string, PanelConfig> = {
   'live-webcams': { name: 'Live Webcams', enabled: true, priority: 1 },
   'windy-webcams': { name: 'Windy Live Webcam', enabled: false, priority: 2 },
   insights: { name: 'AI Insights', enabled: true, priority: 1 },
+  'threat-timeline': { name: 'Threat Timeline', enabled: true, priority: 1 },
   'strategic-posture': { name: 'AI Strategic Posture', enabled: true, priority: 1 },
   forecast: { name: 'AI Forecasts', enabled: true, priority: 1, ...(_desktop && { premium: 'locked' as const }) }, // trial: unlocked on web, locked on desktop
   cii: { name: 'Country Instability', enabled: true, priority: 1, ...(_desktop && { premium: 'enhanced' as const }) },
@@ -42,14 +52,18 @@ const FULL_PANELS: Record<string, PanelConfig> = {
   polymarket: { name: 'Predictions', enabled: true, priority: 1 },
   commodities: { name: 'Metals & Materials', enabled: true, priority: 1 },
   'energy-complex': { name: 'Energy Complex', enabled: true, priority: 1 },
+  'oil-inventories': { name: 'Oil Inventories', enabled: true, priority: 60 },
   markets: { name: 'Markets', enabled: true, priority: 1 },
   'stock-analysis': { name: 'Stock Analysis', enabled: true, priority: 1, premium: 'locked' as const },
   'stock-backtest': { name: 'Backtesting', enabled: true, priority: 1, premium: 'locked' as const },
   'daily-market-brief': { name: 'Daily Market Brief', enabled: true, priority: 1, premium: 'locked' as const },
   'chat-analyst': { name: 'WM Analyst', enabled: true, priority: 1, premium: 'locked' as const },
   economic: { name: 'Macro Stress', enabled: true, priority: 1 },
-  'trade-policy': { name: 'Trade Policy', enabled: true, priority: 1 },
+  'global-procurement': { name: 'Global Procurement', enabled: true, priority: 1, premium: 'locked' as const },
+  'trade-policy': { name: 'Trade Policy', enabled: true, priority: 1, premium: 'locked' as const },
   'supply-chain': { name: 'Supply Chain', enabled: true, priority: 1, ...(_desktop && { premium: 'enhanced' as const }) },
+  'china-corridors': { name: 'China Logistics Corridors', enabled: true, priority: 1 },
+  'china-activity-nowcast': { name: 'China Activity Nowcast', enabled: true, priority: 1 },
   finance: { name: 'Financial', enabled: true, priority: 1 },
   tech: { name: 'Technology', enabled: true, priority: 2 },
   crypto: { name: 'Crypto', enabled: true, priority: 2 },
@@ -57,29 +71,48 @@ const FULL_PANELS: Record<string, PanelConfig> = {
   ai: { name: 'AI/ML', enabled: true, priority: 2 },
   layoffs: { name: 'Layoffs Tracker', enabled: true, priority: 2 },
   monitors: { name: 'My Monitors', enabled: true, priority: 2 },
+  'latest-brief': { name: 'Latest Brief', enabled: true, priority: 1, premium: 'locked' as const },
   'satellite-fires': { name: 'Fires', enabled: true, priority: 2 },
   'macro-signals': { name: 'Market Regime', enabled: true, priority: 2 },
   'fear-greed': { name: 'Fear & Greed', enabled: true, priority: 2 },
+  'aaii-sentiment': { name: 'AAII Sentiment', enabled: false, priority: 2 },
+  'market-breadth': { name: 'Market Breadth', enabled: true, priority: 2 },
   'macro-tiles': { name: 'Macro Indicators', enabled: false, priority: 2 },
   'fsi': { name: 'Financial Stress', enabled: false, priority: 2 },
   'yield-curve': { name: 'Yield Curve', enabled: false, priority: 2 },
   'earnings-calendar': { name: 'Earnings Calendar', enabled: false, priority: 2 },
   'economic-calendar': { name: 'Economic Calendar', enabled: false, priority: 2 },
   'cot-positioning': { name: 'COT Positioning', enabled: false, priority: 2 },
+  'liquidity-shifts': { name: 'Liquidity Shifts', enabled: true, priority: 2 },
+  'positioning-247': { name: '24/7 Positioning', enabled: true, priority: 2 },
+  'gold-intelligence': { name: 'Gold Intelligence', enabled: true, priority: 60 },
   'hormuz-tracker': { name: 'Hormuz Trade Tracker', enabled: true, priority: 2 },
+  'energy-crisis': { name: 'Energy Crisis Tracker', enabled: true, priority: 2 },
+  'pipeline-status': { name: 'Oil & Gas Pipeline Status', enabled: true, priority: 2 },
+  'storage-facility-map': { name: 'Strategic Storage Atlas', enabled: true, priority: 2 },
+  'fuel-shortages': { name: 'Global Fuel Shortage Registry', enabled: true, priority: 2 },
+  'energy-disruptions': { name: 'Energy Disruptions Log', enabled: true, priority: 2 },
+  'energy-risk-overview': { name: 'Global Energy Risk Overview', enabled: false, priority: 2 },
   'gulf-economies': { name: 'Gulf Economies', enabled: false, priority: 2 },
   'consumer-prices': { name: 'Consumer Prices', enabled: false, priority: 2 },
   'grocery-basket': { name: 'Grocery Index', enabled: false, priority: 2 },
   'bigmac': { name: 'Big Mac Index', enabled: false, priority: 2 },
+  // Distinct from the `forex` key, which is an RSS news feed, not a rate
+  // surface. Opt-in per #6199; being per-variant, it can go default-on in
+  // FINANCE_PANELS later without changing any other variant.
+  fx: { name: 'FX Rates', enabled: false, priority: 2 },
   'fuel-prices': { name: 'Fuel Prices', enabled: false, priority: 2 },
+  'fao-food-price-index': { name: 'FAO Food Price Index', enabled: false, priority: 2 },
   'etf-flows': { name: 'BTC ETF Tracker', enabled: true, priority: 2 },
   stablecoins: { name: 'Stablecoins', enabled: true, priority: 2 },
   'ucdp-events': { name: 'UCDP Conflict Events', enabled: true, priority: 2 },
   'disease-outbreaks': { name: 'Disease Outbreaks', enabled: true, priority: 2 },
   'social-velocity': { name: 'Social Velocity', enabled: true, priority: 2 },
+  'wsb-ticker-scanner': { name: 'WSB Ticker Scanner', enabled: true, priority: 75, premium: 'locked' as const },
   giving: { name: 'Global Giving', enabled: false, priority: 2 },
   displacement: { name: 'UNHCR Displacement', enabled: true, priority: 2 },
   climate: { name: 'Climate Anomalies', enabled: true, priority: 2 },
+  'climate-news': { name: 'Climate News', enabled: false, priority: 2 },
   'population-exposure': { name: 'Population Exposure', enabled: true, priority: 2 },
   'security-advisories': { name: 'Security Advisories', enabled: true, priority: 2 },
   'sanctions-pressure': { name: 'Sanctions Pressure', enabled: true, priority: 2 },
@@ -94,13 +127,14 @@ const FULL_PANELS: Record<string, PanelConfig> = {
   'national-debt': { name: 'Global Debt Clock', enabled: true, priority: 2 },
   'cross-source-signals': { name: 'Cross-Source Signals', enabled: true, priority: 2 },
   'market-implications': { name: 'AI Market Implications', enabled: true, priority: 1, premium: 'locked' as const },
-  'deduction': { name: 'Deduct Situation', enabled: true, priority: 1, premium: 'locked' as const },
+  'regional-intelligence': { name: 'Regional Intelligence', enabled: false, priority: 1, premium: 'locked' as const },
+  'deduction': { name: 'Deduct Situation', enabled: false, priority: 1, premium: 'locked' as const },
   'geo-hubs': { name: 'Geopolitical Hubs', enabled: false, priority: 2 },
   'tech-hubs': { name: 'Hot Tech Hubs', enabled: false, priority: 2 },
 };
 
 const FULL_MAP_LAYERS: MapLayers = {
-  iranAttacks: !_desktop,
+  iranAttacks: IRAN_ATTACKS_ENABLED && !_desktop,
   gpsJamming: false,
   satellites: false,
 
@@ -109,6 +143,8 @@ const FULL_MAP_LAYERS: MapLayers = {
   bases: !_desktop,
   cables: false,
   pipelines: false,
+  storageFacilities: false,
+  fuelShortages: false,
   hotspots: true,
   ais: false,
   nuclear: true,
@@ -152,17 +188,18 @@ const FULL_MAP_LAYERS: MapLayers = {
   renewableInstallations: false,
   tradeRoutes: false,
   ciiChoropleth: false,
+  resilienceScore: false,
   dayNight: false,
   // Commodity layers (disabled in full variant)
   miningSites: false,
   processingPlants: false,
   commodityPorts: false,
   webcams: false,
-  weatherRadar: false, diseaseOutbreaks: false,
+  diseaseOutbreaks: false,
 };
 
 const FULL_MOBILE_MAP_LAYERS: MapLayers = {
-  iranAttacks: true,
+  iranAttacks: IRAN_ATTACKS_ENABLED,
   gpsJamming: false,
   satellites: false,
 
@@ -171,6 +208,8 @@ const FULL_MOBILE_MAP_LAYERS: MapLayers = {
   bases: false,
   cables: false,
   pipelines: false,
+  storageFacilities: false,
+  fuelShortages: false,
   hotspots: true,
   ais: false,
   nuclear: false,
@@ -214,13 +253,14 @@ const FULL_MOBILE_MAP_LAYERS: MapLayers = {
   renewableInstallations: false,
   tradeRoutes: false,
   ciiChoropleth: false,
+  resilienceScore: false,
   dayNight: false,
   // Commodity layers (disabled in full variant)
   miningSites: false,
   processingPlants: false,
   commodityPorts: false,
   webcams: false,
-  weatherRadar: false, diseaseOutbreaks: false,
+  diseaseOutbreaks: false,
 };
 
 // ============================================
@@ -241,7 +281,6 @@ const TECH_PANELS: Record<string, PanelConfig> = {
   accelerators: { name: 'Accelerators & Demo Days', enabled: true, priority: 1 },
   security: { name: 'Cybersecurity', enabled: true, priority: 1 },
   policy: { name: 'AI Policy & Regulation', enabled: true, priority: 1 },
-  regulation: { name: 'AI Regulation News', enabled: true, priority: 1 },
   layoffs: { name: 'Layoffs Tracker', enabled: true, priority: 1 },
   markets: { name: 'Tech Stocks', enabled: true, priority: 2 },
   finance: { name: 'Financial News', enabled: true, priority: 2 },
@@ -258,6 +297,7 @@ const TECH_PANELS: Record<string, PanelConfig> = {
   'internet-disruptions': { name: 'Internet Disruptions', enabled: true, priority: 2 },
   'service-status': { name: 'Service Status', enabled: true, priority: 2 },
   economic: { name: 'Macro Stress', enabled: true, priority: 2 },
+  'global-procurement': { name: 'Global Procurement', enabled: true, priority: 1, premium: 'locked' as const },
   'tech-readiness': { name: 'Tech Readiness Index', enabled: true, priority: 1 },
   'macro-signals': { name: 'Market Regime', enabled: true, priority: 2 },
   'etf-flows': { name: 'BTC ETF Tracker', enabled: true, priority: 2 },
@@ -265,6 +305,7 @@ const TECH_PANELS: Record<string, PanelConfig> = {
   'airline-intel': { name: 'Airline Intelligence', enabled: true, priority: 2 },
   'world-clock': { name: 'World Clock', enabled: true, priority: 2 },
   monitors: { name: 'My Monitors', enabled: true, priority: 2 },
+  'latest-brief': { name: 'Latest Brief', enabled: true, priority: 1, premium: 'locked' as const },
   'tech-hubs': { name: 'Hot Tech Hubs', enabled: false, priority: 2 },
   'ai-regulation': { name: 'AI Regulation Dashboard', enabled: false, priority: 2 },
 };
@@ -321,13 +362,14 @@ const TECH_MAP_LAYERS: MapLayers = {
   tradeRoutes: false,
   iranAttacks: false,
   ciiChoropleth: false,
+  resilienceScore: false,
   dayNight: false,
   // Commodity layers (disabled in tech variant)
   miningSites: false,
   processingPlants: false,
   commodityPorts: false,
   webcams: false,
-  weatherRadar: false, diseaseOutbreaks: false,
+  diseaseOutbreaks: false,
 };
 
 const TECH_MOBILE_MAP_LAYERS: MapLayers = {
@@ -382,13 +424,14 @@ const TECH_MOBILE_MAP_LAYERS: MapLayers = {
   tradeRoutes: false,
   iranAttacks: false,
   ciiChoropleth: false,
+  resilienceScore: false,
   dayNight: false,
   // Commodity layers (disabled in tech variant)
   miningSites: false,
   processingPlants: false,
   commodityPorts: false,
   webcams: false,
-  weatherRadar: false, diseaseOutbreaks: false,
+  diseaseOutbreaks: false,
 };
 
 // ============================================
@@ -406,9 +449,19 @@ const FINANCE_PANELS: Record<string, PanelConfig> = {
   'daily-market-brief': { name: 'Daily Market Brief', enabled: true, priority: 1, premium: 'locked' },
   'markets-news': { name: 'Markets News', enabled: true, priority: 2 },
   forex: { name: 'Forex & Currencies', enabled: true, priority: 1 },
+  fx: { name: 'FX Rates', enabled: false, priority: 2 },
   bonds: { name: 'Fixed Income', enabled: true, priority: 1 },
   commodities: { name: 'Metals & Materials', enabled: true, priority: 1 },
   'energy-complex': { name: 'Energy Complex', enabled: true, priority: 1 },
+  // Required for finance variant's pipeline-click path. FINANCE_MAP_LAYERS
+  // has `pipelines: true`, and PR #3366 unified all variants on
+  // createEnergyPipelinesLayer which dispatches energy:open-pipeline-detail
+  // on click. The listener lives in PipelineStatusPanel — if the key is
+  // absent from this panel set, panel-layout never instantiates it and
+  // the click is a silent no-op. Default disabled so the panel slot
+  // doesn't auto-open; users invoke it by clicking a pipeline on the map
+  // (or via CMD+K). Codex P1.
+  'pipeline-status': { name: 'Oil & Gas Pipeline Status', enabled: false, priority: 2 },
   'commodities-news': { name: 'Commodities News', enabled: true, priority: 2 },
   crypto: { name: 'Crypto & Digital Assets', enabled: true, priority: 1 },
   'crypto-news': { name: 'Crypto News', enabled: true, priority: 2 },
@@ -418,23 +471,31 @@ const FINANCE_PANELS: Record<string, PanelConfig> = {
   'other-tokens': { name: 'Alt Tokens', enabled: true, priority: 2 },
   centralbanks: { name: 'Central Bank Watch', enabled: true, priority: 1 },
   economic: { name: 'Macro Stress', enabled: true, priority: 1 },
-  'trade-policy': { name: 'Trade Policy', enabled: true, priority: 1 },
+  'global-procurement': { name: 'Global Procurement', enabled: true, priority: 1, premium: 'locked' as const },
+  'trade-policy': { name: 'Trade Policy', enabled: true, priority: 1, premium: 'locked' as const },
   'sanctions-pressure': { name: 'Sanctions Pressure', enabled: true, priority: 1 },
   'supply-chain': { name: 'Supply Chain', enabled: true, priority: 1 },
+  'china-corridors': { name: 'China Logistics Corridors', enabled: false, priority: 2 },
+  'china-activity-nowcast': { name: 'China Activity Nowcast', enabled: false, priority: 2 },
   'economic-news': { name: 'Economic News', enabled: true, priority: 2 },
   ipo: { name: 'IPOs, Earnings & M&A', enabled: true, priority: 1 },
   heatmap: { name: 'Sector Heatmap', enabled: true, priority: 1 },
   'macro-signals': { name: 'Market Regime', enabled: true, priority: 1 },
   'macro-tiles': { name: 'Macro Indicators', enabled: true, priority: 1 },
   'fear-greed': { name: 'Fear & Greed', enabled: true, priority: 1 },
+  'aaii-sentiment': { name: 'AAII Sentiment', enabled: true, priority: 2 },
+  'market-breadth': { name: 'Market Breadth', enabled: true, priority: 1 },
   'fsi': { name: 'Financial Stress', enabled: true, priority: 1 },
   'yield-curve': { name: 'Yield Curve', enabled: true, priority: 1 },
   'earnings-calendar': { name: 'Earnings Calendar', enabled: true, priority: 1 },
   'economic-calendar': { name: 'Economic Calendar', enabled: true, priority: 1 },
   'cot-positioning': { name: 'COT Positioning', enabled: true, priority: 2 },
+  'liquidity-shifts': { name: 'Liquidity Shifts', enabled: true, priority: 1 },
+  'positioning-247': { name: '24/7 Positioning', enabled: true, priority: 1 },
+  'gold-intelligence': { name: 'Gold Intelligence', enabled: true, priority: 60 },
   derivatives: { name: 'Derivatives & Options', enabled: true, priority: 2 },
   fintech: { name: 'Fintech & Trading Tech', enabled: true, priority: 2 },
-  regulation: { name: 'Financial Regulation', enabled: true, priority: 2 },
+  'fin-regulation': { name: 'Financial Regulation', enabled: true, priority: 2 },
   institutional: { name: 'Hedge Funds & PE', enabled: true, priority: 2 },
   analysis: { name: 'Market Analysis', enabled: true, priority: 2 },
   'etf-flows': { name: 'BTC ETF Tracker', enabled: true, priority: 2 },
@@ -444,9 +505,11 @@ const FINANCE_PANELS: Record<string, PanelConfig> = {
   'gulf-economies': { name: 'Gulf Economies', enabled: true, priority: 1 },
   'consumer-prices': { name: 'Consumer Prices', enabled: true, priority: 1 },
   polymarket: { name: 'Predictions', enabled: true, priority: 2 },
+  'wsb-ticker-scanner': { name: 'WSB Ticker Scanner', enabled: true, priority: 75, premium: 'locked' },
   'airline-intel': { name: 'Airline Intelligence', enabled: true, priority: 2 },
   'world-clock': { name: 'World Clock', enabled: true, priority: 2 },
   monitors: { name: 'My Monitors', enabled: true, priority: 2 },
+  'latest-brief': { name: 'Latest Brief', enabled: true, priority: 1, premium: 'locked' as const },
 };
 
 const FINANCE_MAP_LAYERS: MapLayers = {
@@ -501,13 +564,14 @@ const FINANCE_MAP_LAYERS: MapLayers = {
   tradeRoutes: true,
   iranAttacks: false,
   ciiChoropleth: false,
+  resilienceScore: false,
   dayNight: false,
   // Commodity layers (disabled in finance variant)
   miningSites: false,
   processingPlants: false,
   commodityPorts: false,
   webcams: false,
-  weatherRadar: false, diseaseOutbreaks: false,
+  diseaseOutbreaks: false,
 };
 
 const FINANCE_MOBILE_MAP_LAYERS: MapLayers = {
@@ -562,13 +626,14 @@ const FINANCE_MOBILE_MAP_LAYERS: MapLayers = {
   tradeRoutes: false,
   iranAttacks: false,
   ciiChoropleth: false,
+  resilienceScore: false,
   dayNight: false,
   // Commodity layers (disabled in finance variant)
   miningSites: false,
   processingPlants: false,
   commodityPorts: false,
   webcams: false,
-  weatherRadar: false, diseaseOutbreaks: false,
+  diseaseOutbreaks: false,
 };
 
 // ============================================
@@ -639,13 +704,14 @@ const HAPPY_MAP_LAYERS: MapLayers = {
   tradeRoutes: false,
   iranAttacks: false,
   ciiChoropleth: false,
+  resilienceScore: false,
   dayNight: false,
   // Commodity layers (disabled)
   miningSites: false,
   processingPlants: false,
   commodityPorts: false,
   webcams: false,
-  weatherRadar: false, diseaseOutbreaks: false,
+  diseaseOutbreaks: false,
 };
 
 const HAPPY_MOBILE_MAP_LAYERS: MapLayers = {
@@ -700,13 +766,14 @@ const HAPPY_MOBILE_MAP_LAYERS: MapLayers = {
   tradeRoutes: false,
   iranAttacks: false,
   ciiChoropleth: false,
+  resilienceScore: false,
   dayNight: false,
   // Commodity layers (disabled)
   miningSites: false,
   processingPlants: false,
   commodityPorts: false,
   webcams: false,
-  weatherRadar: false, diseaseOutbreaks: false,
+  diseaseOutbreaks: false,
 };
 
 // ============================================
@@ -717,6 +784,8 @@ const COMMODITY_PANELS: Record<string, PanelConfig> = {
   'live-news': { name: 'Commodity Headlines', enabled: true, priority: 1 },
   insights: { name: 'AI Commodity Insights', enabled: true, priority: 1 },
   'commodity-news': { name: 'Commodity News', enabled: true, priority: 1 },
+  'liquidity-shifts': { name: 'Liquidity Shifts', enabled: true, priority: 1 },
+  'positioning-247': { name: '24/7 Positioning', enabled: true, priority: 1 },
   'gold-silver': { name: 'Gold & Silver', enabled: true, priority: 1 },
   energy: { name: 'Energy Markets', enabled: true, priority: 1 },
   'mining-news': { name: 'Mining News', enabled: true, priority: 1 },
@@ -724,13 +793,22 @@ const COMMODITY_PANELS: Record<string, PanelConfig> = {
   'base-metals': { name: 'Base Metals', enabled: true, priority: 1 },
   'mining-companies': { name: 'Mining Companies', enabled: true, priority: 1 },
   'supply-chain': { name: 'Supply Chain & Logistics', enabled: true, priority: 1 },
+  'china-corridors': { name: 'China Logistics Corridors', enabled: false, priority: 2 },
+  'china-activity-nowcast': { name: 'China Activity Nowcast', enabled: false, priority: 2 },
   'commodity-regulation': { name: 'Regulation & Policy', enabled: true, priority: 1 },
   markets: { name: 'Commodity Markets', enabled: true, priority: 1 },
   commodities: { name: 'Live Metals & Materials', enabled: true, priority: 1 },
   'energy-complex': { name: 'Energy Complex', enabled: true, priority: 1 },
+  // Required for commodity variant's pipeline-click path — see FINANCE_PANELS
+  // for the same rationale: `pipelines: true` + unified Redis-backed layer +
+  // energy:open-pipeline-detail dispatch means the listener must be present
+  // for the click to do anything. Codex P1.
+  'pipeline-status': { name: 'Oil & Gas Pipeline Status', enabled: false, priority: 2 },
+  'oil-inventories': { name: 'Oil Inventories', enabled: true, priority: 60 },
+  'gold-intelligence': { name: 'Gold Intelligence', enabled: true, priority: 60 },
   heatmap: { name: 'Sector Heatmap', enabled: true, priority: 1 },
   'macro-signals': { name: 'Market Regime', enabled: true, priority: 1 },
-  'trade-policy': { name: 'Trade Policy', enabled: true, priority: 1 },
+  'trade-policy': { name: 'Trade Policy', enabled: true, priority: 1, premium: 'locked' as const },
   'sanctions-pressure': { name: 'Sanctions Pressure', enabled: true, priority: 1 },
   economic: { name: 'Macro Stress', enabled: true, priority: 1 },
   'gulf-economies': { name: 'Gulf & OPEC Economies', enabled: true, priority: 1 },
@@ -740,6 +818,7 @@ const COMMODITY_PANELS: Record<string, PanelConfig> = {
   polymarket: { name: 'Commodity Predictions', enabled: true, priority: 2 },
   'world-clock': { name: 'World Clock', enabled: true, priority: 2 },
   monitors: { name: 'My Monitors', enabled: true, priority: 2 },
+  'latest-brief': { name: 'Latest Brief', enabled: true, priority: 1, premium: 'locked' as const },
 };
 
 const COMMODITY_MAP_LAYERS: MapLayers = {
@@ -794,13 +873,14 @@ const COMMODITY_MAP_LAYERS: MapLayers = {
   tradeRoutes: true,
   iranAttacks: false,
   ciiChoropleth: false,
+  resilienceScore: false,
   dayNight: false,
   // Commodity layers (enabled)
   miningSites: true,
   processingPlants: true,
   commodityPorts: true,
   webcams: false,
-  weatherRadar: false, diseaseOutbreaks: false,
+  diseaseOutbreaks: false,
 };
 
 const COMMODITY_MOBILE_MAP_LAYERS: MapLayers = {
@@ -855,23 +935,205 @@ const COMMODITY_MOBILE_MAP_LAYERS: MapLayers = {
   tradeRoutes: false,
   iranAttacks: false,
   ciiChoropleth: false,
+  resilienceScore: false,
   dayNight: false,
   // Commodity layers (limited on mobile)
   miningSites: true,
   processingPlants: false,
   commodityPorts: true,
   webcams: false,
-  weatherRadar: false, diseaseOutbreaks: false,
+  diseaseOutbreaks: false,
+};
+
+// ============================================
+// ENERGY variant — energy.worldmonitor.app
+// Pipelines, storage, chokepoints, fuel shortages, disruption timeline.
+// See docs/internal/global-energy-flow-parity-and-surpass.md (not committed).
+// ============================================
+const ENERGY_PANELS: Record<string, PanelConfig> = {
+  map: { name: 'Energy Atlas Map', enabled: true, priority: 1 },
+  'energy-risk-overview': { name: 'Global Energy Risk Overview', enabled: true, priority: 1 },
+  'chokepoint-strip': { name: 'Chokepoint Status', enabled: true, priority: 1 },
+  'pipeline-status': { name: 'Oil & Gas Pipeline Status', enabled: true, priority: 1 },
+  'storage-facility-map': { name: 'Strategic Storage Atlas', enabled: true, priority: 1 },
+  'fuel-shortages': { name: 'Global Fuel Shortage Registry', enabled: true, priority: 1 },
+  'energy-disruptions': { name: 'Energy Disruptions Log', enabled: true, priority: 1 },
+  'live-news': { name: 'Energy Headlines', enabled: true, priority: 1 },
+  insights: { name: 'AI Energy Insights', enabled: true, priority: 1 },
+  // Energy complex — existing panels reused at launch
+  'energy-complex': { name: 'Oil & Gas Complex', enabled: true, priority: 1 },
+  'oil-inventories': { name: 'Oil & Gas Inventories', enabled: true, priority: 1 },
+  'hormuz-tracker': { name: 'Strait of Hormuz Tracker', enabled: true, priority: 1 },
+  'energy-crisis': { name: 'Energy Crisis Policy Tracker', enabled: true, priority: 1 },
+  'fuel-prices': { name: 'Retail Fuel Prices', enabled: true, priority: 1 },
+  renewable: { name: 'Renewable Energy', enabled: true, priority: 2 },
+  // Markets relevant to energy
+  commodities: { name: 'Energy Commodities (WTI, Brent, NatGas)', enabled: true, priority: 1 },
+  energy: { name: 'Energy Markets News', enabled: true, priority: 1 },
+  'macro-signals': { name: 'Market Regime', enabled: true, priority: 2 },
+  // Supply-chain & chokepoint context
+  'supply-chain': { name: 'Chokepoints & Routes', enabled: true, priority: 1 },
+  'china-corridors': { name: 'China Logistics Corridors', enabled: false, priority: 2 },
+  'china-activity-nowcast': { name: 'China Activity Nowcast', enabled: false, priority: 2 },
+  'sanctions-pressure': { name: 'Sanctions Pressure', enabled: true, priority: 2 },
+  // Gulf / OPEC
+  'gulf-economies': { name: 'Gulf & OPEC Economies', enabled: true, priority: 2 },
+  'gcc-investments': { name: 'GCC Energy Investments', enabled: true, priority: 2 },
+  // Climate — demand driver (HDD / CDD future use)
+  climate: { name: 'Climate & Weather Impact', enabled: true, priority: 2 },
+  // Tracking
+  monitors: { name: 'My Monitors', enabled: true, priority: 3 },
+  'world-clock': { name: 'World Clock', enabled: true, priority: 3 },
+  'latest-brief': { name: 'Latest Brief', enabled: true, priority: 1, premium: 'locked' as const },
+};
+
+const ENERGY_MAP_LAYERS: MapLayers = {
+  gpsJamming: false,
+  satellites: false,
+  conflicts: false,
+  bases: false,
+  cables: false,
+  pipelines: true,        // First-class energy asset (Week 2 registry lands here)
+  hotspots: false,
+  ais: true,              // Tanker positions at chokepoints
+  nuclear: false,
+  irradiators: false,
+  sanctions: true,        // Energy sanctions flows
+  weather: true,
+  economic: false,
+  waterways: true,        // Strategic chokepoints (Hormuz, Suez, Bab el-Mandeb, etc.)
+  outages: true,          // Power / energy system status
+  cyberThreats: false,
+  datacenters: false,
+  protests: false,
+  flights: false,
+  military: false,
+  natural: true,          // Earthquakes near energy infrastructure
+  spaceports: false,
+  minerals: true,         // Critical-minerals + energy-transition overlap
+  fires: true,            // Fires near energy infrastructure / oilfields
+  // Data source layers
+  ucdpEvents: false,
+  displacement: false,
+  climate: true,
+  // Tech layers (disabled)
+  startupHubs: false,
+  cloudRegions: false,
+  accelerators: false,
+  techHQs: false,
+  techEvents: false,
+  // Finance layers (energy hubs = commodity hubs for our purposes)
+  stockExchanges: false,
+  financialCenters: false,
+  centralBanks: false,
+  commodityHubs: true,
+  gulfInvestments: false,
+  // Happy variant layers (disabled)
+  positiveEvents: false,
+  kindness: false,
+  happiness: false,
+  speciesRecovery: false,
+  renewableInstallations: false,
+  tradeRoutes: true,
+  iranAttacks: false,
+  ciiChoropleth: false,
+  resilienceScore: false,
+  dayNight: false,
+  // Commodity layers — selected (energy-relevant subset)
+  miningSites: false,
+  processingPlants: false,
+  commodityPorts: true,   // LNG import/export + crude terminals
+  webcams: false,
+  diseaseOutbreaks: false,
+  storageFacilities: true, // UGS / SPR / LNG / crude hubs (Day 9-10 registry)
+  fuelShortages: true,     // Global fuel shortage alerts (Day 11-12 registry)
+  liveTankers: true,       // AIS ship type 80-89 inside chokepoint bboxes (parity-push PR 3)
+};
+
+const ENERGY_MOBILE_MAP_LAYERS: MapLayers = {
+  gpsJamming: false,
+  satellites: false,
+  conflicts: false,
+  bases: false,
+  cables: false,
+  pipelines: true,
+  hotspots: false,
+  ais: false,
+  nuclear: false,
+  irradiators: false,
+  sanctions: false,
+  weather: false,
+  economic: false,
+  waterways: true,
+  outages: false,
+  cyberThreats: false,
+  datacenters: false,
+  protests: false,
+  flights: false,
+  military: false,
+  natural: true,
+  spaceports: false,
+  minerals: false,
+  fires: false,
+  ucdpEvents: false,
+  displacement: false,
+  climate: false,
+  startupHubs: false,
+  cloudRegions: false,
+  accelerators: false,
+  techHQs: false,
+  techEvents: false,
+  stockExchanges: false,
+  financialCenters: false,
+  centralBanks: false,
+  commodityHubs: false,
+  gulfInvestments: false,
+  positiveEvents: false,
+  kindness: false,
+  happiness: false,
+  speciesRecovery: false,
+  renewableInstallations: false,
+  tradeRoutes: false,
+  iranAttacks: false,
+  ciiChoropleth: false,
+  resilienceScore: false,
+  dayNight: false,
+  miningSites: false,
+  processingPlants: false,
+  commodityPorts: true,
+  webcams: false,
+  diseaseOutbreaks: false,
+  storageFacilities: true,
+  fuelShortages: true,
+  liveTankers: true,
 };
 
 // ============================================
 // UNIFIED PANEL REGISTRY
 // ============================================
 
-/** All panels from all variants — union with FULL taking precedence for duplicate keys. */
+type PanelVariant = 'full' | 'tech' | 'finance' | 'commodity' | 'energy' | 'happy';
+
+const VARIANT_PANEL_CONFIGS: Record<PanelVariant, Record<string, PanelConfig>> = {
+  full: FULL_PANELS,
+  tech: TECH_PANELS,
+  finance: FINANCE_PANELS,
+  commodity: COMMODITY_PANELS,
+  energy: ENERGY_PANELS,
+  happy: HAPPY_PANELS,
+};
+
+function getVariantPanelConfigs(variant: string): Record<string, PanelConfig> | undefined {
+  return Object.prototype.hasOwnProperty.call(VARIANT_PANEL_CONFIGS, variant)
+    ? VARIANT_PANEL_CONFIGS[variant as PanelVariant]
+    : undefined;
+}
+
+/** All panels from all variants — canonical cross-variant registry. */
 export const ALL_PANELS: Record<string, PanelConfig> = {
   ...HAPPY_PANELS,
   ...COMMODITY_PANELS,
+  ...ENERGY_PANELS,
   ...TECH_PANELS,
   ...FINANCE_PANELS,
   ...FULL_PANELS,
@@ -879,11 +1141,12 @@ export const ALL_PANELS: Record<string, PanelConfig> = {
 
 /** Per-variant canonical panel order (keys = which panels are enabled by default). */
 export const VARIANT_DEFAULTS: Record<string, string[]> = {
-  full:      Object.keys(FULL_PANELS),
-  tech:      Object.keys(TECH_PANELS),
-  finance:   Object.keys(FINANCE_PANELS),
-  commodity: Object.keys(COMMODITY_PANELS),
-  happy:     Object.keys(HAPPY_PANELS),
+  full:      Object.keys(VARIANT_PANEL_CONFIGS.full),
+  tech:      Object.keys(VARIANT_PANEL_CONFIGS.tech),
+  finance:   Object.keys(VARIANT_PANEL_CONFIGS.finance),
+  commodity: Object.keys(VARIANT_PANEL_CONFIGS.commodity),
+  energy:    Object.keys(VARIANT_PANEL_CONFIGS.energy),
+  happy:     Object.keys(VARIANT_PANEL_CONFIGS.happy),
 };
 
 /**
@@ -906,6 +1169,11 @@ export const VARIANT_PANEL_OVERRIDES: Partial<Record<string, Partial<Record<stri
     'live-news': { name: 'Commodity Headlines' },
     insights:    { name: 'AI Commodity Insights' },
   },
+  energy: {
+    map:         { name: 'Energy Atlas Map' },
+    'live-news': { name: 'Energy Headlines' },
+    insights:    { name: 'AI Energy Insights' },
+  },
   happy: {
     map:         { name: 'World Map' },
   },
@@ -916,14 +1184,56 @@ export const VARIANT_PANEL_OVERRIDES: Partial<Record<string, Partial<Record<stri
  * applying variant-specific display overrides (name, premium, etc.).
  */
 export function getEffectivePanelConfig(key: string, variant: string): PanelConfig {
-  const base = ALL_PANELS[key];
+  const base = getVariantPanelConfigs(variant)?.[key] ?? ALL_PANELS[key];
   if (!base) return { name: key, enabled: false, priority: 2 };
   const override = VARIANT_PANEL_OVERRIDES[variant]?.[key] ?? {};
   return { ...base, ...override };
 }
 
+/**
+ * Returns true if `key` is in the current variant's default panel set.
+ *
+ * App.ts:577-583 merges ALL_PANELS into panelSettings on every variant so
+ * users can cross-enable panels, which makes `shouldCreatePanel(key)`
+ * (which just checks `key in panelSettings`) true everywhere. Auto-refresh
+ * paths that fan out a fetch must instead gate on the variant defaults —
+ * otherwise variants whose backend doesn't seed the panel's bootstrap key
+ * (e.g. tech-readiness on commodity/finance/energy) blow their 5s fetch
+ * budget on a key that will never populate.
+ */
+const SITE_VARIANT_DEFAULTS = new Set(VARIANT_DEFAULTS[SITE_VARIANT] ?? []);
+
+export function isPanelInVariantDefaults(key: string): boolean {
+  return SITE_VARIANT_DEFAULTS.has(key);
+}
+
 export const FREE_MAX_PANELS = 40;
 export const FREE_MAX_SOURCES = 80;
+
+export function isFreePanelCapCounted(key: string): boolean {
+  return key !== 'map' && !key.startsWith('cw-');
+}
+
+export function countFreePanelCapUsage(panelSettings: Record<string, PanelConfig>): number {
+  return Object.entries(panelSettings).filter(([key, panel]) =>
+    panel.enabled && isFreePanelCapCounted(key)
+  ).length;
+}
+
+export function restoreFreeMapPanelAccess(
+  panelSettings: Record<string, PanelConfig>,
+): Record<string, PanelConfig> {
+  const next: Record<string, PanelConfig> = {};
+  for (const [key, config] of Object.entries(panelSettings)) {
+    next[key] = { ...config };
+  }
+
+  if (next.map?.enabled === false && countFreePanelCapUsage(next) > FREE_MAX_PANELS) {
+    next.map = { ...next.map, enabled: true };
+  }
+
+  return next;
+}
 
 /**
  * Returns true if the current user is entitled to enable/view this panel.
@@ -931,7 +1241,9 @@ export const FREE_MAX_SOURCES = 80;
  */
 export function isPanelEntitled(key: string, config: PanelConfig, isPro = false): boolean {
   if (!config.premium) return true;
-  const apiKeyPanels = ['stock-analysis', 'stock-backtest', 'daily-market-brief', 'market-implications', 'deduction', 'chat-analyst'];
+  // Dodo entitlements unlock all premium panels
+  if (isEntitled()) return true;
+  const apiKeyPanels = ['stock-analysis', 'stock-backtest', 'daily-market-brief', 'market-implications', 'regional-intelligence', 'deduction', 'chat-analyst', 'wsb-ticker-scanner', 'trade-policy', 'global-procurement'];
   if (apiKeyPanels.includes(key)) {
     return getSecretState('WORLDMONITOR_API_KEY').present || isPro;
   }
@@ -939,6 +1251,113 @@ export function isPanelEntitled(key: string, config: PanelConfig, isPro = false)
     return isDesktopRuntime();
   }
   return true;
+}
+
+/**
+ * Clamp a panel-settings map to the free-tier panel cap. Single source of
+ * truth for the count limit so App boot, the settings/search add paths, and
+ * the dashboard-tab add/switch/load paths all enforce the SAME ceiling.
+ *
+ * Returns a NEW map; the input is never mutated. For free users: cw-*
+ * custom-widget panels are a pro
+ * feature and are always disabled. The map is free baseline infrastructure
+ * and never consumes a capped panel slot. Among the remaining enabled panels
+ * the lowest-priority ones past FREE_MAX_PANELS are disabled (priority asc,
+ * key tiebreak — identical ordering to App.enforceFreeTierLimits).
+ *
+ * Pro users get the same panel eligibility, plus the inverse of the cw-* gate:
+ * widgets this helper previously hid are restored (see restoreProGatedPanels).
+ *
+ * `isPro` is passed in (rather than read here) to keep this a pure config
+ * helper with no service-state dependency, matching isPanelEntitled above.
+ */
+export function enforceFreePanelLimit(
+  panelSettings: Record<string, PanelConfig>,
+  isPro: boolean,
+): Record<string, PanelConfig> {
+  if (isPro) return restoreProGatedPanels(panelSettings);
+
+  const next: Record<string, PanelConfig> = {};
+  for (const [key, config] of Object.entries(panelSettings)) {
+    next[key] = { ...config };
+  }
+
+  // cw-* custom widgets are pro-only — never enabled on the free tier.
+  // Stamp `proGated` so restoreProGatedPanels can tell this apart from a
+  // widget the user hid themselves and put it back when they go Pro.
+  for (const key of Object.keys(next)) {
+    if (key.startsWith('cw-') && next[key]?.enabled) {
+      next[key] = { ...next[key]!, enabled: false, proGated: true };
+    }
+  }
+
+  const enabledKeys = Object.entries(next)
+    .filter(([k, v]) => v.enabled && isFreePanelCapCounted(k))
+    .sort(([ka, a], [kb, b]) => (a.priority ?? 99) - (b.priority ?? 99) || ka.localeCompare(kb))
+    .map(([k]) => k);
+
+  for (const key of enabledKeys.slice(FREE_MAX_PANELS)) {
+    next[key] = { ...next[key]!, enabled: false };
+  }
+
+  return next;
+}
+
+/**
+ * Inverse of the cw-* half of `enforceFreePanelLimit`: re-enable the custom
+ * widgets that the free-tier gate hid, and clear the marker.
+ *
+ * Without this the gate is a one-way door. `enforceFreePanelLimit` writes
+ * straight into STORAGE_KEYS.panels, so once a widget is disabled nothing
+ * ever turns it back on — a user who upgrades to Pro (or whose Pro session
+ * simply resolved late, see App.enforceFreeTierLimits) would find their
+ * widgets permanently missing from the dashboard even though the specs are
+ * still in wm-custom-widgets.
+ *
+ * Only panels carrying `proGated` are touched, so a widget the user hid
+ * deliberately via the settings toggle stays hidden.
+ */
+export function restoreProGatedPanels(
+  panelSettings: Record<string, PanelConfig>,
+): Record<string, PanelConfig> {
+  const next: Record<string, PanelConfig> = {};
+  for (const [key, config] of Object.entries(panelSettings)) {
+    if (config.proGated) {
+      const { proGated: _proGated, ...rest } = config;
+      next[key] = { ...rest, enabled: true };
+    } else {
+      next[key] = { ...config };
+    }
+  }
+  return next;
+}
+
+/**
+ * True while the session's tier is still unknowable, so the persisted
+ * free-tier clamp must not run yet. Two windows qualify:
+ *
+ * - Clerk hasn't settled (`authPending`) — a signed-in Pro user is
+ *   indistinguishable from an anonymous one.
+ * - Clerk settled on a signed-in user but the Convex entitlement snapshot
+ *   hasn't arrived (`hasUser && !entitlementLoaded`) — isEntitled() is
+ *   deterministically false until the snapshot lands, so a Convex-only Pro
+ *   subscriber would be clamped as free.
+ *
+ * `deadlineExceeded` is the AUTH_SETTLE_GRACE_MS backstop: once the grace
+ * timer fires, enforcement proceeds with whatever tier signals exist, so a
+ * snapshot that never arrives cannot defer the caps forever.
+ *
+ * Pure on plain booleans (no service imports) to keep this a config helper,
+ * matching isPanelEntitled above.
+ */
+export function shouldDeferFreeTierEnforcement(
+  authPending: boolean,
+  hasUser: boolean,
+  entitlementLoaded: boolean,
+  deadlineExceeded: boolean,
+): boolean {
+  if (deadlineExceeded) return false;
+  return authPending || (hasUser && !entitlementLoaded);
 }
 
 // ============================================
@@ -950,25 +1369,29 @@ export const DEFAULT_PANELS: Record<string, PanelConfig> = Object.fromEntries(
   )
 );
 
-export const DEFAULT_MAP_LAYERS = SITE_VARIANT === 'happy' 
-  ? HAPPY_MAP_LAYERS 
-  : SITE_VARIANT === 'tech' 
-    ? TECH_MAP_LAYERS 
-    : SITE_VARIANT === 'finance' 
-      ? FINANCE_MAP_LAYERS 
+export const DEFAULT_MAP_LAYERS = SITE_VARIANT === 'happy'
+  ? HAPPY_MAP_LAYERS
+  : SITE_VARIANT === 'tech'
+    ? TECH_MAP_LAYERS
+    : SITE_VARIANT === 'finance'
+      ? FINANCE_MAP_LAYERS
       : SITE_VARIANT === 'commodity'
         ? COMMODITY_MAP_LAYERS
-        : FULL_MAP_LAYERS;
+        : SITE_VARIANT === 'energy'
+          ? ENERGY_MAP_LAYERS
+          : FULL_MAP_LAYERS;
 
-export const MOBILE_DEFAULT_MAP_LAYERS = SITE_VARIANT === 'happy' 
-  ? HAPPY_MOBILE_MAP_LAYERS 
-  : SITE_VARIANT === 'tech' 
-    ? TECH_MOBILE_MAP_LAYERS 
-    : SITE_VARIANT === 'finance' 
-      ? FINANCE_MOBILE_MAP_LAYERS 
+export const MOBILE_DEFAULT_MAP_LAYERS = SITE_VARIANT === 'happy'
+  ? HAPPY_MOBILE_MAP_LAYERS
+  : SITE_VARIANT === 'tech'
+    ? TECH_MOBILE_MAP_LAYERS
+    : SITE_VARIANT === 'finance'
+      ? FINANCE_MOBILE_MAP_LAYERS
       : SITE_VARIANT === 'commodity'
         ? COMMODITY_MOBILE_MAP_LAYERS
-        : FULL_MOBILE_MAP_LAYERS;
+        : SITE_VARIANT === 'energy'
+          ? ENERGY_MOBILE_MAP_LAYERS
+          : FULL_MOBILE_MAP_LAYERS;
 
 /** Maps map-layer toggle keys to their data-freshness source IDs (single source of truth). */
 export const LAYER_TO_SOURCE: Partial<Record<keyof MapLayers, DataSourceId[]>> = {
@@ -995,77 +1418,94 @@ export const PANEL_CATEGORY_MAP: Record<string, { labelKey: string; panelKeys: s
   // All variants — essential panels
   core: {
     labelKey: 'header.panelCatCore',
-    panelKeys: ['map', 'live-news', 'live-webcams', 'windy-webcams', 'insights', 'strategic-posture'],
+    panelKeys: ['map', 'live-news', 'live-webcams', 'windy-webcams', 'insights', 'strategic-posture', 'latest-brief'],
   },
 
-  // Full (geopolitical) variant
+  // Full (geopolitical) variant — marketsFinance/topical/dataTracking are
+  // shared with the energy variant, which has no dedicated category block.
   intelligence: {
     labelKey: 'header.panelCatIntelligence',
-    panelKeys: ['cii', 'strategic-risk', 'intel', 'gdelt-intel', 'cascade', 'telegram-intel', 'forecast'],
+    panelKeys: ['cii', 'strategic-risk', 'threat-timeline', 'intel', 'gdelt-intel', 'cascade', 'telegram-intel', 'forecast', 'cross-source-signals', 'regional-intelligence', 'deduction', 'chat-analyst', 'thermal-escalation', 'social-velocity', 'geo-hubs'],
+    variants: ['full'],
   },
   correlation: {
     labelKey: 'header.panelCatCorrelation',
     panelKeys: ['military-correlation', 'escalation-correlation', 'economic-correlation', 'disaster-correlation'],
+    variants: ['full'],
   },
   regionalNews: {
     labelKey: 'header.panelCatRegionalNews',
     panelKeys: ['politics', 'us', 'europe', 'middleeast', 'africa', 'latam', 'asia'],
+    variants: ['full'],
   },
   marketsFinance: {
     labelKey: 'header.panelCatMarketsFinance',
-    panelKeys: ['commodities', 'energy-complex', 'markets', 'economic', 'trade-policy', 'sanctions-pressure', 'supply-chain', 'finance', 'polymarket', 'macro-signals', 'gulf-economies', 'etf-flows', 'stablecoins', 'crypto', 'heatmap'],
+    panelKeys: ['commodities', 'energy-complex', 'energy-risk-overview', 'pipeline-status', 'storage-facility-map', 'oil-inventories', 'fuel-prices', 'chokepoint-strip', 'fuel-shortages', 'energy-disruptions', 'hormuz-tracker', 'energy-crisis', 'markets', 'economic', 'global-procurement', 'trade-policy', 'sanctions-pressure', 'supply-chain', 'china-corridors', 'china-activity-nowcast', 'finance', 'polymarket', 'macro-signals', 'gulf-economies', 'etf-flows', 'stablecoins', 'crypto', 'heatmap', 'aaii-sentiment', 'cot-positioning', 'earnings-calendar', 'economic-calendar', 'fear-greed', 'fsi', 'macro-tiles', 'market-breadth', 'liquidity-shifts', 'national-debt', 'positioning-247', 'wsb-ticker-scanner', 'yield-curve', 'gold-intelligence', 'bigmac', 'fx', 'market-implications'],
+    variants: ['full', 'energy'],
   },
   topical: {
     labelKey: 'header.panelCatTopical',
     panelKeys: ['energy', 'gov', 'thinktanks', 'tech', 'ai', 'layoffs'],
+    variants: ['full', 'energy'],
   },
   dataTracking: {
     labelKey: 'header.panelCatDataTracking',
-    panelKeys: ['monitors', 'satellite-fires', 'ucdp-events', 'displacement', 'climate', 'population-exposure', 'security-advisories', 'radiation-watch', 'oref-sirens', 'world-clock', 'tech-readiness'],
+    panelKeys: ['monitors', 'satellite-fires', 'ucdp-events', 'displacement', 'climate', 'climate-news', 'population-exposure', 'security-advisories', 'radiation-watch', 'oref-sirens', 'world-clock', 'tech-readiness', 'disease-outbreaks', 'fao-food-price-index', 'grocery-basket', 'defense-patents'],
+    variants: ['full', 'energy'],
   },
 
   // Tech variant
   techAi: {
     labelKey: 'header.panelCatTechAi',
-    panelKeys: ['ai', 'tech', 'hardware', 'cloud', 'dev', 'github', 'producthunt', 'events', 'service-status', 'tech-readiness'],
+    panelKeys: ['ai', 'tech', 'hardware', 'cloud', 'dev', 'github', 'producthunt', 'events', 'service-status', 'tech-readiness', 'internet-disruptions', 'tech-hubs'],
+    variants: ['tech'],
   },
   startupsVc: {
     labelKey: 'header.panelCatStartupsVc',
     panelKeys: ['startups', 'vcblogs', 'regionalStartups', 'unicorns', 'accelerators', 'funding', 'ipo'],
+    variants: ['tech'],
   },
   securityPolicy: {
     labelKey: 'header.panelCatSecurityPolicy',
-    panelKeys: ['security', 'policy', 'regulation'],
+    panelKeys: ['security', 'policy', 'ai-regulation'],
+    variants: ['tech'],
   },
   techMarkets: {
     labelKey: 'header.panelCatMarkets',
-    panelKeys: ['markets', 'finance', 'crypto', 'economic', 'sanctions-pressure', 'polymarket', 'macro-signals', 'etf-flows', 'stablecoins', 'layoffs', 'monitors', 'world-clock'],
+    panelKeys: ['markets', 'finance', 'crypto', 'economic', 'global-procurement', 'sanctions-pressure', 'polymarket', 'macro-signals', 'etf-flows', 'stablecoins', 'layoffs', 'monitors', 'world-clock'],
+    variants: ['tech'],
   },
 
   // Finance variant
   finMarkets: {
     labelKey: 'header.panelCatMarkets',
     panelKeys: ['markets', 'stock-analysis', 'stock-backtest', 'daily-market-brief', 'markets-news', 'heatmap', 'macro-signals', 'analysis', 'polymarket'],
+    variants: ['finance'],
   },
   fixedIncomeFx: {
     labelKey: 'header.panelCatFixedIncomeFx',
-    panelKeys: ['forex', 'bonds'],
+    panelKeys: ['forex', 'fx', 'bonds'],
+    variants: ['finance'],
   },
   finCommodities: {
     labelKey: 'header.panelCatCommodities',
     panelKeys: ['commodities', 'energy-complex', 'commodities-news'],
+    variants: ['finance'],
   },
   cryptoDigital: {
     labelKey: 'header.panelCatCryptoDigital',
     panelKeys: ['crypto', 'crypto-heatmap', 'defi-tokens', 'ai-tokens', 'other-tokens', 'crypto-news', 'etf-flows', 'stablecoins', 'fintech'],
+    variants: ['finance'],
   },
   centralBanksEcon: {
     labelKey: 'header.panelCatCentralBanks',
-    panelKeys: ['centralbanks', 'economic', 'energy-complex', 'trade-policy', 'sanctions-pressure', 'supply-chain', 'economic-news'],
+    panelKeys: ['centralbanks', 'economic', 'global-procurement', 'energy-complex', 'trade-policy', 'sanctions-pressure', 'supply-chain', 'china-corridors', 'china-activity-nowcast', 'economic-news'],
+    variants: ['finance'],
   },
   dealsInstitutional: {
     labelKey: 'header.panelCatDeals',
-    panelKeys: ['ipo', 'derivatives', 'institutional', 'regulation'],
+    panelKeys: ['ipo', 'derivatives', 'institutional', 'fin-regulation'],
+    variants: ['finance'],
   },
   gulfMena: {
     labelKey: 'header.panelCatGulfMena',
@@ -1077,10 +1517,12 @@ export const PANEL_CATEGORY_MAP: Record<string, { labelKey: string; panelKeys: s
   commodityPrices: {
     labelKey: 'header.panelCatCommodityPrices',
     panelKeys: ['commodities', 'energy-complex', 'gold-silver', 'energy', 'base-metals', 'critical-minerals', 'markets', 'heatmap', 'macro-signals'],
+    variants: ['commodity'],
   },
   miningIndustry: {
     labelKey: 'header.panelCatMining',
-    panelKeys: ['commodity-news', 'mining-news', 'mining-companies', 'supply-chain', 'commodity-regulation'],
+    panelKeys: ['commodity-news', 'mining-news', 'mining-companies', 'supply-chain', 'china-corridors', 'china-activity-nowcast', 'commodity-regulation'],
+    variants: ['commodity'],
   },
   commodityEcon: {
     labelKey: 'header.panelCatCommodityEcon',
@@ -1092,12 +1534,46 @@ export const PANEL_CATEGORY_MAP: Record<string, { labelKey: string; panelKeys: s
   happyNews: {
     labelKey: 'header.panelCatHappyNews',
     panelKeys: ['positive-feed', 'progress', 'counters', 'spotlight', 'breakthroughs', 'digest'],
+    variants: ['happy'],
   },
   happyPlanet: {
     labelKey: 'header.panelCatHappyPlanet',
     panelKeys: ['species', 'renewable', 'giving'],
+    variants: ['happy'],
   },
 };
+
+export interface VariantPanelCategory {
+  key: string;
+  labelKey: string;
+  panelKeys: string[];
+}
+
+// Categories applicable to `variant` that contain at least one enabled panel.
+// Shared by the settings panel-tab filter and the mobile category nav —
+// callers prepend their own "all" entry and localize labelKey via t().
+export function getVariantPanelCategories(
+  panelSettings: Record<string, PanelConfig>,
+  variant: string,
+): VariantPanelCategory[] {
+  return Object.entries(PANEL_CATEGORY_MAP)
+    .filter(([, def]) => !def.variants || def.variants.includes(variant))
+    .filter(([, def]) => def.panelKeys.some((pk) => panelSettings[pk]?.enabled))
+    .map(([key, def]) => ({ key, labelKey: def.labelKey, panelKeys: def.panelKeys }));
+}
+
+// Enabled panels that carry a premium gate on the current surface — drives
+// the mobile nav's PRO chip. getEffectivePanelConfig folds in per-variant
+// premium overrides; unknown keys (custom widgets, MCP panels) resolve to a
+// premium-less stub and drop out.
+export function getProPanelKeys(
+  panelSettings: Record<string, PanelConfig>,
+  variant: string,
+): string[] {
+  return Object.keys(panelSettings).filter((key) =>
+    panelSettings[key]?.enabled && Boolean(getEffectivePanelConfig(key, variant).premium),
+  );
+}
 
 // Monitor palette — fixed category colors persisted to localStorage (not theme-dependent)
 export const MONITOR_COLORS = [

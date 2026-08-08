@@ -1,0 +1,125 @@
+---
+title: "基础设施级联分析"
+description: "针对全球关键基础设施与海底光缆的依赖图建模与实时监测，直观可视化电力、能源、通信、港口、金融等节点中断如何在国家与系统之间级联传播 —— 用于评估上下游连锁风险、供应链脆弱性、跨境影响面与应急预案的有效性，辅助战略研判、运营决策以及关键节点的韧性分析与风险量化评估。"
+---
+关键基础设施相互依赖。一条电缆断裂不仅影响连通性，还会在依赖的国家和系统中产生级联效应。级联分析与电缆监测系统将这些依赖关系可视化，并提供中断的早期预警。
+
+## 依赖图
+
+系统构建了一个包含 **350 个基础设施节点**和依赖边的图：
+
+| 节点类型 | 数量 | 示例 |
+|-----------|-------|----------|
+| **海底电缆** | 86 | MAREA、FLAG Europe-Asia、SEA-ME-WE 6 |
+| **管道** | 88 | Nord Stream、Trans-Siberian、Keystone |
+| **港口** | 62 | 新加坡、鹿特丹、深圳 |
+| **咽喉要道** | 9 | 苏伊士、霍尔木兹、马六甲、直布罗陀、博斯普鲁斯、达达尼尔 |
+| **国家** | 105 | 代表国家影响的末端节点 |
+
+## 级联计算
+
+当用户选择某项基础设施资产进行分析时，**广度优先级联**会在图中传播：
+
+```
+1. Start at source node (e.g., "cable:marea")
+2. For each dependent node:
+   impact = edge_strength × disruption_level × (1 - redundancy)
+3. Categorize impact:
+   - Critical: impact > 0.8
+   - High: impact > 0.5
+   - Medium: impact > 0.2
+   - Low: impact ≤ 0.2
+4. Recurse to depth 3 (prevent infinite loops)
+```
+
+## 冗余建模
+
+系统考虑了替代路由：
+
+- 冗余度高的电缆显示出降低的影响
+- 拥有多个电缆登陆点的国家显示出较低的脆弱性
+- 替代路由显示有容量百分比
+
+## 示例分析
+
+**MAREA 电缆中断**：
+```
+Source: MAREA (US ↔ Spain, 200 Tbps)
+Countries Affected: 4
+- Spain: Medium (redundancy via other Atlantic cables)
+- Portugal: Low (secondary landing)
+- France: Low (alternative routes via UK)
+- US: Low (high redundancy)
+Alternative Routes: TAT-14 (35%), Hibernia (22%), AEConnect (18%)
+```
+
+**FLAG Europe-Asia 中断**：
+```
+Source: FLAG Europe-Asia (UK ↔ Japan)
+Countries Affected: 7
+- India: Medium (major capacity share)
+- UAE, Saudi Arabia: Medium (limited alternatives)
+- UK, Japan: Low (high redundancy)
+Alternative Routes: SEA-ME-WE 6 (11%), 2Africa (8%), Falcon (8%)
+```
+
+## 使用场景
+
+- **预先部署**：了解哪些国家最易受特定基础设施故障的影响
+- **风险评估**：评估供应链对咽喉要道中断的暴露程度
+- **事件响应**：快速识别已报告的电缆断裂或管道损坏的下游影响
+
+## 海底电缆活动监测
+
+仪表板从官方海事预警系统监控实时电缆作业和通告，提供潜在连通性中断的早期预警。
+
+### 支撑端点
+
+| 方法 | 路由 | 馈入内容 |
+|--------|-------|---------------|
+| `GET` | `/api/infrastructure/v1/get-cable-health` | 电缆健康地图/工具提示与级联上下文。当电缆图层活动时，`fetchCableHealth()` 调用此 RPC，保持 1 分钟的本地缓存，服务端响应由 Redis 加 NGA 预警分析支撑。 |
+
+### 数据来源
+
+| 来源 | 覆盖范围 | 数据类型 |
+|--------|----------|-----------|
+| **NGA 预警** | 全球 | NAVAREA 海事预警 |
+| **电缆运营商** | 路由特定 | 维护通告 |
+
+### 工作原理
+
+系统从 NGA（国家地理空间情报局）海事预警中解析与电缆相关的活动：
+
+1. **关键词过滤**：提取包含 "CABLE"、"CABLESHIP"、"SUBMARINE CABLE"、"FIBER OPTIC" 的预警
+2. **坐标解析**：从预警文本中提取 DMS 和十进制坐标
+3. **电缆匹配**：将坐标与 5° 半径内最近的电缆路由匹配
+4. **严重性分类**：像 "FAULT"、"BREAK"、"DAMAGE" 这样的关键词指示故障；其他指示维护
+
+### 告警类型
+
+| 类型 | 触发条件 | 地图显示 |
+|------|---------|-------------|
+| **电缆通告** | 任何与电缆相关的 NAVAREA 预警 | 位置处的黄色标记 |
+| **维修船** | 在预警中检测到电缆船名称 | 带状态的船只图标 |
+
+### 维修船追踪
+
+当预警中提到电缆船时，系统提取：
+
+- **船名**：CS Reliance、Cable Innovator 等
+- **状态**："En route"（途中）或 "On station"（在站）
+- **位置**：当前作业区域
+- **关联电缆**：最近的电缆路由
+
+这使得在官方运营商公告之前监控正在进行的维修作业成为可能。
+
+### 为什么这很重要
+
+海底电缆承载了 95% 的洲际数据流量。电缆断裂可能：
+
+- 导致区域性互联网中断
+- 中断金融交易
+- 影响军事通信
+- 产生经济级联效应
+
+对电缆作业（即使是维护窗口）的早期可见性为应急规划提供了预警。

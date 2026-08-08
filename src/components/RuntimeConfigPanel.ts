@@ -15,13 +15,15 @@ import {
   type RuntimeFeatureId,
   type RuntimeSecretKey,
 } from '@/services/runtime-config';
-import { invokeTauri } from '@/services/tauri-bridge';
 import { escapeHtml } from '@/utils/sanitize';
 import { isDesktopRuntime } from '@/services/runtime';
+import { openExternalUrl } from '@/services/external-navigation';
 import { fetchOllamaModels as fetchOllamaModelsFromService } from '@/services/ollama-models';
 import { t } from '@/services/i18n';
 import { trackFeatureToggle } from '@/services/analytics';
 import { SIGNUP_URLS, PLAINTEXT_KEYS, MASKED_SENTINEL } from '@/services/settings-constants';
+import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
+
 
 interface RuntimeConfigPanelOptions {
   mode?: 'full' | 'alert';
@@ -236,7 +238,7 @@ export class RuntimeConfigPanel extends Panel {
       const alertClass = missingFeatures > 0 ? 'warn' : 'ok';
 
       this.setEffectiveVisibility(true);
-      this.content.innerHTML = `
+      setTrustedHtml(this.content, trustedHtml(`
         <section class="runtime-alert runtime-alert-${alertClass}" data-alert-state="${alertState}">
           <h3>${alertTitle}</h3>
           <p>
@@ -247,19 +249,19 @@ export class RuntimeConfigPanel extends Panel {
             ${t('modals.runtimeConfig.reserveEarlyAccess')}
           </button>
         </section>
-      `;
+      `, "legacy direct innerHTML migration"));
       this.attachListeners();
       return;
     }
 
-    this.content.innerHTML = `
+    setTrustedHtml(this.content, trustedHtml(`
       <div class="runtime-config-summary">
         ${desktop ? t('modals.runtimeConfig.summary.desktop') : t('modals.runtimeConfig.summary.web')} · ${features.filter(f => isFeatureAvailable(f.id)).length}/${features.length} ${t('modals.runtimeConfig.summary.available')}
       </div>
       <div class="runtime-config-list">
         ${features.map(feature => this.renderFeature(feature)).join('')}
       </div>
-    `;
+    `, "legacy direct innerHTML migration"));
 
     this.attachListeners();
   }
@@ -358,11 +360,9 @@ export class RuntimeConfigPanel extends Panel {
         e.preventDefault();
         const url = link.dataset.signupUrl;
         if (!url) return;
-        if (isDesktopRuntime()) {
-          void invokeTauri<void>('open_url', { url }).catch(() => window.open(url, '_blank'));
-        } else {
-          window.open(url, '_blank');
-        }
+        // Staged-but-unsaved secrets live in this panel; a same-tab navigation
+        // would discard them silently (#6137).
+        void openExternalUrl(url, null, { sameTabFallback: false });
       });
     });
 
@@ -371,11 +371,7 @@ export class RuntimeConfigPanel extends Panel {
     if (this.mode === 'alert') {
       this.content.querySelector<HTMLButtonElement>('[data-early-access]')?.addEventListener('click', () => {
         const url = 'https://www.worldmonitor.app/pro';
-        if (isDesktopRuntime()) {
-          void invokeTauri<void>('open_url', { url }).catch(() => window.open(url, '_blank'));
-        } else {
-          window.open(url, '_blank');
-        }
+        void openExternalUrl(url);
       });
       return;
     }
@@ -540,7 +536,7 @@ export class RuntimeConfigPanel extends Panel {
       || snapshot.secrets.OLLAMA_API_URL?.value
       || '';
     if (!ollamaUrl) {
-      select.innerHTML = '<option value="" disabled selected>Set Ollama URL first</option>';
+      setTrustedHtml(select, trustedHtml('<option value="" disabled selected>Set Ollama URL first</option>', "legacy direct innerHTML migration"));
       return;
     }
 
@@ -559,9 +555,9 @@ export class RuntimeConfigPanel extends Panel {
         return;
       }
 
-      select.innerHTML = models.map(name =>
+      setTrustedHtml(select, trustedHtml(models.map(name =>
         `<option value="${escapeHtml(name)}" ${name === currentModel ? 'selected' : ''}>${escapeHtml(name)}</option>`
-      ).join('');
+      ).join(''), "legacy direct innerHTML migration"));
 
       // Auto-select first model if none stored
       if (!currentModel && models.length > 0) {

@@ -1,139 +1,26 @@
 /**
- * RPC: getHumanitarianSummary -- Port from api/hapi.js
+ * RPC: getHumanitarianSummary -- reads the humanitarian summary cache that
+ * scripts/seed-conflict-intel.mjs populates from HDX HAPI.
  *
- * Queries the HAPI/HDX API for humanitarian conflict event counts,
- * aggregated per country by the most recent reference month.
- * Returns undefined summary on upstream failure (graceful degradation).
+ * Deliberately does NOT call HAPI directly on a cache miss. HDX's
+ * `app_identifier` rate limiting is tracked per-identifier, not per-IP
+ * (confirmed live: a fresh identifier from the same IP at the same instant
+ * got 200s while the flagged one got 429s — see #5554), so every HAPI call
+ * this app makes shares the same throttle bucket. A per-request fetch here
+ * would stack uncoordinated bursts on top of the seeder's own paced loop
+ * and blow HDX's ~1 req/s courtesy limit again within days. The seeder is
+ * the ONLY source of HAPI traffic; this handler just reads what it wrote.
  */
 
 import type {
   ServerContext,
   GetHumanitarianSummaryRequest,
   GetHumanitarianSummaryResponse,
-  HumanitarianCountrySummary,
 } from '../../../../src/generated/server/worldmonitor/conflict/v1/service_server';
 
-import { CHROME_UA } from '../../../_shared/constants';
-import { cachedFetchJson } from '../../../_shared/redis';
-import { ISO2_TO_ISO3 } from './_shared';
+import { getCachedJson } from '../../../_shared/redis';
 
 const REDIS_CACHE_KEY = 'conflict:humanitarian:v1';
-const REDIS_CACHE_TTL = 21600; // 6 hr — monthly humanitarian data
-
-interface HapiCountryAgg {
-  iso3: string;
-  locationName: string;
-  month: string;
-  eventsTotal: number;
-  eventsPoliticalViolence: number;
-  eventsCivilianTargeting: number;
-  eventsDemonstrations: number;
-  fatalitiesTotalPoliticalViolence: number;
-  fatalitiesTotalCivilianTargeting: number;
-}
-
-async function fetchHapiSummary(countryCode: string): Promise<HumanitarianCountrySummary | undefined> {
-  try {
-    const appId = btoa('worldmonitor:monitor@worldmonitor.app');
-    let url = `https://hapi.humdata.org/api/v2/coordination-context/conflict-events?output_format=json&limit=1000&offset=0&app_identifier=${appId}`;
-
-    // Filter by country — if a specific country was requested but has no ISO3 mapping,
-    // return undefined immediately rather than silently returning unrelated data (BLOCKING-1 fix)
-    if (countryCode) {
-      const iso3 = ISO2_TO_ISO3[countryCode.toUpperCase()];
-      if (!iso3) return undefined;
-      url += `&location_code=${iso3}`;
-    }
-
-    const response = await fetch(url, {
-      headers: { Accept: 'application/json', 'User-Agent': CHROME_UA },
-      signal: AbortSignal.timeout(15000),
-    });
-
-    if (!response.ok) return undefined;
-
-    const rawData = await response.json();
-    const records: any[] = rawData.data || [];
-
-    // Aggregate per country -- port exactly from api/hapi.js lines 82-108
-    const byCountry: Record<string, HapiCountryAgg> = {};
-    for (const r of records) {
-      const iso3 = r.location_code || '';
-      if (!iso3) continue;
-
-      const month = r.reference_period_start || '';
-      const eventType = (r.event_type || '').toLowerCase();
-      const events = r.events || 0;
-      const fatalities = r.fatalities || 0;
-
-      if (!byCountry[iso3]) {
-        byCountry[iso3] = {
-          iso3,
-          locationName: r.location_name || '',
-          month,
-          eventsTotal: 0,
-          eventsPoliticalViolence: 0,
-          eventsCivilianTargeting: 0,
-          eventsDemonstrations: 0,
-          fatalitiesTotalPoliticalViolence: 0,
-          fatalitiesTotalCivilianTargeting: 0,
-        };
-      }
-
-      const c = byCountry[iso3];
-      if (month > c.month) {
-        // Newer month -- reset
-        c.month = month;
-        c.eventsTotal = 0;
-        c.eventsPoliticalViolence = 0;
-        c.eventsCivilianTargeting = 0;
-        c.eventsDemonstrations = 0;
-        c.fatalitiesTotalPoliticalViolence = 0;
-        c.fatalitiesTotalCivilianTargeting = 0;
-      }
-      if (month === c.month) {
-        c.eventsTotal += events;
-        if (eventType.includes('political_violence')) {
-          c.eventsPoliticalViolence += events;
-          c.fatalitiesTotalPoliticalViolence += fatalities;
-        }
-        if (eventType.includes('civilian_targeting')) {
-          c.eventsCivilianTargeting += events;
-          c.fatalitiesTotalCivilianTargeting += fatalities;
-        }
-        if (eventType.includes('demonstration')) {
-          c.eventsDemonstrations += events;
-        }
-      }
-    }
-
-    // Pick the right country entry
-    let entry: HapiCountryAgg | undefined;
-    if (countryCode) {
-      const iso3 = ISO2_TO_ISO3[countryCode.toUpperCase()];
-      // iso3 is guaranteed non-null here (early return above handles missing mapping)
-      entry = iso3 ? byCountry[iso3] : undefined;
-      if (!entry) return undefined; // Country not in HAPI data
-    } else {
-      entry = Object.values(byCountry)[0];
-    }
-
-    if (!entry) return undefined;
-
-    return {
-      countryCode: countryCode ? countryCode.toUpperCase() : '',
-      countryName: entry.locationName,
-      conflictEventsTotal: entry.eventsTotal,
-      conflictPoliticalViolenceEvents: entry.eventsPoliticalViolence + entry.eventsCivilianTargeting,
-      conflictFatalities: entry.fatalitiesTotalPoliticalViolence + entry.fatalitiesTotalCivilianTargeting,
-      referencePeriod: entry.month,
-      conflictDemonstrations: entry.eventsDemonstrations,
-      updatedAt: Date.now(),
-    };
-  } catch {
-    return undefined;
-  }
-}
 
 export async function getHumanitarianSummary(
   _ctx: ServerContext,
@@ -141,14 +28,18 @@ export async function getHumanitarianSummary(
 ): Promise<GetHumanitarianSummaryResponse> {
   if (!req.countryCode) return { summary: undefined };
   try {
-    const cacheKey = `${REDIS_CACHE_KEY}:${req.countryCode || 'all'}`;
-
-    const result = await cachedFetchJson<GetHumanitarianSummaryResponse>(cacheKey, REDIS_CACHE_TTL, async () => {
-      const summary = await fetchHapiSummary(req.countryCode);
-      return summary ? { summary } : null;
-    });
-
-    return result || { summary: undefined };
+    // Normalized to match the seeder's uppercase keys (scripts/seed-conflict-intel.mjs
+    // writes conflict:humanitarian:v1:<UPPERCASE>) and the batch handler's sibling
+    // convention. The proto's buf.validate pattern (^[A-Z]{2}$) already rejects
+    // non-uppercase input at the RPC layer in normal operation, so this is defense
+    // in depth rather than a live bug -- but the old fetch-on-miss fallback used to
+    // self-heal any mismatch by hitting HAPI directly; that fallback is gone now, so
+    // a mismatched key would otherwise permanently miss instead of just being slow.
+    const countryCode = req.countryCode.trim().toUpperCase();
+    const cached = (await getCachedJson(`${REDIS_CACHE_KEY}:${countryCode}`)) as
+      | GetHumanitarianSummaryResponse
+      | null;
+    return cached ?? { summary: undefined };
   } catch {
     return { summary: undefined };
   }

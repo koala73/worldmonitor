@@ -3,13 +3,25 @@
  * Loaded when the app is opened with ?settings=1 (e.g. from the main window's Settings button).
  */
 import type { PanelConfig } from '@/types';
-import { DEFAULT_PANELS, STORAGE_KEYS, ALL_PANELS, VARIANT_DEFAULTS, getEffectivePanelConfig, isPanelEntitled, FREE_MAX_PANELS } from '@/config';
+import {
+  DEFAULT_PANELS,
+  STORAGE_KEYS,
+  ALL_PANELS,
+  VARIANT_DEFAULTS,
+  getEffectivePanelConfig,
+  isPanelEntitled,
+  FREE_MAX_PANELS,
+  countFreePanelCapUsage,
+  isFreePanelCapCounted,
+} from '@/config';
 import { isProUser } from '@/services/widget-store';
 import { SITE_VARIANT } from '@/config/variant';
 import { loadFromStorage, saveToStorage } from '@/utils';
 import { t } from '@/services/i18n';
 import { escapeHtml } from '@/utils/sanitize';
 import { isDesktopRuntime } from '@/services/runtime';
+import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
+
 
 function getLocalizedPanelName(panelKey: string, fallback: string): string {
   if (panelKey === 'runtime-config') {
@@ -32,6 +44,11 @@ export function initSettingsWindow(): void {
     STORAGE_KEYS.panels,
     DEFAULT_PANELS
   );
+  // Prune stale panel keys not in current registry (e.g. renamed panels)
+  const validPanelKeys = new Set(Object.keys(ALL_PANELS));
+  for (const key of Object.keys(panelSettings)) {
+    if (!validPanelKeys.has(key) && key !== 'runtime-config') delete panelSettings[key];
+  }
   const variantDefaults = new Set(VARIANT_DEFAULTS[SITE_VARIANT] ?? []);
   for (const key of Object.keys(ALL_PANELS)) {
     if (!(key in panelSettings)) {
@@ -47,26 +64,34 @@ export function initSettingsWindow(): void {
     );
     const panelHtml = panelEntries
       .map(
-        ([key, panel]) => `
+        ([key, panel]) => {
+          // Preserve saved config for dynamic cw-* panels; unknown keys should
+          // not collapse to getEffectivePanelConfig's disabled synthetic fallback.
+          const resolvedPanel = ALL_PANELS[key] ? getEffectivePanelConfig(key, SITE_VARIANT) : panel;
+          return `
         <div class="panel-toggle-item ${panel.enabled ? 'active' : ''}" data-panel="${escapeHtml(key)}">
           <div class="panel-toggle-checkbox">${panel.enabled ? '✓' : ''}</div>
-          <span class="panel-toggle-label">${escapeHtml(getLocalizedPanelName(key, panel.name))}</span>
+          <span class="panel-toggle-label">${escapeHtml(getLocalizedPanelName(key, resolvedPanel.name ?? panel.name))}</span>
         </div>
-      `
+      `;
+        }
       )
       .join('');
 
     const grid = document.getElementById('panelToggles');
     if (grid) {
-      grid.innerHTML = panelHtml;
+      setTrustedHtml(grid, trustedHtml(panelHtml, "legacy direct innerHTML migration"));
       grid.querySelectorAll('.panel-toggle-item').forEach((item) => {
         item.addEventListener('click', () => {
           const panelKey = (item as HTMLElement).dataset.panel!;
           const config = panelSettings[panelKey];
           if (config) {
-            if (!config.enabled && !isPanelEntitled(panelKey, ALL_PANELS[panelKey] ?? config, isProUser())) return;
-            if (!config.enabled && !isProUser()) {
-              const enabledCount = Object.entries(panelSettings).filter(([k, p]) => p.enabled && !k.startsWith('cw-')).length;
+            // Preserve saved config for dynamic cw-* panels; unknown keys should
+            // not collapse to getEffectivePanelConfig's disabled synthetic fallback.
+            const resolvedConfig = ALL_PANELS[panelKey] ? getEffectivePanelConfig(panelKey, SITE_VARIANT) : config;
+            if (!config.enabled && !isPanelEntitled(panelKey, resolvedConfig, isProUser())) return;
+            if (!config.enabled && !isProUser() && isFreePanelCapCounted(panelKey)) {
+              const enabledCount = countFreePanelCapUsage(panelSettings);
               if (enabledCount >= FREE_MAX_PANELS) return;
             }
             config.enabled = !config.enabled;
@@ -78,7 +103,7 @@ export function initSettingsWindow(): void {
     }
   }
 
-  appEl.innerHTML = `
+  setTrustedHtml(appEl, trustedHtml(`
     <div class="settings-window-shell">
       <div class="settings-window-header">
         <div class="settings-window-header-text">
@@ -89,7 +114,7 @@ export function initSettingsWindow(): void {
       </div>
       <div class="panel-toggle-grid" id="panelToggles"></div>
     </div>
-  `;
+  `, "legacy direct innerHTML migration"));
 
   document.getElementById('settingsWindowClose')?.addEventListener('click', () => {
     window.close();

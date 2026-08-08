@@ -1,13 +1,24 @@
 name: Deploy Gate
 
-# Runs whenever Test or Typecheck completes on a PR/push.
-# Checks whether BOTH workflows have passed for the same commit SHA.
+# Runs whenever Test, Typecheck, Lint Code, or Security Audit completes on a PR/push.
+# Checks whether all required PR smoke gates have passed for the same commit SHA.
 # Posts a commit status on the PR's head SHA so branch protection can see it.
+#
+# Also runs on a 30-minute schedule (and on demand) as a self-healing sweep
+# (#5479): event-driven evaluation alone can strand a PR — the check-runs API
+# can serve stale reads (~1 min normally, longer during GitHub degradation),
+# and the last workflow_run event for a SHA is the last time anything
+# re-evaluates. The sweep finds open-PR head SHAs whose gate status is still
+# "pending" and re-evaluates them, so a stranded PR heals within 30 minutes
+# with no manual re-run.
 
 on:
   workflow_run:
-    workflows: ["Test", "Typecheck"]
+    workflows: ["Test", "Typecheck", "Lint Code", "Security Audit"]
     types: [completed]
+  schedule:
+    - cron: "*/30 * * * *"
+  workflow_dispatch:
 
 permissions:
   statuses: write
@@ -16,51 +27,129 @@ jobs:
   gate:
     runs-on: ubuntu-latest
     steps:
-      - name: Check unit + typecheck both passed for this SHA
+      - name: Check required PR gates passed for this SHA
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
           SHA: ${{ github.event.workflow_run.head_sha }}
         run: |
-          # Poll check-runs for this SHA and find the latest result for each required job
-          runs=$(gh api "repos/$REPO/commits/$SHA/check-runs" \
-            --jq '.check_runs | map(select(.name == "unit" or .name == "typecheck"))')
+          set -o pipefail
+          # Every job of every workflow named in the workflow_run trigger above.
+          # A job missing here is never inspected, so it reports red on the PR
+          # while this gate still posts success — CI theatre, not a gate (#5402).
+          # tests/ci-workflow-coverage.test.mts fails when this list and those
+          # workflows drift apart in either direction. `audit-lockfile` is
+          # deliberately absent: it is a matrix job whose check runs are named
+          # `audit-lockfile (root)`, `audit-lockfile (scripts)`, … so a bare
+          # entry would wait on a check run that is never published; the
+          # always()-running `security-audit` aggregate blocks for it instead.
+          #
+          # Entries are check-run NAMES, and the lookup below keeps only the
+          # last-completed run per name. Test, Typecheck and Lint Code each
+          # define a job with the id `changes`; the latter two publish under
+          # `typecheck-changes` / `lint-changes` so all three are evaluated
+          # instead of two being masked by the third (#5822).
+          required='["changes","typecheck-changes","lint-changes","docs-stats","unit","consumer-prices","umami-postgres","sidecar","convex-tests","dom-tests","desktop-config","desktop-rust","variant-smoke-full","resilience-validation-smoke","digest-image","typecheck","biome","public-docs","mintlify-slugs","security-audit"]'
 
-          unit=$(echo "$runs" | python3 -c "
-          import sys, json
-          runs = json.load(sys.stdin)
-          matches = [r for r in runs if r['name'] == 'unit']
-          if not matches: print('pending')
-          else: print(sorted(matches, key=lambda r: r.get('completed_at') or '')[-1]['conclusion'] or 'pending')
+          if [ -n "$SHA" ]; then
+            # workflow_run event — evaluate exactly the triggering SHA.
+            shas="$SHA"
+          else
+            # schedule / workflow_dispatch — sweep open PRs whose gate status
+            # is still pending. Public-repo reads need no extra permission.
+            shas=$(gh api "repos/$REPO/pulls?state=open&per_page=100" --jq '.[].head.sha' | sort -u | while read -r s; do
+              # The API guarantees newest-first status history. Preserve that
+              # order because updated_at ties within the same second.
+              state=$(
+                gh api --paginate --slurp \
+                  "repos/$REPO/commits/$s/statuses?per_page=100" |
+                  jq -r 'flatten | map(select(.context == "gate")) | first | .state // "missing"'
+              )
+              if [ "$state" = "pending" ]; then echo "$s"; fi
+            done)
+            if [ -z "$shas" ]; then
+              echo "sweep: no open PRs with a pending gate status"
+              exit 0
+            fi
+            echo "sweep: re-evaluating pending gate on:"
+            echo "$shas"
+          fi
+
+          for SHA in $shas; do
+          echo "── evaluating $SHA"
+
+          # Poll check-runs for this SHA and find the latest result for each required job.
+          # Project to just the three fields the gate logic reads. A SHA can
+          # accumulate dozens of full check-run objects across re-runs; passing
+          # the un-projected JSON to python3 via the RUNS_JSON env var overflowed
+          # Linux's 128KB-per-arg/env limit (MAX_ARG_STRLEN) once it crossed
+          # ~131KB, failing the gate with "Argument list too long" (exit 126).
+          #
+          # #5479: the check-runs API can lag ~1 minute behind a job's completion,
+          # and workflow_run fires a bounded number of times per SHA — when the
+          # LAST event's single poll got a stale read, the posted "pending"
+          # status was never refreshed and the PR stayed stuck until a manual
+          # re-run (PRs #5476/#5475/#5481). When jobs still read as pending,
+          # re-poll a few times before concluding pending. The all-complete case
+          # breaks on the first pass, so the happy path costs nothing extra.
+          # NOTE: the python3 -c body must stay at column 0 of the block scalar —
+          # indenting it with the loops would be a Python IndentationError.
+          for attempt in 1 2 3 4 5; do
+            runs=$(gh api "repos/$REPO/commits/$SHA/check-runs?per_page=100" \
+              --jq ".check_runs | map(select(.name as \$name | $required | index(\$name)) | {name, conclusion, completed_at})")
+
+            status=$(RUNS_JSON="$runs" REQUIRED_JOBS="$required" python3 -c "
+          import json
+          import os
+
+          runs = json.loads(os.environ['RUNS_JSON'])
+          required = json.loads(os.environ['REQUIRED_JOBS'])
+          latest = {}
+
+          for name in required:
+            matches = [r for r in runs if r.get('name') == name]
+            if matches:
+              latest_run = sorted(matches, key=lambda r: r.get('completed_at') or '')[-1]
+              latest[name] = latest_run.get('conclusion') or 'pending'
+            else:
+              latest[name] = 'pending'
+
+          print(' '.join(f'{name}={latest[name]}' for name in required))
+          print('pending=' + ','.join(name for name in required if latest[name] == 'pending'))
+          print('failed=' + ','.join(name for name in required if latest[name] not in ('success', 'skipped')))
           ")
 
-          typecheck=$(echo "$runs" | python3 -c "
-          import sys, json
-          runs = json.load(sys.stdin)
-          matches = [r for r in runs if r['name'] == 'typecheck']
-          if not matches: print('pending')
-          else: print(sorted(matches, key=lambda r: r.get('completed_at') or '')[-1]['conclusion'] or 'pending')
-          ")
+            echo "attempt $attempt: $status"
+            pending=$(echo "$status" | awk -F= '/^pending=/ { print $2 }')
+            failed=$(echo "$status" | awk -F= '/^failed=/ { print $2 }')
 
-          echo "unit=$unit  typecheck=$typecheck"
+            if [ -z "$pending" ]; then
+              break
+            fi
+            if [ "$attempt" -lt 5 ]; then
+              sleep 30
+            fi
+          done
 
-          if [ "$unit" = "pending" ] || [ "$typecheck" = "pending" ]; then
+          if [ -n "$pending" ]; then
             gh api "repos/$REPO/statuses/$SHA" --method POST \
               --field state="pending" \
               --field context="gate" \
-              --field description="Waiting for unit + typecheck to complete"
-            exit 0
+              --field description="Waiting for required PR gates: $pending"
+            continue
           fi
 
-          if [ "$unit" != "success" ] || [ "$typecheck" != "success" ]; then
+          # Treat "skipped" as passing (docs-only PRs skip code checks)
+          if [ -n "$failed" ]; then
             gh api "repos/$REPO/statuses/$SHA" --method POST \
               --field state="failure" \
               --field context="gate" \
-              --field description="Required checks did not pass (unit=$unit typecheck=$typecheck)"
-            exit 0
+              --field description="Required PR gates did not pass: $failed"
+            continue
           fi
 
           gh api "repos/$REPO/statuses/$SHA" --method POST \
             --field state="success" \
             --field context="gate" \
-            --field description="unit + typecheck both passed"
+            --field description="All required PR gates passed"
+          done

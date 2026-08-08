@@ -64,7 +64,7 @@ export interface DeductContextDetail {
   autoSubmit?: boolean;
 }
 
-export type PropagandaRisk = 'low' | 'medium' | 'high';
+export type PropagandaRisk = 'low' | 'medium' | 'high' | 'unknown';
 
 export interface Feed {
   name: string;
@@ -73,7 +73,8 @@ export interface Feed {
   region?: string;
   propagandaRisk?: PropagandaRisk;
   stateAffiliated?: string;  // e.g., "Russia", "China", "Iran"
-  lang?: string;             // ISO 2-letter code for filtering
+  lang?: string;             // ISO 2-letter code for filtering (locale boost)
+  strategicDefault?: boolean; // always default-on regardless of UI language
 }
 
 export type ThreatLevel = 'critical' | 'high' | 'medium' | 'low' | 'info';
@@ -90,11 +91,30 @@ export interface ThreatClassification {
   source: 'keyword' | 'ml' | 'llm';
 }
 
+export type StoryPhase = 'breaking' | 'developing' | 'sustained' | 'fading';
+
+export interface StoryMeta {
+  firstSeen: number;        // epoch ms
+  mentionCount: number;
+  sourceCount: number;
+  phase: StoryPhase;
+}
+
+
 export interface NewsItem {
   source: string;
   title: string;
   link: string;
   pubDate: Date;
+  /**
+   * True when the upstream feed item had no parseable pubDate/published/
+   * updated timestamp. The `pubDate` field is still populated (synthesized
+   * stamp) for display, but ranking/recency consumers MUST route through
+   * `effectivePubDateMs` from feed-date.ts so these items don't claim
+   * false freshness. Optional so synthesized items from non-RSS producers
+   * don't need to set it explicitly — `undefined` is treated as `false`.
+   */
+  pubDateMissing?: boolean;
   isAlert: boolean;
   monitorColor?: string;
   tier?: number;
@@ -105,6 +125,23 @@ export interface NewsItem {
   lang?: string;
   happyCategory?: HappyContentCategory;
   imageUrl?: string;
+  importanceScore?: number;
+  corroborationCount?: number;
+  storyMeta?: StoryMeta;
+  /**
+   * Cleaned RSS/Atom article description — HTML-stripped, entity-decoded,
+   * whitespace-normalised, ≤400 chars. Empty string when the upstream feed
+   * didn't carry a description or it was indistinguishable from the headline.
+   * Consumers MUST fall back to `title` for display when absent (R6).
+   */
+  snippet?: string;
+  /**
+   * Stock tickers extracted at ingest (#4922a): cashtags + company-name
+   * dictionary matches from title + description. Uppercase, deduped,
+   * first-occurrence order, ≤8. Absent on pre-rollout cached items and
+   * non-digest producers.
+   */
+  tickers?: string[];
 }
 
 export type VelocityLevel = 'normal' | 'elevated' | 'spike';
@@ -244,6 +281,8 @@ export interface Hotspot {
 
 export interface StrategicWaterway {
   id: string;
+  /** Canonical chokepoint ID from chokepoint-registry.ts — same as id. */
+  chokepointId: string;
   name: string;
   lat: number;
   lon: number;
@@ -328,6 +367,8 @@ export interface ConflictZone {
   location?: string;
   description?: string;
   keyDevelopments?: string[];
+  peaceAgreements?: string[];
+  totalFatalities?: string;
 }
 
 
@@ -517,6 +558,10 @@ export interface NuclearFacility {
   type: NuclearFacilityType;
   status: 'active' | 'contested' | 'inactive' | 'decommissioned' | 'construction';
   operator?: string;  // Operating country
+  operationalSince?: string;
+  treaties?: string[];
+  iaeaStatus?: string;
+  keyEvents?: string[];
 }
 
 export interface GammaIrradiator {
@@ -583,6 +628,13 @@ export interface PanelConfig {
   enabled: boolean;
   priority?: number;
   premium?: 'locked' | 'enhanced';
+  /**
+   * Set by `enforceFreePanelLimit` when the free-tier pro gate — not the user —
+   * is what turned this panel off. Distinguishes "hidden because you aren't Pro"
+   * from "you hid it in settings", so the gate can be reversed on upgrade
+   * without overriding a deliberate choice. Only ever set on `cw-*` panels.
+   */
+  proGated?: boolean;
 }
 
 export interface MapLayers {
@@ -643,6 +695,8 @@ export interface MapLayers {
 
   // CII choropleth layer
   ciiChoropleth: boolean;
+  // Resilience choropleth layer
+  resilienceScore: boolean;
   // Overlay layers
   dayNight: boolean;
   // Commodity variant layers
@@ -650,9 +704,15 @@ export interface MapLayers {
   processingPlants: boolean;
   commodityPorts: boolean;
   webcams: boolean;
-  weatherRadar: boolean;
   // Health layers
   diseaseOutbreaks: boolean;
+  // Energy variant layers (new — optional so existing MapLayers literals
+  // across all other variants remain valid without touching them).
+  storageFacilities?: boolean;
+  fuelShortages?: boolean;
+  /** Live tanker positions (AIS ship type 80-89) inside chokepoint bboxes.
+   *  Refreshed every 60s via getVesselSnapshot. Energy Atlas parity-push. */
+  liveTankers?: boolean;
 }
 
 export interface AIDataCenter {
@@ -756,6 +816,7 @@ export interface SocialUnrestEvent {
   severity: ProtestSeverity;
   fatalities?: number;
   sources: string[];
+  sourceUrls?: string[];
   sourceType: ProtestSource;
   tags?: string[];
   actors?: string[];
@@ -822,6 +883,7 @@ export type MilitaryOperator =
 
 export interface MilitaryFlight {
   id: string;
+  source?: string;
   callsign: string;
   hexCode: string;             // ICAO 24-bit address
   registration?: string;
@@ -1058,6 +1120,22 @@ export interface PastTrackPoint {
   timestamp: number;
 }
 
+/** A single agency report retained on a canonical tropical cyclone event. */
+export interface CycloneAgencyObservation {
+  agency: string;
+  agencyId: string;
+  observedAt: number;
+  lat: number;
+  lon: number;
+  windKt?: number;
+  windAveragingPeriodMinutes?: number;
+  pressureMb?: number;
+  classification?: string;
+  status: string;
+  sourceName?: string;
+  sourceUrl?: string;
+}
+
 export interface NaturalEvent {
   id: string;
   title: string;
@@ -1084,6 +1162,11 @@ export interface NaturalEvent {
   forecastTrack?: ForecastPoint[];
   conePolygon?: number[][][];
   pastTrack?: PastTrackPoint[];
+  canonicalId?: string;
+  matchingConfidence?: string;
+  canonicalAliases?: string[];
+  windAveragingPeriodMinutes?: number;
+  agencyObservations?: CycloneAgencyObservation[];
 }
 
 // Infrastructure Cascade Types
@@ -1460,6 +1543,8 @@ export interface CountryBriefSignals {
   protests: number;
   militaryFlights: number;
   militaryVessels: number;
+  militaryFlightsInCountry: number;
+  militaryVesselsInCountry: number;
   outages: number;
   aisDisruptions: number;
   satelliteFires: number;

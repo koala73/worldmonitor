@@ -1,0 +1,40 @@
+{
+  "schemaVersion": 1,
+  "classification": {
+    "code": "H6",
+    "name": "HS2022",
+    "revisionYear": 2022,
+    "sourceUrl": "https://comtradeapi.un.org/files/v1/app/reference/H6.json"
+  },
+  "products": [
+    { "id": "semiconductors", "label": "Semiconductors", "tradeFlowCode": "8542", "tradeFlowCoverageStage": 1, "bilateralHs4Code": "8542" },
+    { "id": "batteries", "label": "Lithium-ion batteries", "tradeFlowCode": "850760", "tradeFlowCoverageStage": 2 },
+    { "id": "electric_vehicles", "label": "Electric vehicles", "bilateralLabel": "Passenger vehicles (including EVs)", "tradeFlowCode": "870380", "tradeFlowCoverageStage": 2, "bilateralHs4Code": "8703" },
+    { "id": "rare_earth_inputs", "label": "Rare-earth metals", "tradeFlowCode": "280530", "tradeFlowCoverageStage": 2 },
+    { "id": "solar_cells", "label": "Photovoltaic cells (unassembled)", "tradeFlowCode": "854142", "tradeFlowCoverageStage": 2 },
+    { "id": "solar_products", "label": "Photovoltaic modules and panels", "tradeFlowCode": "854143", "tradeFlowCoverageStage": 2 },
+    { "id": "crude_oil", "label": "Crude petroleum", "tradeFlowCode": "2709", "tradeFlowCoverageStage": 1, "bilateralHs4Code": "2709" },
+    { "id": "petroleum_gas_legacy", "label": "Petroleum gas (legacy HS4)", "tradeFlowCode": "2711", "tradeFlowCoverageStage": 1 },
+    { "id": "lng", "label": "Liquefied natural gas", "bilateralLabel": "LNG and petroleum gas", "tradeFlowCode": "271111", "tradeFlowCoverageStage": 2, "bilateralHs4Code": "2711" },
+    { "id": "coal", "label": "Coal", "tradeFlowCode": "2701", "tradeFlowCoverageStage": 2 },
+    { "id": "iron_ore", "label": "Iron ore and concentrates", "tradeFlowCode": "2601", "tradeFlowCoverageStage": 2 },
+    { "id": "copper", "label": "Copper ore and concentrates", "tradeFlowCode": "2603", "tradeFlowCoverageStage": 2 },
+    { "id": "gold", "label": "Gold", "tradeFlowCode": "7108", "tradeFlowCoverageStage": 1, "bilateralHs4Code": "7108" },
+    { "id": "arms", "label": "Arms and military equipment", "tradeFlowCode": "9301", "tradeFlowCoverageStage": 1 },
+    { "id": "telecom_equipment", "label": "Smartphones and telecom equipment", "bilateralHs4Code": "8517" },
+    { "id": "pharmaceuticals", "label": "Pharmaceuticals", "bilateralHs4Code": "3004" },
+    { "id": "refined_petroleum", "label": "Refined petroleum", "bilateralHs4Code": "2710" },
+    { "id": "computers", "label": "Computers", "bilateralHs4Code": "8471" },
+    { "id": "turbines", "label": "Turbojets and turbines", "bilateralHs4Code": "8411" },
+    { "id": "aluminium", "label": "Aluminium", "bilateralHs4Code": "7601" },
+    { "id": "ferroalloys", "label": "Ferroalloys (steel)", "bilateralHs4Code": "7202" },
+    { "id": "polyethylene", "label": "Plastics (polyethylene)", "bilateralHs4Code": "3901" },
+    { "id": "hydrocarbon_chemicals", "label": "Chemicals (hydrocarbons)", "bilateralHs4Code": "2902" },
+    { "id": "wheat", "label": "Wheat", "bilateralHs4Code": "1001" },
+    { "id": "soybeans", "label": "Soybeans", "bilateralHs4Code": "1201" },
+    { "id": "garments", "label": "Garments", "bilateralHs4Code": "6204" },
+    { "id": "pork", "label": "Pork", "bilateralHs4Code": "0203" },
+    { "id": "trucks", "label": "Trucks", "bilateralHs4Code": "8704" },
+    { "id": "vehicle_parts", "label": "Vehicle parts", "bilateralHs4Code": "8708" }
+  ]
+}

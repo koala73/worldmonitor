@@ -6,7 +6,7 @@
  *
  * Returns text/event-stream SSE:
  *   data: {"meta":{"sources":["Brief","Risk",...],"degraded":false}}  — always first event
- *   data: {"action":{"type":"suggest-widget","label":"...","prefill":"..."}}  — optional, visual queries only
+ *   data: {"action":{"type":"open_panel"|"set_view"|"...","label":"..."}}  — optional, schema-validated in-app actions
  *   data: {"delta":"..."}    — one per content token
  *   data: {"done":true}      — terminal event
  *   data: {"error":"..."}    — on auth/llm failure
@@ -16,8 +16,13 @@ export const config = { runtime: 'edge', regions: ['iad1', 'lhr1', 'fra1', 'sfo1
 
 // @ts-expect-error — JS module, no declaration file
 import { getCorsHeaders } from './_cors.js';
-import { isCallerPremium } from '../server/_shared/premium-check';
+// @ts-expect-error — JS module, no declaration file
+import { captureSilentError } from './_sentry-edge.js';
+import { renderBillingVerificationDenial } from '../server/_shared/entitlement-check';
+import { resolvePremiumCallerIdentity } from '../server/_shared/premium-check';
 import { checkRateLimit } from '../server/_shared/rate-limit';
+import { runRedisPipeline } from '../server/_shared/redis';
+import { DIRECT_LLM_DAILY_QUOTA_LIMIT, reserveDirectLlmQuota } from '../server/_shared/direct-llm-quota';
 import { assembleAnalystContext } from '../server/worldmonitor/intelligence/v1/chat-analyst-context';
 import { buildAnalystSystemPrompt } from '../server/worldmonitor/intelligence/v1/chat-analyst-prompt';
 import { buildActionEvents } from '../server/worldmonitor/intelligence/v1/chat-analyst-actions';
@@ -49,6 +54,30 @@ function json(body: unknown, status: number, cors: Record<string, string>): Resp
   });
 }
 
+function directLlmQuotaError(
+  status: 429 | 503,
+  retryAfterSec: number,
+  cors: Record<string, string>,
+  limit = DIRECT_LLM_DAILY_QUOTA_LIMIT,
+): Response {
+  const body = status === 429
+    ? {
+        error: 'Direct LLM daily quota exceeded',
+        limit,
+        resetsAt: 'next UTC midnight',
+      }
+    : { error: 'Direct LLM quota unavailable' };
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: {
+      'Content-Type': 'application/json',
+      'Cache-Control': 'no-store',
+      'Retry-After': String(retryAfterSec),
+      ...cors,
+    },
+  });
+}
+
 function prependSseEvents(events: Array<Record<string, unknown>>, stream: ReadableStream<Uint8Array>): ReadableStream<Uint8Array> {
   const enc = new TextEncoder();
   const prefixes = events.map((e) => enc.encode(`data: ${JSON.stringify(e)}\n\n`));
@@ -76,7 +105,7 @@ export default async function handler(req: Request): Promise<Response> {
       headers: {
         ...corsHeaders,
         'Access-Control-Allow-Methods': 'POST, OPTIONS',
-        'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-WorldMonitor-Key',
+        'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-WorldMonitor-Key, X-Api-Key',
       },
     });
   }
@@ -85,84 +114,145 @@ export default async function handler(req: Request): Promise<Response> {
     return json({ error: 'Method not allowed' }, 405, corsHeaders);
   }
 
-  const isPremium = await isCallerPremium(req);
-  if (!isPremium) {
-    return json({ error: 'Pro subscription required' }, 403, corsHeaders);
-  }
-
-  const rateLimitResponse = await checkRateLimit(req, corsHeaders);
-  if (rateLimitResponse) return rateLimitResponse;
-
-  let body: ChatAnalystRequestBody;
+  // Top-level error boundary. An edge function must never let an exception
+  // escape: an uncaught throw becomes an opaque Vercel platform 500 that — for
+  // the cross-origin api.worldmonitor.app caller — also drops our CORS headers,
+  // so the browser sees an opaque failure rather than a readable status. The
+  // pre-stream auth/entitlement lookups (resolvePremiumCallerIdentity) are network-backed
+  // and, while individually fail-soft today, this route had NO server-side
+  // capture, so any 5xx surfaced only as the browser's `API 500` message with
+  // no stack (WORLDMONITOR-SV). Mirror the sibling premium edge route
+  // (api/latest-brief.ts): capture server-side for a real trace, and return a
+  // CORS-correct transient 503 the panel can render. 503 (not 403) so a
+  // transient dependency blip never misclassifies a paying Pro user as
+  // unsubscribed.
   try {
-    body = (await req.json()) as ChatAnalystRequestBody;
-  } catch {
-    return json({ error: 'Invalid JSON body' }, 400, corsHeaders);
+    const premiumIdentity = await resolvePremiumCallerIdentity(req);
+    if (!premiumIdentity.isPremium) {
+      // Preserve retryable billing-verification denials instead of flattening
+      // them to the Pro 403. The panel renders this header without auto-retrying.
+      if (premiumIdentity.billingDenial) {
+        const denial = renderBillingVerificationDenial(
+          premiumIdentity.billingDenial,
+          corsHeaders,
+        );
+        if (denial) return denial;
+      }
+      // A caller we could not identify is not a caller on the free plan (#5619).
+      // Selling a subscription to someone who is merely signed out is both wrong
+      // and unactionable, and it left the client's `sign_in_required` verdict
+      // (#5608) unreachable on this route — every denial arrived as a 403.
+      // Matches api/latest-brief.ts, which has always answered 401 here.
+      if (premiumIdentity.unauthenticated) {
+        return json({ error: 'UNAUTHENTICATED' }, 401, corsHeaders);
+      }
+      return json({ error: 'Pro subscription required' }, 403, corsHeaders);
+    }
+    if (!premiumIdentity.quotaExempt && premiumIdentity.directLlmDailyLimit !== null) {
+      const reservation = await reserveDirectLlmQuota({
+        userId: premiumIdentity.userId,
+        limit: premiumIdentity.directLlmDailyLimit,
+        pipeline: (cmds) => runRedisPipeline(cmds, true),
+      });
+      if (!reservation.ok) {
+        return directLlmQuotaError(
+          reservation.reason === 'cap-exceeded' ? 429 : 503,
+          reservation.retryAfterSec,
+          corsHeaders,
+          reservation.floor ?? DIRECT_LLM_DAILY_QUOTA_LIMIT,
+        );
+      }
+    }
+
+    // Streaming LLM endpoint — the rate-limit IS the abuse defence (each
+    // call hits a frontier model). This route doesn't go through gateway
+    // checkEndpointRateLimit, so opt into fail-closed explicitly: a Redis
+    // outage must not silently lift the budget. (#3531)
+    const rateLimitResponse = await checkRateLimit(req, corsHeaders, { failClosed: true });
+    if (rateLimitResponse) return rateLimitResponse;
+
+    let body: ChatAnalystRequestBody;
+    try {
+      body = (await req.json()) as ChatAnalystRequestBody;
+    } catch {
+      return json({ error: 'Invalid JSON body' }, 400, corsHeaders);
+    }
+
+    const rawQuery = typeof body.query === 'string' ? body.query.trim().slice(0, MAX_QUERY_LEN) : '';
+    if (!rawQuery) return json({ error: 'query is required' }, 400, corsHeaders);
+
+    const query = sanitizeForPrompt(rawQuery);
+    if (!query) return json({ error: 'query is required' }, 400, corsHeaders);
+
+    // Validate domainFocus against the fixed domain set to prevent prompt injection
+    const rawDomain = typeof body.domainFocus === 'string' ? body.domainFocus.trim() : '';
+    const domainFocus = VALID_DOMAINS.has(rawDomain) ? rawDomain : 'all';
+
+    const geoContext = typeof body.geoContext === 'string'
+      ? body.geoContext.trim().toUpperCase().slice(0, MAX_GEO_LEN)
+      : undefined;
+
+    const rawHistory = Array.isArray(body.history) ? body.history : [];
+    const history: ChatMessage[] = rawHistory
+      .filter((m): m is ChatMessage => {
+        if (!m || typeof m !== 'object') return false;
+        const msg = m as Record<string, unknown>;
+        return (msg.role === 'user' || msg.role === 'assistant') && typeof msg.content === 'string';
+      })
+      .slice(-MAX_HISTORY_MESSAGES)
+      .map((m) => {
+        const sanitized = sanitizeForPrompt(m.content.slice(0, MAX_MESSAGE_CHARS)) ?? '';
+        return { role: m.role, content: sanitized };
+      })
+      .filter((m) => m.content.length > 0);
+
+    // Build retrieval query with current turn FIRST so its keywords fill the
+    // extraction cap before prior-turn terms. This ensures pivot words like
+    // "Germany" in "What about Germany?" are never crowded out by a long
+    // previous question. Prior turn backfills remaining slots for topic continuity.
+    const prevUserTurn = history.filter((m) => m.role === 'user').slice(-1)[0]?.content ?? '';
+    const retrievalQuery = prevUserTurn ? `${query} ${prevUserTurn}` : query;
+
+    const context = await assembleAnalystContext(geoContext, domainFocus, retrievalQuery);
+    const systemPrompt = buildAnalystSystemPrompt(context, domainFocus);
+
+    const messages = [
+      { role: 'system', content: systemPrompt },
+      ...history,
+      { role: 'user', content: query },
+    ];
+
+    const llmStream = callLlmReasoningStream({
+      messages,
+      maxTokens: 600,
+      temperature: 0.35,
+      timeoutMs: 25_000,
+      signal: req.signal,
+      stage: 'chat-analyst',
+    });
+
+    // Always prepend a meta event so the client knows which sources are live
+    // and whether context is degraded — before the first token arrives.
+    // Optionally follows with an action event for visual/chart queries.
+    const stream = prependSseEvents(
+      [
+        { meta: { sources: context.activeSources, degraded: context.degraded } },
+        ...buildActionEvents(query).map((a) => ({ action: a })),
+      ],
+      llmStream,
+    );
+
+    return new Response(stream, {
+      status: 200,
+      headers: {
+        'Content-Type': 'text/event-stream',
+        'Cache-Control': 'no-cache, no-store',
+        'X-Accel-Buffering': 'no',
+        ...corsHeaders,
+      },
+    });
+  } catch (err) {
+    captureSilentError(err, { tags: { route: 'api/chat-analyst', step: 'pre-stream' } });
+    return json({ error: 'service_unavailable' }, 503, corsHeaders);
   }
-
-  const rawQuery = typeof body.query === 'string' ? body.query.trim().slice(0, MAX_QUERY_LEN) : '';
-  if (!rawQuery) return json({ error: 'query is required' }, 400, corsHeaders);
-
-  const query = sanitizeForPrompt(rawQuery);
-  if (!query) return json({ error: 'query is required' }, 400, corsHeaders);
-
-  // Validate domainFocus against the fixed domain set to prevent prompt injection
-  const rawDomain = typeof body.domainFocus === 'string' ? body.domainFocus.trim() : '';
-  const domainFocus = VALID_DOMAINS.has(rawDomain) ? rawDomain : 'all';
-
-  const geoContext = typeof body.geoContext === 'string'
-    ? body.geoContext.trim().toUpperCase().slice(0, MAX_GEO_LEN)
-    : undefined;
-
-  const rawHistory = Array.isArray(body.history) ? body.history : [];
-  const history: ChatMessage[] = rawHistory
-    .filter((m): m is ChatMessage => {
-      if (!m || typeof m !== 'object') return false;
-      const msg = m as Record<string, unknown>;
-      return (msg.role === 'user' || msg.role === 'assistant') && typeof msg.content === 'string';
-    })
-    .slice(-MAX_HISTORY_MESSAGES)
-    .map((m) => {
-      const sanitized = sanitizeForPrompt(m.content.slice(0, MAX_MESSAGE_CHARS)) ?? '';
-      return { role: m.role, content: sanitized };
-    })
-    .filter((m) => m.content.length > 0);
-
-  const context = await assembleAnalystContext(geoContext, domainFocus);
-  const systemPrompt = buildAnalystSystemPrompt(context, domainFocus);
-
-  const messages = [
-    { role: 'system', content: systemPrompt },
-    ...history,
-    { role: 'user', content: query },
-  ];
-
-  const llmStream = callLlmReasoningStream({
-    messages,
-    maxTokens: 600,
-    temperature: 0.35,
-    timeoutMs: 25_000,
-    signal: req.signal,
-  });
-
-  // Always prepend a meta event so the client knows which sources are live
-  // and whether context is degraded — before the first token arrives.
-  // Optionally follows with an action event for visual/chart queries.
-  const stream = prependSseEvents(
-    [
-      { meta: { sources: context.activeSources, degraded: context.degraded } },
-      ...buildActionEvents(query).map((a) => ({ action: a })),
-    ],
-    llmStream,
-  );
-
-  return new Response(stream, {
-    status: 200,
-    headers: {
-      'Content-Type': 'text/event-stream',
-      'Cache-Control': 'no-cache, no-store',
-      'X-Accel-Buffering': 'no',
-      ...corsHeaders,
-    },
-  });
 }

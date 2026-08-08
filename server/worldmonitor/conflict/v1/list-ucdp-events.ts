@@ -5,6 +5,7 @@ import type {
   UcdpViolenceEvent,
 } from '../../../../src/generated/server/worldmonitor/conflict/v1/service_server';
 import { getCachedJson } from '../../../_shared/redis';
+import { markNoStoreFallbackResponse } from '../../../_shared/response-headers';
 
 const CACHE_KEY = 'conflict:ucdp-events:v1';
 
@@ -13,16 +14,16 @@ const CACHE_KEY = 'conflict:ucdp-events:v1';
 // Gold standard: Vercel reads, Railway writes.
 
 export async function listUcdpEvents(
-  _ctx: ServerContext,
+  ctx: ServerContext,
   req: ListUcdpEventsRequest,
 ): Promise<ListUcdpEventsResponse> {
   try {
     const raw = await getCachedJson(CACHE_KEY, true) as { events?: UcdpViolenceEvent[] } | null;
-    if (!raw?.events?.length) return { events: [], pagination: undefined };
+    if (!raw?.events?.length) return markNoStoreFallbackResponse(ctx.request, { events: [], pagination: undefined });
     let events = raw.events;
     if (req.country) events = events.filter((e) => e.country === req.country);
     return { events, pagination: undefined };
   } catch {
-    return { events: [], pagination: undefined };
+    return markNoStoreFallbackResponse(ctx.request, { events: [], pagination: undefined });
   }
 }
