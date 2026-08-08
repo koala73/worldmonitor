@@ -566,6 +566,14 @@ export function buildSentryContext(
       // A genuine client AbortSignal.timeout never carries an `error code: 52x`
       // substring, so this ordering steals no real-timeout events.
       : /error code:\s*52[0-7]\b/i.test(msg) ? 'transport_cloudflare'
+      // Response-body JSON parse failure (truncated/corrupt Convex response —
+      // WORLDMONITOR-YV). Keyed on the error NAME, not message substrings,
+      // mirroring the detector in _convex-error.js so the 503 mapping and
+      // this bucket stay in lockstep. Checked BEFORE the /timeout/ branch:
+      // V8's `... is not valid JSON` message embeds a snippet of the
+      // offending body, and a snippet containing "timeout"/"aborted" prose
+      // would otherwise steal the event into transport_timeout.
+      : errName === 'SyntaxError' && /\bJSON\b/.test(msg) ? 'transport_malformed_response'
       : /timeout|timed out|aborted/i.test(msg) ? 'transport_timeout'
       : /fetch failed|network|ECONN|ENOTFOUND|getaddrinfo/i.test(msg) ? 'transport_network'
       : 'unknown');
