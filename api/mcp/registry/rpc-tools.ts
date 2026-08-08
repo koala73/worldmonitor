@@ -15,7 +15,7 @@ import { evaluateFreshness } from '../freshness';
 import { McpSourceUnavailableError } from '../source-unavailable';
 import {
   collectInsightSources,
-  isAcceptedInsightsSnapshot,
+  insightsSnapshotRejection,
   normalizeInsightSource,
 } from '../../../shared/insights-snapshot.js';
 import type { FreshnessCheck, ToolDef } from '../types';
@@ -95,8 +95,18 @@ type SeededWorldBriefPayload = {
   topStories?: unknown;
 };
 
-function projectSeededWorldBrief(raw: unknown): Record<string, unknown> | null {
-  if (!isAcceptedInsightsSnapshot(raw) || !isRecord(raw)) return null;
+// Rejections carry a bounded reason so the "Seeded world brief unavailable"
+// alarm names WHICH gate fired (WORLDMONITOR-YJ) — a stale producer and a
+// schema regression need opposite responses. Bounded values only: the reason
+// lands in Sentry/log messages, never in the client-facing RPC error.
+type SeededWorldBriefProjection =
+  | { value: Record<string, unknown> }
+  | { reason: string };
+
+function projectSeededWorldBrief(raw: unknown): SeededWorldBriefProjection {
+  const snapshotRejection = insightsSnapshotRejection(raw);
+  if (snapshotRejection !== null) return { reason: snapshotRejection };
+  if (!isRecord(raw)) return { reason: 'malformed-snapshot' };
   const payload = raw as SeededWorldBriefPayload;
   const brief = typeof payload.worldBrief === 'string' ? payload.worldBrief.trim() : '';
   const generatedAt = typeof payload.generatedAt === 'string' ? payload.generatedAt : '';
@@ -106,7 +116,8 @@ function projectSeededWorldBrief(raw: unknown): Record<string, unknown> | null {
   // output requirements. Never substitute an on-demand LLM result when the
   // seeded producer has degraded: an empty or stale snapshot is safer than
   // returning an ungated brief.
-  if (!brief || payload.status !== 'ok') return null;
+  if (!brief) return { reason: 'empty-brief' };
+  if (payload.status !== 'ok') return { reason: 'status-not-ok' };
 
   const headlines: string[] = [];
   for (const story of topStories) {
@@ -116,23 +127,25 @@ function projectSeededWorldBrief(raw: unknown): Record<string, unknown> | null {
     headlines.push(headline);
     if (headlines.length >= 12) break;
   }
-  if (headlines.length === 0) return null;
+  if (headlines.length === 0) return { reason: 'no-headlines' };
 
   // The producer's sources share the brief's citation index space. Preserve
   // every record in order, including an empty URL fallback, so a malformed
   // source cannot make later [n] citations point at the wrong article.
   const sourceItems = Array.isArray(payload.worldBriefSources) ? payload.worldBriefSources : null;
-  if (!sourceItems || sourceItems.length === 0 || sourceItems.length > 12) return null;
+  if (!sourceItems || sourceItems.length === 0 || sourceItems.length > 12) return { reason: 'missing-sources' };
   const sources = sourceItems.map((item, index) => normalizeInsightSource(item, {
     fallback: topStories[index],
     urlOrder: 'url-first',
     allowEmptyUrl: true,
   }));
-  if (sources.some((source) => source === null) || !sources.some((source) => source?.url)) return null;
+  if (sources.some((source) => source === null) || !sources.some((source) => source?.url)) {
+    return { reason: 'malformed-sources' };
+  }
   const provider = typeof payload.briefProvider === 'string' ? payload.briefProvider : '';
   const model = typeof payload.briefModel === 'string' ? payload.briefModel : '';
 
-  return {
+  return { value: {
     brief,
     summary: brief,
     headlines,
@@ -140,7 +153,7 @@ function projectSeededWorldBrief(raw: unknown): Record<string, unknown> | null {
     model,
     generatedAt,
     sources: sources as McpBriefSource[],
-  };
+  } };
 }
 
 function countryBriefSearchTerms(countryCode: string): string[] {
@@ -559,14 +572,14 @@ export const RPC_TOOLS: ToolDef[] = [
         }
       }
       const result = projectSeededWorldBrief(insights);
-      if (!result) {
+      if ('reason' in result) {
         throw new McpSourceUnavailableError(
-          'Seeded world brief unavailable',
+          `Seeded world brief unavailable (${result.reason})`,
           ['news:insights:v1'],
           [],
         );
       }
-      return result;
+      return result.value;
     },
     _apiPaths: ['GET /api/infrastructure/v1/get-bootstrap-data'],
   },
