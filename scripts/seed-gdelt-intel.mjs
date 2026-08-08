@@ -252,6 +252,29 @@ function withBudget(operation, budgetMs, fallback, onTimeout) {
 // because the fetch order was only ever reconstructible from a sequence of
 // `Fetching x...` lines, never stated; emitting the ranking keys makes "why is
 // topic X still stale" answerable from the run log alone.
+/**
+ * Parse a stored topic stamp (`fetchedAt` / `attemptedAt`) against the run clock.
+ *
+ * One validator for both readers of these stamps, per #5858. The fetch-ordering
+ * path clamped forward skew while the health path did not, so the same stored
+ * value produced two different numbers depending on who read it — and the
+ * unclamped one is the one `maxContentAgeMin` is evaluated against.
+ *
+ * Returns null for anything unusable (unparseable, non-finite, at or before the
+ * epoch) so each caller can pick its own sentinel, and clamps to `nowMs` so a
+ * container with a skewed clock cannot mint a stamp that reads fresher than the
+ * moment it is read at.
+ *
+ * @param {unknown} value
+ * @param {number} nowMs run clock; a non-finite value disables the clamp
+ * @returns {number | null}
+ */
+export function parseStampMs(value, nowMs) {
+  const parsed = Date.parse(value);
+  if (!Number.isFinite(parsed) || parsed <= 0) return null;
+  return Number.isFinite(nowMs) ? Math.min(parsed, nowMs) : parsed;
+}
+
 export function rankTopicsForFetch(topics, previous, nowMs) {
   const previousById = new Map();
   // Array.isArray, not `?? []`: the cache-merge below already treats this cached
@@ -260,11 +283,7 @@ export function rankTopicsForFetch(topics, previous, nowMs) {
   for (const topic of Array.isArray(previous?.topics) ? previous.topics : []) {
     if (topic?.id) previousById.set(topic.id, topic);
   }
-  const stampMs = (value) => {
-    const parsed = Date.parse(value);
-    if (!Number.isFinite(parsed)) return Number.NEGATIVE_INFINITY;
-    return Number.isFinite(nowMs) ? Math.min(parsed, nowMs) : parsed;
-  };
+  const stampMs = (value) => parseStampMs(value, nowMs) ?? Number.NEGATIVE_INFINITY;
   return topics
     .map((topic, index) => {
       const prev = previousById.get(topic.id);
@@ -934,15 +953,19 @@ export function declareRecords(data) {
 //                  is coasting (a topic is always attempted first, so any
 //                  GDELT success at all keeps this fresh);
 //   oldestItemAt = most starved topic, for operator visibility.
-export function contentMeta(data) {
+export function contentMeta(data, nowMs = Date.now()) {
   // Only topics that actually carry articles count: an articleless topic keeps
   // fetchedAt=now (the empty-topic placeholder), which would hold newestItemAt
   // fresh precisely in the total-death scenario — brownout + expired canonical,
   // nothing to backfill — where STALE_CONTENT matters most.
+  //
+  // Stamps go through the same parseStampMs the fetch ordering uses (#5858), so
+  // a forward-skewed fetchedAt cannot pin newestItemAt ahead of the run clock
+  // and buy the cohort free freshness until wall clock catches up.
   const times = (data?.topics ?? [])
     .filter((t) => Array.isArray(t?.articles) && t.articles.length > 0)
-    .map((t) => Date.parse(t?.fetchedAt))
-    .filter((ms) => Number.isFinite(ms) && ms > 0);
+    .map((t) => parseStampMs(t?.fetchedAt, nowMs))
+    .filter((ms) => ms != null);
   if (times.length === 0) return null;
   return { newestItemAt: Math.max(...times), oldestItemAt: Math.min(...times) };
 }
