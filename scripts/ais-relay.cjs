@@ -2785,9 +2785,30 @@ async function seedStablecoinMarkets() {
   const totalVolume24h = stablecoins.reduce((s, c) => s + c.volume24h, 0);
   const depeggedCount = stablecoins.filter((c) => c.pegStatus === 'DEPEGGED').length;
   const payload = { timestamp: new Date().toISOString(), summary: { totalMarketCap, totalVolume24h, coinCount: stablecoins.length, depeggedCount, healthStatus: depeggedCount === 0 ? 'HEALTHY' : depeggedCount === 1 ? 'CAUTION' : 'WARNING' }, stablecoins };
+  
+  // Сохраняем основной ключ (для обратной совместимости)
   const ok1 = await envelopeWrite('market:stablecoins:v1', payload, STABLECOIN_SEED_TTL, { recordCount: stablecoins.length, sourceVersion: 'market-stablecoins' });
+  
+  // НОВОЕ: Сохраняем каждую монету отдельно для покоинного кеширования
+  let perCoinOk = true;
+  for (const coin of stablecoins) {
+    const coinKey = `market:stablecoins:v1:${coin.id}`;
+    const ok = await envelopeWrite(coinKey, coin, STABLECOIN_SEED_TTL, {
+      recordCount: 1,
+      sourceVersion: 'market-stablecoins'
+    });
+    if (!ok) perCoinOk = false;
+  }
+  
+  // НОВОЕ: Сохраняем список всех ID
+  const idsKey = 'market:stablecoins:v1:ids';
+  const okIds = await envelopeWrite(idsKey, stablecoins.map(c => c.id), STABLECOIN_SEED_TTL, {
+    recordCount: stablecoins.length,
+    sourceVersion: 'market-stablecoins'
+  });
+  
   const ok2 = await upstashSet('seed-meta:market:stablecoins', { fetchedAt: Date.now(), recordCount: stablecoins.length }, 604800);
-  console.log(`[Stablecoin] Seeded ${stablecoins.length} coins (redis: ${ok1 && ok2 ? 'OK' : 'PARTIAL'})`);
+  console.log(`[Stablecoin] Seeded ${stablecoins.length} coins (main: ${ok1 ? 'OK' : 'FAIL'}, per-coin: ${perCoinOk ? 'OK' : 'PARTIAL'}, ids: ${okIds ? 'OK' : 'FAIL'}, meta: ${ok2 ? 'OK' : 'FAIL'})`);
   return stablecoins.length;
 }
 
@@ -12481,3 +12502,7 @@ async function gracefulShutdown(signal) {
 }
 process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
 process.on('SIGINT', () => gracefulShutdown('SIGINT'));
+
+module.exports = {
+  seedStablecoinMarkets,
+};
