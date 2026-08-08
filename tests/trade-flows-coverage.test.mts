@@ -24,7 +24,6 @@ import {
   MAX_YEARS,
   WORLD_PARTNER_CODE,
   getTradeFlows,
-  legacyTradeFlowSeedKey,
   normalizeTradeFlowRequest,
   sliceFlowsToWindow,
   tradeFlowSeedKey,
@@ -346,25 +345,16 @@ describe('a miss is attributed to a cause, not blamed on upstream', () => {
     }
   });
 
-  test('a failed read of the bridge key is a cache fault, not unknown coverage', async () => {
-    // No manifest routes into the legacy bridge; the bridge's own read then
-    // fails. That is a Redis fault and must be named as one.
-    redisErrors.add(legacyTradeFlowSeedKey('840', '000'));
+  test('a miss reads only the pair key and the manifest', async () => {
+    // The #6309 cutover bridge (removed in #6315) used to add a third read of
+    // the old `trade:flows:v1:…` key on this path. Pin that no legacy key is
+    // consulted, so the bridge cannot be reintroduced unnoticed.
     const res = await getTradeFlows(CTX, request());
 
-    assert.equal(res.unavailableReason, R.cacheUnavailable);
-    assert.equal(res.upstreamUnavailable, true);
-  });
-
-  test('the manifest verdict wins over the legacy bridge once the seeder has run', async () => {
-    // A published manifest means the cutover happened, so a miss is a real
-    // verdict and must not be papered over by whatever v1 key still lingers.
-    seedManifest([tradeFlowCoverageId('840', '000')]);
-    redisStore.set(legacyTradeFlowSeedKey('840', '000'), seededPayload(2015, 2025));
-    const res = await getTradeFlows(CTX, request());
-
-    assert.equal(res.unavailableReason, R.seedMissing);
-    assert.ok(!redisReads.includes(legacyTradeFlowSeedKey('840', '000')));
+    assert.equal(res.unavailableReason, R.coverageUnknown);
+    assert.deepEqual(redisReads, [tradeFlowSeedKey('840', '000'), COVERAGE_KEY]);
+    assert.ok(!redisReads.some((k) => k.startsWith('trade:flows:v1:')),
+      'the v1 fleet is gone; nothing may read it');
   });
 
   test('a seeded key holding no rows still gets attributed', async () => {
@@ -376,36 +366,6 @@ describe('a miss is attributed to a cause, not blamed on upstream', () => {
   });
 });
 
-// ── Cutover bridge ────────────────────────────────────────────────────────
-
-describe('the v1 seed still answers until the first v2 run publishes', () => {
-  test('a request that works today keeps working across the deploy window', async () => {
-    // No v2 key and no manifest — the state between this deploy and the next
-    // 6-hourly seeder tick. `reporting_country=840` answers from v1 today, so
-    // reporting a fault here would be a regression introduced by the fix.
-    redisStore.set(legacyTradeFlowSeedKey('840', '000'), seededPayload(2016, 2025));
-    const res = await getTradeFlows(CTX, request());
-
-    assert.equal(res.unavailableReason, R.served);
-    assert.equal(res.upstreamUnavailable, false);
-    assert.equal(res.flows.length, 10);
-    assert.equal(res.coverageEndYear, 2025);
-  });
-
-  test('a window wider than the old key states the narrower span it actually has', async () => {
-    redisStore.set(legacyTradeFlowSeedKey('840', '000'), seededPayload(2016, 2025));
-    const res = await getTradeFlows(CTX, request({ years: 30 }));
-
-    assert.equal(res.flows.length, 10);
-    assert.equal(res.coverageStartYear, 2016,
-      'the response must report the span it has rather than imply the requested one');
-  });
-
-  test('an absent legacy key leaves the original verdict intact', async () => {
-    const res = await getTradeFlows(CTX, request());
-    assert.equal(res.unavailableReason, R.coverageUnknown);
-  });
-});
 
 // ── Request validation ────────────────────────────────────────────────────
 
