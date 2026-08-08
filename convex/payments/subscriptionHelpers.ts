@@ -1031,19 +1031,43 @@ export async function handleSubscriptionActive(
     }
   }
 
+  // #6330: customer lifecycle emails target the account's LOGIN email, not
+  // the address typed into Dodo checkout. The two can be different aliases of
+  // the same person, and a "your subscription is active — sign in" email
+  // addressed to the checkout alias steers the buyer into "account not known"
+  // at the login screen. The users row (populated by users:ensureRecord on
+  // every authenticated session) carries the Clerk login email; fall back to
+  // the checkout email when the row or its email is absent (accounts predating
+  // the users table, phone-only signups). The customers row above deliberately
+  // keeps the checkout email — it mirrors Dodo's record for portal lookups.
+  const userRow = await ctx.db
+    .query("users")
+    .withIndex("by_userId", (q) => q.eq("userId", userId))
+    .first();
+  const loginEmail = (userRow?.email ?? "").trim();
+  const recipientEmail = loginEmail.length > 0 ? loginEmail : email.trim();
+  const checkoutEmailDiffers =
+    loginEmail.length > 0 &&
+    normalizedEmail.length > 0 &&
+    normalizedEmail !== loginEmail.toLowerCase();
+
   // Schedule the appropriate customer email (non-blocking). Only a proven
   // post-lapse return receives the customer-only welcome-back confirmation.
   // Pre-lapse recovery and already-active replay/update paths remain silent.
-  if (!email) {
+  if (!recipientEmail) {
     console.warn(
-      `[subscriptionHelpers] subscription.active: no customer email — skipping welcome email (subscriptionId=${data.subscription_id})`,
+      `[subscriptionHelpers] subscription.active: no resolvable recipient email — skipping welcome email (subscriptionId=${data.subscription_id})`,
     );
   } else if (wasLapsed) {
     if (process.env.RESEND_API_KEY) {
       await ctx.scheduler.runAfter(
         0,
         internal.payments.subscriptionEmails.sendReactivationEmail,
-        { userEmail: email, planKey },
+        {
+          userEmail: recipientEmail,
+          planKey,
+          checkoutEmail: checkoutEmailDiffers ? email.trim() : undefined,
+        },
       );
       console.log(`[subscriptionHelpers] subscription.active: scheduled reactivation email (subscriptionId=${data.subscription_id})`);
     } else {
@@ -1058,13 +1082,17 @@ export async function handleSubscriptionActive(
       0,
       internal.payments.subscriptionEmails.sendSubscriptionEmails,
       {
-        userEmail: email,
+        userEmail: recipientEmail,
         planKey,
         userId,
         recurringPreTaxAmount: data.recurring_pre_tax_amount,
         currency: data.currency,
         taxInclusive: data.tax_inclusive,
         discountId: data.discount_id ?? undefined,
+        // Present only when the buyer typed a different address at checkout:
+        // triggers the sign-in line in the welcome, a pointer email to the
+        // checkout inbox, and the Billing Email row in the admin alert.
+        checkoutEmail: checkoutEmailDiffers ? email.trim() : undefined,
       },
     );
   }
