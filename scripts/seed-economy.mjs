@@ -19,10 +19,10 @@ const KEYS = {
   refineryInputs: 'economic:refinery-inputs:v1',
 };
 
-const FRED_KEY_PREFIX = 'economic:fred:v1';
-const STRESS_INDEX_KEY = 'economic:stress-index:v1';
-const STRESS_INDEX_TTL = 21600; // 6h
-const FRED_TTL = 93600; // 26h — survive daily cron scheduling drift
+export const FRED_KEY_PREFIX = 'economic:fred:v1';
+export const STRESS_INDEX_KEY = 'economic:stress-index:v1';
+export const STRESS_INDEX_TTL = 21600; // 6h
+export const FRED_TTL = 93600; // 26h — survive daily cron scheduling drift
 const ENERGY_TTL = 3600;
 const CAPACITY_TTL = 86400;
 const MACRO_TTL = 21600; // 6h — survive extended Yahoo outages
@@ -119,7 +119,7 @@ export function extractGscpiObservations(parsed) {
  * Read GSCPI from Redis (seeded by ais-relay from NY Fed, not available via FRED API).
  * @returns {Promise<{ observations: { date: string; value: number }[] } | null>}
  */
-async function fetchGscpiFromRedis() {
+export async function fetchGscpiFromRedis() {
   try {
     const { url, token } = getRedisCredentials();
     const resp = await fetch(`${url}/get/${encodeURIComponent(`${FRED_KEY_PREFIX}:GSCPI:0`)}`, {
@@ -141,7 +141,7 @@ async function fetchGscpiFromRedis() {
  * @param {Record<string, { observations: { date: string; value: number }[] }>} fr
  * @returns {{ compositeScore: number; label: string; components: object[]; seededAt: string; unavailable: false } | null}
  */
-function computeStressIndex(fr) {
+export function computeStressIndex(fr) {
   const components = [];
   let weightedSum = 0;
   let totalWeight = 0;
@@ -812,10 +812,9 @@ async function fetchRefineryInputs() {
 // All secondary keys MUST be written inside fetchAll() before returning.
 
 async function fetchAll() {
-  const [energyPrices, energyCapacity, fredResults, macroSignals, crudeInventories, natGasStorage, sprLevels, refineryInputs] = await Promise.allSettled([
+  const [energyPrices, energyCapacity, macroSignals, crudeInventories, natGasStorage, sprLevels, refineryInputs] = await Promise.allSettled([
     fetchEnergyPrices(),
     fetchEnergyCapacity(),
-    fetchFredSeries(),
     fetchMacroSignals(_curlProxyAuth),
     fetchCrudeInventories(),
     fetchNatGasStorage(),
@@ -825,7 +824,6 @@ async function fetchAll() {
 
   const ep = energyPrices.status === 'fulfilled' ? energyPrices.value : null;
   const ec = energyCapacity.status === 'fulfilled' ? energyCapacity.value : null;
-  const fr = fredResults.status === 'fulfilled' ? fredResults.value : null;
   const ms = macroSignals.status === 'fulfilled' ? macroSignals.value : null;
   const ci = crudeInventories.status === 'fulfilled' ? crudeInventories.value : null;
   const ng = natGasStorage.status === 'fulfilled' ? natGasStorage.value : null;
@@ -834,24 +832,16 @@ async function fetchAll() {
 
   if (energyPrices.status === 'rejected') console.warn(`  EnergyPrices failed: ${energyPrices.reason?.message || energyPrices.reason}`);
   if (energyCapacity.status === 'rejected') console.warn(`  EnergyCapacity failed: ${energyCapacity.reason?.message || energyCapacity.reason}`);
-  if (fredResults.status === 'rejected') console.warn(`  FRED failed: ${fredResults.reason?.message || fredResults.reason}`);
   if (macroSignals.status === 'rejected') console.warn(`  MacroSignals failed: ${macroSignals.reason?.message || macroSignals.reason}`);
   if (crudeInventories.status === 'rejected') console.warn(`  CrudeInventories failed: ${crudeInventories.reason?.message || crudeInventories.reason}`);
   if (natGasStorage.status === 'rejected') console.warn(`  NatGasStorage failed: ${natGasStorage.reason?.message || natGasStorage.reason}`);
   if (sprLevels.status === 'rejected') console.warn(`  SPRLevels failed: ${sprLevels.reason?.message || sprLevels.reason}`);
   if (refineryInputs.status === 'rejected') console.warn(`  RefineryInputs failed: ${refineryInputs.reason?.message || refineryInputs.reason}`);
 
-  const frHasData = fr && Object.keys(fr).length > 0;
-  if (!ep && !frHasData && !ms) throw new Error('All economic fetches failed');
+  if (!ep && !ms) throw new Error('All EIA/macro fetches failed');
 
   // Write secondary keys BEFORE returning (runSeed calls process.exit after primary write)
   if (ec?.series?.length > 0) await writeExtraKeyWithMeta(KEYS.energyCapacity, ec, CAPACITY_TTL, ec.series.length);
-
-  if (frHasData) {
-    for (const [seriesId, series] of Object.entries(fr)) {
-      await writeExtraKeyWithMeta(`${FRED_KEY_PREFIX}:${seriesId}:0`, { series }, FRED_TTL, series.observations?.length ?? 0);
-    }
-  }
 
   if (ms && !ms.unavailable && ms.totalCount > 0) await writeExtraKeyWithMeta(KEYS.macroSignals, ms, MACRO_TTL, ms.totalCount ?? 0);
 
@@ -881,26 +871,6 @@ async function fetchAll() {
     await writeExtraKeyWithMeta(KEYS.refineryInputs, ru, REFINERY_INPUTS_TTL, ru.weeks.length);
   } else if (ru) {
     console.warn(`  RefineryInputs: skipped write — ${ru.weeks?.length ?? 0} weeks or schema invalid`);
-  }
-
-  // Compute stress index — GSCPI is seeded by ais-relay (NY Fed), not FRED; read from Redis
-  if (frHasData) {
-    const gscpi = await fetchGscpiFromRedis();
-    if (gscpi) {
-      fr['GSCPI'] = gscpi;
-      console.log('  [StressIndex] GSCPI loaded from Redis');
-    } else {
-      console.warn('  [StressIndex] GSCPI not in Redis yet (ais-relay lag or first run) — excluding');
-    }
-    let stressResult = null;
-    try {
-      stressResult = computeStressIndex(fr);
-    } catch (e) {
-      console.warn(`  [StressIndex] skipped write — ${e.message}`);
-    }
-    if (stressResult) {
-      await writeExtraKeyWithMeta(STRESS_INDEX_KEY, stressResult, STRESS_INDEX_TTL, STRESS_COMPONENTS.length);
-    }
   }
 
   return ep || { prices: [] };
