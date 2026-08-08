@@ -14,6 +14,7 @@
 // server is simply the right place to do it once for everyone.
 
 import { getCachedJson } from '../../../_shared/redis';
+import { sanitizeForPromptLine } from '../../../_shared/llm-sanitize.js';
 
 const DIGEST_KEY_EN = 'news:digest:v1:full:en';
 const MAX_GROUNDING_ITEMS = 15;
@@ -207,8 +208,14 @@ export function buildSharedCountryContext(digest: unknown, countryCode: string):
   const groundingItems = (countryItems.length > 0 ? countryItems : allItems).slice(0, MAX_GROUNDING_ITEMS);
   const sources = collectBriefSources(groundingItems);
   const sourceLines = sources.length > 0 ? ['Brief source articles:', ...briefSourceContextLines(sources)] : [];
+  // Digest titles are feed-derived and land one-per-line under a 'Headlines:'
+  // marker, so this block carried both gaps #5857 closed elsewhere: no #3724
+  // content sanitization at all, and no delimiter guard -- a single newline in
+  // a title forges an extra headline the brief reads as a real story. (The
+  // sibling source lines above are accidentally safe only because
+  // JSON.stringify escapes the newline.)
   const headlineLines = groundingItems
-    .map((item) => (typeof item.title === 'string' ? item.title : ''))
+    .map((item) => (typeof item.title === 'string' ? sanitizeForPromptLine(item.title) : ''))
     .filter(Boolean);
   const contextSnapshot = [...sourceLines, 'Headlines:', ...headlineLines].join('\n').slice(0, MAX_CONTEXT_CHARS);
   return { contextSnapshot, sources };
