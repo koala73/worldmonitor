@@ -3,6 +3,8 @@ export const CLOUD_SYNC_KEYS = [
   'worldmonitor-monitors',
   'worldmonitor-layers',
   'worldmonitor-disabled-feeds',
+  'worldmonitor-free-tier-source-ownership',
+  'worldmonitor-free-tier-layer-ownership',
   'worldmonitor-panel-spans',
   'worldmonitor-panel-col-spans',
   'panel-order',

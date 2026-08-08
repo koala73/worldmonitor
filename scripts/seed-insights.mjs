@@ -29,9 +29,21 @@ import {
   briefUserPrompt,
   synthesisSystemPrompt,
   synthesisUserPrompt,
-  parseBriefSynthesis,
-  composeSynthesizedBrief,
 } from './_insights-brief.mjs';
+import {
+  INSIGHTS_COMPOSER_THREW,
+  INSIGHTS_SYNTHESIS_FAILURE_CODES,
+  classifyInsightsSynthesisFailure,
+  composeInsightsSynthesis,
+  resolveInsightsSynthesis,
+} from './_insights-synthesis-diagnostics.mjs';
+export {
+  INSIGHTS_COMPOSER_THREW,
+  INSIGHTS_SYNTHESIS_FAILURE_CODES,
+  classifyInsightsSynthesisFailure,
+  composeInsightsSynthesis,
+  resolveInsightsSynthesis,
+};
 import { buildLlmCallEvent, emitLlmEvents, flushPendingLlmEvents } from './lib/llm-telemetry.cjs';
 // Import from the scripts mirror (`scripts/shared/`) — NOT the repo-root
 // `shared/`. Railway services with nixpacks `rootDirectory=scripts` only
@@ -101,15 +113,6 @@ const INSIGHTS_RUN_OUTCOMES = Object.freeze({
   DEGRADED: 'degraded',
 });
 
-// These codes are intentionally low-cardinality and safe to put in seed-meta,
-// health responses, and logs. Never include prompt or model output text in the
-// rejection diagnostic: the payload may contain sensitive intelligence.
-export const INSIGHTS_SYNTHESIS_FAILURE_CODES = Object.freeze({
-  PARSE: 'INSIGHTS_SYNTHESIS_PARSE',
-  GATE: 'INSIGHTS_SYNTHESIS_GATE',
-  MISSING_CLUSTER: 'INSIGHTS_SYNTHESIS_MISSING_CLUSTER',
-  PROVIDER: 'INSIGHTS_SYNTHESIS_PROVIDER',
-});
 const INSIGHTS_SYNTHESIS_FAILURE_CODE_SET = new Set(Object.values(INSIGHTS_SYNTHESIS_FAILURE_CODES));
 const INSIGHTS_RUN_META = Symbol('worldmonitor.insightsRunMeta');
 
@@ -156,24 +159,6 @@ export function publishInsightsPayload(data) {
 export function validateInsightsPayload(data) {
   if (insightsRunMeta(data)?.outcome === INSIGHTS_RUN_OUTCOMES.LKG_PRESERVED) return false;
   return declareRecords(data) > 0;
-}
-
-/**
- * Keep synthesis rejection telemetry bounded and machine-actionable. The
- * classifier deliberately accepts only stage outcomes, never raw prompt or
- * provider text, so this value is safe for seed-meta, health, and logs.
- */
-export function classifyInsightsSynthesisFailure({
-  hasBriefCluster = false,
-  synthesisResult = null,
-  parsedSynthesis = null,
-  composed = null,
-} = {}) {
-  if (composed) return null;
-  if (!hasBriefCluster) return INSIGHTS_SYNTHESIS_FAILURE_CODES.MISSING_CLUSTER;
-  if (!synthesisResult) return INSIGHTS_SYNTHESIS_FAILURE_CODES.PROVIDER;
-  if (!parsedSynthesis) return INSIGHTS_SYNTHESIS_FAILURE_CODES.PARSE;
-  return INSIGHTS_SYNTHESIS_FAILURE_CODES.GATE;
 }
 
 export function resolveInsightsFallbackStatus({ synthesisFailureCode, legacyStatus }) {
@@ -811,29 +796,16 @@ async function fetchInsights() {
   } else if (!hasBriefCluster) {
     console.warn(`  [brief_synthesis] no corroborated cluster in corpus (eligible=${briefEligibleClusters ?? 'unknown'})`);
   }
-  // #6001: one definition of "is this synthesis publishable", used BOTH as the
-  // provider-acceptance gate and for the final result, so the chain can never
-  // accept output the composer would later reject. Pure and cheap, so running
-  // it once more below costs nothing and keeps failure classification exact.
-  // Fault-tolerant on purpose: this runs once per provider AND once more for
-  // the final result. An uncaught throw here escapes fetchInsights into
-  // runSeed's withRetry, which would re-run the whole digest read and LLM
-  // chain up to four times until the seed lock expires. Failing to null
-  // classifies as GATE, keeps the LKG fail-safe, and stays visible in the log.
-  const composeFromText = (text) => {
-    try {
-      return composeSynthesizedBrief(text, topStories, {
-        validatorMode: BRIEF_VALIDATOR_MODE,
-        sanitizeTitle,
-        sourceFromStory: briefSourceFromStory,
-        briefCluster,
-        parsedSynthesis: parseBriefSynthesis(text, topStories.length),
-      });
-    } catch (err) {
-      console.warn(`  [brief_synthesis] composer threw (${err.message}) — treating as rejected`);
-      return null;
-    }
+  // The acceptance gate is the composer itself (#6001), so the chain can never
+  // accept output the composer would later reject.
+  const synthesisComposerOptions = {
+    briefCluster,
+    validatorMode: BRIEF_VALIDATOR_MODE,
+    sanitizeTitle,
+    sourceFromStory: briefSourceFromStory,
   };
+  const composeFromText = (text) =>
+    composeInsightsSynthesis(text, topStories, synthesisComposerOptions).brief;
 
   // #6001: L1 may now walk the whole provider chain, and L2 below makes a
   // SECOND callLLM. Stamp the run's LLM start so L2 gets only the remainder —
@@ -849,16 +821,12 @@ async function fetchInsights() {
         accept: composeFromText,
       })
     : null;
-  const parsedSynthesis = synthesisResult
-    ? parseBriefSynthesis(synthesisResult.text, topStories.length)
-    : null;
-  const composed = synthesisResult ? composeFromText(synthesisResult.text) : null;
-  synthesisFailureCode = classifyInsightsSynthesisFailure({
-    hasBriefCluster,
+  const { composed, failureCode } = resolveInsightsSynthesis({
     synthesisResult,
-    parsedSynthesis,
-    composed,
+    topStories,
+    ...synthesisComposerOptions,
   });
+  synthesisFailureCode = failureCode;
 
   if (composed) {
     worldBrief = composed.lead;

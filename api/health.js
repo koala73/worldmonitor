@@ -469,7 +469,15 @@ const SEED_META = {
       // an omitted pattern silently DROPS every code the producer writes, so
       // the contract is only safe if each key names its own vocabulary. A test
       // asserts every synthesisFailure entry declares one.
-      failureCodePattern: /^INSIGHTS_SYNTHESIS_(PARSE|GATE|MISSING_CLUSTER|PROVIDER)$/,
+      //
+      // #5947: the LEAD_* codes and COMPOSER_ERROR name WHICH editorial gate
+      // rejected the synthesis — GATE stays as the producer's residual bucket.
+      // This list is the second source of truth for that vocabulary, and an
+      // unmatched code is dropped SILENTLY, so widening the seeder's codes
+      // without widening this makes them invisible in health. A test asserts
+      // every INSIGHTS_SYNTHESIS_FAILURE_CODES value matches this pattern.
+      failureCodePattern:
+        /^INSIGHTS_SYNTHESIS_(PARSE|GATE|MISSING_CLUSTER|PROVIDER|COMPOSER_ERROR|LEAD_(EMPTY|UNCITED|PROPER_NOUN|NUMERIC_FACT|GROUNDING))$/,
     },
   },
   // #4920: daily GH Actions cadence; 2880 = 2x — one fully missed day alarms
