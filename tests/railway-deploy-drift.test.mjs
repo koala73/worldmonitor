@@ -19,6 +19,7 @@ import {
   classifyServiceDeploy,
   isProblemVerdict,
   missingBaselinedServices,
+  readRepeatedArguments,
   summarizeDeployDrift,
   summarizeStrictDeployDrift,
 } from '../scripts/check-railway-deploy-drift.mjs';
@@ -812,6 +813,26 @@ describe('strict terminal reconciliation drift', () => {
     ], ['a']);
     assert.equal(baselinedInOrdinaryMonitor.ok, false);
     assert.equal(baselinedInOrdinaryMonitor.blocking[0].verdict, 'BUILD_FAILED');
+  });
+
+  it('compares live results with the immutable expected fleet', () => {
+    const summary = summarizeStrictDeployDrift([
+      result('a', 'CURRENT'),
+      result('new-live-service', 'CURRENT'),
+    ], ['a', 'missing-planned-service']);
+    assert.equal(summary.ok, false);
+    assert.deepEqual(summary.missing, ['missing-planned-service']);
+    assert.deepEqual(summary.unexpected, ['new-live-service']);
+  });
+
+  it('parses every repeated immutable expected-service argument', () => {
+    assert.deepEqual(readRepeatedArguments([
+      'node', 'script', '--expected-service', 'seed-a', '--expected-service=seed-b',
+    ], '--expected-service'), ['seed-a', 'seed-b']);
+    assert.throws(
+      () => readRepeatedArguments(['node', 'script', '--expected-service', '--json'], '--expected-service'),
+      /requires a value/,
+    );
   });
 
   it('fails closed on an empty or malformed expected fleet', () => {
