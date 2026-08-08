@@ -26,4 +26,15 @@ export function collectInsightSources(
   options?: InsightSourceOptions,
 ): InsightSource[];
 
+export type InsightsSnapshotRejection =
+  | 'malformed-snapshot'
+  | 'missing-generated-at'
+  | 'future-generated-at'
+  | 'stale-snapshot';
+
+export function insightsSnapshotRejection(
+  raw: unknown,
+  nowMs?: number,
+): InsightsSnapshotRejection | null;
+
 export function isAcceptedInsightsSnapshot(raw: unknown, nowMs?: number): boolean;
