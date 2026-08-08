@@ -166,6 +166,80 @@ test('valid user key validation posts only a SHA-256 hash to Convex', async () =
   });
 });
 
+test('fresh Company Monitoring key is denied generically but cached with its exact binding', async () => {
+  const scopedKey = uniqueUserKey();
+  const binding = {
+    id: 'key_company_monitoring',
+    userId: 'user_company_monitoring',
+    name: 'monitoring',
+    scopes: ['company_monitoring:read', 'company_monitoring:write'],
+    companyMonitoringAccountId: 'cm_account_01K1A2B3C4D5E6F7G8H9J0K1M2',
+  };
+  await withMockedConvex(async (calls) => {
+    const result = await validateBootstrapUserApiKey(scopedKey);
+    assert.deepEqual(result, {
+      ok: false,
+      status: 401,
+      error: 'Invalid API key',
+      reason: 'invalid',
+    });
+    const cacheWrite = calls.find((call) => call.url.startsWith('https://upstash.test') && call.body.includes('"SET"'));
+    assert.ok(cacheWrite);
+    const setCommand = JSON.parse(cacheWrite.body).find((cmd) => cmd[0] === 'SET');
+    assert.deepEqual(JSON.parse(setCommand[2]), {
+      userId: binding.userId,
+      keyId: binding.id,
+      name: binding.name,
+      scopes: binding.scopes,
+      companyMonitoringAccountId: binding.companyMonitoringAccountId,
+    });
+  }, { validateResponse: binding });
+});
+
+test('warm cached Company Monitoring principal is denied without Convex or negative-cache writes', async () => {
+  const scopedKey = uniqueUserKey();
+  const keyHash = await sha256HexForTest(scopedKey);
+  const cachedPrincipal = {
+    userId: 'user_company_monitoring',
+    keyId: 'key_company_monitoring',
+    name: 'monitoring',
+    scopes: ['company_monitoring:read', 'company_monitoring:write'],
+    companyMonitoringAccountId: 'cm_account_01K1A2B3C4D5E6F7G8H9J0K1M2',
+  };
+
+  await withMockedConvex(async (calls) => {
+    const result = await validateBootstrapUserApiKey(scopedKey);
+
+    assert.deepEqual(result, {
+      ok: false,
+      status: 401,
+      error: 'Invalid API key',
+      reason: 'invalid',
+    });
+    assert.equal(calls.some((call) => call.url.endsWith('/api/internal-validate-api-key')), false);
+    assert.equal(
+      calls.some((call) => call.url.startsWith('https://upstash.test') && call.body.includes('"SET"')),
+      false,
+    );
+  }, { redisCache: { [`user-api-key:${keyHash}`]: cachedPrincipal } });
+});
+
+test('ownerless Company Monitoring scope payload is not cached or authenticated', async () => {
+  const scopedKey = uniqueUserKey();
+  await withMockedConvex(async (calls) => {
+    const result = await validateBootstrapUserApiKey(scopedKey);
+    assert.equal(result.ok, false);
+    assert.equal(result.status, 401);
+    assert.equal(calls.some((call) => call.body.includes('"SET"') && call.body.includes('user-api-key:')), false);
+  }, {
+    validateResponse: {
+      id: 'ownerless',
+      userId: 'user_company_monitoring',
+      scopes: ['company_monitoring:read'],
+    },
+  });
+});
+
 test('valid user key validation uses cached hash result without Convex', async () => {
   const keyHash = await sha256HexForTest(USER_KEY);
   await withMockedConvex(async (calls) => {
@@ -177,7 +251,7 @@ test('valid user key validation uses cached hash result without Convex', async (
   }, { redisCache: { [`user-api-key:${keyHash}`]: { userId: 'cached_owner' } } });
 });
 
-test('preview deploy user-key cache matches server Redis prefix for invalidation parity', async () => {
+test('preview deploy user-key cache matches the server Redis namespace', async () => {
   const keyHash = await sha256HexForTest(USER_KEY);
   const expectedCacheKey = `preview:abcdef12:user-api-key:${keyHash}`;
 

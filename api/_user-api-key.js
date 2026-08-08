@@ -16,6 +16,9 @@ const RATE_LIMIT_REDIS_TIMEOUT_MS = 1_000;
 const USER_KEY_CACHE_TTL_SECONDS = 60;
 const USER_KEY_NEGATIVE_CACHE_TTL_SECONDS = 60;
 const USER_KEY_CACHE_PREFIX = 'user-api-key:';
+// Self-contained Edge entry: keep this local mirror pinned by API-key and
+// Company Monitoring contract tests rather than importing TypeScript here.
+const COMPANY_MONITORING_SCOPES = new Set(['company_monitoring:read', 'company_monitoring:write']);
 const BOOTSTRAP_USER_KEY_NEGATIVE_CACHE_PREFIX = 'bootstrap-user-api-key-invalid:';
 const ENTITLEMENT_CACHE_TTL_SECONDS = 900;
 // Mirrors server/_shared/entitlement-check.ts (this .js file cannot import the
@@ -43,6 +46,24 @@ function getServerRedisKeyPrefix() {
 
 function userApiKeyCacheKey(keyHash) {
   return `${getServerRedisKeyPrefix()}${USER_KEY_CACHE_PREFIX}${keyHash}`;
+}
+
+function isUserKeyResult(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+  if (!Object.prototype.hasOwnProperty.call(value, 'userId')) return false;
+  if (typeof value.userId !== 'string' || value.userId.length === 0) return false;
+  if (value.scopes === undefined && value.companyMonitoringAccountId === undefined) return true;
+  if (!Array.isArray(value.scopes) || value.scopes.length === 0) return false;
+  if (typeof value.companyMonitoringAccountId !== 'string' || value.companyMonitoringAccountId.length === 0) {
+    return false;
+  }
+  return new Set(value.scopes).size === value.scopes.length &&
+    value.scopes.every((scope) => typeof scope === 'string' && COMPANY_MONITORING_SCOPES.has(scope));
+}
+
+// Generic bootstrap auth accepts only legacy, unscoped user API keys.
+function isGenericUserKeyResult(value) {
+  return value.scopes === undefined && value.companyMonitoringAccountId === undefined;
 }
 
 function bootstrapUserApiKeyNegativeCacheKey(keyHash) {
@@ -223,7 +244,10 @@ async function validateBootstrapUserApiKeyHash(keyHash) {
   const cacheKey = userApiKeyCacheKey(keyHash);
   const cached = await readCachedJson(cacheKey);
   if (cached.status === 'hit') {
-    if (cached.value && typeof cached.value === 'object' && typeof cached.value.userId === 'string' && cached.value.userId.length > 0) {
+    if (isUserKeyResult(cached.value)) {
+      if (!isGenericUserKeyResult(cached.value)) {
+        return { ok: false, status: 401, error: 'Invalid API key', reason: 'invalid' };
+      }
       return { ok: true, userId: cached.value.userId };
     }
   }
@@ -243,21 +267,38 @@ async function validateBootstrapUserApiKeyHash(keyHash) {
   }
 
   const value = result.value;
-  if (!value || typeof value !== 'object' || typeof value.userId !== 'string' || value.userId.length === 0) {
+  if (!isUserKeyResult(value)) {
     await writeCachedJson(negativeCacheKey, NEG_SENTINEL, USER_KEY_NEGATIVE_CACHE_TTL_SECONDS);
     return { ok: false, status: 401, error: 'Invalid API key', reason: 'invalid' };
   }
 
-  // Cache the full gateway-shared shape ({ userId, keyId, name }) so the
+  // Cache the full gateway-shared shape, including immutable Company
+  // Monitoring scope/account binding when present, so both validators see the
+  // same principal contract.
   // gateway's validateUserApiKey (server/_shared/user-api-key.ts) — which reads
   // and writes the same `user-api-key:<hash>` key typed as UserKeyResult — never
   // reads back a value with keyId/name undefined when bootstrap won the cache
   // race. Convex validateKeyByHash returns `id`, so map it to `keyId` here.
   await writeCachedJson(
     cacheKey,
-    { userId: value.userId, keyId: value.id, name: value.name },
+    {
+      userId: value.userId,
+      keyId: value.id,
+      name: value.name,
+      ...(value.scopes === undefined ? {} : { scopes: value.scopes }),
+      ...(value.companyMonitoringAccountId === undefined
+        ? {}
+        : { companyMonitoringAccountId: value.companyMonitoringAccountId }),
+    },
     USER_KEY_CACHE_TTL_SECONDS,
   );
+  // Company Monitoring keys are bound to an account and exact RPC scopes.
+  // Generic bootstrap callers do not enforce either constraint, so deny the
+  // principal after preserving its full positive cache entry for a future
+  // dedicated validator.
+  if (!isGenericUserKeyResult(value)) {
+    return { ok: false, status: 401, error: 'Invalid API key', reason: 'invalid' };
+  }
   return {
     ok: true,
     userId: value.userId,

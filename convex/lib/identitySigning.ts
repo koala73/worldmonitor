@@ -8,6 +8,10 @@
  * Uses DODO_IDENTITY_SIGNING_SECRET as the HMAC key — a dedicated secret
  * that is SEPARATE from DODO_PAYMENTS_WEBHOOK_SECRET. This ensures rotating
  * the webhook secret does not break identity verification, and vice versa.
+ *
+ * Company Monitoring owner fences use their own required
+ * COMPANY_MONITORING_OWNER_FENCE_SECRET and rotation keyring. Fence identity
+ * must remain stable when checkout/token signing keys rotate.
  */
 
 export const ANON_ID_V4_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
@@ -23,8 +27,12 @@ const MAX_ANON_CLAIM_TOKEN_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 // issuing mutation stamps (U3).
 const BUSINESS_INVITE_TOKEN_VERSION = "v1";
 const BUSINESS_INVITE_TOKEN_TTL_MS = 14 * 24 * 60 * 60 * 1000;
+const COMPANY_MONITORING_OWNER_FENCE_VERSION = "v1";
+const COMPANY_MONITORING_OWNER_FENCE_SECRET_ENV = "COMPANY_MONITORING_OWNER_FENCE_SECRET";
+const COMPANY_MONITORING_OWNER_FENCE_PREVIOUS_SECRETS_ENV =
+  "COMPANY_MONITORING_OWNER_FENCE_PREVIOUS_SECRETS";
 
-function getSigningKey(): string {
+function getDodoIdentitySigningKey(): string {
   const key = process.env.DODO_IDENTITY_SIGNING_SECRET;
   if (!key) {
     throw new Error(
@@ -36,8 +44,24 @@ function getSigningKey(): string {
   return key;
 }
 
-async function signPayload(payload: string): Promise<string> {
-  const key = getSigningKey();
+function getCompanyMonitoringOwnerFenceKey(): string {
+  const key = process.env[COMPANY_MONITORING_OWNER_FENCE_SECRET_ENV];
+  if (!key) {
+    throw new Error(
+      `[identity-signing] ${COMPANY_MONITORING_OWNER_FENCE_SECRET_ENV} not set. ` +
+      "Set it in the Convex dashboard environment variables. " +
+      "Do not reuse DODO_IDENTITY_SIGNING_SECRET.",
+    );
+  }
+  if (key.trim() !== key) {
+    throw new Error(
+      `[identity-signing] ${COMPANY_MONITORING_OWNER_FENCE_SECRET_ENV} is invalid`,
+    );
+  }
+  return key;
+}
+
+async function signPayloadWithKey(payload: string, key: string): Promise<string> {
   const encoder = new TextEncoder();
 
   const cryptoKey = await crypto.subtle.importKey(
@@ -57,6 +81,10 @@ async function signPayload(payload: string): Promise<string> {
   return Array.from(new Uint8Array(signature))
     .map((b) => b.toString(16).padStart(2, "0"))
     .join("");
+}
+
+async function signPayload(payload: string): Promise<string> {
+  return signPayloadWithKey(payload, getDodoIdentitySigningKey());
 }
 
 function timingSafeEqualHex(expected: string, actual: string): boolean {
@@ -85,6 +113,76 @@ function getAnonClaimTokenTtlMs(): number {
  */
 export async function signUserId(userId: string): Promise<string> {
   return signPayload(userId);
+}
+
+/**
+ * Stable, keyed owner fence for Company Monitoring account roots.
+ *
+ * The domain separator prevents this value being replayed as checkout
+ * metadata. Keeping the fence after owner/account deletion lets a delayed
+ * entitlement activation find the terminal tombstone without retaining the
+ * Clerk owner id on that tombstone.
+ */
+export interface CompanyMonitoringOwnerFenceCandidates {
+  current: string;
+  all: readonly string[];
+}
+
+/**
+ * Returns the current fence first, followed by every explicitly configured
+ * predecessor that must remain discoverable.
+ *
+ * Rotation order is deliberate: before rotating
+ * COMPANY_MONITORING_OWNER_FENCE_SECRET, append its current value to the
+ * comma-separated COMPANY_MONITORING_OWNER_FENCE_PREVIOUS_SECRETS keyring and
+ * deploy that configuration. The current-key duplicate is deliberately
+ * ignored during this preparation step. Then rotate the current secret.
+ * Retain every historical key
+ * while tombstones created with it must remain replay-fenced: ownerless
+ * terminal rows cannot be bulk migrated without retaining reversible identity.
+ * Nonterminal roots are opportunistically migrated by entitlement sync.
+ */
+export async function companyMonitoringOwnerFenceCandidates(
+  userId: string,
+): Promise<CompanyMonitoringOwnerFenceCandidates> {
+  if (!userId) {
+    throw new Error("[identity-signing] Company Monitoring owner fence requires a userId");
+  }
+  const currentKey = getCompanyMonitoringOwnerFenceKey();
+  const previousKeysRaw = process.env[COMPANY_MONITORING_OWNER_FENCE_PREVIOUS_SECRETS_ENV];
+  const previousKeys = previousKeysRaw === undefined ? [] : previousKeysRaw.split(",");
+  if (
+    previousKeysRaw !== undefined &&
+    (!previousKeysRaw ||
+      previousKeysRaw.trim() !== previousKeysRaw ||
+      previousKeys.some((key) => !key || key.trim() !== key))
+  ) {
+    throw new Error(
+      `[identity-signing] ${COMPANY_MONITORING_OWNER_FENCE_PREVIOUS_SECRETS_ENV} is invalid`,
+    );
+  }
+  const seenPreviousKeys = new Set<string>();
+  for (const previousKey of previousKeys) {
+    if (seenPreviousKeys.has(previousKey)) {
+      throw new Error(
+        `[identity-signing] ${COMPANY_MONITORING_OWNER_FENCE_PREVIOUS_SECRETS_ENV} contains a duplicate key`,
+      );
+    }
+    seenPreviousKeys.add(previousKey);
+  }
+
+  const payload = `company-monitoring-owner:${COMPANY_MONITORING_OWNER_FENCE_VERSION}:${userId}`;
+  const keys = [currentKey, ...previousKeys.filter((key) => key !== currentKey)];
+  const all = await Promise.all(keys.map((key) => signPayloadWithKey(payload, key)));
+  const [current] = all;
+  if (!current) {
+    throw new Error("[identity-signing] Company Monitoring owner fence keyring is empty");
+  }
+  return { current, all };
+}
+
+export async function signCompanyMonitoringOwnerFence(userId: string): Promise<string> {
+  return (await companyMonitoringOwnerFenceCandidates(userId)).current;
 }
 
 /**

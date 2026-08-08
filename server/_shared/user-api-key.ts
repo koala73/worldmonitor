@@ -7,6 +7,12 @@
  */
 
 import { cachedFetchJson, deleteRedisKey } from './redis';
+import {
+  COMPANY_MONITORING_RPC_SCOPES,
+  type CompanyMonitoringApiScope,
+} from '../../shared/company-monitoring-contract';
+
+const COMPANY_MONITORING_SCOPES = new Set<string>(Object.values(COMPANY_MONITORING_RPC_SCOPES));
 
 interface UserKeyResult {
   userId: string;
@@ -22,6 +28,8 @@ interface UserKeyResult {
    */
   keyId?: string;
   name?: string;
+  scopes?: CompanyMonitoringApiScope[];
+  companyMonitoringAccountId?: string;
 }
 
 /**
@@ -71,7 +79,24 @@ function isUserKeyResult(value: unknown): value is UserKeyResult {
   // a bare `{}` authenticate through the prototype chain.
   if (!Object.prototype.hasOwnProperty.call(value, 'userId')) return false;
   const userId = (value as { userId?: unknown }).userId;
-  return typeof userId === 'string' && userId.length > 0;
+  if (typeof userId !== 'string' || userId.length === 0) return false;
+  const candidate = value as {
+    scopes?: unknown;
+    companyMonitoringAccountId?: unknown;
+  };
+  if (candidate.scopes === undefined && candidate.companyMonitoringAccountId === undefined) return true;
+  if (!Array.isArray(candidate.scopes) || candidate.scopes.length === 0) return false;
+  if (
+    typeof candidate.companyMonitoringAccountId !== 'string' ||
+    candidate.companyMonitoringAccountId.length === 0
+  ) return false;
+  return new Set(candidate.scopes).size === candidate.scopes.length &&
+    candidate.scopes.every((scope) => typeof scope === 'string' && COMPANY_MONITORING_SCOPES.has(scope));
+}
+
+/** Generic gateway/MCP auth accepts only legacy, unscoped user API keys. */
+function isGenericUserKeyResult(value: UserKeyResult): boolean {
+  return value.scopes === undefined && value.companyMonitoringAccountId === undefined;
 }
 
 /** SHA-256 hex digest (Web Crypto API — works in Edge Runtime). */
@@ -126,6 +151,11 @@ export async function validateUserApiKey(key: string): Promise<UserKeyResult | n
       console.warn(`[user-api-key] discarding non-conforming validation payload (type=${Array.isArray(result) ? 'array' : typeof result})`);
       return null;
     }
+    // Company Monitoring keys are bound to an account and exact RPC scopes.
+    // Generic gateway/MCP callers do not enforce either constraint, so they
+    // must not receive the principal. Keep the full positive cache entry intact
+    // for a future dedicated validator instead of replacing it with a negative.
+    if (!isGenericUserKeyResult(result)) return null;
     return result;
   } catch (err) {
     // Transient Convex/network/config errors must stay retryable. Do not

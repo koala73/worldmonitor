@@ -97,6 +97,33 @@ describe("Gap 2 — shapes that MUST still authenticate (fail-closed guard)", ()
   }
 });
 
+describe("Company Monitoring account-bound cache shape", () => {
+  test("generic validation rejects an exact scoped binding from the shared cache", async () => {
+    const scoped = {
+      id: "j97xyz",
+      userId: "u1",
+      name: "monitoring",
+      scopes: ["company_monitoring:read", "company_monitoring:write"],
+      companyMonitoringAccountId: "cm_account_01K1A2B3C4D5E6F7G8H9J0K1M2",
+    };
+    cachedFetchJson.mockResolvedValue(scoped);
+    await expect(validateUserApiKey(VALID_KEY)).resolves.toBeNull();
+    expect(cachedFetchJson).toHaveBeenCalledTimes(1);
+  });
+
+  for (const [label, payload] of [
+    ["scopes without account", { userId: "u1", scopes: ["company_monitoring:read"] }],
+    ["account without scopes", { userId: "u1", companyMonitoringAccountId: "cm_account_x" }],
+    ["unknown scope", { userId: "u1", scopes: ["company_monitoring:admin"], companyMonitoringAccountId: "cm_account_x" }],
+    ["duplicate scope", { userId: "u1", scopes: ["company_monitoring:read", "company_monitoring:read"], companyMonitoringAccountId: "cm_account_x" }],
+  ] as const) {
+    test(`${label} fails closed`, async () => {
+      cachedFetchJson.mockResolvedValue(payload);
+      await expect(validateUserApiKey(VALID_KEY)).resolves.toBeNull();
+    });
+  }
+});
+
 describe("Gap 3 — malformed keys are rejected without amplification", () => {
   const MALFORMED: Array<[string, string]> = [
     ["too short (wm_x)", "wm_x"],
