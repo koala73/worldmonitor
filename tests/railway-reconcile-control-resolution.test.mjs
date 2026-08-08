@@ -90,7 +90,13 @@ function responseJson(body, status = 200) {
   });
 }
 
-function githubClient({ head = HEAD, gate = 'success', active = false, calls = [] } = {}) {
+function githubClient({
+  head = HEAD,
+  runHead = head,
+  gate = 'success',
+  active = false,
+  calls = [],
+} = {}) {
   const fetchImpl = async (url, options) => {
     const parsed = new URL(url);
     calls.push(`${options.method} ${parsed.pathname}${parsed.search}`);
@@ -111,7 +117,7 @@ function githubClient({ head = HEAD, gate = 'success', active = false, calls = [
           path: '.github/workflows/railway-deploy-trigger.yml',
           event: 'workflow_dispatch',
           head_branch: 'main',
-          head_sha: head,
+          head_sha: runHead,
           status: active ? 'in_progress' : 'completed',
           conclusion: active ? null : 'failure',
           display_title: `Railway reconciliation ${PRIOR_ID}`,
@@ -125,7 +131,7 @@ function githubClient({ head = HEAD, gate = 'success', active = false, calls = [
         path: '.github/workflows/railway-deploy-trigger.yml',
         event: 'workflow_dispatch',
         head_branch: 'main',
-        head_sha: head,
+        head_sha: runHead,
         status: active ? 'in_progress' : 'completed',
         conclusion: active ? null : 'failure',
         display_title: `Railway reconciliation ${PRIOR_ID}`,
@@ -374,11 +380,10 @@ describe('read-only GitHub recovery proof', () => {
     );
   });
 
-  it('rejects an exact run ID from another workflow, ref, or head', async () => {
+  it('rejects an exact run ID from another workflow or ref', async () => {
     for (const changed of [
       { path: '.github/workflows/other.yml' },
       { head_branch: 'feature/unsafe' },
-      { head_sha: 'b'.repeat(40) },
     ]) {
       const github = githubClient();
       const readTargetRun = github.readTargetRun.bind(github);
@@ -392,6 +397,38 @@ describe('read-only GitHub recovery proof', () => {
         JSON.stringify(changed),
       );
     }
+  });
+
+  it('allows superseding recovery decisions to inspect an old-head incident run', async () => {
+    const oldHead = 'b'.repeat(40);
+    for (const decision of ['resolve_pre_mutation_hold', 'authorize_current_main_retry']) {
+      const proof = await buildRecoveryProof(request(decision), {
+        githubClient: githubClient({ runHead: oldHead }),
+        verifyProviderInactive: async () => ({ ok: true, checkedServices: 80 }),
+        now: () => NOW,
+      });
+      assert.equal(proof.github.headSha, HEAD);
+      assert.equal(proof.github.matchingRuns[0].runId, '31181545167');
+    }
+  });
+
+  it('keeps observed-convergence acceptance bound to the exact current head', async () => {
+    await assert.rejects(
+      buildRecoveryProof(request('accept_observed_convergence'), {
+        githubClient: githubClient({ runHead: 'b'.repeat(40) }),
+        verifyConvergence: async () => ({
+          ok: true,
+          attemptId: PRIOR_ID,
+          headSha: HEAD,
+          intentDigest: 'b'.repeat(64),
+          resultDigest: 'c'.repeat(64),
+          acceptedDeploymentIds: [],
+          strict: { ok: true },
+        }),
+        now: () => NOW,
+      }),
+      (error) => error.code === 'TARGET_RUN_IDENTITY_MISMATCH',
+    );
   });
 
   it('rejects a convergence manifest from another workflow producer', async () => {

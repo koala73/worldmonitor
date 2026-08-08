@@ -538,13 +538,10 @@ test('owner assertions enforce minimum TTL and expired PREPARED leases are super
 
   assert.equal(second.supersededAttempt.state, 'PRE_MUTATION_ABORTED');
   assert.equal(second.supersededAttempt.closedReason, 'LEASE_EXPIRED');
-  assert.deepEqual(second.attempt.supersededRuns, [{
-    runId: first.attempt.runId,
-    runAttempt: first.attempt.runAttempt,
-  }]);
+  assert.deepEqual(second.attempt.supersededRuns, []);
 });
 
-test('automatic acquisition carries an already released pre-mutation run into lineage', async () => {
+test('automatic acquisition does not add an already released pre-mutation run to lineage', async () => {
   const { clock, control } = makeControl();
   const first = await acquireLease(control, clock, {
     headSha: 'c'.repeat(40),
@@ -566,10 +563,34 @@ test('automatic acquisition carries an already released pre-mutation run into li
     runId: '31180000602',
     runAttempt: 1,
   });
-  assert.deepEqual(second.attempt.supersededRuns, [{
-    runId: '31180000601',
-    runAttempt: 2,
-  }]);
+  assert.deepEqual(second.attempt.supersededRuns, []);
+});
+
+test('pre-mutation churn remains acquirable beyond the mutation-lineage limit', async () => {
+  const { clock, control } = makeControl();
+  let lease = await acquireLease(control, clock, {
+    headSha: 'c'.repeat(40),
+    runId: '31180000700',
+    runAttempt: 1,
+  });
+
+  for (let index = 1; index <= 65; index += 1) {
+    const released = await send(control, clock, '/v1/mutation/release', 'mutation', {
+      version: 1,
+      attemptId: lease.attempt.attemptId,
+      ownerId: lease.attempt.ownerId,
+      leaseCapability: lease.leaseCapability,
+      headSha: lease.attempt.headSha,
+    });
+    assert.equal(released.status, 200);
+    lease = await acquireLease(control, clock, {
+      headSha: 'c'.repeat(40),
+      runId: String(31_180_000_700 + index),
+      runAttempt: 1,
+    });
+  }
+
+  assert.deepEqual(lease.attempt.supersededRuns, []);
 });
 
 test('MUTATION_STARTED raises a global barrier that release and expiry cannot clear', async () => {
