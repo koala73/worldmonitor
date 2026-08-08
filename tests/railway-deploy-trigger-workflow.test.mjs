@@ -6,7 +6,10 @@ import { fileURLToPath } from 'node:url';
 
 import YAML from 'yaml';
 
-import { MUTATION_BOUNDARY_STEP_NAMES } from '../scripts/resolve-railway-reconcile-control.mjs';
+import {
+  MUTATION_BOUNDARY_FALLBACK_STEP_NAMES,
+  MUTATION_BOUNDARY_STEP_NAMES,
+} from '../scripts/resolve-railway-reconcile-control.mjs';
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const workflowPath = resolve(repoRoot, '.github/workflows/railway-deploy-trigger.yml');
@@ -38,9 +41,17 @@ describe('Railway deploy trigger lease-aware workflow', () => {
       'Mark Railway mutation started',
       'Record manual-required reconciliation state',
     ]);
+    const fallback = job('mutation').steps.filter(
+      (step) => MUTATION_BOUNDARY_FALLBACK_STEP_NAMES.includes(step.name),
+    );
+    assert.deepEqual(fallback.map((step) => step.name), [
+      'Trigger lease-fenced deploys for the exact green head',
+    ]);
     const evidence = stepNamed('mutation', 'Record immutable result evidence');
     assert.match(evidence.run, /MUTATION_COMPLETED\)/);
-    assert.match(evidence.run, /MUTATION_PARTIAL\|MUTATION_AMBIGUOUS\)/);
+    assert.match(evidence.run, /MUTATION_PARTIAL\|MUTATION_AMBIGUOUS\|MUTATION_FAILED\)/);
+    assert.match(evidence.run, /mutation_started=true/);
+    assert.match(evidence.run, /manual_required=true/);
     assert.match(
       String(stepNamed('mutation', 'Mark Railway mutation started').if),
       /evidence\.outputs\.mutation_started == 'true'/,
@@ -57,7 +68,7 @@ describe('Railway deploy trigger lease-aware workflow', () => {
     assert.match(job('admission').concurrency.group, /normal/);
     assert.match(job('admission').concurrency.group, /recovery/);
     assert.match(job('admission').concurrency.group, /preview/);
-    for (const name of ['preview', 'mutation', 'verifier']) {
+    for (const name of ['preview', 'mutation', 'verifier', 'liveness']) {
       assert.equal(job(name).concurrency, undefined, `${name} must not own a GitHub production lock`);
     }
   });
@@ -124,12 +135,14 @@ describe('Railway deploy trigger lease-aware workflow', () => {
     assert.match(mutate.run, /--workflow-authorized/);
     assert.match(mutate.run, /--result-manifest/);
     assert.match(mutate.run, /--status-file/);
+    assert.match(mutate.run, /command_status=\$\?/);
+    assert.match(mutate.run, /command_status=\$command_status/);
     assert.doesNotMatch(JSON.stringify(mutation), /RAILWAY_PRODUCTION_TOKEN/);
     assert.doesNotMatch(JSON.stringify(mutation), /npm install --global @railway\/cli/);
   });
 
   it('checks out the exact admitted SHA and never persists checkout credentials', () => {
-    for (const name of ['preview', 'mutation', 'verifier']) {
+    for (const name of ['preview', 'mutation', 'verifier', 'liveness']) {
       const checkout = job(name).steps.find((step) => String(step.uses ?? '').startsWith('actions/checkout@'));
       assert.ok(checkout, `${name} must check out the admitted head`);
       assert.equal(checkout.with.ref, '${{ needs.admission.outputs.head_sha }}');
@@ -147,6 +160,9 @@ describe('Railway deploy trigger lease-aware workflow', () => {
     const download = stepNamed('verifier', 'Download immutable reconciliation result');
     assert.equal(download.uses, 'actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53');
     assert.match(String(job('verifier').if), /manifest_ready == 'true'/);
+    const enforce = stepNamed('mutation', 'Enforce structured mutation outcome');
+    assert.match(String(enforce.if), /command_status != '0'/);
+    assert.match(enforce.run, /exit 1/);
   });
 
   it('gives the 40-minute verifier only Viewer and route-scoped verifier credentials', () => {
@@ -163,10 +179,20 @@ describe('Railway deploy trigger lease-aware workflow', () => {
     assert.doesNotMatch(JSON.stringify(verifier), /DEPLOY_TOKEN|MUTATION_HMAC|WATCHDOG_HMAC|OPERATOR_HMAC|serviceInstanceDeploy/);
   });
 
-  it('counts only final strict acceptance and has no self-poisoning in-band age check', () => {
+  it('counts only final strict acceptance and alarms when no verifier succeeds', () => {
     const final = stepNamed('verifier', 'Finalize exact Railway reconciliation acceptance');
     assert.ok(final.id);
-    assert.doesNotMatch(source, /check-railway-reconcile-age\.mjs/);
+    const liveness = job('liveness');
+    assert.deepEqual(liveness.needs, ['admission', 'mutation', 'verifier']);
+    assert.equal(liveness.environment, undefined);
+    assert.deepEqual(referencedSecrets('liveness'), []);
+    assert.match(String(liveness.if), /needs\.admission\.result == 'success'/);
+    assert.match(String(liveness.if), /needs\.admission\.outputs\.dry_run != 'true'/);
+    assert.match(String(liveness.if), /needs\.verifier\.result != 'success'/);
+    const enforce = stepNamed('liveness', 'Enforce reconciliation liveness');
+    assert.match(enforce.run, /cutover is disabled; no protected mutation path ran/i);
+    assert.match(enforce.run, /check-railway-reconcile-age\.mjs/);
+    assert.doesNotMatch(JSON.stringify(liveness), /RAILWAY_TOKEN|RECONCILE_.*HMAC|DEPLOY_TOKEN/);
     assert.doesNotMatch(source, /check-seed-freshness|\/api\/health/);
   });
 

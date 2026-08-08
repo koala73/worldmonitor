@@ -41,7 +41,10 @@ export function verifierFailureReason(error, manifest) {
   if (error.code === 'MANIFEST_MUTATION_UNRESOLVED') {
     return manifest?.outcome === 'MUTATION_PARTIAL' ? 'PARTIAL_MUTATION' : 'AMBIGUOUS_MUTATION';
   }
-  return null;
+  // A typed convergence failure is part of the verifier contract. If it is
+  // not one of the retryable history/query cases above, close the durable
+  // attempt instead of leaving a verifier lease stranded for manual expiry.
+  return 'VERIFIER_CONTRACT_FAILURE';
 }
 
 export async function finalizeAfterLease({

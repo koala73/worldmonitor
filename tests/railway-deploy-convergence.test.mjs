@@ -5,6 +5,7 @@ import { describe, it } from 'node:test';
 import {
   CONVERGENCE_READ_CONCURRENCY,
   ConvergenceError,
+  buildStrictDriftArgs,
   classifyRelevantDeployment,
   waitForRailwayDeployConvergence,
 } from '../scripts/wait-railway-deploy-convergence.mjs';
@@ -276,12 +277,11 @@ describe('waitForRailwayDeployConvergence', () => {
     }
   });
 
-  it('fails closed on terminal failure, unknown status, missing ID, and query failure', async () => {
+  it('fails closed on terminal failure, unknown status, and missing ID', async () => {
     const cases = [
       { read: async () => ({ id: 'dep-a', status: 'FAILED' }), code: 'DEPLOYMENT_TERMINAL_FAILURE' },
       { read: async () => ({ id: 'dep-a', status: 'NEEDS_APPROVAL' }), code: 'DEPLOYMENT_STATUS_UNKNOWN' },
       { read: async () => null, code: 'DEPLOYMENT_MISSING' },
-      { read: async () => { throw new Error('railway unavailable'); }, code: 'DEPLOYMENT_QUERY_FAILED' },
     ];
     for (const { read, code } of cases) {
       await assert.rejects(
@@ -292,6 +292,42 @@ describe('waitForRailwayDeployConvergence', () => {
         (error) => error instanceof ConvergenceError && error.code === code,
       );
     }
+  });
+
+  it('retries transient deployment-read failures but reports an unresolved failure at the deadline', async () => {
+    let now = 0;
+    let reads = 0;
+    const recovered = await waitForRailwayDeployConvergence({
+      manifest: manifest(),
+      expectedHead: HEAD,
+      deadlineMs: 250,
+      pollIntervalMs: 100,
+      now: () => now,
+      sleep: async (ms) => { now += ms; },
+      readDeployment: async () => {
+        reads += 1;
+        if (reads === 1) throw new Error('transient Railway read failure');
+        return { id: 'dep-a', status: 'SUCCESS' };
+      },
+      verifyStrictDrift: async () => ({ ok: true }),
+    });
+    assert.equal(recovered.ok, true);
+    assert.equal(reads, 2);
+
+    now = 0;
+    await assert.rejects(
+      waitForRailwayDeployConvergence({
+        manifest: manifest(),
+        expectedHead: HEAD,
+        deadlineMs: 250,
+        pollIntervalMs: 100,
+        now: () => now,
+        sleep: async (ms) => { now += ms; },
+        readDeployment: async () => { throw new Error('persistent Railway read failure'); },
+        verifyStrictDrift: async () => ({ ok: true }),
+      }),
+      (error) => error instanceof ConvergenceError && error.code === 'DEPLOYMENT_QUERY_FAILED',
+    );
   });
 
   it('times out instead of accepting a perpetually pending deployment', async () => {
@@ -353,5 +389,16 @@ describe('waitForRailwayDeployConvergence', () => {
       }),
       (error) => error instanceof ConvergenceError && error.code === 'STRICT_DRIFT_FAILED',
     );
+  });
+});
+
+describe('strict drift subprocess contract', () => {
+  it('passes every immutable planned service as an explicit expected-service argument', () => {
+    const args = buildStrictDriftArgs(HEAD, 'production', ['seed-a', 'seed-b']);
+    assert.deepEqual(args.slice(1), [
+      '--strict', '--json', '--head', HEAD, '--environment', 'production',
+      '--expected-service', 'seed-a',
+      '--expected-service', 'seed-b',
+    ]);
   });
 });

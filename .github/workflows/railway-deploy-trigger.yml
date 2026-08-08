@@ -160,31 +160,39 @@ jobs:
           RAILWAY_RECONCILE_MUTATION_HMAC: ${{ secrets.RAILWAY_RECONCILE_MUTATION_HMAC }}
           RAILWAY_RECONCILE_CUTOVER_ACTIVE: ${{ vars.RAILWAY_RECONCILE_CUTOVER_ACTIVE }}
         run: |
-          set -euo pipefail
+          set +e
           node scripts/trigger-railway-deploys.mjs \
             --workflow-authorized \
             --head "${{ needs.admission.outputs.head_sha }}" \
             --recovery-attempt-id "${{ needs.admission.outputs.recovery_attempt_id }}" \
             --result-manifest "$RUNNER_TEMP/railway-reconcile-result.json" \
             --status-file "$RUNNER_TEMP/railway-reconcile-status.json"
+          command_status=$?
+          echo "command_status=$command_status" >> "$GITHUB_OUTPUT"
+          exit 0
       - name: Record immutable result evidence
         id: evidence
         if: always()
         run: |
           set -euo pipefail
           ready=false
-          mutation_started=false
-          manual_required=false
+          mutation_started=true
+          manual_required=true
           if [ -f "$RUNNER_TEMP/railway-reconcile-result.json" ]; then
             ready=true
           fi
           if [ -f "$RUNNER_TEMP/railway-reconcile-status.json" ]; then
             outcome=$(jq -r '.outcome // ""' "$RUNNER_TEMP/railway-reconcile-status.json")
             case "$outcome" in
+              NO_MUTATION|DURABLE_ADMISSION_DEFERRED)
+                mutation_started=false
+                manual_required=false
+                ;;
               MUTATION_COMPLETED)
                 mutation_started=true
+                manual_required=false
                 ;;
-              MUTATION_PARTIAL|MUTATION_AMBIGUOUS)
+              MUTATION_PARTIAL|MUTATION_AMBIGUOUS|MUTATION_FAILED)
                 mutation_started=true
                 manual_required=true
                 ;;
@@ -216,6 +224,11 @@ jobs:
           else
             echo 'Outcome: **failed before structured status was available**' >> "$GITHUB_STEP_SUMMARY"
           fi
+      - name: Enforce structured mutation outcome
+        if: always() && steps.mutate.outputs.command_status != '0'
+        run: |
+          echo '::error::The protected mutation command did not complete successfully.'
+          exit 1
 
   verifier:
     name: terminal exact-head verifier
@@ -267,3 +280,35 @@ jobs:
           else
             echo "**Terminal acceptance failed** for exact head \`${HEAD_SHA:0:9}\`; automatic mutation remains fenced by durable state." >> "$GITHUB_STEP_SUMMARY"
           fi
+
+  liveness:
+    name: fail-closed reconciliation liveness
+    needs: [admission, mutation, verifier]
+    if: >-
+      always()
+      && needs.admission.result == 'success'
+      && needs.admission.outputs.dry_run != 'true'
+      && needs.verifier.result != 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          ref: ${{ needs.admission.outputs.head_sha }}
+          fetch-depth: 0
+          filter: blob:none
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '24'
+      - name: Enforce reconciliation liveness
+        env:
+          CUTOVER_ACTIVE: ${{ vars.RAILWAY_RECONCILE_CUTOVER_ACTIVE }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if [ "$CUTOVER_ACTIVE" != 'true' ]; then
+            echo '::error::Railway reconciliation cutover is disabled; no protected mutation path ran.'
+            exit 1
+          fi
+          node scripts/check-railway-reconcile-age.mjs

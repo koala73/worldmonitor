@@ -19,11 +19,13 @@ import {
   ReconcileDeferral,
   assertWorkflowMutationAuthority,
   buildDeployArgs,
+  createRailwayCliInstallEnv,
   createPlannedManifestEntries,
   installPinnedRailwayCli,
   planServiceDeploy,
   readExactCurrentMainAuthorization,
   readDeploymentId,
+  runGitHubApi,
   runLeasedReconcile,
   selectServices,
   summarizeDeployPlan,
@@ -471,7 +473,16 @@ function leasedOptions(events, overrides = {}) {
 describe('protected leased mutation orchestration', () => {
   it('installs only the reviewed Railway CLI version for the acquired production path', () => {
     const calls = [];
+    const env = {
+      HOME: '/runner/home',
+      PATH: '/runner/bin',
+      RAILWAY_TOKEN: 'deploy-secret',
+      RAILWAY_RECONCILE_MUTATION_HMAC: 'mutation-secret',
+      GH_TOKEN: 'github-secret',
+      UNRELATED_SECRET: 'other-secret',
+    };
     installPinnedRailwayCli({
+      env,
       spawn: (command, args, options) => {
         calls.push({ command, args, options });
         return { status: 0, signal: null, error: null };
@@ -482,6 +493,43 @@ describe('protected leased mutation orchestration', () => {
       ['npm', ['install', '--global', '@railway/cli@5.30.1']],
     ]);
     assert.equal(calls[0].options.timeout, 2 * 60 * 1_000);
+    assert.deepEqual(calls[0].options.env, { HOME: '/runner/home', PATH: '/runner/bin' });
+    assert.deepEqual(createRailwayCliInstallEnv(env), calls[0].options.env);
+  });
+
+  it('retries GitHub state reads without exposing Railway capabilities', () => {
+    const calls = [];
+    const parsed = runGitHubApi('repos/o/r/git/ref/heads/main', {
+      HOME: '/runner/home',
+      PATH: '/runner/bin',
+      GH_TOKEN: 'github-secret',
+      RAILWAY_TOKEN: 'deploy-secret',
+      RAILWAY_RECONCILE_MUTATION_HMAC: 'mutation-secret',
+    }, {
+      spawn: (command, args, options) => {
+        calls.push({ command, args, options });
+        return calls.length === 1
+          ? { status: 1, signal: null, error: null, stdout: '' }
+          : { status: 0, signal: null, error: null, stdout: '{"ok":true}' };
+      },
+    });
+    assert.deepEqual(parsed, { ok: true });
+    assert.equal(calls.length, 2);
+    assert.deepEqual(calls[1].options.env, {
+      GH_TOKEN: 'github-secret',
+      HOME: '/runner/home',
+      PATH: '/runner/bin',
+    });
+
+    let failures = 0;
+    assert.throws(() => runGitHubApi('repos/o/r', { GH_TOKEN: 'github-secret' }, {
+      spawn: () => {
+        failures += 1;
+        return { status: 0, signal: null, error: null, stdout: 'not-json' };
+      },
+    }), (error) => error instanceof ReconcileAuthorizationError
+      && error.code === 'GITHUB_STATE_UNREADABLE');
+    assert.equal(failures, 3);
   });
 
   it('rejects direct non-dry-run execution before any control or Railway access', () => {

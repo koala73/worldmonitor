@@ -83,6 +83,9 @@ describe('terminal verifier failure classification', () => {
       ['DEPLOYMENT_QUERY_FAILED', 'UNREADABLE_HISTORY'],
       ['DEPLOYMENT_MISSING', 'UNREADABLE_HISTORY'],
       ['STRICT_DRIFT_QUERY_FAILED', 'UNREADABLE_HISTORY'],
+      ['EXACT_HEAD_MISMATCH', 'VERIFIER_CONTRACT_FAILURE'],
+      ['STRICT_DRIFT_INVALID', 'VERIFIER_CONTRACT_FAILURE'],
+      ['FUTURE_DETERMINISTIC_CONVERGENCE_FAILURE', 'VERIFIER_CONTRACT_FAILURE'],
     ];
     for (const [code, reason] of cases) {
       assert.equal(verifierFailureReason(new ConvergenceError(code, code), manifest), reason, code);
@@ -209,6 +212,29 @@ describe('exact-run Railway reconciliation finalization', () => {
     );
     assert.equal(failed.length, 1);
     assert.equal(failed[0].reason, 'STALLED');
+  });
+
+  it('durably closes deterministic verifier contract failures', async () => {
+    const failed = [];
+    const manifest = resultManifest();
+    await assert.rejects(
+      finalizeRailwayReconcile({
+        manifest,
+        expectedHead: HEAD,
+        env: ENV,
+        verify: async () => {
+          throw new ConvergenceError('STRICT_DRIFT_INVALID', 'malformed strict drift result');
+        },
+        authorizeCurrent: async () => assert.fail('failed convergence must not be authorized'),
+        control: {
+          accept: async () => assert.fail('failed convergence cannot be accepted'),
+          fail: async (body) => { failed.push(body); return { outcome: 'MANUAL_REQUIRED' }; },
+        },
+      }),
+      (error) => error instanceof ConvergenceError && error.code === 'STRICT_DRIFT_INVALID',
+    );
+    assert.equal(failed.length, 1);
+    assert.equal(failed[0].reason, 'VERIFIER_CONTRACT_FAILURE');
   });
 
   it('leaves durable evidence unchanged on verifier infrastructure failure', async () => {

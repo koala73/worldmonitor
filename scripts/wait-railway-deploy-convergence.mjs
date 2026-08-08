@@ -91,6 +91,7 @@ export async function waitForRailwayDeployConvergence({
   }
 
   const accepted = new Set();
+  const queryFailures = new Map();
   const startedAt = now();
   const deadlineAt = startedAt + deadlineMs;
   while (now() < deadlineAt && accepted.size < relevant.length) {
@@ -102,12 +103,10 @@ export async function waitForRailwayDeployConvergence({
         const { entry, deploymentId } = batch[offset];
         const read = reads[offset];
         if (read.status === 'rejected') {
-          throw new ConvergenceError(
-            'DEPLOYMENT_QUERY_FAILED',
-            `deployment history could not be read for ${entry.service}`,
-            { cause: read.reason },
-          );
+          queryFailures.set(deploymentId, { entry, cause: read.reason });
+          continue;
         }
+        queryFailures.delete(deploymentId);
         const deployment = read.value;
         if (!deployment || deployment.id !== deploymentId) {
           throw new ConvergenceError(
@@ -132,6 +131,15 @@ export async function waitForRailwayDeployConvergence({
         }
       }
       if (now() >= deadlineAt) {
+        const unresolvedFailure = [...queryFailures.entries()]
+          .find(([deploymentId]) => !accepted.has(deploymentId));
+        if (unresolvedFailure) {
+          throw new ConvergenceError(
+            'DEPLOYMENT_QUERY_FAILED',
+            `deployment history could not be read for ${unresolvedFailure[1].entry.service}`,
+            { cause: unresolvedFailure[1].cause },
+          );
+        }
         throw new ConvergenceError(
           'CONVERGENCE_TIMEOUT',
           'deployment reads crossed the exact convergence deadline',
@@ -142,6 +150,15 @@ export async function waitForRailwayDeployConvergence({
     if (accepted.size < relevant.length) await sleep(Math.min(pollIntervalMs, Math.max(1, deadlineAt - now())));
   }
   if (accepted.size !== relevant.length) {
+    const unresolvedFailure = [...queryFailures.entries()]
+      .find(([deploymentId]) => !accepted.has(deploymentId));
+    if (unresolvedFailure) {
+      throw new ConvergenceError(
+        'DEPLOYMENT_QUERY_FAILED',
+        `deployment history could not be read for ${unresolvedFailure[1].entry.service}`,
+        { cause: unresolvedFailure[1].cause },
+      );
+    }
     throw new ConvergenceError(
       'CONVERGENCE_TIMEOUT',
       'relevant deployments did not reach accepted terminal states before the deadline',
@@ -196,11 +213,25 @@ export async function waitForRailwayDeployConvergence({
   };
 }
 
-function runStrictDrift(headSha, environment, timeoutMs) {
-  const result = spawnSync(process.execPath, [
+export function buildStrictDriftArgs(headSha, environment, expectedServices) {
+  if (!Array.isArray(expectedServices) || expectedServices.length === 0
+    || expectedServices.some((name) => typeof name !== 'string' || name.length === 0)
+    || new Set(expectedServices).size !== expectedServices.length) {
+    throw new TypeError('strict drift requires immutable unique expected service names');
+  }
+  return [
     fileURLToPath(new URL('./check-railway-deploy-drift.mjs', import.meta.url)),
     '--strict', '--json', '--head', headSha, '--environment', environment,
-  ], {
+    ...expectedServices.flatMap((service) => ['--expected-service', service]),
+  ];
+}
+
+function runStrictDrift(headSha, environment, timeoutMs, expectedServices) {
+  const result = spawnSync(process.execPath, buildStrictDriftArgs(
+    headSha,
+    environment,
+    expectedServices,
+  ), {
     encoding: 'utf8',
     maxBuffer: 64 * 1024 * 1024,
     timeout: Math.min(5 * 60 * 1_000, Math.max(1, timeoutMs)),
@@ -245,7 +276,12 @@ export async function verifyRailwayManifest({
       return deployments.find((deployment) => deployment.id === wanted) ?? null;
     },
     verifyStrictDrift: async ({ headSha, remainingMs }) => (
-      runStrictDrift(headSha, environment, remainingMs)
+      runStrictDrift(
+        headSha,
+        environment,
+        remainingMs,
+        manifest.intent.plannedServices.map(({ service }) => service),
+      )
     ),
   });
 }

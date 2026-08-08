@@ -43,6 +43,10 @@ import { REPOSITORY, readArgument } from './railway-cli.mjs';
 // which alarms rather than going quiet, but alarms forever for the wrong
 // reason.
 export const RECONCILE_STEP_NAME = 'Finalize exact Railway reconciliation acceptance';
+export const RECONCILE_STEP_NAMES = Object.freeze([
+  RECONCILE_STEP_NAME,
+  'Trigger deploys for services this merge changed',
+]);
 
 export const DEFAULT_WORKFLOW_FILE = 'railway-deploy-trigger.yml';
 
@@ -90,7 +94,7 @@ export function readRunReconciled(jobsPayload) {
     const steps = job?.steps;
     if (!Array.isArray(steps)) continue;
     for (const step of steps) {
-      if (step?.name !== RECONCILE_STEP_NAME) continue;
+      if (!RECONCILE_STEP_NAMES.includes(step?.name)) continue;
       // `success` only. `skipped` is the declined run this exists to catch, and
       // `failure` is a reconcile that did not happen — it reds its own run, so
       // counting it would let a fleet that is genuinely behind read as fresh.

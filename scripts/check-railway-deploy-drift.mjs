@@ -534,6 +534,24 @@ export function summarizeStrictDeployDrift(
   };
 }
 
+export function readRepeatedArguments(argv, name) {
+  const values = [];
+  for (let index = 0; index < argv.length; index += 1) {
+    const argument = argv[index];
+    if (argument === name) {
+      const value = argv[index + 1];
+      if (!value || value.startsWith('--')) throw new Error(`${name} requires a value`);
+      values.push(value);
+      index += 1;
+    } else if (argument.startsWith(`${name}=`)) {
+      const value = argument.slice(name.length + 1);
+      if (!value) throw new Error(`${name} requires a value`);
+      values.push(value);
+    }
+  }
+  return values;
+}
+
 const GIT_CALL_TIMEOUT_MS = 30_000;
 
 function runGit(args) {
@@ -613,6 +631,7 @@ function printReport(results, summary, headSha, graceSha, { verbose = false } = 
 async function main() {
   const asJson = process.argv.includes('--json');
   const strict = process.argv.includes('--strict');
+  const expectedServices = readRepeatedArguments(process.argv, '--expected-service');
   const environment = readArgument(process.argv, '--environment', DEFAULT_ENVIRONMENT);
   const window = Number(readArgument(process.argv, '--window', String(DEFAULT_DEPLOYMENT_WINDOW)));
   const graceMinutes = Number(
@@ -622,6 +641,9 @@ async function main() {
   if (!Number.isInteger(window) || window <= 0) throw new Error('--window must be a positive integer');
   if (!Number.isInteger(concurrency) || concurrency <= 0) throw new Error('--concurrency must be a positive integer');
   if (!Number.isFinite(graceMinutes) || graceMinutes < 0) throw new Error('--grace-minutes must be a non-negative number');
+  if (strict && expectedServices.length === 0) {
+    throw new Error('--strict requires at least one immutable --expected-service');
+  }
 
   const headSha = readArgument(process.argv, '--head', null) ?? runGit(['rev-parse', 'HEAD']);
   // `git merge-base --is-ancestor` exits non-zero both when the answer is no
@@ -716,7 +738,7 @@ async function main() {
   })).sort((left, right) => left.service.localeCompare(right.service));
 
   const summary = strict
-    ? summarizeStrictDeployDrift(results, services.map((service) => service.name).sort(), {
+    ? summarizeStrictDeployDrift(results, expectedServices, {
       isOnAuthorizedMainLineage: (runningSha) => authorizedMainSha !== null
         && ancestry(runningSha, authorizedMainSha) === 'yes',
     })

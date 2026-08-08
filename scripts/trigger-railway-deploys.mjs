@@ -87,6 +87,39 @@ const RESULT_STATUS_VERSION = 1;
 
 export const MUTATION_MIN_TTL_MS = 5 * 60 * 1_000;
 export const PINNED_RAILWAY_CLI = '@railway/cli@5.30.1';
+const NPM_INSTALL_ENV_KEYS = Object.freeze([
+  'CI',
+  'HOME',
+  'HTTP_PROXY',
+  'HTTPS_PROXY',
+  'NODE_EXTRA_CA_CERTS',
+  'NO_PROXY',
+  'PATH',
+  'RUNNER_TEMP',
+  'RUNNER_TOOL_CACHE',
+  'SSL_CERT_DIR',
+  'SSL_CERT_FILE',
+  'TEMP',
+  'TMP',
+  'TMPDIR',
+  'NPM_CONFIG_CACHE',
+  'npm_config_cache',
+]);
+const GITHUB_CLI_ENV_KEYS = Object.freeze([
+  'GH_ENTERPRISE_TOKEN',
+  'GH_HOST',
+  'GH_TOKEN',
+  'GITHUB_API_URL',
+  'GITHUB_TOKEN',
+  'HOME',
+  'HTTP_PROXY',
+  'HTTPS_PROXY',
+  'NODE_EXTRA_CA_CERTS',
+  'NO_PROXY',
+  'PATH',
+  'SSL_CERT_DIR',
+  'SSL_CERT_FILE',
+]);
 export const SAFE_ACQUIRE_DEFERRALS = new Set([
   'LEASE_HELD',
   'DISPATCH_HOLD_ACTIVE',
@@ -393,11 +426,26 @@ export function assertWorkflowMutationAuthority({
   }
 }
 
-export function installPinnedRailwayCli({ spawn = spawnSync } = {}) {
+function selectEnvironment(env, keys) {
+  return Object.fromEntries(keys.flatMap((key) => (
+    typeof env?.[key] === 'string' ? [[key, env[key]]] : []
+  )));
+}
+
+export function createRailwayCliInstallEnv(env = process.env) {
+  return selectEnvironment(env, NPM_INSTALL_ENV_KEYS);
+}
+
+export function createGitHubCliEnv(env = process.env) {
+  return selectEnvironment(env, GITHUB_CLI_ENV_KEYS);
+}
+
+export function installPinnedRailwayCli({ spawn = spawnSync, env = process.env } = {}) {
   const result = spawn('npm', ['install', '--global', PINNED_RAILWAY_CLI], {
     encoding: 'utf8',
     maxBuffer: 8 * 1024 * 1024,
     timeout: 2 * 60 * 1_000,
+    env: createRailwayCliInstallEnv(env),
   });
   if (result.signal) throw new Error('pinned Railway CLI installation timed out');
   if (result.error) throw result.error;
@@ -406,21 +454,30 @@ export function installPinnedRailwayCli({ spawn = spawnSync } = {}) {
   }
 }
 
-function runGitHubApi(path, env) {
-  const result = spawnSync('gh', ['api', path], {
-    encoding: 'utf8',
-    maxBuffer: 4 * 1024 * 1024,
-    timeout: 15_000,
-    env,
-  });
-  if (result.signal || result.error || result.status !== 0) {
-    throw new ReconcileAuthorizationError('GITHUB_STATE_UNREADABLE', 'current GitHub authorization state could not be read');
+export function runGitHubApi(path, env, { spawn = spawnSync, attempts = 3 } = {}) {
+  if (!Number.isInteger(attempts) || attempts < 1 || attempts > 5) {
+    throw new TypeError('GitHub API attempts must be an integer from 1 through 5');
   }
-  try {
-    return JSON.parse(result.stdout);
-  } catch {
-    throw new ReconcileAuthorizationError('GITHUB_STATE_UNREADABLE', 'current GitHub authorization state was malformed');
+  const githubEnv = createGitHubCliEnv(env);
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    const result = spawn('gh', ['api', path], {
+      encoding: 'utf8',
+      maxBuffer: 4 * 1024 * 1024,
+      timeout: 15_000,
+      env: githubEnv,
+    });
+    if (!result.signal && !result.error && result.status === 0) {
+      try {
+        return JSON.parse(result.stdout);
+      } catch {
+        // A truncated or non-JSON response is a transient unreadable read. Retry.
+      }
+    }
   }
+  throw new ReconcileAuthorizationError(
+    'GITHUB_STATE_UNREADABLE',
+    'current GitHub authorization state could not be read after bounded retries',
+  );
 }
 
 export function readExactCurrentMainAuthorization({
@@ -922,6 +979,9 @@ async function main() {
     role: 'mutation',
     secret: process.env.RAILWAY_RECONCILE_MUTATION_HMAC,
   });
+  // The client owns the only required copy. Do not expose the mutation HMAC to
+  // npm lifecycle scripts, the Railway CLI, gh, git, or any later subprocess.
+  delete process.env.RAILWAY_RECONCILE_MUTATION_HMAC;
   let planningContext;
   let completed;
   try {
@@ -953,6 +1013,7 @@ async function main() {
     if (error instanceof ReconcileDeferral) {
       writeStatus(statusPath, { outcome: 'DURABLE_ADMISSION_DEFERRED', reason: error.code, manifestReady: false });
       console.log(`::notice::Railway reconciliation deferred by durable control state (${error.code}).`);
+      process.exitCode = 1;
       return;
     }
     writeStatus(statusPath, { outcome: 'MUTATION_FAILED', manifestReady: false });

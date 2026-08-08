@@ -27,6 +27,7 @@ import YAML from 'yaml';
 import {
   DEFAULT_MAX_RECONCILE_AGE_MS,
   RECONCILE_STEP_NAME,
+  RECONCILE_STEP_NAMES,
   collectReconcileWindow,
   describeReconcileSummary,
   readRunReconciled,
@@ -271,6 +272,14 @@ describe('reading whether one run reconciled', () => {
     // so counting it would double-hide a fleet that is genuinely behind.
     assert.equal(readRunReconciled(jobs('failure')), false);
     assert.equal(readRunReconciled(jobs(null)), false);
+  });
+
+  it('keeps successful pre-cutover reconciliation visible inside the age window', () => {
+    const legacyName = RECONCILE_STEP_NAMES.find((name) => name !== RECONCILE_STEP_NAME);
+    assert.ok(legacyName);
+    assert.equal(readRunReconciled({
+      jobs: [{ steps: [{ name: legacyName, conclusion: 'success' }] }],
+    }), true);
   });
 
   it('reads false — never true — for a payload it does not recognise', () => {
