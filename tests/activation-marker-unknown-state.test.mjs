@@ -36,6 +36,7 @@ const {
   STANDALONE_KEYS,
   ON_DEMAND_KEYS,
   ROLLOUT_PENDING_UNTIL_MS,
+  RUNTIME_ROLLOUT_PENDING_POLICIES,
   CONTENT_FRESHNESS_ROLLOUT_UNTIL_MS,
 } = __testing__;
 
@@ -566,7 +567,10 @@ describe('#6095 — every activation marker is claimed by exactly one policy', (
     const claims = Object.fromEntries(Object.keys(ACTIVATION_MARKERS).map((name) => {
       const policies = [];
       if (contentNames.has(name)) policies.push('content-freshness: fail closed on unknown');
-      if (ROLLOUT_PENDING_UNTIL_MS[name] != null) policies.push('rollout-pending: soft on unknown');
+      if (ROLLOUT_PENDING_UNTIL_MS[name] != null) policies.push('static-rollout-pending: soft on unknown');
+      if (RUNTIME_ROLLOUT_PENDING_POLICIES[name] != null) {
+        policies.push('runtime-rollout-pending: soft on unknown');
+      }
       if (ON_DEMAND_KEYS.has(name)) policies.push('on-demand: soft on unknown');
       return [name, policies];
     }));

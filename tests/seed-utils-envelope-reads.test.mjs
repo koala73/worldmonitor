@@ -23,7 +23,16 @@ const originalFetch = globalThis.fetch;
 function mockFetch(upstashResult) {
   globalThis.fetch = async () => ({
     ok: true,
+    status: 200,
     json: async () => ({ result: upstashResult == null ? null : JSON.stringify(upstashResult) }),
+  });
+}
+
+function mockUpstashBody(body) {
+  globalThis.fetch = async () => ({
+    ok: true,
+    status: 200,
+    json: async () => body,
   });
 }
 
@@ -57,6 +66,72 @@ test('readSeedSnapshot: strict mode distinguishes an upstream read failure from 
     readSeedSnapshot('conflict:acled:v1:all:0:0', { strict: true }),
     /Redis snapshot read failed: HTTP 503/,
   );
+});
+
+test('readSeedSnapshot: strict mode accepts only an explicit null result as a missing key', async () => {
+  mockUpstashBody({ result: null });
+  assert.equal(await readSeedSnapshot('missing:key:v1', { strict: true }), null);
+});
+
+test('readSeedSnapshot: strict mode rejects malformed Upstash response envelopes', async () => {
+  const malformedEnvelopes = [
+    [{}, /without a result/],
+    [{ error: 'upstream protocol error' }, /rejected by Upstash: upstream protocol error/],
+    [{ result: { unexpected: true } }, /non-string result/],
+    [[], /unexpected Upstash response/],
+  ];
+
+  for (const [body, expected] of malformedEnvelopes) {
+    mockUpstashBody(body);
+    await assert.rejects(
+      readSeedSnapshot('rolling:baseline:v1', { strict: true }),
+      expected,
+    );
+  }
+});
+
+test('readSeedSnapshot: strict mode rejects malformed stored JSON', async () => {
+  for (const result of ['{not valid json', '']) {
+    mockUpstashBody({ result });
+    await assert.rejects(
+      readSeedSnapshot('rolling:baseline:v1', { strict: true }),
+      /malformed stored JSON/,
+    );
+  }
+});
+
+test('readSeedSnapshot: strict mode does not confuse a stored JSON null with a missing key', async () => {
+  mockUpstashBody({ result: 'null' });
+  await assert.rejects(
+    readSeedSnapshot('rolling:baseline:v1', { strict: true }),
+    /null stored snapshot/,
+  );
+});
+
+test('readSeedSnapshot: strict mode rejects an unparseable HTTP-200 body', async () => {
+  globalThis.fetch = async () => ({
+    ok: true,
+    status: 200,
+    json: async () => { throw new SyntaxError('bad response'); },
+  });
+  await assert.rejects(
+    readSeedSnapshot('rolling:baseline:v1', { strict: true }),
+    /returned invalid JSON \(HTTP 200\)/,
+  );
+});
+
+test('readSeedSnapshot: non-strict mode preserves null degradation for ambiguous reads', async () => {
+  for (const body of [{}, { error: 'upstream protocol error' }, { result: { unexpected: true } }, []]) {
+    mockUpstashBody(body);
+    assert.equal(await readSeedSnapshot('best-effort:key:v1'), null);
+  }
+
+  globalThis.fetch = async () => ({
+    ok: true,
+    status: 200,
+    json: async () => { throw new SyntaxError('bad response'); },
+  });
+  assert.equal(await readSeedSnapshot('best-effort:key:v1'), null);
 });
 
 test('verifySeedKey: envelope-wrapped value returns inner data only', async () => {

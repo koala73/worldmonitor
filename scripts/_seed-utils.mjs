@@ -1719,12 +1719,37 @@ export async function readSeedSnapshot(canonicalKey, { strict = false } = {}) {
       if (strict) throw new Error(`Redis snapshot read failed: HTTP ${resp.status}`);
       return null;
     }
-    const { result } = await resp.json();
-    if (!result) return null;
+    // Upstash's GET contract has one unambiguous miss: an HTTP-200 JSON
+    // envelope with an explicitly-null `result`. In strict mode, every other
+    // malformed envelope is a read failure, not a cold start. This matters for
+    // rolling/baseline seeders: degrading `{}` or invalid JSON to null can make
+    // two ambiguous reads look like a missing key and overwrite last-good
+    // state. Non-strict callers retain their best-effort null degradation.
+    const body = strict
+      ? await parseRedisCommandResponse(resp, 'Redis snapshot read')
+      : await resp.json();
+    const result = body?.result;
+    if (result === null) return null;
+    if (strict && typeof result !== 'string') {
+      throw new Error('Redis snapshot read returned a non-string result');
+    }
+    if (!strict && !result) return null;
+    let parsed;
+    try {
+      parsed = JSON.parse(result);
+    } catch (cause) {
+      if (strict) {
+        throw Object.assign(new Error('Redis snapshot read returned malformed stored JSON'), { cause });
+      }
+      return null;
+    }
+    if (strict && parsed === null) {
+      throw new Error('Redis snapshot read returned a null stored snapshot');
+    }
     // Envelope-aware: WoW/prev baselines (bigmac, grocery-basket, fear-greed)
     // must see bare legacy-shape data whether the last write was pre- or post-
     // contract-migration. unwrapEnvelope is a no-op on legacy values.
-    return unwrapEnvelope(JSON.parse(result)).data;
+    return unwrapEnvelope(parsed).data;
   } catch (error) {
     if (strict) throw error;
     return null;

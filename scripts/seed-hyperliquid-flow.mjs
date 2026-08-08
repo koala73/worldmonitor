@@ -90,9 +90,9 @@ export function scoreBasis(mark, oracle, threshold) {
  * volume spike are scored as 0 (we lack baselines).
  *
  * Per-asset `warmup` is TRUE until the volume baseline has VOLUME_BASELINE_MIN_SAMPLES
- * and there is a prior OI to compute delta against — NOT just on the first poll after
- * cold start. Without this, the "warming up" badge flips to false on poll 2 while the
- * score is still missing most of its baseline.
+ * and OI has 13 consecutive samples for a real one-hour window — NOT just on the
+ * first poll after cold start. Without this, the "warming up" badge flips to false
+ * while the score is still missing comparable baseline history.
  *
  * @param {{ symbol: string; display: string; class: 'crypto'|'commodity'; group: string }} meta
  * @param {Record<string, string>} ctx
@@ -107,6 +107,11 @@ export function computeAsset(meta, ctx, prevAsset, opts = {}) {
   const oraclePx = Number(ctx.oraclePx);
   const dayNotional = Number(ctx.dayNtlVlm);
   const prevOi = prevAsset?.openInterest ?? null;
+  const prevOiSamples = opts.suppressOiDelta
+    ? []
+    : /** @type {number[]} */ ((prevAsset?.sparkOi || []).filter(
+      /** @param {unknown} v */ (v) => Number.isFinite(v)
+    ));
   const prevVolSamples = /** @type {number[]} */ ((prevAsset?.sparkVol || []).filter(
     /** @param {unknown} v */ (v) => Number.isFinite(v)
   ));
@@ -125,10 +130,15 @@ export function computeAsset(meta, ctx, prevAsset, opts = {}) {
     volumeScore = scoreVolume(dayNotional, avg, t.volume);
   }
 
-  // After a long poll gap, retaining volume history is still valid for the
-  // rolling baseline, but comparing OI across the entire outage would pretend
-  // it was a five-minute move. Suppress only that delta for one poll.
-  const oiScore = !opts.suppressOiDelta && prevOi != null ? scoreOi(currentOi, prevOi, t.oi) : 0;
+  // A valid OI component needs 12 consecutive prior samples: after appending
+  // the current poll that forms the 13-point, one-hour window consumers render.
+  // A long gap resets only OI-derived history; volume remains a rolling 24h
+  // baseline and is intentionally retained.
+  const oiBaselineReady = opts.suppressOiDelta !== true
+    && prevOiSamples.length >= 12
+    && Number.isFinite(prevOi)
+    && prevOi > 0;
+  const oiScore = oiBaselineReady ? scoreOi(currentOi, prevOi, t.oi) : 0;
   const basisScore = scoreBasis(markPx, oraclePx, t.basis);
 
   const composite = clamp(
@@ -139,18 +149,22 @@ export function computeAsset(meta, ctx, prevAsset, opts = {}) {
   );
 
   const sparkFunding = shiftAndAppend(prevAsset?.sparkFunding, Number.isFinite(fundingRate) ? fundingRate : 0);
-  const sparkOi      = shiftAndAppend(prevAsset?.sparkOi,      Number.isFinite(currentOi) ? currentOi : 0);
-  const sparkScore   = shiftAndAppend(prevAsset?.sparkScore,   composite);
+  const sparkOi      = shiftAndAppend(opts.suppressOiDelta ? [] : prevOiSamples, Number.isFinite(currentOi) ? currentOi : 0);
+  // Score history is also discontinuous across an outage because its OI
+  // component is rebuilding. Restart it so downstream charts do not join two
+  // non-comparable regimes into one continuous sparkline.
+  const sparkScore   = shiftAndAppend(opts.suppressOiDelta ? [] : prevAsset?.sparkScore, composite);
   const sparkVol     = shiftAndAppend(prevAsset?.sparkVol,     Number.isFinite(dayNotional) ? dayNotional : 0);
 
   // Warmup stays TRUE until both baselines are usable — cold-start OR insufficient
-  // volume history OR missing prior OI. Clears only when the asset can produce all
-  // four component scores.
-  const oiBaselineReady = opts.suppressOiDelta === true || prevOi != null;
+  // volume history OR a complete one-hour OI window. Clears only when the asset
+  // can produce all four component scores on a comparable cadence.
   const warmup = opts.coldStart === true || !volumeBaselineReady || !oiBaselineReady;
 
   const alerts = [];
-  if (composite >= ALERT_THRESHOLD) {
+  // The partial composite remains inspectable during warmup, but must not emit
+  // a fully-comparable risk alert while one of its four components is absent.
+  if (!warmup && composite >= ALERT_THRESHOLD) {
     alerts.push(`HIGH RISK ${composite.toFixed(0)}/100`);
   }
 
@@ -342,6 +356,15 @@ export function buildSnapshot(upstream, prevSnapshot, opts = {}) {
       }
       assets.push({
         ...prev,
+        // Any per-asset miss breaks the five-minute OI sampling cadence, even
+        // when the rest of the snapshot arrived on time. Keep the independent
+        // rolling volume baseline, but restart OI-derived history so recovery
+        // cannot join samples across an unknown gap or emit a stale alert.
+        sparkOi: [],
+        sparkScore: [],
+        oiScore: 0,
+        alerts: [],
+        warmup: true,
         stale: true,
         staleSince: prev.staleSince || now,
         missingPolls: missing,
@@ -349,7 +372,11 @@ export function buildSnapshot(upstream, prevSnapshot, opts = {}) {
       continue;
     }
     const prev = coldStart ? null : prevByName.get(meta.symbol);
-    const asset = computeAsset(meta, ctx, prev, { coldStart, suppressOiDelta: longPollGap });
+    const assetGap = prev?.stale === true || (prev?.missingPolls || 0) > 0;
+    const asset = computeAsset(meta, ctx, prev, {
+      coldStart,
+      suppressOiDelta: longPollGap || assetGap,
+    });
     assets.push(asset);
   }
 
@@ -374,30 +401,40 @@ export function declareRecords(data) {
   return Array.isArray(data?.assets) ? data.assets.length : 0;
 }
 
-// ── Entry point ──────────────────────────────────────────────────────────────
+/**
+ * Run one protected Hyperliquid seed cycle.
+ *
+ * Reading accumulated state is part of runSeed's locked fetch phase so two
+ * overlapping invocations cannot both derive and publish from the same stale
+ * baseline. Strict reads distinguish a genuinely absent key from an ambiguous
+ * Redis failure; accumulated history is too valuable to cold-start on an
+ * unreadable response.
+ *
+ * @param {{
+ *   runSeedImpl?: typeof runSeed;
+ *   readSeedSnapshotImpl?: typeof readSeedSnapshot;
+ *   writeExtraKeyWithMetaImpl?: typeof writeExtraKeyWithMeta;
+ *   fetchAllMetaAndCtxsImpl?: typeof fetchAllMetaAndCtxs;
+ * }} [deps]
+ */
+export async function runHyperliquidFlowSeed(deps = {}) {
+  const {
+    readSeedSnapshotImpl = readSeedSnapshot,
+    writeExtraKeyWithMetaImpl = writeExtraKeyWithMeta,
+    fetchAllMetaAndCtxsImpl = fetchAllMetaAndCtxs,
+  } = deps;
 
-const isMain = process.argv[1]?.endsWith('seed-hyperliquid-flow.mjs');
-if (isMain) {
-  // The live key has an intentionally short TTL so consumers cannot mistake an
-  // abandoned feed for current data. Baseline state has a separate, longer TTL:
-  // losing the live key during a deploy/outage must not erase 12 accumulated
-  // samples and force every asset back through warmup.
-  const prevSnapshot = await readSeedSnapshot(CANONICAL_KEY)
-    ?? await readSeedSnapshot(BASELINE_KEY);
-  await runSeed('market', 'hyperliquid-flow', CANONICAL_KEY, async () => {
+  const fetchSnapshot = async () => {
+    const canonicalSnapshot = await readSeedSnapshotImpl(CANONICAL_KEY, { strict: true });
+    const prevSnapshot = canonicalSnapshot
+      ?? await readSeedSnapshotImpl(BASELINE_KEY, { strict: true });
+
     // Commodity + FX perps live on the xyz builder dex, NOT the default dex.
     // Must fetch both and merge before scoring (see fetchAllMetaAndCtxs).
-    const upstream = await fetchAllMetaAndCtxs();
-    const snapshot = buildSnapshot(upstream, prevSnapshot);
-    await writeExtraKeyWithMeta(
-      BASELINE_KEY,
-      snapshot,
-      BASELINE_TTL_SECONDS,
-      snapshot.assets.length,
-      'seed-meta:market:hyperliquid-flow-baseline',
-    );
-    return snapshot;
-  }, {
+    const upstream = await fetchAllMetaAndCtxsImpl();
+    return buildSnapshot(upstream, prevSnapshot);
+  };
+  const seedOptions = {
     ttlSeconds: CACHE_TTL_SECONDS,
     validateFn,
     sourceVersion: 'hyperliquid-info-metaAndAssetCtxs-v1',
@@ -405,7 +442,38 @@ if (isMain) {
     declareRecords,
     schemaVersion: 1,
     maxStaleMin: 30,
-  }).catch((err) => {
+    // runSeed invokes afterPublish only after validation and canonical publish.
+    // Invalid or partial snapshots can therefore never replace the durable
+    // seven-day baseline.
+    afterPublish: async (snapshot) => {
+      const wroteMeta = await writeExtraKeyWithMetaImpl(
+        BASELINE_KEY,
+        snapshot,
+        BASELINE_TTL_SECONDS,
+        snapshot.assets.length,
+        'seed-meta:market:hyperliquid-flow-baseline',
+      );
+      if (wroteMeta !== true) {
+        throw new Error('Hyperliquid baseline seed-meta write failed');
+      }
+    },
+  };
+
+  if (deps.runSeedImpl) {
+    return deps.runSeedImpl('market', 'hyperliquid-flow', CANONICAL_KEY, fetchSnapshot, seedOptions);
+  }
+  return runSeed('market', 'hyperliquid-flow', CANONICAL_KEY, fetchSnapshot, seedOptions);
+}
+
+// ── Entry point ──────────────────────────────────────────────────────────────
+
+const isMain = process.argv[1]?.endsWith('seed-hyperliquid-flow.mjs');
+if (isMain) {
+  // The live key has an intentionally short TTL so consumers cannot mistake an
+  // abandoned feed for current data. Baseline state has a separate, longer TTL:
+  // losing the live key during a deploy/outage must not erase accumulated
+  // samples and force every asset back through warmup.
+  await runHyperliquidFlowSeed().catch((err) => {
     const cause = err.cause ? ` (cause: ${err.cause.message || err.cause.code || err.cause})` : '';
     console.error('FATAL:', (err.message || err) + cause);
     process.exit(1);

@@ -1249,11 +1249,16 @@
     "entry": "scripts/seed-fred-rates.mjs",
     "deployMode": "nixpacks-root-scripts",
     "service": "seed-fred-rates",
-    "requiredEnv": ["FRED_API_KEY"],
+    "requiredEnv": [
+      "FRED_API_KEY",
+      "UPSTASH_REDIS_REST_URL",
+      "UPSTASH_REDIS_REST_TOKEN"
+    ],
     "watchPatterns": [
       "scripts/_seed-contract.mjs",
       "scripts/_seed-envelope-source.mjs",
       "scripts/_seed-utils.mjs",
+      "scripts/_upstash-rest.mjs",
       "scripts/_proxy-utils.cjs",
       "scripts/lib/llm-telemetry.cjs",
       "scripts/seed-economy.mjs",
