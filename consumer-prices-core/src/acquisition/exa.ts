@@ -93,9 +93,13 @@ export class ExaProvider implements AcquisitionProvider {
 
     // exa-js does not expose an AbortSignal for getContents, so use the API
     // directly here to keep the opt-in fallback genuinely bounded.
-    const result = await this.request<{ results?: Array<{ summary?: unknown }> }>('/contents', {
+    // `text` rides along in the same call as ground truth for the caller's
+    // on-page price verification (price-evidence.ts) — same request, no
+    // second fetch.
+    const result = await this.request<{ results?: Array<{ summary?: unknown; text?: unknown }> }>('/contents', {
       urls: [url],
       summary: { query: prompt, schema: outputSchema },
+      text: { maxCharacters: 30_000 },
     }, opts.timeout);
     const item = result.results?.[0];
     if (!item) throw new Error(`Exa returned no content for ${url}`);
@@ -107,6 +111,7 @@ export class ExaProvider implements AcquisitionProvider {
       data,
       provider: this.name,
       fetchedAt: new Date(),
+      ...(typeof item.text === 'string' && item.text.trim() ? { pageContent: item.text } : {}),
     };
   }
 
