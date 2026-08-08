@@ -47,12 +47,14 @@ function manifest({ outcome = 'MUTATION_COMPLETED', entries } = {}) {
 }
 
 describe('relevant Railway deployment terminal classification', () => {
-  it('accepts only SUCCESS, waits only known in-flight states, and fails every other terminal', () => {
-    assert.equal(classifyRelevantDeployment('SUCCESS'), 'ACCEPTED');
+  it('uses the shared deployed-source, in-flight, and failure status semantics', () => {
+    for (const status of ['SUCCESS', 'CRASHED', 'REMOVED', 'SLEEPING']) {
+      assert.equal(classifyRelevantDeployment(status), 'ACCEPTED', status);
+    }
     for (const status of ['QUEUED', 'WAITING', 'INITIALIZING', 'BUILDING', 'DEPLOYING']) {
       assert.equal(classifyRelevantDeployment(status), 'WAIT', status);
     }
-    for (const status of ['FAILED', 'CRASHED', 'REMOVED', 'SKIPPED', 'SLEEPING']) {
+    for (const status of ['FAILED', 'SKIPPED']) {
       assert.equal(classifyRelevantDeployment(status), 'FAILED', status);
     }
     for (const status of [null, undefined, 'NEEDS_APPROVAL', 'A_STATUS_FROM_2027']) {
@@ -107,6 +109,30 @@ describe('waitForRailwayDeployConvergence', () => {
       verifyStrictDrift: async () => ({ ok: true, blocking: [], missing: [], duplicates: [], unexpected: [] }),
     });
     assert.deepEqual(result.acceptedDeploymentIds, ['dep-active']);
+  });
+
+  it('accepts cron terminal states only after strict exact-head drift is zero', async () => {
+    const adopted = manifest({
+      outcome: 'NO_MUTATION',
+      entries: [{
+        service: 'seed-a', serviceId: 'svc-a', action: 'ADOPT', outcome: 'ALREADY_ACTIVE',
+        deploymentId: null, observedDeploymentId: 'dep-cron', reason: 'HEAD_ALREADY_ACTIVE',
+      }],
+    });
+    for (const status of ['CRASHED', 'REMOVED', 'SLEEPING']) {
+      let strictReads = 0;
+      const result = await waitForRailwayDeployConvergence({
+        manifest: adopted,
+        expectedHead: HEAD,
+        readDeployment: async ({ observedDeploymentId }) => ({ id: observedDeploymentId, status }),
+        verifyStrictDrift: async () => {
+          strictReads += 1;
+          return { ok: true, blocking: [], missing: [], duplicates: [], unexpected: [] };
+        },
+      });
+      assert.deepEqual(result.acceptedDeploymentIds, ['dep-cron'], status);
+      assert.equal(strictReads, 1, status);
+    }
   });
 
   it('accepts an empty no-mutation plan only after strict full-fleet drift', async () => {

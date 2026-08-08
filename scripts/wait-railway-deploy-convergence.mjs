@@ -11,14 +11,19 @@ import {
   readRepositoryServices,
   resolveEnvironmentId,
 } from './railway-cli.mjs';
-import { IN_FLIGHT_STATUSES } from './railway-deployments.mjs';
+import {
+  FAILED_STATUSES,
+  IN_FLIGHT_STATUSES,
+  REJECTED_STATUS,
+  RUNNING_STATUSES,
+} from './railway-deployments.mjs';
 import { validateResultManifest } from './railway-reconcile-manifest.mjs';
 
 export const DEFAULT_CONVERGENCE_DEADLINE_MS = 35 * 60 * 1_000;
 export const DEFAULT_CONVERGENCE_POLL_MS = 15 * 1_000;
 export const CONVERGENCE_READ_CONCURRENCY = 8;
 
-const FAILED_TERMINAL_STATUSES = new Set(['FAILED', 'CRASHED', 'REMOVED', 'SKIPPED', 'SLEEPING']);
+const FAILED_TERMINAL_STATUSES = new Set([...FAILED_STATUSES, REJECTED_STATUS]);
 
 export class ConvergenceError extends Error {
   constructor(code, message, { disposition = 'UNCHANGED', cause } = {}) {
@@ -30,7 +35,7 @@ export class ConvergenceError extends Error {
 }
 
 export function classifyRelevantDeployment(status) {
-  if (status === 'SUCCESS') return 'ACCEPTED';
+  if (RUNNING_STATUSES.includes(status)) return 'ACCEPTED';
   if (IN_FLIGHT_STATUSES.includes(status)) return 'WAIT';
   if (FAILED_TERMINAL_STATUSES.has(status)) return 'FAILED';
   return 'UNKNOWN';

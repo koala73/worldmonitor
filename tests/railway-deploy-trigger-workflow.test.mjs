@@ -36,7 +36,19 @@ describe('Railway deploy trigger lease-aware workflow', () => {
     );
     assert.deepEqual(recognized.map((step) => step.name), [
       'Mark Railway mutation started',
+      'Record manual-required reconciliation state',
     ]);
+    const evidence = stepNamed('mutation', 'Record immutable result evidence');
+    assert.match(evidence.run, /MUTATION_COMPLETED\)/);
+    assert.match(evidence.run, /MUTATION_PARTIAL\|MUTATION_AMBIGUOUS\)/);
+    assert.match(
+      String(stepNamed('mutation', 'Mark Railway mutation started').if),
+      /evidence\.outputs\.mutation_started == 'true'/,
+    );
+    assert.match(
+      String(stepNamed('mutation', 'Record manual-required reconciliation state').if),
+      /evidence\.outputs\.manual_required == 'true'/,
+    );
   });
 
   it('removes workflow-level production concurrency and makes only admission cancel-safe', () => {
@@ -68,7 +80,7 @@ describe('Railway deploy trigger lease-aware workflow', () => {
     assert.equal(dispatch?.expected_head_sha?.required, true);
     assert.match(workflow['run-name'], /recovery_attempt_id/);
     assert.match(workflow['run-name'], /expected_head_sha/);
-    assert.match(stepNamed('mutation', 'Mark Railway mutation started').run, /--recovery-attempt-id/);
+    assert.match(stepNamed('mutation', 'Trigger lease-fenced deploys for the exact green head').run, /--recovery-attempt-id/);
   });
 
   it('preserves event-driven reconciliation with only an hourly offset backstop', () => {
@@ -107,7 +119,7 @@ describe('Railway deploy trigger lease-aware workflow', () => {
       'RAILWAY_RECONCILE_DEPLOY_TOKEN_V2',
       'RAILWAY_RECONCILE_MUTATION_HMAC',
     ]);
-    const mutate = stepNamed('mutation', 'Mark Railway mutation started');
+    const mutate = stepNamed('mutation', 'Trigger lease-fenced deploys for the exact green head');
     assert.equal(mutate.env.RAILWAY_TOKEN, '${{ secrets.RAILWAY_RECONCILE_DEPLOY_TOKEN_V2 }}');
     assert.match(mutate.run, /--workflow-authorized/);
     assert.match(mutate.run, /--result-manifest/);

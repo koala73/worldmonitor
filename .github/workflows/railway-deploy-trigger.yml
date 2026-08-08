@@ -173,10 +173,32 @@ jobs:
         run: |
           set -euo pipefail
           ready=false
+          mutation_started=false
+          manual_required=false
           if [ -f "$RUNNER_TEMP/railway-reconcile-result.json" ]; then
             ready=true
           fi
+          if [ -f "$RUNNER_TEMP/railway-reconcile-status.json" ]; then
+            outcome=$(jq -r '.outcome // ""' "$RUNNER_TEMP/railway-reconcile-status.json")
+            case "$outcome" in
+              MUTATION_COMPLETED)
+                mutation_started=true
+                ;;
+              MUTATION_PARTIAL|MUTATION_AMBIGUOUS)
+                mutation_started=true
+                manual_required=true
+                ;;
+            esac
+          fi
           echo "manifest_ready=$ready" >> "$GITHUB_OUTPUT"
+          echo "mutation_started=$mutation_started" >> "$GITHUB_OUTPUT"
+          echo "manual_required=$manual_required" >> "$GITHUB_OUTPUT"
+      - name: Mark Railway mutation started
+        if: always() && steps.evidence.outputs.mutation_started == 'true'
+        run: echo 'The immutable result proves that this run crossed the Railway mutation boundary.'
+      - name: Record manual-required reconciliation state
+        if: always() && steps.evidence.outputs.manual_required == 'true'
+        run: echo 'The immutable result requires protected operator recovery.'
       - name: Upload reconciliation result manifest
         if: always()
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
