@@ -2786,10 +2786,10 @@ async function seedStablecoinMarkets() {
   const depeggedCount = stablecoins.filter((c) => c.pegStatus === 'DEPEGGED').length;
   const payload = { timestamp: new Date().toISOString(), summary: { totalMarketCap, totalVolume24h, coinCount: stablecoins.length, depeggedCount, healthStatus: depeggedCount === 0 ? 'HEALTHY' : depeggedCount === 1 ? 'CAUTION' : 'WARNING' }, stablecoins };
   
-  // Сохраняем основной ключ (для обратной совместимости)
+  // Save the legacy key for backward compatibility
   const ok1 = await envelopeWrite('market:stablecoins:v1', payload, STABLECOIN_SEED_TTL, { recordCount: stablecoins.length, sourceVersion: 'market-stablecoins' });
   
-  // НОВОЕ: Сохраняем каждую монету отдельно для покоинного кеширования
+  // Save each coin separately for per-coin caching
   let perCoinOk = true;
   for (const coin of stablecoins) {
     const coinKey = `market:stablecoins:v1:${coin.id}`;
@@ -2800,7 +2800,7 @@ async function seedStablecoinMarkets() {
     if (!ok) perCoinOk = false;
   }
   
-  // НОВОЕ: Сохраняем список всех ID
+  // Save the list of all coin IDs
   const idsKey = 'market:stablecoins:v1:ids';
   const okIds = await envelopeWrite(idsKey, stablecoins.map(c => c.id), STABLECOIN_SEED_TTL, {
     recordCount: stablecoins.length,

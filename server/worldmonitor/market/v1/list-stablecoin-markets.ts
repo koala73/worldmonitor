@@ -13,7 +13,7 @@
  * └─────────────────────────────────────────────────────────────────┘
  * 
  * Benefits of per-coin keys:
- * 1. Cache efficiency: ?coins=tether reads only 1 key
+ * 1. Cache efficiency: ?coins=tether reads only the requested coin key
  * 2. Better hit ratio: overlapping requests share cache
  * 3. Lower latency: smaller payloads
  * 
@@ -66,27 +66,21 @@ export async function listStablecoinMarkets(
   req: ListStablecoinMarketsRequest,
 ): Promise<ListStablecoinMarketsResponse> {
   try {
-    // Get requested coin IDs from the request
     const coinIds = (req as any).coinIds as string[] | undefined;
     
-    // Log request for debugging
     if (process.env.NODE_ENV !== 'production') {
       console.debug('[Stablecoin] Request received:', {
         coinIds: coinIds?.length ? coinIds.join(',') : 'all',
       });
     }
     
-    // If no specific coins requested, return all coins
     if (!coinIds || coinIds.length === 0) {
-      // Get list of all coin IDs
       const allIds = await getCachedJson(IDS_CACHE_KEY, true) as string[] | null;
       
       if (allIds && Array.isArray(allIds) && allIds.length > 0) {
-        // Read all coins by individual keys
         const coinKeys = allIds.map((id: string) => `${COIN_KEY_PREFIX}${id}`);
         const resultsMap = await getCachedJsonBatch(coinKeys);
         
-        // Extract values from Map
         const stablecoins: any[] = [];
         for (const [key, value] of resultsMap) {
           if (value !== null && value !== undefined) {
@@ -104,17 +98,14 @@ export async function listStablecoinMarkets(
         }
       }
       
-      // Fallback to the legacy single key if per-coin cache is empty
       console.warn('[Stablecoin] Individual keys empty, falling back to legacy key');
       const seedData = await getCachedJson(SEED_CACHE_KEY, true) as ListStablecoinMarketsResponse | null;
       return seedData || EMPTY_RESPONSE;
     }
     
-    // Read only requested coins
     const coinKeys = coinIds.map((id: string) => `${COIN_KEY_PREFIX}${id}`);
     const resultsMap = await getCachedJsonBatch(coinKeys);
     
-    // Build response from fetched coins
     const stablecoins: any[] = [];
     for (let i = 0; i < coinIds.length; i++) {
       const key = coinKeys[i];
@@ -125,7 +116,20 @@ export async function listStablecoinMarkets(
     }
     
     if (stablecoins.length === 0) {
-      // Fallback to the legacy single key
+      // Try legacy key but filter only requested coins
+      if (coinIds && coinIds.length > 0) {
+        const seedData = await getCachedJson(SEED_CACHE_KEY, true) as ListStablecoinMarketsResponse | null;
+        if (seedData?.stablecoins) {
+          const filtered = seedData.stablecoins.filter((coin: any) => 
+            coinIds.includes(coin.id)
+          );
+          if (filtered.length > 0) {
+            return buildResponse(filtered);
+          }
+        }
+        return EMPTY_RESPONSE;
+      }
+      
       console.warn('[Stablecoin] Requested coins not found in individual keys, falling back to legacy key:', {
         requested: coinIds.join(','),
       });
