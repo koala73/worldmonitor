@@ -285,6 +285,10 @@ export function warmHealthCache(): void {
   if (typeof process !== 'undefined' && process.env?.GROQ_API_KEY) {
     providerUrls.push('https://api.groq.com/openai/v1/chat/completions');
   }
+  if (typeof process !== 'undefined' && process.env?.ATLASCLOUD_API_KEY) {
+    const atlasBaseUrl = process.env.ATLASCLOUD_API_BASE || 'https://api.atlascloud.ai/v1';
+    providerUrls.push(`${atlasBaseUrl.replace(/\/+$/, '')}/chat/completions`);
+  }
   if (typeof process !== 'undefined' && process.env?.OPENROUTER_API_KEY) {
     providerUrls.push('https://openrouter.ai/api/v1/chat/completions');
   }

@@ -21,6 +21,7 @@ export interface DesktopReadinessCheck {
 
 const keyBackedFeatures: RuntimeFeatureId[] = [
   'aiOllama',
+  'aiAtlasCloud',
   'aiGroq',
   'aiOpenRouter',
   'economicFred',
@@ -130,7 +131,7 @@ export function getDesktopReadinessChecks(localBackendEnabled: boolean): Desktop
     { id: 'startup', label: 'Desktop startup + sidecar API health', ready: localBackendEnabled },
     { id: 'map', label: 'Map rendering (local layers + static geo assets)', ready: true },
     { id: 'core-intel', label: 'Core intelligence panels (Live News, Monitor, Strategic Risk)', ready: true },
-    { id: 'summaries', label: 'Summaries (provider-backed or browser fallback)', ready: isFeatureAvailable('aiOllama') || isFeatureAvailable('aiGroq') || isFeatureAvailable('aiOpenRouter') },
+    { id: 'summaries', label: 'Summaries (provider-backed or browser fallback)', ready: isFeatureAvailable('aiOllama') || isFeatureAvailable('aiAtlasCloud') || isFeatureAvailable('aiGroq') || isFeatureAvailable('aiOpenRouter') },
     { id: 'market', label: 'Market panel live data paths', ready: true },
     { id: 'live-tracking', label: 'At least one live-tracking mode (AIS or OpenSky)', ready: liveTrackingReady },
   ];

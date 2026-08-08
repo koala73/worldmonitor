@@ -22,9 +22,9 @@ function makeContext(headers: Record<string, string> = {}) {
   };
 }
 
-function request(mode = "brief") {
+function request(mode = "brief", provider = "groq") {
   return {
-    provider: "groq",
+    provider,
     headlines: ["Headline one", "Headline two"],
     mode,
     geoContext: "",
@@ -79,6 +79,19 @@ describe("summarizeArticle handler premium mode gate", () => {
       fallback: true,
       status: "SUMMARIZE_STATUS_SKIPPED",
       statusDetail: "GROQ_API_KEY not configured",
+    });
+    expect(globalThis.fetch).not.toHaveBeenCalled();
+  });
+
+  test("Atlas Cloud summaries skip cleanly when the key is not configured", async () => {
+    delete process.env.ATLASCLOUD_API_KEY;
+
+    const result = await summarizeArticle(makeContext(), request("translate", "atlascloud"));
+
+    expect(result).toMatchObject({
+      fallback: true,
+      status: "SUMMARIZE_STATUS_SKIPPED",
+      statusDetail: "ATLASCLOUD_API_KEY not configured",
     });
     expect(globalThis.fetch).not.toHaveBeenCalled();
   });
