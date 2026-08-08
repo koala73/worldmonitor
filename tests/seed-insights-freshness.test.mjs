@@ -2,18 +2,20 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import {
-  INSIGHTS_COMPOSER_THREW,
-  INSIGHTS_SYNTHESIS_FAILURE_CODES,
   buildInsightsFreshnessMetaPatch,
-  classifyInsightsSynthesisFailure,
-  composeInsightsSynthesis,
   decorateInsightsRun,
   insightsFreshnessPatchArgs,
   publishInsightsPayload,
   resolveInsightsFallbackStatus,
-  resolveInsightsSynthesis,
   validateInsightsPayload,
 } from '../scripts/seed-insights.mjs';
+import {
+  INSIGHTS_COMPOSER_THREW,
+  INSIGHTS_SYNTHESIS_FAILURE_CODES,
+  classifyInsightsSynthesisFailure,
+  composeInsightsSynthesis,
+  resolveInsightsSynthesis,
+} from '../scripts/_insights-synthesis-diagnostics.mjs';
 import { BRIEF_REJECTIONS } from '../scripts/_insights-brief.mjs';
 import { __testing__ as healthTesting } from '../api/health.js';
 
@@ -235,25 +237,20 @@ test('a gate rejection reports which gate rejected it', () => {
   assert.equal(gateStage(INSIGHTS_COMPOSER_THREW), INSIGHTS_SYNTHESIS_FAILURE_CODES.COMPOSER_ERROR);
 });
 
-// Drift guard. INSIGHTS_GATE_REASON_CODES is hand-maintained in a second file
-// from the vocabulary it maps, and an unmapped reason degrades SILENTLY to the
-// generic GATE bucket — reopening the exact diagnosability hole #5947 closed.
-// Iterate the source of truth so adding a reason without a code fails here.
-test('every composer rejection reason maps to a code of its own', () => {
-  for (const reason of Object.values(BRIEF_REJECTIONS)) {
+// Drift guard: only final gate reasons reach the reason map. Missing-cluster
+// and parse are classified by earlier stage checks and have real seam tests
+// below. A new LEAD_* reason must not silently degrade to generic GATE.
+test('every final composer gate reason maps to a code of its own', () => {
+  const finalGateReasons = Object.entries(BRIEF_REJECTIONS)
+    .filter(([name]) => name.startsWith('LEAD_'))
+    .map(([, reason]) => reason);
+  for (const reason of [...finalGateReasons, INSIGHTS_COMPOSER_THREW]) {
     const code = classifyInsightsSynthesisFailure({
       hasBriefCluster: true,
       synthesisResult: { text: 'raw' },
       parsedSynthesis: { lead: 'parsed' },
       gateReason: reason,
     });
-    if (reason === BRIEF_REJECTIONS.NO_TOP_STORIES) {
-      // The one deliberate exception: fetchInsights throws on an empty
-      // top-story list before the composer runs, so mapping it would claim
-      // coverage of a path no test can reach through the real seam.
-      assert.equal(code, INSIGHTS_SYNTHESIS_FAILURE_CODES.GATE);
-      continue;
-    }
     assert.notEqual(
       code,
       INSIGHTS_SYNTHESIS_FAILURE_CODES.GATE,
@@ -384,6 +381,15 @@ const seamText = (lead) => JSON.stringify({
   lines: [{ n: 1, text: 'Regional apple prices rose sharply in Chile [1]' }],
 });
 
+test('composeInsightsSynthesis preserves implicit brief-cluster selection', () => {
+  const result = composeInsightsSynthesis(
+    seamText('Prices rose sharply in Chile last quarter [1].'),
+    [SEAM_STORY],
+  );
+  assert.equal(result.rejection, null);
+  assert.ok(result.brief, 'an eligible corpus must compose when briefCluster is omitted');
+});
+
 test('the composer rejection reason reaches the failure code through the real seam', () => {
   const resolve = (lead) => resolveInsightsSynthesis({
     synthesisResult: { text: seamText(lead), provider: 'openrouter', model: 'test' },
@@ -468,23 +474,30 @@ test('a throwing composer is contained and reported as COMPOSER_ERROR', () => {
   assert.equal(failureCode, INSIGHTS_SYNTHESIS_FAILURE_CODES.COMPOSER_ERROR);
 });
 
-test('a non-Error throw is contained too — the handler must not throw formatting it', () => {
-  const exploding = {
-    sources: ['Reuters', 'AP News'],
-    memberTitles: [],
-    get primaryTitle() {
-      throw null;
+test('hostile non-Error throws cannot escape through diagnostic formatting', () => {
+  const hostileMessage = Object.defineProperty({}, 'message', {
+    get() {
+      throw new Error('message getter must not run');
     },
-  };
-  assert.doesNotThrow(() => {
-    const { failureCode } = resolveInsightsSynthesis({
-      synthesisResult: { text: seamText('Prices rose sharply in Chile last quarter [1].') },
-      topStories: [exploding],
-      briefCluster: exploding,
-      validatorMode: 'enforce',
-    });
-    assert.equal(failureCode, INSIGHTS_SYNTHESIS_FAILURE_CODES.COMPOSER_ERROR);
   });
+  for (const thrown of [Symbol('composer boom'), hostileMessage]) {
+    const exploding = {
+      sources: ['Reuters', 'AP News'],
+      memberTitles: [],
+      get primaryTitle() {
+        throw thrown;
+      },
+    };
+    assert.doesNotThrow(() => {
+      const { failureCode } = resolveInsightsSynthesis({
+        synthesisResult: { text: seamText('Prices rose sharply in Chile last quarter [1].') },
+        topStories: [exploding],
+        briefCluster: exploding,
+        validatorMode: 'enforce',
+      });
+      assert.equal(failureCode, INSIGHTS_SYNTHESIS_FAILURE_CODES.COMPOSER_ERROR);
+    });
+  }
 });
 
 test('composeInsightsSynthesis honors shadow mode — the incident kill switch still ships', () => {

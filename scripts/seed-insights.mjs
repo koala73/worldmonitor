@@ -29,10 +29,21 @@ import {
   briefUserPrompt,
   synthesisSystemPrompt,
   synthesisUserPrompt,
-  parseBriefSynthesis,
-  composeSynthesizedBriefResult,
-  BRIEF_REJECTIONS,
 } from './_insights-brief.mjs';
+import {
+  INSIGHTS_COMPOSER_THREW,
+  INSIGHTS_SYNTHESIS_FAILURE_CODES,
+  classifyInsightsSynthesisFailure,
+  composeInsightsSynthesis,
+  resolveInsightsSynthesis,
+} from './_insights-synthesis-diagnostics.mjs';
+export {
+  INSIGHTS_COMPOSER_THREW,
+  INSIGHTS_SYNTHESIS_FAILURE_CODES,
+  classifyInsightsSynthesisFailure,
+  composeInsightsSynthesis,
+  resolveInsightsSynthesis,
+};
 import { buildLlmCallEvent, emitLlmEvents, flushPendingLlmEvents } from './lib/llm-telemetry.cjs';
 // Import from the scripts mirror (`scripts/shared/`) — NOT the repo-root
 // `shared/`. Railway services with nixpacks `rootDirectory=scripts` only
@@ -102,61 +113,7 @@ const INSIGHTS_RUN_OUTCOMES = Object.freeze({
   DEGRADED: 'degraded',
 });
 
-// These codes are intentionally low-cardinality and safe to put in seed-meta,
-// health responses, and logs. Never include prompt or model output text in the
-// rejection diagnostic: the payload may contain sensitive intelligence.
-export const INSIGHTS_SYNTHESIS_FAILURE_CODES = Object.freeze({
-  PARSE: 'INSIGHTS_SYNTHESIS_PARSE',
-  GATE: 'INSIGHTS_SYNTHESIS_GATE',
-  MISSING_CLUSTER: 'INSIGHTS_SYNTHESIS_MISSING_CLUSTER',
-  PROVIDER: 'INSIGHTS_SYNTHESIS_PROVIDER',
-  // #5947: GATE was one opaque bucket over five independent editorial gates,
-  // so a run log or seed-meta read could not say WHICH one fired and every
-  // recurrence needed a live-digest replay to attribute. These name the gate;
-  // GATE itself survives as the residual bucket so a composer rejection this
-  // map does not cover still lands inside the vocabulary instead of being
-  // coerced to PROVIDER and mislabelled a provider outage.
-  LEAD_EMPTY: 'INSIGHTS_SYNTHESIS_LEAD_EMPTY',
-  LEAD_UNCITED: 'INSIGHTS_SYNTHESIS_LEAD_UNCITED',
-  LEAD_PROPER_NOUN: 'INSIGHTS_SYNTHESIS_LEAD_PROPER_NOUN',
-  LEAD_NUMERIC_FACT: 'INSIGHTS_SYNTHESIS_LEAD_NUMERIC_FACT',
-  LEAD_GROUNDING: 'INSIGHTS_SYNTHESIS_LEAD_GROUNDING',
-  // A composer THROW is a defect in our own gate code, not rejected content.
-  // It is fault-tolerated at the call site (an escape would re-run the whole
-  // digest read and LLM chain under runSeed's withRetry), which is exactly why
-  // it needs a code of its own — otherwise it hides inside GATE and reads as
-  // an ordinary editorial rejection.
-  COMPOSER_ERROR: 'INSIGHTS_SYNTHESIS_COMPOSER_ERROR',
-});
 const INSIGHTS_SYNTHESIS_FAILURE_CODE_SET = new Set(Object.values(INSIGHTS_SYNTHESIS_FAILURE_CODES));
-
-// Local sentinel for "the composer threw" — it is not a BRIEF_REJECTIONS value
-// because the composer never returns it; the call site synthesizes it.
-export const INSIGHTS_COMPOSER_THREW = 'composer-threw';
-
-/**
- * #5947: which bounded failure code a composer rejection reason maps to. Only
- * consulted for a rejection that already classified as a GATE stage, so this
- * map refines that arm and never overrides an earlier stage's verdict.
- *
- * NO_TOP_STORIES is deliberately absent: fetchInsights throws before the
- * composer can see an empty list, so a value here would be untestable through
- * the real seam and would claim coverage it does not have. It falls to GATE.
- *
- * A Map, not an object literal: an object lookup answers truthily for
- * inherited keys ('constructor', 'toString'), so an unexpected reason would
- * return a FUNCTION as the failure code instead of falling through to GATE.
- */
-const INSIGHTS_GATE_REASON_CODES = new Map([
-  [BRIEF_REJECTIONS.MISSING_CLUSTER, INSIGHTS_SYNTHESIS_FAILURE_CODES.MISSING_CLUSTER],
-  [BRIEF_REJECTIONS.PARSE, INSIGHTS_SYNTHESIS_FAILURE_CODES.PARSE],
-  [BRIEF_REJECTIONS.LEAD_EMPTY, INSIGHTS_SYNTHESIS_FAILURE_CODES.LEAD_EMPTY],
-  [BRIEF_REJECTIONS.LEAD_UNCITED, INSIGHTS_SYNTHESIS_FAILURE_CODES.LEAD_UNCITED],
-  [BRIEF_REJECTIONS.LEAD_PROPER_NOUN, INSIGHTS_SYNTHESIS_FAILURE_CODES.LEAD_PROPER_NOUN],
-  [BRIEF_REJECTIONS.LEAD_NUMERIC_FACT, INSIGHTS_SYNTHESIS_FAILURE_CODES.LEAD_NUMERIC_FACT],
-  [BRIEF_REJECTIONS.LEAD_GROUNDING, INSIGHTS_SYNTHESIS_FAILURE_CODES.LEAD_GROUNDING],
-  [INSIGHTS_COMPOSER_THREW, INSIGHTS_SYNTHESIS_FAILURE_CODES.COMPOSER_ERROR],
-]);
 const INSIGHTS_RUN_META = Symbol('worldmonitor.insightsRunMeta');
 
 function normalizeInsightsFailureCode(code) {
@@ -202,102 +159,6 @@ export function publishInsightsPayload(data) {
 export function validateInsightsPayload(data) {
   if (insightsRunMeta(data)?.outcome === INSIGHTS_RUN_OUTCOMES.LKG_PRESERVED) return false;
   return declareRecords(data) > 0;
-}
-
-/**
- * Keep synthesis rejection telemetry bounded and machine-actionable. The
- * classifier deliberately accepts only stage outcomes, never raw prompt or
- * provider text, so this value is safe for seed-meta, health, and logs.
- *
- * `gateReason` is the composer's own bounded rejection reason (#5947). It
- * refines the LAST arm only: the stage precedence above it is unchanged, so a
- * reason can never relabel a missing cluster, a provider outage, or a parse
- * failure. An absent or unmapped reason still yields GATE, which is what every
- * caller that predates the reason seam gets.
- */
-export function classifyInsightsSynthesisFailure({
-  hasBriefCluster = false,
-  synthesisResult = null,
-  parsedSynthesis = null,
-  composed = null,
-  gateReason = null,
-} = {}) {
-  if (composed) return null;
-  if (!hasBriefCluster) return INSIGHTS_SYNTHESIS_FAILURE_CODES.MISSING_CLUSTER;
-  if (!synthesisResult) return INSIGHTS_SYNTHESIS_FAILURE_CODES.PROVIDER;
-  if (!parsedSynthesis) return INSIGHTS_SYNTHESIS_FAILURE_CODES.PARSE;
-  return INSIGHTS_GATE_REASON_CODES.get(gateReason) || INSIGHTS_SYNTHESIS_FAILURE_CODES.GATE;
-}
-
-/**
- * #6001/#5947: one definition of "is this synthesis publishable", used BOTH as
- * the provider-acceptance gate and for the final result, so the chain can never
- * accept output the composer would later reject.
- *
- * Fault-tolerant on purpose: this runs once per provider AND once more for the
- * final result. An uncaught throw here escapes fetchInsights into runSeed's
- * withRetry, which would re-run the whole digest read and LLM chain up to four
- * times until the seed lock expires. Failing to a rejection classifies as
- * COMPOSER_ERROR (a throw is our defect, not rejected content), keeps the LKG
- * fail-safe, and stays visible in the log.
- *
- * Exported rather than closed over `topStories` inside fetchInsights so the
- * throw-to-COMPOSER_ERROR translation is reachable from a test. It previously
- * lived in that closure and could only be pinned by a regex over this file's
- * source — a guard that stays green when the wiring is moved into a comment or
- * a dead branch.
- */
-export function composeInsightsSynthesis(text, topStories, opts = {}) {
-  try {
-    return composeSynthesizedBriefResult(text, topStories, {
-      validatorMode: opts.validatorMode ?? BRIEF_VALIDATOR_MODE,
-      sanitizeTitle,
-      sourceFromStory: briefSourceFromStory,
-      briefCluster: opts.briefCluster,
-      parsedSynthesis: parseBriefSynthesis(text, topStories.length),
-    });
-  } catch (err) {
-    // `err?.message`, not `err.message`: a non-Error throw would make this
-    // handler itself throw, and this is the last line of defense before the
-    // retry storm above.
-    console.warn(`  [brief_synthesis] composer threw (${err?.message ?? err}) — treating as rejected`);
-    return { brief: null, rejection: INSIGHTS_COMPOSER_THREW };
-  }
-}
-
-/**
- * #5947: compose the candidate `callLLM` handed back and classify the outcome
- * in one place, so the gate reason the composer reports is the one the failure
- * code is built from.
- *
- * On a fully-rejected chain callLLM returns the FIRST cleanly-rejected
- * candidate, so the gate named here is that provider's — the actionable one —
- * not whichever fallback happened to fail last.
- */
-export function resolveInsightsSynthesis({
-  synthesisResult = null,
-  topStories = [],
-  briefCluster = null,
-  validatorMode,
-} = {}) {
-  const parsedSynthesis = synthesisResult
-    ? parseBriefSynthesis(synthesisResult.text, topStories.length)
-    : null;
-  const composeResult = synthesisResult
-    ? composeInsightsSynthesis(synthesisResult.text, topStories, { briefCluster, validatorMode })
-    : null;
-  const composed = composeResult?.brief ?? null;
-  return {
-    composed,
-    parsedSynthesis,
-    failureCode: classifyInsightsSynthesisFailure({
-      hasBriefCluster: briefCluster != null,
-      synthesisResult,
-      parsedSynthesis,
-      composed,
-      gateReason: composeResult?.rejection ?? null,
-    }),
-  };
 }
 
 export function resolveInsightsFallbackStatus({ synthesisFailureCode, legacyStatus }) {
@@ -937,7 +798,14 @@ async function fetchInsights() {
   }
   // The acceptance gate is the composer itself (#6001), so the chain can never
   // accept output the composer would later reject.
-  const composeFromText = (text) => composeInsightsSynthesis(text, topStories, { briefCluster }).brief;
+  const synthesisComposerOptions = {
+    briefCluster,
+    validatorMode: BRIEF_VALIDATOR_MODE,
+    sanitizeTitle,
+    sourceFromStory: briefSourceFromStory,
+  };
+  const composeFromText = (text) =>
+    composeInsightsSynthesis(text, topStories, synthesisComposerOptions).brief;
 
   // #6001: L1 may now walk the whole provider chain, and L2 below makes a
   // SECOND callLLM. Stamp the run's LLM start so L2 gets only the remainder —
@@ -956,7 +824,7 @@ async function fetchInsights() {
   const { composed, failureCode } = resolveInsightsSynthesis({
     synthesisResult,
     topStories,
-    briefCluster,
+    ...synthesisComposerOptions,
   });
   synthesisFailureCode = failureCode;
 
