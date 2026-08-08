@@ -6,6 +6,8 @@ import { fileURLToPath } from 'node:url';
 
 import YAML from 'yaml';
 
+import { MUTATION_BOUNDARY_STEP_NAMES } from '../scripts/resolve-railway-reconcile-control.mjs';
+
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const workflowPath = resolve(repoRoot, '.github/workflows/railway-deploy-trigger.yml');
 const source = readFileSync(workflowPath, 'utf8');
@@ -28,6 +30,15 @@ function referencedSecrets(jobName) {
 }
 
 describe('Railway deploy trigger lease-aware workflow', () => {
+  it('emits a mutation step recognized by protected pre-mutation recovery', () => {
+    const recognized = job('mutation').steps.filter(
+      (step) => MUTATION_BOUNDARY_STEP_NAMES.includes(step.name),
+    );
+    assert.deepEqual(recognized.map((step) => step.name), [
+      'Mark Railway mutation started',
+    ]);
+  });
+
   it('removes workflow-level production concurrency and makes only admission cancel-safe', () => {
     assert.equal(workflow.concurrency, undefined);
     assert.equal(job('admission').concurrency?.['cancel-in-progress'], true);
@@ -57,7 +68,7 @@ describe('Railway deploy trigger lease-aware workflow', () => {
     assert.equal(dispatch?.expected_head_sha?.required, true);
     assert.match(workflow['run-name'], /recovery_attempt_id/);
     assert.match(workflow['run-name'], /expected_head_sha/);
-    assert.match(stepNamed('mutation', 'Trigger lease-fenced deploys for the exact green head').run, /--recovery-attempt-id/);
+    assert.match(stepNamed('mutation', 'Mark Railway mutation started').run, /--recovery-attempt-id/);
   });
 
   it('preserves event-driven reconciliation with only an hourly offset backstop', () => {
@@ -96,7 +107,7 @@ describe('Railway deploy trigger lease-aware workflow', () => {
       'RAILWAY_RECONCILE_DEPLOY_TOKEN_V2',
       'RAILWAY_RECONCILE_MUTATION_HMAC',
     ]);
-    const mutate = stepNamed('mutation', 'Trigger lease-fenced deploys for the exact green head');
+    const mutate = stepNamed('mutation', 'Mark Railway mutation started');
     assert.equal(mutate.env.RAILWAY_TOKEN, '${{ secrets.RAILWAY_RECONCILE_DEPLOY_TOKEN_V2 }}');
     assert.match(mutate.run, /--workflow-authorized/);
     assert.match(mutate.run, /--result-manifest/);

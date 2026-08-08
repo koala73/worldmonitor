@@ -39,10 +39,12 @@ const DECISIONS = new Set([
 const ACTIVE_STATUSES = new Set(['queued', 'in_progress', 'waiting', 'pending', 'requested']);
 const TERMINAL_STATUS = 'completed';
 const PROOF_MAX_AGE_MS = 10 * 60 * 1000;
-const MUTATION_BOUNDARY_STEP_NAMES = new Set([
+export const MUTATION_BOUNDARY_STEP_NAMES = Object.freeze([
+  'Trigger deploys for services this merge changed',
   'Mark Railway mutation started',
   'Record manual-required reconciliation state',
 ]);
+const MUTATION_BOUNDARY_STEPS = new Set(MUTATION_BOUNDARY_STEP_NAMES);
 const IDENTIFIER = /^[A-Za-z0-9][A-Za-z0-9._:-]{7,127}$/;
 const ACTOR = /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,98}[A-Za-z0-9]|\[bot\])?$/;
 
@@ -498,7 +500,7 @@ function countPossibleMutationBoundarySteps(jobs) {
       fail('GITHUB_EVIDENCE_MALFORMED', 'workflow job steps were unavailable');
     }
     for (const step of job.steps) {
-      if (MUTATION_BOUNDARY_STEP_NAMES.has(step?.name) && step?.conclusion !== 'skipped') count += 1;
+      if (MUTATION_BOUNDARY_STEPS.has(step?.name) && step?.conclusion !== 'skipped') count += 1;
     }
   }
   return count;
