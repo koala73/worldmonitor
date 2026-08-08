@@ -405,6 +405,399 @@ describe("webhook processWebhookEvent", () => {
     expect(welcome?.html).not.toContain("Full API Access");
   });
 
+  // #6330: lifecycle emails must target (and name) the account's login email.
+  // The checkout email is unauthenticated and may be a different alias — a
+  // welcome sent there steers the buyer into "account not known" at sign-in.
+  test("welcome email targets the account login email when checkout email differs", async () => {
+    vi.useFakeTimers();
+    process.env.RESEND_API_KEY = "re_test";
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue(new Response("{}", { status: 200 }));
+    const t = convexTest(schema, modules);
+
+    await seedProductPlan(t, "pdt_test_pro", "pro_monthly", "Pro Monthly");
+    await t.run(async (ctx) => {
+      await ctx.db.insert("users", {
+        userId: "test-user-001",
+        email: "login@example.com",
+        normalizedEmail: "login@example.com",
+        firstSeenAt: BASE_TIMESTAMP - 86400000,
+        lastSeenAt: BASE_TIMESTAMP,
+      });
+    });
+
+    await processEvent(
+      t,
+      "wh_login_email_divergence",
+      "subscription.active",
+      makeSubscriptionPayload({
+        customer: {
+          customer_id: "cust_test_001",
+          email: "checkout@example.com",
+          name: "Test User",
+        },
+      }),
+      BASE_TIMESTAMP,
+    );
+    await t.finishAllScheduledFunctions(vi.runAllTimers);
+
+    const sends = fetchMock.mock.calls
+      .filter(([url]) => String(url).includes("api.resend.com"))
+      .map(([, init]) => JSON.parse(String((init as RequestInit).body)) as {
+        to: string[];
+        subject: string;
+        html: string;
+      });
+
+    // Exactly three sends: welcome, pointer, admin. Pins against double-sends.
+    expect(sends).toHaveLength(3);
+
+    // Welcome goes to the address that can actually sign in, and names it.
+    const welcome = sends.find((send) => send.subject.startsWith("Welcome to World Monitor"));
+    expect(welcome?.to).toEqual(["login@example.com"]);
+    expect(welcome?.html).toContain("login@example.com");
+
+    // The checkout inbox gets a sign-in pointer instead of silence — that is
+    // the inbox the buyer demonstrably watches (they typed it at checkout).
+    // The login address is MASKED there: the checkout inbox is unverified
+    // (a typo'd address reaches a stranger), so it gets a recognizable hint,
+    // never the full account address.
+    const pointer = sends.find((send) => send.to[0] === "checkout@example.com");
+    expect(pointer).toBeDefined();
+    expect(pointer?.html).toContain("l•••@example.com");
+    expect(pointer?.html).not.toContain("login@example.com");
+    expect(pointer?.subject).toContain("sign in");
+
+    // Admin notification names both identities so ops can find the customer
+    // from either address.
+    const admin = sends.find((send) => send.subject.startsWith("[WM] New User Subscribed"));
+    expect(admin?.html).toContain("login@example.com");
+    expect(admin?.html).toContain("checkout@example.com");
+  });
+
+  test("welcome email flow is unchanged when login and checkout emails match", async () => {
+    vi.useFakeTimers();
+    process.env.RESEND_API_KEY = "re_test";
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue(new Response("{}", { status: 200 }));
+    const t = convexTest(schema, modules);
+
+    await seedProductPlan(t, "pdt_test_pro", "pro_monthly", "Pro Monthly");
+    await t.run(async (ctx) => {
+      await ctx.db.insert("users", {
+        userId: "test-user-001",
+        email: "test@example.com",
+        normalizedEmail: "test@example.com",
+        firstSeenAt: BASE_TIMESTAMP - 86400000,
+        lastSeenAt: BASE_TIMESTAMP,
+      });
+    });
+
+    await processEvent(
+      t,
+      "wh_login_email_match",
+      "subscription.active",
+      makeSubscriptionPayload(),
+      BASE_TIMESTAMP,
+    );
+    await t.finishAllScheduledFunctions(vi.runAllTimers);
+
+    const sends = fetchMock.mock.calls
+      .filter(([url]) => String(url).includes("api.resend.com"))
+      .map(([, init]) => JSON.parse(String((init as RequestInit).body)) as {
+        to: string[];
+        subject: string;
+      });
+
+    // Exactly the historical pair: user welcome + admin notification. No
+    // pointer email, no duplicate sends.
+    expect(sends).toHaveLength(2);
+    const welcome = sends.find((send) => send.subject.startsWith("Welcome to World Monitor"));
+    expect(welcome?.to).toEqual(["test@example.com"]);
+  });
+
+  test("welcome email still sends via login email when checkout email is empty", async () => {
+    vi.useFakeTimers();
+    process.env.RESEND_API_KEY = "re_test";
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue(new Response("{}", { status: 200 }));
+    const t = convexTest(schema, modules);
+
+    await seedProductPlan(t, "pdt_test_pro", "pro_monthly", "Pro Monthly");
+    await t.run(async (ctx) => {
+      await ctx.db.insert("users", {
+        userId: "test-user-001",
+        email: "login@example.com",
+        normalizedEmail: "login@example.com",
+        firstSeenAt: BASE_TIMESTAMP - 86400000,
+        lastSeenAt: BASE_TIMESTAMP,
+      });
+    });
+
+    await processEvent(
+      t,
+      "wh_login_email_empty_checkout",
+      "subscription.active",
+      makeSubscriptionPayload({
+        customer: { customer_id: "cust_test_001", email: "", name: "Test User" },
+      }),
+      BASE_TIMESTAMP,
+    );
+    await t.finishAllScheduledFunctions(vi.runAllTimers);
+
+    const sends = fetchMock.mock.calls
+      .filter(([url]) => String(url).includes("api.resend.com"))
+      .map(([, init]) => JSON.parse(String((init as RequestInit).body)) as {
+        to: string[];
+        subject: string;
+      });
+
+    const welcome = sends.find((send) => send.subject.startsWith("Welcome to World Monitor"));
+    expect(welcome?.to).toEqual(["login@example.com"]);
+    // Welcome + admin only — the empty checkout email must not produce a
+    // pointer send.
+    expect(sends).toHaveLength(2);
+  });
+
+  test("a rejected sign-in pointer send does not swallow the admin notification", async () => {
+    vi.useFakeTimers();
+    process.env.RESEND_API_KEY = "re_test";
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockImplementation(async (_url, init) => {
+        const body = JSON.parse(String((init as RequestInit).body)) as { to: string[] };
+        // The buyer-typed checkout address is one Resend rejects outright.
+        if (body.to[0] === "checkout@example.com") {
+          return new Response('{"message":"invalid to"}', { status: 422 });
+        }
+        return new Response("{}", { status: 200 });
+      });
+    const t = convexTest(schema, modules);
+
+    await seedProductPlan(t, "pdt_test_pro", "pro_monthly", "Pro Monthly");
+    await t.run(async (ctx) => {
+      await ctx.db.insert("users", {
+        userId: "test-user-001",
+        email: "login@example.com",
+        normalizedEmail: "login@example.com",
+        firstSeenAt: BASE_TIMESTAMP - 86400000,
+        lastSeenAt: BASE_TIMESTAMP,
+      });
+    });
+
+    await processEvent(
+      t,
+      "wh_pointer_send_rejected",
+      "subscription.active",
+      makeSubscriptionPayload({
+        customer: {
+          customer_id: "cust_test_001",
+          email: "checkout@example.com",
+          name: "Test User",
+        },
+      }),
+      BASE_TIMESTAMP,
+    );
+    await t.finishAllScheduledFunctions(vi.runAllTimers);
+
+    const sends = fetchMock.mock.calls
+      .filter(([url]) => String(url).includes("api.resend.com"))
+      .map(([, init]) => JSON.parse(String((init as RequestInit).body)) as {
+        to: string[];
+        subject: string;
+      });
+
+    // The pointer WAS attempted (guards against the "remove the pointer"
+    // mutant — without this, the test passes vacuously when no pointer is
+    // ever sent), and despite its rejection the welcome and the admin
+    // notification both fired.
+    expect(sends.some((send) => send.to[0] === "checkout@example.com")).toBe(true);
+    expect(sends.some((send) => send.subject.startsWith("Welcome to World Monitor"))).toBe(true);
+    expect(sends.some((send) => send.subject.startsWith("[WM] New User Subscribed"))).toBe(true);
+  });
+
+  test("reactivation email targets the account login email when checkout email differs", async () => {
+    vi.useFakeTimers();
+    process.env.RESEND_API_KEY = "re_test";
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue(new Response("{}", { status: 200 }));
+    const t = convexTest(schema, modules);
+
+    await seedProductPlan(t, "pdt_test_pro", "pro_monthly", "Pro Monthly");
+    await t.run(async (ctx) => {
+      await ctx.db.insert("users", {
+        userId: "test-user-001",
+        email: "login@example.com",
+        normalizedEmail: "login@example.com",
+        firstSeenAt: BASE_TIMESTAMP - 86400000,
+        lastSeenAt: BASE_TIMESTAMP,
+      });
+      await ctx.db.insert("subscriptions", {
+        userId: "test-user-001",
+        dodoSubscriptionId: "sub_test_001",
+        dodoProductId: "pdt_test_pro",
+        planKey: "pro_monthly",
+        status: "expired",
+        currentPeriodStart: BASE_TIMESTAMP - 31 * 86400000,
+        currentPeriodEnd: BASE_TIMESTAMP - 86400000,
+        rawPayload: {},
+        updatedAt: BASE_TIMESTAMP - 86400000,
+      });
+    });
+
+    await processEvent(
+      t,
+      "wh_reactivation_login_email",
+      "subscription.active",
+      makeSubscriptionPayload({
+        customer: {
+          customer_id: "cust_test_001",
+          email: "checkout@example.com",
+          name: "Test User",
+        },
+      }),
+      BASE_TIMESTAMP,
+    );
+    await t.finishAllScheduledFunctions(vi.runAllTimers);
+
+    const sends = fetchMock.mock.calls
+      .filter(([url]) => String(url).includes("api.resend.com"))
+      .map(([, init]) => JSON.parse(String((init as RequestInit).body)) as {
+        to: string[];
+        subject: string;
+      });
+
+    const welcomeBack = sends.find((send) => send.subject.includes("Welcome back"));
+    expect(welcomeBack?.to).toEqual(["login@example.com"]);
+    // The reactivation path gets the same #6330 treatment as the first
+    // purchase: the welcome-back names the sign-in address, and the checkout
+    // inbox receives a pointer (masked login) instead of silence.
+    expect(welcomeBack?.html).toContain("login@example.com");
+    const pointer = sends.find((send) => send.to[0] === "checkout@example.com");
+    expect(pointer).toBeDefined();
+    expect(pointer?.html).toContain("l•••@example.com");
+    expect(sends).toHaveLength(2);
+  });
+
+  test("case- and whitespace-only checkout differences stay on the no-pointer path", async () => {
+    vi.useFakeTimers();
+    process.env.RESEND_API_KEY = "re_test";
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue(new Response("{}", { status: 200 }));
+    const t = convexTest(schema, modules);
+
+    await seedProductPlan(t, "pdt_test_pro", "pro_monthly", "Pro Monthly");
+    await t.run(async (ctx) => {
+      await ctx.db.insert("users", {
+        userId: "test-user-001",
+        email: "login@example.com",
+        normalizedEmail: "login@example.com",
+        firstSeenAt: BASE_TIMESTAMP - 86400000,
+        lastSeenAt: BASE_TIMESTAMP,
+      });
+    });
+
+    await processEvent(
+      t,
+      "wh_login_email_case_only",
+      "subscription.active",
+      makeSubscriptionPayload({
+        customer: {
+          customer_id: "cust_test_001",
+          email: " LOGIN@Example.com ",
+          name: "Test User",
+        },
+      }),
+      BASE_TIMESTAMP,
+    );
+    await t.finishAllScheduledFunctions(vi.runAllTimers);
+
+    const sends = fetchMock.mock.calls
+      .filter(([url]) => String(url).includes("api.resend.com"))
+      .map(([, init]) => JSON.parse(String((init as RequestInit).body)) as {
+        to: string[];
+        subject: string;
+      });
+
+    // Same inbox in different casing is NOT a divergence: welcome + admin
+    // only, no pointer, no third email into the user's own inbox.
+    expect(sends).toHaveLength(2);
+    const welcome = sends.find((send) => send.subject.startsWith("Welcome to World Monitor"));
+    expect(welcome?.to).toEqual(["login@example.com"]);
+  });
+
+  test("a users row without an email falls back to the checkout address", async () => {
+    vi.useFakeTimers();
+    process.env.RESEND_API_KEY = "re_test";
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue(new Response("{}", { status: 200 }));
+    const t = convexTest(schema, modules);
+
+    await seedProductPlan(t, "pdt_test_pro", "pro_monthly", "Pro Monthly");
+    await t.run(async (ctx) => {
+      // Phone-only signup shape: row exists, email absent.
+      await ctx.db.insert("users", {
+        userId: "test-user-001",
+        firstSeenAt: BASE_TIMESTAMP - 86400000,
+        lastSeenAt: BASE_TIMESTAMP,
+      });
+    });
+
+    await processEvent(
+      t,
+      "wh_users_row_no_email",
+      "subscription.active",
+      makeSubscriptionPayload(),
+      BASE_TIMESTAMP,
+    );
+    await t.finishAllScheduledFunctions(vi.runAllTimers);
+
+    const sends = fetchMock.mock.calls
+      .filter(([url]) => String(url).includes("api.resend.com"))
+      .map(([, init]) => JSON.parse(String((init as RequestInit).body)) as {
+        to: string[];
+        subject: string;
+      });
+
+    expect(sends).toHaveLength(2);
+    const welcome = sends.find((send) => send.subject.startsWith("Welcome to World Monitor"));
+    expect(welcome?.to).toEqual(["test@example.com"]);
+  });
+
+  test("email templates escape HTML in interpolated addresses", async () => {
+    process.env.RESEND_API_KEY = "re_test";
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue(new Response("{}", { status: 200 }));
+    const t = convexTest(schema, modules);
+
+    await t.action(internal.payments.subscriptionEmails.sendSubscriptionEmails, {
+      userEmail: 'login<script>alert(1)</script>@example.com',
+      planKey: "pro_monthly",
+      userId: "test-user-001",
+      checkoutEmail: 'checkout<img src=x>@example.com',
+    });
+
+    const sends = fetchMock.mock.calls
+      .filter(([url]) => String(url).includes("api.resend.com"))
+      .map(([, init]) => JSON.parse(String((init as RequestInit).body)) as {
+        html: string;
+      });
+
+    expect(sends.length).toBeGreaterThan(0);
+    for (const send of sends) {
+      expect(send.html).not.toContain("<script>");
+      expect(send.html).not.toContain("<img src=x>");
+    }
+    expect(sends.some((send) => send.html.includes("&lt;script&gt;"))).toBe(true);
+  });
+
   test.each([
     ["on_hold", BASE_TIMESTAMP + 7 * 86400000],
     ["cancelled", BASE_TIMESTAMP],

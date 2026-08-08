@@ -16,6 +16,7 @@ import {
   SECTORS,
   COMMODITIES,
   MARKET_SYMBOLS,
+  STOCK_CATALOG,
   SITE_VARIANT,
   LAYER_TO_SOURCE,
   STORAGE_KEYS,
@@ -72,9 +73,15 @@ import {
   fetchSanctionsPressure,
   fetchRadiationWatch,
 } from '@/services';
-import { getMarketWatchlistEntries, mergeWatchlistSymbols } from '@/services/market-watchlist';
+import {
+  getCatalogSelection,
+  getMarketWatchlistEntries,
+  resolveEffectiveMarketWatchlist,
+} from '@/services/market-watchlist';
 import { fetchStockAnalysesForTargets, getStockAnalysisTargets, type StockAnalysisResult } from '@/services/stock-analysis';
 import { fetchInsiderTransactions } from '@/services/insider-transactions';
+import { selectCompleteHydratedMarketQuotes } from '@/services/market-hydration';
+import { LatestRequestGuard } from '@/utils/latest-request-guard';
 import {
   fetchStockBacktestsForTargets,
   fetchStoredStockBacktests,
@@ -409,6 +416,7 @@ export class DataLoaderManager implements AppModule {
   private satellitePropagationCleanup: (() => void) | null = null;
   private dailyBriefGeneration = 0;
   private _stockAnalysisGeneration = 0;
+  private readonly marketLoadGuard = new LatestRequestGuard();
   private globalTenderGeneration = 0;
   private globalTenderFilters: GlobalTenderFilters = {};
   private dailyBriefFrameworkUnsubscribe: (() => void) | null = null;
@@ -2168,6 +2176,8 @@ export class DataLoaderManager implements AppModule {
   }
 
   async loadMarkets(): Promise<void> {
+    const generation = this.marketLoadGuard.begin();
+    const isCurrent = () => this.marketLoadGuard.isCurrent(generation);
     // Method-scoped so all of loadMarkets' try blocks (stocks/sectors/commodities +
     // crypto/defi/ai/other) see these; market is dynamic-imported off eager main.js (#4571).
     // Guarded: loadMarkets must not reject (the init() watchlist handler calls it
@@ -2180,17 +2190,19 @@ export class DataLoaderManager implements AppModule {
       // whole markets/crypto/commodities cycle with no signal. Log so it's traceable,
       // and mirror the downstream failure states before returning.
       console.warn('[DataLoader] market chunk load failed', e);
-      this.ctx.statusPanel?.updateApi('Finnhub', { status: 'error' });
-      this.ctx.statusPanel?.updateApi('CoinGecko', { status: 'error' });
-      (this.ctx.panels['markets'] as MarketPanel | undefined)?.showRetrying(t('common.failedMarketData'));
-      (this.ctx.panels['heatmap'] as HeatmapPanel | undefined)?.showRetrying(t('common.failedSectorData'));
-      (this.ctx.panels['commodities'] as CommoditiesPanel | undefined)?.showRetrying(t('common.failedCommodities'));
-      (this.ctx.panels['energy-complex'] as EnergyComplexPanel | undefined)?.showRetrying(t('common.failedCommodities'));
-      (this.ctx.panels['crypto'] as CryptoPanel | undefined)?.showRetrying(t('common.failedCryptoData'));
-      (this.ctx.panels['crypto-heatmap'] as CryptoHeatmapPanel | undefined)?.showRetrying(t('common.failedCryptoData'));
-      (this.ctx.panels['defi-tokens'] as DefiTokensPanel | undefined)?.showRetrying(t('common.failedCryptoData'));
-      (this.ctx.panels['ai-tokens'] as AiTokensPanel | undefined)?.showRetrying(t('common.failedCryptoData'));
-      (this.ctx.panels['other-tokens'] as OtherTokensPanel | undefined)?.showRetrying(t('common.failedCryptoData'));
+      if (isCurrent()) {
+        this.ctx.statusPanel?.updateApi('Finnhub', { status: 'error' });
+        this.ctx.statusPanel?.updateApi('CoinGecko', { status: 'error' });
+        (this.ctx.panels['markets'] as MarketPanel | undefined)?.showRetrying(t('common.failedMarketData'));
+        (this.ctx.panels['heatmap'] as HeatmapPanel | undefined)?.showRetrying(t('common.failedSectorData'));
+        (this.ctx.panels['commodities'] as CommoditiesPanel | undefined)?.showRetrying(t('common.failedCommodities'));
+        (this.ctx.panels['energy-complex'] as EnergyComplexPanel | undefined)?.showRetrying(t('common.failedCommodities'));
+        (this.ctx.panels['crypto'] as CryptoPanel | undefined)?.showRetrying(t('common.failedCryptoData'));
+        (this.ctx.panels['crypto-heatmap'] as CryptoHeatmapPanel | undefined)?.showRetrying(t('common.failedCryptoData'));
+        (this.ctx.panels['defi-tokens'] as DefiTokensPanel | undefined)?.showRetrying(t('common.failedCryptoData'));
+        (this.ctx.panels['ai-tokens'] as AiTokensPanel | undefined)?.showRetrying(t('common.failedCryptoData'));
+        (this.ctx.panels['other-tokens'] as OtherTokensPanel | undefined)?.showRetrying(t('common.failedCryptoData'));
+      }
       return;
     }
     const {
@@ -2199,12 +2211,12 @@ export class DataLoaderManager implements AppModule {
     } = marketMod;
     try {
       const customEntries = getMarketWatchlistEntries();
-      // The cap bounds the custom picks only — the default universe is already
-      // larger than it, so bounding the merged length dropped all but the first
-      // custom ticker (#6305).
-      const effectiveSymbols = customEntries.length === 0
-        ? MARKET_SYMBOLS
-        : mergeWatchlistSymbols(MARKET_SYMBOLS, customEntries);
+      const effectiveSymbols = resolveEffectiveMarketWatchlist(
+        STOCK_CATALOG,
+        MARKET_SYMBOLS,
+        getCatalogSelection(),
+        customEntries,
+      ).symbols;
 
       // Hydrate markets from bootstrap (same pattern as sectors) — instant data on page load
       const hydratedMarkets = getHydratedData('marketQuotes') as ListMarketQuotesResponse | undefined;
@@ -2216,9 +2228,13 @@ export class DataLoaderManager implements AppModule {
         marketsPanel?.renderDisclosures(hydratedDisclosures);
       }
 
-      if (customEntries.length === 0 && hydratedMarkets?.quotes?.length) {
+      const selectedHydratedQuotes = selectCompleteHydratedMarketQuotes(
+        effectiveSymbols,
+        hydratedMarkets?.quotes,
+      );
+      if (selectedHydratedQuotes) {
         const symbolMetaMap = new Map(effectiveSymbols.map((s) => [s.symbol, s]));
-        const data = hydratedMarkets.quotes.map((q) => ({
+        const data = selectedHydratedQuotes.map((q) => ({
           symbol: q.symbol,
           name: symbolMetaMap.get(q.symbol)?.name || q.name,
           display: symbolMetaMap.get(q.symbol)?.display || q.display || q.symbol,
@@ -2226,23 +2242,34 @@ export class DataLoaderManager implements AppModule {
           change: q.change ?? null,
           sparkline: q.sparkline?.length > 0 ? q.sparkline : undefined,
         }));
-        this.ctx.latestMarkets = data;
-        marketsPanel?.renderMarkets(data);
-        stocksResult = { data, skipped: hydratedMarkets.finnhubSkipped || undefined, rateLimited: hydratedMarkets.rateLimited || undefined };
+        if (isCurrent()) {
+          this.ctx.latestMarkets = data;
+          marketsPanel?.renderMarkets(data);
+        }
+        stocksResult = {
+          data,
+          skipped: hydratedMarkets?.finnhubSkipped || undefined,
+          rateLimited: hydratedMarkets?.rateLimited || undefined,
+        };
       } else {
         stocksResult = await fetchMultipleStocks(effectiveSymbols, {
           onBatch: (partialStocks) => {
+            if (!isCurrent()) return;
             this.ctx.latestMarkets = partialStocks;
             marketsPanel?.renderMarkets(partialStocks);
           },
         });
-        this.ctx.latestMarkets = stocksResult.data;
-        marketsPanel?.renderMarkets(stocksResult.data, stocksResult.rateLimited, stocksResult.unavailableSymbols);
+        if (isCurrent()) {
+          this.ctx.latestMarkets = stocksResult.data;
+          marketsPanel?.renderMarkets(stocksResult.data, stocksResult.rateLimited, stocksResult.unavailableSymbols);
+        }
       }
 
       const finnhubConfigMsg = 'FINNHUB_API_KEY not configured — add in Settings';
 
-      if (stocksResult.rateLimited && stocksResult.data.length === 0) {
+      if (!isCurrent()) {
+        // A newer selection/load owns all market writes and any premium reload.
+      } else if (stocksResult.rateLimited && stocksResult.data.length === 0) {
         const rlMsg = 'Market data temporarily unavailable (rate limited) — retrying shortly';
         this.ctx.panels['commodities']?.showError(rlMsg);
       } else if (stocksResult.skipped) {
@@ -2395,7 +2422,7 @@ export class DataLoaderManager implements AppModule {
         }
       }
     } catch {
-      this.ctx.statusPanel?.updateApi('Finnhub', { status: 'error' });
+      if (isCurrent()) this.ctx.statusPanel?.updateApi('Finnhub', { status: 'error' });
     }
 
     try {

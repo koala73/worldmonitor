@@ -131,6 +131,23 @@ describe('terminal failure classification', () => {
         { provider: 'exa', reason: 'provider-cooldown' },
       ]),
     ).toBe('provider-cooldown');
+
+    // Evidence rejection (#6182) sits past missing-price (a price WAS read)
+    // and before the semantic rejections (nothing was judged about the
+    // product yet).
+    expect(
+      terminalFailureReason([
+        { provider: 'firecrawl', reason: 'missing-price' },
+        { provider: 'exa', reason: 'price-evidence-missing' },
+      ]),
+    ).toBe('price-evidence-missing');
+
+    expect(
+      terminalFailureReason([
+        { provider: 'firecrawl', reason: 'price-evidence-missing' },
+        { provider: 'exa', reason: 'title-mismatch' },
+      ]),
+    ).toBe('title-mismatch');
   });
 
   // An empty failure list is the "threw something that was not a

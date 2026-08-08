@@ -474,11 +474,15 @@ function assertTargetWorkflowRun(run, request) {
   const workflowPath = `.github/workflows/${TARGET_WORKFLOW}`;
   const path = typeof run?.path === 'string' ? run.path : '';
   const pathMatches = path === workflowPath || path === `${workflowPath}@refs/heads/main`;
+  const targetHead = run?.head_sha;
+  const targetHeadIsValid = typeof targetHead === 'string' && /^[0-9a-f]{40}$/.test(targetHead);
+  const targetMustBeCurrent = request.decision === 'accept_observed_convergence';
   if (!pathMatches || !['workflow_run', 'workflow_dispatch'].includes(run?.event)
-    || run?.head_branch !== 'main' || run?.head_sha !== request.expectedCurrentHead) {
+    || run?.head_branch !== 'main' || !targetHeadIsValid
+    || (targetMustBeCurrent && targetHead !== request.expectedCurrentHead)) {
     fail(
       'TARGET_RUN_IDENTITY_MISMATCH',
-      'the evidence-bound run is not the exact target workflow on current main',
+      'the evidence-bound run is not an allowed exact target workflow run on main',
     );
   }
   if (request.evidence.priorKind === 'dispatch_hold'

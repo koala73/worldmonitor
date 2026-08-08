@@ -843,7 +843,11 @@ export class App {
       const newVariantKeys = new Set(VARIANT_DEFAULTS[currentVariant] ?? []);
       for (const key of Object.keys(panelSettings)) {
         if (!newVariantKeys.has(key) && !isDynamicPanel(key) && panelSettings[key]) {
-          panelSettings[key] = { ...panelSettings[key]!, enabled: false };
+          // Variant reset asserts its own ownership over `enabled`, so drop any
+          // stale gate marker — otherwise the next Pro reconcile re-enables a
+          // panel this reset deliberately turned off.
+          const { proGated: _staleGateMarker, ...rest } = panelSettings[key]!;
+          panelSettings[key] = { ...rest, enabled: false };
         }
       }
       for (const key of newVariantKeys) {
@@ -2161,10 +2165,14 @@ export class App {
   }
 
   /**
-   * Put back the custom widgets the free-tier gate hid, now that we know the
-   * user is Pro. Covers the free→pro upgrade, and heals users whose widgets
-   * were disabled by a pre-fix build (see the one-time recovery below —
-   * those entries pre-date the `proGated` marker, so they need the sweep).
+   * Put back everything the free-tier gate hid, now that we know the user is
+   * Pro: the cw-* custom widgets AND the panels the count cap clamped off past
+   * FREE_MAX_PANELS. Both now carry `proGated`, so the targeted restore covers
+   * both; only the legacy sweep below stays widget-specific.
+   *
+   * Covers the free→pro upgrade, and heals users whose widgets were disabled
+   * by a pre-fix build (see the one-time recovery below — those entries
+   * pre-date the `proGated` marker, so they need the sweep).
    */
   private restoreProGatedCustomWidgets(cloudSyncVersion?: number): boolean {
     const panelSettings = loadFromStorage<Record<string, PanelConfig>>(STORAGE_KEYS.panels, {});

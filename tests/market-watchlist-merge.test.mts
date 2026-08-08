@@ -18,18 +18,23 @@ import {
   MARKET_WATCHLIST_MAX_ENTRIES,
   mergeWatchlistSymbols,
   normalizeWatchlistEntries,
+  resolveEffectiveMarketWatchlist,
   type MarketSymbolMeta,
 } from '../src/services/market-watchlist.ts';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-const DEFAULTS: MarketSymbolMeta[] = (
-  JSON.parse(readFileSync(resolve(root, 'shared/stocks.json'), 'utf8')) as { symbols: MarketSymbolMeta[] }
-).symbols;
+const STOCK_CONFIG = JSON.parse(readFileSync(resolve(root, 'shared/stocks.json'), 'utf8')) as {
+  symbols: MarketSymbolMeta[];
+  defaultSymbols: string[];
+};
+const CATALOG_BY_SYMBOL = new Map(STOCK_CONFIG.symbols.map((entry) => [entry.symbol, entry]));
+const DEFAULTS: MarketSymbolMeta[] = STOCK_CONFIG.defaultSymbols.map((symbol) => CATALOG_BY_SYMBOL.get(symbol)!);
 
 const custom = (symbol: string) => ({ symbol, name: `${symbol} Inc`, display: symbol });
 
 describe('mergeWatchlistSymbols', () => {
   it('keeps the default universe larger than the custom cap (the regression precondition)', () => {
+    assert.equal(DEFAULTS.length, 59, 'catalog customization must preserve current main defaults');
     assert.ok(
       DEFAULTS.length > MARKET_WATCHLIST_MAX_ENTRIES,
       `this regression only exists because the ${DEFAULTS.length} defaults exceed the ${MARKET_WATCHLIST_MAX_ENTRIES} cap`,
@@ -91,5 +96,42 @@ describe('normalizeWatchlistEntries', () => {
 
   it('drops entries without a usable symbol', () => {
     assert.deepEqual(normalizeWatchlistEntries([{ symbol: '   ' }, { symbol: 'TSLA' }]), [{ symbol: 'TSLA' }]);
+  });
+});
+
+describe('resolveEffectiveMarketWatchlist', () => {
+  it('uses all 59 defaults in current-main order when no valid selection exists', () => {
+    const resolved = resolveEffectiveMarketWatchlist(STOCK_CONFIG.symbols, DEFAULTS, ['INVALID'], []);
+    assert.equal(resolved.usesCatalogSelection, false);
+    assert.deepEqual(resolved.symbols.map((entry) => entry.symbol), STOCK_CONFIG.defaultSymbols);
+  });
+
+  it('preserves the selected catalog subset order and ignores invalid duplicates', () => {
+    const resolved = resolveEffectiveMarketWatchlist(
+      STOCK_CONFIG.symbols,
+      DEFAULTS,
+      ['SAP', 'INVALID', 'AAPL', 'SAP', '^FTSE'],
+      [],
+    );
+    assert.equal(resolved.usesCatalogSelection, true);
+    assert.deepEqual(resolved.symbols.map((entry) => entry.symbol), ['SAP', 'AAPL', '^FTSE']);
+  });
+
+  it('appends normalized custom entries without duplicating the selected base', () => {
+    const resolved = resolveEffectiveMarketWatchlist(
+      STOCK_CONFIG.symbols,
+      DEFAULTS,
+      ['AAPL', 'SAP'],
+      [{ symbol: ' AAPL ' }, { symbol: 'PLTR', name: ' Palantir ' }, { symbol: 'PLTR' }],
+    );
+    assert.deepEqual(resolved.symbols.map((entry) => entry.symbol), ['AAPL', 'SAP', 'PLTR']);
+    assert.deepEqual(resolved.customEntries, [{ symbol: 'AAPL' }, { symbol: 'PLTR', name: 'Palantir' }]);
+  });
+
+  it('caps additive custom entries independently of the selected catalog base', () => {
+    const customEntries = Array.from({ length: 60 }, (_, index) => custom(`CUSTOM${index}`));
+    const resolved = resolveEffectiveMarketWatchlist(STOCK_CONFIG.symbols, DEFAULTS, ['SAP'], customEntries);
+    assert.equal(resolved.symbols.length, 1 + MARKET_WATCHLIST_MAX_ENTRIES);
+    assert.equal(resolved.symbols.at(-1)?.symbol, 'CUSTOM49');
   });
 });

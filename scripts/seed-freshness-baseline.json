@@ -24,12 +24,6 @@
       "status": "SEED_ERROR",
       "issue": 5714,
       "reason": "Japan MOD route returns proxy CONNECT 403; candidate country-specific routes return 407. Second cause independent of the #5689 Decodo exhaustion. No verified replacement endpoint installed."
-    },
-    {
-      "name": "humanitarianSummary",
-      "status": "SEED_ERROR",
-      "issue": 5769,
-      "reason": "HAPI returns 'Blocked due to bot activity' to Railway egress (same signature as #5713, which was closed). Recovers intermittently between health snapshots, so one green poll is not evidence of recovery."
     }
   ]
 }

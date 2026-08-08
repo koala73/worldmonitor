@@ -638,11 +638,10 @@ async function acquire(storage, body, now, randomBytes, randomUuid) {
     for (const run of readSupersededRuns(supersededAttempt.supersededRuns)) {
       supersededRuns = appendSupersededRun(supersededRuns, run.runId, run.runAttempt);
     }
-    supersededRuns = appendSupersededRun(
-      supersededRuns,
-      supersededAttempt.runId ?? null,
-      supersededAttempt.runAttempt ?? null,
-    );
+    // A PRE_MUTATION_ABORTED attempt cannot have crossed the provider boundary,
+    // so its run does not need to retire a GitHub mutation marker. Keep any
+    // inherited mutation lineage, but do not let ordinary lease churn consume
+    // the bounded safety history and eventually block all future acquisition.
   }
 
   const leaseCapability = newCapability(randomBytes);

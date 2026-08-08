@@ -1296,11 +1296,38 @@ export function enforceFreePanelLimit(
     .sort(([ka, a], [kb, b]) => (a.priority ?? 99) - (b.priority ?? 99) || ka.localeCompare(kb))
     .map(([k]) => k);
 
+  // Stamp `proGated` for the same reason the cw-* gate above does: this is the
+  // GATE disabling the panel, not the user. Without the marker the count cap
+  // was a one-way door — App.enforceFreeTierLimits persists this map into
+  // STORAGE_KEYS.panels, and restoreProGatedPanels only re-enables what is
+  // marked, so a panel clamped during any window where the tier read as free
+  // stayed `enabled: false` forever. Going Pro never brought it back: the panel
+  // kept appearing in Cmd+K and as a checked box in settings while being absent
+  // from the dashboard.
   for (const key of enabledKeys.slice(FREE_MAX_PANELS)) {
-    next[key] = { ...next[key]!, enabled: false };
+    next[key] = { ...next[key]!, enabled: false, proGated: true };
   }
 
   return next;
+}
+
+/**
+ * Apply a USER-initiated enable/disable to a panel config.
+ *
+ * Every user toggle path must go through this. `proGated` means "the GATE owns
+ * this disable"; the moment the user takes a position on the panel themselves,
+ * the gate no longer owns it and the marker must go — otherwise a panel the
+ * gate once clamped keeps the marker through a user re-enable, and a LATER
+ * deliberate hide is indistinguishable from gate damage, so the next Pro
+ * reconcile resurrects a panel the user chose to hide (and cloud-syncs that to
+ * every device).
+ *
+ * Mutates in place: every call site already owns a live entry in the
+ * panelSettings map it is about to persist.
+ */
+export function userSetPanelEnabled(config: PanelConfig, enabled: boolean): void {
+  config.enabled = enabled;
+  delete config.proGated;
 }
 
 /**

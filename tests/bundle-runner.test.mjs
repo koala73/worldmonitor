@@ -8,13 +8,16 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
-import { writeFileSync, unlinkSync } from 'node:fs';
+import { mkdirSync, writeFileSync, unlinkSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { GRACEFUL_FETCH_FAILURE_EXIT_CODE } from '../scripts/_seed-utils.mjs';
 import { readSectionFreshness } from '../scripts/_bundle-runner.mjs';
 
 const SCRIPTS_DIR = fileURLToPath(new URL('../scripts/', import.meta.url));
+const FIXTURES_DIR = join(SCRIPTS_DIR, 'fixtures');
+const fixtureScript = (name) => `fixtures/${name}`;
+mkdirSync(FIXTURES_DIR, { recursive: true });
 
 test('requireCanonical ignores fresh legacy meta when a new canonical envelope is absent', async () => {
   const reads = [];
@@ -140,11 +143,15 @@ test('a missing completion marker keeps an explicit-freshness section due', asyn
 });
 
 function runBundleWith(sections, opts = {}, env = {}) {
-  const runPath = join(SCRIPTS_DIR, `_bundle-runner-test-run-${randomUUID()}.mjs`);
+  const runPath = join(FIXTURES_DIR, `_bundle-runner-test-run-${randomUUID()}.mjs`);
+  const fixtureSections = sections.map((section) => ({
+    ...section,
+    script: fixtureScript(section.script),
+  }));
   writeFileSync(
     runPath,
-    `import { runBundle } from './_bundle-runner.mjs';\nawait runBundle('test', ${JSON.stringify(
-      sections,
+    `import { runBundle } from '../_bundle-runner.mjs';\nawait runBundle('test', ${JSON.stringify(
+      fixtureSections,
     )}, ${JSON.stringify(opts)});\n`,
   );
   return new Promise((resolve) => {
@@ -164,7 +171,7 @@ function runBundleWith(sections, opts = {}, env = {}) {
 }
 
 function writeFixture(name, body) {
-  const path = join(SCRIPTS_DIR, name);
+  const path = join(FIXTURES_DIR, name);
   writeFileSync(path, body);
   return () => { try { unlinkSync(path); } catch {} };
 }

@@ -68,33 +68,6 @@ export function tradeFlowCoverageId(reporter: string, partner: string): string {
   return `${reporter}:${partner}`;
 }
 
-/**
- * The pre-#6309 key, which baked the lookback into the key and was only ever
- * written at 10.
- *
- * This handler ships before the 6-hourly Railway seeder has written a single v2
- * key, and `reporting_country=840` with the default window answers from the v1
- * key today. Without this bridge that call would report a fault for up to one
- * cron interval — the exact failure mode this issue exists to remove — so the
- * old key is read while, and only while, the v2 manifest is absent.
- *
- * That gate is `coverage_unknown`, which is reachable at any time the manifest
- * cannot be read, not only before the first v2 run: a manifest lost to eviction
- * or to the whole fleet expiring after a prolonged seeder outage lands here too.
- * The bridge stops mattering in practice once the seeder has published (the
- * manifest is republished every run alongside the data keys), but it does not
- * become unreachable — and the v1 keys it reads carry an 8h TTL that nothing
- * refreshes any more, so it degrades to a no-op rather than to stale data.
- *
- * Remove once the first v2 run has landed — tracked in #6315, which carries the
- * production precondition to verify first.
- */
-export const LEGACY_SEEDED_YEARS = 10;
-
-export function legacyTradeFlowSeedKey(reporter: string, partner: string): string {
-  return `trade:flows:v1:${reporter}:${partner}:${LEGACY_SEEDED_YEARS}`;
-}
-
 export interface NormalizedTradeFlowRequest {
   reporter: string;
   partner: string;
@@ -224,16 +197,7 @@ export async function getTradeFlows(
 
   const seeded = read.status === 'hit' ? (read.value as GetTradeFlowsResponse | null) : null;
   const flows = Array.isArray(seeded?.flows) ? sliceFlowsToWindow(seeded.flows, years) : [];
-  if (flows.length === 0) {
-    const miss = await classifyMiss(reporter, partner);
-    if (miss.unavailableReason !== REASON.coverageUnknown) return miss;
-    const legacy = await readLegacySeed(reporter, partner, years);
-    // A failed read of the bridge key is a cache fault, not "we don't know what
-    // is covered" — collapsing the two would report a Redis outage under the
-    // wrong reason.
-    if (legacy === 'error') return unavailable(REASON.cacheUnavailable, true);
-    return legacy ?? miss;
-  }
+  if (flows.length === 0) return classifyMiss(reporter, partner);
 
   return served(flows, seeded?.fetchedAt);
 }
@@ -252,29 +216,4 @@ function served(flows: TradeFlowRecord[], fetchedAt: unknown): GetTradeFlowsResp
     coverageStartYear: first?.year ?? 0,
     coverageEndYear: last?.year ?? 0,
   };
-}
-
-/**
- * See legacyTradeFlowSeedKey. Returns the served response, `'error'` when the
- * read itself failed, or null when the old key simply has no answer.
- */
-async function readLegacySeed(
-  reporter: string,
-  partner: string,
-  years: number,
-): Promise<GetTradeFlowsResponse | 'error' | null> {
-  const key = legacyTradeFlowSeedKey(reporter, partner);
-  const read = await readCachedJson(key, true);
-  if (read.status === 'error') {
-    logReadFailure(key, read.error);
-    return 'error';
-  }
-  if (read.status !== 'hit') return null;
-  const legacy = read.value as GetTradeFlowsResponse | null;
-  if (!Array.isArray(legacy?.flows)) return null;
-  // The old key only ever held 10 years, so a wider request is answered with
-  // what exists. coverage_start_year/coverage_end_year report the real span, so
-  // the narrower window is stated rather than implied.
-  const flows = sliceFlowsToWindow(legacy.flows, years);
-  return flows.length === 0 ? null : served(flows, legacy.fetchedAt);
 }

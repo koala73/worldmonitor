@@ -80,11 +80,11 @@ These tables are the human-facing route map for finance, market, macro, energy, 
 
 ### Customizable Market Watchlist
 
-The Markets panel supports a user-customizable watchlist, letting analysts track specific instruments beyond the default index set. Tickers are added through a search-first picker in the Watchlist modal: typing a ticker or company name queries `/api/symbol-search` (a cached Finnhub search wrapper) and the analyst picks from resolved results, so every stored entry is a symbol the pipeline recognizes.
+The shared Watchlist modal (reachable from Markets and each PRO market panel) has two coherent layers. The **built-in catalog** is an accessible, searchable region picker covering the default US, China, and India universe plus European, Asia-Pacific, GCC, and Americas instruments. Choosing a valid catalog subset replaces the built-in base; Reset restores the full 59-symbol default universe after Save. **Searchable additions** remain additive: typing a ticker or company name queries `/api/symbol-search` (a cached Finnhub search wrapper), and the analyst picks from resolved results. Existing additions remain visible as removable chips even after catalog customization.
 
 The picker resolves equities and indices through Finnhub search. Commodity and FX symbols in Yahoo notation (`GC=F`, `EURUSD=X`) are not watchlist material — they are served by their own RPCs against a fixed configured set, and the quote provider declines them rather than spending a lookup on a guaranteed miss.
 
-Watchlist state is stored in `localStorage` as `wm-market-watchlist-v1`, deduplicated by symbol and capped at **50 custom entries**. The cap bounds the custom picks only — they are appended to the default universe, which is already larger than 50. Changes emit a `wm-market-watchlist-changed` CustomEvent for live synchronization across panels without a page reload.
+The catalog subset is stored as `wm-market-catalog-selection-v1`; searchable additions are stored as `wm-market-watchlist-v1`, deduplicated by symbol and capped at **50 custom entries**. The cap bounds additions only — it never truncates the catalog base. Save writes both layers coherently and emits one `wm-market-watchlist-changed` event for live synchronization across Markets and premium analysis/backtest consumers. Cancel leaves both stored layers untouched, while Reset changes only modal working state until Save. Both keys participate in cloud sync and settings export/import.
 
 #### How a requested symbol is resolved
 

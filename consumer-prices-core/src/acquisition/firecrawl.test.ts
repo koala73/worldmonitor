@@ -74,4 +74,66 @@ describe('FirecrawlProvider.extract', () => {
       'User-Agent': 'worldmonitor-consumer-prices/1.0',
     });
   });
+
+  // The rendered markdown is the ground truth the caller verifies an extracted
+  // price against (price-evidence.ts, #6182) — it must come from the SAME
+  // render that produced the extract, so both ride in one request.
+  it('requests markdown alongside extract and returns it as pageContent', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({ success: true, data: { extract: { price: 4.6 }, markdown: '# Bread\n\n$4.60' } }),
+        { status: 200 },
+      ),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    const result = await new FirecrawlProvider('test-key').extract('https://retailer.example/p/bread', schema);
+
+    const body = JSON.parse(String((fetchMock.mock.calls[0]?.[1] as RequestInit).body)) as { formats: string[] };
+    expect(body.formats).toEqual(['extract', 'markdown']);
+    expect(result.pageContent).toBe('# Bread\n\n$4.60');
+  });
+
+  it('omits pageContent when the response carries no usable markdown', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ success: true, data: { extract: { price: 4.6 }, markdown: '   ' } }), {
+        status: 200,
+      }),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    const result = await new FirecrawlProvider('test-key').extract('https://retailer.example/p/bread', schema);
+    expect(result.pageContent).toBeUndefined();
+  });
+
+  // renderWaitMs (#6182): late-hydrating storefronts capture as a breadcrumb
+  // shell without a settle delay. The wait must reach the request body AND
+  // extend the client abort deadline, or a page using its full wait would be
+  // aborted before its successful response could arrive.
+  it('forwards waitFor to the request body and extends the abort deadline by it', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ success: true, data: { extract: { price: 1 } } }), { status: 200 }),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    await new FirecrawlProvider('test-key').extract('https://retailer.example/p/bread', schema, {
+      timeout: 30_000,
+      waitFor: 8_000,
+    });
+
+    const body = JSON.parse(String((fetchMock.mock.calls[0]?.[1] as RequestInit).body)) as { waitFor?: number };
+    expect(body.waitFor).toBe(8_000);
+  });
+
+  it('omits waitFor from the body when not configured', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ success: true, data: { extract: { price: 1 } } }), { status: 200 }),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    await new FirecrawlProvider('test-key').extract('https://retailer.example/p/bread', schema, { timeout: 30_000 });
+
+    const body = JSON.parse(String((fetchMock.mock.calls[0]?.[1] as RequestInit).body)) as { waitFor?: number };
+    expect(body.waitFor).toBeUndefined();
+  });
 });
