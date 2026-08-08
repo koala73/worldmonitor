@@ -3,7 +3,9 @@ import assert from 'node:assert/strict';
 import {
   ASSETS,
   CANONICAL_KEY,
+  BASELINE_KEY,
   CACHE_TTL_SECONDS,
+  BASELINE_TTL_SECONDS,
   SPARK_MAX,
   MIN_NOTIONAL_USD_24H,
   STALE_SYMBOL_DROP_AFTER_POLLS,
@@ -49,6 +51,11 @@ describe('TTL constants', () => {
   });
   it('CANONICAL_KEY is the documented v1 key', () => {
     assert.equal(CANONICAL_KEY, 'market:hyperliquid:flow:v1');
+  });
+  it('keeps baseline state longer than the live snapshot', () => {
+    assert.equal(BASELINE_KEY, 'market:hyperliquid:flow:baseline:v1');
+    assert.ok(BASELINE_TTL_SECONDS > CACHE_TTL_SECONDS);
+    assert.ok(BASELINE_TTL_SECONDS >= 7 * 24 * 60 * 60);
   });
 });
 
@@ -356,8 +363,8 @@ describe('buildSnapshot — missing-symbol carry-forward', () => {
   });
 });
 
-describe('buildSnapshot — post-outage cold start', () => {
-  it('zeroes deltas when prior snapshot is older than 900s', () => {
+describe('buildSnapshot — post-outage baseline recovery', () => {
+  it('retains volume history but suppresses misleading OI delta after a long gap', () => {
     const u = makeUniverse();
     const ctxs = makeAssetCtxs(u, {
       BTC: { funding: '0.0005', openInterest: '2000', markPx: '65000', oraclePx: '65000', dayNtlVlm: '5000000' },
@@ -368,9 +375,9 @@ describe('buildSnapshot — post-outage cold start', () => {
     };
     const snap = buildSnapshot([{ universe: u }, ctxs], prevSnap, { now: 1_700_000_000_000 });
     const btc = snap.assets.find((a) => a.symbol === 'BTC');
-    assert.equal(btc.warmup, true);
-    assert.equal(btc.oiScore, 0); // would be ~50 if prev OI was used
-    assert.equal(btc.volumeScore, 0); // would be >0 if prev vol samples were used
+    assert.equal(btc.warmup, false);
+    assert.equal(btc.oiScore, 0); // a one-hour move must not be labeled a 5m delta
+    assert.ok(btc.volumeScore > 0); // durable rolling baseline remains usable
   });
 });
 

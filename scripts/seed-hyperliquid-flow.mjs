@@ -11,12 +11,14 @@
  * Used as a leading indicator for commodities / crypto / FX in CommoditiesPanel.
  */
 
-import { loadEnvFile, runSeed, readSeedSnapshot } from './_seed-utils.mjs';
+import { loadEnvFile, runSeed, readSeedSnapshot, writeExtraKeyWithMeta } from './_seed-utils.mjs';
 
 loadEnvFile(import.meta.url);
 
 export const CANONICAL_KEY = 'market:hyperliquid:flow:v1';
+export const BASELINE_KEY = 'market:hyperliquid:flow:baseline:v1';
 export const CACHE_TTL_SECONDS = 2700; // 9× cron cadence (5 min); honest grace window
+export const BASELINE_TTL_SECONDS = 604800; // 7d — baseline state survives live-key expiry/redeploy gaps
 export const SPARK_MAX = 60;             // 5h @ 5min
 export const HYPERLIQUID_URL = 'https://api.hyperliquid.xyz/info';
 export const REQUEST_TIMEOUT_MS = 15_000;
@@ -95,7 +97,7 @@ export function scoreBasis(mark, oracle, threshold) {
  * @param {{ symbol: string; display: string; class: 'crypto'|'commodity'; group: string }} meta
  * @param {Record<string, string>} ctx
  * @param {any} prevAsset
- * @param {{ coldStart?: boolean }} [opts]
+ * @param {{ coldStart?: boolean; suppressOiDelta?: boolean }} [opts]
  */
 export function computeAsset(meta, ctx, prevAsset, opts = {}) {
   const t = THRESHOLDS[meta.class];
@@ -123,7 +125,10 @@ export function computeAsset(meta, ctx, prevAsset, opts = {}) {
     volumeScore = scoreVolume(dayNotional, avg, t.volume);
   }
 
-  const oiScore = prevOi != null ? scoreOi(currentOi, prevOi, t.oi) : 0;
+  // After a long poll gap, retaining volume history is still valid for the
+  // rolling baseline, but comparing OI across the entire outage would pretend
+  // it was a five-minute move. Suppress only that delta for one poll.
+  const oiScore = !opts.suppressOiDelta && prevOi != null ? scoreOi(currentOi, prevOi, t.oi) : 0;
   const basisScore = scoreBasis(markPx, oraclePx, t.basis);
 
   const composite = clamp(
@@ -141,7 +146,8 @@ export function computeAsset(meta, ctx, prevAsset, opts = {}) {
   // Warmup stays TRUE until both baselines are usable — cold-start OR insufficient
   // volume history OR missing prior OI. Clears only when the asset can produce all
   // four component scores.
-  const warmup = opts.coldStart === true || !volumeBaselineReady || prevOi == null;
+  const oiBaselineReady = opts.suppressOiDelta === true || prevOi != null;
+  const warmup = opts.coldStart === true || !volumeBaselineReady || !oiBaselineReady;
 
   const alerts = [];
   if (composite >= ALERT_THRESHOLD) {
@@ -307,8 +313,10 @@ export function buildSnapshot(upstream, prevSnapshot, opts = {}) {
     for (const a of prevSnapshot.assets) prevByName.set(a.symbol, a);
   }
   const prevAgeMs = prevSnapshot?.ts ? now - prevSnapshot.ts : Infinity;
-  // Treat stale prior snapshot (>3× cadence = 900s) as cold start.
-  const coldStart = !prevSnapshot || prevAgeMs > 900_000;
+  const coldStart = !prevSnapshot;
+  // A long gap invalidates a 5m OI delta, not the accumulated volume baseline.
+  // The dedicated 7d baseline key lets us retain that history across expiry.
+  const longPollGap = !coldStart && prevAgeMs > 900_000;
 
   // Info-log unseen xyz: perps once per run so ops sees when Hyperliquid adds
   // commodity/FX markets we could add to the whitelist.
@@ -341,7 +349,7 @@ export function buildSnapshot(upstream, prevSnapshot, opts = {}) {
       continue;
     }
     const prev = coldStart ? null : prevByName.get(meta.symbol);
-    const asset = computeAsset(meta, ctx, prev, { coldStart });
+    const asset = computeAsset(meta, ctx, prev, { coldStart, suppressOiDelta: longPollGap });
     assets.push(asset);
   }
 
@@ -370,12 +378,25 @@ export function declareRecords(data) {
 
 const isMain = process.argv[1]?.endsWith('seed-hyperliquid-flow.mjs');
 if (isMain) {
-  const prevSnapshot = await readSeedSnapshot(CANONICAL_KEY);
+  // The live key has an intentionally short TTL so consumers cannot mistake an
+  // abandoned feed for current data. Baseline state has a separate, longer TTL:
+  // losing the live key during a deploy/outage must not erase 12 accumulated
+  // samples and force every asset back through warmup.
+  const prevSnapshot = await readSeedSnapshot(CANONICAL_KEY)
+    ?? await readSeedSnapshot(BASELINE_KEY);
   await runSeed('market', 'hyperliquid-flow', CANONICAL_KEY, async () => {
     // Commodity + FX perps live on the xyz builder dex, NOT the default dex.
     // Must fetch both and merge before scoring (see fetchAllMetaAndCtxs).
     const upstream = await fetchAllMetaAndCtxs();
-    return buildSnapshot(upstream, prevSnapshot);
+    const snapshot = buildSnapshot(upstream, prevSnapshot);
+    await writeExtraKeyWithMeta(
+      BASELINE_KEY,
+      snapshot,
+      BASELINE_TTL_SECONDS,
+      snapshot.assets.length,
+      'seed-meta:market:hyperliquid-flow-baseline',
+    );
+    return snapshot;
   }, {
     ttlSeconds: CACHE_TTL_SECONDS,
     validateFn,
@@ -383,7 +404,7 @@ if (isMain) {
     recordCount: (snap) => snap?.assets?.length || 0,
     declareRecords,
     schemaVersion: 1,
-    maxStaleMin: 15,
+    maxStaleMin: 30,
   }).catch((err) => {
     const cause = err.cause ? ` (cause: ${err.cause.message || err.cause.code || err.cause})` : '';
     console.error('FATAL:', (err.message || err) + cause);
