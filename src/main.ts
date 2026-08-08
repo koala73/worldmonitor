@@ -179,6 +179,13 @@ function shouldSuppressCspViolation(
       const url = new URL(blockedURI);
       if (url.protocol === 'https:'
           && (url.hostname === 'worldmonitor.app' || url.hostname.endsWith('.worldmonitor.app'))) return true;
+      // Clerk avatar CDN (`img.clerk.com`) — the only cross-origin image host
+      // our UI loads (Clerk UserButton avatar). Explicitly allowed by our
+      // `img-src https:`, so a block here is the same mutated-policy class as
+      // the first-party rule above (WORLDMONITOR-JP round 2 — Firefox privacy
+      // extensions stripping `https:`). Exact hostname + https: only, so blocks
+      // on any other clerk.com host or a lookalike suffix still surface.
+      if (url.protocol === 'https:' && url.hostname === 'img.clerk.com') return true;
     } catch { /* scheme-only values fall through */ }
   }
   // YouTube IFrame API loader: explicitly allowed by our script-src

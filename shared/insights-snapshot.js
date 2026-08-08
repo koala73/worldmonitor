@@ -69,11 +69,22 @@ export function collectInsightSources(candidates, maxSources = 6, options = {}) 
   return out;
 }
 
-export function isAcceptedInsightsSnapshot(raw, nowMs = Date.now()) {
-  if (!isRecord(raw) || !Array.isArray(raw.topStories) || raw.topStories.length === 0) return false;
-  if (typeof raw.generatedAt !== 'string') return false;
+/**
+ * Names WHICH acceptance gate rejects a snapshot (null = accepted). A stale
+ * producer and a schema regression need opposite responses, so alarms built
+ * on the boolean alone were undiagnosable (WORLDMONITOR-YJ). Reasons are a
+ * bounded enum — safe for Sentry messages and log grouping.
+ */
+export function insightsSnapshotRejection(raw, nowMs = Date.now()) {
+  if (!isRecord(raw) || !Array.isArray(raw.topStories) || raw.topStories.length === 0) return 'malformed-snapshot';
+  if (typeof raw.generatedAt !== 'string') return 'missing-generated-at';
   const generatedMs = Date.parse(raw.generatedAt);
-  return Number.isFinite(generatedMs)
-    && generatedMs <= nowMs
-    && nowMs - generatedMs < INSIGHTS_MAX_AGE_MS;
+  if (!Number.isFinite(generatedMs)) return 'missing-generated-at';
+  if (generatedMs > nowMs) return 'future-generated-at';
+  if (nowMs - generatedMs >= INSIGHTS_MAX_AGE_MS) return 'stale-snapshot';
+  return null;
+}
+
+export function isAcceptedInsightsSnapshot(raw, nowMs = Date.now()) {
+  return insightsSnapshotRejection(raw, nowMs) === null;
 }
