@@ -16,13 +16,16 @@ import {
   enforceFreePanelLimit,
   restoreFreeMapPanelAccess,
   restoreProGatedPanels,
+  userSetPanelEnabled,
   shouldDeferFreeTierEnforcement,
   FREE_MAX_PANELS,
   FREE_MAX_SOURCES,
 } from '@/config';
 import {
   sanitizeLayersForVariant,
-  sanitizeLockedLayers,
+  sanitizeLockedLayersWithOwnership,
+  restoreGateOwnedLockedLayers,
+  mapLayerStatesEqual,
   shouldSanitizeLockedLayers,
 } from '@/config/map-layer-definitions';
 import type { MapVariant } from '@/config/map-layer-definitions';
@@ -42,7 +45,15 @@ import { isProUser, isProTierResolved, loadWidgets } from '@/services/widget-sto
 import { mlWorker } from '@/services/ml-worker';
 import { getAiFlowSettings, subscribeAiFlowChange, isHeadlineMemoryEnabled } from '@/services/ai-flow-settings';
 import { startLearning } from '@/services/country-instability';
-import { loadFromStorage, parseMapUrlState, saveToStorage, isMobileDevice, showToast } from '@/utils';
+import {
+  isMobileDevice,
+  isQuotaError,
+  loadFromStorage,
+  markStorageQuotaExceeded,
+  parseMapUrlState,
+  saveToStorage,
+  showToast,
+} from '@/utils';
 import { clearPanelSpans, invalidatePanelStorageCacheForKeys } from '@/utils/panel-storage';
 import { overlayHistory, type OverlayId } from '@/utils/overlay-history';
 import type { ParsedMapUrlState } from '@/utils';
@@ -107,8 +118,17 @@ import {
 import {
   computeCapDisabledSources,
   findFullyDisabledCategories,
+  inferExactSourceGateOwnership,
+  reconcileSourceGateOwnership,
+  restoreGateOwnedSources,
   selectSourcesUnderCap,
+  stringSetsEqual,
 } from '@/services/source-cap';
+import {
+  applyVariantPanelLayoutTransition,
+  persistGateOwnershipTransition,
+  resolveAppliedPanelLayoutVariant,
+} from '@/services/variant-panel-ownership';
 import {
   buildPreStrategicDefaultDisabledStates,
   buildRegionalFeedRolloutMigrationTargets,
@@ -142,6 +162,7 @@ import {
 } from '@/app/free-tier-gate';
 import { replaceRawI18nKeyPlaceholders } from '@/app/i18n-raw-key-healer';
 import { startAccountAuthHandoff } from '@/app/account-auth-handoff';
+import { TierPreferenceHandoff } from '@/app/tier-preference-handoff';
 import { resolveUserRegion, resolvePreciseUserCoordinates, type PreciseCoordinates } from '@/utils/user-location';
 import { showProBanner } from '@/components/ProBanner';
 import { getAuthState, initAuthState, subscribeAuthState } from '@/services/auth-state';
@@ -265,6 +286,7 @@ export class App {
   private bootstrapHydrationState: BootstrapHydrationState = getBootstrapHydrationState();
   private cachedModeBannerEl: HTMLElement | null = null;
   private pendingCloudRecoverySyncVersion: number | undefined;
+  private readonly tierPreferenceHandoff = new TierPreferenceHandoff();
   private readonly handleWmSessionDegraded = (event?: Event): void => {
     if (!this.state.isDestroyed) {
       // Pre-#5674 bundles in long-lived tabs can still dispatch a plain Event
@@ -327,6 +349,7 @@ export class App {
 
     const keySet = new Set(keys);
     let freeTierLimitsInvoked = false;
+    const tierReconciliationDeferred = this.shouldDeferTierPreferenceReconciliation();
     invalidatePanelStorageCacheForKeys(keys);
 
     if (keySet.has(STORAGE_KEYS.panels)) {
@@ -347,8 +370,10 @@ export class App {
       // Returns false while the tier is still unresolved — the fallback below
       // then just re-renders the snapshot, which is all this handler did
       // before reconciliation moved here.
-      const reconciledPanelSettings = this.enforceFreeTierLimits(cloudSyncVersion);
-      freeTierLimitsInvoked = true;
+      const reconciledPanelSettings = tierReconciliationDeferred
+        ? false
+        : this.enforceFreeTierLimits(cloudSyncVersion);
+      freeTierLimitsInvoked = !tierReconciliationDeferred;
       if (!reconciledPanelSettings) {
         this.panelLayout.applyPanelSettings();
         this.state.unifiedSettings?.refreshPanelToggles();
@@ -360,7 +385,10 @@ export class App {
       this.panelLayout.applySavedPanelOrder();
     }
 
-    if (keySet.has(STORAGE_KEYS.mapLayers) && !this.state.initialUrlState?.layers) {
+    if (
+      (keySet.has(STORAGE_KEYS.mapLayers) || keySet.has(STORAGE_KEYS.mapLayerGateOwnership))
+      && !this.state.initialUrlState?.layers
+    ) {
       let nextLayers = normalizeExclusiveChoropleths(
         sanitizeLayersForVariant(
           loadFromStorage<MapLayers>(STORAGE_KEYS.mapLayers, this.state.mapLayers),
@@ -371,11 +399,15 @@ export class App {
       // #6045 — clear locked premium layers once free-tier is settled.
       // Skip while entitlement is still resolving so Pro users don't lose
       // resilienceScore during the Clerk/Convex boot window.
-      nextLayers = this.sanitizeMapLayersForTier(nextLayers);
+      if (!tierReconciliationDeferred) {
+        nextLayers = this.sanitizeMapLayersForTier(nextLayers);
+      }
       if (!CYBER_LAYER_ENABLED) nextLayers.cyberThreats = false;
-      this.state.mapLayers = nextLayers;
-      this.state.map?.setLayers(nextLayers);
-      this.dataLoader.syncDataFreshnessWithLayers();
+      if (!mapLayerStatesEqual(this.state.mapLayers, nextLayers)) {
+        this.state.mapLayers = nextLayers;
+        this.state.map?.setLayers(nextLayers);
+        this.dataLoader.syncDataFreshnessWithLayers();
+      }
     }
 
     if (keySet.has(STORAGE_KEYS.mapMode)) {
@@ -384,11 +416,16 @@ export class App {
       else this.state.map?.switchToFlat();
     }
 
-    if (keySet.has(STORAGE_KEYS.disabledFeeds)) {
+    if (
+      keySet.has(STORAGE_KEYS.disabledFeeds)
+      || keySet.has(STORAGE_KEYS.sourceGateOwnership)
+    ) {
       // A cloud generation can contain only source preferences. Re-run the
       // cap even when no panel snapshot arrived, then reload storage because
       // enforcement may have persisted additional auto-disabled sources.
-      if (!freeTierLimitsInvoked) this.enforceFreeTierLimits(cloudSyncVersion);
+      if (!tierReconciliationDeferred && !freeTierLimitsInvoked) {
+        this.enforceFreeTierLimits(cloudSyncVersion);
+      }
       this.state.disabledSources = new Set(loadFromStorage<string[]>(STORAGE_KEYS.disabledFeeds, []));
     }
 
@@ -809,10 +846,19 @@ export class App {
     const isDynamicPanel = (k: string) => !ALL_PANELS[k] && (k === 'runtime-config' || k.startsWith('cw-') || k.startsWith('mcp-'));
 
     const currentVariant = SITE_VARIANT;
-    let storedVariant: string | null = null;
+    let appliedPanelLayoutVariant: string | null = null;
     let storageAvailable = true;
     try {
-      storedVariant = localStorage.getItem('worldmonitor-variant');
+      appliedPanelLayoutVariant = resolveAppliedPanelLayoutVariant({
+        appliedVariant: localStorage.getItem(STORAGE_KEYS.panelLayoutVariant),
+        legacyVariant: localStorage.getItem(STORAGE_KEYS.variant),
+        currentVariant,
+        validVariants: new Set(Object.keys(VARIANT_DEFAULTS)),
+        persistAppliedVariant: (variant) => {
+          localStorage.setItem(STORAGE_KEYS.panelLayoutVariant, variant);
+          return true;
+        },
+      });
       const probeKey = 'wm-storage-capability-probe';
       localStorage.setItem(probeKey, '1');
       localStorage.removeItem(probeKey);
@@ -827,34 +873,33 @@ export class App {
         sanitizeLayersForVariant({ ...defaultLayers }, currentVariant as MapVariant), null,
       );
       panelSettings = { ...DEFAULT_PANELS };
-    } else if (storedVariant !== currentVariant) {
+    } else if (appliedPanelLayoutVariant !== currentVariant) {
       // Variant changed - reset all settings to variant defaults.
-      console.log(`[App] Variant check: stored="${storedVariant}", current="${currentVariant}"`);
+      console.log(`[App] Variant check: applied="${appliedPanelLayoutVariant}", current="${currentVariant}"`);
       // Variant changed — seed new variant's panels, disable panels not in the new variant
       console.log('[App] Variant changed - seeding new defaults, disabling cross-variant panels');
-      localStorage.setItem('worldmonitor-variant', currentVariant);
       // Reset map layers for the new variant (map layers are not user-personalized the same way)
       localStorage.removeItem(STORAGE_KEYS.mapLayers);
+      localStorage.removeItem(STORAGE_KEYS.mapLayerGateOwnership);
       mapLayers = normalizeExclusiveChoropleths(
         sanitizeLayersForVariant({ ...defaultLayers }, currentVariant as MapVariant), null,
       );
       // Load existing panel prefs (if any), disable panels not belonging to the new variant
-      panelSettings = loadFromStorage<Record<string, PanelConfig>>(STORAGE_KEYS.panels, {});
       const newVariantKeys = new Set(VARIANT_DEFAULTS[currentVariant] ?? []);
-      for (const key of Object.keys(panelSettings)) {
-        if (!newVariantKeys.has(key) && !isDynamicPanel(key) && panelSettings[key]) {
-          // Variant reset asserts its own ownership over `enabled`, so drop any
-          // stale gate marker — otherwise the next Pro reconcile re-enables a
-          // panel this reset deliberately turned off.
-          const { proGated: _staleGateMarker, ...rest } = panelSettings[key]!;
-          panelSettings[key] = { ...rest, enabled: false };
-        }
-      }
-      for (const key of newVariantKeys) {
-        if (!(key in panelSettings)) {
-          panelSettings[key] = { ...getEffectivePanelConfig(key, currentVariant) };
-        }
-      }
+      panelSettings = applyVariantPanelLayoutTransition({
+        currentVariant,
+        panelSettings: loadFromStorage<Record<string, PanelConfig>>(STORAGE_KEYS.panels, {}),
+        variantPanelKeys: newVariantKeys,
+        isDynamicPanel,
+        getDefaultPanel: (key) => getEffectivePanelConfig(key, currentVariant),
+        // Use the throwing primitive here so the transition helper advances
+        // the applied-layout marker only after the panel blob is durable.
+        persistPanels: (next) => localStorage.setItem(STORAGE_KEYS.panels, JSON.stringify(next)),
+        persistAppliedVariant: (variant) => localStorage.setItem(STORAGE_KEYS.panelLayoutVariant, variant),
+      });
+      // Keep the legacy selected-variant key for bootstrap/theme consumers.
+      // The applied-layout marker above advances only after panels persist.
+      localStorage.setItem(STORAGE_KEYS.variant, currentVariant);
     } else {
       mapLayers = normalizeExclusiveChoropleths(
         sanitizeLayersForVariant(
@@ -942,8 +987,14 @@ export class App {
         const happyKeys = new Set(VARIANT_DEFAULTS['happy'] ?? []);
         let fixed = false;
         for (const key of Object.keys(panelSettings)) {
-          if (!happyKeys.has(key) && !isDynamicPanel(key) && panelSettings[key]?.enabled) {
-            panelSettings[key] = { ...panelSettings[key]!, enabled: false };
+          const config = panelSettings[key];
+          if (
+            !happyKeys.has(key)
+            && !isDynamicPanel(key)
+            && config
+            && (config.enabled || config.proGated)
+          ) {
+            userSetPanelEnabled(config, false);
             fixed = true;
           }
         }
@@ -1076,9 +1127,7 @@ export class App {
         const total = getTotalFeedCount();
         console.log(`[App] Sources reduction: ${defaultDisabled.length} disabled, ${total - defaultDisabled.length} enabled`);
       }
-      let explicitLocale = '';
-      try { explicitLocale = localStorage.getItem('wm-locale-explicit') || ''; } catch { /* private mode */ }
-      const userLang = ((explicitLocale || navigator.language || 'en').split('-')[0] ?? 'en').toLowerCase();
+      const userLang = this.currentSourceCapLanguage();
       // #5949 — re-enable Ukraine/Poland frontline sources for profiles that
       // still have the untouched pre-#5949 default disabled set. An exact-set
       // guard is important here: a customized disabledFeeds set is user
@@ -1726,12 +1775,10 @@ export class App {
     // watched subscribeAuthState (Clerk-only); Convex Free→Pro transitions
     // never re-fired loadTradePolicy. Same root cause as PR #3409 layer-unlock.
     const firePremiumLoaders = (): void => {
-      this.enforceFreeTierLimits();
-      // Stored dashboard-tab snapshots are clamped by their own pass at layout
-      // init, which runs inside the same unresolved-tier window. Re-heal them
-      // here so a tab the user hasn't visited yet is reconciled against the
-      // real entitlement instead of waiting for them to switch to it.
-      this.panelLayout.healStoredTabSnapshots();
+      // Account sign-in replaces anonymous/local preferences asynchronously.
+      // Entitlement callbacks may arrive first; defer every ownership mutation
+      // until cloud prefs signals success or error for this same account.
+      this.reconcileTierOwnedPreferences();
       const hadPremium = _prevHadPremium;
       const nowPremium = hasPremiumAccess();
       if (nowPremium && !hadPremium) {
@@ -1759,11 +1806,6 @@ export class App {
         // after sign-out, expiry, or downgrade.
         void this.dataLoader.clearGlobalTenders();
       }
-      // #6045 — when free-tier is settled, strip locked layers from map state
-      // (heals stuck checked+disabled checkbox from pre-gate CMD+K, and clears
-      // layers on Pro→free downgrade). The fallback deadline is an explicit
-      // settled-free signal when Clerk never resolves.
-      if (!nowPremium) this.healLockedMapLayers(this.freeTierGate.authSettleDeadlineExceeded);
       _prevHadPremium = nowPremium;
     };
     this.unsubEntitlementPremiumLoaders = onEntitlementChange(() => firePremiumLoaders());
@@ -1783,6 +1825,7 @@ export class App {
 
       if (userId !== null && userId !== _prevUserId) {
         const handoffGeneration = ++_convexWatchHandoffGeneration;
+        this.tierPreferenceHandoff.begin(userId);
 
         // Rebind Convex watches to the real Clerk userId (was bound to anon UUID at init)
         // destroyEntitlementSubscription deliberately PRESERVES the last
@@ -1807,7 +1850,21 @@ export class App {
             rebindConvexAuthForWatchHandoff,
             initEntitlementSubscription,
             initSubscriptionWatch,
-            cloudPrefsSignIn: (nextUserId) => cloudPrefsSignIn(nextUserId, SITE_VARIANT),
+            cloudPrefsSignIn: (nextUserId) => {
+              const completion = cloudPrefsSignIn(nextUserId, SITE_VARIANT);
+              const finishPreferenceHandoff = (): void => {
+                const currentUserId = getAuthState().user?.id ?? null;
+                if (this.tierPreferenceHandoff.complete(nextUserId, currentUserId)) {
+                  this.reconcileTierOwnedPreferences();
+                }
+              };
+              // Use both branches instead of `finally`: the promise returned
+              // by `finally` would mirror a rejection and become unhandled
+              // because startAccountAuthHandoff intentionally fire-and-forgets
+              // this effect.
+              void completion.then(finishPreferenceHandoff, finishPreferenceHandoff);
+              return completion;
+            },
           },
         });
 
@@ -1915,6 +1972,7 @@ export class App {
         destroySubscriptionWatch();
         cloudPrefsSignOut();
         resetEntitlementState();
+        this.tierPreferenceHandoff.clear();
       }
       _prevUserId = userId;
       // Run after account handoff/reset so this pass cannot enforce the
@@ -2112,12 +2170,38 @@ export class App {
     this.eventHandlers.setupPanelViewTracking();
   }
 
+  private shouldDeferTierPreferenceReconciliation(): boolean {
+    return this.tierPreferenceHandoff.shouldDefer(getAuthState().user?.id ?? null);
+  }
+
+  /** Reconcile all gate-owned preferences against one settled account view. */
+  private reconcileTierOwnedPreferences(): boolean {
+    if (this.shouldDeferTierPreferenceReconciliation()) return false;
+    this.enforceFreeTierLimits();
+    // Stored dashboard-tab snapshots have their own panel copies.
+    this.panelLayout.healStoredTabSnapshots();
+    this.healLockedMapLayers(this.freeTierGate.authSettleDeadlineExceeded);
+    return true;
+  }
+
+  private persistJsonStorageValue<T>(key: string, value: T): boolean {
+    try {
+      localStorage.setItem(key, JSON.stringify(value));
+      return true;
+    } catch (error) {
+      if (isQuotaError(error)) markStorageQuotaExceeded();
+      else console.warn(`Failed to save ${key} to storage:`, error);
+      return false;
+    }
+  }
+
   /**
    * Grace-timer state for the free-tier gate. Lives in a collaborator so the
    * backstop can be driven by tests; App itself is not importable from the
    * node:test suites.
    */
   private readonly freeTierGate = new FreeTierGate(() => {
+    if (this.shouldDeferTierPreferenceReconciliation()) return;
     this.enforceFreeTierLimits();
     this.panelLayout.healStoredTabSnapshots();
     // Clerk can remain pending forever when its script or key is unavailable.
@@ -2134,16 +2218,56 @@ export class App {
   private sanitizeMapLayersForTier(
     layers: MapLayers,
     fallbackActive = this.freeTierGate.authSettleDeadlineExceeded,
+    options: { consumeProOwnership?: boolean } = {},
   ): MapLayers {
-    if (!shouldSanitizeLockedLayers(
-      hasPremiumAccess(),
-      isProTierResolved(),
-      fallbackActive,
-    )) return layers;
+    const consumeProOwnership = options.consumeProOwnership ?? true;
+    const premium = hasPremiumAccess();
+    const existingOwnership = new Set(
+      loadFromStorage<string[]>(STORAGE_KEYS.mapLayerGateOwnership, []),
+    );
 
-    const healed = sanitizeLockedLayers(layers, false);
-    if (healed !== layers) saveToStorage(STORAGE_KEYS.mapLayers, healed);
-    return healed;
+    if (premium) {
+      if (existingOwnership.size === 0) return layers;
+      const restored = sanitizeLayersForVariant(
+        restoreGateOwnedLockedLayers(layers, existingOwnership),
+        SITE_VARIANT as MapVariant,
+      );
+      if (!consumeProOwnership) {
+        if (restored === layers) return layers;
+        return this.persistJsonStorageValue(STORAGE_KEYS.mapLayers, restored)
+          ? restored
+          : layers;
+      }
+      const persistence = persistGateOwnershipTransition(
+        'pro',
+        () => restored === layers
+          || this.persistJsonStorageValue(STORAGE_KEYS.mapLayers, restored),
+        () => this.persistJsonStorageValue(STORAGE_KEYS.mapLayerGateOwnership, []),
+      );
+      return persistence.preferencePersisted ? restored : layers;
+    }
+
+    if (!shouldSanitizeLockedLayers(premium, isProTierResolved(), fallbackActive)) {
+      return layers;
+    }
+
+    const reconciled = sanitizeLockedLayersWithOwnership(layers, existingOwnership);
+    const ownershipChanged = !stringSetsEqual(existingOwnership, reconciled.gateOwned);
+    persistGateOwnershipTransition(
+      'free',
+      () => reconciled.layers === layers
+        || this.persistJsonStorageValue(STORAGE_KEYS.mapLayers, reconciled.layers),
+      () => !ownershipChanged
+        || this.persistJsonStorageValue(
+          STORAGE_KEYS.mapLayerGateOwnership,
+          [...reconciled.gateOwned],
+        ),
+    );
+    // Entitlement is a live safety boundary: blocked/quota-limited storage
+    // must not leave a locked layer rendered. The ordered writes above retain
+    // enough durable state to retry without ever persisting the destructive
+    // preference before ownership.
+    return reconciled.layers;
   }
 
   /** Heal the live map and persisted state after a downgrade or free fallback. */
@@ -2152,7 +2276,11 @@ export class App {
   ): void {
     const initialUrlLayers = this.state.initialUrlState?.layers;
     if (initialUrlLayers) {
-      const healedUrlLayers = this.sanitizeMapLayersForTier(initialUrlLayers, fallbackActive);
+      const healedUrlLayers = this.sanitizeMapLayersForTier(
+        initialUrlLayers,
+        fallbackActive,
+        { consumeProOwnership: false },
+      );
       if (healedUrlLayers !== initialUrlLayers && this.state.initialUrlState) {
         this.state.initialUrlState.layers = healedUrlLayers;
       }
@@ -2174,7 +2302,7 @@ export class App {
    * by a pre-fix build (see the one-time recovery below — those entries
    * pre-date the `proGated` marker, so they need the sweep).
    */
-  private restoreProGatedCustomWidgets(cloudSyncVersion?: number): boolean {
+  private restoreProGatedPanelsForTier(cloudSyncVersion?: number): boolean {
     const panelSettings = loadFromStorage<Record<string, PanelConfig>>(STORAGE_KEYS.panels, {});
     let restored = restoreProGatedPanels(panelSettings);
 
@@ -2250,6 +2378,106 @@ export class App {
     return true;
   }
 
+  private currentSourceCapLanguage(): string {
+    let explicitLocale = '';
+    try { explicitLocale = localStorage.getItem('wm-locale-explicit') || ''; } catch { /* private mode */ }
+    return ((explicitLocale || navigator.language || 'en').split('-')[0] ?? 'en').toLowerCase();
+  }
+
+  private sourceCapProtectedNames(userLang: string): Set<string> {
+    const protectedNames = new Set<string>(FREE_CAP_PROTECTED_SOURCES);
+    for (const name of getStrategicDefaultSources()) protectedNames.add(name);
+    if (userLang !== 'en') {
+      for (const name of getLocaleBoostedSources(userLang)) protectedNames.add(name);
+    }
+    return protectedNames;
+  }
+
+  /** Reconcile or restore the persisted 80-source cap without losing user intent. */
+  private reconcileSourceLimitForTier(pro: boolean): boolean {
+    let ownershipMetadataExists = false;
+    try {
+      ownershipMetadataExists = localStorage.getItem(STORAGE_KEYS.sourceGateOwnership) !== null;
+    } catch { /* optional persistence */ }
+    const persistedDisabled = new Set(
+      loadFromStorage<string[]>(STORAGE_KEYS.disabledFeeds, []),
+    );
+    const persistedGateOwned = new Set(
+      loadFromStorage<string[]>(STORAGE_KEYS.sourceGateOwnership, []),
+    );
+    let gateOwned = new Set(persistedGateOwned);
+    const userLang = this.currentSourceCapLanguage();
+    const protectedNames = this.sourceCapProtectedNames(userLang);
+
+    // Heal untouched profiles capped before ownership metadata existed. Exact
+    // matching preserves every customized denylist.
+    if (!ownershipMetadataExists) {
+      const defaultUserDisabled = new Set(computeDefaultDisabledSources(userLang));
+      const expectedGateOwned = selectSourcesUnderCap(
+        FEEDS,
+        INTEL_SOURCES,
+        defaultUserDisabled,
+        FREE_MAX_SOURCES,
+        protectedNames,
+      ).autoDisabled;
+      gateOwned = inferExactSourceGateOwnership(
+        persistedDisabled,
+        defaultUserDisabled,
+        expectedGateOwned,
+      ) ?? gateOwned;
+    }
+
+    let nextDisabled: Set<string>;
+    let nextGateOwned: Set<string>;
+    if (pro) {
+      nextDisabled = restoreGateOwnedSources(persistedDisabled, gateOwned);
+      nextGateOwned = new Set();
+    } else {
+      const userDisabled = restoreGateOwnedSources(persistedDisabled, gateOwned);
+      const nextAutoDisabled = selectSourcesUnderCap(
+        FEEDS,
+        INTEL_SOURCES,
+        userDisabled,
+        FREE_MAX_SOURCES,
+        protectedNames,
+      ).autoDisabled;
+      const reconciled = reconcileSourceGateOwnership(
+        userDisabled,
+        nextAutoDisabled,
+      );
+      nextDisabled = reconciled.disabled;
+      nextGateOwned = reconciled.gateOwned;
+    }
+
+    const disabledChanged = !stringSetsEqual(persistedDisabled, nextDisabled);
+    const ownershipChanged = !ownershipMetadataExists
+      || !stringSetsEqual(persistedGateOwned, nextGateOwned);
+    const persistence = persistGateOwnershipTransition(
+      pro ? 'pro' : 'free',
+      () => !disabledChanged
+        || this.persistJsonStorageValue(STORAGE_KEYS.disabledFeeds, [...nextDisabled]),
+      () => !ownershipChanged
+        || this.persistJsonStorageValue(
+          STORAGE_KEYS.sourceGateOwnership,
+          [...nextGateOwned],
+        ),
+    );
+    const disabledPersisted = disabledChanged && persistence.preferencePersisted;
+    const ownershipPersisted = ownershipChanged && persistence.ownershipPersisted;
+    if (disabledChanged) {
+      // The live entitlement boundary must not depend on localStorage health.
+      // Durable writes remain ordered/retryable above, but free users stay
+      // capped and Pro users unlock immediately even when quota is exhausted.
+      this.state.disabledSources = new Set(nextDisabled);
+    }
+    if (disabledPersisted || ownershipPersisted) {
+      console.log(pro
+        ? `[App] Pro: restored ${gateOwned.size} source(s) disabled by the free-tier gate`
+        : `[App] Free tier: reconciled ${nextGateOwned.size} gate-owned source disable(s)`);
+    }
+    return disabledPersisted || ownershipPersisted;
+  }
+
   /**
    * Enforce free-tier panel and source limits.
    * Reads current values from storage, trims if necessary, and saves back.
@@ -2288,7 +2516,9 @@ export class App {
 
     if (isProUser()) {
       this.freeTierGate.cancelFallback();
-      return this.restoreProGatedCustomWidgets(cloudSyncVersion);
+      const panelsChanged = this.restoreProGatedPanelsForTier(cloudSyncVersion);
+      this.reconcileSourceLimitForTier(true);
+      return panelsChanged;
     }
 
     // Pro/free is NOT knowable yet on an auth-enabled page load. initAuthState()
@@ -2373,63 +2603,7 @@ export class App {
       console.log(`[App] Free tier: enforced ${FREE_MAX_PANELS}-panel limit (disabled over-cap / cw-* panels)`);
     }
 
-    // --- Source limit ---
-    // Free-tier 80-source cap. Pre-2026-05-01 this used `Array.sort().slice()`
-    // which silently auto-disabled every source past alphabetical position 80,
-    // catastrophically erasing late-alphabet categories (Layoffs, Semiconductors,
-    // IPO & SPAC, Funding & VC, Product Hunt, …) and producing the "All sources
-    // disabled" red panel state on the homepage with no user explanation.
-    // Replaced with round-robin per-category distribution from `selectSourcesUnderCap`.
-    // (v1-bug recovery for stuck localStorage state is handled once at the top
-    // of this function via the schema-version migration.)
-    const disabledSources = new Set(loadFromStorage<string[]>(STORAGE_KEYS.disabledFeeds, []));
-    const totalEligible = (() => {
-      const s = new Set<string>();
-      Object.values(FEEDS).forEach((feeds) => feeds?.forEach((f) => s.add(f.name)));
-      INTEL_SOURCES.forEach((f) => s.add(f.name));
-      let count = 0;
-      for (const name of s) if (!disabledSources.has(name)) count++;
-      return count;
-    })();
-    if (totalEligible > FREE_MAX_SOURCES) {
-      // Protect locale-boosted sources from the cap. Without this, locale-
-      // tagged feeds that sit late in their category bucket (e.g. Hungarian
-      // entries in the Europe bucket, declared AFTER the existing en/de/it/
-      // nl/sv defaults) get round-robin'd out — the locale boost re-enables
-      // them, then the cap immediately auto-disables them again. Free-tier
-      // users on the boosted locale lose their locale's defaults entirely.
-      // userLang derivation mirrors the locale-boost migration (earlier in
-      // the App constructor) and the i18n.ts:99 `wmExplicit` detector:
-      // explicit Settings choice wins, navigator is the fallback. Direct
-      // localStorage read because i18next isn't initialized yet at the
-      // constructor stage where enforceFreeTierLimits also runs.
-      let explicitLocale = '';
-      try { explicitLocale = localStorage.getItem('wm-locale-explicit') || ''; } catch { /* private mode */ }
-      const userLang = ((explicitLocale || navigator.language || 'en').split('-')[0] ?? 'en').toLowerCase();
-      // Strategic defaults + locale-boosted sources (non-en) + editorially
-      // protected EN defaults. User-disabled names remain excluded by the cap
-      // helper, so strategic protection does not override explicit intent.
-      // Without frontline protection, free EN users lose Kyiv Independent / Meduza /
-      // Moscow Times to round-robin late-in-europe-bucket ordering; without the
-      // Eastern-flank additions, Daily Sabah / ERR News are also stripped (#5952).
-      const protectedNames = new Set<string>(FREE_CAP_PROTECTED_SOURCES);
-      for (const name of getStrategicDefaultSources()) protectedNames.add(name);
-      if (userLang !== 'en') {
-        for (const name of getLocaleBoostedSources(userLang)) protectedNames.add(name);
-      }
-      const { keep, autoDisabled } = selectSourcesUnderCap(FEEDS, INTEL_SOURCES, disabledSources, FREE_MAX_SOURCES, protectedNames);
-      // Defense in depth: feeds.ts has 35+ source names that appear in
-      // multiple category buckets. The helper guarantees keep ∩ autoDisabled
-      // = ∅, but a regression there would silently re-disable a kept source
-      // here. The keep.has() guard makes the cross-set invariant explicit
-      // at the caller too — if it ever fires it's a helper-bug signal.
-      for (const name of autoDisabled) {
-        if (!keep.has(name)) disabledSources.add(name);
-      }
-      saveToStorage(STORAGE_KEYS.disabledFeeds, Array.from(disabledSources));
-      this.state.disabledSources = new Set(disabledSources);
-      console.log(`[App] Free tier: round-robin disabled ${autoDisabled.size} source(s) to enforce ${FREE_MAX_SOURCES}-source limit (per-category fairness)`);
-    }
+    this.reconcileSourceLimitForTier(false);
     return panelsChanged;
   }
 

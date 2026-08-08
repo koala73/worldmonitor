@@ -1354,8 +1354,8 @@ export class PanelLayoutManager implements AppModule {
       name: t('dashboardTabs.newTabName'),
       // Same unresolved-tier caveat as applyTabPanelState: clamping a new tab
       // before the entitlement is known bakes a free-tier layout into a Pro
-      // user's workspace, and the count clamp carries no marker to undo. Once
-      // the bounded fallback fires, the tier is settled enough to clamp.
+      // user's workspace before its ownership marker can be safely reconciled.
+      // Once the bounded fallback fires, the tier is settled enough to clamp.
       panelSettings: this.isProTierResolvedOrFallback()
         ? enforceFreePanelLimit(defaults.panelSettings, isProUser())
         : defaults.panelSettings,
