@@ -12,7 +12,7 @@
  * Desktop guard: isDesktopRuntime() always skips sync.
  */
 
-import { CLOUD_SYNC_KEYS, type CloudSyncKey } from './sync-keys';
+import { CLOUD_SYNC_KEYS, resolveCloudBlobKeyAction, type CloudSyncKey } from './sync-keys';
 import { isDesktopRuntime } from '@/services/runtime';
 import { getClerkToken } from '@/services/clerk';
 import {
@@ -242,6 +242,21 @@ function clearRetryTimer(): void {
   }
 }
 
+/**
+ * Whether a sign-in sync is waiting on a scheduled 503 retry.
+ *
+ * `onSignIn`'s promise resolves as soon as the retry is ARMED, not when the
+ * cloud blob is finally applied — the catch schedules the timer and returns
+ * without awaiting it. A caller that treats that resolution as "the account's
+ * preferences have landed" acts on pre-cloud local state (see
+ * TierPreferenceHandoff). The 503 branch assigns `_retryTimer` before the
+ * queued task returns, so this is already true by the time the promise's
+ * `.then` runs.
+ */
+export function hasPendingCloudPrefsRetry(): boolean {
+  return _retryTimer !== null;
+}
+
 // ── Guards ────────────────────────────────────────────────────────────────────
 
 function isEnabled(): boolean {
@@ -290,11 +305,16 @@ function applyCloudBlob(data: Record<string, unknown>, syncVersion?: number): vo
   _suppressPatch = true;
   try {
     for (const key of CLOUD_SYNC_KEYS) {
-      const val = data[key];
-      if (typeof val === 'string') {
-        if (localStorage.getItem(key) !== val) changedKeys.push(key);
-        localStorage.setItem(key, val);
-      } else if (!(key in data)) {
+      // An omitted key normally means the user cleared it. For the free-tier
+      // ownership sidecars it instead means the row predates them (or an older
+      // tab uploaded), and deleting them strands the gate's own disables as
+      // user intent forever. See resolveCloudBlobKeyAction.
+      const action = resolveCloudBlobKeyAction(key, data);
+      if (action.kind === 'keep') continue;
+      if (action.kind === 'set') {
+        if (localStorage.getItem(key) !== action.value) changedKeys.push(key);
+        localStorage.setItem(key, action.value);
+      } else {
         if (localStorage.getItem(key) !== null) changedKeys.push(key);
         localStorage.removeItem(key);
       }

@@ -23,6 +23,7 @@ import {
 } from '@/config';
 import {
   sanitizeLayersForVariant,
+  sanitizeLockedLayers,
   sanitizeLockedLayersWithOwnership,
   restoreGateOwnedLockedLayers,
   mapLayerStatesEqual,
@@ -169,6 +170,7 @@ import { getAuthState, initAuthState, subscribeAuthState } from '@/services/auth
 import {
   CLOUD_PREFS_APPLIED_EVENT,
   getSyncVersion,
+  hasPendingCloudPrefsRetry,
   install as installCloudPrefsSync,
   onSignIn as cloudPrefsSignIn,
   onSignOut as cloudPrefsSignOut,
@@ -286,6 +288,8 @@ export class App {
   private bootstrapHydrationState: BootstrapHydrationState = getBootstrapHydrationState();
   private cachedModeBannerEl: HTMLElement | null = null;
   private pendingCloudRecoverySyncVersion: number | undefined;
+  /** Token of the in-flight preference handoff, so the cloud-applied event can release it. */
+  private pendingPreferenceHandoffGeneration: number | undefined;
   private readonly tierPreferenceHandoff = new TierPreferenceHandoff();
   private readonly handleWmSessionDegraded = (event?: Event): void => {
     if (!this.state.isDestroyed) {
@@ -349,6 +353,13 @@ export class App {
 
     const keySet = new Set(keys);
     let freeTierLimitsInvoked = false;
+    // This event fires from applyCloudBlob, so reaching it means the signing-in
+    // account's cloud preferences have ACTUALLY landed — the terminal signal the
+    // handoff is waiting for. Releasing it here (rather than when the sign-in
+    // promise settles, which a 503 resolves the moment a retry is merely armed)
+    // is what lets the reconciliation below run against cloud state instead of
+    // the local state it is replacing.
+    this.releasePreferenceHandoffOnCloudApply();
     const tierReconciliationDeferred = this.shouldDeferTierPreferenceReconciliation();
     invalidatePanelStorageCacheForKeys(keys);
 
@@ -880,7 +891,11 @@ export class App {
       console.log('[App] Variant changed - seeding new defaults, disabling cross-variant panels');
       // Reset map layers for the new variant (map layers are not user-personalized the same way)
       localStorage.removeItem(STORAGE_KEYS.mapLayers);
-      localStorage.removeItem(STORAGE_KEYS.mapLayerGateOwnership);
+      // Write an explicit empty set rather than removing the key: cloud sync
+      // now tolerates an ABSENT ownership sidecar (a row that predates it must
+      // not delete local ownership), so a genuine variant-reset clear only
+      // propagates cross-device when it is an explicit value.
+      localStorage.setItem(STORAGE_KEYS.mapLayerGateOwnership, '[]');
       mapLayers = normalizeExclusiveChoropleths(
         sanitizeLayersForVariant({ ...defaultLayers }, currentVariant as MapVariant), null,
       );
@@ -895,11 +910,21 @@ export class App {
         // Use the throwing primitive here so the transition helper advances
         // the applied-layout marker only after the panel blob is durable.
         persistPanels: (next) => localStorage.setItem(STORAGE_KEYS.panels, JSON.stringify(next)),
-        persistAppliedVariant: (variant) => localStorage.setItem(STORAGE_KEYS.panelLayoutVariant, variant),
+        persistAppliedVariant: (variant) => {
+          // Both markers advance HERE, inside the helper's success path, and
+          // never after a failed panel write. Advancing the legacy key
+          // unconditionally used to erase the retry: on the next boot
+          // resolveAppliedPanelLayoutVariant would see a null applied marker
+          // beside a legacy key already equal to the current variant, take its
+          // SEEDING branch, and silently record the failed reset as applied.
+          //
+          // Order is load-bearing: the legacy key (read by bootstrap/theme and
+          // by SITE_VARIANT on desktop) goes first, and the applied-layout
+          // marker — the "this layout is durable" flag — goes last.
+          localStorage.setItem(STORAGE_KEYS.variant, variant);
+          localStorage.setItem(STORAGE_KEYS.panelLayoutVariant, variant);
+        },
       });
-      // Keep the legacy selected-variant key for bootstrap/theme consumers.
-      // The applied-layout marker above advances only after panels persist.
-      localStorage.setItem(STORAGE_KEYS.variant, currentVariant);
     } else {
       mapLayers = normalizeExclusiveChoropleths(
         sanitizeLayersForVariant(
@@ -1111,7 +1136,9 @@ export class App {
         sanitizeLayersForVariant(initialUrlState.layers, currentVariant as MapVariant), null,
       );
       // #6045 — URL layer deep-links also cannot force locked layers on for free users.
-      mapLayers = this.sanitizeMapLayersForTier(mapLayers);
+      // Ephemeral: the link is a view, so it must not overwrite the stored
+      // preference or touch gate ownership in either direction.
+      mapLayers = this.sanitizeMapLayersForTier(mapLayers, undefined, { ephemeralSnapshot: true });
       initialUrlState.layers = mapLayers;
     }
     if (!CYBER_LAYER_ENABLED) {
@@ -1825,7 +1852,21 @@ export class App {
 
       if (userId !== null && userId !== _prevUserId) {
         const handoffGeneration = ++_convexWatchHandoffGeneration;
-        this.tierPreferenceHandoff.begin(userId);
+        // The token fences a LATE completion from a previous attempt for the
+        // same account (sign-in A -> sign-out -> sign-in A): the queue settles
+        // that stale attempt before this one runs, and an id-only guard would
+        // let it release a handoff it does not own. The expiry callback is the
+        // backstop for an attempt that never reaches a terminal outcome.
+        const preferenceHandoffGeneration = this.tierPreferenceHandoff.begin(
+          userId,
+          () => { this.reconcileTierOwnedPreferences(); },
+          // A 503 keeps the sign-in legitimately in flight for up to
+          // Retry-After, which can outlast one grace window. Waiting beats
+          // reconciling against pre-cloud state; the handoff's own ceiling
+          // stops that wait from becoming indefinite.
+          () => hasPendingCloudPrefsRetry(),
+        );
+        this.pendingPreferenceHandoffGeneration = preferenceHandoffGeneration;
 
         // Rebind Convex watches to the real Clerk userId (was bound to anon UUID at init)
         // destroyEntitlementSubscription deliberately PRESERVES the last
@@ -1853,8 +1894,22 @@ export class App {
             cloudPrefsSignIn: (nextUserId) => {
               const completion = cloudPrefsSignIn(nextUserId, SITE_VARIANT);
               const finishPreferenceHandoff = (): void => {
+                // A 503 resolves this promise as soon as the RETRY IS ARMED,
+                // before any cloud blob is applied. Completing here would
+                // reconcile — and upload — pre-cloud local state.
+                //
+                // Leave the handoff armed instead. The retry re-enters
+                // onSignIn inside cloud-prefs-sync and never comes back
+                // through this wrapper, so the release comes from
+                // applyCloudSyncedPrefsToRuntime when the blob actually lands,
+                // and from the handoff's bounded expiry if it never does.
+                if (hasPendingCloudPrefsRetry()) return;
                 const currentUserId = getAuthState().user?.id ?? null;
-                if (this.tierPreferenceHandoff.complete(nextUserId, currentUserId)) {
+                if (this.tierPreferenceHandoff.complete(
+                  preferenceHandoffGeneration,
+                  nextUserId,
+                  currentUserId,
+                )) {
                   this.reconcileTierOwnedPreferences();
                 }
               };
@@ -2174,6 +2229,22 @@ export class App {
     return this.tierPreferenceHandoff.shouldDefer(getAuthState().user?.id ?? null);
   }
 
+  /**
+   * Release the handoff because the account's cloud blob just landed.
+   *
+   * The caller then reconciles inline, so this deliberately does NOT reconcile
+   * itself — doing both would run the pass twice per applied generation.
+   */
+  private releasePreferenceHandoffOnCloudApply(): void {
+    const generation = this.pendingPreferenceHandoffGeneration;
+    if (generation === undefined) return;
+    const currentUserId = getAuthState().user?.id ?? null;
+    if (currentUserId === null) return;
+    if (this.tierPreferenceHandoff.complete(generation, currentUserId, currentUserId)) {
+      this.pendingPreferenceHandoffGeneration = undefined;
+    }
+  }
+
   /** Reconcile all gate-owned preferences against one settled account view. */
   private reconcileTierOwnedPreferences(): boolean {
     if (this.shouldDeferTierPreferenceReconciliation()) return false;
@@ -2218,9 +2289,14 @@ export class App {
   private sanitizeMapLayersForTier(
     layers: MapLayers,
     fallbackActive = this.freeTierGate.authSettleDeadlineExceeded,
-    options: { consumeProOwnership?: boolean } = {},
+    options: { ephemeralSnapshot?: boolean } = {},
   ): MapLayers {
-    const consumeProOwnership = options.consumeProOwnership ?? true;
+    // A `?layers=` deep link is a VIEW, not the user's saved preference:
+    // parseMapUrlState rebuilds every LAYER_KEYS entry from the query string.
+    // Treating it as durable state let a shared link overwrite the stored
+    // (and cloud-synced) preference and seed gate ownership the user never
+    // chose, so an ephemeral snapshot is sanitized for display only.
+    const ephemeral = options.ephemeralSnapshot ?? false;
     const premium = hasPremiumAccess();
     const existingOwnership = new Set(
       loadFromStorage<string[]>(STORAGE_KEYS.mapLayerGateOwnership, []),
@@ -2232,15 +2308,14 @@ export class App {
         restoreGateOwnedLockedLayers(layers, existingOwnership),
         SITE_VARIANT as MapVariant,
       );
-      if (!consumeProOwnership) {
-        if (restored === layers) return layers;
-        return this.persistJsonStorageValue(STORAGE_KEYS.mapLayers, restored)
-          ? restored
-          : layers;
-      }
+      // sanitizeLayersForVariant always returns a fresh object, so `restored
+      // === layers` is never true — an identity check here silently persisted
+      // on every pass. Compare by value.
+      const unchanged = mapLayerStatesEqual(layers, restored);
+      if (ephemeral) return unchanged ? layers : restored;
       const persistence = persistGateOwnershipTransition(
         'pro',
-        () => restored === layers
+        () => unchanged
           || this.persistJsonStorageValue(STORAGE_KEYS.mapLayers, restored),
         () => this.persistJsonStorageValue(STORAGE_KEYS.mapLayerGateOwnership, []),
       );
@@ -2250,6 +2325,11 @@ export class App {
     if (!shouldSanitizeLockedLayers(premium, isProTierResolved(), fallbackActive)) {
       return layers;
     }
+
+    // Strip locked layers from the view without recording ownership: a shared
+    // link naming a locked layer must not make that layer auto-enable if the
+    // user later subscribes.
+    if (ephemeral) return sanitizeLockedLayers(layers, false);
 
     const reconciled = sanitizeLockedLayersWithOwnership(layers, existingOwnership);
     const ownershipChanged = !stringSetsEqual(existingOwnership, reconciled.gateOwned);
@@ -2279,13 +2359,24 @@ export class App {
       const healedUrlLayers = this.sanitizeMapLayersForTier(
         initialUrlLayers,
         fallbackActive,
-        { consumeProOwnership: false },
+        { ephemeralSnapshot: true },
       );
       if (healedUrlLayers !== initialUrlLayers && this.state.initialUrlState) {
         this.state.initialUrlState.layers = healedUrlLayers;
       }
     }
-    const healed = this.sanitizeMapLayersForTier(this.state.mapLayers, fallbackActive);
+    // When the session booted from a `?layers=` link, state.mapLayers IS that
+    // URL-derived view (seeded from the same local in the constructor), so this
+    // heal must stay ephemeral too. The boot-time ephemeral pass usually
+    // no-ops — shouldSanitizeLockedLayers is false while the tier is still
+    // unresolved — which makes THIS the call that actually acts, and a
+    // non-ephemeral run here would seed gate ownership from the link and write
+    // it to the stored preference, undoing the deep-link fix entirely.
+    const healed = this.sanitizeMapLayersForTier(
+      this.state.mapLayers,
+      fallbackActive,
+      initialUrlLayers ? { ephemeralSnapshot: true } : {},
+    );
     if (healed === this.state.mapLayers) return;
     this.state.mapLayers = healed;
     this.state.map?.setLayers(healed);

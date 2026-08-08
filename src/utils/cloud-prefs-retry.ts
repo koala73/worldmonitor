@@ -1,5 +1,10 @@
 const RETRY_AFTER_MIN_SEC = 1;
-const RETRY_AFTER_MAX_SEC = 60;
+/**
+ * Upper clamp on a honoured `Retry-After`. Exported so callers that must wait
+ * out a pending retry can size their own deadline against the longest delay
+ * this module will ever schedule, instead of guessing a magic number.
+ */
+export const RETRY_AFTER_MAX_SEC = 60;
 const RETRY_AFTER_DEFAULT_SEC = 5;
 
 export function isTemporaryCloudPrefsStatus(status: number): boolean {
