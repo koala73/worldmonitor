@@ -159,6 +159,24 @@ function seedManifest(pairs: string[]): void {
   redisStore.set(COVERAGE_KEY, { pairs, startYear: 1996, endYear: 2026, fetchedAt: '2026-08-07T00:00:00.000Z' });
 }
 
+/**
+ * Every miss reads exactly the pair key then the manifest — nothing else.
+ *
+ * Applied to EACH miss verdict, not just one. The #6309 cutover bridge sat on
+ * the `coverage_unknown` arm, so pinning only that arm would let the same
+ * fallback be reintroduced on `seed_missing` ("the pair is covered but its key
+ * is gone — try the old key before declaring a fault") with the suite green.
+ * Verified: that exact reintroduction passed 60/60 before this helper existed.
+ *
+ * The two reads are sequential awaits (handler, then classifyMiss), so the
+ * order is deterministic and this cannot flake. If they are ever parallelised
+ * this reddens — which is the right moment to look.
+ */
+function assertTwoReads(reporter: string, partner: string): void {
+  assert.deepEqual(redisReads, [tradeFlowSeedKey(reporter, partner), COVERAGE_KEY],
+    'a miss must read the pair key and the manifest, and nothing else');
+}
+
 // ── Contract pins: the two sides must agree without importing each other ───
 
 describe('seeder and handler agree on the cache contract', () => {
@@ -295,6 +313,7 @@ describe('a miss is attributed to a cause, not blamed on upstream', () => {
     assert.equal(res.fetchedAt, '', 'nothing was fetched, so there is no fetch time to report');
     assert.equal(res.coverageStartYear, 0);
     assert.equal(res.coverageEndYear, 0);
+    assertTwoReads('840', '156');
   });
 
   test('a covered pair whose key is gone is a fault', async () => {
@@ -303,6 +322,7 @@ describe('a miss is attributed to a cause, not blamed on upstream', () => {
 
     assert.equal(res.unavailableReason, R.seedMissing);
     assert.equal(res.upstreamUnavailable, true);
+    assertTwoReads('156', '000');
   });
 
   test('a failed read of the pair key is never reported as missing coverage', async () => {
@@ -352,9 +372,7 @@ describe('a miss is attributed to a cause, not blamed on upstream', () => {
     const res = await getTradeFlows(CTX, request());
 
     assert.equal(res.unavailableReason, R.coverageUnknown);
-    assert.deepEqual(redisReads, [tradeFlowSeedKey('840', '000'), COVERAGE_KEY]);
-    assert.ok(!redisReads.some((k) => k.startsWith('trade:flows:v1:')),
-      'the v1 fleet is gone; nothing may read it');
+    assertTwoReads('840', '000');
   });
 
   test('a seeded key holding no rows still gets attributed', async () => {
@@ -365,7 +383,6 @@ describe('a miss is attributed to a cause, not blamed on upstream', () => {
     assert.equal(res.unavailableReason, R.seedMissing);
   });
 });
-
 
 // ── Request validation ────────────────────────────────────────────────────
 
