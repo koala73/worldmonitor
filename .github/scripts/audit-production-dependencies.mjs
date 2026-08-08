@@ -41,6 +41,18 @@ export const BASELINE_ADVISORIES_BY_LOCKFILE = {
       reason:
         'sharp inherited libvips decode CVEs need attacker-crafted image BYTES fed to sharp. Neither root chain decodes untrusted input: @vercel/og\'s sharp only converts satori-rendered first-party buffers (brief carousel), and @xenova/transformers is consumed solely by the browser ML worker (src/workers/ml.worker.ts) — its Node-only sharp binary never executes server-side. The clean fix (sharp 0.35.x) is semver-major across both chains; baselined until the parents bump.',
     },
+    {
+      id: 'GHSA-5p2g-fcmc-qvqq',
+      expiresAt: '2026-11-05',
+      reason:
+        'image-size JXL/HEIF infinite-loop DoS needs attacker-supplied image bytes parsed by image-size. Both root chains are inert here: metro (via @clerk/clerk-js -> solana wallet adapters -> react-native) is React Native\'s bundler and never executes in this web app, and texture-compressor (via deck.gl -> @loaders.gl/textures) is a Node build-time CLI the browser bundle never invokes — no untrusted bytes ever reach either copy. No patched release exists (every version <= 2.0.2 is affected, first_patched_version is null), so there is nothing to bump; drop when a fixed image-size ships or a parent sheds the dependency.',
+    },
+    {
+      id: 'GHSA-w3rx-r6r6-pgpr',
+      expiresAt: '2026-11-05',
+      reason:
+        'image-size ICNS infinite-loop DoS — same two inert transitive chains as GHSA-5p2g-fcmc-qvqq (metro under react-native, texture-compressor under @loaders.gl/textures), neither of which parses untrusted input in this web app. No patched release exists (<= 2.0.2 affected, first_patched_version null); re-review with its sibling entry when a fix ships.',
+    },
   ],
   'consumer-prices-core/package-lock.json': [],
   'blog-site/package-lock.json': [],
