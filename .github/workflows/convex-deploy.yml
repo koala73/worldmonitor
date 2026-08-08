@@ -91,8 +91,73 @@ jobs:
             echo "convex=false" >> "$GITHUB_OUTPUT"
           fi
 
-  deploy:
+  gate:
+    # Hold the deploy until the merge gate has actually passed on this commit.
+    # Without this, `push: main` deploys Convex the moment the merge lands —
+    # concurrently with the test/typecheck run that decides whether the commit
+    # was any good. A red main then reaches Convex prod anyway, and the only
+    # remedy is a manual redeploy of the previous commit.
+    #
+    # The gate is polled as a commit *status* rather than waited on via
+    # `workflow_run`, because deploy-gate.yml aggregates its result onto the
+    # head SHA as the `gate` context. Polling the SHA keeps this workflow on
+    # the `push` trigger, so the change-detection above (which needs
+    # `github.event.before`/`after`) keeps working unchanged.
     needs: changes
+    if: needs.changes.outputs.convex == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      statuses: read
+    steps:
+      - name: Wait for the merge gate on this commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+
+          # Manual runs are the operator's explicit override (hotfix, or
+          # recovering from a failed deploy). Don't make them wait on a gate
+          # that may never post a status for an off-cycle dispatch.
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "workflow_dispatch: skipping gate wait (operator override)"
+            exit 0
+          fi
+
+          # ~25 min budget: 75 attempts x 20s. The gate aggregates Test,
+          # Typecheck, Lint Code and Security Audit, so it posts well inside
+          # that on a normal run.
+          for _ in $(seq 1 75); do
+            state="$(gh api "repos/$REPO/commits/$SHA/status" \
+              --jq '[.statuses[] | select(.context == "gate")]
+                    | sort_by(.created_at) | last | .state // "missing"')"
+
+            case "$state" in
+              success)
+                echo "gate: success — proceeding with the Convex deploy"
+                exit 0
+                ;;
+              failure|error)
+                # Fail CLOSED. A red gate must not reach Convex prod.
+                echo "::error::merge gate concluded '$state' for $SHA; not deploying Convex"
+                exit 1
+                ;;
+              *)
+                echo "gate: '$state' — waiting..."
+                ;;
+            esac
+            sleep 20
+          done
+
+          # Also fail closed on timeout: an unknown gate result is not a pass.
+          echo "::error::timed out waiting for the merge gate on $SHA; not deploying Convex"
+          exit 1
+
+  deploy:
+    needs: [changes, gate]
     if: needs.changes.outputs.convex == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 10
