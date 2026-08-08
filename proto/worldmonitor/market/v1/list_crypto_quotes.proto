@@ -2,17 +2,30 @@ syntax = "proto3";
 
 package worldmonitor.market.v1;
 
+import "buf/validate/validate.proto";
 import "sebuf/http/annotations.proto";
 import "worldmonitor/market/v1/market_quote.proto";
 
 // ListCryptoQuotesRequest specifies which cryptocurrencies to retrieve.
 message ListCryptoQuotesRequest {
-  // Cryptocurrency IDs to retrieve (CoinGecko IDs). Empty returns defaults.
-  repeated string ids = 1 [(sebuf.http.query) = { name: "ids" }];
+  // Cryptocurrency IDs to retrieve (CoinGecko IDs). Empty returns the default
+  // crypto set. At most 25 IDs are accepted; the handler resolves them
+  // seed-first and fetches the remainder (gap) from the upstream provider.
+  repeated string ids = 1 [
+    (buf.validate.field).repeated.max_items = 25,
+    (sebuf.http.query) = { name: "ids" }
+  ];
 }
 
 // ListCryptoQuotesResponse contains cryptocurrency quotes.
 message ListCryptoQuotesResponse {
   // The list of cryptocurrency quotes.
   repeated CryptoQuote quotes = 1;
+  // CoinGecko IDs that were requested but could not be resolved from the seed
+  // or the upstream provider. Omitted IDs are never silently dropped.
+  repeated string unresolved_ids = 2;
+  // Data source for this response: "seed" (default set/seed hits only),
+  // "upstream" (at least one gap ID fetched from the provider), "mixed"
+  // (seed hits plus fetched gaps), or "degraded" (a gap fetch failed).
+  string provider = 3;
 }

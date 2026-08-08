@@ -33,6 +33,8 @@ export interface ListCryptoQuotesRequest {
 
 export interface ListCryptoQuotesResponse {
   quotes: CryptoQuote[];
+  unresolvedIds: string[];
+  provider: string;
 }
 
 export interface CryptoQuote {
