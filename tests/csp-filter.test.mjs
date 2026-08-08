@@ -454,6 +454,33 @@ describe('CSP violation filter (shouldSuppressCspViolation)', () => {
       assert.ok(suppress('enforce', 'img-src', 'https://tech.worldmonitor.app/favico/tech/favicon-32x32.png', '', false, FIRST_PARTY_CONVEX));
     });
 
+    // Clerk avatar CDN — the only cross-origin image host our UI loads (the
+    // Clerk UserButton avatar). Our img-src allows every https: host, so an
+    // enforced block on img.clerk.com is the same mutated-policy class as the
+    // first-party rules above (WORLDMONITOR-JP round 2, Firefox privacy
+    // extensions stripping `https:` from img-src).
+    it('suppresses img-src to img.clerk.com (Clerk avatar, WORLDMONITOR-JP)', () => {
+      assert.ok(suppress('enforce', 'img-src', 'https://img.clerk.com/eyJ0eXBlIjoicHJveHkifQ?width=200', '', false, FIRST_PARTY_CONVEX));
+    });
+
+    it('does NOT suppress http:// img-src to img.clerk.com (wrong-scheme block must surface)', () => {
+      assert.ok(!suppress('enforce', 'img-src', 'http://img.clerk.com/eyJ0eXBlIjoicHJveHkifQ', '', false, FIRST_PARTY_CONVEX));
+    });
+
+    it('does NOT suppress img-src to suffix-spoof `img.clerk.com.evil.com`', () => {
+      assert.ok(!suppress('enforce', 'img-src', 'https://img.clerk.com.evil.com/pixel.gif', '', false, FIRST_PARTY_CONVEX));
+    });
+
+    it('does NOT suppress img-src to other clerk.com hosts (rule is exact-host)', () => {
+      // Only the avatar CDN is expected; a block on any other clerk.com host
+      // is not a known injection pattern and must surface.
+      assert.ok(!suppress('enforce', 'img-src', 'https://clerk.com/logo.png', '', false, FIRST_PARTY_CONVEX));
+    });
+
+    it('does NOT suppress connect-src to img.clerk.com (rule is scoped to img-src)', () => {
+      assert.ok(!suppress('enforce', 'connect-src', 'https://img.clerk.com/avatar', '', false, FIRST_PARTY_CONVEX));
+    });
+
     it('does NOT suppress img-src to a foreign host', () => {
       // Real third-party CDN image blocks should still surface.
       assert.ok(!suppress('enforce', 'img-src', 'https://malicious.example.com/tracker.gif', '', false, FIRST_PARTY_CONVEX));
