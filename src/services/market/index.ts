@@ -29,7 +29,11 @@ const otherBreaker = createCircuitBreaker<ListOtherTokensResponse>({ name: 'Othe
 const emptyStockFallback: ListMarketQuotesResponse = { quotes: [], finnhubSkipped: false, skipReason: '', rateLimited: false, unavailableSymbols: [] };
 const emptyCommodityFallback: ListCommodityQuotesResponse = { quotes: [] };
 const emptySectorFallback: GetSectorSummaryResponse = { sectors: [] };
-const emptyCryptoFallback: ListCryptoQuotesResponse = { quotes: [] };
+const EMPTY_CRYPTO_FALLBACK: ListCryptoQuotesResponse = {
+  quotes: [],
+  unresolvedIds: [],
+  provider: 'degraded',
+};
 const emptyCryptoSectorsFallback: ListCryptoSectorsResponse = { sectors: [] };
 const emptyDefiTokensFallback: ListDefiTokensResponse = { tokens: [] };
 const emptyAiTokensFallback: ListAiTokensResponse = { tokens: [] };
@@ -241,7 +245,7 @@ export async function fetchCrypto(): Promise<CryptoData[]> {
 
   const resp = await cryptoBreaker.execute(async () => {
     return client.listCryptoQuotes({ ids: [] }); // empty = all defaults
-  }, emptyCryptoFallback);
+  }, EMPTY_CRYPTO_FALLBACK);
 
   const results = resp.quotes
     .map(toCryptoData)

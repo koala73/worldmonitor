@@ -18,10 +18,18 @@ export class ChinaActivityNowcastPanel extends Panel {
   }
 
   public async fetchData(): Promise<boolean> {
-    this.showLoading();
+    // Re-entered by the scroll-driven loadAllData pass and the 15-min
+    // scheduler; the service has no client cache (cacheTtlMs: 0), so the
+    // loading radar must not replace a rendered comparison for the whole
+    // RPC round-trip on every refresh.
+    if (!this.hasData()) this.showLoading();
     const response = await getChinaActivityNowcastData();
     this.setData(response);
     return response.state !== 'insufficient_data';
+  }
+
+  public hasData(): boolean {
+    return this.response !== null;
   }
 
   public setData(response: ChinaActivityNowcastResponse): void {

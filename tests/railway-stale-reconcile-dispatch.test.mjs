@@ -13,21 +13,23 @@ import {
   GITHUB_WATCHDOG_USER_AGENT,
   GitHubWatchdogClient,
   GitHubWatchdogError,
+  GITHUB_DISPATCH_REJECTION_STEP_NAME,
   MANUAL_RECOVERY_DISPATCH_JOB_NAME,
   MANUAL_RECOVERY_DISPATCH_STEP_NAME,
   MANUAL_REQUIRED_STEP_NAME,
   MUTATION_STARTED_STEP_NAME,
   PRE_MUTATION_ACTIVE_MS,
+  PRE_DISPATCH_REJECTION_STEP_NAME,
   WATCHDOG_DISPATCH_JOB_NAME,
   WATCHDOG_DISPATCH_STEP_NAME,
   WATCHDOG_HISTORY_WINDOW_MS,
   WATCHDOG_JOB_READ_CONCURRENCY,
   WATCHDOG_MAX_PAGES,
   classifyWatchdogSnapshot,
-  dispatchAuthorizedRecovery,
+  dispatchGitHubRecovery,
   prepareRecoveryDispatch,
   readWatchdogSnapshot,
-  runStaleReconcileWatchdog,
+  rejectAuthorizedRecovery,
 } from '../scripts/dispatch-stale-railway-reconcile.mjs';
 
 const NOW = Date.parse('2026-08-07T12:00:00Z');
@@ -647,6 +649,9 @@ describe('allowlisted GitHub watchdog transport', () => {
             : json([{ context: 'gate', state: 'success', updated_at: '2026-08-07T11:59:00Z' }]);
         }
         if (parsed.pathname.endsWith('/railway-deploy-trigger.yml/runs')) {
+          if (parsed.searchParams.has('status')) {
+            return json({ total_count: 0, workflow_runs: [] });
+          }
           if (page === '1') {
             const next = new URL(parsed);
             next.searchParams.set('page', '2');
@@ -701,6 +706,9 @@ describe('allowlisted GitHub watchdog transport', () => {
       fetchImpl: async (url) => {
         const parsed = new URL(url);
         if (parsed.pathname.endsWith('/railway-deploy-trigger.yml/runs')) {
+          if (parsed.searchParams.has('status')) {
+            return json({ total_count: 0, workflow_runs: [] });
+          }
           return json({
             total_count: 1,
             workflow_runs: [rawRun({
@@ -732,6 +740,36 @@ describe('allowlisted GitHub watchdog transport', () => {
       Array.from({ length: attemptCount }, (_, index) => index + 1));
   });
 
+  it('includes an active target run even when it started before the 24-hour history window', async () => {
+    const oldActive = rawRun({
+      id: 77,
+      status: 'in_progress',
+      conclusion: null,
+      createdAt: new Date(NOW - 48 * 60 * 60_000).toISOString(),
+      updatedAt: new Date(NOW - 5 * 60_000).toISOString(),
+    });
+    const client = new GitHubWatchdogClient({
+      repository: 'o/r',
+      token: 'token',
+      now: () => NOW,
+      fetchImpl: async (url) => {
+        const parsed = new URL(url);
+        if (!parsed.pathname.endsWith('/railway-deploy-trigger.yml/runs')) {
+          throw new Error(`unexpected ${url}`);
+        }
+        const status = parsed.searchParams.get('status');
+        if (status === 'in_progress') {
+          return json({ total_count: 1, workflow_runs: [oldActive] });
+        }
+        return json({ total_count: 0, workflow_runs: [] });
+      },
+    });
+
+    const runs = await client.readTargetRunSummaries();
+    assert.deepEqual(runs.map((run) => run.id), [77]);
+    assert.equal(runs[0].status, 'in_progress');
+  });
+
   it('correlates accepted dispatches from run summaries without hydrating jobs', async () => {
     const calls = [];
     const client = new GitHubWatchdogClient({
@@ -742,6 +780,9 @@ describe('allowlisted GitHub watchdog transport', () => {
         calls.push(String(url));
         const parsed = new URL(url);
         if (parsed.pathname.endsWith('/railway-deploy-trigger.yml/runs')) {
+          if (parsed.searchParams.has('status')) {
+            return json({ total_count: 0, workflow_runs: [] });
+          }
           return json({
             total_count: 1,
             workflow_runs: [rawRun({
@@ -805,7 +846,7 @@ describe('allowlisted GitHub watchdog transport', () => {
       const evidence = await client.readSourceDispatchEvidence({
         sourceRunId: String(testCase.id),
         sourceRunAttempt: 2,
-        expectedHeadSha: HEAD,
+        expectedSourceHeadSha: HEAD,
       });
       assert.equal(evidence.workflowPath, testCase.path.split('@')[0]);
       assert.equal(evidence.dispatchJobName, testCase.jobName);
@@ -842,7 +883,7 @@ describe('allowlisted GitHub watchdog transport', () => {
         client.readSourceDispatchEvidence({
           sourceRunId: '9003',
           sourceRunAttempt: 2,
-          expectedHeadSha: HEAD,
+          expectedSourceHeadSha: HEAD,
         }),
         (error) => error instanceof GitHubWatchdogError && error.code === 'GITHUB_READ_FAILED',
       );
@@ -878,6 +919,11 @@ describe('allowlisted GitHub watchdog transport', () => {
           return json([{ context: 'gate', state: 'success', updated_at: '2026-08-07T11:59:00Z' }]);
         }
         if (parsed.pathname.endsWith('/railway-deploy-trigger.yml/runs')) {
+          const status = parsed.searchParams.get('status');
+          if (status !== null) {
+            const workflowRuns = status === 'in_progress' ? [allRuns[1]] : [];
+            return json({ total_count: workflowRuns.length, workflow_runs: workflowRuns });
+          }
           const page = Number(parsed.searchParams.get('page'));
           const start = (page - 1) * 100;
           const workflowRuns = allRuns.slice(start, start + 100);
@@ -927,7 +973,7 @@ describe('allowlisted GitHub watchdog transport', () => {
     assert.deepEqual(new Set(hydratedIds), selectedIds);
     assert.equal(snapshot.runs.find(({ id }) => id === 1).hydrated, false);
     assert.ok([...selectedIds].every((id) => snapshot.runs.find((run) => run.id === id)?.hydrated === true));
-    assert.ok(client.requestCount < 25, `expected bounded requests, received ${client.requestCount}`);
+    assert.ok(client.requestCount < 40, `expected bounded requests, received ${client.requestCount}`);
     assert.ok(client.requestCount <= 250);
   });
 
@@ -952,6 +998,9 @@ describe('allowlisted GitHub watchdog transport', () => {
           return json([{ context: 'gate', state: 'success', updated_at: '2026-08-07T11:59:00Z' }]);
         }
         if (parsed.pathname.endsWith('/railway-deploy-trigger.yml/runs')) {
+          if (parsed.searchParams.has('status')) {
+            return json({ total_count: 0, workflow_runs: [] });
+          }
           return json({ total_count: 1, workflow_runs: [oldFailure] });
         }
         if (parsed.pathname.endsWith('/actions/runs/61/attempts/1/jobs')) {
@@ -1039,6 +1088,9 @@ describe('allowlisted GitHub watchdog transport', () => {
         fetchImpl: async (url) => {
           const parsed = new URL(url);
           if (parsed.pathname.endsWith('/railway-deploy-trigger.yml/runs')) {
+            if (parsed.searchParams.has('status')) {
+              return json({ total_count: 0, workflow_runs: [] });
+            }
             return json({ total_count: 1, workflow_runs: [rawRun({ id: 1 })] });
           }
           const page = Number(parsed.searchParams.get('page'));
@@ -1176,15 +1228,20 @@ describe('allowlisted GitHub watchdog transport', () => {
   });
 
   it('parses only the 2026-03-10 workflow_run_id dispatch response field', async () => {
+    let requestBody;
     const accepted = new GitHubWatchdogClient({
       repository: 'o/r',
       token: 'token',
-      fetchImpl: async () => Response.json({ workflow_run_id: 4242 }, { status: 202 }),
+      fetchImpl: async (_url, options) => {
+        requestBody = JSON.parse(options.body);
+        return Response.json({ workflow_run_id: 4242 }, { status: 202 });
+      },
     });
     assert.deepEqual(
       await accepted.dispatchRecovery({ recoveryAttemptId: 'recovery-exact-schema', expectedHeadSha: HEAD }),
       { runId: 4242, runAttempt: 1 },
     );
+    assert.equal(requestBody.return_run_details, true);
 
     for (const body of [{ run_id: 4242 }, { id: 4242 }]) {
       const aliased = new GitHubWatchdogClient({
@@ -1225,11 +1282,19 @@ function controllerFixture({ autoRecoveryEnabled = true, mainSequence = [HEAD, H
     },
     async readTargetRunSummaries() { events.push('runs'); return []; },
     async hydrateTargetRuns() { return []; },
+    async readSourceRunIdentity({ sourceRunId, sourceRunAttempt }) {
+      events.push('source');
+      return { sourceRunId: String(sourceRunId), sourceRunAttempt, headSha: HEAD };
+    },
     async findRunByRecoveryAttemptId() { events.push('correlate'); return null; },
     async dispatchRecovery() {
       events.push('dispatch');
       if (dispatchError) throw dispatchError;
       return { runId: 808, runAttempt: 1 };
+    },
+    async readDispatchedRunIdentity({ runId, runAttempt }) {
+      events.push('verify');
+      return { id: String(runId), runAttempt };
     },
   };
   const control = {
@@ -1290,6 +1355,7 @@ describe('durably held recovery dispatch orchestration', () => {
       headSha: HEAD,
       sourceRunId: '9001',
       sourceRunAttempt: 2,
+      sourceHeadSha: 'b'.repeat(40),
     };
     const rejectCalls = [];
     let rejected = false;
@@ -1305,7 +1371,7 @@ describe('durably held recovery dispatch orchestration', () => {
           workflowPath: '.github/workflows/railway-deploy-trigger-watchdog.yml',
           event: 'schedule',
           ref: 'refs/heads/main',
-          headSha: HEAD,
+          headSha: hold.sourceHeadSha,
           status: 'completed',
           conclusion: 'cancelled',
           dispatchJobName: WATCHDOG_DISPATCH_JOB_NAME,
@@ -1338,6 +1404,7 @@ describe('durably held recovery dispatch orchestration', () => {
       headSha: HEAD,
       sourceRunId: '9004',
       sourceRunAttempt: 1,
+      sourceHeadSha: HEAD,
     };
     const rejectCalls = [];
     const snapshot = await readWatchdogSnapshot({
@@ -1382,9 +1449,67 @@ describe('durably held recovery dispatch orchestration', () => {
     assert.deepEqual(rejectCalls, []);
   });
 
+  it('recovers a hold when the source run recorded a definitive rejection before cancellation', async () => {
+    for (const [marker, reason] of [
+      [PRE_DISPATCH_REJECTION_STEP_NAME, 'PRE_DISPATCH_NOT_STARTED'],
+      [GITHUB_DISPATCH_REJECTION_STEP_NAME, 'DISPATCH_CONFIRMED_REJECTED'],
+    ]) {
+      const hold = {
+        state: 'DISPATCH_HELD',
+        recoveryAttemptId: `recovery-recorded-${reason.toLowerCase()}`,
+        headSha: HEAD,
+        sourceHeadSha: 'b'.repeat(40),
+        sourceRunId: '9005',
+        sourceRunAttempt: 1,
+      };
+      const rejectCalls = [];
+      let rejected = false;
+      const snapshot = await readWatchdogSnapshot({
+        github: {
+          readMainAndGate: async () => ({ sha: HEAD, gate: { state: 'success' } }),
+          readTargetRunSummaries: async () => [],
+          hydrateTargetRuns: async () => [],
+          findRunByRecoveryAttemptId: async () => null,
+          readSourceDispatchEvidence: async () => ({
+            sourceRunId: hold.sourceRunId,
+            sourceRunAttempt: hold.sourceRunAttempt,
+            workflowPath: '.github/workflows/railway-deploy-trigger-watchdog.yml',
+            event: 'schedule',
+            ref: 'refs/heads/main',
+            headSha: hold.sourceHeadSha,
+            status: 'completed',
+            conclusion: 'cancelled',
+            dispatchJobName: WATCHDOG_DISPATCH_JOB_NAME,
+            dispatchStepName: WATCHDOG_DISPATCH_STEP_NAME,
+            jobs: [{
+              id: 78,
+              name: WATCHDOG_DISPATCH_JOB_NAME,
+              status: 'completed',
+              conclusion: 'cancelled',
+              steps: [
+                { name: WATCHDOG_DISPATCH_STEP_NAME, status: 'completed', conclusion: 'success' },
+                { name: marker, status: 'completed', conclusion: 'success' },
+              ],
+            }],
+          }),
+        },
+        control: {
+          status: async () => ({ data: eligibleControl({ dispatchHolds: rejected ? [] : [hold] }) }),
+          rejectDispatch: async (body) => {
+            rejectCalls.push(body);
+            rejected = true;
+          },
+        },
+        clock: () => NOW,
+      });
+      assert.deepEqual(snapshot.controlState.dispatchHolds, []);
+      assert.equal(rejectCalls[0].reason, reason);
+    }
+  });
+
   it('remains observe-only when automatic recovery is false', async () => {
     const fixture = controllerFixture({ autoRecoveryEnabled: false });
-    const result = await runStaleReconcileWatchdog({
+    const result = await prepareRecoveryDispatch({
       ...fixture,
       clock: () => NOW,
       recoveryId: () => 'recovery-observe',
@@ -1395,19 +1520,27 @@ describe('durably held recovery dispatch orchestration', () => {
     assert.ok(!fixture.events.includes('dispatch'));
   });
 
-  it('re-reads exact green main before the hold and again before the one dispatch', async () => {
+  it('separates hold authorization, one GitHub dispatch, exact verification, and durable binding', async () => {
     const fixture = controllerFixture();
-    const result = await runStaleReconcileWatchdog({
+    const prepared = await prepareRecoveryDispatch({
       ...fixture,
       clock: () => NOW,
       recoveryId: () => 'recovery-exact',
     });
-    assert.equal(result.outcome, 'RECOVERY_DISPATCHED');
-    assert.equal(result.runId, 808);
-    assert.equal(result.runAttempt, 1);
+    const dispatched = await dispatchGitHubRecovery({
+      github: fixture.github,
+      expectedHeadSha: prepared.headSha,
+      recoveryAttemptId: prepared.recoveryAttemptId,
+      sourceRunId: fixture.sourceRunId,
+      sourceRunAttempt: fixture.sourceRunAttempt,
+    });
+    assert.equal(dispatched.outcome, 'RECOVERY_DISPATCH_ACCEPTED');
+    assert.equal(dispatched.runId, '808');
+    assert.equal(dispatched.runAttempt, 1);
     assert.deepEqual(fixture.events, [
-      'main:1', 'runs', 'status', 'main:2', 'hold', 'main:3', 'dispatch', 'bind',
+      'main:1', 'runs', 'status', 'main:2', 'source', 'hold', 'main:3', 'dispatch', 'verify',
     ]);
+    assert.ok(!fixture.events.includes('bind'));
   });
 
   it('reports authorization distinctly before the actions-write dispatch phase', async () => {
@@ -1422,6 +1555,7 @@ describe('durably held recovery dispatch orchestration', () => {
     assert.deepEqual(fixture.holdBodies, [{
       recoveryAttemptId: 'recovery-authorized',
       headSha: HEAD,
+      sourceHeadSha: HEAD,
       sourceRunId: '9000',
       sourceRunAttempt: 3,
     }]);
@@ -1429,123 +1563,143 @@ describe('durably held recovery dispatch orchestration', () => {
     assert.ok(!fixture.events.includes('dispatch'));
   });
 
-  it('closes the hold directly when the in-process pre-POST main check moves', async () => {
+  it('binds a hold to the source workflow frozen head separately from current main', async () => {
+    const fixture = controllerFixture();
+    fixture.github.readSourceRunIdentity = async ({ sourceRunId, sourceRunAttempt }) => ({
+      sourceRunId: String(sourceRunId),
+      sourceRunAttempt,
+      headSha: 'b'.repeat(40),
+    });
+    const prepared = await prepareRecoveryDispatch({
+      ...fixture,
+      clock: () => NOW,
+      recoveryId: () => 'recovery-source-head',
+    });
+    assert.equal(prepared.headSha, HEAD);
+    assert.equal(fixture.holdBodies[0].headSha, HEAD);
+    assert.equal(fixture.holdBodies[0].sourceHeadSha, 'b'.repeat(40));
+  });
+
+  it('closes a pre-POST hold only in the separate watchdog-capability phase', async () => {
     const fixture = controllerFixture({ mainSequence: [HEAD, HEAD, 'b'.repeat(40)] });
-    const result = await runStaleReconcileWatchdog({
+    const prepared = await prepareRecoveryDispatch({
       ...fixture,
       clock: () => NOW,
       recoveryId: () => 'recovery-moved',
     });
-    assert.equal(result.outcome, 'DEFERRED_NON_GREEN_MAIN');
+    const dispatched = await dispatchGitHubRecovery({
+      github: fixture.github,
+      expectedHeadSha: prepared.headSha,
+      recoveryAttemptId: prepared.recoveryAttemptId,
+      sourceRunId: fixture.sourceRunId,
+      sourceRunAttempt: fixture.sourceRunAttempt,
+    });
+    assert.equal(dispatched.outcome, 'PRE_DISPATCH_NOT_STARTED');
+    assert.deepEqual(fixture.rejectBodies, []);
+    const rejected = await rejectAuthorizedRecovery({
+      control: fixture.control,
+      expectedHeadSha: prepared.headSha,
+      recoveryAttemptId: prepared.recoveryAttemptId,
+      sourceRunId: fixture.sourceRunId,
+      sourceRunAttempt: fixture.sourceRunAttempt,
+      rejection: dispatched.rejection,
+    });
+    assert.equal(rejected.outcome, 'RECOVERY_DISPATCH_REJECTED');
     assert.equal(fixture.rejectBodies[0].reason, 'PRE_DISPATCH_NOT_STARTED');
-    assert.equal(fixture.rejectBodies[0].sourceRunId, '9000');
-    assert.equal(fixture.rejectBodies[0].sourceRunAttempt, 3);
     assert.ok(!fixture.events.includes('dispatch'));
   });
 
-  it('closes the hold directly when the in-process pre-POST read exits', async () => {
-    const rejectCalls = [];
-    const result = await dispatchAuthorizedRecovery({
+  it('returns definitive pre-POST evidence when the exact main read exits', async () => {
+    const result = await dispatchGitHubRecovery({
       github: {
         readMainAndGate: async () => { throw new Error('read failed'); },
       },
-      control: { rejectDispatch: async (body) => { rejectCalls.push(body); } },
       expectedHeadSha: HEAD,
       recoveryAttemptId: 'recovery-read-exit',
       sourceRunId: '9010',
       sourceRunAttempt: 4,
     });
 
-    assert.equal(result.outcome, 'DEFERRED_AMBIGUOUS');
-    assert.equal(rejectCalls[0].reason, 'PRE_DISPATCH_NOT_STARTED');
-    assert.equal(rejectCalls[0].sourceRunId, '9010');
-    assert.equal(rejectCalls[0].sourceRunAttempt, 4);
+    assert.equal(result.outcome, 'PRE_DISPATCH_NOT_STARTED');
+    assert.equal(result.rejection.reason, 'PRE_DISPATCH_NOT_STARTED');
+    assert.equal(result.rejection.evidence.sourceRunId, '9010');
+    assert.equal(result.rejection.evidence.sourceRunAttempt, 4);
   });
 
-  it('leaves an ambiguous durable hold and never rejects after a lost or 5xx dispatch response', async () => {
+  it('leaves an ambiguous durable hold after a lost or 5xx dispatch response', async () => {
     for (const error of [
       new GitHubWatchdogError('GITHUB_DISPATCH_AMBIGUOUS', 'lost', { ambiguous: true }),
       new GitHubWatchdogError('GITHUB_DISPATCH_AMBIGUOUS', 'HTTP 503', { status: 503, ambiguous: true }),
     ]) {
       const fixture = controllerFixture({ dispatchError: error });
-      const result = await runStaleReconcileWatchdog({
-        ...fixture,
-        clock: () => NOW,
-        recoveryId: () => 'recovery-ambiguous',
+      const result = await dispatchGitHubRecovery({
+        github: fixture.github,
+        expectedHeadSha: HEAD,
+        recoveryAttemptId: 'recovery-ambiguous',
+        sourceRunId: fixture.sourceRunId,
+        sourceRunAttempt: fixture.sourceRunAttempt,
       });
       assert.equal(result.outcome, 'DEFERRED_AMBIGUOUS');
       assert.equal(fixture.events.filter((event) => event === 'dispatch').length, 1);
-      assert.ok(!fixture.events.includes('reject'));
+      assert.equal(result.rejection, undefined);
     }
   });
 
-  it('may close a hold only after a definitive dispatch rejection', async () => {
-    const controlCalls = [];
-    const result = await dispatchAuthorizedRecovery({
+  it('returns closable evidence only after a definitive dispatch rejection', async () => {
+    const result = await dispatchGitHubRecovery({
       github: {
         readMainAndGate: async () => ({ sha: HEAD, gate: { state: 'success' } }),
         dispatchRecovery: async () => {
           throw new GitHubWatchdogError('GITHUB_DISPATCH_REJECTED', 'HTTP 422', { status: 422 });
         },
       },
-      control: { rejectDispatch: async (body) => { controlCalls.push(body); } },
       expectedHeadSha: HEAD,
       recoveryAttemptId: 'recovery-rejected',
       sourceRunId: '9011',
       sourceRunAttempt: 1,
     });
-    assert.equal(result.outcome, 'DEFERRED_AMBIGUOUS');
-    assert.equal(controlCalls[0].reason, 'DISPATCH_CONFIRMED_REJECTED');
-    assert.equal(controlCalls[0].sourceRunId, undefined);
-    assert.equal(controlCalls[0].sourceRunAttempt, undefined);
-    assert.match(controlCalls[0].evidenceDigest, /^[0-9a-f]{64}$/);
+    assert.equal(result.outcome, 'DISPATCH_CONFIRMED_REJECTED');
+    assert.equal(result.rejection.reason, 'DISPATCH_CONFIRMED_REJECTED');
+    assert.equal(result.rejection.evidence.status, 422);
   });
 
-  it('boundedly polls and binds the exact run attempt after a 204 dispatch', async () => {
+  it('boundedly polls and verifies the exact run after a 204 dispatch', async () => {
     const events = [];
     let polls = 0;
-    const result = await dispatchAuthorizedRecovery({
+    const result = await dispatchGitHubRecovery({
       github: {
         readMainAndGate: async () => ({ sha: HEAD, gate: { state: 'success' } }),
         dispatchRecovery: async () => ({ runId: null }),
         findRunByRecoveryAttemptId: async (recoveryAttemptId) => {
           events.push(`poll:${recoveryAttemptId}`);
           polls += 1;
-          return polls === 2 ? { id: 909, runAttempt: 3 } : null;
+          return polls === 2 ? { id: 909, runAttempt: 1 } : null;
+        },
+        readDispatchedRunIdentity: async ({ runId, runAttempt }) => {
+          events.push(`verify:${runId}:${runAttempt}`);
+          return { id: String(runId), runAttempt };
         },
       },
-      control: { bindRun: async (body) => { events.push({ bind: body }); } },
       expectedHeadSha: HEAD,
       recoveryAttemptId: 'recovery-no-id',
       sleep: async (ms) => { events.push(`sleep:${ms}`); },
       correlationAttempts: 3,
     });
 
-    assert.equal(result.outcome, 'RECOVERY_DISPATCHED');
-    assert.equal(result.runId, 909);
-    assert.equal(result.runAttempt, 3);
-    assert.deepEqual(events.at(-1), {
-      bind: {
-        recoveryAttemptId: 'recovery-no-id',
-        headSha: HEAD,
-        runId: '909',
-        runAttempt: 3,
-      },
-    });
-    assert.equal(events.filter((event) => typeof event === 'string' && event.startsWith('sleep:')).length, 1);
+    assert.equal(result.outcome, 'RECOVERY_DISPATCH_ACCEPTED');
+    assert.equal(result.runId, '909');
+    assert.equal(result.runAttempt, 1);
+    assert.equal(events.at(-1), 'verify:909:1');
+    assert.equal(events.filter((event) => event.startsWith('sleep:')).length, 1);
   });
 
   it('keeps the hold and defers when a 204 dispatch cannot be correlated', async () => {
     const events = [];
-    const result = await dispatchAuthorizedRecovery({
+    const result = await dispatchGitHubRecovery({
       github: {
         readMainAndGate: async () => ({ sha: HEAD, gate: { state: 'success' } }),
         dispatchRecovery: async () => ({ runId: null }),
         findRunByRecoveryAttemptId: async () => { events.push('poll'); return null; },
-      },
-      control: {
-        bindRun: async () => { events.push('bind'); },
-        rejectDispatch: async () => { events.push('reject'); },
       },
       expectedHeadSha: HEAD,
       recoveryAttemptId: 'recovery-uncorrelated',
@@ -1556,8 +1710,7 @@ describe('durably held recovery dispatch orchestration', () => {
     assert.equal(result.outcome, 'DEFERRED_AMBIGUOUS');
     assert.equal(result.recoveryAttemptId, 'recovery-uncorrelated');
     assert.deepEqual(events, ['poll', 'sleep', 'poll', 'sleep', 'poll']);
-    assert.ok(!events.includes('bind'));
-    assert.ok(!events.includes('reject'));
+    assert.equal(result.rejection, undefined);
   });
 });
 
