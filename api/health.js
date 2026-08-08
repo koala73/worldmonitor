@@ -175,6 +175,7 @@ const BOOTSTRAP_KEYS = {
   aiTokens:          'market:ai-tokens:v1',
   otherTokens:       'market:other-tokens:v1',
   fredBatch:         'economic:fred:v1:FEDFUNDS:0',
+  fredRatesSeeder:   'economic:fred:batch:v1',
   ecbEstr:           'economic:fred:v1:ESTR:0',
   ecbEuribor3m:      'economic:fred:v1:EURIBOR3M:0',
   ecbEuribor6m:      'economic:fred:v1:EURIBOR6M:0',
@@ -677,6 +678,7 @@ const SEED_META = {
   aiTokens:          { key: 'seed-meta:market:token-panels', maxStaleMin: 90 },
   otherTokens:       { key: 'seed-meta:market:token-panels', maxStaleMin: 90 },
   fredBatch:         { key: 'seed-meta:economic:fred:v1:FEDFUNDS:0', maxStaleMin: 1500 }, // daily cron
+  fredRatesSeeder:   { key: 'seed-meta:economic:fred-rates', maxStaleMin: 180 }, // independent hourly FRED/rates seeder; not gated by EIA
   forecastFredWalcl:      { key: 'seed-meta:economic:fred:v1:WALCL:0',      maxStaleMin: 1500 },
   forecastFredT10y2y:     { key: 'seed-meta:economic:fred:v1:T10Y2Y:0',     maxStaleMin: 1500 },
   forecastFredUnrate:     { key: 'seed-meta:economic:fred:v1:UNRATE:0',     maxStaleMin: 1500 },

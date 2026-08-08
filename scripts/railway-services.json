@@ -1226,5 +1226,43 @@
     "watchPatterns": [],
     "cronSchedule": null,
     "documentedAt": "issue #5300 U3 Railway provisioning contract"
+  },
+  {
+    "entry": "scripts/seed-economy.mjs",
+    "deployMode": "nixpacks-root-scripts",
+    "service": "seed-economy",
+    "watchPatterns": [
+      "scripts/_seed-contract.mjs",
+      "scripts/_seed-envelope-source.mjs",
+      "scripts/_seed-utils.mjs",
+      "scripts/_proxy-utils.cjs",
+      "scripts/lib/llm-telemetry.cjs",
+      "scripts/seed-economy.mjs",
+      "scripts/nixpacks.toml",
+      "scripts/package.json",
+      "scripts/package-lock.json"
+    ],
+    "cronSchedule": "*/15 * * * *",
+    "documentedAt": "docs/railway-seed-consolidation-runbook.md#standalone-seed-crons-43-not-bundled"
+  },
+  {
+    "entry": "scripts/seed-fred-rates.mjs",
+    "deployMode": "nixpacks-root-scripts",
+    "service": "seed-fred-rates",
+    "requiredEnv": ["FRED_API_KEY"],
+    "watchPatterns": [
+      "scripts/_seed-contract.mjs",
+      "scripts/_seed-envelope-source.mjs",
+      "scripts/_seed-utils.mjs",
+      "scripts/_proxy-utils.cjs",
+      "scripts/lib/llm-telemetry.cjs",
+      "scripts/seed-economy.mjs",
+      "scripts/seed-fred-rates.mjs",
+      "scripts/nixpacks.toml",
+      "scripts/package.json",
+      "scripts/package-lock.json"
+    ],
+    "cronSchedule": "0 * * * *",
+    "documentedAt": "docs/market-data-cadence-audit.md"
   }
 ]
