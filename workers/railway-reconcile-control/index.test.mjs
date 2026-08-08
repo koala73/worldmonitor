@@ -485,6 +485,14 @@ test('prepare binds immutable intent and only the owner capability can release',
   assert.equal(nonOwnerRelease.status, 403);
   assert.equal((await responseBody(nonOwnerRelease)).error.code, 'LEASE_OWNER_MISMATCH');
 
+  const wrongCapability = await send(control, clock, '/v1/mutation/assert', 'mutation', {
+    ...ownerFields,
+    leaseCapability: `${ownerFields.leaseCapability.slice(0, -1)}${ownerFields.leaseCapability.endsWith('A') ? 'B' : 'A'}`,
+    minTtlMs: 1,
+  });
+  assert.equal(wrongCapability.status, 403);
+  assert.equal((await responseBody(wrongCapability)).error.code, 'LEASE_CAPABILITY_MISMATCH');
+
   const released = await send(control, clock, '/v1/mutation/release', 'mutation', ownerFields);
   assert.equal(released.status, 200);
   assert.equal((await responseBody(released)).attempt.state, 'PRE_MUTATION_ABORTED');
@@ -564,6 +572,71 @@ test('automatic acquisition does not add an already released pre-mutation run to
     runAttempt: 1,
   });
   assert.deepEqual(second.attempt.supersededRuns, []);
+});
+
+test('one GitHub run cannot renew its fixed lease by acquiring again', async () => {
+  for (const closeMode of ['expired', 'released']) {
+    const { clock, control } = makeControl();
+    const identity = { runId: '31180000650', runAttempt: 3 };
+    const first = await acquireLease(control, clock, {
+      headSha: 'c'.repeat(40),
+      ...identity,
+    });
+    if (closeMode === 'expired') {
+      clock.now = first.leaseExpiresAt + 1;
+    } else {
+      assert.equal((await send(control, clock, '/v1/mutation/release', 'mutation', {
+        version: 1,
+        attemptId: first.attempt.attemptId,
+        ownerId: first.attempt.ownerId,
+        leaseCapability: first.leaseCapability,
+        headSha: first.attempt.headSha,
+      })).status, 200);
+    }
+
+    const repeated = await send(control, clock, '/v1/mutation/acquire', 'mutation', {
+      version: 1,
+      ownerId: `github-run:${identity.runId}:${identity.runAttempt}`,
+      headSha: 'd'.repeat(40),
+      ...identity,
+    });
+    assert.equal(repeated.status, 409, closeMode);
+    assert.equal((await responseBody(repeated)).error.code, 'RUN_ALREADY_ACQUIRED', closeMode);
+  }
+
+  const { clock, control } = makeControl();
+  const firstIdentity = { runId: '31180000651', runAttempt: 1 };
+  const first = await acquireLease(control, clock, {
+    headSha: 'e'.repeat(40),
+    ...firstIdentity,
+  });
+  assert.equal((await send(control, clock, '/v1/mutation/release', 'mutation', {
+    version: 1,
+    attemptId: first.attempt.attemptId,
+    ownerId: first.attempt.ownerId,
+    leaseCapability: first.leaseCapability,
+    headSha: first.attempt.headSha,
+  })).status, 200);
+  const second = await acquireLease(control, clock, {
+    headSha: 'f'.repeat(40),
+    runId: '31180000652',
+    runAttempt: 1,
+  });
+  assert.equal((await send(control, clock, '/v1/mutation/release', 'mutation', {
+    version: 1,
+    attemptId: second.attempt.attemptId,
+    ownerId: second.attempt.ownerId,
+    leaseCapability: second.leaseCapability,
+    headSha: second.attempt.headSha,
+  })).status, 200);
+  const replayedOldRun = await send(control, clock, '/v1/mutation/acquire', 'mutation', {
+    version: 1,
+    ownerId: `github-run:${firstIdentity.runId}:${firstIdentity.runAttempt}`,
+    headSha: '0'.repeat(40),
+    ...firstIdentity,
+  });
+  assert.equal(replayedOldRun.status, 409);
+  assert.equal((await responseBody(replayedOldRun)).error.code, 'RUN_ALREADY_ACQUIRED');
 });
 
 test('pre-mutation churn remains acquirable beyond the mutation-lineage limit', async () => {
@@ -1048,7 +1121,7 @@ test('exact verifier proof can retire only an expired lease after a lost owner r
   assert.equal(snapshot.barrier, null);
 });
 
-test('verifier failure after an expired mutation lease records MANUAL_REQUIRED and preserves the barrier', async () => {
+test('deterministic verifier contract failure records MANUAL_REQUIRED and preserves the barrier', async () => {
   const { clock, control } = makeControl();
   const lease = await acquireLease(control, clock, {
     headSha: '4'.repeat(40),
@@ -1077,12 +1150,12 @@ test('verifier failure after an expired mutation lease records MANUAL_REQUIRED a
     attemptId: lease.attempt.attemptId,
     headSha: lease.attempt.headSha,
     intentDigest,
-    reason: 'CONVERGENCE_TIMEOUT',
+    reason: 'VERIFIER_CONTRACT_FAILURE',
   });
   assert.equal(failed.status, 200);
   const failedData = await responseBody(failed);
   assert.equal(failedData.attempt.state, 'MANUAL_REQUIRED');
-  assert.equal(failedData.attempt.closedReason, 'CONVERGENCE_TIMEOUT');
+  assert.equal(failedData.attempt.closedReason, 'VERIFIER_CONTRACT_FAILURE');
   assert.equal(failedData.barrier.attemptId, lease.attempt.attemptId);
   assert.equal((await responseBody(await getStatus(control, clock))).lease, null);
 
@@ -2249,6 +2322,28 @@ test('superseded run lineage admits 64 unique pairs and rejects a 65th without t
   snapshot = await responseBody(await getStatus(control, clock));
   assert.equal(snapshot.currentAttempt.attemptId, lease.attempt.attemptId);
   assert.equal(snapshot.currentAttempt.supersededRuns.length, 64);
+
+  const converged = await send(
+    control,
+    clock,
+    '/v1/operator/resolve',
+    'operator',
+    operatorRequest(
+      lease.attempt.attemptId,
+      headSha,
+      'accept_observed_convergence',
+      {
+        priorCreatedAt: new Date(lease.attempt.createdAt).toISOString(),
+        targetRunId: run(64).runId,
+        targetRunAttempt: run(64).runAttempt,
+      },
+    ),
+  );
+  assert.equal(converged.status, 200);
+  snapshot = await responseBody(await getStatus(control, clock));
+  assert.equal(snapshot.barrier, null);
+  assert.equal(snapshot.currentAttempt.state, 'TERMINAL_ACCEPTED');
+  assert.deepEqual(snapshot.currentAttempt.supersededRuns, [run(64)]);
 });
 
 test('resolve_pre_mutation_hold can supersede a released no-mutation verification fence', async () => {

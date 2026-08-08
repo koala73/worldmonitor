@@ -368,16 +368,40 @@ describe('read-only GitHub recovery proof', () => {
   });
 
   it('rejects self-attested pre-mutation evidence when job history may have crossed the boundary', async () => {
+    for (const step of [
+      { name: 'Mark Railway mutation started', conclusion: 'cancelled' },
+      { name: 'Trigger lease-fenced deploys for the exact green head', conclusion: 'failure' },
+      { name: 'Trigger lease-fenced deploys for the exact green head', conclusion: 'cancelled' },
+    ]) {
+      const github = githubClient();
+      const readJobs = github.readAllAttemptJobs.bind(github);
+      github.readAllAttemptJobs = async (...args) => (await readJobs(...args)).map((job) => ({
+        ...job,
+        steps: [step],
+      }));
+      await assert.rejects(
+        buildRecoveryProof(request('resolve_pre_mutation_hold'), { githubClient: github, now: () => NOW }),
+        (error) => error.code === 'MUTATION_BOUNDARY_NOT_PROVEN',
+        JSON.stringify(step),
+      );
+    }
+  });
+
+  it('does not treat a successful structured mutation wrapper as boundary proof by itself', async () => {
     const github = githubClient();
     const readJobs = github.readAllAttemptJobs.bind(github);
     github.readAllAttemptJobs = async (...args) => (await readJobs(...args)).map((job) => ({
       ...job,
-      steps: [{ name: 'Mark Railway mutation started', conclusion: 'cancelled' }],
+      steps: [{
+        name: 'Trigger lease-fenced deploys for the exact green head',
+        conclusion: 'success',
+      }],
     }));
-    await assert.rejects(
-      buildRecoveryProof(request('resolve_pre_mutation_hold'), { githubClient: github, now: () => NOW }),
-      (error) => error.code === 'MUTATION_BOUNDARY_NOT_PROVEN',
-    );
+    const proof = await buildRecoveryProof(request('resolve_pre_mutation_hold'), {
+      githubClient: github,
+      now: () => NOW,
+    });
+    assert.equal(proof.github.attempts[0].possibleMutationBoundarySteps, 0);
   });
 
   it('rejects an exact run ID from another workflow or ref', async () => {
