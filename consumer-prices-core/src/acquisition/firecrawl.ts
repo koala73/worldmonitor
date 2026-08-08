@@ -19,6 +19,7 @@ interface FirecrawlExtractResponse {
   success: boolean;
   data?: {
     extract?: Record<string, unknown>;
+    markdown?: string;
     metadata?: Record<string, unknown>;
   };
   error?: string;
@@ -141,11 +142,16 @@ export class FirecrawlProvider implements AcquisitionProvider {
       headers: this.headers(),
       body: JSON.stringify({
         url,
-        formats: ['extract'],
+        // markdown rides along in the same render so the caller can verify an
+        // extracted price actually appears on the page (price-evidence.ts).
+        formats: ['extract', 'markdown'],
         extract: { schema: jsonSchema, ...(schema.prompt ? { prompt: schema.prompt } : {}) },
         timeout: opts.timeout ?? 30_000,
+        // Late-hydrating storefronts capture as a breadcrumb shell without a
+        // settle delay; the abort deadline below must absorb it too.
+        ...(opts.waitFor ? { waitFor: opts.waitFor } : {}),
       }),
-      signal: AbortSignal.timeout(extractAbortMs(opts.timeout)),
+      signal: AbortSignal.timeout(extractAbortMs(opts.timeout) + (opts.waitFor ?? 0)),
     });
 
     if (!resp.ok) throw new Error(`Firecrawl extract failed: HTTP ${resp.status}`);
@@ -167,6 +173,9 @@ export class FirecrawlProvider implements AcquisitionProvider {
       data: (data.data?.extract ?? {}) as T,
       provider: this.name,
       fetchedAt: new Date(),
+      ...(typeof data.data?.markdown === 'string' && data.data.markdown.trim()
+        ? { pageContent: data.data.markdown }
+        : {}),
     };
   }
 

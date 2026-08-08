@@ -17,7 +17,7 @@ export {
 } from './variants/base';
 
 // Market data (shared)
-export { SECTORS, COMMODITIES, MARKET_SYMBOLS, CRYPTO_MAP } from './markets';
+export { SECTORS, COMMODITIES, MARKET_SYMBOLS, CRYPTO_MAP, STOCK_CATALOG } from './markets';
 
 // Geo data (shared base). UNDERSEA_CABLES + MAP_URLS moved to the lazy geo-map
 // chunk (#4404) — import them directly from '@/config/geo-map', not via this barrel.

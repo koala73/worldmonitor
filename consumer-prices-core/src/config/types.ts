@@ -82,6 +82,13 @@ export const SearchConfigSchema = z.object({
   // Unset keeps the historical behaviour of attempting every survivor.
   maxExtractionCandidates: z.number().int().positive().optional(),
   inStockFromPrice: z.boolean().default(false),
+  // Extra render settle time (ms) before Firecrawl captures the page. For
+  // storefronts whose product data hydrates late and otherwise captures as a
+  // breadcrumb shell with no price (Carrefour MAF domains rendered 2.2KB of
+  // breadcrumbs at the default settle vs 32KB with 8s, #6182). Costs its
+  // value in latency on every extraction call for the retailer — set it only
+  // where shell captures are observed.
+  renderWaitMs: z.number().int().positive().max(15_000).optional(),
   // A single bounded provider fallback is opt-in per retailer. `none` keeps
   // the historical Firecrawl-only extraction path.
   extractionFallback: z.enum(['none', 'exa']).default('none'),

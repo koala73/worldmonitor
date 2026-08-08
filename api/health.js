@@ -1012,6 +1012,7 @@ export const COVERAGE_FAILURE_REASONS = Object.freeze([
   'provider-cooldown',
   'provider-error',
   'missing-price',
+  'price-evidence-missing',
   'quantity-as-price',
   'currency-mismatch',
   'title-mismatch',

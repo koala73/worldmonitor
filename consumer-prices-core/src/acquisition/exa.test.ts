@@ -47,6 +47,59 @@ describe('ExaProvider.extract', () => {
     expect(body.summary.schema.required).toEqual(['productName', 'price']);
   });
 
+  // Page text is the ground truth the caller verifies an extracted price
+  // against (price-evidence.ts, #6182) — requested in the SAME /contents call
+  // that produces the structured summary, and bounded so a catalogue page
+  // cannot balloon the response.
+  it('requests bounded page text and returns it as pageContent', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          results: [{ summary: '{"productName":"White Bread","price":4.95}', text: 'White Bread SGD 4.95' }],
+        }),
+        { status: 200, headers: { 'content-type': 'application/json' } },
+      ),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    const result = await new ExaProvider('test-key').extract('https://retailer.example/p/bread', schema, { timeout: 1000 });
+
+    const body = JSON.parse(String((fetchMock.mock.calls[0]?.[1] as RequestInit).body)) as {
+      text: { maxCharacters: number };
+    };
+    expect(body.text).toEqual({ maxCharacters: 30_000 });
+    expect(result.pageContent).toBe('White Bread SGD 4.95');
+  });
+
+  // Mirror of firecrawl.test.ts's omission pair: pageContent feeds the
+  // anti-fabrication evidence gate, and an inverted/broken guard here would
+  // flip every Exa extraction from 'no-content passthrough' to hard reject.
+  it('omits pageContent when the response has no text field', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({ results: [{ summary: '{"productName":"White Bread","price":4.95}' }] }),
+        { status: 200, headers: { 'content-type': 'application/json' } },
+      ),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    const result = await new ExaProvider('test-key').extract('https://retailer.example/p/bread', schema, { timeout: 1000 });
+    expect(result.pageContent).toBeUndefined();
+  });
+
+  it('omits pageContent when the response text is whitespace-only', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({ results: [{ summary: '{"productName":"White Bread","price":4.95}', text: '   ' }] }),
+        { status: 200, headers: { 'content-type': 'application/json' } },
+      ),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    const result = await new ExaProvider('test-key').extract('https://retailer.example/p/bread', schema, { timeout: 1000 });
+    expect(result.pageContent).toBeUndefined();
+  });
+
   // Regression lock for #6182. Exa's /contents validator requires `type` to be a
   // scalar; a `type: ['number','null']` array is rejected with
   // HTTP 400 INVALID_REQUEST_BODY ("expected \"string\" at

@@ -42,6 +42,11 @@ const EXTRACTION_STAGE_ORDER: readonly ExtractionFailureReason[] = [
   'provider-cooldown',
   'provider-error',
   'missing-price',
+  // A price was extracted but its digits were absent from the rendered page —
+  // the deterministic anti-fabrication gate (#6182). Further along than
+  // missing-price (something was read), earlier than the semantic rejections
+  // (nothing about the product was judged yet).
+  'price-evidence-missing',
   'quantity-as-price',
   'currency-mismatch',
   'title-mismatch',
