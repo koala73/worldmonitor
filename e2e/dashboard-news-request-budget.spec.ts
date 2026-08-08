@@ -1085,6 +1085,11 @@ test.describe('dashboard container scroll hydration (#5876)', () => {
       // observed and only await navigation after releasing it.
       const navigation = page.goto('/', { waitUntil: 'domcontentloaded' });
       await slowBootstrap.waitUntilRequested();
+      await page.waitForFunction(() => (
+        document.querySelector('.main-content') instanceof HTMLElement &&
+        document.querySelector('.panels-grid') instanceof HTMLElement &&
+        document.querySelector('[data-panel="stablecoins"]') instanceof HTMLElement
+      ));
 
       const stablecoins = page.locator('[data-panel="stablecoins"]');
       const dashboardScroll = await scrollDashboardAndCollect(page);
@@ -1097,9 +1102,14 @@ test.describe('dashboard container scroll hydration (#5876)', () => {
         'stablecoins must start outside the 400px viewport hydration margin',
       ).toBeGreaterThan(dashboardScroll.before.viewportHeight + 400);
       expect(dashboardScroll.scrollCount, 'the real dashboard scroll event must fire').toBe(1);
-      // Release as soon as the real container scroll is observed. Deferred panel
-      // mounting is itself readiness-gated, so waiting for it here would deadlock the
-      // pending phase rather than prove an independently reachable callback state.
+      await page.waitForFunction(() => {
+        const target = document.querySelector('[data-panel="stablecoins"]');
+        return target instanceof HTMLElement && target.dataset.deferredPanel !== 'true';
+      });
+      expect(
+        stablecoinRequests,
+        'the mounted panel callback must remain gated while slow-tier readiness is pending',
+      ).toEqual([]);
       slowBootstrap.release();
       released = true;
       await navigation;
