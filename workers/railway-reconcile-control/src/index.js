@@ -4,6 +4,7 @@ export const TERMINATION_GRACE_MS = 5 * 60 * 1000;
 export const NETWORK_CLOCK_MARGIN_MS = 60 * 1000;
 export const SAFETY_MARGIN_MS = 6 * 60 * 1000;
 export const AUTH_CLOCK_WINDOW_MS = 5 * 60 * 1000;
+const AUTH_TIMESTAMP_GRANULARITY_MS = 1_000;
 
 const MAX_REQUEST_BODY_BYTES = 16 * 1024;
 const MAX_AUTH_NONCES = 2048;
@@ -474,6 +475,7 @@ function publicDispatchHold(hold) {
     headSha,
     state,
     createdAt,
+    sourceHeadSha = null,
     sourceRunId = null,
     sourceRunAttempt = null,
     runId = null,
@@ -492,6 +494,7 @@ function publicDispatchHold(hold) {
     headSha,
     state,
     createdAt,
+    sourceHeadSha,
     sourceRunId,
     sourceRunAttempt,
     runId,
@@ -955,7 +958,7 @@ async function accept(storage, body, now, operationDigest) {
       outcome: 'TERMINAL_ACCEPTED',
       data: {
         attempt: publicAttempt(attempt),
-        barrier: null,
+        barrier: meta.barrier,
         lastAccepted: attempt.acceptedRecord,
       },
     };
@@ -1100,6 +1103,7 @@ async function createDispatchHold(storage, body, now) {
     'version',
     'recoveryAttemptId',
     'headSha',
+    'sourceHeadSha',
     'sourceRunId',
     'sourceRunAttempt',
   ]);
@@ -1108,6 +1112,7 @@ async function createDispatchHold(storage, body, now) {
     'INVALID_RECOVERY_ATTEMPT_ID',
   );
   const headSha = requireHeadSha(body.headSha);
+  const sourceHeadSha = requireHeadSha(body.sourceHeadSha);
   const sourceRunId = requireIdentifier(body.sourceRunId, 'INVALID_SOURCE_RUN_ID', 24);
   if (!Number.isInteger(body.sourceRunAttempt)
     || body.sourceRunAttempt < 1
@@ -1134,6 +1139,7 @@ async function createDispatchHold(storage, body, now) {
     headSha,
     state: 'DISPATCH_HELD',
     createdAt: now,
+    sourceHeadSha,
     sourceRunId,
     sourceRunAttempt: body.sourceRunAttempt,
     supersededRuns: [],
@@ -1405,6 +1411,8 @@ async function resolveOperator(storage, body, now, randomUuid) {
         reject(409, 'INVALID_DISPATCH_HOLD_TRANSITION');
       }
       if (meta.barrier) reject(423, 'MUTATION_BARRIER_ACTIVE');
+      if (meta.currentLease?.expiresAt > now) reject(409, 'LEASE_STILL_ACTIVE');
+      if (meta.currentLease) meta.currentLease = null;
       resolvedDispatchHold = hold;
       supersedesDispatchHoldId = priorId;
       priorSupersededRuns = readSupersededRuns(hold.supersededRuns);
@@ -1532,6 +1540,7 @@ async function resolveOperator(storage, body, now, randomUuid) {
       headSha: expectedHead,
       state: 'DISPATCH_HELD',
       createdAt: now,
+      sourceHeadSha: expectedHead,
       sourceRunId: operatorRunId,
       sourceRunAttempt: body.operatorRunAttempt,
       supersededRuns,
@@ -1692,7 +1701,7 @@ export class RailwayReconcileControl {
           storage,
           route.role,
           nonceHash,
-          (timestamp * 1000) + AUTH_CLOCK_WINDOW_MS,
+          (timestamp * 1000) + AUTH_CLOCK_WINDOW_MS + AUTH_TIMESTAMP_GRANULARITY_MS,
           now,
         );
       });

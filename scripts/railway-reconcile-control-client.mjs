@@ -73,8 +73,9 @@ function canonicalValue(value) {
   if (typeof value !== 'object') {
     throw new TypeError(`canonical JSON rejects ${typeof value}`);
   }
-  const result = {};
+  const result = Object.create(null);
   for (const key of Object.keys(value).sort()) {
+    if (key === '__proto__') throw new TypeError('canonical JSON rejects __proto__ keys');
     if (value[key] === undefined) throw new TypeError('canonical JSON rejects undefined');
     result[key] = canonicalValue(value[key]);
   }

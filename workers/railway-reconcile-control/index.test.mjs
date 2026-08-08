@@ -31,6 +31,7 @@ let operationCounter = 0;
 let runCounter = 0;
 const priorAuditById = new Map();
 const DEFAULT_DISPATCH_SOURCE = Object.freeze({
+  sourceHeadSha: 'a'.repeat(40),
   sourceRunId: '41180000000',
   sourceRunAttempt: 1,
 });
@@ -817,6 +818,59 @@ test('verifier acceptance is idempotent after a lost success response', async ()
   assert.deepEqual(await responseBody(replay), await responseBody(first));
 });
 
+test('accepted replay reports a barrier raised by a later generation', async () => {
+  const { clock, control, storage } = makeControl();
+  const lease = await acquireLease(control, clock, { headSha: '6'.repeat(40) });
+  const ownerFields = {
+    version: 1,
+    attemptId: lease.attempt.attemptId,
+    ownerId: lease.attempt.ownerId,
+    leaseCapability: lease.leaseCapability,
+    headSha: lease.attempt.headSha,
+  };
+  const intentDigest = '7'.repeat(64);
+  const resultDigest = '8'.repeat(64);
+  assert.equal((await send(control, clock, '/v1/mutation/prepare', 'mutation', {
+    ...ownerFields,
+    intentDigest,
+  })).status, 200);
+  assert.equal((await send(control, clock, '/v1/mutation/bind-result', 'mutation', {
+    ...ownerFields,
+    intentDigest,
+    resultKind: 'NO_MUTATION',
+    resultDigest,
+    minTtlMs: 1,
+  })).status, 200);
+  assert.equal((await send(control, clock, '/v1/mutation/release', 'mutation', ownerFields)).status, 200);
+  const body = {
+    version: 1,
+    attemptId: lease.attempt.attemptId,
+    headSha: lease.attempt.headSha,
+    intentDigest,
+    resultDigest,
+  };
+  assert.equal((await send(control, clock, '/v1/verifier/accept', 'verifier', body)).status, 200);
+  const meta = storage.records.get('control-meta:v1');
+  meta.barrier = {
+    version: 1,
+    attemptId: 'later-barrier-attempt-0001',
+    generation: meta.generation + 1,
+    headSha: '9'.repeat(40),
+    intentDigest: 'a'.repeat(64),
+    raisedAt: clock.now + 1,
+  };
+  storage.records.set('control-meta:v1', meta);
+
+  const replay = await responseBody(await send(
+    control,
+    clock,
+    '/v1/verifier/accept',
+    'verifier',
+    body,
+  ));
+  assert.equal(replay.barrier.attemptId, 'later-barrier-attempt-0001');
+});
+
 test('owner abort closes only a positively pre-mutation attempt', async () => {
   const { clock, control } = makeControl();
   const lease = await acquireLease(control, clock, {
@@ -1180,6 +1234,29 @@ test('dispatch-rejected requires durable evidence before a lost hold stops block
   assert.equal(lease.attempt.state, 'LEASED');
 });
 
+test('a closed dispatch hold ID can never be reused', async () => {
+  const { clock, control } = makeControl();
+  const recoveryAttemptId = 'recovery-reused-hold-0001';
+  const headSha = '7'.repeat(40);
+  const body = {
+    version: 1,
+    ...DEFAULT_DISPATCH_SOURCE,
+    recoveryAttemptId,
+    headSha,
+  };
+  assert.equal((await send(control, clock, '/v1/watchdog/dispatch-hold', 'watchdog', body)).status, 201);
+  assert.equal((await send(control, clock, '/v1/watchdog/dispatch-rejected', 'watchdog', {
+    version: 1,
+    recoveryAttemptId,
+    headSha,
+    reason: 'DISPATCH_CONFIRMED_REJECTED',
+    evidenceDigest: 'd'.repeat(64),
+  })).status, 200);
+  const reused = await send(control, clock, '/v1/watchdog/dispatch-hold', 'watchdog', body);
+  assert.equal(reused.status, 409);
+  assert.equal((await responseBody(reused)).error.code, 'DISPATCH_HOLD_ID_REUSED');
+});
+
 test('pre-dispatch abort requires exact source run provenance and cannot close RUN_BOUND', async () => {
   const headSha = '8'.repeat(40);
   {
@@ -1387,6 +1464,32 @@ test('route-scoped HMAC rejects replay, cross-role use, stale timestamps, and un
   assert.equal((await responseBody(oldRoute)).error.code, 'UNKNOWN_PROTOCOL_VERSION');
 });
 
+test('nonce retention covers the full second-granular authentication window', async () => {
+  const { clock, control } = makeControl();
+  const timestamp = Math.floor(clock.now / 1000);
+  const nonce = 'nonce-window-edge-00000001';
+  const first = await send(
+    control,
+    clock,
+    '/v1/watchdog/status',
+    'watchdog',
+    null,
+    { method: 'GET', timestamp, nonce },
+  );
+  assert.equal(first.status, 200);
+  clock.now = (timestamp * 1000) + (5 * 60 * 1000) + 999;
+  const replay = await send(
+    control,
+    clock,
+    '/v1/watchdog/status',
+    'watchdog',
+    null,
+    { method: 'GET', timestamp, nonce },
+  );
+  assert.equal(replay.status, 409);
+  assert.equal((await responseBody(replay)).error.code, 'AUTH_REPLAY');
+});
+
 test('authenticated rejected transitions still consume their nonce durably', async () => {
   const { clock, control } = makeControl();
   const headSha = '3'.repeat(40);
@@ -1519,6 +1622,45 @@ test('resolve_pre_mutation_hold closes only the exact hold and appends a linked 
   assert.equal(snapshot.currentAttempt.state, 'OPERATOR_RESOLVED');
   assert.equal(snapshot.currentAttempt.supersedesDispatchHoldId, recoveryAttemptId);
   assert.equal(snapshot.currentAttempt.reason, operatorRequest('', '', '').reason);
+});
+
+test('resolving a dispatch hold retires an expired lease and rejects a live lease', async () => {
+  for (const live of [false, true]) {
+    const { clock, control, storage } = makeControl();
+    const recoveryAttemptId = `recovery-hold-with-${live ? 'live' : 'expired'}-lease`;
+    const headSha = 'a'.repeat(40);
+    assert.equal((await send(control, clock, '/v1/watchdog/dispatch-hold', 'watchdog', {
+      version: 1,
+      ...DEFAULT_DISPATCH_SOURCE,
+      recoveryAttemptId,
+      headSha,
+    })).status, 201);
+    const meta = storage.records.get('control-meta:v1');
+    meta.currentLease = {
+      version: 1,
+      attemptId: 'unrelated-stale-attempt-0001',
+      generation: 1,
+      ownerId: 'github-run:41180000999:1',
+      headSha: 'b'.repeat(40),
+      acquiredAt: clock.now - 60_000,
+      expiresAt: live ? clock.now + 60_000 : clock.now - 1,
+    };
+    storage.records.set('control-meta:v1', meta);
+
+    const resolved = await send(control, clock, '/v1/operator/resolve', 'operator', operatorRequest(
+      recoveryAttemptId,
+      headSha,
+      'resolve_pre_mutation_hold',
+    ));
+    if (live) {
+      assert.equal(resolved.status, 409);
+      assert.equal((await responseBody(resolved)).error.code, 'LEASE_STILL_ACTIVE');
+      assert.notEqual((await responseBody(await getStatus(control, clock))).lease, null);
+    } else {
+      assert.equal(resolved.status, 200);
+      assert.equal((await responseBody(await getStatus(control, clock))).lease, null);
+    }
+  }
 });
 
 test('operator resolution requires a supplied lowercase 64-hex operation ID', async () => {

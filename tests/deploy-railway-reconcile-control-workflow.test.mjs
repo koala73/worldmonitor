@@ -36,6 +36,13 @@ describe('Railway reconcile control deployment workflow', () => {
     });
     assert.equal(workflow.jobs.deploy.environment.name, 'railway-reconcile-control-production');
     assert.equal(workflow.jobs.deploy.environment.deployment, false);
+    assert.equal(workflow.jobs.deploy.if, "github.ref == 'refs/heads/main'");
+    for (const jobName of ['unit-test', 'deploy']) {
+      const checkout = workflow.jobs[jobName].steps.find((step) => step.uses?.startsWith('actions/checkout@'));
+      assert.equal(checkout.with['persist-credentials'], false);
+      const install = workflow.jobs[jobName].steps.find((step) => step.name === 'Install');
+      assert.match(install.run, /npm ci --ignore-scripts/);
+    }
   });
 
   it('requires all four route credentials plus one server-owned scope', () => {

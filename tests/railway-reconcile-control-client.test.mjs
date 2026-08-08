@@ -88,6 +88,12 @@ describe('canonicalJson', () => {
       assert.throws(() => canonicalJson({ value }), /canonical JSON/i);
     }
   });
+
+  it('rejects an adversarial __proto__ key instead of signing a colliding object', () => {
+    const payload = JSON.parse('{"safe":1,"__proto__":{"polluted":true}}');
+    assert.throws(() => canonicalJson(payload), /__proto__/);
+    assert.equal({}.polluted, undefined);
+  });
 });
 
 describe('RailwayReconcileControlClient', () => {

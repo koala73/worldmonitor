@@ -26,6 +26,8 @@ export const WATCHDOG_DISPATCH_JOB_NAME = 'Dispatch authorized recovery';
 export const WATCHDOG_DISPATCH_STEP_NAME = 'Dispatch exact Railway deploy-trigger run';
 export const MANUAL_RECOVERY_DISPATCH_JOB_NAME = 'Dispatch ordinary lease-aware retry';
 export const MANUAL_RECOVERY_DISPATCH_STEP_NAME = 'Dispatch correlated superseding generation';
+export const PRE_DISPATCH_REJECTION_STEP_NAME = 'Record definitive pre-dispatch rejection';
+export const GITHUB_DISPATCH_REJECTION_STEP_NAME = 'Record definitive GitHub dispatch rejection';
 
 export const FINAL_ACCEPTANCE_STEP_NAME = 'Finalize exact Railway reconciliation acceptance';
 export const MUTATION_STARTED_STEP_NAME = 'Mark Railway mutation started';
@@ -178,14 +180,23 @@ export class GitHubWatchdogClient {
     }
     if (method === 'GET' && url.pathname === `${this.repoPath}/actions/workflows/${TARGET_WORKFLOW_FILE}/runs`) {
       const created = url.searchParams.get('created');
-      return paginated
-        && /^>=\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(created ?? '')
-        && exactQuery(url, {
-          created,
-          filter: 'all',
-          per_page: String(GITHUB_PAGE_SIZE),
-          page,
-        });
+      const status = url.searchParams.get('status');
+      return paginated && (
+        (/^>=\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(created ?? '')
+          && exactQuery(url, {
+            created,
+            filter: 'all',
+            per_page: String(GITHUB_PAGE_SIZE),
+            page,
+          }))
+        || (ACTIVE_RUN_STATES.includes(status)
+          && exactQuery(url, {
+            status,
+            filter: 'all',
+            per_page: String(GITHUB_PAGE_SIZE),
+            page,
+          }))
+      );
     }
     if (method === 'GET' && new RegExp(`^${this.repoPathPattern}/actions/runs/\\d+/attempts/\\d+/jobs$`).test(url.pathname)) {
       return paginated && exactQuery(url, { per_page: String(GITHUB_PAGE_SIZE), page });
@@ -196,7 +207,8 @@ export class GitHubWatchdogClient {
     if (method === 'POST' && url.pathname === `${this.repoPath}/actions/workflows/${TARGET_WORKFLOW_FILE}/dispatches`) {
       return url.search === ''
         && body?.ref === 'main'
-        && Object.keys(body).sort().join(',') === 'inputs,ref'
+        && body?.return_run_details === true
+        && Object.keys(body).sort().join(',') === 'inputs,ref,return_run_details'
         && validIdentifier(body.inputs?.recovery_attempt_id)
         && /^[0-9a-f]{40}$/i.test(body.inputs?.expected_head_sha ?? '')
         && Object.keys(body.inputs).sort().join(',') === 'expected_head_sha,recovery_attempt_id';
@@ -446,34 +458,72 @@ export class GitHubWatchdogClient {
     );
   }
 
+  async #readRawActiveTargetRuns() {
+    const runs = [];
+    for (const status of ACTIVE_RUN_STATES) {
+      const query = new URLSearchParams({
+        status,
+        filter: 'all',
+        per_page: String(GITHUB_PAGE_SIZE),
+        page: '1',
+      });
+      runs.push(...await this.#paginate(
+        `${this.repoPath}/actions/workflows/${TARGET_WORKFLOW_FILE}/runs?${query}`,
+        (data) => data?.workflow_runs,
+        {
+          readTotalCount: (data) => data?.total_count,
+          readItemId: (run) => run?.id,
+          collectionName: `${status} workflow runs`,
+        },
+      ));
+    }
+    return runs;
+  }
+
+  #summarizeTargetRun(run) {
+    if (!validGitHubId(run?.id)) {
+      throw new GitHubWatchdogError('GITHUB_READ_FAILED', 'workflow run id was invalid');
+    }
+    if (!Number.isSafeInteger(run?.run_attempt) || run.run_attempt < 1) {
+      throw new GitHubWatchdogError('GITHUB_READ_FAILED', 'workflow run attempt count was invalid');
+    }
+    const active = ACTIVE_RUN_STATES.includes(run?.status);
+    if (!/^[0-9a-f]{40}$/i.test(run?.head_sha ?? '')
+      || !(active || run?.status === 'completed')
+      || (active && run?.conclusion !== null)
+      || (run?.status === 'completed' && typeof run?.conclusion !== 'string')
+      || !Number.isFinite(Date.parse(run?.created_at ?? ''))
+      || !Number.isFinite(Date.parse(run?.updated_at ?? ''))) {
+      throw new GitHubWatchdogError('GITHUB_READ_FAILED', 'workflow run summary was invalid');
+    }
+    return {
+      id: run.id,
+      runAttempt: run.run_attempt,
+      displayTitle: run.display_title ?? '',
+      headSha: run.head_sha,
+      status: run.status,
+      conclusion: run.conclusion,
+      createdAt: run.created_at,
+      updatedAt: run.updated_at,
+    };
+  }
+
   async readTargetRunSummaries() {
-    return (await this.#readRawTargetRuns()).map((run) => {
-      if (!validGitHubId(run?.id)) {
-        throw new GitHubWatchdogError('GITHUB_READ_FAILED', 'workflow run id was invalid');
-      }
-      if (!Number.isSafeInteger(run?.run_attempt) || run.run_attempt < 1) {
-        throw new GitHubWatchdogError('GITHUB_READ_FAILED', 'workflow run attempt count was invalid');
-      }
-      const active = ACTIVE_RUN_STATES.includes(run?.status);
-      if (!/^[0-9a-f]{40}$/i.test(run?.head_sha ?? '')
-        || !(active || run?.status === 'completed')
-        || (active && run?.conclusion !== null)
-        || (run?.status === 'completed' && typeof run?.conclusion !== 'string')
-        || !Number.isFinite(Date.parse(run?.created_at ?? ''))
-        || !Number.isFinite(Date.parse(run?.updated_at ?? ''))) {
-        throw new GitHubWatchdogError('GITHUB_READ_FAILED', 'workflow run summary was invalid');
-      }
-      return {
-        id: run.id,
-        runAttempt: run.run_attempt,
-        displayTitle: run.display_title ?? '',
-        headSha: run.head_sha,
-        status: run.status,
-        conclusion: run.conclusion,
-        createdAt: run.created_at,
-        updatedAt: run.updated_at,
-      };
-    });
+    const activeBefore = (await this.#readRawActiveTargetRuns()).map((run) => this.#summarizeTargetRun(run));
+    const history = (await this.#readRawTargetRuns()).map((run) => this.#summarizeTargetRun(run));
+    const activeAfter = (await this.#readRawActiveTargetRuns()).map((run) => this.#summarizeTargetRun(run));
+    const inventoryKey = (runs) => JSON.stringify(runs
+      .map((run) => [run.id, run.runAttempt, run.headSha, run.status, run.createdAt])
+      .sort(([left], [right]) => left - right));
+    if (inventoryKey(activeBefore) !== inventoryKey(activeAfter)) {
+      throw new GitHubWatchdogError(
+        'GITHUB_READ_FAILED',
+        'active workflow inventory changed during the watchdog snapshot',
+      );
+    }
+    const byId = new Map(history.map((run) => [String(run.id), run]));
+    for (const run of activeAfter) byId.set(String(run.id), run);
+    return [...byId.values()];
   }
 
   async hydrateTargetRuns(runSummaries) {
@@ -519,12 +569,12 @@ export class GitHubWatchdogClient {
     )) ?? null;
   }
 
-  async readSourceDispatchEvidence({ sourceRunId, sourceRunAttempt, expectedHeadSha }) {
+  async readSourceRunIdentity({ sourceRunId, sourceRunAttempt, expectedSourceHeadSha = null }) {
     if (!validGitHubRunId(sourceRunId)) throw new TypeError('source workflow run id is invalid');
     if (!Number.isInteger(sourceRunAttempt) || sourceRunAttempt < 1 || sourceRunAttempt > 1_000) {
       throw new TypeError('source workflow run attempt is invalid');
     }
-    if (!/^[0-9a-f]{40}$/i.test(expectedHeadSha ?? '')) {
+    if (expectedSourceHeadSha !== null && !/^[0-9a-f]{40}$/i.test(expectedSourceHeadSha ?? '')) {
       throw new TypeError('expected source workflow head is invalid');
     }
     const normalizedRunId = String(sourceRunId);
@@ -544,7 +594,8 @@ export class GitHubWatchdogClient {
       || String(run?.id) !== normalizedRunId
       || run?.run_attempt !== sourceRunAttempt
       || run?.head_branch !== 'main'
-      || run?.head_sha !== expectedHeadSha
+      || (expectedSourceHeadSha !== null && run?.head_sha !== expectedSourceHeadSha)
+      || !/^[0-9a-f]{40}$/i.test(run?.head_sha ?? '')
       || !(active || terminal)
       || (active && run?.conclusion !== null)) {
       throw new GitHubWatchdogError(
@@ -552,7 +603,6 @@ export class GitHubWatchdogClient {
         'source workflow run identity was not exact',
       );
     }
-    const jobs = await this.#readAttemptJobs(normalizedRunId, sourceRunAttempt);
     return {
       sourceRunId: normalizedRunId,
       sourceRunAttempt,
@@ -564,8 +614,46 @@ export class GitHubWatchdogClient {
       conclusion: run.conclusion,
       dispatchJobName: spec.dispatchJobName,
       dispatchStepName: spec.dispatchStepName,
+    };
+  }
+
+  async readSourceDispatchEvidence({ sourceRunId, sourceRunAttempt, expectedSourceHeadSha }) {
+    const identity = await this.readSourceRunIdentity({
+      sourceRunId,
+      sourceRunAttempt,
+      expectedSourceHeadSha,
+    });
+    const jobs = await this.#readAttemptJobs(identity.sourceRunId, sourceRunAttempt);
+    return {
+      ...identity,
       jobs,
     };
+  }
+
+  async readDispatchedRunIdentity({ runId, runAttempt = 1, expectedHeadSha }) {
+    if (!validGitHubRunId(runId)) throw new TypeError('dispatched workflow run id is invalid');
+    if (runAttempt !== 1) throw new TypeError('dispatched workflow run attempt must be 1');
+    if (!/^[0-9a-f]{40}$/i.test(expectedHeadSha ?? '')) {
+      throw new TypeError('expected dispatched workflow head is invalid');
+    }
+    const normalizedRunId = String(runId);
+    const { data: run } = await this.request(
+      'GET',
+      `${this.repoPath}/actions/runs/${normalizedRunId}/attempts/${runAttempt}`,
+    );
+    const workflowPath = typeof run?.path === 'string' ? run.path.split('@', 1)[0] : '';
+    if (String(run?.id) !== normalizedRunId
+      || run?.run_attempt !== runAttempt
+      || run?.event !== 'workflow_dispatch'
+      || run?.head_branch !== 'main'
+      || run?.head_sha !== expectedHeadSha
+      || workflowPath !== `.github/workflows/${TARGET_WORKFLOW_FILE}`) {
+      throw new GitHubWatchdogError(
+        'GITHUB_READ_FAILED',
+        'dispatched workflow run identity was not exact',
+      );
+    }
+    return { id: normalizedRunId, runAttempt };
   }
 
   dispatchRecovery({ recoveryAttemptId, expectedHeadSha }) {
@@ -575,6 +663,7 @@ export class GitHubWatchdogClient {
       {
         body: {
           ref: 'main',
+          return_run_details: true,
           inputs: {
             recovery_attempt_id: recoveryAttemptId,
             expected_head_sha: expectedHeadSha,
@@ -902,13 +991,14 @@ function evidenceDigest(value) {
   return createHash('sha256').update(JSON.stringify(value)).digest('hex');
 }
 
-function sourceDispatchNotStartedEvidence(hold, evidence) {
+function sourceDispatchRejectionEvidence(hold, evidence) {
   if (!validGitHubRunId(hold?.sourceRunId)
     || !Number.isInteger(hold?.sourceRunAttempt)
     || hold.sourceRunAttempt < 1
+    || !/^[0-9a-f]{40}$/i.test(hold?.sourceHeadSha ?? '')
     || String(evidence?.sourceRunId) !== String(hold.sourceRunId)
     || evidence?.sourceRunAttempt !== hold.sourceRunAttempt
-    || evidence?.headSha !== hold.headSha
+    || evidence?.headSha !== hold.sourceHeadSha
     || evidence?.ref !== 'refs/heads/main'
     || evidence?.status !== 'completed'
     || !TERMINAL_RUN_CONCLUSIONS.includes(evidence?.conclusion)
@@ -926,28 +1016,91 @@ function sourceDispatchNotStartedEvidence(hold, evidence) {
   const dispatchJobs = evidence.jobs.filter((job) => job?.name === spec.dispatchJobName);
   if (dispatchJobs.length === 0) {
     return {
-      kind: 'DISPATCH_JOB_NOT_CREATED',
-      sourceRunId: String(hold.sourceRunId),
-      sourceRunAttempt: hold.sourceRunAttempt,
-      workflowPath: evidence.workflowPath,
-      event: evidence.event,
-      ref: evidence.ref,
-      headSha: evidence.headSha,
-      runStatus: evidence.status,
-      runConclusion: evidence.conclusion,
-      dispatchJobName: spec.dispatchJobName,
-      dispatchStepName: spec.dispatchStepName,
+      reason: 'PRE_DISPATCH_NOT_STARTED',
+      evidence: {
+        kind: 'DISPATCH_JOB_NOT_CREATED',
+        sourceRunId: String(hold.sourceRunId),
+        sourceRunAttempt: hold.sourceRunAttempt,
+        workflowPath: evidence.workflowPath,
+        event: evidence.event,
+        ref: evidence.ref,
+        headSha: evidence.headSha,
+        runStatus: evidence.status,
+        runConclusion: evidence.conclusion,
+        dispatchJobName: spec.dispatchJobName,
+        dispatchStepName: spec.dispatchStepName,
+      },
     };
   }
   if (dispatchJobs.length !== 1) return null;
   const [job] = dispatchJobs;
   if (!Array.isArray(job.steps)) return null;
   const dispatchSteps = job.steps.filter((step) => step?.name === spec.dispatchStepName);
+  const rejectionMarkers = [
+    [PRE_DISPATCH_REJECTION_STEP_NAME, 'PRE_DISPATCH_NOT_STARTED'],
+    [GITHUB_DISPATCH_REJECTION_STEP_NAME, 'DISPATCH_CONFIRMED_REJECTED'],
+  ].flatMap(([stepName, reason]) => job.steps
+    .filter((step) => step?.name === stepName
+      && step?.status === 'completed'
+      && step?.conclusion === 'success')
+    .map((step) => ({ step, stepName, reason })));
+  if (dispatchSteps.length === 1 && rejectionMarkers.length === 1) {
+    const [{ stepName, reason }] = rejectionMarkers;
+    return {
+      reason,
+      evidence: {
+        kind: reason === 'PRE_DISPATCH_NOT_STARTED'
+          ? 'WORKFLOW_PRE_DISPATCH_REJECTION_RECORDED'
+          : 'WORKFLOW_GITHUB_DISPATCH_REJECTION_RECORDED',
+        sourceRunId: String(hold.sourceRunId),
+        sourceRunAttempt: hold.sourceRunAttempt,
+        workflowPath: evidence.workflowPath,
+        event: evidence.event,
+        ref: evidence.ref,
+        headSha: evidence.headSha,
+        runStatus: evidence.status,
+        runConclusion: evidence.conclusion,
+        dispatchJobId: String(job.id),
+        dispatchJobName: spec.dispatchJobName,
+        dispatchStepName: spec.dispatchStepName,
+        rejectionStepName: stepName,
+      },
+    };
+  }
   if (dispatchSteps.length === 1
     && dispatchSteps[0]?.status === 'completed'
     && dispatchSteps[0]?.conclusion === 'skipped') {
     return {
-      kind: 'DISPATCH_POST_STEP_SKIPPED',
+      reason: 'PRE_DISPATCH_NOT_STARTED',
+      evidence: {
+        kind: 'DISPATCH_POST_STEP_SKIPPED',
+        sourceRunId: String(hold.sourceRunId),
+        sourceRunAttempt: hold.sourceRunAttempt,
+        workflowPath: evidence.workflowPath,
+        event: evidence.event,
+        ref: evidence.ref,
+        headSha: evidence.headSha,
+        runStatus: evidence.status,
+        runConclusion: evidence.conclusion,
+        dispatchJobId: String(job.id),
+        dispatchJobName: spec.dispatchJobName,
+        dispatchJobConclusion: job.conclusion,
+        dispatchStepName: spec.dispatchStepName,
+        dispatchStepConclusion: 'skipped',
+      },
+    };
+  }
+  if (dispatchSteps.length !== 0) return null;
+  const jobWasNeverStarted = job?.status === 'completed'
+    && (
+      job?.conclusion === 'skipped'
+      || (job?.conclusion === 'cancelled' && (job?.started_at === null || job?.started_at === undefined))
+    );
+  if (!jobWasNeverStarted) return null;
+  return {
+    reason: 'PRE_DISPATCH_NOT_STARTED',
+    evidence: {
+      kind: 'DISPATCH_JOB_NOT_STARTED',
       sourceRunId: String(hold.sourceRunId),
       sourceRunAttempt: hold.sourceRunAttempt,
       workflowPath: evidence.workflowPath,
@@ -960,30 +1113,7 @@ function sourceDispatchNotStartedEvidence(hold, evidence) {
       dispatchJobName: spec.dispatchJobName,
       dispatchJobConclusion: job.conclusion,
       dispatchStepName: spec.dispatchStepName,
-      dispatchStepConclusion: 'skipped',
-    };
-  }
-  if (dispatchSteps.length !== 0) return null;
-  const jobWasNeverStarted = job?.status === 'completed'
-    && (
-      job?.conclusion === 'skipped'
-      || (job?.conclusion === 'cancelled' && (job?.started_at === null || job?.started_at === undefined))
-    );
-  if (!jobWasNeverStarted) return null;
-  return {
-    kind: 'DISPATCH_JOB_NOT_STARTED',
-    sourceRunId: String(hold.sourceRunId),
-    sourceRunAttempt: hold.sourceRunAttempt,
-    workflowPath: evidence.workflowPath,
-    event: evidence.event,
-    ref: evidence.ref,
-    headSha: evidence.headSha,
-    runStatus: evidence.status,
-    runConclusion: evidence.conclusion,
-    dispatchJobId: String(job.id),
-    dispatchJobName: spec.dispatchJobName,
-    dispatchJobConclusion: job.conclusion,
-    dispatchStepName: spec.dispatchStepName,
+    },
   };
 }
 
@@ -1000,21 +1130,21 @@ async function recoverNeverStartedDispatchHold({ github, control, hold }) {
     evidence = await github.readSourceDispatchEvidence({
       sourceRunId: hold.sourceRunId,
       sourceRunAttempt: hold.sourceRunAttempt,
-      expectedHeadSha: hold.headSha,
+      expectedSourceHeadSha: hold.sourceHeadSha,
     });
   } catch {
     return false;
   }
-  const proof = sourceDispatchNotStartedEvidence(hold, evidence);
-  if (!proof) return false;
+  const rejection = sourceDispatchRejectionEvidence(hold, evidence);
+  if (!rejection) return false;
   try {
     await rejectHeldDispatch(control, {
       recoveryAttemptId: hold.recoveryAttemptId,
       headSha: hold.headSha,
       sourceRunId: String(hold.sourceRunId),
       sourceRunAttempt: hold.sourceRunAttempt,
-      reason: 'PRE_DISPATCH_NOT_STARTED',
-      evidence: proof,
+      reason: rejection.reason,
+      evidence: rejection.evidence,
     });
     return true;
   } catch {
@@ -1170,10 +1300,26 @@ export async function prepareRecoveryDispatch({
       reason: 'current watchdog source run identity was invalid',
     };
   }
+  let sourceIdentity;
+  try {
+    sourceIdentity = await github.readSourceRunIdentity({
+      sourceRunId,
+      sourceRunAttempt,
+    });
+  } catch (error) {
+    return {
+      outcome: 'DEFERRED_AMBIGUOUS',
+      headSha: exact.sha,
+      dispatchEligible: false,
+      dispatchAuthorized: false,
+      reason: error instanceof Error ? error.message : String(error),
+    };
+  }
   try {
     await control.createDispatchHold({
       recoveryAttemptId,
       headSha: exact.sha,
+      sourceHeadSha: sourceIdentity.headSha,
       sourceRunId: String(sourceRunId),
       sourceRunAttempt,
     });
@@ -1213,9 +1359,8 @@ async function rejectHeldDispatch(control, {
   });
 }
 
-export async function dispatchAuthorizedRecovery({
+export async function dispatchGitHubRecovery({
   github,
-  control,
   expectedHeadSha,
   recoveryAttemptId,
   sourceRunId = process.env.GITHUB_RUN_ID,
@@ -1235,65 +1380,38 @@ export async function dispatchAuthorizedRecovery({
   try {
     exact = await github.readMainAndGate();
   } catch (error) {
-    let holdClosed = false;
-    try {
-      await rejectHeldDispatch(control, {
-        recoveryAttemptId,
-        headSha: expectedHeadSha,
-        sourceRunId: String(sourceRunId),
-        sourceRunAttempt,
-        reason: 'PRE_DISPATCH_NOT_STARTED',
-        evidence: {
-          kind: 'IN_PROCESS_PRE_DISPATCH_READ_EXIT',
-          recoveryAttemptId,
-          expectedHeadSha,
-          sourceRunId: String(sourceRunId),
-          sourceRunAttempt,
-        },
-      });
-      holdClosed = true;
-    } catch {
-      holdClosed = false;
-    }
+    const evidence = {
+      kind: 'IN_PROCESS_PRE_DISPATCH_READ_EXIT',
+      recoveryAttemptId,
+      expectedHeadSha,
+      sourceRunId: String(sourceRunId),
+      sourceRunAttempt,
+    };
     return {
-      outcome: 'DEFERRED_AMBIGUOUS',
+      outcome: 'PRE_DISPATCH_NOT_STARTED',
       headSha: expectedHeadSha,
       dispatchEligible: false,
       recoveryAttemptId,
-      reason: holdClosed
-        ? 'pre-dispatch main read exited before POST; the durable hold was closed'
-        : `pre-dispatch main read exited before POST but the durable hold could not be closed: ${error instanceof Error ? error.message : String(error)}`,
+      rejection: { reason: 'PRE_DISPATCH_NOT_STARTED', evidence },
+      reason: `pre-dispatch main read exited before POST: ${error instanceof Error ? error.message : String(error)}`,
     };
   }
   if (exact.sha !== expectedHeadSha || exact.gate?.state !== 'success') {
-    let holdClosed = false;
-    try {
-      await rejectHeldDispatch(control, {
-        recoveryAttemptId,
-        headSha: expectedHeadSha,
-        sourceRunId: String(sourceRunId),
-        sourceRunAttempt,
-        reason: 'PRE_DISPATCH_NOT_STARTED',
-        evidence: {
-          kind: 'IN_PROCESS_PRE_DISPATCH_MAIN_MOVED',
-          recoveryAttemptId,
-          expectedHeadSha,
-          observedHeadSha: exact.sha ?? null,
-          observedGateState: exact.gate?.state ?? null,
-          sourceRunId: String(sourceRunId),
-          sourceRunAttempt,
-        },
-      });
-      holdClosed = true;
-    } catch {
-      holdClosed = false;
-    }
+    const evidence = {
+      kind: 'IN_PROCESS_PRE_DISPATCH_MAIN_MOVED',
+      recoveryAttemptId,
+      expectedHeadSha,
+      observedHeadSha: exact.sha ?? null,
+      observedGateState: exact.gate?.state ?? null,
+      sourceRunId: String(sourceRunId),
+      sourceRunAttempt,
+    };
     return {
       ...deferredMain(exact, expectedHeadSha),
+      outcome: 'PRE_DISPATCH_NOT_STARTED',
       recoveryAttemptId,
-      reason: holdClosed
-        ? 'main moved or became non-green before POST; the durable hold was closed'
-        : 'main moved or became non-green before POST but the durable hold could not be closed',
+      rejection: { reason: 'PRE_DISPATCH_NOT_STARTED', evidence },
+      reason: 'main moved or became non-green before POST',
     };
   }
 
@@ -1302,29 +1420,22 @@ export async function dispatchAuthorizedRecovery({
     dispatched = await github.dispatchRecovery({ recoveryAttemptId, expectedHeadSha });
   } catch (error) {
     if (error instanceof GitHubWatchdogError && error.code === 'GITHUB_DISPATCH_REJECTED') {
-      try {
-        await rejectHeldDispatch(control, {
-          recoveryAttemptId,
-          headSha: expectedHeadSha,
-          sourceRunId: String(sourceRunId),
-          sourceRunAttempt,
-          reason: 'DISPATCH_CONFIRMED_REJECTED',
-          evidence: {
-            status: error.status,
-            recoveryAttemptId,
-            expectedHeadSha,
-            sourceRunId: String(sourceRunId),
-            sourceRunAttempt,
-          },
-        });
-      } catch {
-        return {
-          outcome: 'DEFERRED_AMBIGUOUS',
-          headSha: expectedHeadSha,
-          dispatchEligible: false,
-          reason: 'GitHub rejected dispatch and the durable hold could not be closed',
-        };
-      }
+      const evidence = {
+        kind: 'GITHUB_DISPATCH_DEFINITIVE_REJECTION',
+        status: error.status,
+        recoveryAttemptId,
+        expectedHeadSha,
+        sourceRunId: String(sourceRunId),
+        sourceRunAttempt,
+      };
+      return {
+        outcome: 'DISPATCH_CONFIRMED_REJECTED',
+        headSha: expectedHeadSha,
+        dispatchEligible: false,
+        recoveryAttemptId,
+        rejection: { reason: 'DISPATCH_CONFIRMED_REJECTED', evidence },
+        reason: `GitHub definitively rejected dispatch with HTTP ${error.status}`,
+      };
     }
     return {
       outcome: 'DEFERRED_AMBIGUOUS',
@@ -1373,11 +1484,10 @@ export async function dispatchAuthorizedRecovery({
     };
   }
   try {
-    await control.bindRun({
-      recoveryAttemptId,
-      headSha: expectedHeadSha,
-      runId: String(correlatedRun.id),
+    correlatedRun = await github.readDispatchedRunIdentity({
+      runId: correlatedRun.id,
       runAttempt: correlatedRun.runAttempt,
+      expectedHeadSha,
     });
   } catch (error) {
     return {
@@ -1389,13 +1499,42 @@ export async function dispatchAuthorizedRecovery({
     };
   }
   return {
-    outcome: 'RECOVERY_DISPATCHED',
+    outcome: 'RECOVERY_DISPATCH_ACCEPTED',
     headSha: expectedHeadSha,
     dispatchEligible: false,
     recoveryAttemptId,
     runId: correlatedRun.id,
     runAttempt: correlatedRun.runAttempt,
-    reason: 'GitHub accepted and correlated the exact recovery run',
+    reason: 'GitHub accepted and verified the exact recovery run; durable binding remains separate',
+  };
+}
+
+export async function rejectAuthorizedRecovery({
+  control,
+  expectedHeadSha,
+  recoveryAttemptId,
+  sourceRunId = process.env.GITHUB_RUN_ID,
+  sourceRunAttempt = Number(process.env.GITHUB_RUN_ATTEMPT),
+  rejection,
+}) {
+  if (!rejection || !['PRE_DISPATCH_NOT_STARTED', 'DISPATCH_CONFIRMED_REJECTED'].includes(rejection.reason)
+    || !rejection.evidence || typeof rejection.evidence !== 'object' || Array.isArray(rejection.evidence)) {
+    throw new TypeError('definitive dispatch rejection evidence is invalid');
+  }
+  await rejectHeldDispatch(control, {
+    recoveryAttemptId,
+    headSha: expectedHeadSha,
+    sourceRunId: String(sourceRunId),
+    sourceRunAttempt,
+    reason: rejection.reason,
+    evidence: rejection.evidence,
+  });
+  return {
+    outcome: 'RECOVERY_DISPATCH_REJECTED',
+    headSha: expectedHeadSha,
+    dispatchEligible: false,
+    recoveryAttemptId,
+    reason: 'the definitive GitHub dispatch outcome closed the durable recovery hold',
   };
 }
 
@@ -1431,22 +1570,6 @@ export async function bindAuthorizedRecovery({
   };
 }
 
-export async function runStaleReconcileWatchdog(options) {
-  const prepared = await prepareRecoveryDispatch(options);
-  if (!prepared.dispatchAuthorized) return prepared;
-  return dispatchAuthorizedRecovery({
-    github: options.github,
-    control: options.control,
-    expectedHeadSha: prepared.headSha,
-    recoveryAttemptId: prepared.recoveryAttemptId,
-    sourceRunId: options.sourceRunId,
-    sourceRunAttempt: options.sourceRunAttempt,
-    sleep: options.sleep,
-    correlationAttempts: options.correlationAttempts,
-    correlationPollMs: options.correlationPollMs,
-  });
-}
-
 function readArgument(argv, name, fallback = undefined) {
   const index = argv.indexOf(name);
   return index === -1 ? fallback : argv[index + 1];
@@ -1459,6 +1582,9 @@ function writeWorkflowResult(result) {
     `expected_head_sha=${result.headSha ?? ''}`,
     `recovery_attempt_id=${result.recoveryAttemptId ?? ''}`,
     `prior_id=${result.priorId ?? result.recoveryAttemptId ?? ''}`,
+    `workflow_run_id=${result.runId ?? ''}`,
+    `run_attempt=${result.runAttempt ?? ''}`,
+    `rejection=${result.rejection ? Buffer.from(JSON.stringify(result.rejection)).toString('base64url') : ''}`,
   ];
   if (process.env.GITHUB_OUTPUT) appendFileSync(process.env.GITHUB_OUTPUT, `${lines.join('\n')}\n`);
   if (process.env.GITHUB_STEP_SUMMARY) {
@@ -1475,12 +1601,13 @@ function writeWorkflowResult(result) {
 
 async function main() {
   const phase = readArgument(process.argv, '--phase', 'classify');
-  const control = new RailwayReconcileControlClient({
+  const createControl = () => new RailwayReconcileControlClient({
     baseUrl: process.env.RAILWAY_RECONCILE_CONTROL_URL,
     role: 'watchdog',
     secret: process.env.RAILWAY_RECONCILE_WATCHDOG_HMAC,
   });
   if (phase === 'classify') {
+    const control = createControl();
     const github = new GitHubWatchdogClient({
       repository: process.env.GITHUB_REPOSITORY,
       token: process.env.GH_TOKEN,
@@ -1498,14 +1625,48 @@ async function main() {
       repository: process.env.GITHUB_REPOSITORY,
       token: process.env.GH_TOKEN,
     });
-    const result = await dispatchAuthorizedRecovery({
+    const result = await dispatchGitHubRecovery({
       github,
-      control,
       expectedHeadSha: readArgument(process.argv, '--expected-head-sha'),
       recoveryAttemptId: readArgument(process.argv, '--recovery-attempt-id'),
     });
     writeWorkflowResult(result);
-    if (result.outcome !== 'RECOVERY_DISPATCHED') process.exitCode = 1;
+    if (!['RECOVERY_DISPATCH_ACCEPTED', 'PRE_DISPATCH_NOT_STARTED', 'DISPATCH_CONFIRMED_REJECTED']
+      .includes(result.outcome)) process.exitCode = 1;
+    return;
+  }
+  const control = createControl();
+  if (phase === 'status') {
+    const response = await control.status();
+    writeWorkflowResult({
+      outcome: response.outcome,
+      headSha: response.data?.currentAttempt?.headSha ?? null,
+      priorId: response.data?.barrier?.attemptId
+        ?? response.data?.dispatchHolds?.[0]?.recoveryAttemptId
+        ?? response.data?.currentAttempt?.attemptId
+        ?? null,
+      reason: 'authenticated raw reconciliation control state follows',
+      status: response.data,
+    });
+    return;
+  }
+  if (phase === 'reject') {
+    let rejection;
+    try {
+      rejection = JSON.parse(Buffer.from(
+        readArgument(process.argv, '--rejection'),
+        'base64url',
+      ).toString('utf8'));
+    } catch (cause) {
+      throw new TypeError('dispatch rejection evidence is malformed', { cause });
+    }
+    const result = await rejectAuthorizedRecovery({
+      control,
+      expectedHeadSha: readArgument(process.argv, '--expected-head-sha'),
+      recoveryAttemptId: readArgument(process.argv, '--recovery-attempt-id'),
+      rejection,
+    });
+    writeWorkflowResult(result);
     return;
   }
   if (phase === 'bind') {
@@ -1519,7 +1680,7 @@ async function main() {
     writeWorkflowResult(result);
     return;
   }
-  throw new TypeError('--phase must be classify, dispatch, or bind');
+  throw new TypeError('--phase must be classify, status, dispatch, reject, or bind');
 }
 
 if (isMainModule(import.meta.url, process.argv[1])) {

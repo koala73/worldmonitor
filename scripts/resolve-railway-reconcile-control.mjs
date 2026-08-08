@@ -940,15 +940,16 @@ async function main() {
     return;
   }
   if (mode !== 'resolve') fail('MODE_INVALID', 'mode must be proof or resolve');
-  let proof;
-  try {
-    proof = JSON.parse(Buffer.from(process.env.RECOVERY_PROOF || '', 'base64url').toString('utf8'));
-  } catch (cause) {
-    fail('PROOF_JSON_INVALID', 'RECOVERY_PROOF is malformed', { cause });
-  }
+  const operatorSecret = process.env.RAILWAY_RECONCILE_OPERATOR_HMAC;
+  delete process.env.RAILWAY_RECONCILE_OPERATOR_HMAC;
   const controlClient = new RailwayReconcileControlClient({
     role: 'operator',
-    secret: process.env.RAILWAY_RECONCILE_OPERATOR_HMAC,
+    secret: operatorSecret,
+  });
+  const proof = await buildRecoveryProof(request, {
+    githubClient,
+    verifyConvergence: runStrictConvergence,
+    verifyProviderInactive: verifyNoActiveRailwayDeployments,
   });
   const result = await resolveRailwayReconcileControl(request, {
     proof,

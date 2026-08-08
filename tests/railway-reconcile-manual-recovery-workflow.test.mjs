@@ -81,6 +81,9 @@ describe('Railway reconciliation protected manual recovery workflow', () => {
     assert.deepEqual(allSecretNames(workflow.jobs['bind-dispatched-run']), [
       'RAILWAY_RECONCILE_WATCHDOG_HMAC',
     ]);
+    assert.deepEqual(allSecretNames(workflow.jobs['reject-dispatched-run']), [
+      'RAILWAY_RECONCILE_WATCHDOG_HMAC',
+    ]);
 
     const proofText = JSON.stringify(workflow.jobs.proof);
     assert.doesNotMatch(proofText, /DEPLOY_TOKEN|OPERATOR_HMAC/);
@@ -103,59 +106,60 @@ describe('Railway reconciliation protected manual recovery workflow', () => {
     assert.match(workflow.jobs['dispatch-retry'].if, /RAILWAY_RECONCILE_CUTOVER_ACTIVE == 'true'/);
   });
 
-  it('confines actions:write to one bounded, non-retried dispatch that outputs the exact GitHub run', () => {
+  it('confines actions:write to one shared GitHub-only dispatcher with exact outputs', () => {
     assert.deepEqual(workflow.permissions, { contents: 'read', actions: 'read', statuses: 'read' });
     assert.deepEqual(workflow.jobs.proof.permissions, { contents: 'read', actions: 'read', statuses: 'read' });
     assert.deepEqual(workflow.jobs.resolve.permissions, { contents: 'read', actions: 'read', statuses: 'read' });
-    assert.deepEqual(workflow.jobs['dispatch-retry'].permissions, {
+    const job = workflow.jobs['dispatch-retry'];
+    assert.deepEqual(job.permissions, {
       actions: 'write',
       contents: 'read',
       statuses: 'read',
     });
-    assert.equal(workflow.jobs['dispatch-retry'].steps.length, 3);
-    assert.deepEqual(workflow.jobs['dispatch-retry'].outputs, {
-      workflow_run_id: '${{ steps.verify.outputs.workflow_run_id }}',
-      run_attempt: '${{ steps.verify.outputs.run_attempt }}',
+    assert.equal(job.steps.length, 4);
+    assert.deepEqual(job.outputs, {
+      outcome: '${{ steps.dispatch.outputs.outcome }}',
+      workflow_run_id: '${{ steps.dispatch.outputs.workflow_run_id }}',
+      run_attempt: '${{ steps.dispatch.outputs.run_attempt }}',
+      rejection: '${{ steps.dispatch.outputs.rejection }}',
     });
-    const [preflight, dispatch, verify] = workflow.jobs['dispatch-retry'].steps;
-    assert.equal(preflight.name, 'Revalidate exact main and green gate');
-    assert.match(preflight.run, /git\/ref\/heads\/main/);
-    assert.match(preflight.run, /commits\/\$EXPECTED_HEAD\/status/);
-    assert.match(preflight.run, /context == "gate"/);
-    assert.doesNotMatch(preflight.run, /--retry/);
-    assertBashSyntax(preflight.run);
-
+    const [checkout, dispatch] = job.steps;
+    assert.match(checkout.uses, /^actions\/checkout@[0-9a-f]{40}$/);
+    assert.equal(checkout.with.ref, '${{ needs.resolve.outputs.expected_head }}');
+    assert.equal(checkout.with['persist-credentials'], false);
     assert.equal(dispatch.id, 'dispatch');
-    assert.equal(dispatch.uses, undefined);
-    assert.match(dispatch.run, /railway-deploy-trigger\.yml\/dispatches/);
-    assert.match(dispatch.run, /recovery_attempt_id/);
-    assert.match(dispatch.run, /expected_head_sha/);
-    assert.match(dispatch.run, /return_run_details:true/);
-    assert.match(dispatch.run, /X-GitHub-Api-Version: 2026-03-10/);
-    assert.match(dispatch.run, /--connect-timeout\s+\d+/);
-    assert.match(dispatch.run, /--max-time\s+\d+/);
-    assert.equal((dispatch.run.match(/--request POST/g) ?? []).length, 1);
-    assert.doesNotMatch(dispatch.run, /--retry(?:\s|$)/);
-    assert.match(dispatch.run, /\.workflow_run_id/);
-    assert.match(dispatch.run, /dispatched_workflow_run_id=\$workflow_run_id/);
-    assert.match(dispatch.run, /GITHUB_OUTPUT/);
-    assert.match(dispatch.run, /durable hold remains unresolved/);
-    assert.doesNotMatch(dispatch.run, /expected_head:/);
-    assert.doesNotMatch(dispatch.run, /bindRun|bind-run|dispatch-rejected/);
-    assertBashSyntax(dispatch.run);
+    assert.match(dispatch.run, /dispatch-stale-railway-reconcile\.mjs/);
+    assert.match(dispatch.run, /--phase dispatch/);
+    assert.equal(dispatch.env.GH_TOKEN, '${{ github.token }}');
+    assert.doesNotMatch(JSON.stringify(job), /RAILWAY_TOKEN|HMAC|secrets\.|CONTROL_URL/);
+  });
 
-    assert.equal(verify.id, 'verify');
-    assert.equal(verify.env.WORKFLOW_RUN_ID, '${{ steps.dispatch.outputs.dispatched_workflow_run_id }}');
-    assert.match(verify.run, /actions\/runs\/\$WORKFLOW_RUN_ID/);
-    assert.match(verify.run, /workflow_dispatch/);
-    assert.match(verify.run, /head_branch == "main"/);
-    assert.match(verify.run, /head_sha == \$expected_head/);
-    assert.match(verify.run, /run_attempt == 1/);
-    assert.match(verify.run, /railway-deploy-trigger\.yml/);
-    assert.match(verify.run, /workflow_run_id=\$WORKFLOW_RUN_ID/);
-    assert.match(verify.run, /run_attempt=1/);
-    assert.doesNotMatch(verify.run, /--retry/);
-    assertBashSyntax(verify.run);
+  it('closes definitive retry rejection in the isolated watchdog-capability job', () => {
+    const rejection = workflow.jobs['reject-dispatched-run'];
+    assert.match(rejection.if, /PRE_DISPATCH_NOT_STARTED/);
+    assert.match(rejection.if, /DISPATCH_CONFIRMED_REJECTED/);
+    assert.deepEqual(rejection.permissions, { contents: 'read' });
+    assert.equal(rejection.environment.name, 'ingestion-acceptance-production-watchdog');
+    const close = rejection.steps.find((step) => step.name === 'Close the exact durable dispatch hold');
+    assert.equal(close.env.REJECTION, '${{ needs.dispatch-retry.outputs.rejection }}');
+    assert.equal(
+      close.env.RAILWAY_RECONCILE_WATCHDOG_HMAC,
+      '${{ secrets.RAILWAY_RECONCILE_WATCHDOG_HMAC }}',
+    );
+    assert.match(close.run, /--phase reject/);
+    assert.match(rejection.steps.at(-1).run, /exit 1/);
+  });
+
+  it('builds fresh authorization proof after protected approval and scrubs the operator secret', () => {
+    const resolver = workflow.jobs.resolve.steps.find((step) => step.id === 'resolve');
+    assert.equal(resolver.env.RECOVERY_PROOF, undefined);
+    const resolverSource = readFileSync(
+      resolve(repoRoot, 'scripts/resolve-railway-reconcile-control.mjs'),
+      'utf8',
+    );
+    const deleteOffset = resolverSource.indexOf('delete process.env.RAILWAY_RECONCILE_OPERATOR_HMAC');
+    const proofOffset = resolverSource.lastIndexOf('const proof = await buildRecoveryProof');
+    assert.ok(deleteOffset >= 0 && deleteOffset < proofOffset);
   });
 
   it('never repeats the dispatch POST on a workflow rerun', () => {

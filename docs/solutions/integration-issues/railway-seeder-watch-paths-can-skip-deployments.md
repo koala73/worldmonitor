@@ -254,14 +254,20 @@ runner-less orphan may remain visible forever without blocking production: it
 owns no workflow-level production lock and any later runner must contend for
 the same bounded Durable Object lease.
 
-GitHub evidence is bounded instead of rescanning the permanent Actions archive:
-the watchdog inventories a 24-hour target-workflow summary window and hydrates
-attempt jobs only for active, recent, durably referenced, or non-success
-terminal runs, under a
+GitHub evidence is bounded instead of rescanning the permanent Actions archive.
+The watchdog combines a 24-hour target-workflow summary window with separate
+queries for every active status, repeats the active sweep around the history
+read, and defers if that inventory changes. It hydrates attempt jobs only for
+active, recent, durably referenced, or non-success terminal runs, under a
 10-page ceiling, 250-request ceiling, and 10-second per-request timeout. The
-protected recovery reader uses exact run IDs when supplied, separately
-inventories every active target status, and applies its own page/request/time
-bounds. An exhausted budget fails closed.
+protected recovery reader uses exact run IDs when supplied and applies its own
+page/request/time bounds. An exhausted budget fails closed.
+
+The dormant control-plane foundation does not retire the existing
+`scripts/check-railway-reconcile-age.mjs` alarm: the unchanged target workflow
+and Seed Freshness Monitor continue to require a recent successful reconcile.
+Only the lease-aware cutover transfers stale-run ownership to the independent
+watchdog, and that cutover must land before either activation flag is enabled.
 
 The safety boundary changes at the first possible provider call. A dead
 `LEASED`/`PREPARED` owner becomes recoverable only after its fixed lease expires.

@@ -166,6 +166,88 @@ version and authenticated status probes. Never rotate across an active lease,
 hold, or barrier: the old run would lose its only authorization path and the
 result would require protected operator recovery.
 
+To print the authenticated raw controller state without dispatching anything,
+run the watchdog's `status` mode from `main`:
+
+```bash
+gh workflow run railway-deploy-trigger-watchdog.yml --ref main -f mode=status
+```
+
+The resulting `Read or classify reconciliation control state` log contains the
+closed `STATUS_REPORTED` envelope. An operator with the separately provisioned
+watchdog environment variables can run the same reader locally with
+`node scripts/dispatch-stale-railway-reconcile.mjs --phase status`; never copy
+the watchdog HMAC into an issue, command history, or shared shell profile.
+
+#### Manual recovery evidence contract
+
+`evidence_json` is a closed JSON object: unknown or omitted fields fail the
+request. Every decision uses these common fields:
+
+```json
+{
+  "version": 1,
+  "evidenceId": "incident-evidence-0001",
+  "runEvidenceId": "github-run-evidence-0001",
+  "environmentEvidenceId": "breakglass-review-0001",
+  "priorKind": "dispatch_hold",
+  "priorCreatedAt": "2026-08-08T08:00:00.000Z",
+  "targetRunId": null,
+  "targetRunAttempt": null,
+  "decisionEvidence": {
+    "kind": "pre_mutation_hold",
+    "mutationBoundaryCrossed": false
+  }
+}
+```
+
+The decision-specific `decisionEvidence` schemas are:
+
+| Decision | `priorKind` | Target run | Exact decision evidence |
+|---|---|---|---|
+| `resolve_pre_mutation_hold` | `attempt` or `dispatch_hold` | Null for an unbound hold; otherwise exact run ID and attempt | `{"kind":"pre_mutation_hold","mutationBoundaryCrossed":false}` |
+| `accept_observed_convergence` | `attempt` | Required | `{"kind":"observed_convergence","resultManifest":{...}}`, where `resultManifest` is the unmodified artifact from that exact target run |
+| `authorize_current_main_retry` | `attempt` | Required unless the outage-wait form is used | `{"kind":"current_main_retry","providerCallsActive":false,"retryEvidence":...}` |
+
+`retryEvidence` has exactly one of these forms. Its `evidenceId` must differ
+from the outer evidence ID:
+
+```json
+{"kind":"terminal_inactive","evidenceId":"retry-audit-0001","auditedAt":"2026-08-08T08:45:00.000Z"}
+```
+
+```json
+{
+  "kind": "outage_wait",
+  "evidenceId": "retry-audit-0002",
+  "automaticEntrantsDisabledAt": "2026-08-08T08:00:00.000Z",
+  "allJobsTerminatedAt": "2026-08-08T08:02:00.000Z",
+  "lastPossibleLeaseAcquiredAt": "2026-08-08T08:01:00.000Z",
+  "auditedAt": "2026-08-08T08:44:00.000Z"
+}
+```
+
+The protected resolver rebuilds all GitHub and Railway proof after environment
+approval, then rechecks it immediately before recording the immutable
+resolution. The operator HMAC is removed from the process environment before
+either read-only Railway subprocess can start.
+
+#### Watchdog outcome decisions
+
+| Outcome | Automatic decision | Required evidence or next action |
+|---|---|---|
+| `HEALTHY` | No dispatch | Fresh accepted attempt and no active lease, hold, or barrier |
+| `WAITING_FOR_ACTIVE_RUN` | Defer | Exact active-run inventory, including runs older than 24 hours |
+| `RECOVERY_ELIGIBLE_OBSERVE_ONLY` | Defer | Recovery predicates passed, but activation flags do not authorize a hold |
+| `RECOVERY_AUTHORIZED` | Dispatch once | Durable hold bound to target head plus the source workflow's separate frozen head |
+| `RECOVERY_DISPATCH_ACCEPTED` | Bind exact run | GitHub returned and the helper re-read the exact run ID, attempt, workflow, branch, and head |
+| `RECOVERY_DISPATCHED` | Wait for target acceptance | Controller confirmed `RUN_BOUND` |
+| `PRE_DISPATCH_NOT_STARTED` | Close hold, fail workflow | Positive evidence that no POST began |
+| `DISPATCH_CONFIRMED_REJECTED` | Close hold, fail workflow | One definitive non-retryable GitHub 4xx response |
+| `DEFERRED_NON_GREEN_MAIN` | Defer | Main moved or its newest exact `gate` is not green |
+| `DEFERRED_AMBIGUOUS` | Preserve hold and defer | Any incomplete history, budget exhaustion, timeout, 5xx, 408/409/429, or post-send ambiguity |
+| `MANUAL_REQUIRED_AFTER_MUTATION` | Block automation | Durable mutation marker or barrier; use the protected manual recovery evidence above |
+
 ### Bootstrap R2 publisher contract
 
 The public bootstrap tiers use the dedicated private bucket
@@ -338,13 +420,15 @@ success is the replacement's final strict-acceptance step, including a verified
 no-op. The run summary prints the current prior attempt or hold ID for protected
 manual recovery.
 
-The observer inventories run summaries from the preceding 24 hours, then reads
-attempt jobs only for active, recent, durably referenced, or non-success
-terminal runs. It follows at
-most 10 pages, makes at most 250 GitHub API requests, and bounds each request to
-10 seconds. Durable barriers and dispatch holds remain authoritative beyond
-that window; exhausting any read budget defers recovery rather than dispatching
-on partial history.
+The observer combines run summaries from the preceding 24 hours with separate
+queries for every active target status, including runs that started before that
+window. It repeats the active sweep around the history read and defers if the
+inventory changes, then reads attempt jobs only for active, recent, durably
+referenced, or non-success terminal runs. It follows at most 10 pages per
+query, makes at most 250 GitHub API requests, and bounds each request to 10
+seconds. Durable barriers and dispatch holds remain authoritative beyond that
+window; exhausting any read budget defers recovery rather than dispatching on
+partial history.
 
 Do **not** use `railway redeploy`: Railway documents it as rebuilding the most
 recent deployment with the same code, so it cannot pick up a newer fixed commit.
