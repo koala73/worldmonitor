@@ -961,10 +961,10 @@ export class DataLoaderManager implements AppModule {
           tasks.push({ name: 'supplyChain', task: () => runGuarded('supplyChain', () => this.loadSupplyChain()) });
         }
         if (shouldLoad('china-corridors')) {
-          tasks.push({ name: 'chinaCorridors', task: () => runGuarded('chinaCorridors', () => this.loadChinaCorridors()) });
+          tasks.push({ name: 'chinaCorridors', task: () => runGuarded('chinaCorridors', () => this.loadChinaCorridors({ skipIfPopulated: true })) });
         }
         if (shouldLoad('china-activity-nowcast')) {
-          tasks.push({ name: 'chinaActivityNowcast', task: () => runGuarded('chinaActivityNowcast', () => this.loadChinaActivityNowcast()) });
+          tasks.push({ name: 'chinaActivityNowcast', task: () => runGuarded('chinaActivityNowcast', () => this.loadChinaActivityNowcast({ skipIfPopulated: true })) });
         }
       }
     }
@@ -3935,9 +3935,14 @@ export class DataLoaderManager implements AppModule {
     }
   }
 
-  async loadChinaCorridors(): Promise<void> {
+  async loadChinaCorridors(options?: { skipIfPopulated?: boolean }): Promise<void> {
     const panel = this.ctx.panels['china-corridors'] as ChinaCorridorPanel | undefined;
     if (!panel) return;
+    // The scroll-driven loadAllData pass re-enters this on every scroll event,
+    // and the corridor service deliberately has no client cache (cacheTtlMs: 0)
+    // — so a repeat here is a full RPC. The 15-min refresh scheduler owns
+    // updates once the panel is populated.
+    if (options?.skipIfPopulated && panel.hasData()) return;
     try {
       await panel.fetchData();
     } catch (error) {
@@ -3946,9 +3951,12 @@ export class DataLoaderManager implements AppModule {
     }
   }
 
-  async loadChinaActivityNowcast(): Promise<void> {
+  async loadChinaActivityNowcast(options?: { skipIfPopulated?: boolean }): Promise<void> {
     const panel = this.ctx.panels['china-activity-nowcast'] as ChinaActivityNowcastPanel | undefined;
     if (!panel) return;
+    // Same contract as loadChinaCorridors: scroll re-entries must not refire
+    // the uncached nowcast RPC once the panel is populated.
+    if (options?.skipIfPopulated && panel.hasData()) return;
     try {
       await panel.fetchData();
     } catch (error) {
