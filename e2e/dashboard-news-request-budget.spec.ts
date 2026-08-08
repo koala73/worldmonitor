@@ -443,13 +443,17 @@ test.describe('dashboard news request budget (#5376)', () => {
       () => document.documentElement.dataset.wmEventHandlersReady === 'true',
     );
     await firstDigest;
-    await page.waitForTimeout(SECOND_LOAD_SETTLE_MS);
-
-    expect(
-      log.digestUrls.length,
-      `a 200 digest carrying no categories leaves every panel empty, so it must stay ` +
-        `retryable exactly like a failed request (attempts: ${log.digestUrls.length})`,
-    ).toBeGreaterThanOrEqual(2);
+    await expect
+      .poll(
+        () => log.digestUrls.length,
+        {
+          message:
+            'a 200 digest carrying no categories leaves every panel empty, so it must stay ' +
+            'retryable exactly like a failed request',
+          timeout: 30_000,
+        },
+      )
+      .toBeGreaterThanOrEqual(2);
   });
 
   // The same degraded 200, one layer down: what it does to the fallback rather
