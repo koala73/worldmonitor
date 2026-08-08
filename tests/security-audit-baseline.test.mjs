@@ -490,16 +490,46 @@ describe('security audit baseline', () => {
   });
 
   it('flags a baseline entry that no longer matches any current advisory', () => {
-    const withShellQuote = auditReportWith({
-      name: 'shell-quote',
-      severity: 'high',
-      title: 'shell-quote DoS',
-      url: 'https://github.com/advisories/GHSA-395f-4hp3-45gv',
-    });
+    // Every advisory currently baselined for pro-test must be present in the
+    // report for the no-stale case — one package (image-size) carries two.
+    const withAllBaselined = {
+      vulnerabilities: {
+        'shell-quote': {
+          name: 'shell-quote',
+          severity: 'high',
+          via: [{
+            name: 'shell-quote',
+            severity: 'high',
+            title: 'shell-quote DoS',
+            url: 'https://github.com/advisories/GHSA-395f-4hp3-45gv',
+          }],
+        },
+        'image-size': {
+          name: 'image-size',
+          severity: 'high',
+          via: [
+            {
+              name: 'image-size',
+              severity: 'high',
+              title: 'image-size JXL/HEIF DoS',
+              url: 'https://github.com/advisories/GHSA-5p2g-fcmc-qvqq',
+            },
+            {
+              name: 'image-size',
+              severity: 'high',
+              title: 'image-size ICNS DoS',
+              url: 'https://github.com/advisories/GHSA-w3rx-r6r6-pgpr',
+            },
+          ],
+        },
+      },
+    };
 
-    assert.deepEqual(collectStaleBaselineEntries(withShellQuote, 'pro-test/package-lock.json'), []);
+    assert.deepEqual(collectStaleBaselineEntries(withAllBaselined, 'pro-test/package-lock.json'), []);
     assert.deepEqual(collectStaleBaselineEntries({ vulnerabilities: {} }, 'pro-test/package-lock.json'), [
       'GHSA-395f-4hp3-45gv',
+      'GHSA-5p2g-fcmc-qvqq',
+      'GHSA-w3rx-r6r6-pgpr',
     ]);
     assert.deepEqual(collectStaleBaselineEntries({ vulnerabilities: {} }, 'scripts/package-lock.json'), []);
   });

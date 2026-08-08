@@ -132,14 +132,27 @@ export class ChinaCorridorPanel extends Panel {
   }
 
   public async fetchData(): Promise<boolean> {
-    this.showLoading();
+    // Re-entered by the scroll-driven loadAllData pass and the 15-min
+    // scheduler; the service has no client cache (cacheTtlMs: 0), so the
+    // loading radar must not replace rendered corridors for the whole RPC
+    // round-trip on every refresh.
+    if (!this.hasData()) this.showLoading();
     const response = await fetchChinaCorridorControlTowers();
     if (response.corridors.length === 0) {
-      this.showError('China corridor data unavailable', () => void this.fetchData());
+      // Fail-closed responses still carry all corridors marked unavailable and
+      // render normally; an empty payload on a populated panel keeps the last
+      // truthful render until the scheduler retries.
+      if (!this.hasData()) {
+        this.showError('China corridor data unavailable', () => void this.fetchData());
+      }
       return false;
     }
     this.setData(response);
     return true;
+  }
+
+  public hasData(): boolean {
+    return this.response.corridors.length > 0;
   }
 
   public setData(response: ChinaCorridorControlTowerResponse): void {
