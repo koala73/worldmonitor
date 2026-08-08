@@ -607,19 +607,316 @@ describe('quantified cross-Strait activity (#5575)', () => {
 
   it('scans repeated unterminated list anchors in linear time and recovers at valid anchors', () => {
     // The decoy uses a canonical release path so it is rejected for being
-    // unterminated, not for failing the path pattern.
+    // unterminated, not for failing the path pattern. Each decoy anchor is
+    // abandoned by the one after it: nothing enclosing it ever closes, so where
+    // its body stops is unknowable. The `</div>` variant pins that the last
+    // decoy — the only one a following bound could rescue — is rejected for
+    // that reason and not because of where the fixture's first tag happens to
+    // fall. A stray end tag closes nothing, so it must not rescue it either.
     const japanPrefix = '<a href="/js/pdf/2026/p20260103_01.pdf">x'.repeat(1_500);
     const mndPrefix = '<a href="/en/News/PLAAct/99999"><h5 class="date">2026.07.25'.repeat(1_000);
     const startedAt = performance.now();
     const japanRows = parseJapanModIndex(`${japanPrefix}${fixture('jmod-homepage.html')}`);
+    const strayClosePrefixed = parseJapanModIndex(`${japanPrefix}</div>${fixture('jmod-homepage.html')}`);
     const mndRows = parseTaiwanMndList(`${mndPrefix}${fixture('mnd-list.html')}`);
     const elapsedMs = performance.now() - startedAt;
 
     assert.equal(japanRows.length, 9);
     assert.ok(japanRows.every((row) => !row.sourceUrl.endsWith('/p20260103_01.pdf')));
+    assert.equal(strayClosePrefixed.length, 9);
+    assert.ok(strayClosePrefixed.every((row) => !row.sourceUrl.endsWith('/p20260103_01.pdf')));
     assert.equal(mndRows.length, 3);
     assert.ok(mndRows.every((row) => !row.sourceUrl.endsWith('/99999')));
     assert.ok(elapsedMs < 1_500, `expected bounded linear anchor scan, took ${Math.round(elapsedMs)}ms`);
+  });
+
+  it('keeps a stray end tag from cutting a properly closed anchor short', () => {
+    // `</div>` with no `<div>` open closes nothing, and `</br>` never can —
+    // publishers emit both. Treating any unmatched end tag as the anchor's
+    // bound would end these rows early and hand each the `<time>` text as its
+    // title, discarding the `<h5>` that follows: corrupting well-formed markup
+    // to accommodate the unterminated kind.
+    const strayEndTag = (documentId: string, tag: string) => `
+      <ul class="list-news">
+        <li>
+          <a href="/js/pdf/2026/${documentId}.pdf">
+            <time datetime="2026-08-08">2026年08月08日</time>${tag}
+            <h5>Title after the stray end tag</h5>
+          </a>
+        </li>
+      </ul>
+    `;
+
+    for (const [documentId, tag] of [['p20260808_01', '</div>'], ['p20260808_02', '</br>']]) {
+      assert.deepEqual(
+        parseJapanModIndex(strayEndTag(documentId, tag))
+          .map((row) => [row.publicationDay, row.title]),
+        [['2026-08-08', 'Title after the stray end tag']],
+        `a stray ${tag} must not bound the anchor`,
+      );
+    }
+  });
+
+  it('treats a self-closed non-void start tag as an element it opened', () => {
+    // The `/` in `<div/>` has no effect outside foreign content, so it opens a
+    // div and the first `</div>` closes that one. Skipping the push would make
+    // that `</div>` match the *enclosing* div instead — read as the anchor's
+    // ancestor closing — and cut the row off before its title. The enclosing
+    // div is what makes this observable: without it the unmatched end tag would
+    // simply be ignored, and the assertion would pass either way.
+    const rows = parseJapanModIndex(`
+      <div class="inner">
+        <a href="/js/pdf/2026/p20260808_01.pdf">
+          <div/>公表</div>
+          <time datetime="2026-08-08">2026年08月08日</time>
+          <h5>Title after the self-closed div</h5>
+        </a>
+      </div>
+    `);
+
+    assert.deepEqual(rows.map((row) => [row.publicationDay, row.title]), [
+      ['2026-08-08', 'Title after the self-closed div'],
+    ]);
+  });
+
+  it('stops a release at the sibling item when the publisher omits the closer too', () => {
+    // A publisher that drops `</a>` can drop `</li>`. Then the only end tag is
+    // the list's own `</ul>`, and without recovering the implied item close the
+    // first release runs to it and reports the SIBLING's 2026-06-01 `<time>` as
+    // its publication day — filed under another release's date, silently. The
+    // sibling here deliberately carries no `<a>`: a second anchor would abandon
+    // the first for unrelated reasons and the theft would never be observable.
+    const rows = parseJapanModIndex(`
+      <ul class="list-news">
+        <li>
+          <a href="/js/pdf/2026/p20260808_01.pdf">
+            <h5>Own title</h5>
+        <li>
+          <time datetime="2026-06-01">2026年06月01日</time>
+          <h5>Sibling with no link</h5>
+        </li>
+      </ul>
+    `);
+
+    assert.deepEqual(rows.map((row) => [row.documentId, row.publicationDay, row.title]), [
+      // Its own filename date, not the sibling's stated one.
+      ['p20260808_01', '2026-08-08', 'Own title'],
+    ]);
+  });
+
+  it('keeps a list the anchor itself opened nested rather than reading it as a sibling', () => {
+    // The scope half of the rule above: this `<li>` sits inside a `<ul>` the
+    // anchor opened, so it is the anchor's own content, not the next release.
+    // Bounding here would truncate the row before the `<h5>` carrying its title.
+    const rows = parseJapanModIndex(`
+      <ul class="list-news">
+        <li>
+          <a href="/js/pdf/2026/p20260808_01.pdf">
+            <ul><li>related release</li></ul>
+            <h5>Title after the nested list</h5>
+        </li>
+      </ul>
+    `);
+
+    assert.deepEqual(rows.map((row) => [row.documentId, row.title]), [
+      ['p20260808_01', 'Title after the nested list'],
+    ]);
+  });
+
+  it('does not let script text spell out the bound an unterminated anchor lacks', () => {
+    // The bound now comes from an end tag, so raw-text content is a way to
+    // forge one: `</li>` inside a `<script>` string is text, not a tag. The
+    // scanner's raw-text handling already suppresses it, but the ancestor rule
+    // is new and has to compose with that — otherwise page script could decide
+    // where a release row ends, and this markup would title the row `d`.
+    const rows = parseJapanModIndex(`
+      <ul class="list-news">
+        <li>
+          <a href="/js/pdf/2026/p20260808_01.pdf">
+            <script>var closer = "</li></ul>";</script>
+            <time datetime="2026-08-08">2026年08月08日</time>
+            <h5>Title the script did not cut off</h5>
+        </li>
+      </ul>
+    `);
+
+    assert.deepEqual(rows.map((row) => [row.publicationDay, row.title]), [
+      ['2026-08-08', 'Title the script did not cut off'],
+    ]);
+  });
+
+  it('recovers an unterminated anchor on the Taiwan MND list too', () => {
+    // Both publishers share scanHtmlAnchors, so the recovery reaches MND
+    // whether or not MND needs it today. Pinning it here means a future change
+    // to the bound cannot quietly widen or narrow the other publisher's
+    // discovery — the failure mode would otherwise surface only in production.
+    const rows = parseTaiwanMndList(`
+      <div class="wrap-page3">
+        <a href="/en/News/PLAAct/87151" class="news_list">
+          <h5 class="date">2026.07.25</h5>
+          <div>PLA activities in the waters and airspace around Taiwan</div>
+      </div>
+    `);
+
+    assert.deepEqual(rows, [{
+      publicationDay: '2026-07-25',
+      sourceUrl: 'https://www.mnd.gov.tw/en/News/PLAAct/87151',
+    }]);
+  });
+
+  it('drops an anchor the response never closes rather than guessing its end', () => {
+    // A truncated body leaves the last anchor with no bound at all. Dropping it
+    // is the deliberate choice — the alternative is running the body to the end
+    // of input and inventing a title from whatever the truncation left behind.
+    // Pinned so the tradeoff has to be changed on purpose.
+    const rows = parseJapanModIndex(`
+      <ul class="list-news">
+        <li>
+          <a href="/js/pdf/2026/p20260807_01.pdf">
+            <time datetime="2026-08-07">2026年08月07日</time>
+            <h5>Complete item</h5>
+        </li>
+        <li>
+          <a href="/js/pdf/2026/p20260808_01.pdf">
+            <time datetime="2026-08-08">2026年08月08日</time>
+            <h5>Truncated mid-item`);
+
+    assert.deepEqual(rows.map((row) => row.documentId), ['p20260807_01']);
+  });
+
+  it('discovers releases from the publisher\'s unterminated news-list anchors', () => {
+    // Measured 2026-08-08 against the live homepage: the publisher opens every
+    // news-list `<a>` and never closes it, so `</li>` is the only thing that
+    // bounds the link. Requiring an explicit `</a>` dropped all five releases
+    // and produced JMOD_INDEX_EMPTY on a 200 — over both the direct and the
+    // proxy path, because the content was never the problem.
+    const rows = parseJapanModIndex(fixture('jmod-homepage-unterminated.html'));
+
+    assert.deepEqual(rows, [
+      {
+        sourceUrl: 'https://www.mod.go.jp/js/pdf/2026/p20260808_01.pdf',
+        documentId: 'p20260808_01',
+        publicationDay: '2026-08-08',
+        title: '令和８年熊本地震に係る災害派遣について(8.8)',
+      },
+      {
+        sourceUrl: 'https://www.mod.go.jp/js/pdf/2026/p20260807_02.pdf',
+        documentId: 'p20260807_02',
+        publicationDay: '2026-08-07',
+        title: '令和８年熊本地震に係る災害派遣について(8.7)',
+      },
+      {
+        sourceUrl: 'https://www.mod.go.jp/js/pdf/2026/p20260807_01.pdf',
+        documentId: 'p20260807_01',
+        publicationDay: '2026-08-07',
+        title: '熊本県宇城市における林野火災に係る災害派遣について(終報)',
+      },
+      {
+        sourceUrl: 'https://www.mod.go.jp/js/pdf/2026/p20260806_02.pdf',
+        documentId: 'p20260806_02',
+        publicationDay: '2026-08-06',
+        title: '熊本県宇城市における林野火災に係る災害派遣について',
+      },
+      {
+        sourceUrl: 'https://www.mod.go.jp/js/pdf/2026/p20260806_01.pdf',
+        documentId: 'p20260806_01',
+        publicationDay: '2026-08-06',
+        title: '令和８年熊本地震に係る災害派遣について(8.6)',
+      },
+    ]);
+  });
+
+  it('bounds an unterminated anchor at its own list item, not the next one', () => {
+    // The recovery must not swallow the following sibling. `<time>` and `<h5>`
+    // are read first-match-wins, so an over-capturing bound is only observable
+    // where the item supplies neither: this first release carries a bare title
+    // and no `<time>`, so a body running past `</li>` would hand it the
+    // sibling's 2026-06-01 datetime and the sibling's text.
+    const rows = parseJapanModIndex(`
+      <ul class="list-news">
+        <li>
+          <a href="/js/pdf/2026/p20260808_01.pdf">Own title
+        </li>
+        <li>
+          <a href="/js/pdf/2026/p20260601_01.pdf">
+            <time datetime="2026-06-01">2026年06月01日</time>
+            <h5>Sibling title</h5>
+        </li>
+      </ul>
+    `);
+
+    assert.deepEqual(rows.map((row) => [row.documentId, row.publicationDay, row.title]), [
+      // Falls back to the filename date because this item states none.
+      ['p20260808_01', '2026-08-08', 'Own title'],
+      ['p20260601_01', '2026-06-01', 'Sibling title'],
+    ]);
+  });
+
+  it('still drops an anchor a sibling anchor interrupts, even one with closed children', () => {
+    // Recovery is bounded to anchors an ANCESTOR closed. A `</span>` inside the
+    // body closes something the anchor itself opened and says nothing about
+    // where the anchor stops, so the first release here is still abandoned when
+    // the next `<a>` arrives. Pinned because the alternative — treating any
+    // preceding end tag as a bound — is what would resurrect the unterminated
+    // decoys the linear-time test above relies on being dropped.
+    const rows = parseJapanModIndex(`
+      <a href="/js/pdf/2026/p20260808_01.pdf"><span>interrupted</span>
+      <a href="/js/pdf/2026/p20260601_01.pdf"><h5>Bounded by its own end tag</h5></a>
+    `);
+
+    assert.deepEqual(rows.map((row) => [row.documentId, row.title]), [
+      ['p20260601_01', 'Bounded by its own end tag'],
+    ]);
+  });
+
+  it('tells a nested list item apart from the one that bounds the anchor', () => {
+    // The inner `</li>` closes an element the anchor itself opened and must be
+    // popped; only the outer one bounds the anchor. An implementation that
+    // leaves the inner `li` on the anchor's stack reads the outer `</li>` as a
+    // descendant close, runs the body past its own item, and loses this row.
+    // The first release states no `<time>`, so absorbing the sibling would show
+    // up as its 2026-06-01 date rather than the filename's.
+    const rows = parseJapanModIndex(`
+      <ul class="list-news">
+        <li>
+          <a href="/js/pdf/2026/p20260808_01.pdf">
+            <ul><li>related release</li></ul>
+            <h5>Own title</h5>
+        </li>
+        <li>
+          <a href="/js/pdf/2026/p20260601_01.pdf">
+            <time datetime="2026-06-01">2026年06月01日</time>
+            <h5>Sibling title</h5>
+        </li>
+      </ul>
+    `);
+
+    assert.deepEqual(rows.map((row) => [row.documentId, row.publicationDay, row.title]), [
+      ['p20260808_01', '2026-08-08', 'Own title'],
+      ['p20260601_01', '2026-06-01', 'Sibling title'],
+    ]);
+  });
+
+  it('does not let a stray end tag stand in for the missing bound', () => {
+    // The companion case to the closed-anchor test above: here the publisher
+    // also omitted `</a>`, so the anchor genuinely needs a bound and `</br>` is
+    // the first end tag to arrive. It still must not supply one — the row's
+    // real bound is the `</li>` after its title, and stopping early would cost
+    // the `<h5>`. Unmatched is unmatched whether or not an anchor is waiting.
+    const rows = parseJapanModIndex(`
+      <ul class="list-news">
+        <li>
+          <a href="/js/pdf/2026/p20260808_01.pdf">
+            <time datetime="2026-08-08">2026年08月08日</time>
+            </br>
+            <h5>Title after the stray end tag</h5>
+        </li>
+      </ul>
+    `);
+
+    assert.deepEqual(rows.map((row) => [row.publicationDay, row.title]), [
+      ['2026-08-08', 'Title after the stray end tag'],
+    ]);
   });
 
   it('keeps source offsets stable and reads only an exact quoted href attribute', () => {
@@ -2031,6 +2328,55 @@ describe('quantified cross-Strait activity (#5575)', () => {
         errorCode: 'JMOD_ENGLISH_INDEX_UNUSABLE',
       },
     );
+  });
+
+  it('keeps the English-index probe honest in both directions on unterminated markup', async () => {
+    // `isUsableJapanEnglishIndex` shares scanHtmlAnchors with candidate
+    // discovery, so the ancestor-close recovery reaches the probe too. Two
+    // things must hold: the probe must now read a real English release the
+    // publisher left unterminated (previously dropped, so reported unusable),
+    // and it must still refuse a challenge page that carries the same
+    // unterminated shape but no allowlisted `_NNe.pdf` — the file's claim that
+    // this probe cannot report a false green depends on the second case.
+    const shadowUrl = CROSS_STRAIT_SOURCE_CONTRACTS.japanMod.shadowIndexUrl;
+    const probeFor = async (body: string) => {
+      const baseFetch = japanMinistryFetch([]);
+      const snapshot = await fetchCrossStraitActivitySnapshot({
+        fetchFn: async (input: string | URL | Request, init?: RequestInit) => (
+          String(input) === shadowUrl ? new Response(body) : baseFetch(input, init)
+        ),
+        now: Date.parse(retrievedAt),
+        previousSnapshot: null,
+        sleepFn: async () => {},
+        proxyUrl: '',
+      });
+      return snapshot.sources
+        .find((source: { id: string }) => source.id === 'japan-mod')?.shadowIndexProbe;
+    };
+
+    const usable = await probeFor(`
+      <ul><li><a href="../pdf/2026/p20260724_05e.pdf">
+        <h5>Chinese and Russian Military Activities</h5>
+      </li></ul>
+    `);
+    assert.equal(usable?.status, 'reachable');
+    assert.equal(usable?.errorCode, null);
+
+    const challenge = await probeFor(`
+      <ul><li><a href="/cdn-cgi/challenge-platform/verify">
+        <h5>Just a moment...</h5>
+      </li></ul>
+    `);
+    assert.equal(challenge?.status, 'error');
+    assert.equal(challenge?.errorCode, 'JMOD_ENGLISH_INDEX_UNUSABLE');
+
+    // A canonical English href whose only following end tag matches nothing
+    // must not count either: the anchor is never bounded, so there is no body
+    // to call usable. Reading a stray end tag as the bound would turn this into
+    // the probe's first false green.
+    const strayBound = await probeFor('<dl><dd><a href="../pdf/2026/p20260724_05e.pdf">challenge</bogus>');
+    assert.equal(strayBound?.status, 'error');
+    assert.equal(strayBound?.errorCode, 'JMOD_ENGLISH_INDEX_UNUSABLE');
   });
 
   it('never probes the English index on a failed run and never lets it fail a recovered one', async () => {

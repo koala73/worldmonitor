@@ -502,6 +502,61 @@ export function sanitizeLockedLayers(
   return changed ? sanitized : layers;
 }
 
+export interface LockedLayerOwnershipResult {
+  layers: MapLayers;
+  gateOwned: Set<string>;
+}
+
+export function mapLayerStatesEqual(a: MapLayers, b: MapLayers): boolean {
+  const keys = Object.keys(a) as Array<keyof MapLayers>;
+  return keys.length === Object.keys(b).length && keys.every((key) => a[key] === b[key]);
+}
+
+/**
+ * Sanitize locked layers while remembering which enabled preferences the
+ * free-tier gate forced off. Existing ownership is retained across idempotent
+ * reconciliation passes where the persisted layer is already false.
+ */
+export function sanitizeLockedLayersWithOwnership(
+  layers: MapLayers,
+  existingGateOwned: ReadonlySet<string>,
+): LockedLayerOwnershipResult {
+  const gateOwned = new Set(
+    [...existingGateOwned].filter((key) => (
+      LAYER_REGISTRY[key as keyof MapLayers]?.premium === 'locked'
+    )),
+  );
+  for (const key of Object.keys(layers) as Array<keyof MapLayers>) {
+    if (layers[key] && LAYER_REGISTRY[key]?.premium === 'locked') {
+      gateOwned.add(key);
+    }
+  }
+  return {
+    layers: sanitizeLockedLayers(layers, false),
+    gateOwned,
+  };
+}
+
+/** Restore only valid premium layers previously disabled by the free gate. */
+export function restoreGateOwnedLockedLayers(
+  layers: MapLayers,
+  gateOwned: ReadonlySet<string>,
+): MapLayers {
+  let changed = false;
+  const restored = { ...layers };
+  for (const rawKey of gateOwned) {
+    const key = rawKey as keyof MapLayers;
+    // CII and resilience are mutually exclusive choropleths. Ownership can
+    // outlive a later user choice to enable CII while free; that stale marker
+    // must be consumed without overriding the newer CII preference.
+    if (key === 'resilienceScore' && restored.ciiChoropleth === true) continue;
+    if (LAYER_REGISTRY[key]?.premium !== 'locked' || restored[key] === true) continue;
+    restored[key] = true;
+    changed = true;
+  }
+  return changed ? restored : layers;
+}
+
 export const LAYER_SYNONYMS: Record<string, Array<keyof MapLayers>> = {
   aviation: ['flights'],
   flight: ['flights'],

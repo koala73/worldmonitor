@@ -49,6 +49,7 @@ const VERIFIER_FAILURE_REASONS = new Set([
   'PARTIAL_MUTATION',
   'AMBIGUOUS_MUTATION',
   'CONVERGENCE_TIMEOUT',
+  'VERIFIER_CONTRACT_FAILURE',
 ]);
 
 const OPERATOR_DECISIONS = new Set([
@@ -128,6 +129,7 @@ function errorResponse(status, code) {
     CONTROL_PLANE_UNAVAILABLE: 'control plane configuration is unavailable',
     STATE_UNAVAILABLE: 'control state is unavailable',
     LEASE_HELD: 'another owner holds the lease',
+    RUN_ALREADY_ACQUIRED: 'this workflow run already acquired its non-renewable lease',
     LEASE_NOT_ACTIVE: 'the lease is not active',
     LEASE_OWNER_MISMATCH: 'lease owner does not match',
     LEASE_CAPABILITY_MISMATCH: 'lease capability does not match',
@@ -334,6 +336,10 @@ function constantTimeHexEqual(left, right) {
 
 function attemptKey(attemptId) {
   return `attempt:${attemptId}`;
+}
+
+function runAcquisitionKey(runId, runAttempt) {
+  return `run-acquisition:${runId}:${runAttempt}`;
 }
 
 function dispatchHoldKey(recoveryAttemptId) {
@@ -550,9 +556,14 @@ function randomIdentifier(randomUuid) {
   return randomUuid();
 }
 
-async function closeSupersededPreMutation(storage, meta, now) {
+function isSameRunAttempt(attempt, runId, runAttempt) {
+  return attempt.runId === runId && attempt.runAttempt === runAttempt;
+}
+
+async function closeSupersededPreMutation(storage, meta, now, runId, runAttempt) {
   if (!meta.latestAttemptId) return null;
   const previous = await getAttempt(storage, meta.latestAttemptId);
+  if (isSameRunAttempt(previous, runId, runAttempt)) reject(409, 'RUN_ALREADY_ACQUIRED');
   if (previous.state === 'PRE_MUTATION_ABORTED') return previous;
   if (!['LEASED', 'PREPARED'].includes(previous.state)) return null;
   if (previous.state === 'PREPARED' && previous.resultKind === 'NO_MUTATION') {
@@ -588,6 +599,9 @@ async function acquire(storage, body, now, randomBytes, randomUuid) {
   }
 
   const meta = await getMeta(storage);
+  if (await storage.get(runAcquisitionKey(runId, body.runAttempt)) !== undefined) {
+    reject(409, 'RUN_ALREADY_ACQUIRED');
+  }
   if (meta.barrier) reject(423, 'MUTATION_BARRIER_ACTIVE');
   let admittingHold = null;
   if (meta.activeDispatchHoldIds.length > 0) {
@@ -615,6 +629,9 @@ async function acquire(storage, body, now, randomBytes, randomUuid) {
   if (meta.currentLease) {
     if (meta.currentLease.expiresAt > now) reject(409, 'LEASE_HELD');
     const expiredAttempt = await getAttempt(storage, meta.currentLease.attemptId);
+    if (isSameRunAttempt(expiredAttempt, runId, body.runAttempt)) {
+      reject(409, 'RUN_ALREADY_ACQUIRED');
+    }
     if (!['LEASED', 'PREPARED'].includes(expiredAttempt.state)) {
       reject(503, 'STATE_UNAVAILABLE');
     }
@@ -628,7 +645,7 @@ async function acquire(storage, body, now, randomBytes, randomUuid) {
     supersededAttempt = expiredAttempt;
     meta.currentLease = null;
   } else {
-    supersededAttempt = await closeSupersededPreMutation(storage, meta, now);
+    supersededAttempt = await closeSupersededPreMutation(storage, meta, now, runId, body.runAttempt);
   }
 
   let supersededRuns = admittingHold
@@ -686,6 +703,11 @@ async function acquire(storage, body, now, randomBytes, randomUuid) {
     await storage.put(dispatchHoldKey(admittingHold.recoveryAttemptId), admittingHold);
   }
   await storage.put(attemptKey(attemptId), attempt);
+  await storage.put(runAcquisitionKey(runId, body.runAttempt), {
+    version: 1,
+    attemptId,
+    acquiredAt: now,
+  });
   await storage.put(META_KEY, meta);
   return {
     status: 201,
@@ -1476,11 +1498,14 @@ async function resolveOperator(storage, body, now, randomUuid) {
 
   const attemptId = randomIdentifier(randomUuid);
   const priorGeneration = priorAttempt?.generation ?? meta.generation;
-  const supersededRuns = appendSupersededRun(
-    priorSupersededRuns,
-    targetRunId,
-    body.targetRunAttempt,
-  );
+  // A positive convergence decision closes the uncertainty lineage. The prior
+  // attempts retain their immutable linked audit history, while the terminal
+  // record needs only the exact run whose convergence was observed. This is
+  // also the protected reset route when a real mutation lineage reaches the
+  // bounded 64-run carry-forward limit.
+  const supersededRuns = body.decision === 'accept_observed_convergence'
+    ? [{ runId: targetRunId, runAttempt: body.targetRunAttempt }]
+    : appendSupersededRun(priorSupersededRuns, targetRunId, body.targetRunAttempt);
   const resolution = {
     version: 1,
     attemptId,

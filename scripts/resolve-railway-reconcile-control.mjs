@@ -44,7 +44,11 @@ export const MUTATION_BOUNDARY_STEP_NAMES = Object.freeze([
   'Mark Railway mutation started',
   'Record manual-required reconciliation state',
 ]);
+export const MUTATION_BOUNDARY_FALLBACK_STEP_NAMES = Object.freeze([
+  'Trigger lease-fenced deploys for the exact green head',
+]);
 const MUTATION_BOUNDARY_STEPS = new Set(MUTATION_BOUNDARY_STEP_NAMES);
+const MUTATION_BOUNDARY_FALLBACK_STEPS = new Set(MUTATION_BOUNDARY_FALLBACK_STEP_NAMES);
 const IDENTIFIER = /^[A-Za-z0-9][A-Za-z0-9._:-]{7,127}$/;
 const ACTOR = /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,98}[A-Za-z0-9]|\[bot\])?$/;
 
@@ -501,6 +505,10 @@ function countPossibleMutationBoundarySteps(jobs) {
     }
     for (const step of job.steps) {
       if (MUTATION_BOUNDARY_STEPS.has(step?.name) && step?.conclusion !== 'skipped') count += 1;
+      if (MUTATION_BOUNDARY_FALLBACK_STEPS.has(step?.name)
+        && !['success', 'skipped'].includes(step?.conclusion)) {
+        count += 1;
+      }
     }
   }
   return count;

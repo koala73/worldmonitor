@@ -626,6 +626,7 @@
       "scripts/_china-news-coverage.mjs",
       "scripts/_clustering.mjs",
       "scripts/_insights-brief.mjs",
+      "scripts/_insights-synthesis-diagnostics.mjs",
       "scripts/_proxy-utils.cjs",
       "scripts/_seed-contract.mjs",
       "scripts/_seed-envelope-source.mjs",
