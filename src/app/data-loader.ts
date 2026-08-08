@@ -2224,7 +2224,7 @@ export class DataLoaderManager implements AppModule {
       const marketsPanel = this.ctx.panels['markets'] as MarketPanel | undefined;
       const hydratedDisclosures = getHydratedData('chinaCorporateDisclosures') as
         ChinaCorporateDisclosureSnapshot | undefined;
-      if (isCurrent() && hydratedDisclosures !== undefined) {
+      if (hydratedDisclosures !== undefined) {
         marketsPanel?.renderDisclosures(hydratedDisclosures);
       }
 
