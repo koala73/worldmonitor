@@ -6938,6 +6938,7 @@ function getRouteGroup(pathname) {
   if (pathname === '/notam') return 'notam';
   if (pathname === '/yahoo-chart') return 'yahoo-chart';
   if (pathname === '/aviationstack') return 'aviationstack';
+  if (pathname === '/crypto-quotes') return 'crypto-quotes';
   return 'other';
 }
 
@@ -9721,6 +9722,102 @@ function handleYahooChartRequest(req, res) {
   });
 }
 
+// ── Crypto Quotes Gap Proxy ────────────────────────────────────────────
+// Resolves CoinGecko IDs on demand from the Railway egress IP (per-ID
+// CoinGecko -> CoinPaprika) for the edge handler's bounded gap path (#6306).
+// The edge handler serves seed hits from Redis and only sends cache-miss gap
+// ids here; this route performs the provider work and never writes Redis.
+const CRYPTO_QUOTES_MAX_IDS = 25;
+
+function handleCryptoQuotesRequest(req, res) {
+  const url = new URL(req.url, `http://localhost:${PORT}`);
+  const idsParam = url.searchParams.get('ids') || '';
+  const ids = [...new Set(idsParam.split(',').map((s) => s.trim().toLowerCase()).filter(Boolean))];
+  if (ids.length === 0) {
+    return sendCompressed(req, res, 400, { 'Content-Type': 'application/json' },
+      JSON.stringify({ error: 'Missing ids parameter' }));
+  }
+  if (ids.length > CRYPTO_QUOTES_MAX_IDS) {
+    return sendCompressed(req, res, 400, { 'Content-Type': 'application/json' },
+      JSON.stringify({ error: `At most ${CRYPTO_QUOTES_MAX_IDS} ids per request` }));
+  }
+  const reverseMap = new Map(Object.entries(CRYPTO_PAPRIKA_MAP).map(([g, p]) => [p, g]));
+  const byGeckoId = new Map();
+  (async () => {
+    // CoinGecko first (matches edge fetchGapQuotes), then paprika for still-missing.
+    try {
+      const { base, headers } = coingeckoEndpoint();
+      const geckoUrl = `${base}/coins/markets?vs_currency=usd&ids=${encodeURIComponent(ids.join(','))}&order=market_cap_desc&sparkline=true&price_change_percentage=24h`;
+      const gecko = await cyberHttpGetJson(geckoUrl, headers, 15000);
+      if (Array.isArray(gecko)) {
+        for (const c of gecko) {
+          if (!c?.id) continue;
+          byGeckoId.set(c.id, {
+            id: c.id,
+            name: c.name,
+            symbol: (c.symbol || '').toLowerCase(),
+            quotes: { USD: { price: c.current_price || 0, percent_change_24h: c.price_change_percentage_24h || 0, percent_change_7d: c.price_change_percentage_7d_in_currency || 0 } },
+            sparkline_in_7d: c.sparkline_in_7d,
+          });
+        }
+      }
+    } catch (err) {
+      console.warn(`[Relay][CryptoQuotes] CoinGecko failed: ${err.message}`);
+    }
+
+    const stillMissing = ids.filter((id) => !byGeckoId.has(id));
+    if (stillMissing.length > 0) {
+      const paprikaIds = stillMissing.map((id) => CRYPTO_PAPRIKA_MAP[id]).filter(Boolean);
+      if (paprikaIds.length > 0) {
+        try {
+          const data = await _fetchCoinPaprikaTickersById(paprikaIds);
+          if (Array.isArray(data)) {
+            for (const row of data) {
+              const geckoId = reverseMap.get(row.id) || stillMissing.find((id) => CRYPTO_PAPRIKA_MAP[id] === row.id);
+              if (!geckoId || byGeckoId.has(geckoId)) continue;
+              byGeckoId.set(geckoId, row);
+            }
+          }
+        } catch (err) {
+          console.warn(`[Relay][CryptoQuotes] CoinPaprika failed: ${err.message}`);
+        }
+      }
+    }
+
+    if (byGeckoId.size === 0) {
+      return sendCompressed(req, res, 502, { 'Content-Type': 'application/json' },
+        JSON.stringify({ error: 'All crypto providers failed' }));
+    }
+
+    const quotes = [];
+    const unresolved = [];
+    for (const id of ids) {
+      const row = byGeckoId.get(id);
+      if (!row) { unresolved.push(id); continue; }
+      const prices = row.sparkline_in_7d?.price;
+      quotes.push({
+        id,
+        name: row.name || id,
+        symbol: (row.symbol || id).toUpperCase(),
+        price: row.quotes?.USD?.price || 0,
+        change: row.quotes?.USD?.percent_change_24h || 0,
+        change7d: row.quotes?.USD?.percent_change_7d || 0,
+        sparkline: prices && prices.length > 24 ? prices.slice(-48) : (prices || []),
+      });
+    }
+    return sendCompressed(req, res, 200, {
+      'Content-Type': 'application/json',
+      'Cache-Control': 'public, max-age=60, s-maxage=60, stale-while-revalidate=30',
+      'X-Crypto-Source': 'relay',
+    }, JSON.stringify({ quotes, unresolved }));
+  })().catch((err) => {
+    console.warn(`[Relay][CryptoQuotes] error: ${err.message}`);
+    return sendCompressed(req, res, 502, { 'Content-Type': 'application/json' },
+      JSON.stringify({ error: 'Crypto quotes proxy error' }));
+  });
+}
+
+
 // ── AviationStack Proxy ─────────────────────────────────────────────
 // Vercel handlers proxy flight queries through Railway to keep the API key
 // off Vercel edge and consolidate external calls on one egress IP.
@@ -10825,6 +10922,8 @@ const server = http.createServer(async (req, res) => {
     handleYouTubeLiveRequest(req, res);
   } else if (pathname === '/yahoo-chart') {
     handleYahooChartRequest(req, res);
+  } else if (pathname === '/crypto-quotes') {
+    handleCryptoQuotesRequest(req, res);
   } else if (pathname === '/notam') {
     handleNotamProxyRequest(req, res);
   } else if (pathname === '/aviationstack') {
