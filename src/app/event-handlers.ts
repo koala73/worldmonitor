@@ -18,6 +18,7 @@ import {
   FREE_MAX_SOURCES,
   countFreePanelCapUsage,
   isFreePanelCapCounted,
+  userSetPanelEnabled,
 } from '@/config/panels';
 import type { McpDataPanel } from '@/components/McpDataPanel';
 import { deleteMcpPanel, getMcpPanel, saveMcpPanel } from '@/services/mcp-store';
@@ -340,7 +341,7 @@ export class EventHandlerManager implements AppModule {
         return false;
       }
     }
-    config.enabled = true;
+    userSetPanelEnabled(config, true);
     trackPanelToggled(panelId, true);
     saveToStorage(STORAGE_KEYS.panels, this.ctx.panelSettings);
     this.applyPanelSettings();
@@ -637,7 +638,7 @@ export class EventHandlerManager implements AppModule {
 
       const config = this.ctx.panelSettings[panelId];
       if (!config) return;
-      config.enabled = false;
+      userSetPanelEnabled(config, false);
       // Live-media teardown is handled centrally by applyPanelSettings() below, which
       // calls stopLiveMediaForClose() on every now-disabled panel. Calling it here too
       // double-fired the lifecycle hook for live-news / live-webcams.
@@ -1787,10 +1788,14 @@ export class EventHandlerManager implements AppModule {
             trackPanelToggled(key, nextConfig.enabled);
             return;
           }
-          if (current.enabled !== nextConfig.enabled) {
+          const enabledChanged = current.enabled !== nextConfig.enabled;
+          if (enabledChanged) {
             trackPanelToggled(key, nextConfig.enabled);
           }
           Object.assign(current, nextConfig);
+          // Object.assign cannot DELETE a key, so a stale gate marker would
+          // survive a settings-driven toggle. Re-apply through the owner helper.
+          if (enabledChanged) userSetPanelEnabled(current, nextConfig.enabled);
         });
         saveToStorage(STORAGE_KEYS.panels, this.ctx.panelSettings);
         this.applyPanelSettings();

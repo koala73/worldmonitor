@@ -343,6 +343,22 @@ describe('scheduled seed freshness monitor', () => {
         false,
         'gdeltIntel recovered after the bulk-materializer cutover; do not suppress it again',
       );
+      assert.equal(
+        committed.acknowledged.some((entry) => entry.name === 'humanitarianSummary'),
+        false,
+        'humanitarianSummary recovered; do not suppress a future recurrence',
+      );
+      const humanitarianFailure = applyAcceptanceBaseline(
+        [{ name: 'humanitarianSummary', status: 'SEED_ERROR' }],
+        committed,
+        Date.parse('2026-08-08'),
+      );
+      assert.deepEqual(
+        humanitarianFailure.blocking.map((problem) => problem.name),
+        ['humanitarianSummary'],
+        'a future humanitarianSummary failure must block the committed acceptance gate',
+      );
+      assert.deepEqual(humanitarianFailure.acknowledged, []);
       const gdeltFailure = applyAcceptanceBaseline(
         [{ name: 'gdeltIntel', status: 'SEED_ERROR' }],
         committed,

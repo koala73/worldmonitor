@@ -7204,6 +7204,150 @@ body.playback-mode .status-dot {
   opacity: 0.7;
 }
 
+/* Watchlist picker modal */
+.wl-section-heading {
+  margin: 12px 0 8px;
+  color: var(--text);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.wl-region-bar {
+  display: flex;
+  gap: 4px;
+  padding-bottom: 8px;
+  flex-wrap: wrap;
+}
+
+.wl-pill {
+  padding: 4px 10px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: transparent;
+  color: var(--text-dim);
+  font-size: 11px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.wl-pill:hover {
+  border-color: var(--text-dim);
+  color: var(--text);
+}
+
+.wl-pill.active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #000;
+}
+
+.wl-search {
+  display: block;
+  padding-bottom: 8px;
+}
+
+.wl-search input {
+  width: 100%;
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text);
+  font-size: 12px;
+  outline: none;
+}
+
+.wl-search input:focus {
+  border-color: var(--accent);
+}
+
+.wl-pill:focus-visible,
+.wl-item:focus-visible,
+.wl-search input:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.wl-grid {
+  overflow-y: auto;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 6px;
+  align-content: start;
+  min-height: 120px;
+  max-height: 260px;
+}
+
+.wl-item {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  text-align: left;
+  gap: 8px;
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: transparent;
+  color: inherit;
+  font-family: inherit;
+  cursor: pointer;
+  transition: all 0.12s ease;
+  user-select: none;
+}
+
+.wl-item:hover {
+  border-color: var(--text-dim);
+}
+
+.wl-item.active {
+  border-color: var(--accent);
+  background: rgba(0, 200, 255, 0.06);
+}
+
+.wl-check {
+  width: 16px;
+  height: 16px;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  color: var(--accent);
+  flex-shrink: 0;
+}
+
+.wl-item.active .wl-check {
+  border-color: var(--accent);
+  background: rgba(0, 200, 255, 0.15);
+}
+
+.wl-item-info {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+
+.wl-item-name {
+  font-size: 11px;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.wl-item-ticker {
+  font-size: 9px;
+  color: var(--text-dim);
+}
+
+.wl-counter {
+  margin-top: 6px;
+  font-size: 11px;
+  color: var(--text-dim);
+}
+
 .market-data-unavailable {
   padding: 8px 0;
   color: var(--text-dim);

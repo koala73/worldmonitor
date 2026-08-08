@@ -20,6 +20,7 @@ interface StockEntry {
   symbol: string;
   name: string;
   display: string;
+  region: string;
 }
 
 interface StockConfig {
@@ -28,17 +29,17 @@ interface StockConfig {
 }
 
 const CHINA_BASKET: StockEntry[] = [
-  { symbol: '000001.SS', name: 'Shanghai Composite', display: 'SSEC' },
-  { symbol: '^HSI', name: 'Hang Seng', display: 'HSI' },
-  { symbol: '600519.SS', name: 'Kweichow Moutai', display: 'MOUTAI' },
-  { symbol: '601318.SS', name: 'Ping An Insurance', display: 'PINGAN-A' },
-  { symbol: '600900.SS', name: 'China Yangtze Power', display: 'CYPC' },
-  { symbol: '300750.SZ', name: 'CATL', display: 'CATL' },
-  { symbol: '688981.SS', name: 'SMIC', display: 'SMIC-A' },
-  { symbol: '0700.HK', name: 'Tencent', display: 'TENCENT' },
-  { symbol: '1211.HK', name: 'BYD', display: 'BYD-H' },
-  { symbol: '0939.HK', name: 'China Construction Bank', display: 'CCB-H' },
-  { symbol: '0857.HK', name: 'PetroChina', display: 'PETROCHINA-H' },
+  { symbol: '000001.SS', name: 'Shanghai Composite', display: 'SSEC', region: 'asia' },
+  { symbol: '^HSI', name: 'Hang Seng', display: 'HSI', region: 'asia' },
+  { symbol: '600519.SS', name: 'Kweichow Moutai', display: 'MOUTAI', region: 'asia' },
+  { symbol: '601318.SS', name: 'Ping An Insurance', display: 'PINGAN-A', region: 'asia' },
+  { symbol: '600900.SS', name: 'China Yangtze Power', display: 'CYPC', region: 'asia' },
+  { symbol: '300750.SZ', name: 'CATL', display: 'CATL', region: 'asia' },
+  { symbol: '688981.SS', name: 'SMIC', display: 'SMIC-A', region: 'asia' },
+  { symbol: '0700.HK', name: 'Tencent', display: 'TENCENT', region: 'asia' },
+  { symbol: '1211.HK', name: 'BYD', display: 'BYD-H', region: 'asia' },
+  { symbol: '0939.HK', name: 'China Construction Bank', display: 'CCB-H', region: 'asia' },
+  { symbol: '0857.HK', name: 'PetroChina', display: 'PETROCHINA-H', region: 'asia' },
 ];
 
 const CLIENT_VARIANT_BLOCKS: Record<string, string> = {
@@ -94,6 +95,15 @@ describe('China A/H-share market coverage (#5272)', () => {
 
   it('keeps the browser and Railway stock configurations identical', () => {
     assert.deepEqual(railwayMirror, canonical);
+  });
+
+  it('keeps both seeders on the complete shared catalog instead of private symbol lists', () => {
+    const relay = readText('scripts/ais-relay.cjs');
+    const standalone = readText('scripts/seed-market-quotes.mjs');
+    assert.match(relay, /const MARKET_SYMBOLS = _stockCfg\.symbols\.map\(\(s\) => s\.symbol\)/);
+    assert.match(standalone, /const MARKET_SYMBOLS = stocksConfig\.symbols\.map\(s => s\.symbol\)/);
+    assert.equal(canonical.symbols.length, 93);
+    assert.ok(canonical.symbols.every((entry) => entry.region), 'every catalog symbol needs region metadata');
   });
 
   it('makes the long-running Railway relay consume stock symbols and metadata from the shared config', () => {

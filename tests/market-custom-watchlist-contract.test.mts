@@ -38,9 +38,12 @@ import {
 } from '../src/services/market-watchlist.ts';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-const DEFAULTS: MarketSymbolMeta[] = (
-  JSON.parse(readFileSync(resolve(root, 'shared/stocks.json'), 'utf8')) as { symbols: MarketSymbolMeta[] }
-).symbols;
+const STOCK_CONFIG = JSON.parse(readFileSync(resolve(root, 'shared/stocks.json'), 'utf8')) as {
+  symbols: MarketSymbolMeta[];
+  defaultSymbols: string[];
+};
+const CATALOG_BY_SYMBOL = new Map(STOCK_CONFIG.symbols.map((entry) => [entry.symbol, entry]));
+const DEFAULTS: MarketSymbolMeta[] = STOCK_CONFIG.defaultSymbols.map((symbol) => CATALOG_BY_SYMBOL.get(symbol)!);
 
 const CTX = {} as ServerContext;
 const BOOTSTRAP_KEY = 'market:stocks-bootstrap:v1';

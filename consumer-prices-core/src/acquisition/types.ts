@@ -2,6 +2,10 @@ export type AcquisitionProviderName = 'playwright' | 'exa' | 'firecrawl' | 'p0';
 
 export interface FetchOptions {
   waitForSelector?: string;
+  /** Extra render settle time (ms) before capture — for storefronts whose
+   * product data hydrates late and otherwise captures as an empty shell
+   * (Carrefour MAF domains, #6182). Firecrawl only; other providers ignore it. */
+  waitFor?: number;
   timeout?: number;
   headers?: Record<string, string>;
   retries?: number;
@@ -53,6 +57,11 @@ export interface ExtractResult<T = Record<string, unknown>> {
   data: T;
   provider: AcquisitionProviderName;
   fetchedAt: Date;
+  /** Rendered page content (markdown/text) captured by the SAME provider call
+   * that produced `data`, when the provider can return it. Callers use it as
+   * ground truth to verify an extracted price actually appears on the page
+   * (price-evidence.ts, #6182). Absent = verification cannot run. */
+  pageContent?: string;
 }
 
 export interface AcquisitionProvider {
