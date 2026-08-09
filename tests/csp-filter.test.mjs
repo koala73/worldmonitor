@@ -248,6 +248,8 @@ describe('CSP violation filter (shouldSuppressCspViolation)', () => {
       assert.ok(!suppress('enforce', 'font-src', 'http://migaku-public-data.migaku.com/fonts/x/cw_0.woff2', '', false));
       assert.ok(!suppress('enforce', 'font-src', 'http://at.alicdn.com/t/c/font_1011144_jmo4009ffif.woff', '', false));
       assert.ok(!suppress('enforce', 'font-src', 'http://www.slant.co/fonts/plus-jakarta/Display-Bold.woff2', '', false));
+      assert.ok(!suppress('enforce', 'font-src', 'http://static.shopback.com/fonts/ShopBackSans-Bold.woff2', '', false));
+      assert.ok(!suppress('enforce', 'font-src', 'http://images.simplycodes.com/fonts/simply-circular/CircularXXWeb-Regular.woff2', '', false));
     });
 
     it('does NOT suppress a SIBLING registrable domain of a pinned font host', () => {
@@ -265,6 +267,8 @@ describe('CSP violation filter (shouldSuppressCspViolation)', () => {
       assert.ok(!suppress('enforce', 'font-src', 'https://cdn.migaku.com/fonts/chiron-hei-hk-webfont-2.6.7/cw_0.woff2', '', false));
       assert.ok(!suppress('enforce', 'font-src', 'https://cdn.doubao.com/obj/flow-doubao/x.woff2', '', false));
       assert.ok(!suppress('enforce', 'font-src', 'https://cdn.perplexity.ai/_agi_assets/fonts/x.woff2', '', false));
+      assert.ok(!suppress('enforce', 'font-src', 'https://cdn.shopback.com/fonts/ShopBackSans-Bold.woff2', '', false));
+      assert.ok(!suppress('enforce', 'font-src', 'https://cdn.simplycodes.com/fonts/simply-circular/CircularXXWeb-Regular.woff2', '', false));
     });
 
     it('pins the end-anchor on the shared font matcher', () => {
@@ -289,6 +293,8 @@ describe('CSP violation filter (shouldSuppressCspViolation)', () => {
       assert.ok(!suppress('enforce', 'font-src', 'https://www.slant.co/assets/regression.woff2', '', false));
       assert.ok(!suppress('enforce', 'font-src', 'https://frontend-cdn.perplexity.ai/unrelated/regression.ttf', '', false));
       assert.ok(!suppress('enforce', 'font-src', 'https://lf-flow-web-cdn.doubao.com/unrelated/regression.otf', '', false));
+      assert.ok(!suppress('enforce', 'font-src', 'https://static.shopback.com/unrelated/regression.woff2', '', false));
+      assert.ok(!suppress('enforce', 'font-src', 'https://images.simplycodes.com/unrelated/regression.woff2', '', false));
     });
 
     it('does NOT suppress a SIBLING registrable domain, or http:, on a pinned stylesheet host', () => {
@@ -389,6 +395,32 @@ describe('CSP violation filter (shouldSuppressCspViolation)', () => {
     it('does NOT suppress a slant.co lookalike host or non-font path', () => {
       assert.ok(!suppress('enforce', 'font-src', 'https://www.slant.co.evil.com/x.woff2', '', false));
       assert.ok(!suppress('enforce', 'font-src', 'https://www.slant.co/fonts/loader.js', '', false));
+    });
+
+    it('suppresses ShopBack cashback-extension webfont injection (WORLDMONITOR-TR round 4)', () => {
+      // ShopBackSans in 8 weight/style combinations from the extension's own
+      // static origin. 100% of the issue's volume in the window after the
+      // round-3 rules deployed — every host named there went silent, this one
+      // did not, which is what regressed the issue minutes after a resolve.
+      assert.ok(suppress('enforce', 'font-src', 'https://static.shopback.com/fonts/ShopBackSans-Bold.woff2', '', false));
+      assert.ok(suppress('enforce', 'font-src', 'https://static.shopback.com/fonts/ShopBackSans-BlackItalic.woff2', '', false));
+    });
+
+    it('does NOT suppress a shopback lookalike host or non-font path', () => {
+      assert.ok(!suppress('enforce', 'font-src', 'https://static.shopback.com.evil.com/x.woff2', '', false));
+      assert.ok(!suppress('enforce', 'font-src', 'https://static.shopback.com/fonts/loader.js', '', false));
+    });
+
+    it('suppresses SimplyCodes coupon-extension webfont injection (WORLDMONITOR-TR round 4)', () => {
+      // Three families (Circular XX, Neue Haas Grotesk, Degular) under one
+      // /fonts/ root — 10 distinct URLs, the second-largest remaining slice.
+      assert.ok(suppress('enforce', 'font-src', 'https://images.simplycodes.com/fonts/simply-circular/CircularXXWeb-Regular.woff2', '', false));
+      assert.ok(suppress('enforce', 'font-src', 'https://images.simplycodes.com/fonts/neue-haas-grotesk/NHaasGroteskDSPro-55Rg.woff2', '', false));
+    });
+
+    it('does NOT suppress a simplycodes lookalike host or non-font path', () => {
+      assert.ok(!suppress('enforce', 'font-src', 'https://images.simplycodes.com.evil.com/x.woff2', '', false));
+      assert.ok(!suppress('enforce', 'font-src', 'https://images.simplycodes.com/fonts/loader.js', '', false));
     });
 
     it('does NOT suppress Google Fonts under unrelated directives', () => {

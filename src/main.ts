@@ -320,6 +320,19 @@ function shouldSuppressCspViolation(
       // first-party regression.
       if (url.protocol === 'https:' && url.hostname === 'www.slant.co'
           && url.pathname.startsWith('/fonts/') && fontFile.test(url.pathname)) return true;
+      // ShopBack cashback extension injects its own UI face (ShopBackSans, 8
+      // weight/style combinations) from its static origin. Sized on the window
+      // AFTER the rules above deployed: every host named there went silent and
+      // this one was 100% of what remained, which is why the issue regressed
+      // minutes after being resolved. Exact host + font-file path like the
+      // rules above, so other shopback assets still surface.
+      if (url.protocol === 'https:' && url.hostname === 'static.shopback.com'
+          && url.pathname.startsWith('/fonts/') && fontFile.test(url.pathname)) return true;
+      // SimplyCodes coupon extension injects three overlay families (Circular
+      // XX, Neue Haas Grotesk, Degular) under one /fonts/ root — 10 distinct
+      // URLs, the second-largest remaining slice. Same exact-host shape.
+      if (url.protocol === 'https:' && url.hostname === 'images.simplycodes.com'
+          && url.pathname.startsWith('/fonts/') && fontFile.test(url.pathname)) return true;
     } catch { /* scheme-only values fall through */ }
   }
   // YouTube live stream manifests.
