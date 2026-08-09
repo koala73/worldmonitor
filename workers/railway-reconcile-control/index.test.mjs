@@ -196,6 +196,15 @@ async function acquireLease(control, clock, overrides = {}) {
 
 function operatorRequest(priorId, expectedHead, decision, overrides = {}) {
   const prior = priorAuditById.get(priorId);
+  const targetRunId = overrides.targetRunId !== undefined
+    ? overrides.targetRunId
+    : (prior?.runId ?? null);
+  const targetRunAttempt = overrides.targetRunAttempt !== undefined
+    ? overrides.targetRunAttempt
+    : (prior?.runAttempt ?? null);
+  const targetHead = overrides.targetHead !== undefined
+    ? overrides.targetHead
+    : (targetRunId === null ? null : (prior?.headSha ?? expectedHead));
   return {
     version: 1,
     operationId: (++operationCounter).toString(16).padStart(64, '0'),
@@ -217,8 +226,9 @@ function operatorRequest(priorId, expectedHead, decision, overrides = {}) {
     environmentEvidenceId: 'breakglass-review-evidence-0001',
     gateStatusId: '99',
     gateUpdatedAt: '2026-08-07T11:59:00.000Z',
-    targetRunId: prior?.runId ?? null,
-    targetRunAttempt: prior?.runAttempt ?? null,
+    targetRunId,
+    targetRunAttempt,
+    targetHead,
     ...overrides,
   };
 }
@@ -1893,7 +1903,7 @@ test('operator resolution replays the committed result across volatile evidence 
     { actor: 'different-oncall-engineer' },
     { approver: 'different-production-approver' },
     { reason: 'Reviewed a different immutable resolution reason.' },
-    { targetRunId: '31181545166', targetRunAttempt: 1 },
+    { targetRunId: '31181545166', targetRunAttempt: 1, targetHead: headSha },
   ]) {
     const reused = await send(control, clock, '/v1/operator/resolve', 'operator', {
       ...body,
@@ -2323,6 +2333,7 @@ test('superseded run lineage admits 64 unique pairs and rejects a 65th without t
   assert.equal(snapshot.currentAttempt.attemptId, lease.attempt.attemptId);
   assert.equal(snapshot.currentAttempt.supersededRuns.length, 64);
 
+  const currentHead = '8'.repeat(40);
   const converged = await send(
     control,
     clock,
@@ -2330,19 +2341,24 @@ test('superseded run lineage admits 64 unique pairs and rejects a 65th without t
     'operator',
     operatorRequest(
       lease.attempt.attemptId,
-      headSha,
+      currentHead,
       'accept_observed_convergence',
       {
         priorCreatedAt: new Date(lease.attempt.createdAt).toISOString(),
         targetRunId: run(64).runId,
         targetRunAttempt: run(64).runAttempt,
+        targetHead: headSha,
       },
     ),
   );
   assert.equal(converged.status, 200);
+  assert.equal((await responseBody(converged)).headSha, currentHead);
   snapshot = await responseBody(await getStatus(control, clock));
   assert.equal(snapshot.barrier, null);
   assert.equal(snapshot.currentAttempt.state, 'TERMINAL_ACCEPTED');
+  assert.equal(snapshot.currentAttempt.headSha, headSha);
+  assert.equal(snapshot.currentAttempt.authorizationHeadSha, currentHead);
+  assert.equal(snapshot.lastAccepted.headSha, headSha);
   assert.deepEqual(snapshot.currentAttempt.supersededRuns, [run(64)]);
 });
 
@@ -2397,8 +2413,9 @@ for (const decision of ['accept_observed_convergence', 'authorize_current_main_r
     if (decision === 'accept_observed_convergence') {
       const wrongHead = await send(control, clock, '/v1/operator/resolve', 'operator', operatorRequest(
         lease.attempt.attemptId,
-        'f'.repeat(40),
+        headSha,
         decision,
+        { targetHead: 'f'.repeat(40) },
       ));
       assert.equal(wrongHead.status, 409);
       assert.equal((await responseBody(wrongHead)).error.code, 'HEAD_SHA_MISMATCH');

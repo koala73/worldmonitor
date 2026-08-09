@@ -436,23 +436,41 @@ describe('read-only GitHub recovery proof', () => {
     }
   });
 
-  it('keeps observed-convergence acceptance bound to the exact current head', async () => {
-    await assert.rejects(
-      buildRecoveryProof(request('accept_observed_convergence'), {
-        githubClient: githubClient({ runHead: 'b'.repeat(40) }),
-        verifyConvergence: async () => ({
-          ok: true,
-          attemptId: PRIOR_ID,
-          headSha: HEAD,
-          intentDigest: 'b'.repeat(64),
-          resultDigest: 'c'.repeat(64),
-          acceptedDeploymentIds: [],
-          strict: { ok: true },
-        }),
-        now: () => NOW,
-      }),
-      (error) => error.code === 'TARGET_RUN_IDENTITY_MISMATCH',
-    );
+  it('accepts exact old-head convergence while separately revalidating current green main', async () => {
+    const incidentHead = 'b'.repeat(40);
+    const req = request('accept_observed_convergence');
+    req.evidence.decisionEvidence.resultManifest.intent.headSha = incidentHead;
+    const expectedHeads = [];
+    const verifyConvergence = async (_manifest, expectedHead) => {
+      expectedHeads.push(expectedHead);
+      return {
+        ok: true,
+        attemptId: PRIOR_ID,
+        headSha: incidentHead,
+        intentDigest: 'b'.repeat(64),
+        resultDigest: 'c'.repeat(64),
+        acceptedDeploymentIds: [],
+        strict: { ok: true },
+      };
+    };
+    const proof = await buildRecoveryProof(req, {
+      githubClient: githubClient({ runHead: incidentHead }),
+      verifyConvergence,
+      now: () => NOW,
+    });
+    const resolveCalls = [];
+    await resolveRailwayReconcileControl(req, {
+      proof,
+      githubClient: githubClient({ runHead: incidentHead }),
+      controlClient: controlClient(req.decision, resolveCalls),
+      verifyConvergence,
+      now: () => NOW,
+    });
+    assert.equal(proof.github.headSha, HEAD);
+    assert.equal(proof.github.matchingRuns[0].headSha, incidentHead);
+    assert.deepEqual(expectedHeads, [incidentHead, incidentHead]);
+    assert.equal(resolveCalls[0].expectedHead, HEAD);
+    assert.equal(resolveCalls[0].targetHead, incidentHead);
   });
 
   it('rejects a convergence manifest from another workflow producer', async () => {
@@ -723,7 +741,7 @@ describe('operator resolution decisions', () => {
         'actor', 'approver', 'decision', 'environmentEvidenceId', 'evidenceDigest',
         'evidenceId', 'expectedHead', 'gateStatusId', 'gateUpdatedAt', 'operationId',
         'operatorRunAttempt', 'operatorRunId', 'priorCreatedAt', 'priorId', 'reason', 'runEvidenceId',
-        'targetRunAttempt', 'targetRunId', 'triggeringActor',
+        'targetHead', 'targetRunAttempt', 'targetRunId', 'triggeringActor',
       ]);
       assert.equal(resolveCalls[0].priorId, PRIOR_ID);
       assert.equal(resolveCalls[0].priorCreatedAt, req.evidence.priorCreatedAt);
@@ -743,6 +761,7 @@ describe('operator resolution decisions', () => {
       assert.equal(resolveCalls[0].operationId, createOperatorOperationId(req));
       assert.equal(resolveCalls[0].targetRunId, req.evidence.targetRunId);
       assert.equal(resolveCalls[0].targetRunAttempt, req.evidence.targetRunAttempt);
+      assert.equal(resolveCalls[0].targetHead, HEAD);
       assert.match(resolveCalls[0].evidenceDigest, /^[0-9a-f]{64}$/);
       assert.equal(
         resolveCalls[0].evidenceDigest,
@@ -960,7 +979,7 @@ describe('operator resolution decisions', () => {
       'actor', 'approver', 'decision', 'environmentEvidenceId', 'evidenceDigest',
       'evidenceId', 'expectedHead', 'gateStatusId', 'gateUpdatedAt', 'operationId',
       'operatorRunAttempt', 'operatorRunId', 'priorCreatedAt', 'priorId', 'reason', 'runEvidenceId',
-      'targetRunAttempt', 'targetRunId', 'triggeringActor', 'version',
+      'targetHead', 'targetRunAttempt', 'targetRunId', 'triggeringActor', 'version',
     ]);
     assert.equal(sentBody.version, 1);
     assert.match(sentBody.evidenceDigest, /^[0-9a-f]{64}$/);

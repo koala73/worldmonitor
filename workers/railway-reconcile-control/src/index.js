@@ -421,6 +421,7 @@ function publicAttempt(attempt) {
     gateStatusId = null,
     gateUpdatedAt = null,
     priorCreatedAt = null,
+    authorizationHeadSha = null,
     supersededRuns = [],
   } = attempt;
   return {
@@ -457,6 +458,7 @@ function publicAttempt(attempt) {
     gateStatusId,
     gateUpdatedAt,
     priorCreatedAt,
+    authorizationHeadSha,
     supersededRuns: readSupersededRuns(supersededRuns),
   };
 }
@@ -1344,6 +1346,7 @@ async function resolveOperator(storage, body, now, randomUuid) {
     'gateUpdatedAt',
     'targetRunId',
     'targetRunAttempt',
+    'targetHead',
   ]);
   const operationId = requireDigest(body.operationId, 'INVALID_OPERATION_ID');
   const priorId = requireIdentifier(body.priorId, 'INVALID_PRIOR_ID');
@@ -1375,7 +1378,11 @@ async function resolveOperator(storage, body, now, randomUuid) {
   const targetRunId = body.targetRunId === null
     ? null
     : requireIdentifier(body.targetRunId, 'INVALID_TARGET_RUN_ID', 24);
+  const targetHead = body.targetHead === null ? null : requireHeadSha(body.targetHead);
   if ((targetRunId === null) !== (body.targetRunAttempt === null)) {
+    reject(400, 'INVALID_TARGET_RUN_EVIDENCE');
+  }
+  if ((targetRunId === null) !== (targetHead === null)) {
     reject(400, 'INVALID_TARGET_RUN_EVIDENCE');
   }
   if (targetRunId !== null
@@ -1394,6 +1401,7 @@ async function resolveOperator(storage, body, now, randomUuid) {
     reason,
     targetRunId,
     targetRunAttempt: body.targetRunAttempt,
+    targetHead,
   };
   const replay = await storage.get(operatorResolutionKey(operationId));
   if (replay !== undefined) {
@@ -1480,7 +1488,7 @@ async function resolveOperator(storage, body, now, randomUuid) {
     }
     if (
       body.decision === 'accept_observed_convergence'
-      && priorAttempt.headSha !== expectedHead
+      && priorAttempt.headSha !== targetHead
     ) {
       reject(409, 'HEAD_SHA_MISMATCH');
     }
@@ -1506,11 +1514,15 @@ async function resolveOperator(storage, body, now, randomUuid) {
   const supersededRuns = body.decision === 'accept_observed_convergence'
     ? [{ runId: targetRunId, runAttempt: body.targetRunAttempt }]
     : appendSupersededRun(priorSupersededRuns, targetRunId, body.targetRunAttempt);
+  const resolutionHead = body.decision === 'accept_observed_convergence'
+    ? targetHead
+    : expectedHead;
   const resolution = {
     version: 1,
     attemptId,
     generation: meta.generation + 1,
-    headSha: expectedHead,
+    headSha: resolutionHead,
+    authorizationHeadSha: expectedHead,
     ownerId: 'protected-operator',
     state: 'OPERATOR_RESOLVED',
     createdAt: now,
@@ -1547,7 +1559,7 @@ async function resolveOperator(storage, body, now, randomUuid) {
       version: 1,
       attemptId,
       generation: resolution.generation,
-      headSha: expectedHead,
+      headSha: resolutionHead,
       intentDigest: resolution.intentDigest,
       resultDigest: evidenceDigest,
       resultKind: resolution.resultKind,

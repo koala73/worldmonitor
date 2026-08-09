@@ -210,10 +210,12 @@ The decision-specific `decisionEvidence` schemas are:
 | `authorize_current_main_retry` | `attempt` | Required unless the outage-wait form is used | `{"kind":"current_main_retry","providerCallsActive":false,"retryEvidence":...}` |
 
 The target must be an exact run of the Railway deploy-trigger workflow on the
-`main` branch. `accept_observed_convergence` also requires that run's head to
-equal the current green main head. The two superseding decisions can target an
-older main run: their purpose is to close that exact incident while the
-resolution itself is recorded against the separately revalidated current head.
+`main` branch. All decisions separately require an exact current green main
+authorization. The target can be an older main run: observed convergence is
+verified against that run's immutable manifest and exact incident head, while
+the protected resolution also records the separately revalidated current head.
+This separation keeps the convergence-acceptance route reachable after main
+moves, including when it must reset a full 64-run mutation lineage.
 
 `retryEvidence` has exactly one of these forms. Its `evidenceId` must differ
 from the outer evidence ID:

@@ -482,10 +482,8 @@ function assertTargetWorkflowRun(run, request) {
   const pathMatches = path === workflowPath || path === `${workflowPath}@refs/heads/main`;
   const targetHead = run?.head_sha;
   const targetHeadIsValid = typeof targetHead === 'string' && /^[0-9a-f]{40}$/.test(targetHead);
-  const targetMustBeCurrent = request.decision === 'accept_observed_convergence';
   if (!pathMatches || !['workflow_run', 'workflow_dispatch'].includes(run?.event)
-    || run?.head_branch !== 'main' || !targetHeadIsValid
-    || (targetMustBeCurrent && targetHead !== request.expectedCurrentHead)) {
+    || run?.head_branch !== 'main' || !targetHeadIsValid) {
     fail(
       'TARGET_RUN_IDENTITY_MISMATCH',
       'the evidence-bound run is not an allowed exact target workflow run on main',
@@ -606,6 +604,7 @@ async function collectGitHubProof(request, githubClient, observedAt) {
     matchingRuns: matching.map((run) => ({
       runId: numericId(run.id, 'workflowRunId'),
       runAttempt: requireAttempt(run.run_attempt, 'workflowRunAttempt'),
+      headSha: run.head_sha,
       status: run.status,
       conclusion: run.conclusion,
     })),
@@ -632,14 +631,26 @@ export function createOperatorOperationId(request) {
   })).digest('hex');
 }
 
-function assertManifestProducer(resultManifest, request, repository) {
+function targetRunHead(githubProof, request) {
+  if (request.evidence.targetRunId === null) return null;
+  const target = githubProof?.matchingRuns?.find(
+    (run) => run.runId === request.evidence.targetRunId,
+  );
+  if (!target || typeof target.headSha !== 'string' || !/^[0-9a-f]{40}$/.test(target.headSha)) {
+    fail('TARGET_RUN_IDENTITY_MISMATCH', 'the exact target run head was not retained in GitHub evidence');
+  }
+  return target.headSha;
+}
+
+function assertManifestProducer(resultManifest, request, repository, githubProof) {
   const intent = resultManifest?.intent;
   const producer = intent?.producer;
   const targetRunId = request.evidence.targetRunId;
   const targetRunAttempt = request.evidence.targetRunAttempt;
+  const incidentHead = targetRunHead(githubProof, request);
   if (!intent || !producer || targetRunId === null
     || intent.attemptId !== request.priorId
-    || intent.headSha !== request.expectedCurrentHead
+    || intent.headSha !== incidentHead
     || producer.repository !== repository
     || producer.workflow !== TARGET_WORKFLOW
     || String(producer.runId) !== targetRunId
@@ -652,9 +663,9 @@ function assertManifestProducer(resultManifest, request, repository) {
   }
 }
 
-function validateConvergenceProof(result, request) {
+function validateConvergenceProof(result, request, incidentHead) {
   if (!result || result.ok !== true || result.attemptId !== request.priorId
-    || result.headSha !== request.expectedCurrentHead || result.strict?.ok !== true
+    || result.headSha !== incidentHead || result.strict?.ok !== true
     || !/^[0-9a-f]{64}$/.test(result.intentDigest) || !/^[0-9a-f]{64}$/.test(result.resultDigest)
     || !Array.isArray(result.acceptedDeploymentIds)) {
     fail('CONVERGENCE_PROOF_INVALID', 'strict observed convergence did not prove the exact prior attempt and head');
@@ -680,10 +691,13 @@ export async function buildRecoveryProof(uncheckedRequest, {
       request.evidence.decisionEvidence.resultManifest,
       request,
       githubClient.repository,
+      github,
     );
+    const incidentHead = targetRunHead(github, request);
     convergence = validateConvergenceProof(
-      await verifyConvergence(request.evidence.decisionEvidence.resultManifest, request.expectedCurrentHead),
+      await verifyConvergence(request.evidence.decisionEvidence.resultManifest, incidentHead),
       request,
+      incidentHead,
     );
   }
   if (request.decision === 'authorize_current_main_retry') {
@@ -715,7 +729,9 @@ function validateProof(proof, request, now) {
   const observedAt = requireTimestamp(proof.github.observedAt, 'proof.github.observedAt', now);
   if (observedAt > preparedAt) fail('PROOF_SCHEMA_INVALID', 'proof predates its GitHub observation');
   if (now - preparedAt > PROOF_MAX_AGE_MS) fail('PROOF_STALE', 'recovery proof is older than ten minutes');
-  if (request.decision === 'accept_observed_convergence') validateConvergenceProof(proof.convergence, request);
+  if (request.decision === 'accept_observed_convergence') {
+    validateConvergenceProof(proof.convergence, request, targetRunHead(proof.github, request));
+  }
   if (request.decision === 'authorize_current_main_retry' && proof.provider?.ok !== true) {
     fail('PROVIDER_ACTIVITY_NOT_CLEARED', 'retry proof does not establish provider inactivity');
   }
@@ -783,13 +799,16 @@ export async function resolveRailwayReconcileControl(uncheckedRequest, {
       request.evidence.decisionEvidence.resultManifest,
       request,
       githubClient.repository,
+      githubBeforeRailway,
     );
+    const incidentHead = targetRunHead(githubBeforeRailway, request);
     convergence = validateConvergenceProof(
       await verifyConvergence(
         request.evidence.decisionEvidence.resultManifest,
-        request.expectedCurrentHead,
+        incidentHead,
       ),
       request,
+      incidentHead,
     );
     if (canonicalJson(convergence) !== canonicalJson(proof.convergence)) {
       fail('RAILWAY_EVIDENCE_CHANGED', 'strict convergence changed before protected resolution');
@@ -837,6 +856,7 @@ export async function resolveRailwayReconcileControl(uncheckedRequest, {
     gateUpdatedAt: freshGithub.gateUpdatedAt,
     targetRunId: request.evidence.targetRunId,
     targetRunAttempt: request.evidence.targetRunAttempt,
+    targetHead: targetRunHead(freshGithub, request),
   });
   const resolution = validateResolutionResponse(response, request, operationId);
   return {
