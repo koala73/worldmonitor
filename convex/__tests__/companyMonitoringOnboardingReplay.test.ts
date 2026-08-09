@@ -12,7 +12,7 @@ import {
   OWNER_A,
   OWNER_B,
   schema,
-} from "./companyMonitoringTestHelpers";
+} from "./companyMonitoring.helpers";
 
 installCompanyMonitoringTestEnvironment();
 

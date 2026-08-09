@@ -14,7 +14,7 @@ import {
   OWNER_A,
   schema,
   setStoredEntitlement,
-} from "./companyMonitoringTestHelpers";
+} from "./companyMonitoring.helpers";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const HOUR_MS = 60 * 60 * 1000;

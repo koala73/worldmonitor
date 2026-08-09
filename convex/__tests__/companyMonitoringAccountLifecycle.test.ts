@@ -27,7 +27,7 @@ import {
   schema,
   setStoredEntitlement,
   TEST_OWNER_FENCE_SECRET,
-} from "./companyMonitoringTestHelpers";
+} from "./companyMonitoring.helpers";
 
 installCompanyMonitoringTestEnvironment();
 

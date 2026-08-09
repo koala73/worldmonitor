@@ -32,16 +32,27 @@ function stepNamed(name) {
   return step;
 }
 
+function assertBashSyntax(script) {
+  const result = spawnSync('bash', ['-n'], { input: script, encoding: 'utf8' });
+  assert.equal(result.status, 0, result.stderr);
+}
+
 function scheduledGateStep() {
   const step = monitorSteps.find((candidate) => candidate.id === 'gate');
   assert.ok(step, 'seed freshness workflow must define its scheduled gate step');
   return step;
 }
 
-function runScheduledGate(gateState) {
-  const tempDir = mkdtempSync(join(repoRoot, '.tmp-seed-freshness-gate-'));
-  const fakeBin = join(tempDir, 'bin');
-  const fakeGh = join(fakeBin, 'gh');
+const HEAD_SHA = '0123456789abcdef';
+// Frozen so the age bound is a boundary, not a race against the wall clock:
+// `date` is faked below and every ancestor age is expressed against this.
+const FAKE_NOW_SECONDS = 1_785_000_000;
+
+// Puts the latest `gate` status on a second API page followed by an older status
+// with the same second-resolution timestamp. GitHub returns status history
+// newest-first, so this proves the workflow neither truncates the response nor
+// reorders equal timestamps into stale state.
+function statusPages(gateState) {
   const nonGateStatuses = Array.from({ length: 100 }, (_, index) => ({
     context: `railway-${index}`,
     state: 'success',
@@ -61,27 +72,91 @@ function runScheduledGate(gateState) {
           updated_at: '2026-07-29T12:01:00Z',
         },
       ];
+  return JSON.stringify([nonGateStatuses, gateStatuses]);
+}
+
+/**
+ * Execute the scheduled gate step against a fabricated main history.
+ *
+ * `ancestors` are `{ sha, state, ageSeconds }` in `git log --first-parent`
+ * order (newest first), the same order the step consumes them in.
+ */
+function runScheduledGate(head, ancestors = []) {
+  const tempDir = mkdtempSync(join(repoRoot, '.tmp-seed-freshness-gate-'));
+  const fakeBin = join(tempDir, 'bin');
+  const statusDir = join(tempDir, 'statuses');
+  const outputFile = join(tempDir, 'github-output');
+  const requestLog = join(tempDir, 'requested-shas');
+  const gitLogFile = join(tempDir, 'git-log');
 
   try {
-    // Put the latest `gate` status on a second API page followed by an older
-    // status with the same second-resolution timestamp. GitHub returns status
-    // history newest-first, so this proves the workflow neither truncates the
-    // response nor reorders equal timestamps into stale state.
     mkdirSync(fakeBin);
+    mkdirSync(statusDir);
+    writeFileSync(outputFile, '');
+    writeFileSync(requestLog, '');
+    writeFileSync(join(statusDir, `${HEAD_SHA}.json`), statusPages(head));
+    for (const ancestor of ancestors) {
+      writeFileSync(join(statusDir, `${ancestor.sha}.json`), statusPages(ancestor.state));
+    }
     writeFileSync(
-      fakeGh,
+      gitLogFile,
+      [
+        `${HEAD_SHA} ${FAKE_NOW_SECONDS}`,
+        ...ancestors.map((ancestor) => `${ancestor.sha} ${FAKE_NOW_SECONDS - ancestor.ageSeconds}`),
+        '',
+      ].join('\n'),
+    );
+
+    // Answers per commit and records which commits were asked about, so a test
+    // can prove the step did NOT walk when it had no reason to.
+    writeFileSync(
+      join(fakeBin, 'gh'),
       [
         '#!/bin/sh',
         'case " $* " in *" --paginate "*) ;; *) exit 91 ;; esac',
         'case " $* " in *" --slurp "*) ;; *) exit 92 ;; esac',
         'case "$*" in *"/statuses?per_page=100"*) ;; *) exit 93 ;; esac',
-        'printf \'%s\\n\' "$FAKE_STATUS_PAGES"',
+        'sha=""',
+        'for arg in "$@"; do',
+        '  case "$arg" in',
+        '    */commits/*/statuses*)',
+        '      rest=${arg#*/commits/}',
+        '      sha=${rest%%/statuses*}',
+        '      ;;',
+        '  esac',
+        'done',
+        '[ -n "$sha" ] || exit 94',
+        'printf \'%s\\n\' "$sha" >> "$FAKE_REQUEST_LOG"',
+        '[ -f "$FAKE_STATUS_DIR/$sha.json" ] || exit 95',
+        'cat "$FAKE_STATUS_DIR/$sha.json"',
         '',
       ].join('\n'),
     );
-    chmodSync(fakeGh, 0o755);
+    writeFileSync(
+      join(fakeBin, 'git'),
+      [
+        '#!/bin/sh',
+        'case "$1" in log) ;; *) exit 90 ;; esac',
+        'case " $* " in *" --first-parent "*) ;; *) exit 91 ;; esac',
+        // The walk must start from the revision the job checked out, not from
+        // whatever branch the runner happens to sit on.
+        'case "$*" in *"$FAKE_HEAD_SHA"*) ;; *) exit 92 ;; esac',
+        'cat "$FAKE_GIT_LOG"',
+        '',
+      ].join('\n'),
+    );
+    writeFileSync(
+      join(fakeBin, 'date'),
+      [
+        '#!/bin/sh',
+        'case "$1" in +%s) ;; *) exit 90 ;; esac',
+        'printf \'%s\\n\' "$FAKE_NOW_SECONDS"',
+        '',
+      ].join('\n'),
+    );
+    for (const command of ['gh', 'git', 'date']) chmodSync(join(fakeBin, command), 0o755);
 
-    return spawnSync(
+    const result = spawnSync(
       'bash',
       ['-e', '-c', scheduledGateStep().run],
       {
@@ -89,14 +164,26 @@ function runScheduledGate(gateState) {
         encoding: 'utf8',
         env: {
           ...process.env,
-          FAKE_STATUS_PAGES: JSON.stringify([nonGateStatuses, gateStatuses]),
+          FAKE_GIT_LOG: gitLogFile,
+          FAKE_HEAD_SHA: HEAD_SHA,
+          FAKE_NOW_SECONDS: String(FAKE_NOW_SECONDS),
+          FAKE_REQUEST_LOG: requestLog,
+          FAKE_STATUS_DIR: statusDir,
+          GATED_ANCESTOR_LIMIT: scheduledGateStep().env.GATED_ANCESTOR_LIMIT,
+          GATED_ANCESTOR_MAX_AGE_SECONDS: scheduledGateStep().env.GATED_ANCESTOR_MAX_AGE_SECONDS,
           GH_TOKEN: 'test-token',
+          GITHUB_OUTPUT: outputFile,
           GITHUB_REPOSITORY: 'koala73/worldmonitor',
-          GITHUB_SHA: '0123456789abcdef',
+          GITHUB_SHA: HEAD_SHA,
           PATH: `${fakeBin}:${process.env.PATH}`,
         },
       },
     );
+    return {
+      ...result,
+      output: readFileSync(outputFile, 'utf8'),
+      requested: readFileSync(requestLog, 'utf8').split('\n').filter(Boolean),
+    };
   } finally {
     rmSync(tempDir, { recursive: true, force: true });
   }
@@ -141,23 +228,83 @@ function runRailwayContext({ token = 'project-token', projectId = 'project-123' 
 }
 
 describe('seed freshness workflow control plane', () => {
-  it('fails closed unless the exact checked-out main SHA has a successful gate', () => {
-    const success = runScheduledGate('success');
+  it('monitors the checked-out main SHA when its gate passed', () => {
+    const success = runScheduledGate('success', [
+      { sha: 'aaaaaaaaaaaaaaaa', state: 'success', ageSeconds: 900 },
+    ]);
     assert.equal(success.status, 0, success.stderr);
+    assert.match(success.output, new RegExp(`sha=${HEAD_SHA}`));
+    // A decided head is the answer. Reading any ancestor here would mean the
+    // step can silently grade a revision nobody asked about.
+    assert.deepEqual(success.requested, [HEAD_SHA]);
+  });
 
-    for (const state of ['missing', 'pending', 'failure', 'error']) {
-      const result = runScheduledGate(state);
+  it('fails closed when the gate DECIDED against the checked-out main SHA', () => {
+    for (const state of ['failure', 'error']) {
+      const result = runScheduledGate(state, [
+        { sha: 'aaaaaaaaaaaaaaaa', state: 'success', ageSeconds: 900 },
+      ]);
       assert.notEqual(
         result.status,
         0,
-        `${state} must fail the workflow instead of producing a green skipped acceptance`,
+        `${state} must fail the workflow instead of falling back to an older revision`,
       );
-      assert.match(
-        `${result.stdout}\n${result.stderr}`,
-        new RegExp(`main gate is ${state}`),
-      );
+      assert.match(`${result.stdout}\n${result.stderr}`, new RegExp(`main gate is ${state}`));
+      assert.doesNotMatch(result.output, /sha=aaaaaaaaaaaaaaaa/);
+      // A red main is a verdict, not a race. Walking past it would retire the
+      // alarm this step exists to raise.
+      assert.deepEqual(result.requested, [HEAD_SHA]);
     }
+  });
 
+  it('falls back to the newest gated ancestor while the head gate is undecided', () => {
+    // The deploy gate posts about 6 minutes after a merge and this monitor runs
+    // every 15, so an undecided head is the normal state right after a merge —
+    // it made every merge produce at least one red run.
+    for (const state of ['missing', 'pending']) {
+      const result = runScheduledGate(state, [
+        { sha: 'bbbbbbbbbbbbbbbb', state: 'pending', ageSeconds: 300 },
+        { sha: 'cccccccccccccccc', state: 'success', ageSeconds: 1800 },
+        { sha: 'dddddddddddddddd', state: 'success', ageSeconds: 3600 },
+      ]);
+      assert.equal(result.status, 0, `${state} head with a gated ancestor must still probe: ${result.stderr}`);
+      assert.match(result.output, /sha=cccccccccccccccc/, 'must take the NEWEST gated ancestor');
+      assert.doesNotMatch(result.output, /sha=dddddddddddddddd/);
+      assert.match(`${result.stdout}`, new RegExp(`Head gate is ${state}`));
+    }
+  });
+
+  it('fails closed when no revision in the window has a successful gate', () => {
+    const result = runScheduledGate('pending', [
+      { sha: 'bbbbbbbbbbbbbbbb', state: 'pending', ageSeconds: 300 },
+      { sha: 'cccccccccccccccc', state: 'failure', ageSeconds: 900 },
+    ]);
+    assert.notEqual(result.status, 0, 'an ungated window must not produce a green acceptance');
+    assert.match(`${result.stdout}\n${result.stderr}`, /none of the last 25 main revisions/);
+    assert.equal(result.output.includes('sha='), false);
+  });
+
+  it('fails closed when the newest gated ancestor is older than the age bound', () => {
+    const bound = Number(scheduledGateStep().env.GATED_ANCESTOR_MAX_AGE_SECONDS);
+
+    const inside = runScheduledGate('pending', [
+      { sha: 'cccccccccccccccc', state: 'success', ageSeconds: bound },
+    ]);
+    assert.equal(inside.status, 0, `exactly at the bound must still probe: ${inside.stderr}`);
+    assert.match(inside.output, /sha=cccccccccccccccc/);
+
+    const outside = runScheduledGate('pending', [
+      { sha: 'cccccccccccccccc', state: 'success', ageSeconds: bound + 1 },
+      // A newer green revision does not exist; an older one must not be reached
+      // for, or "main has not been gated in hours" would monitor from last week.
+      { sha: 'dddddddddddddddd', state: 'success', ageSeconds: bound + 2 },
+    ]);
+    assert.notEqual(outside.status, 0, 'past the bound the staleness IS the fault');
+    assert.match(`${outside.stdout}\n${outside.stderr}`, new RegExp(`is ${bound + 1}s old \\(limit ${bound}s\\)`));
+    assert.equal(outside.output.includes('sha='), false);
+  });
+
+  it('keeps the gate step fail-closed and newest-first', () => {
     const gate = scheduledGateStep();
     assert.equal(gate.if, "github.event_name == 'schedule'");
     assert.equal(gate['continue-on-error'], undefined);
@@ -176,6 +323,28 @@ describe('seed freshness workflow control plane', () => {
     assert.equal(acceptance.if, GATE_GUARD, 'acceptance must stay behind the fail-closed gate and nothing else');
     assert.match(GATE_GUARD, /steps\.gate\.conclusion != 'failure'/);
     assert.equal(acceptance['continue-on-error'], undefined);
+  });
+
+  it('checks out the resolved revision before any probe reads the repository', () => {
+    const checkout = stepNamed('Check out the gated main revision');
+    const checkoutIndex = monitorSteps.indexOf(checkout);
+    const gateIndex = monitorSteps.indexOf(scheduledGateStep());
+    // The audit reads scripts/railway-services.json and the acceptance probe
+    // reads scripts/seed-freshness-baseline.json FROM THE WORKING TREE. Moving
+    // the tree after either has run would grade one revision with another
+    // revision's suppression list.
+    const firstProbeIndex = monitorSteps.findIndex(
+      (step) => step.name === 'Audit Railway ingestion deployment controls',
+    );
+    assert.ok(gateIndex < checkoutIndex && checkoutIndex < firstProbeIndex);
+    assert.equal(checkout.if, "${{ steps.gate.outputs.sha != '' && steps.gate.outputs.sha != github.sha }}");
+    // The SHA arrives as an environment value. Interpolating `${{ }}` straight
+    // into the script would splice workflow-expression output into bash.
+    assert.equal(checkout.env.GATED_SHA, '${{ steps.gate.outputs.sha }}');
+    assert.match(checkout.run, /git checkout --detach "\$GATED_SHA"/);
+    assert.doesNotMatch(checkout.run, /\$\{\{/);
+    assertBashSyntax(checkout.run);
+    assertBashSyntax(scheduledGateStep().run);
   });
 
   it('audits read-only Railway production config before grading data health', () => {

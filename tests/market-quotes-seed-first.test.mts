@@ -19,6 +19,8 @@ import {
   __resetKeyPrefixCacheForTests,
 } from '../server/_shared/redis';
 import {
+  __resetUpstreamDeadlineForTests,
+  __setUpstreamDeadlineForTests,
   MARKET_QUOTES_REQUEST_LIMIT,
   MARKET_QUOTES_UPSTREAM_LIMIT,
   filterMarketQuotes,
@@ -36,6 +38,7 @@ const ORIGINAL_ENV = {
   VERCEL_GIT_COMMIT_SHA: process.env.VERCEL_GIT_COMMIT_SHA,
   LOCAL_API_MODE: process.env.LOCAL_API_MODE,
   FINNHUB_API_KEY: process.env.FINNHUB_API_KEY,
+  ALPHA_VANTAGE_API_KEY: process.env.ALPHA_VANTAGE_API_KEY,
 };
 const ORIGINAL_FETCH = globalThis.fetch;
 const ORIGINAL_WARN = console.warn;
@@ -52,6 +55,7 @@ afterEach(() => {
   // of a Redis sentinel. Clearing it keeps each test's provider outcome its
   // own, rather than inheriting a neighbour's throttle.
   __clearLocalUnavailableBackoffForTests();
+  __resetUpstreamDeadlineForTests();
 });
 
 function quote(symbol: string, price: number) {
@@ -68,7 +72,7 @@ function seedPayload(symbols: string[]): ListMarketQuotesResponse {
   };
 }
 
-type ProviderReply = { status: number; body?: unknown };
+type ProviderReply = { status: number; body?: unknown; waitForAbort?: boolean };
 
 interface Harness {
   redis: Map<string, unknown>;
@@ -97,6 +101,9 @@ function installHarness(init: {
   delete process.env.LOCAL_API_MODE;
   if (init.finnhubKey === null) delete process.env.FINNHUB_API_KEY;
   else process.env.FINNHUB_API_KEY = init.finnhubKey ?? 'test-finnhub-key';
+  // Gap-fetch tests mock Finnhub only; clear any host AV key so the cascade
+  // cannot leak to a real Alpha Vantage network call (#6304).
+  delete process.env.ALPHA_VANTAGE_API_KEY;
   __resetKeyPrefixCacheForTests();
 
   const harness: Harness = {
@@ -136,6 +143,15 @@ function installHarness(init: {
       const reply = harness.provider.get(symbol);
       // No configured reply => Finnhub's "unknown ticker" all-zero payload.
       if (!reply) return json({ c: 0, dp: 0, h: 0, l: 0 });
+      if (reply.waitForAbort) {
+        const signal = opts?.signal;
+        assert.ok(signal, 'deadline signal must reach the provider fetch');
+        return await new Promise<Response>((_resolve, reject) => {
+          const onAbort = () => reject(signal.reason);
+          if (signal.aborted) onAbort();
+          else signal.addEventListener('abort', onAbort, { once: true });
+        });
+      }
       return json(reply.body ?? {}, reply.status);
     }
 
@@ -286,7 +302,7 @@ describe('listMarketQuotes seed-first resolution', () => {
     assert.deepEqual(symbolsOf(resp), ['AAPL']);
     assert.equal(reasonFor(resp, 'ARM'), 'MARKET_QUOTE_UNAVAILABLE_REASON_PROVIDER_NOT_CONFIGURED');
     assert.equal(resp.finnhubSkipped, true);
-    assert.equal(resp.skipReason, 'FINNHUB_API_KEY not configured');
+    assert.equal(resp.skipReason, 'FINNHUB_API_KEY and ALPHA_VANTAGE_API_KEY not configured');
     assert.deepEqual(h.finnhubCalls, []);
   });
 
@@ -321,6 +337,23 @@ describe('listMarketQuotes seed-first resolution', () => {
         `${symbol} must be reported, not omitted`,
       );
     }
+  });
+
+  it('enforces one wall-clock deadline across an in-window stalled lookup', async () => {
+    __setUpstreamDeadlineForTests(30);
+    installHarness({
+      seed: seedPayload(['AAPL']),
+      provider: { STALL: { status: 200, waitForAbort: true } },
+    });
+
+    const startedAt = Date.now();
+    const resp = await listMarketQuotes(CTX, { symbols: ['AAPL', 'STALL'] });
+
+    assert.ok(Date.now() - startedAt < 500, 'the response must not wait for the 3s provider timeout');
+    assert.equal(
+      reasonFor(resp, 'STALL'),
+      'MARKET_QUOTE_UNAVAILABLE_REASON_UPSTREAM_BUDGET_EXHAUSTED',
+    );
   });
 
   it('reports symbols dropped by the request cardinality bound', async () => {

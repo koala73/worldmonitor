@@ -1,12 +1,16 @@
 #!/usr/bin/env node
 
-import { loadEnvFile, loadSharedConfig, sleep, CHROME_UA, runSeed, parseYahooChart, writeExtraKey, extendExistingTtl, extendExistingTtlDetailed, readCanonicalEnvelopeMeta, readSeedSnapshot, writeFreshnessMetadata, writeFreshnessMetadataSafely } from './_seed-utils.mjs';
+import { loadEnvFile, loadSharedConfig, sleep, runSeed, parseYahooChart, writeExtraKey, extendExistingTtl, extendExistingTtlDetailed, readCanonicalEnvelopeMeta, readSeedSnapshot, writeFreshnessMetadata, writeFreshnessMetadataSafely } from './_seed-utils.mjs';
 import { fetchYahooJson } from './_yahoo-fetch.mjs';
-import { fetchAvBulkQuotes } from './_shared-av.mjs';
 import { buildCountryStockIndexSnapshot, countryStockIndexKey } from './_country-stock-index.mjs';
 import { loadCountryStockIndexes } from './_country-stock-index-registry.mjs';
 import { getUsEquitySession, isMultiMarketEquityTradingDay } from './shared/market-hours.cjs';
 import { mergeLastGoodQuotes } from './shared/market-quote-refresh.cjs';
+import {
+  authorizedProvidersMissingReason,
+  fetchAuthorizedEquityQuotes,
+  hasSufficientFreshQuoteCoverage,
+} from './shared/market-quote-provider.mjs';
 
 const stocksConfig = loadSharedConfig('stocks.json');
 
@@ -15,6 +19,7 @@ loadEnvFile(import.meta.url);
 const CANONICAL_KEY = 'market:stocks-bootstrap:v1';
 const CACHE_TTL = 1800;
 const YAHOO_DELAY_MS = 200;
+const FRESH_QUOTE_COUNT = Symbol('freshQuoteCount');
 
 // #6235: the RPC answers a bounded 45-country enum, so every country is
 // seedable. Previously only CN was seeded and the other 44 lazy-fetched Yahoo
@@ -27,22 +32,9 @@ const RPC_KEY = `market:quotes:v1:${[...MARKET_SYMBOLS].sort().join(',')}`;
 
 const YAHOO_ONLY = new Set(stocksConfig.yahooOnly);
 
-async function fetchFinnhubQuote(symbol, apiKey) {
-  try {
-    const url = `https://finnhub.io/api/v1/quote?symbol=${encodeURIComponent(symbol)}`;
-    const resp = await fetch(url, {
-      headers: { 'User-Agent': CHROME_UA, 'X-Finnhub-Token': apiKey },
-      signal: AbortSignal.timeout(10_000),
-    });
-    if (!resp.ok) return null;
-    const data = await resp.json();
-    if (data.c === 0 && data.h === 0 && data.l === 0) return null;
-    return { symbol, name: symbol, display: symbol, price: data.c, change: data.dp, sparkline: [] };
-  } catch (err) {
-    console.warn(`  [Finnhub] ${symbol} error: ${err.message}`);
-    return null;
-  }
-}
+const META_BY_SYMBOL = new Map(
+  stocksConfig.symbols.map((s) => [s.symbol, { name: s.name, display: s.display }]),
+);
 
 async function fetchYahooQuote(symbol) {
   try {
@@ -55,53 +47,25 @@ async function fetchYahooQuote(symbol) {
   }
 }
 
+/**
+ * Seed path uses the shared authorized provider adapter (#6304): Alpha Vantage
+ * bulk → Finnhub residual → optional Yahoo residual for yahooOnly / regional
+ * listings. Provider-specific response shapes never leak past the adapter.
+ */
 async function fetchMarketQuotes() {
   const previousPayloadPromise = readSeedSnapshot(CANONICAL_KEY);
-  const quotes = [];
   const avKey = process.env.ALPHA_VANTAGE_API_KEY;
   const finnhubKey = process.env.FINNHUB_API_KEY;
 
-  // --- Primary: Alpha Vantage REALTIME_BULK_QUOTES ---
-  if (avKey) {
-    // AV doesn't support Indian NSE symbols or Yahoo-only indices — skip those
-    const avSymbols = MARKET_SYMBOLS.filter((s) => !YAHOO_ONLY.has(s) && !s.endsWith('.NS'));
-    const avResults = await fetchAvBulkQuotes(avSymbols, avKey);
-    for (const [sym, q] of avResults) {
-      const meta = stocksConfig.symbols.find(s => s.symbol === sym);
-      quotes.push({ symbol: sym, name: meta?.name || sym, display: meta?.display || sym, price: q.price, change: q.change, sparkline: [] });
-      console.log(`  [AV] ${sym}: $${q.price} (${q.change > 0 ? '+' : ''}${q.change.toFixed(2)}%)`);
-    }
-  }
-
-  const covered = new Set(quotes.map((q) => q.symbol));
-
-  // --- Secondary: Finnhub (for any stocks not covered by AV or if AV key not set) ---
-  if (finnhubKey) {
-    const finnhubSymbols = MARKET_SYMBOLS.filter((s) => !covered.has(s) && !YAHOO_ONLY.has(s));
-    for (let i = 0; i < finnhubSymbols.length; i++) {
-      if (i > 0 && i % 10 === 0) await sleep(100);
-      const r = await fetchFinnhubQuote(finnhubSymbols[i], finnhubKey);
-      if (r) {
-        quotes.push(r);
-        covered.add(r.symbol);
-        console.log(`  [Finnhub] ${r.symbol}: $${r.price} (${r.change > 0 ? '+' : ''}${r.change}%)`);
-      }
-    }
-  }
-
-  // --- Fallback: Yahoo (for remaining symbols including Yahoo-only and Indian markets) ---
-  const allYahoo = MARKET_SYMBOLS.filter((s) => !covered.has(s));
-  for (let i = 0; i < allYahoo.length; i++) {
-    const s = allYahoo[i];
-    if (i > 0) await sleep(YAHOO_DELAY_MS);
-    const q = await fetchYahooQuote(s);
-    if (q) {
-      const meta = stocksConfig.symbols.find(x => x.symbol === s);
-      quotes.push({ ...q, symbol: s, name: meta?.name || s, display: meta?.display || s });
-      covered.add(s);
-      console.log(`  [Yahoo] ${s}: $${q.price} (${q.change > 0 ? '+' : ''}${q.change}%)`);
-    }
-  }
+  const { quotes, providersUsed } = await fetchAuthorizedEquityQuotes({
+    symbols: MARKET_SYMBOLS,
+    yahooOnly: YAHOO_ONLY,
+    metaBySymbol: META_BY_SYMBOL,
+    alphaVantageKey: avKey,
+    finnhubKey,
+    fetchYahooQuote,
+    yahooDelayMs: YAHOO_DELAY_MS,
+  });
 
   if (quotes.length === 0) {
     throw new Error('All market quote fetches failed');
@@ -112,17 +76,25 @@ async function fetchMarketQuotes() {
   const mergedQuotes = mergeLastGoodQuotes(MARKET_SYMBOLS, quotes, previousQuotes);
   const retainedCount = mergedQuotes.length - quotes.length;
   if (retainedCount > 0) console.log(`  [last-good] Retained ${retainedCount} quotes missing from this refresh`);
+  if (providersUsed.length > 0) {
+    console.log(`  [providers] ${providersUsed.join(' → ')}`);
+  }
 
   return {
     quotes: mergedQuotes,
     finnhubSkipped: !finnhubKey && !avKey,
-    skipReason: (!finnhubKey && !avKey) ? 'ALPHA_VANTAGE_API_KEY and FINNHUB_API_KEY not configured' : '',
+    skipReason: (!finnhubKey && !avKey) ? authorizedProvidersMissingReason() : '',
     rateLimited: false,
+    // Symbols are deliberately omitted by JSON.stringify, so this proof is
+    // available to validateFn at the publication boundary but never changes
+    // the public cache contract.
+    [FRESH_QUOTE_COUNT]: quotes.length,
   };
 }
 
 function validate(data) {
-  return Array.isArray(data?.quotes) && data.quotes.length >= 1;
+  return Array.isArray(data?.quotes)
+    && hasSufficientFreshQuoteCoverage(data[FRESH_QUOTE_COUNT], MARKET_SYMBOLS.length);
 }
 
 export function declareRecords(data) {

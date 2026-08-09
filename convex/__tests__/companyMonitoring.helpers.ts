@@ -1,3 +1,9 @@
+// The two-dot file name is load-bearing. `convex deploy` turns every one-dot
+// module under convex/ into a backend module and evaluates it in a Convex
+// isolate, where the `import.meta.glob` below throws
+// `InvalidModules ... import.meta unsupported` and fails the WHOLE push.
+// `*.test.ts` gets that skip by accident; this file gets it on purpose.
+// tests/convex-entrypoint-hygiene.test.mjs fails if either regresses.
 import { convexTest } from "convex-test";
 import { afterEach, beforeEach, vi } from "vitest";
 import { internal } from "../_generated/api";

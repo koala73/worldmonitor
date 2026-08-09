@@ -51,21 +51,65 @@ jobs:
         if: github.event_name == 'schedule'
         env:
           GH_TOKEN: ${{ github.token }}
+          # One commit is roughly 6 minutes of gate latency, so 25 spans far more
+          # merge traffic than the 15-minute schedule can outrun. The age bound is
+          # the real limit: past it, "main has not been gated in 6 hours" is itself
+          # the fault, and monitoring from that revision would hide it.
+          GATED_ANCESTOR_LIMIT: '25'
+          GATED_ANCESTOR_MAX_AGE_SECONDS: '21600'
         run: |
           set -o pipefail
           # GitHub guarantees newest-first status history. Preserve that order:
           # updated_at has only second resolution, so sorting can invert ties.
-          gate_state=$(
+          gate_state() {
             gh api --paginate --slurp \
-              "repos/$GITHUB_REPOSITORY/commits/$GITHUB_SHA/statuses?per_page=100" |
+              "repos/$GITHUB_REPOSITORY/commits/$1/statuses?per_page=100" |
               jq -r 'flatten | map(select(.context == "gate")) | first | .state // "missing"'
-          )
-          echo "gate_state=$gate_state"
-          if [ "$gate_state" != "success" ]; then
-            echo "::error::Cannot establish ingestion operational acceptance because main gate is $gate_state."
+          }
+          head_state=$(gate_state "$GITHUB_SHA")
+          echo "gate_state=$head_state"
+          if [ "$head_state" = "success" ]; then
+            echo "sha=$GITHUB_SHA" >> "$GITHUB_OUTPUT"
+            echo "Exact main revision passed repository gates."
+            exit 0
+          fi
+          # A gate that DECIDED against this revision still stops the probe. Only
+          # an undecided one falls through: the deploy gate posts about 6 minutes
+          # after a merge and this monitor runs every 15, so a fresh head is not
+          # yet judged rather than judged bad, and failing on it made every merge
+          # produce at least one red run.
+          if [ "$head_state" != "pending" ] && [ "$head_state" != "missing" ]; then
+            echo "::error::Cannot establish ingestion operational acceptance because main gate is $head_state."
             exit 1
           fi
-          echo "Exact main revision passed repository gates."
+          # Fall back to the newest ANCESTOR that passed. This is not a skip: the
+          # probe still runs, and it still runs against a revision the repository
+          # gates accepted. It just is not always the head.
+          now=$(date +%s)
+          while read -r sha committed; do
+            if [ -z "$sha" ] || [ "$sha" = "$GITHUB_SHA" ]; then continue; fi
+            if [ "$(gate_state "$sha")" != "success" ]; then continue; fi
+            age=$(( now - committed ))
+            if [ "$age" -gt "$GATED_ANCESTOR_MAX_AGE_SECONDS" ]; then
+              echo "::error::Cannot establish ingestion operational acceptance: main gate is $head_state and the newest gated ancestor $sha is ${age}s old (limit ${GATED_ANCESTOR_MAX_AGE_SECONDS}s)."
+              exit 1
+            fi
+            echo "sha=$sha" >> "$GITHUB_OUTPUT"
+            echo "Head gate is $head_state; monitoring the newest gated main revision $sha (${age}s old)."
+            exit 0
+          done <<EOF
+          $(git log --first-parent -n "$GATED_ANCESTOR_LIMIT" --format='%H %ct' "$GITHUB_SHA")
+          EOF
+          echo "::error::Cannot establish ingestion operational acceptance: main gate is $head_state and none of the last $GATED_ANCESTOR_LIMIT main revisions has a successful gate."
+          exit 1
+
+      # Separate from the gate step on purpose: that step stays a pure read, which
+      # is how tests/seed-freshness-workflow.test.mjs executes its bash.
+      - name: Check out the gated main revision
+        if: ${{ steps.gate.outputs.sha != '' && steps.gate.outputs.sha != github.sha }}
+        env:
+          GATED_SHA: ${{ steps.gate.outputs.sha }}
+        run: git checkout --detach "$GATED_SHA"
 
       - name: Install pinned Railway CLI
         run: npm install --global @railway/cli@5.30.1

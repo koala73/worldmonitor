@@ -12,7 +12,7 @@ import {
   OWNER_A,
   schema,
   setStoredEntitlement,
-} from "./companyMonitoringTestHelpers";
+} from "./companyMonitoring.helpers";
 
 installCompanyMonitoringTestEnvironment();
 
