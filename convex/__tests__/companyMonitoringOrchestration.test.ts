@@ -6,7 +6,7 @@ import {
   modules,
   NOW,
   schema,
-} from "./companyMonitoringTestHelpers";
+} from "./companyMonitoring.helpers";
 
 const ORCHESTRATION = (internal as any).companyMonitoring.orchestration;
 const PUBLIC_ORCHESTRATION = (api as any).companyMonitoring.orchestration;

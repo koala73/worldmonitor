@@ -11,7 +11,7 @@ import {
   OWNER_A,
   schema,
   setStoredEntitlement,
-} from "./companyMonitoringTestHelpers";
+} from "./companyMonitoring.helpers";
 
 const ORCHESTRATION = (CM as any).orchestration;
 const DAY_MS = 24 * 60 * 60 * 1000;
