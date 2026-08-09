@@ -15,7 +15,11 @@ import {
   LEGACY_PRODUCT_ALIASES,
   resolveProductToPlan,
 } from "../config/productCatalog";
-import { ANON_ID_V4_REGEX, verifyUserId } from "../lib/identitySigning";
+import {
+  ANON_ID_V4_REGEX,
+  verifyCheckoutLoginEmail,
+  verifyUserId,
+} from "../lib/identitySigning";
 import { DEV_USER_ID, isDev } from "../lib/auth";
 import { isChargedEventType, recordUnattributedEvent } from "./unattributedPayments";
 
@@ -809,6 +813,81 @@ function mergeDodoCustomerId(
   return existing.dodoCustomerId;
 }
 
+/**
+ * Returns the login email the checkout stamped into its metadata, or null when
+ * there is nothing trustworthy to use (#6335).
+ *
+ * Verified against the userId this handler ACTUALLY resolved — not the one in
+ * the metadata — so a signature minted for a different account (or replayed
+ * onto a subscription whose ownership `preferExistingCustomerOwner` reassigned)
+ * is rejected, and against the event's own clock, so a year-old checkout's
+ * metadata replayed by a `subscription.updated` cannot outrank the `users` row.
+ *
+ * Every rejection is a fallback, never a failure: the caller drops to
+ * `users.email` and then to the checkout email exactly as before.
+ */
+async function resolveSignedCheckoutLoginEmail(
+  userId: string,
+  metadata: Record<string, string> | undefined,
+  eventTimestamp: number,
+  subscriptionId: string,
+): Promise<string | null> {
+  const stamped = metadata?.wm_login_email;
+  const signature = metadata?.wm_login_email_sig;
+  const hasStamped = typeof stamped === "string" && stamped.length > 0;
+  const hasSignature = typeof signature === "string" && signature.length > 0;
+  // Neither field: an ordinary pre-#6335 checkout session. Silent by design —
+  // this is the majority shape until every in-flight session has turned over.
+  if (!hasStamped && !hasSignature) return null;
+  // Exactly one of the pair. Both halves are stamped together or not at all
+  // (checkout.ts), so a half-present pair is tampering or a stamping-side
+  // regression — warned in EITHER direction, and reporting only presence,
+  // matching the `describeUnresolvedIdentity` convention for Sentry-bound text.
+  if (!hasStamped || !hasSignature) {
+    console.warn(
+      `[subscriptionHelpers] Half-present wm_login_email pair in checkout metadata — ignoring ` +
+        `(email=${hasStamped ? "present" : "absent"}, signature=${hasSignature ? "present" : "absent"}, ` +
+        `subscriptionId=${subscriptionId})`,
+    );
+    return null;
+  }
+  // Fail closed on padding rather than normalizing it away afterwards. The
+  // signature covers the exact bytes INCLUDING surrounding whitespace, so
+  // trimming post-verification would mean the value we send is not the value we
+  // proved authentic. The stamping side always trims before signing
+  // (normalizeCheckoutLoginEmail), so no producible token is rejected here.
+  if (stamped !== stamped.trim()) return null;
+  // Verify the value EXACTLY as stamped; the signature covers those bytes.
+  const verdict = await verifyCheckoutLoginEmail(
+    userId,
+    stamped,
+    signature,
+    eventTimestamp,
+  );
+  if (verdict === "expired") {
+    // Routine, not anomalous. A `subscription.updated`→active re-delivers the
+    // original checkout's metadata for the whole life of the subscription, so
+    // every such event past the window lands here by design. Logged at
+    // console.log so it cannot dilute the tamper signal below.
+    console.log(
+      `[subscriptionHelpers] wm_login_email aged out of the checkout window — using the users row (subscriptionId=${subscriptionId})`,
+    );
+    return null;
+  }
+  if (verdict !== "valid") {
+    // Genuinely did not come from us for this (userId, email). The address
+    // itself is deliberately absent: this string reaches Sentry via Convex
+    // auto-Sentry, and a login email is exactly the PII the sibling identity
+    // diagnostics (describeUnresolvedIdentity) keep out of it.
+    console.warn(
+      `[subscriptionHelpers] wm_login_email failed signature verification — falling back to the users row (subscriptionId=${subscriptionId})`,
+    );
+    return null;
+  }
+  // Byte-identical to what the signature covers — see the padding guard above.
+  return stamped;
+}
+
 function preferExistingCustomerOwner(
   existingCustomerUserId: string | undefined,
   resolvedUserId: string,
@@ -1035,16 +1114,29 @@ export async function handleSubscriptionActive(
   // the address typed into Dodo checkout. The two can be different aliases of
   // the same person, and a "your subscription is active — sign in" email
   // addressed to the checkout alias steers the buyer into "account not known"
-  // at the login screen. The users row (populated by users:ensureRecord on
-  // every authenticated session) carries the Clerk login email; fall back to
-  // the checkout email when the row or its email is absent (accounts predating
-  // the users table, phone-only signups). The customers row above deliberately
-  // keeps the checkout email — it mirrors Dodo's record for portal lookups.
-  const userRow = await ctx.db
-    .query("users")
-    .withIndex("by_userId", (q) => q.eq("userId", userId))
-    .first();
-  const loginEmail = (userRow?.email ?? "").trim();
+  // at the login screen. The customers row above deliberately keeps the
+  // checkout email — it mirrors Dodo's record for portal lookups.
+  //
+  // #6335: prefer the login email the CHECKOUT stamped and signed. The users
+  // row (populated by users:ensureRecord) is only as fresh as the buyer's last
+  // page load for that userId, so a Clerk portal email change made in a
+  // long-lived tab leaves it pointing at the abandoned address. The stamped
+  // value is as fresh as the checkout itself. Fall through to the users row,
+  // then to the checkout email, when it is absent or unverifiable (pre-#6335
+  // sessions, phone-only signups, accounts predating the users table).
+  const signedLoginEmail = await resolveSignedCheckoutLoginEmail(
+    userId,
+    data.metadata,
+    eventTimestamp,
+    data.subscription_id,
+  );
+  const userRow = signedLoginEmail
+    ? null
+    : await ctx.db
+        .query("users")
+        .withIndex("by_userId", (q) => q.eq("userId", userId))
+        .first();
+  const loginEmail = signedLoginEmail ?? (userRow?.email ?? "").trim();
   const recipientEmail = loginEmail.length > 0 ? loginEmail : email.trim();
   const checkoutEmailDiffers =
     loginEmail.length > 0 &&
