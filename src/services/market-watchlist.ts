@@ -1,8 +1,12 @@
 /**
- * User-customizable market watchlist (additive).
+ * User-customizable market watchlist.
  *
- * Stores a list of extra tickers the user wants to track beyond the defaults.
- * Optional friendly label is supported (used as the displayed name).
+ * Two layers:
+ *  1. Catalog selection — user picks symbols from the built-in catalog (full replacement).
+ *  2. Custom entries — freeform tickers typed manually (appended on top).
+ *
+ * When a catalog selection exists the defaults are replaced entirely.
+ * Custom entries are always additive on top of whichever base list is active.
  */
 
 export interface MarketWatchlistEntry {
@@ -30,7 +34,8 @@ export interface MarketSymbolMeta {
  */
 export const MARKET_WATCHLIST_MAX_ENTRIES = 50;
 
-const STORAGE_KEY = 'wm-market-watchlist-v1';
+export const MARKET_WATCHLIST_STORAGE_KEY = 'wm-market-watchlist-v1';
+export const MARKET_CATALOG_SELECTION_STORAGE_KEY = 'wm-market-catalog-selection-v1';
 export const MARKET_WATCHLIST_EVENT = 'wm-market-watchlist-changed';
 
 function safeParseJson<T>(raw: string | null): T | null {
@@ -123,9 +128,49 @@ export function mergeWatchlistSymbols(
   return merged;
 }
 
+export interface ResolvedMarketWatchlist {
+  baseSymbols: MarketSymbolMeta[];
+  customEntries: MarketWatchlistEntry[];
+  symbols: MarketSymbolMeta[];
+  usesCatalogSelection: boolean;
+}
+
+/** Resolve the catalog base and additive searchable entries in one pure path. */
+export function resolveEffectiveMarketWatchlist(
+  catalog: readonly MarketSymbolMeta[],
+  defaults: readonly MarketSymbolMeta[],
+  catalogSelection: readonly string[] | null | undefined,
+  customEntries: readonly MarketWatchlistEntry[] | null | undefined,
+  maxCustom: number = MARKET_WATCHLIST_MAX_ENTRIES,
+): ResolvedMarketWatchlist {
+  const catalogBySymbol = new Map(catalog.map((entry) => [entry.symbol, entry]));
+  const selectedBase: MarketSymbolMeta[] = [];
+  const seenSelection = new Set<string>();
+
+  for (const raw of catalogSelection ?? []) {
+    if (typeof raw !== 'string') continue;
+    const symbol = normalizeSymbol(raw);
+    if (!symbol || seenSelection.has(symbol)) continue;
+    const entry = catalogBySymbol.get(symbol);
+    if (!entry) continue;
+    seenSelection.add(symbol);
+    selectedBase.push(entry);
+  }
+
+  const usesCatalogSelection = selectedBase.length > 0;
+  const baseSymbols = usesCatalogSelection ? selectedBase : defaults.slice();
+  const normalizedCustom = normalizeWatchlistEntries(customEntries, maxCustom);
+  return {
+    baseSymbols,
+    customEntries: normalizedCustom,
+    symbols: mergeWatchlistSymbols(baseSymbols, normalizedCustom, maxCustom),
+    usesCatalogSelection,
+  };
+}
+
 export function getMarketWatchlistEntries(): MarketWatchlistEntry[] {
   try {
-    const parsed = safeParseJson<unknown>(localStorage.getItem(STORAGE_KEY));
+    const parsed = safeParseJson<unknown>(localStorage.getItem(MARKET_WATCHLIST_STORAGE_KEY));
     if (Array.isArray(parsed)) {
       const entries: MarketWatchlistEntry[] = [];
       for (const item of parsed) {
@@ -141,20 +186,11 @@ export function getMarketWatchlistEntries(): MarketWatchlistEntry[] {
 }
 
 export function setMarketWatchlistEntries(entries: MarketWatchlistEntry[]): void {
-  const out = normalizeWatchlistEntries(entries);
-
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(out));
-  } catch {
-    // ignore
-  }
-
-  window.dispatchEvent(new CustomEvent(MARKET_WATCHLIST_EVENT, { detail: { entries: out } }));
+  setMarketWatchlistPreferences({ catalogSelection: getCatalogSelection(), entries });
 }
 
 export function resetMarketWatchlist(): void {
-  try { localStorage.removeItem(STORAGE_KEY); } catch { /* ignore */ }
-  window.dispatchEvent(new CustomEvent(MARKET_WATCHLIST_EVENT, { detail: { entries: [] } }));
+  setMarketWatchlistPreferences({ catalogSelection: getCatalogSelection(), entries: [] });
 }
 
 export function subscribeMarketWatchlistChange(cb: (entries: MarketWatchlistEntry[]) => void): () => void {
@@ -173,4 +209,66 @@ export function subscribeMarketWatchlistChange(cb: (entries: MarketWatchlistEntr
   };
   window.addEventListener(MARKET_WATCHLIST_EVENT, handler);
   return () => window.removeEventListener(MARKET_WATCHLIST_EVENT, handler);
+}
+
+// ---- Catalog selection (visual picker) ----
+
+export function getCatalogSelection(): string[] | null {
+  try {
+    const parsed = safeParseJson<unknown>(localStorage.getItem(MARKET_CATALOG_SELECTION_STORAGE_KEY));
+    if (!Array.isArray(parsed)) return null;
+    const symbols: string[] = [];
+    const seen = new Set<string>();
+    for (const raw of parsed) {
+      if (typeof raw !== 'string') continue;
+      const symbol = normalizeSymbol(raw);
+      if (!symbol || seen.has(symbol)) continue;
+      seen.add(symbol);
+      symbols.push(symbol);
+    }
+    return symbols.length > 0 ? symbols : null;
+  } catch {
+    return null;
+  }
+}
+
+export interface MarketWatchlistPreferences {
+  catalogSelection: readonly string[] | null;
+  entries: readonly MarketWatchlistEntry[];
+}
+
+/** Persist both preference layers coherently and emit exactly one change event. */
+export function setMarketWatchlistPreferences(preferences: MarketWatchlistPreferences): void {
+  const entries = normalizeWatchlistEntries(preferences.entries);
+  const catalogSelection = Array.from(new Set(
+    (preferences.catalogSelection ?? [])
+      .filter((symbol): symbol is string => typeof symbol === 'string')
+      .map(normalizeSymbol)
+      .filter(Boolean),
+  ));
+
+  try {
+    if (entries.length > 0) localStorage.setItem(MARKET_WATCHLIST_STORAGE_KEY, JSON.stringify(entries));
+    else localStorage.removeItem(MARKET_WATCHLIST_STORAGE_KEY);
+
+    if (catalogSelection.length > 0) {
+      localStorage.setItem(MARKET_CATALOG_SELECTION_STORAGE_KEY, JSON.stringify(catalogSelection));
+    } else {
+      localStorage.removeItem(MARKET_CATALOG_SELECTION_STORAGE_KEY);
+    }
+  } catch {
+    // Keep the in-memory event contract when storage is unavailable.
+  }
+
+  window.dispatchEvent(new CustomEvent(MARKET_WATCHLIST_EVENT, {
+    detail: {
+      entries,
+      catalogSelection: catalogSelection.length > 0 ? catalogSelection : null,
+    },
+  }));
+}
+
+/** Clear both stored layers atomically; consumers observe one coherent reset. */
+export function resetMarketWatchlistPreferences(): void {
+  setMarketWatchlistPreferences({ catalogSelection: null, entries: [] });
 }

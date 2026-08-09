@@ -183,6 +183,23 @@ const DASHBOARD_REFERENCE_LINKS = [
   { label: 'Tools', path: '/tools/' },
 ] as const;
 
+export const VARIANT_SWITCHER_DASHBOARD_URLS = {
+  full: 'https://worldmonitor.app/dashboard',
+  tech: 'https://tech.worldmonitor.app/dashboard',
+  finance: 'https://finance.worldmonitor.app/dashboard',
+  commodity: 'https://commodity.worldmonitor.app/dashboard',
+  energy: 'https://energy.worldmonitor.app/dashboard',
+  happy: 'https://happy.worldmonitor.app/dashboard',
+} as const;
+
+export function variantSwitcherHref(
+  targetVariant: keyof typeof VARIANT_SWITCHER_DASHBOARD_URLS,
+  currentVariant: string,
+  isLocal: boolean,
+): string {
+  return isLocal || currentVariant === targetVariant ? '#' : VARIANT_SWITCHER_DASHBOARD_URLS[targetVariant];
+}
+
 // TEMPORARY MIRROR of each panel constructor's footprint (`defaultRowSpan` /
 // `className: 'panel-wide'`, declared in src/components/*Panel.ts). A deferred
 // shell never instantiates its component, so it cannot read that footprint
@@ -881,10 +898,11 @@ export class PanelLayoutManager implements AppModule {
           <div class="variant-switcher">${(() => {
         const local = this.ctx.isDesktopApp || location.hostname === 'localhost' || location.hostname === '127.0.0.1';
         const inIframe = window.self !== window.top;
-        const vHref = (v: string, prod: string) => local || SITE_VARIANT === v ? '#' : prod;
+        const vHref = (v: keyof typeof VARIANT_SWITCHER_DASHBOARD_URLS) =>
+          variantSwitcherHref(v, SITE_VARIANT, local);
         const vTarget = (v: string) => !local && SITE_VARIANT !== v && inIframe ? 'target="_blank" rel="noopener"' : '';
         return `
-            <a href="${vHref('full', 'https://worldmonitor.app/dashboard')}"
+            <a href="${vHref('full')}"
                class="variant-option ${SITE_VARIANT === 'full' ? 'active' : ''}"
                data-variant="full"
                ${vTarget('full')}
@@ -893,7 +911,7 @@ export class PanelLayoutManager implements AppModule {
               <span class="variant-label">${t('header.world')}</span>
             </a>
             <span class="variant-divider"></span>
-            <a href="${vHref('tech', 'https://tech.worldmonitor.app/dashboard')}"
+            <a href="${vHref('tech')}"
                class="variant-option ${SITE_VARIANT === 'tech' ? 'active' : ''}"
                data-variant="tech"
                ${vTarget('tech')}
@@ -902,7 +920,7 @@ export class PanelLayoutManager implements AppModule {
               <span class="variant-label">${t('header.tech')}</span>
             </a>
             <span class="variant-divider"></span>
-            <a href="${vHref('finance', 'https://finance.worldmonitor.app/dashboard')}"
+            <a href="${vHref('finance')}"
                class="variant-option ${SITE_VARIANT === 'finance' ? 'active' : ''}"
                data-variant="finance"
                ${vTarget('finance')}
@@ -911,7 +929,7 @@ export class PanelLayoutManager implements AppModule {
               <span class="variant-label">${t('header.finance')}</span>
             </a>
             <span class="variant-divider"></span>
-            <a href="${vHref('commodity', 'https://commodity.worldmonitor.app/dashboard')}"
+            <a href="${vHref('commodity')}"
                class="variant-option ${SITE_VARIANT === 'commodity' ? 'active' : ''}"
                data-variant="commodity"
                ${vTarget('commodity')}
@@ -920,7 +938,7 @@ export class PanelLayoutManager implements AppModule {
               <span class="variant-label">${t('header.commodity')}</span>
             </a>
             <span class="variant-divider"></span>
-            <a href="${vHref('energy', 'https://energy.worldmonitor.app/dashboard')}"
+            <a href="${vHref('energy')}"
                class="variant-option ${SITE_VARIANT === 'energy' ? 'active' : ''}"
                data-variant="energy"
                ${vTarget('energy')}
@@ -929,7 +947,7 @@ export class PanelLayoutManager implements AppModule {
               <span class="variant-label">${t('header.energy')}</span>
             </a>
             <span class="variant-divider"></span>
-            <a href="${vHref('happy', 'https://happy.worldmonitor.app/dashboard')}"
+            <a href="${vHref('happy')}"
                class="variant-option ${SITE_VARIANT === 'happy' ? 'active' : ''}"
                data-variant="happy"
                ${vTarget('happy')}
@@ -1354,8 +1372,8 @@ export class PanelLayoutManager implements AppModule {
       name: t('dashboardTabs.newTabName'),
       // Same unresolved-tier caveat as applyTabPanelState: clamping a new tab
       // before the entitlement is known bakes a free-tier layout into a Pro
-      // user's workspace, and the count clamp carries no marker to undo. Once
-      // the bounded fallback fires, the tier is settled enough to clamp.
+      // user's workspace before its ownership marker can be safely reconciled.
+      // Once the bounded fallback fires, the tier is settled enough to clamp.
       panelSettings: this.isProTierResolvedOrFallback()
         ? enforceFreePanelLimit(defaults.panelSettings, isProUser())
         : defaults.panelSettings,
@@ -2926,10 +2944,9 @@ export class PanelLayoutManager implements AppModule {
         normalized = { ...normalized, resilienceScore: false };
       }
       // MapContainer also sanitizes at the renderer boundary, but update the
-      // context and persisted URL preference with the effective state first.
-      // Otherwise a settled-free user can have the locked layer stripped from
-      // the renderer while ctx.mapLayers/localStorage retain the stale `true`
-      // value and a later preference/URL reapplication resurrects it (#6045).
+      // URL-derived context with the effective display state first. A shared
+      // link is not a user preference, so it must never overwrite the saved
+      // (and cloud-synced) map-layer selection.
       if (shouldSanitizeLockedLayers(
         hasPremiumAccess(getAuthState()),
         isProTierResolved(),
@@ -2939,7 +2956,6 @@ export class PanelLayoutManager implements AppModule {
       }
       this.ctx.initialUrlState.layers = normalized;
       this.ctx.mapLayers = normalized;
-      saveToStorage(STORAGE_KEYS.mapLayers, normalized);
       this.ctx.map.setLayers(normalized);
     }
 

@@ -632,7 +632,8 @@ export interface PanelConfig {
    * Set by `enforceFreePanelLimit` when the free-tier pro gate — not the user —
    * is what turned this panel off. Distinguishes "hidden because you aren't Pro"
    * from "you hid it in settings", so the gate can be reversed on upgrade
-   * without overriding a deliberate choice. Only ever set on `cw-*` panels.
+   * without overriding a deliberate choice. Used for both `cw-*` panels and
+   * ordinary panels disabled by the free panel-count cap.
    */
   proGated?: boolean;
 }

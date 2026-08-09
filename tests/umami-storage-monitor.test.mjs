@@ -2,6 +2,8 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { describe, it } from 'node:test';
 
+import YAML from 'yaml';
+
 import {
   evaluateUmamiStorage,
   normalizeVolumeRows,
@@ -10,6 +12,11 @@ import {
 } from '../scripts/check-umami-storage.mjs';
 
 const NOW = Date.parse('2026-08-01T12:00:00.000Z');
+const workflowSource = readFileSync(
+  new URL('../.github/workflows/umami-storage-monitor.yml', import.meta.url),
+  'utf8',
+);
+const workflow = YAML.parse(workflowSource);
 
 function volume(overrides = {}) {
   return {
@@ -134,13 +141,12 @@ describe('Umami storage monitor', () => {
   });
 
   it('wires the read-only Railway check and bounded SQL contract', () => {
-    const workflow = readFileSync(new URL('../.github/workflows/umami-storage-monitor.yml', import.meta.url), 'utf8');
     const sql = readFileSync(new URL('../scripts/umami-retention.sql', import.meta.url), 'utf8');
     const executableSql = sql.replace(/^\s*--.*$/gmu, '');
 
-    assert.match(workflow, /railway volume .* list --json/);
-    assert.match(workflow, /actions\/cache@/);
-    assert.match(workflow, /check-umami-storage\.mjs/);
+    assert.match(workflowSource, /railway volume .* list --json/);
+    assert.match(workflowSource, /actions\/cache@/);
+    assert.match(workflowSource, /check-umami-storage\.mjs/);
     assert.match(sql, /interval '90 days'/);
     assert.match(sql, /LIMIT 10000/);
     assert.match(sql, /64 \* 1024 \* 1024/);
@@ -151,5 +157,25 @@ describe('Umami storage monitor', () => {
     assert.match(sql, /heatmap_event/);
     assert.match(sql, /session_replay_saved/);
     assert.doesNotMatch(sql, /ROW_NUMBER/);
+  });
+
+  it('supersedes stale probes without broadening production credential access', () => {
+    assert.deepEqual(
+      workflow.concurrency,
+      {
+        group: 'umami-storage-monitor-${{ github.ref }}',
+        'cancel-in-progress': true,
+      },
+      'the newest same-ref sample must replace a runner-less owner without cancelling main from another ref',
+    );
+    assert.deepEqual(
+      workflow.jobs.monitor.environment,
+      {
+        name: 'ingestion-acceptance-production',
+        deployment: false,
+      },
+      'the Railway token must stay in the main-only environment without deployment tracking',
+    );
+    assert.equal(workflow.jobs.monitor['timeout-minutes'], 5);
   });
 });

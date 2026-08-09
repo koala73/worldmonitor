@@ -34,7 +34,7 @@ description: "六标签页贸易政策综合面板，涵盖出口限制措施、
 | 标签页 | 方法 + 路由 | 支撑内容 |
 |---|---|---|
 | `restrictions` | `GET /api/trade/v1/get-trade-restrictions` | WTO 限制列表，含国家过滤器与上游不可用状态。 |
-| `tariffs` | `GET /api/trade/v1/get-tariff-trends` | 申报国与伙伴国之间的付费关税率时间序列。 |
+| `tariffs` | `GET /api/trade/v1/get-tariff-trends` | 付费 MFN 适用关税率时间序列（WTO `TP_A_0010`，按申报国）。 |
 | `flows` | `GET /api/trade/v1/get-trade-flows` | 商品贸易流行与同比上下文，申报国对世界（World）。 |
 | `barriers` | `GET /api/trade/v1/get-trade-barriers` | 按国家或措施类型筛选的 SPS/TBT 壁垒通报。 |
 | `revenue` | `GET /api/trade/v1/get-customs-revenue` | 美国财政部海关关税收入；bootstrap 优先，通过 `customsRevenue`。 |
@@ -64,6 +64,28 @@ description: "六标签页贸易政策综合面板，涵盖出口限制措施、
 | `INVALID_REQUEST` | `false` | 代码格式错误（仅在绕过请求校验时可达）。 |
 
 整体覆盖情况通过 `/api/health` 中的 `tradeFlows` 条目发布，其 `records` 计数为实际种子化的申报国/世界组合数量；数量不足时读作 `COVERAGE_PARTIAL`，而种子器停止运行时读作 `STALE_SEED`。
+
+### 关税趋势覆盖范围
+
+`get-tariff-trends` 同样由种子数据提供服务（付费路径）。Railway 种子器预抓取 WTO MFN 适用平均关税率（`TP_A_0010`），本 API 对该历史做切片服务 — 请求时从不调用 WTO。
+
+- **申报国（reporter）** — WTO `/reporters` 端点公布的任意 3 位 UN M49 代码。为空时默认为 `840`（美国）。
+- **伙伴国（partner）** — 为向前兼容而接受；`TP_A_0010` 是申报经济体的 MFN 适用平均关税率，**没有伙伴国维度**，因此该字段不会改变答案。
+- **产品部门（product_sector）** — 为空或 `all` 时选择“全部产品”合计，这是当前唯一被覆盖的部门。任何其他值返回 `NOT_COVERED`。
+- **年数（years）** — `1`–`30`，包含首尾两端（`years=10` 返回 11 个日历年）。种子按申报国保存完整的 30 年窗口，由处理器切片。`0` 表示使用默认值 `10`。
+
+格式错误的代码或超出范围的 `years` 会返回 HTTP 400，而不是被静默替换为 `840` / `10`。种子无法回答的合法请求会返回空 `datapoints` 以及来自 `TariffTrendUnavailableReason` 枚举的 `unavailableReason`（前缀 `TARIFF_TREND_UNAVAILABLE_REASON_`）：
+
+| 后缀 | `upstreamUnavailable` | 含义 |
+|---|---|---|
+| `UNSPECIFIED` | `false` | 正常返回数据点。 |
+| `NOT_COVERED` | `false` | 请求合法，但该申报国/部门组合不在种子覆盖范围内。 |
+| `SEED_MISSING` | `true` | 该申报国在覆盖范围内，但其缓存条目已丢失。 |
+| `COVERAGE_UNKNOWN` | `true` | 无法读取覆盖清单。 |
+| `CACHE_UNAVAILABLE` | `true` | 缓存读取本身失败。 |
+| `INVALID_REQUEST` | `false` | 代码格式错误（仅在绕过请求校验时可达）。 |
+
+整体覆盖情况通过 `/api/health` 中的 `tariffTrendsUs` 条目发布（系列名沿用历史命名；探测目标为舰队级 `seed-meta:trade:tariffs` 记录）。低于最小记录数时读作 `COVERAGE_PARTIAL`，种子器停止运行时读作 `STALE_SEED`。
 
 ## 刷新频率
 

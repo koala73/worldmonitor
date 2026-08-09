@@ -11,6 +11,12 @@ retailer:
     numResults: 5
     queryTemplate: "{canonicalName} ananinja saudi"
     urlPathContains: /product/  # ananinja.com also indexes restaurant menus (/restaurants/); restrict to product pages
+    # ananinja.com fronts Bahrain (/bh/) and Qatar (/qa/) storefronts from the
+    # same hostname — the 2026-08-08 scrape burned candidates on
+    # /bh/en/product/ and /qa/en/product/ pages whose prices are BHD/QAR, not
+    # SAR. Same multi-market pattern as noon.com; pin the Saudi storefront.
+    urlPathMustContain:
+      - /sa/en/
     inStockFromPrice: true  # ananinja.com is a price aggregator; Firecrawl misreads availability
 
   rateLimit:

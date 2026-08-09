@@ -3,7 +3,7 @@ title: "MCP 快速入门"
 description: "在五分钟内完成 Claude Desktop 与 WorldMonitor 的 MCP 集成对接，涵盖客户端安装、API 密钥认证配置、连接测试以及首次真实全球情报调用示例，快速上手实时新闻、市场与地缘冲突查询，构建你的第一个基于真实数据的 AI 情报助手工作流。"
 ---
 
-WorldMonitor 通过 [Model Context Protocol](https://modelcontextprotocol.io) 暴露 59 个实时工具——市场、冲突事件、海事咽喉要道、航空、气候、AI 简报——。本页面是从零到在 Claude 中获得有用响应的最短路径。一旦此流程可行，[MCP Server 参考](/zh/mcp-overview)中的其他内容都是可选阅读。
+WorldMonitor 通过 [Model Context Protocol](https://modelcontextprotocol.io) 暴露 60 个实时工具——市场、冲突事件、海事咽喉要道、航空、气候、AI 简报——。本页面是从零到在 Claude 中获得有用响应的最短路径。一旦此流程可行，[MCP Server 参考](/zh/mcp-overview)中的其他内容都是可选阅读。
 
 ## 1. 选择一个套餐并获取凭证
 
@@ -112,7 +112,7 @@ Claude 会从 WorldMonitor 工具集中选择 `get_market_data`，不带参数�
 
 ## 5. 浏览完整的工具目录
 
-`get_market_data` 是 59 个工具之一。其余工具涵盖：
+`get_market_data` 是 60 个工具之一。其余工具涵盖：
 
 - **地缘政治与安全**——`get_conflict_events`、`get_country_risk`、`get_military_posture`、`get_cyber_threats`、`get_sanctions_data`、`get_news_intelligence`。
 - **移动与基础设施**——`get_chokepoint_status`、`get_maritime_activity`、`get_airspace`、`get_aviation_status`、`search_flights`。
@@ -138,7 +138,7 @@ Claude 会从 WorldMonitor 工具集中选择 `get_market_data`，不带参数�
 MCP 握手在聊天侧是不可见的，但以下是序列，以便你在出现问题时知道去哪里查看：
 
 1. Claude Desktop 读取 `claude_desktop_config.json`，发现 WorldMonitor 服务器，并在首次使用时向 `https://worldmonitor.app/mcp` POST `initialize`。服务器以其能力、协商后的协议版本（默认 `2025-06-18`，与静态服务器卡片一致；固定在 `2025-03-26` 的客户端仍得到 `2025-03-26`）和一个会话级 `instructions` 字符串作为响应，该字符串告诉模型通用的 `jmespath` 参数。通告 `text/event-stream` 的客户端可能以 SSE 形式接收此响应，并带有可恢复的 `Mcp-Session-Id` / `Last-Event-ID` 游标；未通告 SSE 的客户端接收 JSON。推出详情请参见[协议协商](/zh/mcp-overview#protocol-negotiation)和[可流式 HTTP 响应](/zh/mcp-overview#streamable-http-responses)。
-2. Claude Desktop 调用 `tools/list` 并接收 59 个压缩的工具描述（每个工具 `≤120` 字节）。压缩形式保持 `tools/list` 低成本；`describe_tool` 按需返回完整定义。
+2. Claude Desktop 调用 `tools/list` 并接收 60 个压缩的工具描述（每个工具 `≤120` 字节）。压缩形式保持 `tools/list` 低成本；`describe_tool` 按需返回完整定义。
 3. 当你提出需要实时数据的问题时，Claude 选择一个工具，调用 `tools/call`，并将响应内联到其回复中。包括 `get_world_brief` 在内的缓存工具会返回已接受的快照，不会在请求时调用 LLM；实时 LLM 工具（`analyze_situation` 等）需要 1–4 秒。
 
 ## 服务端 curl

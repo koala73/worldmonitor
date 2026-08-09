@@ -38,6 +38,19 @@ import {
 const root = resolve(import.meta.dirname, '..');
 
 describe('Company Monitoring RPC contract', () => {
+  it('keeps the self-contained Edge API-key scope mirror in contract parity', () => {
+    const apiKeySource = readFileSync(resolve(root, 'api/_user-api-key.js'), 'utf8');
+    const declaration = apiKeySource.match(
+      /const COMPANY_MONITORING_SCOPES = new Set\(\[([^\]]+)]\);/,
+    );
+    assert.ok(declaration, 'Edge API-key scope mirror must remain a literal Set declaration');
+    const edgeScopes = [...declaration[1]!.matchAll(/'([^']+)'/g)]
+      .map((match) => match[1])
+      .sort();
+    const contractScopes = [...new Set(Object.values(COMPANY_MONITORING_RPC_SCOPES))].sort();
+    assert.deepEqual(edgeScopes, contractScopes);
+  });
+
   it('defines the exact ten account-scoped RPCs with independent read/write scopes', () => {
     assert.deepEqual(COMPANY_MONITORING_RPC_SCOPES, {
       CreateMonitoredCompany: 'company_monitoring:write',
@@ -112,6 +125,56 @@ describe('Company Monitoring RPC contract', () => {
     ]) {
       assert.doesNotMatch(publicContract, new RegExp(deferred, 'i'), deferred);
     }
+  });
+});
+
+describe('Company Monitoring owner-fence environment contract', () => {
+  it('documents fail-closed feature operations and the strict rotation sequence', () => {
+    const envExample = readFileSync(resolve(root, '.env.example'), 'utf8');
+    const block = envExample.match(
+      /# REQUIRED before enabling Company Monitoring feature operations[\s\S]+?(?=\n# Dodo Payments business ID)/,
+    )?.[0];
+    assert.ok(block, 'owner-fence environment block must remain documented');
+    const prose = block
+      .replace(/^# ?/gm, '')
+      .replace(/\s+/g, ' ');
+
+    assert.match(
+      prose,
+      /REQUIRED.+Company Monitoring feature operations.+Convex deployment/i,
+    );
+    assert.match(
+      prose,
+      /Missing,.+blank,.+whitespace-padded,.+malformed.+fails closed/i,
+    );
+    assert.match(
+      prose,
+      /Company Monitoring provisioning.+terminal operations throw/i,
+    );
+    assert.match(
+      prose,
+      /Entitlement writes are independent and continue because they perform no Company Monitoring work/i,
+    );
+    assert.doesNotMatch(
+      prose,
+      /logged.+skips (?:account-root )?synchronization/i,
+    );
+    assert.match(prose, /independent secret-manager entries/i);
+
+    assert.match(block, /^# COMPANY_MONITORING_OWNER_FENCE_PREVIOUS_SECRETS=$/m);
+    assert.doesNotMatch(block, /^COMPANY_MONITORING_OWNER_FENCE_PREVIOUS_SECRETS=/m);
+    assert.match(prose, /variable ABSENT, not blank, until the first rotation/i);
+    assert.match(
+      prose,
+      /strict comma-separated secrets:.+no whitespace,.+blank entries,.+trailing comma,.+duplicate historical entries/i,
+    );
+    assert.match(prose, /current secret may appear once; append it only once/i);
+    assert.match(
+      prose,
+      /pre-stage the old key.+deploy,.+verify it is discoverable/i,
+    );
+    assert.match(prose, /hide a deleted-owner tombstone.+allow a fresh entitled root/i);
+    assert.match(prose, /ACCOUNT_OWNER_FENCE_CONFLICT.+manual data repair/i);
   });
 });
 

@@ -2292,10 +2292,11 @@
       "unlockedAnnouncement": "Limite de separadores do painel removido."
     },
     "fx": {
-      "infoTooltip": "<strong>Taxas de Câmbio</strong> Stress cambial e taxas spot:<ul><li>FX Stress classifica 45 moedas pela pior queda máxima em 24 meses, juntamente com a variação de 12 meses</li><li>A cobertura inclui ARS, TRY, EGP, NGN, PKR e UAH — moedas omitidas dos conjuntos de referência do BIS e ECB</li><li>Spot lista as taxas em relação ao dólar americano e as taxas de referência do euro do ECB separadamente, porque os dois são cotados em bases diferentes</li></ul>Fontes: Yahoo Finance e Banco Central Europeu.",
+      "infoTooltip": "<strong>Taxas de Câmbio</strong> Stress cambial e taxas spot:<ul><li>FX Stress classifica 45 moedas pela pior queda máxima em 24 meses, juntamente com a variação de 12 meses</li><li>A cobertura inclui ARS, TRY, EGP, NGN, PKR e UAH — moedas omitidas dos conjuntos de referência do BIS e ECB</li><li>Spot lista as taxas em relação ao dólar americano e as taxas de referência do euro do ECB separadamente, porque os dois são cotados em bases diferentes</li><li>RUB — taxas do Banco da Rússia, rublos por unidade</li></ul> Fontes: Yahoo Finance, Banco Central Europeu e Banco da Rússia.",
       "tabs": {
         "stress": "FX Stress",
-        "spot": "Spot"
+        "spot": "Spot",
+        "rub": "RUB"
       },
       "currency": "Moeda",
       "pair": "Par",
@@ -2315,8 +2316,12 @@
       "source": {
         "stress": "Estresse cambial",
         "usd": "Cotações do dólar americano",
-        "eur": "Cotações do euro do BCE"
-      }
+        "eur": "Cotações do euro do BCE",
+        "rub": "Cotações do Banco da Rússia"
+      },
+      "rubBase": "Banco da Rússia — rublos por 1 unidade",
+      "rubPerUnit": "Rublos por unidade",
+      "sourceCbr": "Fonte: Banco da Rússia"
     }
   },
   "popups": {

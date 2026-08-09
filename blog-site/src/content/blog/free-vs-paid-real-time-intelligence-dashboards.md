@@ -83,7 +83,7 @@ Upgrade when one of these is concretely true:
 - **Missed events cost you money or safety.** Scheduled digests and alert routing to Slack/Teams/Telegram exist so the dashboard reaches you.
 - **You ask analytical questions daily.** An AI analyst grounded in 30+ live data services with citations replaces the hour of tab-hopping, not the dashboard.
 - **You're integrating, not reading.** API quotas (e.g. 1,000 requests/day starter, 10,000/day business tier) and webhook rules are the product; the UI is incidental.
-- **Your agents need the data.** MCP access with a documented tool surface (59 tools in World Monitor's case) lets Claude or GPT query live intelligence under one key.
+- **Your agents need the data.** MCP access with a documented tool surface (60 tools in World Monitor's case) lets Claude or GPT query live intelligence under one key.
 - **Compliance is in the room.** SSO, RBAC, audit trails, and air-gapped deployment are enterprise-tier features everywhere; nobody ships them free.
 
 ## How World Monitor prices free vs. paid
@@ -93,7 +93,7 @@ For a concrete, current example (full details on the [pricing page](https://www.
 | Plan | Price | Built for |
 |---|---|---|
 | Free | $0, no signup | Public situational awareness: 56 map layers, 500+ feeds, country briefs, chokepoints, watchlists |
-| Pro | $39.99/month or $359.99/year | Analysts: WM Analyst chat with citations, Scenario Engine, Route Explorer, AI digest, MCP access with 59 tools |
+| Pro | $39.99/month or $359.99/year | Analysts: WM Analyst chat with citations, Scenario Engine, Route Explorer, AI digest, MCP access with 60 tools |
 | API | $99.99/month or $899,99.99/year | Developers: REST access, 1,000 requests/day, 5 webhook rules, OpenAPI docs |
 | API Business | $299.99/month | Teams: 300 requests/minute, 10,000 requests/day, priority support |
 | Enterprise | Custom | Organizations: SSO/MFA/RBAC, team workspaces, white-label, on-prem or air-gapped deployment |

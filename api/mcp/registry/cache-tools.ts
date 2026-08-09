@@ -2000,8 +2000,10 @@ export const CACHE_TOOLS: ToolDef[] = [
       },
       required: [],
     },
-    // First cache key `trade:tariffs:v1:840:all:10` — NON_LABEL drops bare digits
-    // (840, 10) and `v1`, lands on `all`.
+    // First cache key `trade:tariffs:v2:840` — last informative segment is the
+    // reporter code (bare digits → NON_LABEL drops it), so the walk would land
+    // on `tariffs`. Pin the historical `all` label via `_cacheLabels` so the
+    // dataset enum and postFilter map stay stable for callers.
     outputSchema: cacheEnvelope({
       all: {
         type: ['object', 'null'],
@@ -2047,21 +2049,26 @@ export const CACHE_TOOLS: ToolDef[] = [
       }
       return data;
     },
-    // 4-key bundle spanning trade + economic domains. Cadences span hourly-ish
-    // (tariffs co-pinned to 8h TARIFF_TTL) to monthly (FAO / national debt).
-    // Per-key _freshnessChecks pulled from api/health.js::SEED_META so a slow
-    // monthly key doesn't drag the aggregate stale flag and a fast tariff
-    // outage isn't masked by a long FAO budget.
+    // 4-key bundle spanning trade + economic domains. Cadences span the 6h
+    // tariff cron (fleet seed-meta, maxStaleMin 420 inside TARIFF_TTL 480) to
+    // monthly (FAO / national debt). Per-key _freshnessChecks pulled from
+    // api/health.js::SEED_META so a slow monthly key doesn't drag the
+    // aggregate stale flag and a fast tariff outage isn't masked by a long FAO
+    // budget. The US reporter key is a canary payload; fleet freshness rides
+    // on seed-meta:trade:tariffs (#6316).
     _cacheKeys: [
-      'trade:tariffs:v1:840:all:10',   // STANDALONE_KEYS::tariffTrendsUs
+      'trade:tariffs:v2:840',          // US canary payload (label pinned to "all")
       'economic:bigmac:v1',            // BOOTSTRAP_KEYS::bigmac
       'economic:fao-ffpi:v1',          // BOOTSTRAP_KEYS::faoFoodPriceIndex
       'economic:national-debt:v1',     // BOOTSTRAP_KEYS::nationalDebt
     ],
-    _seedMetaKey: 'seed-meta:trade:tariffs:v1:840:all:10',
-    _maxStaleMin: 540, // tariff cron baseline; per-key budgets via _freshnessChecks below
+    _cacheLabels: {
+      'trade:tariffs:v2:840': 'all',
+    },
+    _seedMetaKey: 'seed-meta:trade:tariffs',
+    _maxStaleMin: 420, // tariff fleet meta; per-key budgets via _freshnessChecks below
     _freshnessChecks: [
-      { key: 'seed-meta:trade:tariffs:v1:840:all:10', maxStaleMin: 540 },   // TARIFF_TTL 8h + 60min grace
+      { key: 'seed-meta:trade:tariffs',               maxStaleMin: 420 },   // inside TARIFF_TTL 480
       { key: 'seed-meta:economic:bigmac',             maxStaleMin: 10080 }, // weekly seed; 7d
       { key: 'seed-meta:economic:fao-ffpi',           maxStaleMin: 86400 }, // monthly seed; 60d (2× interval)
       { key: 'seed-meta:economic:national-debt',      maxStaleMin: 86400 }, // monthly seed; 60d (2× interval)

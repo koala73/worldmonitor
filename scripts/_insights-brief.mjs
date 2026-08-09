@@ -31,6 +31,31 @@ import {
 const MIDSENTENCE_DOTTED_ACRONYM = /\b[A-Z]\.(?:[A-Z]\.?)+(?=\s+(?:\p{Ll}|(?:\[\d{1,3}\])+(?:[.!?]|$)))/gu;
 
 /**
+ * #5947: why a synthesized brief was rejected, as a bounded closed vocabulary.
+ *
+ * Every value is a fixed literal — never prompt text, model output, or the
+ * offending noun — so a caller can put it straight into seed-meta, health, and
+ * run logs without leaking the payload, which may carry sensitive intelligence.
+ *
+ * The producer previously reported one opaque `INSIGHTS_SYNTHESIS_GATE` for
+ * all five editorial gates below, so a recurring rejection could only be
+ * attributed by snapshotting the live digest and replaying it through an
+ * offline harness — which the #6019 and #6119 investigations each had to build
+ * from scratch. The reason is the signal that makes the next recurrence
+ * readable from `seed-meta:news:insights` alone.
+ */
+export const BRIEF_REJECTIONS = Object.freeze({
+  NO_TOP_STORIES: 'no-top-stories',
+  MISSING_CLUSTER: 'missing-brief-cluster',
+  PARSE: 'parse-failed',
+  LEAD_EMPTY: 'lead-no-sentences',
+  LEAD_UNCITED: 'lead-uncited',
+  LEAD_PROPER_NOUN: 'lead-proper-noun',
+  LEAD_NUMERIC_FACT: 'lead-numeric-fact',
+  LEAD_GROUNDING: 'lead-grounding',
+});
+
+/**
  * Choose which clustered story to summarize for the WORLD BRIEF.
  *
  * Returns the first entry in `topStories` with either publisher diversity
@@ -188,20 +213,43 @@ export function parseBriefSynthesis(rawText, storyCount) {
  *   hallucinatedLines: number;
  *   strippedCitations: number;
  * }} null → caller falls back to the legacy single-headline path.
+ *
+ * #5947: the seeder now calls `composeSynthesizedBriefResult` below so it can
+ * report WHICH gate rejected. This brief-only shape is kept because the
+ * composer's decision contract is pinned through it by a large existing test
+ * corpus — rewriting those call sites would churn the tests that guard #4928
+ * misattribution and the acronym-boundary fixes without changing any behavior.
  */
 export function composeSynthesizedBrief(rawText, topStories, opts = {}) {
+  return composeSynthesizedBriefResult(rawText, topStories, opts).brief;
+}
+
+/**
+ * #5947: `composeSynthesizedBrief` with the rejection reason attached.
+ *
+ * Same logic and same accept/reject decisions — the only difference is that a
+ * rejection names which gate fired, from the bounded `BRIEF_REJECTIONS`
+ * vocabulary. `composeSynthesizedBrief` above is the unchanged shape for every
+ * caller that only needs the brief.
+ *
+ * @returns {{ brief: ReturnType<typeof composeSynthesizedBrief>, rejection: string | null }}
+ *   Exactly one side is set: a composed brief has `rejection: null`, and a
+ *   rejection has `brief: null`.
+ */
+export function composeSynthesizedBriefResult(rawText, topStories, opts = {}) {
   const validatorMode = opts.validatorMode === 'shadow' ? 'shadow' : 'enforce';
   const sanitize = typeof opts.sanitizeTitle === 'function' ? opts.sanitizeTitle : (t) => t;
   const sourceFromStory = typeof opts.sourceFromStory === 'function' ? opts.sourceFromStory : () => null;
+  const reject = (rejection) => ({ brief: null, rejection });
 
-  if (!Array.isArray(topStories) || topStories.length === 0) return null;
+  if (!Array.isArray(topStories) || topStories.length === 0) return reject(BRIEF_REJECTIONS.NO_TOP_STORIES);
   // Editorial gate: same bar the legacy pickBriefCluster enforced. The caller
   // may pass the already-selected cluster so the synthesis path does not scan
   // the ranked list a second time.
   const hasBriefCluster = Object.prototype.hasOwnProperty.call(opts, 'briefCluster')
     ? opts.briefCluster != null
     : topStories.some(isBriefLeadEligible);
-  if (!hasBriefCluster) return null;
+  if (!hasBriefCluster) return reject(BRIEF_REJECTIONS.MISSING_CLUSTER);
 
   // The caller may also pass the parser result when it needs to classify a
   // rejection. Keeping this seam optional preserves the pure public helper's
@@ -209,7 +257,7 @@ export function composeSynthesizedBrief(rawText, topStories, opts = {}) {
   const parsed = Object.prototype.hasOwnProperty.call(opts, 'parsedSynthesis')
     ? opts.parsedSynthesis
     : parseBriefSynthesis(rawText, topStories.length);
-  if (!parsed) return null;
+  if (!parsed) return reject(BRIEF_REJECTIONS.PARSE);
 
   const groundingStories = topStories.map((story) => ({ headline: story.primaryTitle }));
   const storyGroundText = (story) =>
@@ -242,19 +290,26 @@ export function composeSynthesizedBrief(rawText, topStories, opts = {}) {
     .replace(MIDSENTENCE_DOTTED_ACRONYM, (acronym) => acronym.replace(/\./g, ''))
     .split(/(?<=[.!?])\s+/)
     .filter((sentence) => sentence.trim().length > 0);
-  if (leadSentences.length === 0) return null;
+  if (leadSentences.length === 0) return reject(BRIEF_REJECTIONS.LEAD_EMPTY);
   for (const sentence of leadSentences) {
     const cited = [...sentence.matchAll(/\[(\d{1,3})\]/g)]
       .map((match) => Number.parseInt(match[1], 10))
       .filter((n) => n >= 1 && n <= topStories.length);
     // Contract: every claim is cited. An uncited sentence is unverifiable.
-    if (cited.length === 0) return null;
+    if (cited.length === 0) return reject(BRIEF_REJECTIONS.LEAD_UNCITED);
     const scopedGround = cited.map((n) => storyGroundText(topStories[n - 1])).join(' — ');
+    // Both validators still run before either can reject, so shadow mode
+    // observes exactly what it observed before the reasons were split out.
     const sentenceValidation = validateNoHallucinatedProperNouns(sentence, scopedGround);
     const factValidation = validateNoHallucinatedFacts(sentence, scopedGround);
-    if ((!sentenceValidation.ok || !factValidation.ok) && validatorMode === 'enforce') return null;
+    if (validatorMode === 'enforce') {
+      if (!sentenceValidation.ok) return reject(BRIEF_REJECTIONS.LEAD_PROPER_NOUN);
+      if (!factValidation.ok) return reject(BRIEF_REJECTIONS.LEAD_NUMERIC_FACT);
+    }
   }
-  if (!checkLeadGrounding({ lead: leadCheck.text }, groundingStories, topStories.length)) return null;
+  if (!checkLeadGrounding({ lead: leadCheck.text }, groundingStories, topStories.length)) {
+    return reject(BRIEF_REJECTIONS.LEAD_GROUNDING);
+  }
 
   const lineByIndex = new Map(parsed.lines.map((line) => [line.n, line.text]));
   let hallucinatedLines = 0;
@@ -289,5 +344,8 @@ export function composeSynthesizedBrief(rawText, topStories, opts = {}) {
     };
   });
 
-  return { lead: leadCheck.text, lines, sources, hallucinatedLines, strippedCitations };
+  return {
+    brief: { lead: leadCheck.text, lines, sources, hallucinatedLines, strippedCitations },
+    rejection: null,
+  };
 }

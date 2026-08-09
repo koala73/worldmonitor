@@ -3,6 +3,8 @@ export const CLOUD_SYNC_KEYS = [
   'worldmonitor-monitors',
   'worldmonitor-layers',
   'worldmonitor-disabled-feeds',
+  'worldmonitor-free-tier-source-ownership',
+  'worldmonitor-free-tier-layer-ownership',
   'worldmonitor-panel-spans',
   'worldmonitor-panel-col-spans',
   'panel-order',
@@ -12,6 +14,7 @@ export const CLOUD_SYNC_KEYS = [
   'worldmonitor-map-mode',
   'wm-breaking-alerts-v1',
   'wm-market-watchlist-v1',
+  'wm-market-catalog-selection-v1',
   'aviation:watchlist:v1',
   'wm-pinned-webcams',
   'wm-map-provider',
@@ -43,3 +46,47 @@ export const CLOUD_SYNC_KEYS = [
 ] as const;
 
 export type CloudSyncKey = (typeof CLOUD_SYNC_KEYS)[number];
+
+/**
+ * Keys whose ABSENCE from a cloud row must not be read as "the user cleared
+ * this". `applyCloudBlob` deletes any synced key the incoming row omits, which
+ * is correct for a preference the user can reset but wrong for the free-tier
+ * gate's ownership sidecars: every row written before #6345 lacks them, as does
+ * every upload from an older tab still running a pre-#6345 bundle.
+ *
+ * Deleting them locally is not a cosmetic loss. Without the sidecar,
+ * `reconcileSourceLimitForTier` sees no ownership metadata,
+ * `inferExactSourceGateOwnership` declines to guess for any customized profile,
+ * and the gate's own disables become indistinguishable from deliberate user
+ * choices — so a later Pro upgrade can never reverse them. That is precisely
+ * the bug #6345 exists to fix, reintroduced through the cloud path.
+ *
+ * Tolerating absence loses nothing, because an intentional clear is always an
+ * explicit empty-array write (see `persistGateOwnershipTransition`'s Pro path
+ * and the variant reset in App.ts), never an omission.
+ */
+export const ABSENCE_TOLERANT_SYNC_KEYS: ReadonlySet<CloudSyncKey> = new Set([
+  'worldmonitor-free-tier-source-ownership',
+  'worldmonitor-free-tier-layer-ownership',
+] satisfies CloudSyncKey[]);
+
+export type CloudBlobKeyAction =
+  | { kind: 'set'; value: string }
+  | { kind: 'remove' }
+  | { kind: 'keep' };
+
+/**
+ * What applying an incoming cloud row should do to one local key.
+ *
+ * Extracted as a pure decision so the absence rule is testable against real
+ * key names rather than asserted by grepping the applier's source text.
+ */
+export function resolveCloudBlobKeyAction(
+  key: CloudSyncKey,
+  data: Record<string, unknown>,
+): CloudBlobKeyAction {
+  const value = data[key];
+  if (typeof value === 'string') return { kind: 'set', value };
+  if (!(key in data) && !ABSENCE_TOLERANT_SYNC_KEYS.has(key)) return { kind: 'remove' };
+  return { kind: 'keep' };
+}

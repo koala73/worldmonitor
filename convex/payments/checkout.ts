@@ -17,8 +17,15 @@ import {
   createDodoCheckoutSession,
 } from "../lib/dodo";
 import { requireUserId, resolveUserIdentity } from "../lib/auth";
-import { ANON_ID_V4_REGEX, signAnonClaimToken, signUserId } from "../lib/identitySigning";
+import { extractDomain } from "../lib/emailShape";
+import {
+  ANON_ID_V4_REGEX,
+  signAnonClaimToken,
+  signCheckoutLoginEmail,
+  signUserId,
+} from "../lib/identitySigning";
 import { resolveProductToPlan } from "../config/productCatalog";
+import { isTrustedReturnUrlOrigin } from "./returnUrlOrigin";
 import {
   CHECKOUT_RATE_LIMITED,
   CHECKOUT_RATE_LIMIT_MAX_ATTEMPTS,
@@ -28,6 +35,45 @@ import {
 
 const ACTIVE_SUBSCRIPTION_EXISTS = "ACTIVE_SUBSCRIPTION_EXISTS";
 const PAYMENT_IN_PROGRESS = "PAYMENT_IN_PROGRESS";
+
+// RFC 5321 maximum forward-path length. A value beyond it is not an address we
+// could deliver to anyway, and it keeps the stamped metadata value small.
+const MAX_LOGIN_EMAIL_LENGTH = 254;
+
+/**
+ * Normalizes the authenticated login email for stamping into checkout metadata
+ * (#6335).
+ *
+ * This is a shape guard, not a trust boundary — it keeps an unusable value out
+ * of a field the webhook later hands to Resend as a recipient. What makes that
+ * the right level: `createCheckout` reads the email from the Clerk JWT `email`
+ * claim via `resolveUserIdentity`, and `internalCreateCheckout` receives it from
+ * `/relay/create-checkout`, whose only caller (`api/create-checkout.ts`) derives
+ * it from a JWKS-verified bearer token. Note the relay itself authenticates by
+ * shared secret and does NOT re-derive the claim, so "the value is a verified
+ * credential" is a property of that caller rather than one enforced here.
+ * Downstream this stays safe regardless: the webhook trusts the value only
+ * through the HMAC, and the email templates escape it.
+ *
+ * Case is PRESERVED (the local part is case-sensitive per RFC 5321, and
+ * `users.email` is stored the same way).
+ *
+ * Returns null when there is nothing usable to stamp, in which case the
+ * webhook's existing `users.email` → checkout-email ladder is unchanged.
+ */
+function normalizeCheckoutLoginEmail(raw: string | undefined): string | null {
+  if (typeof raw !== "string") return null;
+  const trimmed = raw.trim();
+  if (trimmed.length === 0 || trimmed.length > MAX_LOGIN_EMAIL_LENGTH) return null;
+  // `extractDomain` owns the @-shape rules (no @, empty local part, a second @,
+  // empty domain). Imported from `emailShape` rather than `emailDomain` so the
+  // checkout path does not pull in that module's `mailchecker` dependency.
+  if (extractDomain(trimmed) === null) return null;
+  // Stricter than extractDomain, which only rejects whitespace in the domain
+  // half: an address bound for an email `to:` header must have none anywhere.
+  if (/\s/.test(trimmed)) return null;
+  return trimmed;
+}
 
 // ---------------------------------------------------------------------------
 // Shared checkout session creation logic
@@ -177,18 +223,7 @@ async function _createCheckoutSession(
       throw new ConvexError("Invalid returnUrl: must be a valid absolute URL");
     }
 
-    const allowedOrigins = new Set([
-      "https://worldmonitor.app",
-      "https://www.worldmonitor.app",
-      "https://app.worldmonitor.app",
-      "https://tech.worldmonitor.app",
-      "https://finance.worldmonitor.app",
-      "https://commodity.worldmonitor.app",
-      "https://happy.worldmonitor.app",
-      "https://energy.worldmonitor.app",
-      new URL(siteUrl).origin,
-    ]);
-    if (!allowedOrigins.has(parsedReturnUrl.origin)) {
+    if (!isTrustedReturnUrlOrigin(parsedReturnUrl.origin, new URL(siteUrl).origin)) {
       throw new ConvexError(
         "Invalid returnUrl: must use a trusted worldmonitor.app origin",
       );
@@ -205,6 +240,26 @@ async function _createCheckoutSession(
     : null;
   if (anonymousClaimToken) {
     metadata.wm_anon_claim = "v2";
+  }
+  // #6335: carry the login email that was authenticated FOR THIS CHECKOUT, so
+  // the activation webhook can address lifecycle mail without depending on the
+  // `users` row — that row is refreshed once per page load per userId
+  // (src/services/convex-client.ts short-circuits on a module-level
+  // lastEnsuredUserId), so a portal email change made in a long-lived tab
+  // leaves it stale and the welcome lands at the abandoned address.
+  //
+  // Signed as a SEPARATE field rather than folded into `wm_user_id_sig`: that
+  // signature's payload must stay `userId` alone, or every checkout session
+  // created before this deploy stops verifying at the webhook and its buyer
+  // becomes unattributable.
+  const loginEmail = normalizeCheckoutLoginEmail(user.email);
+  if (loginEmail) {
+    metadata.wm_login_email = loginEmail;
+    metadata.wm_login_email_sig = await signCheckoutLoginEmail(
+      user.userId,
+      loginEmail,
+      Date.now(),
+    );
   }
   // Tier-group bridge for the duplicate-payment guard (#4438): the pending
   // `payment.processing` webhook echoes `data.metadata.wm_plan_key` and persists

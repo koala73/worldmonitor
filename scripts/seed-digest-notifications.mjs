@@ -93,6 +93,7 @@ import {
 import { readCooldownConfig } from './lib/digest-cooldown-config.mjs';
 import { evaluateCooldown } from './lib/digest-cooldown-decision.mjs';
 import { emitCooldownShadowLog } from './lib/digest-cooldown-shadow-log.mjs';
+import { buildDigestDeliveryPlan } from './lib/digest-delivery-plan.mjs';
 import { buildTickerDictionary } from '../shared/ticker-extract.js';
 import { scanAndEnqueueWatchlistStoryEvents as scanWatchlistStoryEvents } from './lib/watchlist-story-scan.mjs';
 
@@ -1182,75 +1183,6 @@ function formatDigestHtml(stories, nowMs) {
     </div>
   </div>
 </div>`;
-}
-
-// ── Sprint 1 / U7 production-gap shim: BriefStory → formatter shape ──
-//
-// The U7 invariant `digest.cards ⊆ brief.cards` only holds in
-// production if `formatDigest`/`formatDigestHtml` consume the brief
-// envelope's filtered slice (capped at MAX_STORIES_PER_USER=12, post-
-// compose, post-filter), NOT the raw `stories` pool from `buildDigest`
-// (capped at DIGEST_MAX_ITEMS=30).
-//
-// The two formatters above were written when there was no envelope —
-// they expect raw-shape stories with `{title, severity, sources, link,
-// description, phase}`. The brief envelope's `BriefStory` carries a
-// different field set: `{headline, threatLevel, source, sourceUrl,
-// description, clusterId, ...}`. This shim maps the envelope shape to
-// the formatter shape without touching the formatters themselves,
-// keeping the U7 invariant holdable on the live send path with the
-// minimum surgical change.
-//
-// Compatibility decisions:
-//   - `headline` → `title`. Direct rename.
-//   - `threatLevel` → `severity`. The values overlap (`critical`,
-//     `high`, `medium`); a `BriefStory` `low` falls into the formatter's
-//     `high` bucket fallback (line ~651 / ~692). That's a benign
-//     mis-bucket — the brief composer's filter already drops `low` from
-//     the pool today, so the production occurrence is zero.
-//   - `source` (single string) → `sources` (array). Wrap into a
-//     1-element array; empty when missing. Multi-source fan-out for the
-//     formatter's "+N" suffix is lost here — acceptable trade-off
-//     because the BriefStory schema only carries the primary source by
-//     design (per shared/brief-envelope.d.ts:112).
-//   - `sourceUrl` → `link`. Direct rename. Empty string when absent
-//     (the formatter renders unlinked text in that case).
-//   - `description` → `description`. Direct passthrough.
-//   - `clusterId` → `hash`. THIS IS THE U7-LOAD-BEARING MAPPING. The
-//     formatter doesn't consume `hash` for rendering, but the U7
-//     invariant projection (`projectDigestEmitClusterId` in the
-//     companion test) reads it as the per-card identity. Setting
-//     `hash = clusterId` makes the runtime emit set provably equal to
-//     the brief envelope's clusterId set.
-//   - `phase` is not on `BriefStory`. Default to `'sustained'` — a
-//     valid phase value with a dedicated PHASE_COLOR entry, no
-//     filtering effect (the only phase that filters is `'fading'`,
-//     and that filter lives in `buildDigest`, not the formatters).
-//
-// Why an inline shim and not a shared helper: this transformation is
-// load-bearing only for the cron's send loop. Any other consumer that
-// wants the formatter shape would convert via this function would couple
-// itself to the BriefStory→raw mapping that is not load-bearing
-// anywhere else. Keep it local until a second consumer appears.
-function briefStoriesToFormatterShape(briefStories) {
-  if (!Array.isArray(briefStories)) return [];
-  return briefStories.map((s) => {
-    const sources = typeof s?.source === 'string' && s.source.length > 0 ? [s.source] : [];
-    return {
-      title: typeof s?.headline === 'string' ? s.headline : '',
-      severity: typeof s?.threatLevel === 'string' ? s.threatLevel : 'high',
-      sources,
-      link: typeof s?.sourceUrl === 'string' ? s.sourceUrl : '',
-      description: typeof s?.description === 'string' ? s.description : '',
-      // 'sustained' has a defined PHASE_COLOR entry in the formatter
-      // and is NOT 'fading' (the only phase value that drops in
-      // buildDigest). The formatter only uses phase for cosmetic
-      // colour/label, never for filtering.
-      phase: 'sustained',
-      // Load-bearing for the U7 invariant — see header above.
-      hash: typeof s?.clusterId === 'string' ? s.clusterId : '',
-    };
-  });
 }
 
 // ── (Removed) standalone generateAISummary ───────────────────────────────────
@@ -2521,76 +2453,15 @@ async function main() {
       briefLead = briefSynthesis?.lead ?? null;
     }
 
-    // Sprint 1 / U7 production-gap fix.
-    //
-    // Pre-fix the formatters consumed the raw `stories` pool (capped
-    // at DIGEST_MAX_ITEMS=30 by buildDigest). Post-fix they consume
-    // the brief envelope's `data.stories` (capped at MAX_STORIES_PER_USER
-    // =12 by filterTopStories). This is what makes the U7 invariant
-    // `digest.cards ⊆ brief.cards` HOLD ON THE LIVE SEND PATH — without
-    // this swap the email body could surface clusterIds the brief
-    // envelope omitted (the 18-30 stories the cap dropped), which
-    // would orphan their delivered-log keys from the magazine side.
-    //
-    // briefForUser is guaranteed non-null in this branch (the
-    // canonical-rule filter at the top of the loop returned only when
-    // briefForUser was present). The compose-miss fallback path
-    // (briefForUser === undefined) does NOT reach here — that branch
-    // either skips the user or falls through with magazineUrl=null;
-    // the formatters in that fallback continue to consume the raw
-    // stories pool, accepting U7-invariant degradation as the cost of
-    // delivering SOMETHING for that one tick.
-    //
-    // Compatibility shim: briefStoriesToFormatterShape maps the
-    // BriefStory schema to the formatter's expected raw-shape fields.
-    // See the function header for field-by-field rationale + the
-    // load-bearing `clusterId → hash` mapping that makes the U7
-    // invariant projection work at runtime.
-    const briefEnvelopeStories = brief?.envelope?.data?.stories;
-    const formatterStories = Array.isArray(briefEnvelopeStories) && briefEnvelopeStories.length > 0
-      ? briefStoriesToFormatterShape(briefEnvelopeStories)
-      : stories; // fallback: brief envelope absent (compose-miss branch above)
-
-    // Codex PR #3617 round-4 P2 — unified iterable for U4/U5 coverage in
-    // both branches.
-    //
-    // Pre-fix the cooldown loop (U5) and delivered-log writer (U4) were
-    // both gated on `briefEnvelopeStories.length > 0`, so under
-    // compose-miss (brief absent) the digest cards were SENT to the
-    // user but the U4/U5 substrate skipped them entirely. Multi-tick
-    // compose outages (e.g. signing secret unset for 6h) accumulated
-    // un-tracked deliveries; when compose recovered, the cooldown
-    // saw "no prior delivery" and re-aired everything the user had
-    // received during the outage.
-    //
-    // Fix: build a unified `cooldownIterableStories` array that both
-    // branches feed. Under brief-success it's the v4 BriefStory shape
-    // directly (already has clusterId, threatLevel, source, sourceUrl,
-    // headline). Under compose-miss it's a normalized projection of
-    // the raw `stories` pool — fields mapped by hand from the
-    // post-buildDigest shape (severity → threatLevel, link → sourceUrl,
-    // title → headline, mergedHashes[0] || hash → clusterId).
-    //
-    // Same downstream iteration in both U4 and U5 loops; same
-    // sourceCountByClusterId Map (already keyed on repHash, which
-    // matches both branches' clusterId semantics).
-    const cooldownIterableStories = Array.isArray(briefEnvelopeStories) && briefEnvelopeStories.length > 0
-      ? briefEnvelopeStories
-      : (Array.isArray(stories) ? stories.map((rawStory) => {
-          const repHash = Array.isArray(rawStory?.mergedHashes)
-            && rawStory.mergedHashes.length > 0
-            && typeof rawStory.mergedHashes[0] === 'string'
-            ? rawStory.mergedHashes[0]
-            : (typeof rawStory?.hash === 'string' ? rawStory.hash : '');
-          const sources = Array.isArray(rawStory?.sources) ? rawStory.sources : [];
-          return {
-            clusterId: repHash,
-            threatLevel: typeof rawStory?.severity === 'string' ? rawStory.severity : 'unknown',
-            source: typeof sources[0] === 'string' ? sources[0] : '',
-            sourceUrl: typeof rawStory?.link === 'string' ? rawStory.link : '',
-            headline: typeof rawStory?.title === 'string' ? rawStory.title : '',
-          };
-        }) : []);
+    const deliveryPlan = buildDigestDeliveryPlan({
+      briefStories: brief?.envelope?.data?.stories,
+      rawStories: stories,
+    });
+    const {
+      formatterStories,
+      cooldownIterableStories,
+      sourceCountByClusterId,
+    } = deliveryPlan;
 
     const storyListPlain = formatDigest(formatterStories, nowMs);
     if (!storyListPlain) continue;
@@ -2637,42 +2508,6 @@ async function main() {
     // next tick spends zero on cooldown.
     const cooldownDecisions = [];
     const ruleIdComposite = `${rule.variant ?? 'full'}:${rule.lang ?? 'en'}:${rule.sensitivity ?? 'high'}`;
-    // Codex PR #3617 P1 — real per-cluster source count for U4 writes
-    // and U5 cooldown evaluation.
-    //
-    // The brief envelope's BriefStory schema only carries a single
-    // `source` string (the primary wire) — the original cluster's full
-    // sources[] array is not preserved. Reading 0/1 off briefStory.source
-    // collapses real source counts (5, 10, 37+) and breaks U5's "+5
-    // sources within floor" evolution bypass: the delta from N to 0/1
-    // is always 0 or 1, never ≥5. Without this, today's shadow rows
-    // seed bad history that Sprint 2's enforce mode would inherit.
-    //
-    // Fix: derive sourceCount from the raw clustered `stories` pool
-    // (post-buildDigest, pre-filterTopStories) where the original
-    // sources[] is still attached. Match by cluster identity:
-    // mergedHashes[0] when present (rep's own hash by U3's contract),
-    // else the story's own hash (singletons). One Map build per send,
-    // O(1) lookup per cluster iteration.
-    const sourceCountByClusterId = new Map();
-    if (Array.isArray(stories)) {
-      for (const rawStory of stories) {
-        const repHash = Array.isArray(rawStory?.mergedHashes)
-          && rawStory.mergedHashes.length > 0
-          && typeof rawStory.mergedHashes[0] === 'string'
-          ? rawStory.mergedHashes[0]
-          : (typeof rawStory?.hash === 'string' ? rawStory.hash : '');
-        if (!repHash) continue;
-        const sources = Array.isArray(rawStory?.sources) ? rawStory.sources : [];
-        // Existing entry wins (first-rep-by-iteration order). Raw
-        // stories shouldn't duplicate clusterIds post-dedup, but the
-        // defensive first-write semantics protect against a future
-        // dedup bug double-counting sources.
-        if (!sourceCountByClusterId.has(repHash)) {
-          sourceCountByClusterId.set(repHash, sources.length);
-        }
-      }
-    }
     // Slot string mirrors the brief composer: `issueSlotInTz(nowMs, tz)`.
     // We use the same tz the composer used (rule.digestTimezone, default
     // 'UTC') so the slot naming aligns 1:1 with the brief envelope's

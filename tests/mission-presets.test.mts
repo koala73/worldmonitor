@@ -1123,7 +1123,6 @@ function createMissionHarness(options: {
     syncDataFreshnessWithLayers: () => { callbacks.syncDataFreshnessCalls += 1; },
     ensureCorrectZones() {},
     applySavedPanelOrder: (panelOrder?: string[]) => callbacks.appliedOrders.push([...(panelOrder ?? [])]),
-    refreshCiiAfterFocalPointsReady() {},
     stopLayerActivity: (layer: keyof MapLayers) => callbacks.stopLayerActivity.push(String(layer)),
     mountLiveNewsIfReady: () => { callbacks.mountLiveNewsCalls += 1; },
     isFreeTierFallbackActive: () => options.freeTierFallback === true,

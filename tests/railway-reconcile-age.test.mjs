@@ -27,6 +27,7 @@ import YAML from 'yaml';
 import {
   DEFAULT_MAX_RECONCILE_AGE_MS,
   RECONCILE_STEP_NAME,
+  RECONCILE_STEP_NAMES,
   collectReconcileWindow,
   describeReconcileSummary,
   readRunReconciled,
@@ -273,6 +274,14 @@ describe('reading whether one run reconciled', () => {
     assert.equal(readRunReconciled(jobs(null)), false);
   });
 
+  it('keeps successful pre-cutover reconciliation visible inside the age window', () => {
+    const legacyName = RECONCILE_STEP_NAMES.find((name) => name !== RECONCILE_STEP_NAME);
+    assert.ok(legacyName);
+    assert.equal(readRunReconciled({
+      jobs: [{ steps: [{ name: legacyName, conclusion: 'success' }] }],
+    }), true);
+  });
+
   it('reads false — never true — for a payload it does not recognise', () => {
     assert.equal(readRunReconciled({}), false);
     assert.equal(readRunReconciled(null), false);
@@ -313,7 +322,10 @@ describe('the cross-file names this scanner depends on', () => {
     // The scanner's whole signal is this string. If the workflow renames the
     // step, every run reads as "did not reconcile" — which alarms rather than
     // going quiet, but alarms forever for the wrong reason.
-    const names = workflow.jobs.trigger.steps.map((step) => step.name);
+    const names = Object.values(workflow.jobs)
+      .flatMap((job) => job.steps ?? [])
+      .map((step) => step.name)
+      .filter(Boolean);
     assert.ok(
       names.includes(RECONCILE_STEP_NAME),
       `RECONCILE_STEP_NAME ${JSON.stringify(RECONCILE_STEP_NAME)} names no step in the workflow; it has ${JSON.stringify(names)}`,

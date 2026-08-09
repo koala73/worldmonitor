@@ -583,7 +583,7 @@
       "s10l": "Puanlanan sıcak noktalar",
       "s11v": "92",
       "s11l": "Borsalar & varlıklar",
-      "s12v": "59",
+      "s12v": "60",
       "s12l": "MCP araçları",
       "s13v": "154",
       "s13l": "⌘K komutları",
@@ -611,7 +611,7 @@
       "eyebrow": "İnşaatçılar & AI ajanları için",
       "title": "Canlı dünya istihbaratı üzerine inşa edin — herhangi bir yığında.",
       "sub": "Haritadaki her şey aynı zamanda bir API'dir. Claude üzerinde MCP ile entegre edin, REST uç noktalarını nereden de çağırın veya Python, Ruby, Go veya JavaScript için yerel istemci kurun — kodunuz eğitim verileri anılarından ziyade canlı veri ile araştırma yapar.",
-      "b1": "59 MCP aracı — risk skorları, darboğazlar, çatışmalar, pazarlar, özetler",
+      "b1": "60 MCP aracı — risk skorları, darboğazlar, çatışmalar, pazarlar, özetler",
       "b2": "Belgelenmiş REST API — 193 işlem, bir OpenAPI 3.1 spec, bir anahtar",
       "b3": "npm, PyPI, RubyGems ve Go'da resmi SDK'lar — sıfır bağımlılık, MCP-first",
       "b4": "Her çağrıda JMESPath projeksiyonu — ihtiyacınız olan alanları getirin",
@@ -620,7 +620,7 @@
       "termQuery": "Kızıl Deniz maruziyetimiz bu hafta kötüleşiyor mu?",
       "termAnswer": "Geçiş sayıları haftalık olarak azaldı; savaş riski katmanı yükseltildi; son 48 saatte iki yoğunluk anomalisi.",
       "termDocs": "Tam araç referansını görmek için →",
-      "promise": "Bir anahtar. 59 MCP aracı. Tam REST API'si. Dil-yerel istemciler."
+      "promise": "Bir anahtar. 60 MCP aracı. Tam REST API'si. Dil-yerel istemciler."
     },
     "pricing": {
       "eyebrow": "Erişim",
@@ -638,7 +638,7 @@
       "proF1": "WM Analyst — 30+ canlı hizmette sohbet edin, alıntılarla birlikte",
       "proF2": "Senaryo motoru & Rota Gezgini — aksamaları başlamadan önce simüle edin",
       "proF3": "Kişisel AI özeti — günlük, günde iki kez veya haftalık olarak Slack, Telegram veya e-posta'ya",
-      "proF4": "MCP, REST API ve resmi SDK'lar — 59 araç tek bir anahtarın altında",
+      "proF4": "MCP, REST API ve resmi SDK'lar — 60 araç tek bir anahtarın altında",
       "proF5": "Kendi panelleriniz için özel widget oluşturucu",
       "cta": "Planları & fiyatlandırmayı görmek",
       "note": "Başlangıç fiyatı $39,99/ay · Yıllık ödeme ile 3 ay ücretsiz"
@@ -659,7 +659,7 @@
       "q6": "Uyarıya neden güvenmeliyim?",
       "a6": "Bölünmüş bir afiş yalnızca bağımsız kaynak türleri doğrulandığında harekete geçer — haber sınıflandırması, anahtar kelime hızı, sıcak nokta yoğunlaşması, askeri artışlar, resmi sirenler — deduplicated ve hız sınırlı. Daha az uyarı, gerçek olanlar.",
       "q7": "Claude veya GPT gibi AI ajanlar bunu kullanabilir mi?",
-      "a7": "Evet. World Monitor, 59 araçlı bir MCP sunucusu ile gelir, böylece Claude, GPT veya herhangi bir MCP uyumlu ajan canlı risk skorlarını, darboğaz durumunu, çatışmaları, pazarları ve özetleri sorgulayabilir — JMESPath projeksiyonu sayesinde ajanlar tam olarak ihtiyaç duydukları verileri alır.",
+      "a7": "Evet. World Monitor, 60 araçlı bir MCP sunucusu ile gelir, böylece Claude, GPT veya herhangi bir MCP uyumlu ajan canlı risk skorlarını, darboğaz durumunu, çatışmaları, pazarları ve özetleri sorgulayabilir — JMESPath projeksiyonu sayesinde ajanlar tam olarak ihtiyaç duydukları verileri alır.",
       "q8": "Hesaba ihtiyacım var mı?",
       "a8": "Hayır. Pano kaydolmadan anında çalışır. Bir hesap yalnızca Pro'ya yükselttikten sonra veya cihazlar arasında ayarları senkronize etmek istediğinizde önemlidir.",
       "q9": "Açık kaynaklı mı?",

@@ -149,7 +149,7 @@ Build alerting bots that post to your team channel when:
 
 Every developer surface has a dedicated, named page you can jump to directly — the [World Monitor Developer Portal](https://worldmonitor.app/developers.md) links them all in one place:
 
-- **[World Monitor MCP Server](https://worldmonitor.app/mcp-server.md)** — the recommended agent surface at `https://worldmonitor.app/mcp`, with 59 tools over Streamable HTTP. Connect Claude, Cursor, or any MCP client. See the [MCP Overview](https://www.worldmonitor.app/docs/mcp-overview) for auth and the full catalog.
+- **[World Monitor MCP Server](https://worldmonitor.app/mcp-server.md)** — the recommended agent surface at `https://worldmonitor.app/mcp`, with 60 tools over Streamable HTTP. Connect Claude, Cursor, or any MCP client. See the [MCP Overview](https://www.worldmonitor.app/docs/mcp-overview) for auth and the full catalog.
 - **[World Monitor OpenAPI Specification](https://worldmonitor.app/openapi.md)** — the OpenAPI 3.1 contract for the REST API ([openapi.yaml](https://worldmonitor.app/openapi.yaml) / [openapi.json](https://worldmonitor.app/openapi.json)), so you can generate a typed client in any language.
 - **[World Monitor SDKs](https://worldmonitor.app/sdks.md)** — official zero-dependency client libraries for Python, Ruby, Go, and JavaScript, plus the [`worldmonitor` CLI](https://www.worldmonitor.app/docs/cli).
 - **World Monitor API docs** — the full [developer documentation](https://www.worldmonitor.app/docs/documentation) site, with an [MCP Quickstart](https://www.worldmonitor.app/docs/mcp-quickstart) and [agent auth walkthrough](https://worldmonitor.app/auth.md).
@@ -218,7 +218,7 @@ World Monitor's open, typed, proto-first architecture is the alternative:
 
 The intelligence platform of the future isn't a product. It's an ecosystem. World Monitor is building the foundation.
 
-Building an AI agent instead of an app? The same platform is exposed as a Model Context Protocol server with 59 live tools. See [how to connect Claude and other agents to World Monitor's MCP server](/blog/posts/worldmonitor-mcp-server-ai-agents-real-time-intelligence/).
+Building an AI agent instead of an app? The same platform is exposed as a Model Context Protocol server with 60 live tools. See [how to connect Claude and other agents to World Monitor's MCP server](/blog/posts/worldmonitor-mcp-server-ai-agents-real-time-intelligence/).
 
 ## Frequently Asked Questions
 

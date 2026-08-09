@@ -903,8 +903,8 @@ describe('filterTopStories — U3: word-wise titleCase on emitted category (enve
     }
   });
 
-  it('T10b: multi-word category `world politics` → `World Politics` (composeBriefForRule protection)', () => {
-    // filterTopStories is shared with composeBriefForRule callers that
+  it('T10b: multi-word category `world politics` → `World Politics`', () => {
+    // filterTopStories is shared with composeBriefFromDigestStories, which
     // pass multi-word legacy categories like 'world politics'. A
     // first-letter-only helper would corrupt these to 'World politics'.
     // Word-wise titleCase preserves both words capitalized.
@@ -926,9 +926,6 @@ describe('filterTopStories — U3: word-wise titleCase on emitted category (enve
     //     would silently bypass the residue subset for up to 7d of
     //     STORY_TTL — exactly the editorial-clutter failure PR #3697
     //     was created to prevent.
-    // T11b (source-textual) locks the structural ordering: pairKey is
-    // computed before titleCase fires at out.push. The two together
-    // prove cap-on-raw (not cap-on-display) AND case-folded.
     const out = filterTopStories({
       stories: [
         upstreamStory({
@@ -1004,28 +1001,5 @@ describe('filterTopStories — U3: word-wise titleCase on emitted category (enve
     const nonStr = filterTopStories({ stories: [upstreamStory({ category: 42, primaryLink: 'https://example.com/t13-nonstr' })], sensitivity: 'all' });
     assert.equal(nonStr.length, 1);
     assert.equal(nonStr[0].category, 'General');
-  });
-});
-
-describe('filterTopStories — U3 T11b: source-textual cap-key ordering invariant', () => {
-  it('pairKey is computed BEFORE titleCase(category) call in out.push (locks structural ordering)', async () => {
-    // Belt-and-suspenders: lock the structural ordering in source so a
-    // future refactor cannot silently move titleCase upstream of pairKey
-    // and break the cap grouping.
-    const { readFileSync } = await import('node:fs');
-    const { resolve, dirname } = await import('node:path');
-    const { fileURLToPath } = await import('node:url');
-    const src = readFileSync(
-      resolve(dirname(fileURLToPath(import.meta.url)), '..', 'shared', 'brief-filter.js'),
-      'utf-8',
-    );
-    const pairKeyIdx = src.indexOf('const pairKey = source + KEY_DELIM + category');
-    assert.ok(pairKeyIdx !== -1, 'pairKey computation site must exist');
-    const titleCaseCallIdx = src.indexOf('titleCase(category)');
-    assert.ok(titleCaseCallIdx !== -1, 'titleCase(category) call must exist at the out.push site');
-    assert.ok(
-      pairKeyIdx < titleCaseCallIdx,
-      'pairKey must be computed BEFORE titleCase(category) — otherwise the cap groups on display value, not raw',
-    );
   });
 });

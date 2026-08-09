@@ -341,7 +341,7 @@ export function adaptiveExpectedCalibrationError(examples: CalibrationExample[])
   assert.ok(examples.length > 0, 'calibration examples must not be empty');
   const sorted = [...examples].sort(
     (left, right) => left.confidence - right.confidence
-      || left.opaqueExampleId.localeCompare(right.opaqueExampleId),
+      || compareCodePoints(left.opaqueExampleId, right.opaqueExampleId),
   );
   const bins: CalibrationExample[][] = Array.from({ length: 10 }, () => []);
   for (const [index, example] of sorted.entries()) {
@@ -378,7 +378,9 @@ export function stratifiedBootstrapUpperBound(examples: CalibrationExample[], ca
     stratum.push(example);
     strata.set(key, stratum);
   }
-  const orderedStrata = [...strata.entries()].sort(([left], [right]) => left.localeCompare(right));
+  const orderedStrata = [...strata.entries()].sort(
+    ([left], [right]) => compareCodePoints(left, right),
+  );
   const estimates: number[] = [];
   for (let iteration = 0; iteration < iterations; iteration += 1) {
     const sample: CalibrationExample[] = [];

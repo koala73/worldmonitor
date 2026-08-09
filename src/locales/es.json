@@ -2554,10 +2554,11 @@
       "unlockedAnnouncement": "Límite de pestañas del panel eliminado."
     },
     "fx": {
-      "infoTooltip": "<strong>Tipos de Cambio</strong> Estrés cambiario y tipos spot:<ul><li>FX Stress clasifica 45 monedas por su mayor caída acumulada en los últimos 24 meses, junto con el cambio en 12 meses</li><li>La cobertura incluye ARS, TRY, EGP, NGN, PKR y UAH — monedas que los conjuntos de referencia del BIS y BCE omiten</li><li>Spot lista los tipos frente al dólar estadounidense y los tipos de referencia del euro del BCE por separado, porque se cotizan desde bases diferentes</li></ul>Fuentes: Yahoo Finance y el Banco Central Europeo.",
+      "infoTooltip": "<strong>Tipos de Cambio</strong> Estrés cambiario y tipos spot:<ul><li>FX Stress clasifica 45 monedas por su mayor caída acumulada en los últimos 24 meses, junto con el cambio en 12 meses</li><li>La cobertura incluye ARS, TRY, EGP, NGN, PKR y UAH — monedas que los conjuntos de referencia del BIS y BCE omiten</li><li>Spot lista los tipos frente al dólar estadounidense y los tipos de referencia del euro del BCE por separado, porque se cotizan desde bases diferentes</li><li>RUB — tipos del Banco de Rusia, rublos por unidad</li></ul> Fuentes: Yahoo Finance, el Banco Central Europeo y el Banco de Rusia.",
       "tabs": {
         "stress": "Estrés Cambiario",
-        "spot": "Spot"
+        "spot": "Spot",
+        "rub": "RUB"
       },
       "currency": "Moneda",
       "pair": "Par",
@@ -2577,8 +2578,12 @@
       "source": {
         "stress": "Estrés del tipo de cambio",
         "usd": "Tipos de cambio del dólar estadounidense",
-        "eur": "Tipos de cambio del euro del BCE"
-      }
+        "eur": "Tipos de cambio del euro del BCE",
+        "rub": "Tipos de cambio del Banco de Rusia"
+      },
+      "rubBase": "Banco de Rusia — rublos por 1 unidad",
+      "rubPerUnit": "Rublos por unidad",
+      "sourceCbr": "Fuente: Banco de Rusia"
     }
   },
   "popups": {

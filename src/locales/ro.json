@@ -2554,10 +2554,11 @@
       "unlockedAnnouncement": "Limita filelor tabloului de bord a fost ridicată."
     },
     "fx": {
-      "infoTooltip": "<strong>Cursuri de schimb valutar</strong> Stres valutar și cursuri spot:<ul><li>FX Stress clasifică 45 de monede după cea mai mare scădere vârf-vale din ultimii 24 de luni, alături de variația pe 12 luni</li><li>Acoperirea include ARS, TRY, EGP, NGN, PKR și UAH — monede pe care seturile de referință BIS și ECB le omit</li><li>Spot listează cursurile față de dolar american și cursurile de referință euro ECB separat, deoarece cele două sunt cotate din baze diferite</li></ul>Surse: Yahoo Finance și Banca Centrală Europeană.",
+      "infoTooltip": "<strong>Cursuri de schimb valutar</strong> Stres valutar și cursuri spot:<ul><li>FX Stress clasifică 45 de monede după cea mai mare scădere vârf-vale din ultimii 24 de luni, alături de variația pe 12 luni</li><li>Acoperirea include ARS, TRY, EGP, NGN, PKR și UAH — monede pe care seturile de referință BIS și ECB le omit</li><li>Spot listează cursurile față de dolar american și cursurile de referință euro ECB separat, deoarece cele două sunt cotate din baze diferite</li><li>RUB — ratele Băncii Rusiei, ruble per unitate</li></ul> Surse: Yahoo Finance, Banca Centrală Europeană și Banca Rusiei.",
       "tabs": {
         "stress": "FX Stress",
-        "spot": "Spot"
+        "spot": "Spot",
+        "rub": "RUB"
       },
       "currency": "Monedă",
       "pair": "Pereche",
@@ -2577,8 +2578,12 @@
       "source": {
         "stress": "Stres FX",
         "usd": "Ratele dolarului american",
-        "eur": "Ratele euro ale BCE"
-      }
+        "eur": "Ratele euro ale BCE",
+        "rub": "Ratele Băncii Rusiei"
+      },
+      "rubBase": "Banca Rusiei — ruble per 1 unitate",
+      "rubPerUnit": "Ruble per unitate",
+      "sourceCbr": "Sursă: Banca Rusiei"
     }
   },
   "popups": {

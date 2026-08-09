@@ -1025,11 +1025,21 @@ export function extraKeyPayloadBytes(key, data, envelopeMeta) {
   return Buffer.byteLength(serializeExtraKeyValue(key, data, envelopeMeta), 'utf8');
 }
 
-export async function writeSeedMeta(dataKey, recordCount, metaKeyOverride, metaTtlSeconds, coverage) {
+export async function writeSeedMeta(dataKey, recordCount, metaKeyOverride, metaTtlSeconds, coverage, extra) {
   const { url, token } = getRedisCredentials();
   const metaKey = metaKeyOverride || `seed-meta:${dataKey.replace(/:v\d+$/, '')}`;
   const meta = { fetchedAt: Date.now(), recordCount: recordCount ?? 0 };
   if (coverage) meta.coverage = coverage;
+  // Optional producer diagnostics, copied verbatim onto the meta record.
+  // api/health.js decides which fields it trusts (see readSeedMeta), so callers
+  // must keep `extra` safe for a public endpoint; the consumer-prices
+  // `coverage` block is deliberately NOT merged here (health parses it with a
+  // separate retailer schema — see fetchTradeFlows in seed-supply-chain-trade).
+  if (extra && typeof extra === 'object') {
+    for (const [key, value] of Object.entries(extra)) {
+      if (value !== undefined) meta[key] = value;
+    }
+  }
   const metaTtl = metaTtlSeconds ?? 86400 * 7;
   const resp = await fetch(url, {
     method: 'POST',

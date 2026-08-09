@@ -583,7 +583,7 @@
       "s10l": "Points chauds notés",
       "s11v": "92",
       "s11l": "Échanges et actifs",
-      "s12v": "59",
+      "s12v": "60",
       "s12l": "Outils MCP",
       "s13v": "154",
       "s13l": "Commandes ⌘K",
@@ -611,7 +611,7 @@
       "eyebrow": "Pour les créateurs et agents IA",
       "title": "Créez sur l'intelligence du monde en direct — à partir de n'importe quel stack.",
       "sub": "Tout ce qui est sur la carte est aussi une API. Intégrez-la à Claude via MCP, appelez les endpoints REST depuis n'importe où, ou installez un client natif pour Python, Ruby, Go ou JavaScript — votre code recherche avec des données en direct au lieu de souvenirs de données d'entraînement.",
-      "b1": "59 outils MCP — scores de risque, goulets d'étranglement, conflits, marchés, dossiers",
+      "b1": "60 outils MCP — scores de risque, goulets d'étranglement, conflits, marchés, dossiers",
       "b2": "API REST documentée — 193 opérations, une spécification OpenAPI 3.1, une clé",
       "b3": "SDK officiels sur npm, PyPI, RubyGems et Go — zéro dépendance, MCP-first",
       "b4": "Projection JMESPath sur chaque appel — récupérez exactement les champs dont vous avez besoin",
@@ -620,7 +620,7 @@
       "termQuery": "Notre exposition à la mer Rouge s'aggrave-t-elle cette semaine ?",
       "termAnswer": "Comptages de transit en baisse semaine après semaine ; niveau de risque de guerre élevé ; deux anomalies de densité au cours des dernières 48 h.",
       "termDocs": "Voir la référence complète de l'outil →",
-      "promise": "Une clé. 59 outils MCP. Une API REST complète. Des clients natifs pour chaque langage."
+      "promise": "Une clé. 60 outils MCP. Une API REST complète. Des clients natifs pour chaque langage."
     },
     "pricing": {
       "eyebrow": "Accès",
@@ -638,7 +638,7 @@
       "proF1": "WM Analyst — chattez avec 30+ services en direct, avec citations",
       "proF2": "Moteur de scénarios et Route Explorer — simulez les perturbations avant qu'elles ne surviennent",
       "proF3": "Digest IA personnel — quotidien, deux fois par jour ou hebdomadaire, vers Slack, Telegram ou e-mail",
-      "proF4": "MCP, API REST et SDK officiels — 59 outils sous une seule clé",
+      "proF4": "MCP, API REST et SDK officiels — 60 outils sous une seule clé",
       "proF5": "Constructeur de widgets personnalisés pour vos propres tableaux de bord",
       "cta": "Voir les forfaits et tarifs",
       "note": "À partir de 39,99 $/mois · 3 mois gratuits lors de la facturation annuelle"
@@ -659,7 +659,7 @@
       "q6": "Pourquoi devrais-je faire confiance à une alerte ?",
       "a6": "Une bannière en temps réel ne s'affiche que quand des types d'origine indépendants corroborent — classification des actualités, vélocité des mots-clés, escalade des points chauds, augmentations militaires, sirènes officielles — dédupliquées et limitées en débit. Moins d'alertes, de vraies alertes.",
       "q7": "Les agents IA comme Claude ou GPT peuvent-ils l'utiliser ?",
-      "a7": "Oui. World Monitor fournit un serveur MCP avec 59 outils, ce qui permet à Claude, GPT ou tout agent compatible MCP d'interroger en direct les scores de risque, l'état des goulets d'étranglement, les conflits, les marchés et les dossiers — avec projection JMESPath pour que les agents récupèrent exactement ce dont ils ont besoin.",
+      "a7": "Oui. World Monitor fournit un serveur MCP avec 60 outils, ce qui permet à Claude, GPT ou tout agent compatible MCP d'interroger en direct les scores de risque, l'état des goulets d'étranglement, les conflits, les marchés et les dossiers — avec projection JMESPath pour que les agents récupèrent exactement ce dont ils ont besoin.",
       "q8": "Ai-je besoin d'un compte ?",
       "a8": "Non. Le tableau de bord fonctionne instantanément sans inscription. Un compte n'importe que si vous montez en grade vers Pro ou voulez synchroniser les paramètres sur les appareils.",
       "q9": "Est-ce open source ?",

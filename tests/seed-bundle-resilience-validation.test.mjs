@@ -1,74 +1,42 @@
 import assert from 'node:assert/strict';
 import { existsSync } from 'node:fs';
-import { readFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
-import { describe, it } from 'node:test';
 import { fileURLToPath } from 'node:url';
+import { describe, it } from 'node:test';
 
-const __dirname = dirname(fileURLToPath(import.meta.url));
-const scriptsDir = join(__dirname, '..', 'scripts');
+import { WEEK } from '../scripts/_bundle-runner.mjs';
+import {
+  RESILIENCE_VALIDATION_BUNDLE_MEMBERS,
+  RESILIENCE_VALIDATION_BUNDLE_NAME,
+} from '../scripts/resilience-validation-bundle.mjs';
 
-const EXPECTED_SECTIONS = [
-  {
-    label: 'External-Benchmark',
-    script: 'benchmark-resilience-external.mjs',
-  },
-  {
-    label: 'Outcome-Backtest',
-    script: 'backtest-resilience-outcomes.mjs',
-  },
-  {
-    label: 'Sensitivity-Suite',
-    script: 'validate-resilience-sensitivity.mjs',
-  },
+const scriptsDir = join(dirname(fileURLToPath(import.meta.url)), '..', 'scripts');
+
+const EXPECTED_MEMBERS = [
+  { label: 'External-Benchmark', script: 'benchmark-resilience-external.mjs', timeoutMs: 300_000 },
+  { label: 'Outcome-Backtest', script: 'backtest-resilience-outcomes.mjs', timeoutMs: 300_000 },
+  { label: 'Sensitivity-Suite', script: 'validate-resilience-sensitivity.mjs', timeoutMs: 600_000 },
 ];
 
-describe('seed-bundle-resilience-validation', () => {
-  let src;
-
-  it('bundle script exists and parses', async () => {
-    const bundlePath = join(scriptsDir, 'seed-bundle-resilience-validation.mjs');
-    assert.ok(existsSync(bundlePath), 'bundle script must exist on disk');
-    src = await readFile(bundlePath, 'utf8');
-    assert.ok(src.includes("runBundle('resilience-validation'"), 'must call runBundle with correct label');
-  });
-
-  it('has exactly 3 sections with correct labels (no seedMetaKey — validation scripts are not data seeders)', async () => {
-    if (!src) src = await readFile(join(scriptsDir, 'seed-bundle-resilience-validation.mjs'), 'utf8');
-
-    for (const section of EXPECTED_SECTIONS) {
-      assert.ok(src.includes(`label: '${section.label}'`), `missing label: ${section.label}`);
-      assert.ok(src.includes(`script: '${section.script}'`), `missing script ref: ${section.script}`);
-    }
-    assert.ok(!src.includes('seedMetaKey'), 'validation bundle must NOT have seedMetaKey (no seed-meta heartbeats)');
-  });
-
-  it('all intervals use WEEK constant (weekly)', async () => {
-    if (!src) src = await readFile(join(scriptsDir, 'seed-bundle-resilience-validation.mjs'), 'utf8');
-
-    const intervalMatches = src.match(/intervalMs:\s*(.+),/g);
-    assert.equal(intervalMatches.length, 3, 'must have exactly 3 intervalMs entries');
-    for (const m of intervalMatches) {
-      assert.ok(m.includes('WEEK'), `intervalMs must use WEEK, got: ${m}`);
-    }
-  });
-
-  it('imports WEEK from _bundle-runner.mjs', async () => {
-    if (!src) src = await readFile(join(scriptsDir, 'seed-bundle-resilience-validation.mjs'), 'utf8');
-    assert.ok(src.includes("WEEK") && src.includes("_bundle-runner.mjs"), 'must import WEEK from _bundle-runner');
-  });
-
-  it('validate-resilience-sensitivity.mjs exists on disk', () => {
-    assert.ok(
-      existsSync(join(scriptsDir, 'validate-resilience-sensitivity.mjs')),
-      'validate-resilience-sensitivity.mjs must exist',
+describe('resilience validation bundle contract', () => {
+  it('runs the three required validation members in the declared order', () => {
+    assert.equal(RESILIENCE_VALIDATION_BUNDLE_NAME, 'resilience-validation');
+    assert.deepEqual(
+      RESILIENCE_VALIDATION_BUNDLE_MEMBERS.map(({ label, script, timeoutMs }) => ({ label, script, timeoutMs })),
+      EXPECTED_MEMBERS,
     );
   });
 
-  it('bundle runner exists on disk', () => {
-    assert.ok(
-      existsSync(join(scriptsDir, '_bundle-runner.mjs')),
-      '_bundle-runner.mjs must exist',
-    );
+  it('schedules every validation member weekly without seed metadata', () => {
+    for (const member of RESILIENCE_VALIDATION_BUNDLE_MEMBERS) {
+      assert.equal(member.intervalMs, WEEK, `${member.label} must use the weekly bundle interval`);
+      assert.equal('seedMetaKey' in member, false, `${member.label} is validation-only and must not emit a seed heartbeat`);
+    }
+  });
+
+  it('references executable member scripts', () => {
+    for (const member of RESILIENCE_VALIDATION_BUNDLE_MEMBERS) {
+      assert.equal(existsSync(join(scriptsDir, member.script)), true, `${member.script} must exist`);
+    }
   });
 });

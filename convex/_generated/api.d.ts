@@ -24,6 +24,10 @@ import type * as broadcast_proLaunchEmailContent from "../broadcast/proLaunchEma
 import type * as broadcast_rampRunner from "../broadcast/rampRunner.js";
 import type * as broadcast_sendBroadcast from "../broadcast/sendBroadcast.js";
 import type * as broadcast_waveRuns from "../broadcast/waveRuns.js";
+import type * as companyMonitoring__shared from "../companyMonitoring/_shared.js";
+import type * as companyMonitoring_accounts from "../companyMonitoring/accounts.js";
+import type * as companyMonitoring_companies from "../companyMonitoring/companies.js";
+import type * as companyMonitoring_imports from "../companyMonitoring/imports.js";
 import type * as config_productCatalog from "../config/productCatalog.js";
 import type * as constants from "../constants.js";
 import type * as contactMessages from "../contactMessages.js";
@@ -83,6 +87,10 @@ declare const fullApi: ApiFromModules<{
   "broadcast/rampRunner": typeof broadcast_rampRunner;
   "broadcast/sendBroadcast": typeof broadcast_sendBroadcast;
   "broadcast/waveRuns": typeof broadcast_waveRuns;
+  "companyMonitoring/_shared": typeof companyMonitoring__shared;
+  "companyMonitoring/accounts": typeof companyMonitoring_accounts;
+  "companyMonitoring/companies": typeof companyMonitoring_companies;
+  "companyMonitoring/imports": typeof companyMonitoring_imports;
   "config/productCatalog": typeof config_productCatalog;
   constants: typeof constants;
   contactMessages: typeof contactMessages;

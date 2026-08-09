@@ -1,14 +1,14 @@
 /**
- * FX panel render behaviour (#6199).
+ * FX panel render behaviour (#6199, #6231).
  *
- * `tests/fx-panel-rows.test.mjs` covers the three mappers in isolation. Nothing
+ * `tests/fx-panel-rows.test.mjs` covers the mappers in isolation. Nothing
  * joined them to the panel, so the decisions that only exist in `FxPanel` were
- * unproven: which tab is shown when one of its two data sources is empty, and
- * whether the two spot lists stay under separate, correctly-based headings.
+ * unproven: which tab is shown when one of its data sources is empty, and
+ * whether the spot lists stay under separate, correctly-based headings.
  *
  * Both are silent-failure shapes. A panel left on a tab with nothing behind it
- * renders an empty body while data sits one click away, and merging the USD and
- * EUR lists would quote half the rows upside down without throwing anything.
+ * renders an empty body while data sits one click away, and merging the USD,
+ * EUR and RUB lists would quote rows upside down without throwing anything.
  *
  * Raw seeded payloads are pushed through the REAL mappers into a REAL mounted
  * panel — no hand-built row objects — so a mapper change that breaks the panel
@@ -17,7 +17,7 @@
 
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { degradedSources, toEurSpotRows, toFxStressRows, toUsdSpotRows } from '@/services/economic/fx-rates';
+import { degradedSources, toEurSpotRows, toFxStressRows, toRubQuoteRows, toUsdSpotRows } from '@/services/economic/fx-rates';
 
 import { initTestI18n, tt } from './helpers/i18n.mts';
 
@@ -54,14 +54,39 @@ const ECB_RATES = [
 ];
 
 /**
+ * The map scripts/seed-cbr-rates.mjs:363 publishes — RUB per ONE unit of the
+ * listed currency. JPY's rate (~0.52) is the differentiating case: it carries
+ * CBR's per-100 Nominal, and appearing in a USD-or-EUR list would read as a
+ * currency worth half a ruble rather than half a ruble per yen.
+ */
+const RUB_PAYLOAD = {
+  quoteCurrency: 'RUB',
+  rateUnit: 'RUB per 1 unit of the listed currency',
+  effectiveDate: '2026-08-05',
+  rates: {
+    USD: { rate: 81.1291, valuePerNominal: 81.1291, nominal: 1, name: '', numCode: '840', id: '', change1d: 0.32 },
+    JPY: { rate: 0.515171, valuePerNominal: 51.5171, nominal: 100, name: '', numCode: '392', id: '', change1d: 0.0012 },
+    KZT: { rate: 0.17, valuePerNominal: 0.17, nominal: 1, name: '', numCode: '398', id: '', change1d: -0.01 },
+  },
+  keyRate: { rate: 14, observedAt: '2026-08-04', previousRate: 14, changedAt: '2026-07-24', change: 0 },
+  updatedAt: '2026-08-05T06:30:00.000Z',
+  seededAt: 1,
+};
+
+/**
  * Overrides are typed `unknown` on purpose: the mappers accept whatever the
  * cache hands them, and a test that can only pass a payload matching the happy
  * fixture cannot express "the seed came back empty" — the case these guards
  * exist for.
  */
-function rows(overrides: { yoy?: unknown; usd?: unknown; ecb?: unknown } = {}) {
-  const { yoy = YOY_PAYLOAD, usd = USD_PAYLOAD, ecb = ECB_RATES } = overrides;
-  const rowSet = { stress: toFxStressRows(yoy), usd: toUsdSpotRows(usd), eur: toEurSpotRows(ecb) };
+function rows(overrides: { yoy?: unknown; usd?: unknown; ecb?: unknown; rub?: unknown } = {}) {
+  const { yoy = YOY_PAYLOAD, usd = USD_PAYLOAD, ecb = ECB_RATES, rub = RUB_PAYLOAD } = overrides;
+  const rowSet = {
+    stress: toFxStressRows(yoy),
+    usd: toUsdSpotRows(usd),
+    eur: toEurSpotRows(ecb),
+    rub: toRubQuoteRows(rub),
+  };
   // The REAL function getFxPanelData uses — reimplementing it here would let the
   // panel tests pass against logic production does not run.
   return { ...rowSet, degraded: degradedSources(rowSet) };
@@ -270,13 +295,67 @@ describe('spot tab', () => {
   });
 });
 
+describe('rub tab', () => {
+  it('renders a RUB-base table with the direction named in the heading', async () => {
+    await mount(rows());
+    await clickTab('rub');
+
+    // The one column a reader can silently misread: the heading must name the
+    // direction, not leave it to an icon or column label alone.
+    expect(body()).toContain(tt('components.fx.rubBase'));
+    // USD reads ~81.13 RUB — the magnitude that inverts to "1 RUB buys 0.012 USD".
+    const usd = dataRows().find((r) => r.querySelector('.fx-ccy-code')?.textContent === 'USD');
+    expect(usd?.textContent).toContain('81.1291');
+    // JPY is quoted per-100 by CBR; the mapped per-unit value (~0.5152) is what
+    // must render, not the raw 51.5171.
+    const jpy = dataRows().find((r) => r.querySelector('.fx-ccy-code')?.textContent === 'JPY');
+    expect(jpy?.textContent).toContain('0.5152');
+    expect(jpy?.textContent).not.toContain('51.5171');
+  });
+
+  it('renders the CBR day change as an absolute delta, never a percentage', async () => {
+    // The seeder's change1d is `cleanFloat(rate - prior.rate)` in RUB per unit.
+    // Printing it with a % would report USD's 0.32 RUB move as "0.3%" — a 0.4%
+    // true move — and would flatten sub-1.0 pairs (KZT -0.01) to "0.0%".
+    await mount(rows());
+    await clickTab('rub');
+    expect(body()).toContain('+0.3200');
+    expect(body()).not.toMatch(/[+-]?\d+\.\d%/);
+  });
+
+  it('shows a zero rate change as unsigned and neutral, not a green gain', async () => {
+    await mount(rows({
+      rub: {
+        ...RUB_PAYLOAD,
+        rates: { USD: { rate: 81.1291, valuePerNominal: 81.1291, nominal: 1, name: '', numCode: '840', id: '', change1d: 0 } },
+      },
+    }));
+    await clickTab('rub');
+    expect(body()).toContain('0.0000');
+    expect(body()).not.toContain('+0.0000');
+    expect(panel.getElement().querySelector('.change-positive')).toBeNull();
+  });
+
+  it('renders a row with no change as a dash rather than dropping the rate', async () => {
+    await mount(rows({
+      rub: {
+        ...RUB_PAYLOAD,
+        rates: { USD: { rate: 81.1291, valuePerNominal: 81.1291, nominal: 1, name: '', numCode: '840', id: '' } },
+      },
+    }));
+    await clickTab('rub');
+    expect(body()).toContain('81.1291');
+    expect(panel.getElement().querySelector('.fx-na')).not.toBeNull();
+  });
+});
+
 describe('tab fallback when a source is empty', () => {
   it('opens on spot when the fx:yoy seed returned nothing', async () => {
     // Without this the panel opens on its default tab and renders an empty
     // body, while the spot rates sit one unmarked click away.
     await mount(rows({ yoy: { rates: [] } }));
     expect(activeTab()?.dataset.tab).toBe('spot');
-    expect(tabs().map((el) => el.dataset.tab)).toEqual(['spot']);
+    expect(tabs().map((el) => el.dataset.tab)).toEqual(['spot', 'rub']);
     expect(body()).toContain('EUR/USD');
   });
 
@@ -284,20 +363,41 @@ describe('tab fallback when a source is empty', () => {
     // The mount-time case below cannot exercise this: `stress` is already the
     // default tab, so the spot->stress guard never runs. Only a user sitting on
     // the spot tab through a refresh that loses both spot sources reaches it,
-    // and without the guard they are left staring at an empty body.
+    // and without the guard they are left staring at an empty body. With the
+    // RUB table present the guard now lands on RUB, not straight back on
+    // stress — the next surviving source by tab order.
     await mount(rows());
     await clickTab('spot');
     expect(activeTab()?.dataset.tab).toBe('spot');
 
     await reload(rows({ usd: {}, ecb: [] }));
-    expect(activeTab()?.dataset.tab).toBe('stress');
+    expect(activeTab()?.dataset.tab).toBe('rub');
     expect(dataRows().length).toBe(3);
   });
 
   it('opens on stress when both spot sources returned nothing', async () => {
     await mount(rows({ usd: {}, ecb: [] }));
     expect(activeTab()?.dataset.tab).toBe('stress');
-    expect(tabs().map((el) => el.dataset.tab)).toEqual(['stress']);
+    expect(tabs().map((el) => el.dataset.tab)).toEqual(['stress', 'rub']);
+    expect(body()).toContain('ARS');
+  });
+
+  it('landing on RUB when stress and both spot sources all failed', async () => {
+    // A chain of fallbacks: stress -> spot -> rub. Without RUB the panel would
+    // bounce back to stress and render an empty body while the CBR table sat
+    // one click off-screen.
+    await mount(rows({ yoy: { rates: [] }, usd: {}, ecb: [] }));
+    expect(activeTab()?.dataset.tab).toBe('rub');
+    expect(tabs().map((el) => el.dataset.tab)).toEqual(['rub']);
+    expect(body()).toContain('81.1291');
+  });
+
+  it('skips the RUB tab entirely when the CBR table returned nothing', async () => {
+    // A dead cbrRates key must not strand the panel on an empty table; the
+    // panel opens on stress (default) with the RUB tab absent.
+    await mount(rows({ rub: {} }));
+    expect(activeTab()?.dataset.tab).toBe('stress');
+    expect(tabs().map((el) => el.dataset.tab)).toEqual(['stress', 'spot']);
     expect(body()).toContain('ARS');
   });
 
@@ -309,15 +409,15 @@ describe('tab fallback when a source is empty', () => {
     expect(body()).not.toContain(tt('components.fx.usdBase'));
   });
 
-  it('treats all three sources coming back empty as an outage, not as "no data"', async () => {
+  it('treats all four sources coming back empty as an outage, not as "no data"', async () => {
     // ensureHydrated collapses fetch/timeout/JSON errors into undefined, so a
     // dead bootstrap looks exactly like a miss here. Claiming "No data" would
     // assert something we cannot know AND skip the retry that recovers it —
-    // 45 currencies, 47 USD rates and 7 ECB pairs are never all legitimately
-    // absent at once.
+    // 45 currencies, 47 USD rates, 7 ECB pairs and 54 CBR pairs are never all
+    // legitimately absent at once.
     vi.useFakeTimers();
     try {
-      await mount(rows({ yoy: { rates: [] }, usd: {}, ecb: [] }));
+      await mount(rows({ yoy: { rates: [] }, usd: {}, ecb: [], rub: {} }));
       expect(panel.getElement().querySelector('.panel-error-state')).not.toBeNull();
       expect(panel.getElement().querySelector('.panel-empty')).toBeNull();
       expect(tabs()).toHaveLength(0);
@@ -344,6 +444,17 @@ describe('partial outage', () => {
     expect(notice?.textContent).toContain(tt('components.fx.source.stress'));
     // ...and does not accuse the sources that are actually fine
     expect(notice?.textContent).not.toContain(tt('components.fx.source.eur'));
+    expect(notice?.textContent).not.toContain(tt('components.fx.source.rub'));
+  });
+
+  it('names a dead CBR table as degraded, with its own source label', async () => {
+    // RUB is the newest tab; a dead cbrRates key must be named, not left as a
+    // tab that simply isn't there.
+    await mount(rows({ rub: {} }));
+    const notice = panel.getElement().querySelector('.fx-degraded');
+    expect(notice).not.toBeNull();
+    expect(notice?.textContent).toContain(tt('components.fx.source.rub'));
+    expect(notice?.textContent).not.toContain(tt('components.fx.source.stress'));
   });
 
   it('does not show the notice when every source is healthy', async () => {
@@ -380,7 +491,7 @@ describe('partial outage', () => {
 
     // Their choice outranks the restore — they stay on Spot.
     expect(activeTab()?.dataset.tab).toBe('spot');
-    expect(tabs()).toHaveLength(2);                  // and stress is available again
+    expect(tabs()).toHaveLength(3);                  // and stress/rub are available again
   });
 
   it('stops retrying once the panel is destroyed', async () => {

@@ -1331,8 +1331,8 @@ export function userSetPanelEnabled(config: PanelConfig, enabled: boolean): void
 }
 
 /**
- * Inverse of the cw-* half of `enforceFreePanelLimit`: re-enable the custom
- * widgets that the free-tier gate hid, and clear the marker.
+ * Inverse of `enforceFreePanelLimit`: re-enable panels the free-tier gate hid
+ * (custom widgets or count-cap overflow), and clear the marker.
  *
  * Without this the gate is a one-way door. `enforceFreePanelLimit` writes
  * straight into STORAGE_KEYS.panels, so once a widget is disabled nothing
@@ -1341,8 +1341,8 @@ export function userSetPanelEnabled(config: PanelConfig, enabled: boolean): void
  * widgets permanently missing from the dashboard even though the specs are
  * still in wm-custom-widgets.
  *
- * Only panels carrying `proGated` are touched, so a widget the user hid
- * deliberately via the settings toggle stays hidden.
+ * Only panels carrying `proGated` are touched, so a panel the user hid
+ * deliberately via settings stays hidden.
  */
 export function restoreProGatedPanels(
   panelSettings: Record<string, PanelConfig>,

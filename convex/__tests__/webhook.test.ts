@@ -1,7 +1,11 @@
 import { convexTest } from "convex-test";
 import { afterEach, expect, test, describe, vi } from "vitest";
 import { getFeaturesForPlan } from "../lib/entitlements";
-import { signUserId } from "../lib/identitySigning";
+import {
+  CHECKOUT_LOGIN_EMAIL_MAX_AGE_MS,
+  signCheckoutLoginEmail,
+  signUserId,
+} from "../lib/identitySigning";
 import schema from "../schema";
 import { internal } from "../_generated/api";
 
@@ -768,6 +772,937 @@ describe("webhook processWebhookEvent", () => {
     expect(sends).toHaveLength(2);
     const welcome = sends.find((send) => send.subject.startsWith("Welcome to World Monitor"));
     expect(welcome?.to).toEqual(["test@example.com"]);
+  });
+
+  // #6335: the users row is refreshed once per page load per userId
+  // (src/services/convex-client.ts short-circuits on a module-level
+  // lastEnsuredUserId), so a user who changes their primary email in the Clerk
+  // portal and subscribes in the same long-lived tab leaves a STALE
+  // users.email. The checkout carries the login email as it was at checkout
+  // time, HMAC-signed — that is the fresher of the two, so it wins.
+  test("a signed checkout login email outranks a stale users row", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(BASE_TIMESTAMP);
+    process.env.RESEND_API_KEY = "re_test";
+    process.env.DODO_IDENTITY_SIGNING_SECRET = SIGNING_SECRET;
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue(new Response("{}", { status: 200 }));
+    const t = convexTest(schema, modules);
+
+    await seedProductPlan(t, "pdt_test_pro", "pro_monthly", "Pro Monthly");
+    await t.run(async (ctx) => {
+      // The address the user abandoned in the Clerk portal, mirrored here by
+      // the last ensureRecord call before the change.
+      await ctx.db.insert("users", {
+        userId: "test-user-001",
+        email: "stale@example.com",
+        normalizedEmail: "stale@example.com",
+        firstSeenAt: BASE_TIMESTAMP - 86400000,
+        lastSeenAt: BASE_TIMESTAMP - 86400000,
+      });
+    });
+
+    await processEvent(
+      t,
+      "wh_signed_login_email_fresh",
+      "subscription.active",
+      makeSubscriptionPayload({
+        customer: {
+          customer_id: "cust_test_001",
+          email: "checkout@example.com",
+          name: "Test User",
+        },
+        metadata: {
+          wm_user_id: "test-user-001",
+          wm_user_id_sig: await signUserId("test-user-001"),
+          wm_login_email: "fresh@example.com",
+          wm_login_email_sig: await signCheckoutLoginEmail(
+            "test-user-001",
+            "fresh@example.com",
+            BASE_TIMESTAMP - 60_000,
+          ),
+        },
+      }),
+      BASE_TIMESTAMP,
+    );
+    await t.finishAllScheduledFunctions(vi.runAllTimers);
+
+    const sends = fetchMock.mock.calls
+      .filter(([url]) => String(url).includes("api.resend.com"))
+      .map(([, init]) => JSON.parse(String((init as RequestInit).body)) as {
+        to: string[];
+        subject: string;
+        html: string;
+      });
+
+    const welcome = sends.find((send) => send.subject.startsWith("Welcome to World Monitor"));
+    expect(welcome?.to).toEqual(["fresh@example.com"]);
+    expect(welcome?.html).toContain("fresh@example.com");
+    // The abandoned address receives nothing at all.
+    expect(sends.every((send) => send.to[0] !== "stale@example.com")).toBe(true);
+    // The checkout inbox still gets the pointer, and it names the FRESH login
+    // address (masked) — pointing at the stale one is the same dead end.
+    const pointer = sends.find((send) => send.to[0] === "checkout@example.com");
+    expect(pointer?.html).toContain("f•••@example.com");
+    expect(pointer?.html).not.toContain("s•••@example.com");
+  });
+
+  // The inverse of the #6335 bug, and just as real: change the email AFTER
+  // checking out, then load a page (refreshing the users row) before the
+  // activation webhook lands. Now the STAMP is the stale one. A fixed
+  // "stamp wins" rule would send to the abandoned address — the very failure
+  // #6335 set out to fix, with the two sources swapped.
+  test("a users row refreshed after checkout outranks the stamped email", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(BASE_TIMESTAMP);
+    process.env.RESEND_API_KEY = "re_test";
+    process.env.DODO_IDENTITY_SIGNING_SECRET = SIGNING_SECRET;
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue(new Response("{}", { status: 200 }));
+    const t = convexTest(schema, modules);
+
+    const checkoutIssuedAt = BASE_TIMESTAMP - 3600_000;
+
+    await seedProductPlan(t, "pdt_test_pro", "pro_monthly", "Pro Monthly");
+    await t.run(async (ctx) => {
+      await ctx.db.insert("users", {
+        userId: "test-user-001",
+        // Confirmed against Clerk AFTER the checkout was stamped.
+        email: "newest@example.com",
+        normalizedEmail: "newest@example.com",
+        firstSeenAt: BASE_TIMESTAMP - 86400000,
+        lastSeenAt: checkoutIssuedAt + 60_000,
+      });
+    });
+
+    await processEvent(
+      t,
+      "wh_users_row_fresher_than_stamp",
+      "subscription.active",
+      makeSubscriptionPayload({
+        customer: {
+          customer_id: "cust_test_001",
+          email: "checkout@example.com",
+          name: "Test User",
+        },
+        metadata: {
+          wm_user_id: "test-user-001",
+          wm_user_id_sig: await signUserId("test-user-001"),
+          // Valid signature, inside the age window — but superseded.
+          wm_login_email: "abandoned@example.com",
+          wm_login_email_sig: await signCheckoutLoginEmail(
+            "test-user-001",
+            "abandoned@example.com",
+            checkoutIssuedAt,
+          ),
+        },
+      }),
+      BASE_TIMESTAMP,
+    );
+    await t.finishAllScheduledFunctions(vi.runAllTimers);
+
+    const sends = fetchMock.mock.calls
+      .filter(([url]) => String(url).includes("api.resend.com"))
+      .map(([, init]) => JSON.parse(String((init as RequestInit).body)) as {
+        to: string[];
+        subject: string;
+      });
+
+    const welcome = sends.find((send) => send.subject.startsWith("Welcome to World Monitor"));
+    expect(welcome?.to).toEqual(["newest@example.com"]);
+    expect(sends.every((send) => send.to[0] !== "abandoned@example.com")).toBe(true);
+  });
+
+  // The boundary between the two rules: a users row last confirmed BEFORE the
+  // checkout is the stale one, so the stamp wins. Same fixture as above with
+  // only the timestamps' order flipped, which is what makes the comparison
+  // itself — not some other difference — the thing under test.
+  test("a users row last confirmed before checkout loses to the stamped email", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(BASE_TIMESTAMP);
+    process.env.RESEND_API_KEY = "re_test";
+    process.env.DODO_IDENTITY_SIGNING_SECRET = SIGNING_SECRET;
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue(new Response("{}", { status: 200 }));
+    const t = convexTest(schema, modules);
+
+    const checkoutIssuedAt = BASE_TIMESTAMP - 3600_000;
+
+    await seedProductPlan(t, "pdt_test_pro", "pro_monthly", "Pro Monthly");
+    await t.run(async (ctx) => {
+      await ctx.db.insert("users", {
+        userId: "test-user-001",
+        email: "abandoned@example.com",
+        normalizedEmail: "abandoned@example.com",
+        firstSeenAt: BASE_TIMESTAMP - 86400000,
+        lastSeenAt: checkoutIssuedAt - 60_000,
+      });
+    });
+
+    await processEvent(
+      t,
+      "wh_users_row_older_than_stamp",
+      "subscription.active",
+      makeSubscriptionPayload({
+        customer: {
+          customer_id: "cust_test_001",
+          email: "checkout@example.com",
+          name: "Test User",
+        },
+        metadata: {
+          wm_user_id: "test-user-001",
+          wm_user_id_sig: await signUserId("test-user-001"),
+          wm_login_email: "newest@example.com",
+          wm_login_email_sig: await signCheckoutLoginEmail(
+            "test-user-001",
+            "newest@example.com",
+            checkoutIssuedAt,
+          ),
+        },
+      }),
+      BASE_TIMESTAMP,
+    );
+    await t.finishAllScheduledFunctions(vi.runAllTimers);
+
+    const sends = fetchMock.mock.calls
+      .filter(([url]) => String(url).includes("api.resend.com"))
+      .map(([, init]) => JSON.parse(String((init as RequestInit).body)) as {
+        to: string[];
+        subject: string;
+      });
+
+    const welcome = sends.find((send) => send.subject.startsWith("Welcome to World Monitor"));
+    expect(welcome?.to).toEqual(["newest@example.com"]);
+    expect(sends.every((send) => send.to[0] !== "abandoned@example.com")).toBe(true);
+  });
+
+  test("a signed login email equal to the checkout address suppresses the pointer", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(BASE_TIMESTAMP);
+    process.env.RESEND_API_KEY = "re_test";
+    process.env.DODO_IDENTITY_SIGNING_SECRET = SIGNING_SECRET;
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue(new Response("{}", { status: 200 }));
+    const t = convexTest(schema, modules);
+
+    await seedProductPlan(t, "pdt_test_pro", "pro_monthly", "Pro Monthly");
+    await t.run(async (ctx) => {
+      // Stale row that DIVERGES from the checkout address: without the signed
+      // value the run would emit a pointer, so this pins that the divergence
+      // verdict is recomputed against the signed email, not just the recipient.
+      await ctx.db.insert("users", {
+        userId: "test-user-001",
+        email: "stale@example.com",
+        normalizedEmail: "stale@example.com",
+        firstSeenAt: BASE_TIMESTAMP - 86400000,
+        lastSeenAt: BASE_TIMESTAMP - 86400000,
+      });
+    });
+
+    await processEvent(
+      t,
+      "wh_signed_login_email_matches_checkout",
+      "subscription.active",
+      makeSubscriptionPayload({
+        customer: {
+          customer_id: "cust_test_001",
+          email: "checkout@example.com",
+          name: "Test User",
+        },
+        metadata: {
+          wm_user_id: "test-user-001",
+          wm_user_id_sig: await signUserId("test-user-001"),
+          wm_login_email: "checkout@example.com",
+          wm_login_email_sig: await signCheckoutLoginEmail(
+            "test-user-001",
+            "checkout@example.com",
+            BASE_TIMESTAMP - 60_000,
+          ),
+        },
+      }),
+      BASE_TIMESTAMP,
+    );
+    await t.finishAllScheduledFunctions(vi.runAllTimers);
+
+    const sends = fetchMock.mock.calls
+      .filter(([url]) => String(url).includes("api.resend.com"))
+      .map(([, init]) => JSON.parse(String((init as RequestInit).body)) as {
+        to: string[];
+        subject: string;
+      });
+
+    // Welcome + admin only — one inbox, so no sign-in pointer.
+    expect(sends).toHaveLength(2);
+    const welcome = sends.find((send) => send.subject.startsWith("Welcome to World Monitor"));
+    expect(welcome?.to).toEqual(["checkout@example.com"]);
+  });
+
+  test.each([
+    [
+      "a signature minted for a different account",
+      async () => ({
+        wm_login_email: "attacker@example.com",
+        wm_login_email_sig: await signCheckoutLoginEmail(
+          "user_someone_else",
+          "attacker@example.com",
+          BASE_TIMESTAMP - 60_000,
+        ),
+      }),
+    ],
+    [
+      "an email swapped after signing",
+      async () => ({
+        wm_login_email: "attacker@example.com",
+        wm_login_email_sig: await signCheckoutLoginEmail(
+          "test-user-001",
+          "fresh@example.com",
+          BASE_TIMESTAMP - 60_000,
+        ),
+      }),
+    ],
+    [
+      "a token older than the checkout window",
+      async () => ({
+        wm_login_email: "expired@example.com",
+        wm_login_email_sig: await signCheckoutLoginEmail(
+          "test-user-001",
+          "expired@example.com",
+          BASE_TIMESTAMP - CHECKOUT_LOGIN_EMAIL_MAX_AGE_MS - 1,
+        ),
+      }),
+    ],
+    [
+      "an unsigned login email",
+      async () => ({ wm_login_email: "unsigned@example.com" }),
+    ],
+    [
+      // Producible only by hand: the stamping side trims before signing. The
+      // signature here genuinely covers the padding, so this is the one shape
+      // where "verify then trim" would have sent to bytes nobody proved.
+      "a padded login email whose signature covers the padding",
+      async () => ({
+        wm_login_email: "  padded@example.com  ",
+        wm_login_email_sig: await signCheckoutLoginEmail(
+          "test-user-001",
+          "  padded@example.com  ",
+          BASE_TIMESTAMP - 60_000,
+        ),
+      }),
+    ],
+    [
+      // The mirror tamper shape: strip the address, keep the signature. Both
+      // halves are stamped together, so either half alone is an anomaly.
+      "a signature with the address stripped",
+      async () => ({
+        wm_login_email_sig: await signCheckoutLoginEmail(
+          "test-user-001",
+          "stripped@example.com",
+          BASE_TIMESTAMP - 60_000,
+        ),
+      }),
+    ],
+  ])("%s never displaces the users row", async (_label, buildMetadata) => {
+    vi.useFakeTimers();
+    vi.setSystemTime(BASE_TIMESTAMP);
+    process.env.RESEND_API_KEY = "re_test";
+    process.env.DODO_IDENTITY_SIGNING_SECRET = SIGNING_SECRET;
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue(new Response("{}", { status: 200 }));
+    const t = convexTest(schema, modules);
+
+    await seedProductPlan(t, "pdt_test_pro", "pro_monthly", "Pro Monthly");
+    await t.run(async (ctx) => {
+      await ctx.db.insert("users", {
+        userId: "test-user-001",
+        email: "login@example.com",
+        normalizedEmail: "login@example.com",
+        firstSeenAt: BASE_TIMESTAMP - 86400000,
+        lastSeenAt: BASE_TIMESTAMP,
+      });
+    });
+
+    await processEvent(
+      t,
+      `wh_login_email_rejected_${_label.replace(/\W+/g, "_")}`,
+      "subscription.active",
+      makeSubscriptionPayload({
+        customer: {
+          customer_id: "cust_test_001",
+          email: "checkout@example.com",
+          name: "Test User",
+        },
+        metadata: {
+          wm_user_id: "test-user-001",
+          wm_user_id_sig: await signUserId("test-user-001"),
+          ...(await buildMetadata()),
+        },
+      }),
+      BASE_TIMESTAMP,
+    );
+    await t.finishAllScheduledFunctions(vi.runAllTimers);
+
+    const sends = fetchMock.mock.calls
+      .filter(([url]) => String(url).includes("api.resend.com"))
+      .map(([, init]) => JSON.parse(String((init as RequestInit).body)) as {
+        to: string[];
+        subject: string;
+      });
+
+    const welcome = sends.find((send) => send.subject.startsWith("Welcome to World Monitor"));
+    expect(welcome?.to).toEqual(["login@example.com"]);
+    // Whitelist rather than blacklist: every recipient must be one of the three
+    // legitimate inboxes (login, checkout pointer, admin alert), so no
+    // unverifiable metadata value can reach ANY send regardless of the shape it
+    // arrived in (padding included).
+    expect([...new Set(sends.map((send) => send.to[0]))].sort()).toEqual([
+      "checkout@example.com",
+      "elie@worldmonitor.app",
+      "login@example.com",
+    ]);
+  });
+
+  // The steady state, not an anomaly: Dodo re-delivers the ORIGINAL checkout's
+  // metadata on every later `subscription.updated`, so a mature subscription
+  // ages its stamped token out on each one. That must be quiet (console.log)
+  // and must not spend the tamper warning, which is reserved for a token that
+  // did not come from us.
+  test("an aged-out replay on a mature subscription falls back without a warning", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(BASE_TIMESTAMP);
+    process.env.RESEND_API_KEY = "re_test";
+    process.env.DODO_IDENTITY_SIGNING_SECRET = SIGNING_SECRET;
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response("{}", { status: 200 }));
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const t = convexTest(schema, modules);
+
+    await seedProductPlan(t, "pdt_test_pro", "pro_monthly", "Pro Monthly");
+    await t.run(async (ctx) => {
+      await ctx.db.insert("users", {
+        userId: "test-user-001",
+        email: "current@example.com",
+        normalizedEmail: "current@example.com",
+        firstSeenAt: BASE_TIMESTAMP - 400 * 86400000,
+        lastSeenAt: BASE_TIMESTAMP,
+      });
+    });
+
+    await processEvent(
+      t,
+      "wh_mature_sub_aged_replay",
+      "subscription.updated",
+      makeSubscriptionPayload({
+        status: "active",
+        customer: {
+          customer_id: "cust_test_001",
+          email: "checkout@example.com",
+          name: "Test User",
+        },
+        metadata: {
+          wm_user_id: "test-user-001",
+          wm_user_id_sig: await signUserId("test-user-001"),
+          wm_login_email: "year-old@example.com",
+          wm_login_email_sig: await signCheckoutLoginEmail(
+            "test-user-001",
+            "year-old@example.com",
+            BASE_TIMESTAMP - 365 * 86400000,
+          ),
+        },
+      }),
+      BASE_TIMESTAMP,
+    );
+    await t.finishAllScheduledFunctions(vi.runAllTimers);
+
+    // The year-old stamped address loses to the users row, which a page load
+    // has refreshed many times since that checkout.
+    const sends = (globalThis.fetch as unknown as ReturnType<typeof vi.fn>).mock.calls
+      .filter(([url]: [unknown]) => String(url).includes("api.resend.com"))
+      .map(([, init]: [unknown, RequestInit]) => JSON.parse(String(init.body)) as {
+        to: string[];
+        subject: string;
+      });
+    const welcome = sends.find((send) => send.subject.startsWith("Welcome to World Monitor"));
+    expect(welcome?.to).toEqual(["current@example.com"]);
+
+    // And it did so silently. Pinning the ABSENCE of the tamper warning is the
+    // point: without the expired/invalid split this fires on every mature
+    // subscription and the real signal drowns.
+    const loginEmailWarnings = warn.mock.calls
+      .map((call) => String(call[0]))
+      .filter((line) => line.includes("wm_login_email"));
+    expect(loginEmailWarnings).toEqual([]);
+  });
+
+  // Rotating DODO_IDENTITY_SIGNING_SECRET invalidates every in-flight stamped
+  // token at once. The recipient must degrade to the users row rather than the
+  // send failing or addressing an unverified value.
+  test("a rotated signing secret degrades to the users row, it does not break the send", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(BASE_TIMESTAMP);
+    process.env.RESEND_API_KEY = "re_test";
+    process.env.DODO_IDENTITY_SIGNING_SECRET = SIGNING_SECRET;
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue(new Response("{}", { status: 200 }));
+    const t = convexTest(schema, modules);
+
+    await seedProductPlan(t, "pdt_test_pro", "pro_monthly", "Pro Monthly");
+    await t.run(async (ctx) => {
+      await ctx.db.insert("users", {
+        userId: "test-user-001",
+        email: "login@example.com",
+        normalizedEmail: "login@example.com",
+        firstSeenAt: BASE_TIMESTAMP - 86400000,
+        lastSeenAt: BASE_TIMESTAMP,
+      });
+    });
+
+    // Stamped under the old secret...
+    const metadata = {
+      wm_user_id: "test-user-001",
+      wm_user_id_sig: await signUserId("test-user-001"),
+      wm_login_email: "fresh@example.com",
+      wm_login_email_sig: await signCheckoutLoginEmail(
+        "test-user-001",
+        "fresh@example.com",
+        BASE_TIMESTAMP - 60_000,
+      ),
+    };
+    // ...delivered after the rotation. `wm_user_id_sig` is rotated in lockstep,
+    // so attribution falls through to the customers row seeded by processEvent.
+    process.env.DODO_IDENTITY_SIGNING_SECRET = "rotated-secret-value";
+
+    await processEvent(
+      t,
+      "wh_rotated_secret",
+      "subscription.active",
+      makeSubscriptionPayload({
+        customer: {
+          customer_id: "cust_test_001",
+          email: "checkout@example.com",
+          name: "Test User",
+        },
+        metadata,
+      }),
+      BASE_TIMESTAMP,
+    );
+    await t.finishAllScheduledFunctions(vi.runAllTimers);
+
+    const sends = fetchMock.mock.calls
+      .filter(([url]) => String(url).includes("api.resend.com"))
+      .map(([, init]) => JSON.parse(String((init as RequestInit).body)) as {
+        to: string[];
+        subject: string;
+      });
+
+    const welcome = sends.find((send) => send.subject.startsWith("Welcome to World Monitor"));
+    expect(welcome?.to).toEqual(["login@example.com"]);
+  });
+
+  test("a rejected signature on the reactivation path still reaches the users row", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(BASE_TIMESTAMP);
+    process.env.RESEND_API_KEY = "re_test";
+    process.env.DODO_IDENTITY_SIGNING_SECRET = SIGNING_SECRET;
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue(new Response("{}", { status: 200 }));
+    const t = convexTest(schema, modules);
+
+    await seedProductPlan(t, "pdt_test_pro", "pro_monthly", "Pro Monthly");
+    await t.run(async (ctx) => {
+      await ctx.db.insert("users", {
+        userId: "test-user-001",
+        email: "login@example.com",
+        normalizedEmail: "login@example.com",
+        firstSeenAt: BASE_TIMESTAMP - 86400000,
+        lastSeenAt: BASE_TIMESTAMP,
+      });
+      await ctx.db.insert("subscriptions", {
+        userId: "test-user-001",
+        dodoSubscriptionId: "sub_prior_lapsed_reject",
+        dodoProductId: "pdt_test_pro",
+        planKey: "pro_monthly",
+        status: "expired",
+        currentPeriodStart: BASE_TIMESTAMP - 31 * 86400000,
+        currentPeriodEnd: BASE_TIMESTAMP - 86400000,
+        rawPayload: {},
+        updatedAt: BASE_TIMESTAMP - 86400000,
+      });
+    });
+
+    await processEvent(
+      t,
+      "wh_reactivation_rejected_sig",
+      "subscription.active",
+      makeSubscriptionPayload({
+        subscription_id: "sub_returning_reject",
+        customer: {
+          customer_id: "cust_test_001",
+          email: "checkout@example.com",
+          name: "Test User",
+        },
+        metadata: {
+          wm_user_id: "test-user-001",
+          wm_user_id_sig: await signUserId("test-user-001"),
+          wm_login_email: "attacker@example.com",
+          wm_login_email_sig: await signCheckoutLoginEmail(
+            "test-user-001",
+            "somethingelse@example.com",
+            BASE_TIMESTAMP - 60_000,
+          ),
+        },
+      }),
+      BASE_TIMESTAMP,
+    );
+    await t.finishAllScheduledFunctions(vi.runAllTimers);
+
+    const sends = fetchMock.mock.calls
+      .filter(([url]) => String(url).includes("api.resend.com"))
+      .map(([, init]) => JSON.parse(String((init as RequestInit).body)) as {
+        to: string[];
+        subject: string;
+      });
+
+    // The reactivation path gets the same fallback as the first-purchase path.
+    const welcomeBack = sends.find((send) => send.subject.includes("Welcome back"));
+    expect(welcomeBack?.to).toEqual(["login@example.com"]);
+    expect(sends.every((send) => send.to[0] !== "attacker@example.com")).toBe(true);
+  });
+
+  test("a tampered login email still spends the warning", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(BASE_TIMESTAMP);
+    process.env.RESEND_API_KEY = "re_test";
+    process.env.DODO_IDENTITY_SIGNING_SECRET = SIGNING_SECRET;
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response("{}", { status: 200 }));
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const t = convexTest(schema, modules);
+
+    await seedProductPlan(t, "pdt_test_pro", "pro_monthly", "Pro Monthly");
+    await t.run(async (ctx) => {
+      await ctx.db.insert("users", {
+        userId: "test-user-001",
+        email: "login@example.com",
+        normalizedEmail: "login@example.com",
+        firstSeenAt: BASE_TIMESTAMP - 86400000,
+        lastSeenAt: BASE_TIMESTAMP,
+      });
+    });
+
+    await processEvent(
+      t,
+      "wh_tampered_login_email_warns",
+      "subscription.active",
+      makeSubscriptionPayload({
+        customer: {
+          customer_id: "cust_test_001",
+          email: "checkout@example.com",
+          name: "Test User",
+        },
+        metadata: {
+          wm_user_id: "test-user-001",
+          wm_user_id_sig: await signUserId("test-user-001"),
+          wm_login_email: "attacker@example.com",
+          wm_login_email_sig: await signCheckoutLoginEmail(
+            "test-user-001",
+            "fresh@example.com",
+            BASE_TIMESTAMP - 60_000,
+          ),
+        },
+      }),
+      BASE_TIMESTAMP,
+    );
+    await t.finishAllScheduledFunctions(vi.runAllTimers);
+
+    const loginEmailWarnings = warn.mock.calls
+      .map((call) => String(call[0]))
+      .filter((line) => line.includes("wm_login_email"));
+    expect(loginEmailWarnings).toHaveLength(1);
+    expect(loginEmailWarnings[0]).toContain("failed signature verification");
+  });
+
+  // Every metadata shape that CANNOT have come from our own stamping side is an
+  // anomaly and must warn — otherwise a corruption or tampering signal is
+  // invisible. Reported by presence only: the address must never reach a
+  // Sentry-forwarded string.
+  test.each([
+    [
+      "a pair with the signature stripped",
+      { wm_login_email: "half@example.com" },
+      "email=present, signature=absent",
+    ],
+    [
+      "a pair with the address stripped",
+      { wm_login_email_sig: "v1.1.deadbeef" },
+      "email=absent, signature=present",
+    ],
+    [
+      // The stamping side always trims before signing, so padding here is
+      // corruption or tampering even though the fallback is graceful.
+      "a padded address",
+      {
+        wm_login_email: "  padded@example.com  ",
+        wm_login_email_sig: "v1.1.deadbeef",
+      },
+      "Padded wm_login_email",
+    ],
+  ])("%s warns", async (_label, half, expectedShape) => {
+    vi.useFakeTimers();
+    vi.setSystemTime(BASE_TIMESTAMP);
+    process.env.RESEND_API_KEY = "re_test";
+    process.env.DODO_IDENTITY_SIGNING_SECRET = SIGNING_SECRET;
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response("{}", { status: 200 }));
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const t = convexTest(schema, modules);
+
+    await seedProductPlan(t, "pdt_test_pro", "pro_monthly", "Pro Monthly");
+    await t.run(async (ctx) => {
+      await ctx.db.insert("users", {
+        userId: "test-user-001",
+        email: "login@example.com",
+        normalizedEmail: "login@example.com",
+        firstSeenAt: BASE_TIMESTAMP - 86400000,
+        lastSeenAt: BASE_TIMESTAMP,
+      });
+    });
+
+    await processEvent(
+      t,
+      `wh_half_present_${expectedShape.replace(/\W+/g, "_")}`,
+      "subscription.active",
+      makeSubscriptionPayload({
+        metadata: {
+          wm_user_id: "test-user-001",
+          wm_user_id_sig: await signUserId("test-user-001"),
+          ...half,
+        },
+      }),
+      BASE_TIMESTAMP,
+    );
+    await t.finishAllScheduledFunctions(vi.runAllTimers);
+
+    const loginEmailWarnings = warn.mock.calls
+      .map((call) => String(call[0]))
+      .filter((line) => line.includes("wm_login_email"));
+    expect(loginEmailWarnings).toHaveLength(1);
+    expect(loginEmailWarnings[0]).toContain(expectedShape);
+    // Presence only — the address itself never reaches the log line.
+    expect(loginEmailWarnings[0]).not.toContain("@example.com");
+  });
+
+  // resolveSignedCheckoutLoginEmail's docstring claims the signature is checked
+  // against the userId the handler ACTUALLY resolved, not the one the metadata
+  // claims — so a token minted for an anonymous checkout id cannot follow the
+  // subscription after preferExistingCustomerOwner reassigns it to the real
+  // account that owns the Dodo customer. Nothing tested that claim.
+  test("an anon-signed login email does not survive owner reassignment", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(BASE_TIMESTAMP);
+    process.env.RESEND_API_KEY = "re_test";
+    process.env.DODO_IDENTITY_SIGNING_SECRET = SIGNING_SECRET;
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue(new Response("{}", { status: 200 }));
+    const t = convexTest(schema, modules);
+
+    const anonId = "33333333-3333-4333-8333-333333333333";
+    const realUserId = "user_real_owner_6335";
+
+    await seedProductPlan(t, "pdt_test_pro", "pro_monthly", "Pro Monthly");
+    await t.run(async (ctx) => {
+      // The Dodo customer already belongs to a real account...
+      await ctx.db.insert("customers", {
+        userId: realUserId,
+        dodoCustomerId: "cust_reassign_6335",
+        email: "checkout@example.com",
+        normalizedEmail: "checkout@example.com",
+        createdAt: BASE_TIMESTAMP - 86400000,
+        updatedAt: BASE_TIMESTAMP - 86400000,
+      });
+      // ...whose users row carries the address that must win.
+      await ctx.db.insert("users", {
+        userId: realUserId,
+        email: "realowner@example.com",
+        normalizedEmail: "realowner@example.com",
+        firstSeenAt: BASE_TIMESTAMP - 86400000,
+        lastSeenAt: BASE_TIMESTAMP,
+      });
+    });
+
+    await t.mutation(internal.payments.webhookMutations.processWebhookEvent, {
+      webhookId: "wh_anon_signed_reassigned",
+      eventType: "subscription.active",
+      rawPayload: makeSubscriptionPayload({
+        subscription_id: "sub_reassign_6335",
+        customer: {
+          customer_id: "cust_reassign_6335",
+          email: "checkout@example.com",
+          name: "Test User",
+        },
+        // Signed correctly — but for the ANONYMOUS id, which
+        // preferExistingCustomerOwner discards in favour of the real owner.
+        metadata: {
+          wm_user_id: anonId,
+          wm_user_id_sig: await signUserId(anonId),
+          wm_login_email: "anon-typed@example.com",
+          wm_login_email_sig: await signCheckoutLoginEmail(
+            anonId,
+            "anon-typed@example.com",
+            BASE_TIMESTAMP - 60_000,
+          ),
+        },
+      }),
+      timestamp: BASE_TIMESTAMP,
+    });
+    await t.finishAllScheduledFunctions(vi.runAllTimers);
+
+    // The subscription landed on the real owner...
+    const sub = await t.run(async (ctx) =>
+      ctx.db
+        .query("subscriptions")
+        .withIndex("by_dodoSubscriptionId", (q) =>
+          q.eq("dodoSubscriptionId", "sub_reassign_6335"),
+        )
+        .unique(),
+    );
+    expect(sub?.userId).toBe(realUserId);
+
+    const sends = fetchMock.mock.calls
+      .filter(([url]) => String(url).includes("api.resend.com"))
+      .map(([, init]) => JSON.parse(String((init as RequestInit).body)) as {
+        to: string[];
+        subject: string;
+      });
+
+    // ...and so did the welcome. The anon-signed address never verifies against
+    // the reassigned userId, so it cannot redirect a real account's mail.
+    const welcome = sends.find((send) => send.subject.startsWith("Welcome to World Monitor"));
+    expect(welcome?.to).toEqual(["realowner@example.com"]);
+    expect(sends.every((send) => send.to[0] !== "anon-typed@example.com")).toBe(true);
+  });
+
+  test("a signed login email is used even when no users row exists", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(BASE_TIMESTAMP);
+    process.env.RESEND_API_KEY = "re_test";
+    process.env.DODO_IDENTITY_SIGNING_SECRET = SIGNING_SECRET;
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue(new Response("{}", { status: 200 }));
+    const t = convexTest(schema, modules);
+
+    await seedProductPlan(t, "pdt_test_pro", "pro_monthly", "Pro Monthly");
+
+    await processEvent(
+      t,
+      "wh_signed_login_email_no_users_row",
+      "subscription.active",
+      makeSubscriptionPayload({
+        customer: {
+          customer_id: "cust_test_001",
+          email: "checkout@example.com",
+          name: "Test User",
+        },
+        metadata: {
+          wm_user_id: "test-user-001",
+          wm_user_id_sig: await signUserId("test-user-001"),
+          wm_login_email: "fresh@example.com",
+          wm_login_email_sig: await signCheckoutLoginEmail(
+            "test-user-001",
+            "fresh@example.com",
+            BASE_TIMESTAMP - 60_000,
+          ),
+        },
+      }),
+      BASE_TIMESTAMP,
+    );
+    await t.finishAllScheduledFunctions(vi.runAllTimers);
+
+    const sends = fetchMock.mock.calls
+      .filter(([url]) => String(url).includes("api.resend.com"))
+      .map(([, init]) => JSON.parse(String((init as RequestInit).body)) as {
+        to: string[];
+        subject: string;
+      });
+
+    const welcome = sends.find((send) => send.subject.startsWith("Welcome to World Monitor"));
+    expect(welcome?.to).toEqual(["fresh@example.com"]);
+  });
+
+  test("reactivation targets the signed login email over a stale users row", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(BASE_TIMESTAMP);
+    process.env.RESEND_API_KEY = "re_test";
+    process.env.DODO_IDENTITY_SIGNING_SECRET = SIGNING_SECRET;
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue(new Response("{}", { status: 200 }));
+    const t = convexTest(schema, modules);
+
+    await seedProductPlan(t, "pdt_test_pro", "pro_monthly", "Pro Monthly");
+    await t.run(async (ctx) => {
+      await ctx.db.insert("users", {
+        userId: "test-user-001",
+        email: "stale@example.com",
+        normalizedEmail: "stale@example.com",
+        firstSeenAt: BASE_TIMESTAMP - 86400000,
+        lastSeenAt: BASE_TIMESTAMP - 86400000,
+      });
+      await ctx.db.insert("subscriptions", {
+        userId: "test-user-001",
+        dodoSubscriptionId: "sub_prior_lapsed",
+        dodoProductId: "pdt_test_pro",
+        planKey: "pro_monthly",
+        status: "expired",
+        currentPeriodStart: BASE_TIMESTAMP - 31 * 86400000,
+        currentPeriodEnd: BASE_TIMESTAMP - 86400000,
+        rawPayload: {},
+        updatedAt: BASE_TIMESTAMP - 86400000,
+      });
+    });
+
+    await processEvent(
+      t,
+      "wh_reactivation_signed_login_email",
+      "subscription.active",
+      makeSubscriptionPayload({
+        subscription_id: "sub_returning_001",
+        customer: {
+          customer_id: "cust_test_001",
+          email: "checkout@example.com",
+          name: "Test User",
+        },
+        metadata: {
+          wm_user_id: "test-user-001",
+          wm_user_id_sig: await signUserId("test-user-001"),
+          wm_login_email: "fresh@example.com",
+          wm_login_email_sig: await signCheckoutLoginEmail(
+            "test-user-001",
+            "fresh@example.com",
+            BASE_TIMESTAMP - 60_000,
+          ),
+        },
+      }),
+      BASE_TIMESTAMP,
+    );
+    await t.finishAllScheduledFunctions(vi.runAllTimers);
+
+    const sends = fetchMock.mock.calls
+      .filter(([url]) => String(url).includes("api.resend.com"))
+      .map(([, init]) => JSON.parse(String((init as RequestInit).body)) as {
+        to: string[];
+        subject: string;
+        html: string;
+      });
+
+    const welcomeBack = sends.find((send) => send.subject.includes("Welcome back"));
+    expect(welcomeBack?.to).toEqual(["fresh@example.com"]);
+    expect(welcomeBack?.html).toContain("fresh@example.com");
   });
 
   test("email templates escape HTML in interpolated addresses", async () => {

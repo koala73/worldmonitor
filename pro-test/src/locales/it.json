@@ -583,7 +583,7 @@
       "s10l": "Hotspot con punteggio",
       "s11v": "92",
       "s11l": "Borse & asset",
-      "s12v": "59",
+      "s12v": "60",
       "s12l": "Strumenti MCP",
       "s13v": "154",
       "s13l": "Comandi ⌘K",
@@ -611,7 +611,7 @@
       "eyebrow": "Per creatori e agenti AI",
       "title": "Costruisci su intelligence del mondo in tempo reale — da qualsiasi stack.",
       "sub": "Tutto sulla mappa è anche un'API. Integrala in Claude tramite MCP, chiama gli endpoint REST da qualsiasi luogo, o installa un client nativo per Python, Ruby, Go o JavaScript — il tuo codice ricerca con dati in tempo reale invece di memorie di dati di training.",
-      "b1": "59 strumenti MCP — punteggi di rischio, colli di bottiglia, conflitti, mercati, briefing",
+      "b1": "60 strumenti MCP — punteggi di rischio, colli di bottiglia, conflitti, mercati, briefing",
       "b2": "API REST documentata — 193 operazioni, una specifica OpenAPI 3.1, una chiave",
       "b3": "SDK ufficiali su npm, PyPI, RubyGems e Go — zero dipendenze, MCP-first",
       "b4": "Proiezione JMESPath su ogni chiamata — recupera esattamente i campi di cui hai bisogno",
@@ -620,7 +620,7 @@
       "termQuery": "La nostra esposizione al Mar Rosso peggiora questa settimana?",
       "termAnswer": "I conteggi di transito diminuiscono da settimana a settimana; tier di rischio di guerra elevato; due anomalie di densità nelle ultime 48 ore.",
       "termDocs": "Vedi il riferimento strumento completo →",
-      "promise": "Una chiave. 59 strumenti MCP. Un'API REST completa. Client nativi del linguaggio."
+      "promise": "Una chiave. 60 strumenti MCP. Un'API REST completa. Client nativi del linguaggio."
     },
     "pricing": {
       "eyebrow": "Accesso",
@@ -638,7 +638,7 @@
       "proF1": "WM Analyst — chat con 30+ servizi live, con citazioni",
       "proF2": "Scenario engine & Route Explorer — simula i disagi prima che si verifichino",
       "proF3": "Digest AI personale — giornaliero, due volte al giorno o settimanale, su Slack, Telegram o email",
-      "proF4": "MCP, API REST e SDK ufficiali — 59 strumenti con una sola chiave",
+      "proF4": "MCP, API REST e SDK ufficiali — 60 strumenti con una sola chiave",
       "proF5": "Generatore widget personalizzato per i tuoi pannelli",
       "cta": "Visualizza piani e prezzi",
       "note": "Da $39.99/mo · 3 mesi gratis con fatturazione annuale"
@@ -659,7 +659,7 @@
       "q6": "Perché dovrei fidarmi di un avviso?",
       "a6": "Un banner di breaking si attiva solo quando i tipi di origine indipendenti corroborano — classificazione delle notizie, velocità delle parole chiave, escalation degli hotspot, aumenti militari, sirene ufficiali — deduplicati e rate-limited. Meno avvisi, veri.",
       "q7": "Gli agenti IA come Claude o GPT possono usarlo?",
-      "a7": "Sì. World Monitor dispone di un server MCP con 59 strumenti, quindi Claude, GPT o qualsiasi agente compatibile con MCP può interrogare punteggi di rischio live, stato dei colli di bottiglia, conflitti, mercati e briefing — con proiezione JMESPath affinché gli agenti recuperino esattamente quello di cui hanno bisogno.",
+      "a7": "Sì. World Monitor dispone di un server MCP con 60 strumenti, quindi Claude, GPT o qualsiasi agente compatibile con MCP può interrogare punteggi di rischio live, stato dei colli di bottiglia, conflitti, mercati e briefing — con proiezione JMESPath affinché gli agenti recuperino esattamente quello di cui hanno bisogno.",
       "q8": "Ho bisogno di un account?",
       "a8": "No. La dashboard funziona istantaneamente senza iscrizione. Un account è importante solo quando esegui l'upgrade a Pro o desideri sincronizzare le impostazioni tra i dispositivi.",
       "q9": "È open source?",

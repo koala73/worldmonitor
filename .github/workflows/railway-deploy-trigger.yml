@@ -1,79 +1,14 @@
 name: Railway Deploy Trigger
-
-# Builds the Railway services a merge actually changed, from CI (#6142).
-#
-# Railway already builds most merges promptly — measured across the fleet over
-# 600 commits, a service whose closure changed and that Railway simply built saw
-# p90 0.01h from merge to build. The gap this closes is the other decision
-# Railway takes: it refuses to build a commit whose GitHub check suite is
-# failing, and it reads the WHOLE suite, including scheduled workflows that
-# re-report onto main's head SHA hours after the merge gates went green. That
-# accounted for 1,068 of 6,037 closure-relevant merges at p90 4.7h, and it is
-# self-reinforcing — the freshness monitor turns red precisely when the fleet is
-# behind, which then keeps the fleet behind.
-#
-# This does not remove that safety, it replaces the rule with the repository's
-# own: deploy only when main's head carries a green `gate` status, which is the
-# same required-gate aggregate branch protection uses. A red gate stops this
-# workflow exactly as it stops a merge.
-#
-# It is a RECONCILER, not a push handler, and that is deliberate. Each service
-# is judged against the commit IT is running rather than against a pushed range,
-# so the run is idempotent, needs no `event.before`, and self-heals after a
-# failed trigger, a webhook outage (#6064) or a manual `railway up` recovery —
-# none of which a push-shaped trigger recovers from.
+run-name: >-
+  Railway reconcile ${{ github.event_name == 'workflow_dispatch' && inputs.recovery_attempt_id || github.event_name }}
+  @ ${{ github.event_name == 'workflow_dispatch' && inputs.expected_head_sha || github.sha }}
 
 on:
-  # THE PRIMARY CADENCE (#6203). Deploy Gate completing on main is the moment
-  # the `gate` status this workflow reads has just been written, so reconciling
-  # here is both immediate and immune to schedule throttling.
-  #
-  # It replaces a 5-minute cron that did not fire. Measured over the 2h03m
-  # after e2db6b6a9 merged, this workflow produced ONE scheduled run against
-  # ~24 expected ticks — GitHub documents `schedule` as best-effort and drops
-  # high-frequency crons under load, and the same window shows the 15-minute
-  # Seed Freshness Monitor landing every 25-50 minutes. A 5-minute cron is not
-  # a cadence this repository has.
-  #
-  # `branches: [main]` is NOT a PR filter here, and must not be read as one.
-  # Deploy Gate is itself `workflow_run`-triggered, and GitHub stamps such a run
-  # with the DEFAULT branch rather than the branch that triggered it — measured
-  # 2026-08-05, 40 of 40 recent Deploy Gate runs carry head_branch=main and
-  # head_sha = main's head, including ones triggered by PR Test runs. (That is
-  # exactly why deploy-gate.yml reads `github.event.workflow_run.head_sha`
-  # instead of `github.sha`.) So this fires on roughly every gate evaluation in
-  # the repository, PRs included — about 33/hour measured over 72 minutes.
-  #
-  # That is safe rather than merely tolerable, for two independent reasons:
-  # nothing below reads the event at all — the job resolves its own
-  # `git rev-parse origin/main` and refuses to deploy unless THAT commit carries
-  # a green `gate` — and the concurrency group cancels the pending member on
-  # each new arrival, so the executing rate is bounded by one run's duration,
-  # not by the arrival rate. The extra wakeups cost a checkout and exit at the
-  # gate step.
-  #
-  # Chain depth is Test -> Deploy Gate -> here. GitHub refuses to chain
-  # workflow_run more than three levels deep, so this is the last link
-  # available: nothing may be triggered off THIS workflow's completion.
-  #
-  # Deliberately NOT filtered on the Deploy Gate run's own conclusion. That
-  # conclusion says whether the gate job executed, not what verdict it posted,
-  # and this workflow re-reads the `gate` status itself in the first step. A
-  # conclusion filter would only add a way to miss a reconcile.
   workflow_run:
     workflows: ["Deploy Gate"]
     types: [completed]
     branches: [main]
   schedule:
-    # BACKSTOP ONLY, and slow on purpose. The event above is what reconciles;
-    # this covers the one failure it cannot self-heal — a webhook/event-delivery
-    # outage (#6064). Asking for it more often re-orders the same tick GitHub
-    # already proved it drops, and would re-establish the burst the concurrency
-    # group below exists to collapse.
-    #
-    # :37 is clear of the Seed Freshness Monitor's :00/:15/:30/:45 — both fan
-    # out across the whole fleet and sharing a minute is how one starts getting
-    # rate limited.
     - cron: '37 * * * *'
   workflow_dispatch:
     inputs:
@@ -81,263 +16,308 @@ on:
         description: 'Report what would be deployed without deploying it'
         type: boolean
         default: false
+      recovery_attempt_id:
+        description: 'Durable watchdog recovery ID, or none for an ordinary manual run'
+        type: string
+        required: true
+        default: 'none'
+      expected_head_sha:
+        description: 'Exact current green main SHA authorized for this run'
+        type: string
+        required: true
 
-# Never cancel a run in progress: this one mutates production, and a cancelled
-# sweep leaves half the fleet triggered with no record of where it stopped. A
-# superseding run would re-derive the same plan anyway, so queueing costs
-# nothing but interrupting costs a partial deploy.
-#
-# This is also what makes the event trigger above safe to fire often. A merge
-# completes four Deploy Gate runs (Test, Typecheck, Lint Code, Security Audit
-# each trigger one), and GitHub cancels the previously PENDING member of a
-# concurrency group when a new run queues — so a burst collapses to one running
-# plus one queued reconcile rather than a backlog. The reconciler is idempotent,
-# so the collapsed runs cost nothing.
-concurrency:
-  group: railway-deploy-trigger
-  cancel-in-progress: false
-
+# Runner-less runs own no production serialization primitive. Only admission
+# uses GitHub concurrency, and it contains no Railway or control-plane secret.
+# The protected mutation job is serialized by the fixed 30-minute Durable
+# Object lease and global uncertainty barrier.
 permissions:
   contents: read
   statuses: read
-  # Reads this workflow's OWN run history, which is the only record of whether
-  # a run reconciled or declined (#6203).
   actions: read
 
 jobs:
-  trigger:
+  admission:
+    name: cancel-safe admission
     runs-on: ubuntu-latest
-    # Under the 15-minute interval on purpose. The offset cron below assumes
-    # this job and the freshness monitor do not overlap their fleet-wide Railway
-    # fan-outs; a 25-minute ceiling would let one run stretch across the next
-    # two ticks and land on top of the monitor anyway. The reconciler is
-    # idempotent, so being cut off costs a tick, not correctness.
-    timeout-minutes: 13
-    environment:
-      name: ingestion-acceptance-production
-      deployment: false
+    timeout-minutes: 3
+    concurrency:
+      group: >-
+        railway-reconcile-admission-${{
+          github.event_name == 'workflow_dispatch' && inputs.dryRun && 'preview'
+          || github.event_name == 'workflow_dispatch' && inputs.recovery_attempt_id != 'none' && 'recovery'
+          || 'normal'
+        }}
+      cancel-in-progress: true
+    outputs:
+      eligible: ${{ steps.resolve.outputs.eligible }}
+      dry_run: ${{ steps.resolve.outputs.dry_run }}
+      head_sha: ${{ steps.resolve.outputs.head_sha }}
+      recovery_attempt_id: ${{ steps.resolve.outputs.recovery_attempt_id }}
+      gate: ${{ steps.resolve.outputs.gate }}
     steps:
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
-        with:
-          # Full history, no blobs. Every service is compared against the commit
-          # it is running, which for a service that has been behind for weeks is
-          # far outside any fixed depth — and an unreachable commit resolves to
-          # "deploy", so a shallow checkout would rebuild the whole fleet on
-          # every run. `git diff --name-only` needs trees, never blobs, so the
-          # partial-clone filter costs nothing here.
-          fetch-depth: 0
-          filter: blob:none
-
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
-        with:
-          node-version: '24'
-
-      - name: Resolve main's head and require it to be green
-        id: head
+      - name: Resolve exact current green main
+        id: resolve
         env:
           GH_TOKEN: ${{ github.token }}
+          REQUESTED_HEAD: ${{ github.event_name == 'workflow_dispatch' && inputs.expected_head_sha || '' }}
+          RECOVERY_ATTEMPT_ID: ${{ github.event_name == 'workflow_dispatch' && inputs.recovery_attempt_id || 'none' }}
           DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dryRun }}
         run: |
-          set -o pipefail
-          head_sha=$(git rev-parse origin/main)
-          echo "sha=$head_sha" >> "$GITHUB_OUTPUT"
-          # Same status this repository's branch protection requires, read the
-          # same way scripts/check-seed-freshness.mjs's monitor reads it: newest
-          # first, because updated_at has only second resolution and sorting can
-          # invert ties.
-          gate_state=$(
+          set -euo pipefail
+          if [ "$GITHUB_REF" != 'refs/heads/main' ]; then
+            echo "::error::Railway reconciliation is restricted to refs/heads/main."
+            exit 1
+          fi
+          head_sha=$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/main" --jq '.object.sha')
+          if [[ ! "$head_sha" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::GitHub did not return an exact lowercase main SHA."
+            exit 1
+          fi
+          if [ -n "$REQUESTED_HEAD" ] && [ "$REQUESTED_HEAD" != "$head_sha" ]; then
+            echo "::error::Requested head is not current main."
+            exit 1
+          fi
+          if [ "$RECOVERY_ATTEMPT_ID" != 'none' ] \
+            && [[ ! "$RECOVERY_ATTEMPT_ID" =~ ^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$ ]]; then
+            echo "::error::Recovery attempt ID is invalid."
+            exit 1
+          fi
+          gate=$(
             gh api --paginate --slurp \
               "repos/$GITHUB_REPOSITORY/commits/$head_sha/statuses?per_page=100" |
               jq -r 'flatten | map(select(.context == "gate")) | first | .state // "missing"'
           )
-          echo "gate=$gate_state" >> "$GITHUB_OUTPUT"
-          echo "main is at ${head_sha:0:9}, gate=$gate_state"
-          # A dry run mutates nothing, so the gate has no authority over it —
-          # and the moment an operator most needs to read the plan is when main
-          # is red and the fleet is falling behind. Report the state and stop
-          # short of failing, so the preview step below still runs.
-          if [ "${DRY_RUN:-false}" = "true" ] && [ "$gate_state" != "success" ]; then
-            echo "::notice::Gate for ${head_sha:0:9} is $gate_state — previewing only, nothing will be deployed."
-          elif [ "$gate_state" = "success" ]; then
-            :
-          elif [ "$gate_state" = "pending" ] || [ "$gate_state" = "missing" ]; then
-            # Deferring is right for a young commit — the gate genuinely has not
-            # resolved yet. But an UNBOUNDED defer is how this workflow stops
-            # reconciling forever while still reporting success every 15 minutes,
-            # which is the silent-green failure the whole change exists to
-            # remove. `missing` in particular is not a timing state once the
-            # commit is old: it means no `gate` status was ever posted.
-            age=$(( $(date -u +%s) - $(git log -1 --format=%ct "$head_sha") ))
-            if [ "$age" -gt 10800 ]; then
-              echo "::error::Gate for ${head_sha:0:9} has been $gate_state for $((age / 3600))h. The reconciler has not run in that time and the fleet is not being caught up."
-              exit 1
-            fi
-            echo "::notice::Gate for ${head_sha:0:9} is $gate_state ($((age / 60))m old); deferring to the next run rather than deploying an unverified commit."
+          eligible=false
+          if [ "$gate" = 'success' ] || [ "${DRY_RUN:-false}" = 'true' ]; then
+            eligible=true
           else
-            echo "::error::Refusing to deploy ${head_sha:0:9}: its required gates are $gate_state."
-            exit 1
+            echo "::notice::Current main gate is $gate; this admission performs no production work."
           fi
+          echo "eligible=$eligible" >> "$GITHUB_OUTPUT"
+          echo "dry_run=${DRY_RUN:-false}" >> "$GITHUB_OUTPUT"
+          echo "head_sha=$head_sha" >> "$GITHUB_OUTPUT"
+          echo "recovery_attempt_id=$RECOVERY_ATTEMPT_ID" >> "$GITHUB_OUTPUT"
+          echo "gate=$gate" >> "$GITHUB_OUTPUT"
 
-      # Also for a dry run: the preview shells out to the same CLI, and gating
-      # the install on a green gate made `railway: command not found` the actual
-      # behaviour of previewing while main was red.
+  preview:
+    name: non-mutating preview
+    needs: admission
+    if: needs.admission.outputs.eligible == 'true' && needs.admission.outputs.dry_run == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 13
+    environment:
+      name: ingestion-acceptance-production-verification
+      deployment: false
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          ref: ${{ needs.admission.outputs.head_sha }}
+          fetch-depth: 0
+          filter: blob:none
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '24'
       - name: Install pinned Railway CLI
-        if: steps.head.outputs.gate == 'success' || (github.event_name == 'workflow_dispatch' && inputs.dryRun)
         run: npm install --global @railway/cli@5.30.1
-
-      - name: Verify Railway production context
-        if: steps.head.outputs.gate == 'success' || (github.event_name == 'workflow_dispatch' && inputs.dryRun)
-        env:
-          RAILWAY_TOKEN: ${{ secrets.RAILWAY_PRODUCTION_TOKEN }}
-          RAILWAY_PROJECT_ID: ${{ vars.RAILWAY_PROJECT_ID }}
-        run: |
-          if [ -z "$RAILWAY_TOKEN" ]; then
-            echo "::error::RAILWAY_PRODUCTION_TOKEN is required to trigger deployments."
-            exit 1
-          fi
-          if [ -z "$RAILWAY_PROJECT_ID" ]; then
-            echo "::error::RAILWAY_PROJECT_ID Actions environment variable is required."
-            exit 1
-          fi
-          railway status --project "$RAILWAY_PROJECT_ID" --environment production --json > /dev/null
-          echo "Project-scoped Railway token is valid for the expected production context."
-
-      # Split from the deploy step rather than sharing one step with a
-      # conditional --dry-run flag. One step would need its run condition and
-      # its flag expression to agree forever, and the day they diverge the arm
-      # that still runs is the one that deploys. Here each step's own condition
-      # decides both whether it runs AND what it does, so there is nothing to
-      # drift apart.
-      #
-      # Deliberately NOT gated on the gate: previewing mutates nothing, and the
-      # moment an operator most needs to read the plan is when main is red and
-      # the fleet is falling behind — which is exactly when the gate is not
-      # green and the deploy step below is correctly refusing to run.
       - name: Preview what would be deployed
-        id: preview
-        if: github.event_name == 'workflow_dispatch' && inputs.dryRun
         env:
-          RAILWAY_TOKEN: ${{ secrets.RAILWAY_PRODUCTION_TOKEN }}
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_RECONCILE_VIEWER_TOKEN }}
           RAILWAY_PROJECT_ID: ${{ vars.RAILWAY_PROJECT_ID }}
-        run: node scripts/trigger-railway-deploys.mjs --dry-run --head "${{ steps.head.outputs.sha }}"
+        run: node scripts/trigger-railway-deploys.mjs --dry-run --head "${{ needs.admission.outputs.head_sha }}"
 
-      # A failure here is a real one and must red the run: an unauthorized
-      # mutation, an unreadable deployment history, or a deploy call that
-      # returned no deployment id all mean services stayed behind while this
-      # workflow reported that it had handled them.
-      - name: Trigger deploys for services this merge changed
-        id: deploy
-        if: steps.head.outputs.gate == 'success' && !(github.event_name == 'workflow_dispatch' && inputs.dryRun)
-        env:
-          RAILWAY_TOKEN: ${{ secrets.RAILWAY_PRODUCTION_TOKEN }}
-          # Needed by resolveEnvironmentId: a clean runner has no .railway link,
-          # so `railway status` must be told which project to answer for.
-          RAILWAY_PROJECT_ID: ${{ vars.RAILWAY_PROJECT_ID }}
-        run: node scripts/trigger-railway-deploys.mjs --head "${{ steps.head.outputs.sha }}"
-
-      # Deliberately AFTER the deploy and `always()`: this is a diagnostic about
-      # the workflow's own health, and running it first would let a GitHub API
-      # hiccup stop the reconcile it exists to protect. `always()` is what makes
-      # it fire on the runs that matter — the ones that declined and did nothing.
-      #
-      # This is the check that does not depend on WHY. The gate escalation above
-      # only fires on a pending gate and only when this workflow runs, which is
-      # the precondition that failed in #6203.
-      - name: Check how long the fleet has gone un-reconciled
-        # NOT plain `always()`. The scan reads COMPLETED runs and excludes this
-        # one, so a run whose own deploy just succeeded cannot see the reconcile
-        # it performed seconds earlier. After a drought longer than the
-        # threshold — the exact recovery this workflow exists for — the run that
-        # FIXED the fleet would report it stale and go red.
-        #
-        # That is not merely a confusing badge. This workflow's runs carry a
-        # main commit as head_sha, so a red one lands in that commit's check
-        # suite, which is the `CI check suite failed` reason Railway uses to
-        # defer every service. The alarm would trigger the outage it detects.
-        #
-        # A successful deploy IS the freshest possible answer, so skip the
-        # history question entirely when we already have it.
-        id: age
-        if: always() && steps.deploy.outcome != 'success'
-        # Bounded well under the job budget. The scan stops at the first run
-        # that reconciled, so the healthy path is two API calls — but a window
-        # in which NOTHING reconciled costs one call per run in it, and at this
-        # workflow's wake rate that is a three-figure number. It must surface as
-        # its own alarm rather than as the job hitting timeout-minutes with the
-        # reason buried.
-        timeout-minutes: 3
+  mutation:
+    name: leased production mutation
+    needs: admission
+    if: >-
+      needs.admission.outputs.eligible == 'true'
+      && needs.admission.outputs.dry_run != 'true'
+      && vars.RAILWAY_RECONCILE_CUTOVER_ACTIVE == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 13
+    environment:
+      name: ingestion-acceptance-production
+      deployment: false
+    outputs:
+      manifest_ready: ${{ steps.evidence.outputs.manifest_ready }}
+      artifact_name: ${{ steps.evidence.outputs.artifact_name }}
+      producer_run_attempt: ${{ steps.evidence.outputs.producer_run_attempt }}
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          ref: ${{ needs.admission.outputs.head_sha }}
+          fetch-depth: 0
+          filter: blob:none
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '24'
+      - name: Trigger lease-fenced deploys for the exact green head
+        id: mutate
         env:
           GH_TOKEN: ${{ github.token }}
-          # A dry run is an operator diagnosing; report the staleness but do not
-          # red their preview for it.
-          WARN_ONLY: ${{ github.event_name == 'workflow_dispatch' && inputs.dryRun }}
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_RECONCILE_DEPLOY_TOKEN_V2 }}
+          RAILWAY_PROJECT_ID: ${{ vars.RAILWAY_PROJECT_ID }}
+          RAILWAY_RECONCILE_CONTROL_URL: ${{ vars.RAILWAY_RECONCILE_CONTROL_URL }}
+          RAILWAY_RECONCILE_MUTATION_HMAC: ${{ secrets.RAILWAY_RECONCILE_MUTATION_HMAC }}
+          RAILWAY_RECONCILE_CUTOVER_ACTIVE: ${{ vars.RAILWAY_RECONCILE_CUTOVER_ACTIVE }}
         run: |
-          # Two explicit arms rather than an interpolated flag. A GitHub
-          # expression ternary spliced into the command line would have to agree
-          # with the env var above forever, and the day they diverge the arm
-          # that still runs is the one that stays quiet.
-          #
-          # NOTE: never write a literal GitHub expression opener inside a `run:`
-          # block, even in a comment. The expression parser scans the whole
-          # block scalar, so an empty one fails the WORKFLOW to parse — which
-          # publishes no check run, leaves the PR green, and stops every trigger.
-          if [ "${WARN_ONLY:-false}" = "true" ]; then
-            node scripts/check-railway-reconcile-age.mjs --warn-only
-          else
-            node scripts/check-railway-reconcile-age.mjs
+          set +e
+          node scripts/trigger-railway-deploys.mjs \
+            --workflow-authorized \
+            --head "${{ needs.admission.outputs.head_sha }}" \
+            --recovery-attempt-id "${{ needs.admission.outputs.recovery_attempt_id }}" \
+            --result-manifest "$RUNNER_TEMP/railway-reconcile-result.json" \
+            --status-file "$RUNNER_TEMP/railway-reconcile-status.json"
+          command_status=$?
+          echo "command_status=$command_status" >> "$GITHUB_OUTPUT"
+          exit 0
+      - name: Record immutable result evidence
+        id: evidence
+        if: always()
+        run: |
+          set -euo pipefail
+          ready=false
+          mutation_started=true
+          manual_required=true
+          if [ -f "$RUNNER_TEMP/railway-reconcile-result.json" ]; then
+            ready=true
           fi
+          if [ -f "$RUNNER_TEMP/railway-reconcile-status.json" ]; then
+            outcome=$(jq -r '.outcome // ""' "$RUNNER_TEMP/railway-reconcile-status.json")
+            case "$outcome" in
+              NO_MUTATION|DURABLE_ADMISSION_DEFERRED)
+                mutation_started=false
+                manual_required=false
+                ;;
+              MUTATION_COMPLETED)
+                mutation_started=true
+                manual_required=false
+                ;;
+              MUTATION_PARTIAL|MUTATION_AMBIGUOUS|MUTATION_FAILED)
+                mutation_started=true
+                manual_required=true
+                ;;
+            esac
+          fi
+          echo "manifest_ready=$ready" >> "$GITHUB_OUTPUT"
+          echo "mutation_started=$mutation_started" >> "$GITHUB_OUTPUT"
+          echo "manual_required=$manual_required" >> "$GITHUB_OUTPUT"
+          echo "artifact_name=railway-reconcile-result-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" >> "$GITHUB_OUTPUT"
+          echo "producer_run_attempt=${GITHUB_RUN_ATTEMPT}" >> "$GITHUB_OUTPUT"
+      - name: Mark Railway mutation started
+        if: always() && steps.evidence.outputs.mutation_started == 'true'
+        run: echo 'The immutable result proves that this run crossed the Railway mutation boundary.'
+      - name: Record manual-required reconciliation state
+        if: always() && steps.evidence.outputs.manual_required == 'true'
+        run: echo 'The immutable result requires protected operator recovery.'
+      - name: Upload reconciliation result manifest
+        if: always()
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: ${{ steps.evidence.outputs.artifact_name }}
+          path: ${{ runner.temp }}/railway-reconcile-result.json
+          if-no-files-found: ignore
+          retention-days: 2
+      - name: Report mutation phase outcome
+        if: always()
+        run: |
+          echo '### Railway reconciliation mutation' >> "$GITHUB_STEP_SUMMARY"
+          if [ -f "$RUNNER_TEMP/railway-reconcile-status.json" ]; then
+            jq -r '"Outcome: `\(.outcome)`"' "$RUNNER_TEMP/railway-reconcile-status.json" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo 'Outcome: **failed before structured status was available**' >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - name: Enforce structured mutation outcome
+        if: always() && steps.mutate.outputs.command_status != '0'
+        run: |
+          echo '::error::The protected mutation command did not complete successfully.'
+          exit 1
 
-      # "Reconciled the fleet" and "skipped every step that does work" are both
-      # `success` at the workflow-status level, which is how the fleet sat
-      # stranded behind a green badge for 19.5h (#6203). Write the difference
-      # somewhere a human reads without opening the raw log.
-      - name: Report what this run did
+  verifier:
+    name: terminal exact-head verifier
+    needs: [admission, mutation]
+    if: always() && needs.mutation.outputs.manifest_ready == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+    environment:
+      name: ingestion-acceptance-production-verification
+      deployment: false
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          ref: ${{ needs.admission.outputs.head_sha }}
+          fetch-depth: 0
+          filter: blob:none
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '24'
+      - name: Install pinned Railway CLI
+        run: npm install --global @railway/cli@5.30.1
+      - name: Download immutable reconciliation result
+        uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6
+        with:
+          name: ${{ needs.mutation.outputs.artifact_name }}
+          path: ${{ runner.temp }}/railway-reconcile-result
+      - name: Finalize exact Railway reconciliation acceptance
+        id: acceptance
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_RECONCILE_VIEWER_TOKEN }}
+          RAILWAY_PROJECT_ID: ${{ vars.RAILWAY_PROJECT_ID }}
+          RAILWAY_RECONCILE_CONTROL_URL: ${{ vars.RAILWAY_RECONCILE_CONTROL_URL }}
+          RAILWAY_RECONCILE_VERIFIER_HMAC: ${{ secrets.RAILWAY_RECONCILE_VERIFIER_HMAC }}
+        run: >-
+          node scripts/finalize-railway-reconcile.mjs
+          --manifest "$RUNNER_TEMP/railway-reconcile-result/railway-reconcile-result.json"
+          --head "${{ needs.admission.outputs.head_sha }}"
+          --producer-run-attempt "${{ needs.mutation.outputs.producer_run_attempt }}"
+      - name: Report terminal acceptance
         if: always()
         env:
-          GATE: ${{ steps.head.outputs.gate }}
-          HEAD_SHA: ${{ steps.head.outputs.sha }}
-          DEPLOY_OUTCOME: ${{ steps.deploy.outcome }}
-          PREVIEW_OUTCOME: ${{ steps.preview.outcome }}
-          AGE_OUTCOME: ${{ steps.age.outcome }}
+          ACCEPTANCE_OUTCOME: ${{ steps.acceptance.outcome }}
+          HEAD_SHA: ${{ needs.admission.outputs.head_sha }}
         run: |
-          short="${HEAD_SHA:0:9}"
-          case "$DEPLOY_OUTCOME" in
-            success)
-              summary="Reconciled the fleet against \`$short\` (gate=$GATE)."
-              echo "::notice::$summary"
-              ;;
-            failure)
-              summary="**Reconcile FAILED** against \`$short\` — services named in the log above stayed behind."
-              # The deploy step reds the run, but it emits per-service errors;
-              # nothing otherwise states the run-level outcome in the summary.
-              echo "::error::Reconcile FAILED for ${short}. Services named above stayed behind."
-              ;;
-            *)
-              if [ "$PREVIEW_OUTCOME" = "success" ]; then
-                summary="Previewed \`$short\` only; this run deployed nothing by request."
-                echo "::notice::$summary"
-              elif [ "$GATE" = "success" ]; then
-                # The gate was GREEN and the deploy still did not run, so an
-                # earlier step stopped it — an expired RAILWAY_PRODUCTION_TOKEN,
-                # a missing RAILWAY_PROJECT_ID, Railway unreachable. Calling
-                # that "declined" would file an infrastructure failure under the
-                # benign no-op label this step exists to separate out.
-                summary="**Reconcile did not run** for \`$short\` even though its gate was green — a step before the deploy failed (Railway credentials or API). This is not a routine decline."
-                echo "::error::Reconcile did not run for ${short} despite gate=success; a prerequisite step failed."
-              else
-                summary="**Declined to reconcile.** main's head \`$short\` has gate=\`$GATE\`, so no service was deployed by this run."
-                # A warning, not a notice: this is the outcome that used to be
-                # indistinguishable from a successful sweep.
-                echo "::warning::Declined to reconcile ${short}: gate=$GATE. No service was deployed by this run."
-              fi
-              ;;
-          esac
-          echo "### Railway deploy trigger" >> "$GITHUB_STEP_SUMMARY"
-          echo "$summary" >> "$GITHUB_STEP_SUMMARY"
-          # A failed age check reds the job. Without this line the summary could
-          # read as an ordinary decline while the run is red for a second,
-          # louder reason — the fleet has not been reconciled at all.
-          if [ "$AGE_OUTCOME" = "failure" ]; then
-            echo "" >> "$GITHUB_STEP_SUMMARY"
-            echo "**The fleet has also gone un-reconciled past the backstop tolerance** — see the age check above." >> "$GITHUB_STEP_SUMMARY"
+          echo '### Railway reconciliation acceptance' >> "$GITHUB_STEP_SUMMARY"
+          if [ "$ACCEPTANCE_OUTCOME" = 'success' ]; then
+            echo "Exact head \`${HEAD_SHA:0:9}\` reached terminal Railway convergence and strict zero drift." >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "**Terminal acceptance failed** for exact head \`${HEAD_SHA:0:9}\`; automatic mutation remains fenced by durable state." >> "$GITHUB_STEP_SUMMARY"
           fi
+
+  liveness:
+    name: fail-closed reconciliation liveness
+    needs: [admission, mutation, verifier]
+    if: >-
+      always()
+      && needs.admission.result == 'success'
+      && needs.admission.outputs.dry_run != 'true'
+      && needs.verifier.result != 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          ref: ${{ needs.admission.outputs.head_sha }}
+          fetch-depth: 0
+          filter: blob:none
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '24'
+      - name: Enforce reconciliation liveness
+        env:
+          CUTOVER_ACTIVE: ${{ vars.RAILWAY_RECONCILE_CUTOVER_ACTIVE }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if [ "$CUTOVER_ACTIVE" != 'true' ]; then
+            echo '::warning::Railway reconciliation cutover is disabled; no protected mutation path ran.'
+            echo 'Railway reconciliation cutover remains disabled; this run intentionally made no production change.' >> "$GITHUB_STEP_SUMMARY"
+            if ! node scripts/check-railway-reconcile-age.mjs --warn-only; then
+              echo '::warning::Railway reconciliation age could not be read while cutover is disabled.'
+            fi
+            exit 0
+          fi
+          node scripts/check-railway-reconcile-age.mjs

@@ -204,7 +204,8 @@ function shouldSuppressCspViolation(
   // surrounding signal filters.
   if (directive === 'frame-src') {
     try {
-      const frameHost = new URL(blockedURI).hostname;
+      const frameUrl = new URL(blockedURI);
+      const frameHost = frameUrl.hostname;
       if (frameHost === 'gateway.zscloud.net') return true;
       // Same class, other vendors (WORLDMONITOR-HT long tail): NetSTAR inSITE
       // (gw-*.iss.netstar-inc.com), Techloq (filter.techloq.com — kosher
@@ -228,6 +229,26 @@ function shouldSuppressCspViolation(
       // match like the vendor rules above so lookalikes still surface
       // (WORLDMONITOR-HT long tail — 5.8k events / 1.2k users since March).
       if (frameHost === 'h5player.anzz.site') return true;
+      // `div.show` — an origin-only frame (no path) that appears nowhere in our
+      // source, repeated across many users over months. The injector is not
+      // identified, but it does not need to be: frame-src is a BOUNDED
+      // allowlist — named hosts plus five vendor wildcard subdomains
+      // (*.clerk.accounts.dev, *.vercel.app, *.dodopayments.com and two more) —
+      // and div.show falls under none of them, so it can only have been framed
+      // into the page from outside. That safety argument depends on frame-src
+      // staying bounded — pinned by "CSP frame-src stays a bounded host
+      // allowlist" in tests/deploy-config.test.mjs.
+      // Sizing, unlike the font/style rules above: this is ~9% of the issue and
+      // NOT its dominant slice. WORLDMONITOR-HT has no dominant host, and its
+      // largest share is the Google account hosts we deliberately keep
+      // surfaced, so no rule here can quiet it — this one is added because it
+      // is cleanly identifiable, not because it fixes HT. Exact host, so the
+      // rotating merchant-domain tail below stays surfaced (WORLDMONITOR-HT).
+      // Narrowed to the exact observed shape — https, origin-only, no path —
+      // rather than the whole host, because a destination match alone does not
+      // establish that the frame was injected. Anything else on this host still
+      // reports.
+      if (frameUrl.protocol === 'https:' && frameHost === 'div.show' && frameUrl.pathname === '/') return true;
     } catch { /* scheme-only values fall through */ }
   }
   // Browser extensions or injected scripts. `ms-browser-extension://` is Edge's
@@ -249,26 +270,69 @@ function shouldSuppressCspViolation(
   if (/gstatic\.com\/_\/translate/.test(blockedURI) || /facebook\.net/.test(blockedURI)) return true;
   // Google Fonts font files from stale or injected stylesheets. The dashboard now
   // self-hosts its own fonts and the deploy/config tests keep Google Fonts out of
-  // dashboard CSP/source surfaces; if a user's browser still tries
-  // fonts.gstatic.com/s/*.woff2, the strict font-src block is expected noise.
+  // dashboard CSP/source surfaces; if a user's browser still tries a
+  // fonts.gstatic.com/s/* font file, the strict font-src block is expected noise.
   if (directive === 'font-src') {
+    // An @font-face `src:` list names the same face in several formats, and the
+    // browser reports a CSP block for each one it tries. Every host rule below
+    // therefore matches the whole fallback chain — pinning one extension leaks
+    // the rest, which is how a Doubao `.otf` and a gstatic `.ttf` kept firing
+    // after their rules shipped (WORLDMONITOR-TR round 3).
+    const fontFile = /\.(?:woff2?|ttf|otf)$/;
     try {
       const url = new URL(blockedURI);
-      if (url.protocol === 'https:' && url.hostname === 'fonts.gstatic.com' && /^\/s\/.+\.woff2$/.test(url.pathname)) return true;
+      if (url.protocol === 'https:' && url.hostname === 'fonts.gstatic.com' && /^\/s\/.+/.test(url.pathname) && fontFile.test(url.pathname)) return true;
       // Perplexity's Comet browser / extension injects its own UI webfont
       // (frontend-cdn.perplexity.ai/_agi_assets/fonts/*.woff2) into every page.
       // We never load it; the block is the overlay's font failing regardless of
       // our code. Allowlisted by exact host like gstatic above — NOT a blanket
       // third-party suppression, so an unexpected font injection from any other
       // host still surfaces (WORLDMONITOR-TR: 1065 events / 83 users).
-      if (url.protocol === 'https:' && url.hostname === 'frontend-cdn.perplexity.ai' && /\.woff2?$/.test(url.pathname)) return true;
+      if (url.protocol === 'https:' && url.hostname === 'frontend-cdn.perplexity.ai'
+          && url.pathname.startsWith('/_agi_assets/') && fontFile.test(url.pathname)) return true;
       // ByteDance's Doubao AI-assistant browser/extension injects its overlay's
       // KaTeX math fonts (lf-flow-web-cdn.doubao.com/obj/flow-doubao/...) into
       // every page — .woff2/.woff/.ttf fallback chain, so all three extensions
       // appear. We never load it; exact host + font-file path like the rules
       // above, NOT a blanket third-party suppression (WORLDMONITOR-TR round 2:
       // 310k events / 308 users in 11 days).
-      if (url.protocol === 'https:' && url.hostname === 'lf-flow-web-cdn.doubao.com' && /\.(?:woff2?|ttf)$/.test(url.pathname)) return true;
+      if (url.protocol === 'https:' && url.hostname === 'lf-flow-web-cdn.doubao.com'
+          && url.pathname.startsWith('/obj/flow-doubao/') && fontFile.test(url.pathname)) return true;
+      // Migaku language-learning browser extension injects a subsetted Chiron
+      // Hei HK webfont as many numbered chunks (fonts/chiron-hei-hk-webfont-*/
+      // cw_N.woff2, kx_N.woff2) into every page. 38 distinct URLs in a 14-day
+      // sample and 69% of this issue's current volume — the single largest
+      // contributor. We never load it; exact host + font-file path like the
+      // rules above, so any other migaku path still surfaces.
+      if (url.protocol === 'https:' && url.hostname === 'migaku-public-data.migaku.com'
+          && url.pathname.startsWith('/fonts/') && fontFile.test(url.pathname)) return true;
+      // Alibaba iconfont.cn project CDN (at.alicdn.com/t/c/font_<id>.<ext>).
+      // One injected icon font requested in all three formats — 15% of this
+      // issue's current volume. `alicdn.com` is a general Alibaba CDN, so this
+      // is pinned to the exact `at.` host and a font-file path — other alicdn
+      // hosts and non-font assets still surface.
+      if (url.protocol === 'https:' && url.hostname === 'at.alicdn.com'
+          && url.pathname.startsWith('/t/c/') && fontFile.test(url.pathname)) return true;
+      // slant.co overlay webfont (Plus Jakarta Display, 3 weights x 2 formats)
+      // served from the injecting extension's own origin — 12% of this issue's
+      // current volume. Our font-src is `'self' data:` — we ship no
+      // cross-origin webfonts at all, so a block here can never be a
+      // first-party regression.
+      if (url.protocol === 'https:' && url.hostname === 'www.slant.co'
+          && url.pathname.startsWith('/fonts/') && fontFile.test(url.pathname)) return true;
+      // ShopBack cashback extension injects its own UI face (ShopBackSans, 8
+      // weight/style combinations) from its static origin. Sized on the window
+      // AFTER the rules above deployed: every host named there went silent and
+      // this one was 100% of what remained, which is why the issue regressed
+      // minutes after being resolved. Exact host + font-file path like the
+      // rules above, so other shopback assets still surface.
+      if (url.protocol === 'https:' && url.hostname === 'static.shopback.com'
+          && url.pathname.startsWith('/fonts/') && fontFile.test(url.pathname)) return true;
+      // SimplyCodes coupon extension injects three overlay families (Circular
+      // XX, Neue Haas Grotesk, Degular) under one /fonts/ root — 10 distinct
+      // URLs, the second-largest remaining slice. Same exact-host shape.
+      if (url.protocol === 'https:' && url.hostname === 'images.simplycodes.com'
+          && url.pathname.startsWith('/fonts/') && fontFile.test(url.pathname)) return true;
     } catch { /* scheme-only values fall through */ }
   }
   // YouTube live stream manifests.
@@ -293,13 +357,34 @@ function shouldSuppressCspViolation(
   // fonts.gstatic.com font-src rule above (WORLDMONITOR-J0 round 2). Exact
   // host + /css path; Google Fonts under any other directive still surfaces.
   if (/^style-src(-elem)?$/.test(directive)) {
+    // Same reason as `fontFile` above: the plain suffix rules below would
+    // otherwise re-type this per host, which is how such rules drift apart.
+    // Two rules deliberately do NOT use it: Google Fonts matches a path PREFIX
+    // (`/css`, `/css2`), and Typekit pins an exact path shape per host.
+    const cssFile = /\.css$/;
     try {
       const url = new URL(blockedURI);
       if (url.protocol === 'https:' && url.hostname === 'fonts.googleapis.com' && /^\/css2?$/.test(url.pathname)) return true;
       // Chinese-market extension CDN injecting its overlay stylesheet
       // (www.6ppn.com/ext/assets/style.<hash>.css — the /ext/ path is the
       // extension's own asset root). Exact host + .css path (WORLDMONITOR-J0).
-      if (url.protocol === 'https:' && url.hostname === 'www.6ppn.com' && /\.css$/.test(url.pathname)) return true;
+      if (url.protocol === 'https:' && url.hostname === 'www.6ppn.com' && cssFile.test(url.pathname)) return true;
+      // FontAwesome public CDN. The injected sheet is v4.7.0 — a 2016 release
+      // this app never shipped — and our style-src is `'self' 'unsafe-inline'`
+      // with no cross-origin host at all, so any use.fontawesome.com stylesheet
+      // is third-party by construction (WORLDMONITOR-J0 round 3: 80% of the
+      // issue's current volume). Exact host + .css path; their JS bundle under
+      // script-src still surfaces.
+      if (url.protocol === 'https:' && url.hostname === 'use.fontawesome.com'
+          && url.pathname.startsWith('/releases/') && cssFile.test(url.pathname)) return true;
+      // Adobe Typekit / Adobe Fonts kit CSS, from both hosts it serves:
+      // `use.typekit.net/<kit>.css` and the `p.typekit.net/p.css?...` tracking
+      // sheet — together 17% of this issue's current volume. We self-host every
+      // font and reference no kit id, so these are injected by a theme
+      // extension or the user's own stylesheet manager.
+      if (url.protocol === 'https:'
+          && ((url.hostname === 'use.typekit.net' && /^\/[^/]+\.css$/.test(url.pathname))
+            || (url.hostname === 'p.typekit.net' && url.pathname === '/p.css'))) return true;
     } catch { /* unparseable values fall through */ }
     // Extension bug: a literal unsubstituted `[email]` template placeholder as
     // the stylesheet URL. Not a parseable host; can never be first-party.
