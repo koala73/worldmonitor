@@ -49,7 +49,7 @@ export interface MarketQuoteProvider {
    * without the handler needing to know anything about the provider.
    */
   canQuote(symbol: string): boolean;
-  fetchQuote(symbol: string): Promise<QuoteProviderOutcome>;
+  fetchQuote(symbol: string, signal?: AbortSignal): Promise<QuoteProviderOutcome>;
 }
 
 /**
@@ -59,6 +59,26 @@ export interface MarketQuoteProvider {
  * degrade to "unavailable" quickly instead of holding the whole response.
  */
 export const QUOTE_PROVIDER_TIMEOUT_MS = 3_000;
+
+function providerSignal(parent?: AbortSignal): { signal: AbortSignal; cleanup: () => void } {
+  const controller = new AbortController();
+  const timer = setTimeout(
+    () => controller.abort(new DOMException('Provider request timed out', 'TimeoutError')),
+    QUOTE_PROVIDER_TIMEOUT_MS,
+  );
+  const onAbort = () => controller.abort(parent?.reason);
+
+  if (parent?.aborted) onAbort();
+  else parent?.addEventListener('abort', onAbort, { once: true });
+
+  return {
+    signal: controller.signal,
+    cleanup: () => {
+      clearTimeout(timer);
+      parent?.removeEventListener('abort', onAbort);
+    },
+  };
+}
 
 /**
  * Symbols the Railway relay deliberately routes through Yahoo rather than
@@ -93,12 +113,13 @@ export class FinnhubQuoteProvider implements MarketQuoteProvider {
     return isEquityServiceableSymbol(symbol);
   }
 
-  async fetchQuote(symbol: string): Promise<QuoteProviderOutcome> {
+  async fetchQuote(symbol: string, requestSignal?: AbortSignal): Promise<QuoteProviderOutcome> {
+    const attempt = providerSignal(requestSignal);
     try {
-      await finnhubGate();
+      await finnhubGate(attempt.signal);
       const resp = await fetch(`https://finnhub.io/api/v1/quote?symbol=${encodeURIComponent(symbol)}`, {
         headers: { Accept: 'application/json', 'User-Agent': CHROME_UA, 'X-Finnhub-Token': this.apiKey },
-        signal: AbortSignal.timeout(QUOTE_PROVIDER_TIMEOUT_MS),
+        signal: attempt.signal,
       });
 
       if (resp.status === 429) return { status: 'rate_limited' };
@@ -126,6 +147,8 @@ export class FinnhubQuoteProvider implements MarketQuoteProvider {
       };
     } catch (err) {
       return { status: 'error', message: (err as Error).message || 'fetch failed' };
+    } finally {
+      attempt.cleanup();
     }
   }
 }
@@ -149,7 +172,8 @@ export class AlphaVantageQuoteProvider implements MarketQuoteProvider {
     return isEquityServiceableSymbol(symbol);
   }
 
-  async fetchQuote(symbol: string): Promise<QuoteProviderOutcome> {
+  async fetchQuote(symbol: string, requestSignal?: AbortSignal): Promise<QuoteProviderOutcome> {
+    const attempt = providerSignal(requestSignal);
     try {
       const url =
         `https://www.alphavantage.co/query?function=GLOBAL_QUOTE`
@@ -157,7 +181,7 @@ export class AlphaVantageQuoteProvider implements MarketQuoteProvider {
         + `&apikey=${encodeURIComponent(this.apiKey)}`;
       const resp = await fetch(url, {
         headers: { Accept: 'application/json', 'User-Agent': CHROME_UA },
-        signal: AbortSignal.timeout(QUOTE_PROVIDER_TIMEOUT_MS),
+        signal: attempt.signal,
       });
 
       if (resp.status === 429) return { status: 'rate_limited' };
@@ -178,7 +202,7 @@ export class AlphaVantageQuoteProvider implements MarketQuoteProvider {
       // AV signals quota exhaustion with a Note / Information string and no quote body.
       const throttle = json.Note || json.Information;
       if (throttle) {
-        if (/rate|limit|call frequency|premium/i.test(throttle)) {
+        if (/rate|limit|call frequency|premium|too busy|temporarily busy/i.test(throttle)) {
           return { status: 'rate_limited' };
         }
         return { status: 'error', message: throttle.slice(0, 120) };
@@ -189,7 +213,7 @@ export class AlphaVantageQuoteProvider implements MarketQuoteProvider {
       // credential or config failure for 15 minutes.
       if (json['Error Message']) {
         const msg = json['Error Message'];
-        if (/invalid (api )?call|symbol|ticker/i.test(msg)) {
+        if (/\b(?:invalid|unknown|unsupported)\s+(?:symbol|ticker)\b|\b(?:symbol|ticker)\s+(?:is\s+)?(?:invalid|unknown|not found|unsupported)\b/i.test(msg)) {
           return { status: 'not_found' };
         }
         return { status: 'error', message: msg.slice(0, 120) };
@@ -213,6 +237,8 @@ export class AlphaVantageQuoteProvider implements MarketQuoteProvider {
       };
     } catch (err) {
       return { status: 'error', message: (err as Error).message || 'fetch failed' };
+    } finally {
+      attempt.cleanup();
     }
   }
 }
@@ -221,8 +247,8 @@ export class AlphaVantageQuoteProvider implements MarketQuoteProvider {
  * Try providers in order until one returns `ok` or every serviceable provider
  * has answered. A definitive cascade result:
  *   - `ok` from any provider wins immediately
- *   - `rate_limited` only if *every* attempt was rate-limited (or skipped)
- *   - `not_found` if any provider reported not_found and none succeeded
+ *   - `not_found` only if every serviceable provider agrees
+ *   - `rate_limited` if no provider succeeded and any provider was throttled
  *   - otherwise the last `error`
  *
  * Providers that `canQuote` returns false for are skipped without counting as
@@ -242,7 +268,7 @@ export class CascadeQuoteProvider implements MarketQuoteProvider {
     return this.providers.some((p) => p.canQuote(symbol));
   }
 
-  async fetchQuote(symbol: string): Promise<QuoteProviderOutcome> {
+  async fetchQuote(symbol: string, signal?: AbortSignal): Promise<QuoteProviderOutcome> {
     const candidates = this.providers.filter((p) => p.canQuote(symbol));
     if (candidates.length === 0) {
       return { status: 'error', message: 'no provider can quote symbol' };
@@ -253,7 +279,8 @@ export class CascadeQuoteProvider implements MarketQuoteProvider {
     let lastError: QuoteProviderOutcome | null = null;
 
     for (const provider of candidates) {
-      const outcome = await provider.fetchQuote(symbol);
+      if (signal?.aborted) return { status: 'error', message: 'request deadline exceeded' };
+      const outcome = await provider.fetchQuote(symbol, signal);
       if (outcome.status === 'ok') {
         // Observability without credentials: which authorized provider filled the gap.
         console.info(`[quote-provider] ${symbol} via ${provider.name}`);
@@ -270,6 +297,7 @@ export class CascadeQuoteProvider implements MarketQuoteProvider {
       }
       lastError = outcome;
       console.warn(`[quote-provider] ${provider.name} error for ${symbol}: ${outcome.message}`);
+      if (signal?.aborted) break;
     }
 
     // Only a unanimous not_found is definitive — the handler negative-caches it

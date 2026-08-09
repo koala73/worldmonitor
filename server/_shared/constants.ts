@@ -38,13 +38,39 @@ let finnhubLastRequest = 0;
 const FINNHUB_MIN_GAP_MS = process.env.NODE_TEST_CONTEXT ? 1 : 350;
 let finnhubQueue: Promise<void> = Promise.resolve();
 
-export function finnhubGate(): Promise<void> {
-  finnhubQueue = finnhubQueue.then(async () => {
+function abortReason(signal: AbortSignal): unknown {
+  return signal.reason ?? new DOMException('The operation was aborted', 'AbortError');
+}
+
+function waitForGate(ms: number, signal?: AbortSignal): Promise<void> {
+  if (!signal) return new Promise<void>((resolve) => setTimeout(resolve, ms));
+  if (signal.aborted) return Promise.reject(abortReason(signal));
+
+  return new Promise<void>((resolve, reject) => {
+    const timer = setTimeout(() => {
+      signal.removeEventListener('abort', onAbort);
+      resolve();
+    }, ms);
+    const onAbort = () => {
+      clearTimeout(timer);
+      reject(abortReason(signal));
+    };
+    signal.addEventListener('abort', onAbort, { once: true });
+  });
+}
+
+export function finnhubGate(signal?: AbortSignal): Promise<void> {
+  const turn = finnhubQueue.then(async () => {
+    if (signal?.aborted) throw abortReason(signal);
     const elapsed = Date.now() - finnhubLastRequest;
     if (elapsed < FINNHUB_MIN_GAP_MS) {
-      await new Promise<void>(r => setTimeout(r, FINNHUB_MIN_GAP_MS - elapsed));
+      await waitForGate(FINNHUB_MIN_GAP_MS - elapsed, signal);
     }
+    if (signal?.aborted) throw abortReason(signal);
     finnhubLastRequest = Date.now();
   });
-  return finnhubQueue;
+  // A canceled request must release its place without poisoning the shared
+  // queue for every later request.
+  finnhubQueue = turn.catch(() => {});
+  return turn;
 }

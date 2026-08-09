@@ -19,6 +19,8 @@ import {
   __resetKeyPrefixCacheForTests,
 } from '../server/_shared/redis';
 import {
+  __resetUpstreamDeadlineForTests,
+  __setUpstreamDeadlineForTests,
   MARKET_QUOTES_REQUEST_LIMIT,
   MARKET_QUOTES_UPSTREAM_LIMIT,
   filterMarketQuotes,
@@ -53,6 +55,7 @@ afterEach(() => {
   // of a Redis sentinel. Clearing it keeps each test's provider outcome its
   // own, rather than inheriting a neighbour's throttle.
   __clearLocalUnavailableBackoffForTests();
+  __resetUpstreamDeadlineForTests();
 });
 
 function quote(symbol: string, price: number) {
@@ -69,7 +72,7 @@ function seedPayload(symbols: string[]): ListMarketQuotesResponse {
   };
 }
 
-type ProviderReply = { status: number; body?: unknown };
+type ProviderReply = { status: number; body?: unknown; waitForAbort?: boolean };
 
 interface Harness {
   redis: Map<string, unknown>;
@@ -140,6 +143,15 @@ function installHarness(init: {
       const reply = harness.provider.get(symbol);
       // No configured reply => Finnhub's "unknown ticker" all-zero payload.
       if (!reply) return json({ c: 0, dp: 0, h: 0, l: 0 });
+      if (reply.waitForAbort) {
+        const signal = opts?.signal;
+        assert.ok(signal, 'deadline signal must reach the provider fetch');
+        return await new Promise<Response>((_resolve, reject) => {
+          const onAbort = () => reject(signal.reason);
+          if (signal.aborted) onAbort();
+          else signal.addEventListener('abort', onAbort, { once: true });
+        });
+      }
       return json(reply.body ?? {}, reply.status);
     }
 
@@ -325,6 +337,23 @@ describe('listMarketQuotes seed-first resolution', () => {
         `${symbol} must be reported, not omitted`,
       );
     }
+  });
+
+  it('enforces one wall-clock deadline across an in-window stalled lookup', async () => {
+    __setUpstreamDeadlineForTests(30);
+    installHarness({
+      seed: seedPayload(['AAPL']),
+      provider: { STALL: { status: 200, waitForAbort: true } },
+    });
+
+    const startedAt = Date.now();
+    const resp = await listMarketQuotes(CTX, { symbols: ['AAPL', 'STALL'] });
+
+    assert.ok(Date.now() - startedAt < 500, 'the response must not wait for the 3s provider timeout');
+    assert.equal(
+      reasonFor(resp, 'STALL'),
+      'MARKET_QUOTE_UNAVAILABLE_REASON_UPSTREAM_BUDGET_EXHAUSTED',
+    );
   });
 
   it('reports symbols dropped by the request cardinality bound', async () => {

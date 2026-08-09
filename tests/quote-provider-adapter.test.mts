@@ -117,17 +117,37 @@ describe('AlphaVantageQuoteProvider', () => {
     assert.equal(out.status, 'rate_limited');
   });
 
+  it('maps provider-busy Information text to rate_limited', async () => {
+    globalThis.fetch = (async () =>
+      jsonResponse({ Information: 'The Alpha Vantage API is too busy at this time. Please retry.' })) as typeof fetch;
+    const out = await new AlphaVantageQuoteProvider('av-key').fetchQuote('MSFT');
+    assert.equal(out.status, 'rate_limited');
+  });
+
   it('maps empty Global Quote to not_found', async () => {
     globalThis.fetch = (async () => jsonResponse({ 'Global Quote': {} })) as typeof fetch;
     const out = await new AlphaVantageQuoteProvider('av-key').fetchQuote('NOPE');
     assert.equal(out.status, 'not_found');
   });
 
-  it('maps invalid-symbol Error Message to not_found', async () => {
+  it('does not classify a bare invalid-call Error Message as not_found', async () => {
     globalThis.fetch = (async () =>
       jsonResponse({ 'Error Message': 'Invalid API call. Please retry or visit the documentation.' })) as typeof fetch;
     const out = await new AlphaVantageQuoteProvider('av-key').fetchQuote('@@@');
+    assert.equal(out.status, 'error');
+  });
+
+  it('maps an explicit invalid-symbol Error Message to not_found', async () => {
+    globalThis.fetch = (async () =>
+      jsonResponse({ 'Error Message': 'Invalid symbol supplied for GLOBAL_QUOTE.' })) as typeof fetch;
+    const out = await new AlphaVantageQuoteProvider('av-key').fetchQuote('@@@');
     assert.equal(out.status, 'not_found');
+  });
+
+  it('keeps HTTP credential failures as errors, not shared-quota backoff', async () => {
+    globalThis.fetch = (async () => new Response('', { status: 403 })) as typeof fetch;
+    const out = await new AlphaVantageQuoteProvider('bad-key').fetchQuote('AAPL');
+    assert.equal(out.status, 'error');
   });
 
   it('maps non-symbol Error Message to error (not negative-cached as missing)', async () => {

@@ -9,6 +9,7 @@ import { mergeLastGoodQuotes } from './shared/market-quote-refresh.cjs';
 import {
   authorizedProvidersMissingReason,
   fetchAuthorizedEquityQuotes,
+  hasSufficientFreshQuoteCoverage,
 } from './shared/market-quote-provider.mjs';
 
 const stocksConfig = loadSharedConfig('stocks.json');
@@ -18,6 +19,7 @@ loadEnvFile(import.meta.url);
 const CANONICAL_KEY = 'market:stocks-bootstrap:v1';
 const CACHE_TTL = 1800;
 const YAHOO_DELAY_MS = 200;
+const FRESH_QUOTE_COUNT = Symbol('freshQuoteCount');
 
 // #6235: the RPC answers a bounded 45-country enum, so every country is
 // seedable. Previously only CN was seeded and the other 44 lazy-fetched Yahoo
@@ -83,11 +85,16 @@ async function fetchMarketQuotes() {
     finnhubSkipped: !finnhubKey && !avKey,
     skipReason: (!finnhubKey && !avKey) ? authorizedProvidersMissingReason() : '',
     rateLimited: false,
+    // Symbols are deliberately omitted by JSON.stringify, so this proof is
+    // available to validateFn at the publication boundary but never changes
+    // the public cache contract.
+    [FRESH_QUOTE_COUNT]: quotes.length,
   };
 }
 
 function validate(data) {
-  return Array.isArray(data?.quotes) && data.quotes.length >= 1;
+  return Array.isArray(data?.quotes)
+    && hasSufficientFreshQuoteCoverage(data[FRESH_QUOTE_COUNT], MARKET_SYMBOLS.length);
 }
 
 export function declareRecords(data) {

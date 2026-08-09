@@ -19,6 +19,27 @@
 import { CHROME_UA, sleep } from '../_seed-utils.mjs';
 import { fetchAvBulkQuotes } from '../_shared-av.mjs';
 
+export const MARKET_QUOTE_MIN_FRESH_COVERAGE_RATIO = 0.8;
+
+/**
+ * A refresh may retain last-good records, but it must not publish fresh
+ * seed-meta unless this cycle resolved most of the configured universe.
+ *
+ * @param {number} freshCount
+ * @param {number} expectedCount
+ * @param {number} [minimumRatio]
+ */
+export function hasSufficientFreshQuoteCoverage(
+  freshCount,
+  expectedCount,
+  minimumRatio = MARKET_QUOTE_MIN_FRESH_COVERAGE_RATIO,
+) {
+  return Number.isInteger(freshCount)
+    && Number.isInteger(expectedCount)
+    && expectedCount > 0
+    && freshCount >= Math.ceil(expectedCount * minimumRatio);
+}
+
 /**
  * @typedef {{ price: number; change: number; sparkline: number[] }} NormalizedQuote
  * @typedef {{ symbol: string; name: string; display: string; price: number; change: number; sparkline: number[] }} SeedQuote

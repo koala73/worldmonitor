@@ -1453,6 +1453,55 @@ test('accepts WM_DESKTOP_SHARED_SECRET via /api/local-env-update', async () => {
   }
 });
 
+test('accepts ALPHA_VANTAGE_API_KEY via /api/local-env-update', async () => {
+  const originalKey = process.env.ALPHA_VANTAGE_API_KEY;
+  const localApi = await setupApiDir({});
+  const app = await createLocalApiServer({
+    port: 0,
+    apiDir: localApi.apiDir,
+    logger: { log() { }, warn() { }, error() { } },
+  });
+  const { port } = await app.start();
+
+  try {
+    const response = await authFetch(`http://127.0.0.1:${port}/api/local-env-update`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ key: 'ALPHA_VANTAGE_API_KEY', value: 'desktop-av-key' }),
+    });
+    assert.equal(response.status, 200);
+    assert.equal(process.env.ALPHA_VANTAGE_API_KEY, 'desktop-av-key');
+  } finally {
+    if (originalKey === undefined) delete process.env.ALPHA_VANTAGE_API_KEY;
+    else process.env.ALPHA_VANTAGE_API_KEY = originalKey;
+    await app.close();
+    await localApi.cleanup();
+  }
+});
+
+test('stores ALPHA_VANTAGE_API_KEY without claiming the provider demo response verifies it', async () => {
+  const localApi = await setupApiDir({});
+  const app = await createLocalApiServer({
+    port: 0,
+    apiDir: localApi.apiDir,
+    logger: { log() { }, warn() { }, error() { } },
+  });
+  const { port } = await app.start();
+
+  try {
+    const response = await postJsonViaHttp(`http://127.0.0.1:${port}/api/local-validate-secret`, {
+      key: 'ALPHA_VANTAGE_API_KEY',
+      value: 'desktop-av-key',
+    });
+    assert.equal(response.status, 200);
+    assert.equal(response.json?.valid, true);
+    assert.equal(response.json?.message, 'Key stored');
+  } finally {
+    await app.close();
+    await localApi.cleanup();
+  }
+});
+
 test('validates WM_DESKTOP_SHARED_SECRET without provider probe', async () => {
   const localApi = await setupApiDir({});
 

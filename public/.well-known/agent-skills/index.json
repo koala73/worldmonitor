@@ -70,7 +70,7 @@
       "type": "skill-md",
       "description": "Retrieve real-time equity, index, and ETF quotes with price, change, and sparkline history. Use when the user asks for current market prices, how a ticker is doing, or a quick market snapshot.",
       "url": "https://worldmonitor.app/.well-known/agent-skills/get-market-quotes/SKILL.md",
-      "digest": "sha256:c412b521a3a90a51aee977c917eb705676462581c7f6e57029cd523312514520"
+      "digest": "sha256:6de79508ffeab284b1c5ce70b2f4fadc60372eccc9dfd07017de6d2ae798768c"
     },
     {
       "name": "get-prediction-markets",
