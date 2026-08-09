@@ -30,6 +30,7 @@ describe('company monitoring worker deployment registration', () => {
       'scripts/_seed-contract.mjs',
       'scripts/_seed-envelope-source.mjs',
       'scripts/lib/llm-telemetry.cjs',
+      'scripts/lib/main-module.mjs',
       'scripts/nixpacks.toml',
       'scripts/package.json',
       'scripts/package-lock.json',

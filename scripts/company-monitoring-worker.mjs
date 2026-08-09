@@ -15,11 +15,11 @@
  */
 
 import { randomUUID } from 'node:crypto';
-import { pathToFileURL } from 'node:url';
 import { ConvexHttpClient } from 'convex/browser';
 import { anyApi } from 'convex/server';
 
 import { loadEnvFile } from './_seed-utils.mjs';
+import { isMainModule } from './lib/main-module.mjs';
 
 export const COMPANY_MONITORING_WORKER_HEALTH_KEY = 'company-monitoring:worker-health:v1';
 export const COMPANY_MONITORING_WORKER_META_KEY = 'seed-meta:company-monitoring:worker';
@@ -52,6 +52,12 @@ const HEALTH_OUTCOMES = new Set([
   'claim_error',
   'finalize_error',
 ]);
+const HEALTHY_OUTCOMES = new Set([
+  'disabled',
+  'idle',
+  'completed',
+  'replayed',
+]);
 
 /** @typedef {'ok' | 'error'} WorkerHealthStatus */
 /** @typedef {'starting' | 'disabled' | 'idle' | 'completed' | 'non_reassuring' | 'fenced' | 'replayed' | 'claim_error' | 'finalize_error'} WorkerOutcome */
@@ -64,19 +70,21 @@ function projectCounters(value) {
   return Object.fromEntries(COUNTER_NAMES.map((name) => [name, boundedCounter(value?.[name])]));
 }
 
+function providerCoverage(outcome) {
+  if (outcome === 'completed') return 'complete';
+  if (outcome === 'non_reassuring') return 'non_reassuring';
+  return 'not_evaluated';
+}
+
 function workerHealthPayload(input, now) {
-  const status = input?.status === 'error' ? 'error' : 'ok';
   const outcome = HEALTH_OUTCOMES.has(input?.outcome) ? input.outcome : 'starting';
+  const status = input?.status === 'ok' && HEALTHY_OUTCOMES.has(outcome) ? 'ok' : 'error';
   return {
     version: 1,
     status,
     outcome,
     observedAt: now,
-    providerCoverage: outcome === 'completed'
-      ? 'complete'
-      : outcome === 'non_reassuring'
-        ? 'non_reassuring'
-        : 'not_evaluated',
+    providerCoverage: providerCoverage(outcome),
     counters: projectCounters(input?.counters),
   };
 }
@@ -119,6 +127,7 @@ export function createRedisHealthPublisher(options = {}) {
         'SET',
         COMPANY_MONITORING_WORKER_ACTIVATION_KEY,
         JSON.stringify({ version: 1, activatedAt: observedAt }),
+        'NX',
       ]);
     }
 
@@ -154,10 +163,6 @@ async function unavailableExecutor() {
   };
 }
 
-function delay(ms) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
 /**
  * ConvexHttpClient has no default request timeout. Keep every control-plane
  * request inside the lease budget and identify this server-side caller.
@@ -189,7 +194,6 @@ export function createConvexFetch(fetchImpl = globalThis.fetch) {
  * @param {(work: Record<string, unknown>) => Promise<Record<string, unknown>>} [options.executeClaim]
  * @param {(result: Record<string, unknown>, work: Record<string, unknown>) => Promise<void>} [options.afterExecute]
  * @param {(payload: Record<string, unknown>) => Promise<unknown>} [options.publishHealth]
- * @param {(ms: number) => Promise<void>} [options.sleep]
  * @param {number} [options.pollIntervalMs]
  * @param {{ warn?: (...args: unknown[]) => void }} [options.logger]
  */
@@ -201,7 +205,6 @@ export function createCompanyMonitoringWorker(options) {
     executeClaim = unavailableExecutor,
     afterExecute,
     publishHealth = async () => false,
-    sleep = delay,
     pollIntervalMs = DEFAULT_POLL_INTERVAL_MS,
     logger = console,
   } = options;
@@ -211,7 +214,8 @@ export function createCompanyMonitoringWorker(options) {
 
   let stopping = false;
   let stopSignal = null;
-  let wakeSleep = null;
+  let pollTimer = null;
+  let finishPoll = null;
   let inFlight = false;
   const counters = projectCounters({});
 
@@ -293,14 +297,23 @@ export function createCompanyMonitoringWorker(options) {
       await safePublish('error', 'finalize_error');
       return 'finalize_error';
     }
-    await safePublish('ok', outcome);
+    await safePublish(HEALTHY_OUTCOMES.has(outcome) ? 'ok' : 'error', outcome);
     return outcome;
   };
 
-  const waitForNextPoll = () => Promise.race([
-    sleep(Math.max(0, pollIntervalMs)),
-    new Promise((resolve) => { wakeSleep = resolve; }),
-  ]).finally(() => { wakeSleep = null; });
+  const waitForNextPoll = () => new Promise((resolve) => {
+    let settled = false;
+    const finish = () => {
+      if (settled) return;
+      settled = true;
+      if (pollTimer !== null) clearTimeout(pollTimer);
+      pollTimer = null;
+      finishPoll = null;
+      resolve();
+    };
+    finishPoll = finish;
+    pollTimer = setTimeout(finish, Math.max(0, pollIntervalMs));
+  });
 
   return {
     tick,
@@ -313,7 +326,7 @@ export function createCompanyMonitoringWorker(options) {
     requestStop(signal = 'SIGTERM') {
       stopping = true;
       stopSignal = signal;
-      wakeSleep?.();
+      finishPoll?.();
     },
     snapshot() {
       return {
@@ -363,8 +376,7 @@ async function main() {
   console.log(`[company-monitoring-worker] shutdown complete (${shutdownSignal} received)`);
 }
 
-const isMain = process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href;
-if (isMain) {
+if (isMainModule(import.meta.url, process.argv[1])) {
   main().catch((error) => {
     console.error('[company-monitoring-worker] fatal:', error?.message ?? String(error));
     process.exitCode = 1;

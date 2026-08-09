@@ -12,6 +12,8 @@ const ORCHESTRATION = (internal as any).companyMonitoring.orchestration;
 const PUBLIC_ORCHESTRATION = (api as any).companyMonitoring.orchestration;
 const WORKER_SECRET = "test-company-monitoring-worker-secret";
 const LEASE_MS = 5 * 60 * 1000;
+const WINDOW_MS = 24 * 60 * 60 * 1000;
+const WINDOW_BUCKET_MS = 60 * 60 * 1000;
 const ORIGINAL_WORKER_SECRET = process.env.COMPANY_MONITORING_WORKER_SECRET;
 
 installCompanyMonitoringTestEnvironment();
@@ -116,7 +118,7 @@ async function finalizeComplete(
 }
 
 describe("Company Monitoring durable scan orchestration", () => {
-  test("claims server-shaped work and advances checkpoints only after a valid complete result", async () => {
+  test("claims server-shaped work, advances checkpoints, and durably rearms the next scan", async () => {
     const t = convexTest(schema, modules);
     const seeded = await seedAccountWithCompany(t, "happy", {
       initialCheckpoint: "checkpoint-before",
@@ -154,7 +156,21 @@ describe("Company Monitoring durable scan orchestration", () => {
             .eq("source", "exa"),
         )
         .unique();
-      return { work, obligation };
+      const nextWork = obligation?.workId
+        ? await ctx.db
+          .query("companyMonitoringScanWorkItems")
+          .withIndex("by_workId", (q) => q.eq("workId", obligation.workId!))
+          .unique()
+        : null;
+      const account = await ctx.db
+        .query("companyMonitoringAccounts")
+        .withIndex("by_logicalAccountId", (q) => q.eq("logicalAccountId", seeded.ownerAccountId))
+        .unique();
+      const receiptLinks = await ctx.db
+        .query("companyMonitoringScanReceiptLinks")
+        .withIndex("by_workId", (q) => q.eq("workId", claim.work.workId))
+        .collect();
+      return { work, obligation, nextWork, account, receiptLinks };
     });
     expect(state.work).toMatchObject({
       state: "complete",
@@ -166,20 +182,85 @@ describe("Company Monitoring durable scan orchestration", () => {
       },
     });
     expect(state.obligation).toMatchObject({
-      state: "complete",
+      state: "due",
+      dueAt: NOW + WINDOW_MS,
       checkpoint: `checkpoint-${claim.work.workId}`,
     });
+    expect(state.nextWork).toMatchObject({
+      state: "due",
+      scheduledDueAt: NOW + WINDOW_MS,
+      selectionDueAt: NOW + WINDOW_MS,
+    });
+    expect(state.nextWork?.workId).not.toBe(claim.work.workId);
+    expect(state.account?.nextExaScanDueAt).toBe(NOW + WINDOW_MS);
+    expect(state.receiptLinks).toMatchObject([{
+      ownerAccountId: seeded.ownerAccountId,
+      companyId: seeded.companyId,
+      workId: claim.work.workId,
+    }]);
 
     vi.setSystemTime(NOW + 1_000);
-    expect(await t.mutation(ORCHESTRATION.scheduleAccountWork, {
+    await expect(t.mutation(ORCHESTRATION.scheduleAccountWork, {
       ownerAccountId: seeded.ownerAccountId,
       source: "exa",
       companyIds: [seeded.companyId],
-    })).toEqual({ status: "replayed", workId: claim.work.workId });
+    })).rejects.toThrow(/COMPANY_MONITORING_OBLIGATION_ALREADY_ACTIVE/);
     expect(await t.run(async (ctx) => ({
       workItems: (await ctx.db.query("companyMonitoringScanWorkItems").collect()).length,
       obligations: (await ctx.db.query("companyMonitoringScanObligations").collect()).length,
-    }))).toEqual({ workItems: 1, obligations: 1 });
+    }))).toEqual({ workItems: 2, obligations: 1 });
+  });
+
+  test("rebinds materially old due work to the claim-time scan window", async () => {
+    const t = convexTest(schema, modules);
+    const seeded = await seedAccountWithCompany(t, "old_due");
+    const claimAt = NOW + (3 * WINDOW_MS) + (17 * 60 * 1000);
+    vi.setSystemTime(claimAt);
+
+    const claim = await claimForTest(t);
+    const expectedWindowEnd = Math.floor(claimAt / WINDOW_BUCKET_MS) * WINDOW_BUCKET_MS;
+    expect(claim).toMatchObject({
+      status: "claimed",
+      work: {
+        ownerAccountId: seeded.ownerAccountId,
+        windowStart: expectedWindowEnd - WINDOW_MS,
+        windowEnd: expectedWindowEnd,
+      },
+    });
+    const persisted = await t.run(async (ctx) =>
+      ctx.db
+        .query("companyMonitoringScanWorkItems")
+        .withIndex("by_workId", (q) => q.eq("workId", claim.work.workId))
+        .unique()
+    );
+    expect(persisted).toMatchObject({
+      state: "leased",
+      windowStart: expectedWindowEnd - WINDOW_MS,
+      windowEnd: expectedWindowEnd,
+    });
+  });
+
+  test("duplicate lifecycle scheduling is replay-safe while explicit scheduling stays strict", async () => {
+    const t = convexTest(schema, modules);
+    const seeded = await seedAccountWithCompany(t, "lifecycle_replay");
+
+    expect(await t.mutation(ORCHESTRATION.scheduleCompanySources, {
+      ownerAccountId: seeded.ownerAccountId,
+      companyId: seeded.companyId,
+    })).toEqual({ status: "scheduled", sources: 2 });
+    expect(await t.mutation(ORCHESTRATION.scheduleCompanySources, {
+      ownerAccountId: seeded.ownerAccountId,
+      companyId: seeded.companyId,
+    })).toEqual({ status: "replayed", sources: 2 });
+    await expect(t.mutation(ORCHESTRATION.scheduleAccountWork, {
+      ownerAccountId: seeded.ownerAccountId,
+      source: "exa",
+      companyIds: [seeded.companyId],
+    })).rejects.toThrow(/COMPANY_MONITORING_OBLIGATION_ALREADY_ACTIVE/);
+    expect(await t.run(async (ctx) => ({
+      obligations: (await ctx.db.query("companyMonitoringScanObligations").collect()).length,
+      work: (await ctx.db.query("companyMonitoringScanWorkItems").collect()).length,
+    }))).toEqual({ obligations: 2, work: 2 });
   });
 
   test("starts from the indexed account due page and stays bounded beyond 5,000 rows", async () => {
@@ -202,7 +283,6 @@ describe("Company Monitoring durable scan orchestration", () => {
             purgePhase: "none",
             destructivePurgeStarted: false,
             pendingReactivation: false,
-            nextScanDueAt: NOW,
             nextExaScanDueAt: NOW,
             createdAt: NOW + index,
             updatedAt: NOW,
@@ -286,6 +366,12 @@ describe("Company Monitoring durable scan orchestration", () => {
       status: "replayed",
       reason: "complete",
     });
+    expect(await t.run(async (ctx) =>
+      ctx.db
+        .query("companyMonitoringScanReceiptLinks")
+        .withIndex("by_workId", (q) => q.eq("workId", replay.work.workId))
+        .collect()
+    )).toHaveLength(1);
   });
 
   test.each([
@@ -304,8 +390,8 @@ describe("Company Monitoring durable scan orchestration", () => {
       status: "non_reassuring",
       reason,
     });
-    const obligation = await t.run(async (ctx) =>
-      ctx.db
+    const state = await t.run(async (ctx) => ({
+      obligation: await ctx.db
         .query("companyMonitoringScanObligations")
         .withIndex("by_account_company_source", (q) =>
           q
@@ -314,11 +400,98 @@ describe("Company Monitoring durable scan orchestration", () => {
             .eq("source", "exa"),
         )
         .unique(),
-    );
-    expect(obligation).toMatchObject({
-      state: "non_reassuring",
-      reason,
+      terminalWork: await ctx.db
+        .query("companyMonitoringScanWorkItems")
+        .withIndex("by_workId", (q) => q.eq("workId", claim.work.workId))
+        .unique(),
+    }));
+    expect(state.obligation).toMatchObject({
+      state: "due",
+      dueAt: NOW + WINDOW_MS,
       checkpoint: "checkpoint-before",
+    });
+    expect(state.terminalWork).toMatchObject({
+      state: "non_reassuring",
+      terminalReceipt: { reason },
+    });
+  });
+
+  test.each([
+    ["blank checkpoint", "   "],
+    ["checkpoint over 512 UTF-8 bytes", "😀".repeat(129)],
+  ])("%s is malformed, preserves the prior checkpoint, and keeps valid receipt cost", async (_label, checkpoint) => {
+    const t = convexTest(schema, modules);
+    const seeded = await seedAccountWithCompany(t, `malformed_checkpoint_${checkpoint.length}`, {
+      initialCheckpoint: "checkpoint-before",
+    });
+    const claim = await claimForTest(t);
+
+    expect(await finalizeComplete(t, claim, { checkpoint })).toMatchObject({
+      status: "non_reassuring",
+      reason: "malformed",
+    });
+    const state = await t.run(async (ctx) => ({
+      obligation: await ctx.db
+        .query("companyMonitoringScanObligations")
+        .withIndex("by_account_company_source", (q) =>
+          q
+            .eq("ownerAccountId", seeded.ownerAccountId)
+            .eq("companyId", seeded.companyId)
+            .eq("source", "exa"),
+        )
+        .unique(),
+      terminalWork: await ctx.db
+        .query("companyMonitoringScanWorkItems")
+        .withIndex("by_workId", (q) => q.eq("workId", claim.work.workId))
+        .unique(),
+    }));
+    expect(state.obligation).toMatchObject({
+      state: "due",
+      checkpoint: "checkpoint-before",
+    });
+    expect(state.terminalWork).toMatchObject({
+      state: "non_reassuring",
+      terminalReceipt: { reason: "malformed", costUsdMicros: 125 },
+    });
+  });
+
+  test.each([
+    ["negative", -1],
+    ["above maximum", 1_000_000_000_001],
+  ])("%s cost is malformed, preserves the prior checkpoint, and records zero cost", async (_label, costUsdMicros) => {
+    const t = convexTest(schema, modules);
+    const seeded = await seedAccountWithCompany(t, `invalid_cost_${String(costUsdMicros)}`, {
+      initialCheckpoint: "checkpoint-before",
+    });
+    const claim = await claimForTest(t);
+
+    expect(await finalizeComplete(t, claim, { costUsdMicros })).toMatchObject({
+      status: "non_reassuring",
+      reason: "malformed",
+      receipt: { costUsdMicros: 0 },
+    });
+    const state = await t.run(async (ctx) => ({
+      obligation: await ctx.db
+        .query("companyMonitoringScanObligations")
+        .withIndex("by_account_company_source", (q) =>
+          q
+            .eq("ownerAccountId", seeded.ownerAccountId)
+            .eq("companyId", seeded.companyId)
+            .eq("source", "exa"),
+        )
+        .unique(),
+      terminalWork: await ctx.db
+        .query("companyMonitoringScanWorkItems")
+        .withIndex("by_workId", (q) => q.eq("workId", claim.work.workId))
+        .unique(),
+    }));
+    expect(state.obligation).toMatchObject({
+      state: "due",
+      checkpoint: "checkpoint-before",
+    });
+    expect(state.terminalWork).toMatchObject({
+      state: "non_reassuring",
+      terminalReceipt: { reason: "malformed", costUsdMicros: 0 },
     });
   });
 
@@ -347,8 +520,7 @@ describe("Company Monitoring durable scan orchestration", () => {
         .unique(),
     );
     expect(obligation).toMatchObject({
-      state: "non_reassuring",
-      reason: "provider_error",
+      state: "due",
       checkpoint: "checkpoint-before",
     });
   });

@@ -105,6 +105,7 @@ describe('company monitoring Railway worker', () => {
 
   it('fails closed with provider_unavailable when no provider adapter is installed', async () => {
     const calls = [];
+    const health = [];
     const client = convexClient([
       CLAIM,
       { status: 'non_reassuring', reason: 'provider_error', receipt: {} },
@@ -113,7 +114,7 @@ describe('company monitoring Railway worker', () => {
       client,
       secret: 'worker-secret',
       workerId: 'worker-a',
-      publishHealth: async () => true,
+      publishHealth: async (payload) => { health.push(payload); },
     });
 
     assert.equal(await worker.tick(), 'non_reassuring');
@@ -122,6 +123,8 @@ describe('company monitoring Railway worker', () => {
       reason: 'provider_unavailable',
       costUsdMicros: 0,
     });
+    assert.equal(health.at(-1).status, 'error');
+    assert.equal(health.at(-1).outcome, 'non_reassuring');
   });
 
   it('leaves a fetched result unfinalized on a hard crash and safely finalizes the replayed work', async () => {
@@ -172,6 +175,7 @@ describe('company monitoring Railway worker', () => {
 
     assert.equal(await worker.tick(), 'fenced');
     assert.equal(calls.length, 2);
+    assert.equal(health.at(-1).status, 'error');
     assert.equal(health.at(-1).outcome, 'fenced');
     assert.equal(health.at(-1).counters.fenced, 1);
   });
@@ -194,7 +198,6 @@ describe('company monitoring Railway worker', () => {
         return COMPLETE_RESULT;
       },
       publishHealth: async () => true,
-      sleep: async () => {},
     });
 
     const running = worker.run();
@@ -204,6 +207,25 @@ describe('company monitoring Railway worker', () => {
     await running;
 
     assert.equal(calls.length, 2, 'one claim and its finalize; no second claim');
+    assert.equal(worker.snapshot().stopping, true);
+  });
+
+  it('cancels the pending poll timer on SIGTERM instead of delaying shutdown', async () => {
+    const published = deferred();
+    const client = convexClient([{ status: 'idle' }]);
+    const worker = createCompanyMonitoringWorker({
+      client,
+      secret: 'worker-secret',
+      workerId: 'worker-a',
+      pollIntervalMs: 60_000,
+      publishHealth: async () => { published.resolve(); },
+    });
+
+    const running = worker.run();
+    await published.promise;
+    worker.requestStop('SIGTERM');
+    await running;
+
     assert.equal(worker.snapshot().stopping, true);
   });
 });
@@ -234,6 +256,7 @@ describe('company monitoring worker health projection', () => {
     assert.equal(commands[0][1], COMPANY_MONITORING_WORKER_HEALTH_KEY);
     assert.equal(commands[1][1], COMPANY_MONITORING_WORKER_META_KEY);
     assert.deepEqual(commands[2].slice(0, 2), ['SET', COMPANY_MONITORING_WORKER_ACTIVATION_KEY]);
+    assert.equal(commands[2].at(-1), 'NX');
     assert.equal(commands[2].includes('EX'), false, 'activation marker must have no TTL');
     const canonical = JSON.parse(commands[0][2]);
     const meta = JSON.parse(commands[1][2]);
@@ -244,7 +267,7 @@ describe('company monitoring worker health projection', () => {
     assert.equal(JSON.stringify(canonical).includes('account-private'), false);
   });
 
-  it('does not write an activation marker for an unhealthy control-loop result', async () => {
+  it('does not write an activation marker for unhealthy control-loop results', async () => {
     const bodies = [];
     const publisher = createRedisHealthPublisher({
       env: {
@@ -258,11 +281,16 @@ describe('company monitoring worker health projection', () => {
       now: () => 1_800_000_000_000,
     });
 
-    assert.equal(await publisher({
-      status: 'error',
-      outcome: 'claim_error',
-      counters: { loops: 1, claims: 0, completed: 0, nonReassuring: 0, fenced: 0, replayed: 0, executorErrors: 0, claimErrors: 1, finalizeErrors: 0 },
-    }), true);
-    assert.equal(bodies[0].some((command) => command[1] === COMPANY_MONITORING_WORKER_ACTIVATION_KEY), false);
+    for (const outcome of ['claim_error', 'non_reassuring', 'fenced']) {
+      assert.equal(await publisher({
+        status: outcome === 'claim_error' ? 'error' : 'ok',
+        outcome,
+        counters: { loops: 1, claims: 0, completed: 0, nonReassuring: 0, fenced: 0, replayed: 0, executorErrors: 0, claimErrors: 1, finalizeErrors: 0 },
+      }), true);
+    }
+
+    for (const body of bodies) {
+      assert.equal(body.some((command) => command[1] === COMPANY_MONITORING_WORKER_ACTIVATION_KEY), false);
+    }
   });
 });

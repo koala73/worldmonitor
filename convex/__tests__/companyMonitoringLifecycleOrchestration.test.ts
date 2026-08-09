@@ -35,6 +35,31 @@ async function scanRows(t: ReturnType<typeof convexTest>) {
   }));
 }
 
+async function receiptLinks(t: ReturnType<typeof convexTest>) {
+  return t.run(async (ctx) => ctx.db.query("companyMonitoringScanReceiptLinks").collect());
+}
+
+async function finalizeComplete(t: ReturnType<typeof convexTest>, claim: any) {
+  return t.mutation(ORCHESTRATION.finalizeWorkForTest, {
+    workerId: "lifecycle-worker",
+    workId: claim.work.workId,
+    leaseToken: claim.work.leaseToken,
+    result: {
+      type: "result",
+      itemCount: 1,
+      hasMore: false,
+      coverage: "complete",
+      returnedRange: {
+        startAt: claim.work.windowStart,
+        endAt: claim.work.windowEnd,
+      },
+      checkpoint: `checkpoint-${claim.work.workId}`,
+      emptyValidated: false,
+      costUsdMicros: 10,
+    },
+  });
+}
+
 describe("Company Monitoring lifecycle scan integration", () => {
   test("creation materializes trusted source scheduling while public provider flags remain dark", async () => {
     const t = convexTest(schema, modules);
@@ -121,7 +146,6 @@ describe("Company Monitoring lifecycle scan integration", () => {
         await ctx.db.delete(row._id);
       }
       await ctx.db.patch(first.account._id, {
-        nextScanDueAt: undefined,
         nextExaScanDueAt: undefined,
         nextXScanDueAt: undefined,
       });
@@ -162,6 +186,123 @@ describe("Company Monitoring lifecycle scan integration", () => {
     expect(secondRow).toMatchObject({ lifecycle: "active", name: "Shared Second" });
   });
 
+  test("company purge removes current scan state and its retained terminal receipts", async () => {
+    const t = convexTest(schema, modules);
+    await grantProvisioned(t, OWNER_A);
+    const created = await createCompany(t, "Receipt Purge");
+    await t.mutation(ORCHESTRATION.scheduleCompanySources, {
+      ownerAccountId: created.account.logicalAccountId,
+      companyId: created.companyId,
+    });
+    const claim = await t.mutation(ORCHESTRATION.claimNextWorkForTest, {
+      workerId: "lifecycle-worker",
+    });
+    expect(await finalizeComplete(t, claim)).toMatchObject({ status: "completed" });
+    expect(await receiptLinks(t)).toHaveLength(1);
+
+    await t.mutation(CM.companies.setCompanyStateForOwner, {
+      ownerUserId: OWNER_A,
+      companyId: created.companyId,
+      state: "removed",
+    });
+    const removed = await t.run(async (ctx) =>
+      ctx.db
+        .query("companyMonitoringCompanies")
+        .withIndex("by_account_companyId", (q) =>
+          q
+            .eq("ownerAccountId", created.account.logicalAccountId)
+            .eq("companyId", created.companyId),
+        )
+        .unique()
+    );
+    expect(await t.mutation(CM.companies.advanceCompanyPurge, {
+      ownerAccountId: created.account.logicalAccountId,
+      companyId: created.companyId,
+      purgeGeneration: removed!.purgeGeneration,
+    })).toEqual({ status: "complete" });
+    expect(await scanRows(t)).toEqual({ obligations: [], work: [] });
+    expect(await receiptLinks(t)).toEqual([]);
+  });
+
+  test("shared terminal receipt survives one member purge and leaves with its final member", async () => {
+    const t = convexTest(schema, modules);
+    await grantProvisioned(t, OWNER_A);
+    const first = await createCompany(t, "Receipt Shared First");
+    const second = await createCompany(t, "Receipt Shared Second");
+    await t.run(async (ctx) => {
+      for (const row of await ctx.db.query("companyMonitoringScanObligations").collect()) {
+        await ctx.db.delete(row._id);
+      }
+      for (const row of await ctx.db.query("companyMonitoringScanWorkItems").collect()) {
+        await ctx.db.delete(row._id);
+      }
+      await ctx.db.patch(first.account._id, {
+        nextExaScanDueAt: undefined,
+        nextXScanDueAt: undefined,
+      });
+    });
+    await t.mutation(ORCHESTRATION.scheduleAccountWork, {
+      ownerAccountId: first.account.logicalAccountId,
+      source: "exa",
+      companyIds: [first.companyId, second.companyId],
+    });
+    const claim = await t.mutation(ORCHESTRATION.claimNextWorkForTest, {
+      workerId: "lifecycle-worker",
+    });
+    expect(await finalizeComplete(t, claim)).toMatchObject({ status: "completed" });
+    expect(await receiptLinks(t)).toHaveLength(2);
+
+    await t.mutation(CM.companies.setCompanyStateForOwner, {
+      ownerUserId: OWNER_A,
+      companyId: first.companyId,
+      state: "removed",
+    });
+    const removedFirst = await t.run(async (ctx) =>
+      ctx.db
+        .query("companyMonitoringCompanies")
+        .withIndex("by_account_companyId", (q) =>
+          q.eq("ownerAccountId", first.account.logicalAccountId).eq("companyId", first.companyId),
+        )
+        .unique()
+    );
+    expect(await t.mutation(CM.companies.advanceCompanyPurge, {
+      ownerAccountId: first.account.logicalAccountId,
+      companyId: first.companyId,
+      purgeGeneration: removedFirst!.purgeGeneration,
+    })).toEqual({ status: "complete" });
+    expect(await receiptLinks(t)).toMatchObject([{
+      companyId: second.companyId,
+      workId: claim.work.workId,
+    }]);
+    expect(await t.run(async (ctx) =>
+      ctx.db
+        .query("companyMonitoringScanWorkItems")
+        .withIndex("by_workId", (q) => q.eq("workId", claim.work.workId))
+        .unique()
+    )).toMatchObject({ state: "complete" });
+
+    await t.mutation(CM.companies.setCompanyStateForOwner, {
+      ownerUserId: OWNER_A,
+      companyId: second.companyId,
+      state: "removed",
+    });
+    const removedSecond = await t.run(async (ctx) =>
+      ctx.db
+        .query("companyMonitoringCompanies")
+        .withIndex("by_account_companyId", (q) =>
+          q.eq("ownerAccountId", first.account.logicalAccountId).eq("companyId", second.companyId),
+        )
+        .unique()
+    );
+    expect(await t.mutation(CM.companies.advanceCompanyPurge, {
+      ownerAccountId: first.account.logicalAccountId,
+      companyId: second.companyId,
+      purgeGeneration: removedSecond!.purgeGeneration,
+    })).toEqual({ status: "complete" });
+    expect(await receiptLinks(t)).toEqual([]);
+    expect(await scanRows(t)).toEqual({ obligations: [], work: [] });
+  });
+
   test("account destructive purge clears durable scan state before company payloads", async () => {
     const t = convexTest(schema, modules);
     await grantProvisioned(t, OWNER_A);
@@ -187,7 +328,6 @@ describe("Company Monitoring lifecycle scan integration", () => {
     })).toEqual({ status: "companies" });
     expect(await scanRows(t)).toEqual({ obligations: [], work: [] });
     const scanClearedAccount = await accountFor(t, OWNER_A);
-    expect(scanClearedAccount?.nextScanDueAt).toBeUndefined();
     expect(scanClearedAccount?.nextExaScanDueAt).toBeUndefined();
     expect(scanClearedAccount?.nextXScanDueAt).toBeUndefined();
     const companyBeforePayload = await t.run(async (ctx) =>

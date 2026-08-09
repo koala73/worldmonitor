@@ -28,6 +28,7 @@ import type * as companyMonitoring__shared from "../companyMonitoring/_shared.js
 import type * as companyMonitoring_accounts from "../companyMonitoring/accounts.js";
 import type * as companyMonitoring_companies from "../companyMonitoring/companies.js";
 import type * as companyMonitoring_imports from "../companyMonitoring/imports.js";
+import type * as companyMonitoring_orchestration from "../companyMonitoring/orchestration.js";
 import type * as config_productCatalog from "../config/productCatalog.js";
 import type * as constants from "../constants.js";
 import type * as contactMessages from "../contactMessages.js";
@@ -91,6 +92,7 @@ declare const fullApi: ApiFromModules<{
   "companyMonitoring/accounts": typeof companyMonitoring_accounts;
   "companyMonitoring/companies": typeof companyMonitoring_companies;
   "companyMonitoring/imports": typeof companyMonitoring_imports;
+  "companyMonitoring/orchestration": typeof companyMonitoring_orchestration;
   "config/productCatalog": typeof config_productCatalog;
   constants: typeof constants;
   contactMessages: typeof contactMessages;

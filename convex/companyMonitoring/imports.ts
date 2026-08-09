@@ -9,6 +9,7 @@ import {
 import { COMPANY_LIMIT, fingerprint } from "./_shared";
 import { requireProvisionedAccount } from "./accounts";
 import { findNoopByCustomerReference, insertNormalizedCompany } from "./companies";
+import { COMPANY_MONITORING_SCAN_COHORT_LIMIT } from "./orchestration";
 import {
   companyImportRowInputValidator,
   normalizedCompanyImportRowValidator,
@@ -93,7 +94,7 @@ export const importCompanyRowForOwner = internalMutation({
       clientImportId: row.clientImportId,
       importOrdinal: row.ordinal,
       importFingerprint: args.rowFingerprint,
-    }, { scheduleScans: false });
+    });
     const nextCompanyCount = companyCount + 1;
     await ctx.db.patch(account._id, {
       companyCount: nextCompanyCount,
@@ -150,8 +151,15 @@ export const importCompaniesForOwner = internalAction({
     // items per cohort. Work-key replay heals an action interrupted after row
     // commits without duplicating work; no-op rows never join the cohort.
     if (ownerAccountId) {
-      for (let offset = 0; offset < schedulableCompanyIds.length; offset += 25) {
-        const companyIds = schedulableCompanyIds.slice(offset, offset + 25);
+      for (
+        let offset = 0;
+        offset < schedulableCompanyIds.length;
+        offset += COMPANY_MONITORING_SCAN_COHORT_LIMIT
+      ) {
+        const companyIds = schedulableCompanyIds.slice(
+          offset,
+          offset + COMPANY_MONITORING_SCAN_COHORT_LIMIT,
+        );
         for (const source of ["exa", "x"] as const) {
           await ctx.runMutation(internal.companyMonitoring.orchestration.ensureAccountWork, {
             ownerAccountId,

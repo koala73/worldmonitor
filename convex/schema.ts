@@ -1084,10 +1084,9 @@ export default defineSchema({
     ),
     destructivePurgeStarted: v.boolean(),
     pendingReactivation: v.boolean(),
-    // Durable orchestration cursor. Claims always begin from this indexed
-    // account field and read only a fixed page; work/company tables are never
+    // Durable orchestration cursors. Claims always begin from these indexed
+    // account fields and read only a fixed page; work/company tables are never
     // scanned globally to discover due customer work.
-    nextScanDueAt: v.optional(v.number()),
     nextExaScanDueAt: v.optional(v.number()),
     nextXScanDueAt: v.optional(v.number()),
     purgeAfter: v.optional(v.number()),
@@ -1103,7 +1102,6 @@ export default defineSchema({
     // longer push lapses (#6256), so the reconciler pulls them by scanning
     // entitled roots oldest-first.
     .index("by_lifecycle_updatedAt", ["lifecycle", "updatedAt"])
-    .index("by_lifecycle_nextScanDueAt", ["lifecycle", "nextScanDueAt"])
     .index("by_lifecycle_nextExaScanDueAt", ["lifecycle", "nextExaScanDueAt"])
     .index("by_lifecycle_nextXScanDueAt", ["lifecycle", "nextXScanDueAt"]),
 
@@ -1206,9 +1204,23 @@ export default defineSchema({
       ),
     }),
   ))
-    .index("by_obligationId", ["obligationId"])
     .index("by_account_company_source", ["ownerAccountId", "companyId", "source"])
     .index("by_workId", ["workId"]),
+
+  // Durable cohort membership for terminal receipts. Live obligations move
+  // to the next due work item, while these bounded links retain which
+  // companies the immutable terminal work receipt covered. Company purge
+  // removes its links page-by-page and deletes a receipt only after the final
+  // cohort member link is gone.
+  companyMonitoringScanReceiptLinks: defineTable({
+    ownerAccountId: v.string(),
+    companyId: v.string(),
+    workId: v.string(),
+    createdAt: v.number(),
+  })
+    .index("by_account_company", ["ownerAccountId", "companyId"])
+    .index("by_workId", ["workId"])
+    .index("by_workId_company", ["workId", "companyId"]),
 
   // Cohort/source/window work is the sole lease and terminal-receipt
   // authority. `selectionDueAt` is `scheduledDueAt` while due and the lease
@@ -1253,8 +1265,7 @@ export default defineSchema({
     .index("by_workId", ["workId"])
     .index("by_workKey", ["workKey"])
     .index("by_account_state_selectionDueAt", ["ownerAccountId", "state", "selectionDueAt"])
-    .index("by_account_source_state_selectionDueAt", ["ownerAccountId", "source", "state", "selectionDueAt"])
-    .index("by_state_selectionDueAt", ["state", "selectionDueAt"]),
+    .index("by_account_source_state_selectionDueAt", ["ownerAccountId", "source", "state", "selectionDueAt"]),
 
   userApiKeys: defineTable({
     userId: v.string(),

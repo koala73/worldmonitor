@@ -38,7 +38,6 @@ export async function insertNormalizedCompany(
   account: { logicalAccountId: string; snapshotGeneration?: number },
   company: NormalizedMonitoredCompanyInput,
   metadata: ReplayMetadata,
-  options: { scheduleScans?: boolean } = {},
 ) {
   const now = Date.now();
   const companyId = logicalId("company", now);
@@ -60,15 +59,6 @@ export async function insertNormalizedCompany(
     updatedAt: now,
   });
   await insertClaims(ctx, account.logicalAccountId, companyId, company, now);
-  // Import rows are already isolated one mutation at a time. Materializing
-  // both sources here avoids a scheduler fan-out for a 100-row import while
-  // keeping the durable ledger atomic with company creation.
-  if (options.scheduleScans !== false) {
-    await scheduleCompanySourcesHandler(ctx, {
-      ownerAccountId: account.logicalAccountId,
-      companyId,
-    });
-  }
   return companyId;
 }
 
@@ -144,6 +134,10 @@ export const createCompanyForOwner = internalMutation({
     const companyId = await insertNormalizedCompany(ctx, account, company, {
       directRequestId: clientRequestId,
       directFingerprint,
+    });
+    await scheduleCompanySourcesHandler(ctx, {
+      ownerAccountId: account.logicalAccountId,
+      companyId,
     });
     await ctx.db.patch(account._id, {
       companyCount: companyCount + 1,
