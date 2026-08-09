@@ -15,6 +15,7 @@ import {
   fingerprint,
   logicalId,
 } from "./_shared";
+import { purgeAccountScanStateBatch } from "./orchestration";
 
 const PURGE_TRANSACTION_DOCUMENT_LIMIT = 8_192;
 // Reserve room for the account read/write, the lookahead company, scheduler
@@ -38,7 +39,7 @@ const STALLED_PURGE_REAPER_BATCH_SIZE = 50;
 // 24h purgeAfter grace that already delays destructive work.
 const ENTITLED_RECHECK_AGE_MS = 60 * 60 * 1000;
 const ENTITLED_RECHECK_BATCH_SIZE = 50;
-const REAPABLE_PURGE_PHASES = ["finalizing", "companies", "pending"] as const;
+const REAPABLE_PURGE_PHASES = ["finalizing", "companies", "scan", "pending"] as const;
 // Both directions: "entitled" rows may need lapsing, "entitlement_lapsed" rows
 // may need restoring after a late renewal. "denied" is terminal and excluded.
 const RECONCILABLE_LIFECYCLES = ["entitled", "entitlement_lapsed"] as const;
@@ -467,14 +468,27 @@ export const advanceAccountPurge = internalMutation({
           return { status: "reactivated" };
         }
       }
+      const scanPurge = await purgeAccountScanStateBatch(ctx, account.logicalAccountId);
       await ctx.db.patch(account._id, {
-        purgePhase: "companies",
+        purgePhase: scanPurge.complete ? "companies" : "scan",
         destructivePurgeStarted: true,
         purgeAfter: undefined,
         updatedAt: now,
       });
       await scheduleAccountPurge(ctx, args.ownerFenceHash, args.purgeGeneration);
       return { status: "started" };
+    }
+
+    if (account.purgePhase === "scan") {
+      const scanPurge = await purgeAccountScanStateBatch(ctx, account.logicalAccountId);
+      if (!scanPurge.complete) {
+        await ctx.db.patch(account._id, { updatedAt: now });
+        await scheduleAccountPurge(ctx, args.ownerFenceHash, args.purgeGeneration);
+        return { status: "scan" };
+      }
+      await ctx.db.patch(account._id, { purgePhase: "companies", updatedAt: now });
+      await scheduleAccountPurge(ctx, args.ownerFenceHash, args.purgeGeneration);
+      return { status: "companies" };
     }
 
     if (account.purgePhase === "companies") {

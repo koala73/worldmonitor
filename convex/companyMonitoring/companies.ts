@@ -21,6 +21,12 @@ import {
   COMPANY_LIMIT,
 } from "./_shared";
 import { requireProvisionedAccount } from "./accounts";
+import {
+  cancelCompanyScanWork,
+  purgeCompanyScanStateBatch,
+  queueCompanySources,
+  scheduleCompanySourcesHandler,
+} from "./orchestration";
 import { companyPatchValidator, monitoredCompanyInputValidator } from "./validators";
 
 type ReplayMetadata =
@@ -32,6 +38,7 @@ export async function insertNormalizedCompany(
   account: { logicalAccountId: string; snapshotGeneration?: number },
   company: NormalizedMonitoredCompanyInput,
   metadata: ReplayMetadata,
+  options: { scheduleScans?: boolean } = {},
 ) {
   const now = Date.now();
   const companyId = logicalId("company", now);
@@ -53,6 +60,15 @@ export async function insertNormalizedCompany(
     updatedAt: now,
   });
   await insertClaims(ctx, account.logicalAccountId, companyId, company, now);
+  // Import rows are already isolated one mutation at a time. Materializing
+  // both sources here avoids a scheduler fan-out for a 100-row import while
+  // keeping the durable ledger atomic with company creation.
+  if (options.scheduleScans !== false) {
+    await scheduleCompanySourcesHandler(ctx, {
+      ownerAccountId: account.logicalAccountId,
+      companyId,
+    });
+  }
   return companyId;
 }
 
@@ -293,6 +309,14 @@ export const updateCompanyForOwner = internalMutation({
       snapshotGeneration: (account.snapshotGeneration ?? 0) + 1,
       updatedAt: now,
     });
+    if (company.lifecycle === "active") {
+      await cancelCompanyScanWork(ctx, {
+        ownerAccountId: account.logicalAccountId,
+        companyId: company.companyId,
+        reason: "superseded",
+      });
+      await queueCompanySources(ctx, account.logicalAccountId, company.companyId);
+    }
     return { status: "updated", companyId: company.companyId };
   },
 });
@@ -325,6 +349,13 @@ export const setCompanyStateForOwner = internalMutation({
 
     const now = Date.now();
     if (args.state !== "removed") {
+      if (args.state === "paused") {
+        await cancelCompanyScanWork(ctx, {
+          ownerAccountId: account.logicalAccountId,
+          companyId: company.companyId,
+          reason: "superseded",
+        });
+      }
       await ctx.db.patch(company._id, {
         lifecycle: args.state,
         snapshotGeneration: company.snapshotGeneration + 1,
@@ -334,16 +365,24 @@ export const setCompanyStateForOwner = internalMutation({
         snapshotGeneration: (account.snapshotGeneration ?? 0) + 1,
         updatedAt: now,
       });
+      if (args.state === "active") {
+        await queueCompanySources(ctx, account.logicalAccountId, company.companyId);
+      }
       return { status: args.state, companyId: company.companyId };
     }
 
     const purgeGeneration = company.purgeGeneration + 1;
+    await cancelCompanyScanWork(ctx, {
+      ownerAccountId: account.logicalAccountId,
+      companyId: company.companyId,
+      reason: "company_removed",
+    });
     await deleteCompanyClaims(ctx, account.logicalAccountId, company.companyId);
     await ctx.db.patch(company._id, {
       lifecycle: "removed",
       removedAt: now,
       purgeGeneration,
-      purgePhase: "payload",
+      purgePhase: "scan",
       snapshotGeneration: company.snapshotGeneration + 1,
       updatedAt: now,
     });
@@ -386,6 +425,22 @@ export const advanceCompanyPurge = internalMutation({
       return { status: "stale" };
     }
     if (company.purgePhase === "complete") return { status: "complete" };
+    if (company.purgePhase === "scan") {
+      const scanPurge = await purgeCompanyScanStateBatch(
+        ctx,
+        args.ownerAccountId,
+        args.companyId,
+      );
+      if (!scanPurge.complete) {
+        await ctx.scheduler.runAfter(
+          0,
+          internal.companyMonitoring.companies.advanceCompanyPurge,
+          args,
+        );
+        return { status: "scan" };
+      }
+      await ctx.db.patch(company._id, { purgePhase: "payload", updatedAt: Date.now() });
+    }
     await ctx.db.patch(company._id, {
       name: undefined,
       sortName: undefined,

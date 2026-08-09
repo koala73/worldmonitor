@@ -22,6 +22,7 @@ type ImportRowResult = {
 };
 
 type ImportRowMutationResult = ImportRowResult & { companyCount: number };
+type InternalImportRowMutationResult = ImportRowMutationResult & { ownerAccountId: string };
 
 export const importCompanyRowForOwner = internalMutation({
   args: {
@@ -29,7 +30,7 @@ export const importCompanyRowForOwner = internalMutation({
     row: normalizedCompanyImportRowValidator,
     rowFingerprint: v.string(),
   },
-  handler: async (ctx, args): Promise<ImportRowMutationResult> => {
+  handler: async (ctx, args): Promise<InternalImportRowMutationResult> => {
     const account = await requireProvisionedAccount(ctx, args.ownerUserId);
     const row = args.row as NormalizedCompanyImportRow;
     const companyCount = account.companyCount ?? 0;
@@ -49,12 +50,14 @@ export const importCompanyRowForOwner = internalMutation({
             status: "replayed",
             companyId: replay.companyId,
             companyCount,
+            ownerAccountId: account.logicalAccountId,
           }
         : {
             ordinal: row.ordinal,
             status: "conflict",
             reason: "REPLAY_CONFLICT",
             companyCount,
+            ownerAccountId: account.logicalAccountId,
           };
     }
 
@@ -72,6 +75,7 @@ export const importCompanyRowForOwner = internalMutation({
         status: "noop",
         companyId: noop.companyId,
         companyCount,
+        ownerAccountId: account.logicalAccountId,
       };
     }
 
@@ -81,6 +85,7 @@ export const importCompanyRowForOwner = internalMutation({
         status: "rejected",
         reason: "COMPANY_LIMIT_REACHED",
         companyCount,
+        ownerAccountId: account.logicalAccountId,
       };
     }
 
@@ -88,7 +93,7 @@ export const importCompanyRowForOwner = internalMutation({
       clientImportId: row.clientImportId,
       importOrdinal: row.ordinal,
       importFingerprint: args.rowFingerprint,
-    });
+    }, { scheduleScans: false });
     const nextCompanyCount = companyCount + 1;
     await ctx.db.patch(account._id, {
       companyCount: nextCompanyCount,
@@ -100,6 +105,7 @@ export const importCompanyRowForOwner = internalMutation({
       status: "created",
       companyId,
       companyCount: nextCompanyCount,
+      ownerAccountId: account.logicalAccountId,
     };
   },
 });
@@ -110,6 +116,8 @@ export const importCompaniesForOwner = internalAction({
     const rows = normalizeCompanyImportBatch(args.rows as CompanyImportRowInput[]);
     const rowFingerprints = await Promise.all(rows.map((row) => fingerprint(row)));
     const results: ImportRowResult[] = [];
+    const schedulableCompanyIds: string[] = [];
+    let ownerAccountId: string | undefined;
     let companyCount = 0;
 
     for (const [index, row] of rows.entries()) {
@@ -120,10 +128,38 @@ export const importCompaniesForOwner = internalAction({
           row,
           rowFingerprint: rowFingerprints[index]!,
         },
-      ) as ImportRowMutationResult;
+      ) as InternalImportRowMutationResult;
       companyCount = result.companyCount;
-      const { companyCount: _companyCount, ...rowResult } = result;
+      ownerAccountId = result.ownerAccountId;
+      if (
+        (result.status === "created" || result.status === "replayed") &&
+        result.companyId
+      ) {
+        schedulableCompanyIds.push(result.companyId);
+      }
+      const {
+        companyCount: _companyCount,
+        ownerAccountId: _ownerAccountId,
+        ...rowResult
+      } = result;
       results.push(rowResult);
+    }
+
+    // Imports already run one mutation per normalized row. Cohort created and
+    // replayed rows into at most 25 IDs, then materialize two source work
+    // items per cohort. Work-key replay heals an action interrupted after row
+    // commits without duplicating work; no-op rows never join the cohort.
+    if (ownerAccountId) {
+      for (let offset = 0; offset < schedulableCompanyIds.length; offset += 25) {
+        const companyIds = schedulableCompanyIds.slice(offset, offset + 25);
+        for (const source of ["exa", "x"] as const) {
+          await ctx.runMutation(internal.companyMonitoring.orchestration.ensureAccountWork, {
+            ownerAccountId,
+            source,
+            companyIds,
+          });
+        }
+      }
     }
 
     return { results, companyCount };

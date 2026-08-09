@@ -1,5 +1,6 @@
 import { ConvexError, type Infer, v } from "convex/values";
 import type { Doc } from "../_generated/dataModel";
+import { internal } from "../_generated/api";
 import {
   internalMutation,
   mutation,
@@ -24,6 +25,8 @@ type Obligation = Doc<"companyMonitoringScanObligations">;
 const ACCOUNT_DUE_PAGE_SIZE = 32;
 const ACCOUNT_WORK_PAGE_SIZE = 8;
 const MAX_COHORT_COMPANIES = 25;
+const SCAN_PURGE_WORK_BATCH_SIZE = 8;
+const SCAN_PURGE_OBLIGATION_BATCH_SIZE = 16;
 const LEASE_MS = 5 * 60 * 1000;
 const WINDOW_MS = 24 * 60 * 60 * 1000;
 const WINDOW_BUCKET_MS = 60 * 60 * 1000;
@@ -203,12 +206,13 @@ async function scheduleAccountWorkHandler(
     .query("companyMonitoringScanWorkItems")
     .withIndex("by_workKey", (q) => q.eq("workKey", workKey))
     .unique();
-  if (existing) {
+  if (existing && existing.state !== "cancelled") {
     await updateAccountDueFromWork(ctx, args.ownerAccountId);
     return { status: "replayed" as const, workId: existing.workId };
   }
 
-  const workId = `cm_work_${workKey.slice(0, 40)}`;
+  const workId = existing?.workId ?? `cm_work_${workKey.slice(0, 40)}`;
+  const priorWorkIds = new Set<string>();
   for (const companyId of companyIds) {
     const obligation = await ctx.db
       .query("companyMonitoringScanObligations")
@@ -222,9 +226,12 @@ async function scheduleAccountWorkHandler(
     if (obligation && (obligation.state === "due" || obligation.state === "leased")) {
       throw new ConvexError("COMPANY_MONITORING_OBLIGATION_ALREADY_ACTIVE");
     }
+    if (obligation?.workId && obligation.workId !== workId) {
+      priorWorkIds.add(obligation.workId);
+    }
   }
 
-  await ctx.db.insert("companyMonitoringScanWorkItems", {
+  const dueWork = {
     workId,
     workKey,
     ownerAccountId: args.ownerAccountId,
@@ -236,11 +243,13 @@ async function scheduleAccountWorkHandler(
     scheduledDueAt: now,
     selectionDueAt: now,
     resultCap: RESULT_CAP[args.source],
-    attemptCount: 0,
-    state: "due",
-    createdAt: now,
+    attemptCount: existing?.attemptCount ?? 0,
+    state: "due" as const,
+    createdAt: existing?.createdAt ?? now,
     updatedAt: now,
-  });
+  };
+  if (existing) await ctx.db.replace(existing._id, dueWork);
+  else await ctx.db.insert("companyMonitoringScanWorkItems", dueWork);
 
   for (const companyId of companyIds) {
     const obligation = await ctx.db
@@ -283,6 +292,22 @@ async function scheduleAccountWorkHandler(
     }
   }
 
+  // Re-scheduling after a cohort cancellation moves every surviving
+  // obligation to fresh work. Remove the old work only after its last durable
+  // obligation has moved, so another company in the cohort is never stranded.
+  for (const priorWorkId of priorWorkIds) {
+    const remaining = await ctx.db
+      .query("companyMonitoringScanObligations")
+      .withIndex("by_workId", (q) => q.eq("workId", priorWorkId))
+      .first();
+    if (remaining) continue;
+    const priorWork = await ctx.db
+      .query("companyMonitoringScanWorkItems")
+      .withIndex("by_workId", (q) => q.eq("workId", priorWorkId))
+      .unique();
+    if (priorWork) await ctx.db.delete(priorWork._id);
+  }
+
   const currentDue = account.nextScanDueAt;
   const sourceDueField = args.source === "exa" ? "nextExaScanDueAt" : "nextXScanDueAt";
   const currentSourceDue = account[sourceDueField];
@@ -292,6 +317,180 @@ async function scheduleAccountWorkHandler(
     updatedAt: now,
   });
   return { status: "scheduled" as const, workId };
+}
+
+/** Queue one bounded mutation that materializes both source obligations. */
+export async function queueCompanySources(
+  ctx: MutationCtx,
+  ownerAccountId: string,
+  companyId: string,
+) {
+  await ctx.scheduler.runAfter(
+    0,
+    internal.companyMonitoring.orchestration.scheduleCompanySources,
+    { ownerAccountId, companyId },
+  );
+}
+
+async function activeCompany(
+  ctx: MutationCtx,
+  ownerAccountId: string,
+  companyId: string,
+) {
+  const company = await ctx.db
+    .query("companyMonitoringCompanies")
+    .withIndex("by_account_companyId", (q) =>
+      q.eq("ownerAccountId", ownerAccountId).eq("companyId", companyId),
+    )
+    .unique();
+  return company?.lifecycle === "active" ? company : null;
+}
+
+/**
+ * Fence every active cohort that contains this company. Surviving peers keep
+ * cancelled obligations until a trusted queued mutation moves them to fresh
+ * server-shaped work, so no peer can disappear between cancellation and
+ * re-scheduling.
+ */
+export async function cancelCompanyScanWork(
+  ctx: MutationCtx,
+  args: {
+    ownerAccountId: string;
+    companyId: string;
+    reason: "company_removed" | "superseded";
+  },
+) {
+  const companyObligations = await ctx.db
+    .query("companyMonitoringScanObligations")
+    .withIndex("by_account_company_source", (q) =>
+      q.eq("ownerAccountId", args.ownerAccountId).eq("companyId", args.companyId),
+    )
+    .take(3);
+  if (companyObligations.length > 2) {
+    throw new ConvexError("COMPANY_MONITORING_COMPANY_OBLIGATIONS_INVALID");
+  }
+
+  const now = Date.now();
+  const handledWorkIds = new Set<string>();
+  const peerCompanyIds = new Set<string>();
+  for (const companyObligation of companyObligations) {
+    if (!companyObligation.workId || handledWorkIds.has(companyObligation.workId)) continue;
+    handledWorkIds.add(companyObligation.workId);
+    const work = await ctx.db
+      .query("companyMonitoringScanWorkItems")
+      .withIndex("by_workId", (q) => q.eq("workId", companyObligation.workId!))
+      .unique();
+    if (!work || (work.state !== "due" && work.state !== "leased")) continue;
+
+    const cohortObligations = await ctx.db
+      .query("companyMonitoringScanObligations")
+      .withIndex("by_workId", (q) => q.eq("workId", work.workId))
+      .take(MAX_COHORT_COMPANIES + 1);
+    if (cohortObligations.length > MAX_COHORT_COMPANIES) {
+      throw new ConvexError("COMPANY_MONITORING_WORK_OBLIGATIONS_INVALID");
+    }
+    await ctx.db.replace(work._id, {
+      ...workIdentity(work),
+      state: "cancelled",
+      cancelledAt: now,
+      cancelReason: args.reason,
+      updatedAt: now,
+    });
+    for (const obligation of cohortObligations) {
+      if (obligation.state !== "due" && obligation.state !== "leased") continue;
+      const isTarget = obligation.companyId === args.companyId;
+      await ctx.db.replace(obligation._id, {
+        ...obligationIdentity(obligation),
+        state: "cancelled",
+        workId: work.workId,
+        cancelledAt: now,
+        reason: isTarget ? args.reason : "superseded",
+        updatedAt: now,
+      });
+      if (!isTarget && await activeCompany(ctx, args.ownerAccountId, obligation.companyId)) {
+        peerCompanyIds.add(obligation.companyId);
+      }
+    }
+  }
+
+  for (const peerCompanyId of peerCompanyIds) {
+    await queueCompanySources(ctx, args.ownerAccountId, peerCompanyId);
+  }
+  await updateAccountDueFromWork(ctx, args.ownerAccountId);
+  return { cancelledWork: handledWorkIds.size, requeuedPeers: peerCompanyIds.size };
+}
+
+/** Delete one bounded page of scan state associated with a removed company. */
+export async function purgeCompanyScanStateBatch(
+  ctx: MutationCtx,
+  ownerAccountId: string,
+  companyId: string,
+) {
+  const page = await ctx.db
+    .query("companyMonitoringScanObligations")
+    .withIndex("by_account_company_source", (q) =>
+      q.eq("ownerAccountId", ownerAccountId).eq("companyId", companyId),
+    )
+    .take(SCAN_PURGE_OBLIGATION_BATCH_SIZE + 1);
+  const batch = page.slice(0, SCAN_PURGE_OBLIGATION_BATCH_SIZE);
+  for (const obligation of batch) {
+    const workId = obligation.workId;
+    await ctx.db.delete(obligation._id);
+    if (!workId) continue;
+    const remaining = await ctx.db
+      .query("companyMonitoringScanObligations")
+      .withIndex("by_workId", (q) => q.eq("workId", workId))
+      .first();
+    if (remaining) continue;
+    const work = await ctx.db
+      .query("companyMonitoringScanWorkItems")
+      .withIndex("by_workId", (q) => q.eq("workId", workId))
+      .unique();
+    if (work) await ctx.db.delete(work._id);
+  }
+  await updateAccountDueFromWork(ctx, ownerAccountId);
+  return { complete: page.length <= SCAN_PURGE_OBLIGATION_BATCH_SIZE };
+}
+
+/** Delete one bounded, account-leading page during destructive account purge. */
+export async function purgeAccountScanStateBatch(
+  ctx: MutationCtx,
+  ownerAccountId: string,
+) {
+  const states = ["due", "leased", "complete", "non_reassuring", "cancelled"] as const;
+  const works: Work[] = [];
+  for (const state of states) {
+    const remaining = SCAN_PURGE_WORK_BATCH_SIZE + 1 - works.length;
+    if (remaining <= 0) break;
+    works.push(...await ctx.db
+      .query("companyMonitoringScanWorkItems")
+      .withIndex("by_account_state_selectionDueAt", (q) =>
+        q.eq("ownerAccountId", ownerAccountId).eq("state", state),
+      )
+      .take(remaining));
+  }
+  const workBatch = works.slice(0, SCAN_PURGE_WORK_BATCH_SIZE);
+  for (const work of workBatch) {
+    const obligations = await ctx.db
+      .query("companyMonitoringScanObligations")
+      .withIndex("by_workId", (q) => q.eq("workId", work.workId))
+      .take(MAX_COHORT_COMPANIES + 1);
+    if (obligations.length > MAX_COHORT_COMPANIES) {
+      throw new ConvexError("COMPANY_MONITORING_WORK_OBLIGATIONS_INVALID");
+    }
+    for (const obligation of obligations) await ctx.db.delete(obligation._id);
+    await ctx.db.delete(work._id);
+  }
+  if (works.length > SCAN_PURGE_WORK_BATCH_SIZE) return { complete: false };
+
+  const obligationPage = await ctx.db
+    .query("companyMonitoringScanObligations")
+    .withIndex("by_account_company_source", (q) => q.eq("ownerAccountId", ownerAccountId))
+    .take(SCAN_PURGE_OBLIGATION_BATCH_SIZE + 1);
+  for (const obligation of obligationPage.slice(0, SCAN_PURGE_OBLIGATION_BATCH_SIZE)) {
+    await ctx.db.delete(obligation._id);
+  }
+  return { complete: obligationPage.length <= SCAN_PURGE_OBLIGATION_BATCH_SIZE };
 }
 
 async function dueWorkForAccount(
@@ -646,6 +845,72 @@ export const scheduleAccountWork = internalMutation({
     companyIds: v.array(v.string()),
   },
   handler: scheduleAccountWorkHandler,
+});
+
+// Import actions can be retried after row mutations committed but before all
+// cohort scheduling finished. Filter each fixed-size cohort in Convex so only
+// companies missing this source join new work; already durable obligations are
+// left untouched even when created and replayed rows are mixed.
+export const ensureAccountWork = internalMutation({
+  args: {
+    ownerAccountId: v.string(),
+    source: companyMonitoringScanSourceValidator,
+    companyIds: v.array(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const companyIds = [...new Set(args.companyIds)].sort();
+    if (companyIds.length === 0 || companyIds.length > MAX_COHORT_COMPANIES) {
+      throw new ConvexError("INVALID_COMPANY_MONITORING_COHORT");
+    }
+    const missing: string[] = [];
+    for (const companyId of companyIds) {
+      if (!await activeCompany(ctx, args.ownerAccountId, companyId)) continue;
+      const obligation = await ctx.db
+        .query("companyMonitoringScanObligations")
+        .withIndex("by_account_company_source", (q) =>
+          q
+            .eq("ownerAccountId", args.ownerAccountId)
+            .eq("companyId", companyId)
+            .eq("source", args.source),
+        )
+        .unique();
+      if (!obligation || obligation.state === "cancelled") missing.push(companyId);
+    }
+    if (missing.length === 0) return { status: "replayed" as const };
+    return scheduleAccountWorkHandler(ctx, {
+      ownerAccountId: args.ownerAccountId,
+      source: args.source,
+      companyIds: missing,
+    });
+  },
+});
+
+export async function scheduleCompanySourcesHandler(
+  ctx: MutationCtx,
+  args: { ownerAccountId: string; companyId: string },
+) {
+  if (!await activeCompany(ctx, args.ownerAccountId, args.companyId)) {
+    return { status: "inactive" as const, sources: 0 };
+  }
+  const results = [];
+  for (const source of ["exa", "x"] as const) {
+    results.push(await scheduleAccountWorkHandler(ctx, {
+      ownerAccountId: args.ownerAccountId,
+      source,
+      companyIds: [args.companyId],
+    }));
+  }
+  return {
+    status: results.some((result) => result.status === "scheduled")
+      ? "scheduled" as const
+      : "replayed" as const,
+    sources: results.length,
+  };
+}
+
+export const scheduleCompanySources = internalMutation({
+  args: { ownerAccountId: v.string(), companyId: v.string() },
+  handler: scheduleCompanySourcesHandler,
 });
 
 // Public worker claims are intentionally targetless. The worker can identify

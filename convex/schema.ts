@@ -1077,6 +1077,7 @@ export default defineSchema({
     purgePhase: v.union(
       v.literal("none"),
       v.literal("pending"),
+      v.literal("scan"),
       v.literal("companies"),
       v.literal("finalizing"),
       v.literal("complete"),
@@ -1123,7 +1124,12 @@ export default defineSchema({
     importOrdinal: v.optional(v.number()),
     importFingerprint: v.optional(v.string()),
     purgeGeneration: v.number(),
-    purgePhase: v.union(v.literal("none"), v.literal("payload"), v.literal("complete")),
+    purgePhase: v.union(
+      v.literal("none"),
+      v.literal("scan"),
+      v.literal("payload"),
+      v.literal("complete"),
+    ),
     removedAt: v.optional(v.number()),
     createdAt: v.number(),
     updatedAt: v.number(),
