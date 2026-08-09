@@ -129,10 +129,10 @@ describe('Company Monitoring RPC contract', () => {
 });
 
 describe('Company Monitoring owner-fence environment contract', () => {
-  it('documents degraded provisioning and the strict rotation sequence', () => {
+  it('documents fail-closed feature operations and the strict rotation sequence', () => {
     const envExample = readFileSync(resolve(root, '.env.example'), 'utf8');
     const block = envExample.match(
-      /# REQUIRED before enabling Company Monitoring account onboarding[\s\S]+?(?=\n# Dodo Payments business ID)/,
+      /# REQUIRED before enabling Company Monitoring feature operations[\s\S]+?(?=\n# Dodo Payments business ID)/,
     )?.[0];
     assert.ok(block, 'owner-fence environment block must remain documented');
     const prose = block
@@ -141,13 +141,24 @@ describe('Company Monitoring owner-fence environment contract', () => {
 
     assert.match(
       prose,
-      /REQUIRED.+Company Monitoring account onboarding.+Convex deployment/i,
+      /REQUIRED.+Company Monitoring feature operations.+Convex deployment/i,
     );
     assert.match(
       prose,
-      /Missing,.+blank,.+whitespace-padded,.+malformed.+logged.+skips account-root synchronization/i,
+      /Missing,.+blank,.+whitespace-padded,.+malformed.+fails closed/i,
     );
-    assert.match(prose, /authenticated entitlement writes continue/i);
+    assert.match(
+      prose,
+      /Company Monitoring provisioning.+terminal operations throw/i,
+    );
+    assert.match(
+      prose,
+      /Entitlement writes are independent and continue because they perform no Company Monitoring work/i,
+    );
+    assert.doesNotMatch(
+      prose,
+      /logged.+skips (?:account-root )?synchronization/i,
+    );
     assert.match(prose, /independent secret-manager entries/i);
 
     assert.match(block, /^# COMPANY_MONITORING_OWNER_FENCE_PREVIOUS_SECRETS=$/m);

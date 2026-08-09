@@ -289,6 +289,123 @@ describe("bounded onboarding and replay", () => {
     ).rejects.toThrow(/100 rows/);
   });
 
+  test("a directly created company can be recreated with the same request after purge", async () => {
+    const t = convexTest(schema, modules);
+    await grantProvisioned(t, OWNER_A);
+    const request = {
+      ownerUserId: OWNER_A,
+      clientRequestId: "direct-recreate-after-purge",
+      company: company("Direct Purge Corp", "direct-purge-corp"),
+    };
+
+    const created = await t.mutation(CM.companies.createCompanyForOwner, request);
+    expect(await t.mutation(CM.companies.createCompanyForOwner, request)).toEqual({
+      status: "replayed",
+      companyId: created.companyId,
+    });
+    await expect(
+      t.mutation(CM.companies.createCompanyForOwner, {
+        ...request,
+        company: company("Changed Direct Purge Corp", "direct-purge-corp"),
+      }),
+    ).rejects.toThrow(/REPLAY_CONFLICT/);
+
+    await t.mutation(CM.companies.setCompanyStateForOwner, {
+      ownerUserId: OWNER_A,
+      companyId: created.companyId,
+      state: "removed",
+    });
+    const root = await accountFor(t, OWNER_A);
+    const removed = await t.run(async (ctx) =>
+      ctx.db
+        .query("companyMonitoringCompanies")
+        .withIndex("by_account_companyId", (q) =>
+          q.eq("ownerAccountId", root!.logicalAccountId).eq("companyId", created.companyId),
+        )
+        .unique()
+    );
+    expect(await t.mutation(CM.companies.advanceCompanyPurge, {
+      ownerAccountId: root!.logicalAccountId,
+      companyId: created.companyId,
+      purgeGeneration: removed!.purgeGeneration,
+    })).toEqual({ status: "complete" });
+
+    const purged = await t.run(async (ctx) => ctx.db.get(removed!._id));
+    expect(purged?.directRequestId).toBeUndefined();
+    expect(purged?.directFingerprint).toBeUndefined();
+    expect(purged?.clientImportId).toBeUndefined();
+    expect(purged?.importOrdinal).toBeUndefined();
+    expect(purged?.importFingerprint).toBeUndefined();
+
+    const recreated = await t.mutation(CM.companies.createCompanyForOwner, request);
+    expect(recreated.status).toBe("created");
+    expect(recreated.companyId).not.toBe(created.companyId);
+    expect(await t.query(CM.companies.listCompaniesForOwner, { ownerUserId: OWNER_A })).toEqual([
+      expect.objectContaining({ companyId: recreated.companyId, lifecycle: "active" }),
+    ]);
+  });
+
+  test("an imported company can be recreated with the same tuple after purge", async () => {
+    const t = convexTest(schema, modules);
+    await grantProvisioned(t, OWNER_A);
+    const row = {
+      ...company("Import Purge Corp", "import-purge-corp"),
+      clientImportId: "import-recreate-after-purge",
+      ordinal: 0,
+    };
+    const request = { ownerUserId: OWNER_A, rows: [row] };
+
+    const imported = await t.action(CM.imports.importCompaniesForOwner, request);
+    const companyId = imported.results[0]!.companyId!;
+    expect(imported.results[0]).toMatchObject({ status: "created", companyId });
+    expect(await t.action(CM.imports.importCompaniesForOwner, request)).toMatchObject({
+      results: [{ status: "replayed", companyId }],
+    });
+    expect(await t.action(CM.imports.importCompaniesForOwner, {
+      ownerUserId: OWNER_A,
+      rows: [{ ...row, name: "Changed Import Purge Corp" }],
+    })).toMatchObject({
+      results: [{ status: "conflict", reason: "REPLAY_CONFLICT" }],
+    });
+
+    await t.mutation(CM.companies.setCompanyStateForOwner, {
+      ownerUserId: OWNER_A,
+      companyId,
+      state: "removed",
+    });
+    const root = await accountFor(t, OWNER_A);
+    const removed = await t.run(async (ctx) =>
+      ctx.db
+        .query("companyMonitoringCompanies")
+        .withIndex("by_account_companyId", (q) =>
+          q.eq("ownerAccountId", root!.logicalAccountId).eq("companyId", companyId),
+        )
+        .unique()
+    );
+    expect(await t.mutation(CM.companies.advanceCompanyPurge, {
+      ownerAccountId: root!.logicalAccountId,
+      companyId,
+      purgeGeneration: removed!.purgeGeneration,
+    })).toEqual({ status: "complete" });
+
+    const purged = await t.run(async (ctx) => ctx.db.get(removed!._id));
+    expect(purged?.directRequestId).toBeUndefined();
+    expect(purged?.directFingerprint).toBeUndefined();
+    expect(purged?.clientImportId).toBeUndefined();
+    expect(purged?.importOrdinal).toBeUndefined();
+    expect(purged?.importFingerprint).toBeUndefined();
+
+    const reimported = await t.action(CM.imports.importCompaniesForOwner, request);
+    expect(reimported.results[0]?.status).toBe("created");
+    expect(reimported.results[0]?.companyId).not.toBe(companyId);
+    expect(await t.query(CM.companies.listCompaniesForOwner, { ownerUserId: OWNER_A })).toEqual([
+      expect.objectContaining({
+        companyId: reimported.results[0]?.companyId,
+        lifecycle: "active",
+      }),
+    ]);
+  });
+
   test("removal is immediately hidden, idempotent, cleans claims, and fences cross-account IDs", async () => {
     const t = convexTest(schema, modules);
     await grantProvisioned(t, OWNER_A);

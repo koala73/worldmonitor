@@ -114,7 +114,7 @@ export const importCompaniesForOwner = internalAction({
 
     for (const [index, row] of rows.entries()) {
       const result = await ctx.runMutation(
-        (internal as any).companyMonitoring.imports.importCompanyRowForOwner,
+        internal.companyMonitoring.imports.importCompanyRowForOwner,
         {
           ownerUserId: args.ownerUserId,
           row,

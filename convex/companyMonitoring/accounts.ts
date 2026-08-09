@@ -87,7 +87,7 @@ async function scheduleScopedKeyCacheInvalidation(ctx: MutationCtx, ownerUserId:
   if (keyHashes.length === 0) return;
   await ctx.scheduler.runAfter(
     0,
-    (internal as any).payments.cacheActions.invalidateUserApiKeyCaches,
+    internal.payments.cacheActions.invalidateUserApiKeyCaches,
     { keyHashes },
   );
 }
@@ -100,7 +100,7 @@ async function scheduleAccountPurge(
 ) {
   await ctx.scheduler.runAfter(
     Math.max(0, delayMs),
-    (internal as any).companyMonitoring.accounts.advanceAccountPurge,
+    internal.companyMonitoring.accounts.advanceAccountPurge,
     { ownerFenceHash, purgeGeneration },
   );
 }
@@ -124,6 +124,18 @@ async function findAccountByOwnerFence(
   return match;
 }
 
+async function findAccountByOwnerUserId(
+  ctx: MutationCtx,
+  ownerUserId: string,
+): Promise<Doc<"companyMonitoringAccounts"> | null> {
+  const accounts = await ctx.db
+    .query("companyMonitoringAccounts")
+    .withIndex("by_ownerUserId", (q) => q.eq("ownerUserId", ownerUserId))
+    .take(2);
+  if (accounts.length > 1) throw new ConvexError("ACCOUNT_OWNER_FENCE_CONFLICT");
+  return accounts[0] ?? null;
+}
+
 /** Apply the canonical stored entitlement to the single keyed account root. */
 export async function syncCompanyMonitoringAccountFromEntitlement(
   ctx: MutationCtx,
@@ -141,7 +153,14 @@ export async function syncCompanyMonitoringAccountFromEntitlement(
   const ownerFence = await companyMonitoringOwnerFenceCandidates(userId);
   const ownerFenceHash = ownerFence.current;
   const match = await findAccountByOwnerFence(ctx, ownerFence);
-  let existing = match?.account ?? null;
+  // The owner binding is the invariant that survives an operator dropping an
+  // old fence key from history. Reconcile it before insert so a scheduled sync
+  // migrates the one nonterminal root instead of creating a duplicate root.
+  const ownerAccount = await findAccountByOwnerUserId(ctx, userId);
+  if (match && ownerAccount && match.account._id !== ownerAccount._id) {
+    throw new ConvexError("ACCOUNT_OWNER_FENCE_CONFLICT");
+  }
+  let existing = match?.account ?? ownerAccount;
 
   if (!existing) {
     if (!canonical.active) return null;
@@ -172,7 +191,7 @@ export async function syncCompanyMonitoringAccountFromEntitlement(
   if (existing.terminalReason || existing.lifecycle === "denied") return existing;
   if (existing.ownerUserId !== userId) throw new ConvexError("ACCOUNT_OWNER_BINDING_MISMATCH");
 
-  if (match && match.matchedHash !== ownerFenceHash) {
+  if (existing.ownerFenceHash !== ownerFenceHash) {
     await ctx.db.patch(existing._id, { ownerFenceHash });
     if (existing.purgePhase !== "none" && existing.purgePhase !== "complete") {
       // Jobs scheduled before rotation still carry the old hash and will become
@@ -182,7 +201,7 @@ export async function syncCompanyMonitoringAccountFromEntitlement(
         : 0;
       await scheduleAccountPurge(ctx, ownerFenceHash, existing.purgeGeneration, delayMs);
     }
-    existing = (await ctx.db.get(existing._id)) ?? existing;
+    existing = { ...existing, ownerFenceHash };
   }
 
   const semanticChanged = existing.entitlementDigest !== canonical.digest;
@@ -612,19 +631,17 @@ export const reconcileAccountEntitlements = internalMutation({
     let scanned = 0;
     let scheduled = 0;
 
-    // BOTH directions. Scanning only "entitled" would detect lapses and never
-    // undo one, and the entitlement write that used to restore a lapsed root is
-    // exactly what #6256 removed — a customer who re-subscribed after a late
-    // renewal would stay locked out until the purge scrubbed them.
-    for (const lifecycle of RECONCILABLE_LIFECYCLES) {
-      if (remaining === 0) break;
+    const scanLifecycle = async (
+      lifecycle: (typeof RECONCILABLE_LIFECYCLES)[number],
+      limit: number,
+    ) => {
+      if (limit === 0) return 0;
       const accounts = await ctx.db
         .query("companyMonitoringAccounts")
         .withIndex("by_lifecycle_updatedAt", (q) =>
           q.eq("lifecycle", lifecycle).lt("updatedAt", staleBefore),
         )
-        .take(remaining);
-      remaining -= accounts.length;
+        .take(limit);
 
       for (const account of accounts) {
         scanned += 1;
@@ -642,11 +659,31 @@ export const reconcileAccountEntitlements = internalMutation({
         // Same shape as reapStalledAccountPurges.
         await ctx.scheduler.runAfter(
           0,
-          (internal as any).companyMonitoring.accounts.syncStoredEntitlement,
+          internal.companyMonitoring.accounts.syncStoredEntitlement,
           { userId: ownerUserId },
         );
         scheduled += 1;
       }
+      return accounts.length;
+    };
+
+    // BOTH directions. Reserve half the shared budget for each lifecycle so a
+    // full entitled bucket cannot starve late renewals forever. The second
+    // bucket can spend unused capacity from the first; if it also has spare,
+    // the first bucket receives the remainder. Each query remains oldest-first,
+    // and scanLifecycle advances every fetched row before a later page runs.
+    const reservedPerLifecycle = Math.floor(
+      ENTITLED_RECHECK_BATCH_SIZE / RECONCILABLE_LIFECYCLES.length,
+    );
+    const firstLifecycle = RECONCILABLE_LIFECYCLES[0];
+    const secondLifecycle = RECONCILABLE_LIFECYCLES[1];
+
+    const firstScanned = await scanLifecycle(firstLifecycle, reservedPerLifecycle);
+    remaining -= firstScanned;
+    const secondScanned = await scanLifecycle(secondLifecycle, remaining);
+    remaining -= secondScanned;
+    if (remaining > 0) {
+      remaining -= await scanLifecycle(firstLifecycle, remaining);
     }
 
     return { scanned, scheduled };

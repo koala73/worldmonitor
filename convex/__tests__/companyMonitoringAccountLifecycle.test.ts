@@ -399,6 +399,64 @@ describe("Company Monitoring account lifecycle", () => {
     expect(remaining).toEqual([]);
   });
 
+  test("the reconciler reserves room for a renewed lapsed root when entitled rows fill the batch", async () => {
+    const t = convexTest(schema, modules);
+    await grantProvisioned(t, OWNER_A);
+    await setStoredEntitlement(t, OWNER_A, "free", NOW - 1);
+
+    // Renew the canonical entitlement without pushing the change into Company
+    // Monitoring. This stale lapsed root must compete with a full old-style
+    // first bucket during the next scheduled reconciliation tick.
+    await t.run(async (ctx) => {
+      const entitlement = await ctx.db
+        .query("entitlements")
+        .withIndex("by_userId", (q) => q.eq("userId", OWNER_A))
+        .unique();
+      await ctx.db.patch(entitlement!._id, {
+        planKey: "api_starter",
+        features: getFeaturesForPlan("api_starter"),
+        validUntil: FUTURE,
+      });
+    });
+
+    const fences = await Promise.all(
+      Array.from({ length: 50 }, (_, i) =>
+        signCompanyMonitoringOwnerFence(`user_mixed_batch_${i}`),
+      ),
+    );
+    await t.run(async (ctx) => {
+      for (let i = 0; i < 50; i += 1) {
+        await ctx.db.insert("companyMonitoringAccounts", {
+          logicalAccountId: `cm_account_mixed_${String(i).padStart(20, "0")}`,
+          ownerUserId: `user_mixed_batch_${i}`,
+          ownerFenceHash: fences[i]!,
+          lifecycle: "entitled",
+          lifecycleSequence: 1,
+          companyCount: 0,
+          companyLimit: 500,
+          snapshotGeneration: 0,
+          purgeGeneration: 0,
+          purgePhase: "none",
+          destructivePurgeStarted: false,
+          pendingReactivation: false,
+          createdAt: NOW,
+          updatedAt: NOW,
+        });
+      }
+    });
+
+    vi.setSystemTime(NOW + 2 * 60 * 60 * 1000);
+    const result = await t.mutation(CM.accounts.reconcileAccountEntitlements, {});
+    expect(result).toEqual({ scanned: 50, scheduled: 50 });
+    vi.advanceTimersByTime(1);
+    await t.finishInProgressScheduledFunctions();
+
+    expect(await accountFor(t, OWNER_A)).toMatchObject({
+      lifecycle: "entitled",
+      purgePhase: "none",
+    });
+  });
+
   test("the reconciler leaves a still-entitled root alone", async () => {
     const t = convexTest(schema, modules);
     await grantProvisioned(t, OWNER_A);
@@ -877,6 +935,60 @@ describe("Company Monitoring account lifecycle", () => {
         .withIndex("by_ownerFenceHash", (q) => q.eq("ownerFenceHash", oldRoot!.ownerFenceHash))
         .unique()
     )).toBeNull();
+  });
+
+  test("scheduled sync migrates a renewed lapsed root when old fence history was dropped", async () => {
+    const t = convexTest(schema, modules);
+    process.env.COMPANY_MONITORING_OWNER_FENCE_SECRET = OLD_OWNER_FENCE_SECRET;
+    await grantProvisioned(t, OWNER_A);
+    await setStoredEntitlement(t, OWNER_A, "free", NOW - 1);
+    const oldRoot = await accountFor(t, OWNER_A);
+
+    // The billing renewal only updates canonical entitlement state. Rotate the
+    // current key without retaining history before the reconciler schedules the
+    // per-owner sync.
+    await t.run(async (ctx) => {
+      const entitlement = await ctx.db
+        .query("entitlements")
+        .withIndex("by_userId", (q) => q.eq("userId", OWNER_A))
+        .unique();
+      await ctx.db.patch(entitlement!._id, {
+        planKey: "api_starter",
+        features: getFeaturesForPlan("api_starter"),
+        validUntil: FUTURE,
+      });
+    });
+    process.env.COMPANY_MONITORING_OWNER_FENCE_SECRET = NEW_OWNER_FENCE_SECRET;
+    delete process.env.COMPANY_MONITORING_OWNER_FENCE_PREVIOUS_SECRETS;
+    const currentFenceHash = await signCompanyMonitoringOwnerFence(OWNER_A);
+
+    vi.setSystemTime(NOW + 2 * 60 * 60 * 1000);
+    expect(await t.mutation(CM.accounts.reconcileAccountEntitlements, {}))
+      .toEqual({ scanned: 1, scheduled: 1 });
+    vi.advanceTimersByTime(1);
+    await t.finishInProgressScheduledFunctions();
+
+    const state = await t.run(async (ctx) => ({
+      roots: await ctx.db.query("companyMonitoringAccounts").collect(),
+      current: await ctx.db
+        .query("companyMonitoringAccounts")
+        .withIndex("by_ownerFenceHash", (q) => q.eq("ownerFenceHash", currentFenceHash))
+        .unique(),
+      old: await ctx.db
+        .query("companyMonitoringAccounts")
+        .withIndex("by_ownerFenceHash", (q) => q.eq("ownerFenceHash", oldRoot!.ownerFenceHash))
+        .unique(),
+    }));
+    expect(state.roots).toHaveLength(1);
+    expect(state.current).toMatchObject({
+      _id: oldRoot?._id,
+      logicalAccountId: oldRoot?.logicalAccountId,
+      ownerUserId: OWNER_A,
+      ownerFenceHash: currentFenceHash,
+      lifecycle: "entitled",
+      purgePhase: "none",
+    });
+    expect(state.old).toBeNull();
   });
 
   test("dedicated owner-fence rotation keeps two historical tombstones discoverable in candidate order", async () => {

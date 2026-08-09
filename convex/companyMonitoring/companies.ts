@@ -354,7 +354,7 @@ export const setCompanyStateForOwner = internalMutation({
     });
     await ctx.scheduler.runAfter(
       0,
-      (internal as any).companyMonitoring.companies.advanceCompanyPurge,
+      internal.companyMonitoring.companies.advanceCompanyPurge,
       {
         ownerAccountId: account.logicalAccountId,
         companyId: company.companyId,
@@ -391,6 +391,11 @@ export const advanceCompanyPurge = internalMutation({
       sortName: undefined,
       domicileCountry: undefined,
       customerReference: undefined,
+      directRequestId: undefined,
+      directFingerprint: undefined,
+      clientImportId: undefined,
+      importOrdinal: undefined,
+      importFingerprint: undefined,
       coverageState: undefined,
       observationState: undefined,
       purgePhase: "complete",

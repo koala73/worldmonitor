@@ -225,11 +225,10 @@ describe("Company Monitoring purge persistence", () => {
       companyId: direct.companyId,
       purgeGeneration: individuallyRemoved!.purgeGeneration,
     });
-    expect(await t.run(async (ctx) => ctx.db.get(individuallyRemoved!._id))).toMatchObject({
-      directRequestId: "replay-metadata-direct",
-      directFingerprint: expect.any(String),
-      purgePhase: "complete",
-    });
+    const individuallyPurged = await t.run(async (ctx) => ctx.db.get(individuallyRemoved!._id));
+    expect(individuallyPurged).toMatchObject({ purgePhase: "complete" });
+    expect(individuallyPurged?.directRequestId).toBeUndefined();
+    expect(individuallyPurged?.directFingerprint).toBeUndefined();
 
     await setStoredEntitlement(t, OWNER_A, "free", NOW - 1);
     const lapsed = await accountFor(t, OWNER_A);
