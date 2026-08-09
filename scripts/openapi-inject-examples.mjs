@@ -222,12 +222,16 @@ function overrideStringExample(key, context = {}) {
   }
   // GetTariffTrends' 200 example must depict a SERVED response. productSector
   // on a served row is the All-products aggregate label; partnerCountry on the
-  // datapoint is "World" (TP_A_0010 has no partner dimension). See #6316.
+  // datapoint is "World" (TP_A_0010 has no partner dimension). Request
+  // parameters stay inside their buf.validate patterns — constrainedString
+  // maps empty string to the literal "example", so use non-empty valid values.
+  // See #6316.
   if (where.includes('gettarifftrends') || where.includes('get-tariff-trends')) {
     if (key === 'reportingcountry') return '840';
-    if (key === 'partnercountry') return 'World';
-    if (key === 'productsector') return 'All products';
     if (key === 'unavailablereason') return 'TARIFF_TREND_UNAVAILABLE_REASON_UNSPECIFIED';
+    const isParam = context.exampleSurface === 'parameter' || context.exampleSurface === 'request';
+    if (key === 'partnercountry') return isParam ? '156' : 'World';
+    if (key === 'productsector') return isParam ? 'all' : 'All products';
   }
   if (key === 'period' && where.includes('getsectorsummary')) return '1d';
   if (key === 'timespan' && where.includes('searchgdeltdocuments')) return '15min';

@@ -145,7 +145,7 @@ paths:
                      economy and has no partner dimension, so this field never changes the
                      answer. Empty is the documented default.
                   required: false
-                  example: "World"
+                  example: "156"
                   schema:
                     type: string
                     pattern: '^([0-9]{3})?$'
@@ -159,7 +159,7 @@ paths:
                      without a contract change. Max 16 characters, alphanumeric / underscore /
                      hyphen.
                   required: false
-                  example: "All products"
+                  example: "all"
                   schema:
                     type: string
                     pattern: '^([a-zA-Z0-9_-]{0,16})?$'
