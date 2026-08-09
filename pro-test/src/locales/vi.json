@@ -583,7 +583,7 @@
       "s10l": "Điểm nóng ghi điểm",
       "s11v": "92",
       "s11l": "Sàn giao dịch & tài sản",
-      "s12v": "59",
+      "s12v": "60",
       "s12l": "Công cụ MCP",
       "s13v": "154",
       "s13l": "Lệnh ⌘K",
@@ -611,7 +611,7 @@
       "eyebrow": "Cho những người xây dựng & tác nhân AI",
       "title": "Xây dựng trên thông tin tình báo thế giới trực tiếp — từ bất kỳ stack nào.",
       "sub": "Mọi thứ trên bản đồ cũng là một API. Kết nối nó vào Claude qua MCP, gọi các điểm cuối REST từ bất cứ đâu, hoặc cài đặt máy khách gốc cho Python, Ruby, Go hoặc JavaScript — mã của bạn nghiên cứu bằng dữ liệu trực tiếp thay vì ký ức dữ liệu đào tạo.",
-      "b1": "59 công cụ MCP — điểm rủi ro, điểm tắc nghẽn, xung đột, thị trường, bản tin",
+      "b1": "60 công cụ MCP — điểm rủi ro, điểm tắc nghẽn, xung đột, thị trường, bản tin",
       "b2": "REST API được ghi chép — 193 hoạt động, một thông số kỹ thuật OpenAPI 3.1, một khóa",
       "b3": "SDK chính thức trên npm, PyPI, RubyGems và Go — không phụ thuộc, MCP-first",
       "b4": "Phép chiếu JMESPath trên mọi cuộc gọi — tìm nạp chính xác các trường bạn cần",
@@ -620,7 +620,7 @@
       "termQuery": "Mức độ phơi nhiễm Biển Đỏ của chúng tôi có đang trở nên tệ hơn tuần này không?",
       "termAnswer": "Số lượng chuyên chở giảm tuần này so với tuần trước; mức độ rủi ro chiến tranh được nâng cao; hai bất thường về mật độ trong 48 giờ qua.",
       "termDocs": "Xem tham chiếu công cụ đầy đủ →",
-      "promise": "Một khóa. 59 công cụ MCP. Một REST API đầy đủ. Các client hỗ trợ ngôn ngữ."
+      "promise": "Một khóa. 60 công cụ MCP. Một REST API đầy đủ. Các client hỗ trợ ngôn ngữ."
     },
     "pricing": {
       "eyebrow": "Truy cập",
@@ -638,7 +638,7 @@
       "proF1": "WM Analyst — trò chuyện trên 30+ dịch vụ trực tiếp, có trích dẫn",
       "proF2": "Scenario engine & Route Explorer — mô phỏng các sự cố trước khi chúng xảy ra",
       "proF3": "Tóm tắt AI cá nhân — hàng ngày, hai lần mỗi ngày hoặc hàng tuần, gửi đến Slack, Telegram hoặc email",
-      "proF4": "MCP, REST API & SDK chính thức — 59 công cụ dưới một khóa",
+      "proF4": "MCP, REST API & SDK chính thức — 60 công cụ dưới một khóa",
       "proF5": "Trình xây dựng tiện ích tùy chỉnh cho bảng điều khiển của bạn",
       "cta": "Xem các gói & giá cả",
       "note": "Từ $39.99/tháng · Miễn phí 3 tháng khi thanh toán hàng năm"
@@ -659,7 +659,7 @@
       "q6": "Tại sao tôi nên tin tưởng một cảnh báo?",
       "a6": "Một biểu ngữ phá vỡ chỉ phát ra khi các loại nguồn gốc độc lập xác nhận — phân loại tin tức, vận tốc từ khóa, leo thang điểm nóng, sự tăng vọt quân sự, còi chính thức — loại trùng và giới hạn tỷ lệ. Ít cảnh báo hơn, những cảnh báo thực sự.",
       "q7": "Các agent AI như Claude hoặc GPT có thể sử dụng nó không?",
-      "a7": "Có. World Monitor cung cấp máy chủ MCP 59 công cụ, vì vậy Claude, GPT hoặc bất kỳ agent nào tương thích MCP có thể truy vấn điểm rủi ro trực tiếp, trạng thái điểm tắc nghẽn, xung đột, thị trường và bản tin — với phép chiếu JMESPath để các agent chỉ lấy chính xác những gì họ cần.",
+      "a7": "Có. World Monitor cung cấp máy chủ MCP 60 công cụ, vì vậy Claude, GPT hoặc bất kỳ agent nào tương thích MCP có thể truy vấn điểm rủi ro trực tiếp, trạng thái điểm tắc nghẽn, xung đột, thị trường và bản tin — với phép chiếu JMESPath để các agent chỉ lấy chính xác những gì họ cần.",
       "q8": "Tôi có cần một tài khoản không?",
       "a8": "Không. Bảng điều khiển hoạt động ngay lập tức mà không cần đăng ký. Một tài khoản chỉ quan trọng khi bạn nâng cấp lên Pro hoặc muốn cài đặt được đồng bộ hóa trên các thiết bị.",
       "q9": "Nó có mã nguồn mở không?",

@@ -802,6 +802,52 @@ export async function fetchTradeFlows() {
 }
 
 /**
+ * Coarse label for WHY the run published fewer pairs than it attempted, so an
+ * on-call agent can tell a transient WTO outage from a permanent reporter-roster
+ * shift at a glance on /api/health. Kept to a closed vocabulary (health does
+ * not relay arbitrary free text):
+ *
+ *   - run-failed       the FETCH loop itself threw before producing stats
+ *   - upstream         upstreamFailures dominated (requests errored/HTTP non-204)
+ *   - empty            emptyPairs dominated (WTO answered 204/nothing, a real
+ *                      and usually permanent roster contraction)
+ *   - incomplete-years one-sided years dominated (row-level completeness guard)
+ *   - mixed            multiple contributors, none dominant
+ *   - none             no shortfall (pairsSeeded == pairsAttempted, no dropped rows)
+ *
+ * Accounting: `pairsSeeded + upstreamFailures + emptyPairs == pairsAttempted`,
+ * so a healthy run's delta is exactly zero and `incompleteYearsDropped` (a
+ * row-level counter, not a pair counter) is zero too. A positive delta whose
+ * upstream/empty counters do not explain it — the counters cannot both be right
+ * — resolves to `mixed` rather than inventing a winner. When no pair shortfall
+ * exists but one-sided years were dropped anyway, `incomplete-years` names the
+ * row-level quality signal even though the pair count is full.
+ */
+export function dominantFailureMode(coverage) {
+  const seeded = coverage.pairsSeeded ?? 0;
+  const attempted = coverage.pairsAttempted ?? 0;
+  const upstream = coverage.upstreamFailures ?? 0;
+  const empty = coverage.emptyPairs ?? 0;
+  const incomplete = coverage.incompleteYearsDropped ?? 0;
+  if (attempted <= 0 || seeded > attempted) return 'run-failed';
+
+  const delta = attempted - seeded;
+  if (delta <= 0) return incomplete > 0 ? 'incomplete-years' : 'none';
+
+  const accounted = upstream + empty;
+  if (accounted === 0) return incomplete > 0 ? 'incomplete-years' : 'mixed';
+  // A contributor is dominant when it explains the whole shortfall itself, or
+  // when the other side is negligible (< 20% of the delta). Ties resolve to
+  // `mixed` rather than picking a winner by accident.
+  const shortfallSlots = accounted;
+  if (upstream > 0 && empty === 0) return 'upstream';
+  if (empty > 0 && upstream === 0) return 'empty';
+  if (upstream > shortfallSlots * 0.8) return 'upstream';
+  if (empty > shortfallSlots * 0.8) return 'empty';
+  return 'mixed';
+}
+
+/**
  * Publish the flow fleet: one key per seeded pair, then the coverage manifest,
  * then a single freshness/coverage meta record.
  *
@@ -883,7 +929,16 @@ export async function publishTradeFlows({ flows, manifest }) {
     console.warn('  Trade flows: no keys written; leaving the previous seed-meta record to age out');
     return;
   }
-  await writeSeedMeta(TRADE_FLOW_KEY_PREFIX, written, TRADE_FLOW_META_KEY);
+  await writeSeedMeta(TRADE_FLOW_KEY_PREFIX, written, TRADE_FLOW_META_KEY, undefined, undefined, {
+    // Why this run published fewer than attempted, coarse enough for /api/health
+    // to relay to an on-call agent without Railway logs or a raw index read.
+    // Written NEXT TO recordCount, never under `coverage` — health parses that
+    // field with the consumer-prices retailer schema, so a different shape
+    // there would be published as an all-zero purchasedPages block (see the
+    // manifest comment in fetchTradeFlows). An envelope-less top-level field is
+    // the one thing health can read and echo verbatim.
+    dominantFailureMode: dominantFailureMode(manifest.stats ?? {}),
+  });
 }
 
 // ─── Trade Barriers (WTO) ───

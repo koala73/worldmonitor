@@ -583,7 +583,7 @@
       "s10l": "Pontozható hotspotok",
       "s11v": "92",
       "s11l": "Tőzsdék és eszközök",
-      "s12v": "59",
+      "s12v": "60",
       "s12l": "MCP eszközök",
       "s13v": "154",
       "s13l": "⌘K parancsok",
@@ -611,7 +611,7 @@
       "eyebrow": "Építőknek és AI ágenseknek",
       "title": "Építs élő világtudáson alapuló alkalmazásokat — bármilyen stackből.",
       "sub": "A térkép minden eleme API is. Kösd össze Claudeval MCP-n keresztül, hívd meg a REST végpontokat bárhonnan, vagy telepítsen natív klienst Pythonhoz, Rubyhoz, Gohoz vagy JavaScripthez — a kódod élő adatokkal kutat az edzésadatok helyett.",
-      "b1": "59 MCP-eszköz — kockázati pontszámok, szűk keresztmetszetek, konfliktusok, piacok, összefoglalók",
+      "b1": "60 MCP-eszköz — kockázati pontszámok, szűk keresztmetszetek, konfliktusok, piacok, összefoglalók",
       "b2": "Dokumentált REST API — 193 művelet, egy OpenAPI 3.1 specifikáció, egy kulcs",
       "b3": "Hivatalos SDK-k az npm-en, PyPI-n, RubyGemsen és Go-n — zéró függőség, MCP-első",
       "b4": "JMESPath vetítés minden hívásban — csak a szükséges mezőket kérj le",
@@ -620,7 +620,7 @@
       "termQuery": "Romlanak-e a vörös-tengeri kitettségünk ezekben a héten?",
       "termAnswer": "Az átmeneti számok csökkennek heti összehasonlítással; háborús kockázati szint megemelkedett; két sűrűség-anomália az utolsó 48 órában.",
       "termDocs": "Lásd a teljes eszközreferenciát →",
-      "promise": "Egy kulcs. 59 MCP-eszköz. Teljes REST API. Nyelvspecifikus kliensek."
+      "promise": "Egy kulcs. 60 MCP-eszköz. Teljes REST API. Nyelvspecifikus kliensek."
     },
     "pricing": {
       "eyebrow": "Hozzáférés",
@@ -638,7 +638,7 @@
       "proF1": "WM Analyst — csevegj 30+ élő szolgáltatáson keresztül, idézésekkel",
       "proF2": "Forgatókönyv-motor és Route Explorer — szimuláld a zavaroknak a becsapódása előtt",
       "proF3": "Személyes AI összefoglaló — naponta, naponta kétszer vagy hetente, Slackra, Telegramba vagy e-mailbe",
-      "proF4": "MCP, REST API és hivatalos SDK-k — 59 eszköz egy kulcs alatt",
+      "proF4": "MCP, REST API és hivatalos SDK-k — 60 eszköz egy kulcs alatt",
       "proF5": "Egyéni widgetépítő saját panelek készítéséhez",
       "cta": "Tekintsd meg a csomagokat és árakat",
       "note": "Már $39,99/hó · 3 hónap ingyenes éves számlázás esetén"
@@ -659,7 +659,7 @@
       "q6": "Miért bízzak egy riasztásban?",
       "a6": "Egy fontos szalagcím csak akkor jelenik meg, ha független forrásfajták megerősítik — hírosztályozás, kulcsszósebesség, kritikus pont eskalációja, katonai ugrások, hivatalos szirénák — deduplikálva és sebességkorláttal. Kevesebb riasztás, valódi riasztások.",
       "q7": "Használhatják azt AI-ügynökök, mint a Claude vagy a GPT?",
-      "a7": "Igen. A World Monitor egy 59 eszközből álló MCP-szervert szállít, így a Claude, a GPT vagy bármilyen MCP-kompatibilis ügynök lekérdezheti az élő kockázati pontszámokat, szűk keresztmetszet-státuszt, konfliktusokat, piacokat és összefoglalókat — JMESPath-vetítéssel, hogy az ügynökök pontosan azt kapják meg, amire szükségük van.",
+      "a7": "Igen. A World Monitor egy 60 eszközből álló MCP-szervert szállít, így a Claude, a GPT vagy bármilyen MCP-kompatibilis ügynök lekérdezheti az élő kockázati pontszámokat, szűk keresztmetszet-státuszt, konfliktusokat, piacokat és összefoglalókat — JMESPath-vetítéssel, hogy az ügynökök pontosan azt kapják meg, amire szükségük van.",
       "q8": "Szükségem van fiókra?",
       "a8": "Nem. Az irányítópult azonnal működik regisztráció nélkül. A fiók csak akkor számít, ha a Pro verzióra frissítesz vagy beállításokat szeretnél szinkronizálni az eszközök között.",
       "q9": "Nyílt forráskódú?",

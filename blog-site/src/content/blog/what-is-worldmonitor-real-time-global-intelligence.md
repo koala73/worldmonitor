@@ -67,7 +67,7 @@ The dashboard supports triage and context. It does not replace a licensed termin
 
 ## Can Developers and AI Agents Use the Data?
 
-Yes. World Monitor's public interface is generated from 295 Protocol Buffer definitions into 36 REST service specifications, alongside a Model Context Protocol server with 59 live tools. Public metadata and discovery surfaces are open; data-bearing API, MCP tool, and resource calls require the appropriate Pro/API OAuth session or API key.
+Yes. World Monitor's public interface is generated from 295 Protocol Buffer definitions into 36 REST service specifications, alongside a Model Context Protocol server with 60 live tools. Public metadata and discovery surfaces are open; data-bearing API, MCP tool, and resource calls require the appropriate Pro/API OAuth session or API key.
 
 Developers can start with the [API reference](https://www.worldmonitor.app/docs/api-reference), [MCP quickstart](https://www.worldmonitor.app/docs/mcp-quickstart), or [OpenAPI specification](https://www.worldmonitor.app/openapi.json). AI agents can also read the concise [agent briefing](https://www.worldmonitor.app/llms.txt) and the fuller [platform reference](https://www.worldmonitor.app/llms-full.txt).
 

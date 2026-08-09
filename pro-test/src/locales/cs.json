@@ -583,7 +583,7 @@
       "s10l": "Skórované hotspoty",
       "s11v": "92",
       "s11l": "Burzy a aktiva",
-      "s12v": "59",
+      "s12v": "60",
       "s12l": "MCP nástroje",
       "s13v": "154",
       "s13l": "⌘K příkazy",
@@ -611,7 +611,7 @@
       "eyebrow": "Pro tvůrce a AI agenty",
       "title": "Vytvářejte na základě živé světové inteligence — z libovolného stacku.",
       "sub": "Vše na mapě je také API. Připojte to do Claudea přes MCP, zavolejte REST endpointy odkudkoli, nebo nainstalujte nativního klienta pro Python, Ruby, Go nebo JavaScript — váš kód provádí výzkum s živými daty místo paměti trénovacích dat.",
-      "b1": "59 nástrojů MCP — skóre rizika, kritické body, konflikty, trhy, přehledy",
+      "b1": "60 nástrojů MCP — skóre rizika, kritické body, konflikty, trhy, přehledy",
       "b2": "Dokumentované REST API — 193 operací, jedna specifikace OpenAPI 3.1, jeden klíč",
       "b3": "Oficiální SDK na npm, PyPI, RubyGems a Go — bez závislostí, MCP-first",
       "b4": "JMESPath projekce na každém volání — načtěte přesně ta pole, která potřebujete",
@@ -620,7 +620,7 @@
       "termQuery": "Zhoršuje se naše expozice Červenému moři tento týden?",
       "termAnswer": "Počty tranzitů se týdně snižují; válečné riziko zvýšeno; dvě anomálie hustoty za posledních 48h.",
       "termDocs": "Podívejte se na úplný odkaz na nástroje →",
-      "promise": "Jeden klíč. 59 nástrojů MCP. Kompletní REST API. Klienti v nativních jazycích."
+      "promise": "Jeden klíč. 60 nástrojů MCP. Kompletní REST API. Klienti v nativních jazycích."
     },
     "pricing": {
       "eyebrow": "Přístup",
@@ -638,7 +638,7 @@
       "proF1": "WM Analyst — chat přes 30+ živých služeb s citacemi",
       "proF2": "Scenario engine & Route Explorer — simuluj narušení dříve, než se stanou",
       "proF3": "Osobní AI digest — denně, dvakrát denně nebo týdně, do Slack, Telegram nebo e-mailu",
-      "proF4": "MCP, REST API a oficiální SDK — 59 nástrojů pod jedním klíčem",
+      "proF4": "MCP, REST API a oficiální SDK — 60 nástrojů pod jedním klíčem",
       "proF5": "Vlastní konstruktor widgetů pro vaše vlastní panely",
       "cta": "Zobrazit plány a ceny",
       "note": "Od 39,99 Kč/měs · 3 měsíce zdarma při ročním fakturaci"
@@ -658,7 +658,7 @@
       "a5": "Konflikty jsou pouze jedna vrstva z 56. World Monitor spojuje konflikty s přepravou, vojenskými lety, infrastrukturou, trhy a kybernetiku — pak AI skóruje konvergenci: indexy nestability, eskalaci hotspotů, potvrzené alerty na nejdůležitější zprávy a denní souhrny.",
       "a6": "Přerušující banner se aktivuje pouze pokud si nezávislé typy zdrojů potvrdí — klasifikace zpráv, rychlost klíčových slov, eskalace hotspotů, vojenské nárůsty, oficiální sirény — deduplikovány a omezeny podle frekvence. Méně alertů, skutečné.",
       "q7": "Mohou jej používat AI agenti jako Claude nebo GPT?",
-      "a7": "Ano. World Monitor má server MCP s 59 nástroji, takže Claude, GPT nebo jakýkoli agent kompatibilní s MCP mohou dotazovat živá skóre rizika, stav kritických bodů, konflikty, trhy a přehledy — s projekcí JMESPath, aby agenti získali přesně to, co potřebují.",
+      "a7": "Ano. World Monitor má server MCP s 60 nástroji, takže Claude, GPT nebo jakýkoli agent kompatibilní s MCP mohou dotazovat živá skóre rizika, stav kritických bodů, konflikty, trhy a přehledy — s projekcí JMESPath, aby agenti získali přesně to, co potřebují.",
       "q8": "Potřebuji účet?",
       "a8": "Ne. Dashboard funguje okamžitě bez registrace. Účet je důležitý pouze pokud upgradujete na Pro nebo chcete synchronizovat nastavení mezi zařízeními.",
       "q9": "Je to open source?",

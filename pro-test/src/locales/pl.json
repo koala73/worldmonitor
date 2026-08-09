@@ -583,7 +583,7 @@
       "s10l": "Punkty hotspot ze wynikami",
       "s11v": "92",
       "s11l": "Giełdy i aktywa",
-      "s12v": "59",
+      "s12v": "60",
       "s12l": "Narzędzia MCP",
       "s13v": "154",
       "s13l": "Komendy ⌘K",
@@ -611,7 +611,7 @@
       "eyebrow": "Dla twórców i agentów AI",
       "title": "Buduj na żywej inteligencji świata — z dowolnego stosu.",
       "sub": "Wszystko na mapie to także API. Integruj to z Claude'em poprzez MCP, wywoływaj punkty końcowe REST skąd chcesz, lub zainstaluj natywnego klienta dla Pythona, Ruby'ego, Go lub JavaScriptu — twój kod prowadzi badania na żywych danych zamiast na wspomnieniach danych treningowych.",
-      "b1": "59 narzędzia MCP — oceny ryzyka, wąskie gardła, konflikty, rynki, briefingi",
+      "b1": "60 narzędzia MCP — oceny ryzyka, wąskie gardła, konflikty, rynki, briefingi",
       "b2": "Udokumentowany REST API — 193 operacje, jedna specyfikacja OpenAPI 3.1, jeden klucz",
       "b3": "Oficjalne SDK na npm, PyPI, RubyGems i Go — bez zależności, MCP-first",
       "b4": "Projekcja JMESPath przy każdym wywołaniu — pobieraj dokładnie potrzebne pola",
@@ -620,7 +620,7 @@
       "termQuery": "Czy nasza ekspozycja na Morzu Czerwonym pogarsza się w tym tygodniu?",
       "termAnswer": "Liczba tranzytów spadła tydzień do tygodnia; poziom ryzyka wojennego podniesiony; dwie anomalie gęstości w ostatnich 48h.",
       "termDocs": "Przejrzyj pełną dokumentację narzędzi →",
-      "promise": "Jeden klucz. 59 narzędzia MCP. Pełny REST API. Klienty natywne dla języków."
+      "promise": "Jeden klucz. 60 narzędzia MCP. Pełny REST API. Klienty natywne dla języków."
     },
     "pricing": {
       "eyebrow": "Dostęp",
@@ -638,7 +638,7 @@
       "proF1": "WM Analyst — czat z ponad 30 usługami na żywo, z cytowaniami",
       "proF2": "Silnik scenariuszy i Route Explorer — przewiduj zakłócenia zanim się pojawią",
       "proF3": "Osobisty skrót z AI — codziennie, dwa razy dziennie lub tygodniowo na Slack, Telegram lub e-mail",
-      "proF4": "MCP, REST API i oficjalne SDK — 59 narzędzia pod jednym kluczem",
+      "proF4": "MCP, REST API i oficjalne SDK — 60 narzędzia pod jednym kluczem",
       "proF5": "Konstruktor niestandardowych widżetów dla Twoich paneli",
       "cta": "Zobacz plany i ceny",
       "note": "Od $39,99/mies. · 3 miesiące za darmo przy rocznej opłacie"
@@ -659,7 +659,7 @@
       "q6": "Dlaczego powinienem ufać alertowi?",
       "a6": "Baner przerwania pojawia się tylko gdy niezależne typy źródeł się potwierdzą — klasyfikacja wiadomości, prędkość słów kluczowych, eskalacja gorących punktów, surge wojskowości, oficjalne syreny — deduplikowane i ograniczone. Mniej alertów, prawdziwe.",
       "q7": "Czy agenci AI takie jak Claude lub GPT mogą go używać?",
-      "a7": "Tak. World Monitor udostępnia serwer MCP z 59 narzędziami, dzięki czemu Claude, GPT lub każdy agent kompatybilny z MCP może pytać o bieżące oceny ryzyka, status wąskich gardeł, konflikty, rynki i briefingi — z projekcją JMESPath, aby agenci pobierali dokładnie to, czego potrzebują.",
+      "a7": "Tak. World Monitor udostępnia serwer MCP z 60 narzędziami, dzięki czemu Claude, GPT lub każdy agent kompatybilny z MCP może pytać o bieżące oceny ryzyka, status wąskich gardeł, konflikty, rynki i briefingi — z projekcją JMESPath, aby agenci pobierali dokładnie to, czego potrzebują.",
       "q8": "Czy potrzebuję konta?",
       "a8": "Nie. Pulpit nawigacyjny działa natychmiast bez rejestracji. Konto ma znaczenie tylko gdy uaktualnisz do Pro lub chcesz synchronizować ustawienia na różnych urządzeniach.",
       "q9": "Czy to open source?",

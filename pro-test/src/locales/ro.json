@@ -583,7 +583,7 @@
       "s10l": "Puncte fierbinți cotate",
       "s11v": "92",
       "s11l": "Schimburi și active",
-      "s12v": "59",
+      "s12v": "60",
       "s12l": "Instrumente MCP",
       "s13v": "154",
       "s13l": "Comenzi ⌘K",
@@ -611,7 +611,7 @@
       "eyebrow": "Pentru constructori și agenți AI",
       "title": "Construiește pe baza inteligenței live a lumii — din orice stack.",
       "sub": "Totul pe hartă este și o API. Conectează-l la Claude prin MCP, apelează endpoint-urile REST de oriunde, sau instalează un client nativ pentru Python, Ruby, Go sau JavaScript — codul tău cercetează cu date live în loc să se bazeze pe memoriile datelor de antrenament.",
-      "b1": "59 instrumente MCP — scoruri de risc, puncte critice, conflicte, piețe, rezumate",
+      "b1": "60 instrumente MCP — scoruri de risc, puncte critice, conflicte, piețe, rezumate",
       "b2": "API REST documentată — 193 de operații, o specificație OpenAPI 3.1, o cheie",
       "b3": "SDK-uri oficiale pe npm, PyPI, RubyGems și Go — fără dependințe, MCP-first",
       "b4": "Proiecție JMESPath la fiecare apel — prelucrează exact câmpurile de care ai nevoie",
@@ -620,7 +620,7 @@
       "termQuery": "Se înrăutățește exposiția noastră la Marea Roșie în această săptămână?",
       "termAnswer": "Numere de tranzit în scădere săptămână de săptămână; nivel de risc de război ridicat; două anomalii de densitate în ultimele 48 de ore.",
       "termDocs": "Vezi referința completă a instrumentului →",
-      "promise": "O cheie. 59 instrumente MCP. O API REST completă. Clienți nativi pentru limbaje."
+      "promise": "O cheie. 60 instrumente MCP. O API REST completă. Clienți nativi pentru limbaje."
     },
     "pricing": {
       "eyebrow": "Acces",
@@ -638,7 +638,7 @@
       "proF1": "WM Analyst — conversație pe 30+ servicii live, cu citări",
       "proF2": "Scenario engine & Route Explorer — simulează perturbații înainte ca acestea să se producă",
       "proF3": "Digest AI personal — zilnic, de două ori pe zi sau săptămânal, pe Slack, Telegram sau email",
-      "proF4": "MCP, API REST & SDK-uri oficiale — 59 instrumente sub o singură cheie",
+      "proF4": "MCP, API REST & SDK-uri oficiale — 60 instrumente sub o singură cheie",
       "proF5": "Constructor de widget-uri personalizat pentru panourile tale",
       "cta": "Vezi planuri și prețuri",
       "note": "De la $39,99/lună · 3 luni gratuite la plată anuală"
@@ -659,7 +659,7 @@
       "q6": "De ce ar trebui să am încredere într-o alertă?",
       "a6": "Un banner de ultimă oră se activează doar atunci când tipuri de origine independente corborează — clasificare știri, viteza cuvintelor cheie, escaladare pe puncte fierbinți, creșteri militare, sirenele oficiale — deduplicate și limitate la viteză. Mai puține alerte, cele reale.",
       "q7": "Pot agenți AI precum Claude sau GPT să-l folosească?",
-      "a7": "Da. World Monitor expediază un server MCP cu 59 instrumente, astfel încât Claude, GPT sau orice agent compatible MCP poate interoga scoruri de risc în timp real, statul punctelor critice, conflicte, piețe și rezumate — cu proiecție JMESPath pentru ca agenții să prelueze exact ceea ce au nevoie.",
+      "a7": "Da. World Monitor expediază un server MCP cu 60 instrumente, astfel încât Claude, GPT sau orice agent compatible MCP poate interoga scoruri de risc în timp real, statul punctelor critice, conflicte, piețe și rezumate — cu proiecție JMESPath pentru ca agenții să prelueze exact ceea ce au nevoie.",
       "q8": "Am nevoie de un cont?",
       "a8": "Nu. Tabloul de bord funcționează instant fără înregistrare. Un cont este important doar atunci când te actualizezi la Pro sau când vrei ca setările să se sincronizeze pe mai multe dispozitive.",
       "q9": "Este open source?",
