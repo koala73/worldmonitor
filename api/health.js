@@ -239,10 +239,10 @@ const STANDALONE_KEYS = {
   bisCredit:             'economic:bis:credit:v1',
   bisDsr:                'economic:bis:dsr:v1',
   // Bank of Russia official rates: health-monitored but deliberately NOT a
-  // bootstrap key. No dashboard panel reads it — it is served through
-  // get_economic_data, which reads the canonical key straight from Redis — so
-  // registering it in a tier would add ~6KB to a payload every client downloads
-  // and nothing consumes.
+  // bootstrap key. Its dashboard consumer (the FX panel's RUB tab, #6231)
+  // reads it on demand through the credential-less per-key bootstrap URL, so
+  // registering it in a tier would add ~6KB to a payload every client
+  // downloads and only the opt-in panel consumes.
   cbrRates:              'economic:cbr-rates:v1',
   bisPropertyResidential: 'economic:bis:property-residential:v1',
   bisPropertyCommercial:  'economic:bis:property-commercial:v1',

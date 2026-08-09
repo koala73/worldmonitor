@@ -2536,10 +2536,11 @@
       "unlockedAnnouncement": "Giới hạn tab bảng điều khiển đã được dỡ bỏ."
     },
     "fx": {
-      "infoTooltip": "<strong>Tỷ Giá Ngoại Tệ</strong> Áp lực và tỷ giá ghi danh của ngoại tệ:<ul><li>FX Stress xếp hạng 45 đồng tiền theo mức sụt giảm peak-to-trough tồi tệ nhất trong 24 tháng qua, kèm theo thay đổi 12 tháng</li><li>Bao gồm ARS, TRY, EGP, NGN, PKR và UAH — các đồng tiền mà các bộ tham chiếu của BIS và ECB không đưa vào</li><li>Spot liệt kê tỷ giá so với đô la Mỹ và tỷ giá tham chiếu euro của ECB riêng biệt, vì cả hai được định giá từ những cơ sở khác nhau</li></ul>Nguồn: Yahoo Finance và Ngân hàng Trung ương Châu Âu.",
+      "infoTooltip": "<strong>Tỷ Giá Ngoại Tệ</strong> Áp lực và tỷ giá ghi danh của ngoại tệ:<ul><li>FX Stress xếp hạng 45 đồng tiền theo mức sụt giảm peak-to-trough tồi tệ nhất trong 24 tháng qua, kèm theo thay đổi 12 tháng</li><li>Bao gồm ARS, TRY, EGP, NGN, PKR và UAH — các đồng tiền mà các bộ tham chiếu của BIS và ECB không đưa vào</li><li>Spot liệt kê tỷ giá so với đô la Mỹ và tỷ giá tham chiếu euro của ECB riêng biệt, vì cả hai được định giá từ những cơ sở khác nhau</li><li>RUB — tỷ giá của Ngân hàng Trung ương Nga, rúp trên mỗi đơn vị</li></ul> Nguồn: Yahoo Finance, Ngân hàng Trung ương Châu Âu và Ngân hàng Trung ương Nga.",
       "tabs": {
         "stress": "FX Stress",
-        "spot": "Spot"
+        "spot": "Spot",
+        "rub": "RUB"
       },
       "currency": "Đồng Tiền",
       "pair": "Cặp Ngoại Tệ",
@@ -2559,8 +2560,12 @@
       "source": {
         "stress": "Áp lực FX",
         "usd": "Tỷ giá đô la Mỹ",
-        "eur": "Tỷ giá euro của ECB"
-      }
+        "eur": "Tỷ giá euro của ECB",
+        "rub": "Tỷ giá của Ngân hàng Trung ương Nga"
+      },
+      "rubBase": "Ngân hàng Trung ương Nga — rúp cho 1 đơn vị",
+      "rubPerUnit": "Rúp trên mỗi đơn vị",
+      "sourceCbr": "Nguồn: Ngân hàng Trung ương Nga"
     }
   },
   "popups": {

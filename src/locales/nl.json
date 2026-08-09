@@ -2276,10 +2276,11 @@
       "unlockedAnnouncement": "Limiet voor dashboardtabbladen opgeheven."
     },
     "fx": {
-      "infoTooltip": "<strong>Wisselkoersen</strong> Valutastress en spotkoersen:<ul><li>FX Stress rangschikt 45 valuta's op basis van hun ergste piek-tot-dal-daling in de afgelopen 24 maanden, samen met de verandering over 12 maanden</li><li>De dekking omvat ARS, TRY, EGP, NGN, PKR en UAH — valuta's die de referentieversameling van de BIS en ECB niet omvat</li><li>Spot geeft koersen tegen de Amerikaanse dollar en de ECB-euroreferentiekoersen afzonderlijk, omdat deze twee uit verschillende bases worden geciteerd</li></ul>Bronnen: Yahoo Finance en de Europese Centrale Bank.",
+      "infoTooltip": "<strong>Wisselkoersen</strong> Valutastress en spotkoersen:<ul><li>FX Stress rangschikt 45 valuta's op basis van hun ergste piek-tot-dal-daling in de afgelopen 24 maanden, samen met de verandering over 12 maanden</li><li>De dekking omvat ARS, TRY, EGP, NGN, PKR en UAH — valuta's die de referentieversameling van de BIS en ECB niet omvat</li><li>Spot geeft koersen tegen de Amerikaanse dollar en de ECB-euroreferentiekoersen afzonderlijk, omdat deze twee uit verschillende bases worden geciteerd</li><li>RUB — koersen van de Centrale Bank van Rusland, roebel per eenheid</li></ul> Bronnen: Yahoo Finance, de Europese Centrale Bank en de Centrale Bank van Rusland.",
       "tabs": {
         "stress": "FX Stress",
-        "spot": "Spot"
+        "spot": "Spot",
+        "rub": "RUB"
       },
       "currency": "Valuta",
       "pair": "Paar",
@@ -2299,8 +2300,12 @@
       "source": {
         "stress": "FX-stress",
         "usd": "Koersen Amerikaanse dollar",
-        "eur": "ECB eurodeelnemers"
-      }
+        "eur": "ECB eurodeelnemers",
+        "rub": "Koersen van de Centrale Bank van Rusland"
+      },
+      "rubBase": "Centrale Bank van Rusland — roebel per 1 eenheid",
+      "rubPerUnit": "Roebel per eenheid",
+      "sourceCbr": "Bron: Centrale Bank van Rusland"
     }
   },
   "popups": {

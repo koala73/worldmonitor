@@ -2554,10 +2554,11 @@
       "unlockedAnnouncement": "Limite d'onglets du tableau de bord levée."
     },
     "fx": {
-      "infoTooltip": "<strong>Taux de Change</strong> Stress de devises et taux au comptant :<ul><li>FX Stress classe 45 devises selon leur pire baisse crête à creux sur les 24 derniers mois, avec le changement sur 12 mois</li><li>La couverture inclut l'ARS, TRY, EGP, NGN, PKR et UAH — des devises omises par les ensembles de référence de la BRI et de la BCE</li><li>Le comptant répertorie les taux par rapport au dollar américain et aux taux de référence de l'euro de la BCE séparément, car les deux sont cotés sur des bases différentes</li></ul>Sources : Yahoo Finance et la Banque centrale européenne.",
+      "infoTooltip": "<strong>Taux de Change</strong> Stress de devises et taux au comptant :<ul><li>FX Stress classe 45 devises selon leur pire baisse crête à creux sur les 24 derniers mois, avec le changement sur 12 mois</li><li>La couverture inclut l'ARS, TRY, EGP, NGN, PKR et UAH — des devises omises par les ensembles de référence de la BRI et de la BCE</li><li>Le comptant répertorie les taux par rapport au dollar américain et aux taux de référence de l'euro de la BCE séparément, car les deux sont cotés sur des bases différentes</li><li>RUB — taux de la Banque de Russie, roubles par unité</li></ul> Sources : Yahoo Finance, la Banque centrale européenne et la Banque de Russie.",
       "tabs": {
         "stress": "FX Stress",
-        "spot": "Comptant"
+        "spot": "Comptant",
+        "rub": "RUB"
       },
       "currency": "Devise",
       "pair": "Paire",
@@ -2577,8 +2578,12 @@
       "source": {
         "stress": "Stress FX",
         "usd": "Taux du dollar américain",
-        "eur": "Taux de l'euro de la BCE"
-      }
+        "eur": "Taux de l'euro de la BCE",
+        "rub": "Taux de la Banque de Russie"
+      },
+      "rubBase": "Banque de Russie — roubles pour 1 unité",
+      "rubPerUnit": "Roubles par unité",
+      "sourceCbr": "Source : Banque de Russie"
     }
   },
   "popups": {

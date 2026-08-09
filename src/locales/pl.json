@@ -2572,10 +2572,11 @@
       "unlockedAnnouncement": "Limit kart pulpitu zniesiony."
     },
     "fx": {
-      "infoTooltip": "<strong>Kursy walut</strong> Stres walutowy i kursy spot:<ul><li>FX Stress klasyfikuje 45 walut według ich największego spadku od szczytu do dołu w ostatnich 24 miesiącach, wraz ze zmianą 12-miesięczną</li><li>Zasięg obejmuje ARS, TRY, EGP, NGN, PKR i UAH — waluty pominięte w zestawach odniesienia BIS i EBC</li><li>Spot wyświetla kursy względem dolara amerykańskiego i referencyjnych kursów euro EBC osobno, ponieważ są notowane na podstawie różnych źródeł</li></ul>Źródła: Yahoo Finance i Europejski Bank Centralny.",
+      "infoTooltip": "<strong>Kursy walut</strong> Stres walutowy i kursy spot:<ul><li>FX Stress klasyfikuje 45 walut według ich największego spadku od szczytu do dołu w ostatnich 24 miesiącach, wraz ze zmianą 12-miesięczną</li><li>Zasięg obejmuje ARS, TRY, EGP, NGN, PKR i UAH — waluty pominięte w zestawach odniesienia BIS i EBC</li><li>Spot wyświetla kursy względem dolara amerykańskiego i referencyjnych kursów euro EBC osobno, ponieważ są notowane na podstawie różnych źródeł</li><li>RUB — kursy Banku Rosji, ruble za jednostkę</li></ul> Źródła: Yahoo Finance, Europejski Bank Centralny i Bank Rosji.",
       "tabs": {
         "stress": "Stres walutowy",
-        "spot": "Spot"
+        "spot": "Spot",
+        "rub": "RUB"
       },
       "currency": "Waluta",
       "pair": "Para",
@@ -2595,8 +2596,12 @@
       "source": {
         "stress": "Stres walutowy",
         "usd": "Kursy dolara USD",
-        "eur": "Kursy euro ECB"
-      }
+        "eur": "Kursy euro ECB",
+        "rub": "Kursy Banku Rosji"
+      },
+      "rubBase": "Bank Rosji — ruble za 1 jednostkę",
+      "rubPerUnit": "Rubli za jednostkę",
+      "sourceCbr": "Źródło: Bank Rosji"
     }
   },
   "popups": {
