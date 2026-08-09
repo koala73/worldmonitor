@@ -848,6 +848,137 @@ describe("webhook processWebhookEvent", () => {
     expect(pointer?.html).not.toContain("s•••@example.com");
   });
 
+  // The inverse of the #6335 bug, and just as real: change the email AFTER
+  // checking out, then load a page (refreshing the users row) before the
+  // activation webhook lands. Now the STAMP is the stale one. A fixed
+  // "stamp wins" rule would send to the abandoned address — the very failure
+  // #6335 set out to fix, with the two sources swapped.
+  test("a users row refreshed after checkout outranks the stamped email", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(BASE_TIMESTAMP);
+    process.env.RESEND_API_KEY = "re_test";
+    process.env.DODO_IDENTITY_SIGNING_SECRET = SIGNING_SECRET;
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue(new Response("{}", { status: 200 }));
+    const t = convexTest(schema, modules);
+
+    const checkoutIssuedAt = BASE_TIMESTAMP - 3600_000;
+
+    await seedProductPlan(t, "pdt_test_pro", "pro_monthly", "Pro Monthly");
+    await t.run(async (ctx) => {
+      await ctx.db.insert("users", {
+        userId: "test-user-001",
+        // Confirmed against Clerk AFTER the checkout was stamped.
+        email: "newest@example.com",
+        normalizedEmail: "newest@example.com",
+        firstSeenAt: BASE_TIMESTAMP - 86400000,
+        lastSeenAt: checkoutIssuedAt + 60_000,
+      });
+    });
+
+    await processEvent(
+      t,
+      "wh_users_row_fresher_than_stamp",
+      "subscription.active",
+      makeSubscriptionPayload({
+        customer: {
+          customer_id: "cust_test_001",
+          email: "checkout@example.com",
+          name: "Test User",
+        },
+        metadata: {
+          wm_user_id: "test-user-001",
+          wm_user_id_sig: await signUserId("test-user-001"),
+          // Valid signature, inside the age window — but superseded.
+          wm_login_email: "abandoned@example.com",
+          wm_login_email_sig: await signCheckoutLoginEmail(
+            "test-user-001",
+            "abandoned@example.com",
+            checkoutIssuedAt,
+          ),
+        },
+      }),
+      BASE_TIMESTAMP,
+    );
+    await t.finishAllScheduledFunctions(vi.runAllTimers);
+
+    const sends = fetchMock.mock.calls
+      .filter(([url]) => String(url).includes("api.resend.com"))
+      .map(([, init]) => JSON.parse(String((init as RequestInit).body)) as {
+        to: string[];
+        subject: string;
+      });
+
+    const welcome = sends.find((send) => send.subject.startsWith("Welcome to World Monitor"));
+    expect(welcome?.to).toEqual(["newest@example.com"]);
+    expect(sends.every((send) => send.to[0] !== "abandoned@example.com")).toBe(true);
+  });
+
+  // The boundary between the two rules: a users row last confirmed BEFORE the
+  // checkout is the stale one, so the stamp wins. Same fixture as above with
+  // only the timestamps' order flipped, which is what makes the comparison
+  // itself — not some other difference — the thing under test.
+  test("a users row last confirmed before checkout loses to the stamped email", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(BASE_TIMESTAMP);
+    process.env.RESEND_API_KEY = "re_test";
+    process.env.DODO_IDENTITY_SIGNING_SECRET = SIGNING_SECRET;
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue(new Response("{}", { status: 200 }));
+    const t = convexTest(schema, modules);
+
+    const checkoutIssuedAt = BASE_TIMESTAMP - 3600_000;
+
+    await seedProductPlan(t, "pdt_test_pro", "pro_monthly", "Pro Monthly");
+    await t.run(async (ctx) => {
+      await ctx.db.insert("users", {
+        userId: "test-user-001",
+        email: "abandoned@example.com",
+        normalizedEmail: "abandoned@example.com",
+        firstSeenAt: BASE_TIMESTAMP - 86400000,
+        lastSeenAt: checkoutIssuedAt - 60_000,
+      });
+    });
+
+    await processEvent(
+      t,
+      "wh_users_row_older_than_stamp",
+      "subscription.active",
+      makeSubscriptionPayload({
+        customer: {
+          customer_id: "cust_test_001",
+          email: "checkout@example.com",
+          name: "Test User",
+        },
+        metadata: {
+          wm_user_id: "test-user-001",
+          wm_user_id_sig: await signUserId("test-user-001"),
+          wm_login_email: "newest@example.com",
+          wm_login_email_sig: await signCheckoutLoginEmail(
+            "test-user-001",
+            "newest@example.com",
+            checkoutIssuedAt,
+          ),
+        },
+      }),
+      BASE_TIMESTAMP,
+    );
+    await t.finishAllScheduledFunctions(vi.runAllTimers);
+
+    const sends = fetchMock.mock.calls
+      .filter(([url]) => String(url).includes("api.resend.com"))
+      .map(([, init]) => JSON.parse(String((init as RequestInit).body)) as {
+        to: string[];
+        subject: string;
+      });
+
+    const welcome = sends.find((send) => send.subject.startsWith("Welcome to World Monitor"));
+    expect(welcome?.to).toEqual(["newest@example.com"]);
+    expect(sends.every((send) => send.to[0] !== "abandoned@example.com")).toBe(true);
+  });
+
   test("a signed login email equal to the checkout address suppresses the pointer", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(BASE_TIMESTAMP);
@@ -1295,21 +1426,32 @@ describe("webhook processWebhookEvent", () => {
     expect(loginEmailWarnings[0]).toContain("failed signature verification");
   });
 
-  // Both halves are stamped together, so either half alone is an anomaly — and
-  // it must warn in EITHER direction. Reported by presence only: the address
-  // must never reach a Sentry-forwarded string.
+  // Every metadata shape that CANNOT have come from our own stamping side is an
+  // anomaly and must warn — otherwise a corruption or tampering signal is
+  // invisible. Reported by presence only: the address must never reach a
+  // Sentry-forwarded string.
   test.each([
     [
-      "the signature stripped",
+      "a pair with the signature stripped",
       { wm_login_email: "half@example.com" },
       "email=present, signature=absent",
     ],
     [
-      "the address stripped",
+      "a pair with the address stripped",
       { wm_login_email_sig: "v1.1.deadbeef" },
       "email=absent, signature=present",
     ],
-  ])("a half-present pair with %s warns", async (_label, half, expectedShape) => {
+    [
+      // The stamping side always trims before signing, so padding here is
+      // corruption or tampering even though the fallback is graceful.
+      "a padded address",
+      {
+        wm_login_email: "  padded@example.com  ",
+        wm_login_email_sig: "v1.1.deadbeef",
+      },
+      "Padded wm_login_email",
+    ],
+  ])("%s warns", async (_label, half, expectedShape) => {
     vi.useFakeTimers();
     vi.setSystemTime(BASE_TIMESTAMP);
     process.env.RESEND_API_KEY = "re_test";
@@ -1348,7 +1490,6 @@ describe("webhook processWebhookEvent", () => {
       .map((call) => String(call[0]))
       .filter((line) => line.includes("wm_login_email"));
     expect(loginEmailWarnings).toHaveLength(1);
-    expect(loginEmailWarnings[0]).toContain("Half-present");
     expect(loginEmailWarnings[0]).toContain(expectedShape);
     // Presence only — the address itself never reaches the log line.
     expect(loginEmailWarnings[0]).not.toContain("@example.com");

@@ -351,7 +351,19 @@ describe("checkout login-email token signing/verification", () => {
 
   test("throws when signing with a non-integer issuedAt", async () => {
     await expect(signCheckoutLoginEmail(USER, EMAIL, Number.NaN)).rejects.toThrow(
-      /requires an integer issuedAt/,
+      /requires a non-negative integer issuedAt/,
+    );
+    await expect(signCheckoutLoginEmail(USER, EMAIL, 1.5)).rejects.toThrow(
+      /requires a non-negative integer issuedAt/,
+    );
+  });
+
+  // The verifier parses issuedAt with `^\d+$`, which has no sign — so a signer
+  // that accepted a negative value could mint a token this module's own
+  // verifier always calls invalid.
+  test("throws rather than minting a token its own verifier would reject", async () => {
+    await expect(signCheckoutLoginEmail(USER, EMAIL, -1)).rejects.toThrow(
+      /requires a non-negative integer issuedAt/,
     );
   });
 

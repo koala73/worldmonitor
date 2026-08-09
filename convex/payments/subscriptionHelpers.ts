@@ -17,6 +17,7 @@ import {
 } from "../config/productCatalog";
 import {
   ANON_ID_V4_REGEX,
+  parseCheckoutLoginEmailToken,
   verifyCheckoutLoginEmail,
   verifyUserId,
 } from "../lib/identitySigning";
@@ -814,14 +815,20 @@ function mergeDodoCustomerId(
 }
 
 /**
- * Returns the login email the checkout stamped into its metadata, or null when
- * there is nothing trustworthy to use (#6335).
+ * Returns the login email the checkout stamped into its metadata together with
+ * the moment it was stamped, or null when there is nothing trustworthy to use
+ * (#6335).
  *
  * Verified against the userId this handler ACTUALLY resolved — not the one in
  * the metadata — so a signature minted for a different account (or replayed
  * onto a subscription whose ownership `preferExistingCustomerOwner` reassigned)
  * is rejected, and against the event's own clock, so a year-old checkout's
  * metadata replayed by a `subscription.updated` cannot outrank the `users` row.
+ *
+ * `issuedAt` comes back because "is the stamp fresher than the users row?" is
+ * the caller's actual question — see the recipient selection in
+ * `handleSubscriptionActive`. It is read through the shared token parser and is
+ * only returned once the signature over it has verified.
  *
  * Every rejection is a fallback, never a failure: the caller drops to
  * `users.email` and then to the checkout email exactly as before.
@@ -831,7 +838,7 @@ async function resolveSignedCheckoutLoginEmail(
   metadata: Record<string, string> | undefined,
   eventTimestamp: number,
   subscriptionId: string,
-): Promise<string | null> {
+): Promise<{ email: string; issuedAt: number } | null> {
   const stamped = metadata?.wm_login_email;
   const signature = metadata?.wm_login_email_sig;
   const hasStamped = typeof stamped === "string" && stamped.length > 0;
@@ -855,8 +862,15 @@ async function resolveSignedCheckoutLoginEmail(
   // signature covers the exact bytes INCLUDING surrounding whitespace, so
   // trimming post-verification would mean the value we send is not the value we
   // proved authentic. The stamping side always trims before signing
-  // (normalizeCheckoutLoginEmail), so no producible token is rejected here.
-  if (stamped !== stamped.trim()) return null;
+  // (normalizeCheckoutLoginEmail), so no producible token is rejected here —
+  // which is exactly why it warns: a padded value is corruption or tampering,
+  // and returning silently would make that anomaly invisible.
+  if (stamped !== stamped.trim()) {
+    console.warn(
+      `[subscriptionHelpers] Padded wm_login_email in checkout metadata — ignoring (subscriptionId=${subscriptionId})`,
+    );
+    return null;
+  }
   // Verify the value EXACTLY as stamped; the signature covers those bytes.
   const verdict = await verifyCheckoutLoginEmail(
     userId,
@@ -884,8 +898,11 @@ async function resolveSignedCheckoutLoginEmail(
     );
     return null;
   }
+  // Safe to read now: the signature over this exact issuedAt has verified.
+  const parsed = parseCheckoutLoginEmailToken(signature);
+  if (!parsed) return null;
   // Byte-identical to what the signature covers — see the padding guard above.
-  return stamped;
+  return { email: stamped, issuedAt: parsed.issuedAt };
 }
 
 function preferExistingCustomerOwner(
@@ -1117,26 +1134,46 @@ export async function handleSubscriptionActive(
   // at the login screen. The customers row above deliberately keeps the
   // checkout email — it mirrors Dodo's record for portal lookups.
   //
-  // #6335: prefer the login email the CHECKOUT stamped and signed. The users
-  // row (populated by users:ensureRecord) is only as fresh as the buyer's last
-  // page load for that userId, so a Clerk portal email change made in a
-  // long-lived tab leaves it pointing at the abandoned address. The stamped
-  // value is as fresh as the checkout itself. Fall through to the users row,
-  // then to the checkout email, when it is absent or unverifiable (pre-#6335
-  // sessions, phone-only signups, accounts predating the users table).
+  // #6335: two sources can hold the account's login email, and NEITHER is
+  // reliably the fresher one — so pick by which was last confirmed against
+  // Clerk rather than by a fixed precedence.
+  //
+  //   - The stamped value was the login email at `issuedAt` (checkout time).
+  //   - The `users` row's address was last refreshed at `lastSeenAt`:
+  //     `users:ensureRecord` rewrites `email` and stamps `lastSeenAt` in the
+  //     same patch (convex/users.ts), so that timestamp dates the address.
+  //
+  // The original bug is the row being stale: it is only rewritten once per page
+  // load per userId (`src/services/convex-client.ts` short-circuits on a
+  // module-level `lastEnsuredUserId`), so an email change made in a long-lived
+  // tab leaves it pointing at the abandoned address. But the inverse is just as
+  // real — change the email AFTER checking out, then load a page before the
+  // activation webhook arrives, and the STAMP is the stale one. Comparing the
+  // two clocks is correct in both directions; a fixed "stamp wins" rule is only
+  // correct in one.
+  //
+  // Falls through to the checkout email when neither source yields an address
+  // (pre-#6335 sessions, phone-only signups, accounts predating the users row).
   const signedLoginEmail = await resolveSignedCheckoutLoginEmail(
     userId,
     data.metadata,
     eventTimestamp,
     data.subscription_id,
   );
-  const userRow = signedLoginEmail
-    ? null
-    : await ctx.db
-        .query("users")
-        .withIndex("by_userId", (q) => q.eq("userId", userId))
-        .first();
-  const loginEmail = signedLoginEmail ?? (userRow?.email ?? "").trim();
+  const userRow = await ctx.db
+    .query("users")
+    .withIndex("by_userId", (q) => q.eq("userId", userId))
+    .first();
+  const userRowEmail = (userRow?.email ?? "").trim();
+  const userRowIsFresher =
+    userRow !== null &&
+    userRowEmail.length > 0 &&
+    signedLoginEmail !== null &&
+    userRow.lastSeenAt > signedLoginEmail.issuedAt;
+  const loginEmail =
+    signedLoginEmail !== null && !userRowIsFresher
+      ? signedLoginEmail.email
+      : userRowEmail;
   const recipientEmail = loginEmail.length > 0 ? loginEmail : email.trim();
   const checkoutEmailDiffers =
     loginEmail.length > 0 &&

@@ -273,8 +273,12 @@ export async function signCheckoutLoginEmail(
   if (!email) {
     throw new Error("[identity-signing] checkout login-email token requires a non-empty email");
   }
-  if (!Number.isSafeInteger(issuedAt)) {
-    throw new Error("[identity-signing] checkout login-email token requires an integer issuedAt");
+  // Negative is rejected as well as non-integer: the verifier's `^\d+$` parse
+  // has no sign, so a negative issuedAt would mint a token this module's own
+  // verifier always calls invalid. Unreachable from `Date.now()`, but a signer
+  // that can emit a token its verifier rejects is a trap worth closing here.
+  if (!Number.isSafeInteger(issuedAt) || issuedAt < 0) {
+    throw new Error("[identity-signing] checkout login-email token requires a non-negative integer issuedAt");
   }
   const signature = await signPayload(
     checkoutLoginEmailPayload(userId, email, issuedAt),
@@ -295,6 +299,28 @@ export async function signCheckoutLoginEmail(
  * Logging both at the same volume would bury the second in the first.
  */
 export type CheckoutLoginEmailVerdict = "valid" | "expired" | "invalid";
+
+/**
+ * Structural parse of a login-email token — shape only, no authenticity claim.
+ *
+ * Exported so a caller that needs the token's `issuedAt` (to compare the
+ * stamped address's age against another source's) reads it through the SAME
+ * parser `verifyCheckoutLoginEmail` uses, rather than re-splitting the string
+ * and risking a divergent reading. Callers must treat the result as untrusted
+ * until `verifyCheckoutLoginEmail` returns `valid` for the same token.
+ */
+export function parseCheckoutLoginEmailToken(
+  token: string | undefined,
+): { issuedAt: number; signature: string } | null {
+  if (!token) return null;
+  const [version, issuedAtRaw, signature, ...extra] = token.split(".");
+  if (version !== CHECKOUT_LOGIN_EMAIL_TOKEN_VERSION || extra.length > 0) return null;
+  if (typeof issuedAtRaw !== "string" || typeof signature !== "string") return null;
+  if (!/^\d+$/.test(issuedAtRaw) || !signature) return null;
+  const issuedAt = Number(issuedAtRaw);
+  if (!Number.isSafeInteger(issuedAt)) return null;
+  return { issuedAt, signature };
+}
 
 /**
  * Verifies a stamped login email against the userId the webhook actually
@@ -319,12 +345,9 @@ export async function verifyCheckoutLoginEmail(
 ): Promise<CheckoutLoginEmailVerdict> {
   if (!token || !userId || !email) return "invalid";
   if (!Number.isFinite(nowMs)) return "invalid";
-  const [version, issuedAtRaw, signature, ...extra] = token.split(".");
-  if (version !== CHECKOUT_LOGIN_EMAIL_TOKEN_VERSION || extra.length > 0) return "invalid";
-  if (typeof issuedAtRaw !== "string" || typeof signature !== "string") return "invalid";
-  if (!/^\d+$/.test(issuedAtRaw) || !signature) return "invalid";
-  const issuedAt = Number(issuedAtRaw);
-  if (!Number.isSafeInteger(issuedAt)) return "invalid";
+  const parsed = parseCheckoutLoginEmailToken(token);
+  if (!parsed) return "invalid";
+  const { issuedAt, signature } = parsed;
   try {
     const expected = await signPayload(
       checkoutLoginEmailPayload(userId, email, issuedAt),
