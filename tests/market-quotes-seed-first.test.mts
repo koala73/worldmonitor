@@ -36,6 +36,7 @@ const ORIGINAL_ENV = {
   VERCEL_GIT_COMMIT_SHA: process.env.VERCEL_GIT_COMMIT_SHA,
   LOCAL_API_MODE: process.env.LOCAL_API_MODE,
   FINNHUB_API_KEY: process.env.FINNHUB_API_KEY,
+  ALPHA_VANTAGE_API_KEY: process.env.ALPHA_VANTAGE_API_KEY,
 };
 const ORIGINAL_FETCH = globalThis.fetch;
 const ORIGINAL_WARN = console.warn;
@@ -97,6 +98,9 @@ function installHarness(init: {
   delete process.env.LOCAL_API_MODE;
   if (init.finnhubKey === null) delete process.env.FINNHUB_API_KEY;
   else process.env.FINNHUB_API_KEY = init.finnhubKey ?? 'test-finnhub-key';
+  // Gap-fetch tests mock Finnhub only; clear any host AV key so the cascade
+  // cannot leak to a real Alpha Vantage network call (#6304).
+  delete process.env.ALPHA_VANTAGE_API_KEY;
   __resetKeyPrefixCacheForTests();
 
   const harness: Harness = {
@@ -286,7 +290,7 @@ describe('listMarketQuotes seed-first resolution', () => {
     assert.deepEqual(symbolsOf(resp), ['AAPL']);
     assert.equal(reasonFor(resp, 'ARM'), 'MARKET_QUOTE_UNAVAILABLE_REASON_PROVIDER_NOT_CONFIGURED');
     assert.equal(resp.finnhubSkipped, true);
-    assert.equal(resp.skipReason, 'FINNHUB_API_KEY not configured');
+    assert.equal(resp.skipReason, 'FINNHUB_API_KEY and ALPHA_VANTAGE_API_KEY not configured');
     assert.deepEqual(h.finnhubCalls, []);
   });
 

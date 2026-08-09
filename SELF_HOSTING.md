@@ -61,7 +61,8 @@ services:
       OPENROUTER_API_KEY: ""      # https://openrouter.ai (free, 50 req/day)
 
       # 📊 Markets & Economics
-      FINNHUB_API_KEY: ""         # https://finnhub.io (free tier)
+      FINNHUB_API_KEY: ""         # https://finnhub.io (free tier) — primary equity gap + search
+      ALPHA_VANTAGE_API_KEY: ""   # https://www.alphavantage.co/support/#api-key — equity fallback + seeders
       FRED_API_KEY: ""            # https://fred.stlouisfed.org/docs/api/api_key.html (free)
       EIA_API_KEY: ""             # https://www.eia.gov/opendata/ (free)
 
@@ -97,7 +98,7 @@ services:
 | Status | Keys |
 |--------|------|
 | 🟢 No key needed | Earthquakes, weather, natural events, UNHCR displacement, prediction markets, stablecoins, crypto, spending, climate anomalies, submarine cables, BIS data, cyber threats |
-| 🟢 Free signup | GROQ, FRED, EIA, NASA FIRMS, AISSTREAM, Finnhub, AviationStack, ACLED, OpenRouter |
+| 🟢 Free signup | GROQ, FRED, EIA, NASA FIRMS, AISSTREAM, Finnhub, Alpha Vantage, AviationStack, ACLED, OpenRouter |
 | 🟡 Free (limited) | OpenSky (higher rate limits with account) |
 | 🔴 Paid | Cloudflare Radar (internet outages) |
 

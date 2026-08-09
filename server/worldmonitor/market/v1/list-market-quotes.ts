@@ -35,7 +35,11 @@ import type {
   MarketQuoteUnavailableReason,
 } from '../../../../src/generated/server/worldmonitor/market/v1/service_server';
 import { parseStringArray, sanitizeSymbol } from './_shared';
-import { resolveMarketQuoteProvider, type ProviderQuote } from './_quote-provider';
+import {
+  providerNotConfiguredReason,
+  resolveMarketQuoteProvider,
+  type ProviderQuote,
+} from './_quote-provider';
 import { cachedFetchJson, readCachedJson } from '../../../_shared/redis';
 
 const BOOTSTRAP_KEY = 'market:stocks-bootstrap:v1';
@@ -319,7 +323,7 @@ export async function listMarketQuotes(
   return {
     quotes,
     finnhubSkipped: skipped,
-    skipReason: skipped ? 'FINNHUB_API_KEY not configured' : '',
+    skipReason: skipped ? providerNotConfiguredReason() : '',
     rateLimited: resolved.rateLimited,
     unavailableSymbols: [...unavailable, ...overflow],
   };
