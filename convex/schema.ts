@@ -7,6 +7,12 @@ import {
   quietHoursOverrideValidator,
   sensitivityValidator,
 } from "./constants";
+import {
+  companyMonitoringCompleteReceiptValidator,
+  companyMonitoringNonReassuringReasonValidator,
+  companyMonitoringNonReassuringReceiptValidator,
+  companyMonitoringScanSourceValidator,
+} from "./companyMonitoring/validators";
 
 // Subscription status enum — maps Dodo statuses to our internal set
 const subscriptionStatus = v.union(
@@ -60,6 +66,35 @@ const apiPlanLimitCtaKind = v.union(
   v.literal("contact_support"),
   v.literal("none"),
 );
+
+const companyMonitoringObligationIdentity = {
+  obligationId: v.string(),
+  ownerAccountId: v.string(),
+  companyId: v.string(),
+  source: companyMonitoringScanSourceValidator,
+  queryVersion: v.string(),
+  dueAt: v.number(),
+  checkpoint: v.optional(v.string()),
+  createdAt: v.number(),
+  updatedAt: v.number(),
+};
+
+const companyMonitoringWorkIdentity = {
+  workId: v.string(),
+  workKey: v.string(),
+  ownerAccountId: v.string(),
+  cohortKey: v.string(),
+  source: companyMonitoringScanSourceValidator,
+  windowStart: v.number(),
+  windowEnd: v.number(),
+  queryVersion: v.string(),
+  scheduledDueAt: v.number(),
+  selectionDueAt: v.number(),
+  resultCap: v.number(),
+  attemptCount: v.number(),
+  createdAt: v.number(),
+  updatedAt: v.number(),
+};
 
 export default defineSchema({
   userPreferences: defineTable({
@@ -1048,6 +1083,12 @@ export default defineSchema({
     ),
     destructivePurgeStarted: v.boolean(),
     pendingReactivation: v.boolean(),
+    // Durable orchestration cursor. Claims always begin from this indexed
+    // account field and read only a fixed page; work/company tables are never
+    // scanned globally to discover due customer work.
+    nextScanDueAt: v.optional(v.number()),
+    nextExaScanDueAt: v.optional(v.number()),
+    nextXScanDueAt: v.optional(v.number()),
     purgeAfter: v.optional(v.number()),
     purgeCursor: v.optional(v.string()),
     createdAt: v.number(),
@@ -1060,7 +1101,10 @@ export default defineSchema({
     // Consumer: accounts.reconcileAccountEntitlements. Entitlement writes no
     // longer push lapses (#6256), so the reconciler pulls them by scanning
     // entitled roots oldest-first.
-    .index("by_lifecycle_updatedAt", ["lifecycle", "updatedAt"]),
+    .index("by_lifecycle_updatedAt", ["lifecycle", "updatedAt"])
+    .index("by_lifecycle_nextScanDueAt", ["lifecycle", "nextScanDueAt"])
+    .index("by_lifecycle_nextExaScanDueAt", ["lifecycle", "nextExaScanDueAt"])
+    .index("by_lifecycle_nextXScanDueAt", ["lifecycle", "nextXScanDueAt"]),
 
   companyMonitoringCompanies: defineTable({
     ownerAccountId: v.string(),
@@ -1110,6 +1154,101 @@ export default defineSchema({
     updatedAt: v.number(),
   })
     .index("by_account_company", ["ownerAccountId", "companyId"]),
+
+  // One durable company/source obligation. The closed state variants keep a
+  // single uniqueness row while a work item's terminal receipt preserves the
+  // history for every completed window. A failed/non-reassuring attempt never
+  // changes `checkpoint`; a later window reuses that exact value.
+  companyMonitoringScanObligations: defineTable(v.union(
+    v.object({
+      ...companyMonitoringObligationIdentity,
+      state: v.literal("due"),
+      workId: v.string(),
+    }),
+    v.object({
+      ...companyMonitoringObligationIdentity,
+      state: v.literal("leased"),
+      workId: v.string(),
+      leaseToken: v.string(),
+      leaseExpiresAt: v.number(),
+      workerId: v.string(),
+    }),
+    v.object({
+      ...companyMonitoringObligationIdentity,
+      state: v.literal("complete"),
+      workId: v.string(),
+      terminalReceiptId: v.string(),
+      completedAt: v.number(),
+    }),
+    v.object({
+      ...companyMonitoringObligationIdentity,
+      state: v.literal("non_reassuring"),
+      workId: v.string(),
+      terminalReceiptId: v.string(),
+      completedAt: v.number(),
+      reason: companyMonitoringNonReassuringReasonValidator,
+    }),
+    v.object({
+      ...companyMonitoringObligationIdentity,
+      state: v.literal("cancelled"),
+      workId: v.optional(v.string()),
+      cancelledAt: v.number(),
+      reason: v.union(
+        v.literal("company_removed"),
+        v.literal("account_inactive"),
+        v.literal("superseded"),
+      ),
+    }),
+  ))
+    .index("by_obligationId", ["obligationId"])
+    .index("by_account_company_source", ["ownerAccountId", "companyId", "source"])
+    .index("by_workId", ["workId"]),
+
+  // Cohort/source/window work is the sole lease and terminal-receipt
+  // authority. `selectionDueAt` is `scheduledDueAt` while due and the lease
+  // expiry while leased, so crash replay remains an indexed bounded lookup.
+  companyMonitoringScanWorkItems: defineTable(v.union(
+    v.object({
+      ...companyMonitoringWorkIdentity,
+      state: v.literal("due"),
+    }),
+    v.object({
+      ...companyMonitoringWorkIdentity,
+      state: v.literal("leased"),
+      leaseToken: v.string(),
+      leaseExpiresAt: v.number(),
+      workerId: v.string(),
+    }),
+    v.object({
+      ...companyMonitoringWorkIdentity,
+      state: v.literal("complete"),
+      terminalLeaseToken: v.string(),
+      terminalWorkerId: v.string(),
+      terminalReceipt: companyMonitoringCompleteReceiptValidator,
+    }),
+    v.object({
+      ...companyMonitoringWorkIdentity,
+      state: v.literal("non_reassuring"),
+      terminalLeaseToken: v.string(),
+      terminalWorkerId: v.string(),
+      terminalReceipt: companyMonitoringNonReassuringReceiptValidator,
+    }),
+    v.object({
+      ...companyMonitoringWorkIdentity,
+      state: v.literal("cancelled"),
+      cancelledAt: v.number(),
+      cancelReason: v.union(
+        v.literal("company_removed"),
+        v.literal("account_inactive"),
+        v.literal("superseded"),
+      ),
+    }),
+  ))
+    .index("by_workId", ["workId"])
+    .index("by_workKey", ["workKey"])
+    .index("by_account_state_selectionDueAt", ["ownerAccountId", "state", "selectionDueAt"])
+    .index("by_account_source_state_selectionDueAt", ["ownerAccountId", "source", "state", "selectionDueAt"])
+    .index("by_state_selectionDueAt", ["state", "selectionDueAt"]),
 
   userApiKeys: defineTable({
     userId: v.string(),

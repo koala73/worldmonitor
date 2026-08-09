@@ -44,3 +44,73 @@ export const companyPatchValidator = v.object({
   }))),
   removeClaimIds: v.optional(v.array(v.string())),
 });
+
+export const companyMonitoringScanSourceValidator = v.union(
+  v.literal("exa"),
+  v.literal("x"),
+);
+
+export const companyMonitoringProviderErrorReasonValidator = v.union(
+  v.literal("timeout"),
+  v.literal("rate_limited"),
+  v.literal("authentication_failed"),
+  v.literal("provider_unavailable"),
+  v.literal("request_rejected"),
+);
+
+export const companyMonitoringNonReassuringReasonValidator = v.union(
+  v.literal("capped"),
+  v.literal("partial"),
+  v.literal("malformed"),
+  v.literal("invalid_empty"),
+  v.literal("provider_error"),
+);
+
+export const companyMonitoringReturnedRangeValidator = v.object({
+  startAt: v.number(),
+  endAt: v.number(),
+});
+
+export const companyMonitoringFinalizeResultValidator = v.union(
+  v.object({
+    type: v.literal("result"),
+    itemCount: v.number(),
+    hasMore: v.boolean(),
+    coverage: v.union(v.literal("complete"), v.literal("partial")),
+    returnedRange: v.optional(companyMonitoringReturnedRangeValidator),
+    checkpoint: v.optional(v.string()),
+    emptyValidated: v.boolean(),
+    costUsdMicros: v.number(),
+  }),
+  v.object({
+    type: v.literal("provider_error"),
+    reason: companyMonitoringProviderErrorReasonValidator,
+    costUsdMicros: v.number(),
+  }),
+);
+
+export const companyMonitoringCompleteReceiptValidator = v.object({
+  kind: v.literal("complete"),
+  reason: v.literal("complete"),
+  completedAt: v.number(),
+  returnedRange: companyMonitoringReturnedRangeValidator,
+  itemCount: v.number(),
+  costUsdMicros: v.number(),
+  sourceCoverage: v.literal("complete"),
+  checkpointAfter: v.string(),
+});
+
+export const companyMonitoringNonReassuringReceiptValidator = v.object({
+  kind: v.literal("non_reassuring"),
+  reason: companyMonitoringNonReassuringReasonValidator,
+  providerReason: v.optional(companyMonitoringProviderErrorReasonValidator),
+  completedAt: v.number(),
+  returnedRange: v.optional(companyMonitoringReturnedRangeValidator),
+  itemCount: v.optional(v.number()),
+  costUsdMicros: v.number(),
+  sourceCoverage: v.union(
+    v.literal("partial"),
+    v.literal("failed"),
+    v.literal("unknown"),
+  ),
+});
