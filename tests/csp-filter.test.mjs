@@ -260,6 +260,17 @@ describe('CSP violation filter (shouldSuppressCspViolation)', () => {
       assert.ok(!suppress('enforce', 'font-src', 'https://myslant.co/fonts/x.woff2', '', false));
       assert.ok(!suppress('enforce', 'font-src', 'https://notmigaku.com/fonts/x.woff2', '', false));
       assert.ok(!suppress('enforce', 'font-src', 'https://evil-fonts.gstatic.com/s/a/b.woff2', '', false));
+      // Sibling SUBDOMAINS too — these kill an `endsWith('.migaku.com')` style
+      // mutant that a sibling registrable domain alone leaves alive.
+      assert.ok(!suppress('enforce', 'font-src', 'https://cdn.migaku.com/fonts/chiron-hei-hk-webfont-2.6.7/cw_0.woff2', '', false));
+      assert.ok(!suppress('enforce', 'font-src', 'https://cdn.doubao.com/obj/flow-doubao/x.woff2', '', false));
+      assert.ok(!suppress('enforce', 'font-src', 'https://cdn.perplexity.ai/_agi_assets/fonts/x.woff2', '', false));
+    });
+
+    it('pins the end-anchor on the shared font matcher', () => {
+      // Without the `$`, `/\.(?:woff2?|ttf|otf)/` matches mid-path and a
+      // sourcemap alongside the font would be swallowed.
+      assert.ok(!suppress('enforce', 'font-src', 'https://at.alicdn.com/t/c/font_1011144.woff2.map', '', false));
     });
 
     it('does NOT suppress http: font-src on gstatic', () => {
@@ -286,6 +297,12 @@ describe('CSP violation filter (shouldSuppressCspViolation)', () => {
       assert.ok(!suppress('enforce', 'style-src-elem', 'http://use.fontawesome.com/releases/x.css', '', false));
       assert.ok(!suppress('enforce', 'style-src-elem', 'http://use.typekit.net/x.css', '', false));
       assert.ok(!suppress('enforce', 'style-src-elem', 'http://p.typekit.net/p.css', '', false));
+      assert.ok(!suppress('enforce', 'style-src-elem', 'https://cdn.fontawesome.com/releases/v4.7.0/css/x.css', '', false));
+      assert.ok(!suppress('enforce', 'style-src-elem', 'https://cdn.6ppn.com/ext/assets/style.abc.css', '', false));
+    });
+
+    it('pins the end-anchor on the shared stylesheet matcher', () => {
+      assert.ok(!suppress('enforce', 'style-src-elem', 'https://www.6ppn.com/ext/assets/style.abc.css.map', '', false));
     });
 
     it('does NOT suppress an unrelated path on an injected-stylesheet host', () => {
@@ -582,6 +599,7 @@ describe('CSP violation filter (shouldSuppressCspViolation)', () => {
       // swallow both, and `div.show.evil.com` alone would not catch it.
       assert.ok(!suppress('enforce', 'frame-src', 'https://xdiv.show', '', false, FIRST_PARTY_CONVEX));
       assert.ok(!suppress('enforce', 'frame-src', 'https://sub.div.show', '', false, FIRST_PARTY_CONVEX));
+      assert.ok(!suppress('enforce', 'frame-src', 'https://cdn.anzz.site', '', false, FIRST_PARTY_CONVEX));
     });
 
     it('does NOT suppress frame-src for arbitrary third-party hosts (rotating extension long tail stays surfaced)', () => {
