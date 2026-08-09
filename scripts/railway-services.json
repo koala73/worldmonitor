@@ -1151,6 +1151,31 @@
     "documentedAt": "docs/railway-seed-consolidation-runbook.md#bundle-11-seed-bundle-relay-backup"
   },
   {
+    "entry": "scripts/company-monitoring-worker.mjs",
+    "deployMode": "nixpacks-root-scripts",
+    "service": "company-monitoring-worker",
+    "startCommand": "node company-monitoring-worker.mjs",
+    "requiredEnv": [
+      "CONVEX_URL",
+      "COMPANY_MONITORING_WORKER_SECRET",
+      "UPSTASH_REDIS_REST_URL",
+      "UPSTASH_REDIS_REST_TOKEN"
+    ],
+    "watchPatterns": [
+      "scripts/_proxy-utils.cjs",
+      "scripts/_seed-contract.mjs",
+      "scripts/_seed-envelope-source.mjs",
+      "scripts/_seed-utils.mjs",
+      "scripts/company-monitoring-worker.mjs",
+      "scripts/lib/llm-telemetry.cjs",
+      "scripts/nixpacks.toml",
+      "scripts/package-lock.json",
+      "scripts/package.json"
+    ],
+    "cronSchedule": null,
+    "documentedAt": "scripts/company-monitoring-worker.mjs (header docblock declares rootDirectory: scripts)"
+  },
+  {
     "entry": "scripts/scenario-worker.mjs",
     "deployMode": "nixpacks-root-scripts",
     "service": "scenario-worker",

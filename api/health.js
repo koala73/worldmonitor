@@ -220,6 +220,9 @@ const BOOTSTRAP_KEYS = {
 
 const STANDALONE_KEYS = {
   chinaCoverage:      CHINA_COVERAGE_SUMMARY_KEY,
+  // Control-plane heartbeat only. Convex owns every durable scan lease,
+  // checkpoint, receipt, and replay decision; this Redis value is disposable.
+  companyMonitoringWorker: 'company-monitoring:worker-health:v1',
   // Seeded and health-monitored; no dashboard consumer yet (#6155 is the
   // data layer only), so it is standalone rather than bootstrap-tiered.
   chinaStockConnect:  'market:china:stock-connect:v1',
@@ -429,6 +432,9 @@ const SEED_META = {
   // a full hour below the 6h data-expiry floor.
   humanitarianSummary: { key: 'seed-meta:conflict:humanitarian',  maxStaleMin: 300, minRecordCount: 23 },
   chinaCoverage:   { key: 'seed-meta:health:china-coverage',   maxStaleMin: 180 },
+  // Always-on loop publishes every few seconds. Five minutes tolerates deploy
+  // churn while still detecting a stopped worker well before leases age out.
+  companyMonitoringWorker: { key: 'seed-meta:company-monitoring:worker', maxStaleMin: 5, workerControl: true },
   earthquakes:      { key: 'seed-meta:seismology:earthquakes',  maxStaleMin: 30 },
   wildfires:        { key: 'seed-meta:wildfire:fires',          maxStaleMin: 360 }, // FIRMS NRT resets at midnight UTC; new-day data takes 3-6h to accumulate
   wildfiresBootstrap: { key: 'seed-meta:wildfire:fires-bootstrap', maxStaleMin: 360 }, // Compact CDN payload is a distinct publish target; monitor it so canonical fallback cannot hide transform/write failures.
@@ -878,6 +884,9 @@ const ON_DEMAND_KEYS = new Set([
   // activation marker after its first successful publish; after that, a
   // missing/stale summary is strict forever.
   'chinaCoverage',
+  // Deployment-order bridge. The worker writes a permanent activation marker
+  // on its first healthy loop report; absence becomes strict immediately after.
+  'companyMonitoringWorker',
   // Same deployment-order bridge as chinaCoverage: Vercel can ship this reader
   // before seed-bundle-macro's next 08:00 UTC tick publishes the first CBR
   // table, and the every-15-minute freshness monitor would otherwise report an
@@ -947,6 +956,7 @@ const ON_DEMAND_KEYS = new Set([
 // normal EMPTY/STALE_SEED rules apply.
 const ACTIVATION_MARKERS = {
   chinaCoverage: 'seed-activated:health:china-coverage',
+  companyMonitoringWorker: 'seed-activated:company-monitoring:worker',
   // Written by scripts/seed-cbr-rates.mjs (CBR_ACTIVATION_KEY) in runSeed's
   // afterPublish hook, so it exists only once a real table has been published.
   cbrRates: 'seed-activated:economic:cbr-rates',
@@ -1201,14 +1211,37 @@ const TRADE_FLOW_DOMINANT_FAILURE_MODES = new Set([
   'run-failed', 'upstream', 'empty', 'incomplete-years', 'mixed', 'none',
 ]);
 
+const COMPANY_MONITORING_WORKER_STATUSES = new Set(['ok', 'error']);
+const COMPANY_MONITORING_WORKER_OUTCOMES = new Set([
+  'starting', 'disabled', 'idle', 'completed', 'non_reassuring', 'fenced',
+  'replayed', 'claim_error', 'finalize_error',
+]);
+const COMPANY_MONITORING_WORKER_COUNTERS = Object.freeze([
+  'loops', 'claims', 'completed', 'nonReassuring', 'fenced', 'replayed',
+  'executorErrors', 'claimErrors', 'finalizeErrors',
+]);
+
+function projectCompanyMonitoringWorkerControl(meta, enabled) {
+  if (!enabled || !COMPANY_MONITORING_WORKER_STATUSES.has(meta?.status)
+    || !COMPANY_MONITORING_WORKER_OUTCOMES.has(meta?.outcome)) return null;
+  const counters = {};
+  for (const name of COMPANY_MONITORING_WORKER_COUNTERS) {
+    const value = meta?.counters?.[name];
+    counters[name] = Number.isSafeInteger(value) && value >= 0
+      ? Math.min(value, 9_999_999_999)
+      : 0;
+  }
+  return { status: meta.status, outcome: meta.outcome, counters };
+}
+
 function readSeedMeta(seedCfg, keyMetaValues, keyMetaErrors, now) {
   if (!seedCfg) {
-    return { hasMeta: false, seedAge: null, seedStale: null, seedError: false, sourceUnavailable: false, sourceBlocked: false, metaReadFailed: false, metaCount: null, contentAge: null, coverage: null, synthesisFailure: null, dominantFailureMode: null };
+    return { hasMeta: false, seedAge: null, seedStale: null, seedError: false, sourceUnavailable: false, sourceBlocked: false, metaReadFailed: false, metaCount: null, contentAge: null, coverage: null, synthesisFailure: null, dominantFailureMode: null, workerControl: null };
   }
   // Per-command Redis errors on the GET seed-meta half of the pipeline must
   // not silently fall through to STALE_SEED — promote to REDIS_PARTIAL.
   if (keyMetaErrors.get(seedCfg.key)) {
-    return { hasMeta: false, seedAge: null, seedStale: null, seedError: false, sourceUnavailable: false, sourceBlocked: false, metaReadFailed: true, metaCount: null, contentAge: null, coverage: null, synthesisFailure: null, dominantFailureMode: null };
+    return { hasMeta: false, seedAge: null, seedStale: null, seedError: false, sourceUnavailable: false, sourceBlocked: false, metaReadFailed: true, metaCount: null, contentAge: null, coverage: null, synthesisFailure: null, dominantFailureMode: null, workerControl: null };
   }
   // Unwrap through the envelope helper. Legacy seed-meta is a bare
   // `{ fetchedAt, recordCount, sourceVersion, status? }` object with no `_seed`
@@ -1222,6 +1255,7 @@ function readSeedMeta(seedCfg, keyMetaValues, keyMetaErrors, now) {
     && /^[A-Z0-9_]{1,64}$/.test(meta.errorCode)
     ? meta.errorCode
     : null;
+  const workerControl = projectCompanyMonitoringWorkerControl(meta, seedCfg.workerControl);
   if (meta?.status === 'error') {
     return {
       hasMeta: true,
@@ -1240,6 +1274,7 @@ function readSeedMeta(seedCfg, keyMetaValues, keyMetaErrors, now) {
       errorCode,
       synthesisFailure: null,
       dominantFailureMode: null,
+      workerControl,
     };
   }
   let seedAge = null;
@@ -1418,6 +1453,7 @@ function readSeedMeta(seedCfg, keyMetaValues, keyMetaErrors, now) {
     errorCode,
     synthesisFailure,
     dominantFailureMode,
+    workerControl,
   };
 }
 
@@ -1513,6 +1549,7 @@ function classifyKey(name, redisKey, opts, ctx) {
     errorCode,
     synthesisFailure,
     dominantFailureMode,
+    workerControl,
   } = meta;
 
   // Pending activation: the producer has never published a contentFreshness
@@ -1742,6 +1779,9 @@ function classifyKey(name, redisKey, opts, ctx) {
   // it on the fault verdict would hide exactly the "healthy-looking partial"
   // case. Mirrors the ungated synthesisFailure emission below.
   if (dominantFailureMode) entry.dominantFailureMode = dominantFailureMode;
+  // Closed, bounded projection from the worker's seed-meta. It contains only
+  // control-loop state and counters, never work or customer identifiers.
+  if (workerControl) entry.workerControl = workerControl;
   // Surface content-age fields when seeder opted in (presence of
   // meta.maxContentAgeMin). Operators can distinguish "stale content" from
   // "stale seeder run" at a glance.
