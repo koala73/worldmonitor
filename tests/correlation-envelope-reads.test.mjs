@@ -21,16 +21,24 @@
 // envelope handed straight to the field read — produces nothing, so the bug
 // stays pinned and cannot be reintroduced silently.
 
-import { after, before, describe, it } from 'node:test';
+import { after, before, beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { INPUT_KEYS, fetchInputData } from '../scripts/seed-correlation.mjs';
+import {
+  collectEconomicSignals,
+  collectMilitarySignals,
+  INPUT_KEYS,
+  fetchInputData,
+} from '../scripts/seed-correlation.mjs';
 import { unwrapEnvelope } from '../scripts/_seed-envelope-source.mjs';
 
 const REDIS_URL = 'https://correlation-seeder.test.upstash.io';
 const MINUTE = 60_000;
-const now = Date.now();
 
-function seedEnvelope(data, fetchedAt = now) {
+beforeEach((t) => {
+  t.mock.method(console, 'warn', () => {});
+});
+
+function seedEnvelope(data, fetchedAt = Date.now()) {
   return {
     _seed: {
       fetchedAt,
@@ -93,7 +101,7 @@ const ENVELOPED_KEYS = [
     writer: 'scripts/seed-insights.mjs',
     payload: {
       topStories: [{ primaryTitle: 'Strait closure reported', threatLevel: 'high', lat: 26.5, lon: 56.2 }],
-      generatedAt: new Date(now).toISOString(),
+      generatedAt: new Date().toISOString(),
     },
   },
 ];
@@ -118,10 +126,12 @@ describe('fetchInputData envelope handling', () => {
 
   // Stub the Upstash pipeline: `byKey` maps an input key to the raw string
   // Redis would return; anything unlisted comes back as a null result.
-  function stubPipeline(byKey) {
+  function stubPipeline(byKey, pipelineEntries = {}) {
     globalThis.fetch = async () => ({
       ok: true,
-      json: async () => INPUT_KEYS.map((key) => ({ result: byKey[key] ?? null })),
+      json: async () => INPUT_KEYS.map((key) => (
+        pipelineEntries[key] ?? { result: byKey[key] ?? null }
+      )),
     });
   }
 
@@ -158,8 +168,11 @@ describe('fetchInputData envelope handling', () => {
 
   it('passes the bare military flights keys through unchanged', async () => {
     // seed-military-flights.mjs writes these with a local redisSet(), not
-    // runSeed, so they carry no `_seed` and must not be touched.
-    const payload = { flights: [{ hex: 'ae1234', type: 'bomber', lat: 35.1, lon: 33.4 }] };
+    // runSeed, so they carry no `_seed`; their top-level timestamp is retained.
+    const payload = {
+      flights: [{ hex: 'ae1234', type: 'bomber', lat: 35.1, lon: 33.4 }],
+      fetchedAt: Date.now(),
+    };
     stubPipeline({
       'military:flights:v1': JSON.stringify(payload),
       'military:flights:stale:v1': JSON.stringify(payload),
@@ -180,6 +193,15 @@ describe('fetchInputData envelope handling', () => {
     assert.deepEqual(data['unrest:events:v1'], payload);
   });
 
+  it('rejects a top-level array for a strict input policy', async () => {
+    stubPipeline({
+      'market:stocks-bootstrap:v1': JSON.stringify([{ symbol: '^VIX', changePercent: 12.4 }]),
+    });
+
+    const data = await fetchInputData();
+    assert.equal('market:stocks-bootstrap:v1' in data, false);
+  });
+
   it('skips malformed JSON instead of registering the raw string as a found key', async () => {
     // The `hasAnyData` tripwire in computeCorrelation tests `data[k] != null`,
     // so a raw string registered here would read as real input.
@@ -194,6 +216,72 @@ describe('fetchInputData envelope handling', () => {
 
     const data = await fetchInputData();
     assert.equal('infra:outages:v1' in data, false);
+  });
+
+  it('rejects parseable values that do not match the consumer field shape', async () => {
+    const accepted = { earthquakes: [{ id: 'fresh', magnitude: 7.1 }] };
+    stubPipeline({
+      'seismology:earthquakes:v1': JSON.stringify(seedEnvelope(accepted)),
+      'market:stocks-bootstrap:v1': JSON.stringify(seedEnvelope({ quotes: {} })),
+      'market:commodities-bootstrap:v1': JSON.stringify(seedEnvelope(42)),
+      'market:crypto:v1': JSON.stringify(seedEnvelope({ quotes: [null] })),
+      'news:insights:v1': JSON.stringify(seedEnvelope({ topStories: {} })),
+    });
+
+    const data = await fetchInputData();
+    assert.deepEqual(data, { 'seismology:earthquakes:v1': accepted });
+  });
+
+  it('emits one payload-free discard summary for a partial read', async () => {
+    const sentinel = 'must-not-reach-logs';
+    const pipelineError = 'ERR test';
+    stubPipeline({
+      'unrest:events:v1': JSON.stringify(seedEnvelope({ events: [{ id: 'valid' }] })),
+      'infra:outages:v1': JSON.stringify(seedEnvelope(null)),
+      'seismology:earthquakes:v1': '{"earthquakes":[',
+      'market:stocks-bootstrap:v1': JSON.stringify(seedEnvelope({ quotes: { sentinel } })),
+    }, {
+      'market:crypto:v1': { error: pipelineError },
+    });
+
+    const warnings = [];
+    console.warn.mock.mockImplementation((...args) => warnings.push(args));
+    const data = await fetchInputData();
+    assert.deepEqual(data['unrest:events:v1'], { events: [{ id: 'valid' }] });
+    assert.equal('market:crypto:v1' in data, false);
+
+    assert.equal(warnings.length, 1);
+    assert.equal(warnings[0][0], '  [Correlation] discarded Redis inputs');
+    assert.deepEqual(warnings[0][1].byReason, {
+      invalid_shape: 1,
+      malformed_json: 1,
+      missing: 4,
+      null_payload: 1,
+      pipeline_error: 1,
+    });
+    assert.equal(JSON.stringify(warnings).includes(sentinel), false);
+    assert.equal(JSON.stringify(warnings).includes(pipelineError), false);
+  });
+
+  it('fails closed with one payload-free summary for a non-array pipeline body', async () => {
+    const sentinel = 'must-not-reach-logs';
+    const warnings = [];
+    console.warn.mock.mockImplementation((...args) => warnings.push(args));
+
+    for (const body of [null, { result: sentinel }]) {
+      warnings.length = 0;
+      globalThis.fetch = async () => ({ ok: true, json: async () => body });
+
+      assert.deepEqual(await fetchInputData(), {});
+      assert.equal(warnings.length, 1);
+      assert.equal(warnings[0][0], '  [Correlation] discarded Redis inputs');
+      assert.deepEqual(warnings[0][1].byReason, { invalid_pipeline_shape: INPUT_KEYS.length });
+      assert.deepEqual(
+        warnings[0][1].inputs,
+        INPUT_KEYS.map((key) => ({ key, reason: 'invalid_pipeline_shape' })),
+      );
+      assert.equal(JSON.stringify(warnings).includes(sentinel), false);
+    }
   });
 });
 
@@ -228,7 +316,7 @@ describe('fetchInputData freshness gate', () => {
     // stamped `computedAt: Date.now()`.
     stubPipeline({
       'seismology:earthquakes:v1': JSON.stringify(
-        seedEnvelope({ earthquakes: [{ id: 'stale', magnitude: 7.1 }] }, now - 31 * MINUTE),
+        seedEnvelope({ earthquakes: [{ id: 'stale', magnitude: 7.1 }] }, Date.now() - 31 * MINUTE),
       ),
     });
 
@@ -239,7 +327,7 @@ describe('fetchInputData freshness gate', () => {
   it('keeps an envelope inside its budget', async () => {
     const payload = { earthquakes: [{ id: 'fresh', magnitude: 7.1 }] };
     stubPipeline({
-      'seismology:earthquakes:v1': JSON.stringify(seedEnvelope(payload, now - 29 * MINUTE)),
+      'seismology:earthquakes:v1': JSON.stringify(seedEnvelope(payload, Date.now() - 29 * MINUTE)),
     });
 
     const data = await fetchInputData();
@@ -251,25 +339,138 @@ describe('fetchInputData freshness gate', () => {
     // envelope that would drop earthquakes must survive here.
     const payload = { events: [{ id: 'p1', country: 'FR' }] };
     stubPipeline({
-      'unrest:events:v1': JSON.stringify(seedEnvelope(payload, now - 31 * MINUTE)),
+      'unrest:events:v1': JSON.stringify(seedEnvelope(payload, Date.now() - 31 * MINUTE)),
     });
 
     const data = await fetchInputData();
     assert.deepEqual(data['unrest:events:v1'], payload);
 
     stubPipeline({
-      'unrest:events:v1': JSON.stringify(seedEnvelope(payload, now - 121 * MINUTE)),
+      'unrest:events:v1': JSON.stringify(seedEnvelope(payload, Date.now() - 121 * MINUTE)),
     });
     assert.equal('unrest:events:v1' in (await fetchInputData()), false);
   });
 
-  it('never age-gates the bare flights keys', async () => {
-    // No `_seed` means no fetchedAt to judge, and these keys are the only ones
-    // still keeping the military domain alive today.
-    const payload = { flights: [{ hex: 'ae1234', type: 'bomber' }], fetchedAt: now - 48 * 60 * MINUTE };
+  it('keeps a bare flights payload inside the military freshness budget', async () => {
+    const payload = { flights: [{ hex: 'ae1234', type: 'bomber' }], fetchedAt: Date.now() - 29 * MINUTE };
     stubPipeline({ 'military:flights:v1': JSON.stringify(payload) });
 
     const data = await fetchInputData();
     assert.deepEqual(data['military:flights:v1'], payload);
+  });
+
+  it('drops both bare flights keys past the military freshness budget', async () => {
+    const payload = { flights: [{ hex: 'ae1234', type: 'bomber' }], fetchedAt: Date.now() - 31 * MINUTE };
+    stubPipeline({
+      'military:flights:v1': JSON.stringify(payload),
+      'military:flights:stale:v1': JSON.stringify(payload),
+    });
+
+    const data = await fetchInputData();
+    assert.equal('military:flights:v1' in data, false);
+    assert.equal('military:flights:stale:v1' in data, false);
+  });
+
+  for (const { name, fetchedAt } of [
+    { name: 'missing', fetchedAt: () => undefined },
+    { name: 'string', fetchedAt: () => 'not-a-number' },
+    { name: 'non-finite', fetchedAt: () => Number.POSITIVE_INFINITY },
+    { name: 'future', fetchedAt: () => Date.now() + MINUTE },
+  ]) {
+    it(`rejects a bare flights payload with a ${name} fetchedAt`, async () => {
+      const payload = { flights: [{ hex: 'ae1234', type: 'bomber' }] };
+      const value = fetchedAt();
+      if (value !== undefined) payload.fetchedAt = value;
+      stubPipeline({ 'military:flights:v1': JSON.stringify(payload) });
+
+      const warnings = [];
+      console.warn.mock.mockImplementation((...args) => warnings.push(args));
+      const data = await fetchInputData();
+
+      assert.equal('military:flights:v1' in data, false);
+      assert.equal(warnings.length, 1);
+      assert.deepEqual(warnings[0][1].byReason, {
+        invalid_fetched_at: 1,
+        missing: 8,
+      });
+      assert.equal(JSON.stringify(warnings).includes(String(value)), false);
+    });
+  }
+});
+
+describe('military flight observation timestamps', () => {
+  it('uses the producer lastSeenMs instead of making an old flight current', () => {
+    const lastSeenMs = Date.now() - 2 * 60 * MINUTE;
+    const signals = collectMilitarySignals([{
+      hexCode: 'ae1234',
+      aircraftType: 'bomber',
+      lat: 35.1,
+      lon: 33.4,
+      lastSeenMs,
+    }]);
+
+    assert.equal(signals.length, 1);
+    assert.equal(signals[0].timestamp, lastSeenMs);
+  });
+
+  it('filters a producer lastSeenMs older than the 24-hour window', () => {
+    const signals = collectMilitarySignals([{
+      hexCode: 'ae1234',
+      aircraftType: 'bomber',
+      lat: 35.1,
+      lon: 33.4,
+      lastSeenMs: Date.now() - 24 * 60 * MINUTE - MINUTE,
+    }]);
+
+    assert.deepEqual(signals, []);
+  });
+
+  it('parses and filters an old numeric lastSeenMs string', () => {
+    const signals = collectMilitarySignals([{
+      hexCode: 'ae1234',
+      aircraftType: 'bomber',
+      lat: 35.1,
+      lon: 33.4,
+      lastSeenMs: String(Date.now() - 24 * 60 * MINUTE - MINUTE),
+    }]);
+
+    assert.deepEqual(signals, []);
+  });
+
+  it('rejects an invalid supplied lastSeenMs string', () => {
+    const signals = collectMilitarySignals([{
+      hexCode: 'ae1234',
+      aircraftType: 'bomber',
+      lat: 35.1,
+      lon: 33.4,
+      lastSeenMs: 'not-a-timestamp',
+    }]);
+
+    assert.deepEqual(signals, []);
+  });
+
+  it('rejects a future lastSeenMs value', () => {
+    const signals = collectMilitarySignals([{
+      hexCode: 'ae1234',
+      aircraftType: 'bomber',
+      lat: 35.1,
+      lon: 33.4,
+      lastSeenMs: Date.now() + MINUTE,
+    }]);
+
+    assert.deepEqual(signals, []);
+  });
+});
+
+describe('economic record validation', () => {
+  it('skips a quote with a string change while retaining a valid quote', () => {
+    const signals = collectEconomicSignals([
+      { symbol: 'BAD', display: 'Malformed', price: 100, change: '2.5' },
+      { symbol: 'CL=F', display: 'Crude Oil', price: 75, change: 2.5 },
+    ], []);
+
+    assert.equal(signals.length, 1);
+    assert.equal(signals[0].symbol, 'CL=F');
+    assert.equal(signals[0].label, 'Crude Oil +2.5%');
   });
 });
