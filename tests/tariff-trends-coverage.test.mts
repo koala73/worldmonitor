@@ -28,6 +28,7 @@ import {
   TARIFF_TREND_REASON as R,
 } from '../server/worldmonitor/trade/v1/get-tariff-trends';
 import { GENERATED_MESSAGE_RULES } from '../src/generated/server/request_validation';
+import { validateGeneratedRequest } from '../server/request-validator';
 import {
   TARIFF_COVERAGE_KEY,
   TARIFF_KEY_PREFIX,
@@ -206,6 +207,22 @@ describe('seeder and handler agree on the cache contract', () => {
     assert.equal(rule.fields.reportingCountry.stringPattern, '^([0-9]{3})?$');
     assert.equal(rule.fields.partnerCountry.stringPattern, '^([0-9]{3})?$');
     assert.equal(rule.fields.productSector.stringPattern, '^([a-zA-Z0-9_-]{0,16})?$');
+  });
+
+  test('the gateway rejects the same inputs with a 400 before the handler runs', () => {
+    assert.equal(validateGeneratedRequest('getTariffTrends', { reportingCountry: '', partnerCountry: '', productSector: '', years: 0 }), undefined);
+    assert.equal(validateGeneratedRequest('getTariffTrends', { reportingCountry: '840', partnerCountry: '000', productSector: 'all', years: 30 }), undefined);
+    for (const body of [
+      { reportingCountry: 'XX', partnerCountry: '', productSector: '', years: 0 },
+      { reportingCountry: '8400', partnerCountry: '', productSector: '', years: 0 },
+      { reportingCountry: '', partnerCountry: '15', productSector: '', years: 0 },
+      { reportingCountry: '', partnerCountry: '', productSector: 'x'.repeat(17), years: 0 },
+      { reportingCountry: '', partnerCountry: '', productSector: '', years: 31 },
+      { reportingCountry: '', partnerCountry: '', productSector: '', years: -1 },
+      { reportingCountry: '', partnerCountry: '', productSector: '', years: Number.NaN },
+    ]) {
+      assert.ok(validateGeneratedRequest('getTariffTrends', body), `expected a violation for ${JSON.stringify(body)}`);
+    }
   });
 
   test('handler and seeder share the same key prefix and coverage key', () => {

@@ -1198,7 +1198,16 @@ export async function publishTariffTrends({ trends, manifest }) {
     console.warn('  Tariff trends: no keys written; leaving the previous seed-meta record to age out');
     return;
   }
-  await writeSeedMeta(TARIFF_KEY_PREFIX, written, TARIFF_META_KEY);
+  // The meta record is what health reads as "this fleet is fresh", so a write
+  // rejection must NOT abort the run mid-fetchAll and skip the remaining key
+  // writes (customs revenue, resilient indices) — log and keep going; the
+  // previous meta record then ages out on its own TTL instead of crashing the
+  // seeder. Mirrors the isolation policy in _seed-utils.mjs.
+  try {
+    await writeSeedMeta(TARIFF_KEY_PREFIX, written, TARIFF_META_KEY);
+  } catch (err) {
+    console.warn(`  Tariff trends: seed-meta write failed: ${err?.message || err}`);
+  }
 }
 
 // ─── US Treasury Customs Revenue ───
