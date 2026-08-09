@@ -2926,10 +2926,9 @@ export class PanelLayoutManager implements AppModule {
         normalized = { ...normalized, resilienceScore: false };
       }
       // MapContainer also sanitizes at the renderer boundary, but update the
-      // context and persisted URL preference with the effective state first.
-      // Otherwise a settled-free user can have the locked layer stripped from
-      // the renderer while ctx.mapLayers/localStorage retain the stale `true`
-      // value and a later preference/URL reapplication resurrects it (#6045).
+      // URL-derived context with the effective display state first. A shared
+      // link is not a user preference, so it must never overwrite the saved
+      // (and cloud-synced) map-layer selection.
       if (shouldSanitizeLockedLayers(
         hasPremiumAccess(getAuthState()),
         isProTierResolved(),
@@ -2939,7 +2938,6 @@ export class PanelLayoutManager implements AppModule {
       }
       this.ctx.initialUrlState.layers = normalized;
       this.ctx.mapLayers = normalized;
-      saveToStorage(STORAGE_KEYS.mapLayers, normalized);
       this.ctx.map.setLayers(normalized);
     }
 

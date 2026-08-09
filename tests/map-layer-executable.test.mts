@@ -23,6 +23,7 @@ import {
   isLayerExecutable,
   isLayerEntitled,
   isLayerToggleAllowed,
+  sanitizeLayersForVariant,
   sanitizeLockedLayers,
   sanitizeLockedLayersWithOwnership,
   restoreGateOwnedLockedLayers,
@@ -185,6 +186,32 @@ describe('sanitizeLockedLayers — free-user stuck-state heal', () => {
 });
 
 describe('locked map-layer ownership', () => {
+  // Regression: App.sanitizeMapLayersForTier's premium branch guarded its
+  // storage write with `restored === layers`, where `restored` came out of
+  // sanitizeLayersForVariant. That helper spreads its input, so the identity
+  // check was ALWAYS false and the branch persisted on every pass — which is
+  // how a `?layers=` deep link came to overwrite the saved (cloud-synced)
+  // layer preference. Value comparison is the only correct check here.
+  test('sanitizeLayersForVariant never returns its input, so identity guards are dead', () => {
+    const layers = {
+      conflicts: true,
+      resilienceScore: false,
+    } as unknown as MapLayers;
+
+    const out = sanitizeLayersForVariant(layers, 'full');
+
+    assert.notEqual(
+      out,
+      layers,
+      'a fresh object means `out === layers` can never short-circuit a write',
+    );
+    assert.equal(
+      mapLayerStatesEqual(out, layers),
+      true,
+      'mapLayerStatesEqual is the comparison that actually detects "nothing changed"',
+    );
+  });
+
   test('compares layer snapshots semantically instead of by object identity', () => {
     const layers = { conflicts: true, resilienceScore: false } as unknown as MapLayers;
     assert.equal(mapLayerStatesEqual(layers, { ...layers }), true);

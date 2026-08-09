@@ -220,4 +220,63 @@ describe("userPreferences.setPreferences write rate limit", () => {
 
     await expectRateLimited(writePref(t, USER_A, 0));
   });
+
+  test("preserves ownership sidecars omitted by an older writer", async () => {
+    vi.spyOn(Date, "now").mockReturnValue(TEST_NOW);
+    const t = makeT();
+    const sourceOwnership = "worldmonitor-free-tier-source-ownership";
+    const layerOwnership = "worldmonitor-free-tier-layer-ownership";
+
+    await expect(
+      t.withIdentity(USER_A).mutation(api.userPreferences.setPreferences, {
+        variant: "full",
+        data: {
+          theme: "dark",
+          [sourceOwnership]: '["source-a"]',
+          [layerOwnership]: '["resilienceScore"]',
+        },
+        expectedSyncVersion: 0,
+        schemaVersion: 6,
+      }),
+    ).resolves.toEqual({ ok: true, syncVersion: 1 });
+
+    await expect(
+      t.withIdentity(USER_A).mutation(api.userPreferences.setPreferences, {
+        variant: "full",
+        data: { theme: "light" },
+        expectedSyncVersion: 1,
+        schemaVersion: 6,
+      }),
+    ).resolves.toEqual({ ok: true, syncVersion: 2 });
+
+    const preserved = await t.withIdentity(USER_A).query(api.userPreferences.getPreferences, {
+      variant: "full",
+    });
+    expect(preserved?.data).toEqual({
+      theme: "light",
+      [sourceOwnership]: '["source-a"]',
+      [layerOwnership]: '["resilienceScore"]',
+    });
+
+    await expect(
+      t.withIdentity(USER_A).mutation(api.userPreferences.setPreferences, {
+        variant: "full",
+        data: {
+          theme: "light",
+          [sourceOwnership]: "[]",
+          [layerOwnership]: "[]",
+        },
+        expectedSyncVersion: 2,
+        schemaVersion: 6,
+      }),
+    ).resolves.toEqual({ ok: true, syncVersion: 3 });
+
+    const cleared = await t.withIdentity(USER_A).query(api.userPreferences.getPreferences, {
+      variant: "full",
+    });
+    expect(cleared?.data).toMatchObject({
+      [sourceOwnership]: "[]",
+      [layerOwnership]: "[]",
+    });
+  });
 });
