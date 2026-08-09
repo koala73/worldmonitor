@@ -109,7 +109,7 @@
     "test:e2e": "npm run test:e2e:runtime && npm run test:e2e:full && npm run test:e2e:tech && npm run test:e2e:finance && npm run test:e2e:energy",
     "report:geo-coverage": "node scripts/geo-coverage-report.mjs",
     "test:data": "tsx --test --test-concurrency=16 tests/*.test.mjs tests/*.test.mts cli/test/*.test.mjs api/security/report.test.mjs",
-    "test:resilience-validation-smoke": "tsx --test tests/resilience-validation-artifacts-schema.test.mts tests/benchmark-resilience-external.test.mjs tests/backtest-resilience-outcomes.test.mjs tests/resilience-sensitivity-v2.test.mts tests/seed-bundle-resilience-validation.test.mjs tests/resilience-validation-import-graph.test.mjs",
+    "test:resilience-validation-smoke": "tsx --test tests/resilience-validation-artifacts-schema.test.mts tests/benchmark-resilience-external.test.mjs tests/backtest-resilience-outcomes.test.mjs tests/resilience-sensitivity-v2.test.mts tests/resilience-validation-import-graph.test.mjs",
     "dryrun:resilience": "node --import tsx/esm scripts/dry-run-resilience-rebalance.mjs",
     "test:feeds": "node scripts/validate-rss-feeds.mjs",
     "test:feeds:ci": "node scripts/validate-rss-feeds.mjs --ci",

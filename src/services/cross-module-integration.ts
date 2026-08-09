@@ -817,11 +817,6 @@ export function getRecentAlerts(hours: number = 24): UnifiedAlert[] {
   return alerts.filter(a => a.timestamp.getTime() > cutoff);
 }
 
-export function clearAlerts(): void {
-  alerts.length = 0;
-  previousCIIScores.clear();
-}
-
 export function getAlertCount(): { critical: number; high: number; medium: number; low: number } {
   return {
     critical: alerts.filter(a => a.priority === 'critical').length,

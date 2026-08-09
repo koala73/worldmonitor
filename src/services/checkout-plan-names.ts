@@ -30,6 +30,3 @@ export function resolvePlanDisplayName(planKey: unknown): string {
   if (typeof planKey !== 'string' || planKey.length === 0) return 'Pro';
   return PLAN_DISPLAY_NAMES[planKey] ?? 'Pro';
 }
-
-/** Exposed only for tests — do not use in runtime code. */
-export const KNOWN_PLAN_KEYS = Object.keys(PLAN_DISPLAY_NAMES);

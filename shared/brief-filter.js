@@ -182,7 +182,7 @@ function clip(v, cap) {
  * of every word, leaves already-uppercase letters alone. Handles the
  * full canonical EventCategory enum (single-word: `'conflict' \u2192 'Conflict'`)
  * AND space-bearing legacy categories that other `filterTopStories`
- * callers pass through (e.g. `composeBriefForRule` with `'world politics'
+ * callers pass through (e.g. `composeBriefFromDigestStories` with `'world politics'
  * \u2192 'World Politics'`). First-letter-only would corrupt the multi-word
  * case (`'world politics' \u2192 'World politics'`).
  *
@@ -537,7 +537,7 @@ export function filterTopStories({ stories, sensitivity, maxStories = 12, maxPer
     //      construction (see digestStoryToUpstreamTopStory fallback).
     //      Multi-story clusters: shared identity for every member.
     //   2. raw.hash — back-compat for paths that bypass the cluster
-    //      materializer (e.g. composeBriefForRule against
+    //      materializer (e.g. composeBriefFromDigestStories against
     //      news:insights:v1, which feeds raw upstream stories without
     //      a clusterRepHash field). Singleton cluster identity is the
     //      story's own hash, so the contract still holds.
