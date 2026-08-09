@@ -481,7 +481,10 @@ export async function purgeAccountScanStateBatch(
     for (const obligation of obligations) await ctx.db.delete(obligation._id);
     await ctx.db.delete(work._id);
   }
-  if (works.length > SCAN_PURGE_WORK_BATCH_SIZE) return { complete: false };
+  if (works.length > SCAN_PURGE_WORK_BATCH_SIZE) {
+    await updateAccountDueFromWork(ctx, ownerAccountId);
+    return { complete: false };
+  }
 
   const obligationPage = await ctx.db
     .query("companyMonitoringScanObligations")
@@ -490,6 +493,7 @@ export async function purgeAccountScanStateBatch(
   for (const obligation of obligationPage.slice(0, SCAN_PURGE_OBLIGATION_BATCH_SIZE)) {
     await ctx.db.delete(obligation._id);
   }
+  await updateAccountDueFromWork(ctx, ownerAccountId);
   return { complete: obligationPage.length <= SCAN_PURGE_OBLIGATION_BATCH_SIZE };
 }
 

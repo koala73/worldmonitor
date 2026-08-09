@@ -186,6 +186,10 @@ describe("Company Monitoring lifecycle scan integration", () => {
       purgeGeneration: lapsed!.purgeGeneration,
     })).toEqual({ status: "companies" });
     expect(await scanRows(t)).toEqual({ obligations: [], work: [] });
+    const scanClearedAccount = await accountFor(t, OWNER_A);
+    expect(scanClearedAccount?.nextScanDueAt).toBeUndefined();
+    expect(scanClearedAccount?.nextExaScanDueAt).toBeUndefined();
+    expect(scanClearedAccount?.nextXScanDueAt).toBeUndefined();
     const companyBeforePayload = await t.run(async (ctx) =>
       ctx.db
         .query("companyMonitoringCompanies")
