@@ -19,6 +19,7 @@ import {
 import { requireUserId, resolveUserIdentity } from "../lib/auth";
 import { ANON_ID_V4_REGEX, signAnonClaimToken, signUserId } from "../lib/identitySigning";
 import { resolveProductToPlan } from "../config/productCatalog";
+import { isTrustedReturnUrlOrigin } from "./returnUrlOrigin";
 import {
   CHECKOUT_RATE_LIMITED,
   CHECKOUT_RATE_LIMIT_MAX_ATTEMPTS,
@@ -177,18 +178,7 @@ async function _createCheckoutSession(
       throw new ConvexError("Invalid returnUrl: must be a valid absolute URL");
     }
 
-    const allowedOrigins = new Set([
-      "https://worldmonitor.app",
-      "https://www.worldmonitor.app",
-      "https://app.worldmonitor.app",
-      "https://tech.worldmonitor.app",
-      "https://finance.worldmonitor.app",
-      "https://commodity.worldmonitor.app",
-      "https://happy.worldmonitor.app",
-      "https://energy.worldmonitor.app",
-      new URL(siteUrl).origin,
-    ]);
-    if (!allowedOrigins.has(parsedReturnUrl.origin)) {
+    if (!isTrustedReturnUrlOrigin(parsedReturnUrl.origin, new URL(siteUrl).origin)) {
       throw new ConvexError(
         "Invalid returnUrl: must use a trusted worldmonitor.app origin",
       );
