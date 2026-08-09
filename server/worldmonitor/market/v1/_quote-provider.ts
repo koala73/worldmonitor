@@ -183,7 +183,17 @@ export class AlphaVantageQuoteProvider implements MarketQuoteProvider {
         }
         return { status: 'error', message: throttle.slice(0, 120) };
       }
-      if (json['Error Message']) return { status: 'not_found' };
+      // AV uses "Error Message" for invalid keys/params as well as bad symbols.
+      // Only treat as not_found when the text clearly names an invalid symbol;
+      // otherwise surface as error so the cascade does not negative-cache a
+      // credential or config failure for 15 minutes.
+      if (json['Error Message']) {
+        const msg = json['Error Message'];
+        if (/invalid (api )?call|symbol|ticker/i.test(msg)) {
+          return { status: 'not_found' };
+        }
+        return { status: 'error', message: msg.slice(0, 120) };
+      }
 
       const gq = json['Global Quote'];
       if (!gq || typeof gq !== 'object') return { status: 'not_found' };
@@ -238,7 +248,7 @@ export class CascadeQuoteProvider implements MarketQuoteProvider {
       return { status: 'error', message: 'no provider can quote symbol' };
     }
 
-    let sawNotFound = false;
+    let notFoundCount = 0;
     let sawRateLimited = false;
     let lastError: QuoteProviderOutcome | null = null;
 
@@ -250,7 +260,7 @@ export class CascadeQuoteProvider implements MarketQuoteProvider {
         return outcome;
       }
       if (outcome.status === 'not_found') {
-        sawNotFound = true;
+        notFoundCount += 1;
         continue;
       }
       if (outcome.status === 'rate_limited') {
@@ -262,8 +272,11 @@ export class CascadeQuoteProvider implements MarketQuoteProvider {
       console.warn(`[quote-provider] ${provider.name} error for ${symbol}: ${outcome.message}`);
     }
 
-    if (sawNotFound) return { status: 'not_found' };
-    if (sawRateLimited && !lastError) return { status: 'rate_limited' };
+    // Only a unanimous not_found is definitive — the handler negative-caches it
+    // for 15m. A mixed not_found + rate_limited/error must NOT cache: the
+    // second provider never confirmed the symbol is missing.
+    if (notFoundCount === candidates.length) return { status: 'not_found' };
+    if (sawRateLimited) return { status: 'rate_limited' };
     return lastError ?? { status: 'error', message: 'all providers failed' };
   }
 }

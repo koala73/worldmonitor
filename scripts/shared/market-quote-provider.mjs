@@ -189,5 +189,5 @@ export async function fetchAuthorizedEquityQuotes({
  * @returns {string}
  */
 export function authorizedProvidersMissingReason() {
-  return 'ALPHA_VANTAGE_API_KEY and FINNHUB_API_KEY not configured';
+  return 'FINNHUB_API_KEY and ALPHA_VANTAGE_API_KEY not configured';
 }

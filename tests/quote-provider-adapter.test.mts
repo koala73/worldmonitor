@@ -123,11 +123,18 @@ describe('AlphaVantageQuoteProvider', () => {
     assert.equal(out.status, 'not_found');
   });
 
-  it('maps Error Message to not_found', async () => {
+  it('maps invalid-symbol Error Message to not_found', async () => {
     globalThis.fetch = (async () =>
-      jsonResponse({ 'Error Message': 'Invalid API call' })) as typeof fetch;
+      jsonResponse({ 'Error Message': 'Invalid API call. Please retry or visit the documentation.' })) as typeof fetch;
     const out = await new AlphaVantageQuoteProvider('av-key').fetchQuote('@@@');
     assert.equal(out.status, 'not_found');
+  });
+
+  it('maps non-symbol Error Message to error (not negative-cached as missing)', async () => {
+    globalThis.fetch = (async () =>
+      jsonResponse({ 'Error Message': 'the parameter apikey is invalid or missing' })) as typeof fetch;
+    const out = await new AlphaVantageQuoteProvider('bad-key').fetchQuote('AAPL');
+    assert.equal(out.status, 'error');
   });
 });
 
@@ -209,6 +216,55 @@ describe('CascadeQuoteProvider', () => {
     const out = await cascade.fetchQuote('CL=F');
     assert.equal(out.status, 'error');
     assert.equal(calls, 0);
+  });
+
+  it('does not treat mixed not_found + rate_limited as definitive not_found', async () => {
+    globalThis.fetch = (async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes('finnhub.io')) {
+        return jsonResponse({ c: 0, dp: 0, h: 0, l: 0, o: 0, pc: 0, t: 0 });
+      }
+      return new Response('', { status: 429 });
+    }) as typeof fetch;
+
+    const out = await new CascadeQuoteProvider([
+      new FinnhubQuoteProvider('fh'),
+      new AlphaVantageQuoteProvider('av'),
+    ]).fetchQuote('RIVN');
+    // Must not negative-cache: AV never confirmed the symbol is missing.
+    assert.equal(out.status, 'rate_limited');
+  });
+
+  it('does not treat mixed not_found + error as definitive not_found', async () => {
+    globalThis.fetch = (async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes('finnhub.io')) {
+        return jsonResponse({ c: 0, dp: 0, h: 0, l: 0, o: 0, pc: 0, t: 0 });
+      }
+      return new Response('', { status: 503 });
+    }) as typeof fetch;
+
+    const out = await new CascadeQuoteProvider([
+      new FinnhubQuoteProvider('fh'),
+      new AlphaVantageQuoteProvider('av'),
+    ]).fetchQuote('RIVN');
+    assert.equal(out.status, 'error');
+  });
+
+  it('returns not_found only when every provider agrees', async () => {
+    globalThis.fetch = (async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes('finnhub.io')) {
+        return jsonResponse({ c: 0, dp: 0, h: 0, l: 0, o: 0, pc: 0, t: 0 });
+      }
+      return jsonResponse({ 'Global Quote': {} });
+    }) as typeof fetch;
+
+    const out = await new CascadeQuoteProvider([
+      new FinnhubQuoteProvider('fh'),
+      new AlphaVantageQuoteProvider('av'),
+    ]).fetchQuote('NOSUCH');
+    assert.equal(out.status, 'not_found');
   });
 });
 

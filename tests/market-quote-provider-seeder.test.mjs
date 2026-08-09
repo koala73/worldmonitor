@@ -103,7 +103,9 @@ describe('fetchAuthorizedEquityQuotes', () => {
   });
 
   it('reports the shared missing-credentials reason', () => {
-    assert.match(authorizedProvidersMissingReason(), /ALPHA_VANTAGE_API_KEY/);
-    assert.match(authorizedProvidersMissingReason(), /FINNHUB_API_KEY/);
+    assert.equal(
+      authorizedProvidersMissingReason(),
+      'FINNHUB_API_KEY and ALPHA_VANTAGE_API_KEY not configured',
+    );
   });
 });
