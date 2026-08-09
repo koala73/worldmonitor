@@ -454,6 +454,38 @@ curl -s https://worldmonitor.app/mcp \
 
 </CodeGroup>
 
+### `get_wto_trade_flows`
+
+WTO merchandise trade flows for one reporting country versus the World, over a configurable year window. Data comes from the WTO `ITS_MTV_AX` (exports) and `ITS_MTV_AM` (imports) indicators, seeded on a 6-hour cadence; the tool reads the same seeded snapshot the dashboard serves — it never calls WTO per request.
+
+**Parameters (tool-specific):**
+
+| Name | Type | Description |
+|------|------|-------------|
+| `reporter` | string | WTO reporting country as a 3-digit UN M49 code (e.g. "840" = United States). Defaults to "840". The only partner served is the World ("000"); any other partner answers `not_covered`. |
+| `years` | integer | Number of years to look back from the most recent published year, inclusive of both endpoints (10 returns 11 calendar years). Defaults to 10; 30 is the full seeded window. |
+
+**Response distinctions:** `unavailableReason` is the closed `TradeFlowUnavailableReason` enum from the RPC. `TRADE_FLOW_UNAVAILABLE_REASON_NOT_COVERED` is a contract answer — the combination is simply outside seeded coverage, a retry cannot help. Every other non-UNSPECIFIED reason names a fault (`seed_missing`, `coverage_unknown`, `cache_unavailable`), with `upstreamUnavailable: true`.
+
+- **API endpoint:** `GET /api/trade/v1/get-trade-flows`
+- **Kind:** RPC proxy over the canonical trade-flows route (the handler owns window slicing and miss classification).
+- **Freshness budget:** up to **7 h** before `stale` (6 h seeder cadence plus one hour of grace).
+
+<CodeGroup>
+
+```bash curl
+curl -s https://worldmonitor.app/mcp \
+  -H "X-WorldMonitor-Key: $WM_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "jsonrpc":"2.0","id":1,
+    "method":"tools/call",
+    "params":{"name":"get_wto_trade_flows","arguments":{"reporter":"840","years":20}}
+  }'
+```
+
+</CodeGroup>
+
 ### `get_consumer_prices`
 
 Per-country consumer-prices intelligence: 30-day overview, category-level inflation, retailer spread (essentials basket), top movers, and source freshness. Requires country_code (currently only 'ae' is seeded).
