@@ -846,6 +846,7 @@ export async function resolveRailwayReconcileControl(uncheckedRequest, {
     approver: request.approver,
     reason: request.reason,
     evidenceDigest,
+    intentDigest: convergence?.intentDigest ?? null,
     triggeringActor: request.triggeringActor,
     operatorRunId: request.operatorRunId,
     operatorRunAttempt: request.operatorRunAttempt,

@@ -363,6 +363,32 @@ describe('stale Railway reconcile classification', () => {
     assert.equal(stillAuthoritative.outcome, 'WAITING_FOR_ACTIVE_RUN');
   });
 
+  it('retires an old mutation marker as soon as an operator-authorized retry supersedes it', () => {
+    const historical = {
+      ...activeRun({ id: 717, minutesAgo: 30, stepName: MUTATION_STARTED_STEP_NAME }),
+      status: 'completed',
+      conclusion: 'failure',
+    };
+    const result = classifyWatchdogSnapshot({
+      now: NOW,
+      main: { sha: HEAD, gate: { state: 'success' } },
+      runs: [historical],
+      controlState: {
+        barrier: null,
+        lease: null,
+        dispatchHolds: [{ state: 'DISPATCH_HELD', recoveryAttemptId: 'operator-retry-1', headSha: HEAD }],
+        currentAttempt: {
+          attemptId: 'operator-retry-1',
+          state: 'OPERATOR_RESOLVED',
+          headSha: HEAD,
+          supersededRuns: [{ runId: '717', runAttempt: 1 }],
+        },
+        lastAccepted: null,
+      },
+    });
+    assert.notEqual(result.outcome, 'MANUAL_REQUIRED_AFTER_MUTATION');
+  });
+
   it('keeps exact durable acceptance supersession after currentAttempt advances', () => {
     const acceptedAt = NOW - 10 * 60_000;
     const acceptedMarker = {
@@ -919,7 +945,7 @@ describe('allowlisted GitHub watchdog transport', () => {
     }
   });
 
-  it('keeps a 792-run inventory while hydrating only active, recent, and durably referenced runs', async () => {
+  it('classifies only active, recent, failed, and durably referenced runs whose jobs were hydrated', async () => {
     const selectedIds = new Set([2, 3, 4, 5, 6, 7, 8, 9]);
     const allRuns = Array.from({ length: 792 }, (_, index) => rawRun({ id: index + 1 }));
     allRuns[1] = rawRun({ id: 2, status: 'in_progress', conclusion: null });
@@ -998,10 +1024,10 @@ describe('allowlisted GitHub watchdog transport', () => {
       clock: () => NOW,
     });
 
-    assert.equal(snapshot.runs.length, 792);
+    assert.equal(snapshot.runs.length, selectedIds.size);
     assert.deepEqual(new Set(hydratedIds), selectedIds);
-    assert.equal(snapshot.runs.find(({ id }) => id === 1).hydrated, false);
-    assert.ok([...selectedIds].every((id) => snapshot.runs.find((run) => run.id === id)?.hydrated === true));
+    assert.ok(snapshot.runs.every((run) => run.hydrated === true));
+    assert.equal(snapshot.runs.some(({ id }) => id === 1), false);
     assert.ok(client.requestCount < 40, `expected bounded requests, received ${client.requestCount}`);
     assert.ok(client.requestCount <= 250);
   });
@@ -1237,6 +1263,21 @@ describe('allowlisted GitHub watchdog transport', () => {
       (error) => error instanceof GitHubWatchdogError && error.ambiguous === true,
     );
     assert.equal(calls, 1);
+  });
+
+  it('keeps a dispatch hold on GitHub 403 because secondary rate limits are transient', async () => {
+    const client = new GitHubWatchdogClient({
+      repository: 'o/r',
+      token: 'token',
+      fetchImpl: async () => new Response('secondary rate limit', { status: 403 }),
+    });
+    await assert.rejects(
+      client.dispatchRecovery({ recoveryAttemptId: 'recovery-rate-limited', expectedHeadSha: HEAD }),
+      (error) => error instanceof GitHubWatchdogError
+        && error.code === 'GITHUB_DISPATCH_AMBIGUOUS'
+        && error.status === 403
+        && error.ambiguous === true,
+    );
   });
 
   it('treats a malformed successful dispatch response as permanently ambiguous without retry', async () => {

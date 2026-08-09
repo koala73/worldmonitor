@@ -5,7 +5,10 @@ import { describe, it } from 'node:test';
 import {
   CONVERGENCE_READ_CONCURRENCY,
   ConvergenceError,
+  assertRailwayManifestContext,
+  buildStrictDriftArgs,
   classifyRelevantDeployment,
+  createStrictDriftEnv,
   waitForRailwayDeployConvergence,
 } from '../scripts/wait-railway-deploy-convergence.mjs';
 import { createIntentManifest, createResultManifest } from '../scripts/railway-reconcile-manifest.mjs';
@@ -47,12 +50,14 @@ function manifest({ outcome = 'MUTATION_COMPLETED', entries } = {}) {
 }
 
 describe('relevant Railway deployment terminal classification', () => {
-  it('accepts only SUCCESS, waits only known in-flight states, and fails every other terminal', () => {
-    assert.equal(classifyRelevantDeployment('SUCCESS'), 'ACCEPTED');
+  it('uses the shared deployed-source, in-flight, and failure status semantics', () => {
+    for (const status of ['SUCCESS', 'CRASHED', 'REMOVED', 'SLEEPING']) {
+      assert.equal(classifyRelevantDeployment(status), 'ACCEPTED', status);
+    }
     for (const status of ['QUEUED', 'WAITING', 'INITIALIZING', 'BUILDING', 'DEPLOYING']) {
       assert.equal(classifyRelevantDeployment(status), 'WAIT', status);
     }
-    for (const status of ['FAILED', 'CRASHED', 'REMOVED', 'SKIPPED', 'SLEEPING']) {
+    for (const status of ['FAILED', 'SKIPPED']) {
       assert.equal(classifyRelevantDeployment(status), 'FAILED', status);
     }
     for (const status of [null, undefined, 'NEEDS_APPROVAL', 'A_STATUS_FROM_2027']) {
@@ -62,6 +67,24 @@ describe('relevant Railway deployment terminal classification', () => {
 });
 
 describe('waitForRailwayDeployConvergence', () => {
+  it('types deterministic Railway project and environment mismatches', () => {
+    const result = manifest();
+    assert.throws(
+      () => assertRailwayManifestContext(result, {
+        projectId: 'other-project',
+        environmentId: result.intent.environmentId,
+      }),
+      (error) => error instanceof ConvergenceError && error.code === 'MANIFEST_PROJECT_MISMATCH',
+    );
+    assert.throws(
+      () => assertRailwayManifestContext(result, {
+        projectId: result.intent.projectId,
+        environmentId: 'other-environment',
+      }),
+      (error) => error instanceof ConvergenceError && error.code === 'MANIFEST_ENVIRONMENT_MISMATCH',
+    );
+  });
+
   it('stays isolated from seed freshness and aggregate health acceptance', () => {
     const source = readFileSync(new URL('../scripts/wait-railway-deploy-convergence.mjs', import.meta.url), 'utf8');
     assert.doesNotMatch(source, /check-seed-freshness|\/api\/health|seed-freshness-baseline/);
@@ -107,6 +130,30 @@ describe('waitForRailwayDeployConvergence', () => {
       verifyStrictDrift: async () => ({ ok: true, blocking: [], missing: [], duplicates: [], unexpected: [] }),
     });
     assert.deepEqual(result.acceptedDeploymentIds, ['dep-active']);
+  });
+
+  it('accepts cron terminal states only after strict exact-head drift is zero', async () => {
+    const adopted = manifest({
+      outcome: 'NO_MUTATION',
+      entries: [{
+        service: 'seed-a', serviceId: 'svc-a', action: 'ADOPT', outcome: 'ALREADY_ACTIVE',
+        deploymentId: null, observedDeploymentId: 'dep-cron', reason: 'HEAD_ALREADY_ACTIVE',
+      }],
+    });
+    for (const status of ['CRASHED', 'REMOVED', 'SLEEPING']) {
+      let strictReads = 0;
+      const result = await waitForRailwayDeployConvergence({
+        manifest: adopted,
+        expectedHead: HEAD,
+        readDeployment: async ({ observedDeploymentId }) => ({ id: observedDeploymentId, status }),
+        verifyStrictDrift: async () => {
+          strictReads += 1;
+          return { ok: true, blocking: [], missing: [], duplicates: [], unexpected: [] };
+        },
+      });
+      assert.deepEqual(result.acceptedDeploymentIds, ['dep-cron'], status);
+      assert.equal(strictReads, 1, status);
+    }
   });
 
   it('accepts an empty no-mutation plan only after strict full-fleet drift', async () => {
@@ -250,12 +297,11 @@ describe('waitForRailwayDeployConvergence', () => {
     }
   });
 
-  it('fails closed on terminal failure, unknown status, missing ID, and query failure', async () => {
+  it('fails closed on terminal failure, unknown status, and missing ID', async () => {
     const cases = [
       { read: async () => ({ id: 'dep-a', status: 'FAILED' }), code: 'DEPLOYMENT_TERMINAL_FAILURE' },
       { read: async () => ({ id: 'dep-a', status: 'NEEDS_APPROVAL' }), code: 'DEPLOYMENT_STATUS_UNKNOWN' },
       { read: async () => null, code: 'DEPLOYMENT_MISSING' },
-      { read: async () => { throw new Error('railway unavailable'); }, code: 'DEPLOYMENT_QUERY_FAILED' },
     ];
     for (const { read, code } of cases) {
       await assert.rejects(
@@ -266,6 +312,42 @@ describe('waitForRailwayDeployConvergence', () => {
         (error) => error instanceof ConvergenceError && error.code === code,
       );
     }
+  });
+
+  it('retries transient deployment-read failures but reports an unresolved failure at the deadline', async () => {
+    let now = 0;
+    let reads = 0;
+    const recovered = await waitForRailwayDeployConvergence({
+      manifest: manifest(),
+      expectedHead: HEAD,
+      deadlineMs: 250,
+      pollIntervalMs: 100,
+      now: () => now,
+      sleep: async (ms) => { now += ms; },
+      readDeployment: async () => {
+        reads += 1;
+        if (reads === 1) throw new Error('transient Railway read failure');
+        return { id: 'dep-a', status: 'SUCCESS' };
+      },
+      verifyStrictDrift: async () => ({ ok: true }),
+    });
+    assert.equal(recovered.ok, true);
+    assert.equal(reads, 2);
+
+    now = 0;
+    await assert.rejects(
+      waitForRailwayDeployConvergence({
+        manifest: manifest(),
+        expectedHead: HEAD,
+        deadlineMs: 250,
+        pollIntervalMs: 100,
+        now: () => now,
+        sleep: async (ms) => { now += ms; },
+        readDeployment: async () => { throw new Error('persistent Railway read failure'); },
+        verifyStrictDrift: async () => ({ ok: true }),
+      }),
+      (error) => error instanceof ConvergenceError && error.code === 'DEPLOYMENT_QUERY_FAILED',
+    );
   });
 
   it('times out instead of accepting a perpetually pending deployment', async () => {
@@ -327,5 +409,32 @@ describe('waitForRailwayDeployConvergence', () => {
       }),
       (error) => error instanceof ConvergenceError && error.code === 'STRICT_DRIFT_FAILED',
     );
+  });
+});
+
+describe('strict drift subprocess contract', () => {
+  it('passes every immutable planned service as an explicit expected-service argument', () => {
+    const args = buildStrictDriftArgs(HEAD, 'production', ['seed-a', 'seed-b']);
+    assert.deepEqual(args.slice(1), [
+      '--strict', '--json', '--head', HEAD, '--environment', 'production',
+      '--expected-service', 'seed-a',
+      '--expected-service', 'seed-b',
+    ]);
+  });
+
+  it('passes only Railway read credentials and process support to the strict child', () => {
+    const env = createStrictDriftEnv({
+      PATH: '/runner/bin',
+      RAILWAY_TOKEN: 'viewer-token',
+      RAILWAY_PROJECT_ID: 'project-1',
+      RAILWAY_RECONCILE_VERIFIER_HMAC: 'verifier-secret',
+      GH_TOKEN: 'github-token',
+      RAILWAY_RECONCILE_MUTATION_HMAC: 'mutation-secret',
+    });
+    assert.deepEqual(env, {
+      PATH: '/runner/bin',
+      RAILWAY_PROJECT_ID: 'project-1',
+      RAILWAY_TOKEN: 'viewer-token',
+    });
   });
 });

@@ -6,19 +6,25 @@ import { fileURLToPath } from 'node:url';
 
 import { isMainModule } from './lib/main-module.mjs';
 import {
+  createRailwayCliEnv,
   readArgument,
   readDeployments,
   readRepositoryServices,
   resolveEnvironmentId,
 } from './railway-cli.mjs';
-import { IN_FLIGHT_STATUSES } from './railway-deployments.mjs';
+import {
+  FAILED_STATUSES,
+  IN_FLIGHT_STATUSES,
+  REJECTED_STATUS,
+  RUNNING_STATUSES,
+} from './railway-deployments.mjs';
 import { validateResultManifest } from './railway-reconcile-manifest.mjs';
 
 export const DEFAULT_CONVERGENCE_DEADLINE_MS = 35 * 60 * 1_000;
 export const DEFAULT_CONVERGENCE_POLL_MS = 15 * 1_000;
 export const CONVERGENCE_READ_CONCURRENCY = 8;
 
-const FAILED_TERMINAL_STATUSES = new Set(['FAILED', 'CRASHED', 'REMOVED', 'SKIPPED', 'SLEEPING']);
+const FAILED_TERMINAL_STATUSES = new Set([...FAILED_STATUSES, REJECTED_STATUS]);
 
 export class ConvergenceError extends Error {
   constructor(code, message, { disposition = 'UNCHANGED', cause } = {}) {
@@ -29,8 +35,23 @@ export class ConvergenceError extends Error {
   }
 }
 
+export function assertRailwayManifestContext(manifest, { projectId, environmentId }) {
+  if (projectId !== manifest.intent.projectId) {
+    throw new ConvergenceError(
+      'MANIFEST_PROJECT_MISMATCH',
+      'manifest project does not match RAILWAY_PROJECT_ID',
+    );
+  }
+  if (environmentId !== manifest.intent.environmentId) {
+    throw new ConvergenceError(
+      'MANIFEST_ENVIRONMENT_MISMATCH',
+      'manifest environment does not match the resolved Railway environment',
+    );
+  }
+}
+
 export function classifyRelevantDeployment(status) {
-  if (status === 'SUCCESS') return 'ACCEPTED';
+  if (RUNNING_STATUSES.includes(status)) return 'ACCEPTED';
   if (IN_FLIGHT_STATUSES.includes(status)) return 'WAIT';
   if (FAILED_TERMINAL_STATUSES.has(status)) return 'FAILED';
   return 'UNKNOWN';
@@ -86,6 +107,7 @@ export async function waitForRailwayDeployConvergence({
   }
 
   const accepted = new Set();
+  const queryFailures = new Map();
   const startedAt = now();
   const deadlineAt = startedAt + deadlineMs;
   while (now() < deadlineAt && accepted.size < relevant.length) {
@@ -97,12 +119,10 @@ export async function waitForRailwayDeployConvergence({
         const { entry, deploymentId } = batch[offset];
         const read = reads[offset];
         if (read.status === 'rejected') {
-          throw new ConvergenceError(
-            'DEPLOYMENT_QUERY_FAILED',
-            `deployment history could not be read for ${entry.service}`,
-            { cause: read.reason },
-          );
+          queryFailures.set(deploymentId, { entry, cause: read.reason });
+          continue;
         }
+        queryFailures.delete(deploymentId);
         const deployment = read.value;
         if (!deployment || deployment.id !== deploymentId) {
           throw new ConvergenceError(
@@ -127,6 +147,15 @@ export async function waitForRailwayDeployConvergence({
         }
       }
       if (now() >= deadlineAt) {
+        const unresolvedFailure = [...queryFailures.entries()]
+          .find(([deploymentId]) => !accepted.has(deploymentId));
+        if (unresolvedFailure) {
+          throw new ConvergenceError(
+            'DEPLOYMENT_QUERY_FAILED',
+            `deployment history could not be read for ${unresolvedFailure[1].entry.service}`,
+            { cause: unresolvedFailure[1].cause },
+          );
+        }
         throw new ConvergenceError(
           'CONVERGENCE_TIMEOUT',
           'deployment reads crossed the exact convergence deadline',
@@ -137,6 +166,15 @@ export async function waitForRailwayDeployConvergence({
     if (accepted.size < relevant.length) await sleep(Math.min(pollIntervalMs, Math.max(1, deadlineAt - now())));
   }
   if (accepted.size !== relevant.length) {
+    const unresolvedFailure = [...queryFailures.entries()]
+      .find(([deploymentId]) => !accepted.has(deploymentId));
+    if (unresolvedFailure) {
+      throw new ConvergenceError(
+        'DEPLOYMENT_QUERY_FAILED',
+        `deployment history could not be read for ${unresolvedFailure[1].entry.service}`,
+        { cause: unresolvedFailure[1].cause },
+      );
+    }
     throw new ConvergenceError(
       'CONVERGENCE_TIMEOUT',
       'relevant deployments did not reach accepted terminal states before the deadline',
@@ -191,14 +229,33 @@ export async function waitForRailwayDeployConvergence({
   };
 }
 
-function runStrictDrift(headSha, environment, timeoutMs) {
-  const result = spawnSync(process.execPath, [
+export function buildStrictDriftArgs(headSha, environment, expectedServices) {
+  if (!Array.isArray(expectedServices) || expectedServices.length === 0
+    || expectedServices.some((name) => typeof name !== 'string' || name.length === 0)
+    || new Set(expectedServices).size !== expectedServices.length) {
+    throw new TypeError('strict drift requires immutable unique expected service names');
+  }
+  return [
     fileURLToPath(new URL('./check-railway-deploy-drift.mjs', import.meta.url)),
     '--strict', '--json', '--head', headSha, '--environment', environment,
-  ], {
+    ...expectedServices.flatMap((service) => ['--expected-service', service]),
+  ];
+}
+
+export function createStrictDriftEnv(env = process.env) {
+  return createRailwayCliEnv(env);
+}
+
+function runStrictDrift(headSha, environment, timeoutMs, expectedServices) {
+  const result = spawnSync(process.execPath, buildStrictDriftArgs(
+    headSha,
+    environment,
+    expectedServices,
+  ), {
     encoding: 'utf8',
     maxBuffer: 64 * 1024 * 1024,
     timeout: Math.min(5 * 60 * 1_000, Math.max(1, timeoutMs)),
+    env: createStrictDriftEnv(process.env),
   });
   if (result.signal || result.error) throw result.error ?? new Error('strict drift process timed out');
   let parsed;
@@ -213,23 +270,25 @@ function runStrictDrift(headSha, environment, timeoutMs) {
   return parsed.summary;
 }
 
-async function main() {
-  const manifestPath = readArgument(process.argv, '--manifest', null);
-  const expectedHead = readArgument(process.argv, '--head', null);
-  const environment = readArgument(process.argv, '--environment', 'production');
-  if (!manifestPath || !expectedHead) throw new Error('--manifest and --head are required');
-  const manifest = validateResultManifest(JSON.parse(readFileSync(manifestPath, 'utf8')));
-  if (process.env.RAILWAY_PROJECT_ID !== manifest.intent.projectId) {
-    throw new Error('manifest project does not match RAILWAY_PROJECT_ID');
+export async function verifyRailwayManifest({
+  manifest: uncheckedManifest,
+  expectedHead,
+  environment = 'production',
+  deadlineMs = DEFAULT_CONVERGENCE_DEADLINE_MS,
+}) {
+  const manifest = validateResultManifest(uncheckedManifest);
+  const projectId = process.env.RAILWAY_PROJECT_ID;
+  if (projectId !== manifest.intent.projectId) {
+    assertRailwayManifestContext(manifest, { projectId, environmentId: manifest.intent.environmentId });
   }
-  if (resolveEnvironmentId(environment) !== manifest.intent.environmentId) {
-    throw new Error('manifest environment does not match the resolved Railway environment');
-  }
+  const environmentId = resolveEnvironmentId(environment);
+  assertRailwayManifestContext(manifest, { projectId, environmentId });
   const services = readRepositoryServices(environment);
   const byId = new Map(services.map((service) => [service.id, service]));
-  const result = await waitForRailwayDeployConvergence({
+  return waitForRailwayDeployConvergence({
     manifest,
     expectedHead,
+    deadlineMs,
     readDeployment: async (entry) => {
       const service = byId.get(entry.serviceId);
       if (!service || service.name !== entry.service) return null;
@@ -238,8 +297,25 @@ async function main() {
       return deployments.find((deployment) => deployment.id === wanted) ?? null;
     },
     verifyStrictDrift: async ({ headSha, remainingMs }) => (
-      runStrictDrift(headSha, environment, remainingMs)
+      runStrictDrift(
+        headSha,
+        environment,
+        remainingMs,
+        manifest.intent.plannedServices.map(({ service }) => service),
+      )
     ),
+  });
+}
+
+async function main() {
+  const manifestPath = readArgument(process.argv, '--manifest', null);
+  const expectedHead = readArgument(process.argv, '--head', null);
+  const environment = readArgument(process.argv, '--environment', 'production');
+  if (!manifestPath || !expectedHead) throw new Error('--manifest and --head are required');
+  const result = await verifyRailwayManifest({
+    manifest: JSON.parse(readFileSync(manifestPath, 'utf8')),
+    expectedHead,
+    environment,
   });
   console.log(JSON.stringify(result));
 }

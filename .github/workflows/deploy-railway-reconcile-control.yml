@@ -24,6 +24,7 @@ jobs:
   unit-test:
     name: Unit tests
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     defaults:
       run:
         working-directory: workers/railway-reconcile-control
@@ -44,6 +45,7 @@ jobs:
     needs: [unit-test]
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     environment:
       name: railway-reconcile-control-production
       deployment: false

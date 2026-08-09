@@ -205,6 +205,9 @@ function operatorRequest(priorId, expectedHead, decision, overrides = {}) {
   const targetHead = overrides.targetHead !== undefined
     ? overrides.targetHead
     : (targetRunId === null ? null : (prior?.headSha ?? expectedHead));
+  const intentDigest = overrides.intentDigest !== undefined
+    ? overrides.intentDigest
+    : (decision === 'accept_observed_convergence' ? 'e'.repeat(64) : null);
   return {
     version: 1,
     operationId: (++operationCounter).toString(16).padStart(64, '0'),
@@ -218,6 +221,7 @@ function operatorRequest(priorId, expectedHead, decision, overrides = {}) {
     approver: 'production-approver',
     reason: 'Reviewed exact production evidence and approved this resolution.',
     evidenceDigest: 'f'.repeat(64),
+    intentDigest,
     triggeringActor: 'triggering-engineer',
     operatorRunId: '40000000001',
     operatorRunAttempt: 1,
@@ -2419,6 +2423,15 @@ for (const decision of ['accept_observed_convergence', 'authorize_current_main_r
       ));
       assert.equal(wrongHead.status, 409);
       assert.equal((await responseBody(wrongHead)).error.code, 'HEAD_SHA_MISMATCH');
+
+      const wrongIntent = await send(control, clock, '/v1/operator/resolve', 'operator', operatorRequest(
+        lease.attempt.attemptId,
+        headSha,
+        decision,
+        { intentDigest: 'd'.repeat(64) },
+      ));
+      assert.equal(wrongIntent.status, 409);
+      assert.equal((await responseBody(wrongIntent)).error.code, 'INTENT_DIGEST_MISMATCH');
     }
 
     const resolved = await send(control, clock, '/v1/operator/resolve', 'operator', operatorRequest(
@@ -2508,6 +2521,34 @@ for (const decision of ['accept_observed_convergence', 'authorize_current_main_r
     }
   });
 }
+
+test('operator resolution rejects superseded attempts and mismatched barriers with exact codes', async () => {
+  const { clock, control, storage } = makeControl();
+  const headSha = '1'.repeat(40);
+  const lease = await createManualBarrier(control, clock, { headSha });
+  const meta = clone(storage.records.get('control-meta:v1'));
+
+  storage.records.set('control-meta:v1', { ...meta, latestAttemptId: 'newer-attempt-id' });
+  const superseded = await send(control, clock, '/v1/operator/resolve', 'operator', operatorRequest(
+    lease.attempt.attemptId,
+    headSha,
+    'authorize_current_main_retry',
+  ));
+  assert.equal(superseded.status, 409);
+  assert.equal((await responseBody(superseded)).error.code, 'ATTEMPT_SUPERSEDED');
+
+  storage.records.set('control-meta:v1', {
+    ...meta,
+    barrier: { ...meta.barrier, attemptId: 'different-barrier-attempt' },
+  });
+  const mismatchedBarrier = await send(control, clock, '/v1/operator/resolve', 'operator', operatorRequest(
+    lease.attempt.attemptId,
+    headSha,
+    'authorize_current_main_retry',
+  ));
+  assert.equal(mismatchedBarrier.status, 409);
+  assert.equal((await responseBody(mismatchedBarrier)).error.code, 'BARRIER_MISMATCH');
+});
 
 test('operator resolution rejects unsafe decisions, shared approvers, and injectable reasons', async () => {
   const { clock, control } = makeControl();

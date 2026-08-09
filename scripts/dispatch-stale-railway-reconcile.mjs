@@ -261,7 +261,10 @@ export class GitHubWatchdogClient {
       if (!response.ok) {
         const definitive = method === 'POST'
           && response.status >= 400 && response.status < 500
-          && ![408, 409, 429].includes(response.status);
+          // GitHub uses 403 for secondary-rate-limit and abuse throttles. The
+          // response is transient even though it is in the 4xx range, so keep
+          // the durable hold until correlation proves whether a run exists.
+          && ![403, 408, 409, 429].includes(response.status);
         throw new GitHubWatchdogError(
           definitive ? 'GITHUB_DISPATCH_REJECTED' : method === 'POST' ? 'GITHUB_DISPATCH_AMBIGUOUS' : 'GITHUB_READ_FAILED',
           `GitHub returned HTTP ${response.status}`,
@@ -711,7 +714,8 @@ function markerWasSuperseded(run, controlState, markerStepName) {
     ...(Array.isArray(controlState?.lastAccepted?.supersededRuns)
       ? controlState.lastAccepted.supersededRuns
       : []),
-    ...(currentAttempt?.state === 'TERMINAL_ACCEPTED' && Array.isArray(currentAttempt.supersededRuns)
+    ...(['TERMINAL_ACCEPTED', 'OPERATOR_RESOLVED'].includes(currentAttempt?.state)
+      && Array.isArray(currentAttempt.supersededRuns)
       ? currentAttempt.supersededRuns
       : []),
   ];
@@ -1224,11 +1228,11 @@ export async function readWatchdogSnapshot({ github, control, clock = Date.now }
   let controlState = unwrapControl(status);
   const relevantSummaries = selectRunSummariesForHydration({ now, runSummaries, controlState });
   const hydratedRuns = await github.hydrateTargetRuns(relevantSummaries);
-  const runs = mergeRunInventory(runSummaries, hydratedRuns);
+  const runInventory = mergeRunInventory(runSummaries, hydratedRuns);
 
   for (const hold of controlState.dispatchHolds ?? []) {
     if (hold?.state !== 'DISPATCH_HELD' || !hold.recoveryAttemptId) continue;
-    const correlated = await github.findRunByRecoveryAttemptId(hold.recoveryAttemptId, runs);
+    const correlated = await github.findRunByRecoveryAttemptId(hold.recoveryAttemptId, runInventory);
     if (correlated) {
       await control.bindRun({
         recoveryAttemptId: hold.recoveryAttemptId,
@@ -1243,7 +1247,10 @@ export async function readWatchdogSnapshot({ github, control, clock = Date.now }
       controlState = unwrapControl(await control.status());
     }
   }
-  return { now, main, runs, controlState };
+  // Classification receives only histories whose jobs were positively read.
+  // Old terminal-success summaries remain in runInventory for correlation,
+  // but an empty synthetic attempts array must never prove marker absence.
+  return { now, main, runs: hydratedRuns, controlState };
 }
 
 export async function prepareRecoveryDispatch({

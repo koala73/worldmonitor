@@ -1336,6 +1336,7 @@ async function resolveOperator(storage, body, now, randomUuid) {
     'approver',
     'reason',
     'evidenceDigest',
+    'intentDigest',
     'triggeringActor',
     'operatorRunId',
     'operatorRunAttempt',
@@ -1361,6 +1362,12 @@ async function resolveOperator(storage, body, now, randomUuid) {
   if (actor === approver) reject(400, 'OPERATOR_APPROVER_MUST_DIFFER');
   const reason = requireOperatorReason(body.reason);
   const evidenceDigest = requireDigest(body.evidenceDigest, 'INVALID_EVIDENCE_DIGEST');
+  const intentDigest = body.intentDigest === null
+    ? null
+    : requireDigest(body.intentDigest, 'INVALID_INTENT_DIGEST');
+  if (body.decision !== 'accept_observed_convergence' && intentDigest !== null) {
+    reject(400, 'INVALID_INTENT_DIGEST');
+  }
   const triggeringActor = requireIdentifier(body.triggeringActor, 'INVALID_TRIGGERING_ACTOR');
   const operatorRunId = requireIdentifier(body.operatorRunId, 'INVALID_OPERATOR_RUN_ID', 24);
   if (!Number.isInteger(body.operatorRunAttempt) || body.operatorRunAttempt < 1
@@ -1399,6 +1406,7 @@ async function resolveOperator(storage, body, now, randomUuid) {
     actor,
     approver,
     reason,
+    intentDigest,
     targetRunId,
     targetRunAttempt: body.targetRunAttempt,
     targetHead,
@@ -1492,6 +1500,11 @@ async function resolveOperator(storage, body, now, randomUuid) {
     ) {
       reject(409, 'HEAD_SHA_MISMATCH');
     }
+    if (body.decision === 'accept_observed_convergence') {
+      if (intentDigest === null || priorAttempt.intentDigest !== intentDigest) {
+        reject(409, 'INTENT_DIGEST_MISMATCH');
+      }
+    }
     if (
       meta.barrier?.attemptId !== priorId
       || meta.barrier.generation !== priorAttempt.generation
@@ -1550,7 +1563,7 @@ async function resolveOperator(storage, body, now, randomUuid) {
   let recoveryDispatchHold = null;
   if (body.decision === 'accept_observed_convergence') {
     resolution.state = 'TERMINAL_ACCEPTED';
-    resolution.intentDigest = priorAttempt.intentDigest;
+    resolution.intentDigest = intentDigest;
     resolution.resultKind = 'OPERATOR_OBSERVED_CONVERGENCE';
     resolution.resultDigest = evidenceDigest;
     resolution.acceptedAt = now;

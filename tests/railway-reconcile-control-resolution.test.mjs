@@ -739,7 +739,7 @@ describe('operator resolution decisions', () => {
       assert.equal(resolveCalls.length, 1);
       assert.deepEqual(Object.keys(resolveCalls[0]).sort(), [
         'actor', 'approver', 'decision', 'environmentEvidenceId', 'evidenceDigest',
-        'evidenceId', 'expectedHead', 'gateStatusId', 'gateUpdatedAt', 'operationId',
+        'evidenceId', 'expectedHead', 'gateStatusId', 'gateUpdatedAt', 'intentDigest', 'operationId',
         'operatorRunAttempt', 'operatorRunId', 'priorCreatedAt', 'priorId', 'reason', 'runEvidenceId',
         'targetHead', 'targetRunAttempt', 'targetRunId', 'triggeringActor',
       ]);
@@ -762,6 +762,10 @@ describe('operator resolution decisions', () => {
       assert.equal(resolveCalls[0].targetRunId, req.evidence.targetRunId);
       assert.equal(resolveCalls[0].targetRunAttempt, req.evidence.targetRunAttempt);
       assert.equal(resolveCalls[0].targetHead, HEAD);
+      assert.equal(
+        resolveCalls[0].intentDigest,
+        decision === 'accept_observed_convergence' ? proof.convergence.intentDigest : null,
+      );
       assert.match(resolveCalls[0].evidenceDigest, /^[0-9a-f]{64}$/);
       assert.equal(
         resolveCalls[0].evidenceDigest,
@@ -977,7 +981,7 @@ describe('operator resolution decisions', () => {
     });
     assert.deepEqual(Object.keys(sentBody).sort(), [
       'actor', 'approver', 'decision', 'environmentEvidenceId', 'evidenceDigest',
-      'evidenceId', 'expectedHead', 'gateStatusId', 'gateUpdatedAt', 'operationId',
+      'evidenceId', 'expectedHead', 'gateStatusId', 'gateUpdatedAt', 'intentDigest', 'operationId',
       'operatorRunAttempt', 'operatorRunId', 'priorCreatedAt', 'priorId', 'reason', 'runEvidenceId',
       'targetHead', 'targetRunAttempt', 'targetRunId', 'triggeringActor', 'version',
     ]);
