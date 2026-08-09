@@ -310,7 +310,10 @@ const STANDALONE_KEYS = {
   comtradeBilateralHs4:  'seed-meta:comtrade:bilateral-hs4',
   thermalEscalation:     'thermal:escalation:v1',
   thermalEscalationBootstrap: 'thermal:escalation-bootstrap:v1',
-  tariffTrendsUs:           'trade:tariffs:v1:840:all:10',
+  // Meta-only aggregate: payloads are sharded one key per reporter, so probe
+  // the seed-meta key rather than electing one reporter (or one lookback) to
+  // stand for the fleet. Pre-#6316 this pointed at the US years=10 data key.
+  tariffTrendsUs:           'seed-meta:trade:tariffs',
   // Meta-only aggregate: payloads are sharded one key per reporter, so probe
   // the seed-meta key rather than electing one reporter to stand for the fleet.
   tradeFlows:               'seed-meta:trade:flows',
@@ -661,9 +664,8 @@ const SEED_META = {
   // the sample) while the 30-year window picks up reporters with no recent data.
   // 200 leaves ~26% headroom for reporter-list drift and still fires well before
   // a real collapse.
-  // maxStaleMin sits INSIDE the 480min (8h) TRADE_TTL, not outside it — the
-  // opposite of tariffTrendsUs below, and for a structural reason. This is a
-  // meta-only probe (STANDALONE_KEYS.tradeFlows is the seed-meta key itself,
+  // maxStaleMin sits INSIDE the 480min (8h) TRADE_TTL, not outside it. This is
+  // a meta-only probe (STANDALONE_KEYS.tradeFlows is the seed-meta key itself,
   // because the payload is sharded one key per reporter), so the hasData/EMPTY
   // backstop watches the meta record — which writeSeedMeta gives a 7-day TTL —
   // and not the 8h data keys. Nothing else would notice the data expiring. A
@@ -672,7 +674,10 @@ const SEED_META = {
   // STALE_SEED an hour BEFORE the keys it vouches for lapse. Same shape as the
   // meta-only comtradeBilateralHs4 entry above (35d budget, 40d payload TTL).
   tradeFlows:          { key: 'seed-meta:trade:flows',                        maxStaleMin: 420, minRecordCount: 200 },
-  tariffTrendsUs:      { key: 'seed-meta:trade:tariffs:v1:840:all:10',        maxStaleMin: 540 }, // co-pinned to TARIFF_TTL (8h=480min) + 60min grace. Prior 900 (15h) created an 8h-15h silent window where data had expired but seed-meta was still considered fresh, masking real outages as status=EMPTY (not STALE_SEED). See scripts/seed-supply-chain-trade.mjs TARIFF_TTL.
+  // Same meta-only shape as tradeFlows above (#6316 moved tariffs off the
+  // single-key US years=10 probe). maxStaleMin 420 sits inside TARIFF_TTL
+  // (480min); minRecordCount 150 leaves headroom under a ~200+ reporter fleet.
+  tariffTrendsUs:      { key: 'seed-meta:trade:tariffs',                      maxStaleMin: 420, minRecordCount: 150 },
   // publish.ts runs once daily (02:30 UTC); seed-meta TTL=52h — maxStaleMin must cover the full 24h cycle
   consumerPricesOverview:   { key: 'seed-meta:consumer-prices:overview:ae',     maxStaleMin: 1500, minSuccessRate: 0.5 }, // 25h = 24h cadence + 1h grace; warn when <50% snapshots succeeded
   consumerPricesCategories: { key: 'seed-meta:consumer-prices:categories:ae:30d',            maxStaleMin: 1500 },
