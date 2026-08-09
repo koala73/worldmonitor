@@ -91,9 +91,70 @@ jobs:
             echo "convex=false" >> "$GITHUB_OUTPUT"
           fi
 
-  deploy:
+  gate:
+    # Hold the deploy until the required merge gate has passed on this commit.
+    # Without this, a push to main deploys Convex concurrently with the checks
+    # that decide whether the commit is safe, so a red main can reach prod.
+    #
+    # Poll the commit status instead of chaining another workflow_run. Keeping
+    # this workflow on push preserves github.event.before/after, which the
+    # change-detection job above needs.
     needs: changes
     if: needs.changes.outputs.convex == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      statuses: read
+    steps:
+      - name: Wait for the merge gate on this commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+
+          # Manual runs are the operator override for hotfixes and recovery.
+          # An off-cycle dispatch may never receive a gate status.
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "workflow_dispatch: skipping gate wait (operator override)"
+            exit 0
+          fi
+
+          # ~25 minute budget. The gate aggregates Test, Typecheck, Lint Code,
+          # and Security Audit, which normally finish well inside this window.
+          for _ in $(seq 1 75); do
+            # Status history is newest-first. Preserve API order because
+            # created_at has only second resolution and sorting can invert ties.
+            state=$(
+              gh api --paginate --slurp \
+                "repos/$REPO/commits/$SHA/statuses?per_page=100" |
+                jq -r 'flatten | map(select(.context == "gate")) | first | .state // "missing"'
+            )
+
+            case "$state" in
+              success)
+                echo "gate: success — proceeding with the Convex deploy"
+                exit 0
+                ;;
+              failure|error)
+                echo "::error::merge gate concluded '$state' for $SHA; not deploying Convex"
+                exit 1
+                ;;
+              *)
+                echo "gate: '$state' — waiting..."
+                ;;
+            esac
+            sleep 20
+          done
+
+          echo "::error::timed out waiting for the merge gate on $SHA; not deploying Convex"
+          exit 1
+
+  deploy:
+    needs: [changes, gate]
+    if: needs.changes.outputs.convex == 'true' && needs.gate.result == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
