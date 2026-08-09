@@ -22,7 +22,7 @@ More than most buyers expect. Using [World Monitor's free tier](https://www.worl
 - **Country briefs and instability scores** for situational context worldwide
 - **Maritime chokepoint monitoring** (Hormuz, Suez, Malacca, Bab el-Mandeb) and undersea cable status
 - **Cascade analysis, hotspots, breaking-alert pipeline, and watchlists**
-- Coverage in [25 languages](https://www.worldmonitor.app/blog/posts/worldmonitor-in-21-languages-global-intelligence-for-everyone/)
+- Coverage in [26 languages](https://www.worldmonitor.app/blog/posts/worldmonitor-in-21-languages-global-intelligence-for-everyone/)
 
 The catch, and it is a fair one: free-tier refresh cadence is typically **5–15 minutes** rather than seconds, and the workflow layer — analyst chat, scheduled digests, API access, team features — sits behind paid plans.
 
@@ -83,7 +83,7 @@ Upgrade when one of these is concretely true:
 - **Missed events cost you money or safety.** Scheduled digests and alert routing to Slack/Teams/Telegram exist so the dashboard reaches you.
 - **You ask analytical questions daily.** An AI analyst grounded in 30+ live data services with citations replaces the hour of tab-hopping, not the dashboard.
 - **You're integrating, not reading.** API quotas (e.g. 1,000 requests/day starter, 10,000/day business tier) and webhook rules are the product; the UI is incidental.
-- **Your agents need the data.** MCP access with a documented tool surface (41 tools in World Monitor's case) lets Claude or GPT query live intelligence under one key.
+- **Your agents need the data.** MCP access with a documented tool surface (60 tools in World Monitor's case) lets Claude or GPT query live intelligence under one key.
 - **Compliance is in the room.** SSO, RBAC, audit trails, and air-gapped deployment are enterprise-tier features everywhere; nobody ships them free.
 
 ## How World Monitor prices free vs. paid
@@ -93,8 +93,8 @@ For a concrete, current example (full details on the [pricing page](https://www.
 | Plan | Price | Built for |
 |---|---|---|
 | Free | $0, no signup | Public situational awareness: 56 map layers, 500+ feeds, country briefs, chokepoints, watchlists |
-| Pro | $39.99/month or $399.99/year | Analysts: WM Analyst chat with citations, Scenario Engine, Route Explorer, AI digest, MCP access with 41 tools |
-| API | $99.99/month or $999/year | Developers: REST access, 1,000 requests/day, 5 webhook rules, OpenAPI docs |
+| Pro | $39.99/month or $359.99/year | Analysts: WM Analyst chat with citations, Scenario Engine, Route Explorer, AI digest, MCP access with 60 tools |
+| API | $99.99/month or $899,99.99/year | Developers: REST access, 1,000 requests/day, 5 webhook rules, OpenAPI docs |
 | API Business | $299.99/month | Teams: 300 requests/minute, 10,000 requests/day, priority support |
 | Enterprise | Custom | Organizations: SSO/MFA/RBAC, team workspaces, white-label, on-prem or air-gapped deployment |
 
@@ -116,7 +116,7 @@ Delivery. Free tiers require you to look at the dashboard; paid tiers push intel
 
 **How much should an individual analyst expect to pay in 2026?**
 
-Around $30–80/month for the prosumer tier. World Monitor Pro is $39.99/month ($399.99/year). Compare that against enterprise anchors — Bloomberg Terminal at $24,000/year per seat, Dataminr licenses in six figures — and price the specific capability gap, not the brand.
+Around $30–80/month for the prosumer tier. World Monitor Pro is $39.99/month ($359.99/year). Compare that against enterprise anchors — Bloomberg Terminal at $24,000/year per seat, Dataminr licenses in six figures — and price the specific capability gap, not the brand.
 
 **Do paid intelligence platforms train AI on my queries?**
 

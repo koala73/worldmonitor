@@ -27,7 +27,9 @@ function isSameSnapshot(a: StockAnalysisSnapshot, b: StockAnalysisSnapshot): boo
   return a.symbol === b.symbol
     && a.generatedAt === b.generatedAt
     && a.signal === b.signal
+    && a.ratingSignal === b.ratingSignal
     && a.signalScore === b.signalScore
+    && a.compositeScore === b.compositeScore
     && a.currentPrice === b.currentPrice;
 }
 
@@ -68,7 +70,24 @@ export function getLatestStockAnalysisSnapshots(history: StockAnalysisHistory, l
 function hasCurrentStockAnalysisSchema(snapshot: StockAnalysisSnapshot | undefined): boolean {
   if (!snapshot) return false;
   const hasAnalystFields = snapshot.analystConsensus !== undefined || snapshot.priceTarget !== undefined;
-  return hasAnalystFields && snapshot.fundamentals !== undefined;
+  const hasCompositeScore = typeof snapshot.compositeScore === 'number'
+    && Number.isFinite(snapshot.compositeScore);
+  const hasRatingNarrative = typeof snapshot.ratingSummary === 'string'
+    && snapshot.ratingSummary.length > 0
+    && typeof snapshot.ratingAction === 'string'
+    && snapshot.ratingAction.length > 0
+    && typeof snapshot.ratingConfidence === 'string'
+    && snapshot.ratingConfidence.length > 0
+    && typeof snapshot.ratingWhyNow === 'string'
+    && snapshot.ratingWhyNow.length > 0
+    && Array.isArray(snapshot.ratingBullishFactors)
+    && Array.isArray(snapshot.ratingRiskFactors);
+  return hasAnalystFields
+    && snapshot.fundamentals !== undefined
+    && hasCompositeScore
+    && typeof snapshot.ratingSignal === 'string'
+    && snapshot.ratingSignal.length > 0
+    && hasRatingNarrative;
 }
 
 function isFreshSnapshot(

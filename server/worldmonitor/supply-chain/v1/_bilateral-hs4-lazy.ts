@@ -3,13 +3,13 @@
  *
  * When `comtrade:bilateral-hs4:{iso2}:v1` is missing in Redis, this module
  * fetches the same Comtrade endpoint that `seed-comtrade-bilateral-hs4.mjs`
- * uses, writes the result to Redis with a 30-day TTL, and returns the
+ * uses, writes the result to Redis with a 40-day TTL, and returns the
  * products for immediate use by `get-route-impact`.
  *
  * Constraints:
  *   - Concurrency cap: 1 fetch at a time (Comtrade public rate ~1 req/sec)
  *   - Timeout: 5s per request (never block the response longer)
- *   - Cache both success (30d) and known-empty (24h)
+ *   - Cache both success (40d) and known-empty (24h)
  *   - On 429: return null + set a 24h negative-cache sentinel
  */
 
@@ -17,32 +17,47 @@ import { getCachedJson, setCachedJson } from '../../../_shared/redis';
 import UN_TO_ISO2 from '../../../../scripts/shared/un-to-iso2.json';
 import COMTRADE_REPORTER_OVERRIDES from '../../../../scripts/shared/comtrade-reporter-overrides.json';
 
+import strategicProductMetadata from '../../../../scripts/shared/comtrade-strategic-products.json';
+import { recentPeriod } from '../../../../scripts/shared/comtrade-period.mjs';
+
 const COMTRADE_BASE = 'https://comtradeapi.un.org/public/v1/preview/C/A/HS';
 const CHROME_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36';
 const KEY_PREFIX = 'comtrade:bilateral-hs4:';
 const LAZY_SENTINEL_PREFIX = 'comtrade:bilateral-hs4-lazy-sentinel:';
-const SUCCESS_TTL = 2592000; // 30 days
+const SUCCESS_TTL = 3456000; // 40 days
 const EMPTY_TTL = 86400; // 24h
 const FETCH_TIMEOUT_MS = 5000;
 
-const HS4_CODES = [
-  '2709', '2711', '8542', '8517', '8703', '3004', '7108', '2710',
-  '8471', '8411', '7601', '7202', '3901', '2902', '1001', '1201',
-  '6204', '0203', '8704', '8708',
-];
 
-const HS4_LABELS: Record<string, string> = {
-  '2709': 'Crude Petroleum', '2711': 'LNG & Petroleum Gas',
-  '8542': 'Semiconductors', '8517': 'Smartphones & Telecom',
-  '8703': 'Passenger Vehicles', '3004': 'Pharmaceuticals',
-  '7108': 'Gold', '2710': 'Refined Petroleum',
-  '8471': 'Computers', '8411': 'Turbojets & Turbines',
-  '7601': 'Aluminium', '7202': 'Ferroalloys (Steel)',
-  '3901': 'Plastics (Polyethylene)', '2902': 'Chemicals (Hydrocarbons)',
-  '1001': 'Wheat', '1201': 'Soybeans',
-  '6204': 'Women\'s Suits (Woven)', '0203': 'Pork',
-  '8704': 'Commercial Vehicles', '8708': 'Auto Parts',
-};
+// Unlike scripts/seed-comtrade-bilateral-hs4.mjs, this path does NOT fall back
+// to (y-3) when (y-2) is empty: this runs synchronously inside a live request
+// (get-route-impact) under the FETCH_TIMEOUT_MS budget above, and a second
+// sequential round trip would risk doubling response latency for every miss.
+// The 24h EMPTY_TTL sentinel below already bounds the staleness from a
+// reporter that has not yet filed (y-2) — far tighter than the bulk seeder's
+// 40-day cache, which is why that path carries the fallback instead.
+
+// Derived from the same catalogue the bulk seeder uses, not a second hardcoded
+// list. Both write the SAME Redis key, so a product added to the catalogue
+// would otherwise land in the seeder's payloads and be silently absent from
+// every payload this fallback produces, with nothing to surface the drift.
+interface BilateralProductMetadata {
+  bilateralHs4Code: string;
+  bilateralLabel?: string;
+  label: string;
+}
+
+const BILATERAL_PRODUCTS = (
+  strategicProductMetadata.products as Array<Partial<BilateralProductMetadata>>
+).filter((product): product is BilateralProductMetadata => (
+  typeof product.bilateralHs4Code === 'string'
+  && product.bilateralHs4Code.length > 0
+  && typeof product.label === 'string'
+));
+const HS4_CODES = Array.from(new Set(BILATERAL_PRODUCTS.map(p => p.bilateralHs4Code)));
+const HS4_LABELS: Record<string, string> = Object.fromEntries(
+  BILATERAL_PRODUCTS.map(p => [p.bilateralHs4Code, p.bilateralLabel ?? p.label]),
+);
 
 // UN M49 mostly matches UN Comtrade reporterCodes, except the shared override
 // list. Using M49 codes for those reporters silently yields count:0.
@@ -137,6 +152,7 @@ async function fetchComtradeBilateral(reporterCode: string): Promise<ComtradeRes
   url.searchParams.set('reporterCode', reporterCode);
   url.searchParams.set('cmdCode', HS4_CODES.join(','));
   url.searchParams.set('flowCode', 'M');
+  url.searchParams.set('period', recentPeriod());
 
   const resp = await fetch(url.toString(), {
     headers: { 'User-Agent': CHROME_UA, Accept: 'application/json' },

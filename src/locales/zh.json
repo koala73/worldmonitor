@@ -129,17 +129,20 @@
       "currencies": "货币",
       "area": "面积"
     },
-    "loadingResilienceScore": "Loading resilience score…",
-    "resilienceScoreUnavailable": "Resilience score unavailable.",
+    "loadingResilienceScore": "正在加载韧性评分…",
+    "resilienceScoreUnavailable": "韧性评分不可用。",
     "china": {
       "title": "中国国家概览",
       "description": "基于现有公共数据契约的宏观、市场、贸易、能源与运行可用性现状。",
-      "macroPolicy": "宏观与政策",
-      "marketCredit": "市场与信贷",
-      "tradeSupply": "贸易与供应链",
+      "policyEvents": "政策与执法",
       "energy": "能源",
       "availability": "灾害与航空",
       "observed": "数据日期：",
+      "published": "发布：",
+      "effective": "生效：",
+      "sectors": "行业：",
+      "entities": "实体：",
+      "translation": "翻译：",
       "source": "来源：",
       "imfGrowth": "IMF 增长预测",
       "creditGdp": "信贷占 GDP 比重",
@@ -148,8 +151,6 @@
       "gasDemand": "天然气需求",
       "energyMix": "电力结构",
       "coal": "煤炭",
-      "aviationAvailability": "航空可用性",
-      "hazardAvailability": "灾害可用性",
       "noMajorDisruptions": "未报告重大中断",
       "activeDisruptions_one": "{{count}} 起活跃中断",
       "activeDisruptions_other": "{{count}} 起活跃中断",
@@ -161,18 +162,21 @@
       "ccfiSource": "上海航运交易所",
       "comtradeSource": "联合国商品贸易数据库（报告方 156）",
       "sourceUnavailable": "来源不可用",
-      "macroUnavailable": "宏观与政策数据目前不可用。",
-      "marketUnavailable": "市场与信贷数据目前不可用。",
-      "tradeUnavailable": "贸易与供应链数据目前不可用。",
-      "energyUnavailable": "能源数据目前不可用。",
-      "availabilityUnavailable": "灾害与航空可用性数据目前不可用。",
+      "policyUnavailable": "官方政策与执法事件目前不可用。",
+      "policyPartial": "{{count}} 个官方机构的数据暂时降级。",
       "status": {
         "loading": "加载中",
         "available": "可用",
         "partial": "部分",
         "stale": "过期",
         "unavailable": "不可用"
-      }
+      },
+      "macroSignals": "宏观信号",
+      "crossStraitActivity": "两岸活动",
+      "corporateDisclosures": "企业披露",
+      "corridorConditions": "通道状况",
+      "activityNowcast": "活动即时预测",
+      "decisionSignalsUnavailable": "中国决策信号快照当前不可用。"
     }
   },
   "header": {
@@ -253,7 +257,7 @@
     "panelCatCommodityEcon": "经济与贸易",
     "panelCatHappyNews": "好消息",
     "panelCatHappyPlanet": "地球与慈善",
-    "embed": "Embed"
+    "embed": "嵌入"
   },
   "panels": {
     "liveNews": "实时新闻",
@@ -361,7 +365,8 @@
     "airlineIntel": "✈️ 航空公司情报",
     "consumerPrices": "消费者价格",
     "marketBreadth": "市场广度",
-    "climateNews": "气候新闻"
+    "climateNews": "气候新闻",
+    "fx": "外汇汇率"
   },
   "commands": {
     "prefixes": {
@@ -1127,7 +1132,7 @@
         "ucdpEvents": "UCDP事件",
         "displacementFlows": "流离失所流向",
         "climateAnomalies": "气候异常",
-        "weatherAlerts": "天气预警",
+        "weatherAlerts": "美国天气预警（NWS）",
         "strategicWaterways": "战略水道",
         "economicCenters": "经济中心",
         "criticalMinerals": "关键矿产",
@@ -1208,7 +1213,7 @@
           "infraDatacenters": "AI算力集群 >=10,000 GPU",
           "infraOutages": "互联网中断和服务故障",
           "naturalEventsTech": "地震、风暴、火灾（可能影响数据中心）",
-          "weatherAlerts": "恶劣天气预警",
+          "weatherAlerts": "美国恶劣天气预警（NWS）",
           "economicCenters": "证券交易所和央行",
           "countriesOverlay": "国家名称叠加层",
           "financeExchanges": "按市场层级划分的全球主要交易所",
@@ -1220,7 +1225,7 @@
           "financeOutages": "可能影响市场运营的互联网中断",
           "financeCyberThreats": "金融基础设施周边的安全事件",
           "macroWaterways": "大宗商品航运的战略咽喉要道",
-          "weatherAlertsMarket": "与市场相关的恶劣天气事件",
+          "weatherAlertsMarket": "与市场相关的美国恶劣天气事件（NWS）",
           "naturalEventsMacro": "地震、火灾、洪水等自然灾害",
           "timeRecent": "按近几小时筛选时间数据",
           "timeExtended": "显示过去一周、一个月或所有时间的数据",
@@ -1268,8 +1273,8 @@
       "sectionFollowing": "Following",
       "sectionAll": "All",
       "sourceStates": {
-        "degraded": "degraded",
-        "stale": "stale"
+        "degraded": "已降级",
+        "stale": "已过期"
       }
     },
     "insights": {
@@ -1348,7 +1353,8 @@
       "newsSignals": "{{news}} 条新闻 • {{signals}} 个信号",
       "compiledFrom": "编译自 {{stories}} 条故事和 {{sources}} 个来源",
       "provenanceTitle": "覆盖来源：此摘要选自多少条摄取的故事和不同的来源",
-      "briefFreshness": "生成于 {{minutes}}m 前 · 最新来源 {{hours}}h 前"
+      "briefFreshness": "生成于 {{minutes}}m 前 · 最新来源 {{hours}}h 前",
+      "briefStoryDetails": "Story details ({{count}})"
     },
     "settings": {
       "exportSettings": "导出设置",
@@ -1426,10 +1432,10 @@
         "hoursAgo": "{{count}}h ago"
       },
       "infoTooltip": "<strong>方法论</strong>综合评分（0-100）混合：<ul><li>50% 国家不稳定性（前5名加权）</li><li>30% 地理趋同区域</li><li>20% 基础设施事故</li></ul>每5分钟自动刷新。",
-      "cachedCiiStatus": "Cached CII {{states}}",
+      "cachedCiiStatus": "缓存 CII {{states}}",
       "sourceStates": {
-        "degraded": "degraded",
-        "stale": "stale"
+        "degraded": "已降级",
+        "stale": "已过期"
       },
       "dataFreshness": "Data Freshness",
       "sourcesDetail": "{{active}}/{{total}} sources"
@@ -1557,25 +1563,25 @@
       "candidGrants": "Candid拨款",
       "dataLag": "数据延迟",
       "infoTooltip": "<strong>全球捐赠活动指数</strong> 跟踪众筹平台和加密钱包个人捐赠的综合指数。<ul><li><strong>平台</strong>：GoFundMe、GlobalGiving、JustGiving活动抽样</li><li><strong>加密</strong>：链上慈善钱包流入（Endaoment、Giving Block）</li><li><strong>机构</strong>：OECD ODA、CAF世界捐赠指数、Candid拨款</li></ul>指数为方向性指标，非精确金额。结合实时抽样与已发布年度报告。",
-      "benchmarkTitle": "Global Giving Benchmarks",
-      "benchmarkInfoTooltip": "<strong>Global Giving Benchmarks</strong> Published platform and institutional claims with source periods and verification status. Annualized figures are estimates, not live activity.",
+      "benchmarkTitle": "全球捐赠基准",
+      "benchmarkInfoTooltip": "<strong>全球捐赠基准</strong> 已发布的平台和机构声明，包含来源期间和验证状态。年化数字为估算值，非实时活动。",
       "status": {
-        "published": "Published benchmarks with verified source coverage.",
-        "partial": "Published benchmarks with partial source coverage.",
-        "legacy": "Legacy snapshot; source details are unavailable.",
-        "cached": "Showing a cached snapshot; refresh unavailable."
+        "published": "已发布基准，来源覆盖已验证。",
+        "partial": "已发布基准，来源覆盖部分验证。",
+        "legacy": "历史快照；来源详情不可用。",
+        "cached": "显示缓存快照；刷新不可用。"
       },
-      "trackedAnnualized": "Tracked platform giving — annualized estimate",
-      "annualizedDaily": "Annualized daily estimate",
-      "atLeast": "At least",
-      "about": "About",
-      "sourceNotVerified": "Source not verified",
-      "reportedCumulative": "Reported cumulative total",
+      "trackedAnnualized": "已追踪平台捐赠 — 年化估算",
+      "annualizedDaily": "日度年化估算",
+      "atLeast": "至少",
+      "about": "约",
+      "sourceNotVerified": "来源未验证",
+      "reportedCumulative": "已报告累计总额",
       "sourcePeriod": "{{source}} · {{period}}",
-      "benchmark": "Published benchmark",
-      "sourcesMethodology": "Sources & methodology",
-      "methodologyIntro": "Only verified annual or defensibly annualized platform claims enter the headline. Cumulative and institutional figures remain separate context.",
-      "partialEstimate": "Partially verified estimate"
+      "benchmark": "已发布基准",
+      "sourcesMethodology": "来源与方法论",
+      "methodologyIntro": "仅经过验证的年度或可辩护年化平台声明才进入标题。累计和机构数字保持独立背景。",
+      "partialEstimate": "部分验证估算"
     },
     "displacement": {
       "refugees": "难民",
@@ -1615,6 +1621,8 @@
       "summaryFailed": "摘要失败",
       "sources": "{{count}}个来源",
       "relatedAssetsNear": "{{location}}附近的相关资产",
+      "sourceCoverage": "{{covered}}/{{total}} 个来源",
+      "sourceCoverageHint": "已显示 {{total}} 个已启用来源中的 {{covered}} 个 — 该面板每次刷新会轮换抓取不同来源",
       "sortBy": "排序方式",
       "sortNewest": "最新",
       "sortRelevance": "相关性"
@@ -2127,7 +2135,22 @@
       "infoTooltip": "<strong>灾难级联</strong> 检测汇聚的自然灾害和基础设施信号：<ul><li>关联地震、野火、洪灾和极端天气</li><li>追踪对基础设施和供应链的级联影响</li><li>突出具有复合灾难风险的地区</li></ul>点击卡片可在地图上放大到受影响区域。"
     },
     "markets": {
-      "infoTooltip": "<strong>市场</strong> 实时股票指数、股票和加密货币价格。使用\"观察列表\"按钮自定义您的观察列表。火花线显示最近价格趋势。"
+      "infoTooltip": "<strong>市场</strong> 实时股票指数、股票和加密货币价格。使用\"观察列表\"按钮自定义您的观察列表。火花线显示最近价格趋势。",
+      "chart": {
+        "title": "{{symbol}} 价格图表",
+        "close": "关闭图表"
+      },
+      "unavailable": {
+        "symbols": "{{symbols}} — {{reason}}",
+        "symbolsMore": "{{symbols}} +{{count}} more — {{reason}}",
+        "notFound": "no quote available",
+        "providerError": "quote lookup failed, retrying shortly",
+        "rateLimited": "quote provider rate limited, retrying shortly",
+        "notConfigured": "quote provider not configured",
+        "requestLimit": "too many symbols requested",
+        "budget": "not loaded yet, retrying shortly",
+        "seed": "market data temporarily unavailable"
+      }
     },
     "heatmap": {
       "infoTooltip": "<strong>板块热力图</strong> S&P 500 板块表现一览。颜色强度反映每日变化幅度。绿色 = 涨幅，红色 = 跌幅。"
@@ -2247,9 +2270,10 @@
           "summaryVerified": "已解锁，随时可用。",
           "channelsNote": "更喜欢 Telegram、Slack、Discord 还是 Webhook？",
           "pointers": {
+            "search": "搜索整个仪表板",
             "widgets": "创建自定义小组件",
             "analyst": "咨询 AI 分析师",
-            "apiKeys": "获取您的 API 和 MCP 密钥",
+            "mcpClients": "设置 MCP",
             "channels": "在通知设置中进行配置"
           }
         }
@@ -2457,43 +2481,91 @@
       }
     },
     "mobileNav": {
-      "panelCategories": "Panel categories"
+      "panelCategories": "面板类别"
     },
     "panelFreshness": {
       "status": {
-        "fresh": "Fresh",
-        "stale": "Stale",
-        "veryStale": "Very stale",
-        "noData": "No data",
-        "disabled": "Disabled",
-        "error": "Error"
+        "fresh": "最新",
+        "stale": "过期",
+        "veryStale": "严重过期",
+        "noData": "无数据",
+        "disabled": "已禁用",
+        "error": "错误"
       },
       "labelWithAge": "{{status}} {{age}}",
-      "title": "Data freshness: {{status}}. {{sources}}",
+      "title": "数据新鲜度：{{status}}。{{sources}}",
       "sourceDetail": "{{name}}: {{status}}, {{update}}",
       "sourceDetailWithHealth": "{{name}}: {{status}}, {{update}}, {{detail}}",
-      "lastUpdated": "last updated {{time}}",
-      "neverUpdated": "never updated",
+      "lastUpdated": "最后更新 {{time}}",
+      "neverUpdated": "从未更新",
       "health": {
-        "partialCoverage": "partial coverage",
-        "contentStale": "content stale",
-        "seedStale": "seed stale",
-        "noSourceData": "no source data",
-        "sourceErrorReported": "source error reported",
-        "freshnessStoreUnavailable": "freshness store unavailable",
-        "freshnessStoreDegraded": "freshness store degraded"
+        "partialCoverage": "部分覆盖",
+        "contentStale": "内容过期",
+        "seedStale": "种子过期",
+        "noSourceData": "无来源数据",
+        "sourceErrorReported": "已报告来源错误",
+        "freshnessStoreUnavailable": "新鲜度存储不可用",
+        "freshnessStoreDegraded": "新鲜度存储已降级"
       },
       "time": {
-        "never": "never",
-        "justNow": "just now",
-        "minutesAgo": "{{count}}m ago",
-        "hoursAgo": "{{count}}h ago",
-        "daysAgo": "{{count}}d ago",
-        "compactNow": "now",
-        "compactMinutes": "{{count}}m",
-        "compactHours": "{{count}}h",
-        "compactDays": "{{count}}d"
+        "never": "从不",
+        "justNow": "刚刚",
+        "minutesAgo": "{{count}}分钟前",
+        "hoursAgo": "{{count}}小时前",
+        "daysAgo": "{{count}}天前",
+        "compactNow": "现在",
+        "compactMinutes": "{{count}}分",
+        "compactHours": "{{count}}时",
+        "compactDays": "{{count}}天"
       }
+    },
+    "exportGate": {
+      "signedOutDesc": "登录以将仪表板数据导出为 CSV、JSON 或 PDF。",
+      "upgradeDesc": "数据导出（CSV、JSON、PDF）包含在 Pro Business 中。",
+      "upgradeCta": "升级到 Pro Business",
+      "lockedAriaLabel": "导出数据 — 已锁定。{{reason}}",
+      "unlockedAnnouncement": "数据导出已解锁。",
+      "preparingPdf": "正在准备 PDF…",
+      "pdfFailed": "无法生成 PDF 报告。请重试，或使用 JSON 导出。"
+    },
+    "tabCap": {
+      "signedOutDesc": "未登录的工作区限制为 {{cap}} 个仪表板标签页。登录以添加更多。",
+      "upgradeDesc": "您已达到 {{cap}} 个仪表板标签页的上限。",
+      "upgradeCta": "升级获取更多",
+      "lockedAriaLabel": "添加标签页 — 已锁定。{{reason}}",
+      "unlockedAnnouncement": "仪表板标签页限制已解除。"
+    },
+    "fx": {
+      "infoTooltip": "<strong>外汇汇率</strong> 货币压力测试和即期汇率：<ul><li>外汇压力测试根据过去24个月最大跌幅对45种货币进行排名，同时显示12个月涨跌幅</li><li>覆盖范围包括ARS、TRY、EGP、NGN、PKR和UAH——BIS和ECB参考集合中遗漏的货币</li><li>即期汇率分别列示美元和ECB欧元参考汇率，因为两者的报价基础不同</li><li>RUB — 俄罗斯央行汇率，每单位卢布</li></ul> 数据来源：Yahoo Finance、欧洲中央银行和俄罗斯央行。",
+      "tabs": {
+        "stress": "外汇压力测试",
+        "spot": "即期",
+        "rub": "RUB"
+      },
+      "currency": "货币",
+      "pair": "货币对",
+      "rate": "汇率",
+      "yoy": "12个月",
+      "drawdown": "24个月跌幅",
+      "peakToTrough": "峰值 → 谷值",
+      "change1d": "1天",
+      "perUsd": "每1美元",
+      "usdPerUnit": "每单位美元",
+      "usdBase": "兑美元",
+      "eurBase": "ECB欧元参考汇率",
+      "stressedCount": "{{total}}种货币中{{stressed}}种低于{{threshold}}",
+      "sourceYahoo": "数据来源：Yahoo Finance",
+      "sourceEcb": "数据来源：ECB",
+      "degraded": "暂时不可用：{{sources}}。即将重试。",
+      "source": {
+        "stress": "外汇压力",
+        "usd": "美元汇率",
+        "eur": "欧洲央行欧元汇率",
+        "rub": "俄罗斯央行汇率"
+      },
+      "rubBase": "俄罗斯央行 — 每 1 单位卢布",
+      "rubPerUnit": "每单位卢布",
+      "sourceCbr": "来源：俄罗斯央行"
     }
   },
   "popups": {
@@ -2834,7 +2906,7 @@
       "heading": "航向",
       "hexCode": "HEX代码",
       "squawk": "应答机代码",
-      "attribution": "来源：OpenSky Network"
+      "attribution": "来源：adsb.lol (ODbL) · OpenSky Network"
     },
     "militaryVessel": {
       "aisDark": "AIS信号消失",
@@ -3297,16 +3369,42 @@
     "visualizationFailed": "可视化失败"
   },
   "dashboardTabs": {
-    "ariaLabel": "Dashboard tabs",
-    "defaultName": "Main",
-    "newTabName": "New Tab",
-    "newTabCreated": "New tab created",
-    "tabDeleted": "Tab \"{{name}}\" deleted",
-    "addTab": "Add tab",
-    "addTabTitle": "New tab (starts with the default panels)",
-    "renameHint": "{{name}} — double-click to rename",
-    "deleteTab": "Delete tab",
-    "deleteTabAria": "Delete tab {{name}}",
-    "tabNameAria": "Tab name"
+    "ariaLabel": "仪表板标签页",
+    "defaultName": "主页",
+    "newTabName": "新标签页",
+    "newTabCreated": "新标签页已创建",
+    "tabDeleted": "标签页\"{{name}}\"已删除",
+    "addTab": "添加标签页",
+    "addTabTitle": "新标签页（从默认面板开始）",
+    "renameHint": "{{name}} — 双击重命名",
+    "deleteTab": "删除标签页",
+    "deleteTabAria": "删除标签页 {{name}}",
+    "tabNameAria": "标签页名称"
+  },
+  "theaterPresets": {
+    "label": "覆盖预设",
+    "applied": "已应用{{preset}}预设：已启用{{count}}个来源",
+    "alreadyApplied": "{{preset}}预设已应用",
+    "ukraineWar": {
+      "label": "乌克兰战争",
+      "description": "启用乌克兰主要媒体、独立俄罗斯媒体和前线评估来源"
+    },
+    "indoPacific": {
+      "label": "印太 / 台湾",
+      "description": "启用台湾、巴基斯坦和东南亚安全来源"
+    },
+    "sahelWestAfrica": {
+      "label": "萨赫勒和西非",
+      "description": "启用萨赫勒、尼日利亚和西非本地来源"
+    },
+    "caucasusCentralAsia": {
+      "label": "高加索和中亚",
+      "description": "启用南高加索和中亚地区来源"
+    },
+    "middleEastFlashpoints": {
+      "label": "中东热点",
+      "description": "启用伊朗、以色列、海湾和库尔德地区来源"
+    },
+    "unavailable": "当前面板无法使用{{preset}}预设"
   }
 }

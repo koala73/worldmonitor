@@ -274,6 +274,7 @@ function setupSignedIn(userId, { tier = 1, fakeClient }) {
     featureFlagEnabled: true,
     convexClient: fakeClient,
     convexApi: FAKE_API,
+    waitForConvexAuth: async () => true,
   });
 }
 
@@ -1326,5 +1327,32 @@ describe('Codex round-4 P1 — UNAUTHENTICATED transient retry path', () => {
       'merge fires only AFTER waitForConvexAuth resolves',
     );
     assert.equal(authResolved, true);
+  });
+
+  it('fails closed without merging when the identity-bound auth wait is superseded', async () => {
+    setLocalStorageList(['US']);
+    let mergeCalls = 0;
+    const fake = makeFakeConvex({ tier: 1 });
+    const innerMutation = fake.mutation.bind(fake);
+    fake.mutation = async (ref, args) => {
+      if (ref === FAKE_API.followedCountries.mergeAnonymousLocal) mergeCalls += 1;
+      return innerMutation(ref, args);
+    };
+    _setDepsForTests({
+      getCurrentClerkUser: () => ({ id: 'user_guarded' }),
+      getEntitlementState: () => ({ features: { tier: 1 } }),
+      hasTier: (n) => n <= 1,
+      featureFlagEnabled: true,
+      convexClient: fake,
+      convexApi: FAKE_API,
+      waitForConvexAuth: async () => false,
+    });
+
+    await _emitAuthStateForTests({ id: 'user_guarded' });
+    await flushMicrotasks();
+
+    assert.equal(mergeCalls, 0, 'a superseded auth wait must not mutate through the shared client');
+    assert.equal(_getInternalStateForTests().handoffState, 'failed');
+    assert.notEqual(getLocalStorageRaw(), null, 'local follows remain available for a safe retry');
   });
 });

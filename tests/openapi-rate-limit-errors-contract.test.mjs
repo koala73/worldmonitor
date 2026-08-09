@@ -7,6 +7,8 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { load as loadYaml } from 'js-yaml';
 
+import { loadUnifiedOpenApiSpec } from './_lib/openapi-spec-cache.mjs';
+
 // Guards scripts/openapi-inject-rate-limit-errors.mjs. These contracts are
 // emitted by the gateway around every generated RPC, not by the proto handlers,
 // so a fresh `make generate` must re-run the injector or the published spec
@@ -125,7 +127,7 @@ describe('OpenAPI gateway rate-limit and error contracts', () => {
   }
 
   it('the unified bundle documents the same gateway contracts', () => {
-    const bundle = loadYaml(readFileSync(resolve(apiDir, 'worldmonitor.openapi.yaml'), 'utf8'));
+    const bundle = loadUnifiedOpenApiSpec();
     const ops = operations(bundle);
     const serviceTotal = serviceJson.reduce(
       (sum, file) => sum + operations(JSON.parse(readFileSync(resolve(apiDir, file), 'utf8'))).length,

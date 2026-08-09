@@ -105,7 +105,8 @@
     "consumerPrices": "Preços ao Consumidor",
     "fearGreed": "Medo e Ganância",
     "marketBreadth": "Amplitude de Mercado",
-    "climateNews": "Notícias Climáticas"
+    "climateNews": "Notícias Climáticas",
+    "fx": "Taxas de Câmbio"
   },
   "commands": {
     "prefixes": {
@@ -569,7 +570,7 @@
         "ucdpEvents": "Eventos UCDP",
         "displacementFlows": "Fluxos de deslocamento",
         "climateAnomalies": "Anomalias Climáticas",
-        "weatherAlerts": "Alertas meteorológicos",
+        "weatherAlerts": "Alertas meteorológicos nos EUA (NWS)",
         "strategicWaterways": "Hidrovias Estratégicas",
         "economicCenters": "Centros Econômicos",
         "criticalMinerals": "Minerais Críticos",
@@ -657,7 +658,7 @@
           "infraDatacenters": "Clusters de computação de IA >=10.000 GPUs",
           "infraOutages": "Apagões de Internet e interrupções de serviço",
           "naturalEventsTech": "Terremotos, tempestades, incêndios (podem afetar data centers)",
-          "weatherAlerts": "Alertas de mau tempo",
+          "weatherAlerts": "Alertas de tempo severo nos EUA (NWS)",
           "economicCenters": "Bolsas de valores e bancos centrais",
           "countriesOverlay": "Sobreposições de nomes de países",
           "financeExchanges": "Principais bolsas globais por nível de mercado",
@@ -669,7 +670,7 @@
           "financeOutages": "Interrupções na Internet que podem impactar as operações do mercado",
           "financeCyberThreats": "Eventos de segurança em torno da infraestrutura financeira",
           "macroWaterways": "Pontos de estrangulamento estratégicos para o transporte de mercadorias",
-          "weatherAlertsMarket": "Eventos climáticos severos com relevância para o mercado",
+          "weatherAlertsMarket": "Eventos climáticos severos nos EUA com relevância para o mercado (NWS)",
           "naturalEventsMacro": "Terremotos, incêndios, inundações e outras perturbações naturais",
           "timeRecent": "Filtrar dados baseados em tempo para horas recentes",
           "timeExtended": "Mostrar dados da semana, do mês anterior ou de todos os tempos",
@@ -720,7 +721,7 @@
         "moderate": "MODERADO",
         "normal": "NORMAL"
       },
-      "infoTooltip": "<strong>Climate Anomaly Monitor</strong> Temperature and precipitation deviations from 30-day baseline. Dados do Open-Meteo (reanálise ERA5).<ul><li><strong>Extremo</strong>: >5°C ou >80mm/dia ​​de desvio</li><li><strong>Moderado</strong>: >3°C ou >40mm/dia ​​de desvio</li></ul>Monitora 15 zonas propensas a conflitos/desastres."
+      "infoTooltip": "<strong>Climate Anomaly Monitor</strong> Temperature and precipitation deviations from 30-day baseline. Dados do Open-Meteo (reanálise ERA5).<ul><li><strong>Extremo</strong>: >5°C ou >80mm/dia de desvio</li><li><strong>Moderado</strong>: >3°C ou >40mm/dia de desvio</li></ul>Monitora 15 zonas propensas a conflitos/desastres."
     },
     "newsPanel": {
       "close": "Fechar",
@@ -730,6 +731,8 @@
       "relatedAssetsNear": "Ativos relacionados próximos a {{location}}",
       "summaryError": "Não foi possível gerar o resumo",
       "summaryFailed": "Resumo falhado",
+      "sourceCoverage": "{{covered}}/{{total}} fontes",
+      "sourceCoverageHint": "A mostrar {{covered}} de {{total}} fontes ativas — este painel alterna entre as suas fontes a cada atualização",
       "sortBy": "Ordenar por",
       "sortNewest": "Mais recente",
       "sortRelevance": "Relevância"
@@ -1083,8 +1086,8 @@
       "sectionFollowing": "Following",
       "sectionAll": "All",
       "sourceStates": {
-        "degraded": "degraded",
-        "stale": "stale"
+        "degraded": "degradado",
+        "stale": "desatualizado"
       }
     },
     "gdeltIntel": {
@@ -1193,10 +1196,10 @@
         "minutesAgo": "{{count}}m ago",
         "hoursAgo": "{{count}}h ago"
       },
-      "cachedCiiStatus": "Cached CII {{states}}",
+      "cachedCiiStatus": "CII em cache {{states}}",
       "sourceStates": {
-        "degraded": "degraded",
-        "stale": "stale"
+        "degraded": "degradado",
+        "stale": "desatualizado"
       },
       "dataFreshness": "Data Freshness",
       "sourcesDetail": "{{active}}/{{total}} sources"
@@ -1278,7 +1281,8 @@
       "sources_many": "{{count}} fontes",
       "provenanceTitle": "Proveniência de cobertura: quantas histórias ingeridas e fontes distintas foram selecionadas para este resumo",
       "compiledFrom": "Compilado de {{stories}} histórias em {{sources}} fontes",
-      "briefFreshness": "Gerado há {{minutes}}m · fonte mais recente com {{hours}}h"
+      "briefFreshness": "Gerado há {{minutes}}m · fonte mais recente com {{hours}}h",
+      "briefStoryDetails": "Story details ({{count}})"
     },
     "techHubs": {
       "infoTooltip": "<strong>Atividade do Tech Hub</strong><br>Mostra os hubs de tecnologia com mais atividade de notícias.<br><br><em>Níveis de atividade:</em><br>• <span style=\"color: {{highColor}}\">Alto</span> — Notícias de última hora ou pontuação acima de 50<br>• <span style=\"color: {{elevatedColor}}\">Elevado</span> — Pontuação 20-49<br>• <span style=\"color: {{lowColor}}\">Baixo</span> — Pontuação abaixo de 20<br><br>Clique em um hub para ampliar sua localização."
@@ -1517,25 +1521,25 @@
       "trending": "TENDÊNCIA",
       "velocity": "Velocidade",
       "wallets": "Carteiras",
-      "benchmarkTitle": "Global Giving Benchmarks",
-      "benchmarkInfoTooltip": "<strong>Global Giving Benchmarks</strong> Published platform and institutional claims with source periods and verification status. Annualized figures are estimates, not live activity.",
+      "benchmarkTitle": "Referências globais de doações",
+      "benchmarkInfoTooltip": "<strong>Referências globais de doações</strong> Declarações publicadas de plataformas e instituições com períodos de fonte e estado de verificação. Os valores anualizados são estimativas, não atividade em tempo real.",
       "status": {
-        "published": "Published benchmarks with verified source coverage.",
-        "partial": "Published benchmarks with partial source coverage.",
-        "legacy": "Legacy snapshot; source details are unavailable.",
-        "cached": "Showing a cached snapshot; refresh unavailable."
+        "published": "Referências publicadas com cobertura de fonte verificada.",
+        "partial": "Referências publicadas com cobertura de fonte parcial.",
+        "legacy": "Instantâneo legado; detalhes da fonte indisponíveis.",
+        "cached": "A mostrar um instantâneo em cache; atualização indisponível."
       },
-      "trackedAnnualized": "Tracked platform giving — annualized estimate",
-      "annualizedDaily": "Annualized daily estimate",
-      "atLeast": "At least",
-      "about": "About",
-      "sourceNotVerified": "Source not verified",
-      "reportedCumulative": "Reported cumulative total",
+      "trackedAnnualized": "Doações de plataforma rastreadas — estimativa anualizada",
+      "annualizedDaily": "Estimativa diária anualizada",
+      "atLeast": "Pelo menos",
+      "about": "Aproximadamente",
+      "sourceNotVerified": "Fonte não verificada",
+      "reportedCumulative": "Total cumulativo reportado",
       "sourcePeriod": "{{source}} · {{period}}",
-      "benchmark": "Published benchmark",
-      "sourcesMethodology": "Sources & methodology",
-      "methodologyIntro": "Only verified annual or defensibly annualized platform claims enter the headline. Cumulative and institutional figures remain separate context.",
-      "partialEstimate": "Partially verified estimate"
+      "benchmark": "Referência publicada",
+      "sourcesMethodology": "Fontes e metodologia",
+      "methodologyIntro": "Apenas declarações anuais verificadas ou anualizadas de forma defensável entram no título. Os valores cumulativos e institucionais permanecem como contexto separado.",
+      "partialEstimate": "Estimativa parcialmente verificada"
     },
     "supplyChain": {
       "chokepoints": "Pontos de estrangulamento",
@@ -1878,7 +1882,22 @@
       "infoTooltip": "<strong>Cascata de Desastres</strong> Detecta sinais convergentes de desastres naturais e infraestrutura:<ul><li>Correlaciona terremotos, incêndios florestais, inundações e extremos climáticos</li><li>Rastreia efeitos cascata em infraestrutura e cadeias de suprimentos</li><li>Destaca regiões com risco de desastre composto</li></ul>Clique em um card para ampliar a região afetada."
     },
     "markets": {
-      "infoTooltip": "<strong>Mercados</strong> Índices em tempo real, ações e preços de criptomoedas. Personalize sua watchlist com o botão Watchlist. Os gráficos de tendência mostram a tendência de preço recente."
+      "infoTooltip": "<strong>Mercados</strong> Índices em tempo real, ações e preços de criptomoedas. Personalize sua watchlist com o botão Watchlist. Os gráficos de tendência mostram a tendência de preço recente.",
+      "chart": {
+        "title": "Gráfico de preços {{symbol}}",
+        "close": "Fechar gráfico"
+      },
+      "unavailable": {
+        "symbols": "{{symbols}} — {{reason}}",
+        "symbolsMore": "{{symbols}} +{{count}} more — {{reason}}",
+        "notFound": "no quote available",
+        "providerError": "quote lookup failed, retrying shortly",
+        "rateLimited": "quote provider rate limited, retrying shortly",
+        "notConfigured": "quote provider not configured",
+        "requestLimit": "too many symbols requested",
+        "budget": "not loaded yet, retrying shortly",
+        "seed": "market data temporarily unavailable"
+      }
     },
     "heatmap": {
       "infoTooltip": "<strong>Mapa de Calor de Setores</strong> Desempenho de setores do S&P 500 em um relance. A intensidade da cor reflete a magnitude da mudança diária. Verde = ganhos, Vermelho = perdas."
@@ -1998,9 +2017,10 @@
           "summaryVerified": "Desbloqueado e pronto quando você estiver.",
           "channelsNote": "Prefere Telegram, Slack, Discord ou um webhook?",
           "pointers": {
+            "search": "Pesquisar em todo o painel",
             "widgets": "Criar um widget personalizado",
             "analyst": "Perguntar ao analista de IA",
-            "apiKeys": "Obter suas chaves de API e MCP",
+            "mcpClients": "Configurar MCP",
             "channels": "Configure-os nas configurações de notificação"
           }
         }
@@ -2217,43 +2237,91 @@
       }
     },
     "mobileNav": {
-      "panelCategories": "Panel categories"
+      "panelCategories": "Categorias de painéis"
     },
     "panelFreshness": {
       "status": {
-        "fresh": "Fresh",
-        "stale": "Stale",
-        "veryStale": "Very stale",
-        "noData": "No data",
-        "disabled": "Disabled",
-        "error": "Error"
+        "fresh": "Recente",
+        "stale": "Desatualizado",
+        "veryStale": "Muito desatualizado",
+        "noData": "Sem dados",
+        "disabled": "Desativado",
+        "error": "Erro"
       },
       "labelWithAge": "{{status}} {{age}}",
-      "title": "Data freshness: {{status}}. {{sources}}",
+      "title": "Atualidade dos dados: {{status}}. {{sources}}",
       "sourceDetail": "{{name}}: {{status}}, {{update}}",
       "sourceDetailWithHealth": "{{name}}: {{status}}, {{update}}, {{detail}}",
-      "lastUpdated": "last updated {{time}}",
-      "neverUpdated": "never updated",
+      "lastUpdated": "última atualização {{time}}",
+      "neverUpdated": "nunca atualizado",
       "health": {
-        "partialCoverage": "partial coverage",
-        "contentStale": "content stale",
-        "seedStale": "seed stale",
-        "noSourceData": "no source data",
-        "sourceErrorReported": "source error reported",
-        "freshnessStoreUnavailable": "freshness store unavailable",
-        "freshnessStoreDegraded": "freshness store degraded"
+        "partialCoverage": "cobertura parcial",
+        "contentStale": "conteúdo desatualizado",
+        "seedStale": "seed desatualizado",
+        "noSourceData": "sem dados de fonte",
+        "sourceErrorReported": "erro de fonte reportado",
+        "freshnessStoreUnavailable": "armazém de atualidade indisponível",
+        "freshnessStoreDegraded": "armazém de atualidade degradado"
       },
       "time": {
-        "never": "never",
-        "justNow": "just now",
-        "minutesAgo": "{{count}}m ago",
-        "hoursAgo": "{{count}}h ago",
-        "daysAgo": "{{count}}d ago",
-        "compactNow": "now",
+        "never": "nunca",
+        "justNow": "agora mesmo",
+        "minutesAgo": "há {{count}}m",
+        "hoursAgo": "há {{count}}h",
+        "daysAgo": "há {{count}}d",
+        "compactNow": "agora",
         "compactMinutes": "{{count}}m",
         "compactHours": "{{count}}h",
         "compactDays": "{{count}}d"
       }
+    },
+    "exportGate": {
+      "signedOutDesc": "Inicie sessão para exportar dados do painel em CSV, JSON ou PDF.",
+      "upgradeDesc": "A exportação de dados (CSV, JSON, PDF) está incluída no Pro Business.",
+      "upgradeCta": "Atualizar para Pro Business",
+      "lockedAriaLabel": "Exportar dados — bloqueado. {{reason}}",
+      "unlockedAnnouncement": "Exportação de dados desbloqueada.",
+      "preparingPdf": "A preparar PDF…",
+      "pdfFailed": "Não foi possível gerar o relatório PDF. Tente novamente ou use a exportação JSON."
+    },
+    "tabCap": {
+      "signedOutDesc": "Os espaços de trabalho sem sessão estão limitados a {{cap}} separadores. Inicie sessão para adicionar mais.",
+      "upgradeDesc": "Atingiu o limite de {{cap}} separadores do painel.",
+      "upgradeCta": "Atualizar para mais",
+      "lockedAriaLabel": "Adicionar separador — bloqueado. {{reason}}",
+      "unlockedAnnouncement": "Limite de separadores do painel removido."
+    },
+    "fx": {
+      "infoTooltip": "<strong>Taxas de Câmbio</strong> Stress cambial e taxas spot:<ul><li>FX Stress classifica 45 moedas pela pior queda máxima em 24 meses, juntamente com a variação de 12 meses</li><li>A cobertura inclui ARS, TRY, EGP, NGN, PKR e UAH — moedas omitidas dos conjuntos de referência do BIS e ECB</li><li>Spot lista as taxas em relação ao dólar americano e as taxas de referência do euro do ECB separadamente, porque os dois são cotados em bases diferentes</li><li>RUB — taxas do Banco da Rússia, rublos por unidade</li></ul> Fontes: Yahoo Finance, Banco Central Europeu e Banco da Rússia.",
+      "tabs": {
+        "stress": "FX Stress",
+        "spot": "Spot",
+        "rub": "RUB"
+      },
+      "currency": "Moeda",
+      "pair": "Par",
+      "rate": "Taxa",
+      "yoy": "12m",
+      "drawdown": "Queda em 24m",
+      "peakToTrough": "Pico → Vale",
+      "change1d": "1d",
+      "perUsd": "Por 1 USD",
+      "usdPerUnit": "USD por unidade",
+      "usdBase": "Contra o dólar americano",
+      "eurBase": "Taxas de referência do euro do ECB",
+      "stressedCount": "{{stressed}} de {{total}} moedas abaixo de {{threshold}}",
+      "sourceYahoo": "Fonte: Yahoo Finance",
+      "sourceEcb": "Fonte: ECB",
+      "degraded": "Indisponível no momento: {{sources}}. Tentando novamente em breve.",
+      "source": {
+        "stress": "Estresse cambial",
+        "usd": "Cotações do dólar americano",
+        "eur": "Cotações do euro do BCE",
+        "rub": "Cotações do Banco da Rússia"
+      },
+      "rubBase": "Banco da Rússia — rublos por 1 unidade",
+      "rubPerUnit": "Rublos por unidade",
+      "sourceCbr": "Fonte: Banco da Rússia"
     }
   },
   "popups": {
@@ -2586,7 +2654,7 @@
       "heading": "CABEÇALHO",
       "hexCode": "CÓDIGO HEX.",
       "squawk": "GRANDE",
-      "attribution": "Fonte: Rede OpenSky"
+      "attribution": "Fonte: adsb.lol (ODbL) · OpenSky Network"
     },
     "militaryVessel": {
       "aisDark": "AIS ESCURO",
@@ -2985,7 +3053,7 @@
     "panelCatCommodityEcon": "Economia & Comércio",
     "panelCatHappyNews": "Boas Notícias",
     "panelCatHappyPlanet": "Planeta & Doações",
-    "embed": "Embed"
+    "embed": "Incorporar"
   },
   "countryBrief": {
     "identifying": "Identificando país...",
@@ -3117,17 +3185,20 @@
     "geocodeFailed": "Não foi possível identificar um país nesta localização",
     "retryBtn": "Tentar novamente",
     "closeBtn": "Fechar",
-    "loadingResilienceScore": "Loading resilience score…",
-    "resilienceScoreUnavailable": "Resilience score unavailable.",
+    "loadingResilienceScore": "A carregar pontuação de resiliência…",
+    "resilienceScoreUnavailable": "Pontuação de resiliência indisponível.",
     "china": {
       "title": "Panorama do país: China",
       "description": "Situação atual de macro, mercado, comércio, energia e disponibilidade operacional a partir dos contratos de dados públicos existentes.",
-      "macroPolicy": "Macro e política",
-      "marketCredit": "Mercado e crédito",
-      "tradeSupply": "Comércio e cadeia de suprimentos",
+      "policyEvents": "Política e aplicação",
       "energy": "Energia",
       "availability": "Riscos e aviação",
       "observed": "Em:",
+      "published": "Publicado:",
+      "effective": "Em vigor:",
+      "sectors": "Setores:",
+      "entities": "Entidades:",
+      "translation": "Tradução:",
       "source": "Fonte:",
       "imfGrowth": "Previsão de crescimento do FMI",
       "creditGdp": "Crédito sobre o PIB",
@@ -3136,8 +3207,6 @@
       "gasDemand": "Demanda de gás",
       "energyMix": "Matriz elétrica",
       "coal": "carvão",
-      "aviationAvailability": "Disponibilidade da aviação",
-      "hazardAvailability": "Disponibilidade de riscos",
       "noMajorDisruptions": "Nenhuma interrupção relevante informada",
       "activeDisruptions_one": "{{count}} interrupção ativa",
       "activeDisruptions_many": "{{count}} interrupções ativas",
@@ -3151,18 +3220,21 @@
       "ccfiSource": "Bolsa de Navegação de Xangai",
       "comtradeSource": "UN Comtrade, declarante 156",
       "sourceUnavailable": "Fonte indisponível",
-      "macroUnavailable": "Os dados macro e de política estão indisponíveis no momento.",
-      "marketUnavailable": "Os dados de mercado e crédito estão indisponíveis no momento.",
-      "tradeUnavailable": "Os dados de comércio e cadeia de suprimentos estão indisponíveis no momento.",
-      "energyUnavailable": "Os dados de energia estão indisponíveis no momento.",
-      "availabilityUnavailable": "Os dados de disponibilidade de riscos e aviação estão indisponíveis no momento.",
+      "policyUnavailable": "Official policy and enforcement events are currently unavailable.",
+      "policyPartial": "{{count}} official agencies are temporarily degraded.",
       "status": {
         "loading": "Carregando",
         "available": "Disponível",
         "partial": "Parcial",
         "stale": "Desatualizado",
         "unavailable": "Indisponível"
-      }
+      },
+      "macroSignals": "Sinais macro",
+      "crossStraitActivity": "Atividade trans-estreito",
+      "corporateDisclosures": "Divulgações corporativas",
+      "corridorConditions": "Condições do corredor",
+      "activityNowcast": "Previsão de atividade",
+      "decisionSignalsUnavailable": "O instantâneo de sinais de decisão da China está atualmente indisponível."
     }
   },
   "preferences": {
@@ -3315,16 +3387,42 @@
     "visualizationFailed": "Falha na visualização"
   },
   "dashboardTabs": {
-    "ariaLabel": "Dashboard tabs",
-    "defaultName": "Main",
-    "newTabName": "New Tab",
-    "newTabCreated": "New tab created",
-    "tabDeleted": "Tab \"{{name}}\" deleted",
-    "addTab": "Add tab",
-    "addTabTitle": "New tab (starts with the default panels)",
-    "renameHint": "{{name}} — double-click to rename",
-    "deleteTab": "Delete tab",
-    "deleteTabAria": "Delete tab {{name}}",
-    "tabNameAria": "Tab name"
+    "ariaLabel": "Separadores do painel",
+    "defaultName": "Principal",
+    "newTabName": "Novo separador",
+    "newTabCreated": "Novo separador criado",
+    "tabDeleted": "Separador \"{{name}}\" eliminado",
+    "addTab": "Adicionar separador",
+    "addTabTitle": "Novo separador (começa com os painéis predefinidos)",
+    "renameHint": "{{name}} — duplo clique para renomear",
+    "deleteTab": "Eliminar separador",
+    "deleteTabAria": "Eliminar separador {{name}}",
+    "tabNameAria": "Nome do separador"
+  },
+  "theaterPresets": {
+    "label": "Predefinições de cobertura",
+    "applied": "Predefinição {{preset}} aplicada: {{count}} fontes ativadas",
+    "alreadyApplied": "A predefinição {{preset}} já foi aplicada",
+    "ukraineWar": {
+      "label": "Guerra na Ucrânia",
+      "description": "Ativar os principais meios ucranianos, a imprensa russa independente e fontes de avaliação da frente"
+    },
+    "indoPacific": {
+      "label": "Indo-Pacífico / Taiwan",
+      "description": "Ativar fontes de segurança de Taiwan, Paquistão e Sudeste Asiático"
+    },
+    "sahelWestAfrica": {
+      "label": "Sahel e África Ocidental",
+      "description": "Ativar fontes locais do Sahel, Nigéria e África Ocidental"
+    },
+    "caucasusCentralAsia": {
+      "label": "Cáucaso e Ásia Central",
+      "description": "Ativar fontes regionais do Cáucaso do Sul e da Ásia Central"
+    },
+    "middleEastFlashpoints": {
+      "label": "Pontos de tensão no Oriente Médio",
+      "description": "Ativar fontes sobre Irã, Israel, Golfo e regiões curdas"
+    },
+    "unavailable": "A predefinição {{preset}} não está disponível com os painéis atuais"
   }
 }

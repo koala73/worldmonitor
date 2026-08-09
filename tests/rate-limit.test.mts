@@ -22,7 +22,10 @@ import {
   checkRateLimit,
   checkScopedRateLimit,
   getClientIp,
+  rateLimitErrorLevel,
 } from '../server/_shared/rate-limit.ts';
+// @ts-expect-error — JS module, no declaration file
+import { rateLimitErrorLevel as apiRateLimitErrorLevel } from '../api/_rate-limit.js';
 
 const originalFetch = globalThis.fetch;
 const originalEnv = { ...process.env };
@@ -304,6 +307,86 @@ describe('rate-limit fail-open / fail-closed posture (#3531 M9)', () => {
     );
   });
 
+  it('paid-provider market routes each have explicit fail-closed policies (#6236)', async () => {
+    delete process.env.UPSTASH_REDIS_REST_URL;
+    delete process.env.UPSTASH_REDIS_REST_TOKEN;
+    const mod = await importFreshRateLimitModule();
+    const expectedPolicies = new Map([
+      ['/api/market/v1/analyze-stock', { limit: 60, window: '60 s' }],
+      ['/api/market/v1/backtest-stock', { limit: 60, window: '60 s' }],
+      ['/api/market/v1/get-insider-transactions', { limit: 60, window: '60 s' }],
+      ['/api/market/v1/get-country-stock-index', { limit: 30, window: '60 s' }],
+      ['/api/economic/v1/list-world-bank-indicators', { limit: 30, window: '60 s' }],
+    ] as const);
+
+    for (const [pathname, expectedPolicy] of expectedPolicies) {
+      assert.deepEqual(
+        ENDPOINT_RATE_POLICIES[pathname],
+        expectedPolicy,
+        `${pathname} must keep its provider-proxy budget`,
+      );
+      assert.ok(
+        pathname in FAIL_CLOSED_ENDPOINT_RATE_POLICY_REQUIRED,
+        `${pathname} must stay in the fail-closed requirement registry`,
+      );
+
+      const res = await mod.checkEndpointRateLimit(
+        makeRequest({ 'cf-connecting-ip': '203.0.113.7' }),
+        pathname,
+        {},
+      );
+
+      assert.ok(res, `${pathname} must fail closed without Redis config`);
+      assert.equal(res.status, 503);
+      assert.equal(res.headers.get('X-RateLimit-Mode'), 'degraded');
+    }
+  });
+
+  it('paid-provider endpoint policies fail closed when Redis ignores abort until the SDK timeout (#6236)', async () => {
+    process.env.UPSTASH_REDIS_REST_URL = 'https://fake-upstash.example';
+    process.env.UPSTASH_REDIS_REST_TOKEN = 'fake-token';
+    globalThis.fetch = (() => new Promise<Response>(() => {})) as typeof fetch;
+    const mod = await importFreshRateLimitModule();
+
+    const res = await mod.checkEndpointRateLimit(
+      makeRequest({ 'x-real-ip': '203.0.113.7' }),
+      '/api/market/v1/get-insider-transactions',
+      { 'Access-Control-Allow-Origin': 'https://worldmonitor.app' },
+    );
+
+    assert.ok(res, 'a timed-out limiter decision must not use the SDK allow fallback');
+    assert.equal(res.status, 503);
+    assert.equal(res.headers.get('X-RateLimit-Mode'), 'degraded');
+    assert.equal(res.headers.get('Access-Control-Allow-Origin'), 'https://worldmonitor.app');
+  });
+
+  it('paid-provider endpoint policies abort a stalled Redis fetch before failing closed (#6236)', async () => {
+    process.env.UPSTASH_REDIS_REST_URL = 'https://fake-upstash.example';
+    process.env.UPSTASH_REDIS_REST_TOKEN = 'fake-token';
+    let fetchAborted = false;
+    globalThis.fetch = ((_input: RequestInfo | URL, init?: RequestInit) =>
+      new Promise<Response>((_resolve, reject) => {
+        const signal = init?.signal;
+        const abort = () => {
+          fetchAborted = true;
+          reject(signal?.reason ?? new DOMException('Aborted', 'AbortError'));
+        };
+        if (signal?.aborted) abort();
+        else signal?.addEventListener('abort', abort, { once: true });
+      })) as typeof fetch;
+    const mod = await importFreshRateLimitModule();
+
+    const res = await mod.checkEndpointRateLimit(
+      makeRequest({ 'x-real-ip': '203.0.113.7' }),
+      '/api/market/v1/get-insider-transactions',
+      {},
+    );
+
+    assert.equal(fetchAborted, true, 'the Redis transport must be cancelled, not left pending');
+    assert.equal(res?.status, 503);
+    assert.equal(res.headers.get('X-RateLimit-Mode'), 'degraded');
+  });
+
   it('checkEndpointRateLimit keeps unrecognised paths unguarded even with fail-closed defaults', async () => {
     delete process.env.UPSTASH_REDIS_REST_URL;
     delete process.env.UPSTASH_REDIS_REST_TOKEN;
@@ -349,6 +432,8 @@ describe('rate-limit fail-open / fail-closed posture (#3531 M9)', () => {
     assert.match(src, /captureSilentError\(err,\s*\{/);
     assert.match(src, /surface:\s*'server'/);
     assert.match(src, /fingerprint:\s*\['rate-limit',\s*'redis-error',\s*stage\]/);
+    assert.match(src, /lastRateLimitSentryCaptureAt\.get\(stage\)/);
+    assert.match(src, /lastCaptureAt !== undefined && now - lastCaptureAt < RATE_LIMIT_SENTRY_DEDUP_MS/);
   });
 
   it('checkScopedRateLimit reports and captures degraded missing-config once per scope', async () => {
@@ -490,6 +575,55 @@ describe('rate-limit constants', () => {
   });
 });
 
+describe('rateLimitErrorLevel — Sentry severity for a degraded limiter (WORLDMONITOR-VM)', () => {
+  // Both copies must agree; api/_rate-limit.js is the byte-mirror of the .ts one.
+  const IMPLS: Array<[string, (stage: string, msg: string) => string]> = [
+    ['server/_shared/rate-limit.ts', rateLimitErrorLevel],
+    ['api/_rate-limit.js', apiRateLimitErrorLevel],
+  ];
+
+  for (const [surface, classify] of IMPLS) {
+    it(`${surface}: the endpoint limiter's own abort deadline is a transient, not an error`, () => {
+      // getEndpointRatelimit arms `AbortSignal.timeout(ENDPOINT_REDIS_ABORT_TIMEOUT_MS)`
+      // on the Upstash client. When that deadline wins, the SDK rejects with a
+      // DOMException whose message is this exact phrase, checkEndpointRateLimit
+      // absorbs it into the fail-closed 503, and the capture must not page.
+      assert.equal(
+        classify(
+          'checkEndpointRateLimit:/api/military/v1/get-aircraft-details-batch',
+          'The operation was aborted due to timeout',
+        ),
+        'warning',
+      );
+    });
+
+    it(`${surface}: both arms of the same limiter timeout classify alike`, () => {
+      // The SDK-race arm throws this literal from checkEndpointRateLimit; it and
+      // the abort arm above are one condition, so they must not split severity.
+      assert.equal(
+        classify('checkEndpointRateLimit:/api/ask', 'Upstash endpoint rate-limit decision timed out'),
+        'warning',
+      );
+      assert.equal(
+        classify('checkRateLimit', 'ERR Error running script: execution timed out'),
+        'warning',
+      );
+    });
+
+    it(`${surface}: a missing-config stage and an unclassified error still page`, () => {
+      assert.equal(
+        classify('checkEndpointRateLimit:/api/ask:missing-config', 'The operation was aborted due to timeout'),
+        'error',
+        'a deploy misconfiguration outranks any transient phrasing in the message',
+      );
+      assert.equal(
+        classify('checkRateLimit', 'WRONGTYPE Operation against a key holding the wrong kind of value'),
+        'error',
+      );
+    });
+  }
+});
+
 describe('EVALSHA-unsupported fallback (#7c — self-hosted redis-rest proxy blocks Lua)', () => {
   beforeEach(() => {
     process.env.UPSTASH_REDIS_REST_URL = 'https://fake-upstash.example';
@@ -627,6 +761,51 @@ describe('EVALSHA-unsupported fallback (#7c — self-hosted redis-rest proxy blo
       await mod.checkEndpointRateLimit(req, pathname, {}),
       null,
       'callers without a trusted principal must continue using the original IP bucket',
+    );
+  });
+
+  it('checkRateLimit isolates trusted principals sharing one IP while preserving the IP default', async () => {
+    const pipelineHandler = makeProxyPipelineHandler();
+    const incrementedKeys = new Set<string>();
+    globalThis.fetch = (async (_url: string, init?: RequestInit) => {
+      const commands = JSON.parse(String(init?.body)) as unknown[][];
+      for (const command of commands) {
+        if (String(command[0]).toUpperCase() === 'INCR') {
+          incrementedKeys.add(String(command[1]));
+        }
+      }
+      return new Response(JSON.stringify(pipelineHandler(commands)), { status: 200 });
+    }) as typeof fetch;
+
+    const mod = await importFreshRateLimitModule();
+    const req = makeRequest({ 'x-real-ip': '203.0.113.13' });
+
+    for (let i = 0; i < 600; i++) {
+      assert.equal(
+        await mod.checkRateLimit(req, {}, { principalUserId: 'pro-a' }),
+        null,
+      );
+    }
+    const blocked = await mod.checkRateLimit(req, {}, { principalUserId: 'pro-a' });
+    assert.equal(blocked?.status, 429, 'one Pro principal must still be capped at 600/min');
+
+    assert.equal(
+      await mod.checkRateLimit(req, {}, { principalUserId: 'pro-b' }),
+      null,
+      'a second Pro principal behind the same IP must receive an independent bucket',
+    );
+    assert.equal(
+      await mod.checkRateLimit(req, {}),
+      null,
+      'callers without a trusted principal must continue using the original IP bucket',
+    );
+    assert.ok(
+      incrementedKeys.has('rl:fw:203.0.113.13'),
+      'anonymous global traffic must preserve the legacy raw-IP key during rollout',
+    );
+    assert.ok(
+      !incrementedKeys.has('rl:fw:ip:203.0.113.13'),
+      'anonymous global traffic must not reset into a new namespaced key',
     );
   });
 

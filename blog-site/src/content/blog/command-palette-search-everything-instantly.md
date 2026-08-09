@@ -65,7 +65,7 @@ Results are grouped by category (Navigate, Layers, Panels, View, Actions, Countr
 
 ## Multilingual Search
 
-With [25 languages supported](/blog/posts/worldmonitor-in-21-languages-global-intelligence-for-everyone/), the command palette adapts to your locale. Country names and common commands are searchable in:
+With [26 languages supported](/blog/posts/worldmonitor-in-21-languages-global-intelligence-for-everyone/), the command palette adapts to your locale. Country names and common commands are searchable in:
 
 English, French, German, Spanish, Italian, Portuguese, Dutch, Swedish, Polish, Czech, Romanian, Bulgarian, Greek, Russian, Turkish, Arabic, Chinese (Simplified), Japanese, Korean, Thai, Vietnamese
 

@@ -12,6 +12,20 @@ export function rpcOk(id: unknown, result: unknown, extraHeaders: Record<string,
   return jsonResponse({ jsonrpc: '2.0', id: id ?? null, result }, 200, withMcpNoStore(extraHeaders));
 }
 
-export function rpcError(id: unknown, code: number, message: string, extraHeaders: Record<string, string> = {}): Response {
-  return jsonResponse({ jsonrpc: '2.0', id: id ?? null, error: { code, message } }, 200, withMcpNoStore(extraHeaders));
+export function rpcError(
+  id: unknown,
+  code: number,
+  message: string,
+  extraHeaders: Record<string, string> = {},
+  data?: unknown,
+): Response {
+  return jsonResponse(
+    {
+      jsonrpc: '2.0',
+      id: id ?? null,
+      error: { code, message, ...(data === undefined ? {} : { data }) },
+    },
+    200,
+    withMcpNoStore(extraHeaders),
+  );
 }

@@ -83,6 +83,10 @@ Set these before enabling strict relay auth.
 | `AIS_UPSTREAM_QUEUE_HARD_CAP` | Railway | `8000` (must be `> HIGH_WATER`) | No | Max queue size before dropping incoming upstream messages. |
 | `AIS_UPSTREAM_DRAIN_BATCH` | Railway | `250` (min `1`) | No | Max messages drained per cycle. |
 | `AIS_UPSTREAM_DRAIN_BUDGET_MS` | Railway | `20` (min `2`) | No | Max CPU time budget per drain cycle. |
+| `AIS_RECONNECT_BASE_MS` | Railway | `5000` (min `50`) | No | Base delay of the exponential upstream reconnect ladder. |
+| `AIS_RECONNECT_MAX_MS` | Railway | `300000` (min `100`) | No | Ordinary ceiling for the reconnect ladder. |
+| `AIS_THROTTLE_RECONNECT_MAX_MS` | Railway | `1800000` (min `100`, and never below `AIS_RECONNECT_MAX_MS`) | No | Escalated ceiling applied once the provider throttles persistently. Clamped up to `AIS_RECONNECT_MAX_MS` when configured lower, so escalation can never shorten the wait and reconnect harder while being throttled. |
+| `AIS_THROTTLE_ESCALATE_AFTER` | Railway | `5` (min `1`) | No | Consecutive HTTP 429 upgrade rejections before the escalated ceiling applies. |
 
 ## Rate Limit / Logging / Metrics
 

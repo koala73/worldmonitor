@@ -23,6 +23,15 @@ export { getClientIp, hasCloudflareTransitProof, UNKNOWN_CLIENT_IP } from './cli
 // resilient default untouched. Mirrors the retry:false already shipped on the
 // MCP limiter to unblock the suite (PR #3963).
 const REDIS_TEST_RETRY_OPTS: { retry?: false } = process.env.NODE_TEST_CONTEXT ? { retry: false } : {};
+// @upstash/ratelimit v2 returns an allow-shaped result with reason="timeout"
+// when this deadline wins the Redis race. Endpoint policies inspect that
+// reason below and fail closed; keeping the SDK timeout enabled bounds the
+// outage latency instead of waiting for the platform function timeout.
+const ENDPOINT_RATE_LIMIT_TIMEOUT_MS = process.env.NODE_TEST_CONTEXT ? 25 : 5_000;
+// Abort the underlying Upstash fetch just before the SDK's availability-first
+// race expires. Without this, the SDK returns its timeout result but leaves the
+// Redis request alive in the isolate for an unbounded transport stall.
+const ENDPOINT_REDIS_ABORT_TIMEOUT_MS = process.env.NODE_TEST_CONTEXT ? 20 : 4_500;
 
 let ratelimit: Ratelimit | null = null;
 const GLOBAL_RATE_LIMIT = 600;
@@ -57,18 +66,41 @@ function getRatelimit(): Ratelimit | null {
 // SERVICE_UNAVAILABLE `level: 'warning'` precedent in api/user-prefs.ts). A
 // `missing-config` stage is a real deploy misconfiguration and any novel error
 // is unclassified — both stay at `error` so on-call still sees them.
+//
+// `aborted due to timeout` / `TimeoutError` is our OWN deadline reporting in:
+// getEndpointRatelimit arms `AbortSignal.timeout(ENDPOINT_REDIS_ABORT_TIMEOUT_MS)`
+// on the Upstash client, so a stalled transport rejects with a DOMException
+// phrased "The operation was aborted due to timeout" — no `timed out`, no
+// `network`, so the pre-existing alternation scored it `error`. That split the
+// one condition in two: the SDK-race arm throws `Upstash endpoint rate-limit
+// decision timed out` (already `warning`) while the abort arm paged
+// (WORLDMONITOR-VM). Both are absorbed by the same fail-closed 503.
 // Mirrored verbatim in api/_rate-limit.js.
-function rateLimitErrorLevel(stage: string, msg: string): 'warning' | 'error' {
+//
+// Exported purely as a test seam: the classification is only observable through
+// a Sentry capture otherwise, and a source-regex assertion would false-pass on
+// the mirror drifting. tests/rate-limit.test.mts calls both copies directly.
+export function rateLimitErrorLevel(stage: string, msg: string): 'warning' | 'error' {
   if (stage.includes('missing-config')) return 'error';
-  if (/Error running script|execution timed out|Command failed|ETIMEDOUT|ECONNRESET|ENOTFOUND|fetch failed|network|timed out|socket hang up|Redis unavailable|Redis unreachable/i.test(msg)) {
+  if (/Error running script|execution timed out|Command failed|ETIMEDOUT|ECONNRESET|ENOTFOUND|fetch failed|network|timed out|aborted due to timeout|TimeoutError|socket hang up|Redis unavailable|Redis unreachable/i.test(msg)) {
     return 'warning';
   }
   return 'error';
 }
 
+const RATE_LIMIT_SENTRY_DEDUP_MS = 60_000;
+const lastRateLimitSentryCaptureAt = new Map<string, number>();
+
 function logRateLimitDegraded(stage: string, err: unknown): void {
   const msg = err instanceof Error ? err.message : String(err);
   console.error(`[rate-limit] redis-error stage=${stage} msg=${msg}`);
+  // Keep every occurrence in provider logs, but emit at most one Sentry event
+  // per limiter stage per minute from this isolate. A Redis outage otherwise
+  // turns every fail-closed request into another identical ingestion event.
+  const now = Date.now();
+  const lastCaptureAt = lastRateLimitSentryCaptureAt.get(stage);
+  if (lastCaptureAt !== undefined && now - lastCaptureAt < RATE_LIMIT_SENTRY_DEDUP_MS) return;
+  lastRateLimitSentryCaptureAt.set(stage, now);
   captureSilentError(err, {
     tags: { surface: 'server', component: 'rate-limit', stage },
     fingerprint: ['rate-limit', 'redis-error', stage],
@@ -144,16 +176,19 @@ export interface RateLimitOptions {
    * black-hole the whole site. (#3531)
    */
   failClosed?: boolean;
-}
-
-export interface EndpointRateLimitOptions extends RateLimitOptions {
   /**
-   * Optional trusted server-derived user ID for endpoint policies that should
-   * isolate authenticated principals sharing one public IP. Callers must never
-   * pass a raw client-controlled header here. The limiter owns the namespace
-   * prefix so user IDs cannot collide with anonymous IP buckets.
+   * Optional trusted server-derived user ID for policies that should isolate
+   * authenticated principals sharing one public IP. Callers must never pass a
+   * raw client-controlled header here. The limiter owns the namespace prefix
+   * so user IDs cannot collide with anonymous IP buckets.
    */
   principalUserId?: string;
+}
+
+export type EndpointRateLimitOptions = RateLimitOptions;
+
+function getPrincipalRateLimitIdentifier(principalUserId?: string): string | null {
+  return principalUserId ? `user:${principalUserId}` : null;
 }
 
 export async function checkRateLimit(request: Request, corsHeaders: Record<string, string>, opts: RateLimitOptions = {}): Promise<Response | null> {
@@ -166,10 +201,21 @@ export async function checkRateLimit(request: Request, corsHeaders: Record<strin
     return null;
   }
 
-  const ip = getClientIp(request);
+  // Preserve the long-standing raw-IP key for anonymous traffic so an
+  // in-flight 60-second bucket does not reset during rollout. Trusted
+  // principals use a separate namespace.
+  const identifier =
+    getPrincipalRateLimitIdentifier(opts.principalUserId) ??
+    getClientIp(request);
 
   try {
-    const { success, limit, reset } = await limitWithFallback(rl, ip, `rl:fw:${ip}`, GLOBAL_RATE_LIMIT, GLOBAL_RATE_WINDOW_SECONDS);
+    const { success, limit, reset } = await limitWithFallback(
+      rl,
+      identifier,
+      `rl:fw:${identifier}`,
+      GLOBAL_RATE_LIMIT,
+      GLOBAL_RATE_WINDOW_SECONDS,
+    );
 
     if (!success) {
       return tooManyRequestsResponse(limit, reset, corsHeaders, GLOBAL_RATE_WINDOW_SECONDS);
@@ -207,6 +253,34 @@ export const ENDPOINT_RATE_POLICIES: Record<string, EndpointRatePolicy> = {
   // classify-event budget (same limit/window) — both are AI-backed Intelligence
   // RPCs. (#4676)
   '/api/intelligence/v1/deduct-situation': { limit: 600, window: '60 s' },
+  // Historical intelligence memory (#5694): both semantic routes embed the
+  // caller's free text through the OpenRouter embeddings API on every cache
+  // miss, so they are provider-backed spend, not pure reads. They are also
+  // premium-gated, which means the gateway serves them with no CDN cache — a
+  // The three intel-history reads. All are Pro-gated and reach the function on
+  // every request, but they spend two different budgets, so they are sized
+  // against two different ceilings.
+  //
+  // search + similar-events each embed their input on a paid provider. They
+  // share ONE budget while the registry is keyed per PATH, so a caller
+  // alternating them gets the sum, not the cap — 30/min each holds the
+  // combined worst case at the 60/min per-principal embeddings bill this is
+  // sized for. Still generous for interactive use (a search plus follow-ups),
+  // and far under the LLM routes' 600/min because nothing here runs in a
+  // page-load fan-out.
+  //
+  // timeline embeds nothing, which is why it originally carried no policy at
+  // all. That reasoning was right about money and wrong about the resource
+  // that actually scales with retention: Convex reads whole documents, and
+  // every intelHistory row carries a 512-float embedding the projection
+  // immediately discards. One limit=200 call scoped by both domain and
+  // country scans TIMELINE_MAX_SCAN=800 rows (4x over-fetch for the
+  // post-filter) — roughly 3MB of Convex read budget, which the 600/min
+  // availability-first fallback did not bound. 120/min keeps a timeline read
+  // comfortable while capping that worst case.
+  '/api/intelligence/v1/search-intel-history': { limit: 30, window: '60 s' },
+  '/api/intelligence/v1/get-similar-events': { limit: 30, window: '60 s' },
+  '/api/intelligence/v1/get-intel-timeline': { limit: 120, window: '60 s' },
   // Batch humanitarian-summary fans out to the external HAPI (humdata) provider
   // on cache miss — up to 25 countries per request, 5 concurrent upstream
   // fetches. Batch aircraft-details fans out to the external Wingbits provider —
@@ -222,18 +296,75 @@ export const ENDPOINT_RATE_POLICIES: Record<string, EndpointRatePolicy> = {
   // Legacy /api/sanctions-entity-search rate limit was 30/min per IP. Preserve
   // that budget now that LookupSanctionEntity proxies OpenSanctions live.
   '/api/sanctions/v1/lookup-sanction-entity': { limit: 30, window: '60 s' },
+  // Corporate intelligence (#5695): each cache miss proxies SEC EDGAR and/or
+  // Finnhub on the caller's behalf, and the per-company inputs are effectively
+  // unbounded (any ticker/name/domain), so these cannot inherit the fail-open
+  // global fallback. Same 30/min provider-proxy budget as the sanctions lookup
+  // and batch fan-out routes above.
+  '/api/intelligence/v1/get-company-enrichment': { limit: 30, window: '60 s' },
+  '/api/intelligence/v1/list-company-signals': { limit: 30, window: '60 s' },
+  '/api/intelligence/v1/search-sec-filings': { limit: 30, window: '60 s' },
+  // Public market/economic provider proxies (#6236): caller-controlled symbols,
+  // indicators, and year ranges create unbounded cache-key cardinality; the
+  // country-index route is bounded to the 45-country contract but still
+  // proxies Yahoo Finance on a cache miss. None may inherit the global
+  // fail-open budget. The dashboard can legitimately fan out across 50 Pro
+  // watchlist symbols, so those three per-symbol routes admit one full load
+  // plus headroom. analyze-stock remains separately constrained by the
+  // fail-closed per-user daily direct-LLM quota.
+  '/api/market/v1/analyze-stock': { limit: 60, window: '60 s' },
+  '/api/market/v1/backtest-stock': { limit: 60, window: '60 s' },
+  '/api/market/v1/get-insider-transactions': { limit: 60, window: '60 s' },
+  '/api/market/v1/get-country-stock-index': { limit: 30, window: '60 s' },
+  // Stablecoins are seed-backed for the DEFAULT request, but naming coins the
+  // snapshot does not carry reaches CoinGecko, and the caller picks the IDs —
+  // unbounded cardinality, so the per-ID-set cache cannot bound spend alone.
+  //
+  // Sized against the dashboard, not the provider: this path is in
+  // PRO_FRESH_CACHE_RPC_PATHS, so it carries a panel that refreshes on a timer
+  // for every open dashboard, and the limit is per-IP for anonymous traffic —
+  // one office NAT is one bucket. 60/min matches the sibling per-symbol market
+  // routes, which are likewise sized to admit a full legitimate load plus
+  // headroom rather than to price the upstream call.
+  //
+  // Note this makes the route fail closed on a Redis outage, which the four
+  // other panels in PRO_FRESH_CACHE_RPC_PATHS are not. That is survivable
+  // because the handler cannot serve data during that outage either (the seed
+  // read is the same Redis) — and it deliberately performs no provider work
+  // when that read fails, so the fail-closed 503 is a second line, not the
+  // only thing standing between a Redis outage and a CoinGecko fan-out. (#6308)
+  '/api/market/v1/list-stablecoin-markets': { limit: 60, window: '60 s' },
+  '/api/economic/v1/list-world-bank-indicators': { limit: 30, window: '60 s' },
+  // #6305: list-market-quotes stopped being a pure seed read. The fixed seed
+  // still answers the default universe with no upstream call, but a symbol the
+  // seed does not carry (a custom watchlist ticker) now resolves through the
+  // bounded, Redis-cached Finnhub gap fetch — so caller-controlled symbols can
+  // reach a paid provider and this route can no longer inherit the fail-open
+  // global budget. Same 60/min as the sibling per-symbol market routes: the
+  // dashboard issues one multi-symbol call per refresh and the response is
+  // CDN-cached (medium tier), so 60/min is far above any legitimate per-IP
+  // load. Provider spend is separately capped at MARKET_QUOTES_UPSTREAM_LIMIT
+  // lookups per request.
+  '/api/market/v1/list-market-quotes': { limit: 60, window: '60 s' },
+  // Company Monitoring is contract-only and remains unrouted until #6003
+  // passes, but generated mutation routes still need a fail-closed policy
+  // before any later lane can wire them. Import can carry 100 rows, so keep its
+  // request budget lower than the single-company mutations.
+  '/api/company-monitoring/v1/create-monitored-company': { limit: 30, window: '60 s' },
+  '/api/company-monitoring/v1/update-monitored-company': { limit: 30, window: '60 s' },
+  '/api/company-monitoring/v1/set-monitored-company-state': { limit: 30, window: '60 s' },
+  '/api/company-monitoring/v1/import-monitored-company-batch': { limit: 10, window: '60 s' },
   // Lead capture: preserve the 3/hr and 5/hr budgets from legacy api/contact.js
   // and api/register-interest.js. Lower limits than normal IP rate limit since
   // these hit Convex + Resend per request.
   '/api/leads/v1/submit-contact': { limit: 3, window: '1 h' },
   '/api/leads/v1/register-interest': { limit: 5, window: '1 h' },
   // Scenario engine: legacy /api/scenario/v1/run capped at 10 jobs/min/IP via
-  // inline Upstash INCR. Gateway now enforces the same budget with per-IP
-  // keying in checkEndpointRateLimit.
+  // inline Upstash INCR. Gateway preserves the same budget while using a
+  // trusted paid-user principal when available, otherwise the client IP.
   '/api/scenario/v1/run-scenario': { limit: 10, window: '60 s' },
   // #3734: trigger-simulation PRO endpoint, same shape as run-scenario.
-  // Per-IP keying matches run-scenario's production behavior. Pro-identity
-  // primitive deferred (checkScopedRateLimit available if needed).
+  // It follows the same trusted-principal-or-IP attribution contract.
   '/api/forecast/v1/trigger-simulation': { limit: 10, window: '60 s' },
   // Live tanker map (Energy Atlas): one user with 6 chokepoints × 1 call/min
   // = 6 req/min/IP base load. 60/min headroom covers tab refreshes + zoom
@@ -291,8 +422,56 @@ export const FAIL_CLOSED_ENDPOINT_RATE_POLICY_REQUIRED: Record<string, RateLimit
   '/api/intelligence/v1/deduct-situation': {
     reason: 'LLM-backed situational deduction can drive provider spend on cache misses.',
   },
+  '/api/intelligence/v1/search-intel-history': {
+    reason: 'Semantic history search embeds the caller\'s query through a paid embeddings provider on every request.',
+  },
+  '/api/intelligence/v1/get-similar-events': {
+    reason: 'Precedent lookup embeds the caller\'s situation text through a paid embeddings provider on every request.',
+  },
   '/api/conflict/v1/get-humanitarian-summary-batch': {
     reason: 'Batch summary fans out to the external HAPI (humdata) provider on cache miss.',
+  },
+  '/api/intelligence/v1/get-company-enrichment': {
+    reason: 'Per-company composite fans out to SEC EDGAR and Finnhub on cache miss.',
+  },
+  '/api/intelligence/v1/list-company-signals': {
+    reason: 'Per-company signal discovery fans out to SEC EDGAR and Finnhub on cache miss.',
+  },
+  '/api/intelligence/v1/search-sec-filings': {
+    reason: 'Full-text filing search proxies SEC EDGAR on cache miss with unbounded query cardinality.',
+  },
+  '/api/market/v1/analyze-stock': {
+    reason: 'Per-symbol analysis can fan out to Finnhub plus the Exa, Brave, and SerpAPI search ladder on cache miss.',
+  },
+  '/api/market/v1/backtest-stock': {
+    reason: 'Per-symbol backtests proxy scraped Yahoo Finance data with unbounded symbol cardinality.',
+  },
+  '/api/market/v1/get-insider-transactions': {
+    reason: 'Per-symbol insider lookups proxy the paid Finnhub provider on cache miss.',
+  },
+  '/api/market/v1/get-country-stock-index': {
+    reason: 'Per-country stock-index lookups proxy Yahoo Finance on cache miss.',
+  },
+  '/api/market/v1/list-stablecoin-markets': {
+    reason: 'Caller-named coin IDs absent from the seed snapshot fan out to CoinGecko on cache miss with unbounded ID cardinality.',
+  },
+  '/api/market/v1/list-market-quotes': {
+    reason: 'Custom watchlist symbols the fixed seed does not carry resolve through the paid Finnhub provider on cache miss (#6305).',
+  },
+  '/api/economic/v1/list-world-bank-indicators': {
+    reason: 'Caller-controlled indicator, country, and year inputs proxy World Bank on cache miss.',
+  },
+  '/api/company-monitoring/v1/create-monitored-company': {
+    reason: 'Account-scoped portfolio mutation must not become fail-open when its dark contract is wired.',
+  },
+  '/api/company-monitoring/v1/update-monitored-company': {
+    reason: 'Account-scoped portfolio mutation must not become fail-open when its dark contract is wired.',
+  },
+  '/api/company-monitoring/v1/set-monitored-company-state': {
+    reason: 'Account-scoped lifecycle mutation must not become fail-open when its dark contract is wired.',
+  },
+  '/api/company-monitoring/v1/import-monitored-company-batch': {
+    reason: 'A bounded import can write up to 100 portfolio rows and must fail closed when its dark contract is wired.',
   },
   '/api/military/v1/get-aircraft-details-batch': {
     reason: 'Batch enrichment fans out to the external Wingbits provider on cache miss.',
@@ -330,6 +509,9 @@ export const FAIL_CLOSED_ENDPOINT_RATE_POLICY_REQUIRED: Record<string, RateLimit
 export const GLOBAL_RATE_LIMIT_FALLBACK_READ_ROUTES: Record<string, RateLimitPolicyDecision> = {
   '/api/aviation/v1/list-airport-delays': {
     reason: 'Read-only cache-backed airport delay listing; availability-first fallback is acceptable.',
+  },
+  '/api/intelligence/v1/list-material-events': {
+    reason: 'Read-only Redis read of the seeded 8-K stream; no upstream fetch on miss, so availability-first fallback carries no spend risk.',
   },
 };
 
@@ -371,10 +553,16 @@ function getEndpointRatelimit(pathname: string): Ratelimit | null {
   if (!url || !token) return null;
 
   const rl = new Ratelimit({
-    redis: new Redis({ url, token, ...REDIS_TEST_RETRY_OPTS }),
+    redis: new Redis({
+      url,
+      token,
+      ...REDIS_TEST_RETRY_OPTS,
+      signal: () => AbortSignal.timeout(ENDPOINT_REDIS_ABORT_TIMEOUT_MS),
+    }),
     limiter: Ratelimit.slidingWindow(policy.limit, policy.window),
     prefix: 'rl:ep',
     analytics: false,
+    timeout: ENDPOINT_RATE_LIMIT_TIMEOUT_MS,
   });
   endpointLimiters.set(pathname, rl);
   return rl;
@@ -397,9 +585,9 @@ export async function checkEndpointRateLimit(request: Request, pathname: string,
     return null;
   }
 
-  const identifier = opts.principalUserId
-    ? `user:${opts.principalUserId}`
-    : `ip:${getClientIp(request)}`;
+  const identifier =
+    getPrincipalRateLimitIdentifier(opts.principalUserId) ??
+    `ip:${getClientIp(request)}`;
   const policy = ENDPOINT_RATE_POLICIES[pathname];
   // hasEndpointRatePolicy(pathname) above already guarantees this — the
   // extra check exists only to satisfy noUncheckedIndexedAccess, since TS
@@ -407,7 +595,14 @@ export async function checkEndpointRateLimit(request: Request, pathname: string,
   if (!policy) return null;
 
   try {
-    const { success, limit, reset } = await limitWithFallback(rl, `${pathname}:${identifier}`, `rl:ep:fw:${pathname}:${identifier}`, policy.limit, durationToSeconds(policy.window));
+    const result = await limitWithFallback(rl, `${pathname}:${identifier}`, `rl:ep:fw:${pathname}:${identifier}`, policy.limit, durationToSeconds(policy.window));
+    // @upstash/ratelimit v2's timeout is intentionally availability-first:
+    // it resolves { success: true, reason: 'timeout' }. Explicit endpoint
+    // policies are the abuse defence, so that result is degraded, not an allow.
+    if (result.reason === 'timeout') {
+      throw new Error('Upstash endpoint rate-limit decision timed out');
+    }
+    const { success, limit, reset } = result;
 
     if (!success) {
       return tooManyRequestsResponse(limit, reset, corsHeaders, durationToSeconds(policy.window));
@@ -522,5 +717,6 @@ export function __resetRateLimitForTest(): void {
   endpointLimiters.clear();
   scopedLimiters.clear();
   scopedMissingConfigStages.clear();
+  lastRateLimitSentryCaptureAt.clear();
   resetRateLimitFallbackForTest();
 }

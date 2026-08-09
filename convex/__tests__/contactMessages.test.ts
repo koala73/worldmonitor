@@ -35,6 +35,29 @@ describe("contactMessages.submit", () => {
     ).rejects.toThrow(/email/i);
   });
 
+  test.each(["user@gmail.com", "user@mailinator.com"])(
+    "rejects non-corporate email %s with a structured policy error",
+    async (email) => {
+      const t = convexTest(schema, modules);
+      const error = await t
+        .mutation(api.contactMessages.submit, {
+          name: "Ada",
+          email,
+          source: "test",
+        })
+        .then(
+          () => null,
+          (caught: unknown) => caught,
+        );
+      expect(error).toBeInstanceOf(Error);
+      const rawData = (error as { data?: unknown }).data;
+      const data = typeof rawData === "string" ? JSON.parse(rawData) : rawData;
+      expect(data).toMatchObject({
+        kind: "FREE_EMAIL_NOT_ALLOWED",
+      });
+    },
+  );
+
   test("rejects empty name", async () => {
     const t = convexTest(schema, modules);
     await expect(

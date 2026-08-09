@@ -46,8 +46,8 @@
     ],
     "primary": {
       "type": "button",
-      "label": "Get Early Access",
-      "href": "https://www.worldmonitor.app/pro#waitlist"
+      "label": "View Pro plans",
+      "href": "https://www.worldmonitor.app/pro#pricing"
     }
   },
   "navigation": {
@@ -94,6 +94,11 @@
                 "pages": [
                   "signal-intelligence",
                   "ai-intelligence",
+                  "china-data-coverage",
+                  "china-official-macro-policy",
+                  "china-corporate-disclosures",
+                  "china-logistics-corridors",
+                  "methodology/china-activity-nowcast",
                   "methodology/news-digest-and-briefing",
                   "country-instability-index",
                   "methodology/country-resilience-index",
@@ -231,6 +236,8 @@
                   "cors",
                   "health-endpoints",
                   "relay-parameters",
+                  "decision-signal-provenance",
+                  "china-decision-signals",
                   "data-sources"
                 ]
               },
@@ -257,7 +264,8 @@
               {
                 "group": "Overview",
                 "pages": [
-                  "api-reference"
+                  "api-reference",
+                  "api-versioning"
                 ]
               },
               {
@@ -460,8 +468,8 @@
           ],
           "primary": {
             "type": "button",
-            "label": "获取早期访问权限",
-            "href": "https://www.worldmonitor.app/pro#waitlist"
+            "label": "查看 Pro 方案",
+            "href": "https://www.worldmonitor.app/pro#pricing"
           }
         },
         "footer": {
@@ -550,6 +558,11 @@
                 "pages": [
                   "zh/signal-intelligence",
                   "zh/ai-intelligence",
+                  "zh/china-data-coverage",
+                  "zh/china-official-macro-policy",
+                  "zh/china-corporate-disclosures",
+                  "zh/china-logistics-corridors",
+                  "zh/methodology/china-activity-nowcast",
                   "zh/methodology/news-digest-and-briefing",
                   "zh/country-instability-index",
                   "zh/methodology/country-resilience-index",
@@ -687,6 +700,8 @@
                   "zh/cors",
                   "zh/health-endpoints",
                   "zh/relay-parameters",
+                  "zh/decision-signal-provenance",
+                  "zh/china-decision-signals",
                   "zh/data-sources"
                 ]
               },
@@ -713,7 +728,8 @@
               {
                 "group": "概览",
                 "pages": [
-                  "zh/api-reference"
+                  "zh/api-reference",
+                  "zh/api-versioning"
                 ]
               },
               {

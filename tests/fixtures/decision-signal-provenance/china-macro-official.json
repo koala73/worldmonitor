@@ -1,0 +1,122 @@
+{
+  "id": "china-macro-official-numeric",
+  "familyId": "china_macro_official_numeric_observation",
+  "scenarios": ["official_macro_observation", "launched_domain_family"],
+  "provenance": {
+    "contractVersion": "decision-signal-provenance/v1",
+    "signalId": "signal:nbs-industrial-value-added-yoy:2026-06:v1",
+    "familyId": "china_macro_official_numeric_observation",
+    "claims": {
+      "publisher": {
+        "status": "known",
+        "value": {
+          "id": "publisher:nbs-cn",
+          "name": "National Bureau of Statistics of China",
+          "type": "official_government",
+          "registryReference": {
+            "sourceName": "NBS (China)",
+            "sourceType": "gov",
+            "propagandaRisk": "high"
+          }
+        }
+      },
+      "source_url": {
+        "status": "known",
+        "value": "https://www.stats.gov.cn/english/PressRelease/202607/t20260717_1964159.html"
+      },
+      "original_reference": {
+        "status": "known",
+        "value": {
+          "kind": "observation",
+          "id": "nbs-industrial-value-added-yoy:2026-06:v1",
+          "contentHash": "sha256:62d42e59ae40a23dd63c594c613471cea77d04a938c435a0521476131db95588"
+        }
+      },
+      "original_language": {
+        "status": "known",
+        "value": "en"
+      },
+      "translation": {
+        "status": "not_applicable",
+        "reason": "The normalized signal is numeric and carries no translated text."
+      },
+      "observation_time": {
+        "status": "known",
+        "value": {
+          "role": "observation",
+          "value": "2026-06",
+          "precision": "month"
+        }
+      },
+      "effective_time": {
+        "status": "unknown",
+        "reason": "The release does not declare a separate effective date."
+      },
+      "publication_time": {
+        "status": "known",
+        "value": {
+          "role": "publication",
+          "value": "2026-07-16T02:00:00Z",
+          "precision": "instant"
+        }
+      },
+      "retrieval_time": {
+        "status": "known",
+        "value": {
+          "role": "retrieval",
+          "value": "2026-07-25T14:30:00Z",
+          "precision": "instant"
+        }
+      },
+      "revision": {
+        "status": "known",
+        "value": {
+          "vintageId": "nbs-industrial-value-added-yoy:2026-06:v1",
+          "sequence": 1,
+          "state": "original"
+        }
+      },
+      "supersession": {
+        "status": "known",
+        "value": {
+          "state": "current"
+        }
+      },
+      "extraction_confidence": {
+        "status": "known",
+        "value": {
+          "score": 0.98,
+          "method": "reviewed-release-regex/v1"
+        }
+      },
+      "classification_confidence": {
+        "status": "not_applicable",
+        "reason": "The canonical series identity is configured rather than inferred."
+      },
+      "corroboration": {
+        "status": "unknown",
+        "reason": "No independent comparison has been performed."
+      },
+      "transport_freshness": {
+        "status": "known",
+        "value": {
+          "state": "fresh",
+          "assessedAt": "2026-07-25T14:30:00Z",
+          "lastSuccessAt": "2026-07-25T14:30:00Z"
+        }
+      },
+      "content_freshness": {
+        "status": "known",
+        "value": {
+          "state": "current",
+          "assessedAt": "2026-07-25T14:30:00Z",
+          "contentAsOf": "2026-06"
+        }
+      },
+      "derivation": {
+        "status": "not_applicable",
+        "reason": "This is a source observation, not a computed output."
+      }
+    }
+  }
+}

@@ -242,19 +242,3 @@ export const TIER1_COUNTRIES: Record<string, string> = {
 
 export const DEFAULT_BASELINE_RISK = DEFAULT_CII_BASELINE_RISK;
 export const DEFAULT_EVENT_MULTIPLIER = DEFAULT_CII_EVENT_MULTIPLIER;
-
-export const HOTSPOT_COUNTRY_MAP: Record<string, string | string[]> = {
-  tehran: 'IR', moscow: 'RU', beijing: 'CN', kyiv: 'UA', taipei: 'TW',
-  telaviv: 'IL', pyongyang: 'KP', sanaa: 'YE', riyadh: 'SA', ankara: 'TR',
-  damascus: 'SY', caracas: 'VE', dc: 'US', london: 'GB',
-  brussels: 'BE', baghdad: 'IQ', beirut: 'LB', doha: 'QA', abudhabi: 'AE',
-  mexico: 'MX', havana: 'CU', nuuk: 'GL', sahel: ['ML', 'NE', 'BF'], haiti: 'HT',
-  horn_africa: ['ET', 'SO', 'SD'], silicon_valley: 'US', wall_street: 'US',
-  houston: 'US', cairo: 'EG',
-};
-
-export function getHotspotCountries(hotspotId: string): string[] {
-  const val = HOTSPOT_COUNTRY_MAP[hotspotId];
-  if (!val) return [];
-  return Array.isArray(val) ? val : [val];
-}

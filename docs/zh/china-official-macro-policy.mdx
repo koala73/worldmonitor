@@ -1,0 +1,102 @@
+---
+title: "中国官方宏观与政策"
+description: "中国官方宏观观测、发布日历核验、政策事件分类、来源准入、修订与缺失值契约。"
+---
+
+WorldMonitor 维护两条独立官方文件管线：修订感知的数值宏观观测，以及类型化
+政策/执法事件。二者共享[决策信号溯源契约](/zh/decision-signal-provenance)，
+但不共享 fetcher、评分或新鲜度规则。
+
+## 官方宏观观测
+
+已上线宏观快照要求以下五个序列：
+
+| 序列 ID | 发布者 | 支柱 | 单位 | 最大观测年龄 |
+| --- | --- | --- | --- | --- |
+| `nbs_industrial_value_added_yoy` | 中国国家统计局 | 活动 | 百分比 | 75 天 |
+| `nbs_fixed_asset_investment_yoy` | 中国国家统计局 | 投资/房地产 | 百分比 | 75 天 |
+| `nbs_real_estate_investment_yoy` | 中国国家统计局 | 投资/房地产 | 百分比 | 75 天 |
+| `safe_fx_reserves` | 国家外汇管理局 | 外部压力 | 1 亿美元 | 45 天 |
+| `safe_bank_fx_settlement` | 国家外汇管理局 | 外部压力 | 1 亿元人民币 | 45 天 |
+
+NBS 从 `www.stats.gov.cn/english/PressRelease/` 采集；SAFE 从
+`www.safe.gov.cn/safe/` 采集。两者都有有界请求预算、手动重定向处理、响应大小
+限制、robots 预检、来源 host allowlist 与审核归因要求。宏观 seeder 不使用代理
+绕过被拒绝的来源决定。
+
+以下审核候选项保持显式不可用，而不是被静默省略：
+
+- `pboc_aggregate_financing_flow`
+- `pboc_new_rmb_loans`
+- `pboc_m2_yoy`
+- `pboc_policy_liquidity_operation`
+- `gacc_exports`
+- `gacc_imports`
+- `gacc_trade_balance`
+
+当 `www.pbc.gov.cn` robots 策略禁止审核路径或条款审核未完成时，PBoC 候选项保持
+阻止。`english.customs.gov.cn` 无法通过 TLS/来源预检时，GACC 候选项保持阻止。
+相应支柱为 `unavailable`，不会替换为其他发布者。
+
+## 修订与方向
+
+每个官方观测保留观测期、发布时间、检索时间、来源 URL、版本 ID、修订序号与
+替代状态。更正会创建或更新可追踪版本，不会改写历史时点记录。
+
+只有发布序列契约提供有效比较时才计算方向。缺失比较值保持不可用。只有五个必需
+观测都有效并位于各自年龄预算内，快照才是 launch-ready。传输新鲜度与快照完整性
+写入独立 seed metadata。
+
+`GET /api/economic/v1/get-china-macro-snapshot` 仅读取规范
+`economic:china:macro:v2` seed，缓存缺失时不会向上游发布者扇出。Railway 宏观成员
+每 36 小时运行一次。
+
+## 发布日历
+
+发布日历从 `www.stats.gov.cn` 读取当年 NBS 日历。贷款市场报价利率日期由审核的
+中国工作日日历生成并标记为 `provisional`；只有在 `www.chinamoney.com.cn`
+找到对应 ChinaMoney/CFETS 公告后才提升为 `verified`。
+
+必需 NBS 日历失败会让日历构建失败。ChinaMoney 核验失败会保留 LPR 暂定状态并
+记录来源决定，不会把它改标为已核验。
+
+## 政策与执法事件
+
+政策管线轮询六个官方机构：
+
+| 机构 | 发布者 | 列表 host |
+| --- | --- | --- |
+| `CAC` | 国家互联网信息办公室 | `www.cac.gov.cn` |
+| `SAMR` | 国家市场监督管理总局 | `www.samr.gov.cn` |
+| `MIIT` | 工业和信息化部 | `www.miit.gov.cn` |
+| `MOFCOM` | 商务部 | `www.mofcom.gov.cn` |
+| `NDRC` | 国家发展和改革委员会 | `zfxxgk.ndrc.gov.cn` |
+| `PBOC` | 中国人民银行 | `www.pbc.gov.cn` |
+
+每个机构每次运行最多一个列表请求和三个审核文件请求，同 host 请求间隔 400 ms。
+列表响应上限 750 KB，文件上限 2 MB；URL 必须符合审核 host 与路径契约。
+
+确定性分类法输出：
+
+- `consultation_draft`
+- `announcement_guidance`
+- `final_rule`
+- `administrative_approval_restriction`
+- `investigation`
+- `enforcement_penalty`
+- `effective_date_change`
+- `amendment_correction_repeal_supersession`
+- `unknown`
+
+发布事件保留中文原标题与文本、翻译状态、文号、发布/生效日期、审核行业与实体链接、
+内容 hash、分类证据、lineage、修订和完整溯源。未知分类保持未知，不会被提升为执法。
+
+Railway macro bundle 每 6 小时刷新该管线，在 180 天内最多保留 120 个事件，并保持
+完整 lineage。某机构失败时，仍有效的最后良好事件会被保留，其传输新鲜度改为
+`error`；健康机构继续独立运行。
+
+## 告警边界
+
+征求意见稿、指导文件和未知政策分类不触发告警。审核政策/执法告警要求新的稳定
+lineage。更正和重复摄取保留相同 lineage 以便去重。受限中国决策信号组合最多发布
+该管线的四个有效条目。

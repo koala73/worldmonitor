@@ -103,8 +103,25 @@ function windowForDimension(dimension: PlanLimitDimension, now: number) {
   };
 }
 
+// Plans whose MCP calls are metered by the Redis `mcp:pro-usage` counter — i.e.
+// the plans that authenticate into the MCP edge's `pro` context and hit the
+// INCR-first reservation in api/mcp/dispatch.ts. Both a producer (the Redis
+// read) and a consumer (the Axiom-row drop) key on this, and they must agree:
+// see the dual-sourcing note above `redisMcpDailyUsers`.
+function isRedisMeteredMcpPlan(planKey: string): boolean {
+  return (
+    planKey === "pro_monthly" || planKey === "pro_annual"
+    || planKey === "pro_business_monthly" || planKey === "pro_business_annual"
+  );
+}
+
 function dodoUpgradeNotice(planKey: string, dimension: PlanLimitDimension): Omit<NoticeInput, "state"> {
-  if (planKey === "pro_monthly" || planKey === "pro_annual") {
+  // Pro AND Pro Business both top out below API Starter's MCP allowance, and
+  // both are self-serve checkout products — so a capped caller on either gets
+  // the same "buy API Starter" CTA. Without the pro_business arm the notice
+  // falls through to `{ctaKind: 'none'}`: the customer is told they hit the cap
+  // with no way out of it.
+  if (isRedisMeteredMcpPlan(planKey)) {
     return { upgradeTargetPlanKey: "api_starter", ctaKind: "checkout" };
   }
   if (planKey === "api_starter" || planKey === "api_starter_annual") {
@@ -390,7 +407,7 @@ async function buildProductionRows(
   // counter. Mirrors the U8 api_daily_requests move to a single Redis source.
   const redisMcpDailyUsers = new Set(
     active
-      .filter((e) => (e.planKey === "pro_monthly" || e.planKey === "pro_annual") && e.mcpAccess)
+      .filter((e) => isRedisMeteredMcpPlan(e.planKey) && e.mcpAccess)
       .map((e) => e.userId),
   );
   const mcpDailyApl = `['wm_api_usage']
@@ -454,9 +471,11 @@ async function buildProductionRows(
     if (ent.apiAccess && getPlanLimit(ent.planKey, "api_daily_requests") != null) {
       reads.push({ userId: ent.userId, planKey: ent.planKey, dimension: "api_daily_requests", source: "redis:apikey_day" });
     }
-    // mcp_daily_calls: existing Pro daily-counter fallback (unchanged).
-    const isPro = ent.planKey === "pro_monthly" || ent.planKey === "pro_annual";
-    if (isPro && ent.mcpAccess) {
+    // mcp_daily_calls: the pro-family daily-counter read that pairs with the
+    // Axiom-row drop above. The two sets MUST stay identical — a plan in one
+    // and not the other either dual-sources the dimension (notice flap) or
+    // leaves it unmetered.
+    if (isRedisMeteredMcpPlan(ent.planKey) && ent.mcpAccess) {
       reads.push({ userId: ent.userId, planKey: ent.planKey, dimension: "mcp_daily_calls", source: "redis:mcp_pro_daily" });
     }
   }

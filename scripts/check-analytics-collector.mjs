@@ -14,10 +14,28 @@
  * deployment status, which was green throughout that outage.
  */
 
-import { realpathSync } from 'node:fs';
-import { fileURLToPath, pathToFileURL } from 'node:url';
+import { randomUUID } from 'node:crypto';
+import { isMainModule } from './lib/main-module.mjs';
+
+import {
+  extractCollectorFailureMetadata,
+  isBotFilteredBody,
+  WRITE_RECEIPT_FIELDS,
+} from '../shared/collector-failure-metadata.js';
+
+export { extractCollectorFailureMetadata, isBotFilteredBody };
 
 const DEFAULT_COLLECTOR_ORIGIN = 'https://abacus.worldmonitor.app';
+export const ANALYTICS_CANARY_WEBSITE_ID = '373c80a2-1109-42a7-868b-565bcf7bf168';
+const ANALYTICS_CANARY_HOSTNAME = 'analytics-canary.worldmonitor.app';
+/**
+ * Generated per run, not hard-coded. The repo is public, so a fixed session key
+ * published alongside the (necessarily unauthenticated) `/api/send` endpoint is
+ * a stable target an outsider can contend with to force false monitor pages.
+ * A fresh UUID keeps the same-session property for THIS run's probes while
+ * giving nobody a key to squat on, and matches the UUID shape Umami expects.
+ */
+const ANALYTICS_CANARY_SESSION_ID = randomUUID();
 
 /**
  * Cloudflare's WAF 403s a bare `curl/*` User-Agent on this host (verified
@@ -26,10 +44,83 @@ const DEFAULT_COLLECTOR_ORIGIN = 'https://abacus.worldmonitor.app';
  * not cosmetic.
  */
 const USER_AGENT = 'worldmonitor-analytics-collector-monitor/1.0';
+const BROWSER_USER_AGENT =
+  'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36';
 
 const REQUEST_TIMEOUT_MS = 20_000;
 const ATTEMPTS = 3;
 const RETRY_DELAY_MS = 3_000;
+
+/**
+ * Write canaries are fired as synchronized BURSTS, not through the liveness
+ * retry helper. Retrying one failing probe on its own would both (a) hide the
+ * failure the moment a lone retry succeeds and (b) destroy the concurrency that
+ * is the entire point of the probe. Every burst re-fires the whole set at once
+ * and every attempt is retained for the rate.
+ */
+const WRITE_CANARY_BURSTS = 3;
+const WRITE_BURST_DELAY_MS = 3_000;
+
+const ANALYTICS_CANARY_PAYLOAD = Object.freeze({
+  website: ANALYTICS_CANARY_WEBSITE_ID,
+  hostname: ANALYTICS_CANARY_HOSTNAME,
+  url: '/__monitor__/analytics-collector',
+  title: 'World Monitor analytics collector canary',
+  referrer: '',
+  screen: '1x1',
+  language: 'en-US',
+  // One session id across the whole burst. The dedicated website keeps this
+  // exercise outside product funnels.
+  id: ANALYTICS_CANARY_SESSION_ID,
+});
+
+/**
+ * The data key the contending identify probes write.
+ *
+ * This has to be ONE key shared by at least two concurrent `identify` requests.
+ * Umami routes `type: 'event'` through saveEvent() -> saveEventData(), which
+ * never touches `session_data`; only `type: 'identify'` reaches
+ * saveSessionData(), which is where #4183's `updateMany()` race lives. Probes
+ * that write different keys — or that are events at all — touch disjoint rows
+ * and cannot contend, so a burst of mixed shapes proves only that the collector
+ * accepts concurrent requests, not that the race is absent.
+ */
+const CONTENDED_SESSION_DATA_KEY = 'monitor';
+
+function buildWriteCanaryProbe(name, type, extraPayload = {}) {
+  return Object.freeze({
+    name,
+    path: '/api/send',
+    method: 'POST',
+    okStatuses: Object.freeze([200]),
+    userAgent: BROWSER_USER_AGENT,
+    receiptFields: WRITE_RECEIPT_FIELDS,
+    writeCanary: true,
+    body: Object.freeze({
+      type,
+      payload: Object.freeze({ ...ANALYTICS_CANARY_PAYLOAD, ...extraPayload }),
+    }),
+  });
+}
+
+/**
+ * Two identify probes contending on one (session, data key) row reproduce the
+ * #4183 write race; the pageview and named-event probes keep general
+ * write-path coverage (saveEvent / saveEventData) that identify does not give.
+ */
+export const ANALYTICS_WRITE_CANARY_PROBES = Object.freeze([
+  buildWriteCanaryProbe('write-canary-identify-a', 'identify', {
+    data: Object.freeze({ [CONTENDED_SESSION_DATA_KEY]: 'github-actions-a' }),
+  }),
+  buildWriteCanaryProbe('write-canary-identify-b', 'identify', {
+    data: Object.freeze({ [CONTENDED_SESSION_DATA_KEY]: 'github-actions-b' }),
+  }),
+  buildWriteCanaryProbe('write-canary-pageview', 'event'),
+  buildWriteCanaryProbe('write-canary-event', 'event', {
+    name: 'collector-write-canary',
+    data: Object.freeze({ source: 'github-actions' }),
+  }),
+]);
 
 export const COLLECTOR_PROBES = Object.freeze([
   Object.freeze({
@@ -38,6 +129,9 @@ export const COLLECTOR_PROBES = Object.freeze([
     okStatuses: Object.freeze([200]),
     // Proves the app process is alive and serving. The OOM death surfaced
     // here as a Cloudflare 502 after a ~15s origin timeout.
+    // Read the body on failure so a database-shaped error here carries the same
+    // sanitized Prisma identifiers the write canaries report.
+    captureFailureMetadata: true,
   }),
   Object.freeze({
     name: 'tracker-script',
@@ -52,13 +146,39 @@ export const COLLECTOR_PROBES = Object.freeze([
   Object.freeze({
     name: 'ingest-route',
     path: '/api/send',
-    // The write path. GET is the wrong verb on purpose: a mounted route
-    // rejects it (405/400) without recording anything, while a dead origin
-    // returns 5xx. Never POST here — that would pollute production analytics
-    // with synthetic monitor traffic.
+    // Keeps the original no-write route-mount check from #5565. The canaries
+    // below separately prove that the database-backed write path succeeds.
     okStatuses: Object.freeze([400, 405]),
+    captureFailureMetadata: true,
   }),
+  // Fired as synchronized bursts by runWriteCanaryBursts, NOT through the
+  // per-probe liveness retry — see WRITE_CANARY_BURSTS.
+  ...ANALYTICS_WRITE_CANARY_PROBES,
 ]);
+
+/** Build the request shape for one probe without performing network I/O. */
+export function buildProbeRequest(probe) {
+  const headers = { 'User-Agent': probe.userAgent || USER_AGENT };
+  const request = {
+    method: probe.method || 'GET',
+    headers,
+  };
+  if (probe.body !== undefined) {
+    headers['Content-Type'] = 'application/json';
+    request.body = JSON.stringify(probe.body);
+  }
+  return request;
+}
+
+function formatFailureMetadata(body) {
+  const metadata = extractCollectorFailureMetadata(body);
+  if (!metadata.prismaCode && !metadata.constraint) return '';
+  const details = [
+    metadata.prismaCode ? `Prisma ${metadata.prismaCode}` : null,
+    metadata.constraint ? `constraint ${metadata.constraint}` : null,
+  ].filter(Boolean).join(' ');
+  return ` — ${details}`;
+}
 
 /**
  * Classify one completed probe attempt. Returns null when healthy, otherwise a
@@ -84,11 +204,35 @@ export function evaluateProbeResult(probe, result) {
       result.status === 403
         ? ' — Cloudflare WAF rejected the probe; check the User-Agent, not the collector'
         : '';
-    return `HTTP ${result.status} (expected ${probe.okStatuses.join(' or ')})${hint}`;
+    return `HTTP ${result.status} (expected ${probe.okStatuses.join(' or ')})${hint}${formatFailureMetadata(result.body)}`;
   }
 
   if (probe.mustInclude && !String(result.body ?? '').includes(probe.mustInclude)) {
     return `HTTP ${result.status} but body did not contain ${probe.mustInclude}`;
+  }
+
+  if (probe.receiptFields) {
+    // Checked BEFORE the field loop so the reason names the actual condition.
+    // Umami drops a bot-detected write with 200 + `{"beep":"boop"}`; reporting
+    // that as "receipt missing non-empty string cache" points the reader at a
+    // broken write path instead of at the UA heuristic. This still counts as a
+    // probe FAILURE: the canary sends a browser User-Agent precisely so it is
+    // not filtered, so being filtered means the probe has stopped exercising
+    // the write path it exists to measure.
+    if (isBotFilteredBody(result.body)) {
+      return `HTTP ${result.status} but the write was bot-filtered by the collector (probe User-Agent now matches Umami's bot heuristic; the write path was never exercised)`;
+    }
+    let receipt;
+    try {
+      receipt = JSON.parse(result.body);
+    } catch {
+      return `HTTP ${result.status} but write receipt was not valid JSON`;
+    }
+    for (const field of probe.receiptFields) {
+      if (typeof receipt?.[field] !== 'string' || receipt[field].trim() === '') {
+        return `HTTP ${result.status} but write receipt missing non-empty string ${field}`;
+      }
+    }
   }
 
   return null;
@@ -102,16 +246,40 @@ export function summarizeProbeFailures(probes, resultsByName) {
     .map(({ probe, reason }) => ({ name: probe.name, path: probe.path, reason }));
 }
 
+/**
+ * Summarize write-path health over EVERY attempt, not just the surviving one.
+ *
+ * The rate has to be attempt-level or it cannot represent the condition this
+ * monitor exists for. With a per-probe first-success-wins retry, a 4-8%
+ * per-request failure rate reports 0.0% about 99.95% of the time — the monitor
+ * would print a clean bill of health through exactly the incident that reopened
+ * #5715.
+ *
+ * @param {Array<{ name: string, reason: string | null }>} attempts
+ */
+export function summarizeWriteCanaryResults(attempts) {
+  const failures = attempts.filter(({ reason }) => reason !== null);
+  return {
+    total: attempts.length,
+    failed: failures.length,
+    failureRate: attempts.length === 0 ? 0 : failures.length / attempts.length,
+    failures,
+  };
+}
+
 async function runProbe(origin, probe) {
   const url = new URL(probe.path, origin).toString();
   try {
     const response = await fetch(url, {
-      headers: { 'User-Agent': USER_AGENT },
+      ...buildProbeRequest(probe),
       signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
     });
-    // Only read the body when a probe actually asserts on it — the tracker is
-    // ~4.6 KB, but /api/send responses are not worth buffering.
-    const body = probe.mustInclude ? await response.text() : '';
+    // Read only bodies needed for an assertion or sanitized failure metadata.
+    // Never print this body: v3.1.0 could include the full Prisma stack and
+    // request-adjacent details in a 500 response.
+    const body = probe.mustInclude || probe.receiptFields || probe.captureFailureMetadata
+      ? await response.text()
+      : '';
     return { status: response.status, body };
   } catch (error) {
     return { error: error instanceof Error ? error.message : String(error) };
@@ -122,54 +290,132 @@ async function runProbe(origin, probe) {
  * Retry before alerting so a single transient blip (deploy restart, edge
  * hiccup) does not page anyone. A sustained failure is what matters: the
  * outage this monitor exists for lasted four days.
+ *
+ * Liveness probes only — write canaries deliberately do NOT come through here.
  */
-async function runProbeWithRetries(origin, probe) {
+async function runProbeWithRetries(origin, probe, runner, sleep) {
   let last;
   for (let attempt = 1; attempt <= ATTEMPTS; attempt += 1) {
-    last = await runProbe(origin, probe);
+    last = await runner(origin, probe);
     if (evaluateProbeResult(probe, last) === null) return last;
-    if (attempt < ATTEMPTS) {
-      await new Promise((resolve) => setTimeout(resolve, RETRY_DELAY_MS));
-    }
+    if (attempt < ATTEMPTS) await sleep(RETRY_DELAY_MS);
   }
   return last;
 }
 
-async function main() {
-  const origin = process.env.ANALYTICS_COLLECTOR_ORIGIN || DEFAULT_COLLECTOR_ORIGIN;
-
-  const resultsByName = {};
-  for (const probe of COLLECTOR_PROBES) {
-    resultsByName[probe.name] = await runProbeWithRetries(origin, probe);
+/**
+ * Fire every write canary at once, repeatedly. Each burst is itself concurrent,
+ * so a retry still exercises session-data contention instead of degrading into
+ * isolated sequential writes.
+ */
+async function runWriteCanaryBursts(origin, probes, runner, sleep) {
+  const attempts = [];
+  const lastByName = {};
+  for (let burst = 1; burst <= WRITE_CANARY_BURSTS; burst += 1) {
+    const results = await Promise.all(probes.map((probe) => runner(origin, probe)));
+    probes.forEach((probe, index) => {
+      const result = results[index];
+      lastByName[probe.name] = result;
+      attempts.push({ name: probe.name, reason: evaluateProbeResult(probe, result) });
+    });
+    if (burst < WRITE_CANARY_BURSTS) await sleep(WRITE_BURST_DELAY_MS);
   }
+  return { attempts, lastByName };
+}
 
-  const failures = summarizeProbeFailures(COLLECTOR_PROBES, resultsByName);
-  if (failures.length === 0) {
+/**
+ * Run every probe and decide the outcome. Split out of `main()` so the alerting
+ * contract — concurrent canary dispatch, the attempt-level rate, and the exit
+ * decision — is reachable from tests with an injected runner.
+ */
+export async function runCollectorChecks({
+  origin = DEFAULT_COLLECTOR_ORIGIN,
+  runner = runProbe,
+  sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+} = {}) {
+  const livenessProbes = COLLECTOR_PROBES.filter((probe) => !probe.writeCanary);
+  const writeProbes = COLLECTOR_PROBES.filter((probe) => probe.writeCanary);
+
+  const [livenessEntries, writeRun] = await Promise.all([
+    Promise.all(
+      livenessProbes.map(async (probe) => [
+        probe.name,
+        await runProbeWithRetries(origin, probe, runner, sleep),
+      ]),
+    ),
+    runWriteCanaryBursts(origin, writeProbes, runner, sleep),
+  ]);
+
+  const resultsByName = { ...Object.fromEntries(livenessEntries), ...writeRun.lastByName };
+  const livenessFailures = summarizeProbeFailures(livenessProbes, resultsByName);
+  const writeSummary = summarizeWriteCanaryResults(writeRun.attempts);
+
+  // The write canary is the acceptance gate for #5715: the collector must
+  // accept every realistic POST in every burst. A single P2002 or other failed
+  // write is actionable; the rate remains in the report for diagnosis, not as
+  // a tolerance band for a known database race.
+  const writePathDead = writeSummary.total > 0 && writeSummary.failed === writeSummary.total;
+  const hasWriteFailures = writeSummary.failed > 0;
+
+  return {
+    origin,
+    resultsByName,
+    livenessFailures,
+    writeSummary,
+    writePathDead,
+    hasWriteFailures,
+    alerting: livenessFailures.length > 0 || hasWriteFailures,
+  };
+}
+
+function reportCollectorChecks(report) {
+  const { origin, livenessFailures, writeSummary } = report;
+  const writeRate = `${(writeSummary.failureRate * 100).toFixed(1)}%`;
+  console.log(
+    `Analytics collector write canary: ${writeSummary.failed}/${writeSummary.total} attempts failed (${writeRate}) across ${WRITE_CANARY_BURSTS} concurrent bursts.`,
+  );
+
+  if (!report.alerting) {
     console.log(`Analytics collector healthy at ${origin}: ${COLLECTOR_PROBES.length} probes OK.`);
     return;
   }
 
-  console.error(
-    `Analytics collector alert: ${failures.length}/${COLLECTOR_PROBES.length} probe(s) failing at ${origin} after ${ATTEMPTS} attempts.`,
-  );
-  for (const failure of failures) {
-    console.error(`- ${failure.name} (${failure.path}): ${failure.reason}`);
+  console.error(`Analytics collector alert at ${origin}:`);
+  if (livenessFailures.length > 0) {
+    console.error(`- ${livenessFailures.length} liveness probe(s) failing after ${ATTEMPTS} attempts.`);
+    for (const failure of livenessFailures) {
+      console.error(`  - ${failure.name} (${failure.path}): ${failure.reason}`);
+    }
+    console.error(
+      '  Events are being dropped while this is red. Check the Railway `umami` service — a green deployment status does not mean the process is alive (#5565).',
+    );
   }
-  console.error(
-    'Events are being dropped while this is red. Check the Railway `umami` service — a green deployment status does not mean the process is alive (#5565).',
-  );
-  process.exitCode = 1;
+  if (report.writePathDead) {
+    console.error('- Write path is fully down: every canary attempt failed.');
+  } else if (report.hasWriteFailures) {
+    console.error(
+      `- Write canary has ${writeSummary.failed}/${writeSummary.total} failed attempts; any failed POST is actionable after #5715 remediation.`,
+    );
+  }
+  // Deduplicate by reason so a race that hits every burst reads as one line.
+  const seen = new Set();
+  for (const failure of writeSummary.failures) {
+    const line = `  - ${failure.name}: ${failure.reason}`;
+    if (seen.has(line)) continue;
+    seen.add(line);
+    console.error(line);
+  }
 }
 
-// realpath BOTH sides: through a symlinked checkout Node sets import.meta.url
-// to the realpath while argv[1] keeps the symlink, and the naive comparison
-// silently no-ops the whole monitor (exit 0, nothing checked).
-const isMainModule =
-  Boolean(process.argv[1]) &&
-  pathToFileURL(realpathSync(process.argv[1])).href ===
-    pathToFileURL(realpathSync(fileURLToPath(import.meta.url))).href;
+async function main() {
+  const report = await runCollectorChecks({
+    origin: process.env.ANALYTICS_COLLECTOR_ORIGIN || DEFAULT_COLLECTOR_ORIGIN,
+  });
+  reportCollectorChecks(report);
+  if (report.alerting) process.exitCode = 1;
+}
 
-if (isMainModule) {
+if (isMainModule(import.meta.url, process.argv[1])) {
   main().catch((error) => {
     console.error(error instanceof Error ? error.message : String(error));
     process.exitCode = 1;

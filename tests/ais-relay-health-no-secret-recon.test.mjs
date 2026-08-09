@@ -34,11 +34,13 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 
+const relaySourcePromise = readFile(
+  new URL('../scripts/ais-relay.cjs', import.meta.url),
+  'utf8',
+);
+
 async function getHealthHandlerBody() {
-  const source = await readFile(
-    new URL('../scripts/ais-relay.cjs', import.meta.url),
-    'utf8',
-  );
+  const source = await relaySourcePromise;
   // Anchor the /health handler block. ~80-line handler — bound to 8000
   // chars to avoid runaway matching if the handler ever grows.
   const handlerMatch = source.match(
@@ -50,6 +52,22 @@ async function getHealthHandlerBody() {
   return handlerMatch[0]
     .replace(/\/\*[\s\S]*?\*\//g, '')
     .replace(/\/\/.*$/gm, '');
+}
+
+async function getConnectUpstreamBody() {
+  const source = await relaySourcePromise;
+  const start = source.indexOf('function connectUpstream() {');
+  const end = source.indexOf('\nconst wss = new WebSocketServer', start);
+  assert.ok(start >= 0 && end > start, 'expected to find connectUpstream() in ais-relay.cjs');
+  return source.slice(start, end);
+}
+
+async function getSnapshotAvailabilityBody() {
+  const source = await relaySourcePromise;
+  const start = source.indexOf('function recordAisSnapshotAvailability(snapshot) {');
+  const end = source.indexOf('\n}\n\nsetInterval(', start) + 2;
+  assert.ok(start >= 0 && end > start, 'expected to find recordAisSnapshotAvailability()');
+  return source.slice(start, end);
 }
 
 describe('ais-relay /health attacker-recon fields removed (#3802)', () => {
@@ -105,10 +123,60 @@ describe('ais-relay /health operator-monitoring contract preserved (#3812 / #381
 
   it('STILL returns core uptime fields (no over-stripping)', async () => {
     const body = await getHealthHandlerBody();
-    assert.match(body, /status:\s*'ok'/, 'must keep status:"ok"');
+    assert.match(
+      body,
+      /const healthStatus = ingestionDegraded \? 'degraded' : 'ok';/,
+      'must derive the top-level JSON verdict from ingestion health (#5945)',
+    );
+    assert.match(
+      body,
+      /JSON\.stringify\(\{\s*status:\s*healthStatus,\s*ingestion:\s*\{\s*status:\s*healthStatus,/,
+      'top-level status must reflect degraded ingestion while the endpoint stays HTTP 200 (#5945)',
+    );
     assert.match(body, /\bclients:\s*clients\.size/, 'must keep client count');
     assert.match(body, /\btelegram:\s*\{/, 'must keep telegram diagnostics');
     assert.match(body, /\boref:\s*\{/, 'must keep oref diagnostics');
     assert.match(body, /\bmemory:\s*\{/, 'must keep memory block');
+  });
+});
+
+describe('ais-relay reconnect backoff contract (#5945)', () => {
+  it('snapshot traffic cannot cancel a pending upstream reconnect timer', async () => {
+    const body = await getConnectUpstreamBody();
+    assert.match(
+      body,
+      /if \(upstreamReconnectTimer\) return;/,
+      'connectUpstream() must preserve the scheduled exponential-backoff timer',
+    );
+    assert.doesNotMatch(
+      body,
+      /clearTimeout\(upstreamReconnectTimer\)/,
+      'request-driven connect attempts must not clear the provider cooldown',
+    );
+  });
+
+  it('request traffic cannot replace the current socket before its close handler releases ownership', async () => {
+    const body = await getConnectUpstreamBody();
+    assert.match(
+      body,
+      /if \(upstreamSocket\) return;/,
+      'every non-null current socket, including CLOSING/CLOSED, must retain ownership until close',
+    );
+    assert.doesNotMatch(
+      body,
+      /upstreamSocket\?\.readyState === WebSocket\.(?:OPEN|CONNECTING)/,
+      'readyState-only guards leave an error-to-close replacement gap',
+    );
+  });
+
+  it('does not count a lifetime message counter as currently usable snapshot coverage', async () => {
+    const body = await getSnapshotAvailabilityBody();
+    assert.match(body, /const hasData = Number\(snapshot\?\.status\?\.vessels\) > 0;/);
+    assert.match(
+      body,
+      /if \(connected && snapshot\?\.status\?\.currentPositionReady === true && hasData\)/,
+      'fresh availability must match the current-position readiness encoded in the served snapshot',
+    );
+    assert.doesNotMatch(body, /status\?\.messages/, 'old messages cannot keep an empty snapshot green forever');
   });
 });

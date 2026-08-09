@@ -23,6 +23,29 @@ crons.hourly(
   {},
 );
 
+// Bounded recovery for Company Monitoring purge generations whose scheduled
+// continuation was dropped. The mutation independently enforces the ordinary
+// lapse purgeAfter deadline, so an hourly wake cannot bypass the 24h grace.
+crons.hourly(
+  "company-monitoring-stalled-purge-reaper",
+  { minuteUTC: 37 },
+  internal.companyMonitoring.accounts.reapStalledAccountPurges,
+  {},
+);
+
+// Company Monitoring account roots are provisioned on first use and are no
+// longer touched by entitlement writes (#6256), so lapses are pulled here
+// instead of pushed from billing. Scanning only companyMonitoringAccounts means
+// this costs nothing for the subscribers who never use the feature. The 24h
+// purgeAfter grace still applies downstream, so detection latency of one tick
+// is absorbed by a window that already exists.
+crons.hourly(
+  "company-monitoring-entitlement-reconciler",
+  { minuteUTC: 47 },
+  internal.companyMonitoring.accounts.reconcileAccountEntitlements,
+  {},
+);
+
 // PRO-launch broadcast ramp runner. Wakes once a day at 13:00 UTC
 // (~9am ET / 6am PT / 3pm CET — early enough that any kill-gate
 // trip can be triaged within US business hours, late enough that
@@ -38,6 +61,24 @@ crons.daily(
   "api-plan-limit-prune",
   { hourUTC: 4, minuteUTC: 45 },
   internal.apiPlanLimitNotices.pruneApiPlanLimitData,
+  {},
+);
+
+// Daily retention prune for the append-only historical intelligence store
+// (#5694). The table has no natural ceiling — every seeder run appends the
+// events it published — and each row carries a 512-float vector, so the
+// vector index is the real cost being bounded here. Ages rows past
+// INTEL_HISTORY_RETENTION_DAYS out by `ingestedAt` in bounded per-run
+// batches that self-drain. Also drains expired retraction tombstones
+// (#5743) in the same pass, by `retractedAt` — a handful of hand-created
+// rows do not justify a second scheduled function. See `prune` in
+// convex/intelHistory.ts. 04:30 UTC sits between the plan-limit prune
+// (04:45) and the wave-runs cleanup (04:00) so the three delete-heavy jobs
+// never overlap.
+crons.daily(
+  "intel-history-prune",
+  { hourUTC: 4, minuteUTC: 30 },
+  internal.intelHistory.prune,
   {},
 );
 
@@ -145,6 +186,19 @@ crons.daily(
   "dodo-renewal-reconciliation",
   { hourUTC: 3, minuteUTC: 17 },
   internal.payments.billing.reconcileMissedDodoRenewals,
+  {},
+);
+
+// Business Pro seat grant reconciliation (#4634/#4635) — safety net for the
+// webhook-driven and scheduled grant-revocation paths in subscriptionHelpers.ts.
+// A lost webhook or a dropped scheduled function can leave a grant pointing
+// at a Business subscription that's no longer covering/no longer api_business;
+// this daily sweep independently re-derives every live grant's validity
+// rather than trusting a single revocation trigger to have fired.
+crons.daily(
+  "business-pro-grants-reconciliation",
+  { hourUTC: 3, minuteUTC: 20 },
+  internal.payments.subscriptionHelpers.reconcileBusinessProGrants,
   {},
 );
 

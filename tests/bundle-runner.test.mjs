@@ -7,23 +7,158 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
-import { writeFileSync, unlinkSync } from 'node:fs';
+import { randomUUID } from 'node:crypto';
+import { mkdirSync, writeFileSync, unlinkSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { GRACEFUL_FETCH_FAILURE_EXIT_CODE } from '../scripts/_seed-utils.mjs';
+import { readSectionFreshness } from '../scripts/_bundle-runner.mjs';
 
 const SCRIPTS_DIR = fileURLToPath(new URL('../scripts/', import.meta.url));
+const FIXTURES_DIR = join(SCRIPTS_DIR, 'fixtures');
+const fixtureScript = (name) => `fixtures/${name}`;
+mkdirSync(FIXTURES_DIR, { recursive: true });
 
-function runBundleWith(sections, opts = {}) {
-  const runPath = join(SCRIPTS_DIR, '_bundle-runner-test-run.mjs');
+test('requireCanonical ignores fresh legacy meta when a new canonical envelope is absent', async () => {
+  const reads = [];
+  const freshness = await readSectionFreshness({
+    canonicalKey: 'economic:china:macro:v2',
+    seedMetaKey: 'economic:china-macro',
+    requireCanonical: true,
+  }, async (key) => {
+    reads.push(key);
+    if (key === 'economic:china:macro:v2') return null;
+    return { fetchedAt: Date.now() };
+  });
+  assert.equal(freshness, null);
+  assert.deepEqual(reads, ['economic:china:macro:v2']);
+});
+
+test('an explicit freshness meta key gates from source transport success', async () => {
+  const reads = [];
+  const transportFetchedAt = Date.now() - 29 * 60 * 60 * 1000;
+  const completedAt = transportFetchedAt + 60_000;
+  const freshness = await readSectionFreshness({
+    freshnessMetaKey: 'seed-meta:economic:china-macro-transport',
+    completionMetaKey: 'seed-meta:economic:china-macro-complete',
+    canonicalKey: 'economic:china:macro:v2',
+    seedMetaKey: 'economic:china-macro',
+    requireCanonical: true,
+  }, async (key) => {
+    reads.push(key);
+    if (key === 'economic:china:macro:v2') {
+      return { _seed: { fetchedAt: completedAt } };
+    }
+    if (key === 'seed-meta:economic:china-macro-transport') {
+      return { fetchedAt: transportFetchedAt };
+    }
+    if (key === 'seed-meta:economic:china-macro-complete') {
+      return { fetchedAt: completedAt };
+    }
+    return null;
+  });
+  assert.deepEqual(freshness, { fetchedAt: transportFetchedAt });
+  assert.deepEqual(reads, [
+    'economic:china:macro:v2',
+    'seed-meta:economic:china-macro-transport',
+    'seed-meta:economic:china-macro-complete',
+  ]);
+});
+
+test('a missing explicit freshness meta key does not fall back to publish time', async () => {
+  const reads = [];
+  const freshness = await readSectionFreshness({
+    freshnessMetaKey: 'seed-meta:economic:china-macro-transport',
+    completionMetaKey: 'seed-meta:economic:china-macro-complete',
+    canonicalKey: 'economic:china:macro:v2',
+    seedMetaKey: 'economic:china-macro',
+    requireCanonical: true,
+  }, async (key) => {
+    reads.push(key);
+    if (key === 'seed-meta:economic:china-macro-transport') return null;
+    if (key === 'economic:china:macro:v2') return { _seed: { fetchedAt: Date.now() } };
+    return { fetchedAt: Date.now() };
+  });
+  assert.equal(freshness, null);
+  assert.deepEqual(reads, [
+    'economic:china:macro:v2',
+    'seed-meta:economic:china-macro-transport',
+  ]);
+});
+
+test('explicit freshness still requires the canonical envelope when configured', async () => {
+  const reads = [];
+  const freshness = await readSectionFreshness({
+    freshnessMetaKey: 'seed-meta:economic:china-macro-transport',
+    completionMetaKey: 'seed-meta:economic:china-macro-complete',
+    canonicalKey: 'economic:china:macro:v2',
+    requireCanonical: true,
+  }, async (key) => {
+    reads.push(key);
+    return null;
+  });
+  assert.equal(freshness, null);
+  assert.deepEqual(reads, ['economic:china:macro:v2']);
+});
+
+test('a prior completion cannot attest a newer transport-only run', async () => {
+  const transportFetchedAt = Date.now();
+  const previousCompletionAt = transportFetchedAt - 60 * 60 * 1000;
+  const freshness = await readSectionFreshness({
+    freshnessMetaKey: 'seed-meta:economic:china-macro-transport',
+    completionMetaKey: 'seed-meta:economic:china-macro-complete',
+    canonicalKey: 'economic:china:macro:v2',
+    requireCanonical: true,
+  }, async (key) => {
+    if (key === 'economic:china:macro:v2') {
+      return { _seed: { fetchedAt: transportFetchedAt } };
+    }
+    if (key === 'seed-meta:economic:china-macro-transport') {
+      return { fetchedAt: transportFetchedAt };
+    }
+    if (key === 'seed-meta:economic:china-macro-complete') {
+      return { fetchedAt: previousCompletionAt };
+    }
+    return null;
+  });
+  assert.equal(freshness, null);
+});
+
+test('a missing completion marker keeps an explicit-freshness section due', async () => {
+  const freshness = await readSectionFreshness({
+    freshnessMetaKey: 'seed-meta:economic:china-macro-transport',
+    completionMetaKey: 'seed-meta:economic:china-macro-complete',
+    canonicalKey: 'economic:china:macro:v2',
+    requireCanonical: true,
+  }, async (key) => {
+    if (key === 'economic:china:macro:v2') {
+      return { _seed: { fetchedAt: Date.now() } };
+    }
+    if (key === 'seed-meta:economic:china-macro-transport') {
+      return { fetchedAt: Date.now() };
+    }
+    return null;
+  });
+  assert.equal(freshness, null);
+});
+
+function runBundleWith(sections, opts = {}, env = {}) {
+  const runPath = join(FIXTURES_DIR, `_bundle-runner-test-run-${randomUUID()}.mjs`);
+  const fixtureSections = sections.map((section) => ({
+    ...section,
+    script: fixtureScript(section.script),
+  }));
   writeFileSync(
     runPath,
-    `import { runBundle } from './_bundle-runner.mjs';\nawait runBundle('test', ${JSON.stringify(
-      sections,
+    `import { runBundle } from '../_bundle-runner.mjs';\nawait runBundle('test', ${JSON.stringify(
+      fixtureSections,
     )}, ${JSON.stringify(opts)});\n`,
   );
   return new Promise((resolve) => {
-    const child = spawn(process.execPath, [runPath], { stdio: ['ignore', 'pipe', 'pipe'] });
+    const child = spawn(process.execPath, [runPath], {
+      stdio: ['ignore', 'pipe', 'pipe'],
+      env: { ...process.env, ...env },
+    });
     let stdout = '';
     let stderr = '';
     child.stdout.on('data', (c) => { stdout += c; });
@@ -36,7 +171,7 @@ function runBundleWith(sections, opts = {}) {
 }
 
 function writeFixture(name, body) {
-  const path = join(SCRIPTS_DIR, name);
+  const path = join(FIXTURES_DIR, name);
   writeFileSync(path, body);
   return () => { try { unlinkSync(path); } catch {} };
 }
@@ -179,6 +314,45 @@ test('missing required environment configuration hard-fails only the affected se
       stderr,
       /section=REQUIRES_SECRET status=CONFIG_ERROR reason=missing required environment configuration: WM_BUNDLE_TEST_REQUIRED_SECRET/,
     );
+  } finally {
+    cleanup();
+  }
+});
+
+test('an any-of requiredEnv group is satisfied by either alternative', async () => {
+  // A section whose seeder resolves `SOURCE_SPECIFIC || SHARED` must be able to
+  // say so. Gating on the source-specific name alone made the runner stricter
+  // than the code it guards: it hard-failed Cross-Strait-Activity in an
+  // environment carrying only PROXY_URL, even though the adapter would have run
+  // undegraded (#5756 review).
+  const cleanup = writeFixture('_bundle-fixture-anyof.mjs', `console.log('anyof-ran');\n`);
+  try {
+    const section = {
+      label: 'ANY_OF',
+      script: '_bundle-fixture-anyof.mjs',
+      intervalMs: 1,
+      timeoutMs: 5000,
+      requiredEnv: [['WM_BUNDLE_TEST_SPECIFIC', 'WM_BUNDLE_TEST_SHARED']],
+    };
+
+    const viaFallback = await runBundleWith([section], {}, {
+      WM_BUNDLE_TEST_SHARED: 'http://shared:1',
+    });
+    assert.equal(viaFallback.code, 0, 'the shared alternative alone must satisfy the group');
+    assert.match(viaFallback.stdout, /\[ANY_OF\] anyof-ran/);
+
+    const viaSpecific = await runBundleWith([section], {}, {
+      WM_BUNDLE_TEST_SPECIFIC: 'http://specific:2',
+    });
+    assert.equal(viaSpecific.code, 0, 'the source-specific alternative alone must satisfy the group');
+
+    const neither = await runBundleWith([section]);
+    assert.equal(neither.code, 1, 'neither alternative set must still fail the section');
+    assert.match(
+      neither.stderr,
+      /section=ANY_OF status=CONFIG_ERROR reason=missing required environment configuration: WM_BUNDLE_TEST_SPECIFIC or WM_BUNDLE_TEST_SHARED/,
+    );
+    assert.doesNotMatch(neither.stdout, /anyof-ran/);
   } finally {
     cleanup();
   }

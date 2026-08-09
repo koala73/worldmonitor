@@ -76,8 +76,8 @@
     "closeBtn": "Close",
     "limitedCoverage": "Limited coverage",
     "instabilityIndex": "Instability Index",
-    "loadingResilienceScore": "Loading resilience score…",
-    "resilienceScoreUnavailable": "Resilience score unavailable.",
+    "loadingResilienceScore": "در حال بارگذاری امتیاز تاب‌آوری…",
+    "resilienceScoreUnavailable": "امتیاز تاب‌آوری در دسترس نیست.",
     "notTracked": "Not tracked — {{country}} is not in the CII tier-1 list",
     "intelBrief": "Intelligence Brief",
     "generatingBrief": "Generating intelligence brief...",
@@ -203,12 +203,15 @@
     "china": {
       "title": "China Country Snapshot",
       "description": "Current macro, market, trade, energy, and operational availability from existing public data contracts.",
-      "macroPolicy": "Macro & Policy",
-      "marketCredit": "Market & Credit",
-      "tradeSupply": "Trade & Supply Chain",
+      "policyEvents": "سیاست و اجرا",
       "energy": "Energy",
       "availability": "Hazards & Aviation",
       "observed": "As of:",
+      "published": "انتشار:",
+      "effective": "لازم‌الاجرا:",
+      "sectors": "بخش‌ها:",
+      "entities": "نهادها:",
+      "translation": "ترجمه:",
       "source": "Source:",
       "imfGrowth": "IMF growth forecast",
       "creditGdp": "Credit to GDP",
@@ -217,8 +220,6 @@
       "gasDemand": "Gas demand",
       "energyMix": "Power mix",
       "coal": "coal",
-      "aviationAvailability": "Aviation availability",
-      "hazardAvailability": "Hazard availability",
       "noMajorDisruptions": "No major disruptions reported",
       "activeDisruptions_one": "{{count}} active disruption",
       "activeDisruptions_other": "{{count}} active disruptions",
@@ -230,18 +231,21 @@
       "ccfiSource": "Shanghai Shipping Exchange",
       "comtradeSource": "UN Comtrade reporter 156",
       "sourceUnavailable": "Source unavailable",
-      "macroUnavailable": "Macro and policy data are currently unavailable.",
-      "marketUnavailable": "Market and credit data are currently unavailable.",
-      "tradeUnavailable": "Trade and supply-chain data are currently unavailable.",
-      "energyUnavailable": "Energy data are currently unavailable.",
-      "availabilityUnavailable": "Hazard and aviation availability data are currently unavailable.",
+      "policyUnavailable": "Official policy and enforcement events are currently unavailable.",
+      "policyPartial": "{{count}} official agencies are temporarily degraded.",
       "status": {
         "loading": "Loading",
         "available": "Available",
         "partial": "Partial",
         "stale": "Stale",
         "unavailable": "Unavailable"
-      }
+      },
+      "macroSignals": "سیگنال‌های کلان",
+      "crossStraitActivity": "فعالیت فراتنگه",
+      "corporateDisclosures": "افشاگری‌های شرکتی",
+      "corridorConditions": "شرایط دالان",
+      "activityNowcast": "پیش‌بینی آنی فعالیت",
+      "decisionSignalsUnavailable": "عکس‌فوری از سیگنال‌های تصمیم‌گیری چین در حال حاضر در دسترس نیست."
     }
   },
   "header": {
@@ -254,7 +258,7 @@
     "settings": "SETTINGS",
     "sources": "SOURCES",
     "copyLink": "Link",
-    "embed": "Embed",
+    "embed": "جاسازی",
     "downloadApp": "Download App",
     "fullscreen": "Fullscreen",
     "pinMap": "Pin map to top",
@@ -430,7 +434,8 @@
     "consumerPrices": "Consumer Prices",
     "fearGreed": "Fear & Greed",
     "marketBreadth": "Market Breadth",
-    "climateNews": "Climate News"
+    "climateNews": "Climate News",
+    "fx": "نرخ‌های ارز"
   },
   "commands": {
     "prefixes": {
@@ -984,7 +989,7 @@
       "fytdLabel": "FY{{year}} YTD",
       "vsPriorFy": "vs FY{{year}}",
       "sourceWto": "WTO",
-      "sourceTreasury": "US Treasury",
+      "sourceTreasury": "وزارت خزانه‌داری آمریکا",
       "colDate": "Date",
       "colMonthly": "Monthly",
       "colFytd": "FY YTD",
@@ -1270,7 +1275,7 @@
         "ucdpEvents": "Armed Conflict Events",
         "displacementFlows": "Displacement Flows",
         "climateAnomalies": "Climate Anomalies",
-        "weatherAlerts": "Weather Alerts",
+        "weatherAlerts": "هشدارهای آب‌وهوایی ایالات متحده (NWS)",
         "strategicWaterways": "Chokepoints",
         "economicCenters": "Economic Centers",
         "criticalMinerals": "Critical Minerals",
@@ -1349,7 +1354,7 @@
           "infraDatacenters": "AI compute clusters >=10,000 GPUs",
           "infraOutages": "Internet blackouts and service disruptions",
           "naturalEventsTech": "Earthquakes, storms, fires (may affect data centers)",
-          "weatherAlerts": "Severe weather alerts",
+          "weatherAlerts": "هشدارهای آب‌وهوای شدید در ایالات متحده (NWS)",
           "economicCenters": "Stock exchanges & central banks",
           "countriesOverlay": "Country name overlays",
           "financeExchanges": "Major global exchanges by market tier",
@@ -1361,7 +1366,7 @@
           "financeOutages": "Internet disruptions that can impact market operations",
           "financeCyberThreats": "Security events around financial infrastructure",
           "macroWaterways": "Strategic chokepoints for commodity shipping",
-          "weatherAlertsMarket": "Severe weather events with market relevance",
+          "weatherAlertsMarket": "رویدادهای آب‌وهوای شدید مرتبط با بازار در ایالات متحده (NWS)",
           "naturalEventsMacro": "Earthquakes, fires, floods, and other natural disruptions",
           "timeRecent": "Filter time-based data to recent hours",
           "timeExtended": "Show data from past week, month, or all time",
@@ -1406,8 +1411,8 @@
       "sectionFollowing": "Following",
       "sectionAll": "All",
       "sourceStates": {
-        "degraded": "degraded",
-        "stale": "stale"
+        "degraded": "تنزل‌یافته",
+        "stale": "منسوخ"
       },
       "infoTooltip": "<strong>Methodology</strong><ul><li><strong>U</strong>nrest: civil disorder & protests</li><li><strong>C</strong>onflict: armed conflict intensity</li><li><strong>S</strong>ecurity: military flights/vessels over territory</li><li><strong>I</strong>nformation: news velocity and focal point correlation</li><li>Hotspot proximity boost (strategic locations)</li></ul><em>U:C:S:I values show component scores.</em> Focal Point Detection correlates news entities with map signals for accurate scoring.",
       "_methodologyLink_translatorNote": "TRANSLATION TODO (#3725): localize methodologyLink. English value is shipped to every locale as a stop-gap so the methodology link is present in all languages. Safe to translate independently of infoTooltip — the two render as a single tooltip via concatenation in CIIPanel.ts.",
@@ -1489,7 +1494,8 @@
       "newsSignals": "{{news}} news • {{signals}} signals",
       "compiledFrom": "گردآوری‌شده از {{stories}} خبر از {{sources}} منبع",
       "provenanceTitle": "شفافیت پوشش: این گزیده از چه تعداد خبر دریافتی و چند منبع مجزا انتخاب شده است",
-      "briefFreshness": "تولید شده {{minutes}}m پیش · جدیدترین منبع {{hours}}h قدیمی"
+      "briefFreshness": "تولید شده {{minutes}}m پیش · جدیدترین منبع {{hours}}h قدیمی",
+      "briefStoryDetails": "Story details ({{count}})"
     },
     "settings": {
       "exportSettings": "Export Settings",
@@ -1548,10 +1554,10 @@
       "enableDataSources": "Enable data sources to begin monitoring.",
       "requiredDataSources": "Required Data Sources",
       "optionalSources": "Optional Sources",
-      "cachedCiiStatus": "Cached CII {{states}}",
+      "cachedCiiStatus": "CII کش‌شده {{states}}",
       "sourceStates": {
-        "degraded": "degraded",
-        "stale": "stale"
+        "degraded": "تنزل‌یافته",
+        "stale": "منسوخ"
       },
       "enableCoreFeeds": "Enable Core Feeds",
       "waitingForData": "Waiting for data...",
@@ -1698,25 +1704,25 @@
       "candidGrants": "Candid Grants",
       "dataLag": "Data Lag",
       "infoTooltip": "<strong>Global Giving Activity Index</strong> Composite index tracking personal giving across crowdfunding platforms and crypto wallets.<ul><li><strong>Platforms</strong>: GoFundMe, GlobalGiving, JustGiving campaign sampling</li><li><strong>Crypto</strong>: On-chain charity wallet inflows (Endaoment, Giving Block)</li><li><strong>Institutional</strong>: OECD ODA, CAF World Giving Index, Candid grants</li></ul>Index is directional (not exact dollar amounts). Combines live sampling with published annual reports.",
-      "benchmarkTitle": "Global Giving Benchmarks",
-      "benchmarkInfoTooltip": "<strong>Global Giving Benchmarks</strong> Published platform and institutional claims with source periods and verification status. Annualized figures are estimates, not live activity.",
+      "benchmarkTitle": "معیارهای جهانی کمک‌رسانی",
+      "benchmarkInfoTooltip": "<strong>معیارهای جهانی کمک‌رسانی</strong> ادعاهای منتشرشده پلتفرم‌ها و نهادها با دوره‌های منبع و وضعیت تأیید. اعداد سالانه تخمین هستند، نه فعالیت زنده.",
       "status": {
-        "published": "Published benchmarks with verified source coverage.",
-        "partial": "Published benchmarks with partial source coverage.",
-        "legacy": "Legacy snapshot; source details are unavailable.",
-        "cached": "Showing a cached snapshot; refresh unavailable."
+        "published": "معیارهای منتشرشده با پوشش منبع تأییدشده.",
+        "partial": "معیارهای منتشرشده با پوشش منبع جزئی.",
+        "legacy": "عکس‌فوری قدیمی؛ جزئیات منبع در دسترس نیست.",
+        "cached": "نمایش عکس‌فوری ذخیره‌شده؛ بازخوانی در دسترس نیست."
       },
-      "trackedAnnualized": "Tracked platform giving — annualized estimate",
-      "annualizedDaily": "Annualized daily estimate",
-      "atLeast": "At least",
-      "about": "About",
-      "sourceNotVerified": "Source not verified",
-      "reportedCumulative": "Reported cumulative total",
+      "trackedAnnualized": "کمک‌های ردیابی‌شده پلتفرم — برآورد سالانه",
+      "annualizedDaily": "برآورد روزانه سالانه",
+      "atLeast": "حداقل",
+      "about": "تقریباً",
+      "sourceNotVerified": "منبع تأیید نشده",
+      "reportedCumulative": "مجموع تجمعی گزارش‌شده",
       "sourcePeriod": "{{source}} · {{period}}",
-      "benchmark": "Published benchmark",
-      "sourcesMethodology": "Sources & methodology",
-      "methodologyIntro": "Only verified annual or defensibly annualized platform claims enter the headline. Cumulative and institutional figures remain separate context.",
-      "partialEstimate": "Partially verified estimate"
+      "benchmark": "معیار منتشرشده",
+      "sourcesMethodology": "منابع و روش‌شناسی",
+      "methodologyIntro": "تنها ادعاهای سالانه تأییدشده یا سالانه‌شده به‌شکل قابل‌دفاع وارد تیتر می‌شوند. اعداد تجمعی و نهادی به‌عنوان زمینه جداگانه باقی می‌مانند.",
+      "partialEstimate": "برآورد تأییدشده جزئی"
     },
     "displacement": {
       "refugees": "Refugees",
@@ -1756,12 +1762,14 @@
       "summaryFailed": "Summary failed",
       "sources": "{{count}} sources",
       "relatedAssetsNear": "Related assets near {{location}}",
+      "sourceCoverage": "{{covered}}/{{total}} منبع",
+      "sourceCoverageHint": "نمایش {{covered}} از {{total}} منبع فعال — این پنل در هر بازخوانی منابع خود را به نوبت می‌خواند",
       "sortBy": "Sort by",
       "sortNewest": "Newest",
       "sortRelevance": "Relevance"
     },
     "mobileNav": {
-      "panelCategories": "Panel categories"
+      "panelCategories": "دسته‌بندی پنل‌ها"
     },
     "breakingNews": {
       "critical": "CRITICAL",
@@ -1918,7 +1926,22 @@
       "infoTooltip": "<strong>Disaster Cascade</strong> Detects converging natural disaster and infrastructure signals:<ul><li>Correlates earthquakes, wildfires, floods, and weather extremes</li><li>Tracks cascading effects on infrastructure and supply chains</li><li>Highlights regions with compounding disaster risk</li></ul>Click a card to zoom to the affected region."
     },
     "markets": {
-      "infoTooltip": "<strong>Markets</strong> Real-time stock indices, equities, and crypto prices. Customize your watchlist with the Watchlist button. Sparklines show recent price trend."
+      "infoTooltip": "<strong>Markets</strong> Real-time stock indices, equities, and crypto prices. Customize your watchlist with the Watchlist button. Sparklines show recent price trend.",
+      "chart": {
+        "title": "نمودار قیمت {{symbol}}",
+        "close": "بستن نمودار"
+      },
+      "unavailable": {
+        "symbols": "{{symbols}} — {{reason}}",
+        "symbolsMore": "{{symbols}} +{{count}} more — {{reason}}",
+        "notFound": "no quote available",
+        "providerError": "quote lookup failed, retrying shortly",
+        "rateLimited": "quote provider rate limited, retrying shortly",
+        "notConfigured": "quote provider not configured",
+        "requestLimit": "too many symbols requested",
+        "budget": "not loaded yet, retrying shortly",
+        "seed": "market data temporarily unavailable"
+      }
     },
     "heatmap": {
       "infoTooltip": "<strong>Sector Heatmap</strong> S&P 500 sector performance at a glance. Color intensity reflects the magnitude of daily change. Green = gains, Red = losses."
@@ -2319,9 +2342,10 @@
           "summaryVerified": "Unlocked and ready when you are.",
           "channelsNote": "Prefer Telegram, Slack, Discord, or a webhook?",
           "pointers": {
+            "search": "جستجو در کل داشبورد",
             "widgets": "Build a custom widget",
             "analyst": "Ask the AI analyst",
-            "apiKeys": "Get your API & MCP keys",
+            "mcpClients": "Set up MCP",
             "channels": "Set those up in notification settings"
           }
         }
@@ -2530,39 +2554,87 @@
     },
     "panelFreshness": {
       "status": {
-        "fresh": "Fresh",
-        "stale": "Stale",
-        "veryStale": "Very stale",
-        "noData": "No data",
-        "disabled": "Disabled",
-        "error": "Error"
+        "fresh": "به‌روز",
+        "stale": "منسوخ",
+        "veryStale": "خیلی منسوخ",
+        "noData": "داده‌ای وجود ندارد",
+        "disabled": "غیرفعال",
+        "error": "خطا"
       },
       "labelWithAge": "{{status}} {{age}}",
-      "title": "Data freshness: {{status}}. {{sources}}",
+      "title": "تازگی داده: {{status}}. {{sources}}",
       "sourceDetail": "{{name}}: {{status}}, {{update}}",
       "sourceDetailWithHealth": "{{name}}: {{status}}, {{update}}, {{detail}}",
-      "lastUpdated": "last updated {{time}}",
-      "neverUpdated": "never updated",
+      "lastUpdated": "آخرین به‌روزرسانی {{time}}",
+      "neverUpdated": "هیچ‌گاه به‌روز نشده",
       "health": {
-        "partialCoverage": "partial coverage",
-        "contentStale": "content stale",
-        "seedStale": "seed stale",
-        "noSourceData": "no source data",
-        "sourceErrorReported": "source error reported",
-        "freshnessStoreUnavailable": "freshness store unavailable",
-        "freshnessStoreDegraded": "freshness store degraded"
+        "partialCoverage": "پوشش جزئی",
+        "contentStale": "محتوا منسوخ",
+        "seedStale": "seed منسوخ",
+        "noSourceData": "داده منبع وجود ندارد",
+        "sourceErrorReported": "خطای منبع گزارش شد",
+        "freshnessStoreUnavailable": "فروشگاه تازگی در دسترس نیست",
+        "freshnessStoreDegraded": "فروشگاه تازگی تنزل یافته"
       },
       "time": {
-        "never": "never",
-        "justNow": "just now",
-        "minutesAgo": "{{count}}m ago",
-        "hoursAgo": "{{count}}h ago",
-        "daysAgo": "{{count}}d ago",
-        "compactNow": "now",
-        "compactMinutes": "{{count}}m",
-        "compactHours": "{{count}}h",
-        "compactDays": "{{count}}d"
+        "never": "هیچ‌گاه",
+        "justNow": "همین الان",
+        "minutesAgo": "{{count}}د پیش",
+        "hoursAgo": "{{count}}س پیش",
+        "daysAgo": "{{count}}ر پیش",
+        "compactNow": "اکنون",
+        "compactMinutes": "{{count}}د",
+        "compactHours": "{{count}}س",
+        "compactDays": "{{count}}ر"
       }
+    },
+    "exportGate": {
+      "signedOutDesc": "برای خروجی داده‌های داشبورد به‌صورت CSV، JSON یا PDF وارد شوید.",
+      "upgradeDesc": "خروجی داده (CSV، JSON، PDF) در Pro Business موجود است.",
+      "upgradeCta": "ارتقا به Pro Business",
+      "lockedAriaLabel": "خروجی داده — قفل‌شده. {{reason}}",
+      "unlockedAnnouncement": "خروجی داده قفل‌گشایی شد.",
+      "preparingPdf": "آماده‌سازی PDF…",
+      "pdfFailed": "گزارش PDF قابل تولید نیست. دوباره امتحان کنید یا از خروجی JSON استفاده کنید."
+    },
+    "tabCap": {
+      "signedOutDesc": "فضاهای کاری بدون ورود به {{cap}} برگه محدود هستند. برای افزودن بیشتر وارد شوید.",
+      "upgradeDesc": "به حد {{cap}} برگه داشبورد رسیده‌اید.",
+      "upgradeCta": "ارتقا برای بیشتر",
+      "lockedAriaLabel": "افزودن برگه — قفل‌شده. {{reason}}",
+      "unlockedAnnouncement": "محدودیت برگه‌های داشبورد برداشته شد."
+    },
+    "fx": {
+      "infoTooltip": "<strong>نرخ‌های ارز</strong> تنش ارزی و نرخ‌های پایه:<ul><li>تنش ارزی (FX Stress) ۴۵ ارز را بر اساس بدترین کاهش قله‌به‌دره در ۲۴ ماه گذشته، همراه با تغییر ۱۲ ماهه رتبه‌بندی می‌کند</li><li>پوشش شامل ARS، TRY، EGP، NGN، PKR و UAH است — ارزهایی که مجموعه‌های ارجاعی BIS و ECB حذف کرده‌اند</li><li>نرخ‌های پایه نرخ‌ها را در برابر دلار آمریکایی و نرخ‌های ارجاعی یورو ECB به‌طور جداگانه فهرست می‌کند، زیرا این دو از مبانی مختلفی نقل قول می‌شوند</li><li>RUB — نرخ‌های بانک مرکزی روسیه، روبل به ازای هر واحد</li></ul> منابع: Yahoo Finance، بانک مرکزی اروپا و بانک مرکزی روسیه.",
+      "tabs": {
+        "stress": "تنش ارزی",
+        "spot": "نرخ پایه",
+        "rub": "RUB"
+      },
+      "currency": "ارز",
+      "pair": "جفت ارزی",
+      "rate": "نرخ",
+      "yoy": "۱۲ ماه",
+      "drawdown": "کاهش ۲۴ ماهه",
+      "peakToTrough": "قله → دره",
+      "change1d": "۱ روز",
+      "perUsd": "به ازای ۱ دلار آمریکایی",
+      "usdPerUnit": "دلار آمریکایی به ازای هر واحد",
+      "usdBase": "در برابر دلار آمریکایی",
+      "eurBase": "نرخ‌های ارجاعی یورو ECB",
+      "stressedCount": "{{stressed}} از {{total}} ارز زیر {{threshold}}",
+      "sourceYahoo": "منبع: Yahoo Finance",
+      "sourceEcb": "منبع: ECB",
+      "degraded": "در حال حاضر در دسترس نیست: {{sources}}. به زودی دوباره تلاش می‌شود.",
+      "source": {
+        "stress": "تنش ارز",
+        "usd": "نرخ دلار آمریکا",
+        "eur": "نرخ یورو بانک مرکزی اروپا",
+        "rub": "نرخ‌های بانک مرکزی روسیه"
+      },
+      "rubBase": "بانک مرکزی روسیه — روبل به ازای هر ۱ واحد",
+      "rubPerUnit": "روبل به ازای هر واحد",
+      "sourceCbr": "منبع: بانک مرکزی روسیه"
     }
   },
   "popups": {
@@ -2903,7 +2975,7 @@
       "heading": "HEADING",
       "hexCode": "HEX CODE",
       "squawk": "SQUAWK",
-      "attribution": "Source: OpenSky Network"
+      "attribution": "Source: adsb.lol (ODbL) · OpenSky Network"
     },
     "militaryVessel": {
       "aisDark": "AIS DARK",
@@ -3297,16 +3369,42 @@
     "visualizationFailed": "Visualization failed"
   },
   "dashboardTabs": {
-    "ariaLabel": "Dashboard tabs",
-    "defaultName": "Main",
-    "newTabName": "New Tab",
-    "newTabCreated": "New tab created",
-    "tabDeleted": "Tab \"{{name}}\" deleted",
-    "addTab": "Add tab",
-    "addTabTitle": "New tab (starts with the default panels)",
-    "renameHint": "{{name}} — double-click to rename",
-    "deleteTab": "Delete tab",
-    "deleteTabAria": "Delete tab {{name}}",
-    "tabNameAria": "Tab name"
+    "ariaLabel": "برگه‌های داشبورد",
+    "defaultName": "اصلی",
+    "newTabName": "برگه جدید",
+    "newTabCreated": "برگه جدید ایجاد شد",
+    "tabDeleted": "برگه \"{{name}}\" حذف شد",
+    "addTab": "افزودن برگه",
+    "addTabTitle": "برگه جدید (با پنل‌های پیش‌فرض شروع می‌شود)",
+    "renameHint": "{{name}} — دوبار کلیک برای تغییر نام",
+    "deleteTab": "حذف برگه",
+    "deleteTabAria": "حذف برگه {{name}}",
+    "tabNameAria": "نام برگه"
+  },
+  "theaterPresets": {
+    "label": "پیش‌تنظیم‌های پوشش",
+    "applied": "پیش‌تنظیم {{preset}} اعمال شد: {{count}} منبع فعال شد",
+    "alreadyApplied": "پیش‌تنظیم {{preset}} قبلاً اعمال شده است",
+    "ukraineWar": {
+      "label": "جنگ اوکراین",
+      "description": "رسانه‌های اصلی اوکراین، مطبوعات مستقل روسیه و منابع ارزیابی خط مقدم را فعال کنید"
+    },
+    "indoPacific": {
+      "label": "هندو-اقیانوس آرام / تایوان",
+      "description": "منابع امنیتی تایوان، پاکستان و جنوب‌شرق آسیا را فعال کنید"
+    },
+    "sahelWestAfrica": {
+      "label": "ساحل و غرب آفریقا",
+      "description": "منابع محلی ساحل، نیجریه و غرب آفریقا را فعال کنید"
+    },
+    "caucasusCentralAsia": {
+      "label": "قفقاز و آسیای مرکزی",
+      "description": "منابع منطقه‌ای قفقاز جنوبی و آسیای مرکزی را فعال کنید"
+    },
+    "middleEastFlashpoints": {
+      "label": "نقاط بحرانی خاورمیانه",
+      "description": "منابع ایران، اسرائیل، خلیج و مناطق کردنشین را فعال کنید"
+    },
+    "unavailable": "پیش‌تنظیم {{preset}} با پنل‌های فعلی شما در دسترس نیست"
   }
 }

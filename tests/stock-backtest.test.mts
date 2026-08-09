@@ -1,7 +1,12 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { afterEach, describe, it } from 'node:test';
 
-import { backtestStock } from '../server/worldmonitor/market/v1/backtest-stock.ts';
+import {
+  backtestStock,
+  STOCK_BACKTEST_ENGINE_VERSION,
+  STOCK_BACKTEST_RATING_BASIS,
+} from '../server/worldmonitor/market/v1/backtest-stock.ts';
 import { listStoredStockBacktests } from '../server/worldmonitor/market/v1/list-stored-stock-backtests.ts';
 import { MarketServiceClient } from '../src/generated/client/worldmonitor/market/v1/service_client.ts';
 
@@ -181,9 +186,12 @@ describe('backtestStock handler', () => {
     assert.equal(response.currency, 'USD');
     assert.ok(response.actionableEvaluations > 0);
     assert.ok(response.evaluations.length > 0);
-    assert.match(response.evaluations[0]?.analysisId || '', /^ledger:/);
+    assert.match(response.evaluations[0]?.analysisId || '', /^ledger:v3-technical-only:/);
     assert.match(response.latestSignal, /buy/i);
-    assert.match(response.summary, /stored analysis/i);
+    assert.match(response.summary, /technical-only signal/i);
+    assert.match(response.summary, /fundamentals are not included/i);
+    assert.equal(response.ratingBasis, STOCK_BACKTEST_RATING_BASIS);
+    assert.equal(response.engineVersion, STOCK_BACKTEST_ENGINE_VERSION);
   });
 });
 
@@ -236,6 +244,28 @@ describe('server-backed stored stock backtests', () => {
     assert.equal(stored.items.length, 1);
     assert.equal(stored.items[0]?.symbol, 'AAPL');
     assert.equal(stored.items[0]?.latestSignal, response.latestSignal);
+    assert.equal(stored.items[0]?.ratingBasis, 'technical_only');
+    assert.equal(stored.items[0]?.engineVersion, 'v3-technical-only');
+  });
+});
+
+describe('technical-only backtest disclosure', () => {
+  it('labels the panel and persistent namespaces independently from live composite ratings', () => {
+    const panelSource = readFileSync(
+      new URL('../src/components/StockBacktestPanel.ts', import.meta.url),
+      'utf8',
+    );
+    const storeSource = readFileSync(
+      new URL('../server/worldmonitor/market/v1/premium-stock-store.ts', import.meta.url),
+      'utf8',
+    );
+
+    assert.match(panelSource, /technical signal model/i);
+    assert.match(panelSource, /Point-in-time fundamentals are not included/i);
+    assert.match(panelSource, /ratingBasis === 'technical_only'/);
+    assert.match(storeSource, /market:stock-backtest-store:v3:/);
+    assert.match(storeSource, /market:stock-analysis-ledger:index:v2:/);
+    assert.match(storeSource, /market:stock-analysis-ledger:item:v2:/);
   });
 });
 

@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { isDebugBearRumScriptFrame } from '../src/bootstrap/debugbear-rum.ts';
+import { isIosLikeUserAgent } from '../src/bootstrap/platform-ua.ts';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -40,9 +41,24 @@ assert.ok(tpMatch, 'THIRD_PARTY_FETCH_HOST_ALLOWLIST must be defined in src/boot
 
 // Build a callable version. Input: a Sentry-shaped event object. Returns event or null.
 // eslint-disable-next-line no-new-func
-const rawBeforeSend = new Function('event', 'isDebugBearRumScriptFrame', `${tpMatch[0]}\n${fnBody}`);
-function beforeSend(event) {
-  return rawBeforeSend(event, isDebugBearRumScriptFrame);
+const rawBeforeSend = new Function(
+  'event', 'isDebugBearRumScriptFrame', 'isIosLikeUserAgent', 'navigator',
+  `${tpMatch[0]}\n${fnBody}`,
+);
+
+// User-Agent strings, because beforeSend's platform gates read `navigator.userAgent`
+// — NOT `event.contexts.os`, which the browser SDK never populates (see
+// src/bootstrap/platform-ua.ts). `navigator` is passed as a Function parameter so it
+// shadows Node's global and each test can state the platform explicitly.
+const MAC_DESKTOP_UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/151.0.0.0 Safari/537.36';
+const IOS_GOOGLE_APP_UA = 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) GSA/432.9.954074404 Mobile/15E148 Safari/604.1';
+const DESKTOP_NAVIGATOR = { userAgent: MAC_DESKTOP_UA, maxTouchPoints: 0 };
+const IOS_NAVIGATOR = { userAgent: IOS_GOOGLE_APP_UA, maxTouchPoints: 5 };
+/** iPadOS 13+ desktop mode: Macintosh UA, but touch-capable. */
+const IPADOS_NAVIGATOR = { userAgent: MAC_DESKTOP_UA, maxTouchPoints: 5 };
+
+function beforeSend(event, navigatorStub = DESKTOP_NAVIGATOR) {
+  return rawBeforeSend(event, isDebugBearRumScriptFrame, isIosLikeUserAgent, navigatorStub);
 }
 
 // Extract the `ignoreErrors` array literal so tests can assert which messages
@@ -397,6 +413,15 @@ describe('zero-frame async-rejection patterns (timeout / DOMException / OOM / DO
     // value shapes are matched.
     ['NetworkError when attempting to fetch resource.', 'TypeError'],
     ['TypeError: NetworkError when attempting to fetch resource.', 'TypeError'],
+    // Injected page script inserting its own unparseable source
+    // (WORLDMONITOR-YW). Chrome prefixes the parse error with the DOM API that
+    // triggered it. Our own script-appending call sites (analytics, DebugBear,
+    // Clerk, news embeds) keep a source-mapped .ts frame, so the first-party
+    // case is asserted "lets through" by this same loop — the coverage the
+    // superseded ungated ignoreErrors entry could not provide.
+    ["Failed to execute 'appendChild' on 'Node': Unexpected identifier 'x'", 'SyntaxError'],
+    ["Failed to execute 'appendChild' on 'Node': Unexpected token '}'", 'SyntaxError'],
+    ["SyntaxError: Failed to execute 'appendChild' on 'Node': Unexpected end of input", 'SyntaxError'],
   ];
 
   for (const [msg, type] of zeroFrameErrors) {
@@ -415,6 +440,32 @@ describe('zero-frame async-rejection patterns (timeout / DOMException / OOM / DO
       assert.ok(beforeSend(event) !== null, `"${msg}" with first-party stack should NOT be suppressed`);
     });
   }
+
+  // The shape WORLDMONITOR-YW actually arrived in: an injected script's parse
+  // failure carries only `<anonymous>` frames, which nonInfraFrames strips —
+  // so neither the empty-stack nor the extension-URL case above reproduces it.
+  it("suppresses the injected-script appendChild parse failure with only <anonymous> frames", () => {
+    const event = makeEvent(
+      "Failed to execute 'appendChild' on 'Node': Unexpected identifier 'x'",
+      'SyntaxError',
+      [{ filename: '<anonymous>', lineno: 1 }, { filename: '<anonymous>', lineno: 1 }],
+    );
+    assert.equal(beforeSend(event), null);
+  });
+
+  it('lets through an appendChild parse failure attributed to a first-party script loader', () => {
+    // analytics.ts / debugbear-rum.ts / clerk.ts / LiveNewsPanel.ts all append a
+    // third-party <script>; if one of those inserts unparseable source the frame
+    // is ours and the event must still reach the dashboard. The superseded
+    // ignoreErrors entry had no frames to check and dropped this case.
+    const event = makeEvent(
+      "Failed to execute 'appendChild' on 'Node': Unexpected identifier 'x'",
+      'SyntaxError',
+      [{ filename: 'src/services/analytics.ts', lineno: 494, function: 'loadUmamiScript' },
+        { filename: '<anonymous>', lineno: 1 }],
+    );
+    assert.ok(beforeSend(event) !== null);
+  });
 });
 
 // ─── All ambiguous errors require confirmed third-party stack ────────────
@@ -592,6 +643,32 @@ describe('existing beforeSend filters', () => {
       { filename: 'chrome-extension://hoklmmgfnpapgjgcpechhaamimifchmp/frame_ant/frame_ant.js', lineno: 2, function: 'r.class.c.value.window.fetch' },
     ]);
     assert.equal(beforeSend(event), null, 'Extension chain-ending-in-window.fetch fetch failure should be suppressed');
+  });
+
+  it('suppresses bare "Failed to fetch" when the extension fetch frame carries an alias annotation (WORLDMONITOR-Y8)', () => {
+    // Real WORLDMONITOR-Y8 stack (Adjust SDK injectScriptAdjust.js, the same
+    // extension already named in the SG gate): Sentry renders the frame whose
+    // function was reached through an alias as `<name> [<annotation>]`, so the
+    // wrapper surfaces as `window.fetch [<annotation>]`. The SG function match
+    // is anchored, so the trailing annotation made it miss and the identical
+    // wrapper class re-surfaced as a new issue.
+    const event = makeEvent('Failed to fetch', 'TypeError', [
+      { filename: '/assets/panel-storage-RVfx_Amx.js', lineno: 2, function: 'Ln' },
+      { filename: 'chrome-extension://bkkbcggnhapdmkeljlodobbkopceiche/injectScriptAdjust.js', lineno: 1, function: 'window.fetch [as originalFetch]' },
+      { filename: '/assets/widget-store-B60Ai24W.js', lineno: 2, function: 'window.fetch' },
+    ]);
+    assert.equal(beforeSend(event), null, 'alias-annotated extension window.fetch frame should be suppressed');
+  });
+
+  it('does NOT suppress when only the ALIAS half of an extension frame looks like fetch', () => {
+    // Precision guard for the annotation strip above: the meaningful name is the
+    // one BEFORE the bracket. An extension frame whose own function is unrelated
+    // must not qualify just because it was stored under a fetch-ish property.
+    const event = makeEvent('Failed to fetch', 'TypeError', [
+      { filename: '/assets/panels-wF5GXf0N.js', lineno: 100, function: 'MyApiCall' },
+      { filename: 'chrome-extension://abcdefghijklmnopabcdefghijklmnop/inject.js', lineno: 1, function: 'trackEvent [as fetch]' },
+    ]);
+    assert.ok(beforeSend(event) !== null, 'alias-only fetch resemblance must not trigger SG suppression');
   });
 
   it('does NOT suppress bare "Failed to fetch" with a first-party frame and a NON-fetch extension frame', () => {
@@ -895,6 +972,39 @@ describe('existing beforeSend filters', () => {
       firstPartyFrame('src/services/stream.ts', 'onmessage'),
     ]);
     assert.ok(beforeSend(event) !== null, 'first-party onmessage regression must surface');
+  });
+
+  // WORLDMONITOR-RA: SnapTube (Android video-downloader in-app WebView) JS bridge
+  // parses its own `undefined` payload. `/SnapTube/` already sits in ignoreErrors,
+  // but that layer matches the MESSAGE only — here the attribution lives purely in a
+  // frame function, so it needs the stack-aware layer.
+  it('suppresses SyntaxError "is not valid JSON" from the SnapTube WebView bridge', () => {
+    const event = makeEvent('"undefined" is not valid JSON', 'SyntaxError', [
+      { filename: '/assets/sentry-DMxp_zBn.js', lineno: 488, function: 'r' },
+      { filename: '<anonymous>', lineno: 1, function: 'SnapTube.value' },
+      { filename: '<anonymous>', lineno: 1, function: 'Object.jsReceiveMessages' },
+      { filename: '<anonymous>', lineno: 1, function: 'JSON.parse' },
+    ]);
+    assert.equal(beforeSend(event), null);
+  });
+
+  it('does NOT suppress SnapTube-shaped JSON errors when a first-party frame is present', () => {
+    const event = makeEvent('"undefined" is not valid JSON', 'SyntaxError', [
+      firstPartyFrame('src/services/panel-storage.ts', 'readCached'),
+      { filename: '<anonymous>', lineno: 1, function: 'SnapTube.value' },
+    ]);
+    assert.ok(beforeSend(event) !== null, 'first-party JSON.parse regression must surface');
+  });
+
+  it('does NOT suppress "is not valid JSON" from an unnamed anonymous bridge', () => {
+    const event = makeEvent('"undefined" is not valid JSON', 'SyntaxError', [
+      { filename: '<anonymous>', lineno: 1, function: 'e.value' },
+      { filename: '<anonymous>', lineno: 1, function: 'JSON.parse' },
+    ]);
+    assert.ok(
+      beforeSend(event) !== null,
+      'suppression must key off the named SnapTube bridge, not bare !hasFirstParty',
+    );
   });
 
   // WORLDMONITOR-NR: deck.gl/maplibre internal null-access on Layer.isHidden
@@ -1311,5 +1421,101 @@ describe('`Failed to fetch (abacus.worldmonitor.app)` — Umami beacon (WORLDMON
     // gate for our data-serving API — a real outage still has to reach Sentry.
     const event = makeEvent('Failed to fetch (api.worldmonitor.app)', 'TypeError', whStack);
     assert.ok(beforeSend(event) !== null, 'API-outage canary must never be masked by the beacon allowlist');
+  });
+});
+
+// ─── WORLDMONITOR-Y4: bare minified trampoline hop in a DebugBear stack ───────
+//
+// Third build-rename of the VC/VQ wrapper. Vite emitted one hop of the
+// `window.fetch` trampoline as a bare minified `t`, which no fetch-anchored
+// pattern matches, so the identical class re-surfaced as a new issue. The
+// tolerance is bounded to ≤2 chars inside the two fetch-free chunks; the VQ
+// safety tests above (named receiver, `fetchContent`, non-allowlisted chunk)
+// still hold and are what stop this from becoming a blanket chunk allowlist.
+describe('sentry beforeSend — Y4 bare minified trampoline hop', () => {
+  const y4Stack = [
+    { filename: '/lpMwA9KpC6pf.js', lineno: 8, function: null },
+    { filename: '/lpMwA9KpC6pf.js', lineno: 1, function: null },
+    { filename: '/lpMwA9KpC6pf.js', lineno: 8, function: null },
+    { filename: '/lpMwA9KpC6pf.js', lineno: 1, function: null },
+    { filename: '/lpMwA9KpC6pf.js', lineno: 1, function: 'e' },
+    { filename: '/assets/panel-storage-91sIzezL.js', lineno: 2, function: 't' },
+    { filename: '/assets/widget-store-MD1xhCc9.js', lineno: 2, function: 'window.fetch' },
+    { filename: '/assets/panel-storage-91sIzezL.js', lineno: 2, function: 'Pi.window.fetch' },
+  ];
+
+  it('suppresses the exact Y4 production stack', () => {
+    assert.equal(beforeSend(makeEvent('Failed to fetch', 'TypeError', y4Stack)), null,
+      'a bare minified hop is the same DebugBear wrapper class as VC/VQ');
+  });
+
+  it('does NOT suppress a longer minified name in the same chunk', () => {
+    // The bound is what separates a trampoline hop from a real minified caller.
+    const event = makeEvent('Failed to fetch', 'TypeError', [
+      { filename: '/lpMwA9KpC6pf.js', lineno: 1, function: 'e' },
+      { filename: '/assets/panel-storage-91sIzezL.js', lineno: 2, function: 'loadPanels' },
+    ]);
+    assert.ok(beforeSend(event) !== null, 'a named function in the chunk is a real caller');
+  });
+
+  it('does NOT suppress a bare minified frame without a DebugBear frame present', () => {
+    // The collector frame is the reason these trampolines appear at all.
+    const event = makeEvent('Failed to fetch', 'TypeError', [
+      { filename: '/assets/panel-storage-91sIzezL.js', lineno: 2, function: 't' },
+    ]);
+    assert.ok(beforeSend(event) !== null, 'no collector frame means no trampoline explanation');
+  });
+});
+
+// ─── WORLDMONITOR-WK: zero-frame RangeError confined to iOS ───────────────────
+//
+// 23 events / 20 users, 100% iOS, 21 inside the Google app's in-app WebView.
+// A blown stack is exactly when the SDK cannot collect frames, so zero frames
+// alone proves nothing — the OS gate is the load-bearing half.
+describe('sentry beforeSend — WK iOS zero-frame call-stack overflow', () => {
+  it('suppresses the exact WK shape on iOS', () => {
+    const event = makeEvent('Maximum call stack size exceeded.', 'RangeError', []);
+    assert.equal(beforeSend(event, IOS_NAVIGATOR), null, 'iOS in-app WebView recursion is not our bundle');
+  });
+
+  it('suppresses the WK shape on iPadOS desktop-mode (Macintosh UA + touch)', () => {
+    const event = makeEvent('Maximum call stack size exceeded.', 'RangeError', []);
+    assert.equal(beforeSend(event, IPADOS_NAVIGATOR), null, 'iPadOS is the same WebView family');
+  });
+
+  it('does NOT suppress the same message on a desktop OS', () => {
+    const event = makeEvent('Maximum call stack size exceeded.', 'RangeError', []);
+    assert.ok(beforeSend(event, DESKTOP_NAVIGATOR) !== null, 'a real recursion regression must still reach Sentry');
+  });
+
+  it('does NOT suppress an iOS call-stack overflow that carries a first-party frame', () => {
+    const event = makeEvent('Maximum call stack size exceeded.', 'RangeError', [firstPartyFrame()]);
+    assert.ok(beforeSend(event, IOS_NAVIGATOR) !== null, 'an attributable recursion is signal, not noise');
+  });
+
+  it('does NOT suppress an unrelated zero-frame iOS RangeError', () => {
+    const event = makeEvent('Invalid array length', 'RangeError', []);
+    assert.ok(beforeSend(event, IOS_NAVIGATOR) !== null, 'the gate is scoped to the call-stack message');
+  });
+
+  // The regression that let WORLDMONITOR-WK run for 44 events across seven builds:
+  // the gate read `event.contexts.os.name`, which the browser SDK never sets, and the
+  // old fixtures fabricated it. Pin BOTH directions so no future gate can pass a test
+  // via a field production does not supply.
+  it('ignores event.contexts.os entirely — a fabricated iOS context cannot suppress', () => {
+    const event = {
+      ...makeEvent('Maximum call stack size exceeded.', 'RangeError', []),
+      contexts: { os: { name: 'iOS', version: '18.0.0' } },
+    };
+    assert.ok(
+      beforeSend(event, DESKTOP_NAVIGATOR) !== null,
+      'contexts.os is ingest-derived and absent in beforeSend; it must not drive the gate',
+    );
+  });
+
+  it('suppresses on an iOS UA even with no contexts at all (the real production shape)', () => {
+    const event = makeEvent('Maximum call stack size exceeded.', 'RangeError', []);
+    assert.equal(event.contexts, undefined, 'production events reach beforeSend without an os context');
+    assert.equal(beforeSend(event, IOS_NAVIGATOR), null, 'the UA is the only platform signal available');
   });
 });

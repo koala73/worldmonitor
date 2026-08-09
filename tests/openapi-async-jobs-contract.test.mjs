@@ -6,6 +6,8 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { load as loadYaml } from 'js-yaml';
 
+import { loadUnifiedOpenApiSpec } from './_lib/openapi-spec-cache.mjs';
+
 // Guards the REST async-job pattern injected by
 // scripts/openapi-inject-async-jobs.mjs: RunScenario's success response is a
 // 202 Accepted job envelope with a Location header pointing at the
@@ -69,7 +71,7 @@ describe('OpenAPI async-job pattern contract (RunScenario 202)', () => {
   });
 
   it('bundle (worldmonitor.openapi.yaml → /openapi.json) documents the 202 + Location pattern', () => {
-    const bundle = loadYaml(readFileSync(resolve(apiDir, 'worldmonitor.openapi.yaml'), 'utf8'));
+    const bundle = loadUnifiedOpenApiSpec();
     assertAsyncJobContract(bundle.paths?.[RUN_PATH]?.post, 'bundle run-scenario POST');
     assert.ok(bundle.paths?.[POLL_PATH]?.get, 'bundle must keep the poll endpoint published');
   });

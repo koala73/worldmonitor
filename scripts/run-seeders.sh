@@ -91,11 +91,18 @@ caps_seed() {
 }
 
 run_seed() {
+  node_file="$1"
+  # Native Windows Node does not understand MSYS paths such as /c/Users/...
+  # and resolves them as C:\c\Users\.... Convert only when cygpath is present.
+  if command -v cygpath >/dev/null 2>&1; then
+    node_file="$(cygpath -w "$node_file")"
+  fi
+
   if caps_seed "$1"; then
     # -k: if it ignores SIGTERM, SIGKILL it 30s later so the run can move on.
-    timeout -k 30 "$SEED_TIMEOUT" node "$1" 2>&1
+    timeout -k 30 "$SEED_TIMEOUT" node "$node_file" 2>&1
   else
-    node "$1" 2>&1
+    node "$node_file" 2>&1
   fi
 }
 

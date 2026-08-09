@@ -62,6 +62,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { extractBundleMembers, parseDockerfileCopy, walkContainerGraph } from './_lib/import-graph-walk.mjs';
+import { RESILIENCE_VALIDATION_BUNDLE_MEMBERS } from '../scripts/resilience-validation-bundle.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const root = resolve(__dirname, '..');
@@ -130,6 +131,10 @@ const CONTAINERS = [
     name: 'seed-bundle-resilience-validation',
     dockerfile: 'Dockerfile.seed-bundle-resilience-validation',
     bundleScript: 'seed-bundle-resilience-validation.mjs',
+    // The production entry imports this descriptor instead of spelling section
+    // objects inline. Use the same values as its spawn configuration so the
+    // graph guard follows every deployed member, not a shadow source parser.
+    members: RESILIENCE_VALIDATION_BUNDLE_MEMBERS.map((member) => member.script),
     minMembers: 3,
     mustIncludeMember: 'validate-resilience-sensitivity.mjs',
     dynamicRoots: ['server'],
@@ -203,7 +208,7 @@ function walkRootsFor(container) {
   // double quotes must not escape the walk — minMembers is only a floor) and
   // comment-stripped (a DISABLED member must not be walked, nor abort the
   // suite via the existsSync assert below).
-  const members = extractBundleMembers(bundleSrc);
+  const members = container.members ?? extractBundleMembers(bundleSrc);
   assert.ok(
     members.length >= container.minMembers,
     `${container.bundleScript}: expected >=${container.minMembers} member scripts, found ${members.length} — bundle definition or the member regex drifted`,

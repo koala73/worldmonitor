@@ -129,17 +129,20 @@
       "currencies": "Валути",
       "area": "Площ"
     },
-    "loadingResilienceScore": "Loading resilience score…",
-    "resilienceScoreUnavailable": "Resilience score unavailable.",
+    "loadingResilienceScore": "Зареждане на оценката за устойчивост…",
+    "resilienceScoreUnavailable": "Оценката за устойчивост не е налична.",
     "china": {
       "title": "Преглед на държава: Китай",
       "description": "Текущо състояние на макроикономика, пазар, търговия, енергетика и оперативна наличност от съществуващите публични договори за данни.",
-      "macroPolicy": "Макро и политика",
-      "marketCredit": "Пазар и кредит",
-      "tradeSupply": "Търговия и вериги на доставки",
+      "policyEvents": "Политика и прилагане",
       "energy": "Енергетика",
       "availability": "Опасности и авиация",
       "observed": "Към:",
+      "published": "Публикувано:",
+      "effective": "В сила:",
+      "sectors": "Сектори:",
+      "entities": "Субекти:",
+      "translation": "Превод:",
       "source": "Източник:",
       "imfGrowth": "Прогноза за растеж на МВФ",
       "creditGdp": "Кредит към БВП",
@@ -148,8 +151,6 @@
       "gasDemand": "Търсене на газ",
       "energyMix": "Електроенергиен микс",
       "coal": "въглища",
-      "aviationAvailability": "Наличност на авиацията",
-      "hazardAvailability": "Наличност на опасностите",
       "noMajorDisruptions": "Няма съобщени сериозни смущения",
       "activeDisruptions_one": "{{count}} активно прекъсване",
       "activeDisruptions_other": "{{count}} активни прекъсвания",
@@ -161,18 +162,21 @@
       "ccfiSource": "Шанхайска корабна борса",
       "comtradeSource": "UN Comtrade, докладваща страна 156",
       "sourceUnavailable": "Източникът не е наличен",
-      "macroUnavailable": "Макроикономическите и политическите данни в момента не са налични.",
-      "marketUnavailable": "Пазарните и кредитните данни в момента не са налични.",
-      "tradeUnavailable": "Данните за търговия и вериги на доставки в момента не са налични.",
-      "energyUnavailable": "Енергийните данни в момента не са налични.",
-      "availabilityUnavailable": "Данните за опасности и авиация в момента не са налични.",
+      "policyUnavailable": "Official policy and enforcement events are currently unavailable.",
+      "policyPartial": "{{count}} official agencies are temporarily degraded.",
       "status": {
         "loading": "Зареждане",
         "available": "Налично",
         "partial": "Частично",
         "stale": "Остаряло",
         "unavailable": "Неналично"
-      }
+      },
+      "macroSignals": "Макро сигнали",
+      "crossStraitActivity": "Активност през протока",
+      "corporateDisclosures": "Корпоративни оповестявания",
+      "corridorConditions": "Условия в коридора",
+      "activityNowcast": "Нокаст на активността",
+      "decisionSignalsUnavailable": "Снимката на сигналите за решения на Китай в момента не е налична."
     }
   },
   "header": {
@@ -253,7 +257,7 @@
     "panelCatCommodityEcon": "Економија & Трговија",
     "panelCatHappyNews": "Добри Вести",
     "panelCatHappyPlanet": "Планета & Давање",
-    "embed": "Embed"
+    "embed": "Вграждане"
   },
   "panels": {
     "liveNews": "Живи новини",
@@ -361,7 +365,8 @@
     "consumerPrices": "Цени на Потрошувачи",
     "fearGreed": "Страв & Алчност",
     "marketBreadth": "Пазарна Ширина",
-    "climateNews": "Климатски Вести"
+    "climateNews": "Климатски Вести",
+    "fx": "Валутни курсове"
   },
   "commands": {
     "prefixes": {
@@ -1127,7 +1132,7 @@
         "ucdpEvents": "События от въоръжени конфликти",
         "displacementFlows": "Потоци на преместване",
         "climateAnomalies": "Климатични аномалии",
-        "weatherAlerts": "Météo алерти",
+        "weatherAlerts": "Метеорологични предупреждения за САЩ (NWS)",
         "strategicWaterways": "Стратегически водни пътища",
         "economicCenters": "Икономически центрове",
         "criticalMinerals": "Критични минерали",
@@ -1208,7 +1213,7 @@
           "infraDatacenters": "Клъстери за AI изчисления >=10 000 GPU",
           "infraOutages": "Прекъсвания на интернет и сривове на услуги",
           "naturalEventsTech": "Земетресения, бури, пожари (могат да засегнат центрове за данни)",
-          "weatherAlerts": "Предупреждения за тежки метеорологични условия",
+          "weatherAlerts": "Предупреждения за опасно време в САЩ (NWS)",
           "economicCenters": "Фондови борси и централни банки",
           "countriesOverlay": "Наслагване на имена на държави",
           "financeExchanges": "Основни световни борси по пазарен ранг",
@@ -1220,7 +1225,7 @@
           "financeOutages": "Интернет смущения, които могат да засегнат пазарните операции",
           "financeCyberThreats": "Инциденти със сигурността около финансова инфраструктура",
           "macroWaterways": "Стратегически тесни места за транспорт на суровини",
-          "weatherAlertsMarket": "Тежки метеорологични събития с пазарно значение",
+          "weatherAlertsMarket": "Опасни метеорологични явления в САЩ с пазарно значение (NWS)",
           "naturalEventsMacro": "Земетресения, пожари, наводнения и други природни бедствия",
           "timeRecent": "Филтриране на времеви данни до последните часове",
           "timeExtended": "Показване на данни за последната седмица, месец или всички",
@@ -1268,8 +1273,8 @@
       "sectionFollowing": "Following",
       "sectionAll": "All",
       "sourceStates": {
-        "degraded": "degraded",
-        "stale": "stale"
+        "degraded": "деградирал",
+        "stale": "остарял"
       }
     },
     "insights": {
@@ -1348,7 +1353,8 @@
       "newsSignals": "{{news}} новини • {{signals}} сигнали",
       "provenanceTitle": "Произход на обхвата: колко включени истории и отделни източници е избрано от този преглед",
       "compiledFrom": "Събрано от {{stories}} истории в {{sources}} източници",
-      "briefFreshness": "Генериран преди {{minutes}}м · най-нов източник {{hours}}ч стар"
+      "briefFreshness": "Генериран преди {{minutes}}м · най-нов източник {{hours}}ч стар",
+      "briefStoryDetails": "Story details ({{count}})"
     },
     "settings": {
       "exportSettings": "Експорт на настройки",
@@ -1426,10 +1432,10 @@
         "hoursAgo": "{{count}}h преди"
       },
       "infoTooltip": "<strong>Методология</strong> Композитен резултат (0-100), смесване:<ul><li>50% нестабилност на държави (топ 5 претегляни)</li><li>30% географска конвергенция зони</li><li>20% инцидентите на инфраструктура</li></ul>Авто-обновлява всеки 5 минути.",
-      "cachedCiiStatus": "Cached CII {{states}}",
+      "cachedCiiStatus": "Кеширан CII {{states}}",
       "sourceStates": {
-        "degraded": "degraded",
-        "stale": "stale"
+        "degraded": "деградирал",
+        "stale": "остарял"
       },
       "dataFreshness": "Data Freshness",
       "sourcesDetail": "{{active}}/{{total}} sources"
@@ -1557,25 +1563,25 @@
       "candidGrants": "Candid дарения",
       "dataLag": "Лаг на данни",
       "infoTooltip": "<strong>Глобалнен индекс на дарения активност</strong> Композитен индекс на проследяване на личното дарение в платформи за краудфинансиране и крипто портфейли.<ul><li><strong>Платформи</strong>: GoFundMe, GlobalGiving, JustGiving кампания вземане на проба</li><li><strong>Крипто</strong>: На-верига благодателност портфейл приливане (Endaoment, дарение блок)</li><li><strong>Институционален</strong>: OECD ODA, CAF световен индекс дарения, Candid дарения</li></ul>Индекс е посока (не точни суми). Комбинира живо вземане на проба с публикувани годишни доклади.",
-      "benchmarkTitle": "Global Giving Benchmarks",
-      "benchmarkInfoTooltip": "<strong>Global Giving Benchmarks</strong> Published platform and institutional claims with source periods and verification status. Annualized figures are estimates, not live activity.",
+      "benchmarkTitle": "Глобални показатели за дарения",
+      "benchmarkInfoTooltip": "<strong>Глобални показатели за дарения</strong> Публикувани твърдения на платформи и институции с периоди на източници и статус на верификация. Годишните данни са оценки, а не активност в реално време.",
       "status": {
-        "published": "Published benchmarks with verified source coverage.",
-        "partial": "Published benchmarks with partial source coverage.",
-        "legacy": "Legacy snapshot; source details are unavailable.",
-        "cached": "Showing a cached snapshot; refresh unavailable."
+        "published": "Публикувани показатели с верифицирано покритие на източници.",
+        "partial": "Публикувани показатели с частично покритие на източници.",
+        "legacy": "Стара снимка; детайли за източника не са налични.",
+        "cached": "Показва се кеширана снимка; обновяването не е налично."
       },
-      "trackedAnnualized": "Tracked platform giving — annualized estimate",
-      "annualizedDaily": "Annualized daily estimate",
-      "atLeast": "At least",
-      "about": "About",
-      "sourceNotVerified": "Source not verified",
-      "reportedCumulative": "Reported cumulative total",
+      "trackedAnnualized": "Проследявани дарения на платформа — годишна оценка",
+      "annualizedDaily": "Дневна годишна оценка",
+      "atLeast": "Поне",
+      "about": "Около",
+      "sourceNotVerified": "Източникът не е верифициран",
+      "reportedCumulative": "Отчетен кумулативен общ сбор",
       "sourcePeriod": "{{source}} · {{period}}",
-      "benchmark": "Published benchmark",
-      "sourcesMethodology": "Sources & methodology",
-      "methodologyIntro": "Only verified annual or defensibly annualized platform claims enter the headline. Cumulative and institutional figures remain separate context.",
-      "partialEstimate": "Partially verified estimate"
+      "benchmark": "Публикуван показател",
+      "sourcesMethodology": "Източници и методология",
+      "methodologyIntro": "В заглавието влизат само верифицирани годишни или защитимо анюализирани твърдения на платформи. Кумулативните и институционалните данни остават отделен контекст.",
+      "partialEstimate": "Частично верифицирана оценка"
     },
     "displacement": {
       "refugees": "Бежанци",
@@ -1615,6 +1621,8 @@
       "summaryFailed": "Неуспешно резюме",
       "sources": "{{count}} върши",
       "relatedAssetsNear": "Свързани активи близо до {{location}}",
+      "sourceCoverage": "{{covered}}/{{total}} източника",
+      "sourceCoverageHint": "Показва {{covered}} от {{total}} активни източника — този панел редува източниците си при всяко обновяване",
       "sortBy": "Сортиране по",
       "sortNewest": "Най-нови",
       "sortRelevance": "Релевантност"
@@ -2127,7 +2135,22 @@
       "infoTooltip": "<strong>Каскада от災害</strong> Открива конвергиращи сигнали от природни бедствия и инфраструктура:<ul><li>Корелира земетресения, горски пожари, наводнения и екстремни времеви явления</li><li>Проследява каскадни ефекти на инфраструктура и верига на доставки</li><li>Подчертава региони с натрупан риск от бедствия</li></ul>Кликнете върху карта, за да увеличите мащаба на засегнатия регион."
     },
     "markets": {
-      "infoTooltip": "<strong>Пазари</strong> Цени в реално време на фондови индекси, акции и крипто. Персонализирайте списъка си с наблюдавани стойности с помощта на бутона Списък на наблюдаване. Спарклайните показват скорошния тренд на цената."
+      "infoTooltip": "<strong>Пазари</strong> Цени в реално време на фондови индекси, акции и крипто. Персонализирайте списъка си с наблюдавани стойности с помощта на бутона Списък на наблюдаване. Спарклайните показват скорошния тренд на цената.",
+      "chart": {
+        "title": "Ценова диаграма {{symbol}}",
+        "close": "Затвори диаграмата"
+      },
+      "unavailable": {
+        "symbols": "{{symbols}} — {{reason}}",
+        "symbolsMore": "{{symbols}} +{{count}} more — {{reason}}",
+        "notFound": "no quote available",
+        "providerError": "quote lookup failed, retrying shortly",
+        "rateLimited": "quote provider rate limited, retrying shortly",
+        "notConfigured": "quote provider not configured",
+        "requestLimit": "too many symbols requested",
+        "budget": "not loaded yet, retrying shortly",
+        "seed": "market data temporarily unavailable"
+      }
     },
     "heatmap": {
       "infoTooltip": "<strong>Хартата на топлината на секторите</strong> Производителност на секторите на S&P 500 с един поглед. Интензивността на цвета отразява величината на дневната промяна. Зелено = печалби, Червено = загуби."
@@ -2247,9 +2270,10 @@
           "summaryVerified": "Отключен и готов, когато сте готови и вие.",
           "channelsNote": "Предпочитате Telegram, Slack, Discord или уебхук?",
           "pointers": {
+            "search": "Търси в цялото табло",
             "widgets": "Създай персонализиран уиджет",
             "analyst": "Попитай AI анализатора",
-            "apiKeys": "Вземи своите API и MCP ключове",
+            "mcpClients": "Настрой MCP",
             "channels": "Настройте ги в настройките за известия"
           }
         }
@@ -2457,43 +2481,91 @@
       }
     },
     "mobileNav": {
-      "panelCategories": "Panel categories"
+      "panelCategories": "Категории панели"
     },
     "panelFreshness": {
       "status": {
-        "fresh": "Fresh",
-        "stale": "Stale",
-        "veryStale": "Very stale",
-        "noData": "No data",
-        "disabled": "Disabled",
-        "error": "Error"
+        "fresh": "Актуално",
+        "stale": "Остаряло",
+        "veryStale": "Много остаряло",
+        "noData": "Няма данни",
+        "disabled": "Деактивирано",
+        "error": "Грешка"
       },
       "labelWithAge": "{{status}} {{age}}",
-      "title": "Data freshness: {{status}}. {{sources}}",
+      "title": "Актуалност на данните: {{status}}. {{sources}}",
       "sourceDetail": "{{name}}: {{status}}, {{update}}",
       "sourceDetailWithHealth": "{{name}}: {{status}}, {{update}}, {{detail}}",
-      "lastUpdated": "last updated {{time}}",
-      "neverUpdated": "never updated",
+      "lastUpdated": "последна актуализация {{time}}",
+      "neverUpdated": "никога не е актуализирано",
       "health": {
-        "partialCoverage": "partial coverage",
-        "contentStale": "content stale",
-        "seedStale": "seed stale",
-        "noSourceData": "no source data",
-        "sourceErrorReported": "source error reported",
-        "freshnessStoreUnavailable": "freshness store unavailable",
-        "freshnessStoreDegraded": "freshness store degraded"
+        "partialCoverage": "частично покритие",
+        "contentStale": "съдържанието е остаряло",
+        "seedStale": "seed е остарял",
+        "noSourceData": "няма данни от извор",
+        "sourceErrorReported": "докладвана грешка в извора",
+        "freshnessStoreUnavailable": "хранилището за актуалност не е налично",
+        "freshnessStoreDegraded": "хранилището за актуалност е деградирало"
       },
       "time": {
-        "never": "never",
-        "justNow": "just now",
-        "minutesAgo": "{{count}}m ago",
-        "hoursAgo": "{{count}}h ago",
-        "daysAgo": "{{count}}d ago",
-        "compactNow": "now",
-        "compactMinutes": "{{count}}m",
-        "compactHours": "{{count}}h",
-        "compactDays": "{{count}}d"
+        "never": "никога",
+        "justNow": "преди малко",
+        "minutesAgo": "преди {{count}}м",
+        "hoursAgo": "преди {{count}}ч",
+        "daysAgo": "преди {{count}}д",
+        "compactNow": "сега",
+        "compactMinutes": "{{count}}м",
+        "compactHours": "{{count}}ч",
+        "compactDays": "{{count}}д"
       }
+    },
+    "exportGate": {
+      "signedOutDesc": "Влезте, за да експортирате данните от таблото като CSV, JSON или PDF.",
+      "upgradeDesc": "Експортирането на данни (CSV, JSON, PDF) е включено в Pro Business.",
+      "upgradeCta": "Надградете до Pro Business",
+      "lockedAriaLabel": "Експортирай данни — заключено. {{reason}}",
+      "unlockedAnnouncement": "Експортирането на данни е отключено.",
+      "preparingPdf": "Подготовка на PDF…",
+      "pdfFailed": "PDF докладът не можа да бъде генериран. Опитайте отново или използвайте JSON експорт."
+    },
+    "tabCap": {
+      "signedOutDesc": "Работните пространства без вход са ограничени до {{cap}} раздела. Влезте, за да добавите още.",
+      "upgradeDesc": "Достигнахте лимита от {{cap}} раздела на таблото.",
+      "upgradeCta": "Надградете за повече",
+      "lockedAriaLabel": "Добави раздел — заключено. {{reason}}",
+      "unlockedAnnouncement": "Лимитът на разделите на таблото е премахнат."
+    },
+    "fx": {
+      "infoTooltip": "<strong>Валутни курсове</strong> Стрес на валутите и спот курсове:<ul><li>FX Stress класира 45 валути според най-големия им спад от пик към дъно за последните 24 месеца, заедно с промяната за 12 месеца</li><li>Покритието включва ARS, TRY, EGP, NGN, PKR и UAH — валути, които наборите за справка на BIS и ECB пропускат</li><li>Спот списъкът показва курсове спрямо американския долар и еврото на ECB отделно, тъй като двата са котирани от различни бази</li><li>RUB — курсове на Банк на Русия, рубли за единица</li></ul> Източници: Yahoo Finance, Европейска централна банка и Банк на Русия.",
+      "tabs": {
+        "stress": "FX Stress",
+        "spot": "Спот",
+        "rub": "RUB"
+      },
+      "currency": "Валута",
+      "pair": "Валутна двойка",
+      "rate": "Курс",
+      "yoy": "12м",
+      "drawdown": "Спад за 24м",
+      "peakToTrough": "Пик → Дъно",
+      "change1d": "1д",
+      "perUsd": "На 1 USD",
+      "usdPerUnit": "USD за единица",
+      "usdBase": "Спрямо американския долар",
+      "eurBase": "Референтни курсове на ECB за евро",
+      "stressedCount": "{{stressed}} от {{total}} валути под {{threshold}}",
+      "sourceYahoo": "Източник: Yahoo Finance",
+      "sourceEcb": "Източник: ECB",
+      "degraded": "Недостъпна е в момента: {{sources}}. Преопитване след малко.",
+      "source": {
+        "stress": "FX стрес",
+        "usd": "Курсове на US долара",
+        "eur": "Курсове на евро на ECB",
+        "rub": "Курсове на Банк на Русия"
+      },
+      "rubBase": "Банк на Русия — рубли за 1 единица",
+      "rubPerUnit": "Рубли за единица",
+      "sourceCbr": "Източник: Банк на Русия"
     }
   },
   "popups": {
@@ -2834,7 +2906,7 @@
       "heading": "ПОСОКА",
       "hexCode": "HEX КОД",
       "squawk": "SQUAWK",
-      "attribution": "Източник: OpenSky Network"
+      "attribution": "Източник: adsb.lol (ODbL) · OpenSky Network"
     },
     "militaryVessel": {
       "aisDark": "AIS ТЪМНО",
@@ -3297,16 +3369,42 @@
     "visualizationFailed": "Визуализацията не успя"
   },
   "dashboardTabs": {
-    "ariaLabel": "Dashboard tabs",
-    "defaultName": "Main",
-    "newTabName": "New Tab",
-    "newTabCreated": "New tab created",
-    "tabDeleted": "Tab \"{{name}}\" deleted",
-    "addTab": "Add tab",
-    "addTabTitle": "New tab (starts with the default panels)",
-    "renameHint": "{{name}} — double-click to rename",
-    "deleteTab": "Delete tab",
-    "deleteTabAria": "Delete tab {{name}}",
-    "tabNameAria": "Tab name"
+    "ariaLabel": "Раздели на таблото",
+    "defaultName": "Основен",
+    "newTabName": "Нов раздел",
+    "newTabCreated": "Нов раздел е създаден",
+    "tabDeleted": "Разделът \"{{name}}\" е изтрит",
+    "addTab": "Добави раздел",
+    "addTabTitle": "Нов раздел (започва с панелите по подразбиране)",
+    "renameHint": "{{name}} — щракнете двукратно за преименуване",
+    "deleteTab": "Изтрий раздела",
+    "deleteTabAria": "Изтрий раздел {{name}}",
+    "tabNameAria": "Име на раздела"
+  },
+  "theaterPresets": {
+    "label": "Пакети за покритие",
+    "applied": "Пакетът {{preset}} е приложен: активирани са {{count}} източника",
+    "alreadyApplied": "Пакетът {{preset}} вече е приложен",
+    "ukraineWar": {
+      "label": "Войната в Украйна",
+      "description": "Активирайте основни украински медии, независим руски печат и източници за оценка на фронта"
+    },
+    "indoPacific": {
+      "label": "Индо-Тихоокеански регион / Тайван",
+      "description": "Активирайте източници за сигурността в Тайван, Пакистан и Югоизточна Азия"
+    },
+    "sahelWestAfrica": {
+      "label": "Сахел и Западна Африка",
+      "description": "Активирайте местни източници от Сахел, Нигерия и Западна Африка"
+    },
+    "caucasusCentralAsia": {
+      "label": "Кавказ и Централна Азия",
+      "description": "Активирайте регионални източници от Южен Кавказ и Централна Азия"
+    },
+    "middleEastFlashpoints": {
+      "label": "Точки на напрежение в Близкия изток",
+      "description": "Активирайте източници за Иран, Израел, Персийския залив и кюрдските региони"
+    },
+    "unavailable": "Пакетът {{preset}} не е наличен с текущите ви панели"
   }
 }

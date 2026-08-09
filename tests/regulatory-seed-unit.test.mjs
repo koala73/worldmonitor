@@ -2,6 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
+import { decodeHtmlEntities } from '../scripts/_html-entities.mjs';
 
 function normalize(value) {
   return JSON.parse(JSON.stringify(value));
@@ -29,6 +30,7 @@ const ctx = vm.createContext({
   CHROME_UA: 'Mozilla/5.0 (test)',
   loadEnvFile: () => {},
   runSeed: async () => {},
+  decodeHtmlEntities,
 });
 
 vm.runInContext(pureSrc, ctx);

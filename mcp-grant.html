@@ -43,7 +43,7 @@
       <span class="wm-logo-text">WorldMonitor MCP</span>
     </a>
     <div class="card" id="card">
-      <div id="loading"><span class="spinner"></span><span class="placeholder">Loading authorization request…</span></div>
+      <div id="loading"><span class="spinner"></span><span class="placeholder" id="loadingBody">Loading authorization request…</span></div>
       <div id="consent" hidden>
         <div class="client-hd">
           <div class="client-name"><span id="clientName"></span> wants access</div>
@@ -64,8 +64,9 @@
         <p class="error" id="mintError" hidden></p>
       </div>
       <div id="errorView" hidden>
-        <div class="client-name" style="color:#ef4444;font-size:.95rem;font-weight:600;margin-bottom:.5rem">Authorization request expired</div>
+        <div class="client-name" id="errorTitle" style="color:#ef4444;font-size:.95rem;font-weight:600;margin-bottom:.5rem">Authorization request expired</div>
         <p style="font-size:.8rem;color:#666;line-height:1.5" id="errorBody">This authorization request expired or is invalid. Start over from your MCP client (e.g. Claude Desktop).</p>
+        <button type="button" id="retryContextBtn" hidden>Try again</button>
       </div>
     </div>
     <p class="footer"><a href="https://www.worldmonitor.app" target="_blank" rel="noopener">worldmonitor.app</a> &middot; <a href="https://www.worldmonitor.app/pro" target="_blank" rel="noopener">Pro plan →</a></p>

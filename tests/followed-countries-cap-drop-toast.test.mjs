@@ -47,10 +47,26 @@ describe('followed countries cap-drop toast wiring', () => {
       /free plan supports \$\{FREE_TIER_FOLLOW_LIMIT\} followed countries/,
       'toast detail must explain the free-tier cap',
     );
+    // #5911 moved this from a bare `window.open('/pro#pricing', '_blank',
+    // 'noopener,noreferrer')` to the shared router. The invariant is
+    // unchanged and still enforced, just one level down: openExternalUrl's
+    // web branch passes 'noopener,noreferrer' (asserted behaviourally in
+    // tests/desktop-external-handoff.test.mts), and its desktop branch hands
+    // the URL to the OS browser, which has no opener to expose at all. The
+    // URL must be ABSOLUTE — the relative form resolved against
+    // tauri://localhost in the desktop WebView, where no such route exists.
     assert.match(
       appSrc,
-      /window\.open\('\/pro#pricing', '_blank', 'noopener,noreferrer'\)/,
-      'toast must give the user an upgrade action without exposing window.opener or referrer',
+      /openExternalUrl\(`\$\{WEB_APP_ORIGIN\}\/pro#pricing`\)/,
+      'toast upgrade action must route through openExternalUrl on an absolute origin',
+    );
+    // Quote-agnostic, and covers any relative form: the single-quote-only
+    // version stayed green when the exact regression was restored with double
+    // quotes (proven by mutation).
+    assert.doesNotMatch(
+      appSrc,
+      /window\.open\(\s*['"`]\.?\/(?:pro|dashboard)/,
+      'no relative window.open may come back — it dead-ends in the desktop WebView',
     );
     assert.match(
       appSrc,

@@ -456,7 +456,9 @@ Total Signals: 47
 
 | 信号族 | 端点 | 备注 |
 |---|---|---|
-| 公司富化 | `GET /api/intelligence/v1/get-company-enrichment` | 为一家公司聚合 GitHub、SEC、Hacker News 与推断的技术栈上下文。 |
-| 公司活动信号 | `GET /api/intelligence/v1/list-company-signals` | 融资、招聘、扩张、高管与开源活动卡片。 |
+| 公司富化 | `GET /api/intelligence/v1/get-company-enrichment` | 通过股票代码→CIK 解析聚合 SEC EDGAR 身份与近期申报文件、市场概况、盈利意外与新闻提及。 |
+| 公司活动信号 | `GET /api/intelligence/v1/list-company-signals` | 来自 SEC 8-K 重大事件与新闻提及的分类信号；盈利意外保留为公司富化事实，不会被误标为带事件时间戳的信号。 |
+| SEC 文件搜索 | `GET /api/intelligence/v1/search-sec-filings` | 对 SEC EDGAR 申报文件的全文搜索，支持表格类型与日期范围过滤。 |
+| 重大事件流 | `GET /api/intelligence/v1/list-material-events` | 全市场近期 SEC 8-K 重大事件申报流（并购、高管变动、财务重述）。 |
 | GDELT 话题时间线 | `GET /api/intelligence/v1/get-gdelt-topic-timeline` | 某情报话题的基调与体量时间线。 |
 | 市场影响卡片 | `GET /api/intelligence/v1/list-market-implications` | 基于实时世界状态生成的 AI 影响卡片；在此记录以避免重复市场领域面板的所有权。 |

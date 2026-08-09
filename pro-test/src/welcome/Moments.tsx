@@ -41,7 +41,7 @@ export const Moments = () => (
           return (
             <motion.article
               key={key}
-              initial={{ opacity: 0, y: 24 }}
+              initial={false}
               whileInView={{ opacity: 1, y: 0 }}
               viewport={{ once: true, margin: '-60px' }}
               transition={{ duration: 0.5, delay: (mi % 2) * 0.1 }}
@@ -106,7 +106,7 @@ export const Moments = () => (
         })}
       </div>
       <motion.p
-        initial={{ opacity: 0 }}
+        initial={false}
         whileInView={{ opacity: 1 }}
         viewport={{ once: true, margin: '-40px' }}
         transition={{ duration: 0.5 }}

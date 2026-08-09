@@ -215,12 +215,20 @@ export default async function handler(req, ctx) {
         }
         if (relayResponse?.ok) {
           response = relayResponse;
+          usedRelay = true;
         }
       }
     }
 
     const data = await response.text();
     const isSuccess = response.status >= 200 && response.status < 300;
+    const relayCacheState = usedRelay ? response.headers.get('x-cache') : null;
+    const relayStaleMarker = usedRelay ? response.headers.get('x-relay-stale') : null;
+    // New relays identify stale fallback explicitly. Keep the label fallback
+    // while Railway and Vercel revisions roll out independently.
+    const legacyStaleCacheLabel = relayCacheState === 'STALE' || relayCacheState?.endsWith('-STALE');
+    const isStaleRelay = relayStaleMarker === '1' || legacyStaleCacheLabel;
+    const isCacheableSuccess = isSuccess && !isStaleRelay;
     // Relay-only feeds are slow-updating institutional sources — cache longer
     const cdnTtl = isRelayOnly ? 3600 : 900;
     const swr = isRelayOnly ? 7200 : 1800;
@@ -230,10 +238,13 @@ export default async function handler(req, ctx) {
       status: response.status,
       headers: {
         'Content-Type': response.headers.get('content-type') || 'application/xml',
-        'Cache-Control': isSuccess
+        'Cache-Control': isCacheableSuccess
           ? `public, max-age=${browserTtl}, s-maxage=${cdnTtl}, stale-while-revalidate=${swr}, stale-if-error=${sie}`
-          : 'public, max-age=15, s-maxage=60, stale-while-revalidate=120',
-        ...(isSuccess && { 'CDN-Cache-Control': `public, s-maxage=${cdnTtl}, stale-while-revalidate=${swr}, stale-if-error=${sie}` }),
+          : isStaleRelay ? 'no-store' : 'public, max-age=15, s-maxage=60, stale-while-revalidate=120',
+        ...(isCacheableSuccess && { 'CDN-Cache-Control': `public, s-maxage=${cdnTtl}, stale-while-revalidate=${swr}, stale-if-error=${sie}` }),
+        ...(isStaleRelay && { 'CDN-Cache-Control': 'no-store' }),
+        ...(relayCacheState && { 'X-Cache': relayCacheState }),
+        ...(relayStaleMarker && { 'X-Relay-Stale': relayStaleMarker }),
         ...corsHeaders,
       },
     });

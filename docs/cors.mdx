@@ -94,7 +94,7 @@ Both implementations allow these request headers:
 
 To allow additional headers, update `Access-Control-Allow-Headers` in both files.
 
-Browser-visible response headers include `Mcp-Session-Id`, `WWW-Authenticate`, and `Retry-After` via `Access-Control-Expose-Headers` so MCP clients can continue sessions, re-authenticate, and respect backoff hints.
+Browser-visible response headers include `Mcp-Session-Id`, `WWW-Authenticate`, `Retry-After`, and `X-Billing-Verification` via `Access-Control-Expose-Headers` so MCP clients can continue sessions, re-authenticate, respect backoff hints, and tell a retryable billing-verification blip from a terminal lapse without parsing the response body. See [Error handling](/usage-errors).
 
 ## Railway Relay CORS
 

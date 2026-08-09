@@ -129,17 +129,20 @@
       "currencies": "通貨",
       "area": "面積"
     },
-    "loadingResilienceScore": "Loading resilience score…",
-    "resilienceScoreUnavailable": "Resilience score unavailable.",
+    "loadingResilienceScore": "レジリエンススコアを読み込み中…",
+    "resilienceScoreUnavailable": "レジリエンススコアは利用できません。",
     "china": {
       "title": "中国カントリースナップショット",
       "description": "既存の公開データ契約に基づくマクロ・市場・貿易・エネルギー・運用可用性の現況。",
-      "macroPolicy": "マクロ・政策",
-      "marketCredit": "市場・信用",
-      "tradeSupply": "貿易・サプライチェーン",
+      "policyEvents": "政策と執行",
       "energy": "エネルギー",
       "availability": "災害・航空",
       "observed": "基準日:",
+      "published": "公開：",
+      "effective": "発効：",
+      "sectors": "セクター：",
+      "entities": "エンティティ：",
+      "translation": "翻訳：",
       "source": "出典:",
       "imfGrowth": "IMF成長率見通し",
       "creditGdp": "信用残高対GDP比",
@@ -148,8 +151,6 @@
       "gasDemand": "ガス需要",
       "energyMix": "電源構成",
       "coal": "石炭",
-      "aviationAvailability": "航空の可用性",
-      "hazardAvailability": "災害シグナルの可用性",
       "noMajorDisruptions": "重大な障害は報告されていません",
       "activeDisruptions_one": "{{count}}件のアクティブな障害",
       "activeDisruptions_other": "{{count}}件のアクティブな障害",
@@ -161,18 +162,21 @@
       "ccfiSource": "上海航運取引所",
       "comtradeSource": "国連Comtrade（報告国156）",
       "sourceUnavailable": "出典不明",
-      "macroUnavailable": "マクロ・政策データは現在利用できません。",
-      "marketUnavailable": "市場・信用データは現在利用できません。",
-      "tradeUnavailable": "貿易・サプライチェーンデータは現在利用できません。",
-      "energyUnavailable": "エネルギーデータは現在利用できません。",
-      "availabilityUnavailable": "災害・航空の可用性データは現在利用できません。",
+      "policyUnavailable": "Official policy and enforcement events are currently unavailable.",
+      "policyPartial": "{{count}} official agencies are temporarily degraded.",
       "status": {
         "loading": "読み込み中",
         "available": "利用可能",
         "partial": "一部利用可能",
         "stale": "古いデータ",
         "unavailable": "利用不可"
-      }
+      },
+      "macroSignals": "マクロシグナル",
+      "crossStraitActivity": "台湾海峡活動",
+      "corporateDisclosures": "企業開示",
+      "corridorConditions": "回廊状況",
+      "activityNowcast": "活動ナウキャスト",
+      "decisionSignalsUnavailable": "中国の意思決定シグナルのスナップショットは現在利用できません。"
     }
   },
   "header": {
@@ -253,7 +257,7 @@
     "panelCatCommodityEcon": "経済・貿易",
     "panelCatHappyNews": "ニュース",
     "panelCatHappyPlanet": "地球・社会貢献",
-    "embed": "Embed"
+    "embed": "埋め込む"
   },
   "panels": {
     "liveNews": "ライブニュース",
@@ -361,7 +365,8 @@
     "consumerPrices": "消費者物価",
     "fearGreed": "恐怖と貪欲",
     "marketBreadth": "市場の広がり",
-    "climateNews": "気候ニュース"
+    "climateNews": "気候ニュース",
+    "fx": "為替レート"
   },
   "commands": {
     "prefixes": {
@@ -883,7 +888,7 @@
       "fytdLabel": "FY{{year}} YTD",
       "vsPriorFy": "vs FY{{year}}",
       "sourceWto": "WTO",
-      "sourceTreasury": "US財務省",
+      "sourceTreasury": "米国財務省",
       "colDate": "日付",
       "colMonthly": "月間",
       "colFytd": "FY YTD",
@@ -1127,7 +1132,7 @@
         "ucdpEvents": "UCDPイベント",
         "displacementFlows": "避難民フロー",
         "climateAnomalies": "気候異常",
-        "weatherAlerts": "気象警報",
+        "weatherAlerts": "米国の気象警報（NWS）",
         "strategicWaterways": "戦略的水路",
         "economicCenters": "経済中心地",
         "criticalMinerals": "重要鉱物",
@@ -1208,7 +1213,7 @@
           "infraDatacenters": "10,000 GPU以上のAIコンピュートクラスター",
           "infraOutages": "インターネット遮断・サービス障害",
           "naturalEventsTech": "地震、暴風雨、火災（データセンターに影響の可能性）",
-          "weatherAlerts": "気象警報",
+          "weatherAlerts": "米国の重大気象警報（NWS）",
           "economicCenters": "証券取引所・中央銀行",
           "countriesOverlay": "国名オーバーレイ",
           "financeExchanges": "市場ティア別の主要グローバル取引所",
@@ -1220,7 +1225,7 @@
           "financeOutages": "市場運営に影響しうるインターネット障害",
           "financeCyberThreats": "金融インフラ周辺のセキュリティイベント",
           "macroWaterways": "コモディティ海運の戦略的チョークポイント",
-          "weatherAlertsMarket": "市場に関連する気象イベント",
+          "weatherAlertsMarket": "市場に関連する米国の重大気象事象（NWS）",
           "naturalEventsMacro": "地震、火災、洪水、その他の自然災害",
           "timeRecent": "時間ベースデータを直近の時間に絞り込み",
           "timeExtended": "過去1週間、1ヶ月、または全期間のデータを表示",
@@ -1268,8 +1273,8 @@
       "sectionFollowing": "Following",
       "sectionAll": "All",
       "sourceStates": {
-        "degraded": "degraded",
-        "stale": "stale"
+        "degraded": "低下",
+        "stale": "古い"
       }
     },
     "insights": {
@@ -1348,7 +1353,8 @@
       "newsSignals": "{{news}} ニュース • {{signals}} シグナル",
       "provenanceTitle": "カバレッジプロヴェナンス: このブリーフが選択された取り込まれたストーリーと個別ソースの数",
       "compiledFrom": "{{stories}}件のストーリーから{{sources}}個のソースをコンパイル",
-      "briefFreshness": "{{minutes}}m前に生成 · 最新ソース{{hours}}h前"
+      "briefFreshness": "{{minutes}}m前に生成 · 最新ソース{{hours}}h前",
+      "briefStoryDetails": "Story details ({{count}})"
     },
     "settings": {
       "exportSettings": "設定をエクスポート",
@@ -1426,10 +1432,10 @@
         "hoursAgo": "{{count}}h ago"
       },
       "infoTooltip": "<strong>方法論</strong> 複合スコア（0-100）の構成:<ul><li>50% 国家不安定性（上位5カ国加重）</li><li>30% 地理的収束地帯</li><li>20% インフラインシデント</li></ul>5分ごとに自動更新。",
-      "cachedCiiStatus": "Cached CII {{states}}",
+      "cachedCiiStatus": "キャッシュ済み CII {{states}}",
       "sourceStates": {
-        "degraded": "degraded",
-        "stale": "stale"
+        "degraded": "低下",
+        "stale": "古い"
       },
       "dataFreshness": "Data Freshness",
       "sourcesDetail": "{{active}}/{{total}} sources"
@@ -1557,25 +1563,25 @@
       "candidGrants": "Candid助成金",
       "dataLag": "データ遅延",
       "infoTooltip": "<strong>グローバル寄付アクティビティ指数</strong> クラウドファンディングプラットフォームと暗号資産ウォレットを通じた個人寄付を追跡する複合指数。<ul><li><strong>プラットフォーム</strong>: GoFundMe、GlobalGiving、JustGivingのキャンペーンサンプリング</li><li><strong>暗号資産</strong>: オンチェーンの慈善ウォレット流入（Endaoment、Giving Block）</li><li><strong>機関</strong>: OECD ODA、CAF World Giving Index、Candid助成金</li></ul>指数は方向性を示すもので、正確な金額ではありません。ライブサンプリングと公表年次報告書を組み合わせています。",
-      "benchmarkTitle": "Global Giving Benchmarks",
-      "benchmarkInfoTooltip": "<strong>Global Giving Benchmarks</strong> Published platform and institutional claims with source periods and verification status. Annualized figures are estimates, not live activity.",
+      "benchmarkTitle": "グローバル寄付ベンチマーク",
+      "benchmarkInfoTooltip": "<strong>グローバル寄付ベンチマーク</strong> ソース期間と検証状況を含む公開済みプラットフォームおよび機関の主張。年換算数値は推定値であり、リアルタイムの活動ではありません。",
       "status": {
-        "published": "Published benchmarks with verified source coverage.",
-        "partial": "Published benchmarks with partial source coverage.",
-        "legacy": "Legacy snapshot; source details are unavailable.",
-        "cached": "Showing a cached snapshot; refresh unavailable."
+        "published": "検証済みソースカバレッジの公開済みベンチマーク。",
+        "partial": "部分的なソースカバレッジの公開済みベンチマーク。",
+        "legacy": "レガシースナップショット；ソースの詳細は利用できません。",
+        "cached": "キャッシュスナップショットを表示中；更新は利用できません。"
       },
-      "trackedAnnualized": "Tracked platform giving — annualized estimate",
-      "annualizedDaily": "Annualized daily estimate",
-      "atLeast": "At least",
-      "about": "About",
-      "sourceNotVerified": "Source not verified",
-      "reportedCumulative": "Reported cumulative total",
+      "trackedAnnualized": "追跡済みプラットフォーム寄付 — 年換算推定",
+      "annualizedDaily": "日次年換算推定",
+      "atLeast": "少なくとも",
+      "about": "約",
+      "sourceNotVerified": "ソース未検証",
+      "reportedCumulative": "報告済み累積合計",
       "sourcePeriod": "{{source}} · {{period}}",
-      "benchmark": "Published benchmark",
-      "sourcesMethodology": "Sources & methodology",
-      "methodologyIntro": "Only verified annual or defensibly annualized platform claims enter the headline. Cumulative and institutional figures remain separate context.",
-      "partialEstimate": "Partially verified estimate"
+      "benchmark": "公開済みベンチマーク",
+      "sourcesMethodology": "ソースと方法論",
+      "methodologyIntro": "検証済みの年次または正当に年換算されたプラットフォームの主張のみが見出しに含まれます。累積および機関数値は別途コンテキストとして残ります。",
+      "partialEstimate": "部分的に検証済みの推定"
     },
     "displacement": {
       "refugees": "難民",
@@ -1615,6 +1621,8 @@
       "summaryFailed": "要約に失敗しました",
       "sources": "{{count}}件のソース",
       "relatedAssetsNear": "{{location}}付近の関連アセット",
+      "sourceCoverage": "{{covered}}/{{total}} ソース",
+      "sourceCoverageHint": "有効な {{total}} 件のソースのうち {{covered}} 件を表示中 — このパネルは更新のたびにソースを入れ替えて取得します",
       "sortBy": "並び替え",
       "sortNewest": "最新",
       "sortRelevance": "関連性"
@@ -2127,7 +2135,22 @@
       "infoTooltip": "<strong>災害カスケード</strong> 自然災害とインフラシグナルの収束を検出:<ul><li>地震、山火事、洪水、極端な天候を相関させる</li><li>インフラとサプライチェーンへの波及効果を追跡</li><li>複合災害リスクを抱える地域をハイライト</li></ul>カードをクリックして影響を受けた領域にズームします。"
     },
     "markets": {
-      "infoTooltip": "<strong>マーケット</strong> リアルタイムの株価指数、株式、暗号資産価格。ウォッチリストボタンでウォッチリストをカスタマイズしてください。スパークラインは最近の価格トレンドを表示します。"
+      "infoTooltip": "<strong>マーケット</strong> リアルタイムの株価指数、株式、暗号資産価格。ウォッチリストボタンでウォッチリストをカスタマイズしてください。スパークラインは最近の価格トレンドを表示します。",
+      "chart": {
+        "title": "{{symbol}} 価格チャート",
+        "close": "チャートを閉じる"
+      },
+      "unavailable": {
+        "symbols": "{{symbols}} — {{reason}}",
+        "symbolsMore": "{{symbols}} +{{count}} more — {{reason}}",
+        "notFound": "no quote available",
+        "providerError": "quote lookup failed, retrying shortly",
+        "rateLimited": "quote provider rate limited, retrying shortly",
+        "notConfigured": "quote provider not configured",
+        "requestLimit": "too many symbols requested",
+        "budget": "not loaded yet, retrying shortly",
+        "seed": "market data temporarily unavailable"
+      }
     },
     "heatmap": {
       "infoTooltip": "<strong>セクターヒートマップ</strong> S&P 500 セクターのパフォーマンスが一目でわかります。色の濃淡は日次変動の大きさを反映しています。緑 = 上昇、赤 = 下落。"
@@ -2247,9 +2270,10 @@
           "summaryVerified": "解放済み — いつでも準備完了です。",
           "channelsNote": "Telegram、Slack、Discord、またはWebhookがお好みですか？",
           "pointers": {
+            "search": "ダッシュボード全体を検索",
             "widgets": "カスタムウィジェットを作成",
             "analyst": "AIアナリストに質問",
-            "apiKeys": "APIとMCPのキーを取得",
+            "mcpClients": "MCPをセットアップ",
             "channels": "通知設定でセットアップ"
           }
         }
@@ -2457,43 +2481,91 @@
       }
     },
     "mobileNav": {
-      "panelCategories": "Panel categories"
+      "panelCategories": "パネルカテゴリ"
     },
     "panelFreshness": {
       "status": {
-        "fresh": "Fresh",
-        "stale": "Stale",
-        "veryStale": "Very stale",
-        "noData": "No data",
-        "disabled": "Disabled",
-        "error": "Error"
+        "fresh": "最新",
+        "stale": "古い",
+        "veryStale": "非常に古い",
+        "noData": "データなし",
+        "disabled": "無効",
+        "error": "エラー"
       },
       "labelWithAge": "{{status}} {{age}}",
-      "title": "Data freshness: {{status}}. {{sources}}",
+      "title": "データの鮮度：{{status}}。{{sources}}",
       "sourceDetail": "{{name}}: {{status}}, {{update}}",
       "sourceDetailWithHealth": "{{name}}: {{status}}, {{update}}, {{detail}}",
-      "lastUpdated": "last updated {{time}}",
-      "neverUpdated": "never updated",
+      "lastUpdated": "最終更新 {{time}}",
+      "neverUpdated": "更新なし",
       "health": {
-        "partialCoverage": "partial coverage",
-        "contentStale": "content stale",
-        "seedStale": "seed stale",
-        "noSourceData": "no source data",
-        "sourceErrorReported": "source error reported",
-        "freshnessStoreUnavailable": "freshness store unavailable",
-        "freshnessStoreDegraded": "freshness store degraded"
+        "partialCoverage": "部分的なカバレッジ",
+        "contentStale": "コンテンツが古い",
+        "seedStale": "シードが古い",
+        "noSourceData": "ソースデータなし",
+        "sourceErrorReported": "ソースエラーが報告されました",
+        "freshnessStoreUnavailable": "鮮度ストアが利用できません",
+        "freshnessStoreDegraded": "鮮度ストアが低下しています"
       },
       "time": {
-        "never": "never",
-        "justNow": "just now",
-        "minutesAgo": "{{count}}m ago",
-        "hoursAgo": "{{count}}h ago",
-        "daysAgo": "{{count}}d ago",
-        "compactNow": "now",
-        "compactMinutes": "{{count}}m",
-        "compactHours": "{{count}}h",
-        "compactDays": "{{count}}d"
+        "never": "なし",
+        "justNow": "たった今",
+        "minutesAgo": "{{count}}分前",
+        "hoursAgo": "{{count}}時間前",
+        "daysAgo": "{{count}}日前",
+        "compactNow": "今",
+        "compactMinutes": "{{count}}分",
+        "compactHours": "{{count}}時",
+        "compactDays": "{{count}}日"
       }
+    },
+    "exportGate": {
+      "signedOutDesc": "ダッシュボードデータをCSV、JSON、またはPDFとしてエクスポートするにはサインインしてください。",
+      "upgradeDesc": "データエクスポート（CSV、JSON、PDF）はPro Businessに含まれています。",
+      "upgradeCta": "Pro Businessにアップグレード",
+      "lockedAriaLabel": "データをエクスポート — ロック済み。{{reason}}",
+      "unlockedAnnouncement": "データエクスポートのロックが解除されました。",
+      "preparingPdf": "PDFを準備中…",
+      "pdfFailed": "PDFレポートを生成できませんでした。もう一度試すか、JSONエクスポートを使用してください。"
+    },
+    "tabCap": {
+      "signedOutDesc": "サインアウト状態のワークスペースは{{cap}}個のダッシュボードタブに制限されています。追加するにはサインインしてください。",
+      "upgradeDesc": "{{cap}}個のダッシュボードタブの上限に達しました。",
+      "upgradeCta": "さらに追加するにはアップグレード",
+      "lockedAriaLabel": "タブを追加 — ロック済み。{{reason}}",
+      "unlockedAnnouncement": "ダッシュボードタブの制限が解除されました。"
+    },
+    "fx": {
+      "infoTooltip": "<strong>為替レート</strong> 通貨ストレスとスポットレート:<ul><li>FX Stressは45通貨をこの24ヶ月間の最悪のピークからの落ち込み幅でランク付けし、12ヶ月の変化を表示します</li><li>カバレッジにはARS、TRY、EGP、NGN、PKR、UAHが含まれます — BISとECBの参照セットでは省略されている通貨です</li><li>スポットはUSドルおよびECBユーロ参照レートのレートを別々に表示します。異なるベースから引用されているためです</li><li>RUB — ロシア中央銀行レート（1単位あたりのルーブル）</li></ul> 出典: Yahoo Finance、ECB（European Central Bank）およびロシア中央銀行",
+      "tabs": {
+        "stress": "FX Stress",
+        "spot": "スポット",
+        "rub": "RUB"
+      },
+      "currency": "通貨",
+      "pair": "通貨ペア",
+      "rate": "レート",
+      "yoy": "12ヶ月",
+      "drawdown": "24ヶ月 落ち込み幅",
+      "peakToTrough": "ピーク → ボトム",
+      "change1d": "1日",
+      "perUsd": "1 USD当たり",
+      "usdPerUnit": "単位当たりUSD",
+      "usdBase": "USドル建て",
+      "eurBase": "ECBユーロ参照レート",
+      "stressedCount": "{{stressed}}/{{total}}通貨が{{threshold}}を下回る",
+      "sourceYahoo": "出典: Yahoo Finance",
+      "sourceEcb": "出典: ECB",
+      "degraded": "現在利用できません: {{sources}}。間もなく再試行します。",
+      "source": {
+        "stress": "FX ストレス",
+        "usd": "米ドルレート",
+        "eur": "ECB ユーロレート",
+        "rub": "ロシア中央銀行レート"
+      },
+      "rubBase": "ロシア中央銀行 — 1単位あたりのルーブル",
+      "rubPerUnit": "単位あたりルーブル",
+      "sourceCbr": "出典: ロシア中央銀行"
     }
   },
   "popups": {
@@ -2834,7 +2906,7 @@
       "heading": "方位",
       "hexCode": "HEXコード",
       "squawk": "スコーク",
-      "attribution": "ソース: OpenSky Network"
+      "attribution": "ソース: adsb.lol (ODbL) · OpenSky Network"
     },
     "militaryVessel": {
       "aisDark": "AIS消失",
@@ -3297,16 +3369,42 @@
     "visualizationFailed": "ビジュアライゼーションに失敗しました"
   },
   "dashboardTabs": {
-    "ariaLabel": "Dashboard tabs",
-    "defaultName": "Main",
-    "newTabName": "New Tab",
-    "newTabCreated": "New tab created",
-    "tabDeleted": "Tab \"{{name}}\" deleted",
-    "addTab": "Add tab",
-    "addTabTitle": "New tab (starts with the default panels)",
-    "renameHint": "{{name}} — double-click to rename",
-    "deleteTab": "Delete tab",
-    "deleteTabAria": "Delete tab {{name}}",
-    "tabNameAria": "Tab name"
+    "ariaLabel": "ダッシュボードタブ",
+    "defaultName": "メイン",
+    "newTabName": "新しいタブ",
+    "newTabCreated": "新しいタブが作成されました",
+    "tabDeleted": "タブ\"{{name}}\"が削除されました",
+    "addTab": "タブを追加",
+    "addTabTitle": "新しいタブ（デフォルトパネルで開始）",
+    "renameHint": "{{name}} — ダブルクリックして名前を変更",
+    "deleteTab": "タブを削除",
+    "deleteTabAria": "タブ {{name}} を削除",
+    "tabNameAria": "タブ名"
+  },
+  "theaterPresets": {
+    "label": "カバレッジプリセット",
+    "applied": "{{preset}}プリセットを適用しました: {{count}}件のソースを有効化",
+    "alreadyApplied": "{{preset}}プリセットはすでに適用されています",
+    "ukraineWar": {
+      "label": "ウクライナ戦争",
+      "description": "ウクライナの主要メディア、独立系ロシア報道、前線評価ソースを有効にします"
+    },
+    "indoPacific": {
+      "label": "インド太平洋 / 台湾",
+      "description": "台湾、パキスタン、東南アジアの安全保障ソースを有効にします"
+    },
+    "sahelWestAfrica": {
+      "label": "サヘル・西アフリカ",
+      "description": "サヘル、ナイジェリア、西アフリカの現地ソースを有効にします"
+    },
+    "caucasusCentralAsia": {
+      "label": "コーカサス・中央アジア",
+      "description": "南コーカサスと中央アジアの地域ソースを有効にします"
+    },
+    "middleEastFlashpoints": {
+      "label": "中東の緊張地域",
+      "description": "イラン、イスラエル、湾岸、クルド地域のソースを有効にします"
+    },
+    "unavailable": "{{preset}}プリセットは現在のパネルでは利用できません"
   }
 }

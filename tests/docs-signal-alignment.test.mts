@@ -80,8 +80,10 @@ test('public signal docs keep their listed signal count in sync with the SignalT
 });
 
 test('public signal docs stay aligned with hotspot escalation math', () => {
-  const hotspotCode = readRepo('src/services/hotspot-escalation.ts');
-  const geoCode = readRepo('src/config/geo.ts');
+  // Escalation math and the curated hotspot dataset moved to the shared
+  // client/server modules in #5696; the src/ files are re-export shims.
+  const hotspotCode = readRepo('shared/analysis-hotspot-escalation.ts');
+  const geoCode = readRepo('shared/geo-data.ts');
   const hotspotsDoc = readRepo('docs/hotspots.mdx');
   const algorithmsDoc = readRepo('docs/algorithms.mdx');
   const hotspotBaselines = extractHotspotBaselines(geoCode);
@@ -191,7 +193,9 @@ test('public Escalation Monitor docs publish the current adapter weights and gat
 });
 
 test('public algorithms docs publish current temporal anomaly severities', () => {
-  const temporalCode = readRepo('server/worldmonitor/infrastructure/v1/_shared.ts');
+  // Thresholds moved to the shared client/server module in #5696; the server
+  // _shared.ts re-exports them, so this remains the single source of truth.
+  const temporalCode = readRepo('shared/analysis-temporal-severity.ts');
   const algorithmsDoc = readRepo('docs/algorithms.mdx');
 
   assert.match(temporalCode, /export const Z_THRESHOLD_LOW = 1\.5;/);
@@ -209,11 +213,13 @@ test('public algorithms docs publish current temporal anomaly severities', () =>
 });
 
 test('public algorithms docs describe tracked leader names without overclaiming compounds', () => {
-  const trendingCode = readRepo('src/services/trending-keywords.ts');
+  // LEADER_NAMES moved to shared/keyword-spike-core.js (issue #5697) so the
+  // server-side get_keyword_spikes MCP tool shares the list.
+  const trendingCode = readRepo('shared/keyword-spike-core.js');
   const docsStats = readRepo('scripts/docs-stats.mjs');
   const algorithmsDoc = readRepo('docs/algorithms.mdx');
   const leaderBlock = trendingCode.match(/const\s+LEADER_NAMES\s*=\s*\[([\s\S]*?)\];/);
-  assert.ok(leaderBlock, 'trending keywords must define LEADER_NAMES');
+  assert.ok(leaderBlock, 'keyword-spike-core must define LEADER_NAMES');
 
   const leaderNames = (leaderBlock[1].match(/'[^']+'/g) || []).map((name) => name.slice(1, -1));
   const multiWordNames = leaderNames.filter((name) => /\s/.test(name));

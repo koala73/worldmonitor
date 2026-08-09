@@ -1,14 +1,19 @@
 import assert from 'node:assert/strict';
-import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { describe, it } from 'node:test';
 
 import {
   buildCorpus,
+  chokepointMetaDescription,
+  countryMetaDescription,
+  gitFileLastmod,
   loadCorpusData,
 } from '../scripts/build-crawlable-corpus.mjs';
+import { buildSitemapEntries } from '../scripts/build-sitemap.mjs';
 
 const repoRoot = resolve(fileURLToPath(new URL('..', import.meta.url)));
 
@@ -19,6 +24,96 @@ function read(outDir, path) {
 function jsonLdObjects(html) {
   return [...html.matchAll(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/g)]
     .map(([, raw]) => JSON.parse(raw));
+}
+
+const DATASET_DESCRIPTION_MIN_LENGTH = 50;
+const DATASET_DESCRIPTION_MAX_LENGTH = 5000;
+
+function isJsonLdType(value, expectedType) {
+  const type = value?.['@type'];
+  return type === expectedType || (Array.isArray(type) && type.includes(expectedType));
+}
+
+function collectDatasets(value, datasets = []) {
+  if (Array.isArray(value)) {
+    for (const item of value) collectDatasets(item, datasets);
+    return datasets;
+  }
+  if (!value || typeof value !== 'object') return datasets;
+
+  if (isJsonLdType(value, 'Dataset')) datasets.push(value);
+  for (const child of Object.values(value)) collectDatasets(child, datasets);
+  return datasets;
+}
+
+function isAbsoluteHttpUrl(value) {
+  try {
+    const url = new URL(value);
+    return url.protocol === 'http:' || url.protocol === 'https:';
+  } catch {
+    return false;
+  }
+}
+
+function assertDatasetGoogleProperties(html, route, { requireDataset = false } = {}) {
+  const datasets = jsonLdObjects(html).flatMap((entry) => collectDatasets(entry));
+  if (requireDataset) {
+    assert.ok(datasets.length > 0, `${route} must contain a Dataset JSON-LD object`);
+  }
+
+  for (const [index, dataset] of datasets.entries()) {
+    const description = typeof dataset.description === 'string' ? dataset.description.trim() : '';
+    assert.ok(
+      description.length >= DATASET_DESCRIPTION_MIN_LENGTH,
+      `${route} Dataset ${index + 1} description must be at least ${DATASET_DESCRIPTION_MIN_LENGTH} characters`,
+    );
+    assert.ok(
+      description.length <= DATASET_DESCRIPTION_MAX_LENGTH,
+      `${route} Dataset ${index + 1} description must be at most ${DATASET_DESCRIPTION_MAX_LENGTH} characters`,
+    );
+
+    const creators = Array.isArray(dataset.creator) ? dataset.creator : [dataset.creator];
+    assert.ok(
+      creators.some((creator) => (
+        creator
+        && (creator['@type'] === 'Person' || creator['@type'] === 'Organization')
+        && typeof creator.name === 'string'
+        && creator.name.trim().length > 0
+      )),
+      `${route} Dataset ${index + 1} must identify a Person or Organization creator`,
+    );
+
+    const licenses = Array.isArray(dataset.license) ? dataset.license : [dataset.license];
+    assert.ok(
+      licenses.some((license) => (
+        isAbsoluteHttpUrl(license)
+        || (
+          license?.['@type'] === 'CreativeWork'
+          && typeof license.name === 'string'
+          && license.name.trim().length > 0
+          && isAbsoluteHttpUrl(license.url)
+        )
+      )),
+      `${route} Dataset ${index + 1} must link to a specific license URL`,
+    );
+  }
+
+  return datasets;
+}
+
+function decodeHtmlAttribute(value) {
+  return value
+    .replaceAll('&#39;', "'")
+    .replaceAll('&quot;', '"')
+    .replaceAll('&lt;', '<')
+    .replaceAll('&gt;', '>')
+    .replaceAll('&amp;', '&');
+}
+
+function pageMetaDescription(html, route) {
+  const raw = html.match(/<meta name="description" content="([^"]*)">/)?.[1];
+  assert.ok(raw, `${route} must have a meta description`);
+  return decodeHtmlAttribute(raw);
 }
 
 function productionScriptNonce() {
@@ -32,6 +127,104 @@ function productionScriptNonce() {
 }
 
 describe('crawlable corpus generator', () => {
+  it('keeps future long source names inside the meta-description boundary', () => {
+    const descriptions = new Set();
+    for (let length = 1; length <= 100; length += 1) {
+      const cases = [
+        {
+          name: 'A'.repeat(length),
+          description: countryMetaDescription({
+            name: 'A'.repeat(length),
+            rank: 999_999,
+            rankedCount: 999_999,
+          }),
+        },
+        {
+          name: 'B'.repeat(length),
+          description: countryMetaDescription({
+            name: 'B'.repeat(length),
+            rank: null,
+            rankedCount: 999_999,
+          }),
+        },
+        {
+          name: 'C'.repeat(length),
+          description: chokepointMetaDescription('C'.repeat(length)),
+        },
+      ];
+
+      for (const { name, description } of cases) {
+        assert.ok(description.length >= 155 && description.length <= 160);
+        assert.ok(description.startsWith(name), 'fallback must retain the page-specific name');
+        assert.match(description, /\.$/, 'fallback must remain a complete sentence');
+        assert.ok(!descriptions.has(description), 'boundary descriptions must remain unique');
+        descriptions.add(description);
+      }
+    }
+  });
+
+  it('does not treat a shallow boundary commit as a source update', () => {
+    const tempRoot = mkdtempSync(join(tmpdir(), 'wm-corpus-shallow-'));
+    const sourceRoot = join(tempRoot, 'source');
+    const shallowRoot = join(tempRoot, 'shallow');
+    const gitEnv = Object.fromEntries(
+      Object.entries(process.env).filter(([name]) => !name.startsWith('GIT_')),
+    );
+    try {
+      mkdirSync(sourceRoot);
+      execFileSync('git', ['init', '--initial-branch=main'], { cwd: sourceRoot, env: gitEnv });
+      execFileSync(
+        'git',
+        ['config', 'user.email', 'corpus-test@worldmonitor.app'],
+        { cwd: sourceRoot, env: gitEnv },
+      );
+      execFileSync(
+        'git',
+        ['config', 'user.name', 'Corpus Test'],
+        { cwd: sourceRoot, env: gitEnv },
+      );
+
+      writeFileSync(join(sourceRoot, 'material.txt'), 'material version one\n');
+      execFileSync('git', ['add', 'material.txt'], { cwd: sourceRoot, env: gitEnv });
+      execFileSync('git', ['commit', '-m', 'add material'], {
+        cwd: sourceRoot,
+        env: {
+          ...gitEnv,
+          GIT_AUTHOR_DATE: '2026-06-01T00:00:00Z',
+          GIT_COMMITTER_DATE: '2026-06-01T00:00:00Z',
+        },
+      });
+
+      writeFileSync(join(sourceRoot, 'unrelated.txt'), 'release-only change\n');
+      execFileSync('git', ['add', 'unrelated.txt'], { cwd: sourceRoot, env: gitEnv });
+      execFileSync('git', ['commit', '-m', 'release change'], {
+        cwd: sourceRoot,
+        env: {
+          ...gitEnv,
+          GIT_AUTHOR_DATE: '2026-07-28T00:00:00Z',
+          GIT_COMMITTER_DATE: '2026-07-28T00:00:00Z',
+        },
+      });
+
+      execFileSync(
+        'git',
+        ['clone', '--depth', '1', pathToFileURL(sourceRoot).href, shallowRoot],
+        { env: gitEnv },
+      );
+      assert.equal(
+        execFileSync('git', ['rev-parse', '--is-shallow-repository'], {
+          cwd: shallowRoot,
+          encoding: 'utf8',
+          env: gitEnv,
+        }).trim(),
+        'true',
+      );
+      assert.equal(gitFileLastmod(shallowRoot, 'material.txt'), null);
+    } finally {
+      rmSync(tempRoot, { recursive: true, force: true });
+    }
+  });
+
   it('builds a non-trivial static corpus with canonical raw HTML pages', async () => {
     const outDir = mkdtempSync(join(tmpdir(), 'wm-crawlable-corpus-'));
     try {
@@ -45,9 +238,90 @@ describe('crawlable corpus generator', () => {
       assert.equal(manifest.sections.chokepoints.count, 13);
       assert.equal(manifest.sections.crises.count, 4);
       assert.equal(manifest.sections.tools.count, 2);
+      assert.equal(manifest.sections.research.count, 1);
+      assert.equal(manifest.generatorContentVersion, '2026-07-27');
+      const sitemapEntries = buildSitemapEntries({
+        repoRoot,
+        publicDir: outDir,
+        existingSitemapSource: '',
+        resolveMaterialLastmod: () => '2026-07-28',
+        // Real current date: a pinned 'today' silently expires the moment any
+        // material source is committed after it (this fixture went stale on
+        // 2026-07-28 and failed every PR touching a corpus-backing file).
+        today: new Date().toISOString().slice(0, 10),
+      });
+      const corpusLocations = new Set(
+        sitemapEntries
+          .filter((entry) => entry.family === 'content-corpus')
+          .map((entry) => new URL(entry.loc).pathname),
+      );
+      const manifestLocations = new Set([
+        manifest.sections.countries.index,
+        ...manifest.sections.countries.routes,
+        manifest.sections.chokepoints.index,
+        ...manifest.sections.chokepoints.routes,
+        manifest.sections.crises.index,
+        ...manifest.sections.crises.routes,
+        manifest.sections.tools.index,
+        ...manifest.sections.tools.routes,
+        manifest.sections.research.index,
+        ...manifest.sections.research.routes,
+        manifest.sections.changelog.index,
+        ...manifest.sections.changelog.routes,
+      ]);
+      assert.deepEqual(corpusLocations, manifestLocations);
       const liveScriptTag = `<script type="module" nonce="${productionScriptNonce()}" src="/tools/live-tools.js"></script>`;
       assert.ok(manifest.sections.changelog.count >= 2, `expected paginated changelog pages, got ${manifest.sections.changelog.count}`);
       assert.ok(manifest.sections.glossary.count >= 15, `expected existing glossary manifest entries, got ${manifest.sections.glossary.count}`);
+
+      const searchLandingRoutes = [
+        ...manifest.sections.countries.routes,
+        ...manifest.sections.chokepoints.routes,
+      ];
+      const descriptions = new Map();
+      for (const route of searchLandingRoutes) {
+        const description = pageMetaDescription(
+          read(outDir, `${route.slice(1)}index.html`),
+          route,
+        );
+        assert.ok(
+          description.length >= 155 && description.length <= 160,
+          `${route} meta description must be 155-160 characters, got ${description.length}`,
+        );
+        assert.doesNotMatch(
+          description,
+          /…$/,
+          `${route} meta description must be a complete sentence, not a truncated lede`,
+        );
+        assert.ok(
+          !descriptions.has(description),
+          `${route} duplicates the meta description for ${descriptions.get(description)}`,
+        );
+        descriptions.set(description, route);
+      }
+
+      // Google requires Dataset descriptions to be 50-5000 characters and
+      // recommends creator and license. Walk every generated JSON-LD object
+      // recursively so this catches both the country snapshot Dataset and
+      // nested datasets such as research report distributions, not only one
+      // representative page.
+      const generatedRoutes = new Set(
+        Object.values(manifest.sections)
+          .filter((section) => !section.generatedBy)
+          .flatMap((section) => [section.index, ...(section.routes ?? [])])
+          .filter(Boolean),
+      );
+      const datasetRequiredRoutes = new Set([
+        ...manifest.sections.countries.routes,
+        ...manifest.sections.research.routes,
+      ]);
+      for (const route of generatedRoutes) {
+        assertDatasetGoogleProperties(
+          read(outDir, `${route.slice(1)}index.html`),
+          route,
+          { requireDataset: datasetRequiredRoutes.has(route) },
+        );
+      }
 
       for (const path of [
         'countries/index.html',
@@ -74,7 +348,7 @@ describe('crawlable corpus generator', () => {
       const norway = read(outDir, 'countries/norway/index.html');
       assert.match(norway, /<h1>Norway country risk and resilience<\/h1>/);
       assert.match(norway, /<link rel="canonical" href="https:\/\/www\.worldmonitor\.app\/countries\/norway\/">/);
-      assert.match(norway, /<meta name="lastmod" content="2026-05-28">/);
+      assert.match(norway, /<meta name="lastmod" content="2026-08-05">/);
       assert.match(norway, /Source: docs\/snapshots\/resilience-ranking-2026-05-28\.json/);
       assert.doesNotMatch(norway, /id="app"/, 'country page must be raw static HTML, not the SPA shell');
       assert.match(norway, /data-live-country-risk data-country-code="NO" data-country-name="Norway"/);
@@ -101,11 +375,13 @@ describe('crawlable corpus generator', () => {
       assert.match(liveRiskScript, /\/api\/wm-session/);
       assert.match(liveRiskScript, /\/api\/intelligence\/v1\/get-country-risk\?country_code=/);
       assert.match(liveRiskScript, /credentials:\s*'include'/);
+      assert.match(liveRiskScript, /preflightSession:\s*true/);
       assert.match(liveRiskScript, /response\.status === 401/);
       assert.match(liveRiskScript, /payload\.upstreamUnavailable === true/);
 
       const norwayLd = jsonLdObjects(norway);
-      assert.ok(norwayLd.some((entry) => entry['@type'] === 'WebPage' && entry.about?.['@type'] === 'Country' && entry.about?.name === 'Norway'));
+      const norwayWebPage = norwayLd.find((entry) => entry['@type'] === 'WebPage');
+      assert.ok(norwayWebPage?.about?.['@type'] === 'Country' && norwayWebPage.about?.name === 'Norway');
       assert.ok(norwayLd.some((entry) => entry['@type'] === 'BreadcrumbList'));
 
       const chokepointsIndex = read(outDir, 'chokepoints/index.html');
@@ -208,6 +484,8 @@ describe('crawlable corpus generator', () => {
     assert.equal(data.sources.countryBboxes, 'shared/country-bboxes.js');
     assert.equal(data.sources.crisisRegistry, 'shared/crawlable-crises.json');
     assert.equal(data.resilience.capturedAt, '2026-05-28');
+    assert.equal(data.lastmod.countries, '2026-08-05');
+    assert.equal(data.lastmod.research, '2026-08-05');
     assert.equal(data.crises.length, 4);
     assert.ok(data.crises.some((crisis) => crisis.slug === 'ukraine-war' && crisis.coverage.some((country) => country.code === 'UA')));
     assert.ok(data.countryBounds.some((country) => country.code === 'JP' && country.bounds[0] === 31.11));
@@ -218,8 +496,12 @@ describe('crawlable corpus generator', () => {
     assert.ok(data.countries.some((country) => country.slug === 'norway' && country.rank === 1));
     assert.ok(data.chokepoints.some((chokepoint) => chokepoint.slug === 'strait-of-hormuz' && chokepoint.id === 'hormuz_strait'));
     assert.ok(data.glossaryTerms.some((term) => term.slug === 'country-resilience-index'));
-    assert.ok(data.changelog[0].bullets[0].includes('server scorer read non-existent'));
-    assert.ok(data.changelog[0].bullets[0].includes('methodology_version is now v8'));
+    // Position-independent: the parser must carry full bullet prose through,
+    // but pinning the NEWEST bullet made every changelog addition a test
+    // failure. Assert the known CII v8 entry exists wherever it now sits.
+    const allBullets = data.changelog.flatMap((entry) => entry.bullets);
+    assert.ok(allBullets.some((bullet) => bullet.includes('server scorer read non-existent')));
+    assert.ok(allBullets.some((bullet) => bullet.includes('methodology_version is now v8')));
     assert.match(data.lastmod.chokepoints, /^\d{4}-\d{2}-\d{2}$/);
   });
 });

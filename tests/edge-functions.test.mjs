@@ -54,6 +54,7 @@ describe('scripts/shared/ stays in sync with shared/', () => {
   const explicitMirroredFiles = new Set([
     'brief-llm-core.js',
     'brief-llm-core.d.ts',
+    'correlation-runtime-mode.js',
     // U6/U7: pure URL classifier consumed by the brief filter (edge) AND
     // by the audit script under scripts/. Must stay byte-identical.
     'url-classifier.js',
@@ -77,8 +78,20 @@ describe('Edge Function shared helpers resolve', () => {
     const mod = await import(pathToFileURL(join(apiDir, '_rss-allowed-domains.js')).href);
     const domains = mod.default;
     assert.ok(Array.isArray(domains), 'Expected default export to be an array');
-    assert.ok(domains.length > 200, `Expected 200+ domains, got ${domains.length}`);
-    assert.ok(domains.includes('feeds.bbci.co.uk'), 'Expected BBC feed domain in list');
+    // Content parity, not just a smoke check. api/_rss-allowed-domains.js is a
+    // hand-maintained literal mirror of the shared JSON (Vercel edge esbuild
+    // cannot import JSON via import attributes, and api/*.js cannot import from
+    // ../shared), so this assertion is the only thing stopping it drifting from
+    // the source of truth. A domain added to shared/ but missed here 403s in the
+    // edge proxy while every other consumer works — the same silent-drift class
+    // the scripts/shared/ check above already guards against.
+    const shared = JSON.parse(readFileSync(join(sharedDir, 'rss-allowed-domains.json'), 'utf8'));
+    assert.deepStrictEqual(
+      domains,
+      shared,
+      'api/_rss-allowed-domains.js is out of sync with shared/rss-allowed-domains.json — ' +
+        'update the literal array in api/_rss-allowed-domains.js to match',
+    );
   });
 });
 
@@ -238,15 +251,19 @@ describe('api/slack/oauth/callback.ts safety', () => {
     );
   });
 
-  it('consumes CSRF state from Upstash after validation (prevents replay)', () => {
+  it('atomically consumes CSRF state from Upstash (prevents concurrent replay)', () => {
     const src = readFileSync(callbackPath, 'utf-8');
-    const getIdx = src.indexOf('upstashGet');
-    const delIdx = src.indexOf('upstashDel');
-    assert.ok(getIdx !== -1, 'callback.ts: must call upstashGet to validate state');
-    assert.ok(delIdx !== -1, 'callback.ts: must call upstashDel to consume state after validation');
     assert.ok(
-      getIdx < delIdx,
-      'callback.ts: must validate state (upstashGet) before consuming it (upstashDel)',
+      src.includes('upstashGetDel'),
+      'callback.ts: must use a single atomic upstashGetDel operation to validate and consume state',
+    );
+    assert.ok(
+      src.includes('/getdel/'),
+      'callback.ts: state consumption must use Upstash GETDEL, not separate GET and DEL requests',
+    );
+    assert.ok(
+      !src.includes('/get/') && !src.includes('/del/'),
+      'callback.ts: split GET/DEL state consumption permits concurrent replay',
     );
   });
 

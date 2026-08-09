@@ -19,7 +19,7 @@ The principle underneath it: **independent sensors do not coordinate to lie.** O
 
 Before touching physical data, establish what the information environment is doing. Pull up the location's news and check:
 
-- **Source diversity.** Is the claim carried only by anonymous accounts, or has it reached wire services and regional outlets? World Monitor aggregates 77 sources across world, regional, defense, and government categories, including outlets in the region's own press sphere, in [25 languages](/blog/posts/worldmonitor-in-21-languages-global-intelligence-for-everyone/).
+- **Source diversity.** Is the claim carried only by anonymous accounts, or has it reached wire services and regional outlets? World Monitor aggregates 77 sources across world, regional, defense, and government categories, including outlets in the region's own press sphere, in [26 languages](/blog/posts/worldmonitor-in-21-languages-global-intelligence-for-everyone/).
 - **Velocity.** GDELT-powered topic feeds show whether coverage volume is spiking or flat. A genuine mass-casualty event produces a near-vertical velocity curve. A recycled video produces social chatter with no news-side echo.
 - **Hotspot status.** If the location is one of the 29 tracked hotspots, has its escalation score moved? The score fuses news activity (35%), country instability (25%), geographic convergence (25%), and military activity (15%); movement here means multiple systems agree something changed.
 

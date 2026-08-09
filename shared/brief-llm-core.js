@@ -516,6 +516,24 @@ function normalizeDottedAcronyms(text) {
 }
 
 export function extractProperNounSequences(text) {
+  return extractProperNounSequencesWithMeta(text).map((entry) => entry.tokens);
+}
+
+/**
+ * #6109: same extraction, but each sequence also reports whether it began at
+ * the FIRST token of its sentence. That distinction matters because a capital
+ * in that position is forced by orthography and therefore carries no
+ * proper-noun signal, while a capital anywhere else is a deliberate choice by
+ * the writer. `validateNoHallucinatedProperNouns` uses it to stop flagging a
+ * common noun the source already contains in lowercase.
+ *
+ * Internal on purpose — `extractProperNounSequences` keeps its `string[][]`
+ * public shape (declared in brief-llm-core.d.ts and asserted by tests).
+ *
+ * @param {string} text
+ * @returns {{ tokens: string[], sentenceInitial: boolean }[]}
+ */
+function extractProperNounSequencesWithMeta(text) {
   if (typeof text !== 'string' || text.length === 0) return [];
 
   // Normalize dotted acronyms BEFORE sentence-splitting so "U.S." isn't
@@ -526,9 +544,13 @@ export function extractProperNounSequences(text) {
   const sentences = preprocessed.split(/[.!?]+\s+|\n+/);
 
   const sequences = [];
+  // #6109: which non-empty sentence are we in? Only the FIRST one can carry the
+  // sentence-initial allowance — see the `firstSentence` note at its use site.
+  let sentenceOrdinal = -1;
   for (const rawSentence of sentences) {
     const sentence = rawSentence.trim();
     if (!sentence) continue;
+    sentenceOrdinal += 1;
 
     // Tokenize: keep alphanumeric runs + apostrophes + hyphens
     // (preserves "Mar-a-Lago", "O'Brien").
@@ -536,6 +558,9 @@ export function extractProperNounSequences(text) {
     if (tokens.length === 0) continue;
 
     let current = [];
+    let currentStartedSentence = false; // #6109: did `current` open this sentence?
+    let currentAllCaps = false; // #6109: was its first token a deliberate ALL-CAPS acronym?
+    let currentFirstSentence = false; // #6109: is `current` in the FIRST sentence?
     let bridgeBuffer = []; // joiners pending — kept only if another proper noun follows
     let firstToken = true;
 
@@ -571,6 +596,7 @@ export function extractProperNounSequences(text) {
         firstToken = false;
         continue;
       }
+      const atSentenceStart = firstToken;
       firstToken = false;
 
       if (isJoiner) {
@@ -584,22 +610,120 @@ export function extractProperNounSequences(text) {
           current.push(...bridgeBuffer);
         }
         bridgeBuffer = [];
+        if (current.length === 0) {
+          currentStartedSentence = atSentenceStart;
+          // #6109: sentence position can force the FIRST letter to be a capital;
+          // it cannot force the interior ones. An ALL-CAPS token ("WHO", "US",
+          // "SWIFT", "ICE") is therefore a deliberate acronym, not orthography,
+          // so the sentence-initial allowance must not apply to it.
+          currentAllCaps = isAllCapsAcronym;
+          currentFirstSentence = sentenceOrdinal === 0;
+        }
         // Use the punctuation/possessive-stripped form so "Beirut's"
         // lands as "beirut", matching the headline's "Beirut".
         current.push(tokenForLookup.toLowerCase());
       } else {
         // Lowercase non-joiner — ends current sequence.
         if (current.length > 0) {
-          sequences.push(current);
+          sequences.push({ tokens: current, sentenceInitial: currentStartedSentence, allCaps: currentAllCaps, firstSentence: currentFirstSentence });
           current = [];
+          currentStartedSentence = false;
+          currentAllCaps = false;
+          currentFirstSentence = false;
         }
         bridgeBuffer = [];
       }
     }
-    if (current.length > 0) sequences.push(current);
+    if (current.length > 0) sequences.push({ tokens: current, sentenceInitial: currentStartedSentence, allCaps: currentAllCaps, firstSentence: currentFirstSentence });
   }
 
   return sequences;
+}
+
+/**
+ * #6109: the ground text's full lowercased token set, tokenized and stripped
+ * exactly as extractProperNounSequencesWithMeta does so the two compare
+ * apples-to-apples, then acronym/demonym-normalized like a single-token
+ * sequence. Used ONLY for the sentence-initial single-token allowance below —
+ * it answers "does this word appear in the source at all?", which capitalized
+ * proper-noun extraction cannot, because the source may carry the same word
+ * lowercase mid-sentence.
+ */
+// #6109: months are excluded from the sentence-initial allowance below. For
+// every other word a capital at sentence start is pure orthography — but for a
+// month the capital is exactly what separates a CALENDAR CLAIM from an ordinary
+// word ("the march on the capital" -> "March saw heavy fighting"; "officials
+// may authorise" -> "May brought strikes"). Verified against origin/main: the
+// allowance without this newly ACCEPTED both, where the old code rejected them.
+// The date validator does not cover it either — extractNumericFacts only reads
+// a month adjacent to a day or year, so a bare "March" is not a date fact. The
+// repo has flagged this collision class before (the anchor-token note on "May":
+// Theresa May / May Day / the month all land on one token).
+//
+// Excluding a month costs nothing when the source really does name it: the
+// normal capitalized-sequence path already grounds that case. This only removes
+// the lowercase-source fallback, which for a month is never the right read.
+// Adversarial review widened this from months alone to the whole homograph
+// class: a token that is an ordinary lowercase word in a wire story AND a
+// distinct named entity when capitalized. Each entry below was demonstrated as
+// a live false-accept against origin/main, with a realistic newswire source:
+//   turkey  "prices for turkey soar before the holiday"   -> "Turkey rejected…"
+//   china   "tariffs on fine china"                       -> "China imposed…"
+//   bill    "the senate defense bill heads to the floor"  -> "Bill passed…"
+//   polish  "ministers race to polish the package"        -> "Poland readied…"
+//   march / may  (the original month pair)
+// These are NOT reachable via the ACRONYM/DEMONYM tables — 'china' and 'turkey'
+// are not keys there — so the source-capitalization gate in groundTokenSet
+// cannot close them; only an explicit block can.
+//
+// Scope rule for adding to this list: the word must plausibly appear LOWERCASE
+// in a geopolitical wire story while also naming a state, person, org, or date
+// when capitalized. It is deliberately short — the general amnesty is the
+// point, and every entry here is a case where capitalization carries the
+// meaning rather than mere sentence position.
+const SENTENCE_INITIAL_ALLOWANCE_BLOCKED = new Set([
+  // Months — a bare month is not a date fact to extractNumericFacts, so nothing
+  // else catches "the march on the capital" licensing "March saw fighting".
+  'january', 'jan', 'february', 'feb', 'march', 'mar', 'april', 'apr', 'may',
+  'june', 'jun', 'july', 'jul', 'august', 'aug', 'september', 'sept', 'sep',
+  'october', 'oct', 'november', 'nov', 'december', 'dec',
+  // States and nationals that double as common words.
+  'turkey', 'china', 'chad', 'jordan', 'georgia', 'polish', 'dutch', 'thai',
+  // Person names that double as common words.
+  'bill', 'mark', 'will', 'frank', 'rose', 'grant',
+  // Brands and outlets that double as common words. Adversarial review
+  // published "Apple cut its regional orders" grounded only by "apple prices",
+  // and found Post/Guard/State/Sun still licensed across 73 live headlines.
+  'apple', 'amazon', 'shell', 'orange', 'target', 'meta', 'gap', 'visa',
+  'post', 'guard', 'state', 'sun', 'times', 'page', 'ford',
+]);
+
+function groundTokenSet(text) {
+  const out = new Set();
+  if (typeof text !== 'string' || text.length === 0) return out;
+  for (const raw of normalizeDottedAcronyms(text).split(/[^\p{L}\p{N}'’-]+/u)) {
+    if (!raw) continue;
+    const stripped = raw.replace(/[.,;:'’]+$/g, '').replace(/['’]s$/i, '');
+    const token = (stripped || raw).toLowerCase();
+    if (!token) continue;
+    // Do NOT let the acronym/demonym tables promote a token the source wrote in
+    // LOWERCASE. Eight ordinary English words collide with an organization or
+    // nation identity — who->WHO, us->US, sec->SEC, pentagon->DOD, and the
+    // demonyms polish->Poland, thai->Thailand, dutch->Netherlands,
+    // chinese->China. Without this, a source reading "Officials who briefed
+    // reporters…" grounds a lead reading "WHO warned…", publishing an invented
+    // attribution under the default enforce mode. Verified against origin/main:
+    // all eight flipped from reject to accept.
+    //
+    // Same reasoning as the month exclusion above, one axis wider: for these
+    // tokens the capital IS the identity, so the "case carries no signal"
+    // premise does not hold. A source that CAPITALIZES the word still gets the
+    // promotion, so "Israeli jets" -> "Israel struck" keeps working.
+    const sourceCapitalized = /^\p{Lu}/u.test(stripped || raw);
+    if (!sourceCapitalized && (ACRONYM_NORMALIZE.has(token) || DEMONYM_NORMALIZE.has(token))) continue;
+    out.add(normalizeToken(token));
+  }
+  return out;
 }
 
 /**
@@ -667,19 +791,35 @@ export function validateNoHallucinatedProperNouns(summary, headline) {
   if (typeof summary !== 'string' || summary.length === 0) return { ok: true };
   if (typeof headline !== 'string' || headline.length === 0) return { ok: true };
 
-  let summarySequences, headlineSequences;
+  let summaryEntries, headlineSequences, headlineTokens;
   try {
-    summarySequences = extractProperNounSequences(summary).map(normalizeSequence);
+    summaryEntries = extractProperNounSequencesWithMeta(summary)
+      .map((entry) => ({
+        tokens: normalizeSequence(entry.tokens),
+        sentenceInitial: entry.sentenceInitial,
+        allCaps: entry.allCaps,
+        firstSentence: entry.firstSentence,
+      }));
     headlineSequences = extractProperNounSequences(headline).map(normalizeSequence);
-  } catch {
+    headlineTokens = groundTokenSet(headline);
+  } catch (err) {
+    // #6109: this catch fails the gate OPEN — every claim is accepted. That is
+    // the deliberate "ship the LLM output rather than fall back on confusion"
+    // stance, but it must never be SILENT: adversarial review caught a
+    // transient bad save in which the extractor threw and the validator
+    // returned ok:true for all 19 fixtures in a battery, must-reject cases
+    // included, with nothing in the log. A dead gate and a healthy gate looked
+    // identical. Warn so the difference is visible, matching the pattern used
+    // by checkLeadGrounding below.
+    console.warn(`[brief_grounding] proper-noun extraction threw (${err?.message ?? err}) — accepting unvalidated`);
     return { ok: true };
   }
 
-  if (summarySequences.length === 0) return { ok: true };
+  if (summaryEntries.length === 0) return { ok: true };
 
   // For each summary sequence, check whether at least one contiguous
   // subsequence of it appears in some headline sequence.
-  for (const summarySeq of summarySequences) {
+  for (const { tokens: summarySeq, sentenceInitial, allCaps, firstSentence } of summaryEntries) {
     let found = false;
     for (const headlineSeq of headlineSequences) {
       if (containsSubsequence(headlineSeq, summarySeq)) {
@@ -694,11 +834,219 @@ export function validateNoHallucinatedProperNouns(summary, headline) {
         break;
       }
     }
+    // #6109: a SINGLE token that opens its sentence is capitalized by
+    // orthography, not by choice, so its capital proves nothing about
+    // proper-noun-hood. Ground it against the source's full token set, which
+    // sees the word even when the source writes it lowercase mid-sentence
+    // ("…uncertainty remains over…" -> "Uncertainty persists over…").
+    //
+    // Deliberately narrow on both axes. MULTI-token sequences keep the strict
+    // contiguous rule, so "Swat, Pakistan" against a source naming only Swat
+    // still rejects. And MID-sentence capitals keep it too, because there the
+    // capital IS a deliberate signal — that is what stops a source reading
+    // "apple prices" from licensing "Apple" the company. Presence in the
+    // source is the definition of not-invented; case never was.
+    if (
+      !found
+      && sentenceInitial
+      && firstSentence
+      && !allCaps
+      && summarySeq.length === 1
+      && !SENTENCE_INITIAL_ALLOWANCE_BLOCKED.has(summarySeq[0])
+      && headlineTokens.has(summarySeq[0])
+    ) {
+      found = true;
+    }
     if (!found) {
       return { ok: false, hallucinated: summarySeq };
     }
   }
 
+  return { ok: true };
+}
+
+// Numeric and date facts need their own citation-scoped check. Proper-noun
+// grounding cannot see a casualty count, percentage, year, or calendar date,
+// so a merged lead could otherwise borrow those facts from an uncited sibling.
+const NUMBER_FACT_WORD_VALUES = new Map([
+  ['zero', 0], ['one', 1], ['two', 2], ['three', 3], ['four', 4],
+  ['five', 5], ['six', 6], ['seven', 7], ['eight', 8], ['nine', 9],
+  ['ten', 10], ['eleven', 11], ['twelve', 12], ['thirteen', 13],
+  ['fourteen', 14], ['fifteen', 15], ['sixteen', 16], ['seventeen', 17],
+  ['eighteen', 18], ['nineteen', 19], ['twenty', 20], ['thirty', 30],
+  ['forty', 40], ['fifty', 50], ['sixty', 60], ['seventy', 70],
+  ['eighty', 80], ['ninety', 90], ['hundred', 100], ['thousand', 1000],
+  ['thousands', 1000], ['million', 1_000_000], ['millions', 1_000_000],
+  ['billion', 1_000_000_000], ['billions', 1_000_000_000],
+  ['trillion', 1_000_000_000_000], ['trillions', 1_000_000_000_000],
+  ['dozen', 12],
+]);
+const NUMBER_FACT_WORDS = [...NUMBER_FACT_WORD_VALUES.keys(), 'dozens'];
+const NUMBER_FACT_WORD_PATTERN = NUMBER_FACT_WORDS
+  .sort((a, b) => b.length - a.length)
+  .join('|');
+const NUMBER_FACT_WORD_SEQUENCE_RE = new RegExp(
+  `\\b(?:${NUMBER_FACT_WORD_PATTERN})(?:[- ](?:${NUMBER_FACT_WORD_PATTERN}|and))*\\b(?:\\s+percent\\b)?`,
+  'gi',
+);
+const DIGIT_FACT_RE = /\d[\d,]*(?:\.\d+)?(?:\s*(?:%|percent|thousands?|millions?|billions?|trillions?))?/gi;
+const DATE_MONTH_PATTERN = 'Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:t(?:ember)?)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?';
+const DATE_EXPRESSION_RE = new RegExp(
+  `\\b(?:\\d{4}-\\d{1,2}-\\d{1,2}|\\d{1,2}[/-]\\d{1,2}(?:[/-]\\d{2,4})?|(?:${DATE_MONTH_PATTERN})\\.?\\s+\\d{1,2}(?:,?\\s+\\d{4})?|\\d{1,2}\\s+(?:${DATE_MONTH_PATTERN})\\.?\\s*(?:\\d{4})?)\\b`,
+  'gi',
+);
+const DATE_MONTH_NUMBERS = new Map([
+  ['jan', 1], ['january', 1], ['feb', 2], ['february', 2], ['mar', 3], ['march', 3],
+  ['apr', 4], ['april', 4], ['may', 5], ['jun', 6], ['june', 6], ['jul', 7], ['july', 7],
+  ['aug', 8], ['august', 8], ['sep', 9], ['sept', 9], ['september', 9], ['oct', 10],
+  ['october', 10], ['nov', 11], ['november', 11], ['dec', 12], ['december', 12],
+]);
+
+function formatNumericFact(value) {
+  return String(value);
+}
+
+function normalizeDigitFact(raw) {
+  const match = raw.trim().toLowerCase().replace(/,/g, '').match(
+    /^(\d+(?:\.\d+)?)(?:\s*(%|percent|thousands?|millions?|billions?|trillions?))?$/,
+  );
+  if (!match) return `number:${raw.trim().toLowerCase()}`;
+  const value = Number(match[1]);
+  if (!Number.isFinite(value)) return `number:${raw.trim().toLowerCase()}`;
+  const unit = match[2];
+  if (!unit) return `number:${formatNumericFact(value)}`;
+  if (unit === '%' || unit === 'percent') return `number:${formatNumericFact(value)}%`;
+  const scale = NUMBER_FACT_WORD_VALUES.get(unit.replace(/s$/, ''));
+  return scale ? `number:${formatNumericFact(value * scale)}` : `number:${formatNumericFact(value)} ${unit}`;
+}
+
+function normalizeNumberWordFact(raw) {
+  const words = raw.toLowerCase().replace(/-/g, ' ').split(/\s+/).filter(Boolean);
+  let percent = false;
+  if (words.at(-1) === 'percent') {
+    percent = true;
+    words.pop();
+  }
+  if (words.includes('dozen') || words.includes('dozens')) return `word:${words.join(' ')}`;
+
+  let total = 0;
+  let current = 0;
+  let sawValue = false;
+  for (const word of words) {
+    if (word === 'and') continue;
+    const value = NUMBER_FACT_WORD_VALUES.get(word);
+    if (value == null) return `word:${words.join(' ')}`;
+    sawValue = true;
+    if (value >= 100) {
+      if (current === 0) current = 1;
+      if (value >= 1000) {
+        total += current * value;
+        current = 0;
+      } else {
+        current *= value;
+      }
+    } else {
+      current += value;
+    }
+  }
+  if (!sawValue) return `word:${words.join(' ')}`;
+  const value = total + current;
+  return `number:${formatNumericFact(value)}${percent ? '%' : ''}`;
+}
+
+function addDateFact(facts, year, month, day) {
+  const monthNumber = Number(month);
+  const dayNumber = Number(day);
+  if (!Number.isInteger(monthNumber) || !Number.isInteger(dayNumber)) return;
+  if (monthNumber < 1 || monthNumber > 12 || dayNumber < 1 || dayNumber > 31) return;
+  const monthPart = String(monthNumber).padStart(2, '0');
+  const dayPart = String(dayNumber).padStart(2, '0');
+  facts.add(`date:${monthPart}-${dayPart}`);
+  // Keep the components available for prose that says only "in 2026" or
+  // "on the 1st" while the full date expression still requires an exact match.
+  facts.add(`number:${formatNumericFact(monthNumber)}`);
+  facts.add(`number:${formatNumericFact(dayNumber)}`);
+  if (year != null && year !== '') {
+    const yearNumber = Number(year);
+    if (Number.isInteger(yearNumber)) {
+      facts.add(`date:${yearNumber}-${monthPart}-${dayPart}`);
+      facts.add(`number:${formatNumericFact(yearNumber)}`);
+    }
+  }
+}
+
+function addDateExpressionFacts(facts, raw) {
+  const normalized = raw.trim().replace(/\s+/g, ' ');
+  let match = normalized.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
+  if (match) {
+    addDateFact(facts, match[1], match[2], match[3]);
+    return;
+  }
+  match = normalized.match(/^(\d{1,2})[/-](\d{1,2})(?:[/-](\d{2,4}))?$/);
+  if (match) {
+    addDateFact(facts, match[3], match[1], match[2]);
+    return;
+  }
+  match = normalized.match(/^([A-Za-z]+)\.?\s+(\d{1,2})(?:,?\s+(\d{4}))?$/);
+  if (match) {
+    addDateFact(facts, match[3], DATE_MONTH_NUMBERS.get(match[1].toLowerCase()), match[2]);
+    return;
+  }
+  match = normalized.match(/^(\d{1,2})\s+([A-Za-z]+)\.?\s*(?:\s+(\d{4}))?$/);
+  if (match) addDateFact(facts, match[3], DATE_MONTH_NUMBERS.get(match[2].toLowerCase()), match[1]);
+}
+
+/**
+ * Extract citation-relevant numeric and date facts from prose. Citation
+ * markers are removed before extraction, and digit/word forms normalize to
+ * the same value ("9" and "nine"). This is intentionally a fact-presence
+ * check, not a full source fact-checker.
+ *
+ * @param {string} text
+ * @returns {Set<string>}
+ */
+export function extractNumericFacts(text) {
+  const facts = new Set();
+  if (typeof text !== 'string' || text.length === 0) return facts;
+
+  let remaining = text.replace(/\[\d{1,3}\]/g, ' ');
+  remaining = remaining.replace(DATE_EXPRESSION_RE, (match) => {
+    addDateExpressionFacts(facts, match);
+    return ' '.repeat(match.length);
+  });
+  remaining = remaining.replace(DIGIT_FACT_RE, (match, offset, original) => {
+    const before = original[offset - 1];
+    const after = original[offset + match.length];
+    const isWordChar = (value) => typeof value === 'string' && /[\p{L}\p{N}]/u.test(value);
+    if (isWordChar(before) || isWordChar(after)) return match;
+    facts.add(normalizeDigitFact(match));
+    return ' '.repeat(match.length);
+  });
+  remaining.replace(NUMBER_FACT_WORD_SEQUENCE_RE, (match) => {
+    facts.add(normalizeNumberWordFact(match));
+    return match;
+  });
+  return facts;
+}
+
+/**
+ * Validate that every numeric or date fact in summary appears in the cited
+ * source text. Malformed inputs keep the existing defensive acceptance
+ * behavior used by the proper-noun validator.
+ *
+ * @param {string} summary
+ * @param {string} groundText
+ * @returns {{ ok: boolean, hallucinated?: string[] }}
+ */
+export function validateNoHallucinatedFacts(summary, groundText) {
+  if (typeof summary !== 'string' || summary.length === 0) return { ok: true };
+  if (typeof groundText !== 'string' || groundText.length === 0) return { ok: true };
+  const summaryFacts = extractNumericFacts(summary);
+  if (summaryFacts.size === 0) return { ok: true };
+  const groundFacts = extractNumericFacts(groundText);
+  for (const fact of summaryFacts) {
+    if (!groundFacts.has(fact)) return { ok: false, hallucinated: [fact] };
+  }
   return { ok: true };
 }
 

@@ -12,7 +12,13 @@ import { cachedFetchJson, getCachedJson, setCachedJson, getCachedJsonBatch, runR
 import { markNoCacheResponse } from '../../../_shared/response-headers';
 import { sha256Hex } from '../../../_shared/hash';
 import { CHROME_UA } from '../../../_shared/constants';
-import { VARIANT_FEEDS, INTEL_SOURCES, type ServerFeed } from './_feeds';
+import {
+  isServerFeedReachableForLanguage,
+  orderServerFeedEntries,
+  VARIANT_FEEDS,
+  INTEL_SOURCES,
+  type ServerFeed,
+} from './_feeds';
 import { classifyByKeyword, hasHistoricalMarker, type ThreatLevel } from './_classifier';
 import { assignStoryIdentity, adoptExistingCanonical } from './dedup.mjs';
 import { classifyOpinion } from '../../../_shared/opinion-classifier.js';
@@ -49,6 +55,8 @@ const POST_FETCH_HEADROOM_MS = 15_000;
 const RESPONSE_GUARD_BAND_MS = 3_000;
 const OVERALL_DEADLINE_MS = VERCEL_INITIAL_RESPONSE_LIMIT_MS - POST_FETCH_HEADROOM_MS;
 const BATCH_CONCURRENCY = 20;
+
+type DigestFeedEntry = { category: string; feed: ServerFeed };
 
 // U3 — hard freshness floor (default 96h, env override NEWS_MAX_AGE_HOURS).
 // Items older than this are dropped before scoring. The 24h `recencyScore`
@@ -774,6 +782,23 @@ function decodeXmlEntities(s: string): string {
     .replace(/&amp;/g, '&');
 }
 
+/**
+ * Validates a raw `getCachedJsonBatch` hit at the trust boundary before any
+ * field reaches a typed `ParsedItem`. `level`/`category` on `ParsedItem` are
+ * declared `string`/`ThreatLevel`-derived, but the cache is Redis-backed JSON
+ * — an unrelated payload shape (stale schema, another feature's cache
+ * collision, hand-edited Redis value) parses fine as JSON while carrying a
+ * non-string, missing, or object/array `level`/`category`. Returns null
+ * unless BOTH fields are actually strings, so callers never need a
+ * downstream `typeof` guard before assigning onto `item.category`.
+ */
+function parseClassifyCacheHit(raw: unknown): { level: string; category: string } | null {
+  if (raw == null || typeof raw !== 'object' || Array.isArray(raw)) return null;
+  const { level, category } = raw as Record<string, unknown>;
+  if (typeof level !== 'string' || typeof category !== 'string') return null;
+  return { level, category };
+}
+
 async function enrichWithAiCache(items: ParsedItem[]): Promise<void> {
   // Apply the LLM cache to BOTH 'keyword' and 'keyword-historical-downgrade'
   // sources. The historical-downgrade path forced an info level based on a
@@ -800,7 +825,15 @@ async function enrichWithAiCache(items: ParsedItem[]): Promise<void> {
   const cached = await getCachedJsonBatch(keys);
 
   for (const [key, relatedItems] of keyMap) {
-    const hit = cached.get(key) as { level?: string; category?: string } | undefined;
+    const hit = parseClassifyCacheHit(cached.get(key));
+    // `hit.level === '_skip'` is currently unreachable and kept only as
+    // defence-in-depth: both relay skip-writes emit `{ level: '_skip',
+    // timestamp }` with no `category` (scripts/ais-relay.cjs:3892, :3968),
+    // so the shape check above already rejects them and `!hit` catches them
+    // here. It stays because it is the correct guard the moment any writer
+    // starts pairing the sentinel with a category — do not read it as the
+    // operative skip check today. Locked by the `_skip` cases in
+    // tests/news-classify-cache-hit-validation.test.mts.
     if (!hit || hit.level === '_skip' || !hit.level || !hit.category) continue;
 
     for (const item of relatedItems) {
@@ -1248,8 +1281,36 @@ async function writeStoryTracking(items: ParsedItem[], variant: string, lang: st
   await runRedisPipeline([['EXPIRE', accKey, DIGEST_ACCUMULATOR_TTL]]);
 }
 
-async function buildDigest(variant: string, lang: string): Promise<ListFeedDigestResponse> {
+function buildDigestFeedBatches(variant: string, lang: string): {
+  allEntries: DigestFeedEntry[];
+  batches: DigestFeedEntry[][];
+} {
   const feedsByCategory = VARIANT_FEEDS[variant] ?? {};
+  const allEntries: DigestFeedEntry[] = [];
+
+  for (const [category, feeds] of Object.entries(feedsByCategory)) {
+    const filtered = feeds.filter(f => isServerFeedReachableForLanguage(f, lang));
+    for (const feed of filtered) {
+      allEntries.push({ category, feed });
+    }
+  }
+
+  if (variant === 'full') {
+    const filteredIntel = INTEL_SOURCES.filter(f => isServerFeedReachableForLanguage(f, lang));
+    for (const feed of filteredIntel) {
+      allEntries.push({ category: 'intel', feed });
+    }
+  }
+
+  const orderedEntries = orderServerFeedEntries(allEntries);
+  const batches: DigestFeedEntry[][] = [];
+  for (let i = 0; i < orderedEntries.length; i += BATCH_CONCURRENCY) {
+    batches.push(orderedEntries.slice(i, i + BATCH_CONCURRENCY));
+  }
+  return { allEntries, batches };
+}
+
+async function buildDigest(variant: string, lang: string): Promise<ListFeedDigestResponse> {
   const feedStatuses: Record<string, string> = {};
   // #4920 coverage ledger: count every silent drop gate so "how much did
   // we NOT show" is a queryable number instead of a feeling.
@@ -1260,31 +1321,16 @@ async function buildDigest(variant: string, lang: string): Promise<ListFeedDiges
   const deadlineTimeout = setTimeout(() => deadlineController.abort(), OVERALL_DEADLINE_MS);
 
   try {
-    const allEntries: Array<{ category: string; feed: ServerFeed }> = [];
-
-    for (const [category, feeds] of Object.entries(feedsByCategory)) {
-      const filtered = feeds.filter(f => !f.lang || f.lang === lang);
-      for (const feed of filtered) {
-        allEntries.push({ category, feed });
-      }
-    }
-
-    if (variant === 'full') {
-      const filteredIntel = INTEL_SOURCES.filter(f => !f.lang || f.lang === lang);
-      for (const feed of filteredIntel) {
-        allEntries.push({ category: 'intel', feed });
-      }
-    }
+    const { allEntries, batches } = buildDigestFeedBatches(variant, lang);
 
     const results = new Map<string, ParsedItem[]>();
     // Track feeds that actually completed (with or without items) so we can
     // distinguish a genuine timeout (never ran) from a successful empty fetch.
     const completedFeeds = new Set<string>();
 
-    for (let i = 0; i < allEntries.length; i += BATCH_CONCURRENCY) {
+    for (const batch of batches) {
       if (deadlineController.signal.aborted) break;
 
-      const batch = allEntries.slice(i, i + BATCH_CONCURRENCY);
       const settled = await Promise.allSettled(
         batch.map(async ({ category, feed }) => {
           const result = await fetchAndParseRss(feed, variant, deadlineController.signal);
@@ -1561,6 +1607,7 @@ async function buildDigest(variant: string, lang: string): Promise<ListFeedDiges
 
 /** Internal exports for unit tests only — do not import in production code. */
 export const __testing__ = {
+  buildDigestFeedBatches,
   parseRssXml,
   decodeXmlEntities,
   extractDescription,
@@ -1575,6 +1622,7 @@ export const __testing__ = {
   readStoryTracks,
   resolveMaxAgeMs,
   capLlmUpgrade,
+  parseClassifyCacheHit,
   VERCEL_INITIAL_RESPONSE_LIMIT_MS,
   DIGEST_RESPONSE_TIMEOUT_MS,
   POST_FETCH_HEADROOM_MS,

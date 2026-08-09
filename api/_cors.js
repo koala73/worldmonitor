@@ -37,6 +37,13 @@ const EXPOSED_HEADERS = [
   'Retry-After',
   'Idempotency-Key',
   'Idempotent-Replayed',
+  // Billing-verification denials (server/_shared/entitlement-check.ts) carry
+  // the reason here alongside `Retry-After`. Docs advertise the header
+  // (docs/usage-errors.mdx) but it was not exposed, so a cross-origin browser
+  // client — the Tauri desktop shell, widget embeds, anything on
+  // api.worldmonitor.app — could not read it and had to parse `code` from the
+  // body to tell a retryable verification blip from a terminal lapse (#5622).
+  'X-Billing-Verification',
   // IETF RateLimit fields (draft-ietf-httpapi-ratelimit-headers): RateLimit-Policy
   // + RateLimit-Limit are advertised on every API response (vercel.json); the
   // combined RateLimit member and RateLimit-Remaining/Reset appear on a 429.

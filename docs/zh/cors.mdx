@@ -94,7 +94,7 @@ export default async function handler(req) {
 
 要允许额外的头，请更新两个文件中的 `Access-Control-Allow-Headers`。
 
-通过 `Access-Control-Expose-Headers`，浏览器可见的响应头包含 `Mcp-Session-Id`、`WWW-Authenticate` 与 `Retry-After`，以便 MCP 客户端可以继续会话、重新认证并遵循退避提示。
+通过 `Access-Control-Expose-Headers`，浏览器可见的响应头包含 `Mcp-Session-Id`、`WWW-Authenticate`、`Retry-After` 与 `X-Billing-Verification`，以便 MCP 客户端可以继续会话、重新认证、遵循退避提示，并在无需解析响应体的情况下区分「可重试的计费校验故障」与「终态的订阅失效」。参见[错误处理](/zh/usage-errors)。
 
 ## Railway Relay CORS
 

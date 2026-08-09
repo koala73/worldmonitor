@@ -13,7 +13,6 @@ import {
   signalDirection,
   type Candle,
   type AnalystData,
-  STOCK_ANALYSIS_ENGINE_VERSION,
 } from './analyze-stock';
 import {
   getStoredHistoricalBacktestAnalyses,
@@ -27,6 +26,8 @@ const DEFAULT_WINDOW_DAYS = 10;
 const MIN_REQUIRED_BARS = 80;
 const MAX_EVALUATIONS = 8;
 const MIN_ANALYSIS_BARS = 60;
+export const STOCK_BACKTEST_ENGINE_VERSION = 'v3-technical-only';
+export const STOCK_BACKTEST_RATING_BASIS = 'technical_only';
 
 function round(value: number, digits = 2): number {
   return Number.isFinite(value) ? Number(value.toFixed(digits)) : 0;
@@ -154,7 +155,8 @@ async function _ensureHistoricalAnalysisLedger(
       includeNews: false,
       analysisAt,
       generatedAt: new Date(analysisAt).toISOString(),
-      analysisId: `ledger:${STOCK_ANALYSIS_ENGINE_VERSION}:${symbol}:${analysisAt}`,
+      analysisId: `ledger:${STOCK_BACKTEST_ENGINE_VERSION}:${symbol}:${analysisAt}`,
+      engineVersion: STOCK_BACKTEST_ENGINE_VERSION,
     }));
   }
 
@@ -186,12 +188,13 @@ export const backtestStock: MarketServiceHandler['backtestStock'] = async (
       summary: 'No symbol provided.',
       generatedAt: new Date().toISOString(),
       evaluations: [],
-      engineVersion: STOCK_ANALYSIS_ENGINE_VERSION,
+      engineVersion: STOCK_BACKTEST_ENGINE_VERSION,
+      ratingBasis: STOCK_BACKTEST_RATING_BASIS,
     };
   }
 
   const evalWindowDays = Math.max(3, Math.min(30, req.evalWindowDays || DEFAULT_WINDOW_DAYS));
-  const cacheKey = `market:backtest:v2:${symbol}:${evalWindowDays}`;
+  const cacheKey = `market:backtest:v3:${symbol}:${evalWindowDays}`;
 
   try {
     const cached = await cachedFetchJson<BacktestStockResponse>(cacheKey, CACHE_TTL_SECONDS, async () => {
@@ -246,10 +249,11 @@ export const backtestStock: MarketServiceHandler['backtestStock'] = async (
         cumulativeSimulatedReturnPct: round(cumulativeSimulatedReturnPct),
         latestSignal: latest.signal,
         latestSignalScore: round(latest.signalScore),
-        summary: `Validated ${actionableEvaluations} stored analysis records over ${evalWindowDays} trading days with ${round(winRate)}% win rate and ${round(avgSimulatedReturnPct)}% average simulated return.`,
+        summary: `Validated ${actionableEvaluations} technical-only signal records over ${evalWindowDays} trading days with ${round(winRate)}% win rate and ${round(avgSimulatedReturnPct)}% average simulated return. Point-in-time fundamentals are not included.`,
         generatedAt: new Date().toISOString(),
         evaluations: evaluations.slice(0, MAX_EVALUATIONS),
-        engineVersion: STOCK_ANALYSIS_ENGINE_VERSION,
+        engineVersion: STOCK_BACKTEST_ENGINE_VERSION,
+        ratingBasis: STOCK_BACKTEST_RATING_BASIS,
       };
       await storeStockBacktestSnapshot(response);
       return response;
@@ -277,6 +281,7 @@ export const backtestStock: MarketServiceHandler['backtestStock'] = async (
     summary: 'Backtest unavailable for this symbol.',
     generatedAt: new Date().toISOString(),
     evaluations: [],
-    engineVersion: STOCK_ANALYSIS_ENGINE_VERSION,
+    engineVersion: STOCK_BACKTEST_ENGINE_VERSION,
+    ratingBasis: STOCK_BACKTEST_RATING_BASIS,
   };
 };

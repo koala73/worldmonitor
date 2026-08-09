@@ -4,6 +4,7 @@
 
 # Stage 1: Build the frontend with TypeScript + Vite.
 FROM node:24-alpine@sha256:a0b9bf06e4e6193cf7a0f58816cc935ff8c2a908f81e6f1a95432d679c54fbfd AS builder
+ARG BUILDKIT_SBOM_SCAN_STAGE=true
 
 WORKDIR /app
 
@@ -29,7 +30,7 @@ ENV VITE_WS_API_URL=${VITE_WS_API_URL}
 # sidecar image's builder. `npm run build` would chain build:blog
 # (blog-site has its own lockfile, not installed here) and the prebuild
 # openapi/agent-skills generators.
-RUN npm run build:crawlable-corpus && npm run build:content-corpus && npx tsc && npx vite build
+RUN npm run build:crawlable-corpus && npm run build:sitemap && npx tsc && npx vite build
 
 
 # Stage 2: Serve the built assets from nginx.
@@ -50,4 +51,3 @@ RUN chmod +x /docker-entrypoint.sh
 EXPOSE 80
 
 CMD ["/docker-entrypoint.sh"]
-

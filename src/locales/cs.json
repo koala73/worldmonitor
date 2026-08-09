@@ -129,17 +129,20 @@
       "currencies": "Měny",
       "area": "Rozloha"
     },
-    "loadingResilienceScore": "Loading resilience score…",
-    "resilienceScoreUnavailable": "Resilience score unavailable.",
+    "loadingResilienceScore": "Načítání skóre odolnosti…",
+    "resilienceScoreUnavailable": "Skóre odolnosti není k dispozici.",
     "china": {
       "title": "Přehled země: Čína",
       "description": "Aktuální makro, trh, obchod, energetika a provozní dostupnost z existujících veřejných datových kontraktů.",
-      "macroPolicy": "Makro a politika",
-      "marketCredit": "Trh a úvěr",
-      "tradeSupply": "Obchod a dodavatelský řetězec",
+      "policyEvents": "Politika a vymáhání",
       "energy": "Energetika",
       "availability": "Rizika a letectví",
       "observed": "K datu:",
+      "published": "Publikováno:",
+      "effective": "Platné od:",
+      "sectors": "Sektory:",
+      "entities": "Entity:",
+      "translation": "Překlad:",
       "source": "Zdroj:",
       "imfGrowth": "Prognóza růstu MMF",
       "creditGdp": "Úvěr k HDP",
@@ -148,8 +151,6 @@
       "gasDemand": "Poptávka po plynu",
       "energyMix": "Energetický mix",
       "coal": "uhlí",
-      "aviationAvailability": "Dostupnost letectví",
-      "hazardAvailability": "Dostupnost rizik",
       "noMajorDisruptions": "Nebyla hlášena žádná závažná narušení",
       "activeDisruptions_one": "{{count}} aktivní výpadek",
       "activeDisruptions_few": "{{count}} aktivní výpadky",
@@ -165,18 +166,21 @@
       "ccfiSource": "Šanghajská lodní burza",
       "comtradeSource": "UN Comtrade, vykazující země 156",
       "sourceUnavailable": "Zdroj nedostupný",
-      "macroUnavailable": "Makroekonomická a politická data jsou momentálně nedostupná.",
-      "marketUnavailable": "Tržní a úvěrová data jsou momentálně nedostupná.",
-      "tradeUnavailable": "Data o obchodu a dodavatelském řetězci jsou momentálně nedostupná.",
-      "energyUnavailable": "Energetická data jsou momentálně nedostupná.",
-      "availabilityUnavailable": "Data o rizicích a letectví jsou momentálně nedostupná.",
+      "policyUnavailable": "Official policy and enforcement events are currently unavailable.",
+      "policyPartial": "{{count}} official agencies are temporarily degraded.",
       "status": {
         "loading": "Načítání",
         "available": "Dostupné",
         "partial": "Částečné",
         "stale": "Zastaralé",
         "unavailable": "Nedostupné"
-      }
+      },
+      "macroSignals": "Makrosignály",
+      "crossStraitActivity": "Aktivita přes průliv",
+      "corporateDisclosures": "Firemní zveřejnění",
+      "corridorConditions": "Podmínky koridoru",
+      "activityNowcast": "Nowcast aktivity",
+      "decisionSignalsUnavailable": "Snímek rozhodovacích signálů Číny je momentálně nedostupný."
     }
   },
   "header": {
@@ -257,7 +261,7 @@
     "panelCatCommodityEcon": "Ekonomika a obchod",
     "panelCatHappyNews": "Dobré zprávy",
     "panelCatHappyPlanet": "Planeta a dárcovství",
-    "embed": "Embed"
+    "embed": "Vložit"
   },
   "panels": {
     "liveNews": "Živé zprávy",
@@ -365,7 +369,8 @@
     "consumerPrices": "Ceny pro spotřebitele",
     "fearGreed": "Strach a chamtivost",
     "marketBreadth": "Šíře trhu",
-    "climateNews": "Zprávy o klimatu"
+    "climateNews": "Zprávy o klimatu",
+    "fx": "Kurzy měn"
   },
   "commands": {
     "prefixes": {
@@ -1119,7 +1124,7 @@
         "ucdpEvents": "UCDP události",
         "displacementFlows": "Toky vysídlení",
         "climateAnomalies": "Klimatické anomálie",
-        "weatherAlerts": "Upozornění na počasí",
+        "weatherAlerts": "Meteorologická varování pro USA (NWS)",
         "strategicWaterways": "Strategické vodní cesty",
         "economicCenters": "Ekonomická centra",
         "criticalMinerals": "Kritické minerály",
@@ -1200,7 +1205,7 @@
           "infraDatacenters": "Výpočetní clustery AI >=10 000 GPU",
           "infraOutages": "Výpadky internetu a narušení služeb",
           "naturalEventsTech": "Zemětřesení, bouře, požáry (mohou ovlivnit datová centra)",
-          "weatherAlerts": "Upozornění na extrémní počasí",
+          "weatherAlerts": "Varování před extrémním počasím v USA (NWS)",
           "economicCenters": "Burzy a centrální banky",
           "countriesOverlay": "Překryv názvů zemí",
           "financeExchanges": "Hlavní světové burzy podle úrovně trhu",
@@ -1212,7 +1217,7 @@
           "financeOutages": "Výpadky internetu, které mohou ovlivnit operace na trzích",
           "financeCyberThreats": "Bezpečnostní události kolem finanční infrastruktury",
           "macroWaterways": "Strategická úzká hrdla pro přepravu komodit",
-          "weatherAlertsMarket": "Události extrémního počasí s tržním významem",
+          "weatherAlertsMarket": "Události extrémního počasí v USA s tržním významem (NWS)",
           "naturalEventsMacro": "Zemětřesení, požáry, záplavy a další přírodní narušení",
           "timeRecent": "Filtrovat data na základě času za poslední hodiny",
           "timeExtended": "Zobrazit data z minulého týdne, měsíce nebo za celou dobu",
@@ -1260,8 +1265,8 @@
       "sectionFollowing": "Following",
       "sectionAll": "All",
       "sourceStates": {
-        "degraded": "degraded",
-        "stale": "stale"
+        "degraded": "snížená kvalita",
+        "stale": "zastaralý"
       }
     },
     "insights": {
@@ -1342,7 +1347,8 @@
       "sources_many": "{{count}} zdrojů",
       "provenanceTitle": "Původ pokrytí: počet příjatých příběhů a odlišných zdrojů, ze kterých byl tento přehled vybrán",
       "compiledFrom": "Sestaveno z {{stories}} příběhů z {{sources}} zdrojů",
-      "briefFreshness": "Vygenerováno před {{minutes}}m · nejnovější zdroj starý {{hours}}h"
+      "briefFreshness": "Vygenerováno před {{minutes}}m · nejnovější zdroj starý {{hours}}h",
+      "briefStoryDetails": "Story details ({{count}})"
     },
     "cascade": {
       "filters": {
@@ -1411,10 +1417,10 @@
         "hoursAgo": "před {{count}} h"
       },
       "infoTooltip": "<strong>Metodika</strong> Kompozitní skóre (0-100) slučující:<ul><li>50 % Nestabilita zemí (váženo top 5)</li><li>30 % Geografické konvergenční zóny</li><li>20 % Incidenty infrastruktury</li></ul>Automaticky se obnovuje každých 5 minut.",
-      "cachedCiiStatus": "Cached CII {{states}}",
+      "cachedCiiStatus": "Mezipaměť CII {{states}}",
       "sourceStates": {
-        "degraded": "degraded",
-        "stale": "stale"
+        "degraded": "snížená kvalita",
+        "stale": "zastaralý"
       },
       "dataFreshness": "Data Freshness",
       "sourcesDetail": "{{active}}/{{total}} sources"
@@ -1542,25 +1548,25 @@
       "candidGrants": "Granty Candid",
       "dataLag": "Zpoždění dat",
       "infoTooltip": "<strong>Index globální dárcovské aktivity</strong> Kompozitní index sledující osobní dárcovství napříč crowdfundingovými platformami a krypto peněženkami.<ul><li><strong>Platformy</strong>: Vzorkování kampaní GoFundMe, GlobalGiving, JustGiving</li><li><strong>Krypto</strong>: Příliv do on-chain charitativních peněženek (Endaoment, Giving Block)</li><li><strong>Institucionální</strong>: OECD ODA, CAF World Giving Index, granty Candid</li></ul>Index je orientační (ne přesné částky v dolarech). Kombinuje živé vzorkování s publikovanými výročními zprávami.",
-      "benchmarkTitle": "Global Giving Benchmarks",
-      "benchmarkInfoTooltip": "<strong>Global Giving Benchmarks</strong> Published platform and institutional claims with source periods and verification status. Annualized figures are estimates, not live activity.",
+      "benchmarkTitle": "Globální srovnávací hodnoty darování",
+      "benchmarkInfoTooltip": "<strong>Globální srovnávací hodnoty darování</strong> Zveřejněná tvrzení platforem a institucí se zdrojovými obdobími a stavem ověření. Anualizované hodnoty jsou odhady, nikoli aktivita v reálném čase.",
       "status": {
-        "published": "Published benchmarks with verified source coverage.",
-        "partial": "Published benchmarks with partial source coverage.",
-        "legacy": "Legacy snapshot; source details are unavailable.",
-        "cached": "Showing a cached snapshot; refresh unavailable."
+        "published": "Zveřejněné srovnávací hodnoty s ověřeným pokrytím zdrojů.",
+        "partial": "Zveřejněné srovnávací hodnoty s částečným pokrytím zdrojů.",
+        "legacy": "Starý snímek; podrobnosti zdroje nejsou k dispozici.",
+        "cached": "Zobrazení snímku z mezipaměti; obnovení není k dispozici."
       },
-      "trackedAnnualized": "Tracked platform giving — annualized estimate",
-      "annualizedDaily": "Annualized daily estimate",
-      "atLeast": "At least",
-      "about": "About",
-      "sourceNotVerified": "Source not verified",
-      "reportedCumulative": "Reported cumulative total",
+      "trackedAnnualized": "Sledované dary platformy — anualizovaný odhad",
+      "annualizedDaily": "Denní anualizovaný odhad",
+      "atLeast": "Nejméně",
+      "about": "Přibližně",
+      "sourceNotVerified": "Zdroj neověřen",
+      "reportedCumulative": "Hlášený kumulativní součet",
       "sourcePeriod": "{{source}} · {{period}}",
-      "benchmark": "Published benchmark",
-      "sourcesMethodology": "Sources & methodology",
-      "methodologyIntro": "Only verified annual or defensibly annualized platform claims enter the headline. Cumulative and institutional figures remain separate context.",
-      "partialEstimate": "Partially verified estimate"
+      "benchmark": "Zveřejněná srovnávací hodnota",
+      "sourcesMethodology": "Zdroje a metodologie",
+      "methodologyIntro": "Do titulku vstupují pouze ověřená roční nebo obhajitelně anualizovaná tvrzení platforem. Kumulativní a institucionální hodnoty zůstávají samostatným kontextem.",
+      "partialEstimate": "Částečně ověřený odhad"
     },
     "displacement": {
       "refugees": "Uprchlíci",
@@ -1600,6 +1606,8 @@
       "relatedAssetsNear": "Související aktiva blízko {{location}}",
       "summaryError": "Shrnutí se nepodařilo vytvořit",
       "summaryFailed": "Shrnutí selhalo",
+      "sourceCoverage": "{{covered}}/{{total}} zdrojů",
+      "sourceCoverageHint": "Zobrazeno {{covered}} z {{total}} zapnutých zdrojů — tento panel své zdroje při každé aktualizaci střídá",
       "sortBy": "Seřadit podle",
       "sortNewest": "Nejnovější",
       "sortRelevance": "Relevance"
@@ -2145,7 +2153,22 @@
       "infoTooltip": "<strong>Kaskáda katastrof</strong> Detekuje konvergující signály přírodních katastrof a infrastruktury:<ul><li>Koreluje zemětřesení, lesní požáry, povodně a extrémní počasí</li><li>Sleduje kaskádovité účinky na infrastrukturu a dodavatelský řetězec</li><li>Zvýrazňuje regiony se skládajícím se rizikem katastrofy</li></ul>Kliknutím na kartu přiblížíte postižený region."
     },
     "markets": {
-      "infoTooltip": "<strong>Trhy</strong> Ceny akcií v reálném čase, kmenové akcie a kryptoměny. Přizpůsobte si seznam sledovaných položek tlačítkem Sledovat. Minigrafy ukazují poslední cenový trend."
+      "infoTooltip": "<strong>Trhy</strong> Ceny akcií v reálném čase, kmenové akcie a kryptoměny. Přizpůsobte si seznam sledovaných položek tlačítkem Sledovat. Minigrafy ukazují poslední cenový trend.",
+      "chart": {
+        "title": "Graf ceny {{symbol}}",
+        "close": "Zavřít graf"
+      },
+      "unavailable": {
+        "symbols": "{{symbols}} — {{reason}}",
+        "symbolsMore": "{{symbols}} +{{count}} more — {{reason}}",
+        "notFound": "no quote available",
+        "providerError": "quote lookup failed, retrying shortly",
+        "rateLimited": "quote provider rate limited, retrying shortly",
+        "notConfigured": "quote provider not configured",
+        "requestLimit": "too many symbols requested",
+        "budget": "not loaded yet, retrying shortly",
+        "seed": "market data temporarily unavailable"
+      }
     },
     "heatmap": {
       "infoTooltip": "<strong>Sektorová heatmapa</strong> Výkonnost sektoru S&P 500 na první pohled. Intenzita barvy odráží velikost denní změny. Zelená = zisky, Červená = ztráty."
@@ -2265,9 +2288,10 @@
           "summaryVerified": "Odemčeno a připraveno, až budete chtít.",
           "channelsNote": "Preferujete Telegram, Slack, Discord nebo webhook?",
           "pointers": {
+            "search": "Prohledat celý panel",
             "widgets": "Vytvořit vlastní widget",
             "analyst": "Zeptat se AI analytika",
-            "apiKeys": "Získat své API a MCP klíče",
+            "mcpClients": "Nastavit MCP",
             "channels": "Nastavte si je v nastavení oznámení"
           }
         }
@@ -2493,43 +2517,91 @@
       }
     },
     "mobileNav": {
-      "panelCategories": "Panel categories"
+      "panelCategories": "Kategorie panelů"
     },
     "panelFreshness": {
       "status": {
-        "fresh": "Fresh",
-        "stale": "Stale",
-        "veryStale": "Very stale",
-        "noData": "No data",
-        "disabled": "Disabled",
-        "error": "Error"
+        "fresh": "Aktuální",
+        "stale": "Zastaralý",
+        "veryStale": "Velmi zastaralý",
+        "noData": "Žádná data",
+        "disabled": "Zakázáno",
+        "error": "Chyba"
       },
       "labelWithAge": "{{status}} {{age}}",
-      "title": "Data freshness: {{status}}. {{sources}}",
+      "title": "Aktuálnost dat: {{status}}. {{sources}}",
       "sourceDetail": "{{name}}: {{status}}, {{update}}",
       "sourceDetailWithHealth": "{{name}}: {{status}}, {{update}}, {{detail}}",
-      "lastUpdated": "last updated {{time}}",
-      "neverUpdated": "never updated",
+      "lastUpdated": "poslední aktualizace {{time}}",
+      "neverUpdated": "nikdy neaktualizováno",
       "health": {
-        "partialCoverage": "partial coverage",
-        "contentStale": "content stale",
-        "seedStale": "seed stale",
-        "noSourceData": "no source data",
-        "sourceErrorReported": "source error reported",
-        "freshnessStoreUnavailable": "freshness store unavailable",
-        "freshnessStoreDegraded": "freshness store degraded"
+        "partialCoverage": "částečné pokrytí",
+        "contentStale": "obsah zastaralý",
+        "seedStale": "seed zastaralý",
+        "noSourceData": "žádná zdrojová data",
+        "sourceErrorReported": "hlášena chyba zdroje",
+        "freshnessStoreUnavailable": "úložiště čerstvosti nedostupné",
+        "freshnessStoreDegraded": "úložiště čerstvosti degradováno"
       },
       "time": {
-        "never": "never",
-        "justNow": "just now",
-        "minutesAgo": "{{count}}m ago",
-        "hoursAgo": "{{count}}h ago",
-        "daysAgo": "{{count}}d ago",
-        "compactNow": "now",
+        "never": "nikdy",
+        "justNow": "právě teď",
+        "minutesAgo": "před {{count}}m",
+        "hoursAgo": "před {{count}}h",
+        "daysAgo": "před {{count}}d",
+        "compactNow": "nyní",
         "compactMinutes": "{{count}}m",
         "compactHours": "{{count}}h",
         "compactDays": "{{count}}d"
       }
+    },
+    "exportGate": {
+      "signedOutDesc": "Přihlaste se pro export dat řídicího panelu jako CSV, JSON nebo PDF.",
+      "upgradeDesc": "Export dat (CSV, JSON, PDF) je součástí Pro Business.",
+      "upgradeCta": "Přejít na Pro Business",
+      "lockedAriaLabel": "Exportovat data — zamčeno. {{reason}}",
+      "unlockedAnnouncement": "Export dat odemčen.",
+      "preparingPdf": "Příprava PDF…",
+      "pdfFailed": "Zprávu PDF nelze vygenerovat. Zkuste to znovu nebo použijte export JSON."
+    },
+    "tabCap": {
+      "signedOutDesc": "Nepřihlášená pracovní prostředí jsou omezena na {{cap}} karet. Přihlaste se pro přidání dalších.",
+      "upgradeDesc": "Dosáhli jste limitu {{cap}} karet řídicího panelu.",
+      "upgradeCta": "Upgradovat pro více",
+      "lockedAriaLabel": "Přidat kartu — zamčeno. {{reason}}",
+      "unlockedAnnouncement": "Limit karet řídicího panelu zrušen."
+    },
+    "fx": {
+      "infoTooltip": "<strong>Kurzy měn</strong> Stres měny a spotové kurzy:<ul><li>FX Stress řadí 45 měn podle jejich největšího poklesu od vrcholu k dnu za posledních 24 měsíců spolu se změnou za 12 měsíců</li><li>Pokrytí zahrnuje ARS, TRY, EGP, NGN, PKR a UAH — měny, které BIS a ECB vynechávají ze svých referenčních sad</li><li>Spot uvádí kurzy vůči dolaru a referenčnímu kurzu eura ECB zvlášť, protože obě sady vycházejí z různých základů</li><li>RUB — kurzy Ruské centrální banky, rublů za jednotku</li></ul> Zdroje: Yahoo Finance, Evropská centrální banka a Ruská centrální banka.",
+      "tabs": {
+        "stress": "FX Stress",
+        "spot": "Spot",
+        "rub": "RUB"
+      },
+      "currency": "Měna",
+      "pair": "Pár",
+      "rate": "Kurs",
+      "yoy": "12m",
+      "drawdown": "24m pokles",
+      "peakToTrough": "Vrchol → Dno",
+      "change1d": "1d",
+      "perUsd": "Za 1 USD",
+      "usdPerUnit": "USD za jednotku",
+      "usdBase": "Vůči americkému dolaru",
+      "eurBase": "Referenční kurzy eura ECB",
+      "stressedCount": "{{stressed}} z {{total}} měn pod {{threshold}}",
+      "sourceYahoo": "Zdroj: Yahoo Finance",
+      "sourceEcb": "Zdroj: ECB",
+      "degraded": "Momentálně nedostupné: {{sources}}. Opakování za chvíli.",
+      "source": {
+        "stress": "Stres směnného kurzu",
+        "usd": "Kurzy amerického dolaru",
+        "eur": "Kurzy eura ECB",
+        "rub": "Kurzy ruské centrální banky"
+      },
+      "rubBase": "Ruská centrální banka — rubly za 1 jednotku",
+      "rubPerUnit": "Rublů za jednotku",
+      "sourceCbr": "Zdroj: Ruská centrální banka"
     }
   },
   "popups": {
@@ -2862,7 +2934,7 @@
       "heading": "SMĚR",
       "hexCode": "HEX KÓD",
       "squawk": "SQUAWK",
-      "attribution": "Zdroj: Síť OpenSky"
+      "attribution": "Zdroj: adsb.lol (ODbL) · OpenSky Network"
     },
     "militaryVessel": {
       "aisDark": "AIS VYP",
@@ -3333,16 +3405,42 @@
     "visualizationFailed": "Vizualizace selhala"
   },
   "dashboardTabs": {
-    "ariaLabel": "Dashboard tabs",
-    "defaultName": "Main",
-    "newTabName": "New Tab",
-    "newTabCreated": "New tab created",
-    "tabDeleted": "Tab \"{{name}}\" deleted",
-    "addTab": "Add tab",
-    "addTabTitle": "New tab (starts with the default panels)",
-    "renameHint": "{{name}} — double-click to rename",
-    "deleteTab": "Delete tab",
-    "deleteTabAria": "Delete tab {{name}}",
-    "tabNameAria": "Tab name"
+    "ariaLabel": "Karty řídicího panelu",
+    "defaultName": "Hlavní",
+    "newTabName": "Nová karta",
+    "newTabCreated": "Nová karta vytvořena",
+    "tabDeleted": "Karta \"{{name}}\" smazána",
+    "addTab": "Přidat kartu",
+    "addTabTitle": "Nová karta (začíná s výchozími panely)",
+    "renameHint": "{{name}} — dvojitým kliknutím přejmenujete",
+    "deleteTab": "Smazat kartu",
+    "deleteTabAria": "Smazat kartu {{name}}",
+    "tabNameAria": "Název karty"
+  },
+  "theaterPresets": {
+    "label": "Balíčky pokrytí",
+    "applied": "Balíček {{preset}} použit: povoleno {{count}} zdrojů",
+    "alreadyApplied": "Balíček {{preset}} je již použit",
+    "ukraineWar": {
+      "label": "Válka na Ukrajině",
+      "description": "Povolit hlavní ukrajinská média, nezávislý ruský tisk a zdroje pro hodnocení fronty"
+    },
+    "indoPacific": {
+      "label": "Indo-pacifický region / Tchaj-wan",
+      "description": "Povolit bezpečnostní zdroje z Tchaj-wanu, Pákistánu a jihovýchodní Asie"
+    },
+    "sahelWestAfrica": {
+      "label": "Sahel a západní Afrika",
+      "description": "Povolit místní zdroje ze Sahelu, Nigérie a západní Afriky"
+    },
+    "caucasusCentralAsia": {
+      "label": "Kavkaz a Střední Asie",
+      "description": "Povolit regionální zdroje z Jižního Kavkazu a Střední Asie"
+    },
+    "middleEastFlashpoints": {
+      "label": "Ohniska napětí na Blízkém východě",
+      "description": "Povolit zdroje z Íránu, Izraele, oblasti Perského zálivu a kurdských regionů"
+    },
+    "unavailable": "Balíček {{preset}} není s aktuálními panely dostupný"
   }
 }

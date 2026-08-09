@@ -5,13 +5,16 @@ import type { GpsJamData } from '@/services/gps-interference';
 import type { ConvergenceCard } from '@/services/correlation-engine';
 import { t } from '@/services/i18n';
 import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
+import { showToast } from '@/utils/toast';
+import { buildDataReportDocument, printReportDocument, sanitizeExportData } from '@/utils/export-report';
+import { SUPPORTED_EXPORT_FORMATS, type DataExportFormat } from '@/services/gates/export-resolver';
 
 // Iran-events domain sunset (war ended 2026-07). Default OFF: omit the IRAN
 // EVENTS CSV block. Set VITE_ENABLE_IRAN_ATTACKS=true to restore. Guarded so
 // node:test never dereferences import.meta.env.
 const IRAN_ATTACKS_ENABLED = typeof window !== 'undefined' && import.meta.env.VITE_ENABLE_IRAN_ATTACKS === 'true';
 
-type ExportFormat = 'json' | 'csv';
+type ExportFormat = DataExportFormat;
 
 export interface ExportMeta {
   exportedAt: string;
@@ -33,42 +36,26 @@ export interface ExportData {
   monitors?: Monitor[];
 }
 
-// Strip LLM-derived threat annotations so AI does not feed back into itself.
-// Keyword and ML (local model) classifications are retained.
-function sanitizeNewsItem(item: NewsItem): NewsItem {
-  if (item.threat?.source !== 'llm') return item;
-  const { threat: _t, ...rest } = item;
-  return rest as NewsItem;
-}
-
-function sanitizeCluster(cluster: ClusteredEvent): ClusteredEvent {
-  return {
-    ...cluster,
-    threat: cluster.threat?.source === 'llm' ? undefined : cluster.threat,
-    allItems: cluster.allItems.map(sanitizeNewsItem),
-  };
-}
-
-function sanitizeData(data: ExportData): ExportData {
-  return {
-    ...data,
-    news: data.news?.map(sanitizeNewsItem),
-    newsClusters: data.newsClusters?.map(sanitizeCluster),
-    newsByCategory: data.newsByCategory
-      ? Object.fromEntries(
-          Object.entries(data.newsByCategory).map(([k, items]) => [k, items.map(sanitizeNewsItem)]),
-        )
-      : undefined,
-  };
-}
+// The LLM-annotation stripper lives in export-report.ts so all three exporters
+// (JSON, CSV, PDF) share one implementation and it can be unit-tested without
+// a DOM. Keyword and ML (local model) classifications are retained.
 
 export function exportToJSON(data: ExportData, filename = 'worldmonitor-export'): void {
-  const jsonStr = JSON.stringify(sanitizeData(data), null, 2);
+  const jsonStr = JSON.stringify(sanitizeExportData(data), null, 2);
   downloadFile(jsonStr, `${filename}.json`, 'application/json');
 }
 
+/**
+ * PDF v1 (KTD7): a printable DATA report, not a dashboard screenshot. The
+ * builder sanitizes and escapes internally; this wrapper only owns the print
+ * surface and its failure toast.
+ */
+export function exportToPDF(data: ExportData): Promise<void> {
+  return printReportDocument(buildDataReportDocument(data));
+}
+
 export function exportToCSV(data: ExportData, filename = 'worldmonitor-export'): void {
-  const clean = sanitizeData(data);
+  const clean = sanitizeExportData(data);
   const lines: string[] = [];
 
   lines.push(`# WorldMonitor Export — ${new Date(clean.timestamp).toISOString()}`);
@@ -757,8 +744,9 @@ export class ExportPanel {
   private element: HTMLElement;
   private isOpen = false;
   private getData: () => ExportData;
+  private availableFormats = new Set<DataExportFormat>();
 
-  constructor(getDataFn: () => ExportData) {
+  constructor(getDataFn: () => ExportData, formats: readonly DataExportFormat[] = SUPPORTED_EXPORT_FORMATS) {
     this.getData = getDataFn;
     this.element = document.createElement('div');
     this.element.className = 'export-panel-container';
@@ -767,10 +755,21 @@ export class ExportPanel {
       <div class="export-menu hidden">
         <button class="export-option" data-format="csv">${t('common.exportCsv')}</button>
         <button class="export-option" data-format="json">${t('common.exportJson')}</button>
+        <button class="export-option" data-format="pdf">${t('common.exportPdf')}</button>
       </div>
     `, "legacy direct innerHTML migration"));
 
+    this.setAvailableFormats(formats);
     this.setupEventListeners();
+  }
+
+  /** Update the menu in place when a live entitlement snapshot changes. */
+  public setAvailableFormats(formats: readonly DataExportFormat[]): void {
+    this.availableFormats = new Set(formats);
+    this.element.querySelectorAll<HTMLButtonElement>('.export-option').forEach((button) => {
+      const format = button.dataset.format as DataExportFormat;
+      button.hidden = !this.availableFormats.has(format);
+    });
   }
 
   private setupEventListeners(): void {
@@ -791,12 +790,41 @@ export class ExportPanel {
 
     this.element.querySelectorAll('.export-option').forEach(option => {
       option.addEventListener('click', () => {
-        const format = (option as HTMLElement).dataset.format as ExportFormat;
+        const button = option as HTMLButtonElement;
+        const format = button.dataset.format as ExportFormat;
+        if (!this.availableFormats.has(format)) return;
+        if (format === 'pdf') {
+          // The report renders and prints asynchronously, so the menu stays
+          // open with the option in a busy state until it settles — and a
+          // failure surfaces a toast instead of the source pattern's silence.
+          void this.exportPdfWithFeedback(button, menu);
+          return;
+        }
         this.export(format);
         this.isOpen = false;
         menu.classList.add('hidden');
       });
     });
+  }
+
+  private async exportPdfWithFeedback(button: HTMLButtonElement, menu: Element): Promise<void> {
+    if (button.disabled) return;
+    const label = button.textContent;
+    button.disabled = true;
+    button.classList.add('is-exporting');
+    button.textContent = t('components.exportGate.preparingPdf');
+    try {
+      await exportToPDF(this.getData());
+    } catch (err) {
+      console.warn('[export] PDF report failed:', err);
+      showToast(t('components.exportGate.pdfFailed'));
+    } finally {
+      button.disabled = false;
+      button.classList.remove('is-exporting');
+      button.textContent = label;
+      this.isOpen = false;
+      menu.classList.add('hidden');
+    }
   }
 
   private export(format: ExportFormat): void {

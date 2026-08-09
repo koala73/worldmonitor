@@ -129,17 +129,20 @@
       "currencies": "العملات",
       "area": "المساحة"
     },
-    "loadingResilienceScore": "Loading resilience score…",
-    "resilienceScoreUnavailable": "Resilience score unavailable.",
+    "loadingResilienceScore": "جارٍ تحميل درجة المرونة…",
+    "resilienceScoreUnavailable": "درجة المرونة غير متاحة.",
     "china": {
       "title": "لمحة قطرية عن الصين",
       "description": "الوضع الحالي للاقتصاد الكلي والأسواق والتجارة والطاقة والتوافر التشغيلي من عقود البيانات العامة القائمة.",
-      "macroPolicy": "الاقتصاد الكلي والسياسات",
-      "marketCredit": "السوق والائتمان",
-      "tradeSupply": "التجارة وسلاسل الإمداد",
+      "policyEvents": "السياسة والتطبيق",
       "energy": "الطاقة",
       "availability": "المخاطر والطيران",
       "observed": "اعتبارًا من:",
+      "published": "نُشر:",
+      "effective": "نافذ:",
+      "sectors": "القطاعات:",
+      "entities": "الجهات:",
+      "translation": "الترجمة:",
       "source": "المصدر:",
       "imfGrowth": "توقعات النمو من صندوق النقد الدولي",
       "creditGdp": "الائتمان إلى الناتج المحلي الإجمالي",
@@ -148,8 +151,6 @@
       "gasDemand": "الطلب على الغاز",
       "energyMix": "مزيج الكهرباء",
       "coal": "الفحم",
-      "aviationAvailability": "توافر الطيران",
-      "hazardAvailability": "توافر بيانات المخاطر",
       "noMajorDisruptions": "لم يُبلَّغ عن اضطرابات كبيرة",
       "activeDisruptions_zero": "لا توجد اضطرابات نشطة",
       "activeDisruptions_one": "اضطراب نشط واحد",
@@ -169,18 +170,21 @@
       "ccfiSource": "بورصة شنغهاي للشحن",
       "comtradeSource": "قاعدة الأمم المتحدة كومتريد، الجهة المبلغة 156",
       "sourceUnavailable": "المصدر غير متاح",
-      "macroUnavailable": "بيانات الاقتصاد الكلي والسياسات غير متاحة حاليًا.",
-      "marketUnavailable": "بيانات السوق والائتمان غير متاحة حاليًا.",
-      "tradeUnavailable": "بيانات التجارة وسلاسل الإمداد غير متاحة حاليًا.",
-      "energyUnavailable": "بيانات الطاقة غير متاحة حاليًا.",
-      "availabilityUnavailable": "بيانات توافر المخاطر والطيران غير متاحة حاليًا.",
+      "policyUnavailable": "Official policy and enforcement events are currently unavailable.",
+      "policyPartial": "{{count}} official agencies are temporarily degraded.",
       "status": {
         "loading": "جارٍ التحميل",
         "available": "متاح",
         "partial": "جزئي",
         "stale": "قديم",
         "unavailable": "غير متاح"
-      }
+      },
+      "macroSignals": "الإشارات الكلية",
+      "crossStraitActivity": "النشاط عبر المضيق",
+      "corporateDisclosures": "الإفصاحات المؤسسية",
+      "corridorConditions": "أحوال الممرات",
+      "activityNowcast": "التنبؤ الآني للنشاط",
+      "decisionSignalsUnavailable": "لقطة إشارات قرار الصين غير متاحة حالياً."
     }
   },
   "header": {
@@ -261,7 +265,7 @@
     "panelCatCommodityEcon": "الاقتصاد والتجارة",
     "panelCatHappyNews": "أخبار إيجابية",
     "panelCatHappyPlanet": "الكوكب والعطاء",
-    "embed": "Embed"
+    "embed": "تضمين"
   },
   "panels": {
     "liveNews": "أخبار مباشرة",
@@ -369,7 +373,8 @@
     "airlineIntel": "✈️ ذكاء الخطوط الجوية",
     "consumerPrices": "أسعار المستهلك",
     "marketBreadth": "اتساع السوق",
-    "climateNews": "أخبار المناخ"
+    "climateNews": "أخبار المناخ",
+    "fx": "أسعار الصرف"
   },
   "commands": {
     "prefixes": {
@@ -848,7 +853,7 @@
       "fytdLabel": "السنة المالية {{year}} حتى الآن",
       "vsPriorFy": "مقابل السنة المالية {{year}}",
       "sourceWto": "منظمة التجارة العالمية",
-      "sourceTreasury": "خزانة الولايات المتحدة",
+      "sourceTreasury": "وزارة الخزانة الأمريكية",
       "colDate": "التاريخ",
       "colMonthly": "شهري",
       "colFytd": "السنة المالية حتى الآن",
@@ -1092,7 +1097,7 @@
         "ucdpEvents": "أحداث UCDP",
         "displacementFlows": "تدفقات النزوح",
         "climateAnomalies": "شذوذات مناخية",
-        "weatherAlerts": "تنبيهات الطقس",
+        "weatherAlerts": "تنبيهات الطقس في الولايات المتحدة (NWS)",
         "strategicWaterways": "ممرات مائية استراتيجية",
         "economicCenters": "مراكز اقتصادية",
         "criticalMinerals": "معادن حيوية",
@@ -1173,7 +1178,7 @@
           "infraDatacenters": "مجموعات حوسبة AI بـ 10,000+ GPU",
           "infraOutages": "انقطاعات الإنترنت وتعطل الخدمات",
           "naturalEventsTech": "زلازل وعواصف وحرائق (قد تؤثر على مراكز البيانات)",
-          "weatherAlerts": "تنبيهات طقس شديد",
+          "weatherAlerts": "تنبيهات الطقس الشديد في الولايات المتحدة (NWS)",
           "economicCenters": "بورصات وبنوك مركزية",
           "countriesOverlay": "طبقة أسماء الدول",
           "financeExchanges": "البورصات العالمية الرئيسية حسب الفئة السوقية",
@@ -1185,7 +1190,7 @@
           "financeOutages": "انقطاعات إنترنت قد تؤثر على عمليات الأسواق",
           "financeCyberThreats": "أحداث أمنية حول البنية التحتية المالية",
           "macroWaterways": "نقاط اختناق استراتيجية لشحن السلع",
-          "weatherAlertsMarket": "أحداث طقس شديد ذات صلة بالأسواق",
+          "weatherAlertsMarket": "أحداث الطقس الشديد في الولايات المتحدة ذات الصلة بالأسواق (NWS)",
           "naturalEventsMacro": "زلازل وحرائق وفيضانات وكوارث طبيعية أخرى",
           "timeRecent": "تصفية البيانات الزمنية للساعات الأخيرة",
           "timeExtended": "عرض بيانات الأسبوع أو الشهر الماضي أو الكل",
@@ -1233,8 +1238,8 @@
       "sectionFollowing": "Following",
       "sectionAll": "All",
       "sourceStates": {
-        "degraded": "degraded",
-        "stale": "stale"
+        "degraded": "متدهور",
+        "stale": "قديم"
       }
     },
     "insights": {
@@ -1317,7 +1322,8 @@
       "sources_many": "{{count}} مصدر",
       "provenanceTitle": "أصل التغطية: عدد القصص المأخوذة والمصادر المميزة التي تم اختيار هذا الملخص منها",
       "compiledFrom": "مجمّع من {{stories}} قصة عبر {{sources}} مصادر",
-      "briefFreshness": "تم الإنشاء منذ {{minutes}}د · أحدث مصدر عمره {{hours}}س"
+      "briefFreshness": "تم الإنشاء منذ {{minutes}}د · أحدث مصدر عمره {{hours}}س",
+      "briefStoryDetails": "Story details ({{count}})"
     },
     "cascade": {
       "filters": {
@@ -1386,10 +1392,10 @@
         "minutesAgo": "{{count}}m ago",
         "hoursAgo": "{{count}}h ago"
       },
-      "cachedCiiStatus": "Cached CII {{states}}",
+      "cachedCiiStatus": "CII مخزن مؤقتاً {{states}}",
       "sourceStates": {
-        "degraded": "degraded",
-        "stale": "stale"
+        "degraded": "متدهور",
+        "stale": "قديم"
       },
       "dataFreshness": "Data Freshness",
       "sourcesDetail": "{{active}}/{{total}} sources"
@@ -1496,6 +1502,8 @@
       "relatedAssetsNear": "أصول ذات صلة بالقرب من {{location}}",
       "summaryError": "تعذّر إنشاء الملخص",
       "summaryFailed": "فشل التلخيص",
+      "sourceCoverage": "{{covered}}/{{total}} مصدر",
+      "sourceCoverageHint": "يعرض {{covered}} من أصل {{total}} مصدرًا مفعّلًا — تتناوب هذه اللوحة على مصادرها مع كل تحديث",
       "sortBy": "ترتيب حسب",
       "sortNewest": "الأحدث",
       "sortRelevance": "الصلة"
@@ -1784,25 +1792,25 @@
       "trending": "رائج",
       "velocity": "السرعة",
       "wallets": "المحافظ",
-      "benchmarkTitle": "Global Giving Benchmarks",
-      "benchmarkInfoTooltip": "<strong>Global Giving Benchmarks</strong> Published platform and institutional claims with source periods and verification status. Annualized figures are estimates, not live activity.",
+      "benchmarkTitle": "معايير التبرع العالمية",
+      "benchmarkInfoTooltip": "<strong>معايير التبرع العالمية</strong> بيانات المنصات والمؤسسات المنشورة مع فترات المصادر وحالة التحقق. الأرقام السنوية تقديرية وليست نشاطاً فورياً.",
       "status": {
-        "published": "Published benchmarks with verified source coverage.",
-        "partial": "Published benchmarks with partial source coverage.",
-        "legacy": "Legacy snapshot; source details are unavailable.",
-        "cached": "Showing a cached snapshot; refresh unavailable."
+        "published": "معايير منشورة مع تغطية مصدر موثقة.",
+        "partial": "معايير منشورة مع تغطية مصدر جزئية.",
+        "legacy": "لقطة قديمة؛ تفاصيل المصدر غير متاحة.",
+        "cached": "عرض لقطة مخزنة مؤقتاً؛ التحديث غير متاح."
       },
-      "trackedAnnualized": "Tracked platform giving — annualized estimate",
-      "annualizedDaily": "Annualized daily estimate",
-      "atLeast": "At least",
-      "about": "About",
-      "sourceNotVerified": "Source not verified",
-      "reportedCumulative": "Reported cumulative total",
+      "trackedAnnualized": "تبرعات المنصة المتتبعة — تقدير سنوي",
+      "annualizedDaily": "تقدير يومي سنوي",
+      "atLeast": "على الأقل",
+      "about": "حوالي",
+      "sourceNotVerified": "المصدر غير موثق",
+      "reportedCumulative": "الإجمالي التراكمي المُبلَّغ عنه",
       "sourcePeriod": "{{source}} · {{period}}",
-      "benchmark": "Published benchmark",
-      "sourcesMethodology": "Sources & methodology",
-      "methodologyIntro": "Only verified annual or defensibly annualized platform claims enter the headline. Cumulative and institutional figures remain separate context.",
-      "partialEstimate": "Partially verified estimate"
+      "benchmark": "معيار منشور",
+      "sourcesMethodology": "المصادر والمنهجية",
+      "methodologyIntro": "تدخل العنوان الرئيسي فقط بيانات المنصات السنوية الموثقة أو المحسوبة سنوياً بصورة مقبولة. تبقى الأرقام التراكمية والمؤسسية سياقاً منفصلاً.",
+      "partialEstimate": "تقدير موثق جزئياً"
     },
     "supplyChain": {
       "chokepoints": "نقاط الاختناق",
@@ -2163,7 +2171,22 @@
       "infoTooltip": "<strong>تسلسل الكوارث</strong> يكتشف الكوارث الطبيعية وإشارات البنية التحتية المتقاربة:<ul><li>يربط الزلازل والحرائق البرية والفيضانات والطقس الشديد</li><li>يتتبع الآثار المتسلسلة على البنية التحتية وسلسلة التوريد</li><li>يبرز المناطق ذات مخاطر الكوارث المركبة</li></ul>انقر على بطاقة للتكبير على المنطقة المتأثرة."
     },
     "markets": {
-      "infoTooltip": "<strong>الأسواق</strong> مؤشرات الأسهم والأسهم والأسعار المشفرة في الوقت الفعلي. خصص قائمة المراقبة الخاصة بك باستخدام زر قائمة المراقبة. تعرض الرسوم البيانية الصغيرة اتجاه السعر الأخير."
+      "infoTooltip": "<strong>الأسواق</strong> مؤشرات الأسهم والأسهم والأسعار المشفرة في الوقت الفعلي. خصص قائمة المراقبة الخاصة بك باستخدام زر قائمة المراقبة. تعرض الرسوم البيانية الصغيرة اتجاه السعر الأخير.",
+      "chart": {
+        "title": "مخطط سعر {{symbol}}",
+        "close": "إغلاق المخطط"
+      },
+      "unavailable": {
+        "symbols": "{{symbols}} — {{reason}}",
+        "symbolsMore": "{{symbols}} +{{count}} more — {{reason}}",
+        "notFound": "no quote available",
+        "providerError": "quote lookup failed, retrying shortly",
+        "rateLimited": "quote provider rate limited, retrying shortly",
+        "notConfigured": "quote provider not configured",
+        "requestLimit": "too many symbols requested",
+        "budget": "not loaded yet, retrying shortly",
+        "seed": "market data temporarily unavailable"
+      }
     },
     "heatmap": {
       "infoTooltip": "<strong>خريطة حرارية للقطاعات</strong> أداء قطاع S&P 500 في لمحة. يعكس كثافة اللون مقدار التغيير اليومي. الأخضر = أرباح، الأحمر = خسائر."
@@ -2283,9 +2306,10 @@
           "summaryVerified": "غير مقفلة وجاهزة عندما تكون جاهزًا.",
           "channelsNote": "تفضّل Telegram أو Slack أو Discord أو webhook؟",
           "pointers": {
+            "search": "البحث في لوحة المعلومات بالكامل",
             "widgets": "إنشاء أداة مخصصة",
             "analyst": "اسأل المحلل الذكي",
-            "apiKeys": "احصل على مفاتيح API و MCP الخاصة بك",
+            "mcpClients": "إعداد MCP",
             "channels": "أعدّها في إعدادات الإشعارات"
           }
         }
@@ -2529,43 +2553,91 @@
       }
     },
     "mobileNav": {
-      "panelCategories": "Panel categories"
+      "panelCategories": "فئات اللوحات"
     },
     "panelFreshness": {
       "status": {
-        "fresh": "Fresh",
-        "stale": "Stale",
-        "veryStale": "Very stale",
-        "noData": "No data",
-        "disabled": "Disabled",
-        "error": "Error"
+        "fresh": "حديث",
+        "stale": "قديم",
+        "veryStale": "قديم جداً",
+        "noData": "لا توجد بيانات",
+        "disabled": "معطّل",
+        "error": "خطأ"
       },
       "labelWithAge": "{{status}} {{age}}",
-      "title": "Data freshness: {{status}}. {{sources}}",
+      "title": "حداثة البيانات: {{status}}. {{sources}}",
       "sourceDetail": "{{name}}: {{status}}, {{update}}",
       "sourceDetailWithHealth": "{{name}}: {{status}}, {{update}}, {{detail}}",
-      "lastUpdated": "last updated {{time}}",
-      "neverUpdated": "never updated",
+      "lastUpdated": "آخر تحديث {{time}}",
+      "neverUpdated": "لم يُحدَّث قط",
       "health": {
-        "partialCoverage": "partial coverage",
-        "contentStale": "content stale",
-        "seedStale": "seed stale",
-        "noSourceData": "no source data",
-        "sourceErrorReported": "source error reported",
-        "freshnessStoreUnavailable": "freshness store unavailable",
-        "freshnessStoreDegraded": "freshness store degraded"
+        "partialCoverage": "تغطية جزئية",
+        "contentStale": "المحتوى قديم",
+        "seedStale": "البذرة قديمة",
+        "noSourceData": "لا توجد بيانات مصدر",
+        "sourceErrorReported": "تم الإبلاغ عن خطأ في المصدر",
+        "freshnessStoreUnavailable": "مخزن الحداثة غير متاح",
+        "freshnessStoreDegraded": "مخزن الحداثة متدهور"
       },
       "time": {
-        "never": "never",
-        "justNow": "just now",
-        "minutesAgo": "{{count}}m ago",
-        "hoursAgo": "{{count}}h ago",
-        "daysAgo": "{{count}}d ago",
-        "compactNow": "now",
-        "compactMinutes": "{{count}}m",
-        "compactHours": "{{count}}h",
-        "compactDays": "{{count}}d"
+        "never": "أبداً",
+        "justNow": "الآن",
+        "minutesAgo": "منذ {{count}}د",
+        "hoursAgo": "منذ {{count}}س",
+        "daysAgo": "منذ {{count}}ي",
+        "compactNow": "الآن",
+        "compactMinutes": "{{count}}د",
+        "compactHours": "{{count}}س",
+        "compactDays": "{{count}}ي"
       }
+    },
+    "exportGate": {
+      "signedOutDesc": "سجّل الدخول لتصدير بيانات لوحة التحكم بصيغة CSV أو JSON أو PDF.",
+      "upgradeDesc": "تصدير البيانات (CSV، JSON، PDF) مدرج في Pro Business.",
+      "upgradeCta": "الترقية إلى Pro Business",
+      "lockedAriaLabel": "تصدير البيانات — مقفل. {{reason}}",
+      "unlockedAnnouncement": "تم إلغاء قفل تصدير البيانات.",
+      "preparingPdf": "جارٍ إعداد PDF…",
+      "pdfFailed": "تعذّر إنشاء تقرير PDF. حاول مرة أخرى أو استخدم تصدير JSON."
+    },
+    "tabCap": {
+      "signedOutDesc": "مساحات العمل غير المسجّلة محدودة بـ {{cap}} علامة تبويب. سجّل الدخول لإضافة المزيد.",
+      "upgradeDesc": "لقد وصلت إلى حدّك البالغ {{cap}} علامة تبويب.",
+      "upgradeCta": "ترقية للمزيد",
+      "lockedAriaLabel": "إضافة علامة تبويب — مقفل. {{reason}}",
+      "unlockedAnnouncement": "تم رفع حد علامات التبويب."
+    },
+    "fx": {
+      "infoTooltip": "<strong>أسعار الصرف</strong> ضغوط العملات وأسعار الفورية:<ul><li>يصنف ضغط الصرف 45 عملة حسب أسوأ انخفاض من القمة إلى القاع على مدار آخر 24 شهراً، إلى جانب التغير على مدار 12 شهراً</li><li>يشمل التغطية الجنيه الأرجنتيني والليرة التركية والجنيه المصري والنيرة النيجيرية والروبية الباكستانية والهريفنيا الأوكرانية — العملات التي تستبعدها مجموعات المراجع الخاصة بالبنك الدولي والبنك المركزي الأوروبي</li><li>تسرد الأسعار الفورية الأسعار مقابل الدولار الأمريكي وأسعار مرجع اليورو للبنك المركزي الأوروبي بشكل منفصل، لأن الاثنين يتم الاستشهاد بهما من قواعد مختلفة</li><li>RUB — أسعار بنك روسيا، روبل لكل وحدة</li></ul> المصادر: Yahoo Finance والبنك المركزي الأوروبي وبنك روسيا.",
+      "tabs": {
+        "stress": "ضغط الصرف",
+        "spot": "الفورية",
+        "rub": "RUB"
+      },
+      "currency": "العملة",
+      "pair": "الزوج",
+      "rate": "السعر",
+      "yoy": "12 شهراً",
+      "drawdown": "الانخفاض على 24 شهراً",
+      "peakToTrough": "القمة → القاع",
+      "change1d": "يوم واحد",
+      "perUsd": "لكل 1 دولار أمريكي",
+      "usdPerUnit": "دولار أمريكي لكل وحدة",
+      "usdBase": "مقابل الدولار الأمريكي",
+      "eurBase": "أسعار مرجع اليورو للبنك المركزي الأوروبي",
+      "stressedCount": "{{stressed}} من {{total}} عملات دون {{threshold}}",
+      "sourceYahoo": "المصدر: Yahoo Finance",
+      "sourceEcb": "المصدر: البنك المركزي الأوروبي",
+      "degraded": "غير متاح الآن: {{sources}}. إعادة المحاولة قريباً.",
+      "source": {
+        "stress": "ضغط الصرف الأجنبي",
+        "usd": "أسعار الدولار الأمريكي",
+        "eur": "أسعار اليورو من البنك المركزي الأوروبي",
+        "rub": "أسعار بنك روسيا"
+      },
+      "rubBase": "بنك روسيا — روبل لكل وحدة واحدة",
+      "rubPerUnit": "روبل لكل وحدة",
+      "sourceCbr": "المصدر: بنك روسيا"
     }
   },
   "popups": {
@@ -2898,7 +2970,7 @@
       "heading": "الاتجاه",
       "hexCode": "الرمز السداسي",
       "squawk": "رمز الاستجابة",
-      "attribution": "المصدر: OpenSky Network"
+      "attribution": "المصدر: adsb.lol (ODbL) · OpenSky Network"
     },
     "militaryVessel": {
       "aisDark": "AIS مظلم",
@@ -3369,16 +3441,42 @@
     "visualizationFailed": "فشل التصور"
   },
   "dashboardTabs": {
-    "ariaLabel": "Dashboard tabs",
-    "defaultName": "Main",
-    "newTabName": "New Tab",
-    "newTabCreated": "New tab created",
-    "tabDeleted": "Tab \"{{name}}\" deleted",
-    "addTab": "Add tab",
-    "addTabTitle": "New tab (starts with the default panels)",
-    "renameHint": "{{name}} — double-click to rename",
-    "deleteTab": "Delete tab",
-    "deleteTabAria": "Delete tab {{name}}",
-    "tabNameAria": "Tab name"
+    "ariaLabel": "علامات تبويب لوحة التحكم",
+    "defaultName": "الرئيسية",
+    "newTabName": "علامة تبويب جديدة",
+    "newTabCreated": "تم إنشاء علامة تبويب جديدة",
+    "tabDeleted": "تم حذف علامة التبويب \"{{name}}\"",
+    "addTab": "إضافة علامة تبويب",
+    "addTabTitle": "علامة تبويب جديدة (تبدأ بالألواح الافتراضية)",
+    "renameHint": "{{name}} — انقر نقراً مزدوجاً لإعادة التسمية",
+    "deleteTab": "حذف علامة التبويب",
+    "deleteTabAria": "حذف علامة التبويب {{name}}",
+    "tabNameAria": "اسم علامة التبويب"
+  },
+  "theaterPresets": {
+    "label": "مجموعات التغطية",
+    "applied": "تم تطبيق مجموعة {{preset}}: تمكين {{count}} من المصادر",
+    "alreadyApplied": "تم تطبيق مجموعة {{preset}} بالفعل",
+    "ukraineWar": {
+      "label": "حرب أوكرانيا",
+      "description": "تمكين المصادر الأوكرانية الأساسية والصحافة الروسية المستقلة ومصادر تقييم الجبهة"
+    },
+    "indoPacific": {
+      "label": "المحيطان الهندي والهادئ / تايوان",
+      "description": "تمكين مصادر الأمن في تايوان وباكستان وجنوب شرق آسيا"
+    },
+    "sahelWestAfrica": {
+      "label": "الساحل وغرب أفريقيا",
+      "description": "تمكين المصادر المحلية في الساحل ونيجيريا وغرب أفريقيا"
+    },
+    "caucasusCentralAsia": {
+      "label": "القوقاز وآسيا الوسطى",
+      "description": "تمكين المصادر الإقليمية في جنوب القوقاز وآسيا الوسطى"
+    },
+    "middleEastFlashpoints": {
+      "label": "بؤر التوتر في الشرق الأوسط",
+      "description": "تمكين مصادر إيران وإسرائيل والخليج والمنطقة الكردية"
+    },
+    "unavailable": "مجموعة {{preset}} غير متاحة مع لوحاتك الحالية"
   }
 }

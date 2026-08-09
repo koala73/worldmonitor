@@ -6,39 +6,13 @@
     <!-- The app fires a CORS /api/me/entitlement fetch right after boot;
          warming DNS+TLS here takes the connection setup off that path. -->
     <link rel="preconnect" href="https://api.worldmonitor.app" crossorigin />
-    <!-- Tag <html> with .js so the seo-prerender content (visible by default
-         for AEO scanners that don't execute JS) is CSS-hidden for real users.
-         Mirrors the same pattern in the SPA's index.html. -->
-    <script>document.documentElement.classList.add('js')</script>
-    <style>html.js #seo-prerender{position:absolute;left:-9999px;top:-9999px;width:1px;height:1px;overflow:hidden}</style>
-    <title>World Monitor Pro — AI Analyst, Personal Intelligence Desk, MCP for Claude & GPT</title>
-    <meta name="description" content="The geopolitical AI layer. Ask it, subscribe to it, build on it. WM Analyst chat across 30+ live services, an AI digest delivered daily, twice-daily, or weekly to Slack, Discord, Telegram, Email, or webhook, a custom widget builder (HTML/CSS/JS + AI), and MCP connectors for Claude, GPT, and custom LLMs." />
+    <title>World Monitor Pro | AI Intelligence &amp; MCP</title>
+    <meta name="description" content="World Monitor Pro adds an AI analyst, scheduled intelligence digests, custom widgets, market research, and MCP access to live geopolitical and financial data." />
     <meta name="keywords" content="AI analyst, geopolitical intelligence, MCP, Model Context Protocol, Claude integration, GPT integration, AI digest, intelligence platform, custom widget builder, equity research, macro analytics, Slack alerts, Discord alerts, Telegram alerts, flight search, market watchlist, central bank tracking" />
     <link rel="canonical" href="https://www.worldmonitor.app/pro" />
     <link rel="alternate" hreflang="x-default" href="https://www.worldmonitor.app/pro" />
     <link rel="alternate" hreflang="en" href="https://www.worldmonitor.app/pro" />
-    <link rel="alternate" hreflang="ar" href="https://www.worldmonitor.app/pro?lang=ar" />
-    <link rel="alternate" hreflang="fa" href="https://www.worldmonitor.app/pro?lang=fa" />
-    <link rel="alternate" hreflang="de" href="https://www.worldmonitor.app/pro?lang=de" />
-    <link rel="alternate" hreflang="es" href="https://www.worldmonitor.app/pro?lang=es" />
-    <link rel="alternate" hreflang="fr" href="https://www.worldmonitor.app/pro?lang=fr" />
-    <link rel="alternate" hreflang="it" href="https://www.worldmonitor.app/pro?lang=it" />
-    <link rel="alternate" hreflang="ja" href="https://www.worldmonitor.app/pro?lang=ja" />
-    <link rel="alternate" hreflang="ko" href="https://www.worldmonitor.app/pro?lang=ko" />
-    <link rel="alternate" hreflang="pt" href="https://www.worldmonitor.app/pro?lang=pt" />
-    <link rel="alternate" hreflang="ru" href="https://www.worldmonitor.app/pro?lang=ru" />
-    <link rel="alternate" hreflang="tr" href="https://www.worldmonitor.app/pro?lang=tr" />
-    <link rel="alternate" hreflang="bg" href="https://www.worldmonitor.app/pro?lang=bg" />
-    <link rel="alternate" hreflang="cs" href="https://www.worldmonitor.app/pro?lang=cs" />
-    <link rel="alternate" hreflang="el" href="https://www.worldmonitor.app/pro?lang=el" />
-    <link rel="alternate" hreflang="nl" href="https://www.worldmonitor.app/pro?lang=nl" />
-    <link rel="alternate" hreflang="pl" href="https://www.worldmonitor.app/pro?lang=pl" />
-    <link rel="alternate" hreflang="ro" href="https://www.worldmonitor.app/pro?lang=ro" />
-    <link rel="alternate" hreflang="sv" href="https://www.worldmonitor.app/pro?lang=sv" />
-    <link rel="alternate" hreflang="th" href="https://www.worldmonitor.app/pro?lang=th" />
-    <link rel="alternate" hreflang="vi" href="https://www.worldmonitor.app/pro?lang=vi" />
-    <link rel="alternate" hreflang="zh" href="https://www.worldmonitor.app/pro?lang=zh" />
-    <meta property="og:title" content="World Monitor Pro — The Geopolitical AI Layer" />
+    <meta property="og:title" content="World Monitor Pro | Geopolitical AI" />
     <meta property="og:description" content="Ask it, subscribe to it, build on it. WM Analyst chat, an AI digest on your schedule (daily, twice-daily, or weekly), custom widget builder, and MCP for Claude/GPT — across 30+ live services under one key." />
     <meta property="og:type" content="website" />
     <meta property="og:url" content="https://www.worldmonitor.app/pro" />
@@ -51,7 +25,7 @@
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:site" content="@worldmonitorai" />
     <meta name="twitter:creator" content="@worldmonitorai" />
-    <meta name="twitter:title" content="World Monitor Pro — The Geopolitical AI Layer" />
+    <meta name="twitter:title" content="World Monitor Pro | Geopolitical AI" />
     <meta name="twitter:description" content="Ask it, subscribe to it, build on it. WM Analyst, AI digest (daily/twice-daily/weekly), custom widget builder, MCP for Claude/GPT. 30+ services, one key." />
     <link rel="icon" type="image/png" href="https://www.worldmonitor.app/favico/favicon-32x32.png" />
     <script type="application/ld+json">
@@ -63,23 +37,155 @@
       "operatingSystem": "Web, Windows, macOS, Linux, Android TV",
       "url": "https://worldmonitor.app",
       "description": "AI-native global intelligence platform. WM Analyst chat across 30+ live services, an AI digest delivered daily, twice-daily, or weekly to Slack, Discord, Telegram, Email, or webhook, custom widget builder, and MCP connectors for Claude, GPT, and custom LLMs.",
-      "sameAs": ["https://github.com/koala73/worldmonitor", "https://www.npmjs.com/package/worldmonitor"],
+      "sameAs": [
+        "https://github.com/koala73/worldmonitor",
+        "https://www.npmjs.com/package/worldmonitor"
+      ],
       "author": {
         "@type": "Person",
         "name": "Elie Habib",
         "url": "https://x.com/eliehabib",
         "jobTitle": "CEO",
-        "sameAs": ["https://x.com/eliehabib", "https://github.com/koala73", "https://www.linkedin.com/in/elie-habib-7047b931", "https://www.wikidata.org/wiki/Q121365724", "https://www.crunchbase.com/person/elie-habib-2"]
+        "sameAs": [
+          "https://x.com/eliehabib",
+          "https://github.com/koala73",
+          "https://www.linkedin.com/in/elie-habib-7047b931",
+          "https://www.wikidata.org/wiki/Q121365724",
+          "https://www.crunchbase.com/person/elie-habib-2"
+        ]
       },
       "screenshot": "https://www.worldmonitor.app/favico/og-image.png",
       "datePublished": "2026-01",
       "offers": [
-        { "@type": "Offer", "price": "0", "priceCurrency": "USD", "name": "Free", "description": "Core dashboard panels, Global news feed, Earthquake & weather alerts, Basic map view" },
-        { "@type": "Offer", "price": "39.99", "priceCurrency": "USD", "name": "Pro Monthly", "description": "Everything in Free, AI stock analysis & backtesting, Daily market briefs, Military & geopolitical tracking, Custom widget builder, MCP + SDK access for Claude Desktop & other AI clients (50 calls/day), Priority data refresh" },
-        { "@type": "Offer", "price": "399.99", "priceCurrency": "USD", "name": "Pro Annual", "description": "Pro yearly plan — 2 months free vs monthly billing" },
-        { "@type": "Offer", "price": "99.99", "priceCurrency": "USD", "name": "API Starter Monthly", "description": "REST API + official SDKs (npm, PyPI, RubyGems, Go), License / API key included, Real-time data streams, 60 requests/minute, 1,000 requests/day included, Webhook notifications, No commercial use" },
-        { "@type": "Offer", "price": "999", "priceCurrency": "USD", "name": "API Starter Annual", "description": "API Starter yearly plan — about 17% off vs monthly billing" },
-        { "@type": "Offer", "price": "299.99", "priceCurrency": "USD", "name": "API Business", "description": "Everything in API Starter, 300 requests/minute, 10,000 requests/day included, 5 Pro licenses included, Same company email required, Priority support, Commercial use applicable" }
+        {
+          "@type": "Offer",
+          "name": "Free",
+          "price": "0",
+          "priceCurrency": "USD",
+          "availability": "https://schema.org/InStock",
+          "url": "https://www.worldmonitor.app/pro#pricing",
+          "description": "Core dashboard panels, Global news feed, Earthquake & weather alerts, Basic map view, 3 dashboard tabs"
+        },
+        {
+          "@type": "Offer",
+          "name": "Pro Monthly",
+          "price": "39.99",
+          "priceCurrency": "USD",
+          "availability": "https://schema.org/InStock",
+          "url": "https://www.worldmonitor.app/pro#pricing",
+          "description": "Everything in Free, AI stock analysis & backtesting, Daily market briefs, Military & geopolitical tracking, Custom widget builder, 10 custom dashboards (vs 3), MCP + SDK access for Claude Desktop & other AI clients (50 calls/day), Priority data refresh, Personal license",
+          "priceSpecification": {
+            "@type": "UnitPriceSpecification",
+            "price": "39.99",
+            "priceCurrency": "USD",
+            "billingDuration": "P1M"
+          }
+        },
+        {
+          "@type": "Offer",
+          "name": "Pro Annual",
+          "price": "359.99",
+          "priceCurrency": "USD",
+          "availability": "https://schema.org/InStock",
+          "url": "https://www.worldmonitor.app/pro#pricing",
+          "description": "",
+          "priceSpecification": {
+            "@type": "UnitPriceSpecification",
+            "price": "359.99",
+            "priceCurrency": "USD",
+            "billingDuration": "P1Y"
+          }
+        },
+        {
+          "@type": "Offer",
+          "name": "Pro Business Monthly",
+          "price": "49.99",
+          "priceCurrency": "USD",
+          "availability": "https://schema.org/InStock",
+          "url": "https://www.worldmonitor.app/pro#pricing",
+          "description": "Everything in Pro, Use for client work, internal tools & reporting, Data export — CSV, JSON & PDF reports, 25 custom dashboards (vs 10), MCP + SDK: 250 calls/day (vs 50), Priority support, Commercial license included",
+          "priceSpecification": {
+            "@type": "UnitPriceSpecification",
+            "price": "49.99",
+            "priceCurrency": "USD",
+            "billingDuration": "P1M"
+          }
+        },
+        {
+          "@type": "Offer",
+          "name": "Pro Business Annual",
+          "price": "449.99",
+          "priceCurrency": "USD",
+          "availability": "https://schema.org/InStock",
+          "url": "https://www.worldmonitor.app/pro#pricing",
+          "description": "",
+          "priceSpecification": {
+            "@type": "UnitPriceSpecification",
+            "price": "449.99",
+            "priceCurrency": "USD",
+            "billingDuration": "P1Y"
+          }
+        },
+        {
+          "@type": "Offer",
+          "name": "API Starter Monthly",
+          "price": "99.99",
+          "priceCurrency": "USD",
+          "availability": "https://schema.org/InStock",
+          "url": "https://www.worldmonitor.app/pro#pricing",
+          "description": "REST API + official SDKs (npm, PyPI, RubyGems, Go), License / API key included, Real-time data streams, 60 requests/minute, 1,000 requests/day included, Webhook notifications, Commercial license — for your organization",
+          "priceSpecification": {
+            "@type": "UnitPriceSpecification",
+            "price": "99.99",
+            "priceCurrency": "USD",
+            "billingDuration": "P1M"
+          }
+        },
+        {
+          "@type": "Offer",
+          "name": "API Starter Annual",
+          "price": "899.99",
+          "priceCurrency": "USD",
+          "availability": "https://schema.org/InStock",
+          "url": "https://www.worldmonitor.app/pro#pricing",
+          "description": "",
+          "priceSpecification": {
+            "@type": "UnitPriceSpecification",
+            "price": "899.99",
+            "priceCurrency": "USD",
+            "billingDuration": "P1Y"
+          }
+        },
+        {
+          "@type": "Offer",
+          "name": "API Business",
+          "price": "299.99",
+          "priceCurrency": "USD",
+          "availability": "https://schema.org/InStock",
+          "url": "https://www.worldmonitor.app/pro#pricing",
+          "description": "Everything in API Starter, Redistribution rights — embed our data in what you sell, 300 requests/minute, 10,000 requests/day included, 5 Pro licenses included, Priority support, Commercial license — for your customers",
+          "priceSpecification": {
+            "@type": "UnitPriceSpecification",
+            "price": "299.99",
+            "priceCurrency": "USD",
+            "billingDuration": "P1M"
+          }
+        },
+        {
+          "@type": "Offer",
+          "name": "API Business Annual",
+          "price": "2699.99",
+          "priceCurrency": "USD",
+          "availability": "https://schema.org/InStock",
+          "url": "https://www.worldmonitor.app/pro#pricing",
+          "description": "",
+          "priceSpecification": {
+            "@type": "UnitPriceSpecification",
+            "price": "2699.99",
+            "priceCurrency": "USD",
+            "billingDuration": "P1Y"
+          }
+        }
       ],
       "featureList": "WM Analyst conversational AI, Personalized AI digest with daily/twice-daily/weekly cadence (up to 30 ranked items per send), Real-time alerts for critical events, Custom widget builder (HTML/CSS/JS + AI), MCP connectors for Claude/GPT/custom LLMs, Equity research and stock analysis, Backtesting, Flight search and price comparison, Market watchlist, Macro and central bank tracking, Maritime AIS ship monitoring, Global flight tracking, Infrastructure mapping, Satellite fire detection, Slack/Discord/Telegram/Email/Webhook delivery with AES-256 encryption, Android TV app, 22 language support"
     }
@@ -92,7 +198,7 @@
         {
           "@type": "Question",
           "name": "Is World Monitor still free?",
-          "acceptedAnswer": { "@type": "Answer", "text": "Yes. The core platform remains free. Pro adds equity research, macro analytics, and AI briefings. Enterprise adds team deployments and TV apps." }
+          "acceptedAnswer": { "@type": "Answer", "text": "Yes. The core platform remains free. Pro adds equity research, macro analytics, and AI briefings. Pro Business adds the commercial license and data export. Enterprise adds team deployments and TV apps." }
         },
         {
           "@type": "Question",
@@ -107,7 +213,7 @@
         {
           "@type": "Question",
           "name": "Can I start with Pro and upgrade later?",
-          "acceptedAnswer": { "@type": "Answer", "text": "Yes. Pro works for serious individuals. Enterprise is there when team and deployment needs grow." }
+          "acceptedAnswer": { "@type": "Answer", "text": "Yes. Pro is for personal use. Pro Business ($49.99/mo) adds the commercial license, data export, 25 dashboards, and 250 MCP calls/day. API plans cover programmatic access, and Enterprise covers custom deployments. Upgrades run through the billing portal — the app guides you through the steps." }
         },
         {
           "@type": "Question",
@@ -178,10 +284,9 @@
     <script async defer src="https://abacus.worldmonitor.app/script.js" data-website-id="e8800335-c853-46a8-8497-c993ed2f58bc" data-domains="worldmonitor.app,www.worldmonitor.app,happy.worldmonitor.app" data-exclude-search="true" nonce="wm-static-bootstrap"></script>
   </head>
   <body>
-    <div id="root"></div>
+    <div id="root"><h1>World Monitor Pro — The Geopolitical AI Layer</h1></div>
     <noscript>
       <div style="max-width:800px;margin:0 auto;padding:40px 20px;font-family:system-ui,sans-serif;color:#e5e5e5;background:#0a0a0a;">
-        <h2>World Monitor Pro — The Geopolitical AI Layer</h2>
         <p>Ask it, subscribe to it, build on it. WM Analyst chat across 30+ live services, an AI digest delivered daily, twice-daily, or weekly to Slack, Discord, Telegram, Email, or webhook, a custom widget builder, and MCP for Claude and GPT.</p>
         <p>Pro is built on top of the free <a href="https://www.worldmonitor.app/dashboard" style="color:#4ade80;">World Monitor</a> dashboard — try it first, then upgrade for the AI analyst layer. You can also explore the specialized variants: <a href="https://tech.worldmonitor.app/" style="color:#4ade80;">Tech Monitor</a>, <a href="https://finance.worldmonitor.app/" style="color:#4ade80;">Finance Monitor</a>, <a href="https://commodity.worldmonitor.app/" style="color:#4ade80;">Commodity Monitor</a>, and <a href="https://happy.worldmonitor.app/" style="color:#4ade80;">Happy Monitor</a>.</p>
         <p>Pro ingests data from <a href="https://finnhub.io/" style="color:#4ade80;" rel="noopener noreferrer">Finnhub</a>, <a href="https://fred.stlouisfed.org/" style="color:#4ade80;" rel="noopener noreferrer">FRED</a>, <a href="https://acleddata.com/" style="color:#4ade80;" rel="noopener noreferrer">ACLED</a>, <a href="https://ucdp.uu.se/" style="color:#4ade80;" rel="noopener noreferrer">UCDP</a>, <a href="https://firms.modaps.eosdis.nasa.gov/" style="color:#4ade80;" rel="noopener noreferrer">NASA FIRMS</a>, <a href="https://aisstream.io/" style="color:#4ade80;" rel="noopener noreferrer">AISStream</a>, <a href="https://opensky-network.org/" style="color:#4ade80;" rel="noopener noreferrer">OpenSky</a>, and 25+ other live services. Background and analysis on the <a href="https://www.worldmonitor.app/blog/" style="color:#4ade80;">World Monitor Blog</a>; full source on <a href="https://github.com/koala73/worldmonitor" style="color:#4ade80;" rel="noopener noreferrer">GitHub (AGPL-3.0)</a>.</p>

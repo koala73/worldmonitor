@@ -14,7 +14,7 @@ export const PricingTeaser = () => (
       />
       <div className="grid md:grid-cols-2 gap-6">
         <motion.div
-          initial={{ opacity: 0, y: 20 }}
+          initial={false}
           whileInView={{ opacity: 1, y: 0 }}
           viewport={{ once: true, margin: '-60px' }}
           transition={{ duration: 0.5 }}
@@ -41,7 +41,7 @@ export const PricingTeaser = () => (
           </a>
         </motion.div>
         <motion.div
-          initial={{ opacity: 0, y: 20 }}
+          initial={false}
           whileInView={{ opacity: 1, y: 0 }}
           viewport={{ once: true, margin: '-60px' }}
           transition={{ duration: 0.5, delay: 0.1 }}

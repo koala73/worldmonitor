@@ -105,7 +105,8 @@
     "consumerPrices": "Konsumentpriser",
     "fearGreed": "Rädsla & Girighet",
     "marketBreadth": "Marknadsbredd",
-    "climateNews": "Klimatnyheter"
+    "climateNews": "Klimatnyheter",
+    "fx": "Valutakurser"
   },
   "commands": {
     "prefixes": {
@@ -569,7 +570,7 @@
         "ucdpEvents": "UCDP-evenemang",
         "displacementFlows": "Förskjutningsflöden",
         "climateAnomalies": "Klimatanomalier",
-        "weatherAlerts": "Vädervarningar",
+        "weatherAlerts": "Vädervarningar för USA (NWS)",
         "strategicWaterways": "Strategiska vattenvägar",
         "economicCenters": "ekonomiska centra",
         "criticalMinerals": "Kritiska mineraler",
@@ -657,7 +658,7 @@
           "infraDatacenters": "AI-beräkningskluster >=10 000 GPU:er",
           "infraOutages": "Internetavbrott och serviceavbrott",
           "naturalEventsTech": "Jordbävningar, stormar, bränder (kan påverka datacenter)",
-          "weatherAlerts": "Varningar för svåra väderförhållanden",
+          "weatherAlerts": "Varningar för svåra väderförhållanden i USA (NWS)",
           "economicCenters": "Börser & centralbanker",
           "countriesOverlay": "Överlagringar för landsnamn",
           "financeExchanges": "Stora globala börser efter marknadsnivå",
@@ -669,7 +670,7 @@
           "financeOutages": "Internetstörningar som kan påverka marknadsoperationerna",
           "financeCyberThreats": "Säkerhetshändelser kring finansiell infrastruktur",
           "macroWaterways": "Strategiska chokepoints för varufrakt",
-          "weatherAlertsMarket": "Svåra väderhändelser med marknadsrelevans",
+          "weatherAlertsMarket": "Marknadsrelevanta svåra väderhändelser i USA (NWS)",
           "naturalEventsMacro": "Jordbävningar, bränder, översvämningar och andra naturliga störningar",
           "timeRecent": "Filtrera tidsbaserad data till de senaste timmarna",
           "timeExtended": "Visa data från senaste veckan, månaden eller genom tiderna",
@@ -730,6 +731,8 @@
       "relatedAssetsNear": "Relaterade tillgångar nära {{location}}",
       "summaryError": "Kunde inte skapa sammanfattning",
       "summaryFailed": "Sammanfattning misslyckades",
+      "sourceCoverage": "{{covered}}/{{total}} källor",
+      "sourceCoverageHint": "Visar {{covered}} av {{total}} aktiverade källor — den här panelen växlar mellan sina källor vid varje uppdatering",
       "sortBy": "Sortera efter",
       "sortNewest": "Senaste",
       "sortRelevance": "Relevans"
@@ -1019,7 +1022,7 @@
       "fytdLabel": "FY{{year}} YTD",
       "vsPriorFy": "mot FY{{year}}",
       "sourceWto": "WTO",
-      "sourceTreasury": "USA:s Treasury",
+      "sourceTreasury": "USA:s finansdepartement",
       "colDate": "Datum",
       "colMonthly": "Månadsvis",
       "colFytd": "FY YTD",
@@ -1083,8 +1086,8 @@
       "sectionFollowing": "Following",
       "sectionAll": "All",
       "sourceStates": {
-        "degraded": "degraded",
-        "stale": "stale"
+        "degraded": "försämrad",
+        "stale": "föråldrad"
       }
     },
     "gdeltIntel": {
@@ -1193,10 +1196,10 @@
         "minutesAgo": "{{count}}m ago",
         "hoursAgo": "{{count}}h ago"
       },
-      "cachedCiiStatus": "Cached CII {{states}}",
+      "cachedCiiStatus": "Cachad CII {{states}}",
       "sourceStates": {
-        "degraded": "degraded",
-        "stale": "stale"
+        "degraded": "försämrad",
+        "stale": "föråldrad"
       },
       "dataFreshness": "Data Freshness",
       "sourcesDetail": "{{active}}/{{total}} sources"
@@ -1277,7 +1280,8 @@
       "newsSignals": "{{news}} nyheter • {{signals}} signaler",
       "provenanceTitle": "Täckningshärkomst: hur många inmatade historier och unika källor denna kortfattade sammanfattning valdes från",
       "compiledFrom": "Kompilerat från {{stories}} berättelser från {{sources}} källor",
-      "briefFreshness": "Genererad {{minutes}}m sedan · senaste källa {{hours}}h gammal"
+      "briefFreshness": "Genererad {{minutes}}m sedan · senaste källa {{hours}}h gammal",
+      "briefStoryDetails": "Story details ({{count}})"
     },
     "techHubs": {
       "infoTooltip": "<strong>Teknisk hubbaktivitet</strong><br>Visar tekniska nav med mest nyhetsaktivitet.<br><br><em>Aktivitetsnivåer:</em><br>• <span style=\"color: {{highColor}}\">Hög</span> — Nyheter från 50+ PH_• 50+ stil: {{elevatedColor}}\">Höjd</span> — Poäng 20-49<br>• <span style=\"color: {{lowColor}}\">Låg</span> — Poäng under 20<br><br>Klicka på ett nav för att zooma till dess plats."
@@ -1516,25 +1520,25 @@
       "trending": "TREND",
       "velocity": "Hastighet",
       "wallets": "Plånböcker",
-      "benchmarkTitle": "Global Giving Benchmarks",
-      "benchmarkInfoTooltip": "<strong>Global Giving Benchmarks</strong> Published platform and institutional claims with source periods and verification status. Annualized figures are estimates, not live activity.",
+      "benchmarkTitle": "Globala givande-riktmärken",
+      "benchmarkInfoTooltip": "<strong>Globala givande-riktmärken</strong> Publicerade plattforms- och institutionsanspråk med källperioder och verifieringsstatus. Annualiserade siffror är uppskattningar, inte liveaktivitet.",
       "status": {
-        "published": "Published benchmarks with verified source coverage.",
-        "partial": "Published benchmarks with partial source coverage.",
-        "legacy": "Legacy snapshot; source details are unavailable.",
-        "cached": "Showing a cached snapshot; refresh unavailable."
+        "published": "Publicerade riktmärken med verifierad källtäckning.",
+        "partial": "Publicerade riktmärken med partiell källtäckning.",
+        "legacy": "Äldre ögonblicksbild; källdetaljer ej tillgängliga.",
+        "cached": "Visar cachad ögonblicksbild; uppdatering ej tillgänglig."
       },
-      "trackedAnnualized": "Tracked platform giving — annualized estimate",
-      "annualizedDaily": "Annualized daily estimate",
-      "atLeast": "At least",
-      "about": "About",
-      "sourceNotVerified": "Source not verified",
-      "reportedCumulative": "Reported cumulative total",
+      "trackedAnnualized": "Spårade plattformsdonationer — annualiserad uppskattning",
+      "annualizedDaily": "Daglig annualiserad uppskattning",
+      "atLeast": "Minst",
+      "about": "Ungefär",
+      "sourceNotVerified": "Källa ej verifierad",
+      "reportedCumulative": "Rapporterad kumulativ summa",
       "sourcePeriod": "{{source}} · {{period}}",
-      "benchmark": "Published benchmark",
-      "sourcesMethodology": "Sources & methodology",
-      "methodologyIntro": "Only verified annual or defensibly annualized platform claims enter the headline. Cumulative and institutional figures remain separate context.",
-      "partialEstimate": "Partially verified estimate"
+      "benchmark": "Publicerat riktmärke",
+      "sourcesMethodology": "Källor och metodologi",
+      "methodologyIntro": "Endast verifierade årliga eller försvarbart annualiserade plattformsanspråk ingår i rubriken. Kumulativa och institutionella siffror förblir separat sammanhang.",
+      "partialEstimate": "Delvis verifierad uppskattning"
     },
     "supplyChain": {
       "chokepoints": "Flaskhalsar",
@@ -1871,7 +1875,22 @@
       "infoTooltip": "<strong>Katastrofkaskad</strong> Detekterar konvergerande signaler för naturkatastrofer och infrastruktur:<ul><li>Korrelerar jordbävningar, skogsbränder, översvämningar och extremt väder</li><li>Spårar kaskadeffekter på infrastruktur och försörjningskedjor</li><li>Markerar regioner med sammanlagd katastrofrisk</li></ul>Klicka på ett kort för att zooma in på den påverkade regionen."
     },
     "markets": {
-      "infoTooltip": "<strong>Marknader</strong> Realtids aktieindex, aktier och kryptovalutapriser. Anpassa din övervakningslista med knappen Övervakningslista. Sparklines visar den senaste pristrenden."
+      "infoTooltip": "<strong>Marknader</strong> Realtids aktieindex, aktier och kryptovalutapriser. Anpassa din övervakningslista med knappen Övervakningslista. Sparklines visar den senaste pristrenden.",
+      "chart": {
+        "title": "{{symbol}} prisdiagram",
+        "close": "Stäng diagram"
+      },
+      "unavailable": {
+        "symbols": "{{symbols}} — {{reason}}",
+        "symbolsMore": "{{symbols}} +{{count}} more — {{reason}}",
+        "notFound": "no quote available",
+        "providerError": "quote lookup failed, retrying shortly",
+        "rateLimited": "quote provider rate limited, retrying shortly",
+        "notConfigured": "quote provider not configured",
+        "requestLimit": "too many symbols requested",
+        "budget": "not loaded yet, retrying shortly",
+        "seed": "market data temporarily unavailable"
+      }
     },
     "heatmap": {
       "infoTooltip": "<strong>Sektorkarta</strong> S&P 500-sektorprestanda i en överblick. Färgintensitet återspeglar storleken på den dagliga förändringen. Grön = vinster, Röd = förluster."
@@ -1991,9 +2010,10 @@
           "summaryVerified": "Upplåst och redo när du är det.",
           "channelsNote": "Föredrar du Telegram, Slack, Discord eller en webhook?",
           "pointers": {
+            "search": "Sök i hela instrumentpanelen",
             "widgets": "Skapa en anpassad widget",
             "analyst": "Fråga AI-analytikern",
-            "apiKeys": "Hämta dina API- och MCP-nycklar",
+            "mcpClients": "Konfigurera MCP",
             "channels": "Ställ in dem i aviseringsinställningarna"
           }
         }
@@ -2201,43 +2221,91 @@
       }
     },
     "mobileNav": {
-      "panelCategories": "Panel categories"
+      "panelCategories": "Panelkategorier"
     },
     "panelFreshness": {
       "status": {
-        "fresh": "Fresh",
-        "stale": "Stale",
-        "veryStale": "Very stale",
-        "noData": "No data",
-        "disabled": "Disabled",
-        "error": "Error"
+        "fresh": "Aktuell",
+        "stale": "Föråldrad",
+        "veryStale": "Mycket föråldrad",
+        "noData": "Inga data",
+        "disabled": "Inaktiverad",
+        "error": "Fel"
       },
       "labelWithAge": "{{status}} {{age}}",
-      "title": "Data freshness: {{status}}. {{sources}}",
+      "title": "Dataaktualitet: {{status}}. {{sources}}",
       "sourceDetail": "{{name}}: {{status}}, {{update}}",
       "sourceDetailWithHealth": "{{name}}: {{status}}, {{update}}, {{detail}}",
-      "lastUpdated": "last updated {{time}}",
-      "neverUpdated": "never updated",
+      "lastUpdated": "senast uppdaterad {{time}}",
+      "neverUpdated": "aldrig uppdaterad",
       "health": {
-        "partialCoverage": "partial coverage",
-        "contentStale": "content stale",
-        "seedStale": "seed stale",
-        "noSourceData": "no source data",
-        "sourceErrorReported": "source error reported",
-        "freshnessStoreUnavailable": "freshness store unavailable",
-        "freshnessStoreDegraded": "freshness store degraded"
+        "partialCoverage": "partiell täckning",
+        "contentStale": "innehåll föråldrat",
+        "seedStale": "seed föråldrat",
+        "noSourceData": "inga källdata",
+        "sourceErrorReported": "källfel rapporterat",
+        "freshnessStoreUnavailable": "aktualitetslager ej tillgängligt",
+        "freshnessStoreDegraded": "aktualitetslager försämrat"
       },
       "time": {
-        "never": "never",
-        "justNow": "just now",
-        "minutesAgo": "{{count}}m ago",
-        "hoursAgo": "{{count}}h ago",
-        "daysAgo": "{{count}}d ago",
-        "compactNow": "now",
+        "never": "aldrig",
+        "justNow": "nyss",
+        "minutesAgo": "{{count}}m sedan",
+        "hoursAgo": "{{count}}t sedan",
+        "daysAgo": "{{count}}d sedan",
+        "compactNow": "nu",
         "compactMinutes": "{{count}}m",
-        "compactHours": "{{count}}h",
+        "compactHours": "{{count}}t",
         "compactDays": "{{count}}d"
       }
+    },
+    "exportGate": {
+      "signedOutDesc": "Logga in för att exportera instrumentpaneldata som CSV, JSON eller PDF.",
+      "upgradeDesc": "Dataexport (CSV, JSON, PDF) ingår i Pro Business.",
+      "upgradeCta": "Uppgradera till Pro Business",
+      "lockedAriaLabel": "Exportera data — låst. {{reason}}",
+      "unlockedAnnouncement": "Dataexport upplåst.",
+      "preparingPdf": "Förbereder PDF…",
+      "pdfFailed": "PDF-rapporten kunde inte genereras. Försök igen eller använd JSON-exporten."
+    },
+    "tabCap": {
+      "signedOutDesc": "Utloggade arbetsytor är begränsade till {{cap}} instrumentpanelflikar. Logga in för att lägga till fler.",
+      "upgradeDesc": "Du har nått din gräns på {{cap}} instrumentpanelflikar.",
+      "upgradeCta": "Uppgradera för mer",
+      "lockedAriaLabel": "Lägg till flik — låst. {{reason}}",
+      "unlockedAnnouncement": "Gränsen för instrumentpanelflikar upphävd."
+    },
+    "fx": {
+      "infoTooltip": "<strong>Valutakurser</strong> Valutastress och avistakurser:<ul><li>FX Stress rangordnar 45 valutor efter deras värsta topp-till-dal-nedgång under de senaste 24 månaderna, tillsammans med 12-månadersförändringen</li><li>Täckningen inkluderar ARS, TRY, EGP, NGN, PKR och UAH — valutor som BIS och ECB:s referensuppsättningar utesluter</li><li>Spot listar kurser mot US-dollarn och ECB:s euroreferencekurser separat, eftersom de två är noterade från olika baser</li><li>RUB — kurser från Rysslands centralbank, rubel per enhet</li></ul> Källor: Yahoo Finance, Europeiska centralbanken och Rysslands centralbank.",
+      "tabs": {
+        "stress": "Valutastress",
+        "spot": "Avista",
+        "rub": "RUB"
+      },
+      "currency": "Valuta",
+      "pair": "Valutapar",
+      "rate": "Kurs",
+      "yoy": "12m",
+      "drawdown": "24m Nedgång",
+      "peakToTrough": "Topp → Dal",
+      "change1d": "1d",
+      "perUsd": "Per 1 USD",
+      "usdPerUnit": "USD per enhet",
+      "usdBase": "Mot US-dollarn",
+      "eurBase": "ECB:s euroreferencekurser",
+      "stressedCount": "{{stressed}} av {{total}} valutor under {{threshold}}",
+      "sourceYahoo": "Källa: Yahoo Finance",
+      "sourceEcb": "Källa: ECB",
+      "degraded": "Otillgänglig just nu: {{sources}}. Försöker igen inom kort.",
+      "source": {
+        "stress": "FX-stress",
+        "usd": "USD-kurser",
+        "eur": "ECB-eurokurser",
+        "rub": "Kurser från Rysslands centralbank"
+      },
+      "rubBase": "Rysslands centralbank — rubel per 1 enhet",
+      "rubPerUnit": "Rubel per enhet",
+      "sourceCbr": "Källa: Rysslands centralbank"
     }
   },
   "popups": {
@@ -2570,7 +2638,7 @@
       "heading": "RUBRIK",
       "hexCode": "HEXKOD",
       "squawk": "SKRIANDE",
-      "attribution": "Källa: OpenSky Network"
+      "attribution": "Källa: adsb.lol (ODbL) · OpenSky Network"
     },
     "militaryVessel": {
       "aisDark": "AIS MÖRK",
@@ -2969,7 +3037,7 @@
     "panelCatCommodityEcon": "Ekonomi & Handel",
     "panelCatHappyNews": "Goda Nyheter",
     "panelCatHappyPlanet": "Planet & Välgörenhet",
-    "embed": "Embed"
+    "embed": "Bädda in"
   },
   "countryBrief": {
     "identifying": "Identifierar land...",
@@ -3101,17 +3169,20 @@
     "geocodeFailed": "Kunde inte identifiera ett land på denna plats",
     "retryBtn": "Försök igen",
     "closeBtn": "Stäng",
-    "loadingResilienceScore": "Loading resilience score…",
-    "resilienceScoreUnavailable": "Resilience score unavailable.",
+    "loadingResilienceScore": "Läser in motståndskraftspoäng…",
+    "resilienceScoreUnavailable": "Motståndskraftspoäng ej tillgänglig.",
     "china": {
       "title": "Landsöversikt Kina",
       "description": "Aktuell makro-, marknads-, handels-, energi- och driftstillgänglighet från befintliga publika datakontrakt.",
-      "macroPolicy": "Makro & politik",
-      "marketCredit": "Marknad & kredit",
-      "tradeSupply": "Handel & leveranskedja",
+      "policyEvents": "Politik och tillämpning",
       "energy": "Energi",
       "availability": "Faror & luftfart",
       "observed": "Per:",
+      "published": "Publicerad:",
+      "effective": "Gäller från:",
+      "sectors": "Sektorer:",
+      "entities": "Enheter:",
+      "translation": "Översättning:",
       "source": "Källa:",
       "imfGrowth": "IMF:s tillväxtprognos",
       "creditGdp": "Kredit i förhållande till BNP",
@@ -3120,8 +3191,6 @@
       "gasDemand": "Gasefterfrågan",
       "energyMix": "Elmix",
       "coal": "kol",
-      "aviationAvailability": "Luftfartstillgänglighet",
-      "hazardAvailability": "Farotillgänglighet",
       "noMajorDisruptions": "Inga större störningar rapporterade",
       "activeDisruptions_one": "{{count}} aktiv störning",
       "activeDisruptions_other": "{{count}} aktiva störningar",
@@ -3133,18 +3202,21 @@
       "ccfiSource": "Shanghai Shipping Exchange",
       "comtradeSource": "UN Comtrade, rapportör 156",
       "sourceUnavailable": "Källa saknas",
-      "macroUnavailable": "Makro- och politikdata är för närvarande inte tillgängliga.",
-      "marketUnavailable": "Marknads- och kreditdata är för närvarande inte tillgängliga.",
-      "tradeUnavailable": "Handels- och leveranskedjedata är för närvarande inte tillgängliga.",
-      "energyUnavailable": "Energidata är för närvarande inte tillgängliga.",
-      "availabilityUnavailable": "Data om faror och luftfart är för närvarande inte tillgängliga.",
+      "policyUnavailable": "Official policy and enforcement events are currently unavailable.",
+      "policyPartial": "{{count}} official agencies are temporarily degraded.",
       "status": {
         "loading": "Läser in",
         "available": "Tillgänglig",
         "partial": "Delvis",
         "stale": "Inaktuell",
         "unavailable": "Otillgänglig"
-      }
+      },
+      "macroSignals": "Makrosignaler",
+      "crossStraitActivity": "Aktivitet över sundet",
+      "corporateDisclosures": "Företagsupplysningar",
+      "corridorConditions": "Korridorförhållanden",
+      "activityNowcast": "Aktivitetsnowcast",
+      "decisionSignalsUnavailable": "Ögonblicksbilden av Kinas beslutssignaler är för närvarande inte tillgänglig."
     }
   },
   "preferences": {
@@ -3297,16 +3369,42 @@
     "visualizationFailed": "Visualiseringen misslyckades"
   },
   "dashboardTabs": {
-    "ariaLabel": "Dashboard tabs",
-    "defaultName": "Main",
-    "newTabName": "New Tab",
-    "newTabCreated": "New tab created",
-    "tabDeleted": "Tab \"{{name}}\" deleted",
-    "addTab": "Add tab",
-    "addTabTitle": "New tab (starts with the default panels)",
-    "renameHint": "{{name}} — double-click to rename",
-    "deleteTab": "Delete tab",
-    "deleteTabAria": "Delete tab {{name}}",
-    "tabNameAria": "Tab name"
+    "ariaLabel": "Instrumentpanelflikar",
+    "defaultName": "Huvud",
+    "newTabName": "Ny flik",
+    "newTabCreated": "Ny flik skapad",
+    "tabDeleted": "Fliken \"{{name}}\" borttagen",
+    "addTab": "Lägg till flik",
+    "addTabTitle": "Ny flik (börjar med standardpanelerna)",
+    "renameHint": "{{name}} — dubbelklicka för att byta namn",
+    "deleteTab": "Ta bort flik",
+    "deleteTabAria": "Ta bort flik {{name}}",
+    "tabNameAria": "Fliknamn"
+  },
+  "theaterPresets": {
+    "label": "Täckningspaket",
+    "applied": "Paketet {{preset}} har tillämpats: {{count}} källor aktiverade",
+    "alreadyApplied": "Paketet {{preset}} har redan tillämpats",
+    "ukraineWar": {
+      "label": "Kriget i Ukraina",
+      "description": "Aktivera ukrainska huvudmedier, oberoende rysk press och källor för frontbedömning"
+    },
+    "indoPacific": {
+      "label": "Indo-Pacific / Taiwan",
+      "description": "Aktivera säkerhetskällor från Taiwan, Pakistan och Sydostasien"
+    },
+    "sahelWestAfrica": {
+      "label": "Sahel och Västafrika",
+      "description": "Aktivera lokala källor från Sahel, Nigeria och Västafrika"
+    },
+    "caucasusCentralAsia": {
+      "label": "Kaukasus och Centralasien",
+      "description": "Aktivera regionala källor från södra Kaukasus och Centralasien"
+    },
+    "middleEastFlashpoints": {
+      "label": "Spänningshärdar i Mellanöstern",
+      "description": "Aktivera källor om Iran, Israel, Gulfen och kurdiska regioner"
+    },
+    "unavailable": "Paketet {{preset}} är inte tillgängligt med dina nuvarande paneler"
   }
 }

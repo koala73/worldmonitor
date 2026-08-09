@@ -47,7 +47,6 @@ import {
   sanitizeStoryFields,
 } from '../../server/worldmonitor/intelligence/v1/brief-why-matters-prompt';
 import { callLlm } from '../../server/_shared/llm';
-// @ts-expect-error — JS module, no declaration file
 import { readRawJsonFromUpstash, setCachedData, redisPipeline } from '../_upstash-json.js';
 // @ts-expect-error — JS module, no declaration file
 import { captureSilentError } from '../_sentry-edge.js';

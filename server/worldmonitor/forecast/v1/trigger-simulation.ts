@@ -5,7 +5,9 @@ import type {
 } from '../../../../src/generated/server/worldmonitor/forecast/v1/service_server';
 import { ApiError } from '../../../../src/generated/server/worldmonitor/forecast/v1/service_server';
 
-import { isCallerPremium } from '../../../_shared/premium-check';
+import {
+  requirePremiumRpcAccess,
+} from '../../../_shared/premium-check';
 import { markNoCacheResponse } from '../../../_shared/response-headers';
 import {
   enqueueSimulationTaskForServer,
@@ -54,10 +56,7 @@ export async function triggerSimulation(
   req: TriggerSimulationRequest,
 ): Promise<TriggerSimulationResponse> {
   // Step 1: Pro gate (defense-in-depth).
-  const isPro = await isCallerPremium(ctx.request);
-  if (!isPro) {
-    throw new ApiError(403, 'Pro subscription required', '');
-  }
+  await requirePremiumRpcAccess(ctx.request, ApiError, 'Pro subscription required');
 
   // Step 2: queue-depth backpressure (mirrors run-scenario:50).
   const depth = await getQueueDepth();

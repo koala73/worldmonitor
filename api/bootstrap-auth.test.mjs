@@ -177,6 +177,13 @@ function makeWeatherBootstrapRequest(headers = {}) {
   });
 }
 
+function makePublicWeatherBootstrapRequest(headers = {}) {
+  return new Request('https://api.worldmonitor.app/api/bootstrap?keys=weatherAlerts&public=1', {
+    method: 'GET',
+    headers,
+  });
+}
+
 function makeTierBootstrapRequest(tier = 'fast', headers = {}) {
   return new Request(`https://api.worldmonitor.app/api/bootstrap?tier=${tier}`, {
     method: 'GET',
@@ -494,17 +501,127 @@ test('key-auth response with an empty cache batch stays no-store (never shared-c
   });
 });
 
-test('anonymous weather-only bootstrap (no key header) keeps the shared public cache posture', async () => {
-  // Guards the inverse of the no-store path: a no-credential weather request
-  // must stay publicly cacheable. A regression flipping the isKeyAuth predicate
-  // would either break this or, worse, make a key-auth response shared-cacheable.
+test('anonymous weather-only bootstrap serves the public payload but never enters a shared cache', async () => {
+  // #5386: the bare `?keys=weatherAlerts` URL is the SAME URL a credentialed
+  // caller uses, and a CDN hit precedes handler auth. While it was
+  // shared-cacheable, a warm entry answered an invalid-key request with the
+  // cached anonymous 200 instead of the 401 the test below asserts — the origin
+  // and the edge disagreed about the same URL. The anonymous payload and its
+  // ACAO:* posture are unchanged; only the shared-cache shield moves to the
+  // explicitly-marked `&public=1` URL.
   await withMockedBootstrapAuth({ entitlement: activeApiEntitlement() }, async () => {
     const resp = await handler(makeWeatherBootstrapRequest());
 
     assert.equal(resp.status, 200);
+    assert.deepEqual(Object.keys(await resp.json()).sort(), ['data', 'missing']);
+    assertPublicCorsHeaders(resp);
+    assert.equal(resp.headers.get('cache-control'), 'no-store');
+    assertNonSharedCacheHeaders(resp);
+  });
+});
+
+test('explicit public weather bootstrap is CDN-cacheable', async () => {
+  await withMockedBootstrapAuth({ entitlement: activeApiEntitlement() }, async (calls) => {
+    const resp = await handler(makePublicWeatherBootstrapRequest());
+
+    assert.equal(resp.status, 200);
+    assert.deepEqual(Object.keys(await resp.json()).sort(), ['data', 'missing']);
+    assertPublicCorsHeaders(resp);
+    assertSharedCacheHeaders(resp);
+    // weatherAlerts rides the fast tier: shield at the fast s-maxage, not the
+    // slow-tier default the other single-key public URLs inherit.
+    assert.match(resp.headers.get('cdn-cache-control') || '', /s-maxage=600/);
+    // Browser Cache-Control carries public/s-maxage here, unlike the
+    // `?tier=...&public=1` siblings which deliberately keep those tokens out
+    // (CF would mispin an echoed ACAO on those). Safe — and required — here
+    // because this response is ACAO:* for every caller. The live sweep's
+    // assertPublicCacheable() greps this header for `public`
+    // (tests/live-api-cache-auth-regression.test.mjs), so the divergence is
+    // load-bearing, not accidental: pin it.
     assert.match(resp.headers.get('cache-control') || '', /\bpublic\b/);
-    assert.match(resp.headers.get('cache-control') || '', /s-maxage/);
-    assert.ok(resp.headers.get('cdn-cache-control'));
+    assert.match(resp.headers.get('cache-control') || '', /s-maxage=600/);
+    // Public path short-circuits before any key/entitlement validation.
+    assert.equal(calls.some((call) => call.url.endsWith('/api/internal-validate-api-key')), false);
+    assert.equal(calls.some((call) => call.url.endsWith('/api/internal-entitlements')), false);
+  });
+});
+
+test('explicit public weather bootstrap ignores attached credentials by design', async () => {
+  // The marked URL has ONE response contract for every caller, exactly like
+  // `?tier=fast&public=1`: a CDN hit precedes handler auth, so a credential-
+  // dependent answer here could never be honored. Callers that need their key
+  // validated use the bare URL, which is no-store and always reaches the origin.
+  await withMockedBootstrapAuth({ entitlement: activeApiEntitlement() }, async (calls) => {
+    const resp = await handler(makePublicWeatherBootstrapRequest({ 'X-WorldMonitor-Key': 'wm_notcanonical' }));
+
+    assert.equal(resp.status, 200);
+    assertPublicCorsHeaders(resp);
+    assertSharedCacheHeaders(resp);
+    assert.equal(calls.some((call) => call.url.endsWith('/api/internal-validate-api-key')), false);
+  });
+});
+
+test('explicit public weather bootstrap answers a VALID entitled key identically', async () => {
+  // "One response contract for every caller" is the property that makes this URL
+  // safe to cache at all — a CDN hit precedes auth, so if an entitled caller
+  // could ever get something different here, the cache would hand that
+  // difference to everyone. The invalid-key case above is only half the proof;
+  // this is the half that would actually leak if the short-circuit regressed.
+  await withMockedBootstrapAuth({ entitlement: activeApiEntitlement() }, async (calls) => {
+    const resp = await handler(makePublicWeatherBootstrapRequest({ 'X-WorldMonitor-Key': USER_KEY }));
+
+    assert.equal(resp.status, 200);
+    assertPublicCorsHeaders(resp);
+    assertSharedCacheHeaders(resp);
+    assert.equal(calls.some((call) => call.url.endsWith('/api/internal-validate-api-key')), false);
+    assert.equal(calls.some((call) => call.url.endsWith('/api/internal-entitlements')), false);
+  });
+});
+
+test('explicit public weather bootstrap answers a session cookie identically', async () => {
+  // The shape the dashboard produces if `credentials: 'omit'` is ever dropped
+  // from src/services/weather.ts. It must still be the shared public response —
+  // otherwise a signed-in browser could mint a session-flavoured entry at the
+  // shared cache key.
+  await withMockedBootstrapAuth({ entitlement: activeApiEntitlement() }, async () => {
+    const { token } = await issueSessionToken();
+    const resp = await handler(makePublicWeatherBootstrapRequest({ Cookie: `wm-session=${token}` }));
+
+    assert.equal(resp.status, 200);
+    assertPublicCorsHeaders(resp);
+    assertSharedCacheHeaders(resp);
+  });
+});
+
+test('disallowed-Origin rejection is never cacheable on a public URL', async () => {
+  // The 403 is decided by the Origin header, which no cache layer here keys on.
+  // On a `&public=1` URL — shared by every caller — a cacheable 403 minted by one
+  // disallowed origin is a rejection a shared cache can replay to legitimate
+  // callers. Assert both URL shapes.
+  await withMockedBootstrapAuth({ entitlement: activeApiEntitlement() }, async () => {
+    for (const req of [
+      makePublicWeatherBootstrapRequest({ Origin: 'https://evil.example' }),
+      makeWeatherBootstrapRequest({ Origin: 'https://evil.example' }),
+    ]) {
+      const resp = await handler(req);
+
+      assert.equal(resp.status, 403);
+      assert.equal(resp.headers.get('cache-control'), 'no-store', new URL(req.url).search);
+      assert.equal(resp.headers.get('cdn-cache-control'), null);
+    }
+  });
+});
+
+test('HEAD on the public weather URL is not the public path', async () => {
+  // Mirrors the tier rule: the marked public URLs are GET-only, so a HEAD falls
+  // through to credentialed validation rather than minting a cacheable entry.
+  await withMockedBootstrapAuth({ entitlement: activeApiEntitlement() }, async () => {
+    const resp = await handler(
+      new Request('https://api.worldmonitor.app/api/bootstrap?keys=weatherAlerts&public=1', { method: 'HEAD' }),
+    );
+
+    assert.equal(resp.status, 401);
+    assert.equal(resp.headers.get('cache-control'), 'no-store');
   });
 });
 

@@ -4,27 +4,38 @@ package worldmonitor.intelligence.v1;
 
 import "sebuf/http/annotations.proto";
 
-// Request to discover and classify company signals (hiring, funding, tech changes).
-// NOTE: This endpoint is DISABLED — the handler returns an empty stub regardless of
-// input. `company` is still required to pass validation, but no signals are discovered.
+// Request to discover and classify company intelligence signals from authoritative
+// sources (SEC 8-K material events and news mentions). Provide a
+// ticker for the strongest match, or a company name matched against the SEC registry.
 message ListCompanySignalsRequest {
   // Company name to discover signals for.
   string company = 1 [(sebuf.http.query) = {name: "company"}];
-  // Company domain to discover signals for.
-  string domain = 2 [(sebuf.http.query) = {name: "domain"}];
+  // Deprecated compatibility input. When present, attribution stays disabled
+  // and the handler returns the legacy empty stub.
+  string domain = 2 [deprecated = true, (sebuf.http.query) = {name: "domain"}];
+  // Exchange ticker symbol, such as "AAPL". Preferred lookup key.
+  string ticker = 3 [(sebuf.http.query) = {name: "ticker"}];
 }
 
 // Discovered company signals with classification and engagement metrics.
-// DISABLED: the handler returns an empty stub — `signals` is always empty and `summary`
-// reports zero counts; only the echoed `company`/`domain` are populated.
 message ListCompanySignalsResponse {
   string company = 1;
-  string domain = 2;
+  string domain = 2 [deprecated = true];
   repeated CompanySignal signals = 3;
   SignalSummary summary = 4;
   
   // Unix timestamp in milliseconds when signals were discovered.
   int64 discovered_at_ms = 5 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
+
+  // SEC Central Index Key of the resolved filer (zero-padded 10 digits). Empty
+  // when the company did not resolve — this is what distinguishes "no such
+  // company" from "resolved company with no recent signals".
+  string cik = 6;
+
+  // True when the SEC ticker registry or authoritative submissions source
+  // could not be read. Results can be partial (for example, news without SEC
+  // filings); responses with this set are never cached.
+  bool unavailable = 7;
 }
 
 message CompanySignal {

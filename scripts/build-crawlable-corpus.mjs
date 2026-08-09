@@ -14,6 +14,8 @@ import {
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
+import { writeResearchSection } from './build-research-reports.mjs';
+
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 const DEFAULT_ROOT = resolve(__dirname, '..');
@@ -28,14 +30,29 @@ const CHANGELOG_PATH = 'CHANGELOG.md';
 const LIVE_TOOLS_SCRIPT_PATH = 'scripts/crawlable-live-tools.mjs';
 const COUNTRY_BBOXES_PATH = 'shared/country-bboxes.js';
 const CRISIS_REGISTRY_PATH = 'shared/crawlable-crises.json';
+const RESEARCH_REPORTS_INDEX_PATH = 'shared/research-reports/index.mjs';
+// Last substantive change to the shared HTML template/content language. Data
+// families take the later of this version and their own committed source date,
+// so template changes are reflected without pretending every deploy is fresh.
+export const CORPUS_GENERATOR_CONTENT_VERSION = '2026-07-27';
+const COUNTRY_PAGE_CONTENT_VERSION = '2026-07-28';
+const CHOKEPOINT_PAGE_CONTENT_VERSION = '2026-07-28';
+const DATASET_SCHEMA_CONTENT_VERSION = '2026-08-05';
+const DATASET_LICENSE = {
+  '@type': 'CreativeWork',
+  name: 'World Monitor Terms of Service (27 July 2026)',
+  url: 'https://www.worldmonitor.app/docs/terms',
+};
 const CHANGELOG_PAGE_SIZE = 2;
 const MAX_TOOL_LATITUDE_SPAN = 45;
 const MAX_TOOL_LONGITUDE_SPAN = 60;
+const META_DESCRIPTION_MIN = 155;
+const META_DESCRIPTION_MAX = 160;
 
 // Hand-authored, human-readable context for each canonical chokepoint, keyed by
 // the registry `id`. `region` describes what the waterway connects (used as the
 // index card subtitle and the "Connects" tile); `blurb` is a factual 2-sentence
-// summary used as the page lede and meta description; `glossarySlug` cross-links
+// summary used as the page lede; `glossarySlug` cross-links
 // to the matching /blog/glossary/ term where one exists. Keeping this beside the
 // registry (rather than in it) keeps the app bundle free of prose it never uses.
 const CHOKEPOINT_CONTENT = {
@@ -151,6 +168,7 @@ const GENERATED_DIRS = [
   'crises',
   'tools',
   'reference/changelog',
+  'research',
 ];
 
 const MONTHS = [
@@ -178,6 +196,13 @@ function readText(rootDir, relativePath) {
 
 function readJson(rootDir, relativePath) {
   return JSON.parse(readText(rootDir, relativePath));
+}
+
+function laterDate(...values) {
+  return values
+    .filter((value) => /^\d{4}-\d{2}-\d{2}$/.test(value ?? ''))
+    .sort()
+    .at(-1) ?? null;
 }
 
 function normalizeBaseUrl(baseUrl) {
@@ -286,14 +311,155 @@ function formatCoordinates(lat, lon) {
   return `${latText}, ${lonText}`;
 }
 
-// Clamp a lede down to a search-friendly meta description length without cutting
-// a word in half.
-function metaDescription(text, max = 155) {
-  const clean = String(text ?? '').trim();
-  if (clean.length <= max) return clean;
-  const truncated = clean.slice(0, max - 1);
-  const lastSpace = truncated.lastIndexOf(' ');
-  return `${(lastSpace > 40 ? truncated.slice(0, lastSpace) : truncated).replace(/[\s,;:.]+$/, '')}…`;
+function longestEligibleMetaDescription(candidates) {
+  // Linear scan, first-longest wins — the same pick a stable descending sort
+  // by length would make, without copying and sorting the (potentially ~12k)
+  // candidate array.
+  let best;
+  const seen = new Set();
+  for (const raw of candidates) {
+    const candidate = String(raw ?? '').trim();
+    if (seen.has(candidate)) continue;
+    seen.add(candidate);
+    if (candidate.length > META_DESCRIPTION_MAX) continue;
+    if (best === undefined || candidate.length > best.length) best = candidate;
+  }
+  return best;
+}
+
+function formatMetaDescriptionList(items) {
+  if (items.length === 1) return items[0];
+  if (items.length === 2) return `${items[0]} and ${items[1]}`;
+  return `${items.slice(0, -1).join(', ')}, and ${items.at(-1)}`;
+}
+
+function signalMetaDescriptionCandidates({ subjects, signals }) {
+  const candidates = [];
+  const subsetCount = 2 ** signals.length;
+  // The formatted signal list depends only on the mask, so format each subset
+  // once instead of once per subject×verb combination. The triple loop below
+  // keeps its original nesting so the candidate order — and therefore which
+  // equal-length candidate longestEligibleMetaDescription picks — is unchanged.
+  const listByMask = new Array(subsetCount);
+  for (let mask = 1; mask < subsetCount; mask += 1) {
+    const selectedSignals = signals.filter((_, index) => mask & (2 ** index));
+    if (selectedSignals.length < 3) continue;
+    listByMask[mask] = formatMetaDescriptionList(selectedSignals);
+  }
+  for (const subject of subjects) {
+    for (const verb of ['tracks', 'monitors', 'covers']) {
+      for (let mask = 1; mask < subsetCount; mask += 1) {
+        if (listByMask[mask] === undefined) continue;
+        candidates.push(`${subject}: ${verb} ${listByMask[mask]}.`);
+      }
+    }
+  }
+  return candidates;
+}
+
+function selectMetaDescription(candidates, fallbackCandidates) {
+  const selected = longestEligibleMetaDescription(candidates);
+  if (selected?.length >= META_DESCRIPTION_MIN) return selected;
+
+  const fallback = longestEligibleMetaDescription(fallbackCandidates?.() ?? []);
+  if (fallback?.length >= META_DESCRIPTION_MIN) return fallback;
+
+  throw new Error(
+    `No meta description candidate fits ${META_DESCRIPTION_MIN}-${META_DESCRIPTION_MAX} characters`,
+  );
+}
+
+export function countryMetaDescription({ name, rank, rankedCount }) {
+  const subjects = [
+    `${name} country risk and resilience`,
+    `${name} country risk`,
+    `${name} risk and resilience`,
+  ];
+  const standings = rank == null
+    ? [
+      `a low-confidence listing in World Monitor's Country Resilience Index`,
+      `a low-confidence listing in World Monitor's resilience index`,
+      `a low-confidence listing in World Monitor's index`,
+      `a low-confidence World Monitor index listing`,
+      `a low-confidence index listing`,
+    ]
+    : [
+      `ranked #${rank} of ${rankedCount} in World Monitor's Country Resilience Index`,
+      `ranked #${rank} of ${rankedCount} in World Monitor's resilience index`,
+      `ranked #${rank} of ${rankedCount} in World Monitor's index`,
+      `#${rank} of ${rankedCount} in World Monitor's resilience index`,
+      `#${rank} of ${rankedCount} in World Monitor's index`,
+    ];
+  const signals = [
+    'with live instability, travel advisories, sanctions and security signals.',
+    'with current instability, travel advisories, sanctions and security signals.',
+    'with live instability, travel-advisory and sanctions signals.',
+    'plus live instability, travel advisories, sanctions and security signals.',
+    'with live instability, advisories, sanctions and security signals.',
+    'with instability, travel advisories, sanctions and security signals.',
+    'with current instability, advisories, sanctions and security signals.',
+  ];
+  const candidates = subjects.flatMap((subject) => standings.flatMap(
+    (standing) => signals.map((signal) => `${subject}: ${standing}, ${signal}`),
+  ));
+  return selectMetaDescription(candidates, () => signalMetaDescriptionCandidates({
+    subjects: [
+      `${name} country risk profile`,
+      `${name} risk profile`,
+      `${name} country risk`,
+      `${name} risk`,
+    ],
+    signals: [
+      'live instability',
+      'travel advisories',
+      'sanctions',
+      'security signals',
+      'resilience rankings',
+      'current conditions',
+      'global context',
+      'regional context',
+      'risk trends',
+      'public data',
+    ],
+  }));
+}
+
+export function chokepointMetaDescription(name) {
+  const subjects = [
+    `${name} chokepoint status`,
+    `${name} live chokepoint status`,
+    `${name} maritime chokepoint status`,
+    `${name} live status`,
+  ];
+  const signals = [
+    'monitor live disruption risk, vessel transits, congestion, AIS warnings and key trade routes through this strategic waterway.',
+    'track live disruption risk, vessel transits, congestion, AIS warnings and major trade routes through this strategic waterway.',
+    'track disruption risk, vessel transits, congestion, AIS warnings and major trade routes through this strategic waterway.',
+    'monitor disruption risk, transits, congestion, AIS warnings and trade routes through this strategic waterway.',
+  ];
+  const candidates = subjects.flatMap(
+    (subject) => signals.map((signal) => `${subject}: ${signal}`),
+  );
+  return selectMetaDescription(candidates, () => signalMetaDescriptionCandidates({
+    subjects: [
+      `${name} maritime chokepoint`,
+      `${name} chokepoint status`,
+      `${name} chokepoint`,
+      `${name} status`,
+    ],
+    signals: [
+      'live disruption risk',
+      'vessel transits',
+      'congestion',
+      'AIS warnings',
+      'trade routes',
+      'maritime security',
+      'current conditions',
+      'regional context',
+      'shipping signals',
+      'public data',
+    ],
+  }));
 }
 
 function metricTile(label, value) {
@@ -515,13 +681,56 @@ function latestDatedChangelogRelease(changelog) {
   return dates[dates.length - 1] || null;
 }
 
-function gitFileLastmod(rootDir, relativePath) {
+// Git's local env vars (GIT_DIR, GIT_WORK_TREE, GIT_INDEX_FILE, ...) override
+// `cwd`, so a build running inside a git hook would silently resolve these
+// queries against the hook's repository instead of the rootDir it was given.
+// Strip them, and render dates in UTC (see gitFileLastmod).
+let gitLocalEnvVars = null;
+function gitEnvForRoot() {
+  if (gitLocalEnvVars === null) {
+    try {
+      gitLocalEnvVars = execFileSync('git', ['rev-parse', '--local-env-vars'], {
+        encoding: 'utf8',
+        stdio: ['ignore', 'pipe', 'ignore'],
+      }).trim().split('\n');
+    } catch {
+      gitLocalEnvVars = ['GIT_DIR', 'GIT_WORK_TREE', 'GIT_INDEX_FILE', 'GIT_OBJECT_DIRECTORY'];
+    }
+  }
+  const env = { ...process.env, TZ: 'UTC' };
+  for (const name of gitLocalEnvVars) delete env[name];
+  return env;
+}
+
+function hasCompleteGitHistory(rootDir) {
   try {
-    const out = execFileSync('git', ['log', '-1', '--format=%cs', '--', relativePath], {
+    return execFileSync('git', ['rev-parse', '--is-shallow-repository'], {
       cwd: rootDir,
       encoding: 'utf8',
       stdio: ['ignore', 'pipe', 'ignore'],
-    }).trim();
+      env: gitEnvForRoot(),
+    }).trim() === 'false';
+  } catch {
+    return false;
+  }
+}
+
+export function gitFileLastmod(rootDir, relativePath) {
+  if (!hasCompleteGitHistory(rootDir)) return null;
+  try {
+    // Committer date rendered in UTC, not the commit's recorded timezone —
+    // a +04:00 evening commit would otherwise date as "tomorrow" against a
+    // UTC build clock and trip build-sitemap's future-lastmod guard.
+    const out = execFileSync(
+      'git',
+      ['log', '-1', '--date=format-local:%Y-%m-%d', '--format=%cd', '--', relativePath],
+      {
+        cwd: rootDir,
+        encoding: 'utf8',
+        stdio: ['ignore', 'pipe', 'ignore'],
+        env: gitEnvForRoot(),
+      },
+    ).trim();
     return /^\d{4}-\d{2}-\d{2}$/.test(out) ? out : null;
   } catch {
     return null;
@@ -536,12 +745,18 @@ export async function loadCorpusData({ rootDir = DEFAULT_ROOT } = {}) {
     { TRADE_ROUTES },
     { GLOSSARY_TERMS },
     { default: countryBboxes },
+    { RESEARCH_REPORTS },
   ] = await Promise.all([
     importRepoModule(rootDir, CHOKEPOINT_REGISTRY_PATH),
     importRepoModule(rootDir, TRADE_ROUTES_PATH),
     importRepoModule(rootDir, GLOSSARY_DATA_PATH),
     importRepoModule(rootDir, COUNTRY_BBOXES_PATH),
+    importRepoModule(rootDir, RESEARCH_REPORTS_INDEX_PATH),
   ]);
+  const researchReports = RESEARCH_REPORTS.map((report) => ({
+    report,
+    snapshot: readJson(rootDir, report.snapshotPath),
+  }));
   const countries = normalizeCountries(resilience, reverseNames);
   const countryBounds = normalizeCountryBounds(countryBboxes, countries, reverseNames);
   const crises = normalizeCrises(readJson(rootDir, CRISIS_REGISTRY_PATH));
@@ -556,17 +771,38 @@ export async function loadCorpusData({ rootDir = DEFAULT_ROOT } = {}) {
   );
   const glossaryTerms = normalizeGlossaryTerms(GLOSSARY_TERMS);
   const changelog = parseChangelog(readText(rootDir, CHANGELOG_PATH));
-  const changelogLastmod = gitFileLastmod(rootDir, CHANGELOG_PATH)
-    || latestDatedChangelogRelease(changelog)
-    || resilience.capturedAt;
-  const chokepointsLastmod = gitFileLastmod(rootDir, CHOKEPOINT_REGISTRY_PATH)
-    || resilience.capturedAt;
-  const toolsLastmod = gitFileLastmod(rootDir, LIVE_TOOLS_SCRIPT_PATH)
-    || resilience.capturedAt;
-  const crisesLastmod = gitFileLastmod(rootDir, CRISIS_REGISTRY_PATH)
-    || resilience.capturedAt;
+  const countriesLastmod = laterDate(
+    resilience.capturedAt,
+    CORPUS_GENERATOR_CONTENT_VERSION,
+    COUNTRY_PAGE_CONTENT_VERSION,
+    DATASET_SCHEMA_CONTENT_VERSION,
+  );
+  const changelogLastmod = laterDate(
+    gitFileLastmod(rootDir, CHANGELOG_PATH),
+    latestDatedChangelogRelease(changelog),
+    CORPUS_GENERATOR_CONTENT_VERSION,
+  );
+  const chokepointsLastmod = laterDate(
+    gitFileLastmod(rootDir, CHOKEPOINT_REGISTRY_PATH),
+    CORPUS_GENERATOR_CONTENT_VERSION,
+    CHOKEPOINT_PAGE_CONTENT_VERSION,
+  );
+  const toolsLastmod = laterDate(
+    gitFileLastmod(rootDir, LIVE_TOOLS_SCRIPT_PATH),
+    CORPUS_GENERATOR_CONTENT_VERSION,
+  );
+  const crisesLastmod = laterDate(
+    gitFileLastmod(rootDir, CRISIS_REGISTRY_PATH),
+    CORPUS_GENERATOR_CONTENT_VERSION,
+  );
+  const researchLastmod = laterDate(
+    ...researchReports.map(({ report }) => report.dateModified),
+    CORPUS_GENERATOR_CONTENT_VERSION,
+    DATASET_SCHEMA_CONTENT_VERSION,
+  );
 
   return {
+    generatorContentVersion: CORPUS_GENERATOR_CONTENT_VERSION,
     sources: {
       resilienceSnapshot: RESILIENCE_SNAPSHOT_PATH,
       countryNames: COUNTRY_NAMES_PATH,
@@ -577,12 +813,15 @@ export async function loadCorpusData({ rootDir = DEFAULT_ROOT } = {}) {
       liveToolsScript: LIVE_TOOLS_SCRIPT_PATH,
       countryBboxes: COUNTRY_BBOXES_PATH,
       crisisRegistry: CRISIS_REGISTRY_PATH,
+      researchReports: RESEARCH_REPORTS_INDEX_PATH,
     },
     lastmod: {
+      countries: countriesLastmod,
       changelog: changelogLastmod,
       chokepoints: chokepointsLastmod,
       tools: toolsLastmod,
       crises: crisesLastmod,
+      research: researchLastmod,
     },
     resilience,
     countries,
@@ -592,6 +831,7 @@ export async function loadCorpusData({ rootDir = DEFAULT_ROOT } = {}) {
     tradeRoutesById,
     glossaryTerms,
     changelog,
+    researchReports,
   };
 }
 
@@ -619,6 +859,8 @@ function pageDocument({
   breadcrumbs,
   body,
   scriptSrcs = [],
+  ogImage = OG_IMAGE_PATH,
+  ogImageAlt = OG_IMAGE_ALT,
 }) {
   const canonical = absoluteUrl(baseUrl, path);
   const ld = [jsonLd, breadcrumbs].filter(Boolean);
@@ -638,15 +880,15 @@ function pageDocument({
     <meta property="og:description" content="${escapeHtml(description)}">
     <meta property="og:url" content="${escapeHtml(canonical)}">
     <meta property="og:site_name" content="World Monitor">
-    <meta property="og:image" content="${escapeHtml(absoluteUrl(baseUrl, OG_IMAGE_PATH))}">
+    <meta property="og:image" content="${escapeHtml(absoluteUrl(baseUrl, ogImage))}">
     <meta property="og:image:width" content="1200">
     <meta property="og:image:height" content="630">
-    <meta property="og:image:alt" content="${escapeHtml(OG_IMAGE_ALT)}">
+    <meta property="og:image:alt" content="${escapeHtml(ogImageAlt)}">
     <meta name="twitter:card" content="summary_large_image">
     <meta name="twitter:title" content="${escapeHtml(title)}">
     <meta name="twitter:description" content="${escapeHtml(description)}">
-    <meta name="twitter:image" content="${escapeHtml(absoluteUrl(baseUrl, OG_IMAGE_PATH))}">
-    <meta name="twitter:image:alt" content="${escapeHtml(OG_IMAGE_ALT)}">
+    <meta name="twitter:image" content="${escapeHtml(absoluteUrl(baseUrl, ogImage))}">
+    <meta name="twitter:image:alt" content="${escapeHtml(ogImageAlt)}">
     <meta name="twitter:site" content="@worldmonitorai">
     ${ld.map((entry) => `<script type="application/ld+json">${escapeJsonScript(entry)}</script>`).join('\n    ')}
     <style>
@@ -700,6 +942,15 @@ function pageDocument({
       .related { list-style: none; padding: 0; margin: 12px 0 0; display: flex; flex-wrap: wrap; gap: 0 20px; }
       .related a { display: inline-flex; align-items: center; min-height: 44px; }
       .source { margin-top: 34px; font-size: 13px; color: var(--muted); }
+      table { border-collapse: collapse; width: 100%; margin-top: 16px; font-size: 14px; }
+      caption { caption-side: top; text-align: left; color: var(--muted); font-size: 13px; padding-bottom: 8px; }
+      th, td { border: 1px solid var(--line); padding: 8px 12px; text-align: left; }
+      th { color: var(--muted); font-weight: 600; background: var(--panel); }
+      td data { color: var(--text); }
+      figure { margin: 20px 0 0; padding: 16px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); }
+      figcaption { margin-top: 10px; color: var(--muted); font-size: 13px; }
+      blockquote { margin: 16px 0 0; padding: 12px 16px; border-left: 2px solid var(--accent); background: var(--panel); border-radius: 0 8px 8px 0; }
+      blockquote p { margin: 0; color: var(--text); font-size: 14px; }
       footer { border-top: 1px solid var(--line); padding-top: 20px; padding-bottom: 28px; color: var(--muted); font-size: 13px; }
     </style>
   </head>
@@ -711,6 +962,7 @@ function pageDocument({
         <a href="/chokepoints/">Chokepoints</a>
         <a href="/crises/">Crises</a>
         <a href="/tools/">Live tools</a>
+        <a href="/research/">Research</a>
         <a href="/reference/changelog/">Changelog</a>
         <a href="/blog/glossary/">Glossary</a>
       </nav>
@@ -725,7 +977,7 @@ ${body}
 `;
 }
 
-function renderCountriesIndex({ countries, baseUrl, capturedAt }) {
+function renderCountriesIndex({ countries, baseUrl, capturedAt, lastmod }) {
   const path = '/countries/';
   const description = `Browse ${countries.length} country risk and resilience pages from World Monitor's dated ${capturedAt} structural snapshot, with current instability signals on each page.`;
   const body = `      <p class="eyebrow">Country corpus</p>
@@ -740,7 +992,7 @@ ${countries.map((country) => `        <a class="card" href="/countries/${country
     path,
     title: 'Country Risk and Resilience | World Monitor',
     description,
-    lastmod: capturedAt,
+    lastmod,
     jsonLd: {
       '@context': 'https://schema.org',
       '@type': 'CollectionPage',
@@ -757,15 +1009,20 @@ ${countries.map((country) => `        <a class="card" href="/countries/${country
   });
 }
 
-function renderCountryPage({ country, baseUrl, capturedAt, methodologyFormula, rankedCount }) {
+function renderCountryPage({
+  country,
+  baseUrl,
+  capturedAt,
+  lastmod,
+  methodologyFormula,
+  rankedCount,
+}) {
   const path = `/countries/${country.slug}/`;
-  const rankText = country.rank == null ? 'not ranked in the headline table' : `ranked #${country.rank}`;
-  const description = metaDescription(
-    country.rank == null
-      ? `${country.name} country risk: a low-confidence listing in World Monitor's Country Resilience Index, with live instability, travel-advisory and sanctions signals on one page.`
-      : `${country.name} country risk: ranked #${country.rank} of ${rankedCount} in World Monitor's Country Resilience Index, plus live instability, travel-advisory and sanctions signals.`,
-    165,
-  );
+  const description = countryMetaDescription({
+    name: country.name,
+    rank: country.rank,
+    rankedCount,
+  });
   const mapUrl = withUtmSource(
     absoluteUrl(baseUrl, `/?country=${encodeURIComponent(country.code)}&expanded=1`),
     'seo-country',
@@ -815,7 +1072,7 @@ function renderCountryPage({ country, baseUrl, capturedAt, methodologyFormula, r
     // mid-brand.
     title: coreTitle.length > 44 ? coreTitle : `${coreTitle} | World Monitor`,
     description,
-    lastmod: capturedAt,
+    lastmod,
     jsonLd: {
       '@context': 'https://schema.org',
       '@type': 'WebPage',
@@ -831,6 +1088,13 @@ function renderCountryPage({ country, baseUrl, capturedAt, methodologyFormula, r
       mainEntity: {
         '@type': 'Dataset',
         name: `World Monitor Country Resilience snapshot for ${country.name}`,
+        description: `A dated World Monitor Country Resilience Index snapshot for ${country.name}, with the overall score, rank, dimension coverage, confidence classification, and scoring methodology used for this page.`,
+        creator: {
+          '@type': 'Organization',
+          name: 'World Monitor',
+          url: 'https://www.worldmonitor.app/',
+        },
+        license: DATASET_LICENSE,
         datePublished: capturedAt,
         measurementTechnique: methodologyFormula,
       },
@@ -884,12 +1148,12 @@ ${chokepoints.map((cp) => {
   });
 }
 
-function renderChokepointPage({ chokepoint, baseUrl, lastmod, tradeRoutesById }) {
+function renderChokepointPage({ chokepoint, baseUrl, lastmod, tradeRoutesById, researchReports = [] }) {
   const path = `/chokepoints/${chokepoint.slug}/`;
   const content = CHOKEPOINT_CONTENT[chokepoint.id] || {};
   const blurb = content.blurb
     || `${chokepoint.displayName} is one of the 13 canonical maritime chokepoints tracked by World Monitor.`;
-  const description = metaDescription(blurb);
+  const description = chokepointMetaDescription(chokepoint.displayName);
   const mapUrl = withUtmSource(
     absoluteUrl(baseUrl, `/?chokepoint=${encodeURIComponent(chokepoint.id)}`),
     'seo-chokepoint',
@@ -914,6 +1178,11 @@ ${routes.map((route) => {
   ].filter(Boolean).join('\n');
 
   const relatedItems = [];
+  for (const { report } of researchReports) {
+    if (report.focusChokepointId === chokepoint.id) {
+      relatedItems.push(`<a href="/research/${report.slug}/">${escapeHtml(report.title)}</a>`);
+    }
+  }
   if (content.glossarySlug) {
     relatedItems.push(`<a href="/blog/glossary/${content.glossarySlug}/">${escapeHtml(chokepoint.displayName)} in the glossary</a>`);
   }
@@ -1371,9 +1640,11 @@ function buildManifest({ data, baseUrl, changelogPageCount }) {
   ];
   const changelogRoutes = Array.from({ length: changelogPageCount }, (_, index) => changelogPagePath(index));
   const glossaryRoutes = data.glossaryTerms.map((term) => `/blog/glossary/${term.slug}/`);
+  const researchRoutes = data.researchReports.map(({ report }) => `/research/${report.slug}/`);
   return {
     schemaVersion: 1,
     baseUrl: normalizeBaseUrl(baseUrl),
+    generatorContentVersion: data.generatorContentVersion,
     sources: data.sources,
     sections: {
       countries: {
@@ -1402,6 +1673,11 @@ function buildManifest({ data, baseUrl, changelogPageCount }) {
         index: '/reference/changelog/',
         routes: changelogRoutes,
         sourceLastmod: data.lastmod.changelog,
+      },
+      research: {
+        count: researchRoutes.length,
+        index: '/research/',
+        routes: researchRoutes,
       },
       glossary: {
         count: glossaryRoutes.length,
@@ -1433,6 +1709,7 @@ export async function buildCorpus({
       countries: data.countries,
       baseUrl,
       capturedAt: data.resilience.capturedAt,
+      lastmod: data.lastmod.countries,
     }),
   );
   const rankedCount = data.countries.filter((country) => country.rank != null).length;
@@ -1444,6 +1721,7 @@ export async function buildCorpus({
         country,
         baseUrl,
         capturedAt: data.resilience.capturedAt,
+        lastmod: data.lastmod.countries,
         methodologyFormula: data.resilience.methodologyFormula || 'unknown',
         rankedCount,
       }),
@@ -1468,9 +1746,17 @@ export async function buildCorpus({
         baseUrl,
         lastmod: data.lastmod.chokepoints,
         tradeRoutesById: data.tradeRoutesById,
+        researchReports: data.researchReports,
       }),
     );
   }
+
+  writeResearchSection({
+    data,
+    outDir,
+    baseUrl,
+    tpl: { escapeHtml, absoluteUrl, breadcrumbLd, withUtmSource, pageDocument },
+  });
 
   writeGeneratedFile(
     outDir,
@@ -1587,6 +1873,7 @@ async function main() {
     + `${manifest.sections.chokepoints.count} chokepoints, `
     + `${manifest.sections.crises.count} crisis trackers, `
     + `${manifest.sections.tools.count} live tools, `
+    + `${manifest.sections.research.count} research reports, `
     + `${manifest.sections.changelog.count} changelog pages. `
     + `Glossary manifest references ${manifest.sections.glossary.count} existing blog pages.\n`,
   );

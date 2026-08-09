@@ -7,12 +7,18 @@ import type {
 import type { UnifiedSettingsConfig } from '@/components/UnifiedSettings';
 import type { AirlineIntelPanel } from '@/components/AirlineIntelPanel';
 import type { CustomWidgetPanel } from '@/components/CustomWidgetPanel';
-import { deleteWidget, getWidget, saveWidget, isProUser } from '@/services/widget-store';
+import { deleteWidget, getWidget, saveWidget, isProUser, isProTierResolved } from '@/services/widget-store';
+import { hasPremiumAccess } from '@/services/panel-gating';
+import {
+  sanitizeLockedLayers,
+  shouldSanitizeLockedLayers,
+} from '@/config/map-layer-definitions';
 import {
   FREE_MAX_PANELS,
   FREE_MAX_SOURCES,
   countFreePanelCapUsage,
   isFreePanelCapCounted,
+  userSetPanelEnabled,
 } from '@/config/panels';
 import type { McpDataPanel } from '@/components/McpDataPanel';
 import { deleteMcpPanel, getMcpPanel, saveMcpPanel } from '@/services/mcp-store';
@@ -28,9 +34,9 @@ import type { PredictionPanel } from '@/components/PredictionPanel';
 import {
   buildMapUrl,
   debounce,
+  loadFromStorage,
   saveToStorage,
   getCurrentTheme,
-  setTheme,
   showToast,
 } from '@/utils';
 import { clearPanelColSpans, clearPanelSpans } from '@/utils/panel-storage';
@@ -71,7 +77,6 @@ import {
   track,
   trackPanelView,
   trackVariantSwitch,
-  trackThemeChanged,
   trackMapViewChange,
   trackMapLayerToggle,
   trackPanelToggled,
@@ -80,7 +85,7 @@ import {
 } from '@/services/analytics';
 import { detectPlatform, allButtons, buttonsForPlatform } from '@/components/DownloadBanner';
 import type { Platform } from '@/components/DownloadBanner';
-import { invokeTauri } from '@/services/tauri-bridge';
+import { isOpenableExternalUrl, openExternalUrl } from '@/services/external-navigation';
 import { getCachedGpsInterference } from '@/services/gps-interference';
 import { dataFreshness } from '@/services/data-freshness';
 import { mlWorker } from '@/services/ml-worker';
@@ -90,11 +95,22 @@ import { AuthHeaderWidget } from '@/components/AuthHeaderWidget';
 import { t } from '@/services/i18n';
 import { TvModeController } from '@/services/tv-mode';
 import { getAuthState, subscribeAuthState } from '@/services/auth-state';
-import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
+import { onEntitlementChange } from '@/services/entitlements';
+import { evaluateAvailableExportFormats, evaluateExportGate, exportLockToGateReason } from '@/services/gates/export';
+import { primeExportGateActivation } from '@/services/gates/export-resolver';
+import type { DataExportFormat } from '@/services/gates/export-resolver';
+import { evaluatePlaybackGate } from '@/services/gates/playback';
+import { resolveGateAction, type PanelGateReason } from '@/services/panel-gating';
+import { ExportGateControl } from '@/components/ExportGateControl';
+import { h, setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
 import { scheduleAfterFirstPaint } from '@/utils/after-paint';
 import { escapeHtml } from '@/utils/sanitize';
 import { buildEmbedIframeSnippet, buildEmbedMapUrl, type EmbedVariant } from '@/embed/embed-url';
 import { createSettingsButton } from '@/components/settings-button';
+import { overlayHistory, type OverlayId } from '@/utils/overlay-history';
+import { MobilePrimaryNav } from '@/app/mobile-primary-nav';
+import { stageVariantSelection } from '@/services/variant-panel-ownership';
+import { transferSourceGateOwnershipToUser as releaseSourceGateOwnership } from '@/services/source-cap';
 
 function readStorageValue(key: string): string | null {
   try {
@@ -104,11 +120,13 @@ function readStorageValue(key: string): string | null {
   }
 }
 
-function writeStorageValue(key: string, value: string): void {
+function writeStorageValue(key: string, value: string): boolean {
   try {
     localStorage.setItem(key, value);
+    return true;
   } catch {
     // UI preferences remain in memory for the current page.
+    return false;
   }
 }
 
@@ -127,6 +145,7 @@ class LazyUnifiedSettings implements UnifiedSettingsController {
   private instance: RealUnifiedSettings | null = null;
   private loadPromise: Promise<RealUnifiedSettings> | null = null;
   private destroyed = false;
+  private openEpoch = 0;
 
   constructor(private readonly config: UnifiedSettingsConfig) {
     this.button = createSettingsButton(() => this.open());
@@ -136,20 +155,39 @@ class LazyUnifiedSettings implements UnifiedSettingsController {
     return this.button;
   }
 
-  open(tab?: UnifiedSettingsTabId): void {
+  open(tab?: UnifiedSettingsTabId, replaceOverlayId?: OverlayId, historyPending = false): void {
+    const epoch = ++this.openEpoch;
+    const pendingId: OverlayId = 'settings-pending';
+    const pendingGate = historyPending
+      ? overlayHistory.beginPending(pendingId, replaceOverlayId, () => { this.openEpoch += 1; })
+      : null;
     void this.load().then((settings) => {
-      if (!this.destroyed) settings.open(tab);
+      if (this.destroyed || this.openEpoch !== epoch) return;
+      if (pendingGate && !pendingGate.isCurrent()) return;
+      settings.open(tab, pendingGate ? pendingId : replaceOverlayId);
     }).catch((error) => {
       // A rejection because the controller was torn down mid-load is a
       // deliberate unmount, not a failure the user should be toasted about.
-      if (this.destroyed) return;
+      // Back can cancel the pending history transition before the lazy chunk
+      // rejects; that cancellation is also an expected teardown path.
+      const actionWasCancelled = pendingGate !== null && !pendingGate.isCurrent();
+      if (this.destroyed || actionWasCancelled) return;
       console.warn('[settings] Failed to load settings window:', error);
+      pendingGate?.cancel();
       showToast(t('common.error'));
     });
   }
 
   refreshPanelToggles(): void {
     this.instance?.refreshPanelToggles();
+  }
+
+  close(): void {
+    this.instance?.close();
+  }
+
+  hasPendingChanges(): boolean {
+    return this.instance?.hasPendingChanges() ?? false;
   }
 
   destroy(): void {
@@ -185,10 +223,16 @@ class LazyUnifiedSettings implements UnifiedSettingsController {
 
 
 export interface EventHandlerCallbacks {
-  openSearch: (options?: { toggle?: boolean }) => void;
+  openSearch: (options?: { toggle?: boolean; replaceOverlayId?: OverlayId; historyPending?: boolean }) => void;
   updateSearchIndex: () => void;
   updateFlightSource?: (adsb: PositionSample[], military: MilitaryFlight[]) => void;
   loadAllData: () => Promise<void>;
+  /**
+   * Tell the data loader that the rendered news no longer reflects the last
+   * load, so the next loadAllData() refetches it even though the category set
+   * is unchanged. See DataLoader.invalidateNewsHydration.
+   */
+  invalidateNewsHydration: () => void;
   flushStaleRefreshes: () => void;
   setHiddenSince: (ts: number) => void;
   loadDataForLayer: (layer: string) => void;
@@ -196,9 +240,9 @@ export interface EventHandlerCallbacks {
   syncDataFreshnessWithLayers: () => void;
   ensureCorrectZones: () => void;
   applySavedPanelOrder?: (panelOrder?: string[]) => void;
-  refreshCiiAfterFocalPointsReady?: () => void;
   stopLayerActivity?: (layer: keyof MapLayers) => void;
   mountLiveNewsIfReady?: () => void;
+  isFreeTierFallbackActive?: () => boolean;
 }
 
 export class EventHandlerManager implements AppModule {
@@ -212,7 +256,6 @@ export class EventHandlerManager implements AppModule {
   private boundIdleResetHandler: (() => void) | null = null;
   private boundStorageHandler: ((e: StorageEvent) => void) | null = null;
   private boundTvKeydownHandler: ((e: KeyboardEvent) => void) | null = null;
-  private boundFocalPointsReadyHandler: (() => void) | null = null;
   private boundThemeChangedHandler: (() => void) | null = null;
   private boundDropdownClickHandler: ((e: MouseEvent) => void) | null = null;
   private boundDropdownKeydownHandler: ((e: KeyboardEvent) => void) | null = null;
@@ -224,7 +267,7 @@ export class EventHandlerManager implements AppModule {
   private boundMapFullscreenEscHandler: ((e: KeyboardEvent) => void) | null = null;
   private readonly registeredSearchButtons = new Set<string>();
   private boundSearchKeyHandler: ((e: KeyboardEvent) => void) | null = null;
-  private boundMobileMenuKeyHandler: ((e: KeyboardEvent) => void) | null = null;
+  private readonly mobilePrimaryNav: MobilePrimaryNav;
   private boundPanelCloseHandler: ((e: Event) => void) | null = null;
   private boundWidgetModifyHandler: ((e: Event) => void) | null = null;
   private boundUndoHandler: ((e: KeyboardEvent) => void) | null = null;
@@ -234,6 +277,7 @@ export class EventHandlerManager implements AppModule {
   private boundEmbedModalKeydownHandler: ((e: KeyboardEvent) => void) | null = null;
   private missionPresetPopover: HTMLElement | null = null;
   private missionDataRefreshTimer: number | null = null;
+  private authStateUnsubscribers: Array<() => void> = [];
   private proGateUnsubscribers: Array<() => void> = [];
   private exportPanelLoad: Promise<NonNullable<AppContext['exportPanel']>> | null = null;
   private closedPanelStack: string[] = []; // max-items: 20
@@ -245,7 +289,9 @@ export class EventHandlerManager implements AppModule {
   private readonly debouncedUrlSync = debounce(() => {
     const shareUrl = this.getShareUrl();
     if (!shareUrl) return;
-    try { history.replaceState(null, '', shareUrl); } catch { }
+    // Preserve the shared mobile-overlay marker while syncing map URL state;
+    // replacing it with null makes Android Back skip the open sheet.
+    try { history.replaceState(history.state, '', shareUrl); } catch { }
   }, 250);
 
   private readonly debouncedWebcamReload = debounce(() => {
@@ -257,11 +303,17 @@ export class EventHandlerManager implements AppModule {
   constructor(ctx: AppContext, callbacks: EventHandlerCallbacks) {
     this.ctx = ctx;
     this.callbacks = callbacks;
+    this.mobilePrimaryNav = new MobilePrimaryNav(ctx, {
+      openSearch: (options) => this.callbacks.openSearch(options),
+      navigateToVariant: (variant, options) => this.navigateToVariant(variant, options),
+      openMission: (anchor) => this.openMissionPresetPopover(anchor, true),
+    });
   }
 
   init(): void {
     this.setupSearchControls();
     this.setupEventListeners();
+    this.mobilePrimaryNav.init();
     this.setupIdleDetection();
     this.setupTvMode();
   }
@@ -292,7 +344,7 @@ export class EventHandlerManager implements AppModule {
         return false;
       }
     }
-    config.enabled = true;
+    userSetPanelEnabled(config, true);
     trackPanelToggled(panelId, true);
     saveToStorage(STORAGE_KEYS.panels, this.ctx.panelSettings);
     this.applyPanelSettings();
@@ -394,10 +446,6 @@ export class EventHandlerManager implements AppModule {
       document.removeEventListener('keydown', this.boundTvKeydownHandler);
       this.boundTvKeydownHandler = null;
     }
-    if (this.boundFocalPointsReadyHandler) {
-      window.removeEventListener('focal-points-ready', this.boundFocalPointsReadyHandler);
-      this.boundFocalPointsReadyHandler = null;
-    }
     if (this.boundThemeChangedHandler) {
       window.removeEventListener('theme-changed', this.boundThemeChangedHandler);
       this.boundThemeChangedHandler = null;
@@ -440,10 +488,7 @@ export class EventHandlerManager implements AppModule {
       document.removeEventListener('keydown', this.boundSearchKeyHandler);
       this.boundSearchKeyHandler = null;
     }
-    if (this.boundMobileMenuKeyHandler) {
-      document.removeEventListener('keydown', this.boundMobileMenuKeyHandler);
-      this.boundMobileMenuKeyHandler = null;
-    }
+    this.mobilePrimaryNav.destroy();
     if (this.boundPanelCloseHandler) {
       this.ctx.container.removeEventListener('wm:panel-close', this.boundPanelCloseHandler);
       this.boundPanelCloseHandler = null;
@@ -468,6 +513,8 @@ export class EventHandlerManager implements AppModule {
       window.clearTimeout(this.missionDataRefreshTimer);
       this.missionDataRefreshTimer = null;
     }
+    for (const unsub of this.authStateUnsubscribers) unsub();
+    this.authStateUnsubscribers = [];
     for (const unsub of this.proGateUnsubscribers) unsub();
     this.proGateUnsubscribers = [];
     this.ctx.tvMode?.destroy();
@@ -478,6 +525,7 @@ export class EventHandlerManager implements AppModule {
     this.ctx.authHeaderWidget = null;
     this.ctx.authModal?.destroy();
     this.ctx.authModal = null;
+    overlayHistory.reset();
   }
 
   setupSearchControls(): void {
@@ -498,14 +546,19 @@ export class EventHandlerManager implements AppModule {
     };
     wireSearchButton('searchBtn', 'desktop');
     wireSearchButton('mobileSearchBtn', 'mobile');
-    wireSearchButton('searchMobileFab', 'fab');
     if (!this.boundSearchKeyHandler) {
       this.boundSearchKeyHandler = (e: KeyboardEvent) => {
         // !e.shiftKey so Cmd/Ctrl+Shift+K (e.g. Firefox web console) doesn't
         // also toggle search; .toLowerCase() still tolerates CapsLock. (#4403)
         if ((e.metaKey || e.ctrlKey) && !e.shiftKey && e.key.toLowerCase() === 'k') {
           e.preventDefault();
-          this.callbacks.openSearch({ toggle: true });
+          // A keyboard toggle can arrive while the mobile tab is still
+          // loading Search. Reuse that pending marker so the eventual modal
+          // replaces it instead of pushing a second history entry.
+          this.callbacks.openSearch({
+            toggle: true,
+            historyPending: overlayHistory.top() === 'search-pending',
+          });
         }
       };
       document.addEventListener('keydown', this.boundSearchKeyHandler);
@@ -584,7 +637,7 @@ export class EventHandlerManager implements AppModule {
 
       const config = this.ctx.panelSettings[panelId];
       if (!config) return;
-      config.enabled = false;
+      userSetPanelEnabled(config, false);
       // Live-media teardown is handled centrally by applyPanelSettings() below, which
       // calls stopLiveMediaForClose() on every now-disabled panel. Calling it here too
       // double-fired the lifecycle hook for live-news / live-webcams.
@@ -694,18 +747,12 @@ export class EventHandlerManager implements AppModule {
     };
     document.addEventListener('visibilitychange', this.boundVisibilityHandler);
 
-    this.boundFocalPointsReadyHandler = () => {
-      this.callbacks.refreshCiiAfterFocalPointsReady?.();
-    };
-    window.addEventListener('focal-points-ready', this.boundFocalPointsReadyHandler);
-
     this.boundThemeChangedHandler = () => {
       this.ctx.map?.render();
-      this.updateMobileMenuThemeItem();
+      this.mobilePrimaryNav.updateThemeItem();
     };
     window.addEventListener('theme-changed', this.boundThemeChangedHandler);
 
-    this.setupMobileMenu();
     this.setupMissionPresets();
 
     if (this.ctx.isDesktopApp) {
@@ -727,96 +774,23 @@ export class EventHandlerManager implements AppModule {
           return;
         }
         if (url.origin === window.location.origin) return;
-        if (!/^https?:$/.test(url.protocol)) return; // Only allow http(s) links
+        // Gate on the SAME predicate the router uses, not a looser one. The
+        // native opener takes https anywhere but http only for localhost, so
+        // a plain-http link matched by `/^https?:$/` was cancelled here and
+        // then refused there — a guaranteed dead click plus a misleading
+        // `rejected-scheme` report. Anything the router will not take is left
+        // to the WebView's own `target="_blank"` handling instead.
+        if (!isOpenableExternalUrl(url.href)) return;
         e.preventDefault();
         e.stopPropagation();
-        void invokeTauri<void>('open_url', { url: url.toString() }).catch(() => {
-          window.open(url.toString(), '_blank', 'noopener,noreferrer');
-        });
+        void openExternalUrl(url);
       };
       document.addEventListener('click', this.boundDesktopExternalLinkHandler, true);
     }
   }
 
-  private setupMobileMenu(): void {
-    const hamburger = document.getElementById('hamburgerBtn');
-    const overlay = document.getElementById('mobileMenuOverlay');
-    const menu = document.getElementById('mobileMenu');
-    const closeBtn = document.getElementById('mobileMenuClose');
-    if (!hamburger || !overlay || !menu || !closeBtn) return;
-
-    hamburger.addEventListener('click', () => this.openMobileMenu());
-    overlay.addEventListener('click', () => this.closeMobileMenu());
-    closeBtn.addEventListener('click', () => this.closeMobileMenu());
-
-    const isLocalDev = location.hostname === 'localhost' || location.hostname === '127.0.0.1';
-    menu.querySelectorAll<HTMLButtonElement>('.mobile-menu-variant').forEach(btn => {
-      btn.addEventListener('click', () => {
-        const variant = btn.dataset.variant;
-        if (!variant || variant === SITE_VARIANT) return;
-        void this.navigateToVariant(variant, { isLocalDev });
-      });
-    });
-
-    document.getElementById('mobileMenuRegion')?.addEventListener('click', () => {
-      this.closeMobileMenu();
-      this.openRegionSheet();
-    });
-
-    document.getElementById('mobileMenuSettings')?.addEventListener('click', () => {
-      this.closeMobileMenu();
-      this.ctx.unifiedSettings?.open();
-    });
-
-    document.getElementById('mobileMenuTheme')?.addEventListener('click', () => {
-      this.closeMobileMenu();
-      const next = getCurrentTheme() === 'dark' ? 'light' : 'dark';
-      setTheme(next);
-      trackThemeChanged(next);
-    });
-
-    const sheetBackdrop = document.getElementById('regionSheetBackdrop');
-    sheetBackdrop?.addEventListener('click', () => this.closeRegionSheet());
-
-    const sheet = document.getElementById('regionBottomSheet');
-    sheet?.querySelectorAll<HTMLButtonElement>('.region-sheet-option').forEach(opt => {
-      opt.addEventListener('click', () => {
-        const region = opt.dataset.region;
-        if (!region) return;
-        this.ctx.map?.setView(region as MapView);
-        trackMapViewChange(region);
-        const regionSelect = document.getElementById('regionSelect') as HTMLSelectElement;
-        if (regionSelect) regionSelect.value = region;
-        sheet.querySelectorAll('.region-sheet-option').forEach(o => {
-          o.classList.toggle('active', o === opt);
-          const check = o.querySelector('.region-sheet-check');
-          if (check) check.textContent = o === opt ? '✓' : '';
-        });
-        const menuRegionLabel = document.getElementById('mobileMenuRegion')?.querySelector('.mobile-menu-item-label');
-        if (menuRegionLabel) menuRegionLabel.textContent = opt.querySelector('span')?.textContent ?? '';
-        this.closeRegionSheet();
-      });
-    });
-
-    this.boundMobileMenuKeyHandler = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        if (sheet?.classList.contains('open')) {
-          this.closeRegionSheet();
-        } else if (menu.classList.contains('open')) {
-          this.closeMobileMenu();
-        }
-      }
-    };
-    document.addEventListener('keydown', this.boundMobileMenuKeyHandler);
-  }
-
   private setupMissionPresets(): void {
     this.renderMissionPresetControl();
-
-    document.getElementById('mobileMenuMission')?.addEventListener('click', () => {
-      this.closeMobileMenu();
-      this.openMissionPresetPopover(document.getElementById('hamburgerBtn'), true);
-    });
 
     const shouldPrompt =
       !this.ctx.isMobile &&
@@ -1004,9 +978,19 @@ export class EventHandlerManager implements AppModule {
   private filterMissionLayersForCurrentRenderer(layers: MapLayers): MapLayers {
     const renderer = this.ctx.map?.isGlobeMode?.() ? 'globe' : 'flat';
     const isDeckGLActive = this.ctx.map?.isDeckGLActive?.() ?? !this.ctx.isMobile;
-    return this.filterMissionLayersForAvailableServices(
+    let filtered = this.filterMissionLayersForAvailableServices(
       filterMissionLayersForRenderer(layers, renderer, isDeckGLActive, this.getMissionDefaultLayers()),
     );
+    // #6045 — mission presets (e.g. Supply-Chain Risk) include resilienceScore.
+    // Free users must not persist or apply locked layers through this path.
+    if (shouldSanitizeLockedLayers(
+      hasPremiumAccess(),
+      isProTierResolved(),
+      this.callbacks.isFreeTierFallbackActive?.() === true,
+    )) {
+      filtered = sanitizeLockedLayers(filtered, false);
+    }
+    return filtered;
   }
 
   private filterMissionLayersForAvailableServices(layers: MapLayers): MapLayers {
@@ -1144,43 +1128,6 @@ export class EventHandlerManager implements AppModule {
     showToast('Mission preset reset');
     this.renderMissionPresetControl();
     this.closeMissionPresetPopover();
-  }
-
-  private openMobileMenu(): void {
-    const overlay = document.getElementById('mobileMenuOverlay');
-    const menu = document.getElementById('mobileMenu');
-    if (!overlay || !menu) return;
-    overlay.classList.add('open');
-    requestAnimationFrame(() => menu.classList.add('open'));
-    document.body.style.overflow = 'hidden';
-  }
-
-  private closeMobileMenu(): void {
-    const overlay = document.getElementById('mobileMenuOverlay');
-    const menu = document.getElementById('mobileMenu');
-    if (!overlay || !menu) return;
-    menu.classList.remove('open');
-    overlay.classList.remove('open');
-    const sheetOpen = document.getElementById('regionBottomSheet')?.classList.contains('open');
-    if (!sheetOpen) document.body.style.overflow = '';
-  }
-
-  private openRegionSheet(): void {
-    const backdrop = document.getElementById('regionSheetBackdrop');
-    const sheet = document.getElementById('regionBottomSheet');
-    if (!backdrop || !sheet) return;
-    backdrop.classList.add('open');
-    requestAnimationFrame(() => sheet.classList.add('open'));
-    document.body.style.overflow = 'hidden';
-  }
-
-  private closeRegionSheet(): void {
-    const backdrop = document.getElementById('regionSheetBackdrop');
-    const sheet = document.getElementById('regionBottomSheet');
-    if (!backdrop || !sheet) return;
-    sheet.classList.remove('open');
-    backdrop.classList.remove('open');
-    document.body.style.overflow = '';
   }
 
   private setupIdleDetection(): void {
@@ -1579,8 +1526,9 @@ export class EventHandlerManager implements AppModule {
     await this.exitFullscreenForNavigation();
 
     if (this.ctx.isDesktopApp || options.isLocalDev) {
-      writeStorageValue('worldmonitor-variant', variant);
-      window.location.reload();
+      if (stageVariantSelection(SITE_VARIANT, variant, writeStorageValue)) {
+        window.location.reload();
+      }
       return;
     }
 
@@ -1612,16 +1560,6 @@ export class EventHandlerManager implements AppModule {
         try { el.webkitRequestFullscreen(); } catch { }
       }
     }
-  }
-
-  private updateMobileMenuThemeItem(): void {
-    const btn = document.getElementById('mobileMenuTheme');
-    if (!btn) return;
-    const isDark = getCurrentTheme() === 'dark';
-    const icon = btn.querySelector('.mobile-menu-item-icon');
-    const label = btn.querySelector('.mobile-menu-item-label');
-    if (icon) icon.textContent = isDark ? '☀️' : '🌙';
-    if (label) label.textContent = isDark ? 'Light Mode' : 'Dark Mode';
   }
 
   startHeaderClock(): void {
@@ -1698,8 +1636,11 @@ export class EventHandlerManager implements AppModule {
       }
     };
 
+    let currentExportFormats: readonly DataExportFormat[] = [];
+
     const ensureExportPanel = (): Promise<NonNullable<AppContext['exportPanel']>> => {
       if (this.ctx.exportPanel) {
+        this.ctx.exportPanel.setAvailableFormats(currentExportFormats);
         attachExportPanel(this.ctx.exportPanel);
         return Promise.resolve(this.ctx.exportPanel);
       }
@@ -1710,7 +1651,7 @@ export class EventHandlerManager implements AppModule {
           if (this.ctx.isDestroyed) {
             throw new Error('EventHandlerManager destroyed before export panel loaded');
           }
-          const panel = new ExportPanel(getExportData);
+          const panel = new ExportPanel(getExportData, currentExportFormats);
           this.ctx.exportPanel = panel;
           attachExportPanel(panel);
           return panel;
@@ -1723,26 +1664,112 @@ export class EventHandlerManager implements AppModule {
       return this.exportPanelLoad;
     };
 
-    let currentIsPro = getAuthState().user?.role === 'pro';
-    const applyProGate = (isPro: boolean, initial = false) => {
-      currentIsPro = isPro;
-      if (!isPro) {
-        const el = this.ctx.exportPanel?.getElement();
-        if (el) el.style.display = 'none';
-        if (initial) trackGateHit('export');
+    // --- Data-export gate (plan 2026-07-25-001, U5) -------------------------
+    // Replaces the old Clerk-role check plus display:none toggle. The `role`
+    // field is written by nothing in our webhook pipeline, so that check hid
+    // the export button from every paying subscriber. The control is now
+    // visible to everyone and only its MENU changes: format rows when
+    // entitled, a single locked row (reason + CTA) otherwise.
+    let lockedControl: ExportGateControl | null = null;
+    let lockedReason: PanelGateReason | null = null;
+    let isUnlocked = false;
+
+    // Created up front and empty: an aria-live region only announces content
+    // injected AFTER it is in the accessibility tree.
+    const liveRegion = h('span', { className: 'wm-visually-hidden', role: 'status' });
+    liveRegion.setAttribute('aria-live', 'polite');
+    const initialHeaderRight = this.ctx.container.querySelector('.header-right');
+    initialHeaderRight?.appendChild(liveRegion);
+
+    const removeLockedControl = (): void => {
+      lockedControl?.destroy();
+      lockedControl = null;
+      lockedReason = null;
+    };
+
+    const showLocked = (reason: PanelGateReason): void => {
+      isUnlocked = false;
+      const panelEl = this.ctx.exportPanel?.getElement();
+      if (panelEl) panelEl.style.display = 'none';
+      lockedReason = reason;
+      if (lockedControl) {
+        lockedControl.update(reason);
         return;
       }
+      lockedControl = new ExportGateControl({
+        reason,
+        onOpen: () => trackGateHit('export'),
+        onAction: () => {
+          if (lockedReason === null) return;
+          resolveGateAction(lockedReason, { openAuthModal: () => this.ctx.authModal?.open() })();
+        },
+      });
+      const headerRight = this.ctx.container.querySelector('.header-right');
+      headerRight?.insertBefore(lockedControl.getElement(), headerRight.firstChild);
+    };
 
+    const unlock = (formats: readonly DataExportFormat[]): void => {
+      currentExportFormats = formats;
+      const wasLocked = lockedControl !== null;
+      // Change-detection guard: gating re-fires on every auth AND entitlement
+      // emission, most with an unchanged verdict — skip the re-import/DOM
+      // write when already unlocked (same pattern as Panel.showGatedCta's
+      // repeat-verdict skip).
+      if (!wasLocked && isUnlocked) {
+        this.ctx.exportPanel?.setAvailableFormats(currentExportFormats);
+        return;
+      }
+      isUnlocked = true;
+      removeLockedControl();
       void ensureExportPanel()
         .then((panel) => {
-          panel.getElement().style.display = currentIsPro ? '' : 'none';
+          if (this.ctx.isDestroyed) return;
+          // The verdict can flip back while the chunk is in flight (sign-out
+          // mid-load); the locked control winning is the safe resolution.
+          if (lockedControl) {
+            panel.getElement().style.display = 'none';
+            return;
+          }
+          panel.setAvailableFormats(currentExportFormats);
+          panel.getElement().style.display = '';
+          if (wasLocked) liveRegion.textContent = t('components.exportGate.unlockedAnnouncement');
         })
         .catch((err) => {
+          // Allow the next emission to retry the import — the guard above
+          // must not latch an unlocked state the chunk never delivered.
+          isUnlocked = false;
           console.warn('[export-panel] Failed to lazy-load ExportPanel:', err);
         });
     };
-    applyProGate(currentIsPro, true);
-    this.proGateUnsubscribers.push(subscribeAuthState(state => applyProGate(state.user?.role === 'pro')));
+    const applyGate = (): void => {
+      if (this.ctx.isDestroyed) return;
+      const authState = getAuthState();
+      const verdict = evaluateExportGate(authState);
+      if (verdict.locked) {
+        showLocked(exportLockToGateReason(verdict.reason));
+        return;
+      }
+      // Only a would-be-locked user pays for the catalog probe; the gate stays
+      // inactive (export available) until it proves Pro Business is
+      // purchasable, so the takeaway and the tier flip together (R10).
+      if (verdict.pendingActivation) {
+        void primeExportGateActivation().then((active) => {
+          if (active) applyGate();
+        });
+      }
+      unlock(evaluateAvailableExportFormats(authState));
+    };
+
+    applyGate();
+    // BOTH subscriptions: auth alone misses the entitlement snapshot landing
+    // after sign-in (documented at src/app/panel-layout.ts:2470-2485), which is
+    // exactly the post-checkout unlock path.
+    this.proGateUnsubscribers.push(subscribeAuthState(() => applyGate()));
+    this.proGateUnsubscribers.push(onEntitlementChange(() => applyGate()));
+    this.proGateUnsubscribers.push(() => {
+      removeLockedControl();
+      liveRegion.remove();
+    });
   }
 
   setupUnifiedSettings(): void {
@@ -1756,10 +1783,14 @@ export class EventHandlerManager implements AppModule {
             trackPanelToggled(key, nextConfig.enabled);
             return;
           }
-          if (current.enabled !== nextConfig.enabled) {
+          const enabledChanged = current.enabled !== nextConfig.enabled;
+          if (enabledChanged) {
             trackPanelToggled(key, nextConfig.enabled);
           }
           Object.assign(current, nextConfig);
+          // Object.assign cannot DELETE a key, so a stale gate marker would
+          // survive a settings-driven toggle. Re-apply through the owner helper.
+          if (enabledChanged) userSetPanelEnabled(current, nextConfig.enabled);
         });
         saveToStorage(STORAGE_KEYS.panels, this.ctx.panelSettings);
         this.applyPanelSettings();
@@ -1781,7 +1812,9 @@ export class EventHandlerManager implements AppModule {
         } else {
           this.ctx.disabledSources.add(name);
         }
-        saveToStorage(STORAGE_KEYS.disabledFeeds, Array.from(this.ctx.disabledSources));
+        if (this.transferSourceGateOwnershipToUser([name])) {
+          saveToStorage(STORAGE_KEYS.disabledFeeds, Array.from(this.ctx.disabledSources));
+        }
       },
       setSourcesEnabled: (names: string[], enabled: boolean) => {
         if (enabled && !isProUser()) {
@@ -1797,7 +1830,9 @@ export class EventHandlerManager implements AppModule {
           if (enabled) this.ctx.disabledSources.delete(name);
           else this.ctx.disabledSources.add(name);
         }
-        saveToStorage(STORAGE_KEYS.disabledFeeds, Array.from(this.ctx.disabledSources));
+        if (this.transferSourceGateOwnershipToUser(names)) {
+          saveToStorage(STORAGE_KEYS.disabledFeeds, Array.from(this.ctx.disabledSources));
+        }
       },
       getAllSourceNames: () => this.getAllSourceNames(),
       getLocalizedPanelName: (key: string, fallback: string) => this.getLocalizedPanelName(key, fallback),
@@ -1850,17 +1885,21 @@ export class EventHandlerManager implements AppModule {
     const modal = new AuthLauncher();
     this.ctx.authModal = modal;
 
-    // The settings gear is rendered once by the standalone unifiedSettings
-    // button (#unifiedSettingsMount), which is mounted regardless of auth state
-    // (so signed-out users keep it too). Passing onSettingsClick here makes
-    // AuthHeaderWidget render a second gear next to the avatar for signed-in
-    // users — a duplicate. Leave it unset.
-    const widget = new AuthHeaderWidget(() => modal.open());
+    // The standalone gear remains available to every user. Signed-in users
+    // also get explicit Settings and Plan & billing destinations inside the
+    // avatar menu, keeping account and subscription actions in one place.
+    const widget = new AuthHeaderWidget(
+      () => modal.open(),
+      () => this.ctx.unifiedSettings?.open('settings'),
+      () => this.ctx.unifiedSettings?.open('billing'),
+    );
     this.ctx.authHeaderWidget = widget;
     const mount = document.getElementById('authWidgetMount');
     if (mount) {
       mount.appendChild(widget.getElement());
     }
+
+    this.mobilePrimaryNav.setupAuth(modal);
   }
 
   setupPlaybackControl(): void {
@@ -1882,12 +1921,34 @@ export class EventHandlerManager implements AppModule {
       headerRight.insertBefore(el, headerRight.firstChild);
     }
 
-    const applyProGate = (isPro: boolean, initial = false) => {
-      el.style.display = isPro ? '' : 'none';
-      if (initial && !isPro) trackGateHit('playback');
+    // #5632: gate on the entitlement chain, NOT `user.role === 'pro'` — nothing
+    // writes Clerk publicMetadata, so that field read 'free' for paying
+    // subscribers and the control rendered for nobody.
+    let gateHitTracked = false;
+    const applyGate = (): void => {
+      if (this.ctx.isDestroyed) return;
+      const verdict = evaluatePlaybackGate(getAuthState());
+      const visible = verdict === 'visible';
+      el.style.display = visible ? '' : 'none';
+      // Losing access mid-replay must also LEAVE playback. `display: none`
+      // alone strands the dashboard on historical data — the "Live" button is
+      // inside the element we just hid. No-ops unless playback is active.
+      if (!visible) this.ctx.playbackControl?.exitPlayback();
+      // Affirmative denials only, once per session. 'pending' also hides, but
+      // counting it would tick the funnel on every page load — including for
+      // subscribers whose control appears a moment later.
+      if (verdict === 'denied' && !gateHitTracked) {
+        gateHitTracked = true;
+        trackGateHit('playback');
+      }
     };
-    applyProGate(getAuthState().user?.role === 'pro', true);
-    this.proGateUnsubscribers.push(subscribeAuthState(state => applyProGate(state.user?.role === 'pro')));
+    applyGate();
+    // BOTH subscriptions, same as setupExportPanel above: the Convex
+    // entitlement watcher (services/entitlements.ts) is a separate emitter from
+    // Clerk's, so an auth-only subscription never re-runs when a snapshot lands
+    // after sign-in — exactly the post-checkout unlock path.
+    this.proGateUnsubscribers.push(subscribeAuthState(() => applyGate()));
+    this.proGateUnsubscribers.push(onEntitlementChange(() => applyGate()));
   }
 
   setupSnapshotSaving(): void {
@@ -1916,6 +1977,11 @@ export class EventHandlerManager implements AppModule {
   }
 
   restoreSnapshot(snapshot: DashboardSnapshot): void {
+    // Replay parks every news panel on a loading state and never refills it —
+    // leaving playback calls loadAllData() to do that. Its news task is skipped
+    // when the category set is unchanged (#5376), which replay does not touch,
+    // so drop the record here and the exit reload happens.
+    this.callbacks.invalidateNewsHydration();
     for (const panel of Object.values(this.ctx.newsPanels)) {
       panel.showLoading();
     }
@@ -2241,11 +2307,26 @@ export class EventHandlerManager implements AppModule {
     return localized === lookup ? fallback : localized;
   }
 
+  private transferSourceGateOwnershipToUser(names: Iterable<string>): boolean {
+    const gateOwned = new Set(
+      loadFromStorage<string[]>(STORAGE_KEYS.sourceGateOwnership, []),
+    );
+    const nextGateOwned = releaseSourceGateOwnership(gateOwned, names);
+    if (nextGateOwned.size === gateOwned.size) return true;
+    // A deliberate source preference can only outlive the gate safely after
+    // ownership transfers. If this sidecar write fails, keep the live toggle
+    // for the session but do not persist a preference Pro could later undo.
+    return writeStorageValue(
+      STORAGE_KEYS.sourceGateOwnership,
+      JSON.stringify([...nextGateOwned]),
+    );
+  }
+
   getAllSourceNames(): string[] {
     const sources = new Set<string>();
     // Preset feeds + sources from any custom news panels the user added, so
     // the source manager stays in sync with what loadNews() actually fetches.
-    const categories = resolveNewsCategories(FEEDS, CANONICAL_FEEDS, enabledNewsCategoryKeys(this.ctx.newsPanels, this.ctx.panels, this.ctx.panelSettings, Object.keys(CANONICAL_FEEDS)));
+    const categories = resolveNewsCategories(FEEDS, CANONICAL_FEEDS, enabledNewsCategoryKeys(this.ctx.newsCategoryPanelKeys, this.ctx.panelSettings));
     categories.forEach(({ feeds }) => feeds.forEach(f => sources.add(f.name)));
     INTEL_SOURCES.forEach(f => sources.add(f.name));
     return Array.from(sources).sort((a, b) => a.localeCompare(b));

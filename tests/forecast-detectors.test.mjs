@@ -295,6 +295,50 @@ describe('calibrateWithMarkets', () => {
     assert.equal(pred.probability, 0.45);
   });
 
+  // #5733: these two readers used `markets.geopolitical` as a stand-in for "all
+  // markets", which was true only while the producer published near-duplicate
+  // pools. Now that the pools are a disjoint partition, a macro/rates/crypto
+  // anchor lives ONLY in tech or finance, and reading one pool would silently
+  // drop it. Every other test in this describe passes a geopolitical-only
+  // fixture, so without these the regression ships green.
+  it('calibrates from an anchor that lives in the finance pool, not geopolitical', () => {
+    const pred = makePrediction(
+      'economic', 'United States', 'US recession',
+      0.7, 0.6, '7d', [],
+    );
+    pred.region = 'United States';
+    calibrateWithMarkets([pred], {
+      geopolitical: [],
+      tech: [],
+      finance: [{ title: 'US recession by end of 2026?', yesPrice: 30, source: 'polymarket', volume: 50000 }],
+    });
+    assert.ok(pred.calibration !== null, 'a finance-pool market must still calibrate');
+    assert.equal(pred.probability, +(0.4 * 0.3 + 0.6 * 0.7).toFixed(3));
+  });
+
+  it('calibrates from an anchor that lives in the tech pool', () => {
+    const pred = makePrediction(
+      'economic', 'United States', 'US AI market correction',
+      0.7, 0.6, '7d', [],
+    );
+    pred.region = 'United States';
+    calibrateWithMarkets([pred], {
+      geopolitical: [],
+      tech: [{ title: 'US AI market correction in 2026?', yesPrice: 30, source: 'polymarket', volume: 50000 }],
+      finance: [],
+    });
+    assert.ok(pred.calibration !== null, 'a tech-pool market must still calibrate');
+  });
+
+  it('returns early only when every pool is empty', () => {
+    const pred = makePrediction('economic', 'United States', 'US recession', 0.7, 0.6, '7d', []);
+    const original = pred.probability;
+    calibrateWithMarkets([pred], { geopolitical: [], tech: [], finance: [] });
+    assert.equal(pred.probability, original);
+    calibrateWithMarkets([pred], undefined);
+    assert.equal(pred.probability, original);
+  });
+
   it('does not calibrate de-escalation risk from an adverse YES market', () => {
     const pred = makePrediction(
       'conflict', 'Sudan', 'Ceasefire holds in Sudan',
@@ -2756,6 +2800,37 @@ describe('detectFromPredictionMarkets', () => {
       title: `Will Europe face crisis ${i}?`, yesPrice: 70,
     })) };
     assert.ok(detectFromPredictionMarkets({ predictionMarkets: markets }).length <= 5);
+  });
+
+  // #5733: reads every pool, not just geopolitical. The detector's own gate is
+  // "the title tags a region", so a tech- or finance-classified market with a
+  // regional title is in scope — and since the producer's pools became a
+  // disjoint partition those markets no longer appear in `geopolitical`.
+  it('detects from the tech and finance pools, not only geopolitical', () => {
+    const fromTech = detectFromPredictionMarkets({
+      predictionMarkets: {
+        geopolitical: [],
+        tech: [{ title: 'Will China ship the best AI model by December 31?', yesPrice: 70, source: 'polymarket' }],
+        finance: [],
+      },
+    });
+    assert.equal(fromTech.length, 1, 'a tech-pool market must still produce a prediction');
+    assert.equal(fromTech[0].region, 'Asia-Pacific');
+
+    const fromFinance = detectFromPredictionMarkets({
+      predictionMarkets: {
+        geopolitical: [],
+        tech: [],
+        finance: [{ title: 'Will the ECB cut rates in 2026?', yesPrice: 70, source: 'polymarket' }],
+      },
+    });
+    assert.equal(fromFinance.length, 1, 'a finance-pool market must still produce a prediction');
+    assert.equal(fromFinance[0].region, 'Europe');
+  });
+
+  it('tolerates a payload missing pools entirely', () => {
+    assert.equal(detectFromPredictionMarkets({ predictionMarkets: {} }).length, 0);
+    assert.equal(detectFromPredictionMarkets({}).length, 0);
   });
 });
 

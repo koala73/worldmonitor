@@ -14,6 +14,38 @@ import { existsSync, readFileSync, statSync } from 'node:fs';
 import { isBuiltin } from 'node:module';
 import { dirname, extname, join, relative, resolve, sep } from 'node:path';
 
+// Per-file strip/extract cache. The container guards walk overlapping graphs
+// repeatedly — resolveRuntimeSurface alone re-walks each service's graph up to
+// 8 times to reach its spawn-edge fixed point, and every service's walk
+// revisits the same shared seeder modules — so without a cache the same file
+// is read and comment-stripped hundreds of times per test file. Keyed by
+// mtime+size so a test that rewrites a fixture between walks still sees the
+// fresh content, while unchanged files pay stripComments/extractEdges once.
+const sourceCache = new Map();
+
+function cachedSourceEntry(path) {
+  const stat = statSync(path);
+  const key = `${stat.mtimeMs}:${stat.size}`;
+  let entry = sourceCache.get(path);
+  if (!entry || entry.key !== key) {
+    entry = { key, stripped: stripComments(readFileSync(path, 'utf-8')), edges: null };
+    sourceCache.set(path, entry);
+  }
+  return entry;
+}
+
+/** Comment-stripped source of `path`, cached until the file changes on disk. */
+export function readStrippedSource(path) {
+  return cachedSourceEntry(path).stripped;
+}
+
+/** Import edges of `path` (see extractEdges), cached until the file changes. */
+export function extractCachedEdges(path) {
+  const entry = cachedSourceEntry(path);
+  if (!entry.edges) entry.edges = extractEdges(entry.stripped);
+  return entry.edges;
+}
+
 // Keywords after which a `/` in code position starts a REGEX LITERAL, not
 // division (`return /x/.test(s)`, `typeof /x/`, `case /x/:` ...).
 const REGEX_PRECEDING_KEYWORDS = /(?:^|[^$\w.])(?:return|typeof|case|delete|void|in|of|new|instanceof|yield|await|do|else)\s*$/;
@@ -224,8 +256,7 @@ export function resolveTsxRelative(fromFile, spec) {
 // included — the COPY-closure guards never followed those). Used by the
 // relay and digest-notifications Dockerfile guards.
 export function collectRelativeImports(filePath) {
-  const src = stripComments(readFileSync(filePath, 'utf-8'));
-  const { staticSpecs, requireSpecs } = extractEdges(src);
+  const { staticSpecs, requireSpecs } = extractCachedEdges(filePath);
   const imports = new Set();
   for (const spec of [...staticSpecs, ...requireSpecs]) {
     if (spec.startsWith('.')) imports.add(spec);
@@ -238,8 +269,7 @@ export function collectRelativeImports(filePath) {
 // a conditional import that escapes scripts/ still crashes when that branch
 // executes in Railway's /app scripts root.
 export function collectRelativeRuntimeImports(filePath) {
-  const src = stripComments(readFileSync(filePath, 'utf-8'));
-  const { staticSpecs, dynamicSpecs, requireSpecs } = extractEdges(src);
+  const { staticSpecs, dynamicSpecs, requireSpecs } = extractCachedEdges(filePath);
   const imports = new Set();
   for (const spec of [...staticSpecs, ...dynamicSpecs, ...requireSpecs]) {
     if (spec.startsWith('.')) imports.add(spec);
@@ -318,8 +348,7 @@ export function walkContainerGraph(rootFiles, contract) {
     visited.add(file);
     if (extname(file) === '.json') continue; // data, no imports
 
-    const src = stripComments(readFileSync(file, 'utf-8'));
-    const { staticSpecs, dynamicSpecs, requireSpecs } = extractEdges(src);
+    const { staticSpecs, dynamicSpecs, requireSpecs } = extractCachedEdges(file);
 
     for (const spec of staticSpecs) {
       if (isBare(spec)) checkBare(file, spec, 'statically imported');

@@ -9,6 +9,7 @@ function readFileSync(path, options) {
 import { join } from 'node:path';
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import { candidatePeriods } from '../scripts/seed-comtrade-bilateral-hs4.mjs';
 
 const root = join(import.meta.dirname, '..');
 
@@ -125,10 +126,43 @@ describe('Comtrade bilateral HS4 seeder (scripts/seed-comtrade-bilateral-hs4.mjs
     );
   });
 
-  it('TTL_SECONDS is 259200 (72 hours)', () => {
+  it('keeps bulk country payloads alive across the monthly Railway cadence', () => {
+    const ttlMatch = src.match(/const TTL_SECONDS = (\d+)/);
     assert.ok(
-      src.includes('TTL_SECONDS = 259200'),
-      'seeder: TTL_SECONDS must be 259200 (72h) to match the cache interval',
+      ttlMatch && Number(ttlMatch[1]) >= 35 * 86_400,
+      'seeder: TTL_SECONDS must cover a 31-day month plus at least 4 days of deploy/missed-tick slack',
+    );
+  });
+
+  it('falls back to an earlier period per-reporter when the primary period is empty', () => {
+    // Behavioural, not a source grep: the helper now lives in
+    // scripts/shared/comtrade-period.mjs and is re-exported, so a text match on
+    // `export function candidatePeriods` would fail on a working seeder — and,
+    // worse, would pass on a broken one that merely kept the token.
+    assert.deepEqual(
+      candidatePeriods(new Date('2026-07-02T00:00:00Z')),
+      ['2024', '2023'],
+      'seeder: a reporter that has not filed (y-2) must still be retried at (y-3)',
+    );
+    assert.match(
+      src,
+      /if \(batch1\.length > 0 \|\| batch2\.length > 0\) break;/,
+      'seeder: must stop retrying a reporter as soon as a period returns records',
+    );
+  });
+
+  it('does not carry a hardcoded fallback year — must derive from the requested period', () => {
+    assert.doesNotMatch(
+      src,
+      /latestYear \|\| 202\d\b/,
+      'seeder: year fallback must track the requested period, not a hardcoded year that goes stale',
+    );
+  });
+
+  it('caps total requests under the UN Comtrade 500/mo quota even with the period fallback', () => {
+    assert.ok(
+      /REQUEST_BUDGET/.test(src),
+      'seeder: the (y-3) fallback can double request volume for reporters empty on (y-2) — must be guarded by a request budget',
     );
   });
 
@@ -275,6 +309,18 @@ describe('Comtrade bilateral HS4 lazy fallback (server/worldmonitor/supply-chain
     );
   });
 
+  it('uses the stable HS route and an explicit safely-final annual period', () => {
+    assert.ok(
+      src.includes('/public/v1/preview/C/A/HS'),
+      'lazy fallback: must use the stable HS API route classifier',
+    );
+    assert.match(
+      src,
+      /searchParams\.set\('period',\s*recentPeriod\(\)\)/,
+      'lazy fallback: must request an explicit annual period instead of accepting a successful empty response',
+    );
+  });
+
   it('does not carry a stale IN/TW-only inline override map', () => {
     assert.ok(
       !/COMTRADE_REPORTER_OVERRIDES:\s*Record<string,\s*string>\s*=\s*\{\s*IN:\s*'699',\s*TW:\s*'490'\s*\}/.test(src),
@@ -284,10 +330,16 @@ describe('Comtrade bilateral HS4 lazy fallback (server/worldmonitor/supply-chain
 });
 
 describe('Comtrade reporter-code source-of-truth guard', () => {
+  function isRuntimeAuditFixture(name) {
+    return name === '_bundle-runner-test-run.mjs'
+      || /^_bundle-runner-test-run-[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}\.mjs$/u.test(name)
+      || name.startsWith('_bundle-fixture-');
+  }
+
   function collectRuntimeSources(dir) {
     const out = [];
     for (const name of readdirSync(dir)) {
-      if (name === '_bundle-runner-test-run.mjs' || name.startsWith('_bundle-fixture-')) continue;
+      if (isRuntimeAuditFixture(name)) continue;
       const filePath = join(dir, name);
       const stat = statSync(filePath);
       if (stat.isDirectory()) {
@@ -331,6 +383,15 @@ describe('Comtrade reporter-code source-of-truth guard', () => {
       checkedFiles.includes(join(root, 'scripts', '_bundle-runner.mjs')),
       'the committed bundle runner must remain covered by the runtime-source audit',
     );
+  });
+
+  it('ignores randomized bundle-runner fixtures created by concurrent tests', () => {
+    assert.equal(
+      isRuntimeAuditFixture('_bundle-runner-test-run-9cd5c29e-95ba-4eb9-839b-662729b61564.mjs'),
+      true,
+    );
+    assert.equal(isRuntimeAuditFixture('_bundle-runner-test-run-not-a-uuid.mjs'), false);
+    assert.equal(isRuntimeAuditFixture('_bundle-runner.mjs'), false);
   });
 
   it('does not reintroduce stale inline IN/TW-only reporter maps in runtime sources', () => {

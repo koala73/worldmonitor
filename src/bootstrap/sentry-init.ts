@@ -7,6 +7,8 @@
  */
 
 import { isDebugBearRumScriptFrame } from './debugbear-rum';
+import { isIosLikeUserAgent } from './platform-ua';
+import { getSentryBuildMetadata } from './sentry-build-metadata';
 
 type SentryNs = typeof import('@sentry/browser');
 
@@ -58,7 +60,7 @@ function buildSentryInitOptions(): Parameters<SentryNs['init']>[0] {
   const sentryDsn = import.meta.env.VITE_SENTRY_DSN?.trim();
   return {
     dsn: sentryDsn || undefined,
-    release: `worldmonitor@${__APP_VERSION__}`,
+    ...getSentryBuildMetadata(__APP_VERSION__, __BUILD_HASH__),
     environment: (location.hostname === 'worldmonitor.app' || location.hostname.endsWith('.worldmonitor.app')) ? 'production'
       : location.hostname.includes('vercel.app') ? 'preview'
       : 'development',
@@ -188,7 +190,6 @@ function buildSentryInitOptions(): Parameters<SentryNs['init']>[0] {
       /Se requiere plan premium/,
       /hybridExecute is not defined/,
       /reading 'postMessage'/,
-      /appendChild.*Unexpected token/,
       /\bmag is not defined\b/,
       /evaluating '[^']*\.luma/,
       /translateNotifyError/,
@@ -348,6 +349,14 @@ function buildSentryInitOptions(): Parameters<SentryNs['init']>[0] {
       const nonInfraFrames = frames.filter(f => f.filename && f.filename !== '<anonymous>' && f.filename !== '[native code]' && !/\/sentry-[A-Za-z0-9_-]+\.js/.test(f.filename));
       const hasFirstParty = nonInfraFrames.some(f => firstPartyFile(f.filename ?? ''));
       const hasAnyStack = nonInfraFrames.length > 0;
+      // Platform gate for the two iOS-scoped filters below. MUST come from the
+      // User-Agent, not `event.contexts.os` — the browser SDK never populates that
+      // context; Sentry derives it at ingest, long after beforeSend runs. Reading it
+      // here always yielded '' and left both filters unreachable (see platform-ua.ts).
+      const isIosLike = isIosLikeUserAgent(
+        typeof navigator === 'undefined' ? '' : navigator.userAgent ?? '',
+        typeof navigator === 'undefined' ? 0 : navigator.maxTouchPoints ?? 0,
+      );
       // Suppress maplibre internal null-access crashes (light, placement) only when stack is in map chunk
       if (/this\.style\._layers|reading '_layers'|this\.(light|sky) is null|can't access property "(id|type|setFilter|bind)"[,] ?[\w.]+ is (null|undefined)|can't access property "(id|type)" of null|Cannot read properties of null \(reading '(id|type|setFilter|_layers)'\)|null is not an object \(evaluating '\w{1,3}\.(id|style)|^\w{1,2} is null$/.test(msg)) {
         if (frames.some(f => /\/(map|maplibre|deck-stack)-[A-Za-z0-9_-]+\.js/.test(f.filename ?? ''))) return null;
@@ -426,8 +435,7 @@ function buildSentryInitOptions(): Parameters<SentryNs['init']>[0] {
       // so a real `t.x` regression elsewhere on desktop still surfaces.
       if (/undefined is not an object \(evaluating 't\.x'\)|Cannot read properties of undefined \(reading 'x'\)/.test(msg)) {
         if (!hasFirstParty || frames.some(f => /\b_handleTouch\w*Dolly|OrbitControls/.test(f.function ?? ''))) return null;
-        const osName = ((event.contexts as any)?.os?.name as string) ?? '';
-        const isTouchOs = /^(iOS|iPadOS)$/.test(osName);
+        const isTouchOs = isIosLike;
         const mainBundleFrames = nonInfraFrames.filter(f => /\/(main|index)-[A-Za-z0-9_-]+\.js/.test(f.filename ?? ''));
         if (isTouchOs && mainBundleFrames.length === 1 && nonInfraFrames.length === mainBundleFrames.length) return null;
       }
@@ -544,8 +552,20 @@ function buildSentryInitOptions(): Parameters<SentryNs['init']>[0] {
       // trampoline variant is WORLDMONITOR-TZ: a wallet extension's
       // `injected/hook.js` wraps `window.fetch` and the leaked rejection frame
       // surfaces as `Object.apply`, not `window.fetch`.
+      // Sentry renders a frame reached through an aliased property as
+      // `<name> [<annotation>]` — an extension that stashes the original fetch
+      // under its own property surfaces as `window.fetch [<annotation>]`. The
+      // anchored match below needs the bare name, so strip one trailing
+      // bracketed annotation first; the meaningful identity is the name BEFORE
+      // the bracket, so a frame merely stored under a fetch-ish alias still
+      // fails the match (WORLDMONITOR-Y8, same Adjust extension as SG above).
+      // NB: deliberately written without spelling out the annotation keyword —
+      // the beforeSend unit-test harness strips `<keyword> <word>` sequences to
+      // drop TypeScript assertions and would mangle a regex that contained it
+      // (same harness trap as the Floot gate above).
+      const bareFrameFunction = (fn: string) => fn.replace(/\s*\[[^\]]*\]$/, '');
       if (/^(?:TypeError: )?Failed to fetch$/.test(msg)
-          && frames.some(f => /^(?:chrome|moz|safari(?:-web)?)-extension:\/\//.test(f.filename ?? '') && /^(?:(?:.*\.)?window\.|(?:window|Object)\.)?(?:fetch|apply)$/i.test(f.function ?? ''))) {
+          && frames.some(f => /^(?:chrome|moz|safari(?:-web)?)-extension:\/\//.test(f.filename ?? '') && /^(?:(?:.*\.)?window\.|(?:window|Object)\.)?(?:fetch|apply)$/i.test(bareFrameFunction(f.function ?? '')))) {
         return null;
       }
       // Bare `Failed to fetch` surfacing through the DebugBear RUM collector's
@@ -572,12 +592,24 @@ function buildSentryInitOptions(): Parameters<SentryNs['init']>[0] {
       // wrapper class re-surfaced as a new issue. The prefix is bounded to a
       // minified identifier (≤3 chars) so a real named receiver — e.g.
       // `apiClient.fetch` — is still read as a genuine caller and surfaces.
+      // WORLDMONITOR-Y4 is the third build-rename of the same wrapper: Vite
+      // emitted one hop of the trampoline as a BARE minified name (`t`) with no
+      // `fetch` in it at all, which no fetch-anchored pattern can match. Bare
+      // names are admitted only at ≤2 chars and only inside these two chunks —
+      // `fetchContent` (WORLDMONITOR-SG) and `apiClient.fetch` both stay above
+      // that bound and still surface, which their regression tests assert. What
+      // keeps the tolerance honest is that neither module backing these chunks
+      // issues a fetch of its own, so a bare minified frame in them cannot be
+      // the real caller; tests/debugbear-trampoline-chunks.test.mjs fails if
+      // either module ever gains one, rather than letting the gate rot silently.
+      const isTrampolineFrameFunction = (fn: string) =>
+        /^(?:\w{1,3}\.)?(?:window\.)?fetch$/.test(fn) || /^\w{1,2}$/.test(fn);
       if (/^(?:TypeError: )?Failed to fetch$/.test(msg)
           && frames.some(f => isDebugBearRumScriptFrame(f.filename ?? ''))
           && nonInfraFrames.every(f =>
             isDebugBearRumScriptFrame(f.filename ?? '')
             || (/\/assets\/(?:panel-storage|widget-store)-[A-Za-z0-9_-]+\.js/.test(f.filename ?? '')
-              && /^(?:\w{1,3}\.)?(?:window\.)?fetch$/.test(f.function ?? '')))) {
+              && isTrampolineFrameFunction(f.function ?? '')))) {
         return null;
       }
       // Suppress Sentry SDK DOM breadcrumb null-access on document.activeElement/contains.
@@ -586,6 +618,14 @@ function buildSentryInitOptions(): Parameters<SentryNs['init']>[0] {
       if (!hasFirstParty && /Cannot read properties of null \(reading 'contains'\)|null is not an object \(evaluating '\w+\.contains'\)/.test(msg) && frames.some(f => /\/sentry-[A-Za-z0-9_-]+\.js/.test(f.filename ?? ''))) return null;
       // Suppress Convex WS onmessage JSON.parse truncation (intermittent WS frame splits on Ping/Updated control messages)
       if (excType === 'SyntaxError' && /is not valid JSON/.test(msg) && !hasFirstParty && frames.some(f => /onmessage/.test(f.function ?? ''))) return null;
+      // Suppress SnapTube (Android video-downloader in-app WebView) JS-bridge JSON.parse
+      // noise: its injected bridge parses its own `undefined` message payload inside a
+      // setTimeout our SDK instruments, so only vendor sentry-*.js + `<anonymous>` bridge
+      // frames appear. `/SnapTube/` in ignoreErrors already covers the variants that name
+      // the bridge in the MESSAGE; this closes the case where the attribution exists only
+      // in a frame function. Double-gated on !hasFirstParty AND the named bridge frame so a
+      // genuine first-party `JSON.parse(undefined)` still surfaces (WORLDMONITOR-RA).
+      if (excType === 'SyntaxError' && /is not valid JSON/.test(msg) && !hasFirstParty && frames.some(f => /^SnapTube\./.test(f.function ?? ''))) return null;
       // Suppress errors originating from UV proxy (Ultraviolet service worker)
       if (frames.some(f => /\/uv\/service\//.test(f.filename ?? '') || /uv\.handler/.test(f.filename ?? ''))) return null;
       // Suppress Greasemonkey/Tampermonkey userscript errors (x-plugin-script, stay-userscript.html)
@@ -602,6 +642,25 @@ function buildSentryInitOptions(): Parameters<SentryNs['init']>[0] {
       // pattern above) so an unrelated exception with a FireglassUtils frame
       // isn't silently dropped (WORLDMONITOR-MK).
       if (excType === 'RangeError' && frames.some(f => /FireglassUtils/.test(f.function ?? ''))) return null;
+      // `Maximum call stack size exceeded` with a COMPLETELY empty stack, only on
+      // iOS. A blown stack is exactly the case where the SDK cannot collect
+      // frames, so zero frames alone proves nothing — the platform census is what
+      // does. WORLDMONITOR-WK re-censused 2026-08-09 at 44 events / 37 users: 100%
+      // iOS, 100% zero-frame RangeError, overwhelmingly the Google app's in-app
+      // WebView; zero desktop, zero Android. (It reached 44 because this gate read
+      // the ingest-only `contexts.os` and could never fire — see platform-ua.ts. The
+      // census below is why the platform half is load-bearing, not why it was dead.)
+      // Our own bundle is the same code on
+      // every platform, so a genuine first-party recursion cannot be confined to
+      // one iOS WebView family — these are the host app's injected scripts
+      // recursing (the Fireglass gate above is the same class, caught by name).
+      // Triple-gated: any frame at all, any first-party frame, or any non-iOS OS
+      // and a real recursion regression still surfaces.
+      if (excType === 'RangeError'
+          && frames.length === 0
+          && !hasFirstParty
+          && /^Maximum call stack size exceeded\.?$/.test(msg)
+          && isIosLike) return null;
       // Suppress Chrome Mobile WebView 105+ Request constructor quirk ONLY when
       // the Dodo checkout lazy chunk is in the stack (WORLDMONITOR-MH). The
       // exact message is unique to the Fetch § Request() duplex requirement, but
@@ -790,6 +849,22 @@ function buildSentryInitOptions(): Parameters<SentryNs['init']>[0] {
           // This is the WebKit phrasing; the V8 `reading 'postMessage'` variant is
           // already suppressed via the ignoreErrors entry above.
           || /null is not an object \(evaluating '[^']*\.postMessage'\)/.test(msg)
+          // Chrome composes `Failed to execute 'appendChild' on 'Node': <parse
+          // error>` when a script element is inserted and its source fails to
+          // parse synchronously. The DOM-API prefix means SOME caller passed
+          // unparseable script text — and we do have first-party callers that
+          // append third-party scripts (analytics.ts → abacus, debugbear-rum.ts,
+          // clerk.ts, LiveNewsPanel.ts embeds). Those keep a source-mapped .ts
+          // frame, so `!hasFirstParty` is what separates them from an injected
+          // page script inserting its own broken source with only `<anonymous>`
+          // frames. This supersedes the ungated `/appendChild.*Unexpected token/`
+          // ignoreErrors entry, which both missed the `Unexpected identifier`
+          // phrasing and — having no access to frames — would have swallowed a
+          // parse failure attributable to one of those first-party loaders
+          // (WORLDMONITOR-YW: Chrome 150 on Chrome OS, two `<anonymous>:1`
+          // frames). Left deliberately phrasing-agnostic after `Unexpected ` so
+          // every engine's token/identifier/keyword/EOF wording is covered.
+          || /appendChild.*Unexpected /.test(msg)
         )
       ) return null;
       if (hasAnyStack && !hasFirstParty && (

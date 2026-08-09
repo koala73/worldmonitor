@@ -284,7 +284,7 @@ World Monitor 使用 60+ 个 Vercel Edge Functions 作为轻量 API 层，分为
 - **BIS 集成** — 来自国际清算银行的政策利率、实际有效汇率和信贷/GDP 比率，缓存 30 分钟 TTL
 - **WTO 贸易政策** — 来自世界贸易组织的贸易限制、关税趋势、双边贸易流和 SPS/TBT 壁垒
 - **供应链情报** — 海运咽喉点中断评分（交叉引用 NGA 警告 + AIS 数据）、带激增检测的 FRED 航运货运指数，以及通过 Herfindahl-Hirschman 指数分析的关键矿产供应集中度
-- **公司丰富化** — `IntelligenceService.GetCompanyEnrichment` 将 GitHub 组织数据、推断的技术栈（由按星数加权的仓库语言分布得出）、SEC EDGAR 公开文件（10-K、10-Q、8-K）和 Hacker News 提及聚合到单一响应中。`IntelligenceService.ListCompanySignals` 呈现实时公司活动信号 — 融资事件、招聘激增、高管变动和扩张公告 — 来源于 Hacker News 和 GitHub，每个按信号类型分类并基于参与度、评论量和时效性评分
+- **企业情报** — `IntelligenceService.GetCompanyEnrichment` 通过 SEC 股票代码→CIK 注册表（每日从 `company_tickers.json` 播种）解析公司身份，并将 EDGAR 身份与近期申报文件（10-K、10-Q、含条目代码的 8-K）、Finnhub 市场概况与盈利意外、以及近期新闻提及聚合到单一响应中。`IntelligenceService.ListCompanySignals` 仅对具备权威时间戳的 SEC 8-K 重大事件（第 1 层）与新闻提及（第 3 层）进行分类；Finnhub 财政期末仍作为丰富化事实，不会被误标为财报发布时间。`SearchSecFilings` 代理 EDGAR 全文搜索；`ListMaterialEvents` 提供播种的全市场重大 8-K 申报流。不做猜测性归因：未能在 SEC 注册表中解析的公司返回空响应（其启发式前身见 issue #3754/#3755）
 
 所有边缘函数均包含熔断器逻辑，在上游 API 不可用时返回缓存过期数据，确保仪表盘从不显示空白面板。
 

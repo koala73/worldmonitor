@@ -1,12 +1,13 @@
 import type { Feed, NewsItem } from '@/types';
 import { SITE_VARIANT } from '@/config';
-import { chunkArray, fetchWithProxy, isMobileDevice } from '@/utils';
+import { chunkArray, fetchWithProxy, hasNoStoreCacheDirective, isMobileDevice } from '@/utils';
 import { classifyByKeyword, classifyWithAI } from './threat-classifier';
 import { inferGeoHubsFromTitle } from './geo-hub-index';
 import { getPersistentCache, setPersistentCache } from './persistent-cache';
 import { dataFreshness } from './data-freshness';
 import { ingestHeadlines } from './trending-keywords';
 import { getCurrentLanguage } from './i18n';
+import { filterFeedsByLanguage } from './feed-language';
 import { parseFeedDate, effectivePubDateMs } from './feed-date';
 import { canQueueAiClassification, AI_CLASSIFY_MAX_PER_FEED } from './ai-classify-queue';
 import { mlWorker } from './ml-worker';
@@ -247,6 +248,7 @@ export async function fetchFeed(feed: Feed): Promise<NewsItem[]> {
 
     const response = await fetchWithProxy(url);
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    const noStoreResponse = hasNoStoreCacheDirective(response.headers);
     const text = await response.text();
     const isMobile = isMobileDevice();
     const doc = await parseFeedXml(text, isMobile);
@@ -321,8 +323,10 @@ export async function fetchFeed(feed: Feed): Promise<NewsItem[]> {
       if (isMobile && index < itemNodes.length - 1) await yieldToMain();
     }
 
-    feedCache.set(feedScope, { items: parsed, timestamp: Date.now() });
-    void setPersistentCache(getPersistentFeedKey(feedScope), toSerializable(parsed));
+    if (!noStoreResponse) {
+      feedCache.set(feedScope, { items: parsed, timestamp: Date.now() });
+      void setPersistentCache(getPersistentFeedKey(feedScope), toSerializable(parsed));
+    }
     recordFeedSuccess(feedScope);
     ingestHeadlines(parsed.map(item => ({
       title: item.title,
@@ -374,12 +378,13 @@ export async function fetchCategoryFeeds(
 ): Promise<NewsItem[]> {
   const topLimit = 20;
   const batchSize = options.batchSize ?? 5;
-  const currentLang = getCurrentLanguage();
 
   // Filter feeds by language:
   // 1. Feeds with no explicit 'lang' are universal (or multi-url handled inside fetchFeed)
   // 2. Feeds with explicit 'lang' must match current UI language
-  const filteredFeeds = feeds.filter(feed => !feed.lang || feed.lang === currentLang);
+  // Shared with callers that must reason about a category's REACHABLE feed set
+  // before calling in — see feed-language.ts.
+  const filteredFeeds = filterFeedsByLanguage(feeds, getCurrentLanguage());
 
   const batches = chunkArray(filteredFeeds, batchSize);
   const topItems: NewsItem[] = [];

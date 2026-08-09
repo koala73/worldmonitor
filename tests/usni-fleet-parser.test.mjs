@@ -60,6 +60,23 @@ describe('USNI fleet parser helpers', () => {
     assert.equal(usniParseLeadingInt('no count'), undefined);
   });
 
+  it('decodes exactly one entity level and never double-decodes escaped markup', () => {
+    // A fleet report line whose literal text is `&lt;DDG-111&gt;` escapes to
+    // `&amp;lt;DDG-111&amp;gt;`. Decoding `&amp;` before `&lt;` yields `<DDG-111>`.
+    assert.equal(
+      usniStripHtml('USS Spruance &amp;lt;DDG-111&amp;gt;'),
+      'USS Spruance &lt;DDG-111&gt;',
+    );
+    assert.equal(usniStripHtml('Crew &amp;#8217;s morale'), 'Crew &#8217;s morale');
+    assert.equal(usniStripHtml('Fish &amp;amp; Chips'), 'Fish &amp; Chips');
+
+    // Legitimately encoded text still decodes exactly once.
+    assert.equal(usniStripHtml('Fish &amp; Chips'), 'Fish & Chips');
+    assert.equal(usniStripHtml('range 5 &lt; x &gt; 2'), 'range 5 < x > 2');
+    assert.equal(usniStripHtml('Admiral&#8217;s &#8220;quote&#8221; &#8211; page'), 'Admiral\'s "quote" \u2013 page');
+    assert.equal(usniStripHtml('USS&nbsp;Ford'), 'USS Ford');
+  });
+
   it('classifies hull types, deployment status, and region coordinates', () => {
     assert.equal(usniHullToType('CVN-72'), 'carrier');
     assert.equal(usniHullToType('T-AO-205'), 'auxiliary');

@@ -33,12 +33,13 @@ vi.mock('../_shared/rate-limit', async (importActual) => {
 
 import { createDomainGateway } from '../gateway';
 import { IDEMPOTENCY_HEADER, IDEMPOTENT_REPLAYED_HEADER } from '../_shared/idempotency';
+import { markRetryableResponse, setResponseHeader } from '../_shared/response-headers';
 
 const PATH = '/api/leads/v1/submit-contact';
 const ctx = { waitUntil: () => {} };
 
 const handler = vi.fn(
-  async () =>
+  async (_request: Request) =>
     new Response(JSON.stringify({ ok: true, id: 'lead_1' }), {
       status: 200,
       headers: { 'Content-Type': 'application/json' },
@@ -221,5 +222,57 @@ describe('gateway Idempotency-Key', () => {
     expect(res.status).toBe(429);
     const releaseCmd = runRedisPipeline.mock.calls[2][0][0];
     expect(releaseCmd[0]).toBe('DEL');
+  });
+
+  test('an in-band retryable response releases the lock so the same key can recover', async () => {
+    handler
+      .mockImplementationOnce(async (request: Request) => {
+        markRetryableResponse(request);
+        setResponseHeader(request, 'Retry-After', '5');
+        setResponseHeader(
+          request,
+          'X-Billing-Verification',
+          'entitlement_verification_unavailable',
+        );
+        return new Response(JSON.stringify({
+          errorType: 'ServiceError',
+          statusDetail: 'entitlement_verification_unavailable',
+        }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      })
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ ok: true, id: 'lead_recovered' }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        }),
+      );
+    runRedisPipeline
+      .mockResolvedValueOnce([{ result: null }]) // first peek miss
+      .mockResolvedValueOnce([{ result: 'OK' }, { result: null }]) // first claim
+      .mockResolvedValueOnce([{ result: 1 }]) // first response releases the lock
+      .mockResolvedValueOnce([{ result: null }]) // retry sees no completed record
+      .mockResolvedValueOnce([{ result: 'OK' }, { result: null }]) // retry claims
+      .mockResolvedValueOnce([{ result: 'OK' }]); // recovered response is stored
+
+    const gateway = makeGateway();
+    const transient = await gateway(post('key-in-band-retryable'), ctx);
+    expect(transient.status).toBe(200);
+    expect(transient.headers.get('Retry-After')).toBe('5');
+    expect(transient.headers.get('X-Billing-Verification')).toBe(
+      'entitlement_verification_unavailable',
+    );
+    expect(await transient.json()).toEqual({
+      errorType: 'ServiceError',
+      statusDetail: 'entitlement_verification_unavailable',
+    });
+    expect(runRedisPipeline.mock.calls[2][0][0][0]).toBe('DEL');
+
+    const recovered = await gateway(post('key-in-band-retryable'), ctx);
+    expect(recovered.status).toBe(200);
+    expect(handler).toHaveBeenCalledTimes(2);
+    expect(await recovered.json()).toEqual({ ok: true, id: 'lead_recovered' });
+    expect(runRedisPipeline.mock.calls[5][0][0][0]).toBe('SET');
   });
 });

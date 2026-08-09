@@ -4,9 +4,56 @@
 import { isBriefLeadEligible } from './_clustering.mjs';
 import {
   validateNoHallucinatedProperNouns,
+  validateNoHallucinatedFacts,
   checkLeadGrounding,
   verifyCitationIndexes,
 } from './shared/brief-llm-core.js';
+
+// A dotted acronym ("U.S.", "U.N.", "D.O.J.") that is provably NOT at a sentence
+// boundary, in one of two shapes:
+//   1. followed by a lowercase word — sentences start with a capital;
+//   2. followed by its own citation run that CLOSES the sentence — "[5]." or
+//      "[1][2]!" or a run at end-of-lead. Deliberately narrow — see the sentence
+//      split in composeSynthesizedBrief for why ambiguous cases must not match.
+//
+// #5947: shape 2 matters because the model writes the acronym as the sentence's
+// OBJECT ("...not with the U.S. [5].") whenever the story is about a country
+// rather than by it. Without it the split stranded an uncited fragment and
+// orphaned "[5]." into a pseudo-sentence, rejecting the brief.
+//
+// The trailing [.!?]|$ is load-bearing and was NOT in the first version of this
+// fix. Matching a bare citation marker let "…by the U.S. [1] GCC condemned the
+// strikes [2]." collapse with NO sentence terminator anywhere, so the split
+// produced ONE unit citing {1,2} and each claim validated against the other's
+// story — the exact #4928 misattribution the review below fails closed on.
+// Requiring the run to close the sentence keeps the merge citation-neutral: the
+// fragment can only ever join the citation it already owned.
+const MIDSENTENCE_DOTTED_ACRONYM = /\b[A-Z]\.(?:[A-Z]\.?)+(?=\s+(?:\p{Ll}|(?:\[\d{1,3}\])+(?:[.!?]|$)))/gu;
+
+/**
+ * #5947: why a synthesized brief was rejected, as a bounded closed vocabulary.
+ *
+ * Every value is a fixed literal — never prompt text, model output, or the
+ * offending noun — so a caller can put it straight into seed-meta, health, and
+ * run logs without leaking the payload, which may carry sensitive intelligence.
+ *
+ * The producer previously reported one opaque `INSIGHTS_SYNTHESIS_GATE` for
+ * all five editorial gates below, so a recurring rejection could only be
+ * attributed by snapshotting the live digest and replaying it through an
+ * offline harness — which the #6019 and #6119 investigations each had to build
+ * from scratch. The reason is the signal that makes the next recurrence
+ * readable from `seed-meta:news:insights` alone.
+ */
+export const BRIEF_REJECTIONS = Object.freeze({
+  NO_TOP_STORIES: 'no-top-stories',
+  MISSING_CLUSTER: 'missing-brief-cluster',
+  PARSE: 'parse-failed',
+  LEAD_EMPTY: 'lead-no-sentences',
+  LEAD_UNCITED: 'lead-uncited',
+  LEAD_PROPER_NOUN: 'lead-proper-noun',
+  LEAD_NUMERIC_FACT: 'lead-numeric-fact',
+  LEAD_GROUNDING: 'lead-grounding',
+});
 
 /**
  * Choose which clustered story to summarize for the WORLD BRIEF.
@@ -66,7 +113,9 @@ Rules:
 - "lines": exactly one entry per numbered story, in order. Each "text" is ONE sentence under 30 words restating that story, ending with its citation [n].
 - Use ONLY facts present in the numbered story text. Do not add names, places, dates, numbers, or context that are not explicitly there.
 - Do not invent proper nouns (people, organizations, countries) that are not in the story text.
-- Never merge facts from different stories into one claim; the lead may JUXTAPOSE stories but each claim keeps its own [n].
+- Two numbered stories can describe the SAME event in different words. A lead claim may combine them, but it MUST carry the citation of EVERY story it drew from — write [3][7], not just [3]. Any name, place, or number you take from a story you did not cite counts as invented.
+- Write acronyms WITHOUT periods: "US", "UN", "EU", "UK" — never "U.S.", "U.N.". A trailing period there reads as the end of a sentence.
+- Refer to an actor by the name the story uses. Do not swap in a capital city, nickname, or synonym for it — write "US", not "Washington"; "Iran", not "Tehran" — unless that word is in the story text.
 - NEVER start with "Breaking news", "Good evening", "Tonight", or TV-style openings.`;
 }
 
@@ -164,18 +213,51 @@ export function parseBriefSynthesis(rawText, storyCount) {
  *   hallucinatedLines: number;
  *   strippedCitations: number;
  * }} null → caller falls back to the legacy single-headline path.
+ *
+ * #5947: the seeder now calls `composeSynthesizedBriefResult` below so it can
+ * report WHICH gate rejected. This brief-only shape is kept because the
+ * composer's decision contract is pinned through it by a large existing test
+ * corpus — rewriting those call sites would churn the tests that guard #4928
+ * misattribution and the acronym-boundary fixes without changing any behavior.
  */
 export function composeSynthesizedBrief(rawText, topStories, opts = {}) {
+  return composeSynthesizedBriefResult(rawText, topStories, opts).brief;
+}
+
+/**
+ * #5947: `composeSynthesizedBrief` with the rejection reason attached.
+ *
+ * Same logic and same accept/reject decisions — the only difference is that a
+ * rejection names which gate fired, from the bounded `BRIEF_REJECTIONS`
+ * vocabulary. `composeSynthesizedBrief` above is the unchanged shape for every
+ * caller that only needs the brief.
+ *
+ * @returns {{ brief: ReturnType<typeof composeSynthesizedBrief>, rejection: string | null }}
+ *   Exactly one side is set: a composed brief has `rejection: null`, and a
+ *   rejection has `brief: null`.
+ */
+export function composeSynthesizedBriefResult(rawText, topStories, opts = {}) {
   const validatorMode = opts.validatorMode === 'shadow' ? 'shadow' : 'enforce';
   const sanitize = typeof opts.sanitizeTitle === 'function' ? opts.sanitizeTitle : (t) => t;
   const sourceFromStory = typeof opts.sourceFromStory === 'function' ? opts.sourceFromStory : () => null;
+  const reject = (rejection) => ({ brief: null, rejection });
 
-  if (!Array.isArray(topStories) || topStories.length === 0) return null;
-  // Editorial gate: same bar the legacy pickBriefCluster enforced.
-  if (!topStories.some(isBriefLeadEligible)) return null;
+  if (!Array.isArray(topStories) || topStories.length === 0) return reject(BRIEF_REJECTIONS.NO_TOP_STORIES);
+  // Editorial gate: same bar the legacy pickBriefCluster enforced. The caller
+  // may pass the already-selected cluster so the synthesis path does not scan
+  // the ranked list a second time.
+  const hasBriefCluster = Object.prototype.hasOwnProperty.call(opts, 'briefCluster')
+    ? opts.briefCluster != null
+    : topStories.some(isBriefLeadEligible);
+  if (!hasBriefCluster) return reject(BRIEF_REJECTIONS.MISSING_CLUSTER);
 
-  const parsed = parseBriefSynthesis(rawText, topStories.length);
-  if (!parsed) return null;
+  // The caller may also pass the parser result when it needs to classify a
+  // rejection. Keeping this seam optional preserves the pure public helper's
+  // existing behavior for direct callers and tests.
+  const parsed = Object.prototype.hasOwnProperty.call(opts, 'parsedSynthesis')
+    ? opts.parsedSynthesis
+    : parseBriefSynthesis(rawText, topStories.length);
+  if (!parsed) return reject(BRIEF_REJECTIONS.PARSE);
 
   const groundingStories = topStories.map((story) => ({ headline: story.primaryTitle }));
   const storyGroundText = (story) =>
@@ -190,19 +272,44 @@ export function composeSynthesizedBrief(rawText, topStories, opts = {}) {
   let strippedCitations = 0;
   const leadCheck = verifyCitationIndexes(parsed.lead, topStories.length);
   strippedCitations += leadCheck.stripped;
-  const leadSentences = leadCheck.text.split(/(?<=[.!?])\s+/).filter((sentence) => sentence.trim().length > 0);
-  if (leadSentences.length === 0) return null;
+  // #5947: a dotted acronym mid-clause ("U.S. embassies") was read as a
+  // sentence boundary, so the fragment ending at "U.S." inherited the previous
+  // clause's citations and "us" grounded against the wrong story — rejecting
+  // otherwise-valid briefs. Collapse the dots ONLY where the acronym is provably
+  // mid-clause: followed by a lowercase word (which cannot start a sentence), or
+  // by its own citation run that CLOSES the sentence ("U.S. [5]." / end-of-lead).
+  // Everything else stays a boundary — a capitalized continuation, and a citation
+  // run that does NOT close the sentence ("U.S. [1] GCC said…", which would merge
+  // two real sentences). Review of this fix showed that collapsing more broadly
+  // merged genuine sentences into one validation unit whose citation set was the
+  // UNION of both, re-opening the misattribution #4928 closed and letting an
+  // uncited sentence ride inside a cited one. Ambiguity must fail closed. Only
+  // the gate's view changes — the published lead below stays leadCheck.text,
+  // punctuation intact.
+  const leadSentences = leadCheck.text
+    .replace(MIDSENTENCE_DOTTED_ACRONYM, (acronym) => acronym.replace(/\./g, ''))
+    .split(/(?<=[.!?])\s+/)
+    .filter((sentence) => sentence.trim().length > 0);
+  if (leadSentences.length === 0) return reject(BRIEF_REJECTIONS.LEAD_EMPTY);
   for (const sentence of leadSentences) {
     const cited = [...sentence.matchAll(/\[(\d{1,3})\]/g)]
       .map((match) => Number.parseInt(match[1], 10))
       .filter((n) => n >= 1 && n <= topStories.length);
     // Contract: every claim is cited. An uncited sentence is unverifiable.
-    if (cited.length === 0) return null;
+    if (cited.length === 0) return reject(BRIEF_REJECTIONS.LEAD_UNCITED);
     const scopedGround = cited.map((n) => storyGroundText(topStories[n - 1])).join(' — ');
+    // Both validators still run before either can reject, so shadow mode
+    // observes exactly what it observed before the reasons were split out.
     const sentenceValidation = validateNoHallucinatedProperNouns(sentence, scopedGround);
-    if (!sentenceValidation.ok && validatorMode === 'enforce') return null;
+    const factValidation = validateNoHallucinatedFacts(sentence, scopedGround);
+    if (validatorMode === 'enforce') {
+      if (!sentenceValidation.ok) return reject(BRIEF_REJECTIONS.LEAD_PROPER_NOUN);
+      if (!factValidation.ok) return reject(BRIEF_REJECTIONS.LEAD_NUMERIC_FACT);
+    }
   }
-  if (!checkLeadGrounding({ lead: leadCheck.text }, groundingStories, topStories.length)) return null;
+  if (!checkLeadGrounding({ lead: leadCheck.text }, groundingStories, topStories.length)) {
+    return reject(BRIEF_REJECTIONS.LEAD_GROUNDING);
+  }
 
   const lineByIndex = new Map(parsed.lines.map((line) => [line.n, line.text]));
   let hallucinatedLines = 0;
@@ -237,5 +344,8 @@ export function composeSynthesizedBrief(rawText, topStories, opts = {}) {
     };
   });
 
-  return { lead: leadCheck.text, lines, sources, hallucinatedLines, strippedCitations };
+  return {
+    brief: { lead: leadCheck.text, lines, sources, hallucinatedLines, strippedCitations },
+    rejection: null,
+  };
 }

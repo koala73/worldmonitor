@@ -3,8 +3,15 @@ import { readFile } from 'node:fs/promises';
 import { describe, it } from 'node:test';
 
 import { getCorsHeaders, isAllowedOrigin } from '../server/cors.ts';
-import { isDisallowedOrigin as isDisallowedOriginJs } from '../api/_cors.js';
-import { isAllowedOrigin as isAllowedOriginWorker } from '../workers/api-cors-preflight/src/index.js';
+import {
+  getCorsHeaders as getCorsHeadersJs,
+  getPublicCorsHeaders as getPublicCorsHeadersJs,
+  isDisallowedOrigin as isDisallowedOriginJs,
+} from '../api/_cors.js';
+import {
+  buildCorsHeaders as buildCorsHeadersWorker,
+  isAllowedOrigin as isAllowedOriginWorker,
+} from '../workers/api-cors-preflight/src/index.js';
 
 // Regression coverage for issue #3705: CORS-header generation errors must
 // fail closed rather than fall back to a wildcard ACAO.
@@ -111,6 +118,54 @@ describe('isAllowedOrigin — Vercel preview allowlist (eliewm team scope)', () 
     it(`rejects ${label}`, () => {
       assert.equal(isAllowedOrigin(origin), false, `server/cors.ts must reject ${origin}`);
       assert.equal(allowedByJsTwin(origin), false, `api/_cors.js must reject ${origin}`);
+    });
+  }
+});
+
+/**
+ * #5622: every billing-verification denial sets `X-Billing-Verification`
+ * (server/_shared/entitlement-check.ts) and the public docs tell clients to
+ * branch on it — but it was missing from Access-Control-Expose-Headers, so a
+ * cross-origin browser client could not read it and had to fall back to parsing
+ * `code` out of the body.
+ *
+ * Asserted against the header each surface actually produces, not against the
+ * source constant: a list is only exposed if it reaches the response.
+ *
+ * Full parity across the triplet is deliberately NOT asserted — the Worker list
+ * has pre-existing drift (it predates the IETF RateLimit fields) and widening
+ * this test to full parity would fail on that unrelated gap.
+ */
+describe('X-Billing-Verification is readable cross-origin (#5622)', () => {
+  const req = () =>
+    new Request('https://api.worldmonitor.app/api/notification-channels', {
+      headers: { Origin: 'https://worldmonitor.app' },
+    });
+  const exposes = (headers: Record<string, string>) =>
+    headers['Access-Control-Expose-Headers']
+      .split(',')
+      .map((name) => name.trim());
+
+  const SURFACES: Array<[string, () => Record<string, string>]> = [
+    ['server/cors.ts getCorsHeaders', () => getCorsHeaders(req())],
+    ['api/_cors.js getCorsHeaders', () => getCorsHeadersJs(req())],
+    ['api/_cors.js getPublicCorsHeaders', () => getPublicCorsHeadersJs()],
+    ['workers/api-cors-preflight buildCorsHeaders', () => buildCorsHeadersWorker('https://worldmonitor.app')],
+  ];
+
+  for (const [label, build] of SURFACES) {
+    it(`${label} exposes X-Billing-Verification`, () => {
+      assert.ok(
+        exposes(build()).includes('X-Billing-Verification'),
+        `${label} must expose X-Billing-Verification so clients can tell a retryable `
+        + 'verification blip from a terminal lapse without reading the body',
+      );
+    });
+
+    it(`${label} still exposes Retry-After alongside it`, () => {
+      // The two travel together on a retryable denial; exposing one without the
+      // other leaves the client knowing it should retry but not when.
+      assert.ok(exposes(build()).includes('Retry-After'), `${label} must expose Retry-After`);
     });
   }
 });

@@ -13,7 +13,7 @@ Six tabs across one data-dense panel (`defaultRowSpan: 2`):
 |---|---|
 | `restrictions` | Active trade restrictions — the default tab on mount. |
 | `tariffs` | Tariff trends (`TariffDataPoint[]`) and `EffectiveTariffRate` series. |
-| `flows` | Bilateral trade flows — `GetTradeFlowsResponse`. |
+| `flows` | Merchandise trade flows, reporter versus World — `GetTradeFlowsResponse`. |
 | `barriers` | Non-tariff barriers — `GetTradeBarriersResponse`. |
 | `revenue` | US Treasury customs revenue — monthly data with FYTD year-over-year comparison and spike highlighting. |
 | `comtrade` | Full Comtrade bilateral flow search — `ListComtradeFlowsResponse`. |
@@ -34,13 +34,58 @@ Six response shapes from `@/services/trade`, each backed by a generated sebuf RE
 | Tab | Method + route | Feeds |
 |---|---|---|
 | `restrictions` | `GET /api/trade/v1/get-trade-restrictions` | WTO restrictions list with country filters and upstream-unavailable state. |
-| `tariffs` | `GET /api/trade/v1/get-tariff-trends` | Premium tariff-rate timeseries between reporting and partner countries. |
-| `flows` | `GET /api/trade/v1/get-trade-flows` | Bilateral merchandise trade-flow rows and year-over-year context. |
+| `tariffs` | `GET /api/trade/v1/get-tariff-trends` | Premium MFN applied tariff-rate timeseries for a reporting country (WTO `TP_A_0010`). |
+| `flows` | `GET /api/trade/v1/get-trade-flows` | Merchandise trade-flow rows and year-over-year context, reporter versus World. |
 | `barriers` | `GET /api/trade/v1/get-trade-barriers` | SPS/TBT barrier notifications filtered by country or measure type. |
 | `revenue` | `GET /api/trade/v1/get-customs-revenue` | US Treasury customs duties revenue; bootstrap-first via `customsRevenue`. |
 | `comtrade` | `GET /api/trade/v1/list-comtrade-flows` | Premium UN Comtrade strategic commodity flow search with anomaly flags. |
 
 The `revenue` tab's US-Treasury feed is particularly sensitive — see the changelog entry for "US Treasury customs revenue in Trade Policy panel" (`#1663`).
+
+### Trade-flow coverage
+
+`get-trade-flows` is served entirely from the Railway seed; it never calls WTO per request. What that seed contains is the whole supported space:
+
+- **Reporter** — any 3-digit UN M49 code the WTO `/reporters` endpoint advertises. Empty defaults to `840` (United States).
+- **Partner** — `000` (World) only. The WTO indicators behind these rows, `ITS_MTV_AX` and `ITS_MTV_AM`, publish a World total and answer HTTP 204 for every named partner, so no bilateral pair is obtainable. Empty defaults to `000`.
+- **Years** — `1`–`30`, inclusive of both endpoints (`years=10` returns 11 calendar years). The seed holds the full 30-year window per reporter and the handler slices it, so every lookback is served from the same fetch. `0` selects the default of `10`.
+
+A malformed code or an out-of-range `years` is rejected with HTTP 400 rather than silently replaced by a default. A well-formed request the seed cannot answer returns empty `flows` plus an `unavailableReason` from a closed vocabulary, so a coverage gap is distinguishable from a fault:
+
+`unavailableReason` is the `TradeFlowUnavailableReason` enum, so the closed set is discoverable from the OpenAPI schema rather than only from prose. Values are prefixed `TRADE_FLOW_UNAVAILABLE_REASON_`:
+
+| Suffix | `upstreamUnavailable` | Meaning |
+|---|---|---|
+| `UNSPECIFIED` | `false` | Rows served. |
+| `NOT_COVERED` | `false` | Well-formed, but this reporter/partner pair is outside seeded coverage. Nothing is broken; retrying will not help. |
+| `SEED_MISSING` | `true` | The pair is inside coverage but its cache entry is gone. |
+| `COVERAGE_UNKNOWN` | `true` | The coverage manifest could not be read, so neither of the above can be ruled out. |
+| `CACHE_UNAVAILABLE` | `true` | The cache read itself failed. |
+| `INVALID_REQUEST` | `false` | Codes were malformed (only reachable where request validation is bypassed). |
+
+Fleet-level coverage is published as the `tradeFlows` entry in `/api/health`, whose `records` count is the number of reporter/World pairs actually seeded; a shortfall reads `COVERAGE_PARTIAL`, while a stopped seeder reads `STALE_SEED`.
+
+### Tariff-trend coverage
+
+`get-tariff-trends` is also seed-backed (premium path). The Railway seeder pre-fetches WTO MFN applied averages (`TP_A_0010`) and this API serves slices of that history — it never calls WTO per request.
+
+- **Reporter** — any 3-digit UN M49 code the WTO `/reporters` endpoint advertises. Empty defaults to `840` (United States).
+- **Partner** — accepted for forward compatibility; `TP_A_0010` is an MFN applied average for the reporting economy and has **no partner dimension**, so this field never changes the answer.
+- **Product sector** — empty or `all` selects the All-products aggregate, which is the only sector currently covered. Any other value is answered `NOT_COVERED`.
+- **Years** — `1`–`30`, inclusive of both endpoints (`years=10` returns 11 calendar years). The seed holds the full 30-year window per reporter and the handler slices it. `0` selects the default of `10`.
+
+A malformed code or an out-of-range `years` is rejected with HTTP 400 rather than silently replaced by `840` / `10`. A well-formed request the seed cannot answer returns empty `datapoints` plus an `unavailableReason` from the `TariffTrendUnavailableReason` enum (prefixed `TARIFF_TREND_UNAVAILABLE_REASON_`):
+
+| Suffix | `upstreamUnavailable` | Meaning |
+|---|---|---|
+| `UNSPECIFIED` | `false` | Datapoints served. |
+| `NOT_COVERED` | `false` | Well-formed, but this reporter/sector combination is outside seeded coverage. |
+| `SEED_MISSING` | `true` | The reporter is inside coverage but its cache entry is gone. |
+| `COVERAGE_UNKNOWN` | `true` | The coverage manifest could not be read. |
+| `CACHE_UNAVAILABLE` | `true` | The cache read itself failed. |
+| `INVALID_REQUEST` | `false` | Codes were malformed (only reachable where request validation is bypassed). |
+
+Fleet-level coverage is published as the `tariffTrendsUs` entry in `/api/health` (the series name is historical; the probe is the fleet `seed-meta:trade:tariffs` record). A shortfall against the min-record floor reads `COVERAGE_PARTIAL`; a stopped seeder reads `STALE_SEED`.
 
 ## Refresh cadence
 

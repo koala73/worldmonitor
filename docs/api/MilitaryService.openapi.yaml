@@ -13,7 +13,7 @@ paths:
             tags:
                 - MilitaryService
             summary: ListMilitaryFlights
-            description: ListMilitaryFlights retrieves tracked military aircraft from OpenSky and Wingbits.
+            description: ListMilitaryFlights returns paginated military aircraft observations within a bounding box, including callsign, position, altitude, operator, and source fields.
             operationId: ListMilitaryFlights
             parameters:
                 - name: page_size
@@ -1413,9 +1413,12 @@ components:
                     description: Analyst note.
                 enrichment:
                     $ref: '#/components/schemas/FlightEnrichment'
+                source:
+                    type: string
+                    description: Provider that supplied this observation (for example, "adsb.lol" or "opensky").
             required:
                 - id
-            description: MilitaryFlight represents a tracked military aircraft from OpenSky or Wingbits.
+            description: MilitaryFlight represents a tracked military aircraft from the configured ADS-B providers.
         GeoCoordinates:
             type: object
             properties:
@@ -1640,8 +1643,10 @@ components:
                         maxItems: 20
                         minItems: 1
                         description: |-
-                            ICAO 24-bit hex addresses (lowercase). Up to 20 are accepted by validation, but the
-                             handler de-duplicates, sorts, and processes at most the first 10 addresses.
+                            ICAO 24-bit hex addresses (lowercase). Validation accepts up to 20, but the handler
+                             de-duplicates, sorts, and processes at most the first 10 addresses -- anything beyond
+                             that is silently discarded, so send at most 10 per call. The official browser client
+                             caps its own requests at the same bound.
                     maxItems: 20
                     minItems: 1
             description: GetAircraftDetailsBatchRequest looks up multiple aircraft by ICAO 24-bit hex.

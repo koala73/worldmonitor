@@ -85,7 +85,7 @@ const HTTP_METHODS = new Set([
 
 const EXCLUDED_FROM_MCP_PARITY = new Map([
 
-  // === mutating (14) ===
+  // === mutating (18) ===
   ["GET /api/aviation/v1/list-airport-delays",
     "mutating: writes state via setCachedJson / runRedisPipeline / persistent DB"],
   ["GET /api/infrastructure/v1/list-temporal-anomalies",
@@ -117,14 +117,29 @@ const EXCLUDED_FROM_MCP_PARITY = new Map([
     "mutating: writes to Convex (not server/_shared/redis) — contact form write"],
   ["POST /api/v2/shipping/webhooks",
     "mutating: webhook/registration write — POSTs persistent record"],
+  ["POST /api/company-monitoring/v1/create-monitored-company",
+    "mutating: dark account-scoped company-monitoring write; MCP exposure is explicitly outside #6004 and runtime remains disabled until #6003"],
+  ["POST /api/company-monitoring/v1/import-monitored-company-batch",
+    "mutating: dark account-scoped company-monitoring import; MCP exposure is explicitly outside #6004 and runtime remains disabled until #6003"],
+  ["POST /api/company-monitoring/v1/set-monitored-company-state",
+    "mutating: dark account-scoped company-monitoring lifecycle write; MCP exposure is explicitly outside #6004 and runtime remains disabled until #6003"],
+  ["POST /api/company-monitoring/v1/update-monitored-company",
+    "mutating: dark account-scoped company-monitoring write; MCP exposure is explicitly outside #6004 and runtime remains disabled until #6003"],
 
   // === llm-passthrough (2) ===
-  ["GET /api/intelligence/v1/classify-event",
-    "llm-passthrough: invokes callLlm — per-call LLM cost prohibits open MCP exposure"],
+  // classify-event moved to covered in #5697: the classify_event MCP tool wraps
+  // it behind an enum-validated, temperature-0, 50-output-token handler with a
+  // 24h per-title cache, so per-call LLM cost is bounded. Metering differs by
+  // credential class — OAuth/dashboard-key callers consume the 50/UTC-day MCP
+  // reservation; env-key (`wm_`) callers are bounded by the 60/min/key limiter
+  // only (see docs/mcp-tools-reference.mdx). Do not restate this as "the daily
+  // quota bounds it" without qualifying the env-key path.
   ["GET /api/market/v1/analyze-stock",
     "llm-passthrough: invokes callLlm — per-call LLM cost prohibits open MCP exposure"],
+  ["POST /api/news/v1/summarize-article",
+    "llm-passthrough: request-time article summarization is intentionally REST-only; get_world_brief reads the gated seeded snapshot instead"],
 
-  // === fetch-on-miss (29) ===
+  // === fetch-on-miss (30) ===
   ["GET /api/intelligence/v1/get-risk-scores",
     "fetch-on-miss: paid-upstream — cachedFetchJsonWithMeta + ACLED API on cache miss. Cross-domain composite spans conflict plus auxiliary infra outages, climate anomalies, cyber threats, wildfires, GPS jamming, OREF history, advisories, displacement, news insights/threats, aviation, earthquakes, sanctions, temporal anomalies, and military CII; intended for a future expanded_risk_scores composite tool because the current shape doesn't fit any single existing tool."],
   ["GET /api/aviation/v1/get-carrier-ops",
@@ -151,12 +166,8 @@ const EXCLUDED_FROM_MCP_PARITY = new Map([
     "fetch-on-miss: paid-upstream — external upstream fetch per cache miss"],
   ["GET /api/infrastructure/v1/list-service-statuses",
     "fetch-on-miss: paid-upstream — external feed fetch per request"],
-  ["GET /api/intelligence/v1/get-company-enrichment",
-    "deferred-to-future-tool: handler disabled, returns empty envelope until a verified {domain to github_org} registry + proper SEC CIK match are wired (issues #3754, #3755)"],
   ["GET /api/intelligence/v1/get-country-facts",
     "fetch-on-miss: paid-upstream — external upstream fetch per cache miss"],
-  ["GET /api/intelligence/v1/list-company-signals",
-    "deferred-to-future-tool: handler disabled, returns empty envelope until a verified attribution model + authoritative jobs/funding source are wired (issues #3754, #3755)"],
   ["GET /api/maritime/v1/list-navigational-warnings",
     "fetch-on-miss: paid-upstream — external feed fetch per request"],
   ["GET /api/market/v1/backtest-stock",
@@ -187,19 +198,21 @@ const EXCLUDED_FROM_MCP_PARITY = new Map([
     "fetch-on-miss: paid-upstream — external upstream fetch per cache miss"],
   ["POST /api/military/v1/get-aircraft-details-batch",
     "fetch-on-miss: high-cardinality-input — arbitrary query/symbol/identifier params, not enumerable"],
+  // Reclassified from deferred-to-future-tool by #6308. The default request is
+  // still a pure read of market:stablecoins:v1, but naming coins the snapshot
+  // does not carry now reaches CoinGecko through cachedFetchJson, and the
+  // caller picks the IDs. #4525 still owns exposing this as an MCP tool.
+  ["GET /api/market/v1/list-stablecoin-markets",
+    "fetch-on-miss: high-cardinality-input — caller-named CoinGecko IDs outside the seeded set fan out to the provider, not enumerable"],
 
-  // === manual-mapping (28) ===
+  // === manual-mapping (27) ===
   ["POST /api/batch/v1/execute",
     "manual-mapping: REST-only transport multiplexer — fans out to documented GET RPCs that are each individually covered by a tool's _apiPaths or excluded here; the MCP equivalent is native parallel tool calls, so a batch tool would double-map every covered op"],
   ["GET /api/aviation/v1/search-flight-prices",
     "manual-mapping: handler uses inline Redis or Convex (not server/_shared/redis) — manual triage"],
-  ["GET /api/displacement/v1/get-population-exposure",
-    "manual-mapping: handler uses inline Redis or Convex (not server/_shared/redis) — manual triage"],
   ["GET /api/economic/v1/get-bls-series",
     "manual-mapping: parameterized cache key not statically resolvable — equivalent data covered by sibling cache tool at the prefix level"],
   ["GET /api/economic/v1/get-fred-series",
-    "manual-mapping: parameterized cache key not statically resolvable — equivalent data covered by sibling cache tool at the prefix level"],
-  ["GET /api/infrastructure/v1/get-bootstrap-data",
     "manual-mapping: parameterized cache key not statically resolvable — equivalent data covered by sibling cache tool at the prefix level"],
   ["GET /api/infrastructure/v1/get-ip-geo",
     "manual-mapping: handler uses inline Redis or Convex (not server/_shared/redis) — manual triage"],
@@ -239,16 +252,26 @@ const EXCLUDED_FROM_MCP_PARITY = new Map([
     "manual-mapping: parameterized cache key not statically resolvable — equivalent data covered by sibling cache tool at the prefix level"],
   ["GET /api/trade/v1/get-tariff-trends",
     "manual-mapping: parameterized cache key not statically resolvable — equivalent data covered by sibling cache tool at the prefix level"],
-  ["GET /api/trade/v1/get-trade-flows",
-    "manual-mapping: parameterized cache key not statically resolvable — equivalent data covered by sibling cache tool at the prefix level"],
   ["GET /api/trade/v1/list-comtrade-flows",
     "manual-mapping: parameterized cache key not statically resolvable — equivalent data covered by sibling cache tool at the prefix level"],
   ["POST /api/economic/v1/get-fred-series-batch",
     "manual-mapping: parameterized cache key not statically resolvable — equivalent data covered by sibling cache tool at the prefix level"],
 
-  // === deferred-to-future-tool (54) ===
+  // === deferred-to-future-tool (59) ===
   ["GET /api/consumer-prices/v1/get-consumer-price-basket-series",
     "deferred-to-future-tool: handler reads parameterized consumer-prices:basket-series:<market>:<basket>:<range> key NOT in get_consumer_prices._coverageKeys — bundle into a future expanded_consumer_prices tool that exposes the basket-series time series"],
+  ["GET /api/company-monitoring/v1/get-company-coverage",
+    "deferred-to-future-tool: dark account-private read has no MCP surface by #6004 contract; reconsider only after dependency #6003 and an explicit MCP authorization design"],
+  ["GET /api/company-monitoring/v1/get-company-material-event",
+    "deferred-to-future-tool: dark account-private read has no MCP surface by #6004 contract; reconsider only after dependency #6003 and an explicit MCP authorization design"],
+  ["GET /api/company-monitoring/v1/get-company-monitoring-status",
+    "deferred-to-future-tool: dark account-private read has no MCP surface by #6004 contract; reconsider only after dependency #6003 and an explicit MCP authorization design"],
+  ["GET /api/company-monitoring/v1/list-company-event-changes",
+    "deferred-to-future-tool: dark account-private poll has no MCP surface by #6004 contract; reconsider only after dependency #6003 and an explicit MCP authorization design"],
+  ["GET /api/company-monitoring/v1/list-company-event-impacts",
+    "deferred-to-future-tool: dark account-private read has no MCP surface by #6004 contract; reconsider only after dependency #6003 and an explicit MCP authorization design"],
+  ["GET /api/company-monitoring/v1/list-monitored-companies",
+    "deferred-to-future-tool: dark account-private read has no MCP surface by #6004 contract; reconsider only after dependency #6003 and an explicit MCP authorization design"],
   // NOTE: risk-scores was previously mis-classified as deferred-to-future-tool.
   // The handler uses cachedFetchJsonWithMeta (server/.../get-risk-scores.ts:600)
   // with ACLED + auxiliary cross-domain fetches on cache miss — that's the
@@ -272,6 +295,8 @@ const EXCLUDED_FROM_MCP_PARITY = new Map([
     "deferred-to-future-tool: pure-read but no MCP tool exposes economic:bis:eer:v1 yet — bundle into a future expanded-domain tool"],
   ["GET /api/economic/v1/get-bis-policy-rates",
     "deferred-to-future-tool: pure-read but no MCP tool exposes economic:bis:policy:v1 yet — bundle into a future expanded-domain tool"],
+  ["GET /api/economic/v1/get-china-activity-nowcast",
+    "deferred-to-future-tool: deterministic China activity evidence ledger is public through EconomicService, while final MCP tool composition is explicitly outside issue #5579 — bundle into a future expanded economic comparison tool"],
   ["GET /api/economic/v1/get-crude-inventories",
     "deferred-to-future-tool: pure-read but no MCP tool exposes economic:crude-inventories:v1 yet — bundle into a future expanded-domain tool"],
   ["GET /api/economic/v1/get-economic-stress",
@@ -330,8 +355,6 @@ const EXCLUDED_FROM_MCP_PARITY = new Map([
     "deferred-to-future-tool: pure-read but no MCP tool exposes market:defi-tokens:v1 yet — bundle into a future expanded-domain tool"],
   ["GET /api/market/v1/list-other-tokens",
     "deferred-to-future-tool: pure-read but no MCP tool exposes market:other-tokens:v1 yet — bundle into a future expanded-domain tool"],
-  ["GET /api/market/v1/list-stablecoin-markets",
-    "deferred-to-future-tool: pure-read but no MCP tool exposes market:stablecoins:v1 yet — bundle into a future expanded-domain tool"],
   ["GET /api/military/v1/get-usni-fleet-report",
     "deferred-to-future-tool: pure-read but no MCP tool exposes usni-fleet:sebuf:v1 yet — bundle into a future expanded-domain tool"],
   ["GET /api/military/v1/list-defense-patents",
@@ -344,6 +367,8 @@ const EXCLUDED_FROM_MCP_PARITY = new Map([
     "deferred-to-future-tool: pure-read but no MCP tool exposes supply_chain:chokepoints:v4 yet — bundle into a future expanded-domain tool"],
   ["GET /api/supply-chain/v1/get-chokepoint-history",
     "deferred-to-future-tool: pure-read but no MCP tool exposes - yet — bundle into a future expanded-domain tool"],
+  ["GET /api/supply-chain/v1/get-china-corridor-control-towers",
+    "deferred-to-future-tool: pure-read corridor composition has no MCP supply-chain comparison tool yet — bundle into a future expanded-domain tool"],
   ["GET /api/supply-chain/v1/get-pipeline-detail",
     "deferred-to-future-tool: pure-read but no MCP tool exposes energy:pipelines:gas:v1 yet — bundle into a future expanded-domain tool"],
   ["GET /api/supply-chain/v1/get-shipping-rates",

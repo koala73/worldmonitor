@@ -2,19 +2,78 @@ syntax = "proto3";
 
 package worldmonitor.trade.v1;
 
+import "buf/validate/validate.proto";
 import "sebuf/http/annotations.proto";
 import "worldmonitor/trade/v1/trade_data.proto";
 
+// TariffTrendUnavailableReason says why no datapoints were returned. The
+// distinction that matters is NOT_COVERED — a contract answer, nothing is
+// broken and a retry cannot help — against every other member, which names a
+// fault.
+enum TariffTrendUnavailableReason {
+  // Datapoints were served.
+  TARIFF_TREND_UNAVAILABLE_REASON_UNSPECIFIED = 0;
+  // Request codes were malformed. Only reachable where request validation is
+  // bypassed; the gateway rejects these with HTTP 400 before the handler runs.
+  TARIFF_TREND_UNAVAILABLE_REASON_INVALID_REQUEST = 1;
+  // Well-formed, but this reporter/product-sector combination is outside
+  // seeded coverage.
+  TARIFF_TREND_UNAVAILABLE_REASON_NOT_COVERED = 2;
+  // The reporter is inside coverage but its cache entry is absent.
+  TARIFF_TREND_UNAVAILABLE_REASON_SEED_MISSING = 3;
+  // The coverage manifest could not be read, so neither of the two above can
+  // be ruled out.
+  TARIFF_TREND_UNAVAILABLE_REASON_COVERAGE_UNKNOWN = 4;
+  // The cache read itself failed.
+  TARIFF_TREND_UNAVAILABLE_REASON_CACHE_UNAVAILABLE = 5;
+}
+
 // Request for tariff timeseries data.
+//
+// Coverage is seed-backed: Railway pre-fetches WTO MFN applied tariff rates
+// (indicator TP_A_0010) for every reporter and this API serves slices of that
+// history. It never calls WTO per request, so a well-formed combination outside
+// the seeded set is reported as uncovered (see GetTariffTrendsResponse.
+// unavailable_reason) rather than fetched on demand.
+//
+// TP_A_0010 is a reporting-economy MFN applied average — it has no partner
+// dimension and no product-sector split beyond the All-products aggregate.
+// product_sector empty (or "all") is the only sector currently covered;
+// partner_country is accepted for forward compatibility and does not filter
+// the series.
 message GetTariffTrendsRequest {
-  // WTO member code of reporting country (e.g. "840" = US).
-  string reporting_country = 1 [(sebuf.http.query) = { name: "reporting_country" }];
-  // WTO member code of partner country (e.g. "156" = China).
-  string partner_country = 2 [(sebuf.http.query) = { name: "partner_country" }];
-  // Product sector filter (HS chapter). Empty = aggregate.
-  string product_sector = 3 [(sebuf.http.query) = { name: "product_sector" }];
-  // Number of years to look back (default 10, max 30).
-  int32 years = 4 [(sebuf.http.query) = { name: "years" }];
+  // WTO member code of reporting country, as a 3-digit UN M49 code
+  // (for example "840" = United States). Empty selects the "840" default.
+  string reporting_country = 1 [
+    (buf.validate.field).string.pattern = "^([0-9]{3})?$",
+    (sebuf.http.query) = { name: "reporting_country" }
+  ];
+  // Partner country as a 3-digit UN M49 code. Accepted for forward
+  // compatibility; TP_A_0010 is an MFN applied average for the reporting
+  // economy and has no partner dimension, so this field never changes the
+  // answer. Empty is the documented default.
+  string partner_country = 2 [
+    (buf.validate.field).string.pattern = "^([0-9]{3})?$",
+    (sebuf.http.query) = { name: "partner_country" }
+  ];
+  // Product sector filter. Empty or "all" selects the All-products aggregate,
+  // which is the only sector currently covered. Any other value is accepted by
+  // validation and answered with unavailable_reason
+  // TARIFF_TREND_UNAVAILABLE_REASON_NOT_COVERED so sector coverage can widen
+  // without a contract change. Max 16 characters, alphanumeric / underscore /
+  // hyphen.
+  string product_sector = 3 [
+    (buf.validate.field).string.pattern = "^([a-zA-Z0-9_-]{0,16})?$",
+    (sebuf.http.query) = { name: "product_sector" }
+  ];
+  // Number of years to look back from the newest seeded year, inclusive of
+  // both endpoints (years = 10 returns 11 calendar years). 0 selects the
+  // default of 10; the maximum is 30, which is the full seeded window.
+  int32 years = 4 [
+    (buf.validate.field).int32.gte = 0,
+    (buf.validate.field).int32.lte = 30,
+    (sebuf.http.query) = { name: "years" }
+  ];
 }
 
 // Response containing tariff trend datapoints.
@@ -23,8 +82,22 @@ message GetTariffTrendsResponse {
   repeated TariffDataPoint datapoints = 1;
   // ISO 8601 timestamp when data was fetched from WTO.
   string fetched_at = 2;
-  // True if upstream fetch failed and results may be stale/empty.
+  // True when datapoints could not be served because of a fault — a seeded
+  // reporter whose cache entry is gone, or a cache read that failed. False when
+  // datapoints are served AND when the request names a combination that is
+  // simply not part of seeded coverage, which is a contract answer rather than
+  // an outage.
   bool upstream_unavailable = 3;
-  // Optional effective tariff snapshot for countries with additional coverage (currently US only).
+  // Optional effective tariff snapshot for countries with additional coverage
+  // (currently US only, from FRED customs duties / goods imports).
   EffectiveTariffRate effective_tariff_rate = 4;
+  // UNSPECIFIED when datapoints are served; otherwise why they are not, so a
+  // caller can tell a coverage gap from a fault without parsing prose.
+  TariffTrendUnavailableReason unavailable_reason = 5;
+  // First and last calendar year covered by `datapoints`. Both are 0 when no
+  // datapoints are returned. This is the effective window after slicing to
+  // `years`, which may be narrower than the requested lookback when the seed
+  // starts later.
+  int32 coverage_start_year = 6;
+  int32 coverage_end_year = 7;
 }

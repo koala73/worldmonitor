@@ -26,11 +26,18 @@ import {
   deriveSubscriptionKey,
   isFireOnceActive,
   computeFireOnceRecord,
+  fireOnceStorageKey,
+  readScopedFireOnceRecord,
+  writeScopedFireOnceRecord,
   buildActivationSteps,
+  hasAnyActivatedProFunctionality,
   buildBriefDigestPayload,
   buildCriticalAlertsPayload,
   DEFAULT_DIGEST_HOUR,
   buildExitSummary,
+  buildActivationOutcomeBuckets,
+  ACTIVATION_FLOW_RETRY_DELAYS_MS,
+  activationFlowRetryDelay,
   summarizeActivationExit,
   shouldShowFinishSetupChip,
   computeFinishSetupChipDismissal,
@@ -38,7 +45,10 @@ import {
   computeMountClaim,
   parseMountClaim,
   isMountClaimBlocking,
+  selectAdvanceOutcome,
+  selectConfirmOutcome,
   selectStepEvent,
+  shouldReportPushSubscribeFailure,
   ACTIVATION_EVENTS,
   PRO_PRODUCT_IDS,
   PRO_PLAN_KEYS,
@@ -70,6 +80,8 @@ const ACCOUNT_B = deriveActivationAccountKey(USER_B)!;
 
 const PRO_ID = DODO_PRODUCTS.PRO_MONTHLY;
 const PRO_ANNUAL_ID = DODO_PRODUCTS.PRO_ANNUAL;
+const PRO_BUSINESS_ID = DODO_PRODUCTS.PRO_BUSINESS_MONTHLY;
+const PRO_BUSINESS_ANNUAL_ID = DODO_PRODUCTS.PRO_BUSINESS_ANNUAL;
 const API_STARTER_ID = DODO_PRODUCTS.API_STARTER_MONTHLY;
 const API_STARTER_ANNUAL_ID = DODO_PRODUCTS.API_STARTER_ANNUAL;
 const ENTERPRISE_ID = DODO_PRODUCTS.ENTERPRISE;
@@ -85,11 +97,31 @@ function ent(overrides: Partial<ActivationEntitlementSnapshot> = {}): Activation
 function sub(
   overrides: Partial<ActivationSubscriptionSnapshot> = {},
 ): ActivationSubscriptionSnapshot {
-  return { activationKey: 'sub_live_1', ...overrides };
+  return {
+    activationKey: 'sub_live_1',
+    planKey: 'pro_monthly',
+    currentPeriodEnd: NOW + 30 * DAY,
+    activationOnboardingEligible: true,
+    ...overrides,
+  };
 }
 
 function fireOnce(overrides: Partial<FireOnceRecord> = {}): FireOnceRecord {
   return { subscriptionKey: 'sub_live_1', shownAt: NOW, ...overrides };
+}
+
+function createMemoryStorage(
+  values: Map<string, string>,
+): Pick<Storage, 'getItem' | 'setItem' | 'removeItem'> {
+  return {
+    getItem: (key: string) => values.get(key) ?? null,
+    setItem: (key: string, value: string) => {
+      values.set(key, value);
+    },
+    removeItem: (key: string) => {
+      values.delete(key);
+    },
+  };
 }
 
 function mountInput(overrides: Partial<ActivationMountInput> = {}): ActivationMountInput {
@@ -99,6 +131,7 @@ function mountInput(overrides: Partial<ActivationMountInput> = {}): ActivationMo
     subscription: sub(),
     fireOnce: null,
     isDesktop: false,
+    authPending: false,
     currentAccountKey: ACCOUNT_A,
     now: NOW,
     ...overrides,
@@ -112,8 +145,134 @@ describe('decideActivationMount — happy path & mount gate', () => {
     assert.equal(d.action === 'mount' ? d.subscriptionKey : null, 'sub_live_1');
   });
 
-  it('no marker = none (nothing to decide)', () => {
-    assert.equal(decideActivationMount(mountInput({ marker: null })).action, 'none');
+  it('no marker + first-cycle unactivated eligibility mounts the cohort fallback', () => {
+    const d = decideActivationMount(mountInput({ marker: null }));
+    assert.equal(d.action, 'mount');
+    assert.equal(d.action === 'mount' ? d.onlyIfUnactivated : null, true);
+  });
+
+  it('no marker + eligible annual subscription mounts throughout its first billing cycle', () => {
+    const d = decideActivationMount(
+      mountInput({
+        marker: null,
+        entitlement: ent({
+          planKey: 'pro_annual',
+          validUntil: NOW + 365 * DAY,
+        }),
+        subscription: sub({
+          planKey: 'pro_annual',
+          currentPeriodEnd: NOW + 365 * DAY,
+        }),
+      }),
+    );
+    assert.equal(d.action, 'mount');
+    assert.equal(d.action === 'mount' ? d.onlyIfUnactivated : null, true);
+  });
+
+  it('no marker + ineligible subscription = none', () => {
+    const d = decideActivationMount(
+      mountInput({
+        marker: null,
+        subscription: sub({ activationOnboardingEligible: false }),
+      }),
+    );
+    assert.equal(d.action, 'none');
+  });
+
+  it('no marker + mixed-deploy subscription without eligibility = none', () => {
+    const d = decideActivationMount(
+      mountInput({
+        marker: null,
+        subscription: sub({ activationOnboardingEligible: undefined }),
+      }),
+    );
+    assert.equal(d.action, 'none');
+  });
+
+  it('no marker + pending auth keeps the markerless decision retryable', () => {
+    const d = decideActivationMount(
+      mountInput({
+        marker: null,
+        authPending: true,
+        currentAccountKey: null,
+        entitlement: null,
+        subscription: null,
+      }),
+    );
+    assert.equal(d.action, 'keep');
+  });
+
+  it('no marker + settled signed-out visitor = none', () => {
+    const d = decideActivationMount(
+      mountInput({
+        marker: null,
+        currentAccountKey: null,
+        entitlement: null,
+        subscription: null,
+      }),
+    );
+    assert.equal(d.action, 'none');
+  });
+
+  it('no marker + settled free account without a subscription = none', () => {
+    const d = decideActivationMount(
+      mountInput({
+        marker: null,
+        entitlement: ent({ planKey: 'free', validUntil: 0 }),
+        subscription: null,
+      }),
+    );
+    assert.equal(d.action, 'none');
+  });
+
+  it('no marker + first-cycle cohort waits for the live Pro entitlement', () => {
+    const d = decideActivationMount(
+      mountInput({
+        marker: null,
+        entitlement: ent({ planKey: 'free', validUntil: 0 }),
+      }),
+    );
+    assert.equal(d.action, 'keep');
+  });
+
+  it('no marker + already-shown subscription = none', () => {
+    const d = decideActivationMount(
+      mountInput({
+        marker: null,
+        fireOnce: fireOnce(),
+      }),
+    );
+    assert.equal(d.action, 'none');
+  });
+
+  it('no marker + desktop platform = none (R12 applies to the markerless cohort too)', () => {
+    const d = decideActivationMount(
+      mountInput({
+        marker: null,
+        isDesktop: true,
+      }),
+    );
+    assert.equal(d.action, 'none');
+  });
+
+  it('no marker + entitlement not yet loaded keeps the markerless decision retryable', () => {
+    const d = decideActivationMount(
+      mountInput({
+        marker: null,
+        entitlement: null,
+      }),
+    );
+    assert.equal(d.action, 'keep');
+  });
+
+  it('no marker + live entitlement whose subscription snapshot has not loaded yet = keep', () => {
+    const d = decideActivationMount(
+      mountInput({
+        marker: null,
+        subscription: null,
+      }),
+    );
+    assert.equal(d.action, 'keep');
   });
 
   it('desktop platform flag never mounts, even with a fully valid marker (R12)', () => {
@@ -349,29 +508,43 @@ describe('pending marker record + TTL (KTD1)', () => {
 });
 
 describe('plan classification helpers (allowlist)', () => {
-  it('isProProductId: only the two Pro product ids are Pro', () => {
+  it('isProProductId: only the Pro / Pro Business product ids are Pro', () => {
     assert.equal(isProProductId(PRO_ID), true);
     assert.equal(isProProductId(PRO_ANNUAL_ID), true);
+    assert.equal(isProProductId(PRO_BUSINESS_ID), true);
+    assert.equal(isProProductId(PRO_BUSINESS_ANNUAL_ID), true);
     assert.equal(isProProductId(API_STARTER_ID), false);
     assert.equal(isProProductId(ENTERPRISE_ID), false);
     assert.equal(isProProductId('pdt_unknown'), false);
   });
 
-  it('isProPlanKey: only pro_monthly / pro_annual are Pro', () => {
+  it('isProPlanKey: only the pro / pro_business plan keys are Pro', () => {
     assert.equal(isProPlanKey('pro_monthly'), true);
     assert.equal(isProPlanKey('pro_annual'), true);
+    assert.equal(isProPlanKey('pro_business_monthly'), true);
+    assert.equal(isProPlanKey('pro_business_annual'), true);
     assert.equal(isProPlanKey('free'), false);
     assert.equal(isProPlanKey('api_starter'), false);
     assert.equal(isProPlanKey('enterprise'), false);
   });
 
   it('PRO_PRODUCT_IDS stays in sync with the generated catalog (drift guard)', () => {
-    assert.deepEqual([...PRO_PRODUCT_IDS].sort(), [DODO_PRODUCTS.PRO_MONTHLY, DODO_PRODUCTS.PRO_ANNUAL].sort());
+    assert.deepEqual(
+      [...PRO_PRODUCT_IDS].sort(),
+      [
+        DODO_PRODUCTS.PRO_MONTHLY,
+        DODO_PRODUCTS.PRO_ANNUAL,
+        DODO_PRODUCTS.PRO_BUSINESS_MONTHLY,
+        DODO_PRODUCTS.PRO_BUSINESS_ANNUAL,
+      ].sort(),
+    );
   });
 
-  it('PRO_PLAN_KEYS stays in sync with the catalog\'s pro tierGroup (drift guard)', () => {
+  it('PRO_PLAN_KEYS stays in sync with the catalog\'s pro-family tierGroups (drift guard)', () => {
+    // Pro Business gets the Pro day-0 activation lifecycle (KTD9), so the
+    // allowlist tracks BOTH pro-family tier groups — not tierGroup === 'pro'.
     const catalogProPlanKeys = Object.values(PRODUCT_CATALOG)
-      .filter((e) => e.tierGroup === 'pro')
+      .filter((e) => e.tierGroup === 'pro' || e.tierGroup === 'pro_business')
       .map((e) => e.planKey)
       .sort();
     assert.deepEqual([...PRO_PLAN_KEYS].sort(), catalogProPlanKeys);
@@ -405,6 +578,81 @@ describe('fire-once record + TTL (KTD4)', () => {
     assert.equal(isFireOnceActive(fireOnce({ shownAt: NOW }), NOW), true);
     assert.equal(isFireOnceActive(fireOnce({ shownAt: NOW - FIRE_ONCE_TTL_MS - 1 }), NOW), false);
     assert.equal(isFireOnceActive(null, NOW), false);
+  });
+
+  it('scopes storage independently for each opaque account key', () => {
+    assert.notEqual(fireOnceStorageKey(ACCOUNT_A), fireOnceStorageKey(ACCOUNT_B));
+    assert.equal(fireOnceStorageKey(ACCOUNT_A), `${FIRE_ONCE_KEY}:${ACCOUNT_A}`);
+  });
+
+  it('migrates legacy state once and preserves independent A-to-B-to-A records', () => {
+    const values = new Map<string, string>([
+      [FIRE_ONCE_KEY, JSON.stringify(fireOnce({ subscriptionKey: 'sub-a' }))],
+    ]);
+    const storage = createMemoryStorage(values);
+
+    assert.equal(
+      readScopedFireOnceRecord(storage, ACCOUNT_A, 'sub-a', NOW)?.subscriptionKey,
+      'sub-a',
+    );
+    assert.equal(values.has(FIRE_ONCE_KEY), false);
+    assert.equal(
+      writeScopedFireOnceRecord(storage, ACCOUNT_B, fireOnce({ subscriptionKey: 'sub-b' })),
+      true,
+    );
+    assert.equal(
+      readScopedFireOnceRecord(storage, ACCOUNT_B, 'sub-b', NOW)?.subscriptionKey,
+      'sub-b',
+    );
+    assert.equal(
+      readScopedFireOnceRecord(storage, ACCOUNT_A, 'sub-a', NOW)?.subscriptionKey,
+      'sub-a',
+    );
+  });
+
+  it('leaves a legacy record for its owning account when another account evaluates first', () => {
+    const values = new Map<string, string>([
+      [FIRE_ONCE_KEY, JSON.stringify(fireOnce({ subscriptionKey: 'sub-a' }))],
+    ]);
+    const storage = createMemoryStorage(values);
+
+    assert.equal(readScopedFireOnceRecord(storage, ACCOUNT_B, 'sub-b', NOW), null);
+    assert.equal(values.has(FIRE_ONCE_KEY), true);
+    assert.equal(values.has(fireOnceStorageKey(ACCOUNT_B)), false);
+
+    assert.equal(
+      readScopedFireOnceRecord(storage, ACCOUNT_A, 'sub-a', NOW)?.subscriptionKey,
+      'sub-a',
+    );
+    assert.equal(values.has(FIRE_ONCE_KEY), false);
+  });
+
+  it('expires only the current account record and fails closed on storage errors', () => {
+    const values = new Map<string, string>([
+      [
+        fireOnceStorageKey(ACCOUNT_A),
+        JSON.stringify(fireOnce({ shownAt: NOW - FIRE_ONCE_TTL_MS - 1 })),
+      ],
+      [fireOnceStorageKey(ACCOUNT_B), JSON.stringify(fireOnce({ subscriptionKey: 'sub-b' }))],
+    ]);
+    const storage = createMemoryStorage(values);
+    assert.equal(readScopedFireOnceRecord(storage, ACCOUNT_A, 'sub-a', NOW), null);
+    assert.equal(values.has(fireOnceStorageKey(ACCOUNT_A)), false);
+    assert.equal(values.has(fireOnceStorageKey(ACCOUNT_B)), true);
+
+    const denied = {
+      getItem: () => {
+        throw new Error('denied');
+      },
+      setItem: () => {
+        throw new Error('denied');
+      },
+      removeItem: () => {
+        throw new Error('denied');
+      },
+    };
+    assert.equal(readScopedFireOnceRecord(denied, ACCOUNT_A, 'sub-a', NOW), null);
+    assert.equal(writeScopedFireOnceRecord(denied, ACCOUNT_A, fireOnce()), false);
   });
 });
 
@@ -526,6 +774,35 @@ describe('buildActivationSteps — step model (R15/AE6)', () => {
   });
 });
 
+describe('hasAnyActivatedProFunctionality — cohort suppression', () => {
+  it('returns false when none of the onboarding targets is active', () => {
+    assert.equal(hasAnyActivatedProFunctionality(config()), false);
+  });
+
+  it('returns true for an active email brief', () => {
+    assert.equal(
+      hasAnyActivatedProFunctionality(
+        config({ hasEnabledDigestRule: true, hasEmailDelivery: true }),
+      ),
+      true,
+    );
+  });
+
+  it('returns true for active browser alerts', () => {
+    assert.equal(
+      hasAnyActivatedProFunctionality(config({ hasWebPushDelivery: true })),
+      true,
+    );
+  });
+
+  it('returns true for a previously used power feature', () => {
+    assert.equal(
+      hasAnyActivatedProFunctionality(config({ hasUsedPowerFeature: true })),
+      true,
+    );
+  });
+});
+
 describe('buildBriefDigestPayload — brief step write delta (U4)', () => {
   it('carries explicit daily mode, chosen hour, and IANA timezone', () => {
     assert.deepEqual(buildBriefDigestPayload(config(), 6, 'America/New_York'), {
@@ -628,6 +905,15 @@ describe('buildExitSummary — R15 pending/verified/failed', () => {
       { id: 'brief', outcome: 'done', status: 'verified' },
     ]);
   });
+
+  // #5617/#5727: a browser refusal is durably distinct from a voluntary skip.
+  // Its status stays pending, while the rendering layer is free to give the
+  // denied cohort truthful browser-settings guidance.
+  it('blocked reads as pending, never failed (#5617)', () => {
+    assert.deepEqual(buildExitSummary([{ id: 'alerts', outcome: 'blocked' }]), [
+      { id: 'alerts', outcome: 'blocked', status: 'pending' },
+    ]);
+  });
 });
 
 describe('summarizeActivationExit — funnel exit completion state', () => {
@@ -682,6 +968,135 @@ describe('summarizeActivationExit — funnel exit completion state', () => {
       total: 0,
     });
   });
+
+  // The aggregate funnel event keeps its three buckets: adding the durable
+  // `blocked` outcome (#5617) must not shift a denial out of `pending` into
+  // `failed` and silently move the exit-event baseline.
+  it('a blocked step counts as pending, leaving the funnel counts unchanged (#5617)', () => {
+    assert.deepEqual(
+      summarizeActivationExit([
+        { id: 'brief', outcome: 'confirmed' },
+        { id: 'alerts', outcome: 'blocked' },
+      ]),
+      { completion: 'partial', verified: 1, pending: 1, failed: 0, total: 2 },
+    );
+  });
+});
+
+describe('buildActivationOutcomeBuckets — durable outcome record (#5582)', () => {
+  it('confirmed and done both land in confirmedSteps (both count as verified)', () => {
+    assert.deepEqual(
+      buildActivationOutcomeBuckets([
+        { id: 'brief', outcome: 'confirmed' },
+        { id: 'alerts', outcome: 'done' },
+      ]),
+      {
+        confirmedSteps: ['brief', 'alerts'],
+        skippedSteps: [],
+        blockedSteps: [],
+        failedSteps: [],
+      },
+    );
+  });
+
+  it('skipped and failed bucket separately from confirmed', () => {
+    assert.deepEqual(
+      buildActivationOutcomeBuckets([
+        { id: 'brief', outcome: 'confirmed' },
+        { id: 'alerts', outcome: 'skipped' },
+        { id: 'power', outcome: 'failed' },
+      ]),
+      {
+        confirmedSteps: ['brief'],
+        skippedSteps: ['alerts'],
+        blockedSteps: [],
+        failedSteps: ['power'],
+      },
+    );
+  });
+
+  it('preserves step order within each bucket', () => {
+    assert.deepEqual(
+      buildActivationOutcomeBuckets([
+        { id: 'power', outcome: 'skipped' },
+        { id: 'brief', outcome: 'skipped' },
+        { id: 'alerts', outcome: 'skipped' },
+      ]),
+      {
+        confirmedSteps: [],
+        skippedSteps: ['power', 'brief', 'alerts'],
+        blockedSteps: [],
+        failedSteps: [],
+      },
+    );
+  });
+
+  it('empty flow → all buckets empty', () => {
+    assert.deepEqual(buildActivationOutcomeBuckets([]), {
+      confirmedSteps: [],
+      skippedSteps: [],
+      blockedSteps: [],
+      failedSteps: [],
+    });
+  });
+
+  // #5617: the whole point of the fourth bucket. A browser-denied step must be
+  // queryable AFTER the fact — landing it in skippedSteps makes the denial
+  // cohort unsizeable, and landing it in failedSteps would say we tried and
+  // failed. It gets its own bucket, and the other three are untouched.
+  it('a blocked step lands in blockedSteps, not skippedSteps or failedSteps (#5617)', () => {
+    assert.deepEqual(
+      buildActivationOutcomeBuckets([
+        { id: 'brief', outcome: 'confirmed' },
+        { id: 'alerts', outcome: 'blocked' },
+        { id: 'power', outcome: 'skipped' },
+      ]),
+      {
+        confirmedSteps: ['brief'],
+        skippedSteps: ['power'],
+        blockedSteps: ['alerts'],
+        failedSteps: [],
+      },
+    );
+  });
+
+  // Guards the shape of the bucketing itself: an `else`-as-catch-all silently
+  // swallows every future outcome into failedSteps, which is exactly how the
+  // blocked cohort would have been mislabelled here.
+  it('every outcome is routed explicitly — no bucket is a catch-all (#5617)', () => {
+    const buckets = buildActivationOutcomeBuckets([
+      { id: 'brief', outcome: 'blocked' },
+      { id: 'alerts', outcome: 'blocked' },
+      { id: 'power', outcome: 'blocked' },
+    ]);
+    assert.deepEqual(buckets.blockedSteps, ['brief', 'alerts', 'power']);
+    assert.deepEqual(buckets.failedSteps, []);
+    assert.deepEqual(buckets.skippedSteps, []);
+    assert.deepEqual(buckets.confirmedSteps, []);
+  });
+});
+
+// The two shell paths that advance past a step without a confirm (the Continue
+// button and the implicit default for a step the user never acted on) share
+// this seam so they cannot drift apart — a blocked step recorded through one
+// path and skipped through the other would make the durable bucket a biased
+// sample of the very cohort it exists to size (#5617).
+describe('selectAdvanceOutcome — advancing past a step without confirming', () => {
+  it('a browser-refused step resolves blocked, not skipped', () => {
+    assert.equal(selectAdvanceOutcome('blocked'), 'blocked');
+  });
+
+  it('an already-configured step resolves done', () => {
+    assert.equal(selectAdvanceOutcome('already-done'), 'done');
+  });
+
+  it('a confirmable step the user walked past is a real skip', () => {
+    assert.equal(selectAdvanceOutcome('confirmable'), 'skipped');
+  });
+
+  it('a platform-unsupported step stays a skip (we never asked for anything)', () => {
+    assert.equal(selectAdvanceOutcome('unavailable'), 'skipped');
+  });
 });
 
 describe('shouldShowFinishSetupChip', () => {
@@ -696,9 +1111,20 @@ describe('shouldShowFinishSetupChip', () => {
   const withFail: ActivationStepResult[] = [
     { id: 'brief', outcome: 'failed' },
   ];
+  const withBlocked: ActivationStepResult[] = [
+    { id: 'brief', outcome: 'confirmed' },
+    { id: 'alerts', outcome: 'blocked' },
+  ];
 
   it('shows the chip when any step was skipped', () => {
     assert.equal(shouldShowFinishSetupChip(withSkip, null, null, NOW), true);
+  });
+
+  // Splitting blocked out of skippedSteps (#5617) is a RECORD change, not a UX
+  // change: a denied step is still unfinished setup, so the chip must keep
+  // appearing exactly as it did when blocked resolved as 'skipped'.
+  it('still shows the chip when the only unfinished step was blocked (#5617)', () => {
+    assert.equal(shouldShowFinishSetupChip(withBlocked, null, null, NOW), true);
   });
 
   it('shows the chip when any step failed', () => {
@@ -786,14 +1212,57 @@ describe('telemetry event selection', () => {
     assert.equal(ACTIVATION_EVENTS.entered, 'pro-activation-entered');
     assert.equal(ACTIVATION_EVENTS.stepConfirmed, 'pro-activation-step-confirmed');
     assert.equal(ACTIVATION_EVENTS.stepSkipped, 'pro-activation-step-skipped');
+    assert.equal(ACTIVATION_EVENTS.stepBlocked, 'pro-activation-step-blocked');
+    assert.equal(ACTIVATION_EVENTS.stepFailed, 'pro-activation-step-failed');
     assert.equal(ACTIVATION_EVENTS.exit, 'pro-activation-exit');
   });
 
-  it('selectStepEvent maps confirmed/skipped to their events; done/failed to null', () => {
+  it('selectConfirmOutcome reports blocked through no step event', () => {
+    // Silent-hazard pin between #5609 and #5600: the shell already reports a
+    // blocked step via onBlockStep. If a confirm result of `blocked` also mapped
+    // to the `failed` outcome, one denied-permission attempt would emit BOTH
+    // step-blocked and step-failed — double-counting it and re-creating the
+    // mislabeled funnel #5600 exists to fix, just with different labels.
+    assert.equal(selectConfirmOutcome('verified'), 'confirmed');
+    assert.equal(selectConfirmOutcome('failed'), 'failed');
+    assert.equal(selectConfirmOutcome('blocked'), null);
+    // #5600: a dismissed permission prompt is a USER outcome, not our write
+    // erroring. Mapping it to 'failed' put the most common alerts-step result
+    // into the step-failed metric that exists to catch systemic write failures —
+    // the same mislabeling this PR fixes, with the labels swapped. Note
+    // shouldReportPushSubscribeFailure below already excluded 'default' from
+    // Sentry for exactly this reason; the funnel simply did not agree.
+    assert.equal(selectConfirmOutcome('declined'), null);
+    // And the composition the flow actually performs.
+    assert.equal(selectStepEvent(selectConfirmOutcome('verified')!), ACTIVATION_EVENTS.stepConfirmed);
+    assert.equal(selectStepEvent(selectConfirmOutcome('failed')!), ACTIVATION_EVENTS.stepFailed);
+  });
+
+  it('reports a push-subscribe failure to Sentry only when permission was granted', () => {
+    // #5600: the capture exists to surface real write failures. A user who
+    // denies OR dismisses the browser prompt is the documented AE3 outcome and
+    // is the common case — reporting either would bury the signal in noise.
+    assert.equal(shouldReportPushSubscribeFailure('granted'), true);
+    assert.equal(shouldReportPushSubscribeFailure('denied'), false);
+    assert.equal(shouldReportPushSubscribeFailure('default'), false);
+    assert.equal(shouldReportPushSubscribeFailure('unsupported'), false);
+  });
+
+  it('selectStepEvent maps confirmed/skipped/failed to their events; done to null', () => {
+    // #5600: `failed` used to map to null, so a genuinely errored step reached
+    // Umami only as a `step-skipped` — the funnel read broken writes as user
+    // disinterest for a full day before anyone noticed.
     assert.equal(selectStepEvent('confirmed'), ACTIVATION_EVENTS.stepConfirmed);
     assert.equal(selectStepEvent('skipped'), ACTIVATION_EVENTS.stepSkipped);
+    assert.equal(selectStepEvent('failed'), ACTIVATION_EVENTS.stepFailed);
     assert.equal(selectStepEvent('done'), null);
-    assert.equal(selectStepEvent('failed'), null);
+  });
+
+  // The durable `blocked` outcome (#5617) must keep its OWN event. Falling
+  // through to stepSkipped here would re-collapse the denial cohort into
+  // voluntary skips at the event level — the exact gap #5615 closed.
+  it('selectStepEvent maps blocked to stepBlocked, never stepSkipped (#5617)', () => {
+    assert.equal(selectStepEvent('blocked'), ACTIVATION_EVENTS.stepBlocked);
   });
 });
 
@@ -900,5 +1369,14 @@ describe('cross-tab mount claim (#7)', () => {
     assert.match(MOUNT_CLAIM_KEY, /-v\d+$/);
     const keys = [PENDING_MARKER_KEY, FIRE_ONCE_KEY, FINISH_SETUP_CHIP_DISMISS_KEY, MOUNT_CLAIM_KEY];
     assert.equal(new Set(keys).size, keys.length);
+  });
+});
+
+describe('activation flow retry schedule', () => {
+  it('backs off finitely through the abandoned server-claim lease window', () => {
+    assert.deepEqual(ACTIVATION_FLOW_RETRY_DELAYS_MS, [2_000, 4_000, 8_000, 16_000, 30_000]);
+    assert.equal(activationFlowRetryDelay(0), 2_000);
+    assert.equal(activationFlowRetryDelay(4), 30_000);
+    assert.equal(activationFlowRetryDelay(5), null);
   });
 });

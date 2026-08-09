@@ -29,7 +29,7 @@ World Monitor is a real-time OSINT dashboard built with **Vanilla TypeScript** (
 | **TypeScript** | All code — frontend, edge functions, and handlers |
 | **Vite** | Build tool and dev server |
 | **Sebuf** | Proto-first HTTP RPC framework for typed API contracts |
-| **Protobuf / Buf** | Service and message definitions across 36 domains |
+| **Protobuf / Buf** | Service and message definitions across 37 domains |
 | **MapLibre GL** | Base map rendering (tiles, globe mode, camera) |
 | **deck.gl** | WebGL overlay layers (scatterplot, geojson, arcs, heatmaps) |
 | **d3** | Charts, sparklines, and data visualization |
@@ -57,12 +57,12 @@ Variants share all code but differ in default panels, map layers, and RSS feeds.
 
 | Directory | Purpose |
 |---|---|
-| `src/components/` | UI components — 166 top-level TypeScript component files |
+| `src/components/` | UI components — 183 top-level TypeScript component files |
 | `src/services/` | Data fetching modules — sebuf client wrappers, AI, signal analysis |
 | `src/config/` | Static data and variant configs (feeds, geo, military, pipelines, ports) |
 | `src/generated/` | Auto-generated sebuf client + server stubs (**do not edit by hand**) |
 | `src/types/` | TypeScript type definitions |
-| `src/locales/` | i18n JSON files (25 languages) |
+| `src/locales/` | i18n JSON files (26 languages) |
 | `src/workers/` | Web Workers for analysis |
 | `server/` | Sebuf handler implementations for all 35 server handler domains |
 | `api/` | Vercel Edge Functions (sebuf gateway + legacy endpoints) |

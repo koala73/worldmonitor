@@ -6,7 +6,7 @@
  */
 
 import { getRpcBaseUrl } from '@/services/rpc-client';
-import type { ListMarketQuotesResponse, ListCommodityQuotesResponse, GetSectorSummaryResponse, ListCryptoQuotesResponse, ListCryptoSectorsResponse, CryptoSector, ListDefiTokensResponse, ListAiTokensResponse, ListOtherTokensResponse, MarketQuote as ProtoMarketQuote, CryptoQuote as ProtoCryptoQuote } from '@/generated/client/worldmonitor/market/v1/service_client';
+import type { ListMarketQuotesResponse, ListCommodityQuotesResponse, GetSectorSummaryResponse, ListCryptoQuotesResponse, ListCryptoSectorsResponse, CryptoSector, ListDefiTokensResponse, ListAiTokensResponse, ListOtherTokensResponse, MarketQuote as ProtoMarketQuote, MarketQuoteUnavailable, CryptoQuote as ProtoCryptoQuote } from '@/generated/client/worldmonitor/market/v1/service_client';
 import type { MarketData, CryptoData, TokenData } from '@/types';
 import { createCircuitBreaker } from '@/utils/circuit-breaker';
 import { getHydratedData } from '@/services/bootstrap';
@@ -26,10 +26,14 @@ const defiBreaker = createCircuitBreaker<ListDefiTokensResponse>({ name: 'DeFi T
 const aiBreaker = createCircuitBreaker<ListAiTokensResponse>({ name: 'AI Tokens', persistCache: true });
 const otherBreaker = createCircuitBreaker<ListOtherTokensResponse>({ name: 'Other Tokens', persistCache: true });
 
-const emptyStockFallback: ListMarketQuotesResponse = { quotes: [], finnhubSkipped: false, skipReason: '', rateLimited: false };
+const emptyStockFallback: ListMarketQuotesResponse = { quotes: [], finnhubSkipped: false, skipReason: '', rateLimited: false, unavailableSymbols: [] };
 const emptyCommodityFallback: ListCommodityQuotesResponse = { quotes: [] };
 const emptySectorFallback: GetSectorSummaryResponse = { sectors: [] };
-const emptyCryptoFallback: ListCryptoQuotesResponse = { quotes: [] };
+const EMPTY_CRYPTO_FALLBACK: ListCryptoQuotesResponse = {
+  quotes: [],
+  unresolvedIds: [],
+  provider: 'degraded',
+};
 const emptyCryptoSectorsFallback: ListCryptoSectorsResponse = { sectors: [] };
 const emptyDefiTokensFallback: ListDefiTokensResponse = { tokens: [] };
 const emptyAiTokensFallback: ListAiTokensResponse = { tokens: [] };
@@ -67,6 +71,12 @@ export interface MarketFetchResult {
   skipped?: boolean;
   reason?: string;
   rateLimited?: boolean;
+  /**
+   * Requested symbols that produced no quote, each with a reason (#6305).
+   * A custom watchlist ticker the fixed seed does not carry used to vanish
+   * from `data` with no signal at all.
+   */
+  unavailableSymbols?: MarketQuoteUnavailable[];
 }
 
 // ========================================================================
@@ -132,6 +142,9 @@ export async function fetchMultipleStocks(
     skipped: resp.finnhubSkipped || undefined,
     reason: resp.skipReason || undefined,
     rateLimited: resp.rateLimited || undefined,
+    // `resp` can be the pre-#6305 breaker cache or the empty fallback, so
+    // treat a missing field as "nothing to report" rather than trusting it.
+    unavailableSymbols: resp.unavailableSymbols?.length ? resp.unavailableSymbols : undefined,
   };
 }
 
@@ -232,7 +245,7 @@ export async function fetchCrypto(): Promise<CryptoData[]> {
 
   const resp = await cryptoBreaker.execute(async () => {
     return client.listCryptoQuotes({ ids: [] }); // empty = all defaults
-  }, emptyCryptoFallback);
+  }, EMPTY_CRYPTO_FALLBACK);
 
   const results = resp.quotes
     .map(toCryptoData)

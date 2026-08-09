@@ -7,6 +7,12 @@
  */
 
 import { cachedFetchJson, deleteRedisKey } from './redis';
+import {
+  COMPANY_MONITORING_RPC_SCOPES,
+  type CompanyMonitoringApiScope,
+} from '../../shared/company-monitoring-contract';
+
+const COMPANY_MONITORING_SCOPES = new Set<string>(Object.values(COMPANY_MONITORING_RPC_SCOPES));
 
 interface UserKeyResult {
   userId: string;
@@ -22,6 +28,27 @@ interface UserKeyResult {
    */
   keyId?: string;
   name?: string;
+  scopes?: CompanyMonitoringApiScope[];
+  companyMonitoringAccountId?: string;
+}
+
+/**
+ * Thrown when Convex validation cannot be performed (missing config, transport
+ * failure, non-OK HTTP, invalid JSON/payload). Distinct from a definitive
+ * unknown/revoked key (`null`). Callers that own HTTP responses (gateway, MCP)
+ * should map this to a retryable 503; premium gates should fail closed.
+ */
+export class UserApiKeyUnavailableError extends Error {
+  readonly code = 'validation_unavailable' as const;
+
+  constructor(message: string) {
+    super(message);
+    this.name = 'UserApiKeyUnavailableError';
+  }
+}
+
+export function isUserApiKeyUnavailableError(err: unknown): err is UserApiKeyUnavailableError {
+  return err instanceof UserApiKeyUnavailableError;
 }
 
 /**
@@ -52,7 +79,24 @@ function isUserKeyResult(value: unknown): value is UserKeyResult {
   // a bare `{}` authenticate through the prototype chain.
   if (!Object.prototype.hasOwnProperty.call(value, 'userId')) return false;
   const userId = (value as { userId?: unknown }).userId;
-  return typeof userId === 'string' && userId.length > 0;
+  if (typeof userId !== 'string' || userId.length === 0) return false;
+  const candidate = value as {
+    scopes?: unknown;
+    companyMonitoringAccountId?: unknown;
+  };
+  if (candidate.scopes === undefined && candidate.companyMonitoringAccountId === undefined) return true;
+  if (!Array.isArray(candidate.scopes) || candidate.scopes.length === 0) return false;
+  if (
+    typeof candidate.companyMonitoringAccountId !== 'string' ||
+    candidate.companyMonitoringAccountId.length === 0
+  ) return false;
+  return new Set(candidate.scopes).size === candidate.scopes.length &&
+    candidate.scopes.every((scope) => typeof scope === 'string' && COMPANY_MONITORING_SCOPES.has(scope));
+}
+
+/** Generic gateway/MCP auth accepts only legacy, unscoped user API keys. */
+function isGenericUserKeyResult(value: UserKeyResult): boolean {
+  return value.scopes === undefined && value.companyMonitoringAccountId === undefined;
 }
 
 /** SHA-256 hex digest (Web Crypto API — works in Edge Runtime). */
@@ -61,12 +105,26 @@ async function sha256Hex(input: string): Promise<string> {
   return Array.from(new Uint8Array(buf), (b) => b.toString(16).padStart(2, '0')).join('');
 }
 
+function toUnavailableError(err: unknown): UserApiKeyUnavailableError {
+  if (err instanceof UserApiKeyUnavailableError) return err;
+  const message = err instanceof Error ? err.message : String(err);
+  return new UserApiKeyUnavailableError(
+    message.startsWith('Convex user API key validation unavailable')
+      ? message
+      : `Convex user API key validation unavailable: ${message}`,
+  );
+}
+
 /**
  * Validate a user-owned API key.
  *
- * Returns the userId and key metadata if valid, or null if invalid/revoked.
- * Uses cachedFetchJson for Redis caching with request coalescing and
- * standard NEG_SENTINEL for negative results.
+ * Returns the userId and key metadata if valid, or null if invalid/revoked
+ * (including a Redis NEG_SENTINEL negative-cache hit for a definitive unknown key).
+ * Throws {@link UserApiKeyUnavailableError} when Convex validation cannot be
+ * performed — callers must not treat that as "invalid key" (401).
+ *
+ * Uses cachedFetchJson with `cacheFetcherErrors: false` so transient failures
+ * are never written as NEG_SENTINEL.
  */
 export async function validateUserApiKey(key: string): Promise<UserKeyResult | null> {
   // Reject malformed keys BEFORE hashing. `startsWith('wm_')` alone let `wm_x`
@@ -83,6 +141,7 @@ export async function validateUserApiKey(key: string): Promise<UserKeyResult | n
       CACHE_TTL_SECONDS,
       () => fetchFromConvex(keyHash),
       NEG_TTL_SECONDS,
+      { cacheFetcherErrors: false },
     );
     // null is the legitimate negative-cache / unknown-key answer — pass it
     // through untouched. Anything non-null must prove it carries an identity.
@@ -92,12 +151,18 @@ export async function validateUserApiKey(key: string): Promise<UserKeyResult | n
       console.warn(`[user-api-key] discarding non-conforming validation payload (type=${Array.isArray(result) ? 'array' : typeof result})`);
       return null;
     }
+    // Company Monitoring keys are bound to an account and exact RPC scopes.
+    // Generic gateway/MCP callers do not enforce either constraint, so they
+    // must not receive the principal. Keep the full positive cache entry intact
+    // for a future dedicated validator instead of replacing it with a negative.
+    if (!isGenericUserKeyResult(result)) return null;
     return result;
   } catch (err) {
-    // Fail-soft: transient Convex/network errors degrade to unauthorized
-    // rather than bubbling a 500 through the gateway or isCallerPremium.
-    console.warn('[user-api-key] validateUserApiKey failed:', err instanceof Error ? err.message : String(err));
-    return null;
+    // Transient Convex/network/config errors must stay retryable. Do not
+    // collapse them into null (that made gateway/MCP return a misleading 401).
+    const unavailable = toUnavailableError(err);
+    console.warn('[user-api-key] validateUserApiKey unavailable:', unavailable.message);
+    throw unavailable;
   }
 }
 
@@ -105,21 +170,44 @@ export async function validateUserApiKey(key: string): Promise<UserKeyResult | n
 async function fetchFromConvex(keyHash: string): Promise<UserKeyResult | null> {
   const convexSiteUrl = process.env.CONVEX_SITE_URL;
   const convexSharedSecret = process.env.CONVEX_SERVER_SHARED_SECRET;
-  if (!convexSiteUrl || !convexSharedSecret) return null;
+  if (!convexSiteUrl || !convexSharedSecret) {
+    throw new UserApiKeyUnavailableError('Convex user API key validation unavailable: missing-config');
+  }
 
-  const resp = await fetch(`${convexSiteUrl}/api/internal-validate-api-key`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'User-Agent': 'worldmonitor-gateway/1.0',
-      'x-convex-shared-secret': convexSharedSecret,
-    },
-    body: JSON.stringify({ keyHash }),
-    signal: AbortSignal.timeout(3_000),
-  });
+  let resp: Response;
+  try {
+    resp = await fetch(`${convexSiteUrl}/api/internal-validate-api-key`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'User-Agent': 'worldmonitor-gateway/1.0',
+        'x-convex-shared-secret': convexSharedSecret,
+      },
+      body: JSON.stringify({ keyHash }),
+      signal: AbortSignal.timeout(3_000),
+    });
+  } catch {
+    throw new UserApiKeyUnavailableError('Convex user API key validation unavailable: fetch-error');
+  }
 
-  if (!resp.ok) return null;
-  return resp.json() as Promise<UserKeyResult | null>;
+  if (!resp.ok) {
+    throw new UserApiKeyUnavailableError(
+      `Convex user API key validation unavailable: http-${resp.status}`,
+    );
+  }
+
+  let value: unknown;
+  try {
+    value = await resp.json();
+  } catch {
+    throw new UserApiKeyUnavailableError('Convex user API key validation unavailable: invalid-json');
+  }
+
+  if (value === null) return null;
+  if (!isUserKeyResult(value)) {
+    throw new UserApiKeyUnavailableError('Convex user API key validation unavailable: invalid-payload');
+  }
+  return value;
 }
 
 /**

@@ -678,4 +678,184 @@ describe("multi-active-sub guard", () => {
     // Recompute should pick the longer-lived one.
     expect(row!.validUntil).toBeGreaterThan(Date.now() + 50 * DAY_MS);
   });
+
+  // ---------------------------------------------------------------------
+  // Pro Business (plan 2026-07-25-001 U1) — the tier deliberately shares
+  // `tier: 1` with Pro so every Pro gate unlocks generically, which means
+  // PLAN_PRECEDENCE is the ONLY thing stopping a recompute from handing a
+  // Pro Business buyer who also holds a Pro sub the weaker Pro feature set.
+  // Both billing variants need their own entry (the registry keys them
+  // separately and silently degrades a missing key to 0).
+  // ---------------------------------------------------------------------
+
+  async function seedBothProVariantsPlus(
+    t: ReturnType<typeof convexTest>,
+    stronger: { subscriptionId: string; planKey: string; productId: string },
+  ) {
+    await t.run(async (ctx) => {
+      // Both Pro variants deliberately outlive the Pro Business sub — this
+      // verifies the capability tie-break (PLAN_PRECEDENCE) wins over the
+      // duration tie-break (currentPeriodEnd).
+      for (const pro of [
+        { id: "sub_pro_monthly", planKey: "pro_monthly", productId: "pdt_0Nbtt71uObulf7fGXhQup" },
+        { id: "sub_pro_annual", planKey: "pro_annual", productId: "pdt_0NbttMIfjLWC10jHQWYgJ" },
+      ]) {
+        await ctx.db.insert("subscriptions", {
+          userId: USER_ID,
+          dodoSubscriptionId: pro.id,
+          dodoProductId: pro.productId,
+          planKey: pro.planKey,
+          status: "active",
+          currentPeriodStart: Date.now() - 30 * DAY_MS,
+          currentPeriodEnd: Date.now() + 90 * DAY_MS,
+          rawPayload: {},
+          updatedAt: Date.now() - 1000,
+        });
+      }
+      await ctx.db.insert("subscriptions", {
+        userId: USER_ID,
+        dodoSubscriptionId: stronger.subscriptionId,
+        dodoProductId: stronger.productId,
+        planKey: stronger.planKey,
+        status: "active",
+        currentPeriodStart: Date.now() - 30 * DAY_MS,
+        currentPeriodEnd: Date.now() + 30 * DAY_MS,
+        rawPayload: {},
+        updatedAt: Date.now() - 1000,
+      });
+      await ctx.db.insert("entitlements", {
+        userId: USER_ID,
+        planKey: "free",
+        features: {
+          tier: 0,
+          maxDashboards: 3,
+          apiAccess: false,
+          apiRateLimit: 0,
+          prioritySupport: false,
+          exportFormats: [],
+        },
+        validUntil: 0,
+        updatedAt: Date.now() - 1000,
+      });
+    });
+  }
+
+  test("same-tier precedence: pro_business_monthly outranks both Pro variants when all cover", async () => {
+    const t = convexTest(schema, modules);
+    await seedBothProVariantsPlus(t, {
+      subscriptionId: "sub_pro_business_monthly",
+      planKey: "pro_business_monthly",
+      productId: "pdt_0NjyFDbhURh2oROgPIU3G",
+    });
+
+    // Trigger a recompute by firing renewed on the longest-lived Pro sub.
+    await fireSubscriptionRenewed(t, "sub_pro_annual", "pdt_0NbttMIfjLWC10jHQWYgJ");
+
+    const row = await readEntitlement(t);
+    expect(row!.planKey).toBe("pro_business_monthly");
+    // Same tier as Pro, distinct features: more dashboards + priority support.
+    expect(row!.features.tier).toBe(1);
+    expect(row!.features.maxDashboards).toBe(25);
+    expect(row!.features.prioritySupport).toBe(true);
+    expect(row!.features.dataExport).toBe(true);
+  });
+
+  test("same-tier precedence: pro_business_annual outranks both Pro variants when all cover", async () => {
+    const t = convexTest(schema, modules);
+    await seedBothProVariantsPlus(t, {
+      subscriptionId: "sub_pro_business_annual",
+      planKey: "pro_business_annual",
+      productId: "pdt_0Nk072fxPUcHWivZRtlQW",
+    });
+
+    await fireSubscriptionRenewed(t, "sub_pro_annual", "pdt_0NbttMIfjLWC10jHQWYgJ");
+
+    const row = await readEntitlement(t);
+    expect(row!.planKey).toBe("pro_business_annual");
+    expect(row!.features.tier).toBe(1);
+    expect(row!.features.maxDashboards).toBe(25);
+    expect(row!.features.prioritySupport).toBe(true);
+    expect(row!.features.dataExport).toBe(true);
+  });
+
+  test("entitlement rows persist with AND without the optional dataExport field", async () => {
+    // The schema validator must accept the legacy row shape (written before
+    // dataExport existed) as well as catalog-sourced writes that carry it —
+    // v.object is strict on extra keys, so a validator missing the field
+    // rejects every post-U1 webhook entitlement write.
+    const t = convexTest(schema, modules);
+    const legacyFeatures = {
+      tier: 1,
+      maxDashboards: 10,
+      apiAccess: false,
+      apiRateLimit: 0,
+      prioritySupport: false,
+      exportFormats: ["csv", "pdf"],
+    };
+    await t.run(async (ctx) => {
+      await ctx.db.insert("entitlements", {
+        userId: "user_legacy_shape",
+        planKey: "pro_monthly",
+        features: legacyFeatures,
+        validUntil: Date.now() + DAY_MS,
+        updatedAt: Date.now(),
+      });
+      await ctx.db.insert("entitlements", {
+        userId: "user_data_export_shape",
+        planKey: "pro_business_monthly",
+        features: {
+          ...legacyFeatures,
+          maxDashboards: 25,
+          prioritySupport: true,
+          exportFormats: ["csv", "json", "pdf"],
+          dataExport: true,
+        },
+        validUntil: Date.now() + DAY_MS,
+        updatedAt: Date.now(),
+      });
+    });
+
+    const [legacy, modern] = await t.run(async (ctx) => [
+      await ctx.db
+        .query("entitlements")
+        .withIndex("by_userId", (q) => q.eq("userId", "user_legacy_shape"))
+        .first(),
+      await ctx.db
+        .query("entitlements")
+        .withIndex("by_userId", (q) => q.eq("userId", "user_data_export_shape"))
+        .first(),
+    ]);
+    expect(legacy!.features.dataExport).toBeUndefined();
+    expect(modern!.features.dataExport).toBe(true);
+  });
+
+  test("the entitlement cache action accepts features with AND without dataExport", async () => {
+    // Same strictness hazard one layer out: syncEntitlementCache's arg
+    // validator is scheduled with the catalog features object, so a missing
+    // dataExport branch would reject every Pro Business cache sync.
+    const t = convexTest(schema, modules);
+    const baseFeatures = {
+      tier: 1,
+      maxDashboards: 25,
+      apiAccess: false,
+      apiRateLimit: 0,
+      prioritySupport: true,
+      exportFormats: ["csv", "json", "pdf"],
+      mcpAccess: true,
+    };
+    // UPSTASH_* is unset under test, so the action short-circuits before any
+    // network call — this exercises the validator, not Redis.
+    await t.action(internal.payments.cacheActions.syncEntitlementCache, {
+      userId: "user_cache_legacy_shape",
+      planKey: "pro_monthly",
+      features: baseFeatures,
+      validUntil: Date.now() + DAY_MS,
+    });
+    await t.action(internal.payments.cacheActions.syncEntitlementCache, {
+      userId: "user_cache_data_export_shape",
+      planKey: "pro_business_monthly",
+      features: { ...baseFeatures, dataExport: true },
+      validUntil: Date.now() + DAY_MS,
+    });
+  });
 });

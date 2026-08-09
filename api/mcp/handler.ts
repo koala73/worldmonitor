@@ -312,9 +312,9 @@ async function handleAuthenticatedSseReplay(
   }
   setUsageContext(usage, auth.context);
   const getPreCheck = await runContextPreChecks(auth.context, deps, resourceMetadataUrl, corsHeaders, ctx);
-  if (getPreCheck) {
-    usage.phase = getPreCheck.headers.get('X-Billing-Verification') ? 'billing' : 'precheck';
-    return getPreCheck;
+  if (!getPreCheck.ok) {
+    usage.phase = getPreCheck.response.headers.get('X-Billing-Verification') ? 'billing' : 'precheck';
+    return getPreCheck.response;
   }
   const getLimited = await applyPerMinuteLimit(auth.context, corsHeaders);
   if (getLimited) {
@@ -637,6 +637,9 @@ async function mcpHandlerInner(
   // Auth gate. `context` is null only on the anonymous discovery path; every
   // data/quota method below runs the full protected path and always sets it.
   let context: McpAuthContext | null = null;
+  // Set alongside `context` by the gated branch's pre-check. Stays undefined on
+  // the public/anon branch — which never reaches a metered dispatch anyway.
+  let mcpDailyLimit: number | null | undefined;
   if (PUBLIC_MCP_METHODS.has(method) || isAnonResourceRead) {
     if (hasCredentials(req)) {
       // Credentials presented on a public method are still validated so a
@@ -670,10 +673,14 @@ async function mcpHandlerInner(
     context = auth.context;
     setUsageContext(usage, context);
     const preCheck = await runContextPreChecks(context, deps, resourceMetadataUrl, corsHeaders, ctx);
-    if (preCheck) {
-      usage.phase = preCheck.headers.get('X-Billing-Verification') ? 'billing' : 'precheck';
-      return preCheck;
+    if (!preCheck.ok) {
+      usage.phase = preCheck.response.headers.get('X-Billing-Verification') ? 'billing' : 'precheck';
+      return preCheck.response;
     }
+    // Plan-driven daily allowance, resolved from the entitlement the pre-check
+    // already fetched (plan 2026-07-25-001 U3). Carried to the two metered
+    // dispatch sites below; unset for every caller class but `pro`.
+    mcpDailyLimit = preCheck.mcpDailyLimit;
     const limited = await applyPerMinuteLimit(context, corsHeaders);
     if (limited) {
       usage.phase = 'limit';
@@ -740,7 +747,7 @@ async function mcpHandlerInner(
         usage.phase = 'auth';
         return authRequiredResponse(id, resourceMetadataUrl, corsHeaders);
       }
-      const dispatched = await dispatchToolsCall(req, context, deps, body, corsHeaders, ctx);
+      const dispatched = await dispatchToolsCall(req, context, deps, body, corsHeaders, ctx, mcpDailyLimit);
       // Mid-call billing denials (dispatch's BillingDenialError re-emit) must
       // classify like the pre-check sites: 'billing' -> billing_verification_503
       // / tier_403, not rate_limit_degraded (503) or 'ok' (403).
@@ -812,7 +819,7 @@ async function mcpHandlerInner(
         return authRequiredResponse(id, resourceMetadataUrl, corsHeaders);
       }
       {
-        const resourceRes = await buildResourceResponse(req, context, deps, body, corsHeaders, ctx);
+        const resourceRes = await buildResourceResponse(req, context, deps, body, corsHeaders, ctx, mcpDailyLimit);
         if (resourceRes.status === 429 || resourceRes.status === 503) usage.phase = 'dispatch';
         return maybeStreamJsonRpcResponse(req, resourceRes);
       }

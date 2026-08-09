@@ -129,17 +129,20 @@
       "currencies": "Monede",
       "area": "Suprafață"
     },
-    "loadingResilienceScore": "Loading resilience score…",
-    "resilienceScoreUnavailable": "Resilience score unavailable.",
+    "loadingResilienceScore": "Se încarcă scorul de reziliență…",
+    "resilienceScoreUnavailable": "Scorul de reziliență este indisponibil.",
     "china": {
       "title": "Privire de ansamblu: China",
       "description": "Situația actuală macro, de piață, comerț, energie și disponibilitate operațională din contractele de date publice existente.",
-      "macroPolicy": "Macro și politici",
-      "marketCredit": "Piață și credit",
-      "tradeSupply": "Comerț și lanț de aprovizionare",
+      "policyEvents": "Politică și aplicare",
       "energy": "Energie",
       "availability": "Pericole și aviație",
       "observed": "La data:",
+      "published": "Publicat:",
+      "effective": "În vigoare:",
+      "sectors": "Sectoare:",
+      "entities": "Entități:",
+      "translation": "Traducere:",
       "source": "Sursă:",
       "imfGrowth": "Prognoza de creștere a FMI",
       "creditGdp": "Credit raportat la PIB",
@@ -148,8 +151,6 @@
       "gasDemand": "Cererea de gaze",
       "energyMix": "Mixul de energie electrică",
       "coal": "cărbune",
-      "aviationAvailability": "Disponibilitatea aviației",
-      "hazardAvailability": "Disponibilitatea pericolelor",
       "noMajorDisruptions": "Nu au fost raportate perturbări majore",
       "activeDisruptions_one": "{{count}} perturbare activă",
       "activeDisruptions_few": "{{count}} perturbări active",
@@ -163,18 +164,21 @@
       "ccfiSource": "Bursa de Navigație din Shanghai",
       "comtradeSource": "UN Comtrade, raportor 156",
       "sourceUnavailable": "Sursă indisponibilă",
-      "macroUnavailable": "Datele macro și de politici sunt momentan indisponibile.",
-      "marketUnavailable": "Datele de piață și credit sunt momentan indisponibile.",
-      "tradeUnavailable": "Datele despre comerț și lanțul de aprovizionare sunt momentan indisponibile.",
-      "energyUnavailable": "Datele energetice sunt momentan indisponibile.",
-      "availabilityUnavailable": "Datele privind pericolele și aviația sunt momentan indisponibile.",
+      "policyUnavailable": "Official policy and enforcement events are currently unavailable.",
+      "policyPartial": "{{count}} official agencies are temporarily degraded.",
       "status": {
         "loading": "Se încarcă",
         "available": "Disponibil",
         "partial": "Parțial",
         "stale": "Învechit",
         "unavailable": "Indisponibil"
-      }
+      },
+      "macroSignals": "Semnale macro",
+      "crossStraitActivity": "Activitate trans-strâmtoare",
+      "corporateDisclosures": "Divulgări corporative",
+      "corridorConditions": "Condiții de coridor",
+      "activityNowcast": "Previziune activitate curentă",
+      "decisionSignalsUnavailable": "Instantaneul semnalelor de decizie ale Chinei este momentan indisponibil."
     }
   },
   "header": {
@@ -255,7 +259,7 @@
     "panelCatCommodityEcon": "Economie și comerț",
     "panelCatHappyNews": "Știri bune",
     "panelCatHappyPlanet": "Planetă și donații",
-    "embed": "Embed"
+    "embed": "Încorporează"
   },
   "panels": {
     "liveNews": "Știri Live",
@@ -363,7 +367,8 @@
     "consumerPrices": "Prețuri pentru consumatori",
     "fearGreed": "Frică și lacómie",
     "marketBreadth": "Amploarea pieței",
-    "climateNews": "Știri despre climă"
+    "climateNews": "Știri despre climă",
+    "fx": "Cursuri de schimb valutar"
   },
   "commands": {
     "prefixes": {
@@ -1129,7 +1134,7 @@
         "ucdpEvents": "Evenimente de conflict armat",
         "displacementFlows": "Fluxuri de deplasare",
         "climateAnomalies": "Anomalii climatice",
-        "weatherAlerts": "Alerte meteo",
+        "weatherAlerts": "Alerte meteo pentru SUA (NWS)",
         "strategicWaterways": "Căi navigabile strategice",
         "economicCenters": "Centre Economice",
         "criticalMinerals": "Minerale critice",
@@ -1210,7 +1215,7 @@
           "infraDatacenters": "Clustere de calcul AI >=10.000 de GPU",
           "infraOutages": "Întreruperea internetului și întreruperile serviciului",
           "naturalEventsTech": "Cutremururi, furtuni, incendii (pot afecta centrele de date)",
-          "weatherAlerts": "Alerte de vreme severă",
+          "weatherAlerts": "Alerte de vreme severă în SUA (NWS)",
           "economicCenters": "Burse de valori și bănci centrale",
           "countriesOverlay": "Numele țării se suprapune",
           "financeExchanges": "Schimburile globale majore pe nivelul pieței",
@@ -1222,7 +1227,7 @@
           "financeOutages": "Întreruperi ale internetului care pot afecta operațiunile pieței",
           "financeCyberThreats": "Evenimente de securitate în jurul infrastructurii financiare",
           "macroWaterways": "Puncte de strangulare strategice pentru transportul mărfurilor",
-          "weatherAlertsMarket": "Evenimente meteorologice severe cu relevanță pentru piață",
+          "weatherAlertsMarket": "Evenimente meteorologice severe din SUA cu relevanță pentru piață (NWS)",
           "naturalEventsMacro": "Cutremurele, incendiile, inundațiile și alte perturbări naturale",
           "timeRecent": "Filtrați datele bazate pe timp la ultimele ore",
           "timeExtended": "Afișați datele din săptămâna trecută, din luna sau din toate timpurile",
@@ -1270,8 +1275,8 @@
       "sectionFollowing": "Following",
       "sectionAll": "All",
       "sourceStates": {
-        "degraded": "degraded",
-        "stale": "stale"
+        "degraded": "degradat",
+        "stale": "învechit"
       }
     },
     "insights": {
@@ -1351,7 +1356,8 @@
       "sources_few": "{{count}} surse",
       "provenanceTitle": "Proveniență acoperire: câte articole ingerate și surse distincte din care a fost selectat acest rezumat",
       "compiledFrom": "Compilat din {{stories}} povești din {{sources}} surse",
-      "briefFreshness": "Generat {{minutes}}m în urmă · cea mai nouă sursă {{hours}}h vechime"
+      "briefFreshness": "Generat {{minutes}}m în urmă · cea mai nouă sursă {{hours}}h vechime",
+      "briefStoryDetails": "Story details ({{count}})"
     },
     "settings": {
       "exportSettings": "Exportare setări",
@@ -1429,10 +1435,10 @@
         "hoursAgo": "acum {{count}}h"
       },
       "infoTooltip": "<strong>Metodologie</strong> Combinație scor compus (0-100):<ul><li>50% Instabilitatea țării (top 5 ponderat)</li><li>30% Zone de convergență geografică</li><li>20% Incidente de infrastructură</li></ul>Se actualizează automat la fiecare 5 minute.",
-      "cachedCiiStatus": "Cached CII {{states}}",
+      "cachedCiiStatus": "CII din cache {{states}}",
       "sourceStates": {
-        "degraded": "degraded",
-        "stale": "stale"
+        "degraded": "degradat",
+        "stale": "învechit"
       },
       "dataFreshness": "Data Freshness",
       "sourcesDetail": "{{active}}/{{total}} sources"
@@ -1560,25 +1566,25 @@
       "candidGrants": "Granturi Candid",
       "dataLag": "Data Lag",
       "infoTooltip": "<strong>Indexul activității globale de donații</strong> Index compozit care urmărește donațiile personale pe platformele de crowdfunding și portofelele cripto.<ul><li><strong>Platforme</strong>: eșantionarea campaniilor GoFundMe, GlobalGiving, JustGiving</li><li><strong>Crypto</strong>: fluxuri de portofel de caritate în lanț, fluxuri de portofel de caritate GivingEnda Bloc)</li><li><strong>Instituțional</strong>: ODA OECD, CAF World Giving Index, Granturi Candid</li></ul>Indexul este direcțional (nu sume exacte în dolari). Combină eșantionarea în direct cu rapoartele anuale publicate.",
-      "benchmarkTitle": "Global Giving Benchmarks",
-      "benchmarkInfoTooltip": "<strong>Global Giving Benchmarks</strong> Published platform and institutional claims with source periods and verification status. Annualized figures are estimates, not live activity.",
+      "benchmarkTitle": "Repere globale pentru donații",
+      "benchmarkInfoTooltip": "<strong>Repere globale pentru donații</strong> Afirmații publicate ale platformelor și instituțiilor cu perioade sursă și status de verificare. Cifrele anuale sunt estimări, nu activitate în timp real.",
       "status": {
-        "published": "Published benchmarks with verified source coverage.",
-        "partial": "Published benchmarks with partial source coverage.",
-        "legacy": "Legacy snapshot; source details are unavailable.",
-        "cached": "Showing a cached snapshot; refresh unavailable."
+        "published": "Repere publicate cu acoperire sursă verificată.",
+        "partial": "Repere publicate cu acoperire sursă parțială.",
+        "legacy": "Instantaneu vechi; detaliile sursei sunt indisponibile.",
+        "cached": "Se afișează un instantaneu din cache; reîmprospătarea este indisponibilă."
       },
-      "trackedAnnualized": "Tracked platform giving — annualized estimate",
-      "annualizedDaily": "Annualized daily estimate",
-      "atLeast": "At least",
-      "about": "About",
-      "sourceNotVerified": "Source not verified",
-      "reportedCumulative": "Reported cumulative total",
+      "trackedAnnualized": "Donații platformă urmărite — estimare anuală",
+      "annualizedDaily": "Estimare zilnică anualizată",
+      "atLeast": "Cel puțin",
+      "about": "Aproximativ",
+      "sourceNotVerified": "Sursă neverificată",
+      "reportedCumulative": "Total cumulativ raportat",
       "sourcePeriod": "{{source}} · {{period}}",
-      "benchmark": "Published benchmark",
-      "sourcesMethodology": "Sources & methodology",
-      "methodologyIntro": "Only verified annual or defensibly annualized platform claims enter the headline. Cumulative and institutional figures remain separate context.",
-      "partialEstimate": "Partially verified estimate"
+      "benchmark": "Reper publicat",
+      "sourcesMethodology": "Surse și metodologie",
+      "methodologyIntro": "Numai afirmațiile anuale verificate sau anualizate în mod defensibil intră în titlu. Cifrele cumulative și instituționale rămân context separat.",
+      "partialEstimate": "Estimare parțial verificată"
     },
     "displacement": {
       "refugees": "Refugiati",
@@ -1618,6 +1624,8 @@
       "summaryFailed": "Rezumatul a eșuat",
       "sources": "surse {{count}}",
       "relatedAssetsNear": "Materiale similare lângă {{location}}",
+      "sourceCoverage": "{{covered}}/{{total}} surse",
+      "sourceCoverageHint": "Se afișează {{covered}} din {{total}} surse active — acest panou își rotește sursele la fiecare reîmprospătare",
       "sortBy": "Sortează după",
       "sortNewest": "Cel mai recent",
       "sortRelevance": "Relevanță"
@@ -2136,7 +2144,22 @@
       "infoTooltip": "<strong>Disaster Cascade</strong> Detectează semnale convergente de dezastre naturale și infrastructură:<ul><li>Corelează cutremure, incendii de vegetație, inundații și extremuri meteo</li><li>Urmărește efectele în cascadă asupra infrastructurii și lanțurilor de aprovizionare</li><li>Evidențiază regiuni cu risc de dezastru compus</li></ul>Faceți clic pe o carte pentru a mări regiunea afectată."
     },
     "markets": {
-      "infoTooltip": "<strong>Markets</strong> Indici bursieri în timp real, acțiuni și prețuri crypto. Personalizați lista de urmărire cu butonul Watchlist. Sparkline-urile arată tendința recentă de preț."
+      "infoTooltip": "<strong>Markets</strong> Indici bursieri în timp real, acțiuni și prețuri crypto. Personalizați lista de urmărire cu butonul Watchlist. Sparkline-urile arată tendința recentă de preț.",
+      "chart": {
+        "title": "Grafic prețuri {{symbol}}",
+        "close": "Închide graficul"
+      },
+      "unavailable": {
+        "symbols": "{{symbols}} — {{reason}}",
+        "symbolsMore": "{{symbols}} +{{count}} more — {{reason}}",
+        "notFound": "no quote available",
+        "providerError": "quote lookup failed, retrying shortly",
+        "rateLimited": "quote provider rate limited, retrying shortly",
+        "notConfigured": "quote provider not configured",
+        "requestLimit": "too many symbols requested",
+        "budget": "not loaded yet, retrying shortly",
+        "seed": "market data temporarily unavailable"
+      }
     },
     "heatmap": {
       "infoTooltip": "<strong>Sector Heatmap</strong> Performanța sectorului S&P 500 în colțul ochiului. Intensitatea culorii reflectă magnitudinea schimbării zilnice. Verde = câștiguri, Roșu = pierderi."
@@ -2256,9 +2279,10 @@
           "summaryVerified": "Deblocată și pregătită oricând ești și tu.",
           "channelsNote": "Preferi Telegram, Slack, Discord sau un webhook?",
           "pointers": {
+            "search": "Caută în întregul tablou de bord",
             "widgets": "Creează un widget personalizat",
             "analyst": "Întreabă analistul AI",
-            "apiKeys": "Obține cheile tale API și MCP",
+            "mcpClients": "Configurează MCP",
             "channels": "Configurează-le în setările de notificare"
           }
         }
@@ -2475,43 +2499,91 @@
       }
     },
     "mobileNav": {
-      "panelCategories": "Panel categories"
+      "panelCategories": "Categorii de panouri"
     },
     "panelFreshness": {
       "status": {
-        "fresh": "Fresh",
-        "stale": "Stale",
-        "veryStale": "Very stale",
-        "noData": "No data",
-        "disabled": "Disabled",
-        "error": "Error"
+        "fresh": "Actualizat",
+        "stale": "Învechit",
+        "veryStale": "Foarte învechit",
+        "noData": "Fără date",
+        "disabled": "Dezactivat",
+        "error": "Eroare"
       },
       "labelWithAge": "{{status}} {{age}}",
-      "title": "Data freshness: {{status}}. {{sources}}",
+      "title": "Prospețimea datelor: {{status}}. {{sources}}",
       "sourceDetail": "{{name}}: {{status}}, {{update}}",
       "sourceDetailWithHealth": "{{name}}: {{status}}, {{update}}, {{detail}}",
-      "lastUpdated": "last updated {{time}}",
-      "neverUpdated": "never updated",
+      "lastUpdated": "ultima actualizare {{time}}",
+      "neverUpdated": "niciodată actualizat",
       "health": {
-        "partialCoverage": "partial coverage",
-        "contentStale": "content stale",
-        "seedStale": "seed stale",
-        "noSourceData": "no source data",
-        "sourceErrorReported": "source error reported",
-        "freshnessStoreUnavailable": "freshness store unavailable",
-        "freshnessStoreDegraded": "freshness store degraded"
+        "partialCoverage": "acoperire parțială",
+        "contentStale": "conținut învechit",
+        "seedStale": "seed învechit",
+        "noSourceData": "fără date sursă",
+        "sourceErrorReported": "eroare sursă raportată",
+        "freshnessStoreUnavailable": "magazin de prospețime indisponibil",
+        "freshnessStoreDegraded": "magazin de prospețime degradat"
       },
       "time": {
-        "never": "never",
-        "justNow": "just now",
-        "minutesAgo": "{{count}}m ago",
-        "hoursAgo": "{{count}}h ago",
-        "daysAgo": "{{count}}d ago",
-        "compactNow": "now",
+        "never": "niciodată",
+        "justNow": "chiar acum",
+        "minutesAgo": "acum {{count}}m",
+        "hoursAgo": "acum {{count}}h",
+        "daysAgo": "acum {{count}}z",
+        "compactNow": "acum",
         "compactMinutes": "{{count}}m",
         "compactHours": "{{count}}h",
-        "compactDays": "{{count}}d"
+        "compactDays": "{{count}}z"
       }
+    },
+    "exportGate": {
+      "signedOutDesc": "Autentifică-te pentru a exporta datele tabloului de bord ca CSV, JSON sau PDF.",
+      "upgradeDesc": "Exportul de date (CSV, JSON, PDF) este inclus în Pro Business.",
+      "upgradeCta": "Actualizează la Pro Business",
+      "lockedAriaLabel": "Exportă date — blocat. {{reason}}",
+      "unlockedAnnouncement": "Exportul de date a fost deblocat.",
+      "preparingPdf": "Se pregătește PDF-ul…",
+      "pdfFailed": "Raportul PDF nu a putut fi generat. Încearcă din nou sau folosește exportul JSON."
+    },
+    "tabCap": {
+      "signedOutDesc": "Spațiile de lucru fără autentificare sunt limitate la {{cap}} file. Autentifică-te pentru a adăuga mai multe.",
+      "upgradeDesc": "Ai atins limita de {{cap}} file ale tabloului de bord.",
+      "upgradeCta": "Actualizează pentru mai mult",
+      "lockedAriaLabel": "Adaugă filă — blocat. {{reason}}",
+      "unlockedAnnouncement": "Limita filelor tabloului de bord a fost ridicată."
+    },
+    "fx": {
+      "infoTooltip": "<strong>Cursuri de schimb valutar</strong> Stres valutar și cursuri spot:<ul><li>FX Stress clasifică 45 de monede după cea mai mare scădere vârf-vale din ultimii 24 de luni, alături de variația pe 12 luni</li><li>Acoperirea include ARS, TRY, EGP, NGN, PKR și UAH — monede pe care seturile de referință BIS și ECB le omit</li><li>Spot listează cursurile față de dolar american și cursurile de referință euro ECB separat, deoarece cele două sunt cotate din baze diferite</li><li>RUB — ratele Băncii Rusiei, ruble per unitate</li></ul> Surse: Yahoo Finance, Banca Centrală Europeană și Banca Rusiei.",
+      "tabs": {
+        "stress": "FX Stress",
+        "spot": "Spot",
+        "rub": "RUB"
+      },
+      "currency": "Monedă",
+      "pair": "Pereche",
+      "rate": "Curs",
+      "yoy": "12 luni",
+      "drawdown": "Scădere 24 luni",
+      "peakToTrough": "Vârf → Vale",
+      "change1d": "1 zi",
+      "perUsd": "Per 1 USD",
+      "usdPerUnit": "USD per unitate",
+      "usdBase": "Față de dolarul american",
+      "eurBase": "Cursuri de referință euro ECB",
+      "stressedCount": "{{stressed}} din {{total}} monede sub {{threshold}}",
+      "sourceYahoo": "Sursă: Yahoo Finance",
+      "sourceEcb": "Sursă: ECB",
+      "degraded": "Indisponibil în acest moment: {{sources}}. Reîncercarea în curând.",
+      "source": {
+        "stress": "Stres FX",
+        "usd": "Ratele dolarului american",
+        "eur": "Ratele euro ale BCE",
+        "rub": "Ratele Băncii Rusiei"
+      },
+      "rubBase": "Banca Rusiei — ruble per 1 unitate",
+      "rubPerUnit": "Ruble per unitate",
+      "sourceCbr": "Sursă: Banca Rusiei"
     }
   },
   "popups": {
@@ -2852,7 +2924,7 @@
       "heading": "TITUL",
       "hexCode": "COD HEX",
       "squawk": "SQUAWK",
-      "attribution": "Sursa: OpenSky Network"
+      "attribution": "Sursa: adsb.lol (ODbL) · OpenSky Network"
     },
     "militaryVessel": {
       "aisDark": "AIS ÎNTUNEC",
@@ -3315,16 +3387,42 @@
     "visualizationFailed": "Vizualizarea a eșuat"
   },
   "dashboardTabs": {
-    "ariaLabel": "Dashboard tabs",
-    "defaultName": "Main",
-    "newTabName": "New Tab",
-    "newTabCreated": "New tab created",
-    "tabDeleted": "Tab \"{{name}}\" deleted",
-    "addTab": "Add tab",
-    "addTabTitle": "New tab (starts with the default panels)",
-    "renameHint": "{{name}} — double-click to rename",
-    "deleteTab": "Delete tab",
-    "deleteTabAria": "Delete tab {{name}}",
-    "tabNameAria": "Tab name"
+    "ariaLabel": "File tablou de bord",
+    "defaultName": "Principal",
+    "newTabName": "Filă nouă",
+    "newTabCreated": "Filă nouă creată",
+    "tabDeleted": "Fila \"{{name}}\" ștearsă",
+    "addTab": "Adaugă filă",
+    "addTabTitle": "Filă nouă (începe cu panourile implicite)",
+    "renameHint": "{{name}} — dublu clic pentru redenumire",
+    "deleteTab": "Șterge fila",
+    "deleteTabAria": "Șterge fila {{name}}",
+    "tabNameAria": "Numele filei"
+  },
+  "theaterPresets": {
+    "label": "Preseturi de acoperire",
+    "applied": "Presetul {{preset}} a fost aplicat: {{count}} surse activate",
+    "alreadyApplied": "Presetul {{preset}} este deja aplicat",
+    "ukraineWar": {
+      "label": "Războiul din Ucraina",
+      "description": "Activează principalele publicații ucrainene, presa rusă independentă și sursele de evaluare a frontului"
+    },
+    "indoPacific": {
+      "label": "Indo-Pacific / Taiwan",
+      "description": "Activează sursele de securitate pentru Taiwan, Pakistan și Asia de Sud-Est"
+    },
+    "sahelWestAfrica": {
+      "label": "Sahel și Africa de Vest",
+      "description": "Activează sursele locale din Sahel, Nigeria și Africa de Vest"
+    },
+    "caucasusCentralAsia": {
+      "label": "Caucaz și Asia Centrală",
+      "description": "Activează sursele regionale din Caucazul de Sud și Asia Centrală"
+    },
+    "middleEastFlashpoints": {
+      "label": "Puncte fierbinți în Orientul Mijlociu",
+      "description": "Activează sursele despre Iran, Israel, Golf și regiunile kurde"
+    },
+    "unavailable": "Presetul {{preset}} nu este disponibil cu panourile actuale"
   }
 }

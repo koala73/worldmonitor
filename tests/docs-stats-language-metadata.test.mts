@@ -14,17 +14,16 @@ import {
 const EXPECTED = ['en', 'fa', 'fr'];
 const STATS = { localeCodes: EXPECTED, locales: EXPECTED.length };
 
-function buildHtml({ xdefault, locales, jsonld } = {}) {
+function buildHtml({ canonical, xdefault, alternates, jsonld } = {}) {
   const parts = [];
+  parts.push(canonical ?? '<link rel="canonical" href="https://www.worldmonitor.app/dashboard" />');
   if (xdefault !== null) {
     parts.push(xdefault ?? '<link rel="alternate" hreflang="x-default" href="https://www.worldmonitor.app/dashboard" />');
   }
-  parts.push(...(locales ?? [
-    '<link rel="alternate" hreflang="en" href="https://www.worldmonitor.app/dashboard?lang=en" />',
-    '<link rel="alternate" hreflang="fa" href="https://www.worldmonitor.app/dashboard?lang=fa" />',
-    '<link rel="alternate" hreflang="fr" href="https://www.worldmonitor.app/dashboard?lang=fr" />',
+  parts.push(...(alternates ?? [
+    '<link rel="alternate" hreflang="en" href="https://www.worldmonitor.app/dashboard" />',
   ]));
-  parts.push(jsonld ?? '<script type="application/ld+json">\n{ "@type": "WebSite", "inLanguage": ["en", "fa", "fr"] }\n</script>');
+  parts.push(jsonld ?? '<script type="application/ld+json">\n{ "@type": "WebSite", "inLanguage": "en" }\n</script>');
   return parts.join('\n');
 }
 
@@ -47,47 +46,51 @@ describe('validateIndexLanguageMetadata', () => {
     assert.ok(hit(failures, 'x-default hreflang href must not set ?lang'));
   });
 
-  it('flags an hreflang locale set that does not match src/locales', () => {
+  it('flags a missing English alternate', () => {
     const failures = validateIndexLanguageMetadata(STATS, buildHtml({
-      locales: [
-        '<link rel="alternate" hreflang="en" href="https://www.worldmonitor.app/dashboard?lang=en" />',
-        '<link rel="alternate" hreflang="fa" href="https://www.worldmonitor.app/dashboard?lang=fa" />',
-      ],
+      alternates: [],
     }));
-    assert.ok(hit(failures, 'hreflang locale set does not match src/locales'));
-    assert.ok(hit(failures, 'missing: fr'));
+    assert.ok(hit(failures, 'hreflang set must contain only x-default and en'));
+    assert.ok(hit(failures, 'missing: en'));
   });
 
-  it('flags an hreflang href whose ?lang does not equal its code', () => {
+  it('flags a pseudo-localized query-string alternate', () => {
     const failures = validateIndexLanguageMetadata(STATS, buildHtml({
-      locales: [
-        '<link rel="alternate" hreflang="en" href="https://www.worldmonitor.app/dashboard?lang=en" />',
-        '<link rel="alternate" hreflang="fa" href="https://www.worldmonitor.app/dashboard?lang=xx" />',
+      alternates: [
+        '<link rel="alternate" hreflang="en" href="https://www.worldmonitor.app/dashboard" />',
         '<link rel="alternate" hreflang="fr" href="https://www.worldmonitor.app/dashboard?lang=fr" />',
       ],
     }));
-    assert.ok(hit(failures, 'hreflang fa href must use ?lang=fa'));
+    assert.ok(hit(failures, 'hreflang set must contain only x-default and en'));
+    assert.ok(hit(failures, 'extra: fr'));
+    assert.ok(hit(failures, 'query-string locale URLs must not be advertised'));
   });
 
-  it('accepts a relative hreflang href without throwing (regression: URL() must not crash the gate)', () => {
+  it('requires absolute, self-canonical alternate URLs', () => {
     let failures;
     assert.doesNotThrow(() => {
       failures = validateIndexLanguageMetadata(STATS, buildHtml({
-        locales: [
-          '<link rel="alternate" hreflang="en" href="/dashboard?lang=en" />',
-          '<link rel="alternate" hreflang="fa" href="/dashboard?lang=fa" />',
-          '<link rel="alternate" hreflang="fr" href="/dashboard?lang=fr" />',
-        ],
+        alternates: ['<link rel="alternate" hreflang="en" href="/dashboard" />'],
       }));
     });
-    assert.deepEqual(failures, []);
+    assert.ok(hit(failures, 'en hreflang href must be an absolute URL'));
+    assert.ok(hit(failures, 'en hreflang href must equal the canonical URL'));
   });
 
-  it('flags a WebSite inLanguage array that does not match src/locales', () => {
+  it('flags x-default and English alternates that drift from the canonical', () => {
+    const failures = validateIndexLanguageMetadata(STATS, buildHtml({
+      xdefault: '<link rel="alternate" hreflang="x-default" href="https://www.worldmonitor.app/" />',
+      alternates: ['<link rel="alternate" hreflang="en" href="https://www.worldmonitor.app/" />'],
+    }));
+    assert.ok(hit(failures, 'x-default hreflang href must equal the canonical URL'));
+    assert.ok(hit(failures, 'en hreflang href must equal the canonical URL'));
+  });
+
+  it('flags WebSite structured data that claims languages other than the raw English document', () => {
     const failures = validateIndexLanguageMetadata(STATS, buildHtml({
       jsonld: '<script type="application/ld+json">\n{ "@type": "WebSite", "inLanguage": ["en", "fa"] }\n</script>',
     }));
-    assert.ok(hit(failures, 'WebSite inLanguage does not match src/locales'));
+    assert.ok(hit(failures, 'WebSite inLanguage must describe the raw English document'));
   });
 
   it('flags a missing WebSite JSON-LD block', () => {

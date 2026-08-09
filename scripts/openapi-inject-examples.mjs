@@ -33,6 +33,12 @@ const HTTP_METHODS = new Set(['get', 'post', 'put', 'delete', 'patch', 'options'
 const MAX_OBJECT_DEPTH = 6;
 const MAX_OPTIONAL_PROPERTIES = 5;
 
+// Object keys whose boolean members are rollout gates, not status fields. Their example
+// value must be `false` (the shipped default), never the generic `true`.
+const FLAG_CONTAINER_KEYS = new Set(['featureflags', 'rolloutflags']);
+const CHINA_CORRIDOR_PATH = '/api/supply-chain/v1/get-china-corridor-control-towers';
+const CHINA_DECISION_SIGNALS_PATH = '/api/intelligence/v1/get-china-decision-signals';
+
 // ── Curated per-parameter example overrides ───────────────────────────────
 // The field-name heuristic in stringExample() picks structurally-valid but
 // semantically WRONG string examples for a handful of parameters whose accepted
@@ -150,7 +156,10 @@ const REGIONAL_INTELLIGENCE_EXAMPLE_ID = (() => {
 })();
 
 const GDELT_TOPIC_EXAMPLE_ID = (() => {
-  const src = readRepoText('scripts/seed-gdelt-intel.mjs');
+  // Sourced from the ACTIVE producer (#5864): scripts/seed-gdelt-intel.mjs no
+  // longer runs on any Railway service after the #5843 materializer cutover,
+  // so reading its topic ids would silently drift from what is published.
+  const src = readRepoText('scripts/_gdelt-bulk-materializer.mjs');
   const ids = [...src.matchAll(/\bid:\s*['"`]([a-z0-9-]+)['"`]/g)].map((m) => m[1]);
   return ids.includes('military') ? 'military' : (ids[0] ?? 'military');
 })();
@@ -160,6 +169,29 @@ const GDELT_TOPIC_EXAMPLE_ID = (() => {
 // undefined to fall through. `series_id` / `series_ids` is shared by FRED (no
 // enum, needs an override) and BLS (enum-resolved upstream) — disambiguate by
 // operation.
+// Real, documented fields a specific operation's example should not FEATURE.
+//
+// Distinct from honeypots (security decoys that must never be advertised):
+// these are legitimate response fields whose only truthful value in the state
+// the example depicts is the enum zero value — which
+// tests/openapi-examples-contract.test.mjs rightly bans from examples, since a
+// sample showing `_UNSPECIFIED` teaches nothing. Emitting any other member
+// instead would contradict the rest of the payload, so the honest option is to
+// leave the field out and let the schema below document it.
+//
+// Dropping it here also frees a MAX_OPTIONAL_PROPERTIES slot for a field that
+// IS informative in that state.
+function isCuratedOmission(key, context = {}) {
+  const where = `${context.operationId ?? ''} ${context.path ?? ''}`.toLowerCase();
+  // GetTradeFlows / GetTariffTrends: a 200 carrying rows always has
+  // unavailableReason at the UNSPECIFIED zero value. The generic enum picker
+  // skips the zero value and so paired rows with INVALID_REQUEST — a response
+  // the handler cannot produce. See #6309 / #6316.
+  return key === 'unavailableReason'
+    && (where.includes('gettradeflows') || where.includes('get-trade-flows')
+      || where.includes('gettarifftrends') || where.includes('get-tariff-trends'));
+}
+
 function overrideStringExample(key, context = {}) {
   const where = `${context.operationId ?? ''} ${context.path ?? ''}`.toLowerCase();
   if (key === 'jmespath') return 'keys(@)';
@@ -175,6 +207,31 @@ function overrideStringExample(key, context = {}) {
         ? 'pending'
         : '/api/scenario/v1/get-scenario-status?jobId=scenario%3A1717200000000%3Aabcd1234';
     }
+  }
+  // GetTradeFlows' 200 example must depict a SERVED response. The field-name
+  // heuristic otherwise picks "156" for partnerCountry (China — a partner the
+  // WTO indicators behind this RPC cannot answer at all, so it could never
+  // appear on a served row) and the first enum member other than the zero value
+  // for unavailableReason, producing rows and INVALID_REQUEST together: a state
+  // the handler cannot emit. See #6309.
+  if (where.includes('gettradeflows') || where.includes('get-trade-flows')) {
+    if (key === 'partnercountry') return '000';
+    if (key === 'reportingcountry') return '840';
+    if (key === 'unavailablereason') return 'TRADE_FLOW_UNAVAILABLE_REASON_UNSPECIFIED';
+    if (key === 'productsector') return 'Total merchandise';
+  }
+  // GetTariffTrends' 200 example must depict a SERVED response. productSector
+  // on a served row is the All-products aggregate label; partnerCountry on the
+  // datapoint is "World" (TP_A_0010 has no partner dimension). Request
+  // parameters stay inside their buf.validate patterns — constrainedString
+  // maps empty string to the literal "example", so use non-empty valid values.
+  // See #6316.
+  if (where.includes('gettarifftrends') || where.includes('get-tariff-trends')) {
+    if (key === 'reportingcountry') return '840';
+    if (key === 'unavailablereason') return 'TARIFF_TREND_UNAVAILABLE_REASON_UNSPECIFIED';
+    const isParam = context.exampleSurface === 'parameter' || context.exampleSurface === 'request';
+    if (key === 'partnercountry') return isParam ? '156' : 'World';
+    if (key === 'productsector') return isParam ? 'all' : 'All products';
   }
   if (key === 'period' && where.includes('getsectorsummary')) return '1d';
   if (key === 'timespan' && where.includes('searchgdeltdocuments')) return '15min';
@@ -214,6 +271,14 @@ function overrideStringExample(key, context = {}) {
   }
   if (key === 'seriesid' || key === 'seriesids') {
     if (where.includes('fred')) return FRED_SERIES_EXAMPLE_ID;
+  }
+  // ListCommodityQuotes only accepts supported commodity symbols (see #6307);
+  // the generic `symbol`/`symbols` heuristic emits `AAPL` which the handler
+  // now rejects with HTTP 400. Pin a supported commodity futures symbol for
+  // both the query param (`symbols`) and response quote fields (`symbol`).
+  if ((key === 'symbols' || key === 'symbol')
+      && (where.includes('listcommodityquotes') || where.includes('list-commodity-quotes'))) {
+    return 'GC=F';
   }
   return undefined;
 }
@@ -469,8 +534,20 @@ function constrainedString(value, schema) {
 
 function patternString(pattern, key) {
   if (!pattern) return null;
+  if (pattern.startsWith('^cmc1\\.')) {
+    return `cmc1.${'a'.repeat(32)}.${'b'.repeat(43)}`;
+  }
+  if (pattern.includes('(?:www\\.)?') && pattern.includes('[A-Za-z0-9-]')) {
+    return 'example.com';
+  }
   const simpleAlternation = pattern.match(/^\^\(([^)]+)\)\$/);
   if (simpleAlternation) return simpleAlternation[1].split('|')[0];
+  const companyMonitoringLogicalId = pattern.match(
+    /^\^(cm_(?:company|claim|event|evidence|impact)_)\[0-9A-HJKMNP-TV-Z\]\{26\}\$$/,
+  );
+  if (companyMonitoringLogicalId) {
+    return `${companyMonitoringLogicalId[1]}01ARZ3NDEKTSV4RRFFQ69G5FAV`;
+  }
   if (/scenario:\[0-9\]\{13\}:\[a-z0-9\]\{8\}/.test(pattern) || pattern.includes('scenario:')) {
     return 'scenario:1717200000000:abcd1234';
   }
@@ -491,6 +568,14 @@ function stringExample(name, schema = {}, context = {}) {
   // field. Keep the generated response example truthful instead of emitting
   // the generic non-empty string placeholder.
   if (key === 'abstract' && (where.includes('listdefensepatents') || where.includes('list-defense-patents'))) return '';
+  // Intel-history scope: `domain` collides with web-domain params on other
+  // ops, so anchor on the exact accepted-values pattern instead of the name.
+  // If the contract's pattern ever changes this falls through to the generic
+  // heuristic and the schema-validity check reds — the correct failure mode.
+  if (schema.pattern === '^(conflict|military|energy)?$') return 'conflict';
+  // get-similar-events `situation` enforces min_len 10; the generic
+  // placeholder is shorter and produces an un-runnable request sample.
+  if (key === 'situation') return constrainedString('chokepoint closure with an energy price spike', schema);
   const override = overrideStringExample(key, context);
   if (override !== undefined) return constrainedString(override, schema);
   if (shouldUseDescriptionClosedValue(context)) {
@@ -560,7 +645,13 @@ function stringExample(name, schema = {}, context = {}) {
 function numberExample(name, schema = {}, integer = false) {
   const key = normalizeKey(name);
   let value = integer ? 1 : 1.5;
-  if (key.includes('page') || key.includes('limit')) value = 25;
+  // A zero-based position must example as 0. The generic `1` published an import-batch
+  // example whose single row had ordinal 1, which the batch contract rejects outright
+  // ("batch ordinals must be contiguous from 0") — a copy-pasteable 400.
+  // Deliberately `ordinal` only, NOT `index`: in this repo `index` is a price index
+  // (base = 100) on ConsumerPricesService, where 0 is a nonsense example value.
+  if (key === 'ordinal') value = 0;
+  else if (key.includes('page') || key.includes('limit')) value = 25;
   else if (key.includes('days')) value = 7;
   else if (key.includes('closuredays')) value = 30;
   else if (key === 'lat' || key.endsWith('lat') || key.includes('latitude')) value = 40.7128;
@@ -585,6 +676,104 @@ function mergeObjects(a, b) {
     : b;
 }
 
+function getCompanyEnrichmentExample() {
+  return {
+    company: {
+      name: 'Apple Inc.',
+      domain: 'apple.com',
+      description: 'Electronic Computers',
+      location: 'Cupertino, CA',
+      website: 'https://www.apple.com',
+      founded: 0,
+      cik: '0000320193',
+      ticker: 'AAPL',
+    },
+    // Deprecated compatibility collections are intentionally empty. `github`
+    // is omitted because the handler serializes its undefined value away.
+    techStack: [],
+    secFilings: {
+      totalFilings: 120,
+      recentFilings: [{
+        form: '8-K',
+        fileDate: '2026-07-24',
+        description: 'Results of Operations and Financial Condition',
+        url: 'https://www.sec.gov/Archives/edgar/data/320193/000032019326000070/0000320193-26-000070-index.htm',
+        items: ['2.02'],
+      }],
+    },
+    hackerNewsMentions: [],
+    enrichedAtMs: 1784908800000,
+    sources: ['sec_edgar', 'finnhub', 'news'],
+    market: {
+      exchange: 'NASDAQ NMS - GLOBAL MARKET',
+      industry: 'Technology',
+      marketCapMusd: 3200000,
+      ipoDate: '1980-12-12',
+      logoUrl: 'https://static2.finnhub.io/file/publicdatany/finnhubimage/stock_logo/AAPL.png',
+      country: 'US',
+      currency: 'USD',
+    },
+    earningsSurprises: [{
+      period: '2026-06-30',
+      actualEps: 1.57,
+      estimateEps: 1.43,
+      surprise: 0.14,
+      surprisePercent: 9.79,
+      year: 2026,
+      quarter: 3,
+    }],
+    newsMentions: [{
+      title: 'Apple reports quarterly results',
+      url: 'https://example.com/apple-results',
+      source: 'example.com',
+      publishedAtMs: 1784905200000,
+    }],
+    unavailable: false,
+  };
+}
+
+// ShippingIndex has 12 properties and none are `required`, so the generic
+// builder's MAX_OPTIONAL_PROPERTIES cap keeps only the 5 alphabetically-first —
+// dropping the four decision-grade period-change fields (#6078) along with
+// previousValue/unit/spikeAlert. Curate it so the published example shows what
+// the endpoint actually returns, including the fail-closed shape where the
+// exchange published no comparable prior.
+function getShippingRatesExample() {
+  return {
+    indices: [
+      {
+        indexId: 'CCFI',
+        name: 'CCFI - China Container Freight',
+        currentValue: 1072.16,
+        previousValue: 1054.38,
+        changePct: 1.69,
+        unit: 'index',
+        history: [{ date: '2026-01-15', value: 1072.16 }],
+        spikeAlert: false,
+        periodChangePct: 1.69,
+        periodChangeBasis: 'publisher_reported',
+        priorPeriodValue: 1054.38,
+        priorPeriodDate: '2026-01-08',
+      },
+      {
+        // Fail-closed shape: the exchange published a level with no comparable
+        // prior, so the decision-grade fields are ABSENT (not 0, not null) while
+        // the legacy display fields still carry their fabricated fallback.
+        indexId: 'BDI',
+        name: 'BDI - Baltic Dry Index',
+        currentValue: 1972,
+        previousValue: 1972,
+        changePct: 0,
+        unit: 'index',
+        history: [{ date: '2026-01-15', value: 1972 }],
+        spikeAlert: false,
+      },
+    ],
+    fetchedAt: '2026-01-15T12:00:00Z',
+    upstreamUnavailable: false,
+  };
+}
+
 function exampleForSchema(schema, spec, context = {}, depth = 0, seen = new Set()) {
   if (!schema || typeof schema !== 'object') return 'example';
   const original = schema;
@@ -602,6 +791,20 @@ function exampleForSchema(schema, spec, context = {}, depth = 0, seen = new Set(
     && String(context.name ?? '').toLowerCase().endsWith('response')
   ) {
     return getScenarioStatusExample();
+  }
+  if (
+    depth === 0
+    && String(context.operationId ?? '').toLowerCase() === 'getcompanyenrichment'
+    && String(context.name ?? '').toLowerCase().endsWith('response')
+  ) {
+    return getCompanyEnrichmentExample();
+  }
+  if (
+    depth === 0
+    && String(context.operationId ?? '').toLowerCase() === 'getshippingrates'
+    && String(context.name ?? '').toLowerCase().endsWith('response')
+  ) {
+    return getShippingRatesExample();
   }
   const ref = original.$ref;
   if (ref) {
@@ -639,9 +842,12 @@ function exampleForSchema(schema, spec, context = {}, depth = 0, seen = new Set(
     // Drop honeypot fields before slot selection so they never appear in the
     // example and never consume a MAX_OPTIONAL_PROPERTIES slot from a real field.
     const isHoneypot = (key) => isHoneypotField(props[key], spec);
-    const required = new Set((Array.isArray(schema.required) ? schema.required : []).filter((key) => !isHoneypot(key)));
+    // Curated omissions join honeypots in being dropped BEFORE slot selection,
+    // so the freed slot goes to a field that actually informs the example.
+    const isDropped = (key) => isHoneypot(key) || isCuratedOmission(key, context);
+    const required = new Set((Array.isArray(schema.required) ? schema.required : []).filter((key) => !isDropped(key)));
     const optional = Object.keys(props)
-      .filter((key) => !required.has(key) && !isHoneypot(key))
+      .filter((key) => !required.has(key) && !isDropped(key))
       .slice(0, MAX_OPTIONAL_PROPERTIES);
     const keys = [...required, ...optional];
     if (keys.length === 0) {
@@ -654,13 +860,28 @@ function exampleForSchema(schema, spec, context = {}, depth = 0, seen = new Set(
     }
     const out = {};
     for (const key of keys) {
-      out[key] = exampleForSchema(props[key], spec, { ...context, name: key }, depth + 1, seen);
+      // Carry the container's own key so a leaf can tell what block it belongs to
+      // (a feature-flag boolean must not inherit the generic `true` default).
+      out[key] = exampleForSchema(props[key], spec, { ...context, name: key, parent: name }, depth + 1, seen);
     }
     return out;
   }
   if (type === 'integer') return numberExample(name, schema, true);
   if (type === 'number') return numberExample(name, schema, false);
-  if (type === 'boolean') return true;
+  if (type === 'boolean') {
+    // Success-path examples must not teach outage envelopes. `unavailable` on
+    // corporate-intel (and similar) RPCs means the upstream seed/registry was
+    // unreadable — a 200 example with unavailable:true is a contract footgun.
+    const key = normalizeKey(name || context.name || '');
+    if (key === 'unavailable' || key.endsWith('unavailable')) return false;
+    // Rollout/feature flags default OFF. The generic `true` default is wrong for a
+    // block whose whole design is "every gate starts false and flips one at a time":
+    // it published an example showing Company Monitoring mostly-enabled next to
+    // accessState DISABLED — a state the product cannot actually be in, and the exact
+    // opposite of the invariant the flags exist to hold.
+    if (FLAG_CONTAINER_KEYS.has(normalizeKey(context.parent || ''))) return false;
+    return true;
+  }
   return stringExample(name, schema, context);
 }
 
@@ -733,6 +954,11 @@ function injectSpecExamples(spec) {
       if (responses.length > 0) responseOperations++;
       for (const [, response] of responses) {
         const media = response.content[JSON_MEDIA];
+        // This response carries a canonical JSON document inside payloadJson.
+        // Its dedicated injector owns a representative decoded example; keep
+        // that curated example stable when the generic examples pass is
+        // re-run or checked after code generation.
+        if ((path === CHINA_CORRIDOR_PATH || path === CHINA_DECISION_SIGNALS_PATH) && media.example !== undefined) continue;
         const example = exampleForSchema(media.schema, spec, {
           ...context,
           name: `${op.operationId ?? 'operation'}Response`,

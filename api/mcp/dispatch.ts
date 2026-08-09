@@ -1,14 +1,11 @@
-// @ts-expect-error — JS module, no declaration file
-import { readJsonFromUpstash } from '../_upstash-json.js';
+import { readExistsFlags, readJsonFromUpstash, redisPipeline } from '../_upstash-json.js';
 // @ts-expect-error — JS module, no declaration file
 import { captureSilentError } from '../_sentry-edge.js';
-import {
-  PRO_DAILY_QUOTA_LIMIT,
-  secondsUntilUtcMidnight,
-} from '../../server/_shared/pro-mcp-token';
+import { secondsUntilUtcMidnight } from '../../server/_shared/pro-mcp-token';
 import { getMcpBillingVerificationDenial } from './auth';
 import { BillingDenialError } from './billing-denial';
 import {
+  BothSourcesFailedError,
   createMcpToolExecutionContext,
   downstreamErrorTags,
 } from './downstream';
@@ -19,6 +16,7 @@ import { applyJmespath } from './jmespath';
 import { reserveQuota } from './quota';
 import { TOOL_REGISTRY } from './registry/index';
 import { rpcError, rpcOk, withMcpNoStore } from './rpc';
+import { McpSourceUnavailableError } from './source-unavailable';
 import {
   emitTelemetry,
   principalIdForLog,
@@ -42,14 +40,75 @@ import { utf8ByteLength } from './utils';
 export async function executeTool(
   tool: CacheToolDef,
   params: Record<string, unknown> = {},
-): Promise<{ cached_at: string | null; stale: boolean; data: Record<string, unknown> }> {
+  now?: number,
+): Promise<{
+  cached_at: string | null;
+  stale: boolean;
+  activationUnknown?: true;
+  contentFreshnessPendingUntil?: string;
+  data: Record<string, unknown>;
+}> {
   const reads = tool._cacheKeys.map(k => readJsonFromUpstash(k));
   const freshnessChecks = tool._freshnessChecks?.length
     ? tool._freshnessChecks
     : [{ key: tool._seedMetaKey, maxStaleMin: tool._maxStaleMin }];
   const metaReads = freshnessChecks.map((check) => readJsonFromUpstash(check.key));
-  const [results, metas] = await Promise.all([Promise.all(reads), Promise.all(metaReads)]);
-  const { cached_at, stale } = evaluateFreshness(freshnessChecks, metas);
+  // #6080 deployment-order grace. Only checks declaring a content contract pay
+  // for this read, so it is one extra command on get_chokepoint_status and
+  // none at all on every other tool.
+  const activationKeys = [...new Set(
+    freshnessChecks
+      .map((check) => check.contentFreshnessActivationKey)
+      .filter((key): key is string => typeof key === 'string' && key !== ''),
+  )];
+  // EXISTS, not GET — the marker's meaning is presence, and both health
+  // surfaces read it that way through the shared `readExistsFlags` helper.
+  // Reading it as JSON instead would make MCP disagree with them for any marker
+  // value that is not valid JSON, which is the same class of cross-surface
+  // divergence #6080 exists to close.
+  // redisPipeline never rejects — it returns null on any failure — so this
+  // cannot turn a freshness hint into a hard tool-execution failure.
+  const activationRead = activationKeys.length > 0
+    ? redisPipeline(activationKeys.map((key) => ['EXISTS', key]))
+    : Promise.resolve([]);
+  const [results, metas, activationResults] = await Promise.all([
+    Promise.all(reads),
+    Promise.all(metaReads),
+    activationRead,
+  ]);
+  // Three-valued on purpose: only a marker we actually read and found ABSENT
+  // earns the deployment-order grace. An unreadable marker stays out of the
+  // map, so evaluateFreshness evaluates the block and fails closed rather than
+  // granting a grace that would never expire.
+  const activationStates = readExistsFlags(activationResults, activationKeys);
+  // A marker this tool needed could not be read, so `stale` below was computed
+  // WITHOUT knowing whether the producer has ever published. Both health
+  // surfaces publish exactly this as `activationUnknown` (api/health.js,
+  // api/seed-health.js) for a reason api/health.js states outright: otherwise a
+  // verdict resting on an unreadable marker is byte-identical to one resting on
+  // evidence, and the two need different remediations. MCP alarmed on this but
+  // told its CALLER nothing — `stale: true` looked the same whether the marker
+  // was unreadable, the producer regressed, or the grace window closed. One
+  // boolean drives both the alarm and the wire field so they cannot drift.
+  const activationUnknown = activationKeys.length > 0
+    && activationStates.size !== activationKeys.length;
+  if (activationUnknown) {
+    captureSilentError(new Error('mcp activation marker read failed'), {
+      tags: { route: 'api/mcp', step: 'activation-marker', tool: tool.name },
+    });
+  }
+  // Sample wall time AFTER the Redis reads, never at function entry. The same
+  // rule api/health.js applies via snapshotNow(): a request that begins inside
+  // an activation window but finishes after it must not report the grace as
+  // still live, or MCP briefly disagrees with the health surfaces at the exact
+  // instant the deadline passes. `now` stays injectable as a test seam.
+  const evaluatedAt = now ?? Date.now();
+  const { cached_at, stale, contentFreshnessPendingUntil } = evaluateFreshness(
+    freshnessChecks,
+    metas,
+    evaluatedAt,
+    activationStates,
+  );
 
   // F6: if every cache key returned null/undefined AND the tool actually
   // had keys configured, this is a degenerate-empty result (Redis transient
@@ -78,7 +137,7 @@ export async function executeTool(
       const seg = parts[idx] ?? '';
       if (!NON_LABEL.test(seg)) { label = seg; break; }
     }
-    data[label || (parts[0] ?? key)] = results[i];
+    data[tool._cacheLabels?.[key] || label || (parts[0] ?? key)] = results[i];
   });
 
   // Optional in-memory post-filter (declared per-tool, mirrors that tool's
@@ -113,9 +172,15 @@ export async function executeTool(
   // the filter so it composes (`country: "DE", summary: true` → counts/samples
   // for DE). Independent of filter success: a thrown filter still pristine-
   // summarises.
-  if (argBool(params.summary)) result = summarizeData(result);
+  if (argBool(params.summary)) result = tool._summarize ? tool._summarize(result) : summarizeData(result);
 
-  return { cached_at, stale, data: result };
+  return {
+    cached_at,
+    stale,
+    ...(activationUnknown ? { activationUnknown: true } : {}),
+    ...(contentFreshnessPendingUntil === undefined ? {} : { contentFreshnessPendingUntil }),
+    data: result,
+  };
 }
 
 export async function dispatchToolsCall(
@@ -125,6 +190,11 @@ export async function dispatchToolsCall(
   body: { id?: unknown; params?: unknown },
   corsHeaders: Record<string, string>,
   ctx?: { waitUntil: (p: Promise<unknown>) => void },
+  // Daily allowance resolved by the context pre-check (api/mcp/auth.ts) from
+  // the entitlement it already fetched. Omitted → `PRO_DAILY_QUOTA_LIMIT`;
+  // null → unlimited. Only the `pro` context ever supplies one (KTD6), so a
+  // caller that skips the pre-check simply inherits the plan default.
+  mcpDailyLimit?: number | null,
 ): Promise<Response> {
   const id = body.id ?? null;
   const p = body.params as { name?: string; arguments?: Record<string, unknown> } | null;
@@ -137,25 +207,28 @@ export async function dispatchToolsCall(
   }
 
   // Pro-only INCR-first reservation. Both cache-only AND RPC tools count
-  // toward the daily 50/day cap — EXCEPT `describe_tool` (v1.5.0), which
+  // toward the caller's daily cap — EXCEPT `describe_tool` (v1.5.0), which
   // is metadata-only and is actively encouraged by SERVER_INSTRUCTIONS
   // when the compressed tools/list entry is ambiguous. Charging quota for
   // schema lookups would (a) discourage the LLM from using it, defeating
   // the v1.5.0 compression's UX hedge, and (b) lock out Pro users at the
-  // 50/day cap from even seeing tool definitions. Exempt by name; rate-
+  // daily cap from even seeing tool definitions. Exempt by name; rate-
   // limiter (60/min) still applies as the abuse guard.
   const isMetadataTool = p.name === 'describe_tool';
   // user_key (#4859) consumes the same per-user daily quota as pro: cache
   // tools read Upstash directly (no downstream gateway metering), so an
   // unquota'd user_key would be an unmetered data loophole bounded only by
   // the 60/min limiter. Raising API-plan MCP allowances above the Pro cap is
-  // a deliberate follow-up, not a default.
+  // a deliberate follow-up, not a default — which is why `mcpDailyLimit`
+  // arrives unset for that kind (api/mcp/auth.ts::runUserKeyPreChecks).
   if ((context.kind === 'pro' || context.kind === 'user_key') && !isMetadataTool) {
-    const reservation = await reserveQuota(context.userId, deps.redisPipeline);
+    const reservation = await reserveQuota(context.userId, deps.redisPipeline, mcpDailyLimit);
     if (!reservation.ok) {
       if (reservation.reason === 'cap-exceeded') {
+        // `floor` is the limit the reservation actually enforced, so the copy
+        // can never quote a different number from the one that rejected.
         return new Response(
-          JSON.stringify({ jsonrpc: '2.0', id, error: { code: -32029, message: `Daily MCP quota exceeded (${PRO_DAILY_QUOTA_LIMIT}/day). Resets at next UTC midnight.` } }),
+          JSON.stringify({ jsonrpc: '2.0', id, error: { code: -32029, message: `Daily MCP quota exceeded (${reservation.floor}/day). Resets at next UTC midnight.` } }),
           { status: 429, headers: withMcpNoStore({ 'Content-Type': 'application/json', 'Retry-After': String(secondsUntilUtcMidnight()), ...corsHeaders }) },
         );
       }
@@ -282,8 +355,10 @@ export async function dispatchToolsCall(
     // expected, handled customer state — warning-level, not error-level, so
     // Sentry/log alerts don't page on ordinary billing churn.
     const isExpectedDenial = err instanceof BillingDenialError;
+    const isExpectedSourceOutage = err instanceof McpSourceUnavailableError;
     const downstreamTags = downstreamErrorTags(err);
-    const log = isClient4xx || isExpectedDenial ? console.warn : console.error;
+    const isBothFailed = err instanceof BothSourcesFailedError;
+    const log = isClient4xx || isExpectedDenial || isExpectedSourceOutage ? console.warn : console.error;
     log('[mcp] tool execution error:', err);
     captureSilentError(err, {
       tags: {
@@ -297,11 +372,17 @@ export async function dispatchToolsCall(
         } : {}),
         ...downstreamTags,
       },
+      ...(isBothFailed ? {
+        extra: {
+          civilian_failure_detail: err.civilianFailureDetail,
+          military_failure_detail: err.militaryFailureDetail,
+        },
+      } : {}),
       ctx,
       // Split the api/mcp catch-all (WORLDMONITOR-T8) into per-tool,
       // per-status groups — see api/mcp/error-fingerprint.ts.
       fingerprint: mcpErrorFingerprint('tool-execution', tool.name, err),
-      ...(isClient4xx || isExpectedDenial ? { level: 'warning' as const } : {}),
+      ...(isClient4xx || isExpectedDenial || isExpectedSourceOutage ? { level: 'warning' as const } : {}),
     });
     emitTelemetry('mcp.toolcall', {
       tool: tool.name,
@@ -313,7 +394,11 @@ export async function dispatchToolsCall(
       jmespath_used: jmespathUsed,
       jmespath_failed: null,
       ok: false,
-      error_kind: isClient4xx ? 'client_4xx' : 'server_error',
+      error_kind: isClient4xx
+        ? 'client_4xx'
+        : isExpectedSourceOutage
+          ? 'source_unavailable'
+          : 'server_error',
       budget_exceeded: false,
     });
     // #4770: a mid-request billing denial from the gateway keeps its full
@@ -328,6 +413,20 @@ export async function dispatchToolsCall(
         id,
       );
       if (denial) return denial;
+    }
+    if (err instanceof McpSourceUnavailableError) {
+      return rpcError(
+        id,
+        -32003,
+        'Required data inputs are unavailable',
+        corsHeaders,
+        {
+          retryable: true,
+          stale: true,
+          unavailable_inputs: err.unavailableInputs,
+          failed_inputs: err.failedInputs,
+        },
+      );
     }
     return rpcError(id, -32603, 'Internal error: data fetch failed', corsHeaders);
   }

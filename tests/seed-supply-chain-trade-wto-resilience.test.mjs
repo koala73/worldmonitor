@@ -108,7 +108,7 @@ describe('fetchTariffTrends: per-batch isolation under timeout', () => {
   //   - Pre-fix expected behavior: fetchTariffTrends rejects, batch 2's
   //     reporter 840 never makes it to `trends`.
   //   - Post-fix expected behavior: batch 1's null is skipped, batch 2's
-  //     data lands in `trends` keyed by `trade:tariffs:v1:840:all:10`.
+  //     data lands in `trends.trends` keyed by `trade:tariffs:v2:840`.
   it('one batch timing out yields the surviving batches\' data instead of rejecting', async () => {
     // Two batches × BATCH_SIZE=30 reporters; reporter 840 is in batch 2 so
     // the timed-out first batch must not prevent the USA write.
@@ -143,16 +143,20 @@ describe('fetchTariffTrends: per-batch isolation under timeout', () => {
     };
 
     // Must not reject. Pre-fix this would throw.
-    const trends = await fetchTariffTrends();
+    const result = await fetchTariffTrends();
 
     assert.equal(wtoDataCallCount, 2, 'both batches must be attempted (timeout in batch 1 must not skip batch 2)');
-    assert.equal(typeof trends, 'object', 'must return the trends object, not reject');
-    assert.ok(trends['trade:tariffs:v1:840:all:10'], 'USA reporter from batch 2 must be present in trends');
+    assert.equal(typeof result, 'object', 'must return the {trends,manifest} object, not reject');
+    assert.ok(result.trends, 'must expose the trends map');
+    assert.ok(result.trends['trade:tariffs:v2:840'], 'USA reporter from batch 2 must be present in trends');
     assert.equal(
-      trends['trade:tariffs:v1:840:all:10'].datapoints[0].tariffRate,
+      result.trends['trade:tariffs:v2:840'].datapoints[0].tariffRate,
       3.4,
       'datapoint from the surviving batch must be intact',
     );
+    // Codes only in the timed-out batch stay advertised (upstream failure),
+    // while the empty-answered survivors of batch 2 are removed.
+    assert.ok(result.manifest.reporters.includes('840'));
   });
 });
 

@@ -703,14 +703,87 @@ describe('premium gateway bearer token auth', () => {
   });
 
   it('free bearer token on premium endpoint → 403', async () => {
+    // This used to pass on an UNCONFIGURED backend: getEntitlements returned
+    // null without a lookup and the gate rendered its terminal "unable to
+    // verify" 403, so the assertion held for a reason that had nothing to do
+    // with the user's plan. A null now distinguishes "no lookup attempted" from
+    // "Convex confirmed no row", and only the second is an upsell — so pin the
+    // backend as configured and serve a real tier-0 row to test what the name
+    // claims: a confirmed free user is denied with the upgrade verdict.
     const token = await signToken({ sub: 'user_free', plan: 'free' });
-    const res = await handler(new Request('https://worldmonitor.app/api/market/v1/analyze-stock?symbol=AAPL', {
-      headers: {
-        Origin: 'https://worldmonitor.app',
-        Authorization: `Bearer ${token}`,
-      },
-    }));
-    assert.equal(res.status, 403);
+    const originalSiteUrl = process.env.CONVEX_SITE_URL;
+    const originalSecret = process.env.CONVEX_SERVER_SHARED_SECRET;
+    const originalFetch = globalThis.fetch;
+    process.env.CONVEX_SITE_URL = 'https://test.convex.site';
+    process.env.CONVEX_SERVER_SHARED_SECRET = 'test-secret';
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url =
+        typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+      if (url.endsWith('/api/internal-entitlements')) {
+        return new Response(
+          JSON.stringify({
+            planKey: 'free',
+            validUntil: Date.now() + 86_400_000,
+            features: {
+              tier: 0,
+              apiAccess: false,
+              apiRateLimit: 0,
+              maxDashboards: 3,
+              prioritySupport: false,
+              exportFormats: [],
+              mcpAccess: false,
+            },
+          }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } },
+        );
+      }
+      return originalFetch(input, init);
+    }) as typeof fetch;
+
+    try {
+      const res = await handler(new Request('https://worldmonitor.app/api/market/v1/analyze-stock?symbol=AAPL', {
+        headers: {
+          Origin: 'https://worldmonitor.app',
+          Authorization: `Bearer ${token}`,
+        },
+      }));
+      assert.equal(res.status, 403);
+    } finally {
+      globalThis.fetch = originalFetch;
+      if (originalSiteUrl === undefined) delete process.env.CONVEX_SITE_URL;
+      else process.env.CONVEX_SITE_URL = originalSiteUrl;
+      if (originalSecret === undefined) delete process.env.CONVEX_SERVER_SHARED_SECRET;
+      else process.env.CONVEX_SERVER_SHARED_SECRET = originalSecret;
+    }
+  });
+
+  it('a free bearer with an UNCONFIGURED backend is retryable, not an upsell', async () => {
+    // The other half. A missing env var is our deploy defect, and on this gate
+    // it previously told every caller — subscribers included — that their
+    // entitlement could not be verified, with a terminal 403.
+    const token = await signToken({ sub: 'user_free_unconfigured', plan: 'free' });
+    const originalSiteUrl = process.env.CONVEX_SITE_URL;
+    const originalSecret = process.env.CONVEX_SERVER_SHARED_SECRET;
+    delete process.env.CONVEX_SITE_URL;
+    delete process.env.CONVEX_SERVER_SHARED_SECRET;
+    try {
+      const res = await handler(new Request('https://worldmonitor.app/api/market/v1/analyze-stock?symbol=AAPL', {
+        headers: {
+          Origin: 'https://worldmonitor.app',
+          Authorization: `Bearer ${token}`,
+        },
+      }));
+      assert.equal(res.status, 503);
+      assert.equal(
+        res.headers.get('X-Billing-Verification'),
+        'entitlement_verification_unavailable',
+      );
+    } finally {
+      if (originalSiteUrl === undefined) delete process.env.CONVEX_SITE_URL;
+      else process.env.CONVEX_SITE_URL = originalSiteUrl;
+      if (originalSecret === undefined) delete process.env.CONVEX_SERVER_SHARED_SECRET;
+      else process.env.CONVEX_SERVER_SHARED_SECRET = originalSecret;
+    }
   });
 
   it('rejects invalid/expired bearer token on premium endpoint → 401', async () => {

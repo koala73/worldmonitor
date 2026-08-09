@@ -19,6 +19,8 @@ import {
   mergeNotamWithExistingAlert,
 } from './_shared';
 import { getCachedJson, setCachedJson } from '../../../_shared/redis';
+// @ts-expect-error — JS module, no declaration file
+import { captureSilentError } from '../../../../api/_sentry-edge.js';
 
 const FAA_CACHE_KEY = 'aviation:delays:faa:v1';
 const INTL_CACHE_KEY = 'aviation:delays:intl:v3';
@@ -52,7 +54,10 @@ export async function listAirportDelays(
         })
         .filter((a): a is AirportDelayAlert => a !== null);
     }
-  } catch {}
+  } catch (err) {
+    console.warn(`[Aviation] FAA seed read failed: ${err instanceof Error ? err.message : 'unknown'}`);
+    void captureSilentError(err, { tags: { route: 'aviation/list-airport-delays', step: 'faa-seed-read' } });
+  }
 
   // 2. International — read-only from Redis (Railway relay seeds the cache)
   // A cache hit alone does not prove every configured hub was covered. The
@@ -74,6 +79,7 @@ export async function listAirportDelays(
     }
   } catch (err) {
     console.warn(`[Aviation] Intl fetch failed: ${err instanceof Error ? err.message : 'unknown'}`);
+    void captureSilentError(err, { tags: { route: 'aviation/list-airport-delays', step: 'intl-cache-read' } });
   }
 
   // 3. NOTAM alerts — shared loader (seed-first with live fallback).

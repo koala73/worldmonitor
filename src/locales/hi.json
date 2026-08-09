@@ -198,17 +198,20 @@
       "currencies": "मुद्राएं",
       "area": "क्षेत्रफल"
     },
-    "loadingResilienceScore": "Loading resilience score…",
-    "resilienceScoreUnavailable": "Resilience score unavailable.",
+    "loadingResilienceScore": "लचीलापन स्कोर लोड हो रहा है…",
+    "resilienceScoreUnavailable": "लचीलापन स्कोर उपलब्ध नहीं है।",
     "china": {
       "title": "देश अवलोकन: चीन",
       "description": "मौजूदा सार्वजनिक डेटा अनुबंधों से वर्तमान मैक्रो, बाज़ार, व्यापार, ऊर्जा और परिचालन उपलब्धता।",
-      "macroPolicy": "मैक्रो और नीति",
-      "marketCredit": "बाज़ार और ऋण",
-      "tradeSupply": "व्यापार और आपूर्ति श्रृंखला",
+      "policyEvents": "नीति और प्रवर्तन",
       "energy": "ऊर्जा",
       "availability": "खतरे और विमानन",
       "observed": "तिथि:",
+      "published": "प्रकाशित:",
+      "effective": "प्रभावी:",
+      "sectors": "क्षेत्र:",
+      "entities": "संस्थाएँ:",
+      "translation": "अनुवाद:",
       "source": "स्रोत:",
       "imfGrowth": "IMF वृद्धि पूर्वानुमान",
       "creditGdp": "GDP की तुलना में ऋण",
@@ -217,8 +220,6 @@
       "gasDemand": "गैस की मांग",
       "energyMix": "बिजली मिश्रण",
       "coal": "कोयला",
-      "aviationAvailability": "विमानन उपलब्धता",
-      "hazardAvailability": "खतरा उपलब्धता",
       "noMajorDisruptions": "कोई बड़ा व्यवधान दर्ज नहीं",
       "activeDisruptions_one": "{{count}} सक्रिय व्यवधान",
       "activeDisruptions_other": "{{count}} सक्रिय व्यवधान",
@@ -230,18 +231,21 @@
       "ccfiSource": "शंघाई शिपिंग एक्सचेंज",
       "comtradeSource": "UN Comtrade, रिपोर्टर 156",
       "sourceUnavailable": "स्रोत अनुपलब्ध",
-      "macroUnavailable": "मैक्रो और नीति डेटा फ़िलहाल अनुपलब्ध है।",
-      "marketUnavailable": "बाज़ार और ऋण डेटा फ़िलहाल अनुपलब्ध है।",
-      "tradeUnavailable": "व्यापार और आपूर्ति श्रृंखला डेटा फ़िलहाल अनुपलब्ध है।",
-      "energyUnavailable": "ऊर्जा डेटा फ़िलहाल अनुपलब्ध है।",
-      "availabilityUnavailable": "खतरों और विमानन की उपलब्धता का डेटा फ़िलहाल अनुपलब्ध है।",
+      "policyUnavailable": "आधिकारिक नीति और प्रवर्तन घटनाएँ वर्तमान में उपलब्ध नहीं हैं।",
+      "policyPartial": "{{count}} आधिकारिक एजेंसियाँ अस्थायी रूप से निम्नीकृत हैं।",
       "status": {
         "loading": "लोड हो रहा है",
         "available": "उपलब्ध",
         "partial": "आंशिक",
         "stale": "पुराना",
         "unavailable": "अनुपलब्ध"
-      }
+      },
+      "macroSignals": "मैक्रो संकेत",
+      "crossStraitActivity": "जलडमरूमध्य पार गतिविधि",
+      "corporateDisclosures": "कॉर्पोरेट प्रकटीकरण",
+      "corridorConditions": "गलियारा स्थितियाँ",
+      "activityNowcast": "गतिविधि नाउकास्ट",
+      "decisionSignalsUnavailable": "चीन का निर्णय-संकेत स्नैपशॉट वर्तमान में अनुपलब्ध है।"
     }
   },
   "header": {
@@ -322,7 +326,7 @@
     "panelCatCommodityEcon": "अर्थव्यवस्था और व्यापार",
     "panelCatHappyNews": "अच्छी खबरें",
     "panelCatHappyPlanet": "प्लैनेट और दान",
-    "embed": "Embed"
+    "embed": "एम्बेड"
   },
   "panels": {
     "liveNews": "ताजा खबरें",
@@ -430,7 +434,8 @@
     "consumerPrices": "उपभोक्ता कीमतें",
     "fearGreed": "डर और लालच",
     "marketBreadth": "बाजार की पहुंच",
-    "climateNews": "जलवायु समाचार"
+    "climateNews": "जलवायु समाचार",
+    "fx": "FX दरें"
   },
   "commands": {
     "prefixes": {
@@ -984,7 +989,7 @@
       "fytdLabel": "FY{{year}} YTD",
       "vsPriorFy": "FY{{year}} के मुकाबले",
       "sourceWto": "WTO",
-      "sourceTreasury": "US Treasury",
+      "sourceTreasury": "अमेरिकी खजाना विभाग",
       "colDate": "तिथि",
       "colMonthly": "मासिक",
       "colFytd": "FY YTD",
@@ -1270,7 +1275,7 @@
         "ucdpEvents": "सशस्त्र संघर्ष घटनाएं",
         "displacementFlows": "स्थानांतरण प्रवाह",
         "climateAnomalies": "जलवायु असामान्यता",
-        "weatherAlerts": "मौसम अलर्ट",
+        "weatherAlerts": "अमेरिका के मौसम अलर्ट (NWS)",
         "strategicWaterways": "चोकपॉइंट",
         "economicCenters": "आर्थिक केंद्र",
         "criticalMinerals": "महत्वपूर्ण खनिज",
@@ -1349,7 +1354,7 @@
           "infraDatacenters": "एआई कंप्यूट क्लस्टर (>=10,000 GPU)",
           "infraOutages": "इंटरनेट ब्लैकआउट और सेवा व्यवधान",
           "naturalEventsTech": "भूकंप, तूफान, आग (डेटा केंद्र प्रभावित कर सकते हैं)",
-          "weatherAlerts": "कठोर मौसम अलर्ट",
+          "weatherAlerts": "अमेरिका में गंभीर मौसम अलर्ट (NWS)",
           "economicCenters": "शेयर बाजार और केंद्रीय बैंक",
           "countriesOverlay": "देश नाम ओवरले",
           "financeExchanges": "मुख्य वैश्विक एक्सचेंज",
@@ -1361,7 +1366,7 @@
           "financeOutages": "इंटरनेट व्यवधान जो बाजार संचालन को प्रभावित कर सकते हैं",
           "financeCyberThreats": "वित्तीय इन्फ्रास्ट्रक्चर से जुड़े सुरक्षा घटनाएं",
           "macroWaterways": "कमोडिटी शिपिंग के रणनीतिक चोकपॉइंट",
-          "weatherAlertsMarket": "बाजार से संबंधित कठोर मौसम घटनाएं",
+          "weatherAlertsMarket": "अमेरिका में बाजार से संबंधित गंभीर मौसम घटनाएं (NWS)",
           "naturalEventsMacro": "भूकंप, आग, बाढ़ और अन्य प्राकृतिक व्यवधान",
           "timeRecent": "समय-आधारित डेटा को हाल के घंटों तक फ़िल्टर करें",
           "timeExtended": "पिछले सप्ताह, महीने या सभी समय का डेटा दिखाएं",
@@ -1409,8 +1414,8 @@
       "_methodologyLink_translatorNote": "अनुवाद की आवश्यकता (#3725): methodologyLink स्थानीयकरण करें। अंग्रेजी मान सभी भाषाओं में भेजा जाता है ताकि methodology लिंक मौजूद रहे। स्वतंत्र रूप से अनुवादित करें।",
       "methodologyLink": "प्रति-देश आधार + घटना गुणक शामिल — /docs/methodology/cii-risk-scores देखें",
       "sourceStates": {
-        "degraded": "degraded",
-        "stale": "stale"
+        "degraded": "निम्नीकृत",
+        "stale": "पुराना"
       }
     },
     "insights": {
@@ -1489,7 +1494,8 @@
       "newsSignals": "{{news}} खबरें • {{signals}} संकेत",
       "provenanceTitle": "कवरेज प्रोवेनेंस: इस ब्रीफ को कितनी अंतर्ग्रहीत कहानियों और विशिष्ट स्रोतों से चुना गया था",
       "compiledFrom": "{{stories}} कहानियों और {{sources}} स्रोतों से संकलित",
-      "briefFreshness": "{{minutes}}m पहले जनरेट किया गया · नवीनतम स्रोत {{hours}}h पुराना"
+      "briefFreshness": "{{minutes}}m पहले जनरेट किया गया · नवीनतम स्रोत {{hours}}h पुराना",
+      "briefStoryDetails": "Story details ({{count}})"
     },
     "settings": {
       "exportSettings": "सेटिंग्स निर्यात करें",
@@ -1569,10 +1575,10 @@
         "hoursAgo": "{{count}} घंटे पहले"
       },
       "infoTooltip": "<strong>विधि</strong> मिश्रित स्कोर (0-100) इन संकेतों को मिलाता है:<ul><li>50% देश अस्थिरता (शीर्ष 5 भारित)</li><li>30% भौगोलिक संगम क्षेत्र</li><li>20% इन्फ्रास्ट्रक्चर घटनाएं</li></ul>हर 5 मिनट में स्वचालित रिफ्रेश।",
-      "cachedCiiStatus": "Cached CII {{states}}",
+      "cachedCiiStatus": "कैश्ड CII {{states}}",
       "sourceStates": {
-        "degraded": "degraded",
-        "stale": "stale"
+        "degraded": "निम्नीकृत",
+        "stale": "पुराना"
       }
     },
     "techEvents": {
@@ -1698,25 +1704,25 @@
       "candidGrants": "कैंडिड ग्रांट्स",
       "dataLag": "डेटा विलंब",
       "infoTooltip": "<strong>वैश्विक दान गतिविधि सूचकांक</strong> व्यक्तिगत दान को ट्रैक करने वाला संयोजित सूचकांक क्राउडफंडिंग प्लेटफॉर्म और क्रिप्टो वॉलेट्स से।<ul><li><strong>प्लेटफ़ॉर्म</strong>: GoFundMe, GlobalGiving, JustGiving नमूना</li><li><strong>क्रिप्टो</strong>: ऑन-चेन चैरिटी वॉलेट इनफ्लो (Endaoment, Giving Block)</li><li><strong>संस्थागत</strong>: OECD ODA, CAF वर्ल्ड गिविंग इंडेक्स, कैंडिड ग्रांट्स</li></ul>सूचकांक दिशात्मक है (सटीक राशि नहीं)। लाइव नमूना और वार्षिक रिपोर्ट मिलाकर।",
-      "benchmarkTitle": "Global Giving Benchmarks",
-      "benchmarkInfoTooltip": "<strong>Global Giving Benchmarks</strong> Published platform and institutional claims with source periods and verification status. Annualized figures are estimates, not live activity.",
+      "benchmarkTitle": "वैश्विक दान बेंचमार्क",
+      "benchmarkInfoTooltip": "<strong>वैश्विक दान बेंचमार्क</strong> स्रोत अवधि और सत्यापन स्थिति के साथ प्रकाशित प्लेटफ़ॉर्म और संस्थागत दावे। वार्षिक आंकड़े अनुमान हैं, वास्तविक गतिविधि नहीं।",
       "status": {
-        "published": "Published benchmarks with verified source coverage.",
-        "partial": "Published benchmarks with partial source coverage.",
-        "legacy": "Legacy snapshot; source details are unavailable.",
-        "cached": "Showing a cached snapshot; refresh unavailable."
+        "published": "सत्यापित स्रोत कवरेज के साथ प्रकाशित बेंचमार्क।",
+        "partial": "आंशिक स्रोत कवरेज के साथ प्रकाशित बेंचमार्क।",
+        "legacy": "पुराना स्नैपशॉट; स्रोत विवरण उपलब्ध नहीं है।",
+        "cached": "कैश्ड स्नैपशॉट दिखाया जा रहा है; रीफ्रेश उपलब्ध नहीं।"
       },
-      "trackedAnnualized": "Tracked platform giving — annualized estimate",
-      "annualizedDaily": "Annualized daily estimate",
-      "atLeast": "At least",
-      "about": "About",
-      "sourceNotVerified": "Source not verified",
-      "reportedCumulative": "Reported cumulative total",
+      "trackedAnnualized": "ट्रैक किया गया प्लेटफ़ॉर्म दान — वार्षिक अनुमान",
+      "annualizedDaily": "दैनिक वार्षिक अनुमान",
+      "atLeast": "कम से कम",
+      "about": "लगभग",
+      "sourceNotVerified": "स्रोत सत्यापित नहीं",
+      "reportedCumulative": "रिपोर्ट किया गया संचयी कुल",
       "sourcePeriod": "{{source}} · {{period}}",
-      "benchmark": "Published benchmark",
-      "sourcesMethodology": "Sources & methodology",
-      "methodologyIntro": "Only verified annual or defensibly annualized platform claims enter the headline. Cumulative and institutional figures remain separate context.",
-      "partialEstimate": "Partially verified estimate"
+      "benchmark": "प्रकाशित बेंचमार्क",
+      "sourcesMethodology": "स्रोत और पद्धति",
+      "methodologyIntro": "केवल सत्यापित वार्षिक या उचित रूप से वार्षिकीकृत प्लेटफ़ॉर्म दावे शीर्षक में शामिल होते हैं। संचयी और संस्थागत आंकड़े अलग संदर्भ में रहते हैं।",
+      "partialEstimate": "आंशिक रूप से सत्यापित अनुमान"
     },
     "displacement": {
       "refugees": "शरणार्थी",
@@ -1756,6 +1762,8 @@
       "summaryFailed": "सारांश असफल",
       "sources": "{{count}} स्रोत",
       "relatedAssetsNear": "{{location}} के निकट संबंधित संसाधन",
+      "sourceCoverage": "{{covered}}/{{total}} स्रोत",
+      "sourceCoverageHint": "{{total}} सक्षम स्रोतों में से {{covered}} दिखाए जा रहे हैं — यह पैनल हर रिफ़्रेश पर अपने स्रोत बदलता रहता है",
       "sortBy": "क्रमित करें",
       "sortNewest": "नवीनतम",
       "sortRelevance": "प्रासंगिकता"
@@ -1915,7 +1923,22 @@
       "infoTooltip": "<strong>आपदा कैस्केड</strong> प्राकृतिक आपदा और इन्फ्रास्ट्रक्चर संकेतों का संगम पता लगाता है:<ul><li>भूकंप, जंगल की आग, बाढ़, और मौसम की चरम घटनाओं का समन्वय</li><li>इन्फ्रास्ट्रक्चर और सप्लाई चेन पर कैस्केड प्रभाव ट्रैक करता है</li><li>मिल-जुल कर उच्च जोखिम वाले क्षेत्रों को दिखाता है</li></ul>प्रभावित क्षेत्र पर ज़ूम करने के लिए कार्ड क्लिक करें।"
     },
     "markets": {
-      "infoTooltip": "<strong>बाजार</strong> रियल-टाइम स्टॉक इंडेक्स, स्टॉक्स, और क्रिप्टो कीमतें। अपनी वॉचलिस्ट बटन से कस्टमाइज़ करें। स्पार्कलाइन हाल की कीमत प्रवृत्ति दिखाती है।"
+      "infoTooltip": "<strong>बाजार</strong> रियल-टाइम स्टॉक इंडेक्स, स्टॉक्स, और क्रिप्टो कीमतें। अपनी वॉचलिस्ट बटन से कस्टमाइज़ करें। स्पार्कलाइन हाल की कीमत प्रवृत्ति दिखाती है।",
+      "chart": {
+        "title": "{{symbol}} मूल्य चार्ट",
+        "close": "चार्ट बंद करें"
+      },
+      "unavailable": {
+        "symbols": "{{symbols}} — {{reason}}",
+        "symbolsMore": "{{symbols}} +{{count}} more — {{reason}}",
+        "notFound": "no quote available",
+        "providerError": "quote lookup failed, retrying shortly",
+        "rateLimited": "quote provider rate limited, retrying shortly",
+        "notConfigured": "quote provider not configured",
+        "requestLimit": "too many symbols requested",
+        "budget": "not loaded yet, retrying shortly",
+        "seed": "market data temporarily unavailable"
+      }
     },
     "heatmap": {
       "infoTooltip": "<strong>सेक्टर हीटमैप</strong> S&P 500 सेक्टर प्रदर्शन एक नजर में। रंग तीव्रता दैनिक परिवर्तन का परिमाण दिखाती है। हरा = लाभ, लाल = हानि।"
@@ -2316,9 +2339,10 @@
           "summaryVerified": "अनलॉक और तैयार, जब आप हों।",
           "channelsNote": "Telegram, Slack, Discord या वेबहुक पसंद करेंगे?",
           "pointers": {
+            "search": "पूरे डैशबोर्ड में खोजें",
             "widgets": "एक कस्टम विजेट बनाएं",
             "analyst": "AI विश्लेषक से पूछें",
-            "apiKeys": "अपनी API और MCP कुंजियां प्राप्त करें",
+            "mcpClients": "MCP सेट करें",
             "channels": "उन्हें नोटिफिकेशन सेटिंग्स में सेट करें"
           }
         }
@@ -2526,43 +2550,91 @@
       }
     },
     "mobileNav": {
-      "panelCategories": "Panel categories"
+      "panelCategories": "पैनल श्रेणियाँ"
     },
     "panelFreshness": {
       "status": {
-        "fresh": "Fresh",
-        "stale": "Stale",
-        "veryStale": "Very stale",
-        "noData": "No data",
-        "disabled": "Disabled",
-        "error": "Error"
+        "fresh": "ताज़ा",
+        "stale": "पुराना",
+        "veryStale": "बहुत पुराना",
+        "noData": "कोई डेटा नहीं",
+        "disabled": "अक्षम",
+        "error": "त्रुटि"
       },
       "labelWithAge": "{{status}} {{age}}",
-      "title": "Data freshness: {{status}}. {{sources}}",
+      "title": "डेटा ताज़गी: {{status}}। {{sources}}",
       "sourceDetail": "{{name}}: {{status}}, {{update}}",
       "sourceDetailWithHealth": "{{name}}: {{status}}, {{update}}, {{detail}}",
-      "lastUpdated": "last updated {{time}}",
-      "neverUpdated": "never updated",
+      "lastUpdated": "अंतिम अपडेट {{time}}",
+      "neverUpdated": "कभी अपडेट नहीं हुआ",
       "health": {
-        "partialCoverage": "partial coverage",
-        "contentStale": "content stale",
-        "seedStale": "seed stale",
-        "noSourceData": "no source data",
-        "sourceErrorReported": "source error reported",
-        "freshnessStoreUnavailable": "freshness store unavailable",
-        "freshnessStoreDegraded": "freshness store degraded"
+        "partialCoverage": "आंशिक कवरेज",
+        "contentStale": "सामग्री पुरानी",
+        "seedStale": "सीड पुराना",
+        "noSourceData": "कोई स्रोत डेटा नहीं",
+        "sourceErrorReported": "स्रोत त्रुटि रिपोर्ट की गई",
+        "freshnessStoreUnavailable": "फ्रेशनेस स्टोर अनुपलब्ध",
+        "freshnessStoreDegraded": "फ्रेशनेस स्टोर निम्नीकृत"
       },
       "time": {
-        "never": "never",
-        "justNow": "just now",
-        "minutesAgo": "{{count}}m ago",
-        "hoursAgo": "{{count}}h ago",
-        "daysAgo": "{{count}}d ago",
-        "compactNow": "now",
-        "compactMinutes": "{{count}}m",
-        "compactHours": "{{count}}h",
-        "compactDays": "{{count}}d"
+        "never": "कभी नहीं",
+        "justNow": "अभी",
+        "minutesAgo": "{{count}}मि पहले",
+        "hoursAgo": "{{count}}घ पहले",
+        "daysAgo": "{{count}}दि पहले",
+        "compactNow": "अभी",
+        "compactMinutes": "{{count}}मि",
+        "compactHours": "{{count}}घ",
+        "compactDays": "{{count}}दि"
       }
+    },
+    "exportGate": {
+      "signedOutDesc": "CSV, JSON या PDF के रूप में डैशबोर्ड डेटा निर्यात करने के लिए साइन इन करें।",
+      "upgradeDesc": "डेटा निर्यात (CSV, JSON, PDF) Pro Business के साथ शामिल है।",
+      "upgradeCta": "Pro Business में अपग्रेड करें",
+      "lockedAriaLabel": "डेटा निर्यात — लॉक्ड। {{reason}}",
+      "unlockedAnnouncement": "डेटा निर्यात अनलॉक हो गया।",
+      "preparingPdf": "PDF तैयार हो रही है…",
+      "pdfFailed": "PDF रिपोर्ट तैयार नहीं हो सकी। पुनः प्रयास करें, या JSON निर्यात का उपयोग करें।"
+    },
+    "tabCap": {
+      "signedOutDesc": "साइन आउट वर्कस्पेस {{cap}} डैशबोर्ड टैब तक सीमित हैं। अधिक जोड़ने के लिए साइन इन करें।",
+      "upgradeDesc": "आप {{cap}} डैशबोर्ड टैब की सीमा तक पहुँच गए हैं।",
+      "upgradeCta": "अधिक के लिए अपग्रेड करें",
+      "lockedAriaLabel": "टैब जोड़ें — लॉक्ड। {{reason}}",
+      "unlockedAnnouncement": "डैशबोर्ड टैब सीमा हटाई गई।"
+    },
+    "fx": {
+      "infoTooltip": "<strong>FX दरें</strong> मुद्रा तनाव और स्पॉट दरें:<ul><li>FX Stress 45 मुद्राओं को पिछले 24 महीनों में उनके सबसे खराब शिखर-से-गर्त ड्रॉडाउन के आधार पर रैंक करता है, साथ ही 12 महीने का परिवर्तन भी दिखाता है</li><li>कवरेज में ARS, TRY, EGP, NGN, PKR और UAH शामिल हैं — ऐसी मुद्राएं जिन्हें BIS और ECB संदर्भ सेट छोड़ देते हैं</li><li>Spot दरें अमेरिकी डॉलर और ECB यूरो संदर्भ दरों के विरुद्ध अलग-अलग सूचीबद्ध करता है, क्योंकि दोनों को विभिन्न आधारों से उद्धृत किया जाता है</li><li>RUB — बैंक ऑफ रूस दरें, प्रति इकाई रूबल</li></ul> स्रोत: Yahoo Finance, European Central Bank और बैंक ऑफ रूस।",
+      "tabs": {
+        "stress": "FX Stress",
+        "spot": "Spot",
+        "rub": "RUB"
+      },
+      "currency": "मुद्रा",
+      "pair": "जोड़ी",
+      "rate": "दर",
+      "yoy": "12m",
+      "drawdown": "24m ड्रॉडाउन",
+      "peakToTrough": "शिखर → गर्त",
+      "change1d": "1d",
+      "perUsd": "प्रति 1 USD",
+      "usdPerUnit": "प्रति इकाई USD",
+      "usdBase": "अमेरिकी डॉलर के विरुद्ध",
+      "eurBase": "ECB यूरो संदर्भ दरें",
+      "stressedCount": "{{total}} में से {{stressed}} मुद्राएं {{threshold}} से नीचे",
+      "sourceYahoo": "स्रोत: Yahoo Finance",
+      "sourceEcb": "स्रोत: ECB",
+      "degraded": "अभी उपलब्ध नहीं: {{sources}}। शीघ्र ही पुनः प्रयास किया जा रहा है।",
+      "source": {
+        "stress": "FX स्ट्रेस",
+        "usd": "US डॉलर दरें",
+        "eur": "ECB यूरो दरें",
+        "rub": "बैंक ऑफ रूस दरें"
+      },
+      "rubBase": "बैंक ऑफ रूस — प्रति 1 इकाई रूबल",
+      "rubPerUnit": "प्रति इकाई रूबल",
+      "sourceCbr": "स्रोत: बैंक ऑफ रूस"
     }
   },
   "popups": {
@@ -2903,7 +2975,7 @@
       "heading": "दिशा",
       "hexCode": "हेक्स कोड",
       "squawk": "स्क्वॉक",
-      "attribution": "स्रोत: OpenSky नेटवर्क"
+      "attribution": "स्रोत: adsb.lol (ODbL) · OpenSky Network"
     },
     "militaryVessel": {
       "aisDark": "AIS डार्क",
@@ -3297,16 +3369,42 @@
     "visualizationFailed": "विज़ुअलाइज़ेशन असफल"
   },
   "dashboardTabs": {
-    "ariaLabel": "Dashboard tabs",
-    "defaultName": "Main",
-    "newTabName": "New Tab",
-    "newTabCreated": "New tab created",
-    "tabDeleted": "Tab \"{{name}}\" deleted",
-    "addTab": "Add tab",
-    "addTabTitle": "New tab (starts with the default panels)",
-    "renameHint": "{{name}} — double-click to rename",
-    "deleteTab": "Delete tab",
-    "deleteTabAria": "Delete tab {{name}}",
-    "tabNameAria": "Tab name"
+    "ariaLabel": "डैशबोर्ड टैब",
+    "defaultName": "मुख्य",
+    "newTabName": "नया टैब",
+    "newTabCreated": "नया टैब बनाया गया",
+    "tabDeleted": "टैब \"{{name}}\" हटाया गया",
+    "addTab": "टैब जोड़ें",
+    "addTabTitle": "नया टैब (डिफ़ॉल्ट पैनल के साथ शुरू होता है)",
+    "renameHint": "{{name}} — नाम बदलने के लिए डबल-क्लिक करें",
+    "deleteTab": "टैब हटाएं",
+    "deleteTabAria": "{{name}} टैब हटाएं",
+    "tabNameAria": "टैब नाम"
+  },
+  "theaterPresets": {
+    "label": "कवरेज प्रीसेट",
+    "applied": "{{preset}} प्रीसेट लागू: {{count}} स्रोत सक्रिय",
+    "alreadyApplied": "{{preset}} प्रीसेट पहले से लागू है",
+    "ukraineWar": {
+      "label": "यूक्रेन युद्ध",
+      "description": "यूक्रेन के प्रमुख मीडिया, स्वतंत्र रूसी प्रेस और मोर्चे के आकलन वाले स्रोत सक्रिय करें"
+    },
+    "indoPacific": {
+      "label": "हिंद-प्रशांत / ताइवान",
+      "description": "ताइवान, पाकिस्तान और दक्षिण-पूर्व एशिया के सुरक्षा स्रोत सक्रिय करें"
+    },
+    "sahelWestAfrica": {
+      "label": "साहेल और पश्चिमी अफ्रीका",
+      "description": "साहेल, नाइजीरिया और पश्चिमी अफ्रीका के स्थानीय स्रोत सक्रिय करें"
+    },
+    "caucasusCentralAsia": {
+      "label": "काकेशस और मध्य एशिया",
+      "description": "दक्षिण काकेशस और मध्य एशिया के क्षेत्रीय स्रोत सक्रिय करें"
+    },
+    "middleEastFlashpoints": {
+      "label": "मध्य पूर्व के तनाव क्षेत्र",
+      "description": "ईरान, इज़राइल, खाड़ी और कुर्द क्षेत्रों के स्रोत सक्रिय करें"
+    },
+    "unavailable": "{{preset}} प्रीसेट आपके वर्तमान पैनलों के साथ उपलब्ध नहीं है"
   }
 }

@@ -4,18 +4,26 @@ const net = require('node:net');
 const tls = require('node:tls');
 const https = require('node:https');
 const zlib = require('node:zlib');
+
+const DECODO_GATE_HOST = 'gate.decodo.com';
+// Decodo's curl endpoint differs from its CONNECT endpoint.
+const DECODO_CURL_HOST = 'us.decodo.com';
+const DECODO_STICKY_PORT_MIN = 10_001;
+const DECODO_STICKY_PORT_MAX = 49_999;
+
 function parseProxyConfig(raw) {
   if (!raw) return null;
 
   // Standard URL format: http://user:pass@host:port or https://user:pass@host:port
   try {
     const u = new URL(raw);
-    if (u.hostname) {
+    if (u.hostname && (u.protocol === 'http:' || u.protocol === 'https:')) {
+      const tls = u.protocol === 'https:';
       return {
         host: u.hostname,
-        port: parseInt(u.port, 10),
+        port: u.port ? parseInt(u.port, 10) : (tls ? 443 : 80),
         auth: u.username ? `${decodeURIComponent(u.username)}:${decodeURIComponent(u.password)}` : null,
-        tls: u.protocol === 'https:',
+        tls,
       };
     }
   } catch { /* fall through */ }
@@ -47,6 +55,36 @@ function parseProxyConfig(raw) {
 }
 
 /**
+ * Parse a proxy configuration and, for Decodo sticky gateway ports, advance
+ * each retry to a distinct sticky session. Other providers and Decodo rotating
+ * ports retain their configured route exactly.
+ */
+function parseProxyConfigForAttempt(raw, attempt = 0) {
+  const config = parseProxyConfig(raw);
+  if (!config) return null;
+  const port = Number(config.port);
+  // Normalize for provider detection only: the host:port:user:pass form keeps
+  // whatever casing the operator typed, while the URL form is lowercased by the
+  // URL parser. config.host stays verbatim so the connection is unchanged.
+  const host = String(config.host || '').toLowerCase().replace(/\.$/u, '');
+  if (
+    host !== DECODO_GATE_HOST
+    || !Number.isInteger(port)
+    || port < DECODO_STICKY_PORT_MIN
+    || port > DECODO_STICKY_PORT_MAX
+  ) {
+    return config;
+  }
+
+  const stickyPortCount = DECODO_STICKY_PORT_MAX - DECODO_STICKY_PORT_MIN + 1;
+  return {
+    ...config,
+    port: DECODO_STICKY_PORT_MIN
+      + ((port - DECODO_STICKY_PORT_MIN + attempt) % stickyPortCount),
+  };
+}
+
+/**
  * Resolve proxy from PROXY_URL only. Returns { host, port, auth } or null.
  * Use this for sources where OREF (IL-exit) proxy must NOT be used (e.g. USNI).
  */
@@ -67,11 +105,51 @@ function resolveProxyConfigWithFallback() {
  * Decodo: gate.decodo.com → us.decodo.com (curl endpoint differs from CONNECT endpoint).
  * Returns empty string if no proxy configured.
  */
-function resolveProxyString() {
-  const cfg = resolveProxyConfigWithFallback();
+function resolveProxyString(raw = process.env.PROXY_URL || '') {
+  const cfg = parseProxyConfig(raw);
   if (!cfg) return '';
-  const host = cfg.host.replace(/^gate\./, 'us.');
+  // Exact provider match, not a `gate.` prefix rewrite. Two reasons:
+  //   - parseProxyConfig's host:port:user:pass branch returns parts[0] verbatim,
+  //     so an operator's casing reaches this compare unchanged; a case-sensitive
+  //     match silently skipped the rewrite and left a curl caller pointed at the
+  //     CONNECT endpoint.
+  //   - a prefix match rewrites ANY `gate.*` host, so an unrelated proxy would be
+  //     redirected to a Decodo endpoint with its credentials attached. Matching
+  //     the one host we actually mean keeps every other provider untouched.
+  return curlProxyString(cfg);
+}
+
+/** Shared by resolveProxyString and resolveProxyStringForAttempt. */
+function curlProxyString(cfg) {
+  const normalizedHost = String(cfg.host || '').toLowerCase().replace(/\.$/u, '');
+  const host = normalizedHost === DECODO_GATE_HOST ? DECODO_CURL_HOST : cfg.host;
   return cfg.auth ? `${cfg.auth}@${host}:${cfg.port}` : `${host}:${cfg.port}`;
+}
+
+/**
+ * resolveProxyString, but advancing Decodo sticky sessions so each attempt lands
+ * on a DIFFERENT residential exit IP.
+ *
+ * Some upstreams answer HTTP 200 with a payload whose completeness depends on
+ * the exit IP rather than on the request. Yahoo's quote fundamentals cache is
+ * one: measured across 10 rotated Decodo exits, 7 omitted `trailingPE` entirely
+ * for a stable subset of ETFs while 3 served it. Retrying a pinned exit re-reads
+ * the same partial cache forever, so recovery requires moving exits, not
+ * re-requesting.
+ *
+ * `attempt` is deliberately the FIRST parameter: resolveProxyString takes the
+ * raw config first, and a mistaken resolveProxyStringForAttempt(proxyString)
+ * must not silently parse the config as an attempt index and return a route
+ * built from `undefined`.
+ *
+ * Non-sticky Decodo ports and every other provider are returned unrotated —
+ * advancing their port would point at a closed door.
+ */
+function resolveProxyStringForAttempt(attempt = 0, raw = process.env.PROXY_URL || '') {
+  const index = Number.isFinite(Number(attempt)) ? Math.max(0, Math.trunc(Number(attempt))) : 0;
+  const cfg = parseProxyConfigForAttempt(raw, index);
+  if (!cfg) return '';
+  return curlProxyString(cfg);
 }
 
 /**
@@ -138,6 +216,11 @@ function proxyConnectTunnel(targetHostname, proxyConfig, { timeoutMs = 20_000, t
           return rejectOnce(
             Object.assign(new Error(`Proxy CONNECT: ${statusLine}`), {
               status: parseInt(statusLine.split(' ')[1], 10) || 0,
+              // Marks a gateway-layer rejection (auth, quota, policy) as opposed
+              // to a status the target origin returned through the tunnel. The
+              // two are indistinguishable once both collapse to HTTP_<status>,
+              // and only the origin case can be helped by a different exit.
+              proxyConnect: true,
             })
           );
         }
@@ -170,13 +253,36 @@ function proxyConnectTunnel(targetHostname, proxyConfig, { timeoutMs = 20_000, t
   });
 }
 
+function readBoundedResponseStream(stream, maxResponseBytes = Infinity) {
+  return new Promise((resolve, reject) => {
+    const chunks = [];
+    let responseBytes = 0;
+    stream.on('data', (chunk) => {
+      responseBytes += chunk.byteLength;
+      if (responseBytes > maxResponseBytes) {
+        stream.destroy();
+        reject(Object.assign(new Error('proxy response too large'), {
+          code: 'RESPONSE_TOO_LARGE',
+        }));
+        return;
+      }
+      chunks.push(chunk);
+    });
+    stream.on('end', () => resolve(Buffer.concat(chunks)));
+    stream.on('error', reject);
+  });
+}
+
 function proxyFetch(url, proxyConfig, {
   accept = '*/*',
   headers = {},
   method = 'GET',
   body = null,
+  maxResponseBytes = Infinity,
   timeoutMs = 20_000,
   signal,
+  connectTunnel = proxyConnectTunnel,
+  requestFn = https.request,
 } = {}) {
   const targetUrl = new URL(url);
 
@@ -184,7 +290,7 @@ function proxyFetch(url, proxyConfig, {
     return Promise.reject(signal.reason || new Error('aborted'));
   }
 
-  return proxyConnectTunnel(targetUrl.hostname, proxyConfig, { timeoutMs, signal }).then(({ socket: tlsSocket, destroy }) => {
+  return connectTunnel(targetUrl.hostname, proxyConfig, { timeoutMs, signal }).then(({ socket: tlsSocket, destroy }) => {
     return new Promise((resolve, reject) => {
       let settled = false;
       let onAbort = null;
@@ -214,7 +320,7 @@ function proxyFetch(url, proxyConfig, {
         reqHeaders['Content-Length'] = Buffer.byteLength(body);
       }
 
-      const req = https.request({
+      const req = requestFn({
         hostname: targetUrl.hostname,
         path: targetUrl.pathname + targetUrl.search,
         method,
@@ -226,17 +332,21 @@ function proxyFetch(url, proxyConfig, {
         if (enc === 'gzip') stream = resp.pipe(zlib.createGunzip());
         else if (enc === 'deflate') stream = resp.pipe(zlib.createInflate());
 
-        const chunks = [];
-        stream.on('data', (c) => chunks.push(c));
-        stream.on('end', () => {
-          resolveOnce({
+        readBoundedResponseStream(stream, maxResponseBytes).then(
+          (buffer) => resolveOnce({
             ok: resp.statusCode >= 200 && resp.statusCode < 300,
             status: resp.statusCode,
-            buffer: Buffer.concat(chunks),
+            location: resp.headers.location || '',
+            buffer,
             contentType: resp.headers['content-type'] || '',
-          });
-        });
-        stream.on('error', rejectOnce);
+            // Additive: callers that only read ok/status/location/buffer/contentType
+            // are unaffected. Rate-limit headers (Retry-After and vendor variants)
+            // are lost forever otherwise, so a 429 that arrives through the tunnel
+            // cannot say how long the lockout lasts (#6241).
+            headers: resp.headers,
+          }),
+          rejectOnce,
+        );
       });
       req.on('error', rejectOnce);
       if (body != null) req.write(body);
@@ -245,4 +355,15 @@ function proxyFetch(url, proxyConfig, {
   });
 }
 
-module.exports = { parseProxyConfig, resolveProxyConfig, resolveProxyConfigWithFallback, resolveProxyString, resolveProxyStringConnect, proxyConnectTunnel, proxyFetch };
+module.exports = {
+  parseProxyConfig,
+  parseProxyConfigForAttempt,
+  resolveProxyConfig,
+  resolveProxyConfigWithFallback,
+  resolveProxyString,
+  resolveProxyStringForAttempt,
+  resolveProxyStringConnect,
+  proxyConnectTunnel,
+  proxyFetch,
+  _readBoundedResponseStream: readBoundedResponseStream,
+};

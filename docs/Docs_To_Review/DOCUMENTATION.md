@@ -330,7 +330,7 @@ Universal search across all data sources:
 
 ### Data Export
 
-- CSV and JSON export of current dashboard state
+- CSV, JSON, and PDF report export of current dashboard state — on plans that include data export (Pro Business, the API plans, and Enterprise)
 - Historical playback from snapshots
 
 ---

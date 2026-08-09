@@ -39,9 +39,13 @@ const USNI_REGION_COORDS = {
 };
 
 function usniStripHtml(html) {
-  return html.replace(/<[^>]+>/g, ' ').replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&')
-    .replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&#8217;/g, "'")
+  // &amp; is decoded LAST: every other replace is a literal string that cannot
+  // regenerate an entity, so amp-last decodes exactly one level
+  // (`&amp;lt;` -> `&lt;`, never `<`).
+  return html.replace(/<[^>]+>/g, ' ').replace(/&nbsp;/g, ' ').replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>').replace(/&#8217;/g, "'")
     .replace(/&#8220;/g, '"').replace(/&#8221;/g, '"').replace(/&#8211;/g, '\u2013')
+    .replace(/&amp;/g, '&')
     .replace(/\s+/g, ' ').trim();
 }
 

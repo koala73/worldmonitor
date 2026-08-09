@@ -123,6 +123,8 @@ export const COMMANDS: Command[] = [
   { id: 'panel:trade-policy', keywords: ['trade', 'tariffs', 'wto', 'trade policy', 'sanctions', 'restrictions'], label: 'Panel: Trade Policy', icon: '\u{1F4CA}', category: 'panels' },
   { id: 'panel:sanctions-pressure', keywords: ['sanctions pressure', 'ofac', 'designation', 'sanctions'], label: 'Panel: Sanctions Pressure', icon: '\u{1F6AB}', category: 'panels' },
   { id: 'panel:supply-chain', keywords: ['supply chain', 'shipping', 'chokepoint', 'minerals', 'freight', 'logistics'], label: 'Panel: Supply Chain', icon: '\u{1F6A2}', category: 'panels' },
+  { id: 'panel:china-corridors', keywords: ['china corridors', 'logistics control tower', 'yangtze', 'greater bay area', 'bohai', 'western land sea'], label: 'Panel: China Logistics Corridors', icon: '\u{1F5FA}', category: 'panels' },
+  { id: 'panel:china-activity-nowcast', keywords: ['china nowcast', 'official proxies', 'activity comparison', 'opacity resistant'], label: 'Panel: China Activity Nowcast', icon: '\u{1F4CA}', category: 'panels' },
   { id: 'panel:chokepoint-strip', keywords: ['chokepoint', 'chokepoints', 'strait', 'hormuz', 'suez', 'malacca', 'bab el mandeb', 'shipping chokepoints'], label: 'Panel: Chokepoint Status', icon: '\u{1F6A2}', category: 'panels' },
   { id: 'panel:geo-hubs', keywords: ['geopolitical hubs', 'geo hubs', 'power centers', 'capitals', 'geopolitical centers'], label: 'Panel: Geopolitical Hubs', icon: '\u{1F30D}', category: 'panels' },
   { id: 'panel:tech-hubs', keywords: ['tech hubs', 'hot tech hubs', 'innovation hubs', 'silicon valley', 'tech cities'], label: 'Panel: Hot Tech Hubs', icon: '\u{1F984}', category: 'panels' },
@@ -187,6 +189,12 @@ export const COMMANDS: Command[] = [
   { id: 'panel:consumer-prices@world', keywords: ['inflation', 'global inflation', 'inflation by country', 'country inflation', 'inflation ranking', 'world inflation', 'imf inflation', 'highest inflation', 'cpi by country'], label: 'Panel: Global Inflation (by country)', icon: '\u{1F4C8}', category: 'panels' },
   { id: 'panel:grocery-basket', keywords: ['grocery', 'grocery basket', 'grocery index', 'food prices', 'supermarket'], label: 'Panel: Grocery Index', icon: '\u{1F96C}', category: 'panels' },
   { id: 'panel:bigmac', keywords: ['bigmac', 'big mac', 'big mac index', 'purchasing power parity', 'ppp'], label: 'Panel: Big Mac Index', icon: '\u{1F354}', category: 'panels' },
+  // Deliberately shares NO keyword with `panel:forex` (:240), which opens the
+  // currency NEWS feed under the same 'fx'/'currencies'/'exchange rates' terms.
+  // Duplicating those would put two same-icon entries side by side in CMD+K
+  // with nothing to tell them apart, so this one owns only the rate- and
+  // crisis-specific phrasing — the queries no headline feed can answer.
+  { id: 'panel:fx', keywords: ['fx rates', 'spot rates', 'currency stress', 'currency crisis', 'devaluation', 'depreciation', 'fx stress', 'drawdown'], label: 'Panel: FX Rates', icon: '\u{1F4C9}', category: 'panels' },
   { id: 'panel:fuel-prices', keywords: ['fuel prices', 'gas prices', 'gasoline', 'diesel', 'petrol', 'fuel cost', 'pump prices'], label: 'Panel: Fuel Prices', icon: '\u26FD', category: 'panels' },
   { id: 'panel:fao-food-price-index', keywords: ['fao', 'food price index', 'ffpi', 'food prices', 'cereals', 'fao food', 'global food prices', 'food inflation'], label: 'Panel: FAO Food Price Index', icon: '\u{1F33E}', category: 'panels' },
   { id: 'panel:national-debt', keywords: ['national debt', 'debt clock', 'government debt', 'deficit'], label: 'Panel: National Debt Clock', icon: '\u{1F4B8}', category: 'panels' },

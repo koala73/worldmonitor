@@ -362,7 +362,12 @@ export async function callLlmDefault({ systemPrompt, userPrompt }, opts = {}) {
           signal: AbortSignal.timeout(Math.max(1, Math.min(provider.timeout, usable))),
         });
         if (!response.ok) {
-          throw httpRetryError(response, { maxRetryAfterMs: NARRATIVE_LLM_RETRY_AFTER_MAX_MS, capMs: usableBudgetMs() });
+          // #6110: same as seed-insights — this is a real remaining wall clock,
+          // so a hint that exceeds it should fail over now rather than sleep.
+          throw httpRetryError(response, {
+            maxRetryAfterMs: NARRATIVE_LLM_RETRY_AFTER_MAX_MS,
+            remainingBudgetMs: usableBudgetMs(),
+          });
         }
         return response;
       }, NARRATIVE_LLM_MAX_RETRIES, retryDelayMs);

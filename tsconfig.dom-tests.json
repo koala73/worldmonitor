@@ -1,0 +1,9 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "types": ["vite/client", "node"],
+    "noEmit": true,
+    "tsBuildInfoFile": "node_modules/.cache/tsconfig.dom-tests.tsbuildinfo"
+  },
+  "include": ["tests/dom/**/*.mts", "vitest.dom.config.mts", "src/**/*.d.ts"]
+}

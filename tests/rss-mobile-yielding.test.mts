@@ -17,4 +17,12 @@ describe('RSS mobile yielding', () => {
     assert.match(rssSource, /if \(isMobile\) await yieldToMain\(\);/);
     assert.match(rssSource, /if \(isMobile && index < itemNodes\.length - 1\) await yieldToMain\(\);/);
   });
+
+  it('does not persist no-store relay responses in either feed cache', () => {
+    assert.match(rssSource, /hasNoStoreCacheDirective\(response\.headers\)/);
+    assert.match(
+      rssSource,
+      /if \(!noStoreResponse\) \{\s*feedCache\.set\(feedScope[\s\S]*?setPersistentCache\(getPersistentFeedKey\(feedScope\)/s,
+    );
+  });
 });

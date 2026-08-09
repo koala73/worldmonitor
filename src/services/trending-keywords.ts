@@ -1,8 +1,30 @@
 import type { CorrelationSignal } from './correlation';
 import { mlWorker } from './ml-worker';
 import { generateSummary } from './summarization';
-import { SUPPRESSED_TRENDING_TERMS, escapeRegex, generateSignalId, tokenize } from '@/utils/analysis-constants';
+import { SUPPRESSED_TRENDING_TERMS, generateSignalId } from '@/utils/analysis-constants';
+// The pure spike primitives (regex entity extractors, term candidacy, display
+// normalization, spike decision math) live in shared/keyword-spike-core.js
+// (issue #5697) so the server-side get_keyword_spikes MCP tool shares them.
+// This module keeps the stateful machinery: rolling term records, cooldowns,
+// localStorage config, ML enrichment, i18n signal copy.
+import {
+  BASELINE_WINDOW_MS,
+  DEFAULT_MIN_SPIKE_COUNT,
+  DEFAULT_SPIKE_MULTIPLIER,
+  MIN_SPIKE_SOURCE_COUNT,
+  MIN_TOKEN_LENGTH,
+  ROLLING_WINDOW_MS,
+  buildBaseTermCandidates,
+  asDisplayTerm,
+  evaluateSpikeDecision,
+  extractEntities,
+  isEntityShapedTerm,
+  isLikelyProperNoun,
+  toTermKey,
+} from '../../shared/keyword-spike-core.js';
 import { t } from '@/services/i18n';
+
+export { extractEntities };
 
 export interface TrendingHeadlineInput {
   title: string;
@@ -61,16 +83,11 @@ export interface TrendingConfig {
 }
 
 const HOUR_MS = 60 * 60 * 1000;
-const DAY_MS = 24 * HOUR_MS;
 
-const ROLLING_WINDOW_MS = 2 * HOUR_MS;
-const BASELINE_WINDOW_MS = 7 * DAY_MS;
 const BASELINE_REFRESH_MS = HOUR_MS;
 const SPIKE_COOLDOWN_MS = 30 * 60 * 1000;
 const MAX_TRACKED_TERMS = 10000;
 const MAX_AUTO_SUMMARIES_PER_HOUR = 5;
-const MIN_TOKEN_LENGTH = 3;
-const MIN_SPIKE_SOURCE_COUNT = 2;
 const CONFIG_KEY = 'worldmonitor-trending-config-v1';
 const ML_ENTITY_MIN_CONFIDENCE = 0.75;
 const ML_ENTITY_BATCH_SIZE = 20;
@@ -78,24 +95,10 @@ const ML_ENTITY_TYPES = new Set(['PER', 'ORG', 'LOC', 'MISC']);
 
 const DEFAULT_CONFIG: TrendingConfig = {
   blockedTerms: [],
-  minSpikeCount: 5,
-  spikeMultiplier: 3,
+  minSpikeCount: DEFAULT_MIN_SPIKE_COUNT,
+  spikeMultiplier: DEFAULT_SPIKE_MULTIPLIER,
   autoSummarize: true,
 };
-
-const CVE_PATTERN = /CVE-\d{4}-\d{4,}/gi;
-const APT_PATTERN = /APT\d+/gi;
-const FIN_PATTERN = /FIN\d+/gi;
-
-const LEADER_NAMES = [
-  'putin', 'zelensky', 'xi jinping', 'biden', 'trump', 'netanyahu',
-  'khamenei', 'erdogan', 'modi', 'macron', 'scholz', 'starmer',
-  'orban', 'milei', 'kim jong un', 'al-sisi',
-];
-const LEADER_PATTERNS = LEADER_NAMES.map(name => ({
-  name,
-  pattern: new RegExp(`\\b${escapeRegex(name)}\\b`, 'i'),
-}));
 
 const termFrequency = new Map<string, TermRecord>();
 const seenHeadlines = new Map<string, number>();
@@ -105,17 +108,6 @@ const autoSummaryRuns: number[] = [];
 
 let cachedConfig: TrendingConfig | null = null;
 let lastBaselineRefreshMs = 0;
-
-function toTermKey(term: string): string {
-  return term.trim().toLowerCase();
-}
-
-function asDisplayTerm(term: string): string {
-  if (/^(cve-\d{4}-\d{4,}|apt\d+|fin\d+)$/i.test(term)) {
-    return term.toUpperCase();
-  }
-  return term.toLowerCase();
-}
 
 function isStorageAvailable(): boolean {
   if (typeof window === 'undefined') return false;
@@ -178,28 +170,6 @@ function getBlockedTermSet(config: TrendingConfig): Set<string> {
     ...Array.from(SUPPRESSED_TRENDING_TERMS).map(term => toTermKey(term)),
     ...config.blockedTerms.map(term => toTermKey(term)),
   ]);
-}
-
-export function extractEntities(text: string): string[] {
-  const entities: string[] = [];
-  const lower = text.toLowerCase();
-
-  for (const match of text.matchAll(CVE_PATTERN)) {
-    entities.push(match[0].toUpperCase());
-  }
-  for (const match of text.matchAll(APT_PATTERN)) {
-    entities.push(match[0].toUpperCase());
-  }
-  for (const match of text.matchAll(FIN_PATTERN)) {
-    entities.push(match[0].toUpperCase());
-  }
-  for (const { name, pattern } of LEADER_PATTERNS) {
-    if (pattern.test(lower)) {
-      entities.push(name);
-    }
-  }
-
-  return entities;
 }
 
 function normalizeEntityType(type: string): string {
@@ -334,33 +304,6 @@ function dedupeHeadlines(headlines: StoredHeadline[]): StoredHeadline[] {
   return unique;
 }
 
-function stripSourceAttribution(title: string): string {
-  const idx = title.lastIndexOf(' - ');
-  if (idx === -1) return title;
-  const after = title.slice(idx + 3).trim();
-  if (after.length > 0 && after.length <= 60 && !/[.!?]/.test(after)) {
-    return title.slice(0, idx).trim();
-  }
-  return title;
-}
-
-function buildBaseTermCandidates(title: string): Map<string, TermCandidate> {
-  const termCandidates = new Map<string, TermCandidate>();
-  const cleanTitle = stripSourceAttribution(title);
-
-  for (const token of tokenize(cleanTitle)) {
-    const termKey = toTermKey(token);
-    termCandidates.set(termKey, { display: token, isEntity: false });
-  }
-
-  for (const entity of extractEntities(cleanTitle)) {
-    const termKey = toTermKey(entity);
-    termCandidates.set(termKey, { display: entity, isEntity: true });
-  }
-
-  return termCandidates;
-}
-
 function recordTermCandidates(
   termCandidates: Map<string, TermCandidate>,
   headline: TrendingHeadlineInput,
@@ -411,10 +354,12 @@ function checkForSpikes(now: number, config: TrendingConfig, blockedTerms: Set<s
     if (recentCount < config.minSpikeCount) continue;
 
     const baseline = record.baseline7d;
-    const multiplier = baseline > 0 ? recentCount / baseline : 0;
-    const isSpike = baseline > 0
-      ? recentCount > baseline * config.spikeMultiplier
-      : recentCount >= config.minSpikeCount;
+    const { isSpike, multiplier } = evaluateSpikeDecision({
+      recentCount,
+      baseline,
+      minSpikeCount: config.minSpikeCount,
+      spikeMultiplier: config.spikeMultiplier,
+    });
 
     if (!isSpike) continue;
     if (now - record.lastSpikeAlertMs < SPIKE_COOLDOWN_MS) continue;
@@ -454,38 +399,10 @@ function pushSignal(signal: CorrelationSignal): void {
   }
 }
 
-function isLikelyProperNoun(term: string, headlines: StoredHeadline[]): boolean {
-  if (term.includes(' ') && term.length > 5) return true;
-  if (/^\d/.test(term)) return true;
-
-  const titles = headlines.slice(0, 8).map(h => h.title);
-  const termRe = new RegExp(`\\b${escapeRegex(term)}\\b`, 'gi');
-  let capitalizedCount = 0;
-  let midSentenceCount = 0;
-  for (const title of titles) {
-    for (const m of title.matchAll(termRe)) {
-      const idx = m.index ?? 0;
-      if (idx === 0) continue;
-      midSentenceCount++;
-      if (/[A-Z]/.test(title[idx]!)) capitalizedCount++;
-    }
-  }
-  if (midSentenceCount === 0) {
-    return titles.some(t => {
-      const allCaps = t.match(new RegExp(`\\b${escapeRegex(term)}\\b`, 'gi'));
-      return allCaps?.some(match => match === match.toUpperCase() && match.length >= 2);
-    });
-  }
-  return capitalizedCount / midSentenceCount >= 0.5;
-}
-
 async function isSignificantTerm(term: string, headlines: StoredHeadline[]): Promise<boolean> {
   const lower = term.toLowerCase();
 
-  if (/^(cve-\d{4}-\d{4,}|apt\d+|fin\d+)$/i.test(term)) return true;
-  for (const { pattern } of LEADER_PATTERNS) {
-    if (pattern.test(term)) return true;
-  }
+  if (isEntityShapedTerm(term)) return true;
 
   if (!mlWorker.isAvailable) {
     return isLikelyProperNoun(term, headlines);

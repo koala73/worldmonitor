@@ -114,6 +114,18 @@ test('flag-off public tier response performs no probe and preserves the normal r
   assert.equal(pending.length, 0);
 });
 
+test('China decision-signal public bootstrap cache is bounded to its 15-minute seed cadence', async () => {
+  delete process.env.BOOTSTRAP_R2_SHADOW_MEASURE;
+  installFetchHarness();
+
+  const response = await handler(makeRequest('keys=chinaDecisionSignals&public=1'));
+
+  assert.equal(response.status, 200);
+  assert.match(response.headers.get('Cache-Control') ?? '', /max-age=60\b/);
+  assert.match(response.headers.get('CDN-Cache-Control') ?? '', /\bs-maxage=900\b/);
+  assert.doesNotMatch(response.headers.get('CDN-Cache-Control') ?? '', /\bs-maxage=7200\b/);
+});
+
 test('shadow credentials are never exercised outside the production Vercel environment', async () => {
   process.env.BOOTSTRAP_R2_SHADOW_MEASURE = '1';
   process.env.VERCEL_ENV = 'preview';
@@ -273,7 +285,10 @@ test('shadow source pins the uncensored probe ceiling and cannot consume serving
   assert.doesNotMatch(source, /bootstrapR2ServingTimeoutMs|BOOTSTRAP_R2_TIMEOUT_MS_FAST|BOOTSTRAP_R2_TIMEOUT_MS_SLOW/);
 
   const timerStop = source.indexOf('const redisDurationMs = measureR2Shadow');
-  const responseSerialization = source.indexOf('const response = jsonResponse({ data, missing }');
+  const responseSerialization = source.indexOf(
+    'const response = jsonResponse(\n    { data, missing },',
+    timerStop,
+  );
   assert.ok(timerStop >= 0 && responseSerialization >= 0);
   assert.ok(
     timerStop < responseSerialization,

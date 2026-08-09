@@ -60,12 +60,36 @@ interface CapturedProEvent {
   };
 }
 
+interface CapturedOutcomeCall {
+  activationKey: string;
+  claimNonce: string;
+  outcome: {
+    cohort?: 'day0';
+    confirmedSteps: string[];
+    skippedSteps: string[];
+    /** Browser-refused steps (#5617); present-and-empty when nothing was blocked. */
+    blockedSteps: string[];
+    failedSteps: string[];
+    revision: number;
+    finalized: boolean;
+  };
+}
+
+interface CapturedDay0Open {
+  activationKey: string;
+  claimNonce: string;
+  sessionStartedAt: number;
+}
+
 async function gotoHarness(page: Page): Promise<void> {
   await page.goto('/tests/runtime-harness.html');
 }
 
 /** Open the interstitial SHELL directly with synthetic steps + injected callbacks. */
-async function openShell(page: Page, confirmResult: 'verified' | 'failed'): Promise<void> {
+async function openShell(
+  page: Page,
+  confirmResult: 'verified' | 'failed' | 'blocked',
+): Promise<void> {
   await page.evaluate(async (result) => {
     const { initI18n } = await import('/src/services/i18n.ts');
     await initI18n();
@@ -79,7 +103,7 @@ async function openShell(page: Page, confirmResult: 'verified' | 'failed'): Prom
         { id: 'power', state: 'confirmable' },
       ],
       accountEmail: 'e2e@worldmonitor.app',
-      onConfirmStep: async () => result as 'verified' | 'failed',
+      onConfirmStep: async () => result as 'verified' | 'failed' | 'blocked',
       onSkipStep: () => {},
       onExit: (results) => {
         w.__proExit = results;
@@ -99,8 +123,12 @@ async function openFlow(page: Page, withOpeners: boolean): Promise<void> {
     const { initI18n } = await import('/src/services/i18n.ts');
     await initI18n();
     const mod = await import('/src/components/ProActivationInterstitial.ts');
-    const w = window as unknown as { __proEvents: CapturedProEvent[] };
+    const w = window as unknown as {
+      __proEvents: CapturedProEvent[];
+      __proSearchOpened: boolean;
+    };
     w.__proEvents = [];
+    w.__proSearchOpened = false;
     const options: Record<string, unknown> = {
       accountUserId: 'e2e-user',
       accountEmail: 'e2e@worldmonitor.app',
@@ -110,11 +138,18 @@ async function openFlow(page: Page, withOpeners: boolean): Promise<void> {
       },
     };
     if (openers) {
+      options.openSearch = () => {
+        w.__proSearchOpened = true;
+      };
       options.openWidgetBuilder = () => {};
       options.openAiAnalyst = () => {};
+      options.openMcpClients = () => {};
+      // Inject the retired opener too, so the "no apiKeys pointer" assertion is
+      // about buildPowerExtra dropping it rather than about this harness never
+      // supplying it — add() skips any pointer whose opener is absent (#5607).
       options.openApiKeys = () => {};
     }
-    void (mod.openProActivationFlow as (o: unknown) => Promise<boolean>)(options);
+    void (mod.openProActivationFlow as (o: unknown) => Promise<unknown>)(options);
   }, withOpeners);
   await expect(page.locator(OVERLAY)).toBeVisible({ timeout: 20_000 });
 }
@@ -122,6 +157,625 @@ async function openFlow(page: Page, withOpeners: boolean): Promise<void> {
 async function readCapturedEvents(page: Page): Promise<CapturedProEvent[]> {
   return page.evaluate(() => (window as unknown as { __proEvents: CapturedProEvent[] }).__proEvents);
 }
+
+async function readCapturedOutcomes(page: Page): Promise<CapturedOutcomeCall[]> {
+  return page.evaluate(
+    () => (window as unknown as { __proOutcomeCalls: CapturedOutcomeCall[] }).__proOutcomeCalls,
+  );
+}
+
+async function readOutcomeAttempts(page: Page): Promise<number> {
+  return page.evaluate(
+    () => (window as unknown as { __proOutcomeAttempts: number }).__proOutcomeAttempts,
+  );
+}
+
+async function readDay0Opens(page: Page): Promise<CapturedDay0Open[]> {
+  return page.evaluate(
+    () => (window as unknown as { __proDay0Opens: CapturedDay0Open[] }).__proDay0Opens,
+  );
+}
+
+type ClaimStatus = 'claimed' | 'not_eligible' | 'already_presented' | 'already_claimed';
+
+async function runMarkerlessFlowHarness(
+  page: Page,
+  input: {
+    claimStatus: ClaimStatus;
+    activeLocal?: boolean;
+    throwRead?: boolean;
+    switchAfterClaim?: boolean;
+    confirmResult?: boolean;
+    confirmFailures?: number;
+    neverResolveClaim?: boolean;
+    outcomeAlwaysFails?: boolean;
+  },
+): Promise<{ result: string; claimCalls: number; confirmCalls: number }> {
+  return await page.evaluate(async (scenario) => {
+    const { initI18n } = await import('/src/services/i18n.ts');
+    await initI18n();
+    const mod = await import('/src/components/ProActivationInterstitial.ts');
+    const w = window as unknown as {
+      __proOutcomeCalls: CapturedOutcomeCall[];
+      __proOutcomeAttempts: number;
+    };
+    w.__proOutcomeCalls = [];
+    w.__proOutcomeAttempts = 0;
+    let ownerChecks = 0;
+    let claimCalls = 0;
+    let confirmCalls = 0;
+    const context = {
+      config: {
+        hasVerifiedEmailChannel: false,
+        hasEmailDelivery: false,
+        hasEnabledDigestRule: false,
+        hasTunedDigestHour: false,
+        hasWebPushChannel: false,
+        hasWebPushDelivery: false,
+        hasUsedPowerFeature: scenario.activeLocal === true,
+      },
+      capabilities: { webPushSupported: false },
+      channels: [],
+      channelsKnown: true,
+      hasEnabledRule: false,
+    };
+    const result = await mod.openProActivationFlow(
+      {
+        accountUserId: 'markerless-user',
+        accountEmail: 'markerless@worldmonitor.app',
+        onlyIfUnactivated: true,
+        expectedActivationKey: 'opaque-subscription',
+        activationClaimNonce: 'tab-nonce',
+        isAccountCurrent: () => {
+          ownerChecks += 1;
+          return !(scenario.switchAfterClaim && ownerChecks >= 3);
+        },
+      },
+      {
+        readContext: async () => {
+          if (scenario.throwRead) throw new Error('strict read failed');
+          return context;
+        },
+        claimPresentation: async () => {
+          claimCalls += 1;
+          if (scenario.neverResolveClaim) return await new Promise<never>(() => {});
+          return scenario.claimStatus;
+        },
+        confirmPresentation: async () => {
+          confirmCalls += 1;
+          if (confirmCalls <= (scenario.confirmFailures ?? 0)) {
+            throw new Error('confirm transport failed');
+          }
+          return scenario.confirmResult !== false;
+        },
+        recordOutcome: async (activationKey, claimNonce, outcome) => {
+          w.__proOutcomeAttempts += 1;
+          if (scenario.outcomeAlwaysFails) {
+            throw new Error('record outcome transport failed');
+          }
+          w.__proOutcomeCalls.push({ activationKey, claimNonce, outcome });
+          return true;
+        },
+        operationTimeoutMs: 20,
+      },
+    );
+    return { result, claimCalls, confirmCalls };
+  }, input);
+}
+
+test.describe('Pro activation flow — markerless first-cycle handoff', () => {
+  test.beforeEach(async ({ page }) => {
+    await gotoHarness(page);
+  });
+
+  test('strict config failure retries without claiming or opening', async ({ page }) => {
+    const result = await runMarkerlessFlowHarness(page, {
+      claimStatus: 'claimed',
+      throwRead: true,
+    });
+    expect(result).toEqual({ result: 'retry', claimCalls: 0, confirmCalls: 0 });
+    await expect(page.locator(OVERLAY)).toHaveCount(0);
+    expect(await readCapturedOutcomes(page)).toEqual([]);
+  });
+
+  test('a stalled claim reaches the controller retry path within its deadline', async ({ page }) => {
+    const result = await runMarkerlessFlowHarness(page, {
+      claimStatus: 'claimed',
+      neverResolveClaim: true,
+    });
+    expect(result).toEqual({ result: 'retry', claimCalls: 1, confirmCalls: 0 });
+    await expect(page.locator(OVERLAY)).toHaveCount(0);
+  });
+
+  test('local Pro activation suppresses before the server claim', async ({ page }) => {
+    const result = await runMarkerlessFlowHarness(page, {
+      claimStatus: 'claimed',
+      activeLocal: true,
+    });
+    expect(result).toEqual({ result: 'not-eligible', claimCalls: 0, confirmCalls: 0 });
+    await expect(page.locator(OVERLAY)).toHaveCount(0);
+  });
+
+  test('claim outcomes preserve retryable and terminal meanings', async ({ page }) => {
+    const claimedElsewhere = await runMarkerlessFlowHarness(page, {
+      claimStatus: 'already_claimed',
+    });
+    expect(claimedElsewhere.result).toBe('retry');
+
+    const alreadyPresented = await runMarkerlessFlowHarness(page, {
+      claimStatus: 'already_presented',
+    });
+    expect(alreadyPresented.result).toBe('not-eligible');
+    await expect(page.locator(OVERLAY)).toHaveCount(0);
+  });
+
+  test('a successful claim opens once and confirms the presentation', async ({ page }) => {
+    const result = await runMarkerlessFlowHarness(page, { claimStatus: 'claimed' });
+    expect(result).toEqual({ result: 'opened', claimCalls: 1, confirmCalls: 1 });
+    await expect(page.locator(OVERLAY)).toBeVisible();
+  });
+
+  test('markerless progress and final exit persist exact lease-bound outcome snapshots', async ({ page }) => {
+    const result = await runMarkerlessFlowHarness(page, { claimStatus: 'claimed' });
+    expect(result).toEqual({ result: 'opened', claimCalls: 1, confirmCalls: 1 });
+
+    await page.locator('.pro-activation-close').click();
+    await expect(page.locator(SUMMARY)).toBeVisible();
+    await page.locator(FINISH_BTN).click();
+
+    await expect.poll(async () => (await readCapturedOutcomes(page)).length).toBe(2);
+    expect(await readCapturedOutcomes(page)).toEqual([
+      {
+        activationKey: 'opaque-subscription',
+        claimNonce: 'tab-nonce',
+        outcome: {
+          confirmedSteps: [],
+          skippedSteps: ['brief', 'power'],
+          // This harness presents no alerts step, so nothing can be blocked --
+          // but the bucket must still be sent, pinning that every snapshot is a
+          // full replacement rather than an omit-when-empty payload (#5617).
+          blockedSteps: [],
+          failedSteps: [],
+          revision: 1,
+          finalized: false,
+        },
+      },
+      {
+        activationKey: 'opaque-subscription',
+        claimNonce: 'tab-nonce',
+        outcome: {
+          confirmedSteps: [],
+          skippedSteps: ['brief', 'power'],
+          blockedSteps: [],
+          failedSteps: [],
+          revision: 2,
+          finalized: true,
+        },
+      },
+    ]);
+  });
+
+  test('outcome-write retries exhaust and give up without blocking the flow', async ({ page }) => {
+    // persistActivationOutcomeWithRetry doesn't distinguish transport errors
+    // from permanent rejections -- every failure gets the same bounded
+    // retry-then-give-up treatment (OUTCOME_WRITE_RETRY_DELAYS_MS = [250, 750]).
+    // This locks in that give-up behavior: no test previously exercised a
+    // recordOutcome call that fails every attempt.
+    const opened = await runMarkerlessFlowHarness(page, {
+      claimStatus: 'claimed',
+      outcomeAlwaysFails: true,
+    });
+    expect(opened.result).toBe('opened');
+
+    // finalizeAndShowSummary fires exactly one recordProgress() call
+    // (revision 1, finalized: false).
+    await page.locator('.pro-activation-close').click();
+    await expect(page.locator(SUMMARY)).toBeVisible();
+
+    // 1 initial attempt + 2 scheduled retries = 3 attempts, then the
+    // fire-and-forget loop gives up (console.warn) instead of retrying
+    // forever or throwing an unhandled rejection.
+    await expect.poll(() => readOutcomeAttempts(page), { timeout: 5_000 }).toBe(3);
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    expect(await readOutcomeAttempts(page)).toBe(3);
+
+    // Every attempt failed, so nothing was ever durably captured.
+    expect(await readCapturedOutcomes(page)).toEqual([]);
+
+    // The best-effort write failing never blocks the UI: the summary is
+    // still interactive and finishing closes normally.
+    await page.locator(FINISH_BTN).click();
+    await expect(page.locator(OVERLAY)).toHaveCount(0);
+  });
+
+  test('lost confirmation ownership closes the flow and remains retryable', async ({ page }) => {
+    const result = await runMarkerlessFlowHarness(page, {
+      claimStatus: 'claimed',
+      confirmResult: false,
+    });
+    expect(result).toEqual({ result: 'retry', claimCalls: 1, confirmCalls: 1 });
+    await expect(page.locator(OVERLAY)).toHaveCount(0);
+  });
+
+  test('transient confirm failures still open after the retry delays', async ({ page }) => {
+    const result = await runMarkerlessFlowHarness(page, {
+      claimStatus: 'claimed',
+      confirmFailures: 2,
+    });
+    expect(result).toEqual({ result: 'opened', claimCalls: 1, confirmCalls: 3 });
+    await expect(page.locator(OVERLAY)).toBeVisible();
+  });
+
+  test('confirm failures beyond the retry schedule close the flow and remain retryable', async ({ page }) => {
+    // One initial call plus every entry of PRESENTATION_CONFIRM_RETRY_DELAYS_MS
+    // (250/750/1500ms real delays) fails → the flow gives up retrying.
+    test.setTimeout(60_000);
+    const result = await runMarkerlessFlowHarness(page, {
+      claimStatus: 'claimed',
+      confirmFailures: 4,
+    });
+    expect(result).toEqual({ result: 'retry', claimCalls: 1, confirmCalls: 4 });
+    await expect(page.locator(OVERLAY)).toHaveCount(0);
+  });
+
+  test('interstitial stays unmounted while confirmation is pending, so a lost claim cannot leave a stray outcome write', async ({ page }) => {
+    // Regression test for a presentedAt race (review of #5584/#5590):
+    // openProActivationFlow used to open the interstitial (wiring
+    // onProgress/onExit to recordProActivationOutcome) BEFORE awaiting
+    // confirmPresentationWithRetry. If a step got interacted with in that
+    // window and confirm then failed, recordProActivationOutcome's own
+    // presentedAt backfill had already fired, permanently blocking a
+    // legitimate re-claim via claimProActivationPresentation's
+    // already_presented check -- even though the server never acknowledged
+    // this presentation. The interstitial must not exist (and therefore
+    // cannot record an outcome) until confirm actually succeeds.
+    await page.evaluate(async () => {
+      const { initI18n } = await import('/src/services/i18n.ts');
+      await initI18n();
+      const mod = await import('/src/components/ProActivationInterstitial.ts');
+      const w = window as unknown as {
+        __resolveProConfirm?: (ok: boolean) => void;
+        __flowResult?: Promise<string>;
+        __proOutcomeCalls: CapturedOutcomeCall[];
+      };
+      w.__proOutcomeCalls = [];
+      const context = {
+        config: {
+          hasVerifiedEmailChannel: false,
+          hasEmailDelivery: false,
+          hasEnabledDigestRule: false,
+          hasTunedDigestHour: false,
+          hasWebPushChannel: false,
+          hasWebPushDelivery: false,
+          hasUsedPowerFeature: false,
+        },
+        capabilities: { webPushSupported: false },
+        channels: [],
+        channelsKnown: true,
+        hasEnabledRule: false,
+      };
+      // Deliberately never resolves on its own -- held open so the test can
+      // assert on interstitial state while confirm is genuinely in flight,
+      // then resolve it explicitly to drive the failure path.
+      w.__flowResult = mod.openProActivationFlow(
+        {
+          accountUserId: 'markerless-user',
+          accountEmail: 'markerless@worldmonitor.app',
+          onlyIfUnactivated: true,
+          expectedActivationKey: 'opaque-subscription',
+          activationClaimNonce: 'tab-nonce',
+          isAccountCurrent: () => true,
+        },
+        {
+          readContext: async () => context,
+          claimPresentation: async () => 'claimed',
+          confirmPresentation: () =>
+            new Promise<boolean>((resolve) => {
+              w.__resolveProConfirm = resolve;
+            }),
+          recordOutcome: async (activationKey, claimNonce, outcome) => {
+            w.__proOutcomeCalls.push({ activationKey, claimNonce, outcome });
+            return true;
+          },
+          // Large enough that withTimeout never races the manual resolve below.
+          operationTimeoutMs: 20_000,
+        },
+      );
+    });
+
+    // Confirm is still pending: the interstitial must not be mounted, so
+    // there is no onProgress/onConfirmStep handler a (simulated) click could
+    // reach, and no way for a recordOutcome write to fire yet.
+    await page.waitForTimeout(100);
+    await expect(page.locator(OVERLAY)).toHaveCount(0);
+
+    // Server rejects the claim (lost ownership) -- the real failure mode this
+    // guards against.
+    await page.evaluate(() => {
+      (
+        window as unknown as { __resolveProConfirm?: (ok: boolean) => void }
+      ).__resolveProConfirm?.(false);
+    });
+
+    const result = await page.evaluate(
+      () => (window as unknown as { __flowResult: Promise<string> }).__flowResult,
+    );
+    expect(result).toBe('retry');
+    await expect(page.locator(OVERLAY)).toHaveCount(0);
+
+    const outcomeCalls = await page.evaluate(
+      () => (window as unknown as { __proOutcomeCalls: CapturedOutcomeCall[] }).__proOutcomeCalls,
+    );
+    expect(outcomeCalls).toEqual([]);
+  });
+
+  test('account switch after claim retries without opening or confirming', async ({ page }) => {
+    const result = await runMarkerlessFlowHarness(page, {
+      claimStatus: 'claimed',
+      switchAfterClaim: true,
+    });
+    expect(result).toEqual({ result: 'retry', claimCalls: 1, confirmCalls: 0 });
+    await expect(page.locator(OVERLAY)).toHaveCount(0);
+    expect(await readCapturedOutcomes(page)).toEqual([]);
+  });
+});
+
+type Day0Status = 'opened' | 'already_recorded' | 'not_eligible' | 'superseded';
+
+/**
+ * Drive the REAL day-0 (post-checkout) flow: `onlyIfUnactivated: false`, with
+ * the subscription identity the controller now supplies for both cohorts.
+ */
+async function runDay0FlowHarness(
+  page: Page,
+  input: {
+    day0Status?: Day0Status;
+    day0Throws?: boolean;
+    day0FailuresBeforeSuccess?: number;
+    day0NeverResolves?: boolean;
+    day0ResolveAfterMs?: number;
+  } = {},
+): Promise<{ result: string; claimCalls: number; confirmCalls: number; day0Calls: number }> {
+  return await page.evaluate(async (scenario) => {
+    const { initI18n } = await import('/src/services/i18n.ts');
+    await initI18n();
+    const mod = await import('/src/components/ProActivationInterstitial.ts');
+    const w = window as unknown as {
+      __proOutcomeCalls: CapturedOutcomeCall[];
+      __proOutcomeAttempts: number;
+      __proDay0Opens: CapturedDay0Open[];
+    };
+    w.__proOutcomeCalls = [];
+    w.__proOutcomeAttempts = 0;
+    w.__proDay0Opens = [];
+    let claimCalls = 0;
+    let confirmCalls = 0;
+    let day0Calls = 0;
+    const result = await mod.openProActivationFlow(
+      {
+        accountUserId: 'day0-user',
+        accountEmail: 'day0@worldmonitor.app',
+        onlyIfUnactivated: false,
+        expectedActivationKey: 'opaque-subscription',
+        activationClaimNonce: 'tab-nonce',
+        activationSessionStartedAt: 1_725_000_000_000,
+        isAccountCurrent: () => true,
+      },
+      {
+        readContext: async () => ({
+          config: {
+            hasVerifiedEmailChannel: false,
+            hasEmailDelivery: false,
+            hasEnabledDigestRule: false,
+            hasTunedDigestHour: false,
+            hasWebPushChannel: false,
+            hasWebPushDelivery: false,
+            hasUsedPowerFeature: false,
+          },
+          capabilities: { webPushSupported: false },
+          channels: [],
+          channelsKnown: true,
+          hasEnabledRule: false,
+        }),
+        claimPresentation: async () => {
+          claimCalls += 1;
+          return 'claimed';
+        },
+        confirmPresentation: async () => {
+          confirmCalls += 1;
+          return true;
+        },
+        openDay0Presentation: async (activationKey, claimNonce, sessionStartedAt) => {
+          day0Calls += 1;
+          w.__proDay0Opens.push({ activationKey, claimNonce, sessionStartedAt });
+          if (scenario.day0NeverResolves) return await new Promise<never>(() => {});
+          if (
+            scenario.day0Throws ||
+            day0Calls <= (scenario.day0FailuresBeforeSuccess ?? 0)
+          ) {
+            throw new Error('day-0 record transport failed');
+          }
+          if (scenario.day0ResolveAfterMs !== undefined) {
+            await new Promise<void>((resolve) => setTimeout(resolve, scenario.day0ResolveAfterMs));
+          }
+          return scenario.day0Status ?? 'opened';
+        },
+        recordOutcome: async (activationKey, claimNonce, outcome) => {
+          w.__proOutcomeAttempts += 1;
+          w.__proOutcomeCalls.push({ activationKey, claimNonce, outcome });
+          return true;
+        },
+        operationTimeoutMs: 200,
+      },
+    );
+    return { result, claimCalls, confirmCalls, day0Calls };
+  }, input);
+}
+
+test.describe('Pro activation flow — day-0 outcome rows (#5621)', () => {
+  test.beforeEach(async ({ page }) => {
+    await gotoHarness(page);
+  });
+
+  test('day-0 opens its own record and persists cohort-tagged outcome snapshots', async ({ page }) => {
+    // Before #5621 the day-0 path ran with no activation key or nonce, so
+    // persistActivationOutcomeWithRetry returned early and the entire
+    // post-checkout cohort was absent from Convex.
+    const result = await runDay0FlowHarness(page);
+    expect(result).toEqual({ result: 'opened', claimCalls: 0, confirmCalls: 0, day0Calls: 1 });
+    await expect(page.locator(OVERLAY)).toBeVisible();
+
+    await page.locator('.pro-activation-close').click();
+    await expect(page.locator(SUMMARY)).toBeVisible();
+    await page.locator(FINISH_BTN).click();
+
+    await expect.poll(async () => (await readCapturedOutcomes(page)).length).toBe(2);
+    expect(await readCapturedOutcomes(page)).toEqual([
+      {
+        activationKey: 'opaque-subscription',
+        claimNonce: 'tab-nonce',
+        outcome: {
+          cohort: 'day0',
+          confirmedSteps: [],
+          skippedSteps: ['brief', 'power'],
+          // Same full-replacement contract the markerless snapshots pin
+          // (#5617): the day-0 payload carries every bucket, so the cohort tag
+          // rides alongside them rather than replacing any.
+          blockedSteps: [],
+          failedSteps: [],
+          revision: 1,
+          finalized: false,
+        },
+      },
+      {
+        activationKey: 'opaque-subscription',
+        claimNonce: 'tab-nonce',
+        outcome: {
+          cohort: 'day0',
+          confirmedSteps: [],
+          skippedSteps: ['brief', 'power'],
+          blockedSteps: [],
+          failedSteps: [],
+          revision: 2,
+          finalized: true,
+        },
+      },
+    ]);
+  });
+
+  test('day-0 never touches the markerless claim/confirm lease', async ({ page }) => {
+    // The lease is what makes the retro backfill fire exactly once per
+    // subscription. Day-0 borrowing it would consume that budget and lock the
+    // subscriber out of the backfill they may still need (#5600).
+    const result = await runDay0FlowHarness(page);
+    expect(result.claimCalls).toBe(0);
+    expect(result.confirmCalls).toBe(0);
+  });
+
+  test('a late successful day-0 open still flushes queued finalized snapshots', async ({ page }) => {
+    const result = await runDay0FlowHarness(page, { day0ResolveAfterMs: 350 });
+    expect(result.result).toBe('opened');
+    await expect(page.locator(OVERLAY)).toBeVisible();
+
+    // Both snapshots are queued before the open resolves, and after the 200ms
+    // observation deadline. A timeout warning must not turn that eventual
+    // server success into a permanent refusal.
+    await page.locator('.pro-activation-close').click();
+    await expect(page.locator(SUMMARY)).toBeVisible();
+    await page.locator(FINISH_BTN).click();
+
+    await expect.poll(async () => (await readCapturedOutcomes(page)).length).toBe(2);
+    expect((await readCapturedOutcomes(page)).map(({ outcome }) => ({
+      revision: outcome.revision,
+      finalized: outcome.finalized,
+    }))).toEqual([
+      { revision: 1, finalized: false },
+      { revision: 2, finalized: true },
+    ]);
+  });
+
+  test('rejected opens retry with one identity, then flush queued snapshots after success', async ({ page }) => {
+    const result = await runDay0FlowHarness(page, { day0FailuresBeforeSuccess: 2 });
+    expect(result.result).toBe('opened');
+    await expect(page.locator(OVERLAY)).toBeVisible();
+
+    await page.locator('.pro-activation-close').click();
+    await expect(page.locator(SUMMARY)).toBeVisible();
+    await page.locator(FINISH_BTN).click();
+
+    await expect.poll(async () => (await readDay0Opens(page)).length).toBe(3);
+    expect(await readDay0Opens(page)).toEqual(Array.from({ length: 3 }, () => ({
+      activationKey: 'opaque-subscription',
+      claimNonce: 'tab-nonce',
+      sessionStartedAt: 1_725_000_000_000,
+    })));
+    await expect.poll(async () => (await readCapturedOutcomes(page)).length).toBe(2);
+    expect((await readCapturedOutcomes(page)).map(({ outcome }) => ({
+      revision: outcome.revision,
+      finalized: outcome.finalized,
+    }))).toEqual([
+      { revision: 1, finalized: false },
+      { revision: 2, finalized: true },
+    ]);
+  });
+
+  test.describe('a refused or unreachable day-0 record never blocks the welcome flow', () => {
+    for (const [name, day0Status] of [
+      ['server refuses (already finalized)', { day0Status: 'already_recorded' as const }],
+      ['server refuses (ineligible)', { day0Status: 'not_eligible' as const }],
+      ['server refuses (superseded)', { day0Status: 'superseded' as const }],
+    ] as const) {
+      test(name, async ({ page }) => {
+        const result = await runDay0FlowHarness(page, day0Status);
+        // Post-checkout onboarding is the product; the ledger is telemetry.
+        // It must open regardless, and never return the 'retry' that the
+        // markerless path uses when its lease is in doubt.
+        expect(result.result).toBe('opened');
+        await expect(page.locator(OVERLAY)).toBeVisible();
+
+        await page.locator('.pro-activation-close').click();
+        await expect(page.locator(SUMMARY)).toBeVisible();
+        await page.locator(FINISH_BTN).click();
+        await expect(page.locator(OVERLAY)).toHaveCount(0);
+
+        expect((await readDay0Opens(page)).length).toBe(1);
+        expect(await readCapturedOutcomes(page)).toEqual([]);
+        expect(await readOutcomeAttempts(page)).toBe(0);
+      });
+    }
+
+    test('permanent transport rejection performs the bounded attempt count', async ({ page }) => {
+      const result = await runDay0FlowHarness(page, { day0Throws: true });
+      expect(result.result).toBe('opened');
+      await expect(page.locator(OVERLAY)).toBeVisible();
+
+      await page.locator('.pro-activation-close').click();
+      await expect(page.locator(SUMMARY)).toBeVisible();
+      await page.locator(FINISH_BTN).click();
+      await expect(page.locator(OVERLAY)).toHaveCount(0);
+
+      await expect.poll(async () => (await readDay0Opens(page)).length).toBe(3);
+      expect(await readCapturedOutcomes(page)).toEqual([]);
+      expect(await readOutcomeAttempts(page)).toBe(0);
+    });
+
+    test('a hung request stays pending without blocking or writing', async ({ page }) => {
+      const result = await runDay0FlowHarness(page, { day0NeverResolves: true });
+      expect(result.result).toBe('opened');
+      await expect(page.locator(OVERLAY)).toBeVisible();
+
+      await page.locator('.pro-activation-close').click();
+      await expect(page.locator(SUMMARY)).toBeVisible();
+      await page.locator(FINISH_BTN).click();
+      await expect(page.locator(OVERLAY)).toHaveCount(0);
+      await page.waitForTimeout(400);
+
+      expect((await readDay0Opens(page)).length).toBe(1);
+      expect(await readCapturedOutcomes(page)).toEqual([]);
+      expect(await readOutcomeAttempts(page)).toBe(0);
+    });
+  });
+});
 
 test.describe('Pro activation interstitial — shell step flow', () => {
   test('happy path: confirm every step → verified exit summary → dashboard', async ({ page }) => {
@@ -193,6 +847,48 @@ test.describe('Pro activation interstitial — shell step flow', () => {
     await expect(page.locator(SUMMARY)).toBeVisible();
     await expect(page.locator('.pro-activation-summary-line.status-failed')).toHaveCount(1);
     await expect(page.locator('.pro-activation-summary-line.status-pending')).toHaveCount(2);
+  });
+
+  test('confirm resolves to blocked → blocked state, no dead-end retry (#5609)', async ({
+    page,
+  }) => {
+    await gotoHarness(page);
+    await openShell(page, 'blocked');
+
+    // Advance to alerts — the step a browser permission can actually block.
+    await page.locator(SKIP_BTN).click();
+    await expect(page.locator(PROGRESS)).toContainText('2 of 3');
+    await page.locator(CONFIRM_BTN).click();
+
+    // Blocked badge + the site-settings instructions, not the generic error.
+    await expect(page.locator('.pro-activation-status.status-blocked')).toContainText('Blocked');
+    await expect(page.locator('.pro-activation-note.note-warn')).toContainText('site settings');
+    await expect(page.locator('.pro-activation-note.note-error')).toHaveCount(0);
+
+    // Browsers never re-prompt after a deny, so "Try again" must be gone and
+    // the step must expose exactly one way forward.
+    await expect(page.locator(CONFIRM_BTN)).toHaveCount(0);
+    await expect(page.locator(SKIP_BTN)).toHaveCount(0);
+    await expect(page.locator(ADVANCE_SKIP_BTN)).toBeVisible();
+
+    // Continuing resolves it as its own 'blocked' outcome (same as a step
+    // blocked at mount) — never 'failed', which the summary would report as
+    // "we couldn't set up", and never a plain 'skipped', which would make the
+    // denial indistinguishable from disinterest in the durable record (#5617).
+    await page.locator(ADVANCE_SKIP_BTN).click();
+    await expect(page.locator(PROGRESS)).toContainText('3 of 3');
+    await page.locator(SKIP_BTN).click();
+    await expect(page.locator(SUMMARY)).toBeVisible();
+    await expect(page.locator('.pro-activation-summary-line.status-failed')).toHaveCount(0);
+
+    await page.locator(FINISH_BTN).click();
+    const results = await page.evaluate(
+      () => (window as unknown as { __proExit: Array<{ outcome: string }> }).__proExit,
+    );
+    // Only the middle (alerts) step was refused by the browser; the other two
+    // are ordinary skips. Asserting all three as 'skipped' is exactly the
+    // collapse #5617 removed.
+    expect(results.map((r) => r.outcome)).toEqual(['skipped', 'blocked', 'skipped']);
   });
 
   test('dismiss is blocked while a confirmation write is in flight', async ({ page }) => {
@@ -285,14 +981,125 @@ test.describe('Pro activation flow — telemetry + finish-setup chip', () => {
     expect(dismissed).toBeNull();
   });
 
-  test('power-toolkit pointer confirms the step and fires step-confirmed telemetry', async ({
+  test('a failed confirm fires step-failed telemetry and is never reported as a skip', async ({
+    page,
+  }) => {
+    // #5600: every per-step write in this harness fails (authFetch throws with
+    // no Clerk session — see the HARNESS NOTE), which is exactly the day-0
+    // production shape. The failure must reach Umami as its own event; before
+    // the fix the only trace was a `step-skipped`, so the funnel counted broken
+    // writes as user disinterest.
+    await gotoHarness(page);
+    await openFlow(page, /* withOpeners */ false);
+
+    await expect(page.locator(CONFIRM_BTN)).toBeVisible();
+    await page.locator(CONFIRM_BTN).click();
+    await expect(page.locator('.pro-activation-status.status-failed')).toBeVisible();
+
+    const afterConfirm = await readCapturedEvents(page);
+    const failed = afterConfirm.filter((e) => e.event === 'pro-activation-step-failed');
+    expect(failed.length).toBe(1);
+    expect(failed[0]?.stepId).toBe('brief');
+    expect(afterConfirm.some((e) => e.event === 'pro-activation-step-skipped')).toBe(false);
+
+    // Moving on from a failed step records the outcome as `failed`; it must not
+    // also emit a skip for the same step.
+    await page.locator(SKIP_BTN).first().click();
+    const afterSkip = await readCapturedEvents(page);
+    expect(
+      afterSkip.some((e) => e.event === 'pro-activation-step-skipped' && e.stepId === 'brief'),
+    ).toBe(false);
+    expect(
+      afterSkip.filter((e) => e.event === 'pro-activation-step-failed' && e.stepId === 'brief')
+        .length,
+    ).toBe(1);
+  });
+
+  test('a failed confirm reaches Sentry with the step and activation-path tags', async ({
+    page,
+  }) => {
+    // #5600 blind spot 3: the confirm catch blocks only console.warn'd, and
+    // sentry-init.ts has no captureConsole integration — so the error text
+    // never left the browser. Drives the REAL deferred-Sentry queue with an
+    // injected loader (timers collapsed so the 10s audit-window delay does not
+    // dominate the run).
+    await gotoHarness(page);
+    await page.evaluate(async () => {
+      const w = window as unknown as {
+        __sentryCaptures: Array<{ message: string; tags?: Record<string, string> }>;
+      };
+      w.__sentryCaptures = [];
+      const realSetTimeout = window.setTimeout.bind(window);
+      window.setTimeout = ((fn: TimerHandler, ms?: number, ...rest: unknown[]) =>
+        realSetTimeout(fn as () => void, (ms ?? 0) >= 1_000 ? 0 : ms, ...rest)) as typeof setTimeout;
+      (window as unknown as { requestIdleCallback?: unknown }).requestIdleCallback = (
+        cb: () => void,
+      ) => realSetTimeout(cb, 0);
+      const sentryDefer = await import('/src/bootstrap/sentry-defer.ts');
+      sentryDefer._resetSentryDeferStateForTests();
+      sentryDefer._setSentryLoaderForTests(async () => ({
+        captureException: (err: unknown, ctx?: { tags?: Record<string, string> }) => {
+          w.__sentryCaptures.push({
+            message: err instanceof Error ? err.message : String(err),
+            tags: ctx?.tags,
+          });
+          return 'test-event-id';
+        },
+      }) as never);
+      // Deliberately NOT calling scheduleSentryInit() here. Production defers
+      // real init ~10s from page load (main.ts) and the day-0 interstitial opens
+      // on that same post-checkout load, so a failing step enqueues into the
+      // pending buffer rather than dispatching straight through. Awaiting init
+      // first would exercise enqueueSentryCall's immediate branch — not the one
+      // this scenario depends on. reportActivationStepFailure kicks init itself.
+    });
+
+    await openFlow(page, /* withOpeners */ false);
+    await expect(page.locator(CONFIRM_BTN)).toBeVisible();
+    await page.locator(CONFIRM_BTN).click();
+    await expect(page.locator('.pro-activation-status.status-failed')).toBeVisible();
+
+    const readCaptures = () =>
+      page.evaluate(
+        () =>
+          (window as unknown as {
+            __sentryCaptures: Array<{ message: string; tags?: Record<string, string> }>;
+          }).__sentryCaptures,
+      );
+
+    // reportActivationStepFailure kicks the idempotent scheduleSentryInit() itself
+    // (#5600), so the capture must arrive without the test driving init — that
+    // explicit kick is what stops a user who closes the tab inside the ~10s
+    // deferral window from losing the only signal for a failed activation.
+    await expect.poll(async () => (await readCaptures()).length).toBeGreaterThan(0);
+
+    const captures = await readCaptures();
+    const briefCapture = captures.find((c) => c.tags?.step === 'brief');
+    expect(briefCapture).toBeTruthy();
+    expect(briefCapture?.tags).toMatchObject({
+      component: 'pro-activation',
+      step: 'brief',
+      stage: 'brief-confirm',
+      activation_path: 'day0',
+    });
+    // Assert the message this harness actually produces. It fails in
+    // `assertExpectedAccount` (src/services/notification-channels.ts) — no Clerk
+    // user in the harness — so there is no HTTP status to carry here; the
+    // `set email channel: <status>` shape lives on the post-auth path. A bare
+    // length check passed on literally any string, including an empty-ish one.
+    // Matched on the thrown message rather than a line number so the reference
+    // survives edits to that module (#5622 moved the function).
+    expect(briefCapture?.message).toContain('Authenticated account changed during notification setup');
+  });
+
+  test('power-toolkit command search teaches the shortcut and invokes the app opener', async ({
     page,
   }) => {
     await gotoHarness(page);
     await openFlow(page, /* withOpeners */ true);
 
     // Skip forward until the power step's injected pointer is on screen.
-    const pointer = page.locator('.pro-activation-pointer[data-pointer="widgets"]');
+    const pointer = page.locator('.pro-activation-pointer[data-pointer="search"]');
     for (let i = 0; i < 5; i += 1) {
       if (await pointer.count()) break;
       const skip = page.locator(SKIP_BTN);
@@ -300,11 +1107,25 @@ test.describe('Pro activation flow — telemetry + finish-setup chip', () => {
       else break;
     }
     await expect(pointer).toBeVisible();
+    await expect(pointer).toContainText('Search the entire dashboard');
+    await expect(pointer.locator('kbd')).toHaveCount(2);
+    await expect(pointer).toHaveAttribute('aria-label', /Search the entire dashboard \((?:⌘K|Ctrl\+K)\)/);
+    await expect(page.locator('.pro-activation-pointer').first()).toHaveAttribute('data-pointer', 'search');
 
-    // Clicking a pointer confirms the power step (stepConfirmed) and finishes
-    // the flow (a deep-link closes the full-screen overlay first).
-    await pointer.click();
+    // #5607: Pro is apiAccess:false / mcpAccess:true, so the third pointer sells
+    // MCP setup — never "API & MCP keys" deep-linked at the API-plan upsell.
+    await expect(
+      page.locator('.pro-activation-pointer[data-pointer="mcpClients"]'),
+    ).toContainText('Set up MCP');
+    await expect(page.locator('.pro-activation-pointer[data-pointer="apiKeys"]')).toHaveCount(0);
+
+    // The advertised keyboard shortcut must work while the full-screen
+    // interstitial is still open, not launch an invisible search layer behind it.
+    await page.keyboard.press(`${process.platform === 'darwin' ? 'Meta' : 'Control'}+K`);
     await expect(page.locator(OVERLAY)).toHaveCount(0);
+    await expect.poll(
+      () => page.evaluate(() => (window as unknown as { __proSearchOpened: boolean }).__proSearchOpened),
+    ).toBe(true);
 
     const events = await readCapturedEvents(page);
     expect(events[0]?.event).toBe('pro-activation-entered');
@@ -401,12 +1222,12 @@ test.describe('Pro activation — notification context', () => {
 });
 
 test.describe('Pro activation — boot gating (real app)', () => {
-  test('no pending marker → interstitial never opens and no marker is written', async ({
+  test('anonymous boot without a pending marker does not open or synthesize one', async ({
     page,
   }) => {
     // A failed / non-success checkout return writes NO pending marker (only the
-    // success path does), so this also covers "failed checkout return → no
-    // interstitial": with no marker, the boot decision is `none`.
+    // success path does). Markerless onboarding still requires an authenticated,
+    // first-cycle Pro subscription carrying server-derived eligibility.
     await page.addInitScript(() => {
       localStorage.setItem('worldmonitor-variant', 'happy');
     });

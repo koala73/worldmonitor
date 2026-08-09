@@ -47,7 +47,7 @@ export class StockBacktestPanel extends Panel {
 
     if (!this.tableView) {
       this.tableView = new WatchlistTableView<StockBacktestResult>({
-        intro: 'Historical replay of the premium stock-analysis signal engine over recent daily bars.',
+        intro: 'Historical replay of the technical signal model over recent daily bars. Point-in-time fundamentals are not included.',
         columns: [
           {
             key: 'symbol', label: 'Symbol', sortable: true, sortOptionKey: 'symbol-asc',
@@ -127,6 +127,7 @@ export class StockBacktestPanel extends Panel {
           <div style="border:1px solid var(--border);padding:8px"><div style="color:var(--text-dim);text-transform:uppercase;letter-spacing:0.08em">Direction Accuracy</div><div style="margin-top:4px">${escapeHtml(fmtPct(item.directionAccuracy))}</div></div>
           <div style="border:1px solid var(--border);padding:8px"><div style="color:var(--text-dim);text-transform:uppercase;letter-spacing:0.08em">Cumulative</div><div style="margin-top:4px;color:${tone(item.cumulativeSimulatedReturnPct)}">${escapeHtml(fmtPct(item.cumulativeSimulatedReturnPct))}</div></div>
           <div style="border:1px solid var(--border);padding:8px"><div style="color:var(--text-dim);text-transform:uppercase;letter-spacing:0.08em">Signals</div><div style="margin-top:4px">${escapeHtml(String(item.actionableEvaluations))}</div></div>
+          <div style="border:1px solid var(--border);padding:8px"><div style="color:var(--text-dim);text-transform:uppercase;letter-spacing:0.08em">Rating Basis</div><div style="margin-top:4px">${escapeHtml(item.ratingBasis === 'technical_only' ? 'Technical only' : item.ratingBasis)}</div></div>
         </div>
         <div style="display:grid;gap:6px">
           <div style="font-size:11px;text-transform:uppercase;letter-spacing:0.08em;color:var(--text-dim)">Recent Evaluations</div>

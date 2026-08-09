@@ -17,15 +17,20 @@ const LIVE = process.env.LIVE_API_CACHE_TESTS === '1';
 const API_BASE = stripTrailingSlash(process.env.WM_LIVE_API_BASE_URL || 'https://api.worldmonitor.app');
 const WEB_BASE = stripTrailingSlash(process.env.WM_LIVE_WEB_BASE_URL || 'https://worldmonitor.app');
 const FAKE_WM_KEY = 'wm_0000000000000000000000000000000000000000';
+// The CDN-shielded weather read. `&public=1` marks a URL whose response is the
+// shared seed payload for EVERY caller, so it can be cached without the cache
+// key ever having to know about credentials (#5386).
+const PUBLIC_WEATHER_URL = `${API_BASE}/api/bootstrap?keys=weatherAlerts&public=1`;
 
 /**
  * Append a unique cache-buster to a fake-auth probe URL.
  *
  * The fake-auth assertions below are about ORIGIN auth logic ("an invalid key
- * must be rejected no-store"), but they target URLs the edge caches publicly for
- * 600s, and the cache key does NOT include X-WorldMonitor-Key (`vary: Origin`
- * only). So a request bearing an invalid key is served whatever anonymous
- * response is already cached for that URL — verified against production:
+ * must be rejected no-store"), but the cache key does NOT include
+ * X-WorldMonitor-Key (`vary: Origin` only) on any layer — so on any URL that is
+ * both publicly cacheable and credentialed, a request bearing an invalid key is
+ * served whatever anonymous response is already cached — verified against
+ * production before #5386 was fixed:
  *
  *   cache-busted URL + fake key -> x-vercel-cache: MISS -> 401, no-store   (correct)
  *   already-cached URL + fake key -> x-vercel-cache: HIT  -> 200, public    (cached anon)
@@ -36,8 +41,8 @@ const FAKE_WM_KEY = 'wm_0000000000000000000000000000000000000000';
  * reds no PR can fix, which is how a guard earns its way into being ignored.
  *
  * Busting makes the auth assertion deterministic and keeps it testing the thing
- * it names. The cached-anonymous behavior is a separate property, pinned
- * explicitly by its own test below rather than left as a flaky side effect.
+ * it names. That a credentialed URL cannot be warmed into answering for the
+ * origin at all is the separate, un-busted property the warm-cache test asserts.
  */
 let _bust = 0;
 function bust(url) {
@@ -147,7 +152,7 @@ describe(`live API cache/auth regression sweep (${LIVE ? 'ENABLED' : 'SKIPPED - 
     );
   });
 
-  it('bootstrap rejects fake auth as dynamic no-store while anonymous weather stays cacheable', async () => {
+  it('bootstrap rejects fake auth as dynamic no-store while public weather stays cacheable', async () => {
     const fake = await fetchText(bust(`${API_BASE}/api/bootstrap?keys=weatherAlerts`), {
       headers: { 'X-WorldMonitor-Key': FAKE_WM_KEY },
     });
@@ -156,68 +161,101 @@ describe(`live API cache/auth regression sweep (${LIVE ? 'ENABLED' : 'SKIPPED - 
     assertNotCached200(fake.resp, 'bootstrap fake auth');
     assertNoSentinelLeak(fake.bodyText, 'bootstrap fake auth');
 
-    const anon = await fetchText(`${API_BASE}/api/bootstrap?keys=weatherAlerts`);
-    assertPublicCacheable(anon.resp, 'bootstrap anonymous weather');
-    assert.match(anon.bodyText, /"data"\s*:/, 'bootstrap anonymous weather: expected data envelope');
+    // The CDN shield lives on the explicitly-marked URL (#5386). The bare URL is
+    // still anonymous, but no-store — it shares a URL with credentialed callers,
+    // so anything cacheable there could answer for the origin.
+    const anon = await fetchText(`${PUBLIC_WEATHER_URL}`);
+    assertPublicCacheable(anon.resp, 'bootstrap public weather');
+    assert.match(anon.bodyText, /"data"\s*:/, 'bootstrap public weather: expected data envelope');
+
+    const bareAnon = await fetchText(`${API_BASE}/api/bootstrap?keys=weatherAlerts`);
+    assert.equal(bareAnon.resp.status, 200, 'bare weather URL must still answer anonymous callers');
+    assertNoStore(bareAnon.resp, 'bootstrap bare anonymous weather');
     markProbeCompleted('bootstrap-auth');
   });
 
-  it('PINNED: an invalid key on a publicly-cached URL is served the cached anonymous 200, not a 401', async () => {
-    // Documents real production behavior discovered while wiring this suite into
-    // CI (#5379). The edge cache key does not include X-WorldMonitor-Key
-    // (`vary: Origin` only), so once a public URL is warm, a request carrying an
-    // INVALID key is served the cached anonymous response instead of the origin's
-    // 401. Confirmed by the contrast with the cache-busted probe above, which
-    // gets MISS -> 401 on the very same URL and key.
+  it('an invalid key is never answered by a warm cache entry, on either weather URL', async () => {
+    // #5386, fixed: the edge cache key does not include X-WorldMonitor-Key
+    // (`vary: Origin` only), and neither Vercel nor Cloudflare would key on it —
+    // so a URL that is BOTH publicly cacheable and credentialed will serve the
+    // cached anonymous 200 to an invalid key once warm. Production did exactly
+    // that on the bare `?keys=weatherAlerts` URL.
     //
-    // Impact today is bounded: the cached body is the anonymous public payload,
-    // so invalid credentials are silently downgraded to anonymous rather than
-    // leaking anything private — and genuinely gated keys still fail closed (see
-    // the premium RPC test below, which 401s regardless of cache state).
+    // The fix separates the two roles rather than trying to teach the CDN about
+    // the header: `&public=1` is the cacheable URL (public by contract, for every
+    // caller), and the bare URL is credentialed + no-store, so no edge node ever
+    // holds an entry that can answer for the origin there.
     //
-    // Pinned rather than asserted-away because the SHAPE is the #4497 hazard this
-    // whole suite exists to watch: if an authenticated 200 ever became cacheable,
-    // this same cache-key blindness would serve private data publicly. If this
-    // test starts failing because the URL now 401s, the cache key gained the auth
-    // header — that is an improvement; update this test deliberately.
-    // Tracked separately for a product decision; not fixed here.
-    const warm = `${API_BASE}/api/bootstrap?keys=weatherAlerts`;
-    await waitForSharedCacheHit(warm, 'bootstrap anonymous warm-up');
-    const withBadKey = await fetchText(warm, {
+    // Both halves are asserted here because either one alone re-opens the hazard:
+    // if the bare URL becomes cacheable again the 401 below turns back into a
+    // cached 200, and if an entitled payload ever lands in the public entry the
+    // structural assertions catch it. That second half is the #4497 shape this
+    // whole suite exists to watch.
+    const warm = await waitForSharedCacheHit(PUBLIC_WEATHER_URL, 'bootstrap public weather warm-up');
+
+    // The public URL is public for every caller — a key attached here changes
+    // nothing, by design (a CDN hit precedes handler auth).
+    const publicWithBadKey = await fetchText(PUBLIC_WEATHER_URL, {
       headers: { 'X-WorldMonitor-Key': FAKE_WM_KEY },
     });
-
-    if (withBadKey.resp.status === 401) {
-      assertNoStore(withBadKey.resp, 'invalid key on warm URL (now failing closed)');
-      markProbeCompleted('warm-cache');
-      return; // cache key now includes the auth header — strictly better.
-    }
-
-    assert.equal(withBadKey.resp.status, 200, 'expected either a 401 or the cached anonymous 200');
+    assert.equal(publicWithBadKey.resp.status, 200, 'the marked public URL answers every caller identically');
     assert.match(
-      cacheControl(withBadKey.resp), /\bpublic\b/i,
+      cacheControl(publicWithBadKey.resp), /\bpublic\b/i,
       'the served response should be the public cached one, not a private authenticated payload',
     );
-    assertNoSentinelLeak(withBadKey.bodyText, 'invalid key served from cache');
-    // The load-bearing assertion: whatever is served must be the ANONYMOUS
-    // payload shape. A divergence here would mean private data sitting in a
-    // public cache entry — the actual #4497 incident.
+    assertNoSentinelLeak(publicWithBadKey.bodyText, 'invalid key on the public weather URL');
+
+    // The load-bearing assertion: whatever the public entry holds must be the
+    // ANONYMOUS payload shape. A divergence here would mean private data sitting
+    // in a public cache entry — the actual #4497 incident.
     //
     // Asserted STRUCTURALLY, not by byte-length against a second fetch: this is
     // live weather data that changes between requests, and different edge nodes
     // hold differently-sized cache entries (observed 61512 vs 61287 for the same
     // logical response). A size comparison here fails for reasons that have
     // nothing to do with auth — the exact flakiness this test was added to remove.
-    const body = JSON.parse(withBadKey.bodyText);
-    assert.deepEqual(
-      Object.keys(body).sort(), ['data', 'missing'],
-      'invalid-key response must be the public bootstrap envelope, nothing more',
-    );
-    assert.deepEqual(
-      Object.keys(body.data ?? {}), ['weatherAlerts'],
-      'invalid-key response must carry ONLY the public key that was requested — any additional ' +
-        'key would mean an entitled payload is sitting in a public cache entry (#4497)',
-    );
+    for (const [label, sample] of [['warm anonymous', warm], ['invalid key', publicWithBadKey]]) {
+      const body = JSON.parse(sample.bodyText);
+      assert.deepEqual(
+        Object.keys(body).sort(), ['data', 'missing'],
+        `${label}: public weather response must be the bootstrap envelope, nothing more`,
+      );
+      assert.deepEqual(
+        Object.keys(body.data ?? {}), ['weatherAlerts'],
+        `${label}: response must carry ONLY the public key that was requested — any additional ` +
+          'key would mean an entitled payload is sitting in a public cache entry (#4497)',
+      );
+    }
+
+    // The credentialed URL is the one that must fail closed. It is NOT
+    // cache-busted on purpose: the whole point is that ordinary repeated traffic
+    // cannot warm this URL into answering for the origin.
+    //
+    // First prove the EDGE never stores it. The origin emitting `no-store` is
+    // only half the fix — a CDN rule that caches despite `no-store` would keep
+    // the #5386 hazard alive while every origin-side unit test stayed green, and
+    // this live sweep is the only place that difference is observable. Repeat
+    // the anonymous read: if any node ever reports a shared-cache HIT, the URL
+    // is warmable and an invalid key can be answered from it.
+    const bareUrl = `${API_BASE}/api/bootstrap?keys=weatherAlerts`;
+    for (let attempt = 1; attempt <= 3; attempt += 1) {
+      const anonRepeat = await fetchText(bareUrl);
+      assert.equal(anonRepeat.resp.status, 200, `bare weather URL attempt ${attempt}`);
+      assertNoStore(anonRepeat.resp, `bare weather URL attempt ${attempt}`);
+      assert.equal(
+        isSharedCacheHit(anonRepeat.resp), false,
+        `bare weather URL attempt ${attempt}: the credentialed URL must never be served from a `
+          + 'shared cache — a HIT here means the edge is storing it despite no-store (#5386)',
+      );
+    }
+
+    const bareWithBadKey = await fetchText(bareUrl, {
+      headers: { 'X-WorldMonitor-Key': FAKE_WM_KEY },
+    });
+    assert.equal(bareWithBadKey.resp.status, 401, 'an invalid key on the bare weather URL must reach the origin and 401');
+    assertNoStore(bareWithBadKey.resp, 'invalid key on the bare weather URL');
+    assertNotCached200(bareWithBadKey.resp, 'invalid key on the bare weather URL');
+    assertNoSentinelLeak(bareWithBadKey.bodyText, 'invalid key on the bare weather URL');
     markProbeCompleted('warm-cache');
   });
 

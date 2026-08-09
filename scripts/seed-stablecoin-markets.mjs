@@ -11,6 +11,12 @@ const CACHE_TTL = 5400; // 90min — 1h buffer over 10min cron cadence (was 60mi
 
 const STABLECOIN_IDS = stablecoinConfig.ids.join(',');
 
+// Shared with the relay's backup seeder and with the RPC handler, which
+// classifies coins this seed does not carry. Three producers writing peg
+// status against three private copies of these numbers would let the same
+// coin read "ON PEG" from one path and "SLIGHT DEPEG" from another. (#6308)
+const { onPegMaxDeviation: ON_PEG_MAX, slightDepegMaxDeviation: SLIGHT_DEPEG_MAX } = stablecoinConfig.pegThresholds;
+
 async function fetchWithRateLimitRetry(url, maxAttempts = 5, headers = { Accept: 'application/json', 'User-Agent': CHROME_UA }) {
   for (let i = 0; i < maxAttempts; i++) {
     const resp = await fetch(url, {
@@ -78,8 +84,8 @@ async function fetchStablecoinMarkets() {
     const price = coin.current_price || 0;
     const deviation = Math.abs(price - 1.0);
     let pegStatus;
-    if (deviation <= 0.005) pegStatus = 'ON PEG';
-    else if (deviation <= 0.01) pegStatus = 'SLIGHT DEPEG';
+    if (deviation <= ON_PEG_MAX) pegStatus = 'ON PEG';
+    else if (deviation <= SLIGHT_DEPEG_MAX) pegStatus = 'SLIGHT DEPEG';
     else pegStatus = 'DEPEGGED';
 
     return {

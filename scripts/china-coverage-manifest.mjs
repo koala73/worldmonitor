@@ -3,6 +3,11 @@
 // the serialized shared-registry frontier reaches them (issue #5271).
 
 import { CHINA_NEWS_SOURCE_NAMES } from './_china-news-coverage.mjs';
+import {
+  CHINA_MACRO_CACHE_KEY,
+  CHINA_MACRO_MAX_CONTENT_AGE_MIN,
+  CHINA_MACRO_MAX_TRANSPORT_AGE_MIN,
+} from './_china-macro-contract.mjs';
 
 export const CHINA_COVERAGE_SUMMARY_KEY = 'health:china-coverage:v1';
 export const CHINA_COVERAGE_SEED_META_KEY = 'seed-meta:health:china-coverage';
@@ -147,6 +152,56 @@ export const CHINA_COVERAGE_ENTRIES = Object.freeze([
     },
   },
   {
+    id: 'market.china-corporate-disclosures',
+    label: 'Official SSE/SZSE corporate disclosures',
+    ownerIssue: 5577,
+    launchStatus: 'launched',
+    transport: metaTransport('seed-meta:market:china-corporate-disclosures', 180),
+    content: {
+      key: 'market:china:corporate-disclosures:v1',
+      maxAgeMin: 90 * 1_440,
+      probe: {
+        kind: 'object',
+        requiredTruthyPaths: [['sources']],
+        // A fresh seed run can still retain a degraded source snapshot (for
+        // example an intermittent exchange fetch or a bounded page limit).
+        // Treat that as partial coverage directly instead of collapsing it
+        // into the misleading CONTENT_TIMESTAMP_MISSING reason.
+        statusPath: ['status'],
+        validStatusValues: ['healthy'],
+        timestampPaths: [
+          ['events', '*', 'publicationTime', 'value'],
+          ['coverageThrough'],
+        ],
+      },
+    },
+  },
+  {
+    id: 'market.china-stock-connect',
+    label: 'Stock Connect northbound turnover and margin balance (SSE/SZSE)',
+    ownerIssue: 6155,
+    launchStatus: 'launched',
+    transport: metaTransport('seed-meta:market:china-stock-connect', 180),
+    content: {
+      key: 'market:china:stock-connect:v1',
+      // Margin publishes on a T+1 lag and both series pause for every mainland
+      // market holiday, so the content budget has to clear Chinese New Year.
+      maxAgeMin: 14 * 1_440,
+      probe: {
+        kind: 'object',
+        requiredTruthyPaths: [['sources']],
+        // A degraded snapshot is real partial coverage -- one exchange missing,
+        // or the two disagreeing on the trade date -- not a missing timestamp.
+        statusPath: ['status'],
+        validStatusValues: ['healthy'],
+        timestampPaths: [
+          ['northbound', 'tradeDate'],
+          ['margin', 'tradeDate'],
+        ],
+      },
+    },
+  },
+  {
     id: 'news.china',
     label: 'China news digest',
     ownerIssue: 5272,
@@ -194,14 +249,14 @@ export const CHINA_COVERAGE_ENTRIES = Object.freeze([
   {
     id: 'macro.china-snapshot',
     label: 'Normalized China macro snapshot',
-    ownerIssue: 5275,
+    ownerIssue: 5574,
     launchStatus: 'launched',
-    transport: metaTransport('seed-meta:economic:china-macro', 4_320),
+    transport: metaTransport('seed-meta:economic:china-macro-transport', CHINA_MACRO_MAX_TRANSPORT_AGE_MIN),
     content: {
-      key: 'economic:china:macro:v1',
-      maxAgeMin: 120 * 1_440,
-      // contentObservationDate is the OLDEST required launch indicator, so a
-      // fresh FX tick cannot mask stale price/activity content.
+      key: CHINA_MACRO_CACHE_KEY,
+      maxAgeMin: CHINA_MACRO_MAX_CONTENT_AGE_MIN,
+      // contentObservationDate is the oldest required official observation,
+      // while transport freshness remains independent in #5581 provenance.
       probe: { kind: 'object', timestampPaths: [['contentObservationDate']] },
     },
   },
@@ -215,6 +270,22 @@ export const CHINA_COVERAGE_ENTRIES = Object.freeze([
       key: 'economic:china:release-calendar:v1',
       maxAgeMin: 45 * 1_440,
       probe: { kind: 'object', requiredTruthyPaths: [['countryCode'], ['events']], timestampPaths: [['generatedAt']] },
+    },
+  },
+  {
+    id: 'policy.official-events',
+    label: 'Official policy and enforcement events',
+    ownerIssue: 5576,
+    launchStatus: 'launched',
+    transport: metaTransport('seed-meta:china:policy-events', 2_160),
+    content: {
+      key: 'china:policy-events:v1',
+      maxAgeMin: 180 * 1_440,
+      probe: {
+        kind: 'object',
+        requiredTruthyPaths: [['events']],
+        timestampPaths: [['events', '*', 'publicationDate']],
+      },
     },
   },
   {
@@ -239,6 +310,22 @@ export const CHINA_COVERAGE_ENTRIES = Object.freeze([
       key: 'weather:hko-warnings:v1',
       maxAgeMin: 540,
       probe: { kind: 'object', timestampPaths: [['evaluatedAt'], ['latestObservationAt']] },
+    },
+  },
+  {
+    id: 'military.cross-strait-activity',
+    label: 'Official cross-Strait activity baseline',
+    ownerIssue: 5575,
+    launchStatus: 'launched',
+    transport: metaTransport('seed-meta:military:cross-strait-activity', 720),
+    content: {
+      key: 'military:cross-strait-activity:v1',
+      maxAgeMin: 3 * 1_440,
+      probe: {
+        kind: 'object',
+        requiredTruthyPaths: [['coverage', 'usableMndReportingDays']],
+        timestampPaths: [['coverage', 'latestMndReportingDay']],
+      },
     },
   },
 ]);

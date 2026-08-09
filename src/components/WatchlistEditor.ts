@@ -15,33 +15,19 @@
 
 import { escapeHtml } from '@/utils/sanitize';
 import { searchSymbols, toWatchlistEntry, type SymbolSearchResult } from '@/services/symbol-search';
-import type { MarketWatchlistEntry } from '@/services/market-watchlist';
+import {
+  MARKET_WATCHLIST_MAX_ENTRIES as MAX_ENTRIES,
+  normalizeWatchlistEntries,
+  type MarketWatchlistEntry,
+} from '@/services/market-watchlist';
 import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
 
 
 const SEARCH_DEBOUNCE_MS = 280;
-const MAX_ENTRIES = 50;
 
 export interface WatchlistEditorOptions {
   /** The user's current watchlist — seeds the chips. */
   initial: MarketWatchlistEntry[];
-}
-
-function dedupeEntries(list: MarketWatchlistEntry[]): MarketWatchlistEntry[] {
-  const seen = new Set<string>();
-  const out: MarketWatchlistEntry[] = [];
-  for (const e of list || []) {
-    const symbol = (e?.symbol || '').trim();
-    if (!symbol || seen.has(symbol)) continue;
-    seen.add(symbol);
-    out.push({
-      symbol,
-      ...(e.name ? { name: e.name } : {}),
-      ...(e.display ? { display: e.display } : {}),
-    });
-    if (out.length >= MAX_ENTRIES) break;
-  }
-  return out;
 }
 
 export class WatchlistEditor {
@@ -58,7 +44,7 @@ export class WatchlistEditor {
   private searchSeq = 0;
 
   constructor(opts: WatchlistEditorOptions) {
-    this.entries = dedupeEntries(opts.initial);
+    this.entries = normalizeWatchlistEntries(opts.initial);
 
     this.element = document.createElement('div');
     this.element.style.cssText = 'display:flex;flex-direction:column;gap:10px';

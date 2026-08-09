@@ -8,6 +8,8 @@
  * - Unknown errors -- 500 Internal Server Error
  */
 
+import { isBillingVerificationCode } from './_shared/entitlement-check';
+
 /**
  * Detects network/fetch errors across runtimes. Per Fetch spec, network
  * errors throw TypeError. We also check common error message patterns
@@ -38,16 +40,28 @@ export function mapErrorToResponse(error: unknown, _req: Request): Response {
     // Only expose error.message for 4xx (client errors). Use generic message for 5xx
     // to avoid leaking internal details like upstream URLs or API key fragments (H-3 fix).
     const retryAfter = (statusCode === 429 || statusCode === 503) && 'retryAfter' in error ? Number((error as Error & { retryAfter: number }).retryAfter) : null;
+    const billingCodeCandidate = 'billingVerificationCode' in error
+      ? (error as Error & { billingVerificationCode: unknown }).billingVerificationCode
+      : null;
+    const billingVerificationCode = isBillingVerificationCode(billingCodeCandidate)
+      ? billingCodeCandidate
+      : null;
     const exposesRetryableUnavailable = statusCode === 503
       && retryAfter != null
       && Number.isFinite(retryAfter)
       && (error as Error & { exposeMessage?: boolean }).exposeMessage === true;
     const message = (statusCode >= 400 && statusCode < 500) || exposesRetryableUnavailable ? error.message : 'Internal server error';
-    const body: Record<string, unknown> = { message };
+    const extras: Record<string, unknown> = {};
+    const headers: Record<string, string> = {};
 
     // Rate limit: include retryAfter if present
     if (retryAfter != null && Number.isFinite(retryAfter)) {
-      body.retryAfter = retryAfter;
+      extras.retryAfter = retryAfter;
+      headers['Retry-After'] = String(retryAfter);
+    }
+    if (billingVerificationCode) {
+      extras.code = billingVerificationCode;
+      headers['X-Billing-Verification'] = billingVerificationCode;
     }
 
     if (statusCode >= 500) {
@@ -59,8 +73,8 @@ export function mapErrorToResponse(error: unknown, _req: Request): Response {
     return jsonMessageResponse(
       message,
       statusCode,
-      retryAfter != null && Number.isFinite(retryAfter) ? { retryAfter } : undefined,
-      retryAfter != null && Number.isFinite(retryAfter) ? { 'Retry-After': String(retryAfter) } : undefined,
+      Object.keys(extras).length > 0 ? extras : undefined,
+      Object.keys(headers).length > 0 ? headers : undefined,
     );
   }
 

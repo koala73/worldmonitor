@@ -9,9 +9,12 @@ export const UPSTREAM_TIMEOUT_MS = 10_000;
 // Temporal baseline constants
 export const BASELINE_TTL = 7776000; // 90 days in seconds
 export const MIN_SAMPLES = 10;
-export const Z_THRESHOLD_LOW = 1.5;
-export const Z_THRESHOLD_MEDIUM = 2.0;
-export const Z_THRESHOLD_HIGH = 3.0;
+export {
+  Z_THRESHOLD_LOW,
+  Z_THRESHOLD_MEDIUM,
+  Z_THRESHOLD_HIGH,
+  getBaselineSeverity,
+} from '../../../../shared/analysis-temporal-severity';
 
 export const VALID_BASELINE_TYPES = filterParamContracts.infrastructureTemporalBaselineTypes;
 
@@ -44,12 +47,6 @@ export const TEMPORAL_ANOMALIES_TTL = 3600;
 export const BASELINE_LOCK_KEY = 'baseline:lock';
 export const BASELINE_LOCK_TTL = 30;
 
-export function getBaselineSeverity(zScore: number): string {
-  if (zScore >= Z_THRESHOLD_HIGH) return 'critical';
-  if (zScore >= Z_THRESHOLD_MEDIUM) return 'high';
-  if (zScore >= Z_THRESHOLD_LOW) return 'medium';
-  return 'normal';
-}
 
 // ========================================================================
 // Upstash Redis MGET helper (edge-compatible)

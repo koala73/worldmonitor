@@ -16,16 +16,33 @@ import {
   SECTORS,
   COMMODITIES,
   MARKET_SYMBOLS,
+  STOCK_CATALOG,
   SITE_VARIANT,
   LAYER_TO_SOURCE,
+  STORAGE_KEYS,
   isPanelInVariantDefaults,
 } from '@/config';
-import { resolveNewsCategories, enabledNewsCategoryKeys } from '@/config/feed-resolution';
+import { resolveNewsCategories, enabledNewsCategoryKeys, type ResolvedCategory } from '@/config/feed-resolution';
+import {
+  countRepresentedSources,
+  mergeRotatedNewsItems,
+  nextRotationCycle,
+  selectRotatingFeedWindow,
+} from '@/app/news-feed-rotation';
 import {
   runNewsLoadPass,
+  newsWorkListSignature,
   type NewsCategoryLoadOptions,
   type NewsIntelLoadOptions,
 } from '@/app/news-loader-sequencing';
+import {
+  countDigestCategories,
+  DigestPersistenceQueue,
+  digestCacheKey,
+  getScopedDigest,
+  retainRicherScopedDigest,
+  type ScopedDigest,
+} from '@/app/news-digest-acceptance';
 import { INTEL_HOTSPOTS, CONFLICT_ZONES } from '@/config/geo';
 import { tokenizeForMatch, matchKeyword } from '@/utils/keyword-match';
 import { withTimeout } from '@/utils/with-timeout';
@@ -56,9 +73,20 @@ import {
   fetchSanctionsPressure,
   fetchRadiationWatch,
 } from '@/services';
-import { getMarketWatchlistEntries } from '@/services/market-watchlist';
+import {
+  getCatalogSelection,
+  getMarketWatchlistEntries,
+  resolveEffectiveMarketWatchlist,
+} from '@/services/market-watchlist';
 import { fetchStockAnalysesForTargets, getStockAnalysisTargets, type StockAnalysisResult } from '@/services/stock-analysis';
 import { fetchInsiderTransactions } from '@/services/insider-transactions';
+import { selectCompleteHydratedMarketQuotes } from '@/services/market-hydration';
+import { transitionCiiAvailability } from '@/services/cii-availability';
+import {
+  resolveSectorHeatmapAvailability,
+  resolveStockMarketAvailability,
+} from '@/services/market-availability';
+import { LatestRequestGuard } from '@/utils/latest-request-guard';
 import {
   fetchStockBacktestsForTargets,
   fetchStoredStockBacktests,
@@ -83,13 +111,13 @@ import { updateAndCheck, consumeServerAnomalies, fetchLiveAnomalies } from '@/se
 import { fetchAllFires, flattenFires, computeRegionStats, toMapFires } from '@/services/wildfires';
 import type { TheaterPostureSummary } from '@/services/military-surge';
 import { fetchCachedTheaterPosture } from '@/services/cached-theater-posture';
-import { ingestProtestsForCII, ingestMilitaryForCII, ingestNewsForCII, ingestOutagesForCII, ingestConflictsForCII, ingestUcdpForCII, ingestHapiForCII, ingestDisplacementForCII, ingestClimateForCII, ingestStrikesForCII, ingestOrefForCII, ingestAviationForCII, ingestAdvisoriesForCII, ingestGpsJammingForCII, ingestAisDisruptionsForCII, ingestSatelliteFiresForCII, ingestCyberThreatsForCII, ingestTemporalAnomaliesForCII, ingestEarthquakesForCII, ingestSanctionsForCII, isInLearningMode, resetHotspotActivity, type CountryScore } from '@/services/country-instability';
+import { ingestConflictsForCountryData, ingestDisplacementForCountryData, ingestClimateForCountryData, ingestGpsJammingForCountryData, isInLearningMode, type CountryScore } from '@/services/country-instability';
 import { fetchGpsInterference } from '@/services/gps-interference';
 import { fetchSatelliteTLEs, initSatRecs, propagatePositions, startPropagationLoop } from '@/services/satellites';
 import type { SatRecEntry } from '@/services/satellites';
 import { dataFreshness, type DataSourceId } from '@/services/data-freshness';
 import type { CorrelationSignal } from '@/services/correlation';
-import { fetchConflictEvents, fetchUcdpClassifications, fetchHapiSummary, fetchUcdpEvents, deduplicateAgainstAcled, deduplicateUcdpProjectionAggregates, fetchIranEvents } from '@/services/conflict';
+import { fetchConflictEvents, fetchUcdpEvents, deduplicateAgainstAcled, deduplicateUcdpProjectionAggregates, fetchIranEvents } from '@/services/conflict';
 import { fetchUnhcrPopulation } from '@/services/displacement';
 import { fetchClimateAnomalies } from '@/services/climate';
 import { fetchSecurityAdvisories } from '@/services/security-advisories';
@@ -100,10 +128,11 @@ import { fetchOrefAlerts, startOrefPolling, stopOrefPolling, onOrefAlertsUpdate 
 import { getResilienceRanking } from '@/services/resilience';
 import { buildResilienceChoroplethMap } from '@/components/resilience-choropleth-utils';
 import { enrichEventsWithExposure } from '@/services/population-exposure';
-import { debounce, getCircuitBreakerCooldownInfo } from '@/utils';
+import { debounce, getCircuitBreakerCooldownInfo, loadFromStorage, saveToStorage } from '@/utils';
 import { isFeatureAvailable, isFeatureEnabled } from '@/services/runtime-config';
 import { hasPremiumAccess } from '@/services/panel-gating';
 import { isDesktopRuntime, toApiUrl } from '@/services/runtime';
+import { filterFeedsByLanguage } from '@/services/feed-language';
 import { getAiFlowSettings } from '@/services/ai-flow-settings';
 import { t, getCurrentLanguage } from '@/services/i18n';
 import { getHydratedData } from '@/services/bootstrap';
@@ -121,6 +150,7 @@ import type {
   OtherTokensPanel,
   SectorValuation,
 } from '@/components/MarketPanel';
+import type { ChinaCorporateDisclosureSnapshot } from '@/components/market-disclosures';
 import { mountCommunityWidget } from '@/components/CommunityWidget';
 
 import type { StockAnalysisPanel } from '@/components/StockAnalysisPanel';
@@ -139,6 +169,8 @@ import type { TechReadinessPanel } from '@/components/TechReadinessPanel';
 import type { UcdpEventsPanel } from '@/components/UcdpEventsPanel';
 import type { TradePolicyPanel } from '@/components/TradePolicyPanel';
 import type { SupplyChainPanel } from '@/components/SupplyChainPanel';
+import type { ChinaCorridorPanel } from '@/components/ChinaCorridorPanel';
+import type { ChinaActivityNowcastPanel } from '@/components/ChinaActivityNowcastPanel';
 import type { DiseaseOutbreaksPanel } from '@/components/DiseaseOutbreaksPanel';
 import type { SocialVelocityPanel } from '@/components/SocialVelocityPanel';
 import type { WsbTickerScannerPanel } from '@/components/WsbTickerScannerPanel';
@@ -169,25 +201,24 @@ import type {
 } from '@/services/daily-market-brief';
 import { fetchCachedRiskScores, getCachedScores, toCountryScore, type CachedRiskScores } from '@/services/cached-risk-scores';
 import type { ThreatLevel as ClientThreatLevel } from '@/types';
-import type { NewsItem as ProtoNewsItem, ThreatLevel as ProtoThreatLevel } from '@/generated/client/worldmonitor/news/v1/service_client';
+import type { NewsItem as ProtoNewsItem } from '@/generated/client/worldmonitor/news/v1/service_client';
 import { fetchMarketImplications } from '@/services/market-implications';
 import { fetchDiseaseOutbreaks } from '@/services/disease-outbreaks';
 import { fetchSocialVelocity } from '@/services/social-velocity';
-import { getTopActiveGeoHubs } from '@/services/geo-activity';
-// getTopActiveHubs is lazy-imported at its call sites (applyTechHubActivities) so
-// the tech-activity → tech-hub-index → ~62KB tech-geo chain stays off the eager
+import {
+  hydrateGeoHubPanelFromClusters,
+  hydrateTechHubPanelFromClusters,
+} from '@/app/hub-activity-hydration';
+// Tech activity remains lazy-imported by hub-activity-hydration so the
+// tech-activity → tech-hub-index → ~62KB tech-geo chain stays off the eager
 // dashboard critical path (#4404).
 import type { GeoHubsPanel } from '@/components/GeoHubsPanel';
 import type { TechHubsPanel } from '@/components/TechHubsPanel';
 import { ResearchServiceClient } from '@/services/generated-rpc-clients';
 
-const PROTO_TO_CLIENT_LEVEL: Record<ProtoThreatLevel, ClientThreatLevel> = {
-  THREAT_LEVEL_UNSPECIFIED: 'info',
-  THREAT_LEVEL_LOW: 'low',
-  THREAT_LEVEL_MEDIUM: 'medium',
-  THREAT_LEVEL_HIGH: 'high',
-  THREAT_LEVEL_CRITICAL: 'critical',
-};
+// The proto-level -> label map lives in shared/news-clustering-core.js so the
+// client digest loader and the server-side MCP tools cannot drift (#5697).
+import { protoThreatLevelToLabel } from '../../shared/news-clustering-core.js';
 
 const PROTO_TO_CLIENT_PHASE: Record<string, import('@/types').StoryPhase> = {
   STORY_PHASE_BREAKING:   'breaking',
@@ -197,7 +228,7 @@ const PROTO_TO_CLIENT_PHASE: Record<string, import('@/types').StoryPhase> = {
 };
 
 function protoItemToNewsItem(p: ProtoNewsItem): NewsItem {
-  const level = PROTO_TO_CLIENT_LEVEL[p.threat?.level ?? 'THREAT_LEVEL_UNSPECIFIED'];
+  const level: ClientThreatLevel = protoThreatLevelToLabel(p.threat?.level);
   return {
     source: p.source,
     title: p.title,
@@ -390,6 +421,7 @@ export class DataLoaderManager implements AppModule {
   private satellitePropagationCleanup: (() => void) | null = null;
   private dailyBriefGeneration = 0;
   private _stockAnalysisGeneration = 0;
+  private readonly marketLoadGuard = new LatestRequestGuard();
   private globalTenderGeneration = 0;
   private globalTenderFilters: GlobalTenderFilters = {};
   private dailyBriefFrameworkUnsubscribe: (() => void) | null = null;
@@ -407,7 +439,45 @@ export class DataLoaderManager implements AppModule {
   private readonly perFeedFallbackCategoryFeedLimit = 3;
   private readonly perFeedFallbackIntelFeedLimit = 6;
   private readonly perFeedFallbackBatchSize = 2;
-  private lastGoodDigest: ListFeedDigestResponse | null = null;
+  /**
+   * Ceiling on a custom category's ACCUMULATED item set (#5873).
+   *
+   * A custom category rotates through its sources `perFeedFallbackCategoryFeedLimit`
+   * at a time and merges each cycle into what the panel already shows, so unlike
+   * every other path its item set is not one snapshot. 40 is twice the server
+   * digest's `MAX_ITEMS_PER_CATEGORY` (20) — enough headroom for a full rotation
+   * lap of a ten-source category to stay represented at once, while keeping the
+   * panel, `ctx.allNews` and the clustering input the same order of magnitude as
+   * a digest-backed category.
+   */
+  private readonly customCategoryMergedItemLimit = 40;
+  /**
+   * Reachable source count for custom categories.
+   *
+   * Coverage is derived when the category is rendered, after the active time
+   * range has filtered its items. Keeping only the denominator here prevents a
+   * stale pre-filter count from surviving time-range changes.
+   */
+  private readonly customNewsSourceTotals = new Map<string, number>();
+  private lastGoodDigest: ScopedDigest<ListFeedDigestResponse> | null = null;
+  private readonly digestPersistenceQueue = new DigestPersistenceQueue<ListFeedDigestResponse>({
+    cacheMaxAgeMs: this.persistedDigestMaxAgeMs,
+    read: (key) => getPersistentCache<ListFeedDigestResponse>(key),
+    write: (key, data) => setPersistentCache(key, data),
+    onSkipPersist: (fetchedCategoryCount, cachedCategoryCount) => {
+      console.warn(
+        `[News] Digest covers ${fetchedCategoryCount} categories, fewer than the ` +
+        `${cachedCategoryCount} already cached — keeping the cached last-good digest`,
+      );
+    },
+  });
+  /**
+   * Work-list signature of the last news load that actually landed data, or
+   * `null` if none has. Gates loadAllData()'s `news` task — see
+   * `shouldHydrateNews`. Left unset when a load throws or comes back empty with
+   * no usable digest, so a failed load stays retryable.
+   */
+  private loadedNewsSignature: string | null = null;
 
   constructor(ctx: AppContext, callbacks: DataLoaderCallbacks) {
     this.ctx = ctx;
@@ -507,116 +577,45 @@ export class DataLoaderManager implements AppModule {
     this.ctx.map?.setLayerReady('ciiChoropleth', scores.length > 0);
   }
 
-  private renderCachedCiiScores(cached: CachedRiskScores): boolean {
-    if (this.appliedCiiState === cached) return false;
-    this.appliedCiiState = cached;
-    this.callPanel('cii', 'renderFromCached', cached);
-    this.applyCiiScoresToMap(cached.cii.map(toCountryScore));
-    return true;
-  }
-
   private refreshCiiAndBrief(): void {
     const cached = this.getAuthoritativeCachedRiskScores();
-    if (cached) {
-      this.renderCachedCiiScores(cached);
-      this.callbacks.refreshOpenCountryBrief();
-      return;
+    const transition = transitionCiiAvailability(this.appliedCiiState, cached);
+    this.appliedCiiState = transition.nextState;
+
+    if (transition.render === 'cached' && cached) {
+      this.callPanel('cii', 'renderFromCached', cached);
+      this.applyCiiScoresToMap(cached.cii.map(toCountryScore));
+    } else if (transition.render === 'unavailable') {
+      this.callPanel('cii', 'renderUnavailable');
+      this.applyCiiScoresToMap([]);
     }
 
-    if (this.appliedCiiState === null) return;
-    this.appliedCiiState = null;
-    this.callPanel('cii', 'renderUnavailable');
-    this.applyCiiScoresToMap([]);
-    this.callbacks.refreshOpenCountryBrief();
+    if (transition.refreshBrief) this.callbacks.refreshOpenCountryBrief();
   }
 
-  public refreshCiiAfterFocalPointsReady(): void {
-    this.refreshCiiAndBrief();
-  }
-
-  public refreshGeometryDependentCiiAfterCountryGeometry(): void {
+  public refreshGeometryDependentCountryData(): void {
     markLcpDebug('wm:data:country-geometry-replay-start');
     const cache = this.ctx.intelligenceCache;
-    let replayed = 0;
-
-    if (cache.protests || cache.conflicts || cache.military || cache.iranEvents) {
-      resetHotspotActivity();
-    }
-    if (cache.protests) {
-      ingestProtestsForCII(cache.protests.events);
-      replayed += 1;
-    }
-    if (cache.conflicts) {
-      ingestConflictsForCII(cache.conflicts);
-      replayed += 1;
-    }
-    if (cache.military) {
-      ingestMilitaryForCII(cache.military.flights, cache.military.vessels);
-      replayed += 1;
-    }
-    if (cache.iranEvents) {
-      const coerced = cache.iranEvents.map(e => ({ ...e, timestamp: Number(e.timestamp) || 0 }));
-      ingestStrikesForCII(coerced);
-      replayed += 1;
-    }
-    if (cache.earthquakes) {
-      ingestEarthquakesForCII(cache.earthquakes);
-      replayed += 1;
-    }
-    if (cache.flightDelays) {
-      const severe = cache.flightDelays.filter(d => d.severity === 'major' || d.severity === 'severe' || d.delayType === 'closure');
-      if (severe.length > 0) {
-        ingestAviationForCII(severe);
-        replayed += 1;
-      }
-    }
-    if (cache.outages) {
-      ingestOutagesForCII(cache.outages);
-      replayed += 1;
-    }
-    if (cache.orefAlerts) {
-      ingestOrefForCII(cache.orefAlerts.alertCount, cache.orefAlerts.historyCount24h);
-      replayed += 1;
-    }
-    if (cache.advisories) {
-      ingestAdvisoriesForCII(cache.advisories);
-      replayed += 1;
-    }
-    if (cache.sanctions) {
-      ingestSanctionsForCII(cache.sanctions.countries);
-      replayed += 1;
-    }
-    if (this.ctx.cyberThreatsCache) {
-      ingestCyberThreatsForCII(this.ctx.cyberThreatsCache);
-      replayed += 1;
-    }
-    // Coordinate-only sources (no country hint) that resolve purely via
-    // precision geometry. Without this replay their first-pass attribution —
-    // computed during the fan-out before geometry was ready — stays empty until
-    // the next scheduled refresh (#4512).
+    // GPS rows have no country hint, so replay them after precision geometry
+    // becomes available for the country-detail jamming count.
     if (cache.gpsJamming?.length) {
-      ingestGpsJammingForCII(cache.gpsJamming);
-      replayed += 1;
-    }
-    if (cache.aisDisruptions?.length) {
-      ingestAisDisruptionsForCII(cache.aisDisruptions);
-      replayed += 1;
-    }
-    if (cache.satelliteFires?.length) {
-      ingestSatelliteFiresForCII(cache.satelliteFires);
-      replayed += 1;
+      ingestGpsJammingForCountryData(cache.gpsJamming);
     }
 
-    markLcpDebug('wm:data:country-geometry-replay-ready', { replayed });
-    if (replayed > 0) this.refreshCiiAndBrief();
+    markLcpDebug('wm:data:country-geometry-replay-ready', { replayed: cache.gpsJamming?.length ? 1 : 0 });
   }
 
   private async tryFetchDigest(): Promise<ListFeedDigestResponse | null> {
     const now = Date.now();
+    // Capture request and persistence scope together. Sampling the language again
+    // after the response would let an old-language request populate the new
+    // language's cache when the user switches languages in flight.
+    const requestLanguage = getCurrentLanguage();
+    const requestKey = this.digestCacheKey(requestLanguage);
 
     if (this.digestBreaker.state === 'open') {
       if (now < this.digestBreaker.cooldownUntil) {
-        return this.lastGoodDigest ?? await this.loadPersistedDigest();
+        return this.getRetainedDigest(requestKey) ?? await this.loadPersistedDigest(requestKey);
       }
       this.digestBreaker.state = 'half-open';
     }
@@ -624,17 +623,32 @@ export class DataLoaderManager implements AppModule {
     try {
       markLcpDebug('wm:data:feed-digest-start');
       const resp = await publicRpcFetch(
-        toApiUrl(`/api/news/v1/list-feed-digest?variant=${SITE_VARIANT}&lang=${getCurrentLanguage()}`),
+        toApiUrl(`/api/news/v1/list-feed-digest?variant=${SITE_VARIANT}&lang=${requestLanguage}`),
         { signal: AbortSignal.timeout(this.digestRequestTimeoutMs) },
       );
       if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
       const data = await resp.json() as ListFeedDigestResponse;
-      const catCount = Object.keys(data.categories ?? {}).length;
+      const catCount = countDigestCategories(data);
+      // A 200 carrying no categories is an outage wearing a success status: every
+      // preset category renders empty behind it, because per-feed fallback is off
+      // on web. Throwing routes it into the catch below, which is the whole point
+      // — the breaker counts it, `lastGoodDigest` keeps the real digest it had, and
+      // `digest:last-good` is left alone instead of being poisoned for 6 hours with
+      // the empty body the fallback exists to survive (#5877).
+      if (catCount === 0) throw new Error('digest returned 0 categories');
       markLcpDebug('wm:data:feed-digest-ready', { categories: catCount });
       console.info(`[News] Digest fetched: ${catCount} categories`);
-      this.lastGoodDigest = data;
-      this.persistDigest(data);
+      this.persistDigest(requestKey, data);
       this.digestBreaker = { state: 'closed', failures: 0, cooldownUntil: 0 };
+
+      const currentKey = this.digestCacheKey();
+      if (currentKey !== requestKey) {
+        // The response is valid for the scope it requested and may refresh that
+        // scope's persistent cache, but it must not become live data or an
+        // in-memory fallback for the language now active.
+        return this.getRetainedDigest(currentKey) ?? await this.loadPersistedDigest(currentKey);
+      }
+      this.lastGoodDigest = retainRicherScopedDigest(this.lastGoodDigest, requestKey, data);
       return data;
     } catch (e) {
       markLcpDebug('wm:data:feed-digest-error');
@@ -644,20 +658,63 @@ export class DataLoaderManager implements AppModule {
         this.digestBreaker.state = 'open';
         this.digestBreaker.cooldownUntil = now + this.digestBreakerCooldownMs;
       }
-      return this.lastGoodDigest ?? await this.loadPersistedDigest();
+      const currentKey = this.digestCacheKey();
+      return this.getRetainedDigest(currentKey) ?? await this.loadPersistedDigest(currentKey);
     }
   }
 
-  private persistDigest(data: ListFeedDigestResponse): void {
-    setPersistentCache('digest:last-good', data).catch(() => {});
+  /**
+   * Write the fresh digest to `digest:last-good`, unless that would shrink it.
+   *
+   * A PARTIAL digest is the second degraded shape (#5877): a 200 that covers
+   * some categories but fewer than the entry already cached. The response is
+   * real data, so the caller uses it for this load — but overwriting a richer
+   * `digest:last-good` with it is a strict loss for the NEXT page load, which is
+   * the one that falls back to this entry when the digest is unreachable.
+   *
+   * Deliberately fire-and-forget and off the fetch path: the comparison needs a
+   * persistent-cache READ, and `tryFetchDigest` sits on the news first-paint
+   * path, so awaiting an IndexedDB round trip there would buy correctness for
+   * the fallback at the cost of the load it is protecting. A read failure is
+   * treated as "nothing cached" and the write proceeds — the previous behaviour.
+   */
+  private persistDigest(key: string, data: ListFeedDigestResponse): void {
+    this.digestPersistenceQueue.enqueue(key, data);
   }
 
-  private async loadPersistedDigest(): Promise<ListFeedDigestResponse | null> {
+  /**
+   * Cache key for the last-good digest, scoped exactly like the request that
+   * produced it.
+   *
+   * The digest is fetched per `variant` and `lang`, but the entry used to be
+   * stored under one global key — so a variant or language switch compared, and
+   * fell back to, a digest built for a different category set entirely. That was
+   * survivable while every successful fetch overwrote the entry unconditionally;
+   * it is not survivable now that coverage decides whether to overwrite, because
+   * a wider digest from the OTHER variant would veto persisting the current
+   * one's for up to 6 hours (#5877).
+   *
+   * Scoping also retires every entry written under the old key, which is the
+   * migration path for a cache already poisoned by a degraded digest: those
+   * entries simply become unreachable rather than needing to be detected.
+   */
+  private digestCacheKey(language = getCurrentLanguage()): string {
+    return digestCacheKey(SITE_VARIANT, language);
+  }
+
+  private getRetainedDigest(key = this.digestCacheKey()): ListFeedDigestResponse | null {
+    return getScopedDigest(this.lastGoodDigest, key);
+  }
+
+  private async loadPersistedDigest(key = this.digestCacheKey()): Promise<ListFeedDigestResponse | null> {
     try {
-      const envelope = await getPersistentCache<ListFeedDigestResponse>('digest:last-good');
+      const envelope = await getPersistentCache<ListFeedDigestResponse>(key);
       if (!envelope) return null;
       if (Date.now() - envelope.updatedAt > this.persistedDigestMaxAgeMs) return null;
-      this.lastGoodDigest = envelope.data;
+      // Do not let an IndexedDB read started for a previous language complete
+      // into the new language's in-memory fallback.
+      if (key !== this.digestCacheKey()) return null;
+      this.lastGoodDigest = retainRicherScopedDigest(this.lastGoodDigest, key, envelope.data);
       return envelope.data;
     } catch { return null; }
   }
@@ -678,6 +735,51 @@ export class DataLoaderManager implements AppModule {
   private selectLimitedFeeds<T>(feeds: T[], maxFeeds: number): T[] {
     if (feeds.length <= maxFeeds) return feeds;
     return feeds.slice(0, maxFeeds);
+  }
+
+  /**
+   * Rotation cycle of a custom category's capped per-feed window, persisted so
+   * it survives a reload (#5873).
+   *
+   * In-memory-only state would restart every custom category at window 0 on
+   * every page load, which for the common short session is indistinguishable
+   * from the fixed prefix this replaced: sources 4..N would still never be
+   * fetched. Reads are defensive — a hand-edited or older-schema value must not
+   * reach `selectRotatingFeedWindow` as a NaN start.
+   */
+  private readNewsRotationCycles(): Record<string, number> {
+    const stored = loadFromStorage<Record<string, number>>(STORAGE_KEYS.newsFeedRotation, {});
+    return stored && typeof stored === 'object' && !Array.isArray(stored) ? stored : {};
+  }
+
+  private newsRotationCycle(category: string): number {
+    const cycle = this.readNewsRotationCycles()[category];
+    return typeof cycle === 'number' && Number.isFinite(cycle) && cycle >= 0 ? Math.trunc(cycle) : 0;
+  }
+
+  /**
+   * Advance and persist a custom category's rotation cycle.
+   *
+   * Written AFTER the window for this cycle has been selected, and pruned to
+   * the custom categories still in the work-list so a panel the user has since
+   * removed can't leave its entry behind forever.
+   */
+  private advanceNewsRotationCycle(category: string, feedCount: number): void {
+    const keep = new Set(
+      this.resolveEnabledNewsCategories()
+        .filter(({ isCustom }) => isCustom)
+        .map(({ key }) => key),
+    );
+    keep.add(category);
+
+    const next: Record<string, number> = {};
+    for (const [key, value] of Object.entries(this.readNewsRotationCycles())) {
+      if (keep.has(key) && typeof value === 'number' && Number.isFinite(value) && value >= 0) {
+        next[key] = Math.trunc(value);
+      }
+    }
+    next[category] = nextRotationCycle(this.newsRotationCycle(category), feedCount);
+    saveToStorage(STORAGE_KEYS.newsFeedRotation, next);
   }
 
   private shouldShowIntelligenceNotifications(): boolean {
@@ -747,9 +849,10 @@ export class DataLoaderManager implements AppModule {
     const shouldLoad = (id: string): boolean => forceAll || this.isPanelNearViewport(id);
     const shouldLoadAny = (ids: string[]): boolean => forceAll || this.isAnyPanelNearViewport(ids);
 
-    const tasks: HydrationTask[] = [
-      { name: 'news', task: () => runGuarded('news', () => this.loadNews()) },
-    ];
+    const tasks: HydrationTask[] = [];
+    if (this.shouldHydrateNews(forceAll)) {
+      tasks.push({ name: 'news', task: () => runGuarded('news', () => this.loadNews()) });
+    }
 
     // Happy variant only loads news data -- skip all geopolitical/financial/military data
     if (SITE_VARIANT !== 'happy') {
@@ -793,6 +896,12 @@ export class DataLoaderManager implements AppModule {
         }
         if (shouldLoad('supply-chain')) {
           tasks.push({ name: 'supplyChain', task: () => runGuarded('supplyChain', () => this.loadSupplyChain()) });
+        }
+        if (shouldLoad('china-corridors')) {
+          tasks.push({ name: 'chinaCorridors', task: () => runGuarded('chinaCorridors', () => this.loadChinaCorridors({ skipIfPopulated: true })) });
+        }
+        if (shouldLoad('china-activity-nowcast')) {
+          tasks.push({ name: 'chinaActivityNowcast', task: () => runGuarded('chinaActivityNowcast', () => this.loadChinaActivityNowcast({ skipIfPopulated: true })) });
         }
       }
     }
@@ -860,7 +969,7 @@ export class DataLoaderManager implements AppModule {
       try {
         const cached = await fetchCachedRiskScores().catch(() => null);
         if (cached && cached.cii.length > 0) {
-          this.renderCachedCiiScores(cached);
+          this.refreshCiiAndBrief();
         }
       } catch { /* non-fatal */ }
     }
@@ -932,8 +1041,6 @@ export class DataLoaderManager implements AppModule {
     const bootstrapTemporal = consumeServerAnomalies();
     if (bootstrapTemporal.anomalies.length > 0 || bootstrapTemporal.trackedTypes.length > 0) {
       await runSignalAggregator(this.ctx.statusPanel, 'bootstrap temporal anomalies', (aggregator) => aggregator.ingestTemporalAnomalies(bootstrapTemporal.anomalies, bootstrapTemporal.trackedTypes));
-      ingestTemporalAnomaliesForCII(bootstrapTemporal.anomalies);
-      this.refreshCiiAndBrief();
     } else {
       this.refreshTemporalBaseline().catch(() => {});
     }
@@ -942,8 +1049,6 @@ export class DataLoaderManager implements AppModule {
   async refreshTemporalBaseline(): Promise<void> {
     const { anomalies, trackedTypes } = await fetchLiveAnomalies();
     await runSignalAggregator(this.ctx.statusPanel, 'temporal baseline anomalies', (aggregator) => aggregator.ingestTemporalAnomalies(anomalies, trackedTypes));
-    ingestTemporalAnomaliesForCII(anomalies);
-    this.refreshCiiAndBrief();
   }
 
   async loadDataForLayer(layer: keyof MapLayers): Promise<void> {
@@ -1182,11 +1287,32 @@ export class DataLoaderManager implements AppModule {
     return labels[range];
   }
 
+  private newsPanelKey(category: string): string {
+    return this.ctx.newsCategoryPanelKeys.get(category) ?? category;
+  }
+
+  private clearNewsSourceCoverage(category: string): void {
+    this.customNewsSourceTotals.delete(category);
+    this.callPanel(this.newsPanelKey(category), 'setSourceCoverage', null);
+  }
+
+  private setNewsRefreshDegraded(category: string, degraded: boolean): void {
+    this.callPanel(this.newsPanelKey(category), 'setRefreshDegraded', degraded);
+  }
+
   renderNewsForCategory(category: string, items: NewsItem[]): void {
     this.ctx.newsByCategory[category] = items;
+    const filteredItems = this.filterItemsByTimeRange(items);
+    const sourceTotal = this.customNewsSourceTotals.get(category);
+    if (sourceTotal !== undefined) {
+      this.callPanel(this.newsPanelKey(category), 'setSourceCoverage', {
+        covered: countRepresentedSources(filteredItems),
+        total: sourceTotal,
+      });
+    }
+
     const panel = this.ctx.newsPanels[category];
     if (!panel) return;
-    const filteredItems = this.filterItemsByTimeRange(items);
     if (filteredItems.length === 0 && items.length > 0) {
       panel.renderFilteredEmpty(`No items in ${this.getTimeRangeLabel()}`);
       return;
@@ -1205,9 +1331,19 @@ export class DataLoaderManager implements AppModule {
   }
 
   // `isCustom` marks a category from a user-added panel that isn't in the
-  // active variant's preset. The per-variant server digest never carries it,
-  // so it skips the digest-availability gate and fetches its full feed set
-  // directly client-side (the cost is borne only by users who customize).
+  // active variant's preset. The per-variant server digest never carries it, so
+  // it skips the digest-availability gate and fetches directly client-side —
+  // still capped by perFeedFallbackCategoryFeedLimit like any other per-feed
+  // fallback, because nothing bounds how many custom categories a session has
+  // (#5376). The cost is borne only by users who customize.
+  //
+  // That cap is a degraded-mode ceiling for a preset category but the STEADY
+  // STATE for a custom one, so the two diverge in how they spend it (#5873):
+  // a custom category rotates its window across cycles and merges each cycle
+  // into what the panel already shows, and reports the resulting source
+  // coverage on the panel badge. A preset category keeps the fixed prefix and
+  // whole-set replace — it is digest-backed in the normal case, and its
+  // fallback lasts only as long as the outage.
   private async loadNewsCategory(
     category: string,
     feeds: typeof FEEDS.politics,
@@ -1221,7 +1357,10 @@ export class DataLoaderManager implements AppModule {
       const enabledFeeds = (feeds ?? []).filter(f => !this.ctx.disabledSources.has(f.name));
       if (enabledFeeds.length === 0) {
         delete this.ctx.newsByCategory[category];
-        if (panel) panel.showError(t('common.allSourcesDisabled'));
+        this.clearNewsSourceCoverage(category);
+        if (panel) {
+          panel.showError(t('common.allSourcesDisabled'));
+        }
         this.ctx.statusPanel?.updateFeed(category.charAt(0).toUpperCase() + category.slice(1), {
           status: 'ok',
           itemCount: 0,
@@ -1230,8 +1369,28 @@ export class DataLoaderManager implements AppModule {
       }
       const enabledNames = new Set(enabledFeeds.map(f => f.name));
 
+      // The feeds a direct fetch would actually attempt. `fetchCategoryFeeds`
+      // drops feeds whose declared `lang` isn't the current UI language, so for
+      // a rotating custom category the enabled set is the wrong denominator on
+      // both counts: `europe` declares 47 feeds but only 6 are fetchable for an
+      // English user, so rotating over all 47 would spend ~7 of every 8
+      // twenty-minute cycles fetching nothing, and the coverage badge would sit
+      // at "6/47 sources" permanently — a fresh version of the same lie #5873 is
+      // about. Preset categories keep the full enabled set: they are
+      // digest-backed, and `enabledNames` (which filters digest items by source)
+      // must stay language-blind because the server does not language-filter.
+      const reachableFeeds = isCustom ? filterFeedsByLanguage(enabledFeeds, getCurrentLanguage()) : enabledFeeds;
+      if (isCustom) {
+        this.customNewsSourceTotals.set(category, reachableFeeds.length);
+      }
+
       // Digest branch: server already aggregated feeds — map proto items to client types
       if (digest?.categories && category in digest.categories) {
+        // The digest carries every enabled source for the category, so there is
+        // no partial coverage to disclose — clear any badge a prior custom-path
+        // load left behind.
+        this.clearNewsSourceCoverage(category);
+        this.setNewsRefreshDegraded(category, false);
         const items = (digest.categories[category]?.items ?? [])
           .map(protoItemToNewsItem)
           .filter(i => enabledNames.has(i.source));
@@ -1266,6 +1425,40 @@ export class DataLoaderManager implements AppModule {
         return items;
       }
 
+      // Preset categories: serve last-known-good while the digest is briefly
+      // unavailable. Custom categories are NEVER in the digest, so this branch
+      // would fire on every refresh after the first load — getStaleNewsItems
+      // reads ctx.newsByCategory, which the prior cycle's direct fetch already
+      // populated — and freeze the panel on stale headlines. Skip it for them
+      // and fall through to the direct fetch; the panel keeps showing its
+      // current batch until fresh data lands (no blank flash).
+      const staleItems = this.getStaleNewsItems(category).filter(i => enabledNames.has(i.source));
+
+      // For a custom category that same set is not "stale headlines to freeze
+      // on" but the CARRY-OVER this cycle accumulates onto: the rotation window
+      // only ever fetches perFeedFallbackCategoryFeedLimit sources, so the
+      // sources it did NOT fetch this time live here (#5873). Snapshotted here,
+      // before any render — renderNewsForCategory overwrites
+      // ctx.newsByCategory, which is what getStaleNewsItems reads, so reading
+      // it later would fold each partial render back into itself.
+      const carryOver = isCustom ? staleItems : [];
+
+      /**
+       * What to actually paint for a given set of freshly fetched items.
+       *
+       * Identity for a preset category — its fallback replaces wholesale, as
+       * before. For a custom one it merges onto the carry-over. Source coverage
+       * is published by renderNewsForCategory after time-range filtering, so
+       * the badge describes what is actually visible.
+       */
+      const mergeForRender = (freshItems: NewsItem[]): NewsItem[] => {
+        if (!isCustom) return freshItems;
+        return mergeRotatedNewsItems(carryOver, freshItems, {
+          maxItems: this.customCategoryMergedItemLimit,
+          enabledSources: enabledNames,
+        });
+      };
+
       // Per-feed fallback: fetch each feed individually (first load or digest unavailable)
       const renderIntervalMs = 100;
       let lastRenderTime = 0;
@@ -1281,7 +1474,10 @@ export class DataLoaderManager implements AppModule {
 
       const scheduleRender = (partialItems: NewsItem[]) => {
         if (!panel) return;
-        pendingItems = partialItems;
+        // Merge BEFORE queueing, not at flush time: rendering the raw partial
+        // would blank the carried-over sources for one frame and then bring
+        // them back, which is the churn the merge exists to avoid.
+        pendingItems = mergeForRender(partialItems);
         const elapsed = Date.now() - lastRenderTime;
         if (elapsed >= renderIntervalMs) {
           if (renderTimeout) {
@@ -1300,14 +1496,6 @@ export class DataLoaderManager implements AppModule {
         }
       };
 
-      // Preset categories: serve last-known-good while the digest is briefly
-      // unavailable. Custom categories are NEVER in the digest, so this branch
-      // would fire on every refresh after the first load — getStaleNewsItems
-      // reads ctx.newsByCategory, which the prior cycle's direct fetch already
-      // populated — and freeze the panel on stale headlines. Skip it for them
-      // and fall through to the direct fetch; the panel keeps showing its
-      // current batch until fresh data lands (no blank flash).
-      const staleItems = this.getStaleNewsItems(category).filter(i => enabledNames.has(i.source));
       if (!isCustom && staleItems.length > 0) {
         console.warn(`[News] Digest missing for "${category}", serving stale headlines (${staleItems.length})`);
         this.renderNewsForCategory(category, staleItems);
@@ -1318,10 +1506,12 @@ export class DataLoaderManager implements AppModule {
         return staleItems;
       }
 
-      // The per-feed-fallback flag throttles the digest-down thundering herd
-      // (every preset category fetching at once). It does NOT apply to custom
-      // categories: those are NEVER in the digest by design — direct fetch is
-      // their only path, and there are only a handful of them per user.
+      // The per-feed-fallback flag is the kill switch for the digest-down
+      // thundering herd (every preset category fetching at once), so it does NOT
+      // apply to custom categories: those are NEVER in the digest by design and
+      // direct fetch is their only path — gating them here would leave a
+      // customized panel permanently empty rather than degraded. Their blast
+      // radius is bounded by the feed cap below instead.
       if (!isCustom && !this.isPerFeedFallbackEnabled() && !options.allowDigestPendingFallback) {
         console.warn(`[News] Digest missing for "${category}", limited per-feed fallback disabled`);
         this.renderNewsForCategory(category, []);
@@ -1332,13 +1522,31 @@ export class DataLoaderManager implements AppModule {
         return [];
       }
 
-      // Custom categories fetch their full feed set (no thundering-herd risk);
-      // preset categories stay capped by perFeedFallbackCategoryFeedLimit.
+      // Every per-feed fallback is capped, custom categories included. They used
+      // to fetch their full feed set on the theory that a handful of customized
+      // panels carried "no thundering-herd risk" — three of them firing on every
+      // load, uncapped, was 19 direct proxy round-trips (#5376). Nothing bounds
+      // how many custom categories a session can have, so the cap has to be
+      // unconditional.
+      //
+      // WHICH feeds the cap buys is where the two diverge. A preset category
+      // takes the fixed prefix: its fallback is transient, and re-fetching the
+      // same feeds is what makes an outage's repeated attempts idempotent. A
+      // custom category is the ONLY consumer of its feeds and is never in the
+      // digest, so a fixed prefix made the cap PERMANENT — feeds 4..N were
+      // unreachable on every load and every refresh (#5873). It rotates
+      // instead: same request budget, advanced by the cap each cycle, so every
+      // source is reached within ceil(N / cap) cycles.
+      const rotationCycle = isCustom ? this.newsRotationCycle(category) : 0;
       const fallbackFeeds = isCustom
-        ? enabledFeeds
+        ? selectRotatingFeedWindow(reachableFeeds, this.perFeedFallbackCategoryFeedLimit, rotationCycle)
         : this.selectLimitedFeeds(enabledFeeds, this.perFeedFallbackCategoryFeedLimit);
       if (isCustom) {
-        console.warn(`[News] Custom category "${category}" (not in variant preset), fetching ${fallbackFeeds.length} feeds directly`);
+        // Advanced as soon as the window is claimed rather than after the fetch
+        // resolves, so a cycle that fails outright still moves on instead of
+        // retrying the same failing window forever.
+        this.advanceNewsRotationCycle(category, reachableFeeds.length);
+        console.warn(`[News] Custom category "${category}" (not in variant preset), fetching ${fallbackFeeds.length}/${reachableFeeds.length} feeds directly (rotation cycle ${rotationCycle})`);
       } else if (options.allowDigestPendingFallback) {
         console.warn(`[News] Digest still pending for "${category}", using limited per-feed fallback (${fallbackFeeds.length}/${enabledFeeds.length} feeds)`);
       } else if (fallbackFeeds.length < enabledFeeds.length) {
@@ -1348,15 +1556,28 @@ export class DataLoaderManager implements AppModule {
       }
 
       const { fetchCategoryFeeds, getFeedFailures } = await getRssModule();
-      const items = await fetchCategoryFeeds(fallbackFeeds, {
+      const fetchedItems = await fetchCategoryFeeds(fallbackFeeds, {
         batchSize: this.perFeedFallbackBatchSize,
         onBatch: (partialItems) => {
           scheduleRender(partialItems);
+          // Map flashes and breaking-news alerts fire on the FRESH batch only.
+          // Feeding them the merged set would re-flash and re-alert on every
+          // rotation cycle for headlines the user has already seen.
           this.flashMapForNews(partialItems);
           checkBatchForBreakingAlerts(partialItems);
         },
       });
 
+      // Everything downstream — render, empty-state, baseline, status count and
+      // the value that lands in ctx.allNews — reads the MERGED set, because for
+      // a custom category that is what the panel actually shows. Using the raw
+      // fetch would report this cycle's three sources as the whole category and
+      // hand clustering a set the user isn't looking at.
+      const items = mergeForRender(fetchedItems);
+      const failures = getFeedFailures();
+      const failedFeeds = fallbackFeeds.filter(f => failures.has(f.name));
+      const windowFailed = fallbackFeeds.length > 0 && failedFeeds.length === fallbackFeeds.length;
+      this.setNewsRefreshDegraded(category, windowFailed);
       this.renderNewsForCategory(category, items);
       if (panel) {
         if (renderTimeout) {
@@ -1365,16 +1586,12 @@ export class DataLoaderManager implements AppModule {
           pendingItems = null;
         }
 
-        if (items.length === 0) {
-          const failures = getFeedFailures();
-          const failedFeeds = fallbackFeeds.filter(f => failures.has(f.name));
-          if (failedFeeds.length > 0) {
-            const names = failedFeeds.map(f => f.name).join(', ');
-            panel.showError(`${t('common.noNewsAvailable')} (${names} failed)`);
-          }
+        if (items.length === 0 && failedFeeds.length > 0) {
+          const names = failedFeeds.map(f => f.name).join(', ');
+          panel.showError(`${t('common.noNewsAvailable')} (${names} failed)`);
         }
 
-        if (options.recordBaselineSample) {
+        if (options.recordBaselineSample && !windowFailed) {
           try {
             const baseline = await updateBaseline(`news:${category}`, items.length);
             const deviation = calculateDeviation(items.length, baseline);
@@ -1383,11 +1600,22 @@ export class DataLoaderManager implements AppModule {
         }
       }
 
-      this.ctx.statusPanel?.updateFeed(category.charAt(0).toUpperCase() + category.slice(1), {
-        status: 'ok',
-        itemCount: items.length,
-      });
-      this.ctx.statusPanel?.updateApi('RSS2JSON', { status: 'ok' });
+      const feedLabel = category.charAt(0).toUpperCase() + category.slice(1);
+      if (windowFailed) {
+        const names = failedFeeds.map(f => f.name).join(', ');
+        this.ctx.statusPanel?.updateFeed(feedLabel, {
+          status: 'error',
+          itemCount: items.length,
+          errorMessage: `${names} failed`,
+        });
+        this.ctx.statusPanel?.updateApi('RSS2JSON', { status: 'error' });
+      } else {
+        this.ctx.statusPanel?.updateFeed(feedLabel, {
+          status: 'ok',
+          itemCount: items.length,
+        });
+        this.ctx.statusPanel?.updateApi('RSS2JSON', { status: 'ok' });
+      }
 
       return items;
     } catch (error) {
@@ -1396,8 +1624,28 @@ export class DataLoaderManager implements AppModule {
         errorMessage: String(error),
       });
       this.ctx.statusPanel?.updateApi('RSS2JSON', { status: 'error' });
-      delete this.ctx.newsByCategory[category];
-      return [];
+      // A preset category drops its items: its next successful load replaces
+      // them wholesale from the digest, so holding stale ones only risks
+      // presenting them as current.
+      //
+      // A custom category's stored items are its ACCUMULATED rotation coverage,
+      // built one capped window per 20-minute cycle (#5873). Dropping them
+      // sends the next cycle back to carry-over-less, so a single transient
+      // error — a chunk-load hiccup is enough — silently restarts the hour it
+      // takes to cover a ten-source panel. Keep them: the next cycle merges
+      // onto them, and the status panel already reports the error.
+      if (!isCustom) {
+        delete this.ctx.newsByCategory[category];
+        return [];
+      }
+
+      this.setNewsRefreshDegraded(category, true);
+      const enabledNames = new Set(
+        (feeds ?? [])
+          .filter(feed => !this.ctx.disabledSources.has(feed.name))
+          .map(feed => feed.name),
+      );
+      return this.getStaleNewsItems(category).filter(item => enabledNames.has(item.source));
     }
   }
 
@@ -1488,6 +1736,56 @@ export class DataLoaderManager implements AppModule {
     return intel;
   }
 
+  /**
+   * Panel-driven, not variant-driven: the active variant's preset categories
+   * PLUS any extra categories required by enabled news panels the user added
+   * beyond the preset (e.g. Tech panels customized into `full`). Custom
+   * categories aren't in the per-variant server digest, so they're flagged
+   * `isCustom` and fetched directly client-side in loadNewsCategory().
+   */
+  private resolveEnabledNewsCategories(): ResolvedCategory[] {
+    return resolveNewsCategories(
+      FEEDS,
+      CANONICAL_FEEDS,
+      enabledNewsCategoryKeys(this.ctx.newsCategoryPanelKeys, this.ctx.panelSettings),
+    );
+  }
+
+  /**
+   * Whether loadAllData() should (re)run the news load.
+   *
+   * Unlike every other hydration task, the news load is NOT viewport-gated — it
+   * always loaded everything — so an unconditional `news` task meant each of
+   * loadAllData()'s many triggers re-fetched the digest. Boot alone fires two
+   * (panel-layout's hydration trigger, then App.ts's bootstrap fan-out) and the
+   * drain loop turns overlapping calls into a second full run: two
+   * `list-feed-digest` requests per page load, plus a second round of per-feed
+   * fetches (#5376).
+   *
+   * The category set is what the load actually keys on, so re-run when it has
+   * changed (tab switch, mission preset, panel toggle) and skip when it has not
+   * (viewport entry, scroll, playback exit). Periodic refresh stays owned by
+   * RefreshScheduler's `news` loop at REFRESH_INTERVALS.feeds, which calls
+   * loadNews() directly and is unaffected by this gate.
+   */
+  private shouldHydrateNews(forceAll: boolean): boolean {
+    if (forceAll || this.loadedNewsSignature === null) return true;
+    const current = newsWorkListSignature(this.resolveEnabledNewsCategories(), this.ctx.disabledSources);
+    return current !== this.loadedNewsSignature;
+  }
+
+  /**
+   * Drop the record of what the last news load covered, so the next
+   * loadAllData() reloads news even though the category set is unchanged.
+   *
+   * Callers are the paths that take the rendered headlines away without
+   * changing the work-list — playback replay puts every news panel back into a
+   * loading state and relies on the exit calling loadAllData() to refill them.
+   */
+  invalidateNewsHydration(): void {
+    this.loadedNewsSignature = null;
+  }
+
   async loadNews(): Promise<void> {
     // Reset happy variant accumulator for fresh pipeline run
     if (SITE_VARIANT === 'happy') {
@@ -1500,18 +1798,14 @@ export class DataLoaderManager implements AppModule {
       console.warn('[News] Digest fetch failed before category load:', error);
       return null;
     });
-    const fallbackDigest = this.lastGoodDigest ?? await this.loadPersistedDigest();
+    const fallbackKey = this.digestCacheKey();
+    const fallbackDigest = this.getRetainedDigest(fallbackKey) ?? await this.loadPersistedDigest(fallbackKey);
 
-    // Panel-driven, not variant-driven: load the active variant's preset
-    // categories PLUS any extra categories required by enabled news panels the
-    // user added beyond the preset (e.g. Tech panels customized into `full`).
-    // Custom categories aren't in the per-variant server digest, so they're
-    // flagged `isCustom` and fetched directly client-side in loadNewsCategory().
-    const categories = resolveNewsCategories(
-      FEEDS,
-      CANONICAL_FEEDS,
-      enabledNewsCategoryKeys(this.ctx.newsPanels, this.ctx.panels, this.ctx.panelSettings, Object.keys(CANONICAL_FEEDS)),
-    );
+    const categories = this.resolveEnabledNewsCategories();
+    // Snapshot beside the categories: `ctx.disabledSources` is mutated IN PLACE by
+    // the settings source toggle, so reading it after the await would record the
+    // post-toggle set for a load that used the pre-toggle one.
+    const disabledAtLoadStart = new Set(this.ctx.disabledSources);
 
     const maxCategoryConcurrency = SITE_VARIANT === 'tech' ? 4 : 5;
     const categoryConcurrency = Math.max(1, Math.min(maxCategoryConcurrency, categories.length));
@@ -1557,6 +1851,35 @@ export class DataLoaderManager implements AppModule {
     }
 
     this.ctx.allNews = collectedNews;
+    // Record what this run covered — but only when it actually landed something for
+    // the gate to protect. A run counts as landed when the digest COVERED at least
+    // one preset category (authoritative even where that bucket came back empty),
+    // when items arrived by any path, or when there are no categories to retry.
+    //
+    // A digest outage lands none of those, and it has two shapes. The obvious one
+    // is a failed request. The one that bites is a 200 carrying an empty or partial
+    // `categories` map — non-null, so a plain null check would call it landed. Both
+    // render every preset category empty on web (`newsPerFeedFallback` is off), and
+    // recording either would make the gate treat an empty dashboard as "already
+    // loaded" and suppress every retry until RefreshScheduler's 20-minute tick.
+    // Leaving the signature unset keeps the next trigger a real retry — the recovery
+    // the pre-gate double-load provided by accident, now deliberate.
+    //
+    // Coverage is measured over PRESET categories only: a custom category succeeds
+    // on its own direct-fetch path, so counting it would let one customized panel
+    // mask an outage for every other category in the work-list.
+    //
+    // Set here rather than in a `finally` so a load that threw on the way in stays
+    // retryable too, and before the post-load intelligence tail so a failure there
+    // doesn't force a re-fetch of news that already arrived. The disabled-source set
+    // is the one snapshotted at load start, so a source toggled mid-load compares
+    // unequal on the next trigger instead of being swallowed.
+    const digestCategories = newsPass.finalDigest?.categories ?? {};
+    const digestCovered = categories.some(({ key, isCustom }) => !isCustom && key in digestCategories);
+    const anyItemsCollected = collectedNews.length > 0;
+    const noCategoriesToLoad = categories.length === 0;
+    const landed = digestCovered || anyItemsCollected || noCategoriesToLoad;
+    if (landed) this.loadedNewsSignature = newsWorkListSignature(categories, disabledAtLoadStart);
     this.ctx.initialLoadComplete = true;
     mountCommunityWidget();
 
@@ -1568,6 +1891,10 @@ export class DataLoaderManager implements AppModule {
       this.ctx.latestClusters = mlWorker.isAvailable
         ? await clusterNewsHybrid(this.ctx.allNews)
         : await analysisWorker.clusterNews(this.ctx.allNews);
+      // Only now is an empty cluster set a real answer. Set inside the try, after
+      // the assignment, so a pass that threw leaves late-mounting hub panels on
+      // their loading skeleton instead of asserting "no active hubs".
+      this.ctx.clustersSettled = true;
 
       const insightsPanel = this.ctx.panels['insights'] as InsightsPanel | undefined;
       insightsPanel?.updateInsights(this.ctx.latestClusters);
@@ -1576,8 +1903,11 @@ export class DataLoaderManager implements AppModule {
         void threatTimelinePanel?.refresh(this.ctx.latestClusters);
       }
 
-      (this.ctx.panels['geo-hubs'] as GeoHubsPanel | undefined)
-        ?.setActivities(getTopActiveGeoHubs(this.ctx.latestClusters));
+      hydrateGeoHubPanelFromClusters(
+        this.ctx.panels['geo-hubs'] as GeoHubsPanel | undefined,
+        this.ctx.latestClusters,
+        { allowEmpty: true },
+      );
       this.applyTechHubActivities();
 
       const geoLocated = this.ctx.latestClusters
@@ -1771,6 +2101,8 @@ export class DataLoaderManager implements AppModule {
   }
 
   async loadMarkets(): Promise<void> {
+    const generation = this.marketLoadGuard.begin();
+    const isCurrent = () => this.marketLoadGuard.isCurrent(generation);
     // Method-scoped so all of loadMarkets' try blocks (stocks/sectors/commodities +
     // crypto/defi/ai/other) see these; market is dynamic-imported off eager main.js (#4571).
     // Guarded: loadMarkets must not reject (the init() watchlist handler calls it
@@ -1783,17 +2115,19 @@ export class DataLoaderManager implements AppModule {
       // whole markets/crypto/commodities cycle with no signal. Log so it's traceable,
       // and mirror the downstream failure states before returning.
       console.warn('[DataLoader] market chunk load failed', e);
-      this.ctx.statusPanel?.updateApi('Finnhub', { status: 'error' });
-      this.ctx.statusPanel?.updateApi('CoinGecko', { status: 'error' });
-      (this.ctx.panels['markets'] as MarketPanel | undefined)?.showRetrying(t('common.failedMarketData'));
-      (this.ctx.panels['heatmap'] as HeatmapPanel | undefined)?.showRetrying(t('common.failedSectorData'));
-      (this.ctx.panels['commodities'] as CommoditiesPanel | undefined)?.showRetrying(t('common.failedCommodities'));
-      (this.ctx.panels['energy-complex'] as EnergyComplexPanel | undefined)?.showRetrying(t('common.failedCommodities'));
-      (this.ctx.panels['crypto'] as CryptoPanel | undefined)?.showRetrying(t('common.failedCryptoData'));
-      (this.ctx.panels['crypto-heatmap'] as CryptoHeatmapPanel | undefined)?.showRetrying(t('common.failedCryptoData'));
-      (this.ctx.panels['defi-tokens'] as DefiTokensPanel | undefined)?.showRetrying(t('common.failedCryptoData'));
-      (this.ctx.panels['ai-tokens'] as AiTokensPanel | undefined)?.showRetrying(t('common.failedCryptoData'));
-      (this.ctx.panels['other-tokens'] as OtherTokensPanel | undefined)?.showRetrying(t('common.failedCryptoData'));
+      if (isCurrent()) {
+        this.ctx.statusPanel?.updateApi('Finnhub', { status: 'error' });
+        this.ctx.statusPanel?.updateApi('CoinGecko', { status: 'error' });
+        (this.ctx.panels['markets'] as MarketPanel | undefined)?.showRetrying(t('common.failedMarketData'));
+        (this.ctx.panels['heatmap'] as HeatmapPanel | undefined)?.showRetrying(t('common.failedSectorData'));
+        (this.ctx.panels['commodities'] as CommoditiesPanel | undefined)?.showRetrying(t('common.failedCommodities'));
+        (this.ctx.panels['energy-complex'] as EnergyComplexPanel | undefined)?.showRetrying(t('common.failedCommodities'));
+        (this.ctx.panels['crypto'] as CryptoPanel | undefined)?.showRetrying(t('common.failedCryptoData'));
+        (this.ctx.panels['crypto-heatmap'] as CryptoHeatmapPanel | undefined)?.showRetrying(t('common.failedCryptoData'));
+        (this.ctx.panels['defi-tokens'] as DefiTokensPanel | undefined)?.showRetrying(t('common.failedCryptoData'));
+        (this.ctx.panels['ai-tokens'] as AiTokensPanel | undefined)?.showRetrying(t('common.failedCryptoData'));
+        (this.ctx.panels['other-tokens'] as OtherTokensPanel | undefined)?.showRetrying(t('common.failedCryptoData'));
+      }
       return;
     }
     const {
@@ -1802,28 +2136,30 @@ export class DataLoaderManager implements AppModule {
     } = marketMod;
     try {
       const customEntries = getMarketWatchlistEntries();
-      const effectiveSymbols = (() => {
-        if (customEntries.length === 0) return MARKET_SYMBOLS;
-        const base = MARKET_SYMBOLS.slice();
-        const seen = new Set(base.map((s) => s.symbol));
-        for (const entry of customEntries) {
-          const sym = entry.symbol;
-          if (!sym || seen.has(sym)) continue;
-          seen.add(sym);
-          base.push({ symbol: sym, name: entry.name || sym, display: entry.display || sym });
-          if (base.length >= 50) break;
-        }
-        return base;
-      })();
+      const effectiveSymbols = resolveEffectiveMarketWatchlist(
+        STOCK_CATALOG,
+        MARKET_SYMBOLS,
+        getCatalogSelection(),
+        customEntries,
+      ).symbols;
 
       // Hydrate markets from bootstrap (same pattern as sectors) — instant data on page load
       const hydratedMarkets = getHydratedData('marketQuotes') as ListMarketQuotesResponse | undefined;
       let stocksResult: Awaited<ReturnType<typeof fetchMultipleStocks>>;
       const marketsPanel = this.ctx.panels['markets'] as MarketPanel | undefined;
+      const hydratedDisclosures = getHydratedData('chinaCorporateDisclosures') as
+        ChinaCorporateDisclosureSnapshot | undefined;
+      if (hydratedDisclosures !== undefined) {
+        marketsPanel?.renderDisclosures(hydratedDisclosures);
+      }
 
-      if (customEntries.length === 0 && hydratedMarkets?.quotes?.length) {
+      const selectedHydratedQuotes = selectCompleteHydratedMarketQuotes(
+        effectiveSymbols,
+        hydratedMarkets?.quotes,
+      );
+      if (selectedHydratedQuotes) {
         const symbolMetaMap = new Map(effectiveSymbols.map((s) => [s.symbol, s]));
-        const data = hydratedMarkets.quotes.map((q) => ({
+        const data = selectedHydratedQuotes.map((q) => ({
           symbol: q.symbol,
           name: symbolMetaMap.get(q.symbol)?.name || q.name,
           display: symbolMetaMap.get(q.symbol)?.display || q.display || q.symbol,
@@ -1831,35 +2167,55 @@ export class DataLoaderManager implements AppModule {
           change: q.change ?? null,
           sparkline: q.sparkline?.length > 0 ? q.sparkline : undefined,
         }));
-        this.ctx.latestMarkets = data;
-        marketsPanel?.renderMarkets(data);
-        stocksResult = { data, skipped: hydratedMarkets.finnhubSkipped || undefined, rateLimited: hydratedMarkets.rateLimited || undefined };
+        if (isCurrent()) {
+          this.ctx.latestMarkets = data;
+          marketsPanel?.renderMarkets(data);
+        }
+        stocksResult = {
+          data,
+          skipped: hydratedMarkets?.finnhubSkipped || undefined,
+          rateLimited: hydratedMarkets?.rateLimited || undefined,
+        };
       } else {
         stocksResult = await fetchMultipleStocks(effectiveSymbols, {
           onBatch: (partialStocks) => {
+            if (!isCurrent()) return;
             this.ctx.latestMarkets = partialStocks;
             marketsPanel?.renderMarkets(partialStocks);
           },
         });
-        this.ctx.latestMarkets = stocksResult.data;
-        marketsPanel?.renderMarkets(stocksResult.data, stocksResult.rateLimited);
+        if (isCurrent()) {
+          this.ctx.latestMarkets = stocksResult.data;
+          marketsPanel?.renderMarkets(stocksResult.data, stocksResult.rateLimited, stocksResult.unavailableSymbols);
+        }
       }
 
-      const finnhubConfigMsg = 'FINNHUB_API_KEY not configured — add in Settings';
+      const stockAvailability = resolveStockMarketAvailability({
+        stockCount: stocksResult.data.length,
+        finnhubSkipped: stocksResult.skipped,
+        rateLimited: stocksResult.rateLimited,
+      });
 
-      if (stocksResult.rateLimited && stocksResult.data.length === 0) {
-        const rlMsg = 'Market data temporarily unavailable (rate limited) — retrying shortly';
-        this.ctx.panels['commodities']?.showError(rlMsg);
-      } else if (stocksResult.skipped) {
-        this.ctx.statusPanel?.updateApi('Finnhub', { status: 'error' });
-        if (stocksResult.data.length === 0) {
-          this.ctx.panels['markets']?.showConfigError(finnhubConfigMsg);
+      if (!isCurrent()) {
+        // A newer selection/load owns all market writes and any premium reload.
+      } else if (stockAvailability.rateLimitError) {
+        this.ctx.panels['commodities']?.showError(stockAvailability.rateLimitError);
+      } else if (stockAvailability.finnhubStatus) {
+        this.ctx.statusPanel?.updateApi('Finnhub', { status: stockAvailability.finnhubStatus });
+        if (stockAvailability.marketsConfigError) {
+          this.ctx.panels['markets']?.showConfigError(stockAvailability.marketsConfigError);
         }
-      } else {
-        this.ctx.statusPanel?.updateApi('Finnhub', { status: 'ok' });
       }
 
       // Sector heatmap: always attempt loading regardless of market rate-limit status
+      // Symbols whose valuation was replayed from the seeder's last-good snapshot
+      // rather than fetched this cycle. Without this the panel would present
+      // records up to 7 days old as current.
+      const readStaleValuationSymbols = (resp: unknown): string[] => {
+        const coverage = (resp as { valuationCoverage?: { staleValuationSymbols?: unknown } })?.valuationCoverage;
+        const symbols = coverage?.staleValuationSymbols;
+        return Array.isArray(symbols) ? symbols.filter((s): s is string => typeof s === 'string') : [];
+      };
       const hydratedSectors = getHydratedData('sectors') as (GetSectorSummaryResponse & { valuations?: Record<string, SectorValuation> }) | undefined;
       const heatmapPanel = this.ctx.panels['heatmap'] as HeatmapPanel | undefined;
       const sectorNameMap = new Map(SECTORS.map((s) => [s.symbol, s.name]));
@@ -1881,7 +2237,10 @@ export class DataLoaderManager implements AppModule {
         const items = hydratedSectors.sectors.map(toHeatmapItem);
         const sectorBars = items.map(toSectorBar).filter((s): s is NonNullable<typeof s> => s !== null);
         heatmapPanel?.renderHeatmap(items, sectorBars.length ? sectorBars : undefined);
-        heatmapPanel?.updateValuations(hydratedSectors.valuations);
+        heatmapPanel?.updateValuations(
+          hydratedSectors.valuations,
+          readStaleValuationSymbols(hydratedSectors),
+        );
       } else {
         // If hydrated had sectors but no valuations field, render performance
         // tiles immediately so users see heatmap data while the live fetch runs.
@@ -1899,10 +2258,19 @@ export class DataLoaderManager implements AppModule {
           // payload without `valuations` must NOT clear prior valuations that
           // may already be rendered from a previous (successful) fetch.
           if (Object.prototype.hasOwnProperty.call(sectorsResp, 'valuations')) {
-            heatmapPanel?.updateValuations(sectorsResp.valuations);
+            heatmapPanel?.updateValuations(
+              sectorsResp.valuations,
+              readStaleValuationSymbols(sectorsResp),
+            );
           }
-        } else if (stocksResult.skipped) {
-          this.ctx.panels['heatmap']?.showConfigError(finnhubConfigMsg);
+        } else {
+          const heatmapAvailability = resolveSectorHeatmapAvailability({
+            sectorCount: sectorsResp.sectors.length,
+            finnhubSkipped: stocksResult.skipped,
+          });
+          if (heatmapAvailability.configError) {
+            this.ctx.panels['heatmap']?.showConfigError(heatmapAvailability.configError);
+          }
         }
       }
 
@@ -1916,7 +2284,7 @@ export class DataLoaderManager implements AppModule {
       if (commoditiesPanel || energyPanel) {
         // Hydrate commodities from bootstrap (same pattern as sectors/markets)
         const hydratedCommodities = getHydratedData('commodityQuotes') as ListCommodityQuotesResponse | undefined;
-        const skipFetch = stocksResult.rateLimited && stocksResult.data.length === 0;
+        const skipFetch = stockAvailability.skipCommodityFetch;
         let metalsLoaded = skipFetch;
         let energyLoaded = skipFetch;
 
@@ -1972,25 +2340,21 @@ export class DataLoaderManager implements AppModule {
       // Load ECB FX rates for CommoditiesPanel FX tab
       if (commoditiesPanel) {
         try {
-          const { getEcbFxRatesData } = await import('@/services/economic');
+          const { getEcbFxRatesData, toEurSpotRows } = await import('@/services/economic');
           const fxResp = await getEcbFxRatesData();
           if (!fxResp.unavailable && fxResp.rates?.length) {
-            const EUR_FX_ORDER = ['USD', 'GBP', 'JPY', 'CHF', 'CAD', 'CNY', 'AUD'];
-            const orderedRates = EUR_FX_ORDER
-              .map(ccy => fxResp.rates.find(r => r.pair === `EUR${ccy}`))
-              .filter((r): r is NonNullable<typeof r> => r != null);
-            commoditiesPanel.updateFxRates(orderedRates.map(r => ({
-              currency: r.pair.slice(3), // EURUSD -> USD
-              rate: r.rate,
-              change1d: r.change1d ?? null,
-            })));
+            // Shared with the FX panel (#6199) so the pair list and its display
+            // order live in one place. This tab previously kept a private
+            // EUR_FX_ORDER literal; the two would have drifted the moment the
+            // seeder published an eighth pair.
+            commoditiesPanel.updateFxRates(toEurSpotRows(fxResp.rates));
           }
         } catch {
           // FX tab is optional, ignore failures
         }
       }
     } catch {
-      this.ctx.statusPanel?.updateApi('Finnhub', { status: 'error' });
+      if (isCurrent()) this.ctx.statusPanel?.updateApi('Finnhub', { status: 'error' });
     }
 
     try {
@@ -2363,7 +2727,6 @@ export class DataLoaderManager implements AppModule {
       this.ctx.intelligenceCache.earthquakes = earthquakeResult.value;
       this.ctx.map?.setEarthquakes(earthquakeResult.value);
       ingestEarthquakes(earthquakeResult.value);
-      ingestEarthquakesForCII(earthquakeResult.value);
       this.ctx.statusPanel?.updateApi('USGS', { status: 'ok' });
       dataFreshness.recordUpdate('usgs', earthquakeResult.value.length);
     } else {
@@ -2469,7 +2832,6 @@ export class DataLoaderManager implements AppModule {
   }
 
   async loadIntelligenceSignals(): Promise<void> {
-    resetHotspotActivity();
     const _desktopLocked = isDesktopRuntime() && !hasPremiumAccess();
     const tasks: Promise<void>[] = [];
 
@@ -2477,7 +2839,6 @@ export class DataLoaderManager implements AppModule {
       try {
         const outages = await fetchInternetOutages();
         this.ctx.intelligenceCache.outages = outages;
-        ingestOutagesForCII(outages);
         await runSignalAggregator(this.ctx.statusPanel, 'outages', (aggregator) => aggregator.ingestOutages(outages));
         dataFreshness.recordUpdate('outages', outages.length);
         if (this.ctx.mapLayers.outages) {
@@ -2505,7 +2866,6 @@ export class DataLoaderManager implements AppModule {
         const protestData = await fetchProtestEvents();
         this.ctx.intelligenceCache.protests = protestData;
         ingestProtests(protestData.events);
-        ingestProtestsForCII(protestData.events);
         await runSignalAggregator(this.ctx.statusPanel, 'protests', (aggregator) => aggregator.ingestProtests(protestData.events));
         const protestCount = protestData.sources.acled + protestData.sources.gdelt;
         if (protestCount > 0) dataFreshness.recordUpdate('acled', protestCount);
@@ -2534,7 +2894,7 @@ export class DataLoaderManager implements AppModule {
       try {
         const conflictData = await fetchConflictEvents();
         this.ctx.intelligenceCache.conflicts = conflictData.events;
-        ingestConflictsForCII(conflictData.events);
+        ingestConflictsForCountryData(conflictData.events);
         if (conflictData.count > 0) dataFreshness.recordUpdate('acled_conflict', conflictData.count);
       } catch (error) {
         console.error('[Intelligence] Conflict events fetch failed:', error);
@@ -2543,28 +2903,6 @@ export class DataLoaderManager implements AppModule {
     })());
 
     const hydratedUcdp = getHydratedData('ucdpEvents') as import('@/services/conflict').HydratedUcdpPayload | undefined;
-
-    tasks.push((async () => {
-      try {
-        const classifications = await fetchUcdpClassifications(hydratedUcdp);
-        ingestUcdpForCII(classifications);
-        if (classifications.size > 0) dataFreshness.recordUpdate('ucdp', classifications.size);
-      } catch (error) {
-        console.error('[Intelligence] UCDP fetch failed:', error);
-        dataFreshness.recordError('ucdp', String(error));
-      }
-    })());
-
-    tasks.push((async () => {
-      try {
-        const summaries = await fetchHapiSummary();
-        ingestHapiForCII(summaries);
-        if (summaries.size > 0) dataFreshness.recordUpdate('hapi', summaries.size);
-      } catch (error) {
-        console.error('[Intelligence] HAPI fetch failed:', error);
-        dataFreshness.recordError('hapi', String(error));
-      }
-    })());
 
     tasks.push((async () => {
       try {
@@ -2587,7 +2925,6 @@ export class DataLoaderManager implements AppModule {
         }).catch(() => {});
         ingestFlights(flightData.flights);
         ingestVessels(vesselData.vessels);
-        ingestMilitaryForCII(flightData.flights, vesselData.vessels);
         await runSignalAggregator(this.ctx.statusPanel, 'military tracks', (aggregator) => {
           aggregator.ingestFlights(flightData.flights);
           aggregator.ingestVessels(vesselData.vessels);
@@ -2599,8 +2936,6 @@ export class DataLoaderManager implements AppModule {
         ]).then(async anomalies => {
           if (anomalies.length > 0) {
             await runSignalAggregator(this.ctx.statusPanel, 'temporal anomalies', (aggregator) => aggregator.ingestTemporalAnomalies(anomalies));
-            ingestTemporalAnomaliesForCII(anomalies);
-            this.refreshCiiAndBrief();
           }
         }).catch(() => { });
         if (this.ctx.mapLayers.military) {
@@ -2673,7 +3008,7 @@ export class DataLoaderManager implements AppModule {
         }
         const data = unhcrResult.data;
         this.callPanel('displacement', 'setData', data);
-        ingestDisplacementForCII(data.countries);
+        ingestDisplacementForCountryData(data.countries);
         if (this.ctx.mapLayers.displacement && data.topFlows) {
           this.ctx.map?.setDisplacementFlows(data.topFlows);
         }
@@ -2695,7 +3030,7 @@ export class DataLoaderManager implements AppModule {
         }
         const anomalies = climateResult.anomalies;
         this.callPanel('climate', 'setAnomalies', anomalies);
-        ingestClimateForCII(anomalies);
+        ingestClimateForCountryData(anomalies);
         if (this.ctx.mapLayers.climate) {
           this.ctx.map?.setClimateAnomalies(anomalies);
         }
@@ -2723,14 +3058,12 @@ export class DataLoaderManager implements AppModule {
           this.callPanel('oref-sirens', 'setData', data);
           const alertCount = data.alerts?.length ?? 0;
           const historyCount24h = data.historyCount24h ?? 0;
-          ingestOrefForCII(alertCount, historyCount24h);
           this.ctx.intelligenceCache.orefAlerts = { alertCount, historyCount24h };
           if (data.alerts?.length) dispatchOrefBreakingAlert(data.alerts);
           onOrefAlertsUpdate((update) => {
             this.callPanel('oref-sirens', 'setData', update);
             const updAlerts = update.alerts?.length ?? 0;
             const updHistory = update.historyCount24h ?? 0;
-            ingestOrefForCII(updAlerts, updHistory);
             this.ctx.intelligenceCache.orefAlerts = { alertCount: updAlerts, historyCount24h: updHistory };
             if (update.alerts?.length) dispatchOrefBreakingAlert(update.alerts);
           });
@@ -2749,12 +3082,12 @@ export class DataLoaderManager implements AppModule {
           const data = await fetchGpsInterference();
           if (!data) {
             this.ctx.intelligenceCache.gpsJamming = [];
-            ingestGpsJammingForCII([]);
+            ingestGpsJammingForCountryData([]);
             this.ctx.map?.setLayerReady('gpsJamming', false);
             return;
           }
           this.ctx.intelligenceCache.gpsJamming = data.hexes;
-          ingestGpsJammingForCII(data.hexes);
+          ingestGpsJammingForCountryData(data.hexes);
           if (this.ctx.mapLayers.gpsJamming) {
             await this.ctx.map?.setGpsJamming(data.hexes);
             this.ctx.map?.setLayerReady('gpsJamming', data.hexes.length > 0);
@@ -2811,7 +3144,6 @@ export class DataLoaderManager implements AppModule {
       this.ctx.intelligenceCache.outages = outages;
       this.ctx.map?.setOutages(outages);
       this.ctx.map?.setLayerReady('outages', outages.length > 0);
-      ingestOutagesForCII(outages);
       await runSignalAggregator(this.ctx.statusPanel, 'outages', (aggregator) => aggregator.ingestOutages(outages));
       this.ctx.statusPanel?.updateFeed('NetBlocks', { status: 'ok', itemCount: outages.length });
       dataFreshness.recordUpdate('outages', outages.length);
@@ -2842,8 +3174,6 @@ export class DataLoaderManager implements AppModule {
     if (this.ctx.cyberThreatsCache) {
       this.ctx.map?.setCyberThreats(this.ctx.cyberThreatsCache);
       this.ctx.map?.setLayerReady('cyberThreats', this.ctx.cyberThreatsCache.length > 0);
-      ingestCyberThreatsForCII(this.ctx.cyberThreatsCache);
-      this.refreshCiiAndBrief();
       this.ctx.statusPanel?.updateFeed('Cyber Threats', { status: 'ok', itemCount: this.ctx.cyberThreatsCache.length });
       return;
     }
@@ -2854,8 +3184,6 @@ export class DataLoaderManager implements AppModule {
       this.ctx.cyberThreatsCache = threats;
       this.ctx.map?.setCyberThreats(threats);
       this.ctx.map?.setLayerReady('cyberThreats', threats.length > 0);
-      ingestCyberThreatsForCII(threats);
-      this.refreshCiiAndBrief();
       this.ctx.statusPanel?.updateFeed('Cyber Threats', { status: 'ok', itemCount: threats.length });
       this.ctx.statusPanel?.updateApi('Cyber Threats API', { status: 'ok' });
       dataFreshness.recordUpdate('cyber_threats', threats.length);
@@ -2879,8 +3207,6 @@ export class DataLoaderManager implements AppModule {
       this.ctx.map?.setLayerReady('iranAttacks', events.length > 0);
       const coerced = events.map(e => ({ ...e, timestamp: Number(e.timestamp) || 0 }));
       await runSignalAggregator(this.ctx.statusPanel, 'iran conflict events', (aggregator) => aggregator.ingestConflictEvents(coerced));
-      ingestStrikesForCII(coerced);
-      this.refreshCiiAndBrief();
     } catch {
       this.ctx.map?.setLayerReady('iranAttacks', false);
     }
@@ -2894,15 +3220,11 @@ export class DataLoaderManager implements AppModule {
       this.ctx.map?.setAisData(disruptions, density);
       this.ctx.intelligenceCache.aisDisruptions = disruptions;
       await runSignalAggregator(this.ctx.statusPanel, 'AIS disruptions', (aggregator) => aggregator.ingestAisDisruptions(disruptions));
-      ingestAisDisruptionsForCII(disruptions);
-      this.refreshCiiAndBrief();
       updateAndCheck([
         { type: 'ais_gaps', region: 'global', count: disruptions.length },
       ]).then(async anomalies => {
         if (anomalies.length > 0) {
           await runSignalAggregator(this.ctx.statusPanel, 'temporal anomalies', (aggregator) => aggregator.ingestTemporalAnomalies(anomalies));
-          ingestTemporalAnomaliesForCII(anomalies);
-          this.refreshCiiAndBrief();
         }
       }).catch(() => { });
 
@@ -3012,13 +3334,11 @@ export class DataLoaderManager implements AppModule {
       this.ctx.map?.setProtests(protestData.events);
       this.ctx.map?.setLayerReady('protests', protestData.events.length > 0);
       ingestProtests(protestData.events);
-      ingestProtestsForCII(protestData.events);
       await runSignalAggregator(this.ctx.statusPanel, 'protests', (aggregator) => aggregator.ingestProtests(protestData.events));
       const protestCount = protestData.sources.acled + protestData.sources.gdelt;
       if (protestCount > 0) dataFreshness.recordUpdate('acled', protestCount);
       if (protestData.sources.gdelt > 0) dataFreshness.recordUpdate('gdelt', protestData.sources.gdelt);
       if (protestData.sources.gdelt > 0) dataFreshness.recordUpdate('gdelt_doc', protestData.sources.gdelt);
-      this.refreshCiiAndBrief();
       const status = getProtestStatus();
       this.ctx.statusPanel?.updateFeed('Protests', {
         status: 'ok',
@@ -3090,8 +3410,6 @@ export class DataLoaderManager implements AppModule {
       this.ctx.map?.setFlightDelays(delays);
       this.ctx.map?.setLayerReady('flights', delays.length > 0);
       this.ctx.intelligenceCache.flightDelays = delays;
-      const severe = delays.filter(d => d.severity === 'major' || d.severity === 'severe' || d.delayType === 'closure');
-      if (severe.length > 0) ingestAviationForCII(severe);
       this.ctx.statusPanel?.updateFeed('Flights', {
         status: 'ok',
         itemCount: delays.length,
@@ -3146,7 +3464,6 @@ export class DataLoaderManager implements AppModule {
       this.ctx.map?.setMilitaryVessels(vesselData.vessels, vesselData.clusters);
       ingestFlights(flightData.flights);
       ingestVessels(vesselData.vessels);
-      ingestMilitaryForCII(flightData.flights, vesselData.vessels);
       await runSignalAggregator(this.ctx.statusPanel, 'military tracks', (aggregator) => {
         aggregator.ingestFlights(flightData.flights);
         aggregator.ingestVessels(vesselData.vessels);
@@ -3157,12 +3474,9 @@ export class DataLoaderManager implements AppModule {
       ]).then(async anomalies => {
         if (anomalies.length > 0) {
           await runSignalAggregator(this.ctx.statusPanel, 'temporal anomalies', (aggregator) => aggregator.ingestTemporalAnomalies(anomalies));
-          ingestTemporalAnomaliesForCII(anomalies);
-          this.refreshCiiAndBrief();
         }
       }).catch(() => { });
       this.ctx.map?.updateMilitaryForEscalation(flightData.flights, vesselData.vessels);
-      this.refreshCiiAndBrief();
       if (!isInLearningMode()) {
         await this.runMilitarySurgeAnalysis(flightData.flights);
       }
@@ -3440,7 +3754,12 @@ export class DataLoaderManager implements AppModule {
       const [restrictions, tariffs, flows, barriers, revenue, comtrade] = await Promise.allSettled([
         fetchTradeRestrictions([], 50),
         fetchTariffTrends('840', '156', '', 10),
-        fetchTradeFlows('840', '156', 10),
+        // Partner '000' is World. This asked for '156' (China) until #6309:
+        // WTO's ITS_MTV_AX/AM indicators publish a World total only and answer
+        // 204 for any other partner, so the flows tab requested a combination
+        // the seed could never hold and rendered the upstream-unavailable
+        // banner on every load.
+        fetchTradeFlows('840', '000', 10),
         fetchTradeBarriers([], '', 50),
         fetchCustomsRevenue(),
         fetchComtradeFlows(),
@@ -3525,6 +3844,36 @@ export class DataLoaderManager implements AppModule {
     }
   }
 
+  async loadChinaCorridors(options?: { skipIfPopulated?: boolean }): Promise<void> {
+    const panel = this.ctx.panels['china-corridors'] as ChinaCorridorPanel | undefined;
+    if (!panel) return;
+    // The scroll-driven loadAllData pass re-enters this on every scroll event,
+    // and the corridor service deliberately has no client cache (cacheTtlMs: 0)
+    // — so a repeat here is a full RPC. The 15-min refresh scheduler owns
+    // updates once the panel is populated.
+    if (options?.skipIfPopulated && panel.hasData()) return;
+    try {
+      await panel.fetchData();
+    } catch (error) {
+      console.error('[App] China corridors failed:', error);
+      panel.showError('China corridor data unavailable', () => void this.loadChinaCorridors());
+    }
+  }
+
+  async loadChinaActivityNowcast(options?: { skipIfPopulated?: boolean }): Promise<void> {
+    const panel = this.ctx.panels['china-activity-nowcast'] as ChinaActivityNowcastPanel | undefined;
+    if (!panel) return;
+    // Same contract as loadChinaCorridors: scroll re-entries must not refire
+    // the uncached nowcast RPC once the panel is populated.
+    if (options?.skipIfPopulated && panel.hasData()) return;
+    try {
+      await panel.fetchData();
+    } catch (error) {
+      console.error('[App] China activity nowcast failed:', error);
+      panel.showError('China activity comparison unavailable', () => void this.loadChinaActivityNowcast());
+    }
+  }
+
   async loadDiseaseOutbreaks(): Promise<void> {
     try {
       const data = await fetchDiseaseOutbreaks();
@@ -3590,15 +3939,16 @@ export class DataLoaderManager implements AppModule {
 
   // Lazy-load the tech-activity service (→ tech-hub-index → the ~62KB tech-geo
   // table) only when the lazy tech-hubs panel is mounted, so the table stays off
-  // the eager dashboard critical path. Non-critical panel data — degrade silently
-  // on load failure. (#4404)
+  // the eager dashboard critical path. Non-critical panel data — the panel keeps
+  // its previous contents on load failure, but the failure is logged: a silent
+  // swallow here leaves the panel on "Loading..." with no way to diagnose it. (#4404)
   private applyTechHubActivities(): void {
     const techHubsPanel = this.ctx.panels['tech-hubs'] as TechHubsPanel | undefined;
     if (!techHubsPanel) return;
-    const clusters = this.ctx.latestClusters;
-    void import('@/services/tech-activity')
-      .then(({ getTopActiveHubs }) => techHubsPanel.setActivities(getTopActiveHubs(clusters)))
-      .catch(() => { /* non-critical */ });
+    void hydrateTechHubPanelFromClusters(techHubsPanel, this.ctx.latestClusters, { allowEmpty: true })
+      .catch((err) => {
+        console.error('[App] tech-hub activity hydration failed:', err);
+      });
   }
 
   async runCorrelationAnalysis(): Promise<void> {
@@ -3607,14 +3957,16 @@ export class DataLoaderManager implements AppModule {
         this.ctx.latestClusters = mlWorker.isAvailable
           ? await clusterNewsHybrid(this.ctx.allNews)
           : await analysisWorker.clusterNews(this.ctx.allNews);
+        this.ctx.clustersSettled = true;
       }
 
       if (this.ctx.latestClusters.length > 0) {
-        ingestNewsForCII(this.ctx.latestClusters);
         dataFreshness.recordUpdate('gdelt', this.ctx.latestClusters.length);
-        this.refreshCiiAndBrief();
-        (this.ctx.panels['geo-hubs'] as GeoHubsPanel | undefined)
-          ?.setActivities(getTopActiveGeoHubs(this.ctx.latestClusters));
+        hydrateGeoHubPanelFromClusters(
+          this.ctx.panels['geo-hubs'] as GeoHubsPanel | undefined,
+          this.ctx.latestClusters,
+          { allowEmpty: true },
+        );
         this.applyTechHubActivities();
       }
 
@@ -3664,8 +4016,6 @@ export class DataLoaderManager implements AppModule {
 
         this.ctx.intelligenceCache.satelliteFires = satelliteFires;
         await runSignalAggregator(this.ctx.statusPanel, 'satellite fires', (aggregator) => aggregator.ingestSatelliteFires(satelliteFires));
-        ingestSatelliteFiresForCII(satelliteFires);
-        this.refreshCiiAndBrief();
 
         this.ctx.map?.setFires(toMapFires(flat));
 
@@ -3674,8 +4024,6 @@ export class DataLoaderManager implements AppModule {
         dataFreshness.recordUpdate('firms', totalCount);
       } else {
         this.ctx.intelligenceCache.satelliteFires = [];
-        ingestSatelliteFiresForCII([]);
-        this.refreshCiiAndBrief();
         (this.ctx.panels['satellite-fires'] as SatelliteFiresPanel)?.update([], 0);
       }
       this.ctx.statusPanel?.updateApi('FIRMS', { status: 'ok' });
@@ -3900,7 +4248,6 @@ export class DataLoaderManager implements AppModule {
       if (result.ok) {
         this.callPanel('security-advisories', 'setData', result.advisories);
         this.ctx.intelligenceCache.advisories = result.advisories;
-        ingestAdvisoriesForCII(result.advisories);
       }
     } catch (error) {
       console.error('[App] Security advisories fetch failed:', error);
@@ -3914,7 +4261,6 @@ export class DataLoaderManager implements AppModule {
       this.callPanel('sanctions-pressure', 'setData', result);
       this.ctx.intelligenceCache.sanctions = result;
       await runSignalAggregator(this.ctx.statusPanel, 'sanctions pressure', (aggregator) => aggregator.ingestSanctionsPressure(result.countries));
-      ingestSanctionsForCII(result.countries);
       if (result.totalCount > 0) {
         dataFreshness.recordUpdate('sanctions_pressure', result.totalCount);
         this.ctx.statusPanel?.updateApi('OFAC', { status: result.newEntryCount > 0 ? 'warning' : 'ok' });

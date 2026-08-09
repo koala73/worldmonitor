@@ -26,7 +26,11 @@ import {
   checkFailClosedScopedIpRateLimit,
   hasEndpointRatePolicy,
 } from './_shared/rate-limit';
-import { drainResponseHeaders, drainSuccessStatusOverride } from './_shared/response-headers';
+import {
+  drainResponseHeaders,
+  drainRetryableResponse,
+  drainSuccessStatusOverride,
+} from './_shared/response-headers';
 import { projectJsonResponse } from './_shared/response-projection';
 import { getRpcNoStoreReasonFromJson } from './_shared/cache-contract';
 import {
@@ -37,6 +41,7 @@ import {
   isEntitlementBackendConfigured,
   type CachedEntitlements,
 } from './_shared/entitlement-check';
+import { checkProMcpAccess } from './_shared/pro-mcp-gate';
 import { resolveClerkSession } from './_shared/auth-session';
 import {
   INTERNAL_MCP_SIG_HEADER,
@@ -55,6 +60,7 @@ import {
   beginIdempotency,
   peekIdempotency,
   IDEMPOTENCY_HEADER,
+  IDEMPOTENCY_EXEMPT_RPC_PATHS,
   IDEMPOTENT_REPLAYED_HEADER,
   type IdempotencyOutcome,
 } from './_shared/idempotency';
@@ -67,6 +73,7 @@ import {
 import {
   DIRECT_LLM_DAILY_QUOTA_LIMIT,
   DIRECT_LLM_GATEWAY_QUOTA_PATHS,
+  resolveActiveDirectLlmLimit,
   reserveDirectLlmQuota,
 } from './_shared/direct-llm-quota';
 import {
@@ -93,8 +100,12 @@ import {
 } from './_shared/usage';
 import { timingSafeEqual } from './_shared/internal-auth';
 import type { ServerOptions } from '../src/generated/server/worldmonitor/seismology/v1/service_server';
+import { validateGeneratedRequest } from './request-validator';
 
-export const serverOptions: ServerOptions = { onError: mapErrorToResponse };
+export const serverOptions: ServerOptions = {
+  onError: mapErrorToResponse,
+  validateRequest: validateGeneratedRequest,
+};
 
 /**
  * Internal-MCP request body size cap (256 KB). Internal-MCP fetches
@@ -113,6 +124,16 @@ export const serverOptions: ServerOptions = { onError: mapErrorToResponse };
 const MAX_INTERNAL_MCP_BODY = 256 * 1024;
 
 type InternalMcpReplayClaim = 'fresh' | 'replay' | 'unavailable';
+
+function getRateLimitTelemetryReason(
+  response: Response,
+  rejectedReason: RequestReason,
+): RequestReason {
+  return response.status === 503 &&
+    response.headers.get('X-RateLimit-Mode') === 'degraded'
+    ? 'rate_limit_degraded'
+    : rejectedReason;
+}
 
 async function claimInternalMcpReplayNonce(userId: string, nonce: string): Promise<InternalMcpReplayClaim> {
   const digest = await sha256Hex(`${userId}:${nonce}`);
@@ -216,6 +237,7 @@ const RPC_CACHE_TIER: Record<string, CacheTier> = {
   '/api/natural/v1/list-natural-events': 'slow',
   '/api/wildfire/v1/list-fire-detections': 'static',
   '/api/maritime/v1/list-navigational-warnings': 'static',
+  '/api/supply-chain/v1/get-china-corridor-control-towers': 'medium',
   '/api/supply-chain/v1/get-shipping-rates': 'daily',
   '/api/supply-chain/v1/list-pipelines': 'static',
   '/api/supply-chain/v1/get-pipeline-detail': 'static',
@@ -231,6 +253,10 @@ const RPC_CACHE_TIER: Record<string, CacheTier> = {
   '/api/research/v1/list-trending-repos': 'static',
   '/api/giving/v1/get-giving-summary': 'static',
   '/api/intelligence/v1/get-country-intel-brief': 'static',
+  // The canonical Railway projection refreshes every 15 minutes. Keep the
+  // public composition route's Vercel TTL (10m on fast) inside that cadence so
+  // the seeder cannot keep re-publishing a two-hour-old medium-tier response.
+  '/api/intelligence/v1/get-china-decision-signals': 'fast',
   '/api/intelligence/v1/get-gdelt-topic-timeline': 'medium',
   '/api/climate/v1/list-climate-anomalies': 'daily',
   '/api/climate/v1/list-climate-disasters': 'daily',
@@ -303,6 +329,8 @@ const RPC_CACHE_TIER: Record<string, CacheTier> = {
   '/api/intelligence/v1/list-telegram-feed': 'fast',
   '/api/intelligence/v1/get-company-enrichment': 'slow',
   '/api/intelligence/v1/list-company-signals': 'slow',
+  '/api/intelligence/v1/search-sec-filings': 'medium',
+  '/api/intelligence/v1/list-material-events': 'medium',
   '/api/news/v1/summarize-article-cache': 'slow',
 
   '/api/imagery/v1/search-imagery': 'static',
@@ -330,6 +358,7 @@ const RPC_CACHE_TIER: Record<string, CacheTier> = {
   '/api/market/v1/get-insider-transactions': 'slow',
   '/api/economic/v1/get-economic-calendar': 'slow',
   '/api/economic/v1/get-china-macro-snapshot': 'slow',
+  '/api/economic/v1/get-china-activity-nowcast': 'medium',
   '/api/intelligence/v1/list-market-implications': 'slow',
   '/api/economic/v1/get-ecb-fx-rates': 'slow',
   '/api/economic/v1/get-eurostat-country-data': 'slow',
@@ -373,6 +402,10 @@ const RPC_CACHE_TIER: Record<string, CacheTier> = {
   '/api/intelligence/v1/get-regime-history': 'slow',
   // get-regional-brief is premium-gated; slow-browser in practice, slow entry for route-parity.
   '/api/intelligence/v1/get-regional-brief': 'slow',
+  // Historical intelligence memory (#5694) — the timeline is a generated GET
+  // and therefore requires an explicit gateway cache tier. The two semantic
+  // reads are POSTs and cache successful results inside their handlers.
+  '/api/intelligence/v1/get-intel-timeline': 'slow',
   '/api/resilience/v1/get-resilience-score': 'slow',
   '/api/resilience/v1/get-resilience-ranking': 'slow',
   '/api/resilience/v1/get-runtime-manifest': 'no-store',
@@ -383,6 +416,16 @@ const RPC_CACHE_TIER: Record<string, CacheTier> = {
   // GET /webhooks lists caller's webhooks — premium-gated; short-circuited to
   // slow-browser. Entry required by tests/route-cache-tier.test.mjs.
   '/api/v2/shipping/webhooks': 'slow-browser',
+
+  // Company Monitoring is account-private and remains unrouted until #6003.
+  // Keep every generated read no-store so future activation cannot inherit a
+  // shared CDN tier before its account isolation is proven end to end.
+  '/api/company-monitoring/v1/get-company-coverage': 'no-store',
+  '/api/company-monitoring/v1/get-company-material-event': 'no-store',
+  '/api/company-monitoring/v1/get-company-monitoring-status': 'no-store',
+  '/api/company-monitoring/v1/list-company-event-changes': 'no-store',
+  '/api/company-monitoring/v1/list-company-event-impacts': 'no-store',
+  '/api/company-monitoring/v1/list-monitored-companies': 'no-store',
 };
 
 import { PREMIUM_RPC_PATHS } from '../src/shared/premium-paths';
@@ -390,6 +433,7 @@ import { PREMIUM_RPC_PATHS } from '../src/shared/premium-paths';
 export const PUBLIC_NO_AUTH_RPC_PATHS = new Set<string>([
   '/api/conflict/v1/list-acled-events',
   '/api/natural/v1/list-natural-events',
+  '/api/intelligence/v1/get-china-decision-signals',
   '/api/resilience/v1/get-runtime-manifest',
   '/api/seismology/v1/list-earthquakes',
   '/api/unrest/v1/list-unrest-events',
@@ -607,7 +651,7 @@ function createDirectLlmQuotaFailureResponse(
   if (reservation.reason === 'cap-exceeded') {
     return new Response(JSON.stringify({
       error: 'Direct LLM daily quota exceeded',
-      limit: DIRECT_LLM_DAILY_QUOTA_LIMIT,
+      limit: reservation.floor ?? DIRECT_LLM_DAILY_QUOTA_LIMIT,
       resetsAt: 'next UTC midnight',
     }), {
       status: 429,
@@ -718,6 +762,14 @@ export function createDomainGateway(
     };
     function recordUsageEntitlement(ent: CachedEntitlements | null): void {
       if (!ent) return;
+      // The synthesized verification marker is not an answer about this
+      // caller's plan — it is free-SHAPED so the gates deny, nothing more.
+      // Copying its tier-0/'free' fields into usage telemetry would durably
+      // label unverifiable paying callers as free in Axiom, and it would do so
+      // precisely during the outage window this data exists to diagnose. Leave
+      // both fields null, which is what an unanswered lookup used to record
+      // back when this state arrived as a null (#5619 follow-up).
+      if (ent.verificationUnavailable) return;
       usage.tier = typeof ent.features.tier === 'number' ? ent.features.tier : 0;
       usage.planKey = ent.planKey;
     }
@@ -1041,25 +1093,17 @@ export function createDomainGateway(
       // re-check via the fallback path. Mirror the per-handler runProPreChecks
       // and authorize-pro entitlement guards.
       const ent = await getEntitlements(verified.userId);
-      const mcpCovered = !!ent &&
-        ent.features.tier >= 1 &&
-        (ent.features as { mcpAccess?: boolean }).mcpAccess === true &&
-        ent.validUntil >= Date.now();
+      // Single-source Pro MCP decision. The gateway keeps its HTTP denial and
+      // telemetry contract; the shared gate owns access and billing precedence.
+      const gate = checkProMcpAccess(ent, Date.now());
+      const mcpCovered = gate === null;
       const billingDenial = denyForBillingVerification(
         ent,
         corsHeaders,
         mcpCovered,
       );
       if (billingDenial) return billingDenial;
-      if (
-        !ent ||
-        ent.features.tier < 1 ||
-        // mcpAccess flag lands in U10 — undefined means "field not present
-        // on this entitlement row", which we treat as false. This keeps
-        // pre-U10 entitlement rows from accidentally granting MCP access.
-        (ent.features as { mcpAccess?: boolean }).mcpAccess !== true ||
-        ent.validUntil < Date.now()
-      ) {
+      if (!mcpCovered) {
         emitRequest(401, 'auth_401', null);
         return new Response(
           JSON.stringify({ error: 'insufficient_entitlement' }),
@@ -1124,13 +1168,15 @@ export function createDomainGateway(
       !isPublicNoAuthRpc &&
       isProFreshCacheRpc &&
       request.headers.get('Authorization')?.startsWith('Bearer ') === true;
-    let endpointRateLimitPrincipalUserId: string | undefined;
+    let rateLimitPrincipalUserId: string | undefined;
 
     // Session resolution — extract userId from bearer token (Clerk JWT) if present.
     // Runs only for tier gates, direct-LLM quota, or the explicit Pro-fresh
     // market allowlist to avoid JWKS lookup on every request.
     let sessionUserId: string | null = null;
     let sessionRole: 'free' | 'pro' | null = null;
+    let quotaEntitlements: CachedEntitlements | null = null;
+    let directLlmDailyLimit: number | null | undefined;
     if (isTierGated || requiresDirectLlmQuota || needsProFreshnessResolution) {
       const session = await resolveClerkSession(request);
       sessionUserId = session?.userId ?? null;
@@ -1185,35 +1231,63 @@ export function createDomainGateway(
         corsHeaders,
       );
       if (validationGuardResponse) {
-        const reason =
-          validationGuardResponse.status === 503 &&
-          validationGuardResponse.headers.get('X-RateLimit-Mode') === 'degraded'
-            ? 'rate_limit_degraded'
-            : 'rate_limit_429';
+        const reason = getRateLimitTelemetryReason(
+          validationGuardResponse,
+          'rate_limit_429',
+        );
         emitRequest(validationGuardResponse.status, reason, null);
         return validationGuardResponse;
       }
 
+      // Only destructure validateUserApiKey: several gateway unit tests mock this
+      // module with a partial surface. Requiring isUserApiKeyUnavailableError at
+      // import time breaks those mocks (vitest throws "No export is defined").
+      // Classify unavailability by the stable `code` field instead.
       const { validateUserApiKey } = await import('./_shared/user-api-key');
-      const userKeyResult = await validateUserApiKey(wmKey);
-      if (userKeyResult) {
-        isUserApiKey = true;
-        usage.isUserApiKey = true;
-        usage.userApiKeyCustomerRef = userKeyResult.userId;
-        keyCheck = { valid: true, required: true };
-        // Propagate the resolved key-owner identity to downstream route
-        // handlers via x-user-id. The entitlement check itself takes the
-        // userId argument directly (see checkEntitlement(sessionUserId, …))
-        // so it no longer depends on this header — the header is now for
-        // handler consumption + the internal-MCP `isCallerPremium` path.
-        sessionUserId = userKeyResult.userId;
-        // The Clerk role belongs to the bearer subject, not the user-key owner.
-        // Once the explicit wm_ key becomes the identity source, require the
-        // key owner's Convex entitlement to drive tier-gated access.
-        sessionRole = null;
-        usage.sessionUserId = sessionUserId;
-        usage.clerkOrgId = null;
-        request = withAuthenticatedUserId(request, sessionUserId);
+      try {
+        const userKeyResult = await validateUserApiKey(wmKey);
+        if (userKeyResult) {
+          isUserApiKey = true;
+          usage.isUserApiKey = true;
+          usage.userApiKeyCustomerRef = userKeyResult.userId;
+          keyCheck = { valid: true, required: true };
+          // Propagate the resolved key-owner identity to downstream route
+          // handlers via x-user-id. The entitlement check itself takes the
+          // userId argument directly (see checkEntitlement(sessionUserId, …))
+          // so it no longer depends on this header — the header is now for
+          // handler consumption + the internal-MCP `isCallerPremium` path.
+          sessionUserId = userKeyResult.userId;
+          // The Clerk role belongs to the bearer subject, not the user-key owner.
+          // Once the explicit wm_ key becomes the identity source, require the
+          // key owner's Convex entitlement to drive tier-gated access.
+          sessionRole = null;
+          usage.sessionUserId = sessionUserId;
+          usage.clerkOrgId = null;
+          request = withAuthenticatedUserId(request, sessionUserId);
+        }
+      } catch (err) {
+        // Transient Convex validation outage must not look like an invalid key.
+        // Mirror api/_user-api-key.js serviceUnavailable() (503 + Retry-After +
+        // X-Validation-Mode: degraded) so clients retry instead of rotating keys.
+        // Duck-type on `code` so partial test mocks of user-api-key still work.
+        const code =
+          typeof err === 'object' && err !== null
+            ? (err as { code?: unknown }).code
+            : undefined;
+        if (code === 'validation_unavailable') {
+          emitRequest(503, 'validation_unavailable', null);
+          return new Response(JSON.stringify({ error: 'Service temporarily unavailable' }), {
+            status: 503,
+            headers: {
+              'Content-Type': 'application/json',
+              'Cache-Control': 'no-store',
+              'Retry-After': '5',
+              'X-Validation-Mode': 'degraded',
+              ...corsHeaders,
+            },
+          });
+        }
+        throw err;
       }
     }
 
@@ -1319,6 +1393,10 @@ export function createDomainGateway(
           'API access requires an active subscription',
           corsHeaders,
         );
+      } else {
+        // A validated user key plus active apiAccess is a trusted paid
+        // principal even on routes without an endpoint tier policy.
+        rateLimitPrincipalUserId = sessionUserId;
       }
     }
 
@@ -1340,6 +1418,9 @@ export function createDomainGateway(
         !!ent &&
         ent.features.tier >= 1 &&
         ent.validUntil >= Date.now();
+      if (hasProFreshCacheAccess) {
+        rateLimitPrincipalUserId = sessionUserId;
+      }
     }
 
     if (keyCheck.required && !keyCheck.valid) {
@@ -1395,6 +1476,7 @@ export function createDomainGateway(
             emitRequest(403, 'tier_403', null);
             return createGatewayAuthErrorResponse(403, 'Pro subscription required', corsHeaders);
           }
+          rateLimitPrincipalUserId = session.userId;
           // Valid pro session (Clerk role OR Dodo entitlement) — fall through to route handling.
         } else {
           emitRequest(401, 'auth_401', null);
@@ -1421,6 +1503,7 @@ export function createDomainGateway(
       const entitlementCheck = await checkEntitlementDetailed(sessionUserId, pathname, corsHeaders, {
         clerkRole: sessionRole,
       });
+      quotaEntitlements = entitlementCheck.entitlements;
       recordUsageEntitlement(entitlementCheck.entitlements);
       const entitlementResponse = entitlementCheck.response;
       if (entitlementResponse) {
@@ -1433,6 +1516,14 @@ export function createDomainGateway(
         return entitlementResponse.status === 401 || entitlementResponse.status === 403
           ? markAuthErrorNoStore(entitlementResponse)
           : entitlementResponse;
+      }
+
+      // A successful tier gate proves this server-derived principal currently
+      // holds the paid access required by the route. Reuse that authorization
+      // decision for both endpoint and global limiter attribution so Pro users
+      // behind a NAT do not share an IP bucket with unrelated traffic.
+      if (sessionUserId && isTierGated) {
+        rateLimitPrincipalUserId = sessionUserId;
       }
 
       // #5206: summarize refreshes from multiple active Pro users can share a
@@ -1462,11 +1553,10 @@ export function createDomainGateway(
           corsHeaders,
         );
         if (attributionGuardResponse) {
-          const reason =
-            attributionGuardResponse.status === 503 &&
-            attributionGuardResponse.headers.get('X-RateLimit-Mode') === 'degraded'
-              ? 'rate_limit_degraded'
-              : 'rate_limit_429';
+          const reason = getRateLimitTelemetryReason(
+            attributionGuardResponse,
+            'rate_limit_429',
+          );
           emitRequest(attributionGuardResponse.status, reason, null);
           return attributionGuardResponse;
         }
@@ -1476,9 +1566,10 @@ export function createDomainGateway(
             ? userKeyEntitlement
             : await getEntitlements(sessionUserId)
         );
+        quotaEntitlements = ent;
         recordUsageEntitlement(ent);
         if (ent && ent.features.tier >= 1 && ent.validUntil >= Date.now()) {
-          endpointRateLimitPrincipalUserId = sessionUserId;
+          rateLimitPrincipalUserId = sessionUserId;
         }
       }
     }
@@ -1551,8 +1642,15 @@ export function createDomainGateway(
     // (compat block above) are already GET here and are skipped. Scope by the
     // resolved principal so a key can never replay another caller's response.
     // Fail-open: any Redis issue proceeds without idempotency (see the module).
+    // Routes in IDEMPOTENCY_EXEMPT_RPC_PATHS own their own retry semantics (per-row
+    // outcomes recomputed against current state), so generic whole-response replay would
+    // violate their contract. The published OpenAPI already omits the parameter for them;
+    // ignore the header here too, otherwise a client that sends it anyway still gets the
+    // replay the spec says it cannot.
     let idempotency: IdempotencyOutcome | null = null;
-    const hasIdempotencyKey = request.method === 'POST' && request.headers.has(IDEMPOTENCY_HEADER);
+    const hasIdempotencyKey = request.method === 'POST'
+      && request.headers.has(IDEMPOTENCY_HEADER)
+      && !IDEMPOTENCY_EXEMPT_RPC_PATHS.has(pathname);
     const idScope = identityForScope.principal_id ?? identityForScope.customer_id;
     const idempotencyScope = idScope ? `${identityForScope.auth_kind}:${idScope}` : null;
 
@@ -1585,24 +1683,24 @@ export function createDomainGateway(
       }
     }
 
-    // IP-based rate limiting — two-phase: endpoint-specific first, then global fallback.
+    // Gateway rate limiting — two-phase: endpoint-specific first, then global fallback.
+    // Confirmed paid principals use per-user buckets; other traffic uses IP.
     //
-    // Internal-MCP verified path skips IP rate limiting: the MCP edge
+    // Internal-MCP verified requests skip this gateway layer: the MCP edge
     // already enforced 50/day + 60/min per userId in api/mcp.ts. A second
     // limiter here would create misleading double-counting and could 429
     // legitimate Pro tool fetches that pass the upstream cap.
     if (!internalMcpVerified) {
-      const endpointRlResponse = endpointRateLimitPrincipalUserId
+      const endpointRlResponse = rateLimitPrincipalUserId
         ? await checkEndpointRateLimit(request, pathname, corsHeaders, {
-            principalUserId: endpointRateLimitPrincipalUserId,
+            principalUserId: rateLimitPrincipalUserId,
           })
         : await checkEndpointRateLimit(request, pathname, corsHeaders);
       if (endpointRlResponse) {
-        const reason =
-          endpointRlResponse.status === 503 &&
-          endpointRlResponse.headers.get('X-RateLimit-Mode') === 'degraded'
-            ? 'rate_limit_degraded'
-            : 'rate_limit_429';
+        const reason = getRateLimitTelemetryReason(
+          endpointRlResponse,
+          'rate_limit_429_endpoint',
+        );
         emitRequest(endpointRlResponse.status, reason, null);
         return endpointRlResponse;
       }
@@ -1611,9 +1709,10 @@ export function createDomainGateway(
       // Eligible authenticated keys — a valid user key (which carries NO
       // keyCheck.kind, so `isUserApiKey` is the discriminator) or an enterprise
       // env key — are governed by a per-account burst + daily meter (enforced
-      // at the sold allowance, #4635) instead of the global per-IP cap. In ENFORCE they bypass
-      // the per-IP fallback below; in SHADOW they only record telemetry and
-      // still fall through to per-IP, so protection never drops below today.
+      // at the sold allowance, #4635) instead of the global fallback. In ENFORCE
+      // they bypass that fallback below; in SHADOW they only record telemetry
+      // and still fall through to it. Validated user keys use their trusted
+      // principal there, while enterprise keys retain IP attribution.
       // Limits are NOT in scope here (checkEntitlement discards `features`), so
       // user keys resolve getEntitlements explicitly (cached); enterprise keys
       // carry no entitlement and use hardcoded limits.
@@ -1734,19 +1833,24 @@ export function createDomainGateway(
             }
           }
           // Eligible + enforce + not rejected ⇒ the per-account layer governs
-          // this request; skip the per-IP fallback. In shadow, keep per-IP on.
+          // this request and skips the global fallback. In shadow, keep that
+          // fallback active: validated user keys use their trusted principal,
+          // while enterprise keys retain IP attribution.
           if (enforce) governedByApiKeyLayer = true;
         }
       }
 
       if (!governedByApiKeyLayer && !hasEndpointRatePolicy(pathname)) {
-        const rateLimitResponse = await checkRateLimit(request, corsHeaders);
+        const rateLimitResponse = rateLimitPrincipalUserId
+          ? await checkRateLimit(request, corsHeaders, {
+              principalUserId: rateLimitPrincipalUserId,
+            })
+          : await checkRateLimit(request, corsHeaders);
         if (rateLimitResponse) {
-          const reason =
-            rateLimitResponse.status === 503 &&
-            rateLimitResponse.headers.get('X-RateLimit-Mode') === 'degraded'
-              ? 'rate_limit_degraded'
-              : 'rate_limit_429';
+          const reason = getRateLimitTelemetryReason(
+            rateLimitResponse,
+            'rate_limit_429_global',
+          );
           emitRequest(rateLimitResponse.status, reason, null);
           return rateLimitResponse;
         }
@@ -1759,14 +1863,41 @@ export function createDomainGateway(
         return createGatewayAuthErrorResponse(401, 'Pro authentication required', corsHeaders);
       }
 
-      const reservation = await reserveDirectLlmQuota({
-        userId: sessionUserId,
-        pipeline: (cmds) => runRedisPipeline(cmds, true),
-      });
-      if (!reservation.ok) {
-        const response = createDirectLlmQuotaFailureResponse(reservation, corsHeaders);
-        emitRequest(response.status, response.status === 429 ? 'rate_limit_429' : 'rate_limit_degraded', null);
-        return response;
+      // Tier-1 legacy Clerk-role grants intentionally bypass the ordinary
+      // entitlement lookup. Re-read the cached row when available so Pro
+      // Business/API plans still receive their catalog-specific dashboard-AI
+      // allowance.
+      const ent = quotaEntitlements ?? (
+        userKeyEntitlement !== undefined
+          ? userKeyEntitlement
+          : await getEntitlements(sessionUserId)
+      );
+      if (ent) recordUsageEntitlement(ent);
+      // resolveActiveDirectLlmLimit — NOT the raw catalog read — decides this.
+      // A caller we cannot confirm as actively paid (free tier, lapsed row, no
+      // row, or a verification outage) must land on the unverified floor, never
+      // on the paid default: this endpoint spends real provider budget, and
+      // two of the DIRECT_LLM_GATEWAY_QUOTA_PATHS carry no tier gate at all.
+      directLlmDailyLimit = resolveActiveDirectLlmLimit(ent);
+
+      // Enterprise subscription rows carry an explicit null allowance. Do not
+      // hit Redis for those unlimited callers; static enterprise keys already
+      // bypass this block above.
+      if (directLlmDailyLimit !== null) {
+        const reservation = await reserveDirectLlmQuota({
+          userId: sessionUserId,
+          limit: directLlmDailyLimit,
+          pipeline: (cmds) => runRedisPipeline(cmds, true),
+        });
+        if (!reservation.ok) {
+          const response = createDirectLlmQuotaFailureResponse(reservation, corsHeaders);
+          emitRequest(
+            response.status,
+            response.status === 429 ? 'rate_limit_429_direct_llm' : 'rate_limit_degraded',
+            null,
+          );
+          return response;
+        }
       }
     }
 
@@ -1836,6 +1967,7 @@ export function createDomainGateway(
         mergedHeaders.set(key, value);
       }
     }
+    const retryableResponse = drainRetryableResponse(request);
     attachRequiredBboxDiagnosticHeaders(mergedHeaders, pathname, requiredBboxDiagnostic);
 
     // Handler side-channel status override (setSuccessStatusOverride): applied
@@ -1975,7 +2107,14 @@ export function createDomainGateway(
       // record rather than a lingering 'processing' lock → 409. store() is
       // best-effort/fail-open, so a Redis blip degrades to a re-executable
       // retry, never a failed response.
-      await idempotency.store(finalStatus, bodyBytes, response.headers.get('content-type'));
+      // Generated response-envelope RPCs can report a retryable ServiceError
+      // inside HTTP 200. Feed store() a retryable status only for its
+      // persist-vs-release decision; the client still receives finalStatus.
+      await idempotency.store(
+        retryableResponse ? 503 : finalStatus,
+        bodyBytes,
+        response.headers.get('content-type'),
+      );
       emitRequest(finalStatus, 'ok', resolvedCacheTier, bodyBytes.byteLength);
       maybeAttachDevHealthHeader(mergedHeaders);
       return new Response(bodyBytes, {

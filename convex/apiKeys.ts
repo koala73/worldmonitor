@@ -1,9 +1,29 @@
 import { ConvexError, v } from "convex/values";
 import { internalMutation, internalQuery, mutation, query } from "./_generated/server";
-import { requireUserId } from "./lib/auth";
+import { requireUserId, resolveUserId } from "./lib/auth";
+import { activeAccountForOwner } from "./companyMonitoring/_shared";
+import { ensureActiveAccount } from "./companyMonitoring/accounts";
+import {
+  COMPANY_MONITORING_RPC_SCOPES,
+  type CompanyMonitoringApiScope,
+} from "../shared/company-monitoring-contract";
 
 /** Maximum number of active (non-revoked) API keys per user. */
 const MAX_KEYS_PER_USER = 5;
+const COMPANY_MONITORING_SCOPES = [
+  ...new Set(Object.values(COMPANY_MONITORING_RPC_SCOPES)),
+] as CompanyMonitoringApiScope[];
+
+function normalizeCompanyMonitoringScopes(scopes: string[] | undefined) {
+  if (!scopes || scopes.length === 0) return undefined;
+  if (scopes.length > COMPANY_MONITORING_SCOPES.length || new Set(scopes).size !== scopes.length) {
+    throw new ConvexError("INVALID_API_KEY_SCOPES");
+  }
+  if (scopes.some((scope) => !(COMPANY_MONITORING_SCOPES as readonly string[]).includes(scope))) {
+    throw new ConvexError("INVALID_API_KEY_SCOPES");
+  }
+  return [...scopes].sort() as CompanyMonitoringApiScope[];
+}
 
 // ---------------------------------------------------------------------------
 // Public mutations & queries (require Clerk JWT via ctx.auth)
@@ -24,6 +44,7 @@ export const createApiKey = mutation({
     name: v.string(),
     keyPrefix: v.string(),
     keyHash: v.string(),
+    scopes: v.optional(v.array(v.string())),
   },
   handler: async (ctx, args) => {
     const userId = await requireUserId(ctx);
@@ -41,6 +62,16 @@ export const createApiKey = mutation({
       !entitlement.features.apiAccess
     ) {
       throw new ConvexError("API_ACCESS_REQUIRED");
+    }
+
+    const scopes = normalizeCompanyMonitoringScopes(args.scopes);
+    // Issuing a scoped key is a first-use entry point, so it provisions the
+    // root. Requesting no scopes must stay entirely off Company Monitoring.
+    const companyMonitoringAccount = scopes
+      ? await ensureActiveAccount(ctx, userId, entitlement)
+      : null;
+    if (scopes && !companyMonitoringAccount) {
+      throw new ConvexError("COMPANY_MONITORING_ACCESS_DENIED");
     }
 
     if (!args.name.trim()) {
@@ -92,10 +123,18 @@ export const createApiKey = mutation({
       name: args.name.trim(),
       keyPrefix: args.keyPrefix,
       keyHash: args.keyHash,
+      scopes,
+      companyMonitoringAccountId: companyMonitoringAccount?.logicalAccountId,
       createdAt: Date.now(),
     });
 
-    return { id, name: args.name.trim(), keyPrefix: args.keyPrefix };
+    return {
+      id,
+      name: args.name.trim(),
+      keyPrefix: args.keyPrefix,
+      scopes,
+      companyMonitoringAccountId: companyMonitoringAccount?.logicalAccountId,
+    };
   },
 });
 
@@ -103,7 +142,15 @@ export const createApiKey = mutation({
 export const listApiKeys = query({
   args: {},
   handler: async (ctx) => {
-    const userId = await requireUserId(ctx);
+    // This query is called from the settings UI after a best-effort auth
+    // readiness wait, but the Convex WebSocket can still observe a brief
+    // unauthenticated window during sign-out, initial auth, or token rotation.
+    // Throwing AUTH_REQUIRED from that race pages through Convex auto-Sentry
+    // (WORLDMONITOR-XM). The UI already gates this query behind a signed-in
+    // shell, so [] is the honest transient result and cannot expose another
+    // user's keys.
+    const userId = await resolveUserId(ctx);
+    if (!userId) return [];
     const keys = await ctx.db
       .query("userApiKeys")
       .withIndex("by_userId", (q) => q.eq("userId", userId))
@@ -116,6 +163,8 @@ export const listApiKeys = query({
       createdAt: k.createdAt,
       lastUsedAt: k.lastUsedAt,
       revokedAt: k.revokedAt,
+      scopes: k.scopes,
+      companyMonitoringAccountId: k.companyMonitoringAccountId,
     }));
   },
 });
@@ -158,10 +207,34 @@ export const validateKeyByHash = internalQuery({
 
     if (!key || key.revokedAt) return null;
 
+    if (key.scopes && key.scopes.length > 0) {
+      let scopes: string[] | undefined;
+      try {
+        scopes = normalizeCompanyMonitoringScopes(key.scopes);
+      } catch {
+        return null;
+      }
+      const account = await activeAccountForOwner(ctx, key.userId);
+      if (
+        !scopes ||
+        !account ||
+        !key.companyMonitoringAccountId ||
+        account.logicalAccountId !== key.companyMonitoringAccountId
+      ) {
+        return null;
+      }
+    } else if (key.companyMonitoringAccountId) {
+      // A binding without issued scopes is malformed/ownerless credential
+      // state and must never authenticate through a legacy fallback.
+      return null;
+    }
+
     return {
       id: key._id,
       userId: key.userId,
       name: key.name,
+      scopes: key.scopes,
+      companyMonitoringAccountId: key.companyMonitoringAccountId,
     };
   },
 });

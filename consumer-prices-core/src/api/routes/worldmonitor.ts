@@ -1,4 +1,5 @@
 import type { FastifyInstance } from 'fastify';
+import { buildCoverageSnapshot } from '../../snapshots/coverage.js';
 import {
   buildBasketSeriesSnapshot,
   buildCategoriesSnapshot,
@@ -9,6 +10,17 @@ import {
 } from '../../snapshots/worldmonitor.js';
 
 export async function worldmonitorRoutes(fastify: FastifyInstance) {
+  fastify.get('/coverage', async (request, reply) => {
+    const { market = 'ae' } = request.query as { market?: string };
+    try {
+      const data = await buildCoverageSnapshot(market);
+      return reply.send(data);
+    } catch (err) {
+      fastify.log.error(err);
+      return reply.status(500).send({ error: 'failed to build coverage snapshot' });
+    }
+  });
+
   fastify.get('/overview', async (request, reply) => {
     const { market = 'ae' } = request.query as { market?: string };
     try {

@@ -21,18 +21,30 @@ const zlib = require('zlib');
 const path = require('path');
 const { readFileSync } = require('fs');
 const { execFile } = require('child_process');
-const { promisify } = require('util');
-const execFileAsync = promisify(execFile);
 const crypto = require('crypto');
 const v8 = require('v8');
 const { WebSocketServer, WebSocket } = require('ws');
-const { parseProxyConfig, resolveProxyString } = require('./_proxy-utils.cjs');
+const { parseProxyConfig, resolveProxyString, resolveProxyStringForAttempt } = require('./_proxy-utils.cjs');
+const {
+  YahooQuoteSummaryClient,
+  buildSectorSeedMeta,
+  buildSectorValuationCoverage,
+  buildSectorValuationPublication,
+  collectSectorValuations,
+} = require('./_yahoo-sector-valuations.cjs');
 const { countryNameToIso2 } = require('./shared/country-name-to-iso2.cjs');
 const {
   buildDedupMaterial,
   classifySetNxResult,
   recordDedupOutcome,
 } = require('./shared/notification-dedup.cjs');
+const {
+  AVIATION_MIN_SERVED_COVERAGE,
+  RSS_MIN_SERVED_COVERAGE,
+  classifyUpstreamOutcome,
+  nextBackoffMs,
+  summarizeServedCoverage,
+} = require('./_ingestion-coverage.cjs');
 const { maintainClosedMarketEquityKeys: maintainClosedMarketEquityKeysWithDeps } = require('./shared/closed-market-equity-maintenance.cjs');
 const { getUsEquitySession, isMultiMarketEquityTradingDay } = require('./shared/market-hours.cjs');
 const { mergeLastGoodQuotes, planYahooRefresh } = require('./shared/market-quote-refresh.cjs');
@@ -52,14 +64,19 @@ const RSS_ALLOWED_DOMAINS = new Set(requireShared('rss-allowed-domains.cjs'));
 const _heapStats = v8.getHeapStatistics();
 console.log(`[Relay] Heap limit: ${(_heapStats.heap_size_limit / 1024 / 1024).toFixed(0)}MB`);
 
-const AISSTREAM_URL = 'wss://stream.aisstream.io/v0/stream';
+const RELAY_TEST_MODE = process.env.RELAY_TEST_MODE === 'true';
+const AISSTREAM_URL = RELAY_TEST_MODE && process.env.AISSTREAM_URL
+  ? process.env.AISSTREAM_URL
+  : 'wss://stream.aisstream.io/v0/stream';
 const API_KEY = process.env.AISSTREAM_API_KEY || process.env.VITE_AISSTREAM_API_KEY;
 const PORT = process.env.PORT || 3004;
+// Actual bound port, resolved at listen time. Self-requests must use this:
+// with PORT=0 (ephemeral bind, used by tests) the env value is not the port
+// the server listens on, and `http://localhost:0` fails outright.
+let relayBoundPort = PORT;
 
 if (!API_KEY) {
-  console.error('[Relay] Error: AISSTREAM_API_KEY environment variable not set');
-  console.error('[Relay] Get a free key at https://aisstream.io');
-  process.exit(1);
+  console.warn('[Relay] AIS disabled: AISSTREAM_API_KEY is not set (other relay and seed services remain available)');
 }
 
 const MAX_WS_CLIENTS = 10; // Cap WS clients — app uses HTTP snapshots, not WS
@@ -105,6 +122,8 @@ const RELAY_OPENSKY_RATE_LIMIT_MAX = Number.isFinite(Number(process.env.RELAY_OP
   ? Number(process.env.RELAY_OPENSKY_RATE_LIMIT_MAX) : 600;
 const RELAY_RSS_RATE_LIMIT_MAX = Number.isFinite(Number(process.env.RELAY_RSS_RATE_LIMIT_MAX))
   ? Number(process.env.RELAY_RSS_RATE_LIMIT_MAX) : 300;
+const RELAY_GOOGLE_FLIGHTS_RATE_LIMIT_MAX = Number.isFinite(Number(process.env.RELAY_GOOGLE_FLIGHTS_RATE_LIMIT_MAX))
+  ? Number(process.env.RELAY_GOOGLE_FLIGHTS_RATE_LIMIT_MAX) : 60;
 const RELAY_LOG_THROTTLE_MS = Math.max(1000, Number(process.env.RELAY_LOG_THROTTLE_MS || 10000));
 const ALLOW_VERCEL_PREVIEW_ORIGINS = process.env.ALLOW_VERCEL_PREVIEW_ORIGINS === 'true';
 
@@ -544,6 +563,32 @@ function upstashDel(key) {
   });
 }
 
+function upstashReleaseLockIfOwner(key, owner) {
+  return new Promise((resolve) => {
+    if (!UPSTASH_ENABLED) return resolve(false);
+    const url = new URL('/', UPSTASH_REDIS_REST_URL);
+    const script = 'if redis.call("get",KEYS[1]) == ARGV[1] then return redis.call("del",KEYS[1]) else return 0 end';
+    const body = JSON.stringify(['EVAL', script, '1', key, owner]);
+    const req = UPSTASH_HTTP_MODULE.request(url, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${UPSTASH_REDIS_REST_TOKEN}`,
+        'Content-Type': 'application/json',
+      },
+      timeout: 5000,
+    }, (resp) => {
+      let data = '';
+      resp.on('data', (chunk) => { data += chunk; });
+      resp.on('end', () => {
+        try { resolve(Number(JSON.parse(data)?.result) === 1); } catch { resolve(false); }
+      });
+    });
+    req.on('error', () => resolve(false));
+    req.on('timeout', () => { req.destroy(); resolve(false); });
+    req.end(body);
+  });
+}
+
 // ─────────────────────────────────────────────────────────────
 // Seed envelope — canonical { _seed, data } shape. Mirrored from
 // scripts/_seed-envelope-source.mjs (ESM; can't be require()'d from CJS).
@@ -559,18 +604,19 @@ function buildEnvelope({ fetchedAt, recordCount, sourceVersion, schemaVersion, s
 }
 
 // Wrap `data` in a seed envelope and write to Redis at `key` with `ttlSeconds`.
-// meta: { recordCount, sourceVersion, schemaVersion?, state?, zeroOk? }
+// meta: { fetchedAt?, recordCount, sourceVersion, schemaVersion?, state?, zeroOk?, groupId? }
 //   - state: omit to derive ('OK_ZERO' when recordCount===0 && zeroOk, else 'OK')
 //   - schemaVersion: defaults to 1
 function envelopeWrite(key, data, ttlSeconds, meta) {
   const recordCount = Number(meta?.recordCount ?? 0) || 0;
   const state = meta?.state || (recordCount === 0 && meta?.zeroOk ? 'OK_ZERO' : 'OK');
   const envelope = buildEnvelope({
-    fetchedAt: Date.now(),
+    fetchedAt: meta?.fetchedAt ?? Date.now(),
     recordCount,
     sourceVersion: meta?.sourceVersion || 'ais-relay',
     schemaVersion: meta?.schemaVersion ?? 1,
     state,
+    groupId: meta?.groupId,
     data,
   });
   return upstashSet(key, envelope, ttlSeconds);
@@ -672,6 +718,57 @@ async function publishNotificationEvent({ eventType, payload, severity, variant,
 }
 
 let upstreamSocket = null;
+let upstreamReconnectTimer = null;
+let upstreamReconnectFailures = 0;
+let upstreamConsecutiveThrottles = 0;
+let upstreamReconnectAt = 0;
+let upstreamLastPositionAt = 0;
+let relayShuttingDown = false;
+// Floors are deliberate: this change exists to stop the relay hammering a
+// provider that is rejecting it, so the tunables must not open a config path to
+// hammer harder. 50ms/100ms stay well below any production value while leaving
+// the ladder compressible under test.
+const AIS_RECONNECT_BASE_MS = safeInt(process.env.AIS_RECONNECT_BASE_MS, 5_000, 50);
+const AIS_RECONNECT_MAX_MS = safeInt(process.env.AIS_RECONNECT_MAX_MS, 5 * 60 * 1000, 100);
+// A 429 on the WebSocket upgrade means the provider is rate-limiting this egress
+// IP, not that the stream failed transiently: the rejection lands before the API
+// key is ever sent. Knocking every AIS_RECONNECT_MAX_MS keeps ~288 refused
+// requests/day inside the provider's sliding window, which can sustain the block
+// we are waiting out. Sustained throttling therefore escalates to a much longer
+// ceiling; any non-throttle outcome clears it so ordinary disconnects keep the
+// responsive schedule.
+//
+// Clamped at or above the ordinary ceiling: a smaller value would make
+// escalation *shorten* the wait and reconnect more aggressively while throttled,
+// which is the exact inverse of the intent.
+const AIS_THROTTLE_RECONNECT_MAX_MS = Math.max(
+  AIS_RECONNECT_MAX_MS,
+  safeInt(process.env.AIS_THROTTLE_RECONNECT_MAX_MS, 30 * 60 * 1000, 100),
+);
+const AIS_THROTTLE_ESCALATE_AFTER = safeInt(
+  process.env.AIS_THROTTLE_ESCALATE_AFTER,
+  5,
+  1,
+);
+const AIS_HANDSHAKE_TIMEOUT_MS = safeInt(
+  process.env.AIS_HANDSHAKE_TIMEOUT_MS,
+  30_000,
+  1_000,
+);
+const AIS_POSITION_FRESHNESS_MS = safeInt(
+  process.env.AIS_POSITION_FRESHNESS_MS,
+  5 * 60 * 1000,
+  1_000,
+);
+const aisUpstreamMetrics = {
+  connectionAttempts: 0,
+  success: 0,
+  throttle: 0,
+  terminalFailure: 0,
+  lastSuccessAt: 0,
+  lastFailureAt: 0,
+  lastFailure: null,
+};
 let upstreamPaused = false;
 let upstreamQueue = [];
 let upstreamQueueReadIndex = 0;
@@ -681,6 +778,22 @@ let messageCount = 0;
 let droppedMessages = 0;
 const requestRateBuckets = new Map(); // key: route:ip -> { count, resetAt }
 const logThrottleState = new Map(); // key: event key -> timestamp
+
+function isAisThrottleEscalated() {
+  return upstreamConsecutiveThrottles >= AIS_THROTTLE_ESCALATE_AFTER;
+}
+
+function getAisPositionFreshness(nowMs = Date.now()) {
+  const positionAgeMs = upstreamLastPositionAt
+    ? Math.max(0, nowMs - upstreamLastPositionAt)
+    : null;
+  return {
+    currentPositionReady: upstreamSocket?.readyState === WebSocket.OPEN
+      && positionAgeMs !== null
+      && positionAgeMs <= AIS_POSITION_FRESHNESS_MS,
+    positionAgeMs,
+  };
+}
 
 // Safe response: guard against "headers already sent" crashes
 function safeEnd(res, statusCode, headers, body) {
@@ -1576,6 +1689,16 @@ const UCDP_ACCESS_TOKEN = (process.env.UCDP_ACCESS_TOKEN || process.env.UC_DP_KE
 const UCDP_REDIS_KEY = 'conflict:ucdp-events:v1';
 const UCDP_PAGE_SIZE = 1000;
 const UCDP_MAX_PAGES = 6;
+// GED Candidate discovery/fetch/merge is shared with scripts/seed-ucdp-events.mjs
+// so the two UCDP writers cannot drift (they already had, on discovery
+// concurrency and probe timeout).
+const {
+  CANDIDATE_MAX_PAGES: UCDP_CANDIDATE_MAX_PAGES,
+  discoverCandidateVersion: ucdpDiscoverCandidateVersion,
+  fetchCandidatePages: ucdpFetchCandidatePages,
+  capWithAnnualFloor: ucdpCapWithAnnualFloor,
+  candidateContentMeta: ucdpCandidateContentMeta,
+} = require('./shared/ucdp-candidate.cjs');
 const UCDP_MAX_EVENTS = 2000; // Redis payload guard; widening needs live UCDP volume + Upstash payload validation.
 // Retained Redis input window. CII v8's classifier accepts a 2-year window, but
 // this Redis writer fetches the newest pages only and keeps at most UCDP_MAX_EVENTS
@@ -1660,6 +1783,13 @@ async function ucdpDiscoverVersion() {
   return valid[0];
 }
 
+// UCDP also publishes GED Candidate releases monthly ('${year}.0.N'), with "not
+// more than a month's lag globally" per UCDP's docs — unlike the ANNUAL release
+// above, which is finalized once a year and lags ~7 months behind by the time
+// the next one lands. Discovery, paging and merge semantics live in
+// scripts/shared/ucdp-candidate.cjs (required above) so this relay and the
+// backup cron stay byte-identical in behaviour; only the transport differs.
+
 async function seedUcdpEvents() {
   try {
     const { version, page0 } = await ucdpDiscoverVersion();
@@ -1700,7 +1830,50 @@ async function seedUcdpEvents() {
       return;
     }
 
-    const filtered = allEvents.filter((e) => {
+    // Merge the newest GED Candidate release on top of the annual base (ADD,
+    // never replace — a candidate alone is ~1.8k events vs the annual's ~418k).
+    // The annual base is already in allEvents; append candidate events and dedupe
+    // by id so a candidate's revision of an event also present in the annual
+    // release wins (it's the fresher record).
+    let candidateVersion = null;
+    let candidateComplete = false;
+    const candidateIds = new Set();
+    try {
+      const candidate = await ucdpDiscoverCandidateVersion(ucdpFetchPage);
+      if (candidate) {
+        const merged = await ucdpFetchCandidatePages(ucdpFetchPage, candidate);
+        // Only claim the candidate version once the release was fetched whole.
+        // A partial fetch published as `26.0.6` is indistinguishable from a
+        // complete one downstream, which is how a silently degraded merge would
+        // look healthy.
+        candidateComplete = merged.complete && !merged.truncated;
+        candidateVersion = candidateComplete ? candidate.version : `${candidate.version}+partial`;
+        if (merged.failedPages > 0) {
+          console.warn(`[UCDP] candidate ${candidate.version}: ${merged.failedPages} page(s) failed — publishing as partial`);
+        }
+        if (merged.truncated) {
+          console.warn(`[UCDP] candidate ${candidate.version}: ${merged.totalPages} pages exceeds cap ${UCDP_CANDIDATE_MAX_PAGES} — ${merged.totalPages - UCDP_CANDIDATE_MAX_PAGES} page(s) dropped`);
+        }
+        for (const e of merged.events) {
+          if (e?.id != null) candidateIds.add(String(e.id));
+          const ms = e?.date_start ? Date.parse(String(e.date_start)) : NaN;
+          if (Number.isFinite(ms) && (!Number.isFinite(latestMs) || ms > latestMs)) latestMs = ms;
+        }
+        allEvents.push(...merged.events);
+        console.log(`[UCDP] Merged candidate ${candidateVersion}: +${merged.events.length} events`);
+      }
+    } catch (err) {
+      console.warn(`[UCDP] Candidate merge skipped: ${err.message || err}`);
+    }
+
+    const byId = new Map();
+    for (const e of allEvents) {
+      const id = e?.id != null ? String(e.id) : '';
+      byId.set(id || Symbol(id), e);
+    }
+    const dedupedEvents = [...byId.values()];
+
+    const filtered = dedupedEvents.filter((e) => {
       if (!Number.isFinite(latestMs)) return true;
       const ms = e?.date_start ? Date.parse(String(e.date_start)) : NaN;
       return Number.isFinite(ms) && ms >= (latestMs - UCDP_TRAILING_WINDOW_MS);
@@ -1719,20 +1892,38 @@ async function seedUcdpEvents() {
       deathsHigh: Number(e.high) || 0,
       violenceType: UCDP_VIOLENCE_TYPE_MAP[e.type_of_violence] || 'UCDP_VIOLENCE_TYPE_UNSPECIFIED',
       sourceOriginal: (e.source_original || '').substring(0, 300),
-    })).sort((a, b) => b.dateStart - a.dateStart).slice(0, UCDP_MAX_EVENTS);
+    })).sort((a, b) => b.dateStart - a.dateStart);
+
+    // Cap newest-first, but reserve slots for the annual base. Every candidate
+    // event is newer than every annual one, so a plain slice hands the whole
+    // payload to the candidate as soon as it outgrows the cap — evicting the
+    // history get-risk-scores.ts needs for per-country conflict floors.
+    const capped = ucdpCapWithAnnualFloor(mapped, (e) => candidateIds.has(e.id), UCDP_MAX_EVENTS);
 
     // Partial success but 0 events after filtering: extend TTL, don't overwrite
-    if (mapped.length === 0) {
+    if (capped.length === 0) {
       console.warn(`[UCDP] 0 events after filtering (failed pages: ${failedPages}), extending existing key TTL`);
       try { await upstashExpire(UCDP_REDIS_KEY, UCDP_TTL_SECONDS); } catch {}
       return;
     }
 
-    const payload = { events: mapped, fetchedAt: Date.now(), version, totalRaw: allEvents.length, filteredCount: mapped.length };
-    const ok = await envelopeWrite(UCDP_REDIS_KEY, payload, UCDP_TTL_SECONDS, { recordCount: mapped.length, sourceVersion: 'ucdp' });
-    await upstashSet('seed-meta:conflict:ucdp-events', { fetchedAt: Date.now(), recordCount: mapped.length }, 604800);
-    console.log(`[UCDP] Seeded ${mapped.length} events (raw: ${allEvents.length}, failed pages: ${failedPages}, redis: ${ok ? 'OK' : 'FAIL'})`);
-    const newConflicts = mapped.filter(e => e.deathsBest >= 10 && !ucdpPrevAlertedIds.has(e.id)).sort((a, b) => b.deathsBest - a.deathsBest);
+    const payload = { events: capped, fetchedAt: Date.now(), version, candidateVersion, candidateComplete, annualFailedPages: failedPages, totalRaw: allEvents.length, filteredCount: capped.length };
+    const ok = await envelopeWrite(UCDP_REDIS_KEY, payload, UCDP_TTL_SECONDS, { recordCount: capped.length, sourceVersion: 'ucdp' });
+    // Content-age trio: api/health.js treats the presence of maxContentAgeMin as
+    // the opt-in signal and reports STALE_CONTENT once the newest event outruns
+    // the budget. Without it a silently dead candidate merge is invisible —
+    // fetchedAt stays fresh and recordCount stays full while the data itself
+    // falls back to the annual release's ~7-month lag.
+    await upstashSet('seed-meta:conflict:ucdp-events', {
+      fetchedAt: Date.now(),
+      recordCount: capped.length,
+      candidateVersion,
+      candidateComplete,
+      annualFailedPages: failedPages,
+      ...ucdpCandidateContentMeta(capped),
+    }, 604800);
+    console.log(`[UCDP] Seeded ${capped.length} events (raw: ${allEvents.length}, candidate: ${candidateVersion || 'none'}, failed pages: ${failedPages}, redis: ${ok ? 'OK' : 'FAIL'})`);
+    const newConflicts = capped.filter(e => e.deathsBest >= 10 && !ucdpPrevAlertedIds.has(e.id)).sort((a, b) => b.deathsBest - a.deathsBest);
     for (const e of newConflicts.slice(0, 2)) {
       ucdpPrevAlertedIds.add(e.id);
       const parties = e.sideA && e.sideB ? `${e.sideA.slice(0, 40)} vs ${e.sideB.slice(0, 40)}` : e.sideA || e.sideB || 'Unknown parties';
@@ -1946,8 +2137,6 @@ function _parseYahooChartJson(body) {
 const _YAHOO_PROXY_COOLDOWN_MS = 5 * 60 * 1000;
 let _yahooConnectProxyFailCount = 0;   // fetchYahooChartDirect via gate.decodo.com (CONNECT)
 let _yahooConnectProxyCooldownUntil = 0;
-let _yahooCurlProxyFailCount = 0;      // fetchYahooQuoteSummary via us.decodo.com (curl)
-let _yahooCurlProxyCooldownUntil = 0;
 
 function _fetchYahooChartNoProxy(symbol, query = '') {
   return new Promise((resolve) => {
@@ -1993,113 +2182,28 @@ function fetchYahooChartDirect(symbol, query = '') {
   });
 }
 
-// Yahoo's /v10 quoteSummary 401s on Railway container IPs (seen 2026-04-16
-// logs — all 12 sector ETFs failing). Direct first, then curl via Decodo
-// us.decodo.com. Must be curl (NOT CONNECT): Yahoo's edge blocks Decodo's
-// CONNECT egress (gate.decodo.com) but accepts the curl egress — probed
-// 2026-04-16, see scripts/_yahoo-fetch.mjs header.
-function fetchYahooQuoteSummary(symbol) {
-  return new Promise((resolve) => {
-    const modules = 'summaryDetail,defaultKeyStatistics';
-    const url = `https://query1.finance.yahoo.com/v10/finance/quoteSummary/${encodeURIComponent(symbol)}?modules=${modules}`;
-    let settled = false;
-    const settle = (value) => { if (settled) return; settled = true; resolve(value); };
-    const req = https.get(url, {
-      headers: { 'User-Agent': CHROME_UA, Accept: 'application/json' },
-      timeout: 12000,
-    }, (resp) => {
-      if (resp.statusCode !== 200) {
-        resp.resume();
-        logThrottled('warn', `yahoo-summary-${resp.statusCode}:${symbol}`, `[Sector] Yahoo quoteSummary ${symbol} HTTP ${resp.statusCode}`);
-        return settle(_yahooQuoteSummaryProxyFallback(symbol, url));
-      }
-      let body = '';
-      resp.on('data', (chunk) => { body += chunk; });
-      resp.on('end', () => {
-        try {
-          const data = JSON.parse(body);
-          const result = data?.quoteSummary?.result?.[0];
-          if (!result) return settle(null); // app-level "no data" — proxy won't change it
-          const sd = result.summaryDetail || {};
-          const ks = result.defaultKeyStatistics || {};
-          const raw = (obj) => typeof obj === 'object' && obj !== null ? (obj.raw ?? obj.fmt ?? null) : (typeof obj === 'number' ? obj : null);
-          settle({
-            trailingPE: raw(sd.trailingPE),
-            forwardPE: raw(sd.forwardPE),
-            beta: raw(sd.beta) ?? raw(ks.beta3Year),
-            ytdReturn: raw(ks.ytdReturn),
-            threeYearReturn: raw(ks.threeYearAverageReturn),
-            fiveYearReturn: raw(ks.fiveYearAverageReturn),
-          });
-        } catch { settle(_yahooQuoteSummaryProxyFallback(symbol, url)); }
-      });
-    });
-    req.on('error', (err) => { if (settled) return; logThrottled('warn', `yahoo-summary-err:${symbol}`, `[Sector] Yahoo quoteSummary ${symbol} error: ${err.message}`); settle(_yahooQuoteSummaryProxyFallback(symbol, url)); });
-    req.on('timeout', () => { if (settled) return; req.destroy(); logThrottled('warn', `yahoo-summary-timeout:${symbol}`, `[Sector] Yahoo quoteSummary ${symbol} timeout`); settle(_yahooQuoteSummaryProxyFallback(symbol, url)); });
-  });
-}
+// Yahoo quoteSummary now requires a cookie + crumb session. The client caches
+// that session, refreshes it once on 401, then cools the whole route down so a
+// single auth failure cannot produce 12 direct + 12 proxy retries per cycle.
+// The Decodo fallback performs the same authenticated handshake through curl;
+// proxy credentials remain process-local and are never included in logs.
+const _yahooQuoteSummaryClient = new YahooQuoteSummaryClient({
+  userAgent: CHROME_UA,
+  resolveProxyString,
+  // Yahoo's quote fundamentals cache is populated per residential exit IP, so a
+  // 200 response can omit trailingPE for a stable subset of ETFs no matter how
+  // often the same exit is retried. Rotation is the only recovery.
+  resolveProxyStringForAttempt,
+  cooldownMs: _YAHOO_PROXY_COOLDOWN_MS,
+  logger: {
+    warn(message, { transport }) {
+      logThrottled('warn', `sector-yahoo-auth-${transport}`, message);
+    },
+  },
+});
 
-// Async so the curl call doesn't block the relay event loop. Returns a
-// Promise; resolve(promise) in the caller chains the Promise state through
-// to fetchYahooQuoteSummary's outer Promise, so awaiting fetchYahoo* in
-// seedSectorSummary yields the event loop during the curl round-trip.
-async function _yahooQuoteSummaryProxyFallback(symbol, url) {
-  const proxyAuth = resolveProxyString();
-  if (!proxyAuth) return null;
-  if (Date.now() < _yahooCurlProxyCooldownUntil) return null;
-  // Transport failures (timeout, proxy-connect refused, garbage body) must
-  // tick the cooldown too — the failure mode this PR hardens against would
-  // otherwise thrash through N curl attempts per tick with no backoff.
-  const bumpCooldown = () => {
-    _yahooCurlProxyFailCount++;
-    if (_yahooCurlProxyFailCount >= 5) {
-      _yahooCurlProxyCooldownUntil = Date.now() + _YAHOO_PROXY_COOLDOWN_MS;
-      _yahooCurlProxyFailCount = 0;
-      logThrottled('warn', 'sector-yahoo-proxy-cooldown', '[Sector] Yahoo curl proxy cooldown 5min after 5 failures');
-    }
-  };
-  try {
-    const args = [
-      '-sS', '--compressed', '--max-time', '15', '-L',
-      '-x', `http://${proxyAuth}`,
-      '-H', `User-Agent: ${CHROME_UA}`,
-      '-H', 'Accept: application/json',
-      '-w', '\n%{http_code}',
-      url,
-    ];
-    const { stdout } = await execFileAsync('curl', args, { encoding: 'utf8', timeout: 20000 });
-    const nl = stdout.lastIndexOf('\n');
-    const status = parseInt(stdout.slice(nl + 1).trim(), 10);
-    if (status < 200 || status >= 300) {
-      bumpCooldown();
-      logThrottled('warn', `sector-yahoo-proxy-${status}:${symbol}`, `[Sector] Yahoo quoteSummary ${symbol} proxy HTTP ${status}`);
-      return null;
-    }
-    const data = JSON.parse(stdout.slice(0, nl));
-    const result = data?.quoteSummary?.result?.[0];
-    if (!result) {
-      // Proxy reached Yahoo and got a valid 200 — route is healthy. Reset
-      // the counter even if this specific symbol has no data.
-      _yahooCurlProxyFailCount = 0;
-      return null;
-    }
-    _yahooCurlProxyFailCount = 0;
-    const sd = result.summaryDetail || {};
-    const ks = result.defaultKeyStatistics || {};
-    const raw = (obj) => typeof obj === 'object' && obj !== null ? (obj.raw ?? obj.fmt ?? null) : (typeof obj === 'number' ? obj : null);
-    return {
-      trailingPE: raw(sd.trailingPE),
-      forwardPE: raw(sd.forwardPE),
-      beta: raw(sd.beta) ?? raw(ks.beta3Year),
-      ytdReturn: raw(ks.ytdReturn),
-      threeYearReturn: raw(ks.threeYearAverageReturn),
-      fiveYearReturn: raw(ks.fiveYearAverageReturn),
-    };
-  } catch (err) {
-    bumpCooldown();
-    logThrottled('warn', `sector-yahoo-proxy-err:${symbol}`, `[Sector] Yahoo quoteSummary ${symbol} proxy error: ${err.message}`);
-    return null;
-  }
+function fetchYahooQuoteSummary(symbol) {
+  return _yahooQuoteSummaryClient.fetch(symbol);
 }
 
 function parseSectorValuation(raw) {
@@ -2352,16 +2456,46 @@ async function seedSectorSummary() {
     return 0;
   }
 
-  const valuations = {};
-  let valCount = 0;
-  for (const s of SECTOR_SYMBOLS) {
-    const raw = await fetchYahooQuoteSummary(s);
-    const parsed = parseSectorValuation(raw);
-    if (parsed) { valuations[s] = parsed; valCount++; }
-    await sleep(150);
-  }
+  const {
+    valuations,
+    valuationSources,
+    valuationCount: valCount,
+    unavailableSymbols,
+    valuationDiagnostics,
+    currentValuationCount,
+    lastGoodFetchedAt,
+    lastGoodMetricsUsed,
+    lastGoodValuationSymbols,
+  } = await collectSectorValuations({
+    symbols: SECTOR_SYMBOLS,
+    fetchValue: fetchYahooQuoteSummary,
+    fetchValueDetailed: (symbol, options) => _yahooQuoteSummaryClient.fetchDetailed(symbol, options),
+    parseValue: parseSectorValuation,
+    sleepFn: sleep,
+    v7UserAgent: CHROME_UA,
+    v7ResolveProxyString: resolveProxyString,
+    v7Client: _yahooQuoteSummaryClient,
+    upstashGet,
+    upstashSet,
+  });
 
-  const payload = { sectors, valuations };
+  const valuationCoverage = buildSectorValuationCoverage({
+    valuationCount: valCount,
+    expectedCount: SECTOR_SYMBOLS.length,
+    fetchedAt: Date.now(),
+    sources: valuationSources,
+    unavailableSymbols,
+    valuationDiagnostics,
+    currentValuationCount,
+    lastGoodFetchedAt,
+    lastGoodMetricsUsed,
+    lastGoodValuationSymbols,
+  });
+  const { payload, meta: sectorMeta } = buildSectorValuationPublication({
+    sectors,
+    valuations,
+    valuationCoverage,
+  });
   const ok = await envelopeWrite('market:sectors:v2', payload, MARKET_SEED_TTL, { recordCount: sectors.length, sourceVersion: 'market-sectors' });
   const quotesKey = `market:quotes:v1:${[...SECTOR_SYMBOLS].sort().join(',')}`;
   const sectorQuotes = sectors.map((s) => ({
@@ -2370,8 +2504,16 @@ async function seedSectorSummary() {
   }));
   const quotesPayload = { quotes: sectorQuotes, finnhubSkipped: false, skipReason: '', rateLimited: false };
   const ok2 = await envelopeWrite(quotesKey, quotesPayload, MARKET_SEED_TTL, { recordCount: sectorQuotes.length, sourceVersion: 'market-sectors' });
-  const ok3 = await upstashSet('seed-meta:market:sectors', { fetchedAt: Date.now(), recordCount: sectors.length }, 604800);
-  console.log(`[Market] Seeded ${sectors.length}/${SECTOR_SYMBOLS.length} sectors, ${valCount} valuations (redis: ${ok && ok2 && ok3 ? 'OK' : 'PARTIAL'})`);
+  const persistedSectorMeta = buildSectorSeedMeta(sectorMeta, ok);
+  const ok3 = await upstashSet('seed-meta:market:sectors', persistedSectorMeta, 604800);
+  // valCount includes records replayed from the last-good snapshot, so report
+  // the live count alongside it: "12/12 (partial)" during a total upstream
+  // outage reads as healthy coverage to anyone scanning the logs.
+  const liveCount = currentValuationCount == null ? valCount : currentValuationCount;
+  const valuationSummary = liveCount === valCount
+    ? `${valCount}/${SECTOR_SYMBOLS.length} valuations`
+    : `${valCount}/${SECTOR_SYMBOLS.length} valuations (${liveCount} live, ${valCount - liveCount} stale)`;
+  console.log(`[Market] Seeded ${sectors.length}/${SECTOR_SYMBOLS.length} sectors, ${valuationSummary} (${valuationCoverage.sourceStatus}; redis: ${ok && ok2 && ok3 ? 'OK' : 'PARTIAL'})`);
   return sectors.length;
 }
 
@@ -2633,8 +2775,17 @@ async function seedCryptoQuotes() {
 }
 
 // Stablecoin Markets — CoinGecko → CoinPaprika fallback
-const STABLECOIN_IDS = 'tether,usd-coin,dai,first-digital-usd,ethena-usde';
-const STABLECOIN_PAPRIKA_MAP = { tether: 'usdt-tether', 'usd-coin': 'usdc-usd-coin', dai: 'dai-dai', 'first-digital-usd': 'fdusd-first-digital-usd', 'ethena-usde': 'usde-ethena-usde' };
+//
+// This is the BACKUP writer for market:stablecoins:v1; the standalone
+// scripts/seed-stablecoin-markets.mjs is the primary. Both, plus the RPC
+// handler that fills gaps the snapshot does not carry, now read one shared
+// config — private copies here meant the backup could seed a different coin
+// set, or classify the same price differently, than the primary. (#6308)
+const _stablecoinCfg = requireShared('stablecoins.json');
+const STABLECOIN_IDS = _stablecoinCfg.ids.join(',');
+const STABLECOIN_PAPRIKA_MAP = _stablecoinCfg.coinpaprika;
+const STABLECOIN_ON_PEG_MAX = _stablecoinCfg.pegThresholds.onPegMaxDeviation;
+const STABLECOIN_SLIGHT_DEPEG_MAX = _stablecoinCfg.pegThresholds.slightDepegMaxDeviation;
 const STABLECOIN_SEED_TTL = 7200; // 2h — 1h buffer over 5min cron cadence (was 1h = 55min buffer)
 
 async function fetchStablecoinCoinPaprika() {
@@ -2665,7 +2816,7 @@ async function seedStablecoinMarkets() {
   const stablecoins = data.map((coin) => {
     const price = coin.current_price || 0;
     const deviation = Math.abs(price - 1.0);
-    const pegStatus = deviation <= 0.005 ? 'ON PEG' : deviation <= 0.01 ? 'SLIGHT DEPEG' : 'DEPEGGED';
+    const pegStatus = deviation <= STABLECOIN_ON_PEG_MAX ? 'ON PEG' : deviation <= STABLECOIN_SLIGHT_DEPEG_MAX ? 'SLIGHT DEPEG' : 'DEPEGGED';
     return { id: coin.id, symbol: (coin.symbol || '').toUpperCase(), name: coin.name, price, deviation: +(deviation * 100).toFixed(3), pegStatus, marketCap: coin.market_cap || 0, volume24h: coin.total_volume || 0, change24h: coin.price_change_percentage_24h || 0, change7d: coin.price_change_percentage_7d_in_currency || 0, image: coin.image || '' };
   });
   const totalMarketCap = stablecoins.reduce((s, c) => s + c.marketCap, 0);
@@ -3247,185 +3398,6 @@ async function startCyberThreatsSeedLoop() {
   }
   console.log(`[Cyber] Seed loop starting (interval ${CYBER_SEED_INTERVAL_MS / 1000 / 60 / 60}h, urlhaus:${URLHAUS_AUTH_KEY ? 'yes' : 'no'} otx:${OTX_API_KEY ? 'yes' : 'no'} abuseipdb:${ABUSEIPDB_API_KEY ? 'yes' : 'no'})`);
   startBootSeedLoop('Cyber', 'seed-meta:cyber:threats', CYBER_SEED_INTERVAL_MS, seedCyberThreats, (e) => console.warn('[Cyber] Initial seed error:', e?.message || e), (e) => console.warn('[Cyber] Seed error:', e?.message || e));
-}
-
-// ─────────────────────────────────────────────────────────────
-// Positive Events Seed — Railway fetches GDELT GEO API → writes to Redis
-// so Vercel handler serves from cache (avoids 25s edge timeout on slow GDELT)
-// ─────────────────────────────────────────────────────────────
-const POSITIVE_EVENTS_INTERVAL_MS = 900_000; // 15 min
-const POSITIVE_EVENTS_TTL = 2700; // 3× interval
-const POSITIVE_EVENTS_RETRY_MS = 5 * 60 * 1000; // retry 5min after failure (short interval seeder)
-const POSITIVE_EVENTS_RPC_KEY = 'positive-events:geo:v1';
-const POSITIVE_EVENTS_BOOTSTRAP_KEY = 'positive_events:geo-bootstrap:v1';
-const POSITIVE_EVENTS_MAX = 500;
-
-// Single-theme queries — v1 GKG accepts one theme tag per call.
-// http://data.gdeltproject.org/documentation/GKG-MASTER-THEMELIST.TXT
-const POSITIVE_QUERIES = [
-  'SOC_INNOVATION',
-  'EDUCATION',
-  'MEDICAL',
-  'TOURISM',
-  'WB_1765_CULTURE_HERITAGE_AND_SUSTAINABLE_TOURISM',
-  'PEACEKEEPING',
-];
-
-// urltone threshold — keep only articles with urltone strictly above this value.
-const POSITIVE_TONE_THRESHOLD = 2;
-
-// Mirrors CATEGORY_KEYWORDS from src/services/positive-classifier.ts — keep in sync
-const POSITIVE_CATEGORY_KEYWORDS = [
-  ['clinical trial', 'science-health'], ['study finds', 'science-health'],
-  ['researchers', 'science-health'], ['scientists', 'science-health'],
-  ['breakthrough', 'science-health'], ['discovery', 'science-health'],
-  ['cure', 'science-health'], ['vaccine', 'science-health'],
-  ['treatment', 'science-health'], ['medical', 'science-health'],
-  ['endangered species', 'nature-wildlife'], ['conservation', 'nature-wildlife'],
-  ['wildlife', 'nature-wildlife'], ['species', 'nature-wildlife'],
-  ['marine', 'nature-wildlife'], ['forest', 'nature-wildlife'],
-  ['renewable', 'climate-wins'], ['solar', 'climate-wins'],
-  ['wind energy', 'climate-wins'], ['electric vehicle', 'climate-wins'],
-  ['emissions', 'climate-wins'], ['carbon', 'climate-wins'],
-  ['clean energy', 'climate-wins'], ['climate', 'climate-wins'],
-  ['robot', 'innovation-tech'], ['technology', 'innovation-tech'],
-  ['startup', 'innovation-tech'], ['innovation', 'innovation-tech'],
-  ['artificial intelligence', 'innovation-tech'],
-  ['volunteer', 'humanity-kindness'], ['donated', 'humanity-kindness'],
-  ['charity', 'humanity-kindness'], ['rescued', 'humanity-kindness'],
-  ['hero', 'humanity-kindness'], ['kindness', 'humanity-kindness'],
-  [' art ', 'culture-community'], ['music', 'culture-community'],
-  ['festival', 'culture-community'], ['education', 'culture-community'],
-];
-
-function classifyPositiveName(name) {
-  const lower = ` ${name.toLowerCase()} `;
-  for (const [kw, cat] of POSITIVE_CATEGORY_KEYWORDS) {
-    if (lower.includes(kw)) return cat;
-  }
-  return 'humanity-kindness';
-}
-
-function gkgFeatureUrl(p) {
-  return p?.url || p?.source_url || p?.sourceUrl
-      || p?.document_url || p?.documentUrl
-      || p?.article_url || p?.articleUrl || null;
-}
-
-function fetchGdeltGeoPositive(query, seenUrlLocs) {
-  return new Promise((resolve) => {
-    const params = new URLSearchParams({ QUERY: query, MAXROWS: '500' });
-    const req = https.get(`https://api.gdeltproject.org/api/v1/gkg_geojson?${params}`, {
-      headers: { Accept: 'application/json', 'User-Agent': CHROME_UA },
-      timeout: 15000,
-    }, (resp) => {
-      if (resp.statusCode !== 200) { resp.resume(); return resolve({ ok: false, events: [] }); }
-      let body = '';
-      resp.on('data', (chunk) => { body += chunk; });
-      resp.on('end', () => {
-        try {
-          const data = JSON.parse(body);
-          const features = Array.isArray(data?.features) ? data.features : [];
-          const locationMap = new Map();
-          for (const f of features) {
-            // Tone gate — keep only positive-tone articles.
-            const tone = f.properties?.urltone;
-            if (typeof tone !== 'number' || tone <= POSITIVE_TONE_THRESHOLD) continue;
-            const name = String(f.properties?.name || '').substring(0, 200);
-            if (!name) continue;
-            if (name.startsWith('ERROR:') || name.includes('unknown error')) continue;
-            const coords = f.geometry?.coordinates;
-            if (!Array.isArray(coords) || coords.length < 2) continue;
-            const [lon, lat] = coords;
-            if (!Number.isFinite(lat) || !Number.isFinite(lon) || lat < -90 || lat > 90 || lon < -180 || lon > 180) continue;
-            const key = `${lat.toFixed(1)}:${lon.toFixed(1)}`;
-            // GKG v1 emits one feature per (article, location) pair, so an
-            // article mentioning N places contributes N features. Dedup key
-            // is (url, lat/lon bucket) so each (article × location) is counted
-            // once across all theme calls.
-            const url = gkgFeatureUrl(f.properties);
-            const dedupKey = url ? `${url}|${key}` : null;
-            if (dedupKey && seenUrlLocs.has(dedupKey)) continue;
-            if (dedupKey) seenUrlLocs.add(dedupKey);
-            const existing = locationMap.get(key);
-            if (existing) { existing.count++; }
-            else { locationMap.set(key, { latitude: lat, longitude: lon, name, count: 1 }); }
-          }
-          const events = [];
-          for (const [, loc] of locationMap) {
-            if (loc.count < 3) continue;
-            events.push({ latitude: loc.latitude, longitude: loc.longitude, name: loc.name, category: classifyPositiveName(loc.name), count: loc.count, timestamp: Date.now() });
-          }
-          resolve({ ok: true, events });
-        } catch { resolve({ ok: false, events: [] }); }
-      });
-    });
-    req.on('error', () => resolve({ ok: false, events: [] }));
-    req.on('timeout', () => { req.destroy(); resolve({ ok: false, events: [] }); });
-  });
-}
-
-let positiveEventsInFlight = false;
-let positiveEventsRetryTimer = null;
-
-async function seedPositiveEvents() {
-  if (positiveEventsInFlight) return;
-  positiveEventsInFlight = true;
-  if (positiveEventsRetryTimer) { clearTimeout(positiveEventsRetryTimer); positiveEventsRetryTimer = null; }
-  const t0 = Date.now();
-  try {
-    const allEvents = [];
-    const seenNames = new Set();
-    // Cross-call (article × location) dedup — same article tagged with
-    // multiple themes would otherwise double-count its location buckets.
-    const seenUrlLocs = new Set();
-    let anyQuerySucceeded = false;
-
-    for (let i = 0; i < POSITIVE_QUERIES.length; i++) {
-      if (i > 0) await new Promise((r) => setTimeout(r, 5_500)); // GDELT rate limit: 1 req per 5s
-      try {
-        const result = await fetchGdeltGeoPositive(POSITIVE_QUERIES[i], seenUrlLocs);
-        if (!result?.ok) continue;
-        anyQuerySucceeded = true;
-        const events = Array.isArray(result.events) ? result.events : [];
-        for (const e of events) {
-          if (!seenNames.has(e.name)) {
-            seenNames.add(e.name);
-            allEvents.push(e);
-          }
-        }
-      } catch { /* individual query failure is non-fatal */ }
-    }
-
-    if (!anyQuerySucceeded) {
-      console.warn('[PositiveEvents] All queries failed — extending TTL, retrying in 5min');
-      try { await upstashExpire(POSITIVE_EVENTS_RPC_KEY, POSITIVE_EVENTS_TTL); await upstashExpire(POSITIVE_EVENTS_BOOTSTRAP_KEY, POSITIVE_EVENTS_TTL); } catch {}
-      positiveEventsRetryTimer = setTimeout(() => { seedPositiveEvents().catch(() => {}); }, POSITIVE_EVENTS_RETRY_MS);
-      return;
-    }
-
-    const capped = allEvents.slice(0, POSITIVE_EVENTS_MAX);
-    const payload = { events: capped, fetchedAt: Date.now() };
-    const ok1 = await envelopeWrite(POSITIVE_EVENTS_RPC_KEY, payload, POSITIVE_EVENTS_TTL, { recordCount: capped.length, sourceVersion: 'positive-events' });
-    const ok2 = await envelopeWrite(POSITIVE_EVENTS_BOOTSTRAP_KEY, payload, POSITIVE_EVENTS_TTL, { recordCount: capped.length, sourceVersion: 'positive-events' });
-    const ok3 = await upstashSet('seed-meta:positive-events:geo', { fetchedAt: Date.now(), recordCount: capped.length }, 604800);
-    console.log(`[PositiveEvents] Seeded ${capped.length} events (redis: ${ok1 && ok2 && ok3 ? 'OK' : 'PARTIAL'}) in ${((Date.now() - t0) / 1000).toFixed(1)}s`);
-  } catch (e) {
-    console.warn('[PositiveEvents] Seed error:', e?.message || e, '— extending TTL, retrying in 5min');
-    try { await upstashExpire(POSITIVE_EVENTS_RPC_KEY, POSITIVE_EVENTS_TTL); await upstashExpire(POSITIVE_EVENTS_BOOTSTRAP_KEY, POSITIVE_EVENTS_TTL); } catch {}
-    positiveEventsRetryTimer = setTimeout(() => { seedPositiveEvents().catch(() => {}); }, POSITIVE_EVENTS_RETRY_MS);
-  } finally {
-    positiveEventsInFlight = false;
-  }
-}
-
-async function startPositiveEventsSeedLoop() {
-  if (!UPSTASH_ENABLED) {
-    console.log('[PositiveEvents] Disabled (no Upstash Redis)');
-    return;
-  }
-  console.log(`[PositiveEvents] Seed loop starting (interval ${POSITIVE_EVENTS_INTERVAL_MS / 1000 / 60}min)`);
-  startBootSeedLoop('PositiveEvents', 'seed-meta:positive-events:geo', POSITIVE_EVENTS_INTERVAL_MS, seedPositiveEvents, (e) => console.warn('[PositiveEvents] Initial seed error:', e?.message || e), (e) => console.warn('[PositiveEvents] Seed error:', e?.message || e));
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -4076,6 +4048,8 @@ const THEATER_POSTURE_SEED_INTERVAL_MS = 600_000; // 10 min
 const THEATER_POSTURE_LIVE_KEY = 'theater-posture:sebuf:v1';
 const THEATER_POSTURE_STALE_KEY = 'theater_posture:sebuf:stale:v1';
 const THEATER_POSTURE_BACKUP_KEY = 'theater-posture:sebuf:backup:v1';
+const THEATER_POSTURE_LOCK_KEY = 'seed-lock:theater-posture';
+const THEATER_POSTURE_LOCK_TTL_SECONDS = 120;
 const THEATER_POSTURE_LIVE_TTL = 1200;   // 20 min — must outlive the 10-min seed interval (2x)
 const THEATER_POSTURE_STALE_TTL = 86400; // 24h
 const THEATER_POSTURE_BACKUP_TTL = 604800; // 7d
@@ -4134,6 +4108,8 @@ function theaterDetectAircraftType(callsign) {
 }
 
 const WINGBITS_MAX_BOX_NM = 2000;
+const WINGBITS_VIEWPORT_TILE_DEGREES = 30;
+const WINGBITS_MAX_VIEWPORT_AREAS = 36;
 
 const POSTURE_THEATERS = [
   { id: 'iran-theater', bounds: { north: 42, south: 20, east: 65, west: 30 }, thresholds: { elevated: 8, critical: 20 }, strikeIndicators: { minTankers: 2, minAwacs: 1, minFighters: 5 } },
@@ -4145,11 +4121,6 @@ const POSTURE_THEATERS = [
   { id: 'east-med-theater', bounds: { north: 37, south: 33, east: 37, west: 25 }, thresholds: { elevated: 4, critical: 10 }, strikeIndicators: { minTankers: 1, minAwacs: 1, minFighters: 3 } },
   { id: 'israel-gaza-theater', bounds: { north: 33, south: 29, east: 36, west: 33 }, thresholds: { elevated: 3, critical: 8 }, strikeIndicators: { minTankers: 1, minAwacs: 1, minFighters: 3 } },
   { id: 'yemen-redsea-theater', bounds: { north: 22, south: 11, east: 54, west: 32 }, thresholds: { elevated: 4, critical: 10 }, strikeIndicators: { minTankers: 1, minAwacs: 1, minFighters: 3 } },
-];
-
-const THEATER_QUERY_REGIONS = [
-  { name: 'WESTERN', lamin: 10, lamax: 66, lomin: 9, lomax: 66 },
-  { name: 'PACIFIC', lamin: 4, lamax: 44, lomin: 104, lomax: 133 },
 ];
 
 // In-memory index of recently-seen Wingbits positions, keyed by ICAO24.
@@ -4181,6 +4152,34 @@ function wingbitsIndexLookupCallsign(callsign) {
     if (cs.includes(callsign)) results.push(position);
   }
   return results;
+}
+
+function buildWingbitsViewportAreas(south, west, north, east) {
+  const latTiles = Math.max(1, Math.ceil((north - south) / WINGBITS_VIEWPORT_TILE_DEGREES));
+  const lonTiles = Math.max(1, Math.ceil((east - west) / WINGBITS_VIEWPORT_TILE_DEGREES));
+  if (latTiles * lonTiles > WINGBITS_MAX_VIEWPORT_AREAS) return null;
+
+  const areas = [];
+  for (let latIndex = 0; latIndex < latTiles; latIndex += 1) {
+    const tileSouth = south + latIndex * WINGBITS_VIEWPORT_TILE_DEGREES;
+    const tileNorth = Math.min(north, tileSouth + WINGBITS_VIEWPORT_TILE_DEGREES);
+    for (let lonIndex = 0; lonIndex < lonTiles; lonIndex += 1) {
+      const tileWest = west + lonIndex * WINGBITS_VIEWPORT_TILE_DEGREES;
+      const tileEast = Math.min(east, tileWest + WINGBITS_VIEWPORT_TILE_DEGREES);
+      const centerLat = (tileSouth + tileNorth) / 2;
+      const centerLon = (tileWest + tileEast) / 2;
+      areas.push({
+        alias: `viewport-${latIndex}-${lonIndex}`,
+        by: 'box',
+        la: centerLat,
+        lo: centerLon,
+        w: Math.max(1, Math.min((tileEast - tileWest) * 60 * Math.cos(centerLat * Math.PI / 180), WINGBITS_MAX_BOX_NM)),
+        h: Math.max(1, Math.min((tileNorth - tileSouth) * 60, WINGBITS_MAX_BOX_NM)),
+        unit: 'nm',
+      });
+    }
+  }
+  return areas;
 }
 
 async function handleWingbitsTrackRequest(req, res) {
@@ -4293,11 +4292,17 @@ async function handleWingbitsTrackRequest(req, res) {
   const clampedLamax = Math.max(-90, Math.min(90, lamax));
   const clampedLomin = Math.max(-180, Math.min(180, lomin));
   const clampedLomax = Math.max(-180, Math.min(180, lomax));
-  const centerLat = (clampedLamin + clampedLamax) / 2;
-  const centerLon = (clampedLomin + clampedLomax) / 2;
-  const widthNm = Math.min(Math.abs(clampedLomax - clampedLomin) * 60 * Math.cos(centerLat * Math.PI / 180), WINGBITS_MAX_BOX_NM);
-  const heightNm = Math.min(Math.abs(clampedLamax - clampedLamin) * 60, WINGBITS_MAX_BOX_NM);
-  const areas = [{ alias: 'viewport', by: 'box', la: centerLat, lo: centerLon, w: widthNm, h: heightNm, unit: 'nm' }];
+  const south = Math.min(clampedLamin, clampedLamax);
+  const north = Math.max(clampedLamin, clampedLamax);
+  const west = Math.min(clampedLomin, clampedLomax);
+  const east = Math.max(clampedLomin, clampedLomax);
+  const areas = buildWingbitsViewportAreas(south, west, north, east);
+  if (!areas) {
+    return safeEnd(res, 422, { 'Content-Type': 'application/json' }, JSON.stringify({
+      error: `Viewport requires more than ${WINGBITS_MAX_VIEWPORT_AREAS} Wingbits areas`,
+      positions: [],
+    }));
+  }
 
   try {
     const resp = await fetch('https://customer-api.wingbits.com/v1/flights', {
@@ -4336,9 +4341,13 @@ async function handleWingbitsTrackRequest(req, res) {
           const cs = (f.f || f.callsign || f.flight || '').trim().toUpperCase();
           if (!cs.includes(callsignFilter)) continue;
         }
-        seenIds.add(icao24);
         const lat = f.la ?? f.latitude ?? f.lat ?? 0;
         const lon = f.lo ?? f.longitude ?? f.lon ?? f.lng ?? 0;
+        // Multi-area requests overlap at tile edges. Deduplicate and retain
+        // only positions inside the original viewport so a successful
+        // Wingbits response is complete and authoritative for that bbox.
+        if (lat < south || lat > north || lon < west || lon > east) continue;
+        seenIds.add(icao24);
         positions.push({
           icao24,
           callsign: (f.f || f.callsign || f.flight || '').trim(),
@@ -4368,34 +4377,49 @@ async function handleWingbitsTrackRequest(req, res) {
   }
 }
 
+// ONE global /states/all per cycle, not one query per theater region. OpenSky
+// bills by bounding-box area with a flat top tier — every bbox above 400 sq°
+// costs 4 credits, the same as a global query — so the previous WESTERN+PACIFIC
+// pair (3,192 and 1,160 sq°) spent 8 credits/cycle for less coverage than 4
+// buys. The proxy already treats a bbox-less request as a valid global query
+// (normalizeOpenSkyBbox returns the ',,,' cache key). See
+// docs/solutions/integration-issues/opensky-bbox-area-billing-flat-top-tier.md (#6222).
 async function fetchTheaterFlightsFromOpenSky() {
   const seenIds = new Set();
   const allFlights = [];
-  for (const region of THEATER_QUERY_REGIONS) {
-    const params = `lamin=${region.lamin}&lamax=${region.lamax}&lomin=${region.lomin}&lomax=${region.lomax}`;
-    const resp = await fetch(`http://localhost:${PORT}/opensky?${params}`, {
-      headers: { 'User-Agent': CHROME_UA, ...(RELAY_SHARED_SECRET ? { 'x-relay-key': RELAY_SHARED_SECRET } : {}) },
-      signal: AbortSignal.timeout(20_000),
+  const resp = await fetch(`http://localhost:${relayBoundPort}/opensky`, {
+    headers: { 'User-Agent': CHROME_UA, ...(RELAY_SHARED_SECRET ? { 'x-relay-key': RELAY_SHARED_SECRET } : {}) },
+    signal: AbortSignal.timeout(20_000),
+  });
+  if (!resp.ok) throw new Error(`OpenSky proxy ${resp.status} for GLOBAL`);
+  const data = await resp.json();
+  if (!data.states) return allFlights;
+  for (const state of data.states) {
+    const [icao24, callsign, , , , lon, lat, altitude, onGround, velocity, heading] = state;
+    if (lat == null || lon == null || onGround) continue;
+    if (!theaterIsMilCallsign(callsign)) continue;
+    // Filter to theater bounds, matching fetchTheaterFlightsFromAdsbLol. The
+    // query is global now, so without this the returned count would mean
+    // "military aircraft worldwide" for this source and "military aircraft in
+    // theater" for the other two — and seedTheaterPosture attributes the cycle
+    // on `flights.length > 0`, so OpenSky would claim cycles in which it fed
+    // no theater at all.
+    const inTheater = POSTURE_THEATERS.some((t) =>
+      lat >= t.bounds.south && lat <= t.bounds.north &&
+      lon >= t.bounds.west && lon <= t.bounds.east
+    );
+    if (!inTheater) continue;
+    if (seenIds.has(icao24)) continue;
+    seenIds.add(icao24);
+    allFlights.push({
+      id: icao24,
+      callsign: (callsign || '').trim(),
+      lat, lon,
+      altitude: altitude || 0,
+      heading: heading || 0,
+      speed: velocity || 0,
+      aircraftType: theaterDetectAircraftType(callsign),
     });
-    if (!resp.ok) throw new Error(`OpenSky proxy ${resp.status} for ${region.name}`);
-    const data = await resp.json();
-    if (!data.states) continue;
-    for (const state of data.states) {
-      const [icao24, callsign, , , , lon, lat, altitude, onGround, velocity, heading] = state;
-      if (lat == null || lon == null || onGround) continue;
-      if (!theaterIsMilCallsign(callsign)) continue;
-      if (seenIds.has(icao24)) continue;
-      seenIds.add(icao24);
-      allFlights.push({
-        id: icao24,
-        callsign: (callsign || '').trim(),
-        lat, lon,
-        altitude: altitude || 0,
-        heading: heading || 0,
-        speed: velocity || 0,
-        aircraftType: theaterDetectAircraftType(callsign),
-      });
-    }
   }
   return allFlights;
 }
@@ -4411,7 +4435,11 @@ async function fetchTheaterFlightsFromAdsbLol() {
       return null;
     }
     const data = await resp.json();
-    const aircraft = data.ac || [];
+    if (!Array.isArray(data.ac)) {
+      console.warn('[adsb.lol] Malformed response: missing ac array');
+      return null;
+    }
+    const aircraft = data.ac;
     const flights = [];
     const seenIds = new Set();
     for (const a of aircraft) {
@@ -4556,37 +4584,92 @@ function calculateTheaterPostures(flights) {
     };
   });
 }
+// Which upstream actually produced the published theater flights. OpenSky is
+// heavily 429-throttled in production (#5945): a healthy publication served by
+// adsb.lol/Wingbits must stay attributable so fallback operation is never
+// mistaken for OpenSky recovery.
+const THEATER_POSTURE_SOURCE_COUNT_KEYS = Object.freeze({
+  opensky: 'opensky',
+  'adsb.lol': 'adsbLol',
+  wingbits: 'wingbits',
+  'vessel-only': 'vesselOnly',
+});
+const theaterPostureSourceCounts = { opensky: 0, adsbLol: 0, wingbits: 0, vesselOnly: 0 };
+let theaterPostureLastRun = null;
+
 async function seedTheaterPosture() {
   const t0 = Date.now();
   let flights = [];
-  try {
-    flights = await fetchTheaterFlightsFromOpenSky();
-  } catch (e) {
-    console.warn(`[TheaterPosture] OpenSky failed: ${e?.message || e}`);
-  }
-  if (flights.length === 0) {
-    const adsbLol = await fetchTheaterFlightsFromAdsbLol();
-    if (adsbLol !== null) {
-      // null = fetch error (fall through to Wingbits); [] = success, no theater traffic (stop here)
-      flights = adsbLol;
+  let flightSource = 'vessel-only';
+  const adsbLol = await fetchTheaterFlightsFromAdsbLol();
+  if (adsbLol !== null) {
+    // null = fetch error (fall through); [] = success, no theater traffic (stop here).
+    // adsb.lol is the normal theater source so this background loop does not
+    // independently consume the authenticated OpenSky daily credit pool.
+    flights = adsbLol;
+    if (flights.length > 0) flightSource = 'adsb.lol';
+  } else {
+    const wb = await fetchTheaterFlightsFromWingbits();
+    if (wb && wb.length > 0) {
+      flights = wb;
+      flightSource = 'wingbits';
     } else {
-      const wb = await fetchTheaterFlightsFromWingbits();
-      if (wb && wb.length > 0) flights = wb;
+      try {
+        flights = await fetchTheaterFlightsFromOpenSky();
+        if (flights.length > 0) flightSource = 'opensky';
+      } catch (e) {
+        console.warn(`[TheaterPosture] OpenSky failed: ${e?.message || e}`);
+      }
     }
   }
   if (flights.length === 0) {
-    console.warn('[TheaterPosture] No military flights from OpenSky, adsb.lol, or Wingbits — continuing with vessel-only posture');
+    console.warn('[TheaterPosture] No military flights from adsb.lol, OpenSky, or Wingbits — continuing with vessel-only posture');
   }
   const theaters = calculateTheaterPostures(flights);
   const totalVessels = theaters.reduce((sum, t) => sum + t.trackedVessels, 0);
   const payload = { theaters };
-  const ok1 = await envelopeWrite(THEATER_POSTURE_LIVE_KEY, payload, THEATER_POSTURE_LIVE_TTL, { recordCount: theaters.length, sourceVersion: 'theater-posture' });
-  const ok2 = await envelopeWrite(THEATER_POSTURE_STALE_KEY, payload, THEATER_POSTURE_STALE_TTL, { recordCount: theaters.length, sourceVersion: 'theater-posture' });
-  const ok3 = await envelopeWrite(THEATER_POSTURE_BACKUP_KEY, payload, THEATER_POSTURE_BACKUP_TTL, { recordCount: theaters.length, sourceVersion: 'theater-posture' });
-  await upstashSet('seed-meta:theater-posture', { fetchedAt: Date.now(), recordCount: flights.length + totalVessels }, 604800);
-  const elevated = theaters.filter((t) => t.postureLevel !== 'normal').length;
-  const elapsed = ((Date.now() - t0) / 1000).toFixed(1);
-  console.log(`[TheaterPosture] Seeded ${flights.length} mil flights, ${totalVessels} vessels, ${theaters.length} theaters (${elevated} elevated), redis: ${ok1 && ok2 && ok3 ? 'OK' : 'PARTIAL'} [${elapsed}s]`);
+  const publicationId = `ais-relay:${Date.now()}-${crypto.randomBytes(4).toString('hex')}`;
+  const lockResult = await upstashSetNx(THEATER_POSTURE_LOCK_KEY, publicationId, THEATER_POSTURE_LOCK_TTL_SECONDS);
+  if (lockResult !== 'new') {
+    console.warn(`[TheaterPosture] Skipping publication: shared seed lock is ${lockResult}`);
+    return;
+  }
+
+  try {
+    const publishedAt = Date.now();
+    const envelopeMeta = {
+      fetchedAt: publishedAt,
+      recordCount: theaters.length,
+      sourceVersion: 'theater-posture',
+      groupId: publicationId,
+    };
+    const ok1 = await envelopeWrite(THEATER_POSTURE_LIVE_KEY, payload, THEATER_POSTURE_LIVE_TTL, envelopeMeta);
+    const ok2 = await envelopeWrite(THEATER_POSTURE_STALE_KEY, payload, THEATER_POSTURE_STALE_TTL, envelopeMeta);
+    const ok3 = await envelopeWrite(THEATER_POSTURE_BACKUP_KEY, payload, THEATER_POSTURE_BACKUP_TTL, envelopeMeta);
+    // sourceVersion mirrors the shape seed-military-flights.mjs writes to this
+    // key; `producer` disambiguates the two writers, whose source vocabularies
+    // differ (the seeder's 'wingbits' is its Tier-1 normal path, ours is the
+    // last-resort fallback). publicationId pairs this metadata with the
+    // canonical envelope _seed.groupId for cross-producer consistency checks.
+    const seedMetaOk = await upstashSet('seed-meta:theater-posture', { fetchedAt: publishedAt, recordCount: flights.length + totalVessels, sourceVersion: flightSource, producer: 'ais-relay', publicationId }, 604800);
+    theaterPostureSourceCounts[THEATER_POSTURE_SOURCE_COUNT_KEYS[flightSource]] += 1;
+    theaterPostureLastRun = {
+      seededAt: new Date().toISOString(),
+      source: flightSource,
+      flightCount: flights.length,
+      vesselCount: totalVessels,
+      redisOk: ok1 && ok2 && ok3,
+      // Reported separately from redisOk: health gates staleness on the
+      // seed-meta key, so a failed attribution write must not hide behind
+      // three green envelope writes.
+      seedMetaOk,
+    };
+    const elevated = theaters.filter((t) => t.postureLevel !== 'normal').length;
+    const elapsed = ((Date.now() - t0) / 1000).toFixed(1);
+    console.log(`[TheaterPosture] Seeded ${flights.length} mil flights (source=${flightSource}), ${totalVessels} vessels, ${theaters.length} theaters (${elevated} elevated), redis: ${ok1 && ok2 && ok3 ? 'OK' : 'PARTIAL'}, seed-meta: ${seedMetaOk ? 'OK' : 'FAILED'} [${elapsed}s]`);
+  } finally {
+    await upstashReleaseLockIfOwner(THEATER_POSTURE_LOCK_KEY, publicationId);
+  }
 }
 
 function startTheaterPostureSeedLoop() {
@@ -5930,10 +6013,12 @@ function _redditEpochSeconds(v) {
 // The Reddit hosts pass raw_json=1, which un-escapes &amp; &lt; &gt; in text
 // fields. A vendor response may still be HTML-escaped, so decode the few entities
 // Reddit emits to keep panel titles identical across paths.
+// &amp; must be replaced LAST: this set has no numeric refs whose output could
+// re-form an entity, so amp-last decodes exactly one level (&amp;lt; stays &lt;).
 function _decodeRedditEntities(s) {
   if (typeof s !== 'string') return s;
-  return s.replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>')
-    .replace(/&quot;/g, '"').replace(/&#39;/g, "'");
+  return s.replace(/&lt;/g, '<').replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&amp;/g, '&');
 }
 
 // Normalize a ScrapeCreators post so its shape matches the OAuth/public paths
@@ -6636,48 +6721,22 @@ function startPizzintSeedLoop() {
 // ─────────────────────────────────────────────────────────────
 const DODO_PRICE_SEED_INTERVAL_MS = 6 * 60 * 60 * 1000; // 6 hours
 const DODO_PRICE_SEED_TTL = 43200; // 12h (2× interval)
-const DODO_PRICE_REDIS_KEY = 'product-catalog:v2';
+const DODO_PRICE_REDIS_KEY = 'product-catalog:v3';
 const DODO_LIVE_URL = 'https://live.dodopayments.com';
 const DODO_TEST_URL = 'https://test.dodopayments.com';
 const DODO_PRICE_API_KEY = process.env.DODO_API_KEY || '';
 const DODO_PRICE_ENV = process.env.DODO_PAYMENTS_ENVIRONMENT || 'test_mode';
 
-const DODO_PRODUCT_IDS = [
-  'pdt_0Nbtt71uObulf7fGXhQup', // Pro Monthly
-  'pdt_0NbttMIfjLWC10jHQWYgJ', // Pro Annual
-  'pdt_0NbttVmG1SERrxhygbbUq', // API Starter Monthly
-  'pdt_0Nbu2lawHYE3dv2THgSEV', // API Starter Annual
-  'pdt_0Nbttg7NuOJrhbyBGCius', // API Business Monthly (#4945)
-];
-
-// ⚠ MANUAL MIRROR of TIER_CONFIG in api/product-catalog.js (and ultimately
-// convex/config/productCatalog.ts marketingFeatures). This seeder's Redis
-// payload is the PRIMARY live catalog — it wins over the edge fallback on
-// cache hits — so drift here silently changes the /pro pricing page (#4946
-// P0, #4974). Parity enforced by tests/product-catalog-freshness.test.mjs.
-const DODO_TIER_CONFIG = {
-  free: { name: 'Free', localeKey: 'free', description: 'Get started with the essentials', features: ['Core dashboard panels', 'Global news feed', 'Earthquake & weather alerts', 'Basic map view'], cta: 'Get Started', href: 'https://worldmonitor.app/dashboard', highlighted: false },
-  pro: { name: 'Pro', localeKey: 'pro', description: 'Full intelligence dashboard', features: ['Everything in Free', 'AI stock analysis & backtesting', 'Daily market briefs', 'Military & geopolitical tracking', 'Custom widget builder', 'MCP + SDK access for Claude Desktop & other AI clients (50 calls/day)', 'Priority data refresh'], highlighted: true },
-  api_starter: { name: 'API Starter', localeKey: 'api', description: 'Programmatic access to intelligence data', features: ['REST API + official SDKs (npm, PyPI, RubyGems, Go)', 'License / API key included', 'Real-time data streams', '60 requests/minute', '1,000 requests/day included', 'Webhook notifications'], highlightFeatures: ['No commercial use'], highlighted: false },
-  api_business: { name: 'API Business', localeKey: 'apiBusiness', description: 'High-volume API for teams', features: ['Everything in API Starter', '300 requests/minute', '10,000 requests/day included', '5 Pro licenses included', 'Same company email required', 'Priority support'], highlightFeatures: ['Commercial use applicable'], highlighted: false },
-  enterprise: { name: 'Enterprise', localeKey: 'enterprise', description: 'Custom solutions for organizations', features: ['Everything in Pro + API', 'Unlimited API requests', 'Dedicated support', 'Custom integrations', 'SLA guarantee', 'On-premise option'], cta: 'Contact Sales', href: 'mailto:enterprise@worldmonitor.app', highlighted: false },
-};
-
-const DODO_PRODUCT_META = {
-  'pdt_0Nbtt71uObulf7fGXhQup': { tierGroup: 'pro', billingPeriod: 'monthly' },
-  'pdt_0NbttMIfjLWC10jHQWYgJ': { tierGroup: 'pro', billingPeriod: 'annual' },
-  'pdt_0NbttVmG1SERrxhygbbUq': { tierGroup: 'api_starter', billingPeriod: 'monthly' },
-  'pdt_0Nbu2lawHYE3dv2THgSEV': { tierGroup: 'api_starter', billingPeriod: 'annual' },
-  'pdt_0Nbttg7NuOJrhbyBGCius': { tierGroup: 'api_business', billingPeriod: 'monthly' },
-};
-
-const DODO_FALLBACK_PRICES = {
-  'pdt_0Nbtt71uObulf7fGXhQup': 3999,
-  'pdt_0NbttMIfjLWC10jHQWYgJ': 39999,
-  'pdt_0NbttVmG1SERrxhygbbUq': 9999,
-  'pdt_0Nbu2lawHYE3dv2THgSEV': 99900,
-  'pdt_0Nbttg7NuOJrhbyBGCius': 29999,
-};
+// Generated from convex/config/productCatalog.ts. The Railway Redis writer and
+// the Edge fallback consume the same artifact so cache hits cannot silently
+// revert plan copy, lifecycle metadata, or fallback prices.
+const GENERATED_PRODUCT_CATALOG = requireShared('product-catalog.generated.json');
+const DODO_PRODUCT_META = GENERATED_PRODUCT_CATALOG.products;
+const DODO_PRODUCT_IDS = Object.keys(GENERATED_PRODUCT_CATALOG.fallbackPrices);
+const DODO_TIER_CONFIG = GENERATED_PRODUCT_CATALOG.tierConfig;
+const DODO_PUBLIC_TIER_GROUPS = GENERATED_PRODUCT_CATALOG.publicTierGroups;
+const DODO_FALLBACK_PRICES = GENERATED_PRODUCT_CATALOG.fallbackPrices;
+const DODO_PUBLIC_PRODUCT_FACTS = GENERATED_PRODUCT_CATALOG.facts;
 
 let dodoPriceSeedInFlight = false;
 
@@ -6744,8 +6803,7 @@ async function seedDodoPrices() {
 
     // Build tier view model
     const tiers = [];
-    const publicGroups = ['free', 'pro', 'api_starter', 'api_business', 'enterprise'];
-    for (const group of publicGroups) {
+    for (const group of DODO_PUBLIC_TIER_GROUPS) {
       const config = DODO_TIER_CONFIG[group];
       if (!config) continue;
       if (group === 'free') { tiers.push({ ...config, price: 0, period: 'forever' }); continue; }
@@ -6761,7 +6819,13 @@ async function seedDodoPrices() {
 
     const priceSource = fallbackCount === 0 ? 'dodo' : fetchedCount > 0 ? 'partial' : 'fallback';
     const now = Date.now();
-    const payload = { tiers, fetchedAt: now, cachedUntil: now + DODO_PRICE_SEED_TTL * 1000, priceSource };
+    const payload = {
+      ...DODO_PUBLIC_PRODUCT_FACTS,
+      tiers,
+      fetchedAt: now,
+      cachedUntil: now + DODO_PRICE_SEED_TTL * 1000,
+      priceSource,
+    };
 
     // Only write to Redis when ALL prices came from Dodo (no fallback contamination).
     // Partial/fallback results are not persisted — edge endpoint serves them directly with short cache.
@@ -6865,6 +6929,7 @@ function getRouteGroup(pathname) {
   if (pathname.startsWith('/wingbits/track')) return 'wingbits';
   if (pathname.startsWith('/opensky')) return 'opensky';
   if (pathname.startsWith('/rss')) return 'rss';
+  if (pathname.startsWith('/google-flights')) return 'google-flights';
   if (pathname.startsWith('/ais/snapshot')) return 'snapshot';
   if (pathname.startsWith('/worldbank')) return 'worldbank';
   if (pathname.startsWith('/polymarket')) return 'polymarket';
@@ -6873,12 +6938,14 @@ function getRouteGroup(pathname) {
   if (pathname === '/notam') return 'notam';
   if (pathname === '/yahoo-chart') return 'yahoo-chart';
   if (pathname === '/aviationstack') return 'aviationstack';
+  if (pathname === '/crypto-quotes') return 'crypto-quotes';
   return 'other';
 }
 
 function getRateLimitForPath(pathname) {
   if (pathname.startsWith('/opensky')) return RELAY_OPENSKY_RATE_LIMIT_MAX;
   if (pathname.startsWith('/rss')) return RELAY_RSS_RATE_LIMIT_MAX;
+  if (pathname.startsWith('/google-flights')) return RELAY_GOOGLE_FLIGHTS_RATE_LIMIT_MAX;
   if (pathname.startsWith('/oref')) return RELAY_OREF_RATE_LIMIT_MAX;
   return RELAY_RATE_LIMIT_MAX;
 }
@@ -6926,10 +6993,43 @@ const relayMetricsLifetime = {
   openskyDedupEmpty: 0,
   openskyMiss: 0,
   openskyUpstreamFetches: 0,
+  openskyServed: 0,
+  openskySuccess: 0,
+  openskyThrottle: 0,
+  openskyTimeout: 0,
+  openskyAuthRejection: 0,
+  openskyFallback: 0,
+  openskyTerminalFailure: 0,
   drops: 0,
   notificationDedupSetNxErrors: 0,
   notificationDedupSetNxFailOpen: 0,
   notificationDedupSetNxFailClosed: 0,
+  googleFlightsRequests: 0,
+  googleFlightsServed: 0,
+  googleFlightsSuccess: 0,
+  googleFlights429: 0,
+  googleFlightsThrottle: 0,
+  googleFlightsTimeout: 0,
+  googleFlightsAuthRejection: 0,
+  googleFlightsFallback: 0,
+  googleFlightsTerminalFailure: 0,
+  rssRequests: 0,
+  rssServed: 0,
+  rssSuccess: 0,
+  rssThrottle: 0,
+  rssTimeout: 0,
+  rssAuthRejection: 0,
+  rssFallback: 0,
+  rssTerminalFailure: 0,
+  aisSnapshotRequests: 0,
+  aisSnapshotServed: 0,
+  aisSnapshotSuccess: 0,
+  aisSnapshotThrottle: 0,
+  aisSnapshotTimeout: 0,
+  aisSnapshotAuthRejection: 0,
+  aisSnapshotUnauthorizedClient: 0,
+  aisSnapshotFallback: 0,
+  aisSnapshotTerminalFailure: 0,
 };
 let relayMetricsQueueMaxLifetime = 0;
 let relayMetricsCurrentSec = 0;
@@ -6946,11 +7046,44 @@ function createRelayMetricsBucket() {
     openskyDedupEmpty: 0,
     openskyMiss: 0,
     openskyUpstreamFetches: 0,
+    openskyServed: 0,
+    openskySuccess: 0,
+    openskyThrottle: 0,
+    openskyTimeout: 0,
+    openskyAuthRejection: 0,
+    openskyFallback: 0,
+    openskyTerminalFailure: 0,
     drops: 0,
     notificationDedupSetNxErrors: 0,
     notificationDedupSetNxFailOpen: 0,
     notificationDedupSetNxFailClosed: 0,
     queueMax: 0,
+    googleFlightsRequests: 0,
+    googleFlightsServed: 0,
+    googleFlightsSuccess: 0,
+    googleFlights429: 0,
+    googleFlightsThrottle: 0,
+    googleFlightsTimeout: 0,
+    googleFlightsAuthRejection: 0,
+    googleFlightsFallback: 0,
+    googleFlightsTerminalFailure: 0,
+    rssRequests: 0,
+    rssServed: 0,
+    rssSuccess: 0,
+    rssThrottle: 0,
+    rssTimeout: 0,
+    rssAuthRejection: 0,
+    rssFallback: 0,
+    rssTerminalFailure: 0,
+    aisSnapshotRequests: 0,
+    aisSnapshotServed: 0,
+    aisSnapshotSuccess: 0,
+    aisSnapshotThrottle: 0,
+    aisSnapshotTimeout: 0,
+    aisSnapshotAuthRejection: 0,
+    aisSnapshotUnauthorizedClient: 0,
+    aisSnapshotFallback: 0,
+    aisSnapshotTerminalFailure: 0,
   };
 }
 
@@ -6997,6 +7130,47 @@ function incrementRelayMetric(field, amount = 1) {
   }
 }
 
+const RELAY_OUTCOME_FIELDS = Object.freeze({
+  opensky: Object.freeze({
+    success: 'openskySuccess',
+    throttle: 'openskyThrottle',
+    timeout: 'openskyTimeout',
+    authRejection: 'openskyAuthRejection',
+    fallback: 'openskyFallback',
+    terminalFailure: 'openskyTerminalFailure',
+  }),
+  googleFlights: Object.freeze({
+    success: 'googleFlightsSuccess',
+    throttle: 'googleFlightsThrottle',
+    timeout: 'googleFlightsTimeout',
+    authRejection: 'googleFlightsAuthRejection',
+    fallback: 'googleFlightsFallback',
+    terminalFailure: 'googleFlightsTerminalFailure',
+  }),
+  rss: Object.freeze({
+    success: 'rssSuccess',
+    throttle: 'rssThrottle',
+    timeout: 'rssTimeout',
+    authRejection: 'rssAuthRejection',
+    fallback: 'rssFallback',
+    terminalFailure: 'rssTerminalFailure',
+  }),
+  aisSnapshot: Object.freeze({
+    success: 'aisSnapshotSuccess',
+    throttle: 'aisSnapshotThrottle',
+    timeout: 'aisSnapshotTimeout',
+    authRejection: 'aisSnapshotAuthRejection',
+    fallback: 'aisSnapshotFallback',
+    terminalFailure: 'aisSnapshotTerminalFailure',
+  }),
+});
+
+function recordRelayOutcome(route, outcome, amount = 1) {
+  const metricField = RELAY_OUTCOME_FIELDS[route]?.[outcome];
+  if (!metricField) return;
+  incrementRelayMetric(metricField, amount);
+}
+
 function sampleRelayQueueSize(queueSize) {
   const bucket = getRelayMetricsBucket();
   if (queueSize > bucket.queueMax) bucket.queueMax = queueSize;
@@ -7024,15 +7198,86 @@ function getRelayRollingMetrics() {
     rollup.openskyDedupEmpty += bucket.openskyDedupEmpty;
     rollup.openskyMiss += bucket.openskyMiss;
     rollup.openskyUpstreamFetches += bucket.openskyUpstreamFetches;
+    rollup.openskyServed += bucket.openskyServed;
+    rollup.openskySuccess += bucket.openskySuccess;
+    rollup.openskyThrottle += bucket.openskyThrottle;
+    rollup.openskyTimeout += bucket.openskyTimeout;
+    rollup.openskyAuthRejection += bucket.openskyAuthRejection;
+    rollup.openskyFallback += bucket.openskyFallback;
+    rollup.openskyTerminalFailure += bucket.openskyTerminalFailure;
     rollup.drops += bucket.drops;
     rollup.notificationDedupSetNxErrors += bucket.notificationDedupSetNxErrors;
     rollup.notificationDedupSetNxFailOpen += bucket.notificationDedupSetNxFailOpen;
     rollup.notificationDedupSetNxFailClosed += bucket.notificationDedupSetNxFailClosed;
+    rollup.googleFlightsRequests += bucket.googleFlightsRequests;
+    rollup.googleFlightsServed += bucket.googleFlightsServed;
+    rollup.googleFlightsSuccess += bucket.googleFlightsSuccess;
+    rollup.googleFlights429 += bucket.googleFlights429;
+    rollup.googleFlightsThrottle += bucket.googleFlightsThrottle;
+    rollup.googleFlightsTimeout += bucket.googleFlightsTimeout;
+    rollup.googleFlightsAuthRejection += bucket.googleFlightsAuthRejection;
+    rollup.googleFlightsFallback += bucket.googleFlightsFallback;
+    rollup.googleFlightsTerminalFailure += bucket.googleFlightsTerminalFailure;
+    rollup.rssRequests += bucket.rssRequests;
+    rollup.rssServed += bucket.rssServed;
+    rollup.rssSuccess += bucket.rssSuccess;
+    rollup.rssThrottle += bucket.rssThrottle;
+    rollup.rssTimeout += bucket.rssTimeout;
+    rollup.rssAuthRejection += bucket.rssAuthRejection;
+    rollup.rssFallback += bucket.rssFallback;
+    rollup.rssTerminalFailure += bucket.rssTerminalFailure;
+    rollup.aisSnapshotRequests += bucket.aisSnapshotRequests;
+    rollup.aisSnapshotServed += bucket.aisSnapshotServed;
+    rollup.aisSnapshotSuccess += bucket.aisSnapshotSuccess;
+    rollup.aisSnapshotThrottle += bucket.aisSnapshotThrottle;
+    rollup.aisSnapshotTimeout += bucket.aisSnapshotTimeout;
+    rollup.aisSnapshotAuthRejection += bucket.aisSnapshotAuthRejection;
+    rollup.aisSnapshotUnauthorizedClient += bucket.aisSnapshotUnauthorizedClient;
+    rollup.aisSnapshotFallback += bucket.aisSnapshotFallback;
+    rollup.aisSnapshotTerminalFailure += bucket.aisSnapshotTerminalFailure;
     if (bucket.queueMax > rollup.queueMax) rollup.queueMax = bucket.queueMax;
   }
 
   const dedupCount = rollup.openskyDedup + rollup.openskyDedupNeg + rollup.openskyDedupEmpty;
   const cacheServedCount = rollup.openskyCacheHit + rollup.openskyNegativeHit + dedupCount;
+  const nowMs = Date.now();
+  const aisPositionFreshness = getAisPositionFreshness(nowMs);
+  const openskyProviderBlocked = nowMs < openskyGlobal429Until;
+  const observedOpenSkyCoverage = summarizeServedCoverage({
+    requests: rollup.openskyRequests,
+    served: rollup.openskyServed,
+    minimum: AVIATION_MIN_SERVED_COVERAGE,
+  });
+  const openskyCoverage = openskyProviderBlocked
+    ? { ...observedOpenSkyCoverage, status: 'degraded' }
+    : observedOpenSkyCoverage;
+  const googleFlightsCoverage = summarizeServedCoverage({
+    requests: rollup.googleFlightsRequests,
+    served: rollup.googleFlightsServed,
+    minimum: AVIATION_MIN_SERVED_COVERAGE,
+  });
+  const observedAviationCoverage = summarizeServedCoverage({
+    requests: rollup.openskyRequests + rollup.googleFlightsRequests,
+    served: rollup.openskyServed + rollup.googleFlightsServed,
+    minimum: AVIATION_MIN_SERVED_COVERAGE,
+  });
+  const aviationCoverage = openskyProviderBlocked
+    ? { ...observedAviationCoverage, status: 'degraded' }
+    : observedAviationCoverage;
+  const rssCoverage = summarizeServedCoverage({
+    requests: rollup.rssRequests,
+    served: rollup.rssServed,
+    minimum: RSS_MIN_SERVED_COVERAGE,
+  });
+  let rssBackoffActive = 0;
+  let rssMaxBackoffRemainingMs = 0;
+  for (const expiry of rssBackoffUntil.values()) {
+    const remaining = Math.max(0, expiry - nowMs);
+    if (remaining > 0) {
+      rssBackoffActive++;
+      rssMaxBackoffRemainingMs = Math.max(rssMaxBackoffRemainingMs, remaining);
+    }
+  }
 
   return {
     windowSeconds: METRICS_WINDOW_SECONDS,
@@ -7046,10 +7291,42 @@ function getRelayRollingMetrics() {
       dedupHits: dedupCount,
       misses: rollup.openskyMiss,
       upstreamFetches: rollup.openskyUpstreamFetches,
-      global429CooldownRemainingMs: Math.max(0, openskyGlobal429Until - Date.now()),
+      success: rollup.openskySuccess,
+      throttle: rollup.openskyThrottle,
+      timeout: rollup.openskyTimeout,
+      authRejection: rollup.openskyAuthRejection,
+      fallback: rollup.openskyFallback,
+      terminalFailure: rollup.openskyTerminalFailure,
+      served: rollup.openskyServed,
+      coverage: openskyCoverage,
+      global429CooldownRemainingMs: Math.max(0, openskyGlobal429Until - nowMs),
+      rateLimitRemaining: openskyRateLimitRemaining,
+      rateLimitRetryAt: openskyGlobal429Until ? new Date(openskyGlobal429Until).toISOString() : null,
+      lastSuccessAt: openskyLastSuccessAt ? new Date(openskyLastSuccessAt).toISOString() : null,
+      last429At: openskyLast429At ? new Date(openskyLast429At).toISOString() : null,
       requestSpacingMs: OPENSKY_REQUEST_SPACING_MS,
     },
     ais: {
+      enabled: !!API_KEY,
+      connected: upstreamSocket?.readyState === WebSocket.OPEN,
+      currentPositionReady: aisPositionFreshness.currentPositionReady,
+      positionAgeMs: aisPositionFreshness.positionAgeMs,
+      positionFreshnessMs: AIS_POSITION_FRESHNESS_MS,
+      connectionAttemptsSinceBoot: aisUpstreamMetrics.connectionAttempts,
+      successfulConnectionsSinceBoot: aisUpstreamMetrics.success,
+      throttlesSinceBoot: aisUpstreamMetrics.throttle,
+      terminalFailuresSinceBoot: aisUpstreamMetrics.terminalFailure,
+      reconnectFailures: upstreamReconnectFailures,
+      consecutiveThrottles: upstreamConsecutiveThrottles,
+      throttleEscalated: isAisThrottleEscalated(),
+      reconnectCooldownRemainingMs: Math.max(0, upstreamReconnectAt - nowMs),
+      lastSuccessAt: aisUpstreamMetrics.lastSuccessAt
+        ? new Date(aisUpstreamMetrics.lastSuccessAt).toISOString()
+        : null,
+      lastFailureAt: aisUpstreamMetrics.lastFailureAt
+        ? new Date(aisUpstreamMetrics.lastFailureAt).toISOString()
+        : null,
+      lastFailure: aisUpstreamMetrics.lastFailure,
       queueMax: rollup.queueMax,
       currentQueue: getUpstreamQueueSize(),
       drops: rollup.drops,
@@ -7061,6 +7338,58 @@ function getRelayRollingMetrics() {
       dedupSetNxFailOpen: rollup.notificationDedupSetNxFailOpen,
       dedupSetNxFailClosed: rollup.notificationDedupSetNxFailClosed,
     },
+    aviation: {
+      coverage: aviationCoverage,
+      minimumServedCoverage: AVIATION_MIN_SERVED_COVERAGE,
+    },
+    // Which upstream fed each theater-posture publication cycle. Kept separate
+    // from the opensky route counters above so healthy fallback publication
+    // (adsb.lol/Wingbits) is never read as OpenSky recovery (#5945). Unlike
+    // the sibling sections these are NOT rolling-window: the seed cadence
+    // (~10 min) exceeds the metrics window, so bucketed counts would read
+    // all-zero — sourceCountsSinceBoot is process-lifetime and lastRun
+    // (with seededAt) is the current-state signal.
+    theaterPosture: {
+      lastRun: theaterPostureLastRun,
+      sourceCountsSinceBoot: { ...theaterPostureSourceCounts },
+    },
+    googleFlights: {
+      requests: rollup.googleFlightsRequests,
+      served: rollup.googleFlightsServed,
+      success: rollup.googleFlightsSuccess,
+      throttle429: rollup.googleFlights429,
+      throttle: rollup.googleFlightsThrottle,
+      timeout: rollup.googleFlightsTimeout,
+      authRejection: rollup.googleFlightsAuthRejection,
+      fallback: rollup.googleFlightsFallback,
+      terminalFailure: rollup.googleFlightsTerminalFailure,
+      coverage: googleFlightsCoverage,
+      cooldownRemainingMs: Math.max(0, gfGlobal429Until - Date.now()),
+    },
+    rss: {
+      requests: rollup.rssRequests,
+      served: rollup.rssServed,
+      success: rollup.rssSuccess,
+      throttle: rollup.rssThrottle,
+      timeout: rollup.rssTimeout,
+      authRejection: rollup.rssAuthRejection,
+      fallback: rollup.rssFallback,
+      terminalFailure: rollup.rssTerminalFailure,
+      coverage: rssCoverage,
+      backoffActiveFeeds: rssBackoffActive,
+      maxBackoffRemainingMs: rssMaxBackoffRemainingMs,
+    },
+    aisSnapshot: {
+      requests: rollup.aisSnapshotRequests,
+      served: rollup.aisSnapshotServed,
+      success: rollup.aisSnapshotSuccess,
+      throttle: rollup.aisSnapshotThrottle,
+      timeout: rollup.aisSnapshotTimeout,
+      authRejection: rollup.aisSnapshotAuthRejection,
+      unauthorizedClient: rollup.aisSnapshotUnauthorizedClient,
+      fallback: rollup.aisSnapshotFallback,
+      terminalFailure: rollup.aisSnapshotTerminalFailure,
+    },
     lifetime: {
       openskyRequests: relayMetricsLifetime.openskyRequests,
       openskyCacheHit: relayMetricsLifetime.openskyCacheHit,
@@ -7068,11 +7397,44 @@ function getRelayRollingMetrics() {
       openskyDedup: relayMetricsLifetime.openskyDedup + relayMetricsLifetime.openskyDedupNeg + relayMetricsLifetime.openskyDedupEmpty,
       openskyMiss: relayMetricsLifetime.openskyMiss,
       openskyUpstreamFetches: relayMetricsLifetime.openskyUpstreamFetches,
+      openskyServed: relayMetricsLifetime.openskyServed,
+      openskySuccess: relayMetricsLifetime.openskySuccess,
+      openskyThrottle: relayMetricsLifetime.openskyThrottle,
+      openskyTimeout: relayMetricsLifetime.openskyTimeout,
+      openskyAuthRejection: relayMetricsLifetime.openskyAuthRejection,
+      openskyFallback: relayMetricsLifetime.openskyFallback,
+      openskyTerminalFailure: relayMetricsLifetime.openskyTerminalFailure,
       drops: relayMetricsLifetime.drops,
       notificationDedupSetNxErrors: relayMetricsLifetime.notificationDedupSetNxErrors,
       notificationDedupSetNxFailOpen: relayMetricsLifetime.notificationDedupSetNxFailOpen,
       notificationDedupSetNxFailClosed: relayMetricsLifetime.notificationDedupSetNxFailClosed,
       queueMax: relayMetricsQueueMaxLifetime,
+      googleFlightsRequests: relayMetricsLifetime.googleFlightsRequests,
+      googleFlightsServed: relayMetricsLifetime.googleFlightsServed,
+      googleFlightsSuccess: relayMetricsLifetime.googleFlightsSuccess,
+      googleFlights429: relayMetricsLifetime.googleFlights429,
+      googleFlightsThrottle: relayMetricsLifetime.googleFlightsThrottle,
+      googleFlightsTimeout: relayMetricsLifetime.googleFlightsTimeout,
+      googleFlightsAuthRejection: relayMetricsLifetime.googleFlightsAuthRejection,
+      googleFlightsFallback: relayMetricsLifetime.googleFlightsFallback,
+      googleFlightsTerminalFailure: relayMetricsLifetime.googleFlightsTerminalFailure,
+      rssRequests: relayMetricsLifetime.rssRequests,
+      rssServed: relayMetricsLifetime.rssServed,
+      rssSuccess: relayMetricsLifetime.rssSuccess,
+      rssThrottle: relayMetricsLifetime.rssThrottle,
+      rssTimeout: relayMetricsLifetime.rssTimeout,
+      rssAuthRejection: relayMetricsLifetime.rssAuthRejection,
+      rssFallback: relayMetricsLifetime.rssFallback,
+      rssTerminalFailure: relayMetricsLifetime.rssTerminalFailure,
+      aisSnapshotRequests: relayMetricsLifetime.aisSnapshotRequests,
+      aisSnapshotServed: relayMetricsLifetime.aisSnapshotServed,
+      aisSnapshotSuccess: relayMetricsLifetime.aisSnapshotSuccess,
+      aisSnapshotThrottle: relayMetricsLifetime.aisSnapshotThrottle,
+      aisSnapshotTimeout: relayMetricsLifetime.aisSnapshotTimeout,
+      aisSnapshotAuthRejection: relayMetricsLifetime.aisSnapshotAuthRejection,
+      aisSnapshotUnauthorizedClient: relayMetricsLifetime.aisSnapshotUnauthorizedClient,
+      aisSnapshotFallback: relayMetricsLifetime.aisSnapshotFallback,
+      aisSnapshotTerminalFailure: relayMetricsLifetime.aisSnapshotTerminalFailure,
     },
   };
 }
@@ -7317,19 +7679,20 @@ function processRawUpstreamMessage(raw) {
   messageCount++;
   if (messageCount % 5000 === 0) {
     const mem = process.memoryUsage();
-    console.log(`[Relay] ${messageCount} msgs, ${clients.size} ws-clients, ${vessels.size} vessels, queue=${getUpstreamQueueSize()}, dropped=${droppedMessages}, rss=${(mem.rss / 1024 / 1024).toFixed(0)}MB heap=${(mem.heapUsed / 1024 / 1024).toFixed(0)}MB, cache: opensky=${openskyResponseCache.size} opensky_neg=${openskyNegativeCache.size} rss_feed=${rssResponseCache.size} rss_backoff=${rssFailureCount.size}`);
+    console.log(`[Relay] ${messageCount} msgs, ${clients.size} ws-clients, ${vessels.size} vessels, queue=${getUpstreamQueueSize()}, dropped=${droppedMessages}, rss=${(mem.rss / 1024 / 1024).toFixed(0)}MB heap=${(mem.heapUsed / 1024 / 1024).toFixed(0)}MB, cache: opensky=${openskyResponseCache.size} opensky_neg=${openskyNegativeCache.size} rss_feed=${rssResponseCache.size} rss_neg=${rssNegativeCache.size} rss_backoff=${rssFailureCount.size}`);
   }
 
+  let acceptedType = null;
   try {
     const parsed = JSON.parse(raw);
     if (parsed?.MessageType === 'PositionReport') {
-      processPositionReportForSnapshot(parsed);
+      if (processPositionReportForSnapshot(parsed)) acceptedType = 'position';
     } else if (parsed?.MessageType === 'ShipStaticData') {
       // Cache ShipType + ShipName by MMSI so subsequent PositionReports
       // can classify the vessel as a tanker. AISStream broadcasts static
       // data ~every 6 min per vessel; in steady state the cache covers
       // most active MMSIs within minutes of relay startup.
-      processShipStaticDataForMeta(parsed);
+      if (processShipStaticDataForMeta(parsed)) acceptedType = 'static';
     }
   } catch {
     // Ignore malformed upstream payloads
@@ -7348,6 +7711,8 @@ function processRawUpstreamMessage(raw) {
       }
     }
   }
+
+  return acceptedType;
 }
 
 function processShipStaticDataForMeta(data) {
@@ -7355,14 +7720,14 @@ function processShipStaticDataForMeta(data) {
   // CallSign, dimensions. We only need ShipType + ShipName for classification.
   const meta = data?.MetaData;
   const sd = data?.Message?.ShipStaticData;
-  if (!meta || !sd) return;
+  if (!meta || !sd) return false;
   // MMSI fallback: AISStream's PositionReport wrapper puts MMSI under
   // MetaData.MMSI, but the ShipStaticData payload sample shows MMSI mirrored
   // as `UserID` on the message body itself. Read MetaData.MMSI first (the
   // documented wrapper field), then fall back to the message-body field so
   // a wrapper schema variant doesn't silently re-empty vesselMeta.
   const mmsi = String(meta.MMSI || sd.UserID || '');
-  if (!mmsi) return;
+  if (!mmsi) return false;
   // ShipType lives in the message body, not MetaData, on Type 5 frames.
   // Gate on `> 0` (not just `Number.isFinite`) so that Number(null) === 0
   // and AIS code 0 ("Not available" per ITU-R M.1371) don't overwrite a
@@ -7370,25 +7735,27 @@ function processShipStaticDataForMeta(data) {
   // {Type: 85} then later {Type: null} would be downgraded to non-tanker
   // because the second write replaces the first with shipType=0.
   const shipType = Number(sd.Type);
-  if (!Number.isFinite(shipType) || shipType <= 0) return;
+  if (!Number.isFinite(shipType) || shipType <= 0) return false;
   vesselMeta.set(mmsi, {
     shipType,
     shipName: (sd.Name || meta.ShipName || '').trim(),
     lastSeen: Date.now(),
   });
+  return true;
 }
 
 function processPositionReportForSnapshot(data) {
   const meta = data?.MetaData;
   const pos = data?.Message?.PositionReport;
-  if (!meta || !pos) return;
+  if (!meta || !pos) return false;
 
   const mmsi = String(meta.MMSI || '');
-  if (!mmsi) return;
+  if (!mmsi) return false;
 
   const lat = Number.isFinite(pos.Latitude) ? pos.Latitude : meta.latitude;
   const lon = Number.isFinite(pos.Longitude) ? pos.Longitude : meta.longitude;
-  if (!Number.isFinite(lat) || !Number.isFinite(lon)) return;
+  if (!Number.isFinite(lat) || !Number.isFinite(lon)) return false;
+  if (lat < -90 || lat > 90 || lon < -180 || lon > 180) return false;
 
   const now = Date.now();
 
@@ -7476,6 +7843,7 @@ function processPositionReportForSnapshot(data) {
       timestamp: now,
     });
   }
+  return true;
 }
 
 function cleanupAggregates() {
@@ -7754,7 +8122,10 @@ function getTankerReportsSnapshot(bbox) {
 
 function buildSnapshot() {
   const now = Date.now();
-  if (lastSnapshot && now - lastSnapshotAt < Math.floor(SNAPSHOT_INTERVAL_MS / 2)) {
+  const aisPositionFreshness = getAisPositionFreshness(now);
+  if (lastSnapshot
+      && lastSnapshot.status.currentPositionReady === aisPositionFreshness.currentPositionReady
+      && now - lastSnapshotAt < Math.floor(SNAPSHOT_INTERVAL_MS / 2)) {
     return lastSnapshot;
   }
 
@@ -7766,6 +8137,7 @@ function buildSnapshot() {
     timestamp: new Date(now).toISOString(),
     status: {
       connected: upstreamSocket?.readyState === WebSocket.OPEN,
+      currentPositionReady: aisPositionFreshness.currentPositionReady,
       vessels: vessels.size,
       messages: messageCount,
       clients: clients.size,
@@ -7786,12 +8158,44 @@ function buildSnapshot() {
   // Pre-compress both variants asynchronously (zero CPU on request path)
   const baseBuf = Buffer.from(lastSnapshotJson);
   const candBuf = Buffer.from(lastSnapshotWithCandJson);
-  zlib.gzip(baseBuf, (err, buf) => { if (!err) lastSnapshotGzip = buf; });
-  zlib.gzip(candBuf, (err, buf) => { if (!err) lastSnapshotWithCandGzip = buf; });
-  zlib.brotliCompress(baseBuf, { params: { [zlib.constants.BROTLI_PARAM_QUALITY]: 4 } }, (err, buf) => { if (!err) lastSnapshotBrotli = buf; });
-  zlib.brotliCompress(candBuf, { params: { [zlib.constants.BROTLI_PARAM_QUALITY]: 4 } }, (err, buf) => { if (!err) lastSnapshotWithCandBrotli = buf; });
+  const compressionSequence = snapshotSequence;
+  lastSnapshotGzip = null;
+  lastSnapshotWithCandGzip = null;
+  lastSnapshotBrotli = null;
+  lastSnapshotWithCandBrotli = null;
+  zlib.gzip(baseBuf, (err, buf) => {
+    if (!err && snapshotSequence === compressionSequence) lastSnapshotGzip = buf;
+  });
+  zlib.gzip(candBuf, (err, buf) => {
+    if (!err && snapshotSequence === compressionSequence) lastSnapshotWithCandGzip = buf;
+  });
+  zlib.brotliCompress(baseBuf, { params: { [zlib.constants.BROTLI_PARAM_QUALITY]: 4 } }, (err, buf) => {
+    if (!err && snapshotSequence === compressionSequence) lastSnapshotBrotli = buf;
+  });
+  zlib.brotliCompress(candBuf, { params: { [zlib.constants.BROTLI_PARAM_QUALITY]: 4 } }, (err, buf) => {
+    if (!err && snapshotSequence === compressionSequence) lastSnapshotWithCandBrotli = buf;
+  });
 
   return lastSnapshot;
+}
+
+function recordAisSnapshotAvailability(snapshot) {
+  const connected = snapshot?.status?.connected === true;
+  // messageCount is process-lifetime telemetry, not current snapshot coverage.
+  // Only an actually served vessel set keeps the maritime surface available.
+  const hasData = Number(snapshot?.status?.vessels) > 0;
+  if (connected && snapshot?.status?.currentPositionReady === true && hasData) {
+    recordRelayOutcome('aisSnapshot', 'success');
+    incrementRelayMetric('aisSnapshotServed');
+    return 'fresh';
+  }
+  if (hasData) {
+    recordRelayOutcome('aisSnapshot', 'fallback');
+    incrementRelayMetric('aisSnapshotServed');
+    return 'stale';
+  }
+  recordRelayOutcome('aisSnapshot', 'terminalFailure');
+  return 'unavailable';
 }
 
 setInterval(() => {
@@ -8191,18 +8595,21 @@ const OPENSKY_BBOX_DECIMALS = OPENSKY_BBOX_QUANT_STEP > 0
 const OPENSKY_DEDUP_EMPTY_RESPONSE_JSON = JSON.stringify({ states: [], time: 0 });
 const OPENSKY_DEDUP_EMPTY_RESPONSE_GZIP = gzipSyncBuffer(OPENSKY_DEDUP_EMPTY_RESPONSE_JSON);
 const OPENSKY_DEDUP_EMPTY_RESPONSE_BROTLI = brotliSyncBuffer(OPENSKY_DEDUP_EMPTY_RESPONSE_JSON);
-const rssResponseCache = new Map(); // key: feed URL → { data, contentType, timestamp, statusCode }
+const rssResponseCache = new Map(); // key: feed URL → last successful { data, contentType, timestamp, statusCode }
+const rssNegativeCache = new Map(); // key: feed URL → short-lived last non-2xx response
 const rssInFlight = new Map(); // key: feed URL → Promise (dedup concurrent requests)
 const rssFailureCount = new Map(); // key: feed URL → consecutive failure count (for exponential backoff)
 const rssBackoffUntil = new Map(); // key: feed URL → timestamp when backoff expires
-const RSS_CACHE_TTL_MS = 5 * 60 * 1000; // 5 min — RSS feeds rarely update faster
+const RSS_CACHE_TTL_MS = Math.max(1, Number(process.env.RELAY_TEST_RSS_CACHE_TTL_MS) || 5 * 60 * 1000); // 5 min — RSS feeds rarely update faster
 const RSS_NEGATIVE_CACHE_TTL_MS = 60 * 1000; // 1 min base — scaled by 2^failures via backoff
 const RSS_MAX_NEGATIVE_CACHE_TTL_MS = 15 * 60 * 1000; // 15 min cap — stop hammering broken feeds
 const RSS_CACHE_MAX_ENTRIES = 200; // hard cap — ~20 allowed domains × ~5 paths max, with headroom
+const RSS_NEGATIVE_CACHE_MAX_ENTRIES = 64; // short-lived failures need less headroom than feed bodies
+const RSS_CACHE_CLEANUP_INTERVAL_MS = Math.max(1, Number(process.env.RELAY_TEST_RSS_CACHE_CLEANUP_INTERVAL_MS) || 60 * 1000);
 
 function rssRecordFailure(feedUrl) {
   const prev = rssFailureCount.get(feedUrl) || 0;
-  const ttl = Math.min(RSS_NEGATIVE_CACHE_TTL_MS * 2 ** prev, RSS_MAX_NEGATIVE_CACHE_TTL_MS);
+  const ttl = nextBackoffMs(prev, RSS_NEGATIVE_CACHE_TTL_MS, RSS_MAX_NEGATIVE_CACHE_TTL_MS);
   rssFailureCount.set(feedUrl, prev + 1);
   rssBackoffUntil.set(feedUrl, Date.now() + ttl);
   return { failures: prev + 1, backoffSec: Math.round(ttl / 1000) };
@@ -8300,9 +8707,13 @@ const OPENSKY_AUTH_COOLDOWN_MS = 60000; // 1 min cooldown after auth failure
 // Global OpenSky rate limiter — serializes upstream requests and enforces 429 cooldown
 let openskyGlobal429Until = 0; // timestamp: block ALL upstream requests until this time
 const OPENSKY_429_COOLDOWN_MS = Number(process.env.OPENSKY_429_COOLDOWN_MS) || 90 * 1000; // 90s cooldown after any 429
+const OPENSKY_MAX_429_COOLDOWN_MS = 24 * 60 * 60 * 1000;
 const OPENSKY_REQUEST_SPACING_MS = Number(process.env.OPENSKY_REQUEST_SPACING_MS) || 2000; // 2s minimum between consecutive upstream requests
 let openskyLastUpstreamTime = 0;
 let openskyUpstreamQueue = Promise.resolve(); // serial chain — only 1 upstream request at a time
+let openskyRateLimitRemaining = null;
+let openskyLastSuccessAt = 0;
+let openskyLast429At = 0;
 
 async function getOpenSkyToken() {
   const clientId = process.env.OPENSKY_CLIENT_ID;
@@ -8481,6 +8892,17 @@ function _collectDecompressed(response) {
   });
 }
 
+function _readOpenSkyRateLimitHeaders(response) {
+  const remaining = Number(response.headers['x-rate-limit-remaining']);
+  const retryAfterSeconds = Number(response.headers['x-rate-limit-retry-after-seconds']);
+  return {
+    rateLimitRemaining: Number.isFinite(remaining) && remaining >= 0 ? Math.floor(remaining) : null,
+    retryAfterSeconds: Number.isFinite(retryAfterSeconds) && retryAfterSeconds > 0
+      ? Math.min(Math.ceil(retryAfterSeconds), OPENSKY_MAX_429_COOLDOWN_MS / 1000)
+      : null,
+  };
+}
+
 function _openskyRawFetch(url, token) {
   const parsed = new URL(url);
   const reqHeaders = {
@@ -8503,9 +8925,10 @@ function _openskyRawFetch(url, token) {
           headers: reqHeaders,
           timeout: 15000,
         }, (response) => {
+          const rateLimit = _readOpenSkyRateLimitHeaders(response);
           _collectDecompressed(response)
-            .then(data => resolve({ status: response.statusCode || 502, data }))
-            .catch(err => resolve({ status: 0, data: null, error: err }));
+            .then(data => resolve({ status: response.statusCode || 502, data, ...rateLimit }))
+            .catch(err => resolve({ status: response.statusCode || 502, data: null, error: err, ...rateLimit }));
         });
         request.on('error', (err) => resolve({ status: 0, data: null, error: err }));
         request.on('timeout', () => { request.destroy(); resolve({ status: 504, data: null, error: new Error('timeout') }); });
@@ -8520,9 +8943,10 @@ function _openskyRawFetch(url, token) {
       agent: httpsKeepAliveAgent,
       timeout: 15000,
     }, (response) => {
+      const rateLimit = _readOpenSkyRateLimitHeaders(response);
       _collectDecompressed(response)
-        .then(data => resolve({ status: response.statusCode || 502, data }))
-        .catch(err => resolve({ status: 0, data: null, error: err }));
+        .then(data => resolve({ status: response.statusCode || 502, data, ...rateLimit }))
+        .catch(err => resolve({ status: response.statusCode || 502, data: null, error: err, ...rateLimit }));
     });
     request.on('error', (err) => resolve({ status: 0, data: null, error: err }));
     request.on('timeout', () => { request.destroy(); resolve({ status: 504, data: null, error: new Error('timeout') }); });
@@ -8542,7 +8966,28 @@ function openskyQueuedFetch(url, token) {
       return { status: 429, data: JSON.stringify({ states: [], time: Date.now() }), rateLimited: true };
     }
     openskyLastUpstreamTime = Date.now();
-    return _openskyRawFetch(url, token);
+    incrementRelayMetric('openskyUpstreamFetches');
+    const result = await _openskyRawFetch(url, token);
+    const completedAt = Date.now();
+    if (result.rateLimitRemaining != null) {
+      openskyRateLimitRemaining = result.rateLimitRemaining;
+    }
+    if (result.status >= 200 && result.status < 300) {
+      openskyLastSuccessAt = completedAt;
+    }
+    if (result.status === 429) {
+      const providerCooldownMs = result.retryAfterSeconds == null
+        ? OPENSKY_429_COOLDOWN_MS
+        : result.retryAfterSeconds * 1000;
+      const cooldownMs = Math.min(
+        OPENSKY_MAX_429_COOLDOWN_MS,
+        Math.max(OPENSKY_429_COOLDOWN_MS, providerCooldownMs),
+      );
+      openskyGlobal429Until = Math.max(openskyGlobal429Until, completedAt + cooldownMs);
+      openskyLast429At = completedAt;
+      console.warn(`[Relay] OpenSky 429 — global cooldown ${Math.ceil(cooldownMs / 1000)}s (all bbox queries blocked)`);
+    }
+    return result;
   });
   openskyUpstreamQueue = job.catch(() => {});
   return job;
@@ -8570,6 +9015,7 @@ async function handleOpenSkyRequest(req, res, PORT) {
     const cached = openskyResponseCache.get(cacheKey);
     if (cached && Date.now() - cached.timestamp < OPENSKY_CACHE_TTL_MS) {
       incrementRelayMetric('openskyCacheHit');
+      incrementRelayMetric('openskyServed');
       touchCacheEntry(openskyResponseCache, cacheKey, cached); // LRU
       return sendPreGzipped(req, res, 200, {
         'Content-Type': 'application/json',
@@ -8583,6 +9029,7 @@ async function handleOpenSkyRequest(req, res, PORT) {
     const negCached = openskyNegativeCache.get(cacheKey);
     if (negCached && Date.now() - negCached.timestamp < OPENSKY_NEGATIVE_CACHE_TTL_MS) {
       incrementRelayMetric('openskyNegativeHit');
+      recordRelayOutcome('opensky', classifyUpstreamOutcome({ status: negCached.status }));
       touchCacheEntry(openskyNegativeCache, cacheKey, negCached); // LRU
       return sendPreGzipped(req, res, 200, {
         'Content-Type': 'application/json',
@@ -8597,12 +9044,15 @@ async function handleOpenSkyRequest(req, res, PORT) {
     //     ALL get 429'd, and the cycle repeats forever with zero data flowing.
     if (Date.now() < openskyGlobal429Until) {
       incrementRelayMetric('openskyNegativeHit');
+      recordRelayOutcome('opensky', 'throttle');
       cacheOpenSkyNegative(cacheKey, 429);
+      const remainSec = Math.max(1, Math.ceil((openskyGlobal429Until - Date.now()) / 1000));
       return sendCompressed(req, res, 200, {
         'Content-Type': 'application/json',
         'Cache-Control': 'no-cache',
         'CDN-Cache-Control': 'no-store',
         'X-Cache': 'RATE-LIMITED',
+        'Retry-After': String(remainSec),
       }, JSON.stringify({ states: [], time: Date.now() }));
     }
 
@@ -8615,6 +9065,7 @@ async function handleOpenSkyRequest(req, res, PORT) {
       const deduped = openskyResponseCache.get(cacheKey);
       if (deduped && Date.now() - deduped.timestamp < OPENSKY_CACHE_TTL_MS) {
         incrementRelayMetric('openskyDedup');
+        incrementRelayMetric('openskyServed');
         touchCacheEntry(openskyResponseCache, cacheKey, deduped); // LRU
         return sendPreGzipped(req, res, 200, {
           'Content-Type': 'application/json',
@@ -8626,6 +9077,7 @@ async function handleOpenSkyRequest(req, res, PORT) {
       const dedupNeg = openskyNegativeCache.get(cacheKey);
       if (dedupNeg && Date.now() - dedupNeg.timestamp < OPENSKY_NEGATIVE_CACHE_TTL_MS) {
         incrementRelayMetric('openskyDedupNeg');
+        recordRelayOutcome('opensky', classifyUpstreamOutcome({ status: dedupNeg.status }));
         touchCacheEntry(openskyNegativeCache, cacheKey, dedupNeg); // LRU
         return sendPreGzipped(req, res, 200, {
           'Content-Type': 'application/json',
@@ -8636,6 +9088,7 @@ async function handleOpenSkyRequest(req, res, PORT) {
       }
       // In-flight completed but no cache entry (upstream failed) — return empty instead of thundering herd
       incrementRelayMetric('openskyDedupEmpty');
+      recordRelayOutcome('opensky', 'terminalFailure');
       return sendPreGzipped(req, res, 200, {
         'Content-Type': 'application/json',
         'Cache-Control': 'no-cache',
@@ -8663,6 +9116,7 @@ async function handleOpenSkyRequest(req, res, PORT) {
       // Only negative-cache actual upstream 429/5xx responses.
       settleFlight();
       openskyInFlight.delete(cacheKey);
+      recordRelayOutcome('opensky', 'authRejection');
       return safeEnd(res, 503, { 'Content-Type': 'application/json' },
         JSON.stringify({ error: 'OpenSky not configured or auth failed', time: Date.now(), states: [] }));
     }
@@ -8673,25 +9127,23 @@ async function handleOpenSkyRequest(req, res, PORT) {
     }
 
     logThrottled('log', `opensky-miss:${cacheKey}`, '[Relay] OpenSky request (MISS):', openskyUrl);
-    incrementRelayMetric('openskyUpstreamFetches');
-
     // Serialized fetch — queued with spacing to prevent concurrent 429 storms
     const result = await openskyQueuedFetch(openskyUrl, token);
     const upstreamStatus = result.status || 502;
+    const upstreamOutcome = result.error
+      ? classifyUpstreamOutcome({ status: upstreamStatus, error: result.error })
+      : classifyUpstreamOutcome({ status: upstreamStatus });
+    recordRelayOutcome('opensky', upstreamOutcome);
 
     if (upstreamStatus === 401) {
       openskyToken = null;
       openskyTokenExpiry = 0;
     }
 
-    if (upstreamStatus === 429 && !result.rateLimited) {
-      openskyGlobal429Until = Date.now() + OPENSKY_429_COOLDOWN_MS;
-      console.warn(`[Relay] OpenSky 429 — global cooldown ${OPENSKY_429_COOLDOWN_MS / 1000}s (all bbox queries blocked)`);
-    }
-
     if (upstreamStatus === 200 && result.data) {
       cacheOpenSkyPositive(cacheKey, result.data);
       openskyNegativeCache.delete(cacheKey);
+      incrementRelayMetric('openskyServed');
     } else if (result.error) {
       logThrottled('error', `opensky-error:${cacheKey}:${result.error.code || result.error.message}`, '[Relay] OpenSky error:', result.error.message);
       cacheOpenSkyNegative(cacheKey, upstreamStatus || 500);
@@ -8706,17 +9158,26 @@ async function handleOpenSkyRequest(req, res, PORT) {
 
     // Serve stale cache on network errors
     if (result.error && cached) {
+      incrementRelayMetric('openskyServed');
+      recordRelayOutcome('opensky', 'fallback');
       return sendPreGzipped(req, res, 200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store', 'CDN-Cache-Control': 'no-store', 'X-Cache': 'STALE' }, cached.data, cached.gzip, cached.brotli);
     }
 
     const responseData = result.data || JSON.stringify({ error: result.error?.message || 'upstream error', time: Date.now(), states: null });
-    return sendCompressed(req, res, upstreamStatus, {
+    const responseHeaders = {
       'Content-Type': 'application/json',
       'Cache-Control': upstreamStatus === 200 ? 'public, max-age=30' : 'no-cache',
       'CDN-Cache-Control': upstreamStatus === 200 ? 'public, max-age=15' : 'no-store',
       'X-Cache': result.rateLimited ? 'RATE-LIMITED' : 'MISS',
+    };
+    if (upstreamStatus === 429) {
+      responseHeaders['Retry-After'] = String(Math.max(1, Math.ceil((openskyGlobal429Until - Date.now()) / 1000)));
+    }
+    return sendCompressed(req, res, upstreamStatus, {
+      ...responseHeaders,
     }, responseData);
   } catch (err) {
+    recordRelayOutcome('opensky', classifyUpstreamOutcome({ error: err }));
     if (settleFlight) settleFlight();
     if (!cacheKey) {
       try {
@@ -9137,7 +9598,14 @@ setInterval(() => {
     if (now - entry.timestamp > OPENSKY_NEGATIVE_CACHE_TTL_MS * 2) openskyNegativeCache.delete(key);
   }
   for (const [key, entry] of rssResponseCache) {
-    if (now - entry.timestamp > RSS_CACHE_TTL_MS * 2) rssResponseCache.delete(key);
+    const backoffActive = (rssBackoffUntil.get(key) || 0) > now;
+    const negativeCacheActive = (rssNegativeCache.get(key)?.timestamp || 0) + RSS_NEGATIVE_CACHE_TTL_MS > now;
+    if (now - entry.timestamp > RSS_CACHE_TTL_MS * 2 && !backoffActive && !negativeCacheActive) {
+      rssResponseCache.delete(key);
+    }
+  }
+  for (const [key, entry] of rssNegativeCache) {
+    if (now - entry.timestamp > RSS_NEGATIVE_CACHE_TTL_MS * 2) rssNegativeCache.delete(key);
   }
   for (const [key, expiry] of rssBackoffUntil) {
     // Only clear backoff timer on expiry — preserve failureCount so
@@ -9148,7 +9616,9 @@ setInterval(() => {
   // Edge case: if cache is evicted (FIFO/age) right when backoff expires, failureCount
   // resets — next failure starts at 1min instead of re-escalating. Window is ~60s, acceptable.
   for (const key of rssFailureCount.keys()) {
-    if (!rssBackoffUntil.has(key) && !rssResponseCache.has(key)) rssFailureCount.delete(key);
+    if (!rssBackoffUntil.has(key) && !rssResponseCache.has(key) && !rssNegativeCache.has(key)) {
+      rssFailureCount.delete(key);
+    }
   }
   for (const [key, entry] of worldbankCache) {
     if (now - entry.timestamp > WORLDBANK_CACHE_TTL_MS * 2) worldbankCache.delete(key);
@@ -9165,7 +9635,7 @@ setInterval(() => {
   for (const [key, ts] of logThrottleState) {
     if (now - ts > RELAY_LOG_THROTTLE_MS * 6) logThrottleState.delete(key);
   }
-}, 60 * 1000).unref?.();
+}, RSS_CACHE_CLEANUP_INTERVAL_MS).unref?.();
 
 // ── Yahoo Finance Chart Proxy ──────────────────────────────────────
 const YAHOO_CHART_CACHE_TTL_MS = 300_000; // 5 min
@@ -9251,6 +9721,102 @@ function handleYahooChartRequest(req, res) {
     _tryProxy();
   });
 }
+
+// ── Crypto Quotes Gap Proxy ────────────────────────────────────────────
+// Resolves CoinGecko IDs on demand from the Railway egress IP (per-ID
+// CoinGecko -> CoinPaprika) for the edge handler's bounded gap path (#6306).
+// The edge handler serves seed hits from Redis and only sends cache-miss gap
+// ids here; this route performs the provider work and never writes Redis.
+const CRYPTO_QUOTES_MAX_IDS = 25;
+
+function handleCryptoQuotesRequest(req, res) {
+  const url = new URL(req.url, `http://localhost:${PORT}`);
+  const idsParam = url.searchParams.get('ids') || '';
+  const ids = [...new Set(idsParam.split(',').map((s) => s.trim().toLowerCase()).filter(Boolean))];
+  if (ids.length === 0) {
+    return sendCompressed(req, res, 400, { 'Content-Type': 'application/json' },
+      JSON.stringify({ error: 'Missing ids parameter' }));
+  }
+  if (ids.length > CRYPTO_QUOTES_MAX_IDS) {
+    return sendCompressed(req, res, 400, { 'Content-Type': 'application/json' },
+      JSON.stringify({ error: `At most ${CRYPTO_QUOTES_MAX_IDS} ids per request` }));
+  }
+  const reverseMap = new Map(Object.entries(CRYPTO_PAPRIKA_MAP).map(([g, p]) => [p, g]));
+  const byGeckoId = new Map();
+  (async () => {
+    // CoinGecko first (matches edge fetchGapQuotes), then paprika for still-missing.
+    try {
+      const { base, headers } = coingeckoEndpoint();
+      const geckoUrl = `${base}/coins/markets?vs_currency=usd&ids=${encodeURIComponent(ids.join(','))}&order=market_cap_desc&sparkline=true&price_change_percentage=24h`;
+      const gecko = await cyberHttpGetJson(geckoUrl, headers, 15000);
+      if (Array.isArray(gecko)) {
+        for (const c of gecko) {
+          if (!c?.id) continue;
+          byGeckoId.set(c.id, {
+            id: c.id,
+            name: c.name,
+            symbol: (c.symbol || '').toLowerCase(),
+            quotes: { USD: { price: c.current_price || 0, percent_change_24h: c.price_change_percentage_24h || 0, percent_change_7d: c.price_change_percentage_7d_in_currency || 0 } },
+            sparkline_in_7d: c.sparkline_in_7d,
+          });
+        }
+      }
+    } catch (err) {
+      console.warn(`[Relay][CryptoQuotes] CoinGecko failed: ${err.message}`);
+    }
+
+    const stillMissing = ids.filter((id) => !byGeckoId.has(id));
+    if (stillMissing.length > 0) {
+      const paprikaIds = stillMissing.map((id) => CRYPTO_PAPRIKA_MAP[id]).filter(Boolean);
+      if (paprikaIds.length > 0) {
+        try {
+          const data = await _fetchCoinPaprikaTickersById(paprikaIds);
+          if (Array.isArray(data)) {
+            for (const row of data) {
+              const geckoId = reverseMap.get(row.id) || stillMissing.find((id) => CRYPTO_PAPRIKA_MAP[id] === row.id);
+              if (!geckoId || byGeckoId.has(geckoId)) continue;
+              byGeckoId.set(geckoId, row);
+            }
+          }
+        } catch (err) {
+          console.warn(`[Relay][CryptoQuotes] CoinPaprika failed: ${err.message}`);
+        }
+      }
+    }
+
+    if (byGeckoId.size === 0) {
+      return sendCompressed(req, res, 502, { 'Content-Type': 'application/json' },
+        JSON.stringify({ error: 'All crypto providers failed' }));
+    }
+
+    const quotes = [];
+    const unresolved = [];
+    for (const id of ids) {
+      const row = byGeckoId.get(id);
+      if (!row) { unresolved.push(id); continue; }
+      const prices = row.sparkline_in_7d?.price;
+      quotes.push({
+        id,
+        name: row.name || id,
+        symbol: (row.symbol || id).toUpperCase(),
+        price: row.quotes?.USD?.price || 0,
+        change: row.quotes?.USD?.percent_change_24h || 0,
+        change7d: row.quotes?.USD?.percent_change_7d || 0,
+        sparkline: prices && prices.length > 24 ? prices.slice(-48) : (prices || []),
+      });
+    }
+    return sendCompressed(req, res, 200, {
+      'Content-Type': 'application/json',
+      'Cache-Control': 'public, max-age=60, s-maxage=60, stale-while-revalidate=30',
+      'X-Crypto-Source': 'relay',
+    }, JSON.stringify({ quotes, unresolved }));
+  })().catch((err) => {
+    console.warn(`[Relay][CryptoQuotes] error: ${err.message}`);
+    return sendCompressed(req, res, 502, { 'Content-Type': 'application/json' },
+      JSON.stringify({ error: 'Crypto quotes proxy error' }));
+  });
+}
+
 
 // ── AviationStack Proxy ─────────────────────────────────────────────
 // Vercel handlers proxy flight queries through Railway to keep the API key
@@ -9627,6 +10193,12 @@ const server = http.createServer(async (req, res) => {
   const isPublicRoute = pathname === '/health' || pathname === '/' || isRssRoute || pathname.startsWith('/widget-agent');
   if (!isPublicRoute) {
     if (!isAuthorizedRequest(req)) {
+      const routeGroup = getRouteGroup(pathname);
+      if (routeGroup === 'snapshot') incrementRelayMetric('aisSnapshotUnauthorizedClient');
+      else if (routeGroup === 'opensky') recordRelayOutcome('opensky', 'authRejection');
+      else if (routeGroup === 'google-flights') recordRelayOutcome('googleFlights', 'authRejection');
+      else if (routeGroup === 'rss') recordRelayOutcome('rss', 'authRejection');
+      else recordRelayOutcome('other', 'authRejection');
       return safeEnd(res, 401, { 'Content-Type': 'application/json' },
         JSON.stringify({ error: 'Unauthorized', time: Date.now() }));
     }
@@ -9635,6 +10207,20 @@ const server = http.createServer(async (req, res) => {
   if (pathname !== '/health' && pathname !== '/') {
     const rl = consumeRateLimit(req, pathname, isPublicRoute);
     if (rl.limited) {
+      const routeGroup = getRouteGroup(pathname);
+      if (routeGroup === 'opensky') {
+        incrementRelayMetric('openskyRequests');
+        recordRelayOutcome('opensky', 'throttle');
+      } else if (routeGroup === 'google-flights') {
+        incrementRelayMetric('googleFlightsRequests');
+        recordRelayOutcome('googleFlights', 'throttle');
+      } else if (routeGroup === 'rss') {
+        incrementRelayMetric('rssRequests');
+        recordRelayOutcome('rss', 'throttle');
+      } else if (routeGroup === 'snapshot') {
+        incrementRelayMetric('aisSnapshotRequests');
+        recordRelayOutcome('aisSnapshot', 'throttle');
+      }
       const retryAfterSec = Math.max(1, Math.ceil(rl.resetInMs / 1000));
       return safeEnd(res, 429, {
         'Content-Type': 'application/json',
@@ -9648,6 +10234,29 @@ const server = http.createServer(async (req, res) => {
 
   if (pathname === '/health' || pathname === '/') {
     const mem = process.memoryUsage();
+    const ingestion = getRelayRollingMetrics();
+    const {
+      enabled: aisEnabled,
+      connected: aisConnected,
+      currentPositionReady: aisCurrentPositionReady,
+    } = ingestion.ais;
+    const aisHasData = vessels.size > 0;
+    const aisSnapshotDegraded = aisEnabled && (
+      !aisConnected
+      || !aisCurrentPositionReady
+      || !aisHasData
+      || (ingestion.aisSnapshot.requests > 0 && ingestion.aisSnapshot.served === 0)
+    );
+    const ingestionDegraded = ingestion.aviation.coverage.status === 'degraded'
+      || ingestion.rss.coverage.status === 'degraded'
+      || aisSnapshotDegraded;
+    const healthStatus = ingestionDegraded ? 'degraded' : 'ok';
+    let aisSnapshotStatus = 'disabled';
+    if (aisEnabled && aisSnapshotDegraded) {
+      aisSnapshotStatus = 'degraded';
+    } else if (aisEnabled) {
+      aisSnapshotStatus = 'ok';
+    }
     // ⚠ SECURITY — read before adding fields to this response.
     //
     // /health is in `isPublicRoute` (no auth check). Fields here are
@@ -9679,7 +10288,23 @@ const server = http.createServer(async (req, res) => {
     // response. The `ais-relay-health-no-secret-recon` test asserts the
     // removed fields don't reappear here.
     sendCompressed(req, res, 200, { 'Content-Type': 'application/json' }, JSON.stringify({
-      status: 'ok',
+      // Keep HTTP 200 for Railway process-liveness probes, but never publish a
+      // false-green JSON verdict when configured AIS ingestion has no usable data.
+      status: healthStatus,
+      ingestion: {
+        status: healthStatus,
+        aviation: ingestion.aviation,
+        rss: ingestion.rss,
+        aisSnapshot: {
+          ...ingestion.aisSnapshot,
+          enabled: aisEnabled,
+          status: aisSnapshotStatus,
+          connected: aisConnected,
+          hasData: aisHasData,
+          currentPositionReady: aisCurrentPositionReady,
+          upstream: ingestion.ais,
+        },
+      },
       clients: clients.size,
       messages: messageCount,
       droppedMessages,
@@ -9716,7 +10341,9 @@ const server = http.createServer(async (req, res) => {
       cache: {
         opensky: openskyResponseCache.size,
         opensky_neg: openskyNegativeCache.size,
-        rss: rssResponseCache.size,
+        rss: rssResponseCache.size + rssNegativeCache.size,
+        rss_positive: rssResponseCache.size,
+        rss_negative: rssNegativeCache.size,
         ucdp: ucdpCache.data ? 'warm' : 'cold',
         worldbank: worldbankCache.size,
         polymarket: polymarketCache.size,
@@ -9736,10 +10363,19 @@ const server = http.createServer(async (req, res) => {
       'Content-Type': 'application/json',
       'Cache-Control': 'no-store',
     }, JSON.stringify(getRelayRollingMetrics()));
+  } else if (pathname === '/__test/seed-theater-posture' && RELAY_TEST_MODE) {
+    // Test-only seam: background seed loops are disabled in RELAY_TEST_MODE,
+    // so tests trigger a single theater-posture cycle explicitly.
+    await seedTheaterPosture();
+    return sendCompressed(req, res, 200, {
+      'Content-Type': 'application/json',
+      'Cache-Control': 'no-store',
+    }, JSON.stringify({ ok: true }));
   } else if (pathname.startsWith('/ais/snapshot')) {
+    incrementRelayMetric('aisSnapshotRequests');
     // Aggregated AIS snapshot for server-side fanout — serve pre-serialized + pre-gzipped
     connectUpstream();
-    buildSnapshot(); // ensures cache is warm
+    recordAisSnapshotAvailability(buildSnapshot()); // ensures cache is warm and records usable freshness
     const url = new URL(req.url, `http://localhost:${PORT}`);
     const includeCandidates = url.searchParams.get('candidates') === 'true';
     const includeTankers = url.searchParams.get('tankers') === 'true';
@@ -9788,6 +10424,9 @@ const server = http.createServer(async (req, res) => {
     openskyTokenPromise = null;
     openskyAuthCooldownUntil = 0;
     openskyGlobal429Until = 0;
+    openskyRateLimitRemaining = null;
+    openskyLastSuccessAt = 0;
+    openskyLast429At = 0;
     openskyNegativeCache.clear();
     console.log('[Relay] OpenSky auth + rate-limit state reset via /opensky-reset');
     const tokenStart = Date.now();
@@ -9906,54 +10545,81 @@ const server = http.createServer(async (req, res) => {
         res.writeHead(400, { 'Content-Type': 'application/json' });
         return res.end(JSON.stringify({ error: 'Missing url parameter' }));
       }
+      incrementRelayMetric('rssRequests');
 
       // Domain allowlist from shared source of truth (shared/rss-allowed-domains.js)
       const parsed = new URL(feedUrl);
       // Block deprecated/stale feed domains — stale clients still request these
       const blockedDomains = ['rsshub.app'];
       if (blockedDomains.includes(parsed.hostname)) {
+        recordRelayOutcome('rss', 'terminalFailure');
         res.writeHead(410, { 'Content-Type': 'application/json' });
         return res.end(JSON.stringify({ error: 'Feed deprecated' }));
       }
       if (!RSS_ALLOWED_DOMAINS.has(parsed.hostname)) {
+        recordRelayOutcome('rss', 'terminalFailure');
         res.writeHead(403, { 'Content-Type': 'application/json' });
         return res.end(JSON.stringify({ error: 'Domain not allowed on Railway proxy' }));
       }
+
+      const sendRssStale = (cacheEntry, cacheLabel = 'STALE', extraHeaders = {}) => sendCompressed(req, res, 200, {
+        'Content-Type': cacheEntry.contentType || 'application/xml',
+        'Cache-Control': 'no-store',
+        'CDN-Cache-Control': 'no-store',
+        'X-Cache': cacheLabel,
+        ...extraHeaders,
+        'X-Relay-Stale': '1',
+      }, cacheEntry.data);
 
       // Backoff guard: if feed is in exponential backoff, don't hit upstream
       const backoffExpiry = rssBackoffUntil.get(feedUrl);
       const backoffNow = Date.now();
       if (backoffExpiry && backoffNow < backoffExpiry) {
         const rssCachedForBackoff = rssResponseCache.get(feedUrl);
-        if (rssCachedForBackoff && rssCachedForBackoff.statusCode >= 200 && rssCachedForBackoff.statusCode < 300) {
-          return sendCompressed(req, res, 200, {
-            'Content-Type': rssCachedForBackoff.contentType || 'application/xml',
-            'Cache-Control': 'no-store', 'CDN-Cache-Control': 'no-store',
-            'X-Cache': 'BACKOFF-STALE',
-          }, rssCachedForBackoff.data);
+        if (rssCachedForBackoff) {
+          recordRelayOutcome('rss', 'throttle');
+          recordRelayOutcome('rss', 'fallback');
+          incrementRelayMetric('rssServed');
+          return sendRssStale(rssCachedForBackoff, 'BACKOFF-STALE');
         }
         const remainSec = Math.max(1, Math.round((backoffExpiry - backoffNow) / 1000));
+        recordRelayOutcome('rss', 'throttle');
         res.writeHead(503, { 'Content-Type': 'application/json', 'Retry-After': String(remainSec) });
         return res.end(JSON.stringify({ error: 'Feed in backoff', retryAfterSec: remainSec }));
       }
 
       // Two-layer negative caching:
       // 1. Backoff guard above: exponential (1→15min) for network errors (socket hang up, timeout)
-      // 2. This cache check: flat 1min TTL for non-2xx upstream responses (429, 503, etc.)
-      // Both layers work correctly together — backoff handles persistent failures,
-      // negative cache prevents thundering herd on transient upstream errors.
+      // 2. The negative cache below: flat 1min TTL for non-2xx upstream responses (429, 503, etc.)
+      // Keep negative responses separate from the positive cache so an upstream
+      // rejection cannot erase the last body that can be served stale.
       const rssCached = rssResponseCache.get(feedUrl);
-      if (rssCached) {
-        const ttl = (rssCached.statusCode && rssCached.statusCode >= 200 && rssCached.statusCode < 300)
-          ? RSS_CACHE_TTL_MS : RSS_NEGATIVE_CACHE_TTL_MS;
-        if (Date.now() - rssCached.timestamp < ttl) {
-          return sendCompressed(req, res, rssCached.statusCode || 200, {
-            'Content-Type': rssCached.contentType || 'application/xml',
-            'Cache-Control': rssCached.statusCode >= 200 && rssCached.statusCode < 300 ? 'public, max-age=300' : 'no-cache',
-            'CDN-Cache-Control': rssCached.statusCode >= 200 && rssCached.statusCode < 300 ? 'public, max-age=600, stale-while-revalidate=300' : 'no-store',
+      const rssNegativeCached = rssNegativeCache.get(feedUrl);
+      if (rssCached && Date.now() - rssCached.timestamp < RSS_CACHE_TTL_MS) {
+        incrementRelayMetric('rssServed');
+        return sendCompressed(req, res, 200, {
+          'Content-Type': rssCached.contentType || 'application/xml',
+          'Cache-Control': 'public, max-age=300',
+          'CDN-Cache-Control': 'public, max-age=600, stale-while-revalidate=300',
+          'X-Cache': 'HIT',
+        }, rssCached.data);
+      }
+      if (rssNegativeCached) {
+        if (Date.now() - rssNegativeCached.timestamp < RSS_NEGATIVE_CACHE_TTL_MS) {
+          recordRelayOutcome('rss', classifyUpstreamOutcome({ status: rssNegativeCached.statusCode }));
+          if (rssCached) {
+            recordRelayOutcome('rss', 'fallback');
+            incrementRelayMetric('rssServed');
+            return sendRssStale(rssCached, 'NEGATIVE-STALE');
+          }
+          return sendCompressed(req, res, rssNegativeCached.statusCode || 502, {
+            'Content-Type': rssNegativeCached.contentType || 'application/xml',
+            'Cache-Control': 'no-cache',
+            'CDN-Cache-Control': 'no-store',
             'X-Cache': 'HIT',
-          }, rssCached.data);
+          }, rssNegativeCached.data);
         }
+        rssNegativeCache.delete(feedUrl);
       }
 
       // In-flight dedup: if another request for the same feed is already fetching,
@@ -9961,21 +10627,42 @@ const server = http.createServer(async (req, res) => {
       const existing = rssInFlight.get(feedUrl);
       if (existing) {
         try {
-          await existing;
+          const fetchResult = await existing;
           const deduped = rssResponseCache.get(feedUrl);
           if (deduped) {
-            return sendCompressed(req, res, deduped.statusCode || 200, {
+            const dedupedNegative = rssNegativeCache.get(feedUrl);
+            incrementRelayMetric('rssServed');
+            if (dedupedNegative || fetchResult?.stale) {
+              recordRelayOutcome('rss', dedupedNegative
+                ? classifyUpstreamOutcome({ status: dedupedNegative.statusCode })
+                : fetchResult.outcome);
+              recordRelayOutcome('rss', 'fallback');
+              return sendRssStale(deduped, 'DEDUP-STALE');
+            }
+            return sendCompressed(req, res, 200, {
               'Content-Type': deduped.contentType || 'application/xml',
-              'Cache-Control': deduped.statusCode >= 200 && deduped.statusCode < 300 ? 'public, max-age=300' : 'no-cache',
-              'CDN-Cache-Control': deduped.statusCode >= 200 && deduped.statusCode < 300 ? 'public, max-age=600, stale-while-revalidate=300' : 'no-store',
+              'Cache-Control': 'public, max-age=300',
+              'CDN-Cache-Control': 'public, max-age=600, stale-while-revalidate=300',
               'X-Cache': 'DEDUP',
             }, deduped.data);
           }
+          const dedupedNegative = rssNegativeCache.get(feedUrl);
+          if (dedupedNegative) {
+            recordRelayOutcome('rss', classifyUpstreamOutcome({ status: dedupedNegative.statusCode }));
+            return sendCompressed(req, res, dedupedNegative.statusCode || 502, {
+              'Content-Type': dedupedNegative.contentType || 'application/xml',
+              'Cache-Control': 'no-cache',
+              'CDN-Cache-Control': 'no-store',
+              'X-Cache': 'DEDUP',
+            }, dedupedNegative.data);
+          }
           // In-flight completed but nothing cached — serve 502 instead of cascading
+          recordRelayOutcome('rss', 'terminalFailure');
           return safeEnd(res, 502, { 'Content-Type': 'application/json' },
             JSON.stringify({ error: 'Upstream fetch completed but not cached' }));
         } catch {
           // In-flight fetch failed — serve 502 instead of starting another fetch
+          recordRelayOutcome('rss', 'terminalFailure');
           return safeEnd(res, 502, { 'Content-Type': 'application/json' },
             JSON.stringify({ error: 'Upstream fetch failed' }));
         }
@@ -9985,11 +10672,36 @@ const server = http.createServer(async (req, res) => {
 
       const fetchPromise = new Promise((resolveInFlight, rejectInFlight) => {
       let responseHandled = false;
+      let outcomeRecorded = false;
+      let failureRecorded = false;
+
+      const recordAttemptOutcome = (status, error) => {
+        if (outcomeRecorded) return;
+        outcomeRecorded = true;
+        const outcome = classifyUpstreamOutcome({ status, error });
+        recordRelayOutcome('rss', outcome);
+        return outcome;
+      };
+
+      const recordFailure = () => {
+        if (failureRecorded) {
+          const failures = rssFailureCount.get(feedUrl) || 1;
+          const remaining = Math.max(1, Math.round(((rssBackoffUntil.get(feedUrl) || Date.now()) - Date.now()) / 1000));
+          return { failures, backoffSec: remaining };
+        }
+        failureRecorded = true;
+        return rssRecordFailure(feedUrl);
+      };
 
       const sendError = (statusCode, message) => {
         if (responseHandled || res.headersSent) return;
         responseHandled = true;
-        res.writeHead(statusCode, { 'Content-Type': 'application/json' });
+        recordAttemptOutcome(statusCode, new Error(message));
+        const { backoffSec } = recordFailure();
+        res.writeHead(statusCode, {
+          'Content-Type': 'application/json',
+          'Retry-After': String(backoffSec),
+        });
         res.end(JSON.stringify({ error: message }));
         rejectInFlight(new Error(message));
       };
@@ -10036,9 +10748,11 @@ const server = http.createServer(async (req, res) => {
 
           if (response.statusCode === 304 && rssCached) {
             responseHandled = true;
+            const outcome = recordAttemptOutcome(200);
+            incrementRelayMetric('rssServed');
             rssCached.timestamp = Date.now();
             rssResetFailure(feedUrl);
-            resolveInFlight();
+            resolveInFlight({ outcome });
             logThrottled('log', `rss-revalidated:${feedUrl}`, '[Relay] RSS 304 revalidated:', feedUrl);
             sendCompressed(req, res, 200, {
               'Content-Type': rssCached.contentType || 'application/xml',
@@ -10061,48 +10775,66 @@ const server = http.createServer(async (req, res) => {
             if (responseHandled || res.headersSent) return;
             responseHandled = true;
             const data = Buffer.concat(chunks);
-            // Cache all responses: 2xx with full TTL, non-2xx with short TTL (negative cache)
-            // FIFO eviction: drop oldest-inserted entry if at capacity
-            if (rssResponseCache.size >= RSS_CACHE_MAX_ENTRIES && !rssResponseCache.has(feedUrl)) {
-              const oldest = rssResponseCache.keys().next().value;
-              if (oldest) rssResponseCache.delete(oldest);
-            }
-            rssResponseCache.set(feedUrl, {
+            const isSuccess = response.statusCode >= 200 && response.statusCode < 300;
+            const cacheEntry = {
               data, contentType: 'application/xml', statusCode: response.statusCode, timestamp: Date.now(),
-              etag: response.headers.etag || null,
-              lastModified: response.headers['last-modified'] || null,
-            });
-            if (response.statusCode >= 200 && response.statusCode < 300) {
+            };
+            if (isSuccess) {
+              cacheEntry.etag = response.headers.etag || null;
+              cacheEntry.lastModified = response.headers['last-modified'] || null;
+              setBoundedCacheEntry(rssResponseCache, feedUrl, cacheEntry, RSS_CACHE_MAX_ENTRIES);
+              rssNegativeCache.delete(feedUrl);
+            } else {
+              setBoundedCacheEntry(rssNegativeCache, feedUrl, cacheEntry, RSS_NEGATIVE_CACHE_MAX_ENTRIES);
+            }
+            const responseHeaders = {
+              'Content-Type': 'application/xml',
+              'Cache-Control': isSuccess ? 'public, max-age=300' : 'no-cache',
+              'CDN-Cache-Control': isSuccess ? 'public, max-age=600, stale-while-revalidate=300' : 'no-store',
+              'X-Cache': 'MISS',
+            };
+            let outcome;
+            if (isSuccess) {
+              outcome = recordAttemptOutcome(response.statusCode);
+              incrementRelayMetric('rssServed');
               rssResetFailure(feedUrl);
             } else {
-              const { failures, backoffSec } = rssRecordFailure(feedUrl);
+              outcome = recordAttemptOutcome(response.statusCode);
+              const { failures, backoffSec } = recordFailure();
               logThrottled('warn', `rss-upstream:${feedUrl}:${response.statusCode}`, `[Relay] RSS upstream ${response.statusCode} for ${feedUrl} (backoff ${backoffSec}s, failures=${failures})`);
+              responseHeaders['Retry-After'] = String(backoffSec);
+              if (rssCached) {
+                incrementRelayMetric('rssServed');
+                recordRelayOutcome('rss', 'fallback');
+                resolveInFlight({ stale: true, outcome });
+                sendRssStale(rssCached, 'STALE', { 'Retry-After': String(backoffSec) });
+                return;
+              }
             }
-            resolveInFlight();
-            sendCompressed(req, res, response.statusCode, {
-              'Content-Type': 'application/xml',
-              'Cache-Control': response.statusCode >= 200 && response.statusCode < 300 ? 'public, max-age=300' : 'no-cache',
-              'CDN-Cache-Control': response.statusCode >= 200 && response.statusCode < 300 ? 'public, max-age=600, stale-while-revalidate=300' : 'no-store',
-              'X-Cache': 'MISS',
-            }, data);
+            resolveInFlight({ outcome });
+            sendCompressed(req, res, response.statusCode, responseHeaders, data);
           });
           stream.on('error', (err) => {
-            const { failures, backoffSec } = rssRecordFailure(feedUrl);
+            recordAttemptOutcome(502, err);
+            const { failures, backoffSec } = recordFailure();
             logThrottled('error', `rss-decompress:${feedUrl}:${err.code || err.message}`, `[Relay] Decompression error: ${err.message} (backoff ${backoffSec}s, failures=${failures})`);
             sendError(502, 'Decompression failed: ' + err.message);
           });
         });
 
         request.on('error', (err) => {
-          const { failures, backoffSec } = rssRecordFailure(feedUrl);
+          const outcome = recordAttemptOutcome(0, err);
+          const { failures, backoffSec } = recordFailure();
           logThrottled('error', `rss-error:${feedUrl}:${err.code || err.message}`, `[Relay] RSS error: ${err.message} (backoff ${backoffSec}s, failures=${failures})`);
           // Serve stale on error (only if we have previous successful data)
-          if (rssCached && rssCached.statusCode >= 200 && rssCached.statusCode < 300) {
+          if (rssCached) {
             if (!responseHandled && !res.headersSent) {
               responseHandled = true;
-              sendCompressed(req, res, 200, { 'Content-Type': 'application/xml', 'Cache-Control': 'no-store', 'CDN-Cache-Control': 'no-store', 'X-Cache': 'STALE' }, rssCached.data);
+              incrementRelayMetric('rssServed');
+              recordRelayOutcome('rss', 'fallback');
+              sendRssStale(rssCached);
             }
-            resolveInFlight();
+            resolveInFlight({ stale: true, outcome });
             return;
           }
           sendError(502, err.message);
@@ -10110,12 +10842,15 @@ const server = http.createServer(async (req, res) => {
 
         request.on('timeout', () => {
           request.destroy();
-          const { failures, backoffSec } = rssRecordFailure(feedUrl);
+          const outcome = recordAttemptOutcome(504, new Error('timeout'));
+          const { failures, backoffSec } = recordFailure();
           logThrottled('warn', `rss-timeout:${feedUrl}`, `[Relay] RSS timeout for ${feedUrl} (backoff ${backoffSec}s, failures=${failures})`);
-          if (rssCached && rssCached.statusCode >= 200 && rssCached.statusCode < 300 && !responseHandled && !res.headersSent) {
+          if (rssCached && !responseHandled && !res.headersSent) {
             responseHandled = true;
-            sendCompressed(req, res, 200, { 'Content-Type': 'application/xml', 'Cache-Control': 'no-store', 'CDN-Cache-Control': 'no-store', 'X-Cache': 'STALE' }, rssCached.data);
-            resolveInFlight();
+            incrementRelayMetric('rssServed');
+            recordRelayOutcome('rss', 'fallback');
+            sendRssStale(rssCached);
+            resolveInFlight({ stale: true, outcome });
             return;
           }
           sendError(504, 'Request timeout');
@@ -10187,6 +10922,8 @@ const server = http.createServer(async (req, res) => {
     handleYouTubeLiveRequest(req, res);
   } else if (pathname === '/yahoo-chart') {
     handleYahooChartRequest(req, res);
+  } else if (pathname === '/crypto-quotes') {
+    handleCryptoQuotesRequest(req, res);
   } else if (pathname === '/notam') {
     handleNotamProxyRequest(req, res);
   } else if (pathname === '/aviationstack') {
@@ -10217,6 +10954,12 @@ const GF_HEADERS = {
   'Origin': 'https://www.google.com',
   'Referer': 'https://www.google.com/flights',
 };
+
+let gfGlobal429Until = 0;
+const GF_429_COOLDOWN_MS = Number(process.env.GF_429_COOLDOWN_MS) || 120 * 1000;
+const gfNegativeCache = new Map();
+const GF_NEGATIVE_CACHE_TTL = 60 * 1000;
+const GF_NEGATIVE_CACHE_MAX = 64;
 
 /**
  * Encode a Google Flights filter structure for use in f.req POST body.
@@ -10477,6 +11220,7 @@ async function handleGoogleFlightsSearch(req, res) {
       res.end(JSON.stringify({ error: 'origin, destination, departure_date required' }));
       return;
     }
+    incrementRelayMetric('googleFlightsRequests');
 
     const filters = buildFlightFilters({
       origin, destination,
@@ -10491,22 +11235,59 @@ async function handleGoogleFlightsSearch(req, res) {
     });
 
     const body = `f.req=${encodeGfFilters(filters)}`;
+
+    // Global 429 cooldown: block upstream fetches during cooldown
+    if (Date.now() < gfGlobal429Until) {
+      incrementRelayMetric('googleFlights429');
+      recordRelayOutcome('googleFlights', 'throttle');
+      const flights = [];
+      const retryAfter = Math.max(1, Math.ceil((gfGlobal429Until - Date.now()) / 1000));
+      res.writeHead(200, { 'Content-Type': 'application/json', 'Retry-After': String(retryAfter) });
+      res.end(JSON.stringify({ flights, cooldown: true }));
+      return;
+    }
+
     const gfResp = await fetch(GF_SHOPPING_URL, {
       method: 'POST',
       headers: GF_HEADERS,
       body,
       signal: AbortSignal.timeout(15_000),
     });
-    if (!gfResp.ok) throw new Error(`Google Flights returned ${gfResp.status}`);
-
+    if (gfResp.status === 429) {
+      gfGlobal429Until = Date.now() + GF_429_COOLDOWN_MS;
+      console.warn(`[Google Flights] 429 — global cooldown ${GF_429_COOLDOWN_MS / 1000}s`);
+      incrementRelayMetric('googleFlights429');
+      recordRelayOutcome('googleFlights', 'throttle');
+      throw new Error(`Google Flights returned ${gfResp.status}`);
+    }
+    if (gfResp.status === 401 || gfResp.status === 403) {
+      recordRelayOutcome('googleFlights', 'authRejection');
+      throw new Error(`Google Flights returned ${gfResp.status}`);
+    }
+    if (!gfResp.ok) {
+      recordRelayOutcome('googleFlights', 'terminalFailure');
+      throw new Error(`Google Flights returned ${gfResp.status}`);
+    }
     const text = await gfResp.text();
     const flights = parseGfFlights(text);
+    recordRelayOutcome('googleFlights', 'success');
+    incrementRelayMetric('googleFlightsServed');
 
     res.writeHead(200, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({ flights }));
   } catch (err) {
+    const isTimeout = err?.name === 'TimeoutError' || err?.message?.includes('timed out');
+    if (isTimeout) {
+      recordRelayOutcome('googleFlights', 'timeout');
+    } else if (!err?.message?.startsWith('Google Flights returned')) {
+      recordRelayOutcome('googleFlights', 'terminalFailure');
+    }
     console.error('[Google Flights] search error:', err?.message || err);
-    res.writeHead(502, { 'Content-Type': 'application/json' });
+    const retryAfter = Math.max(0, Math.ceil((gfGlobal429Until - Date.now()) / 1000));
+    res.writeHead(502, {
+      'Content-Type': 'application/json',
+      ...(retryAfter > 0 ? { 'Retry-After': String(retryAfter) } : {}),
+    });
     res.end(JSON.stringify({ error: err?.message || 'search failed', flights: [] }));
   }
 }
@@ -10548,19 +11329,55 @@ async function handleGoogleFlightsDates(req, res) {
     const end = new Date(endDate);
     const totalDays = Math.ceil((end - start) / 86_400_000) + 1;
     const MAX_CHUNK = 61;
+    const MAX_DATE_CHUNKS = 6;
     const allDates = [];
     let hasPartialFailure = false;
 
     if (totalDays <= MAX_CHUNK) {
+      incrementRelayMetric('googleFlightsRequests');
+      if (Date.now() < gfGlobal429Until) {
+        incrementRelayMetric('googleFlights429');
+        recordRelayOutcome('googleFlights', 'throttle');
+        const retryAfter = Math.max(1, Math.ceil((gfGlobal429Until - Date.now()) / 1000));
+        res.writeHead(200, { 'Content-Type': 'application/json', 'Retry-After': String(retryAfter) });
+        res.end(JSON.stringify({ dates: [], partial: false, cooldown: true }));
+        return;
+      }
       const filters = buildDateFilters(params);
       const body = `f.req=${encodeGfFilters(filters)}`;
       const gfResp = await fetch(GF_CALENDAR_URL, { method: 'POST', headers: GF_HEADERS, body, signal: AbortSignal.timeout(20_000) });
-      if (!gfResp.ok) throw new Error(`Google Flights returned ${gfResp.status}`);
+      if (gfResp.status === 429) {
+        gfGlobal429Until = Date.now() + GF_429_COOLDOWN_MS;
+        console.warn(`[Google Flights] dates 429 — global cooldown ${GF_429_COOLDOWN_MS / 1000}s`);
+        incrementRelayMetric('googleFlights429');
+        recordRelayOutcome('googleFlights', 'throttle');
+        throw new Error(`Google Flights returned ${gfResp.status}`);
+      }
+      if (gfResp.status === 401 || gfResp.status === 403) {
+        recordRelayOutcome('googleFlights', 'authRejection');
+        throw new Error(`Google Flights returned ${gfResp.status}`);
+      }
+      if (!gfResp.ok) {
+        recordRelayOutcome('googleFlights', 'terminalFailure');
+        throw new Error(`Google Flights returned ${gfResp.status}`);
+      }
       const text = await gfResp.text();
       allDates.push(...parseGfDates(text, isRoundTrip));
+      recordRelayOutcome('googleFlights', 'success');
+      incrementRelayMetric('googleFlightsServed');
     } else {
       const current = new Date(start);
-      while (current <= end) {
+      let chunksAttempted = 0;
+      while (current <= end && chunksAttempted < MAX_DATE_CHUNKS) {
+        chunksAttempted++;
+        incrementRelayMetric('googleFlightsRequests');
+        if (Date.now() < gfGlobal429Until) {
+          incrementRelayMetric('googleFlights429');
+          recordRelayOutcome('googleFlights', 'throttle');
+          hasPartialFailure = true;
+          current.setDate(current.getDate() + MAX_CHUNK);
+          continue;
+        }
         const chunkEnd = new Date(current);
         chunkEnd.setDate(chunkEnd.getDate() + MAX_CHUNK - 1);
         if (chunkEnd > end) chunkEnd.setTime(end.getTime());
@@ -10571,26 +11388,59 @@ async function handleGoogleFlightsDates(req, res) {
           endDate: chunkEnd.toISOString().slice(0, 10),
         });
         const body = `f.req=${encodeGfFilters(chunkFilters)}`;
-        const gfResp = await fetch(GF_CALENDAR_URL, { method: 'POST', headers: GF_HEADERS, body, signal: AbortSignal.timeout(20_000) });
-        if (gfResp.ok) {
+        let gfResp;
+        try {
+          gfResp = await fetch(GF_CALENDAR_URL, { method: 'POST', headers: GF_HEADERS, body, signal: AbortSignal.timeout(20_000) });
+        } catch (err) {
+          recordRelayOutcome('googleFlights', classifyUpstreamOutcome({ error: err }));
+          hasPartialFailure = true;
+          current.setDate(current.getDate() + MAX_CHUNK);
+          continue;
+        }
+        if (gfResp.status === 429) {
+          gfGlobal429Until = Date.now() + GF_429_COOLDOWN_MS;
+          console.warn(`[Google Flights] chunk 429 — global cooldown ${GF_429_COOLDOWN_MS / 1000}s`);
+          incrementRelayMetric('googleFlights429');
+          recordRelayOutcome('googleFlights', 'throttle');
+          hasPartialFailure = true;
+        } else if (gfResp.status === 401 || gfResp.status === 403) {
+          recordRelayOutcome('googleFlights', 'authRejection');
+          hasPartialFailure = true;
+        } else if (gfResp.ok) {
           const text = await gfResp.text();
           allDates.push(...parseGfDates(text, isRoundTrip));
+          recordRelayOutcome('googleFlights', 'success');
+          incrementRelayMetric('googleFlightsServed');
         } else {
+          recordRelayOutcome('googleFlights', 'terminalFailure');
           hasPartialFailure = true;
           console.warn(`[Google Flights] dates chunk ${current.toISOString().slice(0, 10)} failed: ${gfResp.status}`);
         }
         current.setDate(current.getDate() + MAX_CHUNK);
       }
+      if (current <= end) hasPartialFailure = true;
     }
 
     const sortByPrice = url.searchParams.get('sort_by_price') === 'true';
     if (sortByPrice) allDates.sort((a, b) => a.price - b.price);
 
+    if (hasPartialFailure && allDates.length > 0) recordRelayOutcome('googleFlights', 'fallback');
+
     res.writeHead(200, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({ dates: allDates, partial: hasPartialFailure }));
   } catch (err) {
+    const isTimeout = err?.name === 'TimeoutError' || err?.message?.includes('timed out');
+    if (isTimeout) {
+      recordRelayOutcome('googleFlights', 'timeout');
+    } else if (!err?.message?.startsWith('Google Flights returned')) {
+      recordRelayOutcome('googleFlights', 'terminalFailure');
+    }
     console.error('[Google Flights] dates error:', err?.message || err);
-    res.writeHead(502, { 'Content-Type': 'application/json' });
+    const retryAfter = Math.max(0, Math.ceil((gfGlobal429Until - Date.now()) / 1000));
+    res.writeHead(502, {
+      'Content-Type': 'application/json',
+      ...(retryAfter > 0 ? { 'Retry-After': String(retryAfter) } : {}),
+    });
     res.end(JSON.stringify({ error: err?.message || 'search failed', dates: [] }));
   }
 }
@@ -11498,16 +12348,78 @@ function switchTab(btn, key) {
 
 // ─── End Widget Agent ────────────────────────────────────────────────────────
 
+function scheduleUpstreamReconnect() {
+  if (relayShuttingDown || upstreamReconnectTimer || !API_KEY) return;
+  const throttleEscalated = isAisThrottleEscalated();
+  const ceilingMs = throttleEscalated ? AIS_THROTTLE_RECONNECT_MAX_MS : AIS_RECONNECT_MAX_MS;
+  const delayMs = nextBackoffMs(upstreamReconnectFailures, AIS_RECONNECT_BASE_MS, ceilingMs);
+  upstreamReconnectFailures++;
+  upstreamReconnectAt = Date.now() + delayMs;
+  upstreamReconnectTimer = setTimeout(() => {
+    upstreamReconnectTimer = null;
+    upstreamReconnectAt = 0;
+    connectUpstream();
+  }, delayMs);
+  upstreamReconnectTimer.unref?.();
+  const escalationNote = throttleEscalated
+    ? ` [throttle-escalated after ${upstreamConsecutiveThrottles} consecutive 429s]`
+    : '';
+  console.log(`[Relay] AIS reconnect scheduled in ${Math.ceil(delayMs / 1000)}s (attempt=${upstreamReconnectFailures})${escalationNote}`);
+}
+
 function connectUpstream() {
-  // Skip if already connected or connecting
-  if (upstreamSocket?.readyState === WebSocket.OPEN ||
-      upstreamSocket?.readyState === WebSocket.CONNECTING) return;
+  if (!API_KEY) return;
+  // Snapshot and downstream WebSocket traffic may call this while a provider
+  // cooldown is active. Preserve the scheduled exponential backoff instead of
+  // letting request traffic turn one upstream 429 into a reconnect storm.
+  if (upstreamReconnectTimer) return;
+
+  // The close handler owns socket release. Even CLOSING/CLOSED sockets remain
+  // current until that handler clears them, preventing request traffic from
+  // replacing a failed socket during the error-to-close gap.
+  if (upstreamSocket) return;
 
   console.log('[Relay] Connecting to aisstream.io...');
-  const socket = new WebSocket(AISSTREAM_URL);
+  aisUpstreamMetrics.connectionAttempts++;
+  const socket = new WebSocket(AISSTREAM_URL, {
+    handshakeTimeout: AIS_HANDSHAKE_TIMEOUT_MS,
+  });
+  let socketServedData = false;
+  let socketFailureRecorded = false;
+  let socketOpenedAt = 0;
+  let socketPositionTimedOut = false;
+  let positionWatchdogTimer = null;
   upstreamSocket = socket;
+  upstreamLastPositionAt = 0;
+  lastSnapshotAt = 0;
   clearUpstreamQueue();
   upstreamPaused = false;
+
+  const clearPositionWatchdog = () => {
+    if (!positionWatchdogTimer) return;
+    clearTimeout(positionWatchdogTimer);
+    positionWatchdogTimer = null;
+  };
+
+  const armPositionWatchdog = () => {
+    clearPositionWatchdog();
+    if (upstreamSocket !== socket || socket.readyState !== WebSocket.OPEN || !socketOpenedAt) return;
+    const lastPositionOrOpenAt = upstreamLastPositionAt || socketOpenedAt;
+    const remainingMs = Math.max(1, lastPositionOrOpenAt + AIS_POSITION_FRESHNESS_MS - Date.now());
+    positionWatchdogTimer = setTimeout(() => {
+      positionWatchdogTimer = null;
+      if (upstreamSocket !== socket || socket.readyState !== WebSocket.OPEN) return;
+      const latestPositionOrOpenAt = upstreamLastPositionAt || socketOpenedAt;
+      if (Date.now() - latestPositionOrOpenAt < AIS_POSITION_FRESHNESS_MS) {
+        armPositionWatchdog();
+        return;
+      }
+      socketPositionTimedOut = true;
+      console.warn(`[Relay] AIS position stream timed out after ${AIS_POSITION_FRESHNESS_MS}ms; reconnecting`);
+      socket.terminate();
+    }, remainingMs);
+    positionWatchdogTimer.unref?.();
+  };
 
   const scheduleUpstreamDrain = () => {
     if (upstreamDrainScheduled) return;
@@ -11531,7 +12443,26 @@ function connectUpstream() {
            Date.now() - startedAt < UPSTREAM_DRAIN_BUDGET_MS) {
       const raw = dequeueUpstreamMessage();
       if (!raw) break;
-      processRawUpstreamMessage(raw);
+      const acceptedType = processRawUpstreamMessage(raw);
+      if (acceptedType) {
+        // A successful WebSocket upgrade or arbitrary JSON frame is not AIS
+        // recovery. Only a validated frame accepted into relay state resets
+        // provider failure telemetry and reconnect backoff.
+        if (!socketServedData) {
+          socketServedData = true;
+          aisUpstreamMetrics.success++;
+          aisUpstreamMetrics.lastSuccessAt = Date.now();
+          aisUpstreamMetrics.lastFailure = null;
+        }
+        upstreamReconnectFailures = 0;
+        upstreamConsecutiveThrottles = 0;
+        if (acceptedType === 'position') {
+          const wasCurrentPositionReady = getAisPositionFreshness().currentPositionReady;
+          upstreamLastPositionAt = Date.now();
+          armPositionWatchdog();
+          if (!wasCurrentPositionReady) lastSnapshotAt = 0;
+        }
+      }
       processed++;
     }
 
@@ -11557,6 +12488,8 @@ function connectUpstream() {
       return;
     }
     console.log('[Relay] Connected to aisstream.io');
+    socketOpenedAt = Date.now();
+    armPositionWatchdog();
     socket.send(JSON.stringify({
       APIKey: API_KEY,
       BoundingBoxes: [[[-90, -180], [90, 180]]],
@@ -11591,15 +12524,37 @@ function connectUpstream() {
 
   socket.on('close', () => {
     if (upstreamSocket === socket) {
+      clearPositionWatchdog();
+      if (!relayShuttingDown && !socketFailureRecorded) {
+        aisUpstreamMetrics.terminalFailure++;
+        aisUpstreamMetrics.lastFailureAt = Date.now();
+        aisUpstreamMetrics.lastFailure = socketPositionTimedOut
+          ? 'position_timeout'
+          : (socketServedData ? 'disconnected' : 'closed_without_data');
+        // A close with no recorded error is by definition not a throttle.
+        upstreamConsecutiveThrottles = 0;
+      }
       upstreamSocket = null;
+      upstreamLastPositionAt = 0;
+      lastSnapshotAt = 0;
       clearUpstreamQueue();
       upstreamPaused = false;
-      console.log('[Relay] Disconnected, reconnecting in 5s...');
-      setTimeout(connectUpstream, 5000);
+      console.log('[Relay] Disconnected');
+      scheduleUpstreamReconnect();
     }
   });
 
   socket.on('error', (err) => {
+    if (!socketFailureRecorded) {
+      socketFailureRecorded = true;
+      const throttled = /\b429\b/.test(String(err?.message || ''));
+      aisUpstreamMetrics[throttled ? 'throttle' : 'terminalFailure']++;
+      aisUpstreamMetrics.lastFailureAt = Date.now();
+      aisUpstreamMetrics.lastFailure = throttled ? 'http_429' : 'connection_error';
+      // Only an unbroken run of 429s escalates the ceiling; a different failure
+      // means we are no longer being rate-limited and the ordinary schedule applies.
+      upstreamConsecutiveThrottles = throttled ? upstreamConsecutiveThrottles + 1 : 0;
+    }
     console.error('[Relay] Upstream error:', err.message);
   });
 }
@@ -11607,7 +12562,13 @@ function connectUpstream() {
 const wss = new WebSocketServer({ server });
 
 server.listen(PORT, () => {
-  console.log(`[Relay] WebSocket relay on port ${PORT} (OpenSky: ${OPENSKY_PROXY_ENABLED ? 'via proxy' : 'direct'})`);
+  const listeningPort = server.address()?.port || PORT;
+  relayBoundPort = listeningPort;
+  console.log(`[Relay] WebSocket relay on port ${listeningPort} (OpenSky: ${OPENSKY_PROXY_ENABLED ? 'via proxy' : 'direct'})`);
+  if (RELAY_TEST_MODE) {
+    console.log('[Relay] Test mode enabled — background seed loops are disabled');
+    return;
+  }
   startTelegramPollLoop();
   startOrefPollLoop();
   startUcdpSeedLoop();
@@ -11622,7 +12583,6 @@ server.listen(PORT, () => {
   startCiiWarmPingLoop();
   startChokepointWarmPingLoop();
   startCableHealthWarmPingLoop();
-  startPositiveEventsSeedLoop();
   startClassifySeedLoop();
   startServiceStatusesSeedLoop();
   startTheaterPostureSeedLoop();
@@ -11686,6 +12646,7 @@ setInterval(() => {
     openskyResponseCache.clear();
     openskyNegativeCache.clear();
     rssResponseCache.clear();
+    rssNegativeCache.clear();
     polymarketCache.clear();
     worldbankCache.clear();
     yahooChartCache.clear();
@@ -11697,6 +12658,12 @@ setInterval(() => {
 // Railway sends SIGTERM during deploys; without this, the old container keeps
 // the Telegram session alive while the new container connects → AUTH_KEY_DUPLICATED.
 async function gracefulShutdown(signal) {
+  relayShuttingDown = true;
+  if (upstreamReconnectTimer) {
+    clearTimeout(upstreamReconnectTimer);
+    upstreamReconnectTimer = null;
+    upstreamReconnectAt = 0;
+  }
   console.log(`[Relay] ${signal} received — shutting down`);
   if (telegramState.client) {
     console.log('[Relay] Disconnecting Telegram client...');

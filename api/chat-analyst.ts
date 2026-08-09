@@ -18,6 +18,7 @@ export const config = { runtime: 'edge', regions: ['iad1', 'lhr1', 'fra1', 'sfo1
 import { getCorsHeaders } from './_cors.js';
 // @ts-expect-error — JS module, no declaration file
 import { captureSilentError } from './_sentry-edge.js';
+import { renderBillingVerificationDenial } from '../server/_shared/entitlement-check';
 import { resolvePremiumCallerIdentity } from '../server/_shared/premium-check';
 import { checkRateLimit } from '../server/_shared/rate-limit';
 import { runRedisPipeline } from '../server/_shared/redis';
@@ -53,11 +54,16 @@ function json(body: unknown, status: number, cors: Record<string, string>): Resp
   });
 }
 
-function directLlmQuotaError(status: 429 | 503, retryAfterSec: number, cors: Record<string, string>): Response {
+function directLlmQuotaError(
+  status: 429 | 503,
+  retryAfterSec: number,
+  cors: Record<string, string>,
+  limit = DIRECT_LLM_DAILY_QUOTA_LIMIT,
+): Response {
   const body = status === 429
     ? {
         error: 'Direct LLM daily quota exceeded',
-        limit: DIRECT_LLM_DAILY_QUOTA_LIMIT,
+        limit,
         resetsAt: 'next UTC midnight',
       }
     : { error: 'Direct LLM quota unavailable' };
@@ -123,11 +129,29 @@ export default async function handler(req: Request): Promise<Response> {
   try {
     const premiumIdentity = await resolvePremiumCallerIdentity(req);
     if (!premiumIdentity.isPremium) {
+      // Preserve retryable billing-verification denials instead of flattening
+      // them to the Pro 403. The panel renders this header without auto-retrying.
+      if (premiumIdentity.billingDenial) {
+        const denial = renderBillingVerificationDenial(
+          premiumIdentity.billingDenial,
+          corsHeaders,
+        );
+        if (denial) return denial;
+      }
+      // A caller we could not identify is not a caller on the free plan (#5619).
+      // Selling a subscription to someone who is merely signed out is both wrong
+      // and unactionable, and it left the client's `sign_in_required` verdict
+      // (#5608) unreachable on this route — every denial arrived as a 403.
+      // Matches api/latest-brief.ts, which has always answered 401 here.
+      if (premiumIdentity.unauthenticated) {
+        return json({ error: 'UNAUTHENTICATED' }, 401, corsHeaders);
+      }
       return json({ error: 'Pro subscription required' }, 403, corsHeaders);
     }
-    if (!premiumIdentity.quotaExempt) {
+    if (!premiumIdentity.quotaExempt && premiumIdentity.directLlmDailyLimit !== null) {
       const reservation = await reserveDirectLlmQuota({
         userId: premiumIdentity.userId,
+        limit: premiumIdentity.directLlmDailyLimit,
         pipeline: (cmds) => runRedisPipeline(cmds, true),
       });
       if (!reservation.ok) {
@@ -135,6 +159,7 @@ export default async function handler(req: Request): Promise<Response> {
           reservation.reason === 'cap-exceeded' ? 429 : 503,
           reservation.retryAfterSec,
           corsHeaders,
+          reservation.floor ?? DIRECT_LLM_DAILY_QUOTA_LIMIT,
         );
       }
     }

@@ -21,7 +21,7 @@ After merging a catalog change (PR #5419 added a feature bullet to the API Start
 
 ## Guidance
 
-The serving path is: **Redis (`product-catalog:v2`, written by the ais-relay Dodo loop) → Vercel CDN (`s-maxage=600` + `stale-while-revalidate=300` on cache hits, `api/product-catalog.js:272`) → Cloudflare (api zone rewrites the edge TTL to ~30 min)**. A complete eviction after a catalog change:
+The serving path is: **Redis (`product-catalog:v3`, written by the ais-relay Dodo loop) → Vercel CDN (`s-maxage=600` + `stale-while-revalidate=300` on cache hits, `api/product-catalog.js:272`) → Cloudflare (api zone rewrites the edge TTL to ~30 min)**. A complete eviction after a catalog change:
 
 1. **Wait for the ais-relay Railway deploy to finish first.** The relay rewrites the Redis key on every tick; purging while the old relay is live just gets old data re-seeded.
 2. **Purge Redis**: `DELETE /api/product-catalog` with `Authorization: Bearer <RELAY_SHARED_SECRET>`. If it returns 401, the secret was probably empty — shell-`source`-ing an env file can silently yield an empty value; build the request from a real env-file parse (e.g. in Python) instead.

@@ -10,6 +10,9 @@ permissions:
 
 jobs:
   changes:
+    # Distinct check-run name — see the note in typecheck.yml (#5822). The job
+    # id stays `changes` so `needs: changes` below keeps resolving.
+    name: lint-changes
     runs-on: ubuntu-latest
     permissions:
       pull-requests: read
@@ -44,6 +47,7 @@ jobs:
       - run: npm run lint
       - run: npm run lint:boundaries
       - run: npm run lint:api-contract
+      - run: npm run sync:bootstrap-tier-keys:check
       - run: npm run lint:rate-limit-policies
       - run: npm run lint:premium-fetch
       - run: npm run security:vite-env-secrets

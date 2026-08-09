@@ -1,0 +1,150 @@
+syntax = "proto3";
+
+package worldmonitor.company_monitoring.v1;
+
+import "buf/validate/validate.proto";
+import "sebuf/http/annotations.proto";
+import "worldmonitor/company_monitoring/v1/company_monitoring.proto";
+
+message CreateMonitoredCompanyRequest {
+  MonitoredCompanyInput company = 1 [(buf.validate.field).required = true];
+  string client_request_id = 2 [(buf.validate.field).string.max_bytes = 64];
+}
+
+message CreateMonitoredCompanyResponse {
+  MonitoredCompany company = 1;
+}
+
+message MonitoredCompanyPatch {
+  // Present-but-empty is rejected, matching MonitoredCompanyInput.name. A patch must not
+  // be able to blank a field the response models as non-optional; clearing a name would
+  // need an explicit clear mask, which this contract does not define.
+  optional string name = 1 [
+    (buf.validate.field).string.min_len = 1,
+    (buf.validate.field).string.max_bytes = 256
+  ];
+  optional DomicileCountry domicile_country = 2 [
+    (buf.validate.field).enum.defined_only = true,
+    (buf.validate.field).enum.not_in = 0
+  ];
+  repeated CompanyClaimInput add_claims = 3 [(buf.validate.field).repeated.max_items = 81];
+  repeated string remove_claim_ids = 4 [
+    (buf.validate.field).repeated.max_items = 81,
+    (buf.validate.field).repeated.items.string.pattern = "^cm_claim_[0-9A-HJKMNP-TV-Z]{26}$"
+  ];
+  optional string customer_reference = 5 [(buf.validate.field).string.max_bytes = 128];
+}
+
+message UpdateMonitoredCompanyRequest {
+  string company_id = 1 [
+    (buf.validate.field).required = true,
+    (buf.validate.field).string.pattern = "^cm_company_[0-9A-HJKMNP-TV-Z]{26}$"
+  ];
+  MonitoredCompanyPatch patch = 2 [(buf.validate.field).required = true];
+}
+
+message UpdateMonitoredCompanyResponse {
+  MonitoredCompany company = 1;
+}
+
+message SetMonitoredCompanyStateRequest {
+  string company_id = 1 [
+    (buf.validate.field).required = true,
+    (buf.validate.field).string.pattern = "^cm_company_[0-9A-HJKMNP-TV-Z]{26}$"
+  ];
+  MonitoredCompanyLifecycle target_lifecycle = 2 [
+    (buf.validate.field).required = true,
+    (buf.validate.field).enum.defined_only = true
+  ];
+}
+
+message SetMonitoredCompanyStateResponse {
+  MonitoredCompany company = 1;
+  bool snapshot_required = 2;
+}
+
+message MonitoredCompanyImportRow {
+  int32 ordinal = 1 [
+    (buf.validate.field).int32.gte = 0,
+    (buf.validate.field).int32.lte = 99
+  ];
+  MonitoredCompanyInput company = 2 [(buf.validate.field).required = true];
+}
+
+message ImportMonitoredCompanyBatchRequest {
+  string contract_version = 1 [
+    (buf.validate.field).required = true,
+    (buf.validate.field).string.const = "cm-import-v1"
+  ];
+  string client_import_id = 2 [
+    (buf.validate.field).required = true,
+    (buf.validate.field).string.min_len = 1,
+    (buf.validate.field).string.max_bytes = 64
+  ];
+  repeated MonitoredCompanyImportRow rows = 3 [
+    (buf.validate.field).repeated.min_items = 1,
+    (buf.validate.field).repeated.max_items = 100
+  ];
+}
+
+enum CompanyImportRowOutcome {
+  COMPANY_IMPORT_ROW_OUTCOME_UNSPECIFIED = 0;
+  COMPANY_IMPORT_ROW_OUTCOME_CREATED = 1;
+  COMPANY_IMPORT_ROW_OUTCOME_REPLAYED = 2;
+  COMPANY_IMPORT_ROW_OUTCOME_CONFLICT = 3;
+  COMPANY_IMPORT_ROW_OUTCOME_REJECTED = 4;
+  COMPANY_IMPORT_ROW_OUTCOME_NO_OP = 5;
+}
+
+message CompanyImportRowResult {
+  int32 ordinal = 1;
+  CompanyImportRowOutcome outcome = 2;
+  string company_id = 3 [(buf.validate.field).string.pattern = "^cm_company_[0-9A-HJKMNP-TV-Z]{26}$"];
+  string reason_code = 4 [(buf.validate.field).string.max_bytes = 64];
+}
+
+message ImportMonitoredCompanyBatchResponse {
+  repeated CompanyImportRowResult results = 1 [(buf.validate.field).repeated.max_items = 100];
+  int32 created_count = 2 [(buf.validate.field).int32.gte = 0];
+  int32 replayed_count = 3 [(buf.validate.field).int32.gte = 0];
+  int32 rejected_count = 4 [(buf.validate.field).int32.gte = 0];
+}
+
+message ListMonitoredCompaniesRequest {
+  // Accepted values are active, paused, and removed.
+  repeated string lifecycles = 1 [
+    (buf.validate.field).repeated.max_items = 3,
+    (buf.validate.field).repeated.items.string.pattern = "^(?:active|paused|removed|MONITORED_COMPANY_LIFECYCLE_(?:ACTIVE|PAUSED|REMOVED))$",
+    (sebuf.http.query) = {name: "lifecycle"}
+  ];
+  // Accepted values are awaiting_first_scan, adequate, partial, stale, unavailable, and needs_confirmation.
+  repeated string coverage_states = 2 [
+    (buf.validate.field).repeated.max_items = 6,
+    (buf.validate.field).repeated.items.string.pattern = "^(?:awaiting_first_scan|adequate|partial|stale|unavailable|needs_confirmation|COMPANY_COVERAGE_STATE_(?:AWAITING_FIRST_SCAN|ADEQUATE|PARTIAL|STALE|UNAVAILABLE|NEEDS_CONFIRMATION))$",
+    (sebuf.http.query) = {name: "coverage"}
+  ];
+  // Maximum rows to return, from 1 through 100; zero requests the server default.
+  int32 page_size = 3 [
+    (buf.validate.field).ignore = IGNORE_IF_ZERO_VALUE,
+    (buf.validate.field).int32.gte = 1,
+    (buf.validate.field).int32.lte = 100,
+    (sebuf.http.query) = {name: "page_size"}
+  ];
+  // Signed opaque cursor bound to the account, filters, mode, expiry, and snapshot generation; never a storage identifier.
+  string cursor = 4 [
+    (buf.validate.field).ignore = IGNORE_IF_ZERO_VALUE,
+    (buf.validate.field).string.max_bytes = 2048,
+    (buf.validate.field).string.pattern = "^cmc1\\.[A-Za-z0-9_-]{16,1000}[A-Za-z0-9_-]{0,536}\\.[A-Za-z0-9_-]{43}$",
+    (sebuf.http.query) = {name: "cursor"}
+  ];
+}
+
+message ListMonitoredCompaniesResponse {
+  repeated MonitoredCompany companies = 1 [(buf.validate.field).repeated.max_items = 100];
+  string next_cursor = 2 [
+    (buf.validate.field).ignore = IGNORE_IF_ZERO_VALUE,
+    (buf.validate.field).string.max_bytes = 2048,
+    (buf.validate.field).string.pattern = "^cmc1\\.[A-Za-z0-9_-]{16,1000}[A-Za-z0-9_-]{0,536}\\.[A-Za-z0-9_-]{43}$"
+  ];
+  SnapshotBoundary snapshot = 3;
+}

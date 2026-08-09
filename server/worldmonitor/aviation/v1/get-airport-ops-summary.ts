@@ -8,6 +8,8 @@ import type {
 } from '../../../../src/generated/server/worldmonitor/aviation/v1/service_server';
 import { MONITORED_AIRPORTS } from '../../../../src/config/airports';
 import { getCachedJson } from '../../../_shared/redis';
+// @ts-expect-error — JS module, no declaration file
+import { captureSilentError } from '../../../../api/_sentry-edge.js';
 import {
     determineSeverity,
     severityFromCancelRate,
@@ -42,7 +44,13 @@ export async function getAirportOpsSummary(
                 alerts = seedData.alerts;
                 healthy = true;
             }
-        } catch { /* graceful degradation */ }
+        } catch (err) {
+            // Degrade to "no delay telemetry" (healthy stays false) but surface
+            // the cause — otherwise a broken cache read is indistinguishable
+            // from an empty seed.
+            console.warn(`[Aviation] Ops summary seed read failed: ${err instanceof Error ? err.message : 'unknown'}`);
+            void captureSilentError(err, { tags: { route: 'aviation/get-airport-ops-summary', step: 'seed-read' } });
+        }
 
         // Fetch NOTAM closures via shared loader
         let notamClosedIcaos = new Set<string>();
@@ -55,7 +63,10 @@ export async function getAirportOpsSummary(
                 notamRestrictedIcaos = new Set(notamResult.restrictedIcaos ?? []);
                 notamReasons = notamResult.reasons;
             }
-        } catch { /* graceful degradation */ }
+        } catch (err) {
+            console.warn(`[Aviation] Ops summary NOTAM load failed: ${err instanceof Error ? err.message : 'unknown'}`);
+            void captureSilentError(err, { tags: { route: 'aviation/get-airport-ops-summary', step: 'notam-load' } });
+        }
 
         for (const airport of airports) {
             const alert = alerts.find(a => a.iata === airport.iata);
