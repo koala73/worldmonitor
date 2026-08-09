@@ -218,6 +218,7 @@ npx @modelcontextprotocol/inspector https://worldmonitor.app/mcp
 | `get_prediction_markets` | 含当前概率的预测市场：`geopolitical`（地缘政治/选举）、`tech`（有标签的科技：人工智能/加密货币/科学）以及 `finance`（金融/经济或未分类回退）。 |
 | `get_supply_chain_data` | 干散货航运压力指数、海关流量、COMTRADE 双边贸易。 |
 | `get_tariff_trends` | 全球贸易和定价指标：美国关税趋势（HTS 编码）、巨无霸指数、FAO 食品价格指数以及各国国债水平。 |
+| `get_wto_trade_flows` | 一个报告国与世界之间的 WTO 商品贸易流量（报告国使用 3 位 UN M49 代码，时间窗口为 1–30 年）。区分 `not_covered` 与故障。 |
 | `get_chokepoint_status` | 实时海上咽喉要道状态：每个咽喉要道的船舶过境计数（10 分钟节奏）、滚动过境摘要、每个港口的活动，以及静态参考数据和流量汇总。覆盖苏伊士、霍尔木兹、马六甲、曼德海峡、巴拿马等。 |
 | `get_consumer_prices` | 各国消费者价格情报：30 天概览、品类级通胀、零售商价差（必需品篮子）、热门变动以及来源新鲜度。需要 `country_code`（目前仅填充了 `ae`）。 |
 | `get_procurement_opportunities` | 仅限 Pro 的规范全球采购搜索；紧凑输出默认 10 条、最多 25 条。关键词相关性绝不表示投标资格。 |
@@ -334,6 +335,7 @@ npx @modelcontextprotocol/inspector https://worldmonitor.app/mcp
 | `get_market_data` | `GET /api/market/v1/get-fear-greed-index`<br/>`GET /api/market/v1/get-sector-summary`<br/>`GET /api/market/v1/list-commodity-quotes`<br/>`GET /api/market/v1/list-crypto-quotes`<br/>`GET /api/market/v1/list-etf-flows`<br/>`GET /api/market/v1/list-gulf-quotes`<br/>`GET /api/market/v1/list-market-quotes` |
 | `get_economic_data` | `GET /api/economic/v1/get-ecb-fx-rates`<br/>`GET /api/economic/v1/get-economic-calendar`<br/>`GET /api/economic/v1/get-eu-yield-curve`<br/>`GET /api/economic/v1/list-fuel-prices`<br/>`GET /api/market/v1/get-cot-positioning`<br/>`GET /api/market/v1/list-earnings-calendar` |
 | `get_tariff_trends` | `GET /api/economic/v1/get-fao-food-price-index`<br/>`GET /api/economic/v1/get-national-debt`<br/>`GET /api/economic/v1/list-bigmac-prices` |
+| `get_wto_trade_flows` | `GET /api/trade/v1/get-trade-flows` |
 | `get_energy_intelligence` | `GET /api/economic/v1/get-energy-crisis-policies`<br/>`GET /api/supply-chain/v1/get-fuel-shortage-detail`<br/>`GET /api/supply-chain/v1/list-energy-disruptions`<br/>`GET /api/supply-chain/v1/list-fuel-shortages` |
 | `get_consumer_prices` | `GET /api/consumer-prices/v1/get-consumer-price-freshness`<br/>`GET /api/consumer-prices/v1/get-consumer-price-overview`<br/>`GET /api/consumer-prices/v1/list-consumer-price-categories`<br/>`GET /api/consumer-prices/v1/list-consumer-price-movers`<br/>`GET /api/consumer-prices/v1/list-retailer-price-spreads` |
 | `get_supply_chain_data` | `GET /api/supply-chain/v1/get-shipping-stress`<br/>`GET /api/trade/v1/get-customs-revenue` |

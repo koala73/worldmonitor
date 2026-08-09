@@ -183,12 +183,13 @@ const GDELT_TOPIC_EXAMPLE_ID = (() => {
 // IS informative in that state.
 function isCuratedOmission(key, context = {}) {
   const where = `${context.operationId ?? ''} ${context.path ?? ''}`.toLowerCase();
-  // GetTradeFlows: a 200 carrying rows always has unavailableReason at the
-  // UNSPECIFIED zero value. The generic enum picker skips the zero value and so
-  // paired flow rows with INVALID_REQUEST — a response the handler cannot
-  // produce. See #6309.
+  // GetTradeFlows / GetTariffTrends: a 200 carrying rows always has
+  // unavailableReason at the UNSPECIFIED zero value. The generic enum picker
+  // skips the zero value and so paired rows with INVALID_REQUEST — a response
+  // the handler cannot produce. See #6309 / #6316.
   return key === 'unavailableReason'
-    && (where.includes('gettradeflows') || where.includes('get-trade-flows'));
+    && (where.includes('gettradeflows') || where.includes('get-trade-flows')
+      || where.includes('gettarifftrends') || where.includes('get-tariff-trends'));
 }
 
 function overrideStringExample(key, context = {}) {
@@ -218,6 +219,19 @@ function overrideStringExample(key, context = {}) {
     if (key === 'reportingcountry') return '840';
     if (key === 'unavailablereason') return 'TRADE_FLOW_UNAVAILABLE_REASON_UNSPECIFIED';
     if (key === 'productsector') return 'Total merchandise';
+  }
+  // GetTariffTrends' 200 example must depict a SERVED response. productSector
+  // on a served row is the All-products aggregate label; partnerCountry on the
+  // datapoint is "World" (TP_A_0010 has no partner dimension). Request
+  // parameters stay inside their buf.validate patterns — constrainedString
+  // maps empty string to the literal "example", so use non-empty valid values.
+  // See #6316.
+  if (where.includes('gettarifftrends') || where.includes('get-tariff-trends')) {
+    if (key === 'reportingcountry') return '840';
+    if (key === 'unavailablereason') return 'TARIFF_TREND_UNAVAILABLE_REASON_UNSPECIFIED';
+    const isParam = context.exampleSurface === 'parameter' || context.exampleSurface === 'request';
+    if (key === 'partnercountry') return isParam ? '156' : 'World';
+    if (key === 'productsector') return isParam ? 'all' : 'All products';
   }
   if (key === 'period' && where.includes('getsectorsummary')) return '1d';
   if (key === 'timespan' && where.includes('searchgdeltdocuments')) return '15min';

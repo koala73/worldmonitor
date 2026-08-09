@@ -9,7 +9,10 @@ import assert from 'node:assert/strict';
 import { TOOL_REGISTRY } from '../api/mcp/registry/index.ts';
 
 const originalFetch = globalThis.fetch;
-const originalEnv = { ...process.env };
+const originalEnv = {
+  redisUrl: process.env.UPSTASH_REDIS_REST_URL,
+  redisToken: process.env.UPSTASH_REDIS_REST_TOKEN,
+};
 
 const tool = TOOL_REGISTRY.find((t) => t.name === 'get_wto_trade_flows');
 assert.ok(tool, 'get_wto_trade_flows must be registered');
@@ -46,7 +49,10 @@ beforeEach(() => {
 
 afterEach(() => {
   globalThis.fetch = originalFetch;
-  for (const [name, value] of Object.entries(originalEnv)) {
+  for (const [name, value] of [
+    ['UPSTASH_REDIS_REST_URL', originalEnv.redisUrl],
+    ['UPSTASH_REDIS_REST_TOKEN', originalEnv.redisToken],
+  ] as const) {
     if (value === undefined) delete process.env[name];
     else process.env[name] = value;
   }
@@ -82,19 +88,19 @@ describe('get_wto_trade_flows', () => {
     assert.match(requestedUrl, /years=10/);
   });
 
-  it('rejects malformed reporter by defaulting rather than answering a wrong country', async () => {
-    // The handler enforces this too (invalid_request), but the TOOL must not
-    // build a cache-affecting key with garbage either — defaulting is the
-    // documented contract (`reporter` absent → 840), so malformed input must
-    // behave exactly like absent input.
-    await tool._execute({ reporter: 'not-a-code' }, BASE, CTX, {});
-    assert.match(requestedUrl, /reporting_country=840/);
-    assert.match(requestedUrl, /years=10/);
+  it('rejects malformed reporter without answering for the default country', async () => {
+    const result = await tool._execute({ reporter: 'not-a-code' }, BASE, CTX, {});
+    assert.equal(requestedUrl, '', 'invalid input must not issue an upstream request');
+    assert.equal(result.unavailableReason, 'TRADE_FLOW_UNAVAILABLE_REASON_INVALID_REQUEST');
+    assert.equal(result.upstreamUnavailable, false);
+    assert.deepEqual(result.flows, []);
   });
 
-  it('clamps years above the seeded window to 30', async () => {
-    await tool._execute({ years: 99 }, BASE, CTX, {});
-    assert.match(requestedUrl, /years=30/);
+  it('rejects years outside the public input contract', async () => {
+    const result = await tool._execute({ years: 31 }, BASE, CTX, {});
+    assert.equal(requestedUrl, '', 'invalid input must not issue an upstream request');
+    assert.equal(result.unavailableReason, 'TRADE_FLOW_UNAVAILABLE_REASON_INVALID_REQUEST');
+    assert.deepEqual(result.flows, []);
   });
 
   it('surfaces NOT_COVERED distinguishably from a fault', async () => {

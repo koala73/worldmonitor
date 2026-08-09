@@ -2536,10 +2536,11 @@
       "unlockedAnnouncement": "대시보드 탭 한도가 해제되었습니다."
     },
     "fx": {
-      "infoTooltip": "<strong>환율</strong> 통화 스트레스 및 현물 환율:<ul><li>FX Stress는 45개 통화의 최악의 고점에서 저점까지의 하락률을 지난 24개월 동안 순위 매기고, 12개월 변화를 함께 표시합니다</li><li>범위에는 BIS 및 ECB 참조 세트에서 생략한 ARS, TRY, EGP, NGN, PKR, UAH 통화가 포함됩니다</li><li>Spot은 미국 달러 대비 환율과 ECB 유로 참조 환율을 별도로 표시하는데, 이는 두 환율이 서로 다른 기준에서 인용되기 때문입니다</li></ul>출처: Yahoo Finance 및 유럽중앙은행.",
+      "infoTooltip": "<strong>환율</strong> 통화 스트레스 및 현물 환율:<ul><li>FX Stress는 45개 통화의 최악의 고점에서 저점까지의 하락률을 지난 24개월 동안 순위 매기고, 12개월 변화를 함께 표시합니다</li><li>범위에는 BIS 및 ECB 참조 세트에서 생략한 ARS, TRY, EGP, NGN, PKR, UAH 통화가 포함됩니다</li><li>Spot은 미국 달러 대비 환율과 ECB 유로 참조 환율을 별도로 표시하는데, 이는 두 환율이 서로 다른 기준에서 인용되기 때문입니다</li><li>RUB — 러시아 중앙은행 환율, 단위당 루블</li></ul> 출처: Yahoo Finance, 유럽중앙은행 및 러시아 중앙은행.",
       "tabs": {
         "stress": "FX Stress",
-        "spot": "Spot"
+        "spot": "Spot",
+        "rub": "RUB"
       },
       "currency": "통화",
       "pair": "통화쌍",
@@ -2559,8 +2560,12 @@
       "source": {
         "stress": "FX 스트레스",
         "usd": "미국 달러 환율",
-        "eur": "ECB 유로 환율"
-      }
+        "eur": "ECB 유로 환율",
+        "rub": "러시아 중앙은행 환율"
+      },
+      "rubBase": "러시아 중앙은행 — 단위당 루블",
+      "rubPerUnit": "단위당 루블",
+      "sourceCbr": "출처: 러시아 중앙은행"
     }
   },
   "popups": {

@@ -2276,10 +2276,11 @@
       "unlockedAnnouncement": "Gränsen för instrumentpanelflikar upphävd."
     },
     "fx": {
-      "infoTooltip": "<strong>Valutakurser</strong> Valutastress och avistakurser:<ul><li>FX Stress rangordnar 45 valutor efter deras värsta topp-till-dal-nedgång under de senaste 24 månaderna, tillsammans med 12-månadersförändringen</li><li>Täckningen inkluderar ARS, TRY, EGP, NGN, PKR och UAH — valutor som BIS och ECB:s referensuppsättningar utesluter</li><li>Spot listar kurser mot US-dollarn och ECB:s euroreferencekurser separat, eftersom de två är noterade från olika baser</li></ul>Källor: Yahoo Finance och Europeiska centralbanken.",
+      "infoTooltip": "<strong>Valutakurser</strong> Valutastress och avistakurser:<ul><li>FX Stress rangordnar 45 valutor efter deras värsta topp-till-dal-nedgång under de senaste 24 månaderna, tillsammans med 12-månadersförändringen</li><li>Täckningen inkluderar ARS, TRY, EGP, NGN, PKR och UAH — valutor som BIS och ECB:s referensuppsättningar utesluter</li><li>Spot listar kurser mot US-dollarn och ECB:s euroreferencekurser separat, eftersom de två är noterade från olika baser</li><li>RUB — kurser från Rysslands centralbank, rubel per enhet</li></ul> Källor: Yahoo Finance, Europeiska centralbanken och Rysslands centralbank.",
       "tabs": {
         "stress": "Valutastress",
-        "spot": "Avista"
+        "spot": "Avista",
+        "rub": "RUB"
       },
       "currency": "Valuta",
       "pair": "Valutapar",
@@ -2299,8 +2300,12 @@
       "source": {
         "stress": "FX-stress",
         "usd": "USD-kurser",
-        "eur": "ECB-eurokurser"
-      }
+        "eur": "ECB-eurokurser",
+        "rub": "Kurser från Rysslands centralbank"
+      },
+      "rubBase": "Rysslands centralbank — rubel per 1 enhet",
+      "rubPerUnit": "Rubel per enhet",
+      "sourceCbr": "Källa: Rysslands centralbank"
     }
   },
   "popups": {

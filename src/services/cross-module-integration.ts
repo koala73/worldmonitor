@@ -8,6 +8,7 @@ import { getCachedCountryScores, isElevatedCiiScore } from './cached-risk-scores
 import { getCountryNameByCode } from './country-geometry';
 import { t } from '@/services/i18n';
 import type { TheaterPostureSummary } from '@/services/military-surge';
+import { detectCiiScoreChanges } from './cii-score-changes';
 
 export type AlertPriority = 'critical' | 'high' | 'medium' | 'low';
 export type AlertType = 'convergence' | 'cii_spike' | 'cascade' | 'sanctions' | 'radiation' | 'composite';
@@ -101,7 +102,7 @@ export interface StrategicRiskOverview {
 }
 
 const alerts: UnifiedAlert[] = [];
-const previousCIIScores = new Map<string, number>();
+let previousCIIScores = new Map<string, number>();
 const ALERT_MERGE_WINDOW_MS = 2 * 60 * 60 * 1000;
 const ALERT_MERGE_DISTANCE_KM = 200;
 
@@ -572,26 +573,21 @@ export function checkCIIChanges(): UnifiedAlert[] {
   // Skip alerting during learning mode - data not yet reliable
   const inLearning = isInLearningMode();
 
-  for (const score of scores) {
-    const previous = previousCIIScores.get(score.code) ?? score.score;
-    const change = score.score - previous;
-
-    // Only emit alerts after learning period completes
-    if (!inLearning && Math.abs(change) >= 10) {
+  const detected = detectCiiScoreChanges(scores, previousCIIScores, inLearning);
+  for (const { score, previousScore } of detected.changes) {
       const driver = getHighestComponent(score);
       const alert = createCIIAlert(
         score.code,
         score.name,
-        previous,
+        previousScore,
         score.score,
         score.level,
         driver
       );
       if (alert) newAlerts.push(alert);
-    }
-
-    previousCIIScores.set(score.code, score.score);
   }
+
+  previousCIIScores = detected.nextScores;
 
   return newAlerts;
 }
@@ -815,11 +811,6 @@ export function getAlerts(): UnifiedAlert[] {
 export function getRecentAlerts(hours: number = 24): UnifiedAlert[] {
   const cutoff = Date.now() - hours * 60 * 60 * 1000;
   return alerts.filter(a => a.timestamp.getTime() > cutoff);
-}
-
-export function clearAlerts(): void {
-  alerts.length = 0;
-  previousCIIScores.clear();
 }
 
 export function getAlertCount(): { critical: number; high: number; medium: number; low: number } {

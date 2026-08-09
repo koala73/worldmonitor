@@ -233,11 +233,37 @@ function compactTradeFlowRecord(record: TradeFlowRouteRecord) {
   };
 }
 
-/** Coerce the wire value (string|number) to an integer in [1, MAX_YEARS]. */
-function tradeFlowYears(value: unknown): number {
-  const n = typeof value === 'number' ? value : Number(value);
-  if (!Number.isInteger(n) || n < 1) return TRADE_FLOWS_DEFAULT_YEARS;
-  return Math.min(n, TRADE_FLOWS_MAX_YEARS);
+type NormalizedTradeFlowRequest = {
+  reporter: string;
+  years: number;
+};
+
+function normalizeTradeFlowRequest(params: Record<string, unknown>): NormalizedTradeFlowRequest | null {
+  const rawReporter = argStr(params.reporter);
+  if (rawReporter && !TRADE_FLOWS_M49_CODE.test(rawReporter)) return null;
+
+  let years = TRADE_FLOWS_DEFAULT_YEARS;
+  if (params.years !== undefined && params.years !== null) {
+    const rawYears = typeof params.years === 'number' ? params.years : Number(params.years);
+    if (!Number.isInteger(rawYears) || rawYears < 1 || rawYears > TRADE_FLOWS_MAX_YEARS) return null;
+    years = rawYears;
+  }
+
+  return {
+    reporter: rawReporter || TRADE_FLOWS_DEFAULT_REPORTER,
+    years,
+  };
+}
+
+function unavailableTradeFlowResult(reason: typeof TRADE_FLOW_REASON.invalidRequest) {
+  return {
+    flows: [],
+    fetchedAt: '',
+    upstreamUnavailable: false,
+    unavailableReason: reason,
+    coverageStartYear: 0,
+    coverageEndYear: 0,
+  };
 }
 
 type ProcurementRouteTender = {
@@ -636,11 +662,9 @@ export const RPC_TOOLS: ToolDef[] = [
       'trade:flows:v2:840:000',
     ],
     _execute: async (params, base, context, execution) => {
-      const rawReporter = argStr(params.reporter);
-      const reporter = rawReporter && TRADE_FLOWS_M49_CODE.test(rawReporter)
-        ? rawReporter
-        : TRADE_FLOWS_DEFAULT_REPORTER;
-      const years = tradeFlowYears(params.years);
+      const request = normalizeTradeFlowRequest(params);
+      if (!request) return unavailableTradeFlowResult(TRADE_FLOW_REASON.invalidRequest);
+      const { reporter, years } = request;
 
       const query = new URLSearchParams({
         reporting_country: reporter,

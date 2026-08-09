@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { isDebugBearRumScriptFrame } from '../src/bootstrap/debugbear-rum.ts';
+import { isIosLikeUserAgent } from '../src/bootstrap/platform-ua.ts';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -40,9 +41,24 @@ assert.ok(tpMatch, 'THIRD_PARTY_FETCH_HOST_ALLOWLIST must be defined in src/boot
 
 // Build a callable version. Input: a Sentry-shaped event object. Returns event or null.
 // eslint-disable-next-line no-new-func
-const rawBeforeSend = new Function('event', 'isDebugBearRumScriptFrame', `${tpMatch[0]}\n${fnBody}`);
-function beforeSend(event) {
-  return rawBeforeSend(event, isDebugBearRumScriptFrame);
+const rawBeforeSend = new Function(
+  'event', 'isDebugBearRumScriptFrame', 'isIosLikeUserAgent', 'navigator',
+  `${tpMatch[0]}\n${fnBody}`,
+);
+
+// User-Agent strings, because beforeSend's platform gates read `navigator.userAgent`
+// — NOT `event.contexts.os`, which the browser SDK never populates (see
+// src/bootstrap/platform-ua.ts). `navigator` is passed as a Function parameter so it
+// shadows Node's global and each test can state the platform explicitly.
+const MAC_DESKTOP_UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/151.0.0.0 Safari/537.36';
+const IOS_GOOGLE_APP_UA = 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) GSA/432.9.954074404 Mobile/15E148 Safari/604.1';
+const DESKTOP_NAVIGATOR = { userAgent: MAC_DESKTOP_UA, maxTouchPoints: 0 };
+const IOS_NAVIGATOR = { userAgent: IOS_GOOGLE_APP_UA, maxTouchPoints: 5 };
+/** iPadOS 13+ desktop mode: Macintosh UA, but touch-capable. */
+const IPADOS_NAVIGATOR = { userAgent: MAC_DESKTOP_UA, maxTouchPoints: 5 };
+
+function beforeSend(event, navigatorStub = DESKTOP_NAVIGATOR) {
+  return rawBeforeSend(event, isDebugBearRumScriptFrame, isIosLikeUserAgent, navigatorStub);
 }
 
 // Extract the `ignoreErrors` array literal so tests can assert which messages
@@ -397,6 +413,15 @@ describe('zero-frame async-rejection patterns (timeout / DOMException / OOM / DO
     // value shapes are matched.
     ['NetworkError when attempting to fetch resource.', 'TypeError'],
     ['TypeError: NetworkError when attempting to fetch resource.', 'TypeError'],
+    // Injected page script inserting its own unparseable source
+    // (WORLDMONITOR-YW). Chrome prefixes the parse error with the DOM API that
+    // triggered it. Our own script-appending call sites (analytics, DebugBear,
+    // Clerk, news embeds) keep a source-mapped .ts frame, so the first-party
+    // case is asserted "lets through" by this same loop — the coverage the
+    // superseded ungated ignoreErrors entry could not provide.
+    ["Failed to execute 'appendChild' on 'Node': Unexpected identifier 'x'", 'SyntaxError'],
+    ["Failed to execute 'appendChild' on 'Node': Unexpected token '}'", 'SyntaxError'],
+    ["SyntaxError: Failed to execute 'appendChild' on 'Node': Unexpected end of input", 'SyntaxError'],
   ];
 
   for (const [msg, type] of zeroFrameErrors) {
@@ -415,6 +440,32 @@ describe('zero-frame async-rejection patterns (timeout / DOMException / OOM / DO
       assert.ok(beforeSend(event) !== null, `"${msg}" with first-party stack should NOT be suppressed`);
     });
   }
+
+  // The shape WORLDMONITOR-YW actually arrived in: an injected script's parse
+  // failure carries only `<anonymous>` frames, which nonInfraFrames strips —
+  // so neither the empty-stack nor the extension-URL case above reproduces it.
+  it("suppresses the injected-script appendChild parse failure with only <anonymous> frames", () => {
+    const event = makeEvent(
+      "Failed to execute 'appendChild' on 'Node': Unexpected identifier 'x'",
+      'SyntaxError',
+      [{ filename: '<anonymous>', lineno: 1 }, { filename: '<anonymous>', lineno: 1 }],
+    );
+    assert.equal(beforeSend(event), null);
+  });
+
+  it('lets through an appendChild parse failure attributed to a first-party script loader', () => {
+    // analytics.ts / debugbear-rum.ts / clerk.ts / LiveNewsPanel.ts all append a
+    // third-party <script>; if one of those inserts unparseable source the frame
+    // is ours and the event must still reach the dashboard. The superseded
+    // ignoreErrors entry had no frames to check and dropped this case.
+    const event = makeEvent(
+      "Failed to execute 'appendChild' on 'Node': Unexpected identifier 'x'",
+      'SyntaxError',
+      [{ filename: 'src/services/analytics.ts', lineno: 494, function: 'loadUmamiScript' },
+        { filename: '<anonymous>', lineno: 1 }],
+    );
+    assert.ok(beforeSend(event) !== null);
+  });
 });
 
 // ─── All ambiguous errors require confirmed third-party stack ────────────
@@ -1422,28 +1473,49 @@ describe('sentry beforeSend — Y4 bare minified trampoline hop', () => {
 // A blown stack is exactly when the SDK cannot collect frames, so zero frames
 // alone proves nothing — the OS gate is the load-bearing half.
 describe('sentry beforeSend — WK iOS zero-frame call-stack overflow', () => {
-  const withOs = (event, name) => ({ ...event, contexts: { os: { name } } });
-
   it('suppresses the exact WK shape on iOS', () => {
-    const event = withOs(makeEvent('Maximum call stack size exceeded.', 'RangeError', []), 'iOS');
-    assert.equal(beforeSend(event), null, 'iOS in-app WebView recursion is not our bundle');
+    const event = makeEvent('Maximum call stack size exceeded.', 'RangeError', []);
+    assert.equal(beforeSend(event, IOS_NAVIGATOR), null, 'iOS in-app WebView recursion is not our bundle');
+  });
+
+  it('suppresses the WK shape on iPadOS desktop-mode (Macintosh UA + touch)', () => {
+    const event = makeEvent('Maximum call stack size exceeded.', 'RangeError', []);
+    assert.equal(beforeSend(event, IPADOS_NAVIGATOR), null, 'iPadOS is the same WebView family');
   });
 
   it('does NOT suppress the same message on a desktop OS', () => {
-    const event = withOs(makeEvent('Maximum call stack size exceeded.', 'RangeError', []), 'Mac OS X');
-    assert.ok(beforeSend(event) !== null, 'a real recursion regression must still reach Sentry');
+    const event = makeEvent('Maximum call stack size exceeded.', 'RangeError', []);
+    assert.ok(beforeSend(event, DESKTOP_NAVIGATOR) !== null, 'a real recursion regression must still reach Sentry');
   });
 
   it('does NOT suppress an iOS call-stack overflow that carries a first-party frame', () => {
-    const event = withOs(
-      makeEvent('Maximum call stack size exceeded.', 'RangeError', [firstPartyFrame()]),
-      'iOS',
-    );
-    assert.ok(beforeSend(event) !== null, 'an attributable recursion is signal, not noise');
+    const event = makeEvent('Maximum call stack size exceeded.', 'RangeError', [firstPartyFrame()]);
+    assert.ok(beforeSend(event, IOS_NAVIGATOR) !== null, 'an attributable recursion is signal, not noise');
   });
 
   it('does NOT suppress an unrelated zero-frame iOS RangeError', () => {
-    const event = withOs(makeEvent('Invalid array length', 'RangeError', []), 'iOS');
-    assert.ok(beforeSend(event) !== null, 'the gate is scoped to the call-stack message');
+    const event = makeEvent('Invalid array length', 'RangeError', []);
+    assert.ok(beforeSend(event, IOS_NAVIGATOR) !== null, 'the gate is scoped to the call-stack message');
+  });
+
+  // The regression that let WORLDMONITOR-WK run for 44 events across seven builds:
+  // the gate read `event.contexts.os.name`, which the browser SDK never sets, and the
+  // old fixtures fabricated it. Pin BOTH directions so no future gate can pass a test
+  // via a field production does not supply.
+  it('ignores event.contexts.os entirely — a fabricated iOS context cannot suppress', () => {
+    const event = {
+      ...makeEvent('Maximum call stack size exceeded.', 'RangeError', []),
+      contexts: { os: { name: 'iOS', version: '18.0.0' } },
+    };
+    assert.ok(
+      beforeSend(event, DESKTOP_NAVIGATOR) !== null,
+      'contexts.os is ingest-derived and absent in beforeSend; it must not drive the gate',
+    );
+  });
+
+  it('suppresses on an iOS UA even with no contexts at all (the real production shape)', () => {
+    const event = makeEvent('Maximum call stack size exceeded.', 'RangeError', []);
+    assert.equal(event.contexts, undefined, 'production events reach beforeSend without an os context');
+    assert.equal(beforeSend(event, IOS_NAVIGATOR), null, 'the UA is the only platform signal available');
   });
 });

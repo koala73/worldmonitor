@@ -131,9 +131,9 @@ The current version is **v8**.
 > `methodology_version` should re-baseline.
 
 > **Heads up — score contract changes.** Any edit that changes server/API
-> per-country baselines, event multipliers, strategic-risk roll-up
-> coefficients, inline server formula literals, guarded top-level formula
-> constants, or CII movement semantics MUST
+> per-country baselines, event multipliers, climate-zone country attribution,
+> strategic-risk roll-up coefficients, inline server formula literals, guarded
+> top-level formula constants, or CII movement semantics MUST
 > come with a bump of
 > `CII_FORMULA_VERSION` in
 > `server/worldmonitor/intelligence/v1/_risk-config.ts`, an update to this
@@ -278,11 +278,17 @@ These flags are runtime quality markers and do not change `methodology_version`.
 
 ## 2. Per-country `baselineRisk` and `eventMultiplier`
 
-These are the editorial values applied by both server-side API scoring and
-frontend client-side CII rendering. The source of truth is
-[`shared/cii-weights.ts`](https://github.com/koala73/worldmonitor/blob/main/shared/cii-weights.ts); server and frontend
-tables derive from that module so coefficient drift fails in tests instead of
-shipping silently.
+These are the editorial values applied by server-side API scoring. The source
+of truth is
+[`shared/cii-weights.ts`](https://github.com/koala73/worldmonitor/blob/main/shared/cii-weights.ts); the scorer derives its coefficients from that module so
+coefficient drift fails in tests instead of shipping silently. The browser
+consumes cached server-produced CII scores rather than calculating a local
+fallback.
+
+Climate anomaly attribution uses the canonical
+[`shared/cii-climate-zones.ts`](https://github.com/koala73/worldmonitor/blob/main/shared/cii-climate-zones.ts)
+map. Changes to that map can shift server/API scores and follow the score
+contract-change protocol above.
 
 The Tier-1 country set is a curated monitoring universe, not an automatic
 ranking of all sovereign states. Countries enter the set when they satisfy at

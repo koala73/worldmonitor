@@ -5,7 +5,6 @@ import { parallelAnalysis, type AnalyzedHeadline } from '@/services/parallel-ana
 import { signalAggregator, type RegionalConvergence } from '@/services/signal-aggregator';
 import { focalPointDetector } from '@/services/focal-point-detector';
 import { stripOrefLabels } from '@/services/oref-alerts';
-import { ingestNewsForCII } from '@/services/country-instability';
 import { getCachedCountryScoreValue } from '@/services/cached-risk-scores';
 import { getTheaterPostureSummaries } from '@/services/military-surge';
 import { getCachedPosture } from '@/services/cached-theater-posture';
@@ -277,8 +276,6 @@ export class InsightsPanel extends Panel {
       this.setProgress(1, totalSteps, t('components.insights.loadingServerInsights'));
 
       let signalSummary: ReturnType<typeof signalAggregator.getSummary>;
-      let focalSummary: ReturnType<typeof focalPointDetector.analyze>;
-
       if (SITE_VARIANT === 'full') {
         const _cp = getCachedPosture()?.postures;
         const theaterPostures = _cp?.length
@@ -289,12 +286,7 @@ export class InsightsPanel extends Panel {
         }
         signalSummary = signalAggregator.getSummary();
         this.lastConvergenceZones = signalSummary.convergenceZones;
-        focalSummary = focalPointDetector.analyze(clusters, signalSummary);
-        this.lastFocalPoints = focalSummary.focalPoints;
-        if (focalSummary.focalPoints.length > 0) {
-          ingestNewsForCII(clusters);
-          window.dispatchEvent(new CustomEvent('focal-points-ready'));
-        }
+        this.lastFocalPoints = focalPointDetector.analyze(clusters, signalSummary).focalPoints;
       } else {
         this.lastConvergenceZones = [];
         this.lastFocalPoints = [];
@@ -383,10 +375,6 @@ export class InsightsPanel extends Panel {
         this.lastConvergenceZones = signalSummary.convergenceZones;
         focalSummary = focalPointDetector.analyze(clusters, signalSummary);
         this.lastFocalPoints = focalSummary.focalPoints;
-        if (focalSummary.focalPoints.length > 0) {
-          ingestNewsForCII(clusters);
-          window.dispatchEvent(new CustomEvent('focal-points-ready'));
-        }
       } else {
         signalSummary = {
           timestamp: new Date(),

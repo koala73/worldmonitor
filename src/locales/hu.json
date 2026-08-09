@@ -2605,10 +2605,11 @@
       "unlockedAnnouncement": "Az irányítópult-fülek korlátja feloldva."
     },
     "fx": {
-      "infoTooltip": "<strong>FX árfolyamok</strong> Deviza stressz és spot árfolyamok:<ul><li>Az FX Stressz 45 devizát rangsorol az elmúlt 24 hónap alatt tapasztalt legnagyobb csúcs-csúcs visszaesésük alapján, a 12 hónapos változással együtt</li><li>A lefedettség magában foglalja az ARS, TRY, EGP, NGN, PKR és UAH devizákat — olyan valutákat, amelyeket a BIS és az ECB referenciahalmazai nem tartalmaznak</li><li>A Spot árfolyamok az amerikai dollárral és az ECB euró referenciaárfolyamai az alábbi okok miatt szerepelnek külön: a kettő különböző bázisokból származó ajánlatokból áll össze</li></ul>Források: Yahoo Finance és az Európai Központi Bank.",
+      "infoTooltip": "<strong>FX árfolyamok</strong> Deviza stressz és spot árfolyamok:<ul><li>Az FX Stressz 45 devizát rangsorol az elmúlt 24 hónap alatt tapasztalt legnagyobb csúcs-csúcs visszaesésük alapján, a 12 hónapos változással együtt</li><li>A lefedettség magában foglalja az ARS, TRY, EGP, NGN, PKR és UAH devizákat — olyan valutákat, amelyeket a BIS és az ECB referenciahalmazai nem tartalmaznak</li><li>A Spot árfolyamok az amerikai dollárral és az ECB euró referenciaárfolyamai az alábbi okok miatt szerepelnek külön: a kettő különböző bázisokból származó ajánlatokból áll össze</li><li>RUB — orosz jegybanki árfolyamok, rubel egységenként</li></ul> Források: Yahoo Finance, az Európai Központi Bank és az orosz jegybank.",
       "tabs": {
         "stress": "FX Stressz",
-        "spot": "Spot"
+        "spot": "Spot",
+        "rub": "RUB"
       },
       "currency": "Deviza",
       "pair": "Pár",
@@ -2628,8 +2629,12 @@
       "source": {
         "stress": "FX stressz",
         "usd": "USD árfolyamok",
-        "eur": "ECB euró árfolyamok"
-      }
+        "eur": "ECB euró árfolyamok",
+        "rub": "Orosz jegybanki árfolyamok"
+      },
+      "rubBase": "Orosz jegybank — rubel 1 egységenként",
+      "rubPerUnit": "Rubel egységenként",
+      "sourceCbr": "Forrás: Orosz jegybank"
     }
   },
   "popups": {

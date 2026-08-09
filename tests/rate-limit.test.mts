@@ -22,7 +22,10 @@ import {
   checkRateLimit,
   checkScopedRateLimit,
   getClientIp,
+  rateLimitErrorLevel,
 } from '../server/_shared/rate-limit.ts';
+// @ts-expect-error — JS module, no declaration file
+import { rateLimitErrorLevel as apiRateLimitErrorLevel } from '../api/_rate-limit.js';
 
 const originalFetch = globalThis.fetch;
 const originalEnv = { ...process.env };
@@ -570,6 +573,55 @@ describe('rate-limit constants', () => {
   it('UNKNOWN_CLIENT_IP is the literal "unknown" so the api/ mirror stays string-equal', () => {
     assert.equal(UNKNOWN_CLIENT_IP, 'unknown');
   });
+});
+
+describe('rateLimitErrorLevel — Sentry severity for a degraded limiter (WORLDMONITOR-VM)', () => {
+  // Both copies must agree; api/_rate-limit.js is the byte-mirror of the .ts one.
+  const IMPLS: Array<[string, (stage: string, msg: string) => string]> = [
+    ['server/_shared/rate-limit.ts', rateLimitErrorLevel],
+    ['api/_rate-limit.js', apiRateLimitErrorLevel],
+  ];
+
+  for (const [surface, classify] of IMPLS) {
+    it(`${surface}: the endpoint limiter's own abort deadline is a transient, not an error`, () => {
+      // getEndpointRatelimit arms `AbortSignal.timeout(ENDPOINT_REDIS_ABORT_TIMEOUT_MS)`
+      // on the Upstash client. When that deadline wins, the SDK rejects with a
+      // DOMException whose message is this exact phrase, checkEndpointRateLimit
+      // absorbs it into the fail-closed 503, and the capture must not page.
+      assert.equal(
+        classify(
+          'checkEndpointRateLimit:/api/military/v1/get-aircraft-details-batch',
+          'The operation was aborted due to timeout',
+        ),
+        'warning',
+      );
+    });
+
+    it(`${surface}: both arms of the same limiter timeout classify alike`, () => {
+      // The SDK-race arm throws this literal from checkEndpointRateLimit; it and
+      // the abort arm above are one condition, so they must not split severity.
+      assert.equal(
+        classify('checkEndpointRateLimit:/api/ask', 'Upstash endpoint rate-limit decision timed out'),
+        'warning',
+      );
+      assert.equal(
+        classify('checkRateLimit', 'ERR Error running script: execution timed out'),
+        'warning',
+      );
+    });
+
+    it(`${surface}: a missing-config stage and an unclassified error still page`, () => {
+      assert.equal(
+        classify('checkEndpointRateLimit:/api/ask:missing-config', 'The operation was aborted due to timeout'),
+        'error',
+        'a deploy misconfiguration outranks any transient phrasing in the message',
+      );
+      assert.equal(
+        classify('checkRateLimit', 'WRONGTYPE Operation against a key holding the wrong kind of value'),
+        'error',
+      );
+    });
+  }
 });
 
 describe('EVALSHA-unsupported fallback (#7c — self-hosted redis-rest proxy blocks Lua)', () => {

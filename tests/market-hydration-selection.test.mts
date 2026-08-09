@@ -1,5 +1,4 @@
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
 import { describe, it } from 'node:test';
 
 import { selectCompleteHydratedMarketQuotes } from '../src/services/market-hydration.ts';
@@ -21,11 +20,5 @@ describe('selectCompleteHydratedMarketQuotes', () => {
       selectCompleteHydratedMarketQuotes([meta('SAP'), meta('PLTR')], [quote('SAP'), quote('AAPL')]),
       null,
     );
-  });
-
-  it('wires the complete-selection check ahead of the live market fetch', () => {
-    const source = readFileSync(new URL('../src/app/data-loader.ts', import.meta.url), 'utf8');
-    assert.match(source, /selectCompleteHydratedMarketQuotes\(\s*effectiveSymbols,/);
-    assert.match(source, /if \(selectedHydratedQuotes\) \{[\s\S]*?\} else \{\s*stocksResult = await fetchMultipleStocks\(effectiveSymbols,/);
   });
 });

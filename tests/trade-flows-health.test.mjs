@@ -60,17 +60,12 @@ function classifyWithMeta(meta, { ageMin = 1, recordCount = 256, present = true 
       keyStrens: new Map(present ? [[KEY, 4096]] : []),
       keyErrors: new Map(),
       keyMetaValues: new Map(present
-        ? [[META, JSON.stringify({ fetchedAt: nowFor(ageMin), recordCount, ...meta })]]
+        ? [[META, JSON.stringify({ fetchedAt: STRICT_NOW - ageMin * ONE_MIN_MS, recordCount, ...meta })]]
         : []),
       keyMetaErrors: new Map(),
-      now: nowFor(ageMin),
+      now: STRICT_NOW,
     },
   );
-}
-
-function nowFor(ageMin) {
-  const STRICT = Math.max(NOW, (__testing__.ROLLOUT_PENDING_UNTIL_MS?.tradeFlows ?? 0) + 86_400_000);
-  return STRICT + ageMin;
 }
 
 // Default clock sits past the deploy-window grace so the ordinary arms below
@@ -138,7 +133,6 @@ test('a coverage shortfall carries a dominantFailureMode on the entry', () => {
   // must ride on COVERAGE_PARTIAL itself — not only on the fault verdict —
   // because that is precisely the "healthy-looking partial" case it exists to
   // explain.
-  const strictBase = Math.max(NOW, (__testing__.ROLLOUT_PENDING_UNTIL_MS?.tradeFlows ?? 0) + 86_400_000);
   const entry = classifyWithMeta(
     { dominantFailureMode: 'upstream' },
     { ageMin: 0, recordCount: 150, present: true },

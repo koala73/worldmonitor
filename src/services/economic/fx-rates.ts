@@ -10,11 +10,13 @@
  * | `economic:fx:yoy:v1`       | `{ rates: [...] }`   | USD per 1 unit of CCY   |
  * | `shared:fx-rates:v1`       | `{ CCY: number }`    | USD per 1 unit of CCY   |
  * | `economic:ecb-fx-rates:v1` | `{ rates: [...] }`   | CCY per 1 EUR           |
+ * | `economic:cbr-rates:v1`    | `{ rates: {...} }`   | RUB per 1 unit of CCY   |
  *
  * Quoting any of them under the wrong base is the failure mode the issue calls
  * out for the RUB table, so the direction is named in every field rather than
- * left to the caller: `usdPerUnit` / `unitsPerUsd` for the USD-quoted keys, and
- * a separate EUR-base row type for ECB.
+ * left to the caller: `usdPerUnit` / `unitsPerUsd` for the USD-quoted keys, a
+ * separate EUR-base row type for ECB, and `rubPerUnit` for the Bank of Russia
+ * table (issue #6231).
  *
  * `economic:fx:yoy:v1` in particular had no consumer anywhere in the repo
  * before this panel — a daily cron computing currency-crisis data for 45
@@ -67,24 +69,56 @@ export type FxEurSpotRow = {
 };
 
 /**
+ * One Bank of Russia quote row — issue #6231.
+ *
+ * `rate` is RUB for ONE unit of `currency`, normalised by CBR's `Nominal`
+ * multiplier (`scripts/seed-cbr-rates.mjs:200`, `value / nominal`). That is a
+ * THIRD quote direction, distinct from both lists already in the panel:
+ *
+ * | source               | direction              |
+ * |----------------------|------------------------|
+ * | `shared:fx-rates:v1` | USD per 1 unit of CCY  |
+ * | `economic:ecb-fx-rates:v1` | CCY per 1 EUR    |
+ * | `economic:cbr-rates:v1`    | **RUB per 1 CCY** |
+ *
+ * Folding these into either existing table would quote the pair the wrong way
+ * round — a USD row would read "1 RUB buys 81 USD" and an ECB row would invert
+ * the opposite half. The field is named `rubPerUnit` so the direction survives
+ * in the payload that reaches the renderer.
+ *
+ * `change1d` is RUB per unit, an absolute delta matching the seeder's
+ * `cleanFloat(entry.rate - prior.rate)` — NOT a percentage (mirrors the ECB
+ * field above). The seeder writes it null when the prior business day's table
+ * was unavailable, never 0 (a failed fetch reading as "flat").
+ */
+export type FxRubQuoteRow = {
+  currency: string;
+  /** RUB for one unit of `currency` — the raw seeded value. */
+  rubPerUnit: number;
+  /** Absolute delta in `rubPerUnit` units vs the prior published rate. */
+  change1d: number | null;
+};
+
+/**
  * Everything the FX panel renders. Declared here rather than in the component
  * so the service layer that assembles it does not have to import from
  * `src/components/` — a direction `npm run lint:boundaries` rejects.
  */
-export type FxSourceId = 'stress' | 'usd' | 'eur';
+export type FxSourceId = 'stress' | 'usd' | 'eur' | 'rub';
 
 export type FxPanelRows = {
   stress: FxStressRow[];
   usd: FxUsdSpotRow[];
   eur: FxEurSpotRow[];
+  rub: FxRubQuoteRow[];
   /**
    * Sources that yielded no usable rows this load.
    *
-   * Each of the three is implausible as a genuine empty — 45 currencies, 47 USD
-   * rates, 7 ECB pairs — so an empty one means that source is down, and the
-   * loaders cannot tell us apart from a miss. Naming them lets the panel say a
-   * table is *missing* rather than silently rendering as if it never existed,
-   * and lets it retry instead of waiting out the 6h refresh.
+   * Each source is implausible as a genuine empty — 45 currencies, 47 USD
+   * rates, 7 ECB pairs, 54 CBR pairs — so an empty one means that source is
+   * down, and the loaders cannot tell us apart from a miss. Naming them lets
+   * the panel say a table is *missing* rather than silently rendering as if it
+   * never existed, and lets it retry instead of waiting out the 6h refresh.
    */
   degraded: FxSourceId[];
 };
@@ -118,6 +152,7 @@ export function degradedSources(rows: Omit<FxPanelRows, 'degraded'>): FxSourceId
   if (rows.stress.length === 0) degraded.push('stress');
   if (rows.usd.length === 0) degraded.push('usd');
   if (rows.eur.length === 0) degraded.push('eur');
+  if (rows.rub.length === 0) degraded.push('rub');
   return degraded;
 }
 
@@ -283,4 +318,43 @@ export function toEurSpotRows(rates: unknown): FxEurSpotRow[] {
     const rb = rank.get(b.currency) ?? Number.MAX_SAFE_INTEGER;
     return ra - rb || a.currency.localeCompare(b.currency);
   });
+}
+
+/**
+ * Project `economic:cbr-rates:v1` onto RUB quote rows — issue #6231.
+ *
+ * The seeded payload is `{ quoteCurrency, rateUnit, effectiveDate, rates,
+ * keyRate, ... }`, where `rates[code] = { rate, valuePerNominal, nominal,
+ * name, numCode, id, change1d }` (`scripts/seed-cbr-rates.mjs:363`).
+ *
+ * `rate` is RUB per ONE unit of the listed currency (Value / Nominal) — the
+ * quoted direction stated in the payload as `rateUnit: 'RUB per 1 unit of the
+ * listed currency'`. The `nominal` field is kept in the source specifically so
+ * a consumer that reaches for it instead of `rate` is off by that factor and
+ * gets caught; this mapper reads `rate` and nothing else.
+ *
+ * `RUB` itself is skipped — the table's own base quoting "1 RUB = 1 RUB" is
+ * the same noise the USD self-quote is in the USD table. Rows with an
+ * unusable rate are dropped: the seeder already filters non-positive/NaN
+ * rates, but a malformed cache record must not render NaN or a negative
+ * inflation either.
+ *
+ * @param payload the `economic:cbr-rates:v1` value, enveloped or not
+ */
+export function toRubQuoteRows(payload: unknown): FxRubQuoteRow[] {
+  const unwrapped = unwrapEnvelope(payload, 'rates');
+  if (!isRecord(unwrapped)) return [];
+  const rates = unwrapped.rates;
+  if (!isRecord(rates)) return [];
+
+  const rows: FxRubQuoteRow[] = [];
+  for (const [currency, value] of Object.entries(rates)) {
+    if (currency === 'RUB') continue;
+    if (!isRecord(value)) continue;
+    const rubPerUnit = finiteNumber(value.rate);
+    if (rubPerUnit === null || rubPerUnit <= 0) continue;
+    rows.push({ currency, rubPerUnit, change1d: finiteNumber(value.change1d) });
+  }
+
+  return rows.sort((a, b) => a.currency.localeCompare(b.currency));
 }

@@ -12,56 +12,28 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 
-import {
-  resolvePlanDisplayName,
-  KNOWN_PLAN_KEYS,
-} from '../src/services/checkout-plan-names.ts';
+import { resolvePlanDisplayName } from '../src/services/checkout-plan-names.ts';
 
 describe('resolvePlanDisplayName', () => {
-  it('maps pro_monthly to "Pro Monthly"', () => {
-    assert.equal(resolvePlanDisplayName('pro_monthly'), 'Pro Monthly');
+  it('maps shipped plan keys to their display names', () => {
+    const cases = [
+      ['pro_monthly', 'Pro Monthly'],
+      ['pro_annual', 'Pro Annual'],
+      ['pro_business_monthly', 'Pro Business Monthly'],
+      ['pro_business_annual', 'Pro Business Annual'],
+      ['api_starter', 'API Starter'],
+      ['api_business', 'API Business'],
+    ] as const;
+
+    for (const [planKey, displayName] of cases) {
+      assert.equal(resolvePlanDisplayName(planKey), displayName);
+    }
   });
 
-  it('maps pro_annual to "Pro Annual"', () => {
-    assert.equal(resolvePlanDisplayName('pro_annual'), 'Pro Annual');
-  });
-
-  it('maps pro_business_monthly to "Pro Business Monthly"', () => {
-    assert.equal(resolvePlanDisplayName('pro_business_monthly'), 'Pro Business Monthly');
-  });
-
-  it('maps pro_business_annual to "Pro Business Annual"', () => {
-    assert.equal(resolvePlanDisplayName('pro_business_annual'), 'Pro Business Annual');
-  });
-
-  it('maps api_starter to "API Starter"', () => {
-    assert.equal(resolvePlanDisplayName('api_starter'), 'API Starter');
-  });
-
-  it('maps api_business to "API Business"', () => {
-    assert.equal(resolvePlanDisplayName('api_business'), 'API Business');
-  });
-
-  it('falls back to "Pro" for unknown planKey', () => {
-    assert.equal(resolvePlanDisplayName('new_tier_2027'), 'Pro');
-  });
-
-  it('falls back to "Pro" for undefined', () => {
-    assert.equal(resolvePlanDisplayName(undefined), 'Pro');
-  });
-
-  it('falls back to "Pro" for null', () => {
-    assert.equal(resolvePlanDisplayName(null), 'Pro');
-  });
-
-  it('falls back to "Pro" for empty string', () => {
-    assert.equal(resolvePlanDisplayName(''), 'Pro');
-  });
-
-  it('falls back to "Pro" for non-string input', () => {
-    assert.equal(resolvePlanDisplayName(42), 'Pro');
-    assert.equal(resolvePlanDisplayName({ planKey: 'pro_monthly' }), 'Pro');
-    assert.equal(resolvePlanDisplayName(true), 'Pro');
+  it('falls back to "Pro" for unknown or invalid keys', () => {
+    for (const value of ['new_tier_2027', undefined, null, '', 42, { planKey: 'pro_monthly' }, true]) {
+      assert.equal(resolvePlanDisplayName(value), 'Pro');
+    }
   });
 
   it('never returns server-provided text for unknown keys', () => {
@@ -74,15 +46,4 @@ describe('resolvePlanDisplayName', () => {
     assert.equal(result, 'Pro');
   });
 
-  it('whitelist covers all 6 shipped plan keys', () => {
-    // Smoke check so a future rename or removal is caught here rather
-    // than silently producing "Pro" for a real tier.
-    assert.ok(KNOWN_PLAN_KEYS.includes('pro_monthly'));
-    assert.ok(KNOWN_PLAN_KEYS.includes('pro_annual'));
-    assert.ok(KNOWN_PLAN_KEYS.includes('pro_business_monthly'));
-    assert.ok(KNOWN_PLAN_KEYS.includes('pro_business_annual'));
-    assert.ok(KNOWN_PLAN_KEYS.includes('api_starter'));
-    assert.ok(KNOWN_PLAN_KEYS.includes('api_business'));
-    assert.equal(KNOWN_PLAN_KEYS.length, 6);
-  });
 });

@@ -187,6 +187,8 @@ const EXCLUDED_FROM_MCP = new Map([
     'deferred: strict health seed probe added by #5055; disruptions are consumed by chokepoint hazard scoring until a PortWatch MCP expansion exists.'],
   ['seed-meta:comtrade:bilateral-hs4',
     'operational: meta-only aggregate health probe added by #5055 for sharded comtrade:bilateral-hs4:{iso2}:v1 payloads; no queryable data slice lives at this key.'],
+  ['seed-meta:trade:tariffs',
+    'operational: meta-only aggregate health probe added by #6316 for sharded trade:tariffs:v2:{reporter} payloads; no queryable data slice lives at this key. The US canary payload is already in get_tariff_trends as trade:tariffs:v2:840.'],
   ['research:arxiv:v1:cs.AI::50',
     'deferred: strict health seed probe added by #5055; future research MCP expansion can expose the ArXiv/HN trending feed.'],
 

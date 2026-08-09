@@ -454,6 +454,38 @@ curl -s https://worldmonitor.app/mcp \
 
 </CodeGroup>
 
+### `get_wto_trade_flows`
+
+查询一个报告国与世界之间、可配置年份窗口内的 WTO 商品贸易流量。数据来自 WTO `ITS_MTV_AX`（出口）和 `ITS_MTV_AM`（进口）指标，每 6 小时播种一次；该工具读取与仪表板相同的播种快照，不会在每次请求时调用 WTO。
+
+**参数（工具特定）：**
+
+| 名称 | 类型 | 描述 |
+|------|------|-------------|
+| `reporter` | string | WTO 报告国的 3 位 UN M49 代码（例如 "840" 表示美国）。默认为 "840"。目前仅提供与世界（"000"）之间的数据；其他伙伴代码会返回 `not_covered`。 |
+| `years` | integer | 从最新发布年份向前回看的年数，包含起止年份（10 会返回 11 个日历年）。默认为 10；30 是完整播种窗口。 |
+
+**响应区分：** `unavailableReason` 使用 RPC 的封闭 `TradeFlowUnavailableReason` 枚举。`TRADE_FLOW_UNAVAILABLE_REASON_NOT_COVERED` 是合约答案：该组合不在播种覆盖范围内，重试无效。其他非 UNSPECIFIED 原因均表示故障（`seed_missing`、`coverage_unknown`、`cache_unavailable`），并带有 `upstreamUnavailable: true`。
+
+- **API 端点：** `GET /api/trade/v1/get-trade-flows`
+- **类型：** 规范贸易流量路由的 RPC 代理（handler 负责窗口切片和未命中分类）。
+- **新鲜度预算：** 最多 **7 小时**后标记为 `stale`（6 小时播种节奏加 1 小时宽限）。
+
+<CodeGroup>
+
+```bash curl
+curl -s https://worldmonitor.app/mcp \
+  -H "X-WorldMonitor-Key: $WM_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "jsonrpc":"2.0","id":1,
+    "method":"tools/call",
+    "params":{"name":"get_wto_trade_flows","arguments":{"reporter":"840","years":20}}
+  }'
+```
+
+</CodeGroup>
+
 ### `get_consumer_prices`
 
 逐国消费价格情报：30 天概览、类别级通胀、零售商价差（必需品篮子）、涨跌榜和来源新鲜度。需要 country_code（当前仅播种 'ae'）。

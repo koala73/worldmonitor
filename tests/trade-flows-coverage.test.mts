@@ -1022,6 +1022,10 @@ describe('dominantFailureMode', () => {
     assert.equal(dominantFailureMode({ ...baseCoverage, pairsSeeded: 90 }), 'mixed');
   });
 
+  test('inconsistent pair accounting resolves to mixed', () => {
+    assert.equal(dominantFailureMode({ ...baseCoverage, pairsSeeded: 90, upstreamFailures: 20 }), 'mixed');
+  });
+
   test('a run that seeded more than it attempted is a fault', () => {
     assert.equal(dominantFailureMode({ ...baseCoverage, pairsSeeded: 101 }), 'run-failed');
   });
