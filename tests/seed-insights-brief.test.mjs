@@ -5,6 +5,8 @@ import {
   briefSystemPrompt,
   briefUserPrompt,
   composeSynthesizedBrief,
+  composeSynthesizedBriefResult,
+  BRIEF_REJECTIONS,
 } from '../scripts/_insights-brief.mjs';
 
 describe('pickBriefCluster', () => {
@@ -450,5 +452,114 @@ describe('composeSynthesizedBrief acronym followed by its citation (#5947)', () 
       lines,
     });
     assert.equal(composeSynthesizedBrief(strippedToBare, topStories, { validatorMode: 'enforce' }), null);
+  });
+});
+
+// #5947: the producer reported one opaque INSIGHTS_SYNTHESIS_GATE for every
+// editorial gate, so a repeating rejection could only be attributed by
+// snapshotting the live digest and replaying it through an offline harness —
+// which both the #6019 and #6119 investigations had to build from scratch.
+// Each rejection now names its own gate.
+//
+// Every case here drives the REAL composer with a fixture that reaches the gate
+// under test: an assertion that only pinned the map's shape would still pass
+// with the reasons wired to the wrong return points.
+describe('composeSynthesizedBriefResult names which gate rejected (#5947)', () => {
+  const topStories = [
+    {
+      primaryTitle: 'Regional apple prices rose sharply in Chile last quarter, growers say',
+      primarySource: 'Reuters',
+      primaryLink: 'http://apple',
+      sources: ['Reuters', 'AP News'],
+      memberTitles: ['Regional apple prices rose sharply in Chile last quarter, growers say'],
+    },
+  ];
+  const lines = [{ n: 1, text: 'Regional apple prices rose sharply in Chile [1]' }];
+  const compose = (lead) =>
+    composeSynthesizedBriefResult(JSON.stringify({ lead, lines }), topStories, { validatorMode: 'enforce' });
+
+  it('composes with no rejection when the lead is grounded and cited', () => {
+    const out = compose('Prices rose sharply in Chile last quarter [1].');
+    assert.equal(out.rejection, null);
+    assert.ok(out.brief, 'a composed brief must be returned alongside the null rejection');
+    assert.match(out.brief.lead, /Chile/);
+  });
+
+  it('names an uncited lead sentence', () => {
+    const out = compose('Prices rose sharply in Chile last quarter [1]. Analysts expect more increases ahead.');
+    assert.equal(out.brief, null);
+    assert.equal(out.rejection, BRIEF_REJECTIONS.LEAD_UNCITED);
+  });
+
+  it('names a hallucinated proper noun', () => {
+    const out = compose('Prices rose sharply in Venezuela last quarter [1].');
+    assert.equal(out.brief, null);
+    assert.equal(out.rejection, BRIEF_REJECTIONS.LEAD_PROPER_NOUN);
+  });
+
+  it('names a hallucinated numeric fact', () => {
+    // Separate from the proper-noun gate on purpose: an invented NUMBER and an
+    // invented NAME are different editorial failures with different fixes, and
+    // the pre-#5947 GATE code made them indistinguishable in production.
+    const out = compose('Prices rose sharply in Chile by 42 percent last quarter [1].');
+    assert.equal(out.brief, null);
+    assert.equal(out.rejection, BRIEF_REJECTIONS.LEAD_NUMERIC_FACT);
+  });
+
+  it('names an ungrounded lead that carries no hallucinated noun of its own', () => {
+    // Passes the per-sentence proper-noun gate (it invents nothing) but shares
+    // no anchor with any headline, so only checkLeadGrounding can catch it.
+    const out = compose('Growers reported a sharp rise in seasonal fruit costs across the region last quarter [1].');
+    assert.equal(out.brief, null);
+    assert.equal(out.rejection, BRIEF_REJECTIONS.LEAD_GROUNDING);
+  });
+
+  it('names a lead left with no sentences after out-of-range citations are stripped', () => {
+    const out = compose('[999] [998] [997] [996] [995] [994] [993] [992]');
+    assert.equal(out.brief, null);
+    assert.equal(out.rejection, BRIEF_REJECTIONS.LEAD_EMPTY);
+  });
+
+  it('names a parse failure', () => {
+    const out = composeSynthesizedBriefResult('not parseable at all', topStories, { validatorMode: 'enforce' });
+    assert.equal(out.brief, null);
+    assert.equal(out.rejection, BRIEF_REJECTIONS.PARSE);
+  });
+
+  it('names a corpus with no corroborated cluster to lead with', () => {
+    const singleSource = [{ primaryTitle: 'A lone report', primarySource: 'Reuters', sources: ['Reuters'] }];
+    const out = composeSynthesizedBriefResult('{}', singleSource, { validatorMode: 'enforce' });
+    assert.equal(out.brief, null);
+    assert.equal(out.rejection, BRIEF_REJECTIONS.MISSING_CLUSTER);
+  });
+
+  it('names an empty story list', () => {
+    const out = composeSynthesizedBriefResult('{}', [], { validatorMode: 'enforce' });
+    assert.equal(out.brief, null);
+    assert.equal(out.rejection, BRIEF_REJECTIONS.NO_TOP_STORIES);
+  });
+
+  it('keeps every reason distinct — a shared label would erase the diagnostic', () => {
+    const reasons = Object.values(BRIEF_REJECTIONS);
+    assert.equal(new Set(reasons).size, reasons.length);
+  });
+
+  it('reports reasons that carry no prompt, model output, or offending text', () => {
+    // These land in seed-meta, health and Railway logs, where the payload may
+    // be sensitive intelligence. Bounded literals only.
+    for (const reason of Object.values(BRIEF_REJECTIONS)) {
+      assert.match(reason, /^[a-z-]{1,40}$/, `${reason} must stay a bounded literal`);
+    }
+  });
+
+  it('leaves composeSynthesizedBrief returning the brief itself', () => {
+    // The wrapper's `null | brief` shape must not change even though the seeder
+    // itself has moved to composeSynthesizedBriefResult; the test corpus above
+    // is its remaining consumer and pins the composer's decisions through it.
+    const raw = JSON.stringify({ lead: 'Prices rose sharply in Chile last quarter [1].', lines });
+    const brief = composeSynthesizedBrief(raw, topStories, { validatorMode: 'enforce' });
+    assert.ok(brief);
+    assert.equal(brief.lead, compose('Prices rose sharply in Chile last quarter [1].').brief.lead);
+    assert.equal(composeSynthesizedBrief('nope', topStories, { validatorMode: 'enforce' }), null);
   });
 });

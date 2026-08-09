@@ -4,11 +4,67 @@ import assert from 'node:assert/strict';
 import {
   computeRolloutLegacyDisabledStates,
   computeCapDisabledSources,
+  inferExactSourceGateOwnership,
+  reconcileSourceGateOwnership,
+  restoreGateOwnedSources,
+  transferSourceGateOwnershipToUser,
   selectSourcesUnderCap,
   findFullyDisabledCategories,
 } from '../src/services/source-cap';
 
 const F = (...names: string[]) => names.map((name) => ({ name }));
+
+describe('source-cap ownership', () => {
+  it('recomputes the cap from user-owned disables instead of preserving the old cap selection', () => {
+    const reconciled = reconcileSourceGateOwnership(
+      new Set(['user-off']),
+      new Set(['new-cap-b', 'new-cap-c']),
+    );
+
+    assert.deepEqual(reconciled.gateOwned, new Set(['new-cap-b', 'new-cap-c']));
+    assert.deepEqual(reconciled.disabled, new Set(['user-off', 'new-cap-b', 'new-cap-c']));
+  });
+
+  it('restores only sources disabled by the gate on upgrade', () => {
+    assert.deepEqual(
+      restoreGateOwnedSources(
+        new Set(['user-off', 'cap-a', 'cap-b']),
+        new Set(['cap-a', 'cap-b']),
+      ),
+      new Set(['user-off']),
+    );
+  });
+
+  it('transfers directly toggled source names from gate ownership to the user', () => {
+    assert.deepEqual(
+      transferSourceGateOwnershipToUser(
+        new Set(['cap-owned', 'still-cap-owned']),
+        ['cap-owned', 'already-user-owned'],
+      ),
+      new Set(['still-cap-owned']),
+    );
+  });
+
+  it('infers ownership only for an exact untouched legacy cap fingerprint', () => {
+    assert.deepEqual(
+      inferExactSourceGateOwnership(
+        new Set(['user-off', 'cap-a']),
+        new Set(['user-off']),
+        new Set(['cap-a']),
+      ),
+      new Set(['cap-a']),
+    );
+    assert.equal(
+      inferExactSourceGateOwnership(
+        new Set(['user-off', 'cap-a', 'custom-off']),
+        new Set(['user-off']),
+        new Set(['cap-a']),
+      ),
+      null,
+      'a customized denylist must never be guessed back into gate ownership',
+    );
+  });
+});
 
 describe('computeCapDisabledSources: legacy migration fingerprint', () => {
   it('reconstructs the exact mixed default-plus-cap disabled set', () => {

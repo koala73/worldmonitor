@@ -34,6 +34,7 @@ import type { PredictionPanel } from '@/components/PredictionPanel';
 import {
   buildMapUrl,
   debounce,
+  loadFromStorage,
   saveToStorage,
   getCurrentTheme,
   showToast,
@@ -108,6 +109,8 @@ import { buildEmbedIframeSnippet, buildEmbedMapUrl, type EmbedVariant } from '@/
 import { createSettingsButton } from '@/components/settings-button';
 import { overlayHistory, type OverlayId } from '@/utils/overlay-history';
 import { MobilePrimaryNav } from '@/app/mobile-primary-nav';
+import { stageVariantSelection } from '@/services/variant-panel-ownership';
+import { transferSourceGateOwnershipToUser as releaseSourceGateOwnership } from '@/services/source-cap';
 
 function readStorageValue(key: string): string | null {
   try {
@@ -117,11 +120,13 @@ function readStorageValue(key: string): string | null {
   }
 }
 
-function writeStorageValue(key: string, value: string): void {
+function writeStorageValue(key: string, value: string): boolean {
   try {
     localStorage.setItem(key, value);
+    return true;
   } catch {
     // UI preferences remain in memory for the current page.
+    return false;
   }
 }
 
@@ -1532,8 +1537,9 @@ export class EventHandlerManager implements AppModule {
     await this.exitFullscreenForNavigation();
 
     if (this.ctx.isDesktopApp || options.isLocalDev) {
-      writeStorageValue('worldmonitor-variant', variant);
-      window.location.reload();
+      if (stageVariantSelection(SITE_VARIANT, variant, writeStorageValue)) {
+        window.location.reload();
+      }
       return;
     }
 
@@ -1817,7 +1823,9 @@ export class EventHandlerManager implements AppModule {
         } else {
           this.ctx.disabledSources.add(name);
         }
-        saveToStorage(STORAGE_KEYS.disabledFeeds, Array.from(this.ctx.disabledSources));
+        if (this.transferSourceGateOwnershipToUser([name])) {
+          saveToStorage(STORAGE_KEYS.disabledFeeds, Array.from(this.ctx.disabledSources));
+        }
       },
       setSourcesEnabled: (names: string[], enabled: boolean) => {
         if (enabled && !isProUser()) {
@@ -1833,7 +1841,9 @@ export class EventHandlerManager implements AppModule {
           if (enabled) this.ctx.disabledSources.delete(name);
           else this.ctx.disabledSources.add(name);
         }
-        saveToStorage(STORAGE_KEYS.disabledFeeds, Array.from(this.ctx.disabledSources));
+        if (this.transferSourceGateOwnershipToUser(names)) {
+          saveToStorage(STORAGE_KEYS.disabledFeeds, Array.from(this.ctx.disabledSources));
+        }
       },
       getAllSourceNames: () => this.getAllSourceNames(),
       getLocalizedPanelName: (key: string, fallback: string) => this.getLocalizedPanelName(key, fallback),
@@ -2306,6 +2316,21 @@ export class EventHandlerManager implements AppModule {
     const lookup = `panels.${key}`;
     const localized = t(lookup);
     return localized === lookup ? fallback : localized;
+  }
+
+  private transferSourceGateOwnershipToUser(names: Iterable<string>): boolean {
+    const gateOwned = new Set(
+      loadFromStorage<string[]>(STORAGE_KEYS.sourceGateOwnership, []),
+    );
+    const nextGateOwned = releaseSourceGateOwnership(gateOwned, names);
+    if (nextGateOwned.size === gateOwned.size) return true;
+    // A deliberate source preference can only outlive the gate safely after
+    // ownership transfers. If this sidecar write fails, keep the live toggle
+    // for the session but do not persist a preference Pro could later undo.
+    return writeStorageValue(
+      STORAGE_KEYS.sourceGateOwnership,
+      JSON.stringify([...nextGateOwned]),
+    );
   }
 
   getAllSourceNames(): string[] {

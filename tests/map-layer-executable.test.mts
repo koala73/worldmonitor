@@ -15,13 +15,19 @@
 
 import { strict as assert } from 'node:assert';
 import { test, describe } from 'node:test';
+import type { MapLayers } from '../src/types';
+import { persistGateOwnershipTransition } from '../src/services/variant-panel-ownership';
 import {
   LAYER_REGISTRY,
   isLayerCommandAllowed,
   isLayerExecutable,
   isLayerEntitled,
   isLayerToggleAllowed,
+  sanitizeLayersForVariant,
   sanitizeLockedLayers,
+  sanitizeLockedLayersWithOwnership,
+  restoreGateOwnedLockedLayers,
+  mapLayerStatesEqual,
   shouldSanitizeLockedLayers,
 } from '../src/config/map-layer-definitions';
 
@@ -176,6 +182,141 @@ describe('sanitizeLockedLayers — free-user stuck-state heal', () => {
     const out = sanitizeLockedLayers(input, true);
     assert.equal(out.resilienceScore, true);
     assert.equal(out.conflicts, true);
+  });
+});
+
+describe('locked map-layer ownership', () => {
+  // Regression: App.sanitizeMapLayersForTier's premium branch guarded its
+  // storage write with `restored === layers`, where `restored` came out of
+  // sanitizeLayersForVariant. That helper spreads its input, so the identity
+  // check was ALWAYS false and the branch persisted on every pass — which is
+  // how a `?layers=` deep link came to overwrite the saved (cloud-synced)
+  // layer preference. Value comparison is the only correct check here.
+  test('sanitizeLayersForVariant never returns its input, so identity guards are dead', () => {
+    const layers = {
+      conflicts: true,
+      resilienceScore: false,
+    } as unknown as MapLayers;
+
+    const out = sanitizeLayersForVariant(layers, 'full');
+
+    assert.notEqual(
+      out,
+      layers,
+      'a fresh object means `out === layers` can never short-circuit a write',
+    );
+    assert.equal(
+      mapLayerStatesEqual(out, layers),
+      true,
+      'mapLayerStatesEqual is the comparison that actually detects "nothing changed"',
+    );
+  });
+
+  test('compares layer snapshots semantically instead of by object identity', () => {
+    const layers = { conflicts: true, resilienceScore: false } as unknown as MapLayers;
+    assert.equal(mapLayerStatesEqual(layers, { ...layers }), true);
+    assert.equal(
+      mapLayerStatesEqual(layers, { ...layers, resilienceScore: true }),
+      false,
+    );
+  });
+
+  test('records a locked layer forced off for a free user and keeps ownership across reruns', () => {
+    const input = {
+      resilienceScore: true,
+      conflicts: true,
+    } as unknown as MapLayers;
+
+    const first = sanitizeLockedLayersWithOwnership(input, new Set());
+    assert.equal(first.layers.resilienceScore, false);
+    assert.equal(first.layers.conflicts, true);
+    assert.deepEqual(first.gateOwned, new Set(['resilienceScore']));
+
+    const second = sanitizeLockedLayersWithOwnership(first.layers, first.gateOwned);
+    assert.equal(second.layers.resilienceScore, false);
+    assert.deepEqual(second.gateOwned, new Set(['resilienceScore']));
+  });
+
+  test('keeps the live free gate sanitized when ownership persistence fails', () => {
+    const durableLayers = {
+      resilienceScore: true,
+      conflicts: true,
+    } as unknown as MapLayers;
+    const reconciled = sanitizeLockedLayersWithOwnership(durableLayers, new Set());
+    const writes: string[] = [];
+
+    const persistence = persistGateOwnershipTransition(
+      'free',
+      () => { writes.push('layers'); },
+      () => { writes.push('ownership'); return false; },
+    );
+
+    assert.equal(reconciled.layers.resilienceScore, false, 'live state remains safely gated');
+    assert.equal(durableLayers.resilienceScore, true, 'durable preference remains retryable');
+    assert.deepEqual(writes, ['ownership'], 'destructive durable write is blocked');
+    assert.equal(persistence.complete, false);
+  });
+
+  test('restores only valid locked layers owned by the gate', () => {
+    const restored = restoreGateOwnedLockedLayers(
+      {
+        resilienceScore: false,
+        conflicts: false,
+      } as unknown as MapLayers,
+      new Set(['resilienceScore', 'conflicts', 'removed-layer']),
+    );
+
+    assert.equal(restored.resilienceScore, true);
+    assert.equal(restored.conflicts, false, 'ordinary user-disabled layers stay disabled');
+    assert.equal('removed-layer' in restored, false, 'unknown historical keys are ignored');
+  });
+
+  test('does not let stale resilience ownership override an enabled CII choropleth', () => {
+    const restored = restoreGateOwnedLockedLayers(
+      {
+        resilienceScore: false,
+        ciiChoropleth: true,
+      } as unknown as MapLayers,
+      new Set(['resilienceScore']),
+    );
+
+    assert.equal(restored.resilienceScore, false);
+    assert.equal(restored.ciiChoropleth, true);
+  });
+
+  test('consumes stale resilience ownership after a free-to-Pro CII sequence', () => {
+    const free = sanitizeLockedLayersWithOwnership(
+      {
+        resilienceScore: true,
+        ciiChoropleth: false,
+      } as unknown as MapLayers,
+      new Set(),
+    );
+    const ciiSelectedWhileFree = {
+      ...free.layers,
+      ciiChoropleth: true,
+    };
+    const restored = restoreGateOwnedLockedLayers(
+      ciiSelectedWhileFree,
+      free.gateOwned,
+    );
+    let durableOwnership = new Set(free.gateOwned);
+
+    const persistence = persistGateOwnershipTransition(
+      'pro',
+      () => true,
+      () => { durableOwnership = new Set(); },
+    );
+
+    assert.equal(restored.resilienceScore, false);
+    assert.equal(restored.ciiChoropleth, true);
+    assert.equal(persistence.complete, true);
+    assert.deepEqual(durableOwnership, new Set());
+    assert.equal(
+      restoreGateOwnedLockedLayers(restored, durableOwnership),
+      restored,
+      'later reconciliations have no stale resilience ownership to replay',
+    );
   });
 });
 

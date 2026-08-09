@@ -93,8 +93,8 @@ describe('cloud prefs panel sync guardrails', () => {
     const cloudApplyBlock = appSrc.slice(cloudApplyStart, cloudApplyEnd);
     assert.match(
       cloudApplyBlock,
-      /const reconciledPanelSettings = this\.enforceFreeTierLimits\(cloudSyncVersion\);/,
-      'cloud panel snapshots must re-run entitlement reconciliation',
+      /const reconciledPanelSettings = tierReconciliationDeferred\s*\? false\s*: this\.enforceFreeTierLimits\(cloudSyncVersion\);/,
+      'cloud panel snapshots must reconcile only after account preference handoff',
     );
     assert.match(
       cloudApplyBlock,
@@ -107,8 +107,8 @@ describe('cloud prefs panel sync guardrails', () => {
     );
     assert.match(
       cloudApplyHandler,
-      /if \(!freeTierLimitsInvoked\) this\.enforceFreeTierLimits\(cloudSyncVersion\);[\s\S]*?this\.state\.disabledSources = new Set\(loadFromStorage<string\[\]>\(STORAGE_KEYS\.disabledFeeds, \[\]\)\);/,
-      'a disabled-feeds-only cloud generation must re-run the free source cap and then reload the enforced state',
+      /if \(!tierReconciliationDeferred && !freeTierLimitsInvoked\) \{\s*this\.enforceFreeTierLimits\(cloudSyncVersion\);\s*\}[\s\S]*?this\.state\.disabledSources = new Set\(loadFromStorage<string\[\]>\(STORAGE_KEYS\.disabledFeeds, \[\]\)\);/,
+      'a disabled-feeds-only cloud generation must defer during handoff or re-run the cap before reloading state',
     );
     // The legacy sweep must stay one-shot per browser: it cannot tell pre-marker
     // gate damage from a deliberate hide, so re-arming it on cloud snapshots
@@ -144,7 +144,7 @@ describe('cloud prefs panel sync guardrails', () => {
   it('reapplies delayed free-tier panel clamps to the mounted dashboard', () => {
     const appSrc = readSrc('src/App.ts');
     const clampStart = appSrc.indexOf('if (panelsChanged) {');
-    const clampEnd = appSrc.indexOf('// --- Source limit ---', clampStart);
+    const clampEnd = appSrc.indexOf('this.reconcileSourceLimitForTier(false);', clampStart);
     assert.ok(clampStart >= 0 && clampEnd > clampStart, 'free-tier panel clamp block must exist');
     const clampBlock = appSrc.slice(clampStart, clampEnd);
 
@@ -162,15 +162,20 @@ describe('cloud prefs panel sync guardrails', () => {
 
   it('updates the live disabled-source set when a delayed cap persists changes', () => {
     const appSrc = readSrc('src/App.ts');
-    const capStart = appSrc.indexOf('if (totalEligible > FREE_MAX_SOURCES) {');
-    const capEnd = appSrc.indexOf('return panelsChanged;', capStart);
-    assert.ok(capStart >= 0 && capEnd > capStart, 'free-tier source-cap block must exist');
+    const capStart = appSrc.indexOf('private reconcileSourceLimitForTier(');
+    const capEnd = appSrc.indexOf('/**\n   * Enforce free-tier panel', capStart);
+    assert.ok(capStart >= 0 && capEnd > capStart, 'owned free-tier source-cap helper must exist');
     const capBlock = appSrc.slice(capStart, capEnd);
 
     assert.match(
       capBlock,
-      /saveToStorage\(STORAGE_KEYS\.disabledFeeds, Array\.from\(disabledSources\)\);\s*this\.state\.disabledSources = new Set\(disabledSources\);/,
+      /persistJsonStorageValue\(STORAGE_KEYS\.disabledFeeds, \[\.\.\.nextDisabled\]\)[\s\S]*?if \(disabledChanged\) \{[\s\S]*?this\.state\.disabledSources = new Set\(nextDisabled\);/,
       'a cap reached from delayed auth or entitlement settlement must update the running app state',
+    );
+    assert.match(
+      capBlock,
+      /persistJsonStorageValue\(\s*STORAGE_KEYS\.sourceGateOwnership,\s*\[\.\.\.nextGateOwned\],\s*\)/,
+      'the source cap must explicitly confirm persisted ownership',
     );
   });
 
