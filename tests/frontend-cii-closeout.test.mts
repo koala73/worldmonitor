@@ -5,24 +5,11 @@ async function loadCountryInstability(caseId: string) {
   return import(`../src/services/country-instability.ts?${caseId}`);
 }
 
-describe('frontend CII closeout regressions', () => {
-  it('frontend sanctions ingestion accumulates duplicate ISO2 rows', async () => {
-    const cii = await loadCountryInstability('sanctions');
-
-    cii.ingestSanctionsForCII([
-      { countryCode: 'US', entryCount: 60, newEntryCount: 1 },
-      { countryCode: 'US', entryCount: 60, newEntryCount: 0 },
-    ]);
-
-    const data = cii.getCountryData('US');
-    assert.equal(data?.sanctionsEntryCount, 120);
-    assert.equal(data?.sanctionsNewEntryCount, 1);
-  });
-
-  it('frontend climate fallback maps producer zones into CII country stress', async () => {
+describe('country-detail climate cache', () => {
+  it('maps producer zones into per-country climate stress', async () => {
     const cii = await loadCountryInstability('climate-producer-zones');
 
-    cii.ingestClimateForCII([
+    cii.ingestClimateForCountryData([
       { zone: 'California', severity: 'extreme' },
       { zone: 'Amazon', severity: 'moderate' },
       { zone: 'Taiwan Strait', severity: 'extreme' },
@@ -50,10 +37,10 @@ describe('frontend CII closeout regressions', () => {
     assert.equal(cii.getCountryData('VE')?.climateStress, 8);
   });
 
-  it('frontend climate fallback accepts backend-named CII climate zones', async () => {
+  it('accepts backend-named climate zones', async () => {
     const cii = await loadCountryInstability('climate-backend-zones');
 
-    cii.ingestClimateForCII([
+    cii.ingestClimateForCountryData([
       { zone: 'North America', severity: 'moderate' },
       { zone: 'Russia', severity: 'extreme' },
       { zone: 'North Africa', severity: 'moderate' },

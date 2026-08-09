@@ -3,6 +3,14 @@ import { clearPanelColSpanEntry, clearPanelSpanEntry } from '@/utils/panel-stora
 
 const STORAGE_KEY = 'wm-mcp-panels';
 const MAX_PANELS = 10;
+export const MIN_MCP_REFRESH_INTERVAL_MS = 60_000;
+
+/** Keep persisted MCP specs and their runtime timers within the supported cadence. */
+export function normalizeMcpRefreshIntervalMs(value: unknown): number {
+  const interval = typeof value === 'number' ? value : Number(value);
+  if (!Number.isFinite(interval)) return MIN_MCP_REFRESH_INTERVAL_MS;
+  return Math.max(MIN_MCP_REFRESH_INTERVAL_MS, Math.floor(interval));
+}
 
 export interface McpPreset {
   name: string;
@@ -268,7 +276,11 @@ export function loadMcpPanels(): McpPanelSpec[] {
 
 export function saveMcpPanel(spec: McpPanelSpec): void {
   const existing = loadMcpPanels().filter(p => p.id !== spec.id);
-  const updated = [...existing, spec].slice(-MAX_PANELS);
+  const normalizedSpec = {
+    ...spec,
+    refreshIntervalMs: normalizeMcpRefreshIntervalMs(spec.refreshIntervalMs),
+  };
+  const updated = [...existing, normalizedSpec].slice(-MAX_PANELS);
   saveToStorage(STORAGE_KEY, updated);
 }
 

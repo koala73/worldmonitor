@@ -42,6 +42,8 @@ import { CII_CLIMATE_ZONE_COUNTRIES } from '../../../../shared/cii-climate-zones
 //   1. Bump CII_FORMULA_VERSION in ./_risk-config.ts if server/API scores shift.
 //   2. Update docs/methodology/cii-risk-scores.mdx in the SAME commit.
 //   3. Mention the change in CHANGELOG.md (public-facing section).
+// Climate-zone attribution has the same protocol when it changes server/API
+// scores; its canonical map documents that ownership in shared/cii-climate-zones.ts.
 // ========================================================================
 
 // Exported so tests and any internal diagnostics can assert the published

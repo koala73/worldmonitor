@@ -329,7 +329,7 @@ describe('App bootstrap slow-tier lifecycle', () => {
     assert.ok(!/await\s+waitForBootstrapSlowTier\s*\(/.test(preFanout), 'raw slow-tier wait must not be inlined before the fan-out');
     assert.ok(!phase6.includes('void slowTierReady;'), 'slow-tier checkpoint must be awaited, not discarded');
     assert.ok(appSrc.includes('this.startPostLcpIntelligence(countryGeometryReady, geometryReadyBeforeFanout);'), 'post-LCP intelligence should wait on background geometry and know whether geometry was already applied');
-    assert.ok(appSrc.includes('this.dataLoader.refreshGeometryDependentCiiAfterCountryGeometry();'), 'post-geometry replay should restore CII country attribution without blocking fan-out');
+    assert.ok(appSrc.includes('this.dataLoader.refreshGeometryDependentCountryData();'), 'post-geometry replay should restore country-detail attribution without blocking fan-out');
   });
 });
 
