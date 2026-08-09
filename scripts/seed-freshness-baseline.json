@@ -24,6 +24,54 @@
       "status": "SEED_ERROR",
       "issue": 5714,
       "reason": "Japan MOD route returns proxy CONNECT 403; candidate country-specific routes return 407. Second cause independent of the #5689 Decodo exhaustion. No verified replacement endpoint installed."
+    },
+    {
+      "name": "consumerPricesCoverage",
+      "status": "COVERAGE_PARTIAL",
+      "issue": 6355,
+      "reason": "AE aggregate: records match the enabled retailer roster (4) and coverage age stays inside maxStaleMin. summarizeMarketCoverage grades any retailer dirty scrape run as market-wide partial, which fires nearly every day, so the monitor has been red on every scheduled run since #5970 exposed these keys on 2026-07-30. Producer-side tolerance or a warn-level mapping is tracked in the issue."
+    },
+    {
+      "name": "consumerPricesCoverageAU",
+      "status": "COVERAGE_PARTIAL",
+      "issue": 6356,
+      "reason": "AU: records match the enabled retailer roster (2), age fresh. Same daily dirty-scrape-run partial grading as consumerPricesCoverage; parent evidence in #6355."
+    },
+    {
+      "name": "consumerPricesCoverageBR",
+      "status": "COVERAGE_PARTIAL",
+      "issue": 6357,
+      "reason": "BR: records match the enabled retailer roster (2), age fresh. Same daily dirty-scrape-run partial grading as consumerPricesCoverage; parent evidence in #6355."
+    },
+    {
+      "name": "consumerPricesCoverageGB",
+      "status": "COVERAGE_PARTIAL",
+      "issue": 6358,
+      "reason": "GB: records match the enabled retailer roster (2), age fresh. Same daily dirty-scrape-run partial grading as consumerPricesCoverage; parent evidence in #6355."
+    },
+    {
+      "name": "consumerPricesCoverageIN",
+      "status": "COVERAGE_PARTIAL",
+      "issue": 6359,
+      "reason": "IN: records match the enabled retailer roster (2), age fresh. Same daily dirty-scrape-run partial grading as consumerPricesCoverage; parent evidence in #6355."
+    },
+    {
+      "name": "consumerPricesCoverageSA",
+      "status": "COVERAGE_PARTIAL",
+      "issue": 6360,
+      "reason": "SA: records match the enabled retailer roster (3), age fresh. Same daily dirty-scrape-run partial grading as consumerPricesCoverage; parent evidence in #6355."
+    },
+    {
+      "name": "consumerPricesCoverageSG",
+      "status": "COVERAGE_PARTIAL",
+      "issue": 6361,
+      "reason": "SG: records match the enabled retailer roster (2), age fresh. Same daily dirty-scrape-run partial grading as consumerPricesCoverage; parent evidence in #6355."
+    },
+    {
+      "name": "consumerPricesCoverageUS",
+      "status": "COVERAGE_PARTIAL",
+      "issue": 6362,
+      "reason": "US: records match the enabled retailer roster (2), age fresh. Same daily dirty-scrape-run partial grading as consumerPricesCoverage; parent evidence in #6355."
     }
   ]
 }
