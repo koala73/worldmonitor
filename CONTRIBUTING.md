@@ -89,6 +89,9 @@ Variants share all code but differ in default panels, map layers, and RSS feeds.
 ## Development Setup
 
 ```bash
+# Check that your machine has what the build needs (see Build Prerequisites below)
+npm run check:prereqs
+
 # Install everything (buf CLI, sebuf plugins, npm deps, Playwright browsers)
 make install
 
@@ -119,6 +122,47 @@ npm run build:energy
 ```
 
 The dev server runs at `http://localhost:3000` (override the port with `DEV_PORT` in `.env.local`). Run `make help` to see all available make targets.
+
+### Build Prerequisites
+
+`npm run check:prereqs` reports everything missing in one pass and prints a
+single install command for your distribution. It runs automatically before
+`npm run desktop:dev` and `npm run desktop:tauri:build`.
+
+```bash
+npm run check:prereqs              # everything
+npm run check:prereqs -- --scope web       # web app only
+npm run check:prereqs:desktop              # desktop bundle only
+npm run check:prereqs -- --json            # machine-readable, for CI
+npm run check:prereqs -- --warn-only       # report but do not fail
+```
+
+**Web app:** Node >= 22 (the floor CI builds on). Nothing else.
+
+**Desktop app (Tauri v2):** Rust via [rustup](https://rustup.rs), plus native
+libraries on Linux. macOS and Windows need only the Rust toolchain. On Linux
+the check covers WebKitGTK 4.1, JavaScriptCoreGTK 4.1, GTK 3, libsoup 3,
+GLib/GObject, Cairo, Pango, ATK and D-Bus — and, for AppImage bundling,
+librsvg2 (dev), patchelf and the FUSE 2 runtime.
+
+Two of these have bitten people and are worth knowing:
+
+- **librsvg2-dev, not just the runtime.** `linuxdeploy-plugin-gtk` locates the
+  SVG pixbuf loader via `pkg-config --variable=libdir librsvg-2.0`, so it needs
+  the `.pc` file from the `-dev` package. Without it, `tauri build` fails at the
+  very end with only `failed to run linuxdeploy` and no cause.
+- **Tauri v2 requires the 4.1 / libsoup3 line.** WebKitGTK 4.0 is the Tauri v1
+  pairing and will not satisfy this build.
+
+The check probes capabilities (pkg-config modules, sonames, commands) rather
+than package names, and resolves names against your archive, so distro renames
+such as Ubuntu's `libfuse2` → `libfuse2t64` t64 transition are handled
+automatically. Debian/Ubuntu, Fedora/RHEL, Arch and openSUSE families get an
+install command; other distributions get the capability list to map themselves.
+
+openSUSE package names are currently unverified — derived from naming
+convention rather than checked against a live archive — and the check says so
+when it prints them. Corrections welcome.
 
 ### Environment Variables (Optional)
 
