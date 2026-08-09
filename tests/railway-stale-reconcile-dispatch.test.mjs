@@ -297,6 +297,35 @@ describe('stale Railway reconcile classification', () => {
     assert.equal(result.dispatchEligible, false);
   });
 
+  it('retires a mutation marker accepted by a different job in the same run attempt', () => {
+    const run = activeRun({ id: 706, minutesAgo: 10, status: 'completed' });
+    run.conclusion = 'success';
+    run.attempts = [{
+      attempt: 1,
+      jobs: [
+        { steps: [{ name: MUTATION_STARTED_STEP_NAME, conclusion: 'success' }] },
+        { steps: [{ name: FINAL_ACCEPTANCE_STEP_NAME, conclusion: 'success' }] },
+      ],
+    }];
+
+    const result = classifyWatchdogSnapshot({
+      now: NOW,
+      main: { sha: HEAD, gate: { state: 'success' } },
+      runs: [run],
+      controlState: {
+        barrier: null,
+        lease: null,
+        dispatchHolds: [],
+        currentAttempt: { state: 'TERMINAL_ACCEPTED', headSha: HEAD, runId: '706', runAttempt: 1 },
+        lastAccepted: { attemptId: 'accepted-706', headSha: HEAD, acceptedAt: NOW - 5 * 60_000 },
+      },
+      autoRecoveryEnabled: true,
+    });
+
+    assert.equal(result.outcome, 'HEALTHY');
+    assert.equal(result.dispatchEligible, false);
+  });
+
   it('retires only markers named by exact accepted superseded-run evidence', () => {
     const historical = {
       ...activeRun({ id: 707, minutesAgo: 30, stepName: MUTATION_STARTED_STEP_NAME }),

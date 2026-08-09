@@ -719,11 +719,12 @@ function markerWasSuperseded(run, controlState, markerStepName) {
   return markers.every((marker) => (
     acceptedLocations.some((accepted) => (
       accepted.attempt > marker.attempt
-      || (
-        accepted.attempt === marker.attempt
-        && accepted.jobIndex === marker.jobIndex
-        && accepted.stepIndex > marker.stepIndex
-      )
+      // The terminal acceptance step runs in the verifier job, after the
+      // mutation job through an explicit `needs` edge. GitHub job indexes are
+      // only response-array positions, not workflow order, so an exact
+      // acceptance in the same run attempt retires that attempt's markers
+      // regardless of which job array entry contains it.
+      || accepted.attempt === marker.attempt
     ))
     || supersededRuns.some((superseded) => (
       validGitHubRunId(superseded?.runId)
