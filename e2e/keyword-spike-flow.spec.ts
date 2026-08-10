@@ -72,11 +72,7 @@ test.describe('keyword spike modal/badge flow', () => {
         previousConfig,
       };
 
-      const spikeData = (spikes[0]?.data ?? {}) as {
-        sourceNames?: string[];
-        sourceCount?: number;
-        articles?: { title: string; source: string; link?: string; publishedAt?: number }[];
-      };
+      const spikeData = spikes[0]?.data ?? {};
 
       return {
         ok: true,

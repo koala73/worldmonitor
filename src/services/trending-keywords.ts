@@ -1,4 +1,5 @@
 import type { CorrelationSignal } from './correlation';
+import { effectivePubDateMs } from './feed-date';
 import { mlWorker } from './ml-worker';
 import { generateSummary } from './summarization';
 import { SUPPRESSED_TRENDING_TERMS, generateSignalId } from '@/utils/analysis-constants';
@@ -29,6 +30,7 @@ export { extractEntities };
 export interface TrendingHeadlineInput {
   title: string;
   pubDate: Date;
+  pubDateMissing?: boolean;
   source: string;
   link?: string;
 }
@@ -72,6 +74,7 @@ export interface TrendingSpike {
   multiplier: number;
   windowMs: number;
   uniqueSources: number;
+  sourceNames: string[];
   headlines: StoredHeadline[];
 }
 
@@ -310,6 +313,16 @@ function dedupeHeadlines(headlines: StoredHeadline[]): StoredHeadline[] {
   return unique;
 }
 
+function distinctNamedSources(headlines: StoredHeadline[]): string[] {
+  return Array.from(
+    new Set(
+      headlines
+        .map(headline => headline.source.trim())
+        .filter(source => source.length > 0)
+    )
+  );
+}
+
 function recordTermCandidates(
   termCandidates: Map<string, TermCandidate>,
   headline: TrendingHeadlineInput,
@@ -341,7 +354,7 @@ function recordTermCandidates(
       title: headline.title,
       source: headline.source,
       link: headline.link ?? '',
-      publishedAt: Number.isFinite(headline.pubDate.getTime()) ? headline.pubDate.getTime() : now,
+      publishedAt: effectivePubDateMs(headline),
       ingestedAt: now,
     });
     addedAny = true;
@@ -373,8 +386,8 @@ function checkForSpikes(now: number, config: TrendingConfig, blockedTerms: Set<s
     const recentHeadlines = dedupeHeadlines(
       record.headlines.filter(headline => now - headline.ingestedAt <= ROLLING_WINDOW_MS)
     );
-    const uniqueSources = new Set(recentHeadlines.map(headline => headline.source)).size;
-    if (uniqueSources < MIN_SPIKE_SOURCE_COUNT) continue;
+    const sourceNames = distinctNamedSources(recentHeadlines);
+    if (sourceNames.length < MIN_SPIKE_SOURCE_COUNT) continue;
 
     record.lastSpikeAlertMs = now;
     spikes.push({
@@ -383,7 +396,8 @@ function checkForSpikes(now: number, config: TrendingConfig, blockedTerms: Set<s
       baseline,
       multiplier,
       windowMs: ROLLING_WINDOW_MS,
-      uniqueSources,
+      uniqueSources: sourceNames.length,
+      sourceNames,
       headlines: recentHeadlines,
     });
   }
@@ -451,26 +465,18 @@ async function handleSpike(spike: TrendingSpike, config: TrendingConfig): Promis
     // head of that array would hand a re-spike the same six up-to-2h-old
     // headlines it showed last time while the title reports a higher count.
     const articles = [...spike.headlines]
-      .sort((a, b) => (b.publishedAt || b.ingestedAt) - (a.publishedAt || a.ingestedAt))
+      .sort((a, b) => b.publishedAt - a.publishedAt)
       .slice(0, MAX_SPIKE_ARTICLES)
       .map(headline => ({
         title: headline.title,
         source: headline.source,
         link: headline.link || undefined,
-        publishedAt: headline.publishedAt,
+        ...(headline.publishedAt !== 0 && { publishedAt: headline.publishedAt }),
       }));
-    // Derived from the FULL deduped window rather than `articles`, and reused
-    // below as `sourceCount`, so the count the user reads and the names behind
-    // it are the same fact — a source whose only headline fell past the cap
-    // would otherwise be counted but never named. Blank names are dropped here,
-    // not at the render boundary, so the count cannot outrun the nameable list.
-    const sourceNames = Array.from(
-      new Set(
-        spike.headlines
-          .map(headline => headline.source)
-          .filter(source => typeof source === 'string' && source.trim().length > 0)
-      )
-    );
+    // Derived from the FULL deduped window rather than `articles`, then used for
+    // both spike qualification and `sourceCount`, so the count and names stay
+    // the same fact even when one source's only headline falls past the cap.
+    const sourceNames = spike.sourceNames;
     const headlines = articles.map(article => article.title);
     const multiplierText = spike.baseline > 0 ? `${spike.multiplier.toFixed(1)}x baseline` : 'cold-start threshold';
 

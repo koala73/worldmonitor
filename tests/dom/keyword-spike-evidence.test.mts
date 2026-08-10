@@ -24,20 +24,7 @@ import {
   updateTrendingConfig,
 } from '@/services/trending-keywords';
 
-interface SpikeArticle {
-  title: string;
-  source: string;
-  link?: string;
-  publishedAt?: number;
-}
-
-interface SpikeData {
-  term?: string;
-  sourceCount?: number;
-  sourceNames?: string[];
-  articles?: SpikeArticle[];
-  relatedTopics?: string[];
-}
+type SpikeData = CorrelationSignal['data'];
 
 /**
  * `handleSpike` is async (it awaits term-significance scoring), so signals land
@@ -179,6 +166,84 @@ describe('keyword_spike signal payload carries its evidence', () => {
   });
 });
 
+describe('keyword_spike evidence ranks only real publication dates', () => {
+  it('does not let a missing-date article displace six dated articles from the evidence cap', async () => {
+    await initTestI18n();
+    updateTrendingConfig({
+      blockedTerms: [],
+      minSpikeCount: 5,
+      spikeMultiplier: 3,
+      autoSummarize: false,
+    });
+
+    const now = Date.now();
+    const datedHeadlines = [
+      { source: 'Reuters', title: 'Aurelith summit opens after regional talks', link: 'https://example.com/aurelith/1' },
+      { source: 'AP', title: 'Delegates reach Aurelith summit venue', link: 'https://example.com/aurelith/2' },
+      { source: 'BBC', title: 'Aurelith summit agenda focuses on trade', link: 'https://example.com/aurelith/3' },
+      { source: 'Reuters', title: 'Leaders address Aurelith summit session', link: 'https://example.com/aurelith/4' },
+      { source: 'AP', title: 'Aurelith summit enters final negotiations', link: 'https://example.com/aurelith/5' },
+      { source: 'BBC', title: 'Aurelith summit prepares joint statement', link: 'https://example.com/aurelith/6' },
+    ];
+
+    ingestHeadlines([
+      ...datedHeadlines.map((item, index) => ({
+        ...item,
+        pubDate: new Date(now - (datedHeadlines.length - index) * 60_000),
+      })),
+      {
+        source: 'Undated Wire',
+        title: 'Aurelith summit item arrives without publication date',
+        link: 'https://example.com/aurelith/missing',
+        pubDate: new Date(now),
+        pubDateMissing: true,
+      },
+    ]);
+
+    const signal = await drainSpikeFor(/aurelith/i);
+    const articles = dataOf(signal).articles ?? [];
+    expect(articles.map(article => article.title)).toEqual(
+      datedHeadlines.map(headline => headline.title).reverse(),
+    );
+    expect(articles.every(article => Number.isFinite(article.publishedAt) && article.publishedAt! > 0)).toBe(true);
+  });
+
+  it('puts invalid-date evidence last and omits its publication timestamp', async () => {
+    await initTestI18n();
+    updateTrendingConfig({
+      blockedTerms: [],
+      minSpikeCount: 5,
+      spikeMultiplier: 3,
+      autoSummarize: false,
+    });
+
+    const now = Date.now();
+    const datedHeadlines = [
+      { source: 'Reuters', title: 'Belvarin forum opens with policy talks' },
+      { source: 'AP', title: 'Delegates arrive for Belvarin forum session' },
+      { source: 'BBC', title: 'Belvarin forum reviews regional proposal' },
+      { source: 'Reuters', title: 'Officials address Belvarin forum delegates' },
+      { source: 'AP', title: 'Belvarin forum prepares closing statement' },
+    ];
+    const invalidTitle = 'Belvarin forum item has malformed feed date';
+
+    ingestHeadlines([
+      ...datedHeadlines.map((item, index) => ({
+        ...item,
+        pubDate: new Date(now - (datedHeadlines.length - index) * 60_000),
+      })),
+      { source: 'Malformed Wire', title: invalidTitle, pubDate: new Date(Number.NaN) },
+    ]);
+
+    const signal = await drainSpikeFor(/belvarin/i);
+    const articles = dataOf(signal).articles ?? [];
+    const lastArticle = articles[articles.length - 1];
+    expect(lastArticle?.title).toBe(invalidTitle);
+    expect(lastArticle).not.toHaveProperty('publishedAt');
+    expect(articles.slice(0, -1).every(article => Number.isFinite(article.publishedAt) && article.publishedAt! > 0)).toBe(true);
+  });
+});
+
 describe('keyword_spike modal renders the evidence', () => {
   let signal: CorrelationSignal;
   let modal: SignalModal;
@@ -291,6 +356,30 @@ describe('keyword_spike payload excludes unusable source names from the count', 
     // the alert claim five sources while the modal could only show three.
     expect([...(data.sourceNames ?? [])].sort()).toEqual(['AP', 'BBC', 'Reuters']);
     expect(data.sourceCount).toBe(3);
+  });
+
+  it('does not let a blank source satisfy the minimum-source gate', async () => {
+    await initTestI18n();
+    updateTrendingConfig({
+      blockedTerms: [],
+      minSpikeCount: 5,
+      spikeMultiplier: 3,
+      autoSummarize: false,
+    });
+    const pubDate = new Date();
+    ingestHeadlines([
+      { source: 'Reuters', title: 'Ports brace for Norvexa tariff review' },
+      { source: 'Reuters', title: 'Shippers rework Norvexa tariff routing' },
+      { source: 'Reuters', title: 'Growers protest Norvexa tariff schedule' },
+      { source: 'Reuters', title: 'Lawmakers question Norvexa tariff timing' },
+      { source: '   ', title: 'Analysts weigh Norvexa tariff fallout' },
+    ].map(item => ({ ...item, pubDate })));
+
+    await new Promise(resolve => setTimeout(resolve, 50));
+    const emitted = drainTrendingSignals().filter(
+      candidate => /norvexa/i.test(String((candidate.data as SpikeData).term ?? '')),
+    );
+    expect(emitted).toHaveLength(0);
   });
 });
 
