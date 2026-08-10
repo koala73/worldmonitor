@@ -976,9 +976,14 @@ export const INDICATOR_REGISTRY: IndicatorSpec[] = [
     cadence: 'annual',
     // Stays `experimental` while RESILIENCE_EDUCATION_ENABLED is off. That
     // keeps it out of the per-dimension weight-sum invariant AND the
-    // coverage-influence gate, both of which filter on tier. Promote to
-    // 'core' in the activation PR, where the measured 181-country coverage
-    // clears the 137 floor with 44 to spare.
+    // coverage-influence gate, both of which filter on tier.
+    //
+    // The binding floor at promotion is CORE_MIN_COVERAGE = 180 in
+    // `tests/resilience-indicator-tiering.test.mts`, NOT the 137 in the
+    // coverage-influence gate — that gate only flags indicators whose nominal
+    // weight also exceeds 5%, and this one sits at 3.8%, so it would pass at
+    // any coverage. Measured coverage is 181: promotion clears the real floor
+    // by one country. Re-measure before promoting.
     tier: 'experimental',
     coverage: 181,
     license: 'open-attribution',

@@ -60,8 +60,11 @@ const WINDOW_START = 2011;
 // Validation floor. Deliberately well below the measured 181 so a transient
 // World Bank dip does not refresh seed-meta on a truncated payload and
 // freeze the bundle (memory: `feedback_strict_floor_validate_fail_poisons_seed_meta`).
-// This is NOT the flag-flip gate — that separately requires recordCount >= 175
-// per `docs/methodology/education-flag-flip-runbook.md`.
+// This is NOT the flag-flip gate — that separately requires recordCount >= 180,
+// because `tests/resilience-indicator-tiering.test.mts` sets CORE_MIN_COVERAGE
+// = 180 and fails any tier='core' indicator below it. Measured coverage is 181,
+// so promotion clears that floor by one country. See
+// `docs/methodology/education-flag-flip-runbook.md`.
 const MIN_COUNTRIES = 150;
 
 // Pure record reducer, exported so the parsing traps below are testable

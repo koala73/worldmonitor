@@ -32,12 +32,18 @@ All must be green before flipping:
    run in production:
    ```bash
    redis-cli --url $REDIS_URL GET seed-meta:resilience:education-attainment
-   # fetchedAt within the last 8 days, recordCount >= 175
+   # fetchedAt within the last 8 days, recordCount >= 180
    ```
    The validation floor in the seeder is 150, deliberately lower than the
    measured 181 so a transient World Bank dip does not poison seed-meta. The
-   flip gate is the stricter 175 — a payload between 150 and 175 is healthy
+   flip gate is the stricter **180** — a payload between 150 and 180 is healthy
    enough to publish but not healthy enough to activate on.
+
+   **180 is not a round number, it is a CI invariant.**
+   `tests/resilience-indicator-tiering.test.mts` sets `CORE_MIN_COVERAGE = 180`
+   and fails any `tier: 'core'` indicator below it. Flipping on a payload of
+   176–179 would pass a laxer runbook check and then fail CI inside the
+   publication PR. The gate and the invariant must be the same number.
 
 2. **Health green.** `/api/health` reports OK for `educationAttainment`. The key
    is registered STRICT SEED_META, so it reports CRIT (not WARN) while the
@@ -47,8 +53,23 @@ All must be green before flipping:
    in `_indicator-registry.ts` from `tier: 'experimental'` to `tier: 'core'`.
    Until this happens the indicator is excluded from both the weight-sum
    invariant and the coverage-influence gate, so neither is actually exercising
-   it. Measured coverage is 181 against a 137 floor, so the gate passes with
-   44 countries of headroom.
+   it.
+
+   **Know which floor actually binds.** Two different gates apply, and the
+   looser one is the one that looks reassuring:
+
+   - `tests/resilience-coverage-influence-gate.test.mts` — 137-country floor,
+     but it only flags indicators whose nominal weight also exceeds 5%.
+     Education's nominal weight is `1.0 x 1/5 x 0.19 = 3.8%`, under the cap, so
+     **this gate passes at any coverage, including zero.** It provides no
+     assurance here.
+   - `tests/resilience-indicator-tiering.test.mts` — `CORE_MIN_COVERAGE = 180`,
+     a hard floor on every `core` indicator. **This is the binding constraint.**
+
+   Measured coverage is 181, so promotion clears the binding floor by **one
+   country**. That margin is thin by design of the data, not by choice: if the
+   World Bank drops two reporters before the flip, promotion fails CI. Re-measure
+   immediately before promoting rather than trusting the 181 recorded here.
 
 4. **EXTRACTION_RULES implemented.** `scripts/compare-resilience-current-vs-proposed.mjs`
    currently carries `femaleUpperSecondaryAttainment` as `not-implemented`.
