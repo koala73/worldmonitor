@@ -748,7 +748,22 @@ describe('planned Railway service lifecycle', () => {
   };
 
   it('keeps unprovisioned standalone seeders explicitly planned', () => {
+    // An exact list, not a predicate: `planned` removes an entry from the live
+    // audit AND from `--apply`, so every addition has to be a decision somebody
+    // made rather than a way to quiet a red gate.
+    //
+    // company-monitoring-worker (2026-08-10, #6402): #6386 shipped the module and
+    // this registry entry, but no Railway service, no COMPANY_MONITORING_WORKER_SECRET
+    // in any of the 92 shared variables, and nothing else provisioned. Left
+    // unmarked it read as `service is missing from Railway production`, which made
+    // buildRailwayServiceConfigPatch refuse the apply for six OTHER services —
+    // stranding #6397's widened watch paths, including the exact build-input
+    // closure `umami` needs to stop being BEHIND (#6381). Unlike the seeders above,
+    // its own module header says "always-on Railway service" and health polls it on
+    // a 5-minute budget, so this entry is a deliberate PAUSE, not a staging state:
+    // provisioning it (#6402) must remove it from this list again.
     const expectedPlannedServices = [
+      'company-monitoring-worker',
       'seed-crypto-sectors',
       'seed-market-quotes',
       'seed-service-statuses',

@@ -1186,6 +1186,7 @@
   {
     "entry": "scripts/company-monitoring-worker.mjs",
     "deployMode": "nixpacks-root-scripts",
+    "lifecycle": "planned",
     "service": "company-monitoring-worker",
     "startCommand": "node company-monitoring-worker.mjs",
     "requiredEnv": [
@@ -1207,7 +1208,7 @@
       "scripts/package.json"
     ],
     "cronSchedule": null,
-    "documentedAt": "scripts/company-monitoring-worker.mjs (header docblock declares rootDirectory: scripts)"
+    "documentedAt": "scripts/company-monitoring-worker.mjs (header docblock declares rootDirectory: scripts); lifecycle planned 2026-08-10 pending provisioning — see #6402"
   },
   {
     "entry": "scripts/scenario-worker.mjs",
