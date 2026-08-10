@@ -103,6 +103,12 @@ export function validateAcceptanceBaseline(baseline) {
     if (!Number.isInteger(entry.issue)) {
       throw new Error(`Acknowledged baseline entry ${entry.name} needs an owner issue number`);
     }
+    if (
+      Object.hasOwn(entry, 'expiresAt')
+      && (typeof entry.expiresAt !== 'string' || Number.isNaN(Date.parse(entry.expiresAt)))
+    ) {
+      throw new Error(`Acknowledged baseline entry ${entry.name} needs a valid ISO expiresAt date`);
+    }
   }
   return baseline;
 }
@@ -115,8 +121,10 @@ export function validateAcceptanceBaseline(baseline) {
  * longer appears in health at all — reported as a prompt to prune, but
  * deliberately NOT fatal, because several of these sources flap between polls
  * and a clear-on-recovery failure would make the monitor red on exactly the
- * runs that prove things improved. `expiresAt` is the anti-rot mechanism
- * instead: the whole baseline must be re-reviewed on a date, or the gate fails.
+ * runs that prove things improved. The root `expiresAt` is the baseline-wide
+ * anti-rot mechanism: the whole baseline must be re-reviewed on a date, or the
+ * gate fails. An entry may carry its own tighter `expiresAt`; its exact live
+ * problem returns to `blocking` at that instant without expiring other entries.
  *
  * The expiry governs SUPPRESSIONS, so a baseline that acknowledges nothing
  * cannot expire — there is no suppression left to outlive its cause, and a
@@ -149,7 +157,11 @@ export function applyAcceptanceBaseline(problems, baseline, now = Date.now()) {
     const entry = accepted.get(key);
     if (entry) {
       seen.add(key);
-      acknowledged.push({ ...problem, issue: entry.issue });
+      if (!Object.hasOwn(entry, 'expiresAt') || now < Date.parse(entry.expiresAt)) {
+        acknowledged.push({ ...problem, issue: entry.issue });
+      } else {
+        blocking.push(problem);
+      }
     } else {
       blocking.push(problem);
     }

@@ -15,6 +15,11 @@ import {
 } from '../scripts/check-seed-freshness.mjs';
 
 const COMMITTED_BASELINE_URL = new URL('../scripts/seed-freshness-baseline.json', import.meta.url);
+const PR_TEMPLATE_URL = new URL('../.github/pull_request_template.md', import.meta.url);
+const LONG_CRON_RUNBOOK_URL = new URL(
+  '../docs/solutions/integration-issues/merged-is-not-ran-long-cron-seeders.md',
+  import.meta.url,
+);
 const RAILWAY_SERVICES_URL = new URL('../scripts/railway-services.json', import.meta.url);
 const readCommittedBaseline = () => JSON.parse(readFileSync(COMMITTED_BASELINE_URL, 'utf8'));
 const readRailwayServices = () => JSON.parse(readFileSync(RAILWAY_SERVICES_URL, 'utf8'));
@@ -234,6 +239,53 @@ describe('scheduled seed freshness monitor', () => {
       assert.equal(result.expired, false);
     });
 
+    it('acknowledges a matching problem before its entry-level expiry', () => {
+      const rolloutBaseline = {
+        ...baseline,
+        acknowledged: [{
+          name: 'tariffTrendsUs',
+          status: 'EMPTY',
+          issue: 6377,
+          expiresAt: '2026-08-10T12:00:00.000Z',
+        }],
+      };
+      const result = applyAcceptanceBaseline(
+        [{ name: 'tariffTrendsUs', status: 'EMPTY' }],
+        rolloutBaseline,
+        at('2026-08-10T11:59:59.999Z'),
+      );
+
+      assert.deepEqual(result.blocking, []);
+      assert.deepEqual(result.acknowledged, [
+        { name: 'tariffTrendsUs', status: 'EMPTY', issue: 6377 },
+      ]);
+    });
+
+    it('fails closed at and after an entry-level expiry while the root baseline remains valid', () => {
+      const rolloutBaseline = {
+        ...baseline,
+        acknowledged: [{
+          name: 'tariffTrendsUs',
+          status: 'EMPTY',
+          issue: 6377,
+          expiresAt: '2026-08-10T12:00:00.000Z',
+        }],
+      };
+      const problem = { name: 'tariffTrendsUs', status: 'EMPTY' };
+
+      for (const now of [
+        '2026-08-10T12:00:00.000Z',
+        '2026-08-10T12:00:00.001Z',
+      ]) {
+        const result = applyAcceptanceBaseline([problem], rolloutBaseline, at(now));
+        assert.deepEqual(result.blocking, [problem], now);
+        assert.deepEqual(result.acknowledged, [], now);
+        assert.deepEqual(result.cleared, [], now);
+        assert.deepEqual(result.escalated, [], now);
+        assert.equal(result.expired, false, 'the later root expiry keeps its existing semantics');
+      }
+    });
+
     it('blocks when a baselined source fails with a DIFFERENT status', () => {
       // A source degrading further is new information, not the accepted state.
       const result = applyAcceptanceBaseline(
@@ -330,6 +382,24 @@ describe('scheduled seed freshness monitor', () => {
       );
     });
 
+    it('rejects a malformed entry-level expiry when the optional field is supplied', () => {
+      assert.doesNotThrow(() => validateAcceptanceBaseline(baseline));
+      for (const expiresAt of [undefined, null, 42, 'not-a-date']) {
+        assert.throws(
+          () => validateAcceptanceBaseline({
+            ...baseline,
+            acknowledged: [{
+              name: 'tariffTrendsUs',
+              status: 'EMPTY',
+              issue: 6377,
+              expiresAt,
+            }],
+          }),
+          /tariffTrendsUs.*ISO expiresAt/,
+        );
+      }
+    });
+
     it('ships a valid, unexpired committed baseline', () => {
       const committed = readCommittedBaseline();
       validateAcceptanceBaseline(committed);
@@ -417,6 +487,21 @@ describe('scheduled seed freshness monitor', () => {
           `${entry.name} still says it needs a tracking issue — file it and point issue: at it`,
         );
       }
+    });
+
+    it('documents the pre-seed-or-expiring-acknowledgement cutover contract', () => {
+      const committed = readCommittedBaseline();
+      const baselinePolicy = committed.$comment.join('\n');
+      const prTemplate = readFileSync(PR_TEMPLATE_URL, 'utf8');
+      const runbook = readFileSync(LONG_CRON_RUNBOOK_URL, 'utf8');
+
+      assert.match(baselinePolicy, /entry-level `expiresAt`/i);
+      assert.match(baselinePolicy, /first\s+(scheduled\s+)?cron window/i);
+      assert.match(prTemplate, /Railway-side pre-seed/i);
+      assert.match(prTemplate, /entry-level `expiresAt`/i);
+      assert.match(runbook, /Railway-side pre-seed/i);
+      assert.match(runbook, /entry-level `expiresAt`/i);
+      assert.match(runbook, /first\s+(scheduled\s+)?cron window/i);
     });
   });
 
