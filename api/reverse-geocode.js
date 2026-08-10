@@ -3,38 +3,33 @@ import { checkRateLimit } from './_rate-limit.js';
 import { jsonResponse } from './_json-response.js';
 // @ts-expect-error — JS module, no declaration file
 import { readJsonFromUpstash, setCachedData } from './_upstash-json.js';
- 
+
 export const config = { runtime: 'edge' };
- 
+
 const NOMINATIM_BASE = 'https://nominatim.openstreetmap.org/reverse';
 const CHROME_UA = 'WorldMonitor/2.0 (https://worldmonitor.app)';
- 
+
 export default async function handler(req, ctx) {
   if (isDisallowedOrigin(req))
     return new Response('Forbidden', { status: 403 });
- 
+
   const cors = getCorsHeaders(req);
   if (req.method === 'OPTIONS')
     return new Response(null, { status: 204, headers: cors });
- 
+
   const url = new URL(req.url);
   const lat = url.searchParams.get('lat');
   const lon = url.searchParams.get('lon');
- 
+
   const latN = Number(lat);
   const lonN = Number(lon);
   if (!lat || !lon || Number.isNaN(latN) || Number.isNaN(lonN)
       || latN < -90 || latN > 90 || lonN < -180 || lonN > 180) {
     return jsonResponse({ error: 'valid lat (-90..90) and lon (-180..180) required' }, 400, cors);
   }
- 
+
   const cacheKey = `geocode:${latN.toFixed(1)},${lonN.toFixed(1)}`;
- 
-  // Cache misses hit Nominatim, whose usage policy caps request volume per
-  // client. Keep an unauthenticated caller from burning that budget.
-  const rateLimited = await checkRateLimit(req, cors, { scope: 'reverse-geocode', limit: 120, window: '60 s', ctx });
-  if (rateLimited) return rateLimited;
- 
+
   const cached = await readJsonFromUpstash(cacheKey, 1500);
   if (cached) {
     return new Response(JSON.stringify(cached), {
@@ -46,7 +41,15 @@ export default async function handler(req, ctx) {
       },
     });
   }
- 
+
+  // Only a cache MISS reaches Nominatim, whose usage policy caps request volume
+  // per client, so the budget is charged here rather than above the cache read.
+  // Metering hits too would add a second serial Upstash round trip to the fast
+  // path (0.1-degree keys plus a 7-day TTL make hits the steady state) without
+  // protecting anything: a hit never touches Nominatim.
+  const rateLimited = await checkRateLimit(req, cors, { scope: 'reverse-geocode', limit: 120, window: '60 s', ctx });
+  if (rateLimited) return rateLimited;
+
   try {
     const resp = await fetch(
       `${NOMINATIM_BASE}?lat=${latN}&lon=${lonN}&format=json&zoom=3&accept-language=en`,
@@ -55,22 +58,22 @@ export default async function handler(req, ctx) {
         signal: AbortSignal.timeout(8000),
       },
     );
- 
+
     if (!resp.ok) {
       return jsonResponse({ error: `Nominatim ${resp.status}` }, 502, cors);
     }
- 
+
     const data = await resp.json();
     const country = data.address?.country;
     const code = data.address?.country_code?.toUpperCase();
- 
+
     const result = { country: country || null, code: code || null, displayName: data.display_name || country || '' };
     const body = JSON.stringify(result);
- 
+
     if (country && code) {
       ctx.waitUntil(setCachedData(cacheKey, result, 604800));
     }
- 
+
     return new Response(body, {
       status: 200,
       headers: {

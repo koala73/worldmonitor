@@ -1415,14 +1415,7 @@ async function dispatch(requestUrl, req, routes, context) {
     const mute = requestUrl.searchParams.get('mute') === '0' ? '0' : '1';
     const vq = ['small','medium','large','hd720','hd1080'].includes(requestUrl.searchParams.get('vq') || '') ? requestUrl.searchParams.get('vq') : '';
     const origin = `http://localhost:${context.port}`;
-    // parentOrigin is the actual parent window origin (tauri://localhost, asset://localhost, etc.)
-    // passed by the frontend so window.parent.postMessage reaches it. Only accept known desktop
-    // schemes; fall back to '*' if absent or unrecognised.
-    const rawParentOrigin = requestUrl.searchParams.get('parentOrigin') || '';
-    const isAllowedParentOrigin = /^(tauri|asset):\/\/localhost$/.test(rawParentOrigin)
-      || /^https?:\/\/localhost(:\d{1,5})?$/.test(rawParentOrigin)
-      || /^https?:\/\/[\w-]+\.tauri\.localhost(:\d{1,5})?$/.test(rawParentOrigin);
-    const parentOrigin = isAllowedParentOrigin ? rawParentOrigin : '*';
+    const parentOrigin = resolveEmbedParentOrigin(requestUrl.searchParams.get('parentOrigin'), origin);
     const safeVideoId = JSON.stringify(String(videoId));
     const safeOrigin = JSON.stringify(origin);
     const safeParentOrigin = JSON.stringify(parentOrigin);
@@ -1783,6 +1776,32 @@ async function dispatch(requestUrl, req, routes, context) {
   }
 }
 
+// parentOrigin is the actual parent window origin (tauri://localhost,
+// asset://localhost, etc.) passed by the frontend so window.parent.postMessage
+// reaches it. Only known desktop schemes are accepted.
+//
+// The bare `tauri.localhost` host is the Windows desktop origin (docs/changelog.mdx
+// "Windows CORS for Tauri"; src/services/desktop-runtime.ts treats it as a first-class
+// desktop host, and api/youtube/embed.js allows it). Omitting it silently collapsed
+// every Windows load to the wildcard and disabled the postMessage guard.
+//
+// The fallback is this page's OWN origin, never '*'. The emitted guard reads
+// `allowedOrigin!=='*' && e.origin!==allowedOrigin`, so a wildcard default let any
+// framer opt out of origin checking simply by omitting parentOrigin. Mirrors
+// api/youtube/embed.js's sanitizeParentOrigin(raw, origin), whose fallback is
+// likewise a concrete origin and therefore can never disable the guard.
+//
+// Exported for test: the resolution is otherwise observable only by regex-matching
+// the generated HTML, which false-passes on the exact wildcard regression it guards.
+export function resolveEmbedParentOrigin(rawParentOrigin, ownOrigin) {
+  const raw = rawParentOrigin || '';
+  const isAllowed = /^(tauri|asset):\/\/localhost$/.test(raw)
+    || /^https?:\/\/localhost(:\d{1,5})?$/.test(raw)
+    || /^https?:\/\/tauri\.localhost(:\d{1,5})?$/.test(raw)
+    || /^https?:\/\/[\w-]+\.tauri\.localhost(:\d{1,5})?$/.test(raw);
+  return isAllowed ? raw : ownOrigin;
+}
+
 // Test seam: lets tests shrink ipv4Fetch's upstream idle timeout so a
 // silent-stall test doesn't have to wait out the real 12s production value.
 // Production code never calls this.
@@ -1790,6 +1809,7 @@ export const __testing__ = {
   setUpstreamIdleTimeoutMs(ms) {
     _upstreamIdleTimeoutMs = ms;
   },
+  resolveEmbedParentOrigin,
 };
 
 export async function createLocalApiServer(options = {}) {

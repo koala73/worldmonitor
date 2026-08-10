@@ -2639,3 +2639,32 @@ test('abort-signal path: an already-aborted signal rejects immediately without d
     });
   }
 });
+
+// The /api/youtube-embed bridge posts player state to the parent frame and
+// accepts play/pause/loadVideo commands back. The emitted guard reads
+// `allowedOrigin!=='*' && e.origin!==allowedOrigin`, so any input resolving to
+// '*' turns the guard OFF entirely. Assert the resolution directly rather than
+// regex-matching the generated HTML, which cannot tell a live guard from one
+// that was handed a wildcard.
+test('youtube-embed parentOrigin resolution never yields a wildcard', () => {
+  const own = 'http://localhost:47821';
+  const { resolveEmbedParentOrigin } = __testing__;
+
+  // Known desktop origins are echoed through so postMessage reaches the parent.
+  assert.equal(resolveEmbedParentOrigin('tauri://localhost', own), 'tauri://localhost');
+  assert.equal(resolveEmbedParentOrigin('asset://localhost', own), 'asset://localhost');
+  assert.equal(resolveEmbedParentOrigin('http://localhost:1420', own), 'http://localhost:1420');
+  assert.equal(resolveEmbedParentOrigin('https://app.tauri.localhost', own), 'https://app.tauri.localhost');
+
+  // Windows Tauri v2 reports the BARE host. Dropping this arm silently sent
+  // every Windows desktop load down the wildcard path and disabled the guard.
+  assert.equal(resolveEmbedParentOrigin('http://tauri.localhost', own), 'http://tauri.localhost');
+
+  // Absent / unrecognised / hostile input falls back to a concrete origin,
+  // never '*' — otherwise a framer opts out of origin checking by omission.
+  for (const raw of [null, '', '*', 'https://evil.example', 'http://tauri.localhost.evil.com']) {
+    const resolved = resolveEmbedParentOrigin(raw, own);
+    assert.notEqual(resolved, '*', `parentOrigin ${JSON.stringify(raw)} must not resolve to the wildcard`);
+    assert.equal(resolved, own, `parentOrigin ${JSON.stringify(raw)} should fall back to the page's own origin`);
+  }
+});

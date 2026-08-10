@@ -141,7 +141,9 @@ Returns country metadata: centroid, bbox, capital, ISO codes.
 
 ### `GET /api/reverse-geocode?lat=40.7&lon=-74.0`
 
-Reverse geocodes a lat/lon to the nearest country + city using the bundled coordinate dataset.
+Reverse geocodes a lat/lon to the nearest country + city. Results are cached server-side for 7 days on a 0.1-degree grid; a cache miss is resolved upstream via Nominatim.
+
+**Rate limit:** 120 requests/minute per IP, charged on cache misses only (a cache hit never reaches the upstream geocoder). A 429 carries the standard `RateLimit-*` and `Retry-After` headers.
 
 ### `GET /api/data/city-coords?q=Tokyo`
 
