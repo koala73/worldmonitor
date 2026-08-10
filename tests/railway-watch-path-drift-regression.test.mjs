@@ -62,7 +62,7 @@ describe('critical ingestion Railway registry drift regressions', () => {
     const liveUmami = service({
       cronSchedule: null,
       dockerfilePath: umami.dockerfile,
-      watchPatterns: [],
+      watchPatterns: [...umami.watchPatterns],
       variables: {
         APP_SECRET: 'configured',
         DATABASE_URL: 'postgres://configured',

@@ -99,9 +99,22 @@ jobs:
           echo "── evaluating $SHA"
 
           # Poll check-runs for this SHA and find the latest result for each required job.
-          # Project to just the three fields the gate logic reads. A SHA can
-          # accumulate dozens of full check-run objects across re-runs; passing
-          # the un-projected JSON to python3 via the RUNS_JSON env var overflowed
+          #
+          # PAGINATE. `filter=latest` still returns one entry per check-run NAME,
+          # and a push to main now carries more than 100 of them (153 on
+          # d38195c86, 161 on 704537706) — Convex Deploy, the Railway trigger,
+          # IndexNow and the monitors all publish here, not just the gated
+          # workflows. A single un-paginated page held ZERO of the 20 required
+          # names on d38195c86, so the gate read "everything pending" from a page
+          # that did not contain the answer: it posted a stuck `pending` on main
+          # head, and before #6390 it built a ~300-character description from all
+          # 20 names and died on the API's 140-character cap. That 422 was the
+          # symptom; this truncation is the cause (#6389).
+          #
+          # `--slurp` cannot be combined with gh's own `--jq`, so pipe to jq the
+          # way the sweep above already does. Project to just the three fields
+          # the gate logic reads — more pages means more bytes, and passing the
+          # un-projected JSON to python3 via the RUNS_JSON env var overflowed
           # Linux's 128KB-per-arg/env limit (MAX_ARG_STRLEN) once it crossed
           # ~131KB, failing the gate with "Argument list too long" (exit 126).
           #
@@ -115,8 +128,8 @@ jobs:
           # NOTE: the python3 -c body must stay at column 0 of the block scalar —
           # indenting it with the loops would be a Python IndentationError.
           for attempt in 1 2 3 4 5; do
-            runs=$(gh api "repos/$REPO/commits/$SHA/check-runs?per_page=100" \
-              --jq ".check_runs | map(select(.name as \$name | $required | index(\$name)) | {name, conclusion, completed_at})")
+            runs=$(gh api --paginate --slurp "repos/$REPO/commits/$SHA/check-runs?per_page=100" |
+              jq -c "[.[].check_runs[]] | map(select(.name as \$name | $required | index(\$name)) | {name, conclusion, completed_at})")
 
             status=$(RUNS_JSON="$runs" REQUIRED_JOBS="$required" python3 -c "
           import json

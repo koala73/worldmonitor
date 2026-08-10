@@ -56,7 +56,7 @@ jobs:
           # cross-directory-import + native-dep breakage class documented in
           # tests/dockerfile-digest-notifications-imports.test.mjs.
           DIGEST=$(echo "$FILES" | awk '
-            /^(scripts\/|shared\/|server\/_shared\/|api\/|Dockerfile\.digest-notifications|package\.json|package-lock\.json)/ { count++ }
+            /^(scripts\/|shared\/|server\/_shared\/|api\/|\.dockerignore$|Dockerfile\.digest-notifications|package\.json|package-lock\.json)/ { count++ }
             END { print count + 0 }
           ')
           echo "digest=$( [ "$DIGEST" -gt 0 ] && echo true || echo false )" >> "$GITHUB_OUTPUT"
@@ -80,6 +80,7 @@ jobs:
           # unit suite. Run a real PostgreSQL gate only when its managed image,
           # migration, patch, focused tests, or this workflow changes.
           UMAMI=$(echo "$FILES" | awk '
+            /^\.dockerignore$/ { count++ }
             /^Dockerfile\.umami$/ { count++ }
             /^Dockerfile\.umami-retention$/ { count++ }
             /^docker\/umami\// { count++ }

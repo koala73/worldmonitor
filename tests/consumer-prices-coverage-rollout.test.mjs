@@ -55,6 +55,7 @@ const ONE_DAY_MS = 24 * 60 * 60 * 1000;
 const US = consumerPriceCoverageHealthName('us');
 const SG = consumerPriceCoverageHealthName('sg');
 const AE = consumerPriceCoverageHealthName('ae');
+const GB = consumerPriceCoverageHealthName('gb');
 
 const US_UNTIL = ROLLOUT_PENDING_UNTIL_MS[US];
 const BEFORE_DEADLINE = US_UNTIL - 60_000;
@@ -479,6 +480,73 @@ test('partial-market publication: a market that published partial coverage is CO
     },
   });
   assert.equal(entry.status, 'COVERAGE_PARTIAL', 'truthful partial coverage survives the rollout window unchanged');
+});
+
+test('market-floor rollup: budget truncation stays partial, bounded loss stays OK, and below-floor degrades', () => {
+  const retailer = (overrides = {}) => ({
+    slug: 'ocado_gb',
+    name: 'Ocado UK',
+    lastRunAt: '2026-08-10T02:00:00.000Z',
+    runStatus: 'completed',
+    pagesAttempted: 12,
+    pagesSucceeded: 12,
+    errorsCount: 0,
+    rejectedCount: 0,
+    ...overrides,
+  });
+  const classifySnapshot = (snapshot) => classifyCoverage(GB, {
+    now: BEFORE_DEADLINE,
+    activated: [GB],
+    strens: { [BOOTSTRAP_KEYS[GB]]: 2048 },
+    metaValues: {
+      [SEED_META[GB].key]: {
+        fetchedAt: BEFORE_DEADLINE - 60_000,
+        recordCount: snapshot.retailers.length,
+        coverage: snapshot,
+      },
+    },
+  });
+
+  const budgetTruncated = summarizeMarketCoverage('gb', '2026-08-10T02:00:00.000Z', [
+    retailer({ pagesAttempted: 5, pagesSucceeded: 5, runStatus: 'partial' }),
+  ]);
+  const partial = classifySnapshot(budgetTruncated);
+  assert.equal(budgetTruncated.completionRatio, 1);
+  assert.equal(budgetTruncated.status, 'partial');
+  assert.equal(partial.status, 'COVERAGE_PARTIAL');
+  assert.equal(partial.coverage.retailers[0].coverageStatus, 'partial');
+
+  const atFloor = summarizeMarketCoverage('gb', '2026-08-10T02:00:00.000Z', [
+    retailer(),
+    retailer({
+      slug: 'tesco_gb',
+      name: 'Tesco UK',
+      runStatus: 'failed',
+      pagesSucceeded: 0,
+      errorsCount: 12,
+    }),
+  ]);
+  const healthy = classifySnapshot(atFloor);
+  assert.equal(atFloor.completionRatio, 0.5);
+  assert.equal(atFloor.status, 'healthy');
+  assert.equal(healthy.status, 'OK');
+  assert.equal(healthy.coverage.retailers[1].coverageStatus, 'failed');
+
+  const belowFloor = summarizeMarketCoverage('gb', '2026-08-10T02:00:00.000Z', [
+    retailer({ pagesSucceeded: 11, errorsCount: 1, rejectedCount: 1, runStatus: 'partial' }),
+    retailer({
+      slug: 'tesco_gb',
+      name: 'Tesco UK',
+      runStatus: 'failed',
+      pagesSucceeded: 0,
+      errorsCount: 12,
+    }),
+  ]);
+  const degraded = classifySnapshot(belowFloor);
+  assert.equal(belowFloor.completionRatio, 0.4583);
+  assert.equal(belowFloor.status, 'degraded');
+  assert.equal(degraded.status, 'COVERAGE_DEGRADED');
+  assert.equal(degraded.coverage.retailers[1].coverageStatus, 'failed');
 });
 
 // ── The softening is confined to the "never published" branch ───────────────

@@ -75,6 +75,22 @@ export interface UnifiedSettingsConfig {
   resetLayout: () => void;
   isDesktopApp: boolean;
   onMapProviderChange?: (provider: MapProvider) => void;
+  /**
+   * The user finished editing Settings → SOURCES and the enabled set is not
+   * what it was when the overlay opened.
+   *
+   * Sources apply to `ctx.disabledSources` on click (no draft/Save step like
+   * panels), but nothing subscribed to that write, so the change only reached
+   * the dashboard at the next `REFRESH_INTERVALS.feeds` tick — 20 minutes
+   * (#6380). This is the subscription.
+   *
+   * Fired on teardown rather than per click on purpose: the overlay covers the
+   * dashboard, so nothing is observable until it closes, and a per-click
+   * refetch would be a request storm while the user works through the grid
+   * (the budget guarded by e2e/dashboard-news-request-budget.spec.ts). Once per
+   * settings session, and only when the selection genuinely moved.
+   */
+  onSourcesChanged?: () => void;
 }
 
 type TabId = UnifiedSettingsTabId;
@@ -97,6 +113,15 @@ export class UnifiedSettings {
   private savedTimeout: ReturnType<typeof setTimeout> | null = null;
   private confirmingClose = false;
   private historyRegistered = false;
+  /**
+   * `sourceSelectionSignature()` as of the last open(), or null while closed.
+   *
+   * A signature rather than a "something was toggled" flag: a source click can
+   * legitimately fail to mutate anything (the free-tier cap toasts and returns
+   * without touching the set), and toggling a source off and back on again is a
+   * net no-op the dashboard must not be asked to reload for.
+   */
+  private sourceSelectionBaseline: string | null = null;
   private apiKeys: ApiKeyInfo[] = [];
   private apiKeysLoading = false;
   private apiKeysError = '';
@@ -449,6 +474,14 @@ export class UnifiedSettings {
       ? 'settings'
       : requestedTab;
     this.resetPanelDraft();
+    // Only on a FRESH session. open() is re-entrant on an overlay that is
+    // already up (the deep-dive "Notify me about this country" jump to the
+    // notifications tab, an overlayHistory replace), and re-snapshotting there
+    // would adopt a source change already made in this session as the baseline
+    // — silently discarding the very reload this exists to trigger.
+    if (this.sourceSelectionBaseline === null) {
+      this.sourceSelectionBaseline = this.sourceSelectionSignature();
+    }
     // Seed entitlementReady BEFORE render() so the first paint of
     // renderUpgradeSection branches on the current snapshot state, not the
     // stale value left over from a previous open/close cycle.
@@ -593,6 +626,38 @@ export class UnifiedSettings {
     this.resetPanelDraft();
     localStorage.removeItem('wm-settings-open');
     document.removeEventListener('keydown', this.escapeHandler);
+    // Last: the host reloads data in response, and the overlay covering the
+    // dashboard has to be gone before that lands for the user to see it.
+    this.notifySourceSelectionChanged();
+  }
+
+  /**
+   * Order-independent fingerprint of the currently DISABLED source names.
+   *
+   * NUL is the separator because source names contain spaces ("BBC World"):
+   * any separator a name can itself hold collapses `["A B"]` and `["A", "B"]`
+   * into one string, which is a silent miss for exactly the swap-one-source-
+   * for-another case this comparison exists to catch.
+   */
+  private sourceSelectionSignature(): string {
+    return [...this.config.getDisabledSources()].sort().join('\u0000');
+  }
+
+  /**
+   * Tell the host the source selection moved during this settings session.
+   *
+   * Every close path funnels through teardownSettings — the close button, Esc,
+   * the overlay backdrop, mobile history back, and the discard branch of the
+   * unsaved-panel-changes confirm — so this is the single chokepoint. `destroy()`
+   * deliberately does not reach it: the dashboard is going away.
+   */
+  private notifySourceSelectionChanged(): void {
+    const baseline = this.sourceSelectionBaseline;
+    this.sourceSelectionBaseline = null;
+    // null baseline = never opened. A teardown without an open has no session
+    // to compare against, and firing there would reload on a spurious close.
+    if (baseline === null || baseline === this.sourceSelectionSignature()) return;
+    this.config.onSourcesChanged?.();
   }
 
   public refreshPanelToggles(): void {

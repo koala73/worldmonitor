@@ -57,11 +57,15 @@ export type CollectorRequestClassification = {
 
 export type CollectorHealthCohort = 'event' | 'critical-event' | 'identify';
 
+export type CollectorHealthFailureKind = 'network' | 'timeout' | 'missing-receipt' | 'none';
+
 export type CollectorHealthReport = {
   cohort: CollectorHealthCohort;
   writes: number;
   failures: number;
-  failureKind: 'network' | 'timeout' | 'missing-receipt';
+  failureKind: CollectorHealthFailureKind;
+  /** UTC minute bucket containing the client window represented by this delta. */
+  bucket: number;
 };
 
 type CollectorHealthReporter = (report: CollectorHealthReport) => Promise<boolean>;
@@ -465,7 +469,8 @@ export function isAlertWorthyCollectorFailure(
 }
 
 function resetCollectorHealthWindow(startedAt: number): void {
-  collectorHealthWindow = createCollectorHealthWindow(startedAt);
+  const bucketStart = Math.floor(startedAt / HEALTH_WINDOW_MS) * HEALTH_WINDOW_MS;
+  collectorHealthWindow = createCollectorHealthWindow(bucketStart);
   collectorHealthReportCursor = {
     event: { writes: 0, failures: 0 },
     'critical-event': { writes: 0, failures: 0 },
@@ -475,18 +480,38 @@ function resetCollectorHealthWindow(startedAt: number): void {
 
 function buildCollectorHealthReport(
   cohort: CollectorHealthCohort,
-  failure: EnvironmentNoiseFailure,
+  failureKind: CollectorHealthFailureKind = 'none',
+  allowZeroFailures = false,
 ): CollectorHealthReport | null {
   const current = collectorHealthWindow.cohorts[cohort];
   const previous = collectorHealthReportCursor[cohort];
+  const bucket = Math.floor(collectorHealthWindow.startedAt / HEALTH_WINDOW_MS);
   const writes = Math.max(0, current.writes - previous.writes);
   const failures = Math.max(0, current.environmentFailures - previous.failures);
   collectorHealthReportCursor[cohort] = {
     writes: current.writes,
     failures: current.environmentFailures,
   };
-  if (writes < 1 || failures < 1) return null;
-  return { cohort, writes, failures, failureKind: failure.kind };
+  if (writes < 1 || (!allowZeroFailures && failures < 1)) return null;
+  return { cohort, writes, failures, failureKind, bucket };
+}
+
+/**
+ * Complete the previous client window before starting a new one. Healthy
+ * windows carry failures=0, so the server baseline is not trained only by
+ * pages that already experienced a receipt failure.
+ */
+function reportCompletedCollectorHealthWindow(): void {
+  const cohorts: CollectorHealthCohort[] = ['event', 'critical-event', 'identify'];
+  for (const cohort of cohorts) {
+    const report = buildCollectorHealthReport(cohort, 'none', true);
+    if (!report) continue;
+    try {
+      void Promise.resolve(collectorHealthReporter(report)).catch(() => {});
+    } catch {
+      // Best effort. The next window starts independently.
+    }
+  }
 }
 
 function emitCollectorFailureToSentry(
@@ -539,7 +564,9 @@ function emitCollectorFailureToSentry(
 
 function recordCollectorOutcome(request: CollectorRequest, failure: CollectorFailure | null): void {
   const now = Date.now();
-  if (collectorHealthWindow.startedAt === 0 || now - collectorHealthWindow.startedAt >= HEALTH_WINDOW_MS) {
+  const hasStartedWindow = collectorHealthWindow.startedAt !== 0 || collectorHealthWindow.writes > 0;
+  if (!hasStartedWindow || now - collectorHealthWindow.startedAt >= HEALTH_WINDOW_MS) {
+    if (hasStartedWindow) reportCompletedCollectorHealthWindow();
     resetCollectorHealthWindow(now);
   }
   collectorHealthWindow.writes += 1;
@@ -606,7 +633,7 @@ function recordCollectorOutcome(request: CollectorRequest, failure: CollectorFai
       failures: cohortWindow.environmentFailures,
       noiseReported: cohortWindow.noiseReported,
     };
-    const report = buildCollectorHealthReport(cohort, failure);
+    const report = buildCollectorHealthReport(cohort, failure.kind);
     if (!report) return;
 
     let reportPromise: Promise<boolean>;

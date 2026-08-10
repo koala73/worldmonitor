@@ -302,8 +302,8 @@
     "nonCacheable": "no-store"
   },
   "healthProbedKeys": {
-    "bootstrap": 110,
-    "standalone": 148,
-    "total": 258
+    "bootstrap": 109,
+    "standalone": 150,
+    "total": 259
   }
 }

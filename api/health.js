@@ -233,6 +233,9 @@ const BOOTSTRAP_KEYS = {
 
 const STANDALONE_KEYS = {
   chinaCoverage:      CHINA_COVERAGE_SUMMARY_KEY,
+  // Control-plane heartbeat only. Convex owns every durable scan lease,
+  // checkpoint, receipt, and replay decision; this Redis value is disposable.
+  companyMonitoringWorker: 'company-monitoring:worker-health:v1',
   // Seeded and health-monitored; no dashboard consumer yet (#6155 is the
   // data layer only), so it is standalone rather than bootstrap-tiered.
   chinaStockConnect:  'market:china:stock-connect:v1',
@@ -445,6 +448,9 @@ const SEED_META = {
   // a full hour below the 6h data-expiry floor.
   humanitarianSummary: { key: 'seed-meta:conflict:humanitarian',  maxStaleMin: 300, minRecordCount: 23 },
   chinaCoverage:   { key: 'seed-meta:health:china-coverage',   maxStaleMin: 180 },
+  // Always-on loop publishes every few seconds. Five minutes tolerates deploy
+  // churn while still detecting a stopped worker well before leases age out.
+  companyMonitoringWorker: { key: 'seed-meta:company-monitoring:worker', maxStaleMin: 5, workerControl: true },
   earthquakes:      { key: 'seed-meta:seismology:earthquakes',  maxStaleMin: 30 },
   wildfires:        { key: 'seed-meta:wildfire:fires',          maxStaleMin: 360 }, // FIRMS NRT resets at midnight UTC; new-day data takes 3-6h to accumulate
   wildfiresBootstrap: { key: 'seed-meta:wildfire:fires-bootstrap', maxStaleMin: 360 }, // Compact CDN payload is a distinct publish target; monitor it so canonical fallback cannot hide transform/write failures.
@@ -767,12 +773,19 @@ const SEED_META = {
   electricityPrices:    { key: 'seed-meta:energy:electricity-prices',   maxStaleMin: 2880 }, // daily cron (14:00 UTC); 2880min = 48h = 2x interval
   gasStorageCountries:  { key: 'seed-meta:energy:gas-storage-countries', maxStaleMin: 2880 }, // daily cron at 10:30 UTC; 2880min = 48h = 2x interval
   energyIntelligence:   { key: 'seed-meta:energy:intelligence',          maxStaleMin: 720 }, // 6h cron; 720min = 2x interval
-  jodiOil:              { key: 'seed-meta:energy:jodi-oil',               maxStaleMin: 60 * 24 * 40 }, // monthly cron on 25th; 40d threshold matches 35d TTL + 5d buffer
+  // `chinaCoverage` opts these three into the producer diagnostic below. An
+  // unusable China row no longer withholds the JODI publish (#6395), so the
+  // freshness verdict now describes the 51-63 countries that DID publish and
+  // the China gap rides alongside it, named, instead of surfacing 40 days
+  // later as a generic STALE_SEED. Content age is producer-declared
+  // (newestItemAt/maxContentAgeMin in seed-meta) — a frozen upstream file
+  // reads STALE_CONTENT rather than passing as fresh.
+  jodiOil:              { key: 'seed-meta:energy:jodi-oil',               maxStaleMin: 60 * 24 * 40, chinaRow: true }, // monthly cron on 25th; 40d threshold matches 35d TTL + 5d buffer
   ieaOilStocks:         { key: 'seed-meta:energy:iea-oil-stocks',        maxStaleMin: 60 * 24 * 40 }, // monthly cron on 15th; 40d threshold = TTL_SECONDS
   oilStocksAnalysis:    { key: 'seed-meta:energy:oil-stocks-analysis',   maxStaleMin: 60 * 24 * 50 }, // afterPublish of ieaOilStocks; 50d = matches seed-meta TTL (exceeds 40d data TTL)
   eiaPetroleum:         { key: 'seed-meta:energy:eia-petroleum',         maxStaleMin: 4320 }, // daily bundle cron (seed-bundle-energy-sources); 72h = 3× interval, well under 7d data TTL
-  jodiGas:              { key: 'seed-meta:energy:jodi-gas',               maxStaleMin: 60 * 24 * 40 }, // monthly cron on 25th; 40d threshold matches 35d TTL + 5d buffer
-  lngVulnerability:     { key: 'seed-meta:energy:jodi-gas',               maxStaleMin: 60 * 24 * 40 }, // written by jodi-gas seeder afterPublish; shares seed-meta key
+  jodiGas:              { key: 'seed-meta:energy:jodi-gas',               maxStaleMin: 60 * 24 * 40, chinaRow: true }, // monthly cron on 25th; 40d threshold matches 35d TTL + 5d buffer
+  lngVulnerability:     { key: 'seed-meta:energy:jodi-gas',               maxStaleMin: 60 * 24 * 40, chinaRow: true }, // written by jodi-gas seeder afterPublish; shares seed-meta key
   chokepointBaselines:  { key: 'seed-meta:energy:chokepoint-baselines', maxStaleMin: 60 * 24 * 400 }, // 400 days
   sprPolicies:          { key: 'seed-meta:energy:spr-policies',         maxStaleMin: 60 * 24 * 400 }, // 400 days; static registry, same cadence as chokepoint baselines
   pipelinesGas:         { key: 'seed-meta:energy:pipelines-gas',        maxStaleMin: 20_160 }, // 14d — weekly cron (7d) × 2 headroom
@@ -895,6 +908,9 @@ const ON_DEMAND_KEYS = new Set([
   // activation marker after its first successful publish; after that, a
   // missing/stale summary is strict forever.
   'chinaCoverage',
+  // Deployment-order bridge. The worker writes a permanent activation marker
+  // on its first healthy loop report; absence becomes strict immediately after.
+  'companyMonitoringWorker',
   // Same deployment-order bridge as chinaCoverage: Vercel can ship this reader
   // before seed-bundle-macro's next 08:00 UTC tick publishes the first CBR
   // table, and the every-15-minute freshness monitor would otherwise report an
@@ -964,6 +980,7 @@ const ON_DEMAND_KEYS = new Set([
 // normal EMPTY/STALE_SEED rules apply.
 const ACTIVATION_MARKERS = {
   chinaCoverage: 'seed-activated:health:china-coverage',
+  companyMonitoringWorker: 'seed-activated:company-monitoring:worker',
   // Written by scripts/seed-cbr-rates.mjs (CBR_ACTIVATION_KEY) in runSeed's
   // afterPublish hook, so it exists only once a real table has been published.
   cbrRates: 'seed-activated:economic:cbr-rates',
@@ -1241,14 +1258,85 @@ const TRADE_FLOW_DOMINANT_FAILURE_MODES = new Set([
   'run-failed', 'upstream', 'empty', 'incomplete-years', 'mixed', 'none',
 ]);
 
+const COMPANY_MONITORING_WORKER_STATUSES = new Set(['ok', 'error']);
+const COMPANY_MONITORING_WORKER_OUTCOMES = new Set([
+  'starting', 'disabled', 'idle', 'completed', 'non_reassuring', 'fenced',
+  'replayed', 'claim_error', 'finalize_error',
+]);
+const COMPANY_MONITORING_WORKER_COUNTERS = Object.freeze([
+  'loops', 'claims', 'completed', 'nonReassuring', 'fenced', 'replayed',
+  'executorErrors', 'claimErrors', 'finalizeErrors',
+]);
+
+function projectCompanyMonitoringWorkerControl(meta, enabled) {
+  if (!enabled || !COMPANY_MONITORING_WORKER_STATUSES.has(meta?.status)
+    || !COMPANY_MONITORING_WORKER_OUTCOMES.has(meta?.outcome)) return null;
+  const counters = {};
+  for (const name of COMPANY_MONITORING_WORKER_COUNTERS) {
+    const value = meta?.counters?.[name];
+    counters[name] = Number.isSafeInteger(value) && value >= 0
+      ? Math.min(value, 9_999_999_999)
+      : 0;
+  }
+  return { status: meta.status, outcome: meta.outcome, counters };
+}
+
+// A JODI producer's China record, projected for the wire. Opt-in per key via
+// the SEED_META entry declaring `chinaRow: true` so no other seed-meta reader
+// changes. Deliberately NOT named `chinaCoverage`: that is the top-level check
+// projecting the hourly China coverage summary, and one country's row inside
+// one source is a different, smaller claim.
+//
+// Purely informational — it never moves a status. China's rows going unusable
+// is an upstream fact the operator can neither clear nor retry (the China
+// coverage manifest already carries JODI as `blocked` for the same reason), so
+// grading it would be an eternal warn. What it must not be is invisible: since
+// #6395 the dataset publishes without China, and this block is what says which
+// country dropped out and how long ago.
+//
+// `reason` is a closed vocabulary — health would otherwise relay arbitrary
+// producer free-text onto a public endpoint.
+const JODI_CHINA_ROW_REASONS = new Set([
+  'china-missing',
+  'china-invalid-month',
+  'china-stale',
+  'china-no-measurements',
+]);
+
+function projectJodiChinaRow(meta, enabled) {
+  if (!enabled) return null;
+  const raw = meta?.chinaRow;
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
+
+  const ok = raw.ok === true;
+  // Read the raw types rather than coercing: `Number(null)` is 0, which would
+  // publish "China's data is 0 months old" for a China record that is absent
+  // and has no data month at all.
+  const ageMonths = typeof raw.ageMonths === 'number' ? raw.ageMonths : NaN;
+  const unavailableSince = typeof raw.unavailableSince === 'number' ? raw.unavailableSince : NaN;
+  return {
+    ok,
+    reason: !ok && typeof raw.reason === 'string' && JODI_CHINA_ROW_REASONS.has(raw.reason)
+      ? raw.reason
+      : null,
+    dataMonth: typeof raw.dataMonth === 'string' && /^\d{4}-\d{2}$/.test(raw.dataMonth)
+      ? raw.dataMonth
+      : null,
+    ageMonths: Number.isSafeInteger(ageMonths) && ageMonths >= 0 ? ageMonths : null,
+    unavailableSince: !ok && Number.isFinite(unavailableSince) && unavailableSince > 0
+      ? unavailableSince
+      : null,
+  };
+}
+
 function readSeedMeta(seedCfg, keyMetaValues, keyMetaErrors, now) {
   if (!seedCfg) {
-    return { hasMeta: false, seedAge: null, seedStale: null, seedError: false, sourceUnavailable: false, sourceBlocked: false, metaReadFailed: false, metaCount: null, contentAge: null, coverage: null, synthesisFailure: null, dominantFailureMode: null };
+    return { hasMeta: false, seedAge: null, seedStale: null, seedError: false, sourceUnavailable: false, sourceBlocked: false, metaReadFailed: false, metaCount: null, contentAge: null, coverage: null, synthesisFailure: null, dominantFailureMode: null, chinaRow: null, workerControl: null };
   }
   // Per-command Redis errors on the GET seed-meta half of the pipeline must
   // not silently fall through to STALE_SEED — promote to REDIS_PARTIAL.
   if (keyMetaErrors.get(seedCfg.key)) {
-    return { hasMeta: false, seedAge: null, seedStale: null, seedError: false, sourceUnavailable: false, sourceBlocked: false, metaReadFailed: true, metaCount: null, contentAge: null, coverage: null, synthesisFailure: null, dominantFailureMode: null };
+    return { hasMeta: false, seedAge: null, seedStale: null, seedError: false, sourceUnavailable: false, sourceBlocked: false, metaReadFailed: true, metaCount: null, contentAge: null, coverage: null, synthesisFailure: null, dominantFailureMode: null, chinaRow: null, workerControl: null };
   }
   // Unwrap through the envelope helper. Legacy seed-meta is a bare
   // `{ fetchedAt, recordCount, sourceVersion, status? }` object with no `_seed`
@@ -1262,6 +1350,7 @@ function readSeedMeta(seedCfg, keyMetaValues, keyMetaErrors, now) {
     && /^[A-Z0-9_]{1,64}$/.test(meta.errorCode)
     ? meta.errorCode
     : null;
+  const workerControl = projectCompanyMonitoringWorkerControl(meta, seedCfg.workerControl);
   if (meta?.status === 'error') {
     return {
       hasMeta: true,
@@ -1280,6 +1369,11 @@ function readSeedMeta(seedCfg, keyMetaValues, keyMetaErrors, now) {
       errorCode,
       synthesisFailure: null,
       dominantFailureMode: null,
+      // A producer that reported `status: 'error'` never got far enough to
+      // assess China this run; relaying the previous run's verdict here would
+      // read as current.
+      chinaRow: null,
+      workerControl,
     };
   }
   let seedAge = null;
@@ -1441,6 +1535,7 @@ function readSeedMeta(seedCfg, keyMetaValues, keyMetaErrors, now) {
     && TRADE_FLOW_DOMINANT_FAILURE_MODES.has(meta.dominantFailureMode)) {
     dominantFailureMode = meta.dominantFailureMode;
   }
+  const chinaRow = projectJodiChinaRow(meta, seedCfg?.chinaRow);
   return {
     hasMeta: meta != null,
     seedAge,
@@ -1458,6 +1553,8 @@ function readSeedMeta(seedCfg, keyMetaValues, keyMetaErrors, now) {
     errorCode,
     synthesisFailure,
     dominantFailureMode,
+    chinaRow,
+    workerControl,
   };
 }
 
@@ -1556,6 +1653,8 @@ function classifyKey(name, redisKey, opts, ctx) {
     errorCode,
     synthesisFailure,
     dominantFailureMode,
+    chinaRow,
+    workerControl,
   } = meta;
 
   // Pending activation: the producer has never published a contentFreshness
@@ -1713,7 +1812,10 @@ function classifyKey(name, redisKey, opts, ctx) {
   ) status = 'COVERAGE_DEGRADED';
   else if (
     coverage
-    && (coverage.status === 'partial' || coverage.retailers?.some((retailer) => retailer.coverageStatus === 'failed'))
+    // The producer owns the market completion floor. A failed retailer can be
+    // a bounded part of an otherwise healthy market; its diagnostics remain on
+    // the wire without overriding that aggregate verdict.
+    && coverage.status === 'partial'
   ) status = 'COVERAGE_PARTIAL';
   // Content-age check (opt-in via runSeed contentMeta + maxContentAgeMin).
   // Fires AFTER all earlier failure paths so STALE_SEED, COVERAGE_PARTIAL,
@@ -1785,6 +1887,14 @@ function classifyKey(name, redisKey, opts, ctx) {
   // it on the fault verdict would hide exactly the "healthy-looking partial"
   // case. Mirrors the ungated synthesisFailure emission below.
   if (dominantFailureMode) entry.dominantFailureMode = dominantFailureMode;
+  // Ungated for the same reason as dominantFailureMode: the point of #6395 is
+  // that "China dropped out of JODI" is legible from /api/health on a dataset
+  // that is otherwise publishing normally. Gating it on a fault verdict would
+  // hide exactly the healthy-looking-partial case it exists to describe.
+  if (chinaRow) entry.chinaRow = chinaRow;
+  // Closed, bounded projection from the worker's seed-meta. It contains only
+  // control-loop state and counters, never work or customer identifiers.
+  if (workerControl) entry.workerControl = workerControl;
   // Surface content-age fields when seeder opted in (presence of
   // meta.maxContentAgeMin). Operators can distinguish "stale content" from
   // "stale seeder run" at a glance.
@@ -2198,11 +2308,20 @@ function healthResponseBody(snapshot, compact) {
   // STATUS is public, but its named entities are operator-only. `staleCountries`
   // and the decision-group breakdown identify WHICH source is degraded, which
   // is exactly what the chinaDecisionSignals carve-out above exists to
-  // withhold. Runs on both shapes so a cached compact snapshot written before
-  // this rule is scrubbed on the way out too.
+  // withhold. `chinaRow` (#6395) names a country and says which part of a JODI
+  // source is unusable, so it falls under the same rule. Runs on both shapes so
+  // a cached compact snapshot written before this rule is scrubbed on the way
+  // out too.
   for (const [name, check] of Object.entries(problems)) {
-    if (check?.contentFreshness === undefined && check?.decisionGroups === undefined) continue;
-    const { contentFreshness: _detail, decisionGroups: _groups, ...publicFields } = check;
+    if (check?.contentFreshness === undefined
+      && check?.decisionGroups === undefined
+      && check?.chinaRow === undefined) continue;
+    const {
+      contentFreshness: _detail,
+      decisionGroups: _groups,
+      chinaRow: _chinaRow,
+      ...publicFields
+    } = check;
     problems[name] = publicFields;
   }
   if (Object.keys(problems).length > 0) body.problems = problems;
