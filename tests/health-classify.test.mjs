@@ -124,6 +124,33 @@ test('classifyKey: consumer-price coverage at the floor remains healthy', () => 
   assert.equal(entry.status, 'OK');
 });
 
+test('classifyKey: a healthy market rollup keeps failed-retailer diagnostics without paging', () => {
+  const key = BOOTSTRAP_KEYS.consumerPricesCoverageGB;
+  const entry = classifyKey('consumerPricesCoverageGB', key, { allowOnDemand: false }, makeCtx({
+    strens: { [key]: 2048 },
+    metaValues: {
+      [SEED_META.consumerPricesCoverageGB.key]: seedMeta({
+        recordCount: 2,
+        coverage: {
+          status: 'healthy',
+          completedPages: 12,
+          failedPages: 12,
+          completionRatio: 0.5,
+          rejectedCount: 0,
+          retailers: [
+            { slug: 'ocado-gb', coverageStatus: 'healthy', pagesAttempted: 12, pagesSucceeded: 12 },
+            { slug: 'tesco-gb', coverageStatus: 'failed', pagesAttempted: 12, pagesSucceeded: 0 },
+          ],
+        },
+      }),
+    },
+  }));
+
+  assert.equal(entry.status, 'OK');
+  assert.equal(entry.coverage.status, 'healthy');
+  assert.equal(entry.coverage.retailers[1].coverageStatus, 'failed');
+});
+
 test('classifyKey: consumer-price coverage requires diagnostics and exposes retailer rejection state', () => {
   const key = BOOTSTRAP_KEYS.consumerPricesCoverage;
   const entry = classifyKey('consumerPricesCoverage', key, { allowOnDemand: false }, makeCtx({

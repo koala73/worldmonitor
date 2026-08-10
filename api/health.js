@@ -1670,7 +1670,10 @@ function classifyKey(name, redisKey, opts, ctx) {
   ) status = 'COVERAGE_DEGRADED';
   else if (
     coverage
-    && (coverage.status === 'partial' || coverage.retailers?.some((retailer) => retailer.coverageStatus === 'failed'))
+    // The producer owns the market completion floor. A failed retailer can be
+    // a bounded part of an otherwise healthy market; its diagnostics remain on
+    // the wire without overriding that aggregate verdict.
+    && coverage.status === 'partial'
   ) status = 'COVERAGE_PARTIAL';
   // Content-age check (opt-in via runSeed contentMeta + maxContentAgeMin).
   // Fires AFTER all earlier failure paths so STALE_SEED, COVERAGE_PARTIAL,
