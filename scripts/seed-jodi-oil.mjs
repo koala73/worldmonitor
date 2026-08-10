@@ -486,9 +486,16 @@ async function main() {
 
     console.log(`  Parsed ${allRows.length} KBD rows`);
 
+    const previousMeta = await readExistingSeedMeta('energy', 'jodi-oil');
+    if (previousMeta?.chinaRow == null) {
+      // readExistingSeedMeta collapses "no prior record" and "read failed" into
+      // one null, so an ongoing gap re-dates to this run. Say so, or the reset
+      // is indistinguishable from a genuine new outage in the log.
+      console.warn('  China oil row: no previous record readable — dating any gap from this run');
+    }
     const { countries, parsedCount, chinaCoverage, refusalReason, metaPayload } = prepareOilPublish({
       allRows,
-      previousMeta: await readExistingSeedMeta('energy', 'jodi-oil'),
+      previousMeta,
     });
     console.log(`  Built ${countries.length} country payloads of ${parsedCount} parsed`);
 

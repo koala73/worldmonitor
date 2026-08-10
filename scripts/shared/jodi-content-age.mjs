@@ -96,6 +96,20 @@ export function assessChinaJodiCoverage(records, now, hasMeasurements) {
  * for the freshness of the whole file. For the same reason the newest month
  * must clear `minCountries` — see MIN_JODI_CONTENT_AGE_COUNTRIES.
  *
+ * This reduces with max-over-quorum, NOT the min() that
+ * `docs/solutions/design-patterns/multi-source-freshness-clock-must-reduce-with-min.md`
+ * requires. That rule governs one canonical key fed by several independently
+ * failing UPSTREAMS, where the live one hides the dead one. JODI is a single
+ * upstream — one file per fuel — whose countries are series inside it, and
+ * whose reporting lag is heterogeneous by design: the live files carry a tail
+ * back to 2014-03, so min() would report twelve years stale forever and could
+ * never go green. Gating the whole file on one country is also the exact
+ * defect issue #6395 removes. The quorum is what keeps max() honest here:
+ * a file that stops advancing cannot keep three countries moving, so the
+ * doc's own diagnostic — "which single upstream can stop publishing without
+ * changing newestItemAt?" — answers "none" at the granularity that has an
+ * upstream.
+ *
  * @param {unknown} records
  * @param {(record: any) => boolean} hasMeasurements
  * @param {Date} now

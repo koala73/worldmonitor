@@ -185,6 +185,12 @@ export function gasContentMeta(records, now = new Date()) {
 export async function buildGasChinaRowDiagnostic(records, now = new Date(), deps = {}) {
   const readPreviousMeta = deps.readPreviousMeta ?? (() => readExistingSeedMeta('energy', 'jodi-gas'));
   const previousMeta = await readPreviousMeta();
+  if (previousMeta?.chinaRow == null) {
+    // readExistingSeedMeta collapses "no prior record" and "read failed" into
+    // one null, so an ongoing gap re-dates to this run. Say so, or the reset is
+    // indistinguishable from a genuine new outage in the log.
+    console.warn('  China gas row: no previous record readable — dating any gap from this run');
+  }
   return buildChinaRowDiagnostic(
     assessChinaGasCoverage(records, now),
     previousMeta?.chinaRow ?? null,
