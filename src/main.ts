@@ -278,7 +278,13 @@ function shouldSuppressCspViolation(
     // therefore matches the whole fallback chain — pinning one extension leaks
     // the rest, which is how a Doubao `.otf` and a gstatic `.ttf` kept firing
     // after their rules shipped (WORLDMONITOR-TR round 3).
-    const fontFile = /\.(?:woff2?|ttf|otf)$/;
+    // `.eot`/`.svg` are here for the same reason: iconfont.cn emits the classic
+    // five-format chain (eot -> woff2 -> woff -> ttf -> svg), so the alicdn rule
+    // below kept leaking its `.svg` member — 224 of that host's 776 events in the
+    // 14d window to 2026-08-10 (WORLDMONITOR-TR round 5). Both are font formats
+    // only; every rule below stays host- and path-pinned, so widening the format
+    // set cannot widen which hosts are suppressed.
+    const fontFile = /\.(?:woff2?|ttf|otf|eot|svg)$/;
     try {
       const url = new URL(blockedURI);
       if (url.protocol === 'https:' && url.hostname === 'fonts.gstatic.com' && /^\/s\/.+/.test(url.pathname) && fontFile.test(url.pathname)) return true;
@@ -306,13 +312,19 @@ function shouldSuppressCspViolation(
       // rules above, so any other migaku path still surfaces.
       if (url.protocol === 'https:' && url.hostname === 'migaku-public-data.migaku.com'
           && url.pathname.startsWith('/fonts/') && fontFile.test(url.pathname)) return true;
-      // Alibaba iconfont.cn project CDN (at.alicdn.com/t/c/font_<id>.<ext>).
-      // One injected icon font requested in all three formats — 15% of this
-      // issue's current volume. `alicdn.com` is a general Alibaba CDN, so this
-      // is pinned to the exact `at.` host and a font-file path — other alicdn
-      // hosts and non-font assets still surface.
+      // Alibaba iconfont.cn project CDN. `alicdn.com` is a general Alibaba CDN,
+      // so this is pinned to the exact `at.` host and a font-file path — other
+      // alicdn hosts and non-font assets still surface.
+      //
+      // The prefix is `/t/`, NOT `/t/c/`: iconfont.cn serves projects under both
+      // the legacy `/t/font_<id>.<ext>` and the newer `/t/c/font_<id>.<ext>`, and
+      // the original `/t/c/` rule matched only the newer one. Measured over the
+      // 14d window to 2026-08-10, 755 of this host's 776 events (97%) used the
+      // legacy `/t/` path, so the rule shipped in #6369 suppressed almost none of
+      // what it was written for (WORLDMONITOR-TR round 5). `/t/` is still a
+      // path prefix on a pinned host, so `/other/...` assets keep surfacing.
       if (url.protocol === 'https:' && url.hostname === 'at.alicdn.com'
-          && url.pathname.startsWith('/t/c/') && fontFile.test(url.pathname)) return true;
+          && url.pathname.startsWith('/t/') && fontFile.test(url.pathname)) return true;
       // slant.co overlay webfont (Plus Jakarta Display, 3 weights x 2 formats)
       // served from the injecting extension's own origin — 12% of this issue's
       // current volume. Our font-src is `'self' data:` — we ship no
@@ -333,6 +345,48 @@ function shouldSuppressCspViolation(
       // URLs, the second-largest remaining slice. Same exact-host shape.
       if (url.protocol === 'https:' && url.hostname === 'images.simplycodes.com'
           && url.pathname.startsWith('/fonts/') && fontFile.test(url.pathname)) return true;
+      // ---- Round 5 hosts. Sized on 2026-07-27..2026-08-10 (14d, 6353 events),
+      // and re-sized on the 22h window strictly AFTER the round-4 rules were
+      // live (2026-08-09T16:00Z, commit b2f1473) so drain from stale clients on
+      // pre-rule bundles is not mistaken for a rule that does not work. That
+      // distinction matters: shopback looked like it was still escaping its
+      // brand-new rule until its events were grouped by `build_sha` and every
+      // one turned out to predate the rule's own commit.
+      //
+      // scite.ai citation-badge extension injects its icon font on every page.
+      // The ONLY host still firing at the head of that post-deploy window (25 of
+      // 61 events, 41%, latest 2026-08-10T13:18Z) — i.e. the host that keeps
+      // regressing this issue. `scite` appears nowhere in src.
+      if (url.protocol === 'https:' && url.hostname === 'cdn.scite.ai'
+          && url.pathname.startsWith('/assets/fonts/') && fontFile.test(url.pathname)) return true;
+      // Adobe Fonts (Typekit) kit webfonts — 1137 events / 14d, the largest
+      // remaining slice after migaku. This is the font-src counterpart of the
+      // existing use.typekit.net STYLE-src rule below: that one matches the kit
+      // `.css`, this one matches the font binaries the kit then requests. They
+      // need separate rules because Typekit serves fonts from extensionless
+      // paths (`/af/<hex>/<hex>/<n>/<a|d|l>`, where the last segment is the
+      // format code), so `fontFile` cannot match them. Pinned to that exact
+      // path shape, so any other typekit path still surfaces.
+      if (url.protocol === 'https:' && url.hostname === 'use.typekit.net'
+          && /^\/af\/[0-9a-f]+\/[0-9a-f]+\/\d+\/[adl]$/.test(url.pathname)) return true;
+      // FontAwesome public CDN, font-src counterpart of the style-src rule
+      // below. Same argument: the injected release is v4.7.0, a 2016 version
+      // this app never shipped, and our font-src is `'self' data:` with no
+      // cross-origin host at all (39 events / 14d).
+      if (url.protocol === 'https:' && url.hostname === 'use.fontawesome.com'
+          && url.pathname.startsWith('/releases/') && fontFile.test(url.pathname)) return true;
+      // MerciApp French writing-assistant extension — its overlay ships Inter +
+      // Tropiline from its own asset origin (11 events / 14d, 18% of the
+      // post-deploy window). Exact host + /fonts/ path.
+      if (url.protocol === 'https:' && url.hostname === 'assets.merci-app.com'
+          && url.pathname.startsWith('/fonts/') && fontFile.test(url.pathname)) return true;
+      // Yiban extension overlay font (AlimamaShuHeiTi, 64 events / 14d).
+      if (url.protocol === 'https:' && url.hostname === 'cdn.yiban.io'
+          && url.pathname.startsWith('/fonts/') && fontFile.test(url.pathname)) return true;
+      // Alipay/antbank "marmot" asset CDN injecting Inter-Regular (34 events /
+      // 14d). Exact host + /file/ asset-root path.
+      if (url.protocol === 'https:' && url.hostname === 'antbank-cdn.marmot-cloud.com'
+          && url.pathname.startsWith('/file/') && fontFile.test(url.pathname)) return true;
     } catch { /* scheme-only values fall through */ }
   }
   // YouTube live stream manifests.
