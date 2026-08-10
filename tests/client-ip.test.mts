@@ -1,8 +1,24 @@
 import assert from 'node:assert/strict';
-import { describe, it } from 'node:test';
+import { describe, it, afterEach } from 'node:test';
 
-import { getClientIp as getServerClientIp } from '../server/_shared/client-ip.ts';
-import { getClientIp as getApiClientIp } from '../api/_client-ip.js';
+import {
+  getClientIp as getServerClientIp,
+  resetEdgeProofMismatchWarnedForTest as resetServer,
+} from '../server/_shared/client-ip.ts';
+import {
+  getClientIp as getApiClientIp,
+  resetEdgeProofMismatchWarnedForTest as resetApi,
+} from '../api/_client-ip.js';
+
+let originalWarn: typeof console.warn | null = null;
+
+afterEach(() => {
+  if (originalWarn !== null) {
+    console.warn = originalWarn;
+    originalWarn = null;
+  }
+  delete process.env.CF_EDGE_PROOF_SECRET;
+});
 
 function makeRequest(proof: string): Request {
   return new Request('https://worldmonitor.app/api/test', {
@@ -74,6 +90,56 @@ describe('client-IP edge-proof comparison (#5239)', () => {
     } finally {
       if (originalSecret == null) delete process.env.CF_EDGE_PROOF_SECRET;
       else process.env.CF_EDGE_PROOF_SECRET = originalSecret;
+    }
+  });
+});
+
+describe('client-IP proof-mismatch canary (#6431)', () => {
+  it('warns once per isolate when cf-connecting-ip is present but the proof is absent or mismatched', () => {
+    for (const { getClientIp, reset } of [
+      { getClientIp: getServerClientIp, reset: resetServer },
+      { getClientIp: getApiClientIp, reset: resetApi },
+    ]) {
+      let warnings = 0;
+      originalWarn = console.warn;
+      console.warn = () => { warnings += 1; };
+      try {
+        reset();
+        process.env.CF_EDGE_PROOF_SECRET = 'edge-secret-xyz';
+        // Miss: secret configured, header absent.
+        getClientIp(makeRequest(''));
+        assert.ok(warnings >= 1, 'must warn when proof header is absent');
+        // Miss: secret configured, header mismatched.
+        getClientIp(makeRequest('wrong'));
+        getClientIp(makeRequest('edge-secret-xyz-with-extra'));
+        // warn-once: still exactly one warning for the whole isolate.
+        assert.equal(warnings, 1, 'must warn exactly once per isolate');
+      } finally {
+        console.warn = originalWarn;
+        originalWarn = null;
+        delete process.env.CF_EDGE_PROOF_SECRET;
+      }
+    }
+  });
+
+  it('does not warn when the proof matches (normal transit)', () => {
+    for (const { getClientIp, reset } of [
+      { getClientIp: getServerClientIp, reset: resetServer },
+      { getClientIp: getApiClientIp, reset: resetApi },
+    ]) {
+      let warnings = 0;
+      originalWarn = console.warn;
+      console.warn = () => { warnings += 1; };
+      try {
+        reset();
+        process.env.CF_EDGE_PROOF_SECRET = 'edge-secret-xyz';
+        getClientIp(makeRequest('edge-secret-xyz'));
+        assert.equal(warnings, 0, 'must not warn when proof matches');
+      } finally {
+        console.warn = originalWarn;
+        originalWarn = null;
+        delete process.env.CF_EDGE_PROOF_SECRET;
+      }
     }
   });
 });

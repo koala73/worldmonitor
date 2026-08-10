@@ -34,6 +34,35 @@ export function hasCloudflareTransitProof(request) {
   return constantTimeEqual((request.headers.get(CF_EDGE_PROOF_HEADER) ?? '').trim(), secret);
 }
 
+// One-per-isolate warning that the edge-proof is not matching, so a missing
+// CF_EDGE_PROOF_SECRET or a Cloudflare rule that stopped covering this route
+// cannot regress silently. The dangerous state is cf-connecting-ip PRESENT
+// (the request really did transit Cloudflare) but the x-wm-edge-proof header
+// absent or mismatched: getClientIp then falls back to x-real-ip, which
+// Vercel sets to its peer — the Cloudflare PoP — so every user behind that
+// PoP shares one rate-limit bucket and per-IP budgets look enforced but are
+// not (issue #6431). Keep this dependency-free and in sync with
+// server/_shared/client-ip.ts.
+let edgeProofMismatchWarned = false;
+export function warnEdgeProofNotProving() {
+  if (edgeProofMismatchWarned) return;
+  edgeProofMismatchWarned = true;
+  // One line, greppable in Vercel logs; not a per-request log. Follows the
+  // rate-limit degraded-mode console.error precedent (api/_rate-limit.js).
+  console.warn(
+    '[client-ip] cf-connecting-ip present but x-wm-edge-proof missing/mismatched — rate-limit buckets keyed by Cloudflare PoP (x-real-ip), not per user. Fix CF_EDGE_PROOF_SECRET or the Cloudflare header transform rule. Issue #6431',
+  );
+}
+
+// Test seam: the warn-once flag is module state, so a suite that exercises the
+// warning in one test must be able to reset it for the next. Real isolates
+// never call this — a fresh isolate starts with the flag clear, which is
+// exactly what the once-per-isolate contract needs. Mirrors the
+// resetRateLimitFallbackForTest pattern.
+export function resetEdgeProofMismatchWarnedForTest() {
+  edgeProofMismatchWarned = false;
+}
+
 export function getClientIp(request) {
   const cf = (request.headers.get('cf-connecting-ip') ?? '').trim();
   const xr = (request.headers.get('x-real-ip') ?? '').trim();
@@ -46,5 +75,11 @@ export function getClientIp(request) {
   // and the client-settable x-forwarded-for (#3531) are deliberately NOT
   // fallbacks here.
   if (cf && hasCloudflareTransitProof(request)) return cf;
+  // The precise "looks enforced but is shared" state (#6431): the request
+  // really did transit Cloudflare (cf-connecting-ip present and real) but
+  // proof of CF transit is missing, so the user just joined the PoP-shared
+  // x-real-ip bucket. Warn once per isolate so a rule/secret regression
+  // surfaces in logs without spamming them.
+  if (cf) warnEdgeProofNotProving();
   return xr || UNKNOWN_CLIENT_IP;
 }
