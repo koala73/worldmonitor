@@ -16,6 +16,7 @@ import {
   GLOBAL_RATE_LIMIT_FALLBACK_READ_ROUTES,
   RATE_LIMIT_DEGRADED_HEADERS,
   UNKNOWN_CLIENT_IP,
+  __ENDPOINT_LIMITER_DEADLINES_FOR_TEST,
   __resetRateLimitForTest,
   checkEndpointRateLimit,
   checkFailClosedScopedIpRateLimit,
@@ -572,6 +573,21 @@ describe('rate-limit constants', () => {
 
   it('UNKNOWN_CLIENT_IP is the literal "unknown" so the api/ mirror stays string-equal', () => {
     assert.equal(UNKNOWN_CLIENT_IP, 'unknown');
+  });
+
+  // The abort deadline and the SDK decision deadline are a pair, and their
+  // test-context gap is what makes 'abort a stalled Redis fetch before failing
+  // closed (#6236)' deterministic rather than a coin flip. The abort signal is
+  // armed lazily -- the Upstash client calls the `signal` factory only when it
+  // builds the request -- so the gap has to cover that arming cost, measured at
+  // 8-71ms on an idle machine. The original 25/20 pair left 1.1ms at worst.
+  it('keeps the Redis abort deadline far enough ahead of the limiter decision (#6236)', () => {
+    const { decisionMs, abortMs } = __ENDPOINT_LIMITER_DEADLINES_FOR_TEST;
+    assert.ok(abortMs > 0, 'the Upstash fetch abort deadline must stay armed');
+    assert.ok(
+      decisionMs - abortMs >= 100,
+      `the abort must fire well before the decision resolves; gap is ${decisionMs - abortMs}ms`,
+    );
   });
 });
 

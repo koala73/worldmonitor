@@ -1990,7 +1990,7 @@ export async function runSeed(domain, resource, canonicalKey, fetchFn, opts = {}
     sourceVersion,         // new — required when declareRecords is passed
     schemaVersion,         // new — required when declareRecords is passed
     zeroIsValid = false,   // new — when true, recordCount=0 is OK_ZERO, not RETRY
-    contentMeta,           // (rawData) => {newestItemAt, oldestItemAt} | null
+    contentMeta,           // (rawData, runStartedAtMs) => {newestItemAt, oldestItemAt} | null
     maxContentAgeMin,      // positive integer minutes — opts in together with contentMeta
     fetchPhaseTimeoutMs,   // hard ceiling on the fetch phase; defaults to lockTtlMs + margin (#4786)
   } = opts;
@@ -2157,7 +2157,11 @@ export async function runSeed(domain, resource, canonicalKey, fetchFn, opts = {}
     : lockTtlMs + FETCH_PHASE_DEADLINE_MARGIN_MS;
   let data;
   try {
-    data = await raceFetchDeadline(withRetry(fetchFn), fetchDeadlineMs, `${domain}:${resource}`);
+    data = await raceFetchDeadline(
+      withRetry(() => fetchFn({ runStartedAtMs: startMs })),
+      fetchDeadlineMs,
+      `${domain}:${resource}`,
+    );
   } catch (err) {
     // Keep the SIGTERM handler installed across the fetch-failure
     // cleanup. Earlier code did `process.off('SIGTERM', sigTermHandler)`
@@ -2201,7 +2205,7 @@ export async function runSeed(domain, resource, canonicalKey, fetchFn, opts = {}
     let contentOldestAt = null;
     if (contentAgeOptedIn) {
       try {
-        const result = contentMeta(data);
+        const result = contentMeta(data, startMs);
         if (result && typeof result === 'object'
             && Number.isFinite(result.newestItemAt) && result.newestItemAt > 0
             && Number.isFinite(result.oldestItemAt) && result.oldestItemAt > 0) {

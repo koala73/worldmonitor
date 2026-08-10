@@ -27,11 +27,28 @@ const REDIS_TEST_RETRY_OPTS: { retry?: false } = process.env.NODE_TEST_CONTEXT ?
 // when this deadline wins the Redis race. Endpoint policies inspect that
 // reason below and fail closed; keeping the SDK timeout enabled bounds the
 // outage latency instead of waiting for the platform function timeout.
-const ENDPOINT_RATE_LIMIT_TIMEOUT_MS = process.env.NODE_TEST_CONTEXT ? 25 : 5_000;
+const ENDPOINT_RATE_LIMIT_TIMEOUT_MS = process.env.NODE_TEST_CONTEXT ? 250 : 5_000;
 // Abort the underlying Upstash fetch just before the SDK's availability-first
 // race expires. Without this, the SDK returns its timeout result but leaves the
 // Redis request alive in the isolate for an unbounded transport stall.
 const ENDPOINT_REDIS_ABORT_TIMEOUT_MS = process.env.NODE_TEST_CONTEXT ? 20 : 4_500;
+// The two deadlines are a PAIR, and the NODE_TEST_CONTEXT pair is deliberately
+// not the production ratio scaled down. Production's ordering is safe because
+// its 500ms gap dwarfs the few milliseconds the Upstash client needs to build a
+// request and call the `signal` factory in getEndpointRatelimit() -- the abort
+// timer does not start until then, while the SDK's decision timer starts at
+// limit(). Under the node test runner that arming cost is 8-71ms (tsx compile
+// plus per-test module re-import dominate it), so the original 25/20 pair left
+// as little as 1.1ms of headroom and inverted under `--test-concurrency=16`:
+// the decision resolved first and the transport was still pending when the
+// assertion read it. The gap therefore has to exceed the arming cost rather
+// than mirror the production ratio -- a short abort so the suite still fails
+// fast, with the decision deadline well behind it. Pinned by
+// tests/rate-limit.test.mts.
+export const __ENDPOINT_LIMITER_DEADLINES_FOR_TEST = Object.freeze({
+  decisionMs: ENDPOINT_RATE_LIMIT_TIMEOUT_MS,
+  abortMs: ENDPOINT_REDIS_ABORT_TIMEOUT_MS,
+});
 
 let ratelimit: Ratelimit | null = null;
 const GLOBAL_RATE_LIMIT = 600;
