@@ -86,7 +86,20 @@ export function reportServerError(
     const isCloudflareEdgeError = res.status >= 520 && res.status <= 527;
     const message = `API ${res.status}: ${path}`;
     const level: 'warning' | 'error' = isCloudflareEdgeError ? 'warning' : 'error';
-    const tags = { kind: isCloudflareEdgeError ? 'api_cf_5xx' : 'api_5xx' };
+    // `status` is a tag, not just an `extra`: `extra` is not indexed, so a
+    // status that is only there can be read one event at a time but never
+    // aggregated. Both sibling fingerprint sites mirror every grouping
+    // dimension into tags for that reason — analytics-collector-transport.ts
+    // tags `status` beside its fingerprint, and api/user-prefs.ts promotes
+    // fields out of `extra` explicitly to make them searchable. Without it
+    // `kind:api_cf_5xx` is queryable but `status:503` is not, so triage cannot
+    // ask "every 503 this week, across all routes" — the exact question that
+    // separated this issue's 503s from its 520s. Cardinality is the bounded
+    // 5xx set, same as the fingerprint's.
+    const tags = {
+      kind: isCloudflareEdgeError ? 'api_cf_5xx' : 'api_5xx',
+      status: String(res.status),
+    };
     const extra = { path, status: res.status };
     // Group explicitly rather than letting Sentry infer it. These are
     // message-only events — `attachStacktrace` defaults to false and is never

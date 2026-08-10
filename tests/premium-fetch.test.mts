@@ -598,6 +598,21 @@ describe('reportServerError', () => {
     );
   });
 
+  it('exposes status as a searchable tag, not only in extra', () => {
+    // Sentry does not index `extra`, so a status that lives only there is
+    // readable per event but never aggregable. Both sibling fingerprint sites
+    // mirror their grouping dimensions into tags; this pins that parity so a
+    // triage query like `kind:api_5xx status:503` keeps working.
+    const tagsFor = (status: number) => {
+      const { calls, enqueue } = makeSpy();
+      reportServerError(new Response('x', { status }), PUBLIC_TARGET, enqueue);
+      return calls[0].ctx.tags;
+    };
+    assert.equal(tagsFor(503).status, '503');
+    assert.equal(tagsFor(520).status, '520');
+    assert.equal(tagsFor(520).kind, 'api_cf_5xx', 'kind must survive alongside status');
+  });
+
   it('classifies the Cloudflare range at its exact boundaries', () => {
     // The 520-527 window now feeds the grouping key, not just the level and
     // tag, so an off-by-one here would re-split live issues rather than only
