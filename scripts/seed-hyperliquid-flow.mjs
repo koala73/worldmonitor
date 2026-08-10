@@ -83,6 +83,26 @@ export function scoreBasis(mark, oracle, threshold) {
   return clamp((Math.abs(mark - oracle) / oracle / threshold) * 100);
 }
 
+function parsePositiveOpenInterest(value) {
+  if (typeof value === 'number') {
+    return Number.isFinite(value) && value > 0 ? value : Number.NaN;
+  }
+  if (typeof value !== 'string' || value.trim() === '') return Number.NaN;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : Number.NaN;
+}
+
+function trailingValidOiSamples(values) {
+  if (!Array.isArray(values)) return [];
+  let start = values.length;
+  while (start > 0) {
+    const sample = values[start - 1];
+    if (typeof sample !== 'number' || !Number.isFinite(sample) || sample <= 0) break;
+    start -= 1;
+  }
+  return /** @type {number[]} */ (values.slice(start));
+}
+
 /**
  * Compute composite score and alerts for one asset.
  *
@@ -95,23 +115,24 @@ export function scoreBasis(mark, oracle, threshold) {
  * while the score is still missing comparable baseline history.
  *
  * @param {{ symbol: string; display: string; class: 'crypto'|'commodity'; group: string }} meta
- * @param {Record<string, string>} ctx
+ * @param {Record<string, unknown>} ctx
  * @param {any} prevAsset
  * @param {{ coldStart?: boolean; suppressOiDelta?: boolean }} [opts]
  */
 export function computeAsset(meta, ctx, prevAsset, opts = {}) {
   const t = THRESHOLDS[meta.class];
   const fundingRate = Number(ctx.funding);
-  const currentOi = Number(ctx.openInterest);
+  // `Number(null)` and `Number('')` both produce zero. Treat those upstream
+  // shapes, nonnumeric values, and non-positive OI as a continuity break.
+  const currentOi = parsePositiveOpenInterest(ctx.openInterest);
+  const currentOiValid = Number.isFinite(currentOi);
   const markPx = Number(ctx.markPx);
   const oraclePx = Number(ctx.oraclePx);
   const dayNotional = Number(ctx.dayNtlVlm);
   const prevOi = prevAsset?.openInterest ?? null;
   const prevOiSamples = opts.suppressOiDelta
     ? []
-    : /** @type {number[]} */ ((prevAsset?.sparkOi || []).filter(
-      /** @param {unknown} v */ (v) => Number.isFinite(v)
-    ));
+    : trailingValidOiSamples(prevAsset?.sparkOi);
   const prevVolSamples = /** @type {number[]} */ ((prevAsset?.sparkVol || []).filter(
     /** @param {unknown} v */ (v) => Number.isFinite(v)
   ));
@@ -135,6 +156,7 @@ export function computeAsset(meta, ctx, prevAsset, opts = {}) {
   // A long gap resets only OI-derived history; volume remains a rolling 24h
   // baseline and is intentionally retained.
   const oiBaselineReady = opts.suppressOiDelta !== true
+    && currentOiValid
     && prevOiSamples.length >= 12
     && Number.isFinite(prevOi)
     && prevOi > 0;
@@ -149,11 +171,15 @@ export function computeAsset(meta, ctx, prevAsset, opts = {}) {
   );
 
   const sparkFunding = shiftAndAppend(prevAsset?.sparkFunding, Number.isFinite(fundingRate) ? fundingRate : 0);
-  const sparkOi      = shiftAndAppend(opts.suppressOiDelta ? [] : prevOiSamples, Number.isFinite(currentOi) ? currentOi : 0);
+  // Never append a synthetic zero for invalid OI. Reset the series so the next
+  // valid poll must build a new consecutive one-hour baseline.
+  const sparkOi      = currentOiValid
+    ? shiftAndAppend(opts.suppressOiDelta ? [] : prevOiSamples, currentOi)
+    : [];
   // Score history is also discontinuous across an outage because its OI
   // component is rebuilding. Restart it so downstream charts do not join two
   // non-comparable regimes into one continuous sparkline.
-  const sparkScore   = shiftAndAppend(opts.suppressOiDelta ? [] : prevAsset?.sparkScore, composite);
+  const sparkScore   = shiftAndAppend(opts.suppressOiDelta || !currentOiValid ? [] : prevAsset?.sparkScore, composite);
   const sparkVol     = shiftAndAppend(prevAsset?.sparkVol,     Number.isFinite(dayNotional) ? dayNotional : 0);
 
   // Warmup stays TRUE until both baselines are usable — cold-start OR insufficient
@@ -174,7 +200,7 @@ export function computeAsset(meta, ctx, prevAsset, opts = {}) {
     class: meta.class,
     group: meta.group,
     funding: Number.isFinite(fundingRate) ? fundingRate : null,
-    openInterest: Number.isFinite(currentOi) ? currentOi : null,
+    openInterest: currentOiValid ? currentOi : null,
     markPx: Number.isFinite(markPx) ? markPx : null,
     oraclePx: Number.isFinite(oraclePx) ? oraclePx : null,
     dayNotional: Number.isFinite(dayNotional) ? dayNotional : null,

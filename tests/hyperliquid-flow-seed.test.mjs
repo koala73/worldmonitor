@@ -196,6 +196,51 @@ describe('warmup persists until baseline is usable (not just first poll)', () =>
   });
 });
 
+describe('computeAsset OI continuity', () => {
+  it('keeps warmup active and resets OI history when current OI is invalid', () => {
+    const prev = {
+      symbol: 'BTC', openInterest: 1000,
+      sparkVol: Array(12).fill(1_000_000),
+      sparkFunding: [], sparkOi: Array(12).fill(1000), sparkScore: Array(12).fill(10),
+    };
+    const highRiskCtx = {
+      funding: '0.002', markPx: '105', oraclePx: '100', dayNtlVlm: '10000000',
+    };
+
+    for (const invalidOi of [null, '', 'not-a-number', '0', '-1']) {
+      const out = computeAsset(META_BTC, { ...highRiskCtx, openInterest: invalidOi }, prev);
+      assert.ok(out.composite >= ALERT_THRESHOLD, `expected inspectable partial score for OI=${invalidOi}`);
+      assert.equal(out.openInterest, null);
+      assert.equal(out.oiScore, 0);
+      assert.equal(out.warmup, true);
+      assert.deepEqual(out.sparkOi, []);
+      assert.deepEqual(out.sparkScore, [out.composite]);
+      assert.deepEqual(out.alerts, []);
+
+      const recovered = computeAsset(META_BTC, { ...highRiskCtx, openInterest: '1500' }, out);
+      assert.deepEqual(recovered.sparkOi, [1500]);
+      assert.equal(recovered.warmup, true);
+      assert.deepEqual(recovered.alerts, []);
+    }
+  });
+
+  it('does not join a new OI window across a legacy invalid sample', () => {
+    const prev = {
+      symbol: 'BTC', openInterest: 1000,
+      sparkVol: Array(12).fill(1_000_000),
+      sparkFunding: [], sparkOi: [...Array(12).fill(1000), 0, 1000], sparkScore: [],
+    };
+    const out = computeAsset(META_BTC, {
+      funding: '0.002', openInterest: '1500', markPx: '105', oraclePx: '100', dayNtlVlm: '10000000',
+    }, prev);
+
+    assert.deepEqual(out.sparkOi, [1000, 1500]);
+    assert.equal(out.oiScore, 0);
+    assert.equal(out.warmup, true);
+    assert.deepEqual(out.alerts, []);
+  });
+});
+
 describe('volume baseline uses the MOST RECENT window (slice(-12), not slice(0,12))', () => {
   // Regression: sparkVol is newest-at-tail via shiftAndAppend. Using slice(0,12)
   // anchors the baseline to the OLDEST window forever once len >= 12 + new samples
