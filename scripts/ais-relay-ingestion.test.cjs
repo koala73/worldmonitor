@@ -437,6 +437,37 @@ test('theater-posture Wingbits fallback publication is attributed to Wingbits, n
   }
 });
 
+test('theater-posture rejects Wingbits rows without usable theater coordinates', async () => {
+  const upstash = await createUpstashMock();
+  const { child, ready } = spawnRelay({
+    WINGBITS_API_KEY: 'test-wingbits-key',
+    RELAY_TEST_WINGBITS_GHOST_ROWS: '1',
+    ...upstash.env,
+  });
+
+  try {
+    const { port } = await ready;
+    const trigger = await get(port, '/__test/seed-theater-posture');
+    assert.equal(trigger.status, 200, `trigger failed: ${trigger.body}`);
+
+    assert.equal(upstash.setsFor('theater-posture:sebuf:v1').length, 0);
+    assert.equal(upstash.setsFor('theater_posture:sebuf:stale:v1').length, 0);
+    assert.equal(upstash.setsFor('theater-posture:sebuf:backup:v1').length, 0);
+    assert.equal(upstash.setsFor('seed-meta:theater-posture').length, 0);
+
+    const metrics = JSON.parse((await get(port, '/metrics')).body);
+    assert.equal(metrics.theaterPosture.lastRun.source, 'vessel-only');
+    assert.equal(metrics.theaterPosture.lastRun.flightCount, 0);
+    assert.equal(metrics.theaterPosture.lastRun.published, false);
+    assert.equal(metrics.theaterPosture.lastRun.reason, 'no-input-records');
+    assert.equal(metrics.theaterPosture.emptyRejectionsSinceBoot, 1);
+    assert.deepEqual(metrics.theaterPosture.sourceCountsSinceBoot, { opensky: 0, adsbLol: 0, wingbits: 0, vesselOnly: 0 });
+  } finally {
+    await stop(child);
+    await upstash.close();
+  }
+});
+
 test('theater-posture publishes valid vessel-only evidence', async () => {
   const upstash = await createUpstashMock();
   const { child, ready } = spawnRelay({
@@ -490,7 +521,13 @@ test('theater-posture reports a canonical envelope write failure separately', as
 
     const metrics = JSON.parse((await get(port, '/metrics')).body);
     assert.equal(metrics.theaterPosture.lastRun.redisOk, false);
-    assert.equal(metrics.theaterPosture.lastRun.seedMetaOk, true);
+    assert.equal(metrics.theaterPosture.lastRun.seedMetaOk, false);
+    assert.equal(metrics.theaterPosture.lastRun.published, false);
+    assert.equal(metrics.theaterPosture.lastRun.reason, 'write-failed');
+    assert.ok(metrics.theaterPosture.lastRun.attemptedAt);
+    assert.ok(!('seededAt' in metrics.theaterPosture.lastRun));
+    assert.equal(upstash.setsFor('seed-meta:theater-posture').length, 0);
+    assert.deepEqual(metrics.theaterPosture.sourceCountsSinceBoot, { opensky: 0, adsbLol: 0, wingbits: 0, vesselOnly: 0 });
   } finally {
     await stop(child);
     await upstash.close();
@@ -516,6 +553,11 @@ test('theater-posture reports a seed-meta write failure separately', async () =>
     const metrics = JSON.parse((await get(port, '/metrics')).body);
     assert.equal(metrics.theaterPosture.lastRun.redisOk, true);
     assert.equal(metrics.theaterPosture.lastRun.seedMetaOk, false);
+    assert.equal(metrics.theaterPosture.lastRun.published, false);
+    assert.equal(metrics.theaterPosture.lastRun.reason, 'write-failed');
+    assert.ok(metrics.theaterPosture.lastRun.attemptedAt);
+    assert.ok(!('seededAt' in metrics.theaterPosture.lastRun));
+    assert.deepEqual(metrics.theaterPosture.sourceCountsSinceBoot, { opensky: 0, adsbLol: 0, wingbits: 0, vesselOnly: 0 });
   } finally {
     await stop(child);
     await upstash.close();

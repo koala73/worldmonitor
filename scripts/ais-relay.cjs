@@ -4509,13 +4509,20 @@ async function fetchTheaterFlightsFromWingbits() {
       for (const f of flightList) {
         const icao24 = f.h || f.icao24 || f.id;
         if (!icao24 || seenIds.has(icao24)) continue;
-        seenIds.add(icao24);
         const callsign = (f.f || f.callsign || f.flight || '').trim();
         if (!theaterIsMilCallsign(callsign)) continue;
+        const lat = Number(f.la ?? f.latitude ?? f.lat);
+        const lon = Number(f.lo ?? f.longitude ?? f.lon ?? f.lng);
+        const inTheater = Number.isFinite(lat) && Number.isFinite(lon) && POSTURE_THEATERS.some(
+          (theater) => lat >= theater.bounds.south && lat <= theater.bounds.north &&
+            lon >= theater.bounds.west && lon <= theater.bounds.east,
+        );
+        if (!inTheater) continue;
+        seenIds.add(icao24);
         flights.push({
           id: icao24, callsign,
-          lat: f.la || f.latitude || f.lat,
-          lon: f.lo || f.longitude || f.lon || f.lng,
+          lat,
+          lon,
           altitude: f.ab || f.altitude || f.alt || 0,
           heading: f.th || f.heading || f.track || 0,
           speed: f.gs || f.groundSpeed || f.speed || f.velocity || 0,
@@ -4667,23 +4674,29 @@ async function seedTheaterPosture() {
     // differ (the seeder's 'wingbits' is its Tier-1 normal path, ours is the
     // last-resort fallback). publicationId pairs this metadata with the
     // canonical envelope _seed.groupId for cross-producer consistency checks.
-    const seedMetaOk = await upstashSet('seed-meta:theater-posture', { fetchedAt: publishedAt, recordCount: inputRecordCount, sourceVersion: flightSource, producer: 'ais-relay', publicationId }, 604800);
-    theaterPostureSourceCounts[THEATER_POSTURE_SOURCE_COUNT_KEYS[flightSource]] += 1;
+    // Do not advance the freshness marker when the canonical envelope failed:
+    // health must continue to describe the last readable canonical snapshot.
+    const seedMetaOk = ok1 && await upstashSet('seed-meta:theater-posture', { fetchedAt: publishedAt, recordCount: inputRecordCount, sourceVersion: flightSource, producer: 'ais-relay', publicationId }, 604800);
+    const redisOk = ok1 && ok2 && ok3;
+    const published = ok1 && seedMetaOk;
+    if (published) theaterPostureSourceCounts[THEATER_POSTURE_SOURCE_COUNT_KEYS[flightSource]] += 1;
+    const completedAt = new Date().toISOString();
     theaterPostureLastRun = {
-      seededAt: new Date().toISOString(),
+      ...(published ? { seededAt: completedAt } : { attemptedAt: completedAt }),
       source: flightSource,
       flightCount: flights.length,
       vesselCount: totalVessels,
-      published: true,
-      redisOk: ok1 && ok2 && ok3,
+      published,
+      redisOk,
       // Reported separately from redisOk: health gates staleness on the
       // seed-meta key, so a failed attribution write must not hide behind
       // three green envelope writes.
       seedMetaOk,
+      ...(published ? {} : { reason: 'write-failed' }),
     };
     const elevated = theaters.filter((t) => t.postureLevel !== 'normal').length;
     const elapsed = ((Date.now() - t0) / 1000).toFixed(1);
-    console.log(`[TheaterPosture] Seeded ${flights.length} mil flights (source=${flightSource}), ${totalVessels} vessels, ${theaters.length} theaters (${elevated} elevated), redis: ${ok1 && ok2 && ok3 ? 'OK' : 'PARTIAL'}, seed-meta: ${seedMetaOk ? 'OK' : 'FAILED'} [${elapsed}s]`);
+    console.log(`[TheaterPosture] ${published ? 'Seeded' : 'Publication failed for'} ${flights.length} mil flights (source=${flightSource}), ${totalVessels} vessels, ${theaters.length} theaters (${elevated} elevated), redis: ${redisOk ? 'OK' : 'PARTIAL'}, seed-meta: ${seedMetaOk ? 'OK' : 'FAILED'} [${elapsed}s]`);
   } finally {
     await upstashReleaseLockIfOwner(THEATER_POSTURE_LOCK_KEY, publicationId);
   }
