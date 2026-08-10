@@ -48,3 +48,25 @@ test('does not accept wildcard parentOrigin query parameter', async () => {
   assert.equal(html.includes('parentOrigin="*"'), false);
   assert.match(html, /parentOrigin="https:\/\/worldmonitor\.app"/);
 });
+
+test('accepts only team-scoped Vercel preview origins', async () => {
+  // Team-scoped deployment and git-branch aliases stay allowed.
+  for (const origin of [
+    'https://worldmonitor-abc123-eliewm.vercel.app',
+    'https://worldmonitor-git-my-branch-eliewm.vercel.app',
+  ]) {
+    const html = await (await handler(makeRequest(`?videoId=iEpJwprxDdk&origin=${origin}`))).text();
+    assert.equal(html.includes(`origin:"${origin}"`), true, `${origin} should be accepted verbatim`);
+  }
+
+  // A bare worldmonitor-*.vercel.app is any third party's Vercel project — it
+  // must fall back to the canonical origin rather than being echoed back.
+  for (const origin of [
+    'https://worldmonitor-abc123.vercel.app',
+    'https://worldmonitor-attacker.vercel.app',
+  ]) {
+    const html = await (await handler(makeRequest(`?videoId=iEpJwprxDdk&origin=${origin}`))).text();
+    assert.equal(html.includes(`origin:"${origin}"`), false, `${origin} must not be accepted`);
+    assert.match(html, /origin:"https:\/\/worldmonitor\.app"/);
+  }
+});

@@ -1,4 +1,5 @@
 import { getCorsHeaders, isDisallowedOrigin } from './_cors.js';
+import { checkRateLimit } from './_rate-limit.js';
 import { jsonResponse } from './_json-response.js';
 // @ts-expect-error — JS module, no declaration file
 import { readJsonFromUpstash, setCachedData } from './_upstash-json.js';
@@ -40,6 +41,14 @@ export default async function handler(req, ctx) {
       },
     });
   }
+
+  // Only a cache MISS reaches Nominatim, whose usage policy caps request volume
+  // per client, so the budget is charged here rather than above the cache read.
+  // Metering hits too would add a second serial Upstash round trip to the fast
+  // path (0.1-degree keys plus a 7-day TTL make hits the steady state) without
+  // protecting anything: a hit never touches Nominatim.
+  const rateLimited = await checkRateLimit(req, cors, { scope: 'reverse-geocode', limit: 120, window: '60 s', ctx });
+  if (rateLimited) return rateLimited;
 
   try {
     const resp = await fetch(

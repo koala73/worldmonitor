@@ -311,6 +311,12 @@ export class LiveWebcamsPanel extends Panel {
       // The sidecar serves the embed from http://127.0.0.1:PORT which YouTube accepts.
       const params = new URLSearchParams({ videoId, autoplay: '1', mute: '1' });
       if (quality !== 'auto') params.set('vq', quality);
+      // parentOrigin = actual parent frame origin, so the sidecar targets its
+      // yt-ready/yt-state postMessages at us instead of broadcasting to '*'.
+      // Required: the sidecar now falls back to its own origin rather than the
+      // wildcard, so without this the messages handleEmbedMessage relies on
+      // would never be delivered. Mirrors LiveNewsPanel's desktop embed URL.
+      params.set('parentOrigin', window.location.origin);
       return `http://localhost:${getLocalApiPort()}/api/youtube-embed?${params.toString()}`;
     }
     const vq = quality !== 'auto' ? `&vq=${quality}` : '';

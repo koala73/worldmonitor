@@ -25,6 +25,17 @@ export {
 // REDIS_TEST_RETRY_OPTS in server/_shared/rate-limit.ts and PR #3963.
 const REDIS_TEST_RETRY_OPTS = process.env.NODE_TEST_CONTEXT ? { retry: false } : {};
 
+// @upstash/ratelimit's own availability-first race defaults to 5000ms, and the
+// Redis client above will happily burn the full ~4.3s retry ladder underneath
+// it. Without an explicit deadline the SDK returns its timeout result but
+// leaves the Redis request alive in the isolate for an unbounded transport
+// stall — so a degraded Upstash makes every rate-limited route slower AND
+// still fails open. Abort the underlying fetch just before the SDK's race
+// expires. Mirrors ENDPOINT_REDIS_ABORT_TIMEOUT_MS / the timeout comment in
+// server/_shared/rate-limit.ts, which already carries this fix on the Node path.
+const REDIS_ABORT_TIMEOUT_MS = process.env.NODE_TEST_CONTEXT ? 20 : 4_500;
+const RATE_LIMIT_TIMEOUT_MS = process.env.NODE_TEST_CONTEXT ? 25 : 5_000;
+
 const DEFAULT_RATE_LIMIT_SCOPE = 'global';
 const DEFAULT_RATE_LIMIT = 600;
 const DEFAULT_RATE_LIMIT_WINDOW = '60 s';
@@ -49,10 +60,16 @@ function getRatelimit(policy) {
   if (!url || !token) return null;
 
   const ratelimit = new Ratelimit({
-    redis: new Redis({ url, token, ...REDIS_TEST_RETRY_OPTS }),
+    redis: new Redis({
+      url,
+      token,
+      signal: () => AbortSignal.timeout(REDIS_ABORT_TIMEOUT_MS),
+      ...REDIS_TEST_RETRY_OPTS,
+    }),
     limiter: Ratelimit.slidingWindow(policy.limit, policy.window),
     prefix: policy.scope === DEFAULT_RATE_LIMIT_SCOPE ? 'rl' : `rl:${policy.scope}`,
     analytics: false,
+    timeout: RATE_LIMIT_TIMEOUT_MS,
   });
   ratelimits.set(cacheKey, ratelimit);
 

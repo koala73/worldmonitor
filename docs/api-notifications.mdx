@@ -97,7 +97,20 @@ SSR'd YouTube embed iframe with CSP-compatible wrapping. Used to bypass WKWebVie
 
 ### `GET /api/youtube/live?channel=<handle>` or `?videoId=<11-char-id>`
 
-Returns live-stream metadata for a YouTube channel (`channel` — handle with or without `@` prefix) or a specific video (`videoId` — 11-char YouTube id). At least one of the two params is required; returns `400 Missing channel or videoId parameter` otherwise. Response cached 10 min for channel lookups, 1 hour for videoId lookups.
+Returns live-stream metadata for a YouTube channel (`channel` — handle with or without `@` prefix, or a canonical `UC…` channel id) or a specific video (`videoId` — 11-char YouTube id). At least one of the two params is required. Response cached 10 min for channel lookups, 1 hour for videoId lookups.
+
+Error responses:
+
+| Status | `error` | When |
+| --- | --- | --- |
+| 400 | `Missing channel or videoId parameter` | Neither param supplied |
+| 400 | `Invalid channel parameter` | `channel` is not a `@handle` (3-30 letters/digits/`._-`, Unicode letters allowed) or a `UC` + 22-char channel id |
+| 400 | `Invalid videoId parameter` | `videoId` is not exactly 11 characters of `[A-Za-z0-9_-]` |
+| 429 | `Too many requests` | Per-IP budget exceeded — see rate limit below |
+
+The two `Invalid …` responses also carry an `error_description` spelling out the accepted shape, so a programmatic caller can self-correct without reading the source.
+
+**Rate limit:** 60 requests/minute per IP. A 429 carries the standard `RateLimit-Policy` / `RateLimit-Limit` / `RateLimit-Remaining` / `RateLimit-Reset` and `Retry-After` headers.
 
 Proxies to the Railway relay first (residential proxy for YouTube scraping). On relay failure, falls back to YouTube oEmbed (for `videoId`) or direct channel scraping — both are unreliable from datacenter IPs.
 
