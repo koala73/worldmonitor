@@ -1917,7 +1917,7 @@ export class EventHandlerManager implements AppModule {
         this.restoreSnapshot(snapshot);
       } else {
         this.ctx.isPlaybackMode = false;
-        this.callbacks.loadAllData();
+        void this.callbacks.loadAllData();
       }
     });
 

@@ -34,6 +34,26 @@ jobs:
           SHA: ${{ github.event.workflow_run.head_sha }}
         run: |
           set -o pipefail
+          # A commit-status description is capped at 140 characters and GitHub
+          # answers 422 past it. Splicing the whole required-name list in made
+          # this job CRASH instead of posting its status once enough names were
+          # in the list — about seven (#6389, run 31357392032, all 20 pending).
+          # The failure arm is the dangerous one: no `gate` status posted at all
+          # reads as "missing", not "failure", to branch protection, to
+          # check-railway-deploy-drift.mjs and to the Seed Freshness Monitor.
+          # Keep the state and the COUNT, which survive truncation; the full
+          # list is already in this log.
+          gate_description() {
+            text="$1"
+            if [ "${#text}" -le 140 ]; then
+              printf '%s' "$text"
+            else
+              printf '%s...' "${text:0:137}"
+            fi
+          }
+          name_count() {
+            printf '%s\n' "$1" | tr ',' '\n' | wc -l | tr -d ' '
+          }
           # Every job of every workflow named in the workflow_run trigger above.
           # A job missing here is never inspected, so it reports red on the PR
           # while this gate still posts success — CI theatre, not a gate (#5402).
@@ -135,7 +155,7 @@ jobs:
             gh api "repos/$REPO/statuses/$SHA" --method POST \
               --field state="pending" \
               --field context="gate" \
-              --field description="Waiting for required PR gates: $pending"
+              --field description="$(gate_description "Waiting for required PR gates ($(name_count "$pending")): $pending")"
             continue
           fi
 
@@ -144,7 +164,7 @@ jobs:
             gh api "repos/$REPO/statuses/$SHA" --method POST \
               --field state="failure" \
               --field context="gate" \
-              --field description="Required PR gates did not pass: $failed"
+              --field description="$(gate_description "Required PR gates did not pass ($(name_count "$failed")): $failed")"
             continue
           fi
 

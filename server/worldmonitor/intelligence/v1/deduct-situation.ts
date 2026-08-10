@@ -8,10 +8,16 @@ import { cachedFetchJson, getCachedJson } from '../../../_shared/redis';
 import { sha256Hex } from './_shared';
 import { callLlmReasoning } from '../../../_shared/llm';
 // Issue #3724 (extension): prediction-market titles flow into the deduction
-// LLM's prompt. Use sanitizeForPrompt (semantic + structural), not the lighter
+// LLM's prompt. Use the semantic + structural sanitizer, not the lighter
 // sanitizeHeadline, so that a compromised market feed cannot inject
 // instruction-override phrases into the forecaster's context.
-import { sanitizeForPrompt } from '../../../_shared/llm-sanitize.js';
+//
+// The *Line* variant (#5857): each title is composed into a `- "..."` row and
+// the rows are newline-joined, so the newline is this block's delimiter.
+// sanitizeForPrompt preserves a lone newline by design -- correct for prose,
+// wrong here, where one feed-supplied newline forges an extra market row the
+// model reads as a separate, real datum.
+import { sanitizeForPromptLine } from '../../../_shared/llm-sanitize.js';
 import { buildDeductionPrompt, postProcessDeductionOutput } from './deduction-prompt';
 import { isCallerPremium } from '../../../_shared/premium-check';
 
@@ -37,7 +43,9 @@ function formatVolume(v: number): string {
   return `$${v}`;
 }
 
-function buildPredictionContext(query: string, bootstrap: PredictionBootstrap): string {
+// Exported for tests: the guard below is only meaningful if a test can drive a
+// newline-bearing title through the real builder.
+export function buildPredictionContext(query: string, bootstrap: PredictionBootstrap): string {
   const allMarkets = [
     ...(bootstrap.geopolitical ?? []),
     ...(bootstrap.tech ?? []),
@@ -66,7 +74,7 @@ function buildPredictionContext(query: string, bootstrap: PredictionBootstrap): 
   if (!matched.length) return '';
 
   const lines = matched.map((m) => {
-    const title = sanitizeForPrompt(m.title);
+    const title = sanitizeForPromptLine(m.title);
     if (!title) return null;
     const pct = Math.round(m.yesPrice / 5) * 5;
     const vol = formatVolume(m.volume);

@@ -348,6 +348,22 @@ describe('scheduled seed freshness monitor', () => {
         false,
         'humanitarianSummary recovered; do not suppress a future recurrence',
       );
+      assert.equal(
+        committed.acknowledged.some((entry) => entry.name === 'crossStraitActivityJapanMod'),
+        false,
+        'crossStraitActivityJapanMod stopped reporting SEED_ERROR and compact health now counts it OK; do not suppress a future recurrence',
+      );
+      const japanModFailure = applyAcceptanceBaseline(
+        [{ name: 'crossStraitActivityJapanMod', status: 'SEED_ERROR' }],
+        committed,
+        Date.parse('2026-08-10'),
+      );
+      assert.deepEqual(
+        japanModFailure.blocking.map((problem) => problem.name),
+        ['crossStraitActivityJapanMod'],
+        'a returning Japan MOD proxy block must reach the gate, not the suppression it used to carry (#5714)',
+      );
+      assert.deepEqual(japanModFailure.acknowledged, []);
       const humanitarianFailure = applyAcceptanceBaseline(
         [{ name: 'humanitarianSummary', status: 'SEED_ERROR' }],
         committed,

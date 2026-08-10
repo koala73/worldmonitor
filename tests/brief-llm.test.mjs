@@ -1839,6 +1839,23 @@ describe('generateStoryDescription — sanitisation + prefix bump (U5)', () => {
     );
   });
 
+  it('preserves prose newlines in the production Context prompt', async () => {
+    const body = 'Line one.\nLine two with spacing.';
+    const rec = makeRecordingLLM('A diplomatic summit opened in Vienna as foreign ministers met for talks on regional security today.');
+    const cache = { async cacheGet() { return null; }, async cacheSet() {} };
+
+    await generateStoryDescription(
+      story({ description: body }),
+      { ...cache, callLLM: rec.callLLM },
+    );
+
+    assert.strictEqual(rec.calls.length, 1, 'LLM called once');
+    assert.ok(
+      rec.calls[0].user.includes(`Context: ${body}`),
+      'production sanitisation must preserve a legitimate prose newline in the grounding context',
+    );
+  });
+
   it('writes cache under the v2 prefix (bumped 2026-04-24)', async () => {
     const setCalls = [];
     const cache = {
