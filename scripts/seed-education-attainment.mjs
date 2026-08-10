@@ -8,7 +8,8 @@
 //
 // Feeds the `education` dimension of the Country Resilience Index
 // (`scoreEducation` in `_dimension-scorers.ts`). See
-// `docs/methodology/education-attainment.md` for the construct.
+// the "Education" section of `docs/methodology/country-resilience-index.mdx`
+// for the construct.
 //
 // Why the FEMALE variant and not the total:
 //   The causal literature this construct rests on (Striessnig, Lutz & Patt

@@ -629,7 +629,8 @@ function normalizeHigherBetter(value: number, worst: number, best: number): numb
 }
 
 // Education attainment transform (female upper-secondary, 25+).
-// See docs/methodology/education-attainment.md for the construct.
+// See the "Education" section of docs/methodology/country-resilience-index.mdx
+// for the construct.
 //
 // Two segments with a slope drop at the bend. Decreasing slope is concave,
 // which is what the construct contract asks for on a development-adjacent
