@@ -190,6 +190,46 @@ itself.) `lastSynthesisFailureCode` is broader still: like the other
 last-known-good diagnostics above, it is published on every status whenever the
 producer recorded one.
 
+### JODI China Row
+
+`jodiOil`, `jodiGas` and `lngVulnerability` publish an extra `chinaRow` block
+whenever their producer recorded one:
+
+| Field | Meaning |
+|-------|---------|
+| `ok` | Whether China parsed into a usable record this run |
+| `reason` | Why it did not, from a closed vocabulary: `china-missing`, `china-invalid-month`, `china-stale`, `china-no-measurements` |
+| `dataMonth` | China's observation month, when it has one |
+| `ageMonths` | How many months behind the run that observation month is |
+| `unavailableSince` | Epoch milliseconds of the first run that **recorded** the gap, carried forward across runs. Best-effort: a run that cannot read the previous `seed-meta` (Redis blip, first run after deploy) re-dates it to that run. Read it as "first run that recorded this gap", never as a measured outage start |
+
+The block never moves the status. China's rows going unusable is an upstream
+fact no retry clears — every China row in both JODI files has carried
+`ASSESSMENT_CODE 3` ("null/uncertain") since at least 2026-08 — so grading it
+would be a warning nobody can act on. What it must not be is silent: the
+seeders publish the other 50-57 countries regardless of China, and this block
+is what names the country that dropped out.
+
+It describes the producer's **last completed publish**, like every other
+`seed-meta`-derived field: on a run that refused or failed, the previous
+block stays in place and ages alongside `seedAgeMin`. A producer that reported
+`status: "error"` publishes no block at all rather than relaying a verdict it
+never reached this run. The block is also **operator-only** — it names a
+country, so `?compact=1` strips it under the same rule as `contentFreshness`
+and the decision-group breakdown.
+
+Whether the *dataset* is still advancing is a separate, graded signal: both
+seeders declare `newestItemAt`/`maxContentAgeMin` from the newest month a
+quorum of countries reports a measurement for, so a JODI file that stops
+publishing reads `STALE_CONTENT` rather than passing as fresh, and one
+fast-reporting country cannot vouch for a frozen file. Countries whose every
+field parsed to null are not published at all, so the seeders' country floors
+count coverage rather than rows.
+
+Do not confuse `checks.jodiGas.chinaRow` with the `checks.chinaCoverage` entry
+below: the first is one country's row inside one source, the second is the
+fleet-wide China coverage summary.
+
 ### China Coverage Projection
 
 `chinaCoverage` projects the hourly Railway summary at
