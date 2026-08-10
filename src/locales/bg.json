@@ -365,7 +365,8 @@
     "consumerPrices": "Цени на Потрошувачи",
     "fearGreed": "Страв & Алчност",
     "marketBreadth": "Пазарна Ширина",
-    "climateNews": "Климатски Вести"
+    "climateNews": "Климатски Вести",
+    "fx": "Валутни курсове"
   },
   "commands": {
     "prefixes": {
@@ -1131,7 +1132,7 @@
         "ucdpEvents": "События от въоръжени конфликти",
         "displacementFlows": "Потоци на преместване",
         "climateAnomalies": "Климатични аномалии",
-        "weatherAlerts": "Météo алерти",
+        "weatherAlerts": "Метеорологични предупреждения за САЩ (NWS)",
         "strategicWaterways": "Стратегически водни пътища",
         "economicCenters": "Икономически центрове",
         "criticalMinerals": "Критични минерали",
@@ -1212,7 +1213,7 @@
           "infraDatacenters": "Клъстери за AI изчисления >=10 000 GPU",
           "infraOutages": "Прекъсвания на интернет и сривове на услуги",
           "naturalEventsTech": "Земетресения, бури, пожари (могат да засегнат центрове за данни)",
-          "weatherAlerts": "Предупреждения за тежки метеорологични условия",
+          "weatherAlerts": "Предупреждения за опасно време в САЩ (NWS)",
           "economicCenters": "Фондови борси и централни банки",
           "countriesOverlay": "Наслагване на имена на държави",
           "financeExchanges": "Основни световни борси по пазарен ранг",
@@ -1224,7 +1225,7 @@
           "financeOutages": "Интернет смущения, които могат да засегнат пазарните операции",
           "financeCyberThreats": "Инциденти със сигурността около финансова инфраструктура",
           "macroWaterways": "Стратегически тесни места за транспорт на суровини",
-          "weatherAlertsMarket": "Тежки метеорологични събития с пазарно значение",
+          "weatherAlertsMarket": "Опасни метеорологични явления в САЩ с пазарно значение (NWS)",
           "naturalEventsMacro": "Земетресения, пожари, наводнения и други природни бедствия",
           "timeRecent": "Филтриране на времеви данни до последните часове",
           "timeExtended": "Показване на данни за последната седмица, месец или всички",
@@ -1352,7 +1353,8 @@
       "newsSignals": "{{news}} новини • {{signals}} сигнали",
       "provenanceTitle": "Произход на обхвата: колко включени истории и отделни източници е избрано от този преглед",
       "compiledFrom": "Събрано от {{stories}} истории в {{sources}} източници",
-      "briefFreshness": "Генериран преди {{minutes}}м · най-нов източник {{hours}}ч стар"
+      "briefFreshness": "Генериран преди {{minutes}}м · най-нов източник {{hours}}ч стар",
+      "briefStoryDetails": "Story details ({{count}})"
     },
     "settings": {
       "exportSettings": "Експорт на настройки",
@@ -2137,6 +2139,17 @@
       "chart": {
         "title": "Ценова диаграма {{symbol}}",
         "close": "Затвори диаграмата"
+      },
+      "unavailable": {
+        "symbols": "{{symbols}} — {{reason}}",
+        "symbolsMore": "{{symbols}} +{{count}} more — {{reason}}",
+        "notFound": "no quote available",
+        "providerError": "quote lookup failed, retrying shortly",
+        "rateLimited": "quote provider rate limited, retrying shortly",
+        "notConfigured": "quote provider not configured",
+        "requestLimit": "too many symbols requested",
+        "budget": "not loaded yet, retrying shortly",
+        "seed": "market data temporarily unavailable"
       }
     },
     "heatmap": {
@@ -2521,6 +2534,38 @@
       "upgradeCta": "Надградете за повече",
       "lockedAriaLabel": "Добави раздел — заключено. {{reason}}",
       "unlockedAnnouncement": "Лимитът на разделите на таблото е премахнат."
+    },
+    "fx": {
+      "infoTooltip": "<strong>Валутни курсове</strong> Стрес на валутите и спот курсове:<ul><li>FX Stress класира 45 валути според най-големия им спад от пик към дъно за последните 24 месеца, заедно с промяната за 12 месеца</li><li>Покритието включва ARS, TRY, EGP, NGN, PKR и UAH — валути, които наборите за справка на BIS и ECB пропускат</li><li>Спот списъкът показва курсове спрямо американския долар и еврото на ECB отделно, тъй като двата са котирани от различни бази</li><li>RUB — курсове на Банк на Русия, рубли за единица</li></ul> Източници: Yahoo Finance, Европейска централна банка и Банк на Русия.",
+      "tabs": {
+        "stress": "FX Stress",
+        "spot": "Спот",
+        "rub": "RUB"
+      },
+      "currency": "Валута",
+      "pair": "Валутна двойка",
+      "rate": "Курс",
+      "yoy": "12м",
+      "drawdown": "Спад за 24м",
+      "peakToTrough": "Пик → Дъно",
+      "change1d": "1д",
+      "perUsd": "На 1 USD",
+      "usdPerUnit": "USD за единица",
+      "usdBase": "Спрямо американския долар",
+      "eurBase": "Референтни курсове на ECB за евро",
+      "stressedCount": "{{stressed}} от {{total}} валути под {{threshold}}",
+      "sourceYahoo": "Източник: Yahoo Finance",
+      "sourceEcb": "Източник: ECB",
+      "degraded": "Недостъпна е в момента: {{sources}}. Преопитване след малко.",
+      "source": {
+        "stress": "FX стрес",
+        "usd": "Курсове на US долара",
+        "eur": "Курсове на евро на ECB",
+        "rub": "Курсове на Банк на Русия"
+      },
+      "rubBase": "Банк на Русия — рубли за 1 единица",
+      "rubPerUnit": "Рубли за единица",
+      "sourceCbr": "Източник: Банк на Русия"
     }
   },
   "popups": {
@@ -2861,7 +2906,7 @@
       "heading": "ПОСОКА",
       "hexCode": "HEX КОД",
       "squawk": "SQUAWK",
-      "attribution": "Източник: OpenSky Network"
+      "attribution": "Източник: adsb.lol (ODbL) · OpenSky Network"
     },
     "militaryVessel": {
       "aisDark": "AIS ТЪМНО",
@@ -3335,5 +3380,31 @@
     "deleteTab": "Изтрий раздела",
     "deleteTabAria": "Изтрий раздел {{name}}",
     "tabNameAria": "Име на раздела"
+  },
+  "theaterPresets": {
+    "label": "Пакети за покритие",
+    "applied": "Пакетът {{preset}} е приложен: активирани са {{count}} източника",
+    "alreadyApplied": "Пакетът {{preset}} вече е приложен",
+    "ukraineWar": {
+      "label": "Войната в Украйна",
+      "description": "Активирайте основни украински медии, независим руски печат и източници за оценка на фронта"
+    },
+    "indoPacific": {
+      "label": "Индо-Тихоокеански регион / Тайван",
+      "description": "Активирайте източници за сигурността в Тайван, Пакистан и Югоизточна Азия"
+    },
+    "sahelWestAfrica": {
+      "label": "Сахел и Западна Африка",
+      "description": "Активирайте местни източници от Сахел, Нигерия и Западна Африка"
+    },
+    "caucasusCentralAsia": {
+      "label": "Кавказ и Централна Азия",
+      "description": "Активирайте регионални източници от Южен Кавказ и Централна Азия"
+    },
+    "middleEastFlashpoints": {
+      "label": "Точки на напрежение в Близкия изток",
+      "description": "Активирайте източници за Иран, Израел, Персийския залив и кюрдските региони"
+    },
+    "unavailable": "Пакетът {{preset}} не е наличен с текущите ви панели"
   }
 }

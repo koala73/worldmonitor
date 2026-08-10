@@ -36,6 +36,9 @@ export interface GetTariffTrendsResponse {
   fetchedAt: string;
   upstreamUnavailable: boolean;
   effectiveTariffRate?: EffectiveTariffRate;
+  unavailableReason: TariffTrendUnavailableReason;
+  coverageStartYear: number;
+  coverageEndYear: number;
 }
 
 export interface TariffDataPoint {
@@ -66,6 +69,9 @@ export interface GetTradeFlowsResponse {
   flows: TradeFlowRecord[];
   fetchedAt: string;
   upstreamUnavailable: boolean;
+  unavailableReason: TradeFlowUnavailableReason;
+  coverageStartYear: number;
+  coverageEndYear: number;
 }
 
 export interface TradeFlowRecord {
@@ -146,6 +152,10 @@ export interface ComtradeFlowRecord {
   yoyChange: number;
   isAnomaly: boolean;
 }
+
+export type TariffTrendUnavailableReason = "TARIFF_TREND_UNAVAILABLE_REASON_UNSPECIFIED" | "TARIFF_TREND_UNAVAILABLE_REASON_INVALID_REQUEST" | "TARIFF_TREND_UNAVAILABLE_REASON_NOT_COVERED" | "TARIFF_TREND_UNAVAILABLE_REASON_SEED_MISSING" | "TARIFF_TREND_UNAVAILABLE_REASON_COVERAGE_UNKNOWN" | "TARIFF_TREND_UNAVAILABLE_REASON_CACHE_UNAVAILABLE";
+
+export type TradeFlowUnavailableReason = "TRADE_FLOW_UNAVAILABLE_REASON_UNSPECIFIED" | "TRADE_FLOW_UNAVAILABLE_REASON_INVALID_REQUEST" | "TRADE_FLOW_UNAVAILABLE_REASON_NOT_COVERED" | "TRADE_FLOW_UNAVAILABLE_REASON_SEED_MISSING" | "TRADE_FLOW_UNAVAILABLE_REASON_COVERAGE_UNKNOWN" | "TRADE_FLOW_UNAVAILABLE_REASON_CACHE_UNAVAILABLE";
 
 export interface FieldViolation {
   field: string;

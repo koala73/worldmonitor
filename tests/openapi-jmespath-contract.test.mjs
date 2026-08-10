@@ -6,6 +6,8 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { load as loadYaml } from 'js-yaml';
 
+import { loadUnifiedOpenApiSpec } from './_lib/openapi-spec-cache.mjs';
+
 // Guards the universal `?jmespath=` response-projection parameter injected by
 // scripts/openapi-inject-jmespath.mjs. The REST gateway
 // (server/gateway.ts + server/_shared/response-projection.ts) genuinely honors
@@ -19,7 +21,7 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const apiDir = resolve(root, 'docs/api');
 
 const HTTP_METHODS = new Set(['get', 'post', 'put', 'delete', 'patch', 'options', 'head']);
-const EXPECTED_GET_OPERATIONS = 190;
+const EXPECTED_GET_OPERATIONS = 196;
 
 const serviceJsonSpecs = readdirSync(apiDir)
   .filter((f) => /Service\.openapi\.json$/.test(f))
@@ -136,7 +138,7 @@ describe('OpenAPI jmespath projection parameter contract', () => {
   });
 
   it(`the unified bundle advertises jmespath on every GET (${EXPECTED_GET_OPERATIONS} total)`, () => {
-    const bundle = loadYaml(readFileSync(resolve(apiDir, 'worldmonitor.openapi.yaml'), 'utf8'));
+    const bundle = loadUnifiedOpenApiSpec();
     const total = assertJmespathContract(bundle, 'worldmonitor.openapi.yaml');
     assert.equal(
       total,

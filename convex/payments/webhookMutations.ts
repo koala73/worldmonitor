@@ -384,6 +384,128 @@ export const getWebhookFailureDiagnostics = internalQuery({
 });
 
 /**
+ * Shape guards + event dispatch, shared by the live webhook path and by
+ * `attributeUnattributedPayment`'s replay.
+ *
+ * Extracted so a manually attributed event runs through EXACTLY the same
+ * handlers as a live delivery. A second copy of this switch would drift, and
+ * the replay path is precisely where a drifted copy would go unnoticed.
+ */
+async function dispatchWebhookEvent(
+  ctx: MutationCtx,
+  args: {
+    webhookId: string;
+    eventType: string;
+    rawPayload: any;
+    timestamp: number;
+  },
+): Promise<void> {
+  const data = args.rawPayload.data;
+
+  // Minimum shape guard — throw so Convex rolls back and returns 500,
+  // causing Dodo to retry instead of silently dropping the event.
+  // The HTTP action records a durable dead-letter projection after this
+  // mutation rejects, outside this transaction, so permanent schema
+  // mismatches remain repairable after Dodo exhausts its retries.
+  if (!data || typeof data !== 'object') {
+    throw new Error(
+      `[webhook] rawPayload.data is missing or not an object (eventType=${args.eventType}, webhookId=${args.webhookId})`,
+    );
+  }
+
+  const subscriptionEvents = [
+    "subscription.active", "subscription.renewed", "subscription.on_hold",
+    "subscription.cancelled", "subscription.plan_changed", "subscription.expired",
+    // PR 3 (post-launch-stabilization): Dodo's docs list `subscription.updated`
+    // as a real-time-sync event for any subscription field change. Handler
+    // dispatches by the payload's `status` field to reuse our existing
+    // lifecycle logic AND respect the paid-through-cancellation policy.
+    "subscription.updated",
+  ] as const;
+
+  if (subscriptionEvents.includes(args.eventType as typeof subscriptionEvents[number]) && !(data as Record<string, unknown>).subscription_id) {
+    throw new Error(
+      `[webhook] Missing subscription_id for subscription event (eventType=${args.eventType}, webhookId=${args.webhookId}, dataKeys=${Object.keys(data as object).join(",")})`,
+    );
+  }
+
+  switch (args.eventType) {
+    case "subscription.active":
+      await handleSubscriptionActive(
+        ctx,
+        data,
+        args.timestamp,
+        args.webhookId,
+        args.rawPayload,
+      );
+      break;
+    case "subscription.renewed":
+      await handleSubscriptionRenewed(ctx, data, args.timestamp);
+      break;
+    case "subscription.on_hold":
+      await handleSubscriptionOnHold(ctx, data, args.timestamp);
+      break;
+    case "subscription.cancelled":
+      await handleSubscriptionCancelled(ctx, data, args.timestamp);
+      break;
+    case "subscription.plan_changed":
+      await handleSubscriptionPlanChanged(ctx, data, args.timestamp);
+      break;
+    case "subscription.expired":
+      await handleSubscriptionExpired(ctx, data, args.timestamp);
+      break;
+    case "subscription.updated":
+      await handleSubscriptionUpdated(
+        ctx,
+        data,
+        args.timestamp,
+        args.webhookId,
+        args.rawPayload,
+      );
+      break;
+    case "payment.succeeded":
+    case "payment.failed":
+    // `payment.processing` is Dodo's only non-terminal payment event; its
+    // payload `data.status` carries the 3DS/SCA-pending `requires_customer_action`
+    // state. `payment.cancelled` is terminal-but-uncharged. Persisting these
+    // gives the app a pending-payment signal for duplicate-prevention (#4438)
+    // and reconciliation (#4439); previously they fell through to `default`
+    // and were dropped while the payment sat in "Requires customer action" on
+    // Dodo's dashboard. (`payment.requires_customer_action` is NOT a Dodo event
+    // type — see derivePaymentEventStatus in subscriptionHelpers.ts.)
+    case "payment.processing":
+    case "payment.cancelled":
+    case "refund.succeeded":
+    case "refund.failed":
+      await handlePaymentOrRefundEvent(
+        ctx,
+        data,
+        args.eventType,
+        args.timestamp,
+        args.webhookId,
+        args.rawPayload,
+      );
+      break;
+    case "dispute.opened":
+    case "dispute.won":
+    case "dispute.lost":
+    case "dispute.closed":
+      await handleDisputeEvent(ctx, data, args.eventType, args.timestamp);
+      break;
+    default:
+      // Loud signal for `subscription.*` additions (so a future Dodo event
+      // type doesn't silently no-op). Other unhandled events remain a warn.
+      if (typeof args.eventType === "string" && args.eventType.startsWith("subscription.")) {
+        console.error(
+          `[webhook] Unhandled subscription.* event type: ${args.eventType} — needs a dedicated handler in subscriptionHelpers.ts`,
+        );
+      } else {
+        console.warn(`[webhook] Unhandled event type: ${args.eventType}`);
+      }
+  }
+}
+
+/**
  * Idempotent webhook event processor.
  *
  * Receives parsed webhook data from the HTTP action handler,
@@ -422,90 +544,7 @@ export const processWebhookEvent = internalMutation({
     //    Errors propagate (throw) so Convex rolls back the entire transaction,
     //    preventing partial writes (e.g., subscription without entitlements).
     //    The HTTP handler catches thrown errors and returns 500 to trigger retries.
-    const data = args.rawPayload.data;
-
-    // Minimum shape guard — throw so Convex rolls back and returns 500,
-    // causing Dodo to retry instead of silently dropping the event.
-    // The HTTP action records a durable dead-letter projection after this
-    // mutation rejects, outside this transaction, so permanent schema
-    // mismatches remain repairable after Dodo exhausts its retries.
-    if (!data || typeof data !== 'object') {
-      throw new Error(
-        `[webhook] rawPayload.data is missing or not an object (eventType=${args.eventType}, webhookId=${args.webhookId})`,
-      );
-    }
-
-    const subscriptionEvents = [
-      "subscription.active", "subscription.renewed", "subscription.on_hold",
-      "subscription.cancelled", "subscription.plan_changed", "subscription.expired",
-      // PR 3 (post-launch-stabilization): Dodo's docs list `subscription.updated`
-      // as a real-time-sync event for any subscription field change. Handler
-      // dispatches by the payload's `status` field to reuse our existing
-      // lifecycle logic AND respect the paid-through-cancellation policy.
-      "subscription.updated",
-    ] as const;
-
-    if (subscriptionEvents.includes(args.eventType as typeof subscriptionEvents[number]) && !(data as Record<string, unknown>).subscription_id) {
-      throw new Error(
-        `[webhook] Missing subscription_id for subscription event (eventType=${args.eventType}, webhookId=${args.webhookId}, dataKeys=${Object.keys(data as object).join(",")})`,
-      );
-    }
-
-    switch (args.eventType) {
-      case "subscription.active":
-        await handleSubscriptionActive(ctx, data, args.timestamp);
-        break;
-      case "subscription.renewed":
-        await handleSubscriptionRenewed(ctx, data, args.timestamp);
-        break;
-      case "subscription.on_hold":
-        await handleSubscriptionOnHold(ctx, data, args.timestamp);
-        break;
-      case "subscription.cancelled":
-        await handleSubscriptionCancelled(ctx, data, args.timestamp);
-        break;
-      case "subscription.plan_changed":
-        await handleSubscriptionPlanChanged(ctx, data, args.timestamp);
-        break;
-      case "subscription.expired":
-        await handleSubscriptionExpired(ctx, data, args.timestamp);
-        break;
-      case "subscription.updated":
-        await handleSubscriptionUpdated(ctx, data, args.timestamp);
-        break;
-      case "payment.succeeded":
-      case "payment.failed":
-      // `payment.processing` is Dodo's only non-terminal payment event; its
-      // payload `data.status` carries the 3DS/SCA-pending `requires_customer_action`
-      // state. `payment.cancelled` is terminal-but-uncharged. Persisting these
-      // gives the app a pending-payment signal for duplicate-prevention (#4438)
-      // and reconciliation (#4439); previously they fell through to `default`
-      // and were dropped while the payment sat in "Requires customer action" on
-      // Dodo's dashboard. (`payment.requires_customer_action` is NOT a Dodo event
-      // type — see derivePaymentEventStatus in subscriptionHelpers.ts.)
-      case "payment.processing":
-      case "payment.cancelled":
-      case "refund.succeeded":
-      case "refund.failed":
-        await handlePaymentOrRefundEvent(ctx, data, args.eventType, args.timestamp);
-        break;
-      case "dispute.opened":
-      case "dispute.won":
-      case "dispute.lost":
-      case "dispute.closed":
-        await handleDisputeEvent(ctx, data, args.eventType, args.timestamp);
-        break;
-      default:
-        // Loud signal for `subscription.*` additions (so a future Dodo event
-        // type doesn't silently no-op). Other unhandled events remain a warn.
-        if (typeof args.eventType === "string" && args.eventType.startsWith("subscription.")) {
-          console.error(
-            `[webhook] Unhandled subscription.* event type: ${args.eventType} — needs a dedicated handler in subscriptionHelpers.ts`,
-          );
-        } else {
-          console.warn(`[webhook] Unhandled event type: ${args.eventType}`);
-        }
-    }
+    await dispatchWebhookEvent(ctx, args);
 
     // 3. Record the event AFTER successful processing.
     //    If the handler threw, we never reach here — the transaction rolls back
@@ -517,5 +556,110 @@ export const processWebhookEvent = internalMutation({
       processedAt: Date.now(),
       status: "processed",
     });
+  },
+});
+
+/**
+ * Manually attributes a captured-but-unowned Dodo event to a user, then replays
+ * it so entitlement is granted exactly as a live delivery would have.
+ *
+ * This is the repair tool for the payment-link case: a buyer purchases through a
+ * Dodo payment link (or a dashboard-created subscription), which carries no
+ * signed `wm_user_id`, so nothing tells us whose account to credit. An operator
+ * supplies that missing fact and this replays the rest.
+ *
+ * Writing the `customers` mapping first is what makes the replay succeed —
+ * `resolveUserId`'s second source is exactly that table — so the replay follows
+ * the ordinary code path rather than a privileged one that could drift from it.
+ *
+ * Run:
+ *   npx convex run payments/webhookMutations:attributeUnattributedPayment \
+ *     '{"rowId":"<id>","userId":"user_...","note":"Legendary 5-seat deal"}'
+ */
+export const attributeUnattributedPayment = internalMutation({
+  args: {
+    rowId: v.id("unattributedPaymentEvents"),
+    userId: v.string(),
+    note: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const record = await ctx.db.get(args.rowId);
+    if (!record) {
+      throw new Error(`[webhook] No unattributed event ${args.rowId}`);
+    }
+    if (record.resolved) {
+      // Replaying an already-attributed event would re-run the handlers and
+      // could re-send welcome mail or re-open a closed billing state.
+      throw new Error(
+        `[webhook] Unattributed event ${args.rowId} is already attributed to ` +
+          `${record.resolvedUserId ?? "<unknown>"} — refusing to replay.`,
+      );
+    }
+
+    // 1. Supply the missing identity so the normal resolution path works.
+    if (record.dodoCustomerId) {
+      const existingCustomer = await ctx.db
+        .query("customers")
+        .withIndex("by_dodoCustomerId", (q) =>
+          q.eq("dodoCustomerId", record.dodoCustomerId),
+        )
+        .first();
+      const email = record.customerEmail ?? existingCustomer?.email ?? "";
+      const now = Date.now();
+      if (existingCustomer) {
+        if (existingCustomer.userId !== args.userId) {
+          throw new Error(
+            `[webhook] Dodo customer ${record.dodoCustomerId} already maps to ` +
+              `${existingCustomer.userId}; refusing to reassign to ${args.userId}.`,
+          );
+        }
+      } else {
+        await ctx.db.insert("customers", {
+          userId: args.userId,
+          dodoCustomerId: record.dodoCustomerId,
+          email,
+          normalizedEmail: email.trim().toLowerCase(),
+          createdAt: now,
+          updatedAt: now,
+        });
+      }
+    }
+
+    // 2. Clear the idempotency record. The webhook acknowledged this delivery,
+    //    so `webhookEvents` holds a "processed" row that would make the replay
+    //    a no-op. Deleting it mirrors the retry path's own comment: failed
+    //    events are removed so a retry can re-process cleanly.
+    const processed = await ctx.db
+      .query("webhookEvents")
+      .withIndex("by_webhookId", (q) => q.eq("webhookId", record.webhookId))
+      .first();
+    if (processed) await ctx.db.delete(processed._id);
+
+    // 3. Replay through the identical dispatch a live delivery uses. If it
+    //    throws, the whole mutation rolls back — including the customer
+    //    mapping — so a failed repair leaves no half-applied state.
+    await dispatchWebhookEvent(ctx, {
+      webhookId: record.webhookId,
+      eventType: record.eventType,
+      rawPayload: record.rawPayload,
+      timestamp: record.eventTimestamp,
+    });
+
+    await ctx.db.insert("webhookEvents", {
+      webhookId: record.webhookId,
+      eventType: record.eventType,
+      rawPayload: record.rawPayload,
+      processedAt: Date.now(),
+      status: "processed",
+    });
+
+    await ctx.db.patch(args.rowId, {
+      resolved: true,
+      resolvedUserId: args.userId,
+      resolvedAt: Date.now(),
+      resolutionNote: args.note,
+    });
+
+    return { attributedTo: args.userId, eventType: record.eventType };
   },
 });

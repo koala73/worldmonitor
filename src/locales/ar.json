@@ -373,7 +373,8 @@
     "airlineIntel": "✈️ ذكاء الخطوط الجوية",
     "consumerPrices": "أسعار المستهلك",
     "marketBreadth": "اتساع السوق",
-    "climateNews": "أخبار المناخ"
+    "climateNews": "أخبار المناخ",
+    "fx": "أسعار الصرف"
   },
   "commands": {
     "prefixes": {
@@ -1096,7 +1097,7 @@
         "ucdpEvents": "أحداث UCDP",
         "displacementFlows": "تدفقات النزوح",
         "climateAnomalies": "شذوذات مناخية",
-        "weatherAlerts": "تنبيهات الطقس",
+        "weatherAlerts": "تنبيهات الطقس في الولايات المتحدة (NWS)",
         "strategicWaterways": "ممرات مائية استراتيجية",
         "economicCenters": "مراكز اقتصادية",
         "criticalMinerals": "معادن حيوية",
@@ -1177,7 +1178,7 @@
           "infraDatacenters": "مجموعات حوسبة AI بـ 10,000+ GPU",
           "infraOutages": "انقطاعات الإنترنت وتعطل الخدمات",
           "naturalEventsTech": "زلازل وعواصف وحرائق (قد تؤثر على مراكز البيانات)",
-          "weatherAlerts": "تنبيهات طقس شديد",
+          "weatherAlerts": "تنبيهات الطقس الشديد في الولايات المتحدة (NWS)",
           "economicCenters": "بورصات وبنوك مركزية",
           "countriesOverlay": "طبقة أسماء الدول",
           "financeExchanges": "البورصات العالمية الرئيسية حسب الفئة السوقية",
@@ -1189,7 +1190,7 @@
           "financeOutages": "انقطاعات إنترنت قد تؤثر على عمليات الأسواق",
           "financeCyberThreats": "أحداث أمنية حول البنية التحتية المالية",
           "macroWaterways": "نقاط اختناق استراتيجية لشحن السلع",
-          "weatherAlertsMarket": "أحداث طقس شديد ذات صلة بالأسواق",
+          "weatherAlertsMarket": "أحداث الطقس الشديد في الولايات المتحدة ذات الصلة بالأسواق (NWS)",
           "naturalEventsMacro": "زلازل وحرائق وفيضانات وكوارث طبيعية أخرى",
           "timeRecent": "تصفية البيانات الزمنية للساعات الأخيرة",
           "timeExtended": "عرض بيانات الأسبوع أو الشهر الماضي أو الكل",
@@ -1321,7 +1322,8 @@
       "sources_many": "{{count}} مصدر",
       "provenanceTitle": "أصل التغطية: عدد القصص المأخوذة والمصادر المميزة التي تم اختيار هذا الملخص منها",
       "compiledFrom": "مجمّع من {{stories}} قصة عبر {{sources}} مصادر",
-      "briefFreshness": "تم الإنشاء منذ {{minutes}}د · أحدث مصدر عمره {{hours}}س"
+      "briefFreshness": "تم الإنشاء منذ {{minutes}}د · أحدث مصدر عمره {{hours}}س",
+      "briefStoryDetails": "Story details ({{count}})"
     },
     "cascade": {
       "filters": {
@@ -2173,6 +2175,17 @@
       "chart": {
         "title": "مخطط سعر {{symbol}}",
         "close": "إغلاق المخطط"
+      },
+      "unavailable": {
+        "symbols": "{{symbols}} — {{reason}}",
+        "symbolsMore": "{{symbols}} +{{count}} more — {{reason}}",
+        "notFound": "no quote available",
+        "providerError": "quote lookup failed, retrying shortly",
+        "rateLimited": "quote provider rate limited, retrying shortly",
+        "notConfigured": "quote provider not configured",
+        "requestLimit": "too many symbols requested",
+        "budget": "not loaded yet, retrying shortly",
+        "seed": "market data temporarily unavailable"
       }
     },
     "heatmap": {
@@ -2593,6 +2606,38 @@
       "upgradeCta": "ترقية للمزيد",
       "lockedAriaLabel": "إضافة علامة تبويب — مقفل. {{reason}}",
       "unlockedAnnouncement": "تم رفع حد علامات التبويب."
+    },
+    "fx": {
+      "infoTooltip": "<strong>أسعار الصرف</strong> ضغوط العملات وأسعار الفورية:<ul><li>يصنف ضغط الصرف 45 عملة حسب أسوأ انخفاض من القمة إلى القاع على مدار آخر 24 شهراً، إلى جانب التغير على مدار 12 شهراً</li><li>يشمل التغطية الجنيه الأرجنتيني والليرة التركية والجنيه المصري والنيرة النيجيرية والروبية الباكستانية والهريفنيا الأوكرانية — العملات التي تستبعدها مجموعات المراجع الخاصة بالبنك الدولي والبنك المركزي الأوروبي</li><li>تسرد الأسعار الفورية الأسعار مقابل الدولار الأمريكي وأسعار مرجع اليورو للبنك المركزي الأوروبي بشكل منفصل، لأن الاثنين يتم الاستشهاد بهما من قواعد مختلفة</li><li>RUB — أسعار بنك روسيا، روبل لكل وحدة</li></ul> المصادر: Yahoo Finance والبنك المركزي الأوروبي وبنك روسيا.",
+      "tabs": {
+        "stress": "ضغط الصرف",
+        "spot": "الفورية",
+        "rub": "RUB"
+      },
+      "currency": "العملة",
+      "pair": "الزوج",
+      "rate": "السعر",
+      "yoy": "12 شهراً",
+      "drawdown": "الانخفاض على 24 شهراً",
+      "peakToTrough": "القمة → القاع",
+      "change1d": "يوم واحد",
+      "perUsd": "لكل 1 دولار أمريكي",
+      "usdPerUnit": "دولار أمريكي لكل وحدة",
+      "usdBase": "مقابل الدولار الأمريكي",
+      "eurBase": "أسعار مرجع اليورو للبنك المركزي الأوروبي",
+      "stressedCount": "{{stressed}} من {{total}} عملات دون {{threshold}}",
+      "sourceYahoo": "المصدر: Yahoo Finance",
+      "sourceEcb": "المصدر: البنك المركزي الأوروبي",
+      "degraded": "غير متاح الآن: {{sources}}. إعادة المحاولة قريباً.",
+      "source": {
+        "stress": "ضغط الصرف الأجنبي",
+        "usd": "أسعار الدولار الأمريكي",
+        "eur": "أسعار اليورو من البنك المركزي الأوروبي",
+        "rub": "أسعار بنك روسيا"
+      },
+      "rubBase": "بنك روسيا — روبل لكل وحدة واحدة",
+      "rubPerUnit": "روبل لكل وحدة",
+      "sourceCbr": "المصدر: بنك روسيا"
     }
   },
   "popups": {
@@ -2925,7 +2970,7 @@
       "heading": "الاتجاه",
       "hexCode": "الرمز السداسي",
       "squawk": "رمز الاستجابة",
-      "attribution": "المصدر: OpenSky Network"
+      "attribution": "المصدر: adsb.lol (ODbL) · OpenSky Network"
     },
     "militaryVessel": {
       "aisDark": "AIS مظلم",
@@ -3407,5 +3452,31 @@
     "deleteTab": "حذف علامة التبويب",
     "deleteTabAria": "حذف علامة التبويب {{name}}",
     "tabNameAria": "اسم علامة التبويب"
+  },
+  "theaterPresets": {
+    "label": "مجموعات التغطية",
+    "applied": "تم تطبيق مجموعة {{preset}}: تمكين {{count}} من المصادر",
+    "alreadyApplied": "تم تطبيق مجموعة {{preset}} بالفعل",
+    "ukraineWar": {
+      "label": "حرب أوكرانيا",
+      "description": "تمكين المصادر الأوكرانية الأساسية والصحافة الروسية المستقلة ومصادر تقييم الجبهة"
+    },
+    "indoPacific": {
+      "label": "المحيطان الهندي والهادئ / تايوان",
+      "description": "تمكين مصادر الأمن في تايوان وباكستان وجنوب شرق آسيا"
+    },
+    "sahelWestAfrica": {
+      "label": "الساحل وغرب أفريقيا",
+      "description": "تمكين المصادر المحلية في الساحل ونيجيريا وغرب أفريقيا"
+    },
+    "caucasusCentralAsia": {
+      "label": "القوقاز وآسيا الوسطى",
+      "description": "تمكين المصادر الإقليمية في جنوب القوقاز وآسيا الوسطى"
+    },
+    "middleEastFlashpoints": {
+      "label": "بؤر التوتر في الشرق الأوسط",
+      "description": "تمكين مصادر إيران وإسرائيل والخليج والمنطقة الكردية"
+    },
+    "unavailable": "مجموعة {{preset}} غير متاحة مع لوحاتك الحالية"
   }
 }

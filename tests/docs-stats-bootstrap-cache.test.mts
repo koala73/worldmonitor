@@ -295,6 +295,25 @@ describe('parseBootstrapKeyTiers', () => {
     assert.notEqual(source, read('shared/bootstrap-tier-keys.js'), 'fixture drift: FAST_KEY_NAMES head changed');
     assert.throws(() => parseBootstrapKeyTiers(source), /registered in both fast and on-demand tiers/);
   });
+
+  // An apostrophe in a rationale comment used to open a phantom string that ran
+  // to the next apostrophe and registered as a duplicate key, failing with
+  // `key ", " is registered in both on-demand and on-demand tiers` — a message
+  // naming neither the cause nor the line. Comments are stripped before the
+  // quote scan; this keeps prose safe to write next to the key list.
+  it('ignores quotes inside comments in a tier block', () => {
+    const source = read('shared/bootstrap-tier-keys.js')
+      .replace(
+        "const ON_DEMAND_KEY_NAMES = new Set([",
+        "const ON_DEMAND_KEY_NAMES = new Set([\n  // the tab's list, which BIS cannot supply; it's on-demand",
+      );
+    assert.notEqual(source, read('shared/bootstrap-tier-keys.js'), 'fixture drift: ON_DEMAND_KEY_NAMES head changed');
+    const tiers = parseBootstrapKeyTiers(source);
+    assert.equal(tiers.cbrRates, 'on-demand', 'real keys still parse');
+    for (const name of Object.keys(tiers)) {
+      assert.match(name, /^[A-Za-z][A-Za-z0-9]*$/, `parsed a non-identifier key: ${JSON.stringify(name)}`);
+    }
+  });
 });
 
 describe('--check wiring', () => {

@@ -218,7 +218,14 @@ export default async function handler(
         return completeStandaloneIdempotency(idempotency, json(blockedBody, 409, cors));
       }
       console.error('[create-checkout] Relay error:', resp.status, data);
-      return completeStandaloneIdempotency(idempotency, json({ error: data?.error || 'Checkout creation failed' }, 502, cors));
+      // A reached relay returning 500 is an application/provider failure. Keep
+      // it distinct from an edge-to-relay fetch failure (the catch below),
+      // which remains 502 and is eligible for the browser's single retry.
+      const edgeStatus = resp.status === 500 ? 500 : 502;
+      return completeStandaloneIdempotency(
+        idempotency,
+        json({ error: data?.error || 'Checkout creation failed' }, edgeStatus, cors),
+      );
     }
 
     return completeStandaloneIdempotency(idempotency, json(data, 200, cors));

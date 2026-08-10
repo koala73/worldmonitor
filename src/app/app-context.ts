@@ -36,10 +36,10 @@ export interface UnifiedSettingsController {
 
 export interface IntelligenceCache {
   conflicts?: ConflictEvent[];
-  // Coordinate-resolved sources whose CII attribution depends on precision
+  // Coordinate-resolved sources whose country-detail attribution depends on precision
   // country geometry. They are ingested during the visible-data fan-out (before
   // geometry is ready, so attribution is coarse/empty) and replayed once
-  // geometry lands — see refreshGeometryDependentCiiAfterCountryGeometry (#4512).
+  // geometry lands — see refreshGeometryDependentCountryData (#4512).
   gpsJamming?: GpsJamHex[];
   aisDisruptions?: AisDisruptionEvent[];
   satelliteFires?: SatelliteFireSignal[];
@@ -126,6 +126,13 @@ export interface AppContext {
   isPlaybackMode: boolean;
   isIdle: boolean;
   initialLoadComplete: boolean;
+  /**
+   * A clustering pass has completed successfully at least once, so `latestClusters`
+   * is an answer rather than "not computed yet". Distinct from `initialLoadComplete`,
+   * which is set before the clustering pass begins. Never reset: once a pass has
+   * settled, a later in-flight pass still leaves the previous clusters on screen.
+   */
+  clustersSettled: boolean;
   resolvedLocation: 'global' | 'america' | 'mena' | 'eu' | 'asia' | 'latam' | 'africa' | 'oceania';
   activeChokepoint: string | null;
 

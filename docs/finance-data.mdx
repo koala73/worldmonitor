@@ -20,7 +20,7 @@ These tables are the human-facing route map for finance, market, macro, energy, 
 |---|---|---|
 | Market quotes | `GET /api/market/v1/list-market-quotes` | Markets panel, customizable watchlist, equity / index quotes. |
 | Crypto quotes | `GET /api/market/v1/list-crypto-quotes` | Crypto panel defaults; bootstrap-first via `cryptoQuotes`. |
-| Commodity quotes | `GET /api/market/v1/list-commodity-quotes` | Commodities, Energy Risk Brent tile, gold / crude watchlists; bootstrap-first via `commodityQuotes`. |
+| Commodity quotes | `GET /api/market/v1/list-commodity-quotes` | Commodities, Energy Risk Brent tile, gold / crude watchlists; bootstrap-first via `commodityQuotes`. Empty `symbols` returns the configured seed set; only seed-set symbols are supported. |
 | Sector summary | `GET /api/market/v1/get-sector-summary` | Sector heatmap and valuation context; bootstrap-first via `sectors`. |
 | Stablecoin markets | `GET /api/market/v1/list-stablecoin-markets` | Stablecoin peg-health panel; bootstrap-first via `stablecoinMarkets`. |
 | ETF flows | `GET /api/market/v1/list-etf-flows` | BTC spot ETF tracker; bootstrap-first via `etfFlows`. |
@@ -76,19 +76,61 @@ These tables are the human-facing route map for finance, market, macro, energy, 
 | Oil inventories composite | `GET /api/economic/v1/get-oil-inventories` | Oil Inventories panel direct REST fetch combining crude, SPR, gas storage, EU gas, IEA stocks, and refinery context. |
 | Energy crisis policies | `GET /api/economic/v1/get-energy-crisis-policies` | Energy Crisis Tracker; bootstrap-first via `energyCrisisPolicies`. |
 
-## Market Monitoring
+## Authorized market-data providers
+
+WorldMonitor redistributes market quotes to subscribers, so every request-time
+and seeder path must use a provider whose terms permit that commercial use
+(see also the Yahoo ToS remediation tracked under #3731).
+
+| Decision | Detail |
+| --- | --- |
+| **Financial Modeling Prep (FMP)** | **Not selected.** FMP Terms of Service §2.2.1–2.2.2 prohibit commercial use and any multi-user display/redistribution without a separate Data Display and Licensing Agreement. Wiring `FMP_API_KEY` without that agreement would recreate the compliance problem #3731 describes. Revisit only after an enterprise rebroadcast agreement is in place. |
+| **Finnhub** | **Primary** for request-time equity gap fetches and watchlist symbol search (`FINNHUB_API_KEY`). Free tier is quota-limited; production should use a paid plan sized to watchlist traffic. |
+| **Alpha Vantage** | **Authorized fallback** for equity gap fetches and **primary bulk path** for the market-quotes seeder (`ALPHA_VANTAGE_API_KEY`). Also powers physical commodity and FX daily series in seeders. Free tier is tightly rate-limited; production seeders need a higher tier. |
+| **CoinGecko / CoinPaprika** | Crypto quote and stablecoin surfaces (existing chain; not part of the equity adapter). |
+
+### Supported product surfaces
+
+| Surface | Authorized path | Freshness | Notes |
+| --- | --- | --- | --- |
+| Default equity / index universe | Railway seed `market:stocks-bootstrap:v1` via `scripts/seed-market-quotes.mjs` (AV → Finnhub → optional Yahoo residual for yahooOnly listings) | ~5–30 min seed cadence | Seed hit = zero upstream call on the edge |
+| Custom watchlist equities | Seed-first, then bounded Redis-cached gap via `server/.../_quote-provider.ts` (Finnhub → Alpha Vantage) | 5 min positive cache; 15 min negative for definitive not-found | Provider errors are never cached |
+| Commodity futures (configured set) | Seed `shared/commodities.json` / AV physical + residual | Seed cadence | RPC is seed-set only (#6307); no FMP |
+| FX (Gulf / macro) | Seeders using AV `FX_DAILY` where wired | Seed cadence | Not part of equity watchlist gap fetch |
+| Crypto | CoinGecko → CoinPaprika (+ relay) | Seed + bounded gap (#6306) | Separate from equity adapter |
+| Historical series | Seeder-side AV daily commodity / FX series; premium analysis paths | Daily | Request-time gap fetch does **not** pull history (would double the budget) |
+
+**Attribution / keys:** self-hosters need `FINNHUB_API_KEY` and/or `ALPHA_VANTAGE_API_KEY` for custom equity quotes; without either key the RPC reports `PROVIDER_NOT_CONFIGURED` for seed misses rather than calling an unauthorized source. Seeders additionally still use a Yahoo residual for a small yahooOnly set until #3731 fully retires it — that residual is not used on the edge gap path.
 
 ### Customizable Market Watchlist
 
-The Markets panel supports user-customizable stock and commodity symbol lists, allowing analysts to track specific instruments beyond the default index set. The watchlist accepts multiple formats:
+The shared Watchlist modal (reachable from Markets and each PRO market panel) has two coherent layers. The **built-in catalog** is an accessible, searchable region picker covering the default US, China, and India universe plus European, Asia-Pacific, GCC, and Americas instruments. Choosing a valid catalog subset replaces the built-in base; Reset restores the full 59-symbol default universe after Save. **Searchable additions** remain additive: typing a ticker or company name queries `/api/symbol-search` (a cached Finnhub search wrapper), and the analyst picks from resolved results. Existing additions remain visible as removable chips even after catalog customization.
 
-- **Index symbols**: `^GSPC`, `^DJI`, `^IXIC`
-- **Stock tickers**: `AAPL`, `BRK-B`, `NVDA`
-- **Commodities**: `GC=F` (gold), `CL=F` (crude oil)
-- **Crypto pairs**: `BTC-USD`, `ETH-USD`
-- **Friendly labels**: `TSLA|Tesla Inc` (pipe-separated display name)
+The picker resolves equities and indices through Finnhub search. Commodity and FX symbols in Yahoo notation (`GC=F`, `EURUSD=X`) are not watchlist material — they are served by their own RPCs against a fixed configured set, and the quote provider declines them rather than spending a lookup on a guaranteed miss.
 
-Symbols are entered via a modal dialog accessible from the Markets panel settings icon. The input accepts comma-separated, newline-separated, or `SYMBOL|Label` formats. Watchlist state is stored in `localStorage` as `wm-market-watchlist-v1` (max 50 symbols, deduplicated). Changes emit a `wm-market-watchlist-changed` CustomEvent for live synchronization across panels without page reload.
+The catalog subset is stored as `wm-market-catalog-selection-v1`; searchable additions are stored as `wm-market-watchlist-v1`, deduplicated by symbol and capped at **50 custom entries**. The cap bounds additions only — it never truncates the catalog base. Save writes both layers coherently and emits one `wm-market-watchlist-changed` event for live synchronization across Markets and premium analysis/backtest consumers. Cancel leaves both stored layers untouched, while Reset changes only modal working state until Save. Both keys participate in cloud sync and settings export/import.
+
+#### How a requested symbol is resolved
+
+`GET /api/market/v1/list-market-quotes` resolves symbols **seed-first**:
+
+1. Requested symbols are normalized, deduplicated, and bounded (120 per request).
+2. The fixed Railway seed snapshot (`market:stocks-bootstrap:v1`) answers everything it carries — **a seed hit performs no upstream request**.
+3. Only the remaining symbols reach the **authorized** quote provider chain (Finnhub → Alpha Vantage), through a Redis-cached per-symbol lookup bounded by count (10 per request), concurrency, and a wall-clock deadline. Repeat requests for the same symbol reuse the cached quote. Futures / FX Yahoo notation is declined before any upstream call.
+4. Quotes are merged in requested order.
+5. Every requested symbol that produced no quote is returned in `unavailable` with a reason (`NOT_FOUND`, `PROVIDER_ERROR`, `PROVIDER_RATE_LIMITED`, `PROVIDER_NOT_CONFIGURED`, `REQUEST_LIMIT_EXCEEDED`, `UPSTREAM_BUDGET_EXHAUSTED`, `SEED_UNAVAILABLE`) and surfaced in the panel. Nothing is silently dropped.
+
+Transient provider failures are never cached — only a definitive "no such symbol" is. If the seed snapshot is missing or unreadable, the request reports `SEED_UNAVAILABLE` rather than falling through to the provider, so one degraded snapshot cannot amplify into a per-caller upstream fan-out. The endpoint carries an explicit fail-closed rate policy because it is provider-backed.
+
+#### Client parity
+
+| Client | Contract |
+| --- | --- |
+| Web dashboard | Calls the RPC directly. Full seed-first resolution, including custom symbols. |
+| Desktop (Tauri sidecar) | Force-proxies `/api/market/v1/*` to the cloud API, so it gets the identical contract and identical custom-symbol support. |
+| MCP `get_market_data` | **Intentionally different**: a fixed-universe read of the `market:stocks-bootstrap:v1` cache. It filters that snapshot by ticker and never gap-fetches, so it answers only symbols the Railway seeder carries. Use the RPC for arbitrary tickers. |
+
+Commodity futures on the watchlist (e.g. `GC=F`, `CL=F`) are served via market quotes when the Markets panel requests them. The dedicated commodity quotes RPC (`list-commodity-quotes`) is limited to the configured seed set in `shared/commodities.json` — empty `symbols` returns that full set; an unsupported symbol is rejected with HTTP 400 rather than silently dropped. Custom non-seed watchlist tickers are tracked separately (#6305).
 
 ### Macro Signal Analysis (Market Radar)
 
@@ -149,7 +191,19 @@ Five major stablecoins (USDT, USDC, DAI, FDUSD, USDe) are monitored via the Coin
 | 0.5% – 1.0% | SLIGHT DEPEG | Yellow    |
 | > 1.0%      | DEPEGGED     | Red       |
 
-The panel aggregates total stablecoin market cap, 24h volume, and an overall health status (HEALTHY / CAUTION / WARNING). The `coins` query parameter accepts a comma-separated list of CoinGecko IDs, validated against a `[a-z0-9-]+` regex to prevent injection.
+The panel aggregates total stablecoin market cap, 24h volume, and an overall health status (HEALTHY / CAUTION / WARNING).
+
+The `coins` query parameter selects which stablecoins to return. Repeated (`?coins=tether&coins=dai`) and comma-joined (`?coins=tether,dai`) forms are equivalent. IDs are trimmed, lowercased, de-duplicated, and validated against `^[a-z0-9][a-z0-9-]{0,63}$`; a request is capped at 25 IDs.
+
+Requesting nothing and requesting something cost different amounts, deliberately:
+
+- **Empty `coins`** returns the five seeded defaults from the cached snapshot and never calls an upstream provider.
+- **Named IDs** are answered from that snapshot where possible; only IDs the snapshot does not carry — including stablecoins outside the default five — reach CoinGecko, in one batched, rate-limited, separately cached lookup.
+
+The aggregate summary is recomputed over exactly the coins returned, so a subset request describes the subset. Two response fields report coverage:
+
+- `dataStatus` — `OK`, `PARTIAL`, or `UNAVAILABLE`. This is data coverage; `summary.healthStatus` is peg health, and the two are independent.
+- `unresolved` — one entry per requested ID missing from the response, with a reason: `INVALID_ID` (not shaped like a CoinGecko ID), `OVER_CAP` (beyond the 25-ID cap, never looked up), `NOT_FOUND` (the provider answered and has no such coin), or `PROVIDER_ERROR` (the lookup failed, so the ID is unknown rather than absent).
 
 ### BTC ETF Flow Estimation
 

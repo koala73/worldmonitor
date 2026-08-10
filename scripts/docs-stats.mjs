@@ -17,6 +17,7 @@
 import { readFileSync, readdirSync, writeFileSync, mkdirSync } from 'node:fs';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { dirname, join } from 'node:path';
+import { buildSourceAttributionStats } from './source-attribution.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const read = (p) => readFileSync(join(ROOT, p), 'utf8');
@@ -320,7 +321,15 @@ function parseBootstrapKeyTiers(source = read('shared/bootstrap-tier-keys.js')) 
   ]) {
     const block = source.match(new RegExp(`const ${constName} = new Set\\(\\[([\\s\\S]*?)\\n\\]\\);`));
     if (!block) throw new Error(`docs-stats: could not parse ${constName} in shared/bootstrap-tier-keys.js`);
-    for (const m of block[1].matchAll(/'([^']+)'/g)) {
+    // Drop `//` comments before scanning for quoted names. The quote matcher
+    // cannot tell a key from prose, so one apostrophe in a rationale comment
+    // ("the tab's list") opens a phantom string that swallows everything up to
+    // the next apostrophe and registers it as a duplicate key — reported as
+    // `key ", " is registered in both on-demand and on-demand tiers`, which
+    // names neither the real cause nor the offending line. These Sets hold bare
+    // string literals only, so there is no `//` inside a key to protect.
+    const entries = block[1].replace(/\/\/[^\n]*/g, '');
+    for (const m of entries.matchAll(/'([^']+)'/g)) {
       // Last-write-wins would make this parser disagree with the runtime in the
       // one case that matters: tierForKey() tests fast FIRST, so a key in both
       // FAST and ON_DEMAND resolves to fast at runtime and would resolve to
@@ -337,6 +346,258 @@ function parseBootstrapKeyTiers(source = read('shared/bootstrap-tier-keys.js')) 
     throw new Error('docs-stats: shared/bootstrap-tier-keys.js yielded no key tier assignments');
   }
   return tiers;
+}
+
+// ---- /api/health probed-key registry (api/health.js) ----
+//
+// Four published example responses quote `summary.total`, which is the single
+// number a reader uses to sanity-check whether their own response looks
+// complete. #6300: all four sat at 194 while production reported 256 — a
+// quarter of the fleet missing — and the figure had been copied forward often
+// enough (two English pages, two zh mirrors, plus a PR body quoting them) that
+// the agreement read as corroboration rather than as one stale number.
+//
+// Text-parsed rather than imported, like every other stat here: the docs-stats
+// CI job runs on bare Node with no `npm install`, and the runtime registry size
+// additionally depends on process.env.IRAN_EVENTS_ENABLED — an env-dependent
+// number must not land in the committed docs/generated/stats.json.
+//
+// The two object literals are NOT the whole registry: health.js mutates them
+// after declaration. Hardcoding that arithmetic is the same trap the docs fell
+// into — it would keep reporting a confident number that silently drifts the
+// moment a third mutation lands. So every mutation site is DISCOVERED and must
+// be one this function accounts for; an unrecognized one fails the gate loudly
+// instead of quietly publishing a wrong total.
+const HEALTH_PROBED_REGISTRIES = ['BOOTSTRAP_KEYS', 'STANDALONE_KEYS'];
+
+const HEALTH_REGISTRY_MUTATION_RE = new RegExp(
+  [
+    // `delete BOOTSTRAP_KEYS.iranEvents;`
+    String.raw`delete\s+(?:BOOTSTRAP_KEYS|STANDALONE_KEYS)\s*[.[][^\n]*`,
+    // `BOOTSTRAP_KEYS[name] = ...;` — including the compound forms (`??=`,
+    // `||=`, `&&=`), which register a key just as effectively. The `[^=]` tail
+    // keeps reads (`STANDALONE_KEYS[sibling] ?? …`) and `===` out of the match.
+    String.raw`(?:BOOTSTRAP_KEYS|STANDALONE_KEYS)\s*(?:\[[^\]]*\]|\.\w+)\s*(?:\?\?|\|\||&&)?=[^=][^\n]*`,
+    // `Object.assign(BOOTSTRAP_KEYS, …)` / `Object.defineProperty(…)`
+    String.raw`Object\.(?:assign|defineProperty|defineProperties)\(\s*(?:BOOTSTRAP_KEYS|STANDALONE_KEYS)[^\n]*`,
+    // Aliasing the registry to another binding — writes through the alias are
+    // invisible to every pattern above, so the alias itself is the mutation
+    // site to flag. `\s*[;,)]` keeps ordinary indexed reads
+    // (`… ?? BOOTSTRAP_KEYS[sibling]`, followed by `[`) out of the match.
+    String.raw`=\s*(?:BOOTSTRAP_KEYS|STANDALONE_KEYS)\s*[;,)][^\n]*`,
+  ].join('|'),
+  'g',
+);
+
+// Comments are blanked before the mutation scan and the registry-body parse.
+// Two distinct silent failures come from reading them as code:
+//   1. A commented-out `// delete BOOTSTRAP_KEYS.iranEvents;` normalizes to the
+//      exact accounted string, satisfying the very presence check whose error
+//      message is "stale arithmetic" while the runtime registry keeps the key.
+//   2. `parseObjectBlockBody` counts raw braces, so one `}` inside a comment in
+//      a registry literal ends the block early and yields a confident short
+//      count rather than an error.
+// Blanked in place (not deleted) so line and column offsets survive — the key
+// matcher below keys on an exact two-space indent.
+//
+// LINE comments must go FIRST. api/health.js:793 contains the line comment
+// `// list synchronized with consumer-prices-core/configs/retailers/*.yaml.`,
+// whose `/*` opens a block comment that the block matcher then runs 1098 lines
+// to the next `*/` to close — blanking the consumer-price loop, the iranEvents
+// delete, and most of STANDALONE_KEYS along with it. Stripping line comments
+// first removes that text before any `/*` is looked for.
+//
+// A `/*` inside a string or regex literal would still mislead the block pass;
+// nothing in this file has one today, and the registry cross-count plus the
+// runtime-pinning test both fail loudly if that ever changes.
+const blankComments = (src) => src
+  .replace(/^([ \t]*)\/\/[^\n]*$/gm, '$1')
+  .replace(/\/\*[\s\S]*?\*\//g, (m) => m.replace(/[^\n]/g, ' '));
+
+// Every mutation this function knows how to price, in `normalizeMutation` form
+// (trimmed, inner whitespace collapsed). Adding a mutation to api/health.js
+// means teaching this list what it does to the count — that is the point.
+const HEALTH_REGISTRY_ACCOUNTED_MUTATIONS = [
+  // +1 per consumer-price market other than `ae` (which keeps its historical
+  // name in the BOOTSTRAP_KEYS literal).
+  'BOOTSTRAP_KEYS[name] = `consumer-prices:coverage:${market}`;',
+  // -1: the iran-events sunset drops the key unless IRAN_EVENTS_ENABLED=true,
+  // which defaults to false — so the documented (production) registry omits it.
+  'delete BOOTSTRAP_KEYS.iranEvents;',
+];
+
+const normalizeMutation = (line) => line.trim().replace(/\s+/g, ' ');
+
+// Depth-1 entries of a registry object literal. parseObjectBlockBody preserves
+// the original indentation, so a top-level key sits at exactly two spaces; a
+// nested object's keys would sit at four or more and are correctly excluded.
+function countRegistryEntries(source, name) {
+  const body = parseObjectBlockBody(source, `const ${name}`, `${name} in api/health.js`);
+  // The literal's closing brace sits at column 0, so a correctly bounded body
+  // ends on a blank line. Anything else means the brace counter stopped early
+  // on a brace inside a string, and the short count that follows would look
+  // perfectly plausible.
+  if (!/\n[ \t]*$/.test(body)) {
+    throw new Error(`docs-stats: ${name} in api/health.js did not terminate at a top-level closing brace`);
+  }
+  const keys = [...body.matchAll(/^ {2}([A-Za-z_$][\w$]*):/gm)].map((m) => m[1]);
+  if (keys.length === 0) throw new Error(`docs-stats: ${name} in api/health.js yielded no keys`);
+  const dupe = keys.find((k, i) => keys.indexOf(k) !== i);
+  if (dupe) throw new Error(`docs-stats: ${name} in api/health.js declares "${dupe}" twice`);
+  // Whole-body conformance check. The matcher above reads exactly ONE shape —
+  // a bare identifier key at a two-space indent, one per line — and silently
+  // ignores every other legal shape: a quoted key, a computed `[CONST]` key, a
+  // `...SPREAD`, a key indented four spaces, a second key on the same line.
+  // Each of those changes `Object.entries(registry)` without changing this
+  // count, and `keys.length === 0` is far too weak an alarm for that.
+  //
+  // Both registries are uniformly flat today (every value is a string literal
+  // or an identifier, one entry per line), so demanding that EVERY non-blank
+  // line conform is a true invariant rather than a guess. A future entry shape
+  // that breaks it gets an explicit "teach the counter" failure instead of a
+  // quietly smaller number. Comments are already blanked by the caller.
+  const nonConforming = body
+    .split('\n')
+    .filter((line) => line.trim() !== '' && !/^ {2}[A-Za-z_$][\w$]*:\s*\S/.test(line));
+  if (nonConforming.length) {
+    throw new Error(
+      `docs-stats: ${name} in api/health.js has ${nonConforming.length} entr${nonConforming.length === 1 ? 'y' : 'ies'} `
+      + `this counter cannot read (it reads one identifier key per line at a two-space indent): `
+      + `${nonConforming.map((l) => l.trim()).join(' | ')}`,
+    );
+  }
+  // A second key sharing a conforming line still counts once. Every entry ends
+  // in a trailing comma, so comparing comma count to key count catches it.
+  const commas = (body.match(/,/g) || []).length;
+  if (commas !== keys.length) {
+    throw new Error(
+      `docs-stats: ${name} in api/health.js has ${commas} entry terminators but ${keys.length} readable keys `
+      + '— more than one entry on a line, or a value containing a comma.',
+    );
+  }
+  return keys;
+}
+
+// summary.total is one entry per key in EVERY registry the endpoint's `sources`
+// array walks — not per key in the two registries this function happens to
+// price. Adding a third registry there is the single edit that reproduces #6300
+// exactly: production grows while every gate stays pinned at the old number.
+// So read the array rather than assume it.
+function parseProbedRegistries(source) {
+  const block = source.match(/const sources = \[([\s\S]*?)\n {2}\];/);
+  if (!block) throw new Error('docs-stats: could not parse the `sources` registry array in api/health.js');
+  const listed = [...block[1].matchAll(/\[\s*([A-Za-z_$][\w$]*)\s*,/g)].map((m) => m[1]);
+  if (!sameStringSet(listed, HEALTH_PROBED_REGISTRIES)) {
+    throw new Error(
+      'docs-stats: api/health.js probes a different set of key registries than parseHealthProbedKeys prices '
+      + `(${describeSetDelta(listed, HEALTH_PROBED_REGISTRIES)}) — summary.total cannot be derived.`,
+    );
+  }
+  return listed;
+}
+
+function parseHealthProbedKeys(rawSource = read('api/health.js')) {
+  const source = blankComments(rawSource);
+  parseProbedRegistries(source);
+
+  // The registry size equals summary.total only because the endpoint counts
+  // every entry unconditionally. A `continue` or a variant/env gate inserted
+  // ahead of the increment would shrink production's total while this parse —
+  // and the unit test that pins it to `Object.keys(...).length` — stayed put.
+  if (!/for \(const \[name, redisKey\] of Object\.entries\(registry\)\) \{\s*\n\s*totalChecks\+\+;/.test(source)) {
+    throw new Error(
+      'docs-stats: api/health.js no longer counts every registry entry unconditionally, '
+      + 'so summary.total is no longer the registry size.',
+    );
+  }
+
+  const found = [...source.matchAll(HEALTH_REGISTRY_MUTATION_RE)].map((m) => normalizeMutation(m[0]));
+  const unaccounted = found.filter((m) => !HEALTH_REGISTRY_ACCOUNTED_MUTATIONS.includes(m));
+  if (unaccounted.length) {
+    throw new Error(
+      'docs-stats: api/health.js mutates its key registries in a way parseHealthProbedKeys does not '
+      + `account for, so summary.total cannot be derived: ${sorted(unaccounted).join(' | ')}. `
+      + 'Teach HEALTH_REGISTRY_ACCOUNTED_MUTATIONS what it does to the count.',
+    );
+  }
+  for (const expected of HEALTH_REGISTRY_ACCOUNTED_MUTATIONS) {
+    if (!found.includes(expected)) {
+      throw new Error(
+        `docs-stats: api/health.js no longer contains the accounted-for mutation \`${expected}\` — `
+        + 'summary.total would be derived from stale arithmetic.',
+      );
+    }
+  }
+
+  const bootstrapKeys = countRegistryEntries(source, 'BOOTSTRAP_KEYS');
+  const standaloneKeys = countRegistryEntries(source, 'STANDALONE_KEYS');
+
+  // +N: the consumer-price loop registers every market except `ae`.
+  const marketsBlock = source.match(/const CONSUMER_PRICE_HEALTH_MARKETS = Object\.freeze\(\[([^\]]*)\]\)/);
+  if (!marketsBlock) {
+    throw new Error('docs-stats: could not parse CONSUMER_PRICE_HEALTH_MARKETS in api/health.js');
+  }
+  const markets = [...marketsBlock[1].matchAll(/'([^']+)'/g)].map((m) => m[1]);
+  if (!markets.includes('ae')) {
+    throw new Error("docs-stats: CONSUMER_PRICE_HEALTH_MARKETS no longer contains 'ae', which the loop skips");
+  }
+  if (!/if \(market === 'ae'\) continue;/.test(source)) {
+    throw new Error("docs-stats: the consumer-price health loop no longer skips 'ae'");
+  }
+  // Mirror of the iranEvents presence guard below. `BOOTSTRAP_KEYS[name] = …`
+  // OVERWRITES a same-named literal entry at runtime (count unchanged) while
+  // this parse would add one for it — so a market name also declared in the
+  // literal over-counts by one, exactly as a missing iranEvents would
+  // under-count by one.
+  const addedNames = markets.filter((m) => m !== 'ae').map((m) => `consumerPricesCoverage${m.toUpperCase()}`);
+  // Same overwrite semantics within the market list itself: a repeated market
+  // assigns the same property twice at runtime (count unchanged) while a naive
+  // `.length` here would add one per iteration.
+  const repeated = addedNames.find((n, i) => addedNames.indexOf(n) !== i);
+  if (repeated) {
+    throw new Error(
+      `docs-stats: CONSUMER_PRICE_HEALTH_MARKETS yields "${repeated}" more than once — `
+      + 'the runtime registers it once while this count would add it per occurrence.',
+    );
+  }
+  const collision = addedNames.find((name) => bootstrapKeys.includes(name));
+  if (collision) {
+    throw new Error(
+      `docs-stats: BOOTSTRAP_KEYS already declares "${collision}", which the consumer-price loop also `
+      + 'registers — the runtime overwrites it while this count would add it twice.',
+    );
+  }
+  const addedMarkets = addedNames.length;
+
+  // -1: iran-events is sunset unless IRAN_EVENTS_ENABLED=true (default false).
+  // Asserting it is present in the literal keeps the subtraction from
+  // double-counting a key that was already removed from the declaration.
+  if (!bootstrapKeys.includes('iranEvents')) {
+    throw new Error('docs-stats: BOOTSTRAP_KEYS no longer declares iranEvents, so the sunset delete subtracts twice');
+  }
+  if (!/const IRAN_EVENTS_ENABLED = .*\?\? 'false'/.test(source)) {
+    throw new Error('docs-stats: IRAN_EVENTS_ENABLED no longer defaults to false — the documented registry size changed');
+  }
+
+  // The effective registries: the literal, plus the loop's markets, minus the
+  // sunset key. Names — not just counts — so the unit test can compare SETS
+  // against the imported runtime registries; two compensating errors (one real
+  // key missed, one phantom invented) net to an identical count but not to an
+  // identical set. computeStats stores only the counts: dumping 256 key names
+  // into the committed stats.json would bury the claims it actually publishes.
+  const effectiveBootstrap = [...bootstrapKeys, ...addedNames].filter((k) => k !== 'iranEvents');
+  const bootstrap = bootstrapKeys.length + addedMarkets - 1;
+  const standalone = standaloneKeys.length;
+  if (effectiveBootstrap.length !== bootstrap) {
+    throw new Error(`docs-stats: internal — bootstrap arithmetic (${bootstrap}) disagrees with its key list (${effectiveBootstrap.length})`);
+  }
+  return {
+    bootstrap,
+    standalone,
+    total: bootstrap + standalone,
+    bootstrapKeys: effectiveBootstrap,
+    standaloneKeys,
+  };
 }
 
 function parseJsonLdBlocks(html) {
@@ -462,6 +723,24 @@ function computeStats() {
   const registryBlock = mld.slice(mld.indexOf('LAYER_REGISTRY'), mld.indexOf('VARIANT_LAYER_ORDER'));
   const layerDefinitions = (registryBlock.match(/^\s+\w+:\s+def\(/gm) || []).length;
 
+  // Web-locked premium layers: literal 'locked' in the def() call. Desktop-only
+  // locks use the `_desktop ? 'locked' : undefined` ternary and stay free on web,
+  // so they are excluded — plan copy describes the web product.
+  //
+  // Deliberately NOT derived here: a "free layer count". `layerDefinitions -
+  // lockedLayerKeys.length` overstates it, because a registry entry can also be
+  // unreachable for everyone (`isSunsetLayer` drops iranAttacks unless
+  // VITE_ENABLE_IRAN_ATTACKS=true; App.ts hides cyberThreats unless
+  // VITE_ENABLE_CYBER_LAYER=true) and VARIANT_LAYER_ORDER means no single site
+  // shows the whole registry. Plan copy therefore names the Pro-only layer
+  // instead of quoting a free total — see validatePlanLayerEntitlementCopy.
+  const lockedLayerKeys = registryBlock
+    .split('\n')
+    .filter((line) => line.includes("'locked'") && !line.includes("? 'locked'"))
+    .map((line) => line.match(/^\s+(\w+):/)?.[1])
+    .filter(Boolean);
+  const lockedLayerDefinitions = lockedLayerKeys.length;
+
   const variantBlock = mld.slice(mld.indexOf('VARIANT_LAYER_ORDER'), mld.indexOf('export function getLayersForVariant'));
   const variantLayers = {};
   for (const m of variantBlock.matchAll(/(\w+):\s*\[([^\]]*)\]/g)) {
@@ -515,6 +794,13 @@ function computeStats() {
   // ---- Feed definitions (src/config/feeds.ts) — floor metric ----
   const feedDefinitions = (read('src/config/feeds.ts').match(/name:\s*'/g) || []).length;
 
+  // ---- Source attribution inventory (scripts/server/api/src URL contracts) ----
+  // Keep this separate from the feed-label count: one provider can expose
+  // several feed URLs, while a structured endpoint may never appear in the
+  // curated-feed registry. The attribution checker owns manifest coverage;
+  // docs-stats pins the public count surfaces to the same live number.
+  const sourceAttribution = buildSourceAttributionStats({ rootDir: ROOT });
+
   // ---- Operational source counts used by data-source and methodology docs ----
   const airportCount = (read('src/config/airports.ts').match(/\biata:\s*'/g) || []).length;
 
@@ -554,6 +840,21 @@ function computeStats() {
   }
   const leaderNames = (leaderBlock[1].match(/'[^']+'/g) || []).length;
 
+  // ---- CII Tier-1 countries (src/config/countries.ts) ----
+  const countriesSource = read('src/config/countries.ts');
+  const tier1Match = countriesSource.match(/export const TIER1_COUNTRIES[^=]*=\s*\{([\s\S]*?)\n\};/);
+  if (!tier1Match) {
+    throw new Error('docs-stats: could not find TIER1_COUNTRIES in src/config/countries.ts');
+  }
+  const tier1Countries = (tier1Match[1].match(/^\s+[A-Z]{2}:/gm) || []).length;
+
+  // ---- CRI rankable universe (scripts/shared/sovereign-status.json) ----
+  const sovereignStatus = parseJson('scripts/shared/sovereign-status.json');
+  if (!Array.isArray(sovereignStatus?.entries) || sovereignStatus.entries.length === 0) {
+    throw new Error('docs-stats: could not read entries from scripts/shared/sovereign-status.json');
+  }
+  const rankableUniverseCountries = sovereignStatus.entries.length;
+
   // Table moved to the shared client/server core in #5696. Fail closed like
   // LEADER_NAMES above: the previous `: 0` fallback silently zeroed the
   // published claim when the file moved, turning a stale doc number into an
@@ -569,6 +870,10 @@ function computeStats() {
   return {
     _generated: 'scripts/docs-stats.mjs — do not edit by hand; run `npm run docs:stats`',
     layerDefinitions,
+    lockedLayerDefinitions,
+    lockedLayerKeys,
+    tier1Countries,
+    rankableUniverseCountries,
     variantLayers,
     variantCount,
     componentTopLevelTsFiles,
@@ -587,6 +892,8 @@ function computeStats() {
     freshnessSources,
     freshnessRequiredForRisk,
     feedDefinitions,
+    sourceAttribution,
+    sourceAttributionHosts: sourceAttribution.activeHosts,
     airportCount,
     stockExchangeCount,
     centralBankInstitutionCount,
@@ -601,6 +908,10 @@ function computeStats() {
     mcpAppUiResources: mcpApps.uiResources,
     mcpAppLinkedTools: mcpApps.linkedTools,
     bootstrapCache: parseBootstrapCacheContract(),
+    // Counts only — see parseHealthProbedKeys on why the key names stay out.
+    healthProbedKeys: (({ bootstrap, standalone, total }) => ({ bootstrap, standalone, total }))(
+      parseHealthProbedKeys(),
+    ),
   };
 }
 
@@ -618,9 +929,12 @@ function claims(s) {
     { file: 'README.md', re: /(\d+)\s+languages/, value: s.locales },
     { file: 'public/llms.txt', re: /(\d+)\s+languages with RTL support/, value: s.locales },
     { file: 'public/llms-full.txt', re: /(\d+)\s+languages with RTL support/, value: s.locales },
+    { file: 'public/llms-full.txt', re: /(\d+)\+\s+observed upstream hosts/, value: s.sourceAttributionHosts },
     { file: 'README.md', re: /(\d+)\+\s+curated news feeds/, value: s.feedDefinitions, min: true },
+    { file: 'README.md', re: /(\d+)\+\s+observed upstream hosts/, value: s.sourceAttributionHosts },
     { file: 'README.md', re: /(\d+)\s+stock exchanges/, value: s.stockExchangeCount },
     { file: 'docs/overview.mdx', re: /(\d+)\+\s+curated news feeds/, value: s.feedDefinitions, min: true },
+    { file: 'docs/overview.mdx', re: /(\d+)\+\s+observed upstream hosts/, value: s.sourceAttributionHosts },
 
     // ---- Translated READMEs ----
     // Same claims as README.md, pinned in each language. Without these the
@@ -631,7 +945,9 @@ function claims(s) {
     { file: 'README.zh-CN.md', re: /(\d+)\s*项服务/, value: s.protoServices },
     { file: 'README.zh-CN.md', re: /(\d+)\s*种语言/, value: s.locales },
     { file: 'README.zh-CN.md', re: /(\d+)\+\s*精选新闻源/, value: s.feedDefinitions, min: true },
+    { file: 'README.zh-CN.md', re: /(\d+)\+\s*个外部上游主机/, value: s.sourceAttributionHosts, min: true },
     { file: 'README.zh-CN.md', re: /(\d+)\s*家证券交易所/, value: s.stockExchangeCount },
+    { file: 'README.ja-JP.md', re: /(\d+)\s*以上の外部プロバイダー/, value: s.sourceAttribution.providerCount, min: true },
     { file: 'README.ja-JP.md', re: /(\d+)\s*種類のマップレイヤー/, value: s.layerDefinitions },
     { file: 'README.ja-JP.md', re: /Protocol Buffers \((\d+)\s*proto/, value: s.protoFiles },
     { file: 'README.ja-JP.md', re: /(\d+)\s*サービス\)/, value: s.protoServices },
@@ -648,6 +964,7 @@ function claims(s) {
     { file: 'AGENTS.md', re: /requires buf \+ sebuf (v\d+\.\d+\.\d+) plugins/, value: s.sebufVersion },
 
     { file: 'ARCHITECTURE.md', re: /base class \((\d+)\s+classes\b/, value: s.panelClasses },
+    { file: 'ARCHITECTURE.md', re: /(\d+)\+\s+observed upstream hosts/, value: s.sourceAttributionHosts },
     { file: 'CONTRIBUTING.md', re: /Service and message definitions across (\d+)\s+domains/, value: s.protoDomainFolders },
     { file: 'CONTRIBUTING.md', re: /produces (\d+)\s+app variants/, value: s.variantCount },
     { file: 'CONTRIBUTING.md', re: /UI components — (\d+)\s+top-level TypeScript component files/, value: s.componentTopLevelTsFiles },
@@ -657,6 +974,7 @@ function claims(s) {
     { file: 'CONTRIBUTING.md', re: /expand our (\d+)\+\s+feed collection/, value: s.feedDefinitions, min: true },
     { file: 'SECURITY.md', re: /All (\d+)\s+domain APIs are served through Sebuf/, value: s.serverDomains },
     { file: 'index.html', re: /"(\d+)\s+language support with RTL"/, value: s.locales },
+    { file: 'index.html', re: /(\d+)\+\s+observed upstream hosts/, value: s.sourceAttributionHosts },
 
     { file: 'docs/architecture.mdx', re: /(\d+)\s+service domains, and (?:\d+)\s+map layers/, value: s.protoServices },
     { file: 'docs/architecture.mdx', re: /(\d+)\s+map layers\./, value: s.layerDefinitions },
@@ -677,12 +995,69 @@ function claims(s) {
     { file: 'docs/api-reference.mdx', re: /all (\d+)\s+generated services/, value: s.protoServices },
 
     { file: 'docs/mcp-overview.mdx', re: /same (\d+)\s+tools/, value: s.mcpToolCount },
+
+    // ---- MCP tool count on public agent-discovery and marketing surfaces (#5389) ----
+    { file: 'public/home.md', re: /(\d+)-tool MCP server/, value: s.mcpToolCount },
+    { file: 'public/agents.md', re: /Streamable HTTP, (\d+)\s+tools/, value: s.mcpToolCount },
+    { file: 'public/developers.md', re: /Streamable HTTP, (\d+)\s+tools/, value: s.mcpToolCount },
+    { file: 'public/llms.txt', re: /Streamable HTTP, (\d+)\s+tools/, value: s.mcpToolCount },
+    { file: 'public/llms-full.txt', re: /Streamable HTTP, (\d+)\s+tools/, value: s.mcpToolCount },
+    { file: 'public/llms-full.txt', re: /MCP server endpoint, (\d+)\s+tools/, value: s.mcpToolCount },
+    { file: 'public/ai-search.md', re: /- (\d+)\s+MCP tools/, value: s.mcpToolCount },
+    { file: 'public/ai-search.md', re: /- (\d+)\s+supported languages/, value: s.locales },
+    // The rest of ai-search.md's Data Coverage bullets that have a generated
+    // source of truth. The locale line above is the one that had already
+    // drifted (24 vs 26) precisely because nothing pinned it; these siblings
+    // were one capability change away from the same fate.
+    { file: 'public/ai-search.md', re: /- (\d+)\s+map layer types/, value: s.layerDefinitions },
+    { file: 'public/ai-search.md', re: /- (\d+)\+\s+observed upstream hosts/, value: s.sourceAttributionHosts },
+    { file: 'public/ai-search.md', re: /- (\d+)\s+live Country Instability Index countries/, value: s.tier1Countries },
+    { file: 'public/ai-search.md', re: /- (\d+)-country resilience rankings/, value: s.rankableUniverseCountries },
+    { file: 'public/sdks.md', re: /every one of the (\d+)\s+\[MCP tools\]/, value: s.mcpToolCount },
+    { file: 'public/agent.txt', re: /(\d+)\s+tools; tools\/list for the live inventory/, value: s.mcpToolCount },
+    { file: 'public/pricing.md', re: /MCP access and (\d+)\s+tools under one key/, value: s.mcpToolCount },
+    { file: 'docs/pricing.mdx', re: /MCP access \((\d+)\s+tools under one key/, value: s.mcpToolCount },
+    { file: 'docs/cli.mdx', re: /any of the (\d+)\s+MCP tools/, value: s.mcpToolCount },
+    { file: 'docs/cli.mdx', re: /every one of the (\d+)\s+tools/, value: s.mcpToolCount },
+    { file: 'docs/cli.mdx', re: /for all (\d+)\s+tools/, value: s.mcpToolCount },
+    { file: 'docs/mcp-quickstart.mdx', re: /one of (\d+)\s+tools/, value: s.mcpToolCount },
+    { file: 'pro-test/src/locales/en.json', re: /(\d+)\s+MCP tools — risk scores/, value: s.mcpToolCount },
+    { file: 'pro-test/src/locales/en.json', re: /One key\. (\d+)\s+MCP tools/, value: s.mcpToolCount },
+    { file: 'pro-test/src/locales/en.json', re: /SDKs — (\d+)\s+tools under one key/, value: s.mcpToolCount },
+    { file: 'pro-test/src/locales/en.json', re: /"freeF2": "500\+ feeds, (\d+)\+ sources/, value: s.sourceAttributionHosts, min: true },
+    { file: 'pro-test/src/locales/en.json', re: /"s3v": "(\d+)\+"/, value: s.sourceAttribution.providerCount, min: true },
+    { file: 'pro-test/src/locales/en.json', re: /"a3": "(\d+)\+ providers/, value: s.sourceAttribution.providerCount, min: true },
+
+    // ---- Map layers in plan copy (#5387) ----
+    // Plan copy quotes the registry TOTAL and names the Pro-only layer; it never
+    // quotes a free total (see the lockedLayerKeys comment in computeStats).
+    // validatePlanLayerEntitlementCopy asserts the naming half.
+    { file: 'public/home.md', re: /(\d+)\s+data layers, \d+\+\s+observed upstream hosts, and \d+\+\s+curated news feeds/, value: s.layerDefinitions },
+    { file: 'public/home.md', re: /(\d+)\+\s+observed upstream hosts/, value: s.sourceAttributionHosts },
+    { file: 'middleware.ts', re: /(\d+)\+\s+observed upstream hosts/, value: s.sourceAttributionHosts },
+    { file: 'public/pricing.md', re: /Includes: (\d+)\s+map layers \(all free except Resilience/, value: s.layerDefinitions },
+    { file: 'public/pricing.md', re: /(\d+)\+\s+observed upstream hosts/, value: s.sourceAttributionHosts },
+    { file: 'public/pricing.md', re: /"(\d+)\s+map layers \(Resilience is Pro\)"/, value: s.layerDefinitions },
+    { file: 'docs/pricing.mdx', re: /\*\*Free\*\* — (\d+)\s+map layers \(all free except Resilience/, value: s.layerDefinitions },
+    { file: 'docs/pricing.mdx', re: /(\d+)\+\s+observed upstream hosts/, value: s.sourceAttributionHosts },
+    { file: 'docs/accounts.mdx', re: /(\d+)\s+map layers \(all but the Pro-only Resilience layer\)/, value: s.layerDefinitions },
+    { file: 'docs/zh/pricing.mdx', re: /\*\*Free\*\* — (\d+)\s*个地图图层/, value: s.layerDefinitions },
+    { file: 'docs/zh/accounts.mdx', re: /Free 套餐下列出的所有功能 — (\d+)\s*个地图图层/, value: s.layerDefinitions },
+
+    // ---- CII vs CRI country coverage (#5391) ----
+    { file: 'public/home.md', re: /CII v8 for (\d+)\s+Tier-1 countries/, value: s.tier1Countries },
+    { file: 'public/home.md', re: /(\d+)-country resilience scores/, value: s.rankableUniverseCountries },
+    { file: 'README.md', re: /CII v8 stress scoring for (\d+)\s+Tier-1 countries/, value: s.tier1Countries },
+    { file: 'docs/country-instability-index.mdx', re: /CII v8 stability scoring for (\d+)\s+Tier-1 countries/, value: s.tier1Countries },
+    { file: 'public/llms-full.txt', re: /resilience scores for the (\d+)-country public rankable universe/, value: s.rankableUniverseCountries },
+
     { file: 'docs/mcp-apps.mdx', re: /current fleet ships (\d+)\s+MCP Apps/, value: s.mcpAppCount },
     { file: 'docs/mcp-quickstart.mdx', re: /WorldMonitor exposes (\d+)\s+live tools/, value: s.mcpToolCount },
     { file: 'docs/mcp-quickstart.mdx', re: /receives (\d+)\s+compressed tool descriptions/, value: s.mcpToolCount },
     { file: 'public/mcp-server.md', re: /server ships \*\*(\d+)\s+tools\*\*/, value: s.mcpToolCount },
 
     { file: 'docs/data-sources.mdx', re: /monitors (\d+)\s+data sources/, value: s.freshnessSources },
+    { file: 'docs/data-sources.mdx', re: /\*\*(\d+) active upstream hosts\*\*/, value: s.sourceAttributionHosts },
     { file: 'docs/data-sources.mdx', re: /across (\d+)\s+monitored airports/, value: s.airportCount },
     { file: 'docs/data-sources.mdx', re: /^(\d+)\s+airports across 5 regions/m, value: s.airportCount },
     { file: 'docs/data-sources.mdx', re: /(\d+)\s+global stock exchanges/, value: s.stockExchangeCount },
@@ -715,11 +1090,31 @@ function claims(s) {
     { file: 'blog-site/src/content/blog/build-on-worldmonitor-developer-api-open-source.md', re: /Protocol Buffers \((\d+)\s+files\)/, value: s.protoFiles },
     { file: 'blog-site/src/content/blog/build-on-worldmonitor-developer-api-open-source.md', re: /worldmonitor\)\. (\d+)\s+services, \d+\s+proto files, and a global/, value: s.protoServices },
     { file: 'blog-site/src/content/blog/build-on-worldmonitor-developer-api-open-source.md', re: /worldmonitor\)\. \d+\s+services, (\d+)\s+proto files, and a global/, value: s.protoFiles },
-    { file: 'blog-site/src/content/blog/what-is-worldmonitor-real-time-global-intelligence.md', re: /typed APIs \((\d+)\s+proto files, \d+\s+services\)/, value: s.protoFiles },
-    { file: 'blog-site/src/content/blog/what-is-worldmonitor-real-time-global-intelligence.md', re: /typed APIs \(\d+\s+proto files, (\d+)\s+services\)/, value: s.protoServices },
+    { file: 'blog-site/src/content/blog/what-is-worldmonitor-real-time-global-intelligence.md', re: /generated from (\d+)\s+Protocol Buffer definitions into \d+\s+REST service specifications/, value: s.protoFiles },
+    { file: 'blog-site/src/content/blog/what-is-worldmonitor-real-time-global-intelligence.md', re: /generated from \d+\s+Protocol Buffer definitions into (\d+)\s+REST service specifications/, value: s.protoServices },
+    // The explainer's remaining capability counts. These live here rather than
+    // in tests/blog-seo-contract.test.mjs because the `unit` job that runs it is
+    // gated on changes.code, whose filter drops every .md path — the contract
+    // guarding this markdown page skipped the markdown-only PRs most likely to
+    // break it. docs-stats is always-on. Shape assertions that a numeric pin
+    // cannot express live in validateCategoryExplainerCopy below.
+    { file: 'blog-site/src/content/blog/what-is-worldmonitor-real-time-global-intelligence.md', re: /(\d+)\+\s+curated news feeds/, value: s.feedDefinitions, min: true },
+    { file: 'blog-site/src/content/blog/what-is-worldmonitor-real-time-global-intelligence.md', re: /(\d+)\+\s+observed upstream hosts/, value: s.sourceAttributionHosts },
+    { file: 'blog-site/src/content/blog/what-is-worldmonitor-real-time-global-intelligence.md', re: /(\d+)\s+map-layer types/, value: s.layerDefinitions },
+    { file: 'blog-site/src/content/blog/what-is-worldmonitor-real-time-global-intelligence.md', re: /(\d+)\s+Tier-1 countries/, value: s.tier1Countries },
+    { file: 'blog-site/src/content/blog/what-is-worldmonitor-real-time-global-intelligence.md', re: /\*\*(\d+)-country\*\* public Country Resilience Index universe/, value: s.rankableUniverseCountries },
+    { file: 'blog-site/src/content/blog/what-is-worldmonitor-real-time-global-intelligence.md', re: /(\d+)\s+stock exchanges/, value: s.stockExchangeCount },
+    { file: 'blog-site/src/content/blog/what-is-worldmonitor-real-time-global-intelligence.md', re: /(\d+)\s+central-bank or supranational institutions/, value: s.centralBankInstitutionCount },
+    { file: 'blog-site/src/content/blog/what-is-worldmonitor-real-time-global-intelligence.md', re: /(\d+)\s+interface languages/, value: s.locales },
+    { file: 'blog-site/src/content/blog/what-is-worldmonitor-real-time-global-intelligence.md', re: /Model Context Protocol server with (\d+)\s+live tools/, value: s.mcpToolCount },
     { file: 'blog-site/src/content/blog/ai-powered-intelligence-without-the-cloud.md', re: /architecture \((\d+)\s+proto files, \d+\s+typed services\)/, value: s.protoFiles },
     { file: 'blog-site/src/content/blog/ai-powered-intelligence-without-the-cloud.md', re: /architecture \(\d+\s+proto files, (\d+)\s+typed services\)/, value: s.protoServices },
     { file: 'blog-site/src/content/blog/worldmonitor-vs-traditional-intelligence-tools.md', re: /using the (\d+)\s+typed API services/, value: s.protoServices },
+
+    // /api/health `summary.total` (#6300) is pinned by validateHealthSummaryDocs
+    // rather than by claims: a claim runs `text.match()`, which reads only the
+    // FIRST match on a page, so a second example body appended below the pinned
+    // one would publish an unpinned number. The validator checks every block.
   ];
 }
 
@@ -909,6 +1304,107 @@ function bootstrapCacheDocSources(pages = null) {
   return { docs, failures };
 }
 
+// ---- /api/health summary example bodies (#6300) ----
+//
+// `"onDemandWarn"` is the anchor: it is unique to this endpoint's summary
+// object, and the double quotes keep it inside JSON examples rather than the
+// surrounding prose, which names the same field in backticks.
+const HEALTH_SUMMARY_ANCHOR = '"onDemandWarn"';
+
+// The floor, for the same reason BOOTSTRAP_CACHE_DOC_FILES has one: scope is
+// DISCOVERED so a sibling page nobody remembered gets checked too, but a known
+// surface that loses its example must fail rather than drop quietly out of
+// scope. Two of these four are zh mirrors — the pages #6300 shows are exactly
+// the ones a hand-maintained list forgets.
+const HEALTH_SUMMARY_DOC_FILES = [
+  'docs/health-endpoints.mdx',
+  'docs/api-platform.mdx',
+  'docs/zh/health-endpoints.mdx',
+  'docs/zh/api-platform.mdx',
+];
+
+function healthSummaryDocSources(pages = null) {
+  const candidates = pages ?? Object.fromEntries(
+    walk('docs').filter((f) => f.endsWith('.mdx')).map((file) => [file, read(file)]),
+  );
+  const docs = {};
+  const failures = [];
+  for (const [file, text] of Object.entries(candidates)) {
+    if (text.includes(HEALTH_SUMMARY_ANCHOR)) docs[file] = text;
+  }
+  for (const file of HEALTH_SUMMARY_DOC_FILES) {
+    if (docs[file]) continue;
+    failures.push(
+      `${file}: known /api/health surface no longer publishes a summary example (missing ${HEALTH_SUMMARY_ANCHOR})`,
+    );
+  }
+  return { docs, failures };
+}
+
+// EVERY summary block on a publishing page is checked, not just the first.
+// That is the whole reason this is a validator and not a claim: `claims()` uses
+// `text.match()`, so appending a second example body below the pinned one would
+// publish a number the gate never reads — reproducing #6300 on a docs-only PR,
+// which also skips the `unit` job and so gets no other coverage at all.
+//
+// Two properties are asserted per block, and only two, so a page stays free to
+// illustrate a WARNING fleet rather than only an all-OK one:
+//   - `total` equals the registry size. True of any response, whatever its status.
+//   - the buckets sum to `total`. `summary.warn` is already net of onDemandWarn
+//     (api/health.js computes `realWarnCount = counts.warn - counts.onDemandWarn`),
+//     and staleContent/rolloutPending are documented SUBSETS of warn, so the
+//     partition is exactly ok + warn + onDemandWarn + crit. This is what caught
+//     the pre-#6300 api-platform.mdx body, which showed a concrete "HEALTHY"
+//     alongside 5 warns.
+function validateHealthSummaryDocs(stats, docs = null) {
+  const failures = [];
+  if (docs === null) {
+    const discovered = healthSummaryDocSources();
+    failures.push(...discovered.failures);
+    docs = discovered.docs;
+  }
+  const total = stats.healthProbedKeys.total;
+
+  for (const [file, text] of Object.entries(docs)) {
+    const blocks = [...text.matchAll(/"summary":\s*\{([^{}]*)\}/g)];
+    if (blocks.length === 0) {
+      failures.push(`${file}: publishes ${HEALTH_SUMMARY_ANCHOR} but no readable "summary" object`);
+      continue;
+    }
+    blocks.forEach(([, body], i) => {
+      const where = blocks.length > 1 ? `${file} (summary example ${i + 1} of ${blocks.length})` : file;
+      const field = (name) => {
+        const m = new RegExp(`"${name}":\\s*(\\d+)`).exec(body);
+        return m ? Number(m[1]) : null;
+      };
+      const counts = {};
+      for (const name of ['total', 'ok', 'warn', 'onDemandWarn', 'staleContent', 'rolloutPending', 'crit']) {
+        counts[name] = field(name);
+        if (counts[name] === null) failures.push(`${where}: /api/health summary example is missing "${name}"`);
+      }
+      if (Object.values(counts).some((v) => v === null)) return;
+
+      if (counts.total !== total) {
+        failures.push(`${where}: summary.total is ${counts.total}, but /api/health probes ${total} keys`);
+      }
+      const partition = counts.ok + counts.warn + counts.onDemandWarn + counts.crit;
+      if (partition !== counts.total) {
+        failures.push(
+          `${where}: ok + warn + onDemandWarn + crit = ${partition}, which must equal total (${counts.total})`,
+        );
+      }
+      for (const subset of ['staleContent', 'rolloutPending']) {
+        if (counts[subset] > counts.warn) {
+          failures.push(
+            `${where}: ${subset} (${counts[subset]}) is documented as a subset of warn (${counts.warn})`,
+          );
+        }
+      }
+    });
+  }
+  return failures;
+}
+
 // keyTiers is read here rather than carried in stats.json: it is validator
 // input, like the i18n source above, and dumping all ~113 registry entries into
 // the generated snapshot would bury the claims it actually publishes.
@@ -1000,6 +1496,169 @@ function validateBootstrapCacheDocs(stats, docs = null, keyTiers = parseBootstra
   return failures;
 }
 
+/**
+ * Plan copy names the Pro-only map layer rather than quoting a free-layer count
+ * (#5387). That phrasing is only true while `resilienceScore` is the ONLY
+ * web-locked entry in LAYER_REGISTRY: lock a second layer and every surface
+ * below silently starts over-promising again, exactly the way "all 56 map
+ * layers" did. A count pin cannot catch that — the total does not move when a
+ * layer flips to `premium: 'locked'` — so assert the identity of the locked set
+ * and re-point the author at the copy that names it.
+ */
+export const PLAN_LAYER_COPY_SURFACES = [
+  'public/pricing.md',
+  'docs/pricing.mdx',
+  'docs/accounts.mdx',
+  'docs/zh/pricing.mdx',
+  'docs/zh/accounts.mdx',
+  'pro-test/src/locales/en.json',
+  'pro-test/welcome.html',
+  // The category explainer names the free-tier layer boundary too ("Every
+  // layer except the Resilience layer is available on the free plan"), so it
+  // has to be re-pointed alongside the pricing surfaces when the lock set moves.
+  'blog-site/src/content/blog/what-is-worldmonitor-real-time-global-intelligence.md',
+];
+
+/** The single web-locked layer the copy above is written around. */
+export const PLAN_LAYER_PRO_ONLY_KEY = 'resilienceScore';
+const PLAN_LAYER_PRO_ONLY_LABEL = 'Resilience';
+
+export function validatePlanLayerEntitlementCopy(stats, readFile = read) {
+  const failures = [];
+  const locked = stats.lockedLayerKeys ?? [];
+
+  if (locked.join(',') !== PLAN_LAYER_PRO_ONLY_KEY) {
+    failures.push(
+      `src/config/map-layer-definitions.ts: plan copy names ${PLAN_LAYER_PRO_ONLY_LABEL} as the only Pro-only map layer, but LAYER_REGISTRY web-locks [${locked.join(', ')}] — update the free-tier copy in ${PLAN_LAYER_COPY_SURFACES.join(', ')} before changing the lock set`,
+    );
+    return failures;
+  }
+
+  for (const file of PLAN_LAYER_COPY_SURFACES) {
+    let text;
+    try {
+      text = readFile(file);
+    } catch {
+      failures.push(`${file}: file not found`);
+      continue;
+    }
+    if (!text.includes(PLAN_LAYER_PRO_ONLY_LABEL)) {
+      failures.push(`${file}: free-tier copy must name the Pro-only "${PLAN_LAYER_PRO_ONLY_LABEL}" map layer (#5387)`);
+    }
+  }
+  return failures;
+}
+
+/**
+ * The category explainer's answer-first shape (#6217).
+ *
+ * The explainer is the site's primary "what is this product" page and is
+ * written to be quoted verbatim by answer engines, so its shape is a contract:
+ * a self-contained definition before any narrative, the variant count matching
+ * the generated registry, the methodology/pricing links a citation needs, and
+ * none of the stale claims the rewrite retired.
+ *
+ * This lives here rather than in tests/blog-seo-contract.test.mjs because that
+ * file only runs in the `unit` job, which is gated on `changes.code == 'true'`
+ * and whose filter drops every `.md` path — so the contract guarding a markdown
+ * page did not run on the markdown-only PRs most likely to break it. The
+ * docs-stats job is always-on for exactly this reason.
+ *
+ * Purely numeric facts belong in claims() above, not here; this covers only
+ * what a "doc says N, code says N" pin cannot express.
+ */
+export const CATEGORY_EXPLAINER_PATH =
+  'blog-site/src/content/blog/what-is-worldmonitor-real-time-global-intelligence.md';
+
+const CATEGORY_EXPLAINER_OPENING =
+  /^World Monitor is a \*\*free, open-source, real-time global intelligence dashboard\*\*/;
+// Wide enough that ordinary copy edits pass; narrow enough that the definition
+// cannot decay into a one-liner or swell back into the old narrative lede.
+const CATEGORY_EXPLAINER_OPENING_WORDS = { min: 35, max: 80 };
+const COUNT_WORDS = ['zero', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten'];
+const CATEGORY_EXPLAINER_REQUIRED_LINKS = [
+  'https://www.worldmonitor.app/docs/data-sources',
+  'https://www.worldmonitor.app/pricing.md',
+  '/blog/glossary/',
+];
+// The paid tiers must stay named. The page previously claimed there was no
+// tier above free at all, so silence here is the regression, not just an
+// omission — an answer engine quoting it would tell readers Pro does not exist.
+const CATEGORY_EXPLAINER_REQUIRED_COPY = [
+  [/paid Pro, API, and Enterprise plans/i, 'the paid Pro/API/Enterprise tiers'],
+];
+// Claims the rewrite retired because the code had moved on. A revert or a
+// copy-paste from an older post silently reintroduces them.
+const CATEGORY_EXPLAINER_RETIRED_COPY = [
+  [/Five Dashboards/, 'the retired five-variant count'],
+  [/no "enterprise tier"/, 'the retired "no enterprise tier" claim'],
+  [/React \+ TypeScript/, 'the retired React frontend stack (the web app uses Preact)'],
+  [/baseline risk \(40%\)[\s\S]*?unrest indicators \(20%\)/, 'the retired CII weight breakdown'],
+];
+
+export function validateCategoryExplainerCopy(stats, readFile = read) {
+  const file = CATEGORY_EXPLAINER_PATH;
+  let text;
+  try {
+    text = readFile(file);
+  } catch {
+    return [`${file}: file not found`];
+  }
+
+  const frontmatter = text.match(/^---\n[\s\S]*?\n---\n/);
+  if (!frontmatter) return [`${file}: missing frontmatter`];
+  const body = text.slice(frontmatter[0].length);
+  const failures = [];
+
+  // Locate the opening by its first H2 rather than a line count, and fail
+  // loudly when there is none — an indexOf(-1) slice would silently treat the
+  // whole page as the "opening" and the word-count check would read as noise.
+  const firstHeading = body.indexOf('\n## ');
+  if (firstHeading === -1) {
+    failures.push(`${file}: no H2 section, so the answer-first opening cannot be located`);
+  } else {
+    const opening = body.slice(0, firstHeading).trim();
+    if (!CATEGORY_EXPLAINER_OPENING.test(opening)) {
+      failures.push(`${file}: must open with the self-contained "World Monitor is a **free, open-source, real-time global intelligence dashboard**" definition`);
+    }
+    const words = opening.split(/\s+/).filter(Boolean).length;
+    const { min, max } = CATEGORY_EXPLAINER_OPENING_WORDS;
+    if (words < min || words > max) {
+      failures.push(`${file}: answer-first opening is ${words} words, expected ${min}-${max}`);
+    }
+  }
+
+  // The variant count is spelled out in the copy, so no numeric claims() regex
+  // can reach it. Derive the word from the registry anyway: with "Six" pinned
+  // as a literal, variantCount=7 left this the one capability claim in the
+  // contract that stayed green while every numeric sibling went red.
+  const variantWord = COUNT_WORDS[stats.variantCount];
+  if (!variantWord) {
+    failures.push(`${file}: no spelled-out word for variantCount ${stats.variantCount} — extend COUNT_WORDS`);
+  } else if (!new RegExp(`\\b${variantWord} dashboard variants\\b`, 'i').test(body)) {
+    failures.push(`${file}: copy must say "${variantWord} dashboard variants" to match variantCount ${stats.variantCount}`);
+  }
+  // The count word alone stays true if a variant is added to the enumeration
+  // without moving the count, or dropped out of it.
+  const variantList = body.match(/dashboard variants\*\*: (.+)/);
+  if (!variantList) {
+    failures.push(`${file}: missing the enumerated dashboard-variant list`);
+  } else if (variantList[1].split(',').length !== stats.variantCount) {
+    failures.push(`${file}: enumerates ${variantList[1].split(',').length} dashboard variants, code has ${stats.variantCount} — ${variantList[1]}`);
+  }
+
+  for (const link of CATEGORY_EXPLAINER_REQUIRED_LINKS) {
+    if (!body.includes(link)) failures.push(`${file}: citation surface must link ${link}`);
+  }
+  for (const [pattern, what] of CATEGORY_EXPLAINER_REQUIRED_COPY) {
+    if (!pattern.test(body)) failures.push(`${file}: must still name ${what}`);
+  }
+  for (const [pattern, what] of CATEGORY_EXPLAINER_RETIRED_COPY) {
+    if (pattern.test(body)) failures.push(`${file}: reintroduces ${what}`);
+  }
+  return failures;
+}
+
 // The --check validator set. Exported and iterated rather than called as four
 // separate lines in main() so the wiring is data a test can assert: every
 // validator here is unit-tested against its own fixtures, but nothing caught a
@@ -1010,6 +1669,9 @@ const DOC_VALIDATORS = [
   validateSupportedLanguagesRegistry,
   validateMcpAppsDocs,
   validateBootstrapCacheDocs,
+  validateHealthSummaryDocs,
+  validatePlanLayerEntitlementCopy,
+  validateCategoryExplainerCopy,
 ];
 
 function main() {
@@ -1083,6 +1745,12 @@ export {
   validateMcpAppsDocs,
   parseBootstrapCacheContract,
   parseBootstrapKeyTiers,
+  parseHealthProbedKeys,
+  parseProbedRegistries,
+  validateHealthSummaryDocs,
+  healthSummaryDocSources,
+  HEALTH_SUMMARY_DOC_FILES,
+  HEALTH_SUMMARY_ANCHOR,
   validateBootstrapCacheDocs,
   bootstrapCacheDocSources,
   BOOTSTRAP_CACHE_DOC_FILES,

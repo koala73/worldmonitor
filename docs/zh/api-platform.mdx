@@ -74,13 +74,14 @@ description: "World Monitor 平台基础设施端点完整参考：涵盖引导�
 ```json
 {
   "status": "HEALTHY",
-  "checkedAt": "2026-04-19T12:00:00Z",
+  "checkedAt": "2026-08-07T12:00:00Z",
   "summary": {
-    "total": 194,
-    "ok": 180,
-    "warn": 5,
-    "onDemandWarn": 9,
+    "total": 257,
+    "ok": 257,
+    "warn": 0,
+    "onDemandWarn": 0,
     "staleContent": 0,
+    "rolloutPending": 0,
     "crit": 0
   },
   "checks": {
@@ -153,13 +154,9 @@ description: "World Monitor 平台基础设施端点完整参考：涵盖引导�
 | `linux-appimage` | `*_amd64.AppImage` |
 | `linux-appimage-arm64` | `*_aarch64.AppImage` |
 
-**`variant`**(可选):
+**`variant`**(可选):`full`、`world`、`tech`、`finance`、`commodity`、`energy`、`happy`。
 
-| 值 | 将资产名称过滤为 |
-|-------|-----------------------|
-| `full` / `world` | `worldmonitor` |
-| `tech` | `techmonitor` |
-| `finance` | `financemonitor` |
+桌面端只发布一个二进制文件,所有变体均在安装后于应用内切换,因此每个受支持的值都会解析到所请求平台的同一个 World Monitor 资产 —— 该参数只记录调用方来自哪个变体,并不会选择不同的下载。无法识别的值将重定向到 [releases/latest](https://github.com/koala73/worldmonitor/releases/latest),且不会调用 GitHub。省略 `variant` 时的解析方式与传入受支持值时完全相同 —— 身份过滤在所有路径上都会生效,因此发行版中仅仅匹配平台后缀的无关资产永远不会被选中。
 
 将 302 缓存 5 分钟(`s-maxage=300`、`stale-while-revalidate=60`、`stale-if-error=600`)。
 

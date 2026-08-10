@@ -46,7 +46,16 @@ function collectDatasets(value, datasets = []) {
   return datasets;
 }
 
-function assertDatasetDescriptions(html, route, { requireDataset = false } = {}) {
+function isAbsoluteHttpUrl(value) {
+  try {
+    const url = new URL(value);
+    return url.protocol === 'http:' || url.protocol === 'https:';
+  } catch {
+    return false;
+  }
+}
+
+function assertDatasetGoogleProperties(html, route, { requireDataset = false } = {}) {
   const datasets = jsonLdObjects(html).flatMap((entry) => collectDatasets(entry));
   if (requireDataset) {
     assert.ok(datasets.length > 0, `${route} must contain a Dataset JSON-LD object`);
@@ -61,6 +70,31 @@ function assertDatasetDescriptions(html, route, { requireDataset = false } = {})
     assert.ok(
       description.length <= DATASET_DESCRIPTION_MAX_LENGTH,
       `${route} Dataset ${index + 1} description must be at most ${DATASET_DESCRIPTION_MAX_LENGTH} characters`,
+    );
+
+    const creators = Array.isArray(dataset.creator) ? dataset.creator : [dataset.creator];
+    assert.ok(
+      creators.some((creator) => (
+        creator
+        && (creator['@type'] === 'Person' || creator['@type'] === 'Organization')
+        && typeof creator.name === 'string'
+        && creator.name.trim().length > 0
+      )),
+      `${route} Dataset ${index + 1} must identify a Person or Organization creator`,
+    );
+
+    const licenses = Array.isArray(dataset.license) ? dataset.license : [dataset.license];
+    assert.ok(
+      licenses.some((license) => (
+        isAbsoluteHttpUrl(license)
+        || (
+          license?.['@type'] === 'CreativeWork'
+          && typeof license.name === 'string'
+          && license.name.trim().length > 0
+          && isAbsoluteHttpUrl(license.url)
+        )
+      )),
+      `${route} Dataset ${index + 1} must link to a specific license URL`,
     );
   }
 
@@ -266,10 +300,11 @@ describe('crawlable corpus generator', () => {
         descriptions.set(description, route);
       }
 
-      // Google requires Dataset descriptions to be 50-5000 characters. Walk
-      // every generated JSON-LD object recursively so this catches both the
-      // country snapshot Dataset and nested datasets such as research report
-      // distributions, not only one representative page.
+      // Google requires Dataset descriptions to be 50-5000 characters and
+      // recommends creator and license. Walk every generated JSON-LD object
+      // recursively so this catches both the country snapshot Dataset and
+      // nested datasets such as research report distributions, not only one
+      // representative page.
       const generatedRoutes = new Set(
         Object.values(manifest.sections)
           .filter((section) => !section.generatedBy)
@@ -281,7 +316,7 @@ describe('crawlable corpus generator', () => {
         ...manifest.sections.research.routes,
       ]);
       for (const route of generatedRoutes) {
-        assertDatasetDescriptions(
+        assertDatasetGoogleProperties(
           read(outDir, `${route.slice(1)}index.html`),
           route,
           { requireDataset: datasetRequiredRoutes.has(route) },
@@ -313,7 +348,7 @@ describe('crawlable corpus generator', () => {
       const norway = read(outDir, 'countries/norway/index.html');
       assert.match(norway, /<h1>Norway country risk and resilience<\/h1>/);
       assert.match(norway, /<link rel="canonical" href="https:\/\/www\.worldmonitor\.app\/countries\/norway\/">/);
-      assert.match(norway, /<meta name="lastmod" content="2026-07-28">/);
+      assert.match(norway, /<meta name="lastmod" content="2026-08-05">/);
       assert.match(norway, /Source: docs\/snapshots\/resilience-ranking-2026-05-28\.json/);
       assert.doesNotMatch(norway, /id="app"/, 'country page must be raw static HTML, not the SPA shell');
       assert.match(norway, /data-live-country-risk data-country-code="NO" data-country-name="Norway"/);
@@ -449,7 +484,8 @@ describe('crawlable corpus generator', () => {
     assert.equal(data.sources.countryBboxes, 'shared/country-bboxes.js');
     assert.equal(data.sources.crisisRegistry, 'shared/crawlable-crises.json');
     assert.equal(data.resilience.capturedAt, '2026-05-28');
-    assert.equal(data.lastmod.countries, '2026-07-28');
+    assert.equal(data.lastmod.countries, '2026-08-05');
+    assert.equal(data.lastmod.research, '2026-08-05');
     assert.equal(data.crises.length, 4);
     assert.ok(data.crises.some((crisis) => crisis.slug === 'ukraine-war' && crisis.coverage.some((country) => country.code === 'UA')));
     assert.ok(data.countryBounds.some((country) => country.code === 'JP' && country.bounds[0] === 31.11));

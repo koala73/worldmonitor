@@ -496,6 +496,13 @@
       "removal_issue": null
     },
     {
+      "path": "api/analytics-health.js",
+      "category": "ops-admin",
+      "reason": "Anonymous, bounded analytics collector health counter ingress. It accepts no event or identity payload and aggregates operator telemetry in Redis; not a product API.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
       "path": "api/seed-health.js",
       "category": "ops-admin",
       "reason": "Cron-triggered data-freshness check for feed seeds. Operator tool, not a user-facing API.",
@@ -598,13 +605,6 @@
       "path": "api/internal/brief-why-matters.ts",
       "category": "internal-helper",
       "reason": "LLM-enrichment helper for the brief pipeline. Cron-triggered from Railway under RELAY_SHARED_SECRET bearer auth — never reached by dashboards, desktop, or partners. Request/response shape is an implementation detail of the brief renderer; modeling it as a generated service would publish internal cron plumbing as user-facing API surface. Same shape constraint as api/notify.ts (also cron-only).",
-      "owner": "@SebastienMelki",
-      "removal_issue": null
-    },
-    {
-      "path": "api/internal/china-exchange-egress.js",
-      "category": "internal-helper",
-      "reason": "Fixed-target SZSE metadata egress for the Railway corporate-disclosure seed (#5771). RELAY_SHARED_SECRET-authenticated, POST-only, and constrained to the reviewed issuer, channel, page, and 92-day window; it is deployment plumbing for one source adapter rather than a user-facing data API.",
       "owner": "@SebastienMelki",
       "removal_issue": null
     },
@@ -785,6 +785,13 @@
       "reason": "Migrating to analyst/v1.WidgetComplete in commit 9 of #3207. Blocked on sebuf#150.",
       "owner": "@SebastienMelki",
       "removal_issue": "#3207"
+    },
+    {
+      "path": "api/correlation-runtime-mode.js",
+      "category": "ops-admin",
+      "reason": "Public no-store read of the operator-controlled correlation runtime mode. This three-value control-plane decision is consumed by both browser and Railway seeder paths; it is not product data, has no write surface, and must remain independently switchable without a deployment.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
     },
     {
       "path": "api/skills/fetch-agentskills.ts",

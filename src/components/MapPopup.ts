@@ -76,6 +76,22 @@ function formatPositionSource(source: string): string {
   return escapeHtml(source);
 }
 
+function formatMilitaryFlightSource(source: string | undefined): string {
+  if (!source) return escapeHtml(t('popups.militaryFlight.attribution'));
+  const providers: Record<string, { label: string; url: string }> = {
+    'adsb.lol': { label: 'adsb.lol (ODbL)', url: 'https://api.adsb.lol' },
+    'airplanes.live': { label: 'airplanes.live', url: 'https://api.airplanes.live' },
+    'adsb.fi': { label: 'adsb.fi', url: 'https://opendata.adsb.fi' },
+    wingbits: { label: 'Wingbits', url: 'https://wingbits.com' },
+    opensky: { label: 'OpenSky Network', url: 'https://opensky-network.org' },
+  };
+  const provider = providers[source];
+  const renderedSource = provider
+    ? `<a href="${provider.url}" target="_blank" rel="noopener" style="color:inherit">${provider.label}</a>`
+    : escapeHtml(source);
+  return `${escapeHtml(t('popups.source'))}: ${renderedSource}`;
+}
+
 function fmtUtcTime(utc: string | undefined): string {
   if (!utc) return '\u2014';
   const d = new Date(utc.includes('T') ? utc : utc.replace(' ', 'T') + 'Z');
@@ -275,6 +291,26 @@ export class MapPopup {
     // Append to body to avoid container overflow clipping
     document.body.appendChild(this.popup);
 
+    // Reconcile the cached height against reality AFTER the frame has painted.
+    // rAF alone is not enough: rAF callbacks run before that frame's paint, and
+    // INP measures input→next paint, so an offsetHeight read there is still
+    // inside the interaction window. rAF + setTimeout(0) lands after it.
+    // The element is captured so a popup opened in the meantime (show() builds a
+    // fresh node) cannot be measured and filed under this popup's type.
+    if (!this.isMobileSheet) {
+      const popupType = data.type;
+      const openedPopup = this.popup;
+      // Captured now: positionDesktopPopup has already run, so this is the height
+      // THIS popup was placed with.
+      const positionedWith = this.lastPositionedHeight;
+      requestAnimationFrame(() => {
+        setTimeout(() => {
+          if (this.popup !== openedPopup) return;
+          this.refreshHeightCache(popupType, data, containerRect, positionedWith);
+        }, 0);
+      });
+    }
+
     // Mount transit chart for waterway popups after DOM insertion
     if (data.type === 'waterway') {
       const waterway = data.data as StrategicWaterway;
@@ -469,14 +505,38 @@ export class MapPopup {
     }, 200);
   }
 
+  /**
+   * Measured desktop popup height, keyed by popup type (#4487 INP).
+   *
+   * Reading `offsetHeight` forces a synchronous layout of the whole document,
+   * and this ran inside the click handler of every marker across all three map
+   * renderers — the append/measure/remove dance below was a full layout flush on
+   * the very task INP measures. Heights are near-constant per popup type, so the
+   * first popup of a type pays the measurement and every later one reuses it.
+   *
+   * Static so the cache survives the per-open `MapPopup` churn. A stale entry is
+   * self-correcting in the direction that matters: an under-estimate is pulled
+   * back by `clampPopupToViewport`, and `refreshHeightCache` re-measures after
+   * paint — off the interaction critical path — so the entry converges.
+   */
+  private static readonly heightByType = new Map<string, number>();
+
+  /** Height delta worth a visible reposition after the post-paint re-measure. */
+  private static readonly HEIGHT_DRIFT_PX = 12;
+
+  /** Height `applyDesktopPosition` last used, so the re-measure can detect drift. */
+  private lastPositionedHeight: number | null = null;
+
   private positionDesktopPopup(data: PopupData, containerRect: DOMRect): void {
     if (!this.popup) return;
 
-    const popupWidth = 380;
-    const bottomBuffer = 50; // Buffer from viewport bottom
-    const topBuffer = 60; // Header height
+    const cached = MapPopup.heightByType.get(data.type);
+    if (cached !== undefined) {
+      this.applyDesktopPosition(data, containerRect, cached);
+      return;
+    }
 
-    // Temporarily append popup off-screen to measure actual height
+    // First popup of this type: measure off-screen, then remember it.
     this.popup.style.visibility = 'hidden';
     this.popup.style.top = '0';
     this.popup.style.left = '-9999px';
@@ -484,6 +544,47 @@ export class MapPopup {
     const popupHeight = this.popup.offsetHeight;
     document.body.removeChild(this.popup);
     this.popup.style.visibility = '';
+    MapPopup.heightByType.set(data.type, popupHeight);
+
+    this.applyDesktopPosition(data, containerRect, popupHeight);
+  }
+
+  /**
+   * Re-measure the open popup, update the type cache, and correct the position
+   * if the height we positioned with was materially wrong.
+   *
+   * Repositioning matters because the cache key is the popup TYPE, and some
+   * types are not one layout: a `waterway` popup renders a transit chart and an
+   * HS2 ring only for entitled users, so its height genuinely varies within the
+   * key. Clamping alone only rescues downward overflow; an over-estimate would
+   * otherwise leave the popup flipped above the click for no reason.
+   */
+  private refreshHeightCache(
+    type: string,
+    data: PopupData,
+    containerRect: DOMRect,
+    positionedWith: number | null,
+  ): void {
+    if (!this.popup || this.isMobileSheet) return;
+    const measured = this.popup.offsetHeight;
+    if (measured <= 0) return;
+    MapPopup.heightByType.set(type, measured);
+
+    // Sub-pixel and single-line differences are not worth a visible move.
+    if (positionedWith !== null && Math.abs(measured - positionedWith) > MapPopup.HEIGHT_DRIFT_PX) {
+      this.applyDesktopPosition(data, containerRect, measured);
+      return;
+    }
+    this.clampPopupToViewport();
+  }
+
+  private applyDesktopPosition(data: PopupData, containerRect: DOMRect, popupHeight: number): void {
+    if (!this.popup) return;
+    this.lastPositionedHeight = popupHeight;
+
+    const popupWidth = 380;
+    const bottomBuffer = 50; // Buffer from viewport bottom
+    const topBuffer = 60; // Header height
 
     // Convert container-relative coords to viewport coords
     const viewportX = containerRect.left + data.x;
@@ -2757,7 +2858,7 @@ ${isFeatureAvailable('wingbitsEnrichment') ? '<div class="wingbits-live-section"
         </div>
         ${flight.note ? `<p class="popup-description">${note}</p>` : ''}
 ${isFeatureAvailable('wingbitsEnrichment') ? '<div class="wingbits-live-section"><div class="wingbits-live-loading" style="font-size:11px;opacity:0.5;padding:4px 0">Loading Wingbits live data…</div></div>' : ''}
-        <div class="popup-attribution">${t('popups.militaryFlight.attribution')}</div>
+        <div class="popup-attribution">${formatMilitaryFlightSource(flight.source)}</div>
       </div>
     `;
   }

@@ -171,8 +171,11 @@ describe('Product catalog freshness', () => {
     const ent = tiersJson.find(t => t.name === 'Enterprise');
 
     assert.equal(pro?.planLimits?.mcpCallsPerDay, 50, 'Pro MCP daily limit should be visible');
+    assert.equal(pro?.planLimits?.dashboardAiCallsPerDay, 500, 'Pro dashboard-AI daily limit should be visible');
     assert.equal(api?.planLimits?.apiRequestsPerDay, 1000, 'API Starter daily limit should be visible');
+    assert.equal(api?.planLimits?.dashboardAiCallsPerDay, 1000, 'API Starter dashboard-AI daily limit should be visible');
     assert.equal(ent?.planLimits?.apiRequestsPerDay, null, 'Enterprise daily limit should be unlimited');
+    assert.equal(ent?.planLimits?.dashboardAiCallsPerDay, null, 'Enterprise dashboard-AI limit should be unlimited');
   });
 
   it('Enterprise tier is custom with contact CTA', () => {
@@ -366,6 +369,7 @@ describe('Product catalog freshness', () => {
     assert.equal(typeof proBusiness.monthlyPrice, 'number', 'Pro Business should have monthlyPrice');
     assert.equal(typeof proBusiness.annualPrice, 'number', 'Pro Business should have annualPrice');
     assert.equal(proBusiness.planLimits?.mcpCallsPerDay, 250, 'Pro Business MCP daily limit should be visible');
+    assert.equal(proBusiness.planLimits?.dashboardAiCallsPerDay, 2500, 'Pro Business dashboard-AI daily limit should be visible');
   });
 
   it('generated files and pro locale placeholders are fresh (re-running generator produces same output)', () => {

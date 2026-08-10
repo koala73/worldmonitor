@@ -1,4 +1,6 @@
 import type { Monitor, PanelConfig, MapLayers } from '@/types';
+import { WEB_APP_ORIGIN } from '@/config/web-origin';
+import { openExternalUrl } from '@/services/external-navigation';
 import { normalizeExclusiveChoropleths } from '@/components/resilience-choropleth-utils';
 import type { AppContext } from '@/app/app-context';
 import {
@@ -13,10 +15,20 @@ import {
   getEffectivePanelConfig,
   enforceFreePanelLimit,
   restoreFreeMapPanelAccess,
+  restoreProGatedPanels,
+  userSetPanelEnabled,
+  shouldDeferFreeTierEnforcement,
   FREE_MAX_PANELS,
   FREE_MAX_SOURCES,
 } from '@/config';
-import { sanitizeLayersForVariant } from '@/config/map-layer-definitions';
+import {
+  sanitizeLayersForVariant,
+  sanitizeLockedLayers,
+  sanitizeLockedLayersWithOwnership,
+  restoreGateOwnedLockedLayers,
+  mapLayerStatesEqual,
+  shouldSanitizeLockedLayers,
+} from '@/config/map-layer-definitions';
 import type { MapVariant } from '@/config/map-layer-definitions';
 import { getStoredMapModePreference } from '@/services/map-mode-preference';
 import {
@@ -30,11 +42,19 @@ import {
   stopFlightHistoryCleanup,
 } from '@/services';
 import { enableVesselRuntime, stopLoadedVesselHistoryCleanup } from '@/services/military-vessels-lazy';
-import { isProUser } from '@/services/widget-store';
+import { isProUser, isProTierResolved, loadWidgets } from '@/services/widget-store';
 import { mlWorker } from '@/services/ml-worker';
 import { getAiFlowSettings, subscribeAiFlowChange, isHeadlineMemoryEnabled } from '@/services/ai-flow-settings';
 import { startLearning } from '@/services/country-instability';
-import { loadFromStorage, parseMapUrlState, saveToStorage, isMobileDevice, showToast } from '@/utils';
+import {
+  isMobileDevice,
+  isQuotaError,
+  loadFromStorage,
+  markStorageQuotaExceeded,
+  parseMapUrlState,
+  saveToStorage,
+  showToast,
+} from '@/utils';
 import { clearPanelSpans, invalidatePanelStorageCacheForKeys } from '@/utils/panel-storage';
 import { overlayHistory, type OverlayId } from '@/utils/overlay-history';
 import type { ParsedMapUrlState } from '@/utils';
@@ -55,6 +75,7 @@ import type { GulfEconomiesPanel } from '@/components/GulfEconomiesPanel';
 import type { GroceryBasketPanel } from '@/components/GroceryBasketPanel';
 import type { BigMacPanel } from '@/components/BigMacPanel';
 import type { FuelPricesPanel } from '@/components/FuelPricesPanel';
+import type { FxPanel } from '@/components/FxPanel';
 import type { FaoFoodPriceIndexPanel } from '@/components/FaoFoodPriceIndexPanel';
 import type { OilInventoriesPanel } from '@/components/OilInventoriesPanel';
 import type { PipelineStatusPanel } from '@/components/PipelineStatusPanel';
@@ -83,8 +104,36 @@ import { preloadCountryGeometry, isCountryGeometryLoaded, getCountryNameByCode }
 import { initI18n, t, I18N_RESOURCES_LOADED_EVENT, type I18nResourcesLoadedDetail } from '@/services/i18n';
 import { initDeferredDashboardFonts } from '@/bootstrap/secondary-startup';
 
-import { computeDefaultDisabledSources, getLocaleBoostedSources, getTotalFeedCount, FEEDS, INTEL_SOURCES } from '@/config/feeds';
-import { selectSourcesUnderCap, findFullyDisabledCategories } from '@/services/source-cap';
+import {
+  CANADA_ARCTIC_OPT_IN_SOURCES,
+  computeDefaultDisabledSources,
+  computeLegacyDefaultDisabledSources,
+  FEEDS,
+  FREE_CAP_PROTECTED_SOURCES,
+  FRONTLINE_EUROPE_PROTECTED_SOURCES,
+  getLocaleBoostedSources,
+  getStrategicDefaultSources,
+  getTotalFeedCount,
+  INTEL_SOURCES,
+} from '@/config/feeds';
+import {
+  computeCapDisabledSources,
+  findFullyDisabledCategories,
+  inferExactSourceGateOwnership,
+  reconcileSourceGateOwnership,
+  restoreGateOwnedSources,
+  selectSourcesUnderCap,
+  stringSetsEqual,
+} from '@/services/source-cap';
+import {
+  applyVariantPanelLayoutTransition,
+  persistGateOwnershipTransition,
+  resolveAppliedPanelLayoutVariant,
+} from '@/services/variant-panel-ownership';
+import {
+  buildPreStrategicDefaultDisabledStates,
+  buildRegionalFeedRolloutMigrationTargets,
+} from '@/services/regional-feed-rollout';
 import {
   cancelBootstrapSlowTier,
   fetchBootstrapData,
@@ -93,7 +142,8 @@ import {
   waitForBootstrapSlowTier,
   type BootstrapHydrationState,
 } from '@/services/bootstrap';
-import { ensureWmSession, installWmSessionFetchInterceptor, WM_SESSION_DEGRADED_EVENT } from '@/services/wm-session';
+import { ensureWmSession, installWmSessionFetchInterceptor, WM_SESSION_DEGRADED_EVENT, type WmSessionDegradedDetail } from '@/services/wm-session';
+import { describeWmSessionDegradation, WM_SESSION_DEGRADED_FALLBACK_COPY } from '@/services/wm-session-copy';
 import { describeFreshness } from '@/services/persistent-cache';
 import { DesktopUpdater } from '@/app/desktop-updater';
 import { CountryIntelManager } from '@/app/country-intel';
@@ -105,18 +155,35 @@ import { RefreshScheduler } from '@/app/refresh-scheduler';
 import { PanelLayoutManager } from '@/app/panel-layout';
 import { DataLoaderManager } from '@/app/data-loader';
 import { EventHandlerManager } from '@/app/event-handlers';
+import {
+  FreeTierGate,
+  panelGateStateChanged,
+  shouldRunCloudLegacyRecovery,
+  sweepLegacyDisabledCustomWidgets,
+} from '@/app/free-tier-gate';
 import { replaceRawI18nKeyPlaceholders } from '@/app/i18n-raw-key-healer';
 import { startAccountAuthHandoff } from '@/app/account-auth-handoff';
+import { TierPreferenceHandoff } from '@/app/tier-preference-handoff';
 import { resolveUserRegion, resolvePreciseUserCoordinates, type PreciseCoordinates } from '@/utils/user-location';
 import { showProBanner } from '@/components/ProBanner';
 import { getAuthState, initAuthState, subscribeAuthState } from '@/services/auth-state';
 import {
   CLOUD_PREFS_APPLIED_EVENT,
+  CLOUD_PREFS_SIGN_IN_TERMINAL_EVENT,
+  getSyncVersion,
+  hasPendingCloudPrefsRetry,
   install as installCloudPrefsSync,
   onSignIn as cloudPrefsSignIn,
   onSignOut as cloudPrefsSignOut,
   type CloudPrefsAppliedDetail,
+  type CloudPrefsSignInTerminalDetail,
 } from '@/utils/cloud-prefs-sync';
+import {
+  migrateFrontlineEuropeDefaultsV3,
+  migrateStrategicDefaultsV4,
+  migrateRegionalFeedRolloutDefaultsV5,
+  migrateCanadaArcticOptInsV6,
+} from '@/utils/cloud-prefs-migrations';
 import {
   getConvexClient,
   getConvexApi,
@@ -130,7 +197,7 @@ import {
   settleAccountOperation,
 } from '@/services/account-operation';
 import type { Id } from '../convex/_generated/dataModel';
-import { initEntitlementSubscription, destroyEntitlementSubscription, resetEntitlementState, onEntitlementChange } from '@/services/entitlements';
+import { initEntitlementSubscription, destroyEntitlementSubscription, resetEntitlementState, onEntitlementChange, getEntitlementState } from '@/services/entitlements';
 import { initSubscriptionWatch, destroySubscriptionWatch } from '@/services/billing';
 import {
   FREE_TIER_FOLLOW_LIMIT,
@@ -148,6 +215,10 @@ import {
   getStoredAnonId,
 } from '@/services/anonymous-identity-storage';
 import { captureReferralFromUrl } from '@/services/referral-capture';
+import { nextPrimeRetryDelayMs } from '@/utils/prime-retry';
+
+/** Look-ahead margin for viewport-gated panel priming and refresh scheduling. */
+const DEFAULT_VIEWPORT_MARGIN_PX = 400;
 // CorrelationEngine + its 4 adapters are dynamic-imported at the post-loadAllData
 // run site (#4486) so the engine bytes stay off the eager boot graph. The TYPE is
 // referenced via the inline `import(...)` type in app-context.ts (erased at build).
@@ -155,6 +226,9 @@ import type { CorrelationPanel } from '@/components/CorrelationPanel';
 
 const CYBER_LAYER_ENABLED = import.meta.env.VITE_ENABLE_CYBER_LAYER === 'true';
 const FREE_MAP_PANEL_ACCESS_KEY = 'worldmonitor-free-map-panel-access-v1';
+const CW_PRO_GATE_RECOVERY_KEY = 'worldmonitor-cw-pro-gate-recovery-v1';
+const CW_PRO_GATE_CLOUD_RECOVERY_BASELINE_KEY = 'worldmonitor-cw-pro-gate-cloud-recovery-baseline-v1';
+const CW_PRO_GATE_CLOUD_RECOVERY_APPLIED_KEY = 'worldmonitor-cw-pro-gate-cloud-recovery-applied-v1';
 type SignalModalInstance = import('@/components/SignalModal').SignalModal;
 
 export type { CountryBriefSignals } from '@/app/app-context';
@@ -195,25 +269,55 @@ export class App {
   // target panel exists.
   private uiReady!: Promise<void>;
   private resolveUiReady!: () => void;
-  // Returned by registerWebMcpTools when running in a registerTool-capable
-  // browser — aborting it unregisters every tool. destroy() triggers it
-  // so that test harnesses / same-document re-inits don't accumulate
+  // Returned by registerWebMcpTools in browser runtimes — aborting it removes
+  // late-provider listeners and unregisters every accepted tool. destroy()
+  // triggers it so test harnesses / same-document re-inits don't accumulate
   // duplicate registrations.
   private webMcpController: AbortController | null = null;
   private visiblePanelPrimed = new Set<string>();
+  /**
+   * Per-pass viewport results, or null outside a pass. See
+   * {@link primeViewportNearCache}.
+   */
+  private viewportNearCache: Map<string, boolean> | null = null;
+  /** Consecutive prime failures per key, for the retry backoff. */
+  private visiblePanelPrimeFailures = new Map<string, number>();
+  /** Earliest `Date.now()` at which a failed prime key may be retried. */
+  private visiblePanelPrimeRetryAt = new Map<string, number>();
   private visiblePanelPrimeRaf: number | null = null;
+  private viewportHydrationReady = false;
   private followedCountriesCapDropToastTimer: number | null = null;
   private bootstrapHydrationState: BootstrapHydrationState = getBootstrapHydrationState();
   private cachedModeBannerEl: HTMLElement | null = null;
-  private readonly handleWmSessionDegraded = (): void => {
+  private pendingCloudRecoverySyncVersion: number | undefined;
+  /** Token of the in-flight preference handoff, so the cloud-applied event can release it. */
+  private pendingPreferenceHandoffGeneration: number | undefined;
+  private readonly tierPreferenceHandoff = new TierPreferenceHandoff();
+  private readonly handleWmSessionDegraded = (event?: Event): void => {
     if (!this.state.isDestroyed) {
-      showToast('Anonymous data is temporarily unavailable. Check your cookie settings, then reload.');
+      // Pre-#5674 bundles in long-lived tabs can still dispatch a plain Event
+      // with no detail; fall back to the cookie wording those users used to get.
+      const reason = (event as CustomEvent<WmSessionDegradedDetail> | undefined)?.detail?.reason;
+      showToast(
+        reason
+          ? describeWmSessionDegradation(reason)
+          : WM_SESSION_DEGRADED_FALLBACK_COPY,
+      );
     }
   };
-  private readonly handleViewportPrime = (): void => {
+  private readonly handleViewportPrime = (event?: Event): void => {
+    if (!this.viewportHydrationReady || this.state.isDestroyed) return;
+    if (
+      event?.type === 'scroll' &&
+      event.target instanceof Element &&
+      !event.target.matches('.main-content, .panels-grid')
+    ) {
+      return;
+    }
     if (this.visiblePanelPrimeRaf !== null) return;
     this.visiblePanelPrimeRaf = window.requestAnimationFrame(() => {
       this.visiblePanelPrimeRaf = null;
+      markLcpDebug('wm:hydration:viewport-trigger');
       void this.primeVisiblePanelData();
       // loadAllData covers panels primeVisiblePanelData does not (news,
       // markets, intelligence, fred, …). Now that bootstrap runs with
@@ -242,23 +346,67 @@ export class App {
     this.showFollowedCountriesCapDropToast(kept, dropped);
   };
   private readonly handleCloudPrefsApplied = (ev: Event): void => {
-    const keys = (ev as CustomEvent<CloudPrefsAppliedDetail>).detail?.keys ?? [];
-    this.applyCloudSyncedPrefsToRuntime(keys);
+    const detail = (ev as CustomEvent<CloudPrefsAppliedDetail>).detail;
+    this.applyCloudSyncedPrefsToRuntime(detail?.keys ?? [], detail?.syncVersion);
+  };
+  private readonly handleCloudPrefsSignInTerminal = (ev: Event): void => {
+    const detail = (ev as CustomEvent<CloudPrefsSignInTerminalDetail>).detail;
+    const pendingGeneration = this.pendingPreferenceHandoffGeneration;
+    if (
+      detail?.origin !== 'sign-in'
+      || pendingGeneration === undefined
+      || detail.handoffGeneration !== pendingGeneration
+    ) {
+      return;
+    }
+
+    const currentUserId = getAuthState().user?.id ?? null;
+    if (this.tierPreferenceHandoff.complete(
+      pendingGeneration,
+      detail.accountId,
+      currentUserId,
+    )) {
+      this.pendingPreferenceHandoffGeneration = undefined;
+      // A terminal sign-in attempt is the only handoff release signal. Run
+      // one complete pass even when the cloud blob changed no local keys.
+      this.reconcileTierOwnedPreferences();
+    }
   };
 
-  private applyCloudSyncedPrefsToRuntime(keys: readonly string[]): void {
+  private applyCloudSyncedPrefsToRuntime(keys: readonly string[], cloudSyncVersion?: number): void {
     if (keys.length === 0) return;
 
     const keySet = new Set(keys);
+    let freeTierLimitsInvoked = false;
+    const tierReconciliationDeferred = this.shouldDeferTierPreferenceReconciliation();
     invalidatePanelStorageCacheForKeys(keys);
 
     if (keySet.has(STORAGE_KEYS.panels)) {
+      // Cloud can reconcile before Clerk/Convex finishes settling. Preserve
+      // the first panel-bearing cloud generation so a later Pro callback can
+      // still run the bounded legacy recovery pass.
+      if (cloudSyncVersion !== undefined && this.pendingCloudRecoverySyncVersion === undefined) {
+        this.pendingCloudRecoverySyncVersion = cloudSyncVersion;
+      }
       this.state.panelSettings = loadFromStorage<Record<string, PanelConfig>>(
         STORAGE_KEYS.panels,
         this.state.panelSettings,
       );
-      this.panelLayout.applyPanelSettings();
-      this.state.unifiedSettings?.refreshPanelToggles();
+      // Reconcile the freshly applied snapshot against the current
+      // entitlement: a cloud blob written while the tier was unknown can carry
+      // a stale free-tier clamp, and `proGated` markers travel with it, so the
+      // targeted restore inside enforceFreeTierLimits puts those panels back.
+      // Returns false while the tier is still unresolved — the fallback below
+      // then just re-renders the snapshot, which is all this handler did
+      // before reconciliation moved here.
+      const reconciledPanelSettings = tierReconciliationDeferred
+        ? false
+        : this.enforceFreeTierLimits(cloudSyncVersion);
+      freeTierLimitsInvoked = !tierReconciliationDeferred;
+      if (!reconciledPanelSettings) {
+        this.panelLayout.applyPanelSettings();
+        this.state.unifiedSettings?.refreshPanelToggles();
+      }
     }
 
     const panelOrderKey = this.state.PANEL_ORDER_KEY;
@@ -266,18 +414,29 @@ export class App {
       this.panelLayout.applySavedPanelOrder();
     }
 
-    if (keySet.has(STORAGE_KEYS.mapLayers) && !this.state.initialUrlState?.layers) {
-      const nextLayers = normalizeExclusiveChoropleths(
+    if (
+      (keySet.has(STORAGE_KEYS.mapLayers) || keySet.has(STORAGE_KEYS.mapLayerGateOwnership))
+      && !this.state.initialUrlState?.layers
+    ) {
+      let nextLayers = normalizeExclusiveChoropleths(
         sanitizeLayersForVariant(
           loadFromStorage<MapLayers>(STORAGE_KEYS.mapLayers, this.state.mapLayers),
           SITE_VARIANT as MapVariant,
         ),
         this.state.mapLayers,
       );
+      // #6045 — clear locked premium layers once free-tier is settled.
+      // Skip while entitlement is still resolving so Pro users don't lose
+      // resilienceScore during the Clerk/Convex boot window.
+      if (!tierReconciliationDeferred) {
+        nextLayers = this.sanitizeMapLayersForTier(nextLayers);
+      }
       if (!CYBER_LAYER_ENABLED) nextLayers.cyberThreats = false;
-      this.state.mapLayers = nextLayers;
-      this.state.map?.setLayers(nextLayers);
-      this.dataLoader.syncDataFreshnessWithLayers();
+      if (!mapLayerStatesEqual(this.state.mapLayers, nextLayers)) {
+        this.state.mapLayers = nextLayers;
+        this.state.map?.setLayers(nextLayers);
+        this.dataLoader.syncDataFreshnessWithLayers();
+      }
     }
 
     if (keySet.has(STORAGE_KEYS.mapMode)) {
@@ -286,7 +445,16 @@ export class App {
       else this.state.map?.switchToFlat();
     }
 
-    if (keySet.has(STORAGE_KEYS.disabledFeeds)) {
+    if (
+      keySet.has(STORAGE_KEYS.disabledFeeds)
+      || keySet.has(STORAGE_KEYS.sourceGateOwnership)
+    ) {
+      // A cloud generation can contain only source preferences. Re-run the
+      // cap even when no panel snapshot arrived, then reload storage because
+      // enforcement may have persisted additional auto-disabled sources.
+      if (!tierReconciliationDeferred && !freeTierLimitsInvoked) {
+        this.enforceFreeTierLimits(cloudSyncVersion);
+      }
       this.state.disabledSources = new Set(loadFromStorage<string[]>(STORAGE_KEYS.disabledFeeds, []));
     }
 
@@ -298,12 +466,39 @@ export class App {
     }
   }
 
-  private isPanelNearViewport(panelId: string, marginPx = 400): boolean {
+  private isPanelNearViewport(panelId: string, marginPx = DEFAULT_VIEWPORT_MARGIN_PX): boolean {
+    if (marginPx === DEFAULT_VIEWPORT_MARGIN_PX && this.viewportNearCache) {
+      const cached = this.viewportNearCache.get(panelId);
+      if (cached !== undefined) return cached;
+    }
     const panel = this.state.panels[panelId] as { isNearViewport?: (marginPx?: number) => boolean } | undefined;
     return panel?.isNearViewport?.(marginPx) ?? false;
   }
 
-  private isAnyPanelNearViewport(panelIds: string[], marginPx = 400): boolean {
+  /**
+   * Read every mounted panel's viewport state in one uninterrupted pass (#4487).
+   *
+   * `Panel.isNearViewport` calls `getComputedStyle` AND `getBoundingClientRect`,
+   * both of which force style/layout. `primeVisiblePanelData` gates ~48 panels,
+   * and a passing gate synchronously enters the panel's loader, several of which
+   * write DOM before their first await (`showLoading` / `renderPanel`). That made
+   * the pass read → write → read → write, so each read re-flushed a layout the
+   * previous write had just invalidated — up to 48 forced layouts in one task,
+   * dispatched from a scroll handler's rAF.
+   *
+   * Reading everything first means one flush, then writes only. The results are
+   * valid for the whole synchronous pass: nothing scrolls or resizes mid-task.
+   */
+  private primeViewportNearCache(): void {
+    const cache = new Map<string, boolean>();
+    for (const [id, panel] of Object.entries(this.state.panels)) {
+      const near = panel as { isNearViewport?: (marginPx?: number) => boolean } | undefined;
+      cache.set(id, near?.isNearViewport?.(DEFAULT_VIEWPORT_MARGIN_PX) ?? false);
+    }
+    this.viewportNearCache = cache;
+  }
+
+  private isAnyPanelNearViewport(panelIds: string[], marginPx = DEFAULT_VIEWPORT_MARGIN_PX): boolean {
     return panelIds.some((panelId) => this.isPanelNearViewport(panelId, marginPx));
   }
 
@@ -412,13 +607,25 @@ export class App {
 
   private async primeVisiblePanelData(forceAll = false): Promise<void> {
     const tasks: Promise<unknown>[] = [];
+    const now = Date.now();
     const primeTask = (key: string, task: () => Promise<unknown>): void => {
       if (this.visiblePanelPrimed.has(key) || this.state.inFlight.has(key)) return;
+      // A failed prime is never recorded as primed, so without this a fast-failing
+      // endpoint re-enters on every scroll frame forever (#4487).
+      const retryAt = this.visiblePanelPrimeRetryAt.get(key);
+      if (retryAt !== undefined && now < retryAt) return;
       const wrapped = (async () => {
         this.state.inFlight.add(key);
         try {
           await task();
           this.visiblePanelPrimed.add(key);
+          this.visiblePanelPrimeFailures.delete(key);
+          this.visiblePanelPrimeRetryAt.delete(key);
+        } catch (err) {
+          const failures = (this.visiblePanelPrimeFailures.get(key) ?? 0) + 1;
+          this.visiblePanelPrimeFailures.set(key, failures);
+          this.visiblePanelPrimeRetryAt.set(key, Date.now() + nextPrimeRetryDelayMs(failures));
+          throw err;
         } finally {
           this.state.inFlight.delete(key);
         }
@@ -428,6 +635,11 @@ export class App {
 
     const shouldPrime = (id: string): boolean => forceAll || this.isPanelNearViewport(id);
     const shouldPrimeAny = (ids: string[]): boolean => forceAll || this.isAnyPanelNearViewport(ids);
+
+    // Every layout read for this pass happens here, before any gate can enter a
+    // loader that writes DOM. `forceAll` skips the gates entirely, so it needs no
+    // reads at all.
+    if (!forceAll) this.primeViewportNearCache();
 
     if (shouldPrime('service-status')) {
       const panel = this.state.panels['service-status'] as ServiceStatusPanel | undefined;
@@ -475,6 +687,10 @@ export class App {
     if (shouldPrime('fuel-prices')) {
       const panel = this.state.panels['fuel-prices'] as FuelPricesPanel | undefined;
       if (panel) primeTask('fuel-prices', () => panel.fetchData());
+    }
+    if (shouldPrime('fx')) {
+      const panel = this.state.panels['fx'] as FxPanel | undefined;
+      if (panel) primeTask('fx', () => panel.fetchData());
     }
     if (shouldPrime('fao-food-price-index')) {
       const panel = this.state.panels['fao-food-price-index'] as FaoFoodPriceIndexPanel | undefined;
@@ -597,10 +813,10 @@ export class App {
       primeTask('supplyChain', () => this.dataLoader.loadSupplyChain());
     }
     if (shouldPrime('china-corridors')) {
-      primeTask('chinaCorridors', () => this.dataLoader.loadChinaCorridors());
+      primeTask('chinaCorridors', () => this.dataLoader.loadChinaCorridors({ skipIfPopulated: true }));
     }
     if (shouldPrime('china-activity-nowcast')) {
-      primeTask('chinaActivityNowcast', () => this.dataLoader.loadChinaActivityNowcast());
+      primeTask('chinaActivityNowcast', () => this.dataLoader.loadChinaActivityNowcast({ skipIfPopulated: true }));
     }
     if (shouldPrime('cross-source-signals')) {
       primeTask('crossSourceSignals', () => this.dataLoader.loadCrossSourceSignals());
@@ -624,6 +840,10 @@ export class App {
         primeTask('marketImplications', () => this.dataLoader.loadMarketImplications());
       }
     }
+
+    // Gates are done; the cached geometry must not outlive the synchronous pass
+    // or a later scroll would be gated on a stale rect.
+    this.viewportNearCache = null;
 
     if (tasks.length > 0) {
       await Promise.allSettled(tasks);
@@ -655,10 +875,19 @@ export class App {
     const isDynamicPanel = (k: string) => !ALL_PANELS[k] && (k === 'runtime-config' || k.startsWith('cw-') || k.startsWith('mcp-'));
 
     const currentVariant = SITE_VARIANT;
-    let storedVariant: string | null = null;
+    let appliedPanelLayoutVariant: string | null = null;
     let storageAvailable = true;
     try {
-      storedVariant = localStorage.getItem('worldmonitor-variant');
+      appliedPanelLayoutVariant = resolveAppliedPanelLayoutVariant({
+        appliedVariant: localStorage.getItem(STORAGE_KEYS.panelLayoutVariant),
+        legacyVariant: localStorage.getItem(STORAGE_KEYS.variant),
+        currentVariant,
+        validVariants: new Set(Object.keys(VARIANT_DEFAULTS)),
+        persistAppliedVariant: (variant) => {
+          localStorage.setItem(STORAGE_KEYS.panelLayoutVariant, variant);
+          return true;
+        },
+      });
       const probeKey = 'wm-storage-capability-probe';
       localStorage.setItem(probeKey, '1');
       localStorage.removeItem(probeKey);
@@ -673,30 +902,47 @@ export class App {
         sanitizeLayersForVariant({ ...defaultLayers }, currentVariant as MapVariant), null,
       );
       panelSettings = { ...DEFAULT_PANELS };
-    } else if (storedVariant !== currentVariant) {
+    } else if (appliedPanelLayoutVariant !== currentVariant) {
       // Variant changed - reset all settings to variant defaults.
-      console.log(`[App] Variant check: stored="${storedVariant}", current="${currentVariant}"`);
+      console.log(`[App] Variant check: applied="${appliedPanelLayoutVariant}", current="${currentVariant}"`);
       // Variant changed — seed new variant's panels, disable panels not in the new variant
       console.log('[App] Variant changed - seeding new defaults, disabling cross-variant panels');
-      localStorage.setItem('worldmonitor-variant', currentVariant);
       // Reset map layers for the new variant (map layers are not user-personalized the same way)
       localStorage.removeItem(STORAGE_KEYS.mapLayers);
+      // Write an explicit empty set rather than removing the key: cloud sync
+      // now tolerates an ABSENT ownership sidecar (a row that predates it must
+      // not delete local ownership), so a genuine variant-reset clear only
+      // propagates cross-device when it is an explicit value.
+      localStorage.setItem(STORAGE_KEYS.mapLayerGateOwnership, '[]');
       mapLayers = normalizeExclusiveChoropleths(
         sanitizeLayersForVariant({ ...defaultLayers }, currentVariant as MapVariant), null,
       );
       // Load existing panel prefs (if any), disable panels not belonging to the new variant
-      panelSettings = loadFromStorage<Record<string, PanelConfig>>(STORAGE_KEYS.panels, {});
       const newVariantKeys = new Set(VARIANT_DEFAULTS[currentVariant] ?? []);
-      for (const key of Object.keys(panelSettings)) {
-        if (!newVariantKeys.has(key) && !isDynamicPanel(key) && panelSettings[key]) {
-          panelSettings[key] = { ...panelSettings[key]!, enabled: false };
-        }
-      }
-      for (const key of newVariantKeys) {
-        if (!(key in panelSettings)) {
-          panelSettings[key] = { ...getEffectivePanelConfig(key, currentVariant) };
-        }
-      }
+      panelSettings = applyVariantPanelLayoutTransition({
+        currentVariant,
+        panelSettings: loadFromStorage<Record<string, PanelConfig>>(STORAGE_KEYS.panels, {}),
+        variantPanelKeys: newVariantKeys,
+        isDynamicPanel,
+        getDefaultPanel: (key) => getEffectivePanelConfig(key, currentVariant),
+        // Use the throwing primitive here so the transition helper advances
+        // the applied-layout marker only after the panel blob is durable.
+        persistPanels: (next) => localStorage.setItem(STORAGE_KEYS.panels, JSON.stringify(next)),
+        persistAppliedVariant: (variant) => {
+          // Both markers advance HERE, inside the helper's success path, and
+          // never after a failed panel write. Advancing the legacy key
+          // unconditionally used to erase the retry: on the next boot
+          // resolveAppliedPanelLayoutVariant would see a null applied marker
+          // beside a legacy key already equal to the current variant, take its
+          // SEEDING branch, and silently record the failed reset as applied.
+          //
+          // Order is load-bearing: the legacy key (read by bootstrap/theme and
+          // by SITE_VARIANT on desktop) goes first, and the applied-layout
+          // marker — the "this layout is durable" flag — goes last.
+          localStorage.setItem(STORAGE_KEYS.variant, variant);
+          localStorage.setItem(STORAGE_KEYS.panelLayoutVariant, variant);
+        },
+      });
     } else {
       mapLayers = normalizeExclusiveChoropleths(
         sanitizeLayersForVariant(
@@ -704,6 +950,10 @@ export class App {
           currentVariant as MapVariant,
         ), null,
       );
+      // #6045 — heal stuck locked layers from pre-gate localStorage once free
+      // tier is settled. Do not run while Pro status is still resolving.
+      // Persist immediately so dirty storage doesn't reintroduce the layer.
+      mapLayers = this.sanitizeMapLayersForTier(mapLayers);
       panelSettings = loadFromStorage<Record<string, PanelConfig>>(
         STORAGE_KEYS.panels,
         DEFAULT_PANELS
@@ -780,8 +1030,14 @@ export class App {
         const happyKeys = new Set(VARIANT_DEFAULTS['happy'] ?? []);
         let fixed = false;
         for (const key of Object.keys(panelSettings)) {
-          if (!happyKeys.has(key) && !isDynamicPanel(key) && panelSettings[key]?.enabled) {
-            panelSettings[key] = { ...panelSettings[key]!, enabled: false };
+          const config = panelSettings[key];
+          if (
+            !happyKeys.has(key)
+            && !isDynamicPanel(key)
+            && config
+            && (config.enabled || config.proGated)
+          ) {
+            userSetPanelEnabled(config, false);
             fixed = true;
           }
         }
@@ -897,6 +1153,10 @@ export class App {
       mapLayers = normalizeExclusiveChoropleths(
         sanitizeLayersForVariant(initialUrlState.layers, currentVariant as MapVariant), null,
       );
+      // #6045 — URL layer deep-links also cannot force locked layers on for free users.
+      // Ephemeral: the link is a view, so it must not overwrite the stored
+      // preference or touch gate ownership in either direction.
+      mapLayers = this.sanitizeMapLayersForTier(mapLayers, undefined, { ephemeralSnapshot: true });
       initialUrlState.layers = mapLayers;
     }
     if (!CYBER_LAYER_ENABLED) {
@@ -912,6 +1172,104 @@ export class App {
         const total = getTotalFeedCount();
         console.log(`[App] Sources reduction: ${defaultDisabled.length} disabled, ${total - defaultDisabled.length} enabled`);
       }
+      const userLang = this.currentSourceCapLanguage();
+      // #5949 — re-enable Ukraine/Poland frontline sources for profiles that
+      // still have the untouched pre-#5949 default disabled set. An exact-set
+      // guard is important here: a customized disabledFeeds set is user
+      // intent, and must not be rewritten by the startup migration.
+      const frontlineKey = 'worldmonitor-frontline-europe-enable-v1';
+      if (!localStorage.getItem(frontlineKey)) {
+        const frontline = new Set<string>(FRONTLINE_EUROPE_PROTECTED_SOURCES);
+        const legacyDefaultDisabled = new Set(computeLegacyDefaultDisabledSources());
+        const legacyCapDisabled = computeCapDisabledSources(
+          FEEDS,
+          INTEL_SOURCES,
+          new Set(computeDefaultDisabledSources()),
+          FREE_MAX_SOURCES,
+        );
+        const current = loadFromStorage<string[]>(STORAGE_KEYS.disabledFeeds, []);
+        const migrated = migrateFrontlineEuropeDefaultsV3(
+          { [STORAGE_KEYS.disabledFeeds]: JSON.stringify(current) },
+          legacyDefaultDisabled,
+          frontline,
+          legacyCapDisabled,
+        );
+        const updated = JSON.parse(migrated[STORAGE_KEYS.disabledFeeds] as string) as string[];
+        if (updated.length !== current.length) {
+          saveToStorage(STORAGE_KEYS.disabledFeeds, updated);
+          console.log(
+            `[App] Frontline Europe enable (#5949): re-enabled ${current.length - updated.length} source(s)`,
+          );
+        }
+        localStorage.setItem(frontlineKey, 'done');
+      }
+      // #6000 — re-enable strategic defaults for profiles created before the
+      // flag became part of the canonical default set. An exact-set guard is
+      // required: a customized disabledFeeds set is user intent and must not
+      // be rewritten by a startup migration.
+      const strategicKey = 'worldmonitor-strategic-defaults-enable-v1';
+      if (!localStorage.getItem(strategicKey)) {
+        const current = loadFromStorage<string[]>(STORAGE_KEYS.disabledFeeds, []);
+        const migrated = migrateStrategicDefaultsV4(
+          { [STORAGE_KEYS.disabledFeeds]: JSON.stringify(current) },
+          new Set(),
+          getStrategicDefaultSources(),
+          new Set(),
+          buildPreStrategicDefaultDisabledStates(FREE_MAX_SOURCES, userLang),
+        );
+        const updated = JSON.parse(migrated[STORAGE_KEYS.disabledFeeds] as string) as string[];
+        if (updated.length !== current.length) {
+          saveToStorage(STORAGE_KEYS.disabledFeeds, updated);
+          console.log(
+            `[App] Strategic defaults enable (#6000): re-enabled ${current.length - updated.length} source(s)`,
+          );
+        }
+        localStorage.setItem(strategicKey, 'done');
+      }
+      // #5975/#5976/#5977/#5980 — reconcile the regional feed wave for
+      // returning denylist profiles. Exact historical default/cap states are
+      // the only eligible inputs; any source customization skips the migration.
+      const regionalRolloutKey = 'worldmonitor-regional-feed-rollout-reconcile-v1';
+      if (!localStorage.getItem(regionalRolloutKey)) {
+        const current = loadFromStorage<string[]>(STORAGE_KEYS.disabledFeeds, []);
+        const migrated = migrateRegionalFeedRolloutDefaultsV5(
+          { [STORAGE_KEYS.disabledFeeds]: JSON.stringify(current) },
+          buildRegionalFeedRolloutMigrationTargets(FREE_MAX_SOURCES, userLang),
+        );
+        const updated = JSON.parse(migrated[STORAGE_KEYS.disabledFeeds] as string) as string[];
+        if (JSON.stringify(updated) !== JSON.stringify(current)) {
+          saveToStorage(STORAGE_KEYS.disabledFeeds, updated);
+          console.log('[App] Regional feed rollout: restored declared defaults and opt-in boundaries for an untouched profile');
+        }
+        localStorage.setItem(regionalRolloutKey, 'done');
+      }
+      // #5960 — Canada + Arctic/Nordic pack: denylist is additive-only, so newly
+      // cataloged opt-in names would be implicitly enabled for every returner.
+      // Insert opt-ins into any existing denylist once. CBC is intentionally
+      // omitted so default-on can enable it for returners (not in old denylist).
+      const canadaArcticKey = 'worldmonitor-canada-arctic-optin-v1';
+      if (!localStorage.getItem(canadaArcticKey)) {
+        const current = loadFromStorage<string[]>(STORAGE_KEYS.disabledFeeds, []);
+        const migrated = migrateCanadaArcticOptInsV6({
+          [STORAGE_KEYS.disabledFeeds]: JSON.stringify(current),
+        }, CANADA_ARCTIC_OPT_IN_SOURCES);
+        const rawUpdated = migrated[STORAGE_KEYS.disabledFeeds];
+        if (typeof rawUpdated === 'string') {
+          let updated: unknown;
+          try { updated = JSON.parse(rawUpdated); } catch { updated = null; }
+          if (
+            Array.isArray(updated)
+            && updated.every((name): name is string => typeof name === 'string')
+            && JSON.stringify(updated) !== JSON.stringify(current)
+          ) {
+            saveToStorage(STORAGE_KEYS.disabledFeeds, updated);
+            console.log(
+              `[App] Canada/Arctic opt-in (#5960): disabled ${updated.length - current.length} newly cataloged source(s)`,
+            );
+          }
+        }
+        localStorage.setItem(canadaArcticKey, 'done');
+      }
       // Locale boost: additively enable locale-matched sources (runs once per locale).
       // Reads the explicit-choice key (`wm-locale-explicit`, written by Settings →
       // Language) before falling back to navigator. Mirrors the i18n.ts:99
@@ -922,9 +1280,6 @@ export class App {
       // for any subsequent locale choice). Direct localStorage read because
       // i18next isn't initialized yet here in the constructor — `initI18n()` is
       // called later inside `init()`.
-      let explicitLocale = '';
-      try { explicitLocale = localStorage.getItem('wm-locale-explicit') || ''; } catch { /* private mode */ }
-      const userLang = ((explicitLocale || navigator.language || 'en').split('-')[0] ?? 'en').toLowerCase();
       const localeKey = `worldmonitor-locale-boost-${userLang}`;
       if (userLang !== 'en' && !localStorage.getItem(localeKey)) {
         const boosted = getLocaleBoostedSources(userLang);
@@ -994,6 +1349,7 @@ export class App {
       isPlaybackMode: false,
       isIdle: false,
       initialLoadComplete: false,
+      clustersSettled: false,
       resolvedLocation: 'global',
       activeChokepoint: initialUrlState.chokepoint ?? null,
       initialUrlState,
@@ -1031,9 +1387,14 @@ export class App {
         void this.openSearch();
       },
       loadAllData: () => this.dataLoader.loadAllData(),
+      primeVisiblePanelData: () => {
+        if (!this.viewportHydrationReady || this.state.isDestroyed) return;
+        void this.primeVisiblePanelData();
+      },
       updateMonitorResults: () => this.dataLoader.updateMonitorResults(),
       loadSecurityAdvisories: () => this.dataLoader.loadSecurityAdvisories(),
       applyMapLayerChange: (layer, enabled, source) => this.eventHandlers.applyMapLayerChange(layer, enabled, source),
+      isFreeTierFallbackActive: () => this.freeTierGate.authSettleDeadlineExceeded,
     });
 
     this.eventHandlers = new EventHandlerManager(this.state, {
@@ -1046,12 +1407,12 @@ export class App {
       loadDataForLayer: (layer) => { void this.dataLoader.loadDataForLayer(layer as keyof MapLayers); },
       waitForAisData: () => this.dataLoader.waitForAisData(),
       syncDataFreshnessWithLayers: () => this.dataLoader.syncDataFreshnessWithLayers(),
-      ensureCorrectZones: () => this.panelLayout.ensureCorrectZones(),
+      applyPanelSettings: () => this.panelLayout.applyPanelSettings(),
       applySavedPanelOrder: (panelOrder?: string[]) => this.panelLayout.applySavedPanelOrder(panelOrder),
-      refreshCiiAfterFocalPointsReady: () => this.dataLoader.refreshCiiAfterFocalPointsReady(),
       stopLayerActivity: (layer) => this.dataLoader.stopLayerActivity(layer),
       mountLiveNewsIfReady: () => this.panelLayout.mountLiveNewsIfReady(),
       updateFlightSource: (adsb, military) => this.updateFlightSourceIfReady(adsb, military),
+      isFreeTierFallbackActive: () => this.freeTierGate.authSettleDeadlineExceeded,
     });
 
     // Wire cross-module callback: DataLoader → SearchManager
@@ -1220,11 +1581,11 @@ export class App {
   private startPostLcpIntelligence(countryGeometryReady: Promise<void>, geometryAlreadyApplied: boolean): void {
     void countryGeometryReady.finally(() => {
       if (this.state.isDestroyed) return;
-      // Replay geometry-dependent CII only when the fan-out ingested before
+      // Replay geometry-dependent country-detail data only when the fan-out ingested before
       // precision geometry was ready; otherwise the first-pass attribution is
       // already correct and a replay is a redundant compute + repaint (#4512).
       if (!geometryAlreadyApplied) {
-        this.dataLoader.refreshGeometryDependentCiiAfterCountryGeometry();
+        this.dataLoader.refreshGeometryDependentCountryData();
       }
       // Correlation and country-learning use precision geometry/name matching,
       // but they are post-initial-data work and should not hold the LCP path.
@@ -1251,14 +1612,29 @@ export class App {
       engine.registerAdapter(disasterAdapter);
       this.state.correlationEngine = engine;
 
-      await engine.run(this.state);
-      if (this.state.isDestroyed) return;
-      for (const domain of ['military', 'escalation', 'economic', 'disaster'] as const) {
-        const panel = this.state.panels[`${domain}-correlation`] as CorrelationPanel | undefined;
-        panel?.updateCards(engine.getCards(domain));
-      }
+      await this.runCorrelationEngine();
     } catch (error) {
       console.warn('[CorrelationEngine] Initial lazy load/run failed:', error);
+    }
+  }
+
+  private async runCorrelationEngine(): Promise<void> {
+    const engine = this.state.correlationEngine;
+    if (!engine || this.state.isDestroyed) return;
+
+    const { fetchCorrelationRuntimeMode } = await import('@/services/correlation-runtime-mode');
+    const runtimeMode = await fetchCorrelationRuntimeMode();
+    if (this.state.isDestroyed) return;
+
+    // run() reports false when it skipped because a run was already in flight.
+    // Not reachable today (run() never yields), but this diff put two awaits in
+    // front of it, so honour the contract rather than publishing getCards() —
+    // which on a first-run overlap would write empty cards into live panels.
+    const didRun = await engine.run(this.state, runtimeMode);
+    if (!didRun || this.state.isDestroyed) return;
+    for (const domain of ['military', 'escalation', 'economic', 'disaster'] as const) {
+      const panel = this.state.panels[`${domain}-correlation`] as CorrelationPanel | undefined;
+      panel?.updateCards(engine.getCards(domain));
     }
   }
 
@@ -1268,7 +1644,7 @@ export class App {
 
     // WebMCP — register synchronously before any init awaits so agent
     // scanners (isitagentready.com, in-browser agents) find the tools on
-    // their first probe. No-op in browsers without navigator.modelContext.
+    // their first probe. No-op in browsers without document.modelContext.
     // Bindings await `this.uiReady` (resolves after Phase-4 UI init) so
     // a tool invoked during the startup window waits for the target
     // panel to exist instead of throwing. A 10s timeout keeps a genuinely
@@ -1322,7 +1698,7 @@ export class App {
     const ogLocaleMap: Record<string, string> = {
       en: 'en_US', bg: 'bg_BG', cs: 'cs_CZ', fr: 'fr_FR', de: 'de_DE', el: 'el_GR',
       es: 'es_ES', hr: 'hr_HR', hu: 'hu_HU', it: 'it_IT', pl: 'pl_PL', pt: 'pt_BR',
-      nl: 'nl_NL', sv: 'sv_SE', ru: 'ru_RU', ar: 'ar_SA', fa: 'fa_IR', zh: 'zh_CN',
+      nl: 'nl_NL', sv: 'sv_SE', ru: 'ru_RU', uk: 'uk_UA', ar: 'ar_SA', fa: 'fa_IR', zh: 'zh_CN',
       ja: 'ja_JP', ko: 'ko_KR', ro: 'ro_RO', tr: 'tr_TR', th: 'th_TH', vi: 'vi_VN',
       hi: 'hi_IN',
     };
@@ -1420,6 +1796,10 @@ export class App {
     initAuthAnalytics();
     installCloudPrefsSync(SITE_VARIANT);
     window.addEventListener(CLOUD_PREFS_APPLIED_EVENT, this.handleCloudPrefsApplied);
+    window.addEventListener(
+      CLOUD_PREFS_SIGN_IN_TERMINAL_EVENT,
+      this.handleCloudPrefsSignInTerminal,
+    );
     // Install the followed-countries auth listener once. Drives the
     // anon→signed-in handoff (mergeAnonymousLocal mutation) and sign-out
     // cleanup. Idempotent.
@@ -1443,7 +1823,10 @@ export class App {
     // watched subscribeAuthState (Clerk-only); Convex Free→Pro transitions
     // never re-fired loadTradePolicy. Same root cause as PR #3409 layer-unlock.
     const firePremiumLoaders = (): void => {
-      this.enforceFreeTierLimits();
+      // Account sign-in replaces anonymous/local preferences asynchronously.
+      // Entitlement callbacks may arrive first; defer every ownership mutation
+      // until cloud prefs signals success or error for this same account.
+      this.reconcileTierOwnedPreferences();
       const hadPremium = _prevHadPremium;
       const nowPremium = hasPremiumAccess();
       if (nowPremium && !hadPremium) {
@@ -1475,11 +1858,36 @@ export class App {
     };
     this.unsubEntitlementPremiumLoaders = onEntitlementChange(() => firePremiumLoaders());
     this.unsubFreeTier = subscribeAuthState((session) => {
-      firePremiumLoaders();
-
       const userId = session.user?.id ?? null;
+      const accountTransition = (
+        (userId !== null && userId !== _prevUserId) ||
+        (userId === null && _prevUserId !== null)
+      );
+      if (accountTransition) {
+        // A cloud snapshot and its recovery version belong to the account that
+        // was active when they arrived. Do not let a late Pro reconcile for a
+        // different account consume that pending recovery opportunity.
+        this.pendingCloudRecoverySyncVersion = undefined;
+        this.freeTierGate.resetForAuthTransition();
+      }
+
       if (userId !== null && userId !== _prevUserId) {
         const handoffGeneration = ++_convexWatchHandoffGeneration;
+        // The token fences a LATE completion from a previous attempt for the
+        // same account (sign-in A -> sign-out -> sign-in A): the queue settles
+        // that stale attempt before this one runs, and an id-only guard would
+        // let it release a handoff it does not own. The expiry callback is the
+        // backstop for an attempt that never reaches a terminal outcome.
+        const preferenceHandoffGeneration = this.tierPreferenceHandoff.begin(
+          userId,
+          () => { this.reconcileTierOwnedPreferences(); },
+          // A 503 keeps the sign-in legitimately in flight for up to
+          // Retry-After, which can outlast one grace window. Waiting beats
+          // reconciling against pre-cloud state; the handoff's own ceiling
+          // stops that wait from becoming indefinite.
+          () => hasPendingCloudPrefsRetry(),
+        );
+        this.pendingPreferenceHandoffGeneration = preferenceHandoffGeneration;
 
         // Rebind Convex watches to the real Clerk userId (was bound to anon UUID at init)
         // destroyEntitlementSubscription deliberately PRESERVES the last
@@ -1504,7 +1912,11 @@ export class App {
             rebindConvexAuthForWatchHandoff,
             initEntitlementSubscription,
             initSubscriptionWatch,
-            cloudPrefsSignIn: (nextUserId) => cloudPrefsSignIn(nextUserId, SITE_VARIANT),
+            cloudPrefsSignIn: (nextUserId) => {
+              return cloudPrefsSignIn(nextUserId, SITE_VARIANT, {
+                handoffGeneration: preferenceHandoffGeneration,
+              });
+            },
           },
         });
 
@@ -1612,8 +2024,13 @@ export class App {
         destroySubscriptionWatch();
         cloudPrefsSignOut();
         resetEntitlementState();
+        this.tierPreferenceHandoff.clear();
+        this.pendingPreferenceHandoffGeneration = undefined;
       }
       _prevUserId = userId;
+      // Run after account handoff/reset so this pass cannot enforce the
+      // previous user's entitlement against the new user's panels.
+      firePremiumLoaders();
     });
 
 
@@ -1726,12 +2143,6 @@ export class App {
     this.dataLoader.syncDataFreshnessWithLayers();
     const slowTierReady = this.waitForSlowBootstrapCheckpoint();
     if (this.state.isDestroyed) return;
-    // Prime panel-specific data concurrently with bulk loading.
-    // primeVisiblePanelData owns ETF, Stablecoins, Gulf Economies, etc. that
-    // are NOT part of loadAllData. Running them in parallel prevents those
-    // panels from being blocked when a loadAllData batch is slow.
-    window.addEventListener('scroll', this.handleViewportPrime, { passive: true });
-    window.addEventListener('resize', this.handleViewportPrime);
     // forceAll=false at bootstrap: data-loader's existing per-panel
     // viewport gate (shouldLoad(id) = forceAll || isPanelNearViewport(id))
     // now actually fires, cutting the ~80-request fan-out down to the
@@ -1748,6 +2159,20 @@ export class App {
     // (3.5 s browser / 8.5 s desktop). (#4512)
     await slowTierReady;
     if (this.state.isDestroyed) return;
+    this.viewportHydrationReady = true;
+    // Register viewport triggers only after the slow bootstrap tier settles.
+    // Scrolls before this point are covered by the initial fan-out below, which
+    // scans the current viewport after readiness. Registering earlier lets a
+    // captured descendant scroll consume hydration keys before they arrive.
+    window.addEventListener('scroll', this.handleViewportPrime, {
+      passive: true,
+      capture: true,
+    });
+    window.addEventListener('resize', this.handleViewportPrime);
+    // Prime panel-specific data concurrently with bulk loading.
+    // primeVisiblePanelData owns ETF, Stablecoins, Gulf Economies, etc. that
+    // are NOT part of loadAllData. Running them in parallel prevents those
+    // panels from being blocked when a loadAllData batch is slow.
     // Snapshot whether precision geometry was already loaded BEFORE the fan-out
     // (the map renderer triggers the memoized fetch early). If so, the fan-out's
     // geometry-dependent CII ingests already attributed correctly and the
@@ -1798,12 +2223,344 @@ export class App {
     this.eventHandlers.setupPanelViewTracking();
   }
 
+  private shouldDeferTierPreferenceReconciliation(): boolean {
+    return this.tierPreferenceHandoff.shouldDefer(getAuthState().user?.id ?? null);
+  }
+
+  /** Reconcile all gate-owned preferences against one settled account view. */
+  private reconcileTierOwnedPreferences(): boolean {
+    if (this.shouldDeferTierPreferenceReconciliation()) return false;
+    this.enforceFreeTierLimits();
+    // Stored dashboard-tab snapshots have their own panel copies.
+    this.panelLayout.healStoredTabSnapshots();
+    this.healLockedMapLayers(this.freeTierGate.authSettleDeadlineExceeded);
+    return true;
+  }
+
+  private persistJsonStorageValue<T>(key: string, value: T): boolean {
+    try {
+      localStorage.setItem(key, JSON.stringify(value));
+      return true;
+    } catch (error) {
+      if (isQuotaError(error)) markStorageQuotaExceeded();
+      else console.warn(`Failed to save ${key} to storage:`, error);
+      return false;
+    }
+  }
+
+  /**
+   * Grace-timer state for the free-tier gate. Lives in a collaborator so the
+   * backstop can be driven by tests; App itself is not importable from the
+   * node:test suites.
+   */
+  private readonly freeTierGate = new FreeTierGate(() => {
+    if (this.shouldDeferTierPreferenceReconciliation()) return;
+    this.enforceFreeTierLimits();
+    this.panelLayout.healStoredTabSnapshots();
+    // Clerk can remain pending forever when its script or key is unavailable.
+    // The gate's deadline is the explicit free-tier answer in that case, so
+    // heal stale locked map-layer state as well as panel/source state.
+    this.healLockedMapLayers(true);
+  });
+
+  /**
+   * Sanitize a map-layer snapshot only after the entitlement answer is safe to
+   * treat as free. The fallback argument is deliberately explicit: pending
+   * auth is not evidence that a paying user is free, but the bounded gate is.
+   */
+  private sanitizeMapLayersForTier(
+    layers: MapLayers,
+    fallbackActive = this.freeTierGate.authSettleDeadlineExceeded,
+    options: { ephemeralSnapshot?: boolean } = {},
+  ): MapLayers {
+    // A `?layers=` deep link is a VIEW, not the user's saved preference:
+    // parseMapUrlState rebuilds every LAYER_KEYS entry from the query string.
+    // Treating it as durable state let a shared link overwrite the stored
+    // (and cloud-synced) preference and seed gate ownership the user never
+    // chose, so an ephemeral snapshot is sanitized for display only.
+    const ephemeral = options.ephemeralSnapshot ?? false;
+    const premium = hasPremiumAccess();
+    // A Pro deep link is already entitled. Preserve the exact URL-derived
+    // display snapshot and do not even read durable gate ownership: restoring
+    // it here would enable layers the shared link deliberately omitted.
+    if (premium && ephemeral) return layers;
+
+    const existingOwnership = new Set(
+      loadFromStorage<string[]>(STORAGE_KEYS.mapLayerGateOwnership, []),
+    );
+
+    if (premium) {
+      if (existingOwnership.size === 0) return layers;
+      const restored = sanitizeLayersForVariant(
+        restoreGateOwnedLockedLayers(layers, existingOwnership),
+        SITE_VARIANT as MapVariant,
+      );
+      // sanitizeLayersForVariant always returns a fresh object, so `restored
+      // === layers` is never true — an identity check here silently persisted
+      // on every pass. Compare by value.
+      const unchanged = mapLayerStatesEqual(layers, restored);
+      const persistence = persistGateOwnershipTransition(
+        'pro',
+        () => unchanged
+          || this.persistJsonStorageValue(STORAGE_KEYS.mapLayers, restored),
+        () => this.persistJsonStorageValue(STORAGE_KEYS.mapLayerGateOwnership, []),
+      );
+      return persistence.preferencePersisted ? restored : layers;
+    }
+
+    if (!shouldSanitizeLockedLayers(premium, isProTierResolved(), fallbackActive)) {
+      return layers;
+    }
+
+    // Strip locked layers from the view without recording ownership: a shared
+    // link naming a locked layer must not make that layer auto-enable if the
+    // user later subscribes.
+    if (ephemeral) return sanitizeLockedLayers(layers, false);
+
+    const reconciled = sanitizeLockedLayersWithOwnership(layers, existingOwnership);
+    const ownershipChanged = !stringSetsEqual(existingOwnership, reconciled.gateOwned);
+    persistGateOwnershipTransition(
+      'free',
+      () => reconciled.layers === layers
+        || this.persistJsonStorageValue(STORAGE_KEYS.mapLayers, reconciled.layers),
+      () => !ownershipChanged
+        || this.persistJsonStorageValue(
+          STORAGE_KEYS.mapLayerGateOwnership,
+          [...reconciled.gateOwned],
+        ),
+    );
+    // Entitlement is a live safety boundary: blocked/quota-limited storage
+    // must not leave a locked layer rendered. The ordered writes above retain
+    // enough durable state to retry without ever persisting the destructive
+    // preference before ownership.
+    return reconciled.layers;
+  }
+
+  /** Heal the live map and persisted state after a downgrade or free fallback. */
+  private healLockedMapLayers(
+    fallbackActive = this.freeTierGate.authSettleDeadlineExceeded,
+  ): void {
+    const initialUrlLayers = this.state.initialUrlState?.layers;
+    if (initialUrlLayers) {
+      const healedUrlLayers = this.sanitizeMapLayersForTier(
+        initialUrlLayers,
+        fallbackActive,
+        { ephemeralSnapshot: true },
+      );
+      if (healedUrlLayers !== initialUrlLayers && this.state.initialUrlState) {
+        this.state.initialUrlState.layers = healedUrlLayers;
+      }
+    }
+    // When the session booted from a `?layers=` link, state.mapLayers IS that
+    // URL-derived view (seeded from the same local in the constructor), so this
+    // heal must stay ephemeral too. The boot-time ephemeral pass usually
+    // no-ops — shouldSanitizeLockedLayers is false while the tier is still
+    // unresolved — which makes THIS the call that actually acts, and a
+    // non-ephemeral run here would seed gate ownership from the link and write
+    // it to the stored preference, undoing the deep-link fix entirely.
+    const healed = this.sanitizeMapLayersForTier(
+      this.state.mapLayers,
+      fallbackActive,
+      initialUrlLayers ? { ephemeralSnapshot: true } : {},
+    );
+    if (healed === this.state.mapLayers) return;
+    this.state.mapLayers = healed;
+    this.state.map?.setLayers(healed);
+    this.dataLoader.syncDataFreshnessWithLayers();
+  }
+
+  /**
+   * Put back everything the free-tier gate hid, now that we know the user is
+   * Pro: the cw-* custom widgets AND the panels the count cap clamped off past
+   * FREE_MAX_PANELS. Both now carry `proGated`, so the targeted restore covers
+   * both; only the legacy sweep below stays widget-specific.
+   *
+   * Covers the free→pro upgrade, and heals users whose widgets were disabled
+   * by a pre-fix build (see the one-time recovery below — those entries
+   * pre-date the `proGated` marker, so they need the sweep).
+   */
+  private restoreProGatedPanelsForTier(cloudSyncVersion?: number): boolean {
+    const panelSettings = loadFromStorage<Record<string, PanelConfig>>(STORAGE_KEYS.panels, {});
+    let restored = restoreProGatedPanels(panelSettings);
+
+    // ── One-time recovery for pre-`proGated` damage ───────────────────
+    // Strictly once per browser. The sweep cannot tell legacy gate damage from
+    // a widget the user hid on purpose (both are `enabled: false` with no
+    // marker), so re-running it would silently un-hide deliberate hides. It was
+    // previously re-armed on every cloud panels snapshot, which fires on
+    // effectively every sign-in for a multi-device user — that re-arm is gone.
+    //
+    // Each device still heals itself on its first post-fix Pro reconcile, and
+    // from then on `proGated` travels with the synced blob, so the targeted
+    // restore above covers the cross-device case. A panel-bearing cloud
+    // generation received before entitlement settles is retained in memory
+    // until that Pro reconcile, so the one bounded second chance is not lost.
+    //
+    // The marker is burned on the first look, not the first repair: widget
+    // specs are device-local (`wm-custom-widgets` is not a cloud-sync key), so
+    // `loadWidgets()` is fully hydrated here and "found nothing" is a real
+    // answer, not a not-yet-loaded one.
+    try {
+      let ownedWidgetIds: Set<string> | null = null;
+      const sweepLegacy = (): void => {
+        ownedWidgetIds ??= new Set(loadWidgets().map((w) => w.id));
+        restored = sweepLegacyDisabledCustomWidgets(restored, ownedWidgetIds);
+      };
+      const recoveryMarker = localStorage.getItem(CW_PRO_GATE_RECOVERY_KEY);
+      const baselineRaw = localStorage.getItem(CW_PRO_GATE_CLOUD_RECOVERY_BASELINE_KEY);
+      const baselineParsed = baselineRaw === null ? Number.NaN : Number.parseInt(baselineRaw, 10);
+      const baselineSyncVersion = Number.isFinite(baselineParsed) ? baselineParsed : null;
+      const appliedRaw = localStorage.getItem(CW_PRO_GATE_CLOUD_RECOVERY_APPLIED_KEY);
+      const appliedParsed = appliedRaw === null ? Number.NaN : Number.parseInt(appliedRaw, 10);
+      const appliedSyncVersion = Number.isFinite(appliedParsed) ? appliedParsed : null;
+      const effectiveCloudSyncVersion = cloudSyncVersion ?? this.pendingCloudRecoverySyncVersion;
+
+      if (!recoveryMarker) {
+        sweepLegacy();
+        localStorage.setItem(CW_PRO_GATE_RECOVERY_KEY, 'done');
+        // The current cloud snapshot was swept as part of the first recovery,
+        // so mark it consumed when this call came from cloud reconciliation.
+        const baseline = effectiveCloudSyncVersion ?? getSyncVersion();
+        localStorage.setItem(CW_PRO_GATE_CLOUD_RECOVERY_BASELINE_KEY, String(baseline));
+        if (effectiveCloudSyncVersion !== undefined) {
+          localStorage.setItem(CW_PRO_GATE_CLOUD_RECOVERY_APPLIED_KEY, String(effectiveCloudSyncVersion));
+        }
+      } else if (baselineSyncVersion === null && effectiveCloudSyncVersion !== undefined) {
+        // A browser may have burned the original marker before this bounded
+        // cloud-generation guard shipped. Give its first observed cloud
+        // snapshot one recovery pass, then never re-arm for later versions.
+        sweepLegacy();
+        localStorage.setItem(CW_PRO_GATE_CLOUD_RECOVERY_BASELINE_KEY, String(effectiveCloudSyncVersion));
+        localStorage.setItem(CW_PRO_GATE_CLOUD_RECOVERY_APPLIED_KEY, String(effectiveCloudSyncVersion));
+      } else if (baselineSyncVersion === null) {
+        localStorage.setItem(CW_PRO_GATE_CLOUD_RECOVERY_BASELINE_KEY, String(getSyncVersion()));
+      } else if (shouldRunCloudLegacyRecovery(baselineSyncVersion, appliedSyncVersion, effectiveCloudSyncVersion)) {
+        // One bounded second chance covers a pre-fix snapshot arriving after
+        // the local migration marker was already consumed. Deliberate hides
+        // are protected from future cloud replays by the applied marker.
+        sweepLegacy();
+        localStorage.setItem(CW_PRO_GATE_CLOUD_RECOVERY_APPLIED_KEY, String(effectiveCloudSyncVersion));
+      }
+    } catch {
+      // Persistence-only migration; blocked storage already uses defaults.
+    }
+
+    if (!panelGateStateChanged(panelSettings, restored)) return false;
+
+    saveToStorage(STORAGE_KEYS.panels, restored);
+    this.state.panelSettings = restored;
+    this.panelLayout.applyPanelSettings();
+    this.state.unifiedSettings?.refreshPanelToggles();
+    console.log('[App] Pro: restored custom widget panels hidden by the free-tier gate');
+    return true;
+  }
+
+  private currentSourceCapLanguage(): string {
+    let explicitLocale = '';
+    try { explicitLocale = localStorage.getItem('wm-locale-explicit') || ''; } catch { /* private mode */ }
+    return ((explicitLocale || navigator.language || 'en').split('-')[0] ?? 'en').toLowerCase();
+  }
+
+  private sourceCapProtectedNames(userLang: string): Set<string> {
+    const protectedNames = new Set<string>(FREE_CAP_PROTECTED_SOURCES);
+    for (const name of getStrategicDefaultSources()) protectedNames.add(name);
+    if (userLang !== 'en') {
+      for (const name of getLocaleBoostedSources(userLang)) protectedNames.add(name);
+    }
+    return protectedNames;
+  }
+
+  /** Reconcile or restore the persisted 80-source cap without losing user intent. */
+  private reconcileSourceLimitForTier(pro: boolean): boolean {
+    let ownershipMetadataExists = false;
+    try {
+      ownershipMetadataExists = localStorage.getItem(STORAGE_KEYS.sourceGateOwnership) !== null;
+    } catch { /* optional persistence */ }
+    const persistedDisabled = new Set(
+      loadFromStorage<string[]>(STORAGE_KEYS.disabledFeeds, []),
+    );
+    const persistedGateOwned = new Set(
+      loadFromStorage<string[]>(STORAGE_KEYS.sourceGateOwnership, []),
+    );
+    let gateOwned = new Set(persistedGateOwned);
+    const userLang = this.currentSourceCapLanguage();
+    const protectedNames = this.sourceCapProtectedNames(userLang);
+
+    // Heal untouched profiles capped before ownership metadata existed. Exact
+    // matching preserves every customized denylist.
+    if (!ownershipMetadataExists) {
+      const defaultUserDisabled = new Set(computeDefaultDisabledSources(userLang));
+      const expectedGateOwned = selectSourcesUnderCap(
+        FEEDS,
+        INTEL_SOURCES,
+        defaultUserDisabled,
+        FREE_MAX_SOURCES,
+        protectedNames,
+      ).autoDisabled;
+      gateOwned = inferExactSourceGateOwnership(
+        persistedDisabled,
+        defaultUserDisabled,
+        expectedGateOwned,
+      ) ?? gateOwned;
+    }
+
+    let nextDisabled: Set<string>;
+    let nextGateOwned: Set<string>;
+    if (pro) {
+      nextDisabled = restoreGateOwnedSources(persistedDisabled, gateOwned);
+      nextGateOwned = new Set();
+    } else {
+      const userDisabled = restoreGateOwnedSources(persistedDisabled, gateOwned);
+      const nextAutoDisabled = selectSourcesUnderCap(
+        FEEDS,
+        INTEL_SOURCES,
+        userDisabled,
+        FREE_MAX_SOURCES,
+        protectedNames,
+      ).autoDisabled;
+      const reconciled = reconcileSourceGateOwnership(
+        userDisabled,
+        nextAutoDisabled,
+      );
+      nextDisabled = reconciled.disabled;
+      nextGateOwned = reconciled.gateOwned;
+    }
+
+    const disabledChanged = !stringSetsEqual(persistedDisabled, nextDisabled);
+    const ownershipChanged = !ownershipMetadataExists
+      || !stringSetsEqual(persistedGateOwned, nextGateOwned);
+    const persistence = persistGateOwnershipTransition(
+      pro ? 'pro' : 'free',
+      () => !disabledChanged
+        || this.persistJsonStorageValue(STORAGE_KEYS.disabledFeeds, [...nextDisabled]),
+      () => !ownershipChanged
+        || this.persistJsonStorageValue(
+          STORAGE_KEYS.sourceGateOwnership,
+          [...nextGateOwned],
+        ),
+    );
+    const disabledPersisted = disabledChanged && persistence.preferencePersisted;
+    const ownershipPersisted = ownershipChanged && persistence.ownershipPersisted;
+    if (disabledChanged) {
+      // The live entitlement boundary must not depend on localStorage health.
+      // Durable writes remain ordered/retryable above, but free users stay
+      // capped and Pro users unlock immediately even when quota is exhausted.
+      this.state.disabledSources = new Set(nextDisabled);
+    }
+    if (disabledPersisted || ownershipPersisted) {
+      console.log(pro
+        ? `[App] Pro: restored ${gateOwned.size} source(s) disabled by the free-tier gate`
+        : `[App] Free tier: reconciled ${nextGateOwned.size} gate-owned source disable(s)`);
+    }
+    return disabledPersisted || ownershipPersisted;
+  }
+
   /**
    * Enforce free-tier panel and source limits.
    * Reads current values from storage, trims if necessary, and saves back.
    * Safe to call multiple times (idempotent) — e.g. on auth state changes.
    */
-  private enforceFreeTierLimits(): void {
+  private enforceFreeTierLimits(cloudSyncVersion?: number): boolean {
     // ── One-time v1 cap-bug recovery ──────────────────────────────────
     // Pre-2026-05-01 the source cap was enforced by Array.sort().slice(),
     // which silently auto-disabled every source past alphabetical position
@@ -1834,7 +2591,57 @@ export class App {
       saveToStorage(STORAGE_KEYS.disabledFeedsSchema, 1);
     }
 
-    if (isProUser()) return;
+    if (isProUser()) {
+      this.freeTierGate.cancelFallback();
+      const panelsChanged = this.restoreProGatedPanelsForTier(cloudSyncVersion);
+      this.reconcileSourceLimitForTier(true);
+      return panelsChanged;
+    }
+
+    // Pro/free is NOT knowable yet on an auth-enabled page load. initAuthState()
+    // deliberately does not await Clerk (2.98 MB, loaded on requestIdleCallback
+    // with a 4 s timeout) and the Convex entitlement snapshot lands later
+    // still, so getAuthState() is `{ user: null, isPending: true }` here — a
+    // signed-in Pro user is indistinguishable from an anonymous one at this
+    // point. Builds without Clerk settle anonymous synchronously instead.
+    //
+    // That matters because the clamp below is a PERSISTED write and
+    // enforceFreePanelLimit disables every cw-* custom widget on the free
+    // tier. Running it against an unresolved session wrote `enabled: false`
+    // into STORAGE_KEYS.panels for Pro users' widgets on every single refresh:
+    // the specs survived in wm-custom-widgets but the panels never mounted
+    // again, so custom widgets appeared to vanish the moment the page
+    // reloaded. (The widget e2e suite missed it because it seeds the legacy
+    // wm-widget-key, which makes isProUser() true synchronously at boot.)
+    //
+    // Deferring is free: firePremiumLoaders() re-runs this on the Clerk auth
+    // event and on every Convex entitlement snapshot. The fallback timer
+    // covers the one case where neither ever arrives — a configured Clerk
+    // script fails to load and isPending stays true, so the free-tier caps
+    // would otherwise never be enforced.
+    //
+    // The same blindness recurs after Clerk settles: the auth callback runs
+    // firePremiumLoaders() before initEntitlementSubscription() rebinds, so
+    // for a signed-in user getEntitlementState() is still null and
+    // isEntitled() is deterministically false at that instant — a Convex-only
+    // Pro subscriber would be clamped as free on every load. Defer for that
+    // window too; the entitlement snapshot re-runs this and the same fallback
+    // timer bounds a snapshot that never arrives.
+    const session = getAuthState();
+    if (
+      shouldDeferFreeTierEnforcement(
+        session.isPending,
+        session.user !== null,
+        getEntitlementState() !== null,
+        this.freeTierGate.authSettleDeadlineExceeded,
+      )
+    ) {
+      this.freeTierGate.scheduleFallback();
+      return false;
+    }
+    // Tier is known — drop the backstop instead of letting it fire a redundant
+    // enforcement pass 8 s into every session.
+    this.freeTierGate.cancelFallback();
 
     // --- Panel limit ---
     // Delegate to the shared enforceFreePanelLimit helper so this boot path and
@@ -1865,67 +2672,35 @@ export class App {
     if (panelsChanged) {
       saveToStorage(STORAGE_KEYS.panels, clampedPanels);
       this.state.panelSettings = clampedPanels;
+      // Auth and entitlement callbacks can reach this path after the layout
+      // has mounted. Persisting the clamp is not enough in that case: remove
+      // now-ineligible panels from the live dashboard immediately as well.
+      this.panelLayout.applyPanelSettings();
+      this.state.unifiedSettings?.refreshPanelToggles();
       console.log(`[App] Free tier: enforced ${FREE_MAX_PANELS}-panel limit (disabled over-cap / cw-* panels)`);
     }
 
-    // --- Source limit ---
-    // Free-tier 80-source cap. Pre-2026-05-01 this used `Array.sort().slice()`
-    // which silently auto-disabled every source past alphabetical position 80,
-    // catastrophically erasing late-alphabet categories (Layoffs, Semiconductors,
-    // IPO & SPAC, Funding & VC, Product Hunt, …) and producing the "All sources
-    // disabled" red panel state on the homepage with no user explanation.
-    // Replaced with round-robin per-category distribution from `selectSourcesUnderCap`.
-    // (v1-bug recovery for stuck localStorage state is handled once at the top
-    // of this function via the schema-version migration.)
-    const disabledSources = new Set(loadFromStorage<string[]>(STORAGE_KEYS.disabledFeeds, []));
-    const totalEligible = (() => {
-      const s = new Set<string>();
-      Object.values(FEEDS).forEach((feeds) => feeds?.forEach((f) => s.add(f.name)));
-      INTEL_SOURCES.forEach((f) => s.add(f.name));
-      let count = 0;
-      for (const name of s) if (!disabledSources.has(name)) count++;
-      return count;
-    })();
-    if (totalEligible > FREE_MAX_SOURCES) {
-      // Protect locale-boosted sources from the cap. Without this, locale-
-      // tagged feeds that sit late in their category bucket (e.g. Hungarian
-      // entries in the Europe bucket, declared AFTER the existing en/de/it/
-      // nl/sv defaults) get round-robin'd out — the locale boost re-enables
-      // them, then the cap immediately auto-disables them again. Free-tier
-      // users on the boosted locale lose their locale's defaults entirely.
-      // userLang derivation mirrors the locale-boost migration (earlier in
-      // the App constructor) and the i18n.ts:99 `wmExplicit` detector:
-      // explicit Settings choice wins, navigator is the fallback. Direct
-      // localStorage read because i18next isn't initialized yet at the
-      // constructor stage where enforceFreeTierLimits also runs.
-      let explicitLocale = '';
-      try { explicitLocale = localStorage.getItem('wm-locale-explicit') || ''; } catch { /* private mode */ }
-      const userLang = ((explicitLocale || navigator.language || 'en').split('-')[0] ?? 'en').toLowerCase();
-      const protectedNames = userLang === 'en' ? new Set<string>() : getLocaleBoostedSources(userLang);
-      const { keep, autoDisabled } = selectSourcesUnderCap(FEEDS, INTEL_SOURCES, disabledSources, FREE_MAX_SOURCES, protectedNames);
-      // Defense in depth: feeds.ts has 35+ source names that appear in
-      // multiple category buckets. The helper guarantees keep ∩ autoDisabled
-      // = ∅, but a regression there would silently re-disable a kept source
-      // here. The keep.has() guard makes the cross-set invariant explicit
-      // at the caller too — if it ever fires it's a helper-bug signal.
-      for (const name of autoDisabled) {
-        if (!keep.has(name)) disabledSources.add(name);
-      }
-      saveToStorage(STORAGE_KEYS.disabledFeeds, Array.from(disabledSources));
-      console.log(`[App] Free tier: round-robin disabled ${autoDisabled.size} source(s) to enforce ${FREE_MAX_SOURCES}-source limit (per-category fairness)`);
-    }
+    this.reconcileSourceLimitForTier(false);
+    return panelsChanged;
   }
 
   public destroy(): void {
     this.state.isDestroyed = true;
+    this.tierPreferenceHandoff.clear();
+    this.pendingPreferenceHandoffGeneration = undefined;
+    this.viewportHydrationReady = false;
     cancelBootstrapSlowTier();
-    window.removeEventListener('scroll', this.handleViewportPrime);
+    window.removeEventListener('scroll', this.handleViewportPrime, { capture: true });
     window.removeEventListener('resize', this.handleViewportPrime);
     window.removeEventListener('online', this.handleConnectivityChange);
     window.removeEventListener('offline', this.handleConnectivityChange);
     window.removeEventListener(I18N_RESOURCES_LOADED_EVENT, this.handleI18nResourcesLoaded);
     window.removeEventListener(WM_FOLLOWED_COUNTRIES_CAP_DROP, this.handleFollowedCountriesCapDrop);
     window.removeEventListener(CLOUD_PREFS_APPLIED_EVENT, this.handleCloudPrefsApplied);
+    window.removeEventListener(
+      CLOUD_PREFS_SIGN_IN_TERMINAL_EVENT,
+      this.handleCloudPrefsSignInTerminal,
+    );
     if (this.visiblePanelPrimeRaf !== null) {
       window.cancelAnimationFrame(this.visiblePanelPrimeRaf);
       this.visiblePanelPrimeRaf = null;
@@ -1944,6 +2719,7 @@ export class App {
     this.unsubAiFlow?.();
     this.unsubFreeTier?.();
     this.unsubEntitlementPremiumLoaders?.();
+    this.freeTierGate.cancelFallback();
     mlWorker.terminate();
     this.state.findingsBadge?.destroy();
     this.state.findingsBadge = null;
@@ -2049,7 +2825,9 @@ export class App {
         .closest<HTMLElement>('[data-action]')
         ?.dataset.action;
       if (clickedAction === 'upgrade') {
-        window.open('/pro#pricing', '_blank', 'noopener,noreferrer');
+        // Absolute + routed: the relative form resolved against
+        // tauri://localhost in the desktop WebView (#5911).
+        void openExternalUrl(`${WEB_APP_ORIGIN}/pro#pricing`);
         if (this.followedCountriesCapDropToastTimer !== null) {
           window.clearTimeout(this.followedCountriesCapDropToastTimer);
           this.followedCountriesCapDropToastTimer = null;
@@ -2374,6 +3152,13 @@ export class App {
     );
 
     this.refreshScheduler.scheduleRefresh(
+      'fx',
+      () => (this.state.panels['fx'] as FxPanel).fetchData(),
+      REFRESH_INTERVALS.fx,
+      () => this.isPanelNearViewport('fx')
+    );
+
+    this.refreshScheduler.scheduleRefresh(
       'fao-food-price-index',
       () => (this.state.panels['fao-food-price-index'] as FaoFoodPriceIndexPanel).fetchData(),
       REFRESH_INTERVALS.faoFoodPriceIndex,
@@ -2506,13 +3291,7 @@ export class App {
     this.refreshScheduler.scheduleRefresh(
       'correlation-engine',
       async () => {
-        const engine = this.state.correlationEngine;
-        if (!engine) return;
-        await engine.run(this.state);
-        for (const domain of ['military', 'escalation', 'economic', 'disaster'] as const) {
-          const panel = this.state.panels[`${domain}-correlation`] as CorrelationPanel | undefined;
-          panel?.updateCards(engine.getCards(domain));
-        }
+        await this.runCorrelationEngine();
       },
       REFRESH_INTERVALS.correlationEngine,
       () => this.shouldRefreshCorrelation(),

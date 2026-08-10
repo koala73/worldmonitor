@@ -53,6 +53,8 @@ export const REFRESH_INTERVALS = {
   gulfEconomies: 10 * 60 * 1000,
   groceryBasket: 6 * 60 * 60 * 1000,
   fuelPrices: 6 * 60 * 60 * 1000,
+  fx: 6 * 60 * 60 * 1000, // all three FX keys are daily seeds; 6h picks up the new bar without polling a static payload
+
   faoFoodPriceIndex: 24 * 60 * 60 * 1000, // monthly data; refresh daily is sufficient
   oilInventories: 5 * 60 * 1000, // EIA weekly + EU gas daily; 5min refresh
   climateNews: 30 * 60 * 1000, // seeded every 30min; match cadence
@@ -97,10 +99,14 @@ export const MONITOR_COLORS = [
 
 // Storage keys - shared
 export const STORAGE_KEYS = {
+  variant: 'worldmonitor-variant',
   panels: 'worldmonitor-panels',
   monitors: 'worldmonitor-monitors',
   mapLayers: 'worldmonitor-layers',
   disabledFeeds: 'worldmonitor-disabled-feeds',
+  sourceGateOwnership: 'worldmonitor-free-tier-source-ownership',
+  mapLayerGateOwnership: 'worldmonitor-free-tier-layer-ownership',
+  panelLayoutVariant: 'worldmonitor-panel-layout-variant',
   // Schema version for the disabledFeeds set. Bumped on each migration that
   // mutates the set in a backwards-incompatible way. Currently:
   //   missing/0 → pre-2026-05-01 alphabetical-cap state. Eligible for

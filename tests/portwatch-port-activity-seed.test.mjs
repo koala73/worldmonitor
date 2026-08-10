@@ -495,8 +495,16 @@ describe('seed-portwatch-port-activity.mjs exports', () => {
     assert.match(src, /parseMaxDateToAnchor\(upstreamMaxDate\)/);
     assert.match(
       src,
-      /fetchCountryAccum\(iso3,\s*\{\s*signal:\s*childSignal,\s*anchorEpochMs,\s*dateField\s*\}\)/,
+      /retryRateLimited\(\s*\(attemptSignal\)\s*=>\s*fetchCountryAccum\(iso3,\s*\{\s*signal:\s*attemptSignal,\s*anchorEpochMs,\s*dateField\s*\}\)/,
     );
+  });
+
+  it('retries only rate-limited country fetches inside the existing timeout', () => {
+    assert.match(src, /const RATE_LIMIT_RETRY_DELAY_MS\s*=\s*2_000/);
+    assert.match(src, /const MAX_RATE_LIMIT_RETRIES\s*=\s*1/);
+    assert.match(src, /retryRateLimited\(\s*\(attemptSignal\)\s*=>/);
+    assert.match(src, /refreshFailureCode\(reason\)\s*!==\s*'rate_limited'/);
+    assert.match(src, /withPerCountryTimeout\(/);
   });
 
   it('fetchAll resolves the ArcGIS date field once at run start', () => {

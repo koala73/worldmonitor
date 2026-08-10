@@ -165,7 +165,7 @@ Universal arguments:
 
 ### `get_market_data`
 
-Real-time equity quotes, commodity prices (including gold futures GC=F), crypto prices, forex FX rates (USD/EUR, USD/JPY etc.), sector performance, ETF flows, and Gulf market quotes from WorldMonitor's curated bootstrap cache.
+Real-time equity quotes, commodity prices (including gold futures GC=F), crypto prices, forex FX rates (USD/EUR, USD/JPY etc.), sector performance and valuation coverage, ETF flows, and Gulf market quotes from WorldMonitor's curated bootstrap cache.
 
 **Parameters (tool-specific):**
 
@@ -178,6 +178,7 @@ Real-time equity quotes, commodity prices (including gold futures GC=F), crypto 
 - **API endpoints:** `GET /api/market/v1/get-fear-greed-index`, `GET /api/market/v1/get-sector-summary`, `GET /api/market/v1/list-commodity-quotes`, `GET /api/market/v1/list-crypto-quotes`, `GET /api/market/v1/list-etf-flows`, `GET /api/market/v1/list-gulf-quotes`, `GET /api/market/v1/list-market-quotes`
 - **Kind:** cache read — sub-second response from Redis bootstrap cache.
 - **Freshness budget:** up to **30 min** before `stale: true` is flagged (set by the seeder cron's expected interval).
+- Sector `valuationCoverage` separates write age (`stale`) from completeness (`sourceStatus`: `ok`, `partial`, or `degraded`). `stale` describes the seed write, not the individual records — a freshly written payload can still contain older valuations. `valuationCount` and `expectedValuationCount` follow a `symbols` filter when one is supplied. `valuationCount` counts live and replayed records together; `currentValuationCount` gives the subset actually fetched this cycle and is omitted when every record is current. `staleValuationSymbols` lists symbols served from an older snapshot — those symbols **do** have values in `valuations`, and `lastGood.fetchedAt` gives their age (bounded by a 7-day snapshot TTL). `unavailableSymbols` lists symbols with no valuation published at all, and is disjoint from `staleValuationSymbols`. `lastGood` covers both whole records and borrowed return metrics, and includes that snapshot's timestamp. `sourceStatus` is `degraded` when no record is current, `partial` when some are stale or missing. `valuationDiagnostics` is bounded per-symbol route metadata across the `v7Quote`, `v7QuoteBatch`, and `quoteSummary` routes, showing independent direct/proxy outcomes, response classes, and missing fields; it never contains credentials.
 
 <CodeGroup>
 
@@ -196,19 +197,20 @@ curl -s https://worldmonitor.app/mcp \
 
 ### `get_economic_data`
 
-Macro economic indicators: Fed Funds rate (FRED), economic calendar events, fuel prices, ECB FX rates, EU yield curve, earnings calendar, COT positioning, energy storage data, BIS household debt service ratio (DSR, quarterly, leading indicator of household financial stress across ~40 advanced economies), and BIS residential + commercial property price indices (real, quarterly).
+Macro economic indicators: Fed Funds rate (FRED), economic calendar events, fuel prices, ECB FX rates, Bank of Russia official RUB rates and key policy rate, EU yield curve, earnings calendar, COT positioning, energy storage data, BIS household debt service ratio (DSR, quarterly, leading indicator of household financial stress across ~40 advanced economies), and BIS residential + commercial property price indices (real, quarterly).
 
 **Parameters (tool-specific):**
 
 | Name | Type | Description |
 |------|------|-------------|
-| `dataset` | `array<string: fedfunds / econ-calendar / china-macro / china-release-calendar / fuel-prices / ecb-fx-rates / yield-curve-eu / spending / earnings-calendar / cot / dsr / property-residential / property-commercial>` | Restrict the response to one or more sub-datasets. Omit for the full economic bundle. |
+| `dataset` | `array<string: fedfunds / econ-calendar / china-macro / china-release-calendar / fuel-prices / ecb-fx-rates / cbr-rates / yield-curve-eu / spending / earnings-calendar / cot / dsr / property-residential / property-commercial>` | Restrict the response to one or more sub-datasets. Omit for the full economic bundle. |
 | `country` | string | Filter the country-keyed datasets (fuel-prices, BIS DSR/property, economic calendar) to one ISO 3166-1 alpha-2 code. |
 | `limit` | number | Cap each list dataset (calendar, spending, earnings) to at most this many items (default 30, pass 0 for no cap). |
 
 - **API endpoints:** `GET /api/economic/v1/get-ecb-fx-rates`, `GET /api/economic/v1/get-economic-calendar`, `GET /api/economic/v1/get-eu-yield-curve`, `GET /api/economic/v1/list-fuel-prices`, `GET /api/market/v1/get-cot-positioning`, `GET /api/market/v1/list-earnings-calendar`
 - **Kind:** cache read — sub-second response from Redis bootstrap cache.
 - **Freshness budget:** up to **1 d** before `stale: true` is flagged (set by the seeder cron's expected interval).
+- **Per-dataset caveat:** the single `stale` flag is derived from a subset of these sub-datasets, so it is not a per-dataset guarantee. `cbr-rates` is not one of them — it is published daily on a 3-day staleness budget with a 14-day content-age contract, both monitored on `/api/health` rather than through this flag. Read `cbr-rates.effectiveDate` when the age of that dataset specifically matters.
 
 <CodeGroup>
 
@@ -447,6 +449,38 @@ curl -s https://worldmonitor.app/mcp \
     "jsonrpc":"2.0","id":1,
     "method":"tools/call",
     "params":{"name":"get_tariff_trends","arguments":{}}
+  }'
+```
+
+</CodeGroup>
+
+### `get_wto_trade_flows`
+
+WTO merchandise trade flows for one reporting country versus the World, over a configurable year window. Data comes from the WTO `ITS_MTV_AX` (exports) and `ITS_MTV_AM` (imports) indicators, seeded on a 6-hour cadence; the tool reads the same seeded snapshot the dashboard serves — it never calls WTO per request.
+
+**Parameters (tool-specific):**
+
+| Name | Type | Description |
+|------|------|-------------|
+| `reporter` | string | WTO reporting country as a 3-digit UN M49 code (e.g. "840" = United States). Defaults to "840". The only partner served is the World ("000"); any other partner answers `not_covered`. |
+| `years` | integer | Number of years to look back from the most recent published year, inclusive of both endpoints (10 returns 11 calendar years). Defaults to 10; 30 is the full seeded window. |
+
+**Response distinctions:** `unavailableReason` is the closed `TradeFlowUnavailableReason` enum from the RPC. `TRADE_FLOW_UNAVAILABLE_REASON_NOT_COVERED` is a contract answer — the combination is simply outside seeded coverage, a retry cannot help. Every other non-UNSPECIFIED reason names a fault (`seed_missing`, `coverage_unknown`, `cache_unavailable`), with `upstreamUnavailable: true`.
+
+- **API endpoint:** `GET /api/trade/v1/get-trade-flows`
+- **Kind:** RPC proxy over the canonical trade-flows route (the handler owns window slicing and miss classification).
+- **Freshness budget:** up to **7 h** before `stale` (6 h seeder cadence plus one hour of grace).
+
+<CodeGroup>
+
+```bash curl
+curl -s https://worldmonitor.app/mcp \
+  -H "X-WorldMonitor-Key: $WM_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "jsonrpc":"2.0","id":1,
+    "method":"tools/call",
+    "params":{"name":"get_wto_trade_flows","arguments":{"reporter":"840","years":20}}
   }'
 ```
 
@@ -1272,6 +1306,7 @@ Live maritime chokepoint status: per-chokepoint vessel transit counts (10-min ca
 - **API endpoints:** `GET /api/intelligence/v1/get-country-port-activity`, `GET /api/supply-chain/v1/get-chokepoint-status`
 - **Kind:** cache read — sub-second response from Redis bootstrap cache.
 - **Freshness budget (per slice):** `stale: true` flags when ANY contributing slice exceeds its individual budget — **30 min** for live transit summaries (relay), **36 h** for PortWatch port activity, **12 h** for chokepoint flows, **14 d** for the PortWatch chokepoint reference, and up to **~400 d** for the static chokepoint registry / geographic baselines. The bundle's `cached_at` reflects the oldest contributing seed; `stale: true` doesn't mean ALL the data is old.
+- **Per-country content freshness (PortWatch slice):** `stale: true` also flags when a decision-critical country's own observation (`CN`/`HK`) is older than **72 h**, even though the run's heartbeat is fresh and all 174 countries are published. The seeder reuses a cached country payload while upstream `max(date)` has not advanced, so transport age and record count both read healthy while an individual country's data is days old. This mirrors the `STALE_CONTENT` verdict on `/api/health` for the same seed key — see [Health endpoints](/health-endpoints). `stale` stays a single boolean, so it does not say which dimension tripped; `/api/health` names the stale country.
 
 <CodeGroup>
 
@@ -1855,21 +1890,21 @@ curl -s https://worldmonitor.app/mcp \
 
 </CodeGroup>
 
-## AI intelligence (live LLM)
+## AI intelligence
 
 ### `get_world_brief`
 
-AI-generated world intelligence brief. Fetches the latest geopolitical headlines along with their RSS article bodies and produces a grounded LLM-summarized brief. Supply an optional geo_context to focus on a region or topic.
+Citation-grounded world intelligence brief from the same precomputed `news:insights:v1` snapshot used by the dashboard. The insights seeder applies corroboration, citation, and hallucination gates before publishing; this tool reads that accepted result without a request-time LLM call. The optional `geo_context` field is retained for client compatibility and does not alter the seeded global snapshot.
 
 **Parameters:**
 
 | Name | Type | Required | Description |
 |------|------|---------:|-------------|
-| `geo_context` | string | no | Optional focus context (e.g. "Middle East tensions", "US-China trade war") |
+| `geo_context` | string | no | Deprecated compatibility field; the precomputed global snapshot is not regenerated or refocused per request. |
 
-- **API endpoints:** `GET /api/news/v1/list-feed-digest`, `POST /api/news/v1/summarize-article`
-- **Kind:** live RPC — proxies a fetch to the WorldMonitor API on each call. Worst-case total budget **~24s** (6s digest fetch + 18s LLM summarization, sequential).
-- **Sources:** returns a bounded `sources` array with original article links from the feed digest items sent as grounding inputs. URLs are copied from feed data, not generated by the LLM.
+- **API endpoints:** `GET /api/infrastructure/v1/get-bootstrap-data?keys=insights` — authenticated gateway read of the same `news:insights:v1` payload used by the dashboard.
+- **Kind:** cache-backed RPC — returns the latest accepted seeder snapshot and fails closed when it is missing, stale, or degraded. No request-time LLM call.
+- **Sources:** returns the bounded `worldBriefSources` array published with the seeded payload in producer order. URLs are copied from explicit source records, not generated at MCP execution time; empty URL fallbacks are retained so citation indexes cannot shift.
 
 <CodeGroup>
 

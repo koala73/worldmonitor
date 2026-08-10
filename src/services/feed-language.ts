@@ -5,7 +5,12 @@ import type { Feed } from '@/types';
  *
  * A feed with no explicit `lang` is universal (or multi-URL, resolved per
  * language inside `fetchFeed`). A feed that declares one is only fetched when
- * it matches — `fetchCategoryFeeds` drops the rest before it batches.
+ * it matches — unless it is a `strategicDefault`, which bypasses the language
+ * filter so it is reachable in every locale.
+ *
+ * A strategic-default feed carries local-depth content on a strategically
+ * important topic (active war, frontline NATO state, Tier-1 Indo-Pacific
+ * flashpoint) that should be visible to every user regardless of UI language.
  *
  * Extracted so callers that must reason about a category's REACHABLE feed set
  * share this rule rather than restating it. Custom news categories rotate a
@@ -20,7 +25,7 @@ import type { Feed } from '@/types';
  * pure, unit-testable rule; callers pass `getCurrentLanguage()`.
  */
 export function isFeedInLanguage(feed: Feed, language: string): boolean {
-  return !feed.lang || feed.lang === language;
+  return !feed.lang || feed.lang === language || !!feed.strategicDefault;
 }
 
 /** The subset of `feeds` a fetch in `language` would actually attempt. */

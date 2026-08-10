@@ -46,6 +46,11 @@ describe('China decision-signal static and staging audit (#5580)', () => {
     );
     assert.deepEqual(result.structuralCheckIds, [
       'edge-seed-health-group-ids',
+      // #6060 added api/health.js as a third literal mirror of the group
+      // manifest, plus the healthy-quiet cause string in both Edge copies.
+      'edge-health-group-ids',
+      'edge-health-quiet-cause',
+      'edge-seed-health-quiet-cause',
       'gateway-cache-tier',
       'gateway-public-no-auth',
       'access-tier-composition',
@@ -131,12 +136,16 @@ describe('China decision-signal static and staging audit (#5580)', () => {
         partial: 0,
         stale: 0,
         unavailable: 6,
+        healthyQuiet: 0,
+        operationallyCovered: 0,
       },
       bootstrapGroupCounts: {
         populated: 0,
         partial: 0,
         stale: 0,
         unavailable: 6,
+        healthyQuiet: 0,
+        operationallyCovered: 0,
       },
     });
     assert.doesNotMatch(JSON.stringify(result), /apiKey|private-document|must-not-leak/);
@@ -153,6 +162,10 @@ describe('China decision-signal static and staging audit (#5580)', () => {
       partial: 1,
       stale: 1,
       unavailable: 1,
+      // The lone unavailable group declares no cause, so it is not a proven
+      // healthy quiet window and stays uncovered (#6060).
+      healthyQuiet: 0,
+      operationallyCovered: 3,
     });
 
     const groups = CHINA_DECISION_PARITY_MANIFEST.map(({ groupId }) => ({
@@ -193,6 +206,8 @@ describe('China decision-signal static and staging audit (#5580)', () => {
       partial: 0,
       stale: 0,
       unavailable: 6,
+      healthyQuiet: 0,
+      operationallyCovered: 0,
     });
   });
 
@@ -320,6 +335,44 @@ const STRUCTURAL_MUTATIONS = [
     mutate: (source) => source.replace(
       "  'macro',\n  'policy-enforcement',",
       "  'policy-enforcement',\n  'macro',",
+    ),
+  },
+  {
+    checkId: 'edge-health-group-ids',
+    name: 'the health.js group mirror has the right tokens in the wrong order',
+    substringStillPresent: "'macro'",
+    mutate: (source) => source.replace(
+      "  'macro',\n  'policy-enforcement',",
+      "  'policy-enforcement',\n  'macro',",
+    ),
+  },
+  // #6060: renaming the cause at the producer without updating an Edge copy
+  // silently stops crediting a healthy quiet window — the exact 4/6 regression.
+  {
+    checkId: 'edge-health-quiet-cause',
+    name: 'health.js credits a renamed healthy-quiet cause',
+    substringStillPresent: 'CHINA_DECISION_HEALTHY_QUIET_CAUSE',
+    mutate: (source) => source.replace(
+      "const CHINA_DECISION_HEALTHY_QUIET_CAUSE = 'healthy_quiet_window';",
+      "const CHINA_DECISION_HEALTHY_QUIET_CAUSE = 'healthy_quiet';",
+    ),
+  },
+  {
+    checkId: 'edge-health-quiet-cause',
+    name: 'the health.js healthy-quiet cause survives only as a comment',
+    substringStillPresent: "'healthy_quiet_window'",
+    mutate: (source) => source.replace(
+      "const CHINA_DECISION_HEALTHY_QUIET_CAUSE = 'healthy_quiet_window';",
+      "// const CHINA_DECISION_HEALTHY_QUIET_CAUSE = 'healthy_quiet_window';",
+    ),
+  },
+  {
+    checkId: 'edge-seed-health-quiet-cause',
+    name: 'seed-health.js credits a renamed healthy-quiet cause',
+    substringStillPresent: 'CHINA_DECISION_HEALTHY_QUIET_CAUSE',
+    mutate: (source) => source.replace(
+      "const CHINA_DECISION_HEALTHY_QUIET_CAUSE = 'healthy_quiet_window';",
+      "const CHINA_DECISION_HEALTHY_QUIET_CAUSE = 'healthy_quiet';",
     ),
   },
   {

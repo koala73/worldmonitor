@@ -14,7 +14,7 @@ import {
 
 describe('PERMANENT_4XX_STATUSES classification', () => {
   it('includes the request-shape errors that retrying cannot fix', () => {
-    for (const code of [400, 401, 403, 404, 410, 422, 451]) {
+    for (const code of [400, 401, 403, 404, 410, 413, 422, 451]) {
       assert.equal(PERMANENT_4XX_STATUSES.has(code), true, `expected ${code} permanent`);
     }
   });
@@ -94,6 +94,33 @@ describe('withRetry', () => {
       /transient/,
     );
     assert.equal(attempts, 3, 'initial + 2 retries = 3 attempts');
+  });
+
+  it('WM_SEED_RETRY_DELAY_MS caps only the sleep, and only under the test runner', async () => {
+    // The knob exists so suites that stub persistent upstream failures do not
+    // idle through real backoff. Two properties are load-bearing: the attempt
+    // count stays real (only the sleep shrinks), and the cap is dual-gated on
+    // NODE_TEST_CONTEXT so a stray env var on a production seeder cannot
+    // silently disable backoff. This file runs under the node test runner, so
+    // NODE_TEST_CONTEXT is present here by construction.
+    assert.ok(process.env.NODE_TEST_CONTEXT, 'precondition: running under node --test');
+    const prior = process.env.WM_SEED_RETRY_DELAY_MS;
+    process.env.WM_SEED_RETRY_DELAY_MS = '1';
+    try {
+      let attempts = 0;
+      const t0 = Date.now();
+      await assert.rejects(
+        // delayMs 500 would sleep 500ms + 1000ms uncapped — far over the bound.
+        withRetry(async () => { attempts++; throw new Error('transient'); }, 2, 500),
+        /transient/,
+      );
+      const elapsed = Date.now() - t0;
+      assert.equal(attempts, 3, 'the cap must not change the attempt count');
+      assert.ok(elapsed < 400, `capped backoff must not idle: got ${elapsed}ms`);
+    } finally {
+      if (prior === undefined) delete process.env.WM_SEED_RETRY_DELAY_MS;
+      else process.env.WM_SEED_RETRY_DELAY_MS = prior;
+    }
   });
 
   it('returns success on first attempt when fn succeeds', async () => {
@@ -388,6 +415,176 @@ describe('httpRetryError', () => {
     );
     assert.equal(exhausted.retryAfterMs, undefined);
     assert.equal(exhausted.nonRetryable, true);
+  });
+});
+
+// #6110: `capMs` and `maxRetryAfterMs` are both CEILINGS — "never sleep longer
+// than this". Neither answers the question that actually matters when a
+// provider hands back a long Retry-After: is there any point retrying at all?
+//
+// Production (seed-insights, 2026-08-03 12:10Z/12:20Z): groq returned 429 with
+// "tokens per day (TPD): Limit 100000, Used 100000 ... try again in 20m13.92s".
+// The 1213s hint was clamped to the 10s ceiling and retried twice, burning 20s
+// of a 60s LLM budget and a 120s seed lock against a wall that could not move
+// for another 20 minutes. Those cycles ran 30-36s vs 7-17s for healthy ones.
+//
+// `remainingBudgetMs` is the wall clock the caller actually has left. When the
+// server's own hint meets or exceeds it, no retry inside this run can succeed,
+// so the error is nonRetryable and the provider loop falls through immediately
+// with the budget intact. Equality is included: sleeping the full remainder
+// would leave usableBudget at 0 and abort the whole waterfall. Deliberately a NEW option rather than a redefinition of
+// `capMs`: scripts/_seed-history.mjs passes `capMs: RELAY_RETRY_AFTER_CAP_MS`
+// (a fixed 10s ceiling, not a budget), so changing `capMs` semantics would
+// silently make that relay give up where it used to retry.
+describe('httpRetryError — remainingBudgetMs (#6110)', () => {
+  const resp429 = (retryAfterSeconds) => ({
+    status: 429,
+    headers: { get: (n) => (n.toLowerCase() === 'retry-after' ? String(retryAfterSeconds) : null) },
+  });
+
+  it('is nonRetryable when the server hint exceeds the remaining budget', () => {
+    // The production shape: 1213s hint, ~55s of budget left.
+    const err = httpRetryError(resp429(1213), { maxRetryAfterMs: 10_000, remainingBudgetMs: 55_000 });
+    assert.equal(err.nonRetryable, true, 'retrying before the server will serve us is futile');
+    // Fail-fast retains the UNCAPPED magnitude for logs (see fail-fast test);
+    // nonRetryable stops withRetry before it is ever slept on.
+    assert.equal(err.retryAfterMs, 1_213_000);
+  });
+
+  it('still retries when the hint fits inside the remaining budget', () => {
+    const err = httpRetryError(resp429(3), { maxRetryAfterMs: 10_000, remainingBudgetMs: 55_000 });
+    assert.equal(err.nonRetryable, false);
+    assert.equal(err.retryAfterMs, 3_000);
+  });
+
+  it('still applies maxRetryAfterMs as a ceiling when the hint fits the budget', () => {
+    const err = httpRetryError(resp429(30), { maxRetryAfterMs: 10_000, remainingBudgetMs: 55_000 });
+    assert.equal(err.nonRetryable, false);
+    assert.equal(err.retryAfterMs, 10_000, 'ceiling still applies — this is a policy knob, not a verdict');
+  });
+
+  it('is nonRetryable even for a near-miss — 3s hint against 2s of budget', () => {
+    // Not a clamp. Sleeping the 2s we have still lands BEFORE the server said
+    // it would serve us, so the retry is futile and the 2s is better spent
+    // failing over. The margin being small does not make it survivable.
+    const err = httpRetryError(resp429(3), { remainingBudgetMs: 2_000 });
+    assert.equal(err.nonRetryable, true);
+  });
+
+  it('is nonRetryable when the hint exactly equals the remaining budget', () => {
+    // Equality is not survivable for waterfall callers: sleeping the full
+    // remainder leaves usableBudget at 0, so the next withRetry attempt throws
+    // createLlmBudgetError and aborts the whole chain. Fail-fast instead.
+    // Comparison is `>=` (not strict `>`).
+    const err = httpRetryError(resp429(2), { remainingBudgetMs: 2_000 });
+    assert.equal(err.nonRetryable, true);
+    assert.equal(err.retryAfterMs, 2_000, 'uncapped magnitude retained for logs');
+  });
+
+  it('still retries when the hint is strictly under the remaining budget', () => {
+    // Just under equality remains reachable — pins that `>=` did not become
+    // an accidental always-futile gate for every positive hint.
+    const err = httpRetryError(resp429(2), { remainingBudgetMs: 2_001 });
+    assert.equal(err.nonRetryable, false);
+    assert.equal(err.retryAfterMs, 2_000);
+  });
+
+  it('is nonRetryable when the budget is already spent', () => {
+    const err = httpRetryError(resp429(3), { remainingBudgetMs: 0 });
+    assert.equal(err.nonRetryable, true);
+  });
+
+  it('leaves capMs semantics untouched — a long hint still clamps and retries', () => {
+    // scripts/_seed-history.mjs depends on exactly this: capMs is a ceiling.
+    const err = httpRetryError(resp429(30), { capMs: 10_000 });
+    assert.equal(err.nonRetryable, false, 'capMs must NOT gain the futility verdict');
+    assert.equal(err.retryAfterMs, 10_000);
+  });
+
+  it('ignores remainingBudgetMs when the response carries no Retry-After', () => {
+    const err = httpRetryError({ status: 503, headers: { get: () => null } }, { remainingBudgetMs: 1 });
+    assert.equal(err.nonRetryable, false, 'no hint means no futility claim — normal backoff applies');
+    assert.equal(err.retryAfterMs, undefined);
+  });
+
+  it('does not resurrect a permanent status', () => {
+    const err = httpRetryError({ status: 403, headers: { get: () => '1' } }, { remainingBudgetMs: 999_000 });
+    assert.equal(err.nonRetryable, true);
+  });
+
+  // Review caught this: `parseRetryAfterMs` clamps at MAX_RETRY_AFTER_MS (60s),
+  // so judging futility on the PARSED value silently reinstated the bug for any
+  // caller with a budget >= 60s — groq's 1213s reads as 60s there, and 60s is
+  // not > 60s. The verdict now uses the uncapped hint. Both live callers happen
+  // to cap usable budget below 60s (insights 55s, narrative 40s), so this was
+  // latent rather than live — and would have shipped as a comment claiming a
+  // guarantee the code did not provide.
+  it('fires on a huge hint even when the budget exceeds the 60s parse cap', () => {
+    for (const budgetMs of [60_000, 85_000, 300_000]) {
+      const err = httpRetryError(resp429(1213), { maxRetryAfterMs: 10_000, remainingBudgetMs: budgetMs });
+      assert.equal(err.nonRetryable, true, `budget ${budgetMs}ms must still see a 1213s hint as unreachable`);
+    }
+  });
+
+  it('keeps parseRetryAfterMs itself capped — sleeping is still bounded', () => {
+    // The cap is about how long we may SLEEP; only the verdict uses the raw
+    // magnitude. Public behavior of the exported parser must not change.
+    assert.equal(parseRetryAfterMs('1213'), 60_000);
+    assert.equal(parseRetryAfterMs('3'), 3_000);
+  });
+
+  it('carries the uncapped hint on the fail-fast error so logs can tell quota from throttle', () => {
+    // Not slept on — withRetry checks nonRetryable first — and must be the
+    // raw magnitude, not the 60s parse cap: 1213s and 90s would both read as
+    // 60_000 if we attached the capped parse.
+    const err = httpRetryError(resp429(1213), { maxRetryAfterMs: 10_000, remainingBudgetMs: 55_000 });
+    assert.equal(err.nonRetryable, true);
+    assert.equal(err.retryAfterMs, 1_213_000);
+  });
+
+  it('fires remainingBudgetMs futility on HTTP-date Retry-After beyond the 60s parse cap', () => {
+    // Seconds-form is covered above; the Date.parse branch must also feed the
+    // uncapped verdict (a far-future HTTP-date flattens to 60s on the sleep
+    // path and would reinstate #6110 for budgets >= 60s if judged capped).
+    const originalDateNow = Date.now;
+    const frozen = 1_700_000_000_000;
+    Date.now = () => frozen;
+    try {
+      const farFuture = new Date(frozen + 1_213_000).toUTCString();
+      const resp = {
+        status: 429,
+        headers: { get: (n) => (n.toLowerCase() === 'retry-after' ? farFuture : null) },
+      };
+      for (const budgetMs of [60_000, 85_000, 300_000]) {
+        const err = httpRetryError(resp, { maxRetryAfterMs: 10_000, remainingBudgetMs: budgetMs });
+        assert.equal(err.nonRetryable, true, `HTTP-date budget ${budgetMs}ms must see ~1213s as unreachable`);
+        assert.equal(err.retryAfterMs, 1_213_000);
+      }
+      assert.equal(parseRetryAfterMs(farFuture), 60_000, 'sleep parse stays capped');
+    } finally {
+      Date.now = originalDateNow;
+    }
+  });
+
+  it('is nonRetryable when the raw hint overruns the budget even if the ceiling would fit', () => {
+    // hint 15s, ceiling 10s, budget 12s: the clamped sleep WOULD fit, but the
+    // server said 15s, so waking at 10s still lands too early. The ceiling is a
+    // sleep bound, not evidence about when the server will serve.
+    const err = httpRetryError(resp429(15), { maxRetryAfterMs: 10_000, remainingBudgetMs: 12_000 });
+    assert.equal(err.nonRetryable, true);
+  });
+
+  it('leaves the futility check off for a non-finite budget (fails open, as before)', () => {
+    for (const budget of [undefined, null, Number.NaN, 'abc', {}]) {
+      const err = httpRetryError(resp429(1213), { maxRetryAfterMs: 10_000, remainingBudgetMs: budget });
+      assert.equal(err.nonRetryable, false, `budget ${String(budget)} must preserve pre-#6110 behavior`);
+      assert.equal(err.retryAfterMs, 10_000);
+    }
+  });
+
+  it('is nonRetryable for a negative budget', () => {
+    const err = httpRetryError(resp429(3), { remainingBudgetMs: -5_000 });
+    assert.equal(err.nonRetryable, true);
   });
 });
 

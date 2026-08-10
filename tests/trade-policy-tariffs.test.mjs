@@ -59,58 +59,65 @@ describe('FRED effective tariff rate seed integration', () => {
   });
 });
 
-describe('tariffTrendsUs health-check maxStaleMin must not exceed TARIFF_TTL (silent-EMPTY-window guard)', () => {
-  // Regression-locks the fix for the 2026-04-27 silent EMPTY window where
-  // TARIFF_TTL was 480min (8h) but maxStaleMin was 900 (15h). Between
-  // minute 480 and minute 900, the data key was gone but seed-meta was
-  // still considered fresh, so health emitted status=EMPTY (records=0)
-  // with no STALE_SEED alarm. UptimeRobot keyword-checks for "HEALTHY"
-  // continued to pass while paying users saw "data unavailable" panels.
-  // Rule: maxStaleMin must be tightly co-pinned to TTL_DATA + small grace.
+describe('tariffTrendsUs health-check is meta-only and sits inside TARIFF_TTL', () => {
+  // #6316 moved tariffTrendsUs off the single US years=10 data key onto the
+  // fleet seed-meta record (same shape as tradeFlows). A meta-only probe
+  // watches a 7-day meta TTL, so maxStaleMin MUST sit inside the 8h data TTL
+  // — otherwise health stays green while every data key has already expired.
+  // Prior to that change maxStaleMin was 540 (outside the old single-key
+  // budget) and created an 8h–15h silent EMPTY window; see the 2026-04-27
+  // incident notes that originally locked this suite.
 
   function extractSeconds(varName) {
-    const re = new RegExp(`const\\s+${varName}\\s*=\\s*(\\d+)`, 'm');
+    // Prefer export const / const forms.
+    const re = new RegExp(`(?:export\\s+)?const\\s+${varName}\\s*=\\s*(\\d+)`, 'm');
     const m = seedSrc.match(re);
     if (!m) throw new Error(`could not find ${varName} in seed src`);
     return parseInt(m[1], 10);
   }
 
   function extractMaxStaleMin(name) {
-    // Lazy `[^}]*?` instead of greedy + `ms` flag so the pattern still works
-    // if the entry ever grows multi-line or contains nested inline objects.
-    // Failure mode is noisy regardless — test throws when no match — but the
-    // lazy form is more forgiving against future formatting changes.
     const re = new RegExp(`${name}:\\s*\\{[^}]*?maxStaleMin:\\s*(\\d+)`, 'ms');
     const m = healthSrc.match(re);
     if (!m) throw new Error(`could not find ${name}.maxStaleMin in health src`);
     return parseInt(m[1], 10);
   }
 
+  function extractMetaKey(name) {
+    const re = new RegExp(`${name}:\\s*\\{[^}]*?key:\\s*'([^']+)'`, 'ms');
+    const m = healthSrc.match(re);
+    if (!m) throw new Error(`could not find ${name}.key in health src`);
+    return m[1];
+  }
+
   it('TARIFF_TTL is 28800s (8h) — pinned so the relationship below stays meaningful', () => {
     assert.equal(extractSeconds('TARIFF_TTL'), 28800);
   });
 
-  it('tariffTrendsUs.maxStaleMin is 540min — TARIFF_TTL/60 + 60min grace', () => {
-    assert.equal(extractMaxStaleMin('tariffTrendsUs'), 540);
+  it('tariffTrendsUs probes the fleet seed-meta key, not a single data key', () => {
+    assert.equal(extractMetaKey('tariffTrendsUs'), 'seed-meta:trade:tariffs');
+    assert.match(healthSrc, /tariffTrendsUs:\s*'seed-meta:trade:tariffs'/);
   });
 
-  it('maxStaleMin <= TARIFF_TTL_min + 120 grace ceiling (no silent EMPTY window > 2h)', () => {
+  it('tariffTrendsUs.maxStaleMin is 420min — inside TARIFF_TTL (480), not outside it', () => {
+    assert.equal(extractMaxStaleMin('tariffTrendsUs'), 420);
+  });
+
+  it('maxStaleMin <= TARIFF_TTL_min (no silent green after data keys expire)', () => {
     const ttlMin = extractSeconds('TARIFF_TTL') / 60;
     const maxStale = extractMaxStaleMin('tariffTrendsUs');
     assert.ok(
-      maxStale <= ttlMin + 120,
-      `maxStaleMin (${maxStale}) must be <= TARIFF_TTL_min (${ttlMin}) + 120 grace; ` +
-      `larger gap creates a silent EMPTY window where data has expired but no STALE_SEED fires.`,
+      maxStale <= ttlMin,
+      `meta-only maxStaleMin (${maxStale}) must be <= TARIFF_TTL_min (${ttlMin}); ` +
+      `a budget past the data TTL stays green while every tariff key has expired.`,
     );
   });
 
-  it('maxStaleMin >= TARIFF_TTL_min (no false STALE before data even expires)', () => {
-    const ttlMin = extractSeconds('TARIFF_TTL') / 60;
+  it('maxStaleMin >= 360 (the 6h cron) so a healthy fleet is not false-STALE', () => {
     const maxStale = extractMaxStaleMin('tariffTrendsUs');
     assert.ok(
-      maxStale >= ttlMin,
-      `maxStaleMin (${maxStale}) must be >= TARIFF_TTL_min (${ttlMin}); ` +
-      `tighter would fire STALE_SEED before the data has even expired.`,
+      maxStale >= 360,
+      `maxStaleMin (${maxStale}) must cover the 6h cron cadence`,
     );
   });
 });

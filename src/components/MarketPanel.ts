@@ -10,16 +10,49 @@ import {
   renderChinaCorporateDisclosureSignals,
   type ChinaCorporateDisclosureSnapshot,
 } from './market-disclosures';
-import { composeMarketPanelContent } from './market-panel-content';
+import {
+  composeMarketPanelContent,
+  groupUnavailableSymbols,
+  type UnavailableSymbolGroup,
+} from './market-panel-content';
+import type {
+  MarketQuoteUnavailable,
+  MarketQuoteUnavailableReason,
+} from '@/generated/client/worldmonitor/market/v1/service_client';
 import { openMarketChartModal } from './market-chart-modal';
 import {
   bindMarketChartActivation,
   getMarketChartRowAttributes,
 } from './market-chart-interactions';
 
+// Not in the `common` namespace on purpose: `common` ships whole inside the
+// budgeted first-paint shell bundle, and this notice only ever renders after a
+// market fetch has completed.
+const UNAVAILABLE_REASON_KEYS: Record<MarketQuoteUnavailableReason, string> = {
+  MARKET_QUOTE_UNAVAILABLE_REASON_UNSPECIFIED: 'components.markets.unavailable.notFound',
+  MARKET_QUOTE_UNAVAILABLE_REASON_NOT_FOUND: 'components.markets.unavailable.notFound',
+  MARKET_QUOTE_UNAVAILABLE_REASON_PROVIDER_ERROR: 'components.markets.unavailable.providerError',
+  MARKET_QUOTE_UNAVAILABLE_REASON_PROVIDER_RATE_LIMITED: 'components.markets.unavailable.rateLimited',
+  MARKET_QUOTE_UNAVAILABLE_REASON_PROVIDER_NOT_CONFIGURED: 'components.markets.unavailable.notConfigured',
+  MARKET_QUOTE_UNAVAILABLE_REASON_REQUEST_LIMIT_EXCEEDED: 'components.markets.unavailable.requestLimit',
+  MARKET_QUOTE_UNAVAILABLE_REASON_UPSTREAM_BUDGET_EXHAUSTED: 'components.markets.unavailable.budget',
+  MARKET_QUOTE_UNAVAILABLE_REASON_SEED_UNAVAILABLE: 'components.markets.unavailable.seed',
+};
+
+function unavailableSymbolLine(group: UnavailableSymbolGroup): string {
+  // An unrecognized reason (a server ahead of this bundle) still names the
+  // symbols rather than dropping the line — silence is the bug being fixed.
+  const reason = t(UNAVAILABLE_REASON_KEYS[group.reason] ?? 'components.markets.unavailable.notFound');
+  const symbols = group.symbols.join(', ');
+  return group.overflow > 0
+    ? t('components.markets.unavailable.symbolsMore', { symbols, count: group.overflow, reason })
+    : t('components.markets.unavailable.symbols', { symbols, reason });
+}
+
 export class MarketPanel extends Panel {
   private _markets: MarketData[] = [];
   private _marketsRateLimited = false;
+  private _marketsUnavailable: readonly MarketQuoteUnavailable[] = [];
   private _disclosures: ChinaCorporateDisclosureSnapshot | null = null;
 
   constructor() {
@@ -31,9 +64,14 @@ export class MarketPanel extends Panel {
     bindMarketChartActivation(this.content, () => this._markets, openMarketChartModal);
   }
 
-  public renderMarkets(data: MarketData[], rateLimited?: boolean): void {
+  public renderMarkets(
+    data: MarketData[],
+    rateLimited?: boolean,
+    unavailable?: readonly MarketQuoteUnavailable[],
+  ): void {
     this._markets = data;
     this._marketsRateLimited = Boolean(rateLimited);
+    this._marketsUnavailable = unavailable ?? [];
     this._renderMarketsAndDisclosures();
   }
 
@@ -73,6 +111,7 @@ export class MarketPanel extends Panel {
       unavailableMessage: this._marketsRateLimited
         ? t('common.rateLimitedMarket')
         : t('common.failedMarketData'),
+      unavailableSymbolLines: groupUnavailableSymbols(this._marketsUnavailable).map(unavailableSymbolLine),
     });
     if (content.kind === 'retry') {
       this.showRetrying(content.message);
@@ -101,6 +140,7 @@ export class HeatmapPanel extends Panel {
   private _heatmapData: Array<{ symbol?: string; name: string; change: number | null }> = [];
   private _sectorBars: Array<{ symbol: string; name: string; change1d: number }> = [];
   private _valuations: Record<string, SectorValuation> = {};
+  private _staleValuationSymbols: Set<string> = new Set();
 
   constructor() {
     super({ id: 'heatmap', title: t('panels.heatmap'), infoTooltip: t('components.heatmap.infoTooltip') });
@@ -123,18 +163,37 @@ export class HeatmapPanel extends Panel {
     this._render();
   }
 
-  public updateValuations(valuations: Record<string, SectorValuation> | undefined): void {
+  public updateValuations(
+    valuations: Record<string, SectorValuation> | undefined,
+    staleSymbols?: string[],
+  ): void {
     // undefined = caller has no valuations to push (e.g. fresh fetch returned
     // a payload without the field). Leave prior state intact so returning
     // users don't see the Valuations tab vanish mid-session.
     if (valuations === undefined) return;
+    this._staleValuationSymbols = new Set((staleSymbols ?? []).map((s) => s.toUpperCase()));
     if (Object.keys(valuations).length === 0) {
       this._valuations = {};
       if (this._tab === 'valuations') this._tab = 'performance';
       this._render();
       return;
     }
-    this._valuations = valuations;
+    // A record replayed from the seeder's last-good snapshot can arrive with
+    // null-valued keys omitted. `SectorValuation` declares them `number | null`,
+    // and every formatter guards with `=== null`, so a MISSING key would slip
+    // through and reach `undefined.toFixed()`. Coerce to the declared shape.
+    const normalized: Record<string, SectorValuation> = {};
+    for (const [symbol, value] of Object.entries(valuations)) {
+      normalized[symbol] = {
+        trailingPE: value?.trailingPE ?? null,
+        forwardPE: value?.forwardPE ?? null,
+        beta: value?.beta ?? null,
+        ytdReturn: value?.ytdReturn ?? null,
+        threeYearReturn: value?.threeYearReturn ?? null,
+        fiveYearReturn: value?.fiveYearReturn ?? null,
+      };
+    }
+    this._valuations = normalized;
     this._render();
   }
 
@@ -262,8 +321,14 @@ export class HeatmapPanel extends Panel {
     const tableRows = sorted
       .map((e) => {
         const name = nameMap.get(e.symbol) ?? e.symbol;
-        return `<tr>
-  <td style="padding:3px 6px;white-space:nowrap;font-size:11px">${escapeHtml(name)}</td>
+        // A stale row carries real numbers replayed from the seeder's last-good
+        // snapshot, so it must not read as current data.
+        const isStale = this._staleValuationSymbols.has(e.symbol.toUpperCase());
+        const staleMark = isStale
+          ? ` <span title="Last known value; not refreshed this cycle" style="color:var(--text-dim);font-size:9px">(stale)</span>`
+          : '';
+        return `<tr${isStale ? ' style="opacity:0.65"' : ''}>
+  <td style="padding:3px 6px;white-space:nowrap;font-size:11px">${escapeHtml(name)}${staleMark}</td>
   <td style="padding:3px 6px;text-align:right;font-size:11px;color:${peColor(e.trailingPE)}">${fmtPE(e.trailingPE)}</td>
   <td style="padding:3px 6px;text-align:right;font-size:11px;color:${peColor(e.forwardPE)}">${fmtPE(e.forwardPE)}</td>
   <td style="padding:3px 6px;text-align:right;font-size:11px">${fmtBeta(e.beta)}</td>
@@ -502,8 +567,13 @@ export class CommoditiesPanel extends Panel {
     if (this._tab === 'fx' && hasFx) {
       const items = this._fxRates.map(r => {
         const change = r.change1d ?? null;
-        const changeStr = change !== null ? `${change >= 0 ? '+' : ''}${change.toFixed(4)}` : '';
-        const changeClass = change === null ? '' : change >= 0 ? 'change-positive' : 'change-negative';
+        // Zero is signless and neutral, matching the FX panel (#6199). The
+        // seeder writes 0 both for "unchanged" and for "no prior observation"
+        // (scripts/seed-ecb-fx-rates.mjs), so a green "+0.0000" claims a gain
+        // that may not even be a measurement. These two surfaces render the
+        // same seeded field and must not disagree about it.
+        const changeStr = change !== null ? `${change > 0 ? '+' : ''}${change.toFixed(4)}` : '';
+        const changeClass = change === null || change === 0 ? '' : change > 0 ? 'change-positive' : 'change-negative';
         return `<div class="commodity-item">
           <div class="commodity-name">EUR/${escapeHtml(r.currency)}</div>
           <div class="commodity-price">${escapeHtml(r.rate.toFixed(4))}</div>

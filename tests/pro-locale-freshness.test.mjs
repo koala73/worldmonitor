@@ -50,7 +50,7 @@ const ENGLISH_CEILING = {
   ar: 49, bg: 50, cs: 58, de: 61, el: 60, es: 53,
   fa: 573, fr: 66, hi: 115, hr: 55, hu: 51, it: 61,
   ja: 51, ko: 49, nl: 67, pl: 55, pt: 55, ro: 61,
-  ru: 51, sv: 61, th: 54, tr: 51, vi: 53, zh: 49,
+  ru: 51, sv: 61, th: 54, tr: 51, uk: 574, vi: 53, zh: 49,
 };
 
 describe('pro locale freshness', () => {

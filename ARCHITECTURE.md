@@ -46,7 +46,7 @@ World Monitor is a real-time global intelligence dashboard built as a TypeScript
         │ CoinGeck│ │  FRED   │ │ FIRMS   │
         │   ...   │ │   ...   │ │   ...   │
         └─────────┘ └─────────┘ └─────────┘
-           65+ upstream providers and APIs
+           530+ observed upstream hosts
 ```
 
 **Source files**: `package.json`, `vercel.json`
@@ -92,7 +92,7 @@ World Monitor is a real-time global intelligence dashboard built as a TypeScript
 
 ### Component Model
 
-All panels extend the `Panel` base class (107 classes across `src/components`). Panels render via `setContent(html)` (debounced 150ms) and use event delegation on a stable `this.content` element. Panels support resizable row/col spans persisted to localStorage.
+All panels extend the `Panel` base class (108 classes across `src/components`). Panels render via `setContent(html)` (debounced 150ms) and use event delegation on a stable `this.content` element. Panels support resizable row/col spans persisted to localStorage.
 
 ### Dual Map System
 
@@ -371,12 +371,18 @@ Runs before every `git push`:
 | `china-decision-parity-live.yml` | 6-hourly cron, push to main (audit paths), manual (optional staging URL) | Live half of the China decision-signal parity audit: probes the deployed composition RPC and the public `chinaDecisionSignals` bootstrap projection for the six-domain contract and a canonical snapshot under one hour old (#5643 — the probe existed but nothing invoked it, and `--require-live` keeps a lost `--url` from passing vacuously) |
 | `security-audit.yml` | PR, push to main, daily cron, manual | Production dependency audits for every tracked `package-lock.json` workspace, failing on unbaselined high/critical advisories |
 | `seed-freshness-monitor.yml` | 15-minute cron, manual | Enforces production ingestion acceptance after a green scheduled main gate; fails on every actionable compact-health problem except explicitly on-demand sources without grading production before Railway deploys or runs |
+| `railway-deploy-trigger.yml` | Deploy Gate completion, hourly backstop, manual | Reconciles the Railway fleet forward under a bounded Durable Object lease: deploys each service whose dependency closure changed since the commit it is running, revalidates exact green `main` before every serial provider call, and counts success only after read-only terminal convergence plus strict zero drift; runner-less runs own no production lock |
 | `analytics-collector-monitor.yml` | 15-minute cron, manual | Probes the self-hosted Umami collector directly (heartbeat, tracker script, ingest route) and fails when events are being dropped — Railway reported a green deployment through the 4-day #5565 blackout, so deployment status is not trusted here |
+| `umami-storage-monitor.yml` | 15-minute cron, manual | Reads the Umami Postgres Railway volume without mutation, caches a bounded history, and fails on capacity or projected days-to-full thresholds |
+| `perf-style-layout-budget.yml` | Twice-daily cron, manual (URL + budget inputs) | The #4536 forced-reflow gate the desktop main-thread baseline named but nothing enforced: captures `/dashboard` with the Playwright harness and fails when the `styleLayout` share of attributed main-thread self-time exceeds budget. Gates the *share*, not absolute ms, and runs scheduled rather than per-PR because lab absolutes are host-contention contaminated (KTD1) while the decomposition is stable. A report that measured nothing returns `unmeasured`, never a pass |
 | `contributor-trust.yml` | PR | Gates untrusted first-time-contributor runs |
 | `deploy-gate.yml` | After Test/Typecheck/Security Audit complete | Aggregates required smoke-gate statuses onto the head SHA for branch protection |
 | `indexnow-submit.yml` | Successful Production deployment, manual | Submits deployment-relevant canonical URLs to IndexNow only after their host-specific ownership keys are directly reachable |
 | `convex-deploy.yml` | Push to main, manual | Deploys Convex backend functions |
 | `deploy-worker.yml` | Push to main (worker paths), manual | Deploys the `api-cors-preflight` Cloudflare Worker |
+| `deploy-railway-reconcile-control.yml` | Push to main (control-plane paths), manual | Tests and deploys the isolated SQLite-backed Durable Object used for Railway reconciliation leases, attempts, dispatch holds, and the global mutation-uncertain barrier; deployment does not itself activate the trigger cutover |
+| `railway-deploy-trigger-watchdog.yml` | 15-minute offset cron, manual | Independently classifies reconcile liveness with bounded GitHub history; observe-only until both cutover and recovery flags are enabled, and then may dispatch one fenced replacement without cancelling, rerunning, or approving any existing production run |
+| `railway-reconcile-manual-recovery.yml` | Protected manual dispatch only | Evidence-bound break-glass resolution for ambiguous dispatch holds or post-mutation barriers; records immutable supersession and delegates any retry to the ordinary lease-aware workflow rather than carrying a Railway deploy token |
 | `build-desktop.yml` | Release tag, push, manual | Multi-platform Tauri build, code signing (macOS), AppImage library stripping (Linux), smoke test |
 | `docker-publish.yml` | Release, manual | Multi-arch image (amd64, arm64) pushed to GHCR |
 | `publish-cli.yml` | `cli-v*` tag, manual | Tests and publishes the `worldmonitor` npm CLI (`cli/`) via OIDC trusted publishing (no token) with provenance |
@@ -384,6 +390,14 @@ Runs before every `git push`:
 | `publish-ruby.yml` | `gem-v*` tag, manual | Tests and publishes the `worldmonitor` gem (`sdk/ruby/`) via RubyGems OIDC trusted publishing (no token) |
 | `publish-go.yml` | `sdk/go/v*` tag, manual | Vets/tests the Go SDK module (`sdk/go/`) at the tag and warms proxy.golang.org so the version is go-gettable and indexed on pkg.go.dev |
 | `test-linux-app.yml` | Twice-weekly schedule (Mon/Thu 05:23 UTC), manual | Desktop Canary (Linux): installed-app build + launch, hard-fails on crashed app, unreachable sidecar, or blank render (#5902) |
+
+The Railway `umami` runtime is built from `Dockerfile.umami`, which pins the
+upstream v3.2.0 release and applies the reviewed session-data upsert fix.
+The separate `umami-retention` cron uses `Dockerfile.umami-retention` and the
+bounded SQL contract. The old collector is drained to zero before the patched
+image runs its schema migration as a monitored one-off; schema verification,
+patched-runtime write acceptance, and retention are independent operational
+gates.
 
 **Source files**: `.github/workflows/`, `.husky/pre-push`. The workflow list is CI-checked against `.github/workflows/*.yml` by `npm run docs:check` — a new workflow file must be added to this table.
 

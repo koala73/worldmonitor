@@ -1,5 +1,5 @@
 import { Panel } from './Panel';
-import type { McpPanelSpec } from '@/services/mcp-store';
+import { normalizeMcpRefreshIntervalMs, type McpPanelSpec } from '@/services/mcp-store';
 import { t } from '@/services/i18n';
 import { h } from '@/utils/dom-utils';
 import { proxyUrl, widgetAgentUrl } from '@/utils/proxy';
@@ -31,7 +31,7 @@ export class McpDataPanel extends Panel {
       className: 'mcp-data-panel',
       defaultRowSpan: 2,
     });
-    this.spec = spec;
+    this.spec = { ...spec, refreshIntervalMs: normalizeMcpRefreshIntervalMs(spec.refreshIntervalMs) };
     this.addHeaderButtons();
     this.scheduleRefresh(true);
   }
@@ -310,7 +310,7 @@ export class McpDataPanel extends Panel {
   }
 
   updateSpec(spec: McpPanelSpec): void {
-    this.spec = spec;
+    this.spec = { ...spec, refreshIntervalMs: normalizeMcpRefreshIntervalMs(spec.refreshIntervalMs) };
     const titleEl = this.header.querySelector('.panel-title');
     if (titleEl) titleEl.textContent = spec.title;
     this.clearRefreshTimer();

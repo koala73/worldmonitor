@@ -369,7 +369,8 @@
     "consumerPrices": "Ceny Konsumenckie",
     "fearGreed": "Strach i Chciwość",
     "marketBreadth": "Szerokość Rynku",
-    "climateNews": "Wiadomości Klimatyczne"
+    "climateNews": "Wiadomości Klimatyczne",
+    "fx": "Kursy walut"
   },
   "commands": {
     "prefixes": {
@@ -951,7 +952,7 @@
         "ucdpEvents": "Wydarzenia UCDP",
         "displacementFlows": "Przepływy wypornościowe",
         "climateAnomalies": "Anomalie klimatyczne",
-        "weatherAlerts": "Alerty pogodowe",
+        "weatherAlerts": "Alerty pogodowe w USA (NWS)",
         "strategicWaterways": "Strategiczne drogi wodne",
         "economicCenters": "Centra Gospodarcze",
         "criticalMinerals": "Minerały krytyczne",
@@ -1039,7 +1040,7 @@
           "infraDatacenters": "Klastry obliczeniowe AI >=10 000 procesorów graficznych",
           "infraOutages": "Przerwy w dostępie do Internetu i zakłócenia w świadczeniu usług",
           "naturalEventsTech": "Trzęsienia ziemi, burze, pożary (mogą mieć wpływ na centra danych)",
-          "weatherAlerts": "Alerty pogodowe",
+          "weatherAlerts": "Alerty o gwałtownej pogodzie w USA (NWS)",
           "economicCenters": "Giełdy i banki centralne",
           "countriesOverlay": "Nakładki z nazwami krajów",
           "financeExchanges": "Główne giełdy światowe według poziomu rynku",
@@ -1051,7 +1052,7 @@
           "financeOutages": "Zakłócenia w Internecie, które mogą mieć wpływ na funkcjonowanie rynku",
           "financeCyberThreats": "Zdarzenia związane z bezpieczeństwem wokół infrastruktury finansowej",
           "macroWaterways": "Strategiczne wąskie gardła w transporcie towarów",
-          "weatherAlertsMarket": "Poważne zdarzenia pogodowe o znaczeniu rynkowym",
+          "weatherAlertsMarket": "Gwałtowne zdarzenia pogodowe w USA o znaczeniu rynkowym (NWS)",
           "naturalEventsMacro": "Trzęsienia ziemi, pożary, powodzie i inne zakłócenia naturalne",
           "timeRecent": "Filtruj dane oparte na czasie według ostatnich godzin",
           "timeExtended": "Pokaż dane z ostatniego tygodnia, miesiąca lub całego okresu",
@@ -1596,7 +1597,8 @@
       "sources_many": "{{count}} źródeł",
       "provenanceTitle": "Pochodzenie zasięgu: ile pozyskanych artykułów i odrębnych źródeł wybrano dla tego briefu",
       "compiledFrom": "Zebrane z {{stories}} artykułów z {{sources}} źródeł",
-      "briefFreshness": "Wygenerowano {{minutes}}m temu · najnowsze źródło sprzed {{hours}}h"
+      "briefFreshness": "Wygenerowano {{minutes}}m temu · najnowsze źródło sprzed {{hours}}h",
+      "briefStoryDetails": "Story details ({{count}})"
     },
     "etfFlows": {
       "unavailable": "Dane ETF tymczasowo niedostępne",
@@ -2155,6 +2157,17 @@
       "chart": {
         "title": "Wykres cen {{symbol}}",
         "close": "Zamknij wykres"
+      },
+      "unavailable": {
+        "symbols": "{{symbols}} — {{reason}}",
+        "symbolsMore": "{{symbols}} +{{count}} more — {{reason}}",
+        "notFound": "no quote available",
+        "providerError": "quote lookup failed, retrying shortly",
+        "rateLimited": "quote provider rate limited, retrying shortly",
+        "notConfigured": "quote provider not configured",
+        "requestLimit": "too many symbols requested",
+        "budget": "not loaded yet, retrying shortly",
+        "seed": "market data temporarily unavailable"
       }
     },
     "heatmap": {
@@ -2557,6 +2570,38 @@
       "upgradeCta": "Uaktualnij, aby uzyskać więcej",
       "lockedAriaLabel": "Dodaj kartę — zablokowane. {{reason}}",
       "unlockedAnnouncement": "Limit kart pulpitu zniesiony."
+    },
+    "fx": {
+      "infoTooltip": "<strong>Kursy walut</strong> Stres walutowy i kursy spot:<ul><li>FX Stress klasyfikuje 45 walut według ich największego spadku od szczytu do dołu w ostatnich 24 miesiącach, wraz ze zmianą 12-miesięczną</li><li>Zasięg obejmuje ARS, TRY, EGP, NGN, PKR i UAH — waluty pominięte w zestawach odniesienia BIS i EBC</li><li>Spot wyświetla kursy względem dolara amerykańskiego i referencyjnych kursów euro EBC osobno, ponieważ są notowane na podstawie różnych źródeł</li><li>RUB — kursy Banku Rosji, ruble za jednostkę</li></ul> Źródła: Yahoo Finance, Europejski Bank Centralny i Bank Rosji.",
+      "tabs": {
+        "stress": "Stres walutowy",
+        "spot": "Spot",
+        "rub": "RUB"
+      },
+      "currency": "Waluta",
+      "pair": "Para",
+      "rate": "Kurs",
+      "yoy": "12m",
+      "drawdown": "Spadek 24m",
+      "peakToTrough": "Szczyt → Dół",
+      "change1d": "1d",
+      "perUsd": "Za 1 USD",
+      "usdPerUnit": "USD za jednostkę",
+      "usdBase": "Względem dolara amerykańskiego",
+      "eurBase": "Referencyjne kursy euro EBC",
+      "stressedCount": "{{stressed}} z {{total}} walut poniżej {{threshold}}",
+      "sourceYahoo": "Źródło: Yahoo Finance",
+      "sourceEcb": "Źródło: EBC",
+      "degraded": "Niedostępne teraz: {{sources}}. Ponowna próba za chwilę.",
+      "source": {
+        "stress": "Stres walutowy",
+        "usd": "Kursy dolara USD",
+        "eur": "Kursy euro ECB",
+        "rub": "Kursy Banku Rosji"
+      },
+      "rubBase": "Bank Rosji — ruble za 1 jednostkę",
+      "rubPerUnit": "Rubli za jednostkę",
+      "sourceCbr": "Źródło: Bank Rosji"
     }
   },
   "popups": {
@@ -2889,7 +2934,7 @@
       "heading": "NAGŁÓWEK",
       "hexCode": "KOD szesnastkowy",
       "squawk": "SKRZEK",
-      "attribution": "Źródło: Sieć OpenSky"
+      "attribution": "Źródło: adsb.lol (ODbL) · OpenSky Network"
     },
     "militaryVessel": {
       "aisDark": "JEST CIEMNO",
@@ -3371,5 +3416,31 @@
     "deleteTab": "Usuń kartę",
     "deleteTabAria": "Usuń kartę {{name}}",
     "tabNameAria": "Nazwa karty"
+  },
+  "theaterPresets": {
+    "label": "Presety zasięgu",
+    "applied": "Zastosowano preset {{preset}}: włączono {{count}} źródeł",
+    "alreadyApplied": "Preset {{preset}} jest już zastosowany",
+    "ukraineWar": {
+      "label": "Wojna w Ukrainie",
+      "description": "Włącz ukraińskie media głównego nurtu, niezależną prasę rosyjską i źródła oceny sytuacji na froncie"
+    },
+    "indoPacific": {
+      "label": "Indo-Pacyfik / Tajwan",
+      "description": "Włącz źródła bezpieczeństwa dotyczące Tajwanu, Pakistanu i Azji Południowo-Wschodniej"
+    },
+    "sahelWestAfrica": {
+      "label": "Sahel i Afryka Zachodnia",
+      "description": "Włącz lokalne źródła z Sahelu, Nigerii i Afryki Zachodniej"
+    },
+    "caucasusCentralAsia": {
+      "label": "Kaukaz i Azja Centralna",
+      "description": "Włącz źródła regionalne z Kaukazu Południowego i Azji Centralnej"
+    },
+    "middleEastFlashpoints": {
+      "label": "Punkty zapalne na Bliskim Wschodzie",
+      "description": "Włącz źródła dotyczące Iranu, Izraela, Zatoki i regionów kurdyjskich"
+    },
+    "unavailable": "Preset {{preset}} nie jest dostępny przy obecnych panelach"
   }
 }

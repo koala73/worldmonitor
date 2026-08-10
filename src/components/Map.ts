@@ -62,6 +62,7 @@ import {
   getLayerExplanation,
   getLayersForVariant,
   hasCuratedLayerExplanation,
+  isSunsetLayer,
   resolveLayerLabel,
   type MapVariant,
 } from '@/config/map-layer-definitions';
@@ -73,6 +74,7 @@ import {
   startCountryClickGesture,
   updateCountryClickGestureDrag,
 } from './map-interaction-guard';
+import { resolveClusterGlContext } from './map-cluster-gl';
 
 
 export type TimeRange = '1h' | '6h' | '24h' | '48h' | '7d' | 'all';
@@ -89,6 +91,8 @@ export interface MapState {
 export interface MapComponentOptions {
   chrome?: boolean;
   isMobile?: boolean;
+  /** App-owned entitlement guard; omitted for the public embed renderer. */
+  canToggleLayer?: (layer: keyof MapLayers, currentlyEnabled: boolean | undefined) => boolean;
 }
 
 interface HotspotWithBreaking extends Hotspot {
@@ -217,6 +221,7 @@ export class MapComponent {
   private destroyed = false;
   // Mobile loads the lighter 110m country topology (U6); passed in from MapContainer.
   private readonly isMobile: boolean;
+  private readonly canToggleLayer: NonNullable<MapComponentOptions['canToggleLayer']>;
   private overlayAppendTarget: ParentNode | null = null;
   private labelVisibilityScheduled = false;
   private pendingLabelVisibilityZoom = 1;
@@ -241,6 +246,7 @@ export class MapComponent {
     this.hotspots = [...INTEL_HOTSPOTS];
     const chrome = options.chrome ?? true;
     this.isMobile = options.isMobile ?? false;
+    this.canToggleLayer = options.canToggleLayer ?? (() => true);
     this.mobileLabelVisibilityArmed = !this.isMobile;
 
     this.wrapper = document.createElement('div');
@@ -530,11 +536,13 @@ export class MapComponent {
       'weather', 'fires',                     // operational risk
       'economic',                             // infrastructure context
     ];
-    const layers = SITE_VARIANT === 'tech' ? techLayers
+    // Filter sunset layers (e.g. iranAttacks) so the SVG/mobile picker matches
+    // getLayersForVariant / DeckGL — otherwise a dead raw-key toggle wastes a slot (#6046).
+    const layers = (SITE_VARIANT === 'tech' ? techLayers
                  : SITE_VARIANT === 'finance' ? financeLayers
                  : SITE_VARIANT === 'happy' ? happyLayers
                  : SITE_VARIANT === 'energy' ? energyLayers
-                 : fullLayers;
+                 : fullLayers).filter((key) => !isSunsetLayer(key));
     const MAX_SVG_LAYERS = 9;
     const enforceLayerLimit = () => {
       const allBtns = Array.from(toggles.querySelectorAll<HTMLButtonElement>('.layer-toggle'));
@@ -1120,10 +1128,11 @@ export class MapComponent {
   }
 
   private initClusterRenderer(): void {
-    // WebGL clustering disabled - just get context for clearing canvas
-    const gl = this.clusterCanvas.getContext('webgl');
-    if (!gl) return;
-    this.clusterGl = gl;
+    // WebGL clustering disabled - just get context for clearing canvas.
+    // resolveClusterGlContext() rejects the truthy-but-method-less stub that
+    // canvas fingerprint blockers return, which used to crash the whole
+    // dynamic-layer render pass from clearClusterCanvas() (WORLDMONITOR-YG/YH).
+    this.clusterGl = resolveClusterGlContext(this.clusterCanvas);
   }
 
   private clearClusterCanvas(): void {
@@ -3710,6 +3719,7 @@ export class MapComponent {
   ]);
 
   public toggleLayer(layer: keyof MapLayers, source: 'user' | 'programmatic' = 'user'): void {
+    if (!this.canToggleLayer(layer, this.state.layers[layer])) return;
     console.log(`[Map.toggleLayer] ${layer}: ${this.state.layers[layer]} -> ${!this.state.layers[layer]}`);
     this.state.layers[layer] = !this.state.layers[layer];
     if (this.state.layers[layer]) {
@@ -3976,6 +3986,7 @@ export class MapComponent {
   }
 
   public enableLayer(layer: keyof MapLayers): void {
+    if (!this.canToggleLayer(layer, this.state.layers[layer])) return;
     if (!this.state.layers[layer]) {
       this.state.layers[layer] = true;
       const thresholds = MapComponent.LAYER_ZOOM_THRESHOLDS[layer];

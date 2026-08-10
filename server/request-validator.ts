@@ -20,11 +20,16 @@ interface FieldRule {
   readonly optional?: boolean;
   readonly messageType?: string;
   readonly int64Encoding?: 'number' | 'string';
+  readonly enumValues?: readonly string[];
+  readonly enumDefinedOnly?: boolean;
+  readonly enumNotIn?: readonly string[];
   readonly required?: boolean;
   readonly ignore?: 'IGNORE_IF_ZERO_VALUE';
   readonly stringLen?: number;
   readonly stringMinLen?: number;
   readonly stringMaxLen?: number;
+  readonly stringMaxBytes?: number;
+  readonly stringConst?: string;
   readonly stringPattern?: string;
   readonly numberGte?: number;
   readonly numberLte?: number;
@@ -39,7 +44,16 @@ interface MessageRule {
 const requestTypes: Readonly<Record<string, string>> = GENERATED_REQUEST_TYPES;
 const messageRules: Readonly<Record<string, MessageRule>> = GENERATED_MESSAGE_RULES;
 const patternCache = new Map<string, RegExp>();
+const utf8Encoder = new TextEncoder();
 const hasOwn = (value: object, key: string): boolean => Object.prototype.hasOwnProperty.call(value, key);
+
+function exceedsUtf8ByteLimit(value: string, limit: number): boolean {
+  if (value.length > limit) return true;
+  for (let index = 0; index < value.length; index += 1) {
+    if (value.charCodeAt(index) > 0x7f) return utf8Encoder.encode(value).byteLength > limit;
+  }
+  return false;
+}
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -71,10 +85,86 @@ function defaultScalarValue(rule: FieldRule): unknown {
   if (rule.optional) return undefined;
   if (rule.kind === 'string') return '';
   if (rule.kind === 'double' || rule.kind === 'float') return 0;
+  if (rule.kind === 'enum') return rule.enumValues?.[0];
   if (/^(?:s?fixed|s?int|uint)/.test(rule.kind)) {
     return rule.kind === 'int64' && rule.int64Encoding !== 'number' ? '0' : 0;
   }
   return undefined;
+}
+
+function validateEnum(
+  rule: FieldRule,
+  value: unknown,
+  path: string,
+  violations: RequestFieldViolation[],
+): void {
+  // Wire contract is enum NAMES only, deliberately narrower than canonical proto3 JSON
+  // (which also permits the integer ordinal). The generated server types model these as
+  // string unions and the published OpenAPI documents only the string form, so accepting
+  // an integer here would pass a value the handler is not typed for. Keep the rejection
+  // explicit so a proto3-JSON client gets an actionable message instead of a bare 400.
+  if (typeof value !== 'string') {
+    addViolation(
+      violations,
+      path,
+      'value must be an enum name (this API does not accept the numeric proto3-JSON enum form)',
+    );
+    return;
+  }
+  // Membership is enforced whenever the generated rule carries the enum's values, not
+  // only when the proto opted into `enum.defined_only`. This validator only ever sees
+  // proto3 JSON, where an undeclared enum NAME is a parse error by spec, so enforcing
+  // unconditionally costs conformant callers nothing and keeps the default fail-closed
+  // for any future enum field whose proto forgets the annotation.
+  if (rule.enumValues && !rule.enumValues.includes(value)) {
+    addViolation(violations, path, 'enum value must be defined');
+    return;
+  }
+  if (rule.enumNotIn?.includes(value)) {
+    addViolation(violations, path, `enum value must not be ${value}`);
+  }
+}
+
+// Adjacent bounded repeats of the SAME character class, e.g. `[A-Za-z0-9_-]{16,1000}[A-Za-z0-9_-]{0,536}`.
+// The backreference forces the two class bodies to be textually identical.
+const ADJACENT_CLASS_QUANTIFIERS = /(\[(?:[^\]\\]|\\.)*\])\{(\d+),(\d+)\}\1\{(\d+),(\d+)\}/;
+
+/**
+ * Collapses adjacent bounded repeats of an identical character class into one repeat.
+ *
+ * Proto `string.pattern` rules are authored against RE2, which is a linear-time engine
+ * with NO backtracking but a hard cap of 1000 on a single repetition. Authors therefore
+ * split a longer bound into two adjacent quantifiers (`{16,1000}{0,536}`) — free under
+ * RE2, but ambiguous under JavaScript's backtracking RegExp, where a non-matching input
+ * is driven through ~(b-a)x(d-c) split combinations. Measured on the Company Monitoring
+ * cursor pattern: 21ms/op at 800 chars and 30-337ms/op at 2KB, versus ~0.01ms collapsed.
+ *
+ * For any set S, `S{a,b}S{c,d}` accepts exactly `S{a+c,b+d}`, so this rewrite preserves
+ * the language while removing the ambiguity. It runs once per distinct pattern at
+ * compile time, and the result is what gets cached.
+ */
+export function collapseAdjacentClassQuantifiers(source: string): string {
+  let out = source;
+  // Loop so a 3+ term run collapses fully; each pass removes one adjacency.
+  for (let guard = 0; guard < 16; guard += 1) {
+    const next = out.replace(
+      ADJACENT_CLASS_QUANTIFIERS,
+      (_match, cls: string, a: string, b: string, c: string, d: string) =>
+        `${cls}{${Number(a) + Number(c)},${Number(b) + Number(d)}}`,
+    );
+    if (next === out) break;
+    out = next;
+  }
+  return out;
+}
+
+function compilePattern(source: string): RegExp {
+  let pattern = patternCache.get(source);
+  if (!pattern) {
+    pattern = new RegExp(collapseAdjacentClassQuantifiers(source));
+    patternCache.set(source, pattern);
+  }
+  return pattern;
 }
 
 function validateString(
@@ -89,22 +179,31 @@ function validateString(
   }
 
   const length = [...value].length;
+  let oversized = false;
   if (rule.stringLen != null && length !== rule.stringLen) {
     addViolation(violations, path, `string length must be exactly ${rule.stringLen}`);
+    if (length > rule.stringLen) oversized = true;
   }
   if (rule.stringMinLen != null && length < rule.stringMinLen) {
     addViolation(violations, path, `string length must be at least ${rule.stringMinLen}`);
   }
   if (rule.stringMaxLen != null && length > rule.stringMaxLen) {
     addViolation(violations, path, `string length must be at most ${rule.stringMaxLen}`);
+    oversized = true;
   }
-  if (rule.stringPattern != null) {
-    let pattern = patternCache.get(rule.stringPattern);
-    if (!pattern) {
-      pattern = new RegExp(rule.stringPattern);
-      patternCache.set(rule.stringPattern, pattern);
-    }
-    if (!pattern.test(value)) {
+  if (rule.stringMaxBytes != null && exceedsUtf8ByteLimit(value, rule.stringMaxBytes)) {
+    addViolation(violations, path, `string UTF-8 length must be at most ${rule.stringMaxBytes} bytes`);
+    oversized = true;
+  }
+  if (rule.stringConst != null && value !== rule.stringConst) {
+    addViolation(violations, path, `string must equal ${rule.stringConst}`);
+  }
+  // Skip the pattern once the value is already known to be over a declared length or
+  // byte bound. The request is rejected either way, and running a regex over unbounded
+  // attacker-controlled input is the expensive part — the declared max_bytes must
+  // actually bound the matching work, not just the payload.
+  if (rule.stringPattern != null && !oversized) {
+    if (!compilePattern(rule.stringPattern).test(value)) {
       addViolation(violations, path, `string must match pattern ${rule.stringPattern}`);
     }
   }
@@ -173,6 +272,10 @@ function validateSingleValue(
     validateString(rule, value, path, violations);
     return;
   }
+  if (rule.kind === 'enum') {
+    validateEnum(rule, value, path, violations);
+    return;
+  }
   if (rule.kind === 'int64' && rule.int64Encoding !== 'number') {
     validateStringEncodedInt64(rule, value, path, violations);
     return;
@@ -191,7 +294,8 @@ function validateField(
   if (rule.ignore === 'IGNORE_IF_ZERO_VALUE' && (!present || isZeroValue(value))) {
     return;
   }
-  if (rule.required && isRequiredValueMissing(value)) {
+  const enumZeroValue = rule.kind === 'enum' && value === rule.enumValues?.[0];
+  if (rule.required && (isRequiredValueMissing(value) || enumZeroValue)) {
     addViolation(violations, path, 'value is required');
     return;
   }

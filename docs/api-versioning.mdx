@@ -25,6 +25,19 @@ Clients should ignore response fields and enum values they do not recognize.
 The bundled [OpenAPI specification](https://www.worldmonitor.app/openapi.yaml)
 is the source of truth for the currently published contract.
 
+## Protobuf compatibility check
+
+The public API is JSON over HTTP. On pull requests that touch proto paths, CI
+runs `make breaking` against `origin/main` with Buf's `FILE`, `PACKAGE`, and
+`WIRE_JSON` rules. That job fails the `proto-breaking` check-run when the
+baseline is missing or a rule is violated; it is not yet one of the deploy-gate
+required contexts that branch protection aggregates for merge. `WIRE_JSON` is
+intentional: generated JSON field names and shapes are part of the versioned
+REST contract. The repository does not currently ship binary-protobuf
+consumers, so the binary `WIRE` rule is intentionally not enabled. The CI
+workflow fetches full Git history so a missing `origin/main` baseline fails the
+check instead of allowing a vacuous pass.
+
 ## Deprecation timeline
 
 When WorldMonitor replaces or retires a public REST version or operation:

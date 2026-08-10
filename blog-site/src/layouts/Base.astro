@@ -159,6 +159,12 @@ function stringifyJsonLd(value: Record<string, unknown>): string {
           <TrackedProductLink destination="pro" placement="footer-pro" campaign={attributionCampaign}>
             Pro
           </TrackedProductLink>
+          <TrackedProductLink destination="api" placement="footer-api" campaign={attributionCampaign}>
+            API
+          </TrackedProductLink>
+          <TrackedProductLink destination="mcp" placement="footer-mcp" campaign={attributionCampaign}>
+            MCP
+          </TrackedProductLink>
           <a href="https://www.worldmonitor.app/docs" target="_blank" rel="noopener noreferrer">Docs</a>
           <a href="https://status.worldmonitor.app/" target="_blank" rel="noopener noreferrer">Status</a>
           <a href="https://github.com/koala73/worldmonitor" target="_blank" rel="noopener noreferrer">GitHub</a>
@@ -170,5 +176,28 @@ function stringifyJsonLd(value: Record<string, unknown>): string {
         </div>
       </div>
     </footer>
+
+    <!-- Keep inbound acquisition context on every tracked content handoff.
+         Internal content fields use wm_content_*; affiliate ref params are
+         intentionally outside this allowlist. -->
+    <script is:inline nonce="wm-static-bootstrap">
+      (() => {
+        const utmParams = ['utm_source', 'utm_medium', 'utm_campaign', 'utm_term', 'utm_content'];
+        const incoming = new URLSearchParams(window.location.search);
+        if (!utmParams.some((name) => incoming.has(name))) return;
+
+        document.querySelectorAll('a[data-wm-content-link]').forEach((anchor) => {
+          const href = anchor.getAttribute('href');
+          if (!href) return;
+          const target = new URL(href, window.location.href);
+          for (const name of utmParams) {
+            if (target.searchParams.has(name)) continue;
+            const value = incoming.get(name);
+            if (value !== null) target.searchParams.set(name, value.slice(0, 100));
+          }
+          anchor.setAttribute('href', target.toString());
+        });
+      })();
+    </script>
   </body>
 </html>

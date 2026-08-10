@@ -18,7 +18,27 @@ A companion cache key holding a *view* of a dataset sized to what the dashboard 
 
 ### Seed-Owned Key
 
-A cache key whose only writer is a dedicated seeder or relay process; edge endpoints read and serve it but never write it back on a miss — a missing value is answered with a short-TTL computed fallback while the owning seeder's next cycle restores the key. The consequence runs both ways: the reader stays cheap and can never poison the key with a degraded payload, but purging a seed-owned key does not force regeneration at read time — freshness after a purge returns only on the owner's schedule, and a purge issued while an outdated owner is still running is simply overwritten with outdated data. See also: Bootstrap Tier, On-Demand Key.
+A cache key whose only writer is a dedicated seeder or relay process; edge endpoints read and serve it but never write it back on a miss — a missing value is answered with a short-TTL computed fallback while the owning seeder's next cycle restores the key. The consequence runs both ways: the reader stays cheap and can never poison the key with a degraded payload, but purging a seed-owned key does not force regeneration at read time — freshness after a purge returns only on the owner's schedule, and a purge issued while an outdated owner is still running is simply overwritten with outdated data. See also: Bootstrap Tier, On-Demand Key, Read Outcome.
+
+### Content-Age Contract
+
+The freshness clock a seeder declares over the *observation dates inside* the payload it just published, as distinct from the clock over its own last run. The two answer different questions and only one of them detects an upstream that has silently stopped moving: a producer whose source freezes — answering successfully, forever, with unchanging observations — keeps its run clock perfectly current, because the cron fires, the fetch succeeds, the record count stays whole, and validation passes. Nothing but the dates in the data reveals it.
+
+Two rules follow from what the contract reduces to. It reports a single newest timestamp, so a payload assembled from *several independently-failing sources* must derive one clock per source and report the **oldest** of them; reducing all their dates together takes the newest, and the still-living source then hides the dead one indefinitely — an alarm that can only fire when every source dies at once. And an undatable payload must report nothing rather than a default, because "we cannot date this" and "this is stale" warrant the same response, while a fabricated recent date warrants none.
+
+Sizing the budget belongs to the source's own publication calendar, measured rather than assumed: the widest gap the source routinely takes — a holiday cluster, a non-working period, a weekend either side — plus room for one missed run. A budget guessed generously enough to never false-alarm has usually also stopped detecting the freeze it exists for. See also: Seed-Owned Key, Activation Marker.
+
+### Activation Marker
+
+A durable, deliberately expiry-free key a producer writes only after its first genuinely successful publish, used to end a deployment-order grace period. It exists because the reader and the producer ship on different clocks — the reader deploys on merge, the producer runs on its own schedule — so a newly registered data key is legitimately absent for a window that can span a full producer cycle, and grading it strictly during that window reports a loud, unactionable failure for something that has simply not happened yet.
+
+The marker's value is that the grace it grants is *self-revoking on evidence* rather than on a date: before it exists, an absent key is soft; from the first publish onward, the same absence is strict forever. That is what separates it from a hardcoded deadline, which must be guessed against an unknown merge time and rots into either a premature alarm or a permanent exemption. Two properties are load-bearing: the marker carries no expiry, because inferring "has ever published" from a key that itself expires reintroduces the grace every time that key ages out; and its meaning is presence, so a read that *fails* must not be treated as absence — an unreadable marker earns nothing and the key is graded normally, since a grace granted on an unknown state is a grace that never ends. See also: Seed-Owned Key, Content-Age Contract.
+
+### Read Outcome
+
+The three-way result a cache read is obliged to report — **hit**, **miss**, or **failure** — as against the two-way present/absent that a bare returned value can express. The distinction exists because it is observable only at the read itself: a helper that answers the same empty value for "the key genuinely holds nothing" and "the read did not complete" has destroyed the difference at its only observation point, and every caller downstream then decides on a fabricated fact.
+
+What makes the collapse expensive is that the two outcomes license opposite actions. A miss is a legitimate empty state — serve the computed fallback, render the empty panel, treat the day as having no records. A failure is an outage, and the correct response is almost always to abstain: skip the tick rather than publish a partial, keep the last good value rather than replace it with nothing, report the read as incomplete rather than as a finding. Collapsing them converts an outage into a confident empty answer, which then propagates as though it were data. Two properties of the cache store's REST interface make this easy to get wrong. A transport-level success status is not evidence the command ran — the store can answer a success status whose body carries a per-command error — so a reader that checks only the status and then reads the result field silently reclassifies every such rejection as a miss. And because the rejection is per command, one command in a batch can fail while its siblings succeed, so an outcome must be tracked per command rather than inferred once for the whole batch. See also: Seed-Owned Key, One-Shot Hydration.
 
 ### Source Tag
 
@@ -52,6 +72,20 @@ An Alert Rule's optional country restriction. Empty means unscoped — every eve
 
 The country identity a notification publisher attaches to an event at publish time, normalized to ISO-3166 alpha-2 through the shared country-name map. Attribution is the publisher's job, not the dispatcher's: a publisher that knows the country must attach it, because a missing or unresolvable attribution is indistinguishable downstream from a genuinely global event. A name-normalization miss that silently omits the attribution converts "lookup failed" into "field never existed" — the failure mode that lets scoped delivery leak. See also: Country Scope.
 
+## Product Analytics Collection
+
+### Write Receipt
+
+The body the analytics collector returns for a write it actually stored, carrying the session and visit identifiers it minted for that write. The receipt — not the status code — is the delivery proof: the collector answers a success status to writes it accepts and then discards, so treating a 2xx as stored is what lets a dropped conversion look delivered. A response that carries a success status but no receipt is undelivered, and whether it is worth reporting depends on *why* the receipt is missing. See also: Bot-Filtered Write, Environment Noise.
+
+### Bot-Filtered Write
+
+A write the collector deliberately discarded because it judged the client non-human, acknowledged with a success status and a fixed sentinel body instead of a Write Receipt. It is a real delivery failure — nothing was stored, so retry policy and any durable conversion marker must treat it exactly as they treat any other missing receipt — but it is not an incident, so it must never raise an alert. That split is the load-bearing part: the distinction belongs in the *alerting* decision, never in the *delivery* classification, because collapsing them turns a silenced alert into a silenced retry. First-party crawlers and headless browsers hitting production pages land in this class, so any browser-side alarm sees the project's own monitoring traffic unless it excludes it. See also: Write Receipt, Environment Noise.
+
+### Environment Noise
+
+The class of collector failures produced by the client's own environment — a blocked request, an unanswered one — rather than by the collector. Locally indistinguishable from a total outage, because a blocked client and a dead collector both fail every write on that page; nothing computable in one browser separates them. The consequence is that the outage signal is the aggregate volume of these reports across users, not any single report, so the reporting policy gates them behind both a minimum sample and a minimum failure rate within a rolling window and admits at most one per page per window. Without the per-page bound, one heavily-blocked session outproduces the incident the gate exists to expose. Failures the origin answered — any non-success status — are outside this class and always reportable, which is what keeps a dead origin loud. See also: Write Receipt, Bot-Filtered Write, Vacuous Guard.
+
 ## Company Attribution
 
 ### Filer
@@ -80,6 +114,12 @@ Every enabled panel beyond the immediate tier's budget. A deferred panel's slot 
 
 The project's rule for any panel that joins the grid asynchronously, in either tier: a footprint-matched placeholder shell must occupy the panel's exact grid slot from the first synchronous layout pass, and the arriving panel replaces the shell in place rather than being inserted as a new grid item. The contract's invariant is that grid geometry never changes when async content arrives — violations register as layout shifts for every panel below the insertion point. Reserving the slot and starting the load early are independent decisions; conflating "loads immediately" with "needs no reservation" is the failure mode that produced the dashboard's dominant desktop layout-shift mechanism. See also: Immediate Tier, Deferred Tier, Shift Mover.
 
+### Viewport Prime
+
+The dashboard's demand-driven data pass: on boot, and again on every scroll and resize, it loads data for exactly the panels near the viewport, so a Deferred Tier panel receives its content only as the user approaches it. It re-runs constantly by design, which makes its safety contract the load-bearing part: the pass dedupes *concurrent* loads but does not remember *completed* ones, so every loader it can reach must be cheap to repeat — served from a real cache, or skipped outright when the panel already renders data. A loader that repeats expensively (an uncached network call, a teardown of already-rendered content) turns every scroll into user-visible churn.
+
+Refresh triggers divide into three classes that must not be conflated: input-driven passes (scroll, resize — arbitrarily frequent, carrying no information about data staleness), the staleness clock (each panel's scheduled refresh cadence), and explicit user requests (a retry affordance). Only the latter two justify refetching data a panel already shows; an input-driven pass exists to fill empty panels, never to refresh full ones. See also: Deferred Tier, Immediate Tier.
+
 ### Shift Victim
 
 An element that browser and RUM layout-shift attribution names because its *position* changed — it was pushed by something else. Both Chrome's largest-shift-target and RUM per-selector rankings report victims; neither reports causes. A fix aimed at a top-ranked victim is a hypothesis about the pusher, not a confirmed target: prominent above-the-fold elements rank as victims whenever anything above them changes the layout. See also: Shift Mover.
@@ -88,11 +128,21 @@ An element that browser and RUM layout-shift attribution names because its *posi
 
 The element that *causes* a layout shift by changing its own footprint — growing, shrinking, materializing (insertion), or disappearing (removal). Movers are not reported by shift-attribution APIs; naming one requires diffing element geometry across the shift itself (a cached top/height baseline compared at shift delivery). The victim/mover distinction is load-bearing for all layout-stability work in this project: two shipped fixes aimed at victims had null field effect before mover instrumentation named the true mechanism. See also: Shift Victim, Deferred-Shell Contract.
 
+## Payments Provider Calls
+
+### Retry Ownership
+
+The invariant that exactly one layer owns retry policy for any external provider call — every other layer in the chain (vendor SDK internals, edge gateway, client transport) is either pinned to zero retries or restricted to failure classes the owning layer never retries. Vendor SDKs commonly ship default internal retries that honor a provider's advertised wait verbatim, so a retry layer added above an unpinned SDK silently multiplies raw request volume and turns the owner's attempt counts and wall-clock deadlines into fiction — the owning layer can only bound what it can see. Ownership is asserted by construction (retries pinned off when the client is built, each attempt individually time-bounded) and guarded by a contract test, never by convention. See also: Rate-Limit Outcome.
+
+### Rate-Limit Outcome
+
+The typed value a provider-rate-limited operation returns *instead of throwing*, so every downstream surface renders a deliberate retry state — an HTTP 429 with a retry hint at the service boundary, a structured error code on the public API — rather than collapsing the limit into a generic failure. The outcome only exists after the owning retry layer has exhausted its bounded attempts; a raw rate-limit error escaping before that point is a defect, not an outcome. See also: Retry Ownership.
+
 ## Test & Guard Verification
 
 ### Vacuous Guard
 
-A test, CI gate, or static audit that reports success without having examined what it claims to cover, because its *input* silently shrank rather than because its assertion held. The distinguishing property is that it fails open: guards of this shape assert a negative — a violation list is empty, a count is zero, no match was found — and an empty input satisfies a negative assertion perfectly, so the less such a guard actually checks, the greener it looks. Levers that shrink the input include a skip condition gated on a flag nothing sets, a normaliser or comment-stripper that deletes part of the scanned source, a filter or path-walk predicate that stops matching files, and a test harness that never supplies the input the assertion is written about — an "X is absent" check cannot fail when the fixture could not have produced an X in the first place. Two further levers arise from *substitution* rather than filtering: a stub standing in for the unit under test, which makes every branch inside it — error returns especially — unreachable by a contract assertion that still passes for every other tool in the registry; and a lookup that parses a value out of another file, whose miss branch yields a plausible default (`0`, empty, `null`) instead of raising, so a moved or renamed target reads as a real answer rather than a lost one. Both are refactor-triggered: nothing in the import graph follows a path held as a string, so the compiler and the suite stay silent. A third shape does not shrink the input at all but asserts against the wrong artefact: a *wiring* guard that greps a script's source text for the command it should invoke, rather than executing the decision and observing what ran. Such a guard survives the bug restored verbatim, because inverting the condition that reaches the command, or dropping the `|| exit` that propagates its failure, leaves the grepped token in place — the remedy is to move the decision into something callable and run it against stubbed executables, asserting the invocation. A fourth shape asserts a negative consequence of an action the test never actually performed: a check that some effect did *not* follow a simulated user gesture is satisfied just as well by the gesture never landing, so an input that silently does nothing — a scroll against a container that does not scroll, a click on a detached node — makes "nothing happened" indistinguishable from "the mechanism suppressed it". The remedy is a positive control: assert the trigger was delivered before asserting anything about its absence of effect. A fifth shape corrupts the *comparison value* rather than the input: two writers emit a failure sentinel on the same failure path — a probe command that prints its sentinel to stdout even as it exits non-zero, plus a fallback echo appended inside the same command substitution — and the capture concatenates them, so the captured value never equals the bare sentinel and a "not-sentinel means healthy" check passes for a target that is entirely dead. The remedy is a single sentinel source: rely on the command's own failure output, or branch on the exit status, never both. A vacuous guard is worse than no guard, because it also supplies confidence. See also: Mutation Proof, Surviving Mutant.
+A test, CI gate, or static audit that reports success without having examined what it claims to cover, because its *input* silently shrank rather than because its assertion held. The distinguishing property is that it fails open: guards of this shape assert a negative — a violation list is empty, a count is zero, no match was found — and an empty input satisfies a negative assertion perfectly, so the less such a guard actually checks, the greener it looks. Levers that shrink the input include a skip condition gated on a flag nothing sets, a normaliser or comment-stripper that deletes part of the scanned source, a filter or path-walk predicate that stops matching files, and a test harness that never supplies the input the assertion is written about — an "X is absent" check cannot fail when the fixture could not have produced an X in the first place. Two further levers arise from *substitution* rather than filtering: a stub standing in for the unit under test, which makes every branch inside it — error returns especially — unreachable by a contract assertion that still passes for every other tool in the registry; and a lookup that parses a value out of another file, whose miss branch yields a plausible default (`0`, empty, `null`) instead of raising, so a moved or renamed target reads as a real answer rather than a lost one. Both are refactor-triggered: nothing in the import graph follows a path held as a string, so the compiler and the suite stay silent. A third shape does not shrink the input at all but asserts against the wrong artefact: a *wiring* guard that greps a script's source text for the command it should invoke, rather than executing the decision and observing what ran. Such a guard survives the bug restored verbatim, because inverting the condition that reaches the command, or dropping the `|| exit` that propagates its failure, leaves the grepped token in place — the remedy is to move the decision into something callable and run it against stubbed executables, asserting the invocation. A fourth shape asserts a negative consequence of an action the test never actually performed: a check that some effect did *not* follow a simulated user gesture is satisfied just as well by the gesture never landing, so an input that silently does nothing — a scroll against a container that does not scroll, a click on a detached node — makes "nothing happened" indistinguishable from "the mechanism suppressed it". The remedy is a positive control: assert the trigger was delivered before asserting anything about its absence of effect. A fifth shape corrupts the *comparison value* rather than the input: two writers emit a failure sentinel on the same failure path — a probe command that prints its sentinel to stdout even as it exits non-zero, plus a fallback echo appended inside the same command substitution — and the capture concatenates them, so the captured value never equals the bare sentinel and a "not-sentinel means healthy" check passes for a target that is entirely dead. The remedy is a single sentinel source: rely on the command's own failure output, or branch on the exit status, never both. A sixth shape shrinks nothing and substitutes nothing: it examines the whole input and asserts truthfully, but along the wrong *axis*. A schema gate that diffs emitted field names against declared field names answers only whether every emitted key is declared; it is silent on whether the emitted *values* satisfy the declaration, so a producer writing an explicit null for a field the schema declares as absent-when-missing publishes a declared name carrying an undeclared value, and the gate certifies it green forever. The remedy is to name the axes the gate covers and to enforce the uncovered one somewhere it can be seen — for a serialized contract, on the serialized wire rather than the in-process object, since undefined disappears from JSON and null does not. A seventh shape is a guard-of-a-guard that goes blind in lockstep with its subject: a parser paired with a count pin that shares the parser's own pattern shape drops the same unrecognized forms from both sides, and the two agree at the wrong number rather than disagreeing loudly — a self-check must be strictly looser than the thing it checks. An eighth shape covers every unit a fix touches and still misses the fix: when the corrected behaviour lives in the *seam* that composes those units — which decoding a caller applies to a response before handing it to a parser, which of two overloads it selects — then unit tests over the parts stay green with the seam reverted, and the count of them is no evidence at all. The tell is that the diff's essential line sits in a function no test names; the remedy is to make the composing function callable and drive it against a stub deliberately built to satisfy *both* branches, so only the correct seam produces the correct result. A vacuous guard is worse than no guard, because it also supplies confidence. See also: Mutation Proof, Surviving Mutant, Wiring Guard.
 
 ### Mutation Proof
 
@@ -101,6 +151,14 @@ This project's standard of evidence that a guard actually guards: deliberately b
 ### Surviving Mutant
 
 A deliberately broken call site that the test suite fails to notice — the unit in which guard coverage is actually measured, and the artefact a per-site mutation sweep is run to enumerate. Survivors cluster in two shapes that reading cannot reveal and a whole-helper mutation cannot localize: a *branch no fixture reaches*, typically a fallback whose primary path every realistic fixture satisfies and thereby short-circuits; and a *sibling field* on an output row that interpolates several untrusted values, where poisoning one field proves exactly one of them. Both are properties of the fixtures rather than of the code, so they persist through code review and through a rising test count. The useful discipline is to report coverage as a ratio of sites with no survivor rather than as a count of red tests, since the latter saturates while the former does not. See also: Mutation Proof, Vacuous Guard.
+
+### Wiring Guard
+
+A gate that asserts the project's automation actually *invokes* each regression guard — that every required suite, script, or spec is named by some workflow — closing the failure mode where a guard exists, passes, and is simply never run, which from the outside reads identically to green. Its defining tension appears when invocations are consolidated: folding several guarded commands into one combined entry point correctly trips the wiring guard, and the correct repair moves the pin down a level rather than deleting it — require the combined entry point to be wired *and* pin the list of things it must still invoke, with a Mutation Proof that dropping one member turns the gate red. Repaired any other way, the consolidation becomes the mechanism by which a guard stops running while the gate stays green. See also: Vacuous Guard, Mutation Proof.
+
+### Extraction Evidence Gate
+
+A deterministic check that a value reported by a model-based extractor actually appears in the raw content the same acquisition call returned — the value's digits or text must be present in the fetched source, or the observation is rejected as unproven. The gate exists to break a bistable failure in prompt-only anti-fabrication: wording strict enough to stop invented values also makes the extractor withhold values genuinely present in the source, while wording loose enough to report them lets inventions through; moving safety into a mechanical presence check lets the prompt stay permissive. Two properties define a sound gate. First, its matcher is itself an attack surface: on digit-rich source material, a naive matcher assembles "proof" from unrelated numbers — a fraction lifted out of a nearby rating, a size token certifying a quantity reported as a price — so the matcher needs the same adversarial treatment as any guard, with the bypass shapes pinned as regression tests. Second, its abstain state must be observable: when the acquisition call returns no raw content the gate cannot run, and if that outcome is indistinguishable from a verified pass, a provider quietly dropping content reverts the whole pipeline to unguarded acceptance while every health surface stays green — the Vacuous Guard failure arrived at through a different door. The gate proves presence, not attribution: a value printed elsewhere on the page still passes, so identity checks (title, currency, size plausibility) remain the attribution defense. See also: Vacuous Guard, Mutation Proof.
 
 ### Closed-World Gate
 
@@ -166,7 +224,7 @@ The MCP transport this server implements over HTTP: JSON-RPC 2.0 requests via `P
 
 ### Variant Host
 
-One of the product-variant subdomains (`tech`, `finance`, `commodity`, `happy`, `energy`) that serves a themed dashboard entry and metadata. The middleware and Vercel config recognize these hosts explicitly; canonical discovery URLs for shared surfaces (such as `/mcp`) redirect retrieval-method requests from variant hosts to the apex host so discovery signals do not fragment.
+One of the product-variant subdomains (`tech`, `finance`, `commodity`, `happy`, `energy`) that serves a themed dashboard entry and metadata. The middleware and Vercel config recognize these hosts explicitly; canonical discovery URLs for shared surfaces (such as `/mcp`) redirect retrieval-method requests from variant hosts to the apex host so discovery signals do not fragment. This is the web half of variant resolution only — see Desktop Variant Selection for the desktop half, which does not use hosts.
 
 ## Anonymous Access
 
@@ -230,6 +288,14 @@ The single client-derived state that decides what a customer sees when premium a
 
 The bootstrap-time process that turns an inbound URL param into checkout attribution: `?ref=` or `?wm_referral=` on any dashboard landing is read once at app boot, stripped from the URL, persisted locally with a bounded TTL, and forwarded to the payment provider at checkout to credit the referring sharer. Because the param names are generic-looking, any other use of `ref=` on dashboard-bound links (SEO tags, campaign labels) is silently captured as a fake affiliate code — internal source attribution must use `utm_*` params, which this process ignores. See also: Entitlement.
 
+### Signed Checkout Identity
+
+The account identifier the checkout flow stamps into the payment provider's subscription and payment metadata, alongside a server-issued signature. It is the authoritative answer to "which account bought this" — independent of every email address on the payment record, because it captures who was *signed in* at the moment of purchase rather than what the buyer typed. Consumers trust it only when the signature verifies; an unsigned or tampered value falls back to matching on the provider's stored customer record. Support triage of any "paid but no access" report starts here, never from an email comparison. See also: Entitlement, Checkout Email.
+
+### Checkout Email
+
+The address a buyer types into the payment provider's checkout form. It is unauthenticated, need not match any account, and is best read as "an inbox the buyer can see," never as an identity: the same person can present one address at checkout, another as their sign-in, and a third in support threads. Any message addressed to it can therefore land in an inbox whose address owns no account — and a message that invites sign-in steers the buyer toward an address the auth provider has never seen. "Who bought" is resolved by the Signed Checkout Identity; the checkout email resolves only "where the invoice went." See also: Signed Checkout Identity, Entitlement.
+
 ## Activation & Onboarding
 
 ### Brief Loop
@@ -284,6 +350,77 @@ A translated value whose English source has changed since the translation was ma
 
 Distinct from a *missing* translation, which has no value at all, and from an *orphaned* one, which is a value the current English no longer has a key for. The distinction is load-bearing because only the stale class is fixable by retranslation — no translation of a source string that no longer exists can be correct, so orphans must be pruned instead. Inserting an element into an English list makes every later entry stale at once, since each index then points at a different source string; removing the last element produces an orphan instead, leaving every earlier index matching so nothing registers as stale. See also: Translation Provenance.
 
+## Military Aviation Posture
+
+### Theater Posture
+
+An aggregated military-activity assessment for a named geographic theater, derived from live military flights and tracked naval vessels inside the theater's bounds and published as a posture level per theater.
+
+Theater posture has two independent producers on different schedules — a loop inside the AIS relay and the military-flights seeder — and each acquires flights from its own ordered list of sources. Ordering a source list is not the same as gating it: only one producer treats its list as a true cascade, entering a lower tier solely when the tier above it failed; the other queries its lower tiers unconditionally and merges whatever they return, so a metered tier there is billed on every cycle regardless of whether the primary already succeeded (see Ungated Tier). A cycle that publishes through an alternate source is still a healthy publication; what it must never be read as is recovery of the primary source. See also: Publication Source, Ungated Tier.
+
+### Publication Source
+
+The upstream that actually fed a published theater-posture cycle, recorded with the publication rather than inferred from which sources are configured.
+
+Each cycle attributes exactly one winning source (or a vessels-only outcome when no flight source contributed), and per-source cycle counts accumulate for the life of the producer process. The attribution answers "who fed this record", not "which sources are healthy" — a primary source that answered healthily with zero relevant traffic is a quiet primary, not a failed one, and its health is judged from its own request counters, never from the attribution. Because the two Theater Posture producers use different vocabularies for their sources, every attribution also names its producer. See also: Theater Posture.
+
+## Metered Upstreams
+
+### Credit Budget
+
+An upstream's allowance of request cost per refill period, spent down by every caller sharing the account rather than by each caller independently. Its defining property is that depletion and burst-throttling both surface as the same rejection status, while demanding opposite remediations: a depleted budget is fixed by spending less per period and is unaffected by waiting or by spacing requests, whereas a burst throttle is fixed by spacing alone and needs no reduction in total volume. The two are told apart by the wait the provider itself advertises on the rejection — a wait on the order of the refill period means the budget is gone, a wait on the order of seconds means the request rate is too high. Application-side counters cannot make this distinction, because they observe rejections rather than the balance; establishing which one is in play requires probing the provider directly with the production credentials and reading its own balance and retry headers. See also: Cost Tier, Ungated Tier.
+
+### Cost Tier
+
+The band a request falls into under an upstream's cost function, where cost is a step function of a request parameter rather than a smooth function of the data returned. The consequential case is the **flat top tier**: past some threshold the cost stops rising, so every request above that threshold — including the widest request the endpoint accepts — is billed identically. Where a top tier is flat, splitting one broad request into several narrower ones that each still exceed the threshold multiplies cost while reducing coverage, and the usual "ask for less to pay less" intuition inverts. Determining the tier boundaries before sizing a request is therefore a correctness step, not an optimization: a parameter tuned without reference to them can be adjusted at length with no effect on spend. See also: Credit Budget.
+
+### Ungated Tier
+
+A source in an ordered chain that is queried regardless of whether an earlier source already succeeded, as distinct from a fallback entered only on the failure of the tier above it. The condition is not observable from published data — the publication is fresh and correctly attributed to the primary either way — so it must be looked for in the call path rather than inferred from output.
+
+Whether it is a defect depends on what the tier does with its results. A tier whose results *replace* the primary's adds nothing when the primary succeeded, so on a metered upstream it spends budget for no marginal records and should be gated. A tier whose results *merge* into the primary's is contributing coverage, and gating it trades that coverage away — dangerously so, because a degraded-but-non-empty primary satisfies a success-gate and suppresses the merging tier precisely when its coverage matters most. For a merging tier the correct remedy is to reduce its cost rather than to stop calling it. See also: Credit Budget, Cost Tier, Theater Posture, Publication Source.
+
+## Desktop Distribution
+
+### Desktop Variant Selection
+
+How the desktop app decides which product variant to present: from a locally stored user choice re-read at startup, rather than from the host that served it. Switching is an in-app action that reloads into the chosen variant and survives restart.
+
+The distinction from Variant Host is load-bearing rather than cosmetic. One desktop binary is published and it carries every variant, so there is no per-variant download, no per-variant release, and no variant dimension in the update or download path. An interface that accepts a variant when choosing a desktop artifact is therefore recording an identity, not making a selection — treating it as a selector yields a request that can only resolve to the one artifact or fail, and gating any correctness filter on its presence lets the app's own updater, which sends no variant, bypass that filter. See also: Variant Host, Release Line.
+
+### Release Line
+
+The sequence of published releases the update and download surfaces can address. There is exactly one for desktop, because those surfaces resolve the newest published release rather than searching by name — so a second, differently-named line is unservable by construction no matter how it is built or tagged. Publication is therefore the point at which a release becomes visible to every installed client at once, which is why a release is assembled privately and made visible only once every artifact it advertises exists. See also: Desktop Variant Selection.
+
+## China Market Access
+
+### Northbound Turnover
+
+The daily value of Stock Connect trading in mainland A-shares, counted in both
+directions: buys and sells added together. It is a measure of how much foreign
+participation occurred, never of how much capital arrived. The distinction is
+load-bearing because the exchanges once published the buy and sell legs
+separately — so net inflow was derivable — and stopped, leaving only the
+combined figure. A surface that labels this "flow", "net buy", or "inflow" is
+not merely imprecise, it reports a number that means something else entirely.
+Any net-flow figure quoted today is a vendor's reconstruction, not exchange
+truth. See also: Trade-Date Agreement.
+
+### Trade-Date Agreement
+
+The requirement that two independent publishers of the same daily series report
+the *same* session before their values may be combined. It serves two purposes
+at once: it prevents the arithmetic error of summing different days, and it
+detects a frozen publisher on the very next run — a source that keeps answering
+with a stale session disagrees immediately, rather than waiting out a staleness
+budget while looking alive. Because the correctness guard and the liveness
+alarm are the same check, the monitoring cannot be disabled without also
+breaking the sum. It applies only to sources that genuinely share a publication
+clock; series on different schedules would disagree constantly and the check
+would degrade into noise.
+
 ## Flagged ambiguities
 
 - *"Pool"* had been used for both a labelled market category and the complete set of markets — these are distinct. A pool is always a labelled subset; the complete set has no pool and must be requested as an explicit union.
+- *"Variant"* resolves differently per surface — a served host on the web, a locally stored selection on desktop. Only the web sense is addressable by URL; a desktop artifact is never variant-specific, so a variant accompanying a desktop artifact request is an identity label rather than a selector.
+- *"wingbits"* as a publication source means different things across the two Theater Posture producers — the military-flights seeder's keyed regional supplement after adsb.lol, but the relay loop's last-resort fallback. The recorded producer disambiguates which reading applies; never compare the token across producers.

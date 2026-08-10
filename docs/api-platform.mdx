@@ -79,13 +79,14 @@ Monitor via UptimeRobot / Better Stack with `?compact=1` — alert on any status
 ```json
 {
   "status": "HEALTHY",
-  "checkedAt": "2026-04-19T12:00:00Z",
+  "checkedAt": "2026-08-07T12:00:00Z",
   "summary": {
-    "total": 194,
-    "ok": 180,
-    "warn": 5,
-    "onDemandWarn": 9,
+    "total": 257,
+    "ok": 257,
+    "warn": 0,
+    "onDemandWarn": 0,
     "staleContent": 0,
+    "rolloutPending": 0,
     "crit": 0
   },
   "checks": {
@@ -163,13 +164,16 @@ Redirects to the matching asset on the latest GitHub release of `koala73/worldmo
 | `linux-appimage` | `*_amd64.AppImage` |
 | `linux-appimage-arm64` | `*_aarch64.AppImage` |
 
-**`variant`** (optional):
+**`variant`** (optional): `full`, `world`, `tech`, `finance`, `commodity`, `energy`, `happy`.
 
-| value | filters asset name to |
-|-------|-----------------------|
-| `full` / `world` | `worldmonitor` |
-| `tech` | `techmonitor` |
-| `finance` | `financemonitor` |
+One desktop binary ships and every variant is selected in-app after install, so
+each supported value resolves to the same World Monitor asset for the requested
+platform — the parameter records which variant the caller came from, it does not
+select a different download. An unrecognized value redirects to
+[releases/latest](https://github.com/koala73/worldmonitor/releases/latest)
+without calling GitHub. Omitting `variant` resolves the same way a supported value does —
+the identity filter applies on every path, so a release carrying a stray asset that merely
+matches the platform suffix never wins.
 
 Caches the 302 for 5 minutes (`s-maxage=300`, `stale-while-revalidate=60`, `stale-if-error=600`).
 

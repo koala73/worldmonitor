@@ -186,7 +186,7 @@ export function shuffle<T>(arr: T[]): T[] {
   return a;
 }
 
-export { proxyUrl, fetchWithProxy, rssProxyUrl } from './proxy';
+export { proxyUrl, fetchWithProxy, hasNoStoreCacheDirective, rssProxyUrl } from './proxy';
 export { buildMapUrl, parseMapUrlState } from './urlState';
 export { withTimeout, TimeoutError } from './with-timeout';
 export type { ParsedMapUrlState } from './urlState';

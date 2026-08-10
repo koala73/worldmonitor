@@ -365,7 +365,8 @@
     "consumerPrices": "Tüketici Fiyatları",
     "fearGreed": "Korku & Açgözlülük",
     "marketBreadth": "Pazar Genişliği",
-    "climateNews": "İklim Haberleri"
+    "climateNews": "İklim Haberleri",
+    "fx": "Döviz Kurları"
   },
   "commands": {
     "prefixes": {
@@ -1131,7 +1132,7 @@
         "ucdpEvents": "UCDP Olaylari",
         "displacementFlows": "Yerinden Edilme Akislari",
         "climateAnomalies": "Iklim Anomalileri",
-        "weatherAlerts": "Hava Durumu Uyarilari",
+        "weatherAlerts": "ABD hava durumu uyarıları (NWS)",
         "strategicWaterways": "Stratejik Suyollari",
         "economicCenters": "Ekonomik Merkezler",
         "criticalMinerals": "Kritik Mineraller",
@@ -1212,7 +1213,7 @@
           "infraDatacenters": "10.000+ GPU'lu yapay zeka islem kumeleri",
           "infraOutages": "Internet kesintileri ve hizmet aksamalari",
           "naturalEventsTech": "Depremler, firtinalar, yanginlar (veri merkezlerini etkileyebilir)",
-          "weatherAlerts": "Siddetli hava durumu uyarilari",
+          "weatherAlerts": "ABD'deki şiddetli hava durumu uyarıları (NWS)",
           "economicCenters": "Borsalar ve merkez bankalari",
           "countriesOverlay": "Ulke adi katmanlari",
           "financeExchanges": "Piyasa katmanlarina gore buyuk kuresel borsalar",
@@ -1224,7 +1225,7 @@
           "financeOutages": "Piyasa operasyonlarini etkileyebilecek internet aksamalari",
           "financeCyberThreats": "Finansal altyapi cevresindeki guvenlik olaylari",
           "macroWaterways": "Emtia tasimaciligi icin stratejik darbogazlar",
-          "weatherAlertsMarket": "Piyasayla ilgili siddetli hava olaylari",
+          "weatherAlertsMarket": "ABD'de piyasayla ilgili şiddetli hava olayları (NWS)",
           "naturalEventsMacro": "Depremler, yanginlar, seller ve diger dogal afetler",
           "timeRecent": "Zamana bagli verileri son saatlere filtrele",
           "timeExtended": "Gecmis hafta, ay veya tum zamanlarin verilerini goster",
@@ -1352,7 +1353,8 @@
       "newsSignals": "{{news}} haber • {{signals}} sinyal",
       "compiledFrom": "{{stories}} hikaye ve {{sources}} kaynaktan derlenmiştir",
       "provenanceTitle": "Kapsam kaynağı: bu özet için kaç alınan hikaye ve farklı kaynaktan seçildiği",
-      "briefFreshness": "{{minutes}}m önce oluşturuldu · en yeni kaynak {{hours}}s eski"
+      "briefFreshness": "{{minutes}}m önce oluşturuldu · en yeni kaynak {{hours}}s eski",
+      "briefStoryDetails": "Story details ({{count}})"
     },
     "settings": {
       "exportSettings": "Ayarları Dışa Aktar",
@@ -2137,6 +2139,17 @@
       "chart": {
         "title": "{{symbol}} fiyat grafiği",
         "close": "Grafiği kapat"
+      },
+      "unavailable": {
+        "symbols": "{{symbols}} — {{reason}}",
+        "symbolsMore": "{{symbols}} +{{count}} more — {{reason}}",
+        "notFound": "no quote available",
+        "providerError": "quote lookup failed, retrying shortly",
+        "rateLimited": "quote provider rate limited, retrying shortly",
+        "notConfigured": "quote provider not configured",
+        "requestLimit": "too many symbols requested",
+        "budget": "not loaded yet, retrying shortly",
+        "seed": "market data temporarily unavailable"
       }
     },
     "heatmap": {
@@ -2521,6 +2534,38 @@
       "upgradeCta": "Daha fazlası için yükseltin",
       "lockedAriaLabel": "Sekme ekle — kilitli. {{reason}}",
       "unlockedAnnouncement": "Panel sekmesi limiti kaldırıldı."
+    },
+    "fx": {
+      "infoTooltip": "<strong>Döviz Kurları</strong> Para birimi stresi ve spot oranları:<ul><li>FX Stresi, 45 para birimini son 24 ayda en kötü zirve-dip düşüşüne ve 12 aylık değişime göre sıralar</li><li>Kapsam ARS, TRY, EGP, NGN, PKR ve UAH'ı içerir — BIS ve ECB referans setlerinin hariç tuttuğu para birimler</li><li>Spot, iki tabanın farklı kaynaklardan kote edildiği için, ABD doları ve ECB euro referans oranlarına karşı oranları ayrı ayrı listeler</li><li>RUB — Rusya Merkez Bankası kurları, birim başına ruble</li></ul> Kaynaklar: Yahoo Finance, Avrupa Merkez Bankası ve Rusya Merkez Bankası.",
+      "tabs": {
+        "stress": "Döviz Stresi",
+        "spot": "Spot",
+        "rub": "RUB"
+      },
+      "currency": "Para Birimi",
+      "pair": "Çift",
+      "rate": "Oran",
+      "yoy": "12a",
+      "drawdown": "24a Düşüş",
+      "peakToTrough": "Zirve → Dip",
+      "change1d": "1g",
+      "perUsd": "1 USD başına",
+      "usdPerUnit": "Birim başına USD",
+      "usdBase": "ABD doları karşısında",
+      "eurBase": "ECB euro referans oranları",
+      "stressedCount": "{{stressed}}/{{total}} para biriminin {{threshold}} altında",
+      "sourceYahoo": "Kaynak: Yahoo Finance",
+      "sourceEcb": "Kaynak: ECB",
+      "degraded": "Şu anda kullanılamıyor: {{sources}}. Kısa sürede yeniden denenecek.",
+      "source": {
+        "stress": "FX stres",
+        "usd": "ABD doları kurları",
+        "eur": "ECB euro kurları",
+        "rub": "Rusya Merkez Bankası kurları"
+      },
+      "rubBase": "Rusya Merkez Bankası — 1 birim için ruble",
+      "rubPerUnit": "Birim başına ruble",
+      "sourceCbr": "Kaynak: Rusya Merkez Bankası"
     }
   },
   "popups": {
@@ -2861,7 +2906,7 @@
       "heading": "YON",
       "hexCode": "HEX KODU",
       "squawk": "SQUAWK",
-      "attribution": "Kaynak: OpenSky Network"
+      "attribution": "Kaynak: adsb.lol (ODbL) · OpenSky Network"
     },
     "militaryVessel": {
       "aisDark": "AIS KARANLIK",
@@ -3335,5 +3380,31 @@
     "deleteTab": "Sekmeyi sil",
     "deleteTabAria": "{{name}} sekmesini sil",
     "tabNameAria": "Sekme adı"
+  },
+  "theaterPresets": {
+    "label": "Kapsama ön ayarları",
+    "applied": "{{preset}} ön ayarı uygulandı: {{count}} kaynak etkinleştirildi",
+    "alreadyApplied": "{{preset}} ön ayarı zaten uygulanmış",
+    "ukraineWar": {
+      "label": "Ukrayna Savaşı",
+      "description": "Ukrayna'nın başlıca yayınlarını, bağımsız Rus basınını ve cephe değerlendirme kaynaklarını etkinleştirir"
+    },
+    "indoPacific": {
+      "label": "Hint-Pasifik / Tayvan",
+      "description": "Tayvan, Pakistan ve Güneydoğu Asya güvenlik kaynaklarını etkinleştirir"
+    },
+    "sahelWestAfrica": {
+      "label": "Sahel ve Batı Afrika",
+      "description": "Sahel, Nijerya ve Batı Afrika'daki yerel kaynakları etkinleştirir"
+    },
+    "caucasusCentralAsia": {
+      "label": "Kafkasya ve Orta Asya",
+      "description": "Güney Kafkasya ve Orta Asya bölgesel kaynaklarını etkinleştirir"
+    },
+    "middleEastFlashpoints": {
+      "label": "Orta Doğu gerilim noktaları",
+      "description": "İran, İsrail, Körfez ve Kürt bölgelerine ilişkin kaynakları etkinleştirir"
+    },
+    "unavailable": "{{preset}} ön ayarı mevcut panellerinizle kullanılamıyor"
   }
 }

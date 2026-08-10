@@ -34,7 +34,7 @@
   "tools": [
     {
       "name": "get_market_data",
-      "description": "Real-time equity quotes, commodity prices (including gold futures GC=F), crypto prices, forex FX rates (USD/EUR, USD/JPY etc.), sector performance and valuation coverage, ETF flows, and Gulf market quotes from WorldMonitor's curated bootstrap cache."
+      "description": "Real-time equity quotes, commodity prices (including gold futures GC=F), crypto prices, forex FX rates (USD/EUR, USD/JPY etc.), sector performance and valuation coverage, ETF flows, and Gulf market quotes from WorldMonitor's curated bootstrap cache. Covers the curated symbol universe only — it filters that snapshot rather than looking up arbitrary tickers."
     },
     {
       "name": "get_conflict_events",
@@ -62,7 +62,7 @@
     },
     {
       "name": "get_economic_data",
-      "description": "China macro: official-only 12-series; 5 NBS/SAFE ingestible, PBoC/GACC unavailable, no proxies; see launchReady/status. Retained values expose transportStatus and transportFailureReason independently. Other economic data includes Fed Funds (FRED), economic and official NBS/PBoC release calendars, fuel prices, ECB FX rates, EU yield curves, earnings, COT positioning, energy storage, BIS household debt service ratios, and BIS residential/commercial property prices."
+      "description": "China macro: official-only 12-series; 5 NBS/SAFE ingestible, PBoC/GACC unavailable, no proxies; see launchReady/status. Retained values expose transportStatus and transportFailureReason independently. Other economic data includes Fed Funds (FRED), economic and official NBS/PBoC release calendars, fuel prices, ECB FX rates, Bank of Russia official rates (RUB per 1 unit of each listed currency, plus the CBR key policy rate), EU yield curves, earnings, COT positioning, energy storage, BIS household debt service ratios, and BIS residential/commercial property prices."
     },
     {
       "name": "get_country_macro",
@@ -161,8 +161,12 @@
       "description": "Search open global public-procurement opportunities through the canonical Pro route. Default output is 10 compact records (maximum 25), without descriptions or submission/eligibility payloads. automationFit is keyword relevance evidence only, never bidding eligibility; participationMode \"unknown\" remains unknown."
     },
     {
+      "name": "get_wto_trade_flows",
+      "description": "WTO merchandise trade flows for one reporting country versus the World, over a configurable year window. Coverage is seed-backed from the WTO ITS_MTV_AX (exports) and ITS_MTV_AM (imports) indicators; the response distinguishes \"this reporter/partner combination is not part of seeded coverage\" (a contract answer, retrying cannot help) from every fault (seed missing or cache unreadable)."
+    },
+    {
       "name": "get_world_brief",
-      "description": "AI-generated world intelligence brief. Fetches the latest geopolitical headlines along with their RSS article bodies and produces a grounded LLM-summarized brief. Supply an optional geo_context to focus on a region or topic."
+      "description": "Citation-grounded world intelligence brief from the same precomputed news:insights:v1 snapshot used by the dashboard. The insights seeder applies corroboration, citation, and hallucination gates before publishing; this tool reads that accepted result without a request-time LLM call. The optional geo_context field is retained for client compatibility and does not alter the seeded global snapshot."
     },
     {
       "name": "get_country_brief",
@@ -262,7 +266,7 @@
     },
     {
       "name": "get_news_clusters",
-      "description": "Current topic clusters over the live headline digest, computed with the same Jaccard clustering the dashboard uses. Optional category restricts clustering to one full-digest bucket (e.g. \"commodities\"). Each cluster reports its primary headline, member count, distinct sources, top keywords, threat level, and time span. Deterministic — no LLM."
+      "description": "Current topic clusters over the live headline digest, computed with the same Jaccard clustering the dashboard uses. Optional category restricts clustering to one full-digest bucket (e.g. \"commodities\"). Each cluster reports its primary headline, member count, distinct sources with fail-closed provenance, top keywords, threat level, and time span. Deterministic — no LLM."
     },
     {
       "name": "get_keyword_spikes",

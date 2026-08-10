@@ -9,7 +9,9 @@ import { getSourceProvenanceState } from '../../../shared/source-provenance';
 import { CII_RISK_SCORE_CACHE_KEYS } from '../../_cii-risk-cache-keys.js';
 // @ts-expect-error — generated Edge-safe JS mirror; authored types live in shared/bootstrap-tier-keys.d.ts
 import { BOOTSTRAP_CACHE_KEYS } from '../../_bootstrap-tier-keys.js';
-import { DEFAULT_LIST_LIMIT } from '../constants';
+// @ts-expect-error — Edge-safe JS policy shared with health and seed-health
+import { PORTWATCH_CONTENT_FRESHNESS_ACTIVATION_KEY } from '../../_content-freshness.js';
+import { DEFAULT_LIST_LIMIT, MARKET_FRESHNESS_CHECKS } from '../constants';
 import {
   argBool,
   argNum,
@@ -219,7 +221,7 @@ function projectChinaMacroForMcp(value: unknown): unknown {
   };
 }
 
-const MARKET_SECTOR_MAX_STALE_MIN = 30;
+const MARKET_SECTOR_MAX_STALE_MIN = MARKET_FRESHNESS_CHECKS[1].maxStaleMin;
 
 // `get_market_data` bundles several independently seeded caches. The outer
 // envelope carries aggregate freshness, but sector valuation coverage also
@@ -232,7 +234,13 @@ export function applySectorValuationFreshness(
   const sectors = data.sectors;
   if (!sectors || typeof sectors !== 'object' || Array.isArray(sectors)) return data;
   const coverage = (sectors as Record<string, unknown>).valuationCoverage;
-  if (!coverage || typeof coverage !== 'object' || Array.isArray(coverage)) return data;
+  if (!coverage || typeof coverage !== 'object' || Array.isArray(coverage)) {
+    (sectors as Record<string, unknown>).valuationCoverage = {
+      sourceStatus: 'degraded',
+      stale: true,
+    };
+    return data;
+  }
   const fetchedAtValue = (coverage as Record<string, unknown>).fetchedAt;
   const fetchedAt = typeof fetchedAtValue === 'number' || typeof fetchedAtValue === 'string'
     ? Number(fetchedAtValue)
@@ -244,9 +252,15 @@ export function applySectorValuationFreshness(
 
 export const CACHE_TOOLS: ToolDef[] = [
   {
+    // Intentionally fixed-universe, unlike the ListMarketQuotes RPC: this reads
+    // and filters the seeded bootstrap snapshot and never gap-fetches an
+    // unseeded ticker through a provider (#6305). An arbitrary equity the
+    // seeder does not carry is absent here by design — `symbols` narrows the
+    // snapshot, it does not request new instruments. Documented in
+    // docs/finance-data.mdx § Client parity.
     name: 'get_market_data',
     _outputBudgetBytes: 131072,
-    description: 'Real-time equity quotes, commodity prices (including gold futures GC=F), crypto prices, forex FX rates (USD/EUR, USD/JPY etc.), sector performance and valuation coverage, ETF flows, and Gulf market quotes from WorldMonitor\'s curated bootstrap cache.',
+    description: 'Real-time equity quotes, commodity prices (including gold futures GC=F), crypto prices, forex FX rates (USD/EUR, USD/JPY etc.), sector performance and valuation coverage, ETF flows, and Gulf market quotes from WorldMonitor\'s curated bootstrap cache. Covers the curated symbol universe only — it filters that snapshot rather than looking up arbitrary tickers.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -296,10 +310,57 @@ export const CACHE_TOOLS: ToolDef[] = [
             properties: {
               valuationCount: { type: 'number' },
               expectedValuationCount: { type: 'number' },
+              currentValuationCount: {
+                type: 'number',
+                description: 'Valuations fetched live this cycle. Omitted when it equals valuationCount (nothing stale). When present it is lower than valuationCount, and the difference is the records replayed from the last-good snapshot -- valuationCount alone does NOT mean that many symbols are current.',
+              },
               sourceStatus: { type: 'string', enum: ['ok', 'partial', 'degraded'] },
               source: { type: 'string' },
               fetchedAt: { type: 'number' },
               stale: { type: 'boolean' },
+              staleValuationSymbols: {
+                type: 'array',
+                items: { type: 'string' },
+                description: 'Symbols whose valuation record was replayed from the last-good snapshot rather than fetched this cycle. These symbols DO have values in `valuations`; read lastGood.fetchedAt for their age (bounded by a 7-day snapshot TTL). Disjoint from unavailableSymbols.',
+              },
+              unavailableSymbols: {
+                type: 'array',
+                items: { type: 'string' },
+                description: 'Symbols with no valuation published at all -- absent from `valuations`. Disjoint from staleValuationSymbols.',
+              },
+              valuationDiagnostics: {
+                type: 'array',
+                description: 'Bounded per-symbol direct/proxy outcomes from the final Yahoo valuation routes. This is diagnostic metadata, not a valuation record.',
+                items: {
+                  type: 'object',
+                  properties: {
+                    symbol: { type: 'string' },
+                    outcomes: {
+                      type: 'array',
+                      items: {
+                        type: 'object',
+                        properties: {
+                          route: { type: 'string', enum: ['v7Quote', 'v7QuoteBatch', 'quoteSummary'] },
+                          transport: { type: 'string', enum: ['direct', 'proxy'] },
+                          attempts: { type: 'number' },
+                          status: { type: 'number' },
+                          responseClass: { type: 'string' },
+                          missingFields: { type: 'array', items: { type: 'string' } },
+                          failure: { type: 'string' },
+                        },
+                      },
+                    },
+                  },
+                },
+              },
+              lastGood: {
+                type: ['object', 'null'],
+                properties: {
+                  fetchedAt: { type: 'number' },
+                  stale: { type: 'boolean' },
+                  symbols: { type: 'array', items: { type: 'string' } },
+                },
+              },
             },
           },
         },
@@ -342,6 +403,119 @@ export const CACHE_TOOLS: ToolDef[] = [
           narrowNested(data, label, 'quotes', (q) => matchesCode(q.symbol, symbols));
         }
         narrowNested(data, 'sectors', 'sectors', (s) => matchesCode(s.symbol, symbols));
+        const sectorData = data.sectors;
+        if (sectorData && typeof sectorData === 'object' && !Array.isArray(sectorData)) {
+          const sector = sectorData as Record<string, unknown>;
+          const coverage = sector.valuationCoverage;
+          const valuations = sector.valuations;
+          const unavailable = coverage && typeof coverage === 'object' && !Array.isArray(coverage)
+            ? (coverage as Record<string, unknown>).unavailableSymbols
+            : null;
+          const allSectorSymbols = new Set<string>([
+            ...(Array.isArray(sector.sectors)
+              ? sector.sectors.flatMap((row) => {
+                if (!row || typeof row !== 'object' || Array.isArray(row)) return [];
+                const symbol = (row as Record<string, unknown>).symbol;
+                return typeof symbol === 'string' ? [symbol.toLowerCase()] : [];
+              })
+              : []),
+            ...(valuations && typeof valuations === 'object' && !Array.isArray(valuations)
+              ? Object.keys(valuations).map((symbol) => symbol.toLowerCase())
+              : []),
+            ...(Array.isArray(unavailable)
+              ? unavailable.filter((symbol): symbol is string => typeof symbol === 'string').map((symbol) => symbol.toLowerCase())
+              : []),
+          ]);
+          const requestedSectorSymbols = symbols.filter((symbol) => allSectorSymbols.has(symbol));
+          // symbols= is active: always project sector valuations/coverage to the
+          // requested sector subset (empty when the filter is equity-only).
+          if (valuations && typeof valuations === 'object' && !Array.isArray(valuations)) {
+            sector.valuations = Object.fromEntries(
+              Object.entries(valuations).filter(([symbol]) => requestedSectorSymbols.includes(symbol.toLowerCase())),
+            );
+          }
+          if (coverage && typeof coverage === 'object' && !Array.isArray(coverage)) {
+            const coverageRecord = coverage as Record<string, unknown>;
+            if (Array.isArray(coverageRecord.unavailableSymbols)) {
+              const filteredUnavailable = coverageRecord.unavailableSymbols
+                .filter((symbol): symbol is string => typeof symbol === 'string')
+                .filter((symbol) => requestedSectorSymbols.includes(symbol.toLowerCase()));
+              if (filteredUnavailable.length === 0) {
+                delete coverageRecord.unavailableSymbols;
+              } else {
+                coverageRecord.unavailableSymbols = filteredUnavailable;
+              }
+            }
+            const filteredStaleValuationSymbols = Array.isArray(coverageRecord.staleValuationSymbols)
+              ? coverageRecord.staleValuationSymbols
+                .filter((symbol): symbol is string => typeof symbol === 'string')
+                .filter((symbol) => requestedSectorSymbols.includes(symbol.toLowerCase()))
+              : [];
+            if (filteredStaleValuationSymbols.length === 0) {
+              delete coverageRecord.staleValuationSymbols;
+            } else {
+              coverageRecord.staleValuationSymbols = filteredStaleValuationSymbols;
+            }
+            if (coverageRecord.lastGood && typeof coverageRecord.lastGood === 'object' && !Array.isArray(coverageRecord.lastGood)) {
+              const lastGoodRecord = coverageRecord.lastGood as Record<string, unknown>;
+              if (Array.isArray(lastGoodRecord.symbols)) {
+                lastGoodRecord.symbols = lastGoodRecord.symbols
+                  .filter((symbol): symbol is string => typeof symbol === 'string')
+                  .filter((symbol) => requestedSectorSymbols.includes(symbol.toLowerCase()));
+              }
+              // Match seeder omit-empty: never leave lastGood with symbols:[].
+              if (!Array.isArray(lastGoodRecord.symbols) || lastGoodRecord.symbols.length === 0) {
+                delete coverageRecord.lastGood;
+              }
+            }
+            if (Array.isArray(coverageRecord.valuationDiagnostics)) {
+              const filteredDiagnostics = coverageRecord.valuationDiagnostics.filter((diagnostic) => {
+                if (!diagnostic || typeof diagnostic !== 'object' || Array.isArray(diagnostic)) return false;
+                const symbol = (diagnostic as Record<string, unknown>).symbol;
+                return typeof symbol === 'string' && requestedSectorSymbols.includes(symbol.toLowerCase());
+              });
+              if (filteredDiagnostics.length === 0) {
+                delete coverageRecord.valuationDiagnostics;
+              } else {
+                coverageRecord.valuationDiagnostics = filteredDiagnostics;
+              }
+            }
+            const filteredValuationCount = sector.valuations && typeof sector.valuations === 'object' && !Array.isArray(sector.valuations)
+              ? Object.keys(sector.valuations).length
+              : 0;
+            const expectedValuationCount = requestedSectorSymbols.length;
+            const staleValuationCount = sector.valuations && typeof sector.valuations === 'object' && !Array.isArray(sector.valuations)
+              ? filteredStaleValuationSymbols.filter((symbol) => Object.prototype.hasOwnProperty.call(sector.valuations, symbol)).length
+              : 0;
+            const hasCurrentValuationCount = typeof coverageRecord.currentValuationCount === 'number'
+              && Number.isFinite(coverageRecord.currentValuationCount);
+            const filteredCurrentValuationCount = Math.max(0, filteredValuationCount - staleValuationCount);
+            coverageRecord.valuationCount = filteredValuationCount;
+            coverageRecord.expectedValuationCount = expectedValuationCount;
+            // Mirror the producer's omit-when-equal rule (see
+            // buildSectorValuationCoverage): emitting the field when it equals
+            // valuationCount makes the two surfaces disagree on the field's own
+            // emission contract.
+            if (hasCurrentValuationCount && filteredCurrentValuationCount !== filteredValuationCount) {
+              coverageRecord.currentValuationCount = filteredCurrentValuationCount;
+            } else {
+              delete coverageRecord.currentValuationCount;
+            }
+            // Empty request set (no sector symbols matched): complete empty view, not degraded.
+            // Zero CURRENT records is degraded even when stale fills keep the
+            // filtered count non-zero -- mirrors the seeder's own escalation.
+            coverageRecord.sourceStatus = expectedValuationCount === 0
+              ? 'ok'
+              : filteredValuationCount === 0
+                || (hasCurrentValuationCount && filteredCurrentValuationCount === 0)
+                ? 'degraded'
+                : filteredValuationCount < expectedValuationCount
+                  || filteredStaleValuationSymbols.length > 0
+                  || (hasCurrentValuationCount && filteredCurrentValuationCount < expectedValuationCount)
+                  ? 'partial'
+                  : 'ok';
+          }
+        }
         narrowNested(data, 'etf-flows', 'etfs', (e) => matchesCode(e.ticker, symbols));
       }
       const limit = argNum(params.limit) ?? DEFAULT_LIST_LIMIT;
@@ -375,10 +549,7 @@ export const CACHE_TOOLS: ToolDef[] = [
     ],
     _seedMetaKey: 'seed-meta:market:stocks',
     _maxStaleMin: 30,
-    _freshnessChecks: [
-      { key: 'seed-meta:market:stocks', maxStaleMin: 30 },
-      { key: 'seed-meta:market:sectors', maxStaleMin: MARKET_SECTOR_MAX_STALE_MIN },
-    ],
+    _freshnessChecks: [...MARKET_FRESHNESS_CHECKS],
     // NOTE: `GET /api/market/v1/get-gold-intelligence` is NOT covered here.
     // The audit-time cross-reference matched on the single `market:commodities-bootstrap:v1`
     // key shared between this tool and the gold-intel handler, but the handler also reads 4
@@ -877,7 +1048,7 @@ export const CACHE_TOOLS: ToolDef[] = [
   {
     name: 'get_economic_data',
     _outputBudgetBytes: 131072,
-    description: 'China macro: official-only 12-series; 5 NBS/SAFE ingestible, PBoC/GACC unavailable, no proxies; see launchReady/status. Retained values expose transportStatus and transportFailureReason independently. Other economic data includes Fed Funds (FRED), economic and official NBS/PBoC release calendars, fuel prices, ECB FX rates, EU yield curves, earnings, COT positioning, energy storage, BIS household debt service ratios, and BIS residential/commercial property prices.',
+    description: 'China macro: official-only 12-series; 5 NBS/SAFE ingestible, PBoC/GACC unavailable, no proxies; see launchReady/status. Retained values expose transportStatus and transportFailureReason independently. Other economic data includes Fed Funds (FRED), economic and official NBS/PBoC release calendars, fuel prices, ECB FX rates, Bank of Russia official rates (RUB per 1 unit of each listed currency, plus the CBR key policy rate), EU yield curves, earnings, COT positioning, energy storage, BIS household debt service ratios, and BIS residential/commercial property prices.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -885,7 +1056,7 @@ export const CACHE_TOOLS: ToolDef[] = [
           type: 'array',
           items: {
             type: 'string',
-            enum: ['fedfunds', 'econ-calendar', 'china-macro', 'china-release-calendar', 'fuel-prices', 'ecb-fx-rates', 'yield-curve-eu', 'spending', 'earnings-calendar', 'cot', 'dsr', 'property-residential', 'property-commercial'],
+            enum: ['fedfunds', 'econ-calendar', 'china-macro', 'china-release-calendar', 'fuel-prices', 'ecb-fx-rates', 'cbr-rates', 'yield-curve-eu', 'spending', 'earnings-calendar', 'cot', 'dsr', 'property-residential', 'property-commercial'],
           },
           description: 'Restrict the response to one or more sub-datasets. Omit for the full economic bundle.',
         },
@@ -934,6 +1105,50 @@ export const CACHE_TOOLS: ToolDef[] = [
         properties: { countries: { type: 'array', items: { type: 'object', properties: { code: { type: 'string' }, price: { type: 'number' }, currency: { type: 'string' } } } } },
       },
       'ecb-fx-rates': { type: ['object', 'null'] },
+      // Described rather than left as a bare object, unlike its ecb-fx-rates
+      // neighbour: this dataset has no dashboard panel, so an MCP caller is its
+      // ONLY reader and there is no UI to cross-check a misreading against. The
+      // three properties below each name a specific misreading — inverted
+      // direction, a date read as "today", and the per-Nominal block price
+      // mistaken for the unit rate.
+      'cbr-rates': {
+        type: ['object', 'null'],
+        properties: {
+          quoteCurrency: { type: 'string', description: 'Always "RUB". Rates are RUB PER ONE UNIT of each listed currency — rates.USD.rate = 81.13 means 1 USD costs 81.13 RUB, not the reverse.' },
+          rateUnit: { type: 'string', description: 'Human-readable restatement of the quote direction.' },
+          effectiveDate: { type: 'string', description: 'ISO date the rate is OFFICIALLY IN FORCE. CBR sets rates for the next calendar day, so this is routinely tomorrow — it is not "as of today".' },
+          previousDate: { type: ['string', 'null'], description: 'The calendar day requested as the change1d baseline.' },
+          previousEffectiveDate: { type: ['string', 'null'], description: 'The day CBR stamped on the baseline table it returned; differs from previousDate after a weekend or holiday.' },
+          rates: {
+            type: 'object',
+            description: 'Keyed by ISO 4217 alpha code. Use `rate`; `valuePerNominal` is the block price and is 100x or 10000x larger for currencies quoted per 100 or per 10 000 units.',
+            additionalProperties: {
+              type: 'object',
+              properties: {
+                rate: { type: 'number', description: 'RUB per ONE unit. The field to quote.' },
+                valuePerNominal: { type: 'number', description: 'RUB per `nominal` units, as published. NOT the unit rate.' },
+                nominal: { type: 'number', description: 'Units the published price covers (1, 100, or 10000).' },
+                name: { type: 'string', description: 'Official CBR currency name, in Russian.' },
+                numCode: { type: 'string' },
+                change1d: { type: ['number', 'null'], description: 'Change in `rate` vs the previous day, or null when that baseline was unavailable — never 0 for unknown.' },
+              },
+            },
+          },
+          keyRate: {
+            type: ['object', 'null'],
+            description: 'CBR key policy rate. `changes` lists only observed transitions; `windowStart` is where the 2-year lookback opened and is NOT a policy decision.',
+            properties: {
+              rate: { type: 'number', description: 'Current key rate, percent.' },
+              observedAt: { type: 'string', description: 'Newest observation date, not the date the rate last moved.' },
+              previousRate: { type: ['number', 'null'] },
+              changedAt: { type: ['string', 'null'], description: 'First date at the current rate, or null when the window shows no move.' },
+              change: { type: ['number', 'null'] },
+              windowStart: { type: 'object', description: 'Oldest observation in the queried window. Its date is the lookback boundary, NOT a rate decision.' },
+              changes: { type: 'array', description: 'Observed transitions, oldest first. Empty when the rate held for the whole window.', items: { type: 'object' } },
+            },
+          },
+        },
+      },
       'yield-curve-eu': { type: ['object', 'null'] },
       spending: {
         type: ['object', 'null'],
@@ -984,6 +1199,7 @@ export const CACHE_TOOLS: ToolDef[] = [
       BOOTSTRAP_CACHE_KEYS.chinaReleaseCalendar,
       'economic:fuel-prices:v1',
       'economic:ecb-fx-rates:v1',
+      'economic:cbr-rates:v1',
       'economic:yield-curve-eu:v1',
       'economic:spending:v1',
       'market:earnings-calendar:v1',
@@ -1009,6 +1225,15 @@ export const CACHE_TOOLS: ToolDef[] = [
       { key: 'seed-meta:economic:bis-dsr', maxStaleMin: 1440 }, // 12h cron × 2
       { key: 'seed-meta:economic:bis-property-residential', maxStaleMin: 1440 },
       { key: 'seed-meta:economic:bis-property-commercial', maxStaleMin: 1440 },
+      // No cbr-rates entry, matching its closest peer in this tool (ecb-fx-rates)
+      // and 8 of the 14 datasets here. evaluateFreshness treats a missing
+      // seed-meta as stale and ORs every check into ONE tool-level flag, so a
+      // brand-new key would mark every UNRELATED dataset stale — with
+      // cached_at: null — from the Vercel deploy until the first Railway tick.
+      // The activation-marker grace only covers requireContentFreshness blocks,
+      // so it cannot bridge that. CBR freshness is owned by /api/health, which
+      // models it per-key and with a content-age contract this shape cannot
+      // express (see cbrContentMeta in scripts/seed-cbr-rates.mjs).
     ],
     _apiPaths: [
       "GET /api/economic/v1/get-ecb-fx-rates",
@@ -1775,8 +2000,10 @@ export const CACHE_TOOLS: ToolDef[] = [
       },
       required: [],
     },
-    // First cache key `trade:tariffs:v1:840:all:10` — NON_LABEL drops bare digits
-    // (840, 10) and `v1`, lands on `all`.
+    // First cache key `trade:tariffs:v2:840` — last informative segment is the
+    // reporter code (bare digits → NON_LABEL drops it), so the walk would land
+    // on `tariffs`. Pin the historical `all` label via `_cacheLabels` so the
+    // dataset enum and postFilter map stay stable for callers.
     outputSchema: cacheEnvelope({
       all: {
         type: ['object', 'null'],
@@ -1822,21 +2049,26 @@ export const CACHE_TOOLS: ToolDef[] = [
       }
       return data;
     },
-    // 4-key bundle spanning trade + economic domains. Cadences span hourly-ish
-    // (tariffs co-pinned to 8h TARIFF_TTL) to monthly (FAO / national debt).
-    // Per-key _freshnessChecks pulled from api/health.js::SEED_META so a slow
-    // monthly key doesn't drag the aggregate stale flag and a fast tariff
-    // outage isn't masked by a long FAO budget.
+    // 4-key bundle spanning trade + economic domains. Cadences span the 6h
+    // tariff cron (fleet seed-meta, maxStaleMin 420 inside TARIFF_TTL 480) to
+    // monthly (FAO / national debt). Per-key _freshnessChecks pulled from
+    // api/health.js::SEED_META so a slow monthly key doesn't drag the
+    // aggregate stale flag and a fast tariff outage isn't masked by a long FAO
+    // budget. The US reporter key is a canary payload; fleet freshness rides
+    // on seed-meta:trade:tariffs (#6316).
     _cacheKeys: [
-      'trade:tariffs:v1:840:all:10',   // STANDALONE_KEYS::tariffTrendsUs
+      'trade:tariffs:v2:840',          // US canary payload (label pinned to "all")
       'economic:bigmac:v1',            // BOOTSTRAP_KEYS::bigmac
       'economic:fao-ffpi:v1',          // BOOTSTRAP_KEYS::faoFoodPriceIndex
       'economic:national-debt:v1',     // BOOTSTRAP_KEYS::nationalDebt
     ],
-    _seedMetaKey: 'seed-meta:trade:tariffs:v1:840:all:10',
-    _maxStaleMin: 540, // tariff cron baseline; per-key budgets via _freshnessChecks below
+    _cacheLabels: {
+      'trade:tariffs:v2:840': 'all',
+    },
+    _seedMetaKey: 'seed-meta:trade:tariffs',
+    _maxStaleMin: 420, // tariff fleet meta; per-key budgets via _freshnessChecks below
     _freshnessChecks: [
-      { key: 'seed-meta:trade:tariffs:v1:840:all:10', maxStaleMin: 540 },   // TARIFF_TTL 8h + 60min grace
+      { key: 'seed-meta:trade:tariffs',               maxStaleMin: 420 },   // inside TARIFF_TTL 480
       { key: 'seed-meta:economic:bigmac',             maxStaleMin: 10080 }, // weekly seed; 7d
       { key: 'seed-meta:economic:fao-ffpi',           maxStaleMin: 86400 }, // monthly seed; 60d (2× interval)
       { key: 'seed-meta:economic:national-debt',      maxStaleMin: 86400 }, // monthly seed; 60d (2× interval)
@@ -1939,6 +2171,13 @@ export const CACHE_TOOLS: ToolDef[] = [
     // slow chokepoint-baselines budget, and the long-cadence portwatch keys
     // don't drag aggregate stale flagging.
     //
+    // That mirror claim is ENFORCED, not aspirational: the portwatch-ports
+    // entry is asserted field-for-field against health's exported
+    // SEED_META.portwatchPortActivity in
+    // tests/mcp-portwatch-content-freshness-parity.test.mjs. #4293 aligned the
+    // two surfaces on cardinality; #6080 aligned them on content freshness
+    // after the comment had silently stopped being true.
+    //
     // Payload measurement (PR pre-merge, fun-toad-55127.upstash.io 2026-05-11):
     //   transit-summaries:v1                        — 6.8 KB
     //   chokepoint_transits:v1                      — 1.1 KB
@@ -1970,7 +2209,16 @@ export const CACHE_TOOLS: ToolDef[] = [
     _freshnessChecks: [
       { key: 'seed-meta:supply_chain:transit-summaries',   maxStaleMin: 30 },             // 10-min relay; 30min = 3× interval
       { key: 'seed-meta:supply_chain:chokepoint_transits', maxStaleMin: 30 },             // 10-min relay; 30min = 3× interval
-      { key: 'seed-meta:supply_chain:portwatch-ports',     maxStaleMin: 2160, minRecordCount: 174 }, // 12h cron; 36h = 3× interval; #3613 requires full country coverage
+      // #3613 requires full country coverage; #6060 adds the per-entity content
+      // dimension — a complete 174/174 run can still carry a synthetic >170h-old CN payload,
+      // which transport age and record count both read as fresh (#6080).
+      {
+        key: 'seed-meta:supply_chain:portwatch-ports',
+        maxStaleMin: 2160, // 12h cron; 36h = 3× interval
+        minRecordCount: 174,
+        requireContentFreshness: { countries: ['CN', 'HK'], budgetMinutes: 2 * 72 * 60 },
+        contentFreshnessActivationKey: PORTWATCH_CONTENT_FRESHNESS_ACTIVATION_KEY,
+      },
       { key: 'seed-meta:energy:chokepoint-baselines',      maxStaleMin: 60 * 24 * 400 },  // ~400d static registry
       { key: 'seed-meta:portwatch:chokepoints-ref',        maxStaleMin: 60 * 24 * 14 },   // weekly cron; 14d = 2× interval
       { key: 'seed-meta:energy:chokepoint-flows',          maxStaleMin: 720 },            // 6h cron; 12h = 2× interval

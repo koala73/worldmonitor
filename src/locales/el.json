@@ -365,7 +365,8 @@
     "consumerPrices": "Τιμές Καταναλωτή",
     "fearGreed": "Fear & Greed",
     "marketBreadth": "Market Breadth",
-    "climateNews": "Ειδήσεις για το Κλίμα"
+    "climateNews": "Ειδήσεις για το Κλίμα",
+    "fx": "Ισοτιμίες Συναλλάγματος"
   },
   "commands": {
     "prefixes": {
@@ -1131,7 +1132,7 @@
         "ucdpEvents": "Συμβάντα UCDP",
         "displacementFlows": "Ροές Εκτοπισμού",
         "climateAnomalies": "Κλιματικές Ανωμαλίες",
-        "weatherAlerts": "Καιρικές Προειδοποιήσεις",
+        "weatherAlerts": "Καιρικές προειδοποιήσεις ΗΠΑ (NWS)",
         "strategicWaterways": "Στρατηγικές Υδάτινες Οδοί",
         "economicCenters": "Οικονομικά Κέντρα",
         "criticalMinerals": "Κρίσιμα Ορυκτά",
@@ -1212,7 +1213,7 @@
           "infraDatacenters": "Συστοιχίες υπολογιστών AI >=10.000 GPUs",
           "infraOutages": "Blackout διαδικτύου και διακοπές υπηρεσιών",
           "naturalEventsTech": "Σεισμοί, καταιγίδες, πυρκαγιές (μπορεί να επηρεάσουν κέντρα δεδομένων)",
-          "weatherAlerts": "Σοβαρές καιρικές προειδοποιήσεις",
+          "weatherAlerts": "Προειδοποιήσεις έντονων καιρικών φαινομένων στις ΗΠΑ (NWS)",
           "economicCenters": "Χρηματιστήρια & κεντρικές τράπεζες",
           "countriesOverlay": "Επικαλύψεις ονομάτων χωρών",
           "financeExchanges": "Σημαντικά παγκόσμια χρηματιστήρια ανά βαθμίδα αγοράς",
@@ -1224,7 +1225,7 @@
           "financeOutages": "Διακοπές διαδικτύου που μπορούν να επηρεάσουν τις λειτουργίες αγοράς",
           "financeCyberThreats": "Γεγονότα ασφαλείας γύρω από χρηματοπιστωτικές υποδομές",
           "macroWaterways": "Στρατηγικά σημεία ελέγχου για ναυτιλία εμπορευμάτων",
-          "weatherAlertsMarket": "Σοβαρά καιρικά φαινόμενα με σημασία για τις αγορές",
+          "weatherAlertsMarket": "Έντονα καιρικά φαινόμενα στις ΗΠΑ με σημασία για τις αγορές (NWS)",
           "naturalEventsMacro": "Σεισμοί, πυρκαγιές, πλημμύρες και άλλες φυσικές καταστροφές",
           "timeRecent": "Φιλτράρισμα χρονικών δεδομένων σε πρόσφατες ώρες",
           "timeExtended": "Εμφάνιση δεδομένων από την προηγούμενη εβδομάδα, μήνα ή όλα",
@@ -1352,7 +1353,8 @@
       "newsSignals": "{{news}} ειδήσεις • {{signals}} σήματα",
       "provenanceTitle": "Προέλευση κάλυψης: πόσες καταχωρημένες ιστορίες και διακριτές πηγές επιλέχθησαν για αυτή τη σύνοψη",
       "compiledFrom": "Συντάχθηκε από {{stories}} ιστορίες σε {{sources}} πηγές",
-      "briefFreshness": "Δημιουργήθηκε πριν {{minutes}}λ · νεότερη πηγή {{hours}}ώ παλιά"
+      "briefFreshness": "Δημιουργήθηκε πριν {{minutes}}λ · νεότερη πηγή {{hours}}ώ παλιά",
+      "briefStoryDetails": "Story details ({{count}})"
     },
     "settings": {
       "exportSettings": "Εξαγωγή ρυθμίσεων",
@@ -2137,6 +2139,17 @@
       "chart": {
         "title": "Γράφημα τιμής {{symbol}}",
         "close": "Κλείσιμο γραφήματος"
+      },
+      "unavailable": {
+        "symbols": "{{symbols}} — {{reason}}",
+        "symbolsMore": "{{symbols}} +{{count}} more — {{reason}}",
+        "notFound": "no quote available",
+        "providerError": "quote lookup failed, retrying shortly",
+        "rateLimited": "quote provider rate limited, retrying shortly",
+        "notConfigured": "quote provider not configured",
+        "requestLimit": "too many symbols requested",
+        "budget": "not loaded yet, retrying shortly",
+        "seed": "market data temporarily unavailable"
       }
     },
     "heatmap": {
@@ -2521,6 +2534,38 @@
       "upgradeCta": "Αναβάθμιση για περισσότερα",
       "lockedAriaLabel": "Προσθήκη καρτέλας — κλειδωμένο. {{reason}}",
       "unlockedAnnouncement": "Το όριο καρτελών πίνακα ελέγχου αρθρώθηκε."
+    },
+    "fx": {
+      "infoTooltip": "<strong>Ισοτιμίες Συναλλάγματος</strong> Stress συναλλάγματος και spot rates:<ul><li>FX Stress κατατάσσει 45 νομίσματα ανά τη χειρότερη μέγιστη πτώση τους τα τελευταία 24 μήνες, αναφορικά με την αλλαγή 12 μηνών</li><li>Η κάλυψη περιλαμβάνει ARS, TRY, EGP, NGN, PKR και UAH — νομίσματα που δεν περιλαμβάνονται στα σετ αναφοράς της BIS και ECB</li><li>Spot παραθέτει ισοτιμίες έναντι του δολαρίου ΗΠΑ και των ισοτιμιών αναφοράς ευρώ ECB ξεχωριστά, καθώς οι δύο προέρχονται από διαφορετικές βάσεις</li><li>RUB — ισοτιμίες της Τράπεζας της Ρωσίας, ρούβλια ανά μονάδα</li></ul> Πηγές: Yahoo Finance, European Central Bank και Τράπεζα της Ρωσίας.",
+      "tabs": {
+        "stress": "FX Stress",
+        "spot": "Spot",
+        "rub": "RUB"
+      },
+      "currency": "Νόμισμα",
+      "pair": "Ζεύγος",
+      "rate": "Ισοτιμία",
+      "yoy": "12m",
+      "drawdown": "Πτώση 24m",
+      "peakToTrough": "Κορυφή → Κατώφλι",
+      "change1d": "1d",
+      "perUsd": "Ανά 1 USD",
+      "usdPerUnit": "USD ανά μονάδα",
+      "usdBase": "Έναντι του δολαρίου ΗΠΑ",
+      "eurBase": "Ισοτιμίες αναφοράς ευρώ ECB",
+      "stressedCount": "{{stressed}} από {{total}} νομίσματα κάτω του {{threshold}}",
+      "sourceYahoo": "Πηγή: Yahoo Finance",
+      "sourceEcb": "Πηγή: ECB",
+      "degraded": "Προς το παρόν μη διαθέσιμο: {{sources}}. Επανάληψη σε λίγο.",
+      "source": {
+        "stress": "Ένταση συναλλάγματος",
+        "usd": "Ισοτιμίες δολαρίου ΗΠΑ",
+        "eur": "Ισοτιμίες ευρώ ΕΚΤ",
+        "rub": "Ισοτιμίες της Τράπεζας της Ρωσίας"
+      },
+      "rubBase": "Τράπεζα της Ρωσίας — ρούβλια ανά 1 μονάδα",
+      "rubPerUnit": "Ρούβλια ανά μονάδα",
+      "sourceCbr": "Πηγή: Τράπεζα της Ρωσίας"
     }
   },
   "popups": {
@@ -2861,7 +2906,7 @@
       "heading": "ΠΟΡΕΙΑ",
       "hexCode": "HEX CODE",
       "squawk": "SQUAWK",
-      "attribution": "Πηγή: OpenSky Network"
+      "attribution": "Πηγή: adsb.lol (ODbL) · OpenSky Network"
     },
     "militaryVessel": {
       "aisDark": "AIS ΣΚΟΤΕΙΝΟ",
@@ -3335,5 +3380,31 @@
     "deleteTab": "Διαγραφή καρτέλας",
     "deleteTabAria": "Διαγραφή καρτέλας {{name}}",
     "tabNameAria": "Όνομα καρτέλας"
+  },
+  "theaterPresets": {
+    "label": "Προρυθμίσεις κάλυψης",
+    "applied": "Εφαρμόστηκε η προρύθμιση {{preset}}: ενεργοποιήθηκαν {{count}} πηγές",
+    "alreadyApplied": "Η προρύθμιση {{preset}} έχει ήδη εφαρμοστεί",
+    "ukraineWar": {
+      "label": "Πόλεμος στην Ουκρανία",
+      "description": "Ενεργοποίηση βασικών ουκρανικών μέσων, ανεξάρτητου ρωσικού Τύπου και πηγών αξιολόγησης του μετώπου"
+    },
+    "indoPacific": {
+      "label": "Ινδο-Ειρηνικός / Ταϊβάν",
+      "description": "Ενεργοποίηση πηγών ασφάλειας για την Ταϊβάν, το Πακιστάν και τη Νοτιοανατολική Ασία"
+    },
+    "sahelWestAfrica": {
+      "label": "Σαχέλ και Δυτική Αφρική",
+      "description": "Ενεργοποίηση τοπικών πηγών από το Σαχέλ, τη Νιγηρία και τη Δυτική Αφρική"
+    },
+    "caucasusCentralAsia": {
+      "label": "Καύκασος και Κεντρική Ασία",
+      "description": "Ενεργοποίηση περιφερειακών πηγών από τον Νότιο Καύκασο και την Κεντρική Ασία"
+    },
+    "middleEastFlashpoints": {
+      "label": "Εστίες έντασης στη Μέση Ανατολή",
+      "description": "Ενεργοποίηση πηγών για το Ιράν, το Ισραήλ, τον Κόλπο και τις κουρδικές περιοχές"
+    },
+    "unavailable": "Η προρύθμιση {{preset}} δεν είναι διαθέσιμη με τα τρέχοντα πάνελ"
   }
 }

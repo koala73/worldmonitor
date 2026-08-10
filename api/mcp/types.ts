@@ -127,10 +127,35 @@ export interface BaseToolDef {
   _uiResourceUri?: string;
 }
 
+// Per-entity content-freshness contract (#6080). `maxStaleMin` and
+// `minRecordCount` are transport and cardinality questions — "did the producer
+// run, and did it publish enough rows". Neither can see a complete run whose
+// individual entities carry old observations, which is how a 174/174 PortWatch
+// run kept a 98-hour-old CN payload while reading fresh.
+//
+// The CONSUMER owns both the scope and the budget, exactly as
+// api/health.js::SEED_META does — a producer that could narrow `countries` or
+// widen `budgetMinutes` could certify its own stale observation.
+export interface ContentFreshnessRequirement {
+  countries: string[];
+  budgetMinutes: number;
+}
+
 export interface FreshnessCheck {
   key: string;
   maxStaleMin: number;
   minRecordCount?: number;
+  // When set, `stale` additionally reflects the producer's own per-entity
+  // observations, re-aged against read time. Mirrors the health check of the
+  // same name so the two surfaces cannot answer differently for one key.
+  requireContentFreshness?: ContentFreshnessRequirement;
+  // Durable Redis marker proving the producer has published a
+  // `contentFreshness` block at least once. Deployment-order grace: this
+  // module ships to Vercel in minutes, the producer is a 12h cron, so an
+  // absent block before the first publish is pending rather than a fault.
+  // Grace covers ABSENCE ONLY — a malformed block, or one that disappears
+  // after activation, still fails closed.
+  contentFreshnessActivationKey?: string;
 }
 
 // Cache-read tool: reads one or more Redis keys and returns them with staleness info.
@@ -244,7 +269,12 @@ export interface PublicToolShape {
 // ---------------------------------------------------------------------------
 // Daily-quota pipeline types
 // ---------------------------------------------------------------------------
-export type PipelineFn = (commands: Array<Array<string | number>>, timeoutMs?: number) => Promise<Array<{ result: unknown }> | null>;
+// Mirrors redisPipeline in api/_upstash-json.d.ts. `result` is OPTIONAL and
+// `error` exists because Upstash reports per-command failures inside an
+// otherwise-successful 200 — the shape readExistsFlags branches on. While this
+// omitted `error`, a consumer could not read that field without a local cast
+// (api/mcp/dispatch.ts carried one, with a comment saying so, until #6152).
+export type PipelineFn = (commands: Array<Array<string | number>>, timeoutMs?: number) => Promise<Array<{ result?: unknown; error?: unknown }> | null>;
 
 export interface QuotaReserved {
   ok: true;
@@ -286,6 +316,7 @@ export interface McpHandlerDeps {
         apiBurstRequestsPerMinute?: number | null;
         mcpCallsPerDay?: number | null;
         mcpBurstRequestsPerMinute?: number | null;
+        dashboardAiCallsPerDay?: number | null;
       };
     };
     validUntil: number;

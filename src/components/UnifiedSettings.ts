@@ -1,4 +1,7 @@
 import { CANONICAL_FEEDS, INTEL_SOURCES, SOURCE_REGION_MAP } from '@/config/feeds';
+import { WEB_APP_ORIGIN } from '@/config/web-origin';
+import { openExternalUrl } from '@/services/external-navigation';
+import { THEATER_PRESETS, getTheaterPreset, getTheaterPresetEnableList, resolveTheaterPresetSources, type TheaterPreset } from '@/config/theater-presets';
 import {
   PANEL_CATEGORY_MAP,
   ALL_PANELS,
@@ -167,6 +170,13 @@ export class UnifiedSettings {
         // charge (prevent_change) leaves the customer on Starter.
         const reservedWin = prereserveBillingPortalTab();
         void openBillingPortal(reservedWin).then((result) => {
+          // The portal session exists but no window opened (native handoff
+          // refused and the browser fallback was blocked). Saying nothing here
+          // reads as a dead click on a paid feature.
+          if (result.outcome === 'open-failed') {
+            showToast('Could not open the billing portal. Please allow pop-ups and try again.');
+            return;
+          }
           if (result.outcome === 'no-customer') {
             showToast(
               'Subscription is managed outside Dodo. Email support@worldmonitor.app for help.',
@@ -187,6 +197,13 @@ export class UnifiedSettings {
           // (comp grant, restore race, or post-purge cancellation). Send
           // them somewhere actionable instead of leaving them in a
           // generic Dodo portal that won't recognise them.
+          // The portal session exists but no window opened (native handoff
+          // refused and the browser fallback was blocked). Saying nothing here
+          // reads as a dead click on a paid feature.
+          if (result.outcome === 'open-failed') {
+            showToast('Could not open the billing portal. Please allow pop-ups and try again.');
+            return;
+          }
           if (result.outcome === 'no-customer') {
             showToast(
               'Subscription is managed outside Dodo. Email support@worldmonitor.app for help.',
@@ -238,7 +255,9 @@ export class UnifiedSettings {
       const panelItem = target.closest<HTMLElement>('.panel-toggle-item');
       if (panelItem?.dataset.panel) {
         if (panelItem.dataset.proLocked) {
-          window.open('/pro', '_blank', 'noopener,noreferrer');
+          // Absolute + routed: a relative /pro resolves against tauri://localhost
+          // in the desktop WebView, where no such route is served (#5911).
+          void openExternalUrl(`${WEB_APP_ORIGIN}/pro`);
           return;
         }
         const panelKey = panelItem.dataset.panel;
@@ -286,6 +305,12 @@ export class UnifiedSettings {
         this.config.setSourcesEnabled(visible, true);
         this.renderSourcesGrid();
         this.updateSourcesCounter();
+        return;
+      }
+
+      const presetChip = target.closest<HTMLElement>('.unified-settings-preset-chip');
+      if (presetChip?.dataset.presetId) {
+        this.applyCoveragePreset(presetChip.dataset.presetId);
         return;
       }
 
@@ -655,6 +680,7 @@ export class UnifiedSettings {
     ];
     this.activeTab = normalizeSettingsTab(this.activeTab, availableTabs);
     const tabClass = (id: TabId) => `unified-settings-tab${this.activeTab === id ? ' active' : ''}`;
+    const applicablePresets = this.getApplicableTheaterPresets();
 
     setTrustedHtml(this.overlay, trustedHtml(`
       <div class="modal unified-settings-modal">
@@ -701,6 +727,14 @@ export class UnifiedSettings {
           <div class="unified-settings-region-wrapper">
             <div class="unified-settings-region-bar" id="usRegionBar"></div>
           </div>
+          ${applicablePresets.length > 0 ? `
+          <div class="unified-settings-presets" id="usCoveragePresets">
+            <span class="unified-settings-presets-label">${t('theaterPresets.label')}</span>
+            ${applicablePresets.map(preset =>
+              `<button type="button" class="unified-settings-region-pill unified-settings-preset-chip" data-preset-id="${preset.id}" title="${escapeHtml(t(preset.descriptionKey))}">${escapeHtml(t(preset.labelKey))}</button>`
+            ).join('')}
+          </div>
+          ` : ''}
           <div class="sources-search">
             <input type="text" placeholder="${t('header.filterSources')}" value="${escapeHtml(this.sourceFilter)}" />
           </div>
@@ -943,6 +977,13 @@ export class UnifiedSettings {
       this.close();
       const reservedWin = prereserveBillingPortalTab();
       void openBillingPortal(reservedWin).then((result) => {
+        // The portal session exists but no window opened (native handoff
+        // refused and the browser fallback was blocked). Saying nothing here
+        // reads as a dead click on a paid feature.
+        if (result.outcome === 'open-failed') {
+          showToast('Could not open the billing portal. Please allow pop-ups and try again.');
+          return;
+        }
         if (result.outcome === 'no-customer') {
           showToast(
             'Subscription is managed outside Dodo. Email support@worldmonitor.app for help.',
@@ -953,11 +994,14 @@ export class UnifiedSettings {
     }
     this.close();
     if (this.config.isDesktopApp) {
-      window.open('https://worldmonitor.app/pro', '_blank', 'noopener,noreferrer');
+      // Desktop deliberately skips in-app checkout and sends the user to the
+      // pricing page — but a bare window.open only opens another WebView
+      // window. `openExternalUrl` hands it to the OS browser (#5911).
+      void openExternalUrl(`${WEB_APP_ORIGIN}/pro`);
       return;
     }
     import('@/services/checkout').then(m => import('@/config/products').then(p => m.startCheckout(p.DEFAULT_UPGRADE_PRODUCT))).catch(() => {
-      window.open('https://worldmonitor.app/pro', '_blank', 'noopener,noreferrer');
+      void openExternalUrl(`${WEB_APP_ORIGIN}/pro`);
     });
   }
 
@@ -1229,6 +1273,56 @@ export class UnifiedSettings {
     counter.textContent = t('header.sourcesEnabled', { enabled: String(enabledTotal), total: String(allSources.length) });
   }
 
+  /**
+   * Presets with at least one source that resolves in the runtime-known
+   * source set. Narrow variants (or disabled news panels) can leave a preset
+   * with nothing to enable — those chips are dead, so don't offer them.
+   */
+  private getApplicableTheaterPresets(): readonly TheaterPreset[] {
+    const known = new Set(this.config.getAllSourceNames());
+    return THEATER_PRESETS.filter((preset) => resolveTheaterPresetSources(preset, known).length > 0);
+  }
+
+  /**
+   * Theater coverage preset (#5956): additively enable the preset's sources.
+   * Uses the same bulk primitive as select-all, so persistence, the free
+   * source cap, and cloud sync behave identically; unrelated sources are
+   * never touched.
+   */
+  private applyCoveragePreset(presetId: string): void {
+    const preset = getTheaterPreset(presetId);
+    if (!preset) return;
+
+    const known = new Set(this.config.getAllSourceNames());
+    const resolvable = resolveTheaterPresetSources(preset, known);
+    const toEnable = getTheaterPresetEnableList(preset, this.config.getDisabledSources(), known);
+    const label = t(preset.labelKey);
+
+    // Zero resolvable sources (narrow variant or unloaded panels) is not the
+    // same as "already applied" — say so. Normally unreachable because the
+    // chips row only renders applicable presets; kept as a defensive guard.
+    if (resolvable.length === 0) {
+      showToast(t('theaterPresets.unavailable', { preset: label }));
+      return;
+    }
+
+    if (toEnable.length === 0) {
+      showToast(t('theaterPresets.alreadyApplied', { preset: label }));
+      return;
+    }
+
+    // setSourcesEnabled no-ops (with its own free-cap toast) when the free
+    // source cap would be exceeded — only re-render and claim success when
+    // state actually changed.
+    const disabledSizeBefore = this.config.getDisabledSources().size;
+    this.config.setSourcesEnabled(toEnable, true);
+    if (this.config.getDisabledSources().size !== disabledSizeBefore) {
+      this.renderSourcesGrid();
+      this.updateSourcesCounter();
+      showToast(t('theaterPresets.applied', { preset: label, count: String(toEnable.length) }));
+    }
+  }
+
   private async loadPlanLimitNotices(): Promise<void> {
     const request = this.captureAccountRequest();
     if (!request || this.planLimitNoticesLoading) return;
@@ -1335,6 +1429,13 @@ export class UnifiedSettings {
     if (notice.ctaKind === 'billing_portal') {
       const reservedWin = prereserveBillingPortalTab();
       void openBillingPortal(reservedWin).then((result) => {
+        // The portal session exists but no window opened (native handoff
+        // refused and the browser fallback was blocked). Saying nothing here
+        // reads as a dead click on a paid feature.
+        if (result.outcome === 'open-failed') {
+          showToast('Could not open the billing portal. Please allow pop-ups and try again.');
+          return;
+        }
         if (result.outcome === 'no-customer') {
           showToast('Subscription is managed outside Dodo. Email support@worldmonitor.app for help.');
         }
@@ -1352,6 +1453,13 @@ export class UnifiedSettings {
       if (isEntitled()) {
         const reservedWin = prereserveBillingPortalTab();
         void openBillingPortal(reservedWin).then((result) => {
+          // The portal session exists but no window opened (native handoff
+          // refused and the browser fallback was blocked). Saying nothing here
+          // reads as a dead click on a paid feature.
+          if (result.outcome === 'open-failed') {
+            showToast('Could not open the billing portal. Please allow pop-ups and try again.');
+            return;
+          }
           if (result.outcome === 'no-customer') {
             showToast('Subscription is managed outside Dodo. Email support@worldmonitor.app for help.');
           }
@@ -1365,7 +1473,7 @@ export class UnifiedSettings {
           : p.DODO_PRODUCTS.PRO_MONTHLY;
         return m.startCheckout(product);
       })).catch(() => {
-        window.open('https://worldmonitor.app/pro', '_blank', 'noopener,noreferrer');
+        void openExternalUrl(`${WEB_APP_ORIGIN}/pro`);
       });
       return;
     }
@@ -1397,7 +1505,7 @@ export class UnifiedSettings {
         } else {
           this.close();
           import('@/services/checkout').then(m => import('@/config/products').then(p => m.startCheckout(p.DODO_PRODUCTS.API_STARTER_MONTHLY))).catch(() => {
-            window.open('https://worldmonitor.app/pro', '_blank', 'noopener,noreferrer');
+            void openExternalUrl(`${WEB_APP_ORIGIN}/pro`);
           });
         }
       });

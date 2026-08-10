@@ -6,13 +6,13 @@ Open-source (AGPL-3.0), used by 2M+ people across 190+ countries, as featured in
 
 ## What you get
 
-- Real-time global map with 56 data layers and 500+ curated news feeds
+- Real-time global map with 56 data layers, 530+ observed upstream hosts, and 500+ curated news feeds
 - CII v8 for 31 Tier-1 countries, 196-country resilience scores, and global live conflict tracking
 - Market quotes, sector heatmaps, and macro indicators
 - 13 shipping chokepoints with live AIS vessel-transit intelligence
 - Satellite tracking, GPS jamming zones, submarine cables, AI datacenters
 - Daily AI brief, Scenario Engine, custom monitors and breaking alerts
-- 59-tool MCP server so AI agents can query everything above
+- 60-tool MCP server so AI agents can query everything above
 
 ## Live instances
 

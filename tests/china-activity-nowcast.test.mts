@@ -2,6 +2,10 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
 import {
+  PORTWATCH_CONTENT_FRESHNESS_BUDGET_MINUTES,
+} from '../scripts/_portwatch-content-freshness.mjs';
+
+import {
   CHINA_ACTIVITY_NOWCAST_METHOD_VERSION,
   CHINA_ACTIVITY_PROXY_REGISTRY,
   backtestChinaActivityNowcast,
@@ -95,6 +99,41 @@ describe('China activity nowcast method contract (#5579)', () => {
       assert.ok(definition.source.provenance.length >= 20);
       assert.match(definition.source.url, /^https:/);
     }
+  });
+
+  it('keeps the PortWatch freshness boundary at two producer rotations', () => {
+    const portwatch = CHINA_ACTIVITY_PROXY_REGISTRY.find(
+      (definition) => definition.id === 'portwatch_tanker_calls_trend',
+    )!;
+    const budgetMs = portwatch.freshnessBudgetMinutes * 60_000;
+    const evaluatedAtMs = Date.parse(EVALUATED_AT);
+    const observationAtAge = (ageMs: number) =>
+      new Date(evaluatedAtMs - ageMs).toISOString();
+    const observation = (ageMs: number) => {
+      const observedAt = observationAtAge(ageMs);
+      return proxy(portwatch.id, 1, {
+        observedAt,
+        releasedAt: new Date(Date.parse(observedAt) + 1_000).toISOString(),
+        retrievedAt: new Date(evaluatedAtMs - 1_000).toISOString(),
+      });
+    };
+    const evaluatePortwatch = (ageMs: number) => evaluateChinaActivityNowcast({
+      evaluatedAt: EVALUATED_AT,
+      officialObservations: [],
+      proxyObservations: [observation(ageMs)],
+    }).contributions.find((item) => item.seriesId === portwatch.id)!;
+
+    assert.equal(
+      portwatch.freshnessBudgetMinutes,
+      PORTWATCH_CONTENT_FRESHNESS_BUDGET_MINUTES,
+    );
+    assert.equal(evaluatePortwatch(budgetMs - 1).included, true);
+    const justOutside = evaluatePortwatch(budgetMs + 1);
+    assert.equal(justOutside.included, false);
+    assert.equal(
+      justOutside.exclusionReason,
+      'freshness_budget_exceeded',
+    );
   });
 
   it('classifies agreement without emitting an unexplained aggregate score', () => {

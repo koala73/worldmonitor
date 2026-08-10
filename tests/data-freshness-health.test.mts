@@ -4,7 +4,7 @@ import { resolve } from 'node:path';
 import { describe, it } from 'node:test';
 import { fileURLToPath } from 'node:url';
 
-import { dataFreshness } from '../src/services/data-freshness.ts';
+import { dataFreshness, getIntelligenceGaps } from '../src/services/data-freshness.ts';
 import {
   __resetHealthFreshnessForTests,
   HEALTH_CHECK_SOURCE_MAP,
@@ -22,6 +22,40 @@ function jsonResponse(body: unknown, status = 200): Response {
 }
 
 describe('health freshness ingestion', () => {
+  it('identifies the weather source and outage gap as US NWS coverage', async () => {
+    __resetHealthFreshnessForTests();
+    await refreshDataFreshnessFromHealth({
+      endpoint: '/api/health',
+      urlResolver: (path) => path,
+      fetchFn: async () => jsonResponse({
+        checkedAt: new Date().toISOString(),
+        checks: {
+          weatherAlerts: {
+            status: 'SEED_ERROR',
+            records: 0,
+            maxStaleMin: 45,
+          },
+        },
+      }),
+    });
+
+    const weatherGap = getIntelligenceGaps().find(gap => gap.source === 'weather');
+
+    assert.equal(dataFreshness.getSource('weather')?.name, 'US Weather Alerts (NWS)');
+    assert.match(weatherGap?.message ?? '', /US National Weather Service \(NWS\)/);
+
+    // The two assertions above are satisfied by DataFreshnessTracker's constructor alone:
+    // it pre-seeds every SOURCE_METADATA entry with `name` and status 'no_data', and
+    // getIntelligenceGaps() admits 'no_data' with a static per-source message. Without the
+    // two below, this test passes verbatim with the refreshDataFreshnessFromHealth() call
+    // above deleted — an inert fixture. Only a SEED_ERROR that actually routed through
+    // recordSeedHealth sets lastError, which calculateStatus turns into status 'error' and
+    // getIntelligenceGaps escalates to 'critical' (weather is requiredForRisk: false, so
+    // constructor state yields 'warning').
+    assert.equal(dataFreshness.getSource('weather')?.status, 'error');
+    assert.equal(weatherGap?.severity, 'critical');
+  });
+
   it('hydrates dataFreshness from /api/health cadence metadata', async () => {
     const checkedAtMs = Date.now();
     const applied = await refreshDataFreshnessFromHealth({

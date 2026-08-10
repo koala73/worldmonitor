@@ -6,7 +6,7 @@ import "buf/validate/validate.proto";
 import "sebuf/http/annotations.proto";
 import "worldmonitor/core/v1/geo.proto";
 
-// MilitaryFlight represents a tracked military aircraft from OpenSky or Wingbits.
+// MilitaryFlight represents a tracked military aircraft from the configured ADS-B providers.
 message MilitaryFlight {
   // Unique flight identifier.
   string id = 1 [
@@ -60,6 +60,8 @@ message MilitaryFlight {
   string note = 22;
   // Wingbits enrichment data.
   FlightEnrichment enrichment = 23;
+  // Provider that supplied this observation (for example, "adsb.lol" or "opensky").
+  string source = 24;
 }
 
 // FlightEnrichment contains additional data from Wingbits aircraft database.

@@ -1,9 +1,137 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { selectSourcesUnderCap, findFullyDisabledCategories } from '../src/services/source-cap';
+import {
+  computeRolloutLegacyDisabledStates,
+  computeCapDisabledSources,
+  inferExactSourceGateOwnership,
+  reconcileSourceGateOwnership,
+  restoreGateOwnedSources,
+  transferSourceGateOwnershipToUser,
+  selectSourcesUnderCap,
+  findFullyDisabledCategories,
+} from '../src/services/source-cap';
 
 const F = (...names: string[]) => names.map((name) => ({ name }));
+
+describe('source-cap ownership', () => {
+  it('recomputes the cap from user-owned disables instead of preserving the old cap selection', () => {
+    const reconciled = reconcileSourceGateOwnership(
+      new Set(['user-off']),
+      new Set(['new-cap-b', 'new-cap-c']),
+    );
+
+    assert.deepEqual(reconciled.gateOwned, new Set(['new-cap-b', 'new-cap-c']));
+    assert.deepEqual(reconciled.disabled, new Set(['user-off', 'new-cap-b', 'new-cap-c']));
+  });
+
+  it('restores only sources disabled by the gate on upgrade', () => {
+    assert.deepEqual(
+      restoreGateOwnedSources(
+        new Set(['user-off', 'cap-a', 'cap-b']),
+        new Set(['cap-a', 'cap-b']),
+      ),
+      new Set(['user-off']),
+    );
+  });
+
+  it('transfers directly toggled source names from gate ownership to the user', () => {
+    assert.deepEqual(
+      transferSourceGateOwnershipToUser(
+        new Set(['cap-owned', 'still-cap-owned']),
+        ['cap-owned', 'already-user-owned'],
+      ),
+      new Set(['still-cap-owned']),
+    );
+  });
+
+  it('infers ownership only for an exact untouched legacy cap fingerprint', () => {
+    assert.deepEqual(
+      inferExactSourceGateOwnership(
+        new Set(['user-off', 'cap-a']),
+        new Set(['user-off']),
+        new Set(['cap-a']),
+      ),
+      new Set(['cap-a']),
+    );
+    assert.equal(
+      inferExactSourceGateOwnership(
+        new Set(['user-off', 'cap-a', 'custom-off']),
+        new Set(['user-off']),
+        new Set(['cap-a']),
+      ),
+      null,
+      'a customized denylist must never be guessed back into gate ownership',
+    );
+  });
+});
+
+describe('computeCapDisabledSources: legacy migration fingerprint', () => {
+  it('reconstructs the exact mixed default-plus-cap disabled set', () => {
+    const defaultDisabled = new Set(['a2']);
+    const result = computeCapDisabledSources(
+      { a: F('a1', 'a2'), b: F('b1', 'b2') },
+      [],
+      defaultDisabled,
+      2,
+    );
+    assert.deepEqual([...result].sort(), ['a2', 'b2']);
+  });
+});
+
+describe('computeRolloutLegacyDisabledStates: exact release-path fingerprints', () => {
+  it('enumerates untouched default and every chronological cap path without mutating inputs', () => {
+    const feeds = {
+      a: F('base-a', 'stage-1'),
+      b: F('base-b', 'stage-2'),
+      c: F('base-disabled'),
+    };
+    const initial = new Set(['base-disabled']);
+    const stages = [
+      { introducedNames: new Set(['stage-1']), protectedNames: new Set(['stage-1']) },
+      { introducedNames: new Set(['stage-2']), protectedNames: new Set(['stage-1', 'stage-2']) },
+    ];
+
+    const states = computeRolloutLegacyDisabledStates(
+      feeds,
+      [],
+      initial,
+      2,
+      new Set(),
+      stages,
+    );
+    const canonical = new Set(states.map((state) => [...state].sort().join('|')));
+
+    assert.ok(canonical.has('base-disabled'), 'a profile that stayed Pro/default-only must be recognized');
+    assert.ok(
+      canonical.has('base-b|base-disabled'),
+      'a profile capped after stage 1 must retain the exact auto-disabled base source',
+    );
+    assert.ok(
+      canonical.has('base-a|base-b|base-disabled'),
+      'a profile capped after both protected rollout stages must be recognized',
+    );
+    assert.equal(canonical.size, states.length, 'equivalent release paths must be deduplicated');
+    assert.deepEqual(initial, new Set(['base-disabled']), 'initial disabled state must not be mutated');
+  });
+
+  it('rejects rollout names that are introduced by more than one stage', () => {
+    assert.throws(
+      () => computeRolloutLegacyDisabledStates(
+        { a: F('base', 'duplicate') },
+        [],
+        new Set(),
+        1,
+        new Set(),
+        [
+          { introducedNames: new Set(['duplicate']), protectedNames: new Set() },
+          { introducedNames: new Set(['duplicate']), protectedNames: new Set() },
+        ],
+      ),
+      /introduced by more than one rollout stage/,
+    );
+  });
+});
 
 describe('selectSourcesUnderCap: round-robin per-category fairness', () => {
   it('returns empty when cap is 0', () => {
@@ -97,6 +225,40 @@ describe('selectSourcesUnderCap: round-robin per-category fairness', () => {
     assert.ok(r.keep.has('b1'));
     assert.ok(r.keep.has('intel-1'));
     assert.equal(r.keep.size, 3);
+  });
+
+  it('REGRESSION (#5950): UA/RU balance sources survive free-tier europe late-bucket ordering', () => {
+    // europe declaration puts pan-EU defaults first; Kyiv Independent / Meduza /
+    // Moscow Times sit late. With many categories and FREE_MAX_SOURCES=80,
+    // round-robin only keeps ~5 europe slots — without protectedNames the
+    // balance set is auto-disabled while tests on DEFAULT_ENABLED stay green.
+    const europe = F(
+      'France 24', 'EuroNews', 'Le Monde', 'DW News', 'Tagesschau', 'ANSA',
+      'NOS Nieuws', 'SVT Nyheter', 'Balkan Insight',
+      'TVN24', 'Rzeczpospolita',
+      'Meduza', 'Kyiv Independent', 'Moscow Times',
+    );
+    // ~16 buckets × 5 slots ≈ 80 — europe late names drop without protection.
+    const categories: { [k: string]: ReturnType<typeof F> } = { europe };
+    for (let i = 0; i < 15; i++) {
+      categories[`cat-${i}`] = F(`c${i}-1`, `c${i}-2`, `c${i}-3`, `c${i}-4`, `c${i}-5`);
+    }
+    const CAP = 80;
+    const balance = new Set(['Kyiv Independent', 'Meduza', 'Moscow Times']);
+
+    const baseline = selectSourcesUnderCap(categories, [], new Set(), CAP);
+    for (const name of balance) {
+      assert.ok(
+        !baseline.keep.has(name),
+        `baseline should NOT keep ${name} (proves free-tier drop without protection)`,
+      );
+    }
+
+    const protectedRun = selectSourcesUnderCap(categories, [], new Set(), CAP, balance);
+    for (const name of balance) {
+      assert.ok(protectedRun.keep.has(name), `protected free-tier run MUST keep ${name}`);
+      assert.ok(!protectedRun.autoDisabled.has(name), `${name} must not be auto-disabled`);
+    }
   });
 
   it('REGRESSION (PR #3857): locale-late entries in a bucket survive the cap when protected', () => {

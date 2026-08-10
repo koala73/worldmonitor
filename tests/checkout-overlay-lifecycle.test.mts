@@ -171,6 +171,12 @@ const stubSources: Record<string, string> = {
   './analytics': `
     export const trackCheckoutStart = () => {};
   `,
+  // #5911 pulled the desktop detector into checkout.ts (desktop routes
+  // checkout to the OS browser). Stubbed so these web-path suites STATE their
+  // runtime rather than inferring it from a synthesised window.
+  './desktop-runtime': `
+    export const isDesktopRuntime = () => false;
+  `,
   './auth-state': `
     export const subscribeAuthState = () => () => {};
   `,

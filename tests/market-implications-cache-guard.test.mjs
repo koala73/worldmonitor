@@ -41,8 +41,8 @@ test('fingerprint changes when signal text changes', () => {
 
 test('cache hit republishes cached cards without any LLM fetch', async () => {
   const cards = [{
-    ticker: 'LMT', name: 'Lockheed Martin', direction: 'long', timeframe: '1-3m',
-    confidence: 0.7, title: 'Defense demand', narrative: 'n', risk_caveat: '', driver: '', transmission_chain: [],
+    ticker: 'LMT', name: 'Lockheed Martin', direction: 'long', timeframe: '1M',
+    confidence: 'MEDIUM', title: 'Defense demand', narrative: 'Sustained procurement lifts the backlog across primes.', risk_caveat: '', driver: '', transmission_chain: [],
   }];
   const store = {};
   __setRedisStoreForTests(store);

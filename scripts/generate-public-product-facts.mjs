@@ -76,6 +76,22 @@ function replaceMcpToolCounts(source, count) {
     .replace(/\b\d+(?=\s*个\s*(?:MCP\s*)?(?:实时|压缩的)?工具)/g, String(count));
 }
 
+function replaceSourceAttributionCounts(source, { hostCount, providerCount }) {
+  return source
+    .replace(/\b\d+\+(?=\s+(?:external data sources|sources|observed upstream hosts)\b)/gi, `${hostCount}+`)
+    .replace(/\b\d+\+(?=\s+(?:data providers|(?:other\s+)?live providers|providers)\b)/gi, `${providerCount}+`)
+    // The prerendered Pro stat tile puts the label in a sibling element rather
+    // than next to the number, so keep that generated surface in sync too.
+    .replace(/\b\d+\+(?=<\/div><div[^>]*>Data providers\b)/gi, `${providerCount}+`);
+}
+
+function replaceProviderCountClaim(source, count) {
+  // The FAQ copy is translated, so the provider suffix varies ("+", Japanese
+  // "以上", Korean "개 이상", etc.). In every locale the provider claim is
+  // the first numeric-plus token; the later 500+ token belongs to news feeds.
+  return source.replace(/\d+(?=\+|以上|개\s*이상)/, String(count));
+}
+
 function rewriteStrings(value, update) {
   if (typeof value === 'string') return update(value);
   if (Array.isArray(value)) return value.map((item) => rewriteStrings(item, update));
@@ -147,6 +163,12 @@ const plans = publicCatalogEntries.map(([planKey, entry]) => ({
   url: PUBLIC_PRODUCT_METADATA.pricingUrl,
   currentForCheckout: entry.currentForCheckout,
   selfServe: entry.selfServe,
+  // Carried so pricingSummary() can DERIVE its plan-limit copy from the
+  // catalog. The feature strings below used to be hand-written, which meant
+  // re-running this generator faithfully reproduced stale limits and the
+  // freshness gate — which only diffs the generator against its own output —
+  // could never see the drift.
+  dashboardAiCallsPerDay: entry.features?.planLimits?.dashboardAiCallsPerDay,
   description: [
     ...entry.marketingFeatures,
     ...(entry.highlightFeatures ?? []),
@@ -171,6 +193,8 @@ const facts = {
     mapLayers: stats.layerDefinitions,
     feedDefinitions: stats.feedDefinitions,
     freshnessTrackedSourceGroups: stats.freshnessSources,
+    sourceAttributionHosts: stats.sourceAttributionHosts,
+    sourceAttributionProviders: stats.sourceAttribution.providerCount,
   },
 };
 
@@ -252,13 +276,11 @@ function rewriteApplicationJsonLd(source, includedGroups) {
   );
 }
 
-for (const [path, groups] of [
+const applicationJsonLdGroups = new Map([
   ['index.html', ['free', 'pro']],
   ['pro-test/welcome.html', ['free', 'pro']],
   ['pro-test/index.html', null],
-]) {
-  transform(path, (source) => rewriteApplicationJsonLd(source, groups));
-}
+]);
 
 // Every pro-test locale publishes the MCP tool count (guarded by
 // tests/public-product-facts.test.mjs across the full locale sweep), so
@@ -271,10 +293,7 @@ const proLocalePaths = readdirSync(join(ROOT, 'pro-test/src/locales'))
 const mcpCountSurfaces = [
   'server.json',
   'cli/README.md',
-  ...proLocalePaths,
   'pro-test/prerender.mjs',
-  'pro-test/welcome.html',
-  'public/pro/welcome.html',
   'blog-site/src/content/blog/ask-claude-whats-happening-worldmonitor-mcp.md',
   'blog-site/src/content/blog/build-geopolitical-risk-agent-worldmonitor-mcp.md',
   'blog-site/src/content/blog/daily-intelligence-briefing-workflow-15-minutes.md',
@@ -282,6 +301,10 @@ const mcpCountSurfaces = [
   'blog-site/src/content/blog/build-on-worldmonitor-developer-api-open-source.md',
   'blog-site/src/content/blog/worldmonitor-mcp-server-ai-agents-real-time-intelligence.md',
   'blog-site/src/content/blog/worldmonitor-is-not-palantir.md',
+  // Says "a Model Context Protocol server with 59 live tools" — its only
+  // "<n> tools" occurrence, so replaceMcpToolCounts heals it here instead of
+  // leaving a tool-count bump to red the blog contract test and be hand-fixed.
+  'blog-site/src/content/blog/what-is-worldmonitor-real-time-global-intelligence.md',
   'docs/cli.mdx',
   'docs/mcp-overview.mdx',
   'docs/mcp-quickstart.mdx',
@@ -305,6 +328,33 @@ for (const path of mcpCountSurfaces) {
   transform(path, (source) => replaceMcpToolCounts(source, mcpToolCount));
 }
 
+// The audited upstream-host/provider counts are generated product facts just
+// like the MCP/tool and map-layer counts.  Compose all transforms for the
+// overlapping HTML surfaces in one read/write so the large prerendered files
+// do not get parsed repeatedly.
+const htmlProductFactSurfaces = new Set([
+  'index.html',
+  'pro-test/welcome.html',
+  'public/pro/welcome.html',
+]);
+for (const path of htmlProductFactSurfaces) {
+  transform(path, (source) => {
+    let updated = source;
+    const groups = applicationJsonLdGroups.get(path);
+    if (groups !== undefined) updated = rewriteApplicationJsonLd(updated, groups);
+    updated = replaceMcpToolCounts(updated, mcpToolCount);
+    updated = replaceSourceAttributionCounts(updated, {
+      hostCount: stats.sourceAttributionHosts,
+      providerCount: stats.sourceAttribution.providerCount,
+    });
+    return updated;
+  });
+}
+for (const [path, groups] of applicationJsonLdGroups) {
+  if (htmlProductFactSurfaces.has(path)) continue;
+  transform(path, (source) => rewriteApplicationJsonLd(source, groups));
+}
+
 // The server card is the machine-readable tool catalog consumed by docs-stats
 // and external MCP discovery. Generate it from the same registry as the count
 // so adding tools cannot leave a syntactically valid but incomplete card.
@@ -324,8 +374,8 @@ transform('public/agent-view.json', (source) => {
 // localized prose claims. The prose phrasings vary per language, so they
 // cannot be matched by replaceMcpToolCounts — instead rewrite any 2+ digit
 // integer inside exactly these keys (verified: the only other number in any
-// locale is a single-digit "1" in ja.json). Guarded by the full-locale sweep
-// in tests/public-product-facts.test.mjs.
+// locale is a single-digit "1" in ja.json). Source/provider counts and the
+// legacy-key cleanup happen in this same pass to keep each locale read once.
 const LOCALE_TOOL_COUNT_PROSE_KEYS = [
   ['welcome', 'agents', 'b1'],
   ['welcome', 'agents', 'promise'],
@@ -334,7 +384,7 @@ const LOCALE_TOOL_COUNT_PROSE_KEYS = [
 ];
 for (const path of proLocalePaths) {
   transform(path, (source) => {
-    const locale = JSON.parse(source);
+    const locale = JSON.parse(replaceMcpToolCounts(source, mcpToolCount));
     if (typeof locale.welcome?.depth?.s12v === 'string') {
       locale.welcome.depth.s12v = String(mcpToolCount);
     }
@@ -346,33 +396,19 @@ for (const path of proLocalePaths) {
         node[leaf] = node[leaf].replace(/\b\d{2,}\b/g, String(mcpToolCount));
       }
     }
-    return json(locale);
-  });
-}
-
-// The translation baseline records the English string each committed
-// translation was made from. A tool-count bump is a pure numeral
-// substitution already applied to EVERY locale above, so the baseline gets
-// the same substitution — otherwise every count change would report the five
-// count-bearing keys as drifted and demand a full LLM translation pass for a
-// number. Guarded by tests/pro-locale-freshness.test.mjs.
-transform('scripts/locale-baselines/pro-test.json', (source) => {
-  const baseline = JSON.parse(source);
-  if (typeof baseline['welcome.depth.s12v'] === 'string') {
-    baseline['welcome.depth.s12v'] = String(mcpToolCount);
-  }
-  for (const keys of LOCALE_TOOL_COUNT_PROSE_KEYS) {
-    const flatKey = keys.join('.');
-    if (typeof baseline[flatKey] === 'string') {
-      baseline[flatKey] = baseline[flatKey].replace(/\b\d{2,}\b/g, String(mcpToolCount));
+    const freeF2 = locale.twoPath?.freeF2;
+    if (typeof freeF2 === 'string') {
+      let occurrence = 0;
+      locale.twoPath.freeF2 = freeF2.replace(/\b\d+\+/g, (match) => (
+        ++occurrence === 2 ? `${stats.sourceAttributionHosts}+` : match
+      ));
     }
-  }
-  return json(baseline);
-});
-
-for (const path of proLocalePaths) {
-  transform(path, (source) => {
-    const locale = JSON.parse(source);
+    if (typeof locale.welcome?.depth?.s3v === 'string') {
+      locale.welcome.depth.s3v = `${stats.sourceAttribution.providerCount}+`;
+    }
+    if (typeof locale.welcome?.faq?.a3 === 'string') {
+      locale.welcome.faq.a3 = replaceProviderCountClaim(locale.welcome.faq.a3, stats.sourceAttribution.providerCount);
+    }
     delete locale.nav?.reserveAccess;
     delete locale.hero?.reserveEarlyAccess;
     delete locale.hero?.emailPlaceholder;
@@ -385,6 +421,33 @@ for (const path of proLocalePaths) {
     return json(locale);
   });
 }
+
+transform('scripts/locale-baselines/pro-test.json', (source) => {
+  const baseline = JSON.parse(source);
+  const freeF2 = baseline['twoPath.freeF2'];
+  if (typeof freeF2 === 'string') {
+    let occurrence = 0;
+    baseline['twoPath.freeF2'] = freeF2.replace(/\b\d+\+/g, (match) => (
+      ++occurrence === 2 ? `${stats.sourceAttributionHosts}+` : match
+    ));
+  }
+  if (typeof baseline['welcome.depth.s3v'] === 'string') {
+    baseline['welcome.depth.s3v'] = `${stats.sourceAttribution.providerCount}+`;
+  }
+  if (typeof baseline['welcome.faq.a3'] === 'string') {
+    baseline['welcome.faq.a3'] = replaceProviderCountClaim(baseline['welcome.faq.a3'], stats.sourceAttribution.providerCount);
+  }
+  if (typeof baseline['welcome.depth.s12v'] === 'string') {
+    baseline['welcome.depth.s12v'] = String(mcpToolCount);
+  }
+  for (const keys of LOCALE_TOOL_COUNT_PROSE_KEYS) {
+    const flatKey = keys.join('.');
+    if (typeof baseline[flatKey] === 'string') {
+      baseline[flatKey] = baseline[flatKey].replace(/\b\d{2,}\b/g, String(mcpToolCount));
+    }
+  }
+  return json(baseline);
+});
 
 function replacePreviousPrices(source) {
   if (!previousFacts) return source;
@@ -429,6 +492,15 @@ for (const path of new Set([
 
 function pricingSummary() {
   const byKey = Object.fromEntries(plans.map((plan) => [plan.planKey, plan]));
+  /** Catalog-derived dashboard-AI copy. `null` in the catalog means unlimited. */
+  const dashboardAi = (planKey) => {
+    const limit = byKey[planKey]?.dashboardAiCallsPerDay;
+    if (limit === null) return 'unlimited dashboard-AI requests';
+    if (typeof limit !== 'number') {
+      throw new Error(`${planKey} is missing planLimits.dashboardAiCallsPerDay`);
+    }
+    return `${limit.toLocaleString('en-US')} dashboard-AI requests/day`;
+  };
   return {
     product: PUBLIC_PRODUCT_METADATA.name,
     lifecycle: PUBLIC_PRODUCT_METADATA.lifecycle,
@@ -440,31 +512,34 @@ function pricingSummary() {
         name: 'Free',
         price_usd_monthly: 0,
         signup_required: false,
-        features: [`${stats.layerDefinitions} map layers`, '500+ feeds', 'country briefs', 'chokepoints', 'instability scores', 'watchlists', '3 dashboard tabs'],
+        // Free gets every map layer except the Pro-locked Resilience layer. The
+        // caveat rides on the total rather than a free count: registry size is
+        // derivable, a truthful free count is not (see docs-stats.mjs).
+        features: [`${stats.layerDefinitions} map layers (Resilience is Pro)`, '500+ feeds', 'country briefs', 'chokepoints', 'instability scores', 'watchlists', '3 dashboard tabs'],
       },
       {
         name: 'Pro',
         price_usd_monthly: byKey.pro_monthly.price,
         price_usd_yearly: byKey.pro_annual.price,
-        features: ['WM Analyst', 'Scenario Engine', 'Route Explorer', 'AI digest', 'custom widget builder', 'MCP', '10 custom dashboards', 'personal license'],
+        features: ['WM Analyst', 'Scenario Engine', 'Route Explorer', 'AI digest', 'custom widget builder', dashboardAi('pro_monthly'), 'MCP', '10 custom dashboards', 'personal license'],
       },
       {
         name: 'Pro Business',
         price_usd_monthly: byKey.pro_business_monthly.price,
         price_usd_yearly: byKey.pro_business_annual.price,
-        features: ['Everything in Pro', 'commercial license', 'data export — CSV, JSON & PDF reports', '25 custom dashboards', '250 MCP calls/day', 'priority support'],
+        features: ['Everything in Pro', 'commercial license', 'data export — CSV, JSON & PDF reports', '25 custom dashboards', dashboardAi('pro_business_monthly'), '250 MCP calls/day', 'priority support'],
       },
       {
         name: 'API',
         price_usd_monthly: byKey.api_starter.price,
         price_usd_yearly: byKey.api_starter_annual.price,
-        features: ['REST API', 'license / API key included', '1,000 requests/day starter limit', 'webhooks', 'structured JSON', 'OpenAPI docs', 'commercial license — for your organization'],
+        features: ['REST API', 'license / API key included', '1,000 requests/day starter limit', dashboardAi('api_starter'), 'webhooks', 'structured JSON', 'OpenAPI docs', 'commercial license — for your organization'],
       },
       {
         name: 'API Business',
         price_usd_monthly: byKey.api_business.price,
         price_usd_yearly: byKey.api_business_annual.price,
-        features: ['Everything in API Starter', '300 requests/minute', '10,000 requests/day', '5 Pro licenses included', 'same company email required', 'commercial license — for your customers', 'priority support'],
+        features: ['Everything in API Starter', '300 requests/minute', '10,000 requests/day', dashboardAi('api_business'), '5 Pro licenses included', 'same company email required', 'commercial license — for your customers', 'priority support'],
       },
       {
         name: 'Enterprise',

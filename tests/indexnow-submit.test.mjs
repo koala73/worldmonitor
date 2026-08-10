@@ -68,6 +68,11 @@ describe('IndexNow submission', () => {
       assert.equal(new URL(batch.keyLocation).hostname, batch.host);
       assert.match(batch.key, /^[a-f0-9]{32}$/);
       assert.equal(new URL(batch.keyLocation).pathname, `/${batch.key}.txt`);
+      assert.equal(
+        readFileSync(new URL(`../public/${batch.key}.txt`, import.meta.url), 'utf8').trim(),
+        batch.key,
+        `${batch.host}: public/${batch.key}.txt must be committed and match the configured key`,
+      );
       assert.ok(batch.urls.length > 0, `${batch.host} must submit at least one URL`);
       for (const url of batch.urls) {
         assert.equal(new URL(url).hostname, batch.host, `${url} must match ${batch.host}`);

@@ -241,4 +241,37 @@ describe('buildSentryContext — backwards-compat for non-CONFLICT callers', () 
     assert.equal(typeof ctx.extra.messageHead, 'string');
     assert.match(ctx.extra.messageHead as string, /^quite a long/);
   });
+
+  it('JSON.parse SyntaxError (truncated Convex response body) classifies as transport_malformed_response', () => {
+    // WORLDMONITOR-YV: the Convex HTTP client's `response.json()` threw
+    // `SyntaxError: Unterminated string in JSON at position 12997` on a body
+    // truncated mid-transfer. No classifier matched, so it fell to
+    // `error_shape: 'unknown'` at error level with a hard 500. Now
+    // _convex-error.js maps it to SERVICE_UNAVAILABLE (503 + Retry-After,
+    // warning) and this bucket keeps it queryable apart from timeouts and
+    // socket resets.
+    const err = new SyntaxError('Unterminated string in JSON at position 12997 (line 1 column 12998)');
+    const ctx = buildSentryContext(err, err.message, baseOpts);
+    assert.equal(ctx.tags.error_shape, 'transport_malformed_response');
+    assert.deepEqual(ctx.fingerprint, ['api/user-prefs', 'POST', 'transport_malformed_response']);
+  });
+
+  it('a plain Error mentioning JSON does NOT classify as transport_malformed_response (name gate)', () => {
+    // The bucket keys on err.name === 'SyntaxError', not message substrings —
+    // free-form prose about JSON must not be mis-bucketed as CDN/transport.
+    const err = new Error('Unterminated string in JSON at position 5');
+    const ctx = buildSentryContext(err, err.message, baseOpts);
+    assert.equal(ctx.tags.error_shape, 'unknown');
+  });
+
+  it('SyntaxError wins transport_malformed_response even when the body snippet contains "timeout"', () => {
+    // V8's `... is not valid JSON` message embeds a snippet of the offending
+    // body. A Cloudflare-style HTML body starting "A timeout occurred" would
+    // otherwise be stolen by the /timeout/ branch — the SyntaxError check is
+    // ordered BEFORE /timeout/ specifically to prevent this (mirrors the
+    // CF-524 ordering guard above).
+    const err = new SyntaxError(`Unexpected token 'A', "A timeout o"... is not valid JSON`);
+    const ctx = buildSentryContext(err, err.message, baseOpts);
+    assert.equal(ctx.tags.error_shape, 'transport_malformed_response');
+  });
 });

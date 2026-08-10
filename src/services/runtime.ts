@@ -1,10 +1,15 @@
 import { SITE_VARIANT } from '@/config/variant';
 import { getClerkToken } from '@/services/clerk';
+import { isDesktopRuntime } from './desktop-runtime';
+
+// The detector lives in a dependency-free leaf (#5911) so consumers that need
+// only the boolean do not pull this module's variant/Clerk graph. Re-exported
+// here because every existing caller imports it from `@/services/runtime`.
+export { detectDesktopRuntime, isDesktopRuntime, type RuntimeProbe } from './desktop-runtime';
 
 const ENV = (() => {
   try {
     return {
-      VITE_DESKTOP_RUNTIME: import.meta.env.VITE_DESKTOP_RUNTIME,
       VITE_TAURI_API_BASE_URL: import.meta.env.VITE_TAURI_API_BASE_URL,
       VITE_TAURI_REMOTE_API_BASE_URL: import.meta.env.VITE_TAURI_REMOTE_API_BASE_URL,
       VITE_WS_API_URL: import.meta.env.VITE_WS_API_URL,
@@ -27,7 +32,6 @@ const DEFAULT_REMOTE_HOSTS: Record<string, string> = {
 };
 
 const DEFAULT_LOCAL_API_PORT = 46123;
-const FORCE_DESKTOP_RUNTIME = ENV.VITE_DESKTOP_RUNTIME === '1';
 
 let _resolvedPort: number | null = null;
 let _portPromise: Promise<number> | null = null;
@@ -59,57 +63,6 @@ export function getLocalApiPort(): number {
 
 function normalizeBaseUrl(baseUrl: string): string {
   return baseUrl.replace(/\/$/, '');
-}
-
-type RuntimeProbe = {
-  hasTauriGlobals: boolean;
-  userAgent: string;
-  locationProtocol: string;
-  locationHost: string;
-  locationOrigin: string;
-};
-
-export function detectDesktopRuntime(probe: RuntimeProbe): boolean {
-  const tauriInUserAgent = probe.userAgent.includes('Tauri');
-  const secureLocalhostOrigin = (
-    probe.locationProtocol === 'https:' && (
-      probe.locationHost === 'localhost' ||
-      probe.locationHost.startsWith('localhost:') ||
-      probe.locationHost === '127.0.0.1' ||
-      probe.locationHost.startsWith('127.0.0.1:')
-    )
-  );
-
-  // Tauri production windows can expose tauri-like hosts/schemes without
-  // always exposing bridge globals at first paint.
-  const tauriLikeLocation = (
-    probe.locationProtocol === 'tauri:' ||
-    probe.locationProtocol === 'asset:' ||
-    probe.locationHost === 'tauri.localhost' ||
-    probe.locationHost.endsWith('.tauri.localhost') ||
-    probe.locationOrigin.startsWith('tauri://') ||
-    secureLocalhostOrigin
-  );
-
-  return probe.hasTauriGlobals || tauriInUserAgent || tauriLikeLocation;
-}
-
-export function isDesktopRuntime(): boolean {
-  if (FORCE_DESKTOP_RUNTIME) {
-    return true;
-  }
-
-  if (typeof window === 'undefined') {
-    return false;
-  }
-
-  return detectDesktopRuntime({
-    hasTauriGlobals: '__TAURI_INTERNALS__' in window || '__TAURI__' in window,
-    userAgent: window.navigator?.userAgent ?? '',
-    locationProtocol: window.location?.protocol ?? '',
-    locationHost: window.location?.host ?? '',
-    locationOrigin: window.location?.origin ?? '',
-  });
 }
 
 export function getApiBaseUrl(): string {

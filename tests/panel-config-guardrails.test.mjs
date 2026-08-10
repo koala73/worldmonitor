@@ -5,6 +5,14 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
+const appSrcRaw = readFileSync(resolve(__dirname, '../src/App.ts'), 'utf-8');
+// Comment-stripped view for guards that assert a registration EXISTS. Scanning
+// raw text lets a commented-out block satisfy the guard, which is the exact
+// vacuous-pass this class of source-regex check is written to prevent — a
+// panel commented out for debugging would ship dead with CI green.
+// Line comments only: `//` inside a string literal is not a concern in the
+// call-shape patterns these guards match.
+const appSrc = appSrcRaw.replace(/^\s*\/\/.*$/gm, '');
 const panelLayoutSrc = readFileSync(resolve(__dirname, '../src/app/panel-layout.ts'), 'utf-8');
 const panelsSrc = readFileSync(resolve(__dirname, '../src/config/panels.ts'), 'utf-8');
 const commandsSrc = readFileSync(resolve(__dirname, '../src/config/commands.ts'), 'utf-8');
@@ -602,6 +610,46 @@ describe('panel-config guardrails', () => {
       [],
       `Panels with no panel:<id> command in src/config/commands.ts — they can never appear in CMD+K:\n  ${missing.join(', ')}\n` +
       `Add a { id: 'panel:<id>', keywords: [...], label, icon, category: 'panels' } entry for each.`,
+    );
+  });
+
+  // A panel registered ONLY in scheduleRefresh renders its loading radar until
+  // the first interval elapses — six hours for the slow economic panels —
+  // because scheduleRefresh defaults `runImmediately: false` and Panel's
+  // constructor only calls showLoading(). src/App.ts states the contract:
+  // "primeTask wires the panels sit at showLoading() forever because Panel's
+  // constructor calls showLoading() but nothing else triggers fetchData() on
+  // attach — App.ts's primeTask table is the sole near-viewport kickoff path."
+  // The FX panel (#6199) shipped with exactly this gap; three reviewers found
+  // it independently. This turns that class of bug into a build failure.
+  // SCOPE: only the `() => (this.state.panels['x'] as X).fetchData()` shape —
+  // a panel that owns its own fetch and is refreshed on a timer. App.ts has ~45
+  // scheduleRefresh calls; the rest drive services, engines or multi-panel
+  // loaders (correlation-engine, intelligence, health-freshness, news, …) whose
+  // priming contract is different and is NOT asserted here. Broadening to those
+  // needs a per-callback audit, not a wider regex — a wider regex would just
+  // manufacture failures for callbacks that never had this contract.
+  it('every panel that self-fetches on a timer is also primed on first mount', () => {
+    const scheduled = [...appSrc.matchAll(
+      /scheduleRefresh\(\s*'([a-z0-9-]+)',\s*\(\)\s*=>\s*\(this\.state\.panels\['[a-z0-9-]+'\][^)]*\)\.fetchData\(\)/g,
+    )].map((m) => m[1]);
+    const primed = new Set([...appSrc.matchAll(/primeTask\('([a-z0-9-]+)'/g)].map((m) => m[1]));
+
+    // Exact counts, not floors. A floor lets the pattern rot silently: if a
+    // refactor changed the call shape so only 20 of 27 still matched, a `>= 20`
+    // floor would stay green while seven panels quietly left the guard. Bump
+    // these when you add or remove a self-fetching timer-refreshed panel —
+    // being made to notice is the point. (Same convention as the OpenAPI
+    // surface-count assertions in tests/openapi-examples-contract.test.mjs.)
+    assert.equal(scheduled.length, 27, `expected 27 self-fetching scheduled panels, matched ${scheduled.length} — either a panel was added/removed (bump this) or the scheduleRefresh pattern stopped matching (fix the regex)`);
+    assert.equal(primed.size, 40, `expected 40 primeTask entries, matched ${primed.size} — either the prime table changed (bump this) or the primeTask pattern stopped matching (fix the regex)`);
+
+    const unprimed = scheduled.filter((id) => !primed.has(id)).sort();
+    assert.deepStrictEqual(
+      unprimed,
+      [],
+      `These panels refresh on a timer but are never primed on first mount, so they sit at showLoading() until a full interval elapses:\n  ${unprimed.join(', ')}\n` +
+      `Add a shouldPrime('<id>') / primeTask('<id>', () => panel.fetchData()) block in App.ts's primeVisiblePanelData().`,
     );
   });
 

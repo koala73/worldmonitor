@@ -3,7 +3,7 @@ import { describe, it } from 'node:test';
 import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { load as loadYaml } from 'js-yaml';
+import { loadUnifiedOpenApiSpec } from './_lib/openapi-spec-cache.mjs';
 
 import { dedupeErrorResponses, dedupeSharedParameters } from '../scripts/openapi-dedup-responses.mjs';
 import { dedupeSharedChinaProvenanceSchemas } from '../scripts/openapi-dedup-schemas.mjs';
@@ -22,7 +22,6 @@ import { dedupeSharedChinaProvenanceSchemas } from '../scripts/openapi-dedup-sch
 // the next injector cannot silently re-cross the cap.
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-const bundlePath = resolve(root, 'docs/api/worldmonitor.openapi.yaml');
 const buildScriptPath = resolve(root, 'scripts/build-openapi-json.mjs');
 
 // Leave headroom under the ~1 MB cap: the spec sat at ~752 KB when the check
@@ -257,7 +256,7 @@ describe('dedupeSharedChinaProvenanceSchemas (fixture)', () => {
 });
 
 describe('public OpenAPI dedupe (real bundle)', () => {
-  const original = loadYaml(readFileSync(bundlePath, 'utf8'));
+  const original = loadUnifiedOpenApiSpec();
   const deduped = structuredClone(original);
   const stats = dedupeErrorResponses(deduped);
   const schemaStats = dedupeSharedChinaProvenanceSchemas(deduped);

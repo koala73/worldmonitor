@@ -1,6 +1,6 @@
 ---
 title: "命令行客户端"
-description: "使用官方 worldmonitor npm CLI 直接从 shell 脚本化调用国家简报、风险评分、监视列表与全部 59 个 MCP 工具，无需编写任何自定义 API 集成代码即可完成自动化，非常适合运维脚本、CI/CD 流水线、本地情报工作流与临时数据分析。"
+description: "使用官方 worldmonitor npm CLI 直接从 shell 脚本化调用国家简报、风险评分、监视列表与全部 60 个 MCP 工具，无需编写任何自定义 API 集成代码即可完成自动化，非常适合运维脚本、CI/CD 流水线、本地情报工作流与临时数据分析。"
 ---
 
 [`worldmonitor`](https://www.npmjs.com/package/worldmonitor) 是 World Monitor 全球情报 API 的官方命令行客户端。它是对 [MCP 服务器](/zh/mcp-overview)（推荐的智能体接口）的一层轻薄、**无依赖**封装，并带有 REST 备用通道，因此你无需编写一行 HTTP 底层代码，即可从 shell 脚本或智能体拉取简报、风险评分以及冲突/网络/市场/新闻数据源。它以 ESM 形式发布，运行于 **Node 18+**。
@@ -25,7 +25,7 @@ npx worldmonitor tools
 worldmonitor tools
 ```
 
-你会收到全部 59 个工具定义，格式为 JSON。其他所有返回*数据*的操作都是 `tools/call`，需要用户 API 密钥。
+你会收到全部 60 个工具定义，格式为 JSON。其他所有返回*数据*的操作都是 `tools/call`，需要用户 API 密钥。
 
 ## 身份验证
 
@@ -66,7 +66,7 @@ worldmonitor markets --asset_class crypto            # crypto quotes
 
 ## 任意工具，任意参数
 
-精选表格刻意保持精简——全部 59 个工具中的每一个都可通过 `call` 访问，任何未识别的 `--key value` 都会成为工具参数，因此无需任何特殊接线：
+精选表格刻意保持精简——全部 60 个工具中的每一个都可通过 `call` 访问，任何未识别的 `--key value` 都会成为工具参数，因此无需任何特殊接线：
 
 ```sh
 worldmonitor call get_cyber_threats --min_severity 7
@@ -137,7 +137,7 @@ const code = await run(['risk', 'IR'], { env: process.env });
 ## 接下来去哪里
 
 - **[MCP 快速入门](/zh/mcp-quickstart)**——连接 Claude Desktop 并通过 Model Context Protocol 进行你的首次工具调用。
-- **[MCP 工具参考](/zh/mcp-tools-reference)**——全部 59 个工具的逐工具参数、新鲜度预算和示例。
+- **[MCP 工具参考](/zh/mcp-tools-reference)**——全部 60 个工具的逐工具参数、新鲜度预算和示例。
 - **[JMESPath 指南](/zh/mcp-jmespath)**——用于将响应缩小 80–95% 的投影语法。
 - **[身份验证](/zh/usage-auth)**——API 密钥 vs. OAuth vs. 浏览器会话。
 - **[API 参考](/zh/api-reference)**——`get` 和 `list` 命令背后的完整 REST 服务目录。

@@ -7,12 +7,18 @@ import type {
 import type { UnifiedSettingsConfig } from '@/components/UnifiedSettings';
 import type { AirlineIntelPanel } from '@/components/AirlineIntelPanel';
 import type { CustomWidgetPanel } from '@/components/CustomWidgetPanel';
-import { deleteWidget, getWidget, saveWidget, isProUser } from '@/services/widget-store';
+import { deleteWidget, getWidget, saveWidget, isProUser, isProTierResolved } from '@/services/widget-store';
+import { hasPremiumAccess } from '@/services/panel-gating';
+import {
+  sanitizeLockedLayers,
+  shouldSanitizeLockedLayers,
+} from '@/config/map-layer-definitions';
 import {
   FREE_MAX_PANELS,
   FREE_MAX_SOURCES,
   countFreePanelCapUsage,
   isFreePanelCapCounted,
+  userSetPanelEnabled,
 } from '@/config/panels';
 import type { McpDataPanel } from '@/components/McpDataPanel';
 import { deleteMcpPanel, getMcpPanel, saveMcpPanel } from '@/services/mcp-store';
@@ -28,6 +34,7 @@ import type { PredictionPanel } from '@/components/PredictionPanel';
 import {
   buildMapUrl,
   debounce,
+  loadFromStorage,
   saveToStorage,
   getCurrentTheme,
   showToast,
@@ -78,7 +85,7 @@ import {
 } from '@/services/analytics';
 import { detectPlatform, allButtons, buttonsForPlatform } from '@/components/DownloadBanner';
 import type { Platform } from '@/components/DownloadBanner';
-import { invokeTauri } from '@/services/tauri-bridge';
+import { isOpenableExternalUrl, openExternalUrl } from '@/services/external-navigation';
 import { getCachedGpsInterference } from '@/services/gps-interference';
 import { dataFreshness } from '@/services/data-freshness';
 import { mlWorker } from '@/services/ml-worker';
@@ -102,6 +109,8 @@ import { buildEmbedIframeSnippet, buildEmbedMapUrl, type EmbedVariant } from '@/
 import { createSettingsButton } from '@/components/settings-button';
 import { overlayHistory, type OverlayId } from '@/utils/overlay-history';
 import { MobilePrimaryNav } from '@/app/mobile-primary-nav';
+import { stageVariantSelection } from '@/services/variant-panel-ownership';
+import { transferSourceGateOwnershipToUser as releaseSourceGateOwnership } from '@/services/source-cap';
 
 function readStorageValue(key: string): string | null {
   try {
@@ -111,11 +120,13 @@ function readStorageValue(key: string): string | null {
   }
 }
 
-function writeStorageValue(key: string, value: string): void {
+function writeStorageValue(key: string, value: string): boolean {
   try {
     localStorage.setItem(key, value);
+    return true;
   } catch {
     // UI preferences remain in memory for the current page.
+    return false;
   }
 }
 
@@ -227,11 +238,17 @@ export interface EventHandlerCallbacks {
   loadDataForLayer: (layer: string) => void;
   waitForAisData: () => void;
   syncDataFreshnessWithLayers: () => void;
-  ensureCorrectZones: () => void;
+  /**
+   * Push `ctx.panelSettings` onto the live dashboard. Must route to
+   * PanelLayoutManager.applyPanelSettings — it owns the deferred-mount
+   * bookkeeping a panel needs to appear without a reload, and the map-zone
+   * reconciliation the `map` key needs.
+   */
+  applyPanelSettings: () => void;
   applySavedPanelOrder?: (panelOrder?: string[]) => void;
-  refreshCiiAfterFocalPointsReady?: () => void;
   stopLayerActivity?: (layer: keyof MapLayers) => void;
   mountLiveNewsIfReady?: () => void;
+  isFreeTierFallbackActive?: () => boolean;
 }
 
 export class EventHandlerManager implements AppModule {
@@ -245,7 +262,6 @@ export class EventHandlerManager implements AppModule {
   private boundIdleResetHandler: (() => void) | null = null;
   private boundStorageHandler: ((e: StorageEvent) => void) | null = null;
   private boundTvKeydownHandler: ((e: KeyboardEvent) => void) | null = null;
-  private boundFocalPointsReadyHandler: (() => void) | null = null;
   private boundThemeChangedHandler: (() => void) | null = null;
   private boundDropdownClickHandler: ((e: MouseEvent) => void) | null = null;
   private boundDropdownKeydownHandler: ((e: KeyboardEvent) => void) | null = null;
@@ -334,7 +350,7 @@ export class EventHandlerManager implements AppModule {
         return false;
       }
     }
-    config.enabled = true;
+    userSetPanelEnabled(config, true);
     trackPanelToggled(panelId, true);
     saveToStorage(STORAGE_KEYS.panels, this.ctx.panelSettings);
     this.applyPanelSettings();
@@ -435,10 +451,6 @@ export class EventHandlerManager implements AppModule {
     if (this.boundTvKeydownHandler) {
       document.removeEventListener('keydown', this.boundTvKeydownHandler);
       this.boundTvKeydownHandler = null;
-    }
-    if (this.boundFocalPointsReadyHandler) {
-      window.removeEventListener('focal-points-ready', this.boundFocalPointsReadyHandler);
-      this.boundFocalPointsReadyHandler = null;
     }
     if (this.boundThemeChangedHandler) {
       window.removeEventListener('theme-changed', this.boundThemeChangedHandler);
@@ -631,7 +643,7 @@ export class EventHandlerManager implements AppModule {
 
       const config = this.ctx.panelSettings[panelId];
       if (!config) return;
-      config.enabled = false;
+      userSetPanelEnabled(config, false);
       // Live-media teardown is handled centrally by applyPanelSettings() below, which
       // calls stopLiveMediaForClose() on every now-disabled panel. Calling it here too
       // double-fired the lifecycle hook for live-news / live-webcams.
@@ -741,11 +753,6 @@ export class EventHandlerManager implements AppModule {
     };
     document.addEventListener('visibilitychange', this.boundVisibilityHandler);
 
-    this.boundFocalPointsReadyHandler = () => {
-      this.callbacks.refreshCiiAfterFocalPointsReady?.();
-    };
-    window.addEventListener('focal-points-ready', this.boundFocalPointsReadyHandler);
-
     this.boundThemeChangedHandler = () => {
       this.ctx.map?.render();
       this.mobilePrimaryNav.updateThemeItem();
@@ -773,12 +780,16 @@ export class EventHandlerManager implements AppModule {
           return;
         }
         if (url.origin === window.location.origin) return;
-        if (!/^https?:$/.test(url.protocol)) return; // Only allow http(s) links
+        // Gate on the SAME predicate the router uses, not a looser one. The
+        // native opener takes https anywhere but http only for localhost, so
+        // a plain-http link matched by `/^https?:$/` was cancelled here and
+        // then refused there — a guaranteed dead click plus a misleading
+        // `rejected-scheme` report. Anything the router will not take is left
+        // to the WebView's own `target="_blank"` handling instead.
+        if (!isOpenableExternalUrl(url.href)) return;
         e.preventDefault();
         e.stopPropagation();
-        void invokeTauri<void>('open_url', { url: url.toString() }).catch(() => {
-          window.open(url.toString(), '_blank', 'noopener,noreferrer');
-        });
+        void openExternalUrl(url);
       };
       document.addEventListener('click', this.boundDesktopExternalLinkHandler, true);
     }
@@ -973,9 +984,19 @@ export class EventHandlerManager implements AppModule {
   private filterMissionLayersForCurrentRenderer(layers: MapLayers): MapLayers {
     const renderer = this.ctx.map?.isGlobeMode?.() ? 'globe' : 'flat';
     const isDeckGLActive = this.ctx.map?.isDeckGLActive?.() ?? !this.ctx.isMobile;
-    return this.filterMissionLayersForAvailableServices(
+    let filtered = this.filterMissionLayersForAvailableServices(
       filterMissionLayersForRenderer(layers, renderer, isDeckGLActive, this.getMissionDefaultLayers()),
     );
+    // #6045 — mission presets (e.g. Supply-Chain Risk) include resilienceScore.
+    // Free users must not persist or apply locked layers through this path.
+    if (shouldSanitizeLockedLayers(
+      hasPremiumAccess(),
+      isProTierResolved(),
+      this.callbacks.isFreeTierFallbackActive?.() === true,
+    )) {
+      filtered = sanitizeLockedLayers(filtered, false);
+    }
+    return filtered;
   }
 
   private filterMissionLayersForAvailableServices(layers: MapLayers): MapLayers {
@@ -1511,8 +1532,9 @@ export class EventHandlerManager implements AppModule {
     await this.exitFullscreenForNavigation();
 
     if (this.ctx.isDesktopApp || options.isLocalDev) {
-      writeStorageValue('worldmonitor-variant', variant);
-      window.location.reload();
+      if (stageVariantSelection(SITE_VARIANT, variant, writeStorageValue)) {
+        window.location.reload();
+      }
       return;
     }
 
@@ -1767,10 +1789,14 @@ export class EventHandlerManager implements AppModule {
             trackPanelToggled(key, nextConfig.enabled);
             return;
           }
-          if (current.enabled !== nextConfig.enabled) {
+          const enabledChanged = current.enabled !== nextConfig.enabled;
+          if (enabledChanged) {
             trackPanelToggled(key, nextConfig.enabled);
           }
           Object.assign(current, nextConfig);
+          // Object.assign cannot DELETE a key, so a stale gate marker would
+          // survive a settings-driven toggle. Re-apply through the owner helper.
+          if (enabledChanged) userSetPanelEnabled(current, nextConfig.enabled);
         });
         saveToStorage(STORAGE_KEYS.panels, this.ctx.panelSettings);
         this.applyPanelSettings();
@@ -1792,7 +1818,9 @@ export class EventHandlerManager implements AppModule {
         } else {
           this.ctx.disabledSources.add(name);
         }
-        saveToStorage(STORAGE_KEYS.disabledFeeds, Array.from(this.ctx.disabledSources));
+        if (this.transferSourceGateOwnershipToUser([name])) {
+          saveToStorage(STORAGE_KEYS.disabledFeeds, Array.from(this.ctx.disabledSources));
+        }
       },
       setSourcesEnabled: (names: string[], enabled: boolean) => {
         if (enabled && !isProUser()) {
@@ -1808,7 +1836,9 @@ export class EventHandlerManager implements AppModule {
           if (enabled) this.ctx.disabledSources.delete(name);
           else this.ctx.disabledSources.add(name);
         }
-        saveToStorage(STORAGE_KEYS.disabledFeeds, Array.from(this.ctx.disabledSources));
+        if (this.transferSourceGateOwnershipToUser(names)) {
+          saveToStorage(STORAGE_KEYS.disabledFeeds, Array.from(this.ctx.disabledSources));
+        }
       },
       getAllSourceNames: () => this.getAllSourceNames(),
       getLocalizedPanelName: (key: string, fallback: string) => this.getLocalizedPanelName(key, fallback),
@@ -2283,6 +2313,21 @@ export class EventHandlerManager implements AppModule {
     return localized === lookup ? fallback : localized;
   }
 
+  private transferSourceGateOwnershipToUser(names: Iterable<string>): boolean {
+    const gateOwned = new Set(
+      loadFromStorage<string[]>(STORAGE_KEYS.sourceGateOwnership, []),
+    );
+    const nextGateOwned = releaseSourceGateOwnership(gateOwned, names);
+    if (nextGateOwned.size === gateOwned.size) return true;
+    // A deliberate source preference can only outlive the gate safely after
+    // ownership transfers. If this sidecar write fails, keep the live toggle
+    // for the session but do not persist a preference Pro could later undo.
+    return writeStorageValue(
+      STORAGE_KEYS.sourceGateOwnership,
+      JSON.stringify([...nextGateOwned]),
+    );
+  }
+
   getAllSourceNames(): string[] {
     const sources = new Set<string>();
     // Preset feeds + sources from any custom news panels the user added, so
@@ -2293,29 +2338,19 @@ export class EventHandlerManager implements AppModule {
     return Array.from(sources).sort((a, b) => a.localeCompare(b));
   }
 
+  /**
+   * Delegates to PanelLayoutManager, which owns panel visibility.
+   *
+   * This class used to carry its own copy of the toggle loop. That copy could
+   * only re-toggle panels already present in `ctx.panels`, and since #4367 a
+   * panel that boots disabled has no DOM node at all — just an unobserved,
+   * shell-less entry in `deferredPanelMounts`. So every caller here that
+   * ENABLES a panel (settings save, CMD+K add, undo-restore, mission preset,
+   * cross-tab storage sync) silently did nothing until the next reload
+   * re-ran createPanels(). The layout manager's version mounts the deferred
+   * panel and refreshes the mobile panel nav.
+   */
   applyPanelSettings(): void {
-    Object.entries(this.ctx.panelSettings).forEach(([key, config]) => {
-      if (key === 'map') {
-        const mapSection = document.getElementById('mapSection');
-        if (mapSection) {
-          mapSection.classList.toggle('hidden', !config.enabled);
-          const mainContent = document.querySelector('.main-content');
-          if (mainContent) {
-            mainContent.classList.toggle('map-hidden', !config.enabled);
-          }
-          this.callbacks.ensureCorrectZones();
-        }
-        return;
-      }
-      const panel = this.ctx.panels[key];
-      const liveMediaPanel = panel as { stopLiveMediaForClose?: () => void; resumeLiveMediaForShow?: () => void } | undefined;
-      if (!config.enabled) {
-        liveMediaPanel?.stopLiveMediaForClose?.();
-      }
-      panel?.toggle(config.enabled);
-      if (config.enabled) {
-        liveMediaPanel?.resumeLiveMediaForShow?.();
-      }
-    });
+    this.callbacks.applyPanelSettings();
   }
 }

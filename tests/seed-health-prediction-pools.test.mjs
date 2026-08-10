@@ -19,6 +19,7 @@ process.env.RESILIENCE_SCHEMA_V2_ENABLED = 'true';
 const { default: handler } = await import('../api/seed-health.js');
 
 const PREDICTION_META_KEY = 'seed-meta:prediction:markets';
+const PORTWATCH_META_KEY = 'seed-meta:supply_chain:portwatch-ports';
 const RESILIENCE_INTERVAL_PROBE_KEY = 'resilience:intervals:v9:US';
 const RESILIENCE_INTERVAL_METHODOLOGY = 'weight-perturbation-sensitivity-v3';
 
@@ -62,6 +63,27 @@ function installSeedHealthPipelineMock(poolCounts, { fetchedAt = Date.now() } = 
             _formula: 'pc',
             methodology: RESILIENCE_INTERVAL_METHODOLOGY,
             computedAt: '2026-06-11T12:00:00.000Z',
+          }),
+        };
+      }
+      if (key === PORTWATCH_META_KEY) {
+        return {
+          result: JSON.stringify({
+            fetchedAt,
+            recordCount: 174,
+            contentFreshness: {
+              coveredCount: 174,
+              freshCount: 174,
+              staleCount: 0,
+              unknownCount: 0,
+              staleCountries: [],
+              criticalCountries: ['CN', 'HK'],
+              criticalFreshCount: 2,
+              criticalStaleCountries: [],
+              criticalMissingCountries: 0,
+              criticalOldestObservedAt: fetchedAt - 60_000,
+              criticalOldestObservedCountry: 'CN',
+            },
           }),
         };
       }

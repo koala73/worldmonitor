@@ -12,6 +12,7 @@ import {
   isPanelEntitled,
   FREE_MAX_PANELS,
   countFreePanelCapUsage,
+  userSetPanelEnabled,
   isFreePanelCapCounted,
 } from '@/config';
 import { isProUser } from '@/services/widget-store';
@@ -94,7 +95,7 @@ export function initSettingsWindow(): void {
               const enabledCount = countFreePanelCapUsage(panelSettings);
               if (enabledCount >= FREE_MAX_PANELS) return;
             }
-            config.enabled = !config.enabled;
+            userSetPanelEnabled(config, !config.enabled);
             saveToStorage(STORAGE_KEYS.panels, panelSettings);
             render();
           }

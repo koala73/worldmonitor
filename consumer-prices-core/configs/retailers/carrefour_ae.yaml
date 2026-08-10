@@ -9,6 +9,16 @@ retailer:
 
   searchConfig:
     numResults: 5
+    # Pinned product URLs historically used the bare hostname while the
+    # configured base URL uses `www`; both are the same storefront.
+    allowedHosts:
+      - carrefouruae.com
+    # The MAF frontend hydrates product data late: at the default settle a
+    # product page captured as a 2.2KB breadcrumb shell — no title, no price —
+    # so every candidate logged missing-price (65 of the 2026-08-08 run's
+    # failures). With an 8s wait the same URL captured 32KB including the
+    # buy box.
+    renderWaitMs: 8000
 
   rateLimit:
     requestsPerMinute: 20

@@ -17,9 +17,9 @@ describe('China activity nowcast production registration (#5579)', () => {
     assert.match(panels, /'china-activity-nowcast': \{ name: 'China Activity Nowcast', enabled: true/);
     assert.match(panels, /'china-corridors', 'china-activity-nowcast'/);
     assert.match(base, /chinaActivityNowcast: 15 \* 60 \* 1000/);
-    assert.match(app, /primeTask\('chinaActivityNowcast', \(\) => this\.dataLoader\.loadChinaActivityNowcast\(\)\)/);
+    assert.match(app, /primeTask\('chinaActivityNowcast', \(\) => this\.dataLoader\.loadChinaActivityNowcast\(\{ skipIfPopulated: true \}\)\)/);
     assert.match(app, /scheduleRefresh\('chinaActivityNowcast'/);
-    assert.match(loader, /async loadChinaActivityNowcast\(\): Promise<void>/);
+    assert.match(loader, /async loadChinaActivityNowcast\(options\?: \{ skipIfPopulated\?: boolean \}\): Promise<void>/);
     assert.match(loader, /shouldLoad\('china-activity-nowcast'\)/);
     assert.match(layout, /lazyDefaultPanel\(\s*'china-activity-nowcast'/);
     assert.match(commands, /id: 'panel:china-activity-nowcast'/);

@@ -7,11 +7,18 @@ import {
 // @ts-expect-error — generated JS module, no declaration file
 import MINING_SITES_RAW from '../../../shared/mining-sites.js';
 import { readJsonFromUpstash } from '../../_upstash-json.js';
+import { argStr } from '../filters';
 import { buildAuthHeaders } from '../auth';
 import { assertToolFetchOk, BillingDenialError, throwIfBillingDenial } from '../billing-denial';
 import { SUPPORTED_CONSUMER_PRICES_COUNTRIES } from '../constants';
-import { assertMcpToolFetchOk } from '../downstream';
+import { assertMcpToolFetchOk, BothSourcesFailedError } from '../downstream';
 import { evaluateFreshness } from '../freshness';
+import { McpSourceUnavailableError } from '../source-unavailable';
+import {
+  collectInsightSources,
+  insightsSnapshotRejection,
+  normalizeInsightSource,
+} from '../../../shared/insights-snapshot.js';
 import type { FreshnessCheck, ToolDef } from '../types';
 import { COUNTRY_BRIEF_UI_URI, COUNTRY_RISK_UI_URI, WORLD_BRIEF_UI_URI } from '../ui/registry';
 import { ANALYSIS_TOOLS } from './analysis-tools';
@@ -42,22 +49,6 @@ function clipBriefText(value: unknown, maxLen: number): string {
   return text.length > maxLen ? `${text.slice(0, maxLen - 1).trim()}...` : text;
 }
 
-function normalizeBriefUrl(value: unknown): string {
-  if (typeof value !== 'string') return '';
-  try {
-    const parsed = new URL(value.trim());
-    return parsed.protocol === 'http:' || parsed.protocol === 'https:' ? parsed.toString() : '';
-  } catch {
-    return '';
-  }
-}
-
-function normalizeBriefDate(value: unknown): string | undefined {
-  if (typeof value !== 'string' && typeof value !== 'number') return undefined;
-  const ms = new Date(value).getTime();
-  return Number.isFinite(ms) ? new Date(ms).toISOString() : undefined;
-}
-
 function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
@@ -73,20 +64,16 @@ function includesCountryTerm(text: string, term: string): boolean {
   return countryTermIndex(text, term) !== -1;
 }
 
-function collectMcpBriefSources(items: DigestItemForBrief[], maxSources = 6): McpBriefSource[] {
-  const out: McpBriefSource[] = [];
-  const seen = new Set<string>();
-  for (const item of items) {
-    const url = normalizeBriefUrl(item.link ?? item.url);
-    const title = clipBriefText(item.title, 160);
-    const source = clipBriefText(item.source, 80);
-    if (!url || !title || !source || seen.has(url)) continue;
-    const publishedAt = normalizeBriefDate(item.publishedAt ?? item.pubDate ?? item.date);
-    out.push(publishedAt ? { title, source, url, publishedAt } : { title, source, url });
-    seen.add(url);
-    if (out.length >= maxSources) break;
-  }
-  return out;
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return !!value && typeof value === 'object' && !Array.isArray(value);
+}
+
+function collectMcpBriefSources(
+  items: readonly unknown[],
+  maxSources = 6,
+  urlOrder: 'link-first' | 'url-first' = 'link-first',
+): McpBriefSource[] {
+  return collectInsightSources(items, maxSources, { urlOrder }) as McpBriefSource[];
 }
 
 function briefSourceContextLines(sources: McpBriefSource[]): string[] {
@@ -96,6 +83,78 @@ function briefSourceContextLines(sources: McpBriefSource[]): string[] {
       : { title: source.title, source: source.source, url: source.url };
     return `Source [${index + 1}]: ${JSON.stringify(payload)}`;
   });
+}
+
+type SeededWorldBriefPayload = {
+  worldBrief?: unknown;
+  briefStoryLines?: unknown;
+  worldBriefSources?: unknown;
+  briefProvider?: unknown;
+  briefModel?: unknown;
+  generatedAt?: unknown;
+  status?: unknown;
+  topStories?: unknown;
+};
+
+// Rejections carry a bounded reason so the "Seeded world brief unavailable"
+// alarm names WHICH gate fired (WORLDMONITOR-YJ) — a stale producer and a
+// schema regression need opposite responses. Bounded values only: the reason
+// lands in Sentry/log messages, never in the client-facing RPC error.
+type SeededWorldBriefProjection =
+  | { value: Record<string, unknown> }
+  | { reason: string };
+
+function projectSeededWorldBrief(raw: unknown): SeededWorldBriefProjection {
+  const snapshotRejection = insightsSnapshotRejection(raw);
+  if (snapshotRejection !== null) return { reason: snapshotRejection };
+  if (!isRecord(raw)) return { reason: 'malformed-snapshot' };
+  const payload = raw as SeededWorldBriefPayload;
+  const brief = typeof payload.worldBrief === 'string' ? payload.worldBrief.trim() : '';
+  const generatedAt = typeof payload.generatedAt === 'string' ? payload.generatedAt : '';
+  const topStories = Array.isArray(payload.topStories) ? payload.topStories : [];
+
+  // Reuse the dashboard's freshness/shape acceptance, then apply MCP-specific
+  // output requirements. Never substitute an on-demand LLM result when the
+  // seeded producer has degraded: an empty or stale snapshot is safer than
+  // returning an ungated brief.
+  if (!brief) return { reason: 'empty-brief' };
+  if (payload.status !== 'ok') return { reason: 'status-not-ok' };
+
+  const headlines: string[] = [];
+  for (const story of topStories) {
+    if (!isRecord(story)) continue;
+    const headline = clipBriefText(story.primaryTitle, 500);
+    if (!headline) continue;
+    headlines.push(headline);
+    if (headlines.length >= 12) break;
+  }
+  if (headlines.length === 0) return { reason: 'no-headlines' };
+
+  // The producer's sources share the brief's citation index space. Preserve
+  // every record in order, including an empty URL fallback, so a malformed
+  // source cannot make later [n] citations point at the wrong article.
+  const sourceItems = Array.isArray(payload.worldBriefSources) ? payload.worldBriefSources : null;
+  if (!sourceItems || sourceItems.length === 0 || sourceItems.length > 12) return { reason: 'missing-sources' };
+  const sources = sourceItems.map((item, index) => normalizeInsightSource(item, {
+    fallback: topStories[index],
+    urlOrder: 'url-first',
+    allowEmptyUrl: true,
+  }));
+  if (sources.some((source) => source === null) || !sources.some((source) => source?.url)) {
+    return { reason: 'malformed-sources' };
+  }
+  const provider = typeof payload.briefProvider === 'string' ? payload.briefProvider : '';
+  const model = typeof payload.briefModel === 'string' ? payload.briefModel : '';
+
+  return { value: {
+    brief,
+    summary: brief,
+    headlines,
+    provider,
+    model,
+    generatedAt,
+    sources: sources as McpBriefSource[],
+  } };
 }
 
 function countryBriefSearchTerms(countryCode: string): string[] {
@@ -111,6 +170,101 @@ function countryBriefSearchTerms(countryCode: string): string[] {
 
 const PROCUREMENT_TOOL_DEFAULT_PAGE_SIZE = 10;
 const PROCUREMENT_TOOL_MAX_PAGE_SIZE = 25;
+
+// WTO reporter-versus-World merchandise trade-flow contract. Mirrors the
+// proto/v1/handler vocabulary (server/worldmonitor/trade/v1/get-trade-flows.ts):
+// an absent reporter defaults to "840" (US), the only partner is "000" (World),
+// and years is an inclusive lookback bounded by the seeded 30-year window.
+export const TRADE_FLOWS_DEFAULT_REPORTER = '840';
+export const TRADE_FLOWS_DEFAULT_YEARS = 10;
+export const TRADE_FLOWS_MAX_YEARS = 30;
+const TRADE_FLOWS_M49_CODE = /^[0-9]{3}$/;
+
+// Response vocabulary for `unavailableReason` — the closed enum emitted by the
+// RPC (TradeFlowUnavailableReason). The distinction agents depend on is
+// NOT_COVERED (a contract answer: a retry cannot help and nothing is broken)
+// versus every other member (a fault: the seed is missing or the cache failed).
+const TRADE_FLOW_REASON = {
+  served: 'TRADE_FLOW_UNAVAILABLE_REASON_UNSPECIFIED',
+  invalidRequest: 'TRADE_FLOW_UNAVAILABLE_REASON_INVALID_REQUEST',
+  notCovered: 'TRADE_FLOW_UNAVAILABLE_REASON_NOT_COVERED',
+  seedMissing: 'TRADE_FLOW_UNAVAILABLE_REASON_SEED_MISSING',
+  coverageUnknown: 'TRADE_FLOW_UNAVAILABLE_REASON_COVERAGE_UNKNOWN',
+  cacheUnavailable: 'TRADE_FLOW_UNAVAILABLE_REASON_CACHE_UNAVAILABLE',
+} as const;
+
+type TradeFlowRouteRecord = {
+  reportingCountry?: unknown;
+  partnerCountry?: unknown;
+  year?: unknown;
+  exportValueUsd?: unknown;
+  importValueUsd?: unknown;
+  yoyExportChange?: unknown;
+  yoyImportChange?: unknown;
+  productSector?: unknown;
+};
+
+type TradeFlowRouteResponse = {
+  flows?: TradeFlowRouteRecord[] | null;
+  fetchedAt?: unknown;
+  upstreamUnavailable?: unknown;
+  unavailableReason?: unknown;
+  coverageStartYear?: unknown;
+  coverageEndYear?: unknown;
+};
+
+function coerceTradeFlowNumber(value: unknown): number | null {
+  const n = typeof value === 'string' ? Number(value) : value;
+  return typeof n === 'number' && Number.isFinite(n) ? n : null;
+}
+
+function compactTradeFlowRecord(record: TradeFlowRouteRecord) {
+  const year = coerceTradeFlowNumber(record.year);
+  if (year === null) return null;
+  return {
+    year,
+    reportingCountry: typeof record.reportingCountry === 'string' ? record.reportingCountry : '',
+    partnerCountry: typeof record.partnerCountry === 'string' ? record.partnerCountry : '',
+    exportValueUsd: coerceTradeFlowNumber(record.exportValueUsd),
+    importValueUsd: coerceTradeFlowNumber(record.importValueUsd),
+    yoyExportChange: coerceTradeFlowNumber(record.yoyExportChange),
+    yoyImportChange: coerceTradeFlowNumber(record.yoyImportChange),
+    productSector: typeof record.productSector === 'string' ? record.productSector : '',
+  };
+}
+
+type NormalizedTradeFlowRequest = {
+  reporter: string;
+  years: number;
+};
+
+function normalizeTradeFlowRequest(params: Record<string, unknown>): NormalizedTradeFlowRequest | null {
+  const rawReporter = argStr(params.reporter);
+  if (rawReporter && !TRADE_FLOWS_M49_CODE.test(rawReporter)) return null;
+
+  let years = TRADE_FLOWS_DEFAULT_YEARS;
+  if (params.years !== undefined && params.years !== null) {
+    const rawYears = typeof params.years === 'number' ? params.years : Number(params.years);
+    if (!Number.isInteger(rawYears) || rawYears < 1 || rawYears > TRADE_FLOWS_MAX_YEARS) return null;
+    years = rawYears;
+  }
+
+  return {
+    reporter: rawReporter || TRADE_FLOWS_DEFAULT_REPORTER,
+    years,
+  };
+}
+
+function unavailableTradeFlowResult(reason: typeof TRADE_FLOW_REASON.invalidRequest) {
+  return {
+    flows: [],
+    fetchedAt: '',
+    upstreamUnavailable: false,
+    unavailableReason: reason,
+    coverageStartYear: 0,
+    coverageEndYear: 0,
+  };
+}
 
 type ProcurementRouteTender = {
   id: string;
@@ -445,29 +599,131 @@ export const RPC_TOOLS: ToolDef[] = [
     ],
   },
   {
-    name: 'get_world_brief',
+    name: 'get_wto_trade_flows',
     _outputBudgetBytes: 65536,
-    description: 'AI-generated world intelligence brief. Fetches the latest geopolitical headlines along with their RSS article bodies and produces a grounded LLM-summarized brief. Supply an optional geo_context to focus on a region or topic.',
+    description: 'WTO merchandise trade flows for one reporting country versus the World, over a configurable year window. Coverage is seed-backed from the WTO ITS_MTV_AX (exports) and ITS_MTV_AM (imports) indicators; the response distinguishes "this reporter/partner combination is not part of seeded coverage" (a contract answer, retrying cannot help) from every fault (seed missing or cache unreadable).',
     inputSchema: {
       type: 'object',
       properties: {
-        geo_context: { type: 'string', description: 'Optional focus context (e.g. "Middle East tensions", "US-China trade war")' },
+        reporter: {
+          type: 'string',
+          pattern: '^[0-9]{3}$',
+          description: 'WTO reporting country as a 3-digit UN M49 code (e.g. "840" = United States). Defaults to "840". The only partner served is the World ("000"); any other partner answers not_covered.',
+        },
+        years: {
+          type: 'integer',
+          minimum: 1,
+          maximum: TRADE_FLOWS_MAX_YEARS,
+          description: 'Number of years to look back from the most recent published year, inclusive of both endpoints (10 returns 11 calendar years). Defaults to 10; 30 is the full seeded window.',
+        },
       },
       required: [],
     },
-    // RPC tool: returns the raw body of /api/news/v1/summarize-article (LLM brief).
+    outputSchema: {
+      type: 'object',
+      required: ['flows', 'unavailableReason', 'upstreamUnavailable'],
+      properties: {
+        flows: {
+          type: 'array',
+          items: {
+            type: 'object',
+            required: ['year', 'reportingCountry', 'partnerCountry'],
+            properties: {
+              year: { type: 'integer' },
+              reportingCountry: { type: 'string' },
+              partnerCountry: { type: 'string' },
+              exportValueUsd: { type: ['number', 'null'], description: 'Merchandise exports to the World, USD.' },
+              importValueUsd: { type: ['number', 'null'], description: 'Merchandise imports from the World, USD.' },
+              yoyExportChange: { type: ['number', 'null'], description: 'Percent change in exports vs the prior adjacent year; 0 when no adjacent prior year exists.' },
+              yoyImportChange: { type: ['number', 'null'], description: 'Percent change in imports vs the prior adjacent year; 0 when no adjacent prior year exists.' },
+              productSector: { type: 'string' },
+            },
+          },
+        },
+        fetchedAt: { type: 'string', description: 'ISO timestamp when WTO was read by the seeder. Empty when no flows are served.' },
+        unavailableReason: {
+          type: 'string',
+          enum: Object.values(TRADE_FLOW_REASON),
+          description: 'TRADE_FLOW_UNAVAILABLE_REASON_UNSPECIFIED when flows are served; otherwise WHY no rows returned. NOT_COVERED is a contract answer (a retry cannot help); the rest name faults.',
+        },
+        upstreamUnavailable: { type: 'boolean', description: 'True when a fault prevented serving flows; false both when served and when the combination is simply not covered.' },
+        coverageStartYear: { type: 'integer', description: 'First calendar year in the served window; 0 when no flows are served.' },
+        coverageEndYear: { type: 'integer', description: 'Most recent calendar year in the served window; 0 when no flows are served.' },
+      },
+    },
+    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    // RPC-proxy hybrid: the handler owns slicing and miss-classification, so an
+    // agent reading this tool sees exactly what GET /api/trade/v1/get-trade-flows
+    // returns — no parallel slice/classify logic to drift (issue #6309). The
+    // coverage keys are the seeded fleet's canonical health/data keys.
+    _coverageKeys: [
+      'seed-meta:trade:flows',
+      'trade:flows:v2:index',
+      'trade:flows:v2:840:000',
+    ],
+    _execute: async (params, base, context, execution) => {
+      const request = normalizeTradeFlowRequest(params);
+      if (!request) return unavailableTradeFlowResult(TRADE_FLOW_REASON.invalidRequest);
+      const { reporter, years } = request;
+
+      const query = new URLSearchParams({
+        reporting_country: reporter,
+        years: String(years),
+      });
+      const url = `${base}/api/trade/v1/get-trade-flows?${query}`;
+      const auth = await buildAuthHeaders(context, 'GET', url, null);
+      const response = await fetch(url, {
+        headers: { ...auth, 'User-Agent': 'worldmonitor-mcp-edge/1.0' },
+        signal: AbortSignal.timeout(12_000),
+      });
+      await assertMcpToolFetchOk(response, {
+        operation: 'get-trade-flows',
+        tool: 'get_wto_trade_flows',
+        auth: context,
+        execution,
+      });
+      const result = await response.json() as TradeFlowRouteResponse;
+      const flows = Array.isArray(result.flows)
+        ? result.flows.map(compactTradeFlowRecord).filter((f) => f !== null)
+        : [];
+      return {
+        flows,
+        fetchedAt: typeof result.fetchedAt === 'string' ? result.fetchedAt : '',
+        upstreamUnavailable: result.upstreamUnavailable === true,
+        unavailableReason: typeof result.unavailableReason === 'string'
+          ? result.unavailableReason
+          : TRADE_FLOW_REASON.served,
+        coverageStartYear: coerceTradeFlowNumber(result.coverageStartYear) ?? 0,
+        coverageEndYear: coerceTradeFlowNumber(result.coverageEndYear) ?? 0,
+      };
+    },
+    _apiPaths: [
+      'GET /api/trade/v1/get-trade-flows',
+    ],
+  },
+  {
+    name: 'get_world_brief',
+    _outputBudgetBytes: 65536,
+    description: 'Citation-grounded world intelligence brief from the same precomputed news:insights:v1 snapshot used by the dashboard. The insights seeder applies corroboration, citation, and hallucination gates before publishing; this tool reads that accepted result without a request-time LLM call. The optional geo_context field is retained for client compatibility and does not alter the seeded global snapshot.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        geo_context: { type: 'string', description: 'Deprecated compatibility field; the precomputed global snapshot is not regenerated or refocused per request.' },
+      },
+      required: [],
+    },
     outputSchema: {
       type: 'object',
       properties: {
-        brief: { type: 'string', description: 'LLM-summarized geopolitical brief.' },
+        brief: { type: 'string', description: 'Citation-grounded brief from the dashboard insights snapshot.' },
         summary: { type: 'string', description: 'Alternate naming used by some upstream variants.' },
         headlines: { type: 'array', items: { type: 'string' } },
-        provider: { type: 'string' },
-        model: { type: 'string' },
+        provider: { type: 'string', description: 'LLM provider used by the insights seeder.' },
+        model: { type: 'string', description: 'LLM model used by the insights seeder.' },
         generatedAt: { type: ['string', 'number', 'null'] },
         sources: {
           type: 'array',
-          description: 'Original feed articles used as grounding inputs for this brief.',
+          description: 'Producer citation records in original order; empty URLs are retained as fallbacks so citation indexes cannot shift.',
           items: {
             type: 'object',
             properties: {
@@ -480,76 +736,51 @@ export const RPC_TOOLS: ToolDef[] = [
         },
       },
     },
-    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: false, openWorldHint: true },
+    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     // MCP Apps (`io.modelcontextprotocol/ui`): links the tool to its interactive
     // ui:// app shell (rendered inline by an MCP-Apps host). Single source of
     // truth — the ui:// resource is registered in ../ui/registry.ts.
     _uiResourceUri: WORLD_BRIEF_UI_URI,
-    _execute: async (params, base, context, execution) => {
+    _execute: async (_params, base, context, execution) => {
       const UA = 'worldmonitor-mcp-edge/1.0';
-      // Step 1: fetch current geopolitical headlines (budget: 6 s, leaves ~24 s for LLM).
-      // `full` is the documented geopolitical/default digest variant.
-      const digestUrl = `${base}/api/news/v1/list-feed-digest?variant=full&lang=en`;
-      const digestAuth = await buildAuthHeaders(context, 'GET', digestUrl, null);
-      const digestRes = await fetch(digestUrl, {
-        headers: { ...digestAuth, 'User-Agent': UA },
+      // Read the same validated payload that bootstraps the dashboard through
+      // the authenticated gateway RPC. The standalone bootstrap edge route
+      // does not verify MCP's internal HMAC, so Pro callers must use this
+      // gateway-backed path to retain entitlement and replay protection.
+      const insightsUrl = `${base}/api/infrastructure/v1/get-bootstrap-data?keys=insights`;
+      const insightsAuth = await buildAuthHeaders(context, 'GET', insightsUrl, null);
+      const insightsRes = await fetch(insightsUrl, {
+        headers: { ...insightsAuth, 'User-Agent': UA },
         signal: AbortSignal.timeout(6_000),
       });
-      await assertMcpToolFetchOk(digestRes, {
-        operation: 'list-feed-digest',
+      await assertMcpToolFetchOk(insightsRes, {
+        operation: 'bootstrap-insights',
         tool: 'get_world_brief',
         auth: context,
         execution,
       });
-      type DigestPayload = { categories?: Record<string, { items?: DigestItemForBrief[] }> };
-      const digest = await digestRes.json() as DigestPayload;
-      // Pair headlines with their RSS snippets so the LLM grounds per-story
-      // on article bodies instead of hallucinating across unrelated titles.
-      const pairs = Object.values(digest.categories ?? {})
-        .flatMap(cat => cat.items ?? [])
-        .map(item => ({
-          title: item.title ?? '',
-          snippet: item.snippet ?? '',
-          source: item.source ?? '',
-          link: item.link ?? item.url ?? '',
-          publishedAt: item.publishedAt ?? item.pubDate ?? item.date,
-        }))
-        .filter(p => p.title.length > 0)
-        .slice(0, 10);
-      const headlines = pairs.map(p => p.title);
-      const bodies = pairs.map(p => p.snippet);
-      const sources = collectMcpBriefSources(pairs, 6);
-      // Step 2: summarize with LLM (budget: 18 s — combined 24 s, well under 30 s edge ceiling)
-      const briefUrl = `${base}/api/news/v1/summarize-article`;
-      const briefBody = JSON.stringify({
-        provider: 'openrouter',
-        headlines,
-        bodies,
-        mode: 'brief',
-        geoContext: String(params.geo_context ?? ''),
-        variant: 'full',
-        lang: 'en',
-      });
-      const briefAuth = await buildAuthHeaders(context, 'POST', briefUrl, briefBody);
-      const briefRes = await fetch(briefUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...briefAuth, 'User-Agent': UA },
-        body: briefBody,
-        signal: AbortSignal.timeout(18_000),
-      });
-      await assertMcpToolFetchOk(briefRes, {
-        operation: 'summarize-article',
-        tool: 'get_world_brief',
-        auth: context,
-        execution,
-      });
-      const result = await briefRes.json() as Record<string, unknown>;
-      return { ...result, headlines, sources };
+      type BootstrapPayload = { data?: { insights?: unknown }; missing?: string[] };
+      const bootstrap = await insightsRes.json() as BootstrapPayload;
+      const rawInsights = bootstrap.data?.insights;
+      let insights: unknown = rawInsights;
+      if (typeof rawInsights === 'string') {
+        try {
+          insights = JSON.parse(rawInsights);
+        } catch {
+          insights = null;
+        }
+      }
+      const result = projectSeededWorldBrief(insights);
+      if ('reason' in result) {
+        throw new McpSourceUnavailableError(
+          `Seeded world brief unavailable (${result.reason})`,
+          ['news:insights:v1'],
+          [],
+        );
+      }
+      return result.value;
     },
-    _apiPaths: [
-      "GET /api/news/v1/list-feed-digest",
-      "POST /api/news/v1/summarize-article",
-    ],
+    _apiPaths: ['GET /api/infrastructure/v1/get-bootstrap-data'],
   },
   {
     name: 'get_country_brief',
@@ -968,7 +1199,7 @@ export const RPC_TOOLS: ToolDef[] = [
       const milOk = type === 'civilian' || milResult.status === 'fulfilled';
 
       // Both sources down — total outage, don't return misleading empty data
-      if (!civOk && !milOk) throw new Error('Airspace data unavailable: both civilian and military sources failed');
+      if (!civOk && !milOk) throw new BothSourcesFailedError(civResult.reason, milResult.reason);
 
       const civ = civResult.status === 'fulfilled' ? civResult.value : null;
       const mil = milResult.status === 'fulfilled' ? milResult.value : null;

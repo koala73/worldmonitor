@@ -1,6 +1,6 @@
 import type { Feed, NewsItem } from '@/types';
 import { SITE_VARIANT } from '@/config';
-import { chunkArray, fetchWithProxy, isMobileDevice } from '@/utils';
+import { chunkArray, fetchWithProxy, hasNoStoreCacheDirective, isMobileDevice } from '@/utils';
 import { classifyByKeyword, classifyWithAI } from './threat-classifier';
 import { inferGeoHubsFromTitle } from './geo-hub-index';
 import { getPersistentCache, setPersistentCache } from './persistent-cache';
@@ -248,6 +248,7 @@ export async function fetchFeed(feed: Feed): Promise<NewsItem[]> {
 
     const response = await fetchWithProxy(url);
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    const noStoreResponse = hasNoStoreCacheDirective(response.headers);
     const text = await response.text();
     const isMobile = isMobileDevice();
     const doc = await parseFeedXml(text, isMobile);
@@ -322,8 +323,10 @@ export async function fetchFeed(feed: Feed): Promise<NewsItem[]> {
       if (isMobile && index < itemNodes.length - 1) await yieldToMain();
     }
 
-    feedCache.set(feedScope, { items: parsed, timestamp: Date.now() });
-    void setPersistentCache(getPersistentFeedKey(feedScope), toSerializable(parsed));
+    if (!noStoreResponse) {
+      feedCache.set(feedScope, { items: parsed, timestamp: Date.now() });
+      void setPersistentCache(getPersistentFeedKey(feedScope), toSerializable(parsed));
+    }
     recordFeedSuccess(feedScope);
     ingestHeadlines(parsed.map(item => ({
       title: item.title,

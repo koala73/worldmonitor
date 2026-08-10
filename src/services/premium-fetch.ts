@@ -71,6 +71,10 @@ export function reportServerError(
   // widget endpoint and drowns the genuine origin-5xx canary (#5245).
   // markWmSessionDead() captures the episode once instead.
   if (res.headers.get('X-Wm-Session-Degraded') === '1') return;
+  // Fail-closed rate-limit degradation is already captured at the server
+  // decision point. Reporting every browser-visible 503 again would turn one
+  // Redis outage into a per-route, per-client Sentry flood.
+  if (res.headers.get('X-RateLimit-Mode') === 'degraded') return;
   try {
     const href = input instanceof Request ? input.url : String(input);
     const path = new URL(href, globalThis.location?.href ?? 'https://worldmonitor.app').pathname;

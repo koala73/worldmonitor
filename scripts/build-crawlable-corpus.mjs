@@ -37,6 +37,12 @@ const RESEARCH_REPORTS_INDEX_PATH = 'shared/research-reports/index.mjs';
 export const CORPUS_GENERATOR_CONTENT_VERSION = '2026-07-27';
 const COUNTRY_PAGE_CONTENT_VERSION = '2026-07-28';
 const CHOKEPOINT_PAGE_CONTENT_VERSION = '2026-07-28';
+const DATASET_SCHEMA_CONTENT_VERSION = '2026-08-05';
+const DATASET_LICENSE = {
+  '@type': 'CreativeWork',
+  name: 'World Monitor Terms of Service (27 July 2026)',
+  url: 'https://www.worldmonitor.app/docs/terms',
+};
 const CHANGELOG_PAGE_SIZE = 2;
 const MAX_TOOL_LATITUDE_SPAN = 45;
 const MAX_TOOL_LONGITUDE_SPAN = 60;
@@ -306,10 +312,19 @@ function formatCoordinates(lat, lon) {
 }
 
 function longestEligibleMetaDescription(candidates) {
-  return [...new Set(candidates)]
-    .map((candidate) => String(candidate ?? '').trim())
-    .filter((candidate) => candidate.length <= META_DESCRIPTION_MAX)
-    .sort((a, b) => b.length - a.length)[0];
+  // Linear scan, first-longest wins — the same pick a stable descending sort
+  // by length would make, without copying and sorting the (potentially ~12k)
+  // candidate array.
+  let best;
+  const seen = new Set();
+  for (const raw of candidates) {
+    const candidate = String(raw ?? '').trim();
+    if (seen.has(candidate)) continue;
+    seen.add(candidate);
+    if (candidate.length > META_DESCRIPTION_MAX) continue;
+    if (best === undefined || candidate.length > best.length) best = candidate;
+  }
+  return best;
 }
 
 function formatMetaDescriptionList(items) {
@@ -321,12 +336,21 @@ function formatMetaDescriptionList(items) {
 function signalMetaDescriptionCandidates({ subjects, signals }) {
   const candidates = [];
   const subsetCount = 2 ** signals.length;
+  // The formatted signal list depends only on the mask, so format each subset
+  // once instead of once per subject×verb combination. The triple loop below
+  // keeps its original nesting so the candidate order — and therefore which
+  // equal-length candidate longestEligibleMetaDescription picks — is unchanged.
+  const listByMask = new Array(subsetCount);
+  for (let mask = 1; mask < subsetCount; mask += 1) {
+    const selectedSignals = signals.filter((_, index) => mask & (2 ** index));
+    if (selectedSignals.length < 3) continue;
+    listByMask[mask] = formatMetaDescriptionList(selectedSignals);
+  }
   for (const subject of subjects) {
     for (const verb of ['tracks', 'monitors', 'covers']) {
       for (let mask = 1; mask < subsetCount; mask += 1) {
-        const selectedSignals = signals.filter((_, index) => mask & (2 ** index));
-        if (selectedSignals.length < 3) continue;
-        candidates.push(`${subject}: ${verb} ${formatMetaDescriptionList(selectedSignals)}.`);
+        if (listByMask[mask] === undefined) continue;
+        candidates.push(`${subject}: ${verb} ${listByMask[mask]}.`);
       }
     }
   }
@@ -751,6 +775,7 @@ export async function loadCorpusData({ rootDir = DEFAULT_ROOT } = {}) {
     resilience.capturedAt,
     CORPUS_GENERATOR_CONTENT_VERSION,
     COUNTRY_PAGE_CONTENT_VERSION,
+    DATASET_SCHEMA_CONTENT_VERSION,
   );
   const changelogLastmod = laterDate(
     gitFileLastmod(rootDir, CHANGELOG_PATH),
@@ -773,6 +798,7 @@ export async function loadCorpusData({ rootDir = DEFAULT_ROOT } = {}) {
   const researchLastmod = laterDate(
     ...researchReports.map(({ report }) => report.dateModified),
     CORPUS_GENERATOR_CONTENT_VERSION,
+    DATASET_SCHEMA_CONTENT_VERSION,
   );
 
   return {
@@ -1063,6 +1089,12 @@ function renderCountryPage({
         '@type': 'Dataset',
         name: `World Monitor Country Resilience snapshot for ${country.name}`,
         description: `A dated World Monitor Country Resilience Index snapshot for ${country.name}, with the overall score, rank, dimension coverage, confidence classification, and scoring methodology used for this page.`,
+        creator: {
+          '@type': 'Organization',
+          name: 'World Monitor',
+          url: 'https://www.worldmonitor.app/',
+        },
+        license: DATASET_LICENSE,
         datePublished: capturedAt,
         measurementTechnique: methodologyFormula,
       },

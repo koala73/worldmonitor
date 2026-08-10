@@ -130,6 +130,27 @@ const getCspDirectiveTokens = (csp, directive) => {
   return [...new Set(tokens)].sort();
 };
 
+// frame-src is a BOUNDED allowlist, not a closed host list: it legitimately
+// carries vendor wildcard subdomains. Pin them, so a NEW wildcard or any
+// scheme-wide source is flagged while the known ones stay quiet.
+const KNOWN_FRAME_WILDCARDS = [
+  'https://*.clerk.accounts.dev',
+  'https://*.vercel.app',
+  'https://*.dodopayments.com',
+  'https://*.hs.dodopayments.com',
+  'https://*.custom.hs.dodopayments.com',
+];
+const OPEN_CSP_SOURCES = ['*', 'https:', 'http:', 'data:', 'blob:'];
+// Exported-by-hoisting so the guard's own negative test can drive it directly
+// rather than asserting through the real config, which cannot show a widening.
+const findOpenFrameSources = (tokens) => tokens.filter((token) => {
+  if (KNOWN_FRAME_WILDCARDS.includes(token)) return false;
+  // Tokens keep their scheme (`https://*.vercel.app`), so the wildcard test has
+  // to run on the host part or it matches nothing at all.
+  const host = token.replace(/^[a-z][a-z0-9+.-]*:\/\//i, '');
+  return OPEN_CSP_SOURCES.includes(token) || host === '*' || host.startsWith('*.');
+});
+
 const hasTrustedStaticNonce = (attributes) => (
   new RegExp(`\\bnonce=["']${STATIC_SCRIPT_NONCE}["']`).test(attributes)
 );
@@ -1275,6 +1296,53 @@ describe('security header guardrails', () => {
         `${directive} tokens in nginx-security-headers.conf but missing from vercel.json: ${onlyNginx.join(', ')}. ` +
         'Payment/auth iframe and form targets must stay deploy-surface identical.');
     }
+  });
+
+  it('CSP frame-src stays a bounded host allowlist (load-bearing for a Sentry suppression rule)', () => {
+    // `shouldSuppressCspViolation` in src/main.ts discards frame-src violation
+    // reports for `div.show` on the argument that frame-src enumerates every
+    // host we embed, so a host we never reference can only have been injected
+    // from outside. That argument holds only while the directive stays a closed
+    // allowlist -- adding a scheme-wide or wildcard source would make foreign
+    // frames legal, and the suppression would then be hiding a real policy
+    // change rather than third-party noise. The existing frame-src tests pin
+    // that Clerk is PRESENT and that the deploy surfaces agree; neither would
+    // fail on a widening, so this pins the property the suppression depends on.
+    for (const [label, csp] of [
+      ['vercel.json', getHeaderValue('Content-Security-Policy')],
+      ['docker/nginx', getNginxHeaderValue('Content-Security-Policy')],
+    ]) {
+      assert.ok(csp, `${label} must have a Content-Security-Policy header`);
+      const tokens = getCspDirectiveTokens(csp, 'frame-src');
+      assert.ok(tokens.length > 0, `${label} must declare an explicit frame-src`);
+      const open = findOpenFrameSources(tokens);
+      assert.deepEqual(open, [],
+        `${label} frame-src must stay a bounded host allowlist; found open source(s): ${open.join(', ')}. ` +
+        'The div.show suppression in src/main.ts assumes any non-allowlisted frame is third-party injection.');
+    }
+  });
+
+  it('the frame-src allowlist guard actually fires on a widening', () => {
+    // The first version of this guard tested `token.startsWith('*.')`, which can
+    // never match: getCspDirectiveTokens returns tokens WITH their scheme
+    // (`https://*.vercel.app`). It therefore passed while dead. Drive the
+    // predicate directly against widenings written the way they'd really appear.
+    for (const widened of [
+      'https://*.evil.com',   // a new vendor wildcard
+      'https://*',            // scheme-wide with a wildcard host
+      'http://*.evil.com',
+      '*',
+      'https:',
+      '*.evil.com',           // scheme-less
+    ]) {
+      assert.deepEqual(findOpenFrameSources([widened]), [widened],
+        `guard must flag ${widened} as an open frame-src source`);
+    }
+    // ...and must stay quiet on the bounded sources the policy legitimately has.
+    assert.deepEqual(
+      findOpenFrameSources(["'self'", 'https://www.worldmonitor.app', ...KNOWN_FRAME_WILDCARDS]),
+      []
+    );
   });
 
   it('security.txt exists in public/.well-known/', () => {

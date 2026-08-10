@@ -2027,7 +2027,7 @@ describe('api/mcp.ts — PRO MCP Server', () => {
     const faoPayload = { months: [{ month: '2026-04', index: 119.2 }] };
     const debtPayload = { countries: [{ iso: 'JPN', debtPctGdp: 263.1 }] };
 
-    // tariffs budget=540min — set 60min old (fresh)
+    // tariffs budget=420min — set 60min old (fresh)
     const tariffsFetchedAt = Date.now() - 60 * 60_000;
     // bigmac budget=10080min — set 12h old (fresh)
     const bigmacFetchedAt = Date.now() - 12 * 60 * 60_000;
@@ -2038,7 +2038,7 @@ describe('api/mcp.ts — PRO MCP Server', () => {
 
     globalThis.fetch = async (url) => {
       const u = url.toString();
-      if (u.includes(`/get/${encodeURIComponent('trade:tariffs:v1:840:all:10')}`)) {
+      if (u.includes(`/get/${encodeURIComponent('trade:tariffs:v2:840')}`)) {
         return new Response(JSON.stringify({ result: JSON.stringify(tariffsPayload) }), { status: 200, headers: { 'Content-Type': 'application/json' } });
       }
       if (u.includes(`/get/${encodeURIComponent('economic:bigmac:v1')}`)) {
@@ -2050,7 +2050,7 @@ describe('api/mcp.ts — PRO MCP Server', () => {
       if (u.includes(`/get/${encodeURIComponent('economic:national-debt:v1')}`)) {
         return new Response(JSON.stringify({ result: JSON.stringify(debtPayload) }), { status: 200, headers: { 'Content-Type': 'application/json' } });
       }
-      if (u.includes(`/get/${encodeURIComponent('seed-meta:trade:tariffs:v1:840:all:10')}`)) {
+      if (u.includes(`/get/${encodeURIComponent('seed-meta:trade:tariffs')}`)) {
         return new Response(JSON.stringify({ result: JSON.stringify({ fetchedAt: tariffsFetchedAt, recordCount: 1 }) }), { status: 200, headers: { 'Content-Type': 'application/json' } });
       }
       if (u.includes(`/get/${encodeURIComponent('seed-meta:economic:bigmac')}`)) {
@@ -2078,10 +2078,9 @@ describe('api/mcp.ts — PRO MCP Server', () => {
     const payload = JSON.parse(body.result.content[0].text);
     assert.equal(payload.stale, false, 'all 4 metas within their per-key budgets must yield stale=false');
     assert.equal(payload.cached_at, new Date(debtFetchedAt).toISOString(), 'cached_at reflects oldest valid fetchedAt (national-debt)');
-    // Label-walk derives slice names from the trailing non-(v\d+|\d+) segment.
-    // trade:tariffs:v1:840:all:10 → trailing "10" + "all" are skipped/kept;
-    // "10" is bare-numeric → skipped, "all" stays → label="all".
-    assert.deepEqual(payload.data['all'], tariffsPayload, 'tariffs slice labelled "all" from cache-key label-walk');
+    // trade:tariffs:v2:840 would label-walk to "tariffs"; _cacheLabels pins
+    // the historical "all" dataset name so the enum/postFilter stay stable.
+    assert.deepEqual(payload.data['all'], tariffsPayload, 'tariffs slice labelled "all" via _cacheLabels');
     assert.deepEqual(payload.data['bigmac'], bigmacPayload, 'bigmac slice labelled from cache-key suffix');
     assert.deepEqual(payload.data['fao-ffpi'], faoPayload, 'fao-ffpi slice labelled from cache-key suffix');
     assert.deepEqual(payload.data['national-debt'], debtPayload, 'national-debt slice labelled from cache-key suffix');
@@ -2096,7 +2095,7 @@ describe('api/mcp.ts — PRO MCP Server', () => {
     const faoPayload = { months: [{ month: '2025-12' }] };
     const debtPayload = { countries: [{ iso: 'JPN' }] };
 
-    // tariffs budget=540min → 60min old (fresh)
+    // tariffs budget=420min → 60min old (fresh)
     const tariffsFetchedAt = Date.now() - 60 * 60_000;
     // bigmac budget=10080min → 12h old (fresh)
     const bigmacFetchedAt = Date.now() - 12 * 60 * 60_000;
@@ -2107,7 +2106,7 @@ describe('api/mcp.ts — PRO MCP Server', () => {
 
     globalThis.fetch = async (url) => {
       const u = url.toString();
-      if (u.includes(`/get/${encodeURIComponent('trade:tariffs:v1:840:all:10')}`)) {
+      if (u.includes(`/get/${encodeURIComponent('trade:tariffs:v2:840')}`)) {
         return new Response(JSON.stringify({ result: JSON.stringify(tariffsPayload) }), { status: 200, headers: { 'Content-Type': 'application/json' } });
       }
       if (u.includes(`/get/${encodeURIComponent('economic:bigmac:v1')}`)) {
@@ -2119,7 +2118,7 @@ describe('api/mcp.ts — PRO MCP Server', () => {
       if (u.includes(`/get/${encodeURIComponent('economic:national-debt:v1')}`)) {
         return new Response(JSON.stringify({ result: JSON.stringify(debtPayload) }), { status: 200, headers: { 'Content-Type': 'application/json' } });
       }
-      if (u.includes(`/get/${encodeURIComponent('seed-meta:trade:tariffs:v1:840:all:10')}`)) {
+      if (u.includes(`/get/${encodeURIComponent('seed-meta:trade:tariffs')}`)) {
         return new Response(JSON.stringify({ result: JSON.stringify({ fetchedAt: tariffsFetchedAt, recordCount: 1 }) }), { status: 200, headers: { 'Content-Type': 'application/json' } });
       }
       if (u.includes(`/get/${encodeURIComponent('seed-meta:economic:bigmac')}`)) {
@@ -2159,10 +2158,10 @@ describe('api/mcp.ts — PRO MCP Server', () => {
 
     globalThis.fetch = async (url) => {
       const u = url.toString();
-      if (u.includes(`/get/${encodeURIComponent('trade:tariffs:v1:840:all:10')}`)) {
+      if (u.includes(`/get/${encodeURIComponent('trade:tariffs:v2:840')}`)) {
         return new Response(JSON.stringify({ result: JSON.stringify(tariffsPayload) }), { status: 200, headers: { 'Content-Type': 'application/json' } });
       }
-      if (u.includes(`/get/${encodeURIComponent('seed-meta:trade:tariffs:v1:840:all:10')}`)) {
+      if (u.includes(`/get/${encodeURIComponent('seed-meta:trade:tariffs')}`)) {
         return new Response(JSON.stringify({ result: JSON.stringify({ fetchedAt: tariffsFetchedAt, recordCount: 1 }) }), { status: 200, headers: { 'Content-Type': 'application/json' } });
       }
       // Everything else absent → readJsonFromUpstash → null
@@ -2254,6 +2253,20 @@ describe('api/mcp.ts — PRO MCP Server', () => {
     const chokepointTransitsFetchedAt = Date.now() - 8 * 60_000;
     // portwatch-ports budget=2160min (36h) → 12h old (fresh)
     const portwatchPortsFetchedAt = Date.now() - 12 * 60 * 60_000;
+    const portwatchContentFreshness = {
+      assessedAt: Date.now(),
+      coveredCount: 174,
+      freshCount: 174,
+      staleCount: 0,
+      unknownCount: 0,
+      staleCountries: [],
+      criticalCountries: ['CN', 'HK'],
+      criticalFreshCount: 2,
+      criticalStaleCountries: [],
+      criticalMissingCountries: 0,
+      criticalOldestObservedAt: Date.now() - 12 * 60 * 60_000,
+      criticalOldestObservedCountry: 'CN',
+    };
     // chokepoint-baselines budget=576000min (400d) → 60d old (fresh; SECOND-OLDEST)
     const chokepointBaselinesFetchedAt = Date.now() - 60 * 24 * 60 * 60_000;
     // portwatch:chokepoints-ref budget=20160min (14d) → 7d old (fresh)
@@ -2261,8 +2274,17 @@ describe('api/mcp.ts — PRO MCP Server', () => {
     // chokepoint-flows budget=720min (12h) → 5h old (fresh)
     const chokepointFlowsFetchedAt = Date.now() - 5 * 60 * 60_000;
 
-    globalThis.fetch = async (url) => {
+    globalThis.fetch = async (url, init) => {
       const u = url.toString();
+      // #6080/#6111: get_chokepoint_status also reads its content-freshness
+      // activation marker via an EXISTS pipeline. This fixture includes a
+      // valid content report and answers 0 for the marker, so the test stays
+      // about transport/cardinality freshness without relying on grace after
+      // the compiled deployment-order deadline.
+      if (u.endsWith('/pipeline')) {
+        const commands = JSON.parse(init.body);
+        return new Response(JSON.stringify(commands.map(() => ({ result: 0 }))), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      }
       if (u.includes(`/get/${encodeURIComponent('supply_chain:transit-summaries:v1')}`)) {
         return new Response(JSON.stringify({ result: JSON.stringify(transitSummariesPayload) }), { status: 200, headers: { 'Content-Type': 'application/json' } });
       }
@@ -2288,7 +2310,11 @@ describe('api/mcp.ts — PRO MCP Server', () => {
         return new Response(JSON.stringify({ result: JSON.stringify({ fetchedAt: chokepointTransitsFetchedAt, recordCount: 13 }) }), { status: 200, headers: { 'Content-Type': 'application/json' } });
       }
       if (u.includes(`/get/${encodeURIComponent('seed-meta:supply_chain:portwatch-ports')}`)) {
-        return new Response(JSON.stringify({ result: JSON.stringify({ fetchedAt: portwatchPortsFetchedAt, recordCount: 200 }) }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+        return new Response(JSON.stringify({ result: JSON.stringify({
+          fetchedAt: portwatchPortsFetchedAt,
+          recordCount: 200,
+          contentFreshness: portwatchContentFreshness,
+        }) }), { status: 200, headers: { 'Content-Type': 'application/json' } });
       }
       if (u.includes(`/get/${encodeURIComponent('seed-meta:energy:chokepoint-baselines')}`)) {
         return new Response(JSON.stringify({ result: JSON.stringify({ fetchedAt: chokepointBaselinesFetchedAt, recordCount: 13 }) }), { status: 200, headers: { 'Content-Type': 'application/json' } });
@@ -2343,8 +2369,15 @@ describe('api/mcp.ts — PRO MCP Server', () => {
     // portwatch-ports budget=2160min (36h) → 100h old (clearly STALE)
     const portwatchPortsFetchedAt = Date.now() - 100 * 60 * 60_000;
 
-    globalThis.fetch = async (url) => {
+    globalThis.fetch = async (url, init) => {
       const u = url.toString();
+      // #6080/#6111: the marker is read through EXISTS and answers 0, but
+      // these block-less fixtures are intentionally evaluated after the
+      // compiled grace deadline, so the missing content remains strict.
+      if (u.endsWith('/pipeline')) {
+        const commands = JSON.parse(init.body);
+        return new Response(JSON.stringify(commands.map(() => ({ result: 0 }))), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      }
       if (u.includes(`/get/${encodeURIComponent('supply_chain:transit-summaries:v1')}`)) {
         return new Response(JSON.stringify({ result: JSON.stringify(transitSummariesPayload) }), { status: 200, headers: { 'Content-Type': 'application/json' } });
       }
@@ -2385,8 +2418,15 @@ describe('api/mcp.ts — PRO MCP Server', () => {
     const transitSummariesPayload = { chokepoints: { suez: { vesselsPast24h: 87 } } };
     const transitSummariesFetchedAt = Date.now() - 5 * 60_000;
 
-    globalThis.fetch = async (url) => {
+    globalThis.fetch = async (url, init) => {
       const u = url.toString();
+      // #6080/#6111: the marker is read through EXISTS and answers 0, but
+      // this block-less fixture is intentionally evaluated after the compiled
+      // grace deadline, so the missing content remains strict.
+      if (u.endsWith('/pipeline')) {
+        const commands = JSON.parse(init.body);
+        return new Response(JSON.stringify(commands.map(() => ({ result: 0 }))), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      }
       if (u.includes(`/get/${encodeURIComponent('supply_chain:transit-summaries:v1')}`)) {
         return new Response(JSON.stringify({ result: JSON.stringify(transitSummariesPayload) }), { status: 200, headers: { 'Content-Type': 'application/json' } });
       }

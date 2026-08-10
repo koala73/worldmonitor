@@ -259,6 +259,10 @@ describe('China decision-signal alert policy (#5580)', () => {
       partial: 1,
       stale: 1,
       unavailable: 3,
+      // None of the three unavailable groups declares a cause, so none is a
+      // proven healthy quiet window (#6060).
+      healthyQuiet: 0,
+      operationallyCovered: 3,
     });
     assert.deepEqual(diagnostics.groupStates, {
       macro: 'available',

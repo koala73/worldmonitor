@@ -174,6 +174,7 @@
     "groceryBasket": "Grocery Index",
     "groceryItem": "Item",
     "bigmac": "Real Big Mac Index",
+    "fx": "FX Rates",
     "bigmacDesc": "Big Mac prices across Middle East countries (Big Mac Index)",
     "bigmacWow": "WoW",
     "bigmacCountry": "Country",
@@ -455,6 +456,9 @@
     },
     "bigmac": {
       "infoTooltip": "<strong>Real Big Mac Index</strong> The Economist's Big Mac Index measures purchasing power parity by comparing McDonald's burger prices across countries. Updated when new data is published (quarterly/annually)."
+    },
+    "fx": {
+      "infoTooltip": "<strong>FX Rates</strong> Currency stress and spot rates:<ul><li>FX Stress ranks 45 currencies by their worst peak-to-trough drawdown over the last 24 months, alongside the 12-month change</li><li>Coverage includes ARS, TRY, EGP, NGN, PKR and UAH — currencies the BIS and ECB reference sets omit</li><li>Spot lists rates against the US dollar and the ECB euro reference rates separately, because the two are quoted from different bases</li><li>RUB — Bank of Russia rates, rubles per unit</li></ul>Sources: Yahoo Finance, the ECB and the Bank of Russia."
     },
     "cascade": {
       "infoTooltip": "<strong>Cascade Analysis</strong> Models infrastructure dependencies:<ul><li>Subsea cables, pipelines, ports, chokepoints</li><li>Select infrastructure to simulate failure</li><li>Shows affected countries and capacity loss</li><li>Identifies redundant routes</li></ul>Data from TeleGeography and industry sources."

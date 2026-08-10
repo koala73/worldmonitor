@@ -115,6 +115,7 @@ describe('layer explanation metadata', () => {
       'ucdpEvents',
       'ciiChoropleth',
       'natural',
+      'weather',
       'flights',
       'ais',
       'waterways',
@@ -168,6 +169,9 @@ describe('layer explanation metadata', () => {
     const naturalTtlMin = constNumber('scripts/seed-natural-events.mjs', 'CACHE_TTL') / 60;
     assert.equal(naturalTtlMin, naturalCadenceMin * 6, 'natural TTL must keep the documented 6x cadence buffer');
     assertDuration(renderedFreshnessText('natural'), /every\s+([0-9]+)\s+(hour)s?/i, naturalCadenceMin, 'natural event seed cadence');
+
+    assertDuration(renderedFreshnessText('weather'), /every\s+([0-9]+)\s+(minute)s?/i, relayConstMinutes('WEATHER_SEED_INTERVAL_MS'), 'weather relay seed cadence');
+    assertDuration(renderedFreshnessText('weather'), /([0-9]+)-\s*(minute)\s+freshness budget/i, healthMaxStale('weatherAlerts'), 'weather health freshness budget');
 
     const aviationCadenceMin = maxStaleMin('scripts/seed-aviation.mjs', 'intl') / 3;
     assertDuration(renderedFreshnessText('flights'), /([0-9]+)-\s*(minute)\s+cadence/i, aviationCadenceMin, 'aviation disruption seed cadence');
@@ -224,6 +228,23 @@ describe('layer explanation metadata', () => {
 
     assert.match(cyberThreats.source, /ransomware\.live RSS\/news feed/i);
     assert.match(cyberThreats.source, /IP geolocation enrichment/i);
+  });
+
+  test('weather explanation discloses NWS-only United States coverage', () => {
+    const weather = getLayerExplanation('weather');
+
+    assert.equal(LAYER_REGISTRY.weather.fallbackLabel, 'US Weather Alerts (NWS)');
+    assert.match(weather.source, /National Weather Service \(NWS\)/i);
+    assert.ok(
+      weather.limitations.some(limitation => /outside the United States/i.test(limitation)),
+      'weather limitations must state that official warnings outside the United States are absent',
+    );
+    // Require the citations this card's claims actually rest on, without pinning the array
+    // exactly — the v1 loop above already asserts every evidence path exists on disk, so a
+    // later addition stays covered instead of reddening this assertion.
+    for (const path of ['scripts/ais-relay.cjs', 'api/health.js', 'src/services/weather.ts']) {
+      assert.ok(weather.evidence.includes(path), `weather evidence must cite ${path}`);
+    }
   });
 
   test('curated explanations are not accidentally added outside the declared v1 set', () => {

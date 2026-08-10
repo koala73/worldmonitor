@@ -367,7 +367,8 @@
     "consumerPrices": "Prețuri pentru consumatori",
     "fearGreed": "Frică și lacómie",
     "marketBreadth": "Amploarea pieței",
-    "climateNews": "Știri despre climă"
+    "climateNews": "Știri despre climă",
+    "fx": "Cursuri de schimb valutar"
   },
   "commands": {
     "prefixes": {
@@ -1133,7 +1134,7 @@
         "ucdpEvents": "Evenimente de conflict armat",
         "displacementFlows": "Fluxuri de deplasare",
         "climateAnomalies": "Anomalii climatice",
-        "weatherAlerts": "Alerte meteo",
+        "weatherAlerts": "Alerte meteo pentru SUA (NWS)",
         "strategicWaterways": "Căi navigabile strategice",
         "economicCenters": "Centre Economice",
         "criticalMinerals": "Minerale critice",
@@ -1214,7 +1215,7 @@
           "infraDatacenters": "Clustere de calcul AI >=10.000 de GPU",
           "infraOutages": "Întreruperea internetului și întreruperile serviciului",
           "naturalEventsTech": "Cutremururi, furtuni, incendii (pot afecta centrele de date)",
-          "weatherAlerts": "Alerte de vreme severă",
+          "weatherAlerts": "Alerte de vreme severă în SUA (NWS)",
           "economicCenters": "Burse de valori și bănci centrale",
           "countriesOverlay": "Numele țării se suprapune",
           "financeExchanges": "Schimburile globale majore pe nivelul pieței",
@@ -1226,7 +1227,7 @@
           "financeOutages": "Întreruperi ale internetului care pot afecta operațiunile pieței",
           "financeCyberThreats": "Evenimente de securitate în jurul infrastructurii financiare",
           "macroWaterways": "Puncte de strangulare strategice pentru transportul mărfurilor",
-          "weatherAlertsMarket": "Evenimente meteorologice severe cu relevanță pentru piață",
+          "weatherAlertsMarket": "Evenimente meteorologice severe din SUA cu relevanță pentru piață (NWS)",
           "naturalEventsMacro": "Cutremurele, incendiile, inundațiile și alte perturbări naturale",
           "timeRecent": "Filtrați datele bazate pe timp la ultimele ore",
           "timeExtended": "Afișați datele din săptămâna trecută, din luna sau din toate timpurile",
@@ -1355,7 +1356,8 @@
       "sources_few": "{{count}} surse",
       "provenanceTitle": "Proveniență acoperire: câte articole ingerate și surse distincte din care a fost selectat acest rezumat",
       "compiledFrom": "Compilat din {{stories}} povești din {{sources}} surse",
-      "briefFreshness": "Generat {{minutes}}m în urmă · cea mai nouă sursă {{hours}}h vechime"
+      "briefFreshness": "Generat {{minutes}}m în urmă · cea mai nouă sursă {{hours}}h vechime",
+      "briefStoryDetails": "Story details ({{count}})"
     },
     "settings": {
       "exportSettings": "Exportare setări",
@@ -2146,6 +2148,17 @@
       "chart": {
         "title": "Grafic prețuri {{symbol}}",
         "close": "Închide graficul"
+      },
+      "unavailable": {
+        "symbols": "{{symbols}} — {{reason}}",
+        "symbolsMore": "{{symbols}} +{{count}} more — {{reason}}",
+        "notFound": "no quote available",
+        "providerError": "quote lookup failed, retrying shortly",
+        "rateLimited": "quote provider rate limited, retrying shortly",
+        "notConfigured": "quote provider not configured",
+        "requestLimit": "too many symbols requested",
+        "budget": "not loaded yet, retrying shortly",
+        "seed": "market data temporarily unavailable"
       }
     },
     "heatmap": {
@@ -2539,6 +2552,38 @@
       "upgradeCta": "Actualizează pentru mai mult",
       "lockedAriaLabel": "Adaugă filă — blocat. {{reason}}",
       "unlockedAnnouncement": "Limita filelor tabloului de bord a fost ridicată."
+    },
+    "fx": {
+      "infoTooltip": "<strong>Cursuri de schimb valutar</strong> Stres valutar și cursuri spot:<ul><li>FX Stress clasifică 45 de monede după cea mai mare scădere vârf-vale din ultimii 24 de luni, alături de variația pe 12 luni</li><li>Acoperirea include ARS, TRY, EGP, NGN, PKR și UAH — monede pe care seturile de referință BIS și ECB le omit</li><li>Spot listează cursurile față de dolar american și cursurile de referință euro ECB separat, deoarece cele două sunt cotate din baze diferite</li><li>RUB — ratele Băncii Rusiei, ruble per unitate</li></ul> Surse: Yahoo Finance, Banca Centrală Europeană și Banca Rusiei.",
+      "tabs": {
+        "stress": "FX Stress",
+        "spot": "Spot",
+        "rub": "RUB"
+      },
+      "currency": "Monedă",
+      "pair": "Pereche",
+      "rate": "Curs",
+      "yoy": "12 luni",
+      "drawdown": "Scădere 24 luni",
+      "peakToTrough": "Vârf → Vale",
+      "change1d": "1 zi",
+      "perUsd": "Per 1 USD",
+      "usdPerUnit": "USD per unitate",
+      "usdBase": "Față de dolarul american",
+      "eurBase": "Cursuri de referință euro ECB",
+      "stressedCount": "{{stressed}} din {{total}} monede sub {{threshold}}",
+      "sourceYahoo": "Sursă: Yahoo Finance",
+      "sourceEcb": "Sursă: ECB",
+      "degraded": "Indisponibil în acest moment: {{sources}}. Reîncercarea în curând.",
+      "source": {
+        "stress": "Stres FX",
+        "usd": "Ratele dolarului american",
+        "eur": "Ratele euro ale BCE",
+        "rub": "Ratele Băncii Rusiei"
+      },
+      "rubBase": "Banca Rusiei — ruble per 1 unitate",
+      "rubPerUnit": "Ruble per unitate",
+      "sourceCbr": "Sursă: Banca Rusiei"
     }
   },
   "popups": {
@@ -2879,7 +2924,7 @@
       "heading": "TITUL",
       "hexCode": "COD HEX",
       "squawk": "SQUAWK",
-      "attribution": "Sursa: OpenSky Network"
+      "attribution": "Sursa: adsb.lol (ODbL) · OpenSky Network"
     },
     "militaryVessel": {
       "aisDark": "AIS ÎNTUNEC",
@@ -3353,5 +3398,31 @@
     "deleteTab": "Șterge fila",
     "deleteTabAria": "Șterge fila {{name}}",
     "tabNameAria": "Numele filei"
+  },
+  "theaterPresets": {
+    "label": "Preseturi de acoperire",
+    "applied": "Presetul {{preset}} a fost aplicat: {{count}} surse activate",
+    "alreadyApplied": "Presetul {{preset}} este deja aplicat",
+    "ukraineWar": {
+      "label": "Războiul din Ucraina",
+      "description": "Activează principalele publicații ucrainene, presa rusă independentă și sursele de evaluare a frontului"
+    },
+    "indoPacific": {
+      "label": "Indo-Pacific / Taiwan",
+      "description": "Activează sursele de securitate pentru Taiwan, Pakistan și Asia de Sud-Est"
+    },
+    "sahelWestAfrica": {
+      "label": "Sahel și Africa de Vest",
+      "description": "Activează sursele locale din Sahel, Nigeria și Africa de Vest"
+    },
+    "caucasusCentralAsia": {
+      "label": "Caucaz și Asia Centrală",
+      "description": "Activează sursele regionale din Caucazul de Sud și Asia Centrală"
+    },
+    "middleEastFlashpoints": {
+      "label": "Puncte fierbinți în Orientul Mijlociu",
+      "description": "Activează sursele despre Iran, Israel, Golf și regiunile kurde"
+    },
+    "unavailable": "Presetul {{preset}} nu este disponibil cu panourile actuale"
   }
 }

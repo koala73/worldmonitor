@@ -1,4 +1,10 @@
-import type { McpPanelSpec, McpPreset, McpToolDef } from '@/services/mcp-store';
+import {
+  MIN_MCP_REFRESH_INTERVAL_MS,
+  normalizeMcpRefreshIntervalMs,
+  type McpPanelSpec,
+  type McpPreset,
+  type McpToolDef,
+} from '@/services/mcp-store';
 import { MCP_PRESETS } from '@/services/mcp-store';
 import { t } from '@/services/i18n';
 import { escapeHtml } from '@/utils/sanitize';
@@ -13,7 +19,7 @@ interface McpConnectOptions {
   onComplete: (spec: McpPanelSpec) => void;
 }
 
-const MIN_MCP_REFRESH_S = 60;
+const MIN_MCP_REFRESH_S = MIN_MCP_REFRESH_INTERVAL_MS / 1000;
 
 let overlay: HTMLElement | null = null;
 
@@ -437,7 +443,7 @@ export function openMcpConnectModal(options: McpConnectOptions): void {
       customHeaders: getEffectiveHeaders(),
       toolName: selectedTool.name,
       toolArgs,
-      refreshIntervalMs: Math.max(MIN_MCP_REFRESH_S, parseInt(refreshInput.value, 10) || MIN_MCP_REFRESH_S) * 1000,
+      refreshIntervalMs: normalizeMcpRefreshIntervalMs(parseInt(refreshInput.value, 10) * 1000),
       createdAt: existing?.createdAt ?? Date.now(),
       updatedAt: Date.now(),
     };

@@ -4,6 +4,8 @@ import { readdirSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { load as loadYaml } from 'js-yaml';
+
+import { loadUnifiedOpenApiSpec } from './_lib/openapi-spec-cache.mjs';
 import {
   readPublicNoAuthPaths,
   readEndpointEntitlements,
@@ -529,14 +531,14 @@ describe('OpenAPI security contract', () => {
       assertPublicForbiddenGateContract(spec, file);
       assertPremiumForbiddenGateContract(spec, file);
     }
-    const bundle = loadYaml(readFileSync(resolve(apiDir, 'worldmonitor.openapi.yaml'), 'utf8'));
+    const bundle = loadUnifiedOpenApiSpec();
     assertEntitlementOperationContract(bundle, 'bundle');
     assertPremiumForbiddenGateContract(bundle, 'bundle');
     assertPublicForbiddenGateContract(bundle, 'bundle');
   });
 
   it('keeps gated operation descriptions byte-identical across JSON, YAML, and bundle', () => {
-    const bundle = loadYaml(readFileSync(resolve(apiDir, 'worldmonitor.openapi.yaml'), 'utf8'));
+    const bundle = loadUnifiedOpenApiSpec();
     const failures = [];
     for (const file of serviceSpecs) {
       const jsonSpec = JSON.parse(readFileSync(resolve(apiDir, file), 'utf8'));
@@ -556,7 +558,7 @@ describe('OpenAPI security contract', () => {
   });
 
   it('bundle (worldmonitor.openapi.yaml) carries the full auth contract', () => {
-    const bundle = loadYaml(readFileSync(resolve(apiDir, 'worldmonitor.openapi.yaml'), 'utf8'));
+    const bundle = loadUnifiedOpenApiSpec();
     assertAuthContract(bundle, 'bundle');
   });
 
@@ -571,7 +573,7 @@ describe('OpenAPI security contract', () => {
       failures.push(...queryRequiredContradictions(yamlSpec, yamlFile));
     }
 
-    const bundle = loadYaml(readFileSync(resolve(apiDir, 'worldmonitor.openapi.yaml'), 'utf8'));
+    const bundle = loadUnifiedOpenApiSpec();
     failures.push(...queryRequiredContradictions(bundle, 'worldmonitor.openapi.yaml'));
 
     assert.deepEqual(failures, []);
@@ -589,7 +591,7 @@ describe('OpenAPI security contract', () => {
     }
     specs.push({
       label: 'worldmonitor.openapi.yaml',
-      spec: loadYaml(readFileSync(resolve(apiDir, 'worldmonitor.openapi.yaml'), 'utf8')),
+      spec: loadUnifiedOpenApiSpec(),
     });
 
     const failures = [];
@@ -644,7 +646,7 @@ describe('OpenAPI security contract', () => {
     const yamlSpec = loadYaml(readFileSync(resolve(apiDir, 'LeadsService.openapi.yaml'), 'utf8'));
     assertSchemaRequires(yamlSpec, 'RegisterInterestRequest', fields, 'LeadsService.openapi.yaml');
 
-    const bundle = loadYaml(readFileSync(resolve(apiDir, 'worldmonitor.openapi.yaml'), 'utf8'));
+    const bundle = loadUnifiedOpenApiSpec();
     const matches = matchingRequestSchemas(bundle, 'RegisterInterestRequest');
     assert.equal(matches.length, 1, 'worldmonitor.openapi.yaml: expected one RegisterInterestRequest schema');
     const [[schemaName, schema]] = matches;

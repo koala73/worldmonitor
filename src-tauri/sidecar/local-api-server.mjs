@@ -298,7 +298,7 @@ const ALLOWED_ENV_KEYS = new Set([
   'CLOUDFLARE_API_TOKEN', 'ACLED_ACCESS_TOKEN', 'URLHAUS_AUTH_KEY',
   'OTX_API_KEY', 'ABUSEIPDB_API_KEY', 'WINGBITS_API_KEY', 'WS_RELAY_URL',
   'VITE_OPENSKY_RELAY_URL', 'OPENSKY_CLIENT_ID', 'OPENSKY_CLIENT_SECRET',
-  'AISSTREAM_API_KEY', 'VITE_WS_RELAY_URL', 'FINNHUB_API_KEY', 'NASA_FIRMS_API_KEY',
+  'AISSTREAM_API_KEY', 'VITE_WS_RELAY_URL', 'FINNHUB_API_KEY', 'ALPHA_VANTAGE_API_KEY', 'NASA_FIRMS_API_KEY',
   'OLLAMA_API_URL', 'OLLAMA_MODEL', 'WORLDMONITOR_API_KEY', 'WTO_API_KEY',
   'AVIATIONSTACK_API', 'ICAO_API_KEY', 'UCDP_ACCESS_TOKEN', DESKTOP_AUTH_SECRET_ENV,
 ]);
@@ -685,6 +685,11 @@ const cloudPreferred = new Set();
 // Routes/prefixes that should always proxy to cloud. The sidecar lacks
 // WS_RELAY_URL (Yahoo/Finnhub relay) and seeded Redis data. These routes
 // return 200-with-empty-data locally, so normal cloudFallback won't trigger.
+//
+// `/api/market/v1/` covers ListMarketQuotes, so the desktop app gets the same
+// seed-first contract as the web dashboard — including custom watchlist
+// symbols resolved through the cloud provider adapter (#6305). Serving it
+// locally would find no seed snapshot and report every symbol unavailable.
 const cloudPreferredPrefixes = !process.env.WS_RELAY_URL
   ? [
     '/api/market/v1/',
@@ -1886,22 +1891,33 @@ export async function createLocalApiServer(options = {}) {
       const boundPort = typeof address === 'object' && address?.port ? address.port : context.port;
       context.port = boundPort;
       const extraAllowedPrivateOrigins = [];
-      // Docker self-host ONLY: the Redis REST proxy (UPSTASH_REDIS_REST_URL)
-      // points at an internal private host (e.g. http://redis-rest:80 on a
-      // docker network). Without trusting it the SSRF guard blocks every Redis
-      // call and all /api/* return 503 REDIS_DOWN. Gated on mode === 'docker'
-      // so desktop/production startup never widens the SSRF boundary via env
-      // — the same containment as the cloudFallback=false docker policy above,
-      // and the programmatic allowPrivateFetchOrigins escape hatch stays
-      // env-free. On desktop UPSTASH_REDIS_REST_URL is a public Upstash https
-      // origin that already passes the SSRF check, so this path is docker-only.
-      if (context.mode === 'docker' && process.env.UPSTASH_REDIS_REST_URL) {
-        try {
-          extraAllowedPrivateOrigins.push(new URL(process.env.UPSTASH_REDIS_REST_URL).origin);
-        } catch (err) {
-          context.logger.warn(
-            `[local-api] UPSTASH_REDIS_REST_URL is not a valid URL; not added to the private-fetch allowlist (Redis calls will be SSRF-blocked): ${err.message}`,
-          );
+      if (context.mode === 'docker') {
+        const addConfiguredPrivateOrigin = (envKey, blockedService) => {
+          const rawUrl = process.env[envKey];
+          if (!rawUrl) return;
+          try {
+            extraAllowedPrivateOrigins.push(new URL(rawUrl).origin);
+          } catch (err) {
+            context.logger.warn(
+              `[local-api] ${envKey} is not a valid URL; not added to the private-fetch allowlist (${blockedService}): ${err.message}`,
+            );
+          }
+        };
+
+        // Docker self-host ONLY: the Redis REST proxy (UPSTASH_REDIS_REST_URL)
+        // points at an internal private host (e.g. http://redis-rest:80 on a
+        // docker network). Without trusting it the SSRF guard blocks every Redis
+        // call and all /api/* return 503 REDIS_DOWN. On desktop,
+        // UPSTASH_REDIS_REST_URL is a public Upstash https origin that already
+        // passes the SSRF check, so this path is docker-only.
+        addConfiguredPrivateOrigin('UPSTASH_REDIS_REST_URL', 'Redis calls will be SSRF-blocked');
+
+        // SELF_HOSTING.md documents LLM_API_URL for compose-network or LAN
+        // endpoints; OLLAMA_API_URL is the supported desktop runtime setting.
+        // Without trusting their exact configured origins, the global SSRF
+        // guard blocks every private LLM probe and silently skips the provider.
+        for (const envKey of ['LLM_API_URL', 'OLLAMA_API_URL']) {
+          addConfiguredPrivateOrigin(envKey, 'LLM calls will be SSRF-blocked');
         }
       }
       if (context.allowPrivateRemoteBase) {

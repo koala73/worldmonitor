@@ -461,11 +461,11 @@ describe('durable activation lifecycle (#4927 re-review P1)', () => {
     };
     // Never activated: missing data reads soft EMPTY_ON_DEMAND.
     const pending = classifyKey('newsFeedHealth', 'news:feed-health:v1', { allowOnDemand: true },
-      { ...baseCtx, activatedNames: new Set() });
+      { ...baseCtx, activationStates: new Map([['newsFeedHealth', false]]) });
     assert.equal(pending.status, 'EMPTY_ON_DEMAND');
     // Activated then died (marker present, data+meta expired): must alarm.
     const dead = classifyKey('newsFeedHealth', 'news:feed-health:v1', { allowOnDemand: true },
-      { ...baseCtx, activatedNames: new Set(['newsFeedHealth']) });
+      { ...baseCtx, activationStates: new Map([['newsFeedHealth', true]]) });
     assert.equal(dead.status, 'EMPTY', 'post-activation missing data must be EMPTY, not softened');
   });
 
@@ -480,7 +480,54 @@ describe('durable activation lifecycle (#4927 re-review P1)', () => {
     const seedHealthSrc = readSrc('api/seed-health.js');
     assert.match(seedHealthSrc, /activationKey: 'seed-activated:news:feed-health'/,
       'seed-health gates pending-activation on the marker');
-    assert.match(seedHealthSrc, /cfg\.activationKey && !activatedMap\.get\(domain\)/,
-      'missing meta with marker present must fall through to missing/stale');
+  });
+
+  // The claim above ("missing meta with the marker present must fall through to
+  // missing") used to be a regex over the exact gate expression in
+  // api/seed-health.js. That guard passed for the shape of the line rather than
+  // for its behaviour: it went red when #6095 rewrote the same gate to a
+  // three-valued read, and it would have stayed green if the gate had been
+  // inverted while keeping the expression's spelling. Drive the handler instead.
+  it('seed-health: the durable marker, not the missing meta, decides pending vs missing', async () => {
+    const { default: seedHealthHandler } = await import('../api/seed-health.js');
+    const FEED_HEALTH_MARKER = 'seed-activated:news:feed-health';
+    const FEED_HEALTH_META_KEY = 'seed-meta:news:feed-health';
+    const realFetch = globalThis.fetch;
+    const realKeys = process.env.WORLDMONITOR_VALID_KEYS;
+    const realUrl = process.env.UPSTASH_REDIS_REST_URL;
+    const realToken = process.env.UPSTASH_REDIS_REST_TOKEN;
+    process.env.WORLDMONITOR_VALID_KEYS = 'test-completeness-key';
+    process.env.UPSTASH_REDIS_REST_URL = 'https://mock-upstash.test';
+    process.env.UPSTASH_REDIS_REST_TOKEN = 'mock-token';
+
+    const readFeedHealth = async (markerExists) => {
+      globalThis.fetch = async (_url, init) => {
+        const results = JSON.parse(init.body).map(([op, key]) => {
+          if (op === 'EXISTS') return { result: key === FEED_HEALTH_MARKER && markerExists ? 1 : 0 };
+          if (key === FEED_HEALTH_META_KEY) return { result: null };
+          return { result: JSON.stringify({ fetchedAt: Date.now(), recordCount: 10_000 }) };
+        });
+        return new Response(JSON.stringify(results), { status: 200 });
+      };
+      const res = await seedHealthHandler(new Request('https://api.worldmonitor.app/api/seed-health', {
+        headers: { 'X-WorldMonitor-Key': 'test-completeness-key' },
+      }));
+      return (await res.json()).seeds['news:feed-health'];
+    };
+
+    try {
+      assert.equal((await readFeedHealth(false)).status, 'pending-activation',
+        'before the first publish an absent meta is deploy lag, not a fault');
+      assert.equal((await readFeedHealth(true)).status, 'missing',
+        'a publisher that ran once and died must alarm, not read as pending');
+    } finally {
+      globalThis.fetch = realFetch;
+      if (realKeys == null) delete process.env.WORLDMONITOR_VALID_KEYS;
+      else process.env.WORLDMONITOR_VALID_KEYS = realKeys;
+      if (realUrl == null) delete process.env.UPSTASH_REDIS_REST_URL;
+      else process.env.UPSTASH_REDIS_REST_URL = realUrl;
+      if (realToken == null) delete process.env.UPSTASH_REDIS_REST_TOKEN;
+      else process.env.UPSTASH_REDIS_REST_TOKEN = realToken;
+    }
   });
 });

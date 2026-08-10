@@ -481,9 +481,8 @@ export class ResilienceWidget {
     ]);
 
     if (isDesktopRuntime()) {
-      const { invokeTauri } = await import('@/services/tauri-bridge');
-      await invokeTauri<void>('open_url', { url: 'https://worldmonitor.app/pro' })
-        .catch(() => { window.open('https://worldmonitor.app/pro', '_blank', 'noopener,noreferrer'); });
+      const { openExternalUrl } = await import('@/services/external-navigation');
+      await openExternalUrl('https://worldmonitor.app/pro');
       return;
     }
 

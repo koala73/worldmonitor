@@ -203,8 +203,11 @@ test('/pro checkout-start survives the Dodo redirect via sessionStorage handoff 
   const pro = read('pro-test/src/services/checkout.ts');
   assert.ok(pro.includes("'wm-pro-funnel-pending'"),
     '/pro no longer persists undelivered checkout-start — the fast signed-in path dies with the redirect');
-  assert.ok(pro.includes('persistFunnelEventForReplay(event, data)'),
-    '/pro queue branch no longer mirrors events into sessionStorage');
+  assert.ok(
+    pro.includes('persistFunnelEventForReplay(event, data)')
+      || pro.includes('persistFunnelEventForReplay(event, enrichedData)'),
+    '/pro queue branch no longer mirrors events into sessionStorage',
+  );
   assert.ok(pro.includes('clearPersistedFunnelEvents()'),
     '/pro flush no longer clears the mirror — delivered events would double-replay on the dashboard');
   const analytics = read('src/services/analytics.ts');

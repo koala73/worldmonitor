@@ -469,4 +469,14 @@ describe('reportServerError', () => {
     reportServerError(res, PUBLIC_TARGET, enqueue);
     assert.equal(calls.length, 0, 'synthetic degraded 503 must not be reported as an origin 5xx');
   });
+
+  it('skips fail-closed rate-limit degradation already captured by the server', () => {
+    const { calls, enqueue } = makeSpy();
+    const res = new Response(JSON.stringify({ error: 'Rate-limit service temporarily unavailable' }), {
+      status: 503,
+      headers: { 'Content-Type': 'application/json', 'X-RateLimit-Mode': 'degraded' },
+    });
+    reportServerError(res, PUBLIC_TARGET, enqueue);
+    assert.equal(calls.length, 0, 'rate-limit degradation must not be captured again by every browser');
+  });
 });

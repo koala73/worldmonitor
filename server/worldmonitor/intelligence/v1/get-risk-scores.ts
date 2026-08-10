@@ -28,6 +28,7 @@ import {
   DEFAULT_CII_BASELINE_RISK,
   DEFAULT_CII_EVENT_MULTIPLIER,
 } from '../../../../shared/cii-weights';
+import { CII_CLIMATE_ZONE_COUNTRIES } from '../../../../shared/cii-climate-zones';
 
 // ========================================================================
 // Country risk baselines and multipliers
@@ -41,6 +42,8 @@ import {
 //   1. Bump CII_FORMULA_VERSION in ./_risk-config.ts if server/API scores shift.
 //   2. Update docs/methodology/cii-risk-scores.mdx in the SAME commit.
 //   3. Mention the change in CHANGELOG.md (public-facing section).
+// Climate-zone attribution has the same protocol when it changes server/API
+// scores; its canonical map documents that ownership in shared/cii-climate-zones.ts.
 // ========================================================================
 
 // Exported so tests and any internal diagnostics can assert the published
@@ -116,22 +119,6 @@ export const COUNTRY_BBOX: Record<string, { minLat: number; maxLat: number; minL
   EG: { minLat: 22.0, maxLat: 31.7, minLon: 24.7, maxLon: 36.9 },
   JP: { minLat: 24.4, maxLat: 45.5, minLon: 122.9, maxLon: 153.0 },
   QA: { minLat: 24.5, maxLat: 26.2, minLon: 50.7, maxLon: 51.7 },
-};
-
-export const ZONE_COUNTRY_MAP: Record<string, string[]> = {
-  'North America': ['US'], 'Europe': ['DE', 'FR', 'GB', 'PL', 'TR', 'UA'],
-  'East Asia': ['CN', 'TW', 'KP', 'KR', 'JP'], 'South Asia': ['IN', 'PK', 'MM', 'AF'],
-  'Middle East': ['IR', 'IL', 'SA', 'SY', 'YE', 'AE', 'IQ', 'LB', 'QA'], 'Russia': ['RU'],
-  'Latin America': ['VE', 'CU', 'MX', 'BR'], 'North Africa': ['EG'],
-  Ukraine: ['UA'],
-  California: ['US'],
-  Amazon: ['BR'],
-  'Taiwan Strait': ['TW', 'CN'],
-  Myanmar: ['MM'],
-  Caribbean: ['CU', 'MX'],
-  Mediterranean: ['TR', 'IL', 'SY', 'LB', 'EG'],
-  Arctic: ['RU'],
-  'Tibetan Plateau': ['CN', 'IN'],
 };
 
 const ADVISORY_LEVELS_FALLBACK: Record<string, 'do-not-travel' | 'reconsider' | 'caution'> = {
@@ -338,7 +325,7 @@ function getClimateAnomalyCoordinateCountry(anomaly: any): string | null {
 
 export function climateCountriesForAnomaly(anomaly: any): string[] {
   const zone = anomaly?.zone || anomaly?.region || '';
-  const countries = new Set<string>(ZONE_COUNTRY_MAP[zone] || []);
+  const countries = new Set<string>(CII_CLIMATE_ZONE_COUNTRIES[zone] || []);
   const coordinateCountry = getClimateAnomalyCoordinateCountry(anomaly);
   if (coordinateCountry) countries.add(coordinateCountry);
   return [...countries].filter((code) => code in TIER1_COUNTRIES);

@@ -20,6 +20,7 @@ const testWorkflow = read(resolve(workflowsDir, 'test.yml'));
 const desktopBuildWorkflow = read(resolve(workflowsDir, 'build-desktop.yml'));
 const desktopCanaryWorkflow = read(resolve(workflowsDir, 'test-linux-app.yml'));
 const lintCodeWorkflow = read(resolve(workflowsDir, 'lint-code.yml'));
+const protoCheckWorkflow = read(resolve(workflowsDir, 'proto-check.yml'));
 const workflowText = readdirSync(workflowsDir)
   .filter((name) => name.endsWith('.yml') || name.endsWith('.yaml'))
   .map((name) => read(resolve(workflowsDir, name)))
@@ -29,9 +30,18 @@ const REQUIRED_PR_SCRIPTS = [
   'test:data',
   'test:sidecar',
   'test:convex',
-  'test:e2e:mcp-grant',
-  'test:e2e:variant-smoke:full',
+  'test:e2e:ci-smoke',
   'test:resilience-validation-smoke',
+] as const;
+
+// Every spec the combined ci-smoke invocation must keep exercising. The three
+// specs used to be three separate workflow steps; now that one script carries
+// them, dropping a spec from its command line is the new way a guard can stop
+// being invoked while CI stays green — so the spec list is pinned here.
+const REQUIRED_CI_SMOKE_SPECS = [
+  'e2e/variant-live-smoke.spec.ts',
+  'e2e/mcp-grant-consent.spec.ts',
+  'e2e/dashboard-news-request-budget.spec.ts',
 ] as const;
 
 const REQUIRED_TEST_JOBS = [
@@ -143,6 +153,19 @@ function workflowStepBlock(workflow: string, stepName: string): string {
   assert.notEqual(startIndex, -1, `workflow must define step ${stepName}`);
   const nextStepIndex = workflow.indexOf('\n      - ', startIndex + marker.length);
   return workflow.slice(startIndex, nextStepIndex === -1 ? workflow.length : nextStepIndex);
+}
+
+function workflowStepBlocksByUses(workflow: string, action: string): string[] {
+  const marker = new RegExp(`\\n      - uses: ${escapeRegExp(action)}@[^\\n]+\\n`, 'g');
+  const blocks: string[] = [];
+  for (const match of workflow.matchAll(marker)) {
+    const startIndex = match.index ?? -1;
+    assert.notEqual(startIndex, -1, `workflow must define ${action}`);
+    const nextStepIndex = workflow.indexOf('\n      - ', startIndex + match[0].length);
+    blocks.push(workflow.slice(startIndex, nextStepIndex === -1 ? workflow.length : nextStepIndex));
+  }
+  assert.ok(blocks.length > 0, `workflow must define ${action}`);
+  return blocks;
 }
 
 function workflowRunScript(stepBlock: string): string {
@@ -280,6 +303,49 @@ function securityAuditMatrixLockfiles(): string[] {
 }
 
 describe('CI workflow coverage', () => {
+  it('runs the proto breaking check against the full main history (#6114)', () => {
+    const breakingJob = workflowJobBlock(protoCheckWorkflow, 'proto-breaking');
+    assert.doesNotMatch(breakingJob, /^\s+if:/m, 'proto-breaking must run for fork pull requests');
+    const [checkoutStep] = workflowStepBlocksByUses(breakingJob, 'actions/checkout');
+    assert.match(
+      checkoutStep,
+      /\n\s+with:\n\s+fetch-depth: 0\n/,
+      'proto-breaking must fetch full history so the main baseline is available',
+    );
+    const breakingStep = workflowStepBlock(protoCheckWorkflow, 'Check for breaking proto changes');
+    assert.match(
+      breakingStep,
+      /^\s+run: make breaking\s*$/m,
+      'proto-check.yml must run the canonical buf breaking target against the fetched origin/main proto baseline',
+    );
+    assert.doesNotMatch(breakingStep, /^\s+continue-on-error:/m);
+
+    // Pin the shared Makefile baseline. `run: make breaking` alone stays green if the
+    // recipe regresses to proto/.git#branch=main (no repo) or loses origin/main.
+    const makefile = read(resolve(root, 'Makefile'));
+    assert.match(
+      makefile,
+      /^breaking:[^\n]*\n\tcd \$\(PROTO_DIR\) && buf breaking --against '\.\.\/\.git#branch=origin\/main,subdir=proto'\s*$/m,
+      "make breaking must use '../.git#branch=origin/main,subdir=proto' from PROTO_DIR",
+    );
+
+    // Pin the documented FILE/PACKAGE/WIRE_JSON policy (binary WIRE intentionally off).
+    const bufYaml = read(resolve(root, 'proto/buf.yaml'));
+    const breakingUse = bufYaml.match(/\nbreaking:\n(?:[^\n]*\n)*?[ \t]+use:\n((?:[ \t]+-[^\n]*\n)+)/);
+    assert.ok(breakingUse, 'proto/buf.yaml must declare breaking.use');
+    const rules = [...breakingUse[1].matchAll(/^[ \t]+-[ \t]+(\S+)\s*$/gm)].map((m) => m[1]).sort();
+    assert.deepEqual(
+      rules,
+      ['FILE', 'PACKAGE', 'WIRE_JSON'].sort(),
+      'breaking.use must be exactly FILE, PACKAGE, WIRE_JSON (binary WIRE intentionally omitted)',
+    );
+
+    // Path-filtered Proto Generation Check is outside deploy-gate's aggregated
+    // workflows (#5402). A red `proto-breaking` check-run does not fail the
+    // required `gate` context until it is wired into deploy-gate (with a
+    // path-safe always-run/skip pattern) or listed in branch-protection/rulesets.
+  });
+
   it('runs the public documentation boundary on docs-only pull requests', () => {
     const publicDocsJob = workflowJobBlock(lintCodeWorkflow, 'public-docs');
 
@@ -296,6 +362,31 @@ describe('CI workflow coverage', () => {
         `A workflow must run npm run ${script}`,
       );
     }
+  });
+
+  it('keeps every smoke spec on the combined ci-smoke command line', () => {
+    const ciSmoke = packageScripts['test:e2e:ci-smoke'] ?? '';
+    // Tokenize as the shell would, and stop at the first comment token: npm
+    // scripts run under `sh -c`, where a word-initial `#` comments out the
+    // rest of the line. A substring check would stay green with the spec
+    // paths sitting in the commented-out tail while playwright never runs
+    // them — the argv-token check is what gives this guard teeth.
+    const argvTokens: string[] = [];
+    for (const token of ciSmoke.trim().split(/\s+/)) {
+      if (token.startsWith('#')) break;
+      argvTokens.push(token);
+    }
+    for (const spec of REQUIRED_CI_SMOKE_SPECS) {
+      assert.ok(
+        argvTokens.includes(spec),
+        `test:e2e:ci-smoke must pass ${spec} as a live argv token — a spec dropped ` +
+          '(or commented out) from this command has no other CI invocation',
+      );
+    }
+    assert.ok(
+      argvTokens.includes('VITE_VARIANT=full'),
+      'test:e2e:ci-smoke must pin VITE_VARIANT=full — variant-live-smoke asserts the full-variant panel set',
+    );
   });
 
   it('keeps the main Test workflow jobs for defensibility smoke gates', () => {
@@ -495,6 +586,39 @@ describe('CI workflow coverage', () => {
     );
   });
 
+  it('routes Tauri config edits into the job that runs the one-binary gate (#5908)', () => {
+    // Executes the real awk from test.yml rather than string-matching it: a
+    // regex typo in the carve-out would silently exempt Tauri-config changes
+    // from CI while a source-text assertion stayed green — the same drift class
+    // #5908 was filed to fix. tests/desktop-one-binary-model.test.mjs runs in
+    // `unit`, which is gated on this `code` output.
+    const awkBlock = shellAwkAssignmentBlock('CODE');
+    const program = awkBlock.slice(awkBlock.indexOf("awk '") + 5, awkBlock.lastIndexOf("'"));
+    const codeFilterSays = (path: string) => {
+      const out = execFileSync('awk', [program], { input: `${path}\n`, encoding: 'utf8' });
+      return Number(out.trim()) > 0;
+    };
+
+    for (const path of [
+      'src-tauri/tauri.conf.json',
+      'src-tauri/tauri.tech.conf.json',
+      'src-tauri/profiles/commodity.json',
+      'api/download.js',
+      'src/config/variant.ts',
+      'scripts/desktop-package.mjs',
+      'package.json',
+      '.github/workflows/build-desktop.yml',
+    ]) {
+      assert.ok(codeFilterSays(path), `${path} must set code=true so the one-binary gate runs`);
+    }
+
+    // The carve-out must stay a carve-out: Rust and capability edits are still
+    // covered by desktop-config/desktop-rust, not by the full unit suite.
+    for (const path of ['src-tauri/Cargo.toml', 'src-tauri/src/main.rs', 'README.md', 'docs/desktop-app.mdx']) {
+      assert.ok(!codeFilterSays(path), `${path} must not set code=true`);
+    }
+  });
+
   it('keeps resilience validation bundle inputs in the CI change filter', () => {
     assert.ok(
       testWorkflow.includes('validation: ${{ steps.diff.outputs.validation }}'),
@@ -624,13 +748,20 @@ describe('CI workflow coverage', () => {
       () => runReleasePreflight(releasePreflight, 'push', '', 'configured'),
       'populated tag releases must pass the client env preflight',
     );
-    for (const variant of ['full', 'tech', 'finance'] as const) {
-      assert.match(
-        packageScripts[`desktop:build:${variant}`] ?? '',
-        /npm run desktop:check-env/,
-        `desktop:build:${variant} must run the local desktop env gate`,
-      );
-    }
+    // #5908: one published desktop binary means exactly one local build script,
+    // so the env gate has one place to live. Asserting the absence of the
+    // per-variant scripts keeps this from silently covering less than it did —
+    // a reintroduced `desktop:build:tech` would otherwise never be gate-checked.
+    assert.match(
+      packageScripts['desktop:tauri:build'] ?? '',
+      /npm run desktop:check-env/,
+      'desktop:tauri:build must run the local desktop env gate',
+    );
+    assert.deepEqual(
+      Object.keys(packageScripts).filter((name) => /^desktop:(tauri:)?build:/.test(name)),
+      [],
+      'per-variant desktop build scripts were retired with the one-binary model (#5908)',
+    );
     const releasePostProcess = workflowStepBlock(desktopBuildWorkflow, 'Strip GPU libraries from AppImage');
     assert.match(
       releasePostProcess,
@@ -733,6 +864,69 @@ describe('CI workflow coverage', () => {
         `security-audit.yml must cover ${lockfile}`,
       );
     }
+  });
+
+  it('keeps the aggregate verdict list in step with the audit matrix', () => {
+    // The aggregate decides pass/fail by looking for one verdict file per matrix
+    // entry. If the two lists drift, a lockfile that never ran silently stops
+    // being counted and the aggregate reports success — a fail-open. Pin them
+    // to each other.
+    const matrixNames = Array.from(
+      securityAuditWorkflow.matchAll(/^\s+- name: (\S+)\n\s+path:/gm),
+      ([, value]) => value.trim(),
+    ).sort();
+    const aggregateNames = (securityAuditWorkflow.match(/^\s+AUDIT_NAMES:\s*'([^']+)'/m)?.[1] ?? '')
+      .split(/\s+/)
+      .filter(Boolean)
+      .sort();
+
+    assert.ok(matrixNames.length > 0, 'security-audit.yml must define audit matrix entries');
+    assert.deepEqual(
+      aggregateNames,
+      matrixNames,
+      'the security-audit aggregate must require a verdict from exactly the audit-lockfile matrix entries',
+    );
+  });
+
+  it('separates an unaudited lockfile from a real dependency finding', () => {
+    // A GitHub Actions outage (2026-08-06: "Failed to resolve action download
+    // info") kills the matrix job before it audits anything. The aggregate must
+    // report that as an incomplete run, not as "audits failed".
+    assert.match(
+      securityAuditWorkflow,
+      /if-no-files-found: ignore/,
+      'security-audit.yml must upload a per-lockfile verdict artifact',
+    );
+    assert.match(
+      securityAuditWorkflow,
+      /uses: actions\/download-artifact@[0-9a-f]{40}/,
+      'the security-audit aggregate must download the per-lockfile verdicts',
+    );
+    assert.match(
+      securityAuditWorkflow,
+      /No audit verdict was produced for/,
+      'the aggregate must name the lockfiles that produced no verdict',
+    );
+  });
+
+  it('gives the audit gate the base ref it needs to attribute new advisories', () => {
+    // Without a base ref every finding is "inherited", so a PR that genuinely
+    // introduces a vulnerable dependency would only warn.
+    assert.match(
+      securityAuditWorkflow,
+      /AUDIT_BASE_REF: \$\{\{ github\.event_name == 'pull_request'/,
+      'security-audit.yml must pass the PR base sha to the audit gate',
+    );
+    assert.match(
+      securityAuditWorkflow,
+      /git fetch --no-tags --depth=1 origin \$\{\{ github\.event\.pull_request\.base\.sha \}\}/,
+      'security-audit.yml must fetch the base commit so the base lockfile is readable',
+    );
+    assert.match(
+      securityAuditScript,
+      /collectIntroducedIds/,
+      'the audit gate must compute which advisories the change introduced',
+    );
   });
 
   it('keeps Docker base images pinned to immutable digests', () => {

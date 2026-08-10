@@ -102,4 +102,8 @@ Related: `docs/solutions/conventions/verify-the-verifier-mutation-test-every-det
 fixtures kill missing-key, unclassified-var, zero-steps, and parser-evasion
 mutants);
 `docs/solutions/integration-issues/railway-seeder-watch-paths-can-skip-deployments.md`
-(the enumerated-allowlist rot this pattern replaces).
+(the enumerated-allowlist rot this pattern replaces);
+`docs/solutions/design-patterns/contract-gate-field-names-miss-value-axis.md`
+(a second instance of this pattern: proto fields as the enumerable universe,
+with the block-commented-field evasion as exactly the parser-evasion mutant
+class named above).

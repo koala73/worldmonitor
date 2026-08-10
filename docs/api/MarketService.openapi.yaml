@@ -53,6 +53,9 @@ paths:
                                       "symbol": "AAPL"
                                 "rateLimited": true
                                 "skipReason": "example"
+                                "unavailableSymbols":
+                                    - "reason": "MARKET_QUOTE_UNAVAILABLE_REASON_NOT_FOUND"
+                                      "symbol": "AAPL"
                             schema:
                                 $ref: '#/components/schemas/ListMarketQuotesResponse'
                 "400":
@@ -118,7 +121,10 @@ paths:
             parameters:
                 - name: ids
                   in: query
-                  description: Cryptocurrency IDs to retrieve (CoinGecko IDs). Empty returns defaults.
+                  description: |-
+                    Cryptocurrency IDs to retrieve (CoinGecko IDs). Empty returns the default
+                     crypto set. At most 25 IDs are accepted; the handler resolves them
+                     seed-first and fetches the remainder (gap) from the upstream provider.
                   required: false
                   style: form
                   explode: true
@@ -142,6 +148,7 @@ paths:
                     content:
                         application/json:
                             example:
+                                "provider": "worldmonitor"
                                 "quotes":
                                     - "change": 1.5
                                       "change7d": 1.5
@@ -150,6 +157,8 @@ paths:
                                       "sparkline":
                                           - 1.5
                                       "symbol": "AAPL"
+                                "unresolvedIds":
+                                    - "example"
                             schema:
                                 $ref: '#/components/schemas/ListCryptoQuotesResponse'
                 "400":
@@ -210,17 +219,24 @@ paths:
             tags:
                 - MarketService
             summary: ListCommodityQuotes
-            description: ListCommodityQuotes retrieves commodity price quotes from Yahoo Finance.
+            description: |-
+                ListCommodityQuotes retrieves commodity price quotes. Reads the seeded
+                 commodity snapshot; only symbols in the configured commodity set
+                 (shared/commodities.json) are supported.
             operationId: ListCommodityQuotes
             parameters:
                 - name: symbols
                   in: query
-                  description: Commodity symbols to retrieve (Yahoo symbols). Empty returns defaults.
+                  description: |-
+                    Commodity symbols to retrieve (Yahoo symbols). Empty returns the seed
+                     defaults. Only symbols in the configured commodity set
+                     (shared/commodities.json) are supported; requesting an unsupported
+                     symbol returns HTTP 400.
                   required: false
                   style: form
                   explode: true
                   example:
-                      - "AAPL"
+                      - "GC=F"
                   schema:
                     type: array
                     items:
@@ -246,7 +262,7 @@ paths:
                                       "price": 75.25
                                       "sparkline":
                                           - 1.5
-                                      "symbol": "AAPL"
+                                      "symbol": "GC=F"
                             schema:
                                 $ref: '#/components/schemas/ListCommodityQuotesResponse'
                 "400":
@@ -402,7 +418,18 @@ paths:
             parameters:
                 - name: coins
                   in: query
-                  description: CoinGecko IDs to retrieve (e.g. "tether,usd-coin"). Empty returns defaults.
+                  description: |-
+                    CoinGecko IDs to retrieve (e.g. "tether,usd-coin"). Empty returns defaults.
+
+                     Repeated (`?coins=tether&coins=dai`) and comma-joined
+                     (`?coins=tether,dai`) forms are equivalent. IDs are trimmed, lowercased,
+                     and de-duplicated; the request is capped at 25 IDs. An ID that is not
+                     shaped like a CoinGecko ID, that overflows the cap, or that no provider
+                     can resolve is reported in `unresolved` rather than dropped.
+
+                     The empty (default) request is served from the seeded snapshot alone and
+                     never reaches an upstream provider. Naming IDs explicitly opts into a
+                     bounded, cached provider lookup for any ID the snapshot does not carry.
                   required: false
                   style: form
                   explode: true
@@ -426,6 +453,7 @@ paths:
                     content:
                         application/json:
                             example:
+                                "dataStatus": "example"
                                 "stablecoins":
                                     - "change24h": 1.5
                                       "change7d": 1.5
@@ -441,6 +469,9 @@ paths:
                                     "totalMarketCap": 1
                                     "totalVolume24h": 1
                                 "timestamp": "2026-01-15T12:00:00Z"
+                                "unresolved":
+                                    - "id": "example-id"
+                                      "reason": "example"
                             schema:
                                 $ref: '#/components/schemas/ListStablecoinMarketsResponse'
                 "400":
@@ -2399,6 +2430,10 @@ components:
                 rateLimited:
                     type: boolean
                     description: True when the upstream API rate-limited the request.
+                unavailableSymbols:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/MarketQuoteUnavailable'
             description: ListMarketQuotesResponse contains stock and index quotes.
         MarketQuote:
             type: object
@@ -2430,6 +2465,35 @@ components:
             required:
                 - symbol
             description: MarketQuote represents a stock or index quote from Finnhub or Yahoo Finance.
+        MarketQuoteUnavailable:
+            type: object
+            properties:
+                symbol:
+                    type: string
+                    minLength: 1
+                    description: The requested ticker symbol, normalized.
+                reason:
+                    type: string
+                    enum:
+                        - MARKET_QUOTE_UNAVAILABLE_REASON_UNSPECIFIED
+                        - MARKET_QUOTE_UNAVAILABLE_REASON_NOT_FOUND
+                        - MARKET_QUOTE_UNAVAILABLE_REASON_PROVIDER_ERROR
+                        - MARKET_QUOTE_UNAVAILABLE_REASON_PROVIDER_RATE_LIMITED
+                        - MARKET_QUOTE_UNAVAILABLE_REASON_PROVIDER_NOT_CONFIGURED
+                        - MARKET_QUOTE_UNAVAILABLE_REASON_REQUEST_LIMIT_EXCEEDED
+                        - MARKET_QUOTE_UNAVAILABLE_REASON_UPSTREAM_BUDGET_EXHAUSTED
+                        - MARKET_QUOTE_UNAVAILABLE_REASON_SEED_UNAVAILABLE
+                    description: |-
+                        MarketQuoteUnavailableReason explains why a requested symbol produced no quote.
+
+                         Requested symbols are resolved seed-first: the fixed Railway seed snapshot
+                         answers without any upstream call, and only the remaining symbols are looked
+                         up through the bounded, Redis-cached quote provider. Every symbol that
+                         survives normalization is accounted for by either a quote or one of these
+                         reasons — a requested symbol is never silently dropped.
+            required:
+                - symbol
+            description: MarketQuoteUnavailable reports a requested symbol that produced no quote.
         ListCryptoQuotesRequest:
             type: object
             properties:
@@ -2437,7 +2501,12 @@ components:
                     type: array
                     items:
                         type: string
-                        description: Cryptocurrency IDs to retrieve (CoinGecko IDs). Empty returns defaults.
+                        maxItems: 25
+                        description: |-
+                            Cryptocurrency IDs to retrieve (CoinGecko IDs). Empty returns the default
+                             crypto set. At most 25 IDs are accepted; the handler resolves them
+                             seed-first and fetches the remainder (gap) from the upstream provider.
+                    maxItems: 25
             description: ListCryptoQuotesRequest specifies which cryptocurrencies to retrieve.
         ListCryptoQuotesResponse:
             type: object
@@ -2446,6 +2515,19 @@ components:
                     type: array
                     items:
                         $ref: '#/components/schemas/CryptoQuote'
+                unresolvedIds:
+                    type: array
+                    items:
+                        type: string
+                        description: |-
+                            CoinGecko IDs that were requested but could not be resolved from the seed
+                             or the upstream provider. Omitted IDs are never silently dropped.
+                provider:
+                    type: string
+                    description: |-
+                        Data source for this response: "seed" (default set/seed hits only),
+                         "upstream" (at least one gap ID fetched from the provider), "mixed"
+                         (seed hits plus fetched gaps), or "degraded" (a gap fetch failed).
             description: ListCryptoQuotesResponse contains cryptocurrency quotes.
         CryptoQuote:
             type: object
@@ -2485,7 +2567,11 @@ components:
                     type: array
                     items:
                         type: string
-                        description: Commodity symbols to retrieve (Yahoo symbols). Empty returns defaults.
+                        description: |-
+                            Commodity symbols to retrieve (Yahoo symbols). Empty returns the seed
+                             defaults. Only symbols in the configured commodity set
+                             (shared/commodities.json) are supported; requesting an unsupported
+                             symbol returns HTTP 400.
             description: ListCommodityQuotesRequest specifies which commodities to retrieve.
         ListCommodityQuotesResponse:
             type: object
@@ -2566,7 +2652,18 @@ components:
                     type: array
                     items:
                         type: string
-                        description: CoinGecko IDs to retrieve (e.g. "tether,usd-coin"). Empty returns defaults.
+                        description: |-
+                            CoinGecko IDs to retrieve (e.g. "tether,usd-coin"). Empty returns defaults.
+
+                             Repeated (`?coins=tether&coins=dai`) and comma-joined
+                             (`?coins=tether,dai`) forms are equivalent. IDs are trimmed, lowercased,
+                             and de-duplicated; the request is capped at 25 IDs. An ID that is not
+                             shaped like a CoinGecko ID, that overflows the cap, or that no provider
+                             can resolve is reported in `unresolved` rather than dropped.
+
+                             The empty (default) request is served from the seeded snapshot alone and
+                             never reaches an upstream provider. Naming IDs explicitly opts into a
+                             bounded, cached provider lookup for any ID the snapshot does not carry.
             description: ListStablecoinMarketsRequest specifies which stablecoins to retrieve.
         ListStablecoinMarketsResponse:
             type: object
@@ -2580,6 +2677,18 @@ components:
                     type: array
                     items:
                         $ref: '#/components/schemas/Stablecoin'
+                unresolved:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/UnresolvedStablecoin'
+                dataStatus:
+                    type: string
+                    description: |-
+                        Coverage of THIS response, distinct from `summary.health_status` (which
+                         reports peg health, not data availability):
+                           "OK"          — every requested coin was returned.
+                           "PARTIAL"     — at least one coin returned, at least one unresolved.
+                           "UNAVAILABLE" — no coin data available.
             description: ListStablecoinMarketsResponse contains stablecoin market data.
         StablecoinSummary:
             type: object
@@ -2653,6 +2762,23 @@ components:
                 - id
                 - symbol
             description: Stablecoin represents a single stablecoin with peg health data.
+        UnresolvedStablecoin:
+            type: object
+            properties:
+                id:
+                    type: string
+                    description: |-
+                        The requested ID, after trimming and lowercasing. Malformed IDs are
+                         reported as sent (normalized and truncated) so the caller can spot the typo.
+                reason:
+                    type: string
+                    description: |-
+                        Bounded vocabulary — anything outside this list is a contract violation:
+                           "INVALID_ID"     — not shaped like a CoinGecko ID.
+                           "OVER_CAP"       — beyond the per-request ID cap; never looked up.
+                           "NOT_FOUND"      — the provider answered, and has no such coin.
+                           "PROVIDER_ERROR" — the lookup failed, so the ID is unknown, not absent.
+            description: UnresolvedStablecoin explains why a requested ID is absent from the response.
         ListEtfFlowsRequest:
             type: object
             description: ListEtfFlowsRequest is empty; the handler uses a fixed list of BTC spot ETFs.

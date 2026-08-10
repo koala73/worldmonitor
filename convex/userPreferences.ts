@@ -58,6 +58,38 @@ type UserPrefsWriteRateLimitResult =
 
 const RATE_LIMIT_COUNTER_SCAN_LIMIT = USER_PREFS_WRITE_RATE_LIMIT + 1;
 const RATE_LIMIT_STALE_CLEANUP_LIMIT = 5;
+const FREE_TIER_OWNERSHIP_KEYS = [
+  "worldmonitor-free-tier-source-ownership",
+  "worldmonitor-free-tier-layer-ownership",
+] as const;
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+/**
+ * Older clients replace the complete preference blob without the ownership
+ * sidecars. Preserve only those omitted fields from an existing row; an
+ * explicit value, including the string "[]", remains authoritative.
+ */
+export function preserveOmittedFreeTierOwnership(
+  existingData: unknown,
+  incomingData: unknown,
+): unknown {
+  if (!isRecord(existingData) || !isRecord(incomingData)) return incomingData;
+
+  let merged: Record<string, unknown> | null = null;
+  for (const key of FREE_TIER_OWNERSHIP_KEYS) {
+    if (
+      !Object.prototype.hasOwnProperty.call(incomingData, key)
+      && typeof existingData[key] === "string"
+    ) {
+      merged ??= { ...incomingData };
+      merged[key] = existingData[key];
+    }
+  }
+  return merged ?? incomingData;
+}
 
 async function checkUserPrefsWriteRateLimit(
   ctx: MutationCtx,
@@ -143,7 +175,15 @@ export const setPreferences = mutation({
     const rateLimit = await checkUserPrefsWriteRateLimit(ctx, userId);
     if (!rateLimit.ok) return rateLimit;
 
-    const blobSize = JSON.stringify(args.data).length;
+    const existing = await ctx.db
+      .query("userPreferences")
+      .withIndex("by_user_variant", (q) =>
+        q.eq("userId", userId).eq("variant", args.variant),
+      )
+      .unique();
+
+    const data = preserveOmittedFreeTierOwnership(existing?.data, args.data);
+    const blobSize = JSON.stringify(data).length;
     if (blobSize > MAX_PREFS_BLOB_SIZE) {
       return {
         ok: false,
@@ -152,13 +192,6 @@ export const setPreferences = mutation({
         max: MAX_PREFS_BLOB_SIZE,
       };
     }
-
-    const existing = await ctx.db
-      .query("userPreferences")
-      .withIndex("by_user_variant", (q) =>
-        q.eq("userId", userId).eq("variant", args.variant),
-      )
-      .unique();
 
     if (existing && existing.syncVersion !== args.expectedSyncVersion) {
       // CAS-guard "no-op". Returns rather than throws — see SetPreferencesResult
@@ -176,7 +209,7 @@ export const setPreferences = mutation({
 
     if (existing) {
       await ctx.db.patch(existing._id, {
-        data: args.data,
+        data,
         schemaVersion,
         updatedAt: Date.now(),
         syncVersion: nextSyncVersion,
@@ -185,7 +218,7 @@ export const setPreferences = mutation({
       await ctx.db.insert("userPreferences", {
         userId,
         variant: args.variant,
-        data: args.data,
+        data,
         schemaVersion,
         updatedAt: Date.now(),
         syncVersion: nextSyncVersion,

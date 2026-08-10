@@ -1,10 +1,11 @@
-import { readJsonFromUpstash } from '../_upstash-json.js';
+import { readExistsFlags, readJsonFromUpstash, redisPipeline } from '../_upstash-json.js';
 // @ts-expect-error — JS module, no declaration file
 import { captureSilentError } from '../_sentry-edge.js';
 import { secondsUntilUtcMidnight } from '../../server/_shared/pro-mcp-token';
 import { getMcpBillingVerificationDenial } from './auth';
 import { BillingDenialError } from './billing-denial';
 import {
+  BothSourcesFailedError,
   createMcpToolExecutionContext,
   downstreamErrorTags,
 } from './downstream';
@@ -39,14 +40,75 @@ import { utf8ByteLength } from './utils';
 export async function executeTool(
   tool: CacheToolDef,
   params: Record<string, unknown> = {},
-): Promise<{ cached_at: string | null; stale: boolean; data: Record<string, unknown> }> {
+  now?: number,
+): Promise<{
+  cached_at: string | null;
+  stale: boolean;
+  activationUnknown?: true;
+  contentFreshnessPendingUntil?: string;
+  data: Record<string, unknown>;
+}> {
   const reads = tool._cacheKeys.map(k => readJsonFromUpstash(k));
   const freshnessChecks = tool._freshnessChecks?.length
     ? tool._freshnessChecks
     : [{ key: tool._seedMetaKey, maxStaleMin: tool._maxStaleMin }];
   const metaReads = freshnessChecks.map((check) => readJsonFromUpstash(check.key));
-  const [results, metas] = await Promise.all([Promise.all(reads), Promise.all(metaReads)]);
-  const { cached_at, stale } = evaluateFreshness(freshnessChecks, metas);
+  // #6080 deployment-order grace. Only checks declaring a content contract pay
+  // for this read, so it is one extra command on get_chokepoint_status and
+  // none at all on every other tool.
+  const activationKeys = [...new Set(
+    freshnessChecks
+      .map((check) => check.contentFreshnessActivationKey)
+      .filter((key): key is string => typeof key === 'string' && key !== ''),
+  )];
+  // EXISTS, not GET — the marker's meaning is presence, and both health
+  // surfaces read it that way through the shared `readExistsFlags` helper.
+  // Reading it as JSON instead would make MCP disagree with them for any marker
+  // value that is not valid JSON, which is the same class of cross-surface
+  // divergence #6080 exists to close.
+  // redisPipeline never rejects — it returns null on any failure — so this
+  // cannot turn a freshness hint into a hard tool-execution failure.
+  const activationRead = activationKeys.length > 0
+    ? redisPipeline(activationKeys.map((key) => ['EXISTS', key]))
+    : Promise.resolve([]);
+  const [results, metas, activationResults] = await Promise.all([
+    Promise.all(reads),
+    Promise.all(metaReads),
+    activationRead,
+  ]);
+  // Three-valued on purpose: only a marker we actually read and found ABSENT
+  // earns the deployment-order grace. An unreadable marker stays out of the
+  // map, so evaluateFreshness evaluates the block and fails closed rather than
+  // granting a grace that would never expire.
+  const activationStates = readExistsFlags(activationResults, activationKeys);
+  // A marker this tool needed could not be read, so `stale` below was computed
+  // WITHOUT knowing whether the producer has ever published. Both health
+  // surfaces publish exactly this as `activationUnknown` (api/health.js,
+  // api/seed-health.js) for a reason api/health.js states outright: otherwise a
+  // verdict resting on an unreadable marker is byte-identical to one resting on
+  // evidence, and the two need different remediations. MCP alarmed on this but
+  // told its CALLER nothing — `stale: true` looked the same whether the marker
+  // was unreadable, the producer regressed, or the grace window closed. One
+  // boolean drives both the alarm and the wire field so they cannot drift.
+  const activationUnknown = activationKeys.length > 0
+    && activationStates.size !== activationKeys.length;
+  if (activationUnknown) {
+    captureSilentError(new Error('mcp activation marker read failed'), {
+      tags: { route: 'api/mcp', step: 'activation-marker', tool: tool.name },
+    });
+  }
+  // Sample wall time AFTER the Redis reads, never at function entry. The same
+  // rule api/health.js applies via snapshotNow(): a request that begins inside
+  // an activation window but finishes after it must not report the grace as
+  // still live, or MCP briefly disagrees with the health surfaces at the exact
+  // instant the deadline passes. `now` stays injectable as a test seam.
+  const evaluatedAt = now ?? Date.now();
+  const { cached_at, stale, contentFreshnessPendingUntil } = evaluateFreshness(
+    freshnessChecks,
+    metas,
+    evaluatedAt,
+    activationStates,
+  );
 
   // F6: if every cache key returned null/undefined AND the tool actually
   // had keys configured, this is a degenerate-empty result (Redis transient
@@ -112,7 +174,13 @@ export async function executeTool(
   // summarises.
   if (argBool(params.summary)) result = tool._summarize ? tool._summarize(result) : summarizeData(result);
 
-  return { cached_at, stale, data: result };
+  return {
+    cached_at,
+    stale,
+    ...(activationUnknown ? { activationUnknown: true } : {}),
+    ...(contentFreshnessPendingUntil === undefined ? {} : { contentFreshnessPendingUntil }),
+    data: result,
+  };
 }
 
 export async function dispatchToolsCall(
@@ -289,6 +357,7 @@ export async function dispatchToolsCall(
     const isExpectedDenial = err instanceof BillingDenialError;
     const isExpectedSourceOutage = err instanceof McpSourceUnavailableError;
     const downstreamTags = downstreamErrorTags(err);
+    const isBothFailed = err instanceof BothSourcesFailedError;
     const log = isClient4xx || isExpectedDenial || isExpectedSourceOutage ? console.warn : console.error;
     log('[mcp] tool execution error:', err);
     captureSilentError(err, {
@@ -303,6 +372,12 @@ export async function dispatchToolsCall(
         } : {}),
         ...downstreamTags,
       },
+      ...(isBothFailed ? {
+        extra: {
+          civilian_failure_detail: err.civilianFailureDetail,
+          military_failure_detail: err.militaryFailureDetail,
+        },
+      } : {}),
       ctx,
       // Split the api/mcp catch-all (WORLDMONITOR-T8) into per-tool,
       // per-status groups — see api/mcp/error-fingerprint.ts.

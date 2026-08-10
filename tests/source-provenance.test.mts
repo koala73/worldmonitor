@@ -15,22 +15,20 @@
  * - Every configured feed has a definite provenance state via the public API
  *
  * Loading note: `src/config/feeds.ts` pulls `rssProxyUrl` → `import.meta.env.DEV`.
- * Node/tsx has no Vite env object, so we esbuild-bundle with defines (same
- * pattern as tests/mission-presets.test.mts).
+ * Node/tsx has no Vite env object, so we esbuild-bundle with defines — the
+ * shared harness lives in tests/_lib/bundle-feeds-module.mts.
  */
 import { describe, it, before } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdirSync, writeFileSync, rmSync } from 'node:fs';
+import { rmSync } from 'node:fs';
 import { dirname, join } from 'node:path';
-import { fileURLToPath, pathToFileURL } from 'node:url';
-import { build } from 'esbuild';
+import { fileURLToPath } from 'node:url';
+import { bundleFeedsModule } from './_lib/bundle-feeds-module.mts';
 import { CONFIGURED_SOURCE_PROVENANCE_DECLARATIONS } from '../shared/source-provenance-declarations';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const repoRoot = join(__dirname, '..');
 const tempDir = join(repoRoot, 'tmp-source-provenance-test');
-const outfile = join(tempDir, 'feeds-bundle.mjs');
-const rendererOutfile = join(tempDir, 'renderer-bundle.mjs');
 
 interface FeedsModule {
   SOURCE_PROPAGANDA_RISK: Record<string, { risk: string; stateAffiliated?: string; note?: string }>;
@@ -74,75 +72,13 @@ let renderer: {
 };
 
 before(async () => {
-  mkdirSync(tempDir, { recursive: true });
-  // Stub the @/utils barrel so we don't drag proxy → i18n → import.meta.glob.
-  // feeds.ts only needs rssProxyUrl (identity is fine for name-based registries).
-  const stubUtilsPlugin = {
-    name: 'stub-utils-barrel',
-    setup(buildApi: { onResolve: Function; onLoad: Function }) {
-      buildApi.onResolve({ filter: /^@\/utils$/ }, () => ({
-        path: 'stub-utils',
-        namespace: 'stub',
-      }));
-      buildApi.onLoad({ filter: /.*/, namespace: 'stub' }, () => ({
-        contents: 'export function rssProxyUrl(url) { return url; }\n',
-        loader: 'js',
-      }));
-    },
-  };
-  const result = await build({
-    entryPoints: [join(repoRoot, 'src/config/feeds.ts')],
-    bundle: true,
-    format: 'esm',
-    platform: 'neutral',
-    target: 'es2022',
-    write: false,
-    absWorkingDir: repoRoot,
-    alias: {
-      '@': join(repoRoot, 'src'),
-    },
-    plugins: [stubUtilsPlugin as never],
-    define: {
-      'import.meta.env': JSON.stringify({
-        DEV: false,
-        PROD: true,
-        SSR: false,
-        MODE: 'test',
-        BASE_URL: '/',
-        VITE_VARIANT: 'full',
-        VITE_RSS_DIRECT_TO_RELAY: 'false',
-      }),
-    },
+  feeds = await bundleFeedsModule<FeedsModule>({ repoRoot, tempDir });
+  renderer = await bundleFeedsModule<typeof renderer>({
+    repoRoot,
+    tempDir,
+    outfileName: 'renderer-bundle.mjs',
+    entryPoint: join(repoRoot, 'src/components/news/source-provenance.ts'),
   });
-  writeFileSync(outfile, result.outputFiles[0].text, 'utf8');
-  feeds = await import(`${pathToFileURL(outfile).href}?t=${Date.now()}`) as FeedsModule;
-
-  const rendererResult = await build({
-    entryPoints: [join(repoRoot, 'src/components/news/source-provenance.ts')],
-    bundle: true,
-    format: 'esm',
-    platform: 'neutral',
-    target: 'es2022',
-    write: false,
-    absWorkingDir: repoRoot,
-    alias: {
-      '@': join(repoRoot, 'src'),
-    },
-    plugins: [stubUtilsPlugin as never],
-    define: {
-      'import.meta.env': JSON.stringify({
-        DEV: false,
-        PROD: true,
-        SSR: false,
-        MODE: 'test',
-        BASE_URL: '/',
-        VITE_VARIANT: 'full',
-        VITE_RSS_DIRECT_TO_RELAY: 'false',
-      }),
-    },
-  });
-  writeFileSync(rendererOutfile, rendererResult.outputFiles[0].text, 'utf8');
-  renderer = await import(`${pathToFileURL(rendererOutfile).href}?t=${Date.now()}`) as typeof renderer;
 });
 
 describe('source provenance defaults (#5390)', () => {

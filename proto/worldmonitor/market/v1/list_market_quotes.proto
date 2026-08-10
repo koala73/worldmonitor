@@ -24,4 +24,15 @@ message ListMarketQuotesResponse {
 
   // True when the upstream API rate-limited the request.
   bool rate_limited = 4;
+
+  // Requested symbols that produced no quote, in requested order, each with a
+  // reason. Present so a custom watchlist ticker that the fixed seed does not
+  // carry is visibly unavailable instead of silently missing from `quotes`.
+  //
+  // Named `unavailable_symbols`, not `unavailable`: across the Market and
+  // Economic contracts a field called `unavailable` is consistently a BOOLEAN
+  // degradation flag, and the siblings here (`finnhub_skipped`, `rate_limited`)
+  // are booleans too. This matches the established repo name for the same idea
+  // — the sector valuation coverage payload's `unavailableSymbols`.
+  repeated MarketQuoteUnavailable unavailable_symbols = 5;
 }

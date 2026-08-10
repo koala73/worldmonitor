@@ -23,7 +23,7 @@ These subscription licenses cover the hosted Service and its outputs. They are s
 - Price: $0/month
 - Signup required: No
 - Best for: Public situational awareness, OSINT research, market/geopolitical context, news monitoring
-- Includes: 56 map layers, 500+ curated feeds, country briefs, hotspots, instability scores, chokepoints, cables, cascade analysis, breaking alert pipeline and watchlists
+- Includes: 56 map layers (all free except Resilience, which is Pro), 500+ curated feeds backed by 530+ observed upstream hosts, country briefs, hotspots, instability scores, chokepoints, cables, cascade analysis, breaking alert pipeline and watchlists
 - Limits: 3 dashboard tabs; free dashboard refresh cadence is typically 5-15 minutes; advanced analyst, digest, API and team workflows require paid plans
 
 ## Pro
@@ -32,9 +32,9 @@ These subscription licenses cover the hosted Service and its outputs. They are s
 - Annual price: $359.99/year
 - Annual savings: 3 months free versus monthly billing
 - Best for: Investors, analysts, researchers, traders and operators who need the decision layer on top of the free dashboard
-- Includes: WM Analyst chat across 30+ live services with citations, Scenario Engine, Route Explorer, personal AI digest, custom widget builder, MCP access and 59 tools under one key
+- Includes: WM Analyst chat across 30+ live services with citations, Scenario Engine, Route Explorer, personal AI digest, custom widget builder, the Resilience map layer, MCP access and 60 tools under one key
 - License: Personal use
-- Limits: 10 custom dashboards, MCP + SDK 50 calls/day
+- Limits: 10 custom dashboards, 500 dashboard-AI requests/day, MCP + SDK 50 calls/day
 - Digest cadence: Daily, twice-daily or weekly
 - Delivery channels: Slack, Discord, Telegram, email and webhook
 
@@ -46,7 +46,7 @@ These subscription licenses cover the hosted Service and its outputs. They are s
 - Best for: Consultants, agencies and teams who use the Pro dashboard for client work, internal tools or reporting
 - Includes: Everything in Pro, plus data export (CSV, JSON and PDF reports)
 - License: Commercial license included — use WorldMonitor for client work, internal tools and reporting
-- Limits: 25 custom dashboards, MCP + SDK 250 calls/day
+- Limits: 25 custom dashboards, 2,500 dashboard-AI requests/day, MCP + SDK 250 calls/day
 - Support: Priority support
 - Note: Pro and Pro Business are separate products, not a self-serve plan change. To move up, cancel Pro in the billing portal and start the Pro Business checkout; your Pro access runs to the end of the term you already paid for.
 
@@ -102,7 +102,7 @@ These subscription licenses cover the hosted Service and its outputs. They are s
       "price_usd_monthly": 0,
       "signup_required": false,
       "features": [
-        "56 map layers",
+        "56 map layers (Resilience is Pro)",
         "500+ feeds",
         "country briefs",
         "chokepoints",
@@ -121,6 +121,7 @@ These subscription licenses cover the hosted Service and its outputs. They are s
         "Route Explorer",
         "AI digest",
         "custom widget builder",
+        "500 dashboard-AI requests/day",
         "MCP",
         "10 custom dashboards",
         "personal license"
@@ -135,6 +136,7 @@ These subscription licenses cover the hosted Service and its outputs. They are s
         "commercial license",
         "data export — CSV, JSON & PDF reports",
         "25 custom dashboards",
+        "2,500 dashboard-AI requests/day",
         "250 MCP calls/day",
         "priority support"
       ]
@@ -147,6 +149,7 @@ These subscription licenses cover the hosted Service and its outputs. They are s
         "REST API",
         "license / API key included",
         "1,000 requests/day starter limit",
+        "1,000 dashboard-AI requests/day",
         "webhooks",
         "structured JSON",
         "OpenAPI docs",
@@ -161,6 +164,7 @@ These subscription licenses cover the hosted Service and its outputs. They are s
         "Everything in API Starter",
         "300 requests/minute",
         "10,000 requests/day",
+        "10,000 dashboard-AI requests/day",
         "5 Pro licenses included",
         "same company email required",
         "commercial license — for your customers",

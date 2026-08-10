@@ -2,6 +2,10 @@
 
 import { loadEnvFile, runSeed, getRedisCredentials, loadSharedConfig } from './_seed-utils.mjs';
 import { resolveIso2, normalizeCountryToken } from './_country-resolver.mjs';
+import {
+  CORRELATION_RUNTIME_MODE_KEY,
+  resolveCorrelationRuntimeMode,
+} from './shared/correlation-runtime-mode.js';
 
 loadEnvFile(import.meta.url);
 
@@ -41,6 +45,56 @@ async function fetchInputData() {
     }
   }
   return data;
+}
+
+/**
+ * Read the staged runtime control for one correlation compute cycle.
+ *
+ * This intentionally uses the raw Redis key rather than a cached input
+ * pipeline: an operator rollback must be visible to the next cycle. Any
+ * missing credentials, transport failure, malformed Redis response, or
+ * malformed value resolves to the existing legacy behavior.
+ */
+export async function readCorrelationRuntimeMode({
+  fetchImpl = (...args) => globalThis.fetch(...args),
+  env = process.env,
+  timeoutMs = 3_000,
+} = {}) {
+  const url = env.UPSTASH_REDIS_REST_URL;
+  const token = env.UPSTASH_REDIS_REST_TOKEN;
+  if (!url || !token) return 'legacy';
+
+  try {
+    const response = await fetchImpl(`${url}/get/${encodeURIComponent(CORRELATION_RUNTIME_MODE_KEY)}`, {
+      headers: {
+        Accept: 'application/json',
+        Authorization: `Bearer ${token}`,
+        'User-Agent': 'worldmonitor-seeder/1.0',
+      },
+      signal: AbortSignal.timeout(timeoutMs),
+    });
+    if (!response.ok) {
+      console.warn(`  [Correlation] control plane returned HTTP ${response.status}; using legacy`);
+      return 'legacy';
+    }
+
+    const payload = await response.json();
+    if (
+      !payload
+      || typeof payload !== 'object'
+      || Array.isArray(payload)
+      || !Object.prototype.hasOwnProperty.call(payload, 'result')
+      || payload.result == null
+    ) return 'legacy';
+
+    const raw = typeof payload.result === 'string'
+      ? JSON.parse(payload.result)
+      : payload.result;
+    return resolveCorrelationRuntimeMode(raw);
+  } catch (error) {
+    console.warn('  [Correlation] control-plane read failed; using legacy:', error?.message || error);
+    return 'legacy';
+  }
 }
 
 // ── Haversine ───────────────────────────────────────────────
@@ -637,6 +691,9 @@ const DOMAINS = {
 
 // ── Main ────────────────────────────────────────────────────
 async function computeCorrelation() {
+  const runtimeMode = await readCorrelationRuntimeMode();
+  console.log(`  [Correlation] runtime mode=${runtimeMode}`);
+
   const data = await fetchInputData();
 
   const hasAnyData = INPUT_KEYS.some(k => data[k] != null);

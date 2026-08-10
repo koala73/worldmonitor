@@ -29,6 +29,193 @@ export interface SourceCapResult {
   autoDisabled: Set<string>;
 }
 
+export interface SourceGateOwnershipResult {
+  /** Sources disabled by the current cap calculation. */
+  gateOwned: Set<string>;
+  /** Persisted denylist containing both user and gate-owned disables. */
+  disabled: Set<string>;
+}
+
+export interface SourceCapRolloutStage {
+  /** Source names that first became configured in this release stage. */
+  introducedNames: ReadonlySet<string>;
+  /** Cumulative cap-protected names at this release stage. */
+  protectedNames: ReadonlySet<string>;
+}
+
+export function canonicalStringSet(values: ReadonlySet<string>): string {
+  return JSON.stringify([...values].sort());
+}
+
+export function stringSetsEqual(a: ReadonlySet<string>, b: ReadonlySet<string>): boolean {
+  if (a.size !== b.size) return false;
+  for (const value of a) if (!b.has(value)) return false;
+  return true;
+}
+
+/**
+ * Replace the previous free-tier cap selection without confusing it with the
+ * user's own denylist. This makes repeated enforcement responsive to catalog,
+ * locale, and protection changes instead of permanently baking in the first
+ * 80-source selection.
+ */
+export function reconcileSourceGateOwnership(
+  userDisabled: ReadonlySet<string>,
+  nextGateOwned: ReadonlySet<string>,
+): SourceGateOwnershipResult {
+  const gateOwned = new Set(nextGateOwned);
+  return {
+    gateOwned,
+    disabled: new Set([...userDisabled, ...gateOwned]),
+  };
+}
+
+/** Restore only the source disables that the free-tier cap owned. */
+export function restoreGateOwnedSources(
+  persistedDisabled: ReadonlySet<string>,
+  gateOwned: ReadonlySet<string>,
+): Set<string> {
+  return new Set([...persistedDisabled].filter((name) => !gateOwned.has(name)));
+}
+
+/** A direct user source toggle transfers those names out of gate ownership. */
+export function transferSourceGateOwnershipToUser(
+  gateOwned: ReadonlySet<string>,
+  names: Iterable<string>,
+): Set<string> {
+  const next = new Set(gateOwned);
+  for (const name of names) next.delete(name);
+  return next;
+}
+
+/**
+ * Conservatively recover ownership for profiles capped before ownership was
+ * stored. Exact equality is required: one customized source leaves the blob
+ * untouched rather than guessing about user intent.
+ */
+export function inferExactSourceGateOwnership(
+  persistedDisabled: ReadonlySet<string>,
+  defaultUserDisabled: ReadonlySet<string>,
+  expectedGateOwned: ReadonlySet<string>,
+): Set<string> | null {
+  const expectedPersisted = new Set([...defaultUserDisabled, ...expectedGateOwned]);
+  return stringSetsEqual(persistedDisabled, expectedPersisted)
+    ? new Set(expectedGateOwned)
+    : null;
+}
+
+function filterFeedsToAvailable(
+  feedsByCategory: FeedsByCategory,
+  intelSources: ReadonlyArray<FeedItem>,
+  availableNames: ReadonlySet<string>,
+): { feeds: FeedsByCategory; intel: FeedItem[] } {
+  const feeds: FeedsByCategory = {};
+  for (const [category, entries] of Object.entries(feedsByCategory)) {
+    if (!entries) {
+      feeds[category] = entries;
+      continue;
+    }
+    feeds[category] = entries.filter((entry) => availableNames.has(entry.name));
+  }
+  return {
+    feeds,
+    intel: intelSources.filter((entry) => availableNames.has(entry.name)),
+  };
+}
+
+/**
+ * Enumerate exact untouched disabled-set shapes that can result while a group
+ * of feed releases rolls out over time.
+ *
+ * Existing profiles may load every intermediate release, skip some releases,
+ * or stay Pro (and therefore skip the free cap entirely). Each stage branches
+ * the recognized states into "did not persist a cap result" and "did persist
+ * this stage's cap result". Exact set de-duplication keeps the result bounded.
+ * A preference migration can then match one of these states without guessing
+ * whether an arbitrary entry was a user choice.
+ */
+export function computeRolloutLegacyDisabledStates(
+  feedsByCategory: FeedsByCategory,
+  intelSources: ReadonlyArray<FeedItem>,
+  initialDisabled: ReadonlySet<string>,
+  cap: number,
+  baselineProtectedNames: ReadonlySet<string>,
+  stages: ReadonlyArray<SourceCapRolloutStage>,
+): Set<string>[] {
+  const allConfiguredNames = new Set<string>();
+  for (const entries of Object.values(feedsByCategory)) {
+    for (const entry of entries ?? []) allConfiguredNames.add(entry.name);
+  }
+  for (const entry of intelSources) allConfiguredNames.add(entry.name);
+
+  const allIntroducedNames = new Set<string>();
+  for (const stage of stages) {
+    for (const name of stage.introducedNames) {
+      if (allIntroducedNames.has(name)) {
+        throw new Error(`Source "${name}" is introduced by more than one rollout stage`);
+      }
+      allIntroducedNames.add(name);
+    }
+  }
+
+  const availableNames = new Set(
+    [...allConfiguredNames].filter((name) => !allIntroducedNames.has(name)),
+  );
+  const states = new Map<string, Set<string>>();
+  const remember = (state: ReadonlySet<string>) => {
+    const copy = new Set(state);
+    states.set(canonicalStringSet(copy), copy);
+  };
+  const applyCap = (
+    state: ReadonlySet<string>,
+    protectedNames: ReadonlySet<string>,
+    catalog: ReturnType<typeof filterFeedsToAvailable>,
+  ): Set<string> => {
+    const { autoDisabled } = selectSourcesUnderCap(
+      catalog.feeds,
+      catalog.intel,
+      state,
+      cap,
+      protectedNames,
+    );
+    return new Set([...state, ...autoDisabled]);
+  };
+
+  remember(initialDisabled);
+  const baselineCatalog = filterFeedsToAvailable(feedsByCategory, intelSources, availableNames);
+  remember(applyCap(initialDisabled, baselineProtectedNames, baselineCatalog));
+
+  for (const stage of stages) {
+    for (const name of stage.introducedNames) availableNames.add(name);
+    const catalog = filterFeedsToAvailable(feedsByCategory, intelSources, availableNames);
+    const priorStates = [...states.values()];
+    for (const state of priorStates) remember(applyCap(state, stage.protectedNames, catalog));
+  }
+
+  return [...states.values()];
+}
+
+/**
+ * Reconstruct the persisted disabled set produced by the pre-protected cap
+ * caller. This is used only by one-time migrations to recognize an untouched
+ * legacy cap result; callers must still exact-match the returned set before
+ * changing user storage.
+ */
+export function computeCapDisabledSources(
+  feedsByCategory: FeedsByCategory,
+  intelSources: ReadonlyArray<FeedItem>,
+  defaultDisabled: ReadonlySet<string>,
+  cap: number,
+): Set<string> {
+  const { autoDisabled } = selectSourcesUnderCap(
+    feedsByCategory,
+    intelSources,
+    defaultDisabled,
+    cap,
+  );
+  return new Set([...defaultDisabled, ...autoDisabled]);
+}
+
 /**
  * Detect categories where 100% of sources are in the disabled set — the
  * fingerprint of the pre-2026-05-01 free-tier alphabetical-slice cap bug.

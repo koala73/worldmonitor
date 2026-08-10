@@ -31,6 +31,7 @@ describe('U1 — Pro Business catalog entries', () => {
       apiBurstRequestsPerMinute: 0,
       mcpCallsPerDay: 250,
       mcpBurstRequestsPerMinute: 60,
+      dashboardAiCallsPerDay: 2_500,
     });
     assert.deepEqual(features.exportFormats, ['csv', 'json', 'pdf']);
   });

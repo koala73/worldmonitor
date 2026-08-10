@@ -22,11 +22,13 @@
  * checkout.ts dependency tree (Clerk, Dodo SDK, Convex).
  */
 
+import { WEB_APP_ORIGIN } from '@/config/web-origin';
+
 export type NoUserPathOutcome =
   | { kind: 'redirect-pro'; persist: false; redirectUrl: string }
   | { kind: 'inline-signin'; persist: true };
 
-const PRO_URL = 'https://worldmonitor.app/pro';
+const PRO_URL = `${WEB_APP_ORIGIN}/pro`;
 
 export function decideNoUserPathOutcome(fallbackToPricingPage: boolean): NoUserPathOutcome {
   if (fallbackToPricingPage) {

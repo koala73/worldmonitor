@@ -23,6 +23,42 @@ function chinaValueFmt(indicator: ChinaMacroIndicator, value: number): string {
   return `${value.toLocaleString(undefined, { maximumFractionDigits: 2 })}${indicator.unit ? ` ${indicator.unit}` : ''}`;
 }
 
+const CHINA_STATE_LABELS: Record<string, string> = {
+  LIVE: 'Live',
+  STALE: 'Stale',
+  UNAVAILABLE: 'Unavailable',
+  strengthening: 'Strengthening',
+  weakening: 'Weakening',
+  unchanged: 'Unchanged',
+  ROBOTS_DISALLOW: 'Source blocked',
+  TLS_CERTIFICATE_ERROR: 'Source unavailable',
+  HTTP_429: 'Rate limited',
+  HTTP_503: 'Source unavailable',
+  SCHEMA_DRIFT: 'Schema mismatch',
+  STALE_OBSERVATION: 'Observation stale',
+  TRANSPORT_STALE: 'Transport stale',
+  TRANSPORT_RECOVERING: 'Transport recovering',
+  TRANSPORT_MISSING: 'Transport unavailable',
+};
+
+function chinaStateLabel(state: string): string {
+  return CHINA_STATE_LABELS[state]
+    ?? state.toLowerCase().replace(/_/g, ' ').replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
+function chinaStateTone(
+  state: string,
+  available: boolean,
+  stale: boolean,
+): 'positive' | 'warning' | 'negative' | 'neutral' {
+  if (stale || state === 'STALE_OBSERVATION' || state === 'TRANSPORT_STALE') return 'warning';
+  if (!available || state === 'UNAVAILABLE' || state === 'ROBOTS_DISALLOW' || state === 'TLS_CERTIFICATE_ERROR') return 'negative';
+  if (state === 'weakening' || state === 'HTTP_429' || state === 'HTTP_503' || state === 'SCHEMA_DRIFT') return 'negative';
+  if (state === 'TRANSPORT_RECOVERING' || state === 'TRANSPORT_MISSING') return 'warning';
+  if (state === 'unchanged') return 'neutral';
+  return 'positive';
+}
+
 export function chinaTileHtml(indicator: ChinaMacroIndicator): string {
   const available = indicator.hasValue && Number.isFinite(indicator.value);
   const value = available ? escapeHtml(chinaValueFmt(indicator, indicator.value)) : 'N/A';
@@ -42,33 +78,25 @@ export function chinaTileHtml(indicator: ChinaMacroIndicator): string {
       || direction
       || (available ? 'LIVE' : 'UNAVAILABLE')
     );
-  const stateColor = indicator.stale
-    ? '#f39c12'
-    : (
-      indicator.unavailableReason
-      || indicator.transportFailureReason
-      || transportProblem
-      || !available
-      || indicator.direction === 'weakening'
-      ? '#e74c3c'
-      : indicator.direction === 'unchanged'
-        ? 'var(--text-dim)'
-        : '#27ae60'
-    );
   const observed = indicator.observationPeriod || 'No observation period';
   const released = indicator.releaseTime || 'Release time unavailable';
   const revision = indicator.revisionState || 'Revision state unavailable';
   const source = indicator.source || 'Source unavailable';
+  const stateLabel = chinaStateLabel(state);
+  const stateTone = chinaStateTone(state, available, indicator.stale);
+  const valueClass = available ? '' : ' macro-summary-value--unavailable';
 
-  return `<div style="background:rgba(255,255,255,0.03);border:1px solid var(--border);border-radius:6px;padding:14px 12px;display:flex;flex-direction:column;gap:4px;min-width:0">
-    <div style="display:flex;justify-content:space-between;gap:6px;align-items:flex-start">
-      <div style="font-size:10px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.07em">${escapeHtml(indicator.label)}</div>
-      <span style="font-size:9px;color:${stateColor};font-weight:600">${escapeHtml(state.replace(/_/g, ' '))}</span>
+  return `<div class="macro-summary-card">
+    <div class="macro-summary-head">
+      <span class="indicator-name">${escapeHtml(indicator.label)}</span>
+      <span class="macro-summary-state macro-summary-state--${stateTone}" data-state="${escapeHtml(state)}">${escapeHtml(stateLabel)}</span>
     </div>
-    <div style="font-size:28px;font-weight:700;color:var(--text);line-height:1.1;font-variant-numeric:tabular-nums">${value}</div>
-    <div style="font-size:10px;color:var(--text-dim)">Period ${escapeHtml(observed)} · ${escapeHtml(indicator.periodKind || 'period unknown').replace(/_/g, ' ')}</div>
-    <div style="font-size:10px;color:var(--text-dim)">Released ${escapeHtml(released)} · ${escapeHtml(revision).replace(/_/g, ' ')}</div>
-    <div style="font-size:9px;color:var(--text-dim);overflow-wrap:anywhere">Source: ${escapeHtml(source)}</div>
+    <div class="macro-summary-value${valueClass}">${value}</div>
+    <div class="macro-summary-meta">
+      <span>Period ${escapeHtml(observed)} · ${escapeHtml(indicator.periodKind || 'period unknown').replace(/_/g, ' ')}</span>
+      <span>Released ${escapeHtml(released)} · ${escapeHtml(revision).replace(/_/g, ' ')}</span>
+    </div>
+    <div class="macro-summary-source">Source: ${escapeHtml(source)}</div>
   </div>`;
 }
 

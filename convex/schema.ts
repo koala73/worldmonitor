@@ -730,6 +730,9 @@ export default defineSchema({
         apiRequestsPerDay: v.union(v.number(), v.null()),
         apiBurstRequestsPerMinute: v.union(v.number(), v.null()),
         mcpCallsPerDay: v.union(v.number(), v.null()),
+        // Optional for entitlement rows written before the dashboard-AI
+        // dimension existed; the read-time catalog merge supplies it.
+        dashboardAiCallsPerDay: v.optional(v.union(v.number(), v.null())),
         mcpBurstRequestsPerMinute: v.union(v.number(), v.null()),
       })),
       prioritySupport: v.boolean(),
@@ -918,6 +921,54 @@ export default defineSchema({
     updatedAt: v.number(),
   }).index("by_key", ["key"]),
 
+  // Dodo events we received and authenticated but could not attribute to a
+  // user: no signed checkout metadata and no `customers` row. The canonical
+  // source is a Dodo *payment link* / dashboard-created subscription, which
+  // carries `metadata: {}` because only our own checkout attaches the signed
+  // `wm_user_id`.
+  //
+  // These are NOT `paymentWebhookFailures`. That table means "processing broke,
+  // Dodo should retry"; retrying this never helps, because the identity lookup
+  // is deterministic — all 8 attempts fail identically (2026-08-03). This table
+  // means "received intact, needs a human to say who it belongs to", and the
+  // webhook acknowledges 200 once the row is durably committed.
+  unattributedPaymentEvents: defineTable({
+    webhookId: v.string(),
+    eventType: v.string(),
+    // Did money actually move? Drives alert severity and whether we owe the
+    // buyer fulfillment. An abandoned 3DS attempt is a sales signal; a settled
+    // charge with nobody attached is a paid customer holding no access.
+    charged: v.boolean(),
+    dodoCustomerId: v.optional(v.string()),
+    dodoPaymentId: v.optional(v.string()),
+    dodoSubscriptionId: v.optional(v.string()),
+    dodoProductId: v.optional(v.string()),
+    // Contact details come straight from the Dodo payload — they are how an
+    // operator finds the human to talk to, and the only identity signal we have.
+    customerEmail: v.optional(v.string()),
+    customerName: v.optional(v.string()),
+    amount: v.optional(v.number()),
+    currency: v.optional(v.string()),
+    errorCode: v.optional(v.string()),
+    errorMessage: v.optional(v.string()),
+    rawPayload: v.any(),
+    eventTimestamp: v.number(),
+    receivedAt: v.number(),
+    lastSeenAt: v.number(),
+    occurrences: v.number(),
+    notifiedAt: v.optional(v.number()),
+    resolved: v.boolean(),
+    resolvedUserId: v.optional(v.string()),
+    resolvedAt: v.optional(v.number()),
+    resolutionNote: v.optional(v.string()),
+  })
+    .index("by_webhookId", ["webhookId"])
+    .index("by_resolved_lastSeenAt", ["resolved", "lastSeenAt"])
+    // Powers the per-customer notification throttle: a card-testing burst must
+    // not turn into one admin email per attempt.
+    .index("by_dodoCustomerId_lastSeenAt", ["dodoCustomerId", "lastSeenAt"])
+    .index("by_dodoSubscriptionId", ["dodoSubscriptionId"]),
+
   paymentEvents: defineTable({
     userId: v.string(),
     dodoPaymentId: v.string(),
@@ -969,6 +1020,97 @@ export default defineSchema({
     .index("by_dodoProductId", ["dodoProductId"])
     .index("by_planKey", ["planKey"]),
 
+  // Company Monitoring's account root. The persistence contract deliberately keeps
+  // surface to this table plus company and claim rows: imports are replayed
+  // from company-row idempotency fields, and purge progress lives on the root.
+  companyMonitoringAccounts: defineTable({
+    logicalAccountId: v.string(),
+    ownerUserId: v.optional(v.string()),
+    ownerFenceHash: v.string(),
+    lifecycle: v.union(
+      v.literal("entitled"),
+      v.literal("entitlement_lapsed"),
+      v.literal("denied"),
+    ),
+    terminalReason: v.optional(v.union(v.literal("owner_deleted"), v.literal("account_deleted"))),
+    entitlementDigest: v.optional(v.string()),
+    lifecycleSequence: v.number(),
+    companyCount: v.optional(v.number()),
+    companyLimit: v.optional(v.number()),
+    snapshotGeneration: v.optional(v.number()),
+    purgeGeneration: v.number(),
+    purgePhase: v.union(
+      v.literal("none"),
+      v.literal("pending"),
+      v.literal("companies"),
+      v.literal("finalizing"),
+      v.literal("complete"),
+    ),
+    destructivePurgeStarted: v.boolean(),
+    pendingReactivation: v.boolean(),
+    purgeAfter: v.optional(v.number()),
+    purgeCursor: v.optional(v.string()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_logicalAccountId", ["logicalAccountId"])
+    .index("by_ownerUserId", ["ownerUserId"])
+    .index("by_ownerFenceHash", ["ownerFenceHash"])
+    .index("by_purgePhase_updatedAt", ["purgePhase", "updatedAt"])
+    // Consumer: accounts.reconcileAccountEntitlements. Entitlement writes no
+    // longer push lapses (#6256), so the reconciler pulls them by scanning
+    // entitled roots oldest-first.
+    .index("by_lifecycle_updatedAt", ["lifecycle", "updatedAt"]),
+
+  companyMonitoringCompanies: defineTable({
+    ownerAccountId: v.string(),
+    companyId: v.string(),
+    name: v.optional(v.string()),
+    sortName: v.optional(v.string()),
+    domicileCountry: v.optional(v.union(v.literal("US"), v.literal("GB"))),
+    customerReference: v.optional(v.string()),
+    lifecycle: v.union(v.literal("active"), v.literal("paused"), v.literal("removed")),
+    coverageState: v.optional(v.literal("awaiting_first_scan")),
+    observationState: v.optional(v.literal("unknown")),
+    snapshotGeneration: v.number(),
+    directRequestId: v.optional(v.string()),
+    directFingerprint: v.optional(v.string()),
+    clientImportId: v.optional(v.string()),
+    importOrdinal: v.optional(v.number()),
+    importFingerprint: v.optional(v.string()),
+    purgeGeneration: v.number(),
+    purgePhase: v.union(v.literal("none"), v.literal("payload"), v.literal("complete")),
+    removedAt: v.optional(v.number()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_account_companyId", ["ownerAccountId", "companyId"])
+    .index("by_account_lifecycle_sortName", ["ownerAccountId", "lifecycle", "sortName"])
+    .index("by_account_customerReference_lifecycle", ["ownerAccountId", "customerReference", "lifecycle"])
+    .index("by_account_directRequestId", ["ownerAccountId", "directRequestId"])
+    .index("by_account_import_tuple", ["ownerAccountId", "clientImportId", "importOrdinal"]),
+
+  companyMonitoringClaims: defineTable({
+    ownerAccountId: v.string(),
+    companyId: v.string(),
+    claimId: v.string(),
+    type: v.union(
+      v.literal("alias"),
+      v.literal("domain"),
+      v.literal("legal_identifier"),
+      v.literal("x_account_id"),
+      v.literal("x_handle"),
+      v.literal("location"),
+      v.literal("customer_reference"),
+    ),
+    value: v.string(),
+    provenance: v.literal("customer"),
+    trustState: v.literal("unverified"),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_account_company", ["ownerAccountId", "companyId"]),
+
   userApiKeys: defineTable({
     userId: v.string(),
     name: v.string(),
@@ -977,8 +1119,11 @@ export default defineSchema({
     createdAt: v.number(),
     lastUsedAt: v.optional(v.number()),
     revokedAt: v.optional(v.number()),
+    scopes: v.optional(v.array(v.string())),
+    companyMonitoringAccountId: v.optional(v.string()),
   })
     .index("by_userId", ["userId"])
+    .index("by_userId_revokedAt", ["userId", "revokedAt"])
     .index("by_keyHash", ["keyHash"]),
 
   // Non-key Pro MCP identity rows. One row per OAuth grant for a Pro user.

@@ -367,7 +367,8 @@
     "airlineIntel": "✈️ Inteligencia Aeroportuaria",
     "consumerPrices": "Precios al Consumidor",
     "marketBreadth": "Amplitud de Mercado",
-    "climateNews": "Noticias de Clima"
+    "climateNews": "Noticias de Clima",
+    "fx": "Tipos de Cambio"
   },
   "commands": {
     "prefixes": {
@@ -980,7 +981,7 @@
         "ucdpEvents": "Eventos de la UCDP",
         "displacementFlows": "Flujos de desplazamiento",
         "climateAnomalies": "Anomalías climáticas",
-        "weatherAlerts": "Alertas meteorológicas",
+        "weatherAlerts": "Alertas meteorológicas de EE. UU. (NWS)",
         "strategicWaterways": "Vías navegables estratégicas",
         "economicCenters": "Centros Económicos",
         "criticalMinerals": "Minerales críticos",
@@ -1068,7 +1069,7 @@
           "infraDatacenters": "Clústeres de computación de IA >=10 000 GPU",
           "infraOutages": "Apagones de Internet e interrupciones del servicio.",
           "naturalEventsTech": "Terremotos, tormentas, incendios (pueden afectar a los centros de datos)",
-          "weatherAlerts": "Alertas de clima severo",
+          "weatherAlerts": "Alertas de clima severo en EE. UU. (NWS)",
           "economicCenters": "Bolsas de valores y bancos centrales",
           "countriesOverlay": "Superposiciones de nombres de países",
           "financeExchanges": "Principales intercambios globales por nivel de mercado",
@@ -1080,7 +1081,7 @@
           "financeOutages": "Interrupciones de Internet que pueden afectar las operaciones del mercado",
           "financeCyberThreats": "Eventos de seguridad en torno a la infraestructura financiera",
           "macroWaterways": "Puntos de estrangulamiento estratégicos para el transporte de mercancías",
-          "weatherAlertsMarket": "Eventos climáticos severos con relevancia para el mercado",
+          "weatherAlertsMarket": "Eventos climáticos severos en EE. UU. con relevancia para el mercado (NWS)",
           "naturalEventsMacro": "Terremotos, incendios, inundaciones y otras perturbaciones naturales",
           "timeRecent": "Filtrar datos basados en el tiempo a horas recientes",
           "timeExtended": "Mostrar datos de la semana pasada, el mes o todo el tiempo",
@@ -1676,7 +1677,8 @@
       "sources_many": "{{count}} fuentes",
       "provenanceTitle": "Procedencia de cobertura: cuántas historias ingeridas y fuentes distintas se seleccionaron para este resumen",
       "compiledFrom": "Compilado de {{stories}} historias en {{sources}} fuentes",
-      "briefFreshness": "Generado hace {{minutes}}m · fuente más reciente con {{hours}}h de antigüedad"
+      "briefFreshness": "Generado hace {{minutes}}m · fuente más reciente con {{hours}}h de antigüedad",
+      "briefStoryDetails": "Story details ({{count}})"
     },
     "etfFlows": {
       "unavailable": "Datos ETF temporalmente no disponibles",
@@ -2146,6 +2148,17 @@
       "chart": {
         "title": "Gráfico de precios {{symbol}}",
         "close": "Cerrar gráfico"
+      },
+      "unavailable": {
+        "symbols": "{{symbols}} — {{reason}}",
+        "symbolsMore": "{{symbols}} +{{count}} more — {{reason}}",
+        "notFound": "no quote available",
+        "providerError": "quote lookup failed, retrying shortly",
+        "rateLimited": "quote provider rate limited, retrying shortly",
+        "notConfigured": "quote provider not configured",
+        "requestLimit": "too many symbols requested",
+        "budget": "not loaded yet, retrying shortly",
+        "seed": "market data temporarily unavailable"
       }
     },
     "heatmap": {
@@ -2539,6 +2552,38 @@
       "upgradeCta": "Actualizar para obtener más",
       "lockedAriaLabel": "Agregar pestaña — bloqueado. {{reason}}",
       "unlockedAnnouncement": "Límite de pestañas del panel eliminado."
+    },
+    "fx": {
+      "infoTooltip": "<strong>Tipos de Cambio</strong> Estrés cambiario y tipos spot:<ul><li>FX Stress clasifica 45 monedas por su mayor caída acumulada en los últimos 24 meses, junto con el cambio en 12 meses</li><li>La cobertura incluye ARS, TRY, EGP, NGN, PKR y UAH — monedas que los conjuntos de referencia del BIS y BCE omiten</li><li>Spot lista los tipos frente al dólar estadounidense y los tipos de referencia del euro del BCE por separado, porque se cotizan desde bases diferentes</li><li>RUB — tipos del Banco de Rusia, rublos por unidad</li></ul> Fuentes: Yahoo Finance, el Banco Central Europeo y el Banco de Rusia.",
+      "tabs": {
+        "stress": "Estrés Cambiario",
+        "spot": "Spot",
+        "rub": "RUB"
+      },
+      "currency": "Moneda",
+      "pair": "Par",
+      "rate": "Tipo",
+      "yoy": "12m",
+      "drawdown": "Caída 24m",
+      "peakToTrough": "Máximo → Mínimo",
+      "change1d": "1d",
+      "perUsd": "Por 1 USD",
+      "usdPerUnit": "USD por unidad",
+      "usdBase": "Frente al dólar estadounidense",
+      "eurBase": "Tipos de referencia del euro BCE",
+      "stressedCount": "{{stressed}} de {{total}} monedas por debajo de {{threshold}}",
+      "sourceYahoo": "Fuente: Yahoo Finance",
+      "sourceEcb": "Fuente: BCE",
+      "degraded": "No disponible en este momento: {{sources}}. Reintentando en breve.",
+      "source": {
+        "stress": "Estrés del tipo de cambio",
+        "usd": "Tipos de cambio del dólar estadounidense",
+        "eur": "Tipos de cambio del euro del BCE",
+        "rub": "Tipos de cambio del Banco de Rusia"
+      },
+      "rubBase": "Banco de Rusia — rublos por 1 unidad",
+      "rubPerUnit": "Rublos por unidad",
+      "sourceCbr": "Fuente: Banco de Rusia"
     }
   },
   "popups": {
@@ -2871,7 +2916,7 @@
       "heading": "TÍTULO",
       "hexCode": "CÓDIGO HEXAGONAL",
       "squawk": "GRAZNIDO",
-      "attribution": "Fuente: Red OpenSky"
+      "attribution": "Fuente: adsb.lol (ODbL) · OpenSky Network"
     },
     "militaryVessel": {
       "aisDark": "AIS OSCURO",
@@ -3353,5 +3398,31 @@
     "deleteTab": "Eliminar pestaña",
     "deleteTabAria": "Eliminar pestaña {{name}}",
     "tabNameAria": "Nombre de pestaña"
+  },
+  "theaterPresets": {
+    "label": "Paquetes de cobertura",
+    "applied": "Paquete {{preset}} aplicado: {{count}} fuentes activadas",
+    "alreadyApplied": "El paquete {{preset}} ya está aplicado",
+    "ukraineWar": {
+      "label": "Guerra de Ucrania",
+      "description": "Activar medios ucranianos principales, prensa rusa independiente y fuentes de evaluación del frente"
+    },
+    "indoPacific": {
+      "label": "Indo-Pacífico / Taiwán",
+      "description": "Activar fuentes de seguridad de Taiwán, Pakistán y el Sudeste Asiático"
+    },
+    "sahelWestAfrica": {
+      "label": "Sahel y África Occidental",
+      "description": "Activar fuentes locales del Sahel, Nigeria y África Occidental"
+    },
+    "caucasusCentralAsia": {
+      "label": "Cáucaso y Asia Central",
+      "description": "Activar fuentes regionales del Cáucaso Sur y Asia Central"
+    },
+    "middleEastFlashpoints": {
+      "label": "Focos de tensión en Oriente Medio",
+      "description": "Activar fuentes de Irán, Israel, el Golfo y las regiones kurdas"
+    },
+    "unavailable": "El paquete {{preset}} no está disponible con tus paneles actuales"
   }
 }
