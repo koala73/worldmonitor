@@ -104,12 +104,23 @@ All must be green before flipping:
    **At flip, rotate again** (`v26`→`v27`, `v21`→`v22`). The flip changes scores
    far more than the scaffold did, and mixing pre- and post-flip points inside
    the 30-day rolling history window manufactures false trends for every
-   country. Use the grep below and re-run it against the new values:
+   country. Use this grep, then re-run it against the new values:
    ```bash
    grep -rln "resilience:score:v26\|resilience:ranking:v26\|resilience:history:v21" \
-     --include='*.mjs' --include='*.ts' --include='*.js' --include='*.mts' . | grep -v node_modules
+     --include='*.mjs' --include='*.ts' --include='*.js' --include='*.mts' \
+     --include='*.mdx' --include='*.md' . | grep -v node_modules
    ```
-   Nine files carry these literals and eight hand-copy them. Missing one is
+   **The `.mdx`/`.md` includes are load-bearing — do not drop them.** An earlier
+   version of this runbook omitted them, and the v25→v26 rotation consequently
+   missed the cache-key table in `docs/zh/methodology/country-resilience-index.mdx`
+   while the verification grep returned zero hits and read as proof of
+   completeness. A verification step that cannot see the surface it is verifying
+   is worse than no verification step. Both locales carry the key table, and the
+   zh doc is hand-maintained — `scripts/generate-public-product-facts.mjs` does
+   not regenerate it, so it will not self-heal.
+
+   Eleven files carry these literals: `_shared.ts` (canonical), eight that
+   hand-copy them in code, and the EN and zh methodology docs. Missing one is
    worse than not rotating: `benchmark-resilience-external.mjs`,
    `validate-resilience-correlation.mjs`, and `backtest-resilience-outcomes.mjs`
    produce the acceptance evidence, so a stale prefix there reads an abandoned
@@ -122,19 +133,15 @@ All must be green before flipping:
    published pillar coverage for every country — a separate change with its own
    acceptance run, not a rider on this one.
 
-   Nine files carry these literals and eight hand-copy them:
-   ```bash
-   grep -rln "resilience:score:v25\|resilience:ranking:v25\|resilience:history:v20" \
-     --include='*.mjs' --include='*.ts' --include='*.js' --include='*.mts' . | grep -v node_modules
-   ```
-   Bump score `v25`→`v26`, ranking `v25`→`v26`, history `v20`→`v21` in every
-   hit, then re-run the grep against the new values to confirm none was missed.
-   Leaving one behind is worse than not bumping: `benchmark-resilience-external.mjs`,
-   `validate-resilience-correlation.mjs`, and `backtest-resilience-outcomes.mjs`
-   produce the acceptance evidence, so a stale prefix there reads an abandoned
-   namespace and returns a green verdict with no signal.
+6. **Ship the coverage-drop warning.** The 150 validation floor does not catch a
+   partial fetch: 161 countries clears it while silently moving ~20 onto the
+   `unmonitored` imputation. While the dimension is dark that moves nothing
+   published; at flip it moves real scores. The design (sized to this seeder's
+   cadence, warn-not-fail, set-diff rather than count-only) is specified in
+   `scripts/seed-education-attainment.mjs` above `MIN_COUNTRIES`. Build it
+   before flipping, not after.
 
-6. **Remove the dark allow-list entry.** Drop `'education'` from
+7. **Remove the dark allow-list entry.** Drop `'education'` from
    `FLAG_GATED_DARK_DIMENSIONS` in `tests/resilience-release-gate.test.mts` and
    from `RESILIENCE_FLAG_DARK_WHEN_ZERO_COVERAGE` in `_dimension-scorers.ts`.
    Leaving them in place would keep a live dimension excluded from the

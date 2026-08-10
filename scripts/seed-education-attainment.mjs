@@ -67,6 +67,34 @@ const WINDOW_START = 2011;
 // `docs/methodology/education-flag-flip-runbook.md`.
 const MIN_COUNTRIES = 150;
 
+// FOLLOW-UP, required before the flag flips (not before this ships — the
+// dimension is dark, so a silent drop moves nothing published yet).
+//
+// The floor alone leaves a real gap: a fetch that returns 161 countries clears
+// both it and any naive percentage delta check, while silently moving ~20
+// countries onto the 50/0.3 `unmonitored` imputation with no alarm. Post-flip
+// that shifts published scores for those countries.
+//
+// Size the check to CADENCE, not to a percentage borrowed from a volatile feed.
+// A 15% delta is nearly a no-op here: 181 x 0.85 = 154, and validate() already
+// rejects below 150, so it would only fire in the 4-country band between them.
+// This seeder runs weekly against a series that republishes annually, so the
+// expected week-over-week delta is exactly ZERO — which buys a much tighter
+// trigger than a daily feed could afford: ~3-5 countries, with a near-zero
+// false-positive rate.
+//
+// Two constraints on the implementation:
+//   - WARN (log + Sentry), never a hard fail. A legitimate World Bank
+//     republication does move the set, and hard-failing would poison seed-meta
+//     on a real revision — reintroducing at a tighter threshold exactly the
+//     failure the low 150 floor exists to avoid.
+//   - Count is a weak proxy. 181 -> 181 with three countries swapped is
+//     invisible to any count check. Store the sorted ISO2 set (or its hash)
+//     alongside recordCount in seed-meta and log which codes appeared and
+//     disappeared. That turns "did the number move" into "which countries did
+//     we lose", which is the question an operator actually has to answer, and
+//     it matters here because this feeds a public 196-country ranking.
+
 // Pure record reducer, exported so the parsing traps below are testable
 // without network. Folds a page of World Bank rows into `out`, keeping the
 // most recent observation per ISO2 country.
