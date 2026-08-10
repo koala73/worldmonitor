@@ -232,7 +232,7 @@ async function scheduleAccountWorkHandler(
   const { windowStart, windowEnd } = scanWindowAt(now);
   const queryVersion = QUERY_VERSION[args.source];
   const cohortKey = await fingerprint({ version: "cm-cohort-v1", companyIds });
-  const workKey = await scanWorkKey({
+  let workKey = await scanWorkKey({
     ownerAccountId: args.ownerAccountId,
     cohortKey,
     source: args.source,
@@ -246,22 +246,40 @@ async function scheduleAccountWorkHandler(
     }
   }
 
-  const existing = await ctx.db
+  const priorWorkIds = new Set<string>();
+  for (const { obligation } of selectedRows) {
+    if (obligation?.workId) priorWorkIds.add(obligation.workId);
+  }
+
+  let existing = await ctx.db
     .query("companyMonitoringScanWorkItems")
     .withIndex("by_workKey", (q) => q.eq("workKey", workKey))
     .unique();
+  if (
+    mode === "missing_only" &&
+    existing &&
+    (existing.state === "complete" || existing.state === "non_reassuring")
+  ) {
+    // The hourly key is also the immutable identity of the terminal receipt.
+    // A same-hour lifecycle change must preserve that receipt while creating
+    // a new scheduled occurrence for the cancelled obligation.
+    workKey = await fingerprint({
+      version: "cm-lifecycle-reschedule-v1",
+      originalWorkKey: workKey,
+      supersededWorkIds: [...priorWorkIds].sort(),
+    });
+    existing = await ctx.db
+      .query("companyMonitoringScanWorkItems")
+      .withIndex("by_workKey", (q) => q.eq("workKey", workKey))
+      .unique();
+  }
   if (existing && existing.state !== "cancelled") {
     await updateAccountDueFromWork(ctx, args.ownerAccountId);
     return { status: "replayed" as const, workId: existing.workId };
   }
 
   const workId = existing?.workId ?? `cm_work_${workKey.slice(0, 40)}`;
-  const priorWorkIds = new Set<string>();
-  for (const { obligation } of selectedRows) {
-    if (obligation?.workId && obligation.workId !== workId) {
-      priorWorkIds.add(obligation.workId);
-    }
-  }
+  priorWorkIds.delete(workId);
 
   const dueWork = {
     workId,
