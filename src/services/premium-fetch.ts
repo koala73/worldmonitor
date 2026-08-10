@@ -88,7 +88,31 @@ export function reportServerError(
     const level: 'warning' | 'error' = isCloudflareEdgeError ? 'warning' : 'error';
     const tags = { kind: isCloudflareEdgeError ? 'api_cf_5xx' : 'api_5xx' };
     const extra = { path, status: res.status };
-    enqueue((s) => s.captureMessage(message, { level, tags, extra }));
+    // Group explicitly rather than letting Sentry infer it. These are
+    // message-only events — `attachStacktrace` defaults to false and is never
+    // set in sentry-init.ts — so Sentry groups them by message, and its
+    // server-side parameterization normalizes the embedded status integer:
+    // `API 520: /x` and `API 503: /x` collapse to the same grouping message.
+    // WORLDMONITOR-P4 ("API 520: /api/economic/v1/get-fred-series-batch") held
+    // 256 api_5xx events beside 25 api_cf_5xx ones that way — 92 of its last
+    // 100 were the 2026-07-12 origin 503s, not the 520 it is named for. That
+    // inflates the headline count, voids the level split above (one issue
+    // carries one level), and makes an unpinned resolve reopen and page on any
+    // origin 5xx for the path.
+    //
+    // `path` and the status are the two grouping axes. The leading token is a
+    // readable class label in the style of analytics-collector-transport.ts's
+    // fingerprint namespace, but it is derived from the status, so it splits
+    // nothing on its own — do not read it as a third axis.
+    // Cardinality stays bounded at the RPC path set x the 5xx status set —
+    // `path` is a pathname, so query strings never enter the key. Keep it that
+    // way: a path-parameterized caller would mint one Sentry issue per URL.
+    const fingerprint = [
+      isCloudflareEdgeError ? 'api-cf-5xx' : 'api-5xx',
+      path,
+      String(res.status),
+    ];
+    enqueue((s) => s.captureMessage(message, { level, tags, extra, fingerprint }));
   } catch { /* ignore URL parse errors */ }
 }
 
