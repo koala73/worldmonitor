@@ -117,6 +117,11 @@ export const LOCKED_PREVIEW: ResilienceScoreResponse = {
         { id: 'socialCohesion', score: 72, coverage: 0.9, observedWeight: 0.9, imputedWeight: 0.1, imputationClass: 'stable-absence', freshness: { lastObservedAtMs: LOCKED_PREVIEW_FRESH_AT_MS, staleness: 'fresh' } },
         { id: 'borderSecurity', score: 68, coverage: 0.75, observedWeight: 0.75, imputedWeight: 0.25, imputationClass: 'unmonitored', freshness: { lastObservedAtMs: LOCKED_PREVIEW_AGING_AT_MS, staleness: 'aging' } },
         { id: 'informationCognitive', score: 66, coverage: 0.82, observedWeight: 0.82, imputedWeight: 0.18, imputationClass: '', freshness: { lastObservedAtMs: LOCKED_PREVIEW_FRESH_AT_MS, staleness: 'fresh' } },
+        // LOCKED_PREVIEW is the blurred teaser grid, not a mirror of live
+        // state — every non-retired cell carries populated values so the
+        // preview renders meaningfully. Coverage 0.92 reflects the series'
+        // real 181/196 reach for when the flag flips.
+        { id: 'education', score: 71, coverage: 0.92, observedWeight: 0.92, imputedWeight: 0.08, imputationClass: '', freshness: { lastObservedAtMs: LOCKED_PREVIEW_FRESH_AT_MS, staleness: 'fresh' } },
       ],
     },
     {
@@ -457,6 +462,7 @@ const DIMENSION_LABELS: Record<string, string> = {
   // displacement, not border infrastructure. Surface the truthful label.
   borderSecurity: 'Conflict',
   informationCognitive: 'Info',
+  education: 'Edu',
   healthPublicService: 'Health',
   foodWater: 'Food',
   fiscalSpace: 'Fiscal',

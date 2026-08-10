@@ -963,6 +963,28 @@ export const INDICATOR_REGISTRY: IndicatorSpec[] = [
     comprehensive: false,
   },
 
+  // ── education (1 sub-metric) ──────────────────────────────────────────────
+  {
+    id: 'femaleUpperSecondaryAttainment',
+    dimension: 'education',
+    description: 'Female upper-secondary educational attainment, population 25+ (World Bank SE.SEC.CUAT.UP.FE.ZS); piecewise transform with a slope bend at 85',
+    direction: 'higherBetter',
+    goalposts: { worst: 0, best: 100 },
+    weight: 1.0,
+    sourceKey: 'resilience:education-attainment:v1',
+    scope: 'global',
+    cadence: 'annual',
+    // Stays `experimental` while RESILIENCE_EDUCATION_ENABLED is off. That
+    // keeps it out of the per-dimension weight-sum invariant AND the
+    // coverage-influence gate, both of which filter on tier. Promote to
+    // 'core' in the activation PR, where the measured 181-country coverage
+    // clears the 137 floor with 44 to spare.
+    tier: 'experimental',
+    coverage: 181,
+    license: 'open-attribution',
+    comprehensive: true,
+  },
+
   // ── healthPublicService (5 sub-metrics) ───────────────────────────────────
   {
     id: 'uhcIndex',

@@ -56,7 +56,8 @@ describe('resilience handlers', () => {
     // filtered out of confidence averages via RESILIENCE_RETIRED_DIMENSIONS.
     // Plan 2026-04-25-004 Phase 2: financialSystemExposure is the 20th
     // active dim (ships flag-gated dark; counted in the structural total).
-    assert.equal(response.domains.flatMap((domain) => domain.dimensions).length, 22);
+    // 21 active + 2 retired. +1 on 2026-08-10 for the flag-dark `education` dim.
+    assert.equal(response.domains.flatMap((domain) => domain.dimensions).length, 23);
     assert.ok(response.overallScore > 0 && response.overallScore <= 100);
     assert.equal(response.level, response.overallScore >= 70 ? 'high' : response.overallScore >= 40 ? 'medium' : 'low');
     assert.equal(response.trend, 'rising');

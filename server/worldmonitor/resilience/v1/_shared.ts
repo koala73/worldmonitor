@@ -118,6 +118,26 @@ export function isFinancialSystemExposureEnabled(): boolean {
   return (process.env.RESILIENCE_FIN_SYS_EXPOSURE_ENABLED ?? 'false').toLowerCase() === 'true';
 }
 
+// `education` dimension — female upper-secondary attainment (WB
+// SE.SEC.CUAT.UP.FE.ZS), scored by `scoreEducation` from
+// `resilience:education-attainment:v1`. One indicator, dimension weight 0.5
+// in the social-governance domain, goalposts 0/100 with a slope bend at 85.
+//
+// Defaults OFF. While dark the scorer returns the empty-data shape and the
+// registry entry is tier='experimental', which keeps it out of both the
+// per-dimension weight-sum invariant and the coverage-influence CI gate.
+//
+// Flipping this to true is a PUBLICATION EVENT, not a config change: it adds a
+// fifth core-bearing dimension to social-governance, which moves every existing
+// dimension in that domain from a 1/4 to a 1/5 gate share. Run the acceptance
+// gates and capture the artifact per
+// docs/methodology/education-flag-flip-runbook.md before flipping, and bump the
+// score/ranking/history cache prefixes in lockstep or the 30-day trend window
+// mixes pre- and post-change points.
+export function isEducationEnabled(): boolean {
+  return (process.env.RESILIENCE_EDUCATION_ENABLED ?? 'false').toLowerCase() === 'true';
+}
+
 export const RESILIENCE_SCORE_CACHE_TTL_SECONDS = 6 * 60 * 60;
 // Ranking TTL must exceed the cron interval (6h) by enough to tolerate one
 // missed/slow cron tick. With TTL==cron_interval, writing near the end of a

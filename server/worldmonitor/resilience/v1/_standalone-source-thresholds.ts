@@ -26,6 +26,11 @@ export const STANDALONE_SOURCE_META_MAX_STALE_MIN: Readonly<Record<string, numbe
   'seed-meta:resilience:fossil-electricity-share': 11520,
   'seed-meta:resilience:low-carbon-generation': 11520,
   'seed-meta:resilience:power-losses': 11520,
+  // Education dimension seed — weekly cron, 8d budget (2x interval), mirroring
+  // api/health.js and the v2 energy seeds. Alarms on the seeder being dead, not
+  // on the underlying annual series being old; content-age staleness is the
+  // seeder's own 48-month maxContentAgeMin.
+  'seed-meta:resilience:education-attainment': 11520,
   'seed-meta:displacement:summary': 720,
   'seed-meta:unrest:events': 120,
   'seed-meta:conflict:ucdp-events': 420,

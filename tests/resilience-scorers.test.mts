@@ -168,11 +168,17 @@ describe('resilience scorer contracts', () => {
     // per-snapshot cyber severity weight (fixture threats are undated, so the
     // whole snapshot is one capped bucket — same value pre/post the day-bucket
     // rework). Undated rows intentionally fall back to the current bucket.
+    // 2026-08-10 education dim: social-governance 66.25 -> 53. Same flat-mean
+    // artifact the financialSystemExposure note above describes, not a scoring
+    // change: the new `education` dim ships flag-gated off, so score=0, and
+    // this flat average drops 66.25 = 265/4 -> 53 = 265/5. The production
+    // coverage-weighted path (next test) correctly drops a coverage=0 dim
+    // from the blend, so the headline overall is unmoved while the flag is off.
     assert.deepEqual(domainAverages, {
       economic: 56.5,
       infrastructure: 79.67,
       energy: 80,
-      'social-governance': 66.25,
+      'social-governance': 53,
       'health-food': 60.5,
       recovery: 49.63,
     });
