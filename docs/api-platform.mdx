@@ -141,7 +141,7 @@ Returns country metadata: centroid, bbox, capital, ISO codes.
 
 ### `GET /api/reverse-geocode?lat=40.7&lon=-74.0`
 
-Reverse geocodes a lat/lon to the nearest country + city using the bundled coordinate dataset.
+Reverse geocodes a lat/lon to the nearest country + city via OpenStreetMap Nominatim. Results are cached on a 0.1-degree grid for seven days, and the route is limited to 60 req/min/IP.
 
 ### `GET /api/data/city-coords?q=Tokyo`
 

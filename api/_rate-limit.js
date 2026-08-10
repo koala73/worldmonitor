@@ -141,13 +141,29 @@ export async function checkRateLimit(request, corsHeaders, opts = {}) {
   const ip = getClientIp(request);
   try {
     const fallbackPrefix = policy.scope === DEFAULT_RATE_LIMIT_SCOPE ? 'rl:fw' : `rl:${policy.scope}:fw`;
-    const { success, limit, reset } = await limitWithFallback(
+    const result = await limitWithFallback(
       rl,
       ip,
       `${fallbackPrefix}:${ip}`,
       policy.limit,
       durationToSeconds(policy.window),
     );
+
+    // @upstash/ratelimit v2 races the Redis call against its own internal
+    // timeout and RESOLVES `{ success: true, reason: 'timeout' }` rather than
+    // rejecting, so a slow (not down) Redis never reaches the catch below and
+    // is indistinguishable from a genuine allow — the limit vanishes with no
+    // log and no Sentry event. Route it through the same degraded handling as a
+    // thrown Redis error so the bypass window is visible, and so `failClosed`
+    // callers still get their 503. Mirrors checkEndpointRateLimit and
+    // checkScopedRateLimit in server/_shared/rate-limit.ts. (#6412 review)
+    if (result.reason === 'timeout') {
+      logRateLimitDegraded('checkRateLimit:timeout', new Error('Upstash rate-limit decision timed out'), opts.ctx);
+      if (opts.failClosed) return rateLimitDegradedResponse(corsHeaders);
+      return null;
+    }
+
+    const { success, limit, reset } = result;
 
     if (!success) {
       // `reset` is a Unix epoch in MILLISECONDS (Upstash convention). The IETF

@@ -574,7 +574,7 @@ export function renderPreferences(host: PreferencesHost): PreferencesResult {
           }).catch((err: Error) => {
             if (err.name === 'AbortError') return;
             if (err.message === 'rate-limit') {
-              showImportError(errEl, 'Too many import requests. Try again in an hour.');
+              showImportError(errEl, 'Too many import requests. Try again in a minute.');
             } else {
               showImportError(errEl, 'Could not reach agentskills.io. Check your connection.');
             }

@@ -11,7 +11,7 @@ description: "World Monitor API 中的按端点、按密钥、按 IP 三层速�
 |-------|-------|--------|
 | 按 IP（默认） | **600 次请求** | 60 秒 |
 
-适用于所有没有更严格覆盖规则的 `/api/*` 路由。由 `api/_rate-limit.js` / `api/_ip-rate-limit.js` 实现。
+适用于所有没有更严格覆盖规则的 `/api/*` 路由。由 `api/_rate-limit.js`（遗留 `api/*.js` 边缘函数）和 `server/_shared/rate-limit.ts`（网关与 `.ts` 边缘函数）实现。
 
 ## MCP 服务器
 
@@ -66,6 +66,18 @@ Free 与未登录的仪表盘用户在信息流增强上仍可使用常规的关
 对于 `/api/oauth/token`，限流器键在 `client_credentials` 下为 `client_secret` 哈希，其次为 `client_id`（若存在），仅当两个凭证标识均不可用时才回退到调用方 IP。
 
 在 OAuth 流程中超过以上任一限制都会导致 MCP 客户端连接握手失败 — 请等待 60 秒后重试。
+
+## 提供方代理
+
+代表我们抓取第三方主机的路由拥有各自的按 IP 额度，以免单个脚本化调用方向我们无法控制的提供方发出无限流量。这些额度按 IP 计算而非总量：它们限制任意单个调用方，但不限制所有调用方的总出口流量。
+
+| 端点 | 限制 | 窗口 | 范围 |
+|----------|-------|--------|-------|
+| `POST /api/skills/fetch-agentskills` | 30 | 60 秒 | 按 IP |
+| `GET /api/youtube/live` | 30 | 60 秒 | 按 IP |
+| `GET /api/reverse-geocode` | 60 | 60 秒 | 按 IP |
+
+这三个路由都在 `ENDPOINT_RATE_POLICIES`（`server/_shared/rate-limit.ts`）中声明并在处理函数内部强制执行，因为它们都不经过网关。`/api/reverse-geocode` 会访问 Nominatim，其使用政策是本技术栈中最严格的，且以封禁出口 IP 的方式执行，因此应将该额度视为上限而非目标。
 
 ## 写入端点
 

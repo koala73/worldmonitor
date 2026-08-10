@@ -131,7 +131,7 @@ description: "World Monitor 平台基础设施端点完整参考：涵盖引导�
 
 ### `GET /api/reverse-geocode?lat=40.7&lon=-74.0`
 
-使用内置坐标数据集将 lat/lon 反向地理编码为最近的国家 + 城市。
+通过 OpenStreetMap Nominatim 将 lat/lon 反向地理编码为最近的国家 + 城市。结果按 0.1 度网格缓存七天，该路由限制为 60 请求/分钟/IP。
 
 ### `GET /api/data/city-coords?q=Tokyo`
 
