@@ -49,6 +49,12 @@ record both commits. The upstream migration was numbered `23` on its `dev`
 branch; the overlay uses `21_update_session_data` because v3.2.0 ends at
 migration `20`.
 
+Railway watch paths for `umami` are the shared build-context policy, the image
+definition, and the repository files that it copies: `.dockerignore`,
+`Dockerfile.umami`, and the exact inputs under `docker/umami/`. Other
+repository changes do not affect this upstream-based image and must not make
+deploy-drift checks report it as behind.
+
 Deploy the image only through this sequence:
 
 1. Take a restorable backup of the production `Postgres Umami` service and

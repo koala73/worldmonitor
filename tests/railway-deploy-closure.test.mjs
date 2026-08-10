@@ -197,7 +197,7 @@ describe('closure resolution', () => {
   });
 
   it('reads an explicitly empty registry array as watching everything', () => {
-    // umami and publish-bootstrap-tiers use [] deliberately.
+    // publish-bootstrap-tiers uses [] deliberately.
     const closure = resolveServiceClosure({ registryEntry: { watchPatterns: [] } });
     assert.equal(closure.patterns, null);
     assert.ok(changeReachesService(closure, ['src/App.ts']));

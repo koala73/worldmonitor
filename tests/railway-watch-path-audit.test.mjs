@@ -88,6 +88,14 @@ function manifestsCopiedBy(dockerfileSource) {
   return copied;
 }
 
+function repositoryCopyInputs(dockerfileSource) {
+  const repositoryCopySource = dockerfileSource
+    .split('\n')
+    .filter((line) => !/^COPY\s+--from=/u.test(line))
+    .join('\n');
+  return parseDockerfileCopy(repositoryCopySource);
+}
+
 /**
  * The BUILD inputs a service's closure must name, on top of its runtime graph.
  *
@@ -105,11 +113,14 @@ function buildInputsFor(entry, repoRootDir) {
   }
   if (entry.dockerfile) {
     inputs.add(entry.dockerfile);
-    // Derived from the Dockerfile itself rather than assumed per mode: these
-    // images differ, and one that pins its tooling inline (tsx@x.y.z with
-    // --no-package-lock) genuinely has no manifest dependency to watch.
+    inputs.add('.dockerignore');
     const source = readFileSync(resolve(repoRootDir, entry.dockerfile), 'utf8');
-    for (const manifest of manifestsCopiedBy(source)) inputs.add(manifest);
+    // A repository file copied directly into the image is a build input even
+    // when it is a patch, fixture, declaration, or config that the runtime
+    // import graph cannot see. Stage-to-stage COPY sources are image-local and
+    // must not become repository watch paths.
+    const copied = repositoryCopyInputs(source);
+    for (const file of copied.files) inputs.add(file);
   }
   return inputs;
 }
@@ -1119,25 +1130,30 @@ describe('closure detection layers', () => {
       );
     });
 
-    it('gives a Dockerfile service its Dockerfile plus only the manifests it copies', () => {
+    it('gives a Dockerfile service its definition plus every direct file input', () => {
       const relay = [...buildInputsFor(
         { deployMode: 'dockerfile', dockerfile: 'Dockerfile.relay' },
         repoRoot,
       )].sort();
-      assert.deepEqual(relay, [
-        'Dockerfile.relay',
-        'scripts/package-lock.json',
-        'scripts/package.json',
-      ]);
+      const relaySource = readFileSync(resolve(repoRoot, 'Dockerfile.relay'), 'utf8');
+      assert.deepEqual(
+        relay,
+        ['.dockerignore', 'Dockerfile.relay', ...parseDockerfileCopy(relaySource).files].sort(),
+      );
 
-      // The contrast case, in the same test so the two cannot drift apart: an
-      // image that installs nothing from a manifest gets only its Dockerfile.
+      // Directory sources are verified through the runtime-surface walk. Exact
+      // config files copied beside them are build inputs in their own right.
       assert.deepEqual(
         [...buildInputsFor(
           { deployMode: 'dockerfile', dockerfile: 'Dockerfile.seed-bundle-resilience-validation' },
           repoRoot,
-        )],
-        ['Dockerfile.seed-bundle-resilience-validation'],
+        )].sort(),
+        [
+          '.dockerignore',
+          'Dockerfile.seed-bundle-resilience-validation',
+          'tsconfig.api.json',
+          'tsconfig.json',
+        ],
       );
     });
   });
@@ -1222,13 +1238,21 @@ describe('critical ingestion Railway registry contract', () => {
   const closureManaged = managedRailwayServices(registry)
     .filter((entry) => Array.isArray(entry.watchPatterns) && entry.watchPatterns.length > 0);
 
-  it('audit-manages the always-on Umami collector with whole-repository rebuilds', () => {
+  it('audit-manages the always-on Umami collector with its exact image inputs', () => {
     const collector = registry.find((entry) => entry.service === 'umami');
     assert.ok(collector, 'umami must be registered');
+
+    const dockerfileSource = readFileSync(resolve(repoRoot, collector.dockerfile), 'utf8');
+    const copied = repositoryCopyInputs(dockerfileSource);
     assert.deepEqual(
-      collector.watchPatterns,
+      [...copied.directories],
       [],
-      'empty watch paths intentionally rebuild Umami for any repository change',
+      'directory COPY inputs need an explicit recursive watch-path contract',
+    );
+    assert.deepEqual(
+      [...collector.watchPatterns].sort(),
+      ['.dockerignore', collector.dockerfile, ...copied.files].sort(),
+      'Umami must rebuild for every repository input copied into its image, and only those inputs',
     );
     assert.ok(
       managedRailwayServices(registry).includes(collector),
@@ -1238,7 +1262,7 @@ describe('critical ingestion Railway registry contract', () => {
     const liveCollector = service({
       cronSchedule: null,
       dockerfilePath: 'Dockerfile.umami',
-      watchPatterns: [],
+      watchPatterns: [...collector.watchPatterns],
       variables: { DATABASE_URL: 'postgres://configured' },
     });
     const drift = auditRailwayServiceConfig(

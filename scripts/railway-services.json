@@ -8,7 +8,20 @@
       "APP_SECRET",
       "DATABASE_URL"
     ],
-    "watchPatterns": [],
+    "watchPatterns": [
+      ".dockerignore",
+      "Dockerfile.umami",
+      "docker/umami/21_update_session_data/migration.sql",
+      "docker/umami/runtime/21-update-session-data-prefix.sql",
+      "docker/umami/runtime/21-update-session-data-suffix.sql",
+      "docker/umami/runtime/package.json",
+      "docker/umami/runtime/pnpm-lock.yaml",
+      "docker/umami/runtime/pnpm-workspace.yaml",
+      "docker/umami/runtime/session-data-upsert.sql",
+      "docker/umami/runtime/upstream-23-update-session-data.sql",
+      "docker/umami/session-data-upsert.patch",
+      "docker/umami/v320-compat.patch"
+    ],
     "cronSchedule": null,
     "documentedAt": "docs/analytics-collector-operations.md#patched-runtime-image"
   },
@@ -26,6 +39,7 @@
       "PGPASSWORD"
     ],
     "watchPatterns": [
+      ".dockerignore",
       "scripts/umami-retention.sql",
       "Dockerfile.umami-retention"
     ],
@@ -38,10 +52,12 @@
     "dockerfile": "Dockerfile.digest-notifications",
     "service": "digest-notifications",
     "watchPatterns": [
+      ".dockerignore",
       "Dockerfile.digest-notifications",
       "api/_seed-envelope.js",
       "api/_upstash-json.js",
       "scripts/_digest-markdown.mjs",
+      "scripts/clear-delivered-entry.mjs",
       "scripts/lib/_upstash-pipeline.mjs",
       "scripts/lib/brief-compose.mjs",
       "scripts/lib/brief-dedup-consts.mjs",
@@ -82,15 +98,24 @@
       "scripts/shared/notification-dedup.cjs",
       "scripts/shared/stocks.json",
       "server/_shared/brief-render.js",
+      "server/_shared/brief-render.d.ts",
       "server/_shared/feelgood-classifier.js",
+      "server/_shared/feelgood-classifier.d.ts",
       "server/_shared/llm-sanitize.js",
+      "server/_shared/llm-sanitize.d.ts",
       "server/_shared/opinion-classifier.js",
+      "server/_shared/opinion-classifier.d.ts",
+      "shared/brief-envelope.d.ts",
       "shared/brief-envelope.js",
+      "shared/brief-filter.d.ts",
       "shared/brief-filter.js",
+      "shared/brief-llm-core.d.ts",
       "shared/brief-llm-core.js",
       "shared/diplomacy-keywords.json",
+      "shared/ephemeral-live-classifier.d.ts",
       "shared/ephemeral-live-classifier.js",
       "shared/stocks.json",
+      "shared/ticker-extract.d.ts",
       "shared/ticker-extract.js",
       "shared/url-classifier.js"
     ],
@@ -102,11 +127,13 @@
     "dockerfile": "Dockerfile.relay",
     "service": "ais-relay",
     "watchPatterns": [
+      ".dockerignore",
       "Dockerfile.relay",
       "data/israeli-localities-he-en.json",
       "data/oref-threat-translations-he-en.json",
       "data/telegram-channels.json",
       "scripts/_climate-news-helpers.mjs",
+      "scripts/_country-resolver.mjs",
       "scripts/_country-stock-index.mjs",
       "scripts/_html-entities.mjs",
       "scripts/_ingestion-coverage.cjs",
@@ -122,11 +149,13 @@
       "scripts/package.json",
       "scripts/seed-chokepoint-flows.mjs",
       "scripts/seed-climate-news.mjs",
+      "scripts/seed-ember-electricity.mjs",
       "scripts/shared/ai-tokens.json",
       "scripts/shared/closed-market-equity-maintenance.cjs",
       "scripts/shared/commodities.json",
       "scripts/shared/country-name-to-iso2.cjs",
       "scripts/shared/country-names.json",
+      "scripts/shared/iso2-to-region.json",
       "scripts/shared/crypto-sectors.json",
       "scripts/shared/crypto.json",
       "scripts/shared/defi-tokens.json",
@@ -167,6 +196,7 @@
       "PROXY_URL"
     ],
     "watchPatterns": [
+      ".dockerignore",
       "Dockerfile.seed-bundle-portwatch-port-activity",
       "scripts/_bundle-runner.mjs",
       "scripts/_country-resolver.mjs",
@@ -281,6 +311,7 @@
     "dockerfile": "Dockerfile.seed-bundle-resilience-validation",
     "service": "seed-bundle-resilience-validation",
     "watchPatterns": [
+      ".dockerignore",
       "Dockerfile.seed-bundle-resilience-validation",
       "scripts/_bundle-runner.mjs",
       "scripts/_country-resolver.mjs",
@@ -320,7 +351,9 @@
       "shared/country-names.json",
       "shared/iso2-to-iso3.json",
       "shared/iso3-to-iso2.json",
-      "shared/wgi-indicator-keys.json"
+      "shared/wgi-indicator-keys.json",
+      "tsconfig.api.json",
+      "tsconfig.json"
     ],
     "documentedAt": "Dockerfile.seed-bundle-resilience-validation"
   },
