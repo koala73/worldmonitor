@@ -7,6 +7,11 @@ import {
   type MutationCtx,
 } from "../_generated/server";
 import { COMPANY_MONITORING_ROLLOUT_FLAGS } from "../config/productCatalog";
+import {
+  COMPANY_MONITORING_LIMITS,
+  normalizeCompanyClaimInput,
+  normalizeMonitoredCompanyInput,
+} from "../../shared/company-monitoring-contract";
 import { fingerprint } from "./_shared";
 import {
   companyMonitoringFinalizeResultValidator,
@@ -42,7 +47,20 @@ const QUERY_VERSION: Record<Source, string> = {
 
 // Provider limits are Convex-owned. A worker receives the selected value in a
 // lease and cannot raise it in claim or finalize arguments.
-const RESULT_CAP: Record<Source, number> = { exa: 100, x: 100 };
+const RESULT_CAP: Record<Source, number> = { exa: 25, x: 100 };
+const EXA_DISCOVERY_CLAIM_LIMIT_PER_COMPANY = 12;
+const EXA_DISCOVERY_CLAIM_TYPES = new Set([
+  "alias",
+  "domain",
+  "legal_identifier",
+  "location",
+]);
+const EXA_DISCOVERY_CLAIM_PRIORITY: Record<string, number> = {
+  legal_identifier: 0,
+  domain: 1,
+  alias: 2,
+  location: 3,
+};
 
 function workIdentity(work: Work) {
   return {
@@ -653,6 +671,67 @@ async function dueWorkForAccount(
   return null;
 }
 
+async function projectExaCompanyClaims(
+  ctx: MutationCtx,
+  ownerAccountId: string,
+  obligation: Obligation,
+) {
+  const company = await ctx.db
+    .query("companyMonitoringCompanies")
+    .withIndex("by_account_companyId", (q) =>
+      q.eq("ownerAccountId", ownerAccountId).eq("companyId", obligation.companyId),
+    )
+    .unique();
+  if (
+    !company ||
+    company.lifecycle !== "active" ||
+    !company.name ||
+    !company.domicileCountry
+  ) {
+    throw new ConvexError("COMPANY_MONITORING_WORK_COMPANY_INVALID");
+  }
+  const normalizedCompany = normalizeMonitoredCompanyInput({
+    name: company.name,
+    domicileCountry: company.domicileCountry,
+  });
+  const claimRows = await ctx.db
+    .query("companyMonitoringClaims")
+    .withIndex("by_account_company", (q) =>
+      q.eq("ownerAccountId", ownerAccountId).eq("companyId", obligation.companyId),
+    )
+    .take(COMPANY_MONITORING_LIMITS.maxClaimsPerCompany + 1);
+  if (claimRows.length > COMPANY_MONITORING_LIMITS.maxClaimsPerCompany) {
+    throw new ConvexError("COMPANY_MONITORING_WORK_CLAIMS_INVALID");
+  }
+  const eligibleClaims = claimRows
+    .filter((claim) => EXA_DISCOVERY_CLAIM_TYPES.has(claim.type))
+    .map((claim) => {
+      const normalized = normalizeCompanyClaimInput({ type: claim.type, value: claim.value });
+      if (normalized.type !== claim.type || normalized.value !== claim.value) {
+        throw new ConvexError("COMPANY_MONITORING_WORK_CLAIMS_INVALID");
+      }
+      return { claimId: claim.claimId, ...normalized };
+    })
+    .sort((left, right) =>
+      EXA_DISCOVERY_CLAIM_PRIORITY[left.type]! - EXA_DISCOVERY_CLAIM_PRIORITY[right.type]! ||
+      left.value.localeCompare(right.value) ||
+      left.claimId.localeCompare(right.claimId)
+    );
+  return {
+    companyId: obligation.companyId,
+    company: {
+      name: normalizedCompany.name,
+      domicileCountry: normalizedCompany.domicileCountry,
+      claims: eligibleClaims.slice(0, EXA_DISCOVERY_CLAIM_LIMIT_PER_COMPANY),
+      claimProjection: {
+        available: eligibleClaims.length,
+        included: Math.min(eligibleClaims.length, EXA_DISCOVERY_CLAIM_LIMIT_PER_COMPANY),
+        omitted: Math.max(0, eligibleClaims.length - EXA_DISCOVERY_CLAIM_LIMIT_PER_COMPANY),
+      },
+    },
+  };
+}
+
 async function claimSelectedWork(
   ctx: MutationCtx,
   work: Extract<Work, { state: "due" | "leased" }>,
@@ -685,6 +764,13 @@ async function claimSelectedWork(
       throw new ConvexError("COMPANY_MONITORING_WORK_OBLIGATIONS_INVALID");
     }
   }
+
+  const projectedCompanies = work.source === "exa"
+    ? await Promise.all(obligations.map((obligation) =>
+      projectExaCompanyClaims(ctx, work.ownerAccountId, obligation)
+    ))
+    : [];
+  const projectedByCompanyId = new Map(projectedCompanies.map((row) => [row.companyId, row.company]));
 
   await ctx.db.replace(work._id, {
     ...workIdentity(work),
@@ -738,6 +824,9 @@ async function claimSelectedWork(
     obligations: obligations.map((obligation) => ({
       companyId: obligation.companyId,
       ...(obligation.checkpoint ? { checkpoint: obligation.checkpoint } : {}),
+      ...(work.source === "exa"
+        ? { company: projectedByCompanyId.get(obligation.companyId)! }
+        : {}),
     })),
   };
 }

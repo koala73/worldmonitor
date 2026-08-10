@@ -19,6 +19,10 @@ import { ConvexHttpClient } from 'convex/browser';
 import { anyApi } from 'convex/server';
 
 import { loadEnvFile } from './_seed-utils.mjs';
+import {
+  COMPANY_MONITORING_EXA_CONTRACT,
+  createExaCohortExecutor,
+} from './lib/company-monitoring-exa.mjs';
 import { isMainModule } from './lib/main-module.mjs';
 
 export const COMPANY_MONITORING_WORKER_HEALTH_KEY = 'company-monitoring:worker-health:v1';
@@ -163,6 +167,21 @@ async function unavailableExecutor() {
   };
 }
 
+export function createCompanyMonitoringExecutor(options = {}) {
+  const exaExecutor = options.exaExecutor;
+  return async (work) => {
+    if (work?.source === 'exa' && typeof exaExecutor === 'function') return exaExecutor(work);
+    return unavailableExecutor();
+  };
+}
+
+function finalizeResult(execution) {
+  if (execution?.finalizeResult && typeof execution.finalizeResult === 'object') {
+    return execution.finalizeResult;
+  }
+  return execution;
+}
+
 /**
  * ConvexHttpClient has no default request timeout. Keep every control-plane
  * request inside the lease budget and identify this server-side caller.
@@ -256,7 +275,7 @@ export function createCompanyMonitoringWorker(options) {
     inFlight = true;
     let result;
     try {
-      result = await executeClaim(claim.work);
+      result = finalizeResult(await executeClaim(claim.work));
     } catch {
       counters.executorErrors += 1;
       result = await unavailableExecutor();
@@ -346,6 +365,7 @@ async function main() {
       'COMPANY_MONITORING_WORKER_SECRET',
       'UPSTASH_REDIS_REST_URL',
       'UPSTASH_REDIS_REST_TOKEN',
+      'EXA_API_KEYS',
     ],
   });
   const convexUrl = process.env.CONVEX_URL;
@@ -359,6 +379,12 @@ async function main() {
     client,
     secret,
     workerId: `railway-${process.pid}-${randomUUID()}`,
+    executeClaim: createCompanyMonitoringExecutor({
+      exaExecutor: createExaCohortExecutor({
+        apiKeys: (process.env.EXA_API_KEYS ?? '').split(/[\n,]+/),
+        runtimeApproved: COMPANY_MONITORING_EXA_CONTRACT.paidRuntimeApproved,
+      }),
+    }),
     publishHealth: createRedisHealthPublisher(),
   });
   let shutdownSignal = 'SIGTERM';

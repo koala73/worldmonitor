@@ -5,6 +5,7 @@ import {
   COMPANY_MONITORING_WORKER_ACTIVATION_KEY,
   COMPANY_MONITORING_WORKER_HEALTH_KEY,
   COMPANY_MONITORING_WORKER_META_KEY,
+  createCompanyMonitoringExecutor,
   createCompanyMonitoringWorker,
   createConvexFetch,
   createRedisHealthPublisher,
@@ -125,6 +126,32 @@ describe('company monitoring Railway worker', () => {
     });
     assert.equal(health.at(-1).status, 'error');
     assert.equal(health.at(-1).outcome, 'non_reassuring');
+  });
+
+  it('routes Exa work through the adapter and finalizes only its closed receipt projection', async () => {
+    const calls = [];
+    const reports = [];
+    const executeClaim = createCompanyMonitoringExecutor({
+      exaExecutor: async (work) => {
+        reports.push({ workId: work.workId, providerRows: 2 });
+        return { finalizeResult: COMPLETE_RESULT, report: reports.at(-1) };
+      },
+    });
+    const worker = createCompanyMonitoringWorker({
+      client: convexClient([
+        CLAIM,
+        { status: 'completed', reason: 'complete', receipt: {} },
+      ], calls),
+      secret: 'worker-secret',
+      workerId: 'worker-a',
+      executeClaim,
+      publishHealth: async () => true,
+    });
+
+    assert.equal(await worker.tick(), 'completed');
+    assert.deepEqual(reports, [{ workId: 'work-1', providerRows: 2 }]);
+    assert.deepEqual(calls[1].result, COMPLETE_RESULT);
+    assert.equal('report' in calls[1].result, false);
   });
 
   it('leaves a fetched result unfinalized on a hard crash and safely finalizes the replayed work', async () => {

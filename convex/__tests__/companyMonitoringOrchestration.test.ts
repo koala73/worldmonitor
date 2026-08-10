@@ -30,8 +30,9 @@ afterEach(() => {
 async function seedAccountWithCompany(
   t: ReturnType<typeof convexTest>,
   suffix: string,
-  options: { initialCheckpoint?: string } = {},
+  options: { initialCheckpoint?: string; source?: "exa" | "x" } = {},
 ) {
+  const source = options.source ?? "exa";
   const ownerAccountId = `cm_account_${suffix}`;
   const companyId = `cm_company_${suffix.padStart(26, "0").slice(-26)}`;
   await t.run(async (ctx) => {
@@ -66,11 +67,22 @@ async function seedAccountWithCompany(
       createdAt: NOW,
       updatedAt: NOW,
     });
+    await ctx.db.insert("companyMonitoringClaims", {
+      ownerAccountId,
+      companyId,
+      claimId: `cm_claim_${suffix.padStart(26, "0").slice(-26)}`,
+      type: "alias",
+      value: `Alias ${suffix}`,
+      provenance: "customer",
+      trustState: "unverified",
+      createdAt: NOW,
+      updatedAt: NOW,
+    });
   });
 
   const scheduled = await t.mutation(ORCHESTRATION.scheduleAccountWork, {
     ownerAccountId,
-    source: "exa",
+    source,
     companyIds: [companyId],
   });
   if (options.initialCheckpoint) {
@@ -78,7 +90,7 @@ async function seedAccountWithCompany(
       const obligation = await ctx.db
         .query("companyMonitoringScanObligations")
         .withIndex("by_account_company_source", (q) =>
-          q.eq("ownerAccountId", ownerAccountId).eq("companyId", companyId).eq("source", "exa"),
+          q.eq("ownerAccountId", ownerAccountId).eq("companyId", companyId).eq("source", source),
         )
         .unique();
       await ctx.db.patch(obligation!._id, { checkpoint: options.initialCheckpoint });
@@ -132,9 +144,21 @@ describe("Company Monitoring durable scan orchestration", () => {
         ownerAccountId: seeded.ownerAccountId,
         source: "exa",
         queryVersion: "exa-company-discovery-v1",
-        resultCap: 100,
+        resultCap: 25,
         attempt: 1,
-        obligations: [{ companyId: seeded.companyId, checkpoint: "checkpoint-before" }],
+        obligations: [{
+          companyId: seeded.companyId,
+          checkpoint: "checkpoint-before",
+          company: {
+            name: "Company happy",
+            domicileCountry: "US",
+            claims: [{
+              claimId: `cm_claim_${"happy".padStart(26, "0").slice(-26)}`,
+              type: "alias",
+              value: "Alias happy",
+            }],
+          },
+        }],
       },
     });
     expect(claim.work.leaseToken).toMatch(/^[a-f0-9]{64}$/);
@@ -209,6 +233,55 @@ describe("Company Monitoring durable scan orchestration", () => {
       workItems: (await ctx.db.query("companyMonitoringScanWorkItems").collect()).length,
       obligations: (await ctx.db.query("companyMonitoringScanObligations").collect()).length,
     }))).toEqual({ workItems: 2, obligations: 1 });
+  });
+
+  test("projects the strongest bounded Exa claims and leaves X obligations unchanged", async () => {
+    const exa = convexTest(schema, modules);
+    const seeded = await seedAccountWithCompany(exa, "claim_cap");
+    await exa.run(async (ctx) => {
+      for (let index = 0; index < 12; index += 1) {
+        await ctx.db.insert("companyMonitoringClaims", {
+          ownerAccountId: seeded.ownerAccountId,
+          companyId: seeded.companyId,
+          claimId: `cm_claim_${String(index + 100).padStart(26, "0")}`,
+          type: "alias",
+          value: `Alias cap ${index}`,
+          provenance: "customer",
+          trustState: "unverified",
+          createdAt: NOW + index + 1,
+          updatedAt: NOW + index + 1,
+        });
+      }
+      await ctx.db.insert("companyMonitoringClaims", {
+        ownerAccountId: seeded.ownerAccountId,
+        companyId: seeded.companyId,
+        claimId: `cm_claim_${String(999).padStart(26, "0")}`,
+        type: "domain",
+        value: "claim-cap.example",
+        provenance: "customer",
+        trustState: "unverified",
+        createdAt: NOW + 20,
+        updatedAt: NOW + 20,
+      });
+    });
+
+    const exaClaim = await claimForTest(exa);
+    expect(exaClaim.work.obligations[0].company.claims).toHaveLength(12);
+    expect(exaClaim.work.obligations[0].company.claims[0]).toMatchObject({
+      type: "domain",
+      value: "claim-cap.example",
+    });
+    expect(exaClaim.work.obligations[0].company.claimProjection).toEqual({
+      available: 14,
+      included: 12,
+      omitted: 2,
+    });
+
+    const x = convexTest(schema, modules);
+    const xSeeded = await seedAccountWithCompany(x, "x_contract", { source: "x" });
+    const xClaim = await claimForTest(x);
+    expect(xClaim.work.source).toBe("x");
+    expect(xClaim.work.obligations).toEqual([{ companyId: xSeeded.companyId }]);
   });
 
   test("rebinds materially old due work to the claim-time scan window", async () => {
@@ -375,7 +448,7 @@ describe("Company Monitoring durable scan orchestration", () => {
   });
 
   test.each([
-    ["capped", { itemCount: 100, hasMore: false }, "capped"],
+    ["capped", { itemCount: 25, hasMore: false }, "capped"],
     ["partial", { coverage: "partial" }, "partial"],
     ["malformed range", { returnedRange: { startAt: NOW, endAt: NOW - 1 } }, "malformed"],
     ["invalid empty", { itemCount: 0, emptyValidated: false }, "invalid_empty"],
