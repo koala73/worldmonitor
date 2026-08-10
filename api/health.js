@@ -848,11 +848,12 @@ const SEED_META = {
   lowCarbonGeneration:     { key: 'seed-meta:resilience:low-carbon-generation',     maxStaleMin: 11520 },
   fossilElectricityShare:  { key: 'seed-meta:resilience:fossil-electricity-share',  maxStaleMin: 11520 },
   powerLosses:             { key: 'seed-meta:resilience:power-losses',              maxStaleMin: 11520 },
-  // Education attainment — weekly cron, same 8d budget (2x interval) as the
-  // v2 energy seeds. The underlying World Bank series is annual and slow, but
-  // this budget alarms on the SEEDER being dead, not on the data being old;
-  // content-age staleness is handled separately by the seeder's own 48-month
-  // maxContentAgeMin.
+  // Education attainment — 8d budget. The bundle runs a DAILY Railway cron and
+  // gates each member on its own intervalMs (7d here), so a failed attempt
+  // retries on the next daily tick rather than a week later; 8d is the 7d
+  // interval plus roughly one day of retry headroom, not "2x interval". The
+  // budget alarms on the SEEDER being dead, not on the data being old —
+  // content-age staleness is the seeder's own 48-month maxContentAgeMin.
   educationAttainment:     { key: 'seed-meta:resilience:education-attainment',      maxStaleMin: 11520 },
   webcams:                 { key: 'seed-meta:webcam:cameras:geo',                   maxStaleMin: 1440 }, // seed-webcams writes 24h geo/meta keys plus a 30h active pointer; stale at 24h before the layer goes blank.
   // #5736 — history-ingest freshness per collector. `fetchedAt` here is the

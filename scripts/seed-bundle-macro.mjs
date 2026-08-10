@@ -44,6 +44,22 @@ await runBundle('macro', [
   { label: 'FATF-Listing', script: 'seed-fatf-listing.mjs', seedMetaKey: 'economic:fatf-listing', canonicalKey: 'economic:fatf-listing:v1', intervalMs: 30 * DAY, timeoutMs: 300_000 },
   // Education dimension seeder. Same bundle-placement reasoning as the three
   // above: one more annual World Bank pull does not justify a new Railway
-  // service. Single indicator, single paged fetch — 300s is generous.
-  { label: 'Education-Attainment', script: 'seed-education-attainment.mjs', seedMetaKey: 'resilience:education-attainment', canonicalKey: 'resilience:education-attainment:v1', intervalMs: 7 * DAY, timeoutMs: 300_000 },
+  // service.
+  //
+  // 600_000 rather than the 300_000 baseline, matching the BIS-LBS bump above.
+  // This seeder uses a 16-year date window instead of the `mrv=5` its
+  // precedents use — deliberately, so the 39 countries whose latest survey is
+  // 5-15 years old keep their observation instead of being dropped. That costs
+  // page count: measured 8 pages / 3975 rows, against ~3 for an mrv=5 fetch,
+  // and the pages are fetched sequentially (single indicator, no Promise.all
+  // to hide latency). Each page can take 60s worst case — 30s direct plus a
+  // 30s proxy retry — so a World Bank degradation that forces the proxy path
+  // on most pages reaches ~480s and blows a 300s budget.
+  //
+  // This matters beyond this seeder: a member killed by SIGTERM settles
+  // without a status field, so runBundle counts it as a hard failure rather
+  // than GRACEFUL_FAIL, which fails the whole bundle's exit code and paints
+  // Railway "Deploy Crashed!" for all 18 members — every daily tick, for as
+  // long as the upstream degradation lasts.
+  { label: 'Education-Attainment', script: 'seed-education-attainment.mjs', seedMetaKey: 'resilience:education-attainment', canonicalKey: 'resilience:education-attainment:v1', intervalMs: 7 * DAY, timeoutMs: 600_000 },
 ]);
