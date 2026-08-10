@@ -30,11 +30,12 @@ describe('FRED/rates seeder isolation', () => {
       'FRED_API_KEY',
       'UPSTASH_REDIS_REST_URL',
       'UPSTASH_REDIS_REST_TOKEN',
+      'PROXY_URL',
     ]);
     assert.ok(service.watchPatterns.includes('scripts/_fred-seeder.mjs'));
     assert.ok(!service.watchPatterns.includes('scripts/seed-economy.mjs'));
   });
-  it('fails the live Railway audit when either mandatory Redis variable is missing', () => {
+  it('fails the live Railway audit unless all required variables are configured', () => {
     const registry = JSON.parse(fs.readFileSync(new URL('../scripts/railway-services.json', import.meta.url), 'utf8'));
     const fred = registry.find((item) => item.service === 'seed-fred-rates');
     assert.ok(fred);
@@ -46,11 +47,16 @@ describe('FRED/rates seeder isolation', () => {
       variables,
     });
     const serviceIds = new Map([['seed-fred-rates', 'svc-fred']]);
+    const requiredVariables = {
+      FRED_API_KEY: 'configured',
+      UPSTASH_REDIS_REST_URL: 'configured',
+      UPSTASH_REDIS_REST_TOKEN: 'configured',
+      PROXY_URL: 'configured',
+    };
 
-    for (const [variables, missing] of [
-      [{ FRED_API_KEY: 'configured', UPSTASH_REDIS_REST_TOKEN: 'configured' }, 'UPSTASH_REDIS_REST_URL'],
-      [{ FRED_API_KEY: 'configured', UPSTASH_REDIS_REST_URL: 'configured' }, 'UPSTASH_REDIS_REST_TOKEN'],
-    ]) {
+    for (const missing of Object.keys(requiredVariables)) {
+      const variables = { ...requiredVariables };
+      delete variables[missing];
       const drift = auditRailwayServiceConfig(
         { services: { 'svc-fred': liveService(variables) } },
         serviceIds,
@@ -61,11 +67,7 @@ describe('FRED/rates seeder isolation', () => {
 
     assert.deepEqual(
       auditRailwayServiceConfig(
-        { services: { 'svc-fred': liveService({
-          FRED_API_KEY: 'configured',
-          UPSTASH_REDIS_REST_URL: 'configured',
-          UPSTASH_REDIS_REST_TOKEN: 'configured',
-        }) } },
+        { services: { 'svc-fred': liveService(requiredVariables) } },
         serviceIds,
         [fred],
       ),

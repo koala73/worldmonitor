@@ -91,7 +91,7 @@ const SEED_DOMAINS = {
   // Independent hourly producer from scripts/seed-fred-rates.mjs. This
   // operator-only endpoint stays strict; api/health.js owns the bounded
   // deploy-before-provisioning window for public health.
-  'economic:fred-rates':      { key: 'seed-meta:economic:fred-rates',      intervalMin: 60 },
+  'economic:fred-rates':      { key: 'seed-meta:economic:fred-rates',      intervalMin: 60, minRecordCount: 24 },
   // Aligned with health.js SEED_META (intervalMin = maxStaleMin / 2)
   'market:stocks':            { key: 'seed-meta:market:stocks',            intervalMin: 15 },
   'market:commodities':       { key: 'seed-meta:market:commodities',       intervalMin: 15 },

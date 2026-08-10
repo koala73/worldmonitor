@@ -569,6 +569,65 @@ describe('runHyperliquidFlowSeed lifecycle', () => {
     assert.equal(writes[0][4], 'seed-meta:market:hyperliquid-flow-baseline');
   });
 
+  it('prefers a valid canonical snapshot without reading the baseline', async () => {
+    const canonical = {
+      ts: Date.now() - 5 * 60_000,
+      assets: [{
+        symbol: 'BTC', openInterest: 900,
+        sparkOi: Array(12).fill(900), sparkVol: Array(12).fill(1e6),
+      }],
+    };
+    const reads = [];
+    const runSeedImpl = async (_domain, _resource, _key, fetchFn) => fetchFn();
+
+    const result = await runHyperliquidFlowSeed({
+      runSeedImpl,
+      readSeedSnapshotImpl: async (key, options) => {
+        reads.push(key);
+        assert.deepEqual(options, { strict: true });
+        if (key === BASELINE_KEY) {
+          throw new Error('baseline must not be read when canonical is available');
+        }
+        return canonical;
+      },
+      fetchAllMetaAndCtxsImpl: upstream,
+    });
+
+    const btc = result.assets.find((asset) => asset.symbol === 'BTC');
+    assert.deepEqual(reads, [CANONICAL_KEY]);
+    assert.deepEqual(btc.sparkOi, [...canonical.assets[0].sparkOi, 1000]);
+    assert.equal(btc.oiScore > 0, true);
+  });
+
+  it('propagates a baseline read error after an explicit canonical miss without fetching or publishing', async () => {
+    const expected = new Error('Redis baseline read failed: HTTP 503');
+    const reads = [];
+    let fetched = false;
+    let wrote = false;
+    const runSeedImpl = async (_domain, _resource, _key, fetchFn) => fetchFn();
+
+    await assert.rejects(() => runHyperliquidFlowSeed({
+      runSeedImpl,
+      readSeedSnapshotImpl: async (key, options) => {
+        reads.push(key);
+        assert.deepEqual(options, { strict: true });
+        if (key === CANONICAL_KEY) return null;
+        throw expected;
+      },
+      fetchAllMetaAndCtxsImpl: async () => {
+        fetched = true;
+        return upstream();
+      },
+      writeExtraKeyWithMetaImpl: async () => {
+        wrote = true;
+      },
+    }), expected);
+
+    assert.deepEqual(reads, [CANONICAL_KEY, BASELINE_KEY]);
+    assert.equal(fetched, false);
+    assert.equal(wrote, false);
+  });
+
   it('propagates an ambiguous canonical read and never fetches or overwrites the baseline', async () => {
     const expected = new Error('Redis snapshot read failed: HTTP 503');
     let fetched = false;

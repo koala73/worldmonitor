@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { loadEnvFile, runSeed, writeExtraKeyWithMeta } from './_seed-utils.mjs';
+import { loadEnvFile, runSeed, withRetry, writeExtraKeyWithMeta } from './_seed-utils.mjs';
 import { getOptionalUpstashCreds, upstashCommand } from './_upstash-rest.mjs';
 import {
   FRED_KEY_PREFIX,
@@ -22,28 +22,25 @@ export const BATCH_TTL = FRED_TTL;
 // the bounded deploy-before-provisioning grace as soon as the first complete
 // FRED batch has published successfully.
 export const FRED_RATES_ACTIVATION_KEY = 'seed-activated:economic:fred-rates:v1';
+const MIN_SERIES_COUNT = Math.ceil(FRED_SEED_SERIES.length * 0.75);
+const SIDE_WRITE_RETRIES = 2;
+const SIDE_WRITE_RETRY_DELAY_MS = 1_000;
 
-export async function fetchAndPublishFred({
+export async function fetchFredBatch({
   fetchFredSeriesImpl = fetchFredSeries,
-  writeExtraKeyWithMetaImpl = writeExtraKeyWithMeta,
   fetchGscpiFromRedisImpl = fetchGscpiFromRedis,
   computeStressIndexImpl = computeStressIndex,
 } = {}) {
   const seriesById = await fetchFredSeriesImpl();
-  const entries = Object.entries(seriesById).filter(([, series]) => isUsableFredSeries(series));
-  if (entries.length === 0) throw new Error('FRED returned no usable series');
+  const usableSeriesById = Object.fromEntries(
+    FRED_SEED_SERIES
+      .filter((seriesId) => isUsableFredSeries(seriesById[seriesId]))
+      .map((seriesId) => [seriesId, seriesById[seriesId]]),
+  );
+  const seriesIds = Object.keys(usableSeriesById);
+  if (seriesIds.length === 0) throw new Error('FRED returned no usable series');
 
-  for (const [seriesId, series] of entries) {
-    const wroteMeta = await writeExtraKeyWithMetaImpl(
-      `${FRED_KEY_PREFIX}:${seriesId}:0`,
-      { series },
-      FRED_TTL,
-      series.observations.length,
-    );
-    if (wroteMeta !== true) throw new Error(`FRED ${seriesId} seed-meta write failed`);
-  }
-
-  const stressInputs = { ...seriesById };
+  const stressInputs = { ...usableSeriesById };
   const gscpi = await fetchGscpiFromRedisImpl();
   if (gscpi) stressInputs.GSCPI = gscpi;
   let stress = null;
@@ -52,17 +49,70 @@ export async function fetchAndPublishFred({
   } catch (error) {
     console.warn(`  [StressIndex] skipped write — ${error instanceof Error ? error.message : error}`);
   }
-  if (stress) {
-    const wroteMeta = await writeExtraKeyWithMetaImpl(
-      STRESS_INDEX_KEY,
-      stress,
-      STRESS_INDEX_TTL,
-      stress.components?.length ?? 0,
+  return {
+    fetchedAt: new Date().toISOString(),
+    seriesCount: seriesIds.length,
+    seriesIds,
+    missingSeriesIds: FRED_SEED_SERIES.filter((seriesId) => !usableSeriesById[seriesId]),
+    seriesById: usableSeriesById,
+    stress,
+  };
+}
+
+export function projectFredBatch(batch) {
+  return {
+    fetchedAt: batch?.fetchedAt,
+    seriesCount: batch?.seriesCount ?? 0,
+    seriesIds: Array.isArray(batch?.seriesIds) ? batch.seriesIds : [],
+    missingSeriesIds: Array.isArray(batch?.missingSeriesIds) ? batch.missingSeriesIds : [],
+  };
+}
+
+export function validateFredBatch(batch) {
+  return Number.isInteger(batch?.seriesCount) && batch.seriesCount >= MIN_SERIES_COUNT;
+}
+
+async function writeSideKeyWithMeta(
+  writeFn,
+  withRetryImpl,
+  errorMessage,
+) {
+  await withRetryImpl(async () => {
+    const wroteMeta = await writeFn();
+    if (wroteMeta !== true) throw new Error(errorMessage);
+  }, SIDE_WRITE_RETRIES, SIDE_WRITE_RETRY_DELAY_MS);
+}
+
+export async function publishFredSideKeys(batch, {
+  writeExtraKeyWithMetaImpl = writeExtraKeyWithMeta,
+  withRetryImpl = withRetry,
+} = {}) {
+  for (const seriesId of batch.seriesIds) {
+    const series = batch.seriesById[seriesId];
+    await writeSideKeyWithMeta(
+      () => writeExtraKeyWithMetaImpl(
+        `${FRED_KEY_PREFIX}:${seriesId}:0`,
+        { series },
+        FRED_TTL,
+        series.observations.length,
+      ),
+      withRetryImpl,
+      `FRED ${seriesId} seed-meta write failed`,
     );
-    if (wroteMeta !== true) throw new Error('FRED stress-index seed-meta write failed');
   }
 
-  return { fetchedAt: new Date().toISOString(), seriesCount: entries.length, seriesIds: entries.map(([id]) => id) };
+  if (batch.stress) {
+    await writeSideKeyWithMeta(
+      () => writeExtraKeyWithMetaImpl(
+        STRESS_INDEX_KEY,
+        batch.stress,
+        STRESS_INDEX_TTL,
+        batch.stress.components?.length ?? 0,
+      ),
+      withRetryImpl,
+      'FRED stress-index seed-meta write failed',
+    );
+  }
 }
 
 async function markFredRatesActivated() {
@@ -78,17 +128,38 @@ async function markFredRatesActivated() {
   }
 }
 
-if (process.argv[1]?.endsWith('seed-fred-rates.mjs')) {
-  runSeed('economic', 'fred-rates', CANONICAL_KEY, fetchAndPublishFred, {
+export async function runFredRatesSeed(deps = {}) {
+  const fetchBatch = () => fetchFredBatch({
+    fetchFredSeriesImpl: deps.fetchFredSeriesImpl,
+    fetchGscpiFromRedisImpl: deps.fetchGscpiFromRedisImpl,
+    computeStressIndexImpl: deps.computeStressIndexImpl,
+  });
+  const seedOptions = {
     ttlSeconds: BATCH_TTL,
-    validateFn: (data) => data?.seriesCount >= Math.ceil(FRED_SEED_SERIES.length * 0.75),
+    validateFn: validateFredBatch,
+    publishTransform: projectFredBatch,
+    beforePublish: (batch) => publishFredSideKeys(batch, {
+      writeExtraKeyWithMetaImpl: deps.writeExtraKeyWithMetaImpl,
+      withRetryImpl: deps.withRetryImpl,
+    }),
     sourceVersion: 'fred-v1',
     recordCount: (data) => data?.seriesCount ?? 0,
     declareRecords: (data) => data?.seriesCount ?? 0,
     schemaVersion: 1,
     maxStaleMin: 1500,
     afterPublish: markFredRatesActivated,
-  }).catch((error) => {
+  };
+  if (deps.markFredRatesActivatedImpl) {
+    seedOptions.afterPublish = deps.markFredRatesActivatedImpl;
+  }
+  if (deps.runSeedImpl) {
+    return deps.runSeedImpl('economic', 'fred-rates', CANONICAL_KEY, fetchBatch, seedOptions);
+  }
+  return runSeed('economic', 'fred-rates', CANONICAL_KEY, fetchBatch, seedOptions);
+}
+
+if (process.argv[1]?.endsWith('seed-fred-rates.mjs')) {
+  runFredRatesSeed().catch((error) => {
     console.error('FATAL:', error instanceof Error ? error.message : error);
     process.exit(1);
   });
