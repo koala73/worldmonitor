@@ -188,7 +188,6 @@ const BOOTSTRAP_KEYS = {
   aiTokens:          'market:ai-tokens:v1',
   otherTokens:       'market:other-tokens:v1',
   fredBatch:         'economic:fred:v1:FEDFUNDS:0',
-  fredRatesSeeder:   'economic:fred:batch:v1',
   ecbEstr:           'economic:fred:v1:ESTR:0',
   ecbEuribor3m:      'economic:fred:v1:EURIBOR3M:0',
   ecbEuribor6m:      'economic:fred:v1:EURIBOR6M:0',
@@ -250,6 +249,9 @@ const STANDALONE_KEYS = {
   bisExchange:           'economic:bis:eer:v1',
   fxYoy:                 'economic:fx:yoy:v1',
   sharedFxRates:          'shared:fx-rates:v1',
+  // Operational batch written by seed-fred-rates. The UI and MCP surfaces
+  // consume the individual FRED series keys, not this producer envelope.
+  fredRatesSeeder:        'economic:fred:batch:v1',
   bisCredit:             'economic:bis:credit:v1',
   bisDsr:                'economic:bis:dsr:v1',
   // Bank of Russia official rates: health-monitored but deliberately NOT a

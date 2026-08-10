@@ -4,14 +4,15 @@ import { loadEnvFile, runSeed, writeExtraKeyWithMeta } from './_seed-utils.mjs';
 import { getOptionalUpstashCreds, upstashCommand } from './_upstash-rest.mjs';
 import {
   FRED_KEY_PREFIX,
-  FRED_SERIES,
+  FRED_SEED_SERIES,
   FRED_TTL,
   STRESS_INDEX_KEY,
   STRESS_INDEX_TTL,
   computeStressIndex,
   fetchFredSeries,
   fetchGscpiFromRedis,
-} from './seed-economy.mjs';
+  isUsableFredSeries,
+} from './_fred-seeder.mjs';
 
 loadEnvFile(import.meta.url, { only: ['FRED_API_KEY', 'PROXY_URL', 'UPSTASH_REDIS_REST_URL', 'UPSTASH_REDIS_REST_TOKEN'] });
 
@@ -22,23 +23,43 @@ export const BATCH_TTL = FRED_TTL;
 // FRED batch has published successfully.
 export const FRED_RATES_ACTIVATION_KEY = 'seed-activated:economic:fred-rates:v1';
 
-export async function fetchAndPublishFred() {
-  const seriesById = await fetchFredSeries();
-  const entries = Object.entries(seriesById);
+export async function fetchAndPublishFred({
+  fetchFredSeriesImpl = fetchFredSeries,
+  writeExtraKeyWithMetaImpl = writeExtraKeyWithMeta,
+  fetchGscpiFromRedisImpl = fetchGscpiFromRedis,
+  computeStressIndexImpl = computeStressIndex,
+} = {}) {
+  const seriesById = await fetchFredSeriesImpl();
+  const entries = Object.entries(seriesById).filter(([, series]) => isUsableFredSeries(series));
   if (entries.length === 0) throw new Error('FRED returned no usable series');
 
   for (const [seriesId, series] of entries) {
-    await writeExtraKeyWithMeta(`${FRED_KEY_PREFIX}:${seriesId}:0`, { series }, FRED_TTL, series.observations?.length ?? 0);
+    const wroteMeta = await writeExtraKeyWithMetaImpl(
+      `${FRED_KEY_PREFIX}:${seriesId}:0`,
+      { series },
+      FRED_TTL,
+      series.observations.length,
+    );
+    if (wroteMeta !== true) throw new Error(`FRED ${seriesId} seed-meta write failed`);
   }
 
   const stressInputs = { ...seriesById };
-  const gscpi = await fetchGscpiFromRedis();
+  const gscpi = await fetchGscpiFromRedisImpl();
   if (gscpi) stressInputs.GSCPI = gscpi;
+  let stress = null;
   try {
-    const stress = computeStressIndex(stressInputs);
-    if (stress) await writeExtraKeyWithMeta(STRESS_INDEX_KEY, stress, STRESS_INDEX_TTL, stress.components?.length ?? 0);
+    stress = computeStressIndexImpl(stressInputs);
   } catch (error) {
     console.warn(`  [StressIndex] skipped write — ${error instanceof Error ? error.message : error}`);
+  }
+  if (stress) {
+    const wroteMeta = await writeExtraKeyWithMetaImpl(
+      STRESS_INDEX_KEY,
+      stress,
+      STRESS_INDEX_TTL,
+      stress.components?.length ?? 0,
+    );
+    if (wroteMeta !== true) throw new Error('FRED stress-index seed-meta write failed');
   }
 
   return { fetchedAt: new Date().toISOString(), seriesCount: entries.length, seriesIds: entries.map(([id]) => id) };
@@ -60,7 +81,7 @@ async function markFredRatesActivated() {
 if (process.argv[1]?.endsWith('seed-fred-rates.mjs')) {
   runSeed('economic', 'fred-rates', CANONICAL_KEY, fetchAndPublishFred, {
     ttlSeconds: BATCH_TTL,
-    validateFn: (data) => data?.seriesCount >= Math.ceil(FRED_SERIES.length * 0.75),
+    validateFn: (data) => data?.seriesCount >= Math.ceil(FRED_SEED_SERIES.length * 0.75),
     sourceVersion: 'fred-v1',
     recordCount: (data) => data?.seriesCount ?? 0,
     declareRecords: (data) => data?.seriesCount ?? 0,

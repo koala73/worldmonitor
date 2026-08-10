@@ -1,7 +1,6 @@
 #!/usr/bin/env node
 
-import { loadEnvFile, CHROME_UA, runSeed, writeExtraKeyWithMeta, sleep, resolveProxy, resolveProxyForConnect, fredFetchJson, curlFetch, getRedisCredentials, allSettledWithConcurrency } from './_seed-utils.mjs';
-import { unwrapEnvelope } from './_seed-envelope-source.mjs';
+import { loadEnvFile, CHROME_UA, runSeed, writeExtraKeyWithMeta, sleep, resolveProxy, resolveProxyForConnect, fredFetchJson, curlFetch } from './_seed-utils.mjs';
 
 loadEnvFile(import.meta.url);
 
@@ -19,10 +18,6 @@ const KEYS = {
   refineryInputs: 'economic:refinery-inputs:v1',
 };
 
-export const FRED_KEY_PREFIX = 'economic:fred:v1';
-export const STRESS_INDEX_KEY = 'economic:stress-index:v1';
-export const STRESS_INDEX_TTL = 21600; // 6h
-export const FRED_TTL = 93600; // 26h — survive daily cron scheduling drift
 const ENERGY_TTL = 3600;
 const CAPACITY_TTL = 86400;
 const MACRO_TTL = 21600; // 6h — survive extended Yahoo outages
@@ -65,125 +60,6 @@ async function eiaFetchJson(url, label, { timeoutMs = 20_000, attempts = 3 } = {
     await new Promise((r) => setTimeout(r, 500 * i + Math.random() * 400));
   }
   throw lastErr;
-}
-
-export const FRED_SERIES = ['WALCL', 'FEDFUNDS', 'T10Y2Y', 'UNRATE', 'CPIAUCSL', 'DGS10', 'VIXCLS', 'GDP', 'M2SL', 'DCOILWTICO', 'BAMLH0A0HYM2', 'ICSA', 'MORTGAGE30US', 'BAMLC0A0CM', 'SOFR', 'DGS1MO', 'DGS3MO', 'DGS6MO', 'DGS1', 'DGS2', 'DGS5', 'DGS30', 'T10Y3M', 'STLFSI4'];
-
-// In-flight FRED series. The 24-series loop MUST finish inside runSeed's 240s fetch-phase
-// deadline even when the proxy is fully down: fredFetchJson worst case ≈ 3×20s proxy attempts
-// + 20s direct fallback ≈ 82s/series. Sequential (the old code) = 24×82s ≫ 240s → recurring
-// exit-75 "Deploy Crashed!" alerts (issue #5037). At concurrency 12, ⌈24/12⌉ = 2 waves × 82s
-// ≈ 164s — comfortably under the deadline. In-flight requests peak at 12×2 (obs+meta), well
-// under FRED's 120/min limit. Mirrors the seed-bigmac #4994 bounded-concurrency fix.
-export const FRED_CONCURRENCY = 12;
-
-// ─── Economic Stress Index (computed last from FRED data in fetchAll) ───
-
-/** @param {number} v */
-function clamp(v) { return Math.min(100, Math.max(0, v)); }
-
-const STRESS_COMPONENTS = [
-  { id: 'T10Y2Y',  label: 'Yield Curve',      weight: 0.20, /** @param {number} v */ score: (v) => clamp((0.5 - v) / (0.5 - (-1.5)) * 100) },
-  { id: 'T10Y3M',  label: 'Bank Spread',       weight: 0.15, /** @param {number} v */ score: (v) => clamp((0.5 - v) / (0.5 - (-1.0)) * 100) },
-  { id: 'VIXCLS',  label: 'Volatility',        weight: 0.20, /** @param {number} v */ score: (v) => clamp((v - 15) / (80 - 15) * 100) },
-  { id: 'STLFSI4', label: 'Financial Stress',  weight: 0.20, /** @param {number} v */ score: (v) => clamp((v - (-1)) / (5 - (-1)) * 100) },
-  { id: 'GSCPI',   label: 'Supply Chain',      weight: 0.15, /** @param {number} v */ score: (v) => clamp((v - (-2)) / (4 - (-2)) * 100) },
-  { id: 'ICSA',    label: 'Job Claims',        weight: 0.10, /** @param {number} v */ score: (v) => clamp((v - 180000) / (500000 - 180000) * 100) },
-];
-
-/** @param {number} score */
-function stressLabel(score) {
-  if (score < 20) return 'Low';
-  if (score < 40) return 'Moderate';
-  if (score < 60) return 'Elevated';
-  if (score < 80) return 'Severe';
-  return 'Critical';
-}
-
-/**
- * Extract GSCPI observations from the Redis-stored payload.
- * ais-relay writes the FRED-compatible shape `{ series: { series_id, title, units,
- * frequency, observations: [{ date, value }] } }` (see seedGscpi() in ais-relay.cjs).
- * Earlier versions stored a flat `{ observations }` shape, so accept both.
- * Exported for unit testing.
- * @param {unknown} parsed
- * @returns {{ observations: { date: string; value: number }[] } | null}
- */
-export function extractGscpiObservations(parsed) {
-  const p = /** @type {any} */ (parsed);
-  const obs = p?.series?.observations ?? p?.observations;
-  return Array.isArray(obs) ? { observations: obs } : null;
-}
-
-/**
- * Read GSCPI from Redis (seeded by ais-relay from NY Fed, not available via FRED API).
- * @returns {Promise<{ observations: { date: string; value: number }[] } | null>}
- */
-export async function fetchGscpiFromRedis() {
-  try {
-    const { url, token } = getRedisCredentials();
-    const resp = await fetch(`${url}/get/${encodeURIComponent(`${FRED_KEY_PREFIX}:GSCPI:0`)}`, {
-      headers: { Authorization: `Bearer ${token}` },
-      signal: AbortSignal.timeout(5_000),
-    });
-    if (!resp.ok) return null;
-    const body = /** @type {{ result: string | null }} */ (await resp.json());
-    if (!body.result) return null;
-    return extractGscpiObservations(unwrapEnvelope(JSON.parse(body.result)).data);
-  } catch {
-    return null;
-  }
-}
-
-/**
- * Compute the composite stress index from freshly-fetched FRED data.
- * Scan backwards through observations to skip FRED's end-of-series null sentinels.
- * @param {Record<string, { observations: { date: string; value: number }[] }>} fr
- * @returns {{ compositeScore: number; label: string; components: object[]; seededAt: string; unavailable: false } | null}
- */
-export function computeStressIndex(fr) {
-  const components = [];
-  let weightedSum = 0;
-  let totalWeight = 0;
-  let missingCount = 0;
-
-  for (const comp of STRESS_COMPONENTS) {
-    const obs = fr[comp.id]?.observations;
-    let rawValue = null;
-    if (obs?.length > 0) {
-      for (let j = obs.length - 1; j >= 0; j--) {
-        const v = obs[j]?.value;
-        if (typeof v === 'number' && Number.isFinite(v)) { rawValue = v; break; }
-      }
-    }
-
-    if (rawValue === null) {
-      missingCount++;
-      if (comp.id !== 'GSCPI') {
-        // FRED-sourced component missing = refuse to publish degraded composite.
-        throw new Error(`StressIndex: required FRED component ${comp.id} missing — refusing to publish partial composite`);
-      }
-      console.warn(`  [StressIndex] ${comp.id} missing (ais-relay lag) — excluding`);
-      components.push({ id: comp.id, label: comp.label, rawValue: null, missing: true, score: 0, weight: comp.weight });
-      continue;
-    }
-
-    const score = comp.score(rawValue);
-    weightedSum += score * comp.weight;
-    totalWeight += comp.weight;
-    console.log(`  [StressIndex] ${comp.id}: raw=${rawValue.toFixed(4)} score=${score.toFixed(1)}`);
-    components.push({ id: comp.id, label: comp.label, rawValue, score, weight: comp.weight });
-  }
-
-  if (totalWeight === 0) {
-    console.warn('  [StressIndex] No FRED data — skipping write');
-    return null;
-  }
-
-  const compositeScore = Math.round((weightedSum / totalWeight) * 10) / 10;
-  const label = stressLabel(compositeScore);
-  console.log(`  [StressIndex] Composite: ${compositeScore} (${label}) — ${STRESS_COMPONENTS.length - missingCount}/${STRESS_COMPONENTS.length} components`);
-  return { compositeScore, label, components, seededAt: new Date().toISOString(), unavailable: false };
 }
 
 // ─── EIA Energy Prices (WTI + Brent) ───
@@ -302,71 +178,6 @@ async function fetchEnergyCapacity() {
   }
   console.log(`  Energy capacity: ${series.length} sources`);
   return { series };
-}
-
-// ─── FRED Series (10 allowed series) ───
-
-// Fetch one FRED series (observations + metadata in parallel). Throws on a rejected
-// observations fetch so allSettledWithConcurrency records it as a per-series failure —
-// one flaky series can NOT sink the whole run.
-async function fetchOneFredSeries(seriesId, apiKey, fredFetchFn) {
-  const limit = 120;
-  const obsParams = new URLSearchParams({
-    series_id: seriesId, api_key: apiKey, file_type: 'json', sort_order: 'desc', limit: String(limit),
-  });
-  const metaParams = new URLSearchParams({
-    series_id: seriesId, api_key: apiKey, file_type: 'json',
-  });
-
-  const [obsResp, metaResp] = await Promise.allSettled([
-    fredFetchFn(`https://api.stlouisfed.org/fred/series/observations?${obsParams}`, _proxyAuth),
-    fredFetchFn(`https://api.stlouisfed.org/fred/series?${metaParams}`, _proxyAuth),
-  ]);
-
-  if (obsResp.status === 'rejected') {
-    throw new Error(`fetch failed — ${obsResp.reason?.message || obsResp.reason}`);
-  }
-
-  const obsData = obsResp.value;
-  const observations = (obsData.observations || [])
-    .map((o) => { const v = parseFloat(o.value); return Number.isNaN(v) || o.value === '.' ? null : { date: o.date, value: v }; })
-    .filter(Boolean)
-    .reverse();
-
-  let title = seriesId, units = '', frequency = '';
-  if (metaResp.status === 'fulfilled') {
-    const meta = metaResp.value.seriess?.[0];
-    if (meta) { title = meta.title || seriesId; units = meta.units || ''; frequency = meta.frequency || ''; }
-  }
-
-  return { seriesId, title, units, frequency, observations };
-}
-
-// Fetch all FRED series with BOUNDED CONCURRENCY. The old sequential for…of loop breached
-// runSeed's 240s fetch-phase deadline whenever the proxy was down (24 series × ~82s worst-case
-// fredFetchJson budget) → recurring exit-75 "Deploy Crashed!" alerts (issue #5037). deps are
-// injectable for tests (see tests/seed-economy-fred-concurrency.test.mjs).
-export async function fetchFredSeries({ fredFetchFn = fredFetchJson, concurrency = FRED_CONCURRENCY } = {}) {
-  const apiKey = process.env.FRED_API_KEY;
-  if (!apiKey) throw new Error('Missing FRED_API_KEY');
-
-  const settled = await allSettledWithConcurrency(
-    FRED_SERIES,
-    concurrency,
-    (seriesId) => fetchOneFredSeries(seriesId, apiKey, fredFetchFn),
-  );
-
-  const results = {};
-  settled.forEach((s, i) => {
-    const seriesId = FRED_SERIES[i];
-    if (s.status === 'fulfilled') results[seriesId] = s.value;
-    else console.warn(`  FRED ${seriesId}: ${s.reason?.message || s.reason}`);
-  });
-
-  const fredCount = Object.keys(results).length;
-  console.log(`  FRED series: ${fredCount}/${FRED_SERIES.length}`);
-  if (fredCount === 0) console.warn('  [WARN] FRED series: 0 fetched — all series failed. Check FRED_API_KEY and PROXY_URL. FRED-dependent panels will go stale.');
-  return results;
 }
 
 // ─── Macro Signals (Yahoo, Alternative.me, Mempool) ───

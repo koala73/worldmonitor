@@ -613,6 +613,21 @@ describe('runHyperliquidFlowSeed lifecycle', () => {
     }), validationError);
     assert.equal(wrote, false);
   });
+
+  it('fails after canonical publication when baseline seed-meta is not confirmed', async () => {
+    const runSeedImpl = async (_domain, _resource, _key, fetchFn, options) => {
+      const snapshot = await fetchFn();
+      assert.equal(options.validateFn(snapshot), true);
+      await options.afterPublish(snapshot, { canonicalKey: CANONICAL_KEY });
+    };
+
+    await assert.rejects(() => runHyperliquidFlowSeed({
+      runSeedImpl,
+      readSeedSnapshotImpl: async () => null,
+      fetchAllMetaAndCtxsImpl: upstream,
+      writeExtraKeyWithMetaImpl: async () => false,
+    }), /Hyperliquid baseline seed-meta write failed/);
+  });
 });
 
 describe('alert threshold', () => {

@@ -1041,6 +1041,10 @@ export async function writeSeedMeta(dataKey, recordCount, metaKeyOverride, metaT
     console.warn(`  seed-meta ${metaKey}: write failed`);
     return false;
   }
+  // Upstash can return HTTP 200 with a command-level error. Treat that as a
+  // failed metadata write instead of reporting success while health still
+  // points at the previous heartbeat.
+  await parseRedisCommandResponse(resp, `seed-meta ${metaKey}`);
   return true;
 }
 

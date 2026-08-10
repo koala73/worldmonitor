@@ -7,6 +7,7 @@ import { FRED_RATES_ACTIVATION_KEY } from '../scripts/seed-fred-rates.mjs';
 const {
   classifyKey,
   BOOTSTRAP_KEYS,
+  STANDALONE_KEYS,
   SEED_META,
   ACTIVATION_MARKERS,
   FRED_RATES_ROLLOUT_DEADLINE_KEY,
@@ -16,7 +17,7 @@ const {
 } = __testing__;
 
 const NAME = 'fredRatesSeeder';
-const KEY = BOOTSTRAP_KEYS[NAME];
+const KEY = BOOTSTRAP_KEYS[NAME] ?? STANDALONE_KEYS[NAME];
 const DEPLOYED_AT = Date.parse('2031-04-12T09:30:00Z');
 const UNTIL = DEPLOYED_AT + FRED_RATES_ROLLOUT_DURATION_MS;
 

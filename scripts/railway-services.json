@@ -1258,11 +1258,11 @@
     "watchPatterns": [
       "scripts/_seed-contract.mjs",
       "scripts/_seed-envelope-source.mjs",
+      "scripts/_fred-seeder.mjs",
       "scripts/_seed-utils.mjs",
       "scripts/_upstash-rest.mjs",
       "scripts/_proxy-utils.cjs",
       "scripts/lib/llm-telemetry.cjs",
-      "scripts/seed-economy.mjs",
       "scripts/seed-fred-rates.mjs",
       "scripts/nixpacks.toml",
       "scripts/package.json",

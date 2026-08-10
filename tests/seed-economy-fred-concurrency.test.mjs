@@ -1,7 +1,9 @@
 import { describe, it, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { fetchFredSeries, FRED_SERIES, FRED_CONCURRENCY } from '../scripts/seed-economy.mjs';
+import { fetchFredSeries, FRED_SEED_SERIES, FRED_CONCURRENCY } from '../scripts/_fred-seeder.mjs';
+
+const FRED_SERIES = FRED_SEED_SERIES;
 
 // Reproduces #5037: fetchFredSeries used to loop FRED_SERIES STRICTLY SEQUENTIALLY under
 // runSeed's 240s fetch-phase deadline. fredFetchJson worst case ≈ 3×20s proxy attempts + 20s
@@ -33,12 +35,13 @@ function isObservations(url) {
 }
 
 // A fake fredFetchJson: sleeps PER_CALL_MS then returns the right shape for the URL kind.
-function makeFakeFred({ failSeries = new Set() } = {}) {
+function makeFakeFred({ failSeries = new Set(), emptySeries = new Set() } = {}) {
   return async (url) => {
     await new Promise((r) => setTimeout(r, PER_CALL_MS));
     const seriesId = seriesIdFromUrl(url);
     if (isObservations(url)) {
       if (failSeries.has(seriesId)) throw new Error(`simulated FRED failure for ${seriesId}`);
+      if (emptySeries.has(seriesId)) return { observations: [] };
       return { observations: [{ date: '2026-07-01', value: '1.23' }, { date: '2026-07-08', value: '4.56' }] };
     }
     return { seriess: [{ title: `${seriesId} title`, units: 'Percent', frequency: 'Daily' }] };
@@ -65,7 +68,7 @@ function makeTrackingFred() {
   return { fn, get maxInFlight() { return maxInFlight; } };
 }
 
-describe('seed-economy fetchFredSeries — bounded concurrency (#5037)', () => {
+describe('FRED seeder fetchFredSeries — bounded concurrency (#5037)', () => {
   before(() => { process.env.FRED_API_KEY = 'test-key'; });
 
   it('caps in-flight FRED calls at the production default when NO override is passed (pins #5037 fix)', async () => {
@@ -102,6 +105,13 @@ describe('seed-economy fetchFredSeries — bounded concurrency (#5037)', () => {
     assert.equal(Object.keys(results).length, FRED_SERIES.length - failSeries.size);
     for (const id of failSeries) assert.equal(results[id], undefined, `failed series ${id} should be absent`);
     for (const id of FRED_SERIES) if (!failSeries.has(id)) assert.ok(results[id], `healthy series ${id} should be present`);
+  });
+
+  it('excludes fulfilled series that contain no usable observations', async () => {
+    const emptySeries = new Set([FRED_SERIES[2], FRED_SERIES[8]]);
+    const results = await fetchFredSeries({ fredFetchFn: makeFakeFred({ emptySeries }) });
+    assert.equal(Object.keys(results).length, FRED_SERIES.length - emptySeries.size);
+    for (const id of emptySeries) assert.equal(results[id], undefined, `empty series ${id} should be absent`);
   });
 
   it('returns an empty object (does not throw) when every series fails', async () => {

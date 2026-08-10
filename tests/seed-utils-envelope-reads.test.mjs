@@ -73,6 +73,19 @@ test('readSeedSnapshot: strict mode accepts only an explicit null result as a mi
   assert.equal(await readSeedSnapshot('missing:key:v1', { strict: true }), null);
 });
 
+test('readSeedSnapshot: strict mode accepts a valid envelope and unwraps it', async () => {
+  mockFetch({
+    _seed: { fetchedAt: 1, recordCount: 1, sourceVersion: 'v1', schemaVersion: 1, state: 'OK' },
+    data: { samples: [1] },
+  });
+  assert.deepEqual(await readSeedSnapshot('rolling:baseline:v1', { strict: true }), { samples: [1] });
+});
+
+test('readSeedSnapshot: strict mode accepts a valid legacy payload', async () => {
+  mockFetch({ samples: [1], fetchedAt: 1 });
+  assert.deepEqual(await readSeedSnapshot('rolling:baseline:v1', { strict: true }), { samples: [1], fetchedAt: 1 });
+});
+
 test('readSeedSnapshot: strict mode rejects malformed Upstash response envelopes', async () => {
   const malformedEnvelopes = [
     [{}, /without a result/],
