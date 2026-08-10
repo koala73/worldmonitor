@@ -274,30 +274,30 @@ export class ThreatTimelinePanel extends Panel {
         .threat-timeline-panel { display: grid; gap: 10px; }
         .threat-timeline-summary { display: grid; grid-template-columns: 76px 76px 1fr; gap: 8px; align-items: stretch; }
         .threat-timeline-stat, .threat-timeline-trend { border: 1px solid var(--border-color); background: var(--bg-secondary); border-radius: 8px; padding: 8px; min-width: 0; }
-        .threat-timeline-stat-value { display: block; font-size: 20px; line-height: 1; font-weight: 700; color: var(--text-primary); }
-        .threat-timeline-stat-label, .threat-timeline-trend-copy, .threat-timeline-footer, .threat-timeline-note { display: block; font-size: 11px; color: var(--text-secondary); margin-top: 4px; }
+        .threat-timeline-stat-value { display: block; font-size: calc(20px * var(--wm-panel-effective-scale, 1)); line-height: 1; font-weight: 700; color: var(--text-primary); }
+        .threat-timeline-stat-label, .threat-timeline-trend-copy, .threat-timeline-footer, .threat-timeline-note { display: block; font-size: calc(11px * var(--wm-panel-effective-scale, 1)); color: var(--text-secondary); margin-top: 4px; }
         .threat-timeline-trend { border-left: 3px solid var(--accent-color); }
         .threat-timeline-trend.worsening { border-left-color: #ef4444; }
         .threat-timeline-trend.easing { border-left-color: #38bdf8; }
-        .threat-timeline-trend-label { display: block; color: var(--text-primary); font-size: 13px; font-weight: 700; }
+        .threat-timeline-trend-label { display: block; color: var(--text-primary); font-size: calc(13px * var(--wm-panel-effective-scale, 1)); font-weight: 700; }
         .threat-timeline-chart-wrap { border: 1px solid var(--border-color); border-radius: 8px; background: rgba(15, 23, 42, 0.18); padding: 6px; }
         .threat-timeline-chart { width: 100%; height: 150px; display: block; overflow: visible; }
         .threat-timeline-grid { stroke: var(--border-color); stroke-dasharray: 3 3; opacity: 0.7; }
         .threat-timeline-axis { stroke: var(--border-color); }
-        .threat-timeline-labels text { fill: var(--text-secondary); font-size: 9px; }
+        .threat-timeline-labels text { fill: var(--text-secondary); font-size: calc(9px * var(--wm-panel-effective-scale, 1)); }
         .threat-timeline-legend { display: flex; flex-wrap: wrap; gap: 6px; }
-        .threat-timeline-legend-item { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; color: var(--text-secondary); }
+        .threat-timeline-legend-item { display: inline-flex; align-items: center; gap: 4px; font-size: calc(11px * var(--wm-panel-effective-scale, 1)); color: var(--text-secondary); }
         .threat-timeline-swatch { width: 8px; height: 8px; border-radius: 999px; }
         .threat-timeline-groups { display: grid; gap: 8px; }
         .threat-timeline-group { border: 1px solid var(--border-color); border-radius: 8px; overflow: hidden; background: var(--bg-secondary); }
         .threat-timeline-group-header { display: flex; align-items: center; justify-content: space-between; padding: 7px 9px; border-bottom: 1px solid var(--border-color); }
-        .threat-timeline-group-name { font-size: 12px; font-weight: 700; color: var(--text-primary); text-transform: uppercase; letter-spacing: 0; }
-        .threat-timeline-group-count { font-size: 11px; color: var(--text-secondary); }
+        .threat-timeline-group-name { font-size: calc(12px * var(--wm-panel-effective-scale, 1)); font-weight: 700; color: var(--text-primary); text-transform: uppercase; letter-spacing: 0; }
+        .threat-timeline-group-count { font-size: calc(11px * var(--wm-panel-effective-scale, 1)); color: var(--text-secondary); }
         .threat-timeline-item { padding: 8px 9px; display: grid; gap: 4px; }
         .threat-timeline-item + .threat-timeline-item { border-top: 1px solid var(--border-color); }
-        .threat-timeline-item-title { color: var(--text-primary); font-size: 12px; line-height: 1.35; text-decoration: none; }
+        .threat-timeline-item-title { color: var(--text-primary); font-size: calc(12px * var(--wm-panel-effective-scale, 1)); line-height: 1.35; text-decoration: none; }
         a.threat-timeline-item-title:hover { color: var(--accent-color); }
-        .threat-timeline-item-meta { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; color: var(--text-secondary); font-size: 10px; }
+        .threat-timeline-item-meta { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; color: var(--text-secondary); font-size: calc(10px * var(--wm-panel-effective-scale, 1)); }
         .threat-timeline-source, .threat-timeline-source-count { border: 1px solid var(--border-color); border-radius: 999px; padding: 1px 6px; color: var(--text-secondary); }
         .threat-critical .threat-timeline-group-header { border-left: 3px solid #ef4444; }
         .threat-high .threat-timeline-group-header { border-left: 3px solid #f97316; }
@@ -305,8 +305,8 @@ export class ThreatTimelinePanel extends Panel {
         .threat-low .threat-timeline-group-header { border-left: 3px solid #38bdf8; }
         .threat-info .threat-timeline-group-header { border-left: 3px solid #94a3b8; }
         .threat-timeline-empty, .threat-timeline-empty-inline { border: 1px dashed var(--border-color); border-radius: 8px; padding: 14px; color: var(--text-secondary); background: var(--bg-secondary); }
-        .threat-timeline-empty-title { color: var(--text-primary); font-size: 13px; font-weight: 700; }
-        .threat-timeline-empty-copy { margin-top: 5px; font-size: 12px; line-height: 1.4; color: var(--text-secondary); }
+        .threat-timeline-empty-title { color: var(--text-primary); font-size: calc(13px * var(--wm-panel-effective-scale, 1)); font-weight: 700; }
+        .threat-timeline-empty-copy { margin-top: 5px; font-size: calc(12px * var(--wm-panel-effective-scale, 1)); line-height: 1.4; color: var(--text-secondary); }
         @media (max-width: 520px) {
           .threat-timeline-summary { grid-template-columns: 1fr 1fr; }
           .threat-timeline-trend { grid-column: 1 / -1; }

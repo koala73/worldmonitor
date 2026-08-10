@@ -104,7 +104,7 @@ function renderRangeBar(lo: number, hi: number, current: number, positionPct: nu
     <div style="position:relative;height:8px;background:linear-gradient(90deg,rgba(231,76,60,0.25),rgba(245,166,35,0.25),rgba(46,204,113,0.25));border-radius:4px;margin:6px 0">
       <div style="position:absolute;top:-3px;bottom:-3px;left:${clamped.toFixed(1)}%;width:3px;background:#fff;border-radius:1px;box-shadow:0 0 4px rgba(255,255,255,0.8);transform:translateX(-50%)"></div>
     </div>
-    <div style="display:flex;justify-content:space-between;font-size:9px;color:var(--text-dim)">
+    <div style="display:flex;justify-content:space-between;font-size:calc(9px * var(--wm-panel-effective-scale, 1));color:var(--text-dim)">
       <span>Low $${escapeHtml(fmtPrice(lo))}</span>
       <span style="color:var(--text);font-weight:600">$${escapeHtml(fmtPrice(current))} • ${clamped.toFixed(0)}% of range</span>
       <span>High $${escapeHtml(fmtPrice(hi))}</span>
@@ -118,10 +118,10 @@ function renderPositionBar(netPct: number, label: string, wow: string): string {
   const leftPct = clamped >= 0 ? 50 : 50 - halfWidth;
   const sign = clamped >= 0 ? '+' : '';
   const wowN = parseInt(wow, 10);
-  const wowStr = Number.isFinite(wowN) && wowN !== 0 ? ` <span style="font-size:9px;color:${wowN >= 0 ? '#2ecc71' : '#e74c3c'};font-weight:500">Δ ${fmtSignedInt(wow)}</span>` : '';
+  const wowStr = Number.isFinite(wowN) && wowN !== 0 ? ` <span style="font-size:calc(9px * var(--wm-panel-effective-scale, 1));color:${wowN >= 0 ? '#2ecc71' : '#e74c3c'};font-weight:500">Δ ${fmtSignedInt(wow)}</span>` : '';
   return `
     <div style="margin:4px 0">
-      <div style="display:flex;justify-content:space-between;font-size:10px;color:var(--text-dim);margin-bottom:2px">
+      <div style="display:flex;justify-content:space-between;font-size:calc(10px * var(--wm-panel-effective-scale, 1));color:var(--text-dim);margin-bottom:2px">
         <span>${escapeHtml(label)}${wowStr}</span>
         <span style="color:${color};font-weight:600">${sign}${clamped.toFixed(1)}%</span>
       </div>
@@ -141,8 +141,8 @@ function ratioLabel(ratio: number): { text: string; color: string } {
 function returnChip(label: string, pct: number): string {
   const color = pct >= 0 ? '#2ecc71' : '#e74c3c';
   return `<div style="flex:1;text-align:center;padding:4px;background:rgba(255,255,255,0.03);border-radius:4px">
-    <div style="font-size:9px;color:var(--text-dim)">${escapeHtml(label)}</div>
-    <div style="font-size:11px;font-weight:600;color:${color}">${escapeHtml(fmtPct(pct, 1))}</div>
+    <div style="font-size:calc(9px * var(--wm-panel-effective-scale, 1));color:var(--text-dim)">${escapeHtml(label)}</div>
+    <div style="font-size:calc(11px * var(--wm-panel-effective-scale, 1));font-weight:600;color:${color}">${escapeHtml(fmtPct(pct, 1))}</div>
   </div>`;
 }
 
@@ -185,7 +185,7 @@ export class GoldIntelligencePanel extends Panel {
     const fresh = freshnessLabel(d.updatedAt);
 
     const sessionLine = d.session && d.session.dayHigh > 0
-      ? `<div style="font-size:9px;color:var(--text-dim);margin-top:2px">
+      ? `<div style="font-size:calc(9px * var(--wm-panel-effective-scale, 1));color:var(--text-dim);margin-top:2px">
           Session H $${escapeHtml(fmtPrice(d.session.dayHigh))} • L $${escapeHtml(fmtPrice(d.session.dayLow))} • Prev $${escapeHtml(fmtPrice(d.session.prevClose))}
         </div>`
       : '';
@@ -194,11 +194,11 @@ export class GoldIntelligencePanel extends Panel {
       <div class="energy-tape-section">
         <div class="energy-section-title">Price &amp; Performance</div>
         <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
-          <span style="font-size:16px;font-weight:700">$${escapeHtml(fmtPrice(d.goldPrice))}</span>
-          <span style="font-size:11px;font-weight:600;color:${changeColor};padding:1px 6px;border-radius:3px;background:${changeColor}22">${fmtPct(changePct)}</span>
+          <span style="font-size:calc(16px * var(--wm-panel-effective-scale, 1));font-weight:700">$${escapeHtml(fmtPrice(d.goldPrice))}</span>
+          <span style="font-size:calc(11px * var(--wm-panel-effective-scale, 1));font-weight:600;color:${changeColor};padding:1px 6px;border-radius:3px;background:${changeColor}22">${fmtPct(changePct)}</span>
           ${spark}
         </div>
-        <div style="display:flex;align-items:center;gap:6px;font-size:9px;color:var(--text-dim)">
+        <div style="display:flex;align-items:center;gap:6px;font-size:calc(9px * var(--wm-panel-effective-scale, 1));color:var(--text-dim)">
           <span style="width:6px;height:6px;border-radius:50%;background:${fresh.dot};display:inline-block"></span>
           <span>${escapeHtml(fresh.text)} • GC=F front-month</span>
         </div>
@@ -218,7 +218,7 @@ export class GoldIntelligencePanel extends Panel {
       : '';
     const range = d.range52w && d.range52w.hi > 0
       ? `<div style="margin-top:8px">
-          <div style="font-size:9px;color:var(--text-dim)">52-week range</div>
+          <div style="font-size:calc(9px * var(--wm-panel-effective-scale, 1));color:var(--text-dim)">52-week range</div>
           ${renderRangeBar(d.range52w.lo, d.range52w.hi, d.goldPrice, d.range52w.positionPct)}
         </div>`
       : '';
@@ -234,16 +234,16 @@ export class GoldIntelligencePanel extends Panel {
       ? (() => {
         const rl = ratioLabel(d.goldSilverRatio!);
         return `<div style="display:flex;justify-content:space-between;align-items:center;margin-top:4px">
-          <span style="font-size:10px;color:var(--text-dim)">Gold/Silver Ratio</span>
-          <span style="font-size:11px;font-weight:600">${escapeHtml(d.goldSilverRatio!.toFixed(1))} <span style="font-size:9px;color:${rl.color};font-weight:400">${escapeHtml(rl.text)}</span></span>
+          <span style="font-size:calc(10px * var(--wm-panel-effective-scale, 1));color:var(--text-dim)">Gold/Silver Ratio</span>
+          <span style="font-size:calc(11px * var(--wm-panel-effective-scale, 1));font-weight:600">${escapeHtml(d.goldSilverRatio!.toFixed(1))} <span style="font-size:calc(9px * var(--wm-panel-effective-scale, 1));color:${rl.color};font-weight:400">${escapeHtml(rl.text)}</span></span>
         </div>`;
       })()
       : '';
 
     const premiumHtml = d.goldPlatinumPremiumPct != null && Number.isFinite(d.goldPlatinumPremiumPct)
       ? `<div style="display:flex;justify-content:space-between;align-items:center;margin-top:4px">
-          <span style="font-size:10px;color:var(--text-dim)">Gold vs Platinum</span>
-          <span style="font-size:11px;font-weight:600">${escapeHtml(fmtPct(d.goldPlatinumPremiumPct, 1))} premium</span>
+          <span style="font-size:calc(10px * var(--wm-panel-effective-scale, 1));color:var(--text-dim)">Gold vs Platinum</span>
+          <span style="font-size:calc(11px * var(--wm-panel-effective-scale, 1));font-weight:600">${escapeHtml(fmtPct(d.goldPlatinumPremiumPct, 1))} premium</span>
         </div>`
       : '';
 
@@ -253,8 +253,8 @@ export class GoldIntelligencePanel extends Panel {
       { label: 'Palladium', price: d.palladiumPrice },
     ].map(m =>
       `<div style="flex:1;text-align:center;padding:4px;background:rgba(255,255,255,0.03);border-radius:4px">
-        <div style="font-size:9px;color:var(--text-dim)">${escapeHtml(m.label)}</div>
-        <div style="font-size:11px;font-weight:600">$${escapeHtml(fmtPrice(m.price))}</div>
+        <div style="font-size:calc(9px * var(--wm-panel-effective-scale, 1));color:var(--text-dim)">${escapeHtml(m.label)}</div>
+        <div style="font-size:calc(11px * var(--wm-panel-effective-scale, 1));font-weight:600">$${escapeHtml(fmtPrice(m.price))}</div>
       </div>`).join('');
 
     return `<div class="energy-tape-section" style="margin-top:10px">
@@ -269,8 +269,8 @@ export class GoldIntelligencePanel extends Panel {
     if (!d.crossCurrencyPrices.length) return '';
     const rows = d.crossCurrencyPrices.map(c =>
       `<div style="text-align:center;padding:4px;background:rgba(255,255,255,0.03);border-radius:4px">
-        <div style="font-size:9px;color:var(--text-dim)">${escapeHtml(c.flag)} XAU/${escapeHtml(c.currency)}</div>
-        <div style="font-size:11px;font-weight:600">${escapeHtml(fmtPrice(c.price, 0))}</div>
+        <div style="font-size:calc(9px * var(--wm-panel-effective-scale, 1));color:var(--text-dim)">${escapeHtml(c.flag)} XAU/${escapeHtml(c.currency)}</div>
+        <div style="font-size:calc(11px * var(--wm-panel-effective-scale, 1));font-weight:600">${escapeHtml(fmtPrice(c.price, 0))}</div>
       </div>`).join('');
     return `<div class="energy-tape-section" style="margin-top:10px">
       <div class="energy-section-title">Gold in Major Currencies</div>
@@ -287,14 +287,14 @@ export class GoldIntelligencePanel extends Panel {
     const psBar = ps ? renderPositionBar(ps.netPct, 'Producer/Swap (commercials)', ps.wowNetDelta) : '';
 
     const detail = (cat: CotCategory | undefined, label: string) => cat
-      ? `<div style="display:flex;justify-content:space-between;font-size:9px;color:var(--text-dim);padding:2px 0">
+      ? `<div style="display:flex;justify-content:space-between;font-size:calc(9px * var(--wm-panel-effective-scale, 1));color:var(--text-dim);padding:2px 0">
           <span>${escapeHtml(label)}</span>
           <span>L ${escapeHtml(fmtInt(cat.longPositions))} / S ${escapeHtml(fmtInt(cat.shortPositions))} • ${cat.oiSharePct.toFixed(1)}% OI</span>
         </div>`
       : '';
 
     const releaseLine = c.reportDate
-      ? `<div style="display:flex;justify-content:space-between;font-size:9px;color:var(--text-dim);margin-top:6px">
+      ? `<div style="display:flex;justify-content:space-between;font-size:calc(9px * var(--wm-panel-effective-scale, 1));color:var(--text-dim);margin-top:6px">
           <span>As of ${escapeHtml(c.reportDate)}${c.nextReleaseDate ? ` • next release ${escapeHtml(c.nextReleaseDate)}` : ''}</span>
           <span>OI ${escapeHtml(fmtInt(c.openInterest))}</span>
         </div>`
@@ -314,14 +314,14 @@ export class GoldIntelligencePanel extends Panel {
     const cb = d.cbReserves;
     if (!cb || !cb.topHolders.length) return '';
 
-    const holderRow = (h: CbHolder, rank: number) => `<div style="display:flex;justify-content:space-between;font-size:10px;padding:1px 0">
+    const holderRow = (h: CbHolder, rank: number) => `<div style="display:flex;justify-content:space-between;font-size:calc(10px * var(--wm-panel-effective-scale, 1));padding:1px 0">
       <span style="color:var(--text-dim)">${rank}. ${escapeHtml(h.name)}</span>
       <span style="font-weight:600">${h.tonnes > 0 ? `${h.tonnes.toFixed(1)}t` : '—'}</span>
     </div>`;
     const moverRow = (m: CbMover) => {
       const color = m.deltaTonnes12m >= 0 ? '#2ecc71' : '#e74c3c';
       const sign = m.deltaTonnes12m >= 0 ? '+' : '';
-      return `<div style="display:flex;justify-content:space-between;font-size:10px;padding:1px 0">
+      return `<div style="display:flex;justify-content:space-between;font-size:calc(10px * var(--wm-panel-effective-scale, 1));padding:1px 0">
         <span style="color:var(--text-dim)">${escapeHtml(m.name)}</span>
         <span style="color:${color};font-weight:600">${sign}${m.deltaTonnes12m.toFixed(1)}t</span>
       </div>`;
@@ -334,22 +334,22 @@ export class GoldIntelligencePanel extends Panel {
     const moversHtml = (buyers || sellers)
       ? `<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px">
           <div>
-            <div style="font-size:9px;color:var(--text-dim);text-transform:uppercase;margin-bottom:2px">Buyers 12M</div>
-            ${buyers || '<div style="font-size:9px;color:var(--text-dim)">—</div>'}
+            <div style="font-size:calc(9px * var(--wm-panel-effective-scale, 1));color:var(--text-dim);text-transform:uppercase;margin-bottom:2px">Buyers 12M</div>
+            ${buyers || '<div style="font-size:calc(9px * var(--wm-panel-effective-scale, 1));color:var(--text-dim)">—</div>'}
           </div>
           <div>
-            <div style="font-size:9px;color:var(--text-dim);text-transform:uppercase;margin-bottom:2px">Sellers 12M</div>
-            ${sellers || '<div style="font-size:9px;color:var(--text-dim)">—</div>'}
+            <div style="font-size:calc(9px * var(--wm-panel-effective-scale, 1));color:var(--text-dim);text-transform:uppercase;margin-bottom:2px">Sellers 12M</div>
+            ${sellers || '<div style="font-size:calc(9px * var(--wm-panel-effective-scale, 1));color:var(--text-dim)">—</div>'}
           </div>
         </div>`
       : '';
 
     return `<div class="energy-tape-section" style="margin-top:10px">
       <div class="energy-section-title">Central-Bank Reserves</div>
-      <div style="font-size:9px;color:var(--text-dim);margin-bottom:4px">Top holders (tonnes)</div>
+      <div style="font-size:calc(9px * var(--wm-panel-effective-scale, 1));color:var(--text-dim);margin-bottom:4px">Top holders (tonnes)</div>
       ${holders}
       ${moversHtml}
-      <div style="font-size:9px;color:var(--text-dim);margin-top:6px;text-align:right">IMF IFS • as of ${escapeHtml(cb.asOfMonth)}</div>
+      <div style="font-size:calc(9px * var(--wm-panel-effective-scale, 1));color:var(--text-dim);margin-top:6px;text-align:right">IMF IFS • as of ${escapeHtml(cb.asOfMonth)}</div>
     </div>`;
   }
 
@@ -362,9 +362,9 @@ export class GoldIntelligencePanel extends Panel {
       const tSign = deltaT >= 0 ? '+' : '';
       const pSign = deltaPct >= 0 ? '+' : '';
       return `<div style="flex:1;text-align:center;padding:4px;background:rgba(255,255,255,0.03);border-radius:4px">
-        <div style="font-size:9px;color:var(--text-dim)">${escapeHtml(label)}</div>
-        <div style="font-size:11px;font-weight:600;color:${color}">${tSign}${deltaT.toFixed(1)}t</div>
-        <div style="font-size:9px;color:${color}">${pSign}${deltaPct.toFixed(2)}%</div>
+        <div style="font-size:calc(9px * var(--wm-panel-effective-scale, 1));color:var(--text-dim)">${escapeHtml(label)}</div>
+        <div style="font-size:calc(11px * var(--wm-panel-effective-scale, 1));font-weight:600;color:${color}">${tSign}${deltaT.toFixed(1)}t</div>
+        <div style="font-size:calc(9px * var(--wm-panel-effective-scale, 1));color:${color}">${pSign}${deltaPct.toFixed(2)}%</div>
       </div>`;
     };
 
@@ -375,8 +375,8 @@ export class GoldIntelligencePanel extends Panel {
       <div class="energy-section-title">Physical Flows (GLD)</div>
       <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:4px">
         <div>
-          <span style="font-size:14px;font-weight:700">${escapeHtml(f.tonnes.toFixed(1))} <span style="font-size:10px;color:var(--text-dim);font-weight:500">tonnes</span></span>
-          <span style="font-size:10px;color:var(--text-dim);margin-left:6px">AUM ${escapeHtml(aumStr)}${f.nav > 0 ? ` • NAV $${f.nav.toFixed(2)}` : ''}</span>
+          <span style="font-size:calc(14px * var(--wm-panel-effective-scale, 1));font-weight:700">${escapeHtml(f.tonnes.toFixed(1))} <span style="font-size:calc(10px * var(--wm-panel-effective-scale, 1));color:var(--text-dim);font-weight:500">tonnes</span></span>
+          <span style="font-size:calc(10px * var(--wm-panel-effective-scale, 1));color:var(--text-dim);margin-left:6px">AUM ${escapeHtml(aumStr)}${f.nav > 0 ? ` • NAV $${f.nav.toFixed(2)}` : ''}</span>
         </div>
         ${spark}
       </div>
@@ -385,7 +385,7 @@ export class GoldIntelligencePanel extends Panel {
         ${chip('1M', f.changeM1Tonnes, f.changeM1Pct)}
         ${chip('1Y', f.changeY1Tonnes, f.changeY1Pct)}
       </div>
-      <div style="font-size:9px;color:var(--text-dim);margin-top:4px;text-align:right">SPDR GLD • as of ${escapeHtml(f.asOfDate)}</div>
+      <div style="font-size:calc(9px * var(--wm-panel-effective-scale, 1));color:var(--text-dim);margin-top:4px;text-align:right">SPDR GLD • as of ${escapeHtml(f.asOfDate)}</div>
     </div>`;
   }
 
@@ -394,12 +394,12 @@ export class GoldIntelligencePanel extends Panel {
     const rows = d.drivers.map(dr => {
       const color = dr.changePct >= 0 ? '#2ecc71' : '#e74c3c';
       const corrColor = dr.correlation30d <= -0.3 ? '#2ecc71' : dr.correlation30d >= 0.3 ? '#e74c3c' : 'var(--text-dim)';
-      return `<div style="display:flex;justify-content:space-between;align-items:center;padding:3px 0;font-size:10px">
+      return `<div style="display:flex;justify-content:space-between;align-items:center;padding:3px 0;font-size:calc(10px * var(--wm-panel-effective-scale, 1))">
         <span style="color:var(--text-dim)">${escapeHtml(dr.label)}</span>
         <span>
           <span style="font-weight:600">${escapeHtml(dr.value.toFixed(2))}</span>
           <span style="color:${color};margin-left:4px">${escapeHtml(fmtPct(dr.changePct, 2))}</span>
-          <span style="color:${corrColor};margin-left:8px;font-size:9px">corr 30d ${dr.correlation30d >= 0 ? '+' : ''}${dr.correlation30d.toFixed(2)}</span>
+          <span style="color:${corrColor};margin-left:8px;font-size:calc(9px * var(--wm-panel-effective-scale, 1))">corr 30d ${dr.correlation30d >= 0 ? '+' : ''}${dr.correlation30d.toFixed(2)}</span>
         </span>
       </div>`;
     }).join('');

@@ -1794,6 +1794,7 @@ export class EventHandlerManager implements AppModule {
             trackPanelToggled(key, nextConfig.enabled);
           }
           Object.assign(current, nextConfig);
+          if (nextConfig.fontScale === undefined) delete current.fontScale;
           // Object.assign cannot DELETE a key, so a stale gate marker would
           // survive a settings-driven toggle. Re-apply through the owner helper.
           if (enabledChanged) userSetPanelEnabled(current, nextConfig.enabled);
@@ -1859,6 +1860,8 @@ export class EventHandlerManager implements AppModule {
       resetLayout: () => {
         clearPanelSpans();
         clearPanelColSpans();
+        for (const panel of Object.values(this.ctx.panelSettings)) delete panel.fontScale;
+        saveToStorage(STORAGE_KEYS.panels, this.ctx.panelSettings);
         removeStorageValue(this.ctx.PANEL_ORDER_KEY);
         removeStorageValue(this.ctx.PANEL_ORDER_KEY + '-bottom');
         removeStorageValue(this.ctx.PANEL_ORDER_KEY + '-bottom-set');
