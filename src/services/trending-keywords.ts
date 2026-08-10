@@ -88,6 +88,12 @@ const BASELINE_REFRESH_MS = HOUR_MS;
 const SPIKE_COOLDOWN_MS = 30 * 60 * 1000;
 const MAX_TRACKED_TERMS = 10000;
 const MAX_AUTO_SUMMARIES_PER_HOUR = 5;
+// A spike can be built from an unbounded number of headlines; the signal that
+// travels to the modal and into the retained signal history must not be.
+// (`sourceNames` needs no cap of its own — distinct feed names are already
+// bounded by the feed registry, and capping it would put `sourceCount` and the
+// names it claims to explain back into disagreement.)
+const MAX_SPIKE_ARTICLES = 6;
 const CONFIG_KEY = 'worldmonitor-trending-config-v1';
 const ML_ENTITY_MIN_CONFIDENCE = 0.75;
 const ML_ENTITY_BATCH_SIZE = 20;
@@ -439,10 +445,36 @@ async function handleSpike(spike: TrendingSpike, config: TrendingConfig): Promis
     }
 
     const windowHours = Math.round((spike.windowMs / HOUR_MS) * 10) / 10;
-    const headlines = spike.headlines.slice(0, 6).map(h => h.title);
+    // The evidence the alert is about: the articles that produced the count.
+    // Newest first, THEN capped. `spike.headlines` is in ingestion order over a
+    // 2h window while the per-term cooldown is only 30 minutes, so taking the
+    // head of that array would hand a re-spike the same six up-to-2h-old
+    // headlines it showed last time while the title reports a higher count.
+    const articles = [...spike.headlines]
+      .sort((a, b) => (b.publishedAt || b.ingestedAt) - (a.publishedAt || a.ingestedAt))
+      .slice(0, MAX_SPIKE_ARTICLES)
+      .map(headline => ({
+        title: headline.title,
+        source: headline.source,
+        link: headline.link || undefined,
+        publishedAt: headline.publishedAt,
+      }));
+    // Derived from the FULL deduped window rather than `articles`, and reused
+    // below as `sourceCount`, so the count the user reads and the names behind
+    // it are the same fact — a source whose only headline fell past the cap
+    // would otherwise be counted but never named. Blank names are dropped here,
+    // not at the render boundary, so the count cannot outrun the nameable list.
+    const sourceNames = Array.from(
+      new Set(
+        spike.headlines
+          .map(headline => headline.source)
+          .filter(source => typeof source === 'string' && source.trim().length > 0)
+      )
+    );
+    const headlines = articles.map(article => article.title);
     const multiplierText = spike.baseline > 0 ? `${spike.multiplier.toFixed(1)}x baseline` : 'cold-start threshold';
 
-    let description = `${spike.term} is appearing across ${spike.uniqueSources} sources (${spike.count} mentions in ${windowHours}h).`;
+    let description = `${spike.term} is appearing across ${sourceNames.length} sources (${spike.count} mentions in ${windowHours}h).`;
 
     const now = Date.now();
     if (config.autoSummarize && headlines.length >= 2 && canRunAutoSummary(now)) {
@@ -472,11 +504,14 @@ async function handleSpike(spike: TrendingSpike, config: TrendingConfig): Promis
       data: {
         term: spike.term,
         newsVelocity: spike.count,
-        relatedTopics: [spike.term],
+        // No relatedTopics: it was `[spike.term]`, which rendered a chip
+        // repeating the term the user was already reading.
         baseline: spike.baseline,
         multiplier: spike.baseline > 0 ? spike.multiplier : undefined,
-        sourceCount: spike.uniqueSources,
-        explanation: `${spike.term}: ${spike.count} mentions across ${spike.uniqueSources} sources (${multiplierText})`,
+        sourceCount: sourceNames.length,
+        sourceNames,
+        articles,
+        explanation: `${spike.term}: ${spike.count} mentions across ${sourceNames.length} sources (${multiplierText})`,
       },
     });
   } catch (error) {
