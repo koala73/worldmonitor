@@ -94,10 +94,23 @@ const Harness = extractOpen()(
   { open() {}, replace() {} },
 );
 
+/**
+ * What the stubbed sourceSelectionSignature() returns, so the baseline open()
+ * records is identifiable rather than merely non-undefined.
+ */
+const STUB_SOURCE_SIGNATURE = 'stub-source-signature';
+
 function makeInstance(initialTab = 'settings') {
   const instance = new Harness();
   instance.activeTab = initialTab;
   instance.resetPanelDraft = () => {};
+  // The real one reads config.getDisabledSources(), which this harness has no
+  // config for. Kept observable rather than a bare no-op so the baseline
+  // open() takes for #6380 stays asserted below.
+  instance.sourceSelectionSignature = () => STUB_SOURCE_SIGNATURE;
+  // Mirrors the real field initializer. open() snapshots only from null, so a
+  // harness left at undefined would model a state the class never has.
+  instance.sourceSelectionBaseline = null;
   instance.renderedTabs = [];
   instance.render = function render() {
     this.renderedTabs.push(this.activeTab);
@@ -167,5 +180,31 @@ describe('UnifiedSettings.open active-tab availability (#5611)', () => {
 
     assert.equal(instance.activeTab, 'api-keys');
     assert.deepEqual(instance.renderedTabs, ['api-keys']);
+  });
+
+  // Sources apply on click with no Save step, and teardownSettings decides
+  // whether to tell the host to reload by comparing against the set as it was
+  // when the overlay opened (#6380). Without that snapshot the comparison has
+  // nothing to compare to and every close either always reloads or never does.
+  it('snapshots the source selection so a change can be detected at close (#6380)', () => {
+    const instance = makeInstance();
+    assert.equal(instance.sourceSelectionBaseline, null);
+
+    instance.open();
+
+    assert.equal(instance.sourceSelectionBaseline, STUB_SOURCE_SIGNATURE);
+  });
+
+  // open() is re-entrant on an already-open overlay. Re-snapshotting there
+  // would adopt a source change made earlier in the session as the baseline,
+  // so close() would see no movement and never ask the host to reload.
+  it('keeps the first snapshot when open() is re-entered mid-session (#6380)', () => {
+    const instance = makeInstance();
+    instance.open();
+    instance.sourceSelectionSignature = () => 'moved-since-open';
+
+    instance.open('api-keys');
+
+    assert.equal(instance.sourceSelectionBaseline, STUB_SOURCE_SIGNATURE);
   });
 });
