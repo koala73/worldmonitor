@@ -472,7 +472,7 @@ const DIMENSION_LABELS: Record<string, string> = {
   stateContinuity: 'Continuity',
   fuelStockDays: 'Fuel',
   // PR 2 §3.4 — new active dimensions. Labels chosen to stay short
-  // enough for the 20-active/22-serialized-cell confidence grid
+  // enough for the 21-active/23-serialized-cell confidence grid
   // without leaking the internal ID. "Reserves" is already taken by the retired
   // reserveAdequacy so the replacement disambiguates with "Liquid".
   liquidReserveAdequacy: 'Liquid Reserves',

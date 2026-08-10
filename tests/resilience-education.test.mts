@@ -1,7 +1,7 @@
 // Pin the `education` dimension's normalization transform.
 //
 // Indicator: SE.SEC.CUAT.UP.FE.ZS — female upper-secondary attainment, 25+.
-// Construct: docs/methodology/education-attainment.md
+// Construct: the "Education" section of docs/methodology/country-resilience-index.mdx
 //
 // The construct contract requires a threshold or saturating transform for
 // development-adjacent indicators, so the score rewards functional capacity

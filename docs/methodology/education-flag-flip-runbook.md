@@ -81,13 +81,26 @@ All must be green before flipping:
    payload load and extract `countries[iso2].value`.
 
 5. **Cache prefixes bumped in lockstep.** This was deliberately NOT done in the
-   scaffold PR, because while dark the dimension changes no published score:
+   scaffold PR, because while dark the dimension changes no published *score*:
    the coverage-weighted mean drops a `coverage=0` dimension, and the dark dim
-   is excluded from the confidence mean, so overall score, coverage, and
-   `imputationShare` are all identical to pre-change. At flip that stops being
-   true and the rotation becomes mandatory — adding a dimension shifts every
-   country's baseline, and mixing pre- and post-change points inside the 30-day
-   rolling window manufactures false trends.
+   is excluded from the confidence mean, so `overallScore`, `overallCoverage`,
+   and `imputationShare` are all identical to pre-change. At flip that stops
+   being true and the rotation becomes mandatory — adding a dimension shifts
+   every country's baseline, and mixing pre- and post-change points inside the
+   30-day rolling window manufactures false trends.
+
+   **Accepted transient in the scaffold deploy.** The scalars are unchanged, but
+   the serialized `domains[].dimensions[]` array grows from 22 to 23 entries the
+   moment the new code deploys. Because the score cache keeps its prefix, for up
+   to one 6h TTL a country served from a pre-deploy cache entry returns 22
+   entries while a freshly-computed country returns 23. This is accepted, not
+   overlooked: the SDKs and CLI pass the payload through as opaque JSON, the MCP
+   surface does not expose this shape at all, and the widget derives its counts
+   from the response rather than pinning them — so nothing consumes the length.
+   It self-heals within one TTL. Bumping the prefix would make the transition
+   atomic at the cost of discarding six hours of valid scores for 196 countries;
+   that trade is worth taking at the flip, when the scores genuinely change, and
+   not before.
 
    Nine files carry these literals and eight hand-copy them:
    ```bash
