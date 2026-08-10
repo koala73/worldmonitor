@@ -20,12 +20,6 @@
   "expiresAt": "2026-08-27",
   "acknowledged": [
     {
-      "name": "crossStraitActivityJapanMod",
-      "status": "SEED_ERROR",
-      "issue": 5714,
-      "reason": "Japan MOD route returns proxy CONNECT 403; candidate country-specific routes return 407. Second cause independent of the #5689 Decodo exhaustion. No verified replacement endpoint installed."
-    },
-    {
       "name": "consumerPricesCoverage",
       "status": "COVERAGE_PARTIAL",
       "issue": 6355,
