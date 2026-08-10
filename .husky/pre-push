@@ -368,7 +368,7 @@ if changed '^(api/|server/|src/generated/|scripts/check-edge-function-bundles\.m
   echo "Running edge function bundle check..."
   # The shared checker uses git's tracked inventory, so ignored desktop
   # sidecar bundles beside the API sources cannot become edge candidates.
-  node scripts/check-edge-function-bundles.mjs || exit 1
+  node scripts/check-edge-function-bundles.mjs --caller=prepush || exit 1
 else
   echo "Edge function bundle check skipped (no API surface or checker changes)."
 fi

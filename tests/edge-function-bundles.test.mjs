@@ -96,11 +96,46 @@ describe('edge function candidate discovery', () => {
     ]);
   });
 
+  test('pre-push discovery skips tracked edge entries missing only from the worktree', () => {
+    const root = makeRepo();
+    rmSync(join(root, 'api/health.js'));
+
+    assert.deepEqual(listEdgeFunctionEntries(root, { caller: 'prepush' }), [
+      'api/mcp.ts',
+      'api/normal.js',
+      'api/paired.js',
+      'api/paired.ts',
+      'api/space route.js',
+      'api/v2/shipping/[rpc].js',
+    ]);
+  });
+
+  test('CI keeps the legacy top-level TypeScript allowlist', () => {
+    const root = makeRepo();
+    assert.deepEqual(listEdgeFunctionEntries(root, { caller: 'ci' }), [
+      'api/health.js',
+      'api/mcp.ts',
+      'api/normal.js',
+      'api/paired.js',
+      'api/space route.js',
+      'api/v2/shipping/[rpc].js',
+    ]);
+  });
+
   test('the real checker ignores sidecar residue but still bundles tracked entries', async () => {
     const root = makeRepo();
     const entries = await checkEdgeFunctionBundles({ root });
     assert.ok(entries.includes('api/health.js'));
     assert.ok(!entries.includes('api/domain/v1/[rpc].js'));
+  });
+
+  test('the pre-push checker ignores a tracked entry deleted only locally', async () => {
+    const root = makeRepo();
+    rmSync(join(root, 'api/health.js'));
+
+    const entries = await checkEdgeFunctionBundles({ root, caller: 'prepush' });
+    assert.ok(!entries.includes('api/health.js'));
+    assert.ok(entries.includes('api/normal.js'));
   });
 
   test('fails closed when no tracked edge entries exist', async () => {
@@ -166,6 +201,28 @@ describe('edge function checker CLI contract', () => {
     const { status, stdout } = runChecker(makeRepo(), ['--list']);
     assert.equal(status, 0);
     assert.ok(JSON.parse(stdout).includes('api/health.js'));
+  });
+
+  test('--caller=ci preserves the legacy TypeScript entry scope', () => {
+    const { status, stdout } = runChecker(makeRepo(), ['--list', '--caller=ci']);
+    assert.equal(status, 0);
+    assert.deepEqual(JSON.parse(stdout), [
+      'api/health.js',
+      'api/mcp.ts',
+      'api/normal.js',
+      'api/paired.js',
+      'api/space route.js',
+      'api/v2/shipping/[rpc].js',
+    ]);
+  });
+
+  test('--caller=prepush still passes when an unrelated tracked entry is deleted locally', () => {
+    const root = makeRepo();
+    rmSync(join(root, 'api/health.js'));
+
+    const { status, stdout, stderr } = runChecker(root, ['--caller=prepush']);
+    assert.equal(status, 0, stderr);
+    assert.match(stdout, /edge function bundles ok/);
   });
 
   test('runs when reached through a symlinked absolute path', () => {

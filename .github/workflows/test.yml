@@ -173,9 +173,10 @@ jobs:
         run: VITE_VARIANT=full ./node_modules/.bin/vite build
       - run: npm run test:data
       - name: Edge function bundle check
-        # Shared with pre-push. Tracked files are the deployable contract, so
-        # ignored Node sidecar bundles left by local builds are never inputs.
-        run: node scripts/check-edge-function-bundles.mjs
+        # Shared checker with caller-specific profiles. Tracked files are the
+        # deployable contract, so ignored Node sidecar bundles left by local
+        # builds are never inputs.
+        run: node scripts/check-edge-function-bundles.mjs --caller=ci
       - name: Sidecar handler bundles build (#5902)
         # The desktop sidecar loads esbuild-bundled api/{domain}/v1/[rpc].js
         # handlers whose import graph spans src/ and server/ (via the @/

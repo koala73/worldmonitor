@@ -556,7 +556,7 @@ describe('CI workflow coverage', () => {
     const edgeBundleStep = workflowStepBlock(testWorkflow, 'Edge function bundle check');
     assert.match(
       edgeBundleStep,
-      /^\s+run: node scripts\/check-edge-function-bundles\.mjs\s*$/m,
+      /^\s+run: node scripts\/check-edge-function-bundles\.mjs --caller=ci\s*$/m,
     );
     assert.doesNotMatch(edgeBundleStep, /find api\//);
   });
