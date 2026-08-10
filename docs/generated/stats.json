@@ -71,6 +71,7 @@
     "live-api-cache-auth.yml",
     "mcp-live-smoke.yml",
     "perf-style-layout-budget.yml",
+    "postmerge-deploy-monitor.yml",
     "pro-bundle-freshness.yml",
     "proto-check.yml",
     "publish-cli.yml",
@@ -87,7 +88,7 @@
     "typecheck.yml",
     "umami-storage-monitor.yml"
   ],
-  "workflowCount": 31,
+  "workflowCount": 32,
   "freshnessSources": 35,
   "freshnessRequiredForRisk": 2,
   "feedDefinitions": 628,
