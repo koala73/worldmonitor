@@ -66,7 +66,6 @@ export const DIGEST_ACCUMULATOR_TTL = 172800; // 48h — lookback window for dig
  */
 export const SIMULATION_OUTCOME_LATEST_KEY = 'forecast:simulation-outcome:latest';
 export const SIMULATION_PACKAGE_LATEST_KEY = 'forecast:simulation-package:latest';
-export const REGULATORY_ACTIONS_KEY = 'regulatory:actions:v1';
 
 /**
  * CII risk-score payload key family. Keep runtime-local mirrors in

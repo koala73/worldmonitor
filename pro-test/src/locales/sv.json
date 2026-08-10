@@ -583,7 +583,7 @@
       "s10l": "Bedömda hotspots",
       "s11v": "92",
       "s11l": "Börser & tillgångar",
-      "s12v": "59",
+      "s12v": "60",
       "s12l": "MCP-verktyg",
       "s13v": "154",
       "s13l": "⌘K-kommandon",
@@ -611,7 +611,7 @@
       "eyebrow": "För utvecklare och AI-agenter",
       "title": "Bygg på live-världsintelligens — från vilken stack som helst.",
       "sub": "Allt på kartan är också ett API. Integrera det med Claude via MCP, anropa REST-slutpunkterna från var som helst, eller installera en inbyggd klient för Python, Ruby, Go eller JavaScript — din kod forskar med livedata istället för träningsdata.",
-      "b1": "59 MCP-verktyg — riskvärderingar, flaskhalsar, konflikter, marknader, sammanfattningar",
+      "b1": "60 MCP-verktyg — riskvärderingar, flaskhalsar, konflikter, marknader, sammanfattningar",
       "b2": "Dokumenterad REST API — 193 operationer, en OpenAPI 3.1-specifikation, en nyckel",
       "b3": "Officiella SDK:er på npm, PyPI, RubyGems och Go — nollberoenden, MCP-först",
       "b4": "JMESPath-projektion på varje anrop — hämta exakt de fält du behöver",
@@ -620,7 +620,7 @@
       "termQuery": "Blir vår Red Sea-exponering värre den här veckan?",
       "termAnswer": "Transitantal ned vecka för vecka; krigsriskskikt höjt; två täthetskaviteter de senaste 48 timmarna.",
       "termDocs": "Se den fullständiga verktygslistan →",
-      "promise": "En nyckel. 59 MCP-verktyg. Ett fullständigt REST API. Språknativa klienter."
+      "promise": "En nyckel. 60 MCP-verktyg. Ett fullständigt REST API. Språknativa klienter."
     },
     "pricing": {
       "eyebrow": "Åtkomst",
@@ -638,7 +638,7 @@
       "proF1": "WM Analyst — chatta över 30+ live-tjänster, med citering",
       "proF2": "Scenariomotor & Route Explorer — simulera störningar innan de inträffar",
       "proF3": "Personlig AI-sammanfattning — daglig, två gånger daglig eller veckovis, till Slack, Telegram eller e-post",
-      "proF4": "MCP, REST API & officiella SDK:er — 59 verktyg under en nyckel",
+      "proF4": "MCP, REST API & officiella SDK:er — 60 verktyg under en nyckel",
       "proF5": "Anpassad widgetbyggare för dina egna paneler",
       "cta": "Se planer och prissättning",
       "note": "Från 39,99 USD/mån · 3 månader gratis vid årlig fakturering"
@@ -659,7 +659,7 @@
       "q6": "Varför ska jag lita på en avisering?",
       "a6": "En breaking-banner startar endast när oberoende ursprungstyper bekräftar — nyhetsklassificering, nyckelordshastighet, hotspot-eskalering, militär ökning, officiella sirener — deduplicerad och hastighetsbegränsad. Färre aviseringar, verkliga.",
       "q7": "Kan AI-agenter som Claude eller GPT använda det?",
-      "a7": "Ja. World Monitor levereras med en 59-verktygs MCP-server, så Claude, GPT eller vilken MCP-kompatibel agent som helst kan fråga live-riskvärderingar, flaskhalssstatus, konflikter, marknader och sammanfattningar — med JMESPath-projektion så att agenter hämtar exakt vad de behöver.",
+      "a7": "Ja. World Monitor levereras med en 60-verktygs MCP-server, så Claude, GPT eller vilken MCP-kompatibel agent som helst kan fråga live-riskvärderingar, flaskhalssstatus, konflikter, marknader och sammanfattningar — med JMESPath-projektion så att agenter hämtar exakt vad de behöver.",
       "q8": "Behöver jag ett konto?",
       "a8": "Nej. Instrumentbrädan fungerar omedelbar utan registrering. Ett konto spelar endast roll när du uppgraderar till Pro eller vill synkronisera inställningar mellan enheter.",
       "q9": "Är det öppen källkod?",

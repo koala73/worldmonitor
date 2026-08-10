@@ -35,7 +35,11 @@ import type {
   MarketQuoteUnavailableReason,
 } from '../../../../src/generated/server/worldmonitor/market/v1/service_server';
 import { parseStringArray, sanitizeSymbol } from './_shared';
-import { resolveMarketQuoteProvider, type ProviderQuote } from './_quote-provider';
+import {
+  providerNotConfiguredReason,
+  resolveMarketQuoteProvider,
+  type ProviderQuote,
+} from './_quote-provider';
 import { cachedFetchJson, readCachedJson } from '../../../_shared/redis';
 
 const BOOTSTRAP_KEY = 'market:stocks-bootstrap:v1';
@@ -66,8 +70,17 @@ export const MARKET_QUOTES_UPSTREAM_LIMIT = 10;
 /** In-flight provider lookups. The provider's own request gate paces the starts. */
 const UPSTREAM_CONCURRENCY = 4;
 
-/** Wall-clock budget for the whole gap fetch, checked before each new lookup. */
+/** Wall-clock budget for the whole gap fetch, enforced across every lookup. */
 const UPSTREAM_DEADLINE_MS = 6_000;
+let upstreamDeadlineMs = UPSTREAM_DEADLINE_MS;
+
+export function __setUpstreamDeadlineForTests(ms: number): void {
+  upstreamDeadlineMs = ms;
+}
+
+export function __resetUpstreamDeadlineForTests(): void {
+  upstreamDeadlineMs = UPSTREAM_DEADLINE_MS;
+}
 
 /**
  * Ceiling for one cached lookup: the provider's own timeout plus slack for the
@@ -157,6 +170,15 @@ interface GapFetchResult {
   providerConfigured: boolean;
 }
 
+function waitForAbort<T>(promise: Promise<T>, signal: AbortSignal): Promise<T> {
+  if (signal.aborted) return Promise.reject(signal.reason);
+  return new Promise<T>((resolve, reject) => {
+    const onAbort = () => reject(signal.reason);
+    signal.addEventListener('abort', onAbort, { once: true });
+    promise.then(resolve, reject).finally(() => signal.removeEventListener('abort', onAbort));
+  });
+}
+
 /**
  * Resolve seed misses through the provider, one Redis-cached lookup per symbol.
  *
@@ -184,7 +206,8 @@ async function resolveMissingSymbols(missing: string[]): Promise<GapFetchResult>
   const attempted = serviceable.slice(0, MARKET_QUOTES_UPSTREAM_LIMIT);
   for (const symbol of serviceable.slice(MARKET_QUOTES_UPSTREAM_LIMIT)) reasons.set(symbol, REASON.budget);
 
-  const deadline = Date.now() + UPSTREAM_DEADLINE_MS;
+  const deadline = Date.now() + upstreamDeadlineMs;
+  const deadlineSignal = AbortSignal.timeout(upstreamDeadlineMs);
   let rateLimited = false;
 
   // The fetcher records the live outcome here before returning or throwing:
@@ -195,17 +218,18 @@ async function resolveMissingSymbols(missing: string[]): Promise<GapFetchResult>
   const liveOutcomes = new Map<string, Reason>();
 
   await forEachWithConcurrency(attempted, UPSTREAM_CONCURRENCY, async (symbol) => {
-    if (Date.now() >= deadline) {
+    const remainingMs = deadline - Date.now();
+    if (remainingMs <= 0 || deadlineSignal.aborted) {
       reasons.set(symbol, REASON.budget);
       return;
     }
 
     try {
-      const cached = await cachedFetchJson<ProviderQuote>(
+      const cached = await waitForAbort(cachedFetchJson<ProviderQuote>(
         `${QUOTE_CACHE_KEY_PREFIX}:${symbol}`,
         QUOTE_CACHE_TTL_SECONDS,
         async () => {
-          const outcome = await provider.fetchQuote(symbol);
+          const outcome = await provider.fetchQuote(symbol, deadlineSignal);
           if (outcome.status === 'ok') return outcome.quote;
           if (outcome.status === 'not_found') {
             liveOutcomes.set(symbol, REASON.notFound);
@@ -217,13 +241,15 @@ async function resolveMissingSymbols(missing: string[]): Promise<GapFetchResult>
           throw new Error(outcome.status === 'rate_limited' ? 'provider rate limited' : outcome.message);
         },
         QUOTE_NEGATIVE_TTL_SECONDS,
-        { timeoutMs: QUOTE_PROVIDER_CALL_BUDGET_MS, cacheFetcherErrors: false },
-      );
+        { timeoutMs: Math.min(QUOTE_PROVIDER_CALL_BUDGET_MS, remainingMs), cacheFetcherErrors: false },
+      ), deadlineSignal);
 
       if (cached) quotes.set(symbol, cached);
       else reasons.set(symbol, liveOutcomes.get(symbol) ?? REASON.notFound);
     } catch {
-      const reason = liveOutcomes.get(symbol) ?? REASON.providerError;
+      const reason = deadlineSignal.aborted
+        ? REASON.budget
+        : (liveOutcomes.get(symbol) ?? REASON.providerError);
       reasons.set(symbol, reason);
       if (reason === REASON.rateLimited) rateLimited = true;
     }
@@ -319,7 +345,7 @@ export async function listMarketQuotes(
   return {
     quotes,
     finnhubSkipped: skipped,
-    skipReason: skipped ? 'FINNHUB_API_KEY not configured' : '',
+    skipReason: skipped ? providerNotConfiguredReason() : '',
     rateLimited: resolved.rateLimited,
     unavailableSymbols: [...unavailable, ...overflow],
   };

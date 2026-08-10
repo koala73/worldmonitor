@@ -23,6 +23,29 @@ crons.hourly(
   {},
 );
 
+// Bounded recovery for Company Monitoring purge generations whose scheduled
+// continuation was dropped. The mutation independently enforces the ordinary
+// lapse purgeAfter deadline, so an hourly wake cannot bypass the 24h grace.
+crons.hourly(
+  "company-monitoring-stalled-purge-reaper",
+  { minuteUTC: 37 },
+  internal.companyMonitoring.accounts.reapStalledAccountPurges,
+  {},
+);
+
+// Company Monitoring account roots are provisioned on first use and are no
+// longer touched by entitlement writes (#6256), so lapses are pulled here
+// instead of pushed from billing. Scanning only companyMonitoringAccounts means
+// this costs nothing for the subscribers who never use the feature. The 24h
+// purgeAfter grace still applies downstream, so detection latency of one tick
+// is absorbed by a window that already exists.
+crons.hourly(
+  "company-monitoring-entitlement-reconciler",
+  { minuteUTC: 47 },
+  internal.companyMonitoring.accounts.reconcileAccountEntitlements,
+  {},
+);
+
 // PRO-launch broadcast ramp runner. Wakes once a day at 13:00 UTC
 // (~9am ET / 6am PT / 3pm CET — early enough that any kill-gate
 // trip can be triaged within US business hours, late enough that

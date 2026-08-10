@@ -2,7 +2,7 @@
 
 Last updated: July 7, 2026
 
-World Monitor ships official client libraries in four language ecosystems so you can script country briefs, risk scores, market data, and every one of the 59 [MCP tools](https://worldmonitor.app/mcp-server.md) without writing an HTTP integration. All of them are **zero-dependency**, MCP-first mirrors of the [`worldmonitor` npm CLI](https://www.worldmonitor.app/docs/cli), with a small REST escape hatch for host-relative and self-hosted use.
+World Monitor ships official client libraries in four language ecosystems so you can script country briefs, risk scores, market data, and every one of the 60 [MCP tools](https://worldmonitor.app/mcp-server.md) without writing an HTTP integration. All of them are **zero-dependency**, MCP-first mirrors of the [`worldmonitor` npm CLI](https://www.worldmonitor.app/docs/cli), with a small REST escape hatch for host-relative and self-hosted use.
 
 ## Official SDKs
 

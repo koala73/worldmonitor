@@ -2536,10 +2536,11 @@
       "unlockedAnnouncement": "仪表板标签页限制已解除。"
     },
     "fx": {
-      "infoTooltip": "<strong>外汇汇率</strong> 货币压力测试和即期汇率：<ul><li>外汇压力测试根据过去24个月最大跌幅对45种货币进行排名，同时显示12个月涨跌幅</li><li>覆盖范围包括ARS、TRY、EGP、NGN、PKR和UAH——BIS和ECB参考集合中遗漏的货币</li><li>即期汇率分别列示美元和ECB欧元参考汇率，因为两者的报价基础不同</li></ul>数据来源：Yahoo Finance和欧洲中央银行。",
+      "infoTooltip": "<strong>外汇汇率</strong> 货币压力测试和即期汇率：<ul><li>外汇压力测试根据过去24个月最大跌幅对45种货币进行排名，同时显示12个月涨跌幅</li><li>覆盖范围包括ARS、TRY、EGP、NGN、PKR和UAH——BIS和ECB参考集合中遗漏的货币</li><li>即期汇率分别列示美元和ECB欧元参考汇率，因为两者的报价基础不同</li><li>RUB — 俄罗斯央行汇率，每单位卢布</li></ul> 数据来源：Yahoo Finance、欧洲中央银行和俄罗斯央行。",
       "tabs": {
         "stress": "外汇压力测试",
-        "spot": "即期"
+        "spot": "即期",
+        "rub": "RUB"
       },
       "currency": "货币",
       "pair": "货币对",
@@ -2559,8 +2560,12 @@
       "source": {
         "stress": "外汇压力",
         "usd": "美元汇率",
-        "eur": "欧洲央行欧元汇率"
-      }
+        "eur": "欧洲央行欧元汇率",
+        "rub": "俄罗斯央行汇率"
+      },
+      "rubBase": "俄罗斯央行 — 每 1 单位卢布",
+      "rubPerUnit": "每单位卢布",
+      "sourceCbr": "来源：俄罗斯央行"
     }
   },
   "popups": {

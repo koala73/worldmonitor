@@ -189,48 +189,6 @@ function readMaxStoriesPerUser() {
 // P1 on PR #3389.
 export const MAX_STORIES_PER_USER = readMaxStoriesPerUser();
 
-/**
- * Filter + assemble a BriefEnvelope for one alert rule from a
- * prebuilt upstream top-stories list (news:insights:v1 shape).
- *
- * @deprecated The live path is composeBriefFromDigestStories(), which
- *   reads from the same digest:accumulator pool as the email. This
- *   entry point is kept only for tests that stub a news:insights payload
- *   directly — real runs would ship a brief with a different story
- *   list than the email and should use the digest-stories path.
- *
- * @param {object} rule — enabled alertRule row
- * @param {{ topStories: unknown[]; numbers: { clusters: number; multiSource: number } }} insights
- * @param {{ nowMs: number }} [opts]
- */
-export function composeBriefForRule(rule, insights, { nowMs = Date.now() } = {}) {
-  // Default to 'high' (NOT 'all') for parity with composeBriefFromDigestStories,
-  // buildDigest, the digestFor cache key, and the per-attempt log line.
-  // See PR #3387 review (P2).
-  const sensitivity = rule.sensitivity ?? 'high';
-  const tz = rule.digestTimezone ?? 'UTC';
-  const stories = filterTopStories({
-    stories: insights.topStories,
-    sensitivity,
-    maxStories: MAX_STORIES_PER_USER,
-  });
-  if (stories.length === 0) return null;
-  const issueDate = issueDateInTz(nowMs, tz);
-  return assembleStubbedBriefEnvelope({
-    user: { name: userDisplayNameFromId(rule.userId), tz },
-    stories,
-    issueDate,
-    dateLong: dateLongFromIso(issueDate),
-    issue: issueCodeFromIso(issueDate),
-    insightsNumbers: insights.numbers,
-    // Same nowMs as the rest of the envelope so the function stays
-    // deterministic for a given input — tests + retries see identical
-    // output.
-    issuedAt: nowMs,
-    localHour: localHourInTz(nowMs, tz),
-  });
-}
-
 // ── Followed-country soft bias ──────────────────────────────────────────────
 
 // Nominal multiplicative uplift the plan specifies (1.2–1.3×; midpoint

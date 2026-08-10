@@ -70,7 +70,7 @@
       "type": "skill-md",
       "description": "Retrieve real-time equity, index, and ETF quotes with price, change, and sparkline history. Use when the user asks for current market prices, how a ticker is doing, or a quick market snapshot.",
       "url": "https://worldmonitor.app/.well-known/agent-skills/get-market-quotes/SKILL.md",
-      "digest": "sha256:c412b521a3a90a51aee977c917eb705676462581c7f6e57029cd523312514520"
+      "digest": "sha256:6de79508ffeab284b1c5ce70b2f4fadc60372eccc9dfd07017de6d2ae798768c"
     },
     {
       "name": "get-prediction-markets",
@@ -159,9 +159,9 @@
     {
       "name": "track-tariff-trends",
       "type": "skill-md",
-      "description": "Retrieve tariff-rate timeseries for a country pair — applied vs bound rates by product sector and year, plus the current effective tariff rate. Use when the user asks how tariffs between two countries have changed or what rate applies to a sector.",
+      "description": "Retrieve MFN applied tariff-rate timeseries for a reporting country — applied vs bound rates by year, plus the optional US effective tariff rate. Use when the user asks how a country's MFN tariffs have changed over time.",
       "url": "https://worldmonitor.app/.well-known/agent-skills/track-tariff-trends/SKILL.md",
-      "digest": "sha256:275de891aabd7613fbd46f9fdfe3bf1dd952d2dde97abff5f4c4d7aa2884d2bf"
+      "digest": "sha256:e13d1ac27da2a628fcb56efe975998d0e50ec0b154c8a1df7e90306566eb0d47"
     },
     {
       "name": "track-unrest-events",

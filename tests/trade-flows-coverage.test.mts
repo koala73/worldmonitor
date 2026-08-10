@@ -37,10 +37,12 @@ import {
   fetchTradeFlows,
   TRADE_FLOW_COVERAGE_KEY,
   TRADE_FLOW_KEY_PREFIX,
+  TRADE_FLOW_META_KEY,
   TRADE_FLOW_SEED_YEARS,
   TRADE_FLOW_EMPTY_STREAK_TO_DROP,
   WORLD_PARTNER_CODE as SEED_WORLD_PARTNER_CODE,
   buildFlowRecords,
+  dominantFailureMode,
   fetchFlowPair,
   publishTradeFlows,
   tradeFlowCoverageId,
@@ -984,6 +986,107 @@ describe('publishTradeFlows', () => {
     await publishTradeFlows(RUN);
 
     assert.equal(commands[commands.length - 1][1], 'seed-meta:trade:flows');
+  });
+});
+
+// ── Coarse dominant-failure-mode label (#6323) ──────────────────────────────
+
+describe('dominantFailureMode', () => {
+  const baseCoverage = { pairsAttempted: 100, pairsSeeded: 100, upstreamFailures: 0, emptyPairs: 0, incompleteYearsDropped: 0 };
+
+  test('a healthy run reads none', () => {
+    assert.equal(dominantFailureMode(baseCoverage), 'none');
+  });
+
+  test('upstream failures dominate the shortfall', () => {
+    assert.equal(dominantFailureMode({ ...baseCoverage, pairsSeeded: 90, upstreamFailures: 9, emptyPairs: 1 }), 'upstream');
+  });
+
+  test('empty answers dominate the shortfall', () => {
+    assert.equal(dominantFailureMode({ ...baseCoverage, pairsSeeded: 90, upstreamFailures: 1, emptyPairs: 9 }), 'empty');
+  });
+
+  test('one-sided years surface even when every pair still seeded', () => {
+    assert.equal(dominantFailureMode({ ...baseCoverage, incompleteYearsDropped: 40 }), 'incomplete-years');
+  });
+
+  test('one-sided years name an otherwise-unexplained shortfall', () => {
+    assert.equal(dominantFailureMode({ ...baseCoverage, pairsSeeded: 90, incompleteYearsDropped: 10 }), 'incomplete-years');
+  });
+
+  test('a tied contribution resolves to mixed, not an arbitrary winner', () => {
+    assert.equal(dominantFailureMode({ ...baseCoverage, pairsSeeded: 90, upstreamFailures: 5, emptyPairs: 5 }), 'mixed');
+  });
+
+  test('an unexplained shortfall resolves to mixed', () => {
+    assert.equal(dominantFailureMode({ ...baseCoverage, pairsSeeded: 90 }), 'mixed');
+  });
+
+  test('inconsistent pair accounting resolves to mixed', () => {
+    assert.equal(dominantFailureMode({ ...baseCoverage, pairsSeeded: 90, upstreamFailures: 20 }), 'mixed');
+  });
+
+  test('a run that seeded more than it attempted is a fault', () => {
+    assert.equal(dominantFailureMode({ ...baseCoverage, pairsSeeded: 101 }), 'run-failed');
+  });
+
+  test('a run with no attempted pairs cannot be classified', () => {
+    assert.equal(dominantFailureMode({ pairsAttempted: 0, pairsSeeded: 0 }), 'run-failed');
+  });
+});
+
+describe('publishTradeFlows records the dominant failure mode', () => {
+  test('seed-meta carries dominantFailureMode written by the run', async () => {
+    const commands: unknown[][] = [];
+    globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
+      if (!String(input).startsWith(REDIS_HOST)) throw new Error(`unexpected fetch to ${String(input)}`);
+      commands.push(JSON.parse(String(init?.body)));
+      return new Response(JSON.stringify({ result: 'OK' }), { status: 200 });
+    }) as typeof fetch;
+
+    await publishTradeFlows({
+      flows: { 'trade:flows:v2:840:000': seededPayload(2020, 2025) },
+      coverage: { pairsAttempted: 2, pairsSeeded: 1, upstreamFailures: 1, emptyPairs: 0, incompleteYearsDropped: 0, startYear: 1996, endYear: 2026 },
+      manifest: {
+        pairs: ['840:000'],
+        startYear: 1996,
+        endYear: 2026,
+        stats: { pairsAttempted: 2, pairsSeeded: 1, upstreamFailures: 1, emptyPairs: 0, incompleteYearsDropped: 0 },
+        fetchedAt: '2026-08-07T00:00:00.000Z',
+      },
+    });
+
+    const meta = commands.find((c) => c[1] === TRADE_FLOW_META_KEY);
+    assert.ok(meta, 'expected a seed-meta write');
+    const payload = JSON.parse(String(meta[2]));
+    assert.equal(payload.dominantFailureMode, 'upstream',
+      'the run\'s own stats must be folded into a coarse mode on the meta record');
+    assert.equal(payload.recordCount, 1);
+  });
+
+  test('a clean run records dominantFailureMode none', async () => {
+    const commands: unknown[][] = [];
+    globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
+      if (!String(input).startsWith(REDIS_HOST)) throw new Error(`unexpected fetch to ${String(input)}`);
+      commands.push(JSON.parse(String(init?.body)));
+      return new Response(JSON.stringify({ result: 'OK' }), { status: 200 });
+    }) as typeof fetch;
+
+    await publishTradeFlows({
+      flows: { 'trade:flows:v2:840:000': seededPayload(2020, 2025) },
+      coverage: { pairsAttempted: 1, pairsSeeded: 1, upstreamFailures: 0, emptyPairs: 0, incompleteYearsDropped: 0, startYear: 1996, endYear: 2026 },
+      manifest: {
+        pairs: ['840:000'],
+        startYear: 1996,
+        endYear: 2026,
+        stats: { pairsAttempted: 1, pairsSeeded: 1, upstreamFailures: 0, emptyPairs: 0, incompleteYearsDropped: 0 },
+        fetchedAt: '2026-08-07T00:00:00.000Z',
+      },
+    });
+
+    const meta = commands.find((c) => c[1] === TRADE_FLOW_META_KEY);
+    const payload = JSON.parse(String(meta?.[2]));
+    assert.equal(payload.dominantFailureMode, 'none');
   });
 });
 

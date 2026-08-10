@@ -51,6 +51,23 @@ function classifyAt(now, { ageMin = 1, recordCount = 256, present = true } = {})
   );
 }
 
+function classifyWithMeta(meta, { ageMin = 1, recordCount = 256, present = true } = {}) {
+  return classifyKey(
+    'tradeFlows',
+    KEY,
+    {},
+    {
+      keyStrens: new Map(present ? [[KEY, 4096]] : []),
+      keyErrors: new Map(),
+      keyMetaValues: new Map(present
+        ? [[META, JSON.stringify({ fetchedAt: STRICT_NOW - ageMin * ONE_MIN_MS, recordCount, ...meta })]]
+        : []),
+      keyMetaErrors: new Map(),
+      now: STRICT_NOW,
+    },
+  );
+}
+
 // Default clock sits past the deploy-window grace so the ordinary arms below
 // exercise the strict behavior, not the rollout softening.
 const STRICT_NOW = Math.max(NOW, (__testing__.ROLLOUT_PENDING_UNTIL_MS?.tradeFlows ?? 0) + 86_400_000);
@@ -108,6 +125,20 @@ test('the staleness budget fires before the data keys it vouches for expire', ()
 test('a vanished fleet is not reported as healthy', () => {
   const entry = classify({ present: false });
   assert.notEqual(entry.status, 'OK');
+});
+
+test('a coverage shortfall carries a dominantFailureMode on the entry', () => {
+  // #6323: the whole point is an on-call agent can tell a transient WTO outage
+  // from a permanent reporter-roster shift at a glance on /api/health. The mode
+  // must ride on COVERAGE_PARTIAL itself — not only on the fault verdict —
+  // because that is precisely the "healthy-looking partial" case it exists to
+  // explain.
+  const entry = classifyWithMeta(
+    { dominantFailureMode: 'upstream' },
+    { ageMin: 0, recordCount: 150, present: true },
+  );
+  assert.equal(entry.status, 'COVERAGE_PARTIAL', 'the shortfall still reads partial');
+  assert.equal(entry.dominantFailureMode, 'upstream', 'the dominant cause must be relayed');
 });
 
 test('the absent-fleet alarm is not softened by any exemption list', () => {

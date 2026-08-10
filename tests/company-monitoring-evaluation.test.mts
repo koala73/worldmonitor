@@ -918,6 +918,40 @@ describe('Company Monitoring U0 evaluation contract', () => {
     assert.equal(percentileOrderStatistic([0, 1, 2, 3], 0.5, 4), 1);
   });
 
+  it('keeps calibration ordering independent of the host locale', () => {
+    const originalLocaleCompare = String.prototype.localeCompare;
+    let localeCompareCalls = 0;
+    String.prototype.localeCompare = (() => {
+      localeCompareCalls += 1;
+      return 0;
+    }) as typeof String.prototype.localeCompare;
+    const examples: CalibrationExample[] = [
+      {
+        opaqueExampleId: 'cm_example_000002',
+        confidence: 0.9,
+        correct: true,
+        goldMateriality: 'material',
+        goldDirection: 'positive',
+      },
+      {
+        opaqueExampleId: 'cm_example_000001',
+        confidence: 0.9,
+        correct: false,
+        goldMateriality: 'material',
+        goldDirection: 'negative',
+      },
+    ];
+    const admission = asObject(protocol.admissionQuality, 'admissionQuality');
+    const calibration = asObject(admission.calibration, 'admissionQuality.calibration');
+    try {
+      adaptiveExpectedCalibrationError(examples);
+      stratifiedBootstrapUpperBound(examples, calibration);
+    } finally {
+      String.prototype.localeCompare = originalLocaleCompare;
+    }
+    assert.equal(localeCompareCalls, 0);
+  });
+
   it('rejects an over-budget cost package', () => {
     const candidate = structuredClone(protocol);
     const economics = asObject(candidate.economics, 'economics');

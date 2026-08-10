@@ -7,6 +7,7 @@ import {
 // @ts-expect-error — generated JS module, no declaration file
 import MINING_SITES_RAW from '../../../shared/mining-sites.js';
 import { readJsonFromUpstash } from '../../_upstash-json.js';
+import { argStr } from '../filters';
 import { buildAuthHeaders } from '../auth';
 import { assertToolFetchOk, BillingDenialError, throwIfBillingDenial } from '../billing-denial';
 import { SUPPORTED_CONSUMER_PRICES_COUNTRIES } from '../constants';
@@ -169,6 +170,101 @@ function countryBriefSearchTerms(countryCode: string): string[] {
 
 const PROCUREMENT_TOOL_DEFAULT_PAGE_SIZE = 10;
 const PROCUREMENT_TOOL_MAX_PAGE_SIZE = 25;
+
+// WTO reporter-versus-World merchandise trade-flow contract. Mirrors the
+// proto/v1/handler vocabulary (server/worldmonitor/trade/v1/get-trade-flows.ts):
+// an absent reporter defaults to "840" (US), the only partner is "000" (World),
+// and years is an inclusive lookback bounded by the seeded 30-year window.
+export const TRADE_FLOWS_DEFAULT_REPORTER = '840';
+export const TRADE_FLOWS_DEFAULT_YEARS = 10;
+export const TRADE_FLOWS_MAX_YEARS = 30;
+const TRADE_FLOWS_M49_CODE = /^[0-9]{3}$/;
+
+// Response vocabulary for `unavailableReason` — the closed enum emitted by the
+// RPC (TradeFlowUnavailableReason). The distinction agents depend on is
+// NOT_COVERED (a contract answer: a retry cannot help and nothing is broken)
+// versus every other member (a fault: the seed is missing or the cache failed).
+const TRADE_FLOW_REASON = {
+  served: 'TRADE_FLOW_UNAVAILABLE_REASON_UNSPECIFIED',
+  invalidRequest: 'TRADE_FLOW_UNAVAILABLE_REASON_INVALID_REQUEST',
+  notCovered: 'TRADE_FLOW_UNAVAILABLE_REASON_NOT_COVERED',
+  seedMissing: 'TRADE_FLOW_UNAVAILABLE_REASON_SEED_MISSING',
+  coverageUnknown: 'TRADE_FLOW_UNAVAILABLE_REASON_COVERAGE_UNKNOWN',
+  cacheUnavailable: 'TRADE_FLOW_UNAVAILABLE_REASON_CACHE_UNAVAILABLE',
+} as const;
+
+type TradeFlowRouteRecord = {
+  reportingCountry?: unknown;
+  partnerCountry?: unknown;
+  year?: unknown;
+  exportValueUsd?: unknown;
+  importValueUsd?: unknown;
+  yoyExportChange?: unknown;
+  yoyImportChange?: unknown;
+  productSector?: unknown;
+};
+
+type TradeFlowRouteResponse = {
+  flows?: TradeFlowRouteRecord[] | null;
+  fetchedAt?: unknown;
+  upstreamUnavailable?: unknown;
+  unavailableReason?: unknown;
+  coverageStartYear?: unknown;
+  coverageEndYear?: unknown;
+};
+
+function coerceTradeFlowNumber(value: unknown): number | null {
+  const n = typeof value === 'string' ? Number(value) : value;
+  return typeof n === 'number' && Number.isFinite(n) ? n : null;
+}
+
+function compactTradeFlowRecord(record: TradeFlowRouteRecord) {
+  const year = coerceTradeFlowNumber(record.year);
+  if (year === null) return null;
+  return {
+    year,
+    reportingCountry: typeof record.reportingCountry === 'string' ? record.reportingCountry : '',
+    partnerCountry: typeof record.partnerCountry === 'string' ? record.partnerCountry : '',
+    exportValueUsd: coerceTradeFlowNumber(record.exportValueUsd),
+    importValueUsd: coerceTradeFlowNumber(record.importValueUsd),
+    yoyExportChange: coerceTradeFlowNumber(record.yoyExportChange),
+    yoyImportChange: coerceTradeFlowNumber(record.yoyImportChange),
+    productSector: typeof record.productSector === 'string' ? record.productSector : '',
+  };
+}
+
+type NormalizedTradeFlowRequest = {
+  reporter: string;
+  years: number;
+};
+
+function normalizeTradeFlowRequest(params: Record<string, unknown>): NormalizedTradeFlowRequest | null {
+  const rawReporter = argStr(params.reporter);
+  if (rawReporter && !TRADE_FLOWS_M49_CODE.test(rawReporter)) return null;
+
+  let years = TRADE_FLOWS_DEFAULT_YEARS;
+  if (params.years !== undefined && params.years !== null) {
+    const rawYears = typeof params.years === 'number' ? params.years : Number(params.years);
+    if (!Number.isInteger(rawYears) || rawYears < 1 || rawYears > TRADE_FLOWS_MAX_YEARS) return null;
+    years = rawYears;
+  }
+
+  return {
+    reporter: rawReporter || TRADE_FLOWS_DEFAULT_REPORTER,
+    years,
+  };
+}
+
+function unavailableTradeFlowResult(reason: typeof TRADE_FLOW_REASON.invalidRequest) {
+  return {
+    flows: [],
+    fetchedAt: '',
+    upstreamUnavailable: false,
+    unavailableReason: reason,
+    coverageStartYear: 0,
+    coverageEndYear: 0,
+  };
+}
 
 type ProcurementRouteTender = {
   id: string;
@@ -500,6 +596,109 @@ export const RPC_TOOLS: ToolDef[] = [
     },
     _apiPaths: [
       'GET /api/economic/v1/list-global-tenders',
+    ],
+  },
+  {
+    name: 'get_wto_trade_flows',
+    _outputBudgetBytes: 65536,
+    description: 'WTO merchandise trade flows for one reporting country versus the World, over a configurable year window. Coverage is seed-backed from the WTO ITS_MTV_AX (exports) and ITS_MTV_AM (imports) indicators; the response distinguishes "this reporter/partner combination is not part of seeded coverage" (a contract answer, retrying cannot help) from every fault (seed missing or cache unreadable).',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        reporter: {
+          type: 'string',
+          pattern: '^[0-9]{3}$',
+          description: 'WTO reporting country as a 3-digit UN M49 code (e.g. "840" = United States). Defaults to "840". The only partner served is the World ("000"); any other partner answers not_covered.',
+        },
+        years: {
+          type: 'integer',
+          minimum: 1,
+          maximum: TRADE_FLOWS_MAX_YEARS,
+          description: 'Number of years to look back from the most recent published year, inclusive of both endpoints (10 returns 11 calendar years). Defaults to 10; 30 is the full seeded window.',
+        },
+      },
+      required: [],
+    },
+    outputSchema: {
+      type: 'object',
+      required: ['flows', 'unavailableReason', 'upstreamUnavailable'],
+      properties: {
+        flows: {
+          type: 'array',
+          items: {
+            type: 'object',
+            required: ['year', 'reportingCountry', 'partnerCountry'],
+            properties: {
+              year: { type: 'integer' },
+              reportingCountry: { type: 'string' },
+              partnerCountry: { type: 'string' },
+              exportValueUsd: { type: ['number', 'null'], description: 'Merchandise exports to the World, USD.' },
+              importValueUsd: { type: ['number', 'null'], description: 'Merchandise imports from the World, USD.' },
+              yoyExportChange: { type: ['number', 'null'], description: 'Percent change in exports vs the prior adjacent year; 0 when no adjacent prior year exists.' },
+              yoyImportChange: { type: ['number', 'null'], description: 'Percent change in imports vs the prior adjacent year; 0 when no adjacent prior year exists.' },
+              productSector: { type: 'string' },
+            },
+          },
+        },
+        fetchedAt: { type: 'string', description: 'ISO timestamp when WTO was read by the seeder. Empty when no flows are served.' },
+        unavailableReason: {
+          type: 'string',
+          enum: Object.values(TRADE_FLOW_REASON),
+          description: 'TRADE_FLOW_UNAVAILABLE_REASON_UNSPECIFIED when flows are served; otherwise WHY no rows returned. NOT_COVERED is a contract answer (a retry cannot help); the rest name faults.',
+        },
+        upstreamUnavailable: { type: 'boolean', description: 'True when a fault prevented serving flows; false both when served and when the combination is simply not covered.' },
+        coverageStartYear: { type: 'integer', description: 'First calendar year in the served window; 0 when no flows are served.' },
+        coverageEndYear: { type: 'integer', description: 'Most recent calendar year in the served window; 0 when no flows are served.' },
+      },
+    },
+    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    // RPC-proxy hybrid: the handler owns slicing and miss-classification, so an
+    // agent reading this tool sees exactly what GET /api/trade/v1/get-trade-flows
+    // returns — no parallel slice/classify logic to drift (issue #6309). The
+    // coverage keys are the seeded fleet's canonical health/data keys.
+    _coverageKeys: [
+      'seed-meta:trade:flows',
+      'trade:flows:v2:index',
+      'trade:flows:v2:840:000',
+    ],
+    _execute: async (params, base, context, execution) => {
+      const request = normalizeTradeFlowRequest(params);
+      if (!request) return unavailableTradeFlowResult(TRADE_FLOW_REASON.invalidRequest);
+      const { reporter, years } = request;
+
+      const query = new URLSearchParams({
+        reporting_country: reporter,
+        years: String(years),
+      });
+      const url = `${base}/api/trade/v1/get-trade-flows?${query}`;
+      const auth = await buildAuthHeaders(context, 'GET', url, null);
+      const response = await fetch(url, {
+        headers: { ...auth, 'User-Agent': 'worldmonitor-mcp-edge/1.0' },
+        signal: AbortSignal.timeout(12_000),
+      });
+      await assertMcpToolFetchOk(response, {
+        operation: 'get-trade-flows',
+        tool: 'get_wto_trade_flows',
+        auth: context,
+        execution,
+      });
+      const result = await response.json() as TradeFlowRouteResponse;
+      const flows = Array.isArray(result.flows)
+        ? result.flows.map(compactTradeFlowRecord).filter((f) => f !== null)
+        : [];
+      return {
+        flows,
+        fetchedAt: typeof result.fetchedAt === 'string' ? result.fetchedAt : '',
+        upstreamUnavailable: result.upstreamUnavailable === true,
+        unavailableReason: typeof result.unavailableReason === 'string'
+          ? result.unavailableReason
+          : TRADE_FLOW_REASON.served,
+        coverageStartYear: coerceTradeFlowNumber(result.coverageStartYear) ?? 0,
+        coverageEndYear: coerceTradeFlowNumber(result.coverageEndYear) ?? 0,
+      };
+    },
+    _apiPaths: [
+      'GET /api/trade/v1/get-trade-flows',
     ],
   },
   {

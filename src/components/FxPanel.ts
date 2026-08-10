@@ -4,12 +4,12 @@ import { joinSafeHtml, safeHtml } from '@/utils/sanitize';
 import type { SafeHtml } from '@/utils/sanitize';
 
 import { FX_STRESS_THRESHOLD_PCT } from '@/services/economic/fx-rates';
-import type { FxEurSpotRow, FxPanelRows, FxSourceId, FxStressRow, FxUsdSpotRow } from '@/services/economic/fx-rates';
+import type { FxEurSpotRow, FxPanelRows, FxRubQuoteRow, FxSourceId, FxStressRow, FxUsdSpotRow } from '@/services/economic/fx-rates';
 
 /**
- * FX panel — issue #6199.
+ * FX panel — issue #6199 (#6231).
  *
- * Two tabs over three seeded payloads that disagree on quote direction:
+ * Three tabs over four seeded payloads that disagree on quote direction:
  *
  *  - **Stress** reads `economic:fx:yoy:v1` (45 currencies), which had no
  *    consumer anywhere in the repo before this panel. It is the differentiated
@@ -18,13 +18,19 @@ import type { FxEurSpotRow, FxPanelRows, FxSourceId, FxStressRow, FxUsdSpotRow }
  *    the ECB reference rates both lack.
  *  - **Spot** reads `shared:fx-rates:v1` (USD-quoted) and
  *    `economic:ecb-fx-rates:v1` (EUR-base) as two separate lists.
+ *  - **RUB** reads `economic:cbr-rates:v1` (Bank of Russia quote table) as a
+ *    third, RUB-base list. It is deliberately its own tab, not extra rows in
+ *    Spot: these are RUB per one unit of the listed currency, a third quote
+ *    direction, and folding them into either existing list would quote the
+ *    pairs the wrong way round (#6231).
  *
- * The two spot lists are never merged. `shared:fx-rates:v1` is USD per unit of
- * the listed currency and the ECB rates are units per euro; interleaving them
- * would quote half the table upside down.
+ * The three spot lists are never merged. `shared:fx-rates:v1` is USD per unit
+ * of the listed currency, the ECB rates are units per euro, and the CBR rates
+ * are RUB per unit — interleaving any two would quote half the table upside
+ * down.
  */
 
-export type FxTabId = 'stress' | 'spot';
+export type FxTabId = 'stress' | 'spot' | 'rub';
 
 /**
  * FX rates span six orders of magnitude — one Kuwaiti dinar is 3.25 USD and one
@@ -78,6 +84,7 @@ export class FxPanel extends Panel {
   private stress: FxStressRow[] = [];
   private usd: FxUsdSpotRow[] = [];
   private eur: FxEurSpotRow[] = [];
+  private rub: FxRubQuoteRow[] = [];
   private degraded: FxSourceId[] = [];
   private tab: FxTabId = DEFAULT_TAB;
   /** True when the tab-fallback moved us, not the user. See render(). */
@@ -132,6 +139,7 @@ export class FxPanel extends Panel {
     this.stress = data.stress;
     this.usd = data.usd;
     this.eur = data.eur;
+    this.rub = data.rub;
     this.degraded = data.degraded;
     this.loaded = true;
     this.render();
@@ -186,17 +194,22 @@ export class FxPanel extends Panel {
     return this.usd.length > 0 || this.eur.length > 0;
   }
 
+  private hasRub(): boolean {
+    return this.rub.length > 0;
+  }
+
   private render(): void {
     if (!this.loaded) return;
 
-    // Three independent sources all returning nothing is an outage, not an
-    // empty feed — there is no world in which 45 currencies, 47 USD rates and
-    // 7 ECB pairs are all legitimately absent. `ensureHydrated` swallows fetch,
-    // timeout and JSON errors into `undefined`, so a dead bootstrap is
-    // indistinguishable from a miss at this layer; reporting "No data" would
-    // state as fact something we cannot know, and would skip the retry that
-    // recovers it. Surface it as a failure so the error state schedules one.
-    if (!this.hasStress() && !this.hasSpot()) {
+    // Four independent sources all returning nothing is an outage, not an
+    // empty feed — there is no world in which 45 currencies, 47 USD rates, 7
+    // ECB pairs and 54 CBR pairs are all legitimately absent. `ensureHydrated`
+    // swallows fetch, timeout and JSON errors into `undefined`, so a dead
+    // bootstrap is indistinguishable from a miss at this layer; reporting "No
+    // data" would state as fact something we cannot know, and would skip the
+    // retry that recovers it. Surface it as a failure so the error state
+    // schedules one.
+    if (!this.hasStress() && !this.hasSpot() && !this.hasRub()) {
       this.showError(t('common.failedMarketData'), () => void this.fetchData());
       return;
     }
@@ -212,12 +225,17 @@ export class FxPanel extends Panel {
     }
 
     // Never leave the panel on a tab with nothing behind it — a seeder outage
-    // on one key would otherwise render an empty body while the other tab has
-    // data one click away that the reader has no reason to look for.
+    // on one key would otherwise render an empty body while another tab has
+    // data one click away that the reader has no reason to look for. The
+    // fallbacks can follow each other (every guard except the last re-fires on
+    // the new tab), so all-empty surfaces as the error branch above.
     if (this.tab === 'stress' && !this.hasStress()) { this.tab = 'spot'; this.tabForced = true; }
-    if (this.tab === 'spot' && !this.hasSpot()) { this.tab = 'stress'; this.tabForced = true; }
+    if (this.tab === 'spot' && !this.hasSpot()) { this.tab = 'rub'; this.tabForced = true; }
+    if (this.tab === 'rub' && !this.hasRub()) { this.tab = 'stress'; this.tabForced = true; }
 
-    const body = this.tab === 'stress' ? this.renderStress() : this.renderSpot();
+    const body = this.tab === 'stress'
+      ? this.renderStress()
+      : this.tab === 'spot' ? this.renderSpot() : this.renderRub();
     this.setSafeContent(safeHtml`${this.renderTabs()}${body}${this.renderDegradedNotice()}`);
   }
 
@@ -242,6 +260,9 @@ export class FxPanel extends Panel {
     }
     if (this.hasSpot()) {
       tabs.push(safeHtml`<button class="panel-tab ${this.tab === 'spot' ? 'active' : ''}" data-tab="spot">${t('components.fx.tabs.spot')}</button>`);
+    }
+    if (this.hasRub()) {
+      tabs.push(safeHtml`<button class="panel-tab ${this.tab === 'rub' ? 'active' : ''}" data-tab="rub">${t('components.fx.tabs.rub')}</button>`);
     }
     return safeHtml`<div class="panel-tabs">${joinSafeHtml(tabs)}</div>`;
   }
@@ -379,5 +400,45 @@ export class FxPanel extends Panel {
     }
 
     return joinSafeHtml(sections);
+  }
+
+  /**
+   * The Bank of Russia quote table — issue #6231.
+   *
+   * This is a THIRD quote direction and the one a reader can silently misread:
+   * the rate is RUB per ONE unit of the listed currency (so USD reads ~81,
+   * JPY ~0.5), the direct inverse of both tables in Spot. The heading names
+   * the direction outright — "Bank of Russia — RUB per 1 unit" — and the
+   * `rubPerUnit` column carries the raw value. `change1d` is an absolute delta
+   * in RUB-per-unit, not a percentage, matching the EUR-delta treatment.
+   */
+  private renderRub(): SafeHtml {
+    const rows = joinSafeHtml(this.rub.map((r) => {
+      const change = r.change1d === null
+        ? safeHtml`<td class="fx-na">--</td>`
+        : safeHtml`<td class="${changeClass(r.change1d)}">${formatDelta(r.change1d)}</td>`;
+      return safeHtml`
+        <tr>
+          <td class="fx-ccy"><span class="fx-ccy-code">${r.currency}</span></td>
+          <td>${formatRate(r.rubPerUnit)}</td>
+          ${change}
+        </tr>`;
+    }));
+
+    return safeHtml`
+      <div class="fx-section-title">${t('components.fx.rubBase')}</div>
+      <div class="fx-scroll">
+        <table class="fx-table">
+          <thead>
+            <tr>
+              <th class="fx-ccy">${t('components.fx.currency')}</th>
+              <th>${t('components.fx.rubPerUnit')}</th>
+              <th>${t('components.fx.change1d')}</th>
+            </tr>
+          </thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>
+      <div class="fx-footer">${t('components.fx.sourceCbr')}</div>`;
   }
 }

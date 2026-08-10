@@ -1,12 +1,13 @@
-// FX panel row mappers — issue #6199.
+// FX panel row mappers — issue #6199 (#6231).
 //
-// Three seeded payloads feed one panel, and they do NOT agree on quote
+// Four seeded payloads feed one panel, and they do NOT agree on quote
 // direction, envelope shape, or nullability. That disagreement is the whole
 // reason these mappers exist rather than object literals at the call site:
 //
 //   economic:fx:yoy:v1   { rates: [...] }        currentRate = USD per 1 CCY
 //   shared:fx-rates:v1   { CCY: number } flat    value       = USD per 1 CCY
 //   economic:ecb-fx-rates:v1 (via RPC)           rate        = CCY per 1 EUR
+//   economic:cbr-rates:v1 { rates: {...} }       rate        = RUB per 1 CCY
 //
 // Rendering any of these under the wrong base quotes the rate upside down —
 // the exact failure the issue calls out for the RUB table. These tests pin the
@@ -19,6 +20,7 @@ import {
   FX_STRESS_THRESHOLD_PCT,
   degradedSources,
   toFxStressRows,
+  toRubQuoteRows,
   toUsdSpotRows,
   toEurSpotRows,
 } from '../src/services/economic/fx-rates.ts';
@@ -241,26 +243,34 @@ test('tolerates a raw envelope and rejects unusable USD payloads', () => {
 //
 // The client loaders return the same value for a transport failure and a cache
 // miss, so "this source is empty" is the only signal available. None of the
-// three has a plausible genuine empty — 45 currencies, 47 USD rates, 7 ECB
-// pairs — so an empty one is a dead one, and that inference is what drives the
-// panel's degraded notice and its retry.
+// four has a plausible genuine empty — 45 currencies, 47 USD rates, 7 ECB
+// pairs, 54 CBR pairs — so an empty one is a dead one, and that inference is
+// what drives the panel's degraded notice and its retry.
 
 test('names exactly the sources that came back empty', () => {
-  const full = { stress: [{}], usd: [{}], eur: [{}] };
+  const full = { stress: [{}], usd: [{}], eur: [{}], rub: [{}] };
   assert.deepEqual(degradedSources(full), []);
   assert.deepEqual(degradedSources({ ...full, stress: [] }), ['stress']);
   assert.deepEqual(degradedSources({ ...full, usd: [] }), ['usd']);
   assert.deepEqual(degradedSources({ ...full, eur: [] }), ['eur']);
+  assert.deepEqual(degradedSources({ ...full, rub: [] }), ['rub']);
 });
 
 test('reports every empty source, not just the first', () => {
   // A one-source-only report would leave the panel silently omitting a table
   // it never named.
   assert.deepEqual(
-    degradedSources({ stress: [], usd: [], eur: [] }),
-    ['stress', 'usd', 'eur'],
+    degradedSources({ stress: [], usd: [], eur: [], rub: [] }),
+    ['stress', 'usd', 'eur', 'rub'],
   );
-  assert.deepEqual(degradedSources({ stress: [], usd: [{}], eur: [] }), ['stress', 'eur']);
+  assert.deepEqual(
+    degradedSources({ stress: [], usd: [{}], eur: [], rub: [] }),
+    ['stress', 'eur', 'rub'],
+  );
+  assert.deepEqual(
+    degradedSources({ stress: [], usd: [{}], eur: [], rub: [{}] }),
+    ['stress', 'eur'],
+  );
 });
 
 // ─── freshness span ────────────────────────────────────────────────────────────
@@ -348,5 +358,97 @@ test('drops ECB entries with an unusable pair or rate', () => {
 test('returns an empty list for every unusable ECB input', () => {
   for (const bad of [undefined, null, [], {}, 'x']) {
     assert.deepEqual(toEurSpotRows(bad), [], `expected [] for ${JSON.stringify(bad)}`);
+  }
+});
+
+// ─── economic:cbr-rates:v1 ────────────────────────────────────────────────────
+//
+// Reaches the client via ensureHydrated('cbrRates'). `rates` is a MAP of code
+// -> { rate, valuePerNominal, nominal, name, numCode, id, change1d }, and
+// `rate` is RUB per ONE unit of the listed currency (Value / Nominal,
+// scripts/seed-cbr-rates.mjs:200). That is a THIRD quote direction — the
+// direct inverse of both Spot lists — so these rows are a separate list and
+// never merged with them. `nominal` rides in the payload precisely so a
+// consumer that reaches for it instead of `rate` is off by that factor and
+// gets caught; this mapper reads `rate` alone.
+
+const CBR_PAYLOAD = {
+  quoteCurrency: 'RUB',
+  rateUnit: 'RUB per 1 unit of the listed currency',
+  effectiveDate: '2026-08-05',
+  rates: {
+    USD: { rate: 81.1291, valuePerNominal: 81.1291, nominal: 1, name: 'Доллар США', numCode: '840', id: 'R01235', change1d: 0.32 },
+    JPY: { rate: 0.515171, valuePerNominal: 51.5171, nominal: 100, name: 'Иен', numCode: '392', id: 'R01820', change1d: 0.0012 },
+    UZS: { rate: 0.0064657, valuePerNominal: 64.657, nominal: 10000, name: 'Узбекских сумов', numCode: '860', id: 'R01717', change1d: -0.00001 },
+  },
+  keyRate: { rate: 14, observedAt: '2026-08-04', previousRate: 14, changedAt: '2026-07-24', change: 0 },
+  updatedAt: '2026-08-05T06:30:00.000Z',
+  seededAt: 1,
+};
+
+function cbrRates(rates) {
+  return { ...CBR_PAYLOAD, rates };
+}
+
+test('maps CBR rates to RUB-per-unit rows, preserving the non-USD direction', () => {
+  const rows = toRubQuoteRows(CBR_PAYLOAD);
+  assert.deepEqual(rows.map((r) => r.currency), ['JPY', 'USD', 'UZS']);
+  const usd = rows.find((r) => r.currency === 'USD');
+  // 1 USD costs ~81 RUB — a magnitude that inverts to "1 RUB buys 0.012 USD".
+  // Rendering this pair into either Spot list would silently flip the quote.
+  assert.ok(usd.rubPerUnit > 1);
+  assert.equal(usd.rubPerUnit, 81.1291);
+  assert.equal(usd.change1d, 0.32);
+  const jpy = rows.find((r) => r.currency === 'JPY');
+  // JPY is quoted per 100 by CBR, so the mapped rate must already be per-unit
+  // (51.5 / 100). A mapper that reached for the raw Value would report 51.5.
+  assert.ok(jpy.rubPerUnit < 1);
+  assert.equal(jpy.rubPerUnit, 0.515171);
+});
+
+test('skips the RUB self-quote', () => {
+  // "1 RUB = 1 RUB" is the same noise the USD self-quote is in the USD list.
+  assert.equal(toRubQuoteRows(cbrRates({ RUB: { rate: 1, nominal: 1, change1d: 0 } }))
+    .some((r) => r.currency === 'RUB'), false);
+});
+
+test('keeps a RUB row with no change1d rather than dropping the rate', () => {
+  // A missing prior-day table leaves change1d null (never 0); the rate itself
+  // is still CBR's official quote and must render.
+  const rows = toRubQuoteRows(cbrRates({
+    USD: { rate: 81.1291, nominal: 1, name: '', numCode: '840', id: '' },
+  }));
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].rubPerUnit, 81.1291);
+  assert.equal(rows[0].change1d, null);
+});
+
+test('drops RUB entries with an unusable rate or a null rate object', () => {
+  const rows = toRubQuoteRows(cbrRates({
+    USD: { rate: 81.1291, nominal: 1, change1d: 0.32 },
+    EUR: { rate: 0, nominal: 1, change1d: 0 },        // 0 is not a quote
+    GBP: { rate: -1, nominal: 1, change1d: 0 },       // a negative rate cannot happen
+    CNY: { rate: Number.NaN, nominal: 1, change1d: 0 },
+    KZT: { rate: '12.34', nominal: 1, change1d: 0 },  // string, not a number
+    TRY: { rate: undefined, nominal: 1, change1d: 0 },
+    BRL: null,                                        // whole record malformed
+    RUB: { rate: 1, nominal: 1, change1d: 0 },
+  }));
+  assert.deepEqual(rows.map((r) => r.currency), ['USD']);
+});
+
+test('sorts RUB rows alphabetically for a scannable table', () => {
+  const rows = toRubQuoteRows(cbrRates({
+    ZAR: { rate: 4.5, nominal: 1, change1d: 0 },
+    USD: { rate: 81.1291, nominal: 1, change1d: 0 },
+    KZT: { rate: 0.17, nominal: 1, change1d: 0 },
+  }));
+  assert.deepEqual(rows.map((r) => r.currency), ['KZT', 'USD', 'ZAR']);
+});
+
+test('tolerates a raw envelope and rejects unusable RUB payloads', () => {
+  assert.equal(toRubQuoteRows({ _seed: {}, data: CBR_PAYLOAD }).length, 3);
+  for (const bad of [undefined, null, {}, { rates: [] }, { rates: null }, [], 'x', 42]) {
+    assert.deepEqual(toRubQuoteRows(bad), [], `expected [] for ${JSON.stringify(bad)}`);
   }
 });

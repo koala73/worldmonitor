@@ -1,5 +1,5 @@
-import { getRpcBaseUrl, getRpcErrorStatusCode } from '@/services/rpc-client';
-import type { AcledConflictEvent as ProtoAcledEvent, UcdpViolenceEvent as ProtoUcdpEvent, HumanitarianCountrySummary as ProtoHumanSummary, ListAcledEventsResponse, ListUcdpEventsResponse, GetHumanitarianSummaryResponse, GetHumanitarianSummaryBatchResponse, IranEvent, ListIranEventsResponse } from '@/generated/client/worldmonitor/conflict/v1/service_client';
+import { getRpcBaseUrl } from '@/services/rpc-client';
+import type { AcledConflictEvent as ProtoAcledEvent, UcdpViolenceEvent as ProtoUcdpEvent, ListAcledEventsResponse, ListUcdpEventsResponse, IranEvent, ListIranEventsResponse } from '@/generated/client/worldmonitor/conflict/v1/service_client';
 import type { UcdpGeoEvent, UcdpEventType } from '@/types';
 import { createCircuitBreaker } from '@/utils';
 import { getHydratedData } from '@/services/bootstrap';
@@ -10,22 +10,11 @@ import type { AcledDedupEvent, UcdpDedupeIndexEntry, UcdpTabAggregate } from './
 export { deduplicateUcdpProjectionAggregates } from './ucdp-dedupe';
 export type { UcdpDedupeIndexEntry, UcdpTabAggregate } from './ucdp-dedupe';
 
-// ---- Client + Circuit Breakers (per-RPC; HAPI uses per-country map) ----
+// ---- Client + Circuit Breakers ----
 
 const client = new ConflictServiceClient(getRpcBaseUrl(), { fetch: (...args) => globalThis.fetch(...args) });
 const acledBreaker = createCircuitBreaker<ListAcledEventsResponse>({ name: 'ACLED Conflicts', cacheTtlMs: 10 * 60 * 1000, persistCache: true });
 const ucdpBreaker = createCircuitBreaker<ListUcdpEventsResponse>({ name: 'UCDP Events', cacheTtlMs: 10 * 60 * 1000, persistCache: true });
-const hapiBreakers = new Map<string, ReturnType<typeof createCircuitBreaker<GetHumanitarianSummaryResponse>>>();
-function getHapiBreaker(iso2: string) {
-  if (!hapiBreakers.has(iso2)) {
-    hapiBreakers.set(iso2, createCircuitBreaker<GetHumanitarianSummaryResponse>({
-      name: `HDX HAPI:${iso2}`,
-      cacheTtlMs: 10 * 60 * 1000,
-      persistCache: true,
-    }));
-  }
-  return hapiBreakers.get(iso2)!;
-}
 const iranBreaker = createCircuitBreaker<ListIranEventsResponse>({ name: 'Iran Events', cacheTtlMs: 10 * 60 * 1000, persistCache: true });
 
 const emptyIranFallback: ListIranEventsResponse = { events: [], scrapedAt: '0' };
@@ -59,18 +48,6 @@ export interface ConflictData {
 }
 
 
-
-export interface HapiConflictSummary {
-  iso2: string;
-  locationName: string;
-  month: string;
-  eventsTotal: number;
-  eventsPoliticalViolence: number;
-  eventsCivilianTargeting: number;
-  eventsDemonstrations: number;
-  fatalitiesTotalPoliticalViolence: number;
-  fatalitiesTotalCivilianTargeting: number;
-}
 
 // ---- Adapter 1: Proto AcledConflictEvent -> legacy ConflictEvent ----
 
@@ -126,28 +103,6 @@ function toUcdpGeoEvent(proto: ProtoUcdpEvent): UcdpGeoEvent {
   };
 }
 
-// ---- Adapter 3: Proto HumanitarianCountrySummary -> legacy HapiConflictSummary ----
-
-const HAPI_COUNTRY_CODES = [
-  'US', 'RU', 'CN', 'UA', 'IR', 'IL', 'TW', 'KP', 'SA', 'TR',
-  'PL', 'DE', 'FR', 'GB', 'IN', 'PK', 'SY', 'YE', 'MM', 'VE',
-];
-
-function toHapiSummary(proto: ProtoHumanSummary): HapiConflictSummary {
-  // Proto fields now accurately represent HAPI conflict event data (MEDIUM-1 fix)
-  return {
-    iso2: proto.countryCode || '',
-    locationName: proto.countryName,
-    month: proto.referencePeriod || '',
-    eventsTotal: proto.conflictEventsTotal || 0,
-    eventsPoliticalViolence: proto.conflictPoliticalViolenceEvents || 0,
-    eventsCivilianTargeting: 0, // Included in conflictPoliticalViolenceEvents
-    eventsDemonstrations: proto.conflictDemonstrations || 0,
-    fatalitiesTotalPoliticalViolence: proto.conflictFatalities || 0,
-    fatalitiesTotalCivilianTargeting: 0, // Included in conflictFatalities
-  };
-}
-
 /**
  * The bootstrap-hydrated UCDP payload. It is a dashboard PROJECTION of
  * conflict:ucdp-events:v1 (#5300): `events` is capped to the rows the panel
@@ -162,11 +117,8 @@ export type HydratedUcdpPayload = ListUcdpEventsResponse & {
   totalEvents?: number;
 };
 
-// UCDP classification derivation lives in ./ucdp-classify (leaf module, no
-// runtime imports) so the seeder's parity test can load it without Vite.
-import { deriveUcdpClassifications } from './ucdp-classify';
 import type { UcdpConflictStatus } from './ucdp-classify';
-export { deriveUcdpClassifications } from './ucdp-classify';
+export { deriveConflictHistory, deriveUcdpClassifications } from './ucdp-classify';
 export type { ConflictIntensity, UcdpConflictStatus } from './ucdp-classify';
 
 // ---- AcledEvent interface for deduplication (ported from legacy) ----
@@ -177,9 +129,6 @@ type AcledEvent = AcledDedupEvent;
 
 const emptyAcledFallback: ListAcledEventsResponse = { events: [], pagination: undefined };
 const emptyUcdpFallback: ListUcdpEventsResponse = { events: [], pagination: undefined };
-const emptyHapiFallback: GetHumanitarianSummaryResponse = { summary: undefined };
-const emptyHapiBatchFallback: GetHumanitarianSummaryBatchResponse = { results: {}, fetched: 0, requested: 0 };
-const hapiBatchBreaker = createCircuitBreaker<GetHumanitarianSummaryBatchResponse>({ name: 'HDX HAPI Batch', cacheTtlMs: 10 * 60 * 1000, persistCache: true });
 
 // ---- Exported Functions ----
 
@@ -206,68 +155,6 @@ export async function fetchConflictEvents(): Promise<ConflictData> {
     totalFatalities,
     count: events.length,
   };
-}
-
-export async function fetchUcdpClassifications(hydrated?: HydratedUcdpPayload): Promise<Map<string, UcdpConflictStatus>> {
-  // The bootstrap payload is a dashboard projection (#5300): it carries only the
-  // 150 rows the panel renders, so deriving classifications from its `events`
-  // would score CII against a truncated set. The seeder precomputes them over all
-  // 2,000 events instead — use those when present.
-  if (hydrated?.classifications) {
-    return new Map(Object.entries(hydrated.classifications));
-  }
-  if (hydrated?.events?.length) return deriveUcdpClassifications(hydrated.events);
-
-  const resp = await ucdpBreaker.execute(async () => {
-    return client.listUcdpEvents({ country: '', start: 0, end: 0, pageSize: 0, cursor: '' });
-  }, emptyUcdpFallback, { shouldCache: (r) => r.events.length > 0 });
-
-  return deriveUcdpClassifications(resp.events);
-}
-
-export async function fetchHapiSummary(): Promise<Map<string, HapiConflictSummary>> {
-  const byCode = new Map<string, HapiConflictSummary>();
-
-  const resp = await hapiBatchBreaker.execute(async () => {
-    try {
-      return await client.getHumanitarianSummaryBatch(
-        { countryCodes: [...HAPI_COUNTRY_CODES] },
-        { signal: AbortSignal.timeout(60_000) },
-      );
-    } catch (err: unknown) {
-      // 404 deploy-skew fallback: batch endpoint not yet deployed, use per-item calls
-      if (getRpcErrorStatusCode(err) === 404) {
-        const HAPI_CONCURRENT = 5;
-        const allFallback: Array<{ iso2: string; r: GetHumanitarianSummaryResponse }> = [];
-        for (let i = 0; i < HAPI_COUNTRY_CODES.length; i += HAPI_CONCURRENT) {
-          const batch = HAPI_COUNTRY_CODES.slice(i, i + HAPI_CONCURRENT);
-          const results = await Promise.allSettled(
-            batch.map(async (iso2) => {
-              const r = await getHapiBreaker(iso2).execute(async () => {
-                return client.getHumanitarianSummary({ countryCode: iso2 });
-              }, emptyHapiFallback);
-              return { iso2, r };
-            }),
-          );
-          for (const result of results) {
-            if (result.status === 'fulfilled') allFallback.push(result.value);
-          }
-        }
-        const fallbackResults: Record<string, ProtoHumanSummary> = {};
-        for (const { iso2, r } of allFallback) {
-          if (r.summary) fallbackResults[iso2] = r.summary;
-        }
-        return { results: fallbackResults, fetched: Object.keys(fallbackResults).length, requested: HAPI_COUNTRY_CODES.length };
-      }
-      throw err;
-    }
-  }, emptyHapiBatchFallback, { shouldCache: (r) => r.fetched > 0 });
-
-  for (const [cc, summary] of Object.entries(resp.results)) {
-    byCode.set(cc, toHapiSummary(summary));
-  }
-
-  return byCode;
 }
 
 interface UcdpEventsResponse {
@@ -305,34 +192,6 @@ export function deduplicateAgainstAcled(ucdpEvents: UcdpGeoEvent[], acledEvents:
     dateMs: new Date(ucdp.date_start).getTime(),
     deathsBest: ucdp.deaths_best,
   }, acledEvents));
-}
-
-const CONFLICT_HISTORY_RADIUS_DEG = 3;
-
-/**
- * Derive the figures shown in a conflict zone's "Historical Profile" popup.
- *
- * `conflictSince` is taken from the zone's static `startDate` — the UCDP feed is
- * only a ~1-year trailing window (scripts/seed-ucdp-events.mjs), so its earliest
- * event is NOT the conflict's inception and must not be used for "CONFLICT SINCE".
- * `recordedFatalities` sums `deaths_best` for events within ~3° of the zone
- * centre, applying a cos(latitude) correction so the radius is roughly isotropic
- * in real distance (a raw degree radius is ~24% too narrow E–W at 40°N).
- */
-export function deriveConflictHistory(
-  zone: { center: [number, number]; startDate?: string },
-  events: UcdpGeoEvent[],
-): { conflictSince: string | null; recordedFatalities: number } {
-  const [cLon, cLat] = zone.center;
-  const cosLat = Math.cos((cLat * Math.PI) / 180);
-  const recordedFatalities = events.reduce((sum, e) => {
-    const dLat = e.latitude - cLat;
-    const dLon = (e.longitude - cLon) * cosLat;
-    if (Math.sqrt(dLat * dLat + dLon * dLon) >= CONFLICT_HISTORY_RADIUS_DEG) return sum;
-    return sum + (e.deaths_best ?? 0);
-  }, 0);
-  const conflictSince = zone.startDate?.match(/\b(\d{4})\b/)?.[1] ?? null;
-  return { conflictSince, recordedFatalities };
 }
 
 export function groupByCountry(events: UcdpGeoEvent[]): Map<string, UcdpGeoEvent[]> {

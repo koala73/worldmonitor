@@ -583,7 +583,7 @@
       "s10l": "Bewertete Hotspots",
       "s11v": "92",
       "s11l": "Börsen & Vermögenswerte",
-      "s12v": "59",
+      "s12v": "60",
       "s12l": "MCP-Tools",
       "s13v": "154",
       "s13l": "⌘K-Befehle",
@@ -611,7 +611,7 @@
       "eyebrow": "Für Builder & KI-Agenten",
       "title": "Bauen Sie auf Live-Weltkommunikation auf — aus jedem Stack.",
       "sub": "Alles auf der Karte ist auch eine API. Integrieren Sie es in Claude über MCP, rufen Sie die REST-Endpunkte von überall auf, oder installieren Sie einen nativen Client für Python, Ruby, Go oder JavaScript — Ihr Code recherchiert mit Live-Daten statt Trainings-Speicher.",
-      "b1": "59 MCP-Tools — Risikobewertungen, Engpässe, Konflikte, Märkte, Briefings",
+      "b1": "60 MCP-Tools — Risikobewertungen, Engpässe, Konflikte, Märkte, Briefings",
       "b2": "Dokumentierte REST-API — 193 Operationen, eine OpenAPI-3.1-Spezifikation, ein Schlüssel",
       "b3": "Offizielle SDKs auf npm, PyPI, RubyGems und Go — nullabhängig, MCP-First",
       "b4": "JMESPath-Projektion bei jedem Aufruf — rufen Sie genau die Felder ab, die Sie benötigen",
@@ -620,7 +620,7 @@
       "termQuery": "Verschärft sich unsere Rotes-Meer-Exposition diese Woche?",
       "termAnswer": "Transitzählungen sinken Woche für Woche; Kriegsrisikostufe erhöht; zwei Dichteanomalien in den letzten 48 h.",
       "termDocs": "Vollständige Tool-Referenz anzeigen →",
-      "promise": "Ein Schlüssel. 59 MCP-Tools. Eine vollständige REST-API. Sprachenbezogene Clients."
+      "promise": "Ein Schlüssel. 60 MCP-Tools. Eine vollständige REST-API. Sprachenbezogene Clients."
     },
     "pricing": {
       "eyebrow": "Zugriff",
@@ -638,7 +638,7 @@
       "proF1": "WM Analyst — chatten Sie über 30+ Live-Services mit Zitaten",
       "proF2": "Szenario-Engine & Route Explorer — Störungen vor ihrer Auswirkung analysieren",
       "proF3": "Persönliche KI-Zusammenfassung — täglich, zweimal täglich oder wöchentlich an Slack, Telegram oder E-Mail",
-      "proF4": "MCP, REST-API & offizielle SDKs — 59 Tools unter einem Schlüssel",
+      "proF4": "MCP, REST-API & offizielle SDKs — 60 Tools unter einem Schlüssel",
       "proF5": "Custom-Widget-Builder für Ihre eigenen Panels",
       "cta": "Pläne & Preise ansehen",
       "note": "Ab 39,99 €/Monat · 3 Monate kostenlos bei jährlicher Abrechnung"
@@ -659,7 +659,7 @@
       "q6": "Warum sollte ich einem Alert vertrauen?",
       "a6": "Ein Breaking-Banner wird nur angezeigt, wenn unabhängige Ursprungstypen bestätigt werden — Nachrichtenklassifizierung, Keyword-Geschwindigkeit, Hotspot-Eskalation, Militärsurgen, offizielle Sirenen — dedupliziert und drosselungsbegrenzt. Weniger Alerts, echte Alerts.",
       "q7": "Können KI-Agenten wie Claude oder GPT es verwenden?",
-      "a7": "Ja. World Monitor bietet einen 59-Tool-MCP-Server, sodass Claude, GPT oder jeder MCP-kompatible Agent Live-Risikobewertungen, Engpassstatus, Konflikte, Märkte und Briefings abfragen kann – mit JMESPath-Projektion, damit Agenten genau das abrufen, was sie benötigen.",
+      "a7": "Ja. World Monitor bietet einen 60-Tool-MCP-Server, sodass Claude, GPT oder jeder MCP-kompatible Agent Live-Risikobewertungen, Engpassstatus, Konflikte, Märkte und Briefings abfragen kann – mit JMESPath-Projektion, damit Agenten genau das abrufen, was sie benötigen.",
       "q8": "Benötige ich ein Konto?",
       "a8": "Nein. Das Dashboard funktioniert sofort ohne Anmeldung. Ein Konto ist nur wichtig, wenn Sie auf Pro upgraden oder Einstellungen geräteübergreifend synchronisieren möchten.",
       "q9": "Ist es Open Source?",

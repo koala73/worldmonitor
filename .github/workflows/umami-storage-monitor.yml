@@ -6,8 +6,10 @@ on:
   workflow_dispatch:
 
 concurrency:
-  group: umami-storage-monitor
-  cancel-in-progress: false
+  group: umami-storage-monitor-${{ github.ref }}
+  # This is a read-only point-in-time probe. A newer sample is more useful than
+  # a stale runner-less job, which would otherwise own the group indefinitely.
+  cancel-in-progress: true
 
 permissions:
   contents: read

@@ -19,6 +19,36 @@ const execFileAsync = promisify(execFile);
 export const REPOSITORY = 'koala73/worldmonitor';
 
 const GIT_CALL_TIMEOUT_MS = 30_000;
+const RAILWAY_CLI_ENV_KEYS = Object.freeze([
+  'CI',
+  'FORCE_COLOR',
+  'HOME',
+  'HTTP_PROXY',
+  'HTTPS_PROXY',
+  'LANG',
+  'LC_ALL',
+  'NODE_EXTRA_CA_CERTS',
+  'NO_COLOR',
+  'NO_PROXY',
+  'PATH',
+  'RAILWAY_API_TOKEN',
+  'RAILWAY_API_URL',
+  'RAILWAY_PROJECT_ID',
+  'RAILWAY_TOKEN',
+  'SHELL',
+  'SSL_CERT_DIR',
+  'SSL_CERT_FILE',
+  'TEMP',
+  'TERM',
+  'TMP',
+  'TMPDIR',
+]);
+
+export function createRailwayCliEnv(env = process.env) {
+  return Object.fromEntries(RAILWAY_CLI_ENV_KEYS.flatMap((key) => (
+    typeof env?.[key] === 'string' ? [[key, env[key]]] : []
+  )));
+}
 
 /**
  * Run git, throwing an error that PRESERVES the exit status.
@@ -62,12 +92,14 @@ export const RAILWAY_CALL_TIMEOUT_MS = 60_000;
 // limited or starved of file descriptors.
 export const DEFAULT_CONCURRENCY = 8;
 
-export function runRailway(args, options = {}) {
-  const result = spawnSync('railway', args, {
+export function runRailway(args, options = {}, spawnImpl = spawnSync) {
+  const { env: sourceEnv = process.env, ...spawnOptions } = options;
+  const result = spawnImpl('railway', args, {
     encoding: 'utf8',
     maxBuffer: 10 * 1024 * 1024,
     timeout: RAILWAY_CALL_TIMEOUT_MS,
-    ...options,
+    ...spawnOptions,
+    env: createRailwayCliEnv(sourceEnv),
   });
   if (result.signal) {
     throw new Error(`railway ${args.join(' ')} timed out after ${RAILWAY_CALL_TIMEOUT_MS}ms`);
@@ -150,8 +182,11 @@ export function resolveEnvironmentId(environmentName, projectId = process.env.RA
 }
 
 /** One service's deployment history, newest first, up to `window` records. */
-export async function readDeployments(service, environment, window) {
-  const { stdout } = await execFileAsync('railway', [
+export async function readDeployments(service, environment, window, {
+  env = process.env,
+  execFileImpl = execFileAsync,
+} = {}) {
+  const { stdout } = await execFileImpl('railway', [
     'deployment',
     'list',
     '--service',
@@ -161,7 +196,12 @@ export async function readDeployments(service, environment, window) {
     '--limit',
     String(window),
     '--json',
-  ], { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024, timeout: RAILWAY_CALL_TIMEOUT_MS });
+  ], {
+    encoding: 'utf8',
+    maxBuffer: 64 * 1024 * 1024,
+    timeout: RAILWAY_CALL_TIMEOUT_MS,
+    env: createRailwayCliEnv(env),
+  });
   return JSON.parse(stdout);
 }
 

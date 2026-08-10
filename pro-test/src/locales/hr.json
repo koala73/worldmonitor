@@ -583,7 +583,7 @@
       "s10l": "Hotspoti s bodovima",
       "s11v": "92",
       "s11l": "Razmjene i imovina",
-      "s12v": "59",
+      "s12v": "60",
       "s12l": "MCP alati",
       "s13v": "154",
       "s13l": "⌘K naredbe",
@@ -611,7 +611,7 @@
       "eyebrow": "Za graditelje i AI agente",
       "title": "Gradite na živim obavještajima o svijetu — iz bilo kojeg stack-a.",
       "sub": "Sve što se nalazi na karti je ujedno i API. Uključite ga u Claude preko MCP-a, pozovite REST krajnje točke odavde ili instalirajte nativnog klijenta za Python, Ruby, Go ili JavaScript — vaš kod provjerava s živim podacima umjesto memorija podataka o treningu.",
-      "b1": "59 MCP alata — bodovi rizika, uska grla, konflikti, tržišta, brifing",
+      "b1": "60 MCP alata — bodovi rizika, uska grla, konflikti, tržišta, brifing",
       "b2": "Dokumentirani REST API — 193 operacije, jedan OpenAPI 3.1 spec, jedan ključ",
       "b3": "Službeni SDK-ovi na npm, PyPI, RubyGems i Go — bez ovisnosti, MCP-prvi",
       "b4": "JMESPath projekcija na svakom pozivu — dohvatite točno polja koja trebate",
@@ -620,7 +620,7 @@
       "termQuery": "Je li naša ekspozicija Crvenog mora ova tjedna gore?",
       "termAnswer": "Brojevi tranzita padaju tjedan po tjedan; razina rizika rata je povećana; dvije anomalije gustoće u posljednjih 48h.",
       "termDocs": "Vidi puni referenac alata →",
-      "promise": "Jedan ključ. 59 MCP alata. Potpuni REST API. Jezično-Native klijenti."
+      "promise": "Jedan ključ. 60 MCP alata. Potpuni REST API. Jezično-Native klijenti."
     },
     "pricing": {
       "eyebrow": "Pristup",
@@ -638,7 +638,7 @@
       "proF1": "WM Analyst — razgovaraj preko 30+ živih servisa, s citacijama",
       "proF2": "Scenario engine & Route Explorer — simuliraj prekide prije nego što se dogode",
       "proF3": "Osobni AI sažetak — dnevno, dva puta dnevno ili tjedno, na Slack, Telegram ili email",
-      "proF4": "MCP, REST API & zvanični SDK-ovi — 59 alata pod jednim ključem",
+      "proF4": "MCP, REST API & zvanični SDK-ovi — 60 alata pod jednim ključem",
       "proF5": "Prilagođeni builder widgeta za vlastite panele",
       "cta": "Pogledaj planove i cijene",
       "note": "Od 39,99 €/mj · 3 mjeseca besplatno pri godišnoj naplati"
@@ -659,7 +659,7 @@
       "q6": "Zašto bih trebao vjerovati upozoru?",
       "a6": "Banerski hitni slučaj aktivira se samo kada neovisni tipovi izvora potvrde — klasifikacija vijesti, brzina ključnih riječi, eskalacija hotspota, vojne surge, službene sirene — dedupliciranih i ograničenih brzinom. Manje upozora, pravi.",
       "q7": "Mogu li AI agenti kao Claude ili GPT koristiti?",
-      "a7": "Da. World Monitor isporučuje MCP server od 59 alata, tako da Claude, GPT ili bilo koji MCP-kompatibilan agent može upitati živuće bodove rizika, status uskih grla, konflikte, tržišta i brifinge — sa JMESPath projekcijom tako da agenti preuzimaju točno što trebaju.",
+      "a7": "Da. World Monitor isporučuje MCP server od 60 alata, tako da Claude, GPT ili bilo koji MCP-kompatibilan agent može upitati živuće bodove rizika, status uskih grla, konflikte, tržišta i brifinge — sa JMESPath projekcijom tako da agenti preuzimaju točno što trebaju.",
       "q8": "Trebam li račun?",
       "a8": "Ne. Dashboard radi odmah bez prijave. Račun je bitan samo kada nadogradiš na Pro ili želiš sinkronizirati postavke na više uređaja.",
       "q9": "Je li to open source?",

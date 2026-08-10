@@ -255,10 +255,10 @@ const STANDALONE_KEYS = {
   bisCredit:             'economic:bis:credit:v1',
   bisDsr:                'economic:bis:dsr:v1',
   // Bank of Russia official rates: health-monitored but deliberately NOT a
-  // bootstrap key. No dashboard panel reads it — it is served through
-  // get_economic_data, which reads the canonical key straight from Redis — so
-  // registering it in a tier would add ~6KB to a payload every client downloads
-  // and nothing consumes.
+  // bootstrap key. Its dashboard consumer (the FX panel's RUB tab, #6231)
+  // reads it on demand through the credential-less per-key bootstrap URL, so
+  // registering it in a tier would add ~6KB to a payload every client
+  // downloads and only the opt-in panel consumes.
   cbrRates:              'economic:cbr-rates:v1',
   bisPropertyResidential: 'economic:bis:property-residential:v1',
   bisPropertyCommercial:  'economic:bis:property-commercial:v1',
@@ -326,7 +326,10 @@ const STANDALONE_KEYS = {
   comtradeBilateralHs4:  'seed-meta:comtrade:bilateral-hs4',
   thermalEscalation:     'thermal:escalation:v1',
   thermalEscalationBootstrap: 'thermal:escalation-bootstrap:v1',
-  tariffTrendsUs:           'trade:tariffs:v1:840:all:10',
+  // Meta-only aggregate: payloads are sharded one key per reporter, so probe
+  // the seed-meta key rather than electing one reporter (or one lookback) to
+  // stand for the fleet. Pre-#6316 this pointed at the US years=10 data key.
+  tariffTrendsUs:           'seed-meta:trade:tariffs',
   // Meta-only aggregate: payloads are sharded one key per reporter, so probe
   // the seed-meta key rather than electing one reporter to stand for the fleet.
   tradeFlows:               'seed-meta:trade:flows',
@@ -677,9 +680,8 @@ const SEED_META = {
   // the sample) while the 30-year window picks up reporters with no recent data.
   // 200 leaves ~26% headroom for reporter-list drift and still fires well before
   // a real collapse.
-  // maxStaleMin sits INSIDE the 480min (8h) TRADE_TTL, not outside it — the
-  // opposite of tariffTrendsUs below, and for a structural reason. This is a
-  // meta-only probe (STANDALONE_KEYS.tradeFlows is the seed-meta key itself,
+  // maxStaleMin sits INSIDE the 480min (8h) TRADE_TTL, not outside it. This is
+  // a meta-only probe (STANDALONE_KEYS.tradeFlows is the seed-meta key itself,
   // because the payload is sharded one key per reporter), so the hasData/EMPTY
   // backstop watches the meta record — which writeSeedMeta gives a 7-day TTL —
   // and not the 8h data keys. Nothing else would notice the data expiring. A
@@ -687,8 +689,11 @@ const SEED_META = {
   // already gone. 420 = the 6h cron plus one hour of grace, so health reaches
   // STALE_SEED an hour BEFORE the keys it vouches for lapse. Same shape as the
   // meta-only comtradeBilateralHs4 entry above (35d budget, 40d payload TTL).
-  tradeFlows:          { key: 'seed-meta:trade:flows',                        maxStaleMin: 420, minRecordCount: 200 },
-  tariffTrendsUs:      { key: 'seed-meta:trade:tariffs:v1:840:all:10',        maxStaleMin: 540 }, // co-pinned to TARIFF_TTL (8h=480min) + 60min grace. Prior 900 (15h) created an 8h-15h silent window where data had expired but seed-meta was still considered fresh, masking real outages as status=EMPTY (not STALE_SEED). See scripts/seed-supply-chain-trade.mjs TARIFF_TTL.
+  tradeFlows:          { key: 'seed-meta:trade:flows',                        maxStaleMin: 420, minRecordCount: 200, dominantFailureMode: true },
+  // Same meta-only shape as tradeFlows above (#6316 moved tariffs off the
+  // single-key US years=10 probe). maxStaleMin 420 sits inside TARIFF_TTL
+  // (480min); minRecordCount 150 leaves headroom under a ~200+ reporter fleet.
+  tariffTrendsUs:      { key: 'seed-meta:trade:tariffs',                      maxStaleMin: 420, minRecordCount: 150 },
   // publish.ts runs once daily (02:30 UTC); seed-meta TTL=52h — maxStaleMin must cover the full 24h cycle
   consumerPricesOverview:   { key: 'seed-meta:consumer-prices:overview:ae',     maxStaleMin: 1500, minSuccessRate: 0.5 }, // 25h = 24h cadence + 1h grace; warn when <50% snapshots succeeded
   consumerPricesCategories: { key: 'seed-meta:consumer-prices:categories:ae:30d',            maxStaleMin: 1500 },
@@ -1232,14 +1237,18 @@ function keyHasData(redisKey, len) {
   return LIST_DATA_KEYS.has(redisKey) ? len > 0 : strlenIsData(len);
 }
 
+const TRADE_FLOW_DOMINANT_FAILURE_MODES = new Set([
+  'run-failed', 'upstream', 'empty', 'incomplete-years', 'mixed', 'none',
+]);
+
 function readSeedMeta(seedCfg, keyMetaValues, keyMetaErrors, now) {
   if (!seedCfg) {
-    return { hasMeta: false, seedAge: null, seedStale: null, seedError: false, sourceUnavailable: false, sourceBlocked: false, metaReadFailed: false, metaCount: null, contentAge: null, coverage: null, synthesisFailure: null };
+    return { hasMeta: false, seedAge: null, seedStale: null, seedError: false, sourceUnavailable: false, sourceBlocked: false, metaReadFailed: false, metaCount: null, contentAge: null, coverage: null, synthesisFailure: null, dominantFailureMode: null };
   }
   // Per-command Redis errors on the GET seed-meta half of the pipeline must
   // not silently fall through to STALE_SEED — promote to REDIS_PARTIAL.
   if (keyMetaErrors.get(seedCfg.key)) {
-    return { hasMeta: false, seedAge: null, seedStale: null, seedError: false, sourceUnavailable: false, sourceBlocked: false, metaReadFailed: true, metaCount: null, contentAge: null, coverage: null, synthesisFailure: null };
+    return { hasMeta: false, seedAge: null, seedStale: null, seedError: false, sourceUnavailable: false, sourceBlocked: false, metaReadFailed: true, metaCount: null, contentAge: null, coverage: null, synthesisFailure: null, dominantFailureMode: null };
   }
   // Unwrap through the envelope helper. Legacy seed-meta is a bare
   // `{ fetchedAt, recordCount, sourceVersion, status? }` object with no `_seed`
@@ -1270,6 +1279,7 @@ function readSeedMeta(seedCfg, keyMetaValues, keyMetaErrors, now) {
       coverage: null,
       errorCode,
       synthesisFailure: null,
+      dominantFailureMode: null,
     };
   }
   let seedAge = null;
@@ -1420,6 +1430,17 @@ function readSeedMeta(seedCfg, keyMetaValues, keyMetaErrors, now) {
       warning,
     };
   }
+  // Coarse trade-flows run diagnostic (#6323). Only the seed-supply-chain-trade
+  // seeder writes this today; parsing is opt-in per-key via SEED_META entry
+  // declaring `dominantFailureMode: true` so no other seed-meta reader changes.
+  // The vocabulary is a closed set (health would otherwise relay arbitrary
+  // producer free-text into a public endpoint):
+  //   run-failed | upstream | empty | incomplete-years | mixed | none
+  let dominantFailureMode = null;
+  if (seedCfg?.dominantFailureMode && typeof meta?.dominantFailureMode === 'string'
+    && TRADE_FLOW_DOMINANT_FAILURE_MODES.has(meta.dominantFailureMode)) {
+    dominantFailureMode = meta.dominantFailureMode;
+  }
   return {
     hasMeta: meta != null,
     seedAge,
@@ -1436,6 +1457,7 @@ function readSeedMeta(seedCfg, keyMetaValues, keyMetaErrors, now) {
     coverage,
     errorCode,
     synthesisFailure,
+    dominantFailureMode,
   };
 }
 
@@ -1533,6 +1555,7 @@ function classifyKey(name, redisKey, opts, ctx) {
     coverage,
     errorCode,
     synthesisFailure,
+    dominantFailureMode,
   } = meta;
 
   // Pending activation: the producer has never published a contentFreshness
@@ -1756,6 +1779,12 @@ function classifyKey(name, redisKey, opts, ctx) {
   // "why" for the severity bump — leaving a bare crit whose explanation is
   // sitting unread in seed-meta.
   if (fault === 'SEED_ERROR' && errorCode) entry.errorCode = errorCode;
+  // Coarse producer-run diagnostic, relayed whenever the producer recorded it —
+  // the whole point of #6323 is that a coverage shortfall's dominant cause is
+  // visible on /api/health without Railway logs or a raw index read, so gating
+  // it on the fault verdict would hide exactly the "healthy-looking partial"
+  // case. Mirrors the ungated synthesisFailure emission below.
+  if (dominantFailureMode) entry.dominantFailureMode = dominantFailureMode;
   // Surface content-age fields when seeder opted in (presence of
   // meta.maxContentAgeMin). Operators can distinguish "stale content" from
   // "stale seeder run" at a glance.

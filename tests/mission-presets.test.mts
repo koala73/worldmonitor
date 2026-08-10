@@ -941,6 +941,7 @@ type MissionTestCallbacks = {
   syncDataFreshnessCalls: number;
   mountLiveNewsCalls: number;
   waitForAisCalls: number;
+  applyPanelSettingsCalls: number;
 };
 
 type MissionHarness = {
@@ -1049,6 +1050,7 @@ function createMissionHarness(options: {
     syncDataFreshnessCalls: 0,
     mountLiveNewsCalls: 0,
     waitForAisCalls: 0,
+    applyPanelSettingsCalls: 0,
   };
   const unifiedSettings = {
     refreshes: 0,
@@ -1121,9 +1123,8 @@ function createMissionHarness(options: {
     loadDataForLayer: (layer: string) => callbacks.loadDataForLayer.push(layer),
     waitForAisData: () => { callbacks.waitForAisCalls += 1; },
     syncDataFreshnessWithLayers: () => { callbacks.syncDataFreshnessCalls += 1; },
-    ensureCorrectZones() {},
+    applyPanelSettings: () => { callbacks.applyPanelSettingsCalls += 1; },
     applySavedPanelOrder: (panelOrder?: string[]) => callbacks.appliedOrders.push([...(panelOrder ?? [])]),
-    refreshCiiAfterFocalPointsReady() {},
     stopLayerActivity: (layer: keyof MapLayers) => callbacks.stopLayerActivity.push(String(layer)),
     mountLiveNewsIfReady: () => { callbacks.mountLiveNewsCalls += 1; },
     isFreeTierFallbackActive: () => options.freeTierFallback === true,
@@ -1170,6 +1171,10 @@ describe('mission preset shell integration', () => {
     assert.deepEqual(ctx.map.calls.setView.at(-1), { view: 'global', zoom: 2.3 });
     assert.equal(ctx.map.calls.setTimeRange.at(-1), '7d');
     assert.equal(callbacks.waitForAisCalls, 1, 'AIS layer enable should initialize the AIS stream path');
+    assert.ok(
+      callbacks.applyPanelSettingsCalls >= 1,
+      'a preset that flips panels must push them onto the live dashboard, not just persist them (#6379)',
+    );
     assert.ok(callbacks.loadDataForLayer.includes('tradeRoutes'), 'newly enabled non-AIS layers should load data');
     assert.ok(
       ((globalThis as { __missionAnalytics?: Array<{ name: string; args: unknown[] }> }).__missionAnalytics ?? [])

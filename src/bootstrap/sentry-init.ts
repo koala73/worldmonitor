@@ -7,6 +7,7 @@
  */
 
 import { isDebugBearRumScriptFrame } from './debugbear-rum';
+import { isIosLikeUserAgent } from './platform-ua';
 import { getSentryBuildMetadata } from './sentry-build-metadata';
 
 type SentryNs = typeof import('@sentry/browser');
@@ -189,7 +190,6 @@ function buildSentryInitOptions(): Parameters<SentryNs['init']>[0] {
       /Se requiere plan premium/,
       /hybridExecute is not defined/,
       /reading 'postMessage'/,
-      /appendChild.*Unexpected token/,
       /\bmag is not defined\b/,
       /evaluating '[^']*\.luma/,
       /translateNotifyError/,
@@ -349,6 +349,14 @@ function buildSentryInitOptions(): Parameters<SentryNs['init']>[0] {
       const nonInfraFrames = frames.filter(f => f.filename && f.filename !== '<anonymous>' && f.filename !== '[native code]' && !/\/sentry-[A-Za-z0-9_-]+\.js/.test(f.filename));
       const hasFirstParty = nonInfraFrames.some(f => firstPartyFile(f.filename ?? ''));
       const hasAnyStack = nonInfraFrames.length > 0;
+      // Platform gate for the two iOS-scoped filters below. MUST come from the
+      // User-Agent, not `event.contexts.os` — the browser SDK never populates that
+      // context; Sentry derives it at ingest, long after beforeSend runs. Reading it
+      // here always yielded '' and left both filters unreachable (see platform-ua.ts).
+      const isIosLike = isIosLikeUserAgent(
+        typeof navigator === 'undefined' ? '' : navigator.userAgent ?? '',
+        typeof navigator === 'undefined' ? 0 : navigator.maxTouchPoints ?? 0,
+      );
       // Suppress maplibre internal null-access crashes (light, placement) only when stack is in map chunk
       if (/this\.style\._layers|reading '_layers'|this\.(light|sky) is null|can't access property "(id|type|setFilter|bind)"[,] ?[\w.]+ is (null|undefined)|can't access property "(id|type)" of null|Cannot read properties of null \(reading '(id|type|setFilter|_layers)'\)|null is not an object \(evaluating '\w{1,3}\.(id|style)|^\w{1,2} is null$/.test(msg)) {
         if (frames.some(f => /\/(map|maplibre|deck-stack)-[A-Za-z0-9_-]+\.js/.test(f.filename ?? ''))) return null;
@@ -427,8 +435,7 @@ function buildSentryInitOptions(): Parameters<SentryNs['init']>[0] {
       // so a real `t.x` regression elsewhere on desktop still surfaces.
       if (/undefined is not an object \(evaluating 't\.x'\)|Cannot read properties of undefined \(reading 'x'\)/.test(msg)) {
         if (!hasFirstParty || frames.some(f => /\b_handleTouch\w*Dolly|OrbitControls/.test(f.function ?? ''))) return null;
-        const osName = ((event.contexts as any)?.os?.name as string) ?? '';
-        const isTouchOs = /^(iOS|iPadOS)$/.test(osName);
+        const isTouchOs = isIosLike;
         const mainBundleFrames = nonInfraFrames.filter(f => /\/(main|index)-[A-Za-z0-9_-]+\.js/.test(f.filename ?? ''));
         if (isTouchOs && mainBundleFrames.length === 1 && nonInfraFrames.length === mainBundleFrames.length) return null;
       }
@@ -638,9 +645,12 @@ function buildSentryInitOptions(): Parameters<SentryNs['init']>[0] {
       // `Maximum call stack size exceeded` with a COMPLETELY empty stack, only on
       // iOS. A blown stack is exactly the case where the SDK cannot collect
       // frames, so zero frames alone proves nothing — the platform census is what
-      // does. WORLDMONITOR-WK is 23 events across 20 users and 100% iOS, 21 of
-      // them inside the Google app's in-app WebView (the rest Chrome iOS); zero
-      // desktop, zero Android, one release. Our own bundle is the same code on
+      // does. WORLDMONITOR-WK re-censused 2026-08-09 at 44 events / 37 users: 100%
+      // iOS, 100% zero-frame RangeError, overwhelmingly the Google app's in-app
+      // WebView; zero desktop, zero Android. (It reached 44 because this gate read
+      // the ingest-only `contexts.os` and could never fire — see platform-ua.ts. The
+      // census below is why the platform half is load-bearing, not why it was dead.)
+      // Our own bundle is the same code on
       // every platform, so a genuine first-party recursion cannot be confined to
       // one iOS WebView family — these are the host app's injected scripts
       // recursing (the Fireglass gate above is the same class, caught by name).
@@ -650,7 +660,7 @@ function buildSentryInitOptions(): Parameters<SentryNs['init']>[0] {
           && frames.length === 0
           && !hasFirstParty
           && /^Maximum call stack size exceeded\.?$/.test(msg)
-          && /^(iOS|iPadOS)$/.test(((event.contexts as any)?.os?.name as string) ?? '')) return null;
+          && isIosLike) return null;
       // Suppress Chrome Mobile WebView 105+ Request constructor quirk ONLY when
       // the Dodo checkout lazy chunk is in the stack (WORLDMONITOR-MH). The
       // exact message is unique to the Fetch § Request() duplex requirement, but
@@ -839,6 +849,22 @@ function buildSentryInitOptions(): Parameters<SentryNs['init']>[0] {
           // This is the WebKit phrasing; the V8 `reading 'postMessage'` variant is
           // already suppressed via the ignoreErrors entry above.
           || /null is not an object \(evaluating '[^']*\.postMessage'\)/.test(msg)
+          // Chrome composes `Failed to execute 'appendChild' on 'Node': <parse
+          // error>` when a script element is inserted and its source fails to
+          // parse synchronously. The DOM-API prefix means SOME caller passed
+          // unparseable script text — and we do have first-party callers that
+          // append third-party scripts (analytics.ts → abacus, debugbear-rum.ts,
+          // clerk.ts, LiveNewsPanel.ts embeds). Those keep a source-mapped .ts
+          // frame, so `!hasFirstParty` is what separates them from an injected
+          // page script inserting its own broken source with only `<anonymous>`
+          // frames. This supersedes the ungated `/appendChild.*Unexpected token/`
+          // ignoreErrors entry, which both missed the `Unexpected identifier`
+          // phrasing and — having no access to frames — would have swallowed a
+          // parse failure attributable to one of those first-party loaders
+          // (WORLDMONITOR-YW: Chrome 150 on Chrome OS, two `<anonymous>:1`
+          // frames). Left deliberately phrasing-agnostic after `Unexpected ` so
+          // every engine's token/identifier/keyword/EOF wording is covered.
+          || /appendChild.*Unexpected /.test(msg)
         )
       ) return null;
       if (hasAnyStack && !hasFirstParty && (

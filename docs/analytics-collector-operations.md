@@ -255,11 +255,16 @@ write canary is green.
 
 `.github/workflows/umami-storage-monitor.yml` reads the Railway volume list
 without mutating Railway or Postgres. It caches at most 30 days of samples and
-fails the workflow when either condition is true:
+reports the following capacity conditions:
 
 - current usage is at least 80% (warning) or 90% (critical); or
 - projected days to full are at most 30 (warning) or 14 (critical), once a
   24-hour growth baseline exists.
+
+A warning emits a GitHub annotation but leaves the scheduled workflow green so
+the 15-minute probe does not send repeated failed-run alerts during a bounded
+retention drain. A critical condition fails the workflow. Input, Railway, or
+state-processing errors also fail closed.
 
 The monitor prints only volume size, growth, and projected headroom. It never
 prints Railway variables, database URLs, analytics payloads, or user identity

@@ -10,11 +10,25 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
 import { resolveServiceClosure } from '../scripts/railway-deploy-closure.mjs';
+import { ControlPlaneError } from '../scripts/railway-reconcile-control-client.mjs';
+import { validateResultManifest } from '../scripts/railway-reconcile-manifest.mjs';
 import {
+  FAILING_ACQUIRE_DEFERRALS,
   HANDLED_BY_RAILWAY,
+  PINNED_RAILWAY_CLI,
+  ReconcileAuthorizationError,
+  ReconcileDeferral,
+  assertWorkflowMutationAuthority,
   buildDeployArgs,
+  createRailwayCliInstallEnv,
+  createPlannedManifestEntries,
+  installPinnedRailwayCli,
   planServiceDeploy,
+  readCurrentMainLineageAuthorization,
+  readExactCurrentMainAuthorization,
   readDeploymentId,
+  runGitHubApi,
+  runLeasedReconcile,
   selectServices,
   summarizeDeployPlan,
 } from '../scripts/trigger-railway-deploys.mjs';
@@ -29,8 +43,8 @@ const SCRIPTS_SEEDER = resolveServiceClosure({
   },
 });
 
-function deployment(status, commitHash, { createdAt = '2026-08-04T09:00:00.000Z', skippedReason } = {}) {
-  return { status, createdAt, meta: { commitHash, ...(skippedReason ? { skippedReason } : {}) } };
+function deployment(status, commitHash, { id, createdAt = '2026-08-04T09:00:00.000Z', skippedReason } = {}) {
+  return { ...(id ? { id } : {}), status, createdAt, meta: { commitHash, ...(skippedReason ? { skippedReason } : {}) } };
 }
 
 function plan(overrides = {}) {
@@ -72,9 +86,10 @@ describe('deploy planning', () => {
   });
 
   it('stands down once Railway has already built the head commit', () => {
-    const result = plan({ deployments: [deployment('SUCCESS', HEAD, { createdAt: '2026-08-04T12:00:00.000Z' }), deployment('SUCCESS', RUNNING)] });
+    const result = plan({ deployments: [deployment('SUCCESS', HEAD, { id: 'dep-head', createdAt: '2026-08-04T12:00:00.000Z' }), deployment('SUCCESS', RUNNING)] });
     assert.equal(result.action, 'skip');
     assert.equal(result.reason, HANDLED_BY_RAILWAY);
+    assert.equal(result.observedDeploymentId, 'dep-head');
   });
 
   it('stands down while Railway is still building the head commit', () => {
@@ -392,5 +407,366 @@ describe('deploy call', () => {
     for (const response of ['{"data":{"serviceInstanceDeployV2":null}}', '{"data":{}}', '{}']) {
       assert.throws(() => readDeploymentId(response), /no deployment id/, response);
     }
+  });
+});
+
+const PRODUCER = {
+  repository: 'koala73/worldmonitor',
+  workflow: 'railway-deploy-trigger.yml',
+  runId: '31210000001',
+  runAttempt: 1,
+};
+
+function deployPlan(name) {
+  return {
+    service: name,
+    serviceId: `svc-${name}`,
+    action: 'deploy',
+    reason: 'CLOSURE_CHANGED',
+    observedDeploymentId: null,
+  };
+}
+
+function fakeControl(events, { acquire } = {}) {
+  return {
+    acquire: acquire ?? (async () => {
+      events.push('acquire');
+      return {
+        data: {
+          attempt: { attemptId: 'attempt-1' },
+          leaseCapability: 'lease-capability-abcdefghijklmnopqrstuvwxyz',
+        },
+      };
+    }),
+    prepare: async () => { events.push('prepare'); },
+    assertLease: async () => { events.push('assert'); },
+    startMutation: async () => { events.push('start'); },
+    bindResult: async (body) => { events.push(`bind:${body.resultKind}`); },
+    release: async () => { events.push('release'); },
+  };
+}
+
+function leasedOptions(events, overrides = {}) {
+  let clock = Date.parse('2026-08-07T20:00:00.000Z');
+  return {
+    control: fakeControl(events),
+    ownerId: `github-run:${PRODUCER.runId}:${PRODUCER.runAttempt}`,
+    headSha: HEAD,
+    producer: PRODUCER,
+    authorizeCurrent: async () => {
+      events.push('authorize');
+      return {
+        gateContext: 'gate', gateState: 'success',
+        gateObservedAt: '2026-08-07T20:00:00.000Z',
+        mainObservedAt: '2026-08-07T20:00:00.000Z',
+      };
+    },
+    buildPlan: async () => {
+      events.push('build');
+      return { projectId: 'project-1', environmentId: 'environment-1', plans: [] };
+    },
+    refreshService: async (plan) => { events.push(`refresh:${plan.service}`); return plan; },
+    deployService: async (plan) => { events.push(`deploy:${plan.service}`); return `dep-${plan.service}`; },
+    writeResult: async (result) => { events.push('write'); validateResultManifest(result); },
+    now: () => clock++,
+    ...overrides,
+  };
+}
+
+describe('protected leased mutation orchestration', () => {
+  it('alarms only on an unresolved mutation barrier, not ordinary contention or verification overlap', () => {
+    assert.deepEqual([...FAILING_ACQUIRE_DEFERRALS].sort(), [
+      'MUTATION_BARRIER_ACTIVE',
+    ]);
+    assert.equal(FAILING_ACQUIRE_DEFERRALS.has('LEASE_HELD'), false);
+    assert.equal(FAILING_ACQUIRE_DEFERRALS.has('DISPATCH_HOLD_ACTIVE'), false);
+    assert.equal(FAILING_ACQUIRE_DEFERRALS.has('VERIFICATION_PENDING'), false);
+  });
+
+  it('installs only the reviewed Railway CLI version for the acquired production path', () => {
+    const calls = [];
+    const env = {
+      HOME: '/runner/home',
+      PATH: '/runner/bin',
+      RAILWAY_TOKEN: 'deploy-secret',
+      RAILWAY_RECONCILE_MUTATION_HMAC: 'mutation-secret',
+      GH_TOKEN: 'github-secret',
+      UNRELATED_SECRET: 'other-secret',
+    };
+    installPinnedRailwayCli({
+      env,
+      spawn: (command, args, options) => {
+        calls.push({ command, args, options });
+        return { status: 0, signal: null, error: null };
+      },
+    });
+    assert.equal(PINNED_RAILWAY_CLI, '@railway/cli@5.30.1');
+    assert.deepEqual(calls.map(({ command, args }) => [command, args]), [
+      ['npm', ['install', '--global', '@railway/cli@5.30.1']],
+    ]);
+    assert.equal(calls[0].options.timeout, 2 * 60 * 1_000);
+    assert.deepEqual(calls[0].options.env, { HOME: '/runner/home', PATH: '/runner/bin' });
+    assert.deepEqual(createRailwayCliInstallEnv(env), calls[0].options.env);
+  });
+
+  it('retries GitHub state reads without exposing Railway capabilities', () => {
+    const calls = [];
+    const parsed = runGitHubApi('repos/o/r/git/ref/heads/main', {
+      HOME: '/runner/home',
+      PATH: '/runner/bin',
+      GH_TOKEN: 'github-secret',
+      RAILWAY_TOKEN: 'deploy-secret',
+      RAILWAY_RECONCILE_MUTATION_HMAC: 'mutation-secret',
+    }, {
+      spawn: (command, args, options) => {
+        calls.push({ command, args, options });
+        return calls.length === 1
+          ? { status: 1, signal: null, error: null, stdout: '' }
+          : { status: 0, signal: null, error: null, stdout: '{"ok":true}' };
+      },
+    });
+    assert.deepEqual(parsed, { ok: true });
+    assert.equal(calls.length, 2);
+    assert.deepEqual(calls[1].options.env, {
+      GH_TOKEN: 'github-secret',
+      HOME: '/runner/home',
+      PATH: '/runner/bin',
+    });
+
+    let failures = 0;
+    assert.throws(() => runGitHubApi('repos/o/r', { GH_TOKEN: 'github-secret' }, {
+      spawn: () => {
+        failures += 1;
+        return { status: 0, signal: null, error: null, stdout: 'not-json' };
+      },
+    }), (error) => error instanceof ReconcileAuthorizationError
+      && error.code === 'GITHUB_STATE_UNREADABLE');
+    assert.equal(failures, 3);
+  });
+
+  it('rejects direct non-dry-run execution before any control or Railway access', () => {
+    assert.doesNotThrow(() => assertWorkflowMutationAuthority({ dryRun: true, argv: [], env: {} }));
+    assert.throws(
+      () => assertWorkflowMutationAuthority({ dryRun: false, argv: [], env: {} }),
+      /direct Railway mutation is forbidden/i,
+    );
+    assert.doesNotThrow(() => assertWorkflowMutationAuthority({
+      dryRun: false,
+      argv: ['node', 'script', '--workflow-authorized'],
+      env: {
+        GITHUB_ACTIONS: 'true',
+        GITHUB_REF: 'refs/heads/main',
+        GITHUB_WORKFLOW_REF: 'koala73/worldmonitor/.github/workflows/railway-deploy-trigger.yml@refs/heads/main',
+        GITHUB_REPOSITORY: PRODUCER.repository,
+        GITHUB_RUN_ID: PRODUCER.runId,
+        GITHUB_RUN_ATTEMPT: '1',
+        RAILWAY_RECONCILE_CUTOVER_ACTIVE: 'true',
+      },
+    }));
+  });
+
+  it('revalidates exact current main and the newest green gate as closed evidence', () => {
+    const paths = [];
+    const authorization = readExactCurrentMainAuthorization({
+      repository: PRODUCER.repository,
+      headSha: HEAD,
+      now: () => Date.parse('2026-08-07T20:00:00.000Z'),
+      api: (path) => {
+        paths.push(path);
+        return path.includes('/git/ref/')
+          ? { object: { sha: HEAD } }
+          : [{ context: 'gate', state: 'success' }];
+      },
+    });
+    assert.deepEqual(paths, [
+      `repos/${PRODUCER.repository}/git/ref/heads/main`,
+      `repos/${PRODUCER.repository}/commits/${HEAD}/statuses?per_page=100`,
+    ]);
+    assert.equal(authorization.gateState, 'success');
+    assert.throws(() => readExactCurrentMainAuthorization({
+      repository: PRODUCER.repository,
+      headSha: HEAD,
+      api: () => ({ object: { sha: 'b'.repeat(40) } }),
+    }), (error) => error instanceof ReconcileAuthorizationError && error.code === 'MAIN_MOVED');
+  });
+
+  it('authorizes final acceptance when current green main descends from the reconciled head', () => {
+    const descendant = 'b'.repeat(40);
+    const paths = [];
+    const authorization = readCurrentMainLineageAuthorization({
+      repository: PRODUCER.repository,
+      headSha: HEAD,
+      now: () => Date.parse('2026-08-07T20:00:00.000Z'),
+      api: (path) => {
+        paths.push(path);
+        if (path.includes('/git/ref/')) return { object: { sha: descendant } };
+        if (path.includes('/statuses')) return [{ context: 'gate', state: 'success' }];
+        return { status: 'ahead', merge_base_commit: { sha: HEAD } };
+      },
+    });
+    assert.equal(authorization.lineage, 'DESCENDANT');
+    assert.equal(authorization.attemptedHeadSha, HEAD);
+    assert.equal(authorization.currentMainHeadSha, descendant);
+    assert.deepEqual(paths, [
+      `repos/${PRODUCER.repository}/git/ref/heads/main`,
+      `repos/${PRODUCER.repository}/commits/${descendant}/statuses?per_page=100`,
+      `repos/${PRODUCER.repository}/compare/${HEAD}...${descendant}`,
+      `repos/${PRODUCER.repository}/git/ref/heads/main`,
+    ]);
+  });
+
+  it('rejects a diverged or moving current main instead of accepting unrelated lineage', () => {
+    const descendant = 'b'.repeat(40);
+    assert.throws(() => readCurrentMainLineageAuthorization({
+      repository: PRODUCER.repository,
+      headSha: HEAD,
+      api: (path) => {
+        if (path.includes('/git/ref/')) return { object: { sha: descendant } };
+        if (path.includes('/statuses')) return [{ context: 'gate', state: 'success' }];
+        return { status: 'diverged', merge_base_commit: { sha: 'c'.repeat(40) } };
+      },
+    }), (error) => error instanceof ReconcileAuthorizationError && error.code === 'MAIN_DIVERGED');
+
+    let refReads = 0;
+    assert.throws(() => readCurrentMainLineageAuthorization({
+      repository: PRODUCER.repository,
+      headSha: HEAD,
+      api: (path) => {
+        if (path.includes('/git/ref/')) {
+          refReads += 1;
+          return { object: { sha: refReads === 1 ? descendant : 'd'.repeat(40) } };
+        }
+        if (path.includes('/statuses')) return [{ context: 'gate', state: 'success' }];
+        return { status: 'ahead', merge_base_commit: { sha: HEAD } };
+      },
+    }), (error) => error instanceof ReconcileAuthorizationError && error.code === 'MAIN_MOVED');
+  });
+
+  it('acquires before fleet planning and fences every serial provider call', async () => {
+    const events = [];
+    const plans = [deployPlan('a'), deployPlan('b')];
+    const result = await runLeasedReconcile(leasedOptions(events, {
+      buildPlan: async () => {
+        events.push('build');
+        return { projectId: 'project-1', environmentId: 'environment-1', plans };
+      },
+    }));
+    assert.deepEqual(events, [
+      'authorize', 'acquire', 'build', 'prepare',
+      'assert', 'authorize', 'refresh:a', 'start', 'deploy:a',
+      'assert', 'authorize', 'refresh:b', 'deploy:b',
+      'write', 'bind:MUTATED', 'release',
+    ]);
+    assert.equal(result.result.outcome, 'MUTATION_COMPLETED');
+    assert.deepEqual(result.result.entries.map((entry) => entry.deploymentId), ['dep-a', 'dep-b']);
+  });
+
+  it('adopts a fresh native deployment instead of triggering a duplicate', async () => {
+    const events = [];
+    const original = deployPlan('a');
+    const result = await runLeasedReconcile(leasedOptions(events, {
+      buildPlan: async () => ({ projectId: 'project-1', environmentId: 'environment-1', plans: [original] }),
+      refreshService: async () => ({
+        ...original,
+        action: 'skip',
+        reason: 'ALREADY_TAKEN',
+        observedDeploymentId: 'dep-native',
+      }),
+    }));
+    assert.equal(events.includes('start'), false);
+    assert.equal(events.includes('deploy:a'), false);
+    assert.equal(result.result.outcome, 'NO_MUTATION');
+    assert.equal(result.result.entries[0].outcome, 'ALREADY_ACTIVE');
+    assert.equal(result.result.entries[0].observedDeploymentId, 'dep-native');
+  });
+
+  it('stops after an ambiguous provider call and binds the exact partial evidence', async () => {
+    const events = [];
+    const plans = [deployPlan('a'), deployPlan('b'), deployPlan('c')];
+    const result = await runLeasedReconcile(leasedOptions(events, {
+      buildPlan: async () => ({ projectId: 'project-1', environmentId: 'environment-1', plans }),
+      deployService: async (plan) => {
+        events.push(`deploy:${plan.service}`);
+        if (plan.service === 'b') throw new Error('provider response lost');
+        return `dep-${plan.service}`;
+      },
+    }));
+    assert.equal(result.result.outcome, 'MUTATION_AMBIGUOUS');
+    assert.deepEqual(result.result.entries.map((entry) => entry.outcome), ['TRIGGERED', 'AMBIGUOUS', 'SKIPPED']);
+    assert.deepEqual(events.filter((event) => event.startsWith('deploy:')), ['deploy:a', 'deploy:b']);
+    assert.ok(events.includes('bind:MUTATED'));
+  });
+
+  it('stops later calls when main moves without inventing a failed provider mutation', async () => {
+    const events = [];
+    const plans = [deployPlan('a'), deployPlan('b')];
+    let authorizations = 0;
+    const result = await runLeasedReconcile(leasedOptions(events, {
+      buildPlan: async () => ({ projectId: 'project-1', environmentId: 'environment-1', plans }),
+      authorizeCurrent: async () => {
+        authorizations += 1;
+        events.push('authorize');
+        if (authorizations === 3) throw new ReconcileAuthorizationError('MAIN_MOVED', 'moved');
+        return {
+          gateContext: 'gate', gateState: 'success',
+          gateObservedAt: '2026-08-07T20:00:00.000Z',
+          mainObservedAt: '2026-08-07T20:00:00.000Z',
+        };
+      },
+    }));
+    assert.equal(result.result.outcome, 'MUTATION_COMPLETED');
+    assert.deepEqual(result.result.entries.map((entry) => entry.outcome), ['TRIGGERED', 'SKIPPED']);
+    assert.equal(result.result.entries[1].reason, 'MAIN_MOVED');
+    assert.deepEqual(events.filter((event) => event.startsWith('deploy:')), ['deploy:a']);
+  });
+
+  it('waits boundedly for an exact recovery hold to become RUN_BOUND', async () => {
+    const events = [];
+    let attempts = 0;
+    let clock = 0;
+    const control = fakeControl(events, {
+      acquire: async () => {
+        attempts += 1;
+        events.push(`acquire:${attempts}`);
+        if (attempts === 1) {
+          throw new ControlPlaneError('DISPATCH_HOLD_ACTIVE', 'not bound', { definitive: true });
+        }
+        return { data: { attempt: { attemptId: 'attempt-1' }, leaseCapability: 'lease-capability-abcdefghijklmnopqrstuvwxyz' } };
+      },
+    });
+    await runLeasedReconcile(leasedOptions(events, {
+      control,
+      recoveryAttemptId: 'recovery-1',
+      now: () => clock,
+      sleep: async (ms) => { clock += ms; },
+      recoveryHoldWaitMs: 10_000,
+      recoveryHoldPollMs: 1_000,
+    }));
+    assert.deepEqual(events.slice(0, 5), ['authorize', 'acquire:1', 'authorize', 'acquire:2', 'build']);
+  });
+
+  it('defers definitive lease contention without planning or provider access', async () => {
+    const events = [];
+    const control = fakeControl(events, {
+      acquire: async () => {
+        events.push('acquire');
+        throw new ControlPlaneError('LEASE_HELD', 'held', { definitive: true });
+      },
+    });
+    await assert.rejects(
+      runLeasedReconcile(leasedOptions(events, { control })),
+      (error) => error instanceof ReconcileDeferral && error.code === 'LEASE_HELD',
+    );
+    assert.deepEqual(events, ['authorize', 'acquire']);
+  });
+
+  it('maps only allowlisted plan fields into the immutable intent', () => {
+    assert.deepEqual(createPlannedManifestEntries([
+      { ...deployPlan('a'), detail: 'raw provider text must not persist' },
+      { service: 'b', serviceId: 'svc-b', action: 'error', reason: 'raw error', observedDeploymentId: null },
+    ]), [
+      { service: 'a', serviceId: 'svc-a', action: 'DEPLOY', reason: 'CLOSURE_CHANGED' },
+      { service: 'b', serviceId: 'svc-b', action: 'SKIP', reason: 'HISTORY_UNAVAILABLE' },
+    ]);
   });
 });

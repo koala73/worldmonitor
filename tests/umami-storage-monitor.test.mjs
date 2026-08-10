@@ -1,6 +1,12 @@
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { describe, it } from 'node:test';
+import { fileURLToPath } from 'node:url';
+
+import YAML from 'yaml';
 
 import {
   evaluateUmamiStorage,
@@ -10,6 +16,15 @@ import {
 } from '../scripts/check-umami-storage.mjs';
 
 const NOW = Date.parse('2026-08-01T12:00:00.000Z');
+const DAY_MS = 24 * 60 * 60 * 1000;
+const storageCheckScript = fileURLToPath(
+  new URL('../scripts/check-umami-storage.mjs', import.meta.url),
+);
+const workflowSource = readFileSync(
+  new URL('../.github/workflows/umami-storage-monitor.yml', import.meta.url),
+  'utf8',
+);
+const workflow = YAML.parse(workflowSource);
 
 function volume(overrides = {}) {
   return {
@@ -21,6 +36,32 @@ function volume(overrides = {}) {
     status: 'Ready',
     ...overrides,
   };
+}
+
+function runStorageCheckCli({ currentSizeMB, samples = [], volumeOverrides = {} }) {
+  const directory = mkdtempSync(join(tmpdir(), 'wm-umami-storage-monitor-'));
+  const inputPath = join(directory, 'volumes.json');
+  const statePath = join(directory, 'state.json');
+
+  try {
+    writeFileSync(inputPath, JSON.stringify([volume({ currentSizeMB, ...volumeOverrides })]));
+    writeFileSync(statePath, JSON.stringify({
+      version: 1,
+      volumeIdentity: 'volume-1',
+      capacityMB: 50_000,
+      samples,
+    }));
+    return spawnSync(
+      process.execPath,
+      [storageCheckScript, '--input', inputPath, '--state', statePath],
+      {
+        encoding: 'utf8',
+        env: { ...process.env, UMAMI_POSTGRES_SERVICE_NAME: 'Postgres Umami' },
+      },
+    );
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
 }
 
 describe('Umami storage monitor', () => {
@@ -76,6 +117,38 @@ describe('Umami storage monitor', () => {
     assert.equal(result.usagePercent, 90);
     assert.equal(result.status, 'critical');
     assert.equal(result.alerting, true);
+  });
+
+  it('reports a capacity warning without failing the scheduled workflow', () => {
+    const run = runStorageCheckCli({
+      currentSizeMB: 28_000,
+      samples: [{
+        sampledAt: new Date(Date.now() - 7 * DAY_MS).toISOString(),
+        currentSizeMB: 22_800,
+      }],
+    });
+
+    assert.equal(run.status, 0, run.stderr);
+    assert.match(run.stdout, /Umami storage warning:/);
+    assert.match(run.stderr, /::warning::Umami Postgres storage needs retention or capacity action/);
+  });
+
+  it('fails the scheduled workflow at critical capacity', () => {
+    const run = runStorageCheckCli({ currentSizeMB: 45_000 });
+
+    assert.equal(run.status, 1);
+    assert.match(run.stdout, /Umami storage critical:/);
+    assert.match(run.stderr, /::error::Umami Postgres storage is at a critical capacity/);
+  });
+
+  it('fails the scheduled workflow when Railway volume processing fails', () => {
+    const run = runStorageCheckCli({
+      currentSizeMB: 28_000,
+      volumeOverrides: { status: 'Failed' },
+    });
+
+    assert.equal(run.status, 1);
+    assert.match(run.stderr, /Umami storage monitor failed: Umami volume is not ready: Failed/);
   });
 
   it('fails closed when Railway reports a non-ready volume', () => {
@@ -134,13 +207,12 @@ describe('Umami storage monitor', () => {
   });
 
   it('wires the read-only Railway check and bounded SQL contract', () => {
-    const workflow = readFileSync(new URL('../.github/workflows/umami-storage-monitor.yml', import.meta.url), 'utf8');
     const sql = readFileSync(new URL('../scripts/umami-retention.sql', import.meta.url), 'utf8');
     const executableSql = sql.replace(/^\s*--.*$/gmu, '');
 
-    assert.match(workflow, /railway volume .* list --json/);
-    assert.match(workflow, /actions\/cache@/);
-    assert.match(workflow, /check-umami-storage\.mjs/);
+    assert.match(workflowSource, /railway volume .* list --json/);
+    assert.match(workflowSource, /actions\/cache@/);
+    assert.match(workflowSource, /check-umami-storage\.mjs/);
     assert.match(sql, /interval '90 days'/);
     assert.match(sql, /LIMIT 10000/);
     assert.match(sql, /64 \* 1024 \* 1024/);
@@ -151,5 +223,25 @@ describe('Umami storage monitor', () => {
     assert.match(sql, /heatmap_event/);
     assert.match(sql, /session_replay_saved/);
     assert.doesNotMatch(sql, /ROW_NUMBER/);
+  });
+
+  it('supersedes stale probes without broadening production credential access', () => {
+    assert.deepEqual(
+      workflow.concurrency,
+      {
+        group: 'umami-storage-monitor-${{ github.ref }}',
+        'cancel-in-progress': true,
+      },
+      'the newest same-ref sample must replace a runner-less owner without cancelling main from another ref',
+    );
+    assert.deepEqual(
+      workflow.jobs.monitor.environment,
+      {
+        name: 'ingestion-acceptance-production',
+        deployment: false,
+      },
+      'the Railway token must stay in the main-only environment without deployment tracking',
+    );
+    assert.equal(workflow.jobs.monitor['timeout-minutes'], 5);
   });
 });

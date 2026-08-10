@@ -238,9 +238,14 @@ export interface EventHandlerCallbacks {
   loadDataForLayer: (layer: string) => void;
   waitForAisData: () => void;
   syncDataFreshnessWithLayers: () => void;
-  ensureCorrectZones: () => void;
+  /**
+   * Push `ctx.panelSettings` onto the live dashboard. Must route to
+   * PanelLayoutManager.applyPanelSettings — it owns the deferred-mount
+   * bookkeeping a panel needs to appear without a reload, and the map-zone
+   * reconciliation the `map` key needs.
+   */
+  applyPanelSettings: () => void;
   applySavedPanelOrder?: (panelOrder?: string[]) => void;
-  refreshCiiAfterFocalPointsReady?: () => void;
   stopLayerActivity?: (layer: keyof MapLayers) => void;
   mountLiveNewsIfReady?: () => void;
   isFreeTierFallbackActive?: () => boolean;
@@ -257,7 +262,6 @@ export class EventHandlerManager implements AppModule {
   private boundIdleResetHandler: (() => void) | null = null;
   private boundStorageHandler: ((e: StorageEvent) => void) | null = null;
   private boundTvKeydownHandler: ((e: KeyboardEvent) => void) | null = null;
-  private boundFocalPointsReadyHandler: (() => void) | null = null;
   private boundThemeChangedHandler: (() => void) | null = null;
   private boundDropdownClickHandler: ((e: MouseEvent) => void) | null = null;
   private boundDropdownKeydownHandler: ((e: KeyboardEvent) => void) | null = null;
@@ -447,10 +451,6 @@ export class EventHandlerManager implements AppModule {
     if (this.boundTvKeydownHandler) {
       document.removeEventListener('keydown', this.boundTvKeydownHandler);
       this.boundTvKeydownHandler = null;
-    }
-    if (this.boundFocalPointsReadyHandler) {
-      window.removeEventListener('focal-points-ready', this.boundFocalPointsReadyHandler);
-      this.boundFocalPointsReadyHandler = null;
     }
     if (this.boundThemeChangedHandler) {
       window.removeEventListener('theme-changed', this.boundThemeChangedHandler);
@@ -752,11 +752,6 @@ export class EventHandlerManager implements AppModule {
       }
     };
     document.addEventListener('visibilitychange', this.boundVisibilityHandler);
-
-    this.boundFocalPointsReadyHandler = () => {
-      this.callbacks.refreshCiiAfterFocalPointsReady?.();
-    };
-    window.addEventListener('focal-points-ready', this.boundFocalPointsReadyHandler);
 
     this.boundThemeChangedHandler = () => {
       this.ctx.map?.render();
@@ -1922,7 +1917,7 @@ export class EventHandlerManager implements AppModule {
         this.restoreSnapshot(snapshot);
       } else {
         this.ctx.isPlaybackMode = false;
-        this.callbacks.loadAllData();
+        void this.callbacks.loadAllData();
       }
     });
 
@@ -2343,29 +2338,19 @@ export class EventHandlerManager implements AppModule {
     return Array.from(sources).sort((a, b) => a.localeCompare(b));
   }
 
+  /**
+   * Delegates to PanelLayoutManager, which owns panel visibility.
+   *
+   * This class used to carry its own copy of the toggle loop. That copy could
+   * only re-toggle panels already present in `ctx.panels`, and since #4367 a
+   * panel that boots disabled has no DOM node at all — just an unobserved,
+   * shell-less entry in `deferredPanelMounts`. So every caller here that
+   * ENABLES a panel (settings save, CMD+K add, undo-restore, mission preset,
+   * cross-tab storage sync) silently did nothing until the next reload
+   * re-ran createPanels(). The layout manager's version mounts the deferred
+   * panel and refreshes the mobile panel nav.
+   */
   applyPanelSettings(): void {
-    Object.entries(this.ctx.panelSettings).forEach(([key, config]) => {
-      if (key === 'map') {
-        const mapSection = document.getElementById('mapSection');
-        if (mapSection) {
-          mapSection.classList.toggle('hidden', !config.enabled);
-          const mainContent = document.querySelector('.main-content');
-          if (mainContent) {
-            mainContent.classList.toggle('map-hidden', !config.enabled);
-          }
-          this.callbacks.ensureCorrectZones();
-        }
-        return;
-      }
-      const panel = this.ctx.panels[key];
-      const liveMediaPanel = panel as { stopLiveMediaForClose?: () => void; resumeLiveMediaForShow?: () => void } | undefined;
-      if (!config.enabled) {
-        liveMediaPanel?.stopLiveMediaForClose?.();
-      }
-      panel?.toggle(config.enabled);
-      if (config.enabled) {
-        liveMediaPanel?.resumeLiveMediaForShow?.();
-      }
-    });
+    this.callbacks.applyPanelSettings();
   }
 }

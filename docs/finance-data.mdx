@@ -76,7 +76,31 @@ These tables are the human-facing route map for finance, market, macro, energy, 
 | Oil inventories composite | `GET /api/economic/v1/get-oil-inventories` | Oil Inventories panel direct REST fetch combining crude, SPR, gas storage, EU gas, IEA stocks, and refinery context. |
 | Energy crisis policies | `GET /api/economic/v1/get-energy-crisis-policies` | Energy Crisis Tracker; bootstrap-first via `energyCrisisPolicies`. |
 
-## Market Monitoring
+## Authorized market-data providers
+
+WorldMonitor redistributes market quotes to subscribers, so every request-time
+and seeder path must use a provider whose terms permit that commercial use
+(see also the Yahoo ToS remediation tracked under #3731).
+
+| Decision | Detail |
+| --- | --- |
+| **Financial Modeling Prep (FMP)** | **Not selected.** FMP Terms of Service §2.2.1–2.2.2 prohibit commercial use and any multi-user display/redistribution without a separate Data Display and Licensing Agreement. Wiring `FMP_API_KEY` without that agreement would recreate the compliance problem #3731 describes. Revisit only after an enterprise rebroadcast agreement is in place. |
+| **Finnhub** | **Primary** for request-time equity gap fetches and watchlist symbol search (`FINNHUB_API_KEY`). Free tier is quota-limited; production should use a paid plan sized to watchlist traffic. |
+| **Alpha Vantage** | **Authorized fallback** for equity gap fetches and **primary bulk path** for the market-quotes seeder (`ALPHA_VANTAGE_API_KEY`). Also powers physical commodity and FX daily series in seeders. Free tier is tightly rate-limited; production seeders need a higher tier. |
+| **CoinGecko / CoinPaprika** | Crypto quote and stablecoin surfaces (existing chain; not part of the equity adapter). |
+
+### Supported product surfaces
+
+| Surface | Authorized path | Freshness | Notes |
+| --- | --- | --- | --- |
+| Default equity / index universe | Railway seed `market:stocks-bootstrap:v1` via `scripts/seed-market-quotes.mjs` (AV → Finnhub → optional Yahoo residual for yahooOnly listings) | ~5–30 min seed cadence | Seed hit = zero upstream call on the edge |
+| Custom watchlist equities | Seed-first, then bounded Redis-cached gap via `server/.../_quote-provider.ts` (Finnhub → Alpha Vantage) | 5 min positive cache; 15 min negative for definitive not-found | Provider errors are never cached |
+| Commodity futures (configured set) | Seed `shared/commodities.json` / AV physical + residual | Seed cadence | RPC is seed-set only (#6307); no FMP |
+| FX (Gulf / macro) | Seeders using AV `FX_DAILY` where wired | Seed cadence | Not part of equity watchlist gap fetch |
+| Crypto | CoinGecko → CoinPaprika (+ relay) | Seed + bounded gap (#6306) | Separate from equity adapter |
+| Historical series | Seeder-side AV daily commodity / FX series; premium analysis paths | Daily | Request-time gap fetch does **not** pull history (would double the budget) |
+
+**Attribution / keys:** self-hosters need `FINNHUB_API_KEY` and/or `ALPHA_VANTAGE_API_KEY` for custom equity quotes; without either key the RPC reports `PROVIDER_NOT_CONFIGURED` for seed misses rather than calling an unauthorized source. Seeders additionally still use a Yahoo residual for a small yahooOnly set until #3731 fully retires it — that residual is not used on the edge gap path.
 
 ### Customizable Market Watchlist
 
@@ -92,7 +116,7 @@ The catalog subset is stored as `wm-market-catalog-selection-v1`; searchable add
 
 1. Requested symbols are normalized, deduplicated, and bounded (120 per request).
 2. The fixed Railway seed snapshot (`market:stocks-bootstrap:v1`) answers everything it carries — **a seed hit performs no upstream request**.
-3. Only the remaining symbols reach the quote provider, through a Redis-cached per-symbol lookup bounded by count (10 per request), concurrency, and a wall-clock deadline. Repeat requests for the same symbol reuse the cached quote.
+3. Only the remaining symbols reach the **authorized** quote provider chain (Finnhub → Alpha Vantage), through a Redis-cached per-symbol lookup bounded by count (10 per request), concurrency, and a wall-clock deadline. Repeat requests for the same symbol reuse the cached quote. Futures / FX Yahoo notation is declined before any upstream call.
 4. Quotes are merged in requested order.
 5. Every requested symbol that produced no quote is returned in `unavailable` with a reason (`NOT_FOUND`, `PROVIDER_ERROR`, `PROVIDER_RATE_LIMITED`, `PROVIDER_NOT_CONFIGURED`, `REQUEST_LIMIT_EXCEEDED`, `UPSTREAM_BUDGET_EXHAUSTED`, `SEED_UNAVAILABLE`) and surfaced in the panel. Nothing is silently dropped.
 

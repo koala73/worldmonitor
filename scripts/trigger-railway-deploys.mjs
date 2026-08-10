@@ -42,13 +42,14 @@
 //   node scripts/trigger-railway-deploys.mjs --only seed-earthquakes,seed-aviation
 
 import { spawnSync } from 'node:child_process';
-import { readFileSync, realpathSync } from 'node:fs';
+import { readFileSync, realpathSync, writeFileSync } from 'node:fs';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
 import {
   DEFAULT_CONCURRENCY,
   mapWithConcurrency,
   readArgument,
+  readDeployments,
   readDeploymentsForFleet,
   readEnvironmentConfig,
   resolveEnvironmentId,
@@ -70,9 +71,64 @@ import {
   pathsReachingService,
   resolveServiceClosure,
 } from './railway-deploy-closure.mjs';
+import {
+  ControlPlaneError,
+  RailwayReconcileControlClient,
+} from './railway-reconcile-control-client.mjs';
+import {
+  createIntentManifest,
+  createResultManifest,
+} from './railway-reconcile-manifest.mjs';
 
 const DEFAULT_ENVIRONMENT = 'production';
 const REGISTRY_URL = new URL('./railway-services.json', import.meta.url);
+const TARGET_WORKFLOW_FILE = 'railway-deploy-trigger.yml';
+const RESULT_STATUS_VERSION = 1;
+
+export const MUTATION_MIN_TTL_MS = 5 * 60 * 1_000;
+export const PINNED_RAILWAY_CLI = '@railway/cli@5.30.1';
+const NPM_INSTALL_ENV_KEYS = Object.freeze([
+  'CI',
+  'HOME',
+  'HTTP_PROXY',
+  'HTTPS_PROXY',
+  'NODE_EXTRA_CA_CERTS',
+  'NO_PROXY',
+  'PATH',
+  'RUNNER_TEMP',
+  'RUNNER_TOOL_CACHE',
+  'SSL_CERT_DIR',
+  'SSL_CERT_FILE',
+  'TEMP',
+  'TMP',
+  'TMPDIR',
+  'NPM_CONFIG_CACHE',
+  'npm_config_cache',
+]);
+const GITHUB_CLI_ENV_KEYS = Object.freeze([
+  'GH_ENTERPRISE_TOKEN',
+  'GH_HOST',
+  'GH_TOKEN',
+  'GITHUB_API_URL',
+  'GITHUB_TOKEN',
+  'HOME',
+  'HTTP_PROXY',
+  'HTTPS_PROXY',
+  'NODE_EXTRA_CA_CERTS',
+  'NO_PROXY',
+  'PATH',
+  'SSL_CERT_DIR',
+  'SSL_CERT_FILE',
+]);
+export const SAFE_ACQUIRE_DEFERRALS = new Set([
+  'LEASE_HELD',
+  'DISPATCH_HOLD_ACTIVE',
+  'MUTATION_BARRIER_ACTIVE',
+  'VERIFICATION_PENDING',
+]);
+export const FAILING_ACQUIRE_DEFERRALS = new Set([
+  'MUTATION_BARRIER_ACTIVE',
+]);
 
 // Sized for THIS script's question, not inherited from the drift check's.
 //
@@ -118,7 +174,13 @@ export function planServiceDeploy({
   // production moves backwards.
   ancestry = () => 'unknown',
 }) {
-  const base = { service, serviceId, runningSha: null, matchedPaths: [] };
+  const base = {
+    service,
+    serviceId,
+    runningSha: null,
+    observedDeploymentId: null,
+    matchedPaths: [],
+  };
   if (!Array.isArray(deployments)) {
     // Never guess in either direction on a failed query: deploying would mutate
     // production on no information, and skipping would claim this service was
@@ -154,7 +216,13 @@ export function planServiceDeploy({
     (deployment) => deployment.status !== REJECTED_STATUS && isKnownStatus(deployment.status),
   );
   if (taken) {
-    return { ...base, action: 'skip', reason: HANDLED_BY_RAILWAY, detail: `Railway already has ${headSha.slice(0, 9)} (${taken.status})` };
+    return {
+      ...base,
+      observedDeploymentId: typeof taken.id === 'string' ? taken.id : null,
+      action: 'skip',
+      reason: HANDLED_BY_RAILWAY,
+      detail: `Railway already has ${headSha.slice(0, 9)} (${taken.status})`,
+    };
   }
   const unclassified = forHead.find((deployment) => !isKnownStatus(deployment.status));
   if (unclassified) {
@@ -218,6 +286,9 @@ export function planServiceDeploy({
     return {
       ...base,
       runningSha,
+      observedDeploymentId: headToRunning === 'yes' && typeof running.id === 'string'
+        ? running.id
+        : null,
       action: 'skip',
       reason: headToRunning === 'yes' ? 'AHEAD' : 'DIVERGED',
       detail: headToRunning === 'yes'
@@ -314,6 +385,446 @@ export function summarizeDeployPlan(plans) {
   };
 }
 
+export const RECOVERY_HOLD_WAIT_MS = 2 * 60 * 1_000;
+export const RECOVERY_HOLD_POLL_MS = 5 * 1_000;
+
+export class ReconcileDeferral extends Error {
+  constructor(code, message) {
+    super(message);
+    this.name = 'ReconcileDeferral';
+    this.code = code;
+  }
+}
+
+export class ReconcileAuthorizationError extends Error {
+  constructor(code, message) {
+    super(message);
+    this.name = 'ReconcileAuthorizationError';
+    this.code = code;
+  }
+}
+
+export function assertWorkflowMutationAuthority({
+  dryRun,
+  argv = process.argv,
+  env = process.env,
+}) {
+  if (dryRun) return;
+  if (!argv.includes('--workflow-authorized')) {
+    throw new Error('direct Railway mutation is forbidden; use the protected Railway Deploy Trigger workflow');
+  }
+  if (env.GITHUB_ACTIONS !== 'true'
+    || env.GITHUB_REF !== 'refs/heads/main'
+    || env.RAILWAY_RECONCILE_CUTOVER_ACTIVE !== 'true') {
+    throw new Error('Railway mutation requires the active protected main workflow');
+  }
+  const workflowRef = String(env.GITHUB_WORKFLOW_REF ?? '');
+  if (!workflowRef.includes(`/.github/workflows/${TARGET_WORKFLOW_FILE}@`)) {
+    throw new Error(`Railway mutation authority belongs only to ${TARGET_WORKFLOW_FILE}`);
+  }
+  if (!/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(String(env.GITHUB_REPOSITORY ?? ''))
+    || !/^[1-9][0-9]{0,23}$/.test(String(env.GITHUB_RUN_ID ?? ''))
+    || !/^[1-9][0-9]{0,3}$/.test(String(env.GITHUB_RUN_ATTEMPT ?? ''))) {
+    throw new Error('Railway mutation requires an exact GitHub repository, run, and attempt identity');
+  }
+}
+
+function selectEnvironment(env, keys) {
+  return Object.fromEntries(keys.flatMap((key) => (
+    typeof env?.[key] === 'string' ? [[key, env[key]]] : []
+  )));
+}
+
+export function createRailwayCliInstallEnv(env = process.env) {
+  return selectEnvironment(env, NPM_INSTALL_ENV_KEYS);
+}
+
+export function createGitHubCliEnv(env = process.env) {
+  return selectEnvironment(env, GITHUB_CLI_ENV_KEYS);
+}
+
+export function installPinnedRailwayCli({ spawn = spawnSync, env = process.env } = {}) {
+  const result = spawn('npm', ['install', '--global', PINNED_RAILWAY_CLI], {
+    encoding: 'utf8',
+    maxBuffer: 8 * 1024 * 1024,
+    timeout: 2 * 60 * 1_000,
+    env: createRailwayCliInstallEnv(env),
+  });
+  if (result.signal) throw new Error('pinned Railway CLI installation timed out');
+  if (result.error) throw result.error;
+  if (result.status !== 0) {
+    throw new Error(`pinned Railway CLI installation failed (${result.status})`);
+  }
+}
+
+export function runGitHubApi(path, env, { spawn = spawnSync, attempts = 3 } = {}) {
+  if (!Number.isInteger(attempts) || attempts < 1 || attempts > 5) {
+    throw new TypeError('GitHub API attempts must be an integer from 1 through 5');
+  }
+  const githubEnv = createGitHubCliEnv(env);
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    const result = spawn('gh', ['api', path], {
+      encoding: 'utf8',
+      maxBuffer: 4 * 1024 * 1024,
+      timeout: 15_000,
+      env: githubEnv,
+    });
+    if (!result.signal && !result.error && result.status === 0) {
+      try {
+        return JSON.parse(result.stdout);
+      } catch {
+        // A truncated or non-JSON response is a transient unreadable read. Retry.
+      }
+    }
+  }
+  throw new ReconcileAuthorizationError(
+    'GITHUB_STATE_UNREADABLE',
+    'current GitHub authorization state could not be read after bounded retries',
+  );
+}
+
+export function readExactCurrentMainAuthorization({
+  repository,
+  headSha,
+  env = process.env,
+  api = (path) => runGitHubApi(path, env),
+  now = Date.now,
+}) {
+  if (!/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(repository)
+    || !/^[0-9a-f]{40}$/.test(headSha)) {
+    throw new TypeError('exact-current-main authorization requires a repository and lowercase SHA');
+  }
+  const ref = api(`repos/${repository}/git/ref/heads/main`);
+  const currentHead = ref?.object?.sha;
+  if (currentHead !== headSha) {
+    throw new ReconcileAuthorizationError('MAIN_MOVED', 'main moved away from the frozen reconciliation head');
+  }
+  const statuses = api(`repos/${repository}/commits/${headSha}/statuses?per_page=100`);
+  if (!Array.isArray(statuses)) {
+    throw new ReconcileAuthorizationError('GITHUB_STATE_UNREADABLE', 'main gate history was not an array');
+  }
+  const newestGate = statuses.find((status) => status?.context === 'gate');
+  if (newestGate?.state !== 'success') {
+    throw new ReconcileAuthorizationError('GATE_NOT_GREEN', 'the newest exact-head gate is not successful');
+  }
+  const observedAt = new Date(now()).toISOString();
+  return {
+    gateContext: 'gate',
+    gateState: 'success',
+    gateObservedAt: observedAt,
+    mainObservedAt: observedAt,
+  };
+}
+
+export function readCurrentMainLineageAuthorization({
+  repository,
+  headSha,
+  env = process.env,
+  api = (path) => runGitHubApi(path, env),
+  now = Date.now,
+}) {
+  if (!/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(repository)
+    || !/^[0-9a-f]{40}$/.test(headSha)) {
+    throw new TypeError('current-main lineage authorization requires a repository and lowercase SHA');
+  }
+
+  const readMainHead = () => {
+    const currentHead = api(`repos/${repository}/git/ref/heads/main`)?.object?.sha;
+    if (!/^[0-9a-f]{40}$/.test(currentHead ?? '')) {
+      throw new ReconcileAuthorizationError(
+        'GITHUB_STATE_UNREADABLE',
+        'current main did not resolve to a lowercase SHA',
+      );
+    }
+    return currentHead;
+  };
+
+  const currentHead = readMainHead();
+  const statuses = api(`repos/${repository}/commits/${currentHead}/statuses?per_page=100`);
+  if (!Array.isArray(statuses)) {
+    throw new ReconcileAuthorizationError('GITHUB_STATE_UNREADABLE', 'current main gate history was not an array');
+  }
+  const newestGate = statuses.find((status) => status?.context === 'gate');
+  if (newestGate?.state !== 'success') {
+    throw new ReconcileAuthorizationError('GATE_NOT_GREEN', 'the newest current-main gate is not successful');
+  }
+
+  if (currentHead !== headSha) {
+    const comparison = api(`repos/${repository}/compare/${headSha}...${currentHead}`);
+    if (typeof comparison?.status !== 'string'
+      || !/^[0-9a-f]{40}$/.test(comparison?.merge_base_commit?.sha ?? '')) {
+      throw new ReconcileAuthorizationError(
+        'GITHUB_STATE_UNREADABLE',
+        'current-main lineage comparison was unreadable',
+      );
+    }
+    if (comparison.status !== 'ahead' || comparison.merge_base_commit.sha !== headSha) {
+      throw new ReconcileAuthorizationError(
+        'MAIN_DIVERGED',
+        'current main is not a descendant of the frozen reconciliation head',
+      );
+    }
+  }
+
+  if (readMainHead() !== currentHead) {
+    throw new ReconcileAuthorizationError(
+      'MAIN_MOVED',
+      'main moved while the reconciliation lineage was being verified',
+    );
+  }
+
+  const observedAt = new Date(now()).toISOString();
+  return {
+    gateContext: 'gate',
+    gateState: 'success',
+    gateObservedAt: observedAt,
+    mainObservedAt: observedAt,
+    attemptedHeadSha: headSha,
+    currentMainHeadSha: currentHead,
+    lineage: currentHead === headSha ? 'EXACT' : 'DESCENDANT',
+  };
+}
+
+function closedReason(plan, fallback = 'PLAN_SKIPPED') {
+  if (typeof plan?.reason === 'string' && /^[A-Z][A-Z0-9_]{0,63}$/.test(plan.reason)) {
+    return plan.reason;
+  }
+  if (plan?.action === 'error') return 'HISTORY_UNAVAILABLE';
+  if (plan?.action === 'report') return 'UNKNOWN_STATUS';
+  return fallback;
+}
+
+function plannedAction(plan) {
+  if (plan.action === 'deploy') return 'DEPLOY';
+  if (plan.observedDeploymentId) return 'ADOPT';
+  return 'SKIP';
+}
+
+export function createPlannedManifestEntries(plans) {
+  return plans.map((plan) => ({
+    service: plan.service,
+    serviceId: plan.serviceId,
+    action: plannedAction(plan),
+    reason: closedReason(plan),
+  }));
+}
+
+function resultEntry(plan, action, {
+  outcome,
+  deploymentId = null,
+  observedDeploymentId = null,
+  reason = closedReason(plan),
+} = {}) {
+  return {
+    service: plan.service,
+    serviceId: plan.serviceId,
+    action,
+    outcome,
+    deploymentId,
+    observedDeploymentId,
+    reason,
+  };
+}
+
+function noMutationEntry(plan, action = plannedAction(plan), reason = closedReason(plan)) {
+  if (plan.observedDeploymentId) {
+    return resultEntry(plan, action, {
+      outcome: 'ALREADY_ACTIVE',
+      observedDeploymentId: plan.observedDeploymentId,
+      reason,
+    });
+  }
+  return resultEntry(plan, action, { outcome: 'SKIPPED', reason });
+}
+
+function resultOutcome(entries) {
+  if (entries.some((entry) => entry.outcome === 'AMBIGUOUS')) return 'MUTATION_AMBIGUOUS';
+  if (entries.some((entry) => entry.outcome === 'FAILED')) return 'MUTATION_PARTIAL';
+  if (entries.some((entry) => entry.outcome === 'TRIGGERED')) return 'MUTATION_COMPLETED';
+  return 'NO_MUTATION';
+}
+
+function safeAcquireDeferral(error) {
+  return error instanceof ControlPlaneError
+    && error.definitive
+    && SAFE_ACQUIRE_DEFERRALS.has(error.code);
+}
+
+export async function runLeasedReconcile({
+  control,
+  ownerId,
+  headSha,
+  recoveryAttemptId = null,
+  producer,
+  authorizeCurrent,
+  buildPlan,
+  refreshService,
+  deployService,
+  writeResult,
+  now = Date.now,
+  sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+  recoveryHoldWaitMs = RECOVERY_HOLD_WAIT_MS,
+  recoveryHoldPollMs = RECOVERY_HOLD_POLL_MS,
+}) {
+  for (const callback of [authorizeCurrent, buildPlan, refreshService, deployService, writeResult]) {
+    if (typeof callback !== 'function') throw new TypeError('leased reconciliation callbacks must be functions');
+  }
+  const acquireStartedAt = now();
+  let authorization;
+  let acquisition;
+  while (!acquisition) {
+    authorization = await authorizeCurrent();
+    try {
+      acquisition = (await control.acquire({
+        ownerId,
+        headSha,
+        ...(recoveryAttemptId ? { recoveryAttemptId } : {}),
+        runId: producer.runId,
+        runAttempt: producer.runAttempt,
+      })).data;
+    } catch (error) {
+      const mayWaitForBoundHold = recoveryAttemptId
+        && error instanceof ControlPlaneError
+        && error.definitive
+        && error.code === 'DISPATCH_HOLD_ACTIVE'
+        && now() - acquireStartedAt < recoveryHoldWaitMs;
+      if (mayWaitForBoundHold) {
+        await sleep(Math.min(recoveryHoldPollMs, recoveryHoldWaitMs - (now() - acquireStartedAt)));
+        continue;
+      }
+      if (safeAcquireDeferral(error)) {
+        throw new ReconcileDeferral(error.code, 'another durable reconciliation state currently owns admission');
+      }
+      throw error;
+    }
+  }
+
+  const attempt = acquisition.attempt;
+  const ownerFields = {
+    attemptId: attempt.attemptId,
+    ownerId,
+    leaseCapability: acquisition.leaseCapability,
+    headSha,
+  };
+  let operationError = null;
+  let completed = null;
+  try {
+    const context = await buildPlan();
+    const plans = [...context.plans].sort((left, right) => left.service.localeCompare(right.service));
+    const intent = createIntentManifest({
+      attemptId: attempt.attemptId,
+      producer,
+      headSha,
+      projectId: context.projectId,
+      environmentId: context.environmentId,
+      owner: ownerId,
+      recoveryAttemptId,
+      plannedServices: createPlannedManifestEntries(plans),
+      authorization,
+      createdAt: new Date(now()).toISOString(),
+    });
+    await control.prepare({ ...ownerFields, intentDigest: intent.intentDigest });
+
+    const actions = new Map(intent.plannedServices.map((entry) => [entry.service, entry.action]));
+    const entries = [];
+    let mutationStarted = false;
+    let stopReason = null;
+    for (const plan of plans) {
+      const action = actions.get(plan.service);
+      if (stopReason) {
+        entries.push(resultEntry(plan, action, { outcome: 'SKIPPED', reason: stopReason }));
+        continue;
+      }
+      if (plan.action !== 'deploy') {
+        entries.push(noMutationEntry(plan, action));
+        continue;
+      }
+
+      let fresh;
+      try {
+        await control.assertLease({ ...ownerFields, minTtlMs: MUTATION_MIN_TTL_MS });
+        await authorizeCurrent();
+        fresh = await refreshService(plan);
+      } catch (error) {
+        const reason = error instanceof ReconcileAuthorizationError
+          ? error.code
+          : error instanceof ControlPlaneError
+            ? 'LEASE_OWNERSHIP_LOST'
+            : 'HISTORY_UNAVAILABLE';
+        entries.push(resultEntry(plan, action, {
+          // This fence failed before this service's provider call. Earlier
+          // triggers remain exact evidence, but this service is deliberately
+          // untouched rather than a failed or ambiguous mutation.
+          outcome: 'SKIPPED',
+          reason,
+        }));
+        stopReason = mutationStarted ? 'STOPPED_AFTER_FENCE' : reason;
+        continue;
+      }
+
+      if (fresh.action !== 'deploy') {
+        entries.push(noMutationEntry(fresh, action));
+        if (fresh.observedDeploymentId) {
+          plan.alreadyActiveDeploymentId = fresh.observedDeploymentId;
+        }
+        continue;
+      }
+
+      if (!mutationStarted) {
+        await control.startMutation({
+          ...ownerFields,
+          intentDigest: intent.intentDigest,
+          minTtlMs: MUTATION_MIN_TTL_MS,
+        });
+        mutationStarted = true;
+      }
+      try {
+        const deploymentId = await deployService(plan, context);
+        plan.deploymentId = deploymentId;
+        entries.push(resultEntry(plan, action, {
+          outcome: 'TRIGGERED',
+          deploymentId,
+          reason: closedReason(plan),
+        }));
+      } catch {
+        entries.push(resultEntry(plan, action, {
+          outcome: 'AMBIGUOUS',
+          reason: 'TRIGGER_AMBIGUOUS',
+        }));
+        stopReason = 'STOPPED_AFTER_AMBIGUITY';
+      }
+    }
+
+    const outcome = resultOutcome(entries);
+    const result = createResultManifest({
+      intent,
+      outcome,
+      entries,
+      createdAt: new Date(now()).toISOString(),
+    });
+    await writeResult(result);
+    await control.bindResult({
+      ...ownerFields,
+      intentDigest: intent.intentDigest,
+      resultKind: mutationStarted ? 'MUTATED' : 'NO_MUTATION',
+      resultDigest: result.resultDigest,
+      minTtlMs: 1,
+    });
+    completed = { attempt, context, plans, intent, result };
+  } catch (error) {
+    operationError = error;
+  } finally {
+    try {
+      await control.release(ownerFields);
+    } catch (releaseError) {
+      if (!operationError) operationError = releaseError;
+      else console.error('Owner-safe lease release also failed; durable expiry remains authoritative.');
+    }
+  }
+  if (operationError) throw operationError;
+  return completed;
+}
+
 
 
 
@@ -373,6 +884,10 @@ function printReport(plans, summary, headSha, { dryRun, elapsedMs }) {
     console.error(`::${level}::${plan.service}: ${plan.detail}`);
   }
   for (const plan of summary.deploys) {
+    if (!dryRun && plan.alreadyActiveDeploymentId) {
+      console.log(`- already active (${plan.alreadyActiveDeploymentId}): ${plan.service} [fresh provider recheck]`);
+      continue;
+    }
     if (!dryRun && !plan.deploymentId) {
       // ::error:: so the failing SERVICE and its reason reach the Actions
       // summary and the PR checks panel. A plain console.error reds the run but
@@ -389,6 +904,97 @@ function printReport(plans, summary, headSha, { dryRun, elapsedMs }) {
   }
 }
 
+async function buildDeployPlanningContext({ environment, window, concurrency, headSha }) {
+  const projectId = process.env.RAILWAY_PROJECT_ID;
+  if (typeof projectId !== 'string' || projectId.length === 0) {
+    throw new Error('RAILWAY_PROJECT_ID is required');
+  }
+  const registryByService = readRegistryByService();
+  const fleet = readRepositoryServices(environment);
+  if (fleet.length === 0) {
+    throw new Error('the Railway service query returned no repository services, which is a query failure rather than an empty fleet');
+  }
+  const repositoryServices = selectServices(fleet, readArgument(process.argv, '--only', null));
+  const serviceById = new Map(repositoryServices.map((service) => [service.id, service]));
+  // readEnvironmentConfig fails closed on an unexpected payload; see its comment.
+  const liveById = readEnvironmentConfig(environment).services;
+  const environmentId = resolveEnvironmentId(environment);
+  // Merges that landed after the checkout are the main source of "this commit
+  // is not in my history", and one fetch removes most of them before any
+  // ancestry question is asked.
+  try {
+    runGit(['fetch', '--quiet', '--no-tags', 'origin', 'main']);
+  } catch {
+    // Best effort; the ancestry resolver still refuses rather than guesses.
+  }
+  const changedPathsSince = createChangedPathsReader(headSha, { git: runGit });
+  const ancestry = createAncestryResolver({
+    git: runGit,
+    fetchMissing: (sha) => runGit(['fetch', '--quiet', '--no-tags', 'origin', sha]),
+  });
+
+  let headCommittedAt = Number.NEGATIVE_INFINITY;
+  try {
+    headCommittedAt = Number(runGit(['show', '-s', '--format=%ct', headSha])) * 1000;
+  } catch {
+    // Unknown head time means page to the service-coverage rule alone.
+  }
+  const histories = await readDeploymentsForFleet({
+    services: repositoryServices,
+    environment,
+    environmentId,
+    window,
+    concurrency,
+    notBefore: headCommittedAt,
+    accumulatorFactory: createFleetAccumulator,
+    onRoute: (route) => {
+      console.error(route.route === 'fleet'
+        ? `Read ${repositoryServices.length} service histories in ${route.pages} fleet page(s) (${route.records} records), ${route.fellBack} direct fallback(s).`
+        : `Reading service histories one at a time: ${route.reason}`);
+    },
+  });
+
+  const planFor = (service, deployments, readError = null) => planServiceDeploy({
+    service: service.name,
+    serviceId: service.id,
+    closure: resolveServiceClosure({
+      registryEntry: registryByService.get(service.name) ?? null,
+      liveService: liveById[service.id] ?? null,
+    }),
+    deployments,
+    headSha,
+    changedPathsSince,
+    readError,
+    ancestry,
+  });
+  const plans = (await mapWithConcurrency(repositoryServices, concurrency, async (service) => {
+    const { deployments, error: readError } = histories.get(service.id)
+      ?? { deployments: null, error: 'no history was read for this service' };
+    return planFor(service, deployments, readError);
+  })).sort((left, right) => left.service.localeCompare(right.service));
+
+  return {
+    projectId,
+    environmentId,
+    plans,
+    refreshService: async (plan) => {
+      const service = serviceById.get(plan.serviceId);
+      if (!service || service.name !== plan.service) {
+        throw new Error('planned Railway service no longer matches the live fleet');
+      }
+      return planFor(service, await readDeployments(service, environment, window));
+    },
+  };
+}
+
+function writeStatus(path, value) {
+  if (!path) return;
+  writeFileSync(path, `${JSON.stringify({ version: RESULT_STATUS_VERSION, ...value })}\n`, {
+    encoding: 'utf8',
+    mode: 0o600,
+  });
+}
+
 async function main() {
   const dryRun = process.argv.includes('--dry-run');
   const asJson = process.argv.includes('--json');
@@ -397,6 +1003,7 @@ async function main() {
   const concurrency = Number(readArgument(process.argv, '--concurrency', String(DEFAULT_CONCURRENCY)));
   if (!Number.isInteger(window) || window <= 0) throw new Error('--window must be a positive integer');
   if (!Number.isInteger(concurrency) || concurrency <= 0) throw new Error('--concurrency must be a positive integer');
+  assertWorkflowMutationAuthority({ dryRun });
   // origin/main, never the local checkout's HEAD. This is the only script in
   // the repository that mutates production, and the runbook tells an operator to
   // run it with --only <service> from wherever they happen to be standing — so a
@@ -417,110 +1024,98 @@ async function main() {
     }
   }
 
-  const registryByService = readRegistryByService();
-  const fleet = readRepositoryServices(environment);
-  if (fleet.length === 0) {
-    throw new Error('the Railway service query returned no repository services, which is a query failure rather than an empty fleet');
+  if (dryRun) {
+    const context = await buildDeployPlanningContext({ environment, window, concurrency, headSha });
+    const summary = summarizeDeployPlan(context.plans);
+    const elapsedMs = Date.now() - startedAt;
+    if (asJson) console.log(JSON.stringify({
+      environment, headSha, dryRun, elapsedMs, railwayReads: context.plans.length, summary, plans: context.plans,
+    }, null, 2));
+    else printReport(context.plans, summary, headSha, { dryRun, elapsedMs });
+    return;
   }
-  const repositoryServices = selectServices(fleet, readArgument(process.argv, '--only', null));
-  // readEnvironmentConfig fails closed on an unexpected payload; see its comment.
-  const liveById = readEnvironmentConfig(environment).services;
-  // Merges that landed after the checkout are the main source of "this commit
-  // is not in my history", and one fetch removes most of them before any
-  // ancestry question is asked.
-  try {
-    runGit(['fetch', '--quiet', '--no-tags', 'origin', 'main']);
-  } catch {
-    // Best effort; the ancestry resolver still refuses rather than guesses.
-  }
-  const changedPathsSince = createChangedPathsReader(headSha, { git: runGit });
-  // Tri-state, and given a chance to FETCH a commit it cannot see rather than
-  // guessing about it. Railway builds a merge in seconds, so a service running
-  // a commit that landed after this checkout is the ordinary case.
-  const ancestry = createAncestryResolver({
-    git: runGit,
-    fetchMissing: (sha) => runGit(['fetch', '--quiet', '--no-tags', 'origin', sha]),
-  });
 
-  // One fleet-wide query instead of one call per service, falling back to the
-  // per-service path for anything it does not reach. Head's commit time is the
-  // depth the stream must reach for "did Railway take head" to be answerable.
-  let headCommittedAt = Number.NEGATIVE_INFINITY;
-  try {
-    headCommittedAt = Number(runGit(['show', '-s', '--format=%ct', headSha])) * 1000;
-  } catch {
-    // Unknown head time means page to the service-coverage rule alone.
+  const resultPath = readArgument(process.argv, '--result-manifest', null);
+  const statusPath = readArgument(process.argv, '--status-file', null);
+  if (!resultPath || !statusPath) {
+    throw new Error('--result-manifest and --status-file are required for protected mutation');
   }
-  const environmentIdForReads = (() => {
-    try {
-      return resolveEnvironmentId(environment);
-    } catch {
-      return null;
-    }
-  })();
-  const histories = await readDeploymentsForFleet({
-    services: repositoryServices,
-    environment,
-    environmentId: environmentIdForReads,
-    window,
-    concurrency,
-    notBefore: headCommittedAt,
-    accumulatorFactory: createFleetAccumulator,
-    onRoute: (route) => {
-      // stderr, not stdout: --json must remain one parseable document, and a
-      // human progress line in front of it breaks every machine consumer.
-      console.error(route.route === 'fleet'
-        ? `Read ${repositoryServices.length} service histories in ${route.pages} fleet page(s) (${route.records} records), ${route.fellBack} direct fallback(s).`
-        : `Reading service histories one at a time: ${route.reason}`);
-    },
+  const repository = process.env.GITHUB_REPOSITORY;
+  const producer = {
+    repository,
+    workflow: TARGET_WORKFLOW_FILE,
+    runId: process.env.GITHUB_RUN_ID,
+    runAttempt: Number(process.env.GITHUB_RUN_ATTEMPT),
+  };
+  const ownerId = `github-run:${producer.runId}:${producer.runAttempt}`;
+  const recoveryInput = readArgument(process.argv, '--recovery-attempt-id', null);
+  const recoveryAttemptId = recoveryInput && recoveryInput !== 'none' ? recoveryInput : null;
+  const control = new RailwayReconcileControlClient({
+    role: 'mutation',
+    secret: process.env.RAILWAY_RECONCILE_MUTATION_HMAC,
   });
-
-  const plans = (await mapWithConcurrency(repositoryServices, concurrency, async (service) => {
-    const { deployments, error: readError } = histories.get(service.id) ?? { deployments: null, error: 'no history was read for this service' };
-    return planServiceDeploy({
-      service: service.name,
-      serviceId: service.id,
-      closure: resolveServiceClosure({
-        registryEntry: registryByService.get(service.name) ?? null,
-        liveService: liveById[service.id] ?? null,
-      }),
-      deployments,
+  // The client owns the only required copy. Do not expose the mutation HMAC to
+  // npm lifecycle scripts, the Railway CLI, gh, git, or any later subprocess.
+  delete process.env.RAILWAY_RECONCILE_MUTATION_HMAC;
+  let planningContext;
+  let completed;
+  try {
+    completed = await runLeasedReconcile({
+      control,
+      ownerId,
       headSha,
-      changedPathsSince,
-      readError,
-      ancestry,
+      recoveryAttemptId,
+      producer,
+      authorizeCurrent: () => readExactCurrentMainAuthorization({ repository, headSha }),
+      buildPlan: async () => {
+        // A runner-less job or a contender rejected by durable admission must
+        // perform neither production setup nor Railway reads.
+        installPinnedRailwayCli();
+        planningContext = await buildDeployPlanningContext({ environment, window, concurrency, headSha });
+        return planningContext;
+      },
+      refreshService: (plan) => planningContext.refreshService(plan),
+      deployService: async (plan, context) => readDeploymentId(runRailway(buildDeployArgs({
+        serviceId: plan.serviceId,
+        environmentId: context.environmentId,
+        commitSha: headSha,
+      }))),
+      writeResult: async (result) => {
+        writeFileSync(resultPath, `${JSON.stringify(result, null, 2)}\n`, { encoding: 'utf8', mode: 0o600 });
+      },
     });
-  })).sort((left, right) => left.service.localeCompare(right.service));
-
-  const summary = summarizeDeployPlan(plans);
-  if (!dryRun && summary.deploys.length > 0) {
-    const environmentId = resolveEnvironmentId(environment);
-    // Serial on purpose: this is the only mutating call in the script, and a
-    // burst of parallel deploys against one project is how a rate limit turns a
-    // partial catch-up into a silent one.
-    for (const plan of summary.deploys) {
-      try {
-        plan.deploymentId = readDeploymentId(runRailway(buildDeployArgs({
-          serviceId: plan.serviceId,
-          environmentId,
-          commitSha: headSha,
-        })));
-      } catch (error) {
-        plan.error = error instanceof Error ? error.message : String(error);
-      }
+  } catch (error) {
+    if (error instanceof ReconcileDeferral) {
+      writeStatus(statusPath, { outcome: 'DURABLE_ADMISSION_DEFERRED', reason: error.code, manifestReady: false });
+      console.log(`::notice::Railway reconciliation deferred by durable control state (${error.code}).`);
+      if (FAILING_ACQUIRE_DEFERRALS.has(error.code)) process.exitCode = 1;
+      return;
     }
+    writeStatus(statusPath, { outcome: 'MUTATION_FAILED', manifestReady: false });
+    throw error;
   }
 
+  const summary = summarizeDeployPlan(completed.plans);
   const elapsedMs = Date.now() - startedAt;
-  if (asJson) console.log(JSON.stringify({ environment, headSha, dryRun, elapsedMs, railwayReads: plans.length, summary, plans }, null, 2));
-  else printReport(plans, summary, headSha, { dryRun, elapsedMs });
-
-  // Hard-fail only on work that was supposed to happen and did not: a deploy
-  // call that errored or returned no deployment id, or a run in which nothing
-  // could be read at all. An individual unreadable service is warned about
-  // above and left to the drift check.
-  const failed = summary.deploys.filter((plan) => !dryRun && !plan.deploymentId);
-  if (!summary.ok || failed.length > 0) process.exitCode = 1;
+  writeStatus(statusPath, {
+    outcome: completed.result.outcome,
+    manifestReady: true,
+    attemptId: completed.attempt.attemptId,
+  });
+  if (asJson) console.log(JSON.stringify({
+    environment,
+    headSha,
+    dryRun,
+    elapsedMs,
+    railwayReads: completed.plans.length,
+    summary,
+    plans: completed.plans,
+    result: completed.result,
+  }, null, 2));
+  else printReport(completed.plans, summary, headSha, { dryRun, elapsedMs });
+  if (!summary.ok || ['MUTATION_PARTIAL', 'MUTATION_AMBIGUOUS'].includes(completed.result.outcome)) {
+    process.exitCode = 1;
+  }
 }
 
 // realpath BOTH sides: Node sets import.meta.url to the realpath while argv[1]

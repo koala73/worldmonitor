@@ -2572,10 +2572,11 @@
       "unlockedAnnouncement": "Limit karet řídicího panelu zrušen."
     },
     "fx": {
-      "infoTooltip": "<strong>Kurzy měn</strong> Stres měny a spotové kurzy:<ul><li>FX Stress řadí 45 měn podle jejich největšího poklesu od vrcholu k dnu za posledních 24 měsíců spolu se změnou za 12 měsíců</li><li>Pokrytí zahrnuje ARS, TRY, EGP, NGN, PKR a UAH — měny, které BIS a ECB vynechávají ze svých referenčních sad</li><li>Spot uvádí kurzy vůči dolaru a referenčnímu kurzu eura ECB zvlášť, protože obě sady vycházejí z různých základů</li></ul>Zdroje: Yahoo Finance a Evropská centrální banka.",
+      "infoTooltip": "<strong>Kurzy měn</strong> Stres měny a spotové kurzy:<ul><li>FX Stress řadí 45 měn podle jejich největšího poklesu od vrcholu k dnu za posledních 24 měsíců spolu se změnou za 12 měsíců</li><li>Pokrytí zahrnuje ARS, TRY, EGP, NGN, PKR a UAH — měny, které BIS a ECB vynechávají ze svých referenčních sad</li><li>Spot uvádí kurzy vůči dolaru a referenčnímu kurzu eura ECB zvlášť, protože obě sady vycházejí z různých základů</li><li>RUB — kurzy Ruské centrální banky, rublů za jednotku</li></ul> Zdroje: Yahoo Finance, Evropská centrální banka a Ruská centrální banka.",
       "tabs": {
         "stress": "FX Stress",
-        "spot": "Spot"
+        "spot": "Spot",
+        "rub": "RUB"
       },
       "currency": "Měna",
       "pair": "Pár",
@@ -2595,8 +2596,12 @@
       "source": {
         "stress": "Stres směnného kurzu",
         "usd": "Kurzy amerického dolaru",
-        "eur": "Kurzy eura ECB"
-      }
+        "eur": "Kurzy eura ECB",
+        "rub": "Kurzy ruské centrální banky"
+      },
+      "rubBase": "Ruská centrální banka — rubly za 1 jednotku",
+      "rubPerUnit": "Rublů za jednotku",
+      "sourceCbr": "Zdroj: Ruská centrální banka"
     }
   },
   "popups": {

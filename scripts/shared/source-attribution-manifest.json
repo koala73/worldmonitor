@@ -39,7 +39,7 @@
       "references": [
         {
           "path": "server/worldmonitor/news/v1/_feeds.ts",
-          "line": 73
+          "line": 96
         },
         {
           "path": "src/config/feeds.ts",
@@ -73,7 +73,7 @@
       "references": [
         {
           "path": "server/worldmonitor/news/v1/_feeds.ts",
-          "line": 72
+          "line": 95
         },
         {
           "path": "src/config/feeds.ts",
@@ -195,7 +195,7 @@
       "references": [
         {
           "path": "server/worldmonitor/news/v1/_feeds.ts",
-          "line": 232
+          "line": 255
         },
         {
           "path": "src/config/feeds.ts",
@@ -335,7 +335,7 @@
       "references": [
         {
           "path": "scripts/ais-relay.cjs",
-          "line": 3255
+          "line": 3297
         },
         {
           "path": "scripts/seed-cyber-threats.mjs",
@@ -358,7 +358,7 @@
       "references": [
         {
           "path": "scripts/ais-relay.cjs",
-          "line": 4387
+          "line": 4429
         },
         {
           "path": "scripts/seed-military-flights.mjs",
@@ -415,7 +415,7 @@
       "references": [
         {
           "path": "scripts/ais-relay.cjs",
-          "line": 9694
+          "line": 9847
         },
         {
           "path": "scripts/seed-aviation.mjs",
@@ -446,7 +446,7 @@
         },
         {
           "path": "scripts/seed-forecasts.mjs",
-          "line": 15149
+          "line": 15175
         },
         {
           "path": "server/_shared/usage.ts",
@@ -465,7 +465,7 @@
       "references": [
         {
           "path": "server/worldmonitor/news/v1/_feeds.ts",
-          "line": 46
+          "line": 69
         },
         {
           "path": "src/config/feeds.ts",
@@ -530,7 +530,7 @@
       "references": [
         {
           "path": "scripts/ais-relay.cjs",
-          "line": 2698
+          "line": 2731
         }
       ]
     },
@@ -549,11 +549,11 @@
         },
         {
           "path": "scripts/ais-relay.cjs",
-          "line": 2602
+          "line": 2635
         },
         {
           "path": "server/worldmonitor/market/v1/_shared.ts",
-          "line": 413
+          "line": 409
         }
       ]
     },
@@ -668,7 +668,7 @@
       "references": [
         {
           "path": "scripts/ais-relay.cjs",
-          "line": 11528
+          "line": 11725
         },
         {
           "path": "scripts/seed-bigmac.mjs",
@@ -714,7 +714,7 @@
         },
         {
           "path": "scripts/seed-supply-chain-trade.mjs",
-          "line": 749
+          "line": 1067
         }
       ]
     },
@@ -816,7 +816,7 @@
       "references": [
         {
           "path": "scripts/_seed-utils.mjs",
-          "line": 1311
+          "line": 1322
         },
         {
           "path": "scripts/seed-gold-cb-reserves.mjs",
@@ -997,7 +997,7 @@
       "references": [
         {
           "path": "scripts/ais-relay.cjs",
-          "line": 6018
+          "line": 6060
         }
       ]
     },
@@ -1012,7 +1012,7 @@
       "references": [
         {
           "path": "scripts/ais-relay.cjs",
-          "line": 11557
+          "line": 11754
         },
         {
           "path": "server/worldmonitor/market/v1/stock-news-search.ts",
@@ -1156,7 +1156,7 @@
       "references": [
         {
           "path": "scripts/ais-relay.cjs",
-          "line": 4949
+          "line": 4991
         },
         {
           "path": "scripts/seed-usa-spending.mjs",
@@ -1205,7 +1205,7 @@
       "references": [
         {
           "path": "scripts/ais-relay.cjs",
-          "line": 4809
+          "line": 4851
         },
         {
           "path": "scripts/seed-weather-alerts.mjs",
@@ -1243,23 +1243,23 @@
       "references": [
         {
           "path": "scripts/ais-relay.cjs",
-          "line": 5390
+          "line": 5432
         },
         {
           "path": "scripts/ais-relay.cjs",
-          "line": 5453
+          "line": 5495
         },
         {
           "path": "scripts/ais-relay.cjs",
-          "line": 5478
+          "line": 5520
         },
         {
           "path": "scripts/ais-relay.cjs",
-          "line": 9167
+          "line": 9215
         },
         {
           "path": "scripts/ais-relay.cjs",
-          "line": 9249
+          "line": 9297
         },
         {
           "path": "scripts/seed-bis-lbs.mjs",
@@ -1334,27 +1334,27 @@
         },
         {
           "path": "scripts/ais-relay.cjs",
-          "line": 3739
+          "line": 3781
         },
         {
           "path": "scripts/ais-relay.cjs",
-          "line": 3970
+          "line": 4012
         },
         {
           "path": "scripts/ais-relay.cjs",
-          "line": 4696
+          "line": 4738
         },
         {
           "path": "scripts/ais-relay.cjs",
-          "line": 4732
+          "line": 4774
         },
         {
           "path": "scripts/ais-relay.cjs",
-          "line": 4767
+          "line": 4809
         },
         {
           "path": "scripts/ais-relay.cjs",
-          "line": 11859
+          "line": 12056
         },
         {
           "path": "scripts/audit-resilience-cohorts.mjs",
@@ -1402,7 +1402,7 @@
         },
         {
           "path": "scripts/seed-insights.mjs",
-          "line": 646
+          "line": 631
         },
         {
           "path": "scripts/seed-military-maritime-news.mjs",
@@ -1457,11 +1457,11 @@
       "references": [
         {
           "path": "scripts/seed-supply-chain-trade.mjs",
-          "line": 63
+          "line": 79
         },
         {
           "path": "scripts/seed-supply-chain-trade.mjs",
-          "line": 411
+          "line": 429
         },
         {
           "path": "server/worldmonitor/trade/v1/_shared.ts",
@@ -1525,7 +1525,7 @@
       "references": [
         {
           "path": "server/worldmonitor/news/v1/_feeds.ts",
-          "line": 153
+          "line": 176
         },
         {
           "path": "src/config/feeds.ts",
@@ -1544,7 +1544,7 @@
       "references": [
         {
           "path": "server/worldmonitor/news/v1/_feeds.ts",
-          "line": 277
+          "line": 303
         },
         {
           "path": "src/config/feeds.ts",
@@ -1608,7 +1608,7 @@
       "references": [
         {
           "path": "server/worldmonitor/news/v1/_feeds.ts",
-          "line": 83
+          "line": 106
         },
         {
           "path": "src/config/feeds.ts",
@@ -1703,7 +1703,7 @@
       "references": [
         {
           "path": "server/worldmonitor/news/v1/_feeds.ts",
-          "line": 439
+          "line": 465
         },
         {
           "path": "src/config/feeds.ts",
@@ -1752,7 +1752,7 @@
       "references": [
         {
           "path": "server/worldmonitor/news/v1/_feeds.ts",
-          "line": 633
+          "line": 659
         },
         {
           "path": "src/config/feeds.ts",
@@ -1876,7 +1876,7 @@
       "references": [
         {
           "path": "scripts/ais-relay.cjs",
-          "line": 12081
+          "line": 12278
         },
         {
           "path": "server/_shared/brief-carousel-render.ts",
@@ -1914,7 +1914,7 @@
       "references": [
         {
           "path": "scripts/ais-relay.cjs",
-          "line": 1980
+          "line": 2009
         }
       ]
     },
@@ -1944,7 +1944,7 @@
       "references": [
         {
           "path": "server/worldmonitor/news/v1/_feeds.ts",
-          "line": 391
+          "line": 417
         },
         {
           "path": "src/config/feeds.ts",
@@ -1967,7 +1967,7 @@
       "references": [
         {
           "path": "server/worldmonitor/news/v1/_feeds.ts",
-          "line": 114
+          "line": 137
         },
         {
           "path": "src/config/feeds.ts",
@@ -2043,7 +2043,7 @@
       "references": [
         {
           "path": "server/worldmonitor/news/v1/_feeds.ts",
-          "line": 430
+          "line": 456
         },
         {
           "path": "src/config/feeds.ts",
@@ -2066,7 +2066,7 @@
       "references": [
         {
           "path": "scripts/ais-relay.cjs",
-          "line": 5145
+          "line": 5187
         },
         {
           "path": "scripts/seed-research.mjs",
@@ -2154,7 +2154,7 @@
       "references": [
         {
           "path": "server/worldmonitor/news/v1/_feeds.ts",
-          "line": 616
+          "line": 642
         },
         {
           "path": "src/config/feeds.ts",
@@ -2188,7 +2188,7 @@
       "references": [
         {
           "path": "server/worldmonitor/news/v1/_feeds.ts",
-          "line": 653
+          "line": 679
         },
         {
           "path": "src/config/feeds.ts",
@@ -2207,11 +2207,11 @@
       "references": [
         {
           "path": "scripts/ais-relay.cjs",
-          "line": 5595
+          "line": 5637
         },
         {
           "path": "scripts/ais-relay.cjs",
-          "line": 5621
+          "line": 5663
         }
       ]
     },
@@ -2226,7 +2226,7 @@
       "references": [
         {
           "path": "server/worldmonitor/news/v1/_feeds.ts",
-          "line": 441
+          "line": 467
         },
         {
           "path": "src/config/feeds.ts",
@@ -2245,15 +2245,15 @@
       "references": [
         {
           "path": "scripts/ais-relay.cjs",
-          "line": 4177
+          "line": 4219
         },
         {
           "path": "scripts/ais-relay.cjs",
-          "line": 4266
+          "line": 4308
         },
         {
           "path": "scripts/ais-relay.cjs",
-          "line": 4449
+          "line": 4491
         },
         {
           "path": "scripts/seed-military-flights.mjs",
@@ -2306,7 +2306,7 @@
       "references": [
         {
           "path": "server/worldmonitor/news/v1/_feeds.ts",
-          "line": 223
+          "line": 246
         },
         {
           "path": "src/config/feeds.ts",
@@ -2492,7 +2492,7 @@
       "references": [
         {
           "path": "scripts/ais-relay.cjs",
-          "line": 9925
+          "line": 10078
         },
         {
           "path": "scripts/seed-aviation.mjs",
@@ -2545,7 +2545,7 @@
       "references": [
         {
           "path": "server/worldmonitor/news/v1/_feeds.ts",
-          "line": 432
+          "line": 458
         },
         {
           "path": "src/config/feeds.ts",
@@ -2564,7 +2564,7 @@
       "references": [
         {
           "path": "scripts/ais-relay.cjs",
-          "line": 5140
+          "line": 5182
         },
         {
           "path": "scripts/seed-research.mjs",
@@ -2591,7 +2591,7 @@
       "references": [
         {
           "path": "server/worldmonitor/news/v1/_feeds.ts",
-          "line": 389
+          "line": 415
         },
         {
           "path": "src/config/feeds.ts",
@@ -2633,7 +2633,7 @@
       "references": [
         {
           "path": "server/worldmonitor/news/v1/_feeds.ts",
-          "line": 648
+          "line": 674
         },
         {
           "path": "src/config/feeds.ts",
@@ -2935,7 +2935,7 @@
       "references": [
         {
           "path": "scripts/seed-supply-chain-trade.mjs",
-          "line": 231
+          "line": 249
         }
       ]
     },
@@ -3003,7 +3003,7 @@
       "references": [
         {
           "path": "server/worldmonitor/news/v1/_feeds.ts",
-          "line": 130
+          "line": 153
         },
         {
           "path": "src/config/feeds.ts",
@@ -3082,7 +3082,7 @@
       "references": [
         {
           "path": "server/worldmonitor/news/v1/_feeds.ts",
-          "line": 275
+          "line": 301
         },
         {
           "path": "src/config/feeds.ts",
@@ -3101,7 +3101,7 @@
       "references": [
         {
           "path": "scripts/openapi-inject-examples.mjs",
-          "line": 671
+          "line": 713
         },
         {
           "path": "src/services/mcp-store.ts",
@@ -3128,11 +3128,11 @@
         },
         {
           "path": "server/worldmonitor/news/v1/_feeds.ts",
-          "line": 167
+          "line": 190
         },
         {
           "path": "server/worldmonitor/news/v1/_feeds.ts",
-          "line": 330
+          "line": 356
         },
         {
           "path": "src/config/feeds.ts",
@@ -3182,7 +3182,7 @@
       "references": [
         {
           "path": "server/worldmonitor/news/v1/_feeds.ts",
-          "line": 377
+          "line": 403
         },
         {
           "path": "src/config/feeds.ts",
@@ -3205,7 +3205,7 @@
       "references": [
         {
           "path": "server/worldmonitor/news/v1/_feeds.ts",
-          "line": 40
+          "line": 63
         },
         {
           "path": "src/config/feeds.ts",
@@ -3224,11 +3224,11 @@
       "references": [
         {
           "path": "server/worldmonitor/news/v1/_feeds.ts",
-          "line": 158
+          "line": 181
         },
         {
           "path": "server/worldmonitor/news/v1/_feeds.ts",
-          "line": 323
+          "line": 349
         },
         {
           "path": "src/config/feeds.ts",
@@ -3255,31 +3255,31 @@
       "references": [
         {
           "path": "server/worldmonitor/news/v1/_feeds.ts",
-          "line": 29
+          "line": 52
         },
         {
           "path": "server/worldmonitor/news/v1/_feeds.ts",
-          "line": 140
+          "line": 163
         },
         {
           "path": "server/worldmonitor/news/v1/_feeds.ts",
-          "line": 145
+          "line": 168
         },
         {
           "path": "server/worldmonitor/news/v1/_feeds.ts",
-          "line": 213
+          "line": 236
         },
         {
           "path": "server/worldmonitor/news/v1/_feeds.ts",
-          "line": 242
+          "line": 265
         },
         {
           "path": "server/worldmonitor/news/v1/_feeds.ts",
-          "line": 251
+          "line": 274
         },
         {
           "path": "server/worldmonitor/news/v1/_feeds.ts",
-          "line": 270
+          "line": 296
         },
         {
           "path": "src/config/feeds.ts",
@@ -3330,7 +3330,7 @@
       "references": [
         {
           "path": "server/worldmonitor/news/v1/_feeds.ts",
-          "line": 43
+          "line": 66
         },
         {
           "path": "src/config/feeds.ts",
@@ -3364,11 +3364,11 @@
       "references": [
         {
           "path": "server/worldmonitor/news/v1/_feeds.ts",
-          "line": 258
+          "line": 281
         },
         {
           "path": "server/worldmonitor/news/v1/_feeds.ts",
-          "line": 272
+          "line": 298
         },
         {
           "path": "src/config/feeds.ts",
@@ -3452,7 +3452,7 @@
       "references": [
         {
           "path": "server/worldmonitor/news/v1/_feeds.ts",
-          "line": 42
+          "line": 65
         },
         {
           "path": "src/config/feeds.ts",
@@ -3471,7 +3471,7 @@
       "references": [
         {
           "path": "server/worldmonitor/news/v1/_feeds.ts",
-          "line": 217
+          "line": 240
         },
         {
           "path": "src/config/feeds.ts",
@@ -3490,7 +3490,7 @@
       "references": [
         {
           "path": "server/worldmonitor/news/v1/_feeds.ts",
-          "line": 59
+          "line": 82
         },
         {
           "path": "src/config/feeds.ts",
@@ -3509,7 +3509,7 @@
       "references": [
         {
           "path": "server/worldmonitor/news/v1/_feeds.ts",
-          "line": 38
+          "line": 61
         },
         {
           "path": "src/config/feeds.ts",
@@ -3562,23 +3562,23 @@
       "references": [
         {
           "path": "server/worldmonitor/news/v1/_feeds.ts",
-          "line": 172
+          "line": 195
         },
         {
           "path": "server/worldmonitor/news/v1/_feeds.ts",
-          "line": 386
+          "line": 412
         },
         {
           "path": "server/worldmonitor/news/v1/_feeds.ts",
-          "line": 415
+          "line": 441
         },
         {
           "path": "server/worldmonitor/news/v1/_feeds.ts",
-          "line": 587
+          "line": 613
         },
         {
           "path": "server/worldmonitor/news/v1/_feeds.ts",
-          "line": 595
+          "line": 621
         },
         {
           "path": "src/config/feeds.ts",
@@ -3625,7 +3625,7 @@
         },
         {
           "path": "scripts/ais-relay.cjs",
-          "line": 2191
+          "line": 2224
         },
         {
           "path": "scripts/seed-earnings-calendar.mjs",
@@ -3636,8 +3636,8 @@
           "line": 425
         },
         {
-          "path": "scripts/seed-market-quotes.mjs",
-          "line": 32
+          "path": "scripts/shared/market-quote-provider.mjs",
+          "line": 54
         },
         {
           "path": "server/worldmonitor/intelligence/v1/_company-shared.ts",
@@ -3648,8 +3648,12 @@
           "line": 159
         },
         {
+          "path": "server/worldmonitor/market/v1/_quote-provider.ts",
+          "line": 99
+        },
+        {
           "path": "server/worldmonitor/market/v1/_shared.ts",
-          "line": 209
+          "line": 207
         },
         {
           "path": "server/worldmonitor/market/v1/get-insider-transactions.ts",
@@ -3698,11 +3702,11 @@
       "references": [
         {
           "path": "server/worldmonitor/news/v1/_feeds.ts",
-          "line": 299
+          "line": 325
         },
         {
           "path": "server/worldmonitor/news/v1/_feeds.ts",
-          "line": 639
+          "line": 665
         },
         {
           "path": "src/config/feeds.ts",
@@ -3793,7 +3797,7 @@
         },
         {
           "path": "scripts/ais-relay.cjs",
-          "line": 9402
+          "line": 9450
         },
         {
           "path": "scripts/seed-prediction-markets.mjs",
@@ -3812,7 +3816,7 @@
       "references": [
         {
           "path": "server/worldmonitor/news/v1/_feeds.ts",
-          "line": 637
+          "line": 663
         },
         {
           "path": "src/config/feeds.ts",
@@ -3869,7 +3873,7 @@
       "references": [
         {
           "path": "server/worldmonitor/news/v1/_feeds.ts",
-          "line": 371
+          "line": 397
         },
         {
           "path": "src/config/feeds.ts",
@@ -3946,7 +3950,7 @@
       "references": [
         {
           "path": "server/worldmonitor/news/v1/_feeds.ts",
-          "line": 651
+          "line": 677
         },
         {
           "path": "src/config/feeds.ts",
@@ -3965,7 +3969,7 @@
       "references": [
         {
           "path": "server/worldmonitor/news/v1/_feeds.ts",
-          "line": 50
+          "line": 73
         },
         {
           "path": "src/config/feeds.ts",
@@ -4146,15 +4150,15 @@
       "references": [
         {
           "path": "server/worldmonitor/news/v1/_feeds.ts",
-          "line": 157
+          "line": 180
         },
         {
           "path": "server/worldmonitor/news/v1/_feeds.ts",
-          "line": 324
+          "line": 350
         },
         {
           "path": "server/worldmonitor/news/v1/_feeds.ts",
-          "line": 392
+          "line": 418
         },
         {
           "path": "src/config/feeds.ts",
@@ -4193,7 +4197,7 @@
       "references": [
         {
           "path": "server/worldmonitor/news/v1/_feeds.ts",
-          "line": 612
+          "line": 638
         },
         {
           "path": "src/config/feeds.ts",
@@ -4212,7 +4216,7 @@
       "references": [
         {
           "path": "server/worldmonitor/news/v1/_feeds.ts",
-          "line": 71
+          "line": 94
         },
         {
           "path": "src/config/feeds.ts",
@@ -4246,7 +4250,7 @@
       "references": [
         {
           "path": "server/worldmonitor/news/v1/_feeds.ts",
-          "line": 350
+          "line": 376
         },
         {
           "path": "src/config/feeds.ts",
@@ -4269,7 +4273,7 @@
       "references": [
         {
           "path": "server/worldmonitor/news/v1/_feeds.ts",
-          "line": 70
+          "line": 93
         },
         {
           "path": "src/config/feeds.ts",
@@ -4333,7 +4337,7 @@
       "references": [
         {
           "path": "server/worldmonitor/news/v1/_feeds.ts",
-          "line": 248
+          "line": 271
         },
         {
           "path": "src/config/feeds.ts",
@@ -4386,7 +4390,7 @@
       "references": [
         {
           "path": "server/worldmonitor/news/v1/_feeds.ts",
-          "line": 291
+          "line": 317
         },
         {
           "path": "src/config/feeds.ts",
@@ -4435,7 +4439,7 @@
       "references": [
         {
           "path": "server/worldmonitor/news/v1/_feeds.ts",
-          "line": 116
+          "line": 139
         },
         {
           "path": "src/config/feeds.ts",
@@ -4469,7 +4473,7 @@
       "references": [
         {
           "path": "server/worldmonitor/news/v1/_feeds.ts",
-          "line": 255
+          "line": 278
         },
         {
           "path": "src/config/feeds.ts",
@@ -4567,11 +4571,11 @@
       "references": [
         {
           "path": "server/worldmonitor/news/v1/_feeds.ts",
-          "line": 362
+          "line": 388
         },
         {
           "path": "server/worldmonitor/news/v1/_feeds.ts",
-          "line": 643
+          "line": 669
         },
         {
           "path": "src/config/feeds.ts",
@@ -4613,7 +4617,7 @@
       "references": [
         {
           "path": "server/worldmonitor/news/v1/_feeds.ts",
-          "line": 237
+          "line": 260
         },
         {
           "path": "src/config/feeds.ts",
@@ -4791,7 +4795,7 @@
         },
         {
           "path": "scripts/ais-relay.cjs",
-          "line": 6683
+          "line": 6725
         }
       ]
     },
@@ -4851,7 +4855,7 @@
       "references": [
         {
           "path": "server/worldmonitor/news/v1/_feeds.ts",
-          "line": 390
+          "line": 416
         },
         {
           "path": "src/config/feeds.ts",
@@ -4874,63 +4878,67 @@
       "references": [
         {
           "path": "scripts/ais-relay.cjs",
-          "line": 4150
+          "line": 4192
         },
         {
           "path": "scripts/ais-relay.cjs",
-          "line": 4348
+          "line": 4390
         },
         {
           "path": "scripts/ais-relay.cjs",
-          "line": 8952
+          "line": 9000
         },
         {
           "path": "scripts/ais-relay.cjs",
-          "line": 9136
+          "line": 9184
         },
         {
           "path": "scripts/ais-relay.cjs",
-          "line": 9153
+          "line": 9201
         },
         {
           "path": "scripts/ais-relay.cjs",
-          "line": 9459
+          "line": 9507
         },
         {
           "path": "scripts/ais-relay.cjs",
-          "line": 9589
+          "line": 9646
         },
         {
           "path": "scripts/ais-relay.cjs",
-          "line": 9680
+          "line": 9733
         },
         {
           "path": "scripts/ais-relay.cjs",
-          "line": 9802
+          "line": 9833
         },
         {
           "path": "scripts/ais-relay.cjs",
-          "line": 9905
+          "line": 9955
         },
         {
           "path": "scripts/ais-relay.cjs",
-          "line": 10224
+          "line": 10058
         },
         {
           "path": "scripts/ais-relay.cjs",
-          "line": 10354
+          "line": 10379
         },
         {
           "path": "scripts/ais-relay.cjs",
-          "line": 10386
+          "line": 10509
         },
         {
           "path": "scripts/ais-relay.cjs",
-          "line": 11016
+          "line": 10541
         },
         {
           "path": "scripts/ais-relay.cjs",
-          "line": 11100
+          "line": 11213
+        },
+        {
+          "path": "scripts/ais-relay.cjs",
+          "line": 11297
         },
         {
           "path": "server/worldmonitor/research/v1/list-tech-events.ts",
@@ -5025,7 +5033,7 @@
       "references": [
         {
           "path": "server/worldmonitor/news/v1/_feeds.ts",
-          "line": 111
+          "line": 134
         },
         {
           "path": "src/config/feeds.ts",
@@ -5157,7 +5165,7 @@
       "references": [
         {
           "path": "server/worldmonitor/news/v1/_feeds.ts",
-          "line": 80
+          "line": 103
         },
         {
           "path": "src/config/feeds.ts",
@@ -5241,7 +5249,7 @@
       "references": [
         {
           "path": "server/worldmonitor/news/v1/_feeds.ts",
-          "line": 335
+          "line": 361
         },
         {
           "path": "src/config/feeds.ts",
@@ -5264,7 +5272,7 @@
       "references": [
         {
           "path": "server/worldmonitor/news/v1/_feeds.ts",
-          "line": 128
+          "line": 151
         },
         {
           "path": "src/config/feeds.ts",
@@ -5295,51 +5303,51 @@
         },
         {
           "path": "server/worldmonitor/news/v1/_feeds.ts",
-          "line": 16
+          "line": 39
         },
         {
           "path": "server/worldmonitor/news/v1/_feeds.ts",
-          "line": 24
+          "line": 47
         },
         {
           "path": "server/worldmonitor/news/v1/_feeds.ts",
-          "line": 431
+          "line": 457
         },
         {
           "path": "server/worldmonitor/news/v1/_feeds.ts",
-          "line": 440
+          "line": 466
         },
         {
           "path": "server/worldmonitor/news/v1/_feeds.ts",
-          "line": 443
+          "line": 469
         },
         {
           "path": "server/worldmonitor/news/v1/_feeds.ts",
-          "line": 444
+          "line": 470
         },
         {
           "path": "server/worldmonitor/news/v1/_feeds.ts",
-          "line": 445
+          "line": 471
         },
         {
           "path": "server/worldmonitor/news/v1/_feeds.ts",
-          "line": 446
+          "line": 472
         },
         {
           "path": "server/worldmonitor/news/v1/_feeds.ts",
-          "line": 447
+          "line": 473
         },
         {
           "path": "server/worldmonitor/news/v1/_feeds.ts",
-          "line": 448
+          "line": 474
         },
         {
           "path": "server/worldmonitor/news/v1/_feeds.ts",
-          "line": 449
+          "line": 475
         },
         {
           "path": "server/worldmonitor/news/v1/_feeds.ts",
-          "line": 636
+          "line": 662
         },
         {
           "path": "src/config/feeds.ts",
@@ -6941,7 +6949,7 @@
       "references": [
         {
           "path": "server/worldmonitor/news/v1/_feeds.ts",
-          "line": 615
+          "line": 641
         },
         {
           "path": "src/config/feeds.ts",
@@ -6960,7 +6968,7 @@
       "references": [
         {
           "path": "server/worldmonitor/news/v1/_feeds.ts",
-          "line": 207
+          "line": 230
         },
         {
           "path": "src/config/feeds.ts",
@@ -6979,11 +6987,11 @@
       "references": [
         {
           "path": "scripts/ais-relay.cjs",
-          "line": 5698
+          "line": 5740
         },
         {
           "path": "scripts/ais-relay.cjs",
-          "line": 5743
+          "line": 5785
         }
       ]
     },
@@ -6998,7 +7006,7 @@
       "references": [
         {
           "path": "server/worldmonitor/news/v1/_feeds.ts",
-          "line": 357
+          "line": 383
         },
         {
           "path": "src/config/variants/tech.ts",
@@ -7032,7 +7040,7 @@
       "references": [
         {
           "path": "server/worldmonitor/news/v1/_feeds.ts",
-          "line": 124
+          "line": 147
         },
         {
           "path": "src/config/feeds.ts",
@@ -7138,7 +7146,7 @@
       "references": [
         {
           "path": "scripts/ais-relay.cjs",
-          "line": 6056
+          "line": 6098
         }
       ]
     },
@@ -7153,7 +7161,7 @@
       "references": [
         {
           "path": "server/worldmonitor/news/v1/_feeds.ts",
-          "line": 115
+          "line": 138
         },
         {
           "path": "src/config/feeds.ts",
@@ -7176,7 +7184,7 @@
         },
         {
           "path": "server/worldmonitor/news/v1/_feeds.ts",
-          "line": 531
+          "line": 557
         },
         {
           "path": "src/config/feeds.ts",
@@ -7256,7 +7264,7 @@
       "references": [
         {
           "path": "scripts/ais-relay.cjs",
-          "line": 9076
+          "line": 9124
         },
         {
           "path": "scripts/seed-military-flights.mjs",
@@ -7513,7 +7521,7 @@
       "references": [
         {
           "path": "server/worldmonitor/news/v1/_feeds.ts",
-          "line": 75
+          "line": 98
         },
         {
           "path": "src/config/feeds.ts",
@@ -7555,7 +7563,7 @@
       "references": [
         {
           "path": "scripts/ais-relay.cjs",
-          "line": 2695
+          "line": 2728
         }
       ]
     },
@@ -7751,7 +7759,7 @@
       "references": [
         {
           "path": "scripts/_seed-utils.mjs",
-          "line": 1665
+          "line": 1676
         },
         {
           "path": "scripts/_yahoo-fetch.mjs",
@@ -7771,19 +7779,19 @@
         },
         {
           "path": "scripts/ais-relay.cjs",
-          "line": 2114
+          "line": 2143
         },
         {
           "path": "scripts/ais-relay.cjs",
-          "line": 2139
+          "line": 2168
         },
         {
           "path": "scripts/ais-relay.cjs",
-          "line": 2558
+          "line": 2591
         },
         {
           "path": "scripts/ais-relay.cjs",
-          "line": 9609
+          "line": 9666
         },
         {
           "path": "scripts/seed-commodity-quotes.mjs",
@@ -7815,15 +7823,15 @@
         },
         {
           "path": "scripts/seed-market-quotes.mjs",
-          "line": 49
+          "line": 39
         },
         {
           "path": "scripts/seed-market-quotes.mjs",
-          "line": 208
+          "line": 173
         },
         {
           "path": "server/worldmonitor/market/v1/_shared.ts",
-          "line": 285
+          "line": 266
         },
         {
           "path": "server/worldmonitor/market/v1/analyze-stock.ts",
@@ -7926,7 +7934,7 @@
       "references": [
         {
           "path": "scripts/ais-relay.cjs",
-          "line": 3215
+          "line": 3257
         },
         {
           "path": "scripts/fetch-country-boundary-overrides.mjs",
@@ -7965,7 +7973,7 @@
       "references": [
         {
           "path": "server/worldmonitor/news/v1/_feeds.ts",
-          "line": 605
+          "line": 631
         },
         {
           "path": "src/config/feeds.ts",
@@ -7984,11 +7992,11 @@
       "references": [
         {
           "path": "scripts/ais-relay.cjs",
-          "line": 6165
+          "line": 6207
         },
         {
           "path": "scripts/ais-relay.cjs",
-          "line": 6343
+          "line": 6385
         },
         {
           "path": "src/services/story-share.ts",
@@ -8071,7 +8079,7 @@
       "references": [
         {
           "path": "server/worldmonitor/news/v1/_feeds.ts",
-          "line": 340
+          "line": 366
         },
         {
           "path": "src/config/variants/tech.ts",
@@ -8120,7 +8128,7 @@
       "references": [
         {
           "path": "server/worldmonitor/news/v1/_feeds.ts",
-          "line": 56
+          "line": 79
         },
         {
           "path": "src/config/feeds.ts",
@@ -8158,11 +8166,11 @@
       "references": [
         {
           "path": "server/worldmonitor/news/v1/_feeds.ts",
-          "line": 44
+          "line": 67
         },
         {
           "path": "server/worldmonitor/news/v1/_feeds.ts",
-          "line": 366
+          "line": 392
         },
         {
           "path": "src/config/feeds.ts",
@@ -8423,7 +8431,7 @@
       "references": [
         {
           "path": "server/worldmonitor/news/v1/_feeds.ts",
-          "line": 416
+          "line": 442
         },
         {
           "path": "src/config/feeds.ts",
@@ -8523,7 +8531,7 @@
       "references": [
         {
           "path": "server/worldmonitor/news/v1/_feeds.ts",
-          "line": 347
+          "line": 373
         },
         {
           "path": "src/config/feeds.ts",
@@ -8565,7 +8573,7 @@
       "references": [
         {
           "path": "server/worldmonitor/news/v1/_feeds.ts",
-          "line": 611
+          "line": 637
         },
         {
           "path": "src/config/feeds.ts",
@@ -8577,7 +8585,7 @@
       "host": "site.financialmodelingprep.com",
       "provider": "site.financialmodelingprep.com",
       "kind": "structured",
-      "observed": true,
+      "observed": false,
       "license": "Excluded: first-party, control-plane, UI, or rendering transport",
       "attribution": "Excluded from the external-provider count: not an ingested upstream dataset.",
       "status": "excluded",
@@ -8882,7 +8890,7 @@
       "references": [
         {
           "path": "server/worldmonitor/news/v1/_feeds.ts",
-          "line": 342
+          "line": 368
         },
         {
           "path": "src/config/feeds.ts",
@@ -8962,7 +8970,7 @@
       "references": [
         {
           "path": "scripts/ais-relay.cjs",
-          "line": 939
+          "line": 968
         },
         {
           "path": "server/worldmonitor/leads/v1/register-interest.ts",
@@ -9000,7 +9008,7 @@
       "references": [
         {
           "path": "server/worldmonitor/news/v1/_feeds.ts",
-          "line": 635
+          "line": 661
         },
         {
           "path": "src/config/feeds.ts",
@@ -9019,7 +9027,7 @@
       "references": [
         {
           "path": "server/worldmonitor/news/v1/_feeds.ts",
-          "line": 346
+          "line": 372
         },
         {
           "path": "src/config/feeds.ts",
@@ -9057,7 +9065,7 @@
       "references": [
         {
           "path": "server/worldmonitor/news/v1/_feeds.ts",
-          "line": 349
+          "line": 375
         },
         {
           "path": "src/config/feeds.ts",
@@ -9080,19 +9088,19 @@
       "references": [
         {
           "path": "server/worldmonitor/news/v1/_feeds.ts",
-          "line": 314
+          "line": 340
         },
         {
           "path": "server/worldmonitor/news/v1/_feeds.ts",
-          "line": 321
+          "line": 347
         },
         {
           "path": "server/worldmonitor/news/v1/_feeds.ts",
-          "line": 333
+          "line": 359
         },
         {
           "path": "server/worldmonitor/news/v1/_feeds.ts",
-          "line": 382
+          "line": 408
         },
         {
           "path": "src/config/feeds.ts",
@@ -9143,7 +9151,7 @@
       "references": [
         {
           "path": "server/worldmonitor/news/v1/_feeds.ts",
-          "line": 69
+          "line": 92
         },
         {
           "path": "src/config/feeds.ts",
@@ -9181,7 +9189,7 @@
         },
         {
           "path": "scripts/ais-relay.cjs",
-          "line": 6684
+          "line": 6726
         }
       ]
     },
@@ -9226,7 +9234,7 @@
       "references": [
         {
           "path": "server/worldmonitor/news/v1/_feeds.ts",
-          "line": 438
+          "line": 464
         },
         {
           "path": "src/config/feeds.ts",
@@ -9245,7 +9253,7 @@
       "references": [
         {
           "path": "server/worldmonitor/news/v1/_feeds.ts",
-          "line": 252
+          "line": 275
         },
         {
           "path": "src/config/feeds.ts",
@@ -9264,7 +9272,7 @@
       "references": [
         {
           "path": "server/worldmonitor/news/v1/_feeds.ts",
-          "line": 45
+          "line": 68
         },
         {
           "path": "src/config/feeds.ts",
@@ -9283,7 +9291,7 @@
       "references": [
         {
           "path": "server/worldmonitor/news/v1/_feeds.ts",
-          "line": 378
+          "line": 404
         },
         {
           "path": "src/config/feeds.ts",
@@ -9325,7 +9333,7 @@
       "references": [
         {
           "path": "server/worldmonitor/news/v1/_feeds.ts",
-          "line": 650
+          "line": 676
         },
         {
           "path": "src/config/feeds.ts",
@@ -9382,7 +9390,7 @@
       "references": [
         {
           "path": "server/worldmonitor/news/v1/_feeds.ts",
-          "line": 278
+          "line": 304
         },
         {
           "path": "src/config/feeds.ts",
@@ -9431,7 +9439,7 @@
       "references": [
         {
           "path": "server/worldmonitor/news/v1/_feeds.ts",
-          "line": 34
+          "line": 57
         }
       ]
     },
@@ -9506,7 +9514,7 @@
       "references": [
         {
           "path": "server/worldmonitor/news/v1/_feeds.ts",
-          "line": 109
+          "line": 132
         },
         {
           "path": "src/config/feeds.ts",
@@ -9559,11 +9567,11 @@
       "references": [
         {
           "path": "scripts/ais-relay.cjs",
-          "line": 1684
+          "line": 1713
         },
         {
           "path": "scripts/ais-relay.cjs",
-          "line": 8385
+          "line": 8430
         },
         {
           "path": "scripts/seed-ucdp-events.mjs",
@@ -9582,7 +9590,7 @@
       "references": [
         {
           "path": "server/worldmonitor/news/v1/_feeds.ts",
-          "line": 442
+          "line": 468
         },
         {
           "path": "src/config/feeds.ts",
@@ -9601,7 +9609,7 @@
       "references": [
         {
           "path": "scripts/ais-relay.cjs",
-          "line": 3186
+          "line": 3228
         },
         {
           "path": "scripts/seed-cyber-threats.mjs",
@@ -9628,7 +9636,7 @@
         },
         {
           "path": "scripts/_proxy-utils.cjs",
-          "line": 127
+          "line": 158
         },
         {
           "path": "scripts/ais-relay.cjs",
@@ -9647,15 +9655,15 @@
       "references": [
         {
           "path": "server/worldmonitor/news/v1/_feeds.ts",
-          "line": 164
+          "line": 187
         },
         {
           "path": "server/worldmonitor/news/v1/_feeds.ts",
-          "line": 328
+          "line": 354
         },
         {
           "path": "server/worldmonitor/news/v1/_feeds.ts",
-          "line": 334
+          "line": 360
         },
         {
           "path": "src/config/feeds.ts",
@@ -9709,7 +9717,7 @@
       "references": [
         {
           "path": "server/worldmonitor/news/v1/_feeds.ts",
-          "line": 267
+          "line": 293
         },
         {
           "path": "src/config/feeds.ts",
@@ -9743,7 +9751,7 @@
       "references": [
         {
           "path": "server/worldmonitor/news/v1/_feeds.ts",
-          "line": 652
+          "line": 678
         },
         {
           "path": "src/config/feeds.ts",
@@ -9796,7 +9804,7 @@
       "references": [
         {
           "path": "server/worldmonitor/news/v1/_feeds.ts",
-          "line": 302
+          "line": 328
         },
         {
           "path": "src/config/feeds.ts",
@@ -9879,7 +9887,7 @@
       "references": [
         {
           "path": "scripts/ais-relay.cjs",
-          "line": 5146
+          "line": 5188
         },
         {
           "path": "scripts/seed-research.mjs",
@@ -10088,7 +10096,7 @@
         },
         {
           "path": "scripts/seed-insights.mjs",
-          "line": 649
+          "line": 634
         },
         {
           "path": "scripts/seed-military-maritime-news.mjs",
@@ -10213,7 +10221,7 @@
       "references": [
         {
           "path": "server/worldmonitor/news/v1/_feeds.ts",
-          "line": 339
+          "line": 365
         },
         {
           "path": "src/config/variants/tech.ts",
@@ -10255,7 +10263,7 @@
       "references": [
         {
           "path": "server/worldmonitor/news/v1/_feeds.ts",
-          "line": 271
+          "line": 297
         },
         {
           "path": "src/config/feeds.ts",
@@ -10304,7 +10312,7 @@
       "references": [
         {
           "path": "server/worldmonitor/news/v1/_feeds.ts",
-          "line": 218
+          "line": 241
         },
         {
           "path": "src/config/feeds.ts",
@@ -10338,7 +10346,7 @@
       "references": [
         {
           "path": "server/worldmonitor/news/v1/_feeds.ts",
-          "line": 65
+          "line": 88
         },
         {
           "path": "src/config/feeds.ts",
@@ -10372,7 +10380,7 @@
       "references": [
         {
           "path": "server/worldmonitor/news/v1/_feeds.ts",
-          "line": 141
+          "line": 164
         },
         {
           "path": "src/config/feeds.ts",
@@ -10417,12 +10425,16 @@
           "line": 128
         },
         {
-          "path": "server/worldmonitor/market/v1/_shared.ts",
-          "line": 109
+          "path": "server/worldmonitor/market/v1/_quote-provider.ts",
+          "line": 155
         },
         {
           "path": "server/worldmonitor/market/v1/_shared.ts",
-          "line": 159
+          "line": 107
+        },
+        {
+          "path": "server/worldmonitor/market/v1/_shared.ts",
+          "line": 157
         }
       ]
     },
@@ -10437,7 +10449,7 @@
       "references": [
         {
           "path": "server/worldmonitor/news/v1/_feeds.ts",
-          "line": 273
+          "line": 299
         },
         {
           "path": "src/config/feeds.ts",
@@ -10456,7 +10468,7 @@
       "references": [
         {
           "path": "server/worldmonitor/news/v1/_feeds.ts",
-          "line": 58
+          "line": 81
         },
         {
           "path": "src/config/feeds.ts",
@@ -10475,7 +10487,7 @@
       "references": [
         {
           "path": "server/worldmonitor/news/v1/_feeds.ts",
-          "line": 263
+          "line": 289
         },
         {
           "path": "src/config/feeds.ts",
@@ -10494,11 +10506,11 @@
       "references": [
         {
           "path": "server/worldmonitor/news/v1/_feeds.ts",
-          "line": 300
+          "line": 326
         },
         {
           "path": "server/worldmonitor/news/v1/_feeds.ts",
-          "line": 641
+          "line": 667
         },
         {
           "path": "src/config/feeds.ts",
@@ -10521,7 +10533,7 @@
       "references": [
         {
           "path": "server/worldmonitor/news/v1/_feeds.ts",
-          "line": 76
+          "line": 99
         },
         {
           "path": "src/config/feeds.ts",
@@ -10540,7 +10552,7 @@
       "references": [
         {
           "path": "server/worldmonitor/news/v1/_feeds.ts",
-          "line": 544
+          "line": 570
         },
         {
           "path": "src/config/feeds.ts",
@@ -10714,7 +10726,7 @@
       "references": [
         {
           "path": "server/worldmonitor/news/v1/_feeds.ts",
-          "line": 48
+          "line": 71
         },
         {
           "path": "src/config/feeds.ts",
@@ -10771,7 +10783,7 @@
       "references": [
         {
           "path": "server/worldmonitor/news/v1/_feeds.ts",
-          "line": 41
+          "line": 64
         },
         {
           "path": "src/config/feeds.ts",
@@ -10809,7 +10821,7 @@
       "references": [
         {
           "path": "server/worldmonitor/news/v1/_feeds.ts",
-          "line": 257
+          "line": 280
         },
         {
           "path": "src/config/feeds.ts",
@@ -10828,7 +10840,7 @@
       "references": [
         {
           "path": "server/worldmonitor/news/v1/_feeds.ts",
-          "line": 222
+          "line": 245
         },
         {
           "path": "src/config/feeds.ts",
@@ -10881,7 +10893,7 @@
       "references": [
         {
           "path": "server/worldmonitor/news/v1/_feeds.ts",
-          "line": 208
+          "line": 231
         },
         {
           "path": "src/config/feeds.ts",
@@ -10904,7 +10916,7 @@
       "references": [
         {
           "path": "server/worldmonitor/news/v1/_feeds.ts",
-          "line": 247
+          "line": 270
         },
         {
           "path": "src/config/feeds.ts",
@@ -10953,23 +10965,23 @@
       "references": [
         {
           "path": "server/worldmonitor/news/v1/_feeds.ts",
-          "line": 170
+          "line": 193
         },
         {
           "path": "server/worldmonitor/news/v1/_feeds.ts",
-          "line": 385
+          "line": 411
         },
         {
           "path": "server/worldmonitor/news/v1/_feeds.ts",
-          "line": 414
+          "line": 440
         },
         {
           "path": "server/worldmonitor/news/v1/_feeds.ts",
-          "line": 588
+          "line": 614
         },
         {
           "path": "server/worldmonitor/news/v1/_feeds.ts",
-          "line": 593
+          "line": 619
         },
         {
           "path": "src/config/feeds.ts",
@@ -11012,7 +11024,7 @@
       "references": [
         {
           "path": "server/worldmonitor/news/v1/_feeds.ts",
-          "line": 429
+          "line": 455
         },
         {
           "path": "src/config/feeds.ts",
@@ -11065,7 +11077,7 @@
       "references": [
         {
           "path": "server/worldmonitor/news/v1/_feeds.ts",
-          "line": 308
+          "line": 334
         },
         {
           "path": "src/config/feeds.ts",
@@ -11084,7 +11096,7 @@
       "references": [
         {
           "path": "server/worldmonitor/news/v1/_feeds.ts",
-          "line": 303
+          "line": 329
         }
       ]
     },
@@ -11099,7 +11111,7 @@
       "references": [
         {
           "path": "server/worldmonitor/news/v1/_feeds.ts",
-          "line": 229
+          "line": 252
         },
         {
           "path": "src/config/feeds.ts",
@@ -11133,7 +11145,7 @@
       "references": [
         {
           "path": "server/worldmonitor/news/v1/_feeds.ts",
-          "line": 132
+          "line": 155
         },
         {
           "path": "src/config/feeds.ts",
@@ -11152,7 +11164,7 @@
       "references": [
         {
           "path": "server/worldmonitor/news/v1/_feeds.ts",
-          "line": 363
+          "line": 389
         },
         {
           "path": "src/config/feeds.ts",
@@ -11175,7 +11187,7 @@
       "references": [
         {
           "path": "server/worldmonitor/news/v1/_feeds.ts",
-          "line": 284
+          "line": 310
         },
         {
           "path": "src/config/feeds.ts",
@@ -11194,7 +11206,7 @@
       "references": [
         {
           "path": "server/worldmonitor/news/v1/_feeds.ts",
-          "line": 632
+          "line": 658
         },
         {
           "path": "src/config/feeds.ts",
@@ -11213,7 +11225,7 @@
       "references": [
         {
           "path": "server/worldmonitor/news/v1/_feeds.ts",
-          "line": 630
+          "line": 656
         },
         {
           "path": "src/config/feeds.ts",
@@ -11232,7 +11244,7 @@
       "references": [
         {
           "path": "server/worldmonitor/news/v1/_feeds.ts",
-          "line": 85
+          "line": 108
         },
         {
           "path": "src/config/feeds.ts",
@@ -11266,7 +11278,7 @@
       "references": [
         {
           "path": "server/worldmonitor/news/v1/_feeds.ts",
-          "line": 89
+          "line": 112
         },
         {
           "path": "src/config/feeds.ts",
@@ -11300,7 +11312,7 @@
       "references": [
         {
           "path": "server/worldmonitor/news/v1/_feeds.ts",
-          "line": 66
+          "line": 89
         },
         {
           "path": "src/config/feeds.ts",
@@ -11399,7 +11411,7 @@
       "references": [
         {
           "path": "server/worldmonitor/news/v1/_feeds.ts",
-          "line": 246
+          "line": 269
         },
         {
           "path": "src/config/feeds.ts",
@@ -11437,7 +11449,7 @@
       "references": [
         {
           "path": "server/worldmonitor/news/v1/_feeds.ts",
-          "line": 228
+          "line": 251
         },
         {
           "path": "src/config/feeds.ts",
@@ -11456,7 +11468,7 @@
       "references": [
         {
           "path": "server/worldmonitor/news/v1/_feeds.ts",
-          "line": 345
+          "line": 371
         },
         {
           "path": "src/config/variants/tech.ts",
@@ -11475,7 +11487,7 @@
       "references": [
         {
           "path": "server/worldmonitor/news/v1/_feeds.ts",
-          "line": 54
+          "line": 77
         },
         {
           "path": "src/config/feeds.ts",
@@ -11521,7 +11533,7 @@
         },
         {
           "path": "server/worldmonitor/news/v1/_feeds.ts",
-          "line": 646
+          "line": 672
         },
         {
           "path": "src/config/feeds.ts",
@@ -11563,11 +11575,11 @@
         },
         {
           "path": "server/worldmonitor/news/v1/_feeds.ts",
-          "line": 205
+          "line": 228
         },
         {
           "path": "server/worldmonitor/news/v1/_feeds.ts",
-          "line": 452
+          "line": 478
         },
         {
           "path": "src/config/feeds.ts",
@@ -11613,11 +11625,11 @@
       "references": [
         {
           "path": "server/worldmonitor/news/v1/_feeds.ts",
-          "line": 301
+          "line": 327
         },
         {
           "path": "server/worldmonitor/news/v1/_feeds.ts",
-          "line": 640
+          "line": 666
         },
         {
           "path": "src/config/feeds.ts",
@@ -11655,7 +11667,7 @@
       "references": [
         {
           "path": "server/worldmonitor/news/v1/_feeds.ts",
-          "line": 53
+          "line": 76
         },
         {
           "path": "src/config/feeds.ts",
@@ -11690,11 +11702,11 @@
       "references": [
         {
           "path": "server/worldmonitor/news/v1/_feeds.ts",
-          "line": 173
+          "line": 196
         },
         {
           "path": "server/worldmonitor/news/v1/_feeds.ts",
-          "line": 596
+          "line": 622
         },
         {
           "path": "src/config/feeds.ts",
@@ -11744,7 +11756,7 @@
       "references": [
         {
           "path": "server/worldmonitor/news/v1/_feeds.ts",
-          "line": 87
+          "line": 110
         },
         {
           "path": "src/config/feeds.ts",
@@ -11793,7 +11805,7 @@
       "references": [
         {
           "path": "scripts/ais-relay.cjs",
-          "line": 5143
+          "line": 5185
         },
         {
           "path": "scripts/seed-research.mjs",
@@ -11876,15 +11888,15 @@
       "references": [
         {
           "path": "server/worldmonitor/news/v1/_feeds.ts",
-          "line": 603
+          "line": 629
         },
         {
           "path": "server/worldmonitor/news/v1/_feeds.ts",
-          "line": 619
+          "line": 645
         },
         {
           "path": "server/worldmonitor/news/v1/_feeds.ts",
-          "line": 620
+          "line": 646
         },
         {
           "path": "src/config/feeds.ts",
@@ -11927,11 +11939,11 @@
       "references": [
         {
           "path": "scripts/ais-relay.cjs",
-          "line": 10750
+          "line": 10947
         },
         {
           "path": "scripts/ais-relay.cjs",
-          "line": 10751
+          "line": 10948
         },
         {
           "path": "src/components/AviationCommandBar.ts",
@@ -12000,7 +12012,7 @@
       "references": [
         {
           "path": "scripts/seed-supply-chain-trade.mjs",
-          "line": 328
+          "line": 346
         }
       ]
     },
@@ -12015,7 +12027,7 @@
       "references": [
         {
           "path": "server/worldmonitor/news/v1/_feeds.ts",
-          "line": 86
+          "line": 109
         },
         {
           "path": "src/config/feeds.ts",
@@ -12034,7 +12046,7 @@
       "references": [
         {
           "path": "server/worldmonitor/news/v1/_feeds.ts",
-          "line": 135
+          "line": 158
         },
         {
           "path": "src/config/feeds.ts",
@@ -12053,7 +12065,7 @@
       "references": [
         {
           "path": "server/worldmonitor/news/v1/_feeds.ts",
-          "line": 309
+          "line": 335
         },
         {
           "path": "src/config/feeds.ts",
@@ -12136,7 +12148,7 @@
       "references": [
         {
           "path": "server/worldmonitor/news/v1/_feeds.ts",
-          "line": 81
+          "line": 104
         },
         {
           "path": "src/config/feeds.ts",
@@ -12155,7 +12167,7 @@
       "references": [
         {
           "path": "server/worldmonitor/news/v1/_feeds.ts",
-          "line": 245
+          "line": 268
         },
         {
           "path": "src/config/feeds.ts",
@@ -12174,7 +12186,7 @@
       "references": [
         {
           "path": "server/worldmonitor/news/v1/_feeds.ts",
-          "line": 290
+          "line": 316
         },
         {
           "path": "src/config/feeds.ts",
@@ -12193,7 +12205,7 @@
       "references": [
         {
           "path": "server/worldmonitor/news/v1/_feeds.ts",
-          "line": 219
+          "line": 242
         },
         {
           "path": "src/config/feeds.ts",
@@ -12231,7 +12243,7 @@
       "references": [
         {
           "path": "server/worldmonitor/news/v1/_feeds.ts",
-          "line": 148
+          "line": 171
         },
         {
           "path": "src/config/feeds.ts",
@@ -12250,7 +12262,7 @@
       "references": [
         {
           "path": "server/worldmonitor/news/v1/_feeds.ts",
-          "line": 82
+          "line": 105
         },
         {
           "path": "src/config/feeds.ts",
@@ -12284,7 +12296,7 @@
       "references": [
         {
           "path": "server/worldmonitor/news/v1/_feeds.ts",
-          "line": 55
+          "line": 78
         },
         {
           "path": "src/config/feeds.ts",
@@ -12326,7 +12338,7 @@
       "references": [
         {
           "path": "server/worldmonitor/news/v1/_feeds.ts",
-          "line": 649
+          "line": 675
         },
         {
           "path": "src/config/feeds.ts",
@@ -12379,7 +12391,7 @@
       "references": [
         {
           "path": "server/worldmonitor/news/v1/_feeds.ts",
-          "line": 129
+          "line": 152
         },
         {
           "path": "src/config/feeds.ts",
@@ -12428,7 +12440,7 @@
       "references": [
         {
           "path": "server/worldmonitor/news/v1/_feeds.ts",
-          "line": 634
+          "line": 660
         },
         {
           "path": "src/config/feeds.ts",
@@ -12447,7 +12459,7 @@
       "references": [
         {
           "path": "server/worldmonitor/news/v1/_feeds.ts",
-          "line": 543
+          "line": 569
         },
         {
           "path": "src/config/feeds.ts",
@@ -12466,7 +12478,7 @@
       "references": [
         {
           "path": "server/worldmonitor/news/v1/_feeds.ts",
-          "line": 508
+          "line": 534
         },
         {
           "path": "src/config/feeds.ts",
@@ -12489,7 +12501,7 @@
         },
         {
           "path": "scripts/cross-strait-activity/adapters.mjs",
-          "line": 1264
+          "line": 1346
         },
         {
           "path": "src/components/cross-strait-activity-summary.ts",
@@ -12531,7 +12543,7 @@
       "references": [
         {
           "path": "server/worldmonitor/news/v1/_feeds.ts",
-          "line": 235
+          "line": 258
         },
         {
           "path": "src/config/feeds.ts",
@@ -12565,7 +12577,7 @@
       "references": [
         {
           "path": "server/worldmonitor/news/v1/_feeds.ts",
-          "line": 610
+          "line": 636
         },
         {
           "path": "src/config/feeds.ts",
@@ -12637,7 +12649,7 @@
       "references": [
         {
           "path": "scripts/ais-relay.cjs",
-          "line": 5028
+          "line": 5070
         }
       ]
     },
@@ -12712,7 +12724,7 @@
       "references": [
         {
           "path": "server/worldmonitor/news/v1/_feeds.ts",
-          "line": 64
+          "line": 87
         },
         {
           "path": "src/config/feeds.ts",
@@ -12731,7 +12743,7 @@
       "references": [
         {
           "path": "server/worldmonitor/news/v1/_feeds.ts",
-          "line": 647
+          "line": 673
         },
         {
           "path": "src/config/feeds.ts",
@@ -12750,7 +12762,7 @@
       "references": [
         {
           "path": "server/worldmonitor/news/v1/_feeds.ts",
-          "line": 152
+          "line": 175
         },
         {
           "path": "src/config/feeds.ts",
@@ -12784,7 +12796,7 @@
       "references": [
         {
           "path": "server/worldmonitor/news/v1/_feeds.ts",
-          "line": 606
+          "line": 632
         },
         {
           "path": "src/config/feeds.ts",
@@ -12811,7 +12823,7 @@
         },
         {
           "path": "scripts/ais-relay.cjs",
-          "line": 1217
+          "line": 1246
         }
       ]
     },
@@ -12826,7 +12838,7 @@
       "references": [
         {
           "path": "server/worldmonitor/news/v1/_feeds.ts",
-          "line": 638
+          "line": 664
         },
         {
           "path": "src/config/feeds.ts",
@@ -12860,7 +12872,7 @@
       "references": [
         {
           "path": "server/worldmonitor/news/v1/_feeds.ts",
-          "line": 39
+          "line": 62
         },
         {
           "path": "src/config/feeds.ts",
@@ -12879,11 +12891,11 @@
       "references": [
         {
           "path": "scripts/ais-relay.cjs",
-          "line": 6555
+          "line": 6597
         },
         {
           "path": "scripts/ais-relay.cjs",
-          "line": 6556
+          "line": 6598
         },
         {
           "path": "scripts/seed-conflict-intel.mjs",
@@ -12906,7 +12918,7 @@
       "references": [
         {
           "path": "server/worldmonitor/news/v1/_feeds.ts",
-          "line": 136
+          "line": 159
         },
         {
           "path": "src/config/feeds.ts",
@@ -12925,7 +12937,7 @@
       "references": [
         {
           "path": "server/worldmonitor/news/v1/_feeds.ts",
-          "line": 604
+          "line": 630
         },
         {
           "path": "src/config/feeds.ts",
@@ -12944,7 +12956,7 @@
       "references": [
         {
           "path": "server/worldmonitor/news/v1/_feeds.ts",
-          "line": 220
+          "line": 243
         },
         {
           "path": "src/config/feeds.ts",
@@ -12963,7 +12975,7 @@
       "references": [
         {
           "path": "server/worldmonitor/news/v1/_feeds.ts",
-          "line": 244
+          "line": 267
         },
         {
           "path": "src/config/feeds.ts",
@@ -12982,7 +12994,7 @@
       "references": [
         {
           "path": "server/worldmonitor/news/v1/_feeds.ts",
-          "line": 399
+          "line": 425
         },
         {
           "path": "src/config/feeds.ts",
@@ -13005,7 +13017,7 @@
       "references": [
         {
           "path": "server/worldmonitor/news/v1/_feeds.ts",
-          "line": 233
+          "line": 256
         },
         {
           "path": "src/config/feeds.ts",
@@ -13024,7 +13036,7 @@
       "references": [
         {
           "path": "server/worldmonitor/news/v1/_feeds.ts",
-          "line": 226
+          "line": 249
         },
         {
           "path": "src/config/feeds.ts",
@@ -13081,7 +13093,7 @@
       "references": [
         {
           "path": "server/worldmonitor/news/v1/_feeds.ts",
-          "line": 288
+          "line": 314
         },
         {
           "path": "src/config/feeds.ts",
@@ -13100,11 +13112,11 @@
       "references": [
         {
           "path": "scripts/ais-relay.cjs",
-          "line": 5910
+          "line": 5952
         },
         {
           "path": "scripts/ais-relay.cjs",
-          "line": 6062
+          "line": 6104
         }
       ]
     },
@@ -13149,7 +13161,7 @@
       "references": [
         {
           "path": "server/worldmonitor/news/v1/_feeds.ts",
-          "line": 239
+          "line": 262
         },
         {
           "path": "src/config/feeds.ts",
@@ -13168,7 +13180,7 @@
       "references": [
         {
           "path": "server/worldmonitor/news/v1/_feeds.ts",
-          "line": 532
+          "line": 558
         },
         {
           "path": "src/config/feeds.ts",
@@ -13195,7 +13207,7 @@
       "references": [
         {
           "path": "server/worldmonitor/news/v1/_feeds.ts",
-          "line": 110
+          "line": 133
         },
         {
           "path": "src/config/feeds.ts",
@@ -13309,7 +13321,7 @@
       "references": [
         {
           "path": "server/worldmonitor/news/v1/_feeds.ts",
-          "line": 609
+          "line": 635
         },
         {
           "path": "src/config/feeds.ts",
@@ -13343,7 +13355,7 @@
       "references": [
         {
           "path": "scripts/openapi-inject-examples.mjs",
-          "line": 644
+          "line": 686
         },
         {
           "path": "scripts/seed-regulatory-actions.mjs",
@@ -13363,11 +13375,11 @@
         },
         {
           "path": "server/worldmonitor/news/v1/_feeds.ts",
-          "line": 206
+          "line": 229
         },
         {
           "path": "server/worldmonitor/news/v1/_feeds.ts",
-          "line": 479
+          "line": 505
         },
         {
           "path": "src/config/feeds.ts",
@@ -13394,7 +13406,7 @@
       "references": [
         {
           "path": "server/worldmonitor/news/v1/_feeds.ts",
-          "line": 403
+          "line": 429
         },
         {
           "path": "src/config/variants/tech.ts",
@@ -13413,7 +13425,7 @@
       "references": [
         {
           "path": "server/worldmonitor/news/v1/_feeds.ts",
-          "line": 341
+          "line": 367
         },
         {
           "path": "src/config/variants/tech.ts",
@@ -13432,7 +13444,7 @@
       "references": [
         {
           "path": "server/worldmonitor/news/v1/_feeds.ts",
-          "line": 78
+          "line": 101
         },
         {
           "path": "src/config/feeds.ts",
@@ -13451,7 +13463,7 @@
       "references": [
         {
           "path": "server/worldmonitor/news/v1/_feeds.ts",
-          "line": 624
+          "line": 650
         },
         {
           "path": "src/config/feeds.ts",
@@ -13617,7 +13629,7 @@
       "references": [
         {
           "path": "server/worldmonitor/news/v1/_feeds.ts",
-          "line": 60
+          "line": 83
         },
         {
           "path": "src/config/feeds.ts",
@@ -13666,7 +13678,7 @@
       "references": [
         {
           "path": "server/worldmonitor/news/v1/_feeds.ts",
-          "line": 57
+          "line": 80
         },
         {
           "path": "src/config/feeds.ts",
@@ -13685,7 +13697,7 @@
       "references": [
         {
           "path": "server/worldmonitor/news/v1/_feeds.ts",
-          "line": 348
+          "line": 374
         },
         {
           "path": "src/config/variants/tech.ts",
@@ -13704,7 +13716,7 @@
       "references": [
         {
           "path": "scripts/ais-relay.cjs",
-          "line": 5139
+          "line": 5181
         },
         {
           "path": "scripts/seed-research.mjs",
@@ -13735,11 +13747,11 @@
       "references": [
         {
           "path": "server/worldmonitor/news/v1/_feeds.ts",
-          "line": 160
+          "line": 183
         },
         {
           "path": "server/worldmonitor/news/v1/_feeds.ts",
-          "line": 166
+          "line": 189
         },
         {
           "path": "src/config/feeds.ts",
@@ -13808,7 +13820,7 @@
       "references": [
         {
           "path": "server/worldmonitor/news/v1/_feeds.ts",
-          "line": 49
+          "line": 72
         },
         {
           "path": "src/config/feeds.ts",
@@ -13831,15 +13843,15 @@
         },
         {
           "path": "server/worldmonitor/news/v1/_feeds.ts",
-          "line": 30
+          "line": 53
         },
         {
           "path": "server/worldmonitor/news/v1/_feeds.ts",
-          "line": 144
+          "line": 167
         },
         {
           "path": "server/worldmonitor/news/v1/_feeds.ts",
-          "line": 243
+          "line": 266
         },
         {
           "path": "src/config/feeds.ts",
@@ -13870,7 +13882,7 @@
       "references": [
         {
           "path": "server/worldmonitor/news/v1/_feeds.ts",
-          "line": 260
+          "line": 283
         },
         {
           "path": "src/config/feeds.ts",
@@ -13889,7 +13901,7 @@
       "references": [
         {
           "path": "server/worldmonitor/news/v1/_feeds.ts",
-          "line": 112
+          "line": 135
         },
         {
           "path": "src/config/feeds.ts",
@@ -13908,7 +13920,7 @@
       "references": [
         {
           "path": "server/worldmonitor/news/v1/_feeds.ts",
-          "line": 151
+          "line": 174
         }
       ]
     },
@@ -13923,7 +13935,7 @@
       "references": [
         {
           "path": "server/worldmonitor/news/v1/_feeds.ts",
-          "line": 227
+          "line": 250
         },
         {
           "path": "src/config/feeds.ts",
@@ -13942,19 +13954,19 @@
       "references": [
         {
           "path": "server/worldmonitor/news/v1/_feeds.ts",
-          "line": 159
+          "line": 182
         },
         {
           "path": "server/worldmonitor/news/v1/_feeds.ts",
-          "line": 165
+          "line": 188
         },
         {
           "path": "server/worldmonitor/news/v1/_feeds.ts",
-          "line": 322
+          "line": 348
         },
         {
           "path": "server/worldmonitor/news/v1/_feeds.ts",
-          "line": 329
+          "line": 355
         },
         {
           "path": "src/config/feeds.ts",
@@ -13993,7 +14005,7 @@
       "references": [
         {
           "path": "server/worldmonitor/news/v1/_feeds.ts",
-          "line": 224
+          "line": 247
         },
         {
           "path": "src/config/feeds.ts",
@@ -14012,7 +14024,7 @@
       "references": [
         {
           "path": "scripts/ais-relay.cjs",
-          "line": 5144
+          "line": 5186
         },
         {
           "path": "scripts/seed-research.mjs",
@@ -14035,7 +14047,7 @@
       "references": [
         {
           "path": "server/worldmonitor/news/v1/_feeds.ts",
-          "line": 402
+          "line": 428
         },
         {
           "path": "src/config/feeds.ts",
@@ -14058,7 +14070,7 @@
       "references": [
         {
           "path": "server/worldmonitor/news/v1/_feeds.ts",
-          "line": 631
+          "line": 657
         },
         {
           "path": "src/config/feeds.ts",
@@ -14107,7 +14119,7 @@
       "references": [
         {
           "path": "server/worldmonitor/news/v1/_feeds.ts",
-          "line": 221
+          "line": 244
         },
         {
           "path": "src/config/feeds.ts",
@@ -14171,7 +14183,7 @@
       "references": [
         {
           "path": "server/worldmonitor/news/v1/_feeds.ts",
-          "line": 204
+          "line": 227
         }
       ]
     },
@@ -14201,11 +14213,11 @@
       "references": [
         {
           "path": "server/worldmonitor/news/v1/_feeds.ts",
-          "line": 189
+          "line": 212
         },
         {
           "path": "server/worldmonitor/news/v1/_feeds.ts",
-          "line": 190
+          "line": 213
         }
       ]
     },
@@ -14228,7 +14240,7 @@
         },
         {
           "path": "server/worldmonitor/news/v1/_feeds.ts",
-          "line": 310
+          "line": 336
         },
         {
           "path": "src/config/feeds.ts",
@@ -14298,7 +14310,7 @@
         },
         {
           "path": "scripts/build-crawlable-corpus.mjs",
-          "line": 1077
+          "line": 1095
         },
         {
           "path": "scripts/build-research-reports.mjs",
@@ -14401,11 +14413,11 @@
       "references": [
         {
           "path": "server/worldmonitor/news/v1/_feeds.ts",
-          "line": 338
+          "line": 364
         },
         {
           "path": "server/worldmonitor/news/v1/_feeds.ts",
-          "line": 358
+          "line": 384
         },
         {
           "path": "src/config/feeds.ts",
@@ -14432,7 +14444,7 @@
       "references": [
         {
           "path": "server/worldmonitor/news/v1/_feeds.ts",
-          "line": 623
+          "line": 649
         },
         {
           "path": "src/config/feeds.ts",
@@ -14451,7 +14463,7 @@
       "references": [
         {
           "path": "server/worldmonitor/news/v1/_feeds.ts",
-          "line": 149
+          "line": 172
         },
         {
           "path": "src/config/feeds.ts",
@@ -14470,7 +14482,7 @@
       "references": [
         {
           "path": "server/worldmonitor/news/v1/_feeds.ts",
-          "line": 268
+          "line": 294
         },
         {
           "path": "src/config/feeds.ts",
@@ -14501,11 +14513,11 @@
         },
         {
           "path": "scripts/ais-relay.cjs",
-          "line": 9812
+          "line": 9965
         },
         {
           "path": "scripts/ais-relay.cjs",
-          "line": 9847
+          "line": 10000
         },
         {
           "path": "server/worldmonitor/aviation/v1/get-youtube-live-stream-info.ts",
@@ -14568,7 +14580,7 @@
       "references": [
         {
           "path": "server/worldmonitor/news/v1/_feeds.ts",
-          "line": 125
+          "line": 148
         },
         {
           "path": "src/config/feeds.ts",
@@ -14666,7 +14678,7 @@
       "references": [
         {
           "path": "server/worldmonitor/news/v1/_feeds.ts",
-          "line": 63
+          "line": 86
         },
         {
           "path": "src/config/feeds.ts",

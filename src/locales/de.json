@@ -2536,10 +2536,11 @@
       "unlockedAnnouncement": "Dashboard-Tab-Limit aufgehoben."
     },
     "fx": {
-      "infoTooltip": "<strong>Wechselkurse</strong> Währungs-Stress und Kassakurse:<ul><li>FX-Stress ordnet 45 Währungen nach ihrem stärksten Rückgang vom Hoch zum Tief in den letzten 24 Monaten, zusammen mit der 12-Monats-Veränderung</li><li>Die Abdeckung umfasst ARS, TRY, EGP, NGN, PKR und UAH — Währungen, die in den Referenzsätzen der BIS und EZB fehlen</li><li>Spot listet Kurse gegen den US-Dollar und die EZB-Euro-Referenzkurse separat auf, da beide auf unterschiedlichen Basen notiert werden</li></ul>Quellen: Yahoo Finance und die Europäische Zentralbank.",
+      "infoTooltip": "<strong>Wechselkurse</strong> Währungs-Stress und Kassakurse:<ul><li>FX-Stress ordnet 45 Währungen nach ihrem stärksten Rückgang vom Hoch zum Tief in den letzten 24 Monaten, zusammen mit der 12-Monats-Veränderung</li><li>Die Abdeckung umfasst ARS, TRY, EGP, NGN, PKR und UAH — Währungen, die in den Referenzsätzen der BIS und EZB fehlen</li><li>Spot listet Kurse gegen den US-Dollar und die EZB-Euro-Referenzkurse separat auf, da beide auf unterschiedlichen Basen notiert werden</li><li>RUB — Kurse der Bank von Russland, Rubel pro Einheit</li></ul> Quellen: Yahoo Finance, die Europäische Zentralbank und die Bank von Russland.",
       "tabs": {
         "stress": "FX-Stress",
-        "spot": "Spot"
+        "spot": "Spot",
+        "rub": "RUB"
       },
       "currency": "Währung",
       "pair": "Währungspaar",
@@ -2559,8 +2560,12 @@
       "source": {
         "stress": "FX-Stress",
         "usd": "USD-Wechselkurse",
-        "eur": "EZB-Eurokurse"
-      }
+        "eur": "EZB-Eurokurse",
+        "rub": "Kurse der Russischen Zentralbank"
+      },
+      "rubBase": "Russische Zentralbank — Rubel pro 1 Einheit",
+      "rubPerUnit": "Rubel pro Einheit",
+      "sourceCbr": "Quelle: Russische Zentralbank"
     }
   },
   "popups": {

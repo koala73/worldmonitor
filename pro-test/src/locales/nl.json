@@ -583,7 +583,7 @@
       "s10l": "Gescoorde hotspots",
       "s11v": "92",
       "s11l": "Beurzen & activa",
-      "s12v": "59",
+      "s12v": "60",
       "s12l": "MCP-tools",
       "s13v": "154",
       "s13l": "⌘K-opdrachten",
@@ -611,7 +611,7 @@
       "eyebrow": "Voor makers & AI-agents",
       "title": "Bouw op live wereldinformatie — van elke stack.",
       "sub": "Alles op de kaart is ook een API. Verbind het met Claude via MCP, roep de REST-endpoints overal aan, of installeer een native client voor Python, Ruby, Go of JavaScript — je code onderzoekt met live data in plaats van training-datamemories.",
-      "b1": "59 MCP-tools — risicobeoordelingen, knelpunten, conflicten, markten, samenvattingen",
+      "b1": "60 MCP-tools — risicobeoordelingen, knelpunten, conflicten, markten, samenvattingen",
       "b2": "Gedocumenteerde REST-API — 193 operaties, één OpenAPI 3.1-spec, één sleutel",
       "b3": "Officiële SDK's op npm, PyPI, RubyGems en Go — nul afhankelijkheden, MCP-first",
       "b4": "JMESPath-projectie bij elke aanroep — haal precies de velden op die je nodig hebt",
@@ -620,7 +620,7 @@
       "termQuery": "Wordt onze blootstelling aan de Rode Zee deze week erger?",
       "termAnswer": "Transittelling omlaag week-over-week; oorlogsrisico-niveau verhoogd; twee dichtheidsafwijkingen in de laatste 48 uur.",
       "termDocs": "Zie de volledige toolreferentie →",
-      "promise": "Één sleutel. 59 MCP-tools. Een volledige REST API. Taal-native clients."
+      "promise": "Één sleutel. 60 MCP-tools. Een volledige REST API. Taal-native clients."
     },
     "pricing": {
       "eyebrow": "Toegang",
@@ -638,7 +638,7 @@
       "proF1": "WM Analyst — chat met 30+ live services, met bronvermelding",
       "proF2": "Scenario engine & Route Explorer — speel verstoringen door voordat ze toeslaan",
       "proF3": "Persoonlijke AI-samenvatting — dagelijks, twee keer per dag of wekelijks, naar Slack, Telegram of e-mail",
-      "proF4": "MCP, REST API en officiële SDK's — 59 tools onder één sleutel",
+      "proF4": "MCP, REST API en officiële SDK's — 60 tools onder één sleutel",
       "proF5": "Custom widget builder voor je eigen panelen",
       "cta": "Zie plannen & prijzen",
       "note": "Vanaf $39,99/mnd · 3 maanden gratis bij jaarlijkse betaling"
@@ -659,7 +659,7 @@
       "q6": "Waarom moet ik een waarschuwing vertrouwen?",
       "a6": "Een breaking banner verschijnt alleen wanneer onafhankelijke brontypen dit bevestigen — nieuwsclassificatie, trefwoord-snelheid, hotspot-escalatie, militaire pieken, officiële sirenes — gededupliceerd en frequentielimited. Minder waarschuwingen, echte.",
       "q7": "Kunnen AI-agenten zoals Claude of GPT het gebruiken?",
-      "a7": "Ja. World Monitor beschikt over een MCP-server met 59 tools, dus Claude, GPT of een willekeurige MCP-compatibele agent kan live risicobeoordelingen, knelpuntstatus, conflicten, markten en samenvattingen opvragen — met JMESPath-projectie zodat agents precies krijgen wat ze nodig hebben.",
+      "a7": "Ja. World Monitor beschikt over een MCP-server met 60 tools, dus Claude, GPT of een willekeurige MCP-compatibele agent kan live risicobeoordelingen, knelpuntstatus, conflicten, markten en samenvattingen opvragen — met JMESPath-projectie zodat agents precies krijgen wat ze nodig hebben.",
       "q8": "Heb ik een account nodig?",
       "a8": "Nee. Het dashboard werkt direct zonder registratie. Een account is alleen belangrijk wanneer je upgradet naar Pro of instellingen wilt synchroniseren op meerdere apparaten.",
       "q9": "Is het open source?",

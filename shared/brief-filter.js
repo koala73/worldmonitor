@@ -1,5 +1,6 @@
 // Pure helpers for composing a WorldMonitor Brief envelope from
-// upstream news:insights:v1 content + a user's alert-rule preferences.
+// digest-derived, upstream-normalized story rows + a user's alert-rule
+// preferences. Rows can retain legacy/non-clustered fields during migration.
 //
 // Split into its own module so Phase 3a (stubbed digest text) and
 // Phase 3b (LLM-generated digest) share the same filter + shape
@@ -181,8 +182,8 @@ function clip(v, cap) {
  * Word-wise title-case for display values. Capitalizes the first letter
  * of every word, leaves already-uppercase letters alone. Handles the
  * full canonical EventCategory enum (single-word: `'conflict' \u2192 'Conflict'`)
- * AND space-bearing legacy categories that other `filterTopStories`
- * callers pass through (e.g. `composeBriefForRule` with `'world politics'
+ * AND space-bearing legacy categories that digest-derived callers can retain
+ * (e.g. a non-clustered row with `'world politics'`
  * \u2192 'World Politics'`). First-letter-only would corrupt the multi-word
  * case (`'world politics' \u2192 'World politics'`).
  *
@@ -529,17 +530,16 @@ export function filterTopStories({ stories, sensitivity, maxStories = 12, maxPer
     // (scripts/lib/brief-dedup-jaccard.mjs) — the deterministic
     // cluster-rep hash shared across every member of a multi-story
     // cluster. digestStoryToUpstreamTopStory at scripts/lib/brief-compose.mjs
-    // wires it onto the upstream story shape this filter consumes.
+    // wires it onto the digest-derived, upstream-normalized row this filter consumes.
     //
     // Source preference (top wins):
     //   1. raw.clusterRepHash — canonical, materializeCluster path.
     //      Singleton clusters: equals the story's own hash by
     //      construction (see digestStoryToUpstreamTopStory fallback).
     //      Multi-story clusters: shared identity for every member.
-    //   2. raw.hash — back-compat for paths that bypass the cluster
-    //      materializer (e.g. composeBriefForRule against
-    //      news:insights:v1, which feeds raw upstream stories without
-    //      a clusterRepHash field). Singleton cluster identity is the
+    //   2. raw.hash — back-compat for legacy/non-clustered rows that bypass
+    //      the materializer and therefore have no clusterRepHash. Singleton
+    //      cluster identity is the
     //      story's own hash, so the contract still holds.
     //   3. `url:${sourceUrl}` — last-ditch deterministic fallback for
     //      paths that omit hash entirely. sourceUrl is validated above

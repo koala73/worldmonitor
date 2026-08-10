@@ -37,7 +37,9 @@ const SHIPPING_TTL = 28800; // 8h — 2h buffer over 6h cron cadence (was 1h = 5
 // stay green if this constant moved, re-opening the silent window where the
 // flow keys have expired but health still reads OK.
 export const TRADE_TTL = 28800; // 8h — 2h buffer over 6h cron cadence (was 6h = 0 buffer)
-const TARIFF_TTL = 28800; // 8h — 2h buffer over 6h cron cadence (was TRADE_TTL=6h = 0 buffer)
+// Exported so tests can pin the tariffTrendsUs staleness budget against the
+// real data TTL the same way tradeFlows pins TRADE_TTL.
+export const TARIFF_TTL = 28800; // 8h — 2h buffer over 6h cron cadence (was TRADE_TTL=6h = 0 buffer)
 const CUSTOMS_TTL = 86400; // 24h — monthly Treasury data, matches maxStaleMin:1440 (was TRADE_TTL=6h = 0 buffer)
 
 // Reporter list fetched dynamically from WTO API at startup.
@@ -802,6 +804,53 @@ export async function fetchTradeFlows() {
 }
 
 /**
+ * Coarse label for WHY the run published fewer pairs than it attempted, so an
+ * on-call agent can tell a transient WTO outage from a permanent reporter-roster
+ * shift at a glance on /api/health. Kept to a closed vocabulary (health does
+ * not relay arbitrary free text):
+ *
+ *   - run-failed       the FETCH loop itself threw before producing stats
+ *   - upstream         upstreamFailures dominated (requests errored/HTTP non-204)
+ *   - empty            emptyPairs dominated (WTO answered 204/nothing, a real
+ *                      and usually permanent roster contraction)
+ *   - incomplete-years one-sided years dominated (row-level completeness guard)
+ *   - mixed            multiple contributors, none dominant
+ *   - none             no shortfall (pairsSeeded == pairsAttempted, no dropped rows)
+ *
+ * Accounting: `pairsSeeded + upstreamFailures + emptyPairs == pairsAttempted`,
+ * so a healthy run's delta is exactly zero and `incompleteYearsDropped` (a
+ * row-level counter, not a pair counter) is zero too. A positive delta whose
+ * upstream/empty counters do not explain it — the counters cannot both be right
+ * — resolves to `mixed` rather than inventing a winner. When no pair shortfall
+ * exists but one-sided years were dropped anyway, `incomplete-years` names the
+ * row-level quality signal even though the pair count is full.
+ */
+export function dominantFailureMode(coverage) {
+  const seeded = coverage.pairsSeeded ?? 0;
+  const attempted = coverage.pairsAttempted ?? 0;
+  const upstream = coverage.upstreamFailures ?? 0;
+  const empty = coverage.emptyPairs ?? 0;
+  const incomplete = coverage.incompleteYearsDropped ?? 0;
+  if (attempted <= 0 || seeded > attempted) return 'run-failed';
+
+  const delta = attempted - seeded;
+  if (delta <= 0) return incomplete > 0 ? 'incomplete-years' : 'none';
+
+  const accounted = upstream + empty;
+  if (accounted === 0) return incomplete > 0 ? 'incomplete-years' : 'mixed';
+  if (accounted !== delta) return 'mixed';
+  // A contributor is dominant when it explains the whole shortfall itself, or
+  // when the other side is negligible (< 20% of the delta). Ties resolve to
+  // `mixed` rather than picking a winner by accident.
+  const shortfallSlots = accounted;
+  if (upstream > 0 && empty === 0) return 'upstream';
+  if (empty > 0 && upstream === 0) return 'empty';
+  if (upstream > shortfallSlots * 0.8) return 'upstream';
+  if (empty > shortfallSlots * 0.8) return 'empty';
+  return 'mixed';
+}
+
+/**
  * Publish the flow fleet: one key per seeded pair, then the coverage manifest,
  * then a single freshness/coverage meta record.
  *
@@ -883,7 +932,16 @@ export async function publishTradeFlows({ flows, manifest }) {
     console.warn('  Trade flows: no keys written; leaving the previous seed-meta record to age out');
     return;
   }
-  await writeSeedMeta(TRADE_FLOW_KEY_PREFIX, written, TRADE_FLOW_META_KEY);
+  await writeSeedMeta(TRADE_FLOW_KEY_PREFIX, written, TRADE_FLOW_META_KEY, undefined, undefined, {
+    // Why this run published fewer than attempted, coarse enough for /api/health
+    // to relay to an on-call agent without Railway logs or a raw index read.
+    // Written NEXT TO recordCount, never under `coverage` — health parses that
+    // field with the consumer-prices retailer schema, so a different shape
+    // there would be published as an all-zero purchasedPages block (see the
+    // manifest comment in fetchTradeFlows). An envelope-less top-level field is
+    // the one thing health can read and echo verbatim.
+    dominantFailureMode: dominantFailureMode(manifest.stats ?? {}),
+  });
 }
 
 // ─── Trade Barriers (WTO) ───
@@ -1006,23 +1064,90 @@ async function fetchTradeRestrictions() {
   return { restrictions, _reporterCountries: getReporterIso2(), fetchedAt: new Date().toISOString(), upstreamUnavailable: false };
 }
 
-// ─── Tariff Trends (WTO) — pre-seed major reporters ───
+// ─── Tariff Trends (WTO) — pre-seed every reporter's MFN applied series ───
+//
+// One seeded window per reporter, sliced by the handler to whatever lookback
+// the caller asked for. Previously the window was baked into the cache key
+// (`…:${years}`) and only ever written at years=10, so every other supported
+// lookback built a key nothing had written and came back as an upstream
+// outage (issue #6316). Keeping the maximum here and slicing at read time
+// makes all 1-30 answerable from the same fetch.
+//
+// Must stay equal to the `years` maximum in
+// proto/worldmonitor/trade/v1/get_tariff_trends.proto — a seeded window shorter
+// than the contract maximum silently truncates the widest supported request.
+// tests/tariff-trends-coverage.test.mts pins the two together.
+export const TARIFF_SEED_YEARS = 30;
+
+export const TARIFF_KEY_PREFIX = 'trade:tariffs:v2';
+// Coverage manifest: the reporters this seeder intends to publish. Read by the
+// handler ONLY after a data-key miss, so it costs the served path nothing and
+// lets a miss be named — a reporter outside the manifest is a coverage answer,
+// a reporter inside it whose key is gone is a fault.
+export const TARIFF_COVERAGE_KEY = `${TARIFF_KEY_PREFIX}:index`;
+// One aggregate meta key for the whole tariff fleet. Per-key meta (N extra
+// Redis writes per run) had no fleet-level reader; health needs one freshness
+// signal plus the coverage counts that separate "we never seeded this" from
+// "WTO is down".
+export const TARIFF_META_KEY = 'seed-meta:trade:tariffs';
+
+/** Cache key for one seeded reporter. Mirrored by the handler; pinned by tests. */
+export function tariffTrendSeedKey(reporter) {
+  return `${TARIFF_KEY_PREFIX}:${reporter}`;
+}
+
+/** Manifest member for one seeded reporter. Mirrored by the handler; pinned by tests. */
+export function tariffTrendCoverageId(reporter) {
+  return reporter;
+}
+
+/**
+ * Build the tariff datapoint list for one reporter from raw WTO rows.
+ * Exported so coverage tests can drive the real construction path.
+ */
+export function buildTariffDatapoints(reporter, rows) {
+  return rows.map((row) => {
+    const year = parseInt(row.Year ?? row.year ?? '', 10);
+    const tariffRate = parseFloat(row.Value ?? row.value ?? '');
+    if (Number.isNaN(year) || Number.isNaN(tariffRate)) return null;
+    return {
+      reportingCountry: row.ReportingEconomy ?? reporter,
+      partnerCountry: 'World',
+      productSector: 'All products',
+      year,
+      tariffRate: Math.round(tariffRate * 100) / 100,
+      boundRate: 0,
+      indicatorCode: 'TP_A_0010',
+    };
+  }).filter(Boolean).sort((a, b) => a.year - b.year);
+}
 
 export async function fetchTariffTrends() {
   const currentYear = new Date().getFullYear();
   const trends = {};
   const usEffectiveTariffRate = await fetchEffectiveTariffRateFromFred();
+  // Advertised coverage is intent MINUS what upstream definitively answered
+  // empty. A batch WTO *failure* leaves those codes advertised so a miss is
+  // seed_missing (fault); a successful batch that produced no usable rows for
+  // a code removes it so a miss is not_covered (contract answer).
+  const emptyAnswered = new Set();
+  let minYear = Number.POSITIVE_INFINITY;
+  let maxYear = Number.NEGATIVE_INFINITY;
 
   // Batch WTO requests in groups of 30 to avoid URL length limits
   const BATCH_SIZE = 30;
-  const years = 10;
   for (let i = 0; i < ALL_REPORTERS.length; i += BATCH_SIZE) {
-    const batch = ALL_REPORTERS.slice(i, i + BATCH_SIZE);
+    const batch = ALL_REPORTERS.slice(i, i + BATCH_SIZE).filter((c) => /^[0-9]{3}$/.test(c));
+    if (batch.length === 0) continue;
     const data = await wtoFetch('/data', {
       i: 'TP_A_0010', r: batch.join(','),
-      ps: `${currentYear - years}-${currentYear}`, fmt: 'json', mode: 'full', max: '5000',
+      ps: `${currentYear - TARIFF_SEED_YEARS}-${currentYear}`, fmt: 'json', mode: 'full', max: '5000',
     });
-    if (!data) { await sleep(1000); continue; }
+    if (!data) {
+      // Upstream failure for the whole batch — leave these codes advertised.
+      await sleep(1000);
+      continue;
+    }
     const dataset = Array.isArray(data) ? data : data?.Dataset ?? data?.dataset ?? [];
 
     // Group by reporter code
@@ -1033,33 +1158,112 @@ export async function fetchTariffTrends() {
       byReporter.get(code).push(row);
     }
 
-    for (const [reporter, rows] of byReporter) {
-      const datapoints = rows.map(row => {
-        const year = parseInt(row.Year ?? row.year ?? '', 10);
-        const tariffRate = parseFloat(row.Value ?? row.value ?? '');
-        if (Number.isNaN(year) || Number.isNaN(tariffRate)) return null;
-        return {
-          reportingCountry: row.ReportingEconomy ?? reporter,
-          partnerCountry: 'World', productSector: 'All products',
-          year, tariffRate: Math.round(tariffRate * 100) / 100,
-          boundRate: 0, indicatorCode: 'TP_A_0010',
-        };
-      }).filter(Boolean).sort((a, b) => a.year - b.year);
-
-      if (datapoints.length > 0) {
-        const cacheKey = `trade:tariffs:v1:${reporter}:all:${years}`;
-        trends[cacheKey] = {
-          datapoints,
-          ...(reporter === '840' && usEffectiveTariffRate ? { effectiveTariffRate: usEffectiveTariffRate } : {}),
-          fetchedAt: new Date().toISOString(),
-          upstreamUnavailable: false,
-        };
+    for (const reporter of batch) {
+      const rows = byReporter.get(reporter) ?? [];
+      const datapoints = buildTariffDatapoints(reporter, rows);
+      if (datapoints.length === 0) {
+        emptyAnswered.add(reporter);
+        continue;
       }
+      for (const point of datapoints) {
+        if (point.year < minYear) minYear = point.year;
+        if (point.year > maxYear) maxYear = point.year;
+      }
+      const cacheKey = tariffTrendSeedKey(reporter);
+      trends[cacheKey] = {
+        datapoints,
+        ...(reporter === '840' && usEffectiveTariffRate ? { effectiveTariffRate: usEffectiveTariffRate } : {}),
+        fetchedAt: new Date().toISOString(),
+        upstreamUnavailable: false,
+        unavailableReason: 'TARIFF_TREND_UNAVAILABLE_REASON_UNSPECIFIED',
+        coverageStartYear: datapoints[0].year,
+        coverageEndYear: datapoints[datapoints.length - 1].year,
+      };
     }
     await sleep(1000);
   }
-  console.log(`  Tariff trends: ${Object.keys(trends).length} countries`);
-  return trends;
+
+  const reporters = ALL_REPORTERS
+    .filter((code) => /^[0-9]{3}$/.test(code) && !emptyAnswered.has(code))
+    .sort();
+  const manifest = {
+    reporters,
+    startYear: Number.isFinite(minYear) ? minYear : currentYear - TARIFF_SEED_YEARS,
+    endYear: Number.isFinite(maxYear) ? maxYear : currentYear,
+    fetchedAt: new Date().toISOString(),
+    reporterListIsFallback: REPORTER_LIST_IS_FALLBACK === true,
+  };
+
+  console.log(
+    `  Tariff trends: ${Object.keys(trends).length} countries `
+    + `(${reporters.length} advertised, ${emptyAnswered.size} empty)`,
+  );
+  return { trends, manifest };
+}
+
+/**
+ * Publish the tariff fleet: one key per reporter, then the coverage manifest,
+ * then a single freshness/coverage meta record.
+ *
+ * Order matters on the last two. The manifest is what lets a handler miss be
+ * named, and the meta record is what health reads as "this fleet is fresh" —
+ * so the meta goes last, after everything it vouches for is in Redis.
+ */
+export async function publishTariffTrends({ trends, manifest }) {
+  const failedKeys = [];
+  for (const [key, data] of Object.entries(trends)) {
+    try {
+      await writeExtraKey(key, data, TARIFF_TTL);
+    } catch (err) {
+      failedKeys.push(key);
+      console.warn(`  Tariff trends: write failed for ${key}: ${err?.message || err}`);
+    }
+  }
+  if (failedKeys.length > 0) {
+    console.warn(`  Tariff trends: ${failedKeys.length}/${Object.keys(trends).length} key writes failed`);
+  }
+  const written = Object.keys(trends).length - failedKeys.length;
+
+  // Same gate as publishTradeFlows: an under-stated manifest would publish
+  // cacheable `not_covered` about economies this seeder covers. Refuse the
+  // write and leave the previous manifest under its own TTL, or none at all
+  // (handler reports coverage_unknown).
+  const untrustworthy = manifest.reporterListIsFallback
+    ? 'reporter list came from the local fallback'
+    : !Array.isArray(manifest.reporters) || manifest.reporters.length === 0
+      ? 'the run advertised zero reporters'
+      : null;
+  if (untrustworthy) {
+    console.warn(`  Tariff trends: not publishing a coverage manifest — ${untrustworthy}`);
+  } else {
+    try {
+      await writeExtraKey(TARIFF_COVERAGE_KEY, {
+        reporters: manifest.reporters,
+        startYear: manifest.startYear,
+        endYear: manifest.endYear,
+        fetchedAt: manifest.fetchedAt,
+      }, TARIFF_TTL);
+    } catch (err) {
+      console.warn(`  Tariff trends: coverage manifest write failed: ${err?.message || err}`);
+    }
+  }
+
+  // A run that landed NOTHING must not stamp a fresh timestamp over the last
+  // good record — same rationale as publishTradeFlows.
+  if (written === 0) {
+    console.warn('  Tariff trends: no keys written; leaving the previous seed-meta record to age out');
+    return;
+  }
+  // The meta record is what health reads as "this fleet is fresh", so a write
+  // rejection must NOT abort the run mid-fetchAll and skip the remaining key
+  // writes (customs revenue, resilient indices) — log and keep going; the
+  // previous meta record then ages out on its own TTL instead of crashing the
+  // seeder. Mirrors the isolation policy in _seed-utils.mjs.
+  try {
+    await writeSeedMeta(TARIFF_KEY_PREFIX, written, TARIFF_META_KEY);
+  } catch (err) {
+    console.warn(`  Tariff trends: seed-meta write failed: ${err?.message || err}`);
+  }
 }
 
 // ─── US Treasury Customs Revenue ───
@@ -1211,7 +1415,7 @@ async function fetchAll() {
   if (ba) await writeExtraKeyWithMeta(KEYS.barriers, ba, TRADE_TTL, ba.barriers?.length ?? 0);
   if (re) await writeExtraKeyWithMeta(KEYS.restrictions, re, TRADE_TTL, re.restrictions?.length ?? 0);
   if (fl) await publishTradeFlows(fl);
-  if (ta) { for (const [key, data] of Object.entries(ta)) await writeExtraKeyWithMeta(key, data, TARIFF_TTL, data.datapoints?.length ?? 0); }
+  if (ta) await publishTariffTrends(ta);
   if (cu) await writeExtraKeyWithMeta(KEYS.customsRevenue, cu, CUSTOMS_TTL, cu.months?.length ?? 0);
 
   return mergedIndices.length > 0

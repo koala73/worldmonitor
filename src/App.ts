@@ -1407,9 +1407,8 @@ export class App {
       loadDataForLayer: (layer) => { void this.dataLoader.loadDataForLayer(layer as keyof MapLayers); },
       waitForAisData: () => this.dataLoader.waitForAisData(),
       syncDataFreshnessWithLayers: () => this.dataLoader.syncDataFreshnessWithLayers(),
-      ensureCorrectZones: () => this.panelLayout.ensureCorrectZones(),
+      applyPanelSettings: () => this.panelLayout.applyPanelSettings(),
       applySavedPanelOrder: (panelOrder?: string[]) => this.panelLayout.applySavedPanelOrder(panelOrder),
-      refreshCiiAfterFocalPointsReady: () => this.dataLoader.refreshCiiAfterFocalPointsReady(),
       stopLayerActivity: (layer) => this.dataLoader.stopLayerActivity(layer),
       mountLiveNewsIfReady: () => this.panelLayout.mountLiveNewsIfReady(),
       updateFlightSource: (adsb, military) => this.updateFlightSourceIfReady(adsb, military),
@@ -1582,11 +1581,11 @@ export class App {
   private startPostLcpIntelligence(countryGeometryReady: Promise<void>, geometryAlreadyApplied: boolean): void {
     void countryGeometryReady.finally(() => {
       if (this.state.isDestroyed) return;
-      // Replay geometry-dependent CII only when the fan-out ingested before
+      // Replay geometry-dependent country-detail data only when the fan-out ingested before
       // precision geometry was ready; otherwise the first-pass attribution is
       // already correct and a replay is a redundant compute + repaint (#4512).
       if (!geometryAlreadyApplied) {
-        this.dataLoader.refreshGeometryDependentCiiAfterCountryGeometry();
+        this.dataLoader.refreshGeometryDependentCountryData();
       }
       // Correlation and country-learning use precision geometry/name matching,
       // but they are post-initial-data work and should not hold the LCP path.

@@ -2791,10 +2791,11 @@
       "unlockedAnnouncement": "Ograničenje kartica nadzorne ploče ukinuto."
     },
     "fx": {
-      "infoTooltip": "<strong>Devizni tečajevi</strong> Valutni stres i spot tečajevi:<ul><li>FX Stress rangira 45 valuta prema njihovom najvećem pada od vrha do dna tijekom posljednjih 24 mjeseca, zajedno s promjenom u 12 mjeseci</li><li>Pokrivenost uključuje ARS, TRY, EGP, NGN, PKR i UAH — valute koje BIS i ECB referentni skupovi ne uključuju</li><li>Spot navodi tečajeve prema američkom dolaru i ECB euro referentnim tečajevima odvojeno, jer se ta dva kotiraju iz različitih baza</li></ul>Izvori: Yahoo Finance i Europska središnja banka.",
+      "infoTooltip": "<strong>Devizni tečajevi</strong> Valutni stres i spot tečajevi:<ul><li>FX Stress rangira 45 valuta prema njihovom najvećem pada od vrha do dna tijekom posljednjih 24 mjeseca, zajedno s promjenom u 12 mjeseci</li><li>Pokrivenost uključuje ARS, TRY, EGP, NGN, PKR i UAH — valute koje BIS i ECB referentni skupovi ne uključuju</li><li>Spot navodi tečajeve prema američkom dolaru i ECB euro referentnim tečajevima odvojeno, jer se ta dva kotiraju iz različitih baza</li><li>RUB — tečajevi Središnje banke Rusije, rubalja po jedinici</li></ul> Izvori: Yahoo Finance, Europska središnja banka i Središnja banka Rusije.",
       "tabs": {
         "stress": "Valutni stres",
-        "spot": "Spot"
+        "spot": "Spot",
+        "rub": "RUB"
       },
       "currency": "Valuta",
       "pair": "Par",
@@ -2814,8 +2815,12 @@
       "source": {
         "stress": "FX stres",
         "usd": "Tečajevi američkog dolara",
-        "eur": "Tečajevi eura ECB-a"
-      }
+        "eur": "Tečajevi eura ECB-a",
+        "rub": "Tečajevi Središnje banke Rusije"
+      },
+      "rubBase": "Središnja banka Rusije — rubalja po 1 jedinici",
+      "rubPerUnit": "Rubalja po jedinici",
+      "sourceCbr": "Izvor: Središnja banka Rusije"
     }
   },
   "popups": {

@@ -2605,10 +2605,11 @@
       }
     },
     "fx": {
-      "infoTooltip": "<strong>FX Rates</strong> Currency stress and spot rates:<ul><li>FX Stress ranks 45 currencies by their worst peak-to-trough drawdown over the last 24 months, alongside the 12-month change</li><li>Coverage includes ARS, TRY, EGP, NGN, PKR and UAH — currencies the BIS and ECB reference sets omit</li><li>Spot lists rates against the US dollar and the ECB euro reference rates separately, because the two are quoted from different bases</li></ul>Sources: Yahoo Finance and the European Central Bank.",
+      "infoTooltip": "<strong>FX Rates</strong> Currency stress and spot rates:<ul><li>FX Stress ranks 45 currencies by their worst peak-to-trough drawdown over the last 24 months, alongside the 12-month change</li><li>Coverage includes ARS, TRY, EGP, NGN, PKR and UAH — currencies the BIS and ECB reference sets omit</li><li>Spot lists rates against the US dollar and the ECB euro reference rates separately, because the two are quoted from different bases</li><li>RUB — Bank of Russia rates, rubles per unit</li></ul>Sources: Yahoo Finance, the ECB and the Bank of Russia.",
       "tabs": {
         "stress": "FX Stress",
-        "spot": "Spot"
+        "spot": "Spot",
+        "rub": "RUB"
       },
       "currency": "Currency",
       "pair": "Pair",
@@ -2626,10 +2627,14 @@
       "source": {
         "stress": "FX stress",
         "usd": "US dollar rates",
-        "eur": "ECB euro rates"
+        "eur": "ECB euro rates",
+        "rub": "Bank of Russia rates"
       },
       "sourceYahoo": "Source: Yahoo Finance",
-      "sourceEcb": "Source: ECB"
+      "sourceEcb": "Source: ECB",
+      "rubBase": "Bank of Russia — RUB per 1 unit",
+      "rubPerUnit": "RUB per unit",
+      "sourceCbr": "Source: Bank of Russia"
     }
   },
   "popups": {

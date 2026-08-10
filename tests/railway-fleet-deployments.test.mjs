@@ -10,10 +10,55 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import { readFleetDeployments } from '../scripts/railway-cli.mjs';
+import {
+  createRailwayCliEnv,
+  readDeployments,
+  readFleetDeployments,
+  runRailway,
+} from '../scripts/railway-cli.mjs';
 import { createFleetAccumulator } from '../scripts/railway-deployments.mjs';
 
 const HEAD_AT = Date.parse('2026-08-04T12:00:00.000Z');
+
+describe('Railway CLI child capability boundary', () => {
+  const sourceEnv = {
+    PATH: '/runner/bin',
+    HOME: '/runner/home',
+    RAILWAY_TOKEN: 'railway-token',
+    RAILWAY_PROJECT_ID: 'project-1',
+    RAILWAY_RECONCILE_MUTATION_HMAC: 'mutation-secret',
+    RAILWAY_RECONCILE_OPERATOR_HMAC: 'operator-secret',
+    GH_TOKEN: 'github-secret',
+  };
+
+  it('passes Railway credentials but strips control-plane and GitHub credentials', () => {
+    assert.deepEqual(createRailwayCliEnv(sourceEnv), {
+      HOME: '/runner/home',
+      PATH: '/runner/bin',
+      RAILWAY_PROJECT_ID: 'project-1',
+      RAILWAY_TOKEN: 'railway-token',
+    });
+  });
+
+  it('applies the allowlist to sync and async Railway children', async () => {
+    const childEnvironments = [];
+    runRailway(['--version'], { env: sourceEnv }, (_command, _args, options) => {
+      childEnvironments.push(options.env);
+      return { status: 0, signal: null, error: null, stdout: 'railway 4' };
+    });
+    await readDeployments({ id: 'svc-1' }, 'production', 1, {
+      env: sourceEnv,
+      execFileImpl: async (_command, _args, options) => {
+        childEnvironments.push(options.env);
+        return { stdout: '[]' };
+      },
+    });
+    assert.deepEqual(childEnvironments, [
+      createRailwayCliEnv(sourceEnv),
+      createRailwayCliEnv(sourceEnv),
+    ]);
+  });
+});
 
 function node(serviceId, status, at, commitHash) {
   return { serviceId, status, createdAt: at, meta: commitHash ? { commitHash } : {} };
