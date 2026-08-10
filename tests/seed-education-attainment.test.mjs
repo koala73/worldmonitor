@@ -1,0 +1,145 @@
+// Pin the education-attainment seeder's record parsing and validate floor.
+//
+// Series: SE.SEC.CUAT.UP.FE.ZS — educational attainment, at least completed
+// upper secondary, population 25+, female (%). Feeds the `education`
+// dimension of the Country Resilience Index.
+//
+// The pure reducer `reduceAttainmentRecords` is exported so these run fully
+// offline — no network, no recorded fixture. The seeder's network path uses
+// the same paged World Bank pattern as `seed-wb-external-debt.mjs`.
+//
+// The null-coercion case below is the one that matters most: this series can
+// legitimately read near zero (Niger is 1.15%), so a `value: null` coerced to
+// 0 would publish a plausible-looking wrong number rather than an obvious one.
+
+import assert from 'node:assert/strict';
+import { describe, it } from 'node:test';
+
+import {
+  reduceAttainmentRecords,
+  validate,
+  declareRecords,
+  MIN_COUNTRIES,
+  ATTAINMENT_INDICATOR,
+} from '../scripts/seed-education-attainment.mjs';
+
+const row = (iso3, date, value) => ({ countryiso3code: iso3, date: String(date), value });
+
+describe('reduceAttainmentRecords — parsing', () => {
+  it('maps ISO3 to ISO2 and keeps the value', () => {
+    const out = reduceAttainmentRecords([row('FRA', 2023, 82.5)]);
+    assert.deepEqual(out.FR, { value: 82.5, year: 2023 });
+  });
+
+  it('keeps the most recent year when a country reports several', () => {
+    const out = reduceAttainmentRecords([
+      row('KEN', 2019, 30.1),
+      row('KEN', 2023, 34.7),
+      row('KEN', 2021, 32.0),
+    ]);
+    assert.equal(out.KE.year, 2023);
+    assert.equal(out.KE.value, 34.7);
+  });
+
+  it('skips a null value instead of coercing it to 0 and overwriting a real reading', () => {
+    // Number(null) === 0 and is finite. Without an explicit null-skip, the
+    // later null row would beat the earlier real one on year comparison and
+    // publish Niger-like 0% attainment for a country that reports ~34%.
+    const out = reduceAttainmentRecords([
+      row('KEN', 2021, 34.7),
+      row('KEN', 2023, null),
+    ]);
+    assert.equal(out.KE.value, 34.7, 'null row must not overwrite the real observation');
+    assert.equal(out.KE.year, 2021);
+  });
+
+  it('drops a country whose only row is null rather than publishing 0', () => {
+    const out = reduceAttainmentRecords([row('SSD', 2023, null)]);
+    assert.equal(out.SS, undefined);
+  });
+
+  it('rejects out-of-range percentages as upstream corruption', () => {
+    const out = reduceAttainmentRecords([
+      row('BRA', 2023, 145),
+      row('CHL', 2023, -3),
+    ]);
+    assert.equal(out.BR, undefined);
+    assert.equal(out.CL, undefined);
+  });
+
+  it('accepts the observed distribution extremes', () => {
+    // Niger 1.15 is the measured minimum, Belarus 98.18 the measured maximum.
+    // Both must survive parsing or the goalposts lose their anchors.
+    const out = reduceAttainmentRecords([row('NER', 2022, 1.15), row('BLR', 2023, 98.18)]);
+    assert.equal(out.NE.value, 1.15);
+    assert.equal(out.BY.value, 98.18);
+  });
+
+  it('ignores rows whose code resolves to no ISO2 (World Bank aggregates)', () => {
+    // "WLD", "EUU", "OED" and friends are aggregates, not countries.
+    const out = reduceAttainmentRecords([row('ZZZ', 2023, 50), row('FRA', 2023, 82.5)]);
+    assert.deepEqual(Object.keys(out), ['FR']);
+  });
+
+  it('skips a non-numeric year', () => {
+    const out = reduceAttainmentRecords([{ countryiso3code: 'FRA', date: 'n/a', value: 82.5 }]);
+    assert.equal(out.FR, undefined);
+  });
+
+  it('folds successive pages into one accumulator', () => {
+    const out = {};
+    reduceAttainmentRecords([row('FRA', 2021, 80.0)], out);
+    reduceAttainmentRecords([row('FRA', 2024, 83.2), row('DEU', 2023, 86.1)], out);
+    assert.equal(out.FR.year, 2024);
+    assert.equal(out.DE.value, 86.1);
+  });
+});
+
+describe('validate — floor', () => {
+  const many = (n) => {
+    const countries = {};
+    for (let i = 0; i < n; i++) countries[`X${i}`] = { value: 50, year: 2023 };
+    return { countries };
+  };
+
+  it('accepts a payload at the floor', () => {
+    assert.equal(validate(many(MIN_COUNTRIES)), true);
+  });
+
+  it('rejects a truncated payload one below the floor', () => {
+    // A partial World Bank response must not refresh seed-meta, or the bundle
+    // freezes on a truncated snapshot.
+    assert.equal(validate(many(MIN_COUNTRIES - 1)), false);
+  });
+
+  it('rejects an empty or malformed payload', () => {
+    assert.equal(validate({ countries: {} }), false);
+    assert.equal(validate({}), false);
+    assert.equal(validate(null), false);
+  });
+
+  it('the floor sits below the measured coverage with headroom', () => {
+    // Measured 2026-08-10: 181 of the 196 rankable countries. The floor is
+    // deliberately lower so a transient upstream dip does not poison
+    // seed-meta, but high enough that a real outage still fails closed.
+    assert.ok(MIN_COUNTRIES < 181, 'floor must not exceed measured coverage');
+    assert.ok(MIN_COUNTRIES >= 100, 'floor must still catch a substantially truncated fetch');
+  });
+});
+
+describe('declareRecords', () => {
+  it('counts published countries', () => {
+    assert.equal(declareRecords({ countries: { FR: {}, DE: {} } }), 2);
+    assert.equal(declareRecords({}), 0);
+    assert.equal(declareRecords(null), 0);
+  });
+});
+
+describe('series identity', () => {
+  it('pins the female variant, not the total or male series', () => {
+    // The construct rests on the female series specifically — the causal
+    // literature's income-independent effect is measured on it. Swapping to
+    // .ZS (total) or .MA.ZS (male) would silently change what is scored.
+    assert.equal(ATTAINMENT_INDICATOR, 'SE.SEC.CUAT.UP.FE.ZS');
+  });
+});

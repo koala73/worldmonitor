@@ -407,6 +407,11 @@ const STANDALONE_KEYS = {
   lowCarbonGeneration:      'resilience:low-carbon-generation:v1',
   fossilElectricityShare:   'resilience:fossil-electricity-share:v1',
   powerLosses:              'resilience:power-losses:v1',
+  // Education dimension seed. Same STRICT SEED_META posture as the v2 energy
+  // seeds above and for the same reason: the scorer fail-closes on a missing
+  // envelope, so health must surface the Railway-bundle gap independently
+  // rather than letting a dark dimension hide a provisioning failure.
+  educationAttainment:      'resilience:education-attainment:v1',
   goldExtended:             'market:gold-extended:v1',
   goldEtfFlows:             'market:gold-etf-flows:v1',
   goldCbReserves:           'market:gold-cb-reserves:v1',
@@ -843,6 +848,12 @@ const SEED_META = {
   lowCarbonGeneration:     { key: 'seed-meta:resilience:low-carbon-generation',     maxStaleMin: 11520 },
   fossilElectricityShare:  { key: 'seed-meta:resilience:fossil-electricity-share',  maxStaleMin: 11520 },
   powerLosses:             { key: 'seed-meta:resilience:power-losses',              maxStaleMin: 11520 },
+  // Education attainment — weekly cron, same 8d budget (2x interval) as the
+  // v2 energy seeds. The underlying World Bank series is annual and slow, but
+  // this budget alarms on the SEEDER being dead, not on the data being old;
+  // content-age staleness is handled separately by the seeder's own 48-month
+  // maxContentAgeMin.
+  educationAttainment:     { key: 'seed-meta:resilience:education-attainment',      maxStaleMin: 11520 },
   webcams:                 { key: 'seed-meta:webcam:cameras:geo',                   maxStaleMin: 1440 }, // seed-webcams writes 24h geo/meta keys plus a 30h active pointer; stale at 24h before the layer goes blank.
   // #5736 — history-ingest freshness per collector. `fetchedAt` here is the
   // last HEALTHY append (success, or a correctly-detected unconfigured run),

@@ -42,4 +42,8 @@ await runBundle('macro', [
   // 300_000 gives ~50s margin and matches peer sections. Pre-PR-#3415 the section
   // was 120_000 — too tight for the multi-tier fallback, would SIGTERM mid-fetch.
   { label: 'FATF-Listing', script: 'seed-fatf-listing.mjs', seedMetaKey: 'economic:fatf-listing', canonicalKey: 'economic:fatf-listing:v1', intervalMs: 30 * DAY, timeoutMs: 300_000 },
+  // Education dimension seeder. Same bundle-placement reasoning as the three
+  // above: one more annual World Bank pull does not justify a new Railway
+  // service. Single indicator, single paged fetch — 300s is generous.
+  { label: 'Education-Attainment', script: 'seed-education-attainment.mjs', seedMetaKey: 'resilience:education-attainment', canonicalKey: 'resilience:education-attainment:v1', intervalMs: 7 * DAY, timeoutMs: 300_000 },
 ]);
