@@ -107,12 +107,12 @@ const ALLOW_LIST: AllowEntry[] = [
   },
   {
     file: 'src/services/trending-keywords.ts',
-    line: 246,
+    line: 252,
     reason: 'headlineKey identity computation — used for dedupe, not freshness ranking.',
   },
   {
     file: 'src/services/trending-keywords.ts',
-    line: 338,
+    line: 344,
     reason: 'publishedAt record-keeping in headline registry; not a freshness comparator.',
   },
 ];
