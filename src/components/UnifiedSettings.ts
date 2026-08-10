@@ -33,7 +33,14 @@ import { renderPreferences } from '@/services/preferences-content';
 import { renderNotificationsSettings, type NotificationsSettingsResult } from '@/services/notifications-settings';
 import { getAuthState, subscribeAuthState } from '@/services/auth-state';
 import { track, trackApiAction } from '@/services/analytics';
-import { isEntitled, hasFeature, onEntitlementChange, getEntitlementState } from '@/services/entitlements';
+import {
+  getEntitlementState,
+  getEntitlementVerificationStatus,
+  hasFeature,
+  isEntitled,
+  onEntitlementChange,
+  onEntitlementVerificationChange,
+} from '@/services/entitlements';
 import { hasPremiumAccess } from '@/services/panel-gating';
 import { getSubscription, onSubscriptionChange, openBillingPortal, prereserveBillingPortalTab } from '@/services/billing';
 import { BusinessSeatsSection } from '@/components/BusinessSeatsSection';
@@ -143,15 +150,8 @@ export class UnifiedSettings {
   private accountEntitlementRefreshPending = false;
   private unsubscribeAuth: (() => void) | null = null;
   private unsubscribeEntitlement: (() => void) | null = null;
+  private unsubscribeEntitlementVerification: (() => void) | null = null;
   private unsubscribeSubscription: (() => void) | null = null;
-  // Bounded "entitlement snapshot might still arrive" window. Starts false
-  // on open() when currentState is null, flips true on first snapshot OR
-  // after a fallback timeout so signed-in free users aren't stranded on an
-  // empty placeholder when Convex is disabled / auth times out / init
-  // silently fails (all of which leave currentState === null forever — see
-  // src/services/entitlements.ts:41,47,58,78).
-  private entitlementReady = false;
-  private entitlementReadyTimer: ReturnType<typeof setTimeout> | null = null;
 
   constructor(config: UnifiedSettingsConfig) {
     this.config = config;
@@ -184,6 +184,11 @@ export class UnifiedSettings {
 
       if (target.closest('.upgrade-pro-cta')) {
         this.handleUpgradeClick();
+        return;
+      }
+
+      if (target.closest('.retry-plan-status-btn')) {
+        window.location.reload();
         return;
       }
 
@@ -451,7 +456,6 @@ export class UnifiedSettings {
     // Replace any rendered A-owned plaintext/list data synchronously. Account
     // loaders stay suppressed until the new entitlement snapshot rerenders.
     if (this.overlay.classList.contains('active')) {
-      this.entitlementReady = false;
       this.render(false);
     }
   }
@@ -482,10 +486,6 @@ export class UnifiedSettings {
     if (this.sourceSelectionBaseline === null) {
       this.sourceSelectionBaseline = this.sourceSelectionSignature();
     }
-    // Seed entitlementReady BEFORE render() so the first paint of
-    // renderUpgradeSection branches on the current snapshot state, not the
-    // stale value left over from a previous open/close cycle.
-    this.entitlementReady = getEntitlementState() !== null;
     this.render();
     this.overlay.classList.add('active');
     if (isMobileDevice()) {
@@ -504,7 +504,6 @@ export class UnifiedSettings {
     // delivers data, so a paid API Starter user sees the upgrade CTA briefly).
     this.unsubscribeEntitlement?.();
     this.unsubscribeEntitlement = onEntitlementChange((state) => {
-      this.entitlementReady = true;
       if (this.accountEntitlementRefreshPending) {
         // Entitlements are account-scoped. Rebuild every account surface so a
         // direct A→B handoff removes/adds MCP and API tabs using B's snapshot.
@@ -534,6 +533,10 @@ export class UnifiedSettings {
       }
       this.replaceUpgradeSection();
     });
+    this.unsubscribeEntitlementVerification?.();
+    this.unsubscribeEntitlementVerification = onEntitlementVerificationChange(() => {
+      this.replaceUpgradeSection();
+    });
     this.unsubscribeSubscription?.();
     this.unsubscribeSubscription = onSubscriptionChange(() => {
       this.replaceUpgradeSection();
@@ -545,23 +548,6 @@ export class UnifiedSettings {
     const sub = getSubscription();
     if (sub?.planKey === 'api_business' && sub?.status === 'active') {
       void this.businessSeatsSection.load();
-    }
-    // Bounded fallback: the entitlement listener can legitimately never
-    // fire (no VITE_CONVEX_URL, Convex API fails to load, waitForConvexAuth
-    // times out at 10s, or init throws — see entitlements.ts:41,47,58,78).
-    // Without this timer, the signed-in-free branch of renderUpgradeSection
-    // would show a blank placeholder for the entire session. 12s > the 10s
-    // auth timeout so the healthy-but-slow path lands on the real state;
-    // any later path falls back to "Upgrade to Pro" with handleUpgradeClick
-    // defensively re-checking isEntitled() at click time.
-    if (this.entitlementReadyTimer) clearTimeout(this.entitlementReadyTimer);
-    if (!this.entitlementReady) {
-      this.entitlementReadyTimer = setTimeout(() => {
-        this.entitlementReadyTimer = null;
-        if (this.entitlementReady) return;
-        this.entitlementReady = true;
-        this.replaceUpgradeSection();
-      }, 12_000);
     }
   }
 
@@ -616,12 +602,10 @@ export class UnifiedSettings {
     this.pendingNotifs = null;
     this.unsubscribeEntitlement?.();
     this.unsubscribeEntitlement = null;
+    this.unsubscribeEntitlementVerification?.();
+    this.unsubscribeEntitlementVerification = null;
     this.unsubscribeSubscription?.();
     this.unsubscribeSubscription = null;
-    if (this.entitlementReadyTimer) {
-      clearTimeout(this.entitlementReadyTimer);
-      this.entitlementReadyTimer = null;
-    }
     this.stopMcpQuotaPolling();
     this.resetPanelDraft();
     localStorage.removeItem('wm-settings-open');
@@ -680,19 +664,12 @@ export class UnifiedSettings {
     this.pendingNotifs = null;
     this.unsubscribeEntitlement?.();
     this.unsubscribeEntitlement = null;
+    this.unsubscribeEntitlementVerification?.();
+    this.unsubscribeEntitlementVerification = null;
     this.unsubscribeSubscription?.();
     this.unsubscribeSubscription = null;
     this.unsubscribeAuth?.();
     this.unsubscribeAuth = null;
-    // Mirror close() — without this, a destroy() during the 12s fallback
-    // window leaves the timer live; it fires after teardown and calls
-    // replaceUpgradeSection() against a detached overlay (no-op via the
-    // querySelector early return, but a stray async callback + DOM
-    // reference alive longer than intended).
-    if (this.entitlementReadyTimer) {
-      clearTimeout(this.entitlementReadyTimer);
-      this.entitlementReadyTimer = null;
-    }
     this.stopMcpQuotaPolling();
     document.removeEventListener('keydown', this.escapeHandler);
     this.overlay.remove();
@@ -928,17 +905,19 @@ export class UnifiedSettings {
         </div>
       `;
     }
-    // Signed-in user whose Convex entitlement snapshot has not arrived yet
-    // AND whose bounded-wait window has not expired. Rendering "Upgrade to
-    // Pro" in this window is how paying users click through to
+    // Signed-in user whose Convex entitlement snapshot has not arrived yet.
+    // Rendering "Upgrade to Pro" in this window is how paying users click through to
     // /api/create-checkout and hit 409 duplicate_subscription — same race
     // as the 2026-04-17/18 panel-overlay incident fixed in panel-gating.ts,
-    // different surface. The entitlementReady flag is flipped either by
-    // the onEntitlementChange listener (healthy path) or by a 12s fallback
-    // timer in open() (Convex-disabled / auth-timeout / init-fail paths
-    // where currentState would otherwise stay null forever and strand a
-    // signed-in free user on an empty placeholder).
-    if (!this.entitlementReady && getAuthState().user && getEntitlementState() === null) {
+    // different surface. The verification service stays pending across the
+    // complete Clerk/Convex retry schedule and publishes unavailable only
+    // after a terminal handoff or subscription failure.
+    const verificationStatus = getEntitlementVerificationStatus();
+    if (
+      getAuthState().user
+      && getEntitlementState() === null
+      && (verificationStatus === 'idle' || verificationStatus === 'pending')
+    ) {
       return `
         <div class="upgrade-pro-section upgrade-pro-loading" role="status" aria-live="polite">
           <div class="upgrade-pro-title">Checking your plan…</div>
@@ -996,22 +975,15 @@ export class UnifiedSettings {
       `;
     }
 
-    // Fallback branch: 12s timer fired but Convex never delivered a
-    // snapshot. entitlementReady===true does NOT prove the user is free —
-    // it just means we've given up waiting. A paying user whose auth/query
-    // is simply very slow (beyond the 10s waitForConvexAuth timeout) would
-    // otherwise race into in-modal startCheckout here and reproduce the
-    // 409 duplicate_subscription cascade this PR exists to eliminate.
-    // Render the card with a plain anchor to /pro instead: /pro has its
-    // own entitlement gating on fresh page load, and navigating away is a
-    // no-op for backend subscription state. The `upgrade-pro-cta-link`
-    // class does NOT match the `.upgrade-pro-cta` delegated click handler
-    // (line ~95), so the browser handles the navigation natively.
+    // A terminal auth/subscription failure still does not prove the user is
+    // free. Keep checkout unavailable, offer a fresh verification attempt,
+    // and retain the safe /pro link in a separate tab.
     if (getAuthState().user && getEntitlementState() === null) {
       return `
         <div class="upgrade-pro-section upgrade-pro-fallback">
           <div class="upgrade-pro-title">Plan status unavailable</div>
-          <div class="upgrade-pro-desc">We could not verify your current plan. View plans in a new tab or try again later.</div>
+          <div class="upgrade-pro-desc">We could not verify your current plan. Try again or view plans in a new tab.</div>
+          <button class="manage-billing-btn retry-plan-status-btn" style="margin-bottom:8px;">Try again</button>
           <a class="upgrade-pro-cta-link" href="/pro" target="_blank" rel="noopener">View plans →</a>
         </div>
       `;
@@ -1030,14 +1002,9 @@ export class UnifiedSettings {
   // BusinessSeatsSection — see this.businessSeatsSection.
 
   private handleUpgradeClick(): void {
-    // Defense in depth: the upgrade CTA can only be clicked when either (a)
-    // the user is genuinely free-tier, or (b) the 12s fallback timer fired
-    // before the Convex snapshot arrived. In (b), the snapshot might land
-    // AFTER the timer but BEFORE the click — re-check isEntitled() here so
-    // a late-arriving "you're a paying user" state routes to the billing
-    // portal instead of triggering /api/create-checkout against an active
-    // subscription (which would 409 and re-enter the duplicate_subscription
-    // → getCustomerPortalUrl cascade this PR is trying to eliminate).
+    // Defense in depth: re-check at click time so a late-arriving "you're a
+    // paying user" snapshot routes to the billing portal instead of creating
+    // a second checkout against an active subscription.
     if (isEntitled()) {
       this.close();
       const reservedWin = prereserveBillingPortalTab();

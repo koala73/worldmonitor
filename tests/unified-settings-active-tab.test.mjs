@@ -65,8 +65,10 @@ function extractOpen() {
   // eslint-disable-next-line no-new-func
   return new Function(
     'getEntitlementState',
+    'getEntitlementVerificationStatus',
     'hasFeature',
     'onEntitlementChange',
+    'onEntitlementVerificationChange',
     'onSubscriptionChange',
     'getSubscription',
     'getAuthState',
@@ -82,7 +84,9 @@ function extractOpen() {
 let mcpAccess = false;
 const Harness = extractOpen()(
   () => ({ planKey: mcpAccess ? 'pro_monthly' : 'free' }),
+  () => 'ready',
   (feature) => feature === 'mcpAccess' && mcpAccess,
+  () => () => {},
   () => () => {},
   () => () => {},
   () => null,
@@ -121,9 +125,8 @@ function makeInstance(initialTab = 'settings') {
   };
   instance.escapeHandler = () => {};
   instance.unsubscribeEntitlement = null;
+  instance.unsubscribeEntitlementVerification = null;
   instance.unsubscribeSubscription = null;
-  instance.entitlementReady = false;
-  instance.entitlementReadyTimer = null;
   instance.businessSeatsSection = { load() {} };
   return instance;
 }

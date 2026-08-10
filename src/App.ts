@@ -197,7 +197,16 @@ import {
   settleAccountOperation,
 } from '@/services/account-operation';
 import type { Id } from '../convex/_generated/dataModel';
-import { initEntitlementSubscription, destroyEntitlementSubscription, resetEntitlementState, onEntitlementChange, getEntitlementState } from '@/services/entitlements';
+import {
+  beginEntitlementVerification,
+  destroyEntitlementSubscription,
+  getEntitlementState,
+  initEntitlementSubscription,
+  markEntitlementVerificationUnavailable,
+  onEntitlementChange,
+  resetEntitlementState,
+  resetEntitlementVerification,
+} from '@/services/entitlements';
 import { initSubscriptionWatch, destroySubscriptionWatch } from '@/services/billing';
 import {
   FREE_TIER_FOLLOW_LIMIT,
@@ -1907,7 +1916,9 @@ export class App {
           ),
           effects: {
             destroyEntitlementSubscription,
+            beginEntitlementVerification,
             resetEntitlementState,
+            markEntitlementVerificationUnavailable,
             destroySubscriptionWatch,
             rebindConvexAuthForWatchHandoff,
             initEntitlementSubscription,
@@ -2024,6 +2035,7 @@ export class App {
         destroySubscriptionWatch();
         cloudPrefsSignOut();
         resetEntitlementState();
+        resetEntitlementVerification();
         this.tierPreferenceHandoff.clear();
         this.pendingPreferenceHandoffGeneration = undefined;
       }
