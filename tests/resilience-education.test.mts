@@ -25,9 +25,33 @@ import { describe, it } from 'node:test';
 
 import {
   normalizeEducationAttainment,
+  scoreEducation,
   EDUCATION_BEND,
   EDUCATION_BEND_SCORE,
 } from '../server/worldmonitor/resilience/v1/_dimension-scorers.js';
+
+const EDUCATION_KEY = 'resilience:education-attainment:v1';
+const EDUCATION_META_KEY = 'seed-meta:resilience:education-attainment';
+
+// Reader factory: healthy seed-meta plus whatever payload the test supplies.
+function readerFor(countries: Record<string, unknown> | null) {
+  return async (key: string): Promise<unknown | null> => {
+    if (key === EDUCATION_META_KEY) return { status: 'ok', fetchedAt: Date.now() };
+    if (key === EDUCATION_KEY) return countries == null ? null : { countries };
+    return null;
+  };
+}
+
+async function withFlagOn<T>(fn: () => Promise<T>): Promise<T> {
+  const prior = process.env.RESILIENCE_EDUCATION_ENABLED;
+  process.env.RESILIENCE_EDUCATION_ENABLED = 'true';
+  try {
+    return await fn();
+  } finally {
+    if (prior == null) delete process.env.RESILIENCE_EDUCATION_ENABLED;
+    else process.env.RESILIENCE_EDUCATION_ENABLED = prior;
+  }
+}
 
 describe('normalizeEducationAttainment — anchors', () => {
   it('maps the goalposts to the full score range', () => {
@@ -112,5 +136,92 @@ describe('normalizeEducationAttainment — boundary handling', () => {
     assert.equal(normalizeEducationAttainment(null), null);
     assert.equal(normalizeEducationAttainment(undefined), null);
     assert.equal(normalizeEducationAttainment(Number.NaN), null);
+  });
+
+  it('handles the read-path null trap end to end', () => {
+    // Number(null) === 0 and is finite, so any accessor that coerces before
+    // testing publishes a real 0% for a country with no reading.
+    assert.equal(normalizeEducationAttainment(Number(null)), 0, 'coerced null IS a valid 0 score');
+    assert.equal(normalizeEducationAttainment(null), null, 'but raw null must stay null');
+  });
+});
+
+describe('scoreEducation — flag off', () => {
+  it('returns the empty-data shape and contributes no weight', async () => {
+    const score = await scoreEducation('US', readerFor({ US: { value: 80, year: 2024 } }));
+    assert.equal(score.coverage, 0);
+    assert.equal(score.observedWeight, 0);
+    assert.equal(score.imputedWeight, 0);
+    // null, not 'source-failure' — a dark construct is a deliberate state, not
+    // an outage. 'source-failure' renders a "Source down" badge on every country.
+    assert.equal(score.imputationClass, null);
+  });
+});
+
+describe('scoreEducation — flag on', () => {
+  it('scores an observed country', async () => {
+    const score = await withFlagOn(() =>
+      scoreEducation('FR', readerFor({ FR: { value: 82.5, year: 2024 } })),
+    );
+    assert.ok(score.score > 0, `expected a positive score, got ${score.score}`);
+    assert.ok(score.coverage > 0);
+    assert.equal(score.imputationClass, null, 'observed data must not be tagged imputed');
+  });
+
+  it('treats a null value as absent, not as 0% attainment', async () => {
+    // The trap: Number(null) === 0 is finite, so a naive coercion publishes
+    // "worst on earth, fully observed" for a country with no reading. This is
+    // the read-side twin of the seeder's own null guard.
+    const score = await withFlagOn(() =>
+      scoreEducation('XX', readerFor({ XX: { value: null, year: 2023 } })),
+    );
+    assert.notEqual(score.coverage, 1, 'a null reading must not be full-coverage observed data');
+    assert.equal(score.imputationClass, 'unmonitored');
+  });
+
+  it('treats a null year as absent rather than derating to the oldest bucket', async () => {
+    const score = await withFlagOn(() =>
+      scoreEducation('XX', readerFor({ XX: { value: 60, year: null } })),
+    );
+    assert.equal(score.imputationClass, 'unmonitored');
+  });
+
+  it('rejects an out-of-range percentage', async () => {
+    const score = await withFlagOn(() =>
+      scoreEducation('XX', readerFor({ XX: { value: 145, year: 2024 } })),
+    );
+    assert.equal(score.imputationClass, 'unmonitored');
+  });
+
+  it('imputes an absent country as unmonitored, never stable-absence', async () => {
+    // stable-absence would hand DPRK and Syria a score near 85 for the crime of
+    // not being surveyed. The World Bank does not publish everywhere.
+    const score = await withFlagOn(() =>
+      scoreEducation('KP', readerFor({ FR: { value: 82.5, year: 2024 } })),
+    );
+    assert.equal(score.imputationClass, 'unmonitored');
+  });
+
+  it('fails closed when the seed envelope is missing', async () => {
+    // A dead Railway bundle must surface as an operator-visible error, not
+    // silently impute all 196 countries to the midpoint.
+    await withFlagOn(async () => {
+      await assert.rejects(
+        () => scoreEducation('FR', async () => null),
+        (err: Error) => /education-attainment/.test(err.message),
+      );
+    });
+  });
+
+  it('derates certainty for a decade-stale observation but still scores it', async () => {
+    const fresh = await withFlagOn(() =>
+      scoreEducation('FR', readerFor({ FR: { value: 80, year: new Date().getUTCFullYear() } })),
+    );
+    const stale = await withFlagOn(() =>
+      scoreEducation('FR', readerFor({ FR: { value: 80, year: 2014 } })),
+    );
+    assert.equal(stale.score, fresh.score, 'a stale reading keeps its value');
+    assert.ok(stale.coverage < fresh.coverage, 'but carries less certainty');
+    assert.ok(stale.coverage > 0, 'and is not dropped entirely');
   });
 });

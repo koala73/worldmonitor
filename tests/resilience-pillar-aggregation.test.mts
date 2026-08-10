@@ -82,6 +82,88 @@ describe('penalizedPillarScore', () => {
   });
 });
 
+describe('buildPillarList — zero-coverage dimensions dilute pillar weight', () => {
+  // Regression lock for the 2026-08-10 education-dimension finding.
+  //
+  // `averageDomainDimensionCoverage` takes a FLAT mean over
+  // `domain.dimensions.length` and does NOT route through
+  // `isExcludedFromConfidenceMean`. So adding a zero-coverage dimension to one
+  // domain — a flag-dark construct, a retired one — silently rescales that
+  // domain's coverage, which is what weights it inside its pillar
+  // (`domain.weight * coverage`). The pillar rebalances toward its other member
+  // domains and `overallScore` moves.
+  //
+  // This is documented behavior, not a bug being asserted as correct: the point
+  // of pinning it is that "the dimension is dark so nothing published changes"
+  // is FALSE at this layer, and anyone adding a dimension must rotate the score
+  // cache prefixes. If this test ever starts failing because the flat mean
+  // learned to skip zero-coverage dims, that is an intentional improvement —
+  // update this test, and re-run the acceptance gates, because it moves
+  // published pillar coverage for every country.
+  function domainWithDims(
+    id: string,
+    score: number,
+    coverages: number[],
+    weight: number,
+  ): ResilienceDomain {
+    return {
+      id,
+      score,
+      weight,
+      dimensions: coverages.map((coverage, i) => ({
+        id: `${id}-d${i}`,
+        score,
+        coverage,
+        observedWeight: coverage,
+        imputedWeight: 1 - coverage,
+        imputationClass: '',
+        freshness: { lastObservedAtMs: '0', staleness: '' },
+      })),
+    };
+  }
+
+  it('a zero-coverage dimension lowers its domain coverage and shifts the pillar', () => {
+    // structural-readiness = economic + social-governance.
+    const before = buildPillarList(
+      [
+        domainWithDims('economic', 75, [0.9, 0.9], 0.17),
+        domainWithDims('social-governance', 60, [0.8, 0.8, 0.8, 0.8], 0.19),
+      ],
+      true,
+    );
+    // Same inputs plus one dark dimension on social-governance only.
+    const after = buildPillarList(
+      [
+        domainWithDims('economic', 75, [0.9, 0.9], 0.17),
+        domainWithDims('social-governance', 60, [0.8, 0.8, 0.8, 0.8, 0], 0.19),
+      ],
+      true,
+    );
+
+    const sr = (pillars: ReturnType<typeof buildPillarList>) =>
+      pillars.find((p) => p.id === 'structural-readiness')!;
+
+    // Domain coverage falls 0.8 -> 0.64 (4 x 0.8 / 5), so the pillar's own
+    // coverage falls too. Both are public fields.
+    assert.ok(
+      sr(after).coverage < sr(before).coverage,
+      `pillar coverage must fall when a dark dim is added (${sr(before).coverage} -> ${sr(after).coverage})`,
+    );
+
+    // And the pillar score shifts toward economic, because social-governance
+    // now carries less coverage-weighted influence.
+    assert.notEqual(
+      sr(after).score,
+      sr(before).score,
+      'pillar score must move when a member domain loses coverage weight',
+    );
+    assert.ok(
+      sr(after).score > sr(before).score,
+      `pillar must shift toward the higher-scoring domain (${sr(before).score} -> ${sr(after).score})`,
+    );
+  });
+});
+
 describe('buildPillarList', () => {
   it('returns empty array when schemaV2Enabled is false', () => {
     const domains: ResilienceDomain[] = [makeDomain('economic', 75, 0.9)];

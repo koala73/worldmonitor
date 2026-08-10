@@ -169,11 +169,17 @@ describe('resilience scorer contracts', () => {
     // whole snapshot is one capped bucket — same value pre/post the day-bucket
     // rework). Undated rows intentionally fall back to the current bucket.
     // 2026-08-10 education dim: social-governance 66.25 -> 53. Same flat-mean
-    // artifact the financialSystemExposure note above describes, not a scoring
-    // change: the new `education` dim ships flag-gated off, so score=0, and
-    // this flat average drops 66.25 = 265/4 -> 53 = 265/5. The production
-    // coverage-weighted path (next test) correctly drops a coverage=0 dim
-    // from the blend, so the headline overall is unmoved while the flag is off.
+    // artifact the financialSystemExposure note above describes: the new
+    // `education` dim ships flag-gated off, so score=0, and this flat average
+    // drops 66.25 = 265/4 -> 53 = 265/5. The production coverage-weighted path
+    // (next test) does correctly drop a coverage=0 dim from the DOMAIN blend.
+    //
+    // Do NOT read that as "the headline overall is unmoved while dark" — it is
+    // not. `averageDomainDimensionCoverage` in `_pillar-membership.ts` takes a
+    // flat mean over the dimension count with no exclusion filter, so a dark
+    // dim still shifts the domain's weight inside its pillar and moves
+    // `overallScore` and `pillars[].coverage`. That is why this change rotated
+    // the score/ranking/history cache prefixes.
     assert.deepEqual(domainAverages, {
       economic: 56.5,
       infrastructure: 79.67,

@@ -80,27 +80,47 @@ All must be green before flipping:
    harness cannot see. Wire `resilience:education-attainment:v1` into the bulk
    payload load and extract `countries[iso2].value`.
 
-5. **Cache prefixes bumped in lockstep.** This was deliberately NOT done in the
-   scaffold PR, because while dark the dimension changes no published *score*:
-   the coverage-weighted mean drops a `coverage=0` dimension, and the dark dim
-   is excluded from the confidence mean, so `overallScore`, `overallCoverage`,
-   and `imputationShare` are all identical to pre-change. At flip that stops
-   being true and the rotation becomes mandatory — adding a dimension shifts
-   every country's baseline, and mixing pre- and post-change points inside the
-   30-day rolling window manufactures false trends.
+5. **Cache prefixes — already rotated in the scaffold, rotate again at flip.**
 
-   **Accepted transient in the scaffold deploy.** The scalars are unchanged, but
-   the serialized `domains[].dimensions[]` array grows from 22 to 23 entries the
-   moment the new code deploys. Because the score cache keeps its prefix, for up
-   to one 6h TTL a country served from a pre-deploy cache entry returns 22
-   entries while a freshly-computed country returns 23. This is accepted, not
-   overlooked: the SDKs and CLI pass the payload through as opaque JSON, the MCP
-   surface does not expose this shape at all, and the widget derives its counts
-   from the response rather than pinning them — so nothing consumes the length.
-   It self-heals within one TTL. Bumping the prefix would make the transition
-   atomic at the cost of discarding six hours of valid scores for 196 countries;
-   that trade is worth taking at the flip, when the scores genuinely change, and
-   not before.
+   The scaffold PR rotated score `v25`→`v26`, ranking `v25`→`v26`, and history
+   `v20`→`v21` across all nine files carrying the literals. **This corrects an
+   earlier version of this runbook that said the rotation was deliberately
+   deferred because a flag-dark dimension changes no published value. That claim
+   was wrong.**
+
+   Why it was wrong, since the mechanism is not obvious: `coverageWeightedMean`
+   does correctly drop a `coverage=0` dimension at the domain level, and
+   `isExcludedFromConfidenceMean` keeps it out of `overallCoverage` and
+   `lowConfidence`. Both of those checks pass. But
+   `averageDomainDimensionCoverage` in `_pillar-membership.ts` sits above them
+   and takes a **flat mean over `domain.dimensions.length`** with no exclusion
+   filter. A coverage-0 fifth dimension therefore scales social-governance's
+   coverage to 4/5, changing its weight inside the structural-readiness pillar
+   (`domain.weight * coverage`) while economic's is unchanged. The pillar
+   rebalances, `pillars[].coverage` moves as a public field, and `overallScore`
+   moves with it — non-uniformly, so adjacent countries in the 196-country
+   ranking can reorder. A dark dimension is not inert at the pillar layer.
+
+   **At flip, rotate again** (`v26`→`v27`, `v21`→`v22`). The flip changes scores
+   far more than the scaffold did, and mixing pre- and post-flip points inside
+   the 30-day rolling history window manufactures false trends for every
+   country. Use the grep below and re-run it against the new values:
+   ```bash
+   grep -rln "resilience:score:v26\|resilience:ranking:v26\|resilience:history:v21" \
+     --include='*.mjs' --include='*.ts' --include='*.js' --include='*.mts' . | grep -v node_modules
+   ```
+   Nine files carry these literals and eight hand-copy them. Missing one is
+   worse than not rotating: `benchmark-resilience-external.mjs`,
+   `validate-resilience-correlation.mjs`, and `backtest-resilience-outcomes.mjs`
+   produce the acceptance evidence, so a stale prefix there reads an abandoned
+   namespace and returns a green verdict with no signal.
+
+   **Known open question.** Arguably `averageDomainDimensionCoverage` should use
+   the same exclusion helper the confidence mean uses, so structurally-absent
+   dimensions stop diluting pillar weight. That is not done here because it
+   would also change how the two *retired* dimensions are treated, moving
+   published pillar coverage for every country — a separate change with its own
+   acceptance run, not a rider on this one.
 
    Nine files carry these literals and eight hand-copy them:
    ```bash

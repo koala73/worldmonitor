@@ -1661,9 +1661,28 @@ function readEducationAttainment(
   if (countries == null || typeof countries !== 'object') return null;
   const entry = countries[countryCode];
   if (entry == null || typeof entry !== 'object') return null;
-  const value = safeNum((entry as { value?: unknown }).value);
-  const year = safeNum((entry as { year?: unknown }).year);
+
+  // Reject nullish BEFORE coercion. `safeNum` runs Number() first, and
+  // Number(null) === 0 is finite — so a `value: null` in the envelope would
+  // resolve to a real 0% attainment scored at full coverage, publishing "worst
+  // on earth, fully observed" for a country we simply have no reading for. Same
+  // trap the seeder and the transform each guard on the write side; this is the
+  // read side of it. `year: null` would likewise become year 0 and silently
+  // derate a fresh observation into the >10-year certainty bucket.
+  //
+  // The current seeder cannot emit either (it skips nulls before publishing),
+  // so this is defense in depth — but the sibling energy envelopes are typed
+  // `year: number | null`, so a future producer plausibly can.
+  const rawValue = (entry as { value?: unknown }).value;
+  const rawYear = (entry as { year?: unknown }).year;
+  if (rawValue == null || rawYear == null) return null;
+
+  const value = safeNum(rawValue);
+  const year = safeNum(rawYear);
   if (value == null || year == null) return null;
+  // Percentage of population; anything outside 0..100 is upstream corruption,
+  // matching the range check the seeder enforces on write.
+  if (value < 0 || value > 100) return null;
   return { value, year };
 }
 
@@ -2884,6 +2903,15 @@ export const RESILIENCE_NOT_APPLICABLE_WHEN_ZERO_COVERAGE: ReadonlySet<Resilienc
 // dimensions — so every dark dimension pulls every country's coverage down. With
 // `education` counted, the US happy-path build fell below the threshold and
 // dropped out of the headline ranking entirely.
+//
+// NOTE: this helper covers `computeOverallCoverage` and `computeLowConfidence`
+// only. It does NOT reach `averageDomainDimensionCoverage` in
+// `_pillar-membership.ts`, which takes a flat mean over every dimension in the
+// domain and therefore still counts a dark dim in its denominator. That is why
+// the score/ranking/history cache prefixes were rotated for this change: a dark
+// dimension shifts pillar weighting and `overallScore` even though the domain
+// mean and the confidence mean both correctly ignore it. Do not restate "a dark
+// dimension changes nothing published" — it is false at the pillar layer.
 //
 // `financialSystemExposure` is deliberately NOT in this set even though it is
 // also dark. Adding it would change the coverage number already published for

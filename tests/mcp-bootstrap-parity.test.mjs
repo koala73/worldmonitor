@@ -143,7 +143,7 @@ const EXCLUDED_FROM_MCP = new Map([
     'on-demand: RPC cache for military bases — deferred to a future expanded military tool.'],
   ['news:threat:summary:v1',
     'on-demand: relay-classify-only, written only when classify produces country matches (matches api/health.js:468 ON_DEMAND_KEYS rationale). Underlying news inputs already exposed via get_news_intelligence.'],
-  ['resilience:ranking:v25',
+  ['resilience:ranking:v26',
     'on-demand: RPC cache populated after Pro ranking requests (matches api/health.js:469 ON_DEMAND_KEYS rationale). Deferred to a future resilience tool.'],
   ['forecast:simulation-package:latest',
     'on-demand: written by writeSimulationPackage after deep forecast runs (matches api/health.js:466 ON_DEMAND_KEYS rationale). Internal pipeline artifact, not a queryable slice.'],
@@ -175,6 +175,8 @@ const EXCLUDED_FROM_MCP = new Map([
     'deferred: recovery pillar scorer input. Future resilience tool will expose recovery dimensions.'],
   ['resilience:recovery:sovereign-wealth:v1',
     'deferred: recovery pillar scorer input. Future resilience tool will expose recovery dimensions.'],
+  ['resilience:education-attainment:v1',
+    'deferred: social-governance education dimension scorer input (World Bank SE.SEC.CUAT.UP.FE.ZS). Server-only — the MCP surface exposes the computed resilience score, not the raw attainment envelope. Same posture as the recovery-pillar scorer inputs above.'],
 
   // ===========================================================================
   // #5055 health-only seed probes added to strict /api/health monitoring.
@@ -224,11 +226,11 @@ const EXCLUDED_FROM_MCP = new Map([
   ['supply_chain:hormuz_tracker:v1',
     'deferred: specialized Strait-of-Hormuz tracker; broader chokepoint coverage via get_chokepoint_status. Hormuz-specific tool deferred.'],
   ['resilience:static:index:v1',
-    'deferred to a future resilience tool (paired with resilience:ranking:v25).'],
+    'deferred to a future resilience tool (paired with resilience:ranking:v26).'],
   ['resilience:static:fao',
     'deferred to a future resilience tool (FAO Phase 3+ aggregate, paired with resilience:static:index:v1).'],
   ['resilience:intervals:v9:US',
-    'deferred to a future resilience tool (formula-tagged sensitivity bands on top of resilience:ranking:v25).'],
+    'deferred to a future resilience tool (formula-tagged sensitivity bands on top of resilience:ranking:v26).'],
   ['resilience:low-carbon-generation:v1',
     'deferred to a future resilience tool. Companion data to fossil-electricity-share (already exposed via get_energy_intelligence).'],
   ['resilience:power-losses:v1',
