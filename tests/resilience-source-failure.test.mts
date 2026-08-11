@@ -63,16 +63,13 @@ const TRACKED_STANDALONE_META_KEYS_NOT_IN_HEALTH = new Set([
 ]);
 
 describe('education health-probe rollout sequencing', () => {
-  // Inverted in #6452 once seed-bundle-macro published the key for real
-  // (2026-08-11T08:03:25Z). This previously asserted BOTH halves were ABSENT,
-  // pending the first production publish; it now asserts both are PRESENT.
-  //
-  // Asserting both halves is the point, not redundancy. A probe registered in
-  // SEED_META alone still reads its freshness, but nothing ever checks that the
-  // canonical payload exists — so a seeder that writes meta and drops the data
-  // reports OK. The three peer energy probes carry both halves for the same
-  // reason, and registering only one is the specific mistake this locks out.
-  it('registers both the data key and the seed-meta probe', () => {
+  // Inverted in #6452 once seed-bundle-macro published the series for real. The
+  // assertion is kept rather than deleted: it used to lock "not yet registered",
+  // and now it locks "registered on BOTH halves". Registering only SEED_META
+  // leaves /api/health with no canonical data key to probe, which reads as a
+  // healthy meta entry over data nothing checks — the same misleading-green
+  // shape the recoveryFuelStocks slot was removed for.
+  it('registers both the data key and the seed-meta probe after the first production publish', () => {
     assert.equal(
       healthTesting.STANDALONE_KEYS.educationAttainment,
       'resilience:education-attainment:v1',

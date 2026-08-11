@@ -233,7 +233,7 @@ const EXCLUDED_FROM_MCP = new Map([
   ['resilience:power-losses:v1',
     'deferred to a future resilience tool. Companion data to the resilience v2 energy bundle.'],
   ['resilience:education-attainment:v1',
-    'deferred to a future resilience tool. Per-country World Bank SE.SEC.CUAT.UP.FE.ZS stock feeding the education dimension of the Country Resilience Index; same shape and treatment as the low-carbon-generation and power-losses component seeds above (#6452).'],
+    'deferred to a future resilience tool. Single-indicator input to the education dimension, which is still flag-gated dark behind RESILIENCE_EDUCATION_ENABLED — exposing it via MCP would publish a series the index itself does not yet score (#6452).'],
   ['product-catalog:v3',
     'deferred to a future product-catalog tool. Used by the dashboard to render product metadata, not a queryable data slice.'],
   ['climate:zone-normals:v1',

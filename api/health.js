@@ -407,9 +407,9 @@ const STANDALONE_KEYS = {
   lowCarbonGeneration:      'resilience:low-carbon-generation:v1',
   fossilElectricityShare:   'resilience:fossil-electricity-share:v1',
   powerLosses:              'resilience:power-losses:v1',
-  // Education attainment — same strict treatment as the energy peers above.
-  // Registered once seed-bundle-macro published it for real on
-  // 2026-08-11T08:03:25Z; see the SEED_META cutover block for the evidence.
+  // Same strict treatment as the v2 energy seeds above: the education seeder is
+  // a seed-bundle-macro member, so an absent key means the bundle stopped
+  // publishing, which is a real outage and must read CRIT rather than WARN.
   educationAttainment:      'resilience:education-attainment:v1',
   goldExtended:             'market:gold-extended:v1',
   goldEtfFlows:             'market:gold-etf-flows:v1',
@@ -853,47 +853,26 @@ const SEED_META = {
   // interval plus roughly one day of retry headroom, not "2x interval". The
   // budget alarms on the SEEDER being dead, not on the data being old —
   // content-age staleness is the seeder's own 48-month maxContentAgeMin.
-  //
-  // The probe was deliberately withheld in #6450 because the seeder had never
-  // run, and it lands here now on the pre-seed evidence path. The evidence
-  // below cites a publish traced to Railway by three independent proofs, not
-  // by the key's own freshness — a fresh seed-meta key is NOT proof its
-  // producer ran, and this exact key was hand-primed at 05:32:23Z on the same
-  // day, which read as a satisfied precondition and was not one:
-  //   1. Sibling parity — every seed-bundle-macro member (economic:bis,
-  //      cbr-rates, bls-series, eurostat-country-data, fao-ffpi) carries a
-  //      2026-08-11T08:03:0x-25Z stamp, so the bundle ran as a unit. Education
-  //      is last at 08:03:25.357Z, the documented non-Sunday section order.
-  //   2. The running image contains the script — the service was deployed to
-  //      ae0a0fe26 at 08:00:19Z, and `git cat-file -e
-  //      ae0a0fe26:scripts/seed-education-attainment.mjs` exits 0. The prior
-  //      image 7beaf19e2 exits 128, which is why the 05:32Z write cannot have
-  //      come from Railway.
-  //   3. TTL cross-check — 3,011,305s remaining on the 35d CACHE_TTL dates the
-  //      write to 08:03:25Z independently of the payload's own claims.
-  //
-  // `compactHealthStatus: 'OK'` below is an OBSERVED verdict, not an assertion:
-  // this classify path was run over the real production values for both keys at
-  // `verifiedAt` and the probe was absent from `?compact=1` problems. The
-  // observation was mutation-guarded, because "absent from problems" is
-  // otherwise indistinguishable from "the sweep never ran" — aging the
-  // seed-meta to 12000min yields STALE_SEED, deleting both keys yields EMPTY,
-  // and the unseeded peer `powerLosses` reported EMPTY in all three runs to
-  // prove the problems map was live.
   educationAttainment:     {
     key: 'seed-meta:resilience:education-attainment',
     maxStaleMin: 11520,
+    // Pre-seed evidence per scripts/check-health-probe-cutovers.mts. #6450 shipped
+    // the seeder but Railway refused the merge commit (its post-merge check suite
+    // was red on two unrelated tests), so seed-bundle-macro ran an image without
+    // the script and the probe could not be registered then. The service was
+    // deployed to a green head on 2026-08-11 and this entry cites its first real
+    // publish. See docs/methodology/education-flag-flip-runbook.md.
     cutover: {
       mode: 'preseed',
       fromKey: null,
       issue: 6452,
-      verifiedAt: '2026-08-11T11:47:06.532Z',
+      verifiedAt: '2026-08-11T08:03:25.357Z',
       evidence: {
         platform: 'railway',
         service: 'seed-bundle-macro',
         probeKey: 'seed-meta:resilience:education-attainment',
         compactHealthStatus: 'OK',
-        reference: 'https://github.com/koala73/worldmonitor/issues/6452',
+        reference: 'https://github.com/koala73/worldmonitor/issues/6452#issuecomment-5252687464',
       },
     },
   },
