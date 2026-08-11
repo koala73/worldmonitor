@@ -1,6 +1,7 @@
 # Upstream Lock
 
 **Recorded:** 2026-08-11
+**Rechecked through the connected GitHub app:** 2026-08-11T16:47:20+08:00
 **Purpose:** Reproducible source and license provenance for the reconstruction.
 
 | Role | Repository | Ref | Locked SHA | License | Verification |
@@ -17,6 +18,8 @@ upstream https://github.com/koala73/worldmonitor.git
 ```
 
 `origin/main` is locally locked at the fork SHA above. The official upstream SHA is independently verified through the connected GitHub app; Phase 1 must fetch it locally before determining whether `origin/main` is pure-behind and therefore safe for `--ff-only` synchronization.
+
+The Phase 0 closure deliberately did not treat the connected-app upstream lookup as a local object fetch. `ahead`/`behind`, merge-base, and any `--ff-only` action remain Phase 1 gates after the legal confirmation.
 
 ## Legacy-data lock
 

@@ -1,7 +1,7 @@
 # Global Intelligence Mother Reconstruction — Master Status
 
 **Controlling specification:** `D:\google\Codex_5.6_Terra_极高_全球情报母体重构执行书_2026-08-11.md`
-**Updated:** 2026-08-11
+**Updated:** 2026-08-11T16:47:20+08:00
 **Official product brand:** 全球实时热点追踪·探长版
 **Current working branch:** `integration/phase0-safety-inventory`
 **Formal mother repository:** `daking32168-byte/worldmonitor` (AGPL-3.0-only)
@@ -10,7 +10,7 @@
 
 | Phase | Status | Scope | Commit | Evidence |
 |---|---|---|---|---|
-| 0 — Safety inventory, backup, workspace decision | completed pending commit | Old-project checkpoint, mother workspace, SHA locks, data baseline | recorded after commit in this file's next update | `ACCEPTANCE_EVIDENCE.md` |
+| 0 — Safety inventory, backup, workspace decision | completed | Old-project checkpoint, mother workspace, source locks, legacy-data baseline, recoverability audit | `81369e41cfd0e3dd454dbd37ae3739b5aa53b056` | `ACCEPTANCE_EVIDENCE.md`, `evidence/phase0-closure.md` |
 | 1 — Sync and establish WorldMonitor mother baseline | not started | Safe `--ff-only` eligibility check, upstream baseline, legal/brand implementation | — | — |
 | 2–12 | not started | Contracts, market, PokieTicker, maritime, China factory, controls, desktop, final acceptance, PR | — | — |
 
@@ -22,6 +22,8 @@
 - Local branch `backup/pre-worldmonitor-mother-20260811-162026` points to the untouched fork baseline `0fca203c776dd5fa4913c4bd52f99cd2c3c13a25`.
 - All Phase 0 work is isolated on `integration/phase0-safety-inventory`; `main` remains untouched.
 - The initial full clone exceeded the desktop execution time limit. A Git-native sparse checkout using an isolated index completed against the fork baseline without deleting the incomplete clone objects or the legacy project. See `DECISIONS.md`.
+- The Phase 0 closure audit used `GIT_INDEX_FILE=.git/index.phase0` because the normal index remains absent while `.git/index.lock` is host-protected. With the isolated index, the branch was clean and one commit ahead of `origin/main`; the default-index deletion listing is not treated as source deletion evidence.
+- A deterministic, non-sensitive 20-file backup sample and a three-file restoration/readability probe passed on 2026-08-11. Raw commands, output, hashes, exit codes, and the temporary-directory cleanup limitation are in `evidence/phase0-closure.md`.
 
 ## Hard constraints in force
 
@@ -34,4 +36,4 @@
 
 ## Next action
 
-Record the Phase 0 commit SHA, then stop at the Phase 1 legal gate unless the user explicitly confirms acceptance of AGPL-3.0-only distribution obligations and independent branding for the WorldMonitor-derived product.
+Create and visibly open the user confirmation panel, then stop at the Phase 1 legal gate unless the user explicitly confirms acceptance of AGPL-3.0-only distribution obligations and independent branding for the WorldMonitor-derived product.

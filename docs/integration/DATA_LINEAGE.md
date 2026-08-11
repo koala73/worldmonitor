@@ -25,3 +25,7 @@
 | Trade / China factory | UN Comtrade, lawful China customs imports, official local-cluster evidence | Reporting period, reporter/partner/HS, source batch, unit/currency, `OBSERVED_OFFICIAL` / `MODELLED_ESTIMATE` / `BILL_OF_LADING_OBSERVED` |
 
 No upstream website is framed or embedded as a substitute for an owned data pipeline.
+
+## Phase 0 recovery-audit boundary
+
+The recovery audit copied only three non-secret project metadata files to a Codex-created temporary directory for a byte-for-byte readability check. It did not import the PokieTicker database, historical OHLC, news, credentials, or any legacy runtime file into the WorldMonitor mother repository. The resulting product data lineage therefore remains unchanged from this baseline.

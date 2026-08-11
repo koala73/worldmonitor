@@ -16,4 +16,6 @@ No secret belongs in this file, chat transcript, Git history, screenshot or clie
 
 ## Current pause point
 
-Phase 0 is complete pending its documentation commit. The first required user confirmation before Phase 1 is the explicit AGPL-3.0-only and independent-brand acceptance above.
+Phase 0 is complete and its closure evidence is committed on the integration branch. The current required action is to review the visibly opened `用户确认与账号操作面板.md` and set its first two confirmations to `我确认`. The first required user confirmation before Phase 1 remains the explicit AGPL-3.0-only and independent-brand acceptance above.
+
+The only pending cleanup artifact is the Codex-created restoration probe `D:\使用AI专属文件夹\global-intelligence-earth\_codex_phase0_restore_probe_20260811_1640`, containing three copied non-secret representative files. It is outside both projects and is not a user action or a credential request; host policy rejected its scoped PowerShell removal. See `ACCEPTANCE_EVIDENCE.md` for the audit record.

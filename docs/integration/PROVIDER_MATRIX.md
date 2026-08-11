@@ -2,6 +2,8 @@
 
 This matrix is the source of truth for UI labels, API contracts, caching and fallback behavior. `LIVE` or `REALTIME_LICENSED` must never be inferred from a non-empty response.
 
+**Phase 0 closure check (2026-08-11):** no Provider credential, plan, contractual real-time authorization, or live data path was added. Every listed capability remains at the status below until code and Provider verification prove otherwise.
+
 | Capability | Provider / source | Current status | What may be displayed | What may not be displayed |
 |---|---|---|---|---|
 | US stock real-time bars/quotes | Massive or equivalent licensed provider | `NOT_CONFIGURED` | Configuration requirement and disabled state | Real-time/minute price or a synthetic bar |
@@ -19,3 +21,5 @@ This matrix is the source of truth for UI labels, API contracts, caching and fal
 ## Required response fields
 
 Every market, news, AIS, port and trade response must carry: `provider`, `providerStatus`, `sourceUrl` or `sourceId`, `observedAt`, `fetchedAt`, `asOf`, `delaySeconds` when known, `freshnessSeconds`, `isFallback`, `fallbackReason`, and `licenseNote`.
+
+No Phase 0 artifact includes a Provider secret, an OHLC array, a fabricated price series, or an iframe to an upstream application.

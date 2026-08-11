@@ -27,3 +27,9 @@
 
 **Decision:** Do not merge/synchronize/ship a WorldMonitor-derived integration until the user explicitly accepts AGPL-3.0-only network-distribution obligations and independent branding.
 **Reason:** The execution book lists this as P0 manual approval. Local audit and Phase 0 preservation are safe; public or substantive mother integration requires the legal premise.
+
+## D-0006 — Close Phase 0 with an auditable recovery probe
+
+**Decision:** Treat Phase 0 as complete only after verifying the isolated-index worktree, source locks, a deterministic 20-file backup sample, and a three-file read-only restoration probe.
+**Reason:** A backup directory and a prose statement alone are not sufficient recovery evidence.
+**Consequence:** The closure output, SHA-256 values, exit codes, and the host-protected temporary cleanup limitation are retained in `evidence/phase0-closure.md`. The normal index remains unavailable because `.git/index.lock` is host-protected; source state is verified with the clean Git-native isolated index instead of deleting the lock or resetting the worktree.
