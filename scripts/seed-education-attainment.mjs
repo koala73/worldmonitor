@@ -187,7 +187,17 @@ if (process.argv[1]?.endsWith('seed-education-attainment.mjs')) {
     emptyDataIsFailure: true,
     declareRecords,
     schemaVersion: 1,
-    maxStaleMin: 100800,
+    // 8 days, matching the api/health.js budget for this key and sitting well
+    // inside the 35-day CACHE_TTL. The invariant (enforced by
+    // tests/seed-ttl-outlives-staleness-fleet.test.mjs) is that the data key
+    // must OUTLIVE its staleness gate: if the gate is longer than the TTL,
+    // a merely-late seeder surfaces as EMPTY_DATA rather than STALE_SEED,
+    // telling an operator the data is gone when the real fault is a dead cron.
+    //
+    // Do not copy 100800 from seed-wb-external-debt.mjs — that pairing (35d TTL
+    // against a 70d gate) is a grandfathered violation of this invariant, which
+    // is why the test only enforces it on new seeders.
+    maxStaleMin: 11520,
     contentMeta: wbCountryDictContentMeta,
     maxContentAgeMin: MAX_CONTENT_AGE_MIN,
   }).catch((err) => {
