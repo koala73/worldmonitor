@@ -1095,6 +1095,10 @@ export default defineSchema({
     ),
     destructivePurgeStarted: v.boolean(),
     pendingReactivation: v.boolean(),
+    // Legacy accounts remain unstamped until every company page has had its
+    // customer claim policy and current-name alias repaired. Provider rollout
+    // gates fail closed on a missing or older version.
+    claimPolicyVersion: v.optional(v.number()),
     // Durable orchestration cursors. Claims always begin from these indexed
     // account fields and read only a fixed page; work/company tables are never
     // scanned globally to discover due customer work.

@@ -31,6 +31,7 @@ import {
 import {
   purgeCompanyCandidatesBatch,
   purgeCompanyEvidenceBatch,
+  revalidateCompanyEvidenceClaims,
 } from "./evidence";
 import { companyPatchValidator, monitoredCompanyInputValidator } from "./validators";
 
@@ -286,6 +287,8 @@ export const updateCompanyForOwner = internalMutation({
     }
 
     const now = Date.now();
+    const claimsChanged = removeIds.size > 0 || additions.length > 0;
+    const nextSnapshotGeneration = company.snapshotGeneration + 1;
     for (const claimId of removeIds) await ctx.db.delete(currentById.get(claimId)!._id);
     for (const claim of additions) {
       await ctx.db.insert("companyMonitoringClaims", {
@@ -305,13 +308,26 @@ export const updateCompanyForOwner = internalMutation({
       sortName: normalizedFields.name.toLocaleLowerCase("en-US"),
       domicileCountry: normalizedFields.domicileCountry,
       customerReference: normalizedFields.customerReference,
-      snapshotGeneration: company.snapshotGeneration + 1,
+      snapshotGeneration: nextSnapshotGeneration,
+      ...(claimsChanged
+        ? {
+            evidenceRevision: (company.evidenceRevision ?? 0) + 1,
+            recomputeRequiredAt: now,
+          }
+        : {}),
       updatedAt: now,
     });
     await ctx.db.patch(account._id, {
       snapshotGeneration: (account.snapshotGeneration ?? 0) + 1,
       updatedAt: now,
     });
+    if (claimsChanged) {
+      await revalidateCompanyEvidenceClaims(ctx, {
+        ownerAccountId: account.logicalAccountId,
+        companyId: company.companyId,
+        expectedSnapshotGeneration: nextSnapshotGeneration,
+      });
+    }
     if (company.lifecycle === "active") {
       await cancelCompanyScanWork(ctx, {
         ownerAccountId: account.logicalAccountId,

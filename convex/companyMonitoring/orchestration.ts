@@ -12,7 +12,10 @@ import {
   normalizeCompanyClaimInput,
   normalizeMonitoredCompanyInput,
 } from "../../shared/company-monitoring-contract";
-import { fingerprint } from "./_shared";
+import {
+  fingerprint,
+  hasCurrentCompanyMonitoringClaimPolicy,
+} from "./_shared";
 import {
   companyMonitoringFinalizeResultValidator,
   companyMonitoringExaIngestionValidator,
@@ -209,12 +212,28 @@ function randomFence(): string {
   return Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
-function enabledSources(): Source[] {
+function providerRolloutEnabled(source: Source): boolean {
   const flags: Record<Source, boolean> = {
     exa: COMPANY_MONITORING_ROLLOUT_FLAGS.exaProvider,
     x: COMPANY_MONITORING_ROLLOUT_FLAGS.xProvider,
   };
-  return (Object.keys(flags) as Source[]).filter((source) => flags[source]);
+  return flags[source];
+}
+
+function enabledSources(): Source[] {
+  return (["exa", "x"] as const).filter(providerRolloutEnabled);
+}
+
+function requireProviderClaimPolicy(
+  account: Doc<"companyMonitoringAccounts">,
+  source: Source,
+): void {
+  if (
+    providerRolloutEnabled(source) &&
+    !hasCurrentCompanyMonitoringClaimPolicy(account)
+  ) {
+    throw new ConvexError("COMPANY_MONITORING_CLAIM_POLICY_MIGRATION_REQUIRED");
+  }
 }
 
 async function updateAccountDueFromWork(ctx: MutationCtx, ownerAccountId: string) {
@@ -265,6 +284,7 @@ async function scheduleAccountWorkHandler(
   if (!account || account.lifecycle !== "entitled" || account.terminalReason) {
     throw new ConvexError("COMPANY_MONITORING_ACCOUNT_INACTIVE");
   }
+  requireProviderClaimPolicy(account, args.source);
 
   const requestedCompanyIds = [...new Set(args.companyIds)].sort();
   if (
@@ -1230,6 +1250,7 @@ async function claimNextWorkHandler(
     for (const account of accounts) {
       accountsExamined += 1;
       if (account.terminalReason) continue;
+      requireProviderClaimPolicy(account, source);
       const work = await dueWorkForAccount(ctx, account.logicalAccountId, now, source);
       if (!work) {
         await updateAccountDueFromWork(ctx, account.logicalAccountId);
@@ -1536,6 +1557,7 @@ function validExaCandidate(
     candidateCompanyIds.size > 0 &&
     candidateCompanyIds.size === candidate.candidateCompanyIds.length &&
     candidateCompanyIds.size <= COMPANY_MONITORING_SCAN_COHORT_LIMIT &&
+    candidateCompanyIds.size === companyIds.size &&
     [...candidateCompanyIds].every((companyId) => companyIds.has(companyId));
 }
 

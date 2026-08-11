@@ -19,9 +19,18 @@ import {
 
 const EVIDENCE_BATCH_SIZE = 25;
 const CANDIDATE_BATCH_SIZE = 25;
+const CLAIM_REVALIDATION_BATCH_SIZE = 25;
 const MAX_INGESTION_ROWS = 100;
+// One Exa receipt contains at most 25 results routed across at most 25
+// companies. Reject a wider internal expansion before the first write so the
+// receipt remains atomic and the mutation cannot exceed its scheduler budget.
+const MAX_EXPANDED_EVIDENCE_ROWS = 25 * 25;
 
 type EvidenceDoc = Doc<"companyMonitoringEvidence">;
+
+function nextUpdatedAt(row: { updatedAt: number } | null | undefined, now: number) {
+  return Math.max(now, (row?.updatedAt ?? now - 1) + 1);
+}
 
 function evidenceShape(row: EvidenceDoc): NormalizedCompanyEvidence {
   return {
@@ -182,6 +191,8 @@ async function recomputeOccurrenceCandidate(
   companyId: string,
   occurrenceDedupeKey: string,
   fallbackLossReason?: "evidence_unavailable",
+  excludeProvider?: "exa" | "x",
+  scheduleDeadline = true,
 ) {
   const now = Date.now();
   const activePage = await ctx.db
@@ -200,7 +211,9 @@ async function recomputeOccurrenceCandidate(
       row.state = "expired";
     }
   }
-  const active = activePage.filter((row) => row.state === "active");
+  const active = activePage.filter((row) =>
+    row.state === "active" && row.provider !== excludeProvider
+  );
   await setSyndicationForActiveRows(ctx, active);
   const existing = await ctx.db
     .query("companyMonitoringCandidates")
@@ -241,6 +254,21 @@ async function recomputeOccurrenceCandidate(
     };
     if (existing) await ctx.db.replace(existing._id, row);
     else await ctx.db.insert("companyMonitoringCandidates", row);
+    const nextDeadline = [
+      ...(lifecycle.state === "terminal" || row.expiresAt <= now ? [] : [row.expiresAt]),
+      ...active.flatMap((evidence) =>
+        evidence.expiresAt !== undefined && evidence.expiresAt > now
+          ? [evidence.expiresAt]
+          : []
+      ),
+    ].sort((left, right) => left - right)[0];
+    if (scheduleDeadline && nextDeadline !== undefined) {
+      await ctx.scheduler.runAt(
+        nextDeadline,
+        internal.companyMonitoring.evidence.recomputeCompanyEvidence,
+        { ownerAccountId, companyId, occurrenceDedupeKey },
+      );
+    }
     return;
   }
   if (!existing) return;
@@ -298,6 +326,9 @@ export async function ingestCompanyEvidenceForCompanyIds(
     evidence: input.evidence,
     now: Date.now(),
   });
+  if (normalized.evidence.length > MAX_EXPANDED_EVIDENCE_ROWS) {
+    throw new ConvexError("COMPANY_MONITORING_EVIDENCE_EXPANSION_INVALID");
+  }
   const now = Date.now();
   const affected = new Map<string, Map<string, "evidence_unavailable" | undefined>>();
   const rememberOccurrence = (
@@ -329,7 +360,7 @@ export async function ingestCompanyEvidenceForCompanyIds(
       firstSeenAt: existing?.evidenceFingerprint === evidence.evidenceFingerprint
         ? existing.firstSeenAt
         : now,
-      updatedAt: now,
+      updatedAt: nextUpdatedAt(existing, now),
     };
     if (existing) await ctx.db.replace(existing._id, row);
     else await ctx.db.insert("companyMonitoringEvidence", row);
@@ -341,56 +372,42 @@ export async function ingestCompanyEvidenceForCompanyIds(
       );
     }
     rememberOccurrence(evidence.companyId, evidence.occurrenceDedupeKey);
-    if (evidence.expiresAt !== undefined && evidence.expiresAt > now) {
-      await ctx.scheduler.runAt(
-        evidence.expiresAt,
-        (internal as any).companyMonitoring.evidence.recomputeCompanyEvidence,
-        {
-          ownerAccountId: input.ownerAccountId,
-          companyId: evidence.companyId,
-          occurrenceDedupeKey: evidence.occurrenceDedupeKey,
-        },
-      );
-    }
   }
   for (const [companyId, occurrences] of [...affected].sort(([left], [right]) =>
     left.localeCompare(right)
   )) {
     for (const [occurrenceDedupeKey, fallbackLossReason] of [...occurrences].sort()) {
-      const existingCandidate = await ctx.db
-        .query("companyMonitoringCandidates")
-        .withIndex("by_account_company_occurrence", (q) =>
-          q
-            .eq("ownerAccountId", input.ownerAccountId)
-            .eq("companyId", companyId)
-            .eq("occurrenceDedupeKey", occurrenceDedupeKey),
-        )
-        .unique();
       await recomputeOccurrenceCandidate(
         ctx,
         input.ownerAccountId,
         companyId,
         occurrenceDedupeKey,
         fallbackLossReason,
+        undefined,
+        fallbackLossReason === undefined,
       );
-      if (!existingCandidate) {
-        const candidate = await ctx.db
-          .query("companyMonitoringCandidates")
-          .withIndex("by_account_company_occurrence", (q) =>
-            q
-              .eq("ownerAccountId", input.ownerAccountId)
-              .eq("companyId", companyId)
-              .eq("occurrenceDedupeKey", occurrenceDedupeKey),
-          )
-          .unique();
-        if (candidate && candidate.expiresAt > now) {
-          await ctx.scheduler.runAt(
-            candidate.expiresAt,
-            (internal as any).companyMonitoring.evidence.recomputeCompanyEvidence,
-            { ownerAccountId: input.ownerAccountId, companyId, occurrenceDedupeKey },
-          );
-        }
-      }
+    }
+  }
+  const referencedClaimIds = new Map<string, Set<string>>();
+  for (const evidence of normalized.evidence) {
+    const ids = referencedClaimIds.get(evidence.companyId) ?? new Set<string>();
+    for (const claimId of evidence.matchedClaimIds) ids.add(claimId);
+    referencedClaimIds.set(evidence.companyId, ids);
+  }
+  for (const subject of subjects) {
+    const ids = referencedClaimIds.get(subject.companyId);
+    const nextClaimExpiry = subject.claims
+      .filter((claim) =>
+        ids?.has(claim.claimId) && claim.expiresAt !== undefined && claim.expiresAt > now
+      )
+      .map((claim) => claim.expiresAt!)
+      .sort((left, right) => left - right)[0];
+    if (nextClaimExpiry !== undefined) {
+      await ctx.scheduler.runAt(
+        nextClaimExpiry,
+        internal.companyMonitoring.evidence.revalidateExpiredCompanyEvidenceClaims,
+        { ownerAccountId: input.ownerAccountId, companyId: subject.companyId },
+      );
     }
   }
   return {
@@ -445,6 +462,214 @@ export async function setCompanyEvidenceStateForProviderLocators(
   }
 }
 
+async function currentEvidenceSubject(
+  ctx: MutationCtx,
+  ownerAccountId: string,
+  companyId: string,
+): Promise<EvidenceSubject | null> {
+  const [company, claims] = await Promise.all([
+    ctx.db
+      .query("companyMonitoringCompanies")
+      .withIndex("by_account_companyId", (q) =>
+        q.eq("ownerAccountId", ownerAccountId).eq("companyId", companyId),
+      )
+      .unique(),
+    ctx.db
+      .query("companyMonitoringClaims")
+      .withIndex("by_account_company", (q) =>
+        q.eq("ownerAccountId", ownerAccountId).eq("companyId", companyId),
+      )
+      .take(COMPANY_MONITORING_LIMITS.maxClaimsPerCompany + 1),
+  ]);
+  if (
+    !company ||
+    company.lifecycle === "removed" ||
+    !company.name ||
+    claims.length > COMPANY_MONITORING_LIMITS.maxClaimsPerCompany
+  ) return null;
+  return {
+    companyId,
+    name: company.name,
+    claims: claims.map((claim) => ({
+      claimId: claim.claimId,
+      type: claim.type,
+      value: claim.value,
+      trustState: claim.trustState,
+      ...(claim.allowedUses ? { allowedUses: claim.allowedUses } : {}),
+      ...(claim.expiresAt !== undefined ? { expiresAt: claim.expiresAt } : {}),
+    })),
+  };
+}
+
+function providerEvidenceFromRow(row: EvidenceDoc): ProviderEvidence {
+  return {
+    provider: row.provider,
+    providerLocator: row.providerLocator,
+    ...(row.url ? { url: row.url } : {}),
+    ...(row.title ? { title: row.title } : {}),
+    ...(row.text ? { text: row.text } : {}),
+    ...(row.author ? { author: row.author } : {}),
+    ...(row.authorAccountId ? { authorAccountId: row.authorAccountId } : {}),
+    publishedAt: row.publishedAt,
+    observedAt: row.observedAt,
+    ...(row.expiresAt !== undefined ? { expiresAt: row.expiresAt } : {}),
+    candidateCompanyIds: [row.companyId],
+    // Exa first-party authority is derived from a currently verified official
+    // domain claim. Revalidation must earn it again instead of treating the
+    // stored derived value as provider-supplied authority.
+    sourceAuthority: row.provider === "exa" && row.sourceAuthority === "verified_first_party"
+      ? "low_authority"
+      : row.sourceAuthority,
+  };
+}
+
+export async function revalidateCompanyEvidenceClaims(
+  ctx: MutationCtx,
+  args: {
+    ownerAccountId: string;
+    companyId: string;
+    expectedSnapshotGeneration: number;
+    cursor?: string;
+  },
+) {
+  const company = await ctx.db
+    .query("companyMonitoringCompanies")
+    .withIndex("by_account_companyId", (q) =>
+      q.eq("ownerAccountId", args.ownerAccountId).eq("companyId", args.companyId),
+    )
+    .unique();
+  if (
+    !company ||
+    company.lifecycle === "removed" ||
+    company.snapshotGeneration !== args.expectedSnapshotGeneration
+  ) return { status: "stale" as const, complete: true };
+
+  const subject = await currentEvidenceSubject(ctx, args.ownerAccountId, args.companyId);
+  if (!subject) return { status: "stale" as const, complete: true };
+  const now = Date.now();
+  const page = await ctx.db
+    .query("companyMonitoringEvidence")
+    .withIndex("by_account_company", (q) =>
+      q.eq("ownerAccountId", args.ownerAccountId).eq("companyId", args.companyId),
+    )
+    .paginate({ cursor: args.cursor ?? null, numItems: CLAIM_REVALIDATION_BATCH_SIZE });
+  const affected = new Set<string>();
+  let changed = 0;
+  for (const row of page.page) {
+    if (
+      (row.state !== "active" && row.state !== "authority_lost") ||
+      row.matchedClaimIds.length === 0
+    ) continue;
+    if (row.expiresAt !== undefined && row.expiresAt <= now) {
+      await ctx.db.patch(row._id, {
+        state: "expired",
+        updatedAt: nextUpdatedAt(row, now),
+      });
+      affected.add(row.occurrenceDedupeKey);
+      changed += 1;
+      continue;
+    }
+    const normalized = await normalizeCompanyEvidence({
+      ownerAccountId: args.ownerAccountId,
+      subjects: [subject],
+      evidence: [providerEvidenceFromRow(row)],
+      now,
+    });
+    const replacement = normalized.evidence[0];
+    if (!replacement) {
+      if (row.state !== "authority_lost") {
+        await ctx.db.patch(row._id, {
+          state: "authority_lost",
+          updatedAt: nextUpdatedAt(row, now),
+        });
+        affected.add(row.occurrenceDedupeKey);
+        changed += 1;
+      }
+      continue;
+    }
+    const attributionChanged =
+      row.state !== "active" ||
+      row.sourceAuthority !== replacement.sourceAuthority ||
+      row.independence !== replacement.independence ||
+      row.matchedClaimIds.length !== replacement.matchedClaimIds.length ||
+      row.matchedClaimIds.some((claimId, index) =>
+        claimId !== replacement.matchedClaimIds[index]
+      );
+    if (!attributionChanged) continue;
+    await ctx.db.patch(row._id, {
+      state: "active",
+      matchedClaimIds: replacement.matchedClaimIds,
+      sourceAuthority: replacement.sourceAuthority,
+      independence: replacement.independence,
+      updatedAt: nextUpdatedAt(row, now),
+    });
+    affected.add(row.occurrenceDedupeKey);
+    changed += 1;
+  }
+  for (const occurrenceDedupeKey of [...affected].sort()) {
+    await recomputeOccurrenceCandidate(
+      ctx,
+      args.ownerAccountId,
+      args.companyId,
+      occurrenceDedupeKey,
+    );
+  }
+  if (!page.isDone) {
+    await ctx.scheduler.runAfter(
+      0,
+      internal.companyMonitoring.evidence.continueCompanyEvidenceClaimRevalidation,
+      { ...args, cursor: page.continueCursor },
+    );
+  }
+  return {
+    status: "revalidated" as const,
+    complete: page.isDone,
+    changed,
+  };
+}
+
+async function xAuthorityGeneration(
+  ctx: MutationCtx,
+  ownerAccountId: string,
+  companyId: string,
+) {
+  const identity = await ctx.db
+    .query("companyMonitoringXIdentities")
+    .withIndex("by_account_company", (q) =>
+      q.eq("ownerAccountId", ownerAccountId).eq("companyId", companyId),
+    )
+    .unique();
+  return identity
+    ? [
+        identity._id,
+        identity.state,
+        identity.accountId,
+        identity.allowedUses.join(","),
+        identity.evidenceHash,
+        identity.expiresAt,
+        identity.updatedAt,
+      ].join(":")
+    : "missing";
+}
+
+async function continueCompanyProviderStateTransitionBatch(
+  ctx: MutationCtx,
+  args: {
+    ownerAccountId: string;
+    companyId: string;
+    provider: "exa" | "x";
+    state: "deleted" | "authority_lost";
+    authorityGeneration: string;
+  },
+) {
+  if (
+    args.provider === "x" &&
+    await xAuthorityGeneration(ctx, args.ownerAccountId, args.companyId) !==
+      args.authorityGeneration
+  ) return { complete: true, status: "stale" as const };
+  return transitionCurrentCompanyProviderEvidence(ctx, args);
+}
+
 export async function setAllCompanyProviderEvidenceState(
   ctx: MutationCtx,
   args: {
@@ -452,6 +677,25 @@ export async function setAllCompanyProviderEvidenceState(
     companyId: string;
     provider: "exa" | "x";
     state: "deleted" | "authority_lost";
+  },
+) {
+  const authorityGeneration = args.provider === "x"
+    ? await xAuthorityGeneration(ctx, args.ownerAccountId, args.companyId)
+    : "exa";
+  return continueCompanyProviderStateTransitionBatch(ctx, {
+    ...args,
+    authorityGeneration,
+  });
+}
+
+async function transitionCurrentCompanyProviderEvidence(
+  ctx: MutationCtx,
+  args: {
+    ownerAccountId: string;
+    companyId: string;
+    provider: "exa" | "x";
+    state: "deleted" | "authority_lost";
+    authorityGeneration: string;
   },
 ) {
   const page = await ctx.db
@@ -476,16 +720,18 @@ export async function setAllCompanyProviderEvidenceState(
       args.ownerAccountId,
       args.companyId,
       occurrenceDedupeKey,
+      undefined,
+      args.provider,
     );
   }
   if (page.length > EVIDENCE_BATCH_SIZE) {
     await ctx.scheduler.runAfter(
       0,
-      (internal as any).companyMonitoring.evidence.continueCompanyProviderStateTransition,
+      internal.companyMonitoring.evidence.continueCompanyProviderStateTransition,
       args,
     );
   }
-  return { complete: page.length <= EVIDENCE_BATCH_SIZE };
+  return { complete: page.length <= EVIDENCE_BATCH_SIZE, status: "transitioned" as const };
 }
 
 export async function purgeCompanyEvidenceBatch(
@@ -579,7 +825,86 @@ export const recomputeCompanyEvidenceForTest = internalMutation({
   ),
 });
 
+export const continueCompanyEvidenceClaimRevalidation = internalMutation({
+  args: {
+    ownerAccountId: v.string(),
+    companyId: v.string(),
+    expectedSnapshotGeneration: v.number(),
+    cursor: v.optional(v.string()),
+  },
+  handler: revalidateCompanyEvidenceClaims,
+});
+
+export const revalidateExpiredCompanyEvidenceClaims = internalMutation({
+  args: {
+    ownerAccountId: v.string(),
+    companyId: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const [company, claims] = await Promise.all([
+      ctx.db
+        .query("companyMonitoringCompanies")
+        .withIndex("by_account_companyId", (q) =>
+          q.eq("ownerAccountId", args.ownerAccountId).eq("companyId", args.companyId),
+        )
+        .unique(),
+      ctx.db
+        .query("companyMonitoringClaims")
+        .withIndex("by_account_company", (q) =>
+          q.eq("ownerAccountId", args.ownerAccountId).eq("companyId", args.companyId),
+        )
+        .take(COMPANY_MONITORING_LIMITS.maxClaimsPerCompany + 1),
+    ]);
+    if (
+      !company ||
+      company.lifecycle === "removed" ||
+      claims.length > COMPANY_MONITORING_LIMITS.maxClaimsPerCompany
+    ) return { status: "stale" as const, complete: true };
+    const now = Date.now();
+    const attributionClaims = claims.filter((claim) =>
+      claim.allowedUses?.includes("attribution") &&
+      claim.trustState !== "expired" &&
+      claim.trustState !== "rejected"
+    );
+    const nextExpiry = attributionClaims
+      .flatMap((claim) =>
+        claim.expiresAt !== undefined && claim.expiresAt > now ? [claim.expiresAt] : []
+      )
+      .sort((left, right) => left - right)[0];
+    if (nextExpiry !== undefined) {
+      await ctx.scheduler.runAt(
+        nextExpiry,
+        internal.companyMonitoring.evidence.revalidateExpiredCompanyEvidenceClaims,
+        args,
+      );
+    }
+    if (!claims.some((claim) =>
+      claim.allowedUses?.includes("attribution") &&
+      (
+        claim.trustState === "expired" ||
+        claim.trustState === "rejected" ||
+        (claim.expiresAt !== undefined && claim.expiresAt <= now)
+      )
+    )) return { status: "current" as const, complete: true };
+    return revalidateCompanyEvidenceClaims(ctx, {
+      ...args,
+      expectedSnapshotGeneration: company.snapshotGeneration,
+    });
+  },
+});
+
 export const continueCompanyProviderStateTransition = internalMutation({
+  args: {
+    ownerAccountId: v.string(),
+    companyId: v.string(),
+    provider: v.union(v.literal("exa"), v.literal("x")),
+    state: v.union(v.literal("deleted"), v.literal("authority_lost")),
+    authorityGeneration: v.string(),
+  },
+  handler: continueCompanyProviderStateTransitionBatch,
+});
+
+export const setAllCompanyProviderEvidenceStateForTest = internalMutation({
   args: {
     ownerAccountId: v.string(),
     companyId: v.string(),
@@ -613,10 +938,10 @@ export const recordCandidateAttempt = internalMutation({
           .eq("occurrenceDedupeKey", args.occurrenceDedupeKey),
       )
       .unique();
-    if (!candidate || candidate.state === "terminal") {
+    const now = Date.now();
+    if (!candidate || candidate.state === "terminal" || candidate.expiresAt <= now) {
       throw new ConvexError("COMPANY_MONITORING_CANDIDATE_NOT_ACTIVE");
     }
-    const now = Date.now();
     const attemptCount = candidate.attemptCount + 1;
     if (args.outcome === "held") {
       const holdUntil = args.holdUntil;
@@ -637,7 +962,7 @@ export const recordCandidateAttempt = internalMutation({
       });
       await ctx.scheduler.runAt(
         holdUntil,
-        (internal as any).companyMonitoring.evidence.recomputeCompanyEvidence,
+        internal.companyMonitoring.evidence.recomputeCompanyEvidence,
         {
           ownerAccountId: args.ownerAccountId,
           companyId: args.companyId,

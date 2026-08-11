@@ -7,10 +7,17 @@ import {
 } from "../../shared/company-monitoring-contract";
 
 export const COMPANY_LIMIT = COMPANY_MONITORING_LIMITS.maxCompaniesPerAccount;
+export const COMPANY_MONITORING_CLAIM_POLICY_VERSION = 1;
 const CROCKFORD = "0123456789ABCDEFGHJKMNPQRSTVWXYZ";
 const REQUEST_CONTROL = /[\u0000-\u001f\u007f-\u009f\u00ad\u061c\u180e\u200b-\u200f\u2028-\u202e\u2060-\u206f\ufeff\ufff9-\ufffb]/u;
 
 type CompanyMonitoringCtx = MutationCtx | QueryCtx;
+
+export function hasCurrentCompanyMonitoringClaimPolicy(
+  account: Pick<Doc<"companyMonitoringAccounts">, "claimPolicyVersion">,
+): boolean {
+  return (account.claimPolicyVersion ?? 0) >= COMPANY_MONITORING_CLAIM_POLICY_VERSION;
+}
 
 export function normalizeRequestId(value: string, field = "clientRequestId"): string {
   if (typeof value !== "string" || REQUEST_CONTROL.test(value)) {
