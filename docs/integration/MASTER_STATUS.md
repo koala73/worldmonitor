@@ -253,8 +253,8 @@ Huidong source/HS display, absence of fabricated trade and B/L claims, and a
 real owned vertical scroll surface. See `evidence/phase7-china-factory.md` and
 `evidence/phase7-command-log.md`.
 
-**Phase 7 implementation commit:** `PENDING` — replaced immediately after the
-implementation commit is created.
+**Phase 7 implementation commit:** `0ef6e668bbf96d436dc37cc861804a217760d6e5`
+(`feat(trade): add China industrial cluster export explorer`).
 
 ## Next action
 
