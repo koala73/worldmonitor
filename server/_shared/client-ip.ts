@@ -21,6 +21,116 @@ export const UNKNOWN_CLIENT_IP = 'unknown';
 // the request actually transited CF. Keep in sync with api/_client-ip.js.
 const CF_EDGE_PROOF_HEADER = 'x-wm-edge-proof';
 
+// Vercel's x-real-ip is its direct peer. Only a peer in Cloudflare's published
+// proxy ranges proves that an unproven cf-connecting-ip came from a genuine
+// Cloudflare hop rather than a direct-origin spoof. Sources:
+// https://www.cloudflare.com/ips-v4/ and https://www.cloudflare.com/ips-v6/
+// Keep in sync with api/_client-ip.js.
+const CLOUDFLARE_IPV4_CIDRS = Object.freeze([
+  '173.245.48.0/20',
+  '103.21.244.0/22',
+  '103.22.200.0/22',
+  '103.31.4.0/22',
+  '141.101.64.0/18',
+  '108.162.192.0/18',
+  '190.93.240.0/20',
+  '188.114.96.0/20',
+  '197.234.240.0/22',
+  '198.41.128.0/17',
+  '162.158.0.0/15',
+  '104.16.0.0/13',
+  '104.24.0.0/14',
+  '172.64.0.0/13',
+  '131.0.72.0/22',
+]);
+
+const CLOUDFLARE_IPV6_CIDRS = Object.freeze([
+  '2400:cb00::/32',
+  '2606:4700::/32',
+  '2803:f800::/32',
+  '2405:b500::/32',
+  '2405:8100::/32',
+  '2a06:98c0::/29',
+  '2c0f:f248::/32',
+]);
+
+function parseIpv4(value: string): number | null {
+  const parts = value.split('.');
+  if (parts.length !== 4) return null;
+  let address = 0;
+  for (const part of parts) {
+    if (!/^(?:0|[1-9]\d{0,2})$/.test(part)) return null;
+    const octet = Number(part);
+    if (octet > 255) return null;
+    address = (address * 256) + octet;
+  }
+  return address >>> 0;
+}
+
+function parseIpv6(value: string): number[] | null {
+  if (!value || value.includes('.') || value.includes('%')) return null;
+  const halves = value.split('::');
+  if (halves.length > 2) return null;
+
+  const head = halves[0] ? halves[0].split(':') : [];
+  const tail = halves.length === 2 && halves[1] ? halves[1].split(':') : [];
+  if (halves.length === 1 && head.length !== 8) return null;
+  if (halves.length === 2 && head.length + tail.length >= 8) return null;
+
+  const groups = halves.length === 2
+    ? [...head, ...Array(8 - head.length - tail.length).fill('0'), ...tail]
+    : head;
+  if (groups.some((group) => !/^[0-9a-f]{1,4}$/i.test(group))) return null;
+  return groups.map((group) => Number.parseInt(group, 16));
+}
+
+function parseIpv4Cidr(cidr: string): [number, number] {
+  const [networkText = '', prefixText = ''] = cidr.split('/');
+  const network = parseIpv4(networkText);
+  if (network === null) throw new Error(`Invalid Cloudflare IPv4 CIDR: ${cidr}`);
+  return [network, Number(prefixText)];
+}
+
+function parseIpv6Cidr(cidr: string): [number[], number] {
+  const [networkText = '', prefixText = ''] = cidr.split('/');
+  const network = parseIpv6(networkText);
+  if (network === null) throw new Error(`Invalid Cloudflare IPv6 CIDR: ${cidr}`);
+  return [network, Number(prefixText)];
+}
+
+const CLOUDFLARE_IPV4_RANGES = Object.freeze(CLOUDFLARE_IPV4_CIDRS.map(parseIpv4Cidr));
+const CLOUDFLARE_IPV6_RANGES = Object.freeze(CLOUDFLARE_IPV6_CIDRS.map(parseIpv6Cidr));
+
+function isInIpv4Range(address: number, network: number, prefixLength: number): boolean {
+  const mask = (0xffffffff << (32 - prefixLength)) >>> 0;
+  return ((address & mask) >>> 0) === ((network & mask) >>> 0);
+}
+
+function isInIpv6Range(
+  address: number[],
+  network: number[],
+  prefixLength: number,
+): boolean {
+  const fullGroups = Math.floor(prefixLength / 16);
+  for (let i = 0; i < fullGroups; i += 1) {
+    if (address[i]! !== network[i]!) return false;
+  }
+  const remainingBits = prefixLength % 16;
+  if (remainingBits === 0) return true;
+  const mask = (0xffff << (16 - remainingBits)) & 0xffff;
+  return (address[fullGroups]! & mask) === (network[fullGroups]! & mask);
+}
+
+function isCloudflareProxyIp(value: string): boolean {
+  const ipv4 = parseIpv4(value);
+  if (ipv4 !== null) {
+    return CLOUDFLARE_IPV4_RANGES.some(([network, prefix]) => isInIpv4Range(ipv4, network, prefix));
+  }
+  const ipv6 = parseIpv6(value);
+  return ipv6 !== null
+    && CLOUDFLARE_IPV6_RANGES.some(([network, prefix]) => isInIpv6Range(ipv6, network, prefix));
+}
+
 // Compare the edge-proof secret without an early exit on length mismatch.
 // Synchronous so getClientIp stays sync (per-request rate-limit hot path,
 // several non-awaiting callers). Keep in sync with api/_client-ip.js.
@@ -44,17 +154,35 @@ export function hasCloudflareTransitProof(request: Request): boolean {
 // One-per-isolate warning that the edge-proof is not matching, so a missing
 // CF_EDGE_PROOF_SECRET or a Cloudflare rule that stopped covering this route
 // cannot regress silently. The dangerous state is cf-connecting-ip PRESENT
-// (the request really did transit Cloudflare) but the x-wm-edge-proof header
-// absent or mismatched: getClientIp then falls back to x-real-ip, which
-// Vercel sets to its peer — the Cloudflare PoP — so every user behind that
-// PoP shares one rate-limit bucket and per-IP budgets look enforced but are
-// not (issue #6431). Keep this dependency-free: this module is in the static
-// import closure of Railway seeders that install no npm packages (#5229), so
-// no Sentry/logger import and no npm specifier may be added here.
-let edgeProofMismatchWarned = false;
+// and x-real-ip in Cloudflare's proxy ranges, but the x-wm-edge-proof header
+// absent or mismatched. Direct-origin spoofs with non-CF peers must not warn
+// or consume the latch. Keep this dependency-free: this module is in the
+// static import closure of Railway seeders that install no npm packages
+// (#5229), so no Sentry/logger import and no npm specifier may be added here.
+// Symbol.for gives both mirror modules one collision-resistant, isolate-wide
+// latch even when both are loaded together.
+const EDGE_PROOF_MISMATCH_LATCH = Symbol.for(
+  'worldmonitor.client-ip.edge-proof-mismatch-warning.v1',
+);
+
+interface EdgeProofMismatchLatch {
+  warned: boolean;
+}
+
+function getEdgeProofMismatchLatch(): EdgeProofMismatchLatch {
+  const existing = Reflect.get(globalThis, EDGE_PROOF_MISMATCH_LATCH) as
+    | EdgeProofMismatchLatch
+    | undefined;
+  if (existing) return existing;
+  const latch = { warned: false };
+  Reflect.set(globalThis, EDGE_PROOF_MISMATCH_LATCH, latch);
+  return latch;
+}
+
 export function warnEdgeProofNotProving(): void {
-  if (edgeProofMismatchWarned) return;
-  edgeProofMismatchWarned = true;
+  const latch = getEdgeProofMismatchLatch();
+  if (latch.warned) return;
+  latch.warned = true;
   // One line, greppable in Vercel logs; not a per-request log. Follows the
   // rate-limit degraded-mode console.error precedent (server/_shared/rate-limit.ts).
   console.warn(
@@ -62,13 +190,11 @@ export function warnEdgeProofNotProving(): void {
   );
 }
 
-// Test seam: the warn-once flag is module state, so a suite that exercises the
-// warning in one test must be able to reset it for the next. Real isolates
-// never call this — a fresh isolate starts with the flag clear, which is
-// exactly what the once-per-isolate contract needs. Mirrors the
+// Test seam for the shared isolate-wide latch. Real isolates never call this;
+// a fresh isolate starts with the latch clear. Mirrors the
 // resetRateLimitFallbackForTest pattern.
 export function resetEdgeProofMismatchWarnedForTest(): void {
-  edgeProofMismatchWarned = false;
+  getEdgeProofMismatchLatch().warned = false;
 }
 
 export function getClientIp(request: Request): string {
@@ -86,11 +212,10 @@ export function getClientIp(request: Request): string {
   const cf = (request.headers.get('cf-connecting-ip') ?? '').trim();
   const xr = (request.headers.get('x-real-ip') ?? '').trim();
   if (cf && hasCloudflareTransitProof(request)) return cf;
-  // The precise "looks enforced but is shared" state (#6431): the request
-  // really did transit Cloudflare (cf-connecting-ip present and real) but
-  // proof of CF transit is missing, so the user just joined the PoP-shared
-  // x-real-ip bucket. Warn once per isolate so a rule/secret regression
-  // surfaces in logs without spamming them.
-  if (cf) warnEdgeProofNotProving();
+  // The precise "looks enforced but is shared" state (#6431): an unproven
+  // cf-connecting-ip arrived from a Cloudflare peer, so the user just joined
+  // the PoP-shared x-real-ip bucket. A non-CF peer is a direct-origin spoof;
+  // it must neither warn nor consume the shared latch.
+  if (cf && isCloudflareProxyIp(xr)) warnEdgeProofNotProving();
   return xr || UNKNOWN_CLIENT_IP;
 }

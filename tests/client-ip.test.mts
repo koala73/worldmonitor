@@ -20,11 +20,11 @@ afterEach(() => {
   delete process.env.CF_EDGE_PROOF_SECRET;
 });
 
-function makeRequest(proof: string): Request {
+function makeRequest(proof: string, xRealIp = '192.0.2.5'): Request {
   return new Request('https://worldmonitor.app/api/test', {
     headers: {
       'cf-connecting-ip': '203.0.113.7',
-      'x-real-ip': '192.0.2.5',
+      'x-real-ip': xRealIp,
       'x-wm-edge-proof': proof,
     },
   });
@@ -95,31 +95,66 @@ describe('client-IP edge-proof comparison (#5239)', () => {
 });
 
 describe('client-IP proof-mismatch canary (#6431)', () => {
-  it('warns once per isolate when cf-connecting-ip is present but the proof is absent or mismatched', () => {
-    for (const { getClientIp, reset } of [
-      { getClientIp: getServerClientIp, reset: resetServer },
-      { getClientIp: getApiClientIp, reset: resetApi },
-    ]) {
-      let warnings = 0;
-      originalWarn = console.warn;
-      console.warn = () => { warnings += 1; };
-      try {
-        reset();
-        process.env.CF_EDGE_PROOF_SECRET = 'edge-secret-xyz';
-        // Miss: secret configured, header absent.
-        getClientIp(makeRequest(''));
-        assert.ok(warnings >= 1, 'must warn when proof header is absent');
-        // Miss: secret configured, header mismatched.
-        getClientIp(makeRequest('wrong'));
-        getClientIp(makeRequest('edge-secret-xyz-with-extra'));
-        // warn-once: still exactly one warning for the whole isolate.
-        assert.equal(warnings, 1, 'must warn exactly once per isolate');
-      } finally {
-        console.warn = originalWarn;
-        originalWarn = null;
-        delete process.env.CF_EDGE_PROOF_SECRET;
+  it('does not warn or consume the latch for a direct-origin spoof', () => {
+    let warnings = 0;
+    originalWarn = console.warn;
+    console.warn = () => { warnings += 1; };
+    resetServer();
+    process.env.CF_EDGE_PROOF_SECRET = 'edge-secret-xyz';
+
+    assert.equal(getServerClientIp(makeRequest('wrong')), '192.0.2.5');
+    assert.equal(getApiClientIp(makeRequest('', '203.0.113.10')), '203.0.113.10');
+    assert.equal(warnings, 0, 'a non-Cloudflare peer must not warn');
+
+    assert.equal(getApiClientIp(makeRequest('wrong', '173.245.48.1')), '173.245.48.1');
+    assert.equal(warnings, 1, 'a later Cloudflare peer mismatch must still warn');
+  });
+
+  it('recognizes official Cloudflare IPv4 and IPv6 peers in both mirrors', () => {
+    let warnings = 0;
+    originalWarn = console.warn;
+    console.warn = () => { warnings += 1; };
+    process.env.CF_EDGE_PROOF_SECRET = 'edge-secret-xyz';
+
+    for (const getClientIp of [getServerClientIp, getApiClientIp]) {
+      for (const peerIp of ['173.245.48.1', '2606:4700::1111']) {
+        resetServer();
+        assert.equal(getClientIp(makeRequest('wrong', peerIp)), peerIp);
+        assert.equal(warnings, 1, `${peerIp} must trigger the mismatch canary`);
+        warnings = 0;
       }
     }
+  });
+
+  it('warns for a Cloudflare peer when the proof secret is unset', () => {
+    let warnings = 0;
+    originalWarn = console.warn;
+    console.warn = () => { warnings += 1; };
+    resetServer();
+    delete process.env.CF_EDGE_PROOF_SECRET;
+
+    assert.equal(getApiClientIp(makeRequest('', '173.245.48.1')), '173.245.48.1');
+    assert.equal(warnings, 1, 'an unset deployment secret must trigger the canary');
+  });
+
+  it('shares one warning latch and reset seam across both mirrors', () => {
+    let warnings = 0;
+    originalWarn = console.warn;
+    console.warn = () => { warnings += 1; };
+    process.env.CF_EDGE_PROOF_SECRET = 'edge-secret-xyz';
+
+    resetServer();
+    getServerClientIp(makeRequest('', '173.245.48.1'));
+    getApiClientIp(makeRequest('wrong', '173.245.48.2'));
+    assert.equal(warnings, 1, 'both mirrors must share one isolate-wide warning');
+
+    resetApi();
+    getServerClientIp(makeRequest('wrong', '173.245.48.3'));
+    assert.equal(warnings, 2, 'the API reset seam must reset the shared latch');
+
+    resetServer();
+    getApiClientIp(makeRequest('wrong', '173.245.48.4'));
+    assert.equal(warnings, 3, 'the server reset seam must reset the shared latch');
   });
 
   it('does not warn when the proof matches (normal transit)', () => {
