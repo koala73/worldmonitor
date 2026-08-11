@@ -239,7 +239,8 @@ aviation tracking merely because a map layer is enabled.
 
 ## Phase 9 - Provider operations, scheduling and local control-center boundary
 
-**Implementation commit:** pending Phase 9 receipt backfill.
+**Implementation commit:** `b9276fab8c592a6942f7e25fbc0e7eb6667517bd`
+(`feat(ops): add truthful provider control center`).
 
 | Check | Result | Evidence |
 |---|---|---|

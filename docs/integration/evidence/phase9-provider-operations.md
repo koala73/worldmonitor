@@ -1,7 +1,8 @@
 # Phase 9 — Provider 统一控制中心验收证据
 
 **实施日期：** 2026-08-11
-**实施提交：** 待 Phase 9 回执提交回填
+**实施提交：** `b9276fab8c592a6942f7e25fbc0e7eb6667517bd`
+(`feat(ops): add truthful provider control center`)
 
 ## 已交付的本地功能
 

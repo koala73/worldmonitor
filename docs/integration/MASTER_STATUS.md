@@ -323,7 +323,8 @@ production-build gates passed. The first full-lint invocation had a recorded
 PATH-only nested-npm failure; the corrected rerun exited 0. Details are in
 `evidence/phase9-provider-operations.md` and `evidence/phase9-command-log.md`.
 
-**Phase 9 implementation commit:** pending receipt backfill.
+**Phase 9 implementation commit:** `b9276fab8c592a6942f7e25fbc0e7eb6667517bd`
+(`feat(ops): add truthful provider control center`).
 
 ## Next action
 
