@@ -29,6 +29,11 @@ import assert from 'node:assert/strict';
 import { afterEach, beforeEach, describe, it } from 'node:test';
 
 import {
+  FIN_SYS_BAND_ISOLATION_FLOOR,
+  FIN_SYS_BAND_OVEREXPOSED_FLOOR,
+  FIN_SYS_EXPOSURE_COMPREHENSIVE_EMBARGO,
+  FIN_SYS_EXPOSURE_EMBARGO_SCORE_CAP,
+  normalizeBandLowerBetter,
   scoreFinancialSystemExposure,
   ResilienceConfigurationError,
   type ResilienceSeedReader,
@@ -241,24 +246,41 @@ describe('scoreFinancialSystemExposure — formula math', () => {
     assert.equal(result.coverage, 1.0, `best-case coverage must be 1.0, got ${result.coverage}`);
   });
 
-  it('FATF black list + 15% short-term debt + 100% BIS LBS exposure + 1 parent → score floors low', async () => {
-    // Component values driving each to its worst anchor:
+  const buildWorstCaseReader = (xborderPct: number): ResilienceSeedReader => async (key) => {
+    if (key === 'seed-meta:economic:wb-external-debt') return { fetchedAt: Date.now() };
+    if (key === 'seed-meta:economic:bis-lbs') return { fetchedAt: Date.now() };
+    if (key === 'seed-meta:economic:fatf-listing') return { fetchedAt: Date.now() };
+    if (key === 'economic:wb-external-debt:v1') return { countries: { [TEST_ISO2]: { value: 15, year: 2024 } } };
+    if (key === 'economic:bis-lbs:v1') return { countries: { [TEST_ISO2]: { totalXborderPctGdp: xborderPct, parentCount: 1 } } };
+    if (key === 'economic:fatf-listing:v1') return { listings: { [TEST_ISO2]: 'black' }, publicationDate: '2026-02-13' };
+    return null;
+  };
+
+  it('FATF black list + 15% short-term debt + 0% BIS LBS exposure + 1 parent → true worst case', async () => {
+    // #6459 re-anchoring moved the worst case. Component 2's worst reading is
+    // now financial ISOLATION (0% cross-border claims), not over-exposure:
     //   short-term debt = 15% GNI      → lowerBetter(15, 0, 15) = 0
-    //   BIS LBS         = 100% GDP     → U-shape Iceland-2008 territory: 30 - (100-60)*0.5 = 10
+    //   BIS LBS         = 0% GDP       → U-shape isolation floor      = 30
     //   FATF            = black        → 0 (discrete)
-    //   redundancy      = 1 parent     → higherBetter(1, 1, 10) = 0
-    // Total: (0*0.35 + 10*0.30 + 0*0.20 + 0*0.15) / 1.0 = 3.
-    const reader: ResilienceSeedReader = async (key) => {
-      if (key === 'seed-meta:economic:wb-external-debt') return { fetchedAt: Date.now() };
-      if (key === 'seed-meta:economic:bis-lbs') return { fetchedAt: Date.now() };
-      if (key === 'seed-meta:economic:fatf-listing') return { fetchedAt: Date.now() };
-      if (key === 'economic:wb-external-debt:v1') return { countries: { [TEST_ISO2]: { value: 15, year: 2024 } } };
-      if (key === 'economic:bis-lbs:v1') return { countries: { [TEST_ISO2]: { totalXborderPctGdp: 100, parentCount: 1 } } };
-      if (key === 'economic:fatf-listing:v1') return { listings: { [TEST_ISO2]: 'black' }, publicationDate: '2026-02-13' };
-      return null;
-    };
-    const result = await scoreFinancialSystemExposure(TEST_ISO2, reader);
+    //   redundancy      = 1 parent     → higherBetter(1, 1, 10)       = 0
+    // Total: (0*0.35 + 30*0.30 + 0*0.20 + 0*0.15) / 1.0 = 9.
+    const result = await scoreFinancialSystemExposure(TEST_ISO2, buildWorstCaseReader(0));
     assert.ok(result.score < 10, `worst-case must score < 10, got ${result.score}`);
+  });
+
+  it('FATF black list + 15% short-term debt + 100% BIS LBS exposure + 1 parent → floors just above the true worst', async () => {
+    // Same country with an over-banked balance sheet instead of a severed
+    // one. Pre-#6459 the band decayed to 10 here and this scenario was the
+    // "worst case"; the band now floors at 35 because an over-exposed
+    // entrepôt still has working correspondent access that a severed state
+    // does not: (0*0.35 + 35*0.30 + 0*0.20 + 0*0.15) = 10.5 → 11.
+    const overExposed = await scoreFinancialSystemExposure(TEST_ISO2, buildWorstCaseReader(100));
+    const isolated = await scoreFinancialSystemExposure(TEST_ISO2, buildWorstCaseReader(0));
+    assert.equal(overExposed.score, 11, `over-exposed worst case must score 11, got ${overExposed.score}`);
+    assert.ok(
+      overExposed.score > isolated.score,
+      `over-exposure (${overExposed.score}) must stay above isolation (${isolated.score}) — the inverted ordering is the #6459 defect`,
+    );
   });
 
   it('U-shape is piecewise-CONTINUOUS at 5% and 25% boundaries (Greptile P1 regression guard)', async () => {
@@ -284,6 +306,9 @@ describe('scoreFinancialSystemExposure — formula math', () => {
       { name: 'just-above 25%', a: 25.00, b: 25.01 },
       { name: 'just-below 60%', a: 59.99, b: 60.00 },
       { name: 'just-above 60%', a: 60.00, b: 60.01 },
+      // #6459 added the over-exposure floor at 80%; it is a boundary too.
+      { name: 'just-below 80%', a: 79.99, b: 80.00 },
+      { name: 'just-above 80%', a: 80.00, b: 80.01 },
     ];
     for (const { name, a, b } of samplePoints) {
       const sa = await scoreFinancialSystemExposure(TEST_ISO2, buildReader(a));
@@ -327,6 +352,69 @@ describe('scoreFinancialSystemExposure — formula math', () => {
     );
   });
 
+  it('U-shape ASYMMETRY: isolation is the worse extreme, at every over-exposure level (#6459)', () => {
+    // The defect this construct shipped with. The band floored 0% claims at
+    // 60 while decaying over-integration to 0 at 120% of GDP, so a
+    // sanctions-severed balance sheet out-scored a deep one by construction:
+    // Russia's 1.45%-of-GDP claims took 64, Luxembourg's 1041% took 0.
+    //
+    // Tested against `normalizeBandLowerBetter` directly. Driving this
+    // through the blended dimension would not isolate the band: any fixture
+    // that varies cross-border claims also decides whether the debt slot
+    // imputes, so the blend moves for two reasons at once.
+    const isolation = normalizeBandLowerBetter(0);
+
+    // Invariant 1: the isolation floor is low in absolute terms.
+    assert.equal(isolation, FIN_SYS_BAND_ISOLATION_FLOOR, 'value 0 must sit exactly on the isolation floor');
+    assert.ok(isolation <= 40, `isolation floor must be ≤ 40, got ${isolation}`);
+
+    // Invariant 2: isolation is strictly below every other reading of the
+    // band, including the deepest over-exposure the data can produce
+    // (Luxembourg reported 1041.64% of GDP on 2026-08-11). Densely sampled
+    // rather than checked at the endpoints, because a retune that fixes both
+    // ends while leaving a dip in the middle is still inverted for whichever
+    // countries sit there.
+    const samples = [
+      0.5, 1, 1.45, 2, 4.9, 5, 10, 15, 25, 26, 40, 43.67, 60, 61, 79.9, 80,
+      80.1, 100, 122, 300, 800, 1041.64, 5000,
+    ];
+    for (const pct of samples) {
+      const observed = normalizeBandLowerBetter(pct);
+      assert.ok(
+        observed > isolation,
+        `${pct}% cross-border claims scored ${observed}, at or below the isolation floor ${isolation} — the band is inverted again`,
+      );
+    }
+
+    // Invariant 3: the over-exposure leg never falls below the isolation
+    // floor no matter how extreme the reading. Unbounded decay is exactly
+    // what made Luxembourg score 0 and Russia 64.
+    assert.ok(
+      FIN_SYS_BAND_OVEREXPOSED_FLOOR > FIN_SYS_BAND_ISOLATION_FLOOR,
+      'the over-exposure floor must sit above the isolation floor',
+    );
+    assert.equal(normalizeBandLowerBetter(1e9), FIN_SYS_BAND_OVEREXPOSED_FLOOR, 'over-exposure must asymptote to its floor');
+
+    // Invariant 4: every sweet-spot value beats both extremes.
+    for (const pct of [5, 10, 15, 20, 25]) {
+      const sweet = normalizeBandLowerBetter(pct);
+      assert.ok(sweet > isolation, `sweet-spot ${pct}% (${sweet}) must beat isolation (${isolation})`);
+      assert.ok(
+        sweet > FIN_SYS_BAND_OVEREXPOSED_FLOOR,
+        `sweet-spot ${pct}% (${sweet}) must beat the over-exposure floor (${FIN_SYS_BAND_OVEREXPOSED_FLOOR})`,
+      );
+    }
+  });
+
+  it('U-shape rejects malformed and negative readings without inventing a floor', () => {
+    // A negative or non-finite claims ratio is upstream corruption, not
+    // isolation. It must NOT resolve to the isolation floor, which would
+    // make a parser regression look like a sanctions verdict.
+    for (const bad of [-1, Number.NaN, Number.POSITIVE_INFINITY]) {
+      assert.equal(normalizeBandLowerBetter(bad), 50, `malformed reading ${bad} must fall back to the neutral 50`);
+    }
+  });
+
   it('FATF empty listings dict (parser regression) does NOT default every country to compliant', async () => {
     // Greptile P2 regression guard (PR #3407 review). A malformed seed
     // with `listings: {}` that bypassed validate would otherwise score
@@ -351,7 +439,7 @@ describe('scoreFinancialSystemExposure — formula math', () => {
     assert.notEqual(result.score, 100, 'empty FATF listings must NOT score 100 via the compliant-default fall-through');
   });
 
-  it('FATF discrete mapping: black=0, gray=30, compliant=100', async () => {
+  it('FATF discrete mapping: black=0, gray=55, compliant=100', async () => {
     const buildReader = (status: 'black' | 'gray' | 'compliant'): ResilienceSeedReader => async (key) => {
       if (key === 'seed-meta:economic:wb-external-debt') return { fetchedAt: Date.now() };
       if (key === 'seed-meta:economic:bis-lbs') return { fetchedAt: Date.now() };
@@ -366,8 +454,136 @@ describe('scoreFinancialSystemExposure — formula math', () => {
     const gray = await scoreFinancialSystemExposure(TEST_ISO2, buildReader('gray'));
     const compliant = await scoreFinancialSystemExposure(TEST_ISO2, buildReader('compliant'));
     assert.equal(black.score, 0, 'FATF black list anchors at 0');
-    assert.equal(gray.score, 30, 'FATF gray list anchors at 30');
+    // #6459: rescaled 30 → 55. Grey-listing is "increased monitoring under an
+    // agreed action plan", not a step below the call-for-action black list.
+    // At 30 an ordinary remediating economy scored closer to Iran than to its
+    // peers, which is what pushed Monaco (grey, FATF-only coverage) down.
+    assert.equal(gray.score, 55, 'FATF gray list anchors at 55');
     assert.equal(compliant.score, 100, 'FATF compliant anchors at 100');
+  });
+});
+
+describe('scoreFinancialSystemExposure — comprehensive-embargo cap (#6459)', () => {
+  const bestCaseReader = (iso2: string): ResilienceSeedReader => async (key) => {
+    if (key.startsWith('seed-meta:')) return { status: 'ok', fetchedAt: Date.now() };
+    if (key === 'economic:wb-external-debt:v1') return { countries: { [iso2]: { value: 0, year: 2024 } } };
+    if (key === 'economic:bis-lbs:v1') return { countries: { [iso2]: { totalXborderPctGdp: 25, parentCount: 10 } } };
+    if (key === 'economic:fatf-listing:v1') {
+      return { listings: { IR: 'black', KP: 'black' }, publicationDate: '2026-06-01' };
+    }
+    return null;
+  };
+
+  it('caps an embargoed jurisdiction even when every component reads perfect', async () => {
+    // The construct's failure mode was reading severance as strength, so the
+    // cap is tested at the point where the graded components are maximally
+    // wrong: an embargoed country whose four slots all anchor at 100.
+    for (const iso2 of FIN_SYS_EXPOSURE_COMPREHENSIVE_EMBARGO) {
+      const result = await scoreFinancialSystemExposure(iso2, bestCaseReader(iso2));
+      assert.ok(
+        result.score <= FIN_SYS_EXPOSURE_EMBARGO_SCORE_CAP,
+        `${iso2} scored ${result.score}; must be capped at ${FIN_SYS_EXPOSURE_EMBARGO_SCORE_CAP}`,
+      );
+    }
+  });
+
+  it('leaves non-embargoed jurisdictions untouched', async () => {
+    // Negative control. Without it the cap could be applied to everyone and
+    // the anchor gate would still pass.
+    assert.ok(!FIN_SYS_EXPOSURE_COMPREHENSIVE_EMBARGO.has(TEST_ISO2), 'test ISO2 must not be on the list');
+    const result = await scoreFinancialSystemExposure(TEST_ISO2, bestCaseReader(TEST_ISO2));
+    assert.equal(result.score, 100, `non-embargoed best case must be untouched, got ${result.score}`);
+  });
+
+  it('is a cap, not an assignment — a worse embargoed country keeps its lower score', async () => {
+    // DPRK is FATF black-listed with no other resolving slot, so it must stay
+    // at 0 rather than being raised to the cap.
+    const reader: ResilienceSeedReader = async (key) => {
+      if (key.startsWith('seed-meta:')) return { status: 'ok', fetchedAt: Date.now() };
+      if (key === 'economic:fatf-listing:v1') {
+        return { listings: { KP: 'black', IR: 'black', MM: 'black' }, publicationDate: '2026-06-01' };
+      }
+      return null;
+    };
+    const kp = await scoreFinancialSystemExposure('KP', reader);
+    assert.equal(kp.score, 0, `KP must keep its 0, not be lifted to the cap; got ${kp.score}`);
+  });
+
+  it('does not alter coverage or imputation provenance', async () => {
+    // The cap is post-blend by design: an operator inspecting a capped
+    // country must still see which components actually resolved. If the cap
+    // zeroed coverage the dimension would look like a data outage instead of
+    // a construct verdict.
+    const capped = await scoreFinancialSystemExposure('RU', bestCaseReader('RU'));
+    const uncapped = await scoreFinancialSystemExposure(TEST_ISO2, bestCaseReader(TEST_ISO2));
+    assert.equal(capped.coverage, uncapped.coverage, 'cap must not change coverage');
+    assert.equal(capped.observedWeight, uncapped.observedWeight, 'cap must not change observedWeight');
+    assert.equal(capped.imputationClass, uncapped.imputationClass, 'cap must not change imputationClass');
+  });
+
+  it('is case-insensitive on the country code', async () => {
+    const lower = await scoreFinancialSystemExposure('ru', bestCaseReader('ru'));
+    assert.ok(
+      lower.score <= FIN_SYS_EXPOSURE_EMBARGO_SCORE_CAP,
+      `lowercase iso2 must still hit the cap, got ${lower.score}`,
+    );
+  });
+});
+
+describe('scoreFinancialSystemExposure — non-DRS short-term-debt slot (#6459)', () => {
+  const reader = (opts: { debtRow: boolean; bisRow: boolean }): ResilienceSeedReader => async (key) => {
+    if (key.startsWith('seed-meta:')) return { status: 'ok', fetchedAt: Date.now() };
+    if (key === 'economic:wb-external-debt:v1') {
+      return { countries: opts.debtRow ? { [TEST_ISO2]: { value: 0, year: 2024 } } : {} };
+    }
+    if (key === 'economic:bis-lbs:v1') {
+      return { countries: opts.bisRow ? { [TEST_ISO2]: { totalXborderPctGdp: 300, parentCount: 10 } } : {} };
+    }
+    if (key === 'economic:fatf-listing:v1') {
+      return { listings: { IR: 'black', KP: 'black' }, publicationDate: '2026-06-01' };
+    }
+    return null;
+  };
+
+  it('no DRS row + BIS row → imputes the slot instead of renormalizing onto the band leg', async () => {
+    // The Luxembourg shape. Dropping the 0.35 slot pushed the punitive band
+    // leg from 30% to 46% of the score, so a deep financial centre was scored
+    // almost entirely on "your banks are too integrated".
+    //   imputed debt 75 x0.35 + band(300%)=35 x0.30 + compliant 100 x0.20
+    //   + parents 10 → 100 x0.15 = 71.75 → 72
+    const result = await scoreFinancialSystemExposure(TEST_ISO2, reader({ debtRow: false, bisRow: true }));
+    assert.equal(result.score, 72, `expected the imputed-slot blend, got ${result.score}`);
+    assert.ok(result.imputedWeight > 0, 'the imputed slot must be reported as imputed weight');
+    assert.ok(result.coverage < 1, 'coverage must stay below 1 — the reading is inferred, not observed');
+    assert.ok(result.coverage > 0.7, `coverage must still reflect three observed slots, got ${result.coverage}`);
+  });
+
+  it('no DRS row + no BIS row → slot stays null (genuine data desert)', async () => {
+    // Cuba / DPRK shape. Absence from BOTH sources is not evidence that
+    // short-term external debt is not applicable, so the slot must drop.
+    const result = await scoreFinancialSystemExposure(TEST_ISO2, reader({ debtRow: false, bisRow: false }));
+    assert.equal(result.coverage, 0.2, `only the FATF slot may resolve, got coverage ${result.coverage}`);
+    assert.equal(result.imputedWeight, 0, 'no BIS row means no imputation');
+  });
+
+  it('DRS row present → real value wins over the imputation', async () => {
+    const result = await scoreFinancialSystemExposure(TEST_ISO2, reader({ debtRow: true, bisRow: true }));
+    assert.equal(result.imputedWeight, 0, 'a real DRS reading must not be replaced by the imputation');
+    assert.equal(result.coverage, 1, 'all four slots observed');
+  });
+
+  it('a BIS row with no parseable field does not trigger the imputation', async () => {
+    const corrupt: ResilienceSeedReader = async (key) => {
+      if (key.startsWith('seed-meta:')) return { status: 'ok', fetchedAt: Date.now() };
+      if (key === 'economic:bis-lbs:v1') return { countries: { [TEST_ISO2]: { note: 'corrupt' } } };
+      if (key === 'economic:fatf-listing:v1') {
+        return { listings: { IR: 'black', KP: 'black' }, publicationDate: '2026-06-01' };
+      }
+      return null;
+    };
+    const result = await scoreFinancialSystemExposure(TEST_ISO2, corrupt);
+    assert.equal(result.imputedWeight, 0, 'a corrupt BIS row is not evidence of cross-border participation');
+    assert.equal(result.coverage, 0.2, `only the FATF slot may resolve, got coverage ${result.coverage}`);
   });
 });
 

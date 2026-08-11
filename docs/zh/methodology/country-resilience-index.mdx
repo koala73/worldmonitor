@@ -142,11 +142,13 @@ OFAC `sanctionCount` 组件（原权重 0.45）被删除 — 统计指定方注�
 | 指标 | 描述 | 方向 | 目标阈值（最差-最好） | 权重 | 来源 | 频率 |
 |---|---|---|---|---|---|---|
 | shortTermExternalDebtPctGni | 短期外债占 GNI 百分比（(WB IDS DT.DOD.DSTC.CD / NY.GNP.MKTP.CD) × 100）；IMF Article IV 脆弱性阈值为 GNI 的 15% | 越低越好 | 15 - 0 | 0.35 | 世界银行 IDS | 年度 |
-| bisLbsXborderPctGdp | BIS CBS（`WS_CBS_PUB`）按母国外国债权总和（美国/英国/主要欧盟/瑞士/日本/加拿大/澳大利亚/新加坡）占 GDP 百分比；U 形区间 — 隔离（低于 5%）和过度暴露（高于 60%）均低分 | 越低越好（U 形） | 60 - 25 | 0.30 | BIS CBS | 季度 |
-| fatfListingStatus | FATF AML/CFT 列表状态 — 黑名单（呼吁行动）→ 0，灰名单（加强监控）→ 30，合规 → 100 | 越高越好 | 0 - 100 | 0.20 | FATF | 月度 |
+| bisLbsXborderPctGdp | BIS CBS（`WS_CBS_PUB`）按母国外国债权总和（美国/英国/主要欧盟/瑞士/日本/加拿大/澳大利亚/新加坡）占 GDP 百分比；非对称 U 形区间 — 隔离（0%）是最差读数，得 30；过度暴露受惩罚但下限为 35 | 越低越好（U 形） | 0 - 25 | 0.30 | BIS CBS | 季度 |
+| fatfListingStatus | FATF AML/CFT 列表状态 — 黑名单（呼吁行动）→ 0，灰名单（加强监控）→ 55，合规 → 100 | 越高越好 | 0 - 100 | 0.20 | FATF | 月度 |
 | financialCenterRedundancy | 拥有非平凡（>1% GDP）外国债权的不同 BIS CBS 按母国报告者计数；奖励多对手方金融中心，平衡组件 2 过度暴露惩罚 | 越高越好 | 1 - 10 | 0.15 | BIS CBS | 季度 |
 
-**覆盖率**：WB IDS 仅发布约 125 个 LMIC；HIC 落入 BIS CBS 结构性暴露组件（覆盖约 200 国）。FATF + BIS CBS 一起有效覆盖所有清单国家。
+**覆盖率**：WB IDS 仅发布世界银行借款国（2026-08-11 载荷中为 119 国）。没有 IDS 行但有 BIS CBS 行的司法管辖区，其短期债务槽位采用推算值（分数 75，确定性 0.3，`imputationClass='not-applicable'`）而非丢弃 — 未参与债务报告系统（DRS）意味着没有已报告的短期外部商业债务，而非未知。两个来源都缺失的国家保持 null/丢弃行为。FATF + BIS CBS 一起有效覆盖所有清单国家。
+
+**全面禁运上限**：受全面或政府层面西方封锁计划约束的司法管辖区（RU、BY、IR、KP、CU、SY、MM、VE、LY）在混合后上限为 15。四个分级组件中有三个将金融切断读作优势 — 短期债务薄是因为没有市场准入，跨境债权低是因为无人放贷，FATF `compliant` 是因为 FATF 评估的是反洗钱/反恐融资缺陷而非制裁。成员资格标准以及为何仅重新调整区间无法承载该信号，参见 [financial-system-exposure.md](../../methodology/financial-system-exposure.md)。
 
 **数据来源与许可**：BIS 数据（组件 2 + 4）按 [BIS 使用条款](https://www.bis.org/terms_conditions.htm)发布 — 公开可用，需归属；再分发受限。WB IDS（组件 1）和 FATF（组件 3）是开放数据。BIS 衍生指标按现有 BIS 分类约定在指标注册表中标记 `non-commercial` / `enrichment`；维度本身按 Codex R1 #8 为 `core`（贡献标题分数）。
 

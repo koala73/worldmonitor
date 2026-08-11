@@ -183,6 +183,15 @@ export const IMPUTE = {
   // deliberate penalty over-fired for advanced economies that hold
   // reserves through Treasury / central-bank channels).
   recoverySovereignFiscalBuffer: { score: 50, certaintyCoverage: 0.3, imputationClass: 'unmonitored' },
+  // #6459 — financialSystemExposure Component 1 for jurisdictions outside the
+  // World Bank Debtor Reporting System (high-income economies plus a handful
+  // of grant-financed microstates). Absence there means no reported
+  // short-term external commercial debt to roll over, so the slot is
+  // `not-applicable` rather than an unknown; 0.3 certainty keeps the
+  // dimension's coverage honest about the reading being inferred. Before this
+  // entry the slot was dropped and its 0.35 weight renormalized onto the
+  // punitive cross-border-claims leg. See `resolveNonDrsDebtImputation`.
+  finSysExposureNonDrsShortTermDebt: { score: 75, certaintyCoverage: 0.3, imputationClass: 'not-applicable' },
   // Plan 2026-04-26-001 §U2 — gated GPI-only impute for socialCohesion.
   // This entry fires ONLY when the dimension is operating in degraded
   // GPI-only mode (i.e. country is absent from the displacement registry).
@@ -687,34 +696,64 @@ export function scoreInflationStability(inflationPct: number): number {
 //
 // Plan 2026-04-25-004 Phase 2 § Component 2 score shape — re-anchored
 // for piecewise-CONTINUOUS transitions per Greptile P1 catch (PR #3407
-// review 2026-04-25). Original draft had a 30-point cliff at the 25%
+// review 2026-04-25). The original draft had a 30-point cliff at the 25%
 // boundary (sweet spot ended at 100, over-exposed started at 70) and a
 // 5-point jump at 5%. Cliffs in piecewise-linear scorers cause ranking
 // instability for countries near band edges — a 24.9% reading scores
-// dramatically different than 25.1%. Endpoints now share values across
+// dramatically different than 25.1%. Endpoints share values across
 // adjacent segments so the function is monotone-then-monotone with no
-// discontinuities:
+// discontinuities.
 //
-//   0% ≤ value < 5%      → 60-75  (low integration; slope +3/pct)
-//   5% ≤ value ≤ 25%     → 75-100 (sweet spot; slope +1.25/pct)
-//   25% < value ≤ 60%    → 100-30 (over-exposed; slope −2/pct)
-//   value > 60%           → 30 → 0 at 120% (Iceland-2008; slope −0.5/pct, clamped)
-function normalizeBandLowerBetter(value: number): number {
+// #6459 re-anchoring — the ASYMMETRY was inverting the ranking. The
+// original band floored ZERO cross-border integration at 60 while decaying
+// over-integration all the way to 0 at 120% of GDP. 0% claims is the
+// signature of a sanctions-severed banking system, so the shape scored
+// severance above integration by construction: Russia's 1.45% of GDP took
+// 64 while Luxembourg's 1041% took 0. The two legs are now sized so that
+// isolation is the worse extreme:
+//
+//   0% ≤ value < 5%      → 30-75  (isolation → low integration; slope +9/pct)
+//   5% ≤ value ≤ 25%     → 75-100 (sweet spot; slope +1.25/pct, unchanged)
+//   25% < value ≤ 60%    → 100-45 (over-exposed; slope −1.571/pct)
+//   value > 60%          → 45 → 35 at 80%, then flat (Iceland-2008 floor)
+//
+// The invariants, which `tests/resilience-financial-system-exposure.test.mts`
+// pins directly rather than inferring from sample points:
+//   - the isolation floor (value 0) is ≤ 40 and strictly below every
+//     sweet-spot value, so severance can never out-score integration;
+//   - the over-exposure leg floors at 35 — above the isolation floor,
+//     because an over-banked entrepôt still has working correspondent
+//     access that a severed state does not;
+//   - every segment boundary is continuous.
+//
+// Exported for direct testing. The whole lesson of #6459 is that a
+// calibration claim nobody can execute is not a calibration claim, and these
+// invariants are not observable through the blended dimension score: any
+// fixture that varies the band also moves the debt-slot imputation, so a
+// test driven through `scoreFinancialSystemExposure` alone measures the
+// blend rather than the band shape.
+export const FIN_SYS_BAND_ISOLATION_FLOOR = 30;
+export const FIN_SYS_BAND_OVEREXPOSED_FLOOR = 35;
+
+export function normalizeBandLowerBetter(value: number): number {
   if (!Number.isFinite(value) || value < 0) return 50;
   if (value < 5) {
-    // Low integration: 0% → 60, 5% → 75 (continuous to sweet-spot start).
-    return roundScore(60 + (value / 5) * 15);
+    // Isolation → low integration: 0% → 30, 5% → 75 (continuous to sweet spot).
+    return roundScore(FIN_SYS_BAND_ISOLATION_FLOOR + (value / 5) * (75 - FIN_SYS_BAND_ISOLATION_FLOOR));
   }
   if (value <= 25) {
     // Sweet spot: 5% → 75, 25% → 100.
     return roundScore(75 + ((value - 5) / 20) * 25);
   }
   if (value <= 60) {
-    // Over-exposed: 25% → 100 (continuous from sweet-spot peak), 60% → 30.
-    return roundScore(100 - ((value - 25) / 35) * 70);
+    // Over-exposed: 25% → 100 (continuous from sweet-spot peak), 60% → 45.
+    return roundScore(100 - ((value - 25) / 35) * 55);
   }
-  // Iceland-2008 territory: 60% → 30 (continuous), drops 0.5pt per pct; clamped 0.
-  return roundScore(Math.max(0, 30 - (value - 60) * 0.5));
+  // Iceland-2008 territory: 60% → 45 (continuous), drops 0.5pt per pct down
+  // to the over-exposure floor at 80% and stays there. It does NOT decay to
+  // 0: an entrepôt balance sheet is a different failure mode from severance,
+  // and letting it fall below the isolation floor is what inverted the band.
+  return roundScore(Math.max(FIN_SYS_BAND_OVEREXPOSED_FLOOR, 45 - (value - 60) * 0.5));
 }
 
 // `normalizeSanctionCount` retired in plan 2026-04-25-004 Phase 1. The
@@ -1536,10 +1575,16 @@ export async function scoreTradePolicy(
 // corporate domicile with host-country risk.
 //
 // Components (weights total 1.0):
-//   short_term_external_debt_pct_gni     0.35 (WB IDS — lowerBetter; goalpost worst=15% best=0%)
-//   bis_lbs_xborder_us_eu_uk_pct_gdp     0.30 (BIS CBS by-parent — U-shape band)
-//   fatf_listing_status                   0.20 (FATF — discrete: black=0, gray=30, compliant=100)
+//   short_term_external_debt_pct_gni     0.35 (WB IDS — lowerBetter; goalpost worst=15% best=0%;
+//                                              non-DRS jurisdictions impute — see resolveNonDrsDebtImputation)
+//   bis_lbs_xborder_us_eu_uk_pct_gdp     0.30 (BIS CBS by-parent — asymmetric U-shape band)
+//   fatf_listing_status                   0.20 (FATF — discrete: black=0, gray=55, compliant=100)
 //   financial_center_redundancy           0.15 (BIS CBS by-parent count — higherBetter; goalpost worst=1 best=10)
+//
+// ...then capped at 15 for comprehensively embargoed jurisdictions (#6459 —
+// see FIN_SYS_EXPOSURE_COMPREHENSIVE_EMBARGO). The cap is not a component:
+// three of the four graded components read financial severance as strength,
+// so the signal cannot be carried by reweighting them.
 //
 // Flag-gated rollout. `RESILIENCE_FIN_SYS_EXPOSURE_ENABLED` defaults off
 // so the dim ships dark until the 3 component seeders (seed-bis-lbs,
@@ -1686,6 +1731,53 @@ function readEducationAttainment(
   return { value, year };
 }
 
+// #6459 — comprehensive-embargo cap.
+//
+// The construct's question is "how vulnerable is this financial system to
+// coordinated action by major Western banking jurisdictions?". For a
+// jurisdiction already under a comprehensive or government-wide blocking
+// programme that vulnerability is not a forecast, it is realized in full:
+// correspondent relationships are gone, reserves are immobilised, messaging
+// access is revoked. Yet three of the four components read that severance as
+// strength — thin short-term external debt (no market access), low
+// cross-border claims (nobody lends), and FATF-compliant-by-absence (FATF
+// enumerates AML/CFT deficiencies, not sanctions).
+//
+// A band retune alone cannot fix this. With the band leg at 0 and the
+// redundancy leg at 0, Russia still holds 0.35x80 (debt) + 0.20x100 (FATF)
+// = 48, more than double the methodology doc's < 20 activation anchor. The
+// signal has to enter the construct as its own input.
+//
+// This is NOT the "transit-hub exclusion list" rejected as Alternative 2 in
+// the methodology doc. That list would have been an editorial carve-out of
+// jurisdictions the construct scored inconveniently. This list IS the
+// construct's subject, and its membership is externally defined by published
+// US OFAC and EU Council programmes rather than drawn by us.
+//
+// Membership criterion: a comprehensive/territory-wide embargo, or a
+// government-wide blocking programme that severs the sovereign from Western
+// correspondent clearing. Individual-entity designations, sectoral measures
+// and arms embargoes do NOT qualify — those are ordinary policy friction and
+// belong in the graded components.
+export const FIN_SYS_EXPOSURE_COMPREHENSIVE_EMBARGO: ReadonlySet<string> = new Set([
+  'RU', // EO 14024 + G7 reserve immobilisation + SWIFT exclusion of major banks (2022–)
+  'BY', // EO 14038 + EU Reg. 765/2006 as amended; SWIFT exclusion (2022–)
+  'IR', // 31 CFR 560 Iranian Transactions and Sanctions Regulations (comprehensive)
+  'KP', // 31 CFR 510 North Korea Sanctions Regulations (comprehensive)
+  'CU', // 31 CFR 515 Cuban Assets Control Regulations (comprehensive, 1963–)
+  'SY', // 31 CFR 542 Syrian Sanctions Regulations (comprehensive)
+  'MM', // EO 14014 Burma blocking programme + EU Reg. 2013/184
+  'VE', // EO 13884 blocks all property of the Government of Venezuela
+  'LY', // EO 13566 blocks all property of the Government of Libya; UNSCR 1970/1973
+]);
+
+// Cap, not a floor-to-zero: the graded components still order jurisdictions
+// WITHIN the embargoed set (DPRK's FATF black listing keeps it at 0, below
+// Russia's 15), and a country that already scores below the cap is untouched.
+// 15 sits deliberately below the methodology doc's < 20 activation anchor so
+// the anchor has headroom rather than passing by exactly zero margin.
+export const FIN_SYS_EXPOSURE_EMBARGO_SCORE_CAP = 15;
+
 export async function scoreFinancialSystemExposure(
   countryCode: string,
   reader: ResilienceSeedReader = defaultSeedReader,
@@ -1761,10 +1853,33 @@ export async function scoreFinancialSystemExposure(
   //   publicationDate: string }.
   const fatfStatus = readFatfStatus(fatfRaw, countryCode);
 
-  return weightedBlend([
+  // #6459 Component 1 slot. WB International Debt Statistics is the output of
+  // the Debtor Reporting System, whose membership is World Bank BORROWERS —
+  // 119 countries in the 2026-08-11 production payload. High-income
+  // jurisdictions are absent by design, not by data gap.
+  //
+  // Dropping the slot for them was the defect: `weightedBlend` renormalizes
+  // onto the surviving slots, so the 0.35 weight redistributed onto a
+  // denominator of 0.65 and the punitive band leg alone went from 30% to 46%
+  // of the score. Luxembourg was scored almost entirely on "your banks are too
+  // integrated", with no offsetting credit for having no rollover risk at all.
+  //
+  // Imputing at 75 with certaintyCoverage 0.3 keeps the weight where the
+  // design put it while being explicit that the reading is inferred:
+  // `not-applicable` is the right class because non-participation in the DRS
+  // means there is no reported short-term external commercial debt to roll
+  // over, which is a mild positive rather than an unknown.
+  const nonDrsDebtImputation = resolveNonDrsDebtImputation(debtPct, bisCountry);
+
+  const blended = weightedBlend([
     {
-      score: debtPct == null ? null : normalizeLowerBetter(debtPct, 0, 15),
+      score: debtPct != null
+        ? normalizeLowerBetter(debtPct, 0, 15)
+        : (nonDrsDebtImputation?.score ?? null),
       weight: 0.35,
+      certaintyCoverage: nonDrsDebtImputation?.certaintyCoverage,
+      imputed: nonDrsDebtImputation != null ? true : undefined,
+      imputationClass: nonDrsDebtImputation?.imputationClass,
     },
     {
       score: bisCountry?.totalXborderPctGdp == null
@@ -1783,6 +1898,45 @@ export async function scoreFinancialSystemExposure(
       weight: 0.15,
     },
   ]);
+
+  // #6459 comprehensive-embargo cap. Applied POST-blend so it constrains the
+  // published score without distorting the component provenance: coverage,
+  // observedWeight, imputedWeight and imputationClass all still describe what
+  // was actually read. An operator inspecting a capped country still sees
+  // which components resolved.
+  if (
+    FIN_SYS_EXPOSURE_COMPREHENSIVE_EMBARGO.has(countryCode.toUpperCase())
+    && blended.score > FIN_SYS_EXPOSURE_EMBARGO_SCORE_CAP
+  ) {
+    return { ...blended, score: FIN_SYS_EXPOSURE_EMBARGO_SCORE_CAP };
+  }
+  return blended;
+}
+
+// #6459 — decides whether an absent WB IDS row is "not applicable" (the
+// jurisdiction does not report to the Debtor Reporting System) or a genuine
+// data gap.
+//
+// DISCRIMINATOR AND ITS LIMIT: the rule is "no DRS row but present in BIS
+// CBS". There is no income classification on the static country record, and
+// adding a World Bank income seed for one slot is not worth a new dependency.
+// The proxy is close but not exact — of the 83 jurisdictions in BIS and not
+// in IDS on 2026-08-11, roughly ten are not high-income (Pacific microstates
+// such as KI, MH, FM, NR, PW, TV, plus NA, GQ, PS). Those are grant- and
+// concessional-financed rather than commercially indebted, so
+// `not-applicable` still describes them correctly. A country in NEITHER
+// source is a genuine data desert and keeps the null/drop behaviour.
+function resolveNonDrsDebtImputation(
+  debtPct: number | null,
+  bisCountry: BisLbsCountry | null,
+): ImputationEntry | null {
+  if (debtPct != null) return null;
+  // A BIS row whose every field failed to parse is a corrupt entry, not
+  // evidence the jurisdiction participates in cross-border banking — do not
+  // let it trigger the imputation.
+  if (bisCountry == null) return null;
+  if (bisCountry.totalXborderPctGdp == null && bisCountry.parentCount == null) return null;
+  return IMPUTE.finSysExposureNonDrsShortTermDebt;
 }
 
 // Small payload accessors for scoreFinancialSystemExposure. Defensive
@@ -1836,10 +1990,25 @@ function readFatfStatus(raw: unknown, countryCode: string): FatfStatus | null {
   return 'compliant';
 }
 
+// #6459: gray rescaled 30 → 55. FATF grey-listing means "increased
+// monitoring under an agreed action plan" — a jurisdiction actively
+// remediating with FATF, not one a step away from the call-for-action
+// black list. At 30 the gap to black (0) was 30 points and the gap to
+// compliant (100) was 70, which put ordinary grey-listed economies closer
+// to Iran and DPRK than to their actual peers. 55 keeps grey clearly
+// penalised while leaving black as the distinct, much worse state.
+//
+// `compliant` stays at 100 even though FATF assigns it by ABSENCE from both
+// lists rather than by assessment — a hole that gave Russia, Belarus, Cuba
+// and Libya a perfect 100 on a 0.20-weight component. That hole is closed by
+// `FIN_SYS_EXPOSURE_COMPREHENSIVE_EMBARGO` rather than by penalising the ~170
+// genuinely unlisted jurisdictions.
+const FATF_GRAY_SCORE = 55;
+
 function fatfStatusToScore(status: FatfStatus): number {
   switch (status) {
     case 'black': return 0;
-    case 'gray': return 30;
+    case 'gray': return FATF_GRAY_SCORE;
     case 'compliant': return 100;
   }
 }
