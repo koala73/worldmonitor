@@ -99,6 +99,20 @@ export type SignalType =
   | 'sector_cascade'
   | 'military_surge';
 
+/**
+ * One article a signal was built from. `correlatedNews` looks like this but is
+ * NOT — it carries cluster IDs, not links (see `correlatedNews` below), so a
+ * signal that wants to be drilled into needs this shape instead. Mirrors
+ * `HeadlineWithUrl` in shared/analysis-focal-points.ts, plus the source name
+ * and publication time the news pipeline already carries.
+ */
+export interface SignalArticle {
+  title: string;
+  source: string;
+  link?: string;
+  publishedAt?: number;
+}
+
 export interface CorrelationSignalCore {
   id: string;
   type: SignalType;
@@ -118,6 +132,13 @@ export interface CorrelationSignalCore {
     baseline?: number;
     multiplier?: number;
     sourceCount?: number;
+    /**
+     * Distinct source names behind `sourceCount`. Emitters must derive both
+     * from the same set so the count and the names cannot disagree.
+     */
+    sourceNames?: string[];
+    /** Bounded evidence list — the articles the signal was built from. */
+    articles?: SignalArticle[];
   };
 }
 

@@ -127,6 +127,56 @@ describe('api/mcp.ts — per-tool outputSchema coverage (v1.7.0)', () => {
     assert.equal(newsStory.title, undefined, 'news schema must not advertise the drifted title field');
     assert.equal(newsStory.summary, undefined, 'news schema must not advertise the drifted summary field');
 
+    // #4925 item 3: get_news_intelligence is a cache tool, so the raw
+    // news:insights:v1 blob is served and _postFilter only narrows and caps.
+    // Every field below is written by scripts/seed-insights.mjs and already
+    // reaches the client; the schema simply did not admit to them, which left
+    // an agent unable to weigh how well-corroborated a story is.
+    for (const field of [
+      'uniqueSourceCount', 'sources', 'memberTitles', 'lastUpdated', 'sourceTier',
+      'entityCorroboration', 'corroborationSourceCount',
+      'upstreamImportanceScore', 'effectiveImportanceScore',
+    ]) {
+      assert.ok(newsStory[field], `news schema must declare ${field} (served by scripts/seed-insights.mjs)`);
+    }
+    assert.equal(
+      newsStory.sources.items.type,
+      'string',
+      'topStories[].sources is a list of outlet names, not the citation records get_world_brief serves under the same key',
+    );
+
+    // The two brief tools emit corroboration too, and had no served-shape
+    // enforcement at all before #4925. Assert the declarations here so a
+    // schema-versus-emit divergence is caught even if the behavioural suites
+    // (mcp-world-brief-corroboration, mcp-country-brief-grounding) are edited.
+    const rpcTool = (toolName) => {
+      const tool = mod.__testing__.TOOL_REGISTRY.find(t => t.name === toolName);
+      assert.ok(tool, `tool ${toolName} not found in registry`);
+      return tool;
+    };
+
+    const worldStory = rpcTool('get_world_brief').outputSchema.properties.topStories.items.properties;
+    for (const field of [
+      'title', 'sourceCount', 'uniqueSourceCount', 'corroborationSourceCount',
+      'entityCorroboration', 'sourceTier', 'sources',
+    ]) {
+      assert.ok(worldStory[field], `get_world_brief topStories must declare ${field}`);
+    }
+    assert.equal(
+      worldStory.memberTitles,
+      undefined,
+      'get_world_brief deliberately omits memberTitles on output-budget grounds; declaring it would promise bytes the projector does not send',
+    );
+
+    const grounding = rpcTool('get_country_brief').outputSchema.properties.groundingStories.items.properties;
+    for (const field of ['title', 'source', 'corroborationCount', 'mentionCount', 'storyPhase']) {
+      assert.ok(grounding[field], `get_country_brief groundingStories must declare ${field}`);
+    }
+    assert.deepEqual(grounding.storyPhase.enum, [
+      'STORY_PHASE_UNSPECIFIED', 'STORY_PHASE_BREAKING', 'STORY_PHASE_DEVELOPING',
+      'STORY_PHASE_SUSTAINED', 'STORY_PHASE_FADING',
+    ]);
+
     const disasters = dataProperties('get_natural_disasters');
     const earthquake = disasters.earthquakes.properties.earthquakes.items.properties;
     assert.ok(earthquake.occurredAt, 'earthquake schema must declare occurredAt');
