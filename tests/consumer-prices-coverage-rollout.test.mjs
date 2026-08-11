@@ -211,7 +211,7 @@ test('expired rollout deadlines must be pruned from the registry', () => {
   );
 });
 
-test('the rollout registry covers ONLY the consumer-price coverage keys', () => {
+test('the static rollout registry covers only consumer-price coverage', () => {
   const expected = new Set(CONSUMER_PRICE_HEALTH_MARKETS.map(consumerPriceCoverageHealthName));
   assert.deepEqual(
     new Set(Object.keys(ROLLOUT_PENDING_UNTIL_MS)),

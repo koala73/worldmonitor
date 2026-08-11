@@ -383,6 +383,22 @@ describe('CSP violation filter (shouldSuppressCspViolation)', () => {
     it('does NOT suppress an alicdn lookalike host or non-font path', () => {
       assert.ok(!suppress('enforce', 'font-src', 'https://at.alicdn.com.evil.com/x.woff2', '', false));
       assert.ok(!suppress('enforce', 'font-src', 'https://at.alicdn.com/t/c/loader.js', '', false));
+      // The legacy `/t/` widening must not swallow the whole host.
+      assert.ok(!suppress('enforce', 'font-src', 'https://at.alicdn.com/t/loader.js', '', false));
+    });
+
+    it('suppresses the LEGACY alicdn /t/ path and its eot/svg chain members (WORLDMONITOR-TR round 5)', () => {
+      // iconfont.cn serves projects under both `/t/c/font_*` and the legacy
+      // `/t/font_*`. The round-3 rule pinned `/t/c/` only, so it matched almost
+      // nothing: 755 of this host's 776 events over 14d used `/t/`. These
+      // fixtures are the exact URLs observed in Sentry.
+      assert.ok(suppress('enforce', 'font-src', 'https://at.alicdn.com/t/font_792691_ptvyboo0bno.woff?t=1574048839056', '', false));
+      assert.ok(suppress('enforce', 'font-src', 'https://at.alicdn.com/t/font_792691_ptvyboo0bno.ttf?t=1574048839056', '', false));
+      assert.ok(suppress('enforce', 'font-src', 'https://at.alicdn.com/t/font_1334179_yeeyzhmgwya.woff?t=1', '', false));
+      // The five-format chain: 223 of those 776 events were `.svg` and 1 was
+      // `.eot`; neither format was in the shared matcher before round 5.
+      assert.ok(suppress('enforce', 'font-src', 'https://at.alicdn.com/t/font_792691_ptvyboo0bno.svg?t=1574048839056', '', false));
+      assert.ok(suppress('enforce', 'font-src', 'https://at.alicdn.com/t/font_792691_ptvyboo0bno.eot?t=1574048839056', '', false));
     });
 
     it('suppresses slant.co overlay webfont injection (WORLDMONITOR-TR round 3)', () => {
@@ -421,6 +437,88 @@ describe('CSP violation filter (shouldSuppressCspViolation)', () => {
     it('does NOT suppress a simplycodes lookalike host or non-font path', () => {
       assert.ok(!suppress('enforce', 'font-src', 'https://images.simplycodes.com.evil.com/x.woff2', '', false));
       assert.ok(!suppress('enforce', 'font-src', 'https://images.simplycodes.com/fonts/loader.js', '', false));
+    });
+
+    it('suppresses scite.ai citation-badge webfont injection (WORLDMONITOR-TR round 5)', () => {
+      // The only host still firing at the head of the window measured strictly
+      // after the round-4 rules were live (25 of 61 events, latest
+      // 2026-08-10T13:18Z) — i.e. the one that keeps regressing this issue.
+      // `scite` appears nowhere in src.
+      assert.ok(suppress('enforce', 'font-src', 'https://cdn.scite.ai/assets/fonts/scite-icons/scite-icons.woff2?v=5', '', false));
+      assert.ok(suppress('enforce', 'font-src', 'https://cdn.scite.ai/assets/fonts/scite-icons/scite-icons.woff?v=5', '', false));
+      assert.ok(suppress('enforce', 'font-src', 'https://cdn.scite.ai/assets/fonts/scite-icons/scite-icons.ttf?v=5', '', false));
+      assert.ok(suppress('enforce', 'font-src', 'https://cdn.scite.ai/assets/fonts/scite-icons/scite-icons.svg?v=5', '', false));
+    });
+
+    it('does NOT suppress a scite.ai lookalike host, sibling subdomain, http:, or non-font path', () => {
+      assert.ok(!suppress('enforce', 'font-src', 'https://cdn.scite.ai.evil.com/x.woff2', '', false));
+      assert.ok(!suppress('enforce', 'font-src', 'https://assets.scite.ai/assets/fonts/x.woff2', '', false));
+      assert.ok(!suppress('enforce', 'font-src', 'http://cdn.scite.ai/assets/fonts/scite-icons/scite-icons.woff2', '', false));
+      assert.ok(!suppress('enforce', 'font-src', 'https://cdn.scite.ai/assets/fonts/loader.js', '', false));
+      assert.ok(!suppress('enforce', 'font-src', 'https://cdn.scite.ai/unrelated/regression.woff2', '', false));
+    });
+
+    it('suppresses Adobe Typekit kit FONTS under font-src (WORLDMONITOR-TR round 5)', () => {
+      // Typekit serves font binaries from EXTENSIONLESS paths
+      // (/af/<hex>/<hex>/<n>/<a|d|l>), so the shared `fontFile` matcher cannot
+      // reach them and the existing style-src `.css` rule does not either. 1137
+      // events / 14d — the largest slice after migaku.
+      assert.ok(suppress('enforce', 'font-src', 'https://use.typekit.net/af/bcdde2/00000000000000003b9af1d8/27/a?primer=7cdcb44be4a7', '', false));
+      assert.ok(suppress('enforce', 'font-src', 'https://use.typekit.net/af/173a8e/00000000000000003b9af1d9/27/d?primer=7cdcb44be4a7', '', false));
+      assert.ok(suppress('enforce', 'font-src', 'https://use.typekit.net/af/5424c6/00000000000000003b9af1de/30/l?primer=7cdcb44be4a7', '', false));
+    });
+
+    it('does NOT suppress off-shape Typekit paths, a lookalike host, or http:', () => {
+      // Pins each conjunct of the path regex: the `/af/` root, both hex
+      // segments, the numeric segment, and the {a,d,l} format code.
+      assert.ok(!suppress('enforce', 'font-src', 'https://use.typekit.net/af/bcdde2/00000000000000003b9af1d8/27/z', '', false));
+      assert.ok(!suppress('enforce', 'font-src', 'https://use.typekit.net/other/bcdde2/00000000000000003b9af1d8/27/a', '', false));
+      assert.ok(!suppress('enforce', 'font-src', 'https://use.typekit.net/af/nothex/00000000000000003b9af1d8/27/a', '', false));
+      assert.ok(!suppress('enforce', 'font-src', 'https://use.typekit.net/af/bcdde2/00000000000000003b9af1d8/xx/a', '', false));
+      assert.ok(!suppress('enforce', 'font-src', 'https://use.typekit.net/af/bcdde2/00000000000000003b9af1d8/27/a/extra', '', false));
+      assert.ok(!suppress('enforce', 'font-src', 'https://use.typekit.net.evil.com/af/a/b/27/a', '', false));
+      assert.ok(!suppress('enforce', 'font-src', 'http://use.typekit.net/af/bcdde2/00000000000000003b9af1d8/27/a', '', false));
+    });
+
+    it('suppresses FontAwesome CDN webfonts under font-src (WORLDMONITOR-TR round 5)', () => {
+      // font-src counterpart of the existing style-src rule: the injected
+      // release is v4.7.0, a 2016 version this app never shipped.
+      assert.ok(suppress('enforce', 'font-src', 'https://use.fontawesome.com/releases/v4.7.0/fonts/fontawesome-webfont.woff2', '', false));
+      assert.ok(suppress('enforce', 'font-src', 'https://use.fontawesome.com/releases/v4.7.0/fonts/fontawesome-webfont.ttf', '', false));
+    });
+
+    it('does NOT suppress a fontawesome lookalike host or non-font path', () => {
+      assert.ok(!suppress('enforce', 'font-src', 'https://use.fontawesome.com.evil.com/releases/x.woff2', '', false));
+      assert.ok(!suppress('enforce', 'font-src', 'https://use.fontawesome.com/releases/v4.7.0/js/loader.js', '', false));
+      assert.ok(!suppress('enforce', 'font-src', 'https://use.fontawesome.com/other/x.woff2', '', false));
+    });
+
+    it('suppresses MerciApp, Yiban and marmot-cloud overlay webfonts (WORLDMONITOR-TR round 5)', () => {
+      assert.ok(suppress('enforce', 'font-src', 'https://assets.merci-app.com/fonts/Inter-Bold.woff2', '', false));
+      assert.ok(suppress('enforce', 'font-src', 'https://assets.merci-app.com/fonts/Tropiline-Bold.woff', '', false));
+      assert.ok(suppress('enforce', 'font-src', 'https://cdn.yiban.io/fonts/AlimamaShuHeiTi/AlimamaShuHeiTi-Bold.woff2', '', false));
+      assert.ok(suppress('enforce', 'font-src', 'https://antbank-cdn.marmot-cloud.com/file/ee7a463b/Inter-Regular.ttf', '', false));
+    });
+
+    it('does NOT suppress lookalike hosts or non-font paths for the round-5 overlay hosts', () => {
+      assert.ok(!suppress('enforce', 'font-src', 'https://assets.merci-app.com.evil.com/fonts/x.woff2', '', false));
+      assert.ok(!suppress('enforce', 'font-src', 'https://cdn.merci-app.com/fonts/x.woff2', '', false));
+      assert.ok(!suppress('enforce', 'font-src', 'https://assets.merci-app.com/other/regression.woff2', '', false));
+      assert.ok(!suppress('enforce', 'font-src', 'https://cdn.yiban.io.evil.com/fonts/x.woff2', '', false));
+      assert.ok(!suppress('enforce', 'font-src', 'https://cdn.yiban.io/fonts/loader.js', '', false));
+      assert.ok(!suppress('enforce', 'font-src', 'https://antbank-cdn.marmot-cloud.com.evil.com/file/x.ttf', '', false));
+      assert.ok(!suppress('enforce', 'font-src', 'https://antbank-cdn.marmot-cloud.com/other/regression.ttf', '', false));
+      assert.ok(!suppress('enforce', 'font-src', 'http://assets.merci-app.com/fonts/Inter-Bold.woff2', '', false));
+      assert.ok(!suppress('enforce', 'font-src', 'http://cdn.yiban.io/fonts/AlimamaShuHeiTi/AlimamaShuHeiTi-Bold.woff2', '', false));
+      assert.ok(!suppress('enforce', 'font-src', 'http://antbank-cdn.marmot-cloud.com/file/ee7a463b/Inter-Regular.ttf', '', false));
+    });
+
+    it('keeps the widened eot/svg formats host- and path-pinned', () => {
+      // Widening the shared matcher to the full five-format chain must not make
+      // an unpinned host suppressible in a format it previously escaped in.
+      assert.ok(!suppress('enforce', 'font-src', 'https://fonts.evil.example/fonts/x.svg', '', false));
+      assert.ok(!suppress('enforce', 'font-src', 'https://fonts.evil.example/fonts/x.eot', '', false));
+      assert.ok(!suppress('enforce', 'font-src', 'https://migaku-public-data.migaku.com/unrelated/regression.svg', '', false));
     });
 
     it('does NOT suppress Google Fonts under unrelated directives', () => {

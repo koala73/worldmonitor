@@ -27,11 +27,28 @@ const REDIS_TEST_RETRY_OPTS: { retry?: false } = process.env.NODE_TEST_CONTEXT ?
 // when this deadline wins the Redis race. Endpoint policies inspect that
 // reason below and fail closed; keeping the SDK timeout enabled bounds the
 // outage latency instead of waiting for the platform function timeout.
-const ENDPOINT_RATE_LIMIT_TIMEOUT_MS = process.env.NODE_TEST_CONTEXT ? 25 : 5_000;
+const ENDPOINT_RATE_LIMIT_TIMEOUT_MS = process.env.NODE_TEST_CONTEXT ? 250 : 5_000;
 // Abort the underlying Upstash fetch just before the SDK's availability-first
 // race expires. Without this, the SDK returns its timeout result but leaves the
 // Redis request alive in the isolate for an unbounded transport stall.
 const ENDPOINT_REDIS_ABORT_TIMEOUT_MS = process.env.NODE_TEST_CONTEXT ? 20 : 4_500;
+// The two deadlines are a PAIR, and the NODE_TEST_CONTEXT pair is deliberately
+// not the production ratio scaled down. Production's ordering is safe because
+// its 500ms gap dwarfs the few milliseconds the Upstash client needs to build a
+// request and call the `signal` factory in getEndpointRatelimit() -- the abort
+// timer does not start until then, while the SDK's decision timer starts at
+// limit(). Under the node test runner that arming cost is 8-71ms (tsx compile
+// plus per-test module re-import dominate it), so the original 25/20 pair left
+// as little as 1.1ms of headroom and inverted under `--test-concurrency=16`:
+// the decision resolved first and the transport was still pending when the
+// assertion read it. The gap therefore has to exceed the arming cost rather
+// than mirror the production ratio -- a short abort so the suite still fails
+// fast, with the decision deadline well behind it. Pinned by
+// tests/rate-limit.test.mts.
+export const __ENDPOINT_LIMITER_DEADLINES_FOR_TEST = Object.freeze({
+  decisionMs: ENDPOINT_RATE_LIMIT_TIMEOUT_MS,
+  abortMs: ENDPOINT_REDIS_ABORT_TIMEOUT_MS,
+});
 
 let ratelimit: Ratelimit | null = null;
 const GLOBAL_RATE_LIMIT = 600;
@@ -403,6 +420,38 @@ export const ENDPOINT_RATE_POLICIES: Record<string, EndpointRatePolicy> = {
   // response shape dictated by the NLWeb spec, served at /ask). Same anonymous
   // cheap-catalog posture as /api/a2a, same in-handler enforcement.
   '/api/ask': { limit: 60, window: '60 s' },
+  // Agent-skills import proxy (`api/skills/fetch-agentskills.ts`, registered
+  // as `migration-pending` in api/api-route-exceptions.json). Fetches one
+  // skill definition from a fixed three-host allowlist on agentskills.io.
+  // Anonymous by design (the settings importer calls it same-origin before
+  // the user has done anything privileged), so the per-IP minute limit is the
+  // whole abuse defence; 30/min is the provider-proxy budget above, and the
+  // handler also caches the fetched payload so repeat imports never leave our
+  // edge. Enforced in-handler via `checkScopedRateLimit`, same pattern as
+  // /api/docs-mcp. (#6234)
+  '/api/skills/fetch-agentskills': { limit: 30, window: '60 s' },
+  // Legacy `api/*.js` provider proxies (`api/youtube/live.js`,
+  // `api/reverse-geocode.js`), both registered in
+  // api/api-route-exceptions.json. Neither flows through the gateway, and
+  // AGENTS.md forbids `api/*.js` from importing `../server/`, so unlike
+  // /api/mcp-proxy they cannot read this registry at runtime: each handler
+  // carries the same numbers as literal constants and enforces them with
+  // `checkRateLimit` from `api/_rate-limit.js`. The registry stays the single
+  // source of truth for the audit script and the docs, and
+  // tests/rate-limit.test.mts fails if the two copies drift. (#6234)
+  //
+  // youtube/live: one request can fan out to the Railway relay AND a full
+  // live-page HTML scrape of youtube.com, so it takes the same 30/min
+  // provider-proxy budget as the batch fan-out routes above.
+  '/api/youtube/live': { limit: 30, window: '60 s' },
+  // reverse-geocode: already Upstash-cached on a 0.1-degree grid and memoized
+  // per cell in the browser (src/utils/reverse-geocode.ts), so 60/min is a
+  // floor against scripted coordinate sweeps rather than a throttle on real
+  // map use. Nominatim's usage policy is the strictest in our stack and is
+  // enforced by egress-IP ban, and we have a second caller
+  // (server/worldmonitor/infrastructure/v1/reverse-geocode.ts), so the
+  // unmetered path is the one worth closing first.
+  '/api/reverse-geocode': { limit: 60, window: '60 s' },
 };
 
 interface RateLimitPolicyDecision {
@@ -679,6 +728,18 @@ export async function checkScopedRateLimit(scope: string, limit: number, window:
   }
   try {
     const result = await limitWithFallback(rl, `${scope}:${identifier}`, `rl:scope:fw:${scope}:${identifier}`, limit, durationToSeconds(window));
+    // @upstash/ratelimit v2 races the Redis call against its own internal
+    // timeout and RESOLVES `{ success: true, reason: 'timeout' }` instead of
+    // rejecting, so this outcome never reaches the catch below. Left unhandled
+    // it is indistinguishable from a genuine allow — no log, no Sentry,
+    // `degraded: false` — and the limit silently disappears under exactly the
+    // slow-Redis conditions the limit exists for. Report it as degraded so
+    // callers gating on `degraded` can escalate and the bypass window is
+    // visible in logs. Mirrors checkEndpointRateLimit's handling above.
+    if (result.reason === 'timeout') {
+      logRateLimitDegraded(`checkScopedRateLimit:${scope}`, new Error('Upstash scoped rate-limit decision timed out'));
+      return { allowed: true, limit, reset: 0, degraded: true };
+    }
     return {
       allowed: result.success,
       limit: result.limit,
@@ -689,6 +750,23 @@ export async function checkScopedRateLimit(scope: string, limit: number, window:
     logRateLimitDegraded(`checkScopedRateLimit:${scope}`, err);
     return { allowed: true, limit, reset: 0, degraded: true };
   }
+}
+
+/**
+ * Builds the standard 429 for an availability-first in-handler `checkScopedRateLimit`
+ * caller (a top-level edge function that enforces its own budget, e.g.
+ * api/skills/fetch-agentskills.ts). Hand-rolling the response drops the IETF
+ * RateLimit-* fields that api/_cors.js exposes cross-origin specifically so
+ * agents can self-throttle, which is how the same 429 condition ends up with
+ * two different header shapes across sibling routes. Takes the Duration rather
+ * than seconds so callers do not have to reach for durationToSeconds. (#6412 review)
+ */
+export function scopedTooManyRequestsResponse(
+  result: ScopedRateLimitResult,
+  window: Duration,
+  corsHeaders: Record<string, string>,
+): Response {
+  return tooManyRequestsResponse(result.limit, result.reset, corsHeaders, durationToSeconds(window));
 }
 
 /**

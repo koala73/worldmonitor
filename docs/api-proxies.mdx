@@ -26,7 +26,7 @@ Most proxies are intended for **our own dashboard** and are lightly gated. They 
 
 All proxies:
 - Respect the origin CORS allowlist.
-- Apply per-IP rate limits via `_ip-rate-limit.js` (~ 60 req/min/IP default).
+- Apply per-IP rate limits via `api/_rate-limit.js` or `server/_shared/rate-limit.ts` (600 req/min/IP default) where the handler opts in, with stricter per-route budgets declared in `ENDPOINT_RATE_POLICIES` — see [Rate Limits](/usage-rate-limits). Rate limiting is per-route, not platform-wide: `/api/polymarket` opts in, while `/api/opensky`, `/api/gpsjam` and `/api/oref-alerts` are currently unmetered.
 - Cache aggressively (`s-maxage` varies by upstream).
 
 ## Content proxies
@@ -37,9 +37,9 @@ Fetches an RSS/Atom feed and returns the parsed JSON. The URL must match one of 
 
 ## Skills registry
 
-### `GET /api/skills/fetch-agentskills`
+### `POST /api/skills/fetch-agentskills`
 
-Returns the catalog of "skills" (agent capabilities) the WorldMonitor chat analyst can invoke. Used internally by `chat-analyst.ts` and the widget agent.
+Fetches a single agentskills.io skill definition — pass either `url` or `id` in the JSON body — and returns its name, description, and instructions, truncated to 2,000 characters. Only the three `agentskills.io` hosts are accepted and redirects are refused, so the route cannot be used to reach an arbitrary host. Used by the settings skill importer. Limited to 30 req/min/IP; a successful lookup is cached in Redis for one hour.
 
 ## Legacy / internal
 

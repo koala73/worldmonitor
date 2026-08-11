@@ -1,5 +1,6 @@
 import { getCorsHeaders, isDisallowedOrigin } from './_cors.js';
 import { jsonResponse } from './_json-response.js';
+import { checkRateLimit } from './_rate-limit.js';
 // @ts-expect-error — JS module, no declaration file
 import { readJsonFromUpstash, setCachedData } from './_upstash-json.js';
 
@@ -8,6 +9,13 @@ export const config = { runtime: 'edge' };
 const NOMINATIM_BASE = 'https://nominatim.openstreetmap.org/reverse';
 const CHROME_UA = 'WorldMonitor/2.0 (https://worldmonitor.app)';
 
+// Mirrors ENDPOINT_RATE_POLICIES['/api/reverse-geocode'] in
+// server/_shared/rate-limit.ts. api/*.js cannot import ../server/ (AGENTS.md),
+// so the budget is duplicated here and tests/rate-limit.test.mts fails if the
+// two copies drift. (#6234)
+const RATE_LIMIT_SCOPE = 'reverse-geocode';
+const RATE_LIMIT_PER_MINUTE = 60;
+
 export default async function handler(req, ctx) {
   if (isDisallowedOrigin(req))
     return new Response('Forbidden', { status: 403 });
@@ -15,6 +23,19 @@ export default async function handler(req, ctx) {
   const cors = getCorsHeaders(req);
   if (req.method === 'OPTIONS')
     return new Response(null, { status: 204, headers: cors });
+
+  // Metered before the coordinate validation so malformed requests are not a
+  // free unlimited path. Availability-first on purpose: the map degrades to an
+  // unlabelled country rather than failing, and checkRateLimit already returns
+  // null when Upstash is unconfigured. `ctx` is forwarded so the degraded-path
+  // Sentry envelope survives isolate teardown. (#6234)
+  const limited = await checkRateLimit(req, cors, {
+    ctx,
+    scope: RATE_LIMIT_SCOPE,
+    limit: RATE_LIMIT_PER_MINUTE,
+    window: '60 s',
+  });
+  if (limited) return limited;
 
   const url = new URL(req.url);
   const lat = url.searchParams.get('lat');

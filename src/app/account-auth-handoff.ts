@@ -1,6 +1,8 @@
 export interface AccountAuthHandoffEffects {
   destroyEntitlementSubscription: () => void;
+  beginEntitlementVerification: () => void;
   resetEntitlementState: () => void;
+  markEntitlementVerificationUnavailable: () => void;
   destroySubscriptionWatch: () => void;
   rebindConvexAuthForWatchHandoff: (
     isCurrent: () => boolean,
@@ -33,6 +35,10 @@ export function startAccountAuthHandoff(input: {
   const { userId, isCurrent, effects } = input;
 
   effects.destroyEntitlementSubscription();
+  // Publish `pending` before the null snapshot. Settings can receive the
+  // reset synchronously, and must never interpret that account-transition
+  // emission as a terminal lookup failure.
+  effects.beginEntitlementVerification();
   effects.resetEntitlementState();
   effects.destroySubscriptionWatch();
 
@@ -44,5 +50,10 @@ export function startAccountAuthHandoff(input: {
     },
   );
   void effects.cloudPrefsSignIn(userId);
-  return handoff;
+  return handoff.then((ready) => {
+    if (!ready && isCurrent()) {
+      effects.markEntitlementVerificationUnavailable();
+    }
+    return ready;
+  });
 }

@@ -595,6 +595,15 @@ describe('CI workflow coverage', () => {
     );
   });
 
+  it('shares tracked edge bundle discovery with pre-push', () => {
+    const edgeBundleStep = workflowStepBlock(testWorkflow, 'Edge function bundle check');
+    assert.match(
+      edgeBundleStep,
+      /^\s+run: node scripts\/check-edge-function-bundles\.mjs --caller=ci\s*$/m,
+    );
+    assert.doesNotMatch(edgeBundleStep, /find api\//);
+  });
+
   it('routes Tauri config edits into the job that runs the one-binary gate (#5908)', () => {
     // Executes the real awk from test.yml rather than string-matching it: a
     // regex typo in the carve-out would silently exempt Tauri-config changes

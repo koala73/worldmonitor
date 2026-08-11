@@ -1,49 +1,50 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync, readdirSync, existsSync, statSync } from 'node:fs';
+import { readFileSync, readdirSync, existsSync } from 'node:fs';
 import { dirname, resolve, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { listTrackedApiSourceFiles } from '../scripts/check-edge-function-bundles.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const root = resolve(__dirname, '..');
 const apiDir = join(root, 'api');
-const apiOauthDir = join(root, 'api', 'oauth');
+const apiOauthDir = join(apiDir, 'oauth');
 const sharedDir = join(root, 'shared');
 const scriptsSharedDir = join(root, 'scripts', 'shared');
 
-// All .js files in api/ except underscore-prefixed helpers (_cors.js, _api-key.js)
-const edgeFunctions = readdirSync(apiDir)
-  .filter((f) => f.endsWith('.js') && !f.startsWith('_'))
-  .map((f) => ({ name: f, path: join(apiDir, f) }));
+const trackedApiSources = listTrackedApiSourceFiles(root);
 
-// Also include api/oauth/ subdir edge functions
-const oauthEdgeFunctions = readdirSync(apiOauthDir)
-  .filter((f) => f.endsWith('.js') && !f.startsWith('_'))
-  .map((f) => ({ name: `oauth/${f}`, path: join(apiOauthDir, f) }));
+// Both api-wide guards below register one `it()` PER DISCOVERED FILE, so an
+// empty discovery makes them emit zero assertions and this suite reports green
+// while checking nothing — a `node:` import smuggled into an edge function
+// would ship unnoticed. `git ls-files` exits 0 with empty output whenever the
+// pathspec matches nothing, so that is reachable; the previous readdirSync
+// implementation threw instead. Fail closed, mirroring the checker's own
+// zero-entry guard.
+describe('tracked api/ discovery', () => {
+  it('finds at least one tracked api/ source', () => {
+    assert.ok(
+      trackedApiSources.length > 0,
+      'listTrackedApiSourceFiles returned nothing — the guards below would pass vacuously',
+    );
+  });
+});
 
-const allEdgeFunctions = [...edgeFunctions, ...oauthEdgeFunctions];
+// Legacy JS entrypoints at api/ and api/oauth/ have stricter isolation rules.
+const allEdgeFunctions = trackedApiSources
+  .filter((file) => file.endsWith('.js'))
+  .filter((file) => ['api', 'api/oauth'].includes(dirname(file)))
+  .map((file) => ({ name: file.slice('api/'.length), path: join(root, file) }));
 
-// ALL .js AND .ts files under api/ (recursively) — used for node: built-in checks.
+// All tracked .js and .ts files under api/ are used for node: built-in checks.
 // Note: .ts edge functions are intentionally excluded from the
 // module-isolation describe below because Vercel bundles them at build time, so
 // imports from '../server/' are valid. The node: built-in check still applies
 // regardless of depth, since Vercel Edge Runtime rejects node: imports at runtime.
-function walkApi(dir, relPrefix = '') {
-  const out = [];
-  for (const entry of readdirSync(dir)) {
-    if (entry.startsWith('_')) continue; // underscore helpers are not routed
-    const full = join(dir, entry);
-    const rel = relPrefix ? `${relPrefix}/${entry}` : entry;
-    if (statSync(full).isDirectory()) {
-      out.push(...walkApi(full, rel));
-    } else if (entry.endsWith('.js') || entry.endsWith('.ts')) {
-      out.push({ name: rel, path: full });
-    }
-  }
-  return out;
-}
-
-const allApiFiles = walkApi(apiDir);
+const allApiFiles = trackedApiSources.map((file) => ({
+  name: file.slice('api/'.length),
+  path: join(root, file),
+}));
 
 describe('scripts/shared/ stays in sync with shared/', () => {
   // Historical scope: .json (data) + .cjs (helpers).

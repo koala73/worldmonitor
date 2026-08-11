@@ -432,12 +432,21 @@ describe('premiumFetch', () => {
 // reportServerError — the Sentry origin-5xx surface.
 // ---------------------------------------------------------------------------
 describe('reportServerError', () => {
+  type CaptureCtx = { level: string; tags: Record<string, string>; fingerprint?: string[] };
   function makeSpy() {
-    const calls: Array<{ msg: string; ctx: { level: string; tags: Record<string, string> } }> = [];
+    const calls: Array<{ msg: string; ctx: CaptureCtx }> = [];
     const enqueue = ((fn: (s: unknown) => void) => {
-      fn({ captureMessage: (msg: string, ctx: { level: string; tags: Record<string, string> }) => { calls.push({ msg, ctx }); } });
+      fn({ captureMessage: (msg: string, ctx: CaptureCtx) => { calls.push({ msg, ctx }); } });
     }) as unknown as typeof import('@/bootstrap/sentry-defer').enqueueSentryCall;
     return { calls, enqueue };
+  }
+
+  /** Capture one response and return the fingerprint Sentry would group on. */
+  function fingerprintOf(res: Response, target: string = PUBLIC_TARGET): string[] | undefined {
+    const { calls, enqueue } = makeSpy();
+    reportServerError(res, target, enqueue);
+    assert.equal(calls.length, 1, 'expected exactly one capture');
+    return calls[0].ctx.fingerprint;
   }
 
   it('captures a genuine origin 503 at error level with kind api_5xx', () => {
@@ -478,5 +487,142 @@ describe('reportServerError', () => {
     });
     reportServerError(res, PUBLIC_TARGET, enqueue);
     assert.equal(calls.length, 0, 'rate-limit degradation must not be captured again by every browser');
+  });
+
+  // -------------------------------------------------------------------------
+  // Grouping — WORLDMONITOR-P4.
+  //
+  // `captureMessage` varies the message per status (`API 520: …` vs
+  // `API 503: …`), but these are message-only events (`attachStacktrace`
+  // defaults to false and is never set), so Sentry groups them by message and
+  // its server-side parameterization normalizes the status integer — both
+  // collapse to one grouping message. Without an explicit fingerprint every
+  // status for a path folds into ONE issue, titled by whichever fired first.
+  //
+  // Measured on WORLDMONITOR-P4 ("API 520: /api/economic/v1/get-fred-series-batch",
+  // 2026-08-10): the group held `kind` = api_5xx x256 and api_cf_5xx x25, and
+  // 92 of its last 100 events were status 503 from the 2026-07-12 origin
+  // incident — only 8 were the 520 in the title. Three consequences:
+  //   1. the headline count overstates the 520 population by ~11x;
+  //   2. #3854's warning-vs-error split is void, because one issue carries one
+  //      level — the warning 520s inherit the error 503s' grouping;
+  //   3. an issue resolved with no release pin reopens and pages on ANY origin
+  //      5xx for that path, not on the Cloudflare edge error it is named for.
+  // -------------------------------------------------------------------------
+  it('does not group a Cloudflare 520 with an origin 503 on the same path', () => {
+    const cf = fingerprintOf(new Response('cf', { status: 520 }));
+    const origin = fingerprintOf(new Response('oops', { status: 503 }));
+    assert.ok(cf, 'Cloudflare edge capture must carry an explicit fingerprint');
+    assert.ok(origin, 'origin 5xx capture must carry an explicit fingerprint');
+    assert.notDeepEqual(
+      cf, origin,
+      'a CDN-transport 520 and an origin 503 are different failures and must not share a Sentry issue',
+    );
+  });
+
+  it('keeps repeat events of the same status and path in one group', () => {
+    // The fix must split by cause, not fragment per event — otherwise volume
+    // stops being readable and every blip mints a fresh issue.
+    const first = fingerprintOf(new Response('cf', { status: 520 }));
+    const second = fingerprintOf(new Response('cf again', { status: 520 }));
+    // Assert presence explicitly: two absent fingerprints are deep-equal, so
+    // without this the case would pass vacuously against the unfixed code.
+    assert.ok(first, 'fingerprint must be set');
+    assert.deepEqual(first, second, 'two 520s on one path must stay a single issue');
+  });
+
+  it('separates two different origin 5xx statuses on the same path', () => {
+    // The 520-vs-503 case above is also satisfied by grouping on the
+    // Cloudflare-vs-origin class alone, which would leave every origin status
+    // for a path folded together — the same defect one level down (a 500 from
+    // a handler throw sharing an issue with a 503 from a dependency outage).
+    assert.notDeepEqual(
+      fingerprintOf(new Response('boom', { status: 500 })),
+      fingerprintOf(new Response('down', { status: 503 })),
+      'a 500 and a 503 are different origin failures and must not share a Sentry issue',
+    );
+  });
+
+  it('separates the same status across different paths', () => {
+    assert.notDeepEqual(
+      fingerprintOf(new Response('cf', { status: 520 }), PUBLIC_TARGET),
+      fingerprintOf(new Response('cf', { status: 520 }), 'https://www.worldmonitor.app/api/news/v1/summarize-article'),
+      'per-path grouping is what makes the issue title actionable',
+    );
+  });
+
+  it('pins the exact fingerprint tuple', () => {
+    // Every other case here is relational (equal / not-equal), so a refactor
+    // that reorders the tuple or renames a token keeps them green while
+    // silently re-splitting every live Sentry issue — the groups are identified
+    // by these literal strings, so the identity itself needs a test.
+    assert.deepEqual(
+      fingerprintOf(new Response('cf', { status: 520 })),
+      ['api-cf-5xx', '/api/economic/v1/get-fred-series-batch', '520'],
+    );
+    assert.deepEqual(
+      fingerprintOf(new Response('down', { status: 503 })),
+      ['api-5xx', '/api/economic/v1/get-fred-series-batch', '503'],
+    );
+  });
+
+  it('excludes the query string from the grouping key', () => {
+    // `path` is `new URL(...).pathname`, which drops the query. Switching it to
+    // `pathname + search` would mint one Sentry issue per distinct URL — the
+    // cardinality blow-up the bounded-key claim rules out — and real callers do
+    // send per-request query strings through premiumFetch (McpConnectModal
+    // posts `/api/mcp-proxy?<qs>`). Two calls differing only in query must group
+    // together, and no query value may reach the key.
+    const withQuery = fingerprintOf(
+      new Response('cf', { status: 520 }),
+      `${PUBLIC_TARGET}?token=SECRET&cursor=abc`,
+    );
+    assert.deepEqual(withQuery, fingerprintOf(new Response('cf', { status: 520 })));
+    assert.ok(
+      !withQuery?.some((part) => part.includes('SECRET')),
+      'no query-string value may enter the Sentry grouping key',
+    );
+  });
+
+  it('groups a Request input with the equivalent string URL', () => {
+    // reportServerError normalizes via `input instanceof Request ? input.url :
+    // String(input)`. Callers pass both shapes, and one endpoint must stay one
+    // issue regardless of which the caller used.
+    assert.deepEqual(
+      fingerprintOf(new Response('cf', { status: 520 }), PUBLIC_TARGET),
+      (() => {
+        const { calls, enqueue } = makeSpy();
+        reportServerError(new Response('cf', { status: 520 }), new Request(PUBLIC_TARGET), enqueue);
+        return calls[0].ctx.fingerprint;
+      })(),
+    );
+  });
+
+  it('exposes status as a searchable tag, not only in extra', () => {
+    // Sentry does not index `extra`, so a status that lives only there is
+    // readable per event but never aggregable. Both sibling fingerprint sites
+    // mirror their grouping dimensions into tags; this pins that parity so a
+    // triage query like `kind:api_5xx status:503` keeps working.
+    const tagsFor = (status: number) => {
+      const { calls, enqueue } = makeSpy();
+      reportServerError(new Response('x', { status }), PUBLIC_TARGET, enqueue);
+      return calls[0].ctx.tags;
+    };
+    assert.equal(tagsFor(503).status, '503');
+    assert.equal(tagsFor(520).status, '520');
+    assert.equal(tagsFor(520).kind, 'api_cf_5xx', 'kind must survive alongside status');
+  });
+
+  it('classifies the Cloudflare range at its exact boundaries', () => {
+    // The 520-527 window now feeds the grouping key, not just the level and
+    // tag, so an off-by-one here would re-split live issues rather than only
+    // mislabel them. 530 is a real Cloudflare status that sits OUTSIDE the
+    // window by design and must stay on the origin class.
+    const classOf = (status: number) => fingerprintOf(new Response('x', { status }))?.[0];
+    assert.equal(classOf(519), 'api-5xx', '519 is below the Cloudflare window');
+    assert.equal(classOf(520), 'api-cf-5xx', '520 is the first Cloudflare code');
+    assert.equal(classOf(527), 'api-cf-5xx', '527 is the last Cloudflare code');
+    assert.equal(classOf(528), 'api-5xx', '528 is above the Cloudflare window');
+    assert.equal(classOf(530), 'api-5xx', 'CF 530 is deliberately outside the transient-transport window');
   });
 });

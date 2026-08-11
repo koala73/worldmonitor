@@ -187,7 +187,10 @@ describe('Umami runtime remediation (#6024)', () => {
     );
     assert.doesNotMatch(dockerfile, /(?:sh|bash)\s+-c|\$\{?DATABASE_URL/i);
     assert.match(executableSql, /LIMIT 10000/);
-    assert.match(executableSql, /pg_advisory_xact_lock/);
+    // try-, not xact-: each delete commits on its own now, so the lock has to
+    // outlive one transaction, and an overlapping tick has to skip rather than
+    // block into lock_timeout and crash the cron (#6375).
+    assert.match(executableSql, /pg_try_advisory_lock/);
     assert.doesNotMatch(executableSql, /\bTRUNCATE\b/i);
   });
 

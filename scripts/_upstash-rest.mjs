@@ -30,5 +30,15 @@ export async function upstashCommand(creds, command) {
     signal: AbortSignal.timeout(15_000),
   });
   if (!resp.ok) throw new Error(`Upstash HTTP ${resp.status}`);
-  return resp.json();
+  const body = await resp.json();
+  if (!body || typeof body !== 'object' || Array.isArray(body)) {
+    throw new Error('Upstash returned an unexpected response');
+  }
+  if (body.error != null) {
+    throw new Error(`Upstash rejected command: ${String(body.error)}`);
+  }
+  if (!Object.hasOwn(body, 'result')) {
+    throw new Error('Upstash response did not include a result');
+  }
+  return body;
 }

@@ -100,6 +100,19 @@ const HEALTH_VERDICT_REFRESH_WAIT_MS = 3_000;
 // inside the remaining contention budget. The direct-sweep fallback below is
 // preferable to turning a deadline-boundary timeout into false REDIS_DOWN.
 const HEALTH_VERDICT_MIN_REDIS_TIMEOUT_MS = 100;
+// #6339 deploy-before-provisioning bridge. A production health sweep claims
+// this versioned deadline with SET NX, so the 24h window starts when the reader
+// actually reaches production rather than when its PR was authored. The key
+// deliberately has no TTL: an unprovisioned producer cannot re-enter grace
+// after the deadline by waiting for rollout state to expire.
+const RUNTIME_ROLLOUT_PENDING_POLICIES = Object.freeze({
+  fredRatesSeeder: Object.freeze({
+    deadlineKey: 'health:rollout-deadline:economic:fred-rates:v1',
+    durationMs: 24 * 60 * 60 * 1_000,
+  }),
+});
+const FRED_RATES_ROLLOUT_DEADLINE_KEY = RUNTIME_ROLLOUT_PENDING_POLICIES.fredRatesSeeder.deadlineKey;
+const FRED_RATES_ROLLOUT_DURATION_MS = RUNTIME_ROLLOUT_PENDING_POLICIES.fredRatesSeeder.durationMs;
 const HEALTH_VERDICT_RELEASE_LOCK_SCRIPT = [
   "if redis.call('get', KEYS[1]) == ARGV[1] then",
   "  return redis.call('del', KEYS[1])",
@@ -239,6 +252,9 @@ const STANDALONE_KEYS = {
   bisExchange:           'economic:bis:eer:v1',
   fxYoy:                 'economic:fx:yoy:v1',
   sharedFxRates:          'shared:fx-rates:v1',
+  // Operational batch written by seed-fred-rates. The UI and MCP surfaces
+  // consume the individual FRED series keys, not this producer envelope.
+  fredRatesSeeder:        'economic:fred:batch:v1',
   bisCredit:             'economic:bis:credit:v1',
   bisDsr:                'economic:bis:dsr:v1',
   // Bank of Russia official rates: health-monitored but deliberately NOT a
@@ -696,6 +712,7 @@ const SEED_META = {
   aiTokens:          { key: 'seed-meta:market:token-panels', maxStaleMin: 90 },
   otherTokens:       { key: 'seed-meta:market:token-panels', maxStaleMin: 90 },
   fredBatch:         { key: 'seed-meta:economic:fred:v1:FEDFUNDS:0', maxStaleMin: 1500 }, // daily cron
+  fredRatesSeeder:   { key: 'seed-meta:economic:fred-rates', maxStaleMin: 180, minRecordCount: 24 }, // independent hourly FRED/rates seeder; publication accepts 18/24, but health requires full consumer coverage
   forecastFredWalcl:      { key: 'seed-meta:economic:fred:v1:WALCL:0',      maxStaleMin: 1500 },
   forecastFredT10y2y:     { key: 'seed-meta:economic:fred:v1:T10Y2Y:0',     maxStaleMin: 1500 },
   forecastFredUnrate:     { key: 'seed-meta:economic:fred:v1:UNRATE:0',     maxStaleMin: 1500 },
@@ -981,6 +998,10 @@ const ACTIVATION_MARKERS = {
   // has never shipped this field" reads as pending rather than as a fault —
   // while a block that DISAPPEARS after activation still fails closed.
   portwatchContentFreshness: PORTWATCH_CONTENT_FRESHNESS_ACTIVATION_KEY,
+  // Written without a TTL by scripts/seed-fred-rates.mjs only after runSeed
+  // successfully publishes the version-1 canonical batch. The marker makes
+  // first publication one-way: a later disappearance is strict forever.
+  fredRatesSeeder: 'seed-activated:economic:fred-rates:v1',
 };
 
 // #6059 — consumer-price coverage rollout handshake.
@@ -1081,6 +1102,25 @@ for (const market of CONSUMER_PRICE_HEALTH_MARKETS) {
   const from = Date.parse(window?.from ?? '');
   if (Number.isFinite(until)) ROLLOUT_PENDING_UNTIL_MS[name] = until;
   if (Number.isFinite(from)) ROLLOUT_PENDING_FROM_MS[name] = from;
+}
+
+function fredRatesRolloutCommands(now, vercelEnv = process.env.VERCEL_ENV) {
+  // Preview deployments can run for days before merge and can share the same
+  // Redis credentials. Letting one claim the deadline would recreate the fixed
+  // pre-merge-date bug under a different clock, so only production may start it.
+  if (vercelEnv !== 'production') return [];
+  const candidateUntil = now + FRED_RATES_ROLLOUT_DURATION_MS;
+  return [
+    ['SET', FRED_RATES_ROLLOUT_DEADLINE_KEY, String(candidateUntil), 'NX'],
+    ['GET', FRED_RATES_ROLLOUT_DEADLINE_KEY],
+  ];
+}
+
+function parseFredRatesRolloutUntil(results) {
+  if (!Array.isArray(results) || results.length !== 2) return null;
+  if (results[0]?.error || results[1]?.error) return null;
+  const until = Number(results[1]?.result);
+  return Number.isSafeInteger(until) && until > 0 ? until : null;
 }
 
 const EMPTY_DATA_OK_KEYS = new Set([
@@ -1558,12 +1598,15 @@ function classifyKey(name, redisKey, opts, ctx) {
     && ctx.activationStates?.get(name) !== true;
   // #6059 rollout bridge — see ROLLOUT_PENDING_UNTIL_MS. Unlike ON_DEMAND this
   // needs no per-registry opt-in (`allowOnDemand`): the window is bounded by a
-  // compiled deadline and revoked by a durable marker, so it cannot rot into a
-  // silent permanent exemption the way a registry-wide soften could.
+  // deadline and revoked by a durable marker, so it cannot rot into a silent
+  // permanent exemption the way a registry-wide soften could. Most deadlines
+  // are compiled historical values; a new producer can instead supply a
+  // deployment-relative deadline through ctx.rolloutPendingUntilMs.
   // Soft on an unreadable marker for the same reasons as ON_DEMAND above, plus
   // the deadline: an unknown state can delay strictness only until
   // `rolloutPendingUntil`, so it can never grant a grace that never expires.
-  const rolloutPendingUntil = ROLLOUT_PENDING_UNTIL_MS[name];
+  const rolloutPendingUntil = ctx.rolloutPendingUntilMs?.get(name)
+    ?? ROLLOUT_PENDING_UNTIL_MS[name];
   const isRolloutPending = rolloutPendingUntil != null
     && now < rolloutPendingUntil
     && ctx.activationStates?.get(name) !== true;
@@ -2495,6 +2538,7 @@ export async function handleHealth(req, ctx, options = {}) {
   ];
   const allMetaKeys = Object.values(SEED_META).map(s => s.key);
   const activationEntries = Object.entries(ACTIVATION_MARKERS);
+  const fredRolloutCommands = fredRatesRolloutCommands(now);
 
   // STRLEN for data keys avoids loading large blobs into memory (OOM prevention).
   // NEG_SENTINEL ('__WM_NEG__') is 10 bytes — strlenIsData() rejects exactly
@@ -2507,6 +2551,7 @@ export async function handleHealth(req, ctx, options = {}) {
       ...allMetaKeys.map(k => ['GET', k]),
       ...activationEntries.map(([, marker]) => ['EXISTS', marker]),
       ['GET', CHINA_COVERAGE_SUMMARY_KEY],
+      ...fredRolloutCommands,
     ];
     if (!getRedisCredentials()) throw new Error('Redis not configured');
     results = await redisPipeline(commands, 8_000);
@@ -2563,6 +2608,14 @@ export async function handleHealth(req, ctx, options = {}) {
   );
   const chinaCoverageResult = results[allDataKeys.length + allMetaKeys.length + activationEntries.length];
   const chinaCoverageRaw = chinaCoverageResult?.error ? null : chinaCoverageResult?.result;
+  const fredRolloutOffset = allDataKeys.length + allMetaKeys.length + activationEntries.length + 1;
+  const fredRatesRolloutUntil = parseFredRatesRolloutUntil(
+    results.slice(fredRolloutOffset, fredRolloutOffset + fredRolloutCommands.length),
+  );
+  const rolloutPendingUntilMs = new Map();
+  if (fredRatesRolloutUntil !== null) {
+    rolloutPendingUntilMs.set('fredRatesSeeder', fredRatesRolloutUntil);
+  }
 
   const classifyCtx = {
     keyStrens,
@@ -2570,6 +2623,7 @@ export async function handleHealth(req, ctx, options = {}) {
     keyMetaValues,
     keyMetaErrors,
     activationStates,
+    rolloutPendingUntilMs,
     now: evaluationNow,
   };
   const checks = {};
@@ -2740,6 +2794,11 @@ export const __testing__ = {
   CONTENT_FRESHNESS_ROLLOUT_UNTIL_MS,
   ROLLOUT_PENDING_UNTIL_MS,
   ROLLOUT_PENDING_FROM_MS,
+  RUNTIME_ROLLOUT_PENDING_POLICIES,
+  FRED_RATES_ROLLOUT_DEADLINE_KEY,
+  FRED_RATES_ROLLOUT_DURATION_MS,
+  fredRatesRolloutCommands,
+  parseFredRatesRolloutUntil,
   computeOverallStatus,
   hasExpiredRolloutPending,
   hasExpiredActivationGrace,

@@ -183,19 +183,136 @@ schema state requires the recorded database backup.
 
 ## Retention contract
 
-The relational analytics tables retain 90 days of raw data. A controlled
-maintenance process runs [`scripts/umami-retention.sql`](../scripts/umami-retention.sql)
-once per tick; it never loops inside one invocation. Each delete is capped at
-10,000 rows, session-replay payloads are capped at 64 MiB per invocation, and
-oversized replay rows are left for operator handling rather than force-deleted.
-Child rows are deleted before parent rows, and a transaction-level advisory
-lock prevents overlapping jobs. The job must not use `TRUNCATE` or an
+**The horizon is 30 days.** It is declared once, at the top of
+[`scripts/umami-retention.sql`](../scripts/umami-retention.sql), and every
+statement reads that declaration — the tables must never carry their own
+interval literal.
+
+> **Take a backup before merging any change to `retention_horizon`.** Shortening
+> the horizon is irreversible and it ships itself: `scripts/umami-retention.sql`
+> is a watched path for the `umami-retention` service
+> (`scripts/railway-services.json`), `railway-deploy-trigger.yml` redeploys
+> watched-path services automatically once main goes green, and the next cron
+> tick lands within 15 minutes. There is no review step between the merge button
+> and the first bulk delete.
+>
+> Railway does **not** back this volume up for you — checked 2026-08-10, the
+> `Postgres Umami` volume instance has an **empty backup schedule** and only
+> two ad-hoc backups (2026-08-02, 2026-08-04). Assume no restore point exists
+> unless you just made one.
+>
+> So, in order: take a fresh backup of the `Postgres Umami` volume, record its
+> ID in the PR description, and only then merge. Lengthening the horizon needs
+> no backup — it deletes strictly less.
+
+30 days is a capacity number, not a preference. Size any future change the same
+way, from measured bytes per retained day rather than from how much history
+feels nice to keep:
+
+| Input | Measured 2026-08-10 |
+| --- | --- |
+| `website_event` intake | ~450,000 rows/day |
+| `website_event` bytes/row | ~1,700 B (heap **plus** the 15 indexes Umami creates; indexes are 18 GB of its 27 GB) |
+| `event_data` intake | ~250,000 rows/day |
+| `event_data` bytes/row | ~460 B |
+| **Cost per retained day** | **~0.9 GB** |
+| Railway volume | 50 GB |
+
+At ~0.9 GB/day a 30-day window settles near 27 GB of **logical** data, or 54 %
+of the volume. The 90-day window this file used until #6375 needed about 79 GB
+and could never fit; the volume was projected full in 27.7 days. Grow the volume
+before growing the horizon, and re-measure both intake and bytes/row first —
+bytes/row is dominated by Umami's index set, so it moves whenever the schema
+does.
+
+**Expect the volume reading to plateau, not to fall.** `DELETE` marks tuples
+dead; autovacuum makes that space reusable *inside* the relation but does not
+return it to the filesystem. So the success signal after a horizon cut is that
+`currentSizeMB` stops climbing while the logical size drops — not that the
+number goes down. The monitor is built for this: growth at or below zero makes
+projected headroom infinite, and 68.9 % usage is well under the 80 % warning.
+If you ever need the space back for real, that is a separate, scheduled
+`pg_repack` on `website_event` (its 18 GB of indexes is where the bloat sits),
+not something this job can do.
+
+A controlled maintenance process runs the file once per tick; no statement
+loops inside one invocation. Each delete is capped at 10,000 rows,
+session-replay payloads are capped at 64 MiB per invocation, and oversized
+replay rows are left for operator handling rather than force-deleted. Child
+rows are deleted before parent rows. The job must not use `TRUNCATE` or an
 unbounded `DELETE`.
+
+**Each delete commits in its own transaction.** One transaction around all of
+them is what made #6375 silent: the 2026-08-10 12:22 tick logged `DELETE 1369`,
+then the next statement hit the timeout, and `ON_ERROR_STOP` rolled *both* away.
+Ordering still runs children before parents, so an aborted tick can only leave
+the database further along, never inconsistent. The cost is a brief window in
+which an event's `event_data` is gone while the event row survives to the next
+tick; those rows are already past the horizon and are not in any report.
+
+**The advisory lock is session-scoped and taken with `pg_try_advisory_lock`.**
+It has to outlive a single transaction now, and an overlapping tick must exit 0
+with a message rather than block into `lock_timeout` and crash. A tick that
+skips is a normal outcome; a tick that crashes is the alarm.
+
+**`statement_timeout` is 300s, sized against measurement.** One 10,000-row
+`website_event` batch costs 15.0s against a warm cache — 14.7s of that is the
+delete's own 10,000 primary-key probes at ~1.5 ms each — and roughly four times
+that when the pages are cold. The previous 60s sat *inside* that range, so the
+tick died on the cold half. Re-measure with `EXPLAIN (ANALYZE, BUFFERS)` inside
+a transaction you `ROLLBACK` before changing either the batch size or this
+number.
+
+Note that Umami declares its relations in Prisma but creates **no foreign keys**
+in Postgres, so nothing in the database enforces child-before-parent. The
+`NOT EXISTS` guard on the parent delete is the only thing that does.
+
+The `event_data` delete is bounded by its **own** `created_at`, not by a join to
+the parent event — the join had to scan all 2.4 M eligible parents to find the
+few thousand that still had children. The two clocks were measured equal, not
+assumed: across 1,027,145 pairs in two disjoint bands, min and max skew were
+both `00:00:00` and zero rows differed. Re-run that comparison before widening
+the predicate:
+
+```sql
+SELECT count(*), min(d.created_at - e.created_at), max(d.created_at - e.created_at),
+       count(*) FILTER (WHERE d.created_at <> e.created_at) AS differing
+FROM event_data d JOIN website_event e ON e.event_id = d.website_event_id
+WHERE d.created_at >= now() - interval '3 days';
+```
+
+### After a horizon change ships
+
+The runner alarm only proves the tick did not crash. It cannot tell you the tick
+retired the *right* rows. Run this read-only query after the first few ticks, and
+again a day later — `over_horizon` must fall monotonically toward zero, and
+`oldest` must walk forward:
+
+```sql
+SELECT 'website_event' AS table_name, min(created_at) AS oldest, max(created_at) AS newest,
+       count(*) FILTER (WHERE created_at < now() - interval '30 days') AS over_horizon
+FROM website_event
+UNION ALL
+SELECT 'event_data', min(created_at), max(created_at),
+       count(*) FILTER (WHERE created_at < now() - interval '30 days')
+FROM event_data;
+```
+
+A frozen `oldest` with a non-zero `over_horizon` across several ticks is the
+#6375 signature — the tick is running but committing nothing. Read the active
+deployment's runtime logs next, not its status.
 
 The contract preserves website configuration and saved replay definitions.
 Before enabling the job, take a database backup and verify the table names
 against the deployed Umami schema. The SQL is intentionally not called by the
 browser, the Vercel API, or the storage monitor.
+
+`psql` substitutes a variable only **outside** quotes. `interval :'retention_horizon'`
+expands in a plain statement, but the identical text inside the dollar-quoted
+body of a `DO` block reaches the server verbatim and fails with
+`syntax error at or near ":"`. The two `DO` blocks therefore read
+`current_setting('worldmonitor.umami_retention_horizon')`, which is set from the
+same single declaration.
 
 ## Retention runner
 
@@ -206,13 +323,14 @@ hour can retire up to 960,000 eligible event rows per day. A once-daily
 10,000-row tick would run successfully while permanently falling behind, so it
 is not an acceptable schedule.
 
-Size the schedule against the rate rows **cross** the 90-day boundary, not
-against intake. Those are different numbers whenever traffic is growing: when
-retention was activated (#6148) the collector took 591,244 events/day while only
-134,653/day aged past 90 days, because the boundary was still sweeping through
-much quieter traffic from three months earlier. Intake is the figure that
-matters for the steady state — once the boundary reaches present-day volume,
-eligibility converges on it, and 960,000/day has to stay above it.
+Size the schedule against the rate rows **cross** the horizon, not against
+intake. Those are different numbers whenever traffic is growing: when retention
+was activated (#6148) the collector took 591,244 events/day while only
+134,653/day aged past the then-90-day boundary, because the boundary was still
+sweeping through much quieter traffic from three months earlier. Intake is the
+figure that matters for the steady state — once the boundary reaches present-day
+volume, eligibility converges on it, and 960,000/day has to stay above it. At
+the 2026-08-10 intake of ~450,000 events/day that leaves 2.1x of headroom.
 
 Provision the Railway `umami-retention` service from the repository root with
 `/Dockerfile.umami-retention`. Configure `PGHOST`, `PGPORT`, `PGDATABASE`,
@@ -252,6 +370,26 @@ fail quietly:
 - **A cron tick does not create a deployment record.** It re-runs the active
   deployment, so a tick is visible in that deployment's runtime logs and in the
   data — never as a new row in the deployments list.
+- **A failing tick is invisible in every fleet audit.**
+  `scripts/railway-deployments.mjs` counts `CRASHED` as a *running* status,
+  which is correct for a source-drift audit — the image did run — and means the
+  drift reconciler reports this service healthy while every tick exits non-zero.
+  The runner alarm below exists for exactly that gap. Read the runtime logs of
+  the active deployment, not its status, when you want to know what a tick did.
+
+To read what the last tick actually did:
+
+```
+railway deployment list --project "$RAILWAY_PROJECT_ID" --environment production \
+  --service umami-retention --limit 200 --json
+```
+
+Every push to `main` writes a `SKIPPED` refusal ("No changes to watched files")
+for this service, and those arrive far faster than 4 ticks/hour — so the newest
+record is almost never the tick. Take the newest record whose status is a
+*running* one, then read that deployment's logs. A healthy tick logs `BEGIN`,
+`DELETE <n>`, `COMMIT` per statement; a locked-out tick logs the skip message
+and exits 0.
 
 The runtime-image migration and the retention runner are separate gates. Do
 not start retention until the composite-index migration has succeeded and the
@@ -271,6 +409,32 @@ A warning emits a GitHub annotation but leaves the scheduled workflow green so
 the 15-minute probe does not send repeated failed-run alerts during a bounded
 retention drain. A critical condition fails the workflow. Input, Railway, or
 state-processing errors also fail closed.
+
+## Retention runner alarm
+
+Volume usage is a *lagging* signal. In #6375 the runner exited non-zero on every
+tick for days while the volume took its time drifting into the warning band —
+and that warning is deliberately non-fatal, so nothing ever failed. The same
+workflow therefore also runs
+[`scripts/check-umami-retention-runner.mjs`](../scripts/check-umami-retention-runner.mjs),
+which reads deployment records only — never Postgres — and fails when the newest
+`umami-retention` deployment **that actually ran** is `CRASHED`.
+
+Two details carry the whole check:
+
+- It selects the newest record in a *running* status, not `deployments[0]`.
+  Reading index 0 returns a push refusal almost every time and would have missed
+  the outage completely.
+- It fails closed on an empty history, an unreadable payload, a history with no
+  running record, and any Railway status this repo does not model. An unmodelled
+  status is alarming rather than skipped, because `newestRunning()` would
+  otherwise step past it onto an older, healthier record.
+
+The step carries `if: ${{ !cancelled() }}` and runs last. Last, so a critical
+capacity failure cannot stop the capacity step from writing its growth-baseline
+sample; unconditional, so that same failure cannot stop the one actionable alarm
+from printing. Capacity is the symptom, the runner is the cause, and the fix
+starts from the cause.
 
 The monitor prints only volume size, growth, and projected headroom. It never
 prints Railway variables, database URLs, analytics payloads, or user identity
