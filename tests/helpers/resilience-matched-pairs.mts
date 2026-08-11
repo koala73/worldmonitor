@@ -89,6 +89,63 @@ export const MATCHED_PAIRS: readonly MatchedPair[] = [
       'Both are small, wealthy, governance-strong, high-infrastructure economies. Singapore\'s GIC + Temasek buffer remains a real sovereign-fiscal strength, but the active CRI is not a sovereign-wealth ranking: Switzerland\'s balanced pillar profile, liquid-reserve strength, and low live-shock exposure have been a top-tier published anchor since the v17 methodology notes. Expect CH > SG at the whole-index level; a future PR 2 SWF-specific regression check should inspect sovereignFiscalBuffer evidence directly rather than requiring SG > CH overall.',
     minGap: 5,
   },
+
+  // ── education activation anchors (#6460) ────────────────────────────────
+  //
+  // These three are WHOLE-INDEX pairs by design, and that is deliberate even
+  // though #6459 established `DimensionMatchedPair` for exactly this kind of
+  // activation gate. The distinction is what can go wrong.
+  //
+  // `financialSystemExposure` needed dimension-scoped pairs because its
+  // DIRECTION was wrong: severance scored as strength, so the dimension itself
+  // ranked backwards and a whole-index pair could not see a defect confined to
+  // ~3% of the headline. Education has no such failure mode available to it —
+  // it is a single monotone component (higher attainment scores higher, via one
+  // piecewise transform), so its direction cannot invert without the transform
+  // being rewritten. A dimension-scoped education pair would be tautological,
+  // and `PT > UZ` at the dimension level is inverted BY DESIGN: Portugal
+  // measures 50.0 against Uzbekistan's 96.0.
+  //
+  // The risk here is the opposite one: a CORRECT dimension with a very wide
+  // spread dragging the whole index somewhere indefensible. 25+ attainment
+  // stocks penalise late-developing school systems, so southern Europe carries
+  // a real cohort-lag deficit against post-Soviet states with near-universal
+  // upper-secondary credentials. That is a defensible construct property, but
+  // it has to be BOUNDED before it publishes, and the only instrument that can
+  // see it is the overall score. Hence whole-index.
+  //
+  // All three values below were measured against the production payload on
+  // 2026-08-11 (`resilience:education-attainment:v1`, in-universe coverage 181).
+  // If one of these fails the flag-on dry run, the pre-agreed response is to
+  // halve `RESILIENCE_DIMENSION_WEIGHTS.education` from 0.5 to 0.25 and
+  // re-measure — never to waive the gate.
+  {
+    id: 'pt-vs-uz',
+    higherExpected: 'PT',
+    lowerExpected: 'UZ',
+    axis: 'EU institutional depth vs post-Soviet credential stock',
+    rationale:
+      'Portugal carries a ~46-point education-dimension deficit against Uzbekistan on the activating construct (50.0 vs 96.0 female upper-secondary attainment, 25+ population), because attainment measures a stock and Portugal democratised secondary schooling late. Everything else the index measures runs the other way: EU membership and the associated fiscal and regulatory backstop, materially stronger WGI governance across all six sub-pillars, deeper infrastructure and logistics, and a recovery-capacity profile with real reserve and fiscal-space depth. A landlocked authoritarian state with a young population and near-universal secondary credentials should not out-rank it overall. This pair exists to bound the cohort-lag effect at the only level where it is visible; it flips legitimately only if Uzbekistan\'s governance and infrastructure converge on EU levels, which would be a real change in the thing being measured rather than a scoring artefact.',
+    minGap: 3,
+  },
+  {
+    id: 'es-vs-by',
+    higherExpected: 'ES',
+    lowerExpected: 'BY',
+    axis: 'EU member vs sanctioned post-Soviet state on the same credential axis',
+    rationale:
+      'The same axis as pt-vs-uz with the deficit at its widest and the counterweight at its clearest: Spain measures 55.8 against Belarus at 98.2, a ~42-point education-dimension gap, while Belarus is cut out of Western correspondent clearing and SWIFT messaging, sits at the bottom of the governance sub-pillars, and post-#6459 scores 15 on financialSystemExposure. Spain is an EU and euro-area member with deep institutions and infrastructure. If a single dimension at roughly 2.3% effective headline share can carry Belarus past Spain overall, the dimension weight is wrong rather than the gate. Kept separate from pt-vs-uz rather than folded into one pair because two independent instances of the same construct property are what distinguish a systematic southern-Europe penalty from one country\'s idiosyncratic profile.',
+    minGap: 3,
+  },
+  {
+    id: 'ch-vs-tm',
+    higherExpected: 'CH',
+    lowerExpected: 'TM',
+    axis: 'Top-tier OECD state vs the education top-of-table closed autocracy',
+    rationale:
+      'Turkmenistan sits at the very top of the activating series (98.1) against Switzerland\'s 81.9, so this pair tests the ceiling of the construct rather than its southern-Europe tail: the concave bend above 85 is supposed to cap exactly this kind of credential inflation, holding the dimension gap to roughly 99 vs 89. Switzerland is a top-tier published anchor on the balanced pillar profile, liquid reserves, governance and infrastructure; Turkmenistan is a closed autocracy with negligible institutional depth. The buffer is deliberately larger than the other two education pairs because this is not a close call in any dimension except the activating one — a gap under 5 points would itself be evidence the bend is not doing its job, well before the sign ever flips.',
+    minGap: 5,
+  },
 ] as const;
 
 // ---------------------------------------------------------------------------

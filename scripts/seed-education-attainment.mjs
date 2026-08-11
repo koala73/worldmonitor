@@ -31,7 +31,10 @@
 // structural absence, not a fetch failure — the practical ceiling for any
 // World Bank series against this universe is 195/196.
 
-import { loadEnvFile, CHROME_UA, runSeed, resolveProxyForConnect, httpsProxyFetchRaw } from './_seed-utils.mjs';
+import {
+  loadEnvFile, CHROME_UA, runSeed, resolveProxyForConnect, httpsProxyFetchRaw,
+  getRedisCredentials, redisCommand,
+} from './_seed-utils.mjs';
 import { wbCountryDictContentMeta } from './_wb-country-dict-content-age-helpers.mjs';
 import iso3ToIso2 from './shared/iso3-to-iso2.json' with { type: 'json' };
 
@@ -85,33 +88,75 @@ const EDUCATION_SECTION_TIMEOUT_MS = 300_000;
 // `docs/methodology/education-flag-flip-runbook.md`.
 const MIN_COUNTRIES = 150;
 
-// FOLLOW-UP, required before the flag flips (not before this ships — the
-// dimension is dark, so a silent drop moves nothing published yet).
+// Coverage-drop warning (#6460), shipped before the flag flip as the runbook
+// requires. While the dimension is dark a silent drop moves nothing published;
+// once it is live the same drop shifts real scores, so this has to exist first.
 //
 // The floor alone leaves a real gap: a fetch that returns 161 countries clears
 // both it and any naive percentage delta check, while silently moving ~20
-// countries onto the 50/0.3 `unmonitored` imputation with no alarm. Post-flip
-// that shifts published scores for those countries.
+// countries onto the 50/0.3 `unmonitored` imputation with no alarm.
 //
-// Size the check to CADENCE, not to a percentage borrowed from a volatile feed.
-// A 15% delta is nearly a no-op here: 181 x 0.85 = 154, and validate() already
+// Sized to CADENCE, not to a percentage borrowed from a volatile feed. A 15%
+// delta is nearly a no-op here: 181 x 0.85 = 154, and validate() already
 // rejects below 150, so it would only fire in the 4-country band between them.
 // This seeder runs weekly against a series that republishes annually, so the
-// expected week-over-week delta is exactly ZERO — which buys a much tighter
-// trigger than a daily feed could afford: ~3-5 countries, with a near-zero
-// false-positive rate.
+// expected week-over-week delta is exactly ZERO — which buys a far tighter
+// trigger than a daily feed could afford.
+const MAX_EXPECTED_COUNTRY_DROP = 2; // warn from the 3rd disappearance onward
+
+// Count is a weak proxy: 181 -> 181 with three countries swapped is invisible
+// to any count check. The previous run's sorted ISO2 set is persisted into
+// seed-meta so the comparison is a true set-diff and the log names the codes.
+// "Which countries did we lose" is the question an operator actually has to
+// answer; "did the number move" is not, and this feeds a public 196-country
+// ranking.
 //
-// Two constraints on the implementation:
-//   - WARN (log + Sentry), never a hard fail. A legitimate World Bank
-//     republication does move the set, and hard-failing would poison seed-meta
-//     on a real revision — reintroducing at a tighter threshold exactly the
-//     failure the low 150 floor exists to avoid.
-//   - Count is a weak proxy. 181 -> 181 with three countries swapped is
-//     invisible to any count check. Store the sorted ISO2 set (or its hash)
-//     alongside recordCount in seed-meta and log which codes appeared and
-//     disappeared. That turns "did the number move" into "which countries did
-//     we lose", which is the question an operator actually has to answer, and
-//     it matters here because this feeds a public 196-country ranking.
+// Stored as a comma-joined string rather than a hash: a hash proves only THAT
+// the set changed, and the whole point is to say WHICH codes went missing
+// without a second round-trip for the previous payload. ~570 bytes for 189
+// codes, against a seed-meta object /api/health already GETs in bulk.
+export const COUNTRY_SET_META_FIELD = 'countrySet';
+
+export function diffCountrySets(previousCodes, currentCodes) {
+  const prev = new Set(previousCodes ?? []);
+  const curr = new Set(currentCodes ?? []);
+  return {
+    dropped: [...prev].filter((cc) => !curr.has(cc)).sort(),
+    added: [...curr].filter((cc) => !prev.has(cc)).sort(),
+  };
+}
+
+export function parseCountrySetMeta(raw) {
+  if (typeof raw !== 'string' || raw.length === 0) return null;
+  const codes = raw.split(',').map((cc) => cc.trim()).filter((cc) => /^[A-Z]{2}$/.test(cc));
+  return codes.length > 0 ? codes : null;
+}
+
+/**
+ * Pure decision half, exported so the threshold and the first-run behavior are
+ * testable without Redis. WARN-only by contract: a legitimate World Bank
+ * republication does move the set, and hard-failing would poison seed-meta on a
+ * real revision — reintroducing, at a tighter threshold, exactly the failure the
+ * deliberately-low 150 floor exists to avoid.
+ */
+export function buildCoverageDropReport(previousCodes, currentCodes) {
+  const countrySet = [...currentCodes].sort().join(',');
+  // No previous set: the first run after this ships, or after a seed-meta
+  // reset. Record the baseline, warn about nothing — a missing prior is not
+  // evidence of a drop.
+  if (previousCodes == null) {
+    return { countrySet, countryCount: currentCodes.length, baseline: true, warn: false, dropped: [], added: [] };
+  }
+  const { dropped, added } = diffCountrySets(previousCodes, currentCodes);
+  return {
+    countrySet,
+    countryCount: currentCodes.length,
+    baseline: false,
+    warn: dropped.length > MAX_EXPECTED_COUNTRY_DROP,
+    dropped,
+    added,
+  };
+}
 
 // Pure record reducer, exported so the parsing traps below are testable
 // without network. Folds a page of World Bank rows into `out`, keeping the
@@ -186,6 +231,74 @@ async function fetchEducationAttainment() {
   };
 }
 
+const SEED_META_KEY = 'seed-meta:resilience:education-attainment';
+
+/**
+ * Reads the PREVIOUS run's country set. Safe to call from `afterPublish`
+ * because runSeed invokes that hook before `writeFreshnessMetadataSafely`, so
+ * seed-meta still holds the prior run's value at this point.
+ *
+ * Returns null on any read failure. That is deliberate: an unreadable previous
+ * set is indistinguishable from a first run, and both must mean "record the
+ * baseline, warn about nothing". Treating a Redis blip as a total coverage loss
+ * would fire a 189-country drop alarm on a healthy fetch.
+ */
+async function readPreviousCountrySet() {
+  const credentials = getRedisCredentials();
+  if (!credentials?.url || !credentials?.token) return null;
+  try {
+    const body = await redisCommand(
+      credentials.url,
+      credentials.token,
+      ['GET', SEED_META_KEY],
+      { label: 'education-attainment previous seed-meta', timeoutMs: 5_000 },
+    );
+    if (typeof body?.result !== 'string') return null;
+    return parseCountrySetMeta(JSON.parse(body.result)?.[COUNTRY_SET_META_FIELD]);
+  } catch {
+    return null;
+  }
+}
+
+export async function afterPublish(data) {
+  const currentCodes = Object.keys(data?.countries ?? {});
+  const report = buildCoverageDropReport(await readPreviousCountrySet(), currentCodes);
+
+  if (report.baseline) {
+    console.log(`  coverage baseline recorded: ${report.countryCount} countries (no previous set to compare)`);
+  } else if (report.warn) {
+    // Stable leading marker so a log scanner groups every occurrence as one
+    // condition; the varying detail rides in the payload, not the marker.
+    console.warn(
+      `  WARN education-attainment coverage drop: ${report.dropped.length} countries disappeared `
+      + `(threshold ${MAX_EXPECTED_COUNTRY_DROP}). This series republishes ANNUALLY, so the expected `
+      + `week-over-week delta is zero. dropped=[${report.dropped.join(',')}] added=[${report.added.join(',')}] `
+      + `count ${report.countryCount}. Not a failure: a real World Bank revision does move the set, and `
+      + `failing here would poison seed-meta on a legitimate republication.`,
+    );
+  } else if (report.dropped.length > 0 || report.added.length > 0) {
+    console.log(
+      `  coverage churn within tolerance: dropped=[${report.dropped.join(',')}] `
+      + `added=[${report.added.join(',')}] count ${report.countryCount}`,
+    );
+  }
+
+  // No countryCount here on purpose: the shared writer already owns
+  // `recordCount` from declareRecords, and it is the same number. A second
+  // field for one value is a drift liability, and `countrySet` encodes the
+  // count anyway. writeFreshnessMetadata rebuilds `meta` from scratch on every
+  // write rather than merging, so `coverageDropped` clears itself on the next
+  // clean run instead of lingering as a stale alarm.
+  return {
+    freshnessMetaPatch: {
+      [COUNTRY_SET_META_FIELD]: report.countrySet,
+      // Persisted so an operator reading seed-meta after the fact sees the same
+      // verdict the run logged, without needing the Railway log retained.
+      ...(report.warn ? { coverageDropped: report.dropped.join(',') } : {}),
+    },
+  };
+}
+
 export function validate(data) {
   return typeof data?.countries === 'object' && Object.keys(data.countries).length >= MIN_COUNTRIES;
 }
@@ -198,6 +311,8 @@ export {
   CANONICAL_KEY,
   CACHE_TTL,
   MIN_COUNTRIES,
+  MAX_EXPECTED_COUNTRY_DROP,
+  SEED_META_KEY,
   ATTAINMENT_INDICATOR,
   OBSERVATION_WINDOW_YEARS,
   WB_PAGE_SIZE,
@@ -238,6 +353,9 @@ if (process.argv[1]?.endsWith('seed-education-attainment.mjs')) {
     maxContentAgeMin: MAX_CONTENT_AGE_MIN,
     fetchPhaseTimeoutMs: EDUCATION_FETCH_PHASE_TIMEOUT_MS,
     lockTtlMs: EDUCATION_LOCK_TTL_MS,
+    // Coverage-drop set-diff. Runs before the seed-meta write, so it can still
+    // read the previous run's country set from seed-meta to diff against.
+    afterPublish,
   }).catch((err) => {
     const _cause = err.cause ? ` (cause: ${err.cause.message || err.cause.code || err.cause})` : '';
     console.error('FATAL:', (err.message || err) + _cause);
