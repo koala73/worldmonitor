@@ -2,7 +2,8 @@
 
 **Phase branch:** `integration/pokieticker-maritime-china-factory`
 **Upstream baseline:** `ae0a0fe26bcbdb683b366899e4dc38fb8ccfb5ad`
-**Implementation commit:** pending; backfilled by the next documentation receipt.
+**Implementation commit:** `2df9ef0a133564789bb398d7a9f363de171e78b8`
+(`feat(market): establish truthful stock data contracts`).
 
 ## Delivered contract
 

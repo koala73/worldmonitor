@@ -72,8 +72,8 @@ environment before release-wide test certification.
 
 ## Phase 2 — data contract and honest disabled state
 
-**Implementation commit:** pending; this value is backfilled in the immediate
-documentation receipt commit after the implementation commit exists.
+**Implementation commit:** `2df9ef0a133564789bb398d7a9f363de171e78b8`
+(`feat(market): establish truthful stock data contracts`).
 
 | Check | Result | Evidence |
 |---|---|---|

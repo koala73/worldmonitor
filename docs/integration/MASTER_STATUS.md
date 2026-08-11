@@ -16,7 +16,7 @@ This current-status receipt supersedes the historical preflight rows below.
 |---|---|---|---|---|
 | 0 | completed | Safety inventory and recoverability closure | recorded | `evidence/phase0-closure.md` |
 | 1 | completed with recorded data-suite limitation | Real upstream mother baseline, independent brand, AGPL/PokieTicker notices, Windows build and production preview | `c889fcfbdab4bf2bcd7a28f85ed32114f288d6aa` | `evidence/phase1-mother-baseline.md` |
-| 2 | completed pending SHA backfill | Provider/data contracts, generated API, explicit disabled state and historical-fixture isolation | pending implementation SHA backfill | `evidence/phase2-data-contract.md` |
+| 2 | completed | Provider/data contracts, generated API, explicit disabled state and historical-fixture isolation | `2df9ef0a133564789bb398d7a9f363de171e78b8` | `evidence/phase2-data-contract.md` |
 
 | Phase | Status | Scope | Commit | Evidence |
 |---|---|---|---|---|
@@ -88,8 +88,9 @@ The symbol validator rejects empty and illegal symbols; the cache-key primitive
 requires `provider:symbol:interval:range`; and the bar validator rejects a
 cross-symbol, duplicate-time, negative-volume, or invalid-OHLC series.
 
-**Phase 2 implementation commit:** pending; backfilled in the immediate
-documentation receipt commit. See `evidence/phase2-data-contract.md`.
+**Phase 2 implementation commit:** `2df9ef0a133564789bb398d7a9f363de171e78b8`
+(`feat(market): establish truthful stock data contracts`). See
+`evidence/phase2-data-contract.md`.
 
 ## Next action
 
