@@ -5,6 +5,11 @@ on 2026-08-11. Exit codes below are the actual process codes. Bundled Node/npm
 paths were placed first on `PATH` for commands whose npm subcommands invoke
 `node` or `npm` by name.
 
+**Implementation commit:** `7efd2e4a55f547e53943281b62ece403af8674e3`
+(`feat(market): add evidence-linked stock news alignment`); its repository
+pre-commit executed the staged Unicode check successfully (5 executable files,
+0 suspicious hidden characters).
+
 ```text
 Push-Location proto
 npm exec --yes --package=@bufbuild/buf@1.66.1 -- buf format -w worldmonitor/market/v1/stock_data.proto

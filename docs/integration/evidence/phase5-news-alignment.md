@@ -2,7 +2,8 @@
 
 **Date:** 2026-08-11
 **Working branch:** `integration/pokieticker-maritime-china-factory`
-**Implementation commit:** `PENDING_BACKFILL` at initial evidence creation
+**Implementation commit:** `7efd2e4a55f547e53943281b62ece403af8674e3`
+(`feat(market): add evidence-linked stock news alignment`)
 
 ## Delivered boundary
 

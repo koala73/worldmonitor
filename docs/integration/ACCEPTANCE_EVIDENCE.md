@@ -148,7 +148,8 @@ is made.
 
 ## Phase 5 — news evidence, calendar alignment and causal-language boundary
 
-**Implementation commit:** `PENDING_BACKFILL`.
+**Implementation commit:** `7efd2e4a55f547e53943281b62ece403af8674e3`
+(`feat(market): add evidence-linked stock news alignment`).
 
 | Check | Result | Evidence |
 |---|---|---|

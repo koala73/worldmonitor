@@ -19,7 +19,7 @@ This current-status receipt supersedes the historical preflight rows below.
 | 2 | completed | Provider/data contracts, generated API, explicit disabled state and historical-fixture isolation | `2df9ef0a133564789bb398d7a9f363de171e78b8` | `evidence/phase2-data-contract.md` |
 | 3 | completed for code and automated gates; licensed-live acceptance pending | Server-only Massive REST/WebSocket relay, exchange-calendar status, symbol isolation and explicit no-key/no-entitlement denial | `9cb8cb6efe2164891ea26cb6b2f51b6a3da086b0` | `evidence/phase3-authorized-stock-relay.md` |
 | 4 | completed for native UI, browser layout and no-provider truthfulness; licensed-live visual acceptance pending | `/stocks` / `/stocks/:symbol`, priority selector, provider-only search, D3 chart shell, event/research panels and independently scrollable responsive workspace | `f86fbce81b287a62d0af73a126dae8521aa7bc68` | `evidence/phase4-stock-workspace.md`, `POKIETICKER_COMPONENT_MIGRATION.md` |
-| 5 | completed for news schema, US exchange-time alignment, fact-only range metrics and model-disabled truthfulness; provider-backed analysis acceptance pending | `StockNewsAlignment`, `StockNewsAnalysis`, T0/T1/T3/T5/T10 return contract, Massive source preservation, explicit model-disabled UI and calendar tests | `PENDING_BACKFILL` | `evidence/phase5-news-alignment.md`, `evidence/phase5-news-evidence-no-provider-1440x900-final.png` |
+| 5 | completed for news schema, US exchange-time alignment, fact-only range metrics and model-disabled truthfulness; provider-backed analysis acceptance pending | `StockNewsAlignment`, `StockNewsAnalysis`, T0/T1/T3/T5/T10 return contract, Massive source preservation, explicit model-disabled UI and calendar tests | `7efd2e4a55f547e53943281b62ece403af8674e3` | `evidence/phase5-news-alignment.md`, `evidence/phase5-news-evidence-no-provider-1440x900-final.png` |
 
 | Phase | Status | Scope | Commit | Evidence |
 |---|---|---|---|---|
@@ -189,7 +189,8 @@ passed, and the local no-provider browser screenshot shows the scrollable empty
 K-line state with zero synthetic candles and zero fabricated news particles.
 See `evidence/phase5-news-alignment.md`.
 
-**Phase 5 implementation commit:** `PENDING_BACKFILL`.
+**Phase 5 implementation commit:** `7efd2e4a55f547e53943281b62ece403af8674e3`
+(`feat(market): add evidence-linked stock news alignment`).
 
 ## Next action
 
