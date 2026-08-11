@@ -61,6 +61,12 @@ export class MarketPanel extends Panel {
   constructor() {
     super({ id: 'markets', title: t('panels.markets'), infoTooltip: t('components.markets.infoTooltip') });
     this.header.appendChild(createWatchlistButton());
+    const stockWorkspaceLink = document.createElement('a');
+    stockWorkspaceLink.href = stockWorkspaceUrl('AAPL');
+    stockWorkspaceLink.textContent = '股票工作区';
+    stockWorkspaceLink.className = 'watchlist-btn';
+    stockWorkspaceLink.setAttribute('aria-label', '打开股票工作区');
+    this.header.appendChild(stockWorkspaceLink);
     const logisticsLink = document.createElement('a');
     logisticsLink.href = maritimeLogisticsUrl();
     logisticsLink.textContent = '海运物流';

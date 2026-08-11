@@ -163,3 +163,16 @@ not an integration decision: the local integration branch stays pinned to its
 recorded baseline and Phase 7 commits. No fetch that moves a tracking ref,
 merge, rebase, push, force-push or `main` mutation was performed. A future
 upstream resync requires a separately documented comparison and gate review.
+## Phase 8 native layout and posture implementation receipt
+
+Phase 8 is new WorldMonitor configuration, migration, component, service and
+test code. It reorders the existing full-variant panel registry and preserves
+the existing dashboard; it does not copy a PokieTicker dashboard, military
+tracker, aviation provider page, map tile, screenshot, external JavaScript
+bundle, payload or iframe. Provider notices contain short locally authored
+status/action wording only and never reproduce an upstream response.
+
+The source baseline remains the recorded local intake commit while remote
+`upstream/main` is documented as advanced in the preceding recheck. Phase 8
+does not fetch into a tracking ref, merge, rebase, push, force-push or alter
+`main`; all work remains on `integration/pokieticker-maritime-china-factory`.

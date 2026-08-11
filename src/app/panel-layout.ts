@@ -2623,7 +2623,10 @@ export class PanelLayoutManager implements AppModule {
     } else {
       allOrder = [...defaultOrder];
 
-      if (SITE_VARIANT !== 'happy') {
+      // The full variant deliberately follows VARIANT_DEFAULTS: markets and
+      // the native stock workspace entry lead a new dashboard. Other variants
+      // retain their historic feed-first treatment.
+      if (SITE_VARIANT !== 'happy' && SITE_VARIANT !== 'full') {
         const liveNewsIdx = allOrder.indexOf('live-news');
         if (liveNewsIdx > 0) {
           allOrder.splice(liveNewsIdx, 1);

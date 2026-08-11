@@ -100,3 +100,17 @@ Phase 7 added no credential, client-side environment variable, direct browser
 provider request, or iframe. A value may be labelled observed only when its own
 source, period, scope and freshness/delay are present; historical data remains
 historical and cannot be called live.
+
+## Phase 8 layout and posture capability matrix
+
+| Capability | First-use native behavior | Condition for an observed/live-facing label | Hard prohibition | Manual action / secret location |
+|---|---|---|---|---|
+| Full dashboard priority | Existing full panel ownership places Markets/stock workspace first and posture tools last | Not data-bearing; user-created order always wins once saved | Never replace a user layout or create a parallel dashboard to force a new order | Clear/reset layout only through the existing user interface |
+| Military correlation/posture | Retained at tail, collapsed, with readiness notice | Its own Provider/source/time record or official release supports any factual statement | Never turn a layer toggle, correlation card, AIS point or stale cache into a real-time military observation | Optional OpenSky relay values stay in Desktop/server protected store: `VITE_OPENSKY_RELAY_URL`, `OPENSKY_CLIENT_ID`, `OPENSKY_CLIENT_SECRET` |
+| Server military-flight source | Readiness notice says it awaits a sourced/timestamped response | Server returns a permitted record with source and valid observation time | Never call an empty/error state, static list or heuristic classification a live flight feed | Confirm server authorization/provider terms and response provenance; no browser secret |
+| Aviation positions | Retained at tail, collapsed, with no header `LIVE` by default | Fresh provider-attributed position no older than five minutes and not future-dated; header says `OBSERVED`, not an entitlement claim | Never let a map-layer toggle alone show `LIVE`; never present stale/delayed data as real time | Optional OpenSky relay as above, server-side/desktop only |
+| Airport/flight operational metadata | Airline notice describes it separately from positions | Authorized Provider response carries source/update time and applicable cadence | Never merge airport, price, news or tracking data into one real-time claim | `AVIATIONSTACK_API` stays in protected desktop/server store; validate licence first |
+
+Phase 8 reads only presence/validity state through the existing runtime
+configuration boundary. It does not expose plaintext secrets, tail hashes,
+provider payloads or client-side keys.

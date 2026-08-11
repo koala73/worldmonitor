@@ -56,7 +56,17 @@ import {
   saveToStorage,
   showToast,
 } from '@/utils';
-import { clearPanelSpans, invalidatePanelStorageCacheForKeys } from '@/utils/panel-storage';
+import {
+  clearPanelSpans,
+  invalidatePanelStorageCacheForKeys,
+  loadPanelCollapsed,
+  savePanelCollapsed,
+} from '@/utils/panel-storage';
+import {
+  FULL_DEFAULT_COLLAPSED_PANEL_KEYS,
+  FULL_ECONOMY_LAYOUT_MIGRATION_KEY,
+  shouldSeedFullEconomyDefaultCollapse,
+} from '@/config/full-layout-defaults';
 import { overlayHistory, type OverlayId } from '@/utils/overlay-history';
 import type { ParsedMapUrlState } from '@/utils';
 import { BreakingNewsBanner } from '@/components/BreakingNewsBanner';
@@ -1147,6 +1157,22 @@ export class App {
           console.log('[App] Applied layout reset migration (v2.5): cleared panel order/spans');
         }
         localStorage.setItem(LAYOUT_RESET_MIGRATION_KEY, 'done');
+      }
+
+      // Phase 8: a real saved panel order is user-owned and is never reshuffled.
+      // A true first visit (or a layout reset that clears the order) receives the
+      // economy-first full default; provider-dependent military/aviation panels
+      // stay present but collapsed until the user opens them. A collapsed state
+      // is only seeded when no prior value exists for that panel.
+      if (currentVariant === 'full' && !localStorage.getItem(FULL_ECONOMY_LAYOUT_MIGRATION_KEY)) {
+        const hasSavedPanelOrder = localStorage.getItem(PANEL_ORDER_KEY) !== null;
+        if (shouldSeedFullEconomyDefaultCollapse(currentVariant, hasSavedPanelOrder)) {
+          const collapsed = loadPanelCollapsed();
+          for (const key of FULL_DEFAULT_COLLAPSED_PANEL_KEYS) {
+            if (!(key in collapsed)) savePanelCollapsed(key, true);
+          }
+        }
+        localStorage.setItem(FULL_ECONOMY_LAYOUT_MIGRATION_KEY, 'done');
       }
     }
 

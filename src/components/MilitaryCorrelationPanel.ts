@@ -9,6 +9,7 @@ import {
   isCrossStraitActivitySnapshot,
   tryBuildCrossStraitActivityPanelModel,
 } from './cross-strait-activity-summary';
+import { buildProviderReadinessNotice } from './provider-readiness-notice';
 
 function officialSourceLabel(label: string, sourceUrl: string): HTMLElement {
   if (!sourceUrl) return h('span', {}, label);
@@ -29,8 +30,10 @@ export class MilitaryCorrelationPanel extends CorrelationPanel {
     super('military-correlation', 'Force Posture', 'military', t('components.militaryCorrelation.infoTooltip'));
     const hydrated = getHydratedData('crossStraitActivity');
     this.officialActivity = isCrossStraitActivitySnapshot(hydrated) ? hydrated : null;
-    if (this.officialActivity) this.requestRender();
-    else void this.hydrateOfficialActivity();
+    // Render the no-provider notice immediately as well: a waiting bootstrap
+    // must not leave a military surface with an unexplained loading spinner.
+    this.requestRender();
+    if (!this.officialActivity) void this.hydrateOfficialActivity();
   }
 
   override destroy(): void {
@@ -47,10 +50,23 @@ export class MilitaryCorrelationPanel extends CorrelationPanel {
   }
 
   private buildOfficialActivitySupplement(): HTMLElement | null {
-    if (!this.officialActivity) return null;
+    const readiness = buildProviderReadinessNotice('军事态势 Provider / 新鲜度', [
+        {
+          provider: 'OpenSky 中继（可选）',
+          requiredSecrets: ['VITE_OPENSKY_RELAY_URL', 'OPENSKY_CLIENT_ID', 'OPENSKY_CLIENT_SECRET'],
+          manualAction: '在 Desktop Configuration 中配置中继与 OAuth 凭据；不要将凭据写入前端、Git 或聊天。',
+        },
+        {
+          provider: '服务器军事航班数据源',
+          requiredSecrets: [],
+          manualAction: '确认服务端授权、Provider 返回来源和观测时间；无记录时保持不可用状态。',
+        },
+      ]);
+    if (!this.officialActivity) return readiness;
     const model = tryBuildCrossStraitActivityPanelModel(this.officialActivity);
-    if (!model) return null;
+    if (!model) return readiness;
     const children: HTMLElement[] = [
+      readiness,
       h('div', { style: 'display:flex;justify-content:space-between;gap:8px;align-items:baseline;' },
         h('strong', { style: 'font-size:calc(11px * var(--wm-panel-effective-scale, 1));' }, model.heading),
         h('span', { style: 'font-size:calc(9px * var(--wm-panel-effective-scale, 1));opacity:0.6;text-align:right;' }, model.coverageLabel),

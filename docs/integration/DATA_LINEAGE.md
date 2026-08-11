@@ -161,3 +161,27 @@ During Phase 7, no authorized aggregate response, port dataset or commercial
 B/L record was configured. The observed browser lineage is consequently a
 source/HS view with no value-bearing trade row and no shipment facts; it does
 not mean that the underlying real-world trade or shipping volume is zero.
+## Phase 8 layout ownership and aviation observation lineage
+
+Phase 8 introduces no new data Provider. Its lineage is deliberately split:
+
+1. **Layout ownership branch.** `VARIANT_DEFAULTS.full` supplies only the
+   first-use ordering. `panel-order` is an explicit user-owned preference and
+   is not rewritten by the Phase 8 migration. The collapse seed applies once
+   only when no order exists; it is a presentation preference, not a data
+   status.
+2. **Provider-readiness branch.** Military and aviation notices read only the
+   existing protected runtime configuration's presence/validity state. They do
+   not read, hash, return or render any secret. `NOT_CONFIGURED` means no
+   verified observation is currently available; it does not state that no real
+   aircraft or military activity exists.
+3. **Aviation observation branch.** A position becomes an `OBSERVED` header
+   badge only after it supplies a non-empty Provider source and valid
+   `observedAt` not later than the client clock and no older than five minutes.
+   The map-layer enabled flag is merely a request state and cannot enter this
+   lineage. Missing, stale, future-dated or blank-source records remain
+   unlabelled/no-observation.
+
+No Phase 8 branch proves cargo, mission, intent, ownership, military action,
+passenger status or a causal event. Separate authoritative records would be
+needed for any such assertion.

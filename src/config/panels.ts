@@ -6,6 +6,7 @@ import { isDesktopRuntime } from '@/services/runtime';
 import { getSecretState } from '@/services/runtime-config';
 // boundary-ignore: isEntitled is a pure state check with no side effects
 import { isEntitled } from '@/services/entitlements';
+import { prioritizeFullPanelKeys } from './full-layout-defaults';
 
 const _desktop = isDesktopRuntime();
 
@@ -35,8 +36,11 @@ const FULL_PANELS: Record<string, PanelConfig> = {
   intel: { name: 'Intel Feed', enabled: true, priority: 1 },
   'gdelt-intel': { name: 'Live Intelligence', enabled: true, priority: 1, ...(_desktop && { premium: 'enhanced' as const }) },
   cascade: { name: 'Infrastructure Cascade', enabled: true, priority: 1 },
-  'military-correlation': { name: 'Force Posture', enabled: true, priority: 2 },
-  'escalation-correlation': { name: 'Escalation Monitor', enabled: true, priority: 2 },
+  // Keep provider-dependent posture entry points inside the free-panel cap so
+  // their configuration/freshness notice remains reachable. Phase 8's default
+  // order and collapse migration, not the cap, place them at the bottom.
+  'military-correlation': { name: 'Force Posture', enabled: true, priority: 0 },
+  'escalation-correlation': { name: 'Escalation Monitor', enabled: true, priority: 0 },
   'economic-correlation': { name: 'Economic Warfare', enabled: true, priority: 2 },
   'disaster-correlation': { name: 'Disaster Cascade', enabled: true, priority: 2 },
   politics: { name: 'World News', enabled: true, priority: 1 },
@@ -1141,7 +1145,7 @@ export const ALL_PANELS: Record<string, PanelConfig> = {
 
 /** Per-variant canonical panel order (keys = which panels are enabled by default). */
 export const VARIANT_DEFAULTS: Record<string, string[]> = {
-  full:      Object.keys(VARIANT_PANEL_CONFIGS.full),
+  full:      prioritizeFullPanelKeys(Object.keys(VARIANT_PANEL_CONFIGS.full)),
   tech:      Object.keys(VARIANT_PANEL_CONFIGS.tech),
   finance:   Object.keys(VARIANT_PANEL_CONFIGS.finance),
   commodity: Object.keys(VARIANT_PANEL_CONFIGS.commodity),

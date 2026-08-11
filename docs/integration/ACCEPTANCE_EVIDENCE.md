@@ -213,3 +213,26 @@ cargo, destination, port calls, route completion or Provider licence terms.
 NO-PROVIDER TRUTHFULNESS.** It does not claim town-level exports, real-time
 trade, port routing, shipments, containers, vessels, buyers, cargo, customs
 manifests, or bill-of-lading coverage.
+
+## Phase 8 - economy-first full layout and truthful posture degradation
+
+**Implementation commit:** `PENDING` — populated only after the implementation
+commit exists.
+
+| Check | Result | Evidence |
+|---|---|---|
+| Existing dashboard ownership | PASS | The implementation changes `VARIANT_DEFAULTS.full`, `App` migration and `PanelLayout`; no duplicate dashboard, iframe or copied upstream UI exists. |
+| Market and stock priority | PASS | Fresh local-dev browser DOM/order begins `markets`, `stock-analysis`, `stock-backtest`, `daily-market-brief`, `market-implications`; Market header exposes native `/stocks/AAPL`. |
+| Required domain order | PASS | Macro/trade and supply-chain/China workspaces precede news; news precedes disaster/infrastructure; provider-dependent posture panels are ordered last. |
+| Saved-layout ownership | PASS | Migration writes only a version marker when a saved `panel-order` exists. It never reorders that persisted user layout. |
+| First-use collapse | PASS | With a fresh localhost-origin profile, military and escalation panels rendered at the tail with `panel-collapsed`; their entries remain within the free-panel cap. |
+| Provider/status/manual action | PASS | Military and aviation surfaces carry a value-free Provider readiness notice: configuration status, no verified observation time, and non-secret Desktop Configuration/server authorization action. |
+| No false aviation LIVE | PASS | Tests reject enabled-layer implication, blank source, stale and future observations. Header becomes `OBSERVED` only for a sourced, valid, non-future observation within five minutes. |
+| Browser visual evidence | PASS | `phase8-full-dashboard-market-first-1440x900.jpg` and `phase8-full-dashboard-first-use-1440x900.jpg`; inspected fresh local dev instance at `127.0.0.1:4185`. |
+| Focused/type/DOM/API/source/lint gates | PASS | Focused 21/21; `typecheck:all` 0; DOM 293/293; API contract 149/114/96; source check 533 hosts; full lint 0 with existing 33 warnings/9 infos and Safe HTML guard. |
+| Production build | PASS | Final background `build:full` exited 0 in 28.77 seconds and generated 252 PWA precache entries. Raw local transcript is retained separately from versioned Markdown evidence. |
+| Provider-backed military/aviation acceptance | NOT CLAIMED | No current OpenSky relay/OAuth, Aviationstack key, provider response, licence confirmation or verified observation timestamp was configured. |
+
+**Phase 8 gate: COMPLETED FOR ECONOMY-FIRST LAYOUT, SAVED-ORDER OWNERSHIP AND
+NO-PROVIDER TRUTHFULNESS.** This phase does not claim real-time military or
+aviation tracking merely because a map layer is enabled.

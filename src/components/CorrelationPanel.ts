@@ -39,7 +39,7 @@ export class CorrelationPanel extends Panel {
   private correlationDestroyed = false;
 
   constructor(id: string, title: string, domain: CorrelationDomain, infoTooltip?: string) {
-    super({ id, title, showCount: true, infoTooltip });
+    super({ id, title, showCount: true, infoTooltip, collapsible: true });
     this.domain = domain;
 
     const bootstrap = getCorrelationBootstrap();

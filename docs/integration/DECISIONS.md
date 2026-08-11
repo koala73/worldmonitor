@@ -192,3 +192,21 @@ but show no number unless a source-returned country-level record validates the
 selected filters. Port ranking stays unavailable/modelled until its method and
 lawful inputs exist; B/L remains empty until a contracted provider returns an
 authorized, timestamped record.
+## D-0019 - A layout toggle is not evidence of a live observation
+
+**Decision:** Put market/stock work first in a fresh full layout while keeping
+provider-dependent military and aviation panels as collapsed, low-priority
+entries. Treat a user-saved panel order as user-owned. Render an aviation
+observation badge only when a provider-attributed record has a valid,
+non-future timestamp within the configured freshness window.
+
+**Reason:** The requested economic priority should be visible without erasing
+personal workspaces. Conversely, a map layer or a non-empty cache can be
+enabled without a current authorized upstream observation; calling that `LIVE`
+would create a misleading operational claim.
+
+**Consequence:** Fresh full layouts lead with Markets and the native stock
+workspace link, but old saved orders remain untouched. Military/aviation entry
+points remain accessible below the core workspace and show Provider status,
+freshness condition and non-secret actions. A stale, undated, blank-source or
+future-dated position produces no observed/live indicator.

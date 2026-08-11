@@ -1,7 +1,7 @@
 # Global Intelligence Mother Reconstruction — Master Status
 
 **Controlling specification:** `D:\google\Codex_5.6_Terra_极高_全球情报母体重构执行书_2026-08-11.md`
-**Updated:** 2026-08-11T22:08:15+08:00
+**Updated:** 2026-08-11T22:38:27+08:00
 **Official product brand:** 全球实时热点追踪·探长版
 **Current working branch:** `integration/pokieticker-maritime-china-factory`
 **Formal mother repository:** `daking32168-byte/worldmonitor` (AGPL-3.0-only)
@@ -261,3 +261,35 @@ real owned vertical scroll surface. See `evidence/phase7-china-factory.md` and
 Proceed automatically to Phase 8. A missing provider key or lawful dataset may
 not block the Phase 8 adapters, disabled states, contracts and tests; it only
 prevents a provider-backed value-bearing acceptance.
+
+## Phase 8 - economy-first full layout and truthful posture degradation
+
+Phase 8 changes the existing full-variant panel ownership/default-order path;
+it does not create a second dashboard. A first-use full layout now puts Markets
+and the native `/stocks/AAPL` workspace entry first, followed by stock
+analysis/backtest/brief, macro/commodity/FX/trade, supply-chain/China panels,
+news, disaster/infrastructure, and finally military/aviation posture tools.
+The user-owned saved `panel-order` is not rewritten. A version marker seeds
+the collapse preference only on a full first visit with no saved order.
+
+Military correlation, escalation correlation and airline intelligence remain
+reachable configuration entries but are last and collapsed by default. Their
+provider-dependent notices expose configuration state, lack of a verifiable
+observation timestamp and the exact non-secret manual action. A map-layer
+toggle no longer produces an aviation `LIVE` badge: it requires a
+provider-attributed, valid, non-future observation inside a five-minute window.
+
+Focused/default-order, existing panel-config, DOM/API/source, type and lint
+gates have passed. The final production build completed with exit 0 in 28.77
+seconds and generated 252 PWA precache entries. Browser evidence is in
+`evidence/phase8-economy-first-layout.md`.
+
+**Phase 8 implementation commit:** `PENDING` — replaced immediately after the
+implementation commit is created.
+
+## Next action
+
+After Phase 8 receipt, proceed automatically to Phase 9 provider operations,
+scheduling and control-center work. Missing Provider credentials remain a
+reason for disabled/no-observation UI, never a reason to emit sample or live
+claims.

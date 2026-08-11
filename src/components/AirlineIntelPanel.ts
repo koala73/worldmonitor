@@ -21,6 +21,8 @@ import { escapeHtml, sanitizeUrl } from '@/utils/sanitize';
 import { t } from '@/services/i18n';
 import { Panel } from './Panel';
 import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
+import { buildProviderReadinessNotice } from './provider-readiness-notice';
+import { latestFreshProviderObservation } from '@/services/realtime-observation';
 
 
 // ---- Helpers ----
@@ -93,9 +95,10 @@ export class AirlineIntelPanel extends Panel {
     private refreshTimer: ReturnType<typeof setInterval> | null = null;
     private liveIndicator!: HTMLElement;
     private tabBar!: HTMLElement;
+    private trackingLayerEnabled = false;
 
     constructor() {
-        super({ id: 'airline-intel', title: t('panels.airlineIntel'), trackActivity: true, infoTooltip: t('components.airlineIntel.infoTooltip') });
+        super({ id: 'airline-intel', title: t('panels.airlineIntel'), trackActivity: true, infoTooltip: t('components.airlineIntel.infoTooltip'), collapsible: true });
 
         const wl = aviationWatchlist.get();
         this.airports = wl.airports.slice(0, 8);
@@ -121,7 +124,7 @@ export class AirlineIntelPanel extends Panel {
         // Add LIVE indicator badge to the title
         this.liveIndicator = document.createElement('span');
         this.liveIndicator.className = 'live-badge';
-        this.liveIndicator.textContent = '\u25CF LIVE';
+        this.liveIndicator.textContent = '';
         this.liveIndicator.style.cssText = 'display:none;color:#22c55e;font-size:calc(10px * var(--wm-panel-effective-scale, 1));font-weight:700;margin-left:8px;letter-spacing:0.5px;';
         this.header.querySelector('.panel-title')?.appendChild(this.liveIndicator);
 
@@ -195,12 +198,32 @@ export class AirlineIntelPanel extends Panel {
     updateLivePositions(positions: PositionSample[]): void {
         if (this.trackingQuery) return; // preserve filtered search results
         this.trackingData = positions;
+        this.refreshObservedIndicator();
         if (this.activeTab === 'tracking') this.renderTab();
     }
 
-    /** Toggle the LIVE indicator badge. */
+    /**
+     * A map-layer toggle is not a live-data fact. The header becomes observed
+     * only after `updateLivePositions` receives a fresh, sourced timestamp.
+     */
     setLiveMode(active: boolean): void {
-        this.liveIndicator.style.display = active ? '' : 'none';
+        this.trackingLayerEnabled = active;
+        this.refreshObservedIndicator();
+    }
+
+    private refreshObservedIndicator(): void {
+        const observation = this.trackingLayerEnabled
+            ? latestFreshProviderObservation(this.trackingData)
+            : null;
+        if (!observation) {
+            this.liveIndicator.style.display = 'none';
+            this.liveIndicator.textContent = '';
+            return;
+        }
+        const ageSeconds = Math.max(0, Math.floor(observation.ageMs / 1000));
+        this.liveIndicator.textContent = `● OBSERVED ${ageSeconds}s`;
+        this.liveIndicator.title = `${observation.source}; observed ${observation.observedAt.toISOString()}`;
+        this.liveIndicator.style.display = '';
     }
 
     private handleFlightSearch(): void {
@@ -374,7 +397,11 @@ export class AirlineIntelPanel extends Panel {
     }
 
     private renderTab(): void {
-        if (this.loading) { this.renderLoading(); return; }
+        if (this.loading) {
+            this.renderLoading();
+            this.prependProviderReadiness();
+            return;
+        }
         switch (this.activeTab) {
             case 'ops': this.renderOps(); break;
             case 'flights': this.renderFlights(); break;
@@ -383,6 +410,22 @@ export class AirlineIntelPanel extends Panel {
             case 'news': this.renderNews(); break;
             case 'prices': this.renderPrices(); break;
         }
+        this.prependProviderReadiness();
+    }
+
+    private prependProviderReadiness(): void {
+        this.content.prepend(buildProviderReadinessNotice('航空态势 Provider / 新鲜度', [
+            {
+                provider: 'OpenSky 中继',
+                requiredSecrets: ['VITE_OPENSKY_RELAY_URL', 'OPENSKY_CLIENT_ID', 'OPENSKY_CLIENT_SECRET'],
+                manualAction: '在 Desktop Configuration 中配置中继与 OAuth 凭据；未收到带时间戳的位置时不显示 OBSERVED。',
+            },
+            {
+                provider: 'Aviationstack（机场/航班状态）',
+                requiredSecrets: ['AVIATIONSTACK_API'],
+                manualAction: '仅在已获授权后配置服务器/桌面密钥，并保留 Provider、返回时间和延迟状态。',
+            },
+        ]));
     }
 
     // ---- Ops tab ----

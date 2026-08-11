@@ -99,3 +99,19 @@ Never paste any key, account password, session cookie, invoice, payment detail,
 CAPTCHA text or owner token into chat or Git. If login, paid purchase, terms
 acceptance, CAPTCHA or deployment ownership is actually needed, the exact
 official page must be opened before asking the owner to act.
+
+## Phase 8 optional military and aviation observed-data acceptance
+
+No user action is required to continue code work. These actions apply only if
+the owner decides to enable Provider-backed observations after independently
+reviewing permissions and terms.
+
+- [ ] For an OpenSky relay, confirm the account/terms and permitted display/cache use, then store `VITE_OPENSKY_RELAY_URL`, `OPENSKY_CLIENT_ID` and `OPENSKY_CLIENT_SECRET` only in the desktop vault or server/platform secret store. Do not place them in a `VITE_*` browser bundle, Git, screenshots or chat.
+- [ ] For airport/flight operation data, obtain a permitted Aviationstack entitlement before storing `AVIATIONSTACK_API` in the protected desktop/server store. Record Provider, request scope, returned update time, delay/cadence and licence boundary.
+- [ ] In the native full layout, expand the collapsed military and aviation entries. Confirm the readiness notice shows the actual configuration state, Provider and freshness condition before enabling a layer.
+- [ ] With a provider response, validate each aviation position's source and observation timestamp. Confirm stale, future-dated, blank-source or absent positions produce no `OBSERVED`/`LIVE` badge.
+
+Never paste keys, passwords, OAuth tokens, session cookies, invoices, payment
+details or CAPTCHA text into chat or Git. If login, purchase, terms acceptance,
+CAPTCHA or deployment ownership is actually required, open the exact official
+Provider page before asking the owner to take that irreversible action.
