@@ -49,6 +49,7 @@ export const FINSYS_DEBT_FIXTURE: Readonly<Record<string, FinSysDebtEntry>> = {
   MM: { value: 0.08, year: 2024 },
   SY: { value: 2.69, year: 2022 },
   TD: { value: 0.14, year: 2024 },
+  MU: { value: 62.83, year: 2024 },
   // KP, CU, VE, LY, LU, SG, CH, US, MC, DE: no DRS row in production.
 };
 
@@ -66,6 +67,7 @@ export const FINSYS_BIS_FIXTURE: Readonly<Record<string, FinSysBisEntry>> = {
   US: { totalXborderPctGdp: 31.62, parentCount: 8 },
   DE: { totalXborderPctGdp: 34.94, parentCount: 9 },
   TD: { totalXborderPctGdp: 1.11, parentCount: 0 },
+  MU: { totalXborderPctGdp: 69.33, parentCount: 5 },
   // KP, CU, SY, MC: no BIS CBS counterparty row in production.
 };
 

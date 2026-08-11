@@ -249,9 +249,17 @@ Cohort membership lives in `tests/helpers/resilience-cohorts.mts` as `sanctions-
 
 **Dimension-level pairs are deliberately separate from `MATCHED_PAIRS`**, which feeds whole-index acceptance gate #7. A whole-index pair compares overall scores and cannot see a defect confined to one dimension.
 
-### Known residual: no-market-access LICs
+### Known residuals: absence still reads as strength outside the embargo list
 
-The debt leg still reads a structurally tiny short-term external debt stock as low rollover vulnerability, so low-income countries with no commercial market access score high on Component 1 at full weight — Chad scores 99 on that slot and 67 on the dimension against the 2026-08-11 payload. That is the mirror image of the sanctions problem and is **not** fixed here: Chad is not comprehensively embargoed, so the cap does not apply, and re-anchoring the debt goalposts for market-access-constrained borrowers is a separate construct change needing its own calibration. Tracked separately; do not read a passing sanctions cohort as evidence this is resolved.
+The #6459 cap fixes the *embargoed* case of "absence reads as strength". Two non-embargoed shapes of the same defect survive, both measured against the 2026-08-11 production payload. Neither is fixed here, and a passing sanctions cohort is **not** evidence that either is resolved.
+
+**1. No-market-access low-income countries.** The debt leg still reads a structurally tiny short-term external debt stock as low rollover vulnerability, so a country with no commercial market access scores high on Component 1 at full weight. Chad takes 99 on that slot and 67 on the dimension. Re-anchoring the debt goalposts for market-access-constrained borrowers is a separate construct change needing its own calibration.
+
+**2. FATF-compliant-by-absence as the only resolving slot.** Seven scorable jurisdictions have neither a DRS row nor a BIS CBS row, so FATF is their only component. Five of them are actually FATF-listed (MC, SS, YE grey; KP black) or embargoed (CU), and score accordingly. The remaining two — **Eritrea and Taiwan** — are absent from all three sources and take `compliant` by absence, scoring **100 at coverage 0.2**. For Taiwan that absence is a reporting-politics artefact rather than a resilience signal; for Eritrea it is straightforwardly wrong.
+
+The impact is bounded — coverage 0.2 gives the slot little weight in the coverage-weighted economic-domain mean, and both countries move under +1.3 points overall — but the principled fix is to treat compliant-by-absence as carrying no information when it is the *only* resolving component, and drop the slot rather than score it 100. That changes `coverage` (and therefore `headlineEligible`) for those countries, so it needs its own measurement and is deliberately out of scope for #6459, whose Phase B scoped the compliant-by-absence fix to embargoed states.
+
+Both residuals are tracked in **#6461**.
 
 ## Bounded-movement gate
 

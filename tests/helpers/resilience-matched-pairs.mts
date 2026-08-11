@@ -161,4 +161,14 @@ export const FIN_SYS_EXPOSURE_MATCHED_PAIRS: readonly DimensionMatchedPair[] = [
       'The United States issues the currency the construct is denominated in and sits mid-band on cross-border claims with eight reporting parents. Cuba has been under a comprehensive US embargo for six decades, has no BIS counterparty row and no Debtor Reporting System row, and is absent from both FATF lists purely because FATF has never assessed it. Before the #6459 retune this pair was inverted: Cuba scored 100 on FATF-compliant-by-absence as its only observed slot and beat the United States outright. That inversion is the single most legible symptom of the construct defect, so the pair is retained permanently as its regression anchor. It flips only if the United States loses reserve-currency status.',
     minGap: 10,
   },
+  {
+    id: 'ch-vs-mu-finsys',
+    dimension: 'financialSystemExposure',
+    higherExpected: 'CH',
+    lowerExpected: 'MU',
+    axis: 'Deep reserve centre vs thinly-capitalised offshore intermediation',
+    rationale:
+      'The cap-independent anchor of this panel. Neither jurisdiction is on the comprehensive-embargo list, so this pair holds on the graded components alone — if the cap were ever removed or narrowed, the other four pairs would go quiet while this one still constrains direction. Switzerland and Mauritius are both small, FATF-clean, banking-heavy economies, which is what makes the contrast informative: Mauritius carries short-term external debt worth 62.8% of GNI against the construct\'s 15%-of-GNI vulnerability threshold, and its cross-border claims sit deep in over-exposed territory on a small domestic base, while Switzerland sits inside the healthy band with nine reporting parents and no comparable rollover overhang. The claim is that the construct rewards depth plus low rollover risk over thinly-capitalised intermediation. It flips if Mauritius materially deleverages its short-term external position, which would be a real improvement in the thing being measured.',
+    minGap: 10,
+  },
 ] as const;
