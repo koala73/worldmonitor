@@ -20,9 +20,13 @@
 // bug.
 
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { afterEach, beforeEach, describe, it } from 'node:test';
 
-import { scoreFinancialSystemExposure } from '../server/worldmonitor/resilience/v1/_dimension-scorers.ts';
+import {
+  FIN_SYS_EXPOSURE_COMPREHENSIVE_EMBARGO,
+  scoreFinancialSystemExposure,
+} from '../server/worldmonitor/resilience/v1/_dimension-scorers.ts';
 import { RESILIENCE_COHORTS, type ResilienceCohort } from './helpers/resilience-cohorts.mts';
 import { FIN_SYS_EXPOSURE_MATCHED_PAIRS } from './helpers/resilience-matched-pairs.mts';
 import { FINSYS_FIXTURE_CAPTURED_AT, createFinSysFixtureReader } from './helpers/resilience-finsys-fixtures.mts';
@@ -30,11 +34,19 @@ import { FINSYS_FIXTURE_CAPTURED_AT, createFinSysFixtureReader } from './helpers
 // The threshold is the methodology doc's, verbatim. Raising it here without
 // raising it there re-opens the doc/code gap this file closes.
 const SANCTIONS_ANCHOR_CEILING = 20;
+const METHODOLOGY = readFileSync(
+  new URL('../docs/methodology/financial-system-exposure.md', import.meta.url),
+  'utf8',
+);
 
-// The eight jurisdictions the methodology anchor enumerates. Duplicated from
-// the cohort deliberately: if someone quietly drops a member from the cohort
-// to make the gate pass, the membership assertion below fails instead.
-const METHODOLOGY_ANCHOR_MEMBERS = ['RU', 'IR', 'KP', 'CU', 'VE', 'BY', 'LY', 'MM'] as const;
+function methodologyEmbargoCountryCodes(): string[] {
+  const marker = METHODOLOGY.indexOf('FIN_SYS_EXPOSURE_COMPREHENSIVE_EMBARGO');
+  assert.ok(marker >= 0, 'methodology must include the embargo policy code block');
+  const fenceEnd = METHODOLOGY.indexOf('```', marker);
+  assert.ok(fenceEnd >= 0, 'methodology embargo policy code block must be closed');
+  return [...METHODOLOGY.slice(marker, fenceEnd).matchAll(/^\s{2}([A-Z]{2})\s/gm)]
+    .map((match) => match[1]);
+}
 
 const ORIGINAL_FLAG = process.env.RESILIENCE_FIN_SYS_EXPOSURE_ENABLED;
 beforeEach(() => {
@@ -61,12 +73,17 @@ function sanctionsCohort(): ResilienceCohort {
 }
 
 describe('financialSystemExposure — sanctions-isolated activation anchor', () => {
-  it('cohort membership matches the methodology anchor exactly', () => {
+  it('cohort, runtime cap, and methodology membership match exactly', () => {
     const cohort = sanctionsCohort();
     assert.deepEqual(
       [...cohort.countryCodes].sort(),
-      [...METHODOLOGY_ANCHOR_MEMBERS].sort(),
-      'the cohort and `docs/methodology/financial-system-exposure.md` § "Sanctions-isolated jurisdiction sanity check" must enumerate the same jurisdictions',
+      [...FIN_SYS_EXPOSURE_COMPREHENSIVE_EMBARGO].sort(),
+      'the activation cohort and runtime embargo cap must enumerate the same jurisdictions',
+    );
+    assert.deepEqual(
+      methodologyEmbargoCountryCodes().sort(),
+      [...FIN_SYS_EXPOSURE_COMPREHENSIVE_EMBARGO].sort(),
+      'the methodology embargo block and runtime embargo cap must enumerate the same jurisdictions',
     );
   });
 

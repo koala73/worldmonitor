@@ -51,21 +51,22 @@ Where:
 
 **Score shape**: `normalizeLowerBetter(value, 0, 15)` — IMF Article IV external-financing-vulnerability threshold is canonically 15% of GNI.
 
-**Coverage**: ~119-190 LMICs (low- and middle-income countries) depending on the year — 119 in the 2026-08-11 production payload.
+**Coverage**: ~119-190 World Bank borrower economies depending on the year — 119 in the 2026-08-11 production payload.
 
-**Absence handling (#6459)**: IDS is the published output of the World Bank **Debtor Reporting System**, whose membership is World Bank *borrowers*. High-income jurisdictions are absent by design, not by data gap.
+**Absence handling (#6459)**: IDS is the published output of the World Bank **Debtor Reporting System**, whose membership is World Bank *borrowers*. The seeder also reads the World Bank country catalog and records countries with `lendingType=LNX` as explicitly outside the Bank's borrower programs.
 
 The original construct dropped the slot for them. That was the single largest contributor to the inversion: `weightedBlend` renormalizes onto the surviving slots, so the 0.35 weight redistributed onto a denominator of 0.65 and the punitive cross-border-claims leg alone went from 30% to 46% of the score. Luxembourg was scored almost entirely on "your banks are too integrated", with no offsetting credit for having no rollover risk at all.
 
 | Country state | Component 1 slot |
 |---|---|
 | DRS row present | `normalizeLowerBetter(value, 0, 15)`, full 0.35 weight, coverage 1.0 |
-| No DRS row, **but** present in BIS CBS | imputed score **75**, `certaintyCoverage 0.3`, `imputed: true`, `imputationClass: 'not-applicable'` |
-| Absent from both sources | slot drops out of the blend (genuine data gap) |
+| No DRS row, `lendingType=LNX`, **and** present in BIS CBS | imputed score **75**, `certaintyCoverage 0.3`, `imputed: true`, `imputationClass: 'not-applicable'` |
+| Borrower missing its DRS row | slot drops out of the blend (possible partial payload) |
+| Absent from both DRS and BIS CBS | slot drops out of the blend (genuine data gap) |
 
 **Why `not-applicable` and not `unmonitored`**: non-participation in the DRS means there is no reported short-term external commercial debt to roll over. That is a mild positive, not an unknown, so the class that describes it is "the indicator does not apply here".
 
-**Limit of the discriminator**: "no DRS row but present in BIS CBS" is a proxy for high-income, not a definition of it. There is no income classification on the static country record, and a World Bank income seed is not worth a new dependency for one slot. Of the 83 jurisdictions in BIS and not in IDS on 2026-08-11, roughly ten are not high-income — Pacific microstates (KI, MH, FM, NR, PW, TV) plus NA, GQ and PS. Those are grant- and concessional-financed rather than commercially indebted, so `not-applicable` still describes them correctly.
+**Discriminator**: the World Bank country catalog's `lendingType=LNX` classification is the explicit non-borrower signal. A missing DRS row is never enough by itself, because an accepted annual payload can still omit an eligible borrower. The imputation also requires a valid BIS CBS row. Payload schema v1 did not carry `nonDrsCountryCodes`; the scorer remains backward-compatible with that payload but treats eligibility as unknown, so the slot drops instead of receiving a positive imputation until schema v2 is seeded.
 
 **Cadence**: monthly cron (WB IDS publishes annually; the cadence is for refresh-once-they-publish detection).
 
@@ -191,7 +192,6 @@ FIN_SYS_EXPOSURE_COMPREHENSIVE_EMBARGO  (server/worldmonitor/resilience/v1/_dime
   IR  31 CFR 560 Iranian Transactions and Sanctions Regulations (comprehensive)
   KP  31 CFR 510 North Korea Sanctions Regulations (comprehensive)
   CU  31 CFR 515 Cuban Assets Control Regulations (comprehensive, 1963–)
-  SY  31 CFR 542 Syrian Sanctions Regulations (comprehensive)
   MM  EO 14014 Burma blocking programme + EU Reg. 2013/184
   VE  EO 13884 blocks all property of the Government of Venezuela
   LY  EO 13566 blocks all property of the Government of Libya; UNSCR 1970/1973
@@ -205,7 +205,7 @@ FIN_SYS_EXPOSURE_COMPREHENSIVE_EMBARGO  (server/worldmonitor/resilience/v1/_dime
 
 **This is not the rejected "transit-hub exclusion list"** ([Alternative 2](#alternative-2--transit-hub-exclusion-list)). That would have been an editorial carve-out of jurisdictions the construct scored inconveniently. This list *is* the construct's subject, and its membership is externally defined by published US OFAC and EU Council programmes rather than drawn by us.
 
-**Maintenance**: the list is static and must be reviewed when a programme is materially lifted or imposed. A jurisdiction leaving the list should re-enter the graded components on its own merits; the calibration gate below will move with it and must be re-run.
+**Maintenance**: the list is static and must be reviewed when a programme is materially lifted or imposed. It was last reviewed on **2026-08-11** and has a maximum review age of **120 days**, enforced in CI. Syria was removed during that review because [OFAC revoked the comprehensive Syria sanctions program effective 2025-07-01](https://ofac.treasury.gov/recent-actions/20250630). A jurisdiction leaving the list re-enters the graded components on its own merits; tests require the runtime set, calibration cohort, and this code block to remain identical.
 
 ## Fail-closed preflight
 
@@ -217,7 +217,7 @@ seed-meta:economic:bis-lbs:v1
 seed-meta:economic:fatf-listing:v1
 ```
 
-Missing envelopes throw `ResilienceConfigurationError(message, missingKeys)` (two-arg form; `missingKeys` carries the absent seed keys). The `scoreAllDimensions` catch path reads `err.missingKeys`, joins them for the source-failure log, and routes the dim to `imputationClass='source-failure'` with `score=0, coverage=0`. Per-country data gaps inside an otherwise-published envelope are distinct: per-component reads return null and the slot drops out of the weighted blend.
+Missing envelopes throw `ResilienceConfigurationError(message, missingKeys)` (two-arg form; `missingKeys` carries the absent seed keys). The same fail-closed behavior applies when healthy seed metadata is followed by an absent, malformed, or empty World Bank data envelope. The `scoreAllDimensions` catch path reads `err.missingKeys`, joins them for the source-failure log, and routes the dim to `imputationClass='source-failure'` with `score=0, coverage=0`. Per-country data gaps inside an otherwise-published envelope are distinct: per-component reads return null and the slot drops out of the weighted blend unless World Bank metadata explicitly confirms the non-DRS case above.
 
 When `RESILIENCE_FIN_SYS_EXPOSURE_ENABLED` is unset or false (default), the scorer returns the empty-data shape (no preflight, no throw, `imputationClass=null`). The dim drops out of the coverage-weighted economic-domain mean. This is the staged-rollout posture: the dim ships dark until seeders are populating in production, then ops flip the flag.
 
@@ -364,8 +364,9 @@ A flag test on 2026-08-11 showed the construct's ranking was **inverted**: finan
 | Cross-border-claims band re-anchored asymmetrically (isolation floor 60 → 30; over-exposure floor 0 → 35) | Severance stops out-scoring integration |
 | FATF grey rescaled 30 → 55 | Remediating jurisdictions stop scoring near-blacklist |
 | Comprehensive-embargo cap at 15 added as a new input | Closes compliant-by-absence and no-market-access reading as strength |
-| Non-DRS short-term-debt slot imputed at 75 / `not-applicable` instead of dropped | Stops the 0.35 weight renormalizing onto the punitive band leg for high-income economies |
+| Explicit World Bank `lendingType=LNX` non-DRS slot imputed at 75 / `not-applicable` instead of dropped | Stops the 0.35 weight renormalizing onto the punitive band leg without converting missing borrower rows into strength |
 | Sanctions cohort, dimension-level matched pairs, and the inversion probe committed as CI gates | The activation anchor is executable instead of prose |
+| Syria removed from the static cap; policy review age and code/doc/cohort parity enforced | Revoked sanctions cannot persist silently as scorer policy |
 
 Measured effect on the 2026-08-11 production payloads (dimension score, before → after):
 

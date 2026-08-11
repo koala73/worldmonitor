@@ -311,8 +311,9 @@ export const INDICATOR_REGISTRY: IndicatorSpec[] = [
     sourceKey: 'economic:wb-external-debt:v1',
     scope: 'global',
     cadence: 'annual',
-    imputation: { type: 'conservative', score: 50, certainty: 0.3 },
-    // WB IDS publishes for ~125 LMICs only; HIC fall through to the BIS CBS structural-exposure component.
+    imputation: { type: 'conservative', score: 75, certainty: 0.3 },
+    // WB IDS publishes for ~125 borrowers. Explicit World Bank
+    // lendingType=LNX countries can use the guarded non-DRS imputation.
     // Tagged 'enrichment' (not 'core') because the lint test enforces
     // core indicators must have coverage >= 180; LMIC-only is below
     // that gate by definition. Component carries weight 0.35 inside the
@@ -320,13 +321,12 @@ export const INDICATOR_REGISTRY: IndicatorSpec[] = [
     tier: 'enrichment',
     coverage: 125,
     license: 'open-data',
-    // §U5 review fix: comprehensive=false. WB IDS coverage is the LMIC
-    // subset (~125 countries), NOT the universe. HIC absence from this
-    // source is NOT a stable-absence signal — those countries fall through
-    // to the BIS CBS structural-exposure component instead. Marking
-    // comprehensive=true would let any future IMPUTE caller treat HIC
-    // absence as the high stable-absence anchor (85+), which would
-    // misrepresent HIC financial-system exposure.
+    // §U5 review fix: comprehensive=false. WB IDS coverage is the borrower
+    // subset (~125 countries), NOT the universe. Per-country absence from
+    // this source is NOT a stable signal without LNX metadata. Marking
+    // comprehensive=true would let a future caller treat an unknown row as
+    // the high stable-absence anchor (85+), which would misrepresent
+    // financial-system exposure.
     comprehensive: false,
   },
   {

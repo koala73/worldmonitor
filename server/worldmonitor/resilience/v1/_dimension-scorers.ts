@@ -183,10 +183,10 @@ export const IMPUTE = {
   // deliberate penalty over-fired for advanced economies that hold
   // reserves through Treasury / central-bank channels).
   recoverySovereignFiscalBuffer: { score: 50, certaintyCoverage: 0.3, imputationClass: 'unmonitored' },
-  // #6459 — financialSystemExposure Component 1 for jurisdictions outside the
-  // World Bank Debtor Reporting System (high-income economies plus a handful
-  // of grant-financed microstates). Absence there means no reported
-  // short-term external commercial debt to roll over, so the slot is
+  // #6459 — financialSystemExposure Component 1 for jurisdictions that the
+  // World Bank country catalog explicitly classifies as outside its borrower
+  // programs (`lendingType=LNX`). That means no reported short-term external
+  // commercial debt to roll over, so the slot is
   // `not-applicable` rather than an unknown; 0.3 certainty keeps the
   // dimension's coverage honest about the reading being inferred. Before this
   // entry the slot was dropped and its 0.35 weight renormalized onto the
@@ -1765,11 +1765,19 @@ export const FIN_SYS_EXPOSURE_COMPREHENSIVE_EMBARGO: ReadonlySet<string> = new S
   'IR', // 31 CFR 560 Iranian Transactions and Sanctions Regulations (comprehensive)
   'KP', // 31 CFR 510 North Korea Sanctions Regulations (comprehensive)
   'CU', // 31 CFR 515 Cuban Assets Control Regulations (comprehensive, 1963–)
-  'SY', // 31 CFR 542 Syrian Sanctions Regulations (comprehensive)
   'MM', // EO 14014 Burma blocking programme + EU Reg. 2013/184
   'VE', // EO 13884 blocks all property of the Government of Venezuela
   'LY', // EO 13566 blocks all property of the Government of Libya; UNSCR 1970/1973
 ]);
+
+// Static policy state must expire rather than age silently. OFAC revoked the
+// comprehensive Syria programme effective 2025-07-01
+// (https://ofac.treasury.gov/recent-actions/20250630), but the first #6459 list
+// still included SY in August 2026. Tests enforce this review window so
+// every entry is re-checked against current primary sources before the policy
+// can drift for another release cycle.
+export const FIN_SYS_EXPOSURE_EMBARGO_POLICY_REVIEWED_ON = '2026-08-11';
+export const FIN_SYS_EXPOSURE_EMBARGO_POLICY_MAX_AGE_DAYS = 120;
 
 // Cap, not a floor-to-zero: the graded components still order jurisdictions
 // WITHIN the embargoed set (DPRK's FATF black listing keeps it at 0, below
@@ -1833,11 +1841,25 @@ export async function scoreFinancialSystemExposure(
     reader(RESILIENCE_FATF_LISTING_KEY),
   ]);
 
+  // Seed-meta can remain healthy while the subsequent Redis data read misses,
+  // times out, or returns malformed JSON. Without this envelope check that
+  // source-level failure is indistinguishable from a country outside DRS and
+  // can be converted into the positive score-75 imputation below.
+  const debtEnvelope = readWbExternalDebtEnvelope(debtRaw);
+  if (debtEnvelope == null) {
+    throw new ResilienceConfigurationError(
+      `RESILIENCE_FIN_SYS_EXPOSURE_ENABLED=true but ${RESILIENCE_WB_EXTERNAL_DEBT_KEY} data envelope is absent or malformed after a healthy seed-meta preflight. ` +
+        'Re-run seed-wb-external-debt and confirm the payload includes countries before scoring.',
+      [RESILIENCE_WB_EXTERNAL_DEBT_KEY],
+    );
+  }
+
   // Component 1: short-term external debt as % of GNI. WB IDS coverage is
-  // ~125 LMICs; HIC fall through to per-component-null and the blend
-  // covers the gap via the BIS CBS structural-exposure component.
-  // Payload shape: { countries: { [iso2]: { value: number, year: number } } }.
-  const debtPct = readWbExternalDebtPct(debtRaw, countryCode);
+  // ~125 borrowers. Countries explicitly classified by World Bank as outside
+  // its lending scope can receive the guarded non-DRS imputation below.
+  // Payload shape: { countries: { [iso2]: { value, year } },
+  //   nonDrsCountryCodes: string[] }.
+  const debtPct = readWbExternalDebtPct(debtEnvelope, countryCode);
 
   // Component 2 + 4 share the retained economic:bis-lbs payload, sourced
   // from BIS CBS (WS_CBS_PUB). Component 2: sum of by-parent foreign
@@ -1855,7 +1877,7 @@ export async function scoreFinancialSystemExposure(
 
   // #6459 Component 1 slot. WB International Debt Statistics is the output of
   // the Debtor Reporting System, whose membership is World Bank BORROWERS —
-  // 119 countries in the 2026-08-11 production payload. High-income
+  // 119 countries in the 2026-08-11 production payload. Non-borrowing
   // jurisdictions are absent by design, not by data gap.
   //
   // Dropping the slot for them was the defect: `weightedBlend` renormalizes
@@ -1869,7 +1891,11 @@ export async function scoreFinancialSystemExposure(
   // `not-applicable` is the right class because non-participation in the DRS
   // means there is no reported short-term external commercial debt to roll
   // over, which is a mild positive rather than an unknown.
-  const nonDrsDebtImputation = resolveNonDrsDebtImputation(debtPct, bisCountry);
+  const nonDrsDebtImputation = resolveNonDrsDebtImputation(
+    debtPct,
+    bisCountry,
+    debtEnvelope.nonDrsCountryCodes.has(countryCode.toUpperCase()),
+  );
 
   const blended = weightedBlend([
     {
@@ -1917,20 +1943,21 @@ export async function scoreFinancialSystemExposure(
 // jurisdiction does not report to the Debtor Reporting System) or a genuine
 // data gap.
 //
-// DISCRIMINATOR AND ITS LIMIT: the rule is "no DRS row but present in BIS
-// CBS". There is no income classification on the static country record, and
-// adding a World Bank income seed for one slot is not worth a new dependency.
-// The proxy is close but not exact — of the 83 jurisdictions in BIS and not
-// in IDS on 2026-08-11, roughly ten are not high-income (Pacific microstates
-// such as KI, MH, FM, NR, PW, TV, plus NA, GQ, PS). Those are grant- and
-// concessional-financed rather than commercially indebted, so
-// `not-applicable` still describes them correctly. A country in NEITHER
-// source is a genuine data desert and keeps the null/drop behaviour.
+// DISCRIMINATOR: the WB seeder publishes `nonDrsCountryCodes` from the World
+// Bank country catalog's `lendingType=LNX` classification. The imputation
+// requires both that explicit non-borrower signal and a valid BIS row. A
+// borrower missing from a partial IDS payload therefore stays null/drop, and
+// a country in neither source remains a genuine data desert.
 function resolveNonDrsDebtImputation(
   debtPct: number | null,
   bisCountry: BisLbsCountry | null,
+  confirmedNonDrsCountry: boolean,
 ): ImputationEntry | null {
   if (debtPct != null) return null;
+  // Per-country absence is not enough: accepted WB payloads may omit an
+  // otherwise eligible borrower. Only the seeder's World Bank lending-type
+  // metadata can confirm that the country is outside the DRS borrower scope.
+  if (!confirmedNonDrsCountry) return null;
   // A BIS row whose every field failed to parse is a corrupt entry, not
   // evidence the jurisdiction participates in cross-border banking — do not
   // let it trigger the imputation.
@@ -1941,12 +1968,40 @@ function resolveNonDrsDebtImputation(
 
 // Small payload accessors for scoreFinancialSystemExposure. Defensive
 // against unexpected shapes; return null on any deviation.
+interface WbExternalDebtEnvelope {
+  countries: Record<string, unknown>;
+  nonDrsCountryCodes: ReadonlySet<string>;
+}
 
-function readWbExternalDebtPct(raw: unknown, countryCode: string): number | null {
+function readWbExternalDebtEnvelope(raw: unknown): WbExternalDebtEnvelope | null {
   if (raw == null || typeof raw !== 'object') return null;
   const countries = (raw as { countries?: Record<string, unknown> }).countries;
-  if (!countries || typeof countries !== 'object') return null;
-  const entry = countries[countryCode];
+  if (!countries || typeof countries !== 'object' || Array.isArray(countries) || Object.keys(countries).length === 0) {
+    return null;
+  }
+
+  const rawNonDrsCountryCodes = (raw as { nonDrsCountryCodes?: unknown }).nonDrsCountryCodes;
+  if (
+    rawNonDrsCountryCodes != null
+    && (
+      !Array.isArray(rawNonDrsCountryCodes)
+      || rawNonDrsCountryCodes.some((code) => typeof code !== 'string' || !/^[A-Z]{2}$/.test(code))
+      || new Set(rawNonDrsCountryCodes).size !== rawNonDrsCountryCodes.length
+    )
+  ) {
+    return null;
+  }
+
+  return {
+    countries,
+    // Backward-compatible with the last v1 payload: until the v2 seeder runs,
+    // unknown eligibility stays null/drop rather than receiving an imputation.
+    nonDrsCountryCodes: new Set((rawNonDrsCountryCodes ?? []) as string[]),
+  };
+}
+
+function readWbExternalDebtPct(envelope: WbExternalDebtEnvelope, countryCode: string): number | null {
+  const entry = envelope.countries[countryCode];
   if (!entry || typeof entry !== 'object') return null;
   return safeNum((entry as { value?: unknown }).value);
 }

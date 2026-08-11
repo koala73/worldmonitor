@@ -32,6 +32,8 @@ import {
   FIN_SYS_BAND_ISOLATION_FLOOR,
   FIN_SYS_BAND_OVEREXPOSED_FLOOR,
   FIN_SYS_EXPOSURE_COMPREHENSIVE_EMBARGO,
+  FIN_SYS_EXPOSURE_EMBARGO_POLICY_MAX_AGE_DAYS,
+  FIN_SYS_EXPOSURE_EMBARGO_POLICY_REVIEWED_ON,
   FIN_SYS_EXPOSURE_EMBARGO_SCORE_CAP,
   normalizeBandLowerBetter,
   scoreFinancialSystemExposure,
@@ -41,6 +43,14 @@ import {
 import { FINSYS_FIXTURE_CAPTURED_AT, createFinSysFixtureReader } from './helpers/resilience-finsys-fixtures.mts';
 
 const TEST_ISO2 = 'XX';
+const VALID_DEBT_CONTROL_COUNTRY = 'ZZ';
+
+function reachableDebtEnvelope(nonDrsCountryCodes: ReadonlyArray<string> = []): unknown {
+  return {
+    countries: { [VALID_DEBT_CONTROL_COUNTRY]: { value: 1, year: 2024 } },
+    nonDrsCountryCodes,
+  };
+}
 
 // The dim is flag-gated for staged rollout (matches energy v2 pattern).
 // All formula + preflight tests in this file exercise the ON path.
@@ -87,6 +97,7 @@ function emptyButReachableReader(): ResilienceSeedReader {
   ]);
   return async (key) => {
     if (presentSeedMetaKeys.has(key)) return { fetchedAt: Date.now() };
+    if (key === 'economic:wb-external-debt:v1') return reachableDebtEnvelope();
     return null;
   };
 }
@@ -208,6 +219,36 @@ describe('scoreFinancialSystemExposure — fail-closed preflight', () => {
       assert.doesNotThrow(() => err.missingKeys.join(','));
     }
   });
+
+  it('throws when healthy seed-meta is followed by an absent or malformed WB data envelope', async () => {
+    for (const debtPayload of [
+      null,
+      {},
+      { countries: {} },
+      { countries: [], nonDrsCountryCodes: [] },
+      { countries: { ZZ: { value: 1 } }, nonDrsCountryCodes: ['LU', 'LU'] },
+    ]) {
+      const reader: ResilienceSeedReader = async (key) => {
+        if (key.startsWith('seed-meta:')) return { fetchedAt: Date.now(), status: 'ok' };
+        if (key === 'economic:wb-external-debt:v1') return debtPayload;
+        if (key === 'economic:bis-lbs:v1') {
+          return { countries: { [TEST_ISO2]: { totalXborderPctGdp: 25, parentCount: 10 } } };
+        }
+        if (key === 'economic:fatf-listing:v1') {
+          return { listings: { IR: 'black', KP: 'black' }, publicationDate: '2026-06-01' };
+        }
+        return null;
+      };
+      await assert.rejects(
+        () => scoreFinancialSystemExposure(TEST_ISO2, reader),
+        (err: unknown) => (
+          err instanceof ResilienceConfigurationError
+          && err.missingKeys.includes('economic:wb-external-debt:v1')
+        ),
+        'source-level WB data failure must not become a positive per-country imputation',
+      );
+    }
+  });
 });
 
 describe('scoreFinancialSystemExposure — per-country no-data path (positive control)', () => {
@@ -294,6 +335,7 @@ describe('scoreFinancialSystemExposure — formula math', () => {
       if (key === 'seed-meta:economic:wb-external-debt') return { fetchedAt: Date.now() };
       if (key === 'seed-meta:economic:bis-lbs') return { fetchedAt: Date.now() };
       if (key === 'seed-meta:economic:fatf-listing') return { fetchedAt: Date.now() };
+      if (key === 'economic:wb-external-debt:v1') return reachableDebtEnvelope();
       if (key === 'economic:bis-lbs:v1') {
         return { countries: { [TEST_ISO2]: { totalXborderPctGdp: xborderPct, parentCount: 5 } } };
       }
@@ -330,6 +372,7 @@ describe('scoreFinancialSystemExposure — formula math', () => {
       if (key === 'seed-meta:economic:wb-external-debt') return { fetchedAt: Date.now() };
       if (key === 'seed-meta:economic:bis-lbs') return { fetchedAt: Date.now() };
       if (key === 'seed-meta:economic:fatf-listing') return { fetchedAt: Date.now() };
+      if (key === 'economic:wb-external-debt:v1') return reachableDebtEnvelope();
       if (key === 'economic:bis-lbs:v1') {
         return {
           countries: {
@@ -426,6 +469,7 @@ describe('scoreFinancialSystemExposure — formula math', () => {
       if (key === 'seed-meta:economic:wb-external-debt') return { fetchedAt: Date.now() };
       if (key === 'seed-meta:economic:bis-lbs') return { fetchedAt: Date.now() };
       if (key === 'seed-meta:economic:fatf-listing') return { fetchedAt: Date.now() };
+      if (key === 'economic:wb-external-debt:v1') return reachableDebtEnvelope();
       if (key === 'economic:fatf-listing:v1') {
         return { listings: {}, publicationDate: '2026-02-13' };
       }
@@ -444,6 +488,7 @@ describe('scoreFinancialSystemExposure — formula math', () => {
       if (key === 'seed-meta:economic:wb-external-debt') return { fetchedAt: Date.now() };
       if (key === 'seed-meta:economic:bis-lbs') return { fetchedAt: Date.now() };
       if (key === 'seed-meta:economic:fatf-listing') return { fetchedAt: Date.now() };
+      if (key === 'economic:wb-external-debt:v1') return reachableDebtEnvelope();
       if (key === 'economic:fatf-listing:v1') {
         return { listings: { [TEST_ISO2]: status }, publicationDate: '2026-02-13' };
       }
@@ -495,11 +540,29 @@ describe('scoreFinancialSystemExposure — comprehensive-embargo cap (#6459)', (
     assert.equal(result.score, 100, `non-embargoed best case must be untouched, got ${result.score}`);
   });
 
+  it('does not cap Syria after the comprehensive program was revoked', async () => {
+    assert.equal(FIN_SYS_EXPOSURE_COMPREHENSIVE_EMBARGO.has('SY'), false);
+    const result = await scoreFinancialSystemExposure('SY', bestCaseReader('SY'));
+    assert.equal(result.score, 100, 'SY must follow the observed components, not the revoked static cap');
+  });
+
+  it('forces the static embargo policy through a bounded review window', () => {
+    const reviewedAt = Date.parse(`${FIN_SYS_EXPOSURE_EMBARGO_POLICY_REVIEWED_ON}T00:00:00Z`);
+    assert.ok(Number.isFinite(reviewedAt), 'policy review date must be a valid ISO date');
+    const ageDays = (Date.now() - reviewedAt) / (24 * 60 * 60 * 1000);
+    assert.ok(ageDays >= 0, 'policy review date must not be in the future');
+    assert.ok(
+      ageDays <= FIN_SYS_EXPOSURE_EMBARGO_POLICY_MAX_AGE_DAYS,
+      `embargo policy was last reviewed ${Math.floor(ageDays)} days ago; re-check every entry against primary sources`,
+    );
+  });
+
   it('is a cap, not an assignment — a worse embargoed country keeps its lower score', async () => {
     // DPRK is FATF black-listed with no other resolving slot, so it must stay
     // at 0 rather than being raised to the cap.
     const reader: ResilienceSeedReader = async (key) => {
       if (key.startsWith('seed-meta:')) return { status: 'ok', fetchedAt: Date.now() };
+      if (key === 'economic:wb-external-debt:v1') return reachableDebtEnvelope(['KP']);
       if (key === 'economic:fatf-listing:v1') {
         return { listings: { KP: 'black', IR: 'black', MM: 'black' }, publicationDate: '2026-06-01' };
       }
@@ -531,10 +594,12 @@ describe('scoreFinancialSystemExposure — comprehensive-embargo cap (#6459)', (
 });
 
 describe('scoreFinancialSystemExposure — non-DRS short-term-debt slot (#6459)', () => {
-  const reader = (opts: { debtRow: boolean; bisRow: boolean }): ResilienceSeedReader => async (key) => {
+  const reader = (opts: { debtRow: boolean; bisRow: boolean; confirmedNonDrs?: boolean }): ResilienceSeedReader => async (key) => {
     if (key.startsWith('seed-meta:')) return { status: 'ok', fetchedAt: Date.now() };
     if (key === 'economic:wb-external-debt:v1') {
-      return { countries: opts.debtRow ? { [TEST_ISO2]: { value: 0, year: 2024 } } : {} };
+      return opts.debtRow
+        ? { countries: { [TEST_ISO2]: { value: 0, year: 2024 } }, nonDrsCountryCodes: [] }
+        : reachableDebtEnvelope(opts.confirmedNonDrs ? [TEST_ISO2] : []);
     }
     if (key === 'economic:bis-lbs:v1') {
       return { countries: opts.bisRow ? { [TEST_ISO2]: { totalXborderPctGdp: 300, parentCount: 10 } } : {} };
@@ -551,7 +616,10 @@ describe('scoreFinancialSystemExposure — non-DRS short-term-debt slot (#6459)'
     // almost entirely on "your banks are too integrated".
     //   imputed debt 75 x0.35 + band(300%)=35 x0.30 + compliant 100 x0.20
     //   + parents 10 → 100 x0.15 = 71.75 → 72
-    const result = await scoreFinancialSystemExposure(TEST_ISO2, reader({ debtRow: false, bisRow: true }));
+    const result = await scoreFinancialSystemExposure(
+      TEST_ISO2,
+      reader({ debtRow: false, bisRow: true, confirmedNonDrs: true }),
+    );
     assert.equal(result.score, 72, `expected the imputed-slot blend, got ${result.score}`);
     assert.ok(result.imputedWeight > 0, 'the imputed slot must be reported as imputed weight');
     assert.ok(result.coverage < 1, 'coverage must stay below 1 — the reading is inferred, not observed');
@@ -561,7 +629,10 @@ describe('scoreFinancialSystemExposure — non-DRS short-term-debt slot (#6459)'
   it('no DRS row + no BIS row → slot stays null (genuine data desert)', async () => {
     // Cuba / DPRK shape. Absence from BOTH sources is not evidence that
     // short-term external debt is not applicable, so the slot must drop.
-    const result = await scoreFinancialSystemExposure(TEST_ISO2, reader({ debtRow: false, bisRow: false }));
+    const result = await scoreFinancialSystemExposure(
+      TEST_ISO2,
+      reader({ debtRow: false, bisRow: false, confirmedNonDrs: true }),
+    );
     assert.equal(result.coverage, 0.2, `only the FATF slot may resolve, got coverage ${result.coverage}`);
     assert.equal(result.imputedWeight, 0, 'no BIS row means no imputation');
   });
@@ -572,9 +643,19 @@ describe('scoreFinancialSystemExposure — non-DRS short-term-debt slot (#6459)'
     assert.equal(result.coverage, 1, 'all four slots observed');
   });
 
+  it('missing borrower row + BIS row stays null instead of receiving a positive imputation', async () => {
+    const result = await scoreFinancialSystemExposure(
+      TEST_ISO2,
+      reader({ debtRow: false, bisRow: true, confirmedNonDrs: false }),
+    );
+    assert.equal(result.imputedWeight, 0, 'row absence alone must not imply that debt is not applicable');
+    assert.equal(result.observedWeight, 0.65, 'only the two BIS slots and FATF slot may resolve');
+  });
+
   it('a BIS row with no parseable field does not trigger the imputation', async () => {
     const corrupt: ResilienceSeedReader = async (key) => {
       if (key.startsWith('seed-meta:')) return { status: 'ok', fetchedAt: Date.now() };
+      if (key === 'economic:wb-external-debt:v1') return reachableDebtEnvelope([TEST_ISO2]);
       if (key === 'economic:bis-lbs:v1') return { countries: { [TEST_ISO2]: { note: 'corrupt' } } };
       if (key === 'economic:fatf-listing:v1') {
         return { listings: { IR: 'black', KP: 'black' }, publicationDate: '2026-06-01' };
@@ -598,6 +679,7 @@ describe('scoreFinancialSystemExposure — component-read contract', () => {
       if (key === 'seed-meta:economic:wb-external-debt') return { fetchedAt: Date.now() };
       if (key === 'seed-meta:economic:bis-lbs') return { fetchedAt: Date.now() };
       if (key === 'seed-meta:economic:fatf-listing') return { fetchedAt: Date.now() };
+      if (key === 'economic:wb-external-debt:v1') return reachableDebtEnvelope();
       return null;
     };
     await scoreFinancialSystemExposure(TEST_ISO2, reader);
@@ -657,6 +739,7 @@ describe('scoreFinancialSystemExposure — component-read contract', () => {
       if (key === 'seed-meta:economic:wb-external-debt') return { fetchedAt: Date.now() };
       if (key === 'seed-meta:economic:bis-lbs') return { fetchedAt: Date.now() };
       if (key === 'seed-meta:economic:fatf-listing') return { fetchedAt: Date.now() };
+      if (key === 'economic:wb-external-debt:v1') return reachableDebtEnvelope();
       return null;
     };
     await scoreFinancialSystemExposure(TEST_ISO2, reader);
@@ -688,7 +771,10 @@ describe('scoreFinancialSystemExposure — #6459 inversion probe (pinned)', () =
     if (key.startsWith('seed-meta:')) return { status: 'ok', fetchedAt: Date.now() };
     if (key === 'economic:wb-external-debt:v1') {
       // MC/LU absent: neither is a World Bank Debtor Reporting System filer.
-      return { countries: { RU: { value: 3, year: 2024 }, TD: { value: 1, year: 2024 } } };
+      return {
+        countries: { RU: { value: 3, year: 2024 }, TD: { value: 1, year: 2024 } },
+        nonDrsCountryCodes: ['LU', 'MC'],
+      };
     }
     if (key === 'economic:bis-lbs:v1') {
       return {

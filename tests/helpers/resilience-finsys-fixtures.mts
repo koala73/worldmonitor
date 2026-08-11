@@ -1,13 +1,15 @@
 // Production-shaped fixtures for the `financialSystemExposure` calibration
 // gates (issue #6459 Phase A).
 //
-// Every value below is a VERBATIM reading of the three production seed
-// envelopes on 2026-08-11, pulled read-only from Upstash:
+// Every component value below is a VERBATIM reading of the three production
+// seed envelopes on 2026-08-11, pulled read-only from Upstash:
 //   economic:wb-external-debt:v1  (119 countries)
 //   economic:bis-lbs:v1           (200 countries)
 //   economic:fatf-listing:v1      (FATF plenary publication 2026-06-01)
 //
-// They are pinned, not live-fetched, so the calibration gates are
+// The `nonDrsCountryCodes` subset is pinned from the World Bank country
+// catalog's lendingType=LNX classification captured on the same date. The
+// values are pinned, not live-fetched, so the calibration gates are
 // deterministic and run in CI without credentials. The subset is the union
 // of the `sanctions-isolated` cohort, the dimension-level matched pairs,
 // and the issue's stub probe, plus DE as an unremarkable-OECD control.
@@ -52,6 +54,11 @@ export const FINSYS_DEBT_FIXTURE: Readonly<Record<string, FinSysDebtEntry>> = {
   MU: { value: 62.83, year: 2024 },
   // KP, CU, VE, LY, LU, SG, CH, US, MC, DE: no DRS row in production.
 };
+
+/** World Bank country-catalog records classified as lendingType=LNX. */
+export const FINSYS_NON_DRS_COUNTRY_CODES: ReadonlyArray<string> = [
+  'CH', 'CU', 'DE', 'KP', 'LU', 'MC', 'SG', 'US',
+];
 
 /** `economic:bis-lbs:v1` — BIS CBS by-parent claims and reporter count. */
 export const FINSYS_BIS_FIXTURE: Readonly<Record<string, FinSysBisEntry>> = {
@@ -111,7 +118,10 @@ export function createFinSysFixtureReader(
   overrides: FinSysFixtureOverrides = {},
   nowMs: number = Date.now(),
 ): ResilienceSeedReader {
-  const debt = { countries: { ...FINSYS_DEBT_FIXTURE, ...(overrides.debt ?? {}) } };
+  const debt = {
+    countries: { ...FINSYS_DEBT_FIXTURE, ...(overrides.debt ?? {}) },
+    nonDrsCountryCodes: FINSYS_NON_DRS_COUNTRY_CODES,
+  };
   const bis = { countries: { ...FINSYS_BIS_FIXTURE, ...(overrides.bis ?? {}) } };
   const fatf = overrides.fatf ?? FINSYS_FATF_FIXTURE;
   return async (key: string) => {
