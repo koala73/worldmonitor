@@ -1,6 +1,7 @@
 # Phase 4 — Native Stock Workspace Evidence
 
-**Implementation commit:** `PENDING_BACKFILL`
+**Implementation commit:** `f86fbce81b287a62d0af73a126dae8521aa7bc68`
+(`feat(stock): add native truthful research workspace`)
 
 **Scope:** a native WorldMonitor route for `/stocks` and `/stocks/:symbol`,
 with a scrollable research workspace, S&P 500 high-market-capitalization

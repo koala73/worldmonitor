@@ -1,7 +1,7 @@
 # Global Intelligence Mother Reconstruction — Master Status
 
 **Controlling specification:** `D:\google\Codex_5.6_Terra_极高_全球情报母体重构执行书_2026-08-11.md`
-**Updated:** 2026-08-11T20:24:00+08:00
+**Updated:** 2026-08-11T20:31:00+08:00
 **Official product brand:** 全球实时热点追踪·探长版
 **Current working branch:** `integration/pokieticker-maritime-china-factory`
 **Formal mother repository:** `daking32168-byte/worldmonitor` (AGPL-3.0-only)
@@ -18,7 +18,7 @@ This current-status receipt supersedes the historical preflight rows below.
 | 1 | completed with recorded data-suite limitation | Real upstream mother baseline, independent brand, AGPL/PokieTicker notices, Windows build and production preview | `c889fcfbdab4bf2bcd7a28f85ed32114f288d6aa` | `evidence/phase1-mother-baseline.md` |
 | 2 | completed | Provider/data contracts, generated API, explicit disabled state and historical-fixture isolation | `2df9ef0a133564789bb398d7a9f363de171e78b8` | `evidence/phase2-data-contract.md` |
 | 3 | completed for code and automated gates; licensed-live acceptance pending | Server-only Massive REST/WebSocket relay, exchange-calendar status, symbol isolation and explicit no-key/no-entitlement denial | `9cb8cb6efe2164891ea26cb6b2f51b6a3da086b0` | `evidence/phase3-authorized-stock-relay.md` |
-| 4 | completed for native UI, browser layout and no-provider truthfulness; licensed-live visual acceptance pending | `/stocks` / `/stocks/:symbol`, priority selector, provider-only search, D3 chart shell, event/research panels and independently scrollable responsive workspace | `PENDING_BACKFILL` | `evidence/phase4-stock-workspace.md`, `POKIETICKER_COMPONENT_MIGRATION.md` |
+| 4 | completed for native UI, browser layout and no-provider truthfulness; licensed-live visual acceptance pending | `/stocks` / `/stocks/:symbol`, priority selector, provider-only search, D3 chart shell, event/research panels and independently scrollable responsive workspace | `f86fbce81b287a62d0af73a126dae8521aa7bc68` | `evidence/phase4-stock-workspace.md`, `POKIETICKER_COMPONENT_MIGRATION.md` |
 
 | Phase | Status | Scope | Commit | Evidence |
 |---|---|---|---|---|
@@ -155,7 +155,8 @@ returns no unverified symbol results, and the news/analysis/similar/prediction/
 story panels are explicit disabled/empty states. This is a completed UI and
 truthfulness gate, **not** a licensed-live K-line or price-accuracy claim.
 
-**Phase 4 implementation commit:** `PENDING_BACKFILL`.
+**Phase 4 implementation commit:** `f86fbce81b287a62d0af73a126dae8521aa7bc68`
+(`feat(stock): add native truthful research workspace`).
 
 ## Next action
 

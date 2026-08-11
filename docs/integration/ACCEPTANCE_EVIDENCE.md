@@ -125,7 +125,8 @@ timestamps and screenshots.
 
 ## Phase 4 — native stock workspace, scroll and responsive truthfulness
 
-**Implementation commit:** `PENDING_BACKFILL`.
+**Implementation commit:** `f86fbce81b287a62d0af73a126dae8521aa7bc68`
+(`feat(stock): add native truthful research workspace`).
 
 | Check | Result | Evidence |
 |---|---|---|
