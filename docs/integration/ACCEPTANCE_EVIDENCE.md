@@ -170,7 +170,8 @@ are retained in `evidence/phase5-news-alignment.md`.
 
 ## Phase 6 - maritime logistics, AIS and supply-chain boundaries
 
-**Implementation commit:** `PENDING_BACKFILL_AFTER_COMMIT`.
+**Implementation commit:** `d361ee8a48e449f73be916e3a6a992cb66c9f8be`
+(`feat(maritime): add truthful logistics workspace`).
 
 | Check | Result | Evidence |
 |---|---|---|

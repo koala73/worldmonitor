@@ -219,7 +219,8 @@ production-build gates passed. Details are in
 `evidence/phase6-maritime-logistics.md` and
 `evidence/phase6-command-log.md`.
 
-**Phase 6 implementation commit:** `PENDING_BACKFILL_AFTER_COMMIT`.
+**Phase 6 implementation commit:** `d361ee8a48e449f73be916e3a6a992cb66c9f8be`
+(`feat(maritime): add truthful logistics workspace`).
 
 ## Next action
 
