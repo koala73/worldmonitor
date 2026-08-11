@@ -58,8 +58,10 @@ native capability.
 - No Provider credentials were configured. The preview displayed unavailable or
   waiting states rather than synthetic bars or fabricated live content.
 
-## PENDING SHA BACKFILL
+## Implementation commit
 
-The Phase 1 implementation commit SHA is filled in by the immediately following
-documentation-backfill commit. This placeholder prevents a predicted SHA from
-being presented as a real Git object.
+`c889fcfbdab4bf2bcd7a28f85ed32114f288d6aa`
+(`chore(integration): establish WorldMonitor mother baseline`) is the real,
+locally created Phase 1 implementation commit. This documentation receipt is
+the immediately following backfill commit, so the implementation SHA was never
+predicted or presented before it existed.

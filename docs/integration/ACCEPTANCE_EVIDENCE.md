@@ -50,7 +50,7 @@
 
 ## Phase 1 implementation baseline
 
-**Implementation commit:** pending; this value is backfilled in the immediate documentation receipt commit after the implementation commit exists.
+**Implementation commit:** `c889fcfbdab4bf2bcd7a28f85ed32114f288d6aa` (`chore(integration): establish WorldMonitor mother baseline`).
 
 | Check | Result | Evidence |
 |---|---|---|

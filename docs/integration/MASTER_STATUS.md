@@ -15,7 +15,7 @@ This current-status receipt supersedes the historical preflight rows below.
 | Phase | Status | Scope | Commit | Evidence |
 |---|---|---|---|---|
 | 0 | completed | Safety inventory and recoverability closure | recorded | `evidence/phase0-closure.md` |
-| 1 | completed with recorded data-suite limitation | Real upstream mother baseline, independent brand, AGPL/PokieTicker notices, Windows build and production preview | pending implementation SHA backfill | `evidence/phase1-mother-baseline.md` |
+| 1 | completed with recorded data-suite limitation | Real upstream mother baseline, independent brand, AGPL/PokieTicker notices, Windows build and production preview | `c889fcfbdab4bf2bcd7a28f85ed32114f288d6aa` | `evidence/phase1-mother-baseline.md` |
 | 2 | in progress next | Provider contracts and honest disabled-state implementation; no credential required to begin | — | this document and `PROVIDER_MATRIX.md` |
 
 | Phase | Status | Scope | Commit | Evidence |
@@ -66,5 +66,8 @@ PokieTicker MIT/source trace, Windows-safe blog build and production build.
 The final DOM/browser checks passed. `test:data` was invoked but exceeded the
 64-second noninteractive limit; its final result is recorded as inconclusive,
 not passed. See `evidence/phase1-mother-baseline.md`.
+
+**Phase 1 implementation commit:** `c889fcfbdab4bf2bcd7a28f85ed32114f288d6aa`
+(`chore(integration): establish WorldMonitor mother baseline`).
 
 Proceed with Phase 2 provider/data contracts from the completed Phase 1 baseline. Missing Provider credentials must result in tested disabled states, never invented data or real-time claims.
