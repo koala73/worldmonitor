@@ -1,0 +1,22 @@
+syntax = "proto3";
+
+package worldmonitor.market.v1;
+
+import "buf/validate/validate.proto";
+import "sebuf/http/annotations.proto";
+import "worldmonitor/market/v1/stock_data.proto";
+
+message GetStockQuoteRequest {
+  string symbol = 1 [
+    (sebuf.http.query) = {name: "symbol"},
+    (buf.validate.field).required = true,
+    (buf.validate.field).string.min_len = 1,
+    (buf.validate.field).string.max_len = 32
+  ];
+}
+
+message GetStockQuoteResponse {
+  string symbol = 1;
+  StockQuote quote = 2;
+  DataProvenance provenance = 3;
+}

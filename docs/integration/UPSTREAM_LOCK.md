@@ -29,6 +29,14 @@ Local verification is still required and currently unavailable: `origin/main` re
 
 ## Legacy-data lock
 
+## Phase 2 fixture-isolation receipt
+
+Phase 2 reads the preserved legacy SQLite database only through a read-only
+query to derive a twelve-row test fixture for AAPL, MSFT, NVDA and TSLA. The
+fixture records the locked repository SHA, database SHA-256, MIT status,
+maximum source date `2026-03-03`, and `HISTORICAL_SNAPSHOT` label. The database
+itself remains outside Git and no runtime market endpoint reads this fixture.
+
 ## Phase 1 local synchronization receipt
 
 After the user reported GitHub 443 recovery, local HTTP/1.1 fetches of

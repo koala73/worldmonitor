@@ -51,3 +51,17 @@
 **Decision:** Centralize the product identity in a source constant, render the exact AGPL attribution visibly in the application footer, retain PokieTicker's MIT license and source lock, and test these requirements in the repository.
 **Reason:** A README-only promise can drift from the shipped UI. The user requires an independently branded product while the AGPL upstream attribution, PokieTicker provenance, and non-deceptive data boundaries must remain visible and auditable.
 **Consequence:** Phase 1 does not copy PokieTicker source code or its historical SQLite data. It adds only the license/trace documents, branded UI metadata, and contract tests; live data, K-lines, AIS facts and Provider claims remain out of scope until their honest Phase 2+ adapters exist.
+
+## D-0010 — Fail closed for market data until a licensed adapter exists
+
+**Decision:** Establish the complete stock RPC/provenance contract before
+connecting a Provider. The initial handler validates inputs but returns an
+explicit `NOT_CONFIGURED` envelope and no value-bearing market payload.
+**Reason:** A blank 200 response conceals configuration failure, while a shared
+sample OHLC array would be a fake K line. The product must be able to distinguish
+licensed real-time, delayed, historical, stale, degraded, unavailable and
+unconfigured states in both code and UI before it can render a chart.
+**Consequence:** Every future market adapter must use the Phase 2 symbol
+validator, symbol-qualified cache key and bar invariant guard. A Provider key or
+non-empty response cannot by itself upgrade the status to
+`REALTIME_LICENSED`.

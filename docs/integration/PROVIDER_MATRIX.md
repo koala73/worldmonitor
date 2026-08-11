@@ -10,6 +10,14 @@ AIS message or trade record. The final local preview showed honest
 unavailable/waiting states. All capability statuses below remain unchanged until
 a later adapter contract and authorization prove otherwise.
 
+**Phase 2 contract check:** all new stock RPC responses now carry `provider`,
+`providerStatus`, `sourceUrl`, `sourceId`, `observedAt`, `fetchedAt`, `asOf`,
+`delaySeconds`, `freshnessSeconds`, `isFallback`, `fallbackReason`, and
+`licenseNote`. With no configured contract-backed Provider they return only
+`NOT_CONFIGURED` provenance and no market values. `MARKET_CLOSED` is a defined
+future status for a verified exchange-calendar/provider path, not a status
+guessed by the current disabled handler.
+
 **Phase 1 preflight check (blocked):** the current block is local source synchronization, not a Provider credential. No Provider, fallback, K-line payload, quote endpoint, AIS message, or trade record was introduced while the upstream fetch gate is unavailable.
 
 | Capability | Provider / source | Current status | What may be displayed | What may not be displayed |

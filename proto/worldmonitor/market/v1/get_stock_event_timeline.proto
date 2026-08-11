@@ -1,0 +1,30 @@
+syntax = "proto3";
+
+package worldmonitor.market.v1;
+
+import "buf/validate/validate.proto";
+import "sebuf/http/annotations.proto";
+import "worldmonitor/market/v1/stock_data.proto";
+
+message GetStockEventTimelineRequest {
+  string symbol = 1 [
+    (sebuf.http.query) = {name: "symbol"},
+    (buf.validate.field).required = true,
+    (buf.validate.field).string.min_len = 1,
+    (buf.validate.field).string.max_len = 32
+  ];
+  int64 start_utc = 2 [
+    (sebuf.http.query) = {name: "start_utc"},
+    (sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER
+  ];
+  int64 end_utc = 3 [
+    (sebuf.http.query) = {name: "end_utc"},
+    (sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER
+  ];
+}
+
+message GetStockEventTimelineResponse {
+  string symbol = 1;
+  repeated StockEvent events = 2;
+  DataProvenance provenance = 3;
+}

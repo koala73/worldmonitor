@@ -69,3 +69,26 @@
 mother baseline, legal/source provenance, code build and visible product check
 pass. The all-suite data result must be rerun in CI or a long-running
 environment before release-wide test certification.
+
+## Phase 2 — data contract and honest disabled state
+
+**Implementation commit:** pending; this value is backfilled in the immediate
+documentation receipt commit after the implementation commit exists.
+
+| Check | Result | Evidence |
+|---|---|---|
+| Eight contract RPCs and generated client/server/OpenAPI | PASS | Official Buf/sebuf generation completed; Market client/server, request validation, Market OpenAPI and bundle updated. |
+| New protobuf contract lint | PASS | Scoped `buf lint` across the nine new market protocol files exited 0. |
+| Whole repository protobuf lint | BASELINE LIMITATION | Exited 100 on pre-existing unused-import and intelligence `go_package` errors outside this Phase 2 diff; none originated in the new market protocols. |
+| API gateway contract | PASS | `npm run lint:api-contract=0`; 148 API files checked, 96 query parameters checked. |
+| No-key disabled state | PASS | Generated route returns HTTP 200 with `PROVIDER_STATUS_NOT_CONFIGURED`, provenance fields and empty/no-value result; it returns no synthetic bar or quote. |
+| Invalid symbol rejection | PASS | Generated `GetStockBars` route rejects `AAPL;DROP` with HTTP 400. |
+| Symbol/cache/bar isolation | PASS | Focused test verifies distinct cache keys for AAPL/MSFT/NVDA/TSLA, cross-symbol rejection, timestamp/OHLC/volume invariants, and no disabled-state bars. |
+| Historical fixture honesty | PASS | Isolated AAPL/MSFT/NVDA/TSLA data is sourced from the locked PokieTicker SQLite snapshot, marked `HISTORICAL_SNAPSHOT`, and is used only to test distinct valid OHLC shapes. |
+| Types, focused API tests and production build | PASS | `npm run typecheck:all=0`; focused six-test suite passed; `npm run build:full=0`. |
+| Production visual claim | NOT APPLICABLE | Phase 2 establishes contracts, not a stock workspace. No mock screen or fixture screenshot is claimed as production UI acceptance; that visual gate belongs to Phases 3–4. |
+
+**Phase 2 gate: COMPLETED WITH A RECORDED BASELINE-LINT LIMITATION.** All new
+contract, generation, API, truthfulness and production-build gates pass. The
+whole-tree protobuf lint remains an upstream baseline issue and is not counted
+as a pass.

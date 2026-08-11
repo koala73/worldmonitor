@@ -26,6 +26,14 @@ import "worldmonitor/market/v1/get_insider_transactions.proto";
 import "worldmonitor/market/v1/get_market_breadth_history.proto";
 import "worldmonitor/market/v1/get_gold_intelligence.proto";
 import "worldmonitor/market/v1/get_hyperliquid_flow.proto";
+import "worldmonitor/market/v1/search_stocks.proto";
+import "worldmonitor/market/v1/get_stock_bars.proto";
+import "worldmonitor/market/v1/get_stock_quote.proto";
+import "worldmonitor/market/v1/list_stock_news.proto";
+import "worldmonitor/market/v1/get_stock_event_timeline.proto";
+import "worldmonitor/market/v1/analyze_stock_range.proto";
+import "worldmonitor/market/v1/get_stock_forecast.proto";
+import "worldmonitor/market/v1/find_similar_stock_events.proto";
 
 // MarketService provides APIs for financial market data from Finnhub, Yahoo Finance, and CoinGecko.
 service MarketService {
@@ -146,5 +154,47 @@ service MarketService {
   // GetHyperliquidFlow retrieves Hyperliquid perp positioning flow (funding/OI/basis composite scores).
   rpc GetHyperliquidFlow(GetHyperliquidFlowRequest) returns (GetHyperliquidFlowResponse) {
     option (sebuf.http.config) = {path: "/get-hyperliquid-flow", method: HTTP_METHOD_GET};
+  }
+
+  // SearchStocks returns provider-sourced equity identifiers when an approved
+  // search provider is configured. It returns an explicit NOT_CONFIGURED state
+  // rather than static or fabricated search results otherwise.
+  rpc SearchStocks(SearchStocksRequest) returns (SearchStocksResponse) {
+    option (sebuf.http.config) = {path: "/search-stocks", method: HTTP_METHOD_GET};
+  }
+
+  // GetStockBars returns one requested symbol's validated OHLCV bars.
+  rpc GetStockBars(GetStockBarsRequest) returns (GetStockBarsResponse) {
+    option (sebuf.http.config) = {path: "/get-stock-bars", method: HTTP_METHOD_GET};
+  }
+
+  // GetStockQuote returns one requested symbol's quote with provenance.
+  rpc GetStockQuote(GetStockQuoteRequest) returns (GetStockQuoteResponse) {
+    option (sebuf.http.config) = {path: "/get-stock-quote", method: HTTP_METHOD_GET};
+  }
+
+  // ListStockNews returns source-linked news for one requested symbol.
+  rpc ListStockNews(ListStockNewsRequest) returns (ListStockNewsResponse) {
+    option (sebuf.http.config) = {path: "/list-stock-news", method: HTTP_METHOD_GET};
+  }
+
+  // GetStockEventTimeline returns source-linked timeline events for one symbol.
+  rpc GetStockEventTimeline(GetStockEventTimelineRequest) returns (GetStockEventTimelineResponse) {
+    option (sebuf.http.config) = {path: "/get-stock-event-timeline", method: HTTP_METHOD_GET};
+  }
+
+  // AnalyzeStockRange returns an explicitly sourced historical range analysis.
+  rpc AnalyzeStockRange(AnalyzeStockRangeRequest) returns (AnalyzeStockRangeResponse) {
+    option (sebuf.http.config) = {path: "/analyze-stock-range", method: HTTP_METHOD_GET};
+  }
+
+  // GetStockForecast returns a versioned forecast only when its data/model path is available.
+  rpc GetStockForecast(GetStockForecastRequest) returns (GetStockForecastResponse) {
+    option (sebuf.http.config) = {path: "/get-stock-forecast", method: HTTP_METHOD_GET};
+  }
+
+  // FindSimilarStockEvents returns evidence-linked similar events for one symbol.
+  rpc FindSimilarStockEvents(FindSimilarStockEventsRequest) returns (FindSimilarStockEventsResponse) {
+    option (sebuf.http.config) = {path: "/find-similar-stock-events", method: HTTP_METHOD_GET};
   }
 }

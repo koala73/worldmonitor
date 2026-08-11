@@ -699,7 +699,187 @@ export interface HyperliquidAssetFlow {
   alerts: string[];
 }
 
+export interface SearchStocksRequest {
+  query: string;
+  limit: number;
+}
+
+export interface SearchStocksResponse {
+  results: StockSearchResult[];
+  provenance?: DataProvenance;
+}
+
+export interface StockSearchResult {
+  symbol: string;
+  name: string;
+  exchange: string;
+  currency: string;
+}
+
+export interface DataProvenance {
+  provider: string;
+  providerStatus: ProviderStatus;
+  sourceUrl: string;
+  sourceId: string;
+  observedAt: number;
+  fetchedAt: number;
+  asOf: number;
+  delaySeconds: number;
+  freshnessSeconds: number;
+  isFallback: boolean;
+  fallbackReason: string;
+  licenseNote: string;
+}
+
+export interface GetStockBarsRequest {
+  symbol: string;
+  interval: string;
+  startUtc: number;
+  endUtc: number;
+  range: string;
+}
+
+export interface GetStockBarsResponse {
+  symbol: string;
+  interval: string;
+  bars: StockBar[];
+  marketClosed: boolean;
+  provenance?: DataProvenance;
+}
+
+export interface StockBar {
+  symbol: string;
+  interval: string;
+  timestampUtc: number;
+  tradingDate: string;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+  volume: number;
+  vwap: number;
+  transactions: number;
+  adjusted: boolean;
+  session: MarketSession;
+  currency: string;
+  exchange: string;
+}
+
+export interface GetStockQuoteRequest {
+  symbol: string;
+}
+
+export interface GetStockQuoteResponse {
+  symbol: string;
+  quote?: StockQuote;
+  provenance?: DataProvenance;
+}
+
+export interface StockQuote {
+  symbol: string;
+  price: number;
+  change: number;
+  changePercent: number;
+  currency: string;
+  exchange: string;
+  session: MarketSession;
+}
+
+export interface ListStockNewsRequest {
+  symbol: string;
+  limit: number;
+}
+
+export interface ListStockNewsResponse {
+  symbol: string;
+  items: StockNewsItem[];
+  provenance?: DataProvenance;
+}
+
+export interface StockNewsItem {
+  id: string;
+  symbol: string;
+  title: string;
+  source: string;
+  sourceUrl: string;
+  publishedAtUtc: number;
+}
+
+export interface GetStockEventTimelineRequest {
+  symbol: string;
+  startUtc: number;
+  endUtc: number;
+}
+
+export interface GetStockEventTimelineResponse {
+  symbol: string;
+  events: StockEvent[];
+  provenance?: DataProvenance;
+}
+
+export interface StockEvent {
+  id: string;
+  symbol: string;
+  eventType: string;
+  summary: string;
+  sourceUrl: string;
+  occurredAtUtc: number;
+}
+
+export interface AnalyzeStockRangeRequest {
+  symbol: string;
+  startUtc: number;
+  endUtc: number;
+}
+
+export interface AnalyzeStockRangeResponse {
+  analysis?: StockRangeAnalysis;
+  provenance?: DataProvenance;
+}
+
+export interface StockRangeAnalysis {
+  available: boolean;
+  reason: string;
+  symbol: string;
+  rangeStartUtc: number;
+  rangeEndUtc: number;
+}
+
+export interface GetStockForecastRequest {
+  symbol: string;
+  horizon: string;
+}
+
+export interface GetStockForecastResponse {
+  forecast?: StockForecast;
+  provenance?: DataProvenance;
+}
+
+export interface StockForecast {
+  available: boolean;
+  reason: string;
+  symbol: string;
+  horizon: string;
+  modelVersion: string;
+}
+
+export interface FindSimilarStockEventsRequest {
+  symbol: string;
+  eventId: string;
+  limit: number;
+}
+
+export interface FindSimilarStockEventsResponse {
+  symbol: string;
+  events: StockEvent[];
+  provenance?: DataProvenance;
+}
+
 export type MarketQuoteUnavailableReason = "MARKET_QUOTE_UNAVAILABLE_REASON_UNSPECIFIED" | "MARKET_QUOTE_UNAVAILABLE_REASON_NOT_FOUND" | "MARKET_QUOTE_UNAVAILABLE_REASON_PROVIDER_ERROR" | "MARKET_QUOTE_UNAVAILABLE_REASON_PROVIDER_RATE_LIMITED" | "MARKET_QUOTE_UNAVAILABLE_REASON_PROVIDER_NOT_CONFIGURED" | "MARKET_QUOTE_UNAVAILABLE_REASON_REQUEST_LIMIT_EXCEEDED" | "MARKET_QUOTE_UNAVAILABLE_REASON_UPSTREAM_BUDGET_EXHAUSTED" | "MARKET_QUOTE_UNAVAILABLE_REASON_SEED_UNAVAILABLE";
+
+export type MarketSession = "MARKET_SESSION_UNSPECIFIED" | "MARKET_SESSION_PRE" | "MARKET_SESSION_REGULAR" | "MARKET_SESSION_AFTER" | "MARKET_SESSION_CLOSED";
+
+export type ProviderStatus = "PROVIDER_STATUS_UNSPECIFIED" | "PROVIDER_STATUS_REALTIME_LICENSED" | "PROVIDER_STATUS_DELAYED_15M" | "PROVIDER_STATUS_DELAYED_UNVERIFIED" | "PROVIDER_STATUS_END_OF_DAY" | "PROVIDER_STATUS_HISTORICAL_SNAPSHOT" | "PROVIDER_STATUS_STALE" | "PROVIDER_STATUS_DEGRADED" | "PROVIDER_STATUS_NOT_CONFIGURED" | "PROVIDER_STATUS_UNAVAILABLE" | "PROVIDER_STATUS_MARKET_CLOSED";
 
 export interface FieldViolation {
   field: string;
@@ -769,6 +949,14 @@ export interface MarketServiceHandler {
   getMarketBreadthHistory(ctx: ServerContext, req: GetMarketBreadthHistoryRequest): Promise<GetMarketBreadthHistoryResponse>;
   getGoldIntelligence(ctx: ServerContext, req: GetGoldIntelligenceRequest): Promise<GetGoldIntelligenceResponse>;
   getHyperliquidFlow(ctx: ServerContext, req: GetHyperliquidFlowRequest): Promise<GetHyperliquidFlowResponse>;
+  searchStocks(ctx: ServerContext, req: SearchStocksRequest): Promise<SearchStocksResponse>;
+  getStockBars(ctx: ServerContext, req: GetStockBarsRequest): Promise<GetStockBarsResponse>;
+  getStockQuote(ctx: ServerContext, req: GetStockQuoteRequest): Promise<GetStockQuoteResponse>;
+  listStockNews(ctx: ServerContext, req: ListStockNewsRequest): Promise<ListStockNewsResponse>;
+  getStockEventTimeline(ctx: ServerContext, req: GetStockEventTimelineRequest): Promise<GetStockEventTimelineResponse>;
+  analyzeStockRange(ctx: ServerContext, req: AnalyzeStockRangeRequest): Promise<AnalyzeStockRangeResponse>;
+  getStockForecast(ctx: ServerContext, req: GetStockForecastRequest): Promise<GetStockForecastResponse>;
+  findSimilarStockEvents(ctx: ServerContext, req: FindSimilarStockEventsRequest): Promise<FindSimilarStockEventsResponse>;
 }
 
 export function createMarketServiceRoutes(
@@ -1734,6 +1922,395 @@ export function createMarketServiceRoutes(
 
           const result = await handler.getHyperliquidFlow(ctx, body);
           return new Response(JSON.stringify(result as GetHyperliquidFlowResponse), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          });
+        } catch (err: unknown) {
+          if (err instanceof ValidationError) {
+            return new Response(JSON.stringify({ violations: err.violations }), {
+              status: 400,
+              headers: { "Content-Type": "application/json" },
+            });
+          }
+          if (options?.onError) {
+            return options.onError(err, req);
+          }
+          const message = err instanceof Error ? err.message : String(err);
+          return new Response(JSON.stringify({ message }), {
+            status: 500,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+      },
+    },
+    {
+      method: "GET",
+      path: "/api/market/v1/search-stocks",
+      handler: async (req: Request): Promise<Response> => {
+        try {
+          const pathParams: Record<string, string> = {};
+          const url = new URL(req.url, "http://localhost");
+          const params = url.searchParams;
+          const body: SearchStocksRequest = {
+            query: params.get("query") ?? "",
+            limit: Number(params.get("limit") ?? "0"),
+          };
+          if (options?.validateRequest) {
+            const bodyViolations = options.validateRequest("searchStocks", body);
+            if (bodyViolations) {
+              throw new ValidationError(bodyViolations);
+            }
+          }
+
+          const ctx: ServerContext = {
+            request: req,
+            pathParams,
+            headers: Object.fromEntries(req.headers.entries()),
+          };
+
+          const result = await handler.searchStocks(ctx, body);
+          return new Response(JSON.stringify(result as SearchStocksResponse), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          });
+        } catch (err: unknown) {
+          if (err instanceof ValidationError) {
+            return new Response(JSON.stringify({ violations: err.violations }), {
+              status: 400,
+              headers: { "Content-Type": "application/json" },
+            });
+          }
+          if (options?.onError) {
+            return options.onError(err, req);
+          }
+          const message = err instanceof Error ? err.message : String(err);
+          return new Response(JSON.stringify({ message }), {
+            status: 500,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+      },
+    },
+    {
+      method: "GET",
+      path: "/api/market/v1/get-stock-bars",
+      handler: async (req: Request): Promise<Response> => {
+        try {
+          const pathParams: Record<string, string> = {};
+          const url = new URL(req.url, "http://localhost");
+          const params = url.searchParams;
+          const body: GetStockBarsRequest = {
+            symbol: params.get("symbol") ?? "",
+            interval: params.get("interval") ?? "",
+            startUtc: Number(params.get("start_utc") ?? "0"),
+            endUtc: Number(params.get("end_utc") ?? "0"),
+            range: params.get("range") ?? "",
+          };
+          if (options?.validateRequest) {
+            const bodyViolations = options.validateRequest("getStockBars", body);
+            if (bodyViolations) {
+              throw new ValidationError(bodyViolations);
+            }
+          }
+
+          const ctx: ServerContext = {
+            request: req,
+            pathParams,
+            headers: Object.fromEntries(req.headers.entries()),
+          };
+
+          const result = await handler.getStockBars(ctx, body);
+          return new Response(JSON.stringify(result as GetStockBarsResponse), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          });
+        } catch (err: unknown) {
+          if (err instanceof ValidationError) {
+            return new Response(JSON.stringify({ violations: err.violations }), {
+              status: 400,
+              headers: { "Content-Type": "application/json" },
+            });
+          }
+          if (options?.onError) {
+            return options.onError(err, req);
+          }
+          const message = err instanceof Error ? err.message : String(err);
+          return new Response(JSON.stringify({ message }), {
+            status: 500,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+      },
+    },
+    {
+      method: "GET",
+      path: "/api/market/v1/get-stock-quote",
+      handler: async (req: Request): Promise<Response> => {
+        try {
+          const pathParams: Record<string, string> = {};
+          const url = new URL(req.url, "http://localhost");
+          const params = url.searchParams;
+          const body: GetStockQuoteRequest = {
+            symbol: params.get("symbol") ?? "",
+          };
+          if (options?.validateRequest) {
+            const bodyViolations = options.validateRequest("getStockQuote", body);
+            if (bodyViolations) {
+              throw new ValidationError(bodyViolations);
+            }
+          }
+
+          const ctx: ServerContext = {
+            request: req,
+            pathParams,
+            headers: Object.fromEntries(req.headers.entries()),
+          };
+
+          const result = await handler.getStockQuote(ctx, body);
+          return new Response(JSON.stringify(result as GetStockQuoteResponse), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          });
+        } catch (err: unknown) {
+          if (err instanceof ValidationError) {
+            return new Response(JSON.stringify({ violations: err.violations }), {
+              status: 400,
+              headers: { "Content-Type": "application/json" },
+            });
+          }
+          if (options?.onError) {
+            return options.onError(err, req);
+          }
+          const message = err instanceof Error ? err.message : String(err);
+          return new Response(JSON.stringify({ message }), {
+            status: 500,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+      },
+    },
+    {
+      method: "GET",
+      path: "/api/market/v1/list-stock-news",
+      handler: async (req: Request): Promise<Response> => {
+        try {
+          const pathParams: Record<string, string> = {};
+          const url = new URL(req.url, "http://localhost");
+          const params = url.searchParams;
+          const body: ListStockNewsRequest = {
+            symbol: params.get("symbol") ?? "",
+            limit: Number(params.get("limit") ?? "0"),
+          };
+          if (options?.validateRequest) {
+            const bodyViolations = options.validateRequest("listStockNews", body);
+            if (bodyViolations) {
+              throw new ValidationError(bodyViolations);
+            }
+          }
+
+          const ctx: ServerContext = {
+            request: req,
+            pathParams,
+            headers: Object.fromEntries(req.headers.entries()),
+          };
+
+          const result = await handler.listStockNews(ctx, body);
+          return new Response(JSON.stringify(result as ListStockNewsResponse), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          });
+        } catch (err: unknown) {
+          if (err instanceof ValidationError) {
+            return new Response(JSON.stringify({ violations: err.violations }), {
+              status: 400,
+              headers: { "Content-Type": "application/json" },
+            });
+          }
+          if (options?.onError) {
+            return options.onError(err, req);
+          }
+          const message = err instanceof Error ? err.message : String(err);
+          return new Response(JSON.stringify({ message }), {
+            status: 500,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+      },
+    },
+    {
+      method: "GET",
+      path: "/api/market/v1/get-stock-event-timeline",
+      handler: async (req: Request): Promise<Response> => {
+        try {
+          const pathParams: Record<string, string> = {};
+          const url = new URL(req.url, "http://localhost");
+          const params = url.searchParams;
+          const body: GetStockEventTimelineRequest = {
+            symbol: params.get("symbol") ?? "",
+            startUtc: Number(params.get("start_utc") ?? "0"),
+            endUtc: Number(params.get("end_utc") ?? "0"),
+          };
+          if (options?.validateRequest) {
+            const bodyViolations = options.validateRequest("getStockEventTimeline", body);
+            if (bodyViolations) {
+              throw new ValidationError(bodyViolations);
+            }
+          }
+
+          const ctx: ServerContext = {
+            request: req,
+            pathParams,
+            headers: Object.fromEntries(req.headers.entries()),
+          };
+
+          const result = await handler.getStockEventTimeline(ctx, body);
+          return new Response(JSON.stringify(result as GetStockEventTimelineResponse), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          });
+        } catch (err: unknown) {
+          if (err instanceof ValidationError) {
+            return new Response(JSON.stringify({ violations: err.violations }), {
+              status: 400,
+              headers: { "Content-Type": "application/json" },
+            });
+          }
+          if (options?.onError) {
+            return options.onError(err, req);
+          }
+          const message = err instanceof Error ? err.message : String(err);
+          return new Response(JSON.stringify({ message }), {
+            status: 500,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+      },
+    },
+    {
+      method: "GET",
+      path: "/api/market/v1/analyze-stock-range",
+      handler: async (req: Request): Promise<Response> => {
+        try {
+          const pathParams: Record<string, string> = {};
+          const url = new URL(req.url, "http://localhost");
+          const params = url.searchParams;
+          const body: AnalyzeStockRangeRequest = {
+            symbol: params.get("symbol") ?? "",
+            startUtc: Number(params.get("start_utc") ?? "0"),
+            endUtc: Number(params.get("end_utc") ?? "0"),
+          };
+          if (options?.validateRequest) {
+            const bodyViolations = options.validateRequest("analyzeStockRange", body);
+            if (bodyViolations) {
+              throw new ValidationError(bodyViolations);
+            }
+          }
+
+          const ctx: ServerContext = {
+            request: req,
+            pathParams,
+            headers: Object.fromEntries(req.headers.entries()),
+          };
+
+          const result = await handler.analyzeStockRange(ctx, body);
+          return new Response(JSON.stringify(result as AnalyzeStockRangeResponse), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          });
+        } catch (err: unknown) {
+          if (err instanceof ValidationError) {
+            return new Response(JSON.stringify({ violations: err.violations }), {
+              status: 400,
+              headers: { "Content-Type": "application/json" },
+            });
+          }
+          if (options?.onError) {
+            return options.onError(err, req);
+          }
+          const message = err instanceof Error ? err.message : String(err);
+          return new Response(JSON.stringify({ message }), {
+            status: 500,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+      },
+    },
+    {
+      method: "GET",
+      path: "/api/market/v1/get-stock-forecast",
+      handler: async (req: Request): Promise<Response> => {
+        try {
+          const pathParams: Record<string, string> = {};
+          const url = new URL(req.url, "http://localhost");
+          const params = url.searchParams;
+          const body: GetStockForecastRequest = {
+            symbol: params.get("symbol") ?? "",
+            horizon: params.get("horizon") ?? "",
+          };
+          if (options?.validateRequest) {
+            const bodyViolations = options.validateRequest("getStockForecast", body);
+            if (bodyViolations) {
+              throw new ValidationError(bodyViolations);
+            }
+          }
+
+          const ctx: ServerContext = {
+            request: req,
+            pathParams,
+            headers: Object.fromEntries(req.headers.entries()),
+          };
+
+          const result = await handler.getStockForecast(ctx, body);
+          return new Response(JSON.stringify(result as GetStockForecastResponse), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          });
+        } catch (err: unknown) {
+          if (err instanceof ValidationError) {
+            return new Response(JSON.stringify({ violations: err.violations }), {
+              status: 400,
+              headers: { "Content-Type": "application/json" },
+            });
+          }
+          if (options?.onError) {
+            return options.onError(err, req);
+          }
+          const message = err instanceof Error ? err.message : String(err);
+          return new Response(JSON.stringify({ message }), {
+            status: 500,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+      },
+    },
+    {
+      method: "GET",
+      path: "/api/market/v1/find-similar-stock-events",
+      handler: async (req: Request): Promise<Response> => {
+        try {
+          const pathParams: Record<string, string> = {};
+          const url = new URL(req.url, "http://localhost");
+          const params = url.searchParams;
+          const body: FindSimilarStockEventsRequest = {
+            symbol: params.get("symbol") ?? "",
+            eventId: params.get("event_id") ?? "",
+            limit: Number(params.get("limit") ?? "0"),
+          };
+          if (options?.validateRequest) {
+            const bodyViolations = options.validateRequest("findSimilarStockEvents", body);
+            if (bodyViolations) {
+              throw new ValidationError(bodyViolations);
+            }
+          }
+
+          const ctx: ServerContext = {
+            request: req,
+            pathParams,
+            headers: Object.fromEntries(req.headers.entries()),
+          };
+
+          const result = await handler.findSimilarStockEvents(ctx, body);
+          return new Response(JSON.stringify(result as FindSimilarStockEventsResponse), {
             status: 200,
             headers: { "Content-Type": "application/json" },
           });

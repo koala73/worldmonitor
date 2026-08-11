@@ -18,6 +18,8 @@ No secret belongs in this file, chat transcript, Git history, screenshot or clie
 
 **Current status supersession (2026-08-11):** The historical Phase 1 network-block paragraph below is preserved as evidence only. GitHub HTTPS recovered, the true upstream baseline was fetched locally, and Phase 1 is complete on `integration/pokieticker-maritime-china-factory`. Begin Phase 2 without Provider credentials by implementing contracts and explicitly disabled states only.
 
+**Phase 2 completion update (2026-08-11):** The contract and disabled-state work is complete without requesting, receiving or recording a key. The next capability that requires a user action is a display/rebroadcast-authorized market-data plan and the corresponding server-side secret. Until the user elects to complete that action, the product remains correctly `NOT_CONFIGURED`; Phase 3 can still implement the adapter shell and contract tests without exposing a secret.
+
 ## Phase 1 implementation update
 
 The GitHub transport block has cleared for the local Phase 1 fetch. The upstream

@@ -699,7 +699,187 @@ export interface HyperliquidAssetFlow {
   alerts: string[];
 }
 
+export interface SearchStocksRequest {
+  query: string;
+  limit: number;
+}
+
+export interface SearchStocksResponse {
+  results: StockSearchResult[];
+  provenance?: DataProvenance;
+}
+
+export interface StockSearchResult {
+  symbol: string;
+  name: string;
+  exchange: string;
+  currency: string;
+}
+
+export interface DataProvenance {
+  provider: string;
+  providerStatus: ProviderStatus;
+  sourceUrl: string;
+  sourceId: string;
+  observedAt: number;
+  fetchedAt: number;
+  asOf: number;
+  delaySeconds: number;
+  freshnessSeconds: number;
+  isFallback: boolean;
+  fallbackReason: string;
+  licenseNote: string;
+}
+
+export interface GetStockBarsRequest {
+  symbol: string;
+  interval: string;
+  startUtc: number;
+  endUtc: number;
+  range: string;
+}
+
+export interface GetStockBarsResponse {
+  symbol: string;
+  interval: string;
+  bars: StockBar[];
+  marketClosed: boolean;
+  provenance?: DataProvenance;
+}
+
+export interface StockBar {
+  symbol: string;
+  interval: string;
+  timestampUtc: number;
+  tradingDate: string;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+  volume: number;
+  vwap: number;
+  transactions: number;
+  adjusted: boolean;
+  session: MarketSession;
+  currency: string;
+  exchange: string;
+}
+
+export interface GetStockQuoteRequest {
+  symbol: string;
+}
+
+export interface GetStockQuoteResponse {
+  symbol: string;
+  quote?: StockQuote;
+  provenance?: DataProvenance;
+}
+
+export interface StockQuote {
+  symbol: string;
+  price: number;
+  change: number;
+  changePercent: number;
+  currency: string;
+  exchange: string;
+  session: MarketSession;
+}
+
+export interface ListStockNewsRequest {
+  symbol: string;
+  limit: number;
+}
+
+export interface ListStockNewsResponse {
+  symbol: string;
+  items: StockNewsItem[];
+  provenance?: DataProvenance;
+}
+
+export interface StockNewsItem {
+  id: string;
+  symbol: string;
+  title: string;
+  source: string;
+  sourceUrl: string;
+  publishedAtUtc: number;
+}
+
+export interface GetStockEventTimelineRequest {
+  symbol: string;
+  startUtc: number;
+  endUtc: number;
+}
+
+export interface GetStockEventTimelineResponse {
+  symbol: string;
+  events: StockEvent[];
+  provenance?: DataProvenance;
+}
+
+export interface StockEvent {
+  id: string;
+  symbol: string;
+  eventType: string;
+  summary: string;
+  sourceUrl: string;
+  occurredAtUtc: number;
+}
+
+export interface AnalyzeStockRangeRequest {
+  symbol: string;
+  startUtc: number;
+  endUtc: number;
+}
+
+export interface AnalyzeStockRangeResponse {
+  analysis?: StockRangeAnalysis;
+  provenance?: DataProvenance;
+}
+
+export interface StockRangeAnalysis {
+  available: boolean;
+  reason: string;
+  symbol: string;
+  rangeStartUtc: number;
+  rangeEndUtc: number;
+}
+
+export interface GetStockForecastRequest {
+  symbol: string;
+  horizon: string;
+}
+
+export interface GetStockForecastResponse {
+  forecast?: StockForecast;
+  provenance?: DataProvenance;
+}
+
+export interface StockForecast {
+  available: boolean;
+  reason: string;
+  symbol: string;
+  horizon: string;
+  modelVersion: string;
+}
+
+export interface FindSimilarStockEventsRequest {
+  symbol: string;
+  eventId: string;
+  limit: number;
+}
+
+export interface FindSimilarStockEventsResponse {
+  symbol: string;
+  events: StockEvent[];
+  provenance?: DataProvenance;
+}
+
 export type MarketQuoteUnavailableReason = "MARKET_QUOTE_UNAVAILABLE_REASON_UNSPECIFIED" | "MARKET_QUOTE_UNAVAILABLE_REASON_NOT_FOUND" | "MARKET_QUOTE_UNAVAILABLE_REASON_PROVIDER_ERROR" | "MARKET_QUOTE_UNAVAILABLE_REASON_PROVIDER_RATE_LIMITED" | "MARKET_QUOTE_UNAVAILABLE_REASON_PROVIDER_NOT_CONFIGURED" | "MARKET_QUOTE_UNAVAILABLE_REASON_REQUEST_LIMIT_EXCEEDED" | "MARKET_QUOTE_UNAVAILABLE_REASON_UPSTREAM_BUDGET_EXHAUSTED" | "MARKET_QUOTE_UNAVAILABLE_REASON_SEED_UNAVAILABLE";
+
+export type MarketSession = "MARKET_SESSION_UNSPECIFIED" | "MARKET_SESSION_PRE" | "MARKET_SESSION_REGULAR" | "MARKET_SESSION_AFTER" | "MARKET_SESSION_CLOSED";
+
+export type ProviderStatus = "PROVIDER_STATUS_UNSPECIFIED" | "PROVIDER_STATUS_REALTIME_LICENSED" | "PROVIDER_STATUS_DELAYED_15M" | "PROVIDER_STATUS_DELAYED_UNVERIFIED" | "PROVIDER_STATUS_END_OF_DAY" | "PROVIDER_STATUS_HISTORICAL_SNAPSHOT" | "PROVIDER_STATUS_STALE" | "PROVIDER_STATUS_DEGRADED" | "PROVIDER_STATUS_NOT_CONFIGURED" | "PROVIDER_STATUS_UNAVAILABLE" | "PROVIDER_STATUS_MARKET_CLOSED";
 
 export interface FieldViolation {
   field: string;
@@ -1308,6 +1488,219 @@ export class MarketServiceClient {
     }
 
     return await resp.json() as GetHyperliquidFlowResponse;
+  }
+
+  async searchStocks(req: SearchStocksRequest, options?: MarketServiceCallOptions): Promise<SearchStocksResponse> {
+    let path = "/api/market/v1/search-stocks";
+    const params = new URLSearchParams();
+    if (req.query != null && req.query !== "") params.set("query", String(req.query));
+    if (req.limit != null && req.limit !== 0) params.set("limit", String(req.limit));
+    const url = this.baseURL + path + (params.toString() ? "?" + params.toString() : "");
+
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      ...this.defaultHeaders,
+      ...options?.headers,
+    };
+
+    const resp = await this.fetchFn(url, {
+      method: "GET",
+      headers,
+      signal: options?.signal,
+    });
+
+    if (!resp.ok) {
+      return this.handleError(resp);
+    }
+
+    return await resp.json() as SearchStocksResponse;
+  }
+
+  async getStockBars(req: GetStockBarsRequest, options?: MarketServiceCallOptions): Promise<GetStockBarsResponse> {
+    let path = "/api/market/v1/get-stock-bars";
+    const params = new URLSearchParams();
+    if (req.symbol != null && req.symbol !== "") params.set("symbol", String(req.symbol));
+    if (req.interval != null && req.interval !== "") params.set("interval", String(req.interval));
+    if (req.startUtc != null && req.startUtc !== 0) params.set("start_utc", String(req.startUtc));
+    if (req.endUtc != null && req.endUtc !== 0) params.set("end_utc", String(req.endUtc));
+    if (req.range != null && req.range !== "") params.set("range", String(req.range));
+    const url = this.baseURL + path + (params.toString() ? "?" + params.toString() : "");
+
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      ...this.defaultHeaders,
+      ...options?.headers,
+    };
+
+    const resp = await this.fetchFn(url, {
+      method: "GET",
+      headers,
+      signal: options?.signal,
+    });
+
+    if (!resp.ok) {
+      return this.handleError(resp);
+    }
+
+    return await resp.json() as GetStockBarsResponse;
+  }
+
+  async getStockQuote(req: GetStockQuoteRequest, options?: MarketServiceCallOptions): Promise<GetStockQuoteResponse> {
+    let path = "/api/market/v1/get-stock-quote";
+    const params = new URLSearchParams();
+    if (req.symbol != null && req.symbol !== "") params.set("symbol", String(req.symbol));
+    const url = this.baseURL + path + (params.toString() ? "?" + params.toString() : "");
+
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      ...this.defaultHeaders,
+      ...options?.headers,
+    };
+
+    const resp = await this.fetchFn(url, {
+      method: "GET",
+      headers,
+      signal: options?.signal,
+    });
+
+    if (!resp.ok) {
+      return this.handleError(resp);
+    }
+
+    return await resp.json() as GetStockQuoteResponse;
+  }
+
+  async listStockNews(req: ListStockNewsRequest, options?: MarketServiceCallOptions): Promise<ListStockNewsResponse> {
+    let path = "/api/market/v1/list-stock-news";
+    const params = new URLSearchParams();
+    if (req.symbol != null && req.symbol !== "") params.set("symbol", String(req.symbol));
+    if (req.limit != null && req.limit !== 0) params.set("limit", String(req.limit));
+    const url = this.baseURL + path + (params.toString() ? "?" + params.toString() : "");
+
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      ...this.defaultHeaders,
+      ...options?.headers,
+    };
+
+    const resp = await this.fetchFn(url, {
+      method: "GET",
+      headers,
+      signal: options?.signal,
+    });
+
+    if (!resp.ok) {
+      return this.handleError(resp);
+    }
+
+    return await resp.json() as ListStockNewsResponse;
+  }
+
+  async getStockEventTimeline(req: GetStockEventTimelineRequest, options?: MarketServiceCallOptions): Promise<GetStockEventTimelineResponse> {
+    let path = "/api/market/v1/get-stock-event-timeline";
+    const params = new URLSearchParams();
+    if (req.symbol != null && req.symbol !== "") params.set("symbol", String(req.symbol));
+    if (req.startUtc != null && req.startUtc !== 0) params.set("start_utc", String(req.startUtc));
+    if (req.endUtc != null && req.endUtc !== 0) params.set("end_utc", String(req.endUtc));
+    const url = this.baseURL + path + (params.toString() ? "?" + params.toString() : "");
+
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      ...this.defaultHeaders,
+      ...options?.headers,
+    };
+
+    const resp = await this.fetchFn(url, {
+      method: "GET",
+      headers,
+      signal: options?.signal,
+    });
+
+    if (!resp.ok) {
+      return this.handleError(resp);
+    }
+
+    return await resp.json() as GetStockEventTimelineResponse;
+  }
+
+  async analyzeStockRange(req: AnalyzeStockRangeRequest, options?: MarketServiceCallOptions): Promise<AnalyzeStockRangeResponse> {
+    let path = "/api/market/v1/analyze-stock-range";
+    const params = new URLSearchParams();
+    if (req.symbol != null && req.symbol !== "") params.set("symbol", String(req.symbol));
+    if (req.startUtc != null && req.startUtc !== 0) params.set("start_utc", String(req.startUtc));
+    if (req.endUtc != null && req.endUtc !== 0) params.set("end_utc", String(req.endUtc));
+    const url = this.baseURL + path + (params.toString() ? "?" + params.toString() : "");
+
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      ...this.defaultHeaders,
+      ...options?.headers,
+    };
+
+    const resp = await this.fetchFn(url, {
+      method: "GET",
+      headers,
+      signal: options?.signal,
+    });
+
+    if (!resp.ok) {
+      return this.handleError(resp);
+    }
+
+    return await resp.json() as AnalyzeStockRangeResponse;
+  }
+
+  async getStockForecast(req: GetStockForecastRequest, options?: MarketServiceCallOptions): Promise<GetStockForecastResponse> {
+    let path = "/api/market/v1/get-stock-forecast";
+    const params = new URLSearchParams();
+    if (req.symbol != null && req.symbol !== "") params.set("symbol", String(req.symbol));
+    if (req.horizon != null && req.horizon !== "") params.set("horizon", String(req.horizon));
+    const url = this.baseURL + path + (params.toString() ? "?" + params.toString() : "");
+
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      ...this.defaultHeaders,
+      ...options?.headers,
+    };
+
+    const resp = await this.fetchFn(url, {
+      method: "GET",
+      headers,
+      signal: options?.signal,
+    });
+
+    if (!resp.ok) {
+      return this.handleError(resp);
+    }
+
+    return await resp.json() as GetStockForecastResponse;
+  }
+
+  async findSimilarStockEvents(req: FindSimilarStockEventsRequest, options?: MarketServiceCallOptions): Promise<FindSimilarStockEventsResponse> {
+    let path = "/api/market/v1/find-similar-stock-events";
+    const params = new URLSearchParams();
+    if (req.symbol != null && req.symbol !== "") params.set("symbol", String(req.symbol));
+    if (req.eventId != null && req.eventId !== "") params.set("event_id", String(req.eventId));
+    if (req.limit != null && req.limit !== 0) params.set("limit", String(req.limit));
+    const url = this.baseURL + path + (params.toString() ? "?" + params.toString() : "");
+
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      ...this.defaultHeaders,
+      ...options?.headers,
+    };
+
+    const resp = await this.fetchFn(url, {
+      method: "GET",
+      headers,
+      signal: options?.signal,
+    });
+
+    if (!resp.ok) {
+      return this.handleError(resp);
+    }
+
+    return await resp.json() as FindSimilarStockEventsResponse;
   }
 
   private async handleError(resp: Response): Promise<never> {

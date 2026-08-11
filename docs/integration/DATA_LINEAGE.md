@@ -32,6 +32,16 @@ The recovery audit copied only three non-secret project metadata files to a Code
 
 ## Phase 1 blocked-state boundary
 
+## Phase 2 historical-fixture isolation
+
+The only PokieTicker data committed in Phase 2 is a 12-row test fixture at
+`tests/fixtures/market/recorded-historical-bars-v1.json`. It was derived from a
+read-only query of the previously locked `ohlc` table for AAPL, MSFT, NVDA and
+TSLA (three dates each). The fixture preserves the database SHA-256,
+repository/commit, MIT license and `HISTORICAL_SNAPSHOT` status. It is isolated
+to tests, is not read by a production handler, and explicitly says it is not a
+live, delayed, or licensed real-time feed.
+
 ## Phase 1 implementation boundary
 
 The upstream baseline is now integrated on the isolated branch, but Phase 1 did

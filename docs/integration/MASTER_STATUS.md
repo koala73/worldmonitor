@@ -16,7 +16,7 @@ This current-status receipt supersedes the historical preflight rows below.
 |---|---|---|---|---|
 | 0 | completed | Safety inventory and recoverability closure | recorded | `evidence/phase0-closure.md` |
 | 1 | completed with recorded data-suite limitation | Real upstream mother baseline, independent brand, AGPL/PokieTicker notices, Windows build and production preview | `c889fcfbdab4bf2bcd7a28f85ed32114f288d6aa` | `evidence/phase1-mother-baseline.md` |
-| 2 | in progress next | Provider contracts and honest disabled-state implementation; no credential required to begin | — | this document and `PROVIDER_MATRIX.md` |
+| 2 | completed pending SHA backfill | Provider/data contracts, generated API, explicit disabled state and historical-fixture isolation | pending implementation SHA backfill | `evidence/phase2-data-contract.md` |
 
 | Phase | Status | Scope | Commit | Evidence |
 |---|---|---|---|---|
@@ -71,3 +71,28 @@ not passed. See `evidence/phase1-mother-baseline.md`.
 (`chore(integration): establish WorldMonitor mother baseline`).
 
 Proceed with Phase 2 provider/data contracts from the completed Phase 1 baseline. Missing Provider credentials must result in tested disabled states, never invented data or real-time claims.
+
+## Phase 2 implementation correction — 2026-08-11
+
+Phase 2 adds eight Market v1 RPC contracts: `SearchStocks`, `GetStockBars`,
+`GetStockQuote`, `ListStockNews`, `GetStockEventTimeline`, `AnalyzeStockRange`,
+`GetStockForecast`, and `FindSimilarStockEvents`. Every response has the same
+provider/freshness/fallback/license envelope and every front-end provider status
+has one display mapping.
+
+Without a configured contract-backed Provider, the live handlers return an
+explicit `PROVIDER_STATUS_NOT_CONFIGURED` response with empty arrays or absent
+value objects. They do not return a blank success, static company data, a
+synthetic OHLC series, fabricated news, a prediction, or a causal assertion.
+The symbol validator rejects empty and illegal symbols; the cache-key primitive
+requires `provider:symbol:interval:range`; and the bar validator rejects a
+cross-symbol, duplicate-time, negative-volume, or invalid-OHLC series.
+
+**Phase 2 implementation commit:** pending; backfilled in the immediate
+documentation receipt commit. See `evidence/phase2-data-contract.md`.
+
+## Next action
+
+Proceed to Phase 3: implement an authorized provider relay and actual symbol-
+isolated bars only after a display/rebroadcast-authorized Provider path is
+configured. No live-data claim may be made before that verification.

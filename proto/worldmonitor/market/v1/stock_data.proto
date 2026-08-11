@@ -1,0 +1,118 @@
+syntax = "proto3";
+
+package worldmonitor.market.v1;
+
+import "sebuf/http/annotations.proto";
+
+// ProviderStatus states what has actually been authorized, fetched and verified.
+// A non-empty payload never upgrades this status on its own.
+enum ProviderStatus {
+  PROVIDER_STATUS_UNSPECIFIED = 0;
+  PROVIDER_STATUS_REALTIME_LICENSED = 1;
+  PROVIDER_STATUS_DELAYED_15M = 2;
+  PROVIDER_STATUS_DELAYED_UNVERIFIED = 3;
+  PROVIDER_STATUS_END_OF_DAY = 4;
+  PROVIDER_STATUS_HISTORICAL_SNAPSHOT = 5;
+  PROVIDER_STATUS_STALE = 6;
+  PROVIDER_STATUS_DEGRADED = 7;
+  PROVIDER_STATUS_NOT_CONFIGURED = 8;
+  PROVIDER_STATUS_UNAVAILABLE = 9;
+  PROVIDER_STATUS_MARKET_CLOSED = 10;
+}
+
+// DataProvenance accompanies every Phase 2 stock response. Times are UTC epoch
+// milliseconds; zero means the source did not provide that time. A -1 delay or
+// freshness value means unknown, never "real time".
+message DataProvenance {
+  string provider = 1;
+  ProviderStatus provider_status = 2;
+  string source_url = 3;
+  string source_id = 4;
+  int64 observed_at = 5 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
+  int64 fetched_at = 6 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
+  int64 as_of = 7 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
+  int64 delay_seconds = 8 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
+  int64 freshness_seconds = 9 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
+  bool is_fallback = 10;
+  string fallback_reason = 11;
+  string license_note = 12;
+}
+
+enum MarketSession {
+  MARKET_SESSION_UNSPECIFIED = 0;
+  MARKET_SESSION_PRE = 1;
+  MARKET_SESSION_REGULAR = 2;
+  MARKET_SESSION_AFTER = 3;
+  MARKET_SESSION_CLOSED = 4;
+}
+
+// StockBar is a provider-sourced OHLCV bar. A server must reject a bar whose
+// symbol differs from the requested symbol before this object reaches a client.
+message StockBar {
+  string symbol = 1;
+  string interval = 2;
+  int64 timestamp_utc = 3 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
+  string trading_date = 4;
+  double open = 5;
+  double high = 6;
+  double low = 7;
+  double close = 8;
+  double volume = 9;
+  double vwap = 10;
+  int64 transactions = 11 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
+  bool adjusted = 12;
+  MarketSession session = 13;
+  string currency = 14;
+  string exchange = 15;
+}
+
+message StockQuote {
+  string symbol = 1;
+  double price = 2;
+  double change = 3;
+  double change_percent = 4;
+  string currency = 5;
+  string exchange = 6;
+  MarketSession session = 7;
+}
+
+message StockSearchResult {
+  string symbol = 1;
+  string name = 2;
+  string exchange = 3;
+  string currency = 4;
+}
+
+message StockNewsItem {
+  string id = 1;
+  string symbol = 2;
+  string title = 3;
+  string source = 4;
+  string source_url = 5;
+  int64 published_at_utc = 6 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
+}
+
+message StockEvent {
+  string id = 1;
+  string symbol = 2;
+  string event_type = 3;
+  string summary = 4;
+  string source_url = 5;
+  int64 occurred_at_utc = 6 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
+}
+
+message StockRangeAnalysis {
+  bool available = 1;
+  string reason = 2;
+  string symbol = 3;
+  int64 range_start_utc = 4 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
+  int64 range_end_utc = 5 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
+}
+
+message StockForecast {
+  bool available = 1;
+  string reason = 2;
+  string symbol = 3;
+  string horizon = 4;
+  string model_version = 5;
+}

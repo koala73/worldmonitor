@@ -36,6 +36,16 @@ import { getInsiderTransactions } from './get-insider-transactions';
 import { getMarketBreadthHistory } from './get-market-breadth-history';
 import { getGoldIntelligence } from './get-gold-intelligence';
 import { getHyperliquidFlow } from './get-hyperliquid-flow';
+import {
+  analyzeStockRange,
+  findSimilarStockEvents,
+  getStockBars,
+  getStockEventTimeline,
+  getStockForecast,
+  getStockQuote,
+  listStockNews,
+  searchStocks,
+} from './stock-contract-disabled';
 
 export const marketHandler: MarketServiceHandler = {
   listMarketQuotes,
@@ -61,4 +71,12 @@ export const marketHandler: MarketServiceHandler = {
   getMarketBreadthHistory,
   getGoldIntelligence,
   getHyperliquidFlow,
+  searchStocks,
+  getStockBars,
+  getStockQuote,
+  listStockNews,
+  getStockEventTimeline,
+  analyzeStockRange,
+  getStockForecast,
+  findSimilarStockEvents,
 };

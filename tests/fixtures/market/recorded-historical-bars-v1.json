@@ -1,0 +1,35 @@
+{
+  "fixtureVersion": 1,
+  "source": {
+    "repository": "owengetinfo-design/PokieTicker",
+    "commit": "c16b7e34e72c2d09bb50d7b3159fa5cd6697fd19",
+    "databaseSha256": "F50090BF859F71A24A210120F9F92407DE3EA6E6B469E814858C69ADBC9DD47C",
+    "table": "ohlc",
+    "truthStatus": "HISTORICAL_SNAPSHOT",
+    "maximumDatabaseDate": "2026-03-03",
+    "license": "MIT",
+    "notice": "Recorded historical test fixture only. It is not a live, delayed, or licensed real-time feed."
+  },
+  "barsBySymbol": {
+    "AAPL": [
+      { "date": "2026-02-27", "open": 272.81, "high": 272.81, "low": 262.89, "close": 264.18, "volume": 72366505.221193 },
+      { "date": "2026-03-02", "open": 262.41, "high": 266.53, "low": 260.2, "close": 264.72, "volume": 41827946.904771 },
+      { "date": "2026-03-03", "open": 263.48, "high": 265.56, "low": 260.13, "close": 263.75, "volume": 38568921.672138 }
+    ],
+    "MSFT": [
+      { "date": "2026-02-27", "open": 390.88, "high": 396.82, "low": 389.88, "close": 392.74, "volume": 51367196.81918 },
+      { "date": "2026-03-02", "open": 392.855, "high": 401.19, "low": 390.63, "close": 398.55, "volume": 35474907.970181 },
+      { "date": "2026-03-03", "open": 393.14, "high": 406.7, "low": 392.67, "close": 403.93, "volume": 38199209.472429 }
+    ],
+    "NVDA": [
+      { "date": "2026-02-27", "open": 181.25, "high": 182.59, "low": 176.38, "close": 177.19, "volume": 311636494.282879 },
+      { "date": "2026-03-02", "open": 175.01, "high": 183.46, "low": 174.64, "close": 182.48, "volume": 209095331.206143 },
+      { "date": "2026-03-03", "open": 178.49, "high": 180.9, "low": 176.92, "close": 180.05, "volume": 178099430.462249 }
+    ],
+    "TSLA": [
+      { "date": "2026-02-27", "open": 402.94, "high": 407.12, "low": 398.11, "close": 402.51, "volume": 56890097.395043 },
+      { "date": "2026-03-02", "open": 390.6, "high": 404.54, "low": 388.25, "close": 403.32, "volume": 55088338.647 },
+      { "date": "2026-03-03", "open": 395.09, "high": 396.34, "low": 385.39, "close": 392.43, "volume": 62617298.388918 }
+    ]
+  }
+}

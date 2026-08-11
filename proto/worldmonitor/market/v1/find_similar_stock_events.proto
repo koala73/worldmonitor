@@ -1,0 +1,29 @@
+syntax = "proto3";
+
+package worldmonitor.market.v1;
+
+import "buf/validate/validate.proto";
+import "sebuf/http/annotations.proto";
+import "worldmonitor/market/v1/stock_data.proto";
+
+message FindSimilarStockEventsRequest {
+  string symbol = 1 [
+    (sebuf.http.query) = {name: "symbol"},
+    (buf.validate.field).required = true,
+    (buf.validate.field).string.min_len = 1,
+    (buf.validate.field).string.max_len = 32
+  ];
+  string event_id = 2 [(sebuf.http.query) = {name: "event_id"}];
+  int32 limit = 3 [
+    (sebuf.http.query) = {name: "limit"},
+    (buf.validate.field).ignore = IGNORE_IF_ZERO_VALUE,
+    (buf.validate.field).int32.gte = 1,
+    (buf.validate.field).int32.lte = 50
+  ];
+}
+
+message FindSimilarStockEventsResponse {
+  string symbol = 1;
+  repeated StockEvent events = 2;
+  DataProvenance provenance = 3;
+}
