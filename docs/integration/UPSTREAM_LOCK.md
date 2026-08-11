@@ -29,6 +29,15 @@ Local verification is still required and currently unavailable: `origin/main` re
 
 ## Legacy-data lock
 
+## Phase 1 local synchronization receipt
+
+After the user reported GitHub 443 recovery, local HTTP/1.1 fetches of
+`origin/main` and `upstream/main` both exited 0. Local merge-base is
+`0fca203c776dd5fa4913c4bd52f99cd2c3c13a25`; the ahead/behind count is
+`0 43`. The branch `integration/pokieticker-maritime-china-factory` is
+therefore rooted at `ae0a0fe26bcbdb683b366899e4dc38fb8ccfb5ad`. This receipt
+does **not** move or authorize direct modification of `main`.
+
 The legacy PokieTicker database is **not** a Git artifact and must not be copied into the mother repository as a normal blob.
 
 | Field | Value |

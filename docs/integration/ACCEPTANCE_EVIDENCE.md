@@ -46,4 +46,26 @@
 | Local GitHub connectivity | FAIL | `Test-NetConnection github.com -Port 443` timed out at 30 seconds; TCP connect and ping reported failure. |
 | Full mother checkout / dependency baseline / browser baseline | BLOCKED | These steps are intentionally not run without the verified upstream object graph and complete source tree. |
 
-**Phase 1 gate: BLOCKED.** No code integration, source sync, build, test, screenshot, or functionality claim has been made.
+**Phase 1 preflight gate: superseded by the actual implementation below.**
+
+## Phase 1 implementation baseline
+
+**Implementation commit:** pending; this value is backfilled in the immediate documentation receipt commit after the implementation commit exists.
+
+| Check | Result | Evidence |
+|---|---|---|
+| Local fork/upstream ancestry | PASS | Local fetches exited 0; merge-base `0fca203...`; count `0 43`; upstream lock `ae0a0fe...`. |
+| Main protection and branch isolation | PASS | `main` was not moved; the integration branch was created from upstream in a dedicated LF linked worktree. |
+| AGPL, independent brand and upstream notice | PASS | Direct user confirmation; visible product header/footer, notices, contract test and screenshot. |
+| PokieTicker source trace | PASS | Locked MIT text and trace; no source/database import. |
+| Root types and focused contracts | PASS | `npm run typecheck:all=0`; targeted brand/metadata/Windows-copy groups passed. |
+| DOM suite | PASS | `npm run test:dom=0`: 31 files, 293 tests. |
+| Full data suite | INCONCLUSIVE, not pass | `npm run test:data` exceeded the 64-second tool limit; its normal final exit was not captured. The observed UCDP child rerun passed 12/12. |
+| Production build | PASS | Final `npm run build:full=0` on Windows. |
+| Production visual check | PASS | Final build preview title/header/footer checked; `evidence/phase1-production-preview.png` stored. |
+| Truthfulness rules | PASS for Phase 1 scope | No Provider/key/live quote/K-line/AIS cargo assertion/causal claim/iframe/mock production acceptance was added. |
+
+**Phase 1 gate: COMPLETED WITH A RECORDED DATA-SUITE LIMITATION.** The local
+mother baseline, legal/source provenance, code build and visible product check
+pass. The all-suite data result must be rerun in CI or a long-running
+environment before release-wide test certification.

@@ -13,7 +13,10 @@ interface StoryMeta {
 
 const variantMeta = VARIANT_META[SITE_VARIANT] ?? VARIANT_META.full;
 const CANONICAL_URL = variantMeta.url;
-const PUBLIC_ORIGIN = new URL(variantMeta.url).origin;
+// `full` is intentionally relative until this independently branded fork has
+// an operator-declared public hostname. Resolve against the actual browser
+// origin instead of claiming the upstream deployment host.
+const PUBLIC_ORIGIN = new URL(variantMeta.url, window.location.origin).origin;
 const API_ORIGIN = getCanonicalApiOrigin();
 const DEFAULT_IMAGE = `${PUBLIC_ORIGIN}/favico/${SITE_VARIANT === 'full' ? '' : SITE_VARIANT + '/'}og-image.png`;
 

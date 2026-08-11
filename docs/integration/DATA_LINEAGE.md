@@ -32,4 +32,14 @@ The recovery audit copied only three non-secret project metadata files to a Code
 
 ## Phase 1 blocked-state boundary
 
+## Phase 1 implementation boundary
+
+The upstream baseline is now integrated on the isolated branch, but Phase 1 did
+not activate a market, news, AIS, port, trade or AI Provider. The final local
+preview displayed unavailable/waiting states where credentials or live upstream
+data were absent. No OHLC array, quote, trade event, AIS report or generated
+news relationship was added. The PokieTicker record is only the SHA/license
+trace at `third_party/PokieTicker/UPSTREAM.md`; the legacy SQLite snapshot
+remains outside Git and retains `HISTORICAL_SNAPSHOT` status.
+
 No data path was activated while upstream synchronization is blocked. In particular, the legacy backup’s nested WorldMonitor repository was inspected read-only and not copied into the formal mother workspace; its generated-file modifications are not product data and cannot serve as an upstream provenance substitute.

@@ -1,5 +1,6 @@
 import type { Monitor, PanelConfig, MapLayers } from '@/types';
 import { WEB_APP_ORIGIN } from '@/config/web-origin';
+import { PRIMARY_BRAND, PRIMARY_BRAND_EN } from '@/config/brand';
 import { openExternalUrl } from '@/services/external-navigation';
 import { normalizeExclusiveChoropleths } from '@/components/resilience-choropleth-utils';
 import type { AppContext } from '@/app/app-context';
@@ -1696,15 +1697,18 @@ export class App {
     // Localize the static index.html shell — <title>, meta description, and
     // the accessible <h1> are baked in English before the app boots; once i18n
     // is ready we swap them to the user's locale.
-    document.title = t('shell.documentTitle');
+    const shellTitle = SITE_VARIANT === 'full'
+      ? `${PRIMARY_BRAND} - ${PRIMARY_BRAND_EN}`
+      : t('shell.documentTitle');
+    document.title = shellTitle;
     const setMeta = (sel: string, val: string) => {
       const el = document.querySelector(sel);
       if (el) el.setAttribute('content', val);
     };
     setMeta('meta[name="description"]', t('shell.metaDescription'));
-    setMeta('meta[property="og:title"]', t('shell.documentTitle'));
+    setMeta('meta[property="og:title"]', shellTitle);
     setMeta('meta[property="og:description"]', t('shell.metaDescription'));
-    setMeta('meta[name="twitter:title"]', t('shell.documentTitle'));
+    setMeta('meta[name="twitter:title"]', shellTitle);
     setMeta('meta[name="twitter:description"]', t('shell.metaDescription'));
     // Mirror of OG_LOCALE in pro-test/src/i18n.ts. The two packages have
     // separate Vite roots and bundlers and can't share an import — keep the
@@ -1719,7 +1723,7 @@ export class App {
     const baseLang = (document.documentElement.lang || 'en').split('-')[0] || 'en';
     setMeta('meta[property="og:locale"]', ogLocaleMap[baseLang] || `${baseLang}_${baseLang.toUpperCase()}`);
     const srH1 = document.querySelector('body > h1');
-    if (srH1) srH1.textContent = t('shell.documentTitle');
+    if (srH1) srH1.textContent = shellTitle;
     const aiFlow = getAiFlowSettings();
     if (aiFlow.browserModel || isDesktopRuntime()) {
       await mlWorker.init();

@@ -4,6 +4,12 @@ This matrix is the source of truth for UI labels, API contracts, caching and fal
 
 **Phase 0 closure check (2026-08-11):** no Provider credential, plan, contractual real-time authorization, or live data path was added. Every listed capability remains at the status below until code and Provider verification prove otherwise.
 
+**Phase 1 implementation check:** upstream synchronization, branding and build
+work introduced no Provider credential, fallback, K-line payload, quote endpoint,
+AIS message or trade record. The final local preview showed honest
+unavailable/waiting states. All capability statuses below remain unchanged until
+a later adapter contract and authorization prove otherwise.
+
 **Phase 1 preflight check (blocked):** the current block is local source synchronization, not a Provider credential. No Provider, fallback, K-line payload, quote endpoint, AIS message, or trade record was introduced while the upstream fetch gate is unavailable.
 
 | Capability | Provider / source | Current status | What may be displayed | What may not be displayed |

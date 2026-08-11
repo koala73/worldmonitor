@@ -106,10 +106,12 @@ export function renderVariantDashboardHtml(fullDashboardHtml: string, variant: s
 
   // Application locales are client-side preferences, not separately indexable
   // documents. Keep exactly x-default + English on this page's canonical host;
-  // the exact-count guard makes a reintroduced ?lang alternate fail the build.
+  // the full fork can intentionally use a relative /dashboard before an
+  // operator declares a public host, while historical upstream builds use the
+  // old absolute URL. The exact-count guard still rejects any drift.
   html = replaceCounted(
     html,
-    /(<link rel="alternate" hreflang="[^"]+" href=")https:\/\/www\.worldmonitor\.app\/dashboard((?:\?[^"]*)?" \/>)/g,
+    /(<link rel="alternate" hreflang="[^"]+" href=")(?:https:\/\/www\.worldmonitor\.app)?\/dashboard((?:\?[^"]*)?" \/>)/g,
     (_m, a, b) => `${a}${escHtml(meta.url)}${b}`,
     TWO,
     'hreflang alternates',

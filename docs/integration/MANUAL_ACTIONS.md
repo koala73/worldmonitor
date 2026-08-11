@@ -16,6 +16,16 @@ No secret belongs in this file, chat transcript, Git history, screenshot or clie
 
 ## Current pause point
 
+**Current status supersession (2026-08-11):** The historical Phase 1 network-block paragraph below is preserved as evidence only. GitHub HTTPS recovered, the true upstream baseline was fetched locally, and Phase 1 is complete on `integration/pokieticker-maritime-china-factory`. Begin Phase 2 without Provider credentials by implementing contracts and explicitly disabled states only.
+
+## Phase 1 implementation update
+
+The GitHub transport block has cleared for the local Phase 1 fetch. The upstream
+baseline, isolated branch, visible brand, source notices and Windows production
+build are now complete. No Provider action, password, API key, purchase or
+deployment ownership is requested at this point: Phase 2 can implement
+contracts and disabled states without them.
+
 Phase 0 is complete and its closure evidence is committed on the integration branch. The AGPL and independent-brand gate is satisfied by the user’s direct confirmation. Phase 1 is currently blocked only because this machine cannot establish GitHub HTTPS on port 443, so the official upstream commit cannot be fetched into the local Git object graph. No Provider action, password, API key, purchase, or deployment ownership is being requested for this block.
 
 The only pending cleanup artifact is the Codex-created restoration probe `D:\使用AI专属文件夹\global-intelligence-earth\_codex_phase0_restore_probe_20260811_1640`, containing three copied non-secret representative files. It is outside both projects and is not a user action or a credential request; host policy rejected its scoped PowerShell removal. See `ACCEPTANCE_EVIDENCE.md` for the audit record.

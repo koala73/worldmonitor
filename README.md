@@ -1,4 +1,8 @@
-# World Monitor
+# 全球实时热点追踪·探长版
+
+> **独立 AGPL-3.0-only 分发。** Based on [World Monitor](https://github.com/koala73/worldmonitor)（链接到原仓库），modified and distributed under AGPL-3.0-only. 本项目不是 World Monitor 的官方部署，也不使用其标志作为主品牌。
+
+Phase 1 locks the upstream baseline at `ae0a0fe26bcbdb683b366899e4dc38fb8ccfb5ad` and records the MIT-licensed PokieTicker reference at `c16b7e34e72c2d09bb50d7b3159fa5cd6697fd19`. See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) for licenses and provenance; no legacy market database is included or represented as live data.
 
 [简体中文](README.zh-CN.md) | [日本語](README.ja-JP.md)
 

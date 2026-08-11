@@ -3,10 +3,20 @@
 **Controlling specification:** `D:\google\Codex_5.6_Terra_极高_全球情报母体重构执行书_2026-08-11.md`
 **Updated:** 2026-08-11T16:53:00+08:00
 **Official product brand:** 全球实时热点追踪·探长版
-**Current working branch:** `integration/phase0-safety-inventory`
+**Current working branch:** `integration/pokieticker-maritime-china-factory`
 **Formal mother repository:** `daking32168-byte/worldmonitor` (AGPL-3.0-only)
 
 ## Phase status
+
+## Effective current phase status
+
+This current-status receipt supersedes the historical preflight rows below.
+
+| Phase | Status | Scope | Commit | Evidence |
+|---|---|---|---|---|
+| 0 | completed | Safety inventory and recoverability closure | recorded | `evidence/phase0-closure.md` |
+| 1 | completed with recorded data-suite limitation | Real upstream mother baseline, independent brand, AGPL/PokieTicker notices, Windows build and production preview | pending implementation SHA backfill | `evidence/phase1-mother-baseline.md` |
+| 2 | in progress next | Provider contracts and honest disabled-state implementation; no credential required to begin | — | this document and `PROVIDER_MATRIX.md` |
 
 | Phase | Status | Scope | Commit | Evidence |
 |---|---|---|---|---|
@@ -42,4 +52,19 @@
 
 ## Next action
 
-When GitHub HTTPS is reachable from this machine, rerun the local `origin` and `upstream` fetch gates, verify local merge-base/ahead/behind, create a new integration branch from the upstream baseline, and only then expand the checkout, install dependencies, and begin Phase 1 implementation.
+## Phase 1 implementation correction — 2026-08-11
+
+This section supersedes the prior preflight-only state. After GitHub 443 recovery,
+local HTTP/1.1 fetches succeeded and proved merge-base
+`0fca203c776dd5fa4913c4bd52f99cd2c3c13a25` with
+`origin/main...upstream/main = 0 43`. The dedicated branch
+`integration/pokieticker-maritime-china-factory` is rooted at upstream
+`ae0a0fe26bcbdb683b366899e4dc38fb8ccfb5ad`; `main` remains unchanged.
+
+Phase 1 has implemented the independent visible brand, AGPL source notice,
+PokieTicker MIT/source trace, Windows-safe blog build and production build.
+The final DOM/browser checks passed. `test:data` was invoked but exceeded the
+64-second noninteractive limit; its final result is recorded as inconclusive,
+not passed. See `evidence/phase1-mother-baseline.md`.
+
+Proceed with Phase 2 provider/data contracts from the completed Phase 1 baseline. Missing Provider credentials must result in tested disabled states, never invented data or real-time claims.

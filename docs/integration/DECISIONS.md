@@ -39,3 +39,15 @@
 **Decision:** Leave Phase 1 blocked until `upstream/main` is fetched into the new workspace and its local graph proves the remote relationship.
 **Reason:** GitHub HTTPS is currently unavailable from the machine. The legacy backup contains a nested WorldMonitor repository only at `0fca203...` and it has pre-existing generated-file modifications; it does not contain `ae0a0fe...`.
 **Consequence:** Do not copy that tree into the formal mother workspace, create a synthetic `upstream/main`, run a build against it, or claim the 43 upstream commits were integrated. The verified remote comparison and failed local commands are recorded in `evidence/phase1-preflight-network.md`.
+
+## D-0008 — Establish Phase 1 from the real fetched upstream baseline
+
+**Decision:** After GitHub HTTPS recovery, fetch both remotes locally and create the dedicated integration branch from the real `upstream/main` commit `ae0a0fe26bcbdb683b366899e4dc38fb8ccfb5ad`.
+**Reason:** The Phase 1 requirement is a verifiable local object graph, not a cached copy, a synthetic ref, or an inference from the GitHub connector. Local HTTP/1.1 fetches now prove fork merge-base `0fca203c776dd5fa4913c4bd52f99cd2c3c13a25` and upstream ahead/behind `0 43`.
+**Consequence:** `integration/pokieticker-maritime-china-factory` is the only Phase 1 implementation branch. `main`, the preserved legacy project, and the backup branch remain untouched.
+
+## D-0009 — Make provenance and independent identity executable contracts
+
+**Decision:** Centralize the product identity in a source constant, render the exact AGPL attribution visibly in the application footer, retain PokieTicker's MIT license and source lock, and test these requirements in the repository.
+**Reason:** A README-only promise can drift from the shipped UI. The user requires an independently branded product while the AGPL upstream attribution, PokieTicker provenance, and non-deceptive data boundaries must remain visible and auditable.
+**Consequence:** Phase 1 does not copy PokieTicker source code or its historical SQLite data. It adds only the license/trace documents, branded UI metadata, and contract tests; live data, K-lines, AIS facts and Provider claims remain out of scope until their honest Phase 2+ adapters exist.

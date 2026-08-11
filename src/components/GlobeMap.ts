@@ -23,6 +23,7 @@ import { NUCLEAR_FACILITIES, SPACEPORTS, ECONOMIC_CENTERS, CRITICAL_MINERALS, UN
 import { PIPELINES } from '@/config/pipelines';
 import { t } from '@/services/i18n';
 import { SITE_VARIANT } from '@/config/variant';
+import { PRIMARY_BRAND } from '@/config/brand';
 import { getGlobeRenderScale, resolveGlobePixelRatio, resolvePerformanceProfile, subscribeGlobeRenderScaleChange, getGlobeTexture, GLOBE_TEXTURE_URLS, subscribeGlobeTextureChange, getGlobeVisualPreset, subscribeGlobeVisualPresetChange, type GlobeRenderScale, type GlobePerformanceProfile, type GlobeVisualPreset } from '@/services/globe-render-settings';
 import {
   getLayerExplanation,
@@ -1985,7 +1986,7 @@ export class GlobeMap {
       </div>`, "legacy direct innerHTML migration"));
     const authorBadge = document.createElement('div');
     authorBadge.className = 'map-author-badge';
-    authorBadge.textContent = '© Elie Habib · Someone™';
+    authorBadge.textContent = `© ${PRIMARY_BRAND}`;
     el.appendChild(authorBadge);
     this.container.appendChild(el);
     this.layerTogglesEl = el;

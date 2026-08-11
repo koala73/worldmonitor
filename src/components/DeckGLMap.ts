@@ -10,6 +10,7 @@ import maplibregl from 'maplibre-gl';
 import type { StyleSpecification } from 'maplibre-gl';
 import { FALLBACK_DARK_STYLE, FALLBACK_LIGHT_STYLE, getMapProvider, getMapTheme, isLightMapTheme } from '@/config/basemap';
 import { getStyleForProvider } from '@/config/basemap-styles';
+import { PRIMARY_BRAND } from '@/config/brand';
 import Supercluster from 'supercluster';
 import type {
   MapLayers,
@@ -5476,7 +5477,7 @@ export class DeckGLMap {
 
     const authorBadge = document.createElement('div');
     authorBadge.className = 'map-author-badge';
-    authorBadge.textContent = '© Elie Habib · Someone™';
+    authorBadge.textContent = `© ${PRIMARY_BRAND}`;
     toggles.appendChild(authorBadge);
 
     this.container.appendChild(toggles);
