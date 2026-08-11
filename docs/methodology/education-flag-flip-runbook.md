@@ -45,8 +45,9 @@ All must be green before flipping:
    176–179 would pass a laxer runbook check and then fail CI inside the
    publication PR. The gate and the invariant must be the same number.
 
-2. **Register the health probe, then confirm it green.** ✅ **Done in #6452**
-   (2026-08-11). The probe was deliberately **not** registered in the scaffold PR,
+2. **Register the health probe, then confirm it green.** Implementation is ready in
+   #6452 (2026-08-11); post-deploy acceptance is pending. The probe was deliberately
+   **not** registered in the scaffold PR,
    because `scripts/check-health-probe-cutovers.mts` requires a new strict probe to
    carry machine-readable pre-seed evidence, or an acknowledgement expiring by the
    producer's first scheduled run within 24 hours — neither is obtainable before the
@@ -56,6 +57,11 @@ All must be green before flipping:
    `educationAttainment` entry on the **pre-seed evidence** path, citing the Railway
    service, `probeKey`, a real `compactHealthStatus: OK`, and an HTTPS reference →
    then confirm `/api/health` reports OK.
+
+   **Do not mark this step done or close #6452 until post-deploy acceptance proves all
+   three conditions:** the deployed Vercel SHA includes the registration change,
+   `/api/health?compact=1` reports a total of **260** probes, and
+   `educationAttainment` reports status **OK**.
 
    **The publish did not happen on its own.** Railway refused the #6450 merge commit
    because its post-merge check suite was red on two unrelated tests, so the service
