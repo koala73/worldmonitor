@@ -464,8 +464,10 @@ async function handleSpike(spike: TrendingSpike, config: TrendingConfig): Promis
     // 2h window while the per-term cooldown is only 30 minutes, so taking the
     // head of that array would hand a re-spike the same six up-to-2h-old
     // headlines it showed last time while the title reports a higher count.
+    // Coarse feed timestamps can tie, so arrival time decides which evidence
+    // is newest within the same publication instant.
     const articles = [...spike.headlines]
-      .sort((a, b) => b.publishedAt - a.publishedAt)
+      .sort((a, b) => b.publishedAt - a.publishedAt || b.ingestedAt - a.ingestedAt)
       .slice(0, MAX_SPIKE_ARTICLES)
       .map(headline => ({
         title: headline.title,

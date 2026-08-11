@@ -13,7 +13,7 @@
  * so the emitter and the renderer cannot drift apart.
  */
 
-import { beforeAll, describe, expect, it } from 'vitest';
+import { beforeAll, describe, expect, it, vi } from 'vitest';
 
 import { initTestI18n } from './helpers/i18n.mts';
 import { SignalModal } from '@/components/SignalModal';
@@ -163,6 +163,55 @@ describe('keyword_spike signal payload carries its evidence', () => {
     // `relatedTopics: [spike.term]` rendered a chip reading the term the user
     // was already looking at, which carried no information.
     expect(dataOf(signal).relatedTopics ?? []).not.toContain(dataOf(signal).term);
+  });
+});
+
+describe('keyword_spike re-spike evidence breaks publication-time ties by arrival', () => {
+  it('shows later arrivals first after the cooldown when publication times match', async () => {
+    await initTestI18n();
+    updateTrendingConfig({
+      blockedTerms: [],
+      minSpikeCount: 5,
+      spikeMultiplier: 3,
+      autoSummarize: false,
+    });
+
+    const firstIngestAt = Date.now();
+    const dateNow = vi.spyOn(Date, 'now').mockReturnValue(firstIngestAt);
+    const sharedPubDate = new Date(firstIngestAt - 60_000);
+    const originalHeadlines = [
+      { source: 'Reuters', title: 'Talks resume as Solmira delegates arrive' },
+      { source: 'AP', title: 'Markets watch Solmira summit opening' },
+      { source: 'BBC', title: 'Officials outline Solmira summit agenda' },
+      { source: 'Reuters', title: 'Regional leaders join Solmira negotiations' },
+      { source: 'AP', title: 'Observers assess Solmira policy proposals' },
+      { source: 'BBC', title: 'Delegations prepare Solmira joint statement' },
+    ];
+    const laterHeadlines = [
+      { source: 'Reuters', title: 'Fresh terms reshape Solmira summit talks' },
+      { source: 'AP', title: 'New warning changes Solmira negotiation' },
+    ];
+
+    try {
+      ingestHeadlines(originalHeadlines.map(headline => ({ ...headline, pubDate: sharedPubDate })));
+      await drainSpikeFor(/solmira/i);
+
+      // The rolling evidence window is two hours and the alert cooldown is 30
+      // minutes. The old and new stories deliberately share one publication
+      // time, as feeds with coarse timestamps can do.
+      dateNow.mockReturnValue(firstIngestAt + 31 * 60_000);
+      ingestHeadlines(laterHeadlines.map(headline => ({ ...headline, pubDate: sharedPubDate })));
+
+      const secondSignal = await drainSpikeFor(/solmira/i);
+      const titles = (dataOf(secondSignal).articles ?? []).map(article => article.title);
+      expect(titles.slice(0, laterHeadlines.length)).toEqual(
+        laterHeadlines.map(headline => headline.title),
+      );
+      expect(titles).not.toContain(originalHeadlines.at(-1)!.title);
+      expect(titles).not.toContain(originalHeadlines.at(-2)!.title);
+    } finally {
+      dateNow.mockRestore();
+    }
   });
 });
 
