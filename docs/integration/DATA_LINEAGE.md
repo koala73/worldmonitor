@@ -73,3 +73,18 @@ runtime adapter does not read that file. Any future Finnhub/Alpha Vantage value
 is quote-only, explicitly labelled as a fallback and cannot become a bar
 source. News remains source-linked information; its association with a symbol
 does not assert a market cause.
+
+## Phase 4 stock-workspace display boundary
+
+The Phase 4 browser workspace does not add a market-data source. It consumes
+only Market v1 envelopes; when that client returns `NOT_CONFIGURED`, no
+historical fixture, cached sample, shared-symbol series, generated company
+metadata, invented news particle or prediction crosses into the UI. The D3
+chart's empty state is therefore a data-lineage result, not a placeholder that
+can later be mistaken for a price chart.
+
+The eight first-choice ticker chips are product navigation preferences, not
+data records. A user search is a Provider query whose empty output stays empty.
+Any future visible bar/quote/news item must retain its provider, source URL or
+ID, observed/fetched/as-of fields, delay/freshness, fallback state and license
+note all the way from the Phase 3 server adapter to the Phase 4 display.

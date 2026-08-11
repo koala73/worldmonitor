@@ -48,3 +48,17 @@ No Phase 0 artifact includes a Provider secret, an OHLC array, a fabricated pric
 | Massive minute stream | Server-only Massive WebSocket relay to same-origin SSE, ref-counted subscriptions, reconnect/backoff and per-symbol ring/cache keys | `NOT_CONFIGURED` when no key; `DELAYED_UNVERIFIED` with key but no entitlement flag | Confirm commercial display/rebroadcast rights, then set `MASSIVE_REALTIME_DISPLAY_AND_REDISTRIBUTION_CONFIRMED=true` in server-side configuration | No browser key, no claimed real-time badge and no opened stream before confirmation |
 | Finnhub / Alpha Vantage | Existing provider paths may be reached only by the Phase 3 live handler as an explicit quote fallback | `NOT_CONFIGURED` unless separately configured; any returned fallback is `DELAYED_UNVERIFIED` or `MARKET_CLOSED` | Configure a suitable plan and validate actual provider response/provenance | Never use fallback quotes to invent or refill OHLC bars |
 | PokieTicker SQLite | Read-only Phase 2 fixture derivation only; no Phase 3 runtime import | `HISTORICAL_SNAPSHOT` in tests only | None; it is deliberately excluded from runtime feed selection | Never label as current, delayed, licensed or exchange-real-time |
+
+## Phase 4 UI consumption check
+
+| UI capability | Native behavior without an authorized Provider | Condition for value-bearing display | Hard prohibition |
+|---|---|---|---|
+| `/stocks` priority selector | Shows only the eight predeclared navigation choices and the current symbol | A selected symbol may call Market v1; returned value display still follows the response envelope | A chip is not evidence of a current quote, a valid global listing or market availability |
+| Global stock search | Empty result/explicit availability message | Provider returns a validated result with provenance | Never synthesize, cache-share or scrape a company result client-side |
+| K-line, price and volume | Explicit empty chart / absent quote plus Provider status | Symbol-matching validated bars/quote from Market v1 with rendered provider/freshness state | Never show the PokieTicker fixture, a static sample, another symbol's array or an unlicensed response as a live chart |
+| News particles and links | Empty state | Provider-returned news with source link and publication time | Never manufacture particles, source links or claim a news item caused price movement |
+| Categories, range analysis, similar results, forecast, story | Disabled or explicitly unavailable | Phase 5 evidence and any required server response/model provenance | Never call relevance, sentiment, correlation or a simulated return a fact/causal prediction |
+
+The Phase 4 workspace has no client-side Provider credential. Its only market
+client is the existing same-origin Market v1 client; the browser does not call
+Massive directly and no iframe renders either upstream application.

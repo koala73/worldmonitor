@@ -3,6 +3,7 @@ import { t } from '@/services/i18n';
 import type { MarketData, CryptoData, TokenData } from '@/types';
 import { formatPrice, formatChange, getChangeClass, getHeatmapClass } from '@/utils';
 import { escapeHtml, unsafeRawHtml } from '@/utils/sanitize';
+import { normalizeStockWorkspaceSymbol, stockWorkspaceUrl } from '@/features/pokieticker/stock-workspace-route';
 import { miniSparkline } from '@/utils/sparkline';
 import { SITE_VARIANT } from '@/config';
 import { createWatchlistButton } from './watchlist-modal';
@@ -89,11 +90,15 @@ export class MarketPanel extends Panel {
           idx,
           t('components.markets.chart.title', { symbol: stock.display }),
         );
+        const workspaceSymbol = normalizeStockWorkspaceSymbol(stock.symbol);
+        const displaySymbol = workspaceSymbol
+          ? `<a class="market-symbol" data-stock-workspace href="${escapeHtml(stockWorkspaceUrl(workspaceSymbol))}" aria-label="在股票工作区打开 ${escapeHtml(stock.display)}">${escapeHtml(stock.display)}</a>`
+          : `<span class="market-symbol">${escapeHtml(stock.display)}</span>`;
         return `
       <div${attrs}>
         <div class="market-info">
           <span class="market-name">${escapeHtml(stock.name)}</span>
-          <span class="market-symbol">${escapeHtml(stock.display)}</span>
+          ${displaySymbol}
         </div>
         <div class="market-data">
           ${miniSparkline(stock.sparkline, stock.change)}

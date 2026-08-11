@@ -122,3 +122,25 @@ licensed-live manual acceptance remains a separate, intentionally unsatisfied
 gate: it requires an authorized Provider account/secret and a visible test of
 AAPL, MSFT, NVDA, TSLA, AMZN, GOOGL, META and BABA with captured provenance,
 timestamps and screenshots.
+
+## Phase 4 — native stock workspace, scroll and responsive truthfulness
+
+**Implementation commit:** `PENDING_BACKFILL`.
+
+| Check | Result | Evidence |
+|---|---|---|
+| Native route ownership | PASS | `/stocks` and valid `/stocks/:symbol` route before the dashboard app; focused route test passed. |
+| Priority securities and navigation | PASS | AAPL/MSFT/NVDA/AMZN/GOOGL/META/TSLA/BABA are first; browser click changed to `/stocks/MSFT` and the heading became `MSFT`. |
+| Provider-only global search | PASS | `7203` yielded `没有收到可验证的搜索结果` with zero result buttons when the Provider was unconfigured. No static company catalogue was used. |
+| No fake K-line / no cross-symbol fallback | PASS | Browser observed zero synthetic candle markers; empty AAPL/MSFT charts state the unconfigured Provider rather than rendering a fixture or another symbol. Existing focused contract/realtime suite passed 15/15. |
+| Vertical scroll regression | PASS | Browser measured a dedicated `.pokie-workspace` scroller and reached its bottom through a real wheel event at 1440×900. |
+| Responsive layouts | PASS | Browser evidence captured 1440×900, 1280×720 and 390×844. Mobile has no document horizontal overflow; all three retain workspace vertical scrolling. |
+| Type/contract/build gates | PASS | `npm run typecheck:all=0`; scoped Biome=0; `npm run build:full=0`. |
+| Whole-tree lint | PASS with upstream warnings | `npm run lint=0`; 33 warnings and 9 infos, no error. The strict scoped Phase 4 lint passed. |
+| Licensed-live browser acceptance | NOT CLAIMED | No market secret, Provider response, display/rebroadcast entitlement, timestamp/latency or actual K-line is represented as live. |
+
+**Phase 4 gate: COMPLETED FOR NATIVE UI, RESPONSIVE INTERACTION AND
+NO-PROVIDER TRUTHFULNESS.** The later provider-backed acceptance must prove
+actual symbol-specific bars, provider/source, observed/as-of time, freshness
+and commercial display/rebroadcast entitlement before any real-time statement
+is made.

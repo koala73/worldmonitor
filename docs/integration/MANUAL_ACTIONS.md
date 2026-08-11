@@ -31,6 +31,17 @@ screenshot or Git. The manual live test must capture the returned provenance and
 timestamps for AAPL, MSFT, NVDA, TSLA, AMZN, GOOGL, META and BABA; it is not a
 prerequisite for continuing Phase 4 implementation.
 
+**Phase 4 completion update (2026-08-11):** The native responsive workspace,
+provider-only search and empty-chart truthfulness state are complete. The
+remaining market action is still limited to the P0 authorized market plan and
+server-side secret above; no code, browser layout, component migration or
+future Phase 5 adapter work requires the user to reveal a secret. When the user
+chooses to perform licensed-live acceptance, first open the official Massive
+account/plan and API-key console, choose the display/rebroadcast-permitted
+authorization level, put the key only in the server/platform secret store, and
+then run the recorded eight-symbol visual/provenance test. Never paste the key,
+plan invoice, session cookie or CAPTCHA text into this file, chat or Git.
+
 ## Phase 1 implementation update
 
 The GitHub transport block has cleared for the local Phase 1 fetch. The upstream

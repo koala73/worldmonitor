@@ -84,3 +84,18 @@ tree `cef0da8d9cac0154a34be866caad9797243ce6cf`, and the resulting Phase 3
 commit is `9cb8cb6efe2164891ea26cb6b2f51b6a3da086b0`. No backup source file,
 legacy SQLite database, remote ref or `main` branch was copied, updated or
 repointed by this read-only object lookup.
+
+## Phase 4 behavior-map receipt
+
+Phase 4 inspected the locked MIT PokieTicker component names as a behavior map:
+`StockSelector`, `CandlestickChart`, `NewsPanel`, `NewsCategoryPanel`,
+`RangeQueryPopup`, `RangeNewsPanel`, `RangeAnalysisPanel`, `SimilarDaysPanel`,
+`SimilarNewsPanel`, `PredictionPanel` and `StoryPanel`. The native implementation
+is a new WorldMonitor TypeScript/D3 workspace; no PokieTicker component source,
+runtime, database, screenshot or network page was copied or embedded. The
+item-by-item record is `POKIETICKER_COMPONENT_MIGRATION.md`.
+
+The local 2026-08-11 GitHub transport recheck still resolves origin/main to
+`0fca203c776dd5fa4913c4bd52f99cd2c3c13a25` and upstream/main to
+`ae0a0fe26bcbdb683b366899e4dc38fb8ccfb5ad`. It was read-only and did not move
+`main` or any remote ref.

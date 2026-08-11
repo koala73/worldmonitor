@@ -29,6 +29,9 @@ export function bindMarketChartActivation(
   openChart: MarketChartOpener,
 ): void {
   const openFromTarget = (target: HTMLElement): void => {
+    // The Market panel also exposes an owned full-screen stock workspace link.
+    // Do not consume that anchor as the legacy terminal-chart activation.
+    if (target.closest('[data-stock-workspace]')) return;
     const row = target.closest<HTMLElement>('[data-market-chart]');
     if (!row) return;
 
@@ -40,6 +43,7 @@ export function bindMarketChartActivation(
   content.addEventListener('click', (event) => openFromTarget(event.target as HTMLElement));
   content.addEventListener('keydown', (event) => {
     if (event.key !== 'Enter' && event.key !== ' ') return;
+    if ((event.target as HTMLElement).closest('[data-stock-workspace]')) return;
     if (!(event.target as HTMLElement).closest('[data-market-chart]')) return;
 
     event.preventDefault();

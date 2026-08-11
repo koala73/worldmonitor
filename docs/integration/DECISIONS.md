@@ -120,3 +120,19 @@ the required audit trail.
 `git write-tree` and cached-diff checks passed in an isolated index, and after
 the actual staged-Unicode hook passed. The alternate store is lookup-only; it
 does not make the legacy project a code or data source.
+
+## D-0015 — Make the stock workspace own its scroll surface and fail closed visually
+
+**Decision:** Give the native `.pokie-workspace` a bounded `height: 100vh` and
+`overflow-y: auto`, because the enclosing dashboard deliberately disables
+document scrolling. Render a dedicated empty chart and unavailable research
+states whenever Market v1 does not return symbol-validated provider data.
+**Reason:** A page that is visually taller than the viewport but cannot scroll
+does not satisfy the stock-research workflow. Restoring scroll by filling the
+space with a fixture, generic chart or another security's bars would be a more
+serious false-data defect.
+**Consequence:** Browser acceptance must prove real wheel scroll at desktop and
+responsive mobile sizes, while live K-line acceptance remains blocked pending a
+provider response and display/rebroadcast authorization. The UI may preserve
+the component structure of PokieTicker but cannot elevate its historical
+database or an empty no-key response into market facts.

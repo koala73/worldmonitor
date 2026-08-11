@@ -12,6 +12,7 @@ import { loadVariantThemeStylesheet } from '@/bootstrap/variant-theme';
 import { App } from './App';
 import { installUtmInterceptor } from './utils/utm';
 import { captureContentAttributionFromUrl } from '../shared/content-attribution';
+import { isStockWorkspacePath } from './features/pokieticker/stock-workspace-route';
 
 if (SITE_VARIANT === 'happy') {
   // Keeps happy-theme.css off other variants' eager CSS graph. On happy, the
@@ -610,6 +611,13 @@ if (urlParams.get('settings') === '1') {
       m.initLiveChannelsWindow();
     }
   );
+} else if (isStockWorkspacePath(window.location.pathname)) {
+  // The stock workspace is an owned, full-screen WorldMonitor route. It is
+  // deliberately loaded as an island rather than mounting a second React app
+  // or framing PokieTicker/the provider in an iframe.
+  void import('./features/pokieticker/stock-workspace').then(({ initStockWorkspace }) => {
+    initStockWorkspace('app');
+  }).catch(console.error);
 } else {
   installUtmInterceptor();
   markLcpDebug('wm:boot:app-construct');
