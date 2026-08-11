@@ -20671,6 +20671,10 @@ body:has(.tauri-titlebar) .breaking-news-container {
   text-overflow: ellipsis;
 }
 
+.breaking-alert-headline-link {
+  color: inherit;
+}
+
 .breaking-alert-meta {
   font-size: calc(11px * var(--wm-panel-effective-scale, 1));
   color: rgba(255, 255, 255, 0.7);
