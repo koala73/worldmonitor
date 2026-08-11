@@ -53,3 +53,23 @@ trace at `third_party/PokieTicker/UPSTREAM.md`; the legacy SQLite snapshot
 remains outside Git and retains `HISTORICAL_SNAPSHOT` status.
 
 No data path was activated while upstream synchronization is blocked. In particular, the legacy backup’s nested WorldMonitor repository was inspected read-only and not copied into the formal mother workspace; its generated-file modifications are not product data and cannot serve as an upstream provenance substitute.
+
+## Phase 3 authorized-stock path
+
+The production candidate now has an inactive, server-only market path:
+Massive REST aggregate/reference/news responses enter
+`massive-stock-provider.ts`; minute aggregate messages enter
+`market-stream-relay.ts`; normalized results pass the Phase 2 provenance,
+symbol, timestamp and OHLC guards before they can reach Market v1 responses or
+same-origin SSE. The output records provider/source URL, observed/fetched/as-of
+times, freshness/delay when known, authorization status, fallback state and
+license note.
+
+No Massive credential was present during Phase 3. Therefore no actual provider
+record, live price, live bar, latency measurement or stream screenshot is in
+the repository evidence. Recorded AAPL/MSFT/NVDA/TSLA values are the locked
+PokieTicker `HISTORICAL_SNAPSHOT` fixture used solely by automated tests; the
+runtime adapter does not read that file. Any future Finnhub/Alpha Vantage value
+is quote-only, explicitly labelled as a fallback and cannot become a bar
+source. News remains source-linked information; its association with a symbol
+does not assert a market cause.

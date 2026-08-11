@@ -1,3 +1,5 @@
+#!/bin/sh
+
 BRANCH=$(git branch --show-current)
 if [ -n "$BRANCH" ] && [ "$BRANCH" != "main" ] && [ "$BRANCH" != "master" ]; then
   PR_STATE=$(gh pr view "$BRANCH" --json state --jq '.state' 2>/dev/null)

@@ -39,3 +39,12 @@ guessed by the current disabled handler.
 Every market, news, AIS, port and trade response must carry: `provider`, `providerStatus`, `sourceUrl` or `sourceId`, `observedAt`, `fetchedAt`, `asOf`, `delaySeconds` when known, `freshnessSeconds`, `isFallback`, `fallbackReason`, and `licenseNote`.
 
 No Phase 0 artifact includes a Provider secret, an OHLC array, a fabricated price series, or an iframe to an upstream application.
+
+## Phase 3 provider implementation check
+
+| Capability | Implemented adapter behavior | Runtime status without a secret/entitlement | Upgrade condition | Hard prohibition |
+|---|---|---|---|---|
+| Massive stock bars, reference search and company news | Server-only REST adapter with per-symbol cache key, response-symbol verification, range mapping and provenance envelope | `NOT_CONFIGURED`; no returned bars | Store `MASSIVE_API_KEY` only in a server/platform secret store and complete a successful provenance-bearing request | Do not use the historical test fixture, another symbol's bars or a static array as a fallback |
+| Massive minute stream | Server-only Massive WebSocket relay to same-origin SSE, ref-counted subscriptions, reconnect/backoff and per-symbol ring/cache keys | `NOT_CONFIGURED` when no key; `DELAYED_UNVERIFIED` with key but no entitlement flag | Confirm commercial display/rebroadcast rights, then set `MASSIVE_REALTIME_DISPLAY_AND_REDISTRIBUTION_CONFIRMED=true` in server-side configuration | No browser key, no claimed real-time badge and no opened stream before confirmation |
+| Finnhub / Alpha Vantage | Existing provider paths may be reached only by the Phase 3 live handler as an explicit quote fallback | `NOT_CONFIGURED` unless separately configured; any returned fallback is `DELAYED_UNVERIFIED` or `MARKET_CLOSED` | Configure a suitable plan and validate actual provider response/provenance | Never use fallback quotes to invent or refill OHLC bars |
+| PokieTicker SQLite | Read-only Phase 2 fixture derivation only; no Phase 3 runtime import | `HISTORICAL_SNAPSHOT` in tests only | None; it is deliberately excluded from runtime feed selection | Never label as current, delayed, licensed or exchange-real-time |

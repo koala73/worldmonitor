@@ -101,6 +101,36 @@ export function assertStockBarSeriesIntegrity(requestedSymbol: string, bars: rea
   }
 }
 
+/**
+ * Reject a suspicious run of identical traded OHLC bars before it can be
+ * labelled live. Flat price action is possible, but a long run with volume is
+ * more commonly an upstream/default-row failure than a market fact.
+ */
+export function assertNoSuspiciousFlatline(
+  requestedSymbol: string,
+  bars: readonly StockBar[],
+  minimumRepeatedBars = 6,
+): void {
+  const symbol = normalizeStockSymbol(requestedSymbol);
+  let runLength = 0;
+  let previousSignature = '';
+
+  for (const bar of bars) {
+    const signature = `${bar.open}:${bar.high}:${bar.low}:${bar.close}`;
+    if (bar.volume > 0 && signature === previousSignature) {
+      runLength += 1;
+    } else {
+      runLength = bar.volume > 0 ? 1 : 0;
+      previousSignature = signature;
+    }
+    if (runLength >= minimumRepeatedBars) {
+      throw new StockContractRequestError(
+        `bars for ${symbol} contain ${runLength} identical traded OHLC values and cannot be labelled live`,
+      );
+    }
+  }
+}
+
 export function notConfiguredProvenance(capability: string, now = Date.now()): DataProvenance {
   const providerStatus: ProviderStatus = 'PROVIDER_STATUS_NOT_CONFIGURED';
   return {

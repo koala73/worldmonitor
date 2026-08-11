@@ -20,6 +20,17 @@ No secret belongs in this file, chat transcript, Git history, screenshot or clie
 
 **Phase 2 completion update (2026-08-11):** The contract and disabled-state work is complete without requesting, receiving or recording a key. The next capability that requires a user action is a display/rebroadcast-authorized market-data plan and the corresponding server-side secret. Until the user elects to complete that action, the product remains correctly `NOT_CONFIGURED`; Phase 3 can still implement the adapter shell and contract tests without exposing a secret.
 
+**Phase 3 completion update (2026-08-11):** The Massive adapter, server relay,
+exchange-calendar handling and disabled-state tests are complete. To perform
+licensed-live acceptance, use the official Massive account/plan flow, choose a
+plan that expressly permits the intended display and rebroadcast use, store
+`MASSIVE_API_KEY` only in the local/platform server secret store, and set
+`MASSIVE_REALTIME_DISPLAY_AND_REDISTRIBUTION_CONFIRMED=true` only after that
+right is confirmed. Do not paste either value into chat, a checked-in `.env`, a
+screenshot or Git. The manual live test must capture the returned provenance and
+timestamps for AAPL, MSFT, NVDA, TSLA, AMZN, GOOGL, META and BABA; it is not a
+prerequisite for continuing Phase 4 implementation.
+
 ## Phase 1 implementation update
 
 The GitHub transport block has cleared for the local Phase 1 fetch. The upstream

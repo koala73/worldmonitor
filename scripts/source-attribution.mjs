@@ -872,4 +872,7 @@ function main() {
   printStats(sourceAttributionStats(inventory, previous));
 }
 
-if (process.argv[1] && process.argv[1].endsWith('scripts/source-attribution.mjs')) main();
+// Node normalizes an invoked script to an absolute Windows path with `\\`.
+// Normalize the separator before this entrypoint guard so `npm run
+// sources:generate` performs its documented write on Windows as well as POSIX.
+if (process.argv[1]?.replaceAll('\\', '/').endsWith('scripts/source-attribution.mjs')) main();

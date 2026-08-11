@@ -17,6 +17,7 @@ This current-status receipt supersedes the historical preflight rows below.
 | 0 | completed | Safety inventory and recoverability closure | recorded | `evidence/phase0-closure.md` |
 | 1 | completed with recorded data-suite limitation | Real upstream mother baseline, independent brand, AGPL/PokieTicker notices, Windows build and production preview | `c889fcfbdab4bf2bcd7a28f85ed32114f288d6aa` | `evidence/phase1-mother-baseline.md` |
 | 2 | completed | Provider/data contracts, generated API, explicit disabled state and historical-fixture isolation | `2df9ef0a133564789bb398d7a9f363de171e78b8` | `evidence/phase2-data-contract.md` |
+| 3 | completed for code and automated gates; licensed-live acceptance pending | Server-only Massive REST/WebSocket relay, exchange-calendar status, symbol isolation and explicit no-key/no-entitlement denial | pending implementation SHA backfill | `evidence/phase3-authorized-stock-relay.md` |
 
 | Phase | Status | Scope | Commit | Evidence |
 |---|---|---|---|---|
@@ -92,8 +93,39 @@ cross-symbol, duplicate-time, negative-volume, or invalid-OHLC series.
 (`feat(market): establish truthful stock data contracts`). See
 `evidence/phase2-data-contract.md`.
 
+## Phase 3 — authorized stock relay and truthful runtime boundary
+
+Phase 3 adds a server-only Massive adapter for bars, quotes, ticker search and
+company news, plus a server-only WebSocket-to-SSE relay. Its REST requests,
+WebSocket authentication and Redis/in-memory keys are symbol-qualified; a
+response whose ticker does not match the requested symbol, a duplicate-timestamp
+series, invalid OHLC/volume, or six identical traded bars is rejected instead of
+rendered. The browser receives only normalized SSE events and never receives an
+upstream API key.
+
+The stock handler now fails closed: without `MASSIVE_API_KEY`, the SSE endpoint
+returns `503 PROVIDER_STATUS_NOT_CONFIGURED`; without an explicit
+`MASSIVE_REALTIME_DISPLAY_AND_REDISTRIBUTION_CONFIRMED=true`, it returns
+`409 DELAYED_UNVERIFIED` and does not open a WebSocket. A configured REST
+response remains delayed/unverified unless the separately documented commercial
+display/rebroadcast entitlement has been confirmed. Finnhub/Alpha Vantage may
+provide an explicitly labelled quote fallback only; they never fill a missing
+bar series.
+
+The US equity session calculation handles weekends, named full closures and
+documented early-close dates. `MARKET_CLOSED` is therefore not a simple weekday
+guess. The recorded PokieTicker values remain test-only historical fixtures;
+they are not a runtime source and are not claimed to be live or delayed market
+data.
+
+**Phase 3 implementation commit:** pending backfill after the implementation
+commit. Automated evidence is in `evidence/phase3-authorized-stock-relay.md`.
+No actual licensed-live browser acceptance is claimed yet because no Provider
+secret or display/rebroadcast confirmation has been supplied.
+
 ## Next action
 
-Proceed to Phase 3: implement an authorized provider relay and actual symbol-
-isolated bars only after a display/rebroadcast-authorized Provider path is
-configured. No live-data claim may be made before that verification.
+Proceed automatically to Phase 4 stock workspace implementation while the
+manual licensed-live acceptance gate remains pending. A production chart may
+only render returned, provenance-labelled bars; it must show the disabled or
+delayed state rather than a sample or shared K-line.

@@ -439,6 +439,13 @@
     },
 
     {
+      "path": "api/market/stream.ts",
+      "category": "external-protocol",
+      "reason": "Same-origin SSE transport for the server-owned Massive market relay. Its text/event-stream framing, abort lifecycle and subscription semantics cannot be represented as a unary sebuf RPC. Product reads and historical data remain MarketService RPCs; this route never accepts or exposes provider credentials and explicitly returns NOT_CONFIGURED/DELAYED_UNVERIFIED when live streaming is not permitted.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
       "path": "api/opensky.js",
       "category": "upstream-proxy",
       "reason": "Transparent proxy to OpenSky Network API. Shape is OpenSky's; we don't remodel it.",

@@ -65,3 +65,40 @@ unconfigured states in both code and UI before it can render a chart.
 validator, symbol-qualified cache key and bar invariant guard. A Provider key or
 non-empty response cannot by itself upgrade the status to
 `REALTIME_LICENSED`.
+
+## D-0011 — Isolate authorized live market transport on the server and fail closed
+
+**Decision:** Use Massive REST and WebSocket functionality only through a
+server-side adapter/relay. The browser may subscribe to a same-origin SSE
+endpoint but never receives an upstream credential. A missing key returns
+`NOT_CONFIGURED`; a key without the explicitly confirmed display/rebroadcast
+right remains `DELAYED_UNVERIFIED` and opens no upstream real-time stream.
+**Reason:** A client-side key or a WebSocket opened merely because a key exists
+would expose a secret and turn an unverified commercial capability into a false
+real-time claim.
+**Consequence:** All server transport requires symbol-qualified request/cache
+keys and strict response matching. Provider failure returns unavailable empty
+bars, never another symbol's series, a static sample or a historical fixture.
+
+## D-0012 — Treat exchange session state and suspicious repeated bars as data-quality gates
+
+**Decision:** Calculate US equity `MARKET_CLOSED` from a named-calendar and
+early-close model rather than weekday alone, and reject six identical traded
+OHLC bars after normal series validation.
+**Reason:** Weekend-only logic mislabels holidays; a repeated static candle
+sequence is a recognizable fake-K-line failure mode even when its OHLC values
+are individually valid.
+**Consequence:** The Phase 3 relay/adapter tests cover Sunday and Christmas
+closures, distinct symbols/windows, and flatline rejection. Legitimate provider
+data may be shown only when it passes those guards with its true status.
+
+## D-0013 — Keep generated source attribution executable on Windows
+
+**Decision:** Make the source-attribution script recognize its own Windows path
+before invoking `main()`.
+**Reason:** `process.argv[1]` contains backslashes on Windows; the previous
+forward-slash-only suffix test silently skipped generation, leaving provider
+provenance changes unrefreshed.
+**Consequence:** `npm run sources:generate` now refreshes the checked-in
+manifest and source document on this required desktop environment; the resulting
+Massive entries remain `terms-review`, not a license assertion.

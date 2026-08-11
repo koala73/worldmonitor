@@ -92,3 +92,31 @@ environment before release-wide test certification.
 contract, generation, API, truthfulness and production-build gates pass. The
 whole-tree protobuf lint remains an upstream baseline issue and is not counted
 as a pass.
+
+## Phase 3 — authorized stock relay and truthful provider boundary
+
+**Implementation commit:** pending backfill after the Phase 3 implementation
+commit. The follow-up documentation receipt will record its own SHA separately.
+
+| Check | Result | Evidence |
+|---|---|---|
+| GitHub service and local transport recheck | PASS | Connected GitHub app read both repositories; local `git -c http.version=HTTP/1.1 fetch --no-tags origin main` and the matching `upstream main` command both exited 0 and retained `0fca203...` / `ae0a0fe...`. |
+| Massive REST adapter and source attribution | PASS | Server-only adapter uses Massive documented REST paths for aggregates, ticker reference and news; generated source manifest records `api.massive.com` and `massive.com` as terms-review sources. |
+| Server-only relay / no client secret | PASS | Upstream WebSocket authentication occurs only in `market-stream-relay.ts`; the same-origin SSE route has no browser key field. Focused relay tests assert auth remains upstream-only. |
+| Symbol isolation and anti-fake-bar gate | PASS | Focused tests cover AAPL/MSFT/NVDA/TSLA distinct recorded historical shapes, wrong-provider ticker rejection, distinct windows, strict symbol cache keys, invalid OHLC rejection and six-bar flatline rejection. Fixtures are test-only and explicitly historical. |
+| Session and entitlement state | PASS | Tests cover Sunday and Christmas closure, missing entitlement no-socket state, and explicit `NOT_CONFIGURED` / `DELAYED_UNVERIFIED` results. The calendar includes named US closures and early closes. |
+| Provider failure behavior | PASS | A Massive bar failure yields `UNAVAILABLE` empty bars; only an explicitly labelled delayed/unverified quote fallback may be returned. No fallback array or synthetic K-line is produced. |
+| Type check | PASS | `npm run typecheck:all` exited 0. |
+| Focused stock/realtime suite | PASS | `node --import tsx --test tests/stock-data-contract.test.mts tests/stock-realtime-adapter.test.mts` exited 0: 14/14 tests passed. |
+| Phase-scoped lint | PASS | Biome lint over the Phase 3 source/API/test files exited 0. |
+| API contract and client-secret gate | PASS | `npm run lint:api-contract` and `npm run security:vite-env-secrets -- --strict-local` both exited 0. The SSE exception is documented because it is a non-unary protocol endpoint. |
+| Attribution verification | PASS | `npm run sources:generate` and `npm run sources:check` exited 0. The generator's Windows entrypoint guard was corrected so its own script executes when `process.argv[1]` contains backslashes. |
+| Production build | PASS | `npm run build:full` exited 0. It emitted only the repository's normal dynamic-import/chunk-size warnings. |
+| Whole-tree lint | BASELINE LIMITATION | `npm run lint` remains non-zero on pre-existing upstream diagnostics outside the Phase 3 paths. The strict Phase 3 scoped lint passed and is the gate used for this diff. |
+| Licensed-live UI/browser proof | NOT CLAIMED | No `MASSIVE_API_KEY` or display/rebroadcast confirmation was provided. No browser screenshot, tick latency, or eight-symbol live-data result is represented as complete. |
+
+**Phase 3 gate: COMPLETED FOR CODE AND AUTOMATED TRUTHFULNESS CHECKS.** The
+licensed-live manual acceptance remains a separate, intentionally unsatisfied
+gate: it requires an authorized Provider account/secret and a visible test of
+AAPL, MSFT, NVDA, TSLA, AMZN, GOOGL, META and BABA with captured provenance,
+timestamps and screenshots.

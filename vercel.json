@@ -42,6 +42,7 @@
     { "source": "/index.md", "destination": "/home.md" },
     { "source": "/pro", "destination": "/pro/index.html" },
     { "source": "/mcp", "destination": "/api/mcp" },
+    { "source": "/market/stream", "destination": "/api/market/stream" },
     { "source": "/a2a", "destination": "/api/a2a" },
     { "source": "/ask", "destination": "/api/ask" },
     { "source": "/agent/auth", "destination": "/api/agent-auth" },

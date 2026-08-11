@@ -59,3 +59,19 @@ The legacy PokieTicker database is **not** a Git artifact and must not be copied
 | Maximum OHLC date | `2026-03-03` |
 
 The database is an historical research snapshot only. Its maximum OHLC date proves it cannot be presented as current exchange data.
+
+## Phase 3 source and transport receipt
+
+On 2026-08-11, the connected GitHub app successfully read both locked
+repositories: the origin account retains push authority and the official
+upstream is read-only. A subsequent local HTTP/1.1 fetch of `origin main` and
+`upstream main` both exited 0 and resolved the existing locked SHAs
+`0fca203c776dd5fa4913c4bd52f99cd2c3c13a25` and
+`ae0a0fe26bcbdb683b366899e4dc38fb8ccfb5ad`. This is a read-only recheck; it
+does not authorize a direct change, merge or push to `main`.
+
+Phase 3 adds source-attribution entries for `https://api.massive.com` and
+`https://massive.com`. They are marked `terms-review`, not as an inferred
+redistribution license. The adapter references Massive's documented aggregate,
+reference-ticker, news and stock-aggregate WebSocket interfaces; actual live
+use remains gated by the separate customer entitlement in `MANUAL_ACTIONS.md`.

@@ -45,7 +45,7 @@ import {
   getStockQuote,
   listStockNews,
   searchStocks,
-} from './stock-contract-disabled';
+} from './stock-contract-live';
 
 export const marketHandler: MarketServiceHandler = {
   listMarketQuotes,
