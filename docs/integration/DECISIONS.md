@@ -155,3 +155,21 @@ and the UI cannot show neutral/positive/negative, relevance, categories,
 returns or causal confidence as though measured. Future non-US instruments
 must bring a primary-exchange calendar mapping, and a future model provider
 must supply authorized, versioned output with server-only credentials.
+
+## D-0017 - Bound AIS display to verified reports in the selected geography
+
+**Decision:** The maritime workspace requests and displays AIS reports only for
+an explicit, small chokepoint bounding box. Each rendered report requires a
+valid nine-digit MMSI, finite coordinates inside that selected box and a
+positive observation time; duplicate MMSIs retain only the latest report.
+
+**Reason:** A global fixed vessel subset, a stale unscoped cache or a random
+fallback would look like live tracking while being neither current nor tied to
+the user’s requested geography. AIS absence must be visible absence, not a
+reason to fill the map with plausible-looking ships.
+
+**Consequence:** The no-provider UI renders zero vessel dots and an explicit
+configuration state. PortWatch aggregates, official warnings and Shipping v2
+model/registry routes are separate layers with their own unavailable states.
+No component may infer cargo, origin, buyer, value, discharge or bill-of-lading
+fact from AIS.

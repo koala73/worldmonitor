@@ -198,3 +198,31 @@ Proceed automatically to Phase 6 maritime/AIS and supply-chain evidence
 boundaries. A missing maritime key may not be used to infer cargo, origin,
 buyer, discharge, or shipment fact from AIS; disabled state, adapter boundary
 and contract tests must be completed first.
+
+## Phase 6 - native maritime logistics, bounded AIS and supply-chain truthfulness
+
+Phase 6 adds the native `/maritime-logistics` workspace and the visible
+“海运物流” entry from the market surface. It reuses the existing Maritime v1,
+SupplyChain and Shipping v2 boundaries without embedding or copying an
+upstream tracking page. AIS reports are rendered only after strict MMSI,
+timestamp and selected-bounding-box validation; there is no global fallback or
+static vessel subset. The workspace owns its vertical scroll surface, supports
+six bounded chokepoint focus areas, and keeps PortWatch, official warnings and
+model/registry route intelligence visibly separate from AIS observations.
+
+No AIS relay or Provider credential was configured during implementation. The
+accepted browser state is therefore a truthful zero-vessel unavailable state,
+not a live-AIS claim. It explicitly rejects cargo, origin, buyer, discharge,
+ETA, destination, draft and bill-of-lading inference. Automated route, relay,
+PortWatch/Shipping, type, DOM, API-contract, attribution, lint and final
+production-build gates passed. Details are in
+`evidence/phase6-maritime-logistics.md` and
+`evidence/phase6-command-log.md`.
+
+**Phase 6 implementation commit:** `PENDING_BACKFILL_AFTER_COMMIT`.
+
+## Next action
+
+Proceed automatically to Phase 7 adapter/readiness work. Missing AIS or
+PortWatch credentials do not block disabled state, contract and safety work;
+they only block a real provider-backed operational acceptance.

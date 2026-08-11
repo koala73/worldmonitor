@@ -71,3 +71,18 @@ Massive directly and no iframe renders either upstream application.
 | Exchange calendar alignment | Named NYSE/Nasdaq trading calendar for current US equity handling | Deterministic no-key calculation only; no claim that it covers all listings | Supply primary exchange and timezone/calendar mapping per non-US instrument | Never silently apply the US calendar to an unknown global primary exchange |
 | Model sentiment/relevance/category/causal confidence | Typed evidence-analysis contract with provider/model/prompt/version fields and explicit unavailable state | `NOT_CONFIGURED` / `NEWS_SENTIMENT_UNAVAILABLE`; no score or label is a measured result | Select an authorized analysis provider, accept applicable financial/news content terms, keep its key server-side, and persist actual returned model metadata | Never expose a client key or show sentiment/relevance/correlation as fact or causality |
 | Realized T0/T1/T3/T5/T10 return | Typed output only, based on validated symbol-specific price bars | Unavailable when no verified price series exists | Provider returns validated priced bars at the requested horizons with retained provenance | Never substitute a fixture, another symbol, a forecast or a synthetic return |
+
+## Phase 6 maritime capability matrix
+
+| Capability | Current implementation | Provider status without key | UI wording and prohibited inference | Future secret/configuration location |
+|---|---|---|---|---|
+| AIS snapshot observation | Maritime v1 request through server relay, current focus bbox validation and MMSI/time filters | `NOT_CONFIGURED` / no verified snapshot | Show no vessels; AIS proves only received self-reported broadcast fields, never cargo/origin/buyer/value/discharge/BOL | Relay secret store: `AISSTREAM_API_KEY`; server runtime: `WS_RELAY_URL` and relay auth secret |
+| AISStream beta transport | Existing `scripts/ais-relay.cjs`, server-only relay boundary | Disabled without `AISSTREAM_API_KEY` | Never label beta/no-SLA feed as a guaranteed real-time service; never expose key in browser | Relay process/platform secret store only |
+| PortWatch chokepoint activity | Existing SupplyChain/PortWatch cache contract | Unavailable/partial if no current cache or upstream response | Preserve dataset cadence/scope; do not convert a missing response to zero traffic or minute-by-minute AIS | Existing server-side PortWatch seeder/cache configuration only |
+| Official navigation warnings | Existing supply-chain/warning surface | Empty/unavailable if no official record | A warning is source-labelled information, not vessel position or cargo fact | Server-side approved source configuration only |
+| Shipping v2 route intelligence | Existing model/registry route request | Explicit unavailable/error when response absent | “模型/登记册估计”，not actual vessel trajectory, arrival or cargo movement | Existing server-side service credentials if/when required |
+
+Phase 6 added no credential and no client-side environment variable. A non-empty
+response may not be labelled LIVE unless its Provider, observation/fetch time,
+freshness/delay and applicable authorization are present. The user is not asked
+for a key to continue Phase 7 code work.

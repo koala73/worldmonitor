@@ -69,3 +69,17 @@ contracts and disabled states without them.
 Phase 0 is complete and its closure evidence is committed on the integration branch. The AGPL and independent-brand gate is satisfied by the user’s direct confirmation. Phase 1 is currently blocked only because this machine cannot establish GitHub HTTPS on port 443, so the official upstream commit cannot be fetched into the local Git object graph. No Provider action, password, API key, purchase, or deployment ownership is being requested for this block.
 
 The only pending cleanup artifact is the Codex-created restoration probe `D:\使用AI专属文件夹\global-intelligence-earth\_codex_phase0_restore_probe_20260811_1640`, containing three copied non-secret representative files. It is outside both projects and is not a user action or a credential request; host policy rejected its scoped PowerShell removal. See `ACCEPTANCE_EVIDENCE.md` for the audit record.
+
+## Phase 6 optional maritime live-data acceptance
+
+No user action is required to continue code work. This section is only needed
+when the owner elects to run a provider-backed operational acceptance.
+
+- [ ] Obtain/confirm an AISStream account and plan whose permitted use is suitable for the intended relay/display. AISStream beta availability must not be treated as an SLA.
+- [ ] In the relay or platform secret store, set `AISSTREAM_API_KEY`; never put it in a front-end `VITE_*` value, Git, screenshots, this Markdown, or chat.
+- [ ] Configure the server-only `WS_RELAY_URL` to the authenticated relay and configure the relay-to-server shared secret in the same protected secret store.
+- [ ] Start the relay, choose at least two bounded chokepoint focus boxes, and use the native page’s refresh control. Record Provider identity, query bbox, received/observed time, fetched time, stale/delay status and returned MMSI count.
+- [ ] Confirm that every displayed point has a valid MMSI and report time inside the selected bbox; confirm that no cargo, origin, buyer, discharge, ETA, destination, draft or BOL conclusion has appeared.
+- [ ] If a PortWatch source is activated, record its actual dataset update cadence and geographic scope separately from AIS. Do not claim minute-level vessel tracking from a PortWatch aggregate.
+
+Never paste credentials, session cookies, payment details, CAPTCHA contents or platform owner tokens into chat or Git. If an external account login, payment, terms acceptance or CAPTCHA is actually required, open the exact official page before asking the user to act.

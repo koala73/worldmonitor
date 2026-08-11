@@ -106,3 +106,29 @@ branch itself may read only validated symbol-specific bars, never a fixture,
 forecast or cross-symbol cache. The consumer wording remains “possible
 influence” or “consistent with the period” at most; no lineage field can prove
 causation.
+
+## Phase 6 maritime and supply-chain boundary
+
+The native maritime page has three deliberately separate lineage branches:
+
+1. **AIS observation branch.** `scripts/ais-relay.cjs` may receive AISStream
+   messages only after a server-side key is configured. Maritime v1 provides
+   the candidate report fields; the browser retains only valid MMSI, name/type
+   when provided, latitude, longitude, speed, heading/course and report time
+   inside the selected bbox. It records/labels receipt and freshness when the
+   upstream response supplies them. It cannot produce cargo, origin, buyer,
+   value, final discharge, bill-of-lading, destination, ETA, draft or IMO facts
+   that the contract has not supplied.
+2. **Port activity and warning branch.** SupplyChain/PortWatch values are
+   source aggregates with their own dataset release/update cadence, geographic
+   scope and method. An official navigation warning remains a separately
+   sourced alert. Neither is transformed into point AIS or cargo evidence.
+3. **Route-intelligence branch.** Shipping v2 returns a model/registry route
+   assessment with input country/cargo categories and source status. It is
+   labelled as an estimate and cannot be joined to an AIS MMSI as an actual
+   vessel trajectory or shipment fact.
+
+During Phase 6 no relay snapshot or Provider response was configured. The
+observed browser lineage is therefore `NOT_CONFIGURED` / no verified snapshot;
+the zero-marker display means no verified record was received, not zero ships
+in the real world.

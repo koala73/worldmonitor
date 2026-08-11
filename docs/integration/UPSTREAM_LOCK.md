@@ -119,3 +119,17 @@ reconfirmed `origin/main=0fca203c776dd5fa4913c4bd52f99cd2c3c13a25` and
 `upstream/main=ae0a0fe26bcbdb683b366899e4dc38fb8ccfb5ad`. No ref was moved,
 no `main` operation occurred, and the integration branch remains the only
 target for Phase 5 commits.
+
+## Phase 6 native maritime implementation receipt
+
+Phase 6 is new WorldMonitor TypeScript/CSS/test code. It composes the existing
+WorldMonitor `scripts/ais-relay.cjs`, `src/services/maritime/`, Maritime v1,
+SupplyChain/PortWatch and Shipping v2 contracts rather than copying an AIS
+vendor site, ship-tracking UI, vessel list, map tiles, screenshot, route data,
+PortWatch payload or third-party JavaScript. No iframe is used.
+
+The locked GitHub remotes remain `origin/main`
+`0fca203c776dd5fa4913c4bd52f99cd2c3c13a25` and `upstream/main`
+`ae0a0fe26bcbdb683b366899e4dc38fb8ccfb5ad`; the recovered 443 transport was
+rechecked read-only. Phase 6 writes only the integration branch and does not
+move, merge, force-push or otherwise alter `main`.

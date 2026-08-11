@@ -13,6 +13,7 @@ import { App } from './App';
 import { installUtmInterceptor } from './utils/utm';
 import { captureContentAttributionFromUrl } from '../shared/content-attribution';
 import { isStockWorkspacePath } from './features/pokieticker/stock-workspace-route';
+import { isMaritimeLogisticsPath } from './features/maritime-logistics/maritime-logistics-route';
 
 if (SITE_VARIANT === 'happy') {
   // Keeps happy-theme.css off other variants' eager CSS graph. On happy, the
@@ -617,6 +618,13 @@ if (urlParams.get('settings') === '1') {
   // or framing PokieTicker/the provider in an iframe.
   void import('./features/pokieticker/stock-workspace').then(({ initStockWorkspace }) => {
     initStockWorkspace('app');
+  }).catch(console.error);
+} else if (isMaritimeLogisticsPath(window.location.pathname)) {
+  // The logistics workspace is another owned WorldMonitor route. It consumes
+  // same-origin Maritime/SupplyChain/Shipping contracts and intentionally
+  // renders an empty state rather than embedding a provider map or fixture.
+  void import('./features/maritime-logistics/maritime-logistics').then(({ initMaritimeLogistics }) => {
+    initMaritimeLogistics('app');
   }).catch(console.error);
 } else {
   installUtmInterceptor();

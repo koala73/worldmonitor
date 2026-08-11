@@ -4,6 +4,7 @@ import type { MarketData, CryptoData, TokenData } from '@/types';
 import { formatPrice, formatChange, getChangeClass, getHeatmapClass } from '@/utils';
 import { escapeHtml, unsafeRawHtml } from '@/utils/sanitize';
 import { normalizeStockWorkspaceSymbol, stockWorkspaceUrl } from '@/features/pokieticker/stock-workspace-route';
+import { maritimeLogisticsUrl } from '@/features/maritime-logistics/maritime-logistics-route';
 import { miniSparkline } from '@/utils/sparkline';
 import { SITE_VARIANT } from '@/config';
 import { createWatchlistButton } from './watchlist-modal';
@@ -59,6 +60,12 @@ export class MarketPanel extends Panel {
   constructor() {
     super({ id: 'markets', title: t('panels.markets'), infoTooltip: t('components.markets.infoTooltip') });
     this.header.appendChild(createWatchlistButton());
+    const logisticsLink = document.createElement('a');
+    logisticsLink.href = maritimeLogisticsUrl();
+    logisticsLink.textContent = '海运物流';
+    logisticsLink.className = 'watchlist-btn';
+    logisticsLink.setAttribute('aria-label', '打开海运物流工作区');
+    this.header.appendChild(logisticsLink);
 
     // Delegated once on the persistent content element (each render only swaps
     // innerHTML): click or Enter/Space on a plottable ticker opens its terminal chart.

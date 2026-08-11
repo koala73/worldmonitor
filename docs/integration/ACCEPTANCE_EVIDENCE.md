@@ -167,3 +167,25 @@ is made.
 NO-PROVIDER TRUTHFULNESS.** It is not provider-backed financial/news/model
 acceptance. The exact commands, results and the corrected failed setup attempts
 are retained in `evidence/phase5-news-alignment.md`.
+
+## Phase 6 - maritime logistics, AIS and supply-chain boundaries
+
+**Implementation commit:** `PENDING_BACKFILL_AFTER_COMMIT`.
+
+| Check | Result | Evidence |
+|---|---|---|
+| Native owned route and entry | PASS | `/maritime-logistics` is loaded before the dashboard shell and the Market panel contains a native “海运物流” anchor. No iframe or copied upstream UI is used. |
+| Bounded focus behavior | PASS | Suez, Panama, Malacca, Hormuz, Bab el-Mandeb and Dover bounds are each no larger than 10 degrees; browser selection of Hormuz updated URL and panel title. |
+| AIS validation / no global fallback | PASS | Focused route tests reject invalid MMSI, missing timestamps and out-of-box reports; latest record wins per MMSI and at most 250 verified reports render. |
+| No-key/no-relay state | PASS | Browser observed zero vessel dots and the explicit verified-snapshot unavailable state. No random/static vessels, cargo, ETA, destination or other invented fields render. |
+| AIS truth boundary | PASS | UI and lineage state that AIS supports self-reported broadcast fields only, not cargo/origin/buyer/value/discharge/BOL facts. Current Maritime v1 omission of IMO/destination/ETA/draft is disclosed rather than guessed. |
+| Separate PortWatch, warning and route layers | PASS | PortWatch/supply conditions, official alerts and Shipping v2 model/registry estimates each have their own unavailable state and labels. A route estimate is not presented as an actual ship track. |
+| Relay and upstream service safeguards | PASS | AIS relay health/reconnect suite 20/20; PortWatch and Shipping v2 contracts 61/61. |
+| Type, DOM, API and attribution gates | PASS | typecheck, 7 focused route/UI tests, DOM 293/293, API contract and source checks exited 0. |
+| Lint and production build | PASS | Scoped Biome 0; whole-tree lint exited 0 with existing 33 warnings/9 infos; final background production build recorded exit 0. |
+| Browser vertical scroll | PASS | At 1440x900, the owned workspace had `overflow-y:auto`, height 1404 versus client 900, and a real scroll reached `scrollTop=504`. |
+| Provider-backed live maritime acceptance | NOT CLAIMED | No AISStream key, relay URL/auth, PortWatch runtime source response or provider timestamp was configured. The browser evidence is fail-closed only. |
+
+**Phase 6 gate: COMPLETED FOR NATIVE UI, BOUNDARY VALIDATION AND
+NO-PROVIDER TRUTHFULNESS.** It does not certify real-time vessel availability,
+cargo, destination, port calls, route completion or Provider licence terms.
