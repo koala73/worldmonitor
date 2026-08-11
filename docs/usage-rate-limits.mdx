@@ -78,7 +78,7 @@ Routes that fetch a third-party host on our behalf carry their own per-IP budget
 | `GET /api/reverse-geocode` | 60 | 60 s | Per IP |
 | `GET /api/infrastructure/v1/reverse-geocode` | 60 | 60 s | Per IP |
 
-The two edge handlers (`/api/skills/fetch-agentskills`, `/api/youtube/live`) enforce their budgets in-handler via `checkScopedRateLimit`/`checkRateLimit`; `/api/reverse-geocode` mirrors its budget as a literal constant per `api/*.js` constraints. `/api/infrastructure/v1/reverse-geocode` is a gateway RPC, so the gateway enforces it via `checkEndpointRateLimit` (fail-closed on Redis outage). Both reverse-geocode routes reach Nominatim, whose usage policy is the strictest of any provider in the stack and whose enforcement is an egress-IP ban — treat those budgets as a ceiling rather than a target; a global (aggregate) companion budget is tracked in #6431.
+The two edge handlers (`/api/skills/fetch-agentskills`, `/api/youtube/live`) enforce their budgets in-handler via `checkScopedRateLimit`/`checkRateLimit`; `/api/reverse-geocode` mirrors its budget as a literal constant per `api/*.js` constraints. `/api/infrastructure/v1/reverse-geocode` is a gateway RPC, so the gateway enforces it via `checkEndpointRateLimit` (fail-closed on Redis outage). Both reverse-geocode routes reach Nominatim, whose usage policy is the strictest of any provider in the stack and whose enforcement is an egress-IP ban — treat those budgets as a ceiling rather than a target; a global (aggregate) companion budget is still required and is not implemented by this change.
 
 ## Write endpoints
 

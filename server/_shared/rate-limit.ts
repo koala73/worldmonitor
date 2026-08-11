@@ -462,7 +462,8 @@ export const ENDPOINT_RATE_POLICIES: Record<string, EndpointRatePolicy> = {
   // per-IP budgets, so they bound any one caller but do not cap aggregate
   // egress to Nominatim (60/min from a single IP is Nominatim's whole
   // documented allowance for the application); a global companion budget
-  // keyed on 'reverse-geocode:global' is tracked in #6431. Fail-closed on
+  // keyed on 'reverse-geocode:global' is still required but is out of scope
+  // for this change. Fail-closed on
   // Redis outage (default) — Nominatim's enforcement is an egress-IP ban, so
   // a degraded limiter must 503 rather than inherit the fail-open fallback.
   '/api/infrastructure/v1/reverse-geocode': { limit: 60, window: '60 s' },

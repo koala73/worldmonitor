@@ -336,6 +336,33 @@ describe('rate-limit fail-open / fail-closed posture (#3531 M9)', () => {
     assert.ok(res, 'expected reverse-geocode RPC policy to fail closed without Redis config');
     assert.equal(res.status, 503);
     assert.equal(res.headers.get('X-RateLimit-Mode'), 'degraded');
+
+    process.env.WORLDMONITOR_VALID_KEYS = 'reverse-geocode-gateway-test-key';
+    __resetRateLimitForTest();
+    const { createDomainGateway } = await import('../server/gateway.ts');
+    let handlerCalls = 0;
+    const gateway = createDomainGateway([{
+      method: 'GET',
+      path: pathname,
+      handler: async () => {
+        handlerCalls += 1;
+        return new Response(JSON.stringify({ ok: true }), { status: 200 });
+      },
+    }]);
+    const gatewayRes = await gateway(new Request(
+      `https://worldmonitor.app${pathname}?lat=40.7&lon=-74.0`,
+      {
+        headers: {
+          Origin: 'https://worldmonitor.app',
+          'X-WorldMonitor-Key': 'reverse-geocode-gateway-test-key',
+          'x-real-ip': '203.0.113.7',
+        },
+      },
+    ));
+
+    assert.equal(gatewayRes.status, 503);
+    assert.equal(gatewayRes.headers.get('X-RateLimit-Mode'), 'degraded');
+    assert.equal(handlerCalls, 0, 'the gateway must reject before route execution');
   });
 
   it('paid-provider market routes each have explicit fail-closed policies (#6236)', async () => {
