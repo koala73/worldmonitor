@@ -147,3 +147,19 @@ The locked remotes remain `origin/main`
 `ae0a0fe26bcbdb683b366899e4dc38fb8ccfb5ad`. After the user reported port 443
 restored on 2026-08-11, Phase 7's final work remained local to the integration
 branch. It does not move, merge, push, force-push or otherwise alter `main`.
+
+## Post-Phase-7 transport recheck — 2026-08-11T22:08:15+08:00
+
+The connected GitHub app resolved `daking32168-byte/worldmonitor` (owner
+permission) and `koala73/worldmonitor` (read-only upstream). A read-only
+`git ls-remote` over restored HTTPS then returned:
+
+- `origin/main`: `0fca203c776dd5fa4913c4bd52f99cd2c3c13a25` (unchanged)
+- remote `upstream/main`: `f30c5b4207909d252c5380c56d819c4934006c6c`
+
+The second SHA is newer than the recorded upstream intake baseline
+`ae0a0fe26bcbdb683b366899e4dc38fb8ccfb5ad`. This is an observed remote advance,
+not an integration decision: the local integration branch stays pinned to its
+recorded baseline and Phase 7 commits. No fetch that moves a tracking ref,
+merge, rebase, push, force-push or `main` mutation was performed. A future
+upstream resync requires a separately documented comparison and gate review.
