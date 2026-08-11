@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 import { readFileSync, existsSync, writeFileSync, mkdirSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { dirname, join } from 'node:path';
 import { loadEnvFile } from './_seed-utils.mjs';
 
@@ -136,17 +136,17 @@ async function validate(url, token, prefix, version, expectedCount) {
     ['HLEN', metaKey],
   ]);
 
-  const geoCount = zcardResult.result;
-  const metaCount = hlenResult.result;
+  const geoCount = Number(zcardResult.result);
+  const metaCount = Number(hlenResult.result);
 
   console.log(`  ZCARD ${geoKey} = ${geoCount} (expected >= ${expectedCount})`);
   console.log(`  HLEN  ${metaKey} = ${metaCount} (expected == ZCARD)`);
 
-  if (geoCount < expectedCount) {
+  if (!Number.isSafeInteger(geoCount) || geoCount < expectedCount) {
     throw new Error(`GEO count ${geoCount} < expected ${expectedCount}`);
   }
 
-  if (metaCount !== geoCount) {
+  if (!Number.isSafeInteger(metaCount) || metaCount !== geoCount) {
     throw new Error(`META count ${metaCount} != GEO count ${geoCount}`);
   }
 
@@ -179,12 +179,75 @@ async function validate(url, token, prefix, version, expectedCount) {
 
   console.log(`  Sampled ${parseOk}/${sampleIds.length} entries — all valid JSON`);
   console.log('  Validation passed.');
+  return geoCount;
 }
 
-async function atomicSwitch(url, token, prefix, version) {
+function buildSeedMetaCommand(prefix, version, recordCount, fetchedAt) {
+  const seedMetaKey = `${prefix}seed-meta:military:bases`;
+  return ['SET', seedMetaKey, JSON.stringify({
+    fetchedAt,
+    recordCount,
+    sourceVersion: String(version),
+  })];
+}
+
+function buildAtomicSwitchCommands(prefix, version, recordCount, fetchedAt) {
   const activeKey = `${prefix}military:bases:active`;
-  await pipelineRequest(url, token, [['SET', activeKey, String(version)]]);
+  return [
+    ['SET', activeKey, String(version)],
+    buildSeedMetaCommand(prefix, version, recordCount, fetchedAt),
+  ];
+}
+
+export async function atomicSwitch(
+  url,
+  token,
+  prefix,
+  version,
+  recordCount,
+  fetchedAt = Date.now(),
+) {
+  const activeKey = `${prefix}military:bases:active`;
+  const seedMetaKey = `${prefix}seed-meta:military:bases`;
+  await pipelineRequest(
+    url,
+    token,
+    buildAtomicSwitchCommands(prefix, version, recordCount, fetchedAt),
+  );
   console.log(`\nAtomic switch: SET ${activeKey} = ${version}`);
+  console.log(`Freshness meta: SET ${seedMetaKey}`);
+}
+
+export async function backfillSeedMetaFromActiveVersion(url, token, prefix) {
+  const activeKey = `${prefix}military:bases:active`;
+  const activeResult = await pipelineRequest(url, token, [['GET', activeKey]]);
+  const rawVersion = activeResult[0]?.result;
+  if (rawVersion == null || rawVersion === '') {
+    throw new Error('Data file not found locally or on R2, and no existing active version in Redis');
+  }
+
+  const version = String(rawVersion);
+  const fetchedAt = Number(version);
+  if (!/^\d+$/.test(version) || !Number.isSafeInteger(fetchedAt) || fetchedAt <= 0) {
+    throw new Error(`Active version "${version}" is not a valid millisecond timestamp`);
+  }
+
+  const recordCount = await validate(url, token, prefix, version, 1);
+
+  // Do not publish metadata for a version that stopped being active while its
+  // versioned GEO/META keys were being validated.
+  const currentResult = await pipelineRequest(url, token, [['GET', activeKey]]);
+  const currentVersion = currentResult[0]?.result;
+  if (String(currentVersion ?? '') !== version) {
+    throw new Error(`Active version changed during validation (${version} -> ${currentVersion ?? 'missing'})`);
+  }
+
+  const seedMetaKey = `${prefix}seed-meta:military:bases`;
+  await pipelineRequest(url, token, [
+    buildSeedMetaCommand(prefix, version, recordCount, fetchedAt),
+  ]);
+  console.log(`No data file found — restored ${seedMetaKey} from active version ${version} (${recordCount} records).`);
+  return { version, fetchedAt, recordCount };
 }
 
 async function cleanupOldVersion(url, token, prefix, newVersion) {
@@ -252,15 +315,8 @@ async function main() {
   }
 
   if (!dataPath) {
-    const activeKey = `${prefix}military:bases:active`;
-    const check = await pipelineRequest(redisUrl, redisToken, [['GET', activeKey]]);
-    const existing = check[0]?.result;
-    if (existing) {
-      console.log(`No data file found — Redis already has active version ${existing}, skipping.`);
-      process.exit(0);
-    }
-    console.error(`Data file not found locally or on R2, and no existing data in Redis.`);
-    process.exit(1);
+    await backfillSeedMetaFromActiveVersion(redisUrl, redisToken, prefix);
+    return;
   }
 
   const raw = readFileSync(dataPath, 'utf8');
@@ -312,7 +368,7 @@ async function main() {
 
   await validate(redisUrl, redisToken, prefix, version, entries.length);
 
-  await atomicSwitch(redisUrl, redisToken, prefix, version);
+  await atomicSwitch(redisUrl, redisToken, prefix, version, entries.length);
 
   if (oldInfo) {
     console.log(`\nScheduling cleanup of old version ${oldInfo.oldVersion} in ${GRACE_PERIOD_MS / 1000}s...`);
@@ -332,7 +388,10 @@ async function main() {
   console.log(`  Total entries:  ${entries.length.toLocaleString()}`);
 }
 
-main().catch(err => {
-  console.error('\nFATAL:', err.message || err);
-  process.exit(1);
-});
+const isMain = process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href;
+if (isMain) {
+  main().catch(err => {
+    console.error('\nFATAL:', err.message || err);
+    process.exit(1);
+  });
+}
