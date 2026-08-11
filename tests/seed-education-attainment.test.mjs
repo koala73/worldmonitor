@@ -38,6 +38,7 @@ import {
   parseCountrySetMeta,
   MAX_EXPECTED_COUNTRY_DROP,
   COUNTRY_SET_META_FIELD,
+  SEED_META_KEY,
 } from '../scripts/seed-education-attainment.mjs';
 
 const row = (iso3, date, value) => ({ countryiso3code: iso3, date: String(date), value });
@@ -303,6 +304,18 @@ describe('country-set seed-meta round trip', () => {
 
   it('names the field the seeder actually persists', () => {
     assert.equal(COUNTRY_SET_META_FIELD, 'countrySet');
+  });
+
+  it('keeps SEED_META_KEY in step with the key runSeed actually derives', () => {
+    // runSeed writes `seed-meta:${domain}:${resource}`, but the previous-set
+    // read hardcodes the key so it can run before that write. Two spellings of
+    // one key drift silently: the read would return null forever, every run
+    // would look like a first run, and the coverage-drop warning would never
+    // fire again while still logging "baseline recorded" as if healthy.
+    const source = readFileSync(new URL('../scripts/seed-education-attainment.mjs', import.meta.url), 'utf8');
+    const call = source.match(/runSeed\(\s*'([^']+)'\s*,\s*'([^']+)'/);
+    assert.ok(call, 'could not find the runSeed(domain, resource, ...) call');
+    assert.equal(SEED_META_KEY, `seed-meta:${call[1]}:${call[2]}`);
   });
 
   it('diffCountrySets reports both directions independently', () => {
