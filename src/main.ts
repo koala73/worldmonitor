@@ -15,6 +15,7 @@ import { captureContentAttributionFromUrl } from '../shared/content-attribution'
 import { isStockWorkspacePath } from './features/pokieticker/stock-workspace-route';
 import { isMaritimeLogisticsPath } from './features/maritime-logistics/maritime-logistics-route';
 import { isChinaFactoryPath } from './features/china-factory/china-factory-route';
+import { isProviderOperationsPath } from './features/provider-operations/provider-operations-route';
 
 if (SITE_VARIANT === 'happy') {
   // Keeps happy-theme.css off other variants' eager CSS graph. On happy, the
@@ -632,6 +633,13 @@ if (urlParams.get('settings') === '1') {
   // future contracted bill-of-lading observations visibly separate.
   void import('./features/china-factory/china-factory').then(({ initChinaFactoryWorkspace }) => {
     initChinaFactoryWorkspace('app');
+  }).catch(console.error);
+} else if (isProviderOperationsPath(window.location.pathname)) {
+  // The operational control center is an owned surface. It observes only
+  // protected configuration presence and explicit executor telemetry; it never
+  // reads a key or embeds an upstream Provider page.
+  void import('./features/provider-operations/provider-operations').then(({ initProviderOperationsWorkspace }) => {
+    initProviderOperationsWorkspace('app');
   }).catch(console.error);
 } else {
   installUtmInterceptor();

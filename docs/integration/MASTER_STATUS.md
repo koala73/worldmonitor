@@ -293,3 +293,41 @@ After Phase 8 receipt, proceed automatically to Phase 9 provider operations,
 scheduling and control-center work. Missing Provider credentials remain a
 reason for disabled/no-observation UI, never a reason to emit sample or live
 claims.
+
+## Phase 9 - Provider operations, scheduling and truthful control center
+
+Phase 9 adds the owned `/provider-operations` operational workspace and a
+Market-panel entry without creating a second dashboard or embedding an
+upstream page. It unifies the existing protected runtime configuration and
+refresh scheduler behind nine explicit operation contracts: stock REST gap
+repair, minute stream/repair, news ingest, Layer 1 analysis, AIS relay,
+PortWatch, Comtrade, lawful China Customs import and model evaluation. Each
+contract has a cadence, idempotency scope, lock, bounded retry interval and a
+displayed evidence boundary.
+
+The control center separates dashboard callback completion from a provider
+success. It shows only observable telemetry and reports unknown values as
+`未观测`; it cannot convert an empty response, a layer toggle, a scheduler tick
+or a plausible sample into a provider fact. With no registered executor the
+one-click safety control records a no-request `NOT_CONFIGURED` result. Browser
+evidence observed this state after an actual click.
+
+The sidecar now treats server-only `SELF_HOSTED_MODE=true` as an explicit
+no-cloud-fallback switch, while retaining its default-deny `LOCAL_API_TOKEN`
+gate. It does not bypass official paid APIs, and in that mode it does not proxy
+to `api.worldmonitor.app`. No Provider secret, value, tail, reversible
+fingerprint or plaintext is returned to the browser.
+
+All focused sidecar/contract tests, type, DOM, API/source, full lint and final
+production-build gates passed. The first full-lint invocation had a recorded
+PATH-only nested-npm failure; the corrected rerun exited 0. Details are in
+`evidence/phase9-provider-operations.md` and `evidence/phase9-command-log.md`.
+
+**Phase 9 implementation commit:** pending receipt backfill.
+
+## Next action
+
+Proceed automatically to Phase 10 desktop packaging, launch surface and
+desktop-only security/operational verification. Missing Provider credentials
+remain a disabled/unknown state and do not block adapter, contract or desktop
+shell work.

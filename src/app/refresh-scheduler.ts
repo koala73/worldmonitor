@@ -1,5 +1,6 @@
 import type { AppContext, AppModule } from '@/app/app-context';
 import { startSmartPollLoop, VisibilityHub, type SmartPollLoopHandle } from '@/services/runtime';
+import { recordScheduledRefreshOutcome } from '@/services/provider-operations';
 
 export interface RefreshRegistration {
   name: string;
@@ -58,7 +59,15 @@ export class RefreshScheduler implements AppModule {
 
       this.ctx.inFlight.add(name);
       try {
-        return await fn();
+        const result = await fn();
+        // A dashboard callback's completion is recorded separately from a
+        // Provider success. It is useful scheduling telemetry, but it must not
+        // manufacture a provenance-bearing upstream observation.
+        recordScheduledRefreshOutcome(name, result !== false);
+        return result;
+      } catch (error) {
+        recordScheduledRefreshOutcome(name, false);
+        throw error;
       } finally {
         this.ctx.inFlight.delete(name);
       }

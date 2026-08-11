@@ -176,3 +176,17 @@ The source baseline remains the recorded local intake commit while remote
 `upstream/main` is documented as advanced in the preceding recheck. Phase 8
 does not fetch into a tracking ref, merge, rebase, push, force-push or alter
 `main`; all work remains on `integration/pokieticker-maritime-china-factory`.
+
+## Phase 9 native provider-operations receipt
+
+Phase 9 is new WorldMonitor service, scheduler, route, CSS, sidecar policy and
+test code. It does not copy a PokieTicker, WorldMonitor hosted, provider,
+market-data, AIS, PortWatch, Comtrade, China Customs or model-provider page,
+payload, dashboard layout, JavaScript bundle, screenshot or iframe. The
+control center contains only locally authored labels and locally observed
+configuration/executor telemetry.
+
+The locked local intake remains unchanged; remote `upstream/main` remains an
+observed advance requiring a separately reviewed resync. Phase 9 performs no
+fetch into tracking refs, merge, rebase, push, force-push or `main` mutation.
+All commits remain on `integration/pokieticker-maritime-china-factory`.

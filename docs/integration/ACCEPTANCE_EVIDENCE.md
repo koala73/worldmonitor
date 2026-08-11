@@ -236,3 +236,25 @@ manifests, or bill-of-lading coverage.
 **Phase 8 gate: COMPLETED FOR ECONOMY-FIRST LAYOUT, SAVED-ORDER OWNERSHIP AND
 NO-PROVIDER TRUTHFULNESS.** This phase does not claim real-time military or
 aviation tracking merely because a map layer is enabled.
+
+## Phase 9 - Provider operations, scheduling and local control-center boundary
+
+**Implementation commit:** pending Phase 9 receipt backfill.
+
+| Check | Result | Evidence |
+|---|---|---|
+| Owned native control surface | PASS | `/provider-operations` is local TypeScript/CSS, routed in `main.ts` and linked from Markets. It contains no iframe or copied Provider UI. |
+| Required operation contracts | PASS | Nine operations cover stock REST/stream, news ingest/analysis, AIS, PortWatch, Comtrade, China Customs and model evaluation. Every operation specifies cadence, idempotency, lock, bounded retry and truth boundary. |
+| Config/secret disclosure | PASS | The UI receives configuration presence/validity only. It renders no plaintext, tail, raw hash or reversible key fingerprint. Server-managed web state is explicitly `SERVER_MANAGED_UNKNOWN`. |
+| Safe retry / audit | PASS for no-provider state | Browser click recorded `Safe retry not executed: readiness is SERVER_MANAGED_UNKNOWN.`; no executor means no Provider request. The local audit distinguishes scheduler, operator and executor events. |
+| No silent data loss | PASS | Callback false/error records a scheduling failure but does not overwrite owner data; executor contracts keep last successful time separate from failure time. |
+| Self-host safety | PASS | `SELF_HOSTED_MODE=true` forces `cloudFallback=false`; targeted sidecar test also proves `LOCAL_API_TOKEN` authentication remains required and `/api/local-status` reports the non-secret mode. |
+| Focused/type/API/source/DOM gates | PASS | New contract 5/5; targeted sidecar 4/4; typecheck 0; API contract 149/114/96; source check 533; DOM 293/293. |
+| Full lint / production build | PASS with existing warnings | Corrected final lint exited 0 with existing 33 warnings/9 infos and Safe HTML 0 legacy sinks; final `build:full` exited 0 in about 45.2 s with 254 PWA entries. |
+| Browser visual evidence | PASS for truthful disabled state | `phase9-provider-operations-default-1280x720.png` and `phase9-safe-retry-no-executor-1280x720.png`. |
+| Provider-backed operations | NOT CLAIMED | No credential, entitlement, model result, queue metric, AIS message, market bar, trade record or executor response was configured in this environment. |
+
+**Phase 9 gate: COMPLETED FOR CONTROL CONTRACTS, SAFE FAIL-CLOSED OPERATION,
+SELF-HOST CLOUD-FALLBACK PROHIBITION AND OBSERVABILITY UI.** It does not claim
+that a background job, Provider or local database is running until its own
+authenticated executor reports a source-bearing result.

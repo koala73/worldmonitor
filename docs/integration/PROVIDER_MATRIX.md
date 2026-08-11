@@ -34,6 +34,21 @@ guessed by the current disabled handler.
 | Bill of lading | Contracted commercial provider | `NOT_CONFIGURED` | `BILL_OF_LADING_OBSERVED` only after a contract-backed source returns records | Specific shipper/consignee/vessel shipment chain without authorization |
 | AI news analysis | Supported model provider | `NOT_CONFIGURED` | Explicit heuristic/insufficient-data result and model metadata if configured | A fixed model narrative as fact or causal proof |
 
+## Phase 9 operational-control implementation
+
+| Operational lane | Control-center state without an executor | What becomes visible only after an authenticated executor reports it | Explicit prohibition |
+|---|---|---|---|
+| Stock REST gap repair / minute stream | `NOT_CONFIGURED` on desktop missing keys; `SERVER_MANAGED_UNKNOWN` in web | executor success/failure time, rate-limit/quota and symbol-specific provenance | Do not treat scheduler completion, a quote, cache from another symbol or a retry click as a verified K line |
+| News ingest / Layer 1 analysis | no executor, queue/dead-letter are `未观测` | source-preserving article batch, model/version/time/sample and queue/dead-letter metrics | Do not turn relevance, sentiment or alignment into causal price proof |
+| AIS relay | no executor, messages/vessels/freshness are `未观测` | relay health and only validated source/timestamp/range observations | Do not infer cargo, origin, buyer, port call, ETA or B/L |
+| PortWatch / Comtrade / China Customs | no executor/import, release and batch metrics are `未观测` | provider release or lawful import metadata, scope, period and permitted aggregate records | Do not use a missing response as zero trade, or aggregate data as factory/ship facts |
+| Model evaluation | no executor, version/training/sample/backtest are `未观测` | separately versioned evaluation metadata and evidence-bearing metrics | Do not show a model-quality/training claim without its actual record |
+
+The control surface intentionally does not expose a secret, a tail string, a
+hash usable for offline guessing, a vault value, a server token or a browser
+Provider key. `SELF_HOSTED_MODE=true` is a server-side mode that disables cloud
+fallback; it does not grant a Provider plan or bypass licensing.
+
 ## Required response fields
 
 Every market, news, AIS, port and trade response must carry: `provider`, `providerStatus`, `sourceUrl` or `sourceId`, `observedAt`, `fetchedAt`, `asOf`, `delaySeconds` when known, `freshnessSeconds`, `isFallback`, `fallbackReason`, and `licenseNote`.

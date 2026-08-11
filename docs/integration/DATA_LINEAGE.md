@@ -185,3 +185,32 @@ Phase 8 introduces no new data Provider. Its lineage is deliberately split:
 No Phase 8 branch proves cargo, mission, intent, ownership, military action,
 passenger status or a causal event. Separate authoritative records would be
 needed for any such assertion.
+
+## Phase 9 provider-operation and scheduler lineage
+
+Phase 9 adds an operational-control lineage, not a new data source:
+
+1. **Configuration-presence branch.** The web surface can only state that a
+   protected desktop key is present/valid or that a server-managed configuration
+   is not observable. It receives no secret plaintext, tail, content-derived
+   fingerprint or token. Configuration readiness is not Provider health.
+2. **Scheduler branch.** Existing dashboard callbacks may record their own
+   completion/failure time. That only proves a local callback outcome; it does
+   not populate `lastExecutorSuccessAt`, Provider provenance, a K-line,
+   freshness, queue count or data value.
+3. **Executor branch.** A future server/sidecar executor must pass the
+   operation's idempotency, lock, minimum retry and rate-limit controls, then
+   return an explicit result. Success/failure/rate-limit time, quota, queue,
+   dead-letter, AIS-message and vessel metrics remain absent until that result
+   exists. A failure preserves the separate last-success time and cannot
+   silently replace data with an empty set.
+4. **Self-host deployment branch.** `SELF_HOSTED_MODE=true` is a
+   server-configuration lineage input that forces cloud fallback off. The
+   local control API remains guarded by `LOCAL_API_TOKEN`; the browser cannot
+   infer a third-party Provider account, licence, database content or operator
+   identity from either switch.
+
+Thus Phase 9 creates no factual market, news, AIS, port, trade, Customs or
+model record. Any future such record must independently carry Provider/source,
+observed/fetched/as-of time, delay/freshness, fallback reason and licence
+boundary before it reaches a user-facing claim.

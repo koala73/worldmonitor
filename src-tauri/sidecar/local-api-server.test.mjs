@@ -1259,6 +1259,50 @@ test('blocks cloud fallback in Docker mode even when explicitly requested', asyn
   }
 });
 
+test('blocks cloud fallback in explicit SELF_HOSTED_MODE and reports local-admin authentication as required', async () => {
+  const remote = await setupRemoteServer();
+  const localApi = await setupApiDir({
+    'self-hosted-test.js': `
+      export default async function handler() {
+        return new Response(JSON.stringify({ source: 'local-error' }), {
+          status: 500,
+          headers: { 'content-type': 'application/json' }
+        });
+      }
+    `,
+  });
+  const warnings = [];
+  const app = await createLocalApiServer({
+    port: 0,
+    apiDir: localApi.apiDir,
+    remoteBase: remote.remoteBase,
+    cloudFallback: 'true',
+    selfHostedMode: true,
+    allowPrivateRemoteBase: true,
+    logger: { log() {}, warn(...args) { warnings.push(args.join(' ')); }, error() {} },
+  });
+  const { port } = await app.start();
+
+  try {
+    const response = await authFetch(`http://127.0.0.1:${port}/api/self-hosted-test`);
+    assert.equal(response.status, 500);
+    assert.deepEqual(await response.json(), { source: 'local-error' });
+    assert.equal(remote.hits.length, 0, 'self-hosted mode must not fall back to the official cloud');
+    assert.ok(warnings.some(w => w.includes('SELF_HOSTED_MODE')));
+
+    const status = await authFetch(`http://127.0.0.1:${port}/api/local-status`);
+    assert.equal(status.status, 200);
+    const payload = await status.json();
+    assert.equal(payload.selfHostedMode, true);
+    assert.equal(payload.localAdminAuthRequired, true);
+    assert.equal(payload.cloudFallback, false);
+  } finally {
+    await app.close();
+    await localApi.cleanup();
+    await remote.close();
+  }
+});
+
 test('responds to OPTIONS preflight with CORS headers', async () => {
   const localApi = await setupApiDir({
     'data.js': `

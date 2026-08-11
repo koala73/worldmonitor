@@ -789,7 +789,12 @@ function resolveConfig(options = {}) {
   const dataDir = String(options.dataDir ?? process.env.LOCAL_API_DATA_DIR ?? resourceDir);
   const mode = String(options.mode ?? process.env.LOCAL_API_MODE ?? 'desktop-sidecar');
   const requestedFallback = String(options.cloudFallback ?? process.env.LOCAL_API_CLOUD_FALLBACK ?? '') === 'true';
-  const cloudFallback = mode === 'docker' ? false : requestedFallback;
+  // SELF_HOSTED_MODE is an explicit server-only safety switch. Docker has
+  // always been self-hosted, but the switch covers a local/direct sidecar too.
+  // A self-hosted instance must never quietly fall back to api.worldmonitor.app.
+  const selfHostedMode = mode === 'docker'
+    || String(options.selfHostedMode ?? process.env.SELF_HOSTED_MODE ?? '') === 'true';
+  const cloudFallback = selfHostedMode ? false : requestedFallback;
   // Programmatic dev/test escape hatch only; CLI/env startup keeps private remoteBase blocked.
   const allowPrivateRemoteBase = options.allowPrivateRemoteBase === true;
   // Programmatic-only test escape hatch for adding extra origins to the
@@ -800,8 +805,10 @@ function resolveConfig(options = {}) {
     ? options.allowPrivateFetchOrigins.filter((o) => typeof o === 'string' && o.length > 0)
     : [];
   const logger = options.logger ?? console;
-  if (mode === 'docker' && requestedFallback) {
-    logger.warn('[local-api] Cloud fallback disabled in Docker mode (self-hosted instances must not proxy to api.worldmonitor.app)');
+  if (selfHostedMode && requestedFallback) {
+    logger.warn(mode === 'docker'
+      ? '[local-api] Cloud fallback disabled in Docker mode (self-hosted instances must not proxy to api.worldmonitor.app)'
+      : '[local-api] Cloud fallback disabled in SELF_HOSTED_MODE (instances must not proxy to api.worldmonitor.app)');
   }
   if (cloudFallback && !allowPrivateRemoteBase && remoteBaseLooksPrivate(remoteBase)) {
     logger.warn(
@@ -817,6 +824,7 @@ function resolveConfig(options = {}) {
     dataDir,
     apiDir,
     mode,
+    selfHostedMode,
     cloudFallback,
     allowPrivateRemoteBase,
     allowPrivateFetchOrigins,
@@ -1474,6 +1482,8 @@ async function dispatch(requestUrl, req, routes, context) {
     return json({
       success: true,
       mode: context.mode,
+      selfHostedMode: context.selfHostedMode,
+      localAdminAuthRequired: true,
       port: context.port,
       apiDir: context.apiDir,
       remoteBase: context.remoteBase,

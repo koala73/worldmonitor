@@ -115,3 +115,33 @@ Never paste keys, passwords, OAuth tokens, session cookies, invoices, payment
 details or CAPTCHA text into chat or Git. If login, purchase, terms acceptance,
 CAPTCHA or deployment ownership is actually required, open the exact official
 Provider page before asking the owner to take that irreversible action.
+
+## Phase 9 optional executor activation and self-host operation
+
+No owner action is needed for the completed disabled-state implementation.
+These steps are only required before an actual Provider operation can claim a
+success, freshness, queue metric, trade record or model result.
+
+- [ ] If operating a self-hosted sidecar, set the **server-only**
+  `SELF_HOSTED_MODE=true` and ensure `LOCAL_API_TOKEN` is set by the trusted
+  desktop/container launcher. Verify `/api/local-status` through the trusted
+  path reports `selfHostedMode: true`, `localAdminAuthRequired: true` and
+  `cloudFallback: false`. Never put either value in `VITE_*`, Git, screenshots
+  or chat.
+- [ ] Bind each actual executor on the server/sidecar only after the relevant
+  Provider plan, display/rebroadcast right, licence and storage/retry policy
+  are confirmed. A browser button is not an authorization boundary.
+- [ ] For stock minute data, record the Provider, returned symbol, exchange
+  permission, observed/fetched time, delay and range before enabling a real
+  K-line/observed badge. A quote must not repair OHLC.
+- [ ] For AIS, PortWatch, Comtrade, Customs or B/L work, record source release,
+  contract/permission, geographic/product scope and source timestamp before
+  presenting value-bearing records.
+- [ ] For news/model jobs, provide model/version/prompt/sample/evaluation
+  evidence and inspect queue/dead-letter metrics. Keep news correlation and
+  price causality separate.
+
+Never paste a secret, password, OAuth token, session cookie, payment detail,
+invoice, CAPTCHA or deployment-owner token into chat or Git. If an account
+login, paid entitlement, terms acceptance, CAPTCHA or deployment ownership is
+actually necessary, open the exact official page before acting.

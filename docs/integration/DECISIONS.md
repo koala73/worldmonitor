@@ -210,3 +210,26 @@ workspace link, but old saved orders remain untouched. Military/aviation entry
 points remain accessible below the core workspace and show Provider status,
 freshness condition and non-secret actions. A stale, undated, blank-source or
 future-dated position produces no observed/live indicator.
+
+## D-0020 - An operational button is not a Provider request or Provider success
+
+**Decision:** Create a native Provider Operations control surface whose retry
+path executes no network request by default. It can only invoke a separately
+registered protected executor after configuration readiness, a per-operation
+lock, rate-limit window and minimum retry interval pass. Dashboard refresh
+completion, executor success/failure and Provider provenance remain different
+telemetry fields.
+
+**Reason:** A UI retry button, scheduled callback or configured key cannot
+prove that an authorized upstream request ran or that it returned data. Treating
+one as another would turn a convenient control surface into false real-time,
+queue, quota or market-data evidence. It would also risk calling an upstream
+without the intended server-side authorization and audit boundary.
+
+**Consequence:** Missing configuration/executors show explicit
+`NOT_CONFIGURED` / `SERVER_MANAGED_UNKNOWN` states and audit the no-request
+action. Last success is never erased by a later failure. `SELF_HOSTED_MODE=true`
+forces the sidecar cloud fallback off while the existing `LOCAL_API_TOKEN`
+default-deny gate remains required. Any future executor must return its own
+source-bearing metrics before the UI can show health, freshness, vessel count,
+trade value, queue depth, model metric or real-time market assertion.
