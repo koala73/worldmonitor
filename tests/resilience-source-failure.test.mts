@@ -51,14 +51,6 @@ const INTENTIONALLY_UNTRACKED_STANDALONE_META_KEYS = new Set([
 ]);
 
 const TRACKED_STANDALONE_META_KEYS_NOT_IN_HEALTH = new Set([
-  // scripts/seed-education-attainment.mjs ships ahead of its /api/health probe:
-  // check-health-probe-cutovers.mts requires a new strict probe to carry
-  // pre-seed evidence, which cannot exist before the producer has ever run. The
-  // source-failure threshold is still tracked here so a dead seeder surfaces as
-  // source-failure on the scorer side in the meantime. The health probe — and
-  // the removal of this entry — land in the follow-up once seed-bundle-macro
-  // has published once. Owned by #6452.
-  'seed-meta:resilience:education-attainment',
   // api/seed-health.js tracks this seed with intervalMin=360; /api/health
   // does not include a direct SEED_META entry because its data key is
   // parameterized by year.
@@ -71,9 +63,46 @@ const TRACKED_STANDALONE_META_KEYS_NOT_IN_HEALTH = new Set([
 ]);
 
 describe('education health-probe rollout sequencing', () => {
-  it('defers both data and seed-meta registration until the first production publish', () => {
-    assert.equal(Object.hasOwn(healthTesting.STANDALONE_KEYS, 'educationAttainment'), false);
-    assert.equal(Object.hasOwn(healthTesting.SEED_META, 'educationAttainment'), false);
+  // Inverted in #6452 once seed-bundle-macro published the key for real
+  // (2026-08-11T08:03:25Z). This previously asserted BOTH halves were ABSENT,
+  // pending the first production publish; it now asserts both are PRESENT.
+  //
+  // Asserting both halves is the point, not redundancy. A probe registered in
+  // SEED_META alone still reads its freshness, but nothing ever checks that the
+  // canonical payload exists — so a seeder that writes meta and drops the data
+  // reports OK. The three peer energy probes carry both halves for the same
+  // reason, and registering only one is the specific mistake this locks out.
+  it('registers both the data key and the seed-meta probe', () => {
+    assert.equal(
+      healthTesting.STANDALONE_KEYS.educationAttainment,
+      'resilience:education-attainment:v1',
+      'educationAttainment needs its canonical data key in STANDALONE_KEYS, not the SEED_META entry alone',
+    );
+    assert.equal(
+      healthTesting.SEED_META.educationAttainment?.key,
+      'seed-meta:resilience:education-attainment',
+    );
+  });
+
+  it('keeps the seed-meta budget in step with the source-failure threshold', () => {
+    // The scorer-side threshold and the health budget are two sources of truth
+    // for "this seeder is dead". They must not drift apart, or one surface
+    // alarms while the other stays green on the same outage.
+    assert.equal(healthTesting.SEED_META.educationAttainment?.maxStaleMin, 11520);
+  });
+
+  it('carries pre-seed cutover evidence bound to this probe', () => {
+    // check-health-probe-cutovers.mts validates SHAPE, not provenance — it
+    // cannot tell a traced Railway publish from a hand-primed key. This pins
+    // the fields that make the claim auditable after the fact.
+    const cutover = healthTesting.SEED_META.educationAttainment?.cutover;
+    assert.equal(cutover?.mode, 'preseed');
+    assert.equal(cutover?.fromKey, null, 'a brand-new probe transitions from no prior key');
+    assert.equal(cutover?.issue, 6452);
+    assert.equal(cutover?.evidence?.platform, 'railway');
+    assert.equal(cutover?.evidence?.service, 'seed-bundle-macro');
+    assert.equal(cutover?.evidence?.probeKey, 'seed-meta:resilience:education-attainment');
+    assert.equal(cutover?.evidence?.compactHealthStatus, 'OK');
   });
 });
 

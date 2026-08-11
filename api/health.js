@@ -407,6 +407,10 @@ const STANDALONE_KEYS = {
   lowCarbonGeneration:      'resilience:low-carbon-generation:v1',
   fossilElectricityShare:   'resilience:fossil-electricity-share:v1',
   powerLosses:              'resilience:power-losses:v1',
+  // Education attainment — same strict treatment as the energy peers above.
+  // Registered once seed-bundle-macro published it for real on
+  // 2026-08-11T08:03:25Z; see the SEED_META cutover block for the evidence.
+  educationAttainment:      'resilience:education-attainment:v1',
   goldExtended:             'market:gold-extended:v1',
   goldEtfFlows:             'market:gold-etf-flows:v1',
   goldCbReserves:           'market:gold-cb-reserves:v1',
@@ -849,21 +853,50 @@ const SEED_META = {
   // interval plus roughly one day of retry headroom, not "2x interval". The
   // budget alarms on the SEEDER being dead, not on the data being old —
   // content-age staleness is the seeder's own 48-month maxContentAgeMin.
-  // educationAttainment is deliberately NOT registered here yet. The seeder
-  // (scripts/seed-education-attainment.mjs) ships in this PR but has never run
-  // in production, so a strict probe would report EMPTY from merge until the
-  // first seed-bundle-macro tick.
   //
-  // scripts/check-health-probe-cutovers.mts enforces the sequencing: a new
-  // probe needs either machine-readable pre-seed evidence (impossible before
-  // the producer exists) or an acknowledgement that expires by the producer's
-  // first scheduled run, within 24h of activation — which would require
-  // knowing the merge time in advance.
+  // The probe was deliberately withheld in #6450 because the seeder had never
+  // run, and it lands here now on the pre-seed evidence path. The evidence
+  // below cites a publish traced to Railway by three independent proofs, not
+  // by the key's own freshness — a fresh seed-meta key is NOT proof its
+  // producer ran, and this exact key was hand-primed at 05:32:23Z on the same
+  // day, which read as a satisfied precondition and was not one:
+  //   1. Sibling parity — every seed-bundle-macro member (economic:bis,
+  //      cbr-rates, bls-series, eurostat-country-data, fao-ffpi) carries a
+  //      2026-08-11T08:03:0x-25Z stamp, so the bundle ran as a unit. Education
+  //      is last at 08:03:25.357Z, the documented non-Sunday section order.
+  //   2. The running image contains the script — the service was deployed to
+  //      ae0a0fe26 at 08:00:19Z, and `git cat-file -e
+  //      ae0a0fe26:scripts/seed-education-attainment.mjs` exits 0. The prior
+  //      image 7beaf19e2 exits 128, which is why the 05:32Z write cannot have
+  //      come from Railway.
+  //   3. TTL cross-check — 3,011,305s remaining on the 35d CACHE_TTL dates the
+  //      write to 08:03:25Z independently of the payload's own claims.
   //
-  // The probe therefore lands in a follow-up once the bundle has published
-  // once, using the pre-seed evidence path with a real compact-health OK.
-  // #6452 owns it, and it is a pre-flip requirement in
-  // docs/methodology/education-flag-flip-runbook.md.
+  // `compactHealthStatus: 'OK'` below is an OBSERVED verdict, not an assertion:
+  // this classify path was run over the real production values for both keys at
+  // `verifiedAt` and the probe was absent from `?compact=1` problems. The
+  // observation was mutation-guarded, because "absent from problems" is
+  // otherwise indistinguishable from "the sweep never ran" — aging the
+  // seed-meta to 12000min yields STALE_SEED, deleting both keys yields EMPTY,
+  // and the unseeded peer `powerLosses` reported EMPTY in all three runs to
+  // prove the problems map was live.
+  educationAttainment:     {
+    key: 'seed-meta:resilience:education-attainment',
+    maxStaleMin: 11520,
+    cutover: {
+      mode: 'preseed',
+      fromKey: null,
+      issue: 6452,
+      verifiedAt: '2026-08-11T11:47:06.532Z',
+      evidence: {
+        platform: 'railway',
+        service: 'seed-bundle-macro',
+        probeKey: 'seed-meta:resilience:education-attainment',
+        compactHealthStatus: 'OK',
+        reference: 'https://github.com/koala73/worldmonitor/issues/6452',
+      },
+    },
+  },
   webcams:                 { key: 'seed-meta:webcam:cameras:geo',                   maxStaleMin: 1440 }, // seed-webcams writes 24h geo/meta keys plus a 30h active pointer; stale at 24h before the layer goes blank.
   // #5736 — history-ingest freshness per collector. `fetchedAt` here is the
   // last HEALTHY append (success, or a correctly-detected unconfigured run),
