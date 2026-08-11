@@ -1456,6 +1456,7 @@ export {
   EXTRACTION_RULES,
   buildIndicatorExtractionPlan,
   applyExtractionRule,
+  readExtractionSources,
 };
 
 // isMain guard so importing the helpers from a test file does not

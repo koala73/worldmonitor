@@ -37,6 +37,7 @@ import {
 } from './_seed-utils.mjs';
 import { wbCountryDictContentMeta } from './_wb-country-dict-content-age-helpers.mjs';
 import iso3ToIso2 from './shared/iso3-to-iso2.json' with { type: 'json' };
+import sovereignStatus from './shared/sovereign-status.json' with { type: 'json' };
 
 loadEnvFile(import.meta.url);
 
@@ -44,6 +45,8 @@ const WB_BASE = 'https://api.worldbank.org/v2';
 const _proxyAuth = resolveProxyForConnect();
 const CANONICAL_KEY = 'resilience:education-attainment:v1';
 const CACHE_TTL = 35 * 24 * 3600; // 35 days; the series publishes annually
+const SEED_META_KEY = 'seed-meta:resilience:education-attainment';
+const COUNTRY_SET_BASELINE_KEY = 'seed-baseline:resilience:education-attainment:v1';
 
 // Content-age budget. Educational attainment of the 25+ population is a
 // slow-moving stock published on an irregular survey cadence — 39 of the
@@ -87,6 +90,8 @@ const EDUCATION_SECTION_TIMEOUT_MS = 300_000;
 // so promotion clears that floor by one country. See
 // `docs/methodology/education-flag-flip-runbook.md`.
 const MIN_COUNTRIES = 150;
+const ACTIVATION_MIN_COUNTRIES = 180;
+const RANKABLE_COUNTRY_CODES = new Set(sovereignStatus.entries.map((entry) => entry.iso2));
 
 // Coverage-drop warning (#6460), shipped before the flag flip as the runbook
 // requires. While the dimension is dark a silent drop moves nothing published;
@@ -105,17 +110,25 @@ const MIN_COUNTRIES = 150;
 const MAX_EXPECTED_COUNTRY_DROP = 2; // warn from the 3rd disappearance onward
 
 // Count is a weak proxy: 181 -> 181 with three countries swapped is invisible
-// to any count check. The previous run's sorted ISO2 set is persisted into
-// seed-meta so the comparison is a true set-diff and the log names the codes.
+// to any count check. The previous run's sorted RANKABLE ISO2 set is persisted
+// so the comparison is a true set-diff and the log names the codes.
 // "Which countries did we lose" is the question an operator actually has to
 // answer; "did the number move" is not, and this feeds a public 196-country
 // ranking.
 //
 // Stored as a comma-joined string rather than a hash: a hash proves only THAT
 // the set changed, and the whole point is to say WHICH codes went missing
-// without a second round-trip for the previous payload. ~570 bytes for 189
-// codes, against a seed-meta object /api/health already GETs in bulk.
+// without a second round-trip for the previous payload. The dedicated baseline
+// key is updated only after a successful read-and-compare. That keeps the last
+// confirmed set intact when Redis has a transient read failure, while seed-meta
+// still carries the latest diagnostic for operators.
 export const COUNTRY_SET_META_FIELD = 'countrySet';
+
+export function rankableCountryCodes(codes) {
+  return [...new Set(codes ?? [])]
+    .filter((cc) => RANKABLE_COUNTRY_CODES.has(cc))
+    .sort();
+}
 
 export function diffCountrySets(previousCodes, currentCodes) {
   const prev = new Set(previousCodes ?? []);
@@ -139,20 +152,37 @@ export function parseCountrySetMeta(raw) {
  * real revision — reintroducing, at a tighter threshold, exactly the failure the
  * deliberately-low 150 floor exists to avoid.
  */
-export function buildCoverageDropReport(previousCodes, currentCodes) {
+export function buildCoverageDropReport(
+  previousCodes,
+  currentCodes,
+  activationMinCountries = ACTIVATION_MIN_COUNTRIES,
+) {
   const countrySet = [...currentCodes].sort().join(',');
+  const belowActivationFloor = currentCodes.length < activationMinCountries;
   // No previous set: the first run after this ships, or after a seed-meta
-  // reset. Record the baseline, warn about nothing — a missing prior is not
-  // evidence of a drop.
+  // reset. A missing prior is not evidence of a drop, but a baseline below the
+  // binding activation floor still has to warn.
   if (previousCodes == null) {
-    return { countrySet, countryCount: currentCodes.length, baseline: true, warn: false, dropped: [], added: [] };
+    return {
+      countrySet,
+      countryCount: currentCodes.length,
+      baseline: true,
+      belowActivationFloor,
+      dropExceeded: false,
+      warn: belowActivationFloor,
+      dropped: [],
+      added: [],
+    };
   }
   const { dropped, added } = diffCountrySets(previousCodes, currentCodes);
+  const dropExceeded = dropped.length > MAX_EXPECTED_COUNTRY_DROP;
   return {
     countrySet,
     countryCount: currentCodes.length,
     baseline: false,
-    warn: dropped.length > MAX_EXPECTED_COUNTRY_DROP,
+    belowActivationFloor,
+    dropExceeded,
+    warn: dropExceeded || belowActivationFloor,
     dropped,
     added,
   };
@@ -231,51 +261,93 @@ async function fetchEducationAttainment() {
   };
 }
 
-const SEED_META_KEY = 'seed-meta:resilience:education-attainment';
-
 /**
- * Reads the PREVIOUS run's country set. Safe to call from `afterPublish`
- * because runSeed invokes that hook before `writeFreshnessMetadataSafely`, so
- * seed-meta still holds the prior run's value at this point.
- *
- * Returns null on any read failure. That is deliberate: an unreadable previous
- * set is indistinguishable from a first run, and both must mean "record the
- * baseline, warn about nothing". Treating a Redis blip as a total coverage loss
- * would fire a 189-country drop alarm on a healthy fetch.
+ * Reads the last successfully compared rankable-country set. Missing state is a
+ * real first run; Redis and parse failures are separate so they cannot silently
+ * replace the confirmed baseline with the current payload.
  */
-async function readPreviousCountrySet() {
-  const credentials = getRedisCredentials();
-  if (!credentials?.url || !credentials?.token) return null;
+export async function readPreviousCountrySet({
+  credentials = getRedisCredentials(),
+  command = redisCommand,
+} = {}) {
+  if (!credentials?.url || !credentials?.token) {
+    return { status: 'error', reason: 'redis-credentials-missing' };
+  }
   try {
-    const body = await redisCommand(
+    const body = await command(
       credentials.url,
       credentials.token,
-      ['GET', SEED_META_KEY],
-      { label: 'education-attainment previous seed-meta', timeoutMs: 5_000 },
+      ['GET', COUNTRY_SET_BASELINE_KEY],
+      { label: 'education-attainment coverage baseline', timeoutMs: 5_000 },
     );
-    if (typeof body?.result !== 'string') return null;
-    return parseCountrySetMeta(JSON.parse(body.result)?.[COUNTRY_SET_META_FIELD]);
-  } catch {
-    return null;
+    if (body?.result == null) return { status: 'missing', codes: null };
+    const codes = parseCountrySetMeta(body.result);
+    return codes == null
+      ? { status: 'error', reason: 'coverage-baseline-malformed' }
+      : { status: 'ok', codes };
+  } catch (error) {
+    return { status: 'error', reason: error?.message ?? 'coverage-baseline-read-failed' };
   }
 }
 
-export async function afterPublish(data) {
-  const currentCodes = Object.keys(data?.countries ?? {});
-  const report = buildCoverageDropReport(await readPreviousCountrySet(), currentCodes);
+export async function writeCountrySetBaseline(countrySet, {
+  credentials = getRedisCredentials(),
+  command = redisCommand,
+} = {}) {
+  if (!credentials?.url || !credentials?.token) {
+    return { status: 'error', reason: 'redis-credentials-missing' };
+  }
+  try {
+    await command(
+      credentials.url,
+      credentials.token,
+      ['SET', COUNTRY_SET_BASELINE_KEY, countrySet, 'EX', String(CACHE_TTL)],
+      { label: 'education-attainment coverage baseline write', timeoutMs: 5_000 },
+    );
+    return { status: 'ok' };
+  } catch (error) {
+    return { status: 'error', reason: error?.message ?? 'coverage-baseline-write-failed' };
+  }
+}
 
-  if (report.baseline) {
-    console.log(`  coverage baseline recorded: ${report.countryCount} countries (no previous set to compare)`);
+export async function afterPublish(data, context = {}) {
+  const currentCodes = rankableCountryCodes(Object.keys(data?.countries ?? {}));
+  const readBaseline = context.readCountrySetBaseline ?? readPreviousCountrySet;
+  const writeBaseline = context.writeCountrySetBaseline ?? writeCountrySetBaseline;
+  const previous = await readBaseline();
+  const comparisonUnavailable = previous.status === 'error' ? previous.reason : null;
+  const report = buildCoverageDropReport(previous.status === 'ok' ? previous.codes : null, currentCodes);
+
+  let baselineWriteError = null;
+  if (previous.status !== 'error') {
+    const writeResult = await writeBaseline(report.countrySet);
+    if (writeResult.status === 'error') baselineWriteError = writeResult.reason;
+  }
+
+  if (comparisonUnavailable) {
+    console.warn(
+      `  WARN education-attainment coverage comparison unavailable: ${comparisonUnavailable}. `
+      + 'The last confirmed baseline was not replaced; the next clean run will compare against it.',
+    );
   } else if (report.warn) {
+    const reasons = [
+      ...(report.dropExceeded
+        ? [`${report.dropped.length} rankable countries disappeared (threshold ${MAX_EXPECTED_COUNTRY_DROP})`]
+        : []),
+      ...(report.belowActivationFloor
+        ? [`rankable coverage ${report.countryCount} is below activation floor ${ACTIVATION_MIN_COUNTRIES}`]
+        : []),
+    ];
     // Stable leading marker so a log scanner groups every occurrence as one
     // condition; the varying detail rides in the payload, not the marker.
     console.warn(
-      `  WARN education-attainment coverage drop: ${report.dropped.length} countries disappeared `
-      + `(threshold ${MAX_EXPECTED_COUNTRY_DROP}). This series republishes ANNUALLY, so the expected `
-      + `week-over-week delta is zero. dropped=[${report.dropped.join(',')}] added=[${report.added.join(',')}] `
-      + `count ${report.countryCount}. Not a failure: a real World Bank revision does move the set, and `
-      + `failing here would poison seed-meta on a legitimate republication.`,
+      `  WARN education-attainment coverage: ${reasons.join('; ')}. This series republishes ANNUALLY, `
+      + `so the expected week-over-week delta is zero. dropped=[${report.dropped.join(',')}] `
+      + `added=[${report.added.join(',')}] rankableCount ${report.countryCount}. Not a publish failure: `
+      + 'a real World Bank revision can move the set, and failing here would poison seed-meta.',
     );
+  } else if (report.baseline) {
+    console.log(`  coverage baseline recorded: ${report.countryCount} countries (no previous set to compare)`);
   } else if (report.dropped.length > 0 || report.added.length > 0) {
     console.log(
       `  coverage churn within tolerance: dropped=[${report.dropped.join(',')}] `
@@ -283,18 +355,30 @@ export async function afterPublish(data) {
     );
   }
 
-  // No countryCount here on purpose: the shared writer already owns
-  // `recordCount` from declareRecords, and it is the same number. A second
-  // field for one value is a drift liability, and `countrySet` encodes the
-  // count anyway. writeFreshnessMetadata rebuilds `meta` from scratch on every
-  // write rather than merging, so `coverageDropped` clears itself on the next
-  // clean run instead of lingering as a stale alarm.
+  if (baselineWriteError) {
+    console.warn(
+      `  WARN education-attainment coverage baseline write failed: ${baselineWriteError}. `
+      + 'The prior baseline remains authoritative and will be compared again next run.',
+    );
+  }
+
+  // No extra count field here: the shared writer owns total `recordCount`, while
+  // the rankable count can be derived from `countrySet`. The two intentionally
+  // differ because the World Bank payload includes territories outside the
+  // 196-country headline universe. writeFreshnessMetadata rebuilds `meta` from
+  // scratch on every write, so diagnostics clear on the next clean run.
   return {
     freshnessMetaPatch: {
       [COUNTRY_SET_META_FIELD]: report.countrySet,
       // Persisted so an operator reading seed-meta after the fact sees the same
       // verdict the run logged, without needing the Railway log retained.
-      ...(report.warn ? { coverageDropped: report.dropped.join(',') } : {}),
+      ...(report.dropExceeded ? { coverageDropped: report.dropped.join(',') } : {}),
+      ...(report.belowActivationFloor
+        ? { rankableCoverageBelowFloor: `${report.countryCount}/${ACTIVATION_MIN_COUNTRIES}` }
+        : {}),
+      ...(comparisonUnavailable || baselineWriteError
+        ? { coverageComparisonUnavailable: comparisonUnavailable ?? baselineWriteError }
+        : {}),
     },
   };
 }
@@ -311,8 +395,10 @@ export {
   CANONICAL_KEY,
   CACHE_TTL,
   MIN_COUNTRIES,
+  ACTIVATION_MIN_COUNTRIES,
   MAX_EXPECTED_COUNTRY_DROP,
   SEED_META_KEY,
+  COUNTRY_SET_BASELINE_KEY,
   ATTAINMENT_INDICATOR,
   OBSERVATION_WINDOW_YEARS,
   WB_PAGE_SIZE,

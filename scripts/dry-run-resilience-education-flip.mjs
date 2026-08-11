@@ -27,7 +27,7 @@ import { readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
-import { loadEnvFile } from './_seed-utils.mjs';
+import { CHROME_UA, loadEnvFile } from './_seed-utils.mjs';
 import { unwrapEnvelope } from '../server/_shared/seed-envelope.ts';
 import {
   scoreAllDimensions,
@@ -46,17 +46,6 @@ loadEnvFile(import.meta.url);
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(__dirname, '..');
-
-// Mirrors scripts/dry-run-resilience-rebalance.mjs — a one-shot local
-// validation runner, never a CI job. It reads production credentials.
-if (process.env.CI === 'true') {
-  console.error('FATAL: dry-run-resilience-education-flip.mjs must NOT run in CI (manual validation only)');
-  process.exit(2);
-}
-if (!process.env.UPSTASH_REDIS_REST_URL || !process.env.UPSTASH_REDIS_REST_TOKEN) {
-  console.error('FATAL: Upstash Redis credentials missing — this measures against production seeds');
-  process.exit(2);
-}
 
 // In-universe coverage of `resilience:education-attainment:v1`, measured
 // against scripts/shared/sovereign-status.json on 2026-08-11 (recordCount 189
@@ -77,14 +66,19 @@ const universe = Object.values(
   JSON.parse(readFileSync(path.join(REPO_ROOT, 'scripts/shared/sovereign-status.json'), 'utf8')).entries,
 ).map((entry) => entry.iso2);
 
-const weightOverride = process.env.EDUCATION_WEIGHT_OVERRIDE
-  ? Number(process.env.EDUCATION_WEIGHT_OVERRIDE)
-  : null;
-if (weightOverride != null && !Number.isFinite(weightOverride)) {
-  console.error(`FATAL: EDUCATION_WEIGHT_OVERRIDE is not a number: ${process.env.EDUCATION_WEIGHT_OVERRIDE}`);
-  process.exit(2);
-}
 const shippedEducationWeight = RESILIENCE_DIMENSION_WEIGHTS.education;
+
+export function parseEducationWeightOverride(raw, shippedWeight = shippedEducationWeight) {
+  if (raw == null || raw === '') return null;
+  const value = Number(raw);
+  const approvedFallback = shippedWeight / 2;
+  if (!Number.isFinite(value) || value !== approvedFallback) {
+    throw new Error(
+      `EDUCATION_WEIGHT_OVERRIDE must equal the pre-agreed half-weight fallback ${approvedFallback}; got ${raw}`,
+    );
+  }
+  return value;
+}
 
 // ── read layer ─────────────────────────────────────────────────────────────
 //
@@ -115,7 +109,10 @@ let readCount = 0;
 
 async function fetchKeyOnce(key) {
   const resp = await fetch(`${REDIS_URL}/get/${encodeURIComponent(key)}`, {
-    headers: { Authorization: `Bearer ${REDIS_TOKEN}` },
+    headers: {
+      Authorization: `Bearer ${REDIS_TOKEN}`,
+      'User-Agent': CHROME_UA,
+    },
     signal: AbortSignal.timeout(15_000),
   });
   if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
@@ -334,26 +331,41 @@ function evaluateGates(baseline, proposed, formula) {
   return gates;
 }
 
-async function extractionCoverageGate() {
-  const { buildIndicatorExtractionPlan } = await import('./compare-resilience-current-vs-proposed.mjs');
-  const { INDICATOR_REGISTRY } = await import('../server/worldmonitor/resilience/v1/_indicator-registry.ts');
-  const plan = buildIndicatorExtractionPlan(INDICATOR_REGISTRY);
+export function evaluateExtractionCoverageGate({
+  plan,
+  educationRule,
+  educationPayload,
+  applyExtractionRule,
+  countryCodes = universe,
+}) {
   const coreTotal = plan.filter((e) => e.tier === 'core').length;
   const coreImplemented = plan.filter((e) => e.tier === 'core' && e.extractionStatus === 'implemented').length;
   const ratio = coreTotal > 0 ? coreImplemented / coreTotal : 0;
-  // Reported separately because education is still tier='experimental' in this
-  // branch — the promotion to 'core' is the activation PR. Without this the
-  // gate would read green while saying nothing about the dimension being
-  // activated, which is the exact failure mode the runbook's item 4 warns about.
   const education = plan.find((e) => e.indicator === 'femaleUpperSecondaryAttainment') ?? null;
+  const educationSamples = educationRule && educationPayload
+    ? countryCodes.filter((countryCode) => (
+      applyExtractionRule(
+        educationRule,
+        { bulkV1: { [educationRule.key]: educationPayload } },
+        countryCode,
+      ) != null
+    )).length
+    : 0;
+  const educationReady = education?.extractionStatus === 'implemented'
+    && educationSamples === EXPECTED_EDUCATION_COVERAGE;
+  const coreReady = ratio >= GATE_THRESHOLDS.CORE_EXTRACTION_COVERAGE_MIN;
+
   return {
     id: 'gate-9-effective-influence-baseline',
-    name: 'Per-indicator effective-influence baseline exists (>= 80% of Core implemented)',
-    status: ratio >= GATE_THRESHOLDS.CORE_EXTRACTION_COVERAGE_MIN ? 'pass' : 'fail',
-    detail: `${coreImplemented}/${coreTotal} Core indicators measurable (${round2(ratio * 100)}%)`,
+    name: 'Core extraction baseline and education sample are measurable',
+    status: coreReady && educationReady ? 'pass' : 'fail',
+    detail: `${coreImplemented}/${coreTotal} Core indicators measurable (${round2(ratio * 100)}%); `
+      + `education ${educationSamples}/${EXPECTED_EDUCATION_COVERAGE}`,
     evidence: {
       coreImplemented,
       coreTotal,
+      educationPairedSampleSize: educationSamples,
+      expectedEducationSampleSize: EXPECTED_EDUCATION_COVERAGE,
       educationRow: education
         ? { tier: education.tier, extractionStatus: education.extractionStatus }
         : null,
@@ -361,9 +373,93 @@ async function extractionCoverageGate() {
   };
 }
 
+async function extractionCoverageGate() {
+  const {
+    applyExtractionRule,
+    buildIndicatorExtractionPlan,
+    EXTRACTION_RULES,
+  } = await import('./compare-resilience-current-vs-proposed.mjs');
+  const { INDICATOR_REGISTRY } = await import('../server/worldmonitor/resilience/v1/_indicator-registry.ts');
+  const plan = buildIndicatorExtractionPlan(INDICATOR_REGISTRY);
+  const educationRule = EXTRACTION_RULES.femaleUpperSecondaryAttainment;
+  const educationPayload = educationRule?.key ? await readKey(educationRule.key) : null;
+  return evaluateExtractionCoverageGate({
+    plan,
+    educationRule,
+    educationPayload,
+    applyExtractionRule,
+  });
+}
+
+export function collectSourceFailures(passes, countryCodes = universe) {
+  const tally = new Map();
+  for (const [passName, pass] of Object.entries(passes)) {
+    for (const countryCode of countryCodes) {
+      for (const dimensionId of pass.get(countryCode)?.sourceFailureDimensions ?? []) {
+        const key = `${passName}:${dimensionId}`;
+        tally.set(key, (tally.get(key) ?? 0) + 1);
+      }
+    }
+  }
+  return tally;
+}
+
+export function evaluateMeasurementInputs({
+  baseline,
+  proposed,
+  unresolvedEntries = [],
+  countryCodes = universe,
+  expectedEducationCoverage = EXPECTED_EDUCATION_COVERAGE,
+}) {
+  const observed = (countryCode, pass) => {
+    const row = pass.get(countryCode);
+    return row != null && (row.educationCoverage ?? 0) > 0 && !row.educationImputationClass;
+  };
+  const observedEducation = countryCodes.filter((countryCode) => observed(countryCode, proposed));
+  const imputedEducation = countryCodes.filter((countryCode) => (
+    (proposed.get(countryCode)?.educationCoverage ?? 0) > 0
+    && proposed.get(countryCode)?.educationImputationClass
+  ));
+  const baselineWithEducation = countryCodes.filter((countryCode) => (
+    (baseline.get(countryCode)?.educationCoverage ?? 0) > 0
+  ));
+  const sourceFailures = collectSourceFailures({ baseline, proposed }, countryCodes);
+
+  return {
+    valid: unresolvedEntries.length === 0
+      && observedEducation.length === expectedEducationCoverage
+      && baselineWithEducation.length === 0
+      && sourceFailures.size === 0,
+    unresolvedEntries,
+    observedEducation,
+    imputedEducation,
+    baselineWithEducation,
+    sourceFailures,
+  };
+}
+
 // ── main ───────────────────────────────────────────────────────────────────
 
 async function main() {
+  // Mirrors scripts/dry-run-resilience-rebalance.mjs — this executable reads
+  // production credentials. Keep the guards inside main so CI can import and
+  // test the pure gate helpers without running the credentialed workflow.
+  if (process.env.CI === 'true') {
+    console.error('FATAL: dry-run-resilience-education-flip.mjs must NOT run in CI (manual validation only)');
+    process.exit(2);
+  }
+  if (!REDIS_URL || !REDIS_TOKEN) {
+    console.error('FATAL: Upstash Redis credentials missing — this measures against production seeds');
+    process.exit(2);
+  }
+
+  let weightOverride;
+  try {
+    weightOverride = parseEducationWeightOverride(process.env.EDUCATION_WEIGHT_OVERRIDE);
+  } catch (error) {
+    console.error(`FATAL: ${error.message}`);
+    process.exit(2);
+  }
   if (weightOverride != null) {
     console.log(`[dry-run] EDUCATION WEIGHT OVERRIDE: ${shippedEducationWeight} -> ${weightOverride} (runbook fallback rule)`);
     RESILIENCE_DIMENSION_WEIGHTS.education = weightOverride;
@@ -375,6 +471,12 @@ async function main() {
   console.log('[dry-run] pass 2/2 — RESILIENCE_EDUCATION_ENABLED=true (proposed)');
   const proposed = await scorePass('proposed', true);
 
+  const measurementInputs = evaluateMeasurementInputs({
+    baseline,
+    proposed,
+    unresolvedEntries: [...unresolvedKeys],
+  });
+
   // Non-vacuity guard. If the flag-on pass produced no education coverage, the
   // two passes are identical and every gate would pass while proving nothing —
   // the same "green with no signal" failure the runbook calls out for stale
@@ -383,9 +485,9 @@ async function main() {
   // it a degraded run publishes a full set of gate verdicts computed over
   // imputed holes, and the output is indistinguishable from a real construct
   // failure. Abort rather than report.
-  if (unresolvedKeys.size > 0) {
-    console.error(`\nFATAL: ${unresolvedKeys.size} key(s) never resolved after retries — the measurement would be computed over read holes, not data.`);
-    for (const entry of [...unresolvedKeys].slice(0, 20)) console.error(`  ${entry}`);
+  if (measurementInputs.unresolvedEntries.length > 0) {
+    console.error(`\nFATAL: ${measurementInputs.unresolvedEntries.length} key(s) never resolved after retries — the measurement would be computed over read holes, not data.`);
+    for (const entry of measurementInputs.unresolvedEntries.slice(0, 20)) console.error(`  ${entry}`);
     console.error('Re-run when Redis is reachable. Do NOT interpret a FAIL verdict from a degraded run.');
     process.exit(2);
   }
@@ -394,21 +496,20 @@ async function main() {
   // World Bank series impute to `unmonitored` at coverage 0.3, so a
   // `coverage > 0` test returns 196/196 and proves nothing about how many
   // countries were actually measured.
-  const observed = (cc, pass) => {
-    const row = pass.get(cc);
-    return row != null && (row.educationCoverage ?? 0) > 0 && !row.educationImputationClass;
-  };
-  const withEducation = universe.filter((cc) => observed(cc, proposed));
-  const imputedEducation = universe.filter((cc) => (proposed.get(cc)?.educationCoverage ?? 0) > 0 && proposed.get(cc)?.educationImputationClass);
-  const baselineWithEducation = universe.filter((cc) => (baseline.get(cc)?.educationCoverage ?? 0) > 0);
-  console.log(`[dry-run] education: observed ${withEducation.length}, imputed ${imputedEducation.length}, baseline coverage ${baselineWithEducation.length} (${readCount} unique keys read)`);
+  const {
+    observedEducation,
+    imputedEducation,
+    baselineWithEducation,
+    sourceFailures,
+  } = measurementInputs;
+  console.log(`[dry-run] education: observed ${observedEducation.length}, imputed ${imputedEducation.length}, baseline coverage ${baselineWithEducation.length} (${readCount} unique keys read)`);
 
   // Guard 2 — the flag-on pass must actually light the dimension up, and for
   // the RIGHT number of countries. `> 0` alone is too weak: a partially-read
   // payload still clears it while silently imputing the rest, which is how the
   // first attempt produced 93/196 and read as a catastrophe.
-  if (withEducation.length !== EXPECTED_EDUCATION_COVERAGE) {
-    console.error(`\nFATAL: education resolved for ${withEducation.length}/${universe.length} countries, expected ${EXPECTED_EDUCATION_COVERAGE}.`);
+  if (observedEducation.length !== EXPECTED_EDUCATION_COVERAGE) {
+    console.error(`\nFATAL: education resolved for ${observedEducation.length}/${universe.length} countries, expected ${EXPECTED_EDUCATION_COVERAGE}.`);
     console.error('Either the payload changed (re-measure and update EXPECTED_EDUCATION_COVERAGE) or reads were degraded. Not a construct verdict.');
     process.exit(2);
   }
@@ -419,23 +520,17 @@ async function main() {
     process.exit(2);
   }
 
-  // Confound report. Not a gate — a source-failure elsewhere hits both passes
-  // equally so the education delta survives it — but gate-7 reads PROPOSED
-  // absolute scores, so an unrelated outage can move a pair. Report it rather
-  // than let a reader assume every movement is education's.
-  const failureTally = new Map();
-  for (const cc of universe) {
-    for (const dimensionId of baseline.get(cc)?.sourceFailureDimensions ?? []) {
-      failureTally.set(dimensionId, (failureTally.get(dimensionId) ?? 0) + 1);
+  // Source failures invalidate the measurement. Delta gates can isolate a
+  // shared outage, but gate 7 reads proposed ABSOLUTE scores; an unrelated
+  // failure can therefore mask or manufacture a matched-pair verdict. Abort
+  // before printing acceptance gates so degraded input never looks actionable.
+  if (sourceFailures.size > 0) {
+    console.error('\nFATAL: source-failure dimensions make the acceptance measurement invalid:');
+    for (const [passAndDimension, count] of [...sourceFailures.entries()].sort((a, b) => b[1] - a[1])) {
+      console.error(`  ${passAndDimension.padEnd(35)} ${count}/${universe.length} countries`);
     }
-  }
-  if (failureTally.size > 0) {
-    console.log('\n[dry-run] CONFOUND — dimensions in source-failure across the baseline:');
-    for (const [dimensionId, count] of [...failureTally.entries()].sort((a, b) => b[1] - a[1])) {
-      console.log(`  ${dimensionId.padEnd(26)} ${count}/${universe.length} countries`);
-    }
-    console.log('  These depress absolute scores in BOTH passes, so the education delta still isolates.');
-    console.log('  But gate-7 pairs are read on proposed ABSOLUTE scores — attribute pair movement with care.');
+    console.error('Re-run after source health recovers. Do NOT interpret PASS or FAIL from this run.');
+    process.exit(2);
   }
 
   const results = {};
@@ -511,7 +606,7 @@ async function main() {
       educationWeight: RESILIENCE_DIMENSION_WEIGHTS.education,
       shippedEducationWeight,
       universeSize: universe.length,
-      educationCoverageCountries: withEducation.length,
+      educationCoverageCountries: observedEducation.length,
       acceptanceGates: { verdict, gates: results },
       scores: Object.fromEntries(universe.map((cc) => [cc, {
         baseline: baseline.get(cc) ?? null,
@@ -532,4 +627,11 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
   });
 }
 
-export { spearman, rank, median, evaluateGates, GATE_THRESHOLDS };
+export {
+  spearman,
+  rank,
+  median,
+  evaluateGates,
+  GATE_THRESHOLDS,
+  EXPECTED_EDUCATION_COVERAGE,
+};

@@ -15,6 +15,7 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { describe, it } from 'node:test';
+import sovereignStatus from '../scripts/shared/sovereign-status.json' with { type: 'json' };
 
 import {
   reduceAttainmentRecords,
@@ -39,6 +40,12 @@ import {
   MAX_EXPECTED_COUNTRY_DROP,
   COUNTRY_SET_META_FIELD,
   SEED_META_KEY,
+  ACTIVATION_MIN_COUNTRIES,
+  COUNTRY_SET_BASELINE_KEY,
+  rankableCountryCodes,
+  readPreviousCountrySet,
+  writeCountrySetBaseline,
+  afterPublish,
 } from '../scripts/seed-education-attainment.mjs';
 
 const row = (iso3, date, value) => ({ countryiso3code: iso3, date: String(date), value });
@@ -220,10 +227,9 @@ describe('fetch and Railway bundle budgets', () => {
 
 describe('coverage-drop set-diff', () => {
   it('records a baseline and warns about nothing on the first run', () => {
-    // A missing previous set is not evidence of a drop. This is also the
-    // unreadable-Redis path, which must not fire a 189-country alarm on an
-    // otherwise healthy fetch.
-    const report = buildCoverageDropReport(null, ['FR', 'DE', 'US']);
+    // A missing previous set is not evidence of a drop. Redis read errors are
+    // handled separately by afterPublish so they cannot replace the baseline.
+    const report = buildCoverageDropReport(null, ['FR', 'DE', 'US'], 0);
     assert.equal(report.baseline, true);
     assert.equal(report.warn, false);
     assert.deepEqual(report.dropped, []);
@@ -235,7 +241,7 @@ describe('coverage-drop set-diff', () => {
     // The expected week-over-week delta for an annually-republished series is
     // exactly zero, so this is the overwhelmingly common case.
     const codes = ['FR', 'DE', 'US'];
-    const report = buildCoverageDropReport(codes, [...codes].reverse());
+    const report = buildCoverageDropReport(codes, [...codes].reverse(), 0);
     assert.equal(report.warn, false);
     assert.deepEqual(report.dropped, []);
     assert.deepEqual(report.added, []);
@@ -243,11 +249,11 @@ describe('coverage-drop set-diff', () => {
 
   it('warns only from the (threshold + 1)th disappearance', () => {
     const prev = ['AA', 'BB', 'CC', 'DD', 'EE', 'FF'];
-    const atLimit = buildCoverageDropReport(prev, prev.slice(MAX_EXPECTED_COUNTRY_DROP));
+    const atLimit = buildCoverageDropReport(prev, prev.slice(MAX_EXPECTED_COUNTRY_DROP), 0);
     assert.equal(atLimit.dropped.length, MAX_EXPECTED_COUNTRY_DROP);
     assert.equal(atLimit.warn, false, 'a drop exactly at the threshold must not warn');
 
-    const overLimit = buildCoverageDropReport(prev, prev.slice(MAX_EXPECTED_COUNTRY_DROP + 1));
+    const overLimit = buildCoverageDropReport(prev, prev.slice(MAX_EXPECTED_COUNTRY_DROP + 1), 0);
     assert.equal(overLimit.dropped.length, MAX_EXPECTED_COUNTRY_DROP + 1);
     assert.equal(overLimit.warn, true);
   });
@@ -258,7 +264,7 @@ describe('coverage-drop set-diff', () => {
     // three real countries onto the unmonitored imputation.
     const prev = ['AA', 'BB', 'CC', 'DD', 'EE', 'FF'];
     const curr = ['AA', 'BB', 'CC', 'XX', 'YY', 'ZZ'];
-    const report = buildCoverageDropReport(prev, curr);
+    const report = buildCoverageDropReport(prev, curr, 0);
     assert.equal(report.countryCount, prev.length, 'count is identical');
     assert.equal(report.warn, true, 'but the set-diff still fires');
     assert.deepEqual(report.dropped, ['DD', 'EE', 'FF']);
@@ -268,7 +274,7 @@ describe('coverage-drop set-diff', () => {
   it('does not warn on additions alone', () => {
     // A World Bank republication that ADDS reporters is good news; only
     // disappearances move countries onto the imputation.
-    const report = buildCoverageDropReport(['AA'], ['AA', 'BB', 'CC', 'DD', 'EE']);
+    const report = buildCoverageDropReport(['AA'], ['AA', 'BB', 'CC', 'DD', 'EE'], 0);
     assert.equal(report.warn, false);
     assert.deepEqual(report.added, ['BB', 'CC', 'DD', 'EE']);
   });
@@ -278,7 +284,7 @@ describe('coverage-drop set-diff', () => {
     // while dropping 20 countries onto the imputation.
     const prev = Array.from({ length: 181 }, (_, i) => `C${i}`);
     const curr = prev.slice(0, 161);
-    const report = buildCoverageDropReport(prev, curr);
+    const report = buildCoverageDropReport(prev, curr, 0);
     assert.equal(report.warn, true);
     assert.equal(report.dropped.length, 20);
     assert.equal(
@@ -291,7 +297,7 @@ describe('coverage-drop set-diff', () => {
 
 describe('country-set seed-meta round trip', () => {
   it('parses a persisted set back to codes', () => {
-    const report = buildCoverageDropReport(null, ['FR', 'DE']);
+    const report = buildCoverageDropReport(null, ['FR', 'DE'], 0);
     assert.deepEqual(parseCountrySetMeta(report.countrySet), ['DE', 'FR']);
   });
 
@@ -322,5 +328,93 @@ describe('country-set seed-meta round trip', () => {
     const { dropped, added } = diffCountrySets(['A1', 'B1'], ['B1', 'C1']);
     assert.deepEqual(dropped, ['A1']);
     assert.deepEqual(added, ['C1']);
+  });
+});
+
+describe('rankable coverage and durable comparison baseline', () => {
+  const rankable = sovereignStatus.entries.map((entry) => entry.iso2);
+
+  it('warns when rankable coverage falls below the binding 180-country activation floor', () => {
+    assert.ok(rankable.length >= ACTIVATION_MIN_COUNTRIES);
+    const current = rankable.slice(0, ACTIVATION_MIN_COUNTRIES - 1);
+    const report = buildCoverageDropReport(rankable.slice(0, ACTIVATION_MIN_COUNTRIES + 1), current);
+
+    assert.equal(report.countryCount, ACTIVATION_MIN_COUNTRIES - 1);
+    assert.equal(report.belowActivationFloor, true);
+    assert.equal(report.warn, true);
+  });
+
+  it('filters non-rankable territories before evaluating the activation floor', () => {
+    const current = [...rankable.slice(0, ACTIVATION_MIN_COUNTRIES - 1), 'AS', 'GU', 'PR'];
+    assert.equal(current.length, ACTIVATION_MIN_COUNTRIES + 2);
+    assert.equal(rankableCountryCodes(current).length, ACTIVATION_MIN_COUNTRIES - 1);
+  });
+
+  it('does not replace the last confirmed baseline when Redis read fails', async () => {
+    let writes = 0;
+    const warnings = [];
+    const originalWarn = console.warn;
+    console.warn = (...args) => warnings.push(args.join(' '));
+    try {
+      const result = await afterPublish(
+        { countries: Object.fromEntries(rankable.slice(0, 179).map((cc) => [cc, {}])) },
+        {
+          readCountrySetBaseline: async () => ({ status: 'error', reason: 'redis timeout' }),
+          writeCountrySetBaseline: async () => { writes++; return { status: 'ok' }; },
+        },
+      );
+      assert.equal(writes, 0, 'an unreadable baseline must never be replaced');
+      assert.equal(result.freshnessMetaPatch.coverageComparisonUnavailable, 'redis timeout');
+      assert.equal(result.freshnessMetaPatch.rankableCoverageBelowFloor, '179/180');
+      assert.ok(warnings.some((line) => line.includes('last confirmed baseline was not replaced')));
+    } finally {
+      console.warn = originalWarn;
+    }
+  });
+
+  it('writes the current rankable set only after a successful read-and-compare', async () => {
+    const current = rankable.slice(0, ACTIVATION_MIN_COUNTRIES - 1);
+    let written = null;
+    const originalWarn = console.warn;
+    console.warn = () => {};
+    try {
+      const result = await afterPublish(
+        { countries: Object.fromEntries([...current, 'AS'].map((cc) => [cc, {}])) },
+        {
+          readCountrySetBaseline: async () => ({
+            status: 'ok',
+            codes: rankable.slice(0, ACTIVATION_MIN_COUNTRIES + 1),
+          }),
+          writeCountrySetBaseline: async (countrySet) => {
+            written = countrySet;
+            return { status: 'ok' };
+          },
+        },
+      );
+      assert.equal(written, [...current].sort().join(','));
+      assert.equal(result.freshnessMetaPatch.rankableCoverageBelowFloor, '179/180');
+    } finally {
+      console.warn = originalWarn;
+    }
+  });
+
+  it('uses the dedicated baseline key for reads and writes', async () => {
+    const commands = [];
+    const command = async (_url, _token, args) => {
+      commands.push(args);
+      return args[0] === 'GET' ? { result: 'DE,FR' } : { result: 'OK' };
+    };
+    const credentials = { url: 'https://redis.invalid', token: 'test-token' };
+
+    assert.deepEqual(
+      await readPreviousCountrySet({ credentials, command }),
+      { status: 'ok', codes: ['DE', 'FR'] },
+    );
+    assert.deepEqual(
+      await writeCountrySetBaseline('DE,FR', { credentials, command }),
+      { status: 'ok' },
+    );
+    assert.deepEqual(commands[0], ['GET', COUNTRY_SET_BASELINE_KEY]);
+    assert.deepEqual(commands[1].slice(0, 3), ['SET', COUNTRY_SET_BASELINE_KEY, 'DE,FR']);
   });
 });
