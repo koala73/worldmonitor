@@ -112,3 +112,9 @@ tmp/
 docs/plans/
 docs/brainstorms/
 playground-pricing.html
+# Local full-build transcripts retained beside integration evidence. Markdown
+# command summaries and screenshots are versioned; raw terminal streams can
+# include host-specific ANSI sequences and are intentionally local-only.
+docs/integration/evidence/*-build-full.stdout.log
+docs/integration/evidence/*-build-full.stderr.log
+docs/integration/evidence/*-build-full.exitcode

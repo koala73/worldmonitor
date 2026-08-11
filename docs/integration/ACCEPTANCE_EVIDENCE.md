@@ -190,3 +190,26 @@ are retained in `evidence/phase5-news-alignment.md`.
 **Phase 6 gate: COMPLETED FOR NATIVE UI, BOUNDARY VALIDATION AND
 NO-PROVIDER TRUTHFULNESS.** It does not certify real-time vessel availability,
 cargo, destination, port calls, route completion or Provider licence terms.
+## Phase 7 - China industrial-cluster export explorer
+
+**Implementation commit:** `PENDING` — populated only after the implementation
+commit exists.
+
+| Check | Result | Evidence |
+|---|---|---|
+| Native owned route and entry | PASS | `/china-factory` is a local TypeScript/CSS workspace with a native `中国世界工厂` market link; it contains no iframe, copied tracker page or upstream UI bundle. |
+| Seed-source boundary | PASS with disclosed scope | Registry has 22 source-labelled records: 20 MIIT 2024 reference clusters plus Huidong/Putian footwear. The 20 reference-only records have no claimed HS mapping and are statistics-disabled; only the two reviewed footwear records map to HS 64. |
+| Requested Huidong and Putian access | PASS | Browser selected Huidong at `/china-factory?cluster=huidong-womens-footwear&period=2024&hs2=64` and Putian at its own canonical URL. Both show source, publication-date availability, administrative scope and HS 64 boundary. |
+| No fabricated trade values | PASS | Without an authorized returned Comtrade/customs record the page says `无经验证的观测贸易记录`; it substitutes neither sample values nor zero-export claims. |
+| No port/vessel/BOL inference | PASS | Potential port rankings remain an explicit `MODELLED_ESTIMATE` unavailable state; no contracted B/L provider yields zero shipment/container/vessel/buyer records. |
+| Period/product filter isolation | PASS | Route tests require reporter 156, selected integer year and the selected HS-2 prefix; results cannot cross a cluster's HS filter. |
+| China map compliance | PASS | No unaudited China administrative boundary or sensitive map claim is rendered; the UI explicitly records that no audited boundary dataset is loaded. |
+| CSV template and export provenance | PASS | A maintainable reviewed-import CSV template is supplied. The browser CSV exports only returned observed records or an explicit no-value-bearing marker, never a plausible sample. |
+| Type/route/DOM/API/source gates | PASS | `typecheck:all` 0; focused suite 23/23; DOM 293/293; API contract 149/114/96; source generate/check 0 with 533 active hosts. |
+| Lint and production build | PASS with pre-existing warnings | Scoped Biome 0; full lint 0 with 33 warnings/9 infos; final `build:full` 0. The build retained existing chunk/dynamic-import warnings only. |
+| Provider-backed factory/port/BOL acceptance | NOT CLAIMED | No configured Comtrade/customs response, official port data response, commercial bill-of-lading contract, credential, licence confirmation or timestamped live data exists in this environment. |
+
+**Phase 7 gate: COMPLETED FOR NATIVE EXPLORATION, SOURCE/HS BOUNDARIES AND
+NO-PROVIDER TRUTHFULNESS.** It does not claim town-level exports, real-time
+trade, port routing, shipments, containers, vessels, buyers, cargo, customs
+manifests, or bill-of-lading coverage.

@@ -132,3 +132,32 @@ During Phase 6 no relay snapshot or Provider response was configured. The
 observed browser lineage is therefore `NOT_CONFIGURED` / no verified snapshot;
 the zero-marker display means no verified record was received, not zero ships
 in the real world.
+## Phase 7 China industrial-cluster export lineage
+
+Phase 7 has four non-interchangeable branches:
+
+1. **Official cluster-recognition branch.** The reviewed registry holds the
+   official/local source URL, publisher, publication-date availability and
+   administrative scope for an industrial cluster. It establishes recognition
+   only. The MIIT 2024 reference entries have no assumed product/HS mapping and
+   are marked `statisticsEligible=false`.
+2. **HS-mapping branch.** A cluster may request trade only after a separately
+   recorded, reviewed HS source supports the mapping. The Huidong and Putian
+   footwear entries use HS 64. This mapping is a product-class boundary, not a
+   company-, town-, port- or shipment-level observation.
+3. **Observed aggregate trade branch.** The client asks the existing
+   same-origin Comtrade boundary and accepts only a returned China reporter
+   `156`, selected period and selected HS-prefix record with a finite
+   non-negative value. It retains country destination and provider provenance
+   when returned. It is historical/aggregate at its source cadence, never live
+   customs clearance, and may not be re-labelled as a particular factory,
+   export port, ship or container.
+4. **Port and B/L branch.** Potential port ranking, if later enabled, is a
+   documented `MODELLED_ESTIMATE` with lawful inputs/method/confidence/error.
+   An observed port or bill-of-lading fact requires its own authorized,
+   timestamped provider record. AIS/news/context cannot substitute for either.
+
+During Phase 7, no authorized aggregate response, port dataset or commercial
+B/L record was configured. The observed browser lineage is consequently a
+source/HS view with no value-bearing trade row and no shipment facts; it does
+not mean that the underlying real-world trade or shipping volume is zero.

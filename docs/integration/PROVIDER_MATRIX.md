@@ -86,3 +86,17 @@ Phase 6 added no credential and no client-side environment variable. A non-empty
 response may not be labelled LIVE unless its Provider, observation/fetch time,
 freshness/delay and applicable authorization are present. The user is not asked
 for a key to continue Phase 7 code work.
+## Phase 7 China factory/trade capability matrix
+
+| Capability | Native behavior without an authorized Provider or reviewed data file | Condition for value-bearing display | Hard prohibition | Server-side secret/configuration location |
+|---|---|---|---|---|
+| Official cluster registry | Shows source URL, publisher/date availability, administrative scope and reviewed HS mapping only where present | A reviewed official/local source and separately sourced HS mapping are recorded for that cluster | Never infer product/HS, production volume or export facts from a cluster name | Versioned reviewed registry and import template; no secret |
+| Country-level China HS trade | Explicit unavailable/no-record state | Same-origin Comtrade result validates reporter `156`, selected year, selected HS prefix, provider and response provenance | Never present national aggregate as town/company/port/shipment data; never replace absence with samples/zero | Existing server-side `COMTRADE_API_KEYS`; no browser key |
+| Lawful China Customs aggregate import | Disabled until an owner supplies an authorized aggregate file/source with period/method | Reviewed lawful aggregate with source, release date, HS/period/scope and licence recorded | Never scrape/rebroadcast restricted records or call an aggregate a real-time manifest | Server-side approved ingestion/configuration only; no front-end secret |
+| Potential/observed port ranking | `MODELLED_ESTIMATE` unavailable; no rank emitted | A documented method plus lawful joint port/trade inputs, confidence and error bounds; observed port needs its own authoritative source | Never infer port, ship, container, buyer, route or discharge from HS/country/cluster | Server-side approved source configuration only |
+| Bill-of-lading / shipment records | Explicitly unconfigured and zero records | Commercial provider contract/entitlement returns a record with provider, timestamp and permitted display fields | Never claim B/L, vessel, container, buyer or cargo facts from AIS, news, a cluster or aggregate trade | Server/platform secret store, provider-specific variable assigned only after contract |
+
+Phase 7 added no credential, client-side environment variable, direct browser
+provider request, or iframe. A value may be labelled observed only when its own
+source, period, scope and freshness/delay are present; historical data remains
+historical and cannot be called live.

@@ -1,7 +1,7 @@
 # Global Intelligence Mother Reconstruction — Master Status
 
 **Controlling specification:** `D:\google\Codex_5.6_Terra_极高_全球情报母体重构执行书_2026-08-11.md`
-**Updated:** 2026-08-11T21:35:00+08:00
+**Updated:** 2026-08-11T22:04:31+08:00
 **Official product brand:** 全球实时热点追踪·探长版
 **Current working branch:** `integration/pokieticker-maritime-china-factory`
 **Formal mother repository:** `daking32168-byte/worldmonitor` (AGPL-3.0-only)
@@ -227,3 +227,37 @@ production-build gates passed. Details are in
 Proceed automatically to Phase 7 adapter/readiness work. Missing AIS or
 PortWatch credentials do not block disabled state, contract and safety work;
 they only block a real provider-backed operational acceptance.
+## Phase 7 - China industrial-cluster export explorer
+
+Phase 7 adds a native, scrollable `/china-factory` workspace and a visible
+market-surface entry for a China industrial-cluster export investigation. It
+keeps four distinct evidence layers: official cluster recognition, HS mapping,
+country-level observed trade, and separately contracted bill-of-lading data.
+It never derives a town shipment, port call, vessel, container, buyer, cargo or
+route fact from the cluster label, an AIS point, or an aggregate trade value.
+
+The reviewed seed registry contains 22 source-labelled records: 20 official
+2024 MIIT reference clusters and the requested Huidong women's-footwear and
+Putian Licheng sports-footwear clusters. Only the two footwear records have a
+reviewed HS 64 mapping and are eligible to request country-level observed
+trade. The 20 MIIT reference records deliberately remain statistics-disabled
+until an individual product/HS mapping is sourced; the application does not
+invent that mapping or show a number for them. Huidong and Putian still have no
+configured Comtrade response, lawful China Customs file, port dataset, or B/L
+provider in this environment, so the browser truthfully displays no observed
+trade, no port rank, and no vessel/container facts.
+
+All Phase 7 static/contract gates, DOM/API/source checks, whole-tree lint and
+the final production build passed. Browser evidence confirms filter URL state,
+Huidong source/HS display, absence of fabricated trade and B/L claims, and a
+real owned vertical scroll surface. See `evidence/phase7-china-factory.md` and
+`evidence/phase7-command-log.md`.
+
+**Phase 7 implementation commit:** `PENDING` — replaced immediately after the
+implementation commit is created.
+
+## Next action
+
+Proceed automatically to Phase 8. A missing provider key or lawful dataset may
+not block the Phase 8 adapters, disabled states, contracts and tests; it only
+prevents a provider-backed value-bearing acceptance.

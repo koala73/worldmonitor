@@ -173,3 +173,22 @@ configuration state. PortWatch aggregates, official warnings and Shipping v2
 model/registry routes are separate layers with their own unavailable states.
 No component may infer cargo, origin, buyer, value, discharge or bill-of-lading
 fact from AIS.
+## D-0018 - Separate cluster recognition from trade, port and shipment evidence
+
+**Decision:** Store official industrial-cluster recognition, HS mapping,
+country-level observed trade, modelled port potential and commercial B/L
+records as separate evidence layers. A cluster can be visible with its source
+even when it has no reviewed HS mapping; it must then be statistics-disabled.
+
+**Reason:** An industrial-cluster title neither proves its product code nor
+identifies a company's exports, town shipment, port, vessel, container, buyer
+or cargo. Joining those layers without their own source would turn plausible
+context into a fabricated trade or logistics fact.
+
+**Consequence:** The initial registry retains 20 official MIIT reference
+clusters without claiming HS/product statistics and permits observed national
+trade only for reviewed HS mappings. Huidong and Putian footwear map to HS 64
+but show no number unless a source-returned country-level record validates the
+selected filters. Port ranking stays unavailable/modelled until its method and
+lawful inputs exist; B/L remains empty until a contracted provider returns an
+authorized, timestamped record.

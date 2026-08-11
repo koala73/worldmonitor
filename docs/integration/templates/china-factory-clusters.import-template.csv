@@ -1,0 +1,2 @@
+cluster_id,province,city,county_or_district,official_name,product_description,official_source_url,source_published_at,hs_revision,hs_code,hs_mapping_source_url,verification_status,statistics_eligible,notes
+example-id,省,市,区县,官方产业集群名称,官方产品表述,https://official.example.invalid/source,YYYY-MM-DD,HS2022,NNNN,https://official.example.invalid/hs-mapping,UNVERIFIED,false,Replace this example with a lawful reviewed source before import.

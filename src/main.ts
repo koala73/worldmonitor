@@ -14,6 +14,7 @@ import { installUtmInterceptor } from './utils/utm';
 import { captureContentAttributionFromUrl } from '../shared/content-attribution';
 import { isStockWorkspacePath } from './features/pokieticker/stock-workspace-route';
 import { isMaritimeLogisticsPath } from './features/maritime-logistics/maritime-logistics-route';
+import { isChinaFactoryPath } from './features/china-factory/china-factory-route';
 
 if (SITE_VARIANT === 'happy') {
   // Keeps happy-theme.css off other variants' eager CSS graph. On happy, the
@@ -625,6 +626,12 @@ if (urlParams.get('settings') === '1') {
   // renders an empty state rather than embedding a provider map or fixture.
   void import('./features/maritime-logistics/maritime-logistics').then(({ initMaritimeLogistics }) => {
     initMaritimeLogistics('app');
+  }).catch(console.error);
+} else if (isChinaFactoryPath(window.location.pathname)) {
+  // This native route keeps official cluster facts, model estimates and any
+  // future contracted bill-of-lading observations visibly separate.
+  void import('./features/china-factory/china-factory').then(({ initChinaFactoryWorkspace }) => {
+    initChinaFactoryWorkspace('app');
   }).catch(console.error);
 } else {
   installUtmInterceptor();

@@ -133,3 +133,17 @@ The locked GitHub remotes remain `origin/main`
 `ae0a0fe26bcbdb683b366899e4dc38fb8ccfb5ad`; the recovered 443 transport was
 rechecked read-only. Phase 6 writes only the integration branch and does not
 move, merge, force-push or otherwise alter `main`.
+## Phase 7 China industrial-cluster implementation receipt
+
+Phase 7 is new WorldMonitor TypeScript, CSS, test and reviewed-source registry
+code. It does not copy PokieTicker source, a Chinese government web-page
+layout, a Comtrade payload, a customs file, a port dashboard, vessel tracker,
+commercial B/L result, map boundary dataset, screenshot, JavaScript bundle or
+iframe. The registry preserves short source metadata and outbound URLs only;
+it does not reproduce source text or a third-party dataset.
+
+The locked remotes remain `origin/main`
+`0fca203c776dd5fa4913c4bd52f99cd2c3c13a25` and `upstream/main`
+`ae0a0fe26bcbdb683b366899e4dc38fb8ccfb5ad`. After the user reported port 443
+restored on 2026-08-11, Phase 7's final work remained local to the integration
+branch. It does not move, merge, push, force-push or otherwise alter `main`.

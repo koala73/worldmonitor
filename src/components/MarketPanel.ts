@@ -5,6 +5,7 @@ import { formatPrice, formatChange, getChangeClass, getHeatmapClass } from '@/ut
 import { escapeHtml, unsafeRawHtml } from '@/utils/sanitize';
 import { normalizeStockWorkspaceSymbol, stockWorkspaceUrl } from '@/features/pokieticker/stock-workspace-route';
 import { maritimeLogisticsUrl } from '@/features/maritime-logistics/maritime-logistics-route';
+import { chinaFactoryUrl } from '@/features/china-factory/china-factory-route';
 import { miniSparkline } from '@/utils/sparkline';
 import { SITE_VARIANT } from '@/config';
 import { createWatchlistButton } from './watchlist-modal';
@@ -66,6 +67,12 @@ export class MarketPanel extends Panel {
     logisticsLink.className = 'watchlist-btn';
     logisticsLink.setAttribute('aria-label', '打开海运物流工作区');
     this.header.appendChild(logisticsLink);
+    const chinaFactoryLink = document.createElement('a');
+    chinaFactoryLink.href = chinaFactoryUrl();
+    chinaFactoryLink.textContent = '中国世界工厂';
+    chinaFactoryLink.className = 'watchlist-btn';
+    chinaFactoryLink.setAttribute('aria-label', '打开中国世界工厂工作区');
+    this.header.appendChild(chinaFactoryLink);
 
     // Delegated once on the persistent content element (each render only swaps
     // innerHTML): click or Enter/Space on a plottable ticker opens its terminal chart.

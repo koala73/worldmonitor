@@ -83,3 +83,19 @@ when the owner elects to run a provider-backed operational acceptance.
 - [ ] If a PortWatch source is activated, record its actual dataset update cadence and geographic scope separately from AIS. Do not claim minute-level vessel tracking from a PortWatch aggregate.
 
 Never paste credentials, session cookies, payment details, CAPTCHA contents or platform owner tokens into chat or Git. If an external account login, payment, terms acceptance or CAPTCHA is actually required, open the exact official page before asking the user to act.
+## Phase 7 optional observed trade and commercial B/L acceptance
+
+No user action is required to continue implementation. The following is needed
+only when the owner elects to enable value-bearing data after reviewing its
+licence and lawful-use scope.
+
+- [ ] For country-level HS trade, obtain a Comtrade plan/entitlement appropriate for the intended storage and display, then place `COMTRADE_API_KEYS` only in the server or platform secret store. Do not use a `VITE_*` variable, Git, this file, screenshots or chat.
+- [ ] If a lawful China Customs aggregate is preferred, document the official/licensed acquisition route, publication/release date, product/HS, period, geographic scope, aggregation method and redistribution permission before server-side ingestion. An aggregate file does not authorize manifest-level claims.
+- [ ] Before enabling a potential-port model, document its permitted inputs, method, confidence interval/error bounds and date coverage. It must remain labelled `MODELLED_ESTIMATE`; it does not identify an actual port call.
+- [ ] Before enabling B/L records, purchase/accept the commercial provider terms only if the permitted display/rebroadcast use is sufficient. Assign the provider-specific server secret in the protected platform store; record provider, returned timestamp, coverage and licence boundary in the evidence document.
+- [ ] Run the native Huidong and Putian filters for at least two periods. Confirm that each number retains its source, period, scope and observed/modelled label, and that no port, vessel, container, cargo or buyer statement appears without its independent authorized record.
+
+Never paste any key, account password, session cookie, invoice, payment detail,
+CAPTCHA text or owner token into chat or Git. If login, paid purchase, terms
+acceptance, CAPTCHA or deployment ownership is actually needed, the exact
+official page must be opened before asking the owner to act.
