@@ -12,6 +12,7 @@ const DISCOVERY_CLAIM_TYPES = new Set(['alias', 'domain', 'legal_identifier', 'l
 const RETRYABLE_STATUS = new Set([401, 402, 429, 500, 502, 503, 504]);
 const DEFAULT_TIMEOUT_MS = 12_000;
 const PACKING_WINDOW_MS = 24 * 60 * 60 * 1000;
+const LEGAL_IDENTIFIER_MAX_UTF8_BYTES = 512;
 
 export const COMPANY_MONITORING_EXA_CONTRACT = Object.freeze({
   contractVersion: 'cm_exa_discovery_v1',
@@ -22,6 +23,8 @@ export const COMPANY_MONITORING_EXA_CONTRACT = Object.freeze({
     queryUtf8Bytes: 2048,
     resultsPerSearch: 25,
     providerResultsMaximum: 100,
+    providerAttemptsMaximum: 2,
+    providerRequestTimeoutMs: DEFAULT_TIMEOUT_MS,
   }),
   pricing: Object.freeze({
     baseUsdMicrosPerSearch: 7_000,
@@ -38,12 +41,12 @@ function utf8Bytes(value) {
   return encoder.encode(value).byteLength;
 }
 
-function safeText(value) {
+function safeText(value, maxUtf8Bytes = 256) {
   if (typeof value !== 'string') return null;
   const tokens = value.normalize('NFC').match(SAFE_TEXT_TOKEN);
   if (!tokens?.length) return null;
   const normalized = tokens.join(' ').replace(/\s+/g, ' ').trim();
-  return normalized && utf8Bytes(normalized) <= 256 ? normalized : null;
+  return normalized && utf8Bytes(normalized) <= maxUtf8Bytes ? normalized : null;
 }
 
 function safeDomain(value) {
@@ -86,7 +89,10 @@ function normalizedCompany(obligation) {
       if (domain) domains.push(domain);
       continue;
     }
-    const value = safeText(claim.value);
+    const value = safeText(
+      claim.value,
+      claim.type === 'legal_identifier' ? LEGAL_IDENTIFIER_MAX_UTF8_BYTES : undefined,
+    );
     if (!value) continue;
     if (claim.type === 'alias') aliases.push(value);
     else if (claim.type === 'legal_identifier') identifiers.push(value);
@@ -280,6 +286,8 @@ function baseReport(work, compiled, startedAt) {
         COMPANY_MONITORING_EXA_CONTRACT.limits.resultsPerSearch,
       ),
       providerMaximumResults: COMPANY_MONITORING_EXA_CONTRACT.limits.providerResultsMaximum,
+      providerMaximumAttempts: COMPANY_MONITORING_EXA_CONTRACT.limits.providerAttemptsMaximum,
+      providerRequestTimeoutMs: COMPANY_MONITORING_EXA_CONTRACT.limits.providerRequestTimeoutMs,
     },
     includedCompanies: compiled.includedCompanies,
     omittedCompanies: compiled.omittedCompanies,
@@ -321,12 +329,17 @@ function errorExecution(report, attempts, reason, outcome, completedAt) {
 export function createExaCohortExecutor(options = {}) {
   const keys = uniqueInOrder((Array.isArray(options.apiKeys) ? options.apiKeys : [])
     .map((key) => typeof key === 'string' ? key.trim() : '')
-    .filter(Boolean));
+    .filter(Boolean))
+    .slice(0, COMPANY_MONITORING_EXA_CONTRACT.limits.providerAttemptsMaximum);
   const fetchImpl = options.fetchImpl ?? globalThis.fetch;
   const now = options.now ?? Date.now;
-  const timeoutMs = Number.isSafeInteger(options.timeoutMs) && options.timeoutMs > 0
+  const requestedTimeoutMs = Number.isSafeInteger(options.timeoutMs) && options.timeoutMs > 0
     ? options.timeoutMs
     : DEFAULT_TIMEOUT_MS;
+  const timeoutMs = Math.min(
+    requestedTimeoutMs,
+    COMPANY_MONITORING_EXA_CONTRACT.limits.providerRequestTimeoutMs,
+  );
   const runtimeApproved = options.runtimeApproved === true;
 
   return async (work) => {

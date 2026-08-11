@@ -5,7 +5,9 @@
     "cohortCompanies": 25,
     "queryUtf8Bytes": 2048,
     "resultsPerSearch": 25,
-    "providerResultsMaximum": 100
+    "providerResultsMaximum": 100,
+    "providerAttemptsMaximum": 2,
+    "providerRequestTimeoutMs": 12000
   },
   "pricing": {
     "baseUsdPerSearch": 0.007,

@@ -95,6 +95,48 @@ describe('Company Monitoring bounded Exa discovery contract', () => {
     assert.equal(discovery.query.includes('WorldMonitor confirmation v1'), false);
   });
 
+  it('preserves contract-valid long legal identifiers or closes the company as a byte omission', () => {
+    const longIdentifier = 'L'.repeat(300);
+    const obligation = {
+      companyId: 'cm_company_00000000000000000000000003',
+      company: {
+        name: 'Long Identifier Company',
+        domicileCountry: 'US',
+        claims: [{
+          claimId: 'cm_claim_00000000000000000000000004',
+          type: 'legal_identifier',
+          value: longIdentifier,
+        }],
+      },
+    };
+
+    const included = compileExaCohortDiscovery([obligation]);
+    assert.deepEqual(included.includedCompanies, [{
+      companyId: obligation.companyId,
+      claimCount: 1,
+    }]);
+    assert.deepEqual(included.omittedCompanies, []);
+    assert.ok(included.query.includes(`identifiers=["${longIdentifier}"]`));
+
+    const projectedAtClaimCap = {
+      ...obligation,
+      company: {
+        ...obligation.company,
+        claims: Array.from({ length: 12 }, (_, index) => ({
+          claimId: `cm_claim_${String(index + 10).padStart(26, '0')}`,
+          type: 'legal_identifier',
+          value: `${String(index).padStart(2, '0')}${longIdentifier}`,
+        })),
+      },
+    };
+    const omitted = compileExaCohortDiscovery([projectedAtClaimCap]);
+    assert.deepEqual(omitted.includedCompanies, []);
+    assert.deepEqual(omitted.omittedCompanies, [{
+      companyId: obligation.companyId,
+      reason: 'query_byte_limit',
+    }]);
+  });
+
   it('neutralizes query operators and reports every company omitted by validation or byte packing', () => {
     const unsafe = {
       companyId: 'cm_company_00000000000000000000000003',
@@ -337,6 +379,41 @@ describe('Company Monitoring bounded Exa discovery contract', () => {
     assert.equal(execution.report.cost.basis, 'mixed');
     assert.equal(JSON.stringify(execution.report).includes('exa-key-one'), false);
     assert.equal(JSON.stringify(execution.report).includes('exa-key-two'), false);
+  });
+
+  it('caps an oversized all-failure key list at primary plus fallback', async () => {
+    const configuredKeys = Array.from({ length: 30 }, (_, index) => `exa-key-${index + 1}`);
+    const calledKeys = [];
+    const execute = createExaCohortExecutor({
+      apiKeys: configuredKeys,
+      runtimeApproved: true,
+      timeoutMs: Number.MAX_SAFE_INTEGER,
+      now: () => WINDOW_END,
+      fetchImpl: async (_url, init) => {
+        calledKeys.push(init.headers['x-api-key']);
+        const error = new Error('request timed out');
+        error.name = 'TimeoutError';
+        throw error;
+      },
+    });
+
+    const execution = await execute(work());
+    assert.equal(COMPANY_MONITORING_EXA_CONTRACT.limits.providerAttemptsMaximum, 2);
+    assert.equal(COMPANY_MONITORING_EXA_CONTRACT.limits.providerRequestTimeoutMs, 12_000);
+    assert.deepEqual(calledKeys, configuredKeys.slice(0, 2));
+    assert.equal(execution.report.caps.providerMaximumAttempts, 2);
+    assert.equal(execution.report.caps.providerRequestTimeoutMs, 12_000);
+    assert.deepEqual(execution.finalizeResult, {
+      type: 'provider_error',
+      reason: 'timeout',
+      costUsdMicros: 44_000,
+    });
+    assert.deepEqual(execution.report.requests, {
+      attempted: 2,
+      completed: 0,
+      timedOut: 2,
+    });
+    assert.equal(execution.report.cost.attempts.length, 2);
   });
 
   it('does not rotate credentials for a request-specific 403 rejection', async () => {
