@@ -17,7 +17,17 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import { combineExternalDebt, validate } from '../scripts/seed-wb-external-debt.mjs';
+import {
+  combineExternalDebt,
+  deriveNonDrsCountryCodes,
+  validate,
+} from '../scripts/seed-wb-external-debt.mjs';
+
+function countryCodes(count) {
+  return Array.from({ length: count }, (_, index) => (
+    String.fromCharCode(65 + Math.floor(index / 26)) + String.fromCharCode(65 + (index % 26))
+  ));
+}
 
 describe('combineExternalDebt — formula composition', () => {
   it('Brazil: $200B short-term debt / $2T GNI = 10% short-term debt of GNI', () => {
@@ -97,9 +107,35 @@ describe('combineExternalDebt — formula composition', () => {
   });
 });
 
+describe('deriveNonDrsCountryCodes', () => {
+  it('uses the World Bank LNX lending type as the explicit non-DRS signal', () => {
+    assert.deepEqual(
+      deriveNonDrsCountryCodes([
+        { iso2Code: 'LU', lendingType: { id: 'LNX' }, region: { id: 'ECS' } },
+        { iso2Code: 'TD', lendingType: { id: 'IDX' }, region: { id: 'SSF' } },
+        { iso2Code: 'BR', lendingType: { id: 'IBD' }, region: { id: 'LCN' } },
+      ]),
+      ['LU'],
+    );
+  });
+
+  it('excludes aggregate rows and returns unique sorted ISO2 codes', () => {
+    assert.deepEqual(
+      deriveNonDrsCountryCodes([
+        { iso2Code: 'US', lendingType: { id: 'LNX' }, region: { id: 'NAC' } },
+        { iso2Code: 'CH', lendingType: { id: 'LNX' }, region: { id: 'ECS' } },
+        { iso2Code: 'US', lendingType: { id: 'LNX' }, region: { id: 'NAC' } },
+        { iso2Code: 'XD', lendingType: { id: 'LNX' }, region: { id: 'NA' } },
+        { iso2Code: 'bad', lendingType: { id: 'LNX' }, region: { id: 'ECS' } },
+      ]),
+      ['CH', 'US'],
+    );
+  });
+});
+
 describe('validate', () => {
   it('rejects empty payload (upstream outage signal)', () => {
-    assert.equal(validate({ countries: {} }), false);
+    assert.equal(validate({ countries: {}, nonDrsCountryCodes: countryCodes(50) }), false);
   });
 
   it('rejects payload below 80-country floor', () => {
@@ -107,14 +143,34 @@ describe('validate', () => {
     for (let i = 0; i < 50; i++) {
       tiny[`X${i.toString().padStart(2, '0')}`] = { value: 5, year: 2023 };
     }
-    assert.equal(validate({ countries: tiny }), false);
+    assert.equal(validate({ countries: tiny, nonDrsCountryCodes: countryCodes(50) }), false);
   });
 
-  it('accepts payload at or above the LMIC coverage floor', () => {
+  it('rejects an otherwise valid payload without lending-scope metadata', () => {
     const ample = {};
     for (let i = 0; i < 100; i++) {
       ample[`X${i.toString().padStart(2, '0')}`] = { value: 5, year: 2023 };
     }
-    assert.equal(validate({ countries: ample }), true);
+    assert.equal(validate({ countries: ample }), false);
+  });
+
+  it('rejects malformed or duplicate lending-scope metadata', () => {
+    const ample = {};
+    for (let i = 0; i < 100; i++) {
+      ample[`X${i.toString().padStart(2, '0')}`] = { value: 5, year: 2023 };
+    }
+    const malformed = [...countryCodes(49), 'bad'];
+    const duplicate = [...countryCodes(49), countryCodes(49)[0]];
+    assert.equal(validate({ countries: ample, nonDrsCountryCodes: malformed }), false);
+    assert.equal(validate({ countries: ample, nonDrsCountryCodes: duplicate }), false);
+    assert.equal(validate({ countries: Array.from({ length: 100 }), nonDrsCountryCodes: countryCodes(50) }), false);
+  });
+
+  it('accepts payload at or above both coverage floors', () => {
+    const ample = {};
+    for (let i = 0; i < 100; i++) {
+      ample[`X${i.toString().padStart(2, '0')}`] = { value: 5, year: 2023 };
+    }
+    assert.equal(validate({ countries: ample, nonDrsCountryCodes: countryCodes(50) }), true);
   });
 });

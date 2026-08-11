@@ -224,8 +224,21 @@ describe('Company Monitoring bounded Exa discovery contract', () => {
       checkpoint: execution.finalizeResult.checkpoint,
       emptyValidated: false,
       costUsdMicros: 22_000,
+      exaIngestion: execution.finalizeResult.exaIngestion,
     });
     assert.match(execution.finalizeResult.checkpoint, /^exa_rows_v1\./);
+    assert.equal(execution.finalizeResult.exaIngestion.candidates.length, 2);
+    assert.deepEqual(execution.finalizeResult.exaIngestion.candidates[0], {
+      providerResultId: fixture.successResponse.results[0].id,
+      providerRequestId: fixture.successResponse.requestId,
+      providerRank: 1,
+      url: fixture.successResponse.results[0].url,
+      title: fixture.successResponse.results[0].title,
+      author: fixture.successResponse.results[0].author,
+      publishedAt: Date.parse(fixture.successResponse.results[0].publishedDate),
+      retrievedAt: WINDOW_END + 1234,
+      candidateCompanyIds: work().obligations.map((row) => row.companyId),
+    });
     const checkpointPayload = JSON.parse(Buffer.from(
       execution.finalizeResult.checkpoint.split('.')[1],
       'base64url',
@@ -346,6 +359,7 @@ describe('Company Monitoring bounded Exa discovery contract', () => {
       returnedRange: { startAt: WINDOW_START, endAt: WINDOW_END },
       emptyValidated: false,
       costUsdMicros: 22_000,
+      exaIngestion: { candidates: [] },
     });
     assert.equal(execution.report.outcome, 'malformed');
     assert.equal(execution.report.counts.malformedRows, 1);

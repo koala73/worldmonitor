@@ -1,6 +1,6 @@
 # Financial System Exposure — construct definition
 
-**Status**: Active (added in plan 2026-04-25-004 Phase 2 — Ship 2)
+**Status**: Active (added in plan 2026-04-25-004 Phase 2 — Ship 2; recalibrated in #6459)
 **Dimension ID**: `financialSystemExposure`
 **Domain**: `economic` (weight 0.50 within domain)
 **Type**: `stress`
@@ -15,15 +15,20 @@ This dimension replaces the structural-exposure half of the dropped OFAC-domicil
 ## Composition
 
 ```
-financialSystemExposure = weightedBlend([
-  { signal: short_term_external_debt_pct_gni,  weight: 0.35 },
-  { signal: bis_lbs_xborder_us_eu_uk_pct_gdp,  weight: 0.30 },
-  { signal: fatf_listing_status,                weight: 0.20 },
-  { signal: financial_center_redundancy,        weight: 0.15 },
-])
+financialSystemExposure = min(
+  weightedBlend([
+    { signal: short_term_external_debt_pct_gni,  weight: 0.35 },
+    { signal: bis_lbs_xborder_us_eu_uk_pct_gdp,  weight: 0.30 },
+    { signal: fatf_listing_status,                weight: 0.20 },
+    { signal: financial_center_redundancy,        weight: 0.15 },
+  ]),
+  comprehensive_embargo(country) ? 15 : 100,
+)
 ```
 
 Components 2 + 4 share the BIS CBS payload (`economic:bis-lbs:v1` — Redis key name retained for historical continuity even though the upstream dataflow is now CBS, not LBS); no separate seeder for redundancy.
+
+The `min(...)` cap is the comprehensive-embargo term added in #6459; see [§ Comprehensive-embargo cap](#comprehensive-embargo-cap) for why the signal cannot be carried by the four graded components.
 
 ### Component 1: `short_term_external_debt_pct_gni` (weight 0.35)
 
@@ -46,7 +51,22 @@ Where:
 
 **Score shape**: `normalizeLowerBetter(value, 0, 15)` — IMF Article IV external-financing-vulnerability threshold is canonically 15% of GNI.
 
-**Coverage**: ~125-190 LMICs (low- and middle-income countries) depending on the year. HIC fall through to Component 2 (BIS CBS) which has ~200-country coverage.
+**Coverage**: ~119-190 World Bank borrower economies depending on the year — 119 in the 2026-08-11 production payload.
+
+**Absence handling (#6459)**: IDS is the published output of the World Bank **Debtor Reporting System**, whose membership is World Bank *borrowers*. The seeder also reads the World Bank country catalog and records countries with `lendingType=LNX` as explicitly outside the Bank's borrower programs.
+
+The original construct dropped the slot for them. That was the single largest contributor to the inversion: `weightedBlend` renormalizes onto the surviving slots, so the 0.35 weight redistributed onto a denominator of 0.65 and the punitive cross-border-claims leg alone went from 30% to 46% of the score. Luxembourg was scored almost entirely on "your banks are too integrated", with no offsetting credit for having no rollover risk at all.
+
+| Country state | Component 1 slot |
+|---|---|
+| DRS row present | `normalizeLowerBetter(value, 0, 15)`, full 0.35 weight, coverage 1.0 |
+| No DRS row, `lendingType=LNX`, **and** present in BIS CBS | imputed score **75**, `certaintyCoverage 0.3`, `imputed: true`, `imputationClass: 'not-applicable'` |
+| Borrower missing its DRS row | slot drops out of the blend (possible partial payload) |
+| Absent from both DRS and BIS CBS | slot drops out of the blend (genuine data gap) |
+
+**Why `not-applicable` and not `unmonitored`**: non-participation in the DRS means there is no reported short-term external commercial debt to roll over. That is a mild positive, not an unknown, so the class that describes it is "the indicator does not apply here".
+
+**Discriminator**: the World Bank country catalog's `lendingType=LNX` classification is the explicit non-borrower signal. A missing DRS row is never enough by itself, because an accepted annual payload can still omit an eligible borrower. The imputation also requires a valid BIS CBS row. Payload schema v1 did not carry `nonDrsCountryCodes`; the scorer remains backward-compatible with that payload but treats eligibility as unknown, so the slot drops instead of receiving a positive imputation until schema v2 is seeded.
 
 **Cadence**: monthly cron (WB IDS publishes annually; the cadence is for refresh-once-they-publish detection).
 
@@ -85,15 +105,26 @@ The resilience question ("how exposed is country X's financial system to actions
 
 **GDP denominator**: World Bank `NY.GDP.MKTP.CD` (current USD), matched to the same reference year as the CBS quarter.
 
-**Score shape**: U-shaped band-normalization (`normalizeBandLowerBetter`). Both extremes are bad — too little integration suggests financial isolation (sanctions-target jurisdictions; thin correspondent-banking access); too much suggests over-exposure to Western-bank pulls (Iceland-2008 territory). The score peaks in the "healthy diversified financial system" middle band:
+**Score shape**: **asymmetric** U-shaped band-normalization (`normalizeBandLowerBetter`). Both extremes are bad — too little integration suggests financial isolation (sanctions-target jurisdictions; thin correspondent-banking access); too much suggests over-exposure to Western-bank pulls (Iceland-2008 territory). The score peaks in the "healthy diversified financial system" middle band:
 
 | Cross-border claims (% GDP) | Score |
 |---|---|
-| 0% | 60 |
-| < 5% (low integration) | 60-70 (linear) |
+| 0% (isolation floor) | 30 |
+| 0-5% (low integration) | 30-75 (linear) |
 | 5-25% (sweet spot) | 75-100 (linear) |
-| 25-60% (over-exposed) | 70-30 (linear) |
-| > 60% (Iceland-2008 territory) | < 30, clamped 0 |
+| 25-60% (over-exposed) | 100-45 (linear) |
+| 60-80% (Iceland-2008 territory) | 45-35 (linear) |
+| > 80% | 35 (flat over-exposure floor) |
+
+**Asymmetry is the point, and it was wrong until #6459.** The original band floored 0% claims at **60** and decayed over-integration through 30 at 60% of GDP to a clamped **0** from 120%. Zero cross-border integration is the signature of a sanctions-severed banking system, so that shape scored severance above integration by construction: on the 2026-08-11 production payload Russia's 1.45%-of-GDP claims took 64 while Luxembourg's 1041.64% took 0.
+
+Three invariants now hold, and `tests/resilience-financial-system-exposure.test.mts` asserts them against `normalizeBandLowerBetter` directly rather than inferring them from sampled dimension scores:
+
+1. The isolation floor (value 0) is ≤ 40 and **strictly below every other reading of the band**, densely sampled from 0.5% to 5000% of GDP.
+2. The over-exposure leg floors at 35 — above the isolation floor, because an over-banked entrepôt still has working correspondent access that a severed state does not.
+3. Every segment boundary is continuous, including the new 80% floor knee (the PR #3407 Greptile P1 lesson: cliffs in piecewise-linear scorers destabilize rankings at band edges).
+
+A negative or non-finite reading is upstream corruption, not isolation, and falls back to a neutral 50 rather than to the isolation floor — a parser regression must not read as a sanctions verdict.
 
 **Coverage**: ~200 jurisdictions; effectively complete for the manifest.
 
@@ -111,8 +142,12 @@ This page is a STABLE entry point that links to the current publication. Each FA
 | FATF status | Score | Notes |
 |---|---|---|
 | Black list (call for action) | 0 | DPRK has been on every list since 2011; Iran since 2020; Myanmar since 2022 |
-| Grey list (increased monitoring) | 30 | Typically 15-25 jurisdictions; rotates as countries clear FATF action plans |
+| Grey list (increased monitoring) | 55 | Typically 15-25 jurisdictions; rotates as countries clear FATF action plans |
 | Compliant | 100 | Default for any jurisdiction not appearing on either list |
+
+**Grey rescaled 30 → 55 in #6459.** Grey-listing means "increased monitoring under an agreed action plan" — a jurisdiction actively remediating with FATF, not one a step away from the call-for-action black list. At 30 the gap to black was 30 points and the gap to compliant 70, which placed ordinary remediating economies closer to Iran and DPRK than to their actual peers. On the 2026-06-01 plenary list that included Monaco, whose FATF slot is its **only** resolving component in production (no BIS CBS row, no DRS row), so the mis-scaling propagated directly to its dimension score.
+
+**Compliant-by-absence is a known hole.** FATF enumerates AML/CFT deficiencies, not sanctions exposure, so `compliant` is assigned to any jurisdiction on neither list — including Russia, Belarus, Cuba and Libya, which all took a perfect 100 on a 0.20-weight component. The hole is closed by the comprehensive-embargo cap below rather than by penalising the ~170 genuinely unlisted jurisdictions.
 
 **Coverage**: 100% — FATF only enumerates non-compliant jurisdictions; every other country defaults to "compliant".
 
@@ -136,6 +171,42 @@ This page is a STABLE entry point that links to the current publication. Each FA
 
 **Coverage**: derived from BIS CBS — same ~200 jurisdictions.
 
+## Comprehensive-embargo cap
+
+**Added in #6459. Not a component — a post-blend cap.**
+
+The construct's question is "how vulnerable is country X's financial system to coordinated action by major Western banking jurisdictions?". For a jurisdiction already under a comprehensive or government-wide blocking programme, that vulnerability is not a forecast — it is realized in full: correspondent relationships are gone, reserves are immobilised, messaging access is revoked.
+
+Three of the four graded components read that severance as **strength**:
+
+- Component 1 — thin short-term external debt, because there is no market access to borrow from.
+- Component 2 — low cross-border claims, because nobody lends.
+- Component 3 — `compliant`, because FATF assesses AML/CFT deficiency, not sanctions.
+
+**A band retune alone cannot fix this, and the arithmetic is worth stating so nobody re-litigates it.** With the band leg at 0 and the redundancy leg at 0, Russia still holds `0.35 × 80` (debt) + `0.20 × 100` (FATF) = **48** — more than double the < 20 activation anchor. The signal has to enter the construct as its own input.
+
+```
+FIN_SYS_EXPOSURE_COMPREHENSIVE_EMBARGO  (server/worldmonitor/resilience/v1/_dimension-scorers.ts)
+  RU  EO 14024 + G7 reserve immobilisation + SWIFT exclusion of major banks (2022–)
+  BY  EO 14038 + EU Reg. 765/2006 as amended; SWIFT exclusion (2022–)
+  IR  31 CFR 560 Iranian Transactions and Sanctions Regulations (comprehensive)
+  KP  31 CFR 510 North Korea Sanctions Regulations (comprehensive)
+  CU  31 CFR 515 Cuban Assets Control Regulations (comprehensive, 1963–)
+  MM  EO 14014 Burma blocking programme + EU Reg. 2013/184
+  VE  EO 13884 blocks all property of the Government of Venezuela
+  LY  EO 13566 blocks all property of the Government of Libya; UNSCR 1970/1973
+```
+
+**Membership criterion**: a comprehensive/territory-wide embargo, **or** a government-wide blocking programme that severs the sovereign from Western correspondent clearing. Individual-entity designations, sectoral measures and arms embargoes do **not** qualify — those are ordinary policy friction and belong in the graded components.
+
+**Cap, not assignment.** The value is `min(blendedScore, 15)`. A country already below 15 keeps its lower score, so the graded components still order jurisdictions *within* the embargoed set: DPRK's FATF black listing holds it at 0, below Russia's 15. 15 sits deliberately below the < 20 activation anchor so the anchor has headroom rather than passing by exactly zero margin.
+
+**Applied post-blend, so provenance is untouched.** `coverage`, `observedWeight`, `imputedWeight` and `imputationClass` continue to describe what was actually read. An operator inspecting a capped country still sees which components resolved; the cap does not disguise a construct verdict as a data outage.
+
+**This is not the rejected "transit-hub exclusion list"** ([Alternative 2](#alternative-2--transit-hub-exclusion-list)). That would have been an editorial carve-out of jurisdictions the construct scored inconveniently. This list *is* the construct's subject, and its membership is externally defined by published US OFAC and EU Council programmes rather than drawn by us.
+
+**Maintenance**: the list is static and must be reviewed when a programme is materially lifted or imposed. It was last reviewed on **2026-08-11** and has a maximum review age of **120 days**, enforced in CI. Syria was removed during that review because [OFAC revoked the comprehensive Syria sanctions program effective 2025-07-01](https://ofac.treasury.gov/recent-actions/20250630). A jurisdiction leaving the list re-enters the graded components on its own merits; tests require the runtime set, calibration cohort, and this code block to remain identical.
+
 ## Fail-closed preflight
 
 The dim implements the same fail-closed pattern as `scoreEnergy` v2. When `RESILIENCE_FIN_SYS_EXPOSURE_ENABLED=true`, the scorer preflights all 3 required seed envelopes:
@@ -146,7 +217,7 @@ seed-meta:economic:bis-lbs:v1
 seed-meta:economic:fatf-listing:v1
 ```
 
-Missing envelopes throw `ResilienceConfigurationError(message, missingKeys)` (two-arg form; `missingKeys` carries the absent seed keys). The `scoreAllDimensions` catch path reads `err.missingKeys`, joins them for the source-failure log, and routes the dim to `imputationClass='source-failure'` with `score=0, coverage=0`. Per-country data gaps inside an otherwise-published envelope are distinct: per-component reads return null and the slot drops out of the weighted blend.
+Missing envelopes throw `ResilienceConfigurationError(message, missingKeys)` (two-arg form; `missingKeys` carries the absent seed keys). The same fail-closed behavior applies when healthy seed metadata is followed by an absent, malformed, or empty World Bank data envelope. The `scoreAllDimensions` catch path reads `err.missingKeys`, joins them for the source-failure log, and routes the dim to `imputationClass='source-failure'` with `score=0, coverage=0`. Per-country data gaps inside an otherwise-published envelope are distinct: per-component reads return null and the slot drops out of the weighted blend unless World Bank metadata explicitly confirms the non-DRS case above.
 
 When `RESILIENCE_FIN_SYS_EXPOSURE_ENABLED` is unset or false (default), the scorer returns the empty-data shape (no preflight, no throw, `imputationClass=null`). The dim drops out of the coverage-weighted economic-domain mean. This is the staged-rollout posture: the dim ships dark until seeders are populating in production, then ops flip the flag.
 
@@ -158,9 +229,37 @@ When `RESILIENCE_FIN_SYS_EXPOSURE_ENABLED` is unset or false (default), the scor
 
 ## Sanctions-isolated jurisdiction sanity check
 
-The construct is calibrated such that countries with comprehensive financial sanctions and weak banking infrastructure score very low on this dim. The cohort sanity-check anchor (gates the construct at activation time):
+The construct is calibrated such that countries with comprehensive financial sanctions and weak banking infrastructure score very low on this dim. The cohort sanity-check anchor:
 
-- **Russia, Iran, DPRK, Cuba, Venezuela, Belarus, Libya, Myanmar** must score < 20 on `financialSystemExposure` after the flag flips on with seeders populated. If they don't, the construct is mis-calibrated and must be retuned before production rollout.
+- **Russia, Iran, DPRK, Cuba, Venezuela, Belarus, Libya, Myanmar** must score < 20 on `financialSystemExposure`. If they don't, the construct is mis-calibrated and must be retuned before production rollout.
+
+**This anchor is executable (#6459). It was prose for three and a half months and nothing evaluated it, which is how an unsatisfiable construct sat merged and dark.** It now runs in CI:
+
+| Gate | Where |
+|---|---|
+| Sanctions cohort < 20, all eight | `tests/resilience-financial-system-exposure-calibration.test.mts` |
+| Cohort membership == this doc's list | same file — the cohort cannot be trimmed to make the gate pass |
+| Cohort members carry non-zero coverage | same file — a coverage-0 pass would clear `< 20` while proving nothing |
+| Dimension-level direction: LU > BY, SG > MM, CH > RU, US > CU (minGap 10) | same file, via `FIN_SYS_EXPOSURE_MATCHED_PAIRS` |
+| Inversion probe, pinned values | `tests/resilience-financial-system-exposure.test.mts` |
+
+Cohort membership lives in `tests/helpers/resilience-cohorts.mts` as `sanctions-isolated`; the gates run through the real `scoreFinancialSystemExposure` against the three component seed payloads pinned verbatim from production on 2026-08-11 (`tests/helpers/resilience-finsys-fixtures.mts`).
+
+**Why the pre-existing gates missed the inversion.** Spearman-vs-baseline and max-country-drift are *magnitude* gates: they bound how far the ranking moves, not who moves which way. The 2026-08-11 full-universe measurement returned Spearman 0.99612 and max drift 8.61 — both comfortably passing — while the dimension's ranking was completely inverted. A complete direction flip inside a ~3%-of-headline dimension is invisible to both. Only directional gates (cohort thresholds, matched pairs) catch this class.
+
+**Dimension-level pairs are deliberately separate from `MATCHED_PAIRS`**, which feeds whole-index acceptance gate #7. A whole-index pair compares overall scores and cannot see a defect confined to one dimension.
+
+### Known residuals: absence still reads as strength outside the embargo list
+
+The #6459 cap fixes the *embargoed* case of "absence reads as strength". Two non-embargoed shapes of the same defect survive, both measured against the 2026-08-11 production payload. Neither is fixed here, and a passing sanctions cohort is **not** evidence that either is resolved.
+
+**1. No-market-access low-income countries.** The debt leg still reads a structurally tiny short-term external debt stock as low rollover vulnerability, so a country with no commercial market access scores high on Component 1 at full weight. Chad takes 99 on that slot and 67 on the dimension. Re-anchoring the debt goalposts for market-access-constrained borrowers is a separate construct change needing its own calibration.
+
+**2. FATF-compliant-by-absence as the only resolving slot.** Seven scorable jurisdictions have neither a DRS row nor a BIS CBS row, so FATF is their only component. Five of them are actually FATF-listed (MC, SS, YE grey; KP black) or embargoed (CU), and score accordingly. The remaining two — **Eritrea and Taiwan** — are absent from all three sources and take `compliant` by absence, scoring **100 at coverage 0.2**. For Taiwan that absence is a reporting-politics artefact rather than a resilience signal; for Eritrea it is straightforwardly wrong.
+
+The impact is bounded — coverage 0.2 gives the slot little weight in the coverage-weighted economic-domain mean, and both countries move under +1.3 points overall — but the principled fix is to treat compliant-by-absence as carrying no information when it is the *only* resolving component, and drop the slot rather than score it 100. That changes `coverage` (and therefore `headlineEligible`) for those countries, so it needs its own measurement and is deliberately out of scope for #6459, whose Phase B scoped the compliant-by-absence fix to embargoed states.
+
+Both residuals are tracked in **#6461**.
 
 ## Bounded-movement gate
 
@@ -225,6 +324,8 @@ Tweak the piecewise scale to be less aggressive. **Rejected**: doesn't address t
 
 Exclude Dubai/Singapore/Hong Kong/Cyprus free-zone-domiciled designations from each host country's count. **Rejected**: bandaid on the wrong construct; the hub list is arbitrary and any line-drawing exercise becomes politically charged.
 
+> **Not to be confused with the #6459 comprehensive-embargo cap.** The distinction is which way the list points and who draws it. This alternative would have *removed* inconvenient jurisdictions from a component so their scores improved, on a line we drew ourselves. The embargo list *is* the construct's subject — the realized form of the vulnerability the dimension measures — and its membership comes from published US OFAC and EU Council programmes.
+
 ### Alternative 3 — Single-dim formula rewrite (don't split)
 
 Keep `tradeSanctions` as one dim, just rewrite the 0.45 sanctions component formula to be the new `financialSystemExposure` composite. **Rejected**: makes the dim measure two semantically-different things (trade-policy openness AND structural financial vulnerability); future audits have to disentangle them.
@@ -251,3 +352,27 @@ Keep `tradeSanctions` as a retired/compat dimension at coverage=0; add `tradePol
 - Seeders: `scripts/seed-{wb-external-debt,bis-lbs,fatf-listing}.mjs`
 - Tests: `tests/resilience-financial-system-exposure.test.mts`, `tests/seed-{wb-external-debt,bis-lbs,fatf-listing}.test.mjs`
 - Bundle: `scripts/seed-bundle-macro.mjs` (Option A per Codex R1 #5)
+
+## Changelog
+
+### 2026-08-11 — #6459 construct recalibration (still flag-dark)
+
+A flag test on 2026-08-11 showed the construct's ranking was **inverted**: financially deep jurisdictions fell and financially isolated or sanctioned ones rose. Four defects, all fixed in one PR, plus the gates that make the defect class visible:
+
+| Change | Effect |
+|---|---|
+| Cross-border-claims band re-anchored asymmetrically (isolation floor 60 → 30; over-exposure floor 0 → 35) | Severance stops out-scoring integration |
+| FATF grey rescaled 30 → 55 | Remediating jurisdictions stop scoring near-blacklist |
+| Comprehensive-embargo cap at 15 added as a new input | Closes compliant-by-absence and no-market-access reading as strength |
+| Explicit World Bank `lendingType=LNX` non-DRS slot imputed at 75 / `not-applicable` instead of dropped | Stops the 0.35 weight renormalizing onto the punitive band leg without converting missing borrower rows into strength |
+| Sanctions cohort, dimension-level matched pairs, and the inversion probe committed as CI gates | The activation anchor is executable instead of prose |
+| Syria removed from the static cap; policy review age and code/doc/cohort parity enforced | Revoked sanctions cannot persist silently as scorer policy |
+
+Measured effect on the 2026-08-11 production payloads (dimension score, before → after):
+
+| | RU | BY | IR | KP | CU | VE | LY | MM | LU | SG | CH | US | MC |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| before | 68 | 48 | 52 | 0 | 100 | 45 | 59 | 54 | 54 | 54 | 80 | 89 | 30 |
+| after | 15 | 15 | 15 | 0 | 15 | 15 | 15 | 15 | 72 | 72 | 81 | 85 | 55 |
+
+The dimension remains flag-dark behind `RESILIENCE_FIN_SYS_EXPOSURE_ENABLED`; activation is a separate PR with its own flip runbook.

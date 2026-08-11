@@ -311,8 +311,9 @@ export const INDICATOR_REGISTRY: IndicatorSpec[] = [
     sourceKey: 'economic:wb-external-debt:v1',
     scope: 'global',
     cadence: 'annual',
-    imputation: { type: 'conservative', score: 50, certainty: 0.3 },
-    // WB IDS publishes for ~125 LMICs only; HIC fall through to the BIS CBS structural-exposure component.
+    imputation: { type: 'conservative', score: 75, certainty: 0.3 },
+    // WB IDS publishes for ~125 borrowers. Explicit World Bank
+    // lendingType=LNX countries can use the guarded non-DRS imputation.
     // Tagged 'enrichment' (not 'core') because the lint test enforces
     // core indicators must have coverage >= 180; LMIC-only is below
     // that gate by definition. Component carries weight 0.35 inside the
@@ -320,33 +321,37 @@ export const INDICATOR_REGISTRY: IndicatorSpec[] = [
     tier: 'enrichment',
     coverage: 125,
     license: 'open-data',
-    // §U5 review fix: comprehensive=false. WB IDS coverage is the LMIC
-    // subset (~125 countries), NOT the universe. HIC absence from this
-    // source is NOT a stable-absence signal — those countries fall through
-    // to the BIS CBS structural-exposure component instead. Marking
-    // comprehensive=true would let any future IMPUTE caller treat HIC
-    // absence as the high stable-absence anchor (85+), which would
-    // misrepresent HIC financial-system exposure.
+    // §U5 review fix: comprehensive=false. WB IDS coverage is the borrower
+    // subset (~125 countries), NOT the universe. Per-country absence from
+    // this source is NOT a stable signal without LNX metadata. Marking
+    // comprehensive=true would let a future caller treat an unknown row as
+    // the high stable-absence anchor (85+), which would misrepresent
+    // financial-system exposure.
     comprehensive: false,
   },
   {
     id: 'bisLbsXborderPctGdp',
     dimension: 'financialSystemExposure',
-    description: 'BIS CBS (WS_CBS_PUB) sum of by-parent foreign claims (US/UK/major-EU/CH/JP/CA/AU/SG) as % of GDP; U-shape band — both isolation (<5%) and over-exposure (>60%) score low',
+    description: 'BIS CBS (WS_CBS_PUB) sum of by-parent foreign claims (US/UK/major-EU/CH/JP/CA/AU/SG) as % of GDP; asymmetric U-shape band — isolation (0%) is the worst reading, over-exposure (>60%) is penalized but floors above it',
     direction: 'lowerBetter', // U-shape is "lowerBetter" in semantic sense (concentrated exposure penalized)
     // NOTE (Greptile P2 catch, PR #3407 review): goalposts here are
-    // DOCUMENTATION-ONLY for the over-exposed branch. The actual scorer
-    // uses `normalizeBandLowerBetter` (a U-shape, not a linear lowerBetter
-    // mapping), which peaks at 25% and penalizes both extremes. A linear
-    // `{worst, best}` cannot represent a U-shape; we set goalposts to the
-    // peak (best=25) and the over-exposed worst-anchor (worst=60). Tooling
-    // / lints that read these values to compute "expected" component
-    // scores must consult `normalizeBandLowerBetter` directly, not assume
-    // these are the inputs to a generic linear normalizer.
-    goalposts: { worst: 60, best: 25 },
+    // DOCUMENTATION-ONLY. The actual scorer uses `normalizeBandLowerBetter`
+    // (a U-shape, not a linear lowerBetter mapping), which peaks at 25% and
+    // penalizes both extremes. A linear `{worst, best}` cannot represent a
+    // U-shape; we set goalposts to the peak (best=25) and the worst reading
+    // the band can produce. Tooling / lints that read these values to compute
+    // "expected" component scores must consult `normalizeBandLowerBetter`
+    // directly, not assume these are the inputs to a generic linear
+    // normalizer.
+    //
+    // #6459: the worst anchor moved from 60 (over-exposure) to 0 (isolation).
+    // The band used to floor 0% claims at 60 while decaying over-integration
+    // to 0, so it scored a sanctions-severed banking system above a deep one
+    // and inverted the whole dimension. Isolation is now the worse extreme.
+    goalposts: { worst: 0, best: 25 },
     normalization: {
       kind: 'uShape',
-      disclaimer: 'normalizeBandLowerBetter peaks around diversified middle exposure and penalizes both isolation and over-exposure. goalposts summarize the over-exposed documentation branch only.',
+      disclaimer: 'normalizeBandLowerBetter peaks around diversified middle exposure and penalizes both extremes asymmetrically: isolation floors at 30, over-exposure floors at 35. goalposts name the worst (isolation) and best (sweet-spot peak) readings only.',
     },
     weight: 0.30,
     sourceKey: 'economic:bis-lbs:v1',
@@ -360,12 +365,12 @@ export const INDICATOR_REGISTRY: IndicatorSpec[] = [
   {
     id: 'fatfListingStatus',
     dimension: 'financialSystemExposure',
-    description: 'FATF AML/CFT listing status — black list (call for action) → 0, gray list (increased monitoring) → 30, compliant → 100',
+    description: 'FATF AML/CFT listing status — black list (call for action) → 0, gray list (increased monitoring) → 55, compliant → 100',
     direction: 'higherBetter',
     goalposts: { worst: 0, best: 100 },
     normalization: {
       kind: 'discrete',
-      disclaimer: 'fatfStatusToScore maps black=0, gray=30, compliant=100; goalposts are categorical documentation anchors.',
+      disclaimer: 'fatfStatusToScore maps black=0, gray=55, compliant=100; goalposts are categorical documentation anchors. `compliant` is assigned by ABSENCE from both FATF lists, so it does not distinguish a clean jurisdiction from an unassessed or comprehensively sanctioned one; the comprehensive-embargo cap in scoreFinancialSystemExposure covers that hole (#6459).',
     },
     weight: 0.20,
     sourceKey: 'economic:fatf-listing:v1',

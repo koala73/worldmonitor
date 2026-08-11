@@ -16,10 +16,10 @@
 //
 //   shortTermDebtPctGni = (DT.DOD.DSTC.CD / NY.GNP.MKTP.CD) * 100
 //
-// Coverage: ~125 LMICs (low- and middle-income countries). HIC are not
-// published by WB IDS — those countries fall through to the BIS CBS
-// structural-exposure component in the resilience scorer (see
-// `scoreFinancialSystemExposure` in `_dimension-scorers.ts`).
+// Coverage: ~125 World Bank borrower economies. WB IDS is the published
+// output of the Debtor Reporting System; non-borrowers are absent by design
+// and are identified explicitly from the World Bank country catalog below.
+// See `scoreFinancialSystemExposure` in `_dimension-scorers.ts`.
 //
 // IMF Article IV vulnerability threshold for short-term external debt
 // is canonically 15% of GNI; the resilience scorer uses
@@ -99,6 +99,43 @@ async function fetchWbIndicator(indicator) {
   return out;
 }
 
+/**
+ * World Bank country records with lendingType=LNX are outside the Bank's
+ * borrower programs and therefore outside DRS reporting scope. Derive the
+ * list from the source catalog instead of inferring eligibility from a
+ * missing observation, which can also mean a late or partial country row.
+ */
+export function deriveNonDrsCountryCodes(records) {
+  if (!Array.isArray(records)) return [];
+  return [...new Set(records.flatMap((record) => {
+    const iso2 = record?.iso2Code;
+    if (typeof iso2 !== 'string' || !/^[A-Z]{2}$/.test(iso2)) return [];
+    // World Bank aggregate rows use region.id=NA and must never become
+    // country-level scorer policy.
+    if (record?.region?.id === 'NA') return [];
+    return record?.lendingType?.id === 'LNX' ? [iso2] : [];
+  }))].sort();
+}
+
+async function fetchWbNonDrsCountryCodes() {
+  const url = `${WB_BASE}/country?format=json&per_page=400`;
+  let json;
+  try {
+    const resp = await fetch(url, {
+      headers: { 'User-Agent': CHROME_UA },
+      signal: AbortSignal.timeout(30_000),
+    });
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    json = await resp.json();
+  } catch (directErr) {
+    if (!_proxyAuth) throw new Error(`World Bank country metadata: ${directErr.message}`);
+    console.warn(`  WB country metadata: direct failed (${directErr.message}), retrying via proxy`);
+    const { buffer } = await httpsProxyFetchRaw(url, _proxyAuth, { accept: 'application/json', timeoutMs: 30_000 });
+    json = JSON.parse(buffer.toString('utf8'));
+  }
+  return deriveNonDrsCountryCodes(json?.[1]);
+}
+
 export function combineExternalDebt({ shortTermDebtUsd, gniUsd }) {
   const countries = {};
   const allCodes = new Set([
@@ -139,16 +176,19 @@ export function combineExternalDebt({ shortTermDebtUsd, gniUsd }) {
 }
 
 async function fetchWbExternalDebt() {
-  const [shortTermDebtUsd, gniUsd] = await Promise.all([
+  const [shortTermDebtUsd, gniUsd, nonDrsCountryCodes] = await Promise.all([
     fetchWbIndicator(SHORT_TERM_DEBT_USD_INDICATOR),
     fetchWbIndicator(GNI_USD_INDICATOR),
+    fetchWbNonDrsCountryCodes(),
   ]);
 
   return {
     countries: combineExternalDebt({ shortTermDebtUsd, gniUsd }),
+    nonDrsCountryCodes,
     sources: [
       `https://data.worldbank.org/indicator/${SHORT_TERM_DEBT_USD_INDICATOR}`,
       `https://data.worldbank.org/indicator/${GNI_USD_INDICATOR}`,
+      `${WB_BASE}/country`,
     ],
     seededAt: new Date().toISOString(),
   };
@@ -158,7 +198,16 @@ async function fetchWbExternalDebt() {
 // Floor is 80 to absorb late-reporting LMICs without blocking on a
 // transient outage.
 export function validate(data) {
-  return typeof data?.countries === 'object' && Object.keys(data.countries).length >= 80;
+  const nonDrsCountryCodes = data?.nonDrsCountryCodes;
+  return (
+    typeof data?.countries === 'object'
+    && !Array.isArray(data.countries)
+    && Object.keys(data.countries).length >= 80
+    && Array.isArray(nonDrsCountryCodes)
+    && nonDrsCountryCodes.length >= 40
+    && nonDrsCountryCodes.every((code) => typeof code === 'string' && /^[A-Z]{2}$/.test(code))
+    && new Set(nonDrsCountryCodes).size === nonDrsCountryCodes.length
+  );
 }
 
 export function declareRecords(data) {
@@ -178,7 +227,7 @@ if (process.argv[1]?.endsWith('seed-wb-external-debt.mjs')) {
     // freeze the bundle (see memory `feedback_strict_floor_validate_fail_poisons_seed_meta`).
     emptyDataIsFailure: true,
     declareRecords,
-    schemaVersion: 1,
+    schemaVersion: 2,
     maxStaleMin: 100800,
     contentMeta: wbCountryDictContentMeta,
     maxContentAgeMin: MAX_CONTENT_AGE_MIN,

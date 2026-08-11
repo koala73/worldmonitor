@@ -39,6 +39,17 @@ async function receiptLinks(t: ReturnType<typeof convexTest>) {
   return t.run(async (ctx) => ctx.db.query("companyMonitoringScanReceiptLinks").collect());
 }
 
+async function drainCompanyPurge(
+  t: ReturnType<typeof convexTest>,
+  args: { ownerAccountId: string; companyId: string; purgeGeneration: number },
+) {
+  for (let attempt = 0; attempt < 10; attempt += 1) {
+    const result = await t.mutation(CM.companies.advanceCompanyPurge, args);
+    if (result.status === "complete" || result.status === "stale") return result;
+  }
+  throw new Error("company purge did not complete within the bounded test loop");
+}
+
 async function finalizeComplete(t: ReturnType<typeof convexTest>, claim: any) {
   return t.mutation(ORCHESTRATION.finalizeWorkForTest, {
     workerId: "lifecycle-worker",
@@ -56,6 +67,19 @@ async function finalizeComplete(t: ReturnType<typeof convexTest>, claim: any) {
       checkpoint: `checkpoint-${claim.work.workId}`,
       emptyValidated: false,
       costUsdMicros: 10,
+      exaIngestion: {
+        candidates: [{
+          providerResultId: `exa-${claim.work.workId}`,
+          providerRank: 1,
+          url: `https://independent.example/${claim.work.workId}`,
+          title: `${claim.work.obligations[0].company.name} update`,
+          publishedAt: claim.work.windowEnd - 1,
+          retrievedAt: Date.now(),
+          candidateCompanyIds: claim.work.obligations.map(
+            (obligation: { companyId: string }) => obligation.companyId,
+          ),
+        }],
+      },
     },
   });
 }
@@ -174,7 +198,7 @@ describe("Company Monitoring lifecycle scan integration", () => {
       },
     })).toEqual({ status: "fenced" });
 
-    expect(await t.mutation(CM.companies.advanceCompanyPurge, {
+    expect(await drainCompanyPurge(t, {
       ownerAccountId: created.account.logicalAccountId,
       companyId: created.companyId,
       purgeGeneration: removed!.purgeGeneration,
@@ -267,7 +291,7 @@ describe("Company Monitoring lifecycle scan integration", () => {
         )
         .unique()
     );
-    expect(await t.mutation(CM.companies.advanceCompanyPurge, {
+    expect(await drainCompanyPurge(t, {
       ownerAccountId: created.account.logicalAccountId,
       companyId: created.companyId,
       purgeGeneration: removed!.purgeGeneration,
@@ -314,6 +338,11 @@ describe("Company Monitoring lifecycle scan integration", () => {
 
     vi.advanceTimersByTime(1);
     await t.finishInProgressScheduledFunctions();
+    await drainCompanyPurge(t, {
+      ownerAccountId: created.account.logicalAccountId,
+      companyId: created.companyId,
+      purgeGeneration: removed!.purgeGeneration,
+    });
 
     const purged = await t.run(async (ctx) => ctx.db.get(removed!._id));
     expect(purged).toMatchObject({ purgePhase: "complete" });
@@ -363,7 +392,7 @@ describe("Company Monitoring lifecycle scan integration", () => {
         )
         .unique()
     );
-    expect(await t.mutation(CM.companies.advanceCompanyPurge, {
+    expect(await drainCompanyPurge(t, {
       ownerAccountId: first.account.logicalAccountId,
       companyId: first.companyId,
       purgeGeneration: removedFirst!.purgeGeneration,
@@ -392,7 +421,7 @@ describe("Company Monitoring lifecycle scan integration", () => {
         )
         .unique()
     );
-    expect(await t.mutation(CM.companies.advanceCompanyPurge, {
+    expect(await drainCompanyPurge(t, {
       ownerAccountId: first.account.logicalAccountId,
       companyId: second.companyId,
       purgeGeneration: removedSecond!.purgeGeneration,

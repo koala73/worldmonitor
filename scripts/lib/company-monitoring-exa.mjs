@@ -49,6 +49,14 @@ function safeText(value, maxUtf8Bytes = 256) {
   return normalized && utf8Bytes(normalized) <= maxUtf8Bytes ? normalized : null;
 }
 
+function safeOpaqueText(value, maxUtf8Bytes) {
+  if (typeof value !== 'string') return null;
+  const normalized = value.normalize('NFC').trim();
+  return normalized && !/[\u0000-\u001f\u007f]/u.test(normalized) && utf8Bytes(normalized) <= maxUtf8Bytes
+    ? normalized
+    : null;
+}
+
 function safeDomain(value) {
   if (typeof value !== 'string') return null;
   const normalized = value.normalize('NFC').trim().toLowerCase().replace(/^www\./, '').replace(/\.$/, '');
@@ -470,15 +478,13 @@ export function createExaCohortExecutor(options = {}) {
     let malformedRows = 0;
     for (let index = 0; index < Math.min(providerRows.length, resultCap); index += 1) {
       const row = providerRows[index];
-      const providerResultId = typeof row?.id === 'string' && row.id.trim()
-        ? row.id.trim()
-        : typeof row?.url === 'string'
-          ? row.url.trim()
-          : '';
+      const providerResultId = safeOpaqueText(row?.id, 512) ?? safeOpaqueText(row?.url, 2_048) ?? '';
       let safeUrl = null;
       try {
         const parsed = new URL(row?.url);
-        if (parsed.protocol === 'https:') safeUrl = parsed.toString();
+        if (parsed.protocol === 'https:' && !parsed.username && !parsed.password) {
+          safeUrl = safeOpaqueText(parsed.toString(), 2_048);
+        }
       } catch {
         // Count the row as malformed below.
       }
@@ -493,7 +499,7 @@ export function createExaCohortExecutor(options = {}) {
       validRows.push(valid);
       candidates.push({
         providerResultId,
-        providerRequestId: typeof responseBody.requestId === 'string' ? responseBody.requestId : null,
+        providerRequestId: safeOpaqueText(responseBody.requestId, 512),
         providerRank: index + 1,
         url: safeUrl,
         title: typeof row.title === 'string' ? row.title : null,
@@ -523,6 +529,19 @@ export function createExaCohortExecutor(options = {}) {
       ...(checkpoint ? { checkpoint } : {}),
       emptyValidated: providerRows.length === 0 && !malformed && !partial,
       costUsdMicros: cost.usdMicros,
+      exaIngestion: {
+        candidates: candidates.map((candidate) => ({
+          providerResultId: candidate.providerResultId,
+          ...(candidate.providerRequestId ? { providerRequestId: candidate.providerRequestId } : {}),
+          providerRank: candidate.providerRank,
+          url: candidate.url,
+          ...(safeText(candidate.title, 512) ? { title: safeText(candidate.title, 512) } : {}),
+          ...(safeText(candidate.author, 256) ? { author: safeText(candidate.author, 256) } : {}),
+          publishedAt: candidate.publishedAt,
+          retrievedAt: candidate.retrievedAt,
+          candidateCompanyIds: candidate.candidateCompanyIds,
+        })),
+      },
     };
     return {
       finalizeResult,
