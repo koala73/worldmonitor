@@ -75,3 +75,12 @@ Phase 3 adds source-attribution entries for `https://api.massive.com` and
 redistribution license. The adapter references Massive's documented aggregate,
 reference-ticker, news and stock-aggregate WebSocket interfaces; actual live
 use remains gated by the separate customer entitlement in `MANUAL_ACTIONS.md`.
+
+The implementation commit required a read-only
+`GIT_ALTERNATE_OBJECT_DIRECTORIES` reference to the already-locked backup
+WorldMonitor object store when this partial-clone worktree attempted an
+on-demand blob prefetch. `git write-tree` then succeeded locally with candidate
+tree `cef0da8d9cac0154a34be866caad9797243ce6cf`, and the resulting Phase 3
+commit is `9cb8cb6efe2164891ea26cb6b2f51b6a3da086b0`. No backup source file,
+legacy SQLite database, remote ref or `main` branch was copied, updated or
+repointed by this read-only object lookup.

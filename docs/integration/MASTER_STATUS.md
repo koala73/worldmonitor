@@ -17,7 +17,7 @@ This current-status receipt supersedes the historical preflight rows below.
 | 0 | completed | Safety inventory and recoverability closure | recorded | `evidence/phase0-closure.md` |
 | 1 | completed with recorded data-suite limitation | Real upstream mother baseline, independent brand, AGPL/PokieTicker notices, Windows build and production preview | `c889fcfbdab4bf2bcd7a28f85ed32114f288d6aa` | `evidence/phase1-mother-baseline.md` |
 | 2 | completed | Provider/data contracts, generated API, explicit disabled state and historical-fixture isolation | `2df9ef0a133564789bb398d7a9f363de171e78b8` | `evidence/phase2-data-contract.md` |
-| 3 | completed for code and automated gates; licensed-live acceptance pending | Server-only Massive REST/WebSocket relay, exchange-calendar status, symbol isolation and explicit no-key/no-entitlement denial | pending implementation SHA backfill | `evidence/phase3-authorized-stock-relay.md` |
+| 3 | completed for code and automated gates; licensed-live acceptance pending | Server-only Massive REST/WebSocket relay, exchange-calendar status, symbol isolation and explicit no-key/no-entitlement denial | `9cb8cb6efe2164891ea26cb6b2f51b6a3da086b0` | `evidence/phase3-authorized-stock-relay.md` |
 
 | Phase | Status | Scope | Commit | Evidence |
 |---|---|---|---|---|
@@ -118,8 +118,9 @@ guess. The recorded PokieTicker values remain test-only historical fixtures;
 they are not a runtime source and are not claimed to be live or delayed market
 data.
 
-**Phase 3 implementation commit:** pending backfill after the implementation
-commit. Automated evidence is in `evidence/phase3-authorized-stock-relay.md`.
+**Phase 3 implementation commit:** `9cb8cb6efe2164891ea26cb6b2f51b6a3da086b0`
+(`feat(market): add authorized stock relay safeguards`). Automated evidence is
+in `evidence/phase3-authorized-stock-relay.md`.
 No actual licensed-live browser acceptance is claimed yet because no Provider
 secret or display/rebroadcast confirmation has been supplied.
 

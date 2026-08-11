@@ -2,7 +2,8 @@
 
 **Date:** 2026-08-11
 **Working branch:** `integration/pokieticker-maritime-china-factory`
-**Implementation commit:** pending backfill after the implementation commit
+**Implementation commit:** `9cb8cb6efe2164891ea26cb6b2f51b6a3da086b0`
+(`feat(market): add authorized stock relay safeguards`)
 **Scope:** server-only provider adapter/relay, market session/status integrity,
 symbol isolation, no-key/no-entitlement behavior and automated gates.
 
@@ -40,6 +41,28 @@ symbol isolation, no-key/no-entitlement behavior and automated gates.
 | `npm run sources:check` | 0 | 533 active hosts; 293 structured/API, 268 feed, 30 operational-status; 519 terms-review. |
 | `npm run build:full` | 0 | Production build completed; only normal dynamic-import/chunk-size warnings observed. |
 | `npm run lint` whole tree | 1 | Existing upstream-wide diagnostics remain outside this Phase 3 diff; this is not recorded as a Phase 3 pass. The scoped gate above passed. |
+
+## Worktree hook receipt
+
+The linked integration worktree initially resolved its default Git hooks from
+the common worktree Git directory. A relative `.husky` configuration resolved
+under Git metadata rather than the worktree root, and the original tracked
+`pre-commit` had no shebang, so Git for Windows could not execute it. The
+script was corrected to `#!/bin/sh`; the implementation commit was invoked
+with the absolute worktree `.husky` path and actually ran its staged Unicode
+gate: **45 files scanned, no suspicious hidden Unicode**. No `--no-verify`
+bypass was used.
+
+The partial-clone worktree then attempted a tiny on-demand object fetch while
+constructing the commit tree and stalled. The agent safely terminated only its
+own uncommitted process tree, verified no commit existed, and did not delete the
+host-protected original `index.lock` after host policy rejected that removal.
+Instead, Git wrote a 702,941-byte exact staged patch and applied it to a new
+isolated index. With the pre-existing locked backup WorldMonitor object store
+as read-only `GIT_ALTERNATE_OBJECT_DIRECTORIES`, `git write-tree` exited 0 with
+tree `cef0da8d9cac0154a34be866caad9797243ce6cf`; the actual implementation
+commit above then completed. No backup working-tree file, database, branch or
+remote was altered.
 
 ## Truthfulness and manual live-acceptance boundary
 

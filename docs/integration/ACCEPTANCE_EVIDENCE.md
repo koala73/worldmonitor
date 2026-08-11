@@ -95,8 +95,9 @@ as a pass.
 
 ## Phase 3 — authorized stock relay and truthful provider boundary
 
-**Implementation commit:** pending backfill after the Phase 3 implementation
-commit. The follow-up documentation receipt will record its own SHA separately.
+**Implementation commit:** `9cb8cb6efe2164891ea26cb6b2f51b6a3da086b0`
+(`feat(market): add authorized stock relay safeguards`). The follow-up
+documentation receipt will record its own SHA separately.
 
 | Check | Result | Evidence |
 |---|---|---|
@@ -113,6 +114,7 @@ commit. The follow-up documentation receipt will record its own SHA separately.
 | Attribution verification | PASS | `npm run sources:generate` and `npm run sources:check` exited 0. The generator's Windows entrypoint guard was corrected so its own script executes when `process.argv[1]` contains backslashes. |
 | Production build | PASS | `npm run build:full` exited 0. It emitted only the repository's normal dynamic-import/chunk-size warnings. |
 | Whole-tree lint | BASELINE LIMITATION | `npm run lint` remains non-zero on pre-existing upstream diagnostics outside the Phase 3 paths. The strict Phase 3 scoped lint passed and is the gate used for this diff. |
+| Native pre-commit gate | PASS | The implementation commit ran the repaired repository pre-commit script; staged Unicode safety scanned 45 files with no suspicious hidden Unicode. |
 | Licensed-live UI/browser proof | NOT CLAIMED | No `MASSIVE_API_KEY` or display/rebroadcast confirmation was provided. No browser screenshot, tick latency, or eight-symbol live-data result is represented as complete. |
 
 **Phase 3 gate: COMPLETED FOR CODE AND AUTOMATED TRUTHFULNESS CHECKS.** The

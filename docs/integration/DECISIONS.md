@@ -102,3 +102,21 @@ provenance changes unrefreshed.
 **Consequence:** `npm run sources:generate` now refreshes the checked-in
 manifest and source document on this required desktop environment; the resulting
 Massive entries remain `terms-review`, not a license assertion.
+
+## D-0014 — Preserve commit gates in a partial-clone linked worktree
+
+**Decision:** Repair the tracked `pre-commit` script with a portable `#!/bin/sh`
+shebang and run the repository hook explicitly from the integration worktree.
+When the host blocks removal of a stale worktree `index.lock`, build the
+already-reviewed tree through a new Git-native isolated index and use the
+locked backup Git **objects** as a read-only alternate object store.
+**Reason:** The linked worktree's default hooks resolved under its Git metadata,
+the original script had no executable format for Git for Windows, and partial
+clone object hydration stalled during commit. Skipping the hook, deleting a
+host-protected lock by a workaround, or copying the old project would weaken
+the required audit trail.
+**Consequence:** The Phase 3 implementation commit
+`9cb8cb6efe2164891ea26cb6b2f51b6a3da086b0` was produced only after
+`git write-tree` and cached-diff checks passed in an isolated index, and after
+the actual staged-Unicode hook passed. The alternate store is lookup-only; it
+does not make the legacy project a code or data source.
