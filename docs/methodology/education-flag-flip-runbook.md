@@ -45,9 +45,23 @@ All must be green before flipping:
    176–179 would pass a laxer runbook check and then fail CI inside the
    publication PR. The gate and the invariant must be the same number.
 
-2. **Health green.** `/api/health` reports OK for `educationAttainment`. The key
-   is registered STRICT SEED_META, so it reports CRIT (not WARN) while the
-   bundle is unprovisioned. That alarm is intended.
+2. **Register the health probe, then confirm it green.** The probe is
+   deliberately **not** registered in the scaffold PR. `scripts/check-health-probe-cutovers.mts`
+   requires a new strict probe to carry machine-readable pre-seed evidence, or
+   an acknowledgement expiring by the producer's first scheduled run within 24
+   hours — neither is obtainable before the seeder has ever run, and the second
+   would require knowing the merge time in advance.
+
+   So the order is: seeder ships → `seed-bundle-macro` publishes once → add the
+   `educationAttainment` SEED_META entry on the **pre-seed evidence** path,
+   citing the Railway service, `probeKey`, a real `compactHealthStatus: OK`,
+   and an HTTPS reference → then confirm `/api/health` reports OK.
+
+   Two allowlist entries exist only to bridge that gap and must be removed in
+   the same follow-up: `seed-meta:resilience:education-attainment` in
+   `KNOWN_SEEDS_NOT_IN_HEALTH` (`tests/resilience-dimension-freshness.test.mts`)
+   and in `TRACKED_STANDALONE_META_KEYS_NOT_IN_HEALTH`
+   (`tests/resilience-source-failure.test.mts`). Owned by #6452.
 
 3. **Registry tier promoted.** Change the `femaleUpperSecondaryAttainment` entry
    in `_indicator-registry.ts` from `tier: 'experimental'` to `tier: 'core'`.

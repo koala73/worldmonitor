@@ -71,15 +71,6 @@
       "status": "COVERAGE_PARTIAL",
       "issue": 6362,
       "reason": "US: records match the enabled retailer roster (2), age fresh. Same daily dirty-scrape-run partial grading as consumerPricesCoverage; parent evidence in #6355."
-    },
-    {
-      "name": "educationAttainment",
-      "status": "EMPTY",
-      "issue": 6452,
-      "cutover": {
-        "probeKey": "seed-meta:resilience:education-attainment"
-      },
-      "reason": "New STRICT probe shipped alongside its seeder in #6450; the Railway seed-bundle-macro member has not run yet, so the key is absent and the probe reports EMPTY. Pre-seed evidence is not obtainable before merge, so this is an expiring acknowledgement rather than a fabricated OK. #6452 retires it once the bundle has run and /api/health is OK."
     }
   ]
 }
