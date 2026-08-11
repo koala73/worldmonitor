@@ -123,6 +123,38 @@
       "expected": { "companyIds": [], "candidateCount": 0 }
     },
     {
+      "name": "parent subsidiary shared strong domain fails closed",
+      "subjects": [
+        {
+          "companyId": "company-shared-parent",
+          "name": "Shared Group Plc",
+          "claims": [
+            { "claimId": "claim-shared-parent-domain", "type": "domain", "value": "shared-group.example", "trustState": "verified", "allowedUses": ["attribution"] }
+          ]
+        },
+        {
+          "companyId": "company-shared-subsidiary",
+          "name": "Shared Group Energy Ltd",
+          "claims": [
+            { "claimId": "claim-shared-subsidiary-domain", "type": "domain", "value": "shared-group.example", "trustState": "verified", "allowedUses": ["attribution"] }
+          ]
+        }
+      ],
+      "evidence": [
+        {
+          "provider": "exa",
+          "providerLocator": "exa-shared-domain",
+          "url": "https://shared-group.example/news/update",
+          "title": "Shared Group announces an update",
+          "publishedAt": 1785921500000,
+          "observedAt": 1785921600000,
+          "candidateCompanyIds": ["company-shared-parent", "company-shared-subsidiary"],
+          "sourceAuthority": "low_authority"
+        }
+      ],
+      "expected": { "companyIds": [], "candidateCount": 0 }
+    },
+    {
       "name": "discovery-only claims cannot attribute evidence",
       "subjects": [
         {

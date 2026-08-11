@@ -98,15 +98,6 @@ const MAX_EXA_TITLE_BYTES = 512;
 const MAX_EXA_AUTHOR_BYTES = 256;
 const X_IDENTITY_CLOCK_SKEW_MS = 30 * 1000;
 const EXA_RETRIEVAL_CLOCK_SKEW_MS = 30 * 1000;
-const LOW_AUTHORITY_EXA_HOSTS = new Set([
-  "facebook.com",
-  "instagram.com",
-  "reddit.com",
-  "threads.net",
-  "tiktok.com",
-  "twitter.com",
-  "x.com",
-]);
 const X_TRACKED_POSTS_PER_COMPANY = Math.max(
   1,
   Math.floor(MAX_X_POSTS / COMPANY_MONITORING_SCAN_COHORT_LIMIT),
@@ -1562,14 +1553,17 @@ function validExaIngestionForWork(
   }
   const companyIds = new Set(obligations.map((obligation) => obligation.companyId));
   const providerRanks = new Set<number>();
+  const providerResultIds = new Set<string>();
   for (const candidate of payload.candidates) {
     if (
       providerRanks.has(candidate.providerRank) ||
+      providerResultIds.has(candidate.providerResultId) ||
       !validExaCandidate(candidate, companyIds, work, now)
     ) return { valid: false };
     providerRanks.add(candidate.providerRank);
+    providerResultIds.add(candidate.providerResultId);
   }
-  if (result.coverage === "complete" && payload.candidates.length !== result.itemCount) {
+  if (payload.candidates.length !== result.itemCount) {
     return { valid: false };
   }
   return { valid: true, payload };
@@ -1872,15 +1866,6 @@ async function applyXIngestion(
   await syncNormalizedXEvidence(ctx, work, normalizedPosts, obligations, now);
 }
 
-function exaSourceAuthority(rawUrl: string): ProviderEvidence["sourceAuthority"] {
-  const hostname = new URL(rawUrl).hostname.toLowerCase().replace(/^www\./, "");
-  return [...LOW_AUTHORITY_EXA_HOSTS].some((host) =>
-      hostname === host || hostname.endsWith(`.${host}`)
-    )
-    ? "low_authority"
-    : "independent_source";
-}
-
 async function applyExaIngestion(
   ctx: MutationCtx,
   work: Work,
@@ -1901,7 +1886,7 @@ async function applyExaIngestion(
       observedAt: candidate.retrievedAt,
       expiresAt: candidate.retrievedAt + COMPANY_MONITORING_EVIDENCE_POLICY.candidateTtlMs,
       candidateCompanyIds: candidate.candidateCompanyIds,
-      sourceAuthority: exaSourceAuthority(candidate.url),
+      sourceAuthority: "low_authority",
     })),
   });
 }

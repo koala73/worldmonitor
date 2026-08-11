@@ -158,6 +158,15 @@ describe("Company Monitoring evidence persistence and candidate lifecycle", () =
       holdUntil: NOW + 6 * 60 * 60 * 1000,
     });
 
+    vi.advanceTimersByTime(6 * 60 * 60 * 1000 + 1);
+    await t.finishInProgressScheduledFunctions();
+    expect(await candidateFor(t, ACCOUNT_A, COMPANY_A)).toMatchObject({
+      state: "pending_classification",
+      attemptCount: 1,
+      observationBlocking: true,
+    });
+    expect((await candidateFor(t, ACCOUNT_A, COMPANY_A))?.holdUntil).toBeUndefined();
+
     vi.setSystemTime(NOW + 2 * DAY_MS);
     await t.mutation(EVIDENCE.recomputeCompanyEvidenceForTest, {
       ownerAccountId: ACCOUNT_A,
@@ -205,6 +214,75 @@ describe("Company Monitoring evidence persistence and candidate lifecycle", () =
       attemptCount: 1,
       observationBlocking: false,
     });
+  });
+
+  test("recomputes the old occurrence when one provider locator changes content", async () => {
+    const t = convexTest(schema, modules);
+    await seedCompany(t, ACCOUNT_A, COMPANY_A, "lei:A123");
+    await t.mutation(EVIDENCE.ingestEvidenceForTest, {
+      ownerAccountId: ACCOUNT_A,
+      companyIds: [COMPANY_A],
+      evidence: [exaEvidence(COMPANY_A, "lei:A123")],
+    });
+    const original = await candidateFor(t, ACCOUNT_A, COMPANY_A);
+
+    vi.setSystemTime(NOW + 1_000);
+    await t.mutation(EVIDENCE.ingestEvidenceForTest, {
+      ownerAccountId: ACCOUNT_A,
+      companyIds: [COMPANY_A],
+      evidence: [exaEvidence(COMPANY_A, "lei:A123", {
+        title: "Corrected company update (lei:A123)",
+        observedAt: NOW + 1_000,
+      })],
+    });
+
+    const state = await t.run(async (ctx) => ({
+      evidence: await ctx.db
+        .query("companyMonitoringEvidence")
+        .withIndex("by_account_company", (q) =>
+          q.eq("ownerAccountId", ACCOUNT_A).eq("companyId", COMPANY_A),
+        )
+        .collect(),
+      candidates: await ctx.db
+        .query("companyMonitoringCandidates")
+        .withIndex("by_account_company", (q) =>
+          q.eq("ownerAccountId", ACCOUNT_A).eq("companyId", COMPANY_A),
+        )
+        .collect(),
+    }));
+    expect(state.evidence).toHaveLength(1);
+    expect(state.evidence[0]).toMatchObject({ firstSeenAt: NOW + 1_000 });
+    expect(state.candidates).toHaveLength(2);
+    expect(state.candidates.find((row) => row.occurrenceDedupeKey === original?.occurrenceDedupeKey))
+      .toMatchObject({
+        state: "terminal",
+        terminalReason: "evidence_unavailable",
+        observationBlocking: false,
+        referenceCount: 0,
+      });
+    expect(state.candidates.find((row) => row.occurrenceDedupeKey !== original?.occurrenceDedupeKey))
+      .toMatchObject({
+        state: "pending_classification",
+        observationBlocking: true,
+        referenceCount: 1,
+      });
+
+    vi.setSystemTime(NOW + DAY_MS + 1);
+    await t.mutation(EVIDENCE.recomputeCompanyEvidenceForTest, {
+      ownerAccountId: ACCOUNT_A,
+      companyId: COMPANY_A,
+      occurrenceDedupeKey: original!.occurrenceDedupeKey,
+    });
+    const oldCandidate = await t.run(async (ctx) => ctx.db
+      .query("companyMonitoringCandidates")
+      .withIndex("by_account_company_occurrence", (q) =>
+        q
+          .eq("ownerAccountId", ACCOUNT_A)
+          .eq("companyId", COMPANY_A)
+          .eq("occurrenceDedupeKey", original!.occurrenceDedupeKey),
+      )
+      .unique());
+    expect(oldCandidate).toMatchObject({ terminalReason: "evidence_unavailable" });
   });
 
   test("purges evidence and candidates in resumable company phases before payload", async () => {

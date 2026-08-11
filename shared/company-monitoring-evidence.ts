@@ -114,10 +114,18 @@ function canonicalWords(value: string): string {
     .trim();
 }
 
+function decodedPathname(parsedUrl: URL): string {
+  try {
+    return decodeURIComponent(parsedUrl.pathname);
+  } catch {
+    return parsedUrl.pathname;
+  }
+}
+
 function canonicalContent(row: ProviderEvidence, parsedUrl: URL): string {
   const content = canonicalWords([row.title, row.text].filter(Boolean).join(" "));
   if (content) return content;
-  const path = canonicalWords(decodeURIComponent(parsedUrl.pathname));
+  const path = canonicalWords(decodedPathname(parsedUrl));
   return path || canonicalWords(row.providerLocator);
 }
 
@@ -199,6 +207,15 @@ function claimStrength(
   }
 }
 
+function attributionClaimSignature(claim: AttributionClaim): string {
+  const value = claim.type === "domain"
+    ? claim.value.toLocaleLowerCase("en-US").replace(/^www\./, "").replace(/\.$/, "")
+    : claim.type === "x_handle"
+      ? claim.value.replace(/^@/, "").toLocaleLowerCase("en-US")
+      : canonicalWords(claim.value);
+  return `${claim.type}\u0000${value}`;
+}
+
 function validRow(row: ProviderEvidence): URL | null {
   if (row.provider !== "exa" && row.provider !== "x") return null;
   if (!row.providerLocator || row.providerLocator !== row.providerLocator.trim()) return null;
@@ -236,7 +253,7 @@ function reverseMatches(
     row.author,
     row.authorAccountId,
     parsedUrl.hostname,
-    decodeURIComponent(parsedUrl.pathname),
+    decodedPathname(parsedUrl),
   ].filter(Boolean).join(" "));
   const matches = [...new Set(row.candidateCompanyIds)].sort().flatMap((companyId) => {
     const subject = subjectMap.get(companyId);
@@ -250,10 +267,32 @@ function reverseMatches(
       companyId,
       strength: hits[0]!.strength,
       claimIds: hits.filter((hit) => hit.strength === hits[0]!.strength).map((hit) => hit.claim.claimId),
+      strongHits: hits
+        .filter((hit) => hit.strength >= 80)
+        .map((hit) => ({
+          claimId: hit.claim.claimId,
+          signature: attributionClaimSignature(hit.claim),
+        })),
     }];
   });
   const strong = matches.filter((match) => match.strength >= 80);
-  if (strong.length > 0) return strong.map(({ companyId, claimIds }) => ({ companyId, claimIds }));
+  if (strong.length > 0) {
+    const companiesBySignature = new Map<string, Set<string>>();
+    for (const match of strong) {
+      for (const hit of match.strongHits) {
+        const companies = companiesBySignature.get(hit.signature) ?? new Set<string>();
+        companies.add(match.companyId);
+        companiesBySignature.set(hit.signature, companies);
+      }
+    }
+    return strong.flatMap(({ companyId, strongHits }) => {
+      const uniqueClaimIds = strongHits
+        .filter((hit) => companiesBySignature.get(hit.signature)?.size === 1)
+        .map((hit) => hit.claimId)
+        .sort();
+      return uniqueClaimIds.length > 0 ? [{ companyId, claimIds: uniqueClaimIds }] : [];
+    });
+  }
   return matches.length === 1
     ? matches.map(({ companyId, claimIds }) => ({ companyId, claimIds }))
     : [];

@@ -249,10 +249,11 @@ describe("Company Monitoring durable scan orchestration", () => {
       workId: claim.work.workId,
     }]);
     expect(state.evidence).toHaveLength(1);
+    expect(state.evidence[0]).toMatchObject({ sourceAuthority: "low_authority" });
     expect(state.candidates).toMatchObject([{
       state: "pending_classification",
       referenceCount: 1,
-      observationBlocking: true,
+      observationBlocking: false,
     }]);
 
     vi.setSystemTime(NOW + 1_000);
@@ -482,6 +483,11 @@ describe("Company Monitoring durable scan orchestration", () => {
   test.each([
     ["capped", { itemCount: 25, hasMore: false }, "capped"],
     ["partial", { coverage: "partial" }, "partial"],
+    [
+      "partial payload count mismatch",
+      { coverage: "partial", exaIngestion: { candidates: [] } },
+      "malformed",
+    ],
     ["malformed range", { returnedRange: { startAt: NOW, endAt: NOW - 1 } }, "malformed"],
     ["invalid empty", { itemCount: 0, emptyValidated: false }, "invalid_empty"],
   ])("%s results preserve the previous checkpoint and remain non-reassuring", async (_label, overrides, reason) => {

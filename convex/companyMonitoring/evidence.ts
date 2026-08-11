@@ -136,6 +136,7 @@ async function occurrenceLossReason(
     ["deleted", "evidence_deleted"],
     ["unavailable", "evidence_unavailable"],
     ["authority_lost", "authority_lost"],
+    ["expired", "evidence_expired"],
   ] as const) {
     const row = await ctx.db
       .query("companyMonitoringEvidence")
@@ -149,7 +150,7 @@ async function occurrenceLossReason(
       .first();
     if (row) return reason;
   }
-  return "evidence_expired" as const;
+  return "evidence_unavailable" as const;
 }
 
 function candidateLifecycle(
@@ -180,6 +181,7 @@ async function recomputeOccurrenceCandidate(
   ownerAccountId: string,
   companyId: string,
   occurrenceDedupeKey: string,
+  fallbackLossReason?: "evidence_unavailable",
 ) {
   const now = Date.now();
   const activePage = await ctx.db
@@ -254,21 +256,21 @@ async function recomputeOccurrenceCandidate(
     return;
   }
   await ctx.db.patch(existing._id, {
-      state: "terminal",
-      holdUntil: undefined,
-      terminalReason: await occurrenceLossReason(
-        ctx,
-        ownerAccountId,
-        companyId,
-        occurrenceDedupeKey,
-      ),
-      observationBlocking: false,
-      referenceEvidenceFingerprints: [],
-      referenceCount: 0,
-      referencesTruncated: false,
-      evidenceRevision: existing.evidenceRevision + 1,
-      updatedAt: now,
-    });
+    state: "terminal",
+    holdUntil: undefined,
+    terminalReason: fallbackLossReason ?? await occurrenceLossReason(
+      ctx,
+      ownerAccountId,
+      companyId,
+      occurrenceDedupeKey,
+    ),
+    observationBlocking: false,
+    referenceEvidenceFingerprints: [],
+    referenceCount: 0,
+    referencesTruncated: false,
+    evidenceRevision: existing.evidenceRevision + 1,
+    updatedAt: now,
+  });
 }
 
 export async function ingestCompanyEvidenceForCompanyIds(
@@ -297,7 +299,18 @@ export async function ingestCompanyEvidenceForCompanyIds(
     now: Date.now(),
   });
   const now = Date.now();
-  const affected = new Map<string, Set<string>>();
+  const affected = new Map<string, Map<string, "evidence_unavailable" | undefined>>();
+  const rememberOccurrence = (
+    companyId: string,
+    occurrenceDedupeKey: string,
+    fallbackLossReason?: "evidence_unavailable",
+  ) => {
+    const occurrences = affected.get(companyId) ?? new Map();
+    if (!occurrences.has(occurrenceDedupeKey) || fallbackLossReason === undefined) {
+      occurrences.set(occurrenceDedupeKey, fallbackLossReason);
+    }
+    affected.set(companyId, occurrences);
+  };
   for (const evidence of normalized.evidence) {
     const existing = await ctx.db
       .query("companyMonitoringEvidence")
@@ -313,14 +326,21 @@ export async function ingestCompanyEvidenceForCompanyIds(
       ...evidence,
       evidenceId: `cm_evidence_${evidence.evidenceFingerprint.slice(0, 40)}`,
       state: "active" as const,
-      firstSeenAt: existing?.firstSeenAt ?? now,
+      firstSeenAt: existing?.evidenceFingerprint === evidence.evidenceFingerprint
+        ? existing.firstSeenAt
+        : now,
       updatedAt: now,
     };
     if (existing) await ctx.db.replace(existing._id, row);
     else await ctx.db.insert("companyMonitoringEvidence", row);
-    const occurrences = affected.get(evidence.companyId) ?? new Set<string>();
-    occurrences.add(evidence.occurrenceDedupeKey);
-    affected.set(evidence.companyId, occurrences);
+    if (existing && existing.occurrenceDedupeKey !== evidence.occurrenceDedupeKey) {
+      rememberOccurrence(
+        evidence.companyId,
+        existing.occurrenceDedupeKey,
+        "evidence_unavailable",
+      );
+    }
+    rememberOccurrence(evidence.companyId, evidence.occurrenceDedupeKey);
     if (evidence.expiresAt !== undefined && evidence.expiresAt > now) {
       await ctx.scheduler.runAt(
         evidence.expiresAt,
@@ -336,7 +356,7 @@ export async function ingestCompanyEvidenceForCompanyIds(
   for (const [companyId, occurrences] of [...affected].sort(([left], [right]) =>
     left.localeCompare(right)
   )) {
-    for (const occurrenceDedupeKey of [...occurrences].sort()) {
+    for (const [occurrenceDedupeKey, fallbackLossReason] of [...occurrences].sort()) {
       const existingCandidate = await ctx.db
         .query("companyMonitoringCandidates")
         .withIndex("by_account_company_occurrence", (q) =>
@@ -351,6 +371,7 @@ export async function ingestCompanyEvidenceForCompanyIds(
         input.ownerAccountId,
         companyId,
         occurrenceDedupeKey,
+        fallbackLossReason,
       );
       if (!existingCandidate) {
         const candidate = await ctx.db
@@ -598,20 +619,31 @@ export const recordCandidateAttempt = internalMutation({
     const now = Date.now();
     const attemptCount = candidate.attemptCount + 1;
     if (args.outcome === "held") {
+      const holdUntil = args.holdUntil;
       if (
-        !Number.isSafeInteger(args.holdUntil) ||
-        args.holdUntil! <= now ||
-        args.holdUntil! > candidate.expiresAt
+        typeof holdUntil !== "number" ||
+        !Number.isSafeInteger(holdUntil) ||
+        holdUntil <= now ||
+        holdUntil > candidate.expiresAt
       ) {
         throw new ConvexError("COMPANY_MONITORING_CANDIDATE_HOLD_INVALID");
       }
       await ctx.db.patch(candidate._id, {
         state: "held",
-        holdUntil: args.holdUntil,
+        holdUntil,
         terminalReason: undefined,
         attemptCount,
         updatedAt: now,
       });
+      await ctx.scheduler.runAt(
+        holdUntil,
+        (internal as any).companyMonitoring.evidence.recomputeCompanyEvidence,
+        {
+          ownerAccountId: args.ownerAccountId,
+          companyId: args.companyId,
+          occurrenceDedupeKey: args.occurrenceDedupeKey,
+        },
+      );
     } else if (args.outcome === "pending") {
       await ctx.db.patch(candidate._id, {
         state: "pending_classification",

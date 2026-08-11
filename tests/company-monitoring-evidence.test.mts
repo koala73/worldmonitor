@@ -38,6 +38,37 @@ describe("Company Monitoring normalized evidence golden contract", () => {
     assert.equal(COMPANY_MONITORING_EVIDENCE_POLICY.maxReferences, 20);
   });
 
+  it("does not throw on a malformed percent escape in a valid HTTPS URL", async () => {
+    const result = await normalizeCompanyEvidence({
+      ownerAccountId: "account-golden",
+      subjects: [{
+        companyId: "company-safe-path",
+        name: "Safe Path Ltd",
+        claims: [{
+          claimId: "claim-safe-path",
+          type: "legal_identifier",
+          value: "lei:SAFEPATH",
+          trustState: "verified",
+          allowedUses: ["attribution"],
+        }],
+      }],
+      evidence: [{
+        provider: "exa",
+        providerLocator: "exa-malformed-path",
+        url: "https://news.example/%E0%A4%A",
+        title: "Safe Path update (LEI:SAFEPATH)",
+        publishedAt: fixture.now - 1,
+        observedAt: fixture.now,
+        candidateCompanyIds: ["company-safe-path"],
+        sourceAuthority: "low_authority",
+      }],
+      now: fixture.now,
+    });
+
+    assert.equal(result.evidence.length, 1);
+    assert.equal(result.candidates.length, 1);
+  });
+
   for (const testCase of fixture.cases) {
     it(testCase.name, async () => {
       const result = await normalizeCompanyEvidence({
