@@ -854,7 +854,22 @@ const SEED_META = {
   // interval plus roughly one day of retry headroom, not "2x interval". The
   // budget alarms on the SEEDER being dead, not on the data being old —
   // content-age staleness is the seeder's own 48-month maxContentAgeMin.
-  educationAttainment:     { key: 'seed-meta:resilience:education-attainment',      maxStaleMin: 11520 },
+  educationAttainment:     {
+    key: 'seed-meta:resilience:education-attainment',
+    maxStaleMin: 11520,
+    // Expiring acknowledgement rather than pre-seed evidence: the seeder ships
+    // in this same PR, so it cannot already be publishing in production, and
+    // claiming compactHealthStatus OK for a probe that has never run would be
+    // fabricated evidence. The probe reports EMPTY until Railway runs the
+    // seed-bundle-macro member for the first time. #6452 owns retiring both
+    // this block and the matching baseline entry once it is green.
+    cutover: {
+      fromKey: null,
+      issue: 6452,
+      mode: 'expiring-ack',
+      status: 'EMPTY',
+    },
+  },
   webcams:                 { key: 'seed-meta:webcam:cameras:geo',                   maxStaleMin: 1440 }, // seed-webcams writes 24h geo/meta keys plus a 30h active pointer; stale at 24h before the layer goes blank.
   // #5736 — history-ingest freshness per collector. `fetchedAt` here is the
   // last HEALTHY append (success, or a correctly-detected unconfigured run),
