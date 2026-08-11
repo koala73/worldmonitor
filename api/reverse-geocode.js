@@ -16,6 +16,23 @@ const CHROME_UA = 'WorldMonitor/2.0 (https://worldmonitor.app)';
 const RATE_LIMIT_SCOPE = 'reverse-geocode';
 const RATE_LIMIT_PER_MINUTE = 60;
 
+function normalizeCacheEntry(entry) {
+  if (!entry || typeof entry !== 'object' || Array.isArray(entry)) return null;
+  return {
+    country: typeof entry.country === 'string' ? entry.country : '',
+    code: typeof entry.code === 'string' ? entry.code : '',
+    displayName: typeof entry.displayName === 'string' ? entry.displayName : '',
+    error: '',
+  };
+}
+
+function getCacheKeyPrefix() {
+  const env = process.env.VERCEL_ENV;
+  if (!env || env === 'production') return '';
+  const sha = process.env.VERCEL_GIT_COMMIT_SHA?.slice(0, 8) || 'dev';
+  return `${env}:${sha}:`;
+}
+
 export default async function handler(req, ctx) {
   if (isDisallowedOrigin(req))
     return new Response('Forbidden', { status: 403 });
@@ -48,9 +65,9 @@ export default async function handler(req, ctx) {
     return jsonResponse({ error: 'valid lat (-90..90) and lon (-180..180) required' }, 400, cors);
   }
 
-  const cacheKey = `geocode:${latN.toFixed(1)},${lonN.toFixed(1)}`;
+  const cacheKey = `${getCacheKeyPrefix()}geocode:${latN.toFixed(1)},${lonN.toFixed(1)}`;
 
-  const cached = await readJsonFromUpstash(cacheKey, 1500);
+  const cached = normalizeCacheEntry(await readJsonFromUpstash(cacheKey, 1500));
   if (cached) {
     return new Response(JSON.stringify(cached), {
       status: 200,
@@ -76,15 +93,23 @@ export default async function handler(req, ctx) {
     }
 
     const data = await resp.json();
-    const country = data.address?.country;
-    const code = data.address?.country_code?.toUpperCase();
+    const country = data.address?.country || '';
+    const code = (data.address?.country_code || '').toUpperCase();
+    const displayName = data.display_name || country || '';
 
-    const result = { country: country || null, code: code || null, displayName: data.display_name || country || '' };
+    // Write unconditionally, matching the gateway RPC
+    // (server/worldmonitor/infrastructure/v1/reverse-geocode.ts): ocean and
+    // Antarctic cells must populate the shared geocode: cache, and a sweep of
+    // those cells is currently 100% Nominatim passthrough. The entry uses the
+    // RPC's exact shape ({country, code, displayName, error} as strings) —
+    // both handlers read the same deployment-scoped 0.1-degree grid namespace
+    // (`geocode:lat,lon`, 604800 s TTL), so either may serve the other and a
+    // normalized `''` is indistinguishable from an ocean lookup either way.
+    // (#6432)
+    const result = { country, code, displayName, error: '' };
     const body = JSON.stringify(result);
 
-    if (country && code) {
-      ctx.waitUntil(setCachedData(cacheKey, result, 604800));
-    }
+    ctx.waitUntil(setCachedData(cacheKey, result, 604800));
 
     return new Response(body, {
       status: 200,

@@ -91,6 +91,32 @@ export function rateLimitErrorLevel(stage, msg) {
   return 'error';
 }
 
+// Failure-mode suffixes worth their own Sentry issue. Closed set — unlike a
+// route or scope, these describe HOW the limiter failed, not who called it.
+// Mirrored verbatim in server/_shared/rate-limit.ts.
+const RATE_LIMIT_FINGERPRINT_SUFFIXES = new Set(['missing-config', 'timeout']);
+
+/**
+ * Collapse a limiter stage to the low-cardinality token Sentry should GROUP on.
+ *
+ * Stage strings embed the caller (`checkScopedRateLimit:/api/skills/fetch-agentskills`)
+ * so the `stage` TAG can answer "which routes are affected". That is wrong for a
+ * fingerprint: Sentry groups by fingerprint, so the raw stage mints one issue per
+ * caller for a single Redis slowdown. Keep the head, plus a closed set of
+ * failure-mode suffixes; the full stage stays a tag. Exported as a pure function
+ * so the mapping is unit-testable rather than asserted through a Sentry capture.
+ * Mirrored verbatim in server/_shared/rate-limit.ts. (#6454)
+ *
+ * @param {string} stage
+ * @returns {string}
+ */
+export function rateLimitFingerprintStage(stage) {
+  const parts = String(stage ?? '').split(':');
+  const head = parts[0] || 'rate-limit';
+  const last = (parts.length > 1 ? parts[parts.length - 1] : '') ?? '';
+  return RATE_LIMIT_FINGERPRINT_SUFFIXES.has(last) ? `${head}:${last}` : head;
+}
+
 function logRateLimitDegraded(stage, err, ctx) {
   const msg = err instanceof Error ? err.message : String(err);
   // Keep the prefix stable — server/_shared/rate-limit.ts emits the same
@@ -98,7 +124,7 @@ function logRateLimitDegraded(stage, err, ctx) {
   console.error(`[rate-limit] redis-error stage=${stage} msg=${msg}`);
   captureSilentError(err, {
     tags: { surface: 'api', component: 'rate-limit', stage },
-    fingerprint: ['rate-limit', 'redis-error', stage],
+    fingerprint: ['rate-limit', 'redis-error', rateLimitFingerprintStage(stage)],
     ctx,
     level: rateLimitErrorLevel(stage, msg),
   });

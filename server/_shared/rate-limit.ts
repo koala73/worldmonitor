@@ -108,19 +108,51 @@ export function rateLimitErrorLevel(stage: string, msg: string): 'warning' | 'er
 const RATE_LIMIT_SENTRY_DEDUP_MS = 60_000;
 const lastRateLimitSentryCaptureAt = new Map<string, number>();
 
+// Failure-mode suffixes worth their own Sentry issue. These are a closed set —
+// unlike a route or scope, they describe HOW the limiter failed, not who called
+// it, so they never grow with traffic.
+const RATE_LIMIT_FINGERPRINT_SUFFIXES = new Set(['missing-config', 'timeout']);
+
+/**
+ * Collapse a limiter stage to the low-cardinality token Sentry should GROUP on.
+ *
+ * Stage strings deliberately embed the caller so the `stage` tag can answer
+ * "which routes are affected": `checkEndpointRateLimit:/api/market/v1/list-market-quotes`,
+ * `checkScopedRateLimit:/api/skills/fetch-agentskills`. That is right for a tag
+ * and wrong for a fingerprint — Sentry groups by fingerprint, so the raw stage
+ * mints one issue PER ROUTE for a single Redis slowdown. With 213 gateway
+ * routes behind checkEndpointRateLimit, one incident can open 213 issues; the
+ * triage sweep on 2026-08-11 found seven live issues and two ignored ones for
+ * this single condition, three of them created within two minutes of each other.
+ *
+ * Group on the stage's head, keeping only a closed set of failure-mode suffixes.
+ * The full stage stays a tag, so per-route breakdown is preserved inside the one
+ * issue. Exported as a pure function so the mapping is unit-testable rather than
+ * asserted through a Sentry capture. (#6454)
+ */
+export function rateLimitFingerprintStage(stage: string): string {
+  const parts = String(stage ?? '').split(':');
+  const head = parts[0] || 'rate-limit';
+  const last = (parts.length > 1 ? parts[parts.length - 1] : '') ?? '';
+  return RATE_LIMIT_FINGERPRINT_SUFFIXES.has(last) ? `${head}:${last}` : head;
+}
+
 function logRateLimitDegraded(stage: string, err: unknown): void {
   const msg = err instanceof Error ? err.message : String(err);
   console.error(`[rate-limit] redis-error stage=${stage} msg=${msg}`);
   // Keep every occurrence in provider logs, but emit at most one Sentry event
   // per limiter stage per minute from this isolate. A Redis outage otherwise
   // turns every fail-closed request into another identical ingestion event.
+  // Dedup stays keyed on the FULL stage (not the fingerprint) so an incident
+  // still reports one event per affected route — that is what makes the
+  // per-route `stage` tag breakdown inside the grouped issue meaningful.
   const now = Date.now();
   const lastCaptureAt = lastRateLimitSentryCaptureAt.get(stage);
   if (lastCaptureAt !== undefined && now - lastCaptureAt < RATE_LIMIT_SENTRY_DEDUP_MS) return;
   lastRateLimitSentryCaptureAt.set(stage, now);
   captureSilentError(err, {
     tags: { surface: 'server', component: 'rate-limit', stage },
-    fingerprint: ['rate-limit', 'redis-error', stage],
+    fingerprint: ['rate-limit', 'redis-error', rateLimitFingerprintStage(stage)],
     level: rateLimitErrorLevel(stage, msg),
   });
 }
@@ -448,10 +480,25 @@ export const ENDPOINT_RATE_POLICIES: Record<string, EndpointRatePolicy> = {
   // per cell in the browser (src/utils/reverse-geocode.ts), so 60/min is a
   // floor against scripted coordinate sweeps rather than a throttle on real
   // map use. Nominatim's usage policy is the strictest in our stack and is
-  // enforced by egress-IP ban, and we have a second caller
-  // (server/worldmonitor/infrastructure/v1/reverse-geocode.ts), so the
-  // unmetered path is the one worth closing first.
+  // enforced by egress-IP ban, and there are two callers sharing one egress:
+  // the legacy `api/reverse-geocode.js` edge function (which carries these
+  // same numbers as literal constants and enforces them in-handler via
+  // checkRateLimit — api/*.js cannot import ../server/) and the gateway RPC
+  // below. Both use the shared `geocode:` cache namespace (604800 s TTL), so
+  // a hit on either serves the other and the budget is a floor against
+  // scripted sweeps, not a throttle on real map use. (#6234, #6432)
   '/api/reverse-geocode': { limit: 60, window: '60 s' },
+  // Gateway reverse-geocode RPC (#6432): the second Nominatim caller. Same
+  // provider, same shared 0.1-degree grid cache, same egress IPs — must carry
+  // the same 60/min budget as the legacy edge route, and it now does. Both are
+  // per-IP budgets, so they bound any one caller but do not cap aggregate
+  // egress to Nominatim (60/min from a single IP is Nominatim's whole
+  // documented allowance for the application); a global companion budget
+  // keyed on 'reverse-geocode:global' is still required but is out of scope
+  // for this change. Fail-closed on
+  // Redis outage (default) — Nominatim's enforcement is an egress-IP ban, so
+  // a degraded limiter must 503 rather than inherit the fail-open fallback.
+  '/api/infrastructure/v1/reverse-geocode': { limit: 60, window: '60 s' },
 };
 
 interface RateLimitPolicyDecision {
@@ -548,6 +595,9 @@ export const FAIL_CLOSED_ENDPOINT_RATE_POLICY_REQUIRED: Record<string, RateLimit
   },
   '/api/resilience/v1/get-resilience-ranking': {
     reason: 'Cold/stale cache paths can synchronously warm the full country table.',
+  },
+  '/api/infrastructure/v1/reverse-geocode': {
+    reason: 'Proxies Nominatim (egress-IP ban enforcement), same provider and egress IPs as the legacy edge route. Must fail closed on a Redis outage rather than inherit the fail-open 600/min fallback.',
   },
 };
 
