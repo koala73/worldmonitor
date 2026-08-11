@@ -11,7 +11,7 @@ Rate limits are enforced at the Vercel Edge runtime using Upstash Redis counters
 |-------|-------|--------|
 | Per IP (default) | **600 requests** | 60 s |
 
-Applies to all `/api/*` routes that don't have a stricter override. Implemented by `api/_rate-limit.js` / `api/_ip-rate-limit.js`.
+Applies to all `/api/*` routes that don't have a stricter override. Implemented by `api/_rate-limit.js` (legacy `api/*.js` edge functions) and `server/_shared/rate-limit.ts` (the gateway and `.ts` edge functions).
 
 ## MCP server
 
@@ -66,6 +66,18 @@ Matches the implementations in `api/oauth/register.js`, `api/oauth/authorize.js`
 For `/api/oauth/token`, the limiter key is `client_secret` hash for `client_credentials`, then `client_id` when present, and only falls back to caller IP when neither credential identifier is available.
 
 Exceeding any of these during the OAuth flow will cause the MCP client to fail the connection handshake — wait 60 s and retry.
+
+## Provider proxies
+
+Routes that fetch a third-party host on our behalf carry their own per-IP budget, so a single scripted caller cannot drive unbounded traffic to a provider we do not control. These budgets are per IP, not aggregate: they bound any one caller, but they do not cap total egress across all callers.
+
+| Endpoint | Limit | Window | Scope |
+|----------|-------|--------|-------|
+| `POST /api/skills/fetch-agentskills` | 30 | 60 s | Per IP |
+| `GET /api/youtube/live` | 30 | 60 s | Per IP |
+| `GET /api/reverse-geocode` | 60 | 60 s | Per IP |
+
+All three are declared in `ENDPOINT_RATE_POLICIES` (`server/_shared/rate-limit.ts`) and enforced inside the handler, because none of them is routed through the gateway. `/api/reverse-geocode` reaches Nominatim, whose usage policy is the strictest of any provider in the stack and whose enforcement is an egress-IP ban, so treat that budget as a ceiling rather than a target.
 
 ## Write endpoints
 

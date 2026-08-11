@@ -1395,7 +1395,13 @@ export class DataLoaderManager implements AppModule {
           .map(protoItemToNewsItem)
           .filter(i => enabledNames.has(i.source));
 
-        void ingestTrendingHeadlines(items.map(i => ({ title: i.title, pubDate: i.pubDate, source: i.source, link: i.link })))
+        void ingestTrendingHeadlines(items.map(i => ({
+          title: i.title,
+          pubDate: i.pubDate,
+          pubDateMissing: i.pubDateMissing,
+          source: i.source,
+          link: i.link,
+        })))
           .catch((err) => {
             console.warn('[News] ingestTrendingHeadlines failed (chunk load?):', err);
           });

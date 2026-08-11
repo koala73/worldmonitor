@@ -104,6 +104,9 @@ verbose-mode.json
 skills-lock.json
 tmp/
 .context/
+# Scratch the Umami storage monitor writes on the runner: Railway volume and
+# deployment dumps plus its cached growth baseline. Local runs produce them too.
+.cache/
 
 # Local planning documents (not for public repo)
 docs/plans/

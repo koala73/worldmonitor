@@ -12,10 +12,14 @@ import {
   logSeedResult,
   withRetry,
   readSeedSnapshot,
+  readExistingSeedMeta,
 } from './_seed-utils.mjs';
 import {
+  MAX_JODI_CONTENT_AGE_MIN,
   assessChinaJodiCoverage,
+  buildChinaRowDiagnostic,
   hasFiniteMeasurementAtPaths,
+  jodiDatasetContentMeta,
 } from './shared/jodi-content-age.mjs';
 import {
   DEMAND_CHANGE_BASIS,
@@ -402,15 +406,59 @@ async function redisPipeline(commands) {
   return resp.json();
 }
 
-export function formatCoverageFailureReason({ hasGlobalCoverage, countryCount, chinaCoverage }) {
-  const reasons = [];
-  if (!hasGlobalCoverage) {
-    reasons.push(`only ${countryCount} countries, need >=${MIN_VALID_COUNTRIES}`);
-  }
-  if (!chinaCoverage.ok) {
-    reasons.push(`China JODI oil coverage failed: ${chinaCoverage.reason} (dataMonth=${chinaCoverage.dataMonth ?? 'missing'})`);
-  }
-  return reasons.join('; ');
+/**
+ * The only condition that may withhold an oil publish: too few countries
+ * carry a usable measurement to trust the file at all. A single country —
+ * China included — is reported, never enforced (issue #6395).
+ */
+export function formatCoverageFailureReason({ countryCount }) {
+  return `only ${countryCount} countries with usable measurements, need >=${MIN_VALID_COUNTRIES}`;
+}
+
+/**
+ * Everything main() decides about a parsed snapshot, in one testable place:
+ * whether it may publish, what China looks like, and the seed-meta record that
+ * carries both to /api/health.
+ *
+ * @param {{ allRows: any[], previousMeta?: any, now?: Date }} input
+ */
+export function prepareOilPublish({ allRows, previousMeta = null, now = new Date() }) {
+  const parsed = buildAllCountries(allRows);
+  const chinaCoverage = assessChinaOilCoverage(parsed, now);
+
+  // A country whose every field parsed to null is not coverage: it would count
+  // toward MIN_VALID_COUNTRIES while serving no measurement to anyone. With no
+  // single-country gate standing behind that floor any more (#6395), the floor
+  // has to mean what it says, so only measurement-bearing countries are
+  // published. It also stops a null-only month from overwriting a country's
+  // last-good record — the key simply is not rewritten and ages out instead.
+  const countries = parsed.filter(hasOilMeasurements);
+  const refusalReason = validateCoverage(countries)
+    ? null
+    : formatCoverageFailureReason({ countryCount: countries.length });
+
+  const contentMeta = jodiDatasetContentMeta(countries, hasOilMeasurements, now);
+  return {
+    parsedCount: parsed.length,
+    countries,
+    chinaCoverage,
+    refusalReason,
+    metaPayload: {
+      fetchedAt: now.getTime(),
+      recordCount: countries.length,
+      chinaDataMonth: chinaCoverage.dataMonth,
+      chinaRow: buildChinaRowDiagnostic(
+        chinaCoverage,
+        previousMeta?.chinaRow ?? null,
+        now.getTime(),
+      ),
+      // Content-age trio: without it a JODI file that stopped advancing would
+      // publish forever as fresh now that no per-country gate refuses it.
+      newestItemAt: contentMeta?.newestItemAt ?? null,
+      oldestItemAt: contentMeta?.oldestItemAt ?? null,
+      maxContentAgeMin: MAX_JODI_CONTENT_AGE_MIN,
+    },
+  };
 }
 
 async function main() {
@@ -438,18 +486,21 @@ async function main() {
 
     console.log(`  Parsed ${allRows.length} KBD rows`);
 
-    const countries = buildAllCountries(allRows);
-    console.log(`  Built ${countries.length} country payloads`);
+    const previousMeta = await readExistingSeedMeta('energy', 'jodi-oil');
+    if (previousMeta?.chinaRow == null) {
+      // readExistingSeedMeta collapses "no prior record" and "read failed" into
+      // one null, so an ongoing gap re-dates to this run. Say so, or the reset
+      // is indistinguishable from a genuine new outage in the log.
+      console.warn('  China oil row: no previous record readable — dating any gap from this run');
+    }
+    const { countries, parsedCount, chinaCoverage, refusalReason, metaPayload } = prepareOilPublish({
+      allRows,
+      previousMeta,
+    });
+    console.log(`  Built ${countries.length} country payloads of ${parsedCount} parsed`);
 
-    const chinaCoverage = assessChinaOilCoverage(countries);
-    const hasGlobalCoverage = validateCoverage(countries);
-    if (!hasGlobalCoverage || !chinaCoverage.ok) {
-      const reason = formatCoverageFailureReason({
-        hasGlobalCoverage,
-        countryCount: countries.length,
-        chinaCoverage,
-      });
-      console.error(`  COVERAGE GATE FAILED: ${reason}`);
+    if (refusalReason) {
+      console.error(`  COVERAGE GATE FAILED: ${refusalReason}`);
       const prevIso2List = await readSeedSnapshot(CANONICAL_KEY, { strict: true });
       if (Array.isArray(prevIso2List) && prevIso2List.length > 0) {
         const prevCountryKeys = prevIso2List.map(iso2 => `${COUNTRY_KEY_PREFIX}${iso2}`);
@@ -465,6 +516,11 @@ async function main() {
       }
       return;
     }
+
+    console.log(chinaCoverage.ok
+      ? `  China oil coverage: ok (dataMonth=${chinaCoverage.dataMonth})`
+      : `  China oil coverage: ${chinaCoverage.reason} (dataMonth=${chinaCoverage.dataMonth ?? 'missing'})`
+        + ` — publishing the other ${countries.length} countries anyway`);
 
     // Every guard in this chain refuses by returning null, so a refused change
     // is otherwise indistinguishable from an upstream that simply has not
@@ -482,7 +538,6 @@ async function main() {
         + `(${chinaDemandAssessment.reason ?? 'no comparable basket'})`);
 
     const iso2List = countries.map(c => c.iso2);
-    const metaPayload = { fetchedAt: Date.now(), recordCount: countries.length, chinaDataMonth: chinaCoverage.dataMonth };
 
     const commands = [];
     for (const payload of countries) {

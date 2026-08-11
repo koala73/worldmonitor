@@ -42,6 +42,7 @@ const REQUIRED_CI_SMOKE_SPECS = [
   'e2e/variant-live-smoke.spec.ts',
   'e2e/mcp-grant-consent.spec.ts',
   'e2e/dashboard-news-request-budget.spec.ts',
+  'e2e/keyword-spike-flow.spec.ts',
 ] as const;
 
 const REQUIRED_TEST_JOBS = [
@@ -133,6 +134,15 @@ function shellAwkAssignmentBlock(variable: string): string {
   const endIndex = testWorkflow.indexOf(end, startIndex);
   assert.notEqual(endIndex, -1, `test.yml must terminate ${variable}`);
   return testWorkflow.slice(startIndex, endIndex + end.length);
+}
+
+function evaluateAwkAssignmentBlock(block: string, files: string[]): number {
+  const program = block.slice(block.indexOf("awk '") + 5, block.lastIndexOf("'"));
+  const output = execFileSync('awk', [program], {
+    input: `${files.join('\n')}\n`,
+    encoding: 'utf8',
+  });
+  return Number(output.trim());
 }
 
 function testJobBlock(job: string): string {
@@ -586,6 +596,15 @@ describe('CI workflow coverage', () => {
     );
   });
 
+  it('shares tracked edge bundle discovery with pre-push', () => {
+    const edgeBundleStep = workflowStepBlock(testWorkflow, 'Edge function bundle check');
+    assert.match(
+      edgeBundleStep,
+      /^\s+run: node scripts\/check-edge-function-bundles\.mjs --caller=ci\s*$/m,
+    );
+    assert.doesNotMatch(edgeBundleStep, /find api\//);
+  });
+
   it('routes Tauri config edits into the job that runs the one-binary gate (#5908)', () => {
     // Executes the real awk from test.yml rather than string-matching it: a
     // regex typo in the carve-out would silently exempt Tauri-config changes
@@ -593,11 +612,7 @@ describe('CI workflow coverage', () => {
     // #5908 was filed to fix. tests/desktop-one-binary-model.test.mjs runs in
     // `unit`, which is gated on this `code` output.
     const awkBlock = shellAwkAssignmentBlock('CODE');
-    const program = awkBlock.slice(awkBlock.indexOf("awk '") + 5, awkBlock.lastIndexOf("'"));
-    const codeFilterSays = (path: string) => {
-      const out = execFileSync('awk', [program], { input: `${path}\n`, encoding: 'utf8' });
-      return Number(out.trim()) > 0;
-    };
+    const codeFilterSays = (path: string) => evaluateAwkAssignmentBlock(awkBlock, [path]) > 0;
 
     for (const path of [
       'src-tauri/tauri.conf.json',
@@ -626,6 +641,16 @@ describe('CI workflow coverage', () => {
     );
     for (const input of REQUIRED_RESILIENCE_VALIDATION_INPUTS) {
       assert.ok(testWorkflow.includes(workflowRegexNeedle(input)), `test.yml must cover ${input}`);
+    }
+  });
+
+  it('routes the root Docker context policy into image build jobs', () => {
+    for (const variable of ['DIGEST', 'UMAMI']) {
+      const awkBlock = shellAwkAssignmentBlock(variable);
+      assert.ok(
+        evaluateAwkAssignmentBlock(awkBlock, ['.dockerignore']) > 0,
+        `.dockerignore must set ${variable.toLowerCase()}=true`,
+      );
     }
   });
 

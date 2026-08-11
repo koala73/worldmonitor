@@ -1247,12 +1247,44 @@ describe('collector alert policy is wired into the reporting path', () => {
       writes: 1,
       failures: 1,
       failureKind: 'missing-receipt',
+      bucket: Math.floor(Date.now() / 60_000),
     });
     assert.equal(
       getCollectorHealthForTesting().noiseReported,
       false,
       'an accepted aggregate report does not duplicate the server-side Sentry event locally',
     );
+  });
+
+  it('reports a completed zero-failure window so the baseline is not failure-conditioned', async () => {
+    const reports: unknown[] = [];
+    _setCollectorHealthReporterForTesting(async (report) => {
+      reports.push(report);
+      return true;
+    });
+    const originalDateNow = Date.now;
+    window.fetch = (() => Promise.resolve(collectorResponse(true, 200))) as typeof window.fetch;
+    stubFailingUmami();
+
+    try {
+      Date.now = () => 1_000;
+      track('panel-open' as Parameters<typeof track>[0], { first: true });
+      await drainPromiseHandlers();
+
+      Date.now = () => 62_000;
+      track('panel-open' as Parameters<typeof track>[0], { second: true });
+      await drainPromiseHandlers();
+    } finally {
+      Date.now = originalDateNow;
+    }
+
+    assert.deepEqual(reports, [{
+      cohort: 'event',
+      writes: 1,
+      failures: 0,
+      failureKind: 'none',
+      bucket: 0,
+    }]);
   });
 
   // Deliberately does NOT stub the reporter: resetAnalyticsForTesting restores the
@@ -1334,6 +1366,7 @@ describe('collector alert policy is wired into the reporting path', () => {
       writes: 1,
       failures: 1,
       failureKind: 'missing-receipt',
+      bucket: Math.floor(Date.now() / 60_000),
     });
   });
 

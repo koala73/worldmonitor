@@ -89,8 +89,7 @@ export {
 // The grace is spent on a COMMIT, never on a service: the caller resolves the
 // newest commit older than this window and every service must be running that
 // commit or a descendant. Excusing a service because head happens to be young
-// would have gone green on the whole fleet on any run that followed a merge —
-// including for umami, which has been a day behind since #6064.
+// would have gone green on the whole fleet on any run that followed a merge.
 export const DEFAULT_BUILD_GRACE_MS = 30 * 60 * 1000;
 
 // The classifier only reads back to the newest running deployment plus the

@@ -28,6 +28,8 @@ import type * as companyMonitoring__shared from "../companyMonitoring/_shared.js
 import type * as companyMonitoring_accounts from "../companyMonitoring/accounts.js";
 import type * as companyMonitoring_companies from "../companyMonitoring/companies.js";
 import type * as companyMonitoring_imports from "../companyMonitoring/imports.js";
+import type * as companyMonitoring_orchestration from "../companyMonitoring/orchestration.js";
+import type * as companyMonitoring_validators from "../companyMonitoring/validators.js";
 import type * as config_productCatalog from "../config/productCatalog.js";
 import type * as constants from "../constants.js";
 import type * as contactMessages from "../contactMessages.js";
@@ -40,6 +42,7 @@ import type * as intelHistory from "../intelHistory.js";
 import type * as lib_auth from "../lib/auth.js";
 import type * as lib_dodo from "../lib/dodo.js";
 import type * as lib_emailDomain from "../lib/emailDomain.js";
+import type * as lib_emailShape from "../lib/emailShape.js";
 import type * as lib_entitlements from "../lib/entitlements.js";
 import type * as lib_env from "../lib/env.js";
 import type * as lib_identitySigning from "../lib/identitySigning.js";
@@ -52,6 +55,8 @@ import type * as payments_billing from "../payments/billing.js";
 import type * as payments_businessSeats from "../payments/businessSeats.js";
 import type * as payments_cacheActions from "../payments/cacheActions.js";
 import type * as payments_checkout from "../payments/checkout.js";
+import type * as payments_checkoutRateLimit from "../payments/checkoutRateLimit.js";
+import type * as payments_returnUrlOrigin from "../payments/returnUrlOrigin.js";
 import type * as payments_seedProductPlans from "../payments/seedProductPlans.js";
 import type * as payments_subscriptionEmails from "../payments/subscriptionEmails.js";
 import type * as payments_subscriptionHelpers from "../payments/subscriptionHelpers.js";
@@ -91,6 +96,8 @@ declare const fullApi: ApiFromModules<{
   "companyMonitoring/accounts": typeof companyMonitoring_accounts;
   "companyMonitoring/companies": typeof companyMonitoring_companies;
   "companyMonitoring/imports": typeof companyMonitoring_imports;
+  "companyMonitoring/orchestration": typeof companyMonitoring_orchestration;
+  "companyMonitoring/validators": typeof companyMonitoring_validators;
   "config/productCatalog": typeof config_productCatalog;
   constants: typeof constants;
   contactMessages: typeof contactMessages;
@@ -103,6 +110,7 @@ declare const fullApi: ApiFromModules<{
   "lib/auth": typeof lib_auth;
   "lib/dodo": typeof lib_dodo;
   "lib/emailDomain": typeof lib_emailDomain;
+  "lib/emailShape": typeof lib_emailShape;
   "lib/entitlements": typeof lib_entitlements;
   "lib/env": typeof lib_env;
   "lib/identitySigning": typeof lib_identitySigning;
@@ -115,6 +123,8 @@ declare const fullApi: ApiFromModules<{
   "payments/businessSeats": typeof payments_businessSeats;
   "payments/cacheActions": typeof payments_cacheActions;
   "payments/checkout": typeof payments_checkout;
+  "payments/checkoutRateLimit": typeof payments_checkoutRateLimit;
+  "payments/returnUrlOrigin": typeof payments_returnUrlOrigin;
   "payments/seedProductPlans": typeof payments_seedProductPlans;
   "payments/subscriptionEmails": typeof payments_subscriptionEmails;
   "payments/subscriptionHelpers": typeof payments_subscriptionHelpers;
@@ -155,77 +165,5 @@ export declare const internal: FilterApi<
 >;
 
 export declare const components: {
-  dodopayments: {
-    lib: {
-      checkout: FunctionReference<
-        "action",
-        "internal",
-        {
-          apiKey: string;
-          environment: "test_mode" | "live_mode";
-          payload: {
-            allowed_payment_method_types?: Array<string>;
-            billing_address?: {
-              city?: string;
-              country: string;
-              state?: string;
-              street?: string;
-              zipcode?: string;
-            };
-            billing_currency?: string;
-            confirm?: boolean;
-            customer?:
-              | { email: string; name?: string; phone_number?: string }
-              | { customer_id: string };
-            customization?: {
-              force_language?: string;
-              show_on_demand_tag?: boolean;
-              show_order_details?: boolean;
-              theme?: string;
-            };
-            discount_code?: string;
-            feature_flags?: {
-              allow_currency_selection?: boolean;
-              allow_discount_code?: boolean;
-              allow_phone_number_collection?: boolean;
-              allow_tax_id?: boolean;
-              always_create_new_customer?: boolean;
-            };
-            force_3ds?: boolean;
-            metadata?: Record<string, string>;
-            product_cart: Array<{
-              addons?: Array<{ addon_id: string; quantity: number }>;
-              amount?: number;
-              product_id: string;
-              quantity: number;
-            }>;
-            return_url?: string;
-            show_saved_payment_methods?: boolean;
-            subscription_data?: {
-              on_demand?: {
-                adaptive_currency_fees_inclusive?: boolean;
-                mandate_only: boolean;
-                product_currency?: string;
-                product_description?: string;
-                product_price?: number;
-              };
-              trial_period_days?: number;
-            };
-          };
-        },
-        { checkout_url: string }
-      >;
-      customerPortal: FunctionReference<
-        "action",
-        "internal",
-        {
-          apiKey: string;
-          dodoCustomerId: string;
-          environment: "test_mode" | "live_mode";
-          send_email?: boolean;
-        },
-        { portal_url: string }
-      >;
-    };
-  };
+  dodopayments: import("@dodopayments/convex/_generated/component.js").ComponentApi<"dodopayments">;
 };

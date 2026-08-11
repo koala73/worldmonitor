@@ -1051,6 +1051,10 @@ export async function writeSeedMeta(dataKey, recordCount, metaKeyOverride, metaT
     console.warn(`  seed-meta ${metaKey}: write failed`);
     return false;
   }
+  // Upstash can return HTTP 200 with a command-level error. Treat that as a
+  // failed metadata write instead of reporting success while health still
+  // points at the previous heartbeat.
+  await parseRedisCommandResponse(resp, `seed-meta ${metaKey}`);
   return true;
 }
 
@@ -1729,12 +1733,37 @@ export async function readSeedSnapshot(canonicalKey, { strict = false } = {}) {
       if (strict) throw new Error(`Redis snapshot read failed: HTTP ${resp.status}`);
       return null;
     }
-    const { result } = await resp.json();
-    if (!result) return null;
+    // Upstash's GET contract has one unambiguous miss: an HTTP-200 JSON
+    // envelope with an explicitly-null `result`. In strict mode, every other
+    // malformed envelope is a read failure, not a cold start. This matters for
+    // rolling/baseline seeders: degrading `{}` or invalid JSON to null can make
+    // two ambiguous reads look like a missing key and overwrite last-good
+    // state. Non-strict callers retain their best-effort null degradation.
+    const body = strict
+      ? await parseRedisCommandResponse(resp, 'Redis snapshot read')
+      : await resp.json();
+    const result = body?.result;
+    if (result === null) return null;
+    if (strict && typeof result !== 'string') {
+      throw new Error('Redis snapshot read returned a non-string result');
+    }
+    if (!strict && !result) return null;
+    let parsed;
+    try {
+      parsed = JSON.parse(result);
+    } catch (cause) {
+      if (strict) {
+        throw Object.assign(new Error('Redis snapshot read returned malformed stored JSON'), { cause });
+      }
+      return null;
+    }
+    if (strict && parsed === null) {
+      throw new Error('Redis snapshot read returned a null stored snapshot');
+    }
     // Envelope-aware: WoW/prev baselines (bigmac, grocery-basket, fear-greed)
     // must see bare legacy-shape data whether the last write was pre- or post-
     // contract-migration. unwrapEnvelope is a no-op on legacy values.
-    return unwrapEnvelope(JSON.parse(result)).data;
+    return unwrapEnvelope(parsed).data;
   } catch (error) {
     if (strict) throw error;
     return null;
@@ -1961,7 +1990,7 @@ export async function runSeed(domain, resource, canonicalKey, fetchFn, opts = {}
     sourceVersion,         // new — required when declareRecords is passed
     schemaVersion,         // new — required when declareRecords is passed
     zeroIsValid = false,   // new — when true, recordCount=0 is OK_ZERO, not RETRY
-    contentMeta,           // (rawData) => {newestItemAt, oldestItemAt} | null
+    contentMeta,           // (rawData, runStartedAtMs) => {newestItemAt, oldestItemAt} | null
     maxContentAgeMin,      // positive integer minutes — opts in together with contentMeta
     fetchPhaseTimeoutMs,   // hard ceiling on the fetch phase; defaults to lockTtlMs + margin (#4786)
   } = opts;
@@ -2128,7 +2157,11 @@ export async function runSeed(domain, resource, canonicalKey, fetchFn, opts = {}
     : lockTtlMs + FETCH_PHASE_DEADLINE_MARGIN_MS;
   let data;
   try {
-    data = await raceFetchDeadline(withRetry(fetchFn), fetchDeadlineMs, `${domain}:${resource}`);
+    data = await raceFetchDeadline(
+      withRetry(() => fetchFn({ runStartedAtMs: startMs })),
+      fetchDeadlineMs,
+      `${domain}:${resource}`,
+    );
   } catch (err) {
     // Keep the SIGTERM handler installed across the fetch-failure
     // cleanup. Earlier code did `process.off('SIGTERM', sigTermHandler)`
@@ -2172,7 +2205,7 @@ export async function runSeed(domain, resource, canonicalKey, fetchFn, opts = {}
     let contentOldestAt = null;
     if (contentAgeOptedIn) {
       try {
-        const result = contentMeta(data);
+        const result = contentMeta(data, startMs);
         if (result && typeof result === 'object'
             && Number.isFinite(result.newestItemAt) && result.newestItemAt > 0
             && Number.isFinite(result.oldestItemAt) && result.oldestItemAt > 0) {

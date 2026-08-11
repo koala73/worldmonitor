@@ -9269,7 +9269,11 @@ a.prediction-link:hover {
   gap: 0;
 }
 
-.popup-news-item {
+/* Source-labelled headline rows. Shared by the map popup's related-news list
+   and the keyword-spike evidence list in the signal modal (#6414); the two
+   differ only in their row divider and link-hover treatment, scoped below. */
+.popup-news-item,
+.signal-article-item {
   display: flex;
   flex-direction: column;
   gap: 2px;
@@ -9280,14 +9284,16 @@ a.prediction-link:hover {
   border-top: 1px solid rgba(255, 255, 255, 0.03);
 }
 
-.popup-news-item .news-source {
+.popup-news-item .news-source,
+.signal-article-item .news-source {
   font-size: 9px;
   color: var(--red);
   text-transform: uppercase;
   letter-spacing: 0.5px;
 }
 
-.popup-news-item .news-title {
+.popup-news-item .news-title,
+.signal-article-item .news-title {
   font-size: 11px;
   color: var(--text);
   text-decoration: none;
@@ -16518,6 +16524,65 @@ a.prediction-link:hover {
 
 .signal-location {
   margin: 8px 0;
+}
+
+/* --- Signal Modal: Keyword Spike Evidence (#6414) --- */
+.signal-sources {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-wrap: wrap;
+  margin: 10px 0 0;
+}
+
+.signal-sources-label {
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--text-dim);
+}
+
+.signal-source-chip {
+  font-size: 9px;
+  padding: 2px 6px;
+  background: rgba(0, 170, 255, 0.15);
+  color: var(--accent);
+  border-radius: 8px;
+}
+
+.signal-source-chip-more {
+  background: var(--overlay-light);
+  color: var(--text-dim);
+}
+
+.signal-articles {
+  background: rgba(68, 136, 255, 0.08);
+  border: 1px solid rgba(68, 136, 255, 0.25);
+  border-radius: 6px;
+  padding: 10px;
+  margin: 8px 0 0;
+}
+
+.signal-articles-header {
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--semantic-low);
+  margin-bottom: 8px;
+}
+
+/* Layout, source label and title typography come from the shared
+   .popup-news-item / .signal-article-item rules above; only the divider and
+   the link-hover affordance differ here. */
+.signal-article-item + .signal-article-item {
+  border-top: 1px solid var(--overlay-light);
+}
+
+.signal-article-item a.news-title:hover {
+  color: var(--accent);
+  text-decoration: underline;
 }
 
 .signal-item.military_surge {

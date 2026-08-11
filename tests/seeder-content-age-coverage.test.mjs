@@ -37,6 +37,13 @@ const FREEZE_PRONE_MARKERS = [
   /api\.worldbank\.org/,         // World Bank
   /open-meteo-archive/,          // Open-Meteo ERA5 archive
   /lastNObservations=/,          // SDMX windowed-fetch query param
+  // JODI — froze in #6395: the gas world file stopped advancing past 2026-01
+  // and no 2026 oil annual file was ever published, while both downloads kept
+  // returning HTTP 200. Content-age is now the ONLY thing standing between a
+  // frozen JODI file and an OK health verdict, because the per-country China
+  // gate that incidentally caught it was removed in the same issue. This
+  // marker is what keeps that opt-in from being deleted silently.
+  /jodidata\.org/,
 ];
 
 // Seeders that match the heuristic but do NOT wire content-age. Every entry

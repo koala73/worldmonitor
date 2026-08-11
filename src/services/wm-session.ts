@@ -273,7 +273,11 @@ function addSessionBreadcrumb(message: string, data: Record<string, string>): vo
   } catch { /* best-effort telemetry */ }
 }
 
-function markWmSessionDead(reason: WmSessionDeadReason, rawPath: string): void {
+function markWmSessionDead(
+  reason: WmSessionDeadReason,
+  rawPath: string,
+  cause: MintFailureCause | null = null,
+): void {
   const alreadyDead = isWmSessionDead();
   sessionDeadUntil = Date.now() + SESSION_DEAD_COOLDOWN_MS;
   if (!alreadyDead) sessionDeadReason = reason;
@@ -311,11 +315,23 @@ function markWmSessionDead(reason: WmSessionDeadReason, rawPath: string): void {
   // so whichever route happened to be in flight is a bystander — tagging it
   // would seed the census with innocent endpoints.
   const routeTag = reason === 'retry_401' ? blockedTag : '/api/wm-session';
-  addSessionBreadcrumb('wm-session recovery failed', { route: routeTag, blocked: blockedTag, reason });
+  // `reason` names the CATEGORY of failure; `mint_cause` names the actual one.
+  // Without it every mint_failed event looked identical, so WORLDMONITOR-WG
+  // could not be told apart from a server outage, a rate-limit, a CORS block or
+  // a dropped connection — and each of those needs a different fix. This is the
+  // same aggregability argument that added the `route` tag in #5674.
+  const tags: Record<string, string> = { kind: 'wm_session_dead', reason, route: routeTag };
+  if (cause) tags.mint_cause = cause;
+  addSessionBreadcrumb('wm-session recovery failed', {
+    route: routeTag,
+    blocked: blockedTag,
+    reason,
+    ...(cause ? { mint_cause: cause } : {}),
+  });
   try {
     sentryEnqueue((s) => s.captureMessage(
       'wm-session dead: anonymous API calls suppressed',
-      { level: 'warning', tags: { kind: 'wm_session_dead', reason, route: routeTag } },
+      { level: 'warning', tags },
     ));
   } catch { /* best-effort telemetry */ }
   if (typeof window !== 'undefined' && typeof window.dispatchEvent === 'function') {
@@ -350,23 +366,47 @@ function reportRouteRecoveryFailure(rawPath: string): void {
 /**
  * Decide how far a failed recovery should reach.
  *
- * `mint_failed` is session-wide by construction — /api/wm-session itself did
- * not hand back a cookie, so no route can succeed. It trips the global
- * cooldown immediately, exactly as before.
+ * `mint_failed` is session-wide only when the SERVER produced the failure —
+ * `refused` (it answered non-2xx) or `malformed` (it answered something
+ * unusable). Those still trip the global cooldown immediately, because no route
+ * can succeed against an endpoint that will not issue a token.
+ *
+ * A `timeout` or `network` mint failure is NOT session-wide. The request never
+ * completed, so the server rendered no verdict, and the original
+ * "session-wide by construction" reading turned one dropped request into a
+ * 15-minute blackout. It is retried once and then needs the same corroboration
+ * as `retry_401` (WORLDMONITOR-WG).
  *
  * `retry_401` only implicates the one route that was replayed, so it needs
  * SESSION_DEAD_ROUTE_QUORUM distinct routes before it may black out the tab.
  */
-function noteRecoveryFailure(reason: WmSessionDeadReason, rawPath: string): void {
-  if (reason === 'mint_failed') {
-    markWmSessionDead(reason, rawPath);
+function noteRecoveryFailure(
+  reason: WmSessionDeadReason,
+  rawPath: string,
+  cause: MintFailureCause | null = null,
+): void {
+  // A mint the SERVER refused (or answered unusably) is session-wide by
+  // construction, exactly as before: no route can succeed against an endpoint
+  // that will not issue a token, so this still skips the quorum.
+  if (reason === 'mint_failed' && !mintCauseIsTransport(cause)) {
+    markWmSessionDead(reason, rawPath, cause);
     return;
   }
+  // Everything else needs corroboration from a second distinct route before it
+  // may black out the tab. For retry_401 that is the original #5674 rule. For a
+  // transport-level mint failure it is new: the attempt already burned its one
+  // retry, and a single client-side blip is not evidence that the session is
+  // unusable — production shows the server minting normally for everyone else
+  // at that moment (WORLDMONITOR-WG).
   if (recordRouteStrike(rawPath) >= SESSION_DEAD_ROUTE_QUORUM) {
-    markWmSessionDead(reason, rawPath);
+    markWmSessionDead(reason, rawPath, cause);
     return;
   }
-  reportRouteRecoveryFailure(rawPath);
+  // Below quorum, a transport mint failure gets no captureMessage. WG is the
+  // blackout counter (#5245) and no blackout happened; XP counts routes that
+  // reject a demonstrably fresh cookie, which this route did not do — the
+  // cookie never arrived. The breadcrumb from the eventual episode carries it.
+  if (reason === 'retry_401') reportRouteRecoveryFailure(rawPath);
 }
 
 function sessionDegradedResponse(): Response {
@@ -433,7 +473,50 @@ function noteMintCookieEvidence(hadSession: boolean, aCookieExistedWhenSent: boo
   useAnonymousSessionHeader = anonymousSessionHeaderToken !== null;
 }
 
+/**
+ * Why a mint attempt did not produce a session.
+ *
+ * `refused` and `malformed` are verdicts FROM the server: it answered, and the
+ * answer was unusable. Those really are session-wide — no route can succeed
+ * against a session endpoint that will not issue a token.
+ *
+ * `timeout` and `network` are failures of our own transport: the request never
+ * completed, so the server never rendered a verdict at all. They say nothing
+ * about whether the next attempt will work, and must not be read as one
+ * (WORLDMONITOR-WG — see mintCauseIsTransport).
+ */
+type MintFailureCause = 'refused' | 'malformed' | 'timeout' | 'network';
+type MintOutcome =
+  | { ok: true; session: StoredSession }
+  | { ok: false; cause: MintFailureCause };
+
+/**
+ * A transport cause is evidence about this ATTEMPT, not about the session.
+ *
+ * Production disproved the original "a failed mint is session-wide by
+ * construction" premise: for 5 of the 7 most recent mint_failed events, server
+ * telemetry showed 121-216 successful /api/wm-session mints in a +/-2.5 minute
+ * window around the event and ZERO rejections. The server was healthy and
+ * minting for everyone else while one client declared the whole session dead
+ * and suppressed its own anonymous calls for 15 minutes.
+ */
+function mintCauseIsTransport(cause: MintFailureCause | null): boolean {
+  return cause === 'timeout' || cause === 'network';
+}
+
+// The cause of the most recent failed mint, for the recovery path to read.
+// Module-scoped rather than threaded through ensureWmSession's boolean return
+// because that boolean is part of this module's public surface and is consumed
+// by callers (periodic refresh, page boot) that have no use for the cause.
+let lastMintFailureCause: MintFailureCause | null = null;
+
 async function fetchNewSession(body?: { widgetKey?: string; proKey?: string }): Promise<StoredSession | null> {
+  const outcome = await mintSession(body);
+  lastMintFailureCause = outcome.ok ? null : outcome.cause;
+  return outcome.ok ? outcome.session : null;
+}
+
+async function mintSession(body?: { widgetKey?: string; proKey?: string }): Promise<MintOutcome> {
   // Sampled BEFORE the request leaves, not when it returns: concurrent mints
   // would otherwise let the first response to land make the others look like
   // follow-up mints that came back empty. See noteMintCookieEvidence.
@@ -444,8 +527,12 @@ async function fetchNewSession(body?: { widgetKey?: string; proKey?: string }): 
   // before fetch is dispatched and looks exactly like a server-side
   // mint_failed episode. AbortController has materially wider support.
   const timeoutController = new AbortController();
+  // Set by our own timer, so an AbortError can be attributed to the budget
+  // rather than guessed at from the error name — a caller-supplied abort or a
+  // browser-issued one would otherwise be misreported as `timeout`.
+  let timedOut = false;
   const timeoutId = setTimeout(
-    () => timeoutController.abort(),
+    () => { timedOut = true; timeoutController.abort(); },
     fetchNewSessionTimeoutMs,
   );
   try {
@@ -457,9 +544,18 @@ async function fetchNewSession(body?: { widgetKey?: string; proKey?: string }): 
       body: body ? JSON.stringify(body) : undefined,
       signal: timeoutController.signal,
     });
-    if (!resp.ok) return null;
-    const data = await resp.json() as { exp?: unknown; hadSession?: unknown; token?: unknown };
-    if (typeof data?.exp !== 'number') return null;
+    // The server answered and said no. That IS a session-wide verdict.
+    if (!resp.ok) return { ok: false, cause: 'refused' };
+    // A body we cannot parse or that carries no usable expiry is the server
+    // answering with something unusable — also session-wide, and NOT a
+    // transport failure, so it must not inherit the retry below.
+    let data: { exp?: unknown; hadSession?: unknown; token?: unknown };
+    try {
+      data = await resp.json() as { exp?: unknown; hadSession?: unknown; token?: unknown };
+    } catch {
+      return { ok: false, cause: 'malformed' };
+    }
+    if (typeof data?.exp !== 'number') return { ok: false, cause: 'malformed' };
     if (
       sessionIdentityGeneration === identityGenerationWhenSent &&
       typeof data.token === 'string' &&
@@ -472,9 +568,10 @@ async function fetchNewSession(body?: { widgetKey?: string; proKey?: string }): 
     if (typeof data.hadSession === 'boolean') {
       noteMintCookieEvidence(data.hadSession, aCookieExistedWhenSent);
     }
-    return { exp: data.exp };
+    return { ok: true, session: { exp: data.exp } };
   } catch {
-    return null;
+    // The request never completed. Nothing here is evidence about the session.
+    return { ok: false, cause: timedOut ? 'timeout' : 'network' };
   } finally {
     clearTimeout(timeoutId);
   }
@@ -575,6 +672,7 @@ export function __resetWmSessionForTests(): void {
   cookiePersistenceBroken = false;
   anonymousSessionHeaderToken = null;
   useAnonymousSessionHeader = false;
+  lastMintFailureCause = null;
   sentryEnqueue = enqueueSentryCall;
   fetchNewSessionTimeoutMs = 10_000;
 }
@@ -871,9 +969,19 @@ export function installWmSessionFetchInterceptor(): void {
     // for that result instead of each multiplying the failed retry.
     if (!recoveryInFlight) {
       const recovery = (async (): Promise<Response | null> => {
-        const fresh = await ensureWmSession().catch(() => false);
+        let fresh = await ensureWmSession().catch(() => false);
+        // A transport failure is the one cause worth immediately re-attempting:
+        // the server never answered, so a second try costs one request and may
+        // simply succeed. Bounded to a single retry, and only for a transport
+        // cause — a refusal is not retried, because the server already answered
+        // and would answer the same way (WORLDMONITOR-WG).
+        if (!fresh && mintCauseIsTransport(lastMintFailureCause)) {
+          fresh = await ensureWmSession().catch(() => false);
+        }
         if (!fresh) {
-          if (isCurrentSessionIdentity()) noteRecoveryFailure('mint_failed', path);
+          if (isCurrentSessionIdentity()) {
+            noteRecoveryFailure('mint_failed', path, lastMintFailureCause);
+          }
           return null;
         }
         // Recovery already has stronger evidence than a page-boot mint: the

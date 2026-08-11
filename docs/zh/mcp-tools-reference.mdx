@@ -684,6 +684,7 @@ AI 生成的逐国情报简报。为给定国家生成 LLM 分析的地缘政治
 - **API 端点：** `GET /api/intelligence/v1/get-country-intel-brief`
 - **类型：** 实时 RPC — 每次调用代理对 WorldMonitor API 的请求。最坏情况总预算 **~24s**（2s 上下文摘要抓取 + 22s 简报生成，顺序执行）。
 - **来源：** 返回有界的 `sources` 数组，含来自用于为国家上下文提供依据的摘要条目的原始文章链接。URL 从订阅源数据复制，而非由 LLM 生成。
+- **交叉印证：** 为用作依据的摘要文章额外返回一个 `groundingStories` 数组，每项包含 `corroborationCount`（摘要生成时报道该故事的不同媒体数）、`mentionCount` 和生命周期 `storyPhase`。它独立于 `sources`（后者可能改为承载服务端依据集），并在摘要读取失败时为空。引用请使用 `sources`；使用 `groundingStories` 判断底层报道的充分程度。
 
 <CodeGroup>
 
@@ -716,6 +717,7 @@ curl -s https://worldmonitor.app/mcp \
 
 - **API 端点：** `GET /api/intelligence/v1/list-cross-source-signals`, `GET /api/intelligence/v1/search-gdelt-documents`
 - **类型：** 缓存读取 — 来自 Redis 引导缓存的亚秒级响应。
+- **交叉印证：** 每个顶级故事都包含 `uniqueSourceCount`、`corroborationSourceCount`、`entityCorroboration`、`sourceTier`、`sources` 中参与报道的媒体名称，以及 `memberTitles` 中该聚类的全部标题，另有 `lastUpdated`、`upstreamImportanceScore` 和 `effectiveImportanceScore`。
 - **新鲜度预算：** 标记 `stale: true` 前最多 **30 分钟**（由 seeder cron 的预期间隔设定）。
 
 <CodeGroup>
@@ -1796,6 +1798,7 @@ curl -s https://worldmonitor.app/mcp \
 - **API 端点：** `GET /api/infrastructure/v1/get-bootstrap-data?keys=insights` —— 通过已认证网关读取仪表板使用的同一 `news:insights:v1` payload。
 - **类型：** 缓存支撑的 RPC —— 返回最新的种子程序已接受快照，在缺失、过期或降级时 fail closed。不在请求时调用 LLM。
 - **来源：** 按生产者顺序返回种子 payload 发布的有界 `worldBriefSources` 数组。URL 从显式来源记录复制，而不是在 MCP 执行时生成；保留空 URL 回退项，避免引用编号错位。
+- **交叉印证：** `headlines` 中的每一项在 `topStories` 中都有一个按下标对齐的条目（`topStories[i]` 描述 `headlines[i]`），包含 `sourceCount`、`uniqueSourceCount`、`corroborationSourceCount`、`entityCorroboration`、`sourceTier`，以及 `sources` 中参与报道的媒体名称（上限 12 个）。这些全部由洞察种子程序发布，因此不在请求时计算。注意这里每个故事的 `sources` 是媒体名称列表，与该工具顶层的 `sources`（承载引用记录）不同。`memberTitles` 在此处刻意不返回 —— 它可在输出预算更大的 `get_news_intelligence` 上获取。
 
 <CodeGroup>
 

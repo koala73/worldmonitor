@@ -25,6 +25,11 @@ const workflowSource = readFileSync(
   'utf8',
 );
 const workflow = YAML.parse(workflowSource);
+const retentionSql = readFileSync(
+  new URL('../scripts/umami-retention.sql', import.meta.url),
+  'utf8',
+);
+const executableRetentionSql = retentionSql.replace(/^\s*--.*$/gmu, '');
 
 function volume(overrides = {}) {
   return {
@@ -207,22 +212,135 @@ describe('Umami storage monitor', () => {
   });
 
   it('wires the read-only Railway check and bounded SQL contract', () => {
-    const sql = readFileSync(new URL('../scripts/umami-retention.sql', import.meta.url), 'utf8');
-    const executableSql = sql.replace(/^\s*--.*$/gmu, '');
-
     assert.match(workflowSource, /railway volume .* list --json/);
-    assert.match(workflowSource, /actions\/cache@/);
     assert.match(workflowSource, /check-umami-storage\.mjs/);
-    assert.match(sql, /interval '90 days'/);
-    assert.match(sql, /LIMIT 10000/);
-    assert.match(sql, /64 \* 1024 \* 1024/);
-    assert.match(sql, /pg_advisory_xact_lock/);
-    assert.doesNotMatch(executableSql, /\bTRUNCATE\b/);
-    assert.match(sql, /to_regclass\('public\.session_link'\)/);
-    assert.match(sql, /session_link/);
-    assert.match(sql, /heatmap_event/);
-    assert.match(sql, /session_replay_saved/);
-    assert.doesNotMatch(sql, /ROW_NUMBER/);
+
+    // The combined actions/cache declares `post-if: success()`, so its save is
+    // skipped whenever the job fails — and this job can now fail on the
+    // retention runner alarm. Split restore/save, with the save unconditional,
+    // is what keeps the growth baseline accumulating across a red run.
+    const saveStep = workflow.jobs.monitor.steps.find(
+      (step) => (step.uses ?? '').startsWith('actions/cache/save@'),
+    );
+    assert.match(workflowSource, /actions\/cache\/restore@/);
+    assert.ok(saveStep, 'the growth baseline must be saved by an explicit step');
+    assert.equal(saveStep.if, '${{ !cancelled() }}');
+    assert.doesNotMatch(
+      workflowSource,
+      /uses: actions\/cache@/,
+      'the combined action would drop the sample on any failing run',
+    );
+    assert.match(retentionSql, /LIMIT 10000/);
+    assert.match(retentionSql, /64 \* 1024 \* 1024/);
+    assert.doesNotMatch(executableRetentionSql, /\bTRUNCATE\b/);
+    assert.match(retentionSql, /to_regclass\('public\.session_link'\)/);
+    assert.match(retentionSql, /session_link/);
+    assert.match(retentionSql, /heatmap_event/);
+    assert.match(retentionSql, /session_replay_saved/);
+    assert.doesNotMatch(retentionSql, /ROW_NUMBER/);
+  });
+
+  it('declares the retention horizon once, and at a size the 50 GB volume holds', () => {
+    const declarations = [...executableRetentionSql.matchAll(/\\set\s+retention_horizon\s+'([^']+)'/gu)];
+
+    assert.equal(declarations.length, 1, 'the horizon must have exactly one definition');
+    assert.equal(
+      declarations[0][1],
+      '30 days',
+      '90 days needed ~79 GB of a 50 GB volume at ~0.9 GB per retained day (#6375)',
+    );
+    // Nothing may hard-code an interval alongside the declared horizon, or the
+    // tables drift apart the next time somebody changes only one of them.
+    assert.doesNotMatch(
+      executableRetentionSql,
+      /interval\s+'\d+\s+days?'/u,
+      'every statement must read the declared horizon, not its own literal',
+    );
+  });
+
+  it('never interpolates a psql variable inside a dollar-quoted block', () => {
+    // psql substitutes :'var' only outside quotes. The identical text inside a
+    // DO block's dollar-quoted body reaches the server verbatim and dies with
+    // `syntax error at or near ":"`, which ON_ERROR_STOP turns into a crashed
+    // tick. The two DO blocks read a session setting instead.
+    const regions = [...executableRetentionSql.matchAll(/\$(\w*)\$([\s\S]*?)\$\1\$/gu)];
+    assert.ok(regions.length >= 2, 'both DO blocks must be found, or this check proves nothing');
+    for (const [, , body] of regions) {
+      assert.doesNotMatch(
+        body,
+        /:'/u,
+        'a dollar-quoted body must read current_setting(), not a psql variable',
+      );
+    }
+    assert.match(
+      executableRetentionSql,
+      /SET worldmonitor\.umami_retention_horizon = :'retention_horizon';/u,
+      'the session setting must be derived from the single declared horizon',
+    );
+    assert.match(
+      executableRetentionSql,
+      /current_setting\('worldmonitor\.umami_retention_horizon'\)::interval/u,
+    );
+  });
+
+  it('commits each delete on its own so one slow statement cannot discard the tick', () => {
+    // #6375: a single transaction wrapped all eight statements, so the 60s
+    // cancellation on the website_event delete threw away the event_data
+    // delete that had already reported `DELETE 1369`.
+    const chunks = executableRetentionSql.split(/^COMMIT;$/mu);
+    const bodies = chunks.filter((chunk) => /DELETE FROM|DO \$\$/u.test(chunk));
+
+    assert.ok(bodies.length >= 8, `expected every retention statement to be committed, saw ${bodies.length}`);
+    for (const body of bodies) {
+      const opens = body.match(/^BEGIN;$/gmu) ?? [];
+      assert.equal(opens.length, 1, `each committed unit opens exactly one transaction:\n${body.slice(0, 200)}`);
+    }
+    assert.equal(
+      (executableRetentionSql.match(/^BEGIN;$/gmu) ?? []).length,
+      (executableRetentionSql.match(/^COMMIT;$/gmu) ?? []).length,
+      'every transaction this file opens must be committed',
+    );
+  });
+
+  it('skips a busy tick instead of crashing, and allows a cold batch to finish', () => {
+    assert.match(
+      executableRetentionSql,
+      /pg_try_advisory_lock\(hashtextextended\('worldmonitor\.umami\.retention', 0\)\)/u,
+      'a blocking xact lock turns an overlapping tick into a crash, which is the alarm state',
+    );
+    assert.doesNotMatch(executableRetentionSql, /pg_advisory_xact_lock/u);
+    assert.match(executableRetentionSql, /\\quit/u, 'a locked-out tick must exit 0');
+
+    const [, timeout] = executableRetentionSql.match(/SET statement_timeout = '(\d+)s';/u) ?? [];
+    assert.ok(timeout, 'the file must set its own statement timeout');
+    // One 10,000-row website_event batch measured 15.0s warm and roughly four
+    // times that cold; 60s sat inside that range and cancelled the tick.
+    assert.ok(
+      Number(timeout) >= 120,
+      `statement_timeout ${timeout}s is inside the measured cold-batch range`,
+    );
+  });
+
+  it('keeps the runbook numbers equal to the numbers the SQL actually uses', () => {
+    // The runbook states the horizon and the timeout as fact, and an operator
+    // mid-incident reads it as the live value. Nothing but this test stops the
+    // SQL moving and the prose staying put — the timeout assertion above is a
+    // floor on purpose (it encodes the measured cold-batch constraint, not one
+    // blessed number), so a floor alone would let 300 -> 180 pass silently.
+    const runbook = readFileSync(
+      new URL('../docs/analytics-collector-operations.md', import.meta.url),
+      'utf8',
+    );
+
+    const [, documentedHorizon] = runbook.match(/\*\*The horizon is ([^.*]+)\.\*\*/u) ?? [];
+    const [, declaredHorizon] = executableRetentionSql.match(/\\set\s+retention_horizon\s+'([^']+)'/u) ?? [];
+    assert.ok(documentedHorizon, 'the runbook must state the horizon');
+    assert.equal(documentedHorizon, declaredHorizon);
+
+    const [, documentedTimeout] = runbook.match(/\*\*`statement_timeout` is (\d+)s/u) ?? [];
+    const [, declaredTimeout] = executableRetentionSql.match(/SET statement_timeout = '(\d+)s';/u) ?? [];
+    assert.ok(documentedTimeout, 'the runbook must state the statement timeout');
+    assert.equal(documentedTimeout, declaredTimeout);
   });
 
   it('supersedes stale probes without broadening production credential access', () => {

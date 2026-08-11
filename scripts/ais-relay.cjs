@@ -4509,13 +4509,20 @@ async function fetchTheaterFlightsFromWingbits() {
       for (const f of flightList) {
         const icao24 = f.h || f.icao24 || f.id;
         if (!icao24 || seenIds.has(icao24)) continue;
-        seenIds.add(icao24);
         const callsign = (f.f || f.callsign || f.flight || '').trim();
         if (!theaterIsMilCallsign(callsign)) continue;
+        const lat = Number(f.la ?? f.latitude ?? f.lat);
+        const lon = Number(f.lo ?? f.longitude ?? f.lon ?? f.lng);
+        const inTheater = Number.isFinite(lat) && Number.isFinite(lon) && POSTURE_THEATERS.some(
+          (theater) => lat >= theater.bounds.south && lat <= theater.bounds.north &&
+            lon >= theater.bounds.west && lon <= theater.bounds.east,
+        );
+        if (!inTheater) continue;
+        seenIds.add(icao24);
         flights.push({
           id: icao24, callsign,
-          lat: f.la || f.latitude || f.lat,
-          lon: f.lo || f.longitude || f.lon || f.lng,
+          lat,
+          lon,
           altitude: f.ab || f.altitude || f.alt || 0,
           heading: f.th || f.heading || f.track || 0,
           speed: f.gs || f.groundSpeed || f.speed || f.velocity || 0,
@@ -4595,6 +4602,7 @@ const THEATER_POSTURE_SOURCE_COUNT_KEYS = Object.freeze({
   'vessel-only': 'vesselOnly',
 });
 const theaterPostureSourceCounts = { opensky: 0, adsbLol: 0, wingbits: 0, vesselOnly: 0 };
+let theaterPostureEmptyRejections = 0;
 let theaterPostureLastRun = null;
 
 async function seedTheaterPosture() {
@@ -4627,6 +4635,21 @@ async function seedTheaterPosture() {
   }
   const theaters = calculateTheaterPostures(flights);
   const totalVessels = theaters.reduce((sum, t) => sum + t.trackedVessels, 0);
+  const inputRecordCount = flights.length + totalVessels;
+  if (inputRecordCount === 0) {
+    theaterPostureEmptyRejections += 1;
+    theaterPostureLastRun = {
+      attemptedAt: new Date().toISOString(),
+      source: flightSource,
+      flightCount: 0,
+      vesselCount: 0,
+      published: false,
+      reason: 'no-input-records',
+    };
+    const elapsed = ((Date.now() - t0) / 1000).toFixed(1);
+    console.warn(`[TheaterPosture] Rejected empty publication: no military flights or vessels; preserving last-known-good data [${elapsed}s]`);
+    return;
+  }
   const payload = { theaters };
   const publicationId = `ais-relay:${Date.now()}-${crypto.randomBytes(4).toString('hex')}`;
   const lockResult = await upstashSetNx(THEATER_POSTURE_LOCK_KEY, publicationId, THEATER_POSTURE_LOCK_TTL_SECONDS);
@@ -4651,22 +4674,29 @@ async function seedTheaterPosture() {
     // differ (the seeder's 'wingbits' is its Tier-1 normal path, ours is the
     // last-resort fallback). publicationId pairs this metadata with the
     // canonical envelope _seed.groupId for cross-producer consistency checks.
-    const seedMetaOk = await upstashSet('seed-meta:theater-posture', { fetchedAt: publishedAt, recordCount: flights.length + totalVessels, sourceVersion: flightSource, producer: 'ais-relay', publicationId }, 604800);
-    theaterPostureSourceCounts[THEATER_POSTURE_SOURCE_COUNT_KEYS[flightSource]] += 1;
+    // Do not advance the freshness marker when the canonical envelope failed:
+    // health must continue to describe the last readable canonical snapshot.
+    const seedMetaOk = ok1 && await upstashSet('seed-meta:theater-posture', { fetchedAt: publishedAt, recordCount: inputRecordCount, sourceVersion: flightSource, producer: 'ais-relay', publicationId }, 604800);
+    const redisOk = ok1 && ok2 && ok3;
+    const published = ok1 && seedMetaOk;
+    if (published) theaterPostureSourceCounts[THEATER_POSTURE_SOURCE_COUNT_KEYS[flightSource]] += 1;
+    const completedAt = new Date().toISOString();
     theaterPostureLastRun = {
-      seededAt: new Date().toISOString(),
+      ...(published ? { seededAt: completedAt } : { attemptedAt: completedAt }),
       source: flightSource,
       flightCount: flights.length,
       vesselCount: totalVessels,
-      redisOk: ok1 && ok2 && ok3,
+      published,
+      redisOk,
       // Reported separately from redisOk: health gates staleness on the
       // seed-meta key, so a failed attribution write must not hide behind
       // three green envelope writes.
       seedMetaOk,
+      ...(published ? {} : { reason: 'write-failed' }),
     };
     const elevated = theaters.filter((t) => t.postureLevel !== 'normal').length;
     const elapsed = ((Date.now() - t0) / 1000).toFixed(1);
-    console.log(`[TheaterPosture] Seeded ${flights.length} mil flights (source=${flightSource}), ${totalVessels} vessels, ${theaters.length} theaters (${elevated} elevated), redis: ${ok1 && ok2 && ok3 ? 'OK' : 'PARTIAL'}, seed-meta: ${seedMetaOk ? 'OK' : 'FAILED'} [${elapsed}s]`);
+    console.log(`[TheaterPosture] ${published ? 'Seeded' : 'Publication failed for'} ${flights.length} mil flights (source=${flightSource}), ${totalVessels} vessels, ${theaters.length} theaters (${elevated} elevated), redis: ${redisOk ? 'OK' : 'PARTIAL'}, seed-meta: ${seedMetaOk ? 'OK' : 'FAILED'} [${elapsed}s]`);
   } finally {
     await upstashReleaseLockIfOwner(THEATER_POSTURE_LOCK_KEY, publicationId);
   }
@@ -7342,16 +7372,18 @@ function getRelayRollingMetrics() {
       coverage: aviationCoverage,
       minimumServedCoverage: AVIATION_MIN_SERVED_COVERAGE,
     },
-    // Which upstream fed each theater-posture publication cycle. Kept separate
+    // Which upstream fed each theater-posture publication cycle, plus empty
+    // cycles that were rejected before publication. Kept separate
     // from the opensky route counters above so healthy fallback publication
     // (adsb.lol/Wingbits) is never read as OpenSky recovery (#5945). Unlike
     // the sibling sections these are NOT rolling-window: the seed cadence
     // (~10 min) exceeds the metrics window, so bucketed counts would read
     // all-zero — sourceCountsSinceBoot is process-lifetime and lastRun
-    // (with seededAt) is the current-state signal.
+    // (with seededAt or attemptedAt) is the current-state signal.
     theaterPosture: {
       lastRun: theaterPostureLastRun,
       sourceCountsSinceBoot: { ...theaterPostureSourceCounts },
+      emptyRejectionsSinceBoot: theaterPostureEmptyRejections,
     },
     googleFlights: {
       requests: rollup.googleFlightsRequests,
@@ -12566,6 +12598,16 @@ server.listen(PORT, () => {
   relayBoundPort = listeningPort;
   console.log(`[Relay] WebSocket relay on port ${listeningPort} (OpenSky: ${OPENSKY_PROXY_ENABLED ? 'via proxy' : 'direct'})`);
   if (RELAY_TEST_MODE) {
+    if (process.env.RELAY_TEST_THEATER_VESSEL === '1') {
+      candidateReports.set('test-military-vessel', {
+        mmsi: 'test-military-vessel',
+        name: 'USS TEST',
+        lat: 30,
+        lon: 45,
+        shipType: 35,
+        timestamp: Date.now(),
+      });
+    }
     console.log('[Relay] Test mode enabled — background seed loops are disabled');
     return;
   }

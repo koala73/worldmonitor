@@ -56,7 +56,7 @@ jobs:
           # cross-directory-import + native-dep breakage class documented in
           # tests/dockerfile-digest-notifications-imports.test.mjs.
           DIGEST=$(echo "$FILES" | awk '
-            /^(scripts\/|shared\/|server\/_shared\/|api\/|Dockerfile\.digest-notifications|package\.json|package-lock\.json)/ { count++ }
+            /^(scripts\/|shared\/|server\/_shared\/|api\/|\.dockerignore$|Dockerfile\.digest-notifications|package\.json|package-lock\.json)/ { count++ }
             END { print count + 0 }
           ')
           echo "digest=$( [ "$DIGEST" -gt 0 ] && echo true || echo false )" >> "$GITHUB_OUTPUT"
@@ -80,6 +80,7 @@ jobs:
           # unit suite. Run a real PostgreSQL gate only when its managed image,
           # migration, patch, focused tests, or this workflow changes.
           UMAMI=$(echo "$FILES" | awk '
+            /^\.dockerignore$/ { count++ }
             /^Dockerfile\.umami$/ { count++ }
             /^Dockerfile\.umami-retention$/ { count++ }
             /^docker\/umami\// { count++ }
@@ -183,26 +184,10 @@ jobs:
         run: VITE_VARIANT=full ./node_modules/.bin/vite build
       - run: WM_EXPECT_BUILT_OUTPUT=1 npm run test:data
       - name: Edge function bundle check
-        run: |
-          # JS edge entries (existing loop, unchanged).
-          find api/ -name "*.js" -not -name "_*" -not -name "*.test.*" | while read f; do
-            npx esbuild "$f" --bundle --format=esm --platform=browser --outfile=/dev/null || {
-              echo "ERROR: esbuild failed to bundle $f"
-              exit 1
-            }
-          done
-          # TS edge entries — opt-in allowlist. Most TS endpoints pull in
-          # loaders esbuild doesn't ship by default (e.g. @vercel/og WASM
-          # imports under api/brief/carousel/...), so we don't auto-include
-          # api/*.ts the way we do api/*.js. Add a new entry to this list
-          # ONLY after confirming `npx esbuild <file> --bundle --format=esm
-          # --platform=browser --outfile=/dev/null` succeeds locally.
-          for f in api/mcp.ts; do
-            npx esbuild "$f" --bundle --format=esm --platform=browser --outfile=/dev/null || {
-              echo "ERROR: esbuild failed to bundle $f"
-              exit 1
-            }
-          done
+        # Shared checker with caller-specific profiles. Tracked files are the
+        # deployable contract, so ignored Node sidecar bundles left by local
+        # builds are never inputs.
+        run: node scripts/check-edge-function-bundles.mjs --caller=ci
       - name: Sidecar handler bundles build (#5902)
         # The desktop sidecar loads esbuild-bundled api/{domain}/v1/[rpc].js
         # handlers whose import graph spans src/ and server/ (via the @/

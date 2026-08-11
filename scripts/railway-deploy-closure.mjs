@@ -127,8 +127,8 @@ export function buildContextPrefix(rootDirectory) {
  *
  * `null` patterns mean "no filter — every change in the build context reaches
  * this service", which is Railway's own behaviour for a service with no watch
- * paths and the registry's meaning for an explicitly empty array (umami and the
- * bootstrap publisher both use it deliberately).
+ * paths and the registry's meaning for an explicitly empty array (the
+ * bootstrap publisher uses it deliberately).
  *
  * The two sources are UNIONED rather than one winning, because they can
  * legitimately disagree: the registry is edited in a PR and only reaches

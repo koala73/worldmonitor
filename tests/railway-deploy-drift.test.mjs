@@ -531,8 +531,8 @@ describe('Railway deploy drift against the service closure', () => {
   });
 
   it('does not excuse a service that watches everything', () => {
-    // umami and the bootstrap publisher declare an empty filter deliberately;
-    // for them every merge is closure-relevant.
+    // The bootstrap publisher declares an empty filter deliberately; for an
+    // unfiltered service every merge is closure-relevant.
     const everything = resolveServiceClosure({ liveService: { source: {}, build: { watchPatterns: [] } } });
     const result = classify(
       [deployment('REMOVED', { at: '2026-08-03T07:27:24Z', sha: PREVIOUS })],

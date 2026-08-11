@@ -21,6 +21,12 @@ import {
   COMPANY_LIMIT,
 } from "./_shared";
 import { requireProvisionedAccount } from "./accounts";
+import {
+  cancelCompanyScanWork,
+  purgeCompanyScanStateBatch,
+  queueCompanySources,
+  scheduleCompanySourcesHandler,
+} from "./orchestration";
 import { companyPatchValidator, monitoredCompanyInputValidator } from "./validators";
 
 type ReplayMetadata =
@@ -128,6 +134,10 @@ export const createCompanyForOwner = internalMutation({
     const companyId = await insertNormalizedCompany(ctx, account, company, {
       directRequestId: clientRequestId,
       directFingerprint,
+    });
+    await scheduleCompanySourcesHandler(ctx, {
+      ownerAccountId: account.logicalAccountId,
+      companyId,
     });
     await ctx.db.patch(account._id, {
       companyCount: companyCount + 1,
@@ -293,6 +303,14 @@ export const updateCompanyForOwner = internalMutation({
       snapshotGeneration: (account.snapshotGeneration ?? 0) + 1,
       updatedAt: now,
     });
+    if (company.lifecycle === "active") {
+      await cancelCompanyScanWork(ctx, {
+        ownerAccountId: account.logicalAccountId,
+        companyId: company.companyId,
+        reason: "superseded",
+      });
+      await queueCompanySources(ctx, account.logicalAccountId, company.companyId);
+    }
     return { status: "updated", companyId: company.companyId };
   },
 });
@@ -325,6 +343,13 @@ export const setCompanyStateForOwner = internalMutation({
 
     const now = Date.now();
     if (args.state !== "removed") {
+      if (args.state === "paused") {
+        await cancelCompanyScanWork(ctx, {
+          ownerAccountId: account.logicalAccountId,
+          companyId: company.companyId,
+          reason: "superseded",
+        });
+      }
       await ctx.db.patch(company._id, {
         lifecycle: args.state,
         snapshotGeneration: company.snapshotGeneration + 1,
@@ -334,16 +359,24 @@ export const setCompanyStateForOwner = internalMutation({
         snapshotGeneration: (account.snapshotGeneration ?? 0) + 1,
         updatedAt: now,
       });
+      if (args.state === "active") {
+        await queueCompanySources(ctx, account.logicalAccountId, company.companyId);
+      }
       return { status: args.state, companyId: company.companyId };
     }
 
     const purgeGeneration = company.purgeGeneration + 1;
+    await cancelCompanyScanWork(ctx, {
+      ownerAccountId: account.logicalAccountId,
+      companyId: company.companyId,
+      reason: "company_removed",
+    });
     await deleteCompanyClaims(ctx, account.logicalAccountId, company.companyId);
     await ctx.db.patch(company._id, {
       lifecycle: "removed",
       removedAt: now,
       purgeGeneration,
-      purgePhase: "payload",
+      purgePhase: "scan",
       snapshotGeneration: company.snapshotGeneration + 1,
       updatedAt: now,
     });
@@ -386,6 +419,22 @@ export const advanceCompanyPurge = internalMutation({
       return { status: "stale" };
     }
     if (company.purgePhase === "complete") return { status: "complete" };
+    if (company.purgePhase === "scan") {
+      const scanPurge = await purgeCompanyScanStateBatch(
+        ctx,
+        args.ownerAccountId,
+        args.companyId,
+      );
+      if (!scanPurge.complete) {
+        await ctx.scheduler.runAfter(
+          0,
+          internal.companyMonitoring.companies.advanceCompanyPurge,
+          args,
+        );
+        return { status: "scan" };
+      }
+      await ctx.db.patch(company._id, { purgePhase: "payload", updatedAt: Date.now() });
+    }
     await ctx.db.patch(company._id, {
       name: undefined,
       sortName: undefined,
