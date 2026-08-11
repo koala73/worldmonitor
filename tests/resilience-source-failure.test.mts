@@ -51,14 +51,6 @@ const INTENTIONALLY_UNTRACKED_STANDALONE_META_KEYS = new Set([
 ]);
 
 const TRACKED_STANDALONE_META_KEYS_NOT_IN_HEALTH = new Set([
-  // scripts/seed-education-attainment.mjs ships ahead of its /api/health probe:
-  // check-health-probe-cutovers.mts requires a new strict probe to carry
-  // pre-seed evidence, which cannot exist before the producer has ever run. The
-  // source-failure threshold is still tracked here so a dead seeder surfaces as
-  // source-failure on the scorer side in the meantime. The health probe — and
-  // the removal of this entry — land in the follow-up once seed-bundle-macro
-  // has published once. Owned by #6452.
-  'seed-meta:resilience:education-attainment',
   // api/seed-health.js tracks this seed with intervalMin=360; /api/health
   // does not include a direct SEED_META entry because its data key is
   // parameterized by year.
@@ -71,9 +63,19 @@ const TRACKED_STANDALONE_META_KEYS_NOT_IN_HEALTH = new Set([
 ]);
 
 describe('education health-probe rollout sequencing', () => {
-  it('defers both data and seed-meta registration until the first production publish', () => {
-    assert.equal(Object.hasOwn(healthTesting.STANDALONE_KEYS, 'educationAttainment'), false);
-    assert.equal(Object.hasOwn(healthTesting.SEED_META, 'educationAttainment'), false);
+  // Inverted in #6452 once seed-bundle-macro published the series for real. The
+  // assertion is kept rather than deleted: it used to lock "not yet registered",
+  // and now it locks "registered on BOTH halves". Registering only SEED_META
+  // leaves /api/health with no canonical data key to probe, which reads as a
+  // healthy meta entry over data nothing checks — the same misleading-green
+  // shape the recoveryFuelStocks slot was removed for.
+  it('registers both the data key and the seed-meta probe after the first production publish', () => {
+    assert.equal(healthTesting.STANDALONE_KEYS.educationAttainment, 'resilience:education-attainment:v1');
+    assert.equal(
+      healthTesting.SEED_META.educationAttainment?.key,
+      'seed-meta:resilience:education-attainment',
+    );
+    assert.equal(healthTesting.SEED_META.educationAttainment?.maxStaleMin, 11520);
   });
 });
 

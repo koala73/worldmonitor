@@ -407,6 +407,10 @@ const STANDALONE_KEYS = {
   lowCarbonGeneration:      'resilience:low-carbon-generation:v1',
   fossilElectricityShare:   'resilience:fossil-electricity-share:v1',
   powerLosses:              'resilience:power-losses:v1',
+  // Same strict treatment as the v2 energy seeds above: the education seeder is
+  // a seed-bundle-macro member, so an absent key means the bundle stopped
+  // publishing, which is a real outage and must read CRIT rather than WARN.
+  educationAttainment:      'resilience:education-attainment:v1',
   goldExtended:             'market:gold-extended:v1',
   goldEtfFlows:             'market:gold-etf-flows:v1',
   goldCbReserves:           'market:gold-cb-reserves:v1',
@@ -849,21 +853,29 @@ const SEED_META = {
   // interval plus roughly one day of retry headroom, not "2x interval". The
   // budget alarms on the SEEDER being dead, not on the data being old —
   // content-age staleness is the seeder's own 48-month maxContentAgeMin.
-  // educationAttainment is deliberately NOT registered here yet. The seeder
-  // (scripts/seed-education-attainment.mjs) ships in this PR but has never run
-  // in production, so a strict probe would report EMPTY from merge until the
-  // first seed-bundle-macro tick.
-  //
-  // scripts/check-health-probe-cutovers.mts enforces the sequencing: a new
-  // probe needs either machine-readable pre-seed evidence (impossible before
-  // the producer exists) or an acknowledgement that expires by the producer's
-  // first scheduled run, within 24h of activation — which would require
-  // knowing the merge time in advance.
-  //
-  // The probe therefore lands in a follow-up once the bundle has published
-  // once, using the pre-seed evidence path with a real compact-health OK.
-  // #6452 owns it, and it is a pre-flip requirement in
-  // docs/methodology/education-flag-flip-runbook.md.
+  educationAttainment:     {
+    key: 'seed-meta:resilience:education-attainment',
+    maxStaleMin: 11520,
+    // Pre-seed evidence per scripts/check-health-probe-cutovers.mts. #6450 shipped
+    // the seeder but Railway refused the merge commit (its post-merge check suite
+    // was red on two unrelated tests), so seed-bundle-macro ran an image without
+    // the script and the probe could not be registered then. The service was
+    // deployed to a green head on 2026-08-11 and this entry cites its first real
+    // publish. See docs/methodology/education-flag-flip-runbook.md.
+    cutover: {
+      mode: 'preseed',
+      fromKey: null,
+      issue: 6452,
+      verifiedAt: '2026-08-11T08:03:25.357Z',
+      evidence: {
+        platform: 'railway',
+        service: 'seed-bundle-macro',
+        probeKey: 'seed-meta:resilience:education-attainment',
+        compactHealthStatus: 'OK',
+        reference: 'https://github.com/koala73/worldmonitor/issues/6452#issuecomment-5252687464',
+      },
+    },
+  },
   webcams:                 { key: 'seed-meta:webcam:cameras:geo',                   maxStaleMin: 1440 }, // seed-webcams writes 24h geo/meta keys plus a 30h active pointer; stale at 24h before the layer goes blank.
   // #5736 — history-ingest freshness per collector. `fetchedAt` here is the
   // last HEALTHY append (success, or a correctly-detected unconfigured run),
