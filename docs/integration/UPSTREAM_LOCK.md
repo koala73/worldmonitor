@@ -21,6 +21,12 @@ upstream https://github.com/koala73/worldmonitor.git
 
 The Phase 0 closure deliberately did not treat the connected-app upstream lookup as a local object fetch. `ahead`/`behind`, merge-base, and any `--ff-only` action remain Phase 1 gates after the legal confirmation.
 
+## Phase 1 remote comparison and local-fetch state
+
+The connected GitHub app compared `0fca203c776dd5fa4913c4bd52f99cd2c3c13a25` (base) with `ae0a0fe26bcbdb683b366899e4dc38fb8ccfb5ad` (head): status `ahead`, upstream ahead by 43, fork behind by 0, merge-base `0fca203...`. This demonstrates a fast-forward relationship at the remote service.
+
+Local verification is still required and currently unavailable: `origin/main` remains shallow at one commit, no local `upstream/main` ref exists, and two Git fetch methods failed because this machine could not reach GitHub HTTPS. Do not use this remote comparison as authorization to change `main`, manufacture a local ref, or label the local mother baseline synchronized.
+
 ## Legacy-data lock
 
 The legacy PokieTicker database is **not** a Git artifact and must not be copied into the mother repository as a normal blob.

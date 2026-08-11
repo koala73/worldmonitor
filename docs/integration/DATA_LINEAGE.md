@@ -29,3 +29,7 @@ No upstream website is framed or embedded as a substitute for an owned data pipe
 ## Phase 0 recovery-audit boundary
 
 The recovery audit copied only three non-secret project metadata files to a Codex-created temporary directory for a byte-for-byte readability check. It did not import the PokieTicker database, historical OHLC, news, credentials, or any legacy runtime file into the WorldMonitor mother repository. The resulting product data lineage therefore remains unchanged from this baseline.
+
+## Phase 1 blocked-state boundary
+
+No data path was activated while upstream synchronization is blocked. In particular, the legacy backup’s nested WorldMonitor repository was inspected read-only and not copied into the formal mother workspace; its generated-file modifications are not product data and cannot serve as an upstream provenance substitute.

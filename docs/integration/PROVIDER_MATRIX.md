@@ -4,6 +4,8 @@ This matrix is the source of truth for UI labels, API contracts, caching and fal
 
 **Phase 0 closure check (2026-08-11):** no Provider credential, plan, contractual real-time authorization, or live data path was added. Every listed capability remains at the status below until code and Provider verification prove otherwise.
 
+**Phase 1 preflight check (blocked):** the current block is local source synchronization, not a Provider credential. No Provider, fallback, K-line payload, quote endpoint, AIS message, or trade record was introduced while the upstream fetch gate is unavailable.
+
 | Capability | Provider / source | Current status | What may be displayed | What may not be displayed |
 |---|---|---|---|---|
 | US stock real-time bars/quotes | Massive or equivalent licensed provider | `NOT_CONFIGURED` | Configuration requirement and disabled state | Real-time/minute price or a synthetic bar |

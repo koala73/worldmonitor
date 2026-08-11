@@ -33,3 +33,9 @@
 **Decision:** Treat Phase 0 as complete only after verifying the isolated-index worktree, source locks, a deterministic 20-file backup sample, and a three-file read-only restoration probe.
 **Reason:** A backup directory and a prose statement alone are not sufficient recovery evidence.
 **Consequence:** The closure output, SHA-256 values, exit codes, and the host-protected temporary cleanup limitation are retained in `evidence/phase0-closure.md`. The normal index remains unavailable because `.git/index.lock` is host-protected; source state is verified with the clean Git-native isolated index instead of deleting the lock or resetting the worktree.
+
+## D-0007 — Do not substitute a cached or dirty old copy for the required upstream baseline
+
+**Decision:** Leave Phase 1 blocked until `upstream/main` is fetched into the new workspace and its local graph proves the remote relationship.
+**Reason:** GitHub HTTPS is currently unavailable from the machine. The legacy backup contains a nested WorldMonitor repository only at `0fca203...` and it has pre-existing generated-file modifications; it does not contain `ae0a0fe...`.
+**Consequence:** Do not copy that tree into the formal mother workspace, create a synthetic `upstream/main`, run a build against it, or claim the 43 upstream commits were integrated. The verified remote comparison and failed local commands are recorded in `evidence/phase1-preflight-network.md`.

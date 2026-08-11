@@ -34,3 +34,16 @@
 ## Phase 0 gate
 
 **PASS.** Legacy checkpoint is recoverable by sampled hash evidence, the formal workspace is explicit, source locks are recorded, the Phase 0 documentation commit is recorded above, and no destructive overwrite occurred.
+
+## Phase 1 preflight — not completed
+
+| Check | Result | Evidence |
+|---|---|---|
+| AGPL and independent-brand user confirmation | PASS (direct user message) | User explicitly replied that both confirmations are `我确认`. The persisted panel still contains `未确认`; no unobserved file edit is claimed. |
+| Remote fork/upstream ancestry | PASS (connected GitHub app) | Compare `0fca203...` to `ae0a0fe...`: `status=ahead`, `ahead_by=43`, `behind_by=0`, merge-base `0fca203...`. This is remote evidence, not a substitute for local Git object verification. |
+| Local origin history expansion | FAIL | `git fetch --deepen=100 origin main` reported `Recv failure: Connection was reset`; `origin/main` remains one commit deep and the repository remains shallow. The outer PowerShell wrapper exited 0 because it did not propagate the inner Git status; this is logged as a failed fetch, not a pass. |
+| Local upstream object fetch | FAIL | HTTP/1.1 fetch to `upstream/main` exited `128`: `Failed to connect to github.com port 443 after 21059 ms`. No `refs/remotes/upstream/main` was created. |
+| Local GitHub connectivity | FAIL | `Test-NetConnection github.com -Port 443` timed out at 30 seconds; TCP connect and ping reported failure. |
+| Full mother checkout / dependency baseline / browser baseline | BLOCKED | These steps are intentionally not run without the verified upstream object graph and complete source tree. |
+
+**Phase 1 gate: BLOCKED.** No code integration, source sync, build, test, screenshot, or functionality claim has been made.
