@@ -207,8 +207,8 @@ describe('keyword_spike re-spike evidence breaks publication-time ties by arriva
       expect(titles.slice(0, laterHeadlines.length)).toEqual(
         laterHeadlines.map(headline => headline.title),
       );
-      expect(titles).not.toContain(originalHeadlines.at(-1)!.title);
-      expect(titles).not.toContain(originalHeadlines.at(-2)!.title);
+      expect(titles).not.toContain(originalHeadlines[originalHeadlines.length - 1]!.title);
+      expect(titles).not.toContain(originalHeadlines[originalHeadlines.length - 2]!.title);
     } finally {
       dateNow.mockRestore();
     }
