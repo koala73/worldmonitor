@@ -1051,6 +1051,7 @@
       "scripts/seed-china-macro.mjs",
       "scripts/seed-china-policy-events.mjs",
       "scripts/seed-china-release-calendar.mjs",
+      "scripts/seed-education-attainment.mjs",
       "scripts/seed-eurostat-country-data.mjs",
       "scripts/seed-eurostat-gov-debt-q.mjs",
       "scripts/seed-eurostat-house-prices.mjs",
