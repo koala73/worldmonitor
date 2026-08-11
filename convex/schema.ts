@@ -9,6 +9,12 @@ import {
 } from "./constants";
 import {
   companyMonitoringCompleteReceiptValidator,
+  companyMonitoringCandidateStateValidator,
+  companyMonitoringCandidateTerminalReasonValidator,
+  companyMonitoringEvidenceAuthorityValidator,
+  companyMonitoringEvidenceIndependenceValidator,
+  companyMonitoringEvidenceProviderValidator,
+  companyMonitoringEvidenceStateValidator,
   companyMonitoringNonReassuringReasonValidator,
   companyMonitoringNonReassuringReceiptValidator,
   companyMonitoringScanSourceValidator,
@@ -1134,6 +1140,8 @@ export default defineSchema({
     purgePhase: v.union(
       v.literal("none"),
       v.literal("scan"),
+      v.literal("evidence"),
+      v.literal("candidates"),
       v.literal("payload"),
       v.literal("complete"),
     ),
@@ -1254,6 +1262,98 @@ export default defineSchema({
   })
     .index("by_account_postId", ["ownerAccountId", "postId"])
     .index("by_account_company", ["ownerAccountId", "companyId"]),
+
+  // Provider locators are copied into account + company rows. No unscoped
+  // locator or fingerprint index exists, so identical provider results in two
+  // portfolios remain separate customer evidence.
+  companyMonitoringEvidence: defineTable({
+    ownerAccountId: v.string(),
+    companyId: v.string(),
+    evidenceId: v.string(),
+    provider: companyMonitoringEvidenceProviderValidator,
+    providerLocator: v.string(),
+    providerLocatorHash: v.string(),
+    providerOrigin: v.string(),
+    providerOriginFingerprint: v.string(),
+    contentFingerprint: v.string(),
+    evidenceFingerprint: v.string(),
+    occurrenceDedupeKey: v.string(),
+    matchedClaimIds: v.array(v.string()),
+    sourceAuthority: companyMonitoringEvidenceAuthorityValidator,
+    independence: companyMonitoringEvidenceIndependenceValidator,
+    state: companyMonitoringEvidenceStateValidator,
+    url: v.optional(v.string()),
+    title: v.optional(v.string()),
+    text: v.optional(v.string()),
+    author: v.optional(v.string()),
+    authorAccountId: v.optional(v.string()),
+    publishedAt: v.number(),
+    observedAt: v.number(),
+    expiresAt: v.optional(v.number()),
+    firstSeenAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_account_company", ["ownerAccountId", "companyId"])
+    .index("by_account_company_locator", [
+      "ownerAccountId",
+      "companyId",
+      "provider",
+      "providerLocatorHash",
+    ])
+    .index("by_account_company_occurrence", [
+      "ownerAccountId",
+      "companyId",
+      "occurrenceDedupeKey",
+    ])
+    .index("by_account_company_occurrence_state", [
+      "ownerAccountId",
+      "companyId",
+      "occurrenceDedupeKey",
+      "state",
+    ])
+    .index("by_account_company_provider_state", [
+      "ownerAccountId",
+      "companyId",
+      "provider",
+      "state",
+    ])
+    .index("by_account_company_state_expiresAt", [
+      "ownerAccountId",
+      "companyId",
+      "state",
+      "expiresAt",
+    ]),
+
+  // One account/company occurrence is the classifier handoff. References are
+  // bounded snapshots; referenceCount preserves the full active evidence size.
+  companyMonitoringCandidates: defineTable({
+    ownerAccountId: v.string(),
+    companyId: v.string(),
+    candidateId: v.string(),
+    occurrenceDedupeKey: v.string(),
+    state: companyMonitoringCandidateStateValidator,
+    firstDiscoveredAt: v.number(),
+    firstDiscoveredPath: v.string(),
+    attemptCount: v.number(),
+    holdUntil: v.optional(v.number()),
+    expiresAt: v.number(),
+    observationBlocking: v.boolean(),
+    referenceEvidenceFingerprints: v.array(v.string()),
+    referenceCount: v.number(),
+    referencesTruncated: v.boolean(),
+    selectionPolicyVersion: v.string(),
+    terminalReason: v.optional(companyMonitoringCandidateTerminalReasonValidator),
+    evidenceRevision: v.number(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_account_company", ["ownerAccountId", "companyId"])
+    .index("by_account_company_occurrence", [
+      "ownerAccountId",
+      "companyId",
+      "occurrenceDedupeKey",
+    ])
+    .index("by_account_state_updatedAt", ["ownerAccountId", "state", "updatedAt"]),
 
   // One durable company/source obligation. The closed state variants keep a
   // single uniqueness row while a work item's terminal receipt preserves the

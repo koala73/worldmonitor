@@ -15,16 +15,29 @@ import {
 import { fingerprint } from "./_shared";
 import {
   companyMonitoringFinalizeResultValidator,
+  companyMonitoringExaIngestionValidator,
   companyMonitoringNonReassuringReasonValidator,
   companyMonitoringProviderErrorReasonValidator,
   companyMonitoringScanSourceValidator,
   companyMonitoringXIngestionValidator,
 } from "./validators";
+import {
+  ingestCompanyEvidenceForCompanyIds,
+  purgeAccountCandidatesBatch,
+  purgeAccountEvidenceBatch,
+  setAllCompanyProviderEvidenceState,
+  setCompanyEvidenceStateForProviderLocators,
+} from "./evidence";
+import {
+  COMPANY_MONITORING_EVIDENCE_POLICY,
+  type ProviderEvidence,
+} from "../../shared/company-monitoring-evidence";
 
 type Source = Infer<typeof companyMonitoringScanSourceValidator>;
 type FinalizeResult = Infer<typeof companyMonitoringFinalizeResultValidator>;
 type NonReassuringReason = Infer<typeof companyMonitoringNonReassuringReasonValidator>;
 type ProviderErrorReason = Infer<typeof companyMonitoringProviderErrorReasonValidator>;
+type ExaIngestion = Infer<typeof companyMonitoringExaIngestionValidator>;
 type XIngestion = Infer<typeof companyMonitoringXIngestionValidator>;
 type Work = Doc<"companyMonitoringScanWorkItems">;
 type Obligation = Doc<"companyMonitoringScanObligations">;
@@ -57,6 +70,7 @@ const WORKER_ID = /^[A-Za-z0-9._:-]{1,64}$/;
 const X_ACCOUNT_ID = /^[1-9]\d{1,18}$/;
 const X_HANDLE = /^[A-Za-z0-9_]{1,15}$/;
 const SHA256_HEX = /^[a-f0-9]{64}$/;
+const CONTROL_CHARACTER = /[\u0000-\u001f\u007f]/u;
 const X_PACK_QUERY = /^\(from:[A-Za-z0-9_]{1,15}(?: OR from:[A-Za-z0-9_]{1,15})*\) -is:retweet$/;
 const MAX_X_PACKS = 25;
 const MAX_X_POSTS = 100;
@@ -66,7 +80,22 @@ const X_PURGE_POST_ALIAS_BATCH_SIZE =
 const MAX_X_IDENTITIES = COMPANY_MONITORING_SCAN_COHORT_LIMIT;
 const MAX_X_UNEXPECTED_AUTHORS = 100;
 const MAX_X_TEXT_BYTES = 32 * 1024;
+const MAX_EXA_PROVIDER_ID_BYTES = 512;
+const MAX_EXA_REQUEST_ID_BYTES = 512;
+const MAX_EXA_URL_BYTES = 2_048;
+const MAX_EXA_TITLE_BYTES = 512;
+const MAX_EXA_AUTHOR_BYTES = 256;
 const X_IDENTITY_CLOCK_SKEW_MS = 30 * 1000;
+const EXA_RETRIEVAL_CLOCK_SKEW_MS = 30 * 1000;
+const LOW_AUTHORITY_EXA_HOSTS = new Set([
+  "facebook.com",
+  "instagram.com",
+  "reddit.com",
+  "threads.net",
+  "tiktok.com",
+  "twitter.com",
+  "x.com",
+]);
 const X_TRACKED_POSTS_PER_COMPANY = Math.max(
   1,
   Math.floor(MAX_X_POSTS / COMPANY_MONITORING_SCAN_COHORT_LIMIT),
@@ -723,6 +752,8 @@ export async function purgeAccountScanStateBatch(
   for (const alias of postAliasPage.slice(0, X_PURGE_POST_ALIAS_BATCH_SIZE)) {
     await ctx.db.delete(alias._id);
   }
+  const normalizedEvidence = await purgeAccountEvidenceBatch(ctx, ownerAccountId);
+  const normalizedCandidates = await purgeAccountCandidatesBatch(ctx, ownerAccountId);
   await updateAccountDueFromWork(ctx, ownerAccountId);
   return {
     complete:
@@ -730,7 +761,9 @@ export async function purgeAccountScanStateBatch(
       receiptLinkPage.length <= SCAN_PURGE_RECEIPT_LINK_BATCH_SIZE &&
       identityPage.length <= X_PURGE_IDENTITY_BATCH_SIZE &&
       evidencePage.length <= X_PURGE_EVIDENCE_BATCH_SIZE &&
-      postAliasPage.length <= X_PURGE_POST_ALIAS_BATCH_SIZE,
+      postAliasPage.length <= X_PURGE_POST_ALIAS_BATCH_SIZE &&
+      normalizedEvidence.complete &&
+      normalizedCandidates.complete,
   };
 }
 
@@ -884,6 +917,12 @@ async function xSubjectsForClaim(
           allowedUses: [],
           updatedAt: now,
         };
+        await setAllCompanyProviderEvidenceState(ctx, {
+          ownerAccountId,
+          companyId: obligation.companyId,
+          provider: "x",
+          state: "authority_lost",
+        });
       }
       const claimValue = (claim: Doc<"companyMonitoringClaims">) => ({
         claimId: claim.claimId,
@@ -1445,6 +1484,86 @@ async function validXIngestionForWork(
   return { valid: true, payload };
 }
 
+function validExaUrl(rawUrl: string): boolean {
+  if (
+    rawUrl !== rawUrl.trim() ||
+    CONTROL_CHARACTER.test(rawUrl) ||
+    byteLength(rawUrl) > MAX_EXA_URL_BYTES
+  ) return false;
+  try {
+    const url = new URL(rawUrl);
+    return url.protocol === "https:" && !url.username && !url.password;
+  } catch {
+    return false;
+  }
+}
+
+function validExaCandidate(
+  candidate: ExaIngestion["candidates"][number],
+  companyIds: Set<string>,
+  work: Extract<Work, { state: "leased" }>,
+  now: number,
+) {
+  const candidateCompanyIds = new Set(candidate.candidateCompanyIds);
+  return candidate.providerResultId === candidate.providerResultId.trim() &&
+    candidate.providerResultId.length > 0 &&
+    !CONTROL_CHARACTER.test(candidate.providerResultId) &&
+    byteLength(candidate.providerResultId) <= MAX_EXA_PROVIDER_ID_BYTES &&
+    (candidate.providerRequestId === undefined || (
+      candidate.providerRequestId === candidate.providerRequestId.trim() &&
+      candidate.providerRequestId.length > 0 &&
+      !CONTROL_CHARACTER.test(candidate.providerRequestId) &&
+      byteLength(candidate.providerRequestId) <= MAX_EXA_REQUEST_ID_BYTES
+    )) &&
+    Number.isSafeInteger(candidate.providerRank) &&
+    candidate.providerRank >= 1 &&
+    candidate.providerRank <= work.resultCap &&
+    validExaUrl(candidate.url) &&
+    (candidate.title === undefined || (
+      !CONTROL_CHARACTER.test(candidate.title) && byteLength(candidate.title) <= MAX_EXA_TITLE_BYTES
+    )) &&
+    (candidate.author === undefined || (
+      !CONTROL_CHARACTER.test(candidate.author) && byteLength(candidate.author) <= MAX_EXA_AUTHOR_BYTES
+    )) &&
+    Number.isSafeInteger(candidate.publishedAt) &&
+    candidate.publishedAt >= work.windowStart &&
+    candidate.publishedAt <= work.windowEnd &&
+    Number.isSafeInteger(candidate.retrievedAt) &&
+    candidate.retrievedAt >= work.windowEnd &&
+    candidate.retrievedAt <= now + EXA_RETRIEVAL_CLOCK_SKEW_MS &&
+    candidateCompanyIds.size > 0 &&
+    candidateCompanyIds.size === candidate.candidateCompanyIds.length &&
+    candidateCompanyIds.size <= COMPANY_MONITORING_SCAN_COHORT_LIMIT &&
+    [...candidateCompanyIds].every((companyId) => companyIds.has(companyId));
+}
+
+function validExaIngestionForWork(
+  result: FinalizeResult,
+  work: Extract<Work, { state: "leased" }>,
+  obligations: Obligation[],
+  now: number,
+): { valid: boolean; payload?: ExaIngestion } {
+  if (result.type === "provider_error") return { valid: true };
+  if (work.source !== "exa") return { valid: result.exaIngestion === undefined };
+  const payload = result.exaIngestion;
+  if (!payload || result.xIngestion !== undefined || payload.candidates.length > work.resultCap) {
+    return { valid: false };
+  }
+  const companyIds = new Set(obligations.map((obligation) => obligation.companyId));
+  const providerRanks = new Set<number>();
+  for (const candidate of payload.candidates) {
+    if (
+      providerRanks.has(candidate.providerRank) ||
+      !validExaCandidate(candidate, companyIds, work, now)
+    ) return { valid: false };
+    providerRanks.add(candidate.providerRank);
+  }
+  if (result.coverage === "complete" && payload.candidates.length !== result.itemCount) {
+    return { valid: false };
+  }
+  return { valid: true, payload };
+}
+
 function xReceipt(payload: XIngestion) {
   return {
     requestedWindow: payload.requestedWindow,
@@ -1710,10 +1829,157 @@ async function applyXIngestion(
   ctx: MutationCtx,
   work: Work,
   payload: XIngestion,
+  obligations: Obligation[],
   now: number,
 ) {
   await applyXIdentities(ctx, work, payload.identities, now);
   await applyXPosts(ctx, work, payload.posts, now);
+  await syncNormalizedXEvidence(ctx, work, payload, obligations, now);
+}
+
+function exaSourceAuthority(rawUrl: string): ProviderEvidence["sourceAuthority"] {
+  const hostname = new URL(rawUrl).hostname.toLowerCase().replace(/^www\./, "");
+  return [...LOW_AUTHORITY_EXA_HOSTS].some((host) =>
+      hostname === host || hostname.endsWith(`.${host}`)
+    )
+    ? "low_authority"
+    : "independent_source";
+}
+
+async function applyExaIngestion(
+  ctx: MutationCtx,
+  work: Work,
+  payload: ExaIngestion,
+  obligations: Obligation[],
+) {
+  if (payload.candidates.length === 0) return;
+  await ingestCompanyEvidenceForCompanyIds(ctx, {
+    ownerAccountId: work.ownerAccountId,
+    companyIds: obligations.map((obligation) => obligation.companyId),
+    evidence: payload.candidates.map((candidate) => ({
+      provider: "exa" as const,
+      providerLocator: candidate.providerResultId,
+      url: candidate.url,
+      ...(candidate.title ? { title: candidate.title } : {}),
+      ...(candidate.author ? { author: candidate.author } : {}),
+      publishedAt: candidate.publishedAt,
+      observedAt: candidate.retrievedAt,
+      expiresAt: candidate.retrievedAt + COMPANY_MONITORING_EVIDENCE_POLICY.candidateTtlMs,
+      candidateCompanyIds: candidate.candidateCompanyIds,
+      sourceAuthority: exaSourceAuthority(candidate.url),
+    })),
+  });
+}
+
+async function canonicalXPostId(
+  ctx: MutationCtx,
+  ownerAccountId: string,
+  post: XIngestion["posts"][number],
+) {
+  const alias = await ctx.db
+    .query("companyMonitoringXPostAliases")
+    .withIndex("by_account_postId", (q) =>
+      q.eq("ownerAccountId", ownerAccountId).eq("postId", post.postId),
+    )
+    .unique();
+  return alias?.canonicalPostId ?? post.editHistoryPostIds[0] ?? post.postId;
+}
+
+async function syncNormalizedXEvidence(
+  ctx: MutationCtx,
+  work: Work,
+  payload: XIngestion,
+  obligations: Obligation[],
+  now: number,
+) {
+  const companyIds = [...new Set(obligations.map((obligation) => obligation.companyId))].sort();
+  for (const companyId of companyIds) {
+    const identity = await ctx.db
+      .query("companyMonitoringXIdentities")
+      .withIndex("by_account_company", (q) =>
+        q.eq("ownerAccountId", work.ownerAccountId).eq("companyId", companyId),
+      )
+      .unique();
+    const authoritative = Boolean(
+      identity?.state === "authoritative" &&
+      identity.expiresAt > now &&
+      identity.allowedUses.includes("primary_evidence")
+    );
+    if (!authoritative) {
+      await setAllCompanyProviderEvidenceState(ctx, {
+        ownerAccountId: work.ownerAccountId,
+        companyId,
+        provider: "x",
+        state: "authority_lost",
+      });
+    }
+
+    const normalizedRows: ProviderEvidence[] = [];
+    const deletedLocators: string[] = [];
+    const unavailableLocators: string[] = [];
+    for (const post of payload.posts.filter((row) => row.companyId === companyId)) {
+      const canonicalPostId = await canonicalXPostId(ctx, work.ownerAccountId, post);
+      const stored = await ctx.db
+        .query("companyMonitoringXEvidence")
+        .withIndex("by_account_postId", (q) =>
+          q.eq("ownerAccountId", work.ownerAccountId).eq("postId", canonicalPostId),
+        )
+        .unique();
+      if (!stored || stored.companyId !== companyId) continue;
+      if (stored.contentState === "deleted") {
+        deletedLocators.push(canonicalPostId);
+        continue;
+      }
+      if (stored.storageState !== "full_text" || !stored.text) {
+        unavailableLocators.push(canonicalPostId);
+        continue;
+      }
+      if (
+        !authoritative ||
+        !identity ||
+        identity.accountId !== stored.authorAccountId
+      ) continue;
+      normalizedRows.push({
+        provider: "x",
+        providerLocator: canonicalPostId,
+        url: `https://x.com/i/status/${canonicalPostId}`,
+        text: stored.text,
+        author: stored.currentHandle,
+        authorAccountId: stored.authorAccountId,
+        publishedAt: stored.createdAt,
+        observedAt: stored.observedAt,
+        expiresAt: identity.expiresAt,
+        candidateCompanyIds: [companyId],
+        verifiedCompanyIds: [companyId],
+        sourceAuthority: "verified_first_party",
+      });
+    }
+    if (deletedLocators.length > 0) {
+      await setCompanyEvidenceStateForProviderLocators(ctx, {
+        ownerAccountId: work.ownerAccountId,
+        companyId,
+        provider: "x",
+        providerLocators: deletedLocators,
+        state: "deleted",
+      });
+    }
+    if (unavailableLocators.length > 0) {
+      await setCompanyEvidenceStateForProviderLocators(ctx, {
+        ownerAccountId: work.ownerAccountId,
+        companyId,
+        provider: "x",
+        providerLocators: unavailableLocators,
+        state: "unavailable",
+      });
+    }
+    if (normalizedRows.length > 0) {
+      await ingestCompanyEvidenceForCompanyIds(ctx, {
+        ownerAccountId: work.ownerAccountId,
+        companyIds: [companyId],
+        evidence: normalizedRows,
+      });
+    }
+  }
 }
 
 function validCost(value: number): boolean {
@@ -1778,8 +2044,9 @@ function classifyResult(
   work: Work,
   now: number,
   xValidation: { valid: boolean; payload?: XIngestion },
+  exaValidation: { valid: boolean; payload?: ExaIngestion },
 ) {
-  if (!xValidation.valid) {
+  if (!xValidation.valid || !exaValidation.valid) {
     return nonReassuringReceipt("malformed", now, result, work);
   }
   if (!validCost(result.costUsdMicros)) {
@@ -1879,12 +2146,19 @@ async function finalizeWorkHandler(
   }
 
   const xValidation = await validXIngestionForWork(ctx, args.result, work, obligations, now);
-  const receipt = classifyResult(args.result, work, now, xValidation);
+  const exaValidation = validExaIngestionForWork(args.result, work, obligations, now);
+  const receipt = classifyResult(args.result, work, now, xValidation, exaValidation);
   if (
     xValidation.payload &&
     (receipt.reason === "complete" || receipt.reason === "partial" || receipt.reason === "capped")
   ) {
-    await applyXIngestion(ctx, work, xValidation.payload, now);
+    await applyXIngestion(ctx, work, xValidation.payload, obligations, now);
+  }
+  if (
+    exaValidation.payload &&
+    (receipt.reason === "complete" || receipt.reason === "partial" || receipt.reason === "capped")
+  ) {
+    await applyExaIngestion(ctx, work, exaValidation.payload, obligations);
   }
   if (receipt.kind === "complete") {
     await ctx.db.replace(work._id, {

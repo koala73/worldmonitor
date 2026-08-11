@@ -160,6 +160,99 @@ export const companyMonitoringXStorageStateValidator = v.union(
   v.literal("tombstone"),
 );
 
+export const companyMonitoringEvidenceProviderValidator = v.union(
+  v.literal("exa"),
+  v.literal("x"),
+);
+
+export const companyMonitoringEvidenceAuthorityValidator = v.union(
+  v.literal("verified_first_party"),
+  v.literal("independent_source"),
+  v.literal("low_authority"),
+);
+
+export const companyMonitoringEvidenceIndependenceValidator = v.union(
+  v.literal("first_party"),
+  v.literal("independent"),
+  v.literal("syndicated"),
+  v.literal("unknown"),
+);
+
+export const companyMonitoringEvidenceStateValidator = v.union(
+  v.literal("active"),
+  v.literal("deleted"),
+  v.literal("expired"),
+  v.literal("authority_lost"),
+  v.literal("unavailable"),
+);
+
+export const companyMonitoringCandidateStateValidator = v.union(
+  v.literal("pending_classification"),
+  v.literal("held"),
+  v.literal("terminal"),
+);
+
+export const companyMonitoringCandidateTerminalReasonValidator = v.union(
+  v.literal("admitted"),
+  v.literal("rejected"),
+  v.literal("evidence_deleted"),
+  v.literal("evidence_expired"),
+  v.literal("authority_lost"),
+  v.literal("evidence_unavailable"),
+  v.literal("hold_expired"),
+  v.literal("company_removed"),
+);
+
+const companyMonitoringClaimAllowedUseValidator = v.union(
+  v.literal("discovery"),
+  v.literal("attribution"),
+  v.literal("primary_evidence"),
+);
+
+const companyMonitoringAttributionClaimValidator = v.object({
+  claimId: v.string(),
+  type: v.union(
+    v.literal("alias"),
+    v.literal("domain"),
+    v.literal("legal_identifier"),
+    v.literal("x_account_id"),
+    v.literal("x_handle"),
+    v.literal("location"),
+    v.literal("customer_reference"),
+  ),
+  value: v.string(),
+  trustState: v.union(
+    v.literal("unverified"),
+    v.literal("verified"),
+    v.literal("expired"),
+    v.literal("rejected"),
+  ),
+  allowedUses: v.optional(v.array(companyMonitoringClaimAllowedUseValidator)),
+  expiresAt: v.optional(v.number()),
+});
+
+export const companyMonitoringEvidenceSubjectValidator = v.object({
+  companyId: v.string(),
+  name: v.string(),
+  claims: v.array(companyMonitoringAttributionClaimValidator),
+});
+
+export const companyMonitoringProviderEvidenceValidator = v.object({
+  provider: companyMonitoringEvidenceProviderValidator,
+  providerLocator: v.string(),
+  url: v.optional(v.string()),
+  title: v.optional(v.string()),
+  text: v.optional(v.string()),
+  author: v.optional(v.string()),
+  authorAccountId: v.optional(v.string()),
+  publishedAt: v.number(),
+  observedAt: v.number(),
+  expiresAt: v.optional(v.number()),
+  candidateCompanyIds: v.array(v.string()),
+  verifiedCompanyIds: v.optional(v.array(v.string())),
+  sourceAuthority: companyMonitoringEvidenceAuthorityValidator,
+});
+
 export const companyMonitoringXPostObservationValidator = v.object({
   companyId: v.string(),
   postId: v.string(),
@@ -198,6 +291,22 @@ export const companyMonitoringXReceiptValidator = v.object({
   postCount: v.number(),
 });
 
+export const companyMonitoringExaCandidateValidator = v.object({
+  providerResultId: v.string(),
+  providerRequestId: v.optional(v.string()),
+  providerRank: v.number(),
+  url: v.string(),
+  title: v.optional(v.string()),
+  author: v.optional(v.string()),
+  publishedAt: v.number(),
+  retrievedAt: v.number(),
+  candidateCompanyIds: v.array(v.string()),
+});
+
+export const companyMonitoringExaIngestionValidator = v.object({
+  candidates: v.array(companyMonitoringExaCandidateValidator),
+});
+
 export const companyMonitoringFinalizeResultValidator = v.union(
   v.object({
     type: v.literal("result"),
@@ -208,6 +317,7 @@ export const companyMonitoringFinalizeResultValidator = v.union(
     checkpoint: v.optional(v.string()),
     emptyValidated: v.boolean(),
     costUsdMicros: v.number(),
+    exaIngestion: v.optional(companyMonitoringExaIngestionValidator),
     xIngestion: v.optional(companyMonitoringXIngestionValidator),
   }),
   v.object({

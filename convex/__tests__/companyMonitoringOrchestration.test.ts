@@ -75,6 +75,7 @@ async function seedAccountWithCompany(
       value: `Alias ${suffix}`,
       provenance: "customer",
       trustState: "unverified",
+      allowedUses: ["attribution", "discovery"],
       createdAt: NOW,
       updatedAt: NOW,
     });
@@ -124,6 +125,19 @@ async function finalizeComplete(
       checkpoint: `checkpoint-${claim.work.workId}`,
       emptyValidated: false,
       costUsdMicros: 125,
+      exaIngestion: {
+        candidates: [{
+          providerResultId: `exa-${claim.work.workId}`,
+          providerRank: 1,
+          url: `https://independent.example/${claim.work.workId}`,
+          title: `${claim.work.obligations[0].company.claims[0].value} update`,
+          publishedAt: claim.work.windowEnd - 1,
+          retrievedAt: NOW,
+          candidateCompanyIds: claim.work.obligations.map(
+            (obligation: { companyId: string }) => obligation.companyId,
+          ),
+        }],
+      },
       ...overrides,
     },
   });
@@ -194,7 +208,19 @@ describe("Company Monitoring durable scan orchestration", () => {
         .query("companyMonitoringScanReceiptLinks")
         .withIndex("by_workId", (q) => q.eq("workId", claim.work.workId))
         .collect();
-      return { work, obligation, nextWork, account, receiptLinks };
+      const evidence = await ctx.db
+        .query("companyMonitoringEvidence")
+        .withIndex("by_account_company", (q) =>
+          q.eq("ownerAccountId", seeded.ownerAccountId).eq("companyId", seeded.companyId),
+        )
+        .collect();
+      const candidates = await ctx.db
+        .query("companyMonitoringCandidates")
+        .withIndex("by_account_company", (q) =>
+          q.eq("ownerAccountId", seeded.ownerAccountId).eq("companyId", seeded.companyId),
+        )
+        .collect();
+      return { work, obligation, nextWork, account, receiptLinks, evidence, candidates };
     });
     expect(state.work).toMatchObject({
       state: "complete",
@@ -221,6 +247,12 @@ describe("Company Monitoring durable scan orchestration", () => {
       ownerAccountId: seeded.ownerAccountId,
       companyId: seeded.companyId,
       workId: claim.work.workId,
+    }]);
+    expect(state.evidence).toHaveLength(1);
+    expect(state.candidates).toMatchObject([{
+      state: "pending_classification",
+      referenceCount: 1,
+      observationBlocking: true,
     }]);
 
     vi.setSystemTime(NOW + 1_000);
@@ -458,8 +490,26 @@ describe("Company Monitoring durable scan orchestration", () => {
       initialCheckpoint: "checkpoint-before",
     });
     const claim = await claimForTest(t);
+    const resultOverrides = reason === "capped"
+      ? {
+          ...overrides,
+          exaIngestion: {
+            candidates: Array.from({ length: 25 }, (_, index) => ({
+              providerResultId: `exa-capped-${index}`,
+              providerRank: index + 1,
+              url: `https://independent.example/capped-${index}`,
+              title: `${claim.work.obligations[0].company.claims[0].value} update`,
+              publishedAt: claim.work.windowEnd - 1,
+              retrievedAt: NOW,
+              candidateCompanyIds: [seeded.companyId],
+            })),
+          },
+        }
+      : reason === "invalid_empty"
+        ? { ...overrides, exaIngestion: { candidates: [] } }
+        : overrides;
 
-    expect(await finalizeComplete(t, claim, overrides)).toMatchObject({
+    expect(await finalizeComplete(t, claim, resultOverrides)).toMatchObject({
       status: "non_reassuring",
       reason,
     });

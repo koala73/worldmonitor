@@ -123,6 +123,62 @@
       "expected": { "companyIds": [], "candidateCount": 0 }
     },
     {
+      "name": "discovery-only claims cannot attribute evidence",
+      "subjects": [
+        {
+          "companyId": "company-discovery-only",
+          "name": "Discovery Only Ltd",
+          "claims": [
+            { "claimId": "claim-discovery-only", "type": "legal_identifier", "value": "lei:DISCOVERYONLY", "trustState": "verified", "allowedUses": ["discovery"] }
+          ]
+        }
+      ],
+      "evidence": [
+        {
+          "provider": "exa",
+          "providerLocator": "exa-discovery-only",
+          "url": "https://independent.example/discovery-only",
+          "title": "Discovery Only Ltd update (LEI:DISCOVERYONLY)",
+          "publishedAt": 1785921500000,
+          "observedAt": 1785921600000,
+          "candidateCompanyIds": ["company-discovery-only"],
+          "sourceAuthority": "independent_source"
+        }
+      ],
+      "expected": { "companyIds": [], "candidateCount": 0 }
+    },
+    {
+      "name": "low-authority rumors never block observation",
+      "subjects": [
+        {
+          "companyId": "company-rumor",
+          "name": "Rumor Systems Ltd",
+          "claims": [
+            { "claimId": "claim-rumor-lei", "type": "legal_identifier", "value": "lei:RUMOR123", "trustState": "verified", "allowedUses": ["attribution"] }
+          ]
+        }
+      ],
+      "evidence": [
+        {
+          "provider": "exa",
+          "providerLocator": "exa-rumor-1",
+          "url": "https://reddit.com/r/business/comments/rumor",
+          "title": "Unconfirmed Rumor Systems report (LEI:RUMOR123)",
+          "publishedAt": 1785921500000,
+          "observedAt": 1785921600000,
+          "candidateCompanyIds": ["company-rumor"],
+          "sourceAuthority": "low_authority"
+        }
+      ],
+      "expected": {
+        "companyIds": ["company-rumor"],
+        "candidateCount": 1,
+        "observationBlocking": false,
+        "referenceCount": 1,
+        "referencesTruncated": false
+      }
+    },
+    {
       "name": "syndicated evidence collapses and truncates deterministically",
       "subjects": [
         {

@@ -140,14 +140,15 @@ async function sha256(value: unknown): Promise<string> {
   return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
-function normalizedHostname(value: string): string | null {
-  try {
-    const url = new URL(value);
-    if (url.protocol !== "https:" || url.username || url.password) return null;
-    return url.hostname.toLocaleLowerCase("en-US").replace(/^www\./, "");
-  } catch {
-    return null;
-  }
+export function companyEvidenceProviderLocatorHash(
+  provider: CompanyEvidenceProvider,
+  providerLocator: string,
+): Promise<string> {
+  return sha256({
+    version: COMPANY_MONITORING_EVIDENCE_POLICY.fingerprintVersion,
+    provider,
+    locator: providerLocator,
+  });
 }
 
 function domainContains(hostname: string, domain: string): boolean {
@@ -274,13 +275,16 @@ function evidenceRank(row: NormalizedCompanyEvidence): [number, number, number, 
   return [authority, independence, row.publishedAt, row.evidenceFingerprint];
 }
 
-function compareEvidence(left: NormalizedCompanyEvidence, right: NormalizedCompanyEvidence): number {
+export function compareCompanyEvidence(
+  left: NormalizedCompanyEvidence,
+  right: NormalizedCompanyEvidence,
+): number {
   const a = evidenceRank(left);
   const b = evidenceRank(right);
   return b[0] - a[0] || b[1] - a[1] || b[2] - a[2] || a[3].localeCompare(b[3]);
 }
 
-function canBlockObservation(row: NormalizedCompanyEvidence): boolean {
+export function companyEvidenceCanBlockObservation(row: NormalizedCompanyEvidence): boolean {
   if (row.sourceAuthority === "low_authority") return false;
   if (row.independence === "syndicated" || row.independence === "unknown") return false;
   return row.sourceAuthority === "verified_first_party" ||
@@ -304,17 +308,29 @@ export async function normalizeCompanyEvidence(input: {
       : parsedUrl.hostname.toLocaleLowerCase("en-US").replace(/^www\./, "");
     const contentIdentity = canonicalContent(row, parsedUrl);
     const [providerLocatorHash, providerOriginFingerprint, contentFingerprint] = await Promise.all([
-      sha256({ version: COMPANY_MONITORING_EVIDENCE_POLICY.fingerprintVersion, provider: row.provider, locator: row.providerLocator }),
+      companyEvidenceProviderLocatorHash(row.provider, row.providerLocator),
       sha256({ version: COMPANY_MONITORING_EVIDENCE_POLICY.fingerprintVersion, provider: row.provider, origin: providerOrigin }),
       sha256({ version: COMPANY_MONITORING_EVIDENCE_POLICY.fingerprintVersion, content: contentIdentity }),
     ]);
     const matches = reverseMatches(row, parsedUrl, subjectMap, input.now);
     for (const match of matches) {
       const subject = subjectMap.get(match.companyId)!;
-      const officialDomains = subject.claims
-        .filter((claim) => claim.type === "domain" && claim.allowedUses?.includes("attribution"))
-        .map((claim) => claim.value);
-      const firstParty = row.provider === "x" || officialDomains.some((domain) => domainContains(providerOrigin, domain));
+      const matchingOfficialClaims = subject.claims.filter((claim) =>
+        claim.type === "domain" &&
+        claim.allowedUses?.includes("attribution") &&
+        domainContains(providerOrigin, claim.value)
+      );
+      const firstParty = row.provider === "x" || matchingOfficialClaims.length > 0;
+      const sourceAuthority = row.provider === "x"
+        ? row.sourceAuthority
+        : firstParty
+          ? matchingOfficialClaims.some((claim) =>
+              claim.trustState === "verified" &&
+              (claim.expiresAt === undefined || claim.expiresAt > input.now)
+            )
+            ? "verified_first_party" as const
+            : "low_authority" as const
+          : row.sourceAuthority;
       const evidenceFingerprint = await sha256({
         version: COMPANY_MONITORING_EVIDENCE_POLICY.fingerprintVersion,
         ownerAccountId: input.ownerAccountId,
@@ -342,8 +358,8 @@ export async function normalizeCompanyEvidence(input: {
         evidenceFingerprint,
         occurrenceDedupeKey,
         matchedClaimIds: [...match.claimIds].sort(),
-        sourceAuthority: row.sourceAuthority,
-        independence: firstParty ? "first_party" : row.sourceAuthority === "low_authority" ? "unknown" : "independent",
+        sourceAuthority,
+        independence: firstParty ? "first_party" : sourceAuthority === "low_authority" ? "unknown" : "independent",
         ...(row.url ? { url: row.url } : {}),
         ...(row.title ? { title: row.title } : {}),
         ...(row.text ? { text: row.text } : {}),
@@ -376,11 +392,11 @@ export async function normalizeCompanyEvidence(input: {
   evidence.sort((left, right) =>
     left.companyId.localeCompare(right.companyId) ||
     left.occurrenceDedupeKey.localeCompare(right.occurrenceDedupeKey) ||
-    compareEvidence(left, right)
+    compareCompanyEvidence(left, right)
   );
   const candidates: NormalizedCompanyCandidate[] = [];
   for (const [occurrenceDedupeKey, rows] of [...occurrenceGroups.entries()].sort()) {
-    const ranked = [...rows].sort(compareEvidence);
+    const ranked = [...rows].sort(compareCompanyEvidence);
     const first = [...rows].sort((left, right) =>
       left.observedAt - right.observedAt || left.evidenceFingerprint.localeCompare(right.evidenceFingerprint)
     )[0]!;
@@ -394,7 +410,7 @@ export async function normalizeCompanyEvidence(input: {
       firstDiscoveredPath: `${first.provider}:${first.providerLocatorHash}`,
       attemptCount: 0,
       expiresAt: first.observedAt + COMPANY_MONITORING_EVIDENCE_POLICY.candidateTtlMs,
-      observationBlocking: rows.some(canBlockObservation),
+      observationBlocking: rows.some(companyEvidenceCanBlockObservation),
       referenceEvidenceFingerprints: selected.map((row) => row.evidenceFingerprint),
       referenceCount: ranked.length,
       referencesTruncated: ranked.length > selected.length,

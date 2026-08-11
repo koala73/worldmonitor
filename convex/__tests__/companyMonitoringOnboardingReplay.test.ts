@@ -19,6 +19,56 @@ import {
 installCompanyMonitoringTestEnvironment();
 
 describe("bounded onboarding and replay", () => {
+  test("records claim-level discovery and attribution uses for later evidence matching", async () => {
+    const t = convexTest(schema, modules);
+    await grantProvisioned(t, OWNER_A);
+    const created = await t.mutation(CM.companies.createCompanyForOwner, {
+      ownerUserId: OWNER_A,
+      clientRequestId: "claim-use-policy",
+      company: company("Attribution Ready", "attribution-ready"),
+    });
+    const account = await accountFor(t, OWNER_A);
+    const claims = await t.run(async (ctx) => ctx.db
+      .query("companyMonitoringClaims")
+      .withIndex("by_account_company", (q) =>
+        q.eq("ownerAccountId", account!.logicalAccountId).eq("companyId", created.companyId),
+      )
+      .collect());
+
+    expect(claims).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        type: "alias",
+        value: "Attribution Ready",
+        allowedUses: ["attribution", "discovery"],
+      }),
+      expect.objectContaining({
+        type: "domain",
+        allowedUses: ["attribution", "discovery"],
+      }),
+      expect.objectContaining({ type: "location", allowedUses: ["discovery"] }),
+      expect.objectContaining({ type: "customer_reference", allowedUses: ["discovery"] }),
+    ]));
+
+    await t.mutation(CM.companies.updateCompanyForOwner, {
+      ownerUserId: OWNER_A,
+      companyId: created.companyId,
+      patch: { name: "Attribution Ready Renamed" },
+    });
+    const renamedClaims = await t.run(async (ctx) => ctx.db
+      .query("companyMonitoringClaims")
+      .withIndex("by_account_company", (q) =>
+        q.eq("ownerAccountId", account!.logicalAccountId).eq("companyId", created.companyId),
+      )
+      .collect());
+    expect(renamedClaims).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        type: "alias",
+        value: "Attribution Ready Renamed",
+        allowedUses: ["attribution", "discovery"],
+      }),
+    ]));
+  });
+
   test("concurrent final-slot requests admit exactly one and preserve count parity", async () => {
     const t = convexTest(schema, modules);
     await grantProvisioned(t, OWNER_A);

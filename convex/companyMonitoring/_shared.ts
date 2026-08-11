@@ -88,9 +88,32 @@ export async function requireActiveAccount(ctx: CompanyMonitoringCtx, ownerUserI
   return account;
 }
 
+type CustomerClaimType =
+  | "alias"
+  | "domain"
+  | "legal_identifier"
+  | "x_account_id"
+  | "x_handle"
+  | "location"
+  | "customer_reference";
+
+export function customerClaimAllowedUses(type: CustomerClaimType) {
+  if (
+    type === "alias" ||
+    type === "domain" ||
+    type === "legal_identifier" ||
+    type === "x_account_id" ||
+    type === "x_handle"
+  ) {
+    return ["attribution", "discovery"] as const;
+  }
+  return ["discovery"] as const;
+}
+
 function claimsFromCompany(company: NormalizedMonitoredCompanyInput) {
+  const aliases = [...new Set([company.name, ...company.aliases])];
   return [
-    ...company.aliases.map((value) => ({ type: "alias" as const, value })),
+    ...aliases.map((value) => ({ type: "alias" as const, value })),
     ...company.domains.map((value) => ({ type: "domain" as const, value })),
     ...company.identifiers.map((value) => ({ type: "legal_identifier" as const, value })),
     ...company.xHandles.map((value) => ({ type: "x_handle" as const, value })),
@@ -116,6 +139,7 @@ export async function insertClaims(
       ...claim,
       provenance: "customer",
       trustState: "unverified",
+      allowedUses: [...customerClaimAllowedUses(claim.type)],
       createdAt: now,
       updatedAt: now,
     });
