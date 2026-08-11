@@ -221,11 +221,12 @@ describe("userPreferences.setPreferences write rate limit", () => {
     await expectRateLimited(writePref(t, USER_A, 0));
   });
 
-  test("preserves ownership sidecars omitted by an older writer", async () => {
+  test("preserves rolling-deployment fields omitted by an older writer", async () => {
     vi.spyOn(Date, "now").mockReturnValue(TEST_NOW);
     const t = makeT();
     const sourceOwnership = "worldmonitor-free-tier-source-ownership";
     const layerOwnership = "worldmonitor-free-tier-layer-ownership";
+    const fontScale = "wm-font-scale";
 
     await expect(
       t.withIdentity(USER_A).mutation(api.userPreferences.setPreferences, {
@@ -234,6 +235,7 @@ describe("userPreferences.setPreferences write rate limit", () => {
           theme: "dark",
           [sourceOwnership]: '["source-a"]',
           [layerOwnership]: '["resilienceScore"]',
+          [fontScale]: "2",
         },
         expectedSyncVersion: 0,
         schemaVersion: 6,
@@ -256,6 +258,7 @@ describe("userPreferences.setPreferences write rate limit", () => {
       theme: "light",
       [sourceOwnership]: '["source-a"]',
       [layerOwnership]: '["resilienceScore"]',
+      [fontScale]: "2",
     });
 
     await expect(
@@ -265,6 +268,7 @@ describe("userPreferences.setPreferences write rate limit", () => {
           theme: "light",
           [sourceOwnership]: "[]",
           [layerOwnership]: "[]",
+          [fontScale]: "1",
         },
         expectedSyncVersion: 2,
         schemaVersion: 6,
@@ -277,6 +281,7 @@ describe("userPreferences.setPreferences write rate limit", () => {
     expect(cleared?.data).toMatchObject({
       [sourceOwnership]: "[]",
       [layerOwnership]: "[]",
+      [fontScale]: "1",
     });
   });
 });

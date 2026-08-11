@@ -84,6 +84,11 @@ export class StockAnalysisPanel extends Panel {
     this.header.appendChild(createWatchlistButton('Edit Watchlist'));
   }
 
+  public override destroy(): void {
+    this.tableView?.destroy();
+    super.destroy();
+  }
+
   public setInsiderData(symbol: string, data: InsiderTransactionsResult): void {
     this.insiderBySymbol[symbol] = data;
   }

@@ -447,6 +447,8 @@ export const advanceCompanyPurge = internalMutation({
       importFingerprint: undefined,
       coverageState: undefined,
       observationState: undefined,
+      evidenceRevision: undefined,
+      recomputeRequiredAt: undefined,
       purgePhase: "complete",
       updatedAt: Date.now(),
     });

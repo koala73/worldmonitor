@@ -13,7 +13,7 @@
  */
 
 import {
-  ABSENCE_TOLERANT_SYNC_KEYS,
+  ACCOUNT_PROVENANCE_SYNC_KEYS,
   CLOUD_SYNC_KEYS,
   resolveCloudBlobKeyAction,
   type CloudSyncKey,
@@ -357,7 +357,7 @@ function clearForeignOwnershipSidecars(userId: string): void {
   // account provenance. If the next account has a legacy row that omits them,
   // keeping the prior account's local values attributes A's gate decisions to
   // B. B's explicit cloud values will still be applied later in this attempt.
-  for (const key of ABSENCE_TOLERANT_SYNC_KEYS) {
+  for (const key of ACCOUNT_PROVENANCE_SYNC_KEYS) {
     Storage.prototype.removeItem.call(localStorage, key);
   }
 }
@@ -367,10 +367,9 @@ function applyCloudBlob(data: Record<string, unknown>, syncVersion?: number): vo
   _suppressPatch = true;
   try {
     for (const key of CLOUD_SYNC_KEYS) {
-      // An omitted key normally means the user cleared it. For the free-tier
-      // ownership sidecars it instead means the row predates them (or an older
-      // tab uploaded), and deleting them strands the gate's own disables as
-      // user intent forever. See resolveCloudBlobKeyAction.
+      // An omitted key normally means the user cleared it. A small set of keys
+      // instead uses explicit reset values and preserves omission from an old
+      // client during rolling deployments. See resolveCloudBlobKeyAction.
       const action = resolveCloudBlobKeyAction(key, data);
       if (action.kind === 'keep') continue;
       if (action.kind === 'set') {

@@ -36,6 +36,11 @@ export class StockBacktestPanel extends Panel {
     this.header.appendChild(createWatchlistButton('Edit Watchlist'));
   }
 
+  public override destroy(): void {
+    this.tableView?.destroy();
+    super.destroy();
+  }
+
   public renderBacktests(items: StockBacktestResult[], source: 'live' | 'cached' = 'live'): void {
     if (items.length === 0) {
       this.setDataBadge('unavailable');

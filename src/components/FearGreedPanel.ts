@@ -101,18 +101,20 @@ function renderGauge(score: number, label: string, delta: number | null, color: 
   const dStr = delta != null ? `${delta >= 0 ? '+' : ''}${delta.toFixed(1)} vs prev` : '';
   const dFill = delta != null ? (delta >= 0 ? '#2ecc71' : '#e74c3c') : '';
   const deltaLine = dStr
-    ? `<text x="${cx}" y="111" text-anchor="middle" style="font-size:calc(9px * var(--wm-panel-effective-scale, 1))" fill="${dFill}" font-family="system-ui,-apple-system,sans-serif">${dStr}</text>`
+    ? `<div data-gauge-role="delta" style="font-size:calc(9px * var(--wm-panel-effective-scale, 1));line-height:1.25;color:${dFill}">${dStr}</div>`
     : '';
 
-  return `<svg viewBox="0 0 200 115" width="200" height="115" style="display:block;margin:0 auto">
-    ${segs}
-    <line x1="${cx}" y1="${cy}" x2="${nx}" y2="${ny}" stroke="${color}" stroke-width="2.5" stroke-linecap="round"/>
-    <circle cx="${cx}" cy="${cy}" r="6" fill="${color}"/>
-    <circle cx="${cx}" cy="${cy}" r="3" fill="rgba(8,8,8,0.9)"/>
-    <text x="${cx}" y="81" text-anchor="middle" style="font-size:calc(26px * var(--wm-panel-effective-scale, 1))" font-weight="700" fill="${color}" font-family="system-ui,-apple-system,sans-serif">${Math.round(score)}</text>
-    <text x="${cx}" y="96" text-anchor="middle" style="font-size:calc(9px * var(--wm-panel-effective-scale, 1))" font-weight="600" fill="${color}" letter-spacing="0.07em" font-family="system-ui,-apple-system,sans-serif">${label}</text>
+  return `<div data-gauge-role="root" style="display:flex;flex-direction:column;align-items:center;text-align:center;font-family:system-ui,-apple-system,sans-serif">
+    <svg viewBox="0 0 200 115" width="200" height="115" style="display:block;max-width:100%" aria-hidden="true">
+      ${segs}
+      <line x1="${cx}" y1="${cy}" x2="${nx}" y2="${ny}" stroke="${color}" stroke-width="2.5" stroke-linecap="round"/>
+      <circle cx="${cx}" cy="${cy}" r="6" fill="${color}"/>
+      <circle cx="${cx}" cy="${cy}" r="3" fill="rgba(8,8,8,0.9)"/>
+    </svg>
+    <div data-gauge-role="score" style="font-size:calc(26px * var(--wm-panel-effective-scale, 1));font-weight:700;line-height:1;color:${color}">${Math.round(score)}</div>
+    <div data-gauge-role="label" style="font-size:calc(9px * var(--wm-panel-effective-scale, 1));font-weight:600;line-height:1.25;color:${color};letter-spacing:0.07em">${label}</div>
     ${deltaLine}
-  </svg>`;
+  </div>`;
 }
 
 function mapSeedPayload(raw: Record<string, unknown>): FearGreedData | null {

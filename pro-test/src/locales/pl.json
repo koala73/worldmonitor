@@ -48,7 +48,7 @@
     "entF10": "Wdrożenie w chmurze, on-premises lub air-gapped",
     "entF11": "Dedykowane wdrożenie i wsparcie",
     "entCta": "Porozmawiaj ze sprzedażą",
-    "freeF2": "500+ kanałów, 530+ źródeł, 50+ warstw mapy"
+    "freeF2": "500+ kanałów, 531+ źródeł, 50+ warstw mapy"
   },
   "whyUpgrade": {
     "title": "Dlaczego upgrade",
@@ -565,7 +565,7 @@
       "s1l": "Warstwy mapy",
       "s2v": "500+",
       "s2l": "Wyselekcjonowane kanały",
-      "s3v": "528+",
+      "s3v": "529+",
       "s3l": "Dostawcy danych",
       "s4v": "13",
       "s4l": "Punkty krytyczne · AIS na żywo",
@@ -651,7 +651,7 @@
       "q2": "Co to jest globalny pulpit nawigacyjny wywiadowczy?",
       "a2": "Pojedynczy widok na żywo, który łączy sygnały, które większość narzędzi przechowuje oddzielnie: zdarzenia konfliktów, śledzenie statków i samolotów, gardła handlowe, satelity, podmorskie kable, rurociągi, rynki i zagrożenia cybernetyczne — na jednej mapie świata w czasie rzeczywistym, ze scoringiem AI i raporty na szczycie. World Monitor jest darmowym.",
       "q3": "Skąd pochodzą dane?",
-      "a3": "528+ dostawców, nazwanych: ACLED i UCDP do konfliktów, AISStream dla żywych statków, OpenSky dla samolotów, NASA FIRMS dla pożarów, USGS dla trzęsień ziemi, IMF, BIS, FRED i Finnhub dla rynków i makro — plus ponad 500 wyselekcjonowanych kanałów wiadomości. Każdy panel cytuje swoje źródła i znaczniki czasu w tekście.",
+      "a3": "529+ dostawców, nazwanych: ACLED i UCDP do konfliktów, AISStream dla żywych statków, OpenSky dla samolotów, NASA FIRMS dla pożarów, USGS dla trzęsień ziemi, IMF, BIS, FRED i Finnhub dla rynków i makro — plus ponad 500 wyselekcjonowanych kanałów wiadomości. Każdy panel cytuje swoje źródła i znaczniki czasu w tekście.",
       "q4": "Czy mogę obserwować gardła handlowe takie jak Hormuz lub Bab el-Mandeb w czasie rzeczywistym?",
       "a4": "Tak. 13 gardeł handlowych jest śledzonych z licznikami statków AIS na żywo, zmianą tranzytu z tygodnia na tydzień i scoringiem zakłóceń — a anomalie gęstości są oznaczane względem bazowej linii każdej cieśniny.",
       "q5": "Czym to różni się od mapy konfliktów takie jak Liveuamap?",

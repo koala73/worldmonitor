@@ -20,6 +20,10 @@ import { anyApi } from 'convex/server';
 
 import { loadEnvFile } from './_seed-utils.mjs';
 import {
+  COMPANY_MONITORING_LEASE_FINALIZATION_RESERVE_MS,
+  createXRecentSearchExecutor,
+} from './lib/company-monitoring-x-provider.mjs';
+import {
   COMPANY_MONITORING_EXA_CONTRACT,
   createExaCohortExecutor,
 } from './lib/company-monitoring-exa.mjs';
@@ -32,8 +36,16 @@ export const COMPANY_MONITORING_WORKER_ACTIVATION_KEY = 'seed-activated:company-
 const HEALTH_TTL_SECONDS = 900;
 const META_TTL_SECONDS = 86_400;
 const DEFAULT_POLL_INTERVAL_MS = 5_000;
-const CONVEX_TIMEOUT_MS = 15_000;
+export const COMPANY_MONITORING_CONVEX_TIMEOUT_MS = 15_000;
+export const COMPANY_MONITORING_FINALIZE_TRANSPORT_BUFFER_MS = 5_000;
 const REDIS_TIMEOUT_MS = 5_000;
+
+if (
+  COMPANY_MONITORING_LEASE_FINALIZATION_RESERVE_MS <
+    COMPANY_MONITORING_CONVEX_TIMEOUT_MS + COMPANY_MONITORING_FINALIZE_TRANSPORT_BUFFER_MS
+) {
+  throw new Error('Company Monitoring provider lease reserve cannot safely finalize through Convex');
+}
 const COUNTER_NAMES = Object.freeze([
   'loops',
   'claims',
@@ -168,9 +180,10 @@ async function unavailableExecutor() {
 }
 
 export function createCompanyMonitoringExecutor(options = {}) {
-  const exaExecutor = options.exaExecutor;
+  const { exaExecutor, xExecutor } = options;
   return async (work) => {
     if (work?.source === 'exa' && typeof exaExecutor === 'function') return exaExecutor(work);
+    if (work?.source === 'x' && typeof xExecutor === 'function') return xExecutor(work);
     return unavailableExecutor();
   };
 }
@@ -196,7 +209,7 @@ export function createConvexFetch(fetchImpl = globalThis.fetch) {
     return fetchImpl(input, {
       ...init,
       headers,
-      signal: init.signal ?? AbortSignal.timeout(CONVEX_TIMEOUT_MS),
+      signal: init.signal ?? AbortSignal.timeout(COMPANY_MONITORING_CONVEX_TIMEOUT_MS),
     });
   };
 }
@@ -365,6 +378,9 @@ async function main() {
       'COMPANY_MONITORING_WORKER_SECRET',
       'UPSTASH_REDIS_REST_URL',
       'UPSTASH_REDIS_REST_TOKEN',
+      'X_BEARER_TOKEN',
+      'X_POST_STORAGE_MODE',
+      'X_RECENT_SEARCH_REQUEST_COST_USD_MICROS',
       'EXA_API_KEYS',
     ],
   });
@@ -375,16 +391,22 @@ async function main() {
   }
 
   const client = new ConvexHttpClient(convexUrl, { fetch: createConvexFetch() });
+  const executeClaim = createCompanyMonitoringExecutor({
+    exaExecutor: createExaCohortExecutor({
+      apiKeys: (process.env.EXA_API_KEYS ?? '').split(/[\n,]+/),
+      runtimeApproved: COMPANY_MONITORING_EXA_CONTRACT.paidRuntimeApproved,
+    }),
+    xExecutor: createXRecentSearchExecutor({
+      bearerToken: process.env.X_BEARER_TOKEN,
+      storageMode: process.env.X_POST_STORAGE_MODE,
+      requestCostUsdMicros: Number(process.env.X_RECENT_SEARCH_REQUEST_COST_USD_MICROS ?? 0),
+    }),
+  });
   const worker = createCompanyMonitoringWorker({
     client,
     secret,
     workerId: `railway-${process.pid}-${randomUUID()}`,
-    executeClaim: createCompanyMonitoringExecutor({
-      exaExecutor: createExaCohortExecutor({
-        apiKeys: (process.env.EXA_API_KEYS ?? '').split(/[\n,]+/),
-        runtimeApproved: COMPANY_MONITORING_EXA_CONTRACT.paidRuntimeApproved,
-      }),
-    }),
+    executeClaim,
     publishHealth: createRedisHealthPublisher(),
   });
   let shutdownSignal = 'SIGTERM';

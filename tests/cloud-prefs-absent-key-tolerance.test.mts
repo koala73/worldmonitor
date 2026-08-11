@@ -14,6 +14,7 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
 import {
+  ACCOUNT_PROVENANCE_SYNC_KEYS,
   ABSENCE_TOLERANT_SYNC_KEYS,
   CLOUD_SYNC_KEYS,
   resolveCloudBlobKeyAction,
@@ -21,6 +22,7 @@ import {
 
 const SOURCE_OWNERSHIP = 'worldmonitor-free-tier-source-ownership';
 const LAYER_OWNERSHIP = 'worldmonitor-free-tier-layer-ownership';
+const FONT_SCALE = 'wm-font-scale';
 
 describe('cloud blob absent-key tolerance', () => {
   it('keeps both ownership sidecars when the row predates them', () => {
@@ -77,12 +79,26 @@ describe('cloud blob absent-key tolerance', () => {
     );
   });
 
-  it('tolerates absence for exactly the two ownership sidecars', () => {
-    // Pins the blast radius: widening this set silently makes some other
-    // preference impossible to clear from another device.
+  it('keeps font scale when an older client omits the new preference', () => {
+    assert.deepEqual(
+      resolveCloudBlobKeyAction(FONT_SCALE, { 'worldmonitor-theme': 'dark' }),
+      { kind: 'keep' },
+    );
+  });
+
+  it('applies an explicit 100% font scale reset', () => {
+    assert.deepEqual(
+      resolveCloudBlobKeyAction(FONT_SCALE, { [FONT_SCALE]: '1' }),
+      { kind: 'set', value: '1' },
+    );
+  });
+
+  it('tolerates absence only for rolling-deployment-safe keys', () => {
+    // Pins the blast radius: each key in this set must have an explicit reset
+    // representation, so preserving omission cannot resurrect cleared state.
     assert.deepEqual(
       [...ABSENCE_TOLERANT_SYNC_KEYS].sort(),
-      [LAYER_OWNERSHIP, SOURCE_OWNERSHIP].sort(),
+      [FONT_SCALE, LAYER_OWNERSHIP, SOURCE_OWNERSHIP].sort(),
     );
     for (const key of ABSENCE_TOLERANT_SYNC_KEYS) {
       assert.ok(
@@ -92,13 +108,21 @@ describe('cloud blob absent-key tolerance', () => {
     }
   });
 
+  it('keeps font scale out of account-provenance cleanup', () => {
+    assert.deepEqual(
+      [...ACCOUNT_PROVENANCE_SYNC_KEYS].sort(),
+      [LAYER_OWNERSHIP, SOURCE_OWNERSHIP].sort(),
+    );
+    assert.equal(ACCOUNT_PROVENANCE_SYNC_KEYS.has(FONT_SCALE), false);
+  });
+
   it('leaves every other synced key deletable on absence', () => {
     const notDeletable = CLOUD_SYNC_KEYS.filter(
       (key) => resolveCloudBlobKeyAction(key, {}).kind !== 'remove',
     );
     assert.deepEqual(
       notDeletable.sort(),
-      [LAYER_OWNERSHIP, SOURCE_OWNERSHIP].sort(),
+      [FONT_SCALE, LAYER_OWNERSHIP, SOURCE_OWNERSHIP].sort(),
     );
   });
 });

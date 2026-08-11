@@ -1194,7 +1194,8 @@
       "CONVEX_URL",
       "COMPANY_MONITORING_WORKER_SECRET",
       "UPSTASH_REDIS_REST_URL",
-      "UPSTASH_REDIS_REST_TOKEN"
+      "UPSTASH_REDIS_REST_TOKEN",
+      "X_BEARER_TOKEN"
     ],
     "watchPatterns": [
       "scripts/_proxy-utils.cjs",
@@ -1203,8 +1204,10 @@
       "scripts/_seed-utils.mjs",
       "scripts/company-monitoring-worker.mjs",
       "scripts/lib/company-monitoring-exa.mjs",
+      "scripts/lib/company-monitoring-x-provider.mjs",
       "scripts/lib/llm-telemetry.cjs",
       "scripts/lib/main-module.mjs",
+      "scripts/lib/notification-webhook-ssrf.cjs",
       "scripts/nixpacks.toml",
       "scripts/package-lock.json",
       "scripts/package.json"

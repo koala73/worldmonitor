@@ -1,3 +1,8 @@
+import {
+  ACCOUNT_PROVENANCE_PREFERENCE_KEYS,
+  ROLLING_DEPLOYMENT_PREFERENCE_KEYS,
+} from '../../shared/cloud-preferences-contract';
+
 export const CLOUD_SYNC_KEYS = [
   'worldmonitor-panels',
   'worldmonitor-monitors',
@@ -48,28 +53,18 @@ export const CLOUD_SYNC_KEYS = [
 
 export type CloudSyncKey = (typeof CLOUD_SYNC_KEYS)[number];
 
+export const ACCOUNT_PROVENANCE_SYNC_KEYS: ReadonlySet<CloudSyncKey> = new Set(
+  ACCOUNT_PROVENANCE_PREFERENCE_KEYS satisfies readonly CloudSyncKey[],
+);
+
 /**
- * Keys whose ABSENCE from a cloud row must not be read as "the user cleared
- * this". `applyCloudBlob` deletes any synced key the incoming row omits, which
- * is correct for a preference the user can reset but wrong for the free-tier
- * gate's ownership sidecars: every row written before #6345 lacks them, as does
- * every upload from an older tab still running a pre-#6345 bundle.
- *
- * Deleting them locally is not a cosmetic loss. Without the sidecar,
- * `reconcileSourceLimitForTier` sees no ownership metadata,
- * `inferExactSourceGateOwnership` declines to guess for any customized profile,
- * and the gate's own disables become indistinguishable from deliberate user
- * choices — so a later Pro upgrade can never reverse them. That is precisely
- * the bug #6345 exists to fix, reintroduced through the cloud path.
- *
- * Tolerating absence loses nothing, because an intentional clear is always an
- * explicit empty-array write (see `persistGateOwnershipTransition`'s Pro path
- * and the variant reset in App.ts), never an omission.
+ * Keys whose absence from a cloud row means that the writer predates the key,
+ * not that the user cleared it. Each key has an explicit reset value, so a
+ * current writer can still propagate a deliberate clear across devices.
  */
-export const ABSENCE_TOLERANT_SYNC_KEYS: ReadonlySet<CloudSyncKey> = new Set([
-  'worldmonitor-free-tier-source-ownership',
-  'worldmonitor-free-tier-layer-ownership',
-] satisfies CloudSyncKey[]);
+export const ABSENCE_TOLERANT_SYNC_KEYS: ReadonlySet<CloudSyncKey> = new Set(
+  ROLLING_DEPLOYMENT_PREFERENCE_KEYS satisfies readonly CloudSyncKey[],
+);
 
 export type CloudBlobKeyAction =
   | { kind: 'set'; value: string }

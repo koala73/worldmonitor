@@ -1,7 +1,8 @@
 import { expect, test, type Page } from '@playwright/test';
+import { FONT_SCALE_STORAGE_KEY } from '../src/services/font-scale-settings';
 
 const STEPS = ['0.9', '1', '1.1', '1.25', '1.5', '2'] as const;
-const GLOBAL_STORAGE_KEY = 'wm-font-scale';
+const GLOBAL_STORAGE_KEY = FONT_SCALE_STORAGE_KEY;
 const PANELS_STORAGE_KEY = 'worldmonitor-panels';
 const TABS_STORAGE_KEY = 'worldmonitor-tabs-v1:full';
 
@@ -17,6 +18,18 @@ async function seedDashboard(page: Page): Promise<void> {
     localStorage.setItem('wm-pro-banner-launched-dismissed', String(Date.now()));
     localStorage.setItem('worldmonitor-mission-preset-dismissed-v1', '1');
   });
+
+  await page.route('**/api/market/v1/get-fear-greed-index', route => route.fulfill({
+    status: 200,
+    contentType: 'application/json',
+    body: JSON.stringify({
+      compositeScore: 62,
+      compositeLabel: 'Greed',
+      previousScore: 55,
+      volatility: { score: 62, weight: 0.1, contribution: 6.2, degraded: false },
+      unavailable: false,
+    }),
+  }));
 
   await page.route(/^https?:\/\/(?!(127\.0\.0\.1:4173|localhost:4173)(?:\/|$)).*/i, route =>
     route.abort('blockedbyclient'));
@@ -85,6 +98,86 @@ test.describe('panel font scaling', () => {
 
     await openSettings(page);
     await expect(page.locator('#us-font-scale')).toHaveValue('2');
+  });
+
+  test('keeps an open scale selector current after storage and cloud reconciliation', async ({ context, page }) => {
+    await bootDashboard(page);
+    await openSettings(page);
+    const select = page.locator('#us-font-scale');
+    await expect(select).toHaveValue('1');
+
+    const peer = await context.newPage();
+    await peer.goto('/robots.txt', { waitUntil: 'domcontentloaded' });
+    await peer.evaluate(key => localStorage.setItem(key, '2'), GLOBAL_STORAGE_KEY);
+
+    await expect.poll(() => page.evaluate(() =>
+      document.documentElement.style.getPropertyValue('--wm-font-scale'))).toBe('2');
+    await expect(select).toHaveValue('2');
+    await peer.close();
+
+    await page.evaluate(key => {
+      localStorage.setItem(key, '1.5');
+      window.dispatchEvent(new CustomEvent('wm:cloud-prefs-applied', {
+        detail: { keys: [key], syncVersion: 1 },
+      }));
+    }, GLOBAL_STORAGE_KEY);
+
+    await expect.poll(() => page.evaluate(() =>
+      document.documentElement.style.getPropertyValue('--wm-font-scale'))).toBe('1.5');
+    await expect(select).toHaveValue('1.5');
+  });
+
+  test('keeps gauge labels and analyst controls uncut at 200%', async ({ page }) => {
+    await bootDashboard(page);
+    await openSettings(page);
+    await page.locator('#us-font-scale').selectOption('2');
+    await page.locator('.unified-settings-close').click();
+
+    const gaugePanel = page.locator('.panel[data-panel="fear-greed"]');
+    await gaugePanel.scrollIntoViewIfNeeded();
+    const gauge = gaugePanel.locator('[data-gauge-role="root"]');
+    await expect(gauge).toBeVisible({ timeout: 60_000 });
+    const gaugeGeometry = await gauge.evaluate((root) => {
+      const box = (selector: string) => {
+        const rect = root.querySelector<HTMLElement>(selector)!.getBoundingClientRect();
+        return { top: rect.top, bottom: rect.bottom };
+      };
+      const rootRect = root.getBoundingClientRect();
+      return {
+        root: { top: rootRect.top, bottom: rootRect.bottom },
+        svg: box('svg'),
+        pivot: box('svg circle'),
+        score: box('[data-gauge-role="score"]'),
+        label: box('[data-gauge-role="label"]'),
+        delta: box('[data-gauge-role="delta"]'),
+      };
+    });
+    expect(gaugeGeometry.pivot.bottom).toBeLessThanOrEqual(gaugeGeometry.svg.bottom + 0.5);
+    expect(gaugeGeometry.score.bottom).toBeLessThanOrEqual(gaugeGeometry.label.top + 0.5);
+    expect(gaugeGeometry.label.bottom).toBeLessThanOrEqual(gaugeGeometry.delta.top + 0.5);
+    expect(gaugeGeometry.delta.bottom).toBeLessThanOrEqual(gaugeGeometry.root.bottom + 0.5);
+
+    const chatPanel = page.locator('.panel[data-panel="chat-analyst"]');
+    await chatPanel.scrollIntoViewIfNeeded();
+    const chatButtons = chatPanel.locator('.chat-analyst-send, .chat-analyst-clear, .chat-analyst-export');
+    await expect(chatButtons).toHaveCount(3);
+    await expect(chatButtons.first()).toBeVisible({ timeout: 60_000 });
+    const clipping = await chatButtons.evaluateAll(buttons => buttons.map((button) => {
+      const element = button as HTMLElement;
+      const row = element.closest<HTMLElement>('.chat-analyst-input-row')!;
+      const buttonRect = element.getBoundingClientRect();
+      const rowRect = row.getBoundingClientRect();
+      return {
+        content: element.scrollHeight - element.clientHeight,
+        top: rowRect.top - buttonRect.top,
+        bottom: buttonRect.bottom - rowRect.bottom,
+      };
+    }));
+    for (const button of clipping) {
+      expect(button.content).toBeLessThanOrEqual(0);
+      expect(button.top).toBeLessThanOrEqual(0.5);
+      expect(button.bottom).toBeLessThanOrEqual(0.5);
+    }
   });
 
   test('persists an absolute panel override and captures it in the active tab snapshot', async ({ page }) => {

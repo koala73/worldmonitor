@@ -7,11 +7,13 @@ import type { StreamQuality } from '@/services/ai-flow-settings';
 import { getThemePreference, setThemePreference, type ThemePreference } from '@/utils/theme-manager';
 import { getFontFamily, setFontFamily, type FontFamily } from '@/services/font-settings';
 import {
+  FONT_SCALE_CHANGED_EVENT,
   FONT_SCALE_STEPS,
   fontScaleLabel,
   getFontScale,
   parseFontScale,
   setFontScale,
+  type FontScaleChangedDetail,
 } from '@/services/font-scale-settings';
 import { escapeHtml } from '@/utils/sanitize';
 import { trackLanguageChange } from '@/services/analytics';
@@ -429,6 +431,12 @@ export function renderPreferences(host: PreferencesHost): PreferencesResult {
     attach(container: HTMLElement): () => void {
       const ac = new AbortController();
       const { signal } = ac;
+
+      window.addEventListener(FONT_SCALE_CHANGED_EVENT, (event) => {
+        const select = container.querySelector<HTMLSelectElement>('#us-font-scale');
+        const scale = (event as CustomEvent<FontScaleChangedDetail>).detail?.scale;
+        if (select && scale !== undefined) select.value = String(scale);
+      }, { signal });
 
       container.addEventListener('change', (e) => {
         const target = e.target as HTMLInputElement;

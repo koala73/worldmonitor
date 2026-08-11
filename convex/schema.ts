@@ -12,6 +12,11 @@ import {
   companyMonitoringNonReassuringReasonValidator,
   companyMonitoringNonReassuringReceiptValidator,
   companyMonitoringScanSourceValidator,
+  companyMonitoringXAllowedUseValidator,
+  companyMonitoringXAuthorityRoleValidator,
+  companyMonitoringXContentStateValidator,
+  companyMonitoringXDemotionReasonValidator,
+  companyMonitoringXStorageStateValidator,
 } from "./companyMonitoring/validators";
 
 // Subscription status enum — maps Dodo statuses to our internal set
@@ -1055,9 +1060,9 @@ export default defineSchema({
     .index("by_dodoProductId", ["dodoProductId"])
     .index("by_planKey", ["planKey"]),
 
-  // Company Monitoring's account root. The persistence contract deliberately keeps
-  // surface to this table plus company and claim rows: imports are replayed
-  // from company-row idempotency fields, and purge progress lives on the root.
+  // Company Monitoring's account root. Imports are replayed from company-row
+  // idempotency fields, and purge progress lives on this root. Provider tables
+  // below remain account-prefixed so destructive purge never scans globally.
   companyMonitoringAccounts: defineTable({
     logicalAccountId: v.string(),
     ownerUserId: v.optional(v.string()),
@@ -1115,6 +1120,10 @@ export default defineSchema({
     lifecycle: v.union(v.literal("active"), v.literal("paused"), v.literal("removed")),
     coverageState: v.optional(v.literal("awaiting_first_scan")),
     observationState: v.optional(v.literal("unknown")),
+    // Any new deletion tombstone advances this version and makes downstream
+    // derived state stale until the later recomputation slice consumes it.
+    evidenceRevision: v.optional(v.number()),
+    recomputeRequiredAt: v.optional(v.number()),
     snapshotGeneration: v.number(),
     directRequestId: v.optional(v.string()),
     directFingerprint: v.optional(v.string()),
@@ -1152,11 +1161,98 @@ export default defineSchema({
       v.literal("customer_reference"),
     ),
     value: v.string(),
-    provenance: v.literal("customer"),
-    trustState: v.literal("unverified"),
+    provenance: v.union(v.literal("customer"), v.literal("independent_provider")),
+    trustState: v.union(
+      v.literal("unverified"),
+      v.literal("verified"),
+      v.literal("expired"),
+      v.literal("rejected"),
+    ),
+    allowedUses: v.optional(v.array(v.union(
+      v.literal("discovery"),
+      v.literal("attribution"),
+      v.literal("primary_evidence"),
+    ))),
+    expiresAt: v.optional(v.number()),
     createdAt: v.number(),
     updatedAt: v.number(),
   })
+    .index("by_account_company", ["ownerAccountId", "companyId"]),
+
+  // One current official-X authority decision per company. The immutable
+  // account ID is the binding key; handles are current display/routing data.
+  // Claim IDs retain the exact independently verified domain evidence and
+  // customer handle claim used for each decision.
+  companyMonitoringXIdentities: defineTable({
+    ownerAccountId: v.string(),
+    companyId: v.string(),
+    domainClaimId: v.string(),
+    xHandleClaimId: v.string(),
+    officialDomain: v.string(),
+    officialPageUrl: v.string(),
+    accountId: v.string(),
+    currentHandle: v.string(),
+    profileName: v.string(),
+    domicileCountry: v.union(v.literal("US"), v.literal("GB")),
+    authorityRole: companyMonitoringXAuthorityRoleValidator,
+    state: v.union(v.literal("authoritative"), v.literal("demoted")),
+    demotionReason: v.optional(companyMonitoringXDemotionReasonValidator),
+    badgeVerified: v.boolean(),
+    allowedUses: v.array(companyMonitoringXAllowedUseValidator),
+    evidenceHash: v.string(),
+    checkedAt: v.number(),
+    expiresAt: v.number(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_account_company", ["ownerAccountId", "companyId"])
+    .index("by_account_accountId", ["ownerAccountId", "accountId"])
+    .index("by_account_currentHandle", ["ownerAccountId", "currentHandle"]),
+
+  // Compliance-aware recent posts. Deleted content remains as a tombstone;
+  // protected/withheld content retains only permitted metadata.
+  companyMonitoringXEvidence: defineTable({
+    ownerAccountId: v.string(),
+    companyId: v.string(),
+    postId: v.string(),
+    authorAccountId: v.string(),
+    currentHandle: v.string(),
+    createdAt: v.number(),
+    observedAt: v.number(),
+    contentState: companyMonitoringXContentStateValidator,
+    storageState: companyMonitoringXStorageStateValidator,
+    text: v.optional(v.string()),
+    editHistoryPostIds: v.array(v.string()),
+    withheldCountryCodes: v.optional(v.array(v.string())),
+    evidenceRevision: v.number(),
+    lastReconciledAt: v.optional(v.number()),
+    firstSeenAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_account_company", ["ownerAccountId", "companyId"])
+    .index("by_account_company_observedAt", ["ownerAccountId", "companyId", "observedAt"])
+    .index("by_account_company_contentState_lastReconciledAt", [
+      "ownerAccountId",
+      "companyId",
+      "contentState",
+      "lastReconciledAt",
+    ])
+    .index("by_account_postId", ["ownerAccountId", "postId"])
+    .index("by_account_company_postId", ["ownerAccountId", "companyId", "postId"]),
+
+  // Every X edit-history ID resolves to one canonical evidence row. This
+  // keeps later compliance events for any edit sibling from leaving another
+  // version active after a deletion.
+  companyMonitoringXPostAliases: defineTable({
+    ownerAccountId: v.string(),
+    companyId: v.string(),
+    postId: v.string(),
+    canonicalPostId: v.string(),
+    authorAccountId: v.string(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_account_postId", ["ownerAccountId", "postId"])
     .index("by_account_company", ["ownerAccountId", "companyId"]),
 
   // One durable company/source obligation. The closed state variants keep a

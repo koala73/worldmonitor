@@ -3673,10 +3673,9 @@ a.hub-top-story {
   font-size: calc(11px * var(--wm-panel-effective-scale, 1));
 }
 .watchlist-table-scroll {
-  /* Source of truth for the virtual row height. MUST equal
-     VIRTUAL_ROW_HEIGHT_PX in WatchlistTableView.ts — the spacer pixel math and
-     the scroll→index mapping there assume every data row is exactly this tall. */
-  --watchlist-row-height: 33px;
+  /* Keep the complete row box proportional to the effective text scale. The
+     virtual scroller measures this value for its scroll-to-index mapping. */
+  --watchlist-row-height: calc(33px * var(--wm-panel-effective-scale, 1));
   max-height: min(58vh, 640px);
   overflow-y: auto;
   overscroll-behavior: contain;

@@ -2,6 +2,8 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
 import {
+  COMPANY_MONITORING_CONVEX_TIMEOUT_MS,
+  COMPANY_MONITORING_FINALIZE_TRANSPORT_BUFFER_MS,
   COMPANY_MONITORING_WORKER_ACTIVATION_KEY,
   COMPANY_MONITORING_WORKER_HEALTH_KEY,
   COMPANY_MONITORING_WORKER_META_KEY,
@@ -10,6 +12,10 @@ import {
   createConvexFetch,
   createRedisHealthPublisher,
 } from '../scripts/company-monitoring-worker.mjs';
+import {
+  COMPANY_MONITORING_LEASE_FINALIZATION_RESERVE_MS,
+  createXRecentSearchExecutor,
+} from '../scripts/lib/company-monitoring-x-provider.mjs';
 
 const CLAIM = {
   status: 'claimed',
@@ -58,6 +64,39 @@ function convexClient(responses, calls = []) {
 }
 
 describe('company monitoring Railway worker', () => {
+  it('reserves enough provider lease time for Convex finalize transport and serialization', () => {
+    assert.ok(
+      COMPANY_MONITORING_LEASE_FINALIZATION_RESERVE_MS >=
+        COMPANY_MONITORING_CONVEX_TIMEOUT_MS + COMPANY_MONITORING_FINALIZE_TRANSPORT_BUFFER_MS,
+    );
+  });
+
+  it('routes only X to the installed adapter and keeps Exa outside this slice', async () => {
+    const execute = createCompanyMonitoringExecutor({
+      xExecutor: createXRecentSearchExecutor({ bearerToken: '' }),
+    });
+    assert.deepEqual(await execute({ source: 'x' }), {
+      type: 'provider_error',
+      reason: 'authentication_failed',
+      costUsdMicros: 0,
+    });
+    assert.deepEqual(await execute({ source: 'exa' }), {
+      type: 'provider_error',
+      reason: 'provider_unavailable',
+      costUsdMicros: 0,
+    });
+  });
+
+  it('routes Exa and X through their independent installed adapters', async () => {
+    const execute = createCompanyMonitoringExecutor({
+      exaExecutor: async () => ({ provider: 'exa' }),
+      xExecutor: async () => ({ provider: 'x' }),
+    });
+
+    assert.deepEqual(await execute({ source: 'exa' }), { provider: 'exa' });
+    assert.deepEqual(await execute({ source: 'x' }), { provider: 'x' });
+  });
+
   it('bounds Convex requests and identifies the server-side worker', async () => {
     let captured;
     const guardedFetch = createConvexFetch(async (_input, init) => {

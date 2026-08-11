@@ -25653,7 +25653,8 @@ body.map-width-resizing {
   font-size: calc(12px * var(--wm-panel-effective-scale, 1));
   transition: border-color 0.15s, color 0.15s;
   align-self: flex-end;
-  height: 28px;
+  min-height: 28px;
+  line-height: 1;
 }
 .chat-analyst-send:hover { border-color: var(--accent); color: var(--accent); }
 .chat-analyst-clear:hover { border-color: var(--red, #ef4444); color: var(--red, #ef4444); }
