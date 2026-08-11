@@ -4,6 +4,7 @@
 
 **Closure time:** 2026-08-11T16:47:20+08:00
 **Phase documentation commit:** `81369e41cfd0e3dd454dbd37ae3739b5aa53b056` (`chore(integration): record Phase 0 safety inventory`)
+**Phase closure-evidence receipt:** `8cf5937b8c4bad406e7c64eba8e50a51ac473ce6` (`docs(integration): close Phase 0 evidence gate`)
 
 | Check | Result | Evidence |
 |---|---|---|

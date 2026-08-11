@@ -10,7 +10,7 @@
 
 | Phase | Status | Scope | Commit | Evidence |
 |---|---|---|---|---|
-| 0 — Safety inventory, backup, workspace decision | completed | Old-project checkpoint, mother workspace, source locks, legacy-data baseline, recoverability audit | `81369e41cfd0e3dd454dbd37ae3739b5aa53b056` | `ACCEPTANCE_EVIDENCE.md`, `evidence/phase0-closure.md` |
+| 0 — Safety inventory, backup, workspace decision | completed | Old-project checkpoint, mother workspace, source locks, legacy-data baseline, recoverability audit | `81369e41cfd0e3dd454dbd37ae3739b5aa53b056`; `8cf5937b8c4bad406e7c64eba8e50a51ac473ce6` | `ACCEPTANCE_EVIDENCE.md`, `evidence/phase0-closure.md` |
 | 1 — Sync and establish WorldMonitor mother baseline | not started | Safe `--ff-only` eligibility check, upstream baseline, legal/brand implementation | — | — |
 | 2–12 | not started | Contracts, market, PokieTicker, maritime, China factory, controls, desktop, final acceptance, PR | — | — |
 
