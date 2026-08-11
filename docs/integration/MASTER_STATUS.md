@@ -284,8 +284,8 @@ gates have passed. The final production build completed with exit 0 in 28.77
 seconds and generated 252 PWA precache entries. Browser evidence is in
 `evidence/phase8-economy-first-layout.md`.
 
-**Phase 8 implementation commit:** `PENDING` — replaced immediately after the
-implementation commit is created.
+**Phase 8 implementation commit:** `7c231dc82acd40f40ce0066dc25486391edf7dcd`
+(`feat(layout): prioritize markets and truthful posture states`).
 
 ## Next action
 

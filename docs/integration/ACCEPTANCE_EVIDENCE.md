@@ -216,8 +216,8 @@ manifests, or bill-of-lading coverage.
 
 ## Phase 8 - economy-first full layout and truthful posture degradation
 
-**Implementation commit:** `PENDING` — populated only after the implementation
-commit exists.
+**Implementation commit:** `7c231dc82acd40f40ce0066dc25486391edf7dcd`
+(`feat(layout): prioritize markets and truthful posture states`).
 
 | Check | Result | Evidence |
 |---|---|---|
