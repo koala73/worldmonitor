@@ -24,9 +24,10 @@ import {
   checkScopedRateLimit,
   getClientIp,
   rateLimitErrorLevel,
+  rateLimitFingerprintStage,
 } from '../server/_shared/rate-limit.ts';
 // @ts-expect-error — JS module, no declaration file
-import { rateLimitErrorLevel as apiRateLimitErrorLevel } from '../api/_rate-limit.js';
+import { rateLimitErrorLevel as apiRateLimitErrorLevel, rateLimitFingerprintStage as apiRateLimitFingerprintStage } from '../api/_rate-limit.js';
 
 const originalFetch = globalThis.fetch;
 const originalEnv = { ...process.env };
@@ -432,7 +433,17 @@ describe('rate-limit fail-open / fail-closed posture (#3531 M9)', () => {
     assert.match(src, /import\s+\{\s*captureSilentError\s+\}\s+from\s+['"]\.\.\/\.\.\/api\/_sentry-edge\.js['"]/);
     assert.match(src, /captureSilentError\(err,\s*\{/);
     assert.match(src, /surface:\s*'server'/);
-    assert.match(src, /fingerprint:\s*\['rate-limit',\s*'redis-error',\s*stage\]/);
+    // Group on the collapsed stage, never the raw one. The raw `stage` embeds
+    // the caller's pathname, so using it here mints one Sentry issue per route
+    // for a single Redis slowdown (#6454). The semantics of the collapse are
+    // covered directly by the rateLimitFingerprintStage unit tests below; this
+    // assertion only pins that the capture routes through it.
+    assert.match(src, /fingerprint:\s*\['rate-limit',\s*'redis-error',\s*rateLimitFingerprintStage\(stage\)\]/);
+    assert.doesNotMatch(
+      src,
+      /fingerprint:\s*\['rate-limit',\s*'redis-error',\s*stage\]/,
+      'the raw stage must not be used as a fingerprint — it is high-cardinality and fragments grouping per route',
+    );
     assert.match(src, /lastRateLimitSentryCaptureAt\.get\(stage\)/);
     assert.match(src, /lastCaptureAt !== undefined && now - lastCaptureAt < RATE_LIMIT_SENTRY_DEDUP_MS/);
   });
@@ -753,6 +764,66 @@ describe('rate-limit constants', () => {
       decisionMs - abortMs >= 100,
       `the abort must fire well before the decision resolves; gap is ${decisionMs - abortMs}ms`,
     );
+  });
+});
+
+describe('rateLimitFingerprintStage — Sentry grouping for a degraded limiter (#6454)', () => {
+  // Both copies must agree; api/_rate-limit.js is the byte-mirror of the .ts one.
+  const IMPLS: Array<[string, (stage: string) => string]> = [
+    ['server/_shared/rate-limit.ts', rateLimitFingerprintStage],
+    ['api/_rate-limit.js', apiRateLimitFingerprintStage],
+  ];
+
+  for (const [name, fn] of IMPLS) {
+    it(`${name}: strips the per-caller token so one incident is one issue`, () => {
+      // The bug: `stage` embeds the pathname, and it was used verbatim as the
+      // fingerprint, so a single Redis slowdown opened one issue per route.
+      assert.equal(fn('checkEndpointRateLimit:/api/market/v1/list-market-quotes'), 'checkEndpointRateLimit');
+      assert.equal(fn('checkEndpointRateLimit:/api/military/v1/get-aircraft-details-batch'), 'checkEndpointRateLimit');
+      assert.equal(
+        fn('checkEndpointRateLimit:/api/market/v1/list-market-quotes'),
+        fn('checkEndpointRateLimit:/api/military/v1/get-aircraft-details-batch'),
+        'two routes failing the same way must land in the same Sentry issue',
+      );
+      assert.equal(fn('checkScopedRateLimit:/api/skills/fetch-agentskills'), 'checkScopedRateLimit');
+    });
+
+    it(`${name}: keeps failure-mode suffixes, which are a closed set`, () => {
+      // These describe HOW the limiter failed, not who called it, so they do not
+      // grow with traffic and each deserves its own issue.
+      assert.equal(fn('checkRateLimit:missing-config'), 'checkRateLimit:missing-config');
+      assert.equal(fn('checkRateLimit:timeout'), 'checkRateLimit:timeout');
+      assert.equal(fn('checkScopedRateLimit:/api/skills/fetch-agentskills:missing-config'), 'checkScopedRateLimit:missing-config');
+      assert.notEqual(
+        fn('checkRateLimit:timeout'),
+        fn('checkRateLimit:missing-config'),
+        'a slow Redis and an unconfigured Redis are different problems and must not merge',
+      );
+    });
+
+    it(`${name}: passes through a stage with no caller token, and never returns empty`, () => {
+      assert.equal(fn('checkRateLimit'), 'checkRateLimit');
+      assert.equal(fn('checkScopedRateLimit'), 'checkScopedRateLimit');
+      assert.equal(fn(''), 'rate-limit');
+      assert.equal(fn(':missing-config'), 'rate-limit:missing-config');
+    });
+  }
+
+  it('both mirrors agree on every shape', () => {
+    for (const stage of [
+      'checkEndpointRateLimit:/api/a/b/c',
+      'checkScopedRateLimit:/api/skills/fetch-agentskills',
+      'checkScopedRateLimit:/api/x:missing-config',
+      'checkRateLimit:timeout',
+      'checkRateLimit',
+      '',
+    ]) {
+      assert.equal(
+        rateLimitFingerprintStage(stage),
+        apiRateLimitFingerprintStage(stage),
+        `mirrors disagree for stage "${stage}" — operators grep across both surfaces`,
+      );
+    }
   });
 });
 
