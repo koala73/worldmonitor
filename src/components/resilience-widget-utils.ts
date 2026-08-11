@@ -40,6 +40,14 @@ const RESILIENCE_NOT_APPLICABLE_WHEN_ZERO_COVERAGE_IDS: ReadonlySet<string> = ne
   'sovereignFiscalBuffer',
 ]);
 
+// Client mirror of `RESILIENCE_FLAG_DARK_WHEN_ZERO_COVERAGE`. A disabled
+// construct stays serialized for schema continuity but is not part of the
+// active coverage universe. The parity test below keeps this set synchronized
+// with the server.
+const RESILIENCE_FLAG_DARK_WHEN_ZERO_COVERAGE_IDS: ReadonlySet<string> = new Set([
+  'education',
+]);
+
 // Mirrors server/worldmonitor/resilience/v1/_shared.ts. Keep this table
 // in sync so the widget Coverage % matches API overallCoverage semantics;
 // tests/resilience-staleness-factor-parity.test.mts guards drift.
@@ -348,6 +356,12 @@ export function formatResilienceConfidence(data: ResilienceScoreResponse): strin
         // so an operator notices, not be silently filtered.
         if (
           RESILIENCE_NOT_APPLICABLE_WHEN_ZERO_COVERAGE_IDS.has(dim.id) &&
+          dim.coverage === 0 &&
+          (dim.observedWeight ?? 0) === 0 &&
+          (dim.imputedWeight ?? 0) === 0
+        ) return false;
+        if (
+          RESILIENCE_FLAG_DARK_WHEN_ZERO_COVERAGE_IDS.has(dim.id) &&
           dim.coverage === 0 &&
           (dim.observedWeight ?? 0) === 0 &&
           (dim.imputedWeight ?? 0) === 0

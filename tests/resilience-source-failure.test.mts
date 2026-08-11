@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { describe, it } from 'node:test';
 import { parse } from 'acorn';
+import { __testing__ as healthTesting } from '../api/health.js';
 
 import {
   DATASET_TO_DIMENSIONS,
@@ -68,6 +69,13 @@ const TRACKED_STANDALONE_META_KEYS_NOT_IN_HEALTH = new Set([
   'seed-meta:trade:restrictions:v1:tariff-overview:50',
   'seed-meta:trade:barriers:v1:tariff-gap:50',
 ]);
+
+describe('education health-probe rollout sequencing', () => {
+  it('defers both data and seed-meta registration until the first production publish', () => {
+    assert.equal(Object.hasOwn(healthTesting.STANDALONE_KEYS, 'educationAttainment'), false);
+    assert.equal(Object.hasOwn(healthTesting.SEED_META, 'educationAttainment'), false);
+  });
+});
 
 function literalKey(node: any): string | null {
   if (node.type === 'Identifier') return node.name;

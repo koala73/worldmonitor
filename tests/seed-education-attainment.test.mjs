@@ -13,6 +13,7 @@
 // 0 would publish a plausible-looking wrong number rather than an obvious one.
 
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { describe, it } from 'node:test';
 
 import {
@@ -21,6 +22,17 @@ import {
   declareRecords,
   MIN_COUNTRIES,
   ATTAINMENT_INDICATOR,
+  OBSERVATION_WINDOW_YEARS,
+  WB_PAGE_SIZE,
+  EDUCATION_MAX_EXPECTED_PAGES,
+  EDUCATION_PAGE_WORST_CASE_MS,
+  EDUCATION_OUTER_ATTEMPTS,
+  EDUCATION_RETRY_BACKOFF_MS,
+  EDUCATION_FETCH_PROCESSING_HEADROOM_MS,
+  EDUCATION_FETCH_PHASE_TIMEOUT_MS,
+  EDUCATION_LOCK_TTL_MS,
+  EDUCATION_SECTION_TIMEOUT_MS,
+  observationWindowStart,
 } from '../scripts/seed-education-attainment.mjs';
 
 const row = (iso3, date, value) => ({ countryiso3code: iso3, date: String(date), value });
@@ -141,5 +153,53 @@ describe('series identity', () => {
     // literature's income-independent effect is measured on it. Swapping to
     // .ZS (total) or .MA.ZS (male) would silently change what is scored.
     assert.equal(ATTAINMENT_INDICATOR, 'SE.SEC.CUAT.UP.FE.ZS');
+  });
+});
+
+describe('rolling observation window', () => {
+  it('preserves the measured 2011 lower bound in 2026', () => {
+    assert.equal(OBSERVATION_WINDOW_YEARS, 15);
+    assert.equal(observationWindowStart(2026), 2011);
+  });
+
+  it('advances the lower bound when the calendar year advances', () => {
+    assert.equal(observationWindowStart(2027), 2012);
+  });
+});
+
+describe('fetch and Railway bundle budgets', () => {
+  it('fits all outer retries, backoff, and processing inside the explicit deadline', () => {
+    assert.equal(WB_PAGE_SIZE, 5_000);
+    assert.ok(
+      EDUCATION_OUTER_ATTEMPTS * EDUCATION_MAX_EXPECTED_PAGES * EDUCATION_PAGE_WORST_CASE_MS
+        + EDUCATION_RETRY_BACKOFF_MS
+        + EDUCATION_FETCH_PROCESSING_HEADROOM_MS
+        <= EDUCATION_FETCH_PHASE_TIMEOUT_MS,
+    );
+  });
+
+  it('preserves fetch, publish, section, and Railway cleanup headroom', () => {
+    assert.ok(EDUCATION_FETCH_PHASE_TIMEOUT_MS < EDUCATION_LOCK_TTL_MS);
+    assert.ok(EDUCATION_LOCK_TTL_MS < EDUCATION_SECTION_TIMEOUT_MS);
+    assert.ok(EDUCATION_SECTION_TIMEOUT_MS + 10_000 <= 570_000);
+
+    const bundleSource = readFileSync(
+      new URL('../scripts/seed-bundle-macro.mjs', import.meta.url),
+      'utf8',
+    );
+    assert.match(bundleSource, /maxBundleMs:\s*570_000/);
+    assert.match(
+      bundleSource,
+      /Education-Attainment[^\n]+timeoutMs:\s*EDUCATION_SECTION_TIMEOUT_MS/,
+    );
+    assert.match(bundleSource, /EDUCATION_PRIORITY_UTC_DAY\s*=\s*0/);
+    assert.match(
+      bundleSource,
+      /educationRunsFirst[\s\S]+\? \[EDUCATION_SECTION, \.\.\.MACRO_SECTIONS\][\s\S]+: \[\.\.\.MACRO_SECTIONS, EDUCATION_SECTION\]/,
+    );
+    assert.match(
+      bundleSource,
+      /normally last[\s\S]+first priority on one UTC day each week[\s\S]+production keeps the other[\s\S]+six days/,
+    );
   });
 });

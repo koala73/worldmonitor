@@ -94,33 +94,27 @@ All must be green before flipping:
    harness cannot see. Wire `resilience:education-attainment:v1` into the bulk
    payload load and extract `countries[iso2].value`.
 
-5. **Cache prefixes — already rotated in the scaffold, rotate again at flip.**
+5. **Cache prefixes — the scaffold is score-invariant; rotate at flip.**
 
-   The scaffold PR rotated score `v25`→`v26`, ranking `v25`→`v26`, and history
-   `v20`→`v21` across all nine files carrying the literals. **This corrects an
-   earlier version of this runbook that said the rotation was deliberately
-   deferred because a flag-dark dimension changes no published value. That claim
-   was wrong.**
+   The scaffold rotates score `v25`→`v26` so cached score payloads gain the
+   serialized education row, and ranking `v25`→`v26` so the ranking generation
+   is rebuilt from the current score namespace. It deliberately keeps history
+   at `v20` and intervals at `v9` because the flag-dark triple-zero row is
+   excluded from the domain, pillar, server-confidence, and widget-confidence
+   denominators. Tests assert identical flag-off pillar score and coverage.
 
-   Why it was wrong, since the mechanism is not obvious: `coverageWeightedMean`
-   does correctly drop a `coverage=0` dimension at the domain level, and
-   `isExcludedFromConfidenceMean` keeps it out of `overallCoverage` and
-   `lowConfidence`. Both of those checks pass. But
-   `averageDomainDimensionCoverage` in `_pillar-membership.ts` sits above them
-   and takes a **flat mean over `domain.dimensions.length`** with no exclusion
-   filter. A coverage-0 fifth dimension therefore scales social-governance's
-   coverage to 4/5, changing its weight inside the structural-readiness pillar
-   (`domain.weight * coverage`) while economic's is unchanged. The pillar
-   rebalances, `pillars[].coverage` moves as a public field, and `overallScore`
-   moves with it — non-uniformly, so adjacent countries in the 196-country
-   ranking can reorder. A dark dimension is not inert at the pillar layer.
+   The exclusion is narrow: only the `education` triple-zero flag-dark shape is
+   skipped by `averageDomainDimensionCoverage`. A real education outage carries
+   observed or imputed weight and remains in the denominator, so the invariant
+   cannot hide a source failure.
 
-   **At flip, rotate again** (`v26`→`v27`, `v21`→`v22`). The flip changes scores
-   far more than the scaffold did, and mixing pre- and post-flip points inside
-   the 30-day rolling history window manufactures false trends for every
-   country. Use this grep, then re-run it against the new values:
+   **At flip, rotate all numeric generations**: score `v26`→`v27`, ranking
+   `v26`→`v27`, history `v20`→`v21`, and intervals `v9`→`v10`. The flip
+   changes scores, and mixing pre- and post-flip history points or sensitivity
+   bands would manufacture false trends and stale `rankStable` verdicts. Use
+   this grep, then re-run it against the new values:
    ```bash
-   grep -rln "resilience:score:v26\|resilience:ranking:v26\|resilience:history:v21" \
+   grep -rln "resilience:score:v26\|resilience:ranking:v26\|resilience:history:v20\|resilience:intervals:v9" \
      --include='*.mjs' --include='*.ts' --include='*.js' --include='*.mts' \
      --include='*.mdx' --include='*.md' . | grep -v node_modules
    ```
@@ -133,19 +127,10 @@ All must be green before flipping:
    zh doc is hand-maintained — `scripts/generate-public-product-facts.mjs` does
    not regenerate it, so it will not self-heal.
 
-   Eleven files carry these literals: `_shared.ts` (canonical), eight that
-   hand-copy them in code, and the EN and zh methodology docs. Missing one is
-   worse than not rotating: `benchmark-resilience-external.mjs`,
+   Missing one is worse than not rotating: `benchmark-resilience-external.mjs`,
    `validate-resilience-correlation.mjs`, and `backtest-resilience-outcomes.mjs`
    produce the acceptance evidence, so a stale prefix there reads an abandoned
    namespace and returns a green verdict with no signal.
-
-   **Known open question.** Arguably `averageDomainDimensionCoverage` should use
-   the same exclusion helper the confidence mean uses, so structurally-absent
-   dimensions stop diluting pillar weight. That is not done here because it
-   would also change how the two *retired* dimensions are treated, moving
-   published pillar coverage for every country — a separate change with its own
-   acceptance run, not a rider on this one.
 
 6. **Ship the coverage-drop warning.** The 150 validation floor does not catch a
    partial fetch: 161 countries clears it while silently moving ~20 onto the

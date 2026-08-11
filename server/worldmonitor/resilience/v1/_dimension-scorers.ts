@@ -2904,15 +2904,6 @@ export const RESILIENCE_NOT_APPLICABLE_WHEN_ZERO_COVERAGE: ReadonlySet<Resilienc
 // `education` counted, the US happy-path build fell below the threshold and
 // dropped out of the headline ranking entirely.
 //
-// NOTE: this helper covers `computeOverallCoverage` and `computeLowConfidence`
-// only. It does NOT reach `averageDomainDimensionCoverage` in
-// `_pillar-membership.ts`, which takes a flat mean over every dimension in the
-// domain and therefore still counts a dark dim in its denominator. That is why
-// the score/ranking/history cache prefixes were rotated for this change: a dark
-// dimension shifts pillar weighting and `overallScore` even though the domain
-// mean and the confidence mean both correctly ignore it. Do not restate "a dark
-// dimension changes nothing published" — it is false at the pillar layer.
-//
 // `financialSystemExposure` is deliberately NOT in this set even though it is
 // also dark. Adding it would change the coverage number already published for
 // every country, which is outside this change's scope; the two should be
@@ -2920,6 +2911,16 @@ export const RESILIENCE_NOT_APPLICABLE_WHEN_ZERO_COVERAGE: ReadonlySet<Resilienc
 export const RESILIENCE_FLAG_DARK_WHEN_ZERO_COVERAGE: ReadonlySet<ResilienceDimensionId> = new Set([
   'education',
 ]);
+
+export function isFlagDarkDimension(
+  dimension: { id: string; coverage: number; observedWeight?: number; imputedWeight?: number },
+): boolean {
+  const id = dimension.id as ResilienceDimensionId;
+  return RESILIENCE_FLAG_DARK_WHEN_ZERO_COVERAGE.has(id)
+    && dimension.coverage === 0
+    && (dimension.observedWeight ?? 0) === 0
+    && (dimension.imputedWeight ?? 0) === 0;
+}
 
 export function isExcludedFromConfidenceMean(
   dimension: { id: string; coverage: number; observedWeight?: number; imputedWeight?: number },
@@ -2929,14 +2930,7 @@ export function isExcludedFromConfidenceMean(
   // Same triple-zero fingerprint as the not-applicable path below: a dark dim
   // emits score=0/coverage=0/observedWeight=0/imputedWeight=0. Once the flag
   // flips the dim carries real coverage and rejoins the mean automatically.
-  if (
-    RESILIENCE_FLAG_DARK_WHEN_ZERO_COVERAGE.has(id) &&
-    dimension.coverage === 0 &&
-    (dimension.observedWeight ?? 0) === 0 &&
-    (dimension.imputedWeight ?? 0) === 0
-  ) {
-    return true;
-  }
+  if (isFlagDarkDimension(dimension)) return true;
   if (
     RESILIENCE_NOT_APPLICABLE_WHEN_ZERO_COVERAGE.has(id) &&
     dimension.coverage === 0 &&

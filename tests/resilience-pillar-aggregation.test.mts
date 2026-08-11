@@ -82,30 +82,8 @@ describe('penalizedPillarScore', () => {
   });
 });
 
-describe('buildPillarList — zero-coverage dimensions dilute pillar weight', () => {
-  // Regression lock for the 2026-08-10 education-dimension finding.
-  //
-  // `averageDomainDimensionCoverage` takes a FLAT mean over
-  // `domain.dimensions.length` and does NOT route through
-  // `isExcludedFromConfidenceMean`. So adding a zero-coverage dimension to one
-  // domain — a flag-dark construct, a retired one — silently rescales that
-  // domain's coverage, which is what weights it inside its pillar
-  // (`domain.weight * coverage`). The pillar rebalances toward its other member
-  // domains and `overallScore` moves.
-  //
-  // This is documented behavior, not a bug being asserted as correct: the point
-  // of pinning it is that "the dimension is dark so nothing published changes"
-  // is FALSE at this layer, and anyone adding a dimension must rotate the score
-  // cache prefixes. If this test ever starts failing because the flat mean
-  // learned to skip zero-coverage dims, that is an intentional improvement —
-  // update this test, and re-run the acceptance gates, because it moves
-  // published pillar coverage for every country.
-  function domainWithDims(
-    id: string,
-    score: number,
-    coverages: number[],
-    weight: number,
-  ): ResilienceDomain {
+describe('buildPillarList — flag-dark dimension invariance', () => {
+  function domainWithDims(id: string, score: number, coverages: number[], weight: number): ResilienceDomain {
     return {
       id,
       score,
@@ -122,45 +100,66 @@ describe('buildPillarList — zero-coverage dimensions dilute pillar weight', ()
     };
   }
 
-  it('a zero-coverage dimension lowers its domain coverage and shifts the pillar', () => {
-    // structural-readiness = economic + social-governance.
-    const before = buildPillarList(
-      [
-        domainWithDims('economic', 75, [0.9, 0.9], 0.17),
-        domainWithDims('social-governance', 60, [0.8, 0.8, 0.8, 0.8], 0.19),
-      ],
-      true,
-    );
-    // Same inputs plus one dark dimension on social-governance only.
-    const after = buildPillarList(
-      [
-        domainWithDims('economic', 75, [0.9, 0.9], 0.17),
-        domainWithDims('social-governance', 60, [0.8, 0.8, 0.8, 0.8, 0], 0.19),
-      ],
-      true,
-    );
+  const baselineDomains = (): ResilienceDomain[] => [
+    domainWithDims('economic', 75, [0.9, 0.9], 0.17),
+    domainWithDims('social-governance', 60, [0.8, 0.8, 0.8, 0.8], 0.19),
+  ];
 
-    const sr = (pillars: ReturnType<typeof buildPillarList>) =>
-      pillars.find((p) => p.id === 'structural-readiness')!;
+  const structural = (pillars: ReturnType<typeof buildPillarList>) =>
+    pillars.find((pillar) => pillar.id === 'structural-readiness')!;
 
-    // Domain coverage falls 0.8 -> 0.64 (4 x 0.8 / 5), so the pillar's own
-    // coverage falls too. Both are public fields.
-    assert.ok(
-      sr(after).coverage < sr(before).coverage,
-      `pillar coverage must fall when a dark dim is added (${sr(before).coverage} -> ${sr(after).coverage})`,
-    );
+  it('keeps pillar score and coverage identical when education is flag-dark', () => {
+    const before = structural(buildPillarList(baselineDomains(), true));
+    const domains = baselineDomains();
+    domains[1]!.dimensions.push({
+      id: 'education',
+      score: 0,
+      coverage: 0,
+      observedWeight: 0,
+      imputedWeight: 0,
+      imputationClass: '',
+      freshness: { lastObservedAtMs: '0', staleness: '' },
+    });
+    const after = structural(buildPillarList(domains, true));
 
-    // And the pillar score shifts toward economic, because social-governance
-    // now carries less coverage-weighted influence.
-    assert.notEqual(
-      sr(after).score,
-      sr(before).score,
-      'pillar score must move when a member domain loses coverage weight',
-    );
-    assert.ok(
-      sr(after).score > sr(before).score,
-      `pillar must shift toward the higher-scoring domain (${sr(before).score} -> ${sr(after).score})`,
-    );
+    assert.equal(after.coverage, before.coverage);
+    assert.equal(after.score, before.score);
+  });
+
+  it('keeps a generic zero-coverage outage in the pillar denominator', () => {
+    const before = structural(buildPillarList(baselineDomains(), true));
+    const domains = baselineDomains();
+    domains[1]!.dimensions.push({
+      id: 'social-governance-outage',
+      score: 0,
+      coverage: 0,
+      observedWeight: 0,
+      imputedWeight: 1,
+      imputationClass: 'source-failure',
+      freshness: { lastObservedAtMs: '0', staleness: '' },
+    });
+    const after = structural(buildPillarList(domains, true));
+
+    assert.ok(after.coverage < before.coverage);
+    assert.notEqual(after.score, before.score);
+  });
+
+  it('keeps an education source failure in the pillar denominator', () => {
+    const before = structural(buildPillarList(baselineDomains(), true));
+    const domains = baselineDomains();
+    domains[1]!.dimensions.push({
+      id: 'education',
+      score: 50,
+      coverage: 0,
+      observedWeight: 0,
+      imputedWeight: 1,
+      imputationClass: 'source-failure',
+      freshness: { lastObservedAtMs: '0', staleness: '' },
+    });
+    const after = structural(buildPillarList(domains, true));
+
+    assert.ok(after.coverage < before.coverage);
+    assert.notEqual(after.score, before.score);
   });
 });
 

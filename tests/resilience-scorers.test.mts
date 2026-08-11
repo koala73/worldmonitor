@@ -174,12 +174,11 @@ describe('resilience scorer contracts', () => {
     // drops 66.25 = 265/4 -> 53 = 265/5. The production coverage-weighted path
     // (next test) does correctly drop a coverage=0 dim from the DOMAIN blend.
     //
-    // Do NOT read that as "the headline overall is unmoved while dark" — it is
-    // not. `averageDomainDimensionCoverage` in `_pillar-membership.ts` takes a
-    // flat mean over the dimension count with no exclusion filter, so a dark
-    // dim still shifts the domain's weight inside its pillar and moves
-    // `overallScore` and `pillars[].coverage`. That is why this change rotated
-    // the score/ranking/history cache prefixes.
+    // This arithmetic-only assertion deliberately averages every serialized
+    // row. Production aggregation is different: the domain blend drops zero
+    // coverage, and pillar coverage excludes the allow-listed education
+    // triple-zero flag-dark shape. The serialized placeholder is therefore
+    // present without moving the flag-off headline score.
     assert.deepEqual(domainAverages, {
       economic: 56.5,
       infrastructure: 79.67,

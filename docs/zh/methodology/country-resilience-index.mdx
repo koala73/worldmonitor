@@ -565,7 +565,7 @@ CRI 设计为端到端可审计：给定任一时刻的 Redis 快照，读者应
 |---|---|---|---|---|
 | `resilience:score:v26:{countryCode}` | JSON | 6 小时 | `server/worldmonitor/resilience/v1/_shared.ts` 中的 `buildResilienceScore` | `getResilienceScore` 处理器 |
 | `resilience:ranking:v26` | JSON | 12 小时 | `getResilienceRanking` 暖路径，仅当至少 90% 国家已评分时（`RANKING_CACHE_MIN_COVERAGE = 0.90`） | `getResilienceRanking` 处理器 |
-| `resilience:history:v21:{countryCode}` | 有序集合 | 无限期，修剪至 30 天 | 评分期间 `appendHistory` | 趋势和 `change30d` 计算 |
+| `resilience:history:v20:{countryCode}` | 有序集合 | 无限期，修剪至 30 天 | 评分期间 `appendHistory` | 趋势和 `change30d` 计算 |
 | `resilience:intervals:v9:{countryCode}` | JSON | 7 天；通过 `seed-meta`/健康频率监控新鲜度 | `scripts/seed-resilience-scores.mjs` | `getResilienceScore`（可选 `scoreInterval` 字段）和 `getResilienceRanking`（`rankStable`） |
 | `seed-meta:resilience:static` | JSON | 400 天 | 每次成功种子运行结束时的 `scripts/seed-resilience-static.mjs` | 评分器用于 `dataVersion` 填充、健康检查 |
 | `resilience:static:{countryCode}` | JSON | 400 天 | `scripts/seed-resilience-static.mjs` | 评分器用于所有基线信号（WGI、WHO、FAO、GPI、RSF 等） |
@@ -736,7 +736,7 @@ v17.1 在评分时将修复扩展到 `liquidReserveAdequacy`（无种子器变�
 4. **重新锚定发布门带**：`tests/resilience-pillar-combine-activation.test.mts` 将高带锚点（NO、CH、DK）锁定在 ≥ 55（vs 6 领域公式的 ≥ 70 下限），低带锚点（YE、SO）在 ≤ 40（vs ≤ 45）。快照测试从每个快照读取 `methodologyFormula` 并应用匹配带。参考版重计算确认带在领域加权支柱聚合后有裕度成立：NO = 74.85（≥ 55 by 19.85 分），YE = 29.20（≤ 40 by 10.80 分）。
 5. **投影和权威快照**：`docs/snapshots/resilience-ranking-pillar-combined-projected-2026-04-21.json` 携带激活前使用的 52 国预览表。`docs/snapshots/resilience-ranking-2026-05-28.json` 携带标志激活后的权威全范围实时捕获；它早于 P1-1 领域加权支柱聚合修复，作为 P1-1 前历史捕获保留，直到生成下一次实时全范围捕获。
 
-回退：设 `RESILIENCE_PILLAR_COMBINE_ENABLED=false`，刷新当前 `resilience:score:v26:*`、`resilience:ranking:v26` 和 `resilience:history:v21:*` 键（或等待 TTL 过期）。6 领域公式与支柱组合在 `_shared.ts` 中并存，回退无需代码变更。
+回退：设 `RESILIENCE_PILLAR_COMBINE_ENABLED=false`，刷新当前 `resilience:score:v26:*`、`resilience:ranking:v26` 和 `resilience:history:v20:*` 键（或等待 TTL 过期）。6 领域公式与支柱组合在 `_shared.ts` 中并存，回退无需代码变更。
 
 ### 评分卡（v2.0 自评）
 

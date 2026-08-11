@@ -407,11 +407,6 @@ const STANDALONE_KEYS = {
   lowCarbonGeneration:      'resilience:low-carbon-generation:v1',
   fossilElectricityShare:   'resilience:fossil-electricity-share:v1',
   powerLosses:              'resilience:power-losses:v1',
-  // Education dimension seed. Same STRICT SEED_META posture as the v2 energy
-  // seeds above and for the same reason: the scorer fail-closes on a missing
-  // envelope, so health must surface the Railway-bundle gap independently
-  // rather than letting a dark dimension hide a provisioning failure.
-  educationAttainment:      'resilience:education-attainment:v1',
   goldExtended:             'market:gold-extended:v1',
   goldEtfFlows:             'market:gold-etf-flows:v1',
   goldCbReserves:           'market:gold-cb-reserves:v1',

@@ -333,6 +333,26 @@ test('formatResilienceConfidence excludes retired dimensions by ID (not by cover
   assert.equal(formatResilienceConfidence(withRetired), 'Coverage 57% ✓');
 });
 
+test('formatResilienceConfidence excludes flag-dark education but counts an education outage', () => {
+  const withDarkEducation: ResilienceScoreResponse = {
+    ...baseResponse,
+    domains: [{ id: 'social-governance', score: 80, weight: 0.19, dimensions: [
+      { id: 'governanceInstitutional', score: 80, coverage: 0.8, observedWeight: 0.8, imputedWeight: 0.2 },
+      { id: 'education', score: 0, coverage: 0, observedWeight: 0, imputedWeight: 0 },
+    ] }],
+  };
+  assert.equal(formatResilienceConfidence(withDarkEducation), 'Coverage 80% ✓');
+
+  const withEducationOutage: ResilienceScoreResponse = {
+    ...withDarkEducation,
+    domains: [{ ...withDarkEducation.domains[0]!, dimensions: [
+      withDarkEducation.domains[0]!.dimensions[0]!,
+      { id: 'education', score: 50, coverage: 0, observedWeight: 0, imputedWeight: 1, imputationClass: 'source-failure' },
+    ] }],
+  };
+  assert.equal(formatResilienceConfidence(withEducationOutage), 'Coverage 40% ✓');
+});
+
 test('formatResilienceChange30d preserves explicit sign formatting', () => {
   assert.equal(formatResilienceChange30d(2.41), '30d +2.4');
   assert.equal(formatResilienceChange30d(-1.26), '30d -1.3');

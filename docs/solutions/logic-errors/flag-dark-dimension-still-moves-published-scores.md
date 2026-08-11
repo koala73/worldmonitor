@@ -67,18 +67,22 @@ const pillarScore = /* ... */ domainCoverages.reduce((sum, item) => {
 
 Adding a coverage-0 fifth dimension scales that domain's coverage to 4/5 of its previous value. Its weight inside the pillar drops, the pillar rebalances toward its other member domains, and the overall score moves.
 
-Two fixes are available, and the choice matters:
+The fix uses a narrow `isFlagDarkDimension` predicate in both confidence and
+pillar aggregation. It matches only allow-listed dimensions with the exact
+triple-zero shape. Retired and not-applicable dimensions keep their existing
+pillar semantics, while a real education outage (`imputedWeight > 0` or
+`observedWeight > 0`) remains in the denominator and lowers confidence.
 
-| Fix | Effect | Cost |
-|---|---|---|
-| Filter the pillar mean through the same exclusion helper the confidence mean uses | Structurally-absent dimensions stop diluting pillar weight — arguably the correct behavior | Also changes how already-retired dimensions are treated, moving published pillar coverage for **every** country. Needs its own acceptance run. |
-| Accept the dilution, rotate the score/ranking/history cache prefixes, and correct the false claim | Minimal, in-scope | The dilution remains; the behavior is documented rather than fixed |
-
-The second was taken here because the first widens blast radius beyond the change under review. The first is recorded as a known open question rather than silently dropped.
+This scope matters. Reusing the broader confidence exclusion helper would also
+change how already-retired dimensions affect pillar coverage, causing an
+unrelated published-score migration.
 
 ## Why This Works
 
-The cache rotation matters independently of the scoring shift. Score history is a 30-day rolling window keyed by prefix; mixing pre- and post-change points inside that window manufactures false trends. Once the score genuinely moves — even slightly — the old and new points are no longer comparable, so the namespace must rotate.
+With the narrow exclusion in place, the flag-off scaffold is numerically
+invariant. The score cache still rotates because its serialized payload gains
+the education row, but history and interval generations stay unchanged until
+the flag is activated and the numeric score can move.
 
 The deeper reason the original reasoning failed: **"this value is zero, so it contributes nothing" is only true where the aggregation is weighted by that value.** A flat mean is weighted by *count*, not by the value, so a zero contributes its full share of the denominator. Any `sum / length` in an aggregation chain is a place where a zero-valued member still exerts influence.
 
@@ -93,18 +97,22 @@ Grep for the shape rather than reasoning about it:
 grep -rn "\.length;" --include='*.ts' server/ | grep -i "reduce\|sum\|average\|mean"
 ```
 
-**Pin the behavior with a test, whichever fix you take.** The regression lock added here asserts the dilution explicitly, so the next person to add a dimension sees it rather than rediscovering it:
+**Pin the invariant and its negative case.** The regression lock asserts that a
+flag-dark row is inert while a source failure on the same dimension still
+changes coverage:
 
 ```ts
-it('a zero-coverage dimension lowers its domain coverage and shifts the pillar', () => {
+it('keeps pillar score and coverage identical when education is flag-dark', () => {
   const before = buildPillarList([/* economic 2 dims, social-governance 4 dims */], true);
-  const after  = buildPillarList([/* same, plus one coverage-0 dim */], true);
-  assert.ok(sr(after).coverage < sr(before).coverage);
-  assert.ok(sr(after).score > sr(before).score); // shifts toward the higher-scoring domain
+  const after  = buildPillarList([/* same, plus education triple-zero */], true);
+  assert.equal(sr(after).coverage, sr(before).coverage);
+  assert.equal(sr(after).score, sr(before).score);
 });
 ```
 
-Note the test asserts the *current* behavior including the flaw, with a comment saying so — if a later change teaches the flat mean to skip zero-coverage members, the test fails loudly and the acceptance run gets re-triggered. That is the intended outcome, not a false alarm.
+The paired outage test sets `imputedWeight=1` and asserts that pillar coverage
+does fall. Without that negative case, an over-broad `coverage===0` filter could
+make the invariant green by hiding real failures.
 
 **Do not write an invariant claim into documentation until the whole chain is checked.** The claim "this change moves no published value" was asserted in a runbook, a code comment, and a test comment before the pillar layer had been examined. Three artifacts then had to be corrected. A claim about what a change does *not* affect is a strong claim and deserves the same evidence bar as a claim about what it does.
 

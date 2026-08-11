@@ -175,9 +175,6 @@ const EXCLUDED_FROM_MCP = new Map([
     'deferred: recovery pillar scorer input. Future resilience tool will expose recovery dimensions.'],
   ['resilience:recovery:sovereign-wealth:v1',
     'deferred: recovery pillar scorer input. Future resilience tool will expose recovery dimensions.'],
-  ['resilience:education-attainment:v1',
-    'deferred: social-governance education dimension scorer input (World Bank SE.SEC.CUAT.UP.FE.ZS). Server-only — the MCP surface exposes the computed resilience score, not the raw attainment envelope. Same posture as the recovery-pillar scorer inputs above.'],
-
   // ===========================================================================
   // #5055 health-only seed probes added to strict /api/health monitoring.
   // ===========================================================================

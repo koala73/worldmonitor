@@ -51,11 +51,29 @@ const MAX_CONTENT_AGE_MIN = 48 * 30 * 24 * 60;
 
 const ATTAINMENT_INDICATOR = 'SE.SEC.CUAT.UP.FE.ZS';
 
-// Observation window. Matches the window the coverage measurement used, so
-// the published record count reproduces the measured 181. A country whose
-// only observation predates 2011 is treated as uncovered rather than
-// published at a 15+ year vintage.
-const WINDOW_START = 2011;
+// Rolling observation window. The 2026 coverage measurement used 2011..2026;
+// deriving the start keeps the same 15-year lookback as the calendar advances
+// instead of retaining progressively older observations forever.
+const OBSERVATION_WINDOW_YEARS = 15;
+export function observationWindowStart(nowYear) {
+  return nowYear - OBSERVATION_WINDOW_YEARS;
+}
+
+// The measured 3975-row response fits in one World Bank page at this size.
+// runSeed's outer withRetry allows four attempts with 1s + 2s + 4s backoff.
+// Four fully degraded attempts therefore cost at most 4 x
+// (30s direct + 30s proxy) + 7s = 247s. The fetch deadline adds 13s for JSON
+// parsing and reduction; the lock and bundle section retain publish/cleanup
+// headroom.
+const WB_PAGE_SIZE = 5_000;
+const EDUCATION_MAX_EXPECTED_PAGES = 1;
+const EDUCATION_PAGE_WORST_CASE_MS = 60_000;
+const EDUCATION_OUTER_ATTEMPTS = 4;
+const EDUCATION_RETRY_BACKOFF_MS = 7_000;
+const EDUCATION_FETCH_PROCESSING_HEADROOM_MS = 13_000;
+const EDUCATION_FETCH_PHASE_TIMEOUT_MS = 260_000;
+const EDUCATION_LOCK_TTL_MS = 280_000;
+const EDUCATION_SECTION_TIMEOUT_MS = 300_000;
 
 // Validation floor. Deliberately well below the measured 181 so a transient
 // World Bank dip does not refresh seed-meta on a truncated payload and
@@ -131,10 +149,11 @@ async function fetchAttainment() {
   let page = 1;
   let totalPages = 1;
   const windowEnd = new Date().getUTCFullYear();
+  const windowStart = observationWindowStart(windowEnd);
 
   while (page <= totalPages) {
     const url = `${WB_BASE}/country/all/indicator/${ATTAINMENT_INDICATOR}`
-      + `?format=json&per_page=500&page=${page}&date=${WINDOW_START}:${windowEnd}`;
+      + `?format=json&per_page=${WB_PAGE_SIZE}&page=${page}&date=${windowStart}:${windowEnd}`;
     let json;
     try {
       const resp = await fetch(url, {
@@ -175,7 +194,24 @@ export function declareRecords(data) {
   return Object.keys(data?.countries || {}).length;
 }
 
-export { CANONICAL_KEY, CACHE_TTL, MIN_COUNTRIES, ATTAINMENT_INDICATOR, WINDOW_START, fetchEducationAttainment, fetchAttainment };
+export {
+  CANONICAL_KEY,
+  CACHE_TTL,
+  MIN_COUNTRIES,
+  ATTAINMENT_INDICATOR,
+  OBSERVATION_WINDOW_YEARS,
+  WB_PAGE_SIZE,
+  EDUCATION_MAX_EXPECTED_PAGES,
+  EDUCATION_PAGE_WORST_CASE_MS,
+  EDUCATION_OUTER_ATTEMPTS,
+  EDUCATION_RETRY_BACKOFF_MS,
+  EDUCATION_FETCH_PROCESSING_HEADROOM_MS,
+  EDUCATION_FETCH_PHASE_TIMEOUT_MS,
+  EDUCATION_LOCK_TTL_MS,
+  EDUCATION_SECTION_TIMEOUT_MS,
+  fetchEducationAttainment,
+  fetchAttainment,
+};
 
 if (process.argv[1]?.endsWith('seed-education-attainment.mjs')) {
   runSeed('resilience', 'education-attainment', CANONICAL_KEY, fetchEducationAttainment, {
@@ -200,6 +236,8 @@ if (process.argv[1]?.endsWith('seed-education-attainment.mjs')) {
     maxStaleMin: 11520,
     contentMeta: wbCountryDictContentMeta,
     maxContentAgeMin: MAX_CONTENT_AGE_MIN,
+    fetchPhaseTimeoutMs: EDUCATION_FETCH_PHASE_TIMEOUT_MS,
+    lockTtlMs: EDUCATION_LOCK_TTL_MS,
   }).catch((err) => {
     const _cause = err.cause ? ` (cause: ${err.cause.message || err.cause.code || err.cause})` : '';
     console.error('FATAL:', (err.message || err) + _cause);

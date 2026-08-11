@@ -118,26 +118,6 @@ export function isFinancialSystemExposureEnabled(): boolean {
   return (process.env.RESILIENCE_FIN_SYS_EXPOSURE_ENABLED ?? 'false').toLowerCase() === 'true';
 }
 
-// `education` dimension — female upper-secondary attainment (WB
-// SE.SEC.CUAT.UP.FE.ZS), scored by `scoreEducation` from
-// `resilience:education-attainment:v1`. One indicator, dimension weight 0.5
-// in the social-governance domain, goalposts 0/100 with a slope bend at 85.
-//
-// Defaults OFF. While dark the scorer returns the empty-data shape and the
-// registry entry is tier='experimental', which keeps it out of both the
-// per-dimension weight-sum invariant and the coverage-influence CI gate.
-//
-// Flipping this to true is a PUBLICATION EVENT, not a config change: it adds a
-// fifth core-bearing dimension to social-governance, which moves every existing
-// dimension in that domain from a 1/4 to a 1/5 gate share. Run the acceptance
-// gates and capture the artifact per
-// docs/methodology/education-flag-flip-runbook.md before flipping, and bump the
-// score/ranking/history cache prefixes in lockstep or the 30-day trend window
-// mixes pre- and post-change points.
-export function isEducationEnabled(): boolean {
-  return (process.env.RESILIENCE_EDUCATION_ENABLED ?? 'false').toLowerCase() === 'true';
-}
-
 export const RESILIENCE_SCORE_CACHE_TTL_SECONDS = 6 * 60 * 60;
 // Ranking TTL must exceed the cron interval (6h) by enough to tolerate one
 // missed/slow cron tick. With TTL==cron_interval, writing near the end of a
@@ -230,23 +210,11 @@ export const RESILIENCE_RANKING_CACHE_TTL_SECONDS = 12 * 60 * 60;
 // stable firstSeenAt discovery day and decays old one-day bursts while
 // allowing sustained multi-day pressure to reach the cap. Same `pc` formula
 // tag, but infrastructure, pillar, and overall payloads can move.
-// v25→v26 bump (2026-08-10) for the `education` dimension. This bump was
-// initially deferred on the reasoning that a flag-dark dimension changes no
-// published value. That reasoning was WRONG, and the mechanism is worth
-// recording because it is not obvious:
-//
-// `coverageWeightedMean` does correctly drop a coverage=0 dimension at the
-// DOMAIN level — that much of the original rationale held. But
-// `averageDomainDimensionCoverage` in `_pillar-membership.ts` sits ABOVE it and
-// takes a FLAT mean over `domain.dimensions.length`, with no exclusion filter.
-// Adding a coverage-0 fifth dimension to social-governance therefore scales
-// that domain's coverage to 4/5 of its previous value, which changes its weight
-// inside the structural-readiness pillar (`domain.weight * coverage`) while
-// economic's is unchanged. The pillar rebalances, `pillars[].coverage` moves as
-// a public field, and `overallScore` moves with it — non-uniformly, so adjacent
-// countries in the public ranking can reorder.
-//
-// So a "dark" dimension is not inert at the pillar layer. Rotate.
+// v25→v26 bump (2026-08-10) for the serialized `education` dimension. The
+// flag-off triple-zero placeholder is excluded from domain, pillar, and
+// confidence denominators, so numeric scores do not move. The score namespace
+// still rotates because old cached score payloads do not contain the new
+// dimension row.
 export const RESILIENCE_SCORE_CACHE_PREFIX = 'resilience:score:v26:';
 // Bumped from v4 to v5 in the pillar-combined activation PR. Provides
 // a clean slate at PR deploy so pre-PR history points (which were
@@ -323,7 +291,9 @@ export const RESILIENCE_SCORE_CACHE_PREFIX = 'resilience:score:v26:';
 // v19→v20 bump in lockstep with RESILIENCE_SCORE_CACHE_PREFIX v24→v25 for
 // issue #4009 so pre-smoothing cyberDigital history points do not mix with
 // discovery-decayed points inside the rolling 30-day trend window.
-export const RESILIENCE_HISTORY_KEY_PREFIX = 'resilience:history:v21:';
+// Education is numerically inert while dark, so retain v20 history continuity.
+// Rotate only when the flag is activated and the published score can move.
+export const RESILIENCE_HISTORY_KEY_PREFIX = 'resilience:history:v20:';
 // v12 bump in lockstep with RESILIENCE_SCORE_CACHE_PREFIX (v11 → v12)
 // for PR 3A §net-imports denominator. As with the score prefix, the
 // version bump is a belt — the suspenders are cache-only metadata on
