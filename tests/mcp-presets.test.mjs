@@ -112,9 +112,9 @@ describe('MCP Presets — static validation', () => {
     assert.deepEqual(broken, [], `Presets with unparseable serverUrls: ${broken.map(p => p.name).join(', ')}`);
   });
 
-  it('expected free presets are present (Robtex, Pyth, WeatherForensics)', () => {
+  it('expected free presets are present', () => {
     const names = new Set(presets.map(p => p.name));
-    for (const expected of ['Robtex', 'Pyth Price Feeds', 'Weather Forensics']) {
+    for (const expected of ['Parallel Search', 'Robtex', 'Pyth Price Feeds', 'Weather Forensics']) {
       assert.ok(names.has(expected), `Expected preset "${expected}" not found`);
     }
   });
@@ -136,6 +136,13 @@ describe('MCP Presets — static validation', () => {
     const maps = presets.find(p => p.name === 'Google Maps');
     assert.ok(maps, 'Google Maps preset not found');
     assert.equal(maps.serverUrl, 'https://mapstools.googleapis.com/mcp');
+  });
+
+  it('Parallel Search uses the public Search MCP endpoint and web_search tool', () => {
+    const parallel = presets.find(p => p.name === 'Parallel Search');
+    assert.ok(parallel, 'Parallel Search preset not found');
+    assert.equal(parallel.serverUrl, 'https://search.parallel.ai/mcp');
+    assert.equal(parallel.defaultTool, 'web_search');
   });
 
   it('Datadog serverUrl includes /api/unstable/mcp-server/mcp', () => {
@@ -177,6 +184,7 @@ const LIVE = process.env.LIVE_MCP_TESTS === '1';
 describe(`MCP Presets — live connectivity (${LIVE ? 'ENABLED' : 'SKIPPED — set LIVE_MCP_TESTS=1'})`, { skip: !LIVE }, () => {
   const EXPECTED_LIVE_URLS = [
     // Free presets expected to respond (no auth needed for initialize)
+    { name: 'Parallel Search', url: 'https://search.parallel.ai/mcp' },
     { name: 'Robtex',          url: 'https://mcp.robtex.com/mcp' },
     { name: 'Pyth Price Feeds', url: 'https://mcp.pyth.network/mcp' },
     { name: 'Weather Forensics', url: 'https://weatherforensics.dev/mcp/free' },

@@ -50,6 +50,18 @@ export const MCP_PRESETS: McpPreset[] = [
     defaultTitle: 'Tavily Search',
   },
   {
+    name: 'Parallel Search',
+    icon: '🧭',
+    description: 'Free web search and URL fetching with no account or API key required',
+    serverUrl: 'https://search.parallel.ai/mcp',
+    defaultTool: 'web_search',
+    defaultArgs: {
+      objective: 'Find the latest major geopolitical developments',
+      search_queries: ['latest geopolitical developments'],
+    },
+    defaultTitle: 'Parallel Search',
+  },
+  {
     name: 'Perigon News',
     icon: '📰',
     description: 'Real-time global news search with journalist, company, and topic filters',
