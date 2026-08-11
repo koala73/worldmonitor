@@ -59,6 +59,11 @@ import {
   type OverlayId,
 } from '@/utils/overlay-history';
 import { isMobileDevice } from '@/utils';
+import {
+  FONT_SCALE_STEPS,
+  fontScaleLabel,
+  parseFontScale,
+} from '@/services/font-scale-settings';
 
 
 function showToast(msg: string): void {
@@ -412,6 +417,34 @@ export class UnifiedSettings {
         }
         return;
       }
+    });
+
+    this.overlay.addEventListener('change', (e) => {
+      const select = (e.target as HTMLElement).closest<HTMLSelectElement>('[data-panel-font-scale]');
+      const panelKey = select?.dataset.panelFontScale;
+      if (!select || !panelKey) return;
+      const panel = this.draftPanelSettings[panelKey];
+      if (!panel) return;
+
+      if (select.value === 'global') {
+        delete panel.fontScale;
+      } else {
+        const scale = parseFontScale(select.value);
+        if (scale === undefined) {
+          select.value = panel.fontScale === undefined ? 'global' : String(panel.fontScale);
+          return;
+        }
+        panel.fontScale = scale;
+      }
+
+      this.panelsJustSaved = false;
+      select.closest('.panel-settings-item')
+        ?.querySelector('.panel-toggle-item')
+        ?.classList.toggle(
+          'changed',
+          this.isPanelDraftChanged(panelKey, panel, this.config.getPanelSettings()),
+        );
+      this.updatePanelsFooter();
     });
 
     this.overlay.addEventListener('input', (e) => {
@@ -965,7 +998,7 @@ export class UnifiedSettings {
         <div class="upgrade-pro-section upgrade-pro-active" style="margin-top:16px;padding:14px 16px;border:1px solid ${statusBorderColor};border-radius:6px;background:${statusBgColor};">
           <div style="display:flex;align-items:center;gap:8px;margin-bottom:${statusLine ? '8' : '0'}px;">
             <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${statusColor};flex-shrink:0;"></span>
-            <span style="color:${statusColor};font-weight:600;font-size:13px;">${escapeHtml(planName)}</span>
+            <span style="color:${statusColor};font-weight:600;font-size:calc(13px * var(--wm-panel-effective-scale, 1));">${escapeHtml(planName)}</span>
           </div>
           ${statusLine ? `<div class="upgrade-pro-status-line">${escapeHtml(statusLine)}</div>` : ''}
           ${sub?.planKey === 'api_starter' ? `<button class="upgrade-to-business-btn" style="margin-right:8px;">Upgrade to Business</button>` : ''}
@@ -1095,21 +1128,34 @@ export class UnifiedSettings {
     const savedSettings = this.config.getPanelSettings();
     const pro = isProUser();
     const entries = this.getVisiblePanelEntries();
+    const panelFontScaleLabel = t('preferences.panelFontScale', { defaultValue: 'Text size' });
+    const followGlobalFontScaleLabel = t('preferences.followGlobalFontScale', { defaultValue: 'Use global' });
     setTrustedHtml(container, trustedHtml(entries.map(([key, panel]) => {
       // Preserve saved config for dynamic cw-* panels; unknown keys should not
       // collapse to getEffectivePanelConfig's disabled synthetic fallback.
       const resolvedPanel = ALL_PANELS[key] ? getEffectivePanelConfig(key, SITE_VARIANT) : panel;
       const entitled = isPanelEntitled(key, resolvedPanel, pro);
       const locked = !entitled;
-      const changed = !locked && this.getSavedPanelEnabled(key, savedSettings) !== panel.enabled;
+      const changed = !locked && this.isPanelDraftChanged(key, panel, savedSettings);
       const displayName = this.config.getLocalizedPanelName(key, resolvedPanel.name ?? panel.name);
       const a11yState = getPanelToggleA11yState(locked, panel.enabled, displayName);
+      // Sandboxed MCP iframes cannot inherit the host panel's CSS scale.
+      const supportsPanelFontScale = key !== 'map' && !key.startsWith('mcp-');
       return `
-        <button type="button" class="panel-toggle-item ${panel.enabled && !locked ? 'active' : ''}${changed ? ' changed' : ''}${locked ? ' pro-locked' : ''}" data-panel="${escapeHtml(key)}" ${a11yState.ariaPressed === null ? '' : `aria-pressed="${a11yState.ariaPressed}"`} ${a11yState.ariaLabel === null ? '' : `aria-label="${escapeHtml(a11yState.ariaLabel)}"`} ${locked ? 'data-pro-locked="1"' : ''}>
-          <div  class="panel-toggle-checkbox" aria-hidden="true">${panel.enabled && !locked ? '\u2713' : ''}${locked ? '\uD83D\uDD12' : ''}</div>
-          <span class="panel-toggle-label">${escapeHtml(displayName)}</span>
-          ${(locked || resolvedPanel.premium) ? '<span class="panel-toggle-pro-badge" aria-hidden="true">PRO</span>' : ''}
-        </button>
+        <div class="panel-settings-item">
+          <button type="button" class="panel-toggle-item ${panel.enabled && !locked ? 'active' : ''}${changed ? ' changed' : ''}${locked ? ' pro-locked' : ''}" data-panel="${escapeHtml(key)}" ${a11yState.ariaPressed === null ? '' : `aria-pressed="${a11yState.ariaPressed}"`} ${a11yState.ariaLabel === null ? '' : `aria-label="${escapeHtml(a11yState.ariaLabel)}"`} ${locked ? 'data-pro-locked="1"' : ''}>
+            <div class="panel-toggle-checkbox" aria-hidden="true">${panel.enabled && !locked ? '\u2713' : ''}${locked ? '\uD83D\uDD12' : ''}</div>
+            <span class="panel-toggle-label">${escapeHtml(displayName)}</span>
+            ${(locked || resolvedPanel.premium) ? '<span class="panel-toggle-pro-badge" aria-hidden="true">PRO</span>' : ''}
+          </button>
+          ${supportsPanelFontScale ? `<label class="panel-font-scale-control">
+            <span>${escapeHtml(panelFontScaleLabel)}</span>
+            <select data-panel-font-scale="${escapeHtml(key)}" aria-label="${escapeHtml(`${displayName}: ${panelFontScaleLabel}`)}"${locked ? ' disabled' : ''}>
+              <option value="global"${panel.fontScale === undefined ? ' selected' : ''}>${escapeHtml(followGlobalFontScaleLabel)}</option>
+              ${FONT_SCALE_STEPS.map(scale => `<option value="${scale}"${panel.fontScale === scale ? ' selected' : ''}>${fontScaleLabel(scale)}</option>`).join('')}
+            </select>
+          </label>` : ''}
+        </div>
       `;
     }).join(''), "legacy direct innerHTML migration"));
 
@@ -1139,10 +1185,26 @@ export class UnifiedSettings {
     return Boolean(ALL_PANELS[key]) && isPanelInVariantDefaults(key);
   }
 
+  private getSavedPanelFontScale(
+    key: string,
+    savedSettings: Record<string, PanelConfig>,
+  ): PanelConfig['fontScale'] {
+    return savedSettings[key]?.fontScale;
+  }
+
+  private isPanelDraftChanged(
+    key: string,
+    panel: PanelConfig,
+    savedSettings: Record<string, PanelConfig>,
+  ): boolean {
+    return this.getSavedPanelEnabled(key, savedSettings) !== panel.enabled
+      || this.getSavedPanelFontScale(key, savedSettings) !== panel.fontScale;
+  }
+
   private hasPendingPanelChanges(): boolean {
     const savedSettings = this.config.getPanelSettings();
     return Object.entries(this.draftPanelSettings).some(
-      ([key, panel]) => this.getSavedPanelEnabled(key, savedSettings) !== panel.enabled,
+      ([key, panel]) => this.isPanelDraftChanged(key, panel, savedSettings),
     );
   }
 

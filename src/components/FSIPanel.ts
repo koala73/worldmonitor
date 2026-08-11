@@ -77,8 +77,8 @@ function cissIsStale(latestDate: string): boolean {
 
 function metricCard(label: string, value: string): string {
   return `<div style="background:rgba(255,255,255,0.04);border-radius:6px;padding:8px 10px;border:1px solid rgba(255,255,255,0.07)">
-    <div style="font-size:9px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:4px">${escapeHtml(label)}</div>
-    <div style="font-size:16px;font-weight:600;color:var(--text)">${escapeHtml(value)}</div>
+    <div style="font-size:calc(9px * var(--wm-panel-effective-scale, 1));color:var(--text-dim);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:4px">${escapeHtml(label)}</div>
+    <div style="font-size:calc(16px * var(--wm-panel-effective-scale, 1));font-weight:600;color:var(--text)">${escapeHtml(value)}</div>
   </div>`;
 }
 
@@ -166,19 +166,19 @@ export class FSIPanel extends Panel {
     const cissStale = euFsi ? (euFsi.stale || cissIsStale(euFsi.latestDate)) : false;
     const cissSection = euFsi
       ? `<div style="margin-top:12px;padding-top:12px;border-top:1px solid rgba(255,255,255,0.07)">
-          <div style="font-size:10px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:8px">${escapeHtml(t('components.fsi.cissTitle'))}</div>
+          <div style="font-size:calc(10px * var(--wm-panel-effective-scale, 1));color:var(--text-dim);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:8px">${escapeHtml(t('components.fsi.cissTitle'))}</div>
           <div style="display:flex;align-items:center;gap:12px;margin-bottom:8px">
-            <div style="font-size:28px;font-weight:700;color:${cissLabelColor(euFsi.label)};line-height:1">${euFsi.latestValue.toFixed(4)}</div>
+            <div style="font-size:calc(28px * var(--wm-panel-effective-scale, 1));font-weight:700;color:${cissLabelColor(euFsi.label)};line-height:1">${euFsi.latestValue.toFixed(4)}</div>
             <div>
-              <div style="font-size:12px;font-weight:600;color:${cissLabelColor(euFsi.label)}">${escapeHtml(cissLabelDisplay(euFsi.label))}</div>
-              <div style="font-size:10px;color:${cissStale ? '#e67e22' : 'var(--text-dim)'}">${escapeHtml(euFsi.latestDate ? new Date(euFsi.latestDate).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' }) : '')}</div>
+              <div style="font-size:calc(12px * var(--wm-panel-effective-scale, 1));font-weight:600;color:${cissLabelColor(euFsi.label)}">${escapeHtml(cissLabelDisplay(euFsi.label))}</div>
+              <div style="font-size:calc(10px * var(--wm-panel-effective-scale, 1));color:${cissStale ? '#e67e22' : 'var(--text-dim)'}">${escapeHtml(euFsi.latestDate ? new Date(euFsi.latestDate).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' }) : '')}</div>
             </div>
           </div>
-          ${cissStale ? `<div style="font-size:9px;color:#e67e22;background:rgba(230,126,34,0.1);border-radius:4px;padding:4px 6px;margin-bottom:8px">⚠ ${escapeHtml(t('components.fsi.cissStale'))}</div>` : ''}
+          ${cissStale ? `<div style="font-size:calc(9px * var(--wm-panel-effective-scale, 1));color:#e67e22;background:rgba(230,126,34,0.1);border-radius:4px;padding:4px 6px;margin-bottom:8px">⚠ ${escapeHtml(t('components.fsi.cissStale'))}</div>` : ''}
           <div style="background:rgba(255,255,255,0.07);border-radius:4px;height:6px;overflow:hidden">
             <div style="height:100%;width:${(euFsi.latestValue * 100).toFixed(1)}%;background:linear-gradient(90deg,#27ae60,#f39c12,#c0392b);border-radius:4px"></div>
           </div>
-          <div style="display:flex;justify-content:space-between;font-size:9px;color:var(--text-dim);margin-top:3px">
+          <div style="display:flex;justify-content:space-between;font-size:calc(9px * var(--wm-panel-effective-scale, 1));color:var(--text-dim);margin-top:3px">
             <span>${escapeHtml(t('components.fsi.scale.noStress'))}</span><span>${escapeHtml(t('components.fsi.scale.extremeStress'))}</span>
           </div>
         </div>`
@@ -186,12 +186,12 @@ export class FSIPanel extends Panel {
 
     const html = `<div style="padding:12px 14px">
       <div style="text-align:center;margin-bottom:16px">
-        <div style="font-size:11px;color:var(--text-dim);margin-bottom:4px">${escapeHtml(t('components.fsi.usFsiValue'))}</div>
-        <div style="font-size:36px;font-weight:700;color:${labelColor};line-height:1">${fsiValue.toFixed(4)}</div>
-        <div style="font-size:13px;font-weight:600;color:${labelColor};margin-top:4px">${escapeHtml(fsiLabelDisplay(fsiLabel))}</div>
+        <div style="font-size:calc(11px * var(--wm-panel-effective-scale, 1));color:var(--text-dim);margin-bottom:4px">${escapeHtml(t('components.fsi.usFsiValue'))}</div>
+        <div style="font-size:calc(36px * var(--wm-panel-effective-scale, 1));font-weight:700;color:${labelColor};line-height:1">${fsiValue.toFixed(4)}</div>
+        <div style="font-size:calc(13px * var(--wm-panel-effective-scale, 1));font-weight:600;color:${labelColor};margin-top:4px">${escapeHtml(fsiLabelDisplay(fsiLabel))}</div>
       </div>
       <div style="margin:0 0 12px">
-        <div style="display:flex;justify-content:space-between;font-size:9px;color:var(--text-dim);margin-bottom:3px">
+        <div style="display:flex;justify-content:space-between;font-size:calc(9px * var(--wm-panel-effective-scale, 1));color:var(--text-dim);margin-bottom:3px">
           <span>${escapeHtml(t('components.fsi.scale.highStress'))}</span><span>${escapeHtml(t('components.fsi.scale.lowStress'))}</span>
         </div>
         <div style="background:rgba(255,255,255,0.07);border-radius:4px;height:8px;overflow:hidden">
@@ -204,7 +204,7 @@ export class FSIPanel extends Panel {
         ${metricCard(t('components.fsi.metrics.hygPrice'), hygPrice > 0 ? '$' + hygPrice.toFixed(2) : t('components.fsi.notAvailable'))}
         ${metricCard(t('components.fsi.metrics.tltPrice'), tltPrice > 0 ? '$' + tltPrice.toFixed(2) : t('components.fsi.notAvailable'))}
       </div>
-      <div style="font-size:11px;color:var(--text-dim);background:rgba(255,255,255,0.03);border-radius:6px;padding:8px 10px;border-left:3px solid ${labelColor}">
+      <div style="font-size:calc(11px * var(--wm-panel-effective-scale, 1));color:var(--text-dim);background:rgba(255,255,255,0.03);border-radius:6px;padding:8px 10px;border-left:3px solid ${labelColor}">
         ${escapeHtml(interpretation)}
       </div>
       ${cissSection}

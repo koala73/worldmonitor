@@ -6,6 +6,13 @@ import { getGlobeVisualPreset, setGlobeVisualPreset, GLOBE_VISUAL_PRESET_OPTIONS
 import type { StreamQuality } from '@/services/ai-flow-settings';
 import { getThemePreference, setThemePreference, type ThemePreference } from '@/utils/theme-manager';
 import { getFontFamily, setFontFamily, type FontFamily } from '@/services/font-settings';
+import {
+  FONT_SCALE_STEPS,
+  fontScaleLabel,
+  getFontScale,
+  parseFontScale,
+  setFontScale,
+} from '@/services/font-scale-settings';
 import { escapeHtml } from '@/utils/sanitize';
 import { trackLanguageChange } from '@/services/analytics';
 import { exportSettings, importSettings, type ImportResult } from '@/utils/settings-persistence';
@@ -153,6 +160,22 @@ export function renderPreferences(host: PreferencesHost): PreferencesResult {
   ] as { value: FontFamily; label: string }[]) {
     const selected = opt.value === currentFont ? ' selected' : '';
     html += `<option value="${opt.value}"${selected}>${escapeHtml(opt.label)}</option>`;
+  }
+  html += `</select>`;
+
+  // Panel font scale. Fixed-geometry map chrome deliberately does not inherit
+  // this value; individual panel overrides live in Settings -> Panels.
+  const currentFontScale = getFontScale();
+  html += `<div class="ai-flow-toggle-row">
+    <div class="ai-flow-toggle-label-wrap">
+      <div class="ai-flow-toggle-label">${t('preferences.fontScale', { defaultValue: 'Panel text size' })}</div>
+      <div class="ai-flow-toggle-desc">${t('preferences.fontScaleDesc', { defaultValue: 'Sets panel text globally. A panel-specific value replaces this setting.' })}</div>
+    </div>
+  </div>`;
+  html += `<select class="unified-settings-select" id="us-font-scale">`;
+  for (const scale of FONT_SCALE_STEPS) {
+    const selected = scale === currentFontScale ? ' selected' : '';
+    html += `<option value="${scale}"${selected}>${fontScaleLabel(scale)}</option>`;
   }
   html += `</select>`;
 
@@ -436,6 +459,11 @@ export function renderPreferences(host: PreferencesHost): PreferencesResult {
         }
         if (target.id === 'us-font-family') {
           setFontFamily(target.value as FontFamily);
+          return;
+        }
+        if (target.id === 'us-font-scale') {
+          const scale = parseFontScale(target.value);
+          if (scale !== undefined) setFontScale(scale);
           return;
         }
         if (target.id === 'us-map-provider') {

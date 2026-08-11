@@ -1,4 +1,5 @@
 import type { CorrelationSignal } from './correlation';
+import { effectivePubDateMs } from './feed-date';
 import { mlWorker } from './ml-worker';
 import { generateSummary } from './summarization';
 import { SUPPRESSED_TRENDING_TERMS, generateSignalId } from '@/utils/analysis-constants';
@@ -29,6 +30,7 @@ export { extractEntities };
 export interface TrendingHeadlineInput {
   title: string;
   pubDate: Date;
+  pubDateMissing?: boolean;
   source: string;
   link?: string;
 }
@@ -72,6 +74,7 @@ export interface TrendingSpike {
   multiplier: number;
   windowMs: number;
   uniqueSources: number;
+  sourceNames: string[];
   headlines: StoredHeadline[];
 }
 
@@ -88,6 +91,12 @@ const BASELINE_REFRESH_MS = HOUR_MS;
 const SPIKE_COOLDOWN_MS = 30 * 60 * 1000;
 const MAX_TRACKED_TERMS = 10000;
 const MAX_AUTO_SUMMARIES_PER_HOUR = 5;
+// A spike can be built from an unbounded number of headlines; the signal that
+// travels to the modal and into the retained signal history must not be.
+// (`sourceNames` needs no cap of its own — distinct feed names are already
+// bounded by the feed registry, and capping it would put `sourceCount` and the
+// names it claims to explain back into disagreement.)
+const MAX_SPIKE_ARTICLES = 6;
 const CONFIG_KEY = 'worldmonitor-trending-config-v1';
 const ML_ENTITY_MIN_CONFIDENCE = 0.75;
 const ML_ENTITY_BATCH_SIZE = 20;
@@ -304,6 +313,16 @@ function dedupeHeadlines(headlines: StoredHeadline[]): StoredHeadline[] {
   return unique;
 }
 
+function distinctNamedSources(headlines: StoredHeadline[]): string[] {
+  return Array.from(
+    new Set(
+      headlines
+        .map(headline => headline.source.trim())
+        .filter(source => source.length > 0)
+    )
+  );
+}
+
 function recordTermCandidates(
   termCandidates: Map<string, TermCandidate>,
   headline: TrendingHeadlineInput,
@@ -335,7 +354,7 @@ function recordTermCandidates(
       title: headline.title,
       source: headline.source,
       link: headline.link ?? '',
-      publishedAt: Number.isFinite(headline.pubDate.getTime()) ? headline.pubDate.getTime() : now,
+      publishedAt: effectivePubDateMs(headline),
       ingestedAt: now,
     });
     addedAny = true;
@@ -367,8 +386,8 @@ function checkForSpikes(now: number, config: TrendingConfig, blockedTerms: Set<s
     const recentHeadlines = dedupeHeadlines(
       record.headlines.filter(headline => now - headline.ingestedAt <= ROLLING_WINDOW_MS)
     );
-    const uniqueSources = new Set(recentHeadlines.map(headline => headline.source)).size;
-    if (uniqueSources < MIN_SPIKE_SOURCE_COUNT) continue;
+    const sourceNames = distinctNamedSources(recentHeadlines);
+    if (sourceNames.length < MIN_SPIKE_SOURCE_COUNT) continue;
 
     record.lastSpikeAlertMs = now;
     spikes.push({
@@ -377,7 +396,8 @@ function checkForSpikes(now: number, config: TrendingConfig, blockedTerms: Set<s
       baseline,
       multiplier,
       windowMs: ROLLING_WINDOW_MS,
-      uniqueSources,
+      uniqueSources: sourceNames.length,
+      sourceNames,
       headlines: recentHeadlines,
     });
   }
@@ -439,10 +459,30 @@ async function handleSpike(spike: TrendingSpike, config: TrendingConfig): Promis
     }
 
     const windowHours = Math.round((spike.windowMs / HOUR_MS) * 10) / 10;
-    const headlines = spike.headlines.slice(0, 6).map(h => h.title);
+    // The evidence the alert is about: the articles that produced the count.
+    // Newest first, THEN capped. `spike.headlines` is in ingestion order over a
+    // 2h window while the per-term cooldown is only 30 minutes, so taking the
+    // head of that array would hand a re-spike the same six up-to-2h-old
+    // headlines it showed last time while the title reports a higher count.
+    // Coarse feed timestamps can tie, so arrival time decides which evidence
+    // is newest within the same publication instant.
+    const articles = [...spike.headlines]
+      .sort((a, b) => b.publishedAt - a.publishedAt || b.ingestedAt - a.ingestedAt)
+      .slice(0, MAX_SPIKE_ARTICLES)
+      .map(headline => ({
+        title: headline.title,
+        source: headline.source,
+        link: headline.link || undefined,
+        ...(headline.publishedAt !== 0 && { publishedAt: headline.publishedAt }),
+      }));
+    // Derived from the FULL deduped window rather than `articles`, then used for
+    // both spike qualification and `sourceCount`, so the count and names stay
+    // the same fact even when one source's only headline falls past the cap.
+    const sourceNames = spike.sourceNames;
+    const headlines = articles.map(article => article.title);
     const multiplierText = spike.baseline > 0 ? `${spike.multiplier.toFixed(1)}x baseline` : 'cold-start threshold';
 
-    let description = `${spike.term} is appearing across ${spike.uniqueSources} sources (${spike.count} mentions in ${windowHours}h).`;
+    let description = `${spike.term} is appearing across ${sourceNames.length} sources (${spike.count} mentions in ${windowHours}h).`;
 
     const now = Date.now();
     if (config.autoSummarize && headlines.length >= 2 && canRunAutoSummary(now)) {
@@ -472,11 +512,14 @@ async function handleSpike(spike: TrendingSpike, config: TrendingConfig): Promis
       data: {
         term: spike.term,
         newsVelocity: spike.count,
-        relatedTopics: [spike.term],
+        // No relatedTopics: it was `[spike.term]`, which rendered a chip
+        // repeating the term the user was already reading.
         baseline: spike.baseline,
         multiplier: spike.baseline > 0 ? spike.multiplier : undefined,
-        sourceCount: spike.uniqueSources,
-        explanation: `${spike.term}: ${spike.count} mentions across ${spike.uniqueSources} sources (${multiplierText})`,
+        sourceCount: sourceNames.length,
+        sourceNames,
+        articles,
+        explanation: `${spike.term}: ${spike.count} mentions across ${sourceNames.length} sources (${multiplierText})`,
       },
     });
   } catch (error) {

@@ -167,11 +167,19 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          # The health-probe cutover gate compares the exact PR base with the
+          # candidate tree. A shallow checkout would make that gate vacuous.
+          fetch-depth: 0
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: '24'
           cache: 'npm'
       - run: npm ci
+      - name: Enforce health-probe cutovers
+        env:
+          HEALTH_PROBE_CUTOVER_BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: node --import tsx scripts/check-health-probe-cutovers.mts "$HEALTH_PROBE_CUTOVER_BASE"
       - name: Build dashboard artifacts for built-output tests
         run: VITE_VARIANT=full ./node_modules/.bin/vite build
       - run: WM_EXPECT_BUILT_OUTPUT=1 npm run test:data

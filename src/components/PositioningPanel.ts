@@ -120,7 +120,7 @@ function renderArcGauge(score: number, color: string, size = 56): string {
   return `<svg width="${size}" height="${size}" viewBox="0 0 ${size} ${size}" class="pos-gauge">
     <path d="M ${bgX1} ${bgY1} A ${r} ${r} 0 1 1 ${bgX2} ${bgY2}" fill="none" stroke="var(--border-color, #333)" stroke-width="3" stroke-linecap="round"/>
     ${score > 0 ? `<path d="M ${bgX1} ${bgY1} A ${r} ${r} 0 ${largeArc} 1 ${fX2} ${fY2}" fill="none" stroke="${color}" stroke-width="3.5" stroke-linecap="round" opacity="${opacity}"/>` : ''}
-    <text x="${cx}" y="${cy + 2}" text-anchor="middle" dominant-baseline="middle" fill="${color}" font-size="13" font-weight="600" opacity="${opacity}">${Math.round(score)}</text>
+    <text x="${cx}" y="${cy + 2}" text-anchor="middle" dominant-baseline="middle" fill="${color}" style="font-size:calc(13px * var(--wm-panel-effective-scale, 1))" font-weight="600" opacity="${opacity}">${Math.round(score)}</text>
   </svg>`;
 }
 

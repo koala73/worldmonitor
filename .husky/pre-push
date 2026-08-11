@@ -363,6 +363,13 @@ if changed '^(src/|api/|server/|scripts/check-sentry-coverage\.mjs$)'; then
   node scripts/check-sentry-coverage.mjs || exit 1
 fi
 
+if changed '^(api/health\.js|scripts/check-health-probe-cutovers\.mts|scripts/check-seed-freshness\.mjs|scripts/seed-freshness-baseline\.json)$'; then
+  echo "Running health-probe cutover check..."
+  node --import tsx scripts/check-health-probe-cutovers.mts origin/main || exit 1
+else
+  echo "Health-probe cutover check skipped (no health registry or cutover-policy changes)."
+fi
+
 if changed '^(api/|server/|scripts/enforce-rate-limit-policies\.mjs$)'; then
   echo "Running rate-limit policy coverage check..."
   npm run lint:rate-limit-policies || exit 1

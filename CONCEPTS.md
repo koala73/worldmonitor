@@ -330,7 +330,7 @@ Two properties keep the soft path from becoming a hole. It may fire only when th
 
 A dependency advisory the security gate knowingly tolerates, recorded per-lockfile with written reasoning for why the vulnerable path is unreachable in this project — typically a build-time-only or dev-tooling chain, or a fix that is semver-major on a parent the project cannot yet move.
 
-The baseline is an exemption list, not a suppression: an advisory outside it fails the gate for every branch at once, which is why a newly published advisory blocks the whole repository until someone either patches or baselines it. Each entry carries its justification inline so a later reader can re-evaluate rather than inherit a bare allowlist, and an entry that no longer matches any live advisory is surfaced as stale so the list does not accrete dead exemptions. See also: Third-Party Rot.
+The baseline is an exemption list, not a suppression: an advisory outside it fails the gate for every branch at once, which is why a newly published advisory blocks the whole repository until someone either patches or baselines it. Each entry carries its justification inline so a later reader can re-evaluate rather than inherit a bare allowlist, and an entry that no longer matches any live advisory is surfaced as stale so the list does not accrete dead exemptions. See also: Third-Party Rot, Acceptance Baseline.
 
 ## Localization & First Paint
 
@@ -379,6 +379,36 @@ The band a request falls into under an upstream's cost function, where cost is a
 A source in an ordered chain that is queried regardless of whether an earlier source already succeeded, as distinct from a fallback entered only on the failure of the tier above it. The condition is not observable from published data — the publication is fresh and correctly attributed to the primary either way — so it must be looked for in the call path rather than inferred from output.
 
 Whether it is a defect depends on what the tier does with its results. A tier whose results *replace* the primary's adds nothing when the primary succeeded, so on a metered upstream it spends budget for no marginal records and should be gated. A tier whose results *merge* into the primary's is contributing coverage, and gating it trades that coverage away — dangerously so, because a degraded-but-non-empty primary satisfies a success-gate and suppresses the merging tier precisely when its coverage matters most. For a merging tier the correct remedy is to reduce its cost rather than to stop calling it. See also: Credit Budget, Cost Tier, Theater Posture, Publication Source.
+
+## Consumer Prices Ingestion
+
+### Retailer Roster
+
+The set of enabled retailer configurations for one market. The market's coverage denominator is the pages its roster plans, so roster membership — not scrape tuning — is the operational lever when a retailer's domain becomes unscrapeable to every acquisition provider.
+
+A retailer enters or leaves the roster by flipping its declared enablement; a disabled retailer keeps its configuration and its recorded disable evidence so re-admission starts from the prior verdict rather than a fresh diagnosis (and that evidence goes stale — re-probe before trusting it). Onboarding requires probing every acquisition provider against the retailer's domain first: a retailer only one provider can reach carries a single point of failure from day one. See also: Market Completion Floor.
+
+### Market Completion Floor
+
+The declared minimum share of planned pages a market's scrape must complete for the market to stay operationally healthy; below the floor the market grades degraded rather than merely noisy.
+
+The floor governs the market aggregate, not individual retailers — one retailer can fail outright without degrading the market so long as the remaining roster keeps the completion ratio above the floor. Roster size is therefore floor headroom: the roster should survive the outright loss of any single retailer. See also: Retailer Roster.
+
+### Auto Match
+
+A scraped product accepted for aggregation: validation bound the retailer product to a basket item confidently enough that its price is aggregate-eligible without review.
+
+### Candidate Match
+
+A scraped product admitted with doubt: recorded for later review but excluded from aggregates. A page can scrape successfully yet yield only a candidate match, so page-level success and aggregate eligibility diverge — coverage built on page counts alone can read healthy while contributing no usable prices. Strict validation closes the gap by rejecting the doubtful product and trying the next candidate page instead of admitting the doubt. See also: Auto Match, Market Completion Floor.
+
+## Ingestion Acceptance
+
+### Acceptance Baseline
+
+The accepted-problem list the ingestion acceptance gate consults: each entry acknowledges one known degradation, identified by exactly its source and status, and owned by an open tracking issue.
+
+Matching is exact by design. A source that recovers surfaces its entry as a prune prompt; a source that worsens to a different status escalates and blocks, because a suppression written for a lesser state must not cover a worse one. The list as a whole carries an expiry that forces re-review, and an acknowledgement is never added for a status whose remediation is still in flight — the gate exists to verify the remediation, not to trust it. See also: Baselined Advisory.
 
 ## Desktop Distribution
 

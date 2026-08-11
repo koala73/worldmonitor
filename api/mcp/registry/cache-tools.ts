@@ -743,7 +743,7 @@ export const CACHE_TOOLS: ToolDef[] = [
     name: 'get_news_intelligence',
     _uiResourceUri: NEWS_INTELLIGENCE_UI_URI,
     _outputBudgetBytes: 131072,
-    description: 'AI-classified geopolitical threat news summaries, GDELT intelligence signals, cross-source signals, and security advisories from WorldMonitor\'s intelligence layer.',
+    description: 'AI-classified geopolitical threat news summaries, GDELT intelligence signals, cross-source signals, and security advisories from WorldMonitor\'s intelligence layer. Each top story carries full corroboration metadata — uniqueSourceCount, corroborationSourceCount, entityCorroboration, sourceTier, the contributing outlet names, and every clustered headline.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -766,6 +766,22 @@ export const CACHE_TOOLS: ToolDef[] = [
           topStories: { type: 'array', items: { type: 'object', properties: {
             primaryTitle: { type: 'string' }, primarySource: { type: 'string' }, primaryLink: { type: 'string' },
             pubDate: { type: 'string' }, sourceCount: { type: 'number' }, importanceScore: { type: 'number' },
+            // Corroboration and clustering fields the seeder already writes
+            // into every news:insights:v1 topStories entry (see the object
+            // built in scripts/seed-insights.mjs). This is a cache tool: the
+            // raw blob is served and _postFilter only narrows and caps, never
+            // strips, so all of these already reach the client. Declaring them
+            // closes a schema that was silently under-describing its own
+            // payload, and left an agent unable to weigh corroboration. (#4925)
+            uniqueSourceCount: { type: 'number', description: 'Distinct outlets that carried the story — the corroboration breadth signal.' },
+            sources: { type: 'array', items: { type: 'string' }, description: 'Outlet names in the cluster, tier-sorted and deduped.' },
+            memberTitles: { type: 'array', items: { type: 'string' }, description: 'Headline of every article in the cluster, primary first.' },
+            lastUpdated: { type: 'string', description: 'Timestamp of the newest article in the cluster.' },
+            sourceTier: { type: 'number', description: 'Best (lowest) source tier in the cluster; 1 is a wire or primary outlet.' },
+            entityCorroboration: { type: 'boolean', description: 'True when named entities were corroborated across outlets.' },
+            corroborationSourceCount: { type: 'number', description: 'Outlets that independently corroborated the story per the seeder entity gate; 0 when that gate did not fire.' },
+            upstreamImportanceScore: { type: 'number', description: 'Highest per-article importance score in the cluster, before seeder re-ranking.' },
+            effectiveImportanceScore: { type: 'number', description: 'Post-ranking importance score used to order topStories.' },
             velocity: { type: 'object', properties: {
               level: { type: 'string' }, sourcesPerHour: { type: 'number' },
             } },

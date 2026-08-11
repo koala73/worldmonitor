@@ -362,7 +362,7 @@ export class SupplyChainPanel extends Panel {
         // data available for this chokepoint. If dataAvailable === false, the
         // per-id history key would also be zero (we skip the lazy-fetch).
         const chartPlaceholder = expanded && ts?.dataAvailable !== false
-          ? `<div data-chart-cp="${escapeHtml(cp.name)}" data-chart-cp-id="${escapeHtml(cp.id)}" style="margin-top:8px;min-height:200px;display:flex;align-items:center;justify-content:center;color:var(--text-dim,#888);font-size:12px">${t('components.supplyChain.loadingHistory') || 'Loading transit history\u2026'}</div>`
+          ? `<div data-chart-cp="${escapeHtml(cp.name)}" data-chart-cp-id="${escapeHtml(cp.id)}" style="margin-top:8px;min-height:200px;display:flex;align-items:center;justify-content:center;color:var(--text-dim,#888);font-size:calc(12px * var(--wm-panel-effective-scale, 1))">${t('components.supplyChain.loadingHistory') || 'Loading transit history\u2026'}</div>`
           : '';
 
         const tier = cp.warRiskTier ?? 'WAR_RISK_TIER_NORMAL';
@@ -446,14 +446,14 @@ export class SupplyChainPanel extends Panel {
             <span class="trade-status ${statusClass}">${escapeHtml(cp.status)}</span>
           </div>
           <div class="trade-restriction-body">
-            ${isAffectedByScenario && scenarioResult?.template ? `<div class="sc-metric-row" style="background:#7f1d1d22;padding:4px 6px;border-radius:3px;margin-bottom:4px;font-size:11px">
+            ${isAffectedByScenario && scenarioResult?.template ? `<div class="sc-metric-row" style="background:#7f1d1d22;padding:4px 6px;border-radius:3px;margin-bottom:4px;font-size:calc(11px * var(--wm-panel-effective-scale, 1))">
               <span style="color:#fca5a5;font-weight:600">\u26A0 Projected under scenario: ${scenarioResult.template.disruptionPct}% closure for ${scenarioResult.template.durationDays} days${scenarioResult.template.costShockMultiplier > 1 ? ` (+${Math.round((scenarioResult.template.costShockMultiplier - 1) * 100)}% cost)` : ''}</span>
             </div>` : ''}
             <div class="sc-metric-row">
               <span>${cp.activeWarnings} ${t('components.supplyChain.warnings')} · ${aisDisruptions} ${t('components.supplyChain.aisDisruptions')}</span>
               ${cp.directions?.length ? `<span>${cp.directions.map(d => escapeHtml(d)).join('/')}</span>` : ''}
             </div>
-            ${ts && ts.dataAvailable === false ? `<div class="sc-metric-row" style="opacity:0.5;font-size:11px"><span>${t('components.supplyChain.transitDataUnavailable') || 'Transit data unavailable (upstream partial)'}</span></div>` : ''}
+            ${ts && ts.dataAvailable === false ? `<div class="sc-metric-row" style="opacity:0.5;font-size:calc(11px * var(--wm-panel-effective-scale, 1))"><span>${t('components.supplyChain.transitDataUnavailable') || 'Transit data unavailable (upstream partial)'}</span></div>` : ''}
             ${ts && ts.dataAvailable !== false && (ts.todayTotal > 0 || hasWow || disruptPct > 0) ? `<div class="sc-metric-row">
               ${ts.todayTotal > 0 ? `<span>${ts.todayTotal} ${t('components.supplyChain.vessels')}</span>` : ''}
               ${hasWow ? `<span>${t('components.supplyChain.wowChange')}: ${wowSpan}</span>` : ''}
@@ -469,12 +469,12 @@ export class SupplyChainPanel extends Panel {
               const pct = Math.round(fe.flowRatio * 100);
               const flowColor = fe.disrupted || pct < 85 ? '#ef4444' : pct < 95 ? '#f59e0b' : 'var(--text-dim,#888)';
               const hazardBadge = fe.hazardAlertLevel && fe.hazardAlertName
-                ? ` <span style="background:#ea580c;color:#fff;font-size:9px;padding:1px 5px;border-radius:3px;margin-left:4px">&#9888; ${escapeHtml(fe.hazardAlertName.toUpperCase())}</span>`
+                ? ` <span style="background:#ea580c;color:#fff;font-size:calc(9px * var(--wm-panel-effective-scale, 1));padding:1px 5px;border-radius:3px;margin-left:4px">&#9888; ${escapeHtml(fe.hazardAlertName.toUpperCase())}</span>`
                 : '';
               return `<div class="sc-metric-row" style="color:${flowColor}">
                 <span>~${fe.currentMbd} mb/d <span style="opacity:0.7">(${pct}% of ${fe.baselineMbd} baseline)</span>${hazardBadge}</span>
               </div>`;
-            })() : FLOW_SUPPORTED_IDS.has(cp.id) ? `<div class="sc-metric-row" style="color:var(--text-dim,#888);font-size:11px;opacity:0.7">
+            })() : FLOW_SUPPORTED_IDS.has(cp.id) ? `<div class="sc-metric-row" style="color:var(--text-dim,#888);font-size:calc(11px * var(--wm-panel-effective-scale, 1));opacity:0.7">
                 <span>${t('components.supplyChain.flowUnavailable')}</span>
               </div>` : ''}
             ${cp.description ? `<div class="trade-description">${escapeHtml(cp.description)}</div>` : ''}
@@ -641,13 +641,13 @@ export class SupplyChainPanel extends Panel {
 
     const header = `<div style="margin-bottom:12px">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
-        <span style="font-size:11px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.06em">Composite Stress Score</span>
-        <span style="font-size:11px;font-weight:700;padding:2px 7px;border-radius:3px;background:${gaugeBg};color:${levelColor}">${escapeHtml(stressLevel.toUpperCase())}</span>
+        <span style="font-size:calc(11px * var(--wm-panel-effective-scale, 1));color:var(--text-dim);text-transform:uppercase;letter-spacing:0.06em">Composite Stress Score</span>
+        <span style="font-size:calc(11px * var(--wm-panel-effective-scale, 1));font-weight:700;padding:2px 7px;border-radius:3px;background:${gaugeBg};color:${levelColor}">${escapeHtml(stressLevel.toUpperCase())}</span>
       </div>
       <div style="position:relative;height:6px;border-radius:3px;background:rgba(255,255,255,0.08)">
         <div style="position:absolute;left:0;top:0;height:100%;width:${gaugeWidth}%;border-radius:3px;background:${levelColor};transition:width 0.4s"></div>
       </div>
-      <div style="text-align:right;font-size:10px;color:var(--text-dim);margin-top:2px">${stressScore.toFixed(1)}/100</div>
+      <div style="text-align:right;font-size:calc(10px * var(--wm-panel-effective-scale, 1));color:var(--text-dim);margin-top:2px">${stressScore.toFixed(1)}/100</div>
     </div>`;
 
     const rows = carriers.map(c => {
@@ -657,12 +657,12 @@ export class SupplyChainPanel extends Panel {
       const spark = c.sparkline?.length >= 2 ? this.renderSparkline(c.sparkline) : '';
       return `<div class="trade-restriction-card">
         <div class="trade-restriction-header">
-          <span class="trade-country" style="font-size:11px">${escapeHtml(c.symbol)}</span>
-          <span style="font-size:9px;padding:1px 5px;border-radius:2px;background:rgba(255,255,255,0.06);color:var(--text-dim)">${typeLabel}</span>
+          <span class="trade-country" style="font-size:calc(11px * var(--wm-panel-effective-scale, 1))">${escapeHtml(c.symbol)}</span>
+          <span style="font-size:calc(9px * var(--wm-panel-effective-scale, 1));padding:1px 5px;border-radius:2px;background:rgba(255,255,255,0.06);color:var(--text-dim)">${typeLabel}</span>
           <span class="trade-badge">${c.price.toFixed(2)}</span>
           <span class="trade-flow-change ${changeClass}">${arrow} ${Math.abs(c.changePct).toFixed(2)}%</span>
         </div>
-        <div class="trade-restriction-body" style="font-size:10px;color:var(--text-dim)">${escapeHtml(c.name)}${spark}</div>
+        <div class="trade-restriction-body" style="font-size:calc(10px * var(--wm-panel-effective-scale, 1));color:var(--text-dim)">${escapeHtml(c.name)}${spark}</div>
       </div>`;
     }).join('');
 
@@ -684,8 +684,8 @@ export class SupplyChainPanel extends Panel {
     }).join(' ');
 
     const dateLabels = dates?.length ? `
-      <text x="0" y="${totalH - 1}" fill="var(--text-dim,#888)" font-size="9" text-anchor="start">${escapeHtml(dates[0]!.slice(0, 7))}</text>
-      <text x="${w}" y="${totalH - 1}" fill="var(--text-dim,#888)" font-size="9" text-anchor="end">${escapeHtml(dates[dates.length - 1]!.slice(0, 7))}</text>
+      <text x="0" y="${totalH - 1}" fill="var(--text-dim,#888)" style="font-size:calc(9px * var(--wm-panel-effective-scale, 1))" text-anchor="start">${escapeHtml(dates[0]!.slice(0, 7))}</text>
+      <text x="${w}" y="${totalH - 1}" fill="var(--text-dim,#888)" style="font-size:calc(9px * var(--wm-panel-effective-scale, 1))" text-anchor="end">${escapeHtml(dates[dates.length - 1]!.slice(0, 7))}</text>
     ` : '';
 
     return `<svg width="${w}" height="${totalH}" viewBox="0 0 ${w} ${totalH}" style="display:block;margin:4px 0">

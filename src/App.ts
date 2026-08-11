@@ -103,6 +103,7 @@ import { track, trackEvent, trackDeeplinkOpened, initAuthAnalytics } from '@/ser
 import { preloadCountryGeometry, isCountryGeometryLoaded, getCountryNameByCode } from '@/services/country-geometry';
 import { initI18n, t, I18N_RESOURCES_LOADED_EVENT, type I18nResourcesLoadedDetail } from '@/services/i18n';
 import { initDeferredDashboardFonts } from '@/bootstrap/secondary-startup';
+import { applyFontScale, FONT_SCALE_STORAGE_KEY } from '@/services/font-scale-settings';
 
 import {
   CANADA_ARCTIC_OPT_IN_SOURCES,
@@ -389,6 +390,10 @@ export class App {
     let freeTierLimitsInvoked = false;
     const tierReconciliationDeferred = this.shouldDeferTierPreferenceReconciliation();
     invalidatePanelStorageCacheForKeys(keys);
+
+    if (keySet.has(FONT_SCALE_STORAGE_KEY)) {
+      applyFontScale();
+    }
 
     if (keySet.has(STORAGE_KEYS.panels)) {
       // Cloud can reconcile before Clerk/Convex finishes settling. Preserve

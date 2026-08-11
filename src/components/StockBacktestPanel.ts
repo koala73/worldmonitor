@@ -111,18 +111,18 @@ export class StockBacktestPanel extends Panel {
         <div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-start">
           <div>
             <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-              <strong style="font-size:16px;letter-spacing:-0.02em">${escapeHtml(item.name || item.symbol)}</strong>
-              <span style="font-size:11px;color:var(--text-dim);font-family:var(--font-mono);text-transform:uppercase">${escapeHtml(item.display || item.symbol)}</span>
+              <strong style="font-size:calc(16px * var(--wm-panel-effective-scale, 1));letter-spacing:-0.02em">${escapeHtml(item.name || item.symbol)}</strong>
+              <span style="font-size:calc(11px * var(--wm-panel-effective-scale, 1));color:var(--text-dim);font-family:var(--font-mono);text-transform:uppercase">${escapeHtml(item.display || item.symbol)}</span>
               <span class="signal-badge ${backtestSignalClass(item.winRate)}">${escapeHtml(backtestSignalLabel(item.winRate))}</span>
             </div>
-            <div style="margin-top:6px;font-size:12px;color:var(--text-dim);line-height:1.5">${escapeHtml(item.summary)}</div>
+            <div style="margin-top:6px;font-size:calc(12px * var(--wm-panel-effective-scale, 1));color:var(--text-dim);line-height:1.5">${escapeHtml(item.summary)}</div>
           </div>
           <div style="text-align:right;min-width:110px">
-            <div style="font-size:18px;font-weight:700;color:${tone(item.avgSimulatedReturnPct)}">${escapeHtml(fmtPct(item.avgSimulatedReturnPct))}</div>
-            <div style="font-size:11px;color:var(--text-dim)">Avg simulated return</div>
+            <div style="font-size:calc(18px * var(--wm-panel-effective-scale, 1));font-weight:700;color:${tone(item.avgSimulatedReturnPct)}">${escapeHtml(fmtPct(item.avgSimulatedReturnPct))}</div>
+            <div style="font-size:calc(11px * var(--wm-panel-effective-scale, 1));color:var(--text-dim)">Avg simulated return</div>
           </div>
         </div>
-        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:8px;font-size:11px">
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:8px;font-size:calc(11px * var(--wm-panel-effective-scale, 1))">
           <div style="border:1px solid var(--border);padding:8px"><div style="color:var(--text-dim);text-transform:uppercase;letter-spacing:0.08em">Win Rate</div><div style="margin-top:4px">${escapeHtml(fmtPct(item.winRate))}</div></div>
           <div style="border:1px solid var(--border);padding:8px"><div style="color:var(--text-dim);text-transform:uppercase;letter-spacing:0.08em">Direction Accuracy</div><div style="margin-top:4px">${escapeHtml(fmtPct(item.directionAccuracy))}</div></div>
           <div style="border:1px solid var(--border);padding:8px"><div style="color:var(--text-dim);text-transform:uppercase;letter-spacing:0.08em">Cumulative</div><div style="margin-top:4px;color:${tone(item.cumulativeSimulatedReturnPct)}">${escapeHtml(fmtPct(item.cumulativeSimulatedReturnPct))}</div></div>
@@ -130,9 +130,9 @@ export class StockBacktestPanel extends Panel {
           <div style="border:1px solid var(--border);padding:8px"><div style="color:var(--text-dim);text-transform:uppercase;letter-spacing:0.08em">Rating Basis</div><div style="margin-top:4px">${escapeHtml(item.ratingBasis === 'technical_only' ? 'Technical only' : item.ratingBasis)}</div></div>
         </div>
         <div style="display:grid;gap:6px">
-          <div style="font-size:11px;text-transform:uppercase;letter-spacing:0.08em;color:var(--text-dim)">Recent Evaluations</div>
+          <div style="font-size:calc(11px * var(--wm-panel-effective-scale, 1));text-transform:uppercase;letter-spacing:0.08em;color:var(--text-dim)">Recent Evaluations</div>
           ${item.evaluations.map((evaluation) => `
-            <div style="display:flex;justify-content:space-between;gap:12px;padding:8px 10px;border:1px solid var(--border);background:rgba(255,255,255,0.02);font-size:11px">
+            <div style="display:flex;justify-content:space-between;gap:12px;padding:8px 10px;border:1px solid var(--border);background:rgba(255,255,255,0.02);font-size:calc(11px * var(--wm-panel-effective-scale, 1))">
               <span>${escapeHtml(evaluation.signal)} · ${escapeHtml(evaluation.outcome)} · ${escapeHtml(fmtPct(evaluation.simulatedReturnPct))}</span>
               <span style="color:var(--text-dim)">${escapeHtml(new Date(Number(evaluation.analysisAt)).toLocaleDateString())}</span>
             </div>

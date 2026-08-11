@@ -252,7 +252,7 @@ export class NationalDebtPanel extends Panel {
 
   private showLoadingState(): void {
     this.setSafeContent(unsafeRawHtml(`
-      <div style="display:flex;align-items:center;justify-content:center;height:80px;color:var(--text-dim);font-size:13px;">
+      <div style="display:flex;align-items:center;justify-content:center;height:80px;color:var(--text-dim);font-size:calc(13px * var(--wm-panel-effective-scale, 1));">
         Loading debt data from IMF...
       </div>
     `, 'legacy Panel.setContent() migration'));

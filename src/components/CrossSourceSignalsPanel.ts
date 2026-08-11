@@ -138,7 +138,7 @@ export class CrossSourceSignalsPanel extends Panel {
     const contributors = isComposite && sig.contributingTypes.length > 0
       ? `<div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:5px">${
           sig.contributingTypes.slice(0, 5).map(t =>
-            `<span style="font-size:9px;font-family:var(--font-mono);padding:1px 5px;background:rgba(255,255,255,0.05);border:1px solid var(--border);color:var(--text-dim);text-transform:uppercase;letter-spacing:0.06em;border-radius:2px">${escapeHtml(t)}</span>`
+            `<span style="font-size:calc(9px * var(--wm-panel-effective-scale, 1));font-family:var(--font-mono);padding:1px 5px;background:rgba(255,255,255,0.05);border:1px solid var(--border);color:var(--text-dim);text-transform:uppercase;letter-spacing:0.06em;border-radius:2px">${escapeHtml(t)}</span>`
           ).join('')
         }</div>`
       : '';
@@ -147,14 +147,14 @@ export class CrossSourceSignalsPanel extends Panel {
       <div style="display:flex;align-items:stretch;${cardStyle};background:rgba(255,255,255,0.02);overflow:hidden">
         <div style="width:4px;flex-shrink:0;background:${sevColor}"></div>
         <div style="display:flex;gap:10px;align-items:flex-start;padding:10px;flex:1;min-width:0">
-          <div style="font-size:12px;font-weight:700;color:var(--text-dim);min-width:18px;text-align:right;flex-shrink:0;font-family:var(--font-mono);padding-top:1px">${index + 1}</div>
+          <div style="font-size:calc(12px * var(--wm-panel-effective-scale, 1));font-weight:700;color:var(--text-dim);min-width:18px;text-align:right;flex-shrink:0;font-family:var(--font-mono);padding-top:1px">${index + 1}</div>
           <div style="flex:1;min-width:0">
             <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:5px">
-              <span style="font-size:10px;padding:2px 6px;border:1px solid var(--border);color:var(--text-dim);font-family:var(--font-mono);text-transform:uppercase;letter-spacing:0.06em;display:inline-flex;align-items:center;gap:4px"><span>${typeIcon}</span>${escapeHtml(typeLabel)}</span>
-              <span style="font-size:10px;padding:2px 6px;font-family:var(--font-mono);text-transform:uppercase;letter-spacing:0.08em;font-weight:700;${sevBadgeStyle}">${escapeHtml(SEVERITY_LABEL[sig.severity] ?? '')}</span>
-              <span style="display:inline-flex;align-items:center;gap:5px;background:rgba(255,255,255,0.06);border-radius:3px;padding:2px 7px;font-size:10px;color:rgba(232,234,237,0.65);font-family:var(--font-mono);letter-spacing:0.04em;white-space:nowrap">${escapeHtml(sig.theater)}<span style="opacity:0.4"> · </span>${escapeHtml(age)}</span>
+              <span style="font-size:calc(10px * var(--wm-panel-effective-scale, 1));padding:2px 6px;border:1px solid var(--border);color:var(--text-dim);font-family:var(--font-mono);text-transform:uppercase;letter-spacing:0.06em;display:inline-flex;align-items:center;gap:4px"><span>${typeIcon}</span>${escapeHtml(typeLabel)}</span>
+              <span style="font-size:calc(10px * var(--wm-panel-effective-scale, 1));padding:2px 6px;font-family:var(--font-mono);text-transform:uppercase;letter-spacing:0.08em;font-weight:700;${sevBadgeStyle}">${escapeHtml(SEVERITY_LABEL[sig.severity] ?? '')}</span>
+              <span style="display:inline-flex;align-items:center;gap:5px;background:rgba(255,255,255,0.06);border-radius:3px;padding:2px 7px;font-size:calc(10px * var(--wm-panel-effective-scale, 1));color:rgba(232,234,237,0.65);font-family:var(--font-mono);letter-spacing:0.04em;white-space:nowrap">${escapeHtml(sig.theater)}<span style="opacity:0.4"> · </span>${escapeHtml(age)}</span>
             </div>
-            <div style="font-size:12px;line-height:1.5;color:var(--text)">${escapeHtml(sig.summary)}</div>
+            <div style="font-size:calc(12px * var(--wm-panel-effective-scale, 1));line-height:1.5;color:var(--text)">${escapeHtml(sig.summary)}</div>
             ${contributors}
           </div>
         </div>
@@ -167,7 +167,7 @@ export class CrossSourceSignalsPanel extends Panel {
       if (!this.evaluatedAt) {
         this.showError('Signal aggregator is initializing. First evaluation runs within 15 minutes.', () => {/* refreshed by scheduler */});
       } else {
-        this.setSafeContent(unsafeRawHtml('<div style="padding:16px 0;text-align:center;font-size:12px;color:var(--text-dim)">No cross-source signals detected.</div>', 'legacy Panel.setContent() migration'));
+        this.setSafeContent(unsafeRawHtml('<div style="padding:16px 0;text-align:center;font-size:calc(12px * var(--wm-panel-effective-scale, 1));color:var(--text-dim)">No cross-source signals detected.</div>', 'legacy Panel.setContent() migration'));
       }
       return;
     }
@@ -177,7 +177,7 @@ export class CrossSourceSignalsPanel extends Panel {
       : '';
 
     const compositeNote = this.compositeCount > 0
-      ? `<div style="display:flex;align-items:center;gap:8px;font-size:12px;color:var(--semantic-critical);padding:7px 10px;border:1px solid rgba(255,80,80,0.3);background:rgba(255,80,80,0.06);margin-bottom:8px"><div style="width:7px;height:7px;border-radius:50%;background:var(--semantic-critical);flex-shrink:0;animation:cross-source-pulse-dot 2s ease-in-out infinite"></div>${this.compositeCount} composite escalation zone${this.compositeCount > 1 ? 's' : ''} detected</div>`
+      ? `<div style="display:flex;align-items:center;gap:8px;font-size:calc(12px * var(--wm-panel-effective-scale, 1));color:var(--semantic-critical);padding:7px 10px;border:1px solid rgba(255,80,80,0.3);background:rgba(255,80,80,0.06);margin-bottom:8px"><div style="width:7px;height:7px;border-radius:50%;background:var(--semantic-critical);flex-shrink:0;animation:cross-source-pulse-dot 2s ease-in-out infinite"></div>${this.compositeCount} composite escalation zone${this.compositeCount > 1 ? 's' : ''} detected</div>`
       : '';
 
     const signalRows = this.signals.map((s, i) => this.renderSignal(s, i)).join('');
@@ -186,7 +186,7 @@ export class CrossSourceSignalsPanel extends Panel {
       <div style="display:flex;flex-direction:column;gap:6px">
         ${compositeNote}
         ${signalRows}
-        ${evalTime ? `<div style="font-size:10px;color:var(--text-dim);padding-top:8px;border-top:1px solid var(--border);text-align:center;font-family:var(--font-mono)">${escapeHtml(evalTime)}</div>` : ''}
+        ${evalTime ? `<div style="font-size:calc(10px * var(--wm-panel-effective-scale, 1));color:var(--text-dim);padding-top:8px;border-top:1px solid var(--border);text-align:center;font-family:var(--font-mono)">${escapeHtml(evalTime)}</div>` : ''}
       </div>
     `, 'legacy Panel.setContent() migration'));
   }

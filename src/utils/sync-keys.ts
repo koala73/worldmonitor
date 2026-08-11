@@ -19,6 +19,7 @@ export const CLOUD_SYNC_KEYS = [
   'wm-pinned-webcams',
   'wm-map-provider',
   'wm-font-family',
+  'wm-font-scale',
   'wm-globe-visual-preset',
   'wm-stream-quality',
   'wm-ai-flow-cloud-llm',
