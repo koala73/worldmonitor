@@ -76,8 +76,9 @@ Free 与未登录的仪表盘用户在信息流增强上仍可使用常规的关
 | `POST /api/skills/fetch-agentskills` | 30 | 60 秒 | 按 IP |
 | `GET /api/youtube/live` | 30 | 60 秒 | 按 IP |
 | `GET /api/reverse-geocode` | 60 | 60 秒 | 按 IP |
+| `GET /api/infrastructure/v1/reverse-geocode` | 60 | 60 秒 | 按 IP |
 
-这三个路由都在 `ENDPOINT_RATE_POLICIES`（`server/_shared/rate-limit.ts`）中声明并在处理函数内部强制执行，因为它们都不经过网关。`/api/reverse-geocode` 会访问 Nominatim，其使用政策是本技术栈中最严格的，且以封禁出口 IP 的方式执行，因此应将该额度视为上限而非目标。
+两个边缘处理函数（`/api/skills/fetch-agentskills`、`/api/youtube/live`）通过 `checkScopedRateLimit`/`checkRateLimit` 在处理函数内部执行其额度；`/api/reverse-geocode` 根据 `api/*.js` 约束将其额度镜像为字面常量；`/api/infrastructure/v1/reverse-geocode` 是网关 RPC，由网关通过 `checkEndpointRateLimit` 执行（Redis 故障时默认失败关闭）。两条 reverse-geocode 路由都会访问 Nominatim，其使用政策是本技术栈中最严格的，且以封禁出口 IP 的方式执行，因此应将这些额度视为上限而非目标；聚合总量配套额度见 #6431。
 
 ## 写入端点
 

@@ -448,10 +448,24 @@ export const ENDPOINT_RATE_POLICIES: Record<string, EndpointRatePolicy> = {
   // per cell in the browser (src/utils/reverse-geocode.ts), so 60/min is a
   // floor against scripted coordinate sweeps rather than a throttle on real
   // map use. Nominatim's usage policy is the strictest in our stack and is
-  // enforced by egress-IP ban, and we have a second caller
-  // (server/worldmonitor/infrastructure/v1/reverse-geocode.ts), so the
-  // unmetered path is the one worth closing first.
+  // enforced by egress-IP ban, and there are two callers sharing one egress:
+  // the legacy `api/reverse-geocode.js` edge function (which carries these
+  // same numbers as literal constants and enforces them in-handler via
+  // checkRateLimit — api/*.js cannot import ../server/) and the gateway RPC
+  // below. Both use the shared `geocode:` cache namespace (604800 s TTL), so
+  // a hit on either serves the other and the budget is a floor against
+  // scripted sweeps, not a throttle on real map use. (#6234, #6432)
   '/api/reverse-geocode': { limit: 60, window: '60 s' },
+  // Gateway reverse-geocode RPC (#6432): the second Nominatim caller. Same
+  // provider, same shared 0.1-degree grid cache, same egress IPs — must carry
+  // the same 60/min budget as the legacy edge route, and it now does. Both are
+  // per-IP budgets, so they bound any one caller but do not cap aggregate
+  // egress to Nominatim (60/min from a single IP is Nominatim's whole
+  // documented allowance for the application); a global companion budget
+  // keyed on 'reverse-geocode:global' is tracked in #6431. Fail-closed on
+  // Redis outage (default) — Nominatim's enforcement is an egress-IP ban, so
+  // a degraded limiter must 503 rather than inherit the fail-open fallback.
+  '/api/infrastructure/v1/reverse-geocode': { limit: 60, window: '60 s' },
 };
 
 interface RateLimitPolicyDecision {
@@ -548,6 +562,9 @@ export const FAIL_CLOSED_ENDPOINT_RATE_POLICY_REQUIRED: Record<string, RateLimit
   },
   '/api/resilience/v1/get-resilience-ranking': {
     reason: 'Cold/stale cache paths can synchronously warm the full country table.',
+  },
+  '/api/infrastructure/v1/reverse-geocode': {
+    reason: 'Proxies Nominatim (egress-IP ban enforcement), same provider and egress IPs as the legacy edge route. Must fail closed on a Redis outage rather than inherit the fail-open 600/min fallback.',
   },
 };
 

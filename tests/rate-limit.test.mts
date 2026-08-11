@@ -308,6 +308,36 @@ describe('rate-limit fail-open / fail-closed posture (#3531 M9)', () => {
     );
   });
 
+  it('gateway reverse-geocode RPC is a Nominatim provider route with a matched 60/min fail-closed policy (#6432)', async () => {
+    // #6432 — the second Nominatim caller. The legacy edge route carries a
+    // per-IP 60/min budget (#6234); this RPC must carry the same policy or it
+    // silently inherits the gateway's 600/min availability-first fallback,
+    // leaving half the egress exposure open. Since the RPC has no handler --
+    // checkEndpointRateLimit runs in the gateway before any route logic -- the
+    // policy is the whole metering, so assert it stays registered, stays in
+    // the fail-closed requirement, and degrades to 503.
+    delete process.env.UPSTASH_REDIS_REST_URL;
+    delete process.env.UPSTASH_REDIS_REST_TOKEN;
+    const mod = await importFreshRateLimitModule();
+    const pathname = '/api/infrastructure/v1/reverse-geocode';
+
+    assert.deepEqual(ENDPOINT_RATE_POLICIES[pathname], { limit: 60, window: '60 s' });
+    assert.ok(
+      pathname in FAIL_CLOSED_ENDPOINT_RATE_POLICY_REQUIRED,
+      'reverse-geocode RPC must stay in the fail-closed requirement registry — a Redis outage must 503, not inherit the fail-open 600/min fallback',
+    );
+
+    const res = await mod.checkEndpointRateLimit(
+      makeRequest({ 'cf-connecting-ip': '203.0.113.7' }),
+      pathname,
+      { 'Access-Control-Allow-Origin': 'https://worldmonitor.app' },
+    );
+
+    assert.ok(res, 'expected reverse-geocode RPC policy to fail closed without Redis config');
+    assert.equal(res.status, 503);
+    assert.equal(res.headers.get('X-RateLimit-Mode'), 'degraded');
+  });
+
   it('paid-provider market routes each have explicit fail-closed policies (#6236)', async () => {
     delete process.env.UPSTASH_REDIS_REST_URL;
     delete process.env.UPSTASH_REDIS_REST_TOKEN;

@@ -148,6 +148,48 @@ test('allows the request through when the limiter reports headroom', async () =>
   );
 });
 
+test('caches ocean and Antarctic results too — a sweep of empty cells must not be 100% passthrough (#6432)', async () => {
+  // #6412 deliberately left the cache write conditional on a resolved country,
+  // so ocean/Antarctic cells returned Nominatim's "no place" answer on every
+  // request. The parallel gateway RPC writes those cells unconditionally and
+  // both share the geocode: namespace, so this route must too. The mutation
+  // is one line: no `if (country && code)` around the write.
+  const calls = spyFetch((url) => {
+    if (url.includes('/get/')) {
+      // First request is a cache miss; the write is fire-and-forget so no
+      // read-back occurs.
+      return new Response(JSON.stringify({ result: null }), {
+        status: 200, headers: { 'Content-Type': 'application/json' },
+      });
+    }
+    // Ocean in the middle of the Pacific — Nominatim returns no address.
+    return new Response(JSON.stringify({
+      display_name: '',
+    }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+  });
+  const { ctx, waited } = makeCtx();
+  const res = await handler(makeRequest('lat=0&lon=-150', uniqueCallerIp()), ctx);
+  assert.equal(res.status, 200);
+  assert.equal((await res.json()).country, '');
+  assert.equal(nominatimCalls(calls).length, 1);
+  // The cache write is fire-and-forget; flush it.
+  await Promise.all(waited);
+  const writes = calls.filter((c) => c.url.includes('fake-upstash'));
+  assert.ok(writes.length > 0, 'an ocean-resolved response must be written to the shared geocode: cache');
+  assert.ok(
+    writes.some((c) => {
+      try {
+        const entries = JSON.parse(String(c.init.body));
+        const hasSet = Array.isArray(entries)
+          ? entries.some((e) => Array.isArray(e) && String(e[0]).toLowerCase() === 'set')
+          : String(entries[0]).toLowerCase() === 'set';
+        return hasSet && JSON.stringify(entries).includes('geocode:0.0,-150.0');
+      } catch { return false; }
+    }),
+    'the cache write must target the shared geocode:0.0,-150.0 key (lat=0 → 0.0, lon=-150 → -150.0)',
+  );
+});
+
 test('stays available when Upstash is unconfigured', async () => {
   // Availability-first: the map degrades to an unlabelled country rather than
   // failing, so a missing/blipping Redis must not black-hole the route.

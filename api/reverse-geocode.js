@@ -76,15 +76,22 @@ export default async function handler(req, ctx) {
     }
 
     const data = await resp.json();
-    const country = data.address?.country;
-    const code = data.address?.country_code?.toUpperCase();
+    const country = data.address?.country || '';
+    const code = (data.address?.country_code || '').toUpperCase();
+    const displayName = data.display_name || country || '';
 
-    const result = { country: country || null, code: code || null, displayName: data.display_name || country || '' };
+    // Write unconditionally, matching the gateway RPC
+    // (server/worldmonitor/infrastructure/v1/reverse-geocode.ts): ocean and
+    // Antarctic cells must populate the shared geocode: cache, and a sweep of
+    // those cells is currently 100% Nominatim passthrough. The entry uses the
+    // RPC's exact shape ({country, code, displayName, error} as strings) —
+    // both handlers read the same 0.1-degree grid namespace (`geocode:lat,lon`,
+    // 604800 s TTL), so either may serve the other and a normalized `''` is
+    // indistinguishable from an ocean lookup either way. (#6432)
+    const result = { country, code, displayName, error: '' };
     const body = JSON.stringify(result);
 
-    if (country && code) {
-      ctx.waitUntil(setCachedData(cacheKey, result, 604800));
-    }
+    ctx.waitUntil(setCachedData(cacheKey, result, 604800));
 
     return new Response(body, {
       status: 200,
