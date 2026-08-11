@@ -1,7 +1,7 @@
 # Global Intelligence Mother Reconstruction — Master Status
 
 **Controlling specification:** `D:\google\Codex_5.6_Terra_极高_全球情报母体重构执行书_2026-08-11.md`
-**Updated:** 2026-08-11T20:31:00+08:00
+**Updated:** 2026-08-11T21:35:00+08:00
 **Official product brand:** 全球实时热点追踪·探长版
 **Current working branch:** `integration/pokieticker-maritime-china-factory`
 **Formal mother repository:** `daking32168-byte/worldmonitor` (AGPL-3.0-only)
@@ -19,6 +19,7 @@ This current-status receipt supersedes the historical preflight rows below.
 | 2 | completed | Provider/data contracts, generated API, explicit disabled state and historical-fixture isolation | `2df9ef0a133564789bb398d7a9f363de171e78b8` | `evidence/phase2-data-contract.md` |
 | 3 | completed for code and automated gates; licensed-live acceptance pending | Server-only Massive REST/WebSocket relay, exchange-calendar status, symbol isolation and explicit no-key/no-entitlement denial | `9cb8cb6efe2164891ea26cb6b2f51b6a3da086b0` | `evidence/phase3-authorized-stock-relay.md` |
 | 4 | completed for native UI, browser layout and no-provider truthfulness; licensed-live visual acceptance pending | `/stocks` / `/stocks/:symbol`, priority selector, provider-only search, D3 chart shell, event/research panels and independently scrollable responsive workspace | `f86fbce81b287a62d0af73a126dae8521aa7bc68` | `evidence/phase4-stock-workspace.md`, `POKIETICKER_COMPONENT_MIGRATION.md` |
+| 5 | completed for news schema, US exchange-time alignment, fact-only range metrics and model-disabled truthfulness; provider-backed analysis acceptance pending | `StockNewsAlignment`, `StockNewsAnalysis`, T0/T1/T3/T5/T10 return contract, Massive source preservation, explicit model-disabled UI and calendar tests | `PENDING_BACKFILL` | `evidence/phase5-news-alignment.md`, `evidence/phase5-news-evidence-no-provider-1440x900-final.png` |
 
 | Phase | Status | Scope | Commit | Evidence |
 |---|---|---|---|---|
@@ -163,3 +164,36 @@ truthfulness gate, **not** a licensed-live K-line or price-accuracy claim.
 Proceed automatically to Phase 5 evidence-linked news, analysis and causality
 boundaries. Missing keys do not block adapters, disabled states and tests; they
 continue to block only a real Provider visual-data acceptance.
+
+## Phase 5 — news evidence, exchange-time alignment and non-causality boundary
+
+Phase 5 separates four things that must not be collapsed into a market claim:
+the provider article/source, its primary-exchange trading-date alignment, a
+versioned model assessment, and realized price returns from validated bars.
+The Market v1 schema now persists UTC and exchange-local publication time,
+aligned trading date, alignment rule and session state. For the current US
+equity calendar, pre-market and regular-session publications align to the same
+trading day; after-hours, weekends and named holidays align to the next actual
+NYSE/Nasdaq trading day. Non-US primary exchanges remain an explicit future
+calendar-mapping requirement rather than an unlabelled US default.
+
+Model sentiment, relevance, causal confidence, category and T0/T1/T3/T5/T10
+actual returns have independent fields. With no authorized analysis provider,
+the response is `NOT_CONFIGURED` / `NEWS_SENTIMENT_UNAVAILABLE`; it does not
+emit a neutral label, a zero relevance score as a measurement, a return, or a
+causal assertion. Range numbers appear only from a validated symbol-specific
+bar sequence and carry a non-causality note.
+
+The focused suite passed 20/20; type/API/source/DOM/build/full-lint gates
+passed, and the local no-provider browser screenshot shows the scrollable empty
+K-line state with zero synthetic candles and zero fabricated news particles.
+See `evidence/phase5-news-alignment.md`.
+
+**Phase 5 implementation commit:** `PENDING_BACKFILL`.
+
+## Next action
+
+Proceed automatically to Phase 6 maritime/AIS and supply-chain evidence
+boundaries. A missing maritime key may not be used to infer cargo, origin,
+buyer, discharge, or shipment fact from AIS; disabled state, adapter boundary
+and contract tests must be completed first.

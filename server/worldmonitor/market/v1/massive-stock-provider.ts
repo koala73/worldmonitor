@@ -25,6 +25,7 @@ import {
   StockContractRequestError,
 } from './stock-data-contract';
 import { resolveUsEquityMarketState } from './market-calendar';
+import { enrichStockNewsItem } from './stock-news-evidence';
 
 const MASSIVE_API_BASE = 'https://api.massive.com';
 const MASSIVE_REST_DOCS = 'https://massive.com/docs/rest/stocks';
@@ -343,7 +344,7 @@ export async function getMassiveStockNews(symbolInput: string, limit: number, co
     const publishedAtUtc = Date.parse(row.published_utc ?? '');
     if (!row.id || !row.title || !row.article_url || !Number.isFinite(publishedAtUtc)) return [];
     if (Array.isArray(row.tickers) && !row.tickers.map(value => String(value).toUpperCase()).includes(symbol)) return [];
-    return [{ id: row.id, symbol, title: row.title, source: row.publisher?.name ?? 'Massive publisher', sourceUrl: row.article_url, publishedAtUtc }];
+    return [enrichStockNewsItem({ id: row.id, symbol, title: row.title, source: row.publisher?.name ?? 'Massive publisher', sourceUrl: row.article_url, publishedAtUtc })];
   });
   const observedAt = Math.max(0, ...items.map(item => item.publishedAtUtc));
   return {

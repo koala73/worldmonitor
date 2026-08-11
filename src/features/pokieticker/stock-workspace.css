@@ -162,11 +162,18 @@
 .pokie-workspace__news-item.is-selected { border-left-color: var(--pokie-accent); background: rgba(14, 57, 84, .68); }
 .pokie-workspace__news-link { color: #e3f3ff; font-size: 12px; line-height: 1.35; }
 .pokie-workspace__news-meta,
-.pokie-workspace__news-analysis-state { color: var(--pokie-muted); font-size: 10px; line-height: 1.35; }
+.pokie-workspace__news-analysis-state,
+.pokie-workspace__news-alignment,
+.pokie-workspace__news-return-state { color: var(--pokie-muted); font-size: 10px; line-height: 1.35; }
+.pokie-workspace__news-alignment { color: #a9cce5; }
+.pokie-workspace__news-return-state { color: #b6d8c5; }
 .pokie-workspace__category-controls { display: flex; flex-wrap: wrap; gap: 6px; }
 .pokie-workspace__category { padding: 5px 7px; font-size: 11px; cursor: not-allowed; opacity: .55; }
 .pokie-workspace__range-caption { color: var(--pokie-accent); font-size: 12px; }
 .pokie-workspace__analysis-ok { margin: 0; color: var(--pokie-up); font-size: 12px; line-height: 1.45; }
+.pokie-workspace__range-metrics { display: grid; grid-template-columns: 1fr auto; gap: 5px 10px; margin: 0; font-size: 11px; }
+.pokie-workspace__range-metrics dt { color: var(--pokie-muted); }
+.pokie-workspace__range-metrics dd { margin: 0; color: var(--pokie-text); font-variant-numeric: tabular-nums; }
 .pokie-workspace__secondary-button { justify-self: start; padding: 6px 8px; font-size: 11px; }
 .pokie-workspace__footer { margin-top: 14px; padding: 11px 14px; border-radius: 8px; color: var(--pokie-muted); font-size: 11px; line-height: 1.5; }
 

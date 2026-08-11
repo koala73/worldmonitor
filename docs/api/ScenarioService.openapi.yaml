@@ -24,13 +24,7 @@ paths:
             tags:
                 - ScenarioService
             summary: RunScenario
-            description: |-
-                RunScenario enqueues a scenario job on scenario-queue:pending. PRO-gated.
-                 Async job pattern: a successful enqueue returns HTTP 202 Accepted with a
-                 Location header pointing at GetScenarioStatus; poll it (or the statusUrl
-                 body field) with the returned jobId until status is "done" or "failed".
-                 The scenario-worker (scripts/scenario-worker.mjs) pulls jobs off the
-                 queue via BLMOVE and writes results under scenario-result:{job_id}. Requires entitlement tier >= 1.
+            description: "RunScenario enqueues a scenario job on scenario-queue:pending. PRO-gated.\r\n Async job pattern: a successful enqueue returns HTTP 202 Accepted with a\r\n Location header pointing at GetScenarioStatus; poll it (or the statusUrl\r\n body field) with the returned jobId until status is \"done\" or \"failed\".\r\n The scenario-worker (scripts/scenario-worker.mjs) pulls jobs off the\r\n queue via BLMOVE and writes results under scenario-result:{job_id}. Requires entitlement tier >= 1."
             operationId: RunScenario
             security:
                 - WorldMonitorKey: []
@@ -179,10 +173,7 @@ paths:
             tags:
                 - ScenarioService
             summary: GetScenarioStatus
-            description: |-
-                GetScenarioStatus polls a single job's result. PRO-gated.
-                 Returns status="pending" when no result key exists, mirroring the
-                 worker's lifecycle state once the key is written. Requires entitlement tier >= 1.
+            description: "GetScenarioStatus polls a single job's result. PRO-gated.\r\n Returns status=\"pending\" when no result key exists, mirroring the\r\n worker's lifecycle state once the key is written. Requires entitlement tier >= 1."
             operationId: GetScenarioStatus
             security:
                 - WorldMonitorKey: []
@@ -198,7 +189,6 @@ paths:
                   example: "scenario:1717200000000:abcd1234"
                   schema:
                     type: string
-                    pattern: '^scenario:[0-9]{13}:[a-z0-9]{8}$'
                 - name: jmespath
                   in: query
                   description: |-
@@ -286,9 +276,7 @@ paths:
             tags:
                 - ScenarioService
             summary: ListScenarioTemplates
-            description: |-
-                ListScenarioTemplates returns the catalog of pre-defined scenarios.
-                 Not PRO-gated — used by documented public API consumers.
+            description: "ListScenarioTemplates returns the catalog of pre-defined scenarios.\r\n Not PRO-gated — used by documented public API consumers."
             operationId: ListScenarioTemplates
             parameters:
                 - name: jmespath
@@ -501,15 +489,10 @@ components:
                 iso2:
                     type: string
                     pattern: ^([A-Z]{2})?$
-                    description: |-
-                        Optional 2-letter ISO country code to scope the impact computation.
-                         When absent, v1 computes only the seeded reporter set:
-                         US, CN, RU, IR, IN, TW.
+                    description: "Optional 2-letter ISO country code to scope the impact computation.\r\n When absent, v1 computes only the seeded reporter set:\r\n US, CN, RU, IR, IN, TW."
             required:
                 - scenarioId
-            description: |-
-                RunScenarioRequest enqueues a scenario job on the scenario-queue:pending
-                 Upstash list for the async scenario-worker to pick up.
+            description: "RunScenarioRequest enqueues a scenario job on the scenario-queue:pending\r\n Upstash list for the async scenario-worker to pick up."
         RunScenarioResponse:
             type: object
             properties:
@@ -521,23 +504,8 @@ components:
                     description: Always "pending" at enqueue time.
                 statusUrl:
                     type: string
-                    description: |-
-                        Convenience URL the caller can use to poll this job's status.
-                         Server-computed as `/api/scenario/v1/get-scenario-status?jobId=<job_id>`.
-                         Restored after the v1 → v1 sebuf migration because external callers
-                         may key off this field.
-            description: |-
-                RunScenarioResponse carries the enqueued job id. Clients poll
-                 GetScenarioStatus with this id until status != "pending".
-
-                 NOTE: a successful enqueue returns HTTP 202 Accepted with a Location
-                 header pointing at GetScenarioStatus — the legacy (pre-sebuf) contract,
-                 restored. The sebuf-generated server still emits 200 for every success
-                 (no per-RPC status-code annotation exists), so the gateway upgrades the
-                 status via the setSuccessStatusOverride side-channel
-                 (server/_shared/response-headers.ts). Treat any 2xx as success; the
-                 interim guidance to branch on response body shape instead of the status
-                 code remains valid.
+                    description: "Convenience URL the caller can use to poll this job's status.\r\n Server-computed as `/api/scenario/v1/get-scenario-status?jobId=<job_id>`.\r\n Restored after the v1 → v1 sebuf migration because external callers\r\n may key off this field."
+            description: "RunScenarioResponse carries the enqueued job id. Clients poll\r\n GetScenarioStatus with this id until status != \"pending\".\r\n\r\n NOTE: a successful enqueue returns HTTP 202 Accepted with a Location\r\n header pointing at GetScenarioStatus — the legacy (pre-sebuf) contract,\r\n restored. The sebuf-generated server still emits 200 for every success\r\n (no per-RPC status-code annotation exists), so the gateway upgrades the\r\n status via the setSuccessStatusOverride side-channel\r\n (server/_shared/response-headers.ts). Treat any 2xx as success; the\r\n interim guidance to branch on response body shape instead of the status\r\n code remains valid."
         GetScenarioStatusRequest:
             type: object
             properties:

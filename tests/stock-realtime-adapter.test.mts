@@ -4,6 +4,7 @@ import test from 'node:test';
 
 import {
   getMassiveStockBars,
+  getMassiveStockNews,
   resolveMassiveBarWindow,
 } from '../server/worldmonitor/market/v1/massive-stock-provider';
 import { resolveUsEquityMarketState } from '../server/worldmonitor/market/v1/market-calendar';
@@ -72,12 +73,48 @@ test('a Massive response with a cross-symbol ticker is rejected before it reache
   );
 });
 
+test('provider-linked company news receives exchange alignment but no invented model conclusion', async () => {
+  const result = await getMassiveStockNews('AAPL', 10, {
+    apiKey: 'test-key-not-a-secret', now: () => NOW,
+    fetchImpl: async () => new Response(JSON.stringify({
+      request_id: 'news-request',
+      results: [{
+        id: 'massive-news-1', title: 'Provider-linked company article', article_url: 'https://example.test/aapl/news-1',
+        published_utc: '2026-08-07T22:30:00.000Z', tickers: ['AAPL'], publisher: { name: 'Example Provider' },
+      }],
+    }), { headers: { 'Content-Type': 'application/json' } }),
+  });
+  const item = result.items[0];
+  assert.equal(item?.symbol, 'AAPL');
+  assert.equal(item?.alignment?.alignedTradingDate, '2026-08-10');
+  assert.equal(item?.analysis?.available, false);
+  assert.equal(item?.analysis?.modelSentiment, 'NEWS_SENTIMENT_UNAVAILABLE');
+  assert.match(item?.analysis?.causalReason ?? '', /No causal claim/);
+});
+
 test('range requests map to a real bounded interval rather than one reused default window', () => {
   const ranges = ['1D', '5D', '1M', '3M', '1Y', '5Y', 'MAX'];
   const windows = ranges.map(range => resolveMassiveBarWindow({ symbol: 'AAPL', interval: '1d', range, startUtc: 0, endUtc: 0 }, NOW));
   assert.equal(new Set(windows.map(window => window.cacheWindow)).size, ranges.length);
   assert.equal(windows[0]!.to, windows.at(-1)!.to);
   assert.ok(windows[0]!.from > windows[6]!.from, '1D must cover less history than MAX');
+});
+
+test('range metrics use the requested symbol bars and expressly avoid a causal conclusion', async () => {
+  const handlers = createStockContractLiveHandlers({
+    massive: { apiKey: 'test-key-not-a-secret', fetchImpl: massiveFetch, now: () => NOW },
+  });
+  const response = await handlers.analyzeStockRange({} as never, {
+    symbol: 'AAPL', startUtc: Date.UTC(2026, 2, 2), endUtc: Date.UTC(2026, 2, 3),
+  });
+  const analysis = response.analysis;
+  assert.equal(analysis?.available, true);
+  assert.equal(analysis?.metricsAvailable, true);
+  assert.equal(analysis?.validatedBarCount, 2);
+  assert.equal(analysis?.startClose, RECORDED_AGGREGATES.AAPL[0]!.c);
+  assert.equal(analysis?.endClose, RECORDED_AGGREGATES.AAPL[1]!.c);
+  assert.equal(analysis?.totalVolume, RECORDED_AGGREGATES.AAPL[0]!.v + RECORDED_AGGREGATES.AAPL[1]!.v);
+  assert.match(analysis?.causalNote ?? '', /do not prove/);
 });
 
 test('the exchange calendar marks a Sunday and NYSE holiday closed, without creating a bar', () => {

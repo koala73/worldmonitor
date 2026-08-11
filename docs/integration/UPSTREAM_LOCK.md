@@ -99,3 +99,23 @@ The local 2026-08-11 GitHub transport recheck still resolves origin/main to
 `0fca203c776dd5fa4913c4bd52f99cd2c3c13a25` and upstream/main to
 `ae0a0fe26bcbdb683b366899e4dc38fb8ccfb5ad`. It was read-only and did not move
 `main` or any remote ref.
+
+## Phase 5 native evidence-boundary receipt
+
+Phase 5 adds new WorldMonitor Market v1 schema, server evidence/alignment code,
+native workspace rendering and tests. It does not copy PokieTicker source,
+SQLite values, screenshots, article text, APIs, JavaScript bundles or iframe
+content. PokieTicker remains a locked behavior/reference inventory only.
+
+The only upstream provider shape used is the already recorded Massive
+company-news response boundary; the new logic preserves its source/time fields
+and rejects non-matching/untraceable records before adding a locally computed
+exchange-calendar alignment. The new model analysis schema is a disabled
+contract, not a copied provider response or an implicit use of an external AI
+service.
+
+After GitHub HTTPS recovery on 2026-08-11, read-only `git fetch --no-tags`
+reconfirmed `origin/main=0fca203c776dd5fa4913c4bd52f99cd2c3c13a25` and
+`upstream/main=ae0a0fe26bcbdb683b366899e4dc38fb8ccfb5ad`. No ref was moved,
+no `main` operation occurred, and the integration branch remains the only
+target for Phase 5 commits.

@@ -14,6 +14,22 @@ No secret belongs in this file, chat transcript, Git history, screenshot or clie
 | P2 | Contract an appropriate bill-of-lading provider | Required for shipment-level facts | No vessel/box/shipper claim is shown as fact |
 | P2 | Configure deployment ownership (Vercel/Railway/Upstash/domain) | Required for production deployment | Local development only |
 
+## Phase 5 completion update (2026-08-11)
+
+The source-linked news contract, US-equity exchange-time alignment, actual
+return schema and model-disabled state are complete without a credential. There
+is no user action required to continue to Phase 6.
+
+Only when the user elects to enable provider-backed AI/news analysis, first
+choose a provider whose terms expressly permit the intended news/financial use
+and record its authorization level. Put the resulting server-only secret in the
+platform/local secret store named by that provider; do not paste a key, cookie,
+invoice, CAPTCHA response, article text requiring restricted redistribution, or
+model console screenshot into chat, this file, a checked-in `.env`, an image or
+Git. Then run a source/provenance/manual acceptance that records actual model,
+prompt, timestamps and returned evidence. This future credential action does
+not authorize labelling a model result as a market cause.
+
 ## Current pause point
 
 **Current status supersession (2026-08-11):** The historical Phase 1 network-block paragraph below is preserved as evidence only. GitHub HTTPS recovered, the true upstream baseline was fetched locally, and Phase 1 is complete on `integration/pokieticker-maritime-china-factory`. Begin Phase 2 without Provider credentials by implementing contracts and explicitly disabled states only.

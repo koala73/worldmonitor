@@ -803,6 +803,43 @@ export interface StockNewsItem {
   source: string;
   sourceUrl: string;
   publishedAtUtc: number;
+  alignment?: StockNewsAlignment;
+  analysis?: StockNewsAnalysis;
+}
+
+export interface StockNewsAlignment {
+  exchangeTimezone: string;
+  publishedAtExchangeTz: string;
+  alignedTradingDate: string;
+  alignmentRule: string;
+  marketSessionAtPublish: MarketSession;
+}
+
+export interface StockNewsAnalysis {
+  available: boolean;
+  status: string;
+  reason: string;
+  modelSentiment: NewsSentiment;
+  sentimentReason: string;
+  relevance: number;
+  relevanceReason: string;
+  causalConfidence: number;
+  causalReason: string;
+  category: string;
+  categoryReason: string;
+  modelProvider: string;
+  modelVersion: string;
+  promptVersion: string;
+  generatedAtUtc: number;
+  realizedReturns: StockNewsRealizedReturn[];
+}
+
+export interface StockNewsRealizedReturn {
+  horizon: string;
+  available: boolean;
+  percent: number;
+  reason: string;
+  evaluatedAtUtc: number;
 }
 
 export interface GetStockEventTimelineRequest {
@@ -843,6 +880,13 @@ export interface StockRangeAnalysis {
   symbol: string;
   rangeStartUtc: number;
   rangeEndUtc: number;
+  metricsAvailable: boolean;
+  startClose: number;
+  endClose: number;
+  realizedReturnPercent: number;
+  totalVolume: number;
+  validatedBarCount: number;
+  causalNote: string;
 }
 
 export interface GetStockForecastRequest {
@@ -878,6 +922,8 @@ export interface FindSimilarStockEventsResponse {
 export type MarketQuoteUnavailableReason = "MARKET_QUOTE_UNAVAILABLE_REASON_UNSPECIFIED" | "MARKET_QUOTE_UNAVAILABLE_REASON_NOT_FOUND" | "MARKET_QUOTE_UNAVAILABLE_REASON_PROVIDER_ERROR" | "MARKET_QUOTE_UNAVAILABLE_REASON_PROVIDER_RATE_LIMITED" | "MARKET_QUOTE_UNAVAILABLE_REASON_PROVIDER_NOT_CONFIGURED" | "MARKET_QUOTE_UNAVAILABLE_REASON_REQUEST_LIMIT_EXCEEDED" | "MARKET_QUOTE_UNAVAILABLE_REASON_UPSTREAM_BUDGET_EXHAUSTED" | "MARKET_QUOTE_UNAVAILABLE_REASON_SEED_UNAVAILABLE";
 
 export type MarketSession = "MARKET_SESSION_UNSPECIFIED" | "MARKET_SESSION_PRE" | "MARKET_SESSION_REGULAR" | "MARKET_SESSION_AFTER" | "MARKET_SESSION_CLOSED";
+
+export type NewsSentiment = "NEWS_SENTIMENT_UNSPECIFIED" | "NEWS_SENTIMENT_UNAVAILABLE" | "NEWS_SENTIMENT_POSITIVE" | "NEWS_SENTIMENT_NEGATIVE" | "NEWS_SENTIMENT_NEUTRAL";
 
 export type ProviderStatus = "PROVIDER_STATUS_UNSPECIFIED" | "PROVIDER_STATUS_REALTIME_LICENSED" | "PROVIDER_STATUS_DELAYED_15M" | "PROVIDER_STATUS_DELAYED_UNVERIFIED" | "PROVIDER_STATUS_END_OF_DAY" | "PROVIDER_STATUS_HISTORICAL_SNAPSHOT" | "PROVIDER_STATUS_STALE" | "PROVIDER_STATUS_DEGRADED" | "PROVIDER_STATUS_NOT_CONFIGURED" | "PROVIDER_STATUS_UNAVAILABLE" | "PROVIDER_STATUS_MARKET_CLOSED";
 

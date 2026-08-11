@@ -117,10 +117,7 @@ paths:
             tags:
                 - SupplyChainService
             summary: GetChokepointStatus
-            description: |-
-                GetChokepointStatus retrieves seeded chokepoint status. Empty chokepoints
-                 with upstream_unavailable=true means the seed snapshot is unavailable/
-                 degraded, not that there are confirmed zero chokepoints.
+            description: "GetChokepointStatus retrieves seeded chokepoint status. Empty chokepoints\r\n with upstream_unavailable=true means the seed snapshot is unavailable/\r\n degraded, not that there are confirmed zero chokepoints."
             operationId: GetChokepointStatus
             parameters:
                 - name: jmespath
@@ -206,10 +203,7 @@ paths:
             tags:
                 - SupplyChainService
             summary: GetChokepointHistory
-            description: |-
-                GetChokepointHistory returns transit-count history for a single chokepoint,
-                 loaded lazily on card expand. Keeps the status RPC compact (no 180-day
-                 history per chokepoint on every call).
+            description: "GetChokepointHistory returns transit-count history for a single chokepoint,\r\n loaded lazily on card expand. Keeps the status RPC compact (no 180-day\r\n history per chokepoint on every call)."
             operationId: GetChokepointHistory
             parameters:
                 - name: chokepointId
@@ -492,7 +486,6 @@ paths:
                   example: "US"
                   schema:
                     type: string
-                    pattern: '^[A-Z]{2}$'
                 - name: hs2
                   in: query
                   description: HS2 chapter (2-digit string). Defaults to "27" (energy/mineral fuels) when absent.
@@ -711,7 +704,6 @@ paths:
                   example: "US"
                   schema:
                     type: string
-                    pattern: '^[A-Z]{2}$'
                 - name: chokepointId
                   in: query
                   description: Chokepoint identifier to model as disrupted.
@@ -819,7 +811,6 @@ paths:
                   example: "US"
                   schema:
                     type: string
-                    pattern: '^[A-Z]{2}$'
                 - name: jmespath
                   in: query
                   description: |-
@@ -906,9 +897,7 @@ paths:
             tags:
                 - SupplyChainService
             summary: GetMultiSectorCostShock
-            description: |-
-                GetMultiSectorCostShock returns per-sector cost-shock estimates for a
-                 country+chokepoint+closure-window. PRO-gated. Requires entitlement tier >= 1.
+            description: "GetMultiSectorCostShock returns per-sector cost-shock estimates for a\r\n country+chokepoint+closure-window. PRO-gated. Requires entitlement tier >= 1."
             operationId: GetMultiSectorCostShock
             security:
                 - WorldMonitorKey: []
@@ -922,7 +911,6 @@ paths:
                   example: "US"
                   schema:
                     type: string
-                    pattern: '^[A-Z]{2}$'
                 - name: chokepointId
                   in: query
                   description: Chokepoint identifier to model as disrupted.
@@ -1036,7 +1024,6 @@ paths:
                   example: "US"
                   schema:
                     type: string
-                    pattern: '^[A-Z]{2}$'
                 - name: hs2
                   in: query
                   description: HS2 chapter code, e.g. "27" (mineral fuels), "85" (electronics)
@@ -1124,12 +1111,7 @@ paths:
             tags:
                 - SupplyChainService
             summary: GetRouteExplorerLane
-            description: |-
-                GetRouteExplorerLane returns the primary maritime route, chokepoint exposures,
-                 bypass options with geometry, war risk, and static transit/freight estimates for
-                 a country pair + HS2 + cargo type. PRO-gated. Wraps the route-intelligence vendor
-                 endpoint's compute with browser-callable auth and adds fields needed by the
-                 Route Explorer UI. Requires entitlement tier >= 1.
+            description: "GetRouteExplorerLane returns the primary maritime route, chokepoint exposures,\r\n bypass options with geometry, war risk, and static transit/freight estimates for\r\n a country pair + HS2 + cargo type. PRO-gated. Wraps the route-intelligence vendor\r\n endpoint's compute with browser-callable auth and adds fields needed by the\r\n Route Explorer UI. Requires entitlement tier >= 1."
             operationId: GetRouteExplorerLane
             security:
                 - WorldMonitorKey: []
@@ -1143,7 +1125,6 @@ paths:
                   example: "US"
                   schema:
                     type: string
-                    pattern: '^[A-Z]{2}$'
                 - name: toIso2
                   in: query
                   description: ISO 3166-1 alpha-2 destination country code for the trade lane.
@@ -1151,7 +1132,6 @@ paths:
                   example: "US"
                   schema:
                     type: string
-                    pattern: '^[A-Z]{2}$'
                 - name: hs2
                   in: query
                   description: HS2 chapter code, e.g. "27", "85"
@@ -1271,7 +1251,6 @@ paths:
                   example: "US"
                   schema:
                     type: string
-                    pattern: '^[A-Z]{2}$'
                 - name: toIso2
                   in: query
                   description: ISO 3166-1 alpha-2 destination country code for the route.
@@ -1279,7 +1258,6 @@ paths:
                   example: "US"
                   schema:
                     type: string
-                    pattern: '^[A-Z]{2}$'
                 - name: hs2
                   in: query
                   description: HS2 chapter code for the product sector on the route.
@@ -1367,11 +1345,7 @@ paths:
             tags:
                 - SupplyChainService
             summary: ListPipelines
-            description: |-
-                ListPipelines returns the curated oil & gas pipeline registry for the
-                 Energy Atlas PathLayer. Public badges are DERIVED from evidence bundles
-                 server-side and versioned (classifier_version). Free-tier; see
-                 docs/methodology/pipelines.mdx for data + classifier spec.
+            description: "ListPipelines returns the curated oil & gas pipeline registry for the\r\n Energy Atlas PathLayer. Public badges are DERIVED from evidence bundles\r\n server-side and versioned (classifier_version). Free-tier; see\r\n docs/methodology/pipelines.mdx for data + classifier spec."
             operationId: ListPipelines
             parameters:
                 - name: commodityType
@@ -1474,9 +1448,7 @@ paths:
             tags:
                 - SupplyChainService
             summary: GetPipelineDetail
-            description: |-
-                GetPipelineDetail returns a single pipeline with full evidence bundle
-                 + auto-revision-log entries. Loaded lazily on drawer open.
+            description: "GetPipelineDetail returns a single pipeline with full evidence bundle\r\n + auto-revision-log entries. Loaded lazily on drawer open."
             operationId: GetPipelineDetail
             parameters:
                 - name: pipelineId
@@ -1584,20 +1556,12 @@ paths:
             tags:
                 - SupplyChainService
             summary: ListStorageFacilities
-            description: |-
-                ListStorageFacilities returns the curated strategic storage registry
-                 (UGS + SPR + LNG + crude tank farms) for the Energy Atlas DeckGL
-                 ScatterplotLayer. Public badges are DERIVED from evidence bundles
-                 server-side and versioned (classifier_version). Free-tier; see
-                 docs/methodology/storage.mdx.
+            description: "ListStorageFacilities returns the curated strategic storage registry\r\n (UGS + SPR + LNG + crude tank farms) for the Energy Atlas DeckGL\r\n ScatterplotLayer. Public badges are DERIVED from evidence bundles\r\n server-side and versioned (classifier_version). Free-tier; see\r\n docs/methodology/storage.mdx."
             operationId: ListStorageFacilities
             parameters:
                 - name: facilityType
                   in: query
-                  description: |-
-                    Filter to one facility type. Accepts:
-                       "ugs" | "spr" | "lng_export" | "lng_import" | "crude_tank_farm"
-                     Omit (or pass empty) to receive all types.
+                  description: "Filter to one facility type. Accepts:\r\n   \"ugs\" | \"spr\" | \"lng_export\" | \"lng_import\" | \"crude_tank_farm\"\r\n Omit (or pass empty) to receive all types."
                   required: false
                   example: "ugs"
                   schema:
@@ -1690,9 +1654,7 @@ paths:
             tags:
                 - SupplyChainService
             summary: GetStorageFacilityDetail
-            description: |-
-                GetStorageFacilityDetail returns a single facility with full evidence
-                 bundle + revision log. Loaded lazily on drawer open.
+            description: "GetStorageFacilityDetail returns a single facility with full evidence\r\n bundle + revision log. Loaded lazily on drawer open."
             operationId: GetStorageFacilityDetail
             parameters:
                 - name: facilityId
@@ -1795,10 +1757,7 @@ paths:
             tags:
                 - SupplyChainService
             summary: ListFuelShortages
-            description: |-
-                ListFuelShortages returns the global fuel-shortage alert registry.
-                 Curated-only: severity ("confirmed" | "watch") is a row field authored
-                 at curation time, not a client-side derivation. Free tier.
+            description: "ListFuelShortages returns the global fuel-shortage alert registry.\r\n Curated-only: severity (\"confirmed\" | \"watch\") is a row field authored\r\n at curation time, not a client-side derivation. Free tier."
             operationId: ListFuelShortages
             parameters:
                 - name: country
@@ -1810,9 +1769,7 @@ paths:
                     type: string
                 - name: product
                   in: query
-                  description: |-
-                    Filter to one product. Accepts: "petrol" | "diesel" | "jet" | "heating_oil".
-                     Omit for all products.
+                  description: "Filter to one product. Accepts: \"petrol\" | \"diesel\" | \"jet\" | \"heating_oil\".\r\n Omit for all products."
                   required: false
                   example: "diesel"
                   schema:
@@ -1918,9 +1875,7 @@ paths:
             tags:
                 - SupplyChainService
             summary: GetFuelShortageDetail
-            description: |-
-                GetFuelShortageDetail returns a single shortage with full evidence
-                 bundle and citation timeline. Loaded lazily on drawer open.
+            description: "GetFuelShortageDetail returns a single shortage with full evidence\r\n bundle and citation timeline. Loaded lazily on drawer open."
             operationId: GetFuelShortageDetail
             parameters:
                 - name: shortageId
@@ -2023,18 +1978,12 @@ paths:
             tags:
                 - SupplyChainService
             summary: ListEnergyDisruptions
-            description: |-
-                ListEnergyDisruptions returns the disruption event log for pipelines
-                 and storage facilities. Supports per-asset or per-asset-type filtering
-                 so panel drawers can fetch a scoped timeline without pulling the
-                 full registry.
+            description: "ListEnergyDisruptions returns the disruption event log for pipelines\r\n and storage facilities. Supports per-asset or per-asset-type filtering\r\n so panel drawers can fetch a scoped timeline without pulling the\r\n full registry."
             operationId: ListEnergyDisruptions
             parameters:
                 - name: assetId
                   in: query
-                  description: |-
-                    Filter to one asset. Omit for all. When set, also narrows to the
-                     matching asset_type if provided.
+                  description: "Filter to one asset. Omit for all. When set, also narrows to the\r\n matching asset_type if provided."
                   required: false
                   example: "asset-example-1"
                   schema:
@@ -2137,10 +2086,7 @@ paths:
             tags:
                 - SupplyChainService
             summary: GetChinaCorridorControlTowers
-            description: |-
-                GetChinaCorridorControlTowers composes reviewed China logistics corridors
-                 from existing source caches. Conditions retain canonical provenance and
-                 explicit unavailable states; the response never emits a single risk score.
+            description: "GetChinaCorridorControlTowers composes reviewed China logistics corridors\r\n from existing source caches. Conditions retain canonical provenance and\r\n explicit unavailable states; the response never emits a single risk score."
             operationId: GetChinaCorridorControlTowers
             parameters:
                 - name: jmespath
@@ -4700,17 +4646,7 @@ components:
                 commodityType:
                     type: string
                     description: Filter to one commodity. Omit (or pass empty) to receive both.
-            description: |-
-                ListPipelines returns the full oil and/or gas pipeline registry with
-                 evidence-based status per asset. Registry is curated (see
-                 docs/methodology/pipelines.mdx) and refreshed weekly by
-                 scripts/seed-pipelines-{gas,oil}.mjs. Typical consumer: PipelineStatusPanel
-                 rendering the DeckGL PathLayer.
-
-                 The public badge is DERIVED from the evidence bundle server-side at
-                 read time — callers MUST use `public_badge` for display, not invent
-                 their own derivation from `evidence` fields. This keeps the atlas and
-                 MCP clients consistent and versioned together.
+            description: "ListPipelines returns the full oil and/or gas pipeline registry with\r\n evidence-based status per asset. Registry is curated (see\r\n docs/methodology/pipelines.mdx) and refreshed weekly by\r\n scripts/seed-pipelines-{gas,oil}.mjs. Typical consumer: PipelineStatusPanel\r\n rendering the DeckGL PathLayer.\r\n\r\n The public badge is DERIVED from the evidence bundle server-side at\r\n read time — callers MUST use `public_badge` for display, not invent\r\n their own derivation from `evidence` fields. This keeps the atlas and\r\n MCP clients consistent and versioned together."
         ListPipelinesResponse:
             type: object
             properties:
@@ -4768,9 +4704,7 @@ components:
                     $ref: '#/components/schemas/PipelineEvidence'
                 publicBadge:
                     type: string
-                    description: |-
-                        Server-derived public badge. One of:
-                           "flowing" | "reduced" | "offline" | "disputed"
+                    description: "Server-derived public badge. One of:\r\n   \"flowing\" | \"reduced\" | \"offline\" | \"disputed\""
         LatLon:
             type: object
             properties:
@@ -4833,11 +4767,7 @@ components:
                     description: Pipeline identifier to load with full evidence details.
             required:
                 - pipelineId
-            description: |-
-                GetPipelineDetail returns a single pipeline with its full evidence bundle.
-                 Evidence surface here is richer than ListPipelinesResponse — the list view
-                 is designed for the map layer's compact shape; detail is designed for the
-                 click-through drawer.
+            description: "GetPipelineDetail returns a single pipeline with its full evidence bundle.\r\n Evidence surface here is richer than ListPipelinesResponse — the list view\r\n is designed for the map layer's compact shape; detail is designed for the\r\n click-through drawer."
         GetPipelineDetailResponse:
             type: object
             properties:
@@ -4876,22 +4806,8 @@ components:
             properties:
                 facilityType:
                     type: string
-                    description: |-
-                        Filter to one facility type. Accepts:
-                           "ugs" | "spr" | "lng_export" | "lng_import" | "crude_tank_farm"
-                         Omit (or pass empty) to receive all types.
-            description: |-
-                ListStorageFacilities returns the curated strategic storage registry
-                 (underground gas storage, strategic petroleum reserves, LNG terminals,
-                 crude tank farms) with evidence-based status per asset. Registry is
-                 curated (see docs/methodology/storage.mdx) and refreshed weekly by
-                 scripts/seed-storage-facilities.mjs. Typical consumer:
-                 StorageFacilityMapPanel rendering the DeckGL ScatterplotLayer.
-
-                 Like pipelines, the public badge is DERIVED from the evidence bundle
-                 server-side at read time. Callers MUST use `public_badge` for display
-                 rather than inventing their own derivation from `evidence` fields, so
-                 the atlas and MCP clients stay consistent and versioned together.
+                    description: "Filter to one facility type. Accepts:\r\n   \"ugs\" | \"spr\" | \"lng_export\" | \"lng_import\" | \"crude_tank_farm\"\r\n Omit (or pass empty) to receive all types."
+            description: "ListStorageFacilities returns the curated strategic storage registry\r\n (underground gas storage, strategic petroleum reserves, LNG terminals,\r\n crude tank farms) with evidence-based status per asset. Registry is\r\n curated (see docs/methodology/storage.mdx) and refreshed weekly by\r\n scripts/seed-storage-facilities.mjs. Typical consumer:\r\n StorageFacilityMapPanel rendering the DeckGL ScatterplotLayer.\r\n\r\n Like pipelines, the public badge is DERIVED from the evidence bundle\r\n server-side at read time. Callers MUST use `public_badge` for display\r\n rather than inventing their own derivation from `evidence` fields, so\r\n the atlas and MCP clients stay consistent and versioned together."
         ListStorageFacilitiesResponse:
             type: object
             properties:
@@ -4924,12 +4840,7 @@ components:
                 capacityTwh:
                     type: number
                     format: double
-                    description: |-
-                        Working capacity in the facility's native unit (see working_capacity_unit).
-                         Exactly ONE of these is populated per facility, chosen by facility_type:
-                           ugs                              → capacity_twh
-                           spr, crude_tank_farm             → capacity_mb
-                           lng_export, lng_import           → capacity_mtpa
+                    description: "Working capacity in the facility's native unit (see working_capacity_unit).\r\n Exactly ONE of these is populated per facility, chosen by facility_type:\r\n   ugs                              → capacity_twh\r\n   spr, crude_tank_farm             → capacity_mb\r\n   lng_export, lng_import           → capacity_mtpa"
                 capacityMb:
                     type: number
                     format: double
@@ -4946,9 +4857,7 @@ components:
                     $ref: '#/components/schemas/StorageEvidence'
                 publicBadge:
                     type: string
-                    description: |-
-                        Server-derived public badge. One of:
-                           "operational" | "reduced" | "offline" | "disputed"
+                    description: "Server-derived public badge. One of:\r\n   \"operational\" | \"reduced\" | \"offline\" | \"disputed\""
         StorageLatLon:
             type: object
             properties:
@@ -4978,15 +4887,10 @@ components:
                         $ref: '#/components/schemas/StorageSanctionRef'
                 fillDisclosed:
                     type: boolean
-                    description: |-
-                        Whether working-gas / stock-level fill is publicly disclosed for this
-                         asset. LNG export terminals, for instance, tend NOT to disclose; UGS
-                         sites in Europe are required to disclose via GIE AGSI+.
+                    description: "Whether working-gas / stock-level fill is publicly disclosed for this\r\n asset. LNG export terminals, for instance, tend NOT to disclose; UGS\r\n sites in Europe are required to disclose via GIE AGSI+."
                 fillSource:
                     type: string
-                    description: |-
-                        Source of the disclosed fill series ("GIE AGSI+", "EIA SPR weekly
-                         stock report", etc.). Empty when fill_disclosed=false.
+                    description: "Source of the disclosed fill series (\"GIE AGSI+\", \"EIA SPR weekly\r\n stock report\", etc.). Empty when fill_disclosed=false."
                 lastEvidenceUpdate:
                     type: string
                 classifierVersion:
@@ -5022,10 +4926,7 @@ components:
                     description: Storage facility identifier to load with full evidence details.
             required:
                 - facilityId
-            description: |-
-                GetStorageFacilityDetail returns a single facility with its full evidence
-                 bundle + revision log. Revisions land in Week 3 alongside the disruption
-                 event log (Week 3 milestone — empty array in v1).
+            description: "GetStorageFacilityDetail returns a single facility with its full evidence\r\n bundle + revision log. Revisions land in Week 3 alongside the disruption\r\n event log (Week 3 milestone — empty array in v1)."
         GetStorageFacilityDetailResponse:
             type: object
             properties:
@@ -5067,21 +4968,11 @@ components:
                     description: Filter to one ISO 3166-1 alpha-2 country. Omit for global.
                 product:
                     type: string
-                    description: |-
-                        Filter to one product. Accepts: "petrol" | "diesel" | "jet" | "heating_oil".
-                         Omit for all products.
+                    description: "Filter to one product. Accepts: \"petrol\" | \"diesel\" | \"jet\" | \"heating_oil\".\r\n Omit for all products."
                 severity:
                     type: string
                     description: 'Filter to one severity. Accepts: "confirmed" | "watch". Omit for both.'
-            description: |-
-                ListFuelShortages returns the global fuel-shortage alert registry.
-                 Seeded from a curated JSON file (scripts/data/fuel-shortages.json).
-                 An LLM classifier extension was scoped but not shipped — the registry
-                 is curated-only today. Severity ("confirmed" or "watch") is a row
-                 field authored at curation time; the evidence is shipped alongside
-                 so agents and humans can audit the grounds for a severity label.
-
-                 See docs/methodology/shortages.mdx for the evidence-threshold spec.
+            description: "ListFuelShortages returns the global fuel-shortage alert registry.\r\n Seeded from a curated JSON file (scripts/data/fuel-shortages.json).\r\n An LLM classifier extension was scoped but not shipped — the registry\r\n is curated-only today. Severity (\"confirmed\" or \"watch\") is a row\r\n field authored at curation time; the evidence is shipped alongside\r\n so agents and humans can audit the grounds for a severity label.\r\n\r\n See docs/methodology/shortages.mdx for the evidence-threshold spec."
         ListFuelShortagesResponse:
             type: object
             properties:
@@ -5119,17 +5010,12 @@ components:
                     type: array
                     items:
                         type: string
-                        description: |-
-                            Observable consumer-facing impacts. Subset of:
-                               "stations_closed" | "rationing" | "flights_cancelled" | "import_cut" | "price_spike"
+                        description: "Observable consumer-facing impacts. Subset of:\r\n   \"stations_closed\" | \"rationing\" | \"flights_cancelled\" | \"import_cut\" | \"price_spike\""
                 causeChain:
                     type: array
                     items:
                         type: string
-                        description: |-
-                            Contributing root causes, ordered primary-first. Subset of:
-                               "upstream_refinery" | "logistics" | "policy" | "chokepoint" |
-                               "sanction" | "war" | "import_cut"
+                        description: "Contributing root causes, ordered primary-first. Subset of:\r\n   \"upstream_refinery\" | \"logistics\" | \"policy\" | \"chokepoint\" |\r\n   \"sanction\" | \"war\" | \"import_cut\""
                 shortDescription:
                     type: string
                 evidence:
@@ -5143,9 +5029,7 @@ components:
                         $ref: '#/components/schemas/FuelShortageEvidenceSource'
                 firstRegulatorConfirmation:
                     type: string
-                    description: |-
-                        ISO date of the first regulator confirmation, if any. Empty when
-                         severity is "watch" on press-only signal.
+                    description: "ISO date of the first regulator confirmation, if any. Empty when\r\n severity is \"watch\" on press-only signal."
                 classifierVersion:
                     type: string
                 classifierConfidence:
@@ -5175,9 +5059,7 @@ components:
                     description: Fuel-shortage identifier to load with full evidence details.
             required:
                 - shortageId
-            description: |-
-                GetFuelShortageDetail returns a single shortage with full evidence
-                 bundle + citation timeline. Loaded lazily on drawer open.
+            description: "GetFuelShortageDetail returns a single shortage with full evidence\r\n bundle + citation timeline. Loaded lazily on drawer open."
         GetFuelShortageDetailResponse:
             type: object
             properties:
@@ -5192,27 +5074,14 @@ components:
             properties:
                 assetId:
                     type: string
-                    description: |-
-                        Filter to one asset. Omit for all. When set, also narrows to the
-                         matching asset_type if provided.
+                    description: "Filter to one asset. Omit for all. When set, also narrows to the\r\n matching asset_type if provided."
                 assetType:
                     type: string
                     description: 'Filter to one asset type. Accepts: "pipeline" | "storage".'
                 ongoingOnly:
                     type: boolean
                     description: If true, only return events with endAt empty (still ongoing).
-            description: |-
-                ListEnergyDisruptions returns the energy disruption event log — state
-                 transitions for pipelines and storage facilities (sabotage, sanction,
-                 maintenance, mechanical, weather, commercial, war). Each event ties
-                 back to an assetId seeded by the pipeline or storage registry, so the
-                 panel drawer can render an asset-scoped timeline without a second RPC.
-
-                 Seeded from a curated JSON file (scripts/data/energy-disruptions.json).
-                 An automated state-transition classifier was scoped but not shipped —
-                 the log is curated-only today.
-
-                 See docs/methodology/disruptions.mdx.
+            description: "ListEnergyDisruptions returns the energy disruption event log — state\r\n transitions for pipelines and storage facilities (sabotage, sanction,\r\n maintenance, mechanical, weather, commercial, war). Each event ties\r\n back to an assetId seeded by the pipeline or storage registry, so the\r\n panel drawer can render an asset-scoped timeline without a second RPC.\r\n\r\n Seeded from a curated JSON file (scripts/data/energy-disruptions.json).\r\n An automated state-transition classifier was scoped but not shipped —\r\n the log is curated-only today.\r\n\r\n See docs/methodology/disruptions.mdx."
         ListEnergyDisruptionsResponse:
             type: object
             properties:
@@ -5239,9 +5108,7 @@ components:
                     description: 'One of: "pipeline" | "storage"'
                 eventType:
                     type: string
-                    description: |-
-                        One of: "sabotage" | "sanction" | "maintenance" | "mechanical" |
-                                 "weather" | "commercial" | "war" | "other"
+                    description: "One of: \"sabotage\" | \"sanction\" | \"maintenance\" | \"mechanical\" |\r\n         \"weather\" | \"commercial\" | \"war\" | \"other\""
                 startAt:
                     type: string
                 endAt:
@@ -5276,12 +5143,7 @@ components:
                     type: array
                     items:
                         type: string
-                        description: |-
-                            Countries touched by the referenced asset (pipeline: fromCountry +
-                             toCountry + transitCountries; storage: country). Denormalised at seed
-                             time so CountryDeepDivePanel can filter events without a second RPC.
-                             Always non-empty in well-formed payloads; empty only if the upstream
-                             asset was removed without an event update. Per plan §R/#5 decision B.
+                        description: "Countries touched by the referenced asset (pipeline: fromCountry +\r\n toCountry + transitCountries; storage: country). Denormalised at seed\r\n time so CountryDeepDivePanel can filter events without a second RPC.\r\n Always non-empty in well-formed payloads; empty only if the upstream\r\n asset was removed without an event update. Per plan §R/#5 decision B."
         EnergyDisruptionSource:
             type: object
             properties:

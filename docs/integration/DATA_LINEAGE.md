@@ -88,3 +88,21 @@ data records. A user search is a Provider query whose empty output stays empty.
 Any future visible bar/quote/news item must retain its provider, source URL or
 ID, observed/fetched/as-of fields, delay/freshness, fallback state and license
 note all the way from the Phase 3 server adapter to the Phase 4 display.
+
+## Phase 5 news-to-market evidence boundary
+
+A future provider article enters Market v1 only after symbol, source URL and
+UTC publication-time validation. `StockNewsAlignment` then retains both the
+original UTC time and an exchange-local time, named alignment rule, session and
+aligned trading date. For the current US equity implementation, the calendar is
+NYSE/Nasdaq; unknown/non-US primary exchanges are not silently treated as US.
+
+`StockNewsAnalysis` is a separate lineage branch. Without an authorized model
+provider it records an explicit unavailable status and no evidence-derived
+sentiment, relevance, category, causal confidence or realized return. When
+future analysis is enabled, the provider/model/prompt/version/generated time,
+source links and actual return calculations must be retained. The actual return
+branch itself may read only validated symbol-specific bars, never a fixture,
+forecast or cross-symbol cache. The consumer wording remains “possible
+influence” or “consistent with the period” at most; no lineage field can prove
+causation.

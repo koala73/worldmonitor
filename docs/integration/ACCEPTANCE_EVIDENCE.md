@@ -145,3 +145,24 @@ NO-PROVIDER TRUTHFULNESS.** The later provider-backed acceptance must prove
 actual symbol-specific bars, provider/source, observed/as-of time, freshness
 and commercial display/rebroadcast entitlement before any real-time statement
 is made.
+
+## Phase 5 — news evidence, calendar alignment and causal-language boundary
+
+**Implementation commit:** `PENDING_BACKFILL`.
+
+| Check | Result | Evidence |
+|---|---|---|
+| Source-preserving news contract | PASS | `StockNewsItem` now retains a validated provider source/URL/UTC time and nests `StockNewsAlignment` plus a separately unavailable-or-versioned `StockNewsAnalysis`. |
+| Trading-date rule | PASS | Focused tests prove pre-market/regular same-day mapping, Friday after-hours to Monday, weekend to next trading day and 2026 Christmas closure to 2026-12-28 under the named US calendar. |
+| No false model result | PASS | No-key analysis is `NOT_CONFIGURED` / `NEWS_SENTIMENT_UNAVAILABLE`; model sentiment, relevance, causal confidence and category are not rendered as factual labels. |
+| Fact-only range metrics | PASS | Start/end close, range return, total volume and bar count are supplied only for validated symbol-specific bars; the causal note rejects causal inference. |
+| Focused contract/adapter/UI suite | PASS | `stock-news-evidence`, `stock-data-contract`, `stock-realtime-adapter` and `stock-workspace-route` passed 20/20. |
+| API/type/source/DOM/build gates | PASS | Buf scoped lint, `npm run typecheck:all`, `lint:api-contract`, `sources:check`, `test:dom` and `build:full` all exited 0. |
+| Whole-tree lint | PASS with upstream warnings | `npm run lint` exited 0 with the existing 33 warnings and 9 infos; safe HTML guard passed. |
+| No-provider browser acceptance | PASS for fail-closed state | `phase5-news-evidence-no-provider-1440x900-final.png` shows the scrollable AAPL workspace, no verified K-line, zero synthetic markers and zero news items. |
+| Provider-backed article/model/live-price acceptance | NOT CLAIMED | No market entitlement, provider article, model credential, returned model version, live bar or causal claim was available. |
+
+**Phase 5 gate: COMPLETED FOR CONTRACT, CALENDAR, FACT-ONLY METRICS AND
+NO-PROVIDER TRUTHFULNESS.** It is not provider-backed financial/news/model
+acceptance. The exact commands, results and the corrected failed setup attempts
+are retained in `evidence/phase5-news-alignment.md`.

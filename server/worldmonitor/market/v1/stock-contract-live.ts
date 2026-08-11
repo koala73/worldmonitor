@@ -197,20 +197,39 @@ export function createStockContractLiveHandlers(options: StockContractLiveOption
     if (!hasPrimary({ massive })) return disabled.analyzeStockRange(_ctx, { ...req, symbol });
     try {
       const bars = await getMassiveStockBars({ symbol, interval: '1d', range: 'CUSTOM', startUtc: req.startUtc, endUtc: req.endUtc }, massive);
+      const firstBar = bars.bars[0];
+      const lastBar = bars.bars[bars.bars.length - 1];
+      const metricsAvailable = Boolean(firstBar && lastBar && firstBar.close !== 0);
+      const realizedReturnPercent = metricsAvailable
+        ? ((lastBar!.close - firstBar!.close) / firstBar!.close) * 100
+        : 0;
       return {
         analysis: {
-          available: false,
-          reason: 'Provider bars are available, but Phase 5 evidence-linked range interpretation has not been configured.',
+          available: metricsAvailable,
+          reason: metricsAvailable
+            ? 'Validated price and volume metrics are available for this selected range. They are not a causal explanation of the move.'
+            : 'Provider bars did not contain enough validated values for range metrics.',
           symbol,
           rangeStartUtc: req.startUtc,
           rangeEndUtc: req.endUtc,
+          metricsAvailable,
+          startClose: firstBar?.close ?? 0,
+          endClose: lastBar?.close ?? 0,
+          realizedReturnPercent,
+          totalVolume: bars.bars.reduce((sum, bar) => sum + bar.volume, 0),
+          validatedBarCount: bars.bars.length,
+          causalNote: 'The metrics are observed price/volume facts. News alignment, sentiment and temporal correlation do not prove that an event caused the return.',
         },
         provenance: { ...bars.provenance, sourceId: `stock-range-analysis:${symbol}` },
       };
     } catch (error) {
       if (isNotConfiguredError(error)) return disabled.analyzeStockRange(_ctx, { ...req, symbol });
       return {
-        analysis: { available: false, reason: 'No provider bar series could be verified for this range.', symbol, rangeStartUtc: req.startUtc, rangeEndUtc: req.endUtc },
+        analysis: {
+          available: false, reason: 'No provider bar series could be verified for this range.', symbol, rangeStartUtc: req.startUtc, rangeEndUtc: req.endUtc,
+          metricsAvailable: false, startClose: 0, endClose: 0, realizedReturnPercent: 0, totalVolume: 0, validatedBarCount: 0,
+          causalNote: 'No causal claim is made when the source price series is unavailable.',
+        },
         provenance: unavailableProvenance('stock-range-analysis', symbol, 'Massive range request failed.'),
       };
     }

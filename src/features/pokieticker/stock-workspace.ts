@@ -16,6 +16,7 @@ import {
   type ListStockNewsResponse,
   type StockBar,
   type StockNewsItem,
+  type StockRangeAnalysis,
 } from '@/generated/client/worldmonitor/market/v1/service_client';
 import { providerStatusDisplay } from '@/services/market-data-truth';
 import { getRpcBaseUrl, rpcFetch } from '@/services/rpc-client';
@@ -40,6 +41,8 @@ type WorkspaceData = {
   news?: ListStockNewsResponse;
 };
 
+type WorkspaceRangeResult = Pick<StockRangeAnalysis, 'available' | 'reason'> & Partial<StockRangeAnalysis>;
+
 type WorkspaceState = {
   symbol: string;
   range: RangeKey;
@@ -48,7 +51,7 @@ type WorkspaceState = {
   searchResults: Array<{ symbol: string; name: string; exchange: string; currency: string }>;
   selectedNewsId: string | null;
   selectedRange: SelectedRange | null;
-  rangeResult: { available: boolean; reason: string } | null;
+  rangeResult: WorkspaceRangeResult | null;
   loading: boolean;
   searchLoading: boolean;
   error: string | null;
@@ -299,7 +302,7 @@ class StockWorkspace {
       if (this.state.symbol !== symbol || this.state.selectedRange !== range) return;
       const analysis = response.analysis;
       this.state.rangeResult = analysis
-        ? { available: analysis.available, reason: analysis.reason }
+        ? analysis
         : { available: false, reason: 'Provider 未返回可解释区间结果。' };
     } catch (error) {
       this.state.rangeResult = {
@@ -356,7 +359,7 @@ class StockWorkspace {
     page.append(layout);
 
     const footer = element('footer', 'pokie-workspace__footer');
-    footer.textContent = 'K 线、报价和新闻仅在服务端返回可验证数据时呈现；新闻关联、情绪和价格因果在 Phase 5 前不会被伪造。非投资建议。';
+    footer.textContent = 'K 线、报价和新闻仅在服务端返回可验证数据时呈现；新闻关联、情绪、实际回报与价格因果只有在证据化分析 Provider 产出版本化结果后才显示，且不会被伪造成事实。非投资建议。';
     page.append(footer);
     this.root.append(page);
 
@@ -537,12 +540,35 @@ class StockWorkspace {
     });
     row.append(link);
     row.append(element('span', 'pokie-workspace__news-meta', `${item.source} · ${formatTimestamp(item.publishedAtUtc)}`));
-    row.append(element('span', 'pokie-workspace__news-analysis-state', '利好/利空分类与实际回报：待 Phase 5 的证据化分析，当前不作因果断言。'));
+    row.append(element('span', 'pokie-workspace__news-analysis-state', '新闻分析尚未配置；当前仅显示可追溯原文与交易日对齐，不作利好/利空、相关性、回报或因果断言。'));
+    const legacyAnalysisState = row.querySelector('.pokie-workspace__news-analysis-state');
+    if (item.alignment) {
+      row.append(element(
+        'span',
+        'pokie-workspace__news-alignment',
+        `交易日对齐：${item.alignment.alignedTradingDate} · ${item.alignment.alignmentRule} · ${item.alignment.publishedAtExchangeTz}`,
+      ));
+    }
+    const analysis = item.analysis;
+    if (!analysis?.available) {
+      if (legacyAnalysisState) {
+        legacyAnalysisState.textContent = analysis?.reason ?? '新闻分析未配置；不显示利好/利空、相关性、因果或实际回报结论。';
+      }
+    } else {
+      if (legacyAnalysisState) {
+        legacyAnalysisState.textContent = `模型情绪：${analysis.modelSentiment}；相关性：${analysis.relevance.toFixed(2)}；解释置信度：${analysis.causalConfidence.toFixed(2)}。${analysis.causalReason}`;
+      }
+      const returns = analysis.realizedReturns
+        .filter((entry) => entry.available)
+        .map((entry) => `${entry.horizon}: ${entry.percent.toFixed(2)}%`)
+        .join(' · ');
+      row.append(element('span', 'pokie-workspace__news-return-state', returns || '实际回报尚无可验证结果；模型标签与实际回报分开显示。'));
+    }
     return row;
   }
 
   private renderCategoriesSection(): HTMLElement {
-    const { section, body } = this.railSection('新闻分类', '分类筛选外形已保留；没有经过 Phase 5 的分析结果时不会给新闻套上利好/利空标签。');
+    const { section, body } = this.railSection('新闻分类', '分类筛选外形已保留；只有证据化分析 Provider 返回版本、理由与置信度后才会启用，未配置时不伪造利好/利空标签。');
     const controls = element('div', 'pokie-workspace__category-controls');
     for (const category of ['市场', '政策', '财报', '产品技术', '竞争', '管理']) {
       const control = button(category, 'pokie-workspace__category', () => {}, true);
@@ -563,6 +589,20 @@ class StockWorkspace {
     }
     body.append(element('strong', 'pokie-workspace__range-caption', rangeCaption(range)));
     const result = this.state.rangeResult;
+    if (result?.metricsAvailable) {
+      const metrics = element('dl', 'pokie-workspace__range-metrics');
+      const values: Array<[string, string]> = [
+        ['起始收盘', formatPrice(result.startClose)],
+        ['结束收盘', formatPrice(result.endClose)],
+        ['实际区间回报', `${result.realizedReturnPercent?.toFixed(2) ?? '—'}%`],
+        ['验证 K 线数', String(result.validatedBarCount ?? 0)],
+      ];
+      for (const [label, value] of values) {
+        metrics.append(element('dt', undefined, label), element('dd', undefined, value));
+      }
+      body.append(metrics);
+      body.append(element('p', 'pokie-workspace__empty-note', result.causalNote ?? '区间数值不代表新闻或事件造成价格变化。'));
+    }
     body.append(element('p', result?.available ? 'pokie-workspace__analysis-ok' : 'pokie-workspace__empty-note', result?.reason ?? '正在等待区间分析响应。'));
     body.append(button('清除区间', 'pokie-workspace__secondary-button', () => {
       this.state.selectedRange = null;

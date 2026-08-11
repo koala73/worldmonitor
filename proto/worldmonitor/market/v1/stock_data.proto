@@ -83,6 +83,59 @@ message StockSearchResult {
   string currency = 4;
 }
 
+// NewsSentiment is a model output only. It is distinct from observed price
+// movement and must be UNAVAILABLE until an evidence-bearing analysis runs.
+enum NewsSentiment {
+  NEWS_SENTIMENT_UNSPECIFIED = 0;
+  NEWS_SENTIMENT_UNAVAILABLE = 1;
+  NEWS_SENTIMENT_POSITIVE = 2;
+  NEWS_SENTIMENT_NEGATIVE = 3;
+  NEWS_SENTIMENT_NEUTRAL = 4;
+}
+
+// StockNewsAlignment records how a published article was mapped to the
+// security's primary-exchange session. It never claims the article caused a
+// subsequent market move.
+message StockNewsAlignment {
+  string exchange_timezone = 1;
+  string published_at_exchange_tz = 2;
+  string aligned_trading_date = 3;
+  string alignment_rule = 4;
+  MarketSession market_session_at_publish = 5;
+}
+
+// StockNewsRealizedReturn stores an observed price return separately from a
+// model sentiment or a causal explanation. available=false means there was
+// no validated price series for that horizon.
+message StockNewsRealizedReturn {
+  string horizon = 1;
+  bool available = 2;
+  double percent = 3;
+  string reason = 4;
+  int64 evaluated_at_utc = 5 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
+}
+
+// StockNewsAnalysis is optional model/evidence metadata. available=false is a
+// truthful degraded state, not a neutral sentiment or zero-impact conclusion.
+message StockNewsAnalysis {
+  bool available = 1;
+  string status = 2;
+  string reason = 3;
+  NewsSentiment model_sentiment = 4;
+  string sentiment_reason = 5;
+  double relevance = 6;
+  string relevance_reason = 7;
+  double causal_confidence = 8;
+  string causal_reason = 9;
+  string category = 10;
+  string category_reason = 11;
+  string model_provider = 12;
+  string model_version = 13;
+  string prompt_version = 14;
+  int64 generated_at_utc = 15 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
+  repeated StockNewsRealizedReturn realized_returns = 16;
+}
+
 message StockNewsItem {
   string id = 1;
   string symbol = 2;
@@ -90,6 +143,8 @@ message StockNewsItem {
   string source = 4;
   string source_url = 5;
   int64 published_at_utc = 6 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
+  StockNewsAlignment alignment = 7;
+  StockNewsAnalysis analysis = 8;
 }
 
 message StockEvent {
@@ -107,6 +162,13 @@ message StockRangeAnalysis {
   string symbol = 3;
   int64 range_start_utc = 4 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
   int64 range_end_utc = 5 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
+  bool metrics_available = 6;
+  double start_close = 7;
+  double end_close = 8;
+  double realized_return_percent = 9;
+  double total_volume = 10;
+  int32 validated_bar_count = 11;
+  string causal_note = 12;
 }
 
 message StockForecast {

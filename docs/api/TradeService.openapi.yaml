@@ -18,9 +18,7 @@ paths:
             parameters:
                 - name: countries
                   in: query
-                  description: |-
-                    WTO member codes to filter by. Empty = all.
-                     Accepted but currently ignored; no-op until this handler supports the parameter.
+                  description: "WTO member codes to filter by. Empty = all.\r\n Accepted but currently ignored; no-op until this handler supports the parameter."
                   required: false
                   style: form
                   explode: true
@@ -129,46 +127,28 @@ paths:
             parameters:
                 - name: reporting_country
                   in: query
-                  description: |-
-                    WTO member code of reporting country, as a 3-digit UN M49 code
-                     (for example "840" = United States). Empty selects the "840" default.
+                  description: "WTO member code of reporting country, as a 3-digit UN M49 code\r\n (for example \"840\" = United States). Empty selects the \"840\" default."
                   required: false
                   example: "840"
                   schema:
                     type: string
-                    pattern: '^([0-9]{3})?$'
                 - name: partner_country
                   in: query
-                  description: |-
-                    Partner country as a 3-digit UN M49 code. Accepted for forward
-                     compatibility; TP_A_0010 is an MFN applied average for the reporting
-                     economy and has no partner dimension, so this field never changes the
-                     answer. Empty is the documented default.
+                  description: "Partner country as a 3-digit UN M49 code. Accepted for forward\r\n compatibility; TP_A_0010 is an MFN applied average for the reporting\r\n economy and has no partner dimension, so this field never changes the\r\n answer. Empty is the documented default."
                   required: false
                   example: "156"
                   schema:
                     type: string
-                    pattern: '^([0-9]{3})?$'
                 - name: product_sector
                   in: query
-                  description: |-
-                    Product sector filter. Empty or "all" selects the All-products aggregate,
-                     which is the only sector currently covered. Any other value is accepted by
-                     validation and answered with unavailable_reason
-                     TARIFF_TREND_UNAVAILABLE_REASON_NOT_COVERED so sector coverage can widen
-                     without a contract change. Max 16 characters, alphanumeric / underscore /
-                     hyphen.
+                  description: "Product sector filter. Empty or \"all\" selects the All-products aggregate,\r\n which is the only sector currently covered. Any other value is accepted by\r\n validation and answered with unavailable_reason\r\n TARIFF_TREND_UNAVAILABLE_REASON_NOT_COVERED so sector coverage can widen\r\n without a contract change. Max 16 characters, alphanumeric / underscore /\r\n hyphen."
                   required: false
                   example: "all"
                   schema:
                     type: string
-                    pattern: '^([a-zA-Z0-9_-]{0,16})?$'
                 - name: years
                   in: query
-                  description: |-
-                    Number of years to look back from the newest seeded year, inclusive of
-                     both endpoints (years = 10 returns 11 calendar years). 0 selects the
-                     default of 10; the maximum is 30, which is the full seeded window.
+                  description: "Number of years to look back from the newest seeded year, inclusive of\r\n both endpoints (years = 10 returns 11 calendar years). 0 selects the\r\n default of 10; the maximum is 30, which is the full seeded window."
                   required: false
                   example: 1
                   schema:
@@ -268,35 +248,21 @@ paths:
             parameters:
                 - name: reporting_country
                   in: query
-                  description: |-
-                    WTO member code of reporting country, as a 3-digit UN M49 code
-                     (for example "840" = United States). Empty selects the "840" default.
+                  description: "WTO member code of reporting country, as a 3-digit UN M49 code\r\n (for example \"840\" = United States). Empty selects the \"840\" default."
                   required: false
                   example: "840"
                   schema:
                     type: string
-                    pattern: '^([0-9]{3})?$'
                 - name: partner_country
                   in: query
-                  description: |-
-                    WTO member code of partner country, as a 3-digit UN M49 code.
-                     Empty selects "000" = World, which is the only partner currently covered:
-                     the WTO indicators behind these flows (ITS_MTV_AX, ITS_MTV_AM) publish a
-                     World total and answer 204 for every named partner. Any other code is
-                     accepted by validation and answered with unavailable_reason
-                     TRADE_FLOW_UNAVAILABLE_REASON_NOT_COVERED, so coverage can widen without a
-                     contract change.
+                  description: "WTO member code of partner country, as a 3-digit UN M49 code.\r\n Empty selects \"000\" = World, which is the only partner currently covered:\r\n the WTO indicators behind these flows (ITS_MTV_AX, ITS_MTV_AM) publish a\r\n World total and answer 204 for every named partner. Any other code is\r\n accepted by validation and answered with unavailable_reason\r\n TRADE_FLOW_UNAVAILABLE_REASON_NOT_COVERED, so coverage can widen without a\r\n contract change."
                   required: false
                   example: "000"
                   schema:
                     type: string
-                    pattern: '^([0-9]{3})?$'
                 - name: years
                   in: query
-                  description: |-
-                    Number of years to look back from the newest seeded year, inclusive of
-                     both endpoints (years = 10 returns 11 calendar years). 0 selects the
-                     default of 10; the maximum is 30, which is the full seeded window.
+                  description: "Number of years to look back from the newest seeded year, inclusive of\r\n both endpoints (years = 10 returns 11 calendar years). 0 selects the\r\n default of 10; the maximum is 30, which is the full seeded window."
                   required: false
                   example: 1
                   schema:
@@ -391,9 +357,7 @@ paths:
             parameters:
                 - name: countries
                   in: query
-                  description: |-
-                    WTO member codes to filter by. Empty = all.
-                     Accepted but currently ignored; no-op until this handler supports the parameter.
+                  description: "WTO member codes to filter by. Empty = all.\r\n Accepted but currently ignored; no-op until this handler supports the parameter."
                   required: false
                   style: form
                   explode: true
@@ -405,9 +369,7 @@ paths:
                         type: string
                 - name: measure_type
                   in: query
-                  description: |-
-                    Filter by measure type: "SPS", "TBT", or empty for both.
-                     Accepted but currently ignored; no-op until this handler supports the parameter.
+                  description: "Filter by measure type: \"SPS\", \"TBT\", or empty for both.\r\n Accepted but currently ignored; no-op until this handler supports the parameter."
                   required: false
                   example: "SPS"
                   schema:
@@ -608,7 +570,6 @@ paths:
                   example: "2709"
                   schema:
                     type: string
-                    pattern: '^\d{4,6}$'
                 - name: anomalies_only
                   in: query
                   description: If true, only return flows with a year-over-year change exceeding 30%.
@@ -822,9 +783,7 @@ components:
                     type: array
                     items:
                         type: string
-                        description: |-
-                            WTO member codes to filter by. Empty = all.
-                             Accepted but currently ignored; no-op until this handler supports the parameter.
+                        description: "WTO member codes to filter by. Empty = all.\r\n Accepted but currently ignored; no-op until this handler supports the parameter."
                 limit:
                     type: integer
                     format: int32
@@ -881,50 +840,22 @@ components:
                 reportingCountry:
                     type: string
                     pattern: ^([0-9]{3})?$
-                    description: |-
-                        WTO member code of reporting country, as a 3-digit UN M49 code
-                         (for example "840" = United States). Empty selects the "840" default.
+                    description: "WTO member code of reporting country, as a 3-digit UN M49 code\r\n (for example \"840\" = United States). Empty selects the \"840\" default."
                 partnerCountry:
                     type: string
                     pattern: ^([0-9]{3})?$
-                    description: |-
-                        Partner country as a 3-digit UN M49 code. Accepted for forward
-                         compatibility; TP_A_0010 is an MFN applied average for the reporting
-                         economy and has no partner dimension, so this field never changes the
-                         answer. Empty is the documented default.
+                    description: "Partner country as a 3-digit UN M49 code. Accepted for forward\r\n compatibility; TP_A_0010 is an MFN applied average for the reporting\r\n economy and has no partner dimension, so this field never changes the\r\n answer. Empty is the documented default."
                 productSector:
                     type: string
                     pattern: ^([a-zA-Z0-9_-]{0,16})?$
-                    description: |-
-                        Product sector filter. Empty or "all" selects the All-products aggregate,
-                         which is the only sector currently covered. Any other value is accepted by
-                         validation and answered with unavailable_reason
-                         TARIFF_TREND_UNAVAILABLE_REASON_NOT_COVERED so sector coverage can widen
-                         without a contract change. Max 16 characters, alphanumeric / underscore /
-                         hyphen.
+                    description: "Product sector filter. Empty or \"all\" selects the All-products aggregate,\r\n which is the only sector currently covered. Any other value is accepted by\r\n validation and answered with unavailable_reason\r\n TARIFF_TREND_UNAVAILABLE_REASON_NOT_COVERED so sector coverage can widen\r\n without a contract change. Max 16 characters, alphanumeric / underscore /\r\n hyphen."
                 years:
                     type: integer
                     maximum: 30
                     minimum: 0
                     format: int32
-                    description: |-
-                        Number of years to look back from the newest seeded year, inclusive of
-                         both endpoints (years = 10 returns 11 calendar years). 0 selects the
-                         default of 10; the maximum is 30, which is the full seeded window.
-            description: |-
-                Request for tariff timeseries data.
-
-                 Coverage is seed-backed: Railway pre-fetches WTO MFN applied tariff rates
-                 (indicator TP_A_0010) for every reporter and this API serves slices of that
-                 history. It never calls WTO per request, so a well-formed combination outside
-                 the seeded set is reported as uncovered (see GetTariffTrendsResponse.
-                 unavailable_reason) rather than fetched on demand.
-
-                 TP_A_0010 is a reporting-economy MFN applied average — it has no partner
-                 dimension and no product-sector split beyond the All-products aggregate.
-                 product_sector empty (or "all") is the only sector currently covered;
-                 partner_country is accepted for forward compatibility and does not filter
-                 the series.
+                    description: "Number of years to look back from the newest seeded year, inclusive of\r\n both endpoints (years = 10 returns 11 calendar years). 0 selects the\r\n default of 10; the maximum is 30, which is the full seeded window."
+            description: "Request for tariff timeseries data.\r\n\r\n Coverage is seed-backed: Railway pre-fetches WTO MFN applied tariff rates\r\n (indicator TP_A_0010) for every reporter and this API serves slices of that\r\n history. It never calls WTO per request, so a well-formed combination outside\r\n the seeded set is reported as uncovered (see GetTariffTrendsResponse.\r\n unavailable_reason) rather than fetched on demand.\r\n\r\n TP_A_0010 is a reporting-economy MFN applied average — it has no partner\r\n dimension and no product-sector split beyond the All-products aggregate.\r\n product_sector empty (or \"all\") is the only sector currently covered;\r\n partner_country is accepted for forward compatibility and does not filter\r\n the series."
         GetTariffTrendsResponse:
             type: object
             properties:
@@ -937,12 +868,7 @@ components:
                     description: ISO 8601 timestamp when data was fetched from WTO.
                 upstreamUnavailable:
                     type: boolean
-                    description: |-
-                        True when datapoints could not be served because of a fault — a seeded
-                         reporter whose cache entry is gone, or a cache read that failed. False when
-                         datapoints are served AND when the request names a combination that is
-                         simply not part of seeded coverage, which is a contract answer rather than
-                         an outage.
+                    description: "True when datapoints could not be served because of a fault — a seeded\r\n reporter whose cache entry is gone, or a cache read that failed. False when\r\n datapoints are served AND when the request names a combination that is\r\n simply not part of seeded coverage, which is a contract answer rather than\r\n an outage."
                 effectiveTariffRate:
                     $ref: '#/components/schemas/EffectiveTariffRate'
                 unavailableReason:
@@ -954,19 +880,11 @@ components:
                         - TARIFF_TREND_UNAVAILABLE_REASON_SEED_MISSING
                         - TARIFF_TREND_UNAVAILABLE_REASON_COVERAGE_UNKNOWN
                         - TARIFF_TREND_UNAVAILABLE_REASON_CACHE_UNAVAILABLE
-                    description: |-
-                        TariffTrendUnavailableReason says why no datapoints were returned. The
-                         distinction that matters is NOT_COVERED — a contract answer, nothing is
-                         broken and a retry cannot help — against every other member, which names a
-                         fault.
+                    description: "TariffTrendUnavailableReason says why no datapoints were returned. The\r\n distinction that matters is NOT_COVERED — a contract answer, nothing is\r\n broken and a retry cannot help — against every other member, which names a\r\n fault."
                 coverageStartYear:
                     type: integer
                     format: int32
-                    description: |-
-                        First and last calendar year covered by `datapoints`. Both are 0 when no
-                         datapoints are returned. This is the effective window after slicing to
-                         `years`, which may be narrower than the requested lookback when the seed
-                         starts later.
+                    description: "First and last calendar year covered by `datapoints`. Both are 0 when no\r\n datapoints are returned. This is the effective window after slicing to\r\n `years`, which may be narrower than the requested lookback when the seed\r\n starts later."
                 coverageEndYear:
                     type: integer
                     format: int32
@@ -1025,37 +943,18 @@ components:
                 reportingCountry:
                     type: string
                     pattern: ^([0-9]{3})?$
-                    description: |-
-                        WTO member code of reporting country, as a 3-digit UN M49 code
-                         (for example "840" = United States). Empty selects the "840" default.
+                    description: "WTO member code of reporting country, as a 3-digit UN M49 code\r\n (for example \"840\" = United States). Empty selects the \"840\" default."
                 partnerCountry:
                     type: string
                     pattern: ^([0-9]{3})?$
-                    description: |-
-                        WTO member code of partner country, as a 3-digit UN M49 code.
-                         Empty selects "000" = World, which is the only partner currently covered:
-                         the WTO indicators behind these flows (ITS_MTV_AX, ITS_MTV_AM) publish a
-                         World total and answer 204 for every named partner. Any other code is
-                         accepted by validation and answered with unavailable_reason
-                         TRADE_FLOW_UNAVAILABLE_REASON_NOT_COVERED, so coverage can widen without a
-                         contract change.
+                    description: "WTO member code of partner country, as a 3-digit UN M49 code.\r\n Empty selects \"000\" = World, which is the only partner currently covered:\r\n the WTO indicators behind these flows (ITS_MTV_AX, ITS_MTV_AM) publish a\r\n World total and answer 204 for every named partner. Any other code is\r\n accepted by validation and answered with unavailable_reason\r\n TRADE_FLOW_UNAVAILABLE_REASON_NOT_COVERED, so coverage can widen without a\r\n contract change."
                 years:
                     type: integer
                     maximum: 30
                     minimum: 0
                     format: int32
-                    description: |-
-                        Number of years to look back from the newest seeded year, inclusive of
-                         both endpoints (years = 10 returns 11 calendar years). 0 selects the
-                         default of 10; the maximum is 30, which is the full seeded window.
-            description: |-
-                Request for merchandise trade flow data, reporter versus World.
-
-                 Coverage is seed-backed: Railway pre-fetches a fixed set of
-                 reporter/partner pairs from WTO and this API serves slices of that history.
-                 It never calls WTO per request, so a well-formed combination outside the
-                 seeded set is reported as uncovered (see GetTradeFlowsResponse.
-                 unavailable_reason) rather than fetched on demand.
+                    description: "Number of years to look back from the newest seeded year, inclusive of\r\n both endpoints (years = 10 returns 11 calendar years). 0 selects the\r\n default of 10; the maximum is 30, which is the full seeded window."
+            description: "Request for merchandise trade flow data, reporter versus World.\r\n\r\n Coverage is seed-backed: Railway pre-fetches a fixed set of\r\n reporter/partner pairs from WTO and this API serves slices of that history.\r\n It never calls WTO per request, so a well-formed combination outside the\r\n seeded set is reported as uncovered (see GetTradeFlowsResponse.\r\n unavailable_reason) rather than fetched on demand."
         GetTradeFlowsResponse:
             type: object
             properties:
@@ -1068,11 +967,7 @@ components:
                     description: ISO 8601 timestamp when data was fetched from WTO.
                 upstreamUnavailable:
                     type: boolean
-                    description: |-
-                        True when flows could not be served because of a fault — a seeded pair
-                         whose cache entry is gone, or a cache read that failed. False when flows
-                         are served AND when the request names a combination that is simply not
-                         part of seeded coverage, which is a contract answer rather than an outage.
+                    description: "True when flows could not be served because of a fault — a seeded pair\r\n whose cache entry is gone, or a cache read that failed. False when flows\r\n are served AND when the request names a combination that is simply not\r\n part of seeded coverage, which is a contract answer rather than an outage."
                 unavailableReason:
                     type: string
                     enum:
@@ -1082,17 +977,11 @@ components:
                         - TRADE_FLOW_UNAVAILABLE_REASON_SEED_MISSING
                         - TRADE_FLOW_UNAVAILABLE_REASON_COVERAGE_UNKNOWN
                         - TRADE_FLOW_UNAVAILABLE_REASON_CACHE_UNAVAILABLE
-                    description: |-
-                        TradeFlowUnavailableReason says why no rows were returned. The distinction
-                         that matters is NOT_COVERED — a contract answer, nothing is broken and a
-                         retry cannot help — against every other member, which names a fault.
+                    description: "TradeFlowUnavailableReason says why no rows were returned. The distinction\r\n that matters is NOT_COVERED — a contract answer, nothing is broken and a\r\n retry cannot help — against every other member, which names a fault."
                 coverageStartYear:
                     type: integer
                     format: int32
-                    description: |-
-                        First and last calendar year covered by `flows`. Both are 0 when no flows
-                         are returned. This is the effective window after slicing to `years`, which
-                         may be narrower than the requested lookback when the seed starts later.
+                    description: "First and last calendar year covered by `flows`. Both are 0 when no flows\r\n are returned. This is the effective window after slicing to `years`, which\r\n may be narrower than the requested lookback when the seed starts later."
                 coverageEndYear:
                     type: integer
                     format: int32
@@ -1137,14 +1026,10 @@ components:
                     type: array
                     items:
                         type: string
-                        description: |-
-                            WTO member codes to filter by. Empty = all.
-                             Accepted but currently ignored; no-op until this handler supports the parameter.
+                        description: "WTO member codes to filter by. Empty = all.\r\n Accepted but currently ignored; no-op until this handler supports the parameter."
                 measureType:
                     type: string
-                    description: |-
-                        Filter by measure type: "SPS", "TBT", or empty for both.
-                         Accepted but currently ignored; no-op until this handler supports the parameter.
+                    description: "Filter by measure type: \"SPS\", \"TBT\", or empty for both.\r\n Accepted but currently ignored; no-op until this handler supports the parameter."
                 limit:
                     type: integer
                     format: int32

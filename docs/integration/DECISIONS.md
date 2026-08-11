@@ -136,3 +136,22 @@ responsive mobile sizes, while live K-line acceptance remains blocked pending a
 provider response and display/rebroadcast authorization. The UI may preserve
 the component structure of PokieTicker but cannot elevate its historical
 database or an empty no-key response into market facts.
+
+## D-0016 — Separate event alignment, analysis, realized returns and causality
+
+**Decision:** Represent source/time alignment, model assessment and realized
+market returns as separate fields and render each only when its own evidence is
+available. Use a named primary-exchange calendar rule; for the present US
+implementation, after-hours/non-trading publications move to the next named
+NYSE/Nasdaq trading date. Do not turn any of these correlations into a causal
+statement.
+**Reason:** A publication timestamp can establish only calendar alignment. A
+model label is an attributed model output, while a T0/T1/T3/T5/T10 price change
+is a price observation from validated bars. None independently proves that an
+article caused the change; collapsing them would manufacture investment
+evidence.
+**Consequence:** No-key responses fail closed as `NOT_CONFIGURED` / unavailable,
+and the UI cannot show neutral/positive/negative, relevance, categories,
+returns or causal confidence as though measured. Future non-US instruments
+must bring a primary-exchange calendar mapping, and a future model provider
+must supply authorized, versioned output with server-only credentials.

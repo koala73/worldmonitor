@@ -26,9 +26,7 @@ paths:
                     format: int32
                 - name: cursor
                   in: query
-                  description: |-
-                    Cursor for next page.
-                     Accepted but currently ignored; no-op until this handler supports the parameter.
+                  description: "Cursor for next page.\r\n Accepted but currently ignored; no-op until this handler supports the parameter."
                   required: false
                   example: "next-page-token"
                   schema:
@@ -42,9 +40,7 @@ paths:
                     type: string
                 - name: query
                   in: query
-                  description: |-
-                    Search query for paper titles and abstracts.
-                     Accepted but currently ignored; no-op until this handler supports the parameter.
+                  description: "Search query for paper titles and abstracts.\r\n Accepted but currently ignored; no-op until this handler supports the parameter."
                   required: false
                   example: "supply chain risk"
                   schema:
@@ -277,13 +273,6 @@ paths:
                   example: "top"
                   schema:
                     type: string
-                    enum:
-                        - 'top'
-                        - 'new'
-                        - 'best'
-                        - 'ask'
-                        - 'show'
-                        - 'job'
                 - name: jmespath
                   in: query
                   description: |-
@@ -375,15 +364,9 @@ paths:
                   in: query
                   description: 'Event type filter: "all", "conference", "earnings", "ipo", "other". Empty = all.'
                   required: false
-                  example: "all"
+                  example: "conference"
                   schema:
                     type: string
-                    enum:
-                        - 'all'
-                        - 'conference'
-                        - 'earnings'
-                        - 'ipo'
-                        - 'other'
                 - name: mappable
                   in: query
                   description: Only events with non-virtual coordinates.
@@ -393,9 +376,7 @@ paths:
                     type: boolean
                 - name: limit
                   in: query
-                  description: |-
-                    Max events to return. The handler clamps this to the range 1-200 and defaults to 50
-                     when omitted; 0 is not unlimited (it clamps up to 1).
+                  description: "Max events to return. The handler clamps this to the range 1-200 and defaults to 50\r\n when omitted; 0 is not unlimited (it clamps up to 1)."
                   required: false
                   example: 25
                   schema:
@@ -403,9 +384,7 @@ paths:
                     format: int32
                 - name: days
                   in: query
-                  description: |-
-                    Events within N days from now. The handler clamps this to the range 1-365 and defaults
-                     to 90 when omitted; 0 is not unlimited (it clamps up to 1).
+                  description: "Events within N days from now. The handler clamps this to the range 1-365 and defaults\r\n to 90 when omitted; 0 is not unlimited (it clamps up to 1)."
                   required: false
                   example: 7
                   schema:
@@ -622,17 +601,13 @@ components:
                     description: Maximum items per page (1-100).
                 cursor:
                     type: string
-                    description: |-
-                        Cursor for next page.
-                         Accepted but currently ignored; no-op until this handler supports the parameter.
+                    description: "Cursor for next page.\r\n Accepted but currently ignored; no-op until this handler supports the parameter."
                 category:
                     type: string
                     description: arXiv category filter (e.g., "cs.AI"). Empty returns all tracked categories.
                 query:
                     type: string
-                    description: |-
-                        Search query for paper titles and abstracts.
-                         Accepted but currently ignored; no-op until this handler supports the parameter.
+                    description: "Search query for paper titles and abstracts.\r\n Accepted but currently ignored; no-op until this handler supports the parameter."
             description: ListArxivPapersRequest specifies filters for retrieving arXiv papers.
         ListArxivPapersResponse:
             type: object
@@ -820,16 +795,12 @@ components:
                     maximum: 500
                     minimum: 0
                     format: int32
-                    description: |-
-                        Max events to return. The handler clamps this to the range 1-200 and defaults to 50
-                         when omitted; 0 is not unlimited (it clamps up to 1).
+                    description: "Max events to return. The handler clamps this to the range 1-200 and defaults to 50\r\n when omitted; 0 is not unlimited (it clamps up to 1)."
                 days:
                     type: integer
                     minimum: 0
                     format: int32
-                    description: |-
-                        Events within N days from now. The handler clamps this to the range 1-365 and defaults
-                         to 90 when omitted; 0 is not unlimited (it clamps up to 1).
+                    description: "Events within N days from now. The handler clamps this to the range 1-365 and defaults\r\n to 90 when omitted; 0 is not unlimited (it clamps up to 1)."
             description: ListTechEventsRequest specifies filters for retrieving tech events.
         ListTechEventsResponse:
             type: object

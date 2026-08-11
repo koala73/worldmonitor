@@ -18,9 +18,7 @@ paths:
             parameters:
                 - name: page_size
                   in: query
-                  description: |-
-                    Maximum items per page (1-100).
-                     Accepted but currently ignored; no-op until this handler supports the parameter.
+                  description: "Maximum items per page (1-100).\r\n Accepted but currently ignored; no-op until this handler supports the parameter."
                   required: false
                   example: 25
                   schema:
@@ -28,26 +26,18 @@ paths:
                     format: int32
                 - name: cursor
                   in: query
-                  description: |-
-                    Cursor for next page.
-                     Accepted but currently ignored; no-op until this handler supports the parameter.
+                  description: "Cursor for next page.\r\n Accepted but currently ignored; no-op until this handler supports the parameter."
                   required: false
                   example: "next-page-token"
                   schema:
                     type: string
                 - name: min_severity
                   in: query
-                  description: |-
-                    Optional filter by anomaly severity.
-                     Accepted but currently ignored; no-op until this handler supports the parameter.
+                  description: "Optional filter by anomaly severity.\r\n Accepted but currently ignored; no-op until this handler supports the parameter."
                   required: false
-                  example: "ANOMALY_SEVERITY_NORMAL"
+                  example: "watch"
                   schema:
                     type: string
-                    enum:
-                        - 'ANOMALY_SEVERITY_NORMAL'
-                        - 'ANOMALY_SEVERITY_MODERATE'
-                        - 'ANOMALY_SEVERITY_EXTREME'
                 - name: jmespath
                   in: query
                   description: |-
@@ -489,10 +479,7 @@ paths:
             tags:
                 - ClimateService
             summary: ListClimateNews
-            description: |-
-                ListClimateNews retrieves latest climate/environment intelligence headlines from seeded RSS feeds.
-                 Empty items with fetched_at=0 or data_available=false means the seed snapshot
-                 is unavailable/degraded, not that there are confirmed zero headlines.
+            description: "ListClimateNews retrieves latest climate/environment intelligence headlines from seeded RSS feeds.\r\n Empty items with fetched_at=0 or data_available=false means the seed snapshot\r\n is unavailable/degraded, not that there are confirmed zero headlines."
             operationId: ListClimateNews
             parameters:
                 - name: jmespath
@@ -696,14 +683,10 @@ components:
                 pageSize:
                     type: integer
                     format: int32
-                    description: |-
-                        Maximum items per page (1-100).
-                         Accepted but currently ignored; no-op until this handler supports the parameter.
+                    description: "Maximum items per page (1-100).\r\n Accepted but currently ignored; no-op until this handler supports the parameter."
                 cursor:
                     type: string
-                    description: |-
-                        Cursor for next page.
-                         Accepted but currently ignored; no-op until this handler supports the parameter.
+                    description: "Cursor for next page.\r\n Accepted but currently ignored; no-op until this handler supports the parameter."
                 minSeverity:
                     type: string
                     enum:

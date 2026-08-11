@@ -62,3 +62,12 @@ No Phase 0 artifact includes a Provider secret, an OHLC array, a fabricated pric
 The Phase 4 workspace has no client-side Provider credential. Its only market
 client is the existing same-origin Market v1 client; the browser does not call
 Massive directly and no iframe renders either upstream application.
+
+## Phase 5 evidence-analysis implementation check
+
+| Capability | Implemented boundary | Runtime status without authorization | Upgrade condition | Hard prohibition |
+|---|---|---|---|---|
+| Provider ticker/company news | Massive server-side source validation plus source URL/UTC preservation and US exchange-time alignment | `NOT_CONFIGURED`; UI receives no invented article or particle | Configure a licensed news-capable market account and validate symbol/source/timestamp/entitlement on returned records | Do not associate common words with a ticker, invent a source or call a timestamp match a cause |
+| Exchange calendar alignment | Named NYSE/Nasdaq trading calendar for current US equity handling | Deterministic no-key calculation only; no claim that it covers all listings | Supply primary exchange and timezone/calendar mapping per non-US instrument | Never silently apply the US calendar to an unknown global primary exchange |
+| Model sentiment/relevance/category/causal confidence | Typed evidence-analysis contract with provider/model/prompt/version fields and explicit unavailable state | `NOT_CONFIGURED` / `NEWS_SENTIMENT_UNAVAILABLE`; no score or label is a measured result | Select an authorized analysis provider, accept applicable financial/news content terms, keep its key server-side, and persist actual returned model metadata | Never expose a client key or show sentiment/relevance/correlation as fact or causality |
+| Realized T0/T1/T3/T5/T10 return | Typed output only, based on validated symbol-specific price bars | Unavailable when no verified price series exists | Provider returns validated priced bars at the requested horizons with retained provenance | Never substitute a fixture, another symbol, a forecast or a synthetic return |

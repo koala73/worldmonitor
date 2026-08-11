@@ -18,9 +18,7 @@ paths:
             parameters:
                 - name: page_size
                   in: query
-                  description: |-
-                    Maximum items per page (1-100).
-                     Accepted but currently ignored; no-op until this handler supports the parameter.
+                  description: "Maximum items per page (1-100).\r\n Accepted but currently ignored; no-op until this handler supports the parameter."
                   required: false
                   example: 25
                   schema:
@@ -28,44 +26,25 @@ paths:
                     format: int32
                 - name: cursor
                   in: query
-                  description: |-
-                    Cursor for next page.
-                     Accepted but currently ignored; no-op until this handler supports the parameter.
+                  description: "Cursor for next page.\r\n Accepted but currently ignored; no-op until this handler supports the parameter."
                   required: false
                   example: "next-page-token"
                   schema:
                     type: string
                 - name: region
                   in: query
-                  description: |-
-                    Optional region filter.
-                     Accepted but currently ignored; no-op until this handler supports the parameter.
+                  description: "Optional region filter.\r\n Accepted but currently ignored; no-op until this handler supports the parameter."
                   required: false
-                  example: "AIRPORT_REGION_AMERICAS"
+                  example: "example"
                   schema:
                     type: string
-                    enum:
-                        - 'AIRPORT_REGION_AMERICAS'
-                        - 'AIRPORT_REGION_EUROPE'
-                        - 'AIRPORT_REGION_APAC'
-                        - 'AIRPORT_REGION_MENA'
-                        - 'AIRPORT_REGION_AFRICA'
                 - name: min_severity
                   in: query
-                  description: |-
-                    Optional minimum severity filter.
-                     Accepted but currently ignored; no-op until this handler supports the parameter.
+                  description: "Optional minimum severity filter.\r\n Accepted but currently ignored; no-op until this handler supports the parameter."
                   required: false
-                  example: "FLIGHT_DELAY_SEVERITY_NORMAL"
+                  example: "watch"
                   schema:
                     type: string
-                    enum:
-                        - 'FLIGHT_DELAY_SEVERITY_NORMAL'
-                        - 'FLIGHT_DELAY_SEVERITY_MINOR'
-                        - 'FLIGHT_DELAY_SEVERITY_MODERATE'
-                        - 'FLIGHT_DELAY_SEVERITY_MAJOR'
-                        - 'FLIGHT_DELAY_SEVERITY_SEVERE'
-                        - 'FLIGHT_DELAY_SEVERITY_UNKNOWN'
                 - name: jmespath
                   in: query
                   description: |-
@@ -260,13 +239,9 @@ paths:
                   in: query
                   description: Direction filter.
                   required: false
-                  example: "FLIGHT_DIRECTION_DEPARTURE"
+                  example: "example"
                   schema:
                     type: string
-                    enum:
-                        - 'FLIGHT_DIRECTION_DEPARTURE'
-                        - 'FLIGHT_DIRECTION_ARRIVAL'
-                        - 'FLIGHT_DIRECTION_BOTH'
                 - name: limit
                   in: query
                   description: Maximum number of flights to return (1-100).
@@ -842,14 +817,9 @@ paths:
                   in: query
                   description: Desired cabin class.
                   required: false
-                  example: "CABIN_CLASS_ECONOMY"
+                  example: "example"
                   schema:
                     type: string
-                    enum:
-                        - 'CABIN_CLASS_ECONOMY'
-                        - 'CABIN_CLASS_PREMIUM_ECONOMY'
-                        - 'CABIN_CLASS_BUSINESS'
-                        - 'CABIN_CLASS_FIRST'
                 - name: nonstop_only
                   in: query
                   description: Whether to restrict to nonstop flights only.
@@ -1530,14 +1500,10 @@ components:
                 pageSize:
                     type: integer
                     format: int32
-                    description: |-
-                        Maximum items per page (1-100).
-                         Accepted but currently ignored; no-op until this handler supports the parameter.
+                    description: "Maximum items per page (1-100).\r\n Accepted but currently ignored; no-op until this handler supports the parameter."
                 cursor:
                     type: string
-                    description: |-
-                        Cursor for next page.
-                         Accepted but currently ignored; no-op until this handler supports the parameter.
+                    description: "Cursor for next page.\r\n Accepted but currently ignored; no-op until this handler supports the parameter."
                 region:
                     type: string
                     enum:
@@ -2235,15 +2201,10 @@ components:
                         $ref: '#/components/schemas/PriceQuote'
                 provider:
                     type: string
-                    description: |-
-                        Provider name: "travelpayouts_data", "demo", or "none" when no live
-                         provider is configured.
+                    description: "Provider name: \"travelpayouts_data\", \"demo\", or \"none\" when no live\r\n provider is configured."
                 isDemoMode:
                     type: boolean
-                    description: |-
-                        Whether results are from demo/simulated mode. Requires explicit
-                         AVIATION_DEMO_PRICES=1 opt-in on the server. Never true in default
-                         self-host / production runs. See issue #3756.
+                    description: "Whether results are from demo/simulated mode. Requires explicit\r\n AVIATION_DEMO_PRICES=1 opt-in on the server. Never true in default\r\n self-host / production runs. See issue #3756."
                 updatedAt:
                     type: integer
                     format: int64
@@ -2253,17 +2214,10 @@ components:
                     description: Whether returned prices are indicative (subject to change).
                 degraded:
                     type: boolean
-                    description: |-
-                        True when the live provider could not satisfy the request — missing
-                         credentials, upstream failure, or zero results. Mirrors the
-                         searchGoogleFlights pattern so clients can render distinct messages
-                         for each error class.
+                    description: "True when the live provider could not satisfy the request — missing\r\n credentials, upstream failure, or zero results. Mirrors the\r\n searchGoogleFlights pattern so clients can render distinct messages\r\n for each error class."
                 error:
                     type: string
-                    description: |-
-                        Discriminator for the degraded state: "" (ok), "missing_credentials"
-                         (TRAVELPAYOUTS_API_TOKEN unset), "upstream_error" (provider call
-                         threw), "no_results" (provider returned empty for this route).
+                    description: "Discriminator for the degraded state: \"\" (ok), \"missing_credentials\"\r\n (TRAVELPAYOUTS_API_TOKEN unset), \"upstream_error\" (provider call\r\n threw), \"no_results\" (provider returned empty for this route)."
             description: SearchFlightPricesResponse contains flight price offers.
         PriceQuote:
             type: object

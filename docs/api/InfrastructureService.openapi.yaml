@@ -34,9 +34,7 @@ paths:
                     format: int64
                 - name: page_size
                   in: query
-                  description: |-
-                    Maximum items per page.
-                     Accepted but currently ignored; no-op until this handler supports the parameter.
+                  description: "Maximum items per page.\r\n Accepted but currently ignored; no-op until this handler supports the parameter."
                   required: false
                   example: 25
                   schema:
@@ -44,9 +42,7 @@ paths:
                     format: int32
                 - name: cursor
                   in: query
-                  description: |-
-                    Cursor for next page.
-                     Accepted but currently ignored; no-op until this handler supports the parameter.
+                  description: "Cursor for next page.\r\n Accepted but currently ignored; no-op until this handler supports the parameter."
                   required: false
                   example: "next-page-token"
                   schema:
@@ -150,15 +146,9 @@ paths:
                   in: query
                   description: Optional status filter. Returns only services in this state.
                   required: false
-                  example: "SERVICE_OPERATIONAL_STATUS_OPERATIONAL"
+                  example: "example"
                   schema:
                     type: string
-                    enum:
-                        - 'SERVICE_OPERATIONAL_STATUS_OPERATIONAL'
-                        - 'SERVICE_OPERATIONAL_STATUS_DEGRADED'
-                        - 'SERVICE_OPERATIONAL_STATUS_PARTIAL_OUTAGE'
-                        - 'SERVICE_OPERATIONAL_STATUS_MAJOR_OUTAGE'
-                        - 'SERVICE_OPERATIONAL_STATUS_MAINTENANCE'
                 - name: jmespath
                   in: query
                   description: |-
@@ -249,13 +239,6 @@ paths:
                   example: "military_flights"
                   schema:
                     type: string
-                    enum:
-                        - 'military_flights'
-                        - 'vessels'
-                        - 'protests'
-                        - 'news'
-                        - 'ais_gaps'
-                        - 'satellite_fires'
                 - name: region
                   in: query
                   description: Geographic region key, defaults to "global".
@@ -1268,14 +1251,10 @@ components:
                 pageSize:
                     type: integer
                     format: int32
-                    description: |-
-                        Maximum items per page.
-                         Accepted but currently ignored; no-op until this handler supports the parameter.
+                    description: "Maximum items per page.\r\n Accepted but currently ignored; no-op until this handler supports the parameter."
                 cursor:
                     type: string
-                    description: |-
-                        Cursor for next page.
-                         Accepted but currently ignored; no-op until this handler supports the parameter.
+                    description: "Cursor for next page.\r\n Accepted but currently ignored; no-op until this handler supports the parameter."
                 country:
                     type: string
                     description: Optional country filter (ISO 3166-1 alpha-2).

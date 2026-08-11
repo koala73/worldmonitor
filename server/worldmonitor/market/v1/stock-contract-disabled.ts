@@ -70,6 +70,13 @@ export const analyzeStockRange: MarketServiceHandler['analyzeStockRange'] = asyn
       symbol,
       rangeStartUtc: req.startUtc,
       rangeEndUtc: req.endUtc,
+      metricsAvailable: false,
+      startClose: 0,
+      endClose: 0,
+      realizedReturnPercent: 0,
+      totalVolume: 0,
+      validatedBarCount: 0,
+      causalNote: 'No causal claim is made when no validated source price series is available.',
     },
     provenance: notConfiguredProvenance('stock-range-analysis'),
   };

@@ -13,10 +13,7 @@ paths:
             tags:
                 - PredictionService
             summary: ListPredictionMarkets
-            description: |-
-                ListPredictionMarkets retrieves active prediction markets from seeded market snapshots.
-                 Empty markets with fetched_at=0 or data_available=false means the seed
-                 snapshot is unavailable/degraded, not that there are confirmed zero markets.
+            description: "ListPredictionMarkets retrieves active prediction markets from seeded market snapshots.\r\n Empty markets with fetched_at=0 or data_available=false means the seed\r\n snapshot is unavailable/degraded, not that there are confirmed zero markets."
             operationId: ListPredictionMarkets
             parameters:
                 - name: page_size
@@ -29,9 +26,7 @@ paths:
                     format: int32
                 - name: cursor
                   in: query
-                  description: |-
-                    Cursor for next page.
-                     Accepted but currently ignored; no-op until this handler supports the parameter.
+                  description: "Cursor for next page.\r\n Accepted but currently ignored; no-op until this handler supports the parameter."
                   required: false
                   example: "next-page-token"
                   schema:
@@ -40,22 +35,9 @@ paths:
                   in: query
                   description: Optional category filter (e.g., "Politics").
                   required: false
-                  example: "ai"
+                  example: "cs.AI"
                   schema:
                     type: string
-                    enum:
-                        - 'ai'
-                        - 'tech'
-                        - 'crypto'
-                        - 'science'
-                        - 'economy'
-                        - 'fed'
-                        - 'inflation'
-                        - 'interest-rates'
-                        - 'recession'
-                        - 'trade'
-                        - 'tariffs'
-                        - 'debt-ceiling'
                 - name: query
                   in: query
                   description: Optional search query for market titles.
@@ -271,9 +253,7 @@ components:
                     description: Maximum items per page (1-100).
                 cursor:
                     type: string
-                    description: |-
-                        Cursor for next page.
-                         Accepted but currently ignored; no-op until this handler supports the parameter.
+                    description: "Cursor for next page.\r\n Accepted but currently ignored; no-op until this handler supports the parameter."
                 category:
                     type: string
                     description: Optional category filter (e.g., "Politics").
@@ -293,15 +273,10 @@ components:
                 fetchedAt:
                     type: integer
                     format: int64
-                    description: |-
-                        Time the seed snapshot was fetched, as Unix epoch milliseconds. A value of
-                         0 means the snapshot is unavailable/degraded, not that there are confirmed
-                         zero matching markets.. Warning: Values > 2^53 may lose precision in JavaScript
+                    description: "Time the seed snapshot was fetched, as Unix epoch milliseconds. A value of\r\n 0 means the snapshot is unavailable/degraded, not that there are confirmed\r\n zero matching markets.. Warning: Values > 2^53 may lose precision in JavaScript"
                 dataAvailable:
                     type: boolean
-                    description: |-
-                        True when markets were evaluated against a seed snapshot. False means an
-                         empty payload is graceful degradation because the snapshot is unavailable.
+                    description: "True when markets were evaluated against a seed snapshot. False means an\r\n empty payload is graceful degradation because the snapshot is unavailable."
             description: ListPredictionMarketsResponse contains prediction markets matching the request.
         PredictionMarket:
             type: object

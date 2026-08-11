@@ -13,10 +13,7 @@ paths:
             tags:
                 - NaturalService
             summary: ListNaturalEvents
-            description: |-
-                ListNaturalEvents retrieves seeded EONET/GDACS/NHC/HKO natural events. Empty
-                 events with fetched_at=0 or data_available=false means the seed snapshot is
-                 unavailable/degraded, not that there are confirmed zero events.
+            description: "ListNaturalEvents retrieves seeded EONET/GDACS/NHC/HKO natural events. Empty\r\n events with fetched_at=0 or data_available=false means the seed snapshot is\r\n unavailable/degraded, not that there are confirmed zero events."
             operationId: ListNaturalEvents
             security: []
             parameters:
@@ -205,15 +202,10 @@ components:
                 fetchedAt:
                     type: integer
                     format: int64
-                    description: |-
-                        Time the seed snapshot was fetched, as Unix epoch milliseconds. A value of
-                         0 means the snapshot is unavailable/degraded, not that there are confirmed
-                         zero natural events.. Warning: Values > 2^53 may lose precision in JavaScript
+                    description: "Time the seed snapshot was fetched, as Unix epoch milliseconds. A value of\r\n 0 means the snapshot is unavailable/degraded, not that there are confirmed\r\n zero natural events.. Warning: Values > 2^53 may lose precision in JavaScript"
                 dataAvailable:
                     type: boolean
-                    description: |-
-                        True when events came from a seed snapshot. False means an empty payload is
-                         graceful degradation because the snapshot is unavailable.
+                    description: "True when events came from a seed snapshot. False means an empty payload is\r\n graceful degradation because the snapshot is unavailable."
         NaturalEvent:
             type: object
             properties:
@@ -286,10 +278,7 @@ components:
                         $ref: '#/components/schemas/PastTrackPoint'
                 canonicalId:
                     type: string
-                    description: |-
-                        Cross-agency tropical cyclone identity and attribution. These fields keep
-                         each agency's observation intact instead of collapsing incompatible wind
-                         averaging periods into one number.
+                    description: "Cross-agency tropical cyclone identity and attribution. These fields keep\r\n each agency's observation intact instead of collapsing incompatible wind\r\n averaging periods into one number."
                 matchingConfidence:
                     type: string
                 canonicalAliases:
