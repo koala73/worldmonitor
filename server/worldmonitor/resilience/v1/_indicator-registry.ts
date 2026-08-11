@@ -963,6 +963,33 @@ export const INDICATOR_REGISTRY: IndicatorSpec[] = [
     comprehensive: false,
   },
 
+  // ── education (1 sub-metric) ──────────────────────────────────────────────
+  {
+    id: 'femaleUpperSecondaryAttainment',
+    dimension: 'education',
+    description: 'Female upper-secondary educational attainment, population 25+ (World Bank SE.SEC.CUAT.UP.FE.ZS); piecewise transform with a slope bend at 85',
+    direction: 'higherBetter',
+    goalposts: { worst: 0, best: 100 },
+    weight: 1.0,
+    sourceKey: 'resilience:education-attainment:v1',
+    scope: 'global',
+    cadence: 'annual',
+    // Stays `experimental` while RESILIENCE_EDUCATION_ENABLED is off. That
+    // keeps it out of the per-dimension weight-sum invariant AND the
+    // coverage-influence gate, both of which filter on tier.
+    //
+    // The binding floor at promotion is CORE_MIN_COVERAGE = 180 in
+    // `tests/resilience-indicator-tiering.test.mts`, NOT the 137 in the
+    // coverage-influence gate — that gate only flags indicators whose nominal
+    // weight also exceeds 5%, and this one sits at 3.8%, so it would pass at
+    // any coverage. Measured coverage is 181: promotion clears the real floor
+    // by one country. Re-measure before promoting.
+    tier: 'experimental',
+    coverage: 181,
+    license: 'open-attribution',
+    comprehensive: true,
+  },
+
   // ── healthPublicService (5 sub-metrics) ───────────────────────────────────
   {
     id: 'uhcIndex',

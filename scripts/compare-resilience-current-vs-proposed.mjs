@@ -344,6 +344,22 @@ const EXTRACTION_RULES = {
   socialVelocity: { type: 'summarize-social-velocity' },
   newsThreatScore: { type: 'news-threat-score' },
 
+  // ── education ───────────────────────────────────────────────────────
+  // Dark while RESILIENCE_EDUCATION_ENABLED=false: the scorer returns the
+  // empty-data shape, so the dimension contributes nothing to a
+  // current-vs-proposed comparison and there is no value to extract.
+  //
+  // THIS MUST BE IMPLEMENTED IN THE ACTIVATION PR. Once the flag flips and
+  // the tier is promoted to 'core', education carries real weight, and a
+  // `not-implemented` row here means gate-9 effective-vs-nominal influence
+  // evidence silently omits it — a green acceptance verdict computed over a
+  // formula the harness cannot see. Wire `resilience:education-attainment:v1`
+  // into the bulk payload load and extract `countries[iso2].value`.
+  femaleUpperSecondaryAttainment: {
+    type: 'not-implemented',
+    reason: 'education dim ships flag-dark at tier=experimental; wire resilience:education-attainment:v1 into the bulk payload load when the activation PR promotes it to core',
+  },
+
   // ── healthPublicService ─────────────────────────────────────────────
   hospitalBeds: { type: 'static-who', code: 'hospitalBeds' },
   uhcIndex: { type: 'static-who', code: 'uhcIndex' },

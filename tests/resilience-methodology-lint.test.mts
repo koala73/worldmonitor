@@ -48,6 +48,7 @@ const HEADING_TO_DIMENSION: Readonly<Record<string, ResilienceDimensionId>> = {
   // for proto / cache-key stability.
   'Conflict & Displacement': 'borderSecurity',
   'Information & Cognitive': 'informationCognitive',
+  Education: 'education',
   'Health & Public Service': 'healthPublicService',
   'Food & Water': 'foodWater',
   'Fiscal Space': 'fiscalSpace',

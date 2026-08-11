@@ -168,11 +168,22 @@ describe('resilience scorer contracts', () => {
     // per-snapshot cyber severity weight (fixture threats are undated, so the
     // whole snapshot is one capped bucket — same value pre/post the day-bucket
     // rework). Undated rows intentionally fall back to the current bucket.
+    // 2026-08-10 education dim: social-governance 66.25 -> 53. Same flat-mean
+    // artifact the financialSystemExposure note above describes: the new
+    // `education` dim ships flag-gated off, so score=0, and this flat average
+    // drops 66.25 = 265/4 -> 53 = 265/5. The production coverage-weighted path
+    // (next test) does correctly drop a coverage=0 dim from the DOMAIN blend.
+    //
+    // This arithmetic-only assertion deliberately averages every serialized
+    // row. Production aggregation is different: the domain blend drops zero
+    // coverage, and pillar coverage excludes the allow-listed education
+    // triple-zero flag-dark shape. The serialized placeholder is therefore
+    // present without moving the flag-off headline score.
     assert.deepEqual(domainAverages, {
       economic: 56.5,
       infrastructure: 79.67,
       energy: 80,
-      'social-governance': 66.25,
+      'social-governance': 53,
       'health-food': 60.5,
       recovery: 49.63,
     });

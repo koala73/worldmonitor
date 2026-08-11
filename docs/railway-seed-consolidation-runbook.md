@@ -869,7 +869,8 @@ Recovery is accepted only when:
 | **Watch paths** | `scripts/**`, `shared/**` |
 | **Replaces** | 6 services |
 | **Net savings** | 5 slots |
-| **Members** | BIS Data (12h), CBR Rates (daily), China Macro (36h), China Release Calendar (36h), China Policy Events (6h), BIS Extended (12h), BLS Series (daily), Eurostat (daily), Eurostat House Prices (7d), Eurostat Government Debt (2d), Eurostat Industrial Production (daily), IMF Macro (30d), National Debt (30d), FAO FFPI (daily), World Bank External Debt (30d), BIS LBS (7d), FATF Listing (30d) |
+| **Members** | BIS Data (12h), CBR Rates (daily), China Macro (36h), China Release Calendar (36h), China Policy Events (6h), BIS Extended (12h), BLS Series (daily), Eurostat (daily), Eurostat House Prices (7d), Eurostat Government Debt (2d), Eurostat Industrial Production (daily), IMF Macro (30d), National Debt (30d), FAO FFPI (daily), World Bank External Debt (30d), BIS LBS (7d), FATF Listing (30d), Education Attainment (7d) |
+| **Wall budget** | 570 seconds. The runner defers a section when its timeout plus 10-second kill grace cannot fit before Railway's 10-minute limit. Education stays last on six UTC days so a persistent failure in the new flag-dark producer cannot starve established production members; it gets first priority each Sunday UTC so sustained production load cannot defer its first envelope forever. |
 
 ### Bundle 9: seed-bundle-health
 
@@ -1103,7 +1104,7 @@ Start with lowest-risk, highest-savings bundles.
 | 4 | seed-bundle-portwatch | 3 | Medium (hourly, 4 members) | Hourly |
 | 5 | seed-bundle-climate | 4 | Medium (3h, 5 members) | 3h |
 | 6 | seed-bundle-energy-sources | 5 | Medium (daily, 6 members) | Daily |
-| 7 | seed-bundle-macro | 5 | Medium (daily, 6 members) | Daily |
+| 7 | seed-bundle-macro | 5 | Medium (daily, 18 members) | Daily |
 | 8 | seed-bundle-health | 3 | Medium (hourly, 5 members) | Hourly |
 | 9 | seed-bundle-derived-signals | 1 | Medium (5min bundle; one bounded 3h external member) | 5min |
 | 10 | seed-bundle-market-backup | 4 | Low (backup for relay) | 5min |

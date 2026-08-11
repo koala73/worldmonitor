@@ -82,6 +82,87 @@ describe('penalizedPillarScore', () => {
   });
 });
 
+describe('buildPillarList — flag-dark dimension invariance', () => {
+  function domainWithDims(id: string, score: number, coverages: number[], weight: number): ResilienceDomain {
+    return {
+      id,
+      score,
+      weight,
+      dimensions: coverages.map((coverage, i) => ({
+        id: `${id}-d${i}`,
+        score,
+        coverage,
+        observedWeight: coverage,
+        imputedWeight: 1 - coverage,
+        imputationClass: '',
+        freshness: { lastObservedAtMs: '0', staleness: '' },
+      })),
+    };
+  }
+
+  const baselineDomains = (): ResilienceDomain[] => [
+    domainWithDims('economic', 75, [0.9, 0.9], 0.17),
+    domainWithDims('social-governance', 60, [0.8, 0.8, 0.8, 0.8], 0.19),
+  ];
+
+  const structural = (pillars: ReturnType<typeof buildPillarList>) =>
+    pillars.find((pillar) => pillar.id === 'structural-readiness')!;
+
+  it('keeps pillar score and coverage identical when education is flag-dark', () => {
+    const before = structural(buildPillarList(baselineDomains(), true));
+    const domains = baselineDomains();
+    domains[1]!.dimensions.push({
+      id: 'education',
+      score: 0,
+      coverage: 0,
+      observedWeight: 0,
+      imputedWeight: 0,
+      imputationClass: '',
+      freshness: { lastObservedAtMs: '0', staleness: '' },
+    });
+    const after = structural(buildPillarList(domains, true));
+
+    assert.equal(after.coverage, before.coverage);
+    assert.equal(after.score, before.score);
+  });
+
+  it('keeps a generic zero-coverage outage in the pillar denominator', () => {
+    const before = structural(buildPillarList(baselineDomains(), true));
+    const domains = baselineDomains();
+    domains[1]!.dimensions.push({
+      id: 'social-governance-outage',
+      score: 0,
+      coverage: 0,
+      observedWeight: 0,
+      imputedWeight: 1,
+      imputationClass: 'source-failure',
+      freshness: { lastObservedAtMs: '0', staleness: '' },
+    });
+    const after = structural(buildPillarList(domains, true));
+
+    assert.ok(after.coverage < before.coverage);
+    assert.notEqual(after.score, before.score);
+  });
+
+  it('keeps an education source failure in the pillar denominator', () => {
+    const before = structural(buildPillarList(baselineDomains(), true));
+    const domains = baselineDomains();
+    domains[1]!.dimensions.push({
+      id: 'education',
+      score: 50,
+      coverage: 0,
+      observedWeight: 0,
+      imputedWeight: 1,
+      imputationClass: 'source-failure',
+      freshness: { lastObservedAtMs: '0', staleness: '' },
+    });
+    const after = structural(buildPillarList(domains, true));
+
+    assert.ok(after.coverage < before.coverage);
+    assert.notEqual(after.score, before.score);
+  });
+});
+
 describe('buildPillarList', () => {
   it('returns empty array when schemaV2Enabled is false', () => {
     const domains: ResilienceDomain[] = [makeDomain('economic', 75, 0.9)];

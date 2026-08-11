@@ -163,7 +163,7 @@ const PUBLISHER_FAMILY_DATA = {
   },
   'venturebeat': { publisher: "VentureBeat", labels: ["VentureBeat", "VentureBeat AI"] },
   'white-house': { publisher: "The White House", labels: ["White House", "White House Actions"] },
-  'y-combinator': { publisher: "Y Combinator", labels: ["YC Blog", "YC Launches", "Y Combinator Blog"] },
+  'y-combinator': { publisher: "Y Combinator", labels: ["YC Launches", "Y Combinator Blog"] },
   'yahoo-finance': { publisher: "Yahoo Finance", labels: ["Yahoo Finance", "Yahoo Finance Commodities"] },
 };
 

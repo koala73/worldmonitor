@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { describe, it } from 'node:test';
 import { parse } from 'acorn';
+import { __testing__ as healthTesting } from '../api/health.js';
 
 import {
   DATASET_TO_DIMENSIONS,
@@ -50,6 +51,14 @@ const INTENTIONALLY_UNTRACKED_STANDALONE_META_KEYS = new Set([
 ]);
 
 const TRACKED_STANDALONE_META_KEYS_NOT_IN_HEALTH = new Set([
+  // scripts/seed-education-attainment.mjs ships ahead of its /api/health probe:
+  // check-health-probe-cutovers.mts requires a new strict probe to carry
+  // pre-seed evidence, which cannot exist before the producer has ever run. The
+  // source-failure threshold is still tracked here so a dead seeder surfaces as
+  // source-failure on the scorer side in the meantime. The health probe — and
+  // the removal of this entry — land in the follow-up once seed-bundle-macro
+  // has published once. Owned by #6452.
+  'seed-meta:resilience:education-attainment',
   // api/seed-health.js tracks this seed with intervalMin=360; /api/health
   // does not include a direct SEED_META entry because its data key is
   // parameterized by year.
@@ -60,6 +69,13 @@ const TRACKED_STANDALONE_META_KEYS_NOT_IN_HEALTH = new Set([
   'seed-meta:trade:restrictions:v1:tariff-overview:50',
   'seed-meta:trade:barriers:v1:tariff-gap:50',
 ]);
+
+describe('education health-probe rollout sequencing', () => {
+  it('defers both data and seed-meta registration until the first production publish', () => {
+    assert.equal(Object.hasOwn(healthTesting.STANDALONE_KEYS, 'educationAttainment'), false);
+    assert.equal(Object.hasOwn(healthTesting.SEED_META, 'educationAttainment'), false);
+  });
+});
 
 function literalKey(node: any): string | null {
   if (node.type === 'Identifier') return node.name;

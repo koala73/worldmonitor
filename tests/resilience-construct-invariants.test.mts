@@ -255,3 +255,63 @@ describe('construct invariants — sovereignFiscalBuffer (saturating transform)'
     );
   });
 });
+
+describe('isExcludedFromConfidenceMean — education dark branch', () => {
+  // Mirrors the NOT_APPLICABLE positive/negative pair above. The negative case
+  // is the one that matters: the discriminator is the TRIPLE zero, not
+  // coverage===0 alone. A country that genuinely carries the construct but has
+  // a data outage must still drag confidence down so an operator notices —
+  // if this branch matched on coverage alone it would silently hide outages.
+  it('excludes the flag-dark triple-zero shape', () => {
+    assert.equal(
+      isExcludedFromConfidenceMean({
+        id: 'education',
+        coverage: 0,
+        observedWeight: 0,
+        imputedWeight: 0,
+      }),
+      true,
+      'flag-dark education must leave the confidence mean',
+    );
+  });
+
+  it('does NOT exclude a real outage on the same dimension', () => {
+    // source-failure path: coverage 0 but imputedWeight 1. Must stay counted.
+    assert.equal(
+      isExcludedFromConfidenceMean({
+        id: 'education',
+        coverage: 0,
+        observedWeight: 0,
+        imputedWeight: 1,
+      }),
+      false,
+      'a real education outage must still drag confidence down',
+    );
+  });
+
+  it('does NOT exclude an observed-but-zero-coverage reading', () => {
+    assert.equal(
+      isExcludedFromConfidenceMean({
+        id: 'education',
+        coverage: 0,
+        observedWeight: 1,
+        imputedWeight: 0,
+      }),
+      false,
+      'observed data derated to zero coverage is an outage, not a dark dim',
+    );
+  });
+
+  it('does NOT exclude a scoring education dimension once the flag is on', () => {
+    assert.equal(
+      isExcludedFromConfidenceMean({
+        id: 'education',
+        coverage: 0.92,
+        observedWeight: 0.92,
+        imputedWeight: 0.08,
+      }),
+      false,
+      'a live education dim must rejoin the confidence mean automatically',
+    );
+  });
+});

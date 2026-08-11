@@ -357,7 +357,7 @@ const STANDALONE_KEYS = {
   pizzint:                  'intelligence:pizzint:seed:v1',
   resilienceStaticIndex:    'resilience:static:index:v1',
   resilienceStaticFao:      'resilience:static:fao',
-  resilienceRanking:        'resilience:ranking:v25',
+  resilienceRanking:        'resilience:ranking:v26',
   productCatalog:           'product-catalog:v3',
   energySpineCountries:     'energy:spine:v1:_countries',
   energyExposure:           'energy:exposure:v1:index',
@@ -843,6 +843,27 @@ const SEED_META = {
   lowCarbonGeneration:     { key: 'seed-meta:resilience:low-carbon-generation',     maxStaleMin: 11520 },
   fossilElectricityShare:  { key: 'seed-meta:resilience:fossil-electricity-share',  maxStaleMin: 11520 },
   powerLosses:             { key: 'seed-meta:resilience:power-losses',              maxStaleMin: 11520 },
+  // Education attainment — 8d budget. The bundle runs a DAILY Railway cron and
+  // gates each member on its own intervalMs (7d here), so a failed attempt
+  // retries on the next daily tick rather than a week later; 8d is the 7d
+  // interval plus roughly one day of retry headroom, not "2x interval". The
+  // budget alarms on the SEEDER being dead, not on the data being old —
+  // content-age staleness is the seeder's own 48-month maxContentAgeMin.
+  // educationAttainment is deliberately NOT registered here yet. The seeder
+  // (scripts/seed-education-attainment.mjs) ships in this PR but has never run
+  // in production, so a strict probe would report EMPTY from merge until the
+  // first seed-bundle-macro tick.
+  //
+  // scripts/check-health-probe-cutovers.mts enforces the sequencing: a new
+  // probe needs either machine-readable pre-seed evidence (impossible before
+  // the producer exists) or an acknowledgement that expires by the producer's
+  // first scheduled run, within 24h of activation — which would require
+  // knowing the merge time in advance.
+  //
+  // The probe therefore lands in a follow-up once the bundle has published
+  // once, using the pre-seed evidence path with a real compact-health OK.
+  // #6452 owns it, and it is a pre-flip requirement in
+  // docs/methodology/education-flag-flip-runbook.md.
   webcams:                 { key: 'seed-meta:webcam:cameras:geo',                   maxStaleMin: 1440 }, // seed-webcams writes 24h geo/meta keys plus a 30h active pointer; stale at 24h before the layer goes blank.
   // #5736 — history-ingest freshness per collector. `fetchedAt` here is the
   // last HEALTHY append (success, or a correctly-detected unconfigured run),

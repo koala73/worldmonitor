@@ -1,6 +1,6 @@
 ---
 title: "Country Resilience Index"
-description: "Real-time resilience scoring for 196 countries across 6 domains and 20 dimensions — 0-100 index refreshed every 6 hours at OECD/JRC parity."
+description: "Real-time resilience scoring for 196 countries across 6 domains and 21 dimensions — 0-100 index refreshed every 6 hours at OECD/JRC parity."
 ---
 
 The WorldMonitor Country Resilience Index (CRI) scores the 196-country public rankable universe on a 0-100 scale, combining long-run structural capacity with current operational stress to produce an actionable resilience metric. Upstream static/source feeds can include a broader set of territories, but the public CRI ranking is filtered to the rankable universe before score publication. Rather than relying on static country risk ratings, the CRI updates every 6 hours from official and authoritative sources and exposes full provenance, coverage, and imputation context so analysts can see exactly *why* a score moved and how much of it is real data versus imputed.
@@ -12,7 +12,7 @@ This document describes the **currently shipping** behavior of the index. The ve
 
 For the live deployment state, use the [runtime manifest](https://api.worldmonitor.app/resilience/v1/get-runtime-manifest). It reports the active formula tag, static `dataVersion`, ranking-cache metadata, safe derived construct versions such as `constructVersions.energy` (`legacy` or `v2`), and `intervals` availability metadata for the public `scoreInterval`/`rankStable` support path without exposing deploy identifiers, raw `RESILIENCE_*` flag states, or internal cache keys. The Reference Edition remains a frozen shipped bundle; it should not be treated as proof of the runtime state currently active in production.
 
-Everything documented below describes the **currently shipping** state: schemaVersion `"2.0"` shape, 6 domains × 20 active dimensions × 3 pillars (plus 2 structurally-retired dimensions kept in the registry for schema continuity at `coverage=0`), the pillar-combined penalized `overall_score`, and the energy v2 construct. The subsection on [Pillar-combined score activation](#pillar-combined-score-activation-active) records the activation evidence and rollback mechanics. The live runtime manifest reported `formulaTag="pc"` and `constructVersions.energy="v2"` on 2026-06-02, with `/api/health` reporting `OK` for the three required energy v2 seed checks (`lowCarbonGeneration`, `fossilElectricityShare`, and `powerLosses`).
+Everything documented below describes the **currently shipping** state: schemaVersion `"2.0"` shape, 6 domains × 21 active dimensions × 3 pillars (plus 2 structurally-retired dimensions kept in the registry for schema continuity at `coverage=0`), the pillar-combined penalized `overall_score`, and the energy v2 construct. The subsection on [Pillar-combined score activation](#pillar-combined-score-activation-active) records the activation evidence and rollback mechanics. The live runtime manifest reported `formulaTag="pc"` and `constructVersions.energy="v2"` on 2026-06-02, with `/api/health` reporting `OK` for the three required energy v2 seed checks (`lowCarbonGeneration`, `fossilElectricityShare`, and `powerLosses`).
 
 ## Construct contract
 
@@ -49,7 +49,7 @@ All three dashboard surfaces are free to view. Direct score and ranking API call
 
 ## Overview
 
-The WorldMonitor Country Resilience Index scores the 196-country public rankable universe on a 0-100 scale across 6 domains and 20 active dimensions (plus 2 structurally-retired dimensions kept in the registry at `coverage=0` for schema continuity). The ranking handler can still route low-confidence or headline-ineligible countries to `greyedOut[]`, but the rankable universe itself is fixed by the committed UN-member + SAR whitelist. It combines structural baseline indicators (governance quality, health infrastructure, fiscal capacity) with real-time stress signals (cyber threats, conflict events, shipping disruption) and recovery-capacity indicators (fiscal space, reserves, import concentration) to produce a single resilience score updated every 6 hours.
+The WorldMonitor Country Resilience Index scores the 196-country public rankable universe on a 0-100 scale across 6 domains and 21 active dimensions (plus 2 structurally-retired dimensions kept in the registry at `coverage=0` for schema continuity). The ranking handler can still route low-confidence or headline-ineligible countries to `greyedOut[]`, but the rankable universe itself is fixed by the committed UN-member + SAR whitelist. It combines structural baseline indicators (governance quality, health infrastructure, fiscal capacity) with real-time stress signals (cyber threats, conflict events, shipping disruption) and recovery-capacity indicators (fiscal space, reserves, import concentration) to produce a single resilience score updated every 6 hours.
 
 Data is sourced from official and authoritative providers: World Bank, IMF, WHO, WTO, UNHCR, UCDP, BIS, IEA, FAO, Reporters Sans Frontieres, and the Institute for Economics and Peace, among others.
 
@@ -62,7 +62,7 @@ The index is organized into 6 domains. Each domain weight reflects its design co
 | Economic | `economic` | 0.17 | Macro-Fiscal, Currency & External, Trade Policy, Financial System Exposure |
 | Infrastructure | `infrastructure` | 0.15 | Cyber & Digital, Logistics & Supply, Infrastructure |
 | Energy | `energy` | 0.11 | Energy |
-| Social & Governance | `social-governance` | 0.19 | Governance, Social Cohesion, Conflict & Displacement, Information |
+| Social & Governance | `social-governance` | 0.19 | Governance, Social Cohesion, Conflict & Displacement, Information, Education |
 | Health & Food | `health-food` | 0.13 | Health & Public Service, Food & Water |
 | Recovery | `recovery` | 0.25 | Fiscal Space, External Debt Coverage, Import Concentration, State Continuity, Liquid Reserve Adequacy, Sovereign Fiscal Buffer |
 
@@ -339,6 +339,28 @@ dimension. Unlisted countries default to the `minimal` tier.
 | `secondary` | 0.7 | AE, BB, BD, BH, BW, CM, CY, ET, FJ, GH, GM, GY, HK, IL, IN, JM, JO, KE, KH, KW, LK, LR, LS, MT, MW, MY, MM, MZ, NA, NG, NP, PG, PH, PK, QA, RW, SL, SZ, TT, TZ, UG, WS, ZA, ZM, ZW |
 | `limited` | 0.4 | AM, AR, AT, AZ, BE, BG, BR, BY, CH, CL, CN, CO, CZ, DE, DK, DZ, EC, EE, EG, ES, FI, FR, GE, GR, HR, HU, ID, IQ, IR, IT, JP, KR, KZ, LB, LT, LV, MA, MX, NL, NO, PE, PL, PT, RO, RS, RU, SA, SE, SI, SK, TH, TN, TR, TW, UA, UZ, VE, VN |
 | `minimal` | 0.2 | Default for any country not listed above |
+
+#### Education
+
+Added 2026-08-10. Ships **flag-gated dark** behind `RESILIENCE_EDUCATION_ENABLED` (defaults off) at `tier='experimental'`, pending the Railway seeder rollout. While dark the scorer returns the empty-data shape and the dimension contributes nothing to any published score.
+
+| Indicator | Description | Direction | Goalposts (worst-best) | Weight | Source | Cadence |
+|---|---|---|---|---|---|---|
+| femaleUpperSecondaryAttainment | Female upper-secondary educational attainment, population 25+ (World Bank SE.SEC.CUAT.UP.FE.ZS). Piecewise transform: linear to 85, shallower slope above. | Higher is better | 0 - 100 | 1.00 | World Bank | Annual |
+
+**Mechanism.** Female upper-secondary attainment governs how fast a population can receive, understand, and act on emergency instruction, and how fast it can re-skill after a shock. The construct contract excludes indicators whose only answer to the mechanism test is "this country is rich", so the income-independence of this signal is the load-bearing claim. Two forms of evidence support it. Externally, the Wittgenstein Centre / IIASA strand (Striessnig, Lutz & Patt 2013, *Ecology & Society* 18(1):16; Lutz, Muttarak & Striessnig 2014, *Science* 346(6213):1061) reports that rising GDP per capita did not track falling climate-disaster deaths over four decades while rising female secondary attainment did. Internally and more directly, the measured top of this series is post-Soviet rather than Western — Belarus 98.2, Turkmenistan 98.1, Uzbekistan 96.0, with the United States tenth at 92.1. An affluence proxy would put Norway and Switzerland on top.
+
+**Why the female variant.** The female, male, and total series cover an identical 181 of the 196 rankable countries, so choosing the variant the causal literature credits costs nothing in coverage.
+
+**Transform.** The measured distribution does not saturate: median 50.0, near-uniform deciles, only 1.7% above 95% (adult literacy, by contrast, puts 42% there). A log or logistic squash would erase discrimination in the 20–80 band holding two-thirds of the universe. The dimension therefore uses a two-segment map with a slope drop at 85 — decreasing slope is concave, satisfying the contract's threshold requirement, while the first segment stays linear where countries actually sit. The bend affects 22 of 181 countries.
+
+Goalposts are fixed 0 and 100, never observed extremes. An observed-max anchor would let Turkmenistan define a perfect score; a percentile lower anchor would tie 18 Sahel and Horn countries at the floor, precisely the band this series was chosen to resolve.
+
+**Known limitations.** This indicator measures attainment, not education *quality* or the freedom to act on what one knows — a series led by Turkmenistan and Belarus partly reflects credential issuance under authoritarian state education systems. Those failure modes are scored elsewhere: Turkmenistan is penalized by Governance, Information & Cognitive, and Conflict & Displacement, and the min-pillar penalty limits how far one strong pillar can compensate. No published effect size is cited because none was available in the secondary literature; the primary papers should be consulted before quoting a coefficient. A separate literature finds income outpredicts education for *individual, within-country* mortality — a different unit of analysis, not a rebuttal of the cross-national finding.
+
+**Excluded: the female-minus-male gap.** The gap carries real cross-country signal, but its positive tail is Gulf migrant labor (Qatar +30.2, Bahrain +18.7) inflating the male 25+ denominator rather than female advancement. A raw gap term would rank Qatar the most female-favorable country on earth — the same construct error the OFAC-domicile component was retired for. Deferred until a migrant-stock adjustment exists.
+
+**Coverage and staleness.** 181 of 196 rankable countries. The 15 absent (BB, ER, GA, GQ, KG, KN, KP, LI, LY, MC, SS, ST, SY, TW, VC) are tagged `unmonitored`, not `stable-absence` — the World Bank does not survey everywhere, so absence means "not measured", not "the phenomenon is not happening". Taiwan is absent from all World Bank data, so 195/196 is the practical ceiling for any World Bank series. A stale-but-present observation is kept at reduced certainty rather than dropped: 1.0 within 5 years, 0.8 at 5–10, 0.6 beyond. There is deliberately no drop rule at 5 years — that bucket holds 39 countries including Japan, China, New Zealand, and Kazakhstan.
 
 ### Health & Food Domain (weight 0.13)
 
@@ -678,8 +700,8 @@ The CRI is designed to be auditable end-to-end: given the Redis snapshot at any 
 
 | Key | Type | TTL | Written by | Read by |
 |---|---|---|---|---|
-| `resilience:score:v25:{countryCode}` | JSON | 6 hours | `buildResilienceScore` in `server/worldmonitor/resilience/v1/_shared.ts` | `getResilienceScore` handler |
-| `resilience:ranking:v25` | JSON | 12 hours | `getResilienceRanking` warm path, only when at least 90% of countries are scored (`RANKING_CACHE_MIN_COVERAGE = 0.90`) | `getResilienceRanking` handler |
+| `resilience:score:v26:{countryCode}` | JSON | 6 hours | `buildResilienceScore` in `server/worldmonitor/resilience/v1/_shared.ts` | `getResilienceScore` handler |
+| `resilience:ranking:v26` | JSON | 12 hours | `getResilienceRanking` warm path, only when at least 90% of countries are scored (`RANKING_CACHE_MIN_COVERAGE = 0.90`) | `getResilienceRanking` handler |
 | `resilience:history:v20:{countryCode}` | sorted set | indefinite, trimmed to 30 days | `appendHistory` during scoring | trend and `change30d` computation |
 | `resilience:intervals:v9:{countryCode}` | JSON | 7 days; freshness monitored via `seed-meta`/health cadence | `scripts/seed-resilience-scores.mjs` | `getResilienceScore` (optional `scoreInterval` field) and `getResilienceRanking` (`rankStable`) |
 | `seed-meta:resilience:static` | JSON | 400 days | `scripts/seed-resilience-static.mjs` at the end of each successful seed run | scorer for `dataVersion` population, health checks |
@@ -699,7 +721,7 @@ Given a Redis snapshot at time T:
 1. Read `seed-meta:resilience:static` for the `dataVersion`.
 2. Read `resilience:static:{cc}` for the country's baseline record (WGI, WHO, GPI, RSF, FAO, IEA, and so on).
 3. Read the rolling signal keys (annual UCDP GED releases, UNHCR, outages, cyber threats, prices, shipping stress, and so on) for the country's slice.
-4. For each of the 20 active dimensions, apply the formulas in the Scoring Formula section with the goalposts from the Dimensions and Indicators tables. For missing signals, consult the Imputation Taxonomy table in this document.
+4. For each of the 21 active dimensions, apply the formulas in the Scoring Formula section with the goalposts from the Dimensions and Indicators tables. For missing signals, consult the Imputation Taxonomy table in this document.
 5. Aggregate dimension scores into domain scores via coverage-weighted mean.
 6. Aggregate domain scores into the three pillar scores using `domainWeight * averageDimensionCoverage` as each member domain's pillar-score influence, then compute the overall score with the pillar-combined penalized formula used by the production `pc` cache tag.
 
@@ -851,7 +873,7 @@ The plan's non-compensatory pillar combine is the methodologically stronger form
 4. **Re-anchored release-gate bands**: `tests/resilience-pillar-combine-activation.test.mts` pins high-band anchors (NO, CH, DK) at ≥ 55 (vs the 6-domain formula's ≥ 70 floor) and low-band anchors (YE, SO) at ≤ 40 (vs ≤ 45). The snapshot test reads `methodologyFormula` from each snapshot and applies the matching bands. The reference-edition recompute confirms the bands hold with margin after domain-weighted pillar aggregation: NO = 74.85 (≥ 55 by 19.85 points), YE = 29.20 (≤ 40 by 10.80 points).
 5. **Projected and authoritative snapshots**: `docs/snapshots/resilience-ranking-pillar-combined-projected-2026-04-21.json` carries the 52-country preview tables used before activation. `docs/snapshots/resilience-ranking-2026-05-28.json` carries the authoritative full-universe live capture after the flag was activated; it predates the P1-1 domain-weighted pillar aggregation fix and is retained as a pre-P1-1 historical capture until the next live full-universe capture is generated.
 
-Rollback: set `RESILIENCE_PILLAR_COMBINE_ENABLED=false`, flush the current `resilience:score:v25:*`, `resilience:ranking:v25`, and `resilience:history:v20:*` keys (or wait for TTLs to expire). The 6-domain formula lives alongside the pillar combine in `_shared.ts` and needs no code change to come back.
+Rollback: set `RESILIENCE_PILLAR_COMBINE_ENABLED=false`, flush the current `resilience:score:v26:*`, `resilience:ranking:v26`, and `resilience:history:v20:*` keys (or wait for TTLs to expire). The 6-domain formula lives alongside the pillar combine in `_shared.ts` and needs no code change to come back.
 
 ### Scorecard (v2.0 self-assessment)
 
@@ -860,7 +882,7 @@ Self-assessed against the standard composite-indicator review axes on a 0-10 sca
 | Axis | Score | Rationale |
 |---|---|---|
 | **Validation** | 8.0 | Cross-index benchmark against INFORM, UNDP HDI, and the WorldRiskIndex vulnerability component with explicit directional hypotheses. Outcome backtest across 7 event families with AUC release gates. Sensitivity suite with 4-pass perturbation and ceiling detection. Gap: external expert review (Phase 3 T3.8b) not yet complete. |
-| **Data** | 9.0 | 20 active dimensions across 6 domains (plus 2 structurally-retired dimensions kept in the registry), 47+ indicators. Recovery capacity uses real import-HHI data where Comtrade quota/backfill limits permit; `fuelStockDays` is retired from the core score and retained only as an experimental registry surface. Signal tiering registry tags every indicator Core/Enrichment/Experimental with coverage + license audit. Gap: reserve-margin integration, external expert review, formal refresh SLAs, and attribution/explanation surfaces. |
+| **Data** | 9.0 | At the time of this v2.0 assessment, 6 domains (plus 2 structurally-retired dimensions kept in the registry), 47+ indicators. Recovery capacity uses real import-HHI data where Comtrade quota/backfill limits permit; `fuelStockDays` is retired from the core score and retained only as an experimental registry surface. Signal tiering registry tags every indicator Core/Enrichment/Experimental with coverage + license audit. Gap: reserve-margin integration, external expert review, formal refresh SLAs, and attribution/explanation surfaces. |
 | **Architecture** | 9.0 | Three-pillar schema with schemaVersion feature flag for backward compat. Penalized weighted mean aggregation with documented alpha. Domain-weighted pillar scores. Cache-key versioning (bumped per schema change). Language normalization corrects English-press bias. Gap: alpha tuning is initial (0.5), needs backtest-driven refinement after live data accumulates. |
 | **Methodology** | 8.5 | Every dimension has a named source, direction, goalpost, weight, cadence, imputation class, AND tier. Four-class imputation taxonomy live end-to-end. Freshness classifier surfaces staleness at the dimension level. Methodology doc linter enforces parity. Gap: three-pillar weight rationale is defensible but not yet empirically optimized. |
 | **Explainability** | 8.0 | Per-dimension confidence grid with imputation icon + freshness badge. Pillar structure makes the index decomposable (structural vs live-shock vs recovery). Gap: no waterfall chart yet (Phase 3 T3.3), no change attribution (Phase 3 T3.5). |

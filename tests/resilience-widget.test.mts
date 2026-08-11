@@ -333,6 +333,26 @@ test('formatResilienceConfidence excludes retired dimensions by ID (not by cover
   assert.equal(formatResilienceConfidence(withRetired), 'Coverage 57% ✓');
 });
 
+test('formatResilienceConfidence excludes flag-dark education but counts an education outage', () => {
+  const withDarkEducation: ResilienceScoreResponse = {
+    ...baseResponse,
+    domains: [{ id: 'social-governance', score: 80, weight: 0.19, dimensions: [
+      { id: 'governanceInstitutional', score: 80, coverage: 0.8, observedWeight: 0.8, imputedWeight: 0.2 },
+      { id: 'education', score: 0, coverage: 0, observedWeight: 0, imputedWeight: 0 },
+    ] }],
+  };
+  assert.equal(formatResilienceConfidence(withDarkEducation), 'Coverage 80% ✓');
+
+  const withEducationOutage: ResilienceScoreResponse = {
+    ...withDarkEducation,
+    domains: [{ ...withDarkEducation.domains[0]!, dimensions: [
+      withDarkEducation.domains[0]!.dimensions[0]!,
+      { id: 'education', score: 50, coverage: 0, observedWeight: 0, imputedWeight: 1, imputationClass: 'source-failure' },
+    ] }],
+  };
+  assert.equal(formatResilienceConfidence(withEducationOutage), 'Coverage 40% ✓');
+});
+
 test('formatResilienceChange30d preserves explicit sign formatting', () => {
   assert.equal(formatResilienceChange30d(2.41), '30d +2.4');
   assert.equal(formatResilienceChange30d(-1.26), '30d -1.3');
@@ -614,7 +634,7 @@ test('collectDimensionConfidences returns an empty list for an empty response', 
 // representative card instead of a blank gap between the domain rows
 // and the footer. If a future edit accidentally drops a dimension
 // from the preview, this regression test fails loudly.
-test('LOCKED_PREVIEW populates all 22 serialized dimensions for the gated preview (PR #2949 review)', async () => {
+test('LOCKED_PREVIEW populates all 23 serialized dimensions for the gated preview (PR #2949 review)', async () => {
   const {
     RESILIENCE_DIMENSION_ORDER,
     RESILIENCE_RETIRED_DIMENSIONS,
@@ -623,8 +643,8 @@ test('LOCKED_PREVIEW populates all 22 serialized dimensions for the gated previe
   const all = collectDimensionConfidences(LOCKED_PREVIEW.domains);
   assert.equal(
     all.length,
-    22,
-    `locked preview should carry all 22 serialized dimensions (20 active + 2 retired), got ${all.length}`,
+    23,
+    `locked preview should carry all 23 serialized dimensions (21 active + 2 retired), got ${all.length}`,
   );
   assert.deepEqual(
     all.map((dim) => dim.id),

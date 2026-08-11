@@ -26,6 +26,7 @@ export type ResilienceDimensionId =
   | 'socialCohesion'
   | 'borderSecurity'
   | 'informationCognitive'
+  | 'education'             // female upper-secondary attainment (WB SE.SEC.CUAT.UP.FE.ZS)
   | 'healthPublicService'
   | 'foodWater'
   | 'fiscalSpace'
@@ -483,6 +484,11 @@ export const RESILIENCE_DIMENSION_WEIGHTS: Record<ResilienceDimensionId, number>
   socialCohesion: 1.0,
   borderSecurity: 1.0,
   informationCognitive: 1.0,
+  // 0.5 mirrors the financialSystemExposure precedent for a new dimension:
+  // it caps education at ~11% of the social-governance domain rather than the
+  // ~20% an equal-weight entry would take. Deliberately conservative for a
+  // first ship; raising it later is a separate, evidenced decision.
+  education: 0.5,
   healthPublicService: 1.0,
   foodWater: 1.0,
   fiscalSpace: 1.0,
@@ -508,6 +514,7 @@ export const RESILIENCE_DIMENSION_DOMAINS: Record<ResilienceDimensionId, Resilie
   socialCohesion: 'social-governance',
   borderSecurity: 'social-governance',
   informationCognitive: 'social-governance',
+  education: 'social-governance',
   healthPublicService: 'health-food',
   foodWater: 'health-food',
   fiscalSpace: 'recovery',
@@ -533,6 +540,7 @@ export const RESILIENCE_DIMENSION_ORDER: ResilienceDimensionId[] = [
   'socialCohesion',
   'borderSecurity',
   'informationCognitive',
+  'education',
   'healthPublicService',
   'foodWater',
   'fiscalSpace',
@@ -569,6 +577,9 @@ export const RESILIENCE_DIMENSION_TYPES: Record<ResilienceDimensionId, Resilienc
   socialCohesion: 'baseline',
   borderSecurity: 'stress',
   informationCognitive: 'stress',
+  // Attainment of the 25+ population is a structural stock, not a live shock
+  // signal — it moves on a survey cadence, not a news cycle.
+  education: 'baseline',
   healthPublicService: 'baseline',
   foodWater: 'mixed',
   fiscalSpace: 'baseline',
@@ -615,6 +626,48 @@ function normalizeHigherBetter(value: number, worst: number, best: number): numb
   if (best <= worst) return 50;
   const ratio = (value - worst) / (best - worst);
   return roundScore(ratio * 100);
+}
+
+// Education attainment transform (female upper-secondary, 25+).
+// See the "Education" section of docs/methodology/country-resilience-index.mdx
+// for the construct.
+//
+// Two segments with a slope drop at the bend. Decreasing slope is concave,
+// which is what the construct contract asks for on a development-adjacent
+// indicator — the score must stop paying for attainment past the point where
+// it stops buying shock absorption.
+//
+// It is deliberately NOT a log or logistic squash. The measured distribution
+// does not saturate: median 50.0 across the 181 covered countries, near-uniform
+// deciles, only 1.7% above 95% (adult literacy, by contrast, puts 42% there).
+// Squashing would erase discrimination in the 20-80 band that holds two-thirds
+// of the universe. The bend affects 22 of 181 countries.
+//
+// Goalposts are fixed 0 and 100, never observed min/max. Eight of the top ten
+// are post-Soviet states reporting near-universal legacy completion, so an
+// observed-max anchor would let Turkmenistan define a perfect score; a
+// percentile lower anchor would tie 18 Sahel and Horn countries at the floor,
+// which is exactly the band this series was chosen to resolve.
+export const EDUCATION_BEND = 85;
+export const EDUCATION_BEND_SCORE = 92;
+
+export function normalizeEducationAttainment(value: unknown): number | null {
+  // `value == null` must be checked before coercion: Number(null) === 0 is
+  // finite, and 0 is a plausible reading here, so a null would silently score
+  // an unsurveyed country as the worst on earth instead of dropping its slot.
+  if (value == null) return null;
+  const numeric = typeof value === 'number' ? value : Number(value);
+  if (!Number.isFinite(numeric)) return null;
+
+  const pct = clamp(numeric, 0, 100);
+  if (pct <= EDUCATION_BEND) {
+    // Linear across the band where countries actually sit.
+    return roundScore((pct / EDUCATION_BEND) * EDUCATION_BEND_SCORE);
+  }
+  // Shallower slope above the bend: the remaining 15 points of attainment buy
+  // only the remaining 8 points of score.
+  const topBandFraction = (pct - EDUCATION_BEND) / (100 - EDUCATION_BEND);
+  return roundScore(EDUCATION_BEND_SCORE + topBandFraction * (100 - EDUCATION_BEND_SCORE));
 }
 
 export function scoreInflationStability(inflationPct: number): number {
@@ -1506,6 +1559,131 @@ export async function scoreTradePolicy(
 // `null` and the slot drops out of the weighted blend.
 function isFinSysExposureEnabledLocal(): boolean {
   return (process.env.RESILIENCE_FIN_SYS_EXPOSURE_ENABLED ?? 'false').toLowerCase() === 'true';
+}
+
+const RESILIENCE_EDUCATION_KEY = 'resilience:education-attainment:v1';
+
+function isEducationEnabledLocal(): boolean {
+  return (process.env.RESILIENCE_EDUCATION_ENABLED ?? 'false').toLowerCase() === 'true';
+}
+
+// Certainty ladder for a stale-but-present observation. Attainment of the 25+
+// population is a slow-moving stock, so a 2015 reading still carries real
+// information in a way a 2015 unemployment rate would not — reduce certainty
+// rather than dropping the country.
+//
+// Deliberately NOT a drop rule. 39 of the 181 covered countries have an
+// observation older than 5 years, including JP, CN, NZ, and KZ, so a 5-year
+// drop would cut major economies for survey cadence alone. Only 5 countries
+// (FM, NI, CG, MR, SB) are past 10 years, and two of those sit in the low band
+// this series was chosen to resolve.
+export function educationObservationCertainty(observationYear: number, nowYear: number): number {
+  if (!Number.isFinite(observationYear) || !Number.isFinite(nowYear)) return 0.6;
+  const age = nowYear - observationYear;
+  if (age <= 5) return 1.0;
+  if (age <= 10) return 0.8;
+  return 0.6;
+}
+
+export async function scoreEducation(
+  countryCode: string,
+  reader: ResilienceSeedReader = defaultSeedReader,
+): Promise<ResilienceDimensionScore> {
+  if (!isEducationEnabledLocal()) {
+    // Flag off — empty-data shape, contributes zero weight to the domain mean.
+    // imputationClass stays null: a dark dimension is a deliberate construct
+    // state, not an outage, and tagging it `source-failure` would render a
+    // false "Source down" badge on every country in the widget.
+    return {
+      score: 0,
+      coverage: 0,
+      observedWeight: 0,
+      imputedWeight: 0,
+      imputationClass: null,
+      freshness: { lastObservedAtMs: 0, staleness: '' },
+    };
+  }
+
+  // Fail-closed preflight. A missing envelope means the Railway bundle is not
+  // publishing, which is an operator problem — surface it as source-failure
+  // rather than silently imputing every country to the midpoint.
+  const meta = await reader(resolveSeedMetaKey(RESILIENCE_EDUCATION_KEY));
+  if (isSeedMetaPreflightUnhealthy(RESILIENCE_EDUCATION_KEY, meta)) {
+    throw new ResilienceConfigurationError(
+      `RESILIENCE_EDUCATION_ENABLED=true but required seed-meta absent or unhealthy for: ${RESILIENCE_EDUCATION_KEY}. ` +
+        'Provision the macro bundle component seeder (seed-education-attainment) and confirm Redis ' +
+        'populates BEFORE flipping the flag. Or set RESILIENCE_EDUCATION_ENABLED=false to keep the dim dark. ' +
+        'See docs/methodology/education-flag-flip-runbook.md.',
+      [RESILIENCE_EDUCATION_KEY],
+    );
+  }
+
+  const raw = await reader(RESILIENCE_EDUCATION_KEY);
+  const record = readEducationAttainment(raw, countryCode);
+
+  if (record == null) {
+    // Country absent from the envelope. This is `unmonitored`, NOT
+    // `stable-absence`: the World Bank does not survey everywhere, so absence
+    // means "not measured", not "the phenomenon is not happening". Treating it
+    // as stable-absence would hand DPRK and Syria a score near 85.
+    return weightedBlend([
+      {
+        score: IMPUTATION.curated_list_absent.score,
+        weight: 1.0,
+        certaintyCoverage: IMPUTATION.curated_list_absent.certaintyCoverage,
+        imputed: true,
+        imputationClass: IMPUTATION.curated_list_absent.imputationClass,
+      },
+    ]);
+  }
+
+  const nowYear = new Date().getUTCFullYear();
+  return weightedBlend([
+    {
+      score: normalizeEducationAttainment(record.value),
+      weight: 1.0,
+      // Observed data at reduced certainty when the survey is old. NOT
+      // `imputed` — this is a real reading, just an aging one, and flagging it
+      // imputed would misreport the dimension's provenance.
+      certaintyCoverage: educationObservationCertainty(record.year, nowYear),
+    },
+  ]);
+}
+
+// Payload accessor. Shape: { countries: { [iso2]: { value, year } } }.
+// Defensive against unexpected shapes; returns null on any deviation.
+function readEducationAttainment(
+  raw: unknown,
+  countryCode: string,
+): { value: number; year: number } | null {
+  if (raw == null || typeof raw !== 'object') return null;
+  const countries = (raw as { countries?: Record<string, unknown> }).countries;
+  if (countries == null || typeof countries !== 'object') return null;
+  const entry = countries[countryCode];
+  if (entry == null || typeof entry !== 'object') return null;
+
+  // Reject nullish BEFORE coercion. `safeNum` runs Number() first, and
+  // Number(null) === 0 is finite — so a `value: null` in the envelope would
+  // resolve to a real 0% attainment scored at full coverage, publishing "worst
+  // on earth, fully observed" for a country we simply have no reading for. Same
+  // trap the seeder and the transform each guard on the write side; this is the
+  // read side of it. `year: null` would likewise become year 0 and silently
+  // derate a fresh observation into the >10-year certainty bucket.
+  //
+  // The current seeder cannot emit either (it skips nulls before publishing),
+  // so this is defense in depth — but the sibling energy envelopes are typed
+  // `year: number | null`, so a future producer plausibly can.
+  const rawValue = (entry as { value?: unknown }).value;
+  const rawYear = (entry as { year?: unknown }).year;
+  if (rawValue == null || rawYear == null) return null;
+
+  const value = safeNum(rawValue);
+  const year = safeNum(rawYear);
+  if (value == null || year == null) return null;
+  // Percentage of population; anything outside 0..100 is upstream corruption,
+  // matching the range check the seeder enforces on write.
+  if (value < 0 || value > 100) return null;
+  return { value, year };
 }
 
 export async function scoreFinancialSystemExposure(
@@ -2716,11 +2894,43 @@ export const RESILIENCE_NOT_APPLICABLE_WHEN_ZERO_COVERAGE: ReadonlySet<Resilienc
 // it MUST drag down user-facing confidence so an operator notices.
 // The triple-zero check is the unique fingerprint of the Path-3
 // "no manifest entry" return shape.
+// A dimension that is dark behind a feature flag is a deliberate construct
+// state, not a data gap, so it must not drag down user-facing confidence and
+// coverage while it waits for its seeder rollout.
+//
+// This is load-bearing, not cosmetic. `headlineEligible` gates public ranking
+// inclusion on `overallCoverage >= 0.65`, and the coverage mean is taken across
+// dimensions — so every dark dimension pulls every country's coverage down. With
+// `education` counted, the US happy-path build fell below the threshold and
+// dropped out of the headline ranking entirely.
+//
+// `financialSystemExposure` is deliberately NOT in this set even though it is
+// also dark. Adding it would change the coverage number already published for
+// every country, which is outside this change's scope; the two should be
+// reconciled together when either flag flips.
+export const RESILIENCE_FLAG_DARK_WHEN_ZERO_COVERAGE: ReadonlySet<ResilienceDimensionId> = new Set([
+  'education',
+]);
+
+export function isFlagDarkDimension(
+  dimension: { id: string; coverage: number; observedWeight?: number; imputedWeight?: number },
+): boolean {
+  const id = dimension.id as ResilienceDimensionId;
+  return RESILIENCE_FLAG_DARK_WHEN_ZERO_COVERAGE.has(id)
+    && dimension.coverage === 0
+    && (dimension.observedWeight ?? 0) === 0
+    && (dimension.imputedWeight ?? 0) === 0;
+}
+
 export function isExcludedFromConfidenceMean(
   dimension: { id: string; coverage: number; observedWeight?: number; imputedWeight?: number },
 ): boolean {
   const id = dimension.id as ResilienceDimensionId;
   if (RESILIENCE_RETIRED_DIMENSIONS.has(id)) return true;
+  // Same triple-zero fingerprint as the not-applicable path below: a dark dim
+  // emits score=0/coverage=0/observedWeight=0/imputedWeight=0. Once the flag
+  // flips the dim carries real coverage and rejoins the mean automatically.
+  if (isFlagDarkDimension(dimension)) return true;
   if (
     RESILIENCE_NOT_APPLICABLE_WHEN_ZERO_COVERAGE.has(id) &&
     dimension.coverage === 0 &&
@@ -2773,6 +2983,7 @@ ResilienceDimensionId,
   socialCohesion: scoreSocialCohesion,
   borderSecurity: scoreBorderSecurity,
   informationCognitive: scoreInformationCognitive,
+  education: scoreEducation,
   healthPublicService: scoreHealthPublicService,
   foodWater: scoreFoodWater,
   fiscalSpace: scoreFiscalSpace,

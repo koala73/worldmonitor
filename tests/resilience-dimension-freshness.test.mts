@@ -534,6 +534,15 @@ describe('INDICATOR_REGISTRY seed-meta coverage (T1.5 P1 regression lock)', () =
   // tracks yet). Each entry must be verified against scripts/seed-*.mjs
   // before being added.
   const KNOWN_SEEDS_NOT_IN_HEALTH: ReadonlySet<string> = new Set([
+    // scripts/seed-education-attainment.mjs ships before its health probe by
+    // design. check-health-probe-cutovers.mts requires a new strict probe to
+    // carry pre-seed evidence (impossible before the producer has ever run) or
+    // an acknowledgement expiring by the producer's first scheduled run within
+    // 24h (which would require knowing the merge time). The probe is added in a
+    // follow-up on the pre-seed path once seed-bundle-macro has published once.
+    // Remove this entry then. Owned by #6452; a pre-flip requirement in
+    // docs/methodology/education-flag-flip-runbook.md.
+    'seed-meta:resilience:education-attainment',
     // scripts/seed-supply-chain-trade.mjs writes these via
     // writeExtraKeyWithMeta. The :v\d+ is not trailing (has :tariff-*:50
     // suffix) so the strip is a no-op and the meta key equals the key.
