@@ -58,7 +58,7 @@ export function isOnDemandProblem(problem) {
 // not accept an arbitrarily distant deadline as a licence to stay quiet. Without
 // this, a single bad `rolloutPendingUntil` — a registry bug, a bad merge, a
 // tampered response — would silence these keys in CI effectively forever.
-const MAX_ROLLOUT_WINDOW_MS = 24 * 60 * 60 * 1000;
+export const MAX_ROLLOUT_WINDOW_MS = 24 * 60 * 60 * 1000;
 
 export function isRolloutPendingProblem(problem, now = Date.now()) {
   if (problem?.status !== 'ROLLOUT_PENDING') return false;
@@ -86,6 +86,34 @@ export function findOperationalProblems(payload, now = Date.now()) {
     .sort((a, b) => a.name.localeCompare(b.name));
 }
 
+/**
+ * Return true for a real ISO calendar instant with an explicit Z or numeric timezone.
+ * Date.parse alone is insufficient because it normalizes impossible dates such as February 30.
+ */
+export function isUtcIsoInstant(value) {
+  if (typeof value !== 'string') return false;
+  const match = value.match(
+    /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.(\d+))?(Z|[+-](\d{2}):(\d{2}))$/,
+  );
+  if (!match) return false;
+  const [, yearText, monthText, dayText, hourText, minuteText, secondText, , zone, offsetHourText, offsetMinuteText] = match;
+  const year = Number(yearText);
+  const month = Number(monthText);
+  const day = Number(dayText);
+  const hour = Number(hourText);
+  const minute = Number(minuteText);
+  const second = Number(secondText);
+  const leapYear = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
+  const daysInMonth = [31, leapYear ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+  if (month < 1 || month > 12 || day < 1 || day > daysInMonth[month - 1]) return false;
+  if (hour > 23 || minute > 59 || second > 59) return false;
+  if (
+    zone !== 'Z'
+    && (Number(offsetHourText) > 23 || Number(offsetMinuteText) > 59)
+  ) return false;
+  return Number.isFinite(Date.parse(value));
+}
+
 export function validateAcceptanceBaseline(baseline) {
   if (!baseline || typeof baseline !== 'object' || Array.isArray(baseline)) {
     throw new Error('Acceptance baseline must be an object');
@@ -96,18 +124,56 @@ export function validateAcceptanceBaseline(baseline) {
   if (!Array.isArray(baseline.acknowledged)) {
     throw new Error('Acceptance baseline must contain an acknowledged array');
   }
+  const seen = new Set();
   for (const entry of baseline.acknowledged) {
     if (!entry?.name || !entry?.status) {
       throw new Error('Each acknowledged baseline entry needs name and status');
     }
+    const key = `${entry.name}:${entry.status}`;
+    if (seen.has(key)) {
+      throw new Error(`Acceptance baseline contains duplicate entry ${key}`);
+    }
+    seen.add(key);
     if (!Number.isInteger(entry.issue)) {
       throw new Error(`Acknowledged baseline entry ${entry.name} needs an owner issue number`);
     }
     if (
       Object.hasOwn(entry, 'expiresAt')
-      && (typeof entry.expiresAt !== 'string' || Number.isNaN(Date.parse(entry.expiresAt)))
+      && !isUtcIsoInstant(entry.expiresAt)
     ) {
-      throw new Error(`Acknowledged baseline entry ${entry.name} needs a valid ISO expiresAt date`);
+      throw new Error(`Acknowledged baseline entry ${entry.name} needs a valid UTC ISO expiresAt instant`);
+    }
+    if (Object.hasOwn(entry, 'cutover')) {
+      if (!entry.cutover || typeof entry.cutover !== 'object' || Array.isArray(entry.cutover)) {
+        throw new Error(`Acknowledged baseline entry ${entry.name} needs a cutover object`);
+      }
+      if (typeof entry.expiresAt !== 'string') {
+        throw new Error(`Cutover acknowledgement ${entry.name} needs an entry-level expiresAt`);
+      }
+      if (typeof entry.cutover.probeKey !== 'string' || entry.cutover.probeKey.length === 0) {
+        throw new Error(`Cutover acknowledgement ${entry.name} needs a probeKey`);
+      }
+      if (!isUtcIsoInstant(entry.cutover.activatedAt)) {
+        throw new Error(`Cutover acknowledgement ${entry.name} needs a valid UTC ISO activatedAt instant`);
+      }
+      if (!isUtcIsoInstant(entry.cutover.firstScheduledRunAt)) {
+        throw new Error(`Cutover acknowledgement ${entry.name} needs a valid UTC ISO firstScheduledRunAt instant`);
+      }
+      const activatedAt = Date.parse(entry.cutover.activatedAt);
+      const firstScheduledRunAt = Date.parse(entry.cutover.firstScheduledRunAt);
+      const expiresAt = Date.parse(entry.expiresAt);
+      if (firstScheduledRunAt <= activatedAt) {
+        throw new Error(`Cutover acknowledgement ${entry.name} first scheduled run must follow activation`);
+      }
+      if (firstScheduledRunAt - activatedAt > MAX_ROLLOUT_WINDOW_MS) {
+        throw new Error(`Cutover acknowledgement ${entry.name} first scheduled run must be within 24 hours`);
+      }
+      if (expiresAt <= activatedAt) {
+        throw new Error(`Cutover acknowledgement ${entry.name} must expire after activation`);
+      }
+      if (expiresAt > firstScheduledRunAt) {
+        throw new Error(`Cutover acknowledgement ${entry.name} must expire by its first scheduled run`);
+      }
     }
   }
   return baseline;

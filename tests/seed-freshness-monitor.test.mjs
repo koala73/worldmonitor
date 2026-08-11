@@ -13,6 +13,7 @@ import {
   validateAcceptanceBaseline,
   validateCompactHealthPayload,
 } from '../scripts/check-seed-freshness.mjs';
+import { validateHealthProbeCutovers } from '../scripts/check-health-probe-cutovers.mts';
 
 const COMMITTED_BASELINE_URL = new URL('../scripts/seed-freshness-baseline.json', import.meta.url);
 const PR_TEMPLATE_URL = new URL('../.github/pull_request_template.md', import.meta.url);
@@ -21,6 +22,8 @@ const LONG_CRON_RUNBOOK_URL = new URL(
   import.meta.url,
 );
 const RAILWAY_SERVICES_URL = new URL('../scripts/railway-services.json', import.meta.url);
+const TEST_WORKFLOW_URL = new URL('../.github/workflows/test.yml', import.meta.url);
+const PRE_PUSH_HOOK_URL = new URL('../.husky/pre-push', import.meta.url);
 const readCommittedBaseline = () => JSON.parse(readFileSync(COMMITTED_BASELINE_URL, 'utf8'));
 const readRailwayServices = () => JSON.parse(readFileSync(RAILWAY_SERVICES_URL, 'utf8'));
 
@@ -400,6 +403,73 @@ describe('scheduled seed freshness monitor', () => {
       }
     });
 
+    it('rejects parseable entry expiries that are not real UTC ISO instants', () => {
+      for (const expiresAt of [
+        'August 10, 2026',
+        '2026-02-30T00:00:00.000Z',
+        '2026-08-10T12:00:00',
+      ]) {
+        assert.throws(
+          () => validateAcceptanceBaseline({
+            ...baseline,
+            acknowledged: [{
+              name: 'tariffTrendsUs',
+              status: 'EMPTY',
+              issue: 6377,
+              expiresAt,
+            }],
+          }),
+          /tariffTrendsUs.*UTC ISO expiresAt/,
+          expiresAt,
+        );
+      }
+
+      for (const expiresAt of [
+        '2026-08-10T12:00:00Z',
+        '2026-08-10T12:00:00.1Z',
+        '2026-08-10T12:00:00.123Z',
+        '2026-08-10T12:00:00.123456Z',
+        '2026-08-10T12:00:00+04:00',
+      ]) {
+        assert.doesNotThrow(
+          () => validateAcceptanceBaseline({
+            ...baseline,
+            acknowledged: [{
+              name: 'tariffTrendsUs',
+              status: 'EMPTY',
+              issue: 6377,
+              expiresAt,
+            }],
+          }),
+          expiresAt,
+        );
+      }
+    });
+
+    it('rejects duplicate name and status entries in either order', () => {
+      const expired = {
+        name: 'tariffTrendsUs',
+        status: 'EMPTY',
+        issue: 6377,
+        expiresAt: '2026-08-10T12:00:00.000Z',
+      };
+      const unbounded = {
+        name: 'tariffTrendsUs',
+        status: 'EMPTY',
+        issue: 6378,
+      };
+
+      for (const acknowledged of [
+        [expired, unbounded],
+        [unbounded, expired],
+      ]) {
+        assert.throws(
+          () => validateAcceptanceBaseline({ ...baseline, acknowledged }),
+          /duplicate.*tariffTrendsUs:EMPTY/i,
+        );
+      }
+    });
+
     it('ships a valid, unexpired committed baseline', () => {
       const committed = readCommittedBaseline();
       validateAcceptanceBaseline(committed);
@@ -502,6 +572,186 @@ describe('scheduled seed freshness monitor', () => {
       assert.match(runbook, /Railway-side pre-seed/i);
       assert.match(runbook, /entry-level `expiresAt`/i);
       assert.match(runbook, /first\s+(scheduled\s+)?cron window/i);
+    });
+
+    describe('health-probe cutover enforcement', () => {
+      const baseSeedMeta = {
+        tariffTrendsUs: { key: 'seed-meta:economic:tariff-trends-us' },
+        unchanged: { key: 'seed-meta:unchanged', maxStaleMin: 60 },
+      };
+      const baselineWithoutCutover = { ...baseline, acknowledged: [] };
+
+      it('fails a new or repointed probe without machine-readable cutover evidence', () => {
+        assert.throws(
+          () => validateHealthProbeCutovers({
+            baseSeedMeta,
+            headSeedMeta: {
+              ...baseSeedMeta,
+              tariffTrendsUs: { key: 'seed-meta:trade:tariffs' },
+            },
+            baseline: baselineWithoutCutover,
+          }),
+          /tariffTrendsUs.*pre-seed.*expiring acknowledgement/i,
+        );
+      });
+
+      it('accepts pre-seed evidence bound to the exact key transition', () => {
+        const cutover = {
+          mode: 'preseed',
+          fromKey: 'seed-meta:economic:tariff-trends-us',
+          issue: 6377,
+          verifiedAt: '2026-08-10T09:00:00.000Z',
+          evidence: {
+            platform: 'railway',
+            service: 'seed-supply-chain-trade',
+            probeKey: 'seed-meta:trade:tariffs',
+            compactHealthStatus: 'OK',
+            reference: 'https://github.com/koala73/worldmonitor/issues/6377#issuecomment-1',
+          },
+        };
+        const headSeedMeta = {
+          ...baseSeedMeta,
+          tariffTrendsUs: { key: 'seed-meta:trade:tariffs', cutover },
+        };
+
+        assert.doesNotThrow(() => validateHealthProbeCutovers({
+          baseSeedMeta,
+          headSeedMeta,
+          baseline: baselineWithoutCutover,
+        }));
+        assert.throws(
+          () => validateHealthProbeCutovers({
+            baseSeedMeta: {
+              ...baseSeedMeta,
+              tariffTrendsUs: { key: 'seed-meta:another-old-key' },
+            },
+            headSeedMeta,
+            baseline: baselineWithoutCutover,
+          }),
+          /fromKey.*seed-meta:another-old-key/i,
+        );
+        assert.throws(
+          () => validateHealthProbeCutovers({
+            baseSeedMeta,
+            headSeedMeta: {
+              ...headSeedMeta,
+              tariffTrendsUs: {
+                ...headSeedMeta.tariffTrendsUs,
+                cutover: { ...cutover, verifiedAt: 'August 10, 2026' },
+              },
+            },
+            baseline: baselineWithoutCutover,
+          }),
+          /verifiedAt/i,
+        );
+        for (const evidence of [
+          'unstructured',
+          { ...cutover.evidence, platform: 'github' },
+          { ...cutover.evidence, service: '' },
+          { ...cutover.evidence, probeKey: 'seed-meta:wrong' },
+          { ...cutover.evidence, compactHealthStatus: 'EMPTY' },
+          { ...cutover.evidence, reference: 'http://example.com/evidence' },
+        ]) {
+          assert.throws(
+            () => validateHealthProbeCutovers({
+              baseSeedMeta,
+              headSeedMeta: {
+                ...headSeedMeta,
+                tariffTrendsUs: {
+                  ...headSeedMeta.tariffTrendsUs,
+                  cutover: { ...cutover, evidence },
+                },
+              },
+              baseline: baselineWithoutCutover,
+            }),
+            /Railway.*service.*probe.*compact health OK.*HTTPS/i,
+          );
+        }
+      });
+
+      it('accepts an owner-bound acknowledgement that expires by the first cron run', () => {
+        const headSeedMeta = {
+          ...baseSeedMeta,
+          tariffTrendsUs: {
+            key: 'seed-meta:trade:tariffs',
+            cutover: {
+              mode: 'expiring-ack',
+              fromKey: 'seed-meta:economic:tariff-trends-us',
+              issue: 6377,
+              status: 'EMPTY',
+            },
+          },
+        };
+        const cutoverEntry = {
+          name: 'tariffTrendsUs',
+          status: 'EMPTY',
+          issue: 6377,
+          expiresAt: '2026-08-10T06:00:00.000Z',
+          cutover: {
+            probeKey: 'seed-meta:trade:tariffs',
+            activatedAt: '2026-08-10T00:00:00.000Z',
+            firstScheduledRunAt: '2026-08-10T06:00:00.000Z',
+          },
+        };
+
+        assert.doesNotThrow(() => validateHealthProbeCutovers({
+          baseSeedMeta,
+          headSeedMeta,
+          baseline: { ...baseline, acknowledged: [cutoverEntry] },
+        }));
+        for (const badEntry of [
+          { ...cutoverEntry, expiresAt: '2026-08-10T06:00:00.001Z' },
+          { ...cutoverEntry, expiresAt: '2026-08-09T23:59:59.999Z' },
+          {
+            ...cutoverEntry,
+            cutover: {
+              ...cutoverEntry.cutover,
+              firstScheduledRunAt: '2026-08-11T00:00:00.001Z',
+            },
+          },
+        ]) {
+          assert.throws(
+            () => validateHealthProbeCutovers({
+              baseSeedMeta,
+              headSeedMeta,
+              baseline: { ...baseline, acknowledged: [badEntry] },
+            }),
+            /activation|first scheduled run|24 hours/i,
+          );
+        }
+        assert.throws(
+          () => validateHealthProbeCutovers({
+            baseSeedMeta,
+            headSeedMeta: {
+              ...headSeedMeta,
+              tariffTrendsUs: {
+                ...headSeedMeta.tariffTrendsUs,
+                cutover: { ...headSeedMeta.tariffTrendsUs.cutover, status: 'SEED_ERROR' },
+              },
+            },
+            baseline: { ...baseline, acknowledged: [cutoverEntry] },
+          }),
+          /exact health status|expiring acknowledgement/i,
+        );
+      });
+
+      it('runs in the pull-request workflow and the pre-push hook', () => {
+        const workflow = readFileSync(TEST_WORKFLOW_URL, 'utf8');
+        const hook = readFileSync(PRE_PUSH_HOOK_URL, 'utf8');
+
+        assert.match(
+          workflow,
+          /unit:[\s\S]*?fetch-depth: 0[\s\S]*?name: Enforce health-probe cutovers[\s\S]*?node --import tsx scripts\/check-health-probe-cutovers\.mts/,
+        );
+        assert.match(
+          hook,
+          /changed '[^']*scripts\/check-health-probe-cutovers\\\.mts/,
+        );
+        assert.match(
+          hook,
+          /node --import tsx scripts\/check-health-probe-cutovers\.mts origin\/main/,
+        );
+      });
     });
   });
 
