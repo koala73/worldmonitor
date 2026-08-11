@@ -8,7 +8,7 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
 import { RESILIENCE_COHORTS, unionMembership } from './helpers/resilience-cohorts.mts';
-import { MATCHED_PAIRS } from './helpers/resilience-matched-pairs.mts';
+import { FIN_SYS_EXPOSURE_MATCHED_PAIRS, MATCHED_PAIRS } from './helpers/resilience-matched-pairs.mts';
 
 const ISO2_RE = /^[A-Z]{2}$/;
 
@@ -120,5 +120,91 @@ describe('resilience matched-pair configuration', () => {
     // and the panel provides insufficient coverage across scorer
     // behavior axes.
     assert.ok(MATCHED_PAIRS.length >= 4, `expected ≥ 4 matched pairs, got ${MATCHED_PAIRS.length}`);
+  });
+});
+
+describe('dimension-scoped matched-pair configuration', () => {
+  // The dimension panels intentionally live OUTSIDE `MATCHED_PAIRS`: that
+  // export feeds acceptance gate #7, which compares whole-index overall
+  // scores. Mixing dimension-level anchors into it would silently compare
+  // one dimension's expectation against another quantity. #6459.
+  const DIMENSION_PANELS = [
+    { label: 'FIN_SYS_EXPOSURE_MATCHED_PAIRS', pairs: FIN_SYS_EXPOSURE_MATCHED_PAIRS },
+  ];
+
+  it('dimension panels are disjoint from the whole-index panel', () => {
+    const wholeIndexIds = new Set(MATCHED_PAIRS.map((p) => p.id));
+    for (const { label, pairs } of DIMENSION_PANELS) {
+      for (const pair of pairs) {
+        assert.ok(
+          !wholeIndexIds.has(pair.id),
+          `${label} pair ${pair.id} collides with a whole-index pair id`,
+        );
+      }
+    }
+  });
+
+  it('every dimension pair names its dimension and two distinct valid ISO-2 codes', () => {
+    for (const { label, pairs } of DIMENSION_PANELS) {
+      for (const pair of pairs) {
+        assert.ok(pair.dimension.length > 0, `${label} pair ${pair.id} must name a dimension`);
+        assert.match(pair.higherExpected, ISO2_RE, `${label} pair ${pair.id} higherExpected`);
+        assert.match(pair.lowerExpected, ISO2_RE, `${label} pair ${pair.id} lowerExpected`);
+        assert.notEqual(
+          pair.higherExpected,
+          pair.lowerExpected,
+          `${label} pair ${pair.id} has higher === lower (${pair.higherExpected})`,
+        );
+      }
+    }
+  });
+
+  it('every dimension pair documents its axis, rationale, and flip conditions', () => {
+    for (const { label, pairs } of DIMENSION_PANELS) {
+      for (const pair of pairs) {
+        assert.ok(pair.axis.length > 10, `${label} pair ${pair.id} axis too short`);
+        assert.ok(
+          pair.rationale.length > 100,
+          `${label} pair ${pair.id} rationale too short (${pair.rationale.length} chars)`,
+        );
+        // The contract in resilience-matched-pairs.mts requires the
+        // rationale to state the conditions under which the direction
+        // could legitimately flip, so a future reviewer can challenge the
+        // pair rather than guess at intent.
+        assert.match(
+          pair.rationale,
+          /flip/i,
+          `${label} pair ${pair.id} rationale must state its flip conditions`,
+        );
+      }
+    }
+  });
+
+  it('dimension pairs carry a decisive minimum gap', () => {
+    // A dimension-level anchor exists to keep one dimension's own signal
+    // unambiguous, so it takes a wider buffer than the whole-index panel's
+    // 1-5 point cushions. Below 10 the gate stops distinguishing "the
+    // construct is directionally right" from "the two happen to be close".
+    for (const { label, pairs } of DIMENSION_PANELS) {
+      for (const pair of pairs) {
+        const minGap = pair.minGap ?? 3;
+        assert.ok(minGap >= 10, `${label} pair ${pair.id} minGap=${minGap} must be ≥ 10`);
+        assert.ok(minGap <= 40, `${label} pair ${pair.id} minGap=${minGap} suspiciously large`);
+      }
+    }
+  });
+
+  it('dimension pair ids are unique within their panel', () => {
+    for (const { label, pairs } of DIMENSION_PANELS) {
+      const ids = pairs.map((p) => p.id);
+      assert.equal(new Set(ids).size, ids.length, `${label} pair ids must be unique`);
+    }
+  });
+
+  it('the financialSystemExposure panel covers at least 4 axes', () => {
+    assert.ok(
+      FIN_SYS_EXPOSURE_MATCHED_PAIRS.length >= 4,
+      `expected ≥ 4 financialSystemExposure pairs, got ${FIN_SYS_EXPOSURE_MATCHED_PAIRS.length}`,
+    );
   });
 });

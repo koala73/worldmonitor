@@ -33,6 +33,7 @@ import {
   ResilienceConfigurationError,
   type ResilienceSeedReader,
 } from '../server/worldmonitor/resilience/v1/_dimension-scorers.ts';
+import { FINSYS_FIXTURE_CAPTURED_AT, createFinSysFixtureReader } from './helpers/resilience-finsys-fixtures.mts';
 
 const TEST_ISO2 = 'XX';
 
@@ -444,5 +445,116 @@ describe('scoreFinancialSystemExposure — component-read contract', () => {
     };
     await scoreFinancialSystemExposure(TEST_ISO2, reader);
     assert.equal(sanctionsReads, 0, 'scoreFinancialSystemExposure must not read sanctions:country-counts:v1');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// #6459 inversion probe, committed as a regression test.
+//
+// The issue's appendix ran five hand-built countries through the real scorer
+// and got, at b83ecbe35:
+//
+//   MC 22/0.65   LU 54/0.65   RU 70/1.0   TD 72/1.0   IR 0/0.2
+//
+// Monaco and Luxembourg — the two deepest financial systems in the sample —
+// scored BELOW Russia and Chad. Russia's 70 decomposed as 0.35x80 (thin
+// short-term debt) + 0.30x72 (low cross-border claims) + 0.20x100 (on neither
+// FATF list) + 0.15x0: three of four components read severance from the
+// Western financial system as strength.
+//
+// Keeping the probe as a test rather than a script is the whole point. The
+// prose activation anchor in the methodology doc said the same thing and
+// nothing evaluated it for three and a half months.
+// ---------------------------------------------------------------------------
+describe('scoreFinancialSystemExposure — #6459 inversion probe (pinned)', () => {
+  // Verbatim from the issue appendix.
+  const probeReader: ResilienceSeedReader = async (key) => {
+    if (key.startsWith('seed-meta:')) return { status: 'ok', fetchedAt: Date.now() };
+    if (key === 'economic:wb-external-debt:v1') {
+      // MC/LU absent: neither is a World Bank Debtor Reporting System filer.
+      return { countries: { RU: { value: 3, year: 2024 }, TD: { value: 1, year: 2024 } } };
+    }
+    if (key === 'economic:bis-lbs:v1') {
+      return {
+        countries: {
+          RU: { totalXborderPctGdp: 4, parentCount: 0 },
+          TD: { totalXborderPctGdp: 1.5, parentCount: 0 },
+          MC: { totalXborderPctGdp: 630, parentCount: 6 },
+          LU: { totalXborderPctGdp: 800, parentCount: 10 },
+        },
+      };
+    }
+    if (key === 'economic:fatf-listing:v1') {
+      return {
+        listings: { IR: 'black', KP: 'black', MM: 'black', MC: 'gray', VE: 'gray' },
+        publicationDate: '2026-02-20',
+      };
+    }
+    return null;
+  };
+
+  // Expected values were derived from the component arithmetic BEFORE the
+  // retune was written, not read back off the implementation:
+  //   MC 0.35x75(imputed) + 0.30x35(band floor) + 0.20x55(gray) + 0.15x56 = 56
+  //   LU 0.35x75          + 0.30x35            + 0.20x100      + 0.15x100 = 72
+  //   RU capped at 15 by the comprehensive-embargo cap (blend was 68)
+  //   TD 0.35x93 + 0.30x44 + 0.20x100 + 0.15x0                            = 66
+  //   IR FATF black is the only resolving slot                            = 0
+  const EXPECTED: ReadonlyArray<{ cc: string; score: number; coverage: number; wasBeforeFix: number }> = [
+    { cc: 'MC', score: 56, coverage: 0.76, wasBeforeFix: 22 },
+    { cc: 'LU', score: 72, coverage: 0.76, wasBeforeFix: 54 },
+    { cc: 'RU', score: 15, coverage: 1, wasBeforeFix: 70 },
+    { cc: 'TD', score: 66, coverage: 1, wasBeforeFix: 72 },
+    { cc: 'IR', score: 0, coverage: 0.2, wasBeforeFix: 0 },
+  ];
+
+  it('pins the probe scores and coverages', async () => {
+    for (const { cc, score, coverage, wasBeforeFix } of EXPECTED) {
+      const result = await scoreFinancialSystemExposure(cc, probeReader);
+      assert.equal(
+        result.score,
+        score,
+        `${cc}: expected ${score}, got ${result.score} (was ${wasBeforeFix} at b83ecbe35, pre-#6459)`,
+      );
+      assert.equal(result.coverage, coverage, `${cc}: expected coverage ${coverage}, got ${result.coverage}`);
+    }
+  });
+
+  it('financially deep jurisdictions out-score financially severed ones', async () => {
+    // The invariant behind the pinned numbers. If a future retune moves the
+    // exact values, this assertion still holds the construct's direction —
+    // the pinned table alone would just be updated to whatever ran.
+    const [mc, lu, ru, td] = await Promise.all(
+      ['MC', 'LU', 'RU', 'TD'].map((cc) => scoreFinancialSystemExposure(cc, probeReader)),
+    );
+    assert.ok(lu.score > ru.score, `LU (${lu.score}) must out-score RU (${ru.score})`);
+    assert.ok(lu.score > td.score, `LU (${lu.score}) must out-score TD (${td.score})`);
+    assert.ok(mc.score > ru.score, `MC (${mc.score}) must out-score RU (${ru.score})`);
+  });
+});
+
+describe('scoreFinancialSystemExposure — production-shaped no-BIS-row jurisdictions', () => {
+  // Landmine from #6459: the appendix probe gave Monaco a BIS row, but
+  // production has none — Monaco resolves its FATF slot only, at coverage
+  // 0.2. Both shapes produced an inverted outcome, so both are pinned.
+  it('Monaco resolves FATF-only at coverage 0.2 in the production payload', async () => {
+    const reader = createFinSysFixtureReader();
+    const mc = await scoreFinancialSystemExposure('MC', reader);
+    assert.equal(mc.coverage, 0.2, `MC coverage must reflect the FATF-only slot (${FINSYS_FIXTURE_CAPTURED_AT} payload)`);
+    assert.equal(mc.score, 55, 'MC must score the FATF gray anchor exactly — it is the only resolving component');
+  });
+
+  it('Cuba and DPRK resolve FATF-only and stay under the sanctions anchor', async () => {
+    // Neither has a Debtor Reporting System row nor a BIS CBS counterparty
+    // row. Cuba is absent from both FATF lists, so before #6459 its single
+    // resolving slot scored compliant-by-absence at 100 — a comprehensively
+    // embargoed economy topping the dimension outright.
+    const reader = createFinSysFixtureReader();
+    const cu = await scoreFinancialSystemExposure('CU', reader);
+    const kp = await scoreFinancialSystemExposure('KP', reader);
+    assert.equal(cu.coverage, 0.2, 'CU must resolve the FATF slot only');
+    assert.ok(cu.score < 20, `CU scored ${cu.score}; compliant-by-absence must not survive the embargo cap`);
+    assert.equal(kp.coverage, 0.2, 'KP must resolve the FATF slot only');
+    assert.equal(kp.score, 0, 'KP is FATF black-listed; its only slot anchors at 0');
   });
 });
