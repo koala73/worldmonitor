@@ -203,40 +203,6 @@ export const companyMonitoringCandidateTerminalReasonValidator = v.union(
   v.literal("company_removed"),
 );
 
-const companyMonitoringClaimAllowedUseValidator = v.union(
-  v.literal("discovery"),
-  v.literal("attribution"),
-  v.literal("primary_evidence"),
-);
-
-const companyMonitoringAttributionClaimValidator = v.object({
-  claimId: v.string(),
-  type: v.union(
-    v.literal("alias"),
-    v.literal("domain"),
-    v.literal("legal_identifier"),
-    v.literal("x_account_id"),
-    v.literal("x_handle"),
-    v.literal("location"),
-    v.literal("customer_reference"),
-  ),
-  value: v.string(),
-  trustState: v.union(
-    v.literal("unverified"),
-    v.literal("verified"),
-    v.literal("expired"),
-    v.literal("rejected"),
-  ),
-  allowedUses: v.optional(v.array(companyMonitoringClaimAllowedUseValidator)),
-  expiresAt: v.optional(v.number()),
-});
-
-export const companyMonitoringEvidenceSubjectValidator = v.object({
-  companyId: v.string(),
-  name: v.string(),
-  claims: v.array(companyMonitoringAttributionClaimValidator),
-});
-
 export const companyMonitoringProviderEvidenceValidator = v.object({
   provider: companyMonitoringEvidenceProviderValidator,
   providerLocator: v.string(),

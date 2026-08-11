@@ -72,21 +72,6 @@ async function seedCompany(
   });
 }
 
-function subject(companyId: string, legalIdentifier: string) {
-  return {
-    companyId,
-    name: `Company ${companyId.at(-1)}`,
-    claims: [{
-      claimId: `claim_${legalIdentifier}`,
-      type: "legal_identifier",
-      value: legalIdentifier,
-      trustState: "verified",
-      allowedUses: ["attribution"],
-      expiresAt: NOW + 30 * DAY_MS,
-    }],
-  };
-}
-
 function exaEvidence(
   companyId: string,
   legalIdentifier: string,
@@ -127,12 +112,12 @@ describe("Company Monitoring evidence persistence and candidate lifecycle", () =
 
     await t.mutation(EVIDENCE.ingestEvidenceForTest, {
       ownerAccountId: ACCOUNT_A,
-      subjects: [subject(COMPANY_A, "lei:A123")],
+      companyIds: [COMPANY_A],
       evidence: [exaEvidence(COMPANY_A, "lei:A123")],
     });
     await t.mutation(EVIDENCE.ingestEvidenceForTest, {
       ownerAccountId: ACCOUNT_B,
-      subjects: [subject(COMPANY_B, "lei:B456")],
+      companyIds: [COMPANY_B],
       evidence: [exaEvidence(COMPANY_B, "lei:B456")],
     });
 
@@ -150,7 +135,7 @@ describe("Company Monitoring evidence persistence and candidate lifecycle", () =
     await seedCompany(t, ACCOUNT_A, COMPANY_A, "lei:A123");
     await t.mutation(EVIDENCE.ingestEvidenceForTest, {
       ownerAccountId: ACCOUNT_A,
-      subjects: [subject(COMPANY_A, "lei:A123")],
+      companyIds: [COMPANY_A],
       evidence: [exaEvidence(COMPANY_A, "lei:A123")],
     });
     const original = await candidateFor(t, ACCOUNT_A, COMPANY_A);
@@ -236,7 +221,7 @@ describe("Company Monitoring evidence persistence and candidate lifecycle", () =
     ));
     await t.mutation(EVIDENCE.ingestEvidenceForTest, {
       ownerAccountId: ACCOUNT_A,
-      subjects: [subject(COMPANY_A, "lei:A123")],
+      companyIds: [COMPANY_A],
       evidence,
     });
     await t.run(async (ctx) => {

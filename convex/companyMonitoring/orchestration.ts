@@ -52,6 +52,17 @@ type XPostAlias = Pick<
   | "createdAt"
   | "updatedAt"
 >;
+type NormalizedXPostInput = Pick<
+  Doc<"companyMonitoringXEvidence">,
+  | "companyId"
+  | "authorAccountId"
+  | "currentHandle"
+  | "createdAt"
+  | "observedAt"
+  | "contentState"
+  | "storageState"
+  | "text"
+> & { canonicalPostId: string };
 
 const ACCOUNT_DUE_PAGE_SIZE = 32;
 const ACCOUNT_WORK_PAGE_SIZE = 8;
@@ -1657,6 +1668,7 @@ async function applyXPosts(
   posts: XIngestion["posts"],
   now: number,
 ) {
+  const normalizedPosts = new Map<string, NormalizedXPostInput>();
   const companyRevisions = new Map<string, number>();
   const identities = new Map<string, Doc<"companyMonitoringXIdentities"> | null>();
   const companies = new Map<string, Doc<"companyMonitoringCompanies"> | null>();
@@ -1780,6 +1792,17 @@ async function applyXPosts(
         lastReconciledAt: now,
         updatedAt: now,
       });
+      normalizedPosts.set(`${post.companyId}\u0000${canonicalPostId}`, {
+        companyId: existing.companyId,
+        canonicalPostId,
+        authorAccountId: existing.authorAccountId,
+        currentHandle: existing.currentHandle,
+        createdAt: existing.createdAt,
+        observedAt: existing.observedAt,
+        contentState: existing.contentState,
+        storageState: existing.storageState,
+        ...(existing.text ? { text: existing.text } : {}),
+      });
       continue;
     }
     if (post.contentState === "deleted") deletedCanonicalPostIds.add(canonicalPostId);
@@ -1822,7 +1845,19 @@ async function applyXPosts(
     };
     if (existing) await ctx.db.replace(existing._id, row);
     else await ctx.db.insert("companyMonitoringXEvidence", row);
+    normalizedPosts.set(`${post.companyId}\u0000${canonicalPostId}`, {
+      companyId: row.companyId,
+      canonicalPostId,
+      authorAccountId: row.authorAccountId,
+      currentHandle: row.currentHandle,
+      createdAt: row.createdAt,
+      observedAt: row.observedAt,
+      contentState: row.contentState,
+      storageState: row.storageState,
+      ...(row.text ? { text: row.text } : {}),
+    });
   }
+  return [...normalizedPosts.values()];
 }
 
 async function applyXIngestion(
@@ -1833,8 +1868,8 @@ async function applyXIngestion(
   now: number,
 ) {
   await applyXIdentities(ctx, work, payload.identities, now);
-  await applyXPosts(ctx, work, payload.posts, now);
-  await syncNormalizedXEvidence(ctx, work, payload, obligations, now);
+  const normalizedPosts = await applyXPosts(ctx, work, payload.posts, now);
+  await syncNormalizedXEvidence(ctx, work, normalizedPosts, obligations, now);
 }
 
 function exaSourceAuthority(rawUrl: string): ProviderEvidence["sourceAuthority"] {
@@ -1871,24 +1906,10 @@ async function applyExaIngestion(
   });
 }
 
-async function canonicalXPostId(
-  ctx: MutationCtx,
-  ownerAccountId: string,
-  post: XIngestion["posts"][number],
-) {
-  const alias = await ctx.db
-    .query("companyMonitoringXPostAliases")
-    .withIndex("by_account_postId", (q) =>
-      q.eq("ownerAccountId", ownerAccountId).eq("postId", post.postId),
-    )
-    .unique();
-  return alias?.canonicalPostId ?? post.editHistoryPostIds[0] ?? post.postId;
-}
-
 async function syncNormalizedXEvidence(
   ctx: MutationCtx,
   work: Work,
-  payload: XIngestion,
+  posts: NormalizedXPostInput[],
   obligations: Obligation[],
   now: number,
 ) {
@@ -1917,15 +1938,8 @@ async function syncNormalizedXEvidence(
     const normalizedRows: ProviderEvidence[] = [];
     const deletedLocators: string[] = [];
     const unavailableLocators: string[] = [];
-    for (const post of payload.posts.filter((row) => row.companyId === companyId)) {
-      const canonicalPostId = await canonicalXPostId(ctx, work.ownerAccountId, post);
-      const stored = await ctx.db
-        .query("companyMonitoringXEvidence")
-        .withIndex("by_account_postId", (q) =>
-          q.eq("ownerAccountId", work.ownerAccountId).eq("postId", canonicalPostId),
-        )
-        .unique();
-      if (!stored || stored.companyId !== companyId) continue;
+    for (const stored of posts.filter((row) => row.companyId === companyId)) {
+      const canonicalPostId = stored.canonicalPostId;
       if (stored.contentState === "deleted") {
         deletedLocators.push(canonicalPostId);
         continue;

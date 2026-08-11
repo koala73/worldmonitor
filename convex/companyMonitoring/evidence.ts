@@ -14,7 +14,6 @@ import {
 } from "../../shared/company-monitoring-evidence";
 import { COMPANY_MONITORING_LIMITS } from "../../shared/company-monitoring-contract";
 import {
-  companyMonitoringEvidenceSubjectValidator,
   companyMonitoringProviderEvidenceValidator,
 } from "./validators";
 
@@ -65,8 +64,7 @@ async function canonicalSubjects(
   if (subjectIds.length !== requestedCompanyIds.length) {
     throw new ConvexError("COMPANY_MONITORING_EVIDENCE_SUBJECTS_INVALID");
   }
-  const canonical: EvidenceSubject[] = [];
-  for (const companyId of subjectIds) {
+  const canonical = await Promise.all(subjectIds.map(async (companyId): Promise<EvidenceSubject> => {
     const [company, claims] = await Promise.all([
       ctx.db
         .query("companyMonitoringCompanies")
@@ -89,7 +87,7 @@ async function canonicalSubjects(
     ) {
       throw new ConvexError("COMPANY_MONITORING_EVIDENCE_SUBJECTS_INVALID");
     }
-    canonical.push({
+    return {
       companyId,
       name: company.name,
       claims: claims.map((claim) => ({
@@ -100,37 +98,30 @@ async function canonicalSubjects(
         ...(claim.allowedUses ? { allowedUses: claim.allowedUses } : {}),
         ...(claim.expiresAt !== undefined ? { expiresAt: claim.expiresAt } : {}),
       })),
-    });
-  }
+    };
+  }));
   // Only the requested company IDs are routing input. Names, claims, trust,
   // expiry, and allowed-use values are always re-read from this account.
   return canonical;
 }
 
 async function setSyndicationForActiveRows(ctx: MutationCtx, rows: EvidenceDoc[]) {
-  const groups = new Map<string, EvidenceDoc[]>();
-  for (const row of rows) {
-    const group = groups.get(row.occurrenceDedupeKey) ?? [];
-    group.push(row);
-    groups.set(row.occurrenceDedupeKey, group);
-  }
-  for (const group of groups.values()) {
-    const independent = group
-      .filter((row) =>
-        row.sourceAuthority !== "low_authority" && row.independence !== "first_party"
-      )
-      .sort((left, right) =>
-        left.publishedAt - right.publishedAt ||
-        left.providerOriginFingerprint.localeCompare(right.providerOriginFingerprint) ||
-        left.evidenceFingerprint.localeCompare(right.evidenceFingerprint)
-      );
-    const leaderId = independent[0]?._id;
-    for (const row of independent) {
-      const independence = row._id === leaderId ? "independent" as const : "syndicated" as const;
-      if (row.independence !== independence) {
-        await ctx.db.patch(row._id, { independence, updatedAt: Date.now() });
-        row.independence = independence;
-      }
+  const independent = rows
+    .filter((row) =>
+      row.sourceAuthority !== "low_authority" && row.independence !== "first_party"
+    )
+    .sort((left, right) =>
+      left.publishedAt - right.publishedAt ||
+      left.providerOriginFingerprint.localeCompare(right.providerOriginFingerprint) ||
+      left.evidenceFingerprint.localeCompare(right.evidenceFingerprint)
+    );
+  const leaderId = independent[0]?._id;
+  const now = Date.now();
+  for (const row of independent) {
+    const independence = row._id === leaderId ? "independent" as const : "syndicated" as const;
+    if (row.independence !== independence) {
+      await ctx.db.patch(row._id, { independence, updatedAt: now });
+      row.independence = independence;
     }
   }
 }
@@ -159,6 +150,29 @@ async function occurrenceLossReason(
     if (row) return reason;
   }
   return "evidence_expired" as const;
+}
+
+function candidateLifecycle(
+  candidate: Doc<"companyMonitoringCandidates"> | null,
+  now: number,
+) {
+  if (
+    candidate?.state === "terminal" &&
+    (candidate.terminalReason === "admitted" || candidate.terminalReason === "rejected")
+  ) {
+    return { state: "terminal" as const, terminalReason: candidate.terminalReason };
+  }
+  if (candidate && candidate.expiresAt <= now) {
+    return { state: "terminal" as const, terminalReason: "hold_expired" as const };
+  }
+  if (
+    candidate?.state === "held" &&
+    candidate.holdUntil !== undefined &&
+    candidate.holdUntil > now
+  ) {
+    return { state: "held" as const, holdUntil: candidate.holdUntil };
+  }
+  return { state: "pending_classification" as const };
 }
 
 async function recomputeOccurrenceCandidate(
@@ -201,18 +215,7 @@ async function recomputeOccurrenceCandidate(
     const first = [...active].sort((left, right) =>
       left.observedAt - right.observedAt || left.evidenceFingerprint.localeCompare(right.evidenceFingerprint)
     )[0]!;
-    const expiredCandidate = existing && existing.expiresAt <= now;
-    const classifiedTerminal = existing?.state === "terminal" &&
-      (existing.terminalReason === "admitted" || existing.terminalReason === "rejected");
-    const held = existing?.state === "held" && existing.holdUntil !== undefined &&
-      existing.holdUntil > now && !expiredCandidate;
-    const lifecycle = classifiedTerminal
-      ? { state: "terminal" as const, terminalReason: existing.terminalReason }
-      : expiredCandidate
-        ? { state: "terminal" as const, terminalReason: "hold_expired" as const }
-        : held
-          ? { state: "held" as const, holdUntil: existing.holdUntil }
-          : { state: "pending_classification" as const };
+    const lifecycle = candidateLifecycle(existing, now);
     const row = {
       ownerAccountId,
       companyId,
@@ -376,21 +379,6 @@ export async function ingestCompanyEvidenceForCompanyIds(
   };
 }
 
-export function ingestCompanyEvidence(
-  ctx: MutationCtx,
-  input: {
-    ownerAccountId: string;
-    subjects: EvidenceSubject[];
-    evidence: ProviderEvidence[];
-  },
-) {
-  return ingestCompanyEvidenceForCompanyIds(ctx, {
-    ownerAccountId: input.ownerAccountId,
-    companyIds: input.subjects.map((subject) => subject.companyId),
-    evidence: input.evidence,
-  });
-}
-
 export async function setCompanyEvidenceStateForProviderLocators(
   ctx: MutationCtx,
   args: {
@@ -532,12 +520,12 @@ export async function purgeAccountCandidatesBatch(ctx: MutationCtx, ownerAccount
 export const ingestEvidenceForTest = internalMutation({
   args: {
     ownerAccountId: v.string(),
-    subjects: v.array(companyMonitoringEvidenceSubjectValidator),
+    companyIds: v.array(v.string()),
     evidence: v.array(companyMonitoringProviderEvidenceValidator),
   },
-  handler: (ctx, args) => ingestCompanyEvidence(ctx, args as {
+  handler: (ctx, args) => ingestCompanyEvidenceForCompanyIds(ctx, args as {
     ownerAccountId: string;
-    subjects: EvidenceSubject[];
+    companyIds: string[];
     evidence: ProviderEvidence[];
   }),
 });
@@ -580,8 +568,7 @@ export const continueCompanyProviderStateTransition = internalMutation({
   handler: setAllCompanyProviderEvidenceState,
 });
 
-// #6011 can consume this internal lifecycle seam without changing the storage
-// contract established here. It does not expose a public classifier endpoint.
+// Classifier state changes stay behind an internal mutation.
 export const recordCandidateAttempt = internalMutation({
   args: {
     ownerAccountId: v.string(),
