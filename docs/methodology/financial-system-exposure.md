@@ -1,6 +1,6 @@
 # Financial System Exposure — construct definition
 
-**Status**: Active (added in plan 2026-04-25-004 Phase 2 — Ship 2; recalibrated in #6459)
+**Status**: Active (added in plan 2026-04-25-004 Phase 2 — Ship 2; recalibrated in #6459 and #6461)
 **Dimension ID**: `financialSystemExposure`
 **Domain**: `economic` (weight 0.50 within domain)
 **Type**: `stress`
@@ -59,14 +59,23 @@ The original construct dropped the slot for them. That was the single largest co
 
 | Country state | Component 1 slot |
 |---|---|
-| DRS row present | `normalizeLowerBetter(value, 0, 15)`, full 0.35 weight, coverage 1.0 |
+| DRS row present; market-access proxy does not fire | `normalizeLowerBetter(value, 0, 15)`, full 0.35 weight, coverage 1.0 |
+| DRS row present; debt ≤1% GNI, BIS claims &lt;5% GDP, and zero reporting parents | same observed score at 30% certainty: runtime weight 0.105, nominal weight 0.35, `certaintyCoverage 0.3` |
 | No DRS row, `lendingType=LNX`, **and** present in BIS CBS | imputed score **75**, `certaintyCoverage 0.3`, `imputed: true`, `imputationClass: 'not-applicable'` |
 | Borrower missing its DRS row | slot drops out of the blend (possible partial payload) |
 | Absent from both DRS and BIS CBS | slot drops out of the blend (genuine data gap) |
 
+**Market-access constraint attenuation (#6461).** A near-zero short-term debt ratio is not full-strength evidence of low rollover vulnerability when the country has little commercial market access from which to borrow. The scorer uses a three-signal intersection already present in the construct: debt ≤1% of GNI, BIS cross-border claims below the 5% healthy-integration boundary, and zero independent foreign reporting parents. Only when all three hold does the debt leg retain 30% of its score weight and coverage certainty. If any signal clears its boundary, the observed debt ratio keeps full weight. This avoids an editorial country list and makes the rule self-expiring when market access appears in the source data.
+
+The low-claims and zero-parent signals must be observed numeric values. A missing or malformed BIS field is unknown, so it drops its own slot and does not trigger debt attenuation.
+
+On the 2026-08-11 production-shaped fixture, Chad moves from **67 at coverage 1.0** to **56 at coverage 0.76**. Its raw 0.14% debt observation still exists, but it no longer dominates the dimension while BIS reports claims at 1.11% of GDP and zero foreign parents.
+
 **Why `not-applicable` and not `unmonitored`**: non-participation in the DRS means there is no reported short-term external commercial debt to roll over. That is a mild positive, not an unknown, so the class that describes it is "the indicator does not apply here".
 
 **Discriminator**: the World Bank country catalog's `lendingType=LNX` classification is the explicit non-borrower signal. A missing DRS row is never enough by itself, because an accepted annual payload can still omit an eligible borrower. The imputation also requires a valid BIS CBS row. Payload schema v1 did not carry `nonDrsCountryCodes`; the scorer remains backward-compatible with that payload but treats eligibility as unknown, so the slot drops instead of receiving a positive imputation until schema v2 is seeded.
+
+This typed LNX/BIS imputation counts as a resolving component for FATF singleton handling. It is explicit `not-applicable` evidence with score 75 and partial certainty, not three-source absence, and therefore cannot produce a perfect 100-point dimension through the imputed-debt path.
 
 **Cadence**: monthly cron (WB IDS publishes annually; the cadence is for refresh-once-they-publish detection).
 
@@ -147,9 +156,11 @@ This page is a STABLE entry point that links to the current publication. Each FA
 
 **Grey rescaled 30 → 55 in #6459.** Grey-listing means "increased monitoring under an agreed action plan" — a jurisdiction actively remediating with FATF, not one a step away from the call-for-action black list. At 30 the gap to black was 30 points and the gap to compliant 70, which placed ordinary remediating economies closer to Iran and DPRK than to their actual peers. On the 2026-06-01 plenary list that included Monaco, whose FATF slot is its **only** resolving component in production (no BIS CBS row, no DRS row), so the mis-scaling propagated directly to its dimension score.
 
-**Compliant-by-absence is a known hole.** FATF enumerates AML/CFT deficiencies, not sanctions exposure, so `compliant` is assigned to any jurisdiction on neither list — including Russia, Belarus, Cuba and Libya, which all took a perfect 100 on a 0.20-weight component. The hole is closed by the comprehensive-embargo cap below rather than by penalising the ~170 genuinely unlisted jurisdictions.
+**Compliant-by-absence singleton handling (#6461).** FATF enumerates AML/CFT deficiencies, not sanctions exposure, so an unlisted jurisdiction receives `compliant` by absence. That 100-point slot remains valid when another financial-system component resolves; dropping it globally would penalise roughly 170 ordinary unlisted jurisdictions. For a non-embargoed country where it is the **only** resolving component, however, the scorer drops the slot: absence from WB IDS, BIS CBS, and both FATF lists carries no positive information. A listed gray or black jurisdiction keeps its real observation. The comprehensive-embargo cohort also keeps non-zero observed provenance because the external cap is the construct signal and the executable sanctions anchor rejects a vacuous coverage-0 pass.
 
-**Coverage**: 100% — FATF only enumerates non-compliant jurisdictions; every other country defaults to "compliant".
+The current seeder publishes only black and gray records. The scorer also accepts an explicit `compliant` record as observed provenance, rather than confusing a future explicit assessment with list absence; changing that payload contract requires its own calibration gate.
+
+**Coverage**: the source classifies the global universe by enumeration plus absence. Scorer coverage is conditional: a non-embargoed compliant-by-absence singleton contributes zero coverage, while listed jurisdictions and countries with another resolving component retain the 0.20 slot.
 
 **Cadence**: monthly cron.
 
@@ -249,17 +260,15 @@ Cohort membership lives in `tests/helpers/resilience-cohorts.mts` as `sanctions-
 
 **Dimension-level pairs are deliberately separate from `MATCHED_PAIRS`**, which feeds whole-index acceptance gate #7. A whole-index pair compares overall scores and cannot see a defect confined to one dimension.
 
-### Known residuals: absence still reads as strength outside the embargo list
+### Resolved absence-as-strength cases (#6461)
 
-The #6459 cap fixes the *embargoed* case of "absence reads as strength". Two non-embargoed shapes of the same defect survive, both measured against the 2026-08-11 production payload. Neither is fixed here, and a passing sanctions cohort is **not** evidence that either is resolved.
+The #6459 cap fixed the *embargoed* case of "absence reads as strength". #6461 resolves the two non-embargoed shapes measured against the 2026-08-11 production payload. The directional gates live in `tests/resilience-financial-system-exposure-calibration.test.mts` and run through the real scorer.
 
-**1. No-market-access low-income countries.** The debt leg still reads a structurally tiny short-term external debt stock as low rollover vulnerability, so a country with no commercial market access scores high on Component 1 at full weight. Chad takes 99 on that slot and 67 on the dimension. Re-anchoring the debt goalposts for market-access-constrained borrowers is a separate construct change needing its own calibration.
+**1. No-market-access low-income countries.** The observed debt leg is attenuated to 30% certainty only when its tiny ratio coincides with near-zero BIS claims and zero reporting parents. Chad's dimension score is now 56 rather than 67, with coverage reduced from 1.0 to 0.76. Boundary controls prove that debt above 1% GNI, claims at or above 5% GDP, or at least one reporting parent preserves full confidence.
 
-**2. FATF-compliant-by-absence as the only resolving slot.** Seven scorable jurisdictions have neither a DRS row nor a BIS CBS row, so FATF is their only component. Five of them are actually FATF-listed (MC, SS, YE grey; KP black) or embargoed (CU), and score accordingly. The remaining two — **Eritrea and Taiwan** — are absent from all three sources and take `compliant` by absence, scoring **100 at coverage 0.2**. For Taiwan that absence is a reporting-politics artefact rather than a resilience signal; for Eritrea it is straightforwardly wrong.
+**2. FATF-compliant-by-absence as the only resolving slot.** Seven scorable jurisdictions have neither a DRS row nor a BIS CBS row. Listed MC, SS, YE, and KP retain real FATF observations; embargoed CU retains the provenance constrained by its external cap. **Eritrea and Taiwan** now drop the inferred FATF slot and publish dimension score/coverage **0/0**, rather than **100/0.2**. Taiwan's reporting-politics absence and Eritrea's data desert therefore do not become resilience signals.
 
-The impact is bounded — coverage 0.2 gives the slot little weight in the coverage-weighted economic-domain mean, and both countries move under +1.3 points overall — but the principled fix is to treat compliant-by-absence as carrying no information when it is the *only* resolving component, and drop the slot rather than score it 100. That changes `coverage` (and therefore `headlineEligible`) for those countries, so it needs its own measurement and is deliberately out of scope for #6459, whose Phase B scoped the compliant-by-absence fix to embargoed states.
-
-Both residuals are tracked in **#6461**.
+The gate observes the pre-fix failures directly: ER/TW returned coverage 0.2, and Chad returned 67. Negative controls preserve FATF-only listed jurisdictions, the embargo cohort's non-zero coverage, ordinary low-debt borrowers with market access, and explicit compliant records.
 
 ## Bounded-movement gate
 
@@ -267,6 +276,12 @@ When the flag flips on, every country's `financialSystemExposure` score moves fr
 
 - At least 60% of countries should have |Δ| < 3 points overall
 - No country moves > 12 points overall except the explicitly-predicted set above (sanctions-isolated jurisdictions where the new dim correctly adds penalty)
+
+**#6461 full-universe measurement (2026-08-12, 196 scorable countries, flag OFF → flag ON):** Spearman **0.99789**; **196/196 (100%)** move by less than 3 points; maximum absolute movement **2.35**; no country moves more than 12. ER and TW remain `headlineEligible=false` in both arms and resolve the dimension at 0/0. Chad moves +0.87 overall, resolves at 56/0.76, and remains eligible. The only eligibility change is Venezuela, false → true, from activation of its capped 15/0.65 observed dimension rather than from the two #6461 residual rules.
+
+Production already runs with the flag enabled, as tracked in #6511, so the OFF arm is a counterfactual baseline rather than the current deployment state. The cache-generation rotation and activation-protocol reconciliation remain separate operational work in #6511; this measurement does not close those gates.
+
+This live measurement was **degraded** by a WGI source-failure state that affected the same governance-related dimensions in both arms. The paired movement result is still a genuine same-run flag comparison, but it is not an undegraded production-health snapshot; do not use it to claim WGI health or final post-deploy acceptance.
 
 ## Data sources and licensing
 

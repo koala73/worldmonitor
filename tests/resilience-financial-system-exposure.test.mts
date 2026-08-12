@@ -34,7 +34,8 @@ import {
   FIN_SYS_EXPOSURE_COMPREHENSIVE_EMBARGO,
   FIN_SYS_EXPOSURE_EMBARGO_POLICY_MAX_AGE_DAYS,
   FIN_SYS_EXPOSURE_EMBARGO_POLICY_REVIEWED_ON,
-  FIN_SYS_EXPOSURE_EMBARGO_SCORE_CAP,
+  FIN_SYS_MARKET_ACCESS_LOW_CLAIMS_PCT_GDP_MAX,
+  FIN_SYS_MARKET_ACCESS_LOW_DEBT_PCT_GNI_MAX,
   normalizeBandLowerBetter,
   scoreFinancialSystemExposure,
   ResilienceConfigurationError,
@@ -525,10 +526,7 @@ describe('scoreFinancialSystemExposure — comprehensive-embargo cap (#6459)', (
     // wrong: an embargoed country whose four slots all anchor at 100.
     for (const iso2 of FIN_SYS_EXPOSURE_COMPREHENSIVE_EMBARGO) {
       const result = await scoreFinancialSystemExposure(iso2, bestCaseReader(iso2));
-      assert.ok(
-        result.score <= FIN_SYS_EXPOSURE_EMBARGO_SCORE_CAP,
-        `${iso2} scored ${result.score}; must be capped at ${FIN_SYS_EXPOSURE_EMBARGO_SCORE_CAP}`,
-      );
+      assert.equal(result.score, 15, `${iso2} must stay pinned to the audited embargo cap`);
     }
   });
 
@@ -586,10 +584,7 @@ describe('scoreFinancialSystemExposure — comprehensive-embargo cap (#6459)', (
 
   it('is case-insensitive on the country code', async () => {
     const lower = await scoreFinancialSystemExposure('ru', bestCaseReader('ru'));
-    assert.ok(
-      lower.score <= FIN_SYS_EXPOSURE_EMBARGO_SCORE_CAP,
-      `lowercase iso2 must still hit the cap, got ${lower.score}`,
-    );
+    assert.equal(lower.score, 15, `lowercase iso2 must still hit the audited cap, got ${lower.score}`);
   });
 });
 
@@ -633,7 +628,8 @@ describe('scoreFinancialSystemExposure — non-DRS short-term-debt slot (#6459)'
       TEST_ISO2,
       reader({ debtRow: false, bisRow: false, confirmedNonDrs: true }),
     );
-    assert.equal(result.coverage, 0.2, `only the FATF slot may resolve, got coverage ${result.coverage}`);
+    assert.equal(result.coverage, 0, `compliant-by-absence must also drop for a genuine data desert, got coverage ${result.coverage}`);
+    assert.equal(result.score, 0, 'absence from all three sources must not publish a resilience score');
     assert.equal(result.imputedWeight, 0, 'no BIS row means no imputation');
   });
 
@@ -664,7 +660,76 @@ describe('scoreFinancialSystemExposure — non-DRS short-term-debt slot (#6459)'
     };
     const result = await scoreFinancialSystemExposure(TEST_ISO2, corrupt);
     assert.equal(result.imputedWeight, 0, 'a corrupt BIS row is not evidence of cross-border participation');
-    assert.equal(result.coverage, 0.2, `only the FATF slot may resolve, got coverage ${result.coverage}`);
+    assert.equal(result.coverage, 0, `a corrupt BIS row must not make compliant-by-absence resolve, got coverage ${result.coverage}`);
+  });
+});
+
+describe('scoreFinancialSystemExposure — market-access-constrained debt certainty (#6461)', () => {
+  const reader = (values: { debtPct: number; claimsPctGdp: unknown; parentCount: unknown }): ResilienceSeedReader =>
+    async (key) => {
+      if (key.startsWith('seed-meta:')) return { status: 'ok', fetchedAt: Date.now() };
+      if (key === 'economic:wb-external-debt:v1') {
+        return { countries: { [TEST_ISO2]: { value: values.debtPct, year: 2024 } } };
+      }
+      if (key === 'economic:bis-lbs:v1') {
+        return { countries: { [TEST_ISO2]: { totalXborderPctGdp: values.claimsPctGdp, parentCount: values.parentCount } } };
+      }
+      if (key === 'economic:fatf-listing:v1') {
+        return { listings: { IR: 'black', KP: 'black' }, publicationDate: '2026-06-01' };
+      }
+      return null;
+    };
+
+  it('reduces score weight and coverage only when all three constraint signals hold', async () => {
+    const result = await scoreFinancialSystemExposure(
+      TEST_ISO2,
+      reader({
+        debtPct: FIN_SYS_MARKET_ACCESS_LOW_DEBT_PCT_GNI_MAX,
+        claimsPctGdp: FIN_SYS_MARKET_ACCESS_LOW_CLAIMS_PCT_GDP_MAX - 0.01,
+        parentCount: 0,
+      }),
+    );
+
+    assert.equal(result.coverage, 0.76, 'the debt slot must report its attenuated certainty against nominal weight');
+    assert.equal(result.observedWeight, 0.755, 'the observed runtime weight must match the pinned attenuation applied to scoring');
+  });
+
+  it('treats a missing or malformed parent count as unknown rather than observed zero', async () => {
+    for (const parentCount of [null, '']) {
+      const result = await scoreFinancialSystemExposure(
+        TEST_ISO2,
+        reader({ debtPct: 0.1, claimsPctGdp: 1, parentCount }),
+      );
+
+      assert.equal(result.coverage, 0.85, 'a corrupt parent count must drop its own slot without attenuating the debt observation');
+      assert.equal(result.observedWeight, 0.85, 'unknown parent count must not masquerade as the observed zero-parent signal');
+    }
+  });
+
+  it('treats missing or malformed claims as unknown rather than observed zero', async () => {
+    for (const claimsPctGdp of [null, '']) {
+      const result = await scoreFinancialSystemExposure(
+        TEST_ISO2,
+        reader({ debtPct: 0.1, claimsPctGdp, parentCount: 0 }),
+      );
+
+      assert.equal(result.coverage, 0.7, 'corrupt claims must drop their own slot without attenuating the debt observation');
+      assert.equal(result.observedWeight, 0.7, 'unknown claims must not masquerade as the observed low-claims signal');
+    }
+  });
+
+  it('keeps full debt confidence when any market-access signal clears its boundary', async () => {
+    const controls = [
+      reader({ debtPct: FIN_SYS_MARKET_ACCESS_LOW_DEBT_PCT_GNI_MAX + 0.01, claimsPctGdp: 1, parentCount: 0 }),
+      reader({ debtPct: 0.1, claimsPctGdp: FIN_SYS_MARKET_ACCESS_LOW_CLAIMS_PCT_GDP_MAX, parentCount: 0 }),
+      reader({ debtPct: 0.1, claimsPctGdp: 1, parentCount: 1 }),
+    ];
+
+    for (const control of controls) {
+      const result = await scoreFinancialSystemExposure(TEST_ISO2, control);
+      assert.equal(result.coverage, 1, 'a country outside the three-signal intersection must retain full observed coverage');
+      assert.equal(result.observedWeight, 1, 'a country outside the three-signal intersection must retain all nominal score weight');
+    }
   });
 });
 
@@ -800,13 +865,13 @@ describe('scoreFinancialSystemExposure — #6459 inversion probe (pinned)', () =
   //   MC 0.35x75(imputed) + 0.30x35(band floor) + 0.20x55(gray) + 0.15x56 = 56
   //   LU 0.35x75          + 0.30x35            + 0.20x100      + 0.15x100 = 72
   //   RU capped at 15 by the comprehensive-embargo cap (blend was 68)
-  //   TD 0.35x93 + 0.30x44 + 0.20x100 + 0.15x0                            = 66
+  //   TD (0.35x0.3)x93 + 0.30x44 + 0.20x100 + 0.15x0, /0.755             = 57
   //   IR FATF black is the only resolving slot                            = 0
   const EXPECTED: ReadonlyArray<{ cc: string; score: number; coverage: number; wasBeforeFix: number }> = [
     { cc: 'MC', score: 56, coverage: 0.76, wasBeforeFix: 22 },
     { cc: 'LU', score: 72, coverage: 0.76, wasBeforeFix: 54 },
     { cc: 'RU', score: 15, coverage: 1, wasBeforeFix: 70 },
-    { cc: 'TD', score: 66, coverage: 1, wasBeforeFix: 72 },
+    { cc: 'TD', score: 57, coverage: 0.76, wasBeforeFix: 72 },
     { cc: 'IR', score: 0, coverage: 0.2, wasBeforeFix: 0 },
   ];
 

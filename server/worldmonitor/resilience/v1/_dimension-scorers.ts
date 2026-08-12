@@ -1979,6 +1979,9 @@ export async function scoreFinancialSystemExposure(
     };
   }
 
+  const normalizedCountryCode = countryCode.toUpperCase();
+  const isComprehensiveEmbargo = FIN_SYS_EXPOSURE_COMPREHENSIVE_EMBARGO.has(normalizedCountryCode);
+
   // Preflight: verify the 3 required seed envelopes are published and fresh.
   // `runSeed` (scripts/_seed-utils.mjs) STRIPS the trailing :v\d+ from the
   // data key when it writes seed-meta — so `economic:wb-external-debt:v1`
@@ -2047,10 +2050,12 @@ export async function scoreFinancialSystemExposure(
   //   parentCount: number, parents: { [parentIso2]: number } } } }.
   const bisCountry = readBisLbsCountry(bisRaw, countryCode);
 
-  // Component 3: FATF listing status. Discrete classification.
+  // Component 3: FATF listing status. Discrete classification. Preserve
+  // whether `compliant` was explicitly published or inferred from absence so
+  // a data-desert country cannot turn list absence into a perfect score.
   // Payload shape: { listings: { [iso2]: 'black' | 'gray' | 'compliant' },
   //   publicationDate: string }.
-  const fatfStatus = readFatfStatus(fatfRaw, countryCode);
+  const fatfObservation = readFatfStatus(fatfRaw, countryCode);
 
   // #6459 Component 1 slot. WB International Debt Statistics is the output of
   // the Debtor Reporting System, whose membership is World Bank BORROWERS —
@@ -2071,16 +2076,39 @@ export async function scoreFinancialSystemExposure(
   const nonDrsDebtImputation = resolveNonDrsDebtImputation(
     debtPct,
     bisCountry,
-    debtEnvelope.nonDrsCountryCodes.has(countryCode.toUpperCase()),
+    debtEnvelope.nonDrsCountryCodes.has(normalizedCountryCode),
   );
+
+  const marketAccessConstrainedDebt = isMarketAccessConstrainedDebtSignal(debtPct, bisCountry);
+  const fatfIsOnlyResolvingComponent = debtPct == null
+    && nonDrsDebtImputation == null
+    && bisCountry?.totalXborderPctGdp == null
+    && bisCountry?.parentCount == null;
+  const dropFatfCompliantByAbsence = fatfObservation?.assignedByAbsence === true
+    && fatfIsOnlyResolvingComponent
+    // CU is intentionally preserved: the comprehensive-embargo cap is an
+    // external construct signal, and its non-zero observed FATF slot keeps the
+    // executable sanctions anchor from passing vacuously at zero coverage.
+    && !isComprehensiveEmbargo;
 
   const blended = weightedBlend([
     {
       score: debtPct != null
         ? normalizeLowerBetter(debtPct, 0, 15)
         : (nonDrsDebtImputation?.score ?? null),
-      weight: 0.35,
-      certaintyCoverage: nonDrsDebtImputation?.certaintyCoverage,
+      // #6461: a tiny debt stock is not full-strength evidence of low
+      // rollover vulnerability when the same country has near-zero BIS
+      // claims and no foreign reporting parents. Those three observed signals
+      // together proxy market-access constraint using data already in the
+      // construct. Retain the reading at low confidence instead of deleting it
+      // or introducing a new editorial country list.
+      weight: marketAccessConstrainedDebt
+        ? FIN_SYS_SHORT_TERM_DEBT_WEIGHT * FIN_SYS_MARKET_ACCESS_CONSTRAINED_DEBT_CERTAINTY
+        : FIN_SYS_SHORT_TERM_DEBT_WEIGHT,
+      nominalWeight: FIN_SYS_SHORT_TERM_DEBT_WEIGHT,
+      certaintyCoverage: marketAccessConstrainedDebt
+        ? FIN_SYS_MARKET_ACCESS_CONSTRAINED_DEBT_CERTAINTY
+        : nonDrsDebtImputation?.certaintyCoverage,
       imputed: nonDrsDebtImputation != null ? true : undefined,
       imputationClass: nonDrsDebtImputation?.imputationClass,
     },
@@ -2091,7 +2119,9 @@ export async function scoreFinancialSystemExposure(
       weight: 0.30,
     },
     {
-      score: fatfStatus == null ? null : fatfStatusToScore(fatfStatus),
+      score: fatfObservation == null || dropFatfCompliantByAbsence
+        ? null
+        : fatfStatusToScore(fatfObservation.status),
       weight: 0.20,
     },
     {
@@ -2108,7 +2138,7 @@ export async function scoreFinancialSystemExposure(
   // was actually read. An operator inspecting a capped country still sees
   // which components resolved.
   if (
-    FIN_SYS_EXPOSURE_COMPREHENSIVE_EMBARGO.has(countryCode.toUpperCase())
+    isComprehensiveEmbargo
     && blended.score > FIN_SYS_EXPOSURE_EMBARGO_SCORE_CAP
   ) {
     return { ...blended, score: FIN_SYS_EXPOSURE_EMBARGO_SCORE_CAP };
@@ -2188,21 +2218,55 @@ interface BisLbsCountry {
   parentCount: number | null;
 }
 
+// #6461 market-access proxy. Reuse the construct's existing component
+// boundaries instead of adding an unverified source: <=1% short-term debt is
+// structurally tiny, <5% BIS claims is below the healthy integration band, and
+// zero reporting parents means no independent foreign-bank route clears the
+// redundancy floor. All three must hold, so ordinary low-debt borrowers keep
+// full weight when either banking signal shows real market access.
+const FIN_SYS_SHORT_TERM_DEBT_WEIGHT = 0.35;
+export const FIN_SYS_MARKET_ACCESS_CONSTRAINED_DEBT_CERTAINTY = 0.3;
+export const FIN_SYS_MARKET_ACCESS_LOW_DEBT_PCT_GNI_MAX = 1;
+export const FIN_SYS_MARKET_ACCESS_LOW_CLAIMS_PCT_GDP_MAX = 5;
+
+function isMarketAccessConstrainedDebtSignal(
+  debtPct: number | null,
+  bisCountry: BisLbsCountry | null,
+): boolean {
+  if (debtPct == null || debtPct < 0 || debtPct > FIN_SYS_MARKET_ACCESS_LOW_DEBT_PCT_GNI_MAX) return false;
+  const claims = bisCountry?.totalXborderPctGdp;
+  const parents = bisCountry?.parentCount;
+  return claims != null
+    && claims >= 0
+    && claims < FIN_SYS_MARKET_ACCESS_LOW_CLAIMS_PCT_GDP_MAX
+    && parents === 0;
+}
+
 function readBisLbsCountry(raw: unknown, countryCode: string): BisLbsCountry | null {
   if (raw == null || typeof raw !== 'object') return null;
   const countries = (raw as { countries?: Record<string, unknown> }).countries;
   if (!countries || typeof countries !== 'object') return null;
   const entry = countries[countryCode];
   if (!entry || typeof entry !== 'object') return null;
+  const rawClaims = (entry as { totalXborderPctGdp?: unknown }).totalXborderPctGdp;
+  const rawParentCount = (entry as { parentCount?: unknown }).parentCount;
   return {
-    totalXborderPctGdp: safeNum((entry as { totalXborderPctGdp?: unknown }).totalXborderPctGdp),
-    parentCount: safeNum((entry as { parentCount?: unknown }).parentCount),
+    // `safeNum(null)` and `safeNum('')` are numeric zero by design. These
+    // fields use zero as a real financial-isolation signal, so require a raw
+    // number rather than manufacturing an observed zero from malformed data.
+    totalXborderPctGdp: typeof rawClaims === 'number' ? safeNum(rawClaims) : null,
+    parentCount: typeof rawParentCount === 'number' ? safeNum(rawParentCount) : null,
   };
 }
 
 type FatfStatus = 'black' | 'gray' | 'compliant';
 
-function readFatfStatus(raw: unknown, countryCode: string): FatfStatus | null {
+interface FatfObservation {
+  status: FatfStatus;
+  assignedByAbsence: boolean;
+}
+
+function readFatfStatus(raw: unknown, countryCode: string): FatfObservation | null {
   if (raw == null || typeof raw !== 'object') return null;
   const listings = (raw as { listings?: Record<string, unknown> }).listings;
   if (!listings || typeof listings !== 'object') return null;
@@ -2216,10 +2280,12 @@ function readFatfStatus(raw: unknown, countryCode: string): FatfStatus | null {
   // reaching production, but defense-in-depth costs nothing.
   if (Object.keys(listings).length === 0) return null;
   const status = listings[countryCode];
-  if (status === 'black' || status === 'gray' || status === 'compliant') return status;
+  if (status === 'black' || status === 'gray' || status === 'compliant') {
+    return { status, assignedByAbsence: false };
+  }
   // Unknown country = compliant (FATF only enumerates non-compliant
   // jurisdictions; absence from both lists means compliant).
-  return 'compliant';
+  return { status: 'compliant', assignedByAbsence: true };
 }
 
 // #6459: gray rescaled 30 → 55. FATF grey-listing means "increased
@@ -2230,11 +2296,11 @@ function readFatfStatus(raw: unknown, countryCode: string): FatfStatus | null {
 // to Iran and DPRK than to their actual peers. 55 keeps grey clearly
 // penalised while leaving black as the distinct, much worse state.
 //
-// `compliant` stays at 100 even though FATF assigns it by ABSENCE from both
-// lists rather than by assessment — a hole that gave Russia, Belarus, Cuba
-// and Libya a perfect 100 on a 0.20-weight component. That hole is closed by
-// `FIN_SYS_EXPOSURE_COMPREHENSIVE_EMBARGO` rather than by penalising the ~170
-// genuinely unlisted jurisdictions.
+// `compliant` stays at 100 for countries with other observed financial-system
+// components. #6461 drops it only when it was assigned by absence and is the
+// sole resolving component; listed gray/black jurisdictions remain real
+// observations, and the comprehensive-embargo cap remains authoritative for
+// its externally defined cohort.
 const FATF_GRAY_SCORE = 55;
 
 function fatfStatusToScore(status: FatfStatus): number {

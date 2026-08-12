@@ -34,6 +34,7 @@ const DOCS_PATH = 'docs/source-attribution.mdx';
 const BEGIN_MARKER = '{/* BEGIN GENERATED SOURCE ATTRIBUTION */}';
 const END_MARKER = '{/* END GENERATED SOURCE ATTRIBUTION */}';
 const MANIFEST_STATUSES = new Set(['terms-review', 'reviewed', 'excluded']);
+const CREDIT_BEARING_STATUSES = new Set(['terms-review', 'reviewed']);
 const ERROR_PRINT_LIMIT = 20;
 const REGENERATE_HINT = 'run node scripts/source-attribution.mjs --write';
 const REFERENCE_DISPLAY_LIMIT = 4;
@@ -737,10 +738,29 @@ export function loadManifest(rootDir = ROOT) {
   };
 }
 
-export function buildManifest(inventory, previous = { entries: [], logicalEntries: [] }) {
+function retirementRequiredMessage(host) {
+  return `${host} left the scan; confirm removal with --retire ${host} or restore a discoverable reference`;
+}
+
+export function buildManifest(
+  inventory,
+  previous = { entries: [], logicalEntries: [] },
+  { retireHosts = [] } = {},
+) {
   const previousByHost = new Map((previous.entries || []).map((entry) => [entry.host, entry]));
   const entries = inventory.map((observed) => mergeEntry(observed, previousByHost.get(observed.host)));
   const observedHosts = new Set(inventory.map((entry) => entry.host));
+  const retireHostSet = new Set(retireHosts);
+  for (const host of retireHostSet) {
+    const previousEntry = previousByHost.get(host);
+    if (!previousEntry) throw new Error(`source-attribution: cannot retire unknown host ${host}`);
+    if (observedHosts.has(host)) {
+      throw new Error(`source-attribution: cannot retire ${host} because the scanner still finds it`);
+    }
+    if (previousEntry.observed === false) {
+      throw new Error(`source-attribution: cannot retire ${host} because it is already retired`);
+    }
+  }
   // Retain retired rows as explicit exclusions rather than silently deleting a
   // credit. This makes removals reviewable and keeps historical attribution
   // visible while ensuring only currently observed hosts count as active.
@@ -754,6 +774,16 @@ export function buildManifest(inventory, previous = { entries: [], logicalEntrie
     // source path that does not contain it. The docs cell falls back to
     // "No current fetch observed", which is what is actually true.
     const { references, ...retained } = oldEntry;
+    if (retained.observed !== false && !MANIFEST_STATUSES.has(retained.status)) {
+      throw new Error(`source-attribution: cannot retire ${retained.host} because its manifest status is invalid`);
+    }
+    if (
+      retained.observed !== false
+      && CREDIT_BEARING_STATUSES.has(retained.status)
+      && !retireHostSet.has(retained.host)
+    ) {
+      throw new Error(`source-attribution: ${retirementRequiredMessage(retained.host)}`);
+    }
     entries.push(retained.observed === false
       ? retained
       : {
@@ -842,7 +872,7 @@ export function validateManifest(inventory, manifest) {
       // the provider really was removed, or the scanner simply lost sight of a
       // URL that moved somewhere lexical discovery cannot see. Say both, because
       // regenerating on the second retires a provider the code still fetches.
-      errors.push(`manifest marks ${entry.host} observed but scanner found no current reference — if the provider was removed, ${REGENERATE_HINT} to retire the row; if its URL moved out of the scanned tree, restore a discoverable reference or add it to DYNAMIC_HOSTS instead`);
+      errors.push(`manifest marks ${entry.host} observed but scanner found no current reference — ${retirementRequiredMessage(entry.host)} or add it to DYNAMIC_HOSTS`);
     }
   }
   for (const entry of manifest.logicalEntries || []) {
@@ -945,8 +975,8 @@ export function buildSourceAttributionStats({ rootDir = ROOT } = {}) {
   return sourceAttributionStats(inventory, manifest);
 }
 
-function printStats(stats) {
-  console.log(`source-attribution: ${stats.activeHosts} active hosts (${stats.structuredHosts} structured/API, ${stats.feedHosts} feed, ${stats.operationalStatusHosts} operational-status; ${stats.reviewNeeded} terms-review)`);
+function printStats(stats, log = console.log) {
+  log(`source-attribution: ${stats.activeHosts} active hosts (${stats.structuredHosts} structured/API, ${stats.feedHosts} feed, ${stats.operationalStatusHosts} operational-status; ${stats.reviewNeeded} terms-review)`);
 }
 
 function serializeManifest(manifest) {
@@ -988,47 +1018,82 @@ export function checkSourceAttribution(rootDir = ROOT) {
   return { errors: [], stats: sourceAttributionStats(inventory, previous) };
 }
 
-function main() {
-  if (process.argv.includes('--write')) {
-    const inventory = scanUpstreamHosts(ROOT);
-    const previous = loadManifest(ROOT);
-    const manifest = buildManifest(inventory, previous);
-    // Render and count before writing anything. Both throw on a manifest row
-    // that no longer validates, and a row retired by an earlier run is now kept
-    // rather than dropped — so writing first would leave the manifest rewritten,
-    // the docs stale, and every rerun repeating it.
-    const section = renderAttributionSection(inventory, manifest);
-    const stats = sourceAttributionStats(inventory, manifest);
-    const serialized = serializeManifest(manifest);
-    writeFileSync(join(ROOT, MANIFEST_PATH), serialized);
-    // The mirror is what `scripts/`-rooted Railway services read. Writing it
-    // here keeps a manual `cp` from being the only thing holding them equal.
-    writeFileSync(join(ROOT, MIRROR_PATH), serialized);
-    updateDocs(ROOT, section);
-    const retired = manifest.entries.filter((entry) => entry.observed === false).map((entry) => entry.host);
-    const newlyRetired = retired.filter(
-      (host) => (previous.entries || []).some((entry) => entry.host === host && entry.observed !== false),
-    );
-    if (newlyRetired.length) {
-      // Retiring drops a provider from the published count and from license
-      // review. That must never happen quietly just because someone regenerated.
-      console.warn(`source-attribution: retired ${newlyRetired.length} host(s) no longer found by the scanner: ${newlyRetired.join(', ')}`);
-      console.warn('source-attribution: confirm each was removed deliberately — a URL that moved out of the scanned tree looks identical here.');
+function parseRetireHosts(args) {
+  const retireHosts = [];
+  for (let index = 0; index < args.length; index += 1) {
+    if (args[index] !== '--retire') continue;
+    const host = args[index + 1];
+    if (!host || host.startsWith('--')) {
+      throw new Error('source-attribution: --retire requires a host');
     }
-    printStats(stats);
-    return;
+    retireHosts.push(host);
+    index += 1;
   }
-  const { errors, stats } = checkSourceAttribution(ROOT);
-  if (errors.length) {
-    console.error(`source-attribution: ${errors.length} manifest error(s)`);
-    // A single stale scan can fault every row, so cap the listing: an unbounded
-    // dump buries the first (and usually only) cause the reader needs.
-    for (const error of errors.slice(0, ERROR_PRINT_LIMIT)) console.error(`- ${error}`);
-    if (errors.length > ERROR_PRINT_LIMIT) console.error(`- ...and ${errors.length - ERROR_PRINT_LIMIT} more`);
-    process.exitCode = 1;
-    return;
-  }
-  printStats(stats);
+  return [...new Set(retireHosts)];
 }
 
-if (process.argv[1] && process.argv[1].endsWith('scripts/source-attribution.mjs')) main();
+export function runSourceAttribution({
+  rootDir = ROOT,
+  args = [],
+  log = console.log,
+  warn = console.warn,
+  reportError = console.error,
+} = {}) {
+  let retireHosts;
+  try {
+    retireHosts = parseRetireHosts(args);
+  } catch (error) {
+    reportError(error.message);
+    return 1;
+  }
+  if (retireHosts.length && !args.includes('--write')) {
+    reportError('source-attribution: --retire requires --write');
+    return 1;
+  }
+  if (args.includes('--write')) {
+    try {
+      const inventory = scanUpstreamHosts(rootDir);
+      const previous = loadManifest(rootDir);
+      const manifest = buildManifest(inventory, previous, { retireHosts });
+      // Render and count before writing anything. Both throw on a manifest row
+      // that no longer validates, and a row retired by an earlier run is now kept
+      // rather than dropped — so writing first would leave the manifest rewritten,
+      // the docs stale, and every rerun repeating it.
+      const section = renderAttributionSection(inventory, manifest);
+      const stats = sourceAttributionStats(inventory, manifest);
+      const serialized = serializeManifest(manifest);
+      writeFileSync(join(rootDir, MANIFEST_PATH), serialized);
+      // The mirror is what `scripts/`-rooted Railway services read. Writing it
+      // here keeps a manual `cp` from being the only thing holding them equal.
+      writeFileSync(join(rootDir, MIRROR_PATH), serialized);
+      updateDocs(rootDir, section);
+      const retired = manifest.entries.filter((entry) => entry.observed === false).map((entry) => entry.host);
+      const newlyRetired = retired.filter(
+        (host) => (previous.entries || []).some((entry) => entry.host === host && entry.observed !== false),
+      );
+      if (newlyRetired.length) {
+        warn(`source-attribution: retired ${newlyRetired.length} host(s): ${newlyRetired.join(', ')}`);
+      }
+      printStats(stats, log);
+    } catch (error) {
+      reportError(error.message);
+      return 1;
+    }
+    return 0;
+  }
+  const { errors, stats } = checkSourceAttribution(rootDir);
+  if (errors.length) {
+    reportError(`source-attribution: ${errors.length} manifest error(s)`);
+    // A single stale scan can fault every row, so cap the listing: an unbounded
+    // dump buries the first (and usually only) cause the reader needs.
+    for (const error of errors.slice(0, ERROR_PRINT_LIMIT)) reportError(`- ${error}`);
+    if (errors.length > ERROR_PRINT_LIMIT) reportError(`- ...and ${errors.length - ERROR_PRINT_LIMIT} more`);
+    return 1;
+  }
+  printStats(stats, log);
+  return 0;
+}
+
+if (process.argv[1] && process.argv[1].endsWith('scripts/source-attribution.mjs')) {
+  process.exitCode = runSourceAttribution({ args: process.argv.slice(2) });
+}
