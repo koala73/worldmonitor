@@ -343,7 +343,9 @@ With no licensed market Provider configured, the actual native market panel disp
 
 The core gates passed: Phase 10 tests 6/6, sidecar 371/371, DOM 293/293, typecheck, full lint, desktop/secret/version gates, API-contract and source attribution checks. The final NSIS artifact is 53,356,779 bytes with SHA-256 `9F0A44E20B847BEF42AE22A0F20E8C85F48616DA0E677A2B40C5F7518074D371`. It is intentionally unsigned because no code-signing certificate was supplied. Detailed evidence is in `evidence/phase10-desktop-delivery.md` and `evidence/phase10-command-log.md`.
 
-**Phase 10 implementation commit:** pending the immediate implementation commit. The following documentation receipt will backfill its immutable SHA.
+**Phase 10 implementation commit:** `b44689019ce6c21d30aa785f9525d98a69387545`
+(`feat(desktop): deliver native branded launcher`). The following documentation
+receipt backfills this immutable SHA after the implementation commit.
 
 ## Next action
 

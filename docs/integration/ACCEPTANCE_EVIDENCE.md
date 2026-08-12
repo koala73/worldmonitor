@@ -262,7 +262,8 @@ authenticated executor reports a source-bearing result.
 
 ## Phase 10 - native Windows desktop delivery, integrity and fail-closed market view
 
-**Implementation commit:** pending the immediate Phase 10 implementation commit.
+**Implementation commit:** `b44689019ce6c21d30aa785f9525d98a69387545`
+(`feat(desktop): deliver native branded launcher`).
 
 | Check | Result | Evidence |
 |---|---|---|
