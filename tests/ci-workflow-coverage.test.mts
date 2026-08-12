@@ -682,9 +682,14 @@ describe('CI workflow coverage', () => {
     );
   });
 
-  it('batches pending gate discovery during the scheduled self-healing sweep', () => {
+  it('batches pending and stale-contract gate discovery during the scheduled self-healing sweep', () => {
     const deployGateJob = workflowJobBlock(deployGateWorkflow, 'gate');
 
+    assert.match(
+      deployGateWorkflow,
+      /^ {2}group: deploy-gate-\$\{\{ github\.event\.workflow_run\.head_sha \|\| 'sweep' \}\}$/m,
+      'schedule and workflow_dispatch must share one sweep concurrency group while workflow_run stays keyed by SHA',
+    );
     assert.match(
       deployGateWorkflow,
       /^run-name: Deploy Gate \$\{\{ github\.event\.workflow_run\.head_sha \|\| github\.event_name \}\}$/m,
@@ -693,8 +698,12 @@ describe('CI workflow coverage', () => {
     assert.match(deployGateJob, /pullRequests\(first: 100, states: \[OPEN\], after: \$endCursor\)/);
     assert.match(deployGateJob, /pageInfo \{ hasNextPage endCursor \}/);
     assert.match(deployGateJob, /contexts\(first: 100, after: \$endCursor\)/);
-    assert.match(deployGateJob, /status \{ context\(name: "gate"\) \{ state \} \}/);
+    assert.match(deployGateJob, /status \{ context\(name: "gate"\) \{ state description \} \}/);
+    assert.match(deployGateJob, /stale_terminal_shas=/);
+    assert.match(deployGateJob, /\$gate\.state != "PENDING"/);
     assert.match(deployGateJob, /context\.state == "PENDING"/);
+    assert.match(deployGateJob, /endswith\(\$gate_stamp\) \| not/);
+    assert.match(deployGateJob, /awk '!seen\[\$0\]\+\+'/);
     assert.match(deployGateJob, /context == null/);
     assert.match(
       deployGateJob,

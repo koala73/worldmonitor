@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import {
   chmodSync,
   mkdirSync,
@@ -24,7 +25,10 @@ const SHA = 'fedcba9876543210fedcba9876543210fedcba98';
 
 // The whole required list, read from the workflow so the test cannot pass by
 // pinning a shorter list than production actually gates on.
-const REQUIRED = JSON.parse(gateStep.run.match(/required='(\[[^']*\])'/)[1]);
+const REQUIRED_LITERAL = gateStep.run.match(/required='(\[[^']*\])'/)[1];
+const REQUIRED = JSON.parse(REQUIRED_LITERAL);
+const GATE_STAMP = `[gate-contract:${createHash('sha256').update(REQUIRED_LITERAL).digest('hex').slice(0, 12)}]`;
+const stamped = (description) => `${description} ${GATE_STAMP}`;
 
 /**
  * Run the gate step against a fabricated check-runs answer.
@@ -45,7 +49,8 @@ function runGate(conclusions, {
   resetAvailable = true,
   statusFailures = 0,
   statusFailureKind = 'generic',
-  sweepState,
+  sweepStatus,
+  sweepStatuses,
 } = {}) {
   const tempDir = mkdtempSync(join(repoRoot, '.tmp-deploy-gate-'));
   const fakeBin = join(tempDir, 'bin');
@@ -54,6 +59,7 @@ function runGate(conclusions, {
   const statusFailuresFile = join(tempDir, 'status-failures');
   const sweepFile = join(tempDir, 'sweep.json');
   const postedFile = join(tempDir, 'posted');
+  const postTargetsFile = join(tempDir, 'post-targets');
   const rejectedFile = join(tempDir, 'rejected');
   const callsFile = join(tempDir, 'calls');
 
@@ -62,6 +68,7 @@ function runGate(conclusions, {
     writeFileSync(failuresFile, String(graphQlFailures));
     writeFileSync(statusFailuresFile, String(statusFailures));
     writeFileSync(postedFile, '');
+    writeFileSync(postTargetsFile, '');
     writeFileSync(rejectedFile, '');
     writeFileSync(callsFile, '');
     const runsFor = (values, timestamp, idBase) => REQUIRED.flatMap((name, index) => values?.[name]
@@ -118,9 +125,17 @@ function runGate(conclusions, {
         },
       }]),
     );
-    const sweepNode = (sha, state) => ({
+    const sweepNode = (sha, status) => ({
       headRefOid: sha,
-      commits: { nodes: [{ commit: { status: { context: state ? { state } : null } } }] },
+      commits: {
+        nodes: [{
+          commit: {
+            status: {
+              context: status,
+            },
+          },
+        }],
+      },
     });
     writeFileSync(
       sweepFile,
@@ -128,7 +143,13 @@ function runGate(conclusions, {
         data: {
           repository: {
             pullRequests: {
-              nodes: Array.from({ length: 100 }, (_, index) => sweepNode(`other-${index}`, 'SUCCESS')),
+              nodes: Array.from(
+                { length: 100 },
+                (_, index) => sweepNode(`other-${index}`, {
+                  state: 'SUCCESS',
+                  description: stamped('All required PR gates passed'),
+                }),
+              ),
               pageInfo: { hasNextPage: true, endCursor: 'page-two' },
             },
           },
@@ -137,7 +158,8 @@ function runGate(conclusions, {
         data: {
           repository: {
             pullRequests: {
-              nodes: [sweepNode(SHA, sweepState)],
+              nodes: sweepStatuses?.map(({ sha, status }) => sweepNode(sha, status))
+                ?? [sweepNode(SHA, sweepStatus ?? null)],
               pageInfo: { hasNextPage: false, endCursor: 'done' },
             },
           },
@@ -216,6 +238,7 @@ function runGate(conclusions, {
         '  *"/statuses/"*)',
         '    state=""',
         '    description=""',
+        '    target_sha=${2##*/}',
         '    for arg in "$@"; do',
         '      case "$arg" in',
         '        state=*) state=${arg#state=} ;;',
@@ -239,6 +262,7 @@ function runGate(conclusions, {
         '      exit 1',
         '    fi',
         '    printf \'%s|%s\\n\' "$state" "$description" >> "$FAKE_POSTED"',
+        '    printf \'%s\\n\' "$target_sha" >> "$FAKE_POST_TARGETS"',
         '    exit 0',
         '    ;;',
         'esac',
@@ -277,6 +301,7 @@ function runGate(conclusions, {
         FAKE_FAILURE_KIND: graphQlFailureKind,
         FAKE_FAILURES: failuresFile,
         FAKE_POSTED: postedFile,
+        FAKE_POST_TARGETS: postTargetsFile,
         FAKE_REJECTED: rejectedFile,
         FAKE_NOW: String(Date.parse('2026-08-12T12:30:00Z') / 1000),
         FAKE_RESET_AT: String(Date.parse('2026-08-12T12:30:10Z') / 1000),
@@ -289,7 +314,7 @@ function runGate(conclusions, {
         PATH: `${fakeBin}:${process.env.PATH}`,
         REPO: 'koala73/worldmonitor',
         RUNNER_TEMP: tempDir,
-        SHA: sweepState === undefined ? SHA : '',
+        SHA: sweepStatus === undefined && sweepStatuses === undefined ? SHA : '',
       },
     });
 
@@ -304,6 +329,7 @@ function runGate(conclusions, {
     return {
       ...result,
       calls: readFileSync(callsFile, 'utf8').split('\n').filter(Boolean),
+      postTargets: readFileSync(postTargetsFile, 'utf8').split('\n').filter(Boolean),
       posted: parse(postedFile),
       rejected: parse(rejectedFile),
     };
@@ -336,7 +362,10 @@ describe('deploy gate commit-status description', () => {
     assert.equal(result.posted[0].state, 'pending');
     assert.ok(result.posted[0].description.length <= 140);
     assert.match(result.posted[0].description, new RegExp(`Waiting for required PR gates \\(${REQUIRED.length}\\):`));
-    assert.match(result.posted[0].description, /\.\.\.$/, 'a truncated description must say it was cut');
+    assert.ok(
+      result.posted[0].description.endsWith(`... ${GATE_STAMP}`),
+      'a truncated description must say it was cut and preserve the contract stamp',
+    );
     assert.deepEqual(
       result.calls,
       [
@@ -372,8 +401,8 @@ describe('deploy gate commit-status description', () => {
 
     assert.equal(result.status, 0, result.stderr);
     assert.equal(result.posted[0].state, 'pending');
-    assert.equal(result.posted[0].description, 'Waiting for required PR gates (2): unit,biome');
-    assert.doesNotMatch(result.posted[0].description, /\.\.\.$/, 'a description that fits must not be cut');
+    assert.equal(result.posted[0].description, stamped('Waiting for required PR gates (2): unit,biome'));
+    assert.doesNotMatch(result.posted[0].description, /\.\.\. /, 'a description that fits must not be cut');
   });
 
   it('still posts success when everything passed or skipped', () => {
@@ -383,7 +412,7 @@ describe('deploy gate commit-status description', () => {
 
     assert.equal(result.status, 0, result.stderr);
     assert.deepEqual(result.posted, [
-      { state: 'success', description: 'All required PR gates passed' },
+      { state: 'success', description: stamped('All required PR gates passed') },
     ]);
     assert.deepEqual(result.calls, ['graphql-check-page', 'graphql-check-page', 'status:success']);
   });
@@ -403,20 +432,111 @@ describe('deploy gate commit-status description', () => {
 
     assert.notEqual(crashed.status, 0, 'the forced API failure must actually crash the evaluation');
     assert.deepEqual(crashed.posted, [
-      { state: 'pending', description: 'Deploy Gate could not evaluate; retry scheduled' },
+      { state: 'pending', description: stamped('Deploy Gate could not evaluate; retry scheduled') },
     ]);
 
-    const healed = runGate(conclusionsFor('success'), { sweepState: 'PENDING' });
+    const healed = runGate(conclusionsFor('success'), {
+      sweepStatus: {
+        state: 'PENDING',
+        description: stamped('Deploy Gate could not evaluate; retry scheduled'),
+      },
+    });
     assert.equal(healed.status, 0, healed.stderr);
     assert.deepEqual(healed.posted.at(-1), {
       state: 'success',
-      description: 'All required PR gates passed',
+      description: stamped('All required PR gates passed'),
     });
     assert.deepEqual(
       healed.calls.slice(0, 2),
       ['graphql-sweep-page', 'graphql-sweep-page'],
       'a pending gate beyond the first 100 open PRs must enter recovery',
     );
+  });
+
+  it('invalidates and evaluates stale contracts before current pending gates', () => {
+    const staleSha = 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
+    const pendingSha = 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb';
+    const oldStamp = '[gate-contract:001122334455]';
+    const result = runGate(conclusionsFor('success'), {
+      // Put pending first in the API response and duplicate the stale SHA. The
+      // workflow must still invalidate/evaluate stale first, exactly once.
+      sweepStatuses: [
+        {
+          sha: pendingSha,
+          status: {
+            state: 'PENDING',
+            description: stamped('Deploy Gate could not evaluate; retry scheduled'),
+          },
+        },
+        {
+          sha: staleSha,
+          status: {
+            state: 'SUCCESS',
+            description: `All required PR gates passed ${oldStamp}`,
+          },
+        },
+        {
+          sha: staleSha,
+          status: {
+            state: 'SUCCESS',
+            description: `All required PR gates passed ${oldStamp}`,
+          },
+        },
+      ],
+    });
+
+    assert.equal(result.status, 0, result.stderr);
+    assert.deepEqual(result.calls, [
+      'graphql-sweep-page',
+      'graphql-sweep-page',
+      'status:pending',
+      'graphql-check-page',
+      'graphql-check-page',
+      'status:success',
+      'graphql-check-page',
+      'graphql-check-page',
+      'status:success',
+    ]);
+    assert.deepEqual(result.posted, [
+      {
+        state: 'pending',
+        description: stamped('Required PR gate contract changed; re-evaluation scheduled'),
+      },
+      { state: 'success', description: stamped('All required PR gates passed') },
+      { state: 'success', description: stamped('All required PR gates passed') },
+    ]);
+    assert.deepEqual(result.postTargets, [staleSha, staleSha, pendingSha]);
+  });
+
+  it('does not sleep or retry a stale contract after invalidating it', () => {
+    const conclusions = conclusionsFor('success');
+    conclusions.unit = 'pending';
+    const result = runGate(conclusions, {
+      sweepStatus: {
+        state: 'SUCCESS',
+        description: 'All required PR gates passed [gate-contract:001122334455]',
+      },
+    });
+
+    assert.equal(result.status, 0, result.stderr);
+    assert.deepEqual(result.calls, [
+      'graphql-sweep-page',
+      'graphql-sweep-page',
+      'status:pending',
+      'graphql-check-page',
+      'graphql-check-page',
+      'status:pending',
+    ]);
+    assert.deepEqual(result.posted, [
+      {
+        state: 'pending',
+        description: stamped('Required PR gate contract changed; re-evaluation scheduled'),
+      },
+      {
+        state: 'pending',
+        description: stamped('Waiting for required PR gates (1): unit'),
+      },
+    ]);
   });
 
   it('backs off to the installation reset and retries a rate-limited read once', () => {
@@ -444,7 +564,7 @@ describe('deploy gate commit-status description', () => {
 
     assert.notEqual(result.status, 0, 'a persistent rate limit must fail the evaluation');
     assert.deepEqual(result.posted, [
-      { state: 'pending', description: 'Deploy Gate could not evaluate; retry scheduled' },
+      { state: 'pending', description: stamped('Deploy Gate could not evaluate; retry scheduled') },
     ]);
   });
 
@@ -462,7 +582,7 @@ describe('deploy gate commit-status description', () => {
       'status:pending',
     ]);
     assert.deepEqual(result.posted, [
-      { state: 'pending', description: 'Deploy Gate could not evaluate; retry scheduled' },
+      { state: 'pending', description: stamped('Deploy Gate could not evaluate; retry scheduled') },
     ]);
   });
 
@@ -477,7 +597,7 @@ describe('deploy gate commit-status description', () => {
       'status:pending',
     ]);
     assert.deepEqual(result.posted, [
-      { state: 'pending', description: 'Deploy Gate could not evaluate; retry scheduled' },
+      { state: 'pending', description: stamped('Deploy Gate could not evaluate; retry scheduled') },
     ]);
   });
 
@@ -497,7 +617,7 @@ describe('deploy gate commit-status description', () => {
       'status:success',
     ]);
     assert.deepEqual(result.posted, [
-      { state: 'success', description: 'All required PR gates passed' },
+      { state: 'success', description: stamped('All required PR gates passed') },
     ]);
   });
 
@@ -508,20 +628,20 @@ describe('deploy gate commit-status description', () => {
     assert.deepEqual(stranded.posted, []);
     assert.deepEqual(stranded.calls.slice(-2), ['status:success', 'status:pending']);
 
-    const healed = runGate(conclusionsFor('success'), { sweepState: null });
+    const healed = runGate(conclusionsFor('success'), { sweepStatus: null });
     assert.equal(healed.status, 0, healed.stderr);
     assert.deepEqual(healed.calls.slice(0, 2), ['graphql-sweep-page', 'graphql-sweep-page']);
     assert.equal(healed.calls[2], 'rest-failed-runs-page');
     assert.deepEqual(healed.posted.at(-1), {
       state: 'success',
-      description: 'All required PR gates passed',
+      description: stamped('All required PR gates passed'),
     });
   });
 
   it('does not recover a missing gate without a matching recent failed run', () => {
     const result = runGate(conclusionsFor('success'), {
       failedRunSha: '0123456789abcdef0123456789abcdef01234567',
-      sweepState: null,
+      sweepStatus: null,
     });
 
     assert.equal(result.status, 0, result.stderr);
@@ -536,7 +656,7 @@ describe('deploy gate commit-status description', () => {
   it('does not recover a missing gate from a stale failed run', () => {
     const result = runGate(conclusionsFor('success'), {
       failedRunCreatedAt: '2026-08-10T12:15:00Z',
-      sweepState: null,
+      sweepStatus: null,
     });
 
     assert.equal(result.status, 0, result.stderr);
