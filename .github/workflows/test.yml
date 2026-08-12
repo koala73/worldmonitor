@@ -487,20 +487,31 @@ jobs:
       # undiagnosable after the fact (#6496: a "Target page, context or browser
       # has been closed" close whose cause the log could not name).
       #
+      # `!cancelled()`, NOT `failure()`: retries mean the MOST common flake here
+      # never reddens the job at all. Run 31586695334 finished green-but-flaky —
+      # settings-source-live-apply failed at bootUntilNewsSettles and passed on
+      # retry — and Playwright kept the failed attempt's trace either way. A
+      # `failure()` guard would have thrown away the only evidence of the exact
+      # class of bug this step exists to catch.
+      #
       # Placed after BOTH smoke steps: a failing step ends the job, so whichever
-      # one failed is the one whose test-results/ this uploads. `if: failure()`
-      # also covers a failure before Playwright ever ran (npm ci, browser
-      # install) — hence `if-no-files-found: warn`, which says so in the log
-      # instead of failing the job a second time for a different reason.
+      # one failed owns the test-results/ this uploads.
+      #
+      # `ignore`, not `warn`: a clean run leaves nothing but a hidden
+      # .last-run.json, which the action skips, and a warning printed on every
+      # green run is noise that teaches people to skip the log. No artifact on
+      # the run page IS the "nothing was captured" signal.
+      #
       # run_attempt is in the name because a re-run keeps the same run_id and
-      # v6 rejects a duplicate artifact name within one run.
-      - name: Upload Playwright artifacts on failure
-        if: failure()
+      # v6 rejects a duplicate artifact name within one run — that collision
+      # would land exactly when someone re-runs the job to chase a flake.
+      - name: Upload Playwright artifacts
+        if: ${{ !cancelled() }}
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:
           name: playwright-variant-smoke-full-${{ github.run_id }}-${{ github.run_attempt }}
           path: test-results/
-          if-no-files-found: warn
+          if-no-files-found: ignore
           retention-days: 14
 
   resilience-validation-smoke:

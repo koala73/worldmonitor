@@ -468,7 +468,15 @@ describe('CI workflow coverage', () => {
       if (!/\n\s*uses: actions\/upload-artifact@/.test(block)) return false;
       const why: string[] = [];
       if (offset < lastPlaywrightRun) why.push('runs before the last playwright invocation');
-      if (!/\n {8}if: failure\(\)\n/.test(block)) why.push('is not guarded by `if: failure()`');
+      // The condition has to survive a failed step AND a green run. Without an
+      // `if:` at all the step is skipped the moment a smoke step fails — the
+      // only time it matters. With `failure()` it skips the green-but-flaky
+      // run, which is what retries make the COMMON shape here: the failed
+      // attempt's trace is retained, the job is green, and the evidence would
+      // be thrown away.
+      if (!/\n {8}if: [^\n]*(?:!\s*cancelled\(\)|always\(\))/.test(block)) {
+        why.push('is not guarded by an `if:` that runs on both failure and success (`!cancelled()`)');
+      }
       if (!stepPaths(block).includes(outputDir)) why.push(`does not upload ${outputDir}/`);
       // A re-run keeps the same run_id and upload-artifact rejects a duplicate
       // name within one run, so a name without run_attempt fails to upload
