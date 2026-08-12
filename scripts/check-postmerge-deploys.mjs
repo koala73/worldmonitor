@@ -101,13 +101,75 @@ const INDETERMINATE_RUN_CONCLUSIONS = new Set([
 
 const GH_CALL_TIMEOUT_MS = 30_000;
 
+// Retries AFTER the first attempt, so the worst case is 3 calls. Sized against
+// the workflow's `timeout-minutes: 10`: a transport failure returns in about a
+// second, so 3 workflows x 2 reads x 3 attempts costs seconds, not minutes.
+export const GH_READ_RETRY_ATTEMPTS = 2;
+export const GH_READ_RETRY_BASE_MS = 500;
+export const GH_READ_RETRY_MAX_MS = 4_000;
+
+/**
+ * Is this `gh` failure worth asking again? (#6479)
+ *
+ * The distinction is whether GitHub ANSWERED. `gh api` puts the status in its
+ * stderr as `(HTTP nnn)`; a 404 or 422 is an answer and re-asking cannot change
+ * it, so retrying only burns the job's budget and delays the alarm. When no
+ * status appears at all the request never reached GitHub — TLS, DNS, a reset,
+ * an EOF — and that is exactly the class that a second attempt fixes.
+ *
+ * Timeouts are deliberately terminal: every attempt burns the full 30s call
+ * budget, so retrying them would spend the 10-minute job on one dead read. Same
+ * decision, same reason, as the sibling watchdog (#6478).
+ */
+export function isRetryableGhFailure(error) {
+  if (!error) return false;
+  if (error.timedOut === true) return false;
+  // gh itself missing (ENOENT) will never succeed on a retry.
+  if (error.code === 'ENOENT') return false;
+  const message = error instanceof Error ? error.message : String(error);
+  const status = message.match(/\(HTTP (\d{3})\)/);
+  if (status) {
+    const code = Number(status[1]);
+    return code === 408 || code === 429 || code >= 500;
+  }
+  return true;
+}
+
+function sleepSync(ms) {
+  // spawnSync makes the whole read path synchronous, so the backoff must be
+  // too. Atomics.wait on a private buffer blocks without a busy loop.
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+}
+
+/**
+ * Wrap a `gh` reader so a transient transport failure does not become a verdict.
+ *
+ * `sleep` is injected so tests do not pay the backoff.
+ */
+export function createRetryingGh({ gh, sleep = sleepSync, attempts = GH_READ_RETRY_ATTEMPTS }) {
+  return (args) => {
+    for (let attempt = 0; ; attempt += 1) {
+      try {
+        return gh(args);
+      } catch (error) {
+        if (attempt >= attempts || !isRetryableGhFailure(error)) throw error;
+        sleep(Math.min(GH_READ_RETRY_BASE_MS * (2 ** attempt), GH_READ_RETRY_MAX_MS));
+      }
+    }
+  };
+}
+
 function runGh(args) {
   const result = spawnSync('gh', args, {
     encoding: 'utf8',
     maxBuffer: 32 * 1024 * 1024,
     timeout: GH_CALL_TIMEOUT_MS,
   });
-  if (result.signal) throw new Error(`gh ${args.join(' ')} timed out`);
+  if (result.signal) {
+    const error = new Error(`gh ${args.join(' ')} timed out`);
+    error.timedOut = true;
+    throw error;
+  }
   if (result.error) throw result.error;
   if (result.status !== 0) {
     throw new Error(`gh ${args.join(' ')} failed (${result.status}): ${String(result.stderr).trim()}`);
@@ -348,33 +410,77 @@ export function judgeWorkflow({ workflow, run, jobs, skipProof }) {
 export function checkPostmergeDeploys({ repository, gh, git, now = Date.now() }) {
   const results = [];
   for (const workflow of MONITORED_WORKFLOWS) {
-    const run = readNewestRun({ gh, repository, workflowFile: workflow.file, now, noRunWindowMs: workflow.noRunWindowMs });
-    let jobs = null;
-    if (run.found && run.verdict === 'RUN_FOUND') {
-      jobs = readRunJobs({
-        gh,
-        repository,
-        runId: run.runId,
-        runAttempt: run.runAttempt,
+    try {
+      const run = readNewestRun({ gh, repository, workflowFile: workflow.file, now, noRunWindowMs: workflow.noRunWindowMs });
+      let jobs = null;
+      if (run.found && run.verdict === 'RUN_FOUND') {
+        jobs = readRunJobs({
+          gh,
+          repository,
+          runId: run.runId,
+          runAttempt: run.runAttempt,
+        });
+      }
+      const skipProof = workflow.skipProofPath
+        ? (headSha) => {
+          // The parent of the head on main. The checkout has full history with
+          // no blobs (see the workflow), so `git diff --name-only` needs only
+          // trees. A missing parent is a read failure: throw, and the caller
+          // resolves the skip to ALARM.
+          const parent = git(['rev-parse', '--verify', `${headSha}^`]).trim();
+          return !diffTouchesPath({ git, parentSha: parent, headSha, pathPrefix: workflow.skipProofPath });
+        }
+        : null;
+      results.push({
+        workflow: workflow.file,
+        displayName: workflow.displayName,
+        ...judgeWorkflow({ workflow, run, jobs, skipProof }),
+      });
+    } catch (error) {
+      // #6479: one unreadable record used to abort the whole walk, so a
+      // transient failure on the FIRST workflow hid a genuinely red deploy on
+      // the second. Every workflow gets its own verdict; an unread one is
+      // UNKNOWN, which is not healthy (it still exits non-zero) but is also not
+      // a claim that a deploy failed — the monitor never saw the record.
+      results.push({
+        workflow: workflow.file,
+        displayName: workflow.displayName,
+        state: 'UNKNOWN',
+        verdict: 'READ_FAILED',
+        runId: null,
+        detail: `the record could not be read: ${error instanceof Error ? error.message : String(error)}`,
       });
     }
-    const skipProof = workflow.skipProofPath
-      ? (headSha) => {
-        // The parent of the head on main. The checkout has full history with
-        // no blobs (see the workflow), so `git diff --name-only` needs only
-        // trees. A missing parent is a read failure: throw, and the caller
-        // resolves the skip to ALARM.
-        const parent = git(['rev-parse', '--verify', `${headSha}^`]).trim();
-        return !diffTouchesPath({ git, parentSha: parent, headSha, pathPrefix: workflow.skipProofPath });
-      }
-      : null;
-    results.push({
-      workflow: workflow.file,
-      displayName: workflow.displayName,
-      ...judgeWorkflow({ workflow, run, jobs, skipProof }),
-    });
   }
   return results;
+}
+
+/**
+ * Split the results into the two things a notification must not conflate: a
+ * deploy that failed, and a record that could not be read. (#6479)
+ *
+ * Both exit non-zero — an unreadable record must never pass as healthy — but
+ * they are reported apart, because "Convex Deploy did not deploy" and "we could
+ * not reach the GitHub API" call for opposite responses.
+ */
+export function summarizeResults(results) {
+  const alarms = results.filter((result) => result.state === 'ALARM');
+  const unknowns = results.filter((result) => result.state === 'UNKNOWN');
+  const lines = [];
+  if (alarms.length > 0) {
+    lines.push(`Post-merge deploy monitor found ${alarms.length} workflow(s) that did not deploy:`);
+    for (const alarm of alarms) lines.push(`- ${alarm.displayName} [${alarm.verdict}] ${alarm.detail}`);
+  }
+  if (unknowns.length > 0) {
+    lines.push(`Post-merge deploy monitor could not be read for ${unknowns.length} workflow(s) — this is a read failure, not a failed deploy:`);
+    for (const unknown of unknowns) lines.push(`- ${unknown.displayName} [${unknown.verdict}] ${unknown.detail}`);
+  }
+  return {
+    alarms,
+    unknowns,
+    lines,
+    exitCode: alarms.length + unknowns.length > 0 ? 1 : 0,
+  };
 }
 
 async function main() {
@@ -382,7 +488,8 @@ async function main() {
   const asJson = process.argv.includes('--json');
   const results = checkPostmergeDeploys({
     repository,
-    gh: runGh,
+    // Reads retry; a transient TLS or DNS failure must not become a verdict.
+    gh: createRetryingGh({ gh: runGh }),
     git: (args) => {
       const result = spawnSync('git', args, {
         encoding: 'utf8',
@@ -407,14 +514,9 @@ async function main() {
     }
   }
 
-  const alarms = results.filter((result) => result.state === 'ALARM');
-  if (alarms.length > 0) {
-    console.error(`Post-merge deploy monitor found ${alarms.length} workflow(s) that did not deploy:`);
-    for (const alarm of alarms) {
-      console.error(`- ${alarm.displayName} [${alarm.verdict}] ${alarm.detail}`);
-    }
-    process.exitCode = 1;
-  }
+  const summary = summarizeResults(results);
+  for (const line of summary.lines) console.error(line);
+  process.exitCode = summary.exitCode;
 }
 
 if (isMainModule(import.meta.url, process.argv[1])) {

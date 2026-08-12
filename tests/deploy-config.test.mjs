@@ -22,6 +22,9 @@ const packageJson = JSON.parse(readFileSync(resolve(__dirname, '../package.json'
 const vercelConfig = JSON.parse(readFileSync(resolve(__dirname, '../vercel.json'), 'utf-8'));
 const viteConfigSource = readFileSync(resolve(__dirname, '../vite.config.ts'), 'utf-8');
 const proViteConfigSource = readFileSync(resolve(__dirname, '../pro-test/vite.config.ts'), 'utf-8');
+const playwrightConfigSource = readFileSync(resolve(__dirname, '../playwright.config.ts'), 'utf-8');
+const embedE2eSource = readFileSync(resolve(__dirname, '../e2e/embed.spec.ts'), 'utf-8');
+const testWorkflowSource = readFileSync(resolve(__dirname, '../.github/workflows/test.yml'), 'utf-8');
 const sitemapSource = readFileSync(resolve(__dirname, '../public/sitemap.xml'), 'utf-8');
 const robotsSource = readFileSync(resolve(__dirname, '../public/robots.txt'), 'utf-8');
 const mainSource = readFileSync(resolve(__dirname, '../src/main.ts'), 'utf-8');
@@ -36,6 +39,25 @@ const vercelIgnoreSource = readFileSync(resolve(__dirname, '../scripts/vercel-ig
 const SPA_HTML_CACHE_SOURCE = '/((?!api|mcp|a2a|ask|oauth|assets|blog|docs|countries|chokepoints|crises|tools|research|reference|changelog|embed|embed\\.html|favico|map-styles|data|textures|pro|sw\\.js|workbox-[a-f0-9]+\\.js|manifest\\.webmanifest|offline\\.html|robots\\.txt|sitemap\\.xml|schemamap\\.xml|sandbox|llms\\.txt|llms-full\\.txt|openapi\\.yaml|openapi\\.json|auth\\.md|pricing\\.md|support\\.md|ai-search\\.md|agents\\.md|developers\\.md|developers/llms\\.txt|mcp-server\\.md|openapi\\.md|sdks\\.md|agent\\.txt|\\.well-known|wm-widget-sandbox\\.html|mcp-grant\\.html|mcp-grant).*)';
 const GLOBAL_SECURITY_HEADER_SOURCE = '/((?!docs|embed|embed\\.html).*)';
 const APP_ROOT_HOST_PATTERN = '^(?:(?:www|tech|finance|commodity|happy|energy)\\.)?worldmonitor\\.app$';
+const WEBMCP_PRODUCTION_HOST_PATTERN = '^(?:www|tech|finance|commodity|happy|energy)\\.worldmonitor\\.app$';
+const WEBMCP_PRODUCTION_HOSTS = [
+  'www.worldmonitor.app',
+  'tech.worldmonitor.app',
+  'finance.worldmonitor.app',
+  'commodity.worldmonitor.app',
+  'happy.worldmonitor.app',
+  'energy.worldmonitor.app',
+];
+const WEBMCP_TRIAL_EXPIRY = 1_794_873_600;
+const WEBMCP_TOKEN_RENEWAL_BUFFER_SECONDS = 14 * 24 * 60 * 60;
+const WEBMCP_TOKEN_SHA256_BY_HOST = {
+  'www.worldmonitor.app': '97b1029dd642731a33c2c6696f21358afe3f1e3bebf87079be26ba5891d950ce',
+  'tech.worldmonitor.app': 'd230e2454012d19baebd987709beeefbd985b0e0f62aa080b220da80a6e6b31d',
+  'finance.worldmonitor.app': 'e1f3483bd6cfae1ace66dc041c9f8584233c45e9e0c335394f6cf9bdfe9af489',
+  'commodity.worldmonitor.app': '0e0bde1d1b87976889126b2f3ddcfd06df78cc3c13598e80e0a3a45701d2c0b6',
+  'happy.worldmonitor.app': '72c2026ac2266553d9007ef0615ab46c0ca080002b86b11fc1e71cadb37f23f8',
+  'energy.worldmonitor.app': '0f2fec8b51e7f29db5f12bcaaeb859d1f1d1c71156648d57d28e1bc86954d0d4',
+};
 const GLOBAL_CSP_INLINE_SCRIPT_HTML_FILES = [
   'index.html',
   'settings.html',
@@ -56,13 +78,18 @@ const GLOBAL_CSP_EXTERNAL_SCRIPT_HTML_FILES = [
 const STATIC_SCRIPT_NONCE = 'wm-static-bootstrap';
 
 const getCacheHeaderValue = (sourcePath) => {
-  const rule = vercelConfig.headers.find((entry) => entry.source === sourcePath);
-  const header = rule?.headers?.find((item) => item.key.toLowerCase() === 'cache-control');
-  return header?.value ?? null;
+  let value = null;
+  for (const rule of vercelConfig.headers.filter((entry) => entry.source === sourcePath)) {
+    const header = rule.headers?.find((item) => item.key.toLowerCase() === 'cache-control');
+    if (header) value = header.value;
+  }
+  return value;
 };
 
 const getHeadersForSource = (sourcePath) => {
-  return vercelConfig.headers.find((entry) => entry.source === sourcePath)?.headers ?? [];
+  return vercelConfig.headers
+    .filter((entry) => entry.source === sourcePath)
+    .flatMap((entry) => entry.headers ?? []);
 };
 
 // Convert a vercel.json `source` (the path-to-regexp subset used in this file)
@@ -103,6 +130,20 @@ const sourceToRegExp = (source) => {
   return new RegExp(`^${out}$`);
 };
 
+const headerRuleMatchesRequest = (rule, { path, host, query = {} }) => {
+  if (!sourceToRegExp(rule.source).test(path)) return false;
+  const conditionMatches = (condition) => {
+    if (condition.type === 'host') return new RegExp(condition.value).test(host);
+    if (condition.type === 'query') {
+      const actual = query[condition.key];
+      if (actual === undefined) return false;
+      return condition.value === undefined || new RegExp(`^(?:${condition.value})$`).test(actual);
+    }
+    return false;
+  };
+  return (rule.has ?? []).every(conditionMatches) && !(rule.missing ?? []).some(conditionMatches);
+};
+
 // Vercel applies every matching `headers` entry in file order; when several
 // set the same header key, the LAST matching rule wins.
 const effectiveCacheControl = (path) => {
@@ -119,6 +160,22 @@ const getHeaderValueForSource = (sourcePath, key) => {
   const headers = getHeadersForSource(sourcePath);
   const header = headers.find((h) => h.key.toLowerCase() === key.toLowerCase());
   return header?.value ?? null;
+};
+
+const decodeOriginTrialTokenPayload = (token) => {
+  assert.match(token, /^[A-Za-z0-9+/]+={0,2}$/, 'Origin-trial token must be canonical base64');
+  assert.equal(token.length % 4, 0, 'Origin-trial token base64 must have complete quanta');
+  const bytes = Buffer.from(token, 'base64');
+  assert.equal(bytes.toString('base64'), token, 'Origin-trial token must round-trip without ignored bytes');
+  assert.equal(bytes[0], 2, 'WebMCP origin-trial tokens must use the expected token version');
+  assert.ok(bytes.length >= 69, 'Origin-trial token must contain its signature and payload length');
+  const payloadLength = bytes.readUInt32BE(65);
+  assert.equal(
+    bytes.length,
+    69 + payloadLength,
+    'Origin-trial token payload length must cover the complete token without trailing bytes',
+  );
+  return JSON.parse(bytes.subarray(69).toString('utf8'));
 };
 
 const getCspDirectiveTokens = (csp, directive) => {
@@ -1041,6 +1098,194 @@ describe('security header guardrails', () => {
     );
   });
 
+  it('Permissions-Policy exposes WebMCP tools only to same-origin agents', () => {
+    const policy = getHeaderValue('Permissions-Policy');
+    assert.ok(
+      policy.includes('tools=(self)'),
+      'Dashboard/homepage Permissions-Policy must keep WebMCP same-origin',
+    );
+    assert.doesNotMatch(policy, /tools=\(\*\)/, 'WebMCP tools must never be exposed to every origin');
+  });
+
+  it('mirrors WebMCP origin isolation and embed denial in local development without enrolling localhost', () => {
+    const pluginSource = viteConfigSource.match(
+      /function webMcpDevSecurityHeadersPlugin\(\): Plugin \{[\s\S]*?\n\}/,
+    )?.[0] ?? '';
+    assert.ok(pluginSource, 'Vite must define the local WebMCP security-header plugin');
+    assert.match(pluginSource, /res\.setHeader\('Origin-Agent-Cluster', '\?1'\)/);
+    assert.match(pluginSource, /isEmbedDocument \? 'tools=\(\)' : 'tools=\(self\)'/);
+    assert.doesNotMatch(pluginSource, /Origin-Trial/, 'localhost must use Chrome testing mode, not a trial token');
+    assert.match(viteConfigSource, /\n\s+webMcpDevSecurityHeadersPlugin\(\),/);
+    assert.match(proViteConfigSource, /'Origin-Agent-Cluster': '\?1'/);
+    assert.match(proViteConfigSource, /'Permissions-Policy': 'tools=\(self\)'/);
+    assert.doesNotMatch(
+      proViteConfigSource,
+      /Origin-Trial/,
+      'the local homepage must use Chrome testing mode, not a trial token',
+    );
+  });
+
+  it('runs the strict WebMCP iframe probe in an enabled Chrome milestone', () => {
+    const script = packageJson.scripts?.['test:e2e:webmcp'] ?? '';
+    const variantSmokeJob = testWorkflowSource.match(
+      /\n  variant-smoke-full:\n[\s\S]*?(?=\n  [a-z][a-z0-9-]+:\n|$)/,
+    )?.[0] ?? '';
+    assert.match(script, /WM_REQUIRE_WEBMCP=1/);
+    assert.match(script, /playwright test e2e\/embed\.spec\.ts --project=chromium/);
+    assert.ok(variantSmokeJob, 'Test workflow must define the full-variant smoke job');
+    assert.match(
+      variantSmokeJob,
+      /run: npm run test:e2e:webmcp/,
+      'PR CI must fail when the strict WebMCP iframe probe fails or is unavailable',
+    );
+    assert.match(playwrightConfigSource, /process\.env\.WM_REQUIRE_WEBMCP === '1'/);
+    assert.match(playwrightConfigSource, /process\.env\.WM_WEBMCP_CHROME_EXECUTABLE_PATH/);
+    assert.match(playwrightConfigSource, /channel: webMcpChromeChannel/);
+    assert.match(playwrightConfigSource, /executablePath: webMcpChromeExecutablePath/);
+    assert.match(playwrightConfigSource, /--enable-features=WebMCPTesting/);
+    assert.match(embedE2eSource, /WEBMCP_MIN_CHROME_MAJOR = 149/);
+    assert.match(embedE2eSource, /WM_REQUIRE_WEBMCP requires Chrome/);
+  });
+
+  it('origin-keys only the intended production web origins', () => {
+    const rules = vercelConfig.headers.filter((entry) =>
+      entry.headers?.some((header) => header.key.toLowerCase() === 'origin-agent-cluster')
+    );
+    assert.equal(rules.length, 1, 'Expected one reviewable Origin-Agent-Cluster rule');
+    const [rule] = rules;
+    assert.equal(rule.source, '/(.*)', 'Origin-Agent-Cluster must be consistent across each enrolled origin');
+    assert.deepEqual(rule.has, [{ type: 'host', value: WEBMCP_PRODUCTION_HOST_PATTERN }]);
+    assert.equal(
+      rule.headers.find((header) => header.key.toLowerCase() === 'origin-agent-cluster')?.value,
+      '?1',
+    );
+    assert.ok(!rule.has[0].value.includes('vercel'), 'Preview deployments must not be origin-trial candidates');
+    assert.equal(getNginxHeaderValue('Origin-Agent-Cluster'), '?1');
+    assert.equal(
+      getNginxHeaderValueFrom('docker/nginx-embed-security-headers.conf', 'Origin-Agent-Cluster'),
+      '?1',
+      'Embedded documents must keep the same origin-keying opt-in while tools=() denies WebMCP',
+    );
+
+    const sidecarLocationBlocks = [...dockerNginxSource.matchAll(/^ {4}location [^{]+\{\n([\s\S]*?)^ {4}\}/gm)];
+    assert.ok(sidecarLocationBlocks.length > 0, 'docker/nginx.conf must define route locations');
+    for (const [locationBlock] of sidecarLocationBlocks) {
+      const location = locationBlock.match(/^ {4}location ([^{]+)\{/)?.[1].trim() ?? '<unknown>';
+      assert.match(
+        locationBlock,
+        /add_header Origin-Agent-Cluster "\?1" always;/,
+        `docker/nginx.conf ${location} must preserve origin-keying on direct navigations`,
+      );
+    }
+
+    const nginxTemplate = readFileSync(resolve(__dirname, '../docker/nginx.conf.template'), 'utf-8');
+    const frontendLocationBlocks = [...nginxTemplate.matchAll(/^ {4}location [^{]+\{\n([\s\S]*?)^ {4}\}/gm)];
+    assert.ok(frontendLocationBlocks.length > 0, 'docker/nginx.conf.template must define route locations');
+    for (const [locationBlock] of frontendLocationBlocks) {
+      const location = locationBlock.match(/^ {4}location ([^{]+)\{/)?.[1].trim() ?? '<unknown>';
+      assert.match(
+        locationBlock,
+        /include \/etc\/nginx\/(?:embed_)?security_headers\.conf;/,
+        `docker/nginx.conf.template ${location} must include an origin-keying header set`,
+      );
+    }
+  });
+
+  it('enrolls only eligible production pages with exact-origin WebMCP trial tokens', () => {
+    const rules = vercelConfig.headers.filter((entry) =>
+      entry.headers?.some((header) => header.key.toLowerCase() === 'origin-trial')
+    );
+    assert.equal(rules.length, WEBMCP_PRODUCTION_HOSTS.length * 3);
+
+    for (const host of WEBMCP_PRODUCTION_HOSTS) {
+      const hostPattern = '^' + host.replaceAll('.', '\\.') + '$';
+      const hostRules = rules.filter((rule) =>
+        rule.has?.some((condition) => condition.type === 'host' && condition.value === hostPattern)
+      );
+      assert.deepEqual(
+        hostRules.map((rule) => rule.source).sort(),
+        ['/', '/dashboard', '/dashboard.html'],
+        host + ' must enroll the homepage, canonical dashboard, and direct dashboard document',
+      );
+      const rootRule = hostRules.find((rule) => rule.source === '/');
+      assert.ok(rootRule, host + ' must define a homepage origin-trial rule');
+      assert.deepEqual(
+        rootRule.missing,
+        [{ type: 'query', key: 'mode', value: 'agent' }],
+        host + ' must exclude the /?mode=agent JSON representation from enrollment',
+      );
+      assert.equal(headerRuleMatchesRequest(rootRule, { path: '/', host }), true);
+      assert.equal(headerRuleMatchesRequest(rootRule, { path: '/', host, query: { mode: 'reader' } }), true);
+      assert.equal(
+        headerRuleMatchesRequest(rootRule, { path: '/', host, query: { mode: 'agent' } }),
+        false,
+        host + ' must not attach an Origin-Trial token to /?mode=agent',
+      );
+      assert.equal(
+        hostRules.some((rule) => headerRuleMatchesRequest(rule, { path: '/dashboard', host })),
+        true,
+        host + ' must enroll the canonical dashboard route',
+      );
+      assert.equal(
+        hostRules.some((rule) => headerRuleMatchesRequest(rule, { path: '/dashboard.html', host })),
+        true,
+        host + ' must enroll the directly navigable dashboard document',
+      );
+      const tokens = new Set(hostRules.map((rule) =>
+        rule.headers.find((header) => header.key.toLowerCase() === 'origin-trial')?.value
+      ));
+      assert.equal(tokens.size, 1, host + ' must use one token consistently across eligible routes');
+      const [token] = tokens;
+      assert.ok(token && !token.includes('REPLACE_WITH'), host + ' must not ship a placeholder token');
+
+      const payload = decodeOriginTrialTokenPayload(token);
+      assert.deepEqual(
+        Object.keys(payload).sort(),
+        ['expiry', 'feature', 'origin'],
+        host + ' token must not carry subdomain, third-party, or usage-restriction scope',
+      );
+      assert.equal(payload.origin, 'https://' + host + ':443');
+      assert.equal(payload.feature, 'WebMCP');
+      assert.equal(payload.expiry, WEBMCP_TRIAL_EXPIRY);
+      assert.ok(
+        payload.expiry > Math.floor(Date.now() / 1000) + WEBMCP_TOKEN_RENEWAL_BUFFER_SECONDS,
+        host + ' WebMCP token expires within 14 days; renew it or remove the completed trial enrollment',
+      );
+      assert.equal(
+        createHash('sha256').update(token).digest('hex'),
+        WEBMCP_TOKEN_SHA256_BY_HOST[host],
+        host + ' complete signed token must match its independently pinned digest',
+      );
+    }
+
+    assert.equal(
+      new Set(rules.map((rule) =>
+        rule.headers.find((header) => header.key.toLowerCase() === 'origin-trial')?.value
+      )).size,
+      WEBMCP_PRODUCTION_HOSTS.length,
+      'Each production origin must have its own exact-origin token',
+    );
+    assert.ok(
+      rules.every((rule) => !rule.has?.some((condition) => condition.value.includes('vercel'))),
+      'Preview deployments must not receive WebMCP trial tokens',
+    );
+    for (const request of [
+      { path: '/embed', host: 'www.worldmonitor.app' },
+      { path: '/embed.html', host: 'www.worldmonitor.app' },
+      { path: '/docs/documentation', host: 'www.worldmonitor.app' },
+      { path: '/api/health', host: 'www.worldmonitor.app' },
+      { path: '/oauth/authorize', host: 'www.worldmonitor.app' },
+      { path: '/dashboard', host: 'worldmonitor.app' },
+      { path: '/dashboard', host: 'worldmonitor-git-main-example.vercel.app' },
+    ]) {
+      assert.equal(
+        rules.some((rule) => headerRuleMatchesRequest(rule, request)),
+        false,
+        request.host + request.path + ' must remain outside the WebMCP origin trial',
+      );
+    }
+  });
+
   it('Permissions-Policy is in sync between vercel.json header and docker/nginx-security-headers.conf', () => {
     assert.equal(
       getNginxHeaderValue('Permissions-Policy'),
@@ -1390,7 +1635,10 @@ describe('embeddable map route guardrails', () => {
       assert.equal(getHeaderValueForSource(source, 'X-Frame-Options'), null);
       assert.equal(getHeaderValueForSource(source, 'Cache-Control'), 'private, no-cache, must-revalidate');
       const csp = getHeaderValueForSource(source, 'Content-Security-Policy');
+      const permissionsPolicy = getHeaderValueForSource(source, 'Permissions-Policy');
       assert.ok(csp, `${source} must have a CSP`);
+      assert.ok(permissionsPolicy?.includes('tools=()'), `${source} must explicitly deny WebMCP tools`);
+      assert.ok(!permissionsPolicy?.includes('tools=(self)'), `${source} must not expose same-origin WebMCP tools`);
       assert.match(csp, /frame-ancestors \*/);
       assert.match(csp, /script-src 'self'(?:;|$)/);
       assert.doesNotMatch(csp, /clerk|dodopayments|stripe/);
@@ -1416,6 +1664,7 @@ describe('embeddable map route guardrails', () => {
       'magnetometer=()',
       'picture-in-picture=()',
       'payment=()',
+      'tools=()',
     ]) {
       assert.ok(dockerLockedPolicy.includes(directive), `Docker embed policy must keep ${directive}`);
     }
@@ -2131,7 +2380,9 @@ describe('agent readiness: homepage Link headers', () => {
 
   for (const source of ['/', '/dashboard', '/dashboard.html']) {
     it(`${source} emits a Link header`, () => {
-      const entry = vercel.headers.find((h) => h.source === source);
+      const entry = vercel.headers.find((h) =>
+        h.source === source && h.headers.some((header) => header.key === 'Link')
+      );
       assert.ok(entry, `expected a headers entry for ${source}`);
       const linkHeader = entry.headers.find((h) => h.key === 'Link');
       assert.ok(linkHeader, `expected a Link header on ${source}`);
@@ -2215,8 +2466,14 @@ describe('agent readiness: homepage Link headers', () => {
   // must stay in lockstep. Hardcoded duplication in vercel.json otherwise
   // silently drifts — this guard catches the drift at CI time.
   it('/dashboard and /dashboard.html Link headers are identical', () => {
-    const dashboard = vercel.headers.find((h) => h.source === '/dashboard').headers.find((h) => h.key === 'Link');
-    const dashboardHtml = vercel.headers.find((h) => h.source === '/dashboard.html').headers.find((h) => h.key === 'Link');
+    const dashboard = vercel.headers
+      .filter((h) => h.source === '/dashboard')
+      .flatMap((entry) => entry.headers)
+      .find((h) => h.key === 'Link');
+    const dashboardHtml = vercel.headers
+      .filter((h) => h.source === '/dashboard.html')
+      .flatMap((entry) => entry.headers)
+      .find((h) => h.key === 'Link');
     assert.strictEqual(dashboard.value, dashboardHtml.value);
   });
 });

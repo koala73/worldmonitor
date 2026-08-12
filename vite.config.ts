@@ -853,6 +853,27 @@ function gpsjamDevPlugin(): Plugin {
   };
 }
 
+// Mirror the WebMCP security gates during local development. Chrome's
+// #enable-webmcp-testing flag bypasses origin-trial enrollment, but it does not
+// bypass origin isolation or Permissions Policy. Keeping these headers in the
+// dev server makes the documented local smoke meaningful while preserving the
+// production boundary: no Origin-Trial token is ever served locally.
+function webMcpDevSecurityHeadersPlugin(): Plugin {
+  return {
+    name: 'wm-webmcp-dev-security-headers',
+    apply: 'serve',
+    configureServer(server) {
+      server.middlewares.use((req, res, next) => {
+        const pathname = new URL(req.url ?? '/', 'http://localhost').pathname;
+        const isEmbedDocument = pathname === '/embed' || pathname === '/embed.html';
+        res.setHeader('Origin-Agent-Cluster', '?1');
+        res.setHeader('Permissions-Policy', isEmbedDocument ? 'tools=()' : 'tools=(self)');
+        next();
+      });
+    },
+  };
+}
+
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '');
   // Inject environment variables from .env files into process.env.
@@ -912,6 +933,7 @@ export default defineConfig(({ mode }) => {
       // which is always the 'full' build (variant selection is runtime by
       // hostname). Desktop and dedicated VITE_VARIANT builds skip it.
       !isDesktopBuild && activeVariant === 'full' && variantDashboardHtmlPlugin(),
+      webMcpDevSecurityHeadersPlugin(),
       polymarketPlugin(),
       rssProxyPlugin(),
       youtubeLivePlugin(),

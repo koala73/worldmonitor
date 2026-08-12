@@ -11,10 +11,14 @@ import { describe, it } from 'node:test';
 import {
   DEFAULT_NO_RUN_WINDOW_MS,
   MONITORED_WORKFLOWS,
+  checkPostmergeDeploys,
+  createRetryingGh,
   diffTouchesPath,
+  isRetryableGhFailure,
   judgeWorkflow,
   readNewestRun,
   readRunJobs,
+  summarizeResults,
 } from '../scripts/check-postmerge-deploys.mjs';
 
 const NOW = Date.parse('2026-08-10T12:00:00Z');
@@ -325,5 +329,226 @@ describe('post-merge deploy monitor', () => {
       now: NOW,
     });
     assert.equal(outside.verdict, 'NO_RUN_IN_WINDOW');
+  });
+});
+
+// #6479 — on 2026-08-12 this monitor emailed "All jobs have failed" while the
+// genuine alarm (Convex Deploy red on main after #6470) went unnamed. A single
+// transient TLS error from api.github.com threw out of the first read and
+// aborted the whole walk. Three separate defects, one symptom.
+describe('post-merge deploy monitor — read-path resilience (#6479)', () => {
+  // The verbatim stderr from run 31560494370. A transport error never reached
+  // GitHub, so there is no HTTP status in it — that absence is the signal.
+  const TLS_STDERR = 'gh api repos/koala73/worldmonitor/actions/runs/30741257511/attempts/1/jobs failed (1): '
+    + 'Get "https://api.github.com/repos/koala73/worldmonitor/actions/runs/30741257511/attempts/1/jobs": '
+    + 'tls: failed to verify certificate: x509: certificate is not valid for any names, but wanted to match api.github.com';
+
+  describe('classifies which gh failures are worth retrying', () => {
+    it('retries a transport error that never got an HTTP answer', () => {
+      assert.equal(isRetryableGhFailure(new Error(TLS_STDERR)), true);
+      for (const transport of [
+        'dial tcp: lookup api.github.com: no such host',
+        'read: connection reset by peer',
+        'EOF',
+      ]) {
+        assert.equal(isRetryableGhFailure(new Error(transport)), true, transport);
+      }
+    });
+
+    it('retries a transient HTTP status', () => {
+      for (const status of [408, 429, 500, 502, 503, 504]) {
+        assert.equal(
+          isRetryableGhFailure(new Error(`gh: Server Error (HTTP ${status})`)),
+          true,
+          `HTTP ${status} is transient and must be retried`,
+        );
+      }
+    });
+
+    // The whole point of the classifier. A 404 or 422 IS GitHub's answer, and
+    // re-asking cannot change it — retrying only burns the job's 10-minute
+    // budget and delays the alarm the monitor exists to raise.
+    it('never retries a status that is a real answer', () => {
+      for (const status of [400, 401, 403, 404, 410, 422]) {
+        assert.equal(
+          isRetryableGhFailure(new Error(`gh: Not Found (HTTP ${status})`)),
+          false,
+          `HTTP ${status} is an answer, not a transport failure`,
+        );
+      }
+    });
+
+    // Every timeout attempt burns the full 30s call budget. Three workflows x
+    // two reads x three attempts would be 9 minutes against `timeout-minutes:
+    // 10`, so the retry would cause the outage it is meant to survive. Same
+    // decision, same reason, as the sibling watchdog in #6478.
+    it('never retries a timeout', () => {
+      const timedOut = new Error('gh api repos/x/actions/runs timed out');
+      timedOut.timedOut = true;
+      assert.equal(isRetryableGhFailure(timedOut), false);
+    });
+  });
+
+  describe('retries the read before giving up', () => {
+    it('recovers from a transient failure without surfacing it', async () => {
+      const calls = [];
+      const flaky = (args) => {
+        calls.push(args);
+        if (calls.length < 3) throw new Error(TLS_STDERR);
+        return '{"ok":true}';
+      };
+      const slept = [];
+      const gh = createRetryingGh({ gh: flaky, sleep: (ms) => { slept.push(ms); } });
+
+      assert.equal(gh(['api', 'anything']), '{"ok":true}');
+      assert.equal(calls.length, 3, 'two retries after the first failure');
+      assert.equal(slept.length, 2, 'each retry backs off');
+      assert.ok(slept[1] > slept[0], 'the backoff grows');
+    });
+
+    it('gives up after the budget and rethrows the original failure', () => {
+      let calls = 0;
+      const gh = createRetryingGh({
+        gh: () => { calls += 1; throw new Error(TLS_STDERR); },
+        sleep: () => {},
+      });
+      assert.throws(() => gh(['api', 'anything']), /tls: failed to verify certificate/);
+      assert.ok(calls > 1, 'it did retry');
+      assert.ok(calls <= 4, `the budget is bounded, got ${calls} attempts`);
+    });
+
+    it('does not retry a real answer — one call, immediate throw', () => {
+      let calls = 0;
+      const gh = createRetryingGh({
+        gh: () => { calls += 1; throw new Error('gh: Not Found (HTTP 404)'); },
+        sleep: () => { throw new Error('must not sleep on a 404'); },
+      });
+      assert.throws(() => gh(['api', 'anything']), /HTTP 404/);
+      assert.equal(calls, 1);
+    });
+  });
+
+  describe('one unreadable workflow does not silence the others', () => {
+    // A gh stub for the whole fleet: healthy deploys everywhere, except the
+    // workflow named in `unreadable`, whose run listing throws.
+    function ghFleet({ unreadable }) {
+      return (args) => {
+        const joined = args.join(' ');
+        if (unreadable && joined.includes(`workflows/${unreadable}/runs`)) {
+          throw new Error(TLS_STDERR);
+        }
+        const runsMatch = joined.match(/workflows\/([^/]+)\/runs/);
+        if (runsMatch) {
+          return JSON.stringify({
+            workflow_runs: [{
+              id: 900,
+              created_at: new Date(NOW - HOUR).toISOString(),
+              conclusion: 'success',
+              run_attempt: 1,
+              head_sha: 'f'.repeat(40),
+              event: 'push',
+              display_title: 'push',
+            }],
+          });
+        }
+        // The jobs listing: every monitored deploy job name, all successful.
+        return jobsPayload([
+          { name: 'deploy', conclusion: 'success', status: 'completed' },
+          { name: 'Wrangler deploy', conclusion: 'success', status: 'completed' },
+        ]);
+      };
+    }
+
+    it('reports the remaining workflows when the first read fails', () => {
+      const results = checkPostmergeDeploys({
+        repository: 'koala73/worldmonitor',
+        gh: ghFleet({ unreadable: 'convex-deploy.yml' }),
+        git: () => '',
+        now: NOW,
+      });
+
+      assert.equal(
+        results.length,
+        MONITORED_WORKFLOWS.length,
+        'every monitored workflow gets a verdict, even when an earlier read threw',
+      );
+      const convex = results.find((entry) => entry.workflow === 'convex-deploy.yml');
+      assert.equal(convex.state, 'UNKNOWN');
+      assert.equal(convex.verdict, 'READ_FAILED');
+      assert.match(convex.detail, /tls: failed to verify certificate/);
+
+      // This is the #6479 regression itself: the two workflows behind the
+      // broken read were never judged at all.
+      for (const other of results.filter((entry) => entry.workflow !== 'convex-deploy.yml')) {
+        assert.equal(other.state, 'OK', `${other.workflow} must still be judged`);
+        assert.equal(other.verdict, 'DEPLOYED');
+      }
+    });
+
+    it('still judges a genuinely failed deploy behind an unreadable one', () => {
+      const gh = (args) => {
+        const joined = args.join(' ');
+        if (joined.includes('workflows/convex-deploy.yml/runs')) throw new Error(TLS_STDERR);
+        if (joined.includes('/runs?')) {
+          return JSON.stringify({
+            workflow_runs: [{
+              id: 901,
+              created_at: new Date(NOW - HOUR).toISOString(),
+              conclusion: 'failure',
+              run_attempt: 1,
+              head_sha: 'f'.repeat(40),
+              event: 'push',
+              display_title: 'push',
+            }],
+          });
+        }
+        return jobsPayload([]);
+      };
+
+      const results = checkPostmergeDeploys({
+        repository: 'koala73/worldmonitor',
+        gh,
+        git: () => '',
+        now: NOW,
+      });
+      const failed = results.filter((entry) => entry.verdict === 'RUN_FAILED');
+      assert.equal(failed.length, MONITORED_WORKFLOWS.length - 1);
+      for (const entry of failed) assert.equal(entry.state, 'ALARM');
+    });
+
+    // UNKNOWN is not a softer OK. The module's whole direction-of-failure rule
+    // is that an unreadable record resolves AWAY from healthy.
+    it('keeps UNKNOWN non-healthy and still exits non-zero', () => {
+      const summary = summarizeResults([
+        { workflow: 'convex-deploy.yml', displayName: 'Convex Deploy', state: 'UNKNOWN', verdict: 'READ_FAILED', detail: TLS_STDERR },
+        { workflow: 'deploy-worker.yml', displayName: 'Deploy Worker', state: 'OK', verdict: 'DEPLOYED', detail: 'run 900 deployed' },
+      ]);
+      assert.equal(summary.exitCode, 1, 'an unreadable record must not pass as healthy');
+      assert.equal(summary.alarms.length, 0, 'an unread record is not a failed deploy');
+      assert.equal(summary.unknowns.length, 1);
+    });
+
+    // The reporting half of the incident: the notification must name the
+    // Convex failure, not only the TLS error that interrupted a different read.
+    it('reports a real alarm separately from an unreadable record', () => {
+      const summary = summarizeResults([
+        { workflow: 'convex-deploy.yml', displayName: 'Convex Deploy', state: 'ALARM', verdict: 'RUN_FAILED', detail: 'run 31560369482 concluded failure' },
+        { workflow: 'deploy-worker.yml', displayName: 'Deploy Worker', state: 'UNKNOWN', verdict: 'READ_FAILED', detail: TLS_STDERR },
+      ]);
+      assert.equal(summary.exitCode, 1);
+      assert.equal(summary.alarms.length, 1);
+      assert.equal(summary.unknowns.length, 1);
+      const report = summary.lines.join('\n');
+      assert.match(report, /Convex Deploy/);
+      assert.match(report, /did not deploy|RUN_FAILED/);
+      assert.match(report, /could not be read|UNKNOWN|READ_FAILED/);
+    });
+
+    it('exits clean when everything deployed', () => {
+      const summary = summarizeResults([
+        { workflow: 'convex-deploy.yml', displayName: 'Convex Deploy', state: 'OK', verdict: 'DEPLOYED', detail: 'run 900 deployed' },
+      ]);
+      assert.equal(summary.exitCode, 0);
+    });
   });
 });

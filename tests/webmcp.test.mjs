@@ -12,6 +12,7 @@ const __filename = fileURLToPath(import.meta.url);
 const ROOT = resolve(dirname(__filename), '..');
 const WEBMCP_PATH = resolve(ROOT, 'src/services/webmcp.ts');
 const src = readFileSync(WEBMCP_PATH, 'utf-8');
+const homepageSrc = readFileSync(resolve(ROOT, 'pro-test/welcome.html'), 'utf-8');
 
 const settlePromises = async () => {
   await Promise.resolve();
@@ -58,6 +59,21 @@ describe('webmcp.ts: current API contract', () => {
     assert.match(src, /runtimeDocument\.modelContext/);
     assert.doesNotMatch(src, /navigator\.modelContext/);
     assert.doesNotMatch(src, /provideContext/);
+  });
+
+  it('keeps every registration same-origin and never delegates tools to an iframe', () => {
+    assert.doesNotMatch(`${src}\n${homepageSrc}`, /\bexposedTo\b|\bfromOrigins\b/);
+    for (const htmlPath of [
+      'index.html',
+      'embed.html',
+      'settings.html',
+      'live-channels.html',
+      'mcp-grant.html',
+      'pro-test/welcome.html',
+    ]) {
+      const html = readFileSync(resolve(ROOT, htmlPath), 'utf-8');
+      assert.doesNotMatch(html, /<iframe\b[^>]*\ballow=["'][^"']*\btools\b/i, htmlPath);
+    }
   });
 
   it('uses the official ambient WebMCP declarations', () => {

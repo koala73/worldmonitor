@@ -1,5 +1,6 @@
 import { SITE_VARIANT } from '@/config/variant';
 import { getClerkToken } from '@/services/clerk';
+import { withBillingVerificationRetry } from '@/services/billing-retry';
 import { isDesktopRuntime } from './desktop-runtime';
 
 // The detector lives in a dependency-free leaf (#5911) so consumers that need
@@ -302,7 +303,7 @@ export function installRuntimeFetchPatch(): void {
   }
 
   const nativeFetch = window.fetch.bind(window);
-  window.fetch = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+  const dispatch = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
     const target = getApiTargetFromRequestInput(input);
     const debug = localStorage.getItem('wm-debug-log') === '1';
 
@@ -361,6 +362,11 @@ export function installRuntimeFetchPatch(): void {
       return cloudFallback();
     }
   };
+  // Desktop reaches the same cloud gateway through the native proxy, so it sees
+  // the same retryable billing-verification 503. This patch and the web one are
+  // mutually exclusive (each returns early on the other's runtime), so wrapping
+  // both is what makes the contract honored everywhere rather than only on web.
+  window.fetch = withBillingVerificationRetry(dispatch);
 
   (window as unknown as Record<string, unknown>).__wmFetchPatched = true;
 }
@@ -459,7 +465,7 @@ export function installWebApiRedirect(): void {
       }
     };
 
-    window.fetch = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+    const dispatch = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
       if (typeof input === 'string') {
         if (shouldRedirectPath(input)) {
           // Relative /api/... path — redirect to API base and inject auth.
@@ -505,9 +511,10 @@ export function installWebApiRedirect(): void {
       }
       return nativeFetch(input, init);
     };
+    window.fetch = withBillingVerificationRetry(dispatch);
   } else {
     // No API base redirect — only inject auth headers for premium paths.
-    window.fetch = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+    const dispatch = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
       if (typeof input === 'string') {
         if (shouldRedirectPath(input)) {
           const enriched = await enrichInitForPremium(input, init);
@@ -538,6 +545,7 @@ export function installWebApiRedirect(): void {
       }
       return nativeFetch(input, init);
     };
+    window.fetch = withBillingVerificationRetry(dispatch);
   }
 
   (window as unknown as Record<string, unknown>).__wmWebRedirectPatched = true;
