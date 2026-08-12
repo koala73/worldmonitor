@@ -10,12 +10,18 @@ import {
 import { internal } from "../_generated/api";
 
 const EVIDENCE = internal.companyMonitoring.evidence;
+const ADMISSION = (internal as any).companyMonitoring.admission;
 const COMPANIES = internal.companyMonitoring.companies;
 const ACCOUNT_A = "cm_account_evidence_a";
 const ACCOUNT_B = "cm_account_evidence_b";
 const COMPANY_A = "cm_company_01K27AAAAAAAAAAAAAAAAAAAAA";
 const COMPANY_B = "cm_company_01K27BBBBBBBBBBBBBBBBBBBBB";
 const DAY_MS = 24 * 60 * 60 * 1000;
+const REQUESTED_MODEL_VERSION = "cm-classifier-model-test";
+
+function claimArgs(workerId: string, classificationRunId = `claim-${workerId}`) {
+  return { workerId, classificationRunId, requestedModelVersion: REQUESTED_MODEL_VERSION };
+}
 
 installCompanyMonitoringTestEnvironment();
 
@@ -83,6 +89,7 @@ function xEvidence(
   return {
     provider: "x",
     providerLocator: postId,
+    queryVersion: "x-company-discovery-v1",
     url: `https://x.com/i/status/${postId}`,
     text: `Official update ${index}`,
     author: "companya",
@@ -105,6 +112,7 @@ function exaEvidence(
   return {
     provider: "exa",
     providerLocator: "shared-provider-locator",
+    queryVersion: "exa-company-discovery-v1",
     url: "https://independent.example/company-update",
     title: `Company update (${legalIdentifier})`,
     publishedAt: NOW - 1_000,
@@ -127,6 +135,29 @@ async function candidateFor(
       q.eq("ownerAccountId", ownerAccountId).eq("companyId", companyId),
     )
     .unique());
+}
+
+function validMaterialOutput(evidenceId: string) {
+  const axis = (truth: string, confidence: number) => ({
+    truth,
+    confidence,
+    rationale: "The normalized evidence supports this conclusion.",
+    evidenceIds: [evidenceId],
+  });
+  return {
+    attribution: axis("confirmed", 0.96),
+    occurrence: axis("confirmed", 0.92),
+    materiality: axis("material", 0.84),
+    direction: "negative",
+    channels: ["financial"],
+    magnitude: "high",
+    category: "material_event",
+    title: "Company reports material event",
+    neutralSummary: "The company reported a material event.",
+    positiveRationale: "",
+    negativeRationale: "The event can reduce financial performance.",
+    conflict: false,
+  };
 }
 
 describe("Company Monitoring evidence persistence and candidate lifecycle", () => {
@@ -155,6 +186,31 @@ describe("Company Monitoring evidence persistence and candidate lifecycle", () =
     expect((await candidateFor(t, ACCOUNT_B, COMPANY_B))?.referenceCount).toBe(1);
   });
 
+  test("does not revise an unchanged candidate snapshot during provider refresh", async () => {
+    const t = convexTest(schema, modules);
+    await seedCompany(t, ACCOUNT_A, COMPANY_A, "lei:A123");
+    const evidence = exaEvidence(COMPANY_A, "lei:A123");
+    await t.mutation(EVIDENCE.ingestEvidenceForTest, {
+      ownerAccountId: ACCOUNT_A,
+      companyIds: [COMPANY_A],
+      evidence: [evidence],
+    });
+    const original = await candidateFor(t, ACCOUNT_A, COMPANY_A);
+
+    vi.advanceTimersByTime(1_000);
+    await t.mutation(EVIDENCE.ingestEvidenceForTest, {
+      ownerAccountId: ACCOUNT_A,
+      companyIds: [COMPANY_A],
+      evidence: [evidence],
+    });
+
+    expect(await candidateFor(t, ACCOUNT_A, COMPANY_A)).toMatchObject({
+      evidenceRevision: original!.evidenceRevision,
+      evidenceSnapshotDigest: original!.evidenceSnapshotDigest,
+      updatedAt: original!.updatedAt,
+    });
+  });
+
   test("records attempts and holds, then recomputes expiry and restored authority", async () => {
     const t = convexTest(schema, modules);
     await seedCompany(t, ACCOUNT_A, COMPANY_A, "lei:A123");
@@ -170,12 +226,22 @@ describe("Company Monitoring evidence persistence and candidate lifecycle", () =
       observationBlocking: true,
     });
 
-    await t.mutation(EVIDENCE.recordCandidateAttempt, {
+    const claim = await t.mutation(
+      ADMISSION.claimNextAdmissionCandidateForTest,
+      claimArgs("worker-evidence-lifecycle", "lifecycle-hold-1"),
+    );
+    expect(claim.status).toBe("claimed");
+    await t.mutation(ADMISSION.recordAdmissionDecisionForTest, {
+      workerId: "worker-evidence-lifecycle",
+      leaseToken: claim.leaseToken!,
       ownerAccountId: ACCOUNT_A,
       companyId: COMPANY_A,
       occurrenceDedupeKey: original!.occurrenceDedupeKey,
-      outcome: "held",
-      holdUntil: NOW + 6 * 60 * 60 * 1000,
+      expectedEvidenceRevision: original!.evidenceRevision,
+      classificationRunId: "lifecycle-hold-1",
+      requestedModelVersion: REQUESTED_MODEL_VERSION,
+      modelVersion: "cm-classifier-model-test-v1",
+      modelOutput: validMaterialOutput(original!.referenceEvidenceFingerprints[0]!),
     });
     expect(await candidateFor(t, ACCOUNT_A, COMPANY_A)).toMatchObject({
       state: "held",
@@ -670,13 +736,11 @@ describe("Company Monitoring evidence persistence and candidate lifecycle", () =
     const candidate = await candidateFor(t, ACCOUNT_A, COMPANY_A);
     vi.setSystemTime(candidate!.expiresAt);
 
-    await expect(t.mutation(EVIDENCE.recordCandidateAttempt, {
-      ownerAccountId: ACCOUNT_A,
-      companyId: COMPANY_A,
-      occurrenceDedupeKey: candidate!.occurrenceDedupeKey,
-      outcome: "pending",
-    })).rejects.toThrow(/COMPANY_MONITORING_CANDIDATE_NOT_ACTIVE/);
+    expect(await t.mutation(ADMISSION.claimNextAdmissionCandidateForTest, claimArgs("worker-delayed-expiry"))).toEqual({ status: "idle" });
     expect((await candidateFor(t, ACCOUNT_A, COMPANY_A))?.attemptCount).toBe(0);
+    expect(await t.run(async (ctx) =>
+      ctx.db.query("companyMonitoringAdmissionDecisions").collect()
+    )).toMatchObject([{ decision: "expire", reasonCodes: ["candidate_expired"] }]);
   });
 
   test("purges evidence and candidates in resumable company phases before payload", async () => {

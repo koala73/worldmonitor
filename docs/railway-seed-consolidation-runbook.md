@@ -144,12 +144,43 @@ rejects every other host even if a workflow variable is misconfigured.
 |---|---|
 | `railway-reconcile-control-production` | Cloudflare deploy token, account ID, fixed control scope, and all four pairwise-distinct HMAC values |
 | `ingestion-acceptance-production-watchdog` | Watchdog HMAC only; no Railway credential |
-| `ingestion-acceptance-production-verification` | Read-only Railway Viewer token, project ID, and GitHub read evidence |
-| `ingestion-acceptance-production-breakglass` | Operator HMAC plus the same Viewer-only Railway access; require independent reviewers and prevent self-review |
+| `ingestion-acceptance-production` | Mutation HMAC, `RAILWAY_RECONCILE_DEPLOY_TOKEN_V2`, and project ID |
+| `ingestion-acceptance-production-verification` | Verifier HMAC, `RAILWAY_RECONCILE_VIEWER_TOKEN`, project ID, and GitHub read evidence |
+| `ingestion-acceptance-production-breakglass` | Operator HMAC plus the same `RAILWAY_RECONCILE_VIEWER_TOKEN`; required reviewers gate the resolve job |
+
+Both Railway tokens are distinct project tokens with identical capability; the
+names record intended use, not an enforced boundary. See the scope note below.
 
 The ordinary lease-aware mutation and verifier jobs receive only their own
-HMAC roles in their separately protected environments. The Viewer token must
-not be able to deploy, redeploy, edit configuration, or approve Railway work.
+HMAC roles in their separately protected environments.
+
+The Viewer token is **read-only by convention, not by credential scope.**
+Railway issues exactly two token types and neither accepts a role or scope:
+`apiTokenCreate` takes only `{name, workspaceId}` and inherits the creating
+user's permissions, and `projectTokenCreate` takes only
+`{projectId, environmentId, name}`. The `VIEWER` value on `ProjectRole` and
+`TeamRole` applies to project *members* — user accounts — not to tokens. A
+genuinely read-only token would require a separate Railway user account joined
+to the project as a `VIEWER` member, which this project does not maintain.
+
+So mint the Viewer and deploy tokens as two distinct project tokens on the one
+owner account: distinct tokens still give independent revocation, a separate
+audit trail, and blast-radius containment if one leaks. What they do not give
+is an inability to deploy. That property is enforced instead by the
+`--workflow-authorized` fence in `scripts/trigger-railway-deploys.mjs` and the
+workflow contract tests, so treat any change to those guards as a change to a
+security boundary. Note also that `projectTokenCreate` rejects a CLI session
+with `Not Authorized`; both tokens must be created from the Railway dashboard.
+
+Breakglass approval is **one-person by deliberate choice.** The environment
+requires a reviewer, so `resolve` pauses until a human approves and GitHub
+records who did, but `prevent_self_review` is **off**: the operator who
+dispatches recovery may approve their own run. Turning it on with a single
+reviewer would deadlock the emergency path — the one person able to trigger
+recovery would be forbidden from approving it, exactly when it is needed. Real
+two-person control needs a second named reviewer added first; until then the
+`approver` workflow input stays an audit assertion, not a verified second party.
+
 The protected resolver deliberately repeats the GitHub, convergence, and
 provider-inactivity reads after environment approval; the earlier proof is not
 fresh enough to authorize a state transition by itself.

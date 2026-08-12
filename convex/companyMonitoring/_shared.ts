@@ -36,6 +36,12 @@ export async function fingerprint(value: unknown): Promise<string> {
   return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
+export function randomFence(): string {
+  const bytes = new Uint8Array(32);
+  crypto.getRandomValues(bytes);
+  return Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
 function encodeTime(time: number): string {
   let remaining = Math.max(0, Math.trunc(time));
   let result = "";

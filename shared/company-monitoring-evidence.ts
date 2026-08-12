@@ -52,6 +52,7 @@ export interface EvidenceSubject {
 export interface ProviderEvidence {
   provider: CompanyEvidenceProvider;
   providerLocator: string;
+  queryVersion?: string;
   url?: string;
   title?: string;
   text?: string;
@@ -70,6 +71,7 @@ export interface NormalizedCompanyEvidence {
   companyId: string;
   provider: CompanyEvidenceProvider;
   providerLocator: string;
+  queryVersion?: string;
   providerLocatorHash: string;
   providerOrigin: string;
   providerOriginFingerprint: string;
@@ -390,6 +392,7 @@ export async function normalizeCompanyEvidence(input: {
         companyId: match.companyId,
         provider: row.provider,
         providerLocator: row.providerLocator,
+        ...(row.queryVersion ? { queryVersion: row.queryVersion } : {}),
         providerLocatorHash,
         providerOrigin,
         providerOriginFingerprint,

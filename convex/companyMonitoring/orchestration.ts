@@ -15,6 +15,7 @@ import {
 import {
   fingerprint,
   hasCurrentCompanyMonitoringClaimPolicy,
+  randomFence,
 } from "./_shared";
 import {
   companyMonitoringFinalizeResultValidator,
@@ -31,6 +32,11 @@ import {
   setAllCompanyProviderEvidenceState,
   setCompanyEvidenceStateForProviderLocators,
 } from "./evidence";
+import {
+  claimNextAdmissionCandidateHandler,
+  recordAdmissionDecisionHandler,
+  recordAdmissionTransportFailureHandler,
+} from "./admission";
 import {
   COMPANY_MONITORING_EVIDENCE_POLICY,
   type ProviderEvidence,
@@ -204,12 +210,6 @@ async function requireWorkerSecret(secret: string): Promise<void> {
   if (!expected || !(await timingSafeEqualStrings(secret, expected))) {
     throw new ConvexError("COMPANY_MONITORING_WORKER_UNAUTHORIZED");
   }
-}
-
-function randomFence(): string {
-  const bytes = new Uint8Array(32);
-  crypto.getRandomValues(bytes);
-  return Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
 function providerRolloutEnabled(source: Source): boolean {
@@ -1901,6 +1901,7 @@ async function applyExaIngestion(
     evidence: payload.candidates.map((candidate) => ({
       provider: "exa" as const,
       providerLocator: candidate.providerResultId,
+      queryVersion: work.queryVersion,
       url: candidate.url,
       ...(candidate.title ? { title: candidate.title } : {}),
       ...(candidate.author ? { author: candidate.author } : {}),
@@ -1963,6 +1964,7 @@ async function syncNormalizedXEvidence(
       normalizedRows.push({
         provider: "x",
         providerLocator: canonicalPostId,
+        queryVersion: work.queryVersion,
         url: `https://x.com/i/status/${canonicalPostId}`,
         text: stored.text,
         author: stored.currentHandle,
@@ -2292,6 +2294,60 @@ export const finalizeWork = mutation({
   handler: async (ctx, args) => {
     await requireWorkerSecret(args.secret);
     return finalizeWorkHandler(ctx, args);
+  },
+});
+
+/** Claim one exact normalized-evidence snapshot for deterministic classification. */
+export const claimNextAdmissionCandidate = mutation({
+  args: {
+    secret: v.string(),
+    workerId: v.string(),
+    classificationRunId: v.string(),
+    requestedModelVersion: v.string(),
+  },
+  handler: async (ctx, args) => {
+    await requireWorkerSecret(args.secret);
+    return claimNextAdmissionCandidateHandler(ctx, args);
+  },
+});
+
+/** Validate untrusted model output and append the fenced policy decision. */
+export const finalizeAdmissionCandidate = mutation({
+  args: {
+    secret: v.string(),
+    workerId: v.string(),
+    leaseToken: v.string(),
+    ownerAccountId: v.string(),
+    companyId: v.string(),
+    occurrenceDedupeKey: v.string(),
+    expectedEvidenceRevision: v.number(),
+    classificationRunId: v.string(),
+    requestedModelVersion: v.string(),
+    modelVersion: v.string(),
+    modelOutput: v.optional(v.any()),
+  },
+  handler: async (ctx, { secret, ...args }) => {
+    await requireWorkerSecret(secret);
+    return recordAdmissionDecisionHandler(ctx, args);
+  },
+});
+
+/** Record a fenced classifier transport failure without accepting model output. */
+export const finalizeAdmissionTransportFailure = mutation({
+  args: {
+    secret: v.string(),
+    workerId: v.string(),
+    leaseToken: v.string(),
+    ownerAccountId: v.string(),
+    companyId: v.string(),
+    occurrenceDedupeKey: v.string(),
+    expectedEvidenceRevision: v.number(),
+    classificationRunId: v.string(),
+    requestedModelVersion: v.string(),
+  },
+  handler: async (ctx, { secret, ...args }) => {
+    await requireWorkerSecret(secret);
+    return recordAdmissionTransportFailureHandler(ctx, args);
   },
 });
 
