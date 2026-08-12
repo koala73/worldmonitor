@@ -1,4 +1,5 @@
 import sovereignStatus from '../../scripts/shared/sovereign-status.json';
+import { FINSYS_NON_DRS_COUNTRY_CODES } from './resilience-finsys-fixtures.mts';
 
 export type FixtureMap = Record<string, unknown>;
 
@@ -433,6 +434,7 @@ export const RESILIENCE_FIXTURES: FixtureMap = {
       US: { value: 0, year: 2024 },     // HIC, WB IDS doesn't publish — fixture treats as 0 for the test triple
       YE: { value: 14, year: 2023 },    // ~14% GNI — fragile state near worst goalpost → score ~7
     },
+    nonDrsCountryCodes: FINSYS_NON_DRS_COUNTRY_CODES,
     seededAt: '2026-04-25T00:00:00.000Z',
   },
   'economic:bis-lbs:v1': {

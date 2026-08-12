@@ -2028,8 +2028,8 @@ export async function scoreFinancialSystemExposure(
   const debtEnvelope = readWbExternalDebtEnvelope(debtRaw);
   if (debtEnvelope == null) {
     throw new ResilienceConfigurationError(
-      `RESILIENCE_FIN_SYS_EXPOSURE_ENABLED=true but ${RESILIENCE_WB_EXTERNAL_DEBT_KEY} data envelope is absent or malformed after a healthy seed-meta preflight. ` +
-        'Re-run seed-wb-external-debt and confirm the payload includes countries before scoring.',
+      `RESILIENCE_FIN_SYS_EXPOSURE_ENABLED=true requires ${RESILIENCE_WB_EXTERNAL_DEBT_KEY} schema v2 with valid countries and nonDrsCountryCodes after a healthy seed-meta preflight. ` +
+        'Re-run seed-wb-external-debt and confirm the published envelope schema before scoring.',
       [RESILIENCE_WB_EXTERNAL_DEBT_KEY],
     );
   }
@@ -2188,22 +2188,21 @@ function readWbExternalDebtEnvelope(raw: unknown): WbExternalDebtEnvelope | null
   }
 
   const rawNonDrsCountryCodes = (raw as { nonDrsCountryCodes?: unknown }).nonDrsCountryCodes;
-  if (
-    rawNonDrsCountryCodes != null
-    && (
-      !Array.isArray(rawNonDrsCountryCodes)
-      || rawNonDrsCountryCodes.some((code) => typeof code !== 'string' || !/^[A-Z]{2}$/.test(code))
-      || new Set(rawNonDrsCountryCodes).size !== rawNonDrsCountryCodes.length
-    )
-  ) {
-    return null;
+  // Match the producer's fail-closed floor so an empty or truncated cohort
+  // cannot preserve the schema shape while silently disabling imputation.
+  if (!Array.isArray(rawNonDrsCountryCodes) || rawNonDrsCountryCodes.length < 40) return null;
+
+  const nonDrsCountryCodes = new Set<string>();
+  for (const code of rawNonDrsCountryCodes) {
+    if (typeof code !== 'string' || !/^[A-Z]{2}$/.test(code) || nonDrsCountryCodes.has(code)) return null;
+    nonDrsCountryCodes.add(code);
   }
 
   return {
     countries,
-    // Backward-compatible with the last v1 payload: until the v2 seeder runs,
-    // unknown eligibility stays null/drop rather than receiving an imputation.
-    nonDrsCountryCodes: new Set((rawNonDrsCountryCodes ?? []) as string[]),
+    // The active scorer requires schema v2. Accepting the former v1 shape here
+    // silently disables the non-DRS imputation for every eligible country.
+    nonDrsCountryCodes,
   };
 }
 
