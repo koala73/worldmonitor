@@ -8,6 +8,7 @@ import {
   loadManifest,
   matchGeneratedAttributionSection,
   renderAttributionSection,
+  runSourceAttribution,
   scanUpstreamHosts,
   sourceAttributionStats,
   validateManifest,
@@ -35,13 +36,14 @@ function makeFixtureCheckout() {
   const manifest = buildManifest(inventory, { entries: [], logicalEntries: [] });
   const manifestPath = join(dir, 'shared/source-attribution-manifest.json');
   const mirrorPath = join(dir, 'scripts/shared/source-attribution-manifest.json');
+  const docsPath = join(dir, 'docs/source-attribution.mdx');
   const writeManifest = (value) => {
     const serialized = `${JSON.stringify(value, null, 2)}\n`;
     writeFileSync(manifestPath, serialized);
     writeFileSync(mirrorPath, serialized);
   };
   const writeDocs = (value) => writeFileSync(
-    join(dir, 'docs/source-attribution.mdx'),
+    docsPath,
     `---\ntitle: "Source Attribution"\n---\n\n${renderAttributionSection(inventory, value)}\n`,
   );
   writeManifest(manifest);
@@ -51,9 +53,18 @@ function makeFixtureCheckout() {
     manifest,
     manifestPath,
     mirrorPath,
+    docsPath,
     writeManifest,
     writeDocs,
     cleanup: () => rmSync(dir, { recursive: true, force: true }),
+  };
+}
+
+function readFixtureArtifacts(fixture) {
+  return {
+    manifest: readFileSync(fixture.manifestPath, 'utf8'),
+    mirror: readFileSync(fixture.mirrorPath, 'utf8'),
+    docs: readFileSync(fixture.docsPath, 'utf8'),
   };
 }
 
@@ -278,6 +289,177 @@ test('a retired row survives regeneration instead of being deleted', () => {
   );
   // Retention only makes --write a fixpoint if it is stable across runs.
   assert.deepEqual(buildManifest([], rebuilt), rebuilt);
+  assert.throws(
+    () => buildManifest([], rebuilt, { retireHosts: ['gone.example'] }),
+    /cannot retire gone\.example because it is already retired/,
+  );
+});
+
+test('credit-bearing hosts cannot leave the inventory without explicit retirement', () => {
+  for (const status of ['terms-review', 'reviewed']) {
+    const previous = {
+      entries: [{
+        host: `${status}.example`,
+        provider: status,
+        license: 'Provider terms',
+        attribution: `Credit ${status}.`,
+        observed: true,
+        kind: 'structured',
+        status,
+        references: [{ path: 'scripts/seed-provider.mjs' }],
+      }],
+      logicalEntries: [],
+    };
+
+    assert.throws(
+      () => buildManifest([], previous),
+      new RegExp(`${status}\\.example left the scan; confirm removal with --retire ${status}\\.example`),
+    );
+    assert.equal(previous.entries[0].observed, true, 'a refused retirement must not mutate the previous manifest');
+  }
+});
+
+test('an explicit retirement drops a credit-bearing host from the active inventory', () => {
+  const previous = {
+    entries: [{
+      host: 'gone.example',
+      provider: 'Gone',
+      license: 'Provider terms',
+      attribution: 'Credit Gone.',
+      observed: true,
+      kind: 'feed',
+      status: 'terms-review',
+      references: [{ path: 'src/config/feeds.ts' }],
+    }],
+    logicalEntries: [],
+  };
+
+  const rebuilt = buildManifest([], previous, { retireHosts: ['gone.example'] });
+  const retired = rebuilt.entries.find((entry) => entry.host === 'gone.example');
+  assert.equal(retired.observed, false);
+  assert.equal(retired.status, 'excluded');
+  assert.equal(retired.references, undefined);
+  assert.equal(retired.attribution, 'Credit Gone.', 'explicit retirement must preserve required credit');
+});
+
+test('an invalid manifest status cannot be laundered into retirement', () => {
+  const previous = {
+    entries: [{
+      host: 'invalid-status.example',
+      provider: 'Invalid Status',
+      license: 'Provider terms',
+      attribution: 'Credit Invalid Status.',
+      observed: true,
+      kind: 'structured',
+      status: 'review',
+      references: [{ path: 'scripts/seed-provider.mjs' }],
+    }],
+    logicalEntries: [],
+  };
+
+  assert.throws(
+    () => buildManifest([], previous),
+    /cannot retire invalid-status\.example because its manifest status is invalid/,
+  );
+  assert.throws(
+    () => buildManifest([], previous, { retireHosts: ['invalid-status.example'] }),
+    /cannot retire invalid-status\.example because its manifest status is invalid/,
+    'explicit retirement must not normalize malformed compliance state',
+  );
+  assert.equal(previous.entries[0].observed, true);
+  assert.equal(previous.entries[0].status, 'review');
+});
+
+test('an explicit retirement host must name a current manifest row that left the scan', () => {
+  const previous = {
+    entries: [{
+      host: 'current.example',
+      provider: 'Current',
+      license: 'Provider terms',
+      attribution: 'Credit Current.',
+      observed: true,
+      kind: 'structured',
+      status: 'terms-review',
+      references: [{ path: 'server/current.ts' }],
+    }],
+    logicalEntries: [],
+  };
+  const inventory = [{
+    host: 'current.example',
+    kinds: ['structured'],
+    references: [{ path: 'server/current.ts' }],
+  }];
+
+  assert.throws(
+    () => buildManifest(inventory, previous, { retireHosts: ['current.example'] }),
+    /cannot retire current\.example because the scanner still finds it/,
+  );
+  assert.throws(
+    () => buildManifest([], previous, { retireHosts: ['typo.example'] }),
+    /cannot retire unknown host typo\.example/,
+  );
+});
+
+test('the CLI refuses malformed, unpaired, or still-observed retirement requests without writing', () => {
+  const fixture = makeFixtureCheckout();
+  try {
+    const before = readFixtureArtifacts(fixture);
+    for (const [label, args, expected] of [
+      ['missing value at end', ['--write', '--retire'], /--retire requires a host/],
+      ['another flag used as the value', ['--retire', '--write'], /--retire requires a host/],
+      ['missing --write', ['--retire', 'fixture.example'], /--retire requires --write/],
+      ['still observed', ['--write', '--retire', 'fixture.example'], /cannot retire fixture\.example because the scanner still finds it/],
+    ]) {
+      const errors = [];
+      const exitCode = runSourceAttribution({
+        rootDir: fixture.dir,
+        args,
+        log: () => {},
+        warn: () => {},
+        reportError: (message) => errors.push(message),
+      });
+      assert.equal(exitCode, 1, `${label} must fail`);
+      assert.ok(errors.some((error) => expected.test(error)), `${label} reported ${JSON.stringify(errors)}`);
+      assert.deepEqual(readFixtureArtifacts(fixture), before, `${label} must not rewrite attribution artifacts`);
+    }
+  } finally {
+    fixture.cleanup();
+  }
+});
+
+test('the CLI explicitly retires a missing fixture host and updates every artifact', () => {
+  const fixture = makeFixtureCheckout();
+  try {
+    writeFileSync(join(fixture.dir, 'scripts/seed-fixture.mjs'), 'export const removed = true;\n');
+    const before = readFixtureArtifacts(fixture);
+    const errors = [];
+    const warnings = [];
+    const exitCode = runSourceAttribution({
+      rootDir: fixture.dir,
+      args: ['--write', '--retire', 'fixture.example'],
+      log: () => {},
+      warn: (message) => warnings.push(message),
+      reportError: (message) => errors.push(message),
+    });
+
+    assert.equal(exitCode, 0, JSON.stringify(errors));
+    assert.deepEqual(errors, []);
+    assert.ok(warnings.some((warning) => /retired 1 host\(s\): fixture\.example/.test(warning)));
+
+    const after = readFixtureArtifacts(fixture);
+    assert.notEqual(after.manifest, before.manifest);
+    assert.equal(after.mirror, after.manifest, 'the scripts/shared mirror must match the retired manifest');
+    assert.notEqual(after.docs, before.docs);
+    const retired = JSON.parse(after.manifest).entries.find((entry) => entry.host === 'fixture.example');
+    assert.equal(retired.observed, false);
+    assert.equal(retired.status, 'excluded');
+    assert.equal(retired.references, undefined);
+    assert.match(retired.attribution, /Credit fixture\.example/);
+    assert.match(after.docs, /fixture\.example\) \| Excluded \/ candidate — No current fetch observed/);
+    assert.deepEqual(checkSourceAttribution(fixture.dir).errors, [], 'the explicit retirement must leave a clean fixpoint');
+  } finally {
+    fixture.cleanup();
+  }
 });
 
 test('a retired host that comes back is counted again instead of staying excluded', () => {
@@ -369,7 +551,7 @@ test('a retired row stops claiming a source path it is no longer found in', () =
       references: [{ path: 'src/config/feeds.ts' }],
     }],
     logicalEntries: [],
-  });
+  }, { retireHosts: ['gone.example'] });
   const retired = rebuilt.entries.find((entry) => entry.host === 'gone.example');
   assert.equal(retired.observed, false);
   assert.equal(retired.references, undefined, 'a host the scanner cannot find must not publish a source path');
@@ -443,7 +625,11 @@ test('a reviewed host loses its verdict across a retire and revive round trip', 
     status: 'reviewed',
     references: [{ path: 'scripts/seed-roundtrip.mjs' }],
   };
-  const retired = buildManifest([], { entries: [reviewed], logicalEntries: [] });
+  const retired = buildManifest(
+    [],
+    { entries: [reviewed], logicalEntries: [] },
+    { retireHosts: ['roundtrip.example'] },
+  );
   const revived = buildManifest(
     [{ host: 'roundtrip.example', kinds: ['structured'], references: [{ path: 'scripts/seed-roundtrip.mjs' }] }],
     retired,
