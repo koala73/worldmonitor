@@ -24,7 +24,7 @@ const rootDir = join(dirname(fileURLToPath(import.meta.url)), '..');
  */
 function makeFixtureCheckout() {
   const dir = mkdtempSync(join(tmpdir(), 'source-attribution-'));
-  for (const root of ['scripts', 'server', 'api', 'src', 'shared', 'docs']) {
+  for (const root of ['scripts/shared', 'server', 'api', 'src', 'shared', 'docs']) {
     mkdirSync(join(dir, root), { recursive: true });
   }
   writeFileSync(
@@ -33,17 +33,28 @@ function makeFixtureCheckout() {
   );
   const inventory = scanUpstreamHosts(dir);
   const manifest = buildManifest(inventory, { entries: [], logicalEntries: [] });
-  const writeManifest = (value) => writeFileSync(
-    join(dir, 'shared/source-attribution-manifest.json'),
-    `${JSON.stringify(value, null, 2)}\n`,
-  );
+  const manifestPath = join(dir, 'shared/source-attribution-manifest.json');
+  const mirrorPath = join(dir, 'scripts/shared/source-attribution-manifest.json');
+  const writeManifest = (value) => {
+    const serialized = `${JSON.stringify(value, null, 2)}\n`;
+    writeFileSync(manifestPath, serialized);
+    writeFileSync(mirrorPath, serialized);
+  };
   const writeDocs = (value) => writeFileSync(
     join(dir, 'docs/source-attribution.mdx'),
     `---\ntitle: "Source Attribution"\n---\n\n${renderAttributionSection(inventory, value)}\n`,
   );
   writeManifest(manifest);
   writeDocs(manifest);
-  return { dir, manifest, writeManifest, writeDocs, cleanup: () => rmSync(dir, { recursive: true, force: true }) };
+  return {
+    dir,
+    manifest,
+    manifestPath,
+    mirrorPath,
+    writeManifest,
+    writeDocs,
+    cleanup: () => rmSync(dir, { recursive: true, force: true }),
+  };
 }
 
 test('source inventory has complete metadata and matches the generated catalog', () => {
@@ -258,14 +269,15 @@ test('a retired row survives regeneration instead of being deleted', () => {
     observed: false,
     kind: 'feed',
     status: 'excluded',
-    references: [{ path: 'src/config/feeds.ts' }],
   };
   const rebuilt = buildManifest([], { entries: [retired], logicalEntries: [] });
   assert.deepEqual(
     rebuilt.entries.find((entry) => entry.host === 'gone.example'),
     retired,
-    'a row retired by an earlier regeneration must be retained verbatim, not silently deleted',
+    'a row retired by an earlier regeneration must be retained, not silently deleted',
   );
+  // Retention only makes --write a fixpoint if it is stable across runs.
+  assert.deepEqual(buildManifest([], rebuilt), rebuilt);
 });
 
 test('a retired host that comes back is counted again instead of staying excluded', () => {
@@ -320,6 +332,144 @@ test('a playback-only host that gains a real fetch stops being excluded', () => 
     { entries: [playbackOnly], logicalEntries: [] },
   );
   assert.equal(unchanged.entries.find((entry) => entry.host === 'stream.example').status, 'excluded');
+});
+
+test('a host dropped from EXCLUDED_HOSTS stops being excluded', () => {
+  // The sibling of the playback-only case: the other rule that mints an
+  // exclusion. Both branches must withdraw, not just the one.
+  const firstParty = {
+    host: 'not-excluded-any-more.example',
+    provider: 'not-excluded-any-more.example',
+    license: 'Excluded: first-party, control-plane, UI, or rendering transport',
+    attribution: 'Excluded from the external-provider count: not an ingested upstream dataset.',
+    observed: true,
+    kind: 'structured',
+    status: 'excluded',
+    references: [{ path: 'scripts/seed-example.mjs' }],
+  };
+  const rebuilt = buildManifest(
+    [{ host: 'not-excluded-any-more.example', kinds: ['structured'], references: [{ path: 'scripts/seed-example.mjs' }] }],
+    { entries: [firstParty], logicalEntries: [] },
+  );
+  const entry = rebuilt.entries.find((candidate) => candidate.host === 'not-excluded-any-more.example');
+  assert.equal(entry.status, 'terms-review');
+  assert.doesNotMatch(entry.license, /Excluded:/);
+});
+
+test('a retired row stops claiming a source path it is no longer found in', () => {
+  const rebuilt = buildManifest([], {
+    entries: [{
+      host: 'gone.example',
+      provider: 'Gone',
+      license: 'Terms review',
+      attribution: 'Credit Gone.',
+      observed: true,
+      kind: 'feed',
+      status: 'terms-review',
+      references: [{ path: 'src/config/feeds.ts' }],
+    }],
+    logicalEntries: [],
+  });
+  const retired = rebuilt.entries.find((entry) => entry.host === 'gone.example');
+  assert.equal(retired.observed, false);
+  assert.equal(retired.references, undefined, 'a host the scanner cannot find must not publish a source path');
+  assert.match(
+    renderAttributionSection([], rebuilt),
+    /gone\.example\) \| Excluded \/ candidate — No current fetch observed/,
+  );
+});
+
+test('a reference carrying anything beyond a path fails the manifest gate', () => {
+  const errors = validateManifest([], {
+    entries: [{
+      host: 'legacy.example',
+      provider: 'Legacy',
+      license: 'Terms review',
+      attribution: 'Credit Legacy.',
+      observed: false,
+      kind: 'feed',
+      status: 'excluded',
+      references: [{ path: 'src/config/feeds.ts', line: 175 }],
+    }],
+    logicalEntries: [],
+  });
+  assert.ok(
+    errors.some((error) => error.includes('carries fields beyond path')),
+    `a re-introduced line number must be rejected, got: ${JSON.stringify(errors)}`,
+  );
+});
+
+test('a field this script owns sends the reviewer to the script, not to --write', () => {
+  // api.openaq.org is in PROVIDER_OVERRIDES, so --write reasserts its license.
+  // Telling a reviewer to regenerate would destroy the edit they just made.
+  const errors = validateManifest(
+    [{ host: 'api.openaq.org', kinds: ['structured'], references: [{ path: 'scripts/seed-air-quality.mjs' }] }],
+    {
+      entries: [{
+        host: 'api.openaq.org',
+        provider: 'OpenAQ',
+        license: 'CC BY 4.0 — reviewed by counsel',
+        attribution: 'OpenAQ, https://openaq.org/.',
+        observed: true,
+        kind: 'structured',
+        status: 'reviewed',
+        references: [{ path: 'scripts/seed-air-quality.mjs' }],
+      }],
+      logicalEntries: [],
+    },
+  );
+  assert.ok(errors.some((error) => error.includes('edit the script instead')), JSON.stringify(errors));
+  assert.ok(!errors.some((error) => /license.*run node scripts/.test(error)), 'must not prescribe --write for an owned field');
+});
+
+test('a malformed inventory row is reported, not thrown', () => {
+  assert.doesNotThrow(() => validateManifest([{ host: 'broken.example' }], { entries: [], logicalEntries: [] }));
+  const errors = validateManifest([{ host: 'broken.example' }], { entries: [], logicalEntries: [] });
+  assert.ok(errors.some((error) => error.includes('broken.example') && error.includes('kinds and references')));
+});
+
+test('a reviewed host loses its verdict across a retire and revive round trip', () => {
+  // Pinning a deliberate loss, not endorsing it: retirement overwrites status,
+  // so the completed audit is already gone by the time the host returns. The
+  // direction is fail-safe — it re-opens review rather than claiming one that
+  // no longer describes the provider's current terms.
+  const reviewed = {
+    host: 'roundtrip.example',
+    provider: 'Roundtrip',
+    license: 'CC BY 4.0',
+    attribution: 'Credit Roundtrip.',
+    observed: true,
+    kind: 'structured',
+    status: 'reviewed',
+    references: [{ path: 'scripts/seed-roundtrip.mjs' }],
+  };
+  const retired = buildManifest([], { entries: [reviewed], logicalEntries: [] });
+  const revived = buildManifest(
+    [{ host: 'roundtrip.example', kinds: ['structured'], references: [{ path: 'scripts/seed-roundtrip.mjs' }] }],
+    retired,
+  );
+  assert.equal(revived.entries.find((entry) => entry.host === 'roundtrip.example').status, 'terms-review');
+});
+
+test('a truncated reference list says how much it is hiding', () => {
+  const many = ['a', 'b', 'c', 'd', 'e', 'f'].map((name) => ({ path: `scripts/seed-${name}.mjs` }));
+  const section = renderAttributionSection(
+    [{ host: 'many.example', kinds: ['structured'], references: many }],
+    {
+      entries: [{
+        host: 'many.example',
+        provider: 'Many',
+        license: 'Terms review',
+        attribution: 'Credit Many.',
+        observed: true,
+        kind: 'structured',
+        status: 'terms-review',
+        references: many,
+      }],
+      logicalEntries: [],
+    },
+  );
+  assert.match(section, /scripts\/seed-d\.mjs, \+2 more/);
 });
 
 test('a curated exclusion keeps its reviewer-written credit', () => {
@@ -379,6 +529,12 @@ test('the check gate goes red on manifest, docs, and logical-entry drift', () =>
       const docsPath = join(f.dir, 'docs/source-attribution.mdx');
       writeFileSync(docsPath, readFileSync(docsPath, 'utf8').replace('fixture.example', 'fixture.tampered'));
     }, /source-attribution\.mdx is out of date/],
+    ['a desynced scripts/shared mirror', (f) => {
+      const drifted = structuredClone(f.manifest);
+      drifted.entries[0].provider = 'Renamed In The Mirror Only';
+      writeFileSync(f.mirrorPath, `${JSON.stringify(drifted, null, 2)}\n`);
+    }, /scripts\/shared\/source-attribution-manifest\.json is out of sync/],
+    ['a missing manifest', (f) => rmSync(f.manifestPath), /source-attribution-manifest\.json is missing/],
   ]) {
     const fixture = makeFixtureCheckout();
     try {

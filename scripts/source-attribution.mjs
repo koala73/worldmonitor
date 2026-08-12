@@ -21,6 +21,9 @@ import { isDeepStrictEqual } from 'node:util';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const MANIFEST_PATH = 'shared/source-attribution-manifest.json';
+// Byte-identical copy for services whose rootDirectory is scripts/ (they cannot
+// reach ../shared). tests/edge-functions.test.mjs asserts the two match.
+const MIRROR_PATH = 'scripts/shared/source-attribution-manifest.json';
 const DOCS_PATH = 'docs/source-attribution.mdx';
 // MDX comments, not HTML ones: Mintlify parses docs/source-attribution.mdx as MDX v3,
 // which rejects `<!--` ("Unexpected character `!` before name") and fails the
@@ -32,6 +35,8 @@ const BEGIN_MARKER = '{/* BEGIN GENERATED SOURCE ATTRIBUTION */}';
 const END_MARKER = '{/* END GENERATED SOURCE ATTRIBUTION */}';
 const MANIFEST_STATUSES = new Set(['terms-review', 'reviewed', 'excluded']);
 const ERROR_PRINT_LIMIT = 20;
+const REGENERATE_HINT = 'run node scripts/source-attribution.mjs --write';
+const REFERENCE_DISPLAY_LIMIT = 4;
 const MANIFEST_KIND_RE = /^(?:structured|feed|operational-status)(?:\+(?:structured|feed|operational-status))*$/;
 const LOGICAL_KIND_RE = /^(?:candidate|structured|feed|operational-status)(?:\+(?:structured|feed|operational-status))*$/;
 
@@ -616,27 +621,17 @@ export function scanUpstreamHosts(rootDir = ROOT) {
   for (const dynamic of DYNAMIC_HOSTS) {
     if (!existsSync(join(rootDir, dynamic.path))) continue;
     const source = read(rootDir, dynamic.path);
-    if (!source.toLowerCase().includes(dynamic.host.toLowerCase())) {
-      throw new Error(`source-attribution: dynamic reference ${dynamic.path} no longer mentions ${dynamic.host}`);
+    // Require the host in URL position rather than anywhere in the file, so a
+    // leftover mention in a comment or changelog note cannot keep a provider we
+    // stopped fetching in the active inventory.
+    if (!source.toLowerCase().includes(`//${dynamic.host.toLowerCase()}`)) {
+      throw new Error(`source-attribution: dynamic reference ${dynamic.path} no longer builds a URL for ${dynamic.host}`);
     }
     recordHost(dynamic.host, dynamic.kind, dynamic.path);
   }
   return [...hosts.values()]
     .map((entry) => ({ ...entry, kinds: [...entry.kinds].sort(), references: entry.references.sort((a, b) => a.path.localeCompare(b.path)) }))
     .sort((a, b) => a.host.localeCompare(b.host));
-}
-
-/**
- * Collapse a reference list to one deduplicated, sorted `{ path }` row per file.
- * Retired rows keep the shape the scanner emits, so a manifest written before
- * line numbers were dropped cannot smuggle one back through a retained entry.
- */
-function normalizeReferences(references) {
-  const paths = new Set();
-  for (const reference of Array.isArray(references) ? references : []) {
-    if (typeof reference?.path === 'string' && reference.path.trim()) paths.add(reference.path);
-  }
-  return [...paths].sort((a, b) => a.localeCompare(b)).map((path) => ({ path }));
 }
 
 function defaultEntry(observed) {
@@ -694,15 +689,25 @@ function clearStaleExclusion(previous, observed, override) {
     : { ...previous, status: fallback.status };
 }
 
-function mergeEntry(observed, previous) {
+/**
+ * Fields this script owns for a host, which therefore cannot be curated in the
+ * manifest — `--write` reasserts them on every run. Kept separate from
+ * mergeEntry so the validator can tell a reviewer *where* to make an edit
+ * stick instead of sending them to a command that would discard it.
+ */
+function overrideFor(observed) {
+  if (PROVIDER_OVERRIDES[observed.host]) return PROVIDER_OVERRIDES[observed.host];
   const presentationOnly = observed.references.length > 0
     && observed.references.every((reference) => PRESENTATION_ONLY_FILES.has(reference.path));
-  const override = PROVIDER_OVERRIDES[observed.host]
-    || (presentationOnly
-      ? { provider: observed.host, ...GENERATED_EXCLUSIONS[0] }
-      : EXCLUDED_HOSTS.has(observed.host) || observed.host.endsWith('.worldmonitor.app')
-      ? { provider: observed.host, ...GENERATED_EXCLUSIONS[1] }
-      : {});
+  if (presentationOnly) return { provider: observed.host, ...GENERATED_EXCLUSIONS[0] };
+  if (EXCLUDED_HOSTS.has(observed.host) || observed.host.endsWith('.worldmonitor.app')) {
+    return { provider: observed.host, ...GENERATED_EXCLUSIONS[1] };
+  }
+  return {};
+}
+
+function mergeEntry(observed, previous) {
+  const override = overrideFor(observed);
   const base = previous ? clearStaleExclusion(previous, observed, override) : defaultEntry(observed);
   return {
     ...base,
@@ -717,7 +722,14 @@ function mergeEntry(observed, previous) {
 export function loadManifest(rootDir = ROOT) {
   const path = join(rootDir, MANIFEST_PATH);
   if (!existsSync(path)) return { version: 1, entries: [], logicalEntries: [] };
-  const manifest = JSON.parse(readFileSync(path, 'utf8'));
+  const raw = readFileSync(path, 'utf8');
+  let manifest;
+  try {
+    manifest = JSON.parse(raw);
+  } catch (error) {
+    // A bare "Unexpected end of JSON input" names no file; say which one.
+    throw new Error(`source-attribution: ${MANIFEST_PATH} is not valid JSON (${error.message})`);
+  }
   return {
     version: manifest.version || 1,
     entries: Array.isArray(manifest.entries) ? manifest.entries : [],
@@ -737,9 +749,11 @@ export function buildManifest(inventory, previous = { entries: [], logicalEntrie
   // also stopped --write from being a fixpoint the check could compare against.
   for (const oldEntry of previous.entries || []) {
     if (observedHosts.has(oldEntry.host)) continue;
-    const retained = oldEntry.references === undefined
-      ? { ...oldEntry }
-      : { ...oldEntry, references: normalizeReferences(oldEntry.references) };
+    // A retired row keeps its credit but loses its references: the scanner no
+    // longer finds the host in those files, so publishing them would assert a
+    // source path that does not contain it. The docs cell falls back to
+    // "No current fetch observed", which is what is actually true.
+    const { references, ...retained } = oldEntry;
     entries.push(retained.observed === false
       ? retained
       : {
@@ -790,6 +804,12 @@ export function validateManifest(inventory, manifest) {
     manifestByHost.set(entry.host, entry);
   }
   for (const entry of inventory) {
+    if (!Array.isArray(entry.references) || !Array.isArray(entry.kinds)) {
+      // mergeEntry below reads both. Report the bad row instead of letting a
+      // caller of this error-collecting function receive a raw TypeError.
+      errors.push(`inventory entry ${entry.host || '(unknown host)'} must carry kinds and references arrays`);
+      continue;
+    }
     const manifestEntry = manifestByHost.get(entry.host);
     if (!manifestEntry) {
       errors.push(`missing manifest entry for ${entry.host}`);
@@ -805,15 +825,25 @@ export function validateManifest(inventory, manifest) {
     // --write would produce for it, so the check and the generator agree.
     const rebuilt = mergeEntry(entry, manifestEntry);
     const stale = Object.keys(rebuilt).filter((field) => !isDeepStrictEqual(rebuilt[field], manifestEntry[field]));
-    if (stale.length) {
-      errors.push(`stale manifest entry for ${entry.host}: ${stale.join(', ')} no longer match the source tree; run node scripts/source-attribution.mjs --write`);
-    }
+    if (!stale.length) continue;
+    // Sending a reviewer to --write for a field this script owns would discard
+    // the edit they just made to a compliance artifact. Name the real owner.
+    const owned = stale.filter((field) => field in overrideFor(entry));
+    errors.push(owned.length
+      ? `manifest entry ${entry.host} disagrees with this script on ${owned.join(', ')}; those fields are set in scripts/source-attribution.mjs (PROVIDER_OVERRIDES or an exclusion rule) and --write will overwrite the manifest — edit the script instead`
+      : `stale manifest entry for ${entry.host}: ${stale.join(', ')} no longer match the source tree; ${REGENERATE_HINT}`);
   }
   for (const entry of manifestEntries) {
     if (typeof entry.provider !== 'string' || !entry.provider.trim() || typeof entry.license !== 'string' || !entry.license.trim() || typeof entry.attribution !== 'string' || !entry.attribution.trim()) {
       errors.push(`incomplete attribution metadata for ${entry.host || '(unknown host)'}`);
     }
-    if (entry.observed && !observedByHost.has(entry.host)) errors.push(`manifest marks ${entry.host} observed but scanner found no current reference`);
+    if (entry.observed && !observedByHost.has(entry.host)) {
+      // Two very different causes, one of which --write resolves destructively:
+      // the provider really was removed, or the scanner simply lost sight of a
+      // URL that moved somewhere lexical discovery cannot see. Say both, because
+      // regenerating on the second retires a provider the code still fetches.
+      errors.push(`manifest marks ${entry.host} observed but scanner found no current reference — if the provider was removed, ${REGENERATE_HINT} to retire the row; if its URL moved out of the scanned tree, restore a discoverable reference or add it to DYNAMIC_HOSTS instead`);
+    }
   }
   for (const entry of manifest.logicalEntries || []) {
     const label = entry?.provider || '(unknown provider)';
@@ -859,7 +889,12 @@ export function renderAttributionSection(inventory, manifest) {
   const entries = [...(manifest.entries || []), ...(manifest.logicalEntries || [])]
     .sort((a, b) => (a.provider || '').localeCompare(b.provider || '') || a.host.localeCompare(b.host));
   const rows = entries.map((entry) => {
-    const refs = (entry.references || []).slice(0, 4).map((reference) => reference.path).join(', ');
+    const references = entry.references || [];
+    // Say when the list is cut. A reader auditing where a provider is used
+    // otherwise reads four paths as the complete answer.
+    const refs = references.length > REFERENCE_DISPLAY_LIMIT
+      ? `${references.slice(0, REFERENCE_DISPLAY_LIMIT).map((reference) => reference.path).join(', ')}, +${references.length - REFERENCE_DISPLAY_LIMIT} more`
+      : references.map((reference) => reference.path).join(', ');
     const surface = entry.observed === false ? 'Excluded / candidate' : entry.kind;
     const sourceRef = refs || (entry.observed === false ? 'No current fetch observed' : 'Manifest-only review row');
     return `| ${markdownCell(entry.provider)} (${markdownCell(entry.host)}) | ${markdownCell(surface)} — ${markdownCell(sourceRef)} | ${markdownCell(entry.license)} | ${markdownCell(entry.attribution)} | ${markdownCell(entry.status)} |`;
@@ -918,14 +953,18 @@ function serializeManifest(manifest) {
   return `${JSON.stringify(manifest, null, 2)}\n`;
 }
 
-const REGENERATE_HINT = 'run node scripts/source-attribution.mjs --write';
-
 /**
  * The whole `--check` verdict, exported so a test can prove each way it fails
  * rather than only that it currently passes. Returns every error it found and,
  * when clean, the stats the CLI prints.
  */
 export function checkSourceAttribution(rootDir = ROOT) {
+  // Before anything else, because an absent manifest otherwise surfaces as one
+  // "missing manifest entry" per host and never names the real cause.
+  const manifestPath = join(rootDir, MANIFEST_PATH);
+  if (!existsSync(manifestPath)) return { errors: [`${MANIFEST_PATH} is missing; ${REGENERATE_HINT}`] };
+  const docsPath = join(rootDir, DOCS_PATH);
+  if (!existsSync(docsPath)) return { errors: [`${DOCS_PATH} is missing; ${REGENERATE_HINT}`] };
   const inventory = scanUpstreamHosts(rootDir);
   const previous = loadManifest(rootDir);
   const errors = validateManifest(inventory, previous);
@@ -934,13 +973,14 @@ export function checkSourceAttribution(rootDir = ROOT) {
   // per-row validation above covers observed hosts; this catches the rest —
   // retired rows, logical entries, and formatting — so --check and --write can
   // no longer disagree about what the committed artifact should contain.
-  const manifestPath = join(rootDir, MANIFEST_PATH);
-  const committed = existsSync(manifestPath) ? readFileSync(manifestPath, 'utf8') : '';
-  if (committed !== serializeManifest(buildManifest(inventory, previous))) {
+  const rebuilt = serializeManifest(buildManifest(inventory, previous));
+  if (readFileSync(manifestPath, 'utf8') !== rebuilt) {
     return { errors: [`${MANIFEST_PATH} is out of date; ${REGENERATE_HINT}`] };
   }
-  const docsPath = join(rootDir, DOCS_PATH);
-  if (!existsSync(docsPath)) return { errors: [`${DOCS_PATH} is missing; ${REGENERATE_HINT}`] };
+  const mirrorPath = join(rootDir, MIRROR_PATH);
+  if (!existsSync(mirrorPath) || readFileSync(mirrorPath, 'utf8') !== rebuilt) {
+    return { errors: [`${MIRROR_PATH} is out of sync with ${MANIFEST_PATH}; ${REGENERATE_HINT}`] };
+  }
   const actual = matchGeneratedAttributionSection(readFileSync(docsPath, 'utf8'));
   if (actual !== renderAttributionSection(inventory, previous)) {
     return { errors: [`${DOCS_PATH} is out of date; ${REGENERATE_HINT}`] };
@@ -951,10 +991,31 @@ export function checkSourceAttribution(rootDir = ROOT) {
 function main() {
   if (process.argv.includes('--write')) {
     const inventory = scanUpstreamHosts(ROOT);
-    const manifest = buildManifest(inventory, loadManifest(ROOT));
-    writeFileSync(join(ROOT, MANIFEST_PATH), serializeManifest(manifest));
-    updateDocs(ROOT, renderAttributionSection(inventory, manifest));
-    printStats(sourceAttributionStats(inventory, manifest));
+    const previous = loadManifest(ROOT);
+    const manifest = buildManifest(inventory, previous);
+    // Render and count before writing anything. Both throw on a manifest row
+    // that no longer validates, and a row retired by an earlier run is now kept
+    // rather than dropped — so writing first would leave the manifest rewritten,
+    // the docs stale, and every rerun repeating it.
+    const section = renderAttributionSection(inventory, manifest);
+    const stats = sourceAttributionStats(inventory, manifest);
+    const serialized = serializeManifest(manifest);
+    writeFileSync(join(ROOT, MANIFEST_PATH), serialized);
+    // The mirror is what `scripts/`-rooted Railway services read. Writing it
+    // here keeps a manual `cp` from being the only thing holding them equal.
+    writeFileSync(join(ROOT, MIRROR_PATH), serialized);
+    updateDocs(ROOT, section);
+    const retired = manifest.entries.filter((entry) => entry.observed === false).map((entry) => entry.host);
+    const newlyRetired = retired.filter(
+      (host) => (previous.entries || []).some((entry) => entry.host === host && entry.observed !== false),
+    );
+    if (newlyRetired.length) {
+      // Retiring drops a provider from the published count and from license
+      // review. That must never happen quietly just because someone regenerated.
+      console.warn(`source-attribution: retired ${newlyRetired.length} host(s) no longer found by the scanner: ${newlyRetired.join(', ')}`);
+      console.warn('source-attribution: confirm each was removed deliberately — a URL that moved out of the scanned tree looks identical here.');
+    }
+    printStats(stats);
     return;
   }
   const { errors, stats } = checkSourceAttribution(ROOT);

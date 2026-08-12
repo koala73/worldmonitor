@@ -6526,12 +6526,7 @@
       "observed": false,
       "license": "Provider terms for this feed publisher; verify before redistribution",
       "attribution": "Credit tuoitrenews.vn and link to the original feed publisher.",
-      "status": "excluded",
-      "references": [
-        {
-          "path": "src/config/feeds.ts"
-        }
-      ]
+      "status": "excluded"
     },
     {
       "host": "turnerlive.warnermediacdn.com",
