@@ -4619,6 +4619,20 @@
       ]
     },
     {
+      "host": "ogcapi.bgs.ac.uk",
+      "provider": "British Geological Survey World Mineral Statistics",
+      "kind": "structured",
+      "observed": true,
+      "license": "BGS mineral statistics terms; attribution required; redistribution restricted",
+      "attribution": "British Geological Survey (BGS) World Mineral Production; credit BGS and link to https://www.bgs.ac.uk/mineralsuk/statistics/world-mineral-statistics/.",
+      "status": "reviewed",
+      "references": [
+        {
+          "path": "scripts/seed-mineral-production.mjs"
+        }
+      ]
+    },
+    {
       "host": "oilprice.com",
       "provider": "oilprice.com",
       "kind": "feed+structured",
@@ -9644,6 +9658,20 @@
         },
         {
           "path": "src/config/variants/tech.ts"
+        }
+      ]
+    },
+    {
+      "host": "www.sciencebase.gov",
+      "provider": "USGS ScienceBase (Mineral Commodity Summaries)",
+      "kind": "structured",
+      "observed": true,
+      "license": "U.S. government public-domain mineral statistics (USGS MCS data release)",
+      "attribution": "U.S. Geological Survey Mineral Commodity Summaries; link to the ScienceBase data release (https://doi.org/10.5066/P1WKQ63T).",
+      "status": "reviewed",
+      "references": [
+        {
+          "path": "scripts/seed-mineral-production.mjs"
         }
       ]
     },
