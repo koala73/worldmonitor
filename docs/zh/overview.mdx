@@ -19,6 +19,57 @@ World Monitor 从单一代码库运行六个专用变体，每个变体针对不
 
 ---
 
+## 平台评估指南
+
+本节为采购、安全和工程团队简要说明当前平台。各变体的详细说明见后文。
+
+### 技术能力
+
+World Monitor 将交互式 3D 地球仪和平面地图、可配置情报面板、带来源归属的新闻与 OSINT、市场和经济数据、国家风险与韧性评分、基础设施与供应链分析、情景建模、AI 生成简报及告警工作流整合在一起。平台提供托管 Web 应用、跨平台桌面应用和自托管部署。
+
+完整产品功能见[功能与界面](/zh/features)。处理模型、缓存、韧性控制和部署组件见[架构](/zh/architecture)。方法论页面说明平台如何计算[算法与复合信号](/zh/algorithms)。
+
+### 更新频率与新鲜度
+
+World Monitor 不对所有数据集使用统一刷新间隔。每个来源的更新节奏与其上游提供方发布有效观测值的频率相匹配。快速变化的数据流使用实时或分钟级管道；机构数据则保持其每日、每周或每月发布周期。
+
+仪表盘、REST 和 MCP 的典型目标如下：
+
+| 数据领域 | 典型新鲜度或刷新周期 |
+| --- | --- |
+| 市场数据 | 1–5 分钟 |
+| 航班追踪（ADS-B） | 1–3 分钟 |
+| 海事追踪（AIS） | 5–15 分钟 |
+| 仪表盘新闻与 OSINT | 仪表盘每 20 分钟刷新；发布方时间各不相同 |
+| 冲突与动荡数据 | 15–60 分钟 |
+| 国家韧性指数 | 6 小时 |
+| 宏观、BIS 与 Eurostat 数据 | 每日到每周 |
+| IMF《世界经济展望》数据 | 每月 |
+
+这些是运行目标，不保证上游发布方会在每个时间窗口内发布新观测值。支持该能力的缓存型 API 和 MCP 响应会提供时间戳与 `stale` 标记。各工具的新鲜度预算见 [MCP 工具参考](/zh/mcp-tools-reference)，监控语义见[健康端点](/zh/health-endpoints)，当前服务状态见 [status.worldmonitor.app](https://status.worldmonitor.app/)。
+
+### 来源与溯源
+
+World Monitor 组合结构化 API、公开和授权数据集、政府及多边机构官方来源、新闻源和经过审核的 OSINT。代表性提供方包括 ACLED、UCDP、GDELT、UNHCR/OCHA、IMF、世界银行、BIS、Eurostat、FRED、USGS、NASA、Open-Meteo、Cloudflare Radar、AIS 与 ADS-B 提供方，以及数百家新闻发布机构。
+
+按领域查看覆盖范围，请使用[数据来源目录](/zh/data-sources)。查看已观测上游主机、许可状态和归属状态，请使用机器生成的[来源归属清单](/zh/source-attribution)。不同功能和部署模式的来源可用性与许可条件可能不同。
+
+### 集成选项与要求
+
+| 选项 | 最适合 | 主要要求 |
+| --- | --- | --- |
+| 托管仪表盘 | 需要完整可视化产品的分析人员 | 现代浏览器。公开功能无需客户侧集成；付费功能需要相应的 World Monitor 账户或套餐。 |
+| [实时地图嵌入](/zh/embed-live-map) | 文章、门户和内部仪表盘 | 允许使用 HTTPS iframe 的页面。嵌入仅公开允许列表中的公共地图图层，不公开账户或高级功能状态。 |
+| [REST API](/zh/api-reference) | 应用、数据管道和较高流量的批量读取 | 支持出站 HTTPS 与 JSON。标准服务器到服务器访问通过 `X-WorldMonitor-Key` 发送 API 密钥；无需单独网关、令牌交换或 IP 允许列表。请从 [API 快速入门](/zh/usage-quickstart)、[身份验证](/zh/usage-auth)和[速率限制](/zh/usage-rate-limits)开始。 |
+| [MCP 服务器](/zh/mcp-overview) | Claude、Cursor 和自定义 AI 智能体 | 兼容 Streamable HTTP 的 MCP 客户端。目录发现公开；数据调用需要通过 OAuth 2.1 或 World Monitor API 密钥取得付费权益。请参阅[五分钟 MCP 快速入门](/zh/mcp-quickstart)。 |
+| [官方 SDK](/zh/sdks) 与 [CLI](/zh/cli) | Python、Ruby、Go、JavaScript 应用或 Shell 自动化 | 对应语言运行时；数据调用需要 API 密钥。客户端也支持自托管基础 URL。 |
+| [航运 Webhook](/zh/api-shipping-v2) | 咽喉要道中断通知 | 具备 PRO 权限的 API 密钥，以及通过文档所述 SSRF 检查的公开 HTTPS 回调。Webhook 当前仅适用于特定领域，并非全平台通用事件总线。 |
+| 自托管部署 | 需要自行运行整个技术栈的团队 | Node.js 22+、Docker 或 Podman、Redis、部署密钥，并遵守 [AGPL 或单独商业许可](/zh/license)。请参阅[入门指南](/zh/getting-started)。 |
+
+浏览器内 API 调用请查看 [CORS 策略](/zh/cors)。生成客户端请使用机器可读合同：[OpenAPI 规范](https://www.worldmonitor.app/openapi.yaml)。
+
+---
+
 ## World Monitor（地缘政治）
 
 主变体聚焦于地缘政治情报、军事追踪和基础设施安全监测。
