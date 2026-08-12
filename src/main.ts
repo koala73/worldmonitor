@@ -387,6 +387,32 @@ function shouldSuppressCspViolation(
       // 14d). Exact host + /file/ asset-root path.
       if (url.protocol === 'https:' && url.hostname === 'antbank-cdn.marmot-cloud.com'
           && url.pathname.startsWith('/file/') && fontFile.test(url.pathname)) return true;
+      // ---- Round 6. Sized on the window strictly AFTER the round-5 rules were
+      // live (commit 03e4c1e8, 2026-08-10T14:18Z), per the note above. In that
+      // window this issue took THREE events total and every previously-ruled
+      // host had drained to zero — round 5 worked. These two generic package
+      // CDNs are all that remains, so they are the whole live tail of a 357k
+      // headline that is otherwise historical.
+      //
+      // Both are pinned by host + font-file extension rather than a path
+      // prefix, because neither serves fonts from a stable root: they mirror
+      // whatever an arbitrary npm package or GitHub repo happens to ship.
+      // `font-src 'self' data:` means we load NO cross-origin webfont from any
+      // host, so a font block here can never be a first-party regression; a
+      // non-font asset from either CDN still surfaces.
+      //
+      // unpkg: element-ui@2.15.6 theme-chalk icons (.ttf + .woff — the same
+      // face in two formats, the fallback-chain pattern noted above).
+      // `element-ui` appears in neither package.json nor src.
+      if (url.protocol === 'https:' && url.hostname === 'unpkg.com'
+          && fontFile.test(url.pathname)) return true;
+      // jsDelivr: a Korean webfont (Pretendard) served from its GitHub mirror,
+      // `/gh/Project-Noonnu/noonfonts_2107@1.1/`. We DO legitimately load JS
+      // from this host — chart.js in the widget-sanitizer iframe — but only
+      // under `/npm/`, and never a font. That is the same argument the
+      // style-src jsDelivr rule below makes for CSS.
+      if (url.protocol === 'https:' && url.hostname === 'cdn.jsdelivr.net'
+          && fontFile.test(url.pathname)) return true;
     } catch { /* scheme-only values fall through */ }
   }
   // YouTube live stream manifests.

@@ -252,6 +252,34 @@ describe('CSP violation filter (shouldSuppressCspViolation)', () => {
       assert.ok(!suppress('enforce', 'font-src', 'http://images.simplycodes.com/fonts/simply-circular/CircularXXWeb-Regular.woff2', '', false));
     });
 
+    it('suppresses the round-6 package-CDN webfonts (unpkg, jsDelivr)', () => {
+      // The exact URIs still leaking in the window strictly AFTER the round-5
+      // rules went live (03e4c1e8, 2026-08-10T14:18Z) — three events, the whole
+      // live tail of this issue. Both formats of the element-ui face appear
+      // because an @font-face src: list is tried in order.
+      assert.ok(suppress('enforce', 'font-src', 'https://unpkg.com/element-ui@2.15.6/lib/theme-chalk/fonts/element-icons.ttf', '', false));
+      assert.ok(suppress('enforce', 'font-src', 'https://unpkg.com/element-ui@2.15.6/lib/theme-chalk/fonts/element-icons.woff', '', false));
+      assert.ok(suppress('enforce', 'font-src', 'https://cdn.jsdelivr.net/gh/Project-Noonnu/noonfonts_2107@1.1/Pretendard-Regular.woff', '', false));
+    });
+
+    it('keeps NON-font assets from the round-6 package CDNs visible', () => {
+      // These two rules are host + extension only (no path prefix), so the
+      // extension check is the ONLY thing keeping them narrow. jsDelivr in
+      // particular serves our own chart.js: a script block from it must still
+      // reach Sentry, or a real widget-sandbox CSP regression goes silent.
+      assert.ok(!suppress('enforce', 'font-src', 'https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js', '', false));
+      assert.ok(!suppress('enforce', 'script-src', 'https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js', '', false));
+      assert.ok(!suppress('enforce', 'font-src', 'https://unpkg.com/element-ui@2.15.6/lib/theme-chalk/index.css', '', false));
+      // http: on both, pinning the shared protocol conjunct.
+      assert.ok(!suppress('enforce', 'font-src', 'http://unpkg.com/element-ui@2.15.6/lib/theme-chalk/fonts/element-icons.woff', '', false));
+      assert.ok(!suppress('enforce', 'font-src', 'http://cdn.jsdelivr.net/gh/x/y.woff', '', false));
+      // Sibling registrable domains and subdomains an endsWith() refactor eats.
+      assert.ok(!suppress('enforce', 'font-src', 'https://evilunpkg.com/x.woff', '', false));
+      assert.ok(!suppress('enforce', 'font-src', 'https://cdn.unpkg.com/x.woff', '', false));
+      assert.ok(!suppress('enforce', 'font-src', 'https://evil-cdn.jsdelivr.net/gh/x/y.woff', '', false));
+      assert.ok(!suppress('enforce', 'font-src', 'https://jsdelivr.net/gh/x/y.woff', '', false));
+    });
+
     it('does NOT suppress a SIBLING registrable domain of a pinned font host', () => {
       // The `<host>.evil.com` fixtures elsewhere are rejected by ANY hostname
       // check, including a suffix match, so they cannot prove exactness. These
