@@ -306,6 +306,7 @@ describe('crawlable corpus generator', () => {
           .filter((entry) => entry.family === 'content-corpus')
           .map((entry) => new URL(entry.loc).pathname),
       );
+      assert.ok(corpusLocations.has('/sources/'), 'root sitemap must publish the sources catalog');
       const manifestLocations = new Set([
         manifest.sections.countries.index,
         ...manifest.sections.countries.routes,
