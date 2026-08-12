@@ -17,6 +17,7 @@ import { describe, it } from 'node:test';
 import {
   UNDETERMINABLE_VERDICTS,
   classifyServiceDeploy,
+  deepenNoBuildWindows,
   isProblemVerdict,
   missingBaselinedServices,
   readRepeatedArguments,
@@ -842,5 +843,112 @@ describe('strict terminal reconciliation drift', () => {
         /expected service|unique|non-empty/i,
       );
     }
+  });
+});
+
+// #6141/#6483 — NO_BUILD_IN_WINDOW is usually a WINDOW artifact, not a fleet
+// state: under a long refusal storm every push adds a SKIPPED record to every
+// service and a chatty cron adds one per tick, so days of storm displace the
+// newest RUNNING deployment past the 50-record horizon. 29 of 80 services read
+// NO_BUILD_IN_WINDOW this way on 2026-08-12 while every one of them was
+// serving. The deep pass re-reads exactly those services once with a deeper
+// window and reclassifies from the superset — and must stay fail-closed when
+// the deeper read cannot answer either.
+describe('deep-window fallback for NO_BUILD_IN_WINDOW', () => {
+  const svc = (name) => ({ id: `id-${name}`, name });
+  // A shallow window holding nothing classifiable as running: SKIPPED records
+  // without a commitHash are not rejections, so classify() reaches !running.
+  const shallowNoBuild = (name) => classifyServiceDeploy({
+    service: name,
+    deployments: [
+      deployment('SKIPPED', { at: '2026-08-12T10:00:00.000Z' }),
+      deployment('SKIPPED', { at: '2026-08-12T09:00:00.000Z' }),
+    ],
+    headSha: HEAD,
+  });
+  const reclassify = (service, { deployments, error }) => classifyServiceDeploy({
+    service: service.name,
+    deployments,
+    error,
+    headSha: HEAD,
+  });
+
+  it('reclassifies a service whose running build sits past the shallow window', async () => {
+    const reads = [];
+    const shallow = shallowNoBuild('seed-a');
+    assert.equal(shallow.verdict, 'NO_BUILD_IN_WINDOW');
+    const { results, deepened } = await deepenNoBuildWindows(
+      [shallow, { service: 'seed-b', verdict: 'CURRENT', detail: null }],
+      {
+        services: [svc('seed-a'), svc('seed-b')],
+        readDeep: async (service) => {
+          reads.push(service.name);
+          return [
+            deployment('SKIPPED', { at: '2026-08-12T10:00:00.000Z' }),
+            deployment('SUCCESS', { at: '2026-08-01T00:00:00.000Z', sha: HEAD }),
+          ];
+        },
+        reclassify,
+      },
+    );
+    assert.deepEqual(reads, ['seed-a'], 'only the undeterminable service is re-read');
+    assert.equal(deepened, 1);
+    assert.equal(results[0].service, 'seed-a');
+    assert.equal(results[0].verdict, 'CURRENT');
+    assert.equal(results[1].verdict, 'CURRENT', 'other services pass through untouched');
+  });
+
+  it('keeps the shallow verdict when the deep read fails — an unread answer must stay reported', async () => {
+    const shallow = shallowNoBuild('seed-a');
+    const { results, deepened } = await deepenNoBuildWindows([shallow], {
+      services: [svc('seed-a')],
+      readDeep: async () => { throw new Error('railway timed out'); },
+      reclassify,
+    });
+    assert.equal(deepened, 1);
+    assert.equal(results[0], shallow, 'a failed deep read must not replace the verdict in either direction');
+    assert.ok(isProblemVerdict(results[0].verdict));
+  });
+
+  it('stays NO_BUILD_IN_WINDOW when even the deep window holds no running build', async () => {
+    const { results } = await deepenNoBuildWindows([shallowNoBuild('seed-a')], {
+      services: [svc('seed-a')],
+      readDeep: async () => [
+        deployment('SKIPPED', { at: '2026-08-12T10:00:00.000Z' }),
+        deployment('SKIPPED', { at: '2026-08-05T10:00:00.000Z' }),
+      ],
+      reclassify,
+    });
+    assert.equal(results[0].verdict, 'NO_BUILD_IN_WINDOW');
+    assert.ok(isProblemVerdict(results[0].verdict), 'a truly buildless history must stay reported');
+  });
+
+  it('leaves a service it cannot resolve in the fleet untouched', async () => {
+    const shallow = shallowNoBuild('seed-gone');
+    const reads = [];
+    const { results, deepened } = await deepenNoBuildWindows([shallow], {
+      services: [svc('seed-other')],
+      readDeep: async (service) => { reads.push(service.name); return []; },
+      reclassify,
+    });
+    assert.deepEqual(reads, [], 'no deep read for a service the fleet map cannot resolve');
+    assert.equal(deepened, 0);
+    assert.equal(results[0], shallow);
+  });
+
+  it('preserves fleet order across mixed verdicts', async () => {
+    const input = [
+      { service: 'a', verdict: 'CURRENT', detail: null },
+      shallowNoBuild('b'),
+      { service: 'c', verdict: 'REJECTED_PUSH', detail: 'x' },
+      shallowNoBuild('d'),
+    ];
+    const { results } = await deepenNoBuildWindows(input, {
+      services: [svc('b'), svc('d')],
+      readDeep: async () => [deployment('SUCCESS', { at: '2026-08-01T00:00:00.000Z', sha: HEAD })],
+      reclassify,
+    });
+    assert.deepEqual(results.map((result) => result.service), ['a', 'b', 'c', 'd']);
+    assert.deepEqual(results.map((result) => result.verdict), ['CURRENT', 'CURRENT', 'REJECTED_PUSH', 'CURRENT']);
   });
 });

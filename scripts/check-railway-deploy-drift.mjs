@@ -35,6 +35,7 @@ import {
   DEFAULT_CONCURRENCY,
   mapWithConcurrency,
   readArgument,
+  readDeployments,
   readDeploymentsForFleet,
   readEnvironmentConfig,
   resolveEnvironmentId,
@@ -387,6 +388,52 @@ export function classifyServiceDeploy({
   };
 }
 
+// One deeper read for a service whose shallow window held no running build.
+// 400 is sized against the observed worst case, not the steady state: the
+// 2026-08-07→12 refusal storm added a SKIPPED record per push per service plus
+// a record per cron tick, and the deepest displacement measured stayed well
+// under half of this. A storm that outruns even this leaves the service
+// NO_BUILD_IN_WINDOW — reported, exactly as before.
+export const DEEP_DEPLOYMENT_WINDOW = 400;
+
+/**
+ * Re-read exactly the NO_BUILD_IN_WINDOW services with a deeper window and
+ * reclassify from the superset.
+ *
+ * NO_BUILD_IN_WINDOW usually means the newest RUNNING deployment sits past the
+ * window's horizon, not that none exists (#6483: 29 of 80 services read it
+ * while every one was serving). The verdict is undeterminable, so the baseline
+ * refuses to acknowledge it — the only honest way to shrink it is to actually
+ * read deeper. Fail-closed on the deep read itself: a service whose deeper
+ * history cannot be read or still shows no running build keeps its shallow
+ * verdict and stays reported.
+ */
+export async function deepenNoBuildWindows(results, {
+  services,
+  readDeep,
+  reclassify,
+  concurrency = DEFAULT_CONCURRENCY,
+}) {
+  const byName = new Map(services.map((service) => [service.name, service]));
+  const candidates = results
+    .map((result, index) => ({ result, index }))
+    .filter(({ result }) => result.verdict === 'NO_BUILD_IN_WINDOW' && byName.has(result.service));
+  const out = [...results];
+  await mapWithConcurrency(candidates, concurrency, async ({ result, index }) => {
+    const service = byName.get(result.service);
+    try {
+      const deployments = await readDeep(service);
+      out[index] = reclassify(service, { deployments, error: null });
+    } catch {
+      // The shallow answer stands. Replacing it with QUERY_FAILED would erase
+      // the one fact the shallow read DID establish, and going green here would
+      // convert an unread answer into a healthy one — the exact failure mode
+      // UNDETERMINABLE_VERDICTS exists to prevent.
+    }
+  });
+  return { results: out, deepened: candidates.length };
+}
+
 /**
  * Split the fleet into what blocks and what is a known, owned degradation.
  *
@@ -718,23 +765,39 @@ async function main() {
     },
   });
 
-  const results = (await mapWithConcurrency(services, concurrency, async (service) => {
+  // One classifier closure for both passes: the shallow fleet read and the
+  // deep per-service re-read must judge a history identically, or the deepen
+  // pass could reach a different verdict for reasons other than depth.
+  const classifyFrom = (service, { deployments, error }) => classifyServiceDeploy({
+    service: service.name,
+    deployments,
+    error,
+    headSha,
+    graceSha,
+    isAncestor,
+    closure: resolveServiceClosure({
+      registryEntry: registryByService.get(service.name) ?? null,
+      liveService: liveById[service.id] ?? null,
+    }),
+    changedPathsSince,
+    changedPathsIn,
+  });
+
+  const shallowResults = (await mapWithConcurrency(services, concurrency, async (service) => {
     const { deployments, error } = histories.get(service.id) ?? { deployments: null, error: 'no history was read for this service' };
-    return classifyServiceDeploy({
-      service: service.name,
-      deployments,
-      error,
-      headSha,
-      graceSha,
-      isAncestor,
-      closure: resolveServiceClosure({
-        registryEntry: registryByService.get(service.name) ?? null,
-        liveService: liveById[service.id] ?? null,
-      }),
-      changedPathsSince,
-      changedPathsIn,
-    });
+    return classifyFrom(service, { deployments, error });
   })).sort((left, right) => left.service.localeCompare(right.service));
+
+  const { results, deepened } = await deepenNoBuildWindows(shallowResults, {
+    services,
+    readDeep: (service) => readDeployments(service, environment, DEEP_DEPLOYMENT_WINDOW),
+    reclassify: classifyFrom,
+    concurrency,
+  });
+  if (deepened > 0) {
+    // stderr for the same reason the route line is: --json stays one document.
+    console.error(`Deepened ${deepened} service history read(s) whose ${window}-record window held no running build (deep window ${DEEP_DEPLOYMENT_WINDOW}).`);
+  }
 
   const summary = strict
     ? summarizeStrictDeployDrift(results, expectedServices, {
