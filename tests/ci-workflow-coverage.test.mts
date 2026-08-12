@@ -444,36 +444,40 @@ describe('CI workflow coverage', () => {
   // every failed test and CI collected none of them, so run 31584738075 died
   // with the only evidence that could have named its browser close. The job is
   // required, so it reddens on flakes nobody can then diagnose.
-  it('collects the Playwright artifacts a failed variant-smoke-full leaves behind (#6496)', () => {
+  it('collects what every playwright run in variant-smoke-full leaves behind (#6496)', () => {
     const job = testJobBlock('variant-smoke-full');
 
     // The uploaded path has to be the directory Playwright actually writes.
     // The config leaves outputDir at its default, so that is `test-results`;
-    // pinning one later without repointing the upload would strand the upload
-    // on an empty folder while every run still reported green.
+    // pinning one later without repointing the uploads would strand them on an
+    // empty folder while every run still reported green.
     const configuredOutputDir = playwrightConfig.match(/^\s*outputDir:\s*['"]([^'"]+)['"]/m);
     const outputDir = (configuredOutputDir?.[1] ?? 'test-results').replace(/^\.\//, '').replace(/\/$/, '');
 
-    // A failing step ends the job, so an upload placed BEFORE the smoke steps
-    // can only fire for a failure that happened before any test wrote the
-    // output dir. Anything at or after this offset can see it.
-    const lastPlaywrightRun = Math.max(job.lastIndexOf('test:e2e:ci-smoke'), job.lastIndexOf('test:e2e:webmcp'));
-    assert.notEqual(lastPlaywrightRun, -1, 'variant-smoke-full must still invoke playwright');
+    const steps = jobSteps(job);
+    // `- run: …` (the whole step on the dash line) and `run: …` under a named
+    // step are both real here, and matching only the second form silently
+    // narrowed this guard to the WebMCP run alone.
+    const runs = steps
+      .map((step, index) => ({ ...step, index }))
+      .filter((step) => /\n\s*(?:- )?run: npm run test:e2e:/.test(step.block));
+    assert.ok(runs.length > 0, 'variant-smoke-full must still invoke playwright');
+    assert.equal(
+      runs.length,
+      (job.match(/\n\s*(?:- )?run: npm run test:e2e:/g) ?? []).length,
+      'every `npm run test:e2e:*` line in the job must be attributed to exactly one step — if this ' +
+        'fails the step splitter has drifted and the per-run checks below cover less than they claim',
+    );
 
-    // Judge EVERY upload step, not just the first one: a build- or report-
-    // upload added ahead of this one later must not make the guard fail for a
-    // step it was never about.
     const rejected: string[] = [];
-    const collectors = jobSteps(job).filter(({ block, offset }) => {
+    const qualifies = (block: string): boolean => {
       if (!/\n\s*uses: actions\/upload-artifact@/.test(block)) return false;
       const why: string[] = [];
-      if (offset < lastPlaywrightRun) why.push('runs before the last playwright invocation');
-      // The condition has to survive a failed step AND a green run. Without an
-      // `if:` at all the step is skipped the moment a smoke step fails — the
-      // only time it matters. With `failure()` it skips the green-but-flaky
-      // run, which is what retries make the COMMON shape here: the failed
-      // attempt's trace is retained, the job is green, and the evidence would
-      // be thrown away.
+      // The condition has to survive a failed step AND a green run. With no
+      // `if:` the step is skipped the moment a run above it fails — the only
+      // time it matters. With `failure()` it skips the green-but-flaky run,
+      // which retries make the COMMON shape here: the failed attempt's trace
+      // is retained, the job is green, and the evidence would be dropped.
       if (!/\n {8}if: [^\n]*(?:!\s*cancelled\(\)|always\(\))/.test(block)) {
         why.push('is not guarded by an `if:` that runs on both failure and success (`!cancelled()`)');
       }
@@ -487,13 +491,33 @@ describe('CI workflow coverage', () => {
         return false;
       }
       return true;
-    });
+    };
 
-    assert.ok(
-      collectors.length > 0,
-      'variant-smoke-full must upload the Playwright output dir after the smoke run — without it a ' +
-        'failure of this required gate leaves nothing but the console log to diagnose (#6496).' +
-        (rejected.length > 0 ? `\nUpload steps that do not qualify:\n${rejected.join('\n')}` : ''),
+    // Each playwright run needs its OWN collector, before the next one starts:
+    // `playwright test` clears the output dir on startup, so a single upload at
+    // the end of the job carries only the last run's leftovers and silently
+    // drops the earlier run's traces (observed in run 31587725167).
+    const artifactNames: string[] = [];
+    for (const [position, run] of runs.entries()) {
+      const script = run.block.match(/npm run (test:e2e:[\w:-]+)/)?.[1] ?? 'playwright';
+      const nextRun = runs[position + 1]?.index ?? steps.length;
+      const collector = steps.slice(run.index + 1, nextRun).find((step) => qualifies(step.block));
+      assert.ok(
+        collector,
+        `${script} has no artifact upload between it and the next playwright run — the next run wipes ` +
+          `${outputDir}/ on startup, so its traces would be gone before anything collected them (#6496).` +
+          (rejected.length > 0 ? `\nUpload steps that do not qualify:\n${rejected.join('\n')}` : ''),
+      );
+      artifactNames.push(collector.block.match(/\n {10}name: ([^\n]+)/)?.[1]?.trim() ?? '');
+    }
+
+    // Distinct names, or the second upload 409s against the first and the run
+    // ends up with one of the two sets of traces.
+    assert.equal(
+      new Set(artifactNames).size,
+      artifactNames.length,
+      `each playwright run's artifact needs its own name — upload-artifact rejects a duplicate name ` +
+        `within one run, so a collision drops one run's traces entirely. Got: ${artifactNames.join(', ')}`,
     );
   });
 
