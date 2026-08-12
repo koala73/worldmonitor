@@ -19,19 +19,25 @@ test('source inventory has complete metadata and matches the generated catalog',
   const manifest = loadManifest(rootDir);
   assert.deepEqual(validateManifest(inventory, manifest), []);
 
-  const docs = readFileSync(join(rootDir, 'docs/data-sources.mdx'), 'utf8');
+  const docs = readFileSync(join(rootDir, 'docs/source-attribution.mdx'), 'utf8');
   const generated = renderAttributionSection(inventory, manifest);
   const actual = matchGeneratedAttributionSection(docs);
-  assert.equal(actual, generated, 'docs/data-sources.mdx must contain exactly the generated attribution section');
+  assert.equal(actual, generated, 'docs/source-attribution.mdx must contain exactly the generated attribution section');
 
-  // Mintlify parses this page as MDX v3, which rejects `<!--` with
+  // Mintlify parses these pages as MDX v3, which rejects `<!--` with
   // "Unexpected character `!` (U+0021) before name" and fails the whole
   // deployment. Nothing repo-side catches that, so pin it here.
-  assert.equal(
-    docs.includes('<!--'),
-    false,
-    'docs/data-sources.mdx must not contain HTML comments — MDX v3 rejects them; use {/* ... */}',
-  );
+  const dataSourcesDocs = readFileSync(join(rootDir, 'docs/data-sources.mdx'), 'utf8');
+  for (const [path, text] of [
+    ['docs/source-attribution.mdx', docs],
+    ['docs/data-sources.mdx', dataSourcesDocs],
+  ]) {
+    assert.equal(
+      text.includes('<!--'),
+      false,
+      `${path} must not contain HTML comments — MDX v3 rejects them; use {/* ... */}`,
+    );
+  }
 
   const stats = sourceAttributionStats(inventory, manifest);
   assert.equal(stats.activeHosts, 531);

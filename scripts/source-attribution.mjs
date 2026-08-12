@@ -20,8 +20,8 @@ import { fileURLToPath } from 'node:url';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const MANIFEST_PATH = 'shared/source-attribution-manifest.json';
-const DOCS_PATH = 'docs/data-sources.mdx';
-// MDX comments, not HTML ones: Mintlify parses docs/data-sources.mdx as MDX v3,
+const DOCS_PATH = 'docs/source-attribution.mdx';
+// MDX comments, not HTML ones: Mintlify parses docs/source-attribution.mdx as MDX v3,
 // which rejects `<!--` ("Unexpected character `!` before name") and fails the
 // whole deployment. The markers are interpolated into RegExp below, and `{`,
 // `*`, `}` are metacharacters, so every interpolation must go through
@@ -865,7 +865,7 @@ function main() {
   const markerPattern = inventoryMarkerPattern(false);
   const actual = docs.match(markerPattern)?.[0];
   if (actual !== expectedSection) {
-    console.error('source-attribution: docs/data-sources.mdx is out of date; run node scripts/source-attribution.mjs --write');
+    console.error('source-attribution: docs/source-attribution.mdx is out of date; run node scripts/source-attribution.mjs --write');
     process.exitCode = 1;
     return;
   }

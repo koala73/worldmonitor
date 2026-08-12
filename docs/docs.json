@@ -85,6 +85,7 @@
                 "pages": [
                   "overview",
                   "features",
+                  "data-sources",
                   "global-procurement-intelligence",
                   "hotspots"
                 ]
@@ -238,7 +239,7 @@
                   "relay-parameters",
                   "decision-signal-provenance",
                   "china-decision-signals",
-                  "data-sources"
+                  "source-attribution"
                 ]
               },
               {
@@ -550,6 +551,7 @@
                 "pages": [
                   "zh/overview",
                   "zh/features",
+                  "zh/data-sources",
                   "zh/hotspots"
                 ]
               },
@@ -702,7 +704,7 @@
                   "zh/relay-parameters",
                   "zh/decision-signal-provenance",
                   "zh/china-decision-signals",
-                  "zh/data-sources"
+                  "zh/source-attribution"
                 ]
               },
               {

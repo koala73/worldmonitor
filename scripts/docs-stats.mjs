@@ -1057,7 +1057,7 @@ function claims(s) {
     { file: 'public/mcp-server.md', re: /server ships \*\*(\d+)\s+tools\*\*/, value: s.mcpToolCount },
 
     { file: 'docs/data-sources.mdx', re: /monitors (\d+)\s+data sources/, value: s.freshnessSources },
-    { file: 'docs/data-sources.mdx', re: /\*\*(\d+) active upstream hosts\*\*/, value: s.sourceAttributionHosts },
+    { file: 'docs/source-attribution.mdx', re: /\*\*(\d+) active upstream hosts\*\*/, value: s.sourceAttributionHosts },
     { file: 'docs/data-sources.mdx', re: /across (\d+)\s+monitored airports/, value: s.airportCount },
     { file: 'docs/data-sources.mdx', re: /^(\d+)\s+airports across 5 regions/m, value: s.airportCount },
     { file: 'docs/data-sources.mdx', re: /(\d+)\s+global stock exchanges/, value: s.stockExchangeCount },
