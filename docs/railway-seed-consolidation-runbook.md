@@ -144,9 +144,12 @@ rejects every other host even if a workflow variable is misconfigured.
 |---|---|
 | `railway-reconcile-control-production` | Cloudflare deploy token, account ID, fixed control scope, and all four pairwise-distinct HMAC values |
 | `ingestion-acceptance-production-watchdog` | Watchdog HMAC only; no Railway credential |
-| `ingestion-acceptance-production` | Mutation HMAC, the deploy-scoped `RAILWAY_RECONCILE_DEPLOY_TOKEN_V2`, and project ID |
-| `ingestion-acceptance-production-verification` | Verifier HMAC, read-only Railway Viewer token, project ID, and GitHub read evidence |
-| `ingestion-acceptance-production-breakglass` | Operator HMAC plus the same Viewer-only Railway access; required reviewers gate the resolve job |
+| `ingestion-acceptance-production` | Mutation HMAC, `RAILWAY_RECONCILE_DEPLOY_TOKEN_V2`, and project ID |
+| `ingestion-acceptance-production-verification` | Verifier HMAC, `RAILWAY_RECONCILE_VIEWER_TOKEN`, project ID, and GitHub read evidence |
+| `ingestion-acceptance-production-breakglass` | Operator HMAC plus the same `RAILWAY_RECONCILE_VIEWER_TOKEN`; required reviewers gate the resolve job |
+
+Both Railway tokens are distinct project tokens with identical capability; the
+names record intended use, not an enforced boundary. See the scope note below.
 
 The ordinary lease-aware mutation and verifier jobs receive only their own
 HMAC roles in their separately protected environments.

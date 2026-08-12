@@ -372,11 +372,18 @@ export class GitHubWatchdogClient {
       items.push(...pageItems);
       // GitHub answers every paginated read with a `next` link on the numeric
       // repository-ID path (`/repositories/<id>/statuses/<sha>`), not the
-      // `/repos/<owner>/<repo>/...` path that was requested. Treat the link as
-      // nothing but a boolean "another page exists" and synthesize the next
-      // request from our own allowlisted path, so the origin never routes a
-      // watchdog request. Completeness stays enforced below by the frozen
-      // total_count, duplicate-id, and truncation invariants.
+      // `/repos/<owner>/<repo>/...` path that was requested, so comparing the
+      // two never matches. Treat the link as nothing but a boolean "another
+      // page exists" and synthesize the next request from our own path.
+      //
+      // Completeness is proven per collection, NOT uniformly: the frozen
+      // total_count, duplicate-id, and truncation checks below all sit behind
+      // `frozenTotalCount !== null`, so they are inert for any caller that
+      // passes no readTotalCount. readNewestGate is exactly that caller — and
+      // the only one that paginates in production. Its walk is bounded solely
+      // by WATCHDOG_MAX_PAGES, and a short or Link-less response yields a
+      // partial prefix that surfaces as a fail-closed `state: 'missing'`
+      // (DEFERRED_NON_GREEN_MAIN), never as a dispatch. See #6474.
       const hasNextPage = parseNextLink(response.headers.get('link')) !== null;
       let nextPage = null;
       if (hasNextPage) {
