@@ -84,6 +84,21 @@ describe('projectMineralProduction', () => {
     assert.ok(!res.commodities.some((c) => c.commodityId === 'cobalt'));
   });
 
+  it('omits a stage when iso2 is not in that stage', () => {
+    const res = projectMineralProduction(payload, { commodity: 'copper', iso2: 'CN', stage: '' });
+    assert.equal(res.commodities.length, 1);
+    assert.equal(res.commodities[0].mine, undefined);
+    assert.equal(res.commodities[0].refinery?.countries.length, 1);
+    assert.equal(res.commodities[0].refinery?.countries[0].iso2, 'CN');
+  });
+
+  it('treats smelter as the refinery stage', () => {
+    const res = projectMineralProduction(payload, { commodity: 'copper', iso2: '', stage: 'smelter' });
+    assert.equal(res.commodities.length, 1);
+    assert.ok(res.commodities[0].refinery);
+    assert.equal(res.commodities[0].mine, undefined);
+  });
+
   it('marks missing seed as unavailable', () => {
     const res = projectMineralProduction(null, { commodity: '', iso2: '', stage: '' });
     assert.equal(res.upstreamUnavailable, true);

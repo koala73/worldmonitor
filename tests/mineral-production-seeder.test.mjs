@@ -2,6 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   CANONICAL_KEY,
+  contentMeta,
   pickUsgsMcsCsvFromCatalog,
   validateFn,
 } from '../scripts/seed-mineral-production.mjs';
@@ -26,6 +27,14 @@ describe('seed-mineral-production wiring', () => {
     });
     assert.equal(picked.year, 2026);
     assert.equal(picked.url, 'https://example.test/2026.csv');
+  });
+
+  it('contentMeta supplies both timestamps runSeed requires', () => {
+    const meta = contentMeta({ dataYear: 2024 });
+    assert.ok(meta);
+    assert.equal(meta.newestItemAt, Date.parse('2024-12-31T00:00:00.000Z'));
+    assert.equal(meta.oldestItemAt, meta.newestItemAt);
+    assert.equal(contentMeta({}), null);
   });
 
   it('rejects payloads with too few staged commodities', () => {

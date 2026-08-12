@@ -141,7 +141,9 @@ export function declareRecords(data) {
 export function contentMeta(data) {
   const year = Number(data?.dataYear);
   if (!Number.isInteger(year)) return null;
-  return { newestItemAt: Date.parse(`${year}-12-31T00:00:00.000Z`) };
+  const newestItemAt = Date.parse(`${year}-12-31T00:00:00.000Z`);
+  if (!Number.isFinite(newestItemAt) || newestItemAt <= 0) return null;
+  return { newestItemAt, oldestItemAt: newestItemAt };
 }
 
 export async function buildPayload() {

@@ -53,21 +53,21 @@ export class SupplyChainPanel extends Panel {
   constructor() {
     super({ id: 'supply-chain', title: t('panels.supplyChain'), defaultRowSpan: 2, infoTooltip: t('components.supplyChain.infoTooltip') });
     this.content.addEventListener('click', (e) => {
-      const tab = (e.target as HTMLElement).closest('.panel-tab') as HTMLElement | null;
-      if (tab) {
-        const tabId = tab.dataset.tab as TabId;
-        if (tabId && tabId !== this.activeTab) {
-          this.clearTransitChart();
-          this.activeTab = tabId;
-          this.render();
-        }
-        return;
-      }
       const stageBtn = (e.target as HTMLElement).closest('[data-mineral-stage]') as HTMLElement | null;
       if (stageBtn?.dataset.mineralStage === 'mine' || stageBtn?.dataset.mineralStage === 'refinery') {
         const next = stageBtn.dataset.mineralStage as 'mine' | 'refinery';
         if (next !== this.mineralsStage) {
           this.mineralsStage = next;
+          this.render();
+        }
+        return;
+      }
+      const tab = (e.target as HTMLElement).closest('.panel-tab') as HTMLElement | null;
+      if (tab?.dataset.tab) {
+        const tabId = tab.dataset.tab as TabId;
+        if (tabId !== this.activeTab) {
+          this.clearTransitChart();
+          this.activeTab = tabId;
           this.render();
         }
         return;

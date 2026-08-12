@@ -83,7 +83,9 @@ function filterStage(
 ): MineralStageSnapshot | undefined {
   if (!stage) return undefined;
   if (!iso2) return stage;
-  return { ...stage, countries: stage.countries.filter((c) => c.iso2 === iso2) };
+  const countries = stage.countries.filter((c) => c.iso2 === iso2);
+  if (!countries.length) return undefined;
+  return { ...stage, countries };
 }
 
 export function projectMineralProduction(
@@ -94,7 +96,8 @@ export function projectMineralProduction(
 
   const commodityFilter = (req.commodity || '').trim().toLowerCase();
   const iso2 = (req.iso2 || '').trim().toUpperCase();
-  const stageFilter = (req.stage || '').trim().toLowerCase();
+  const rawStage = (req.stage || '').trim().toLowerCase();
+  const stageFilter = rawStage === 'smelter' || rawStage === 'smelting' ? 'refinery' : rawStage;
 
   const records: MineralProductionRecord[] = [];
   for (const item of Object.values(payload.commodities)) {
