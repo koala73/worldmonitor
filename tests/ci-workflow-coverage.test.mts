@@ -21,6 +21,7 @@ const desktopBuildWorkflow = read(resolve(workflowsDir, 'build-desktop.yml'));
 const desktopCanaryWorkflow = read(resolve(workflowsDir, 'test-linux-app.yml'));
 const lintCodeWorkflow = read(resolve(workflowsDir, 'lint-code.yml'));
 const protoCheckWorkflow = read(resolve(workflowsDir, 'proto-check.yml'));
+const playwrightConfig = read(resolve(root, 'playwright.config.ts'));
 const workflowText = readdirSync(workflowsDir)
   .filter((name) => name.endsWith('.yml') || name.endsWith('.yaml'))
   .map((name) => read(resolve(workflowsDir, name)))
@@ -176,6 +177,34 @@ function workflowStepBlocksByUses(workflow: string, action: string): string[] {
   }
   assert.ok(blocks.length > 0, `workflow must define ${action}`);
   return blocks;
+}
+
+// Every step of a job block, with the offset it starts at so a caller can ask
+// where a step sits relative to another (step ORDER decides whether an
+// `if: failure()` step can see what an earlier step produced).
+function jobSteps(jobBlock: string): { block: string; offset: number }[] {
+  // Anchored with `m` rather than a leading `\n`: consuming the newline that
+  // separates two steps would leave the next step with no `\n` to match on,
+  // and matchAll would silently return every OTHER step.
+  const steps: { block: string; offset: number }[] = [];
+  for (const match of jobBlock.matchAll(/^ {6}- [^\n]*\n(?:(?! {6}- )[^\n]*\n)*/gm)) {
+    steps.push({ block: `\n${match[0]}`, offset: match.index ?? 0 });
+  }
+  return steps;
+}
+
+// The `path:` of an upload step, normalized, as a list — the input accepts a
+// single path or a block scalar of several, and a guard that only understood
+// the single-path form would redden the day someone adds a second path.
+function stepPaths(stepBlock: string): string[] {
+  const inline = stepBlock.match(/\n {10}path: (?!\|)([^\n]+)/);
+  if (inline) return [inline[1].trim().replace(/\/$/, '')];
+  const block = stepBlock.match(/\n {10}path: \|[-+]?\n((?: {12}[^\n]*\n)+)/);
+  if (!block) return [];
+  return block[1]
+    .split('\n')
+    .map((line) => line.trim().replace(/\/$/, ''))
+    .filter((line) => line.length > 0);
 }
 
 function workflowRunScript(stepBlock: string): string {
@@ -409,6 +438,55 @@ describe('CI workflow coverage', () => {
     for (const job of TIMEOUT_CAPPED_TEST_JOBS) {
       assert.match(testJobBlock(job), /\n {4}timeout-minutes: \d+\n/, `${job} must set timeout-minutes`);
     }
+  });
+
+  // #6496: playwright.config.ts retained a trace, a video and a screenshot for
+  // every failed test and CI collected none of them, so run 31584738075 died
+  // with the only evidence that could have named its browser close. The job is
+  // required, so it reddens on flakes nobody can then diagnose.
+  it('collects the Playwright artifacts a failed variant-smoke-full leaves behind (#6496)', () => {
+    const job = testJobBlock('variant-smoke-full');
+
+    // The uploaded path has to be the directory Playwright actually writes.
+    // The config leaves outputDir at its default, so that is `test-results`;
+    // pinning one later without repointing the upload would strand the upload
+    // on an empty folder while every run still reported green.
+    const configuredOutputDir = playwrightConfig.match(/^\s*outputDir:\s*['"]([^'"]+)['"]/m);
+    const outputDir = (configuredOutputDir?.[1] ?? 'test-results').replace(/^\.\//, '').replace(/\/$/, '');
+
+    // A failing step ends the job, so an upload placed BEFORE the smoke steps
+    // can only fire for a failure that happened before any test wrote the
+    // output dir. Anything at or after this offset can see it.
+    const lastPlaywrightRun = Math.max(job.lastIndexOf('test:e2e:ci-smoke'), job.lastIndexOf('test:e2e:webmcp'));
+    assert.notEqual(lastPlaywrightRun, -1, 'variant-smoke-full must still invoke playwright');
+
+    // Judge EVERY upload step, not just the first one: a build- or report-
+    // upload added ahead of this one later must not make the guard fail for a
+    // step it was never about.
+    const rejected: string[] = [];
+    const collectors = jobSteps(job).filter(({ block, offset }) => {
+      if (!/\n\s*uses: actions\/upload-artifact@/.test(block)) return false;
+      const why: string[] = [];
+      if (offset < lastPlaywrightRun) why.push('runs before the last playwright invocation');
+      if (!/\n {8}if: failure\(\)\n/.test(block)) why.push('is not guarded by `if: failure()`');
+      if (!stepPaths(block).includes(outputDir)) why.push(`does not upload ${outputDir}/`);
+      // A re-run keeps the same run_id and upload-artifact rejects a duplicate
+      // name within one run, so a name without run_attempt fails to upload
+      // exactly when someone re-runs the job to reproduce the flake.
+      if (!/\n {10}name: [^\n]*github\.run_attempt/.test(block)) why.push('has no github.run_attempt in its name');
+      if (why.length > 0) {
+        rejected.push(`  - "${block.trim().split('\n')[0].replace(/^-\s*/, '')}" ${why.join('; ')}`);
+        return false;
+      }
+      return true;
+    });
+
+    assert.ok(
+      collectors.length > 0,
+      'variant-smoke-full must upload the Playwright output dir after the smoke run — without it a ' +
+        'failure of this required gate leaves nothing but the console log to diagnose (#6496).' +
+        (rejected.length > 0 ? `\nUpload steps that do not qualify:\n${rejected.join('\n')}` : ''),
+    );
   });
 
   it('keeps the deploy gate wired to every Test workflow check job', () => {
