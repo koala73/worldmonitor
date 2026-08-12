@@ -1680,6 +1680,49 @@ describe('durably held recovery dispatch orchestration', () => {
     assert.equal((await snapshotPromise).main.sha, HEAD);
   });
 
+  it('repairs an already-issued dispatch hold during classification without creating a new dispatch', async () => {
+    const hold = {
+      state: 'DISPATCH_HELD',
+      recoveryAttemptId: 'operator-retry-already-issued',
+      headSha: HEAD,
+      sourceRunId: '9007',
+      sourceRunAttempt: 1,
+      sourceHeadSha: HEAD,
+    };
+    const bindCalls = [];
+    let bound = false;
+    const snapshot = await readWatchdogSnapshot({
+      github: {
+        readMainAndGate: async () => ({ sha: HEAD, gate: { state: 'success' } }),
+        readTargetRunSummaries: async () => [],
+        hydrateTargetRuns: async () => [],
+        findRunByRecoveryAttemptId: async () => ({ id: 9008, runAttempt: 1 }),
+      },
+      control: {
+        status: async () => ({
+          data: eligibleControl({
+            dispatchHolds: bound
+              ? [{ ...hold, state: 'RUN_BOUND', runId: '9008', runAttempt: 1 }]
+              : [hold],
+          }),
+        }),
+        bindRun: async (body) => {
+          bindCalls.push(body);
+          bound = true;
+        },
+      },
+      clock: () => NOW,
+    });
+
+    assert.deepEqual(bindCalls, [{
+      recoveryAttemptId: hold.recoveryAttemptId,
+      headSha: hold.headSha,
+      runId: '9008',
+      runAttempt: 1,
+    }]);
+    assert.equal(snapshot.controlState.dispatchHolds[0].state, 'RUN_BOUND');
+  });
+
   it('closes a cancellation-before-job hold only after exact terminal source evidence proves POST never started', async () => {
     const hold = {
       state: 'DISPATCH_HELD',

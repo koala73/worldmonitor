@@ -95,15 +95,16 @@ export const DEFAULT_CONCURRENCY = 8;
 
 export function runRailway(args, options = {}, spawnImpl = spawnSync) {
   const { env: sourceEnv = process.env, ...spawnOptions } = options;
+  const timeout = spawnOptions.timeout ?? RAILWAY_CALL_TIMEOUT_MS;
   const result = spawnImpl('railway', args, {
     encoding: 'utf8',
     maxBuffer: 10 * 1024 * 1024,
-    timeout: RAILWAY_CALL_TIMEOUT_MS,
+    timeout,
     ...spawnOptions,
     env: createRailwayCliEnv(sourceEnv),
   });
   if (result.signal) {
-    throw new Error(`railway ${args.join(' ')} timed out after ${RAILWAY_CALL_TIMEOUT_MS}ms`);
+    throw new Error(`railway ${args.join(' ')} timed out after ${timeout}ms`);
   }
   if (result.error) throw result.error;
   if (result.status !== 0) {
@@ -186,6 +187,7 @@ export function resolveEnvironmentId(environmentName, projectId = process.env.RA
 export async function readDeployments(service, environment, window, {
   env = process.env,
   execFileImpl = execFileAsync,
+  timeoutMs = RAILWAY_CALL_TIMEOUT_MS,
 } = {}) {
   const { stdout } = await execFileImpl('railway', [
     'deployment',
@@ -200,7 +202,7 @@ export async function readDeployments(service, environment, window, {
   ], {
     encoding: 'utf8',
     maxBuffer: 64 * 1024 * 1024,
-    timeout: RAILWAY_CALL_TIMEOUT_MS,
+    timeout: timeoutMs,
     env: createRailwayCliEnv(env),
   });
   return JSON.parse(stdout);
@@ -227,8 +229,11 @@ const FLEET_QUERY = `query FleetDeployments($input: DeploymentListInput!, $first
 }`;
 
 /** Run one GraphQL document through the Railway CLI and return `data`. */
-export function runRailwayApi(query, variables) {
-  const stdout = runRailway(['api', query, '--variables', JSON.stringify(variables), '--compact']);
+export function runRailwayApi(query, variables, { timeoutMs = RAILWAY_CALL_TIMEOUT_MS } = {}) {
+  const stdout = runRailway(
+    ['api', query, '--variables', JSON.stringify(variables), '--compact'],
+    { timeout: timeoutMs },
+  );
   // `railway api` can print advisory lines before the payload; the JSON document
   // is the first line that parses.
   for (const line of stdout.split('\n')) {
@@ -240,6 +245,65 @@ export function runRailwayApi(query, variables) {
     if (parsed?.data) return parsed.data;
   }
   throw new Error('railway api returned no JSON payload');
+}
+
+/**
+ * Read one service's complete deployment history with cursor pagination.
+ *
+ * Most callers need only a bounded recent window. Manual recovery is
+ * different: before it authorizes another mutation, it must prove that no
+ * older deployment is still in flight. The CLI caps a direct history read at
+ * 1,000 records, so a full first page is not exhaustion. This reader is used
+ * only for that uncommon fallback and returns only after Railway says there is
+ * no next page. A repeated cursor or the defensive page budget fails closed.
+ */
+export async function readAllDeployments(service, environmentId, {
+  pageSize = 500,
+  maxPages = 200,
+  api = runRailwayApi,
+  deadline = Number.POSITIVE_INFINITY,
+  now = () => performance.now(),
+} = {}) {
+  if (!service?.id || !environmentId) {
+    throw new Error('service id and environment id are required for complete deployment history');
+  }
+  const deployments = [];
+  const seenCursors = new Set();
+  let after = null;
+  for (let page = 1; page <= maxPages; page += 1) {
+    const remainingMs = deadline - now();
+    if (!(remainingMs > 0)) {
+      throw new Error(`Railway provider proof deadline expired before page ${page} for ${service.name}`);
+    }
+    const data = await api(FLEET_QUERY, {
+      input: { serviceId: service.id, environmentId },
+      first: pageSize,
+      ...(after ? { after } : {}),
+    }, {
+      timeoutMs: Math.min(RAILWAY_CALL_TIMEOUT_MS, Math.max(1, Math.floor(remainingMs))),
+    });
+    const connection = data?.deployments;
+    if (!Array.isArray(connection?.edges)
+      || typeof connection?.pageInfo?.hasNextPage !== 'boolean') {
+      throw new Error(`Railway returned an incomplete deployment history page for ${service.name}`);
+    }
+    const pageDeployments = connection.edges.map((edge) => edge?.node);
+    if (pageDeployments.some((deployment) => !deployment
+      || typeof deployment.id !== 'string'
+      || typeof deployment.status !== 'string'
+      || deployment.serviceId !== service.id)) {
+      throw new Error(`Railway returned a malformed deployment history record for ${service.name}`);
+    }
+    deployments.push(...pageDeployments);
+    if (connection.pageInfo.hasNextPage !== true) return deployments;
+    const next = connection.pageInfo.endCursor;
+    if (typeof next !== 'string' || next === '' || seenCursors.has(next)) {
+      throw new Error(`Railway deployment history cursor did not advance for ${service.name}`);
+    }
+    seenCursors.add(next);
+    after = next;
+  }
+  throw new Error(`Railway deployment history exceeded ${maxPages} pages for ${service.name}`);
 }
 
 /**

@@ -127,11 +127,12 @@ the live audit.
 
 The reconciliation controller is a dedicated Cloudflare Worker backed by one
 SQLite Durable Object. Its foundation can be deployed while the existing
-Railway trigger remains unchanged: keep both
+Railway integration remains unchanged. Keep both
 `RAILWAY_RECONCILE_CUTOVER_ACTIVE` and
 `RAILWAY_RECONCILE_AUTO_RECOVERY_ENABLED` set to `false` until the lease-aware
-target workflow has landed and the legacy trigger has been disabled and
-drained.
+target workflow, protected environments, role credentials, and authenticated
+status probe are ready. Activate the flags separately with the staged cutover
+below.
 
 Provision these GitHub Actions environments with a `main`-only deployment
 branch policy:
@@ -196,6 +197,35 @@ Worker and the one matching consumer environment together and repeat both the
 version and authenticated status probes. Never rotate across an active lease,
 hold, or barrier: the old run would lose its only authorization path and the
 result would require protected operator recovery.
+
+#### Staged cutover
+
+Do not enable both activation flags in one operation.
+
+1. Confirm the current `main` head has an exact green `gate`, no target mutation
+   or verifier run is active, and authenticated controller status has no lease,
+   barrier, attempt, or dispatch hold. Confirm every protected environment has
+   only the role credentials its jobs read.
+2. Set `RAILWAY_RECONCILE_CUTOVER_ACTIVE=true` while keeping
+   `RAILWAY_RECONCILE_AUTO_RECOVERY_ENABLED=false`. This enables the ordinary
+   lease-fenced mutation and verifier cycle plus protected manual retry, but it
+   cannot authorize a watchdog dispatch. Run one exact-green-head cycle and
+   require terminal acceptance to populate `lastAccepted`. Unset the cutover
+   flag to roll back admission of new mutation jobs.
+3. Enable `RAILWAY_RECONCILE_AUTO_RECOVERY_ENABLED` only after `lastAccepted`
+   has been observed fresh, watchdog read failures fail the job after their
+   bounded streak, and a baseline exists for green deferrals caused by a live
+   paginated GitHub inventory. Run the watchdog in `dispatch` mode and require
+   `HEALTHY` with no dispatch. Unset this flag first to roll back automatic
+   recovery authority.
+
+The native Railway source integration is not the lease-aware mutation path. It
+can continue to accept ordinary builds: the reconcile trigger reads the live
+deployment inventory and treats an accepted or in-progress build for the exact
+commit as a no-op. The repository has no separate legacy GitHub workflow that
+deploys with `RAILWAY_PRODUCTION_TOKEN`; that token remains only in read paths.
+If either fact changes, disable and drain the new competing mutation path before
+the staged cutover.
 
 To print the authenticated raw controller state without dispatching anything,
 run the watchdog's `status` mode from `main`:
@@ -447,11 +477,18 @@ The reconciliation control plane deliberately separates two failures:
   Manual Recovery** workflow records an audited resolution. Lease expiry alone
   never clears this barrier.
 
-The watchdog is observe-only unless both `RAILWAY_RECONCILE_CUTOVER_ACTIVE` and
-`RAILWAY_RECONCILE_AUTO_RECOVERY_ENABLED` are exactly `true`. The first flag is
-the hard fence against dispatching the legacy target contract; the second is
-the operational recovery switch. `RECOVERY_AUTHORIZED` means the controller
-persisted a one-use dispatch hold but has not yet dispatched it;
+The watchdog cannot create a hold or dispatch a new recovery unless both
+`RAILWAY_RECONCILE_CUTOVER_ACTIVE` and
+`RAILWAY_RECONCILE_AUTO_RECOVERY_ENABLED` are exactly `true`. Classification is
+deliberately read-and-repair: if an earlier authorized watchdog or manual
+recovery dispatch left a `DISPATCH_HELD` record, an ordinary scheduled run may
+bind its exact accepted workflow run or close it after definitive pre-dispatch
+rejection. That repair is independent of both flags because it completes an
+authorization that already exists; it never creates a hold or sends a dispatch.
+The first flag enables the lease-aware mutation contract and protected manual
+retry, while the second authorizes new automatic recovery. `RECOVERY_AUTHORIZED`
+means the controller persisted a one-use dispatch hold but has not yet
+dispatched it;
 `RECOVERY_DISPATCHED` means GitHub accepted the request and the controller
 durably bound its exact workflow run and attempt. A green
 watchdog run means only that observation did not poison `main`; authoritative
