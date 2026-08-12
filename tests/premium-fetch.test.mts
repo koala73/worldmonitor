@@ -426,6 +426,190 @@ describe('premiumFetch', () => {
     assert.equal(tokenCalls, 2, 'retried once, then gives up — no infinite loop');
     assert.equal(sentHeaders().get('Authorization'), null);
   });
+
+  it('a rejected Clerk-authenticated fetch still falls through to the unauthenticated path', async () => {
+    // The Bearer attempt lives inside a try whose catch falls through to the
+    // anonymous request. Pinned because routing that attempt through a shared
+    // helper makes it easy to `return` the promise unawaited, which escapes the
+    // catch and turns a fall-through into a propagated rejection.
+    let n = 0;
+    setup({
+      clerkToken: 'clerk-jwt',
+      fetchImpl: () =>
+        n++ === 0 ? Promise.reject(new Error('boom')) : Promise.resolve(fakeRes(200)),
+    });
+
+    const res = await premiumFetch(TARGET);
+    assert.equal(res.status, 200);
+    assert.equal(fetchMock.mock.calls.length, 2, 'fell through rather than propagating');
+    assert.equal(sentHeaders(0).get('Authorization'), 'Bearer clerk-jwt');
+    assert.equal(sentHeaders(1).get('Authorization'), null);
+  });
+
+  // -------------------------------------------------------------------------
+  // Retryable billing-verification 503 (#6483).
+  //
+  // WORLDMONITOR-Z4: the gateway 503s every tier-gated path while a Convex
+  // entitlement lookup is unavailable, and getEntitlements() negative-caches
+  // that failure per user — so a single blip took out analyze-stock and
+  // list-stored-stock-backtests one second apart on the same dashboard paint.
+  // The server marks it retryable; these pin that we now honor that.
+  // -------------------------------------------------------------------------
+  function billingRes(status: number, code: string | null, retryAfter: string | null) {
+    const headers = new Headers({ 'Content-Type': 'application/json' });
+    if (code) headers.set('X-Billing-Verification', code);
+    if (retryAfter) headers.set('Retry-After', retryAfter);
+    return new Response(JSON.stringify(code ? { code } : {}), { status, headers });
+  }
+
+  /** Records the waits so a test can assert we honored Retry-After exactly. */
+  let slept: number[];
+  /**
+   * Takes response FACTORIES, not instances: a Response body is single-use, and
+   * the retry path clones the first one to read its denial code. Minting a fresh
+   * Response per attempt keeps each test's attempts independent.
+   */
+  function setupBilling(responses: Array<() => Response>) {
+    slept = [];
+    let n = 0;
+    _setTestProviders({
+      getTesterKeys: () => [],
+      getClerkToken: async () => null,
+      sleep: async (ms) => { slept.push(ms); },
+    });
+    fetchMock.mock.resetCalls();
+    fetchMock.mock.mockImplementation(() =>
+      Promise.resolve(responses[Math.min(n++, responses.length - 1)]!()),
+    );
+  }
+
+  it('retries an unverifiable-entitlement 503 once and returns the recovered response', async () => {
+    setupBilling([
+      () => billingRes(503, 'entitlement_verification_unavailable', '5'),
+      () => fakeRes(200),
+    ]);
+
+    const res = await premiumFetch(TARGET);
+    assert.equal(res.status, 200, 'caller sees the recovered response, not the blip');
+    assert.equal(fetchMock.mock.calls.length, 2, 'exactly one retry');
+    assert.deepEqual(slept, [5000], 'waited exactly the Retry-After the server asked for');
+    // A 200 is below reportServerError's `status < 500` early return, so the
+    // absorbed transient produces no Sentry event at all — the noise half of
+    // WORLDMONITOR-Z4. reportServerError's own suite pins that threshold.
+  });
+
+  it('gives up after ONE retry — a sustained outage still surfaces its 503', async () => {
+    setupBilling([() => billingRes(503, 'entitlement_verification_unavailable', '5')]);
+
+    const res = await premiumFetch(TARGET);
+    assert.equal(res.status, 503, 'sustained outage still reaches the caller');
+    assert.equal(fetchMock.mock.calls.length, 2, 'one retry, then stop — never a loop');
+  });
+
+  it('reads the denial code from the body when the header was stripped', async () => {
+    // Cross-origin widget/Tauri callers can lose X-Billing-Verification to an
+    // intermediary; the body mirrors it.
+    setupBilling([
+      () => new Response(JSON.stringify({ code: 'entitlement_verification_unavailable' }), {
+        status: 503,
+        headers: { 'Content-Type': 'application/json', 'Retry-After': '5' },
+      }),
+      () => fakeRes(200),
+    ]);
+
+    const res = await premiumFetch(TARGET);
+    assert.equal(res.status, 200);
+    assert.equal(fetchMock.mock.calls.length, 2, 'body fallback still triggers the retry');
+  });
+
+  it('does NOT retry a 503 that carries no billing-verification code', async () => {
+    setupBilling([() => billingRes(503, null, '5')]);
+
+    const res = await premiumFetch(TARGET);
+    assert.equal(res.status, 503);
+    assert.equal(fetchMock.mock.calls.length, 1, 'an unclassified 503 is not blind-retried');
+    assert.deepEqual(slept, []);
+  });
+
+  it('does NOT retry fail-closed rate-limit degradation', async () => {
+    // Redis is the thing that is down there and the limiter IS the abuse
+    // defence — retrying adds load to a degraded dependency. Deliberately
+    // outside the allowlist.
+    setupBilling([() => new Response('{"error":"Rate-limit service temporarily unavailable"}', {
+      status: 503,
+      headers: {
+        'Content-Type': 'application/json',
+        'X-RateLimit-Mode': 'degraded',
+        'Retry-After': '5',
+      },
+    })]);
+
+    const res = await premiumFetch(TARGET);
+    assert.equal(res.status, 503);
+    assert.equal(fetchMock.mock.calls.length, 1, 'no retry for a degraded limiter');
+  });
+
+  it('declines a Retry-After longer than the inline budget', async () => {
+    // renewal_verification_failed asks for up to 60s — that is the Dodo
+    // cooldown, so waiting it out inline just arrives at the same denial.
+    setupBilling([() => billingRes(503, 'renewal_verification_failed', '60')]);
+
+    const res = await premiumFetch(TARGET);
+    assert.equal(res.status, 503);
+    assert.equal(fetchMock.mock.calls.length, 1, 'surfaces now rather than blocking a minute');
+  });
+
+  it('retries a short renewal-verification-pending wait', async () => {
+    setupBilling([
+      () => billingRes(503, 'renewal_verification_pending', '2'),
+      () => fakeRes(200),
+    ]);
+
+    const res = await premiumFetch(TARGET);
+    assert.equal(res.status, 200);
+    assert.deepEqual(slept, [2000]);
+  });
+
+  it('defaults the wait when the server omitted Retry-After', async () => {
+    setupBilling([
+      () => billingRes(503, 'entitlement_verification_unavailable', null),
+      () => fakeRes(200),
+    ]);
+
+    const res = await premiumFetch(TARGET);
+    assert.equal(res.status, 200);
+    assert.deepEqual(slept, [5000], 'matches the server-side default');
+  });
+
+  it('does NOT retry a Request input — its body stream is single-use', async () => {
+    setupBilling([() => billingRes(503, 'entitlement_verification_unavailable', '5')]);
+
+    const res = await premiumFetch(new Request(TARGET));
+    assert.equal(res.status, 503);
+    assert.equal(fetchMock.mock.calls.length, 1, 'a consumed body must never be replayed');
+  });
+
+  it('returns the original 503 when the retry itself throws', async () => {
+    slept = [];
+    let n = 0;
+    _setTestProviders({
+      getTesterKeys: () => [],
+      getClerkToken: async () => null,
+      sleep: async (ms) => { slept.push(ms); },
+    });
+    fetchMock.mock.resetCalls();
+    fetchMock.mock.mockImplementation(() =>
+      n++ === 0
+        ? Promise.resolve(billingRes(503, 'entitlement_verification_unavailable', '5'))
+        : Promise.reject(new Error('network down')),
+    );
+
+    // Worst case must be exactly today's behavior, never a thrown rejection
+    // in place of the server's answer.
+    const res = await premiumFetch(TARGET);
+    assert.equal(res.status, 503);
+    assert.equal(fetchMock.mock.calls.length, 2);
+  });
 });
 
 // ---------------------------------------------------------------------------
