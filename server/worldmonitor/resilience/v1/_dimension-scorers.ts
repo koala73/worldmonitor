@@ -735,6 +735,9 @@ export function scoreInflationStability(inflationPct: number): number {
 // blend rather than the band shape.
 export const FIN_SYS_BAND_ISOLATION_FLOOR = 30;
 export const FIN_SYS_BAND_OVEREXPOSED_FLOOR = 35;
+// The low-integration/sweet-spot boundary (5% of GDP). Everything at or below
+// it is a level reading the diversity conditioning below must not touch.
+export const FIN_SYS_BAND_PREMIUM_FLOOR = 75;
 
 export function normalizeBandLowerBetter(value: number): number {
   if (!Number.isFinite(value) || value < 0) return 50;
@@ -782,24 +785,48 @@ export function normalizeBandLowerBetter(value: number): number {
 //   - parents ≤ 1  → no premium (band caps at the 75 boundary value);
 //   - continuous in claims for any fixed parent count (a scaled continuous
 //     premium added to a continuous base), monotone in parents;
-//   - `parentCount == null` (BIS row present but the count failed to parse)
-//     earns NO premium: absence of diversity evidence is not diversity, the
-//     same fail-closed direction as `readBisLbsCountry`'s refusal to coerce
-//     malformed fields to observed zeros.
+//   - a non-finite or absent `parentCount` earns NO premium: absence of
+//     diversity evidence is not diversity. Non-finite is handled explicitly
+//     rather than left to arithmetic — `normalizeHigherBetter` returns NaN for
+//     it, and `roundScore(NaN)` is 0, which would put a premium-region country
+//     BELOW the isolation floor and invert the very ranking this function
+//     exists to fix. The sibling `normalizeBandLowerBetter` neutralises
+//     malformed input the same way.
+//
+// Capping the band is necessary but not SUFFICIENT to make a `parentCount`
+// parse regression fail closed, and this function cannot make it so. The same
+// missing count also nulls the Component 4 slot, and `weightedBlend`
+// renormalises the freed weight onto the survivors — for a country whose debt
+// and FATF legs read high, that renormalisation RAISES the published score.
+// Measured on the pinned Albania fixture: honest 70 -> 80 with the count
+// unparseable.
+//
+// That inflation is a property of the blend, not of this conditioning, and it
+// predates it: the same measurement against the raw band is 74 -> 86, so the
+// conditioning strictly REDUCES it (+10 vs +12). Coupling the two BIS slots so
+// a half-parsed row resolves neither was measured too and is worse still
+// (-> 83): it frees even more weight onto the high legs. The real fix is at
+// the blend layer — see issue #6528 — and is deliberately not attempted here.
 //
 // Known conservative edge: parentCount counts only parents above 1% of GDP,
 // so a country integrated through many sub-threshold parents forfeits a
 // premium its true breadth might merit. No production row currently has
-// premium-region claims with parentCount 0, and the forfeited premium at
-// those claim levels is ≤ 3 points.
+// premium-region claims with parentCount 0. The forfeit is bounded by the
+// premium itself (≤ 25 points of band, ≤ 7.5 of dimension) and reaches ~14
+// band points at the worst arithmetically reachable case — 16 enumerated
+// reporting parents each sitting just under the 1%-of-GDP counting threshold.
 export function normalizeDiversityConditionedBand(
   claimsPctGdp: number,
   parentCount: number | null,
 ): number {
   const raw = normalizeBandLowerBetter(claimsPctGdp);
-  if (raw <= 75) return raw;
-  const redundancy = parentCount == null ? 0 : normalizeHigherBetter(parentCount, 1, 10);
-  return roundScore(75 + (raw - 75) * (redundancy / 100));
+  if (raw <= FIN_SYS_BAND_PREMIUM_FLOOR) return raw;
+  const redundancy = parentCount != null && Number.isFinite(parentCount)
+    ? normalizeHigherBetter(parentCount, 1, 10)
+    : 0;
+  return roundScore(
+    FIN_SYS_BAND_PREMIUM_FLOOR + (raw - FIN_SYS_BAND_PREMIUM_FLOOR) * (redundancy / 100),
+  );
 }
 
 // `normalizeSanctionCount` retired in plan 2026-04-25-004 Phase 1. The
@@ -2164,6 +2191,10 @@ export async function scoreFinancialSystemExposure(
       // proportion to demonstrated parent breadth (see
       // `normalizeDiversityConditionedBand`). Passing `parentCount` from the
       // same BIS row keeps level and breadth reads consistent per country.
+      // A missing count caps the premium here but cannot stop the blend from
+      // renormalising the freed Component 4 weight onto the surviving legs —
+      // pre-existing, measured, and reduced (not caused) by the conditioning:
+      // issue #6528.
       score: bisCountry?.totalXborderPctGdp == null
         ? null
         : normalizeDiversityConditionedBand(bisCountry.totalXborderPctGdp, bisCountry.parentCount),

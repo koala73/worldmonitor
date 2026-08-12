@@ -24,6 +24,7 @@ import { readFileSync } from 'node:fs';
 import { afterEach, beforeEach, describe, it } from 'node:test';
 
 import {
+  FIN_SYS_BAND_PREMIUM_FLOOR,
   FIN_SYS_EXPOSURE_COMPREHENSIVE_EMBARGO,
   scoreFinancialSystemExposure,
 } from '../server/worldmonitor/resilience/v1/_dimension-scorers.ts';
@@ -186,6 +187,82 @@ describe('financialSystemExposure — dimension-level matched pairs', () => {
       failures,
       [],
       `financialSystemExposure matched pairs failed on ${FINSYS_FIXTURE_CAPTURED_AT} production payloads: ${failures.join(' | ')}`,
+    );
+  });
+
+  it('a thin anchor is only thin if its OBSERVED gap is, not just its declared minGap', async () => {
+    // The other half of the thin-anchor gate. `resilience-cohort-config`
+    // checks the DECLARATION (sanctioned id, minGap 1-5, thinness rationale);
+    // only here are scores actually computed, so only here can the claim be
+    // checked against reality. Without this, a decisive pair could be
+    // relabelled `thinAnchor` to escape the >= 10 rule and both gates would
+    // pass — the declaration would be internally consistent and the wide gap
+    // would sail through a bound that no longer applied to it.
+    const reader = createFinSysFixtureReader();
+    const failures: string[] = [];
+
+    for (const pair of FIN_SYS_EXPOSURE_MATCHED_PAIRS) {
+      if (!pair.thinAnchor) continue;
+      const higher = await scoreFinancialSystemExposure(pair.higherExpected, reader);
+      const lower = await scoreFinancialSystemExposure(pair.lowerExpected, reader);
+      const gap = higher.score - lower.score;
+      if (gap >= 10) {
+        failures.push(
+          `${pair.id}: observed gap ${gap} (${pair.higherExpected}=${higher.score} - `
+            + `${pair.lowerExpected}=${lower.score}) is decisive, not thin — either drop thinAnchor `
+            + 'and give it the >= 10 bound it now earns, or re-examine why the gap widened',
+        );
+      }
+    }
+
+    assert.deepEqual(failures, [], failures.join(' | '));
+  });
+
+  it('the methodology renders the same premium boundary the scorer uses', () => {
+    // Doc/code parity for the conditioning, mirroring what
+    // `methodologyEmbargoCountryCodes` does for the embargo list. The doc
+    // carries the formula as prose, and the boundary is the number in it most
+    // likely to drift silently: change it in the code and the doc keeps
+    // telling readers the old story, with no test between them. The embargo
+    // block already proved that a cross-checked doc is the only kind that
+    // stays true.
+    const marker = METHODOLOGY.indexOf('conditioned = min(band,');
+    assert.ok(marker >= 0, 'methodology must render the diversity-conditioning formula');
+    const formula = METHODOLOGY.slice(marker, METHODOLOGY.indexOf('\n', marker));
+
+    // Extract the boundary from the two slots that carry it, rather than
+    // scanning every integer and denylisting the rest — the formula also
+    // contains 0, 1, 10 and 100, and a denylist silently stops matching the
+    // moment the prose is reworded. `−` is U+2212 in the rendered doc, so
+    // accept either dash.
+    const slots = [
+      /min\(band,\s*(\d+)\)/, // min(band, 75)
+      /band\s*[-−]\s*(\d+)/, // band − 75
+    ].map((re) => {
+      const match = formula.match(re);
+      assert.ok(match, `rendered formula does not contain the expected slot ${re}: ${formula}`);
+      return Number(match[1]);
+    });
+
+    for (const value of slots) {
+      assert.equal(
+        value,
+        FIN_SYS_BAND_PREMIUM_FLOOR,
+        `methodology renders boundary ${value} but the scorer uses ${FIN_SYS_BAND_PREMIUM_FLOOR} — `
+          + `doc and code have drifted (formula: ${formula})`,
+      );
+    }
+  });
+
+  it('the thin-anchor class is not a silent majority of the panel', async () => {
+    // A per-pair bound says nothing about how many pairs use the exception.
+    // If most of the panel became thin, the dimension's directional gates
+    // would collectively lose their teeth without any single check failing.
+    const thin = FIN_SYS_EXPOSURE_MATCHED_PAIRS.filter((p) => p.thinAnchor).length;
+    assert.ok(
+      thin * 2 <= FIN_SYS_EXPOSURE_MATCHED_PAIRS.length,
+      `${thin} of ${FIN_SYS_EXPOSURE_MATCHED_PAIRS.length} financialSystemExposure pairs are thin anchors — `
+        + 'the decisive contrasts must stay the majority of the panel',
     );
   });
 });

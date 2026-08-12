@@ -2,8 +2,10 @@
 // gates (issue #6459 Phase A).
 //
 // Every component value below is a VERBATIM reading of the three production
-// seed envelopes on 2026-08-11, pulled read-only from Upstash:
-//   economic:wb-external-debt:v1  (119 countries)
+// seed envelopes, pulled read-only from Upstash. All 57 pinned values were
+// diffed against the live payloads on 2026-08-12 and matched exactly:
+//   economic:wb-external-debt:v1  (119 countries; nonDrsCountryCodes from the
+//                                  v2 seeder, 72 codes as of 2026-08-12)
 //   economic:bis-lbs:v1           (200 countries)
 //   economic:fatf-listing:v1      (FATF plenary publication 2026-06-01)
 //
@@ -31,7 +33,12 @@
 
 import type { ResilienceSeedReader } from '../../server/worldmonitor/resilience/v1/_dimension-scorers.ts';
 
-export const FINSYS_FIXTURE_CAPTURED_AT = '2026-08-11';
+// Capture date for the whole file — quoted verbatim in calibration failure
+// messages, so it must describe every row, not just the newest. When adding a
+// row, re-diff the existing rows against production and bump this together
+// with them; a stamp that describes only some rows sends the next debugger to
+// the wrong payload.
+export const FINSYS_FIXTURE_CAPTURED_AT = '2026-08-12';
 
 export interface FinSysDebtEntry {
   value: number;
