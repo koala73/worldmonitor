@@ -198,6 +198,10 @@ const stubSources: Record<string, string> = {
   `,
   './referral-capture': `
     export const loadActiveReferral = () => null;
+    // Re-exported real, never faked: startCheckout gates its outgoing
+    // referral on this, so a stub that always returns true would make any
+    // referral assertion in this harness vacuous (#6493).
+    export { isAffiliateCode } from './src/services/referral-capture.ts';
   `,
   './checkout-duplicate-dialog': `
     export const showDuplicateSubscriptionDialog = () => {};
@@ -229,6 +233,8 @@ const pendingDialogPlugin: Plugin = {
     buildApi.onLoad({ filter: /.*/, namespace: 'pending-stub' }, (args) => ({
       contents: stubSources[args.path],
       loader: 'js',
+      // Lets a stub re-export the real module it partially replaces.
+      resolveDir: process.cwd(),
     }));
   },
 };

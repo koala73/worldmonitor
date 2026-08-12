@@ -48,7 +48,7 @@ const ConsoleFrame = () => (
   >
     <div className="absolute -inset-8 bg-wm-green/5 blur-[60px] rounded-full pointer-events-none" aria-hidden="true" />
     <a
-      href={`${DASHBOARD_PATH}?ref=welcome-plate`}
+      href={`${DASHBOARD_PATH}?utm_source=welcome&utm_content=plate`}
       data-umami-event="welcome-cta"
       data-umami-event-target="welcome-plate"
       className="relative block border border-wm-border rounded-md overflow-hidden border-glow bg-wm-card hover:border-wm-green/40 transition-colors"
@@ -114,7 +114,7 @@ export const Hero = () => (
         className="mt-9 mx-auto flex max-w-[22rem] sm:max-w-none flex-col sm:flex-row items-stretch sm:items-center justify-center gap-4"
       >
         <a
-          href={`${DASHBOARD_PATH}?ref=welcome-hero`}
+          href={`${DASHBOARD_PATH}?utm_source=welcome&utm_content=hero`}
           data-umami-event="welcome-cta"
           data-umami-event-target="welcome-hero"
           className="w-full sm:w-auto justify-center bg-wm-green text-wm-bg px-5 sm:px-8 py-3.5 rounded-sm font-mono text-sm uppercase tracking-wide sm:tracking-wider font-bold hover:bg-green-400 transition-colors inline-flex items-center gap-2"

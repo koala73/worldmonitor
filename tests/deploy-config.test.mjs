@@ -588,6 +588,27 @@ const DASHBOARD_HTML_DESTINATION = '/dashboard.html';
 // its output to dashboard.html so Vercel's filesystem cannot shadow the /
 // rewrite. /welcome and /index.html redirect to root so crawlers and humans do
 // not see duplicate landing URLs.
+// Both affiliate param names, in URL position. Mirrors REFERRAL_PARAM_NAMES in
+// src/services/referral-capture.ts — a CTA spelled with either one is captured
+// as an affiliate code and forwarded to Dodo.
+const AFFILIATE_PARAM_IN_URL = /[?&](?:ref|wm_referral)=/;
+// Dashboard-bound CTA queries, in the two shapes the welcome sections use: the
+// DASHBOARD_PATH template literal and an absolute variant-host URL.
+const DASHBOARD_CTA_QUERY = /(?:\$\{DASHBOARD_PATH\}|worldmonitor\.app\/dashboard)\?([^`'"\s]*)/g;
+
+function readWelcomeSources() {
+  const welcomeDir = resolve(__dirname, '../pro-test/src/welcome');
+  const files = readdirSync(welcomeDir).filter((file) => file.endsWith('.tsx'));
+  assert.ok(files.length > 0, 'expected welcome section sources to scan');
+  return files.map((file) => [file, readFileSync(resolve(welcomeDir, file), 'utf-8')]);
+}
+
+function readGeneratedWelcomeAsset(generatedWelcomeHtml) {
+  const welcomeAssetPath = generatedWelcomeHtml.match(/src="\/pro\/(assets\/welcome-[^"]+\.js)"/)?.[1];
+  assert.ok(welcomeAssetPath, 'generated welcome HTML must reference a hashed welcome JS entry');
+  return readFileSync(resolve(__dirname, '../public/pro', welcomeAssetPath), 'utf-8');
+}
+
 describe('welcome landing page routing', () => {
   // A `/` rewrite gated on a query condition (e.g. /?mode=agent →
   // /agent-view.json) never matches a plain navigation, so the app-root
@@ -870,24 +891,30 @@ describe('welcome landing page routing', () => {
   });
 
   it('keeps welcome dashboard launch CTAs off the root welcome route', () => {
-    const welcomeMomentsSource = readFileSync(resolve(__dirname, '../pro-test/src/welcome/Moments.tsx'), 'utf-8');
+    const welcomeSources = readWelcomeSources();
     const generatedWelcomeHtml = readFileSync(resolve(__dirname, '../public/pro/welcome.html'), 'utf-8');
-    const welcomeAssetPath = generatedWelcomeHtml.match(/src="\/pro\/(assets\/welcome-[^"]+\.js)"/)?.[1];
-    assert.ok(welcomeAssetPath, 'generated welcome HTML must reference a hashed welcome JS entry');
+    const generatedWelcomeAsset = readGeneratedWelcomeAsset(generatedWelcomeHtml);
 
-    const generatedWelcomeAsset = readFileSync(resolve(__dirname, '../public/pro', welcomeAssetPath), 'utf-8');
-    const rootWelcomeLaunchLink = /href\s*[:=]\s*["'`]\/\?ref=welcome-/;
-    const variantRootWelcomeLaunchLink = /https:\/\/(?:tech|finance|commodity|happy|energy)\.worldmonitor\.app\/\?ref=welcome-/;
-    assert.doesNotMatch(
-      welcomeMomentsSource,
-      rootWelcomeLaunchLink,
-      'welcome source must not route launch CTAs back to the root welcome page'
-    );
-    assert.doesNotMatch(
-      welcomeMomentsSource,
-      variantRootWelcomeLaunchLink,
-      'welcome source must not route variant launch CTAs back to variant root welcome pages'
-    );
+    // Param-agnostic on purpose: these once keyed off `?ref=welcome-`, and
+    // when #6493 moved the CTAs to `?utm_source=` both regexes quietly stopped
+    // matching anything, leaving the guard green over code it no longer
+    // described. What is actually forbidden is a query-carrying link to a ROOT
+    // route (`/?…`), which lands back on the welcome page instead of the
+    // dashboard — whatever the query happens to be called.
+    const rootWelcomeLaunchLink = /href\s*[:=]\s*["'`]\/\?/;
+    const variantRootWelcomeLaunchLink = /https:\/\/(?:tech|finance|commodity|happy|energy)\.worldmonitor\.app\/\?/;
+    for (const [file, source] of welcomeSources) {
+      assert.doesNotMatch(
+        source,
+        rootWelcomeLaunchLink,
+        `${file}: welcome source must not route launch CTAs back to the root welcome page`
+      );
+      assert.doesNotMatch(
+        source,
+        variantRootWelcomeLaunchLink,
+        `${file}: welcome source must not route variant launch CTAs back to variant root welcome pages`
+      );
+    }
     assert.doesNotMatch(
       generatedWelcomeAsset,
       rootWelcomeLaunchLink,
@@ -898,6 +925,107 @@ describe('welcome landing page routing', () => {
       variantRootWelcomeLaunchLink,
       'generated welcome JS must not route variant launch CTAs back to variant root welcome pages'
     );
+  });
+
+  it('tags welcome dashboard CTAs with utm params, never an affiliate referral param', () => {
+    // `ref=` and `wm_referral=` on a dashboard URL are read by
+    // src/services/referral-capture.ts as an AFFILIATE code: persisted for 7
+    // days and forwarded to Dodo as `affonso_referral`. Internal welcome CTAs
+    // tagged that way credit "welcome-nav" for organic purchases (#6493), so
+    // the source tag must be a utm_* param — which Umami reports natively and
+    // referral-capture ignores. Both param names are banned: wm_referral is
+    // read FIRST, so a CTA spelled that way is the identical bug.
+    const welcomeSources = readWelcomeSources();
+
+    let taggedCtas = 0;
+    for (const [file, source] of welcomeSources) {
+      assert.doesNotMatch(
+        source,
+        AFFILIATE_PARAM_IN_URL,
+        `${file}: welcome CTAs must never use an affiliate referral param (see REFERRAL_PARAM_NAMES in referral-capture.ts)`
+      );
+      for (const [, query] of source.matchAll(DASHBOARD_CTA_QUERY)) {
+        assert.match(
+          query,
+          /(?:^|&)utm_source=welcome(?:&|$)/,
+          `${file}: dashboard CTA "?${query}" must carry utm_source=welcome`
+        );
+        taggedCtas += 1;
+      }
+    }
+    // Exact, not a floor: a floor with slack lets a CTA drop out of the scan
+    // (moved behind a helper, or re-pointed off /dashboard) while still
+    // reading as covered. Bump this deliberately when a CTA is added.
+    assert.equal(taggedCtas, 12, `expected all 12 welcome dashboard CTAs to be scanned, saw ${taggedCtas}`);
+
+    const generatedWelcomeHtml = readFileSync(resolve(__dirname, '../public/pro/welcome.html'), 'utf-8');
+    assert.doesNotMatch(
+      readGeneratedWelcomeAsset(generatedWelcomeHtml),
+      AFFILIATE_PARAM_IN_URL,
+      'generated welcome JS still ships affiliate referral CTAs — rebuild pro-test and commit public/pro/'
+    );
+    assert.doesNotMatch(
+      // React serializes `&` as `&amp;` in attribute values, so a second-position
+      // param reads `&amp;ref=` in the prerendered HTML and would slip past a
+      // bare `[?&]` character class.
+      generatedWelcomeHtml.replace(/&amp;/g, '&'),
+      AFFILIATE_PARAM_IN_URL,
+      'prerendered welcome HTML still ships affiliate referral CTAs — rebuild pro-test and commit public/pro/'
+    );
+  });
+
+  it('keeps every critical-CSS anchor rule bound to an anchor the prerender actually emits', () => {
+    // The inline critical CSS styles the above-the-fold CTAs by attribute
+    // selector before Tailwind loads. Those selectors key off values that live
+    // in the components (an href query, an aria-label), so renaming one there
+    // silently kills the rule and the CTA renders unstyled on first paint.
+    const prerenderSource = readFileSync(resolve(__dirname, '../pro-test/prerender.mjs'), 'utf-8')
+      // Comments in this file discuss selectors (including ones that no longer
+      // exist); scanning them would fail the guard over prose.
+      .replace(/^[ \t]*\/\/.*$/gm, '');
+    const generatedWelcomeHtml = readFileSync(resolve(__dirname, '../public/pro/welcome.html'), 'utf-8');
+
+    // Region-scoped: a `main a[...]` rule is dead if only a <nav> anchor
+    // matches it, so each selector is checked against anchors from its own
+    // region rather than the whole document.
+    const anchorsByRegion = new Map(['main', 'nav'].map((region) => {
+      const markup = generatedWelcomeHtml.match(new RegExp(`<${region}\\b[\\s\\S]*?</${region}>`))?.[0] ?? '';
+      return [region, markup.match(/<a\b[^>]*>/g) ?? []];
+    }));
+    for (const [region, anchors] of anchorsByRegion) {
+      assert.ok(anchors.length > 0, `prerendered welcome HTML must contain <${region}> anchors`);
+    }
+
+    // `[~|^$*]?` covers every CSS attribute operator, so a rule rewritten with
+    // one we do not model fails loudly below instead of dropping out of the
+    // scanned set.
+    const selectors = [...prerenderSource.matchAll(/(main|nav) a\[([a-zA-Z-]+)([~|^$*]?)="([^"]+)"\]/g)];
+    const scanned = new Set(selectors.map(([, region, attribute, operator, value]) => `${region} a[${attribute}${operator}="${value}"]`));
+    // Named, not counted: a floor equal to the post-deletion count is green
+    // when the rule it exists to protect is deleted outright.
+    for (const required of [
+      'main a[data-umami-event-target="welcome-hero"]',
+      'main a[href*="moments"]',
+      'nav a[aria-label*="Launch"]',
+    ]) {
+      assert.ok(scanned.has(required), `critical CSS must still style the welcome CTA via ${required}`);
+    }
+
+    for (const [, region, attribute, operator, value] of selectors) {
+      assert.ok(
+        operator === '' || operator === '*',
+        `critical CSS selector a[${attribute}${operator}="${value}"] uses an attribute operator this guard does not model — teach it the operator or it silently stops checking that rule`
+      );
+      const matched = (anchorsByRegion.get(region) ?? []).some((tag) => {
+        const actual = tag.match(new RegExp(`\\b${attribute}="([^"]*)"`))?.[1];
+        if (actual === undefined) return false;
+        return operator === '*' ? actual.includes(value) : actual === value;
+      });
+      assert.ok(
+        matched,
+        `critical CSS selector ${region} a[${attribute}${operator}="${value}"] matches no prerendered <${region}> anchor — the rule is dead and its CTA paints unstyled`
+      );
+    }
   });
 
   it('redirects signed-in welcome visitors to /dashboard client-side without loading the Clerk SDK', () => {

@@ -51,7 +51,7 @@ export const Nav = () => (
         </div>
       </details>
       <a
-        href={`${DASHBOARD_PATH}?ref=welcome-nav`}
+        href={`${DASHBOARD_PATH}?utm_source=welcome&utm_content=nav`}
         data-umami-event="welcome-cta"
         data-umami-event-target="welcome-nav"
         aria-label={t('welcome.nav.launch')}

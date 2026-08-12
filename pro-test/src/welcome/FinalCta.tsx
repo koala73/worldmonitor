@@ -17,7 +17,7 @@ export const FinalCta = () => (
       <p className="text-wm-muted mt-4">{t('welcome.cta.subtitle')}</p>
       <div className="mt-9">
         <a
-          href={`${DASHBOARD_PATH}?ref=welcome-final`}
+          href={`${DASHBOARD_PATH}?utm_source=welcome&utm_content=final`}
           data-umami-event="welcome-cta"
           data-umami-event-target="welcome-final"
           className="bg-wm-green text-wm-bg px-10 py-4 rounded-sm font-mono text-sm uppercase tracking-wider font-bold hover:bg-green-400 transition-colors inline-flex items-center gap-2"
