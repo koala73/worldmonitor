@@ -139,6 +139,390 @@ const SOURCE_DOMAIN_OVERRIDES = new Map([
   ['your-app.convex.site', 'infrastructure'],
 ]);
 
+// Attribution is host-oriented because licensing and URL discovery happen at
+// that boundary. The marketing catalog needs the public name people recognize.
+// Keep the hostname as the traceability link, but never make it do double duty
+// as the visible provider title.
+const SOURCE_NAME_OVERRIDES = new Map([
+  ['acleddata.com', 'ACLED'],
+  ['adsb.lol', 'ADSB.lol'],
+  ['aerotime.aero', 'AeroTime'],
+  ['agentskills.io', 'Agent Skills'],
+  ['agsi.gie.eu', 'GIE AGSI+'],
+  ['airlinegeeks.com', 'AirlineGeeks'],
+  ['airplanes.live', 'Airplanes.live'],
+  ['api.abuseipdb.com', 'AbuseIPDB'],
+  ['api.aviationstack.com', 'AviationStack'],
+  ['api.coingecko.com', 'CoinGecko'],
+  ['api.data.gov.my', 'Malaysia Open Data'],
+  ['api.datos.gob.mx', 'Mexico Open Data'],
+  ['api.eia.gov', 'U.S. Energy Information Administration (EIA)'],
+  ['api.fiscaldata.treasury.gov', 'U.S. Treasury Fiscal Data'],
+  ['api.gdeltproject.org', 'GDELT'],
+  ['api.iea.org', 'International Energy Agency (IEA)'],
+  ['api.imf.org', 'International Monetary Fund (IMF)'],
+  ['api.ossinsight.io', 'OSS Insight'],
+  ['api.planespotters.net', 'Planespotters.net'],
+  ['api.sam.gov', 'SAM.gov'],
+  ['api.spdrgoldshares.com', 'SPDR Gold Shares'],
+  ['api.stlouisfed.org', 'Federal Reserve Economic Data (FRED)'],
+  ['api.ted.europa.eu', 'Tenders Electronic Daily (TED)'],
+  ['api.tzevaadom.co.il', 'Tzeva Adom'],
+  ['api.unhcr.org', 'UNHCR'],
+  ['api.usaspending.gov', 'USAspending.gov'],
+  ['api.weather.gov', 'U.S. National Weather Service'],
+  ['api.worldbank.org', 'World Bank'],
+  ['api.wto.org', 'World Trade Organization (WTO)'],
+  ['arxiv.org', 'arXiv'],
+  ['auth.opensky-network.org', 'OpenSky Network'],
+  ['budgetlab.yale.edu', 'The Budget Lab at Yale'],
+  ['celestrak.org', 'CelesTrak'],
+  ['comtradeapi.un.org', 'UN Comtrade'],
+  ['customer-api.wingbits.com', 'Wingbits'],
+  ['data-api.ecb.europa.eu', 'European Central Bank (ECB)'],
+  ['data.ecb.europa.eu', 'European Central Bank (ECB)'],
+  ['data.humdata.org', 'Humanitarian Data Exchange (HDX)'],
+  ['data.weather.gov.hk', 'Hong Kong Observatory'],
+  ['datalab.wto.org', 'WTO Data Lab'],
+  ['dataservices.icao.int', 'International Civil Aviation Organization (ICAO)'],
+  ['drmkc.jrc.ec.europa.eu', 'EU Disaster Risk Management Knowledge Centre'],
+  ['e00-elmundo.uecdn.es', 'El Mundo'],
+  ['earthobservatory.nasa.gov', 'NASA Earth Observatory'],
+  ['earthquake.usgs.gov', 'U.S. Geological Survey (USGS)'],
+  ['ecs-api.wingbits.com', 'Wingbits'],
+  ['en.sse.net.cn', 'Shanghai Stock Exchange'],
+  ['en.wikipedia.org', 'Wikipedia'],
+  ['eonet.gsfc.nasa.gov', 'NASA EONET'],
+  ['ec.europa.eu', 'European Commission'],
+  ['energy.ec.europa.eu', 'European Commission Directorate-General for Energy'],
+  ['export.arxiv.org', 'arXiv'],
+  ['fc.yahoo.com', 'Yahoo Finance'],
+  ['feed.infoq.com', 'InfoQ'],
+  ['feeds.abcnews.com', 'ABC News'],
+  ['feeds.arstechnica.com', 'Ars Technica'],
+  ['feeds.bbci.co.uk', 'BBC'],
+  ['feeds.content.dowjones.io', 'The Wall Street Journal'],
+  ['feeds.elpais.com', 'El País'],
+  ['feeds.feedburner.com', 'FeedBurner-hosted publishers'],
+  ['feeds.folha.uol.com.br', 'Folha de S.Paulo'],
+  ['feeds.megaphone.fm', 'Pivot Podcast'],
+  ['feeds.nbcnews.com', 'NBC News'],
+  ['feeds.news24.com', 'News24'],
+  ['feeds.nos.nl', 'NOS Nieuws'],
+  ['feeds.npr.org', 'NPR'],
+  ['feodotracker.abuse.ch', 'Feodo Tracker'],
+  ['finance.yahoo.com', 'Yahoo Finance'],
+  ['firms.modaps.eosdis.nasa.gov', 'NASA FIRMS'],
+  ['gain.nd.edu', 'Notre Dame Global Adaptation Initiative'],
+  ['gamma-api.polymarket.com', 'Polymarket'],
+  ['geospatial-usace.opendata.arcgis.com', 'U.S. Army Corps of Engineers'],
+  ['ghoapi.azureedge.net', 'World Health Organization (WHO)'],
+  ['github.blog', 'GitHub Blog'],
+  ['gml.noaa.gov', 'NOAA Global Monitoring Laboratory'],
+  ['hacker-news.firebaseio.com', 'Hacker News'],
+  ['hapi.humdata.org', 'UN OCHA Humanitarian API (HAPI)'],
+  ['health.aws.amazon.com', 'AWS Health'],
+  ['hnrss.org', 'Hacker News RSS'],
+  ['mapservices.weather.noaa.gov', 'NOAA Weather'],
+  ['moxie.foxnews.com', 'Fox News'],
+  ['msi.nga.mil', 'NGA Maritime Safety Information'],
+  ['nasstatus.faa.gov', 'Federal Aviation Administration (FAA)'],
+  ['news.crunchbase.com', 'Crunchbase News'],
+  ['news.google.com', 'Google News'],
+  ['news.mit.edu', 'MIT News'],
+  ['news.un.org', 'UN News'],
+  ['news.usni.org', 'USNI News'],
+  ['news.ycombinator.com', 'Hacker News'],
+  ['nominatim.openstreetmap.org', 'OpenStreetMap Nominatim'],
+  ['otx.alienvault.com', 'AlienVault Open Threat Exchange'],
+  ['overpass-api.de', 'OpenStreetMap Overpass API'],
+  ['patents.google.com', 'Google Patents'],
+  ['portwatch.imf.org', 'IMF PortWatch'],
+  ['pro-api.coingecko.com', 'CoinGecko'],
+  ['production.dataviz.cnn.io', 'CNN'],
+  ['public.govdelivery.com', 'GovDelivery'],
+  ['publicacionexterna.azurewebsites.net', 'Mexico Energy Regulatory Commission (CRE)'],
+  ['qevdnlpgjxpwusesmtpx.supabase.co', 'Supabase'],
+  ['query.sse.com.cn', 'Shanghai Stock Exchange'],
+  ['query.wikidata.org', 'Wikidata'],
+  ['query1.finance.yahoo.com', 'Yahoo Finance'],
+  ['raw.githubusercontent.com', 'GitHub'],
+  ['rss.art19.com', 'ART19-hosted podcasts'],
+  ['rss.dw.com', 'Deutsche Welle'],
+  ['rss.libsyn.com', 'Libsyn-hosted podcasts'],
+  ['rss.politico.com', 'POLITICO'],
+  ['sanctionslistservice.ofac.treas.gov', 'U.S. Treasury OFAC'],
+  ['sedeaplicaciones.minetur.gob.es', 'Spain Ministry of Industry and Tourism'],
+  ['search.worldbank.org', 'World Bank'],
+  ['services7.arcgis.com', 'ArcGIS'],
+  ['services9.arcgis.com', 'ArcGIS'],
+  ['stats.bis.org', 'Bank for International Settlements (BIS)'],
+  ['tools.cdc.gov', 'U.S. Centers for Disease Control and Prevention'],
+  ['travel.state.gov', 'U.S. Department of State'],
+  ['ucdpapi.pcr.uu.se', 'Uppsala Conflict Data Program (UCDP)'],
+  ['urlhaus-api.abuse.ch', 'URLhaus'],
+  ['wabi-europe-north-b-api.analysis.windows.net', 'Microsoft Power BI'],
+  ['web.archive.org', 'Internet Archive'],
+  ['www.cbr.ru', 'Bank of Russia'],
+  ['www.contractsfinder.service.gov.uk', 'UK Contracts Finder'],
+  ['www.ecb.europa.eu', 'European Central Bank (ECB)'],
+  ['www.ecdc.europa.eu', 'European Centre for Disease Prevention and Control'],
+  ['www.eia.gov', 'U.S. Energy Information Administration (EIA)'],
+  ['www.fao.org', 'UN Food and Agriculture Organization (FAO)'],
+  ['www.federalreserve.gov', 'U.S. Federal Reserve'],
+  ['www.gdacs.org', 'Global Disaster Alert and Coordination System (GDACS)'],
+  ['www.gov.uk', 'UK Government'],
+  ['www.gov.br', 'Brazilian Government'],
+  ['www.iaea.org', 'International Atomic Energy Agency (IAEA)'],
+  ['www.iea.org', 'International Energy Agency (IEA)'],
+  ['www.jodidata.org', 'Joint Organisations Data Initiative (JODI)'],
+  ['www.gets.govt.nz', 'New Zealand Government Electronic Tenders Service'],
+  ['www.mbie.govt.nz', 'New Zealand Ministry of Business, Innovation and Employment'],
+  ['www.mnd.gov.tw', 'Taiwan Ministry of National Defense'],
+  ['www.mod.go.jp', 'Japan Ministry of Defense'],
+  ['www.ncei.noaa.gov', 'NOAA National Centers for Environmental Information'],
+  ['www.newyorkfed.org', 'Federal Reserve Bank of New York'],
+  ['www.opec.org', 'OPEC'],
+  ['www.oref.org.il', 'Israel Home Front Command'],
+  ['www.pbc.gov.cn', "People's Bank of China"],
+  ['www.safe.gov.cn', 'State Administration of Foreign Exchange (SAFE)'],
+  ['www.samr.gov.cn', 'China State Administration for Market Regulation'],
+  ['www.smartraveller.gov.au', 'Australia Smartraveller'],
+  ['www.stats.gov.cn', 'National Bureau of Statistics of China'],
+  ['www.szse.cn', 'Shenzhen Stock Exchange'],
+  ['www.unep.org', 'UN Environment Programme (UNEP)'],
+  ['www.war.gov', 'Pentagon'],
+  ['www.weather.gov.hk', 'Hong Kong Observatory'],
+  ['www.whitehouse.gov', 'The White House'],
+  ['www.who.int', 'World Health Organization (WHO)'],
+  ['www.abc.net.au', 'ABC Australia'],
+  ['www.afro.who.int', 'WHO Regional Office for Africa'],
+  ['wwwnc.cdc.gov', 'U.S. Centers for Disease Control and Prevention'],
+]);
+
+const US_EMBASSY_COUNTRIES = new Map([
+  ['ae', 'the United Arab Emirates'],
+  ['bd', 'Bangladesh'],
+  ['co', 'Colombia'],
+  ['de', 'Germany'],
+  ['do', 'the Dominican Republic'],
+  ['in', 'India'],
+  ['it', 'Italy'],
+  ['mm', 'Myanmar'],
+  ['mx', 'Mexico'],
+  ['pk', 'Pakistan'],
+  ['pl', 'Poland'],
+  ['th', 'Thailand'],
+  ['ua', 'Ukraine'],
+]);
+
+const BRAND_TOKEN_OVERRIDES = new Map([
+  ['24', '24.hu'],
+  ['444', '444.hu'],
+  ['actualite', 'Actualité.cd'],
+  ['aaii', 'American Association of Individual Investors (AAII)'],
+  ['africanews', 'Africanews'],
+  ['aftenposten', 'Aftenposten'],
+  ['aljazeera', 'Al Jazeera'],
+  ['alarabiya', 'Al Arabiya'],
+  ['alphavantage', 'Alpha Vantage'],
+  ['amarujala', 'Amar Ujala'],
+  ['ansa', 'ANSA'],
+  ['arxiv', 'arXiv'],
+  ['asharqbusiness', 'Asharq Business'],
+  ['astanatimes', 'The Astana Times'],
+  ['atlanticcouncil', 'Atlantic Council'],
+  ['australianmining', 'Australian Mining'],
+  ['aviationpros', 'Aviation Pros'],
+  ['aviationweek', 'Aviation Week'],
+  ['balkaninsight', 'Balkan Insight'],
+  ['bild', 'BILD'],
+  ['bitcoinmagazine', 'Bitcoin Magazine'],
+  ['bothsidesofthetable', 'Both Sides of the Table'],
+  ['brasilparalelo', 'Brasil Paralelo'],
+  ['breakingdefense', 'Breaking Defense'],
+  ['carbonbrief', 'Carbon Brief'],
+  ['cbinsights', 'CB Insights'],
+  ['channelnewsasia', 'Channel NewsAsia'],
+  ['channelstv', 'Channels Television'],
+  ['chinamoney', 'China Money'],
+  ['circleci', 'CircleCI'],
+  ['climatecentral', 'Climate Central'],
+  ['cloudflarestatus', 'Cloudflare Status'],
+  ['cointelegraph', 'Cointelegraph'],
+  ['collisionconf', 'Collision Conference'],
+  ['conservationoptimism', 'Conservation Optimism'],
+  ['correctiv', 'CORRECTIV'],
+  ['corridorrisk', 'Corridor Risk'],
+  ['crisisgroup', 'International Crisis Group'],
+  ['cryptoslate', 'CryptoSlate'],
+  ['dabangasudan', 'Dabanga Sudan'],
+  ['dailygood', 'DailyGood'],
+  ['dailysabah', 'Daily Sabah'],
+  ['dailytrust', 'Daily Trust'],
+  ['darkreading', 'Dark Reading'],
+  ['defensenews', 'Defense News'],
+  ['defenseone', 'Defense One'],
+  ['devops', 'DevOps.com'],
+  ['dfrlab', 'DFRLab'],
+  ['discordstatus', 'Discord Status'],
+  ['dockerstatus', 'Docker Status'],
+  ['eluniverso', 'El Universo'],
+  ['euronews', 'Euronews'],
+  ['finnhub', 'Finnhub'],
+  ['firstround', 'First Round Review'],
+  ['flightglobal', 'FlightGlobal'],
+  ['foreignaffairs', 'Foreign Affairs'],
+  ['foreignpolicy', 'Foreign Policy'],
+  ['freeipapi', 'FreeIPAPI'],
+  ['gcaptain', 'gCaptain'],
+  ['github', 'GitHub'],
+  ['githubstatus', 'GitHub Status'],
+  ['globalinitiative', 'Global Initiative Against Transnational Organized Crime'],
+  ['globalnews', 'Global News'],
+  ['goldsilverworlds', 'Gold Silver Worlds'],
+  ['goodgoodgood', 'Good Good Good'],
+  ['goodnewsnetwork', 'Good News Network'],
+  ['gpsjam', 'GPSJam'],
+  ['handybulk', 'HandyBulk'],
+  ['humanprogress', 'Human Progress'],
+  ['indianexpress', 'The Indian Express'],
+  ['insideclimatenews', 'Inside Climate News'],
+  ['insightcrime', 'InSight Crime'],
+  ['islandtimes', 'Island Times'],
+  ['japantoday', 'Japan Today'],
+  ['jeuneafrique', 'Jeune Afrique'],
+  ['krebsonsecurity', 'Krebs on Security'],
+  ['lasillavacia', 'La Silla Vacía'],
+  ['lennysnewsletter', "Lenny's Newsletter"],
+  ['lequotidien', 'Le Quotidien'],
+  ['lighthousereports', 'Lighthouse Reports'],
+  ['linearstatus', 'Linear Status'],
+  ['livescience', 'Live Science'],
+  ['militarytimes', 'Military Times'],
+  ['mempool', 'mempool.space'],
+  ['mexiconewsdaily', 'Mexico News Daily'],
+  ['myjoyonline', 'MyJoyOnline'],
+  ['naftemporiki', 'Naftemporiki'],
+  ['netlifystatus', 'Netlify Status'],
+  ['newscientist', 'New Scientist'],
+  ['newsmaker', 'Newsmaker'],
+  ['northernminer', 'The Northern Miner'],
+  ['novayagazeta', 'Novaya Gazeta Europe'],
+  ['omanobserver', 'Oman Observer'],
+  ['oilprice', 'OilPrice.com'],
+  ['onemileatatime', 'One Mile at a Time'],
+  ['opensky-network', 'OpenSky Network'],
+  ['optimistdaily', 'The Optimist Daily'],
+  ['oryxspioenkop', 'Oryx'],
+  ['outbreaknewstoday', 'Outbreak News Today'],
+  ['pitchbook', 'PitchBook'],
+  ['polsatnews', 'Polsat News'],
+  ['premiumtimesng', 'Premium Times'],
+  ['producthunt', 'Product Hunt'],
+  ['phys', 'Phys.org'],
+  ['radiookapi', 'Radio Okapi'],
+  ['radiotamazuj', 'Radio Tamazuj'],
+  ['rainviewer', 'RainViewer'],
+  ['ransomware', 'Ransomware.live'],
+  ['reasonstobecheerful', 'Reasons to Be Cheerful'],
+  ['reliefweb', 'ReliefWeb'],
+  ['replicatestatus', 'Replicate Status'],
+  ['repubblica', 'la Repubblica'],
+  ['restcountries', 'REST Countries'],
+  ['responsiblestatecraft', 'Responsible Statecraft'],
+  ['sciencedaily', 'ScienceDaily'],
+  ['scrapecreators', 'ScrapeCreators'],
+  ['seekingalpha', 'Seeking Alpha'],
+  ['semianalysis', 'SemiAnalysis'],
+  ['sequoiacap', 'Sequoia Capital'],
+  ['seznamzpravy', 'Seznam Zprávy'],
+  ['silverseek', 'SilverSeek'],
+  ['simpleflying', 'Simple Flying'],
+  ['singularityhub', 'Singularity Hub'],
+  ['spdrgoldshares', 'SPDR Gold Shares'],
+  ['taskandpurpose', 'Task & Purpose'],
+  ['techinasia', 'Tech in Asia'],
+  ['techcabal', 'TechCabal'],
+  ['techcrunch', 'TechCrunch'],
+  ['technologyreview', 'MIT Technology Review'],
+  ['techstars', 'Techstars'],
+  ['thebetterindia', 'The Better India'],
+  ['thedefiant', 'The Defiant'],
+  ['thediplomat', 'The Diplomat'],
+  ['thehill', 'The Hill'],
+  ['thenewstack', 'The New Stack'],
+  ['thepointsguy', 'The Points Guy'],
+  ['thesentry', 'The Sentry'],
+  ['theglobeandmail', 'The Globe and Mail'],
+  ['theguardian', 'The Guardian'],
+  ['themoscowtimes', 'The Moscow Times'],
+  ['thenationalnews', 'The National'],
+  ['thereporterethiopia', 'The Reporter Ethiopia'],
+  ['thisdaylive', 'THISDAY'],
+  ['timesca', 'The Times of Central Asia'],
+  ['token2049', 'TOKEN2049'],
+  ['tomshardware', "Tom's Hardware"],
+  ['trumpstruth', 'Truth Social'],
+  ['unchainedcrypto', 'Unchained'],
+  ['vanguardngr', 'Vanguard News'],
+  ['venturebeat', 'VentureBeat'],
+  ['viewfromthewing', 'View from the Wing'],
+  ['vnexpress', 'VnExpress'],
+  ['warontherocks', 'War on the Rocks'],
+  ['websummit', 'Web Summit'],
+  ['ycombinator', 'Y Combinator'],
+  ['yesmagazine', 'YES! Magazine'],
+  ['yonhapnewstv', 'Yonhap News TV'],
+  ['yourstory', 'YourStory'],
+  ['zdnet', 'ZDNET'],
+  ['zoomstatus', 'Zoom Status'],
+]);
+
+const MULTI_LABEL_PUBLIC_SUFFIXES = new Set([
+  'co.il', 'co.kr', 'co.uk', 'com.au', 'com.br', 'com.cn', 'com.tr',
+  'gov.au', 'gov.cn', 'gov.hk', 'gov.my', 'gob.mx', 'net.cn', 'org.uk',
+]);
+
+function hostnameBrandToken(host) {
+  const labels = host.toLowerCase().split('.');
+  const suffix = labels.slice(-2).join('.');
+  const offset = MULTI_LABEL_PUBLIC_SUFFIXES.has(suffix) ? 3 : 2;
+  return labels.at(-offset) || labels[0] || host;
+}
+
+function titleCaseBrandToken(token) {
+  const override = BRAND_TOKEN_OVERRIDES.get(token);
+  if (override) return override;
+  return token
+    .split(/[-_]+/)
+    .filter(Boolean)
+    .map((part) => part.length <= 4 && /^[a-z]+$/.test(part) ? part.toUpperCase() : `${part[0]?.toUpperCase() || ''}${part.slice(1)}`)
+    .join(' ');
+}
+
+export function sourceProviderDisplayName(provider, hosts = []) {
+  if (!/^(?:[a-z0-9-]+\.)+[a-z0-9-]+$/i.test(provider)) return provider;
+
+  const primaryHost = hosts[0] || provider;
+  const exact = SOURCE_NAME_OVERRIDES.get(primaryHost) || SOURCE_NAME_OVERRIDES.get(provider);
+  if (exact) return exact;
+
+  const embassy = primaryHost.match(/^([a-z]{2})\.usembassy\.gov$/i);
+  if (embassy) {
+    const country = US_EMBASSY_COUNTRIES.get(embassy[1].toLowerCase());
+    if (country) return `U.S. Embassy & Consulates in ${country}`;
+  }
+
+  if (primaryHost.endsWith('.euronews.com')) return 'Euronews';
+  if (primaryHost.endsWith('.status.atlassian.com')) return 'Atlassian Status';
+  if (primaryHost.startsWith('status.')) {
+    return `${titleCaseBrandToken(hostnameBrandToken(primaryHost))} Status`;
+  }
+
+  return titleCaseBrandToken(hostnameBrandToken(primaryHost));
+}
+
 function sourceDomainIdForEntries(entries) {
   const kinds = new Set(entries.flatMap((entry) => entry.kind.split('+')));
   if (kinds.has('operational-status')) return 'infrastructure';
@@ -168,13 +552,17 @@ export function buildSourceCatalog(entries) {
   }
 
   return [...entriesByProvider.entries()]
-    .map(([provider, providerEntries]) => ({
-      provider,
-      domainId: sourceDomainIdForEntries(providerEntries),
-      hosts: [...new Set(providerEntries.map((entry) => entry.host))].sort(),
-      kinds: [...new Set(providerEntries.flatMap((entry) => entry.kind.split('+')))].sort(),
-    }))
-    .sort((left, right) => left.provider.localeCompare(right.provider, 'en', { sensitivity: 'base' }));
+    .map(([provider, providerEntries]) => {
+      const hosts = [...new Set(providerEntries.map((entry) => entry.host))].sort();
+      return {
+        provider,
+        displayName: sourceProviderDisplayName(provider, hosts),
+        domainId: sourceDomainIdForEntries(providerEntries),
+        hosts,
+        kinds: [...new Set(providerEntries.flatMap((entry) => entry.kind.split('+')))].sort(),
+      };
+    })
+    .sort((left, right) => left.displayName.localeCompare(right.displayName, 'en', { sensitivity: 'base' }));
 }
 
 export function renderSourcesIndex({ sourceStats, sourceCatalog, baseUrl, lastmod, helpers }) {
@@ -212,10 +600,10 @@ export function renderSourcesIndex({ sourceStats, sourceCatalog, baseUrl, lastmo
     const kindBadges = provider.kinds.map((kind) => (
       `<span class="kind-badge">${escapeHtml(kindLabels[kind] || kind)}</span>`
     )).join('');
-    return `        <article class="provider-card" data-provider="${escapeHtml(provider.provider)}" data-source-domain="${provider.domainId}" data-source-kind="${provider.kinds.join(' ')}">
+    return `        <article class="provider-card" data-provider="${escapeHtml(provider.provider)}" data-provider-name="${escapeHtml(provider.displayName)}" data-source-domain="${provider.domainId}" data-source-kind="${provider.kinds.join(' ')}">
           <div class="provider-heading">
             <span class="provider-domain">${escapeHtml(domain.name)}</span>
-            <h3>${escapeHtml(provider.provider)}</h3>
+            <h3>${escapeHtml(provider.displayName)}</h3>
           </div>
           <div class="kind-badges">${kindBadges}</div>
           <div class="provider-hosts" aria-label="Provider hosts">${hostLinks}</div>

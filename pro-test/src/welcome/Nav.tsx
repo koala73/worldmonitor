@@ -8,6 +8,7 @@ const NAV_ITEMS = [
   { href: '#moments', labelKey: 'welcome.nav.useCases', accent: false },
   { href: '#first-five', labelKey: 'welcome.nav.firstFive', accent: false },
   { href: '#depth', labelKey: 'welcome.nav.depth', accent: false },
+  { href: '/sources/?utm_source=welcome-nav', labelKey: 'welcome.depth.s3l', accent: false },
   { href: '/pro#pricing', labelKey: 'welcome.nav.pricing', accent: true },
   { href: '#faq', labelKey: 'welcome.nav.faq', accent: false },
   { href: '/blog/', labelKey: 'welcome.nav.blog', accent: false },
