@@ -429,6 +429,7 @@ export const RESILIENCE_FIXTURES: FixtureMap = {
     seededAt: '2026-08-11T08:03:25.357Z',
   },
   'economic:wb-external-debt:v1': {
+    schemaVersion: 2,
     countries: {
       NO: { value: 2, year: 2024 },     // 2% GNI — Norway low external debt → score ~87
       US: { value: 0, year: 2024 },     // HIC, WB IDS doesn't publish — fixture treats as 0 for the test triple

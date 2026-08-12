@@ -72,7 +72,11 @@ export type CacheReadResult = { status: 'hit'; value: unknown } | { status: 'mis
  * seed-owned keys written unprefixed by the Railway seeders, mirroring
  * `getCachedJson`'s own raw flag. Leave false for keys this app writes.
  */
-export async function readCachedJson(key: string, raw = false): Promise<CacheReadResult> {
+async function readCachedJsonInternal(
+  key: string,
+  raw = false,
+  unwrapSeedEnvelope = true,
+): Promise<CacheReadResult> {
   if (process.env.LOCAL_API_MODE === 'tauri-sidecar') {
     try {
       const { sidecarCacheGet } = await import('./sidecar-cache');
@@ -99,13 +103,18 @@ export async function readCachedJson(key: string, raw = false): Promise<CacheRea
     // Envelope-aware by default — RPC consumers get the bare payload regardless
     // of whether the writer has migrated to contract mode. Legacy shapes pass
     // through unchanged (unwrapEnvelope returns {_seed: null, data: raw}).
+    const parsed = JSON.parse(data.result);
     return {
       status: 'hit',
-      value: unwrapEnvelope(JSON.parse(data.result)).data,
+      value: unwrapSeedEnvelope ? unwrapEnvelope(parsed).data : parsed,
     };
   } catch (error) {
     return { status: 'error', error };
   }
+}
+
+export async function readCachedJson(key: string, raw = false): Promise<CacheReadResult> {
+  return readCachedJsonInternal(key, raw, true);
 }
 
 function logCacheReadError(key: string, err: unknown): void {
@@ -192,6 +201,14 @@ export async function getCachedRawString(key: string): Promise<string | null> {
 
 export async function getCachedJson(key: string, raw = false): Promise<unknown | null> {
   const read = await readCachedJson(key, raw);
+  if (read.status === 'hit') return read.value;
+  if (read.status === 'error') logCacheReadError(key, read.error);
+  return null;
+}
+
+/** Read a JSON value without discarding its runSeed contract metadata. */
+export async function getCachedEnvelopeJson(key: string, raw = false): Promise<unknown | null> {
+  const read = await readCachedJsonInternal(key, raw, false);
   if (read.status === 'hit') return read.value;
   if (read.status === 'error') logCacheReadError(key, read.error);
   return null;

@@ -333,7 +333,7 @@ redis-cli GET 'economic:bis-lbs:v1' | jq '.countries.BR'
 
 If any of these return null or empty, **do NOT flip the flag** — flipping with absent envelopes throws `ResilienceConfigurationError` on every `/api/resilience/*` request and stamps every country's `financialSystemExposure` as `imputationClass='source-failure'`. The fix is recoverable (flip the flag back OFF, fix the seeder, re-run, retry) but produces user-visible Sentry noise during the gap.
 
-The active non-DRS path also requires the WB debt contract envelope to be schema v2. Confirm the canonical value has `_seed.schemaVersion >= 2` and at least 40 valid unique entries in `data.nonDrsCountryCodes`. A schema-v1 payload is now a fail-closed configuration error instead of silently disabling the imputation for every eligible country.
+The active non-DRS path also requires the WB debt contract envelope to be schema v2. The scorer preserves this canonical envelope long enough to enforce numeric `_seed.schemaVersion >= 2`, then validates at least 40 valid unique entries in `data.nonDrsCountryCodes`. A schema-v1 payload is now a fail-closed configuration error instead of silently disabling the imputation for every eligible country.
 
 ## Alternatives considered (and rejected)
 

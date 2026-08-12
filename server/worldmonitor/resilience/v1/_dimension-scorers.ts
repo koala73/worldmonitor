@@ -2,7 +2,8 @@ import countryNames from '../../../../shared/country-names.json';
 import iso2ToIso3Json from '../../../../shared/iso2-to-iso3.json';
 import wgiIndicatorKeys from '../../../../shared/wgi-indicator-keys.json';
 import { normalizeCountryToken } from '../../../_shared/country-token';
-import { getCachedJson, readCachedJson } from '../../../_shared/redis';
+import { getCachedEnvelopeJson, getCachedJson, readCachedJson } from '../../../_shared/redis';
+import { unwrapEnvelope } from '../../../_shared/seed-envelope';
 import { classifyDimensionFreshness, readFreshnessMap, resolveSeedMetaKey } from './_dimension-freshness';
 import { getLanguageCoverageFactor } from './_language-coverage';
 import { MACRO_FISCAL_INDICATOR_WEIGHTS } from './_macro-fiscal-weights';
@@ -318,6 +319,7 @@ const RESILIENCE_TRADE_RESTRICTIONS_KEY = 'trade:restrictions:v1:tariff-overview
 const RESILIENCE_TRADE_BARRIERS_KEY = 'trade:barriers:v1:tariff-gap:50';
 // plan 2026-04-25-004 Phase 2: financialSystemExposure component seed keys.
 const RESILIENCE_WB_EXTERNAL_DEBT_KEY = 'economic:wb-external-debt:v1';
+const RESILIENCE_WB_EXTERNAL_DEBT_SCHEMA_VERSION = 2;
 const RESILIENCE_BIS_LBS_KEY = 'economic:bis-lbs:v1';
 const RESILIENCE_FATF_LISTING_KEY = 'economic:fatf-listing:v1';
 const RESILIENCE_CYBER_KEY = 'cyber:threats:v2';
@@ -1016,7 +1018,13 @@ async function readSeedMetaResilient(key: string): Promise<unknown | null> {
 }
 
 async function defaultSeedReader(key: string): Promise<unknown | null> {
-  return isSeedMetaKey(key) ? readSeedMetaResilient(key) : getCachedJson(key, true);
+  if (isSeedMetaKey(key)) return readSeedMetaResilient(key);
+  // Preserve the contract envelope for WB debt so its numeric schemaVersion
+  // remains available to the fail-closed scorer. Other seed readers retain
+  // the established bare-data behavior.
+  return key === RESILIENCE_WB_EXTERNAL_DEBT_KEY
+    ? getCachedEnvelopeJson(key, true)
+    : getCachedJson(key, true);
 }
 
 interface MemoizedSeedReaderOptions {
@@ -2182,12 +2190,22 @@ interface WbExternalDebtEnvelope {
 
 function readWbExternalDebtEnvelope(raw: unknown): WbExternalDebtEnvelope | null {
   if (raw == null || typeof raw !== 'object') return null;
-  const countries = (raw as { countries?: Record<string, unknown> }).countries;
+  const unwrapped = unwrapEnvelope(raw);
+  const schemaVersion = unwrapped._seed?.schemaVersion
+    ?? (raw as { schemaVersion?: unknown }).schemaVersion;
+  if (
+    typeof schemaVersion !== 'number'
+    || !Number.isInteger(schemaVersion)
+    || schemaVersion < RESILIENCE_WB_EXTERNAL_DEBT_SCHEMA_VERSION
+  ) return null;
+  const payload = unwrapped.data;
+  if (payload == null || typeof payload !== 'object' || Array.isArray(payload)) return null;
+  const countries = (payload as { countries?: Record<string, unknown> }).countries;
   if (!countries || typeof countries !== 'object' || Array.isArray(countries) || Object.keys(countries).length === 0) {
     return null;
   }
 
-  const rawNonDrsCountryCodes = (raw as { nonDrsCountryCodes?: unknown }).nonDrsCountryCodes;
+  const rawNonDrsCountryCodes = (payload as { nonDrsCountryCodes?: unknown }).nonDrsCountryCodes;
   // Match the producer's fail-closed floor so an empty or truncated cohort
   // cannot preserve the schema shape while silently disabling imputation.
   if (!Array.isArray(rawNonDrsCountryCodes) || rawNonDrsCountryCodes.length < 40) return null;

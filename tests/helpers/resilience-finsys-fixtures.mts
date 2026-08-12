@@ -122,6 +122,7 @@ export function createFinSysFixtureReader(
   nowMs: number = Date.now(),
 ): ResilienceSeedReader {
   const debt = {
+    schemaVersion: 2,
     countries: { ...FINSYS_DEBT_FIXTURE, ...(overrides.debt ?? {}) },
     nonDrsCountryCodes: FINSYS_NON_DRS_COUNTRY_CODES,
   };
