@@ -221,6 +221,7 @@ const RPC_CACHE_TIER: Record<string, CacheTier> = {
   '/api/cyber/v1/list-cyber-threats': 'static',
   '/api/conflict/v1/list-acled-events': 'slow',
   '/api/military/v1/get-theater-posture': 'slow',
+  '/api/military/v1/get-defense-industrial-base': 'daily',
   '/api/infrastructure/v1/get-temporal-baseline': 'slow',
   '/api/aviation/v1/list-airport-delays': 'static',
   '/api/aviation/v1/get-airport-ops-summary': 'static',

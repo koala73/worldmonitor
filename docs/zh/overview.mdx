@@ -58,7 +58,7 @@ World Monitor 不对所有数据集使用统一刷新间隔。每个来源的更
 
 ### 来源与溯源
 
-World Monitor 发布了公开且可搜索的[数据源目录（英文）](https://worldmonitor.app/sources)。该目录基于来源归属清单生成，目前列出 529 个活跃提供方、531 个上游主机、291 个结构化端点和 268 个新闻及 OSINT 数据流。单独的应用清单记录了 632 个已配置数据流定义，Telegram 目录启用了 56 个频道。这些数字描述不同的清单层级，不应相加。
+World Monitor 发布了公开且可搜索的[数据源目录（英文）](https://worldmonitor.app/sources)。该目录基于来源归属清单生成，目前列出 530 个活跃提供方、532 个上游主机、292 个结构化端点和 268 个新闻及 OSINT 数据流。单独的应用清单记录了 632 个已配置数据流定义，Telegram 目录启用了 56 个频道。这些数字描述不同的清单层级，不应相加。
 
 在这些清单中，World Monitor 组合结构化 API、公开和授权数据集、政府及多边机构官方来源、新闻源和经过审核的 OSINT。代表性提供方包括 ACLED、UCDP、GDELT、UNHCR/OCHA、IMF、世界银行、BIS、Eurostat、FRED、USGS、NASA、Open-Meteo、Cloudflare Radar、AIS 与 ADS-B 提供方，以及数百家新闻发布机构。RSS 配置可包含来源层级、国家关联和宣传风险元数据。Telegram 配置使用不同的结构，包含层级、主题和地区元数据。跨来源佐证可以提高排序和置信度，但不是每个告警的通用前提条件。
 
@@ -71,7 +71,7 @@ World Monitor 发布了公开且可搜索的[数据源目录（英文）](https:
 | 托管仪表盘 | 需要完整可视化产品的分析人员 | 现代浏览器。公开功能无需客户侧集成；付费功能需要相应的 World Monitor 账户或套餐。 |
 | [实时地图嵌入](/zh/embed-live-map) | 文章、门户和内部仪表盘 | 允许使用 HTTPS iframe 的页面。嵌入仅公开允许列表中的公共地图图层，不公开账户或高级功能状态。 |
 | [REST API](/zh/api-reference) | 应用、数据管道和较高流量的批量读取 | OpenAPI 3.1 描述 36 个生成的服务合同和 200 多个版本化 HTTP 路径。标准服务器到服务器访问通过 `X-WorldMonitor-Key` 发送 API 密钥。请在参考文档中检查当前路由状态，并查看[快速入门](/zh/usage-quickstart)、[身份验证](/zh/usage-auth)、[版本政策](/zh/api-versioning)和 [REST 速率限制](/zh/usage-rate-limits)。 |
-| [MCP 服务器](/zh/mcp-overview) | Claude、Cursor 和自定义 AI 智能体 | Streamable HTTP，提供 60 个工具、6 个工作流提示、10 个交互应用和可选 JMESPath 响应筛选。目录发现公开；数据调用需要 OAuth 2.1 或 World Monitor API 密钥。MCP 权益与计量和 REST API 套餐额度分别说明。 |
+| [MCP 服务器](/zh/mcp-overview) | Claude、Cursor 和自定义 AI 智能体 | Streamable HTTP，提供 61 个工具、6 个工作流提示、10 个交互应用和可选 JMESPath 响应筛选。目录发现公开；数据调用需要 OAuth 2.1 或 World Monitor API 密钥。MCP 权益与计量和 REST API 套餐额度分别说明。 |
 | [官方 SDK](/zh/sdks) 与 [CLI](/zh/cli) | Python、Ruby、Go、JavaScript 应用或 Shell 自动化 | 对应语言运行时；数据调用需要 API 密钥。零依赖 SDK 和 npm CLI 支持托管及自托管基础 URL。 |
 | [通知渠道](/zh/api-notifications) | 向运营系统发送通用领域告警 | 已计费的 PRO 账户和 Clerk bearer token。支持的交付渠道包括签名 HTTPS Webhook、Telegram、Slack、Discord、电子邮件和 Web Push。可用性取决于事件领域和渠道配置。 |
 | [航运 Webhook](/zh/api-shipping-v2) | 咽喉要道中断通知 | 具备 PRO 权限的 API 密钥，以及通过文档所述 SSRF 检查的公开 HTTPS 回调。交付使用 HMAC-SHA256 签名，并采用至少一次语义。这些 Webhook 仅适用于特定领域，并非全平台通用事件总线。 |

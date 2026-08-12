@@ -136,6 +136,17 @@
       "stable": "स्थिर"
     },
     "militaryActivity": "सैन्य गतिविधि",
+    "defenseIndustrial": {
+      "title": "Defense Industrial Base",
+      "expenditure": "Military spend",
+      "personnel": "Personnel",
+      "armsImports": "Arms imports",
+      "concentration": "Supplier HHI",
+      "suppliers": "Arms suppliers ({{start}}–{{end}})",
+      "source": "Sources: World Bank and SIPRI Arms Transfers Database. TIV measures transfer volume, not financial value.",
+      "sourceWorldBank": "Source: World Bank.",
+      "unavailable": "Not available"
+    },
     "economicIndicators": "आर्थिक संकेतक",
     "ownFlights": "अपनी उड़ानें",
     "foreignFlights": "विदेशी उड़ानें",

@@ -58,7 +58,7 @@ These are operating targets, not a promise that an upstream publisher will relea
 
 ### Sources and provenance
 
-World Monitor publishes a public, searchable [Data Source Catalog](https://worldmonitor.app/sources). Its manifest-derived inventory currently lists 529 active providers, 531 upstream hosts, 291 structured endpoints, and 268 news and OSINT feeds. The separate application inventory records 632 configured feed definitions, and the Telegram catalog enables 56 channels. These figures describe different inventory layers and should not be added together.
+World Monitor publishes a public, searchable [Data Source Catalog](https://worldmonitor.app/sources). Its manifest-derived inventory currently lists 530 active providers, 532 upstream hosts, 292 structured endpoints, and 268 news and OSINT feeds. The separate application inventory records 632 configured feed definitions, and the Telegram catalog enables 56 channels. These figures describe different inventory layers and should not be added together.
 
 Across those inventories, World Monitor combines structured APIs, public and licensed datasets, official government and multilateral sources, news feeds, and reviewed OSINT. Representative providers include ACLED, UCDP, GDELT, UNHCR/OCHA, IMF, World Bank, BIS, Eurostat, FRED, USGS, NASA, Open-Meteo, Cloudflare Radar, AIS and ADS-B providers, and hundreds of news publishers. RSS configuration can include source tier, state affiliation, and propaganda-risk metadata. Telegram configuration uses a different schema with tier, topic, and region metadata. Cross-source corroboration can improve ranking and confidence, but it is not a universal prerequisite for every alert.
 
@@ -71,7 +71,7 @@ Start with the public [Data Source Catalog](https://worldmonitor.app/sources) to
 | Hosted dashboard | Analysts who need the complete visual product | A modern browser. Public capabilities need no customer-side integration; paid features require the applicable World Monitor account or plan. |
 | [Live map embed](/embed-live-map) | Articles, portals, and internal dashboards | A page that permits an HTTPS iframe. The embed exposes allow-listed public map layers only and does not expose account or premium state. |
 | [REST API](/api-reference) | Applications, data pipelines, and higher-volume batch reads | 36 generated service contracts and more than 200 versioned HTTP paths described by OpenAPI 3.1. Standard server-to-server access uses an API key in `X-WorldMonitor-Key`. See the reference for current routing status, then review the [quickstart](/usage-quickstart), [authentication](/usage-auth), [versioning policy](/api-versioning), and [REST rate limits](/usage-rate-limits). |
-| [MCP server](/mcp-overview) | Claude, Cursor, and custom AI agents | Streamable HTTP with 60 tools, 6 workflow prompts, 10 interactive apps, and optional JMESPath response filtering. Catalog discovery is public; data calls require OAuth 2.1 or a World Monitor API key. MCP entitlements and metering are documented separately from REST API-plan allowances. |
+| [MCP server](/mcp-overview) | Claude, Cursor, and custom AI agents | Streamable HTTP with 61 tools, 6 workflow prompts, 10 interactive apps, and optional JMESPath response filtering. Catalog discovery is public; data calls require OAuth 2.1 or a World Monitor API key. MCP entitlements and metering are documented separately from REST API-plan allowances. |
 | [Official SDKs](/sdks) and [CLI](/cli) | Python, Ruby, Go, and JavaScript applications or shell automation | The relevant language runtime and an API key for data calls. The zero-dependency SDKs and npm CLI support hosted and self-hosted base URLs. |
 | [Notification channels](/api-notifications) | General domain alerts to operational systems | A billed PRO account and Clerk bearer token. Supported delivery channels include signed HTTPS webhooks, Telegram, Slack, Discord, email, and Web Push. Availability depends on the event domain and channel configuration. |
 | [Shipping webhooks](/api-shipping-v2#webhook-subscriptions) | Chokepoint disruption notifications | A PRO-capable API key and a public HTTPS callback that passes the documented SSRF checks. Deliveries are HMAC-SHA256 signed and at least once. These webhooks are domain-specific, not a general platform-wide event bus. |
@@ -108,7 +108,7 @@ The primary variant focuses on geopolitical intelligence, military tracking, and
 
 ### News Coverage
 
-500+ curated news feeds across geopolitics, defense, energy, think tanks, and regional news (Middle East, Africa, Latin America, Asia-Pacific), backed by 531+ observed upstream hosts.
+500+ curated news feeds across geopolitics, defense, energy, think tanks, and regional news (Middle East, Africa, Latin America, Asia-Pacific), backed by 532+ observed upstream hosts.
 
 ---
 

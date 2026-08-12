@@ -699,9 +699,13 @@ const cloudPreferredPrefixes = !process.env.WS_RELAY_URL
     '/api/research/v1/',
   ]
   : [];
-const cloudPreferredExact = !process.env.WS_RELAY_URL
-  ? new Set(['/api/bootstrap'])
-  : new Set();
+// These routes read seed-owned Redis snapshots that the local sidecar does not
+// hold. They must stay cloud-preferred even when a desktop configures WS relay;
+// relay availability does not provide Upstash credentials to local handlers.
+const cloudPreferredExact = new Set([
+  '/api/bootstrap',
+  '/api/military/v1/get-defense-industrial-base',
+]);
 
 function isCloudPreferred(pathname) {
   if (cloudPreferred.has(pathname)) return true;
@@ -1804,6 +1808,7 @@ async function dispatch(requestUrl, req, routes, context) {
 // silent-stall test doesn't have to wait out the real 12s production value.
 // Production code never calls this.
 export const __testing__ = {
+  isCloudPreferred,
   setUpstreamIdleTimeoutMs(ms) {
     _upstreamIdleTimeoutMs = ms;
   },

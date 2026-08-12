@@ -67,6 +67,17 @@
       "stable": "안정"
     },
     "militaryActivity": "군사 활동",
+    "defenseIndustrial": {
+      "title": "Defense Industrial Base",
+      "expenditure": "Military spend",
+      "personnel": "Personnel",
+      "armsImports": "Arms imports",
+      "concentration": "Supplier HHI",
+      "suppliers": "Arms suppliers ({{start}}–{{end}})",
+      "source": "Sources: World Bank and SIPRI Arms Transfers Database. TIV measures transfer volume, not financial value.",
+      "sourceWorldBank": "Source: World Bank.",
+      "unavailable": "Not available"
+    },
     "economicIndicators": "경제 지표",
     "ownFlights": "자국 항공편",
     "foreignFlights": "외국 항공편",

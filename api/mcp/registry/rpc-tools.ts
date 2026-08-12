@@ -526,7 +526,72 @@ const INTEL_HISTORY_RECORD_SCHEMA = {
   },
 };
 
+const DEFENSE_INDUSTRIAL_METRIC_SCHEMA = {
+  type: 'object',
+  required: ['available', 'value', 'year', 'previousValue', 'previousYear', 'source'],
+  properties: {
+    available: { type: 'boolean' },
+    value: { type: 'number' },
+    year: { type: 'integer' },
+    previousValue: { type: 'number' },
+    previousYear: { type: 'integer' },
+    source: { type: 'string' },
+  },
+};
+
 export const RPC_TOOLS: ToolDef[] = [
+  {
+    name: 'get_defense_industrial_base',
+    _outputBudgetBytes: 16_384,
+    description: 'Return one country\'s latest World Bank military-capacity indicators and SIPRI-derived five-year arms-supplier shares and concentration. Use this to answer who supplies a country\'s major weapons and how concentrated that dependency is. TIV is a transfer-volume indicator, not money.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        country_code: { type: 'string', description: 'ISO 3166-1 alpha-2 country code, such as UA, DE, or IN.' },
+      },
+      required: ['country_code'],
+    },
+    outputSchema: {
+      type: 'object',
+      required: ['countryCode', 'available', 'expenditurePctGdp', 'expenditureUsd', 'personnel', 'armsExportsTiv', 'armsImportsTiv', 'suppliers', 'supplierHhi', 'windowStartYear', 'windowEndYear', 'supplierSource', 'fetchedAt'],
+      properties: {
+        countryCode: { type: 'string' },
+        available: { type: 'boolean' },
+        expenditurePctGdp: DEFENSE_INDUSTRIAL_METRIC_SCHEMA,
+        expenditureUsd: DEFENSE_INDUSTRIAL_METRIC_SCHEMA,
+        personnel: DEFENSE_INDUSTRIAL_METRIC_SCHEMA,
+        armsExportsTiv: DEFENSE_INDUSTRIAL_METRIC_SCHEMA,
+        armsImportsTiv: DEFENSE_INDUSTRIAL_METRIC_SCHEMA,
+        suppliers: { type: 'array', items: { type: 'object', required: ['supplierIso2', 'tivShare'], properties: { supplierIso2: { type: 'string', pattern: '^[A-Z]{2}$' }, tivShare: { type: 'number', minimum: 0, maximum: 1 } } } },
+        supplierHhi: { type: 'number', minimum: 0, maximum: 1, description: 'Herfindahl-Hirschman concentration from 0 to 1; higher means fewer dominant suppliers.' },
+        windowStartYear: { type: 'integer' },
+        windowEndYear: { type: 'integer' },
+        supplierSource: { type: 'string' },
+        fetchedAt: { type: 'string' },
+      },
+    },
+    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    _execute: async (params, base, context, execution) => {
+      const countryCode = argStr(params.country_code).trim().toUpperCase();
+      // The MCP gate has already authenticated and metered this call. Fetch the
+      // caller-invariant country snapshot through its bounded public CDN shape
+      // so MCP traffic does not parse both global Redis snapshots per request.
+      const url = `${base}/api/military/v1/get-defense-industrial-base?country_code=${encodeURIComponent(countryCode)}&public=1`;
+      const response = await fetch(url, {
+        headers: { 'User-Agent': 'worldmonitor-mcp-edge/1.0' },
+        signal: AbortSignal.timeout(8_000),
+      });
+      await assertMcpToolFetchOk(response, {
+        operation: 'get-defense-industrial-base',
+        tool: 'get_defense_industrial_base',
+        auth: context,
+        execution,
+      });
+      return response.json();
+    },
+    _coverageKeys: ['military:industrial-base:v1', 'military:arms-suppliers:v1'],
+    _apiPaths: ['GET /api/military/v1/get-defense-industrial-base'],
+  },
   {
     name: 'get_china_decision_signals',
     _outputBudgetBytes: CHINA_DECISION_SIGNAL_MAX_SERIALIZED_BYTES,

@@ -756,7 +756,7 @@ All new services share these settings:
 | **Watch paths** | `scripts/**`, `shared/**` |
 | **Replaces** | 4 services (including the retired defense-patents producer) |
 | **Net savings** | 3 slots |
-| **Members** | Submarine Cables (weekly), Defense Patents (weekly), Chokepoint Baselines (400d, runs rarely), Military Bases (30d, runs rarely) |
+| **Members** | Submarine Cables (weekly), Defense Patents (weekly), Defense Industrial Base (10d), Chokepoint Baselines (400d, runs rarely), Military Bases (30d, runs rarely) |
 | **Required variable** | `USPTO_API_KEY=${{shared.USPTO_API_KEY}}` |
 
 Defense Patents is an intentional data-series migration, not a continuation of
@@ -766,6 +766,18 @@ empty for wire compatibility. The producer marks the discontinuity with
 `sourceVersion: uspto-odp-v1` and `schemaVersion: 2`; operational comparisons
 must not treat pre-migration grant dates and post-migration filing dates as one
 continuous metric.
+
+Defense Industrial Base writes `military:industrial-base:v1` from World Bank
+`MS.MIL.*` series and `military:arms-suppliers:v1` from SIPRI-derived five-year
+supplier shares. Both values have a 30-day TTL. The member is eligible every 10
+days, which keeps the canonical TTL at three times the refresh interval. The WB
+and SIPRI stages fail independently: a SIPRI portal failure preserves the last
+good supplier rows and does not block publication of fresh WB indicators. A
+separate SIPRI-completion marker stays old after a partial pass, so the next
+bundle tick retries the portal instead of treating the partial pass as complete.
+Strict health-probe registration is a staged follow-up after the first Railway
+run publishes both seed-meta keys; the follow-up must cite real Railway
+pre-seed evidence under the health-probe cutover contract.
 
 ### Bundle 4: seed-bundle-resilience
 
