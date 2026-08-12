@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { readFileSync, readdirSync } from 'node:fs';
 import test from 'node:test';
 
 import sovereignStatus from '../scripts/shared/sovereign-status.json' with { type: 'json' };
@@ -12,6 +13,7 @@ import {
   EXPECTED_EDUCATION_COVERAGE,
   parseEducationWeightOverride,
   spearman,
+  summarizeAcceptanceGates,
 } from '../scripts/dry-run-resilience-education-flip.mjs';
 
 const universe = sovereignStatus.entries.map((entry) => entry.iso2);
@@ -113,6 +115,46 @@ test('matched-pair gate distinguishes flip regressions from pre-existing failure
   assert.equal(pair?.preExisting, true);
 });
 
+test('acceptance verdict gates on the published active formula and retains legacy diagnostics', () => {
+  const passingGates = [
+    'gate-1-spearman',
+    'gate-2-country-drift',
+    'gate-6-cohort-median',
+    'gate-7-matched-pair',
+    'gate-9-effective-influence-baseline',
+  ].map((id) => ({ id, status: 'pass', evidence: {} }));
+  const legacyFailure = {
+    id: 'gate-7-matched-pair',
+    status: 'fail',
+    evidence: { preExisting: ['de-vs-fr'], regressions: [] },
+  };
+
+  const summary = summarizeAcceptanceGates({
+    pc: passingGates,
+    d6: [legacyFailure],
+  });
+  assert.equal(summary.verdict, 'PASS');
+  assert.deepEqual(summary.gatingFailures, []);
+  assert.deepEqual(summary.nonGatingFailures, [legacyFailure]);
+
+  const activeFailure = {
+    id: 'gate-2-country-drift',
+    status: 'fail',
+    evidence: {},
+  };
+  assert.equal(summarizeAcceptanceGates({
+    pc: passingGates.map((gate) => gate.id === activeFailure.id ? activeFailure : gate),
+    d6: [passingGates[0]],
+  }).verdict, 'FAIL');
+
+  assert.throws(() => summarizeAcceptanceGates({}), /active pc acceptance gates/);
+  assert.throws(() => summarizeAcceptanceGates({ pc: [] }), /active pc acceptance gates/);
+  assert.throws(
+    () => summarizeAcceptanceGates({ pc: passingGates.slice(0, -1) }),
+    /active pc acceptance gates/,
+  );
+});
+
 test('source-failure collection makes both passes and dimensions explicit', () => {
   const baseline = new Map([['FR', { sourceFailureDimensions: ['wgi', 'education'] }]]);
   const proposed = new Map([['FR', { sourceFailureDimensions: ['wgi'] }]]);
@@ -124,6 +166,41 @@ test('source-failure collection makes both passes and dimensions explicit', () =
       ['proposed:wgi', 1],
     ],
   );
+});
+
+test('source-failure validity guard remains fail-closed for every scored country', () => {
+  const baseline = new Map([
+    ['TW', {
+      educationCoverage: 0,
+      educationImputationClass: null,
+      headlineEligible: false,
+      sourceFailureDimensions: ['stateContinuity'],
+    }],
+  ]);
+  const proposed = new Map([
+    ['TW', {
+      educationCoverage: 1,
+      educationImputationClass: null,
+      headlineEligible: false,
+      sourceFailureDimensions: ['stateContinuity'],
+    }],
+  ]);
+
+  const measurement = evaluateMeasurementInputs({
+    baseline,
+    proposed,
+    countryCodes: ['TW'],
+    expectedEducationCoverage: 1,
+  });
+  assert.equal(measurement.valid, false);
+  assert.deepEqual([...measurement.sourceFailures.entries()], [
+    ['baseline:stateContinuity', 1],
+    ['proposed:stateContinuity', 1],
+  ]);
+  assert.deepEqual([...measurement.blockingSourceFailures.entries()], [
+    ['baseline:stateContinuity', 1],
+    ['proposed:stateContinuity', 1],
+  ]);
 });
 
 test('measurement preconditions fail closed on unresolved, vacuous, contaminated, or failed inputs', () => {
@@ -223,4 +300,33 @@ test('gate 9 requires both Core coverage and a real 181-country education sample
     countryCodes: universe,
   });
   assert.equal(unimplementedEducation.status, 'fail');
+});
+
+test('committed education acceptance artifacts contain a passing active-formula capture', () => {
+  const filenames = readdirSync(new URL('../docs/snapshots/', import.meta.url))
+    .filter((filename) => /^resilience-education-acceptance-\d{4}-\d{2}-\d{2}\.json$/.test(filename));
+  assert.ok(filenames.length > 0, 'at least one genuine education acceptance artifact must be committed');
+
+  for (const filename of filenames) {
+    const artifact = JSON.parse(readFileSync(
+      new URL(`../docs/snapshots/${filename}`, import.meta.url),
+      'utf8',
+    ));
+    assert.equal(artifact.acceptanceGates?.verdict, 'PASS', `${filename} must record PASS`);
+    assert.equal(artifact.acceptanceGates?.gatingFormula, 'pc', `${filename} must gate the published formula`);
+    assert.equal(artifact.universeSize, universe.length);
+    assert.equal(artifact.educationCoverageCountries, EXPECTED_EDUCATION_COVERAGE);
+    assert.deepEqual(artifact.blockingSourceFailures, {});
+
+    const activeGates = new Map(artifact.acceptanceGates.gates.pc.map((gate) => [gate.id, gate]));
+    for (const gateId of [
+      'gate-1-spearman',
+      'gate-2-country-drift',
+      'gate-6-cohort-median',
+      'gate-7-matched-pair',
+      'gate-9-effective-influence-baseline',
+    ]) {
+      assert.equal(activeGates.get(gateId)?.status, 'pass', `${filename} ${gateId} must pass`);
+    }
+  }
 });

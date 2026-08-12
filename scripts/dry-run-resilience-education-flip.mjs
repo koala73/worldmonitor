@@ -435,6 +435,36 @@ export function evaluateMeasurementInputs({
     imputedEducation,
     baselineWithEducation,
     sourceFailures,
+    blockingSourceFailures: sourceFailures,
+  };
+}
+
+const REQUIRED_ACTIVE_GATE_IDS = new Set([
+  'gate-1-spearman',
+  'gate-2-country-drift',
+  'gate-6-cohort-median',
+  'gate-7-matched-pair',
+  'gate-9-effective-influence-baseline',
+]);
+
+export function summarizeAcceptanceGates(results) {
+  const activeGates = results.pc;
+  const activeGateIds = Array.isArray(activeGates) ? activeGates.map((gate) => gate?.id) : [];
+  const validActiveGates = activeGateIds.length === REQUIRED_ACTIVE_GATE_IDS.size
+    && new Set(activeGateIds).size === REQUIRED_ACTIVE_GATE_IDS.size
+    && activeGateIds.every((id) => REQUIRED_ACTIVE_GATE_IDS.has(id))
+    && activeGates.every((gate) => gate?.status === 'pass' || gate?.status === 'fail');
+  if (!validActiveGates) {
+    throw new Error('active pc acceptance gates are missing, duplicated, or malformed');
+  }
+  const gatingFailures = activeGates.filter((gate) => gate.status !== 'pass');
+  const nonGatingFailures = Object.entries(results)
+    .filter(([formula]) => formula !== 'pc')
+    .flatMap(([, gates]) => gates.filter((gate) => gate.status !== 'pass'));
+  return {
+    verdict: gatingFailures.length === 0 ? 'PASS' : 'FAIL',
+    gatingFailures,
+    nonGatingFailures,
   };
 }
 
@@ -501,6 +531,7 @@ async function main() {
     imputedEducation,
     baselineWithEducation,
     sourceFailures,
+    blockingSourceFailures,
   } = measurementInputs;
   console.log(`[dry-run] education: observed ${observedEducation.length}, imputed ${imputedEducation.length}, baseline coverage ${baselineWithEducation.length} (${readCount} unique keys read)`);
 
@@ -520,19 +551,18 @@ async function main() {
     process.exit(2);
   }
 
-  // Source failures invalidate the measurement. Delta gates can isolate a
-  // shared outage, but gate 7 reads proposed ABSOLUTE scores; an unrelated
-  // failure can therefore mask or manufacture a matched-pair verdict. Abort
-  // before printing acceptance gates so degraded input never looks actionable.
-  if (sourceFailures.size > 0) {
+  // Any real source failure invalidates the measurement because the global
+  // Spearman and drift gates consume the full scored universe. Structural
+  // source absences must be removed by the source-failure classifier instead
+  // of weakening this validity guard.
+  if (blockingSourceFailures.size > 0) {
     console.error('\nFATAL: source-failure dimensions make the acceptance measurement invalid:');
-    for (const [passAndDimension, count] of [...sourceFailures.entries()].sort((a, b) => b[1] - a[1])) {
+    for (const [passAndDimension, count] of [...blockingSourceFailures.entries()].sort((a, b) => b[1] - a[1])) {
       console.error(`  ${passAndDimension.padEnd(35)} ${count}/${universe.length} countries`);
     }
     console.error('Re-run after source health recovers. Do NOT interpret PASS or FAIL from this run.');
     process.exit(2);
   }
-
   const results = {};
   for (const formula of ['pc', 'd6']) {
     const gates = evaluateGates(baseline, proposed, formula);
@@ -570,9 +600,11 @@ async function main() {
     console.log(`  ${cc}  ${round2(before)} -> ${round2(after)}  (${after - before > 0 ? '+' : ''}${round2(after - before)})  education dim ${proposed.get(cc)?.educationScore}`);
   }
 
-  const allGates = [...results.pc, ...results.d6];
-  const failed = allGates.filter((g) => g.status !== 'pass');
-  const verdict = failed.length === 0 ? 'PASS' : 'FAIL';
+  const {
+    verdict,
+    gatingFailures: failed,
+    nonGatingFailures,
+  } = summarizeAcceptanceGates(results);
 
   // Attribution matters more than the bare verdict here. The runbook's
   // weight-fallback rule assumes a failing gate was CAUSED by the flip; it
@@ -580,8 +612,8 @@ async function main() {
   // because halving the weight only walks the gap back toward that baseline.
   // Reporting a bare FAIL would send an operator to a fallback that provably
   // does not apply.
-  const allRegressions = [...new Set(allGates.flatMap((g) => g.evidence?.regressions ?? []))];
-  const allPreExisting = [...new Set(allGates.flatMap((g) => g.evidence?.preExisting ?? []))];
+  const allRegressions = [...new Set(results.pc.flatMap((g) => g.evidence?.regressions ?? []))];
+  const allPreExisting = [...new Set(results.pc.flatMap((g) => g.evidence?.preExisting ?? []))];
   const nonPairFailures = failed.filter((g) => g.id !== 'gate-7-matched-pair');
 
   console.log(`\n================ VERDICT: ${verdict} ================`);
@@ -589,6 +621,10 @@ async function main() {
     console.log('Failed gates:', [...new Set(failed.map((g) => g.id))].join(', '));
     console.log(`  caused by this flip:      ${allRegressions.length ? allRegressions.join(', ') : 'none'}`);
     console.log(`  already failing at flag-off baseline: ${allPreExisting.length ? allPreExisting.join(', ') : 'none'}`);
+  }
+  if (nonGatingFailures.length) {
+    console.log('Legacy diagnostic failures (not part of the active pc acceptance verdict):',
+      [...new Set(nonGatingFailures.map((g) => g.id))].join(', '));
   }
   const fallbackIndicated = nonPairFailures.length > 0 || allRegressions.length > 0;
   if (fallbackIndicated) {
@@ -607,7 +643,14 @@ async function main() {
       shippedEducationWeight,
       universeSize: universe.length,
       educationCoverageCountries: observedEducation.length,
-      acceptanceGates: { verdict, gates: results },
+      sourceFailures: Object.fromEntries(sourceFailures),
+      blockingSourceFailures: Object.fromEntries(blockingSourceFailures),
+      acceptanceGates: {
+        verdict,
+        gatingFormula: 'pc',
+        gates: results,
+        nonGatingFailures,
+      },
       scores: Object.fromEntries(universe.map((cc) => [cc, {
         baseline: baseline.get(cc) ?? null,
         proposed: proposed.get(cc) ?? null,

@@ -3550,7 +3550,7 @@ export async function scoreAllDimensions(
   // source-failure. Real-data and not-applicable dimensions are untouched:
   // a seed failing does not invalidate a country that was served from prior
   // snapshot data or a structural non-applicability path.
-  const affected = failedDimensionsFromDatasets(failedDatasets);
+  const affected = failedDimensionsFromDatasets(failedDatasets, countryCode);
   for (const dimId of standaloneFailures.dimensions) {
     affected.add(dimId);
   }

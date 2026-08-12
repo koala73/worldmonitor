@@ -1,0 +1,4154 @@
+{
+  "measuredAt": "2026-08-12T18:17:49.135Z",
+  "educationWeight": 0.5,
+  "shippedEducationWeight": 0.5,
+  "universeSize": 196,
+  "educationCoverageCountries": 181,
+  "sourceFailures": {},
+  "blockingSourceFailures": {},
+  "acceptanceGates": {
+    "verdict": "PASS",
+    "gatingFormula": "pc",
+    "gates": {
+      "pc": [
+        {
+          "id": "gate-1-spearman",
+          "name": "Spearman vs baseline >= 0.85",
+          "status": "pass",
+          "detail": "rho 1 over 196 countries",
+          "evidence": {
+            "spearman": 0.9962239462471005,
+            "countries": 196
+          }
+        },
+        {
+          "id": "gate-2-country-drift",
+          "name": "Max country drift <= 15 points",
+          "status": "pass",
+          "detail": "max |delta| 3.45 (VU)",
+          "evidence": {
+            "topMovers": [
+              {
+                "countryCode": "VU",
+                "delta": -3.45
+              },
+              {
+                "countryCode": "RU",
+                "delta": 2.18
+              },
+              {
+                "countryCode": "IL",
+                "delta": 2
+              },
+              {
+                "countryCode": "MW",
+                "delta": -1.98
+              },
+              {
+                "countryCode": "SR",
+                "delta": -1.93
+              },
+              {
+                "countryCode": "RW",
+                "delta": -1.84
+              },
+              {
+                "countryCode": "UG",
+                "delta": -1.8
+              },
+              {
+                "countryCode": "NR",
+                "delta": -1.78
+              },
+              {
+                "countryCode": "KI",
+                "delta": -1.75
+              },
+              {
+                "countryCode": "UA",
+                "delta": 1.62
+              },
+              {
+                "countryCode": "NP",
+                "delta": -1.62
+              },
+              {
+                "countryCode": "KH",
+                "delta": -1.54
+              },
+              {
+                "countryCode": "BI",
+                "delta": -1.43
+              },
+              {
+                "countryCode": "BT",
+                "delta": -1.39
+              },
+              {
+                "countryCode": "MC",
+                "delta": -1.39
+              }
+            ]
+          }
+        },
+        {
+          "id": "gate-6-cohort-median",
+          "name": "Cohort median shift <= 10 points",
+          "status": "pass",
+          "detail": "worst fragile-states -1.11",
+          "evidence": {
+            "cohortShifts": [
+              {
+                "cohort": "net-fuel-exporters",
+                "members": 22,
+                "medianShift": 0.01
+              },
+              {
+                "cohort": "net-energy-importers-oecd",
+                "members": 18,
+                "medianShift": 0.06
+              },
+              {
+                "cohort": "nuclear-heavy-generation",
+                "members": 16,
+                "medianShift": 0.46
+              },
+              {
+                "cohort": "coal-heavy-domestic",
+                "members": 12,
+                "medianShift": 0.72
+              },
+              {
+                "cohort": "small-island-importers",
+                "members": 18,
+                "medianShift": -0.52
+              },
+              {
+                "cohort": "sanctions-isolated",
+                "members": 8,
+                "medianShift": 0.2
+              },
+              {
+                "cohort": "fragile-states",
+                "members": 18,
+                "medianShift": -1.11
+              }
+            ]
+          }
+        },
+        {
+          "id": "gate-7-matched-pair",
+          "name": "Every matched pair holds direction and minGap",
+          "status": "pass",
+          "detail": "9/9 pairs pass",
+          "evidence": {
+            "pairs": [
+              {
+                "pairId": "de-vs-fr",
+                "status": "pass",
+                "baselineStatus": "pass",
+                "regression": false,
+                "preExisting": false,
+                "gap": 1.63,
+                "baselineGap": 1.66,
+                "gapDelta": -0.03,
+                "minGap": 1
+              },
+              {
+                "pairId": "no-vs-ca",
+                "status": "pass",
+                "baselineStatus": "pass",
+                "regression": false,
+                "preExisting": false,
+                "gap": 15.48,
+                "baselineGap": 15.51,
+                "gapDelta": -0.03,
+                "minGap": 3
+              },
+              {
+                "pairId": "uae-vs-bh",
+                "status": "pass",
+                "baselineStatus": "pass",
+                "regression": false,
+                "preExisting": false,
+                "gap": 21.27,
+                "baselineGap": 21.35,
+                "gapDelta": -0.08,
+                "minGap": 5
+              },
+              {
+                "pairId": "jp-vs-kr",
+                "status": "pass",
+                "baselineStatus": "pass",
+                "regression": false,
+                "preExisting": false,
+                "gap": 11.74,
+                "baselineGap": 11.65,
+                "gapDelta": 0.09,
+                "minGap": 1
+              },
+              {
+                "pairId": "in-vs-za",
+                "status": "pass",
+                "baselineStatus": "pass",
+                "regression": false,
+                "preExisting": false,
+                "gap": 1.94,
+                "baselineGap": 2.7,
+                "gapDelta": -0.76,
+                "minGap": 1
+              },
+              {
+                "pairId": "ch-vs-sg",
+                "status": "pass",
+                "baselineStatus": "pass",
+                "regression": false,
+                "preExisting": false,
+                "gap": 19.37,
+                "baselineGap": 19.02,
+                "gapDelta": 0.35,
+                "minGap": 5
+              },
+              {
+                "pairId": "pt-vs-uz",
+                "status": "pass",
+                "baselineStatus": "pass",
+                "regression": false,
+                "preExisting": false,
+                "gap": 4.85,
+                "baselineGap": 6.21,
+                "gapDelta": -1.36,
+                "minGap": 3
+              },
+              {
+                "pairId": "es-vs-by",
+                "status": "pass",
+                "baselineStatus": "pass",
+                "regression": false,
+                "preExisting": false,
+                "gap": 9.19,
+                "baselineGap": 10.54,
+                "gapDelta": -1.35,
+                "minGap": 3
+              },
+              {
+                "pairId": "ch-vs-tm",
+                "status": "pass",
+                "baselineStatus": "pass",
+                "regression": false,
+                "preExisting": false,
+                "gap": 28.36,
+                "baselineGap": 29,
+                "gapDelta": -0.64,
+                "minGap": 5
+              }
+            ],
+            "regressions": [],
+            "preExisting": []
+          }
+        },
+        {
+          "id": "gate-9-effective-influence-baseline",
+          "name": "Core extraction baseline and education sample are measurable",
+          "status": "pass",
+          "detail": "48/52 Core indicators measurable (92.31%); education 181/181",
+          "evidence": {
+            "coreImplemented": 48,
+            "coreTotal": 52,
+            "educationPairedSampleSize": 181,
+            "expectedEducationSampleSize": 181,
+            "educationRow": {
+              "tier": "core",
+              "extractionStatus": "implemented"
+            }
+          }
+        }
+      ],
+      "d6": [
+        {
+          "id": "gate-1-spearman",
+          "name": "Spearman vs baseline >= 0.85",
+          "status": "pass",
+          "detail": "rho 1 over 196 countries",
+          "evidence": {
+            "spearman": 0.997042754549741,
+            "countries": 196
+          }
+        },
+        {
+          "id": "gate-2-country-drift",
+          "name": "Max country drift <= 15 points",
+          "status": "pass",
+          "detail": "max |delta| 2.13 (KI)",
+          "evidence": {
+            "topMovers": [
+              {
+                "countryCode": "KI",
+                "delta": -2.13
+              },
+              {
+                "countryCode": "VU",
+                "delta": -2.08
+              },
+              {
+                "countryCode": "BT",
+                "delta": -1.44
+              },
+              {
+                "countryCode": "SN",
+                "delta": -1.4
+              },
+              {
+                "countryCode": "BJ",
+                "delta": -1.37
+              },
+              {
+                "countryCode": "TZ",
+                "delta": -1.34
+              },
+              {
+                "countryCode": "MG",
+                "delta": -1.33
+              },
+              {
+                "countryCode": "CV",
+                "delta": -1.32
+              },
+              {
+                "countryCode": "TV",
+                "delta": -1.3
+              },
+              {
+                "countryCode": "MV",
+                "delta": -1.29
+              },
+              {
+                "countryCode": "SB",
+                "delta": -1.29
+              },
+              {
+                "countryCode": "GW",
+                "delta": -1.27
+              },
+              {
+                "countryCode": "TG",
+                "delta": -1.25
+              },
+              {
+                "countryCode": "KH",
+                "delta": -1.23
+              },
+              {
+                "countryCode": "KM",
+                "delta": -1.21
+              }
+            ]
+          }
+        },
+        {
+          "id": "gate-6-cohort-median",
+          "name": "Cohort median shift <= 10 points",
+          "status": "pass",
+          "detail": "worst fragile-states -0.89",
+          "evidence": {
+            "cohortShifts": [
+              {
+                "cohort": "net-fuel-exporters",
+                "members": 22,
+                "medianShift": -0.18
+              },
+              {
+                "cohort": "net-energy-importers-oecd",
+                "members": 18,
+                "medianShift": 0.11
+              },
+              {
+                "cohort": "nuclear-heavy-generation",
+                "members": 16,
+                "medianShift": 0.48
+              },
+              {
+                "cohort": "coal-heavy-domestic",
+                "members": 12,
+                "medianShift": 0.38
+              },
+              {
+                "cohort": "small-island-importers",
+                "members": 18,
+                "medianShift": -0.44
+              },
+              {
+                "cohort": "sanctions-isolated",
+                "members": 8,
+                "medianShift": -0.18
+              },
+              {
+                "cohort": "fragile-states",
+                "members": 18,
+                "medianShift": -0.89
+              }
+            ]
+          }
+        },
+        {
+          "id": "gate-7-matched-pair",
+          "name": "Every matched pair holds direction and minGap",
+          "status": "fail",
+          "detail": "0 caused by this flip; 1 already failing at baseline (de-vs-fr 0.48->0.43 vs min 1)",
+          "evidence": {
+            "pairs": [
+              {
+                "pairId": "de-vs-fr",
+                "status": "near-flip",
+                "baselineStatus": "near-flip",
+                "regression": false,
+                "preExisting": true,
+                "gap": 0.43,
+                "baselineGap": 0.48,
+                "gapDelta": -0.05,
+                "minGap": 1
+              },
+              {
+                "pairId": "no-vs-ca",
+                "status": "pass",
+                "baselineStatus": "pass",
+                "regression": false,
+                "preExisting": false,
+                "gap": 8.14,
+                "baselineGap": 8.33,
+                "gapDelta": -0.19,
+                "minGap": 3
+              },
+              {
+                "pairId": "uae-vs-bh",
+                "status": "pass",
+                "baselineStatus": "pass",
+                "regression": false,
+                "preExisting": false,
+                "gap": 14.81,
+                "baselineGap": 14.97,
+                "gapDelta": -0.16,
+                "minGap": 5
+              },
+              {
+                "pairId": "jp-vs-kr",
+                "status": "pass",
+                "baselineStatus": "pass",
+                "regression": false,
+                "preExisting": false,
+                "gap": 8.1,
+                "baselineGap": 8.05,
+                "gapDelta": 0.05,
+                "minGap": 1
+              },
+              {
+                "pairId": "in-vs-za",
+                "status": "pass",
+                "baselineStatus": "pass",
+                "regression": false,
+                "preExisting": false,
+                "gap": 2.55,
+                "baselineGap": 2.83,
+                "gapDelta": -0.28,
+                "minGap": 1
+              },
+              {
+                "pairId": "ch-vs-sg",
+                "status": "pass",
+                "baselineStatus": "pass",
+                "regression": false,
+                "preExisting": false,
+                "gap": 13.84,
+                "baselineGap": 13.69,
+                "gapDelta": 0.15,
+                "minGap": 5
+              },
+              {
+                "pairId": "pt-vs-uz",
+                "status": "pass",
+                "baselineStatus": "pass",
+                "regression": false,
+                "preExisting": false,
+                "gap": 4.46,
+                "baselineGap": 5.83,
+                "gapDelta": -1.37,
+                "minGap": 3
+              },
+              {
+                "pairId": "es-vs-by",
+                "status": "pass",
+                "baselineStatus": "pass",
+                "regression": false,
+                "preExisting": false,
+                "gap": 6.62,
+                "baselineGap": 8,
+                "gapDelta": -1.38,
+                "minGap": 3
+              },
+              {
+                "pairId": "ch-vs-tm",
+                "status": "pass",
+                "baselineStatus": "pass",
+                "regression": false,
+                "preExisting": false,
+                "gap": 20.7,
+                "baselineGap": 21.61,
+                "gapDelta": -0.91,
+                "minGap": 5
+              }
+            ],
+            "regressions": [],
+            "preExisting": [
+              "de-vs-fr"
+            ]
+          }
+        }
+      ]
+    },
+    "nonGatingFailures": [
+      {
+        "id": "gate-7-matched-pair",
+        "name": "Every matched pair holds direction and minGap",
+        "status": "fail",
+        "detail": "0 caused by this flip; 1 already failing at baseline (de-vs-fr 0.48->0.43 vs min 1)",
+        "evidence": {
+          "pairs": [
+            {
+              "pairId": "de-vs-fr",
+              "status": "near-flip",
+              "baselineStatus": "near-flip",
+              "regression": false,
+              "preExisting": true,
+              "gap": 0.43,
+              "baselineGap": 0.48,
+              "gapDelta": -0.05,
+              "minGap": 1
+            },
+            {
+              "pairId": "no-vs-ca",
+              "status": "pass",
+              "baselineStatus": "pass",
+              "regression": false,
+              "preExisting": false,
+              "gap": 8.14,
+              "baselineGap": 8.33,
+              "gapDelta": -0.19,
+              "minGap": 3
+            },
+            {
+              "pairId": "uae-vs-bh",
+              "status": "pass",
+              "baselineStatus": "pass",
+              "regression": false,
+              "preExisting": false,
+              "gap": 14.81,
+              "baselineGap": 14.97,
+              "gapDelta": -0.16,
+              "minGap": 5
+            },
+            {
+              "pairId": "jp-vs-kr",
+              "status": "pass",
+              "baselineStatus": "pass",
+              "regression": false,
+              "preExisting": false,
+              "gap": 8.1,
+              "baselineGap": 8.05,
+              "gapDelta": 0.05,
+              "minGap": 1
+            },
+            {
+              "pairId": "in-vs-za",
+              "status": "pass",
+              "baselineStatus": "pass",
+              "regression": false,
+              "preExisting": false,
+              "gap": 2.55,
+              "baselineGap": 2.83,
+              "gapDelta": -0.28,
+              "minGap": 1
+            },
+            {
+              "pairId": "ch-vs-sg",
+              "status": "pass",
+              "baselineStatus": "pass",
+              "regression": false,
+              "preExisting": false,
+              "gap": 13.84,
+              "baselineGap": 13.69,
+              "gapDelta": 0.15,
+              "minGap": 5
+            },
+            {
+              "pairId": "pt-vs-uz",
+              "status": "pass",
+              "baselineStatus": "pass",
+              "regression": false,
+              "preExisting": false,
+              "gap": 4.46,
+              "baselineGap": 5.83,
+              "gapDelta": -1.37,
+              "minGap": 3
+            },
+            {
+              "pairId": "es-vs-by",
+              "status": "pass",
+              "baselineStatus": "pass",
+              "regression": false,
+              "preExisting": false,
+              "gap": 6.62,
+              "baselineGap": 8,
+              "gapDelta": -1.38,
+              "minGap": 3
+            },
+            {
+              "pairId": "ch-vs-tm",
+              "status": "pass",
+              "baselineStatus": "pass",
+              "regression": false,
+              "preExisting": false,
+              "gap": 20.7,
+              "baselineGap": 21.61,
+              "gapDelta": -0.91,
+              "minGap": 5
+            }
+          ],
+          "regressions": [],
+          "preExisting": [
+            "de-vs-fr"
+          ]
+        }
+      }
+    ]
+  },
+  "scores": {
+    "AF": {
+      "baseline": {
+        "pc": 32.77,
+        "d6": 49.57,
+        "educationScore": 0,
+        "educationCoverage": 0,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      },
+      "proposed": {
+        "pc": 31.97,
+        "d6": 48.7,
+        "educationScore": 6,
+        "educationCoverage": 1,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      }
+    },
+    "AL": {
+      "baseline": {
+        "pc": 60.9,
+        "d6": 72.13,
+        "educationScore": 0,
+        "educationCoverage": 0,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      },
+      "proposed": {
+        "pc": 60.55,
+        "d6": 71.83,
+        "educationScore": 54,
+        "educationCoverage": 1,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      }
+    },
+    "DZ": {
+      "baseline": {
+        "pc": 54,
+        "d6": 66.04,
+        "educationScore": 0,
+        "educationCoverage": 0,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      },
+      "proposed": {
+        "pc": 53.07,
+        "d6": 65.44,
+        "educationScore": 27,
+        "educationCoverage": 0.8,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      }
+    },
+    "AD": {
+      "baseline": {
+        "pc": 66.05,
+        "d6": 78.94,
+        "educationScore": 0,
+        "educationCoverage": 0,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      },
+      "proposed": {
+        "pc": 65.46,
+        "d6": 78.3,
+        "educationScore": 65,
+        "educationCoverage": 1,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      }
+    },
+    "AO": {
+      "baseline": {
+        "pc": 40.07,
+        "d6": 54.11,
+        "educationScore": 0,
+        "educationCoverage": 0,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      },
+      "proposed": {
+        "pc": 39.27,
+        "d6": 53.22,
+        "educationScore": 21,
+        "educationCoverage": 1,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      }
+    },
+    "AG": {
+      "baseline": {
+        "pc": 55.69,
+        "d6": 72.48,
+        "educationScore": 0,
+        "educationCoverage": 0,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      },
+      "proposed": {
+        "pc": 55.95,
+        "d6": 72.65,
+        "educationScore": 85,
+        "educationCoverage": 1,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      }
+    },
+    "AR": {
+      "baseline": {
+        "pc": 50.86,
+        "d6": 66.24,
+        "educationScore": 0,
+        "educationCoverage": 0,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      },
+      "proposed": {
+        "pc": 50.84,
+        "d6": 66.19,
+        "educationScore": 63,
+        "educationCoverage": 1,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      }
+    },
+    "AM": {
+      "baseline": {
+        "pc": 51.17,
+        "d6": 64.91,
+        "educationScore": 0,
+        "educationCoverage": 0,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      },
+      "proposed": {
+        "pc": 51.94,
+        "d6": 65.69,
+        "educationScore": 96,
+        "educationCoverage": 1,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      }
+    },
+    "AU": {
+      "baseline": {
+        "pc": 61.1,
+        "d6": 76.61,
+        "educationScore": 0,
+        "educationCoverage": 0,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      },
+      "proposed": {
+        "pc": 61.24,
+        "d6": 76.73,
+        "educationScore": 85,
+        "educationCoverage": 1,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      }
+    },
+    "AT": {
+      "baseline": {
+        "pc": 62.36,
+        "d6": 76.64,
+        "educationScore": 0,
+        "educationCoverage": 0,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      },
+      "proposed": {
+        "pc": 62.5,
+        "d6": 76.78,
+        "educationScore": 86,
+        "educationCoverage": 1,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      }
+    },
+    "AZ": {
+      "baseline": {
+        "pc": 54.15,
+        "d6": 67.22,
+        "educationScore": 0,
+        "educationCoverage": 0,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      },
+      "proposed": {
+        "pc": 55.04,
+        "d6": 68.15,
+        "educationScore": 95,
+        "educationCoverage": 1,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      }
+    },
+    "BS": {
+      "baseline": {
+        "pc": 45.81,
+        "d6": 64.38,
+        "educationScore": 0,
+        "educationCoverage": 0,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      },
+      "proposed": {
+        "pc": 46.51,
+        "d6": 65.05,
+        "educationScore": 97,
+        "educationCoverage": 1,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      }
+    },
+    "BH": {
+      "baseline": {
+        "pc": 42.57,
+        "d6": 59.63,
+        "educationScore": 0,
+        "educationCoverage": 0,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      },
+      "proposed": {
+        "pc": 43.03,
+        "d6": 60.16,
+        "educationScore": 85,
+        "educationCoverage": 1,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      }
+    },
+    "BD": {
+      "baseline": {
+        "pc": 39.35,
+        "d6": 54.5,
+        "educationScore": 0,
+        "educationCoverage": 0,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      },
+      "proposed": {
+        "pc": 38.89,
+        "d6": 54,
+        "educationScore": 32,
+        "educationCoverage": 1,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      }
+    },
+    "BB": {
+      "baseline": {
+        "pc": 60.82,
+        "d6": 72.76,
+        "educationScore": 0,
+        "educationCoverage": 0,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      },
+      "proposed": {
+        "pc": 60.48,
+        "d6": 72.61,
+        "educationScore": 50,
+        "educationCoverage": 0.3,
+        "educationImputationClass": "unmonitored",
+        "sourceFailureDimensions": []
+      }
+    },
+    "BY": {
+      "baseline": {
+        "pc": 52.44,
+        "d6": 66.53,
+        "educationScore": 0,
+        "educationCoverage": 0,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      },
+      "proposed": {
+        "pc": 53.48,
+        "d6": 67.63,
+        "educationScore": 99,
+        "educationCoverage": 1,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      }
+    },
+    "BE": {
+      "baseline": {
+        "pc": 58.44,
+        "d6": 72.64,
+        "educationScore": 0,
+        "educationCoverage": 0,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      },
+      "proposed": {
+        "pc": 58.52,
+        "d6": 72.72,
+        "educationScore": 80,
+        "educationCoverage": 1,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      }
+    },
+    "BZ": {
+      "baseline": {
+        "pc": 51.92,
+        "d6": 65.99,
+        "educationScore": 0,
+        "educationCoverage": 0,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      },
+      "proposed": {
+        "pc": 51.08,
+        "d6": 65.37,
+        "educationScore": 47,
+        "educationCoverage": 1,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      }
+    },
+    "BJ": {
+      "baseline": {
+        "pc": 40.35,
+        "d6": 55.15,
+        "educationScore": 0,
+        "educationCoverage": 0,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      },
+      "proposed": {
+        "pc": 39.11,
+        "d6": 53.78,
+        "educationScore": 4,
+        "educationCoverage": 1,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      }
+    },
+    "BT": {
+      "baseline": {
+        "pc": 54.24,
+        "d6": 70.87,
+        "educationScore": 0,
+        "educationCoverage": 0,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      },
+      "proposed": {
+        "pc": 52.85,
+        "d6": 69.43,
+        "educationScore": 17,
+        "educationCoverage": 1,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      }
+    },
+    "BO": {
+      "baseline": {
+        "pc": 43.33,
+        "d6": 58.72,
+        "educationScore": 0,
+        "educationCoverage": 0,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      },
+      "proposed": {
+        "pc": 43.21,
+        "d6": 58.57,
+        "educationScore": 55,
+        "educationCoverage": 1,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      }
+    },
+    "BA": {
+      "baseline": {
+        "pc": 56.4,
+        "d6": 68.41,
+        "educationScore": 0,
+        "educationCoverage": 0,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      },
+      "proposed": {
+        "pc": 56.46,
+        "d6": 68.49,
+        "educationScore": 68,
+        "educationCoverage": 1,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      }
+    },
+    "BW": {
+      "baseline": {
+        "pc": 46.12,
+        "d6": 60.38,
+        "educationScore": 0,
+        "educationCoverage": 0,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      },
+      "proposed": {
+        "pc": 45.5,
+        "d6": 59.72,
+        "educationScore": 45,
+        "educationCoverage": 1,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      }
+    },
+    "BR": {
+      "baseline": {
+        "pc": 56.06,
+        "d6": 70.18,
+        "educationScore": 0,
+        "educationCoverage": 0,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      },
+      "proposed": {
+        "pc": 56.27,
+        "d6": 70.43,
+        "educationScore": 68,
+        "educationCoverage": 1,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      }
+    },
+    "BN": {
+      "baseline": {
+        "pc": 58.49,
+        "d6": 71.87,
+        "educationScore": 0,
+        "educationCoverage": 0,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      },
+      "proposed": {
+        "pc": 58.33,
+        "d6": 71.69,
+        "educationScore": 73,
+        "educationCoverage": 1,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      }
+    },
+    "BG": {
+      "baseline": {
+        "pc": 60,
+        "d6": 72.17,
+        "educationScore": 0,
+        "educationCoverage": 0,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      },
+      "proposed": {
+        "pc": 60.4,
+        "d6": 72.58,
+        "educationScore": 85,
+        "educationCoverage": 1,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      }
+    },
+    "BF": {
+      "baseline": {
+        "pc": 36.75,
+        "d6": 50.31,
+        "educationScore": 0,
+        "educationCoverage": 0,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      },
+      "proposed": {
+        "pc": 35.57,
+        "d6": 49.4,
+        "educationScore": 4,
+        "educationCoverage": 1,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      }
+    },
+    "BI": {
+      "baseline": {
+        "pc": 38.69,
+        "d6": 52.96,
+        "educationScore": 0,
+        "educationCoverage": 0,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      },
+      "proposed": {
+        "pc": 37.26,
+        "d6": 52.13,
+        "educationScore": 8,
+        "educationCoverage": 0.8,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      }
+    },
+    "CV": {
+      "baseline": {
+        "pc": 53.63,
+        "d6": 67.81,
+        "educationScore": 0,
+        "educationCoverage": 0,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      },
+      "proposed": {
+        "pc": 52.4,
+        "d6": 66.49,
+        "educationScore": 29,
+        "educationCoverage": 1,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      }
+    },
+    "KH": {
+      "baseline": {
+        "pc": 50.59,
+        "d6": 63.55,
+        "educationScore": 0,
+        "educationCoverage": 0,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      },
+      "proposed": {
+        "pc": 49.05,
+        "d6": 62.32,
+        "educationScore": 9,
+        "educationCoverage": 1,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      }
+    },
+    "CM": {
+      "baseline": {
+        "pc": 39.54,
+        "d6": 53.31,
+        "educationScore": 0,
+        "educationCoverage": 0,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      },
+      "proposed": {
+        "pc": 38.38,
+        "d6": 52.63,
+        "educationScore": 11,
+        "educationCoverage": 0.8,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      }
+    },
+    "CA": {
+      "baseline": {
+        "pc": 59.95,
+        "d6": 75.56,
+        "educationScore": 0,
+        "educationCoverage": 0,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      },
+      "proposed": {
+        "pc": 60.36,
+        "d6": 75.96,
+        "educationScore": 95,
+        "educationCoverage": 1,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      }
+    },
+    "CF": {
+      "baseline": {
+        "pc": 36.27,
+        "d6": 50.94,
+        "educationScore": 0,
+        "educationCoverage": 0,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      },
+      "proposed": {
+        "pc": 35.08,
+        "d6": 50.21,
+        "educationScore": 4,
+        "educationCoverage": 0.8,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      }
+    },
+    "TD": {
+      "baseline": {
+        "pc": 36.36,
+        "d6": 50.34,
+        "educationScore": 0,
+        "educationCoverage": 0,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      },
+      "proposed": {
+        "pc": 35.33,
+        "d6": 49.47,
+        "educationScore": 2,
+        "educationCoverage": 0.8,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      }
+    },
+    "CL": {
+      "baseline": {
+        "pc": 56.69,
+        "d6": 70.04,
+        "educationScore": 0,
+        "educationCoverage": 0,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      },
+      "proposed": {
+        "pc": 56.81,
+        "d6": 70.16,
+        "educationScore": 75,
+        "educationCoverage": 1,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      }
+    },
+    "CN": {
+      "baseline": {
+        "pc": 53.57,
+        "d6": 66.13,
+        "educationScore": 0,
+        "educationCoverage": 0,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      },
+      "proposed": {
+        "pc": 52.76,
+        "d6": 65.66,
+        "educationScore": 32,
+        "educationCoverage": 0.8,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      }
+    },
+    "CO": {
+      "baseline": {
+        "pc": 48.52,
+        "d6": 64.78,
+        "educationScore": 0,
+        "educationCoverage": 0,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      },
+      "proposed": {
+        "pc": 49.42,
+        "d6": 65.29,
+        "educationScore": 64,
+        "educationCoverage": 1,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      }
+    },
+    "KM": {
+      "baseline": {
+        "pc": 48.1,
+        "d6": 60.58,
+        "educationScore": 0,
+        "educationCoverage": 0,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      },
+      "proposed": {
+        "pc": 46.96,
+        "d6": 59.37,
+        "educationScore": 21,
+        "educationCoverage": 1,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      }
+    },
+    "CG": {
+      "baseline": {
+        "pc": 42.3,
+        "d6": 55.31,
+        "educationScore": 0,
+        "educationCoverage": 0,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      },
+      "proposed": {
+        "pc": 41.69,
+        "d6": 54.68,
+        "educationScore": 15,
+        "educationCoverage": 0.6,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      }
+    },
+    "CD": {
+      "baseline": {
+        "pc": 37.32,
+        "d6": 51.52,
+        "educationScore": 0,
+        "educationCoverage": 0,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      },
+      "proposed": {
+        "pc": 36.48,
+        "d6": 51.08,
+        "educationScore": 21,
+        "educationCoverage": 1,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      }
+    },
+    "CR": {
+      "baseline": {
+        "pc": 49.33,
+        "d6": 64.83,
+        "educationScore": 0,
+        "educationCoverage": 0,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      },
+      "proposed": {
+        "pc": 48.89,
+        "d6": 64.33,
+        "educationScore": 48,
+        "educationCoverage": 1,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      }
+    },
+    "CI": {
+      "baseline": {
+        "pc": 42.43,
+        "d6": 57.32,
+        "educationScore": 0,
+        "educationCoverage": 0,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      },
+      "proposed": {
+        "pc": 41.37,
+        "d6": 56.19,
+        "educationScore": 13,
+        "educationCoverage": 1,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      }
+    },
+    "HR": {
+      "baseline": {
+        "pc": 57.46,
+        "d6": 70.25,
+        "educationScore": 0,
+        "educationCoverage": 0,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      },
+      "proposed": {
+        "pc": 57.8,
+        "d6": 70.6,
+        "educationScore": 84,
+        "educationCoverage": 1,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      }
+    },
+    "CU": {
+      "baseline": {
+        "pc": 47.01,
+        "d6": 61.57,
+        "educationScore": 0,
+        "educationCoverage": 0,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      },
+      "proposed": {
+        "pc": 47.2,
+        "d6": 61.67,
+        "educationScore": 60,
+        "educationCoverage": 0.8,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      }
+    },
+    "CY": {
+      "baseline": {
+        "pc": 58.05,
+        "d6": 70.77,
+        "educationScore": 0,
+        "educationCoverage": 0,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      },
+      "proposed": {
+        "pc": 58.31,
+        "d6": 71.03,
+        "educationScore": 84,
+        "educationCoverage": 1,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      }
+    },
+    "CZ": {
+      "baseline": {
+        "pc": 67.04,
+        "d6": 77.57,
+        "educationScore": 0,
+        "educationCoverage": 0,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      },
+      "proposed": {
+        "pc": 67.49,
+        "d6": 78.01,
+        "educationScore": 94,
+        "educationCoverage": 1,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      }
+    },
+    "DK": {
+      "baseline": {
+        "pc": 71.52,
+        "d6": 81.23,
+        "educationScore": 0,
+        "educationCoverage": 0,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      },
+      "proposed": {
+        "pc": 71.58,
+        "d6": 81.29,
+        "educationScore": 85,
+        "educationCoverage": 1,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      }
+    },
+    "DJ": {
+      "baseline": {
+        "pc": 42.54,
+        "d6": 56.64,
+        "educationScore": 0,
+        "educationCoverage": 0,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      },
+      "proposed": {
+        "pc": 41.8,
+        "d6": 55.83,
+        "educationScore": 11,
+        "educationCoverage": 0.8,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      }
+    },
+    "DM": {
+      "baseline": {
+        "pc": 57.76,
+        "d6": 71.72,
+        "educationScore": 0,
+        "educationCoverage": 0,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      },
+      "proposed": {
+        "pc": 57.19,
+        "d6": 70.93,
+        "educationScore": 55,
+        "educationCoverage": 1,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      }
+    },
+    "DO": {
+      "baseline": {
+        "pc": 49.99,
+        "d6": 62.89,
+        "educationScore": 0,
+        "educationCoverage": 0,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      },
+      "proposed": {
+        "pc": 49.78,
+        "d6": 62.66,
+        "educationScore": 57,
+        "educationCoverage": 1,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      }
+    },
+    "EC": {
+      "baseline": {
+        "pc": 49.56,
+        "d6": 62.82,
+        "educationScore": 0,
+        "educationCoverage": 0,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      },
+      "proposed": {
+        "pc": 49.27,
+        "d6": 62.7,
+        "educationScore": 50,
+        "educationCoverage": 1,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      }
+    },
+    "EG": {
+      "baseline": {
+        "pc": 48.35,
+        "d6": 61.1,
+        "educationScore": 0,
+        "educationCoverage": 0,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      },
+      "proposed": {
+        "pc": 48.35,
+        "d6": 61.13,
+        "educationScore": 55,
+        "educationCoverage": 1,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      }
+    },
+    "SV": {
+      "baseline": {
+        "pc": 52.31,
+        "d6": 64.68,
+        "educationScore": 0,
+        "educationCoverage": 0,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      },
+      "proposed": {
+        "pc": 51.62,
+        "d6": 64,
+        "educationScore": 35,
+        "educationCoverage": 1,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      }
+    },
+    "GQ": {
+      "baseline": {
+        "pc": 40.32,
+        "d6": 51.05,
+        "educationScore": 0,
+        "educationCoverage": 0,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      },
+      "proposed": {
+        "pc": 40.06,
+        "d6": 51.01,
+        "educationScore": 50,
+        "educationCoverage": 0.3,
+        "educationImputationClass": "unmonitored",
+        "sourceFailureDimensions": []
+      }
+    },
+    "ER": {
+      "baseline": {
+        "pc": 37.26,
+        "d6": 52.67,
+        "educationScore": 0,
+        "educationCoverage": 0,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      },
+      "proposed": {
+        "pc": 37.36,
+        "d6": 52.69,
+        "educationScore": 50,
+        "educationCoverage": 0.3,
+        "educationImputationClass": "unmonitored",
+        "sourceFailureDimensions": []
+      }
+    },
+    "EE": {
+      "baseline": {
+        "pc": 61.09,
+        "d6": 74.02,
+        "educationScore": 0,
+        "educationCoverage": 0,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      },
+      "proposed": {
+        "pc": 61.49,
+        "d6": 74.4,
+        "educationScore": 94,
+        "educationCoverage": 1,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      }
+    },
+    "SZ": {
+      "baseline": {
+        "pc": 39.67,
+        "d6": 54.56,
+        "educationScore": 0,
+        "educationCoverage": 0,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      },
+      "proposed": {
+        "pc": 39.13,
+        "d6": 53.99,
+        "educationScore": 35,
+        "educationCoverage": 1,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      }
+    },
+    "ET": {
+      "baseline": {
+        "pc": 37.14,
+        "d6": 50.81,
+        "educationScore": 0,
+        "educationCoverage": 0,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      },
+      "proposed": {
+        "pc": 36.26,
+        "d6": 49.9,
+        "educationScore": 7,
+        "educationCoverage": 1,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      }
+    },
+    "FJ": {
+      "baseline": {
+        "pc": 55.41,
+        "d6": 70.06,
+        "educationScore": 0,
+        "educationCoverage": 0,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      },
+      "proposed": {
+        "pc": 54.98,
+        "d6": 69.58,
+        "educationScore": 51,
+        "educationCoverage": 0.8,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      }
+    },
+    "FI": {
+      "baseline": {
+        "pc": 64.69,
+        "d6": 77.4,
+        "educationScore": 0,
+        "educationCoverage": 0,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      },
+      "proposed": {
+        "pc": 64.9,
+        "d6": 77.59,
+        "educationScore": 90,
+        "educationCoverage": 1,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      }
+    },
+    "FR": {
+      "baseline": {
+        "pc": 61.23,
+        "d6": 74.22,
+        "educationScore": 0,
+        "educationCoverage": 0,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      },
+      "proposed": {
+        "pc": 61.5,
+        "d6": 74.51,
+        "educationScore": 83,
+        "educationCoverage": 1,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      }
+    },
+    "GA": {
+      "baseline": {
+        "pc": 44.94,
+        "d6": 57.56,
+        "educationScore": 0,
+        "educationCoverage": 0,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      },
+      "proposed": {
+        "pc": 44.72,
+        "d6": 57.51,
+        "educationScore": 50,
+        "educationCoverage": 0.3,
+        "educationImputationClass": "unmonitored",
+        "sourceFailureDimensions": []
+      }
+    },
+    "GM": {
+      "baseline": {
+        "pc": 49.37,
+        "d6": 62.34,
+        "educationScore": 0,
+        "educationCoverage": 0,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      },
+      "proposed": {
+        "pc": 48.23,
+        "d6": 61.35,
+        "educationScore": 21,
+        "educationCoverage": 1,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      }
+    },
+    "GE": {
+      "baseline": {
+        "pc": 53.03,
+        "d6": 64.95,
+        "educationScore": 0,
+        "educationCoverage": 0,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      },
+      "proposed": {
+        "pc": 53.78,
+        "d6": 65.69,
+        "educationScore": 96,
+        "educationCoverage": 1,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      }
+    },
+    "DE": {
+      "baseline": {
+        "pc": 62.89,
+        "d6": 74.7,
+        "educationScore": 0,
+        "educationCoverage": 0,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      },
+      "proposed": {
+        "pc": 63.13,
+        "d6": 74.94,
+        "educationScore": 86,
+        "educationCoverage": 1,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      }
+    },
+    "GH": {
+      "baseline": {
+        "pc": 44.51,
+        "d6": 58.07,
+        "educationScore": 0,
+        "educationCoverage": 0,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      },
+      "proposed": {
+        "pc": 43.47,
+        "d6": 56.96,
+        "educationScore": 20,
+        "educationCoverage": 1,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      }
+    },
+    "GR": {
+      "baseline": {
+        "pc": 59.29,
+        "d6": 71.05,
+        "educationScore": 0,
+        "educationCoverage": 0,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      },
+      "proposed": {
+        "pc": 59.4,
+        "d6": 71.17,
+        "educationScore": 74,
+        "educationCoverage": 1,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      }
+    },
+    "GD": {
+      "baseline": {
+        "pc": 58.79,
+        "d6": 71.57,
+        "educationScore": 0,
+        "educationCoverage": 0,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      },
+      "proposed": {
+        "pc": 58.33,
+        "d6": 70.82,
+        "educationScore": 57,
+        "educationCoverage": 1,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      }
+    },
+    "GT": {
+      "baseline": {
+        "pc": 51.17,
+        "d6": 64.34,
+        "educationScore": 0,
+        "educationCoverage": 0,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      },
+      "proposed": {
+        "pc": 49.83,
+        "d6": 63.37,
+        "educationScore": 19,
+        "educationCoverage": 1,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      }
+    },
+    "GN": {
+      "baseline": {
+        "pc": 38.63,
+        "d6": 52.35,
+        "educationScore": 0,
+        "educationCoverage": 0,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      },
+      "proposed": {
+        "pc": 37.65,
+        "d6": 51.29,
+        "educationScore": 4,
+        "educationCoverage": 0.8,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      }
+    },
+    "GW": {
+      "baseline": {
+        "pc": 40.38,
+        "d6": 53.59,
+        "educationScore": 0,
+        "educationCoverage": 0,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      },
+      "proposed": {
+        "pc": 39.21,
+        "d6": 52.32,
+        "educationScore": 10,
+        "educationCoverage": 1,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      }
+    },
+    "GY": {
+      "baseline": {
+        "pc": 54.35,
+        "d6": 68.1,
+        "educationScore": 0,
+        "educationCoverage": 0,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      },
+      "proposed": {
+        "pc": 53.17,
+        "d6": 67.54,
+        "educationScore": 39,
+        "educationCoverage": 0.8,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      }
+    },
+    "HT": {
+      "baseline": {
+        "pc": 43.96,
+        "d6": 58.12,
+        "educationScore": 0,
+        "educationCoverage": 0,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      },
+      "proposed": {
+        "pc": 42.62,
+        "d6": 57.27,
+        "educationScore": 10,
+        "educationCoverage": 0.8,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      }
+    },
+    "HN": {
+      "baseline": {
+        "pc": 47.6,
+        "d6": 61.72,
+        "educationScore": 0,
+        "educationCoverage": 0,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      },
+      "proposed": {
+        "pc": 46.82,
+        "d6": 60.93,
+        "educationScore": 26,
+        "educationCoverage": 1,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      }
+    },
+    "HU": {
+      "baseline": {
+        "pc": 58.8,
+        "d6": 72.47,
+        "educationScore": 0,
+        "educationCoverage": 0,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      },
+      "proposed": {
+        "pc": 59.22,
+        "d6": 72.91,
+        "educationScore": 88,
+        "educationCoverage": 1,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      }
+    },
+    "IS": {
+      "baseline": {
+        "pc": 74.58,
+        "d6": 83.34,
+        "educationScore": 0,
+        "educationCoverage": 0,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      },
+      "proposed": {
+        "pc": 74.63,
+        "d6": 83.38,
+        "educationScore": 86,
+        "educationCoverage": 1,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      }
+    },
+    "IN": {
+      "baseline": {
+        "pc": 49.32,
+        "d6": 62.5,
+        "educationScore": 0,
+        "educationCoverage": 0,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      },
+      "proposed": {
+        "pc": 48.32,
+        "d6": 61.98,
+        "educationScore": 36,
+        "educationCoverage": 1,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      }
+    },
+    "ID": {
+      "baseline": {
+        "pc": 52.78,
+        "d6": 65.59,
+        "educationScore": 0,
+        "educationCoverage": 0,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      },
+      "proposed": {
+        "pc": 52.17,
+        "d6": 64.99,
+        "educationScore": 39,
+        "educationCoverage": 1,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      }
+    },
+    "IR": {
+      "baseline": {
+        "pc": 33.65,
+        "d6": 48.97,
+        "educationScore": 0,
+        "educationCoverage": 0,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      },
+      "proposed": {
+        "pc": 33.87,
+        "d6": 49.1,
+        "educationScore": 47,
+        "educationCoverage": 1,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      }
+    },
+    "IQ": {
+      "baseline": {
+        "pc": 41.85,
+        "d6": 63.63,
+        "educationScore": 0,
+        "educationCoverage": 0,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      },
+      "proposed": {
+        "pc": 41.19,
+        "d6": 63.44,
+        "educationScore": 19,
+        "educationCoverage": 1,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      }
+    },
+    "IE": {
+      "baseline": {
+        "pc": 62.66,
+        "d6": 74.26,
+        "educationScore": 0,
+        "educationCoverage": 0,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      },
+      "proposed": {
+        "pc": 62.96,
+        "d6": 74.53,
+        "educationScore": 92,
+        "educationCoverage": 1,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      }
+    },
+    "IL": {
+      "baseline": {
+        "pc": 55.98,
+        "d6": 70.56,
+        "educationScore": 0,
+        "educationCoverage": 0,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      },
+      "proposed": {
+        "pc": 57.98,
+        "d6": 71.64,
+        "educationScore": 92,
+        "educationCoverage": 1,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      }
+    },
+    "IT": {
+      "baseline": {
+        "pc": 63.6,
+        "d6": 74.8,
+        "educationScore": 0,
+        "educationCoverage": 0,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      },
+      "proposed": {
+        "pc": 63.32,
+        "d6": 74.56,
+        "educationScore": 60,
+        "educationCoverage": 1,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      }
+    },
+    "JM": {
+      "baseline": {
+        "pc": 55.86,
+        "d6": 69.61,
+        "educationScore": 0,
+        "educationCoverage": 0,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      },
+      "proposed": {
+        "pc": 55.69,
+        "d6": 69.42,
+        "educationScore": 65,
+        "educationCoverage": 1,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      }
+    },
+    "JP": {
+      "baseline": {
+        "pc": 69.02,
+        "d6": 78.93,
+        "educationScore": 0,
+        "educationCoverage": 0,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      },
+      "proposed": {
+        "pc": 69.31,
+        "d6": 79.18,
+        "educationScore": 91,
+        "educationCoverage": 0.8,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      }
+    },
+    "JO": {
+      "baseline": {
+        "pc": 54.3,
+        "d6": 66.28,
+        "educationScore": 0,
+        "educationCoverage": 0,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      },
+      "proposed": {
+        "pc": 53.82,
+        "d6": 65.87,
+        "educationScore": 45,
+        "educationCoverage": 1,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      }
+    },
+    "KZ": {
+      "baseline": {
+        "pc": 54.05,
+        "d6": 66.86,
+        "educationScore": 0,
+        "educationCoverage": 0,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      },
+      "proposed": {
+        "pc": 55.43,
+        "d6": 67.54,
+        "educationScore": 97,
+        "educationCoverage": 0.8,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      }
+    },
+    "KE": {
+      "baseline": {
+        "pc": 40.4,
+        "d6": 53.66,
+        "educationScore": 0,
+        "educationCoverage": 0,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      },
+      "proposed": {
+        "pc": 39.99,
+        "d6": 53.21,
+        "educationScore": 37,
+        "educationCoverage": 1,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      }
+    },
+    "KI": {
+      "baseline": {
+        "pc": 54.32,
+        "d6": 69.46,
+        "educationScore": 0,
+        "educationCoverage": 0,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      },
+      "proposed": {
+        "pc": 52.57,
+        "d6": 67.33,
+        "educationScore": 15,
+        "educationCoverage": 1,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      }
+    },
+    "KP": {
+      "baseline": {
+        "pc": 45.36,
+        "d6": 61.75,
+        "educationScore": 0,
+        "educationCoverage": 0,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      },
+      "proposed": {
+        "pc": 45.47,
+        "d6": 61.75,
+        "educationScore": 50,
+        "educationCoverage": 0.3,
+        "educationImputationClass": "unmonitored",
+        "sourceFailureDimensions": []
+      }
+    },
+    "KR": {
+      "baseline": {
+        "pc": 57.37,
+        "d6": 70.88,
+        "educationScore": 0,
+        "educationCoverage": 0,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      },
+      "proposed": {
+        "pc": 57.57,
+        "d6": 71.08,
+        "educationScore": 82,
+        "educationCoverage": 1,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      }
+    },
+    "KW": {
+      "baseline": {
+        "pc": 63.87,
+        "d6": 74.9,
+        "educationScore": 0,
+        "educationCoverage": 0,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      },
+      "proposed": {
+        "pc": 63.35,
+        "d6": 74.4,
+        "educationScore": 43,
+        "educationCoverage": 0.8,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      }
+    },
+    "KG": {
+      "baseline": {
+        "pc": 52.35,
+        "d6": 65.69,
+        "educationScore": 0,
+        "educationCoverage": 0,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      },
+      "proposed": {
+        "pc": 52.37,
+        "d6": 65.65,
+        "educationScore": 50,
+        "educationCoverage": 0.3,
+        "educationImputationClass": "unmonitored",
+        "sourceFailureDimensions": []
+      }
+    },
+    "LA": {
+      "baseline": {
+        "pc": 49.77,
+        "d6": 65.35,
+        "educationScore": 0,
+        "educationCoverage": 0,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      },
+      "proposed": {
+        "pc": 48.74,
+        "d6": 64.31,
+        "educationScore": 18,
+        "educationCoverage": 1,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      }
+    },
+    "LV": {
+      "baseline": {
+        "pc": 60.28,
+        "d6": 73.33,
+        "educationScore": 0,
+        "educationCoverage": 0,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      },
+      "proposed": {
+        "pc": 60.79,
+        "d6": 73.84,
+        "educationScore": 95,
+        "educationCoverage": 1,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      }
+    },
+    "LB": {
+      "baseline": {
+        "pc": 41.38,
+        "d6": 60.04,
+        "educationScore": 0,
+        "educationCoverage": 0,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      },
+      "proposed": {
+        "pc": 41.84,
+        "d6": 60.27,
+        "educationScore": 46,
+        "educationCoverage": 0.8,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      }
+    },
+    "LS": {
+      "baseline": {
+        "pc": 51.44,
+        "d6": 64.7,
+        "educationScore": 0,
+        "educationCoverage": 0,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      },
+      "proposed": {
+        "pc": 50.51,
+        "d6": 63.8,
+        "educationScore": 29,
+        "educationCoverage": 1,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      }
+    },
+    "LR": {
+      "baseline": {
+        "pc": 44.92,
+        "d6": 57.58,
+        "educationScore": 0,
+        "educationCoverage": 0,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      },
+      "proposed": {
+        "pc": 44.07,
+        "d6": 56.72,
+        "educationScore": 18,
+        "educationCoverage": 0.8,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      }
+    },
+    "LY": {
+      "baseline": {
+        "pc": 43.21,
+        "d6": 56.9,
+        "educationScore": 0,
+        "educationCoverage": 0,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      },
+      "proposed": {
+        "pc": 43.5,
+        "d6": 56.91,
+        "educationScore": 50,
+        "educationCoverage": 0.3,
+        "educationImputationClass": "unmonitored",
+        "sourceFailureDimensions": []
+      }
+    },
+    "LI": {
+      "baseline": {
+        "pc": 74,
+        "d6": 81.46,
+        "educationScore": 0,
+        "educationCoverage": 0,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      },
+      "proposed": {
+        "pc": 73.12,
+        "d6": 81.3,
+        "educationScore": 50,
+        "educationCoverage": 0.3,
+        "educationImputationClass": "unmonitored",
+        "sourceFailureDimensions": []
+      }
+    },
+    "LT": {
+      "baseline": {
+        "pc": 60.28,
+        "d6": 72.33,
+        "educationScore": 0,
+        "educationCoverage": 0,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      },
+      "proposed": {
+        "pc": 60.8,
+        "d6": 72.82,
+        "educationScore": 96,
+        "educationCoverage": 1,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      }
+    },
+    "LU": {
+      "baseline": {
+        "pc": 65.03,
+        "d6": 77.12,
+        "educationScore": 0,
+        "educationCoverage": 0,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      },
+      "proposed": {
+        "pc": 64.95,
+        "d6": 77.02,
+        "educationScore": 82,
+        "educationCoverage": 1,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      }
+    },
+    "MG": {
+      "baseline": {
+        "pc": 41.31,
+        "d6": 56.42,
+        "educationScore": 0,
+        "educationCoverage": 0,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      },
+      "proposed": {
+        "pc": 40.12,
+        "d6": 55.09,
+        "educationScore": 8,
+        "educationCoverage": 1,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      }
+    },
+    "MW": {
+      "baseline": {
+        "pc": 43.43,
+        "d6": 56,
+        "educationScore": 0,
+        "educationCoverage": 0,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      },
+      "proposed": {
+        "pc": 41.45,
+        "d6": 54.93,
+        "educationScore": 8,
+        "educationCoverage": 0.8,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      }
+    },
+    "MY": {
+      "baseline": {
+        "pc": 55.43,
+        "d6": 68.16,
+        "educationScore": 0,
+        "educationCoverage": 0,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      },
+      "proposed": {
+        "pc": 55.64,
+        "d6": 68.38,
+        "educationScore": 75,
+        "educationCoverage": 1,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      }
+    },
+    "MV": {
+      "baseline": {
+        "pc": 50.41,
+        "d6": 65.64,
+        "educationScore": 0,
+        "educationCoverage": 0,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      },
+      "proposed": {
+        "pc": 49.28,
+        "d6": 64.35,
+        "educationScore": 17,
+        "educationCoverage": 0.8,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      }
+    },
+    "ML": {
+      "baseline": {
+        "pc": 33.28,
+        "d6": 47.34,
+        "educationScore": 0,
+        "educationCoverage": 0,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      },
+      "proposed": {
+        "pc": 32.07,
+        "d6": 46.64,
+        "educationScore": 5,
+        "educationCoverage": 1,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      }
+    },
+    "MT": {
+      "baseline": {
+        "pc": 53.19,
+        "d6": 67.32,
+        "educationScore": 0,
+        "educationCoverage": 0,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      },
+      "proposed": {
+        "pc": 52.76,
+        "d6": 66.88,
+        "educationScore": 59,
+        "educationCoverage": 1,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      }
+    },
+    "MH": {
+      "baseline": {
+        "pc": 59.43,
+        "d6": 72.12,
+        "educationScore": 0,
+        "educationCoverage": 0,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      },
+      "proposed": {
+        "pc": 59.12,
+        "d6": 71.78,
+        "educationScore": 69,
+        "educationCoverage": 0.8,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      }
+    },
+    "MR": {
+      "baseline": {
+        "pc": 45.39,
+        "d6": 59.45,
+        "educationScore": 0,
+        "educationCoverage": 0,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      },
+      "proposed": {
+        "pc": 44.64,
+        "d6": 58.64,
+        "educationScore": 4,
+        "educationCoverage": 0.6,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      }
+    },
+    "MU": {
+      "baseline": {
+        "pc": 56.71,
+        "d6": 68.77,
+        "educationScore": 0,
+        "educationCoverage": 0,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      },
+      "proposed": {
+        "pc": 56.09,
+        "d6": 68.16,
+        "educationScore": 50,
+        "educationCoverage": 1,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      }
+    },
+    "MX": {
+      "baseline": {
+        "pc": 45.76,
+        "d6": 61.39,
+        "educationScore": 0,
+        "educationCoverage": 0,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      },
+      "proposed": {
+        "pc": 45.64,
+        "d6": 61.31,
+        "educationScore": 45,
+        "educationCoverage": 1,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      }
+    },
+    "FM": {
+      "baseline": {
+        "pc": 62.85,
+        "d6": 74.33,
+        "educationScore": 0,
+        "educationCoverage": 0,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      },
+      "proposed": {
+        "pc": 62.5,
+        "d6": 73.93,
+        "educationScore": 63,
+        "educationCoverage": 0.6,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      }
+    },
+    "MD": {
+      "baseline": {
+        "pc": 52.73,
+        "d6": 65.89,
+        "educationScore": 0,
+        "educationCoverage": 0,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      },
+      "proposed": {
+        "pc": 53.09,
+        "d6": 66.28,
+        "educationScore": 80,
+        "educationCoverage": 1,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      }
+    },
+    "MC": {
+      "baseline": {
+        "pc": 65.8,
+        "d6": 72.82,
+        "educationScore": 0,
+        "educationCoverage": 0,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      },
+      "proposed": {
+        "pc": 64.41,
+        "d6": 72.61,
+        "educationScore": 50,
+        "educationCoverage": 0.3,
+        "educationImputationClass": "unmonitored",
+        "sourceFailureDimensions": []
+      }
+    },
+    "MN": {
+      "baseline": {
+        "pc": 56.68,
+        "d6": 68.92,
+        "educationScore": 0,
+        "educationCoverage": 0,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      },
+      "proposed": {
+        "pc": 57.25,
+        "d6": 69.47,
+        "educationScore": 93,
+        "educationCoverage": 1,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      }
+    },
+    "ME": {
+      "baseline": {
+        "pc": 57.23,
+        "d6": 69.09,
+        "educationScore": 0,
+        "educationCoverage": 0,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      },
+      "proposed": {
+        "pc": 57.57,
+        "d6": 69.4,
+        "educationScore": 84,
+        "educationCoverage": 0.8,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      }
+    },
+    "MA": {
+      "baseline": {
+        "pc": 49.79,
+        "d6": 62.41,
+        "educationScore": 0,
+        "educationCoverage": 0,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      },
+      "proposed": {
+        "pc": 48.86,
+        "d6": 61.44,
+        "educationScore": 12,
+        "educationCoverage": 0.8,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      }
+    },
+    "MZ": {
+      "baseline": {
+        "pc": 38.64,
+        "d6": 52.12,
+        "educationScore": 0,
+        "educationCoverage": 0,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      },
+      "proposed": {
+        "pc": 37.63,
+        "d6": 51.05,
+        "educationScore": 10,
+        "educationCoverage": 1,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      }
+    },
+    "MM": {
+      "baseline": {
+        "pc": 42.92,
+        "d6": 58.86,
+        "educationScore": 0,
+        "educationCoverage": 0,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      },
+      "proposed": {
+        "pc": 42.1,
+        "d6": 58.4,
+        "educationScore": 24,
+        "educationCoverage": 0.8,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      }
+    },
+    "NA": {
+      "baseline": {
+        "pc": 48.6,
+        "d6": 61.67,
+        "educationScore": 0,
+        "educationCoverage": 0,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      },
+      "proposed": {
+        "pc": 47.84,
+        "d6": 60.89,
+        "educationScore": 39,
+        "educationCoverage": 1,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      }
+    },
+    "NR": {
+      "baseline": {
+        "pc": 64.34,
+        "d6": 74.51,
+        "educationScore": 0,
+        "educationCoverage": 0,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      },
+      "proposed": {
+        "pc": 62.56,
+        "d6": 73.52,
+        "educationScore": 45,
+        "educationCoverage": 1,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      }
+    },
+    "NP": {
+      "baseline": {
+        "pc": 54.18,
+        "d6": 67.4,
+        "educationScore": 0,
+        "educationCoverage": 0,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      },
+      "proposed": {
+        "pc": 52.56,
+        "d6": 66.22,
+        "educationScore": 11,
+        "educationCoverage": 1,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      }
+    },
+    "NL": {
+      "baseline": {
+        "pc": 62.42,
+        "d6": 74.47,
+        "educationScore": 0,
+        "educationCoverage": 0,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      },
+      "proposed": {
+        "pc": 62.4,
+        "d6": 74.44,
+        "educationScore": 79,
+        "educationCoverage": 1,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      }
+    },
+    "NZ": {
+      "baseline": {
+        "pc": 67.18,
+        "d6": 79.5,
+        "educationScore": 0,
+        "educationCoverage": 0,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      },
+      "proposed": {
+        "pc": 67.11,
+        "d6": 79.44,
+        "educationScore": 81,
+        "educationCoverage": 0.8,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      }
+    },
+    "NI": {
+      "baseline": {
+        "pc": 58.31,
+        "d6": 70.02,
+        "educationScore": 0,
+        "educationCoverage": 0,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      },
+      "proposed": {
+        "pc": 57.45,
+        "d6": 69.54,
+        "educationScore": 31,
+        "educationCoverage": 0.6,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      }
+    },
+    "NE": {
+      "baseline": {
+        "pc": 34.38,
+        "d6": 47.44,
+        "educationScore": 0,
+        "educationCoverage": 0,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      },
+      "proposed": {
+        "pc": 33.32,
+        "d6": 46.29,
+        "educationScore": 1,
+        "educationCoverage": 1,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      }
+    },
+    "NG": {
+      "baseline": {
+        "pc": 37.85,
+        "d6": 51.21,
+        "educationScore": 0,
+        "educationCoverage": 0,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      },
+      "proposed": {
+        "pc": 37.71,
+        "d6": 51.08,
+        "educationScore": 42,
+        "educationCoverage": 1,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      }
+    },
+    "MK": {
+      "baseline": {
+        "pc": 51.73,
+        "d6": 64.83,
+        "educationScore": 0,
+        "educationCoverage": 0,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      },
+      "proposed": {
+        "pc": 51.76,
+        "d6": 64.87,
+        "educationScore": 67,
+        "educationCoverage": 1,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      }
+    },
+    "NO": {
+      "baseline": {
+        "pc": 75.46,
+        "d6": 83.89,
+        "educationScore": 0,
+        "educationCoverage": 0,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      },
+      "proposed": {
+        "pc": 75.84,
+        "d6": 84.1,
+        "educationScore": 90,
+        "educationCoverage": 1,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      }
+    },
+    "OM": {
+      "baseline": {
+        "pc": 53,
+        "d6": 65.62,
+        "educationScore": 0,
+        "educationCoverage": 0,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      },
+      "proposed": {
+        "pc": 53.23,
+        "d6": 65.86,
+        "educationScore": 78,
+        "educationCoverage": 1,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      }
+    },
+    "PK": {
+      "baseline": {
+        "pc": 38.08,
+        "d6": 52.61,
+        "educationScore": 0,
+        "educationCoverage": 0,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      },
+      "proposed": {
+        "pc": 37.71,
+        "d6": 52.18,
+        "educationScore": 21,
+        "educationCoverage": 0.8,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      }
+    },
+    "PW": {
+      "baseline": {
+        "pc": 66.43,
+        "d6": 76.34,
+        "educationScore": 0,
+        "educationCoverage": 0,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      },
+      "proposed": {
+        "pc": 66.96,
+        "d6": 76.89,
+        "educationScore": 95,
+        "educationCoverage": 0.8,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      }
+    },
+    "PA": {
+      "baseline": {
+        "pc": 50.95,
+        "d6": 65.56,
+        "educationScore": 0,
+        "educationCoverage": 0,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      },
+      "proposed": {
+        "pc": 50.73,
+        "d6": 65.32,
+        "educationScore": 55,
+        "educationCoverage": 1,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      }
+    },
+    "PG": {
+      "baseline": {
+        "pc": 52.35,
+        "d6": 65.37,
+        "educationScore": 0,
+        "educationCoverage": 0,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      },
+      "proposed": {
+        "pc": 51.21,
+        "d6": 64.28,
+        "educationScore": 16,
+        "educationCoverage": 1,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      }
+    },
+    "PY": {
+      "baseline": {
+        "pc": 57.02,
+        "d6": 69.72,
+        "educationScore": 0,
+        "educationCoverage": 0,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      },
+      "proposed": {
+        "pc": 56.65,
+        "d6": 69.37,
+        "educationScore": 50,
+        "educationCoverage": 1,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      }
+    },
+    "PE": {
+      "baseline": {
+        "pc": 58.65,
+        "d6": 70.57,
+        "educationScore": 0,
+        "educationCoverage": 0,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      },
+      "proposed": {
+        "pc": 58.52,
+        "d6": 70.56,
+        "educationScore": 58,
+        "educationCoverage": 1,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      }
+    },
+    "PH": {
+      "baseline": {
+        "pc": 53.55,
+        "d6": 65.77,
+        "educationScore": 0,
+        "educationCoverage": 0,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      },
+      "proposed": {
+        "pc": 52.97,
+        "d6": 65.23,
+        "educationScore": 39,
+        "educationCoverage": 1,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      }
+    },
+    "PL": {
+      "baseline": {
+        "pc": 60.27,
+        "d6": 73.1,
+        "educationScore": 0,
+        "educationCoverage": 0,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      },
+      "proposed": {
+        "pc": 60.78,
+        "d6": 73.59,
+        "educationScore": 93,
+        "educationCoverage": 1,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      }
+    },
+    "PT": {
+      "baseline": {
+        "pc": 63.73,
+        "d6": 76.26,
+        "educationScore": 0,
+        "educationCoverage": 0,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      },
+      "proposed": {
+        "pc": 63.18,
+        "d6": 75.74,
+        "educationScore": 54,
+        "educationCoverage": 1,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      }
+    },
+    "QA": {
+      "baseline": {
+        "pc": 59.57,
+        "d6": 72.52,
+        "educationScore": 0,
+        "educationCoverage": 0,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      },
+      "proposed": {
+        "pc": 59.71,
+        "d6": 72.67,
+        "educationScore": 81,
+        "educationCoverage": 1,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      }
+    },
+    "RO": {
+      "baseline": {
+        "pc": 56.44,
+        "d6": 69.07,
+        "educationScore": 0,
+        "educationCoverage": 0,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      },
+      "proposed": {
+        "pc": 56.58,
+        "d6": 69.22,
+        "educationScore": 74,
+        "educationCoverage": 1,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      }
+    },
+    "RU": {
+      "baseline": {
+        "pc": 53.28,
+        "d6": 67.16,
+        "educationScore": 0,
+        "educationCoverage": 0,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      },
+      "proposed": {
+        "pc": 55.46,
+        "d6": 68.25,
+        "educationScore": 96,
+        "educationCoverage": 1,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      }
+    },
+    "RW": {
+      "baseline": {
+        "pc": 45.58,
+        "d6": 59.1,
+        "educationScore": 0,
+        "educationCoverage": 0,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      },
+      "proposed": {
+        "pc": 43.74,
+        "d6": 58.11,
+        "educationScore": 16,
+        "educationCoverage": 1,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      }
+    },
+    "KN": {
+      "baseline": {
+        "pc": 51.84,
+        "d6": 69.73,
+        "educationScore": 0,
+        "educationCoverage": 0,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      },
+      "proposed": {
+        "pc": 51.63,
+        "d6": 69.56,
+        "educationScore": 50,
+        "educationCoverage": 0.3,
+        "educationImputationClass": "unmonitored",
+        "sourceFailureDimensions": []
+      }
+    },
+    "LC": {
+      "baseline": {
+        "pc": 60.27,
+        "d6": 73.67,
+        "educationScore": 0,
+        "educationCoverage": 0,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      },
+      "proposed": {
+        "pc": 59.84,
+        "d6": 73.14,
+        "educationScore": 59,
+        "educationCoverage": 0.8,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      }
+    },
+    "VC": {
+      "baseline": {
+        "pc": 53.47,
+        "d6": 69.81,
+        "educationScore": 0,
+        "educationCoverage": 0,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      },
+      "proposed": {
+        "pc": 53.15,
+        "d6": 69.64,
+        "educationScore": 50,
+        "educationCoverage": 0.3,
+        "educationImputationClass": "unmonitored",
+        "sourceFailureDimensions": []
+      }
+    },
+    "WS": {
+      "baseline": {
+        "pc": 64.98,
+        "d6": 76.37,
+        "educationScore": 0,
+        "educationCoverage": 0,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      },
+      "proposed": {
+        "pc": 64.21,
+        "d6": 75.61,
+        "educationScore": 52,
+        "educationCoverage": 1,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      }
+    },
+    "SM": {
+      "baseline": {
+        "pc": 58.03,
+        "d6": 73.08,
+        "educationScore": 0,
+        "educationCoverage": 0,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      },
+      "proposed": {
+        "pc": 57.55,
+        "d6": 72.31,
+        "educationScore": 63,
+        "educationCoverage": 1,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      }
+    },
+    "ST": {
+      "baseline": {
+        "pc": 56.13,
+        "d6": 67.97,
+        "educationScore": 0,
+        "educationCoverage": 0,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      },
+      "proposed": {
+        "pc": 55.96,
+        "d6": 67.83,
+        "educationScore": 50,
+        "educationCoverage": 0.3,
+        "educationImputationClass": "unmonitored",
+        "sourceFailureDimensions": []
+      }
+    },
+    "SA": {
+      "baseline": {
+        "pc": 58.16,
+        "d6": 70.05,
+        "educationScore": 0,
+        "educationCoverage": 0,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      },
+      "proposed": {
+        "pc": 58.55,
+        "d6": 70.45,
+        "educationScore": 80,
+        "educationCoverage": 1,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      }
+    },
+    "SN": {
+      "baseline": {
+        "pc": 42.75,
+        "d6": 56.54,
+        "educationScore": 0,
+        "educationCoverage": 0,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      },
+      "proposed": {
+        "pc": 41.45,
+        "d6": 55.14,
+        "educationScore": 6,
+        "educationCoverage": 1,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      }
+    },
+    "RS": {
+      "baseline": {
+        "pc": 58.28,
+        "d6": 70.51,
+        "educationScore": 0,
+        "educationCoverage": 0,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      },
+      "proposed": {
+        "pc": 58.65,
+        "d6": 70.88,
+        "educationScore": 79,
+        "educationCoverage": 1,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      }
+    },
+    "SC": {
+      "baseline": {
+        "pc": 61.22,
+        "d6": 73.9,
+        "educationScore": 0,
+        "educationCoverage": 0,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      },
+      "proposed": {
+        "pc": 61.45,
+        "d6": 74.13,
+        "educationScore": 90,
+        "educationCoverage": 0.8,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      }
+    },
+    "SL": {
+      "baseline": {
+        "pc": 42.67,
+        "d6": 55.95,
+        "educationScore": 0,
+        "educationCoverage": 0,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      },
+      "proposed": {
+        "pc": 41.54,
+        "d6": 54.76,
+        "educationScore": 7,
+        "educationCoverage": 0.8,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      }
+    },
+    "SG": {
+      "baseline": {
+        "pc": 56.38,
+        "d6": 69.09,
+        "educationScore": 0,
+        "educationCoverage": 0,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      },
+      "proposed": {
+        "pc": 56.4,
+        "d6": 69.09,
+        "educationScore": 83,
+        "educationCoverage": 1,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      }
+    },
+    "SK": {
+      "baseline": {
+        "pc": 58.74,
+        "d6": 72.19,
+        "educationScore": 0,
+        "educationCoverage": 0,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      },
+      "proposed": {
+        "pc": 59.24,
+        "d6": 72.69,
+        "educationScore": 93,
+        "educationCoverage": 1,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      }
+    },
+    "SI": {
+      "baseline": {
+        "pc": 62.54,
+        "d6": 75.46,
+        "educationScore": 0,
+        "educationCoverage": 0,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      },
+      "proposed": {
+        "pc": 62.73,
+        "d6": 75.65,
+        "educationScore": 85,
+        "educationCoverage": 1,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      }
+    },
+    "SB": {
+      "baseline": {
+        "pc": 57.71,
+        "d6": 70.18,
+        "educationScore": 0,
+        "educationCoverage": 0,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      },
+      "proposed": {
+        "pc": 56.6,
+        "d6": 68.89,
+        "educationScore": 12,
+        "educationCoverage": 0.6,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      }
+    },
+    "SO": {
+      "baseline": {
+        "pc": 21.03,
+        "d6": 35.43,
+        "educationScore": 0,
+        "educationCoverage": 0,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      },
+      "proposed": {
+        "pc": 20.57,
+        "d6": 34.9,
+        "educationScore": 4,
+        "educationCoverage": 1,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      }
+    },
+    "ZA": {
+      "baseline": {
+        "pc": 46.62,
+        "d6": 59.67,
+        "educationScore": 0,
+        "educationCoverage": 0,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      },
+      "proposed": {
+        "pc": 46.38,
+        "d6": 59.43,
+        "educationScore": 52,
+        "educationCoverage": 1,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      }
+    },
+    "SS": {
+      "baseline": {
+        "pc": 28.78,
+        "d6": 46.37,
+        "educationScore": 0,
+        "educationCoverage": 0,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      },
+      "proposed": {
+        "pc": 28.99,
+        "d6": 46.42,
+        "educationScore": 50,
+        "educationCoverage": 0.3,
+        "educationImputationClass": "unmonitored",
+        "sourceFailureDimensions": []
+      }
+    },
+    "ES": {
+      "baseline": {
+        "pc": 62.98,
+        "d6": 74.53,
+        "educationScore": 0,
+        "educationCoverage": 0,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      },
+      "proposed": {
+        "pc": 62.67,
+        "d6": 74.25,
+        "educationScore": 60,
+        "educationCoverage": 1,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      }
+    },
+    "LK": {
+      "baseline": {
+        "pc": 46.46,
+        "d6": 60.88,
+        "educationScore": 0,
+        "educationCoverage": 0,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      },
+      "proposed": {
+        "pc": 46.71,
+        "d6": 61.15,
+        "educationScore": 71,
+        "educationCoverage": 1,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      }
+    },
+    "SD": {
+      "baseline": {
+        "pc": 18.34,
+        "d6": 31.87,
+        "educationScore": 0,
+        "educationCoverage": 0,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      },
+      "proposed": {
+        "pc": 18.19,
+        "d6": 31.66,
+        "educationScore": 21,
+        "educationCoverage": 1,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      }
+    },
+    "SR": {
+      "baseline": {
+        "pc": 57.76,
+        "d6": 70,
+        "educationScore": 0,
+        "educationCoverage": 0,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      },
+      "proposed": {
+        "pc": 55.83,
+        "d6": 69.03,
+        "educationScore": 33,
+        "educationCoverage": 1,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      }
+    },
+    "SE": {
+      "baseline": {
+        "pc": 66.04,
+        "d6": 78.2,
+        "educationScore": 0,
+        "educationCoverage": 0,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      },
+      "proposed": {
+        "pc": 66.38,
+        "d6": 78.52,
+        "educationScore": 92,
+        "educationCoverage": 1,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      }
+    },
+    "CH": {
+      "baseline": {
+        "pc": 75.4,
+        "d6": 82.78,
+        "educationScore": 0,
+        "educationCoverage": 0,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      },
+      "proposed": {
+        "pc": 75.77,
+        "d6": 82.93,
+        "educationScore": 89,
+        "educationCoverage": 1,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      }
+    },
+    "SY": {
+      "baseline": {
+        "pc": 23.42,
+        "d6": 44.08,
+        "educationScore": 0,
+        "educationCoverage": 0,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      },
+      "proposed": {
+        "pc": 23.8,
+        "d6": 44.21,
+        "educationScore": 50,
+        "educationCoverage": 0.3,
+        "educationImputationClass": "unmonitored",
+        "sourceFailureDimensions": []
+      }
+    },
+    "TJ": {
+      "baseline": {
+        "pc": 58.04,
+        "d6": 70.9,
+        "educationScore": 0,
+        "educationCoverage": 0,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      },
+      "proposed": {
+        "pc": 58.68,
+        "d6": 71.36,
+        "educationScore": 82,
+        "educationCoverage": 0.8,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      }
+    },
+    "TZ": {
+      "baseline": {
+        "pc": 40.9,
+        "d6": 54.56,
+        "educationScore": 0,
+        "educationCoverage": 0,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      },
+      "proposed": {
+        "pc": 39.67,
+        "d6": 53.22,
+        "educationScore": 5,
+        "educationCoverage": 1,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      }
+    },
+    "TH": {
+      "baseline": {
+        "pc": 52.19,
+        "d6": 64.67,
+        "educationScore": 0,
+        "educationCoverage": 0,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      },
+      "proposed": {
+        "pc": 51.52,
+        "d6": 64.21,
+        "educationScore": 42,
+        "educationCoverage": 1,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      }
+    },
+    "TL": {
+      "baseline": {
+        "pc": 52.21,
+        "d6": 67.32,
+        "educationScore": 0,
+        "educationCoverage": 0,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      },
+      "proposed": {
+        "pc": 52.1,
+        "d6": 67.23,
+        "educationScore": 68,
+        "educationCoverage": 1,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      }
+    },
+    "TG": {
+      "baseline": {
+        "pc": 41.81,
+        "d6": 54.84,
+        "educationScore": 0,
+        "educationCoverage": 0,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      },
+      "proposed": {
+        "pc": 40.62,
+        "d6": 53.59,
+        "educationScore": 6,
+        "educationCoverage": 1,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      }
+    },
+    "TO": {
+      "baseline": {
+        "pc": 59.72,
+        "d6": 72.99,
+        "educationScore": 0,
+        "educationCoverage": 0,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      },
+      "proposed": {
+        "pc": 58.94,
+        "d6": 72.16,
+        "educationScore": 46,
+        "educationCoverage": 1,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      }
+    },
+    "TT": {
+      "baseline": {
+        "pc": 52.77,
+        "d6": 68.17,
+        "educationScore": 0,
+        "educationCoverage": 0,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      },
+      "proposed": {
+        "pc": 52.86,
+        "d6": 68.27,
+        "educationScore": 71,
+        "educationCoverage": 1,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      }
+    },
+    "TN": {
+      "baseline": {
+        "pc": 44.8,
+        "d6": 59.09,
+        "educationScore": 0,
+        "educationCoverage": 0,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      },
+      "proposed": {
+        "pc": 43.9,
+        "d6": 58.12,
+        "educationScore": 21,
+        "educationCoverage": 1,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      }
+    },
+    "TR": {
+      "baseline": {
+        "pc": 45.54,
+        "d6": 59.39,
+        "educationScore": 0,
+        "educationCoverage": 0,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      },
+      "proposed": {
+        "pc": 44.98,
+        "d6": 59.1,
+        "educationScore": 39,
+        "educationCoverage": 1,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      }
+    },
+    "TM": {
+      "baseline": {
+        "pc": 46.4,
+        "d6": 61.17,
+        "educationScore": 0,
+        "educationCoverage": 0,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      },
+      "proposed": {
+        "pc": 47.41,
+        "d6": 62.23,
+        "educationScore": 99,
+        "educationCoverage": 1,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      }
+    },
+    "TV": {
+      "baseline": {
+        "pc": 64.7,
+        "d6": 76.21,
+        "educationScore": 0,
+        "educationCoverage": 0,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      },
+      "proposed": {
+        "pc": 63.52,
+        "d6": 74.91,
+        "educationScore": 34,
+        "educationCoverage": 0.8,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      }
+    },
+    "UG": {
+      "baseline": {
+        "pc": 42.43,
+        "d6": 55.62,
+        "educationScore": 0,
+        "educationCoverage": 0,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      },
+      "proposed": {
+        "pc": 40.63,
+        "d6": 54.57,
+        "educationScore": 11,
+        "educationCoverage": 1,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      }
+    },
+    "UA": {
+      "baseline": {
+        "pc": 41.83,
+        "d6": 57.77,
+        "educationScore": 0,
+        "educationCoverage": 0,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      },
+      "proposed": {
+        "pc": 43.45,
+        "d6": 58.69,
+        "educationScore": 76,
+        "educationCoverage": 1,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      }
+    },
+    "AE": {
+      "baseline": {
+        "pc": 63.92,
+        "d6": 74.6,
+        "educationScore": 0,
+        "educationCoverage": 0,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      },
+      "proposed": {
+        "pc": 64.3,
+        "d6": 74.97,
+        "educationScore": 86,
+        "educationCoverage": 1,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      }
+    },
+    "GB": {
+      "baseline": {
+        "pc": 60.52,
+        "d6": 73.19,
+        "educationScore": 0,
+        "educationCoverage": 0,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      },
+      "proposed": {
+        "pc": 60.84,
+        "d6": 73.5,
+        "educationScore": 88,
+        "educationCoverage": 1,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      }
+    },
+    "US": {
+      "baseline": {
+        "pc": 58.63,
+        "d6": 73.45,
+        "educationScore": 0,
+        "educationCoverage": 0,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      },
+      "proposed": {
+        "pc": 59.31,
+        "d6": 74.14,
+        "educationScore": 96,
+        "educationCoverage": 1,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      }
+    },
+    "UY": {
+      "baseline": {
+        "pc": 63.64,
+        "d6": 75,
+        "educationScore": 0,
+        "educationCoverage": 0,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      },
+      "proposed": {
+        "pc": 62.79,
+        "d6": 74.19,
+        "educationScore": 41,
+        "educationCoverage": 1,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      }
+    },
+    "UZ": {
+      "baseline": {
+        "pc": 57.52,
+        "d6": 70.43,
+        "educationScore": 0,
+        "educationCoverage": 0,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      },
+      "proposed": {
+        "pc": 58.33,
+        "d6": 71.28,
+        "educationScore": 98,
+        "educationCoverage": 1,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      }
+    },
+    "VU": {
+      "baseline": {
+        "pc": 56.12,
+        "d6": 68.99,
+        "educationScore": 0,
+        "educationCoverage": 0,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      },
+      "proposed": {
+        "pc": 52.67,
+        "d6": 66.91,
+        "educationScore": 11,
+        "educationCoverage": 1,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      }
+    },
+    "VE": {
+      "baseline": {
+        "pc": 33.11,
+        "d6": 51.15,
+        "educationScore": 0,
+        "educationCoverage": 0,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      },
+      "proposed": {
+        "pc": 33.36,
+        "d6": 51.48,
+        "educationScore": 66,
+        "educationCoverage": 0.8,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      }
+    },
+    "VN": {
+      "baseline": {
+        "pc": 52.5,
+        "d6": 65.58,
+        "educationScore": 0,
+        "educationCoverage": 0,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      },
+      "proposed": {
+        "pc": 51.76,
+        "d6": 65.02,
+        "educationScore": 38,
+        "educationCoverage": 1,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      }
+    },
+    "YE": {
+      "baseline": {
+        "pc": 31.34,
+        "d6": 48.83,
+        "educationScore": 0,
+        "educationCoverage": 0,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      },
+      "proposed": {
+        "pc": 30.82,
+        "d6": 48.55,
+        "educationScore": 17,
+        "educationCoverage": 1,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      }
+    },
+    "ZM": {
+      "baseline": {
+        "pc": 44.53,
+        "d6": 57.8,
+        "educationScore": 0,
+        "educationCoverage": 0,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      },
+      "proposed": {
+        "pc": 43.59,
+        "d6": 56.82,
+        "educationScore": 22,
+        "educationCoverage": 1,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      }
+    },
+    "ZW": {
+      "baseline": {
+        "pc": 37.39,
+        "d6": 53.56,
+        "educationScore": 0,
+        "educationCoverage": 0,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      },
+      "proposed": {
+        "pc": 36.63,
+        "d6": 52.67,
+        "educationScore": 11,
+        "educationCoverage": 0.8,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      }
+    },
+    "HK": {
+      "baseline": {
+        "pc": 52.74,
+        "d6": 69.32,
+        "educationScore": 0,
+        "educationCoverage": 0,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      },
+      "proposed": {
+        "pc": 52.59,
+        "d6": 69.09,
+        "educationScore": 70,
+        "educationCoverage": 1,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      }
+    },
+    "MO": {
+      "baseline": {
+        "pc": 67.02,
+        "d6": 78.97,
+        "educationScore": 0,
+        "educationCoverage": 0,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      },
+      "proposed": {
+        "pc": 66.26,
+        "d6": 78.19,
+        "educationScore": 55,
+        "educationCoverage": 0.8,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      }
+    },
+    "TW": {
+      "baseline": {
+        "pc": 65.34,
+        "d6": 78.09,
+        "educationScore": 0,
+        "educationCoverage": 0,
+        "educationImputationClass": "",
+        "sourceFailureDimensions": []
+      },
+      "proposed": {
+        "pc": 65.16,
+        "d6": 77.89,
+        "educationScore": 50,
+        "educationCoverage": 0.3,
+        "educationImputationClass": "unmonitored",
+        "sourceFailureDimensions": []
+      }
+    }
+  }
+}

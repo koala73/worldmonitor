@@ -13,7 +13,10 @@ import {
   readStandaloneSourceFailureDimensions,
   readFailedDatasets,
 } from '../server/worldmonitor/resilience/v1/_source-failure.ts';
-import { RESILIENCE_DIMENSION_ORDER } from '../server/worldmonitor/resilience/v1/_dimension-scorers.ts';
+import {
+  RESILIENCE_DIMENSION_ORDER,
+  scoreAllDimensions,
+} from '../server/worldmonitor/resilience/v1/_dimension-scorers.ts';
 import { resolveSeedMetaKey } from '../server/worldmonitor/resilience/v1/_dimension-freshness.ts';
 import {
   INDICATOR_REGISTRY,
@@ -23,6 +26,32 @@ import type { IndicatorSpec } from '../server/worldmonitor/resilience/v1/_indica
 import sovereignStatus from '../scripts/shared/sovereign-status.json';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
+
+describe('structural source absences', () => {
+  it('does not convert Taiwan WGI absence into an actionable source failure', async () => {
+    assert.equal(failedDimensionsFromDatasets(['wgi'], 'TW').size, 0);
+    assert.deepEqual(
+      [...failedDimensionsFromDatasets(['wgi', 'rsf'], 'TW')],
+      ['informationCognitive'],
+      'the structural exception applies only to WGI',
+    );
+    assert.deepEqual(
+      [...failedDimensionsFromDatasets(['wgi'], 'US')].sort(),
+      ['governanceInstitutional', 'macroFiscal', 'stateContinuity'],
+    );
+
+    const reader = async (key: string): Promise<unknown | null> => {
+      if (key === 'seed-meta:resilience:static') {
+        return { status: 'ok', fetchedAt: 1, recordCount: 196, failedDatasets: ['wgi'] };
+      }
+      return null;
+    };
+    const dimensions = await scoreAllDimensions('TW', reader);
+
+    assert.equal(dimensions.stateContinuity.observedWeight, 0);
+    assert.equal(dimensions.stateContinuity.imputationClass, 'unmonitored');
+  });
+});
 
 // Adapter keys enumerated in scripts/seed-resilience-static.mjs
 // `fetchAllDatasetMaps()`. Every adapter that can end up in the
