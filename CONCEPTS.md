@@ -449,6 +449,57 @@ breaking the sum. It applies only to sources that genuinely share a publication
 clock; series on different schedules would disagree constantly and the check
 would degrade into noise.
 
+## Resilience Scoring
+
+### Dimension
+
+One scored facet of a country's resilience — a single question about the
+country ("how exposed is its financial system?") answered as a number on a
+common scale, so facets that measure unlike things can be combined. A dimension
+is not a data source: it is a construct assembled from several inputs, and the
+same source can feed more than one.
+
+A dimension can be published dark — computed but deliberately excluded from what
+readers see — while its inputs and calibration are proven. Dark is a rollout
+state, not a defect state; a dimension that is dark is still expected to be
+correct.
+
+### Component Slot
+
+One weighted input to a dimension, together with the weight it carries. A slot
+resolves in one of three ways: to an observed reading, to an imputed value
+carrying reduced certainty, or not at all.
+
+The third case has a consequence worth stating, because it is the opposite of
+the intuition: an unresolved slot is not scored as zero and does not pull the
+dimension down. Its weight is redistributed across the slots that did resolve,
+so the dimension moves toward whatever survived. Withholding a slot is
+therefore never automatically the cautious choice — it raises the score
+whenever the withheld slot would have read below its siblings.
+
+### Coverage
+
+How much of a dimension's *designed* evidence actually resolved, expressed on
+the same scale for every dimension so sparsely-observed countries are
+distinguishable from well-observed ones.
+
+Coverage is measured against the weights the dimension was designed with, not
+against the weight that happened to resolve — which is what makes it meaningful
+at all. Because the score renormalises onto surviving slots and coverage does
+not, the two can move in opposite directions: a country losing an input can show
+a rising score and a falling coverage in the same response. When they disagree,
+coverage is the one describing the evidence.
+
+### Imputation Class
+
+The typed reason a slot carries an inferred value rather than an observed one.
+The distinction is the point: "we do not measure here", "the phenomenon is
+genuinely absent", "this indicator does not apply to this country", and "the
+source failed" are four different claims that would otherwise all appear as a
+missing number, and they justify very different scores. A country nobody
+surveys must not be scored like a country where the thing being measured
+verifiably does not happen.
+
 ## Flagged ambiguities
 
 - *"Pool"* had been used for both a labelled market category and the complete set of markets — these are distinct. A pool is always a labelled subset; the complete set has no pool and must be requested as an explicit union.
