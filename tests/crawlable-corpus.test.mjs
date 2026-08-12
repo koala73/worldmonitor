@@ -17,7 +17,7 @@ import {
   loadCorpusData,
 } from '../scripts/build-crawlable-corpus.mjs';
 import { buildSitemapEntries } from '../scripts/build-sitemap.mjs';
-import { sourceProviderDisplayName } from '../scripts/crawlable-sources-page.mjs';
+import { buildSourceCatalog, sourceProviderDisplayName } from '../scripts/crawlable-sources-page.mjs';
 
 const repoRoot = resolve(fileURLToPath(new URL('..', import.meta.url)));
 
@@ -44,6 +44,44 @@ const SOURCE_DOMAIN_IDS = new Set([
   'china',
   'technology',
 ]);
+
+describe('sources catalog domain assignment', () => {
+  it('assigns mineral production hosts to energy instead of failing the corpus build', () => {
+    const catalog = buildSourceCatalog([
+      {
+        provider: 'British Geological Survey World Mineral Statistics',
+        host: 'ogcapi.bgs.ac.uk',
+        kind: 'structured',
+        references: [{ path: 'scripts/seed-mineral-production.mjs' }],
+      },
+      {
+        provider: 'USGS ScienceBase (Mineral Commodity Summaries)',
+        host: 'www.sciencebase.gov',
+        kind: 'structured',
+        references: [{ path: 'scripts/seed-mineral-production.mjs' }],
+      },
+    ]);
+    assert.deepEqual(
+      Object.fromEntries(catalog.map((row) => [row.provider, row.domainId])),
+      {
+        'British Geological Survey World Mineral Statistics': 'energy',
+        'USGS ScienceBase (Mineral Commodity Summaries)': 'energy',
+      },
+    );
+  });
+
+  it('still fails closed when a structured provider has no catalog domain', () => {
+    assert.throws(
+      () => buildSourceCatalog([{
+        provider: 'Unclassified Structured Provider',
+        host: 'example.invalid',
+        kind: 'structured',
+        references: [{ path: 'scripts/seed-example.mjs' }],
+      }]),
+      /Source provider needs a catalog domain: Unclassified Structured Provider/,
+    );
+  });
+});
 
 describe('sources catalog provider names', () => {
   it('uses public source names while retaining hostnames as separate metadata', () => {
