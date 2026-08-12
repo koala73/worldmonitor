@@ -219,6 +219,36 @@ describe('fleet paging', () => {
 });
 
 describe('complete per-service history paging', () => {
+  it('caps every API page to the shared deadline and checks it before the next page', async () => {
+    const observedTimeouts = [];
+    const times = [10, 50];
+    let calls = 0;
+    await assert.rejects(
+      readAllDeployments(
+        { id: 'service-1', name: 'seed-one' },
+        'environment-1',
+        {
+          deadline: 50,
+          now: () => times.shift(),
+          api: async (_query, _variables, options) => {
+            calls += 1;
+            observedTimeouts.push(options.timeoutMs);
+            return {
+              deployments: {
+                edges: [],
+                pageInfo: { hasNextPage: true, endCursor: 'cursor-1' },
+              },
+            };
+          },
+        },
+      ),
+      /deadline expired before page 2/,
+    );
+
+    assert.equal(calls, 1, 'the expired deadline must stop before another API call');
+    assert.deepEqual(observedTimeouts, [40], 'the API page gets only the remaining proof budget');
+  });
+
   it('continues by cursor until Railway proves exhaustion', async () => {
     const calls = [];
     const pages = [
