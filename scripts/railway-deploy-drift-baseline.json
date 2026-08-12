@@ -36,8 +36,238 @@
     "and the reconciler in .github/workflows/railway-deploy-trigger.yml is now what",
     "keeps it there -- it judges each service against the commit it is RUNNING, so a",
     "webhook that goes quiet again self-heals on the next reconcile instead of needing",
-    "an entry here."
+    "an entry here.",
+    "",
+    "2026-08-12: 31 REJECTED_PUSH entries against #6378. Railway wait-for-CI reads a",
+    "commit's WHOLE check suite, so the 2026-08-07..12 deploy-gate outage (fixed by",
+    "#6513) made it refuse pushes fleet-wide, and the 2026-08-12 history reset",
+    "(c001e7566, a parentless root commit) left pre-reset rejections that ancestry",
+    "can never supersede -- they clear per service via the sha-changed fallback once",
+    "any post-reset build fires. The compensating reconciler is deployed but dormant",
+    "pending #6378 cutover, so these services are KNOWINGLY behind: tracked, owned,",
+    "and recoverable at any time via cutover or serviceInstanceDeployV2. Baselining",
+    "them is what lets a NEW service entering REJECTED_PUSH -- the #6483 class, which",
+    "ran 25h inside an already-red monitor -- fail the run on its own signal. The",
+    "entry-level expiry re-pages on 2026-08-26 if cutover has not landed by then."
   ],
   "expiresAt": "2026-09-04",
-  "acknowledged": []
+  "acknowledged": [
+    {
+      "name": "deep-forecast-worker",
+      "status": "REJECTED_PUSH",
+      "reason": "Railway wait-for-CI refused this service's pushes across the 2026-08-07..12 deploy-gate outage and the 2026-08-12 history reset (c001e7566), and the compensating reconciler is dormant pending #6378 cutover. Content is knowingly behind; recover via cutover or a manual serviceInstanceDeployV2 at green head.",
+      "issue": 6378,
+      "expiresAt": "2026-08-26T00:00:00Z"
+    },
+    {
+      "name": "digest-notifications",
+      "status": "REJECTED_PUSH",
+      "reason": "Railway wait-for-CI refused this service's pushes across the 2026-08-07..12 deploy-gate outage and the 2026-08-12 history reset (c001e7566), and the compensating reconciler is dormant pending #6378 cutover. Content is knowingly behind; recover via cutover or a manual serviceInstanceDeployV2 at green head.",
+      "issue": 6378,
+      "expiresAt": "2026-08-26T00:00:00Z"
+    },
+    {
+      "name": "scenario-worker",
+      "status": "REJECTED_PUSH",
+      "reason": "Railway wait-for-CI refused this service's pushes across the 2026-08-07..12 deploy-gate outage and the 2026-08-12 history reset (c001e7566), and the compensating reconciler is dormant pending #6378 cutover. Content is knowingly behind; recover via cutover or a manual serviceInstanceDeployV2 at green head.",
+      "issue": 6378,
+      "expiresAt": "2026-08-26T00:00:00Z"
+    },
+    {
+      "name": "seed-aaii-sentiment",
+      "status": "REJECTED_PUSH",
+      "reason": "Railway wait-for-CI refused this service's pushes across the 2026-08-07..12 deploy-gate outage and the 2026-08-12 history reset (c001e7566), and the compensating reconciler is dormant pending #6378 cutover. Content is knowingly behind; recover via cutover or a manual serviceInstanceDeployV2 at green head.",
+      "issue": 6378,
+      "expiresAt": "2026-08-26T00:00:00Z"
+    },
+    {
+      "name": "seed-bundle-climate",
+      "status": "REJECTED_PUSH",
+      "reason": "Railway wait-for-CI refused this service's pushes across the 2026-08-07..12 deploy-gate outage and the 2026-08-12 history reset (c001e7566), and the compensating reconciler is dormant pending #6378 cutover. Content is knowingly behind; recover via cutover or a manual serviceInstanceDeployV2 at green head.",
+      "issue": 6378,
+      "expiresAt": "2026-08-26T00:00:00Z"
+    },
+    {
+      "name": "seed-bundle-derived-signals",
+      "status": "REJECTED_PUSH",
+      "reason": "Railway wait-for-CI refused this service's pushes across the 2026-08-07..12 deploy-gate outage and the 2026-08-12 history reset (c001e7566), and the compensating reconciler is dormant pending #6378 cutover. Content is knowingly behind; recover via cutover or a manual serviceInstanceDeployV2 at green head.",
+      "issue": 6378,
+      "expiresAt": "2026-08-26T00:00:00Z"
+    },
+    {
+      "name": "seed-bundle-ecb-eu",
+      "status": "REJECTED_PUSH",
+      "reason": "Railway wait-for-CI refused this service's pushes across the 2026-08-07..12 deploy-gate outage and the 2026-08-12 history reset (c001e7566), and the compensating reconciler is dormant pending #6378 cutover. Content is knowingly behind; recover via cutover or a manual serviceInstanceDeployV2 at green head.",
+      "issue": 6378,
+      "expiresAt": "2026-08-26T00:00:00Z"
+    },
+    {
+      "name": "seed-bundle-health",
+      "status": "REJECTED_PUSH",
+      "reason": "Railway wait-for-CI refused this service's pushes across the 2026-08-07..12 deploy-gate outage and the 2026-08-12 history reset (c001e7566), and the compensating reconciler is dormant pending #6378 cutover. Content is knowingly behind; recover via cutover or a manual serviceInstanceDeployV2 at green head.",
+      "issue": 6378,
+      "expiresAt": "2026-08-26T00:00:00Z"
+    },
+    {
+      "name": "seed-bundle-market-backup",
+      "status": "REJECTED_PUSH",
+      "reason": "Railway wait-for-CI refused this service's pushes across the 2026-08-07..12 deploy-gate outage and the 2026-08-12 history reset (c001e7566), and the compensating reconciler is dormant pending #6378 cutover. Content is knowingly behind; recover via cutover or a manual serviceInstanceDeployV2 at green head.",
+      "issue": 6378,
+      "expiresAt": "2026-08-26T00:00:00Z"
+    },
+    {
+      "name": "seed-bundle-portwatch",
+      "status": "REJECTED_PUSH",
+      "reason": "Railway wait-for-CI refused this service's pushes across the 2026-08-07..12 deploy-gate outage and the 2026-08-12 history reset (c001e7566), and the compensating reconciler is dormant pending #6378 cutover. Content is knowingly behind; recover via cutover or a manual serviceInstanceDeployV2 at green head.",
+      "issue": 6378,
+      "expiresAt": "2026-08-26T00:00:00Z"
+    },
+    {
+      "name": "seed-bundle-portwatch-port-activity",
+      "status": "REJECTED_PUSH",
+      "reason": "Railway wait-for-CI refused this service's pushes across the 2026-08-07..12 deploy-gate outage and the 2026-08-12 history reset (c001e7566), and the compensating reconciler is dormant pending #6378 cutover. Content is knowingly behind; recover via cutover or a manual serviceInstanceDeployV2 at green head.",
+      "issue": 6378,
+      "expiresAt": "2026-08-26T00:00:00Z"
+    },
+    {
+      "name": "seed-bundle-regional",
+      "status": "REJECTED_PUSH",
+      "reason": "Railway wait-for-CI refused this service's pushes across the 2026-08-07..12 deploy-gate outage and the 2026-08-12 history reset (c001e7566), and the compensating reconciler is dormant pending #6378 cutover. Content is knowingly behind; recover via cutover or a manual serviceInstanceDeployV2 at green head.",
+      "issue": 6378,
+      "expiresAt": "2026-08-26T00:00:00Z"
+    },
+    {
+      "name": "seed-bundle-relay-backup",
+      "status": "REJECTED_PUSH",
+      "reason": "Railway wait-for-CI refused this service's pushes across the 2026-08-07..12 deploy-gate outage and the 2026-08-12 history reset (c001e7566), and the compensating reconciler is dormant pending #6378 cutover. Content is knowingly behind; recover via cutover or a manual serviceInstanceDeployV2 at green head.",
+      "issue": 6378,
+      "expiresAt": "2026-08-26T00:00:00Z"
+    },
+    {
+      "name": "seed-bundle-resilience-energy-v2",
+      "status": "REJECTED_PUSH",
+      "reason": "Railway wait-for-CI refused this service's pushes across the 2026-08-07..12 deploy-gate outage and the 2026-08-12 history reset (c001e7566), and the compensating reconciler is dormant pending #6378 cutover. Content is knowingly behind; recover via cutover or a manual serviceInstanceDeployV2 at green head.",
+      "issue": 6378,
+      "expiresAt": "2026-08-26T00:00:00Z"
+    },
+    {
+      "name": "seed-bundle-resilience-recovery",
+      "status": "REJECTED_PUSH",
+      "reason": "Railway wait-for-CI refused this service's pushes across the 2026-08-07..12 deploy-gate outage and the 2026-08-12 history reset (c001e7566), and the compensating reconciler is dormant pending #6378 cutover. Content is knowingly behind; recover via cutover or a manual serviceInstanceDeployV2 at green head.",
+      "issue": 6378,
+      "expiresAt": "2026-08-26T00:00:00Z"
+    },
+    {
+      "name": "seed-chokepoint-exposure",
+      "status": "REJECTED_PUSH",
+      "reason": "Railway wait-for-CI refused this service's pushes across the 2026-08-07..12 deploy-gate outage and the 2026-08-12 history reset (c001e7566), and the compensating reconciler is dormant pending #6378 cutover. Content is knowingly behind; recover via cutover or a manual serviceInstanceDeployV2 at green head.",
+      "issue": 6378,
+      "expiresAt": "2026-08-26T00:00:00Z"
+    },
+    {
+      "name": "seed-commodity-quotes",
+      "status": "REJECTED_PUSH",
+      "reason": "Railway wait-for-CI refused this service's pushes across the 2026-08-07..12 deploy-gate outage and the 2026-08-12 history reset (c001e7566), and the compensating reconciler is dormant pending #6378 cutover. Content is knowingly behind; recover via cutover or a manual serviceInstanceDeployV2 at green head.",
+      "issue": 6378,
+      "expiresAt": "2026-08-26T00:00:00Z"
+    },
+    {
+      "name": "seed-comtrade-bilateral-hs4",
+      "status": "REJECTED_PUSH",
+      "reason": "Railway wait-for-CI refused this service's pushes across the 2026-08-07..12 deploy-gate outage and the 2026-08-12 history reset (c001e7566), and the compensating reconciler is dormant pending #6378 cutover. Content is knowingly behind; recover via cutover or a manual serviceInstanceDeployV2 at green head.",
+      "issue": 6378,
+      "expiresAt": "2026-08-26T00:00:00Z"
+    },
+    {
+      "name": "seed-conflict-intel",
+      "status": "REJECTED_PUSH",
+      "reason": "Railway wait-for-CI refused this service's pushes across the 2026-08-07..12 deploy-gate outage and the 2026-08-12 history reset (c001e7566), and the compensating reconciler is dormant pending #6378 cutover. Content is knowingly behind; recover via cutover or a manual serviceInstanceDeployV2 at green head.",
+      "issue": 6378,
+      "expiresAt": "2026-08-26T00:00:00Z"
+    },
+    {
+      "name": "seed-economy",
+      "status": "REJECTED_PUSH",
+      "reason": "Railway wait-for-CI refused this service's pushes across the 2026-08-07..12 deploy-gate outage and the 2026-08-12 history reset (c001e7566), and the compensating reconciler is dormant pending #6378 cutover. Content is knowingly behind; recover via cutover or a manual serviceInstanceDeployV2 at green head.",
+      "issue": 6378,
+      "expiresAt": "2026-08-26T00:00:00Z"
+    },
+    {
+      "name": "seed-forecast-resolutions",
+      "status": "REJECTED_PUSH",
+      "reason": "Railway wait-for-CI refused this service's pushes across the 2026-08-07..12 deploy-gate outage and the 2026-08-12 history reset (c001e7566), and the compensating reconciler is dormant pending #6378 cutover. Content is knowingly behind; recover via cutover or a manual serviceInstanceDeployV2 at green head.",
+      "issue": 6378,
+      "expiresAt": "2026-08-26T00:00:00Z"
+    },
+    {
+      "name": "seed-forecasts",
+      "status": "REJECTED_PUSH",
+      "reason": "Railway wait-for-CI refused this service's pushes across the 2026-08-07..12 deploy-gate outage and the 2026-08-12 history reset (c001e7566), and the compensating reconciler is dormant pending #6378 cutover. Content is knowingly behind; recover via cutover or a manual serviceInstanceDeployV2 at green head.",
+      "issue": 6378,
+      "expiresAt": "2026-08-26T00:00:00Z"
+    },
+    {
+      "name": "seed-fred-rates",
+      "status": "REJECTED_PUSH",
+      "reason": "Railway wait-for-CI refused this service's pushes across the 2026-08-07..12 deploy-gate outage and the 2026-08-12 history reset (c001e7566), and the compensating reconciler is dormant pending #6378 cutover. Content is knowingly behind; recover via cutover or a manual serviceInstanceDeployV2 at green head.",
+      "issue": 6378,
+      "expiresAt": "2026-08-26T00:00:00Z"
+    },
+    {
+      "name": "seed-fx-yoy",
+      "status": "REJECTED_PUSH",
+      "reason": "Railway wait-for-CI refused this service's pushes across the 2026-08-07..12 deploy-gate outage and the 2026-08-12 history reset (c001e7566), and the compensating reconciler is dormant pending #6378 cutover. Content is knowingly behind; recover via cutover or a manual serviceInstanceDeployV2 at green head.",
+      "issue": 6378,
+      "expiresAt": "2026-08-26T00:00:00Z"
+    },
+    {
+      "name": "seed-gdelt-intel",
+      "status": "REJECTED_PUSH",
+      "reason": "Railway wait-for-CI refused this service's pushes across the 2026-08-07..12 deploy-gate outage and the 2026-08-12 history reset (c001e7566), and the compensating reconciler is dormant pending #6378 cutover. Content is knowingly behind; recover via cutover or a manual serviceInstanceDeployV2 at green head.",
+      "issue": 6378,
+      "expiresAt": "2026-08-26T00:00:00Z"
+    },
+    {
+      "name": "seed-insights",
+      "status": "REJECTED_PUSH",
+      "reason": "Railway wait-for-CI refused this service's pushes across the 2026-08-07..12 deploy-gate outage and the 2026-08-12 history reset (c001e7566), and the compensating reconciler is dormant pending #6378 cutover. Content is knowingly behind; recover via cutover or a manual serviceInstanceDeployV2 at green head.",
+      "issue": 6378,
+      "expiresAt": "2026-08-26T00:00:00Z"
+    },
+    {
+      "name": "seed-market-breadth",
+      "status": "REJECTED_PUSH",
+      "reason": "Railway wait-for-CI refused this service's pushes across the 2026-08-07..12 deploy-gate outage and the 2026-08-12 history reset (c001e7566), and the compensating reconciler is dormant pending #6378 cutover. Content is knowingly behind; recover via cutover or a manual serviceInstanceDeployV2 at green head.",
+      "issue": 6378,
+      "expiresAt": "2026-08-26T00:00:00Z"
+    },
+    {
+      "name": "seed-military-cii",
+      "status": "REJECTED_PUSH",
+      "reason": "Railway wait-for-CI refused this service's pushes across the 2026-08-07..12 deploy-gate outage and the 2026-08-12 history reset (c001e7566), and the compensating reconciler is dormant pending #6378 cutover. Content is knowingly behind; recover via cutover or a manual serviceInstanceDeployV2 at green head.",
+      "issue": 6378,
+      "expiresAt": "2026-08-26T00:00:00Z"
+    },
+    {
+      "name": "seed-supply-chain-trade",
+      "status": "REJECTED_PUSH",
+      "reason": "Railway wait-for-CI refused this service's pushes across the 2026-08-07..12 deploy-gate outage and the 2026-08-12 history reset (c001e7566), and the compensating reconciler is dormant pending #6378 cutover. Content is knowingly behind; recover via cutover or a manual serviceInstanceDeployV2 at green head.",
+      "issue": 6378,
+      "expiresAt": "2026-08-26T00:00:00Z"
+    },
+    {
+      "name": "simulation-worker",
+      "status": "REJECTED_PUSH",
+      "reason": "Railway wait-for-CI refused this service's pushes across the 2026-08-07..12 deploy-gate outage and the 2026-08-12 history reset (c001e7566), and the compensating reconciler is dormant pending #6378 cutover. Content is knowingly behind; recover via cutover or a manual serviceInstanceDeployV2 at green head.",
+      "issue": 6378,
+      "expiresAt": "2026-08-26T00:00:00Z"
+    },
+    {
+      "name": "umami-retention",
+      "status": "REJECTED_PUSH",
+      "reason": "Railway wait-for-CI refused this service's pushes across the 2026-08-07..12 deploy-gate outage and the 2026-08-12 history reset (c001e7566), and the compensating reconciler is dormant pending #6378 cutover. Content is knowingly behind; recover via cutover or a manual serviceInstanceDeployV2 at green head.",
+      "issue": 6378,
+      "expiresAt": "2026-08-26T00:00:00Z"
+    }
+  ]
 }
