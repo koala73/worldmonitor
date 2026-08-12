@@ -481,6 +481,27 @@ jobs:
       # system Chrome fails the required PR job instead of silently skipping.
       - name: Run strict WebMCP iframe smoke in Chrome
         run: npm run test:e2e:webmcp
+      # playwright.config.ts already retains a trace, a video and a screenshot
+      # for every failed test (retain-on-failure) — but nothing collected them,
+      # so they died with the runner and every flake in this required gate was
+      # undiagnosable after the fact (#6496: a "Target page, context or browser
+      # has been closed" close whose cause the log could not name).
+      #
+      # Placed after BOTH smoke steps: a failing step ends the job, so whichever
+      # one failed is the one whose test-results/ this uploads. `if: failure()`
+      # also covers a failure before Playwright ever ran (npm ci, browser
+      # install) — hence `if-no-files-found: warn`, which says so in the log
+      # instead of failing the job a second time for a different reason.
+      # run_attempt is in the name because a re-run keeps the same run_id and
+      # v6 rejects a duplicate artifact name within one run.
+      - name: Upload Playwright artifacts on failure
+        if: failure()
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: playwright-variant-smoke-full-${{ github.run_id }}-${{ github.run_attempt }}
+          path: test-results/
+          if-no-files-found: warn
+          retention-days: 14
 
   resilience-validation-smoke:
     needs: changes
