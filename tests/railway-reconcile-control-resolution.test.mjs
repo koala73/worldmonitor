@@ -1018,14 +1018,57 @@ describe('read-only Railway provider inactivity proof', () => {
     assert.equal(maxActive, 8);
   });
 
-  it('fails closed when exactly 1000 deployments do not prove history exhaustion', async () => {
+  it('pages a full CLI window to positive exhaustion and checks older active work', async () => {
+    const service = { id: 'service-full', name: 'seed-full-history' };
+    const complete = Array.from(
+      { length: 1001 },
+      (_, index) => ({ id: `deployment-${index}`, status: index === 1000 ? 'BUILDING' : 'SUCCESS' }),
+    );
     await assert.rejects(
       verifyNoActiveRailwayDeployments({
-        readRepositoryServicesImpl: () => [{ name: 'seed-full-history' }],
+        readRepositoryServicesImpl: () => [service],
+        readDeploymentsImpl: async () => complete.slice(0, 1000),
+        resolveEnvironmentIdImpl(environment) {
+          assert.equal(environment, 'production');
+          return 'environment-1';
+        },
+        readAllDeploymentsImpl(observedService, environmentId) {
+          assert.equal(observedService, service);
+          assert.equal(environmentId, 'environment-1');
+          return complete;
+        },
+      }),
+      (error) => error.code === 'PROVIDER_ACTIVITY_NOT_CLEARED',
+    );
+  });
+
+  it('accepts a complete paginated history with no active provider work', async () => {
+    const complete = Array.from(
+      { length: 1001 },
+      (_, index) => ({ id: `deployment-${index}`, status: 'SUCCESS' }),
+    );
+    const proof = await verifyNoActiveRailwayDeployments({
+      readRepositoryServicesImpl: () => [{ id: 'service-full', name: 'seed-full-history' }],
+      readDeploymentsImpl: async () => complete.slice(0, 1000),
+      resolveEnvironmentIdImpl: () => 'environment-1',
+      readAllDeploymentsImpl: async () => complete,
+    });
+
+    assert.deepEqual(proof, { ok: true, checkedServices: 1 });
+  });
+
+  it('fails closed when complete history paging cannot prove exhaustion', async () => {
+    await assert.rejects(
+      verifyNoActiveRailwayDeployments({
+        readRepositoryServicesImpl: () => [{ id: 'service-full', name: 'seed-full-history' }],
         readDeploymentsImpl: async () => Array.from(
           { length: 1000 },
           (_, index) => ({ id: `deployment-${index}`, status: 'SUCCESS' }),
         ),
+        resolveEnvironmentIdImpl: () => 'environment-1',
+        readAllDeploymentsImpl: async () => {
+          throw new Error('page budget exhausted');
+        },
       }),
       (error) => error.code === 'PROVIDER_EVIDENCE_INCOMPLETE',
     );

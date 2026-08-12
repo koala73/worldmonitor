@@ -242,6 +242,57 @@ export function runRailwayApi(query, variables) {
 }
 
 /**
+ * Read one service's complete deployment history with cursor pagination.
+ *
+ * Most callers need only a bounded recent window. Manual recovery is
+ * different: before it authorizes another mutation, it must prove that no
+ * older deployment is still in flight. The CLI caps a direct history read at
+ * 1,000 records, so a full first page is not exhaustion. This reader is used
+ * only for that uncommon fallback and returns only after Railway says there is
+ * no next page. A repeated cursor or the defensive page budget fails closed.
+ */
+export async function readAllDeployments(service, environmentId, {
+  pageSize = 500,
+  maxPages = 200,
+  api = runRailwayApi,
+} = {}) {
+  if (!service?.id || !environmentId) {
+    throw new Error('service id and environment id are required for complete deployment history');
+  }
+  const deployments = [];
+  const seenCursors = new Set();
+  let after = null;
+  for (let page = 1; page <= maxPages; page += 1) {
+    const data = await api(FLEET_QUERY, {
+      input: { serviceId: service.id, environmentId },
+      first: pageSize,
+      ...(after ? { after } : {}),
+    });
+    const connection = data?.deployments;
+    if (!Array.isArray(connection?.edges)
+      || typeof connection?.pageInfo?.hasNextPage !== 'boolean') {
+      throw new Error(`Railway returned an incomplete deployment history page for ${service.name}`);
+    }
+    const pageDeployments = connection.edges.map((edge) => edge?.node);
+    if (pageDeployments.some((deployment) => !deployment
+      || typeof deployment.id !== 'string'
+      || typeof deployment.status !== 'string'
+      || deployment.serviceId !== service.id)) {
+      throw new Error(`Railway returned a malformed deployment history record for ${service.name}`);
+    }
+    deployments.push(...pageDeployments);
+    if (connection.pageInfo.hasNextPage !== true) return deployments;
+    const next = connection.pageInfo.endCursor;
+    if (typeof next !== 'string' || next === '' || seenCursors.has(next)) {
+      throw new Error(`Railway deployment history cursor did not advance for ${service.name}`);
+    }
+    seenCursors.add(next);
+    after = next;
+  }
+  throw new Error(`Railway deployment history exceeded ${maxPages} pages for ${service.name}`);
+}
+
+/**
  * Every repository service's recent deployment history, in a handful of calls
  * instead of one per service.
  *

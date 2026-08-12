@@ -12,7 +12,12 @@ import {
   RailwayReconcileControlClient,
   canonicalJson,
 } from './railway-reconcile-control-client.mjs';
-import { readDeployments, readRepositoryServices } from './railway-cli.mjs';
+import {
+  readAllDeployments,
+  readDeployments,
+  readRepositoryServices,
+  resolveEnvironmentId,
+} from './railway-cli.mjs';
 import { IN_FLIGHT_STATUSES } from './railway-deployments.mjs';
 
 export const RECOVERY_PROTOCOL_VERSION = 1;
@@ -879,26 +884,43 @@ export async function verifyNoActiveRailwayDeployments({
   environment = 'production',
   readRepositoryServicesImpl = readRepositoryServices,
   readDeploymentsImpl = readDeployments,
+  readAllDeploymentsImpl = readAllDeployments,
+  resolveEnvironmentIdImpl = resolveEnvironmentId,
 } = {}) {
-  if (typeof readRepositoryServicesImpl !== 'function' || typeof readDeploymentsImpl !== 'function') {
+  if (typeof readRepositoryServicesImpl !== 'function'
+    || typeof readDeploymentsImpl !== 'function'
+    || typeof readAllDeploymentsImpl !== 'function'
+    || typeof resolveEnvironmentIdImpl !== 'function') {
     throw new TypeError('Railway evidence readers must be functions');
   }
   const services = readRepositoryServicesImpl(environment);
   if (services.length === 0) fail('PROVIDER_EVIDENCE_UNREADABLE', 'Railway Viewer returned no repository services');
   let checked = 0;
+  let environmentId = null;
   for (let index = 0; index < services.length; index += 8) {
     const batch = services.slice(index, index + 8);
-    const histories = await Promise.all(
+    const boundedHistories = await Promise.all(
       batch.map((service) => readDeploymentsImpl(service, environment, 1000)),
     );
-    histories.forEach((deployments, offset) => {
-      if (!Array.isArray(deployments)) fail('PROVIDER_EVIDENCE_UNREADABLE', 'Railway deployment history was malformed');
-      if (deployments.length >= 1000) {
+    const histories = await Promise.all(boundedHistories.map(async (deployments, offset) => {
+      if (!Array.isArray(deployments)) {
+        fail('PROVIDER_EVIDENCE_UNREADABLE', 'Railway deployment history was malformed');
+      }
+      if (deployments.length < 1000) return deployments;
+      environmentId ??= resolveEnvironmentIdImpl(environment);
+      try {
+        const complete = await readAllDeploymentsImpl(batch[offset], environmentId);
+        if (!Array.isArray(complete)) throw new Error('complete deployment history was malformed');
+        return complete;
+      } catch (cause) {
         fail(
           'PROVIDER_EVIDENCE_INCOMPLETE',
           `Railway deployment history did not prove exhaustion for ${batch[offset].name}`,
+          { cause },
         );
       }
+    }));
+    histories.forEach((deployments, offset) => {
       const active = deployments.find((deployment) => IN_FLIGHT_STATUSES.includes(deployment?.status));
       if (active) fail('PROVIDER_ACTIVITY_NOT_CLEARED', `Railway still reports active work for ${batch[offset].name}`);
       checked += 1;

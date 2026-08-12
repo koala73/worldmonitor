@@ -1464,6 +1464,10 @@ export async function readWatchdogSnapshot({ github, control, clock = Date.now }
   const hydratedRuns = await github.hydrateTargetRuns(relevantSummaries);
   const runInventory = mergeRunInventory(runSummaries, hydratedRuns);
 
+  // This loop repairs only an authorization that already exists. It never
+  // creates a hold or dispatches a run, so it stays active even when automatic
+  // recovery is disabled. Otherwise a successful GitHub dispatch followed by
+  // a failed bind step could leave the durable hold ambiguous forever.
   for (const hold of controlState.dispatchHolds ?? []) {
     if (hold?.state !== 'DISPATCH_HELD' || !hold.recoveryAttemptId) continue;
     const correlated = await github.findRunByRecoveryAttemptId(hold.recoveryAttemptId, runInventory);

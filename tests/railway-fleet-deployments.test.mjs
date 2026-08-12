@@ -12,6 +12,7 @@ import { describe, it } from 'node:test';
 
 import {
   createRailwayCliEnv,
+  readAllDeployments,
   readDeployments,
   readFleetDeployments,
   runRailway,
@@ -213,6 +214,101 @@ describe('fleet paging', () => {
         api: () => ({}), accumulatorFactory: createFleetAccumulator,
       }),
       /no deployments connection/,
+    );
+  });
+});
+
+describe('complete per-service history paging', () => {
+  it('continues by cursor until Railway proves exhaustion', async () => {
+    const calls = [];
+    const pages = [
+      {
+        edges: [{ node: { id: 'deployment-1', ...node('service-1', 'SUCCESS', '2026-08-04T11:00:00Z', 'aaa') } }],
+        pageInfo: { hasNextPage: true, endCursor: 'cursor-1' },
+      },
+      {
+        edges: [{ node: { id: 'deployment-2', ...node('service-1', 'REMOVED', '2026-08-03T11:00:00Z', 'bbb') } }],
+        pageInfo: { hasNextPage: false, endCursor: 'cursor-2' },
+      },
+    ];
+    const deployments = await readAllDeployments(
+      { id: 'service-1', name: 'seed-one' },
+      'environment-1',
+      {
+        api: async (_query, variables) => {
+          calls.push(variables);
+          return { deployments: pages.shift() };
+        },
+      },
+    );
+
+    assert.equal(deployments.length, 2);
+    assert.deepEqual(calls, [
+      { input: { serviceId: 'service-1', environmentId: 'environment-1' }, first: 500 },
+      { input: { serviceId: 'service-1', environmentId: 'environment-1' }, first: 500, after: 'cursor-1' },
+    ]);
+  });
+
+  it('fails closed when a cursor repeats', async () => {
+    await assert.rejects(
+      readAllDeployments(
+        { id: 'service-1', name: 'seed-one' },
+        'environment-1',
+        {
+          api: async () => ({
+            deployments: {
+              edges: [],
+              pageInfo: { hasNextPage: true, endCursor: 'stuck' },
+            },
+          }),
+        },
+      ),
+      /cursor did not advance/,
+    );
+  });
+
+  it('fails closed when the defensive page budget cannot prove exhaustion', async () => {
+    await assert.rejects(
+      readAllDeployments(
+        { id: 'service-1', name: 'seed-one' },
+        'environment-1',
+        {
+          maxPages: 1,
+          api: async () => ({
+            deployments: {
+              edges: [],
+              pageInfo: { hasNextPage: true, endCursor: 'cursor-1' },
+            },
+          }),
+        },
+      ),
+      /exceeded 1 pages/,
+    );
+  });
+
+  it('fails closed on an ambiguous page or a record from another service', async () => {
+    await assert.rejects(
+      readAllDeployments(
+        { id: 'service-1', name: 'seed-one' },
+        'environment-1',
+        { api: async () => ({ deployments: { edges: [], pageInfo: {} } }) },
+      ),
+      /incomplete deployment history page/,
+    );
+    await assert.rejects(
+      readAllDeployments(
+        { id: 'service-1', name: 'seed-one' },
+        'environment-1',
+        {
+          api: async () => ({
+            deployments: {
+              edges: [{ node: { id: 'deployment-1', ...node('service-2', 'SUCCESS', '2026-08-04T11:00:00Z', 'aaa') } }],
+              pageInfo: { hasNextPage: false, endCursor: null },
+            },
+          }),
+        },
+      ),
+      /malformed deployment history record/,
     );
   });
 });
