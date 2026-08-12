@@ -71,6 +71,18 @@
       "status": "COVERAGE_PARTIAL",
       "issue": 6362,
       "reason": "US: records match the enabled retailer roster (2), age fresh. Same daily dirty-scrape-run partial grading as consumerPricesCoverage; parent evidence in #6355."
+    },
+    {
+      "name": "mineralProduction",
+      "status": "EMPTY",
+      "issue": 6439,
+      "reason": "New USGS/BGS mineral-production probe. seed-bundle-static-ref cannot publish until this PR deploys; EMPTY is expected until the first post-merge bundle run.",
+      "expiresAt": "2026-08-13T16:00:00.000Z",
+      "cutover": {
+        "probeKey": "seed-meta:supply-chain:mineral-production",
+        "activatedAt": "2026-08-12T17:10:00.000Z",
+        "firstScheduledRunAt": "2026-08-13T16:00:00.000Z"
+      }
     }
   ]
 }
