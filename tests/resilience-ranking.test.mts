@@ -1492,6 +1492,76 @@ describe('resilience ranking contracts', () => {
     assert.ok(returnedCountries.includes('NO') || returnedCountries.includes('US'), 'recomputed ranking must reflect the current static index');
   });
 
+  it('?refresh=1 rebuilds pre-warmed score payloads instead of republishing a poisoned cohort', async () => {
+    // #6510 production evidence: the 12:04Z Railway run reported 196/196
+    // scores pre-warmed, then the Vercel handler rebuilt only the ranking
+    // aggregate. The per-country payloads had been written before #6503 and
+    // carried education=source-failure, so refresh=1 republished the outage
+    // without ever running the fixed scorer.
+    process.env.WORLDMONITOR_SEED_REFRESH_KEY = 'seed-refresh-secret';
+    const { redis } = installRedis({ ...RESILIENCE_FIXTURES });
+    redis.set(
+      'resilience:static:index:v1',
+      JSON.stringify({
+        countries: ['NO', 'US'],
+        recordCount: 2,
+        failedDatasets: [],
+        seedYear: 2026,
+      }),
+    );
+
+    for (const countryCode of ['NO', 'US']) {
+      redis.set(`${RESILIENCE_SCORE_CACHE_PREFIX}${countryCode}`, JSON.stringify({
+        countryCode,
+        overallScore: 10,
+        baselineScore: 10,
+        stressScore: 10,
+        stressFactor: 0.5,
+        level: 'critical',
+        domains: [{
+          id: 'human',
+          score: 0,
+          weight: 1,
+          dimensions: [{
+            id: 'education',
+            score: 0,
+            coverage: 0,
+            observedWeight: 0,
+            imputedWeight: 1,
+            imputationClass: 'source-failure',
+          }],
+        }],
+        trend: 'stable',
+        change30d: 0,
+        lowConfidence: true,
+        imputationShare: 1,
+        dataVersion: 'poisoned-before-6503',
+        pillars: [],
+        schemaVersion: '2.0',
+        headlineEligible: false,
+        _formula: 'd6',
+        _educationState: 'education-on',
+      }));
+    }
+
+    await getResilienceRanking({
+      request: new Request('https://example.com/api/resilience/v1/get-resilience-ranking?refresh=1', {
+        headers: { 'X-WorldMonitor-Key': 'seed-refresh-secret' },
+      }),
+    } as never, {});
+
+    for (const countryCode of ['NO', 'US']) {
+      const refreshed = JSON.parse(redis.get(`${RESILIENCE_SCORE_CACHE_PREFIX}${countryCode}`)!);
+      const education = refreshed.domains
+        .flatMap((domain: { dimensions?: unknown[] }) => domain.dimensions ?? [])
+        .find((dimension: { id?: string }) => dimension.id === 'education');
+      assert.ok(education, `${countryCode} refreshed score must contain education`);
+      assert.ok(education.coverage > 0, `${countryCode} refresh must replace zero-coverage education`);
+      assert.notEqual(education.imputationClass, 'source-failure', `${countryCode} refresh must not retain source-failure`);
+      assert.notEqual(refreshed.dataVersion, 'poisoned-before-6503', `${countryCode} score payload must be recomputed`);
+    }
+  });
+
   it('?refresh=1 seed-secret recomputes release the Redis refresh slot by token', async () => {
     process.env.WORLDMONITOR_SEED_REFRESH_KEY = 'seed-refresh-secret';
     const { redis } = installRedis({ ...RESILIENCE_FIXTURES });

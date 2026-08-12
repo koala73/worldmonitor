@@ -778,7 +778,7 @@ describe('script is self-contained .mjs', () => {
     assert.match(src, /parseCachedScorePayload\(raw, expectedCacheState\)/);
     assert.match(src, /countCachedFromPipeline\(finalResults, expectedCacheState\)/);
     assert.match(src, /computeAndWriteIntervals\(url, token, countryCodes, finalResults, expectedCacheState\)/);
-    assert.match(src, /computeAndWriteIntervals\(url, token, countryCodes, preResults, expectedCacheState\)/);
+    assert.match(src, /computeAndWriteIntervals\(url, token, countryCodes, refreshedResults, expectedCacheState\)/);
     assert.match(src, /_formula: options\.expectedFormula/);
     assert.match(src, /_educationState: options\.expectedEducationState/);
     assert.match(src, /_intervalMethodology: INTERVAL_METHODOLOGY/);
@@ -826,6 +826,63 @@ describe('ensures ranking aggregate is present every cron, with truthful meta', 
       calls.length >= 2,
       `refreshRankingAggregate must be called from both branches (missing>0 and missing===0); found ${calls.length} call sites`,
     );
+  });
+
+  it('rotates the score cohort before reading interval inputs in both branches', () => {
+    const refreshCalls = [...src.matchAll(/const rankingPresent = await refreshRankingAggregate\([^;]+;/g)]
+      .map((match) => match.index);
+    const scoreReads = [...src.matchAll(/const (?:finalResults|refreshedResults) = await redisPipeline\(url, token, getCommands\);/g)]
+      .map((match) => match.index);
+    const intervalWrites = [...src.matchAll(/const intervalResult = await computeAndWriteIntervals\(url, token, countryCodes, (?:finalResults|refreshedResults), expectedCacheState\);/g)]
+      .map((match) => match.index);
+
+    assert.equal(refreshCalls.length, 2, 'warm and pre-warmed branches must each rotate the score cohort');
+    assert.equal(scoreReads.length, 2, 'each branch must re-read the score cohort after rotation');
+    assert.equal(intervalWrites.length, 2, 'each branch must publish intervals from its re-read cohort');
+    for (let index = 0; index < 2; index++) {
+      assert.ok(refreshCalls[index] < scoreReads[index], 'score rotation must precede the interval input read');
+      assert.ok(scoreReads[index] < intervalWrites[index], 'interval publication must use the post-rotation score read');
+    }
+  });
+
+  it('preserves the prior interval generation when the forced refresh does not complete', async () => {
+    const mod = await import('../scripts/seed-resilience-scores.mjs');
+    assert.equal(
+      typeof mod.refreshRankingAggregate,
+      'function',
+      'the refresh boundary must be directly testable as behavior, not only by source ordering',
+    );
+
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = (async (input) => {
+      const href = typeof input === 'string' ? input : input.url;
+      if (href.includes('/api/resilience/v1/get-resilience-ranking')) {
+        return new Response('gateway timeout', { status: 504 });
+      }
+      if (href.includes('/strlen/')) {
+        return new Response(JSON.stringify({ result: 31_370 }), { status: 200 });
+      }
+      if (href.includes('/get/seed-meta:resilience:ranking')) {
+        return new Response(JSON.stringify({
+          result: JSON.stringify({ fetchedAt: Date.now(), recordCount: 196 }),
+        }), { status: 200 });
+      }
+      throw new Error(`Unexpected fetch in refresh failure test: ${href}`);
+    });
+
+    try {
+      await assert.rejects(
+        () => mod.refreshRankingAggregate({
+          url: 'https://redis.example',
+          token: 'token',
+          laggardsWarmed: 0,
+        }),
+        /previous interval generation was preserved/i,
+        'an old ranking key must not make a failed refresh look safe for interval publication',
+      );
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
   });
 
   it('always triggers the rebuild HTTP call — never short-circuits on "key still present"', () => {

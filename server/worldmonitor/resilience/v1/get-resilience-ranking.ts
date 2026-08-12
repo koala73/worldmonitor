@@ -4,6 +4,7 @@ import {
   type ServerContext,
   type GetResilienceRankingRequest,
   type GetResilienceRankingResponse,
+  type GetResilienceScoreResponse,
   type ResilienceRankingItem,
 } from '../../../../src/generated/server/worldmonitor/resilience/v1/service_server';
 
@@ -325,7 +326,16 @@ export const getResilienceRanking: ResilienceServiceHandler['getResilienceRankin
       });
     }
 
-    const cachedScores = await getCachedResilienceScores(countryCodes);
+    // An authorized refresh is the score-cohort rotation path used by the
+    // Railway seeder. It must bypass BOTH cache layers: skipping only the
+    // ranking aggregate while admitting every pre-warmed per-country score
+    // republished the #6510 source-failure cohort after #6503 deployed, without
+    // executing the fixed scorer once. The old payloads remain available as
+    // stale fallback in Redis if this rebuild fails, while every country enters
+    // the in-memory recompute-and-atomic-publish path.
+    const cachedScores = forceRefresh
+      ? new Map<string, GetResilienceScoreResponse>()
+      : await getCachedResilienceScores(countryCodes);
     const missing = countryCodes.filter((countryCode) => !cachedScores.has(countryCode));
     // Track the country codes whose scores were JUST warmed by this invocation.
     // The persistence parity check below samples from THIS set specifically —

@@ -1315,7 +1315,12 @@ export async function warmMissingResilienceScores(
 
   // Share one memoized reader across all countries so global Redis keys (conflict events,
   // sanctions, unrest, etc.) are fetched only once instead of once per country.
-  const sharedReader = createMemoizedSeedReader();
+  // A normal memoized reader coalesces a missing key within one score build.
+  // This reader spans many countries, so joined countries share one recovery
+  // read after an exhausted seed-meta read: one transient null must not become
+  // the fail-closed answer for the full ranking cohort or trigger a retry herd
+  // (#6510).
+  const sharedReader = createMemoizedSeedReader(undefined, { retryJoinedSeedMetaNull: true });
   const computed = await Promise.allSettled(
     uniqueCodes.map(async (cc) => ({ cc, score: await scoreBuilder(cc, sharedReader) })),
   );

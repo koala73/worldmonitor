@@ -11,8 +11,8 @@
 //   1. The ranking warm scores ~196 countries CONCURRENTLY.
 //   2. Under that burst `getCachedJson` hits its 1500 ms op timeout.
 //   3. `getCachedJson` collapses MISS and ERROR to the same `null`.
-//   4. `createMemoizedSeedReader` caches that resolved `null`, so ONE failed
-//      read is shared by every country in the build.
+//   4. `createMemoizedSeedReader` shares that in-flight read, so ONE exhausted
+//      result reaches every country that joined it.
 //   5. The preflight reads `null` as "the producer never published" and
 //      fail-closes, publishing a 6-hour-cached source-failure for the world.
 //
@@ -25,6 +25,7 @@ import { readFileSync } from 'node:fs';
 import { afterEach, describe, it } from 'node:test';
 
 import { scoreEducation, createMemoizedSeedReader } from '../server/worldmonitor/resilience/v1/_dimension-scorers.ts';
+import { warmMissingResilienceScores } from '../server/worldmonitor/resilience/v1/_shared.ts';
 
 const META_KEY = 'seed-meta:resilience:education-attainment';
 const DATA_KEY = 'resilience:education-attainment:v1';
@@ -81,9 +82,14 @@ function installRedisStub(options: StubOptions = {}) {
     [DATA_KEY]: EDUCATION_PAYLOAD,
   };
 
-  globalThis.fetch = (async (input: unknown) => {
+  globalThis.fetch = (async (input: unknown, init?: RequestInit) => {
     const href = typeof input === 'string' ? input : (input as Request).url;
-    const key = decodeURIComponent(new URL(href).pathname.replace(/^\/get\//, ''));
+    const url = new URL(href);
+    if (url.pathname.endsWith('/pipeline')) {
+      const commands = JSON.parse(String(init?.body ?? '[]')) as unknown[];
+      return new Response(JSON.stringify(commands.map(() => ({ result: 'OK' }))), { status: 200 });
+    }
+    const key = decodeURIComponent(url.pathname.replace(/^\/get\//, ''));
     if (key === META_KEY) {
       counts.meta++;
       if (remainingMetaFailures > 0) {
@@ -147,21 +153,50 @@ describe('seed-meta preflight — transient read error vs genuine absence', () =
 });
 
 describe('memoized seed reader — one failed read must not poison the batch', () => {
-  it('does not cache a null seed-meta read across countries', async () => {
-    // The amplifier. `createMemoizedSeedReader` caches a resolved null, so in
-    // the ranking warm ONE failed read became source-failure for all 196
-    // countries. A later country in the same build must get its own attempt.
-    installRedisStub({ metaFailures: 1 });
-    const reader = createMemoizedSeedReader();
-
-    const first = await reader(META_KEY);
-    const second = await reader(META_KEY);
-
-    assert.ok(
-      first != null || second != null,
-      'a transient null must not be memoized for the rest of the build',
+  it('contains an exhausted seed-meta read without creating a batch-wide retry herd', async () => {
+    // #6510: the first fix evicted a resolved null from the memo, but all
+    // concurrent countries had already joined the same in-flight promise.
+    // If that promise exhausted its retries, every joined scorer still saw
+    // null and the whole batch failed closed. The first country may retain the
+    // fail-closed result; joined countries must share one recovery read.
+    const counts = installRedisStub({ metaFailures: 3 });
+    const countryCodes = RANKABLE_CODES.slice(0, 20);
+    const warmed = await warmMissingResilienceScores(
+      countryCodes,
+      async (countryCode, reader) => {
+        const education = await scoreEducation(countryCode, reader);
+        return {
+          countryCode,
+          domains: [{ id: 'human', score: education.score, weight: 1, dimensions: [{ id: 'education', ...education }] }],
+        } as never;
+      },
     );
-    assert.notEqual(second, null, 'the second read in the same batch must retry rather than reuse the failure');
+
+    assert.equal(warmed.failures.filter((failure) => failure.stage === 'compute').length, 1);
+    assert.equal(warmed.size, countryCodes.length - 1, 'only the creator of the exhausted read may fail closed');
+    assert.equal(counts.meta, 4, 'joined countries must share one recovery read instead of stampeding Redis');
+    for (const score of warmed.values()) {
+      const education = score.domains.flatMap((domain) => domain.dimensions).find((dimension) => dimension.id === 'education');
+      assert.ok(education && education.coverage > 0, `${score.countryCode} must observe the healthy education seed`);
+      assert.notEqual(education.imputationClass, 'source-failure');
+    }
+  });
+
+  it('evicts a null seed-meta result before a later sequential read', async () => {
+    const recoveredMeta = { fetchedAt: Date.now(), recordCount: 189, rankableRecordCount: 181 };
+    let reads = 0;
+    const reader = createMemoizedSeedReader(async () => {
+      reads++;
+      return reads === 1 ? null : recoveredMeta;
+    });
+
+    assert.equal(await reader(META_KEY), null, 'the creator still observes its fail-closed null');
+    assert.deepEqual(
+      await reader(META_KEY),
+      recoveredMeta,
+      'a later caller must retry instead of reusing the resolved null',
+    );
+    assert.equal(reads, 2, 'the sequential retry contract must not depend on the internal retry budget');
   });
 
   it('still memoizes a successful read', async () => {
