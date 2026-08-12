@@ -34,7 +34,6 @@ import {
   FIN_SYS_EXPOSURE_COMPREHENSIVE_EMBARGO,
   FIN_SYS_EXPOSURE_EMBARGO_POLICY_MAX_AGE_DAYS,
   FIN_SYS_EXPOSURE_EMBARGO_POLICY_REVIEWED_ON,
-  FIN_SYS_EXPOSURE_EMBARGO_SCORE_CAP,
   FIN_SYS_MARKET_ACCESS_LOW_CLAIMS_PCT_GDP_MAX,
   FIN_SYS_MARKET_ACCESS_LOW_DEBT_PCT_GNI_MAX,
   normalizeBandLowerBetter,
@@ -527,10 +526,7 @@ describe('scoreFinancialSystemExposure — comprehensive-embargo cap (#6459)', (
     // wrong: an embargoed country whose four slots all anchor at 100.
     for (const iso2 of FIN_SYS_EXPOSURE_COMPREHENSIVE_EMBARGO) {
       const result = await scoreFinancialSystemExposure(iso2, bestCaseReader(iso2));
-      assert.ok(
-        result.score <= FIN_SYS_EXPOSURE_EMBARGO_SCORE_CAP,
-        `${iso2} scored ${result.score}; must be capped at ${FIN_SYS_EXPOSURE_EMBARGO_SCORE_CAP}`,
-      );
+      assert.equal(result.score, 15, `${iso2} must stay pinned to the audited embargo cap`);
     }
   });
 
@@ -588,10 +584,7 @@ describe('scoreFinancialSystemExposure — comprehensive-embargo cap (#6459)', (
 
   it('is case-insensitive on the country code', async () => {
     const lower = await scoreFinancialSystemExposure('ru', bestCaseReader('ru'));
-    assert.ok(
-      lower.score <= FIN_SYS_EXPOSURE_EMBARGO_SCORE_CAP,
-      `lowercase iso2 must still hit the cap, got ${lower.score}`,
-    );
+    assert.equal(lower.score, 15, `lowercase iso2 must still hit the audited cap, got ${lower.score}`);
   });
 });
 
