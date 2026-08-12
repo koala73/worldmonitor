@@ -1775,6 +1775,51 @@ export const RPC_TOOLS: ToolDef[] = [
     },
     _apiPaths: [],
   },
+  {
+    name: 'get_mineral_production',
+    _outputBudgetBytes: 131072,
+    description: 'Who mines and who refines a commodity, with country shares and HHI. Answers "who refines cobalt" or "what does Chile produce". USGS Mineral Commodity Summaries plus BGS fill. Complements get_commodity_geo (deposit locations).',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        commodity: { type: 'string', description: 'Commodity id or label, e.g. "cobalt", "lithium", "ree"' },
+        iso2: { type: 'string', description: 'ISO 3166-1 alpha-2 producer filter, e.g. "CL"' },
+        stage: { type: 'string', enum: ['mine', 'refinery'], description: 'Mine or refinery/smelter stage. Omit for both.' },
+      },
+      required: [],
+    },
+    outputSchema: {
+      type: 'object',
+      properties: {
+        commodities: { type: 'array' },
+        countries: { type: 'array' },
+        fetchedAt: { type: 'string' },
+        upstreamUnavailable: { type: 'boolean' },
+        dataYear: { type: 'number' },
+      },
+    },
+    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    _execute: async (params, base, context) => {
+      const qs = new URLSearchParams();
+      if (params.commodity) qs.set('commodity', String(params.commodity));
+      if (params.iso2) qs.set('iso2', String(params.iso2).toUpperCase());
+      if (params.stage) qs.set('stage', String(params.stage));
+      const url = `${base}/api/supply-chain/v1/get-mineral-production${qs.size ? `?${qs}` : ''}`;
+      const auth = await buildAuthHeaders(context, 'GET', url, null);
+      const res = await fetch(url, {
+        headers: { ...auth, 'User-Agent': 'worldmonitor-mcp-edge/1.0' },
+        signal: AbortSignal.timeout(15_000),
+      });
+      assertToolFetchOk(res, 'get-mineral-production');
+      return res.json();
+    },
+    _coverageKeys: [
+      'supply-chain:mineral-production:v1',
+    ],
+    _apiPaths: [
+      'GET /api/supply-chain/v1/get-mineral-production',
+    ],
+  },
   ...ANALYSIS_TOOLS,
   {
     name: 'search_intel_history',

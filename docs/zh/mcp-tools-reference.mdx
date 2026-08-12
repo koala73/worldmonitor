@@ -515,6 +515,22 @@ curl -s https://worldmonitor.app/mcp \
 
 </CodeGroup>
 
+### `get_mineral_production`
+
+各国矿产开采与冶炼份额及 HHI，来自 USGS Mineral Commodity Summaries 年度种子（BGS 补 USGS 缺表的品种，尤其是铀）。用于“谁精炼 X / 某国生产什么”。矿床位置仍用 `get_commodity_geo`。
+
+**参数：**
+
+| 名称 | 类型 | 必填 | 描述 |
+|------|------|-----:|------|
+| `commodity` | string | 否 | 品种 id 或名称（`cobalt`、`lithium`、`ree` 等） |
+| `iso2` | string | 否 | ISO 3166-1 alpha-2 生产国过滤 |
+| `stage` | string: mine / refinery | 否 | 限制为开采或冶炼阶段 |
+
+- **API 端点：** `GET /api/supply-chain/v1/get-mineral-production`
+- **类型：** 缓存读取 — Redis 种子 `supply-chain:mineral-production:v1`。
+- **新鲜度：** 年度 MCS 版本。USGS 的 W（withheld）保持标记，不会被当成 0。
+
 ### `get_commodity_geo`
 
 全球矿业地点，含坐标、运营商、矿产类型和生产状态。覆盖全球 71 座主要矿山，涵盖黄金、白银、铜、锂、铀、煤和其他矿物。

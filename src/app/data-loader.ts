@@ -3812,24 +3812,27 @@ export class DataLoaderManager implements AppModule {
 
     try {
       const {
-        fetchShippingRates, fetchChokepointStatus, fetchCriticalMinerals, fetchShippingStress,
+        fetchShippingRates, fetchChokepointStatus, fetchCriticalMinerals, fetchMineralProduction, fetchShippingStress,
       } = await import('@/services/supply-chain');
-      const [shipping, chokepoints, minerals, stress] = await Promise.allSettled([
+      const [shipping, chokepoints, minerals, mineralProduction, stress] = await Promise.allSettled([
         fetchShippingRates(),
         fetchChokepointStatus(),
         fetchCriticalMinerals(),
+        fetchMineralProduction(),
         fetchShippingStress(),
       ]);
 
       const shippingData = shipping.status === 'fulfilled' ? shipping.value : null;
       const chokepointData = chokepoints.status === 'fulfilled' ? chokepoints.value : null;
       const mineralsData = minerals.status === 'fulfilled' ? minerals.value : null;
+      const mineralProductionData = mineralProduction.status === 'fulfilled' ? mineralProduction.value : null;
       const stressData = stress.status === 'fulfilled' ? stress.value : null;
 
       if (shippingData) scPanel.updateShippingRates(shippingData);
       if (chokepointData) scPanel.updateChokepointStatus(chokepointData);
       if (chokepointData) this.ctx.map?.setChokepointData(chokepointData);
       if (mineralsData) scPanel.updateCriticalMinerals(mineralsData);
+      if (mineralProductionData) scPanel.updateMineralProduction(mineralProductionData);
       if (stressData) scPanel.updateShippingStress(stressData);
 
       const totalItems = (shippingData?.indices.length || 0) + (chokepointData?.chokepoints.length || 0) + (mineralsData?.minerals.length || 0);

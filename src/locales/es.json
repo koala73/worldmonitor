@@ -842,7 +842,12 @@
       "loadingHistory": "Cargando historial de tránsitos…",
       "historyUnavailable": "Historial de tránsitos no disponible",
       "transitDataUnavailable": "Datos de tránsito no disponibles (parcial en origen)",
-      "infoTooltip": "<strong>Monitor de cadena de suministro</strong> Seguimiento global de logística y recursos:<ul><li><strong>Puntos críticos</strong>: estado de tránsito marítimo, puntuaciones de disrupción y conteos de buques</li><li><strong>Transporte</strong>: Índice Báltico Seco y tendencias de tarifas de flete</li><li><strong>Minerales</strong>: riesgo de concentración de minerales críticos (HHI) y principales productores</li></ul>Haz clic en una tarjeta de punto crítico para expandir el gráfico de historial de tránsitos."
+      "infoTooltip": "<strong>Monitor de cadena de suministro</strong> Seguimiento global de logística y recursos:<ul><li><strong>Puntos críticos</strong>: estado de tránsito marítimo, puntuaciones de disrupción y conteos de buques</li><li><strong>Transporte</strong>: Índice Báltico Seco y tendencias de tarifas de flete</li><li><strong>Minerales</strong>: riesgo de concentración de minerales críticos (HHI) y principales productores</li></ul>Haz clic en una tarjeta de punto crítico para expandir el gráfico de historial de tránsitos.",
+      "mineStage": "Mine",
+      "refineryStage": "Refine",
+      "stageUnavailable": "No published figures for this stage",
+      "withheldNote": "W withheld",
+      "productionCaption": "Country shares of actual production. The map deposits layer shows where resources sit; this table shows who mines or refines them."
     },
     "tradePolicy": {
       "tariffs": "Aranceles",

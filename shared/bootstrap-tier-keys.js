@@ -36,6 +36,7 @@ export const BOOTSTRAP_CACHE_KEYS = Object.freeze({
   shippingRates: 'supply_chain:shipping:v2',
   chokepoints: 'supply_chain:chokepoints:v4',
   minerals: 'supply_chain:minerals:v2',
+  mineralProduction: 'supply-chain:mineral-production:v1',
   giving: 'giving:summary:v2',
   climateAnomalies: 'climate:anomalies:v2',
   climateDisasters: 'climate:disasters:v1',
@@ -127,7 +128,7 @@ export const BOOTSTRAP_CACHE_KEYS = Object.freeze({
 });
 
 const SLOW_KEY_NAMES = new Set([
-  'bisPolicy', 'bisExchange', 'bisCredit', 'chinaMacro', 'chinaReleaseCalendar', 'chinaCorporateDisclosures', 'minerals', 'giving',
+  'bisPolicy', 'bisExchange', 'bisCredit', 'chinaMacro', 'chinaReleaseCalendar', 'chinaCorporateDisclosures', 'minerals', 'mineralProduction', 'giving',
   'sectors', 'etfFlows', 'wildfires', 'climateAnomalies', 'climateDisasters', 'co2Monitoring', 'oceanIce', 'climateNews',
   'radiationWatch', 'thermalEscalation', 'crossSourceSignals',
   'crossStraitActivity',

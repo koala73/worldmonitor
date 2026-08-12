@@ -141,6 +141,7 @@ const SEED_DOMAINS = {
   'infra:service-statuses':   { key: 'seed-meta:infra:service-statuses',   intervalMin: 60 },
   'supply_chain:shipping':    { key: 'seed-meta:supply_chain:shipping',    intervalMin: 120 },
   'supply_chain:chokepoints': { key: 'seed-meta:supply_chain:chokepoints', intervalMin: 30 },
+  'supply-chain:mineral-production': { key: 'seed-meta:supply-chain:mineral-production', intervalMin: 86400, minRecordCount: 8 }, // 60d static-ref bundle; 8-commodity floor
   'cable-health':             { key: 'seed-meta:cable-health',             intervalMin: 30 },
   'infrastructure:submarine-cables': { key: 'seed-meta:infrastructure:submarine-cables', intervalMin: 12600 },
   'prediction:markets': {

@@ -295,6 +295,7 @@ const RPC_CACHE_TIER: Record<string, CacheTier> = {
   '/api/economic/v1/get-nat-gas-storage': 'daily',
   '/api/economic/v1/get-eu-yield-curve': 'daily',
   '/api/supply-chain/v1/get-critical-minerals': 'daily',
+  '/api/supply-chain/v1/get-mineral-production': 'daily',
   '/api/military/v1/get-aircraft-details': 'static',
   '/api/military/v1/get-wingbits-status': 'static',
   '/api/military/v1/get-wingbits-live-flight': 'no-store',

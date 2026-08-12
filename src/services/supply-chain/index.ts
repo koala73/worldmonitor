@@ -1,7 +1,7 @@
 import { getRpcBaseUrl } from '@/services/rpc-client';
 import { premiumFetch } from '@/services/premium-fetch';
 import type { CargoType } from '@/config/bypass-corridors';
-import type { GetShippingRatesResponse, GetChokepointStatusResponse, GetChokepointHistoryResponse, GetCriticalMineralsResponse, GetShippingStressResponse, GetCountryChokepointIndexResponse, GetBypassOptionsResponse, GetCountryCostShockResponse, GetCountryProductsResponse, GetMultiSectorCostShockResponse, GetSectorDependencyResponse, GetRouteExplorerLaneResponse, GetRouteImpactResponse, ShippingIndex, ChokepointInfo, CriticalMineral, MineralProducer, ShippingRatePoint, ChokepointExposureEntry, BypassOption, TransitDayCount, CountryProduct, ProductExporter, MultiSectorCostShock } from '@/generated/client/worldmonitor/supply_chain/v1/service_client';
+import type { GetShippingRatesResponse, GetChokepointStatusResponse, GetChokepointHistoryResponse, GetCriticalMineralsResponse, GetMineralProductionResponse, GetShippingStressResponse, GetCountryChokepointIndexResponse, GetBypassOptionsResponse, GetCountryCostShockResponse, GetCountryProductsResponse, GetMultiSectorCostShockResponse, GetSectorDependencyResponse, GetRouteExplorerLaneResponse, GetRouteImpactResponse, ShippingIndex, ChokepointInfo, CriticalMineral, MineralProducer, ShippingRatePoint, ChokepointExposureEntry, BypassOption, TransitDayCount, CountryProduct, ProductExporter, MultiSectorCostShock } from '@/generated/client/worldmonitor/supply_chain/v1/service_client';
 import { createCircuitBreaker } from '@/utils';
 import { getHydratedData } from '@/services/bootstrap';
 import { hasPremiumAccess } from '@/services/panel-gating';
@@ -29,6 +29,7 @@ export type {
   GetChokepointStatusResponse,
   GetChokepointHistoryResponse,
   GetCriticalMineralsResponse,
+  GetMineralProductionResponse,
   GetShippingStressResponse,
   GetCountryChokepointIndexResponse,
   GetBypassOptionsResponse,
@@ -63,8 +64,8 @@ export type MultiSectorShock = MultiSectorCostShock;
 // signed-in browser pros (no Clerk bearer / no WM key injected) and the
 // generated client's try/catch would swallow the 401, returning the empty
 // fallbacks below. premiumFetch no-ops safely when no credentials are
-// available, so the 5 non-premium methods (shippingRates, chokepointStatus,
-// chokepointHistory, criticalMinerals, shippingStress) keep working as before.
+// available, so the public methods (shippingRates, chokepointStatus,
+// chokepointHistory, criticalMinerals, mineralProduction, shippingStress) keep working as before.
 const client = new SupplyChainServiceClient(getRpcBaseUrl(), { fetch: premiumFetch });
 
 const shippingBreaker = createCircuitBreaker<GetShippingRatesResponse>({ name: 'Shipping Rates', cacheTtlMs: 60 * 60 * 1000, persistCache: true });
@@ -78,6 +79,18 @@ const chinaCorridorBreaker = createCircuitBreaker<ChinaCorridorControlTowerRespo
 const emptyShipping: GetShippingRatesResponse = { indices: [], fetchedAt: '', upstreamUnavailable: false };
 const emptyChokepoints: GetChokepointStatusResponse = { chokepoints: [], fetchedAt: '', upstreamUnavailable: false };
 const emptyMinerals: GetCriticalMineralsResponse = { minerals: [], fetchedAt: '', upstreamUnavailable: false };
+const emptyMineralProduction: GetMineralProductionResponse = {
+  commodities: [],
+  countries: [],
+  fetchedAt: '',
+  upstreamUnavailable: false,
+  dataYear: 0,
+};
+const mineralProductionBreaker = createCircuitBreaker<GetMineralProductionResponse>({
+  name: 'Mineral Production',
+  cacheTtlMs: 24 * 60 * 60 * 1000,
+  persistCache: true,
+});
 
 export async function fetchChinaCorridorControlTowers(): Promise<ChinaCorridorControlTowerResponse> {
   return fetchChinaCorridorControlTowersWithDependencies({
@@ -140,6 +153,19 @@ export async function fetchCriticalMinerals(): Promise<GetCriticalMineralsRespon
     }, emptyMinerals);
   } catch {
     return emptyMinerals;
+  }
+}
+
+export async function fetchMineralProduction(): Promise<GetMineralProductionResponse> {
+  const hydrated = getHydratedData('mineralProduction') as GetMineralProductionResponse | undefined;
+  if (hydrated?.commodities?.length) return hydrated;
+
+  try {
+    return await mineralProductionBreaker.execute(async () => {
+      return client.getMineralProduction({ commodity: '', iso2: '', stage: '' });
+    }, emptyMineralProduction);
+  } catch {
+    return emptyMineralProduction;
   }
 }
 

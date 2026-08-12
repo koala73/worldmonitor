@@ -842,7 +842,12 @@
       "loadingHistory": "Caricamento cronologia transiti…",
       "historyUnavailable": "Cronologia transiti non disponibile",
       "transitDataUnavailable": "Dati transiti non disponibili (parziale da origine)",
-      "infoTooltip": "<strong>Supply Chain Monitor</strong> Tracciamento logistica e risorse globali:<ul><li><strong>Chokepoint</strong>: Stato transiti marittimi, punteggi disagi e conteggio navi</li><li><strong>Spedizioni</strong>: Baltic Dry Index e tendenze tariffe di trasporto</li><li><strong>Minerali</strong>: Rischio concentrazione minerali critici (HHI) e principali produttori</li></ul>Fai clic su una card chokepoint per espandere il grafico cronologia transiti."
+      "infoTooltip": "<strong>Supply Chain Monitor</strong> Tracciamento logistica e risorse globali:<ul><li><strong>Chokepoint</strong>: Stato transiti marittimi, punteggi disagi e conteggio navi</li><li><strong>Spedizioni</strong>: Baltic Dry Index e tendenze tariffe di trasporto</li><li><strong>Minerali</strong>: Rischio concentrazione minerali critici (HHI) e principali produttori</li></ul>Fai clic su una card chokepoint per espandere il grafico cronologia transiti.",
+      "mineStage": "Mine",
+      "refineryStage": "Refine",
+      "stageUnavailable": "No published figures for this stage",
+      "withheldNote": "W withheld",
+      "productionCaption": "Country shares of actual production. The map deposits layer shows where resources sit; this table shows who mines or refines them."
     },
     "tradePolicy": {
       "tariffs": "Dazi",

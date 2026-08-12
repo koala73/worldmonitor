@@ -852,7 +852,12 @@
       "loadingHistory": "กำลังโหลดประวัติการขนส่ง…",
       "historyUnavailable": "ไม่มีประวัติการขนส่ง",
       "transitDataUnavailable": "ไม่มีข้อมูลการขนส่ง (บางส่วนต้นน้ำ)",
-      "infoTooltip": "<strong>ตัวติดตามห่วงโซ่อุปทาน</strong> การติดตามโลจิสติกส์และทรัพยากรทั่วโลก:<ul><li><strong>จุดคอขวด</strong>: สถานะการขนส่งทางทะเล คะแนนการหยุดชะงัก และจำนวนเรือ</li><li><strong>การขนส่ง</strong>: ดัชนี Baltic Dry และแนวโน้มค่าขนส่ง</li><li><strong>แร่ธาตุ</strong>: ความเสี่ยงจากความเข้มข้นของแร่ธาตุหาค่ายาก (HHI) และผู้ผลิตชั้นนำ</li></ul>คลิกการ์ดจุดคอขวดเพื่อขยายแผนภูมิประวัติการขนส่ง"
+      "infoTooltip": "<strong>ตัวติดตามห่วงโซ่อุปทาน</strong> การติดตามโลจิสติกส์และทรัพยากรทั่วโลก:<ul><li><strong>จุดคอขวด</strong>: สถานะการขนส่งทางทะเล คะแนนการหยุดชะงัก และจำนวนเรือ</li><li><strong>การขนส่ง</strong>: ดัชนี Baltic Dry และแนวโน้มค่าขนส่ง</li><li><strong>แร่ธาตุ</strong>: ความเสี่ยงจากความเข้มข้นของแร่ธาตุหาค่ายาก (HHI) และผู้ผลิตชั้นนำ</li></ul>คลิกการ์ดจุดคอขวดเพื่อขยายแผนภูมิประวัติการขนส่ง",
+      "mineStage": "Mine",
+      "refineryStage": "Refine",
+      "stageUnavailable": "No published figures for this stage",
+      "withheldNote": "W withheld",
+      "productionCaption": "Country shares of actual production. The map deposits layer shows where resources sit; this table shows who mines or refines them."
     },
     "tradePolicy": {
       "tariffs": "ภาษีศุลกากร",

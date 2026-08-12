@@ -852,7 +852,12 @@
       "loadingHistory": "Geçiş geçmişi yükleniyor…",
       "historyUnavailable": "Geçiş geçmişi kullanılamıyor",
       "transitDataUnavailable": "Geçiş verileri kullanılamıyor (upstream kısmi)",
-      "infoTooltip": "<strong>Tedarik Zinciri İzleyicisi</strong> Küresel lojistik ve kaynak izleme:<ul><li><strong>Darboğazlar</strong>: Deniz geçişi durumu, kesinti puanları ve gemi sayıları</li><li><strong>Nakliye</strong>: Baltic Kuru İndeksi ve nakliye tarifeleri eğilimleri</li><li><strong>Mineraller</strong>: Kritik maden yoğunlaşma riski (HHI) ve en büyük üreticiler</li></ul>Geçiş geçmişi grafiğini genişletmek için bir darboğaz kartına tıklayın."
+      "infoTooltip": "<strong>Tedarik Zinciri İzleyicisi</strong> Küresel lojistik ve kaynak izleme:<ul><li><strong>Darboğazlar</strong>: Deniz geçişi durumu, kesinti puanları ve gemi sayıları</li><li><strong>Nakliye</strong>: Baltic Kuru İndeksi ve nakliye tarifeleri eğilimleri</li><li><strong>Mineraller</strong>: Kritik maden yoğunlaşma riski (HHI) ve en büyük üreticiler</li></ul>Geçiş geçmişi grafiğini genişletmek için bir darboğaz kartına tıklayın.",
+      "mineStage": "Mine",
+      "refineryStage": "Refine",
+      "stageUnavailable": "No published figures for this stage",
+      "withheldNote": "W withheld",
+      "productionCaption": "Country shares of actual production. The map deposits layer shows where resources sit; this table shows who mines or refines them."
     },
     "tradePolicy": {
       "tariffs": "Gümrük Tarifeleri",

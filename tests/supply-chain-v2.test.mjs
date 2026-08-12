@@ -317,6 +317,10 @@ describe('Gateway daily cache tier', () => {
     assert.match(src, /\/api\/supply-chain\/v1\/get-critical-minerals':\s*'daily'/);
   });
 
+  it('mineral production route uses daily tier', () => {
+    assert.match(src, /\/api\/supply-chain\/v1\/get-mineral-production':\s*'daily'/);
+  });
+
   it('critical minerals route does NOT use static tier', () => {
     assert.doesNotMatch(src, /\/api\/supply-chain\/v1\/get-critical-minerals':\s*'static'/);
   });

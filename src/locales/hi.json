@@ -953,7 +953,12 @@
       "mineral": "खनिज",
       "topProducers": "शीर्ष उत्पादक",
       "risk": "जोखिम",
-      "infoTooltip": "<strong>सप्लाई चेन मॉनिटर</strong> वैश्विक लॉजिस्टिक्स और संसाधन ट्रैकिंग:<ul><li><strong>चोकपॉइंट</strong>: समुद्री पारगमन स्थिति, व्यवधान स्कोर, और जहाज गणना</li><li><strong>शिपिंग</strong>: बाल्टिक ड्राई इंडेक्स और फ्रेट दर प्रवृत्तियां</li><li><strong>खनिज</strong>: महत्वपूर्ण खनिज सांद्रता जोखिम (HHI) और शीर्ष उत्पादक</li></ul>ट्रांजिट इतिहास चार्ट खोलने के लिए चोकपॉइंट कार्ड पर क्लिक करें।"
+      "infoTooltip": "<strong>सप्लाई चेन मॉनिटर</strong> वैश्विक लॉजिस्टिक्स और संसाधन ट्रैकिंग:<ul><li><strong>चोकपॉइंट</strong>: समुद्री पारगमन स्थिति, व्यवधान स्कोर, और जहाज गणना</li><li><strong>शिपिंग</strong>: बाल्टिक ड्राई इंडेक्स और फ्रेट दर प्रवृत्तियां</li><li><strong>खनिज</strong>: महत्वपूर्ण खनिज सांद्रता जोखिम (HHI) और शीर्ष उत्पादक</li></ul>ट्रांजिट इतिहास चार्ट खोलने के लिए चोकपॉइंट कार्ड पर क्लिक करें।",
+      "mineStage": "Mine",
+      "refineryStage": "Refine",
+      "stageUnavailable": "No published figures for this stage",
+      "withheldNote": "W withheld",
+      "productionCaption": "Country shares of actual production. The map deposits layer shows where resources sit; this table shows who mines or refines them."
     },
     "tradePolicy": {
       "overview": "ओवरव्यू",

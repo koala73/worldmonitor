@@ -142,6 +142,63 @@ export interface MineralProducer {
   sharePct: number;
 }
 
+export interface GetMineralProductionRequest {
+  commodity: string;
+  iso2: string;
+  stage: string;
+}
+
+export interface GetMineralProductionResponse {
+  commodities: MineralProductionRecord[];
+  countries: MineralCountryPortfolio[];
+  fetchedAt: string;
+  upstreamUnavailable: boolean;
+  dataYear: number;
+}
+
+export interface MineralProductionRecord {
+  commodityId: string;
+  commodity: string;
+  year: number;
+  unit: string;
+  mine?: MineralStageSnapshot;
+  refinery?: MineralStageSnapshot;
+  sources: string[];
+}
+
+export interface MineralStageSnapshot {
+  year: number;
+  unit: string;
+  countries: MineralCountryShare[];
+  hhi: number;
+  worldTotal?: number;
+  withheldCount: number;
+}
+
+export interface MineralCountryShare {
+  iso2: string;
+  country: string;
+  output?: number;
+  share?: number;
+  withheld: boolean;
+  estimated: boolean;
+  residual: boolean;
+}
+
+export interface MineralCountryPortfolio {
+  iso2: string;
+  holdings: MineralCountryHolding[];
+}
+
+export interface MineralCountryHolding {
+  commodityId: string;
+  commodity: string;
+  stage: string;
+  output?: number;
+  share?: number;
+  withheld: boolean;
+}
+
 export interface GetShippingStressRequest {
 }
 
@@ -796,6 +853,33 @@ export class SupplyChainServiceClient {
     }
 
     return await resp.json() as GetCriticalMineralsResponse;
+  }
+
+  async getMineralProduction(req: GetMineralProductionRequest, options?: SupplyChainServiceCallOptions): Promise<GetMineralProductionResponse> {
+    let path = "/api/supply-chain/v1/get-mineral-production";
+    const params = new URLSearchParams();
+    if (req.commodity != null && req.commodity !== "") params.set("commodity", String(req.commodity));
+    if (req.iso2 != null && req.iso2 !== "") params.set("iso2", String(req.iso2));
+    if (req.stage != null && req.stage !== "") params.set("stage", String(req.stage));
+    const url = this.baseURL + path + (params.toString() ? "?" + params.toString() : "");
+
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      ...this.defaultHeaders,
+      ...options?.headers,
+    };
+
+    const resp = await this.fetchFn(url, {
+      method: "GET",
+      headers,
+      signal: options?.signal,
+    });
+
+    if (!resp.ok) {
+      return this.handleError(resp);
+    }
+
+    return await resp.json() as GetMineralProductionResponse;
   }
 
   async getShippingStress(_req: GetShippingStressRequest, options?: SupplyChainServiceCallOptions): Promise<GetShippingStressResponse> {

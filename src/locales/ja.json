@@ -852,7 +852,12 @@
       "loadingHistory": "通過履歴を読み込み中…",
       "historyUnavailable": "通過履歴が利用できません",
       "transitDataUnavailable": "通過データが利用できません（上流データが部分的）",
-      "infoTooltip": "<strong>サプライチェーン監視</strong> グローバルロジスティクスとリソース追跡:<ul><li><strong>チョークポイント</strong>: 海上輸送ステータス、支障スコア、船舶数</li><li><strong>海運</strong>: バルティック海運指数と運賃トレンド</li><li><strong>鉱物</strong>: 重要鉱物集中リスク（HHI）と主要生産国</li></ul>チョークポイントカードをクリックして通過履歴チャートを展開します。"
+      "infoTooltip": "<strong>サプライチェーン監視</strong> グローバルロジスティクスとリソース追跡:<ul><li><strong>チョークポイント</strong>: 海上輸送ステータス、支障スコア、船舶数</li><li><strong>海運</strong>: バルティック海運指数と運賃トレンド</li><li><strong>鉱物</strong>: 重要鉱物集中リスク（HHI）と主要生産国</li></ul>チョークポイントカードをクリックして通過履歴チャートを展開します。",
+      "mineStage": "Mine",
+      "refineryStage": "Refine",
+      "stageUnavailable": "No published figures for this stage",
+      "withheldNote": "W withheld",
+      "productionCaption": "Country shares of actual production. The map deposits layer shows where resources sit; this table shows who mines or refines them."
     },
     "tradePolicy": {
       "tariffs": "関税",
