@@ -757,6 +757,51 @@ export function normalizeBandLowerBetter(value: number): number {
   return roundScore(Math.max(FIN_SYS_BAND_OVEREXPOSED_FLOOR, 45 - (value - 60) * 0.5));
 }
 
+// The band's premium region (raw band > 75, i.e. claims between 5% and
+// ~40.9% of GDP) is documented as "healthy DIVERSIFIED financial system" —
+// but `normalizeBandLowerBetter` reads only the integration LEVEL. On the
+// 2026-08-12 production payload, 29 of the 77 premium-region countries held
+// that premium through ≤ 2 reporting parents: Bosnia took a 90 band on ONE
+// parent, Albania a 91 on two (its parents map is dominated by one Austrian
+// and one Italian group). Moderate integration through two doors is not a
+// diversified system — it is the 1997-Thailand / 2011-Greek-deleveraging
+// withdrawal channel, and the construct's own Component 4 scores that same
+// fact 11/100. Level and breadth are not independent: the level's meaning
+// flips with concentration, which is the same cross-component insight behind
+// `isMarketAccessConstrainedDebtSignal` (#6461).
+//
+// So the premium above the 75 low-integration boundary is scaled by the
+// construct's OWN redundancy transform — `normalizeHigherBetter(parents,
+// 1, 10)`, verbatim the Component 4 scale, no new constants. Everything at
+// or below 75 (both floors, the isolation leg, the deep over-exposure legs)
+// is untouched, so every #6459 band invariant survives:
+//
+//   conditioned = min(band, 75) + max(0, band − 75) × redundancy/100
+//
+//   - parents ≥ 10 → full premium (identical to the raw band everywhere);
+//   - parents ≤ 1  → no premium (band caps at the 75 boundary value);
+//   - continuous in claims for any fixed parent count (a scaled continuous
+//     premium added to a continuous base), monotone in parents;
+//   - `parentCount == null` (BIS row present but the count failed to parse)
+//     earns NO premium: absence of diversity evidence is not diversity, the
+//     same fail-closed direction as `readBisLbsCountry`'s refusal to coerce
+//     malformed fields to observed zeros.
+//
+// Known conservative edge: parentCount counts only parents above 1% of GDP,
+// so a country integrated through many sub-threshold parents forfeits a
+// premium its true breadth might merit. No production row currently has
+// premium-region claims with parentCount 0, and the forfeited premium at
+// those claim levels is ≤ 3 points.
+export function normalizeDiversityConditionedBand(
+  claimsPctGdp: number,
+  parentCount: number | null,
+): number {
+  const raw = normalizeBandLowerBetter(claimsPctGdp);
+  if (raw <= 75) return raw;
+  const redundancy = parentCount == null ? 0 : normalizeHigherBetter(parentCount, 1, 10);
+  return roundScore(75 + (raw - 75) * (redundancy / 100));
+}
+
 // `normalizeSanctionCount` retired in plan 2026-04-25-004 Phase 1. The
 // piecewise scale (0=100, 1-10=90-75, 11-50=75-50, 51-200=50-25, 201+=25→0)
 // only normalized the dropped OFAC `sanctionCount` component. Removed
@@ -1666,7 +1711,9 @@ export async function scoreTradePolicy(
 // Components (weights total 1.0):
 //   short_term_external_debt_pct_gni     0.35 (WB IDS — lowerBetter; goalpost worst=15% best=0%;
 //                                              non-DRS jurisdictions impute — see resolveNonDrsDebtImputation)
-//   bis_lbs_xborder_us_eu_uk_pct_gdp     0.30 (BIS CBS by-parent — asymmetric U-shape band)
+//   bis_lbs_xborder_us_eu_uk_pct_gdp     0.30 (BIS CBS by-parent — asymmetric U-shape band;
+//                                              premium above 75 scaled by parent redundancy —
+//                                              see normalizeDiversityConditionedBand)
 //   fatf_listing_status                   0.20 (FATF — discrete: black=0, gray=55, compliant=100)
 //   financial_center_redundancy           0.15 (BIS CBS by-parent count — higherBetter; goalpost worst=1 best=10)
 //
@@ -2113,9 +2160,13 @@ export async function scoreFinancialSystemExposure(
       imputationClass: nonDrsDebtImputation?.imputationClass,
     },
     {
+      // Diversity-conditioned: the sweet-spot premium is earned only in
+      // proportion to demonstrated parent breadth (see
+      // `normalizeDiversityConditionedBand`). Passing `parentCount` from the
+      // same BIS row keeps level and breadth reads consistent per country.
       score: bisCountry?.totalXborderPctGdp == null
         ? null
-        : normalizeBandLowerBetter(bisCountry.totalXborderPctGdp),
+        : normalizeDiversityConditionedBand(bisCountry.totalXborderPctGdp, bisCountry.parentCount),
       weight: 0.30,
     },
     {

@@ -133,6 +133,16 @@ Three invariants now hold, and `tests/resilience-financial-system-exposure.test.
 2. The over-exposure leg floors at 35 — above the isolation floor, because an over-banked entrepôt still has working correspondent access that a severed state does not.
 3. Every segment boundary is continuous, including the new 80% floor knee (the PR #3407 Greptile P1 lesson: cliffs in piecewise-linear scorers destabilize rankings at band edges).
 
+**Diversity-conditioned premium (the Albania residue).** The table above is the RAW band; what the blend consumes is `normalizeDiversityConditionedBand`, which scales the premium **above the 75 low-integration boundary** by Component 4's own redundancy transform:
+
+```
+conditioned = min(band, 75) + max(0, band − 75) × normalizeHigherBetter(parentCount, 1, 10) / 100
+```
+
+The sweet spot's label is "healthy **diversified** financial system", but the raw band reads only the integration level. After the #6459 retune, 29 of the 77 premium-region countries on the 2026-08-12 production payload held that premium through ≤ 2 reporting parents — Bosnia took a 90 band on ONE parent; Albania took 91 on claims routed almost entirely through one Austrian and one Italian banking group, and out-scored Singapore and the United Kingdom on the full dimension. Moderate integration through two doors is a withdrawal channel (Thailand 1997; the 2011-2015 Greek-bank deleveraging in the western Balkans), not a cushion, and the construct's own Component 4 scores the same fact 11/100. Conditioning the premium on demonstrated parent breadth closes that gap with **no new constants or sources**: the scale is verbatim Component 4's, the same reuse discipline as the #6461 market-access proxy.
+
+Everything at or below 75 is untouched — the isolation floor, the over-exposure floor, and the deep over-exposure legs keep the exact #6459 shape, so all three invariants above survive unchanged. Additional conditioning invariants pinned by the same test file: parents ≥ 10 earns the full raw premium; parents ≤ 1 (or a BIS row whose `parentCount` failed to parse) earns none — absence of diversity evidence is not diversity; the conditioned band is monotone in parents and remains continuous in claims at every segment boundary. Known conservative edge: `parentCount` counts only parents above 1% of GDP, so a country integrated through many sub-threshold parents forfeits a premium its true breadth might merit (≤ 3 points at the affected claim levels; no production row currently hits this).
+
 A negative or non-finite reading is upstream corruption, not isolation, and falls back to a neutral 50 rather than to the isolation floor — a parser regression must not read as a sanctions verdict.
 
 **Coverage**: ~200 jurisdictions; effectively complete for the manifest.

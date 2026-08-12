@@ -164,6 +164,19 @@ export const MATCHED_PAIRS: readonly MatchedPair[] = [
 export interface DimensionMatchedPair extends MatchedPair {
   /** Dimension id whose per-dimension score the pair constrains. */
   dimension: string;
+  /**
+   * Marks a deliberately-thin anti-inversion anchor. The default dimension
+   * pair is a DECISIVE contrast (severed vs deep; embargoed vs reserve
+   * issuer) and must carry `minGap ≥ 10` — below that, a decisive pair
+   * stops distinguishing "directionally right" from "the two happen to be
+   * close". A thin anchor is the other kind: both jurisdictions' readings
+   * are genuine and the honest post-fix state IS close, so the pair exists
+   * to pin direction (and a small floor) against re-inversion — not
+   * separation. Thin anchors carry `minGap` 1-5, and the rationale must say
+   * why the gap is structurally thin. Config gate:
+   * tests/resilience-cohort-config.test.mts § 'decisive minimum gap'.
+   */
+  thinAnchor?: true;
 }
 
 /**
@@ -227,5 +240,27 @@ export const FIN_SYS_EXPOSURE_MATCHED_PAIRS: readonly DimensionMatchedPair[] = [
     rationale:
       'The cap-independent anchor of this panel. Neither jurisdiction is on the comprehensive-embargo list, so this pair holds on the graded components alone — if the cap were ever removed or narrowed, the other four pairs would go quiet while this one still constrains direction. Switzerland and Mauritius are both small, FATF-clean, banking-heavy economies, which is what makes the contrast informative: Mauritius carries short-term external debt worth 62.8% of GNI against the construct\'s 15%-of-GNI vulnerability threshold, and its cross-border claims sit deep in over-exposed territory on a small domestic base, while Switzerland sits inside the healthy band with nine reporting parents and no comparable rollover overhang. The claim is that the construct rewards depth plus low rollover risk over thinly-capitalised intermediation. It flips if Mauritius materially deleverages its short-term external position, which would be a real improvement in the thing being measured.',
     minGap: 10,
+  },
+  {
+    id: 'gb-vs-al-finsys',
+    dimension: 'financialSystemExposure',
+    higherExpected: 'GB',
+    lowerExpected: 'AL',
+    axis: 'Deep multi-parent hub vs concentrated two-parent integration',
+    rationale:
+      'The concentrated-integration anchor. Albania\'s cross-border claims sit at sweet-spot level (17.6% of GDP) but arrive through exactly two reporting parents — its BIS parents map is dominated by one Austrian and one Italian banking group, the same two-door dependence that made Greek-bank deleveraging a systemic event for the western Balkans in 2011-2015. The United Kingdom carries heavier claims (64.2% of GDP) through twelve independent parents with clean FATF standing. A construct whose Component 2 sweet spot is documented as "healthy diversified financial system" must not rank a two-parent system above a twelve-parent one on the strength of the level alone: integration depth without funding diversity is a withdrawal channel, not a cushion. The gap is structurally thin, not decisive: the UK\'s heavy claims genuinely sit on the over-exposure leg while Albania\'s low short-term debt and clean FATF standing are genuine strengths, so direction plus a small floor is the honest claim. It flips only if Albania\'s parent base genuinely broadens — a real improvement in the thing measured — or if the UK\'s correspondent network concentrates to a comparable degree.',
+    thinAnchor: true,
+    minGap: 3,
+  },
+  {
+    id: 'sg-vs-al-finsys',
+    dimension: 'financialSystemExposure',
+    higherExpected: 'SG',
+    lowerExpected: 'AL',
+    axis: 'Diversified entrepôt over-exposure vs concentrated moderate integration',
+    rationale:
+      'The residue pair from the #6459 retune: after the band re-anchor Singapore still scored below Albania, because Albania collected the full sweet-spot premium on claims held through two parents while Singapore\'s eleven-parent entrepôt balance sheet sat on the over-exposure floor. Both readings are real, but their risk is not symmetric: an eleven-parent hub loses one funder and reroutes; a two-parent system loses one funder and loses half its foreign-credit channel. The gap is deliberately thin — Singapore\'s over-exposure is genuine and Albania\'s low short-term debt is genuine, so the construct should separate them by direction rather than by a wide margin. It flips if Albania\'s parent base broadens materially or if Singapore\'s reporting-parent set collapses toward concentration.',
+    thinAnchor: true,
+    minGap: 1,
   },
 ] as const;

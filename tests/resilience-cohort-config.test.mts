@@ -194,11 +194,30 @@ describe('dimension-scoped matched-pair configuration', () => {
     // unambiguous, so it takes a wider buffer than the whole-index panel's
     // 1-5 point cushions. Below 10 the gate stops distinguishing "the
     // construct is directionally right" from "the two happen to be close".
+    //
+    // The exception is an explicit `thinAnchor` — a pair whose two
+    // jurisdictions are legitimately close (both readings genuine, the
+    // honest post-fix state IS a small gap) and which exists to pin
+    // direction against re-inversion, not separation. Those carry 1-5 and
+    // must say in their rationale why the gap is structurally thin; the
+    // marker is deliberate opt-in so the decisive default keeps its teeth.
     for (const { label, pairs } of DIMENSION_PANELS) {
       for (const pair of pairs) {
         const minGap = pair.minGap ?? 3;
-        assert.ok(minGap >= 10, `${label} pair ${pair.id} minGap=${minGap} must be ≥ 10`);
-        assert.ok(minGap <= 40, `${label} pair ${pair.id} minGap=${minGap} suspiciously large`);
+        if (pair.thinAnchor) {
+          assert.ok(
+            minGap >= 1 && minGap <= 5,
+            `${label} thin anchor ${pair.id} minGap=${minGap} must be 1-5 — a thin anchor needing more is a decisive pair`,
+          );
+          assert.match(
+            pair.rationale,
+            /thin|close/i,
+            `${label} thin anchor ${pair.id} rationale must explain why the gap is structurally thin`,
+          );
+        } else {
+          assert.ok(minGap >= 10, `${label} pair ${pair.id} minGap=${minGap} must be ≥ 10`);
+          assert.ok(minGap <= 40, `${label} pair ${pair.id} minGap=${minGap} suspiciously large`);
+        }
       }
     }
   });

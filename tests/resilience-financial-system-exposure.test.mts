@@ -37,6 +37,7 @@ import {
   FIN_SYS_MARKET_ACCESS_LOW_CLAIMS_PCT_GDP_MAX,
   FIN_SYS_MARKET_ACCESS_LOW_DEBT_PCT_GNI_MAX,
   normalizeBandLowerBetter,
+  normalizeDiversityConditionedBand,
   scoreFinancialSystemExposure,
   ResilienceConfigurationError,
   type ResilienceSeedReader,
@@ -457,6 +458,87 @@ describe('scoreFinancialSystemExposure — formula math', () => {
     for (const bad of [-1, Number.NaN, Number.POSITIVE_INFINITY]) {
       assert.equal(normalizeBandLowerBetter(bad), 50, `malformed reading ${bad} must fall back to the neutral 50`);
     }
+  });
+
+  it('diversity conditioning: the premium above 75 is earned in proportion to parent breadth', () => {
+    // The Albania defect: 17.6% of GDP through TWO parents took the raw
+    // band's 91 — a "healthy diversified" premium with no diversity
+    // evidence — while the construct's own redundancy component scored the
+    // same fact 11/100. Tested against the exported function directly, for
+    // the same reason as the U-shape invariants above: through the blend a
+    // fixture that varies the band also moves the debt slot.
+
+    // Invariant 1: everything at or below the 75 boundary is untouched at
+    // EVERY parent count — both floors and the deep over-exposure legs are
+    // not this conditioning's business.
+    for (const pct of [0, 1.45, 4.9, 43.67, 60, 80, 122, 1041.64]) {
+      const raw = normalizeBandLowerBetter(pct);
+      if (raw > 75) continue;
+      for (const parents of [null, 0, 1, 2, 5, 10, 14]) {
+        assert.equal(
+          normalizeDiversityConditionedBand(pct, parents),
+          raw,
+          `${pct}% (raw ${raw} ≤ 75) must be unchanged at parents=${parents}`,
+        );
+      }
+    }
+
+    // Invariant 2: full breadth (parents ≥ 10, the redundancy transform's
+    // best goalpost) earns the full raw premium everywhere.
+    for (const pct of [5, 10, 17.6, 25, 31.62, 40]) {
+      assert.equal(
+        normalizeDiversityConditionedBand(pct, 10),
+        normalizeBandLowerBetter(pct),
+        `${pct}% at 10 parents must equal the raw band`,
+      );
+    }
+
+    // Invariant 3: one parent or none — or a BIS row whose count failed to
+    // parse (null) — earns NO premium: the band caps at the 75 boundary.
+    // Absence of diversity evidence is not diversity.
+    for (const parents of [null, 0, 1]) {
+      for (const pct of [10, 17.6, 25, 31.62]) {
+        assert.equal(
+          normalizeDiversityConditionedBand(pct, parents),
+          75,
+          `${pct}% at parents=${parents} must cap at the 75 boundary`,
+        );
+      }
+    }
+
+    // Invariant 4: monotone in parents — more breadth never lowers the band.
+    for (const pct of [10, 17.6, 25]) {
+      let prev = -1;
+      for (let parents = 0; parents <= 14; parents++) {
+        const observed = normalizeDiversityConditionedBand(pct, parents);
+        assert.ok(
+          observed >= prev,
+          `${pct}% must be monotone in parents (parents=${parents}: ${observed} < ${prev})`,
+        );
+        prev = observed;
+      }
+    }
+
+    // Invariant 5: continuity in claims survives the conditioning. For a
+    // fixed low parent count, adjacent readings across every segment
+    // boundary (5%, 25%, and the ~40.9% crossing back through 75) must not
+    // jump — the #6459 P1 cliff must not be reintroduced by the premium
+    // scaling. 2 points of tolerance covers integer rounding on both sides.
+    for (const parents of [2, 5]) {
+      for (const boundary of [5, 25, 40.9]) {
+        const below = normalizeDiversityConditionedBand(boundary - 0.05, parents);
+        const above = normalizeDiversityConditionedBand(boundary + 0.05, parents);
+        assert.ok(
+          Math.abs(above - below) <= 2,
+          `parents=${parents}: discontinuity at ${boundary}% (${below} → ${above})`,
+        );
+      }
+    }
+
+    // The concrete production anchor: Albania's exact reading. Raw band 91;
+    // at 2 parents the premium scales by 11% → 77.
+    assert.equal(normalizeBandLowerBetter(17.6), 91);
+    assert.equal(normalizeDiversityConditionedBand(17.6, 2), 77);
   });
 
   it('FATF empty listings dict (parser regression) does NOT default every country to compliant', async () => {

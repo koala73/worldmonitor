@@ -52,12 +52,14 @@ export const FINSYS_DEBT_FIXTURE: Readonly<Record<string, FinSysDebtEntry>> = {
   SY: { value: 2.69, year: 2022 },
   TD: { value: 0.14, year: 2024 },
   MU: { value: 62.83, year: 2024 },
-  // KP, CU, VE, LY, LU, SG, CH, US, MC, DE: no DRS row in production.
+  // AL added 2026-08-12 for the concentrated-integration matched pairs.
+  AL: { value: 4.07, year: 2024 },
+  // KP, CU, VE, LY, LU, SG, CH, US, MC, DE, GB: no DRS row in production.
 };
 
 /** World Bank country-catalog records classified as lendingType=LNX. */
 export const FINSYS_NON_DRS_COUNTRY_CODES: ReadonlyArray<string> = [
-  'CH', 'CU', 'DE', 'KP', 'LU', 'MC', 'SG', 'US',
+  'CH', 'CU', 'DE', 'GB', 'KP', 'LU', 'MC', 'SG', 'US',
 ];
 
 /** `economic:bis-lbs:v1` — BIS CBS by-parent claims and reporter count. */
@@ -75,6 +77,12 @@ export const FINSYS_BIS_FIXTURE: Readonly<Record<string, FinSysBisEntry>> = {
   DE: { totalXborderPctGdp: 34.94, parentCount: 9 },
   TD: { totalXborderPctGdp: 1.11, parentCount: 0 },
   MU: { totalXborderPctGdp: 69.33, parentCount: 5 },
+  // AL / GB added 2026-08-12 (verbatim production readings) for the
+  // concentrated-integration matched pairs: Albania holds sweet-spot-level
+  // claims through 2 reporting parents (AT + IT dominate its parents map);
+  // the United Kingdom is the deep-hub contrast with 12.
+  AL: { totalXborderPctGdp: 17.6, parentCount: 2 },
+  GB: { totalXborderPctGdp: 64.2, parentCount: 12 },
   // KP, CU, SY, MC: no BIS CBS counterparty row in production.
 };
 
