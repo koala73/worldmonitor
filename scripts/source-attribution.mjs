@@ -17,6 +17,7 @@ import {
 } from 'node:fs';
 import { dirname, extname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { isDeepStrictEqual } from 'node:util';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const MANIFEST_PATH = 'shared/source-attribution-manifest.json';
@@ -30,6 +31,7 @@ const DOCS_PATH = 'docs/source-attribution.mdx';
 const BEGIN_MARKER = '{/* BEGIN GENERATED SOURCE ATTRIBUTION */}';
 const END_MARKER = '{/* END GENERATED SOURCE ATTRIBUTION */}';
 const MANIFEST_STATUSES = new Set(['terms-review', 'reviewed', 'excluded']);
+const ERROR_PRINT_LIMIT = 20;
 const MANIFEST_KIND_RE = /^(?:structured|feed|operational-status)(?:\+(?:structured|feed|operational-status))*$/;
 const LOGICAL_KIND_RE = /^(?:candidate|structured|feed|operational-status)(?:\+(?:structured|feed|operational-status))*$/;
 
@@ -464,12 +466,14 @@ const LOGICAL_ENTRIES = [
 // A few seeders build a URL from a classification/configuration document and
 // therefore do not contain the provider host beside the eventual fetch call.
 // Keep those dynamic hosts explicit so the lexical pass still provides a
-// reviewable reference and the CI gate cannot silently drop them.
+// reviewable reference and the CI gate cannot silently drop them.  The file is
+// pinned but the line deliberately is not: a line pin hard-fails the whole scan
+// the moment an unrelated edit shifts it.
 const DYNAMIC_HOSTS = [
-  { host: 'www.swfinstitute.org', kind: 'structured', path: 'scripts/seed-sovereign-wealth.mjs', line: 24 },
-  { host: 'www.ifswf.org', kind: 'structured', path: 'scripts/seed-sovereign-wealth.mjs', line: 291 },
-  { host: 'www.visionofhumanity.org', kind: 'structured', path: 'scripts/seed-resilience-static.mjs', line: 614 },
-  { host: 'earth-search.aws.element84.com', kind: 'structured', path: 'server/worldmonitor/imagery/v1/search-imagery.ts', line: 10 },
+  { host: 'www.swfinstitute.org', kind: 'structured', path: 'scripts/seed-sovereign-wealth.mjs' },
+  { host: 'www.ifswf.org', kind: 'structured', path: 'scripts/seed-sovereign-wealth.mjs' },
+  { host: 'www.visionofhumanity.org', kind: 'structured', path: 'scripts/seed-resilience-static.mjs' },
+  { host: 'earth-search.aws.element84.com', kind: 'structured', path: 'server/worldmonitor/imagery/v1/search-imagery.ts' },
 ];
 
 const EXCLUDED_HOSTS = new Set([
@@ -558,12 +562,13 @@ function hostFromUrl(raw) {
 
 export function scanUpstreamHosts(rootDir = ROOT) {
   const hosts = new Map();
-  const recordHost = (host, kind, reference) => {
+  // References are recorded per file, never per line. A line number is not part
+  // of the attribution (which records license posture and required credit), and
+  // pinning one made every unrelated edit rewrite the committed manifest.
+  const recordHost = (host, kind, path) => {
     const current = hosts.get(host) || { host, kinds: new Set(), references: [] };
     current.kinds.add(kind);
-    if (!current.references.some((ref) => ref.path === reference.path && ref.line === reference.line)) {
-      current.references.push(reference);
-    }
+    if (!current.references.some((reference) => reference.path === path)) current.references.push({ path });
     hosts.set(host, current);
   };
   for (const relativePath of walkSourceFiles(rootDir)) {
@@ -600,27 +605,38 @@ export function scanUpstreamHosts(rootDir = ROOT) {
       if (!candidate) continue;
       const host = hostFromUrl(match[0]);
       if (!host) continue;
-      const lineNumber = lineNumberIndex + 1;
       const kind = relativePath === STATUS_FILE
         ? 'operational-status'
         : FEED_FILES.has(relativePath)
           ? 'feed'
           : 'structured';
-      recordHost(host, kind, { path: relativePath, line: lineNumber });
+      recordHost(host, kind, relativePath);
     }
   }
   for (const dynamic of DYNAMIC_HOSTS) {
     if (!existsSync(join(rootDir, dynamic.path))) continue;
     const source = read(rootDir, dynamic.path);
-    const line = source.split('\n')[dynamic.line - 1] || '';
-    if (!line.toLowerCase().includes(dynamic.host.toLowerCase())) {
-      throw new Error(`source-attribution: dynamic reference ${dynamic.path}:${dynamic.line} no longer mentions ${dynamic.host}`);
+    if (!source.toLowerCase().includes(dynamic.host.toLowerCase())) {
+      throw new Error(`source-attribution: dynamic reference ${dynamic.path} no longer mentions ${dynamic.host}`);
     }
-    recordHost(dynamic.host, dynamic.kind, { path: dynamic.path, line: dynamic.line });
+    recordHost(dynamic.host, dynamic.kind, dynamic.path);
   }
   return [...hosts.values()]
-    .map((entry) => ({ ...entry, kinds: [...entry.kinds].sort(), references: entry.references.sort((a, b) => a.path.localeCompare(b.path) || a.line - b.line) }))
+    .map((entry) => ({ ...entry, kinds: [...entry.kinds].sort(), references: entry.references.sort((a, b) => a.path.localeCompare(b.path)) }))
     .sort((a, b) => a.host.localeCompare(b.host));
+}
+
+/**
+ * Collapse a reference list to one deduplicated, sorted `{ path }` row per file.
+ * Retired rows keep the shape the scanner emits, so a manifest written before
+ * line numbers were dropped cannot smuggle one back through a retained entry.
+ */
+function normalizeReferences(references) {
+  const paths = new Set();
+  for (const reference of Array.isArray(references) ? references : []) {
+    if (typeof reference?.path === 'string' && reference.path.trim()) paths.add(reference.path);
+  }
+  return [...paths].sort((a, b) => a.localeCompare(b)).map((path) => ({ path }));
 }
 
 function defaultEntry(observed) {
@@ -656,7 +672,14 @@ function mergeEntry(observed, previous) {
         status: 'excluded',
       }
       : {});
-  const base = previous || defaultEntry(observed);
+  const fallback = defaultEntry(observed);
+  // A row retired by an earlier regeneration carries status 'excluded' for a
+  // host the scanner now sees again. Retirement is bookkeeping, not a license
+  // verdict, so a revived host returns to the default review status instead of
+  // staying silently excluded from the active count. An override still wins.
+  const base = previous
+    ? (previous.observed === false ? { ...previous, status: fallback.status } : previous)
+    : fallback;
   return {
     ...base,
     ...override,
@@ -685,15 +708,22 @@ export function buildManifest(inventory, previous = { entries: [], logicalEntrie
   // Retain retired rows as explicit exclusions rather than silently deleting a
   // credit. This makes removals reviewable and keeps historical attribution
   // visible while ensuring only currently observed hosts count as active.
+  // Rows retired by an earlier run are carried through unchanged: skipping them
+  // made a second regeneration delete the credit the first one preserved, which
+  // also stopped --write from being a fixpoint the check could compare against.
   for (const oldEntry of previous.entries || []) {
-    if (!observedHosts.has(oldEntry.host) && oldEntry.observed !== false) {
-      entries.push({
-        ...oldEntry,
+    if (observedHosts.has(oldEntry.host)) continue;
+    const retained = oldEntry.references === undefined
+      ? { ...oldEntry }
+      : { ...oldEntry, references: normalizeReferences(oldEntry.references) };
+    entries.push(retained.observed === false
+      ? retained
+      : {
+        ...retained,
         observed: false,
         status: 'excluded',
-        attribution: oldEntry.attribution || `Excluded: ${oldEntry.host} is no longer observed in the source tree.`,
+        attribution: retained.attribution || `Excluded: ${retained.host} is no longer observed in the source tree.`,
       });
-    }
   }
   const logicalEntries = [...LOGICAL_ENTRIES, ...(previous.logicalEntries || [])]
     .filter((entry, index, all) => all.findIndex((candidate) => candidate.provider === entry.provider && candidate.host === entry.host) === index)
@@ -716,15 +746,20 @@ export function validateManifest(inventory, manifest) {
     if (typeof entry.observed !== 'boolean') errors.push(`manifest entry ${label} observed must be boolean`);
     if (typeof entry.kind !== 'string' || !MANIFEST_KIND_RE.test(entry.kind)) errors.push(`invalid manifest kind for ${label}`);
     if (typeof entry.status !== 'string' || !MANIFEST_STATUSES.has(entry.status)) errors.push(`invalid manifest status for ${label}`);
-    if (entry.observed === true) {
-      if (!Array.isArray(entry.references) || entry.references.length === 0) {
-        errors.push(`manifest entry ${label} observed rows need at least one reference`);
-      } else {
-        for (const reference of entry.references) {
-          if (!reference || typeof reference.path !== 'string' || !reference.path.trim() || !Number.isInteger(reference.line) || reference.line < 1) {
-            errors.push(`manifest entry ${label} has an invalid source reference`);
-          }
-        }
+    if (entry.references !== undefined && !Array.isArray(entry.references)) {
+      errors.push(`manifest entry ${label} references must be an array`);
+    }
+    const references = Array.isArray(entry.references) ? entry.references : [];
+    if (entry.observed === true && references.length === 0) {
+      errors.push(`manifest entry ${label} observed rows need at least one reference`);
+    }
+    for (const reference of references) {
+      if (!reference || typeof reference.path !== 'string' || !reference.path.trim()) {
+        errors.push(`manifest entry ${label} has an invalid source reference`);
+      } else if (Object.keys(reference).length !== 1) {
+        // A line number here is the drift the rest of this validator exists to
+        // stop: it changes on every unrelated edit and credits nobody.
+        errors.push(`manifest entry ${label} reference ${reference.path} carries fields beyond path`);
       }
     }
     if (manifestByHost.has(entry.host)) errors.push(`duplicate manifest entry for ${entry.host}`);
@@ -732,9 +767,22 @@ export function validateManifest(inventory, manifest) {
   }
   for (const entry of inventory) {
     const manifestEntry = manifestByHost.get(entry.host);
-    if (!manifestEntry) errors.push(`missing manifest entry for ${entry.host}`);
-    else if (manifestEntry.observed !== true) {
+    if (!manifestEntry) {
+      errors.push(`missing manifest entry for ${entry.host}`);
+      continue;
+    }
+    if (manifestEntry.observed !== true) {
       errors.push(`manifest must mark current host ${entry.host} observed; excluded rows need an explicit exclusion reason`);
+      continue;
+    }
+    // Host-set membership alone cannot see a row whose scan-derived fields have
+    // gone stale, which is how a committed manifest drifted from the source tree
+    // while this gate stayed green. Every observed row must already equal what
+    // --write would produce for it, so the check and the generator agree.
+    const rebuilt = mergeEntry(entry, manifestEntry);
+    const stale = Object.keys(rebuilt).filter((field) => !isDeepStrictEqual(rebuilt[field], manifestEntry[field]));
+    if (stale.length) {
+      errors.push(`stale manifest entry for ${entry.host}: ${stale.join(', ')} no longer match the source tree; run node scripts/source-attribution.mjs --write`);
     }
   }
   for (const entry of manifestEntries) {
@@ -787,7 +835,7 @@ export function renderAttributionSection(inventory, manifest) {
   const entries = [...(manifest.entries || []), ...(manifest.logicalEntries || [])]
     .sort((a, b) => (a.provider || '').localeCompare(b.provider || '') || a.host.localeCompare(b.host));
   const rows = entries.map((entry) => {
-    const refs = (entry.references || []).slice(0, 4).map((ref) => `${ref.path}:${ref.line}`).join(', ');
+    const refs = (entry.references || []).slice(0, 4).map((reference) => reference.path).join(', ');
     const surface = entry.observed === false ? 'Excluded / candidate' : entry.kind;
     const sourceRef = refs || (entry.observed === false ? 'No current fetch observed' : 'Manifest-only review row');
     return `| ${markdownCell(entry.provider)} (${markdownCell(entry.host)}) | ${markdownCell(surface)} — ${markdownCell(sourceRef)} | ${markdownCell(entry.license)} | ${markdownCell(entry.attribution)} | ${markdownCell(entry.status)} |`;
@@ -842,13 +890,17 @@ function printStats(stats) {
   console.log(`source-attribution: ${stats.activeHosts} active hosts (${stats.structuredHosts} structured/API, ${stats.feedHosts} feed, ${stats.operationalStatusHosts} operational-status; ${stats.reviewNeeded} terms-review)`);
 }
 
+function serializeManifest(manifest) {
+  return `${JSON.stringify(manifest, null, 2)}\n`;
+}
+
 function main() {
   const write = process.argv.includes('--write');
   const inventory = scanUpstreamHosts(ROOT);
   const previous = loadManifest(ROOT);
   if (write) {
     const manifest = buildManifest(inventory, previous);
-    writeFileSync(join(ROOT, MANIFEST_PATH), `${JSON.stringify(manifest, null, 2)}\n`);
+    writeFileSync(join(ROOT, MANIFEST_PATH), serializeManifest(manifest));
     updateDocs(ROOT, renderAttributionSection(inventory, manifest));
     printStats(sourceAttributionStats(inventory, manifest));
     return;
@@ -856,7 +908,20 @@ function main() {
   const errors = validateManifest(inventory, previous);
   if (errors.length) {
     console.error(`source-attribution: ${errors.length} manifest error(s)`);
-    for (const error of errors) console.error(`- ${error}`);
+    // A single stale scan can fault every row, so cap the listing: an unbounded
+    // dump buries the first (and usually only) cause the reader needs.
+    for (const error of errors.slice(0, ERROR_PRINT_LIMIT)) console.error(`- ${error}`);
+    if (errors.length > ERROR_PRINT_LIMIT) console.error(`- ...and ${errors.length - ERROR_PRINT_LIMIT} more`);
+    process.exitCode = 1;
+    return;
+  }
+  // Compare the committed manifest against a rebuild, not against itself. The
+  // per-row validation above covers observed hosts; this catches the rest —
+  // retired rows, logical entries, and formatting — so --check and --write can
+  // no longer disagree about what the committed artifact should contain.
+  const rebuilt = serializeManifest(buildManifest(inventory, previous));
+  if (read(ROOT, MANIFEST_PATH) !== rebuilt) {
+    console.error(`source-attribution: ${MANIFEST_PATH} is out of date; run node scripts/source-attribution.mjs --write`);
     process.exitCode = 1;
     return;
   }

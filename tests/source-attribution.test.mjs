@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import {
+  buildManifest,
   loadManifest,
   matchGeneratedAttributionSection,
   renderAttributionSection,
@@ -147,6 +148,114 @@ test('malformed manifest rows fail closed before public counts are derived', () 
   assert.ok(errors.some((error) => error.includes('invalid manifest kind')));
   assert.ok(errors.some((error) => error.includes('invalid manifest status')));
   assert.throws(() => sourceAttributionStats([], manifest), /invalid manifest/);
+});
+
+// The gate this file guards used to compare the committed docs against a render
+// of the committed manifest, so it agreed with itself while the manifest itself
+// drifted away from the source tree. These four tests pin the properties that
+// make --check honest: no drift-prone line numbers, a manifest that is a
+// fixpoint of its own generator, and a validator that can see reference and
+// kind drift on a row it already knows about.
+test('manifest and scanner references record a path only', () => {
+  const manifest = loadManifest(rootDir);
+  for (const entry of manifest.entries) {
+    for (const reference of entry.references || []) {
+      assert.deepEqual(
+        Object.keys(reference),
+        ['path'],
+        `${entry.host} carries a drift-prone reference field: ${JSON.stringify(reference)}`,
+      );
+    }
+    const paths = (entry.references || []).map((reference) => reference.path);
+    assert.deepEqual([...new Set(paths)], paths, `${entry.host} repeats a reference path`);
+  }
+  for (const observed of scanUpstreamHosts(rootDir)) {
+    for (const reference of observed.references) {
+      assert.deepEqual(Object.keys(reference), ['path'], `scanner emitted ${JSON.stringify(reference)}`);
+    }
+  }
+});
+
+test('the committed manifest is a fixpoint of its own generator', () => {
+  const inventory = scanUpstreamHosts(rootDir);
+  const manifest = loadManifest(rootDir);
+  const rebuilt = buildManifest(inventory, manifest);
+  const committedByHost = new Map(manifest.entries.map((entry) => [entry.host, entry]));
+  const drifted = rebuilt.entries
+    .filter((entry) => JSON.stringify(entry) !== JSON.stringify(committedByHost.get(entry.host)))
+    .map((entry) => entry.host);
+  const dropped = manifest.entries
+    .filter((entry) => !rebuilt.entries.some((candidate) => candidate.host === entry.host))
+    .map((entry) => entry.host);
+  assert.deepEqual(drifted, [], 'committed rows differ from a rebuild; run node scripts/source-attribution.mjs --write');
+  assert.deepEqual(dropped, [], 'a rebuild would delete these committed rows instead of retiring them in place');
+});
+
+test('reference and kind drift on an observed row fails the manifest gate', () => {
+  const errors = validateManifest(
+    [{ host: 'provider.example', kinds: ['feed', 'structured'], references: [{ path: 'server/a.ts' }, { path: 'server/b.ts' }] }],
+    {
+      entries: [{
+        host: 'provider.example',
+        provider: 'Provider',
+        license: 'Terms review',
+        attribution: 'Credit Provider.',
+        observed: true,
+        kind: 'structured',
+        status: 'terms-review',
+        references: [{ path: 'server/a.ts' }],
+      }],
+      logicalEntries: [],
+    },
+  );
+  assert.ok(
+    errors.some((error) => error.includes('provider.example') && error.includes('references')),
+    `stale references must be reported, got: ${JSON.stringify(errors)}`,
+  );
+  assert.ok(
+    errors.some((error) => error.includes('provider.example') && error.includes('kind')),
+    `stale kind must be reported, got: ${JSON.stringify(errors)}`,
+  );
+});
+
+test('a retired row survives regeneration instead of being deleted', () => {
+  const retired = {
+    host: 'gone.example',
+    provider: 'Gone',
+    license: 'Terms review',
+    attribution: 'Excluded: gone.example is no longer observed in the source tree.',
+    observed: false,
+    kind: 'feed',
+    status: 'excluded',
+    references: [{ path: 'src/config/feeds.ts' }],
+  };
+  const rebuilt = buildManifest([], { entries: [retired], logicalEntries: [] });
+  assert.deepEqual(
+    rebuilt.entries.find((entry) => entry.host === 'gone.example'),
+    retired,
+    'a row retired by an earlier regeneration must be retained verbatim, not silently deleted',
+  );
+});
+
+test('a retired host that comes back is counted again instead of staying excluded', () => {
+  const retired = {
+    host: 'back.example',
+    provider: 'Back',
+    license: 'Terms review',
+    attribution: 'Credit Back.',
+    observed: false,
+    kind: 'feed',
+    status: 'excluded',
+    references: [{ path: 'src/config/feeds.ts' }],
+  };
+  const rebuilt = buildManifest(
+    [{ host: 'back.example', kinds: ['feed'], references: [{ path: 'src/config/feeds.ts' }] }],
+    { entries: [retired], logicalEntries: [] },
+  );
+  const revived = rebuilt.entries.find((entry) => entry.host === 'back.example');
+  assert.equal(revived.observed, true);
+  assert.equal(revived.status, 'terms-review', 'retirement must not keep a re-observed host out of the active count');
+  assert.equal(revived.attribution, 'Credit Back.', 'the curated credit survives the round trip');
 });
 
 test('observed manifest rows cannot erase their source references', () => {
