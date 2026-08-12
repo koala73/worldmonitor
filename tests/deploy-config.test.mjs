@@ -24,6 +24,7 @@ const viteConfigSource = readFileSync(resolve(__dirname, '../vite.config.ts'), '
 const proViteConfigSource = readFileSync(resolve(__dirname, '../pro-test/vite.config.ts'), 'utf-8');
 const playwrightConfigSource = readFileSync(resolve(__dirname, '../playwright.config.ts'), 'utf-8');
 const embedE2eSource = readFileSync(resolve(__dirname, '../e2e/embed.spec.ts'), 'utf-8');
+const testWorkflowSource = readFileSync(resolve(__dirname, '../.github/workflows/test.yml'), 'utf-8');
 const sitemapSource = readFileSync(resolve(__dirname, '../public/sitemap.xml'), 'utf-8');
 const robotsSource = readFileSync(resolve(__dirname, '../public/robots.txt'), 'utf-8');
 const mainSource = readFileSync(resolve(__dirname, '../src/main.ts'), 'utf-8');
@@ -1126,8 +1127,17 @@ describe('security header guardrails', () => {
 
   it('runs the strict WebMCP iframe probe in an enabled Chrome milestone', () => {
     const script = packageJson.scripts?.['test:e2e:webmcp'] ?? '';
+    const variantSmokeJob = testWorkflowSource.match(
+      /\n  variant-smoke-full:\n[\s\S]*?(?=\n  [a-z][a-z0-9-]+:\n|$)/,
+    )?.[0] ?? '';
     assert.match(script, /WM_REQUIRE_WEBMCP=1/);
     assert.match(script, /playwright test e2e\/embed\.spec\.ts --project=chromium/);
+    assert.ok(variantSmokeJob, 'Test workflow must define the full-variant smoke job');
+    assert.match(
+      variantSmokeJob,
+      /run: npm run test:e2e:webmcp/,
+      'PR CI must fail when the strict WebMCP iframe probe fails or is unavailable',
+    );
     assert.match(playwrightConfigSource, /process\.env\.WM_REQUIRE_WEBMCP === '1'/);
     assert.match(playwrightConfigSource, /process\.env\.WM_WEBMCP_CHROME_EXECUTABLE_PATH/);
     assert.match(playwrightConfigSource, /channel: webMcpChromeChannel/);

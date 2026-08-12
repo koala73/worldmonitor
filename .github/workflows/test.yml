@@ -476,6 +476,11 @@ jobs:
       # regression guard no job invokes reports green while the regression
       # ships.
       - run: npm run test:e2e:ci-smoke
+      # WebMCP is exposed only by an enabled Chrome milestone. Keep this probe
+      # separate from the bundled-Chromium smoke so an unavailable or stale
+      # system Chrome fails the required PR job instead of silently skipping.
+      - name: Run strict WebMCP iframe smoke in Chrome
+        run: npm run test:e2e:webmcp
 
   resilience-validation-smoke:
     needs: changes
