@@ -414,6 +414,17 @@ have deployed or executed that revision yet. That separates a code failure from
 the operational case this guard targets: repository checks are green while a
 Railway producer, deployment trigger, or composed coverage is still unhealthy.
 
+**Exception, added after #6483: the deploy-drift step is NOT gated on green
+main.** The gate and the drift it measures share an upstream — an ungated or
+red main is exactly when Railway's wait-for-CI refuses pushes and drift grows —
+and during #6483 the gate failed for days while the drift step sat skipped, so
+a seeder served a dead cache namespace for 25h inside a permanently-red
+monitor. The drift step and its two prerequisites (CLI install, token verify)
+now run under `if: !cancelled()`; a gate failure still fails the run, it just
+no longer blinds the one probe that measures its blast radius. Freshness
+acceptance stays gated: it grades data against code expectations and needs a
+gated revision to grade against.
+
 ## Prevention
 
 - **Read `meta.skippedReason` before concluding anything from a `SKIPPED`

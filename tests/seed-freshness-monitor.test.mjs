@@ -281,7 +281,12 @@ describe('scheduled seed freshness monitor', () => {
         '2026-08-10T12:00:00.001Z',
       ]) {
         const result = applyAcceptanceBaseline([problem], rolloutBaseline, at(now));
-        assert.deepEqual(result.blocking, [problem], now);
+        // The blocking item carries the expired entry's identity so the report
+        // can attribute the red line to a scheduled re-page instead of a fresh
+        // outage (#6483 review) — the fail-closed split itself is unchanged.
+        assert.deepEqual(result.blocking, [
+          { ...problem, expiredEntry: '2026-08-10T12:00:00.000Z', issue: 6377 },
+        ], now);
         assert.deepEqual(result.acknowledged, [], now);
         assert.deepEqual(result.cleared, [], now);
         assert.deepEqual(result.escalated, [], now);

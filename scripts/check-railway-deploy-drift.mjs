@@ -132,6 +132,14 @@ export const UNDETERMINABLE_VERDICTS = Object.freeze([
   'NO_DEPLOYMENTS',
   'NO_BUILD_IN_WINDOW',
   'CLOSURE_UNKNOWN',
+  // A rejection observed on a window that never surfaced a running deployment
+  // (#6483 review): the check knows pushes were refused but has no idea what
+  // the container is serving. It LOOKS determinate — which is exactly why it
+  // gets its own verdict: as plain REJECTED_PUSH it matched the baseline's
+  // name:status key and an unidentified source was acknowledged as an owned,
+  // understood degradation. Listed here so the baseline refuses it by
+  // construction and the deep pass gets a chance to identify the source.
+  'REJECTED_PUSH_UNKNOWN_SOURCE',
 ]);
 
 
@@ -303,10 +311,23 @@ export function classifyServiceDeploy({
     const reasons = [...new Set(
       outstandingRejections.map((deployment) => deployment.meta?.skippedReason).filter(Boolean),
     )];
+    const refused = `Railway refused ${rejectedShas.length} push(es) reaching this service and has built nothing since: ${rejectedShas.map((sha) => sha.slice(0, 9)).join(', ')}${reasons.length > 0 ? ` (${reasons.join('; ')})` : ''}`;
+    // A rejection on a window with NO running deployment is a different answer
+    // than a rejection on an identified source: the saturated-window shape
+    // that produces NO_BUILD_IN_WINDOW produces this instead whenever one
+    // outstanding rejection is present, and it must be equally undeterminable
+    // (#6483 review, verified by execution against the shipped baseline).
+    if (!running) {
+      return {
+        ...identified,
+        verdict: 'REJECTED_PUSH_UNKNOWN_SOURCE',
+        detail: `${refused} — and no deployment in the window ever reached a running state, so the live source is unidentified`,
+      };
+    }
     return {
       ...identified,
       verdict: 'REJECTED_PUSH',
-      detail: `Railway refused ${rejectedShas.length} push(es) reaching this service and has built nothing since: ${rejectedShas.map((sha) => sha.slice(0, 9)).join(', ')}${reasons.length > 0 ? ` (${reasons.join('; ')})` : ''}`,
+      detail: refused,
     };
   }
   if (!running) {
@@ -396,42 +417,97 @@ export function classifyServiceDeploy({
 // NO_BUILD_IN_WINDOW — reported, exactly as before.
 export const DEEP_DEPLOYMENT_WINDOW = 400;
 
+// The deep pass is a second CLI sweep behind the shallow one, inside a job
+// with a 20-minute budget and a 15-minute cadence whose concurrency group
+// cancels in-progress runs. Unbounded, a full-fleet storm (every service a
+// candidate, every read at the 60s RAILWAY_CALL_TIMEOUT_MS ceiling) could
+// push the run past its own cadence and get every run superseded — a grey
+// monitor during exactly the incident class this pass exists for. Overflow
+// candidates keep their shallow verdict, which is fail-closed: reported,
+// unbaselineable, retried next tick.
+export const DEEP_PASS_MAX_CANDIDATES = 40;
+
+// A deep read that surfaces only an ANCIENT running record must not upgrade
+// the service to a healthy verdict (#6483 review, verified by execution): a
+// cron seeder records a running-status record per tick, so "nothing newer at
+// any depth" is evidence the container stopped ticking, and CURRENT_FOR_CLOSURE
+// on a months-dead service is the green-while-stale outcome the BUILD_STALLED
+// age bound already exists to prevent. Seven days sits far above the fleet's
+// slowest observed healthy cadence (oldest healthy runningAt measured 51.7h on
+// 2026-08-12) and far below the dead case that motivated the guard.
+export const DEEP_HEALTHY_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
+
+// Both verdicts mean "the shallow window never identified the live source":
+// NO_BUILD_IN_WINDOW when no rejection is outstanding, REJECTED_PUSH_UNKNOWN_SOURCE
+// when one is. Deepening only the first would leave the second — the one the
+// baseline's name:status key would otherwise have acknowledged — unresolved.
+const DEEP_CANDIDATE_VERDICTS = new Set(['NO_BUILD_IN_WINDOW', 'REJECTED_PUSH_UNKNOWN_SOURCE']);
+
 /**
- * Re-read exactly the NO_BUILD_IN_WINDOW services with a deeper window and
- * reclassify from the superset.
+ * Re-read the services whose shallow window never identified a live source
+ * with a deeper window, and reclassify from the superset.
  *
- * NO_BUILD_IN_WINDOW usually means the newest RUNNING deployment sits past the
- * window's horizon, not that none exists (#6483: 29 of 80 services read it
- * while every one was serving). The verdict is undeterminable, so the baseline
- * refuses to acknowledge it — the only honest way to shrink it is to actually
- * read deeper. Fail-closed on the deep read itself: a service whose deeper
- * history cannot be read or still shows no running build keeps its shallow
- * verdict and stays reported.
+ * These verdicts usually mean the newest RUNNING deployment sits past the
+ * window's horizon, not that none exists (#6483: 29 of 80 services read
+ * NO_BUILD_IN_WINDOW while every one was serving). They are undeterminable,
+ * so the baseline refuses to acknowledge them — the only honest way to shrink
+ * them is to actually read deeper. Fail-closed at every exit: a deep read that
+ * throws, stays buildless, or surfaces only a stale build leaves the shallow
+ * verdict in place, reported.
  */
 export async function deepenNoBuildWindows(results, {
   services,
   readDeep,
   reclassify,
   concurrency = DEFAULT_CONCURRENCY,
+  now = Date.now(),
 }) {
   const byName = new Map(services.map((service) => [service.name, service]));
-  const candidates = results
+  const eligible = results
     .map((result, index) => ({ result, index }))
-    .filter(({ result }) => result.verdict === 'NO_BUILD_IN_WINDOW' && byName.has(result.service));
+    .filter(({ result }) => DEEP_CANDIDATE_VERDICTS.has(result.verdict) && byName.has(result.service));
+  const candidates = eligible.slice(0, DEEP_PASS_MAX_CANDIDATES);
+  const capped = eligible.length - candidates.length;
   const out = [...results];
+  let reclassified = 0;
+  let failed = 0;
   await mapWithConcurrency(candidates, concurrency, async ({ result, index }) => {
     const service = byName.get(result.service);
     try {
       const deployments = await readDeep(service);
-      out[index] = reclassify(service, { deployments, error: null });
-    } catch {
+      const next = reclassify(service, { deployments, error: null });
+      // The healthy-upgrade age guard. Guarded only when the verdict rests on
+      // a running record (PENDING_BUILD with no running source is fresh
+      // in-flight evidence, not an old build). A refused upgrade keeps the
+      // shallow verdict and counts as neither reclassified nor failed — the
+      // "unchanged" remainder in the caller's summary line.
+      if (!isProblemVerdict(next.verdict) && next.runningSha) {
+        const runningAtMs = Date.parse(next.runningAt ?? '');
+        if (!Number.isFinite(runningAtMs) || now - runningAtMs > DEEP_HEALTHY_MAX_AGE_MS) {
+          return;
+        }
+      }
+      out[index] = next;
+      reclassified += 1;
+    } catch (error) {
       // The shallow answer stands. Replacing it with QUERY_FAILED would erase
       // the one fact the shallow read DID establish, and going green here would
       // convert an unread answer into a healthy one — the exact failure mode
-      // UNDETERMINABLE_VERDICTS exists to prevent.
+      // UNDETERMINABLE_VERDICTS exists to prevent. The failure itself must be
+      // visible, though: an inert deep pass (rate-limited --limit 400, expired
+      // token) is otherwise indistinguishable from a genuinely buildless fleet.
+      failed += 1;
+      console.error(`Deep history re-read failed for ${result.service}: ${error instanceof Error ? error.message : String(error)}`);
     }
   });
-  return { results: out, deepened: candidates.length };
+  return {
+    results: out,
+    deepened: candidates.length,
+    reclassified,
+    failed,
+    capped,
+    deepenedServices: candidates.map(({ result }) => result.service),
+  };
 }
 
 /**
@@ -474,6 +550,7 @@ export function summarizeDeployDrift(results, baseline = null, now = Date.now())
     blocking: problems,
     acknowledged: [],
     cleared: [],
+    escalated: [],
     missing: [],
     expired: false,
     expiresAt: null,
@@ -506,6 +583,10 @@ export function summarizeDeployDrift(results, baseline = null, now = Date.now())
     blocking: split.blocking,
     acknowledged: split.acknowledged,
     cleared,
+    // A baselined service reporting a DIFFERENT verdict is already in
+    // `blocking`; this list is the attribution — dropping it made an
+    // escalation read as an anonymous new failure (#6483 review).
+    escalated: split.escalated ?? [],
     missing,
     expired: split.expired,
     expiresAt: split.expiresAt ?? null,
@@ -629,11 +710,25 @@ function printReport(results, summary, headSha, graceSha, { verbose = false } = 
   if (summary.blocking.length > 0) {
     console.error(`Railway deploy-drift check found ${summary.blocking.length} service(s) not running the head commit:`);
     for (const problem of summary.blocking) {
-      console.error(`- ${problem.service} [${problem.verdict}] ${problem.detail}`);
+      // A blocking line caused by the baseline itself must say so: 31 entries
+      // expiring as anonymous drift lines is indistinguishable from a fresh
+      // fleet-wide outage, which is how a monitor teaches people to ignore it.
+      const attribution = problem.expiredEntry
+        ? ` — acknowledged until ${problem.expiredEntry} against #${problem.issue}; the suppression expired, re-review scripts/railway-deploy-drift-baseline.json`
+        : Array.isArray(problem.novelRejections) && problem.novelRejections.length > 0
+          ? ` — includes ${problem.novelRejections.length} refused push(es) OUTSIDE the cohort acknowledged against #${problem.issue}: ${problem.novelRejections.map((sha) => sha.slice(0, 9)).join(', ')}`
+          : '';
+      console.error(`- ${problem.service} [${problem.verdict}] ${problem.detail}${attribution}`);
     }
   }
   for (const name of summary.missing ?? []) {
     console.error(`- ${name} is acknowledged in the baseline but was not in the queried fleet — it is unchecked, not recovered`);
+  }
+  // Same sentence the freshness report uses for the same state. No pruning
+  // advice on purpose: the suppression's source got WORSE, not better, and the
+  // worse status is already in the blocking list above.
+  for (const entry of summary.escalated ?? []) {
+    console.error(`- escalated (#${entry.issue}): ${entry.name} ${entry.status} -> ${entry.observedStatus}; the baselined status is no longer what this source reports. Re-review the suppression against the worse state before changing it.`);
   }
   if (summary.expired) {
     console.error(`Deploy-drift baseline expired on ${summary.expiresAt}; re-review scripts/railway-deploy-drift-baseline.json.`);
@@ -788,15 +883,23 @@ async function main() {
     return classifyFrom(service, { deployments, error });
   })).sort((left, right) => left.service.localeCompare(right.service));
 
-  const { results, deepened } = await deepenNoBuildWindows(shallowResults, {
+  const deepPass = await deepenNoBuildWindows(shallowResults, {
     services,
     readDeep: (service) => readDeployments(service, environment, DEEP_DEPLOYMENT_WINDOW),
     reclassify: classifyFrom,
     concurrency,
   });
-  if (deepened > 0) {
+  const { results } = deepPass;
+  if (deepPass.deepened > 0) {
     // stderr for the same reason the route line is: --json stays one document.
-    console.error(`Deepened ${deepened} service history read(s) whose ${window}-record window held no running build (deep window ${DEEP_DEPLOYMENT_WINDOW}).`);
+    // The three counts are distinct states an operator must be able to tell
+    // apart: reclassified (the deep read answered), failed (the read never
+    // landed — a tooling problem, not fleet state), unchanged (read landed but
+    // stayed inconclusive or refused a stale healthy upgrade).
+    console.error(`Deepened ${deepPass.deepened} service history read(s) whose ${window}-record window left the source unidentified (deep window ${DEEP_DEPLOYMENT_WINDOW}): ${deepPass.reclassified} reclassified, ${deepPass.failed} failed, ${deepPass.deepened - deepPass.reclassified - deepPass.failed} unchanged.`);
+  }
+  if (deepPass.capped > 0) {
+    console.error(`Deep pass capped at ${DEEP_PASS_MAX_CANDIDATES} candidate(s); ${deepPass.capped} kept their shallow verdict this run and retry next tick.`);
   }
 
   const summary = strict
@@ -805,7 +908,24 @@ async function main() {
         && ancestry(runningSha, authorizedMainSha) === 'yes',
     })
     : summarizeDeployDrift(results, JSON.parse(readFileSync(BASELINE_URL, 'utf8')));
-  if (asJson) console.log(JSON.stringify({ environment, headSha, graceSha, summary, results }, null, 2));
+  // deepPass in the machine payload for the same reason the stderr line
+  // exists: a service that flaps between shallow-undeterminable and
+  // deep-reclassified across runs is invisible to a JSON consumer otherwise.
+  if (asJson) {
+    console.log(JSON.stringify({
+      environment,
+      headSha,
+      graceSha,
+      deepPass: {
+        attempted: deepPass.deepenedServices,
+        reclassified: deepPass.reclassified,
+        failed: deepPass.failed,
+        capped: deepPass.capped,
+      },
+      summary,
+      results,
+    }, null, 2));
+  }
   else if (strict) {
     console.log(`Strict Railway deploy-drift check: head=${headSha.slice(0, 9)} services=${results.length}`);
     for (const problem of summary.blocking) {
