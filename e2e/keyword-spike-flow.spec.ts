@@ -246,3 +246,16 @@ test.describe('keyword spike modal/badge flow', () => {
     expect(result.emittedTitles.length).toBe(0);
   });
 });
+
+// TEMPORARY — reverted in the next commit on this branch.
+//
+// #6496 acceptance: prove the new "Upload Playwright artifacts on failure" step
+// in .github/workflows/test.yml really fires and really carries a trace.zip.
+// Reading the YAML proves nothing; only a real red run does. The navigation is
+// deliberate — it gives the trace, the video and the screenshot something to
+// record before the assertion fails.
+test('TEMP #6496 artifact-upload probe (deliberate failure)', async ({ page }) => {
+  await page.goto('/');
+  await page.waitForLoadState('domcontentloaded');
+  expect(1, 'deliberate failure — proves the artifact upload step fires').toBe(2);
+});
