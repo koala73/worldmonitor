@@ -476,11 +476,60 @@ jobs:
       # regression guard no job invokes reports green while the regression
       # ships.
       - run: npm run test:e2e:ci-smoke
+      # playwright.config.ts already retains a trace, a video and a screenshot
+      # for every failed test (retain-on-failure) — but nothing collected them,
+      # so they died with the runner and every flake in this required gate was
+      # undiagnosable after the fact (#6496: a "Target page, context or browser
+      # has been closed" close whose cause the log could not name).
+      #
+      # ONE UPLOAD PER PLAYWRIGHT RUN, each immediately after its own. Playwright
+      # clears the output dir when it starts, so a single upload at the end of
+      # the job collects only the LAST run's leftovers: run 31587725167 proved
+      # it, uploading the WebMCP step's screenshots while the ci-smoke flake's
+      # trace — the whole point of the upload — had already been deleted.
+      #
+      # `!cancelled()`, NOT `failure()`: retries mean the most common flake here
+      # never reddens the job at all. Run 31586695334 finished green-but-flaky —
+      # settings-source-live-apply failed at bootUntilNewsSettles and passed on
+      # retry — and Playwright kept the failed attempt's trace either way. A
+      # `failure()` guard would have thrown away the only evidence of the exact
+      # class of bug this step exists to catch.
+      #
+      # `ignore`, not `warn`: a clean ci-smoke run leaves nothing but a hidden
+      # .last-run.json, which the action skips, and a warning printed on every
+      # green run is noise that teaches people to skip the log.
+      #
+      # run_attempt is in the name because a re-run keeps the same run_id and
+      # v6 rejects a duplicate artifact name within one run — that collision
+      # would land exactly when someone re-runs the job to chase a flake.
+      - name: Upload ci-smoke Playwright artifacts
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: playwright-ci-smoke-${{ github.run_id }}-${{ github.run_attempt }}
+          path: test-results/
+          if-no-files-found: ignore
+          retention-days: 14
       # WebMCP is exposed only by an enabled Chrome milestone. Keep this probe
       # separate from the bundled-Chromium smoke so an unavailable or stale
       # system Chrome fails the required PR job instead of silently skipping.
       - name: Run strict WebMCP iframe smoke in Chrome
+        id: webmcp
         run: npm run test:e2e:webmcp
+      # Gated on the WebMCP step having actually run: when ci-smoke fails this
+      # step is skipped, and without the guard this upload would re-publish the
+      # ci-smoke output the step above already has, under a second name.
+      # embed.spec.ts attaches screenshots on success, so unlike the ci-smoke
+      # artifact this one appears on green runs too — its presence is not by
+      # itself a failure signal.
+      - name: Upload WebMCP Playwright artifacts
+        if: ${{ !cancelled() && steps.webmcp.outcome != 'skipped' }}
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: playwright-webmcp-${{ github.run_id }}-${{ github.run_attempt }}
+          path: test-results/
+          if-no-files-found: ignore
+          retention-days: 14
 
   resilience-validation-smoke:
     needs: changes

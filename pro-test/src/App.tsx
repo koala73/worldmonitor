@@ -36,6 +36,7 @@ import {
   DASHBOARD_URL,
 } from './routes';
 import { appendStoredContentAttributionToUrl } from '../../shared/content-attribution';
+import { isInternalSourceTag } from '../../shared/referral-namespaces';
 
 const API_BASE = 'https://api.worldmonitor.app/api';
 const TURNSTILE_SITE_KEY = '0x4AAAAAACnaYgHIyxclu8Tj';
@@ -68,9 +69,22 @@ export function renderTurnstileWidgets(): number {
   return count;
 }
 
+/**
+ * The single entry point for this page's inbound referral code. Every
+ * consumer goes through it — the dashboard CTAs via appendRefToUrl and
+ * PricingSection, which hands the value to startCheckout and from there to
+ * Dodo as `affonso_referral`.
+ *
+ * Internal source tags are rejected here rather than at each consumer: an
+ * internal tag is not an affiliate code on this surface either, and this page
+ * reaches checkout without ever passing through the dashboard's
+ * referral-capture guard (#6493).
+ */
 function getRefCode(): string | undefined {
   const params = new URLSearchParams(window.location.search);
-  return params.get('ref') || undefined;
+  const code = params.get('ref') || undefined;
+  if (!code || isInternalSourceTag(code)) return undefined;
+  return code;
 }
 
 /**
