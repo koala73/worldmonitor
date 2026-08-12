@@ -845,6 +845,46 @@ describe('ensures ranking aggregate is present every cron, with truthful meta', 
     }
   });
 
+  it('preserves the prior interval generation when the forced refresh does not complete', async () => {
+    const mod = await import('../scripts/seed-resilience-scores.mjs');
+    assert.equal(
+      typeof mod.refreshRankingAggregate,
+      'function',
+      'the refresh boundary must be directly testable as behavior, not only by source ordering',
+    );
+
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = (async (input) => {
+      const href = typeof input === 'string' ? input : input.url;
+      if (href.includes('/api/resilience/v1/get-resilience-ranking')) {
+        return new Response('gateway timeout', { status: 504 });
+      }
+      if (href.includes('/strlen/')) {
+        return new Response(JSON.stringify({ result: 31_370 }), { status: 200 });
+      }
+      if (href.includes('/get/seed-meta:resilience:ranking')) {
+        return new Response(JSON.stringify({
+          result: JSON.stringify({ fetchedAt: Date.now(), recordCount: 196 }),
+        }), { status: 200 });
+      }
+      throw new Error(`Unexpected fetch in refresh failure test: ${href}`);
+    });
+
+    try {
+      await assert.rejects(
+        () => mod.refreshRankingAggregate({
+          url: 'https://redis.example',
+          token: 'token',
+          laggardsWarmed: 0,
+        }),
+        /previous interval generation was preserved/i,
+        'an old ranking key must not make a failed refresh look safe for interval publication',
+      );
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
   it('always triggers the rebuild HTTP call — never short-circuits on "key still present"', () => {
     // Skipping rebuild when the key exists recreates a timing hole: the key
     // can be alive at probe time but expire a few minutes later, leaving a

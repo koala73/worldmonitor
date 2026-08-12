@@ -182,6 +182,23 @@ describe('memoized seed reader — one failed read must not poison the batch', (
     }
   });
 
+  it('evicts a null seed-meta result before a later sequential read', async () => {
+    const recoveredMeta = { fetchedAt: Date.now(), recordCount: 189, rankableRecordCount: 181 };
+    let reads = 0;
+    const reader = createMemoizedSeedReader(async () => {
+      reads++;
+      return reads === 1 ? null : recoveredMeta;
+    });
+
+    assert.equal(await reader(META_KEY), null, 'the creator still observes its fail-closed null');
+    assert.deepEqual(
+      await reader(META_KEY),
+      recoveredMeta,
+      'a later caller must retry instead of reusing the resolved null',
+    );
+    assert.equal(reads, 2, 'the sequential retry contract must not depend on the internal retry budget');
+  });
+
   it('still memoizes a successful read', async () => {
     const counts = installRedisStub();
     const reader = createMemoizedSeedReader();

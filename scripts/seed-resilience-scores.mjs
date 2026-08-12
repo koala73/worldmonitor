@@ -28,6 +28,8 @@ const WM_KEY = process.env.WORLDMONITOR_API_KEY
 const WM_REFRESH_KEY = process.env.WORLDMONITOR_SEED_REFRESH_KEY?.trim() || '';
 const SEED_UA = 'Mozilla/5.0 (compatible; WorldMonitor-Seed/1.0)';
 const NEG_SENTINEL = '__WM_NEG__';
+const RANKING_REFRESH_TIMEOUT_MS = 60_000;
+const RANKING_REFRESH_SLOW_MS = 45_000;
 
 function requireSeedRefreshKey() {
   if (WM_REFRESH_KEY) return;
@@ -499,7 +501,7 @@ export async function seedResilienceScores({ runtimeCacheState = fetchRuntimeCac
       if (WM_REFRESH_KEY) headers['X-WorldMonitor-Key'] = WM_REFRESH_KEY;
       const resp = await fetch(`${API_BASE}/api/resilience/v1/get-resilience-ranking?refresh=1`, {
         headers,
-        signal: AbortSignal.timeout(60_000),
+        signal: AbortSignal.timeout(RANKING_REFRESH_TIMEOUT_MS),
       });
       if (resp.ok) {
         const data = await resp.json();
@@ -621,10 +623,15 @@ export async function seedResilienceScores({ runtimeCacheState = fetchRuntimeCac
 // partial-pipeline case where ranking was written but meta wasn't — handler
 // retries the atomic pair on every cron.
 //
-// Returns whether the ranking key is present in Redis after the rebuild
-// attempt (observability only — no caller gates on this).
-async function refreshRankingAggregate({ url, token, laggardsWarmed }) {
+// Returns whether the ranking key is present only after the forced rebuild
+// completes. A failed or timed-out rebuild may have rotated some per-country
+// scores before the request ended, so callers must stop before reading that
+// mixed cohort for a new interval generation.
+export async function refreshRankingAggregate({ url, token, laggardsWarmed }) {
   const reason = laggardsWarmed > 0 ? `${laggardsWarmed} laggard warms` : 'scheduled cron refresh';
+  const refreshStartedAt = Date.now();
+  let refreshCompleted = false;
+  let refreshFailure = 'unknown failure';
   try {
     // ?refresh=1 tells the handler to skip its cache-hit early-return and
     // recompute-then-SET atomically. Avoids the earlier "DEL then rebuild"
@@ -634,17 +641,32 @@ async function refreshRankingAggregate({ url, token, laggardsWarmed }) {
     if (WM_REFRESH_KEY) rebuildHeaders['X-WorldMonitor-Key'] = WM_REFRESH_KEY;
     const rebuildResp = await fetch(`${API_BASE}/api/resilience/v1/get-resilience-ranking?refresh=1`, {
       headers: rebuildHeaders,
-      signal: AbortSignal.timeout(60_000),
+      signal: AbortSignal.timeout(RANKING_REFRESH_TIMEOUT_MS),
     });
     if (rebuildResp.ok) {
       const rebuilt = await rebuildResp.json();
       const total = (rebuilt.items?.length ?? 0) + (rebuilt.greyedOut?.length ?? 0);
-      console.log(`[resilience-scores] Refreshed ${RESILIENCE_RANKING_CACHE_KEY} with ${total} countries (${reason})`);
+      refreshCompleted = true;
+      const durationMs = Date.now() - refreshStartedAt;
+      console.log(
+        `[resilience-scores] Refreshed ${RESILIENCE_RANKING_CACHE_KEY} with ${total} countries `
+        + `(${reason}, durationMs=${durationMs})`,
+      );
+      if (durationMs > RANKING_REFRESH_SLOW_MS) {
+        console.warn(
+          `[resilience-scores] Slow ranking refresh durationMs=${durationMs} `
+          + `thresholdMs=${RANKING_REFRESH_SLOW_MS} timeoutMs=${RANKING_REFRESH_TIMEOUT_MS}`,
+        );
+      }
     } else {
+      refreshFailure = `HTTP ${rebuildResp.status}`;
       console.warn(`[resilience-scores] Refresh ranking HTTP ${rebuildResp.status} — ranking cache stays at its prior state until next cron`);
     }
   } catch (err) {
-    console.warn(`[resilience-scores] Failed to refresh ranking cache: ${err.message}`);
+    refreshFailure = err instanceof Error ? err.message : String(err);
+    console.warn(
+      `[resilience-scores] Failed to refresh ranking cache after ${Date.now() - refreshStartedAt}ms: ${refreshFailure}`,
+    );
   }
 
   // Verify BOTH the ranking data key AND the seed-meta key. Upstash REST
@@ -672,6 +694,12 @@ async function refreshRankingAggregate({ url, token, laggardsWarmed }) {
   const rankingPresent = rankingLen > 0;
   if (rankingPresent && !metaFresh) {
     console.warn(`[resilience-scores] Partial publish: ${RESILIENCE_RANKING_CACHE_KEY} present but seed-meta not fresh — next cron will retry (handler SET is idempotent)`);
+  }
+  if (!refreshCompleted) {
+    throw new Error(
+      `Ranking refresh did not complete after ${Date.now() - refreshStartedAt}ms (${refreshFailure}); `
+      + 'the previous interval generation was preserved',
+    );
   }
   return rankingPresent;
 }
