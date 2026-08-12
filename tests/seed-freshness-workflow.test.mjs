@@ -436,9 +436,14 @@ describe('seed freshness workflow control plane', () => {
       undefined,
       'a merge that never reached production must fail the monitor, not annotate it',
     );
-    // Gated on the green-main check only, exactly as compact health is: an
-    // earlier probe's failure must not be able to skip this one.
-    assert.equal(drift.if, GATE_GUARD, 'deploy drift stays behind the fail-closed gate and nothing else');
+    // NOT gated on green main, unlike compact health. The gate and the drift
+    // this step measures share an upstream: an ungated or red main is exactly
+    // when Railway's wait-for-CI refuses pushes and drift GROWS. During #6483
+    // the gate failed for days, this step sat skipped, and a seeder served a
+    // dead cache namespace for 25h with the alarm silenced (run 31464945851:
+    // gate failure, drift skipped). The gate's own failure still fails the run;
+    // it must not also blind the one probe that measures its blast radius.
+    assert.equal(drift.if, '${{ !cancelled() }}', 'deploy drift must run regardless of the green-main gate (#6483)');
 
     assert.equal(
       workflow.jobs.monitor['timeout-minutes'],
@@ -455,6 +460,21 @@ describe('seed freshness workflow control plane', () => {
       monitorSteps[installIndex].run,
       /npm install --global @railway\/cli@5\.30\.1/,
       'scheduled audits must use a deterministic Railway CLI version',
+    );
+
+    // The drift step can only run after a failed gate if its prerequisites do
+    // too. Without these, a gate failure skips the CLI install and the token
+    // verify by default step semantics, and the ungated drift step above fails
+    // on a missing `railway` binary instead of measuring drift.
+    assert.equal(
+      monitorSteps[installIndex].if,
+      '${{ !cancelled() }}',
+      'the CLI install must survive a gate failure so the ungated drift step can run',
+    );
+    assert.equal(
+      monitorSteps[contextIndex].if,
+      '${{ !cancelled() }}',
+      'the token verify must survive a gate failure so the ungated drift step can run',
     );
 
     const context = monitorSteps[contextIndex];
