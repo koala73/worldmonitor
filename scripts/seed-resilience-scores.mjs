@@ -545,12 +545,14 @@ export async function seedResilienceScores({ runtimeCacheState = fetchRuntimeCac
       console.log(`[resilience-scores] Laggards warmed: ${laggardsWarmed}/${stillMissing.length}`);
     }
 
+    const rankingPresent = await refreshRankingAggregate({ url, token, laggardsWarmed });
+    // refresh=1 rotates every per-country score, not only the ranking aggregate.
+    // Re-read after the final rotation so interval publication and recordCount
+    // describe the exact score cohort that the refreshed ranking serves.
     const finalResults = await redisPipeline(url, token, getCommands);
     const finalWarmed = countCachedFromPipeline(finalResults, expectedCacheState);
     console.log(`[resilience-scores] Final: ${finalWarmed}/${countryCodes.length} cached`);
-
     const intervalResult = await computeAndWriteIntervals(url, token, countryCodes, finalResults, expectedCacheState);
-    const rankingPresent = await refreshRankingAggregate({ url, token, laggardsWarmed });
     return {
       skipped: false,
       recordCount: finalWarmed,
@@ -574,16 +576,21 @@ export async function seedResilienceScores({ runtimeCacheState = fetchRuntimeCac
     };
   }
 
-  const intervalResult = await computeAndWriteIntervals(url, token, countryCodes, preResults, expectedCacheState);
   // Refresh the ranking aggregate on every cron, even when per-country
   // scores are still warm from the previous tick. Ranking has a 12h TTL vs
   // a 6h cron cadence — skipping the refresh when the key is still alive
   // would let it drift toward expiry without a rebuild, and a single missed
   // cron would then produce an EMPTY_ON_DEMAND gap before the next one runs.
   const rankingPresent = await refreshRankingAggregate({ url, token, laggardsWarmed: 0 });
+  // The refresh also rotates the full score cohort. Build intervals only from a
+  // post-refresh read so a clean cron cannot publish old intervals beside new
+  // scores (the #6510 recurrence path).
+  const refreshedResults = await redisPipeline(url, token, getCommands);
+  const refreshedWarmed = countCachedFromPipeline(refreshedResults, expectedCacheState);
+  const intervalResult = await computeAndWriteIntervals(url, token, countryCodes, refreshedResults, expectedCacheState);
   return {
     skipped: false,
-    recordCount: preWarmed,
+    recordCount: refreshedWarmed,
     total: countryCodes.length,
     intervalsWritten: intervalResult.recordCount,
     intervalClampCount: intervalResult.diagnostics.activeScoreClampCount,
