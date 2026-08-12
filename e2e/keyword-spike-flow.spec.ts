@@ -246,20 +246,3 @@ test.describe('keyword spike modal/badge flow', () => {
     expect(result.emittedTitles.length).toBe(0);
   });
 });
-
-// TEMPORARY — reverted in the next commit on this branch.
-//
-// #6496 acceptance, second half: the FIRST probe proved a red job uploads its
-// artifacts. It could not prove the case the upload was widened for — a run
-// that is GREEN because the retry passed, whose first attempt left a trace
-// behind. This reproduces exactly that shape: fail on attempt 0, pass on the
-// retry, so Playwright reports "1 flaky", the job exits 0, and the artifact
-// must still arrive carrying the failed attempt's trace.
-test('TEMP #6496 flaky-shape probe (fails once, passes on retry)', async ({ page }, testInfo) => {
-  await page.goto('/');
-  await page.waitForLoadState('domcontentloaded');
-  expect(
-    testInfo.retry,
-    'deliberate first-attempt failure — proves a green-but-flaky run still uploads its trace',
-  ).toBeGreaterThan(0);
-});
