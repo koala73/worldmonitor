@@ -164,7 +164,10 @@ function displayCountryName(code, fallbackName) {
   return COUNTRY_DISPLAY_NAMES[code] || fallbackName || code;
 }
 
-const GENERATED_DIRS = [
+// Exported so a test can hold .gitignore to this list. Every directory here is
+// deleted and rewritten on each build, so one missing an ignore rule shows up
+// as permanent untracked noise and can be committed by a stray `git add -A`.
+export const GENERATED_DIRS = [
   'countries',
   'chokepoints',
   'crises',

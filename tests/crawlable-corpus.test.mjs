@@ -10,6 +10,7 @@ import {
   buildCorpus,
   chokepointMetaDescription,
   countryMetaDescription,
+  GENERATED_DIRS,
   gitFileLastmod,
   loadCorpusData,
 } from '../scripts/build-crawlable-corpus.mjs';
@@ -127,6 +128,26 @@ function productionScriptNonce() {
 }
 
 describe('crawlable corpus generator', () => {
+  // #6492 added public/sources/ to GENERATED_DIRS and not to .gitignore, so
+  // every built worktree carried it as untracked noise. Nothing tied the two
+  // lists together, so the next directory added would repeat it.
+  it('gitignores every directory the build deletes and rewrites', () => {
+    const ignored = new Set(
+      readFileSync(join(repoRoot, '.gitignore'), 'utf8')
+        .split('\n')
+        .map((line) => line.trim())
+        .filter((line) => line && !line.startsWith('#')),
+    );
+    for (const dir of GENERATED_DIRS) {
+      // 'reference/changelog' is covered by the broader 'public/reference/'.
+      const [topLevel] = dir.split('/');
+      assert.ok(
+        ignored.has(`public/${topLevel}/`),
+        `public/${topLevel}/ is missing from .gitignore — the build rewrites it every run, so it must not be tracked`,
+      );
+    }
+  });
+
   it('keeps future long source names inside the meta-description boundary', () => {
     const descriptions = new Set();
     for (let length = 1; length <= 100; length += 1) {
