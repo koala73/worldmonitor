@@ -53,6 +53,7 @@ test('built welcome page ships the real hero in #root before JavaScript', () => 
   );
   assert.match(navContent, /href="\/blog\/"/);
   assert.match(navContent, />Blog<\/a>/);
+  assert.match(navContent, /href="\/sources\/\?utm_source=welcome-nav"[^>]*>Sources<\/a>/);
   assert.match(navContent, /id="welcome-tablet-navigation"/);
   assert.match(navContent, />Menu</);
   const headlineIndex = rootContent.indexOf('By the time it&#x27;s news,');
