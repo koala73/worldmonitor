@@ -641,8 +641,8 @@ describe('panel-config guardrails', () => {
     // these when you add or remove a self-fetching timer-refreshed panel —
     // being made to notice is the point. (Same convention as the OpenAPI
     // surface-count assertions in tests/openapi-examples-contract.test.mjs.)
-    assert.equal(scheduled.length, 27, `expected 27 self-fetching scheduled panels, matched ${scheduled.length} — either a panel was added/removed (bump this) or the scheduleRefresh pattern stopped matching (fix the regex)`);
-    assert.equal(primed.size, 40, `expected 40 primeTask entries, matched ${primed.size} — either the prime table changed (bump this) or the primeTask pattern stopped matching (fix the regex)`);
+    assert.equal(scheduled.length, 28, `expected 28 self-fetching scheduled panels, matched ${scheduled.length} — either a panel was added/removed (bump this) or the scheduleRefresh pattern stopped matching (fix the regex)`);
+    assert.equal(primed.size, 41, `expected 41 primeTask entries, matched ${primed.size} — either the prime table changed (bump this) or the primeTask pattern stopped matching (fix the regex)`);
 
     const unprimed = scheduled.filter((id) => !primed.has(id)).sort();
     assert.deepStrictEqual(

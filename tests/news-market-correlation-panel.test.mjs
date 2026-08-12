@@ -25,7 +25,7 @@ describe('news to market correlation panel integration', () => {
 
     assert.equal((panels.match(/'news-market-correlation': \{ name: 'News ↔ Markets', enabled: true/g) ?? []).length, 3);
     assert.match(layout, /lazyDefaultPanel\('news-market-correlation'/);
-    assert.match(app, /primeTask\('newsMarketCorrelation'/);
+    assert.match(app, /primeTask\('news-market-correlation'/);
     assert.match(app, /REFRESH_INTERVALS\.newsMarketCorrelation/);
   });
 

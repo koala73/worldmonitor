@@ -806,7 +806,7 @@ export class App {
     }
     if (shouldPrime('news-market-correlation')) {
       const panel = this.state.panels['news-market-correlation'] as NewsMarketCorrelationPanel | undefined;
-      if (panel) primeTask('newsMarketCorrelation', () => panel.fetchData());
+      if (panel) primeTask('news-market-correlation', () => panel.fetchData());
     }
     if (shouldPrimeAny(['markets', 'heatmap', 'commodities', 'crypto', 'energy-complex'])) {
       primeTask('markets', () => this.dataLoader.loadMarkets());
