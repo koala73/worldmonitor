@@ -9,6 +9,7 @@ import {
   RESILIENCE_RANKING_CACHE_KEY,
   RESILIENCE_RANKING_CACHE_TTL_SECONDS,
   RESILIENCE_INTERVAL_MIN_RECORD_COUNT,
+  RESILIENCE_INTERVAL_PROBE_COUNTRY_CODE,
   RESILIENCE_SCORE_SECTION_META_TTL_SECONDS,
   RESILIENCE_SCORE_CACHE_PREFIX,
   RESILIENCE_STATIC_INDEX_KEY,
@@ -30,6 +31,16 @@ const D6_DOMAINS = [
   { id: 'health-food', score: 69, weight: 0.13 },
   { id: 'recovery', score: 71, weight: 0.25 },
 ];
+
+function acceptedIntervalCountryCodes() {
+  const withoutProbe = listRankableCountries().filter(
+    (countryCode) => countryCode !== RESILIENCE_INTERVAL_PROBE_COUNTRY_CODE,
+  );
+  return [
+    ...withoutProbe.slice(0, RESILIENCE_INTERVAL_MIN_RECORD_COUNT - 1),
+    RESILIENCE_INTERVAL_PROBE_COUNTRY_CODE,
+  ];
+}
 
 // Three pillars so a pc-tagged payload produces a real pillar-jitter interval.
 const PC_PILLARS = [
@@ -343,7 +354,7 @@ describe('cached score interval payload classification', () => {
   it('publishes interval keys and freshness metadata in one proxy-supported transaction', async () => {
     const originalFetch = globalThis.fetch;
     const requests = [];
-    const countryCodes = listRankableCountries().slice(0, RESILIENCE_INTERVAL_MIN_RECORD_COUNT);
+    const countryCodes = acceptedIntervalCountryCodes();
     const pipelineResults = countryCodes.map((countryCode) => ({
       result: JSON.stringify({
         countryCode,
@@ -424,11 +435,48 @@ describe('cached score interval payload classification', () => {
     }
   });
 
+  it('refuses an otherwise sufficient generation that omits the fixed health probe', async () => {
+    const originalFetch = globalThis.fetch;
+    let requestCount = 0;
+    globalThis.fetch = async () => {
+      requestCount++;
+      throw new Error('Redis must not be called without the health probe');
+    };
+    const countryCodes = listRankableCountries()
+      .filter((countryCode) => countryCode !== RESILIENCE_INTERVAL_PROBE_COUNTRY_CODE)
+      .slice(0, RESILIENCE_INTERVAL_MIN_RECORD_COUNT);
+    const pipelineResults = countryCodes.map((countryCode) => ({
+      result: JSON.stringify({
+        countryCode,
+        _formula: 'd6',
+        _educationState: 'education-on',
+        overallScore: 70,
+        domains: D6_DOMAINS,
+      }),
+    }));
+
+    try {
+      await assert.rejects(
+        () => computeAndWriteIntervals(
+          'https://redis.example.test',
+          'token',
+          countryCodes,
+          pipelineResults,
+          { expectedFormula: 'd6', expectedEducationState: 'education-on' },
+        ),
+        /missing the required US health probe; the previous generation was preserved/,
+      );
+      assert.equal(requestCount, 0);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
   it('atomically deletes omitted old-state intervals from an accepted generation', async () => {
     const originalFetch = globalThis.fetch;
     const allCountryCodes = listRankableCountries();
-    const publishedCodes = allCountryCodes.slice(0, RESILIENCE_INTERVAL_MIN_RECORD_COUNT);
-    const omittedCodes = allCountryCodes.slice(RESILIENCE_INTERVAL_MIN_RECORD_COUNT);
+    const publishedCodes = acceptedIntervalCountryCodes();
+    const omittedCodes = allCountryCodes.filter((countryCode) => !publishedCodes.includes(countryCode));
     const redis = new Map([
       [`resilience:intervals:v10:${omittedCodes[0]}`, JSON.stringify({
         p05: 10,

@@ -88,6 +88,7 @@ const INTERVAL_TTL_SECONDS = 7 * 24 * 60 * 60;
 const INTERVAL_SOURCE_VERSION = `resilience-intervals:${INTERVAL_KEY_PREFIX}${INTERVAL_METHODOLOGY}`;
 const INTERVAL_META_KEY = 'seed-meta:resilience:intervals';
 export const RESILIENCE_INTERVAL_MIN_RECORD_COUNT = 180;
+export const RESILIENCE_INTERVAL_PROBE_COUNTRY_CODE = 'US';
 export { computeIntervals };
 
 function isKnownScoreFormulaTag(value) {
@@ -310,6 +311,13 @@ export async function computeAndWriteIntervals(url, token, countryCodes, pipelin
     throw new Error(
       `Resilience interval coverage ${intervalPayloads.size}/${countryCodes.length} is below the ` +
       `${RESILIENCE_INTERVAL_MIN_RECORD_COUNT}-country publication floor; the previous generation was preserved`,
+    );
+  }
+
+  if (!intervalPayloads.has(RESILIENCE_INTERVAL_PROBE_COUNTRY_CODE)) {
+    throw new Error(
+      `Resilience interval generation is missing the required ${RESILIENCE_INTERVAL_PROBE_COUNTRY_CODE} health probe; ` +
+      'the previous generation was preserved',
     );
   }
 

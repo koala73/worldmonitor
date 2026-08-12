@@ -287,7 +287,9 @@ state after rollback, so a `false` deployment cannot reuse active scores,
 rankings, sensitivity bands, or trend points while the new state warms.
 The interval publisher also refuses generations below 180 records. An accepted
 generation replaces the full rankable-country keyspace atomically, deleting
-omitted keys so old-state intervals cannot survive a partial refresh.
+omitted keys so old-state intervals cannot survive a partial refresh. It also
+requires the `US` interval used by public and seed health as the fixed data
+probe; a generation cannot advance metadata while that probe is absent.
 
 ## Pre-deploy validation — 2026-08-11
 
