@@ -713,6 +713,19 @@ function walk(rel, out = []) {
   return out;
 }
 
+// Local leftovers (empty `api/[domain]/v1` after a dirty checkout) are not
+// endpoints. Git cannot track empty trees, so a readdir count that includes
+// them writes a stats.json CI cannot reproduce.
+function dirHasFiles(rel) {
+  for (const e of readdirSync(join(ROOT, rel), { withFileTypes: true })) {
+    if (e.name.startsWith('.')) continue;
+    const child = `${rel}/${e.name}`;
+    if (e.isFile()) return true;
+    if (e.isDirectory() && dirHasFiles(child)) return true;
+  }
+  return false;
+}
+
 function computeStats() {
   const makefile = read('Makefile');
   const serverCard = parseJson('public/.well-known/mcp/server-card.json');
@@ -751,9 +764,13 @@ function computeStats() {
   // ---- Root app directories used by AGENTS.md and CONTRIBUTING.md ----
   const componentTopLevelTsFiles = filesIn('src/components').filter((f) => f.endsWith('.ts')).length;
   const serviceTopLevelEntries = entriesIn('src/services').length;
-  const apiEndpointEntries = entriesIn('api').filter(
-    (f) => !f.startsWith('_') && !/\.test\./.test(f) && !/\.d\.ts$/.test(f) && !/\.json$/.test(f),
-  ).length;
+  const apiEndpointEntries = readdirSync(join(ROOT, 'api'), { withFileTypes: true }).filter((e) => {
+    const f = e.name;
+    if (f.startsWith('_') || f.startsWith('.')) return false;
+    if (/\.test\./.test(f) || /\.d\.ts$/.test(f) || /\.json$/.test(f)) return false;
+    if (e.isDirectory()) return dirHasFiles(`api/${f}`);
+    return e.isFile();
+  }).length;
 
   // ---- Panel subclasses across src/components (ARCHITECTURE.md system diagram) ----
   const panelClasses = walk('src/components')
