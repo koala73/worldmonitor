@@ -145,6 +145,27 @@ Everything at or below 75 is untouched — the isolation floor, the over-exposur
 
 **Known conservative edge.** `parentCount` counts only parents holding **more than** 1% of host GDP, so a country integrated through many sub-threshold parents forfeits a premium its true breadth might merit. The forfeit is bounded by the premium itself (≤ 25 band points, ≤ 7.5 dimension points). The worst arithmetically reachable case is ~14 band points: all 16 enumerated reporting parents sitting just under the counting threshold sums to ~16% of GDP — a raw band of 89 scored at the 75 floor. No production row currently has premium-region claims with `parentCount` 0, so this is a bound on the transform, not an observed effect. If a future BIS payload does produce one, the fix is a breadth measure over the full parent-share distribution (effective parent count or an HHI over `parents`), not a lower threshold.
 
+**Reproducing the concentration statistic.** The "29 of 77" figure above is the empirical justification for conditioning at all, so it must be re-derivable rather than taken on trust — BIS republishes quarterly and the ratio will move. Against a live payload:
+
+```bash
+# How many premium-region countries hold that premium through <= 2 parents?
+redis-cli GET 'economic:bis-lbs:v1' | jq '
+  (.data // .).countries
+  | to_entries
+  | map(select(.value.totalXborderPctGdp != null and .value.parentCount != null))
+  # Premium region = the band ROUNDS above 75, so raw band >= 75.5 — which the
+  # two legs reach at 5.4% and 40.59% of GDP. Using the unrounded 5%/40.9%
+  # crossings instead pulls in 2 countries whose band rounds to exactly 75 and
+  # earns no premium, which is what makes this read 79/31 rather than 77/29.
+  | map(select(.value.totalXborderPctGdp >= 5.4 and .value.totalXborderPctGdp <= 40.59))
+  | {premium_region: length,
+     concentrated: map(select(.value.parentCount <= 2)) | length,
+     single_parent: map(select(.value.parentCount <= 1)) | length}'
+# 2026-08-12: { "premium_region": 77, "concentrated": 29, "single_parent": 11 }
+```
+
+If `concentrated` ever falls near zero, the conditioning has stopped doing work and the construct is worth re-examining — not because the transform broke, but because the concentration it corrects for would have disappeared from the data.
+
 **What the conditioning does not fix.** A `parentCount` that fails to parse caps the premium here but also nulls the Component 4 slot, and `weightedBlend` renormalises the freed weight onto the surviving legs — which *raises* the score when those legs read high (Albania: 70 → 80). That inflation is a property of the blend and predates this change; the same measurement against the raw band is 74 → 86, so conditioning strictly reduces it. Tracked as issue #6528; the scorer cannot close it, because a component slot has no way to hold weight the blend has already freed.
 
 A negative or non-finite reading is upstream corruption, not isolation, and falls back to a neutral 50 rather than to the isolation floor — a parser regression must not read as a sanctions verdict.
