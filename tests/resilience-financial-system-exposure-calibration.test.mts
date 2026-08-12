@@ -124,6 +124,41 @@ describe('financialSystemExposure — sanctions-isolated activation anchor', () 
   });
 });
 
+describe('financialSystemExposure — absence must not resolve as strength (#6461)', () => {
+  it('drops FATF compliant-by-absence when it is the only resolving component', async () => {
+    const reader = createFinSysFixtureReader();
+
+    for (const cc of ['ER', 'TW']) {
+      const result = await scoreFinancialSystemExposure(cc, reader);
+      assert.equal(
+        result.coverage,
+        0,
+        `${cc} is absent from WB IDS, BIS CBS, and both FATF lists; compliant-by-absence must not create coverage`,
+      );
+      assert.equal(
+        result.score,
+        0,
+        `${cc} must not publish a perfect financial-system score from absence alone`,
+      );
+    }
+  });
+
+  it('attenuates Chad\'s near-perfect debt leg when the banking signals show no market access', async () => {
+    const result = await scoreFinancialSystemExposure('TD', createFinSysFixtureReader());
+
+    assert.equal(
+      result.score,
+      56,
+      '0.14% short-term debt must not dominate when BIS claims are 1.11% of GDP with zero reporting parents',
+    );
+    assert.equal(
+      result.coverage,
+      0.76,
+      'the debt reading is observed but not a full-confidence market-access signal',
+    );
+  });
+});
+
 describe('financialSystemExposure — dimension-level matched pairs', () => {
   it('every pair holds its documented direction with its minimum gap', async () => {
     const reader = createFinSysFixtureReader();
