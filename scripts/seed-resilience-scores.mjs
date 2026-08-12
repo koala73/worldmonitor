@@ -6,7 +6,7 @@ import {
   writeFreshnessMetadata,
 } from './_seed-utils.mjs';
 import { unwrapEnvelope } from './_seed-envelope-source.mjs';
-import { isInRankableUniverse } from './shared/rankable-universe.mjs';
+import { isInRankableUniverse, listRankableCountries } from './shared/rankable-universe.mjs';
 import {
   DRAWS,
   RESILIENCE_INTERVAL_KEY_PREFIX as INTERVAL_KEY_PREFIX,
@@ -86,10 +86,16 @@ export const RESILIENCE_STATIC_INDEX_KEY = 'resilience:static:index:v1';
 
 const INTERVAL_TTL_SECONDS = 7 * 24 * 60 * 60;
 const INTERVAL_SOURCE_VERSION = `resilience-intervals:${INTERVAL_KEY_PREFIX}${INTERVAL_METHODOLOGY}`;
+const INTERVAL_META_KEY = 'seed-meta:resilience:intervals';
+export const RESILIENCE_INTERVAL_MIN_RECORD_COUNT = 180;
 export { computeIntervals };
 
 function isKnownScoreFormulaTag(value) {
   return value === 'pc' || value === 'd6';
+}
+
+function isKnownEducationState(value) {
+  return value === 'education-on' || value === 'education-off';
 }
 
 function recordDiagnosticSample(diagnostics, sampleKey, countryCode, details = {}) {
@@ -128,25 +134,54 @@ async function redisPipeline(url, token, commands) {
   return resp.json();
 }
 
-async function fetchRuntimeFormulaTag() {
+async function redisTransaction(url, token, commands) {
+  const resp = await fetch(`${url}/multi-exec`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json',
+      'User-Agent': SEED_UA,
+    },
+    body: JSON.stringify(commands),
+    signal: AbortSignal.timeout(30_000),
+  });
+  if (!resp.ok) {
+    const text = await resp.text().catch(() => '');
+    throw new Error(`Redis transaction HTTP ${resp.status} — ${text.slice(0, 200)}`);
+  }
+  return resp.json();
+}
+
+export async function fetchRuntimeCacheState(fetchFn = globalThis.fetch) {
   try {
-    const resp = await fetch(`${API_BASE}/api/resilience/v1/get-runtime-manifest`, {
+    const resp = await fetchFn(`${API_BASE}/api/resilience/v1/get-runtime-manifest`, {
       headers: { 'User-Agent': SEED_UA, 'Accept': 'application/json' },
       signal: AbortSignal.timeout(10_000),
     });
     if (!resp.ok) {
-      console.warn(`[resilience-scores] Runtime manifest returned ${resp.status}; accepting any valid score formula tag`);
-      return null;
+      console.warn(`[resilience-scores] Runtime manifest returned ${resp.status}; refusing to trust an unproven education cache state`);
+      return { expectedFormula: null, expectedEducationState: null };
     }
 
     const data = await resp.json();
-    if (isKnownScoreFormulaTag(data?.formulaTag)) return data.formulaTag;
-    console.warn(`[resilience-scores] Runtime manifest formulaTag=${String(data?.formulaTag)} is not recognized; accepting any valid score formula tag`);
+    const expectedFormula = isKnownScoreFormulaTag(data?.formulaTag) ? data.formulaTag : null;
+    const expectedEducationState = data?.constructVersions?.education === 'active'
+      ? 'education-on'
+      : data?.constructVersions?.education === 'rollback'
+        ? 'education-off'
+        : null;
+    if (!expectedFormula) {
+      console.warn(`[resilience-scores] Runtime manifest formulaTag=${String(data?.formulaTag)} is not recognized; refusing to read or publish from an unproven formula`);
+    }
+    if (!expectedEducationState) {
+      console.warn('[resilience-scores] Runtime manifest is missing the education construct version; refusing to write intervals from an unproven construct state');
+    }
+    return { expectedFormula, expectedEducationState };
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    console.warn(`[resilience-scores] Runtime manifest formula lookup failed (${message}); accepting any valid score formula tag`);
+    console.warn(`[resilience-scores] Runtime manifest lookup failed (${message}); refusing to trust an unproven education cache state`);
   }
-  return null;
+  return { expectedFormula: null, expectedEducationState: null };
 }
 
 export function parseCachedScorePayload(raw, options = {}) {
@@ -164,6 +199,8 @@ export function parseCachedScorePayload(raw, options = {}) {
     if (!isKnownScoreFormulaTag(formula)) return null;
     const expectedFormula = options?.expectedFormula;
     if (isKnownScoreFormulaTag(expectedFormula) && formula !== expectedFormula) return null;
+    const expectedEducationState = options?.expectedEducationState;
+    if (!isKnownEducationState(expectedEducationState) || payload._educationState !== expectedEducationState) return null;
     const overallScore = Number(payload.overallScore);
     if (!Number.isFinite(overallScore) || overallScore <= 0) return null;
     return payload;
@@ -172,10 +209,10 @@ export function parseCachedScorePayload(raw, options = {}) {
   }
 }
 
-function countCachedFromPipeline(results, expectedFormula = null) {
+function countCachedFromPipeline(results, options = {}) {
   let count = 0;
   for (const entry of results) {
-    if (parseCachedScorePayload(entry?.result, { expectedFormula }) != null) count++;
+    if (parseCachedScorePayload(entry?.result, options) != null) count++;
   }
   return count;
 }
@@ -214,7 +251,7 @@ export function buildIntervalPayloadFromCachedScore(raw, countryCode, diagnostic
     // the manifest lookup succeeded. We deliberately do not gate on a formula
     // re-derived from this process's env: that drift left production
     // interval-less while the ranking stayed fresh.
-    const currentScore = parseCachedScorePayload(raw, { expectedFormula });
+    const currentScore = parseCachedScorePayload(raw, options);
     if (!currentScore) {
       recordDiagnosticCount(diagnostics, 'invalidScorePayloadCount', 'invalidScorePayloadSamples', countryCode, { formula });
       return null;
@@ -236,8 +273,8 @@ export function buildIntervalPayloadFromCachedScore(raw, countryCode, diagnostic
   }
 }
 
-async function computeAndWriteIntervals(url, token, countryCodes, pipelineResults, options = {}) {
-  const commands = [];
+export async function computeAndWriteIntervals(url, token, countryCodes, pipelineResults, options = {}) {
+  const intervalPayloads = new Map();
   const diagnostics = createIntervalDiagnostics();
 
   for (let i = 0; i < countryCodes.length; i++) {
@@ -245,7 +282,7 @@ async function computeAndWriteIntervals(url, token, countryCodes, pipelineResult
     const countryCode = countryCodes[i];
     const payload = buildIntervalPayloadFromCachedScore(raw, countryCode, diagnostics, options);
     if (payload) {
-      commands.push(['SET', `${INTERVAL_KEY_PREFIX}${countryCode}`, JSON.stringify(payload), 'EX', INTERVAL_TTL_SECONDS]);
+      intervalPayloads.set(countryCode, JSON.stringify(payload));
     }
   }
 
@@ -256,7 +293,7 @@ async function computeAndWriteIntervals(url, token, countryCodes, pipelineResult
     );
   }
 
-  if (commands.length === 0) {
+  if (intervalPayloads.size === 0) {
     console.warn(
       `[resilience-scores] No interval keys written for ${countryCodes.length} countries ` +
       `(missingScorePayloads=${diagnostics.missingScorePayloadCount}, ` +
@@ -269,11 +306,51 @@ async function computeAndWriteIntervals(url, token, countryCodes, pipelineResult
     return { recordCount: 0, diagnostics };
   }
 
-  const PIPE_BATCH = 50;
-  for (let i = 0; i < commands.length; i += PIPE_BATCH) {
-    await redisPipeline(url, token, commands.slice(i, i + PIPE_BATCH));
+  if (intervalPayloads.size < RESILIENCE_INTERVAL_MIN_RECORD_COUNT) {
+    throw new Error(
+      `Resilience interval coverage ${intervalPayloads.size}/${countryCodes.length} is below the ` +
+      `${RESILIENCE_INTERVAL_MIN_RECORD_COUNT}-country publication floor; the previous generation was preserved`,
+    );
   }
-  console.log(`[resilience-scores] Wrote ${commands.length} interval keys`);
+
+  const intervalMeta = {
+    fetchedAt: Date.now(),
+    recordCount: intervalPayloads.size,
+    sourceVersion: INTERVAL_SOURCE_VERSION,
+    _formula: options.expectedFormula,
+    _educationState: options.expectedEducationState,
+    _intervalMethodology: INTERVAL_METHODOLOGY,
+  };
+  // Replace the authoritative 196-country keyspace, not only the current
+  // static-index slice. If that index shrinks during a partial upstream run,
+  // omitted old-generation keys must still be removed in this same script.
+  const intervalKeys = listRankableCountries().map((countryCode) => `${INTERVAL_KEY_PREFIX}${countryCode}`);
+  const metaTtlSeconds = Math.max(86400 * 7, INTERVAL_TTL_SECONDS);
+  const publishCommands = intervalKeys.map((key) => {
+    const payload = intervalPayloads.get(key.slice(INTERVAL_KEY_PREFIX.length));
+    return payload == null
+      ? ['DEL', key]
+      : ['SET', key, payload, 'EX', INTERVAL_TTL_SECONDS];
+  });
+  publishCommands.push(['SET', INTERVAL_META_KEY, JSON.stringify(intervalMeta), 'EX', metaTtlSeconds]);
+  const publishResult = await redisTransaction(url, token, publishCommands);
+  if (
+    !Array.isArray(publishResult)
+    || publishResult.length !== publishCommands.length
+    || publishResult.some((result, index) => {
+      if (result?.error) return true;
+      return publishCommands[index]?.[0] === 'SET' && result?.result !== 'OK';
+    })
+  ) {
+    throw new Error(
+      `Resilience interval atomic publish failed persistence proof for ${intervalPayloads.size} interval keys; ` +
+      'freshness metadata was not advanced',
+    );
+  }
+  console.log(
+    `[resilience-scores] Published ${intervalPayloads.size} interval keys and removed ` +
+    `${intervalKeys.length - intervalPayloads.size} omitted keys in one generation`,
+  );
   if (diagnostics.activeScoreClampCount > 0) {
     console.warn(
       `[resilience-scores] Clamped ${diagnostics.activeScoreClampCount} interval bands to contain the active score ` +
@@ -281,8 +358,7 @@ async function computeAndWriteIntervals(url, token, countryCodes, pipelineResult
     );
   }
 
-  await writeFreshnessMetadata('resilience', 'intervals', commands.length, INTERVAL_SOURCE_VERSION, INTERVAL_TTL_SECONDS);
-  return { recordCount: commands.length, diagnostics };
+  return { recordCount: intervalPayloads.size, diagnostics };
 }
 
 export function getIntervalWriteFailure(result) {
@@ -290,7 +366,15 @@ export function getIntervalWriteFailure(result) {
   const total = Number(result?.total ?? 0);
   const intervalsWritten = Number(result?.intervalsWritten ?? 0);
   if (!Number.isFinite(total) || total <= 0) return null;
-  if (Number.isFinite(intervalsWritten) && intervalsWritten > 0) return null;
+  if (Number.isFinite(intervalsWritten) && intervalsWritten >= RESILIENCE_INTERVAL_MIN_RECORD_COUNT) return null;
+
+  if (Number.isFinite(intervalsWritten) && intervalsWritten > 0) {
+    return {
+      reason: 'insufficient_interval_coverage',
+      message: `Only ${intervalsWritten}/${total} resilience intervals were published; ` +
+        `${RESILIENCE_INTERVAL_MIN_RECORD_COUNT} are required`,
+    };
+  }
 
   const scoreCount = Number(result?.recordCount ?? 0);
   const formulaSkipCount = Number(result?.intervalFormulaSkipCount ?? 0);
@@ -350,7 +434,7 @@ export function buildSeedResultLogExtra(result) {
   };
 }
 
-async function seedResilienceScores() {
+export async function seedResilienceScores({ runtimeCacheState = fetchRuntimeCacheState } = {}) {
   const { url, token } = getRedisCredentials();
 
   const index = await redisGetJson(url, token, RESILIENCE_STATIC_INDEX_KEY);
@@ -374,16 +458,21 @@ async function seedResilienceScores() {
     return { skipped: true, reason: 'no_index' };
   }
 
-  const expectedFormula = await fetchRuntimeFormulaTag();
-  if (expectedFormula) {
-    console.log(`[resilience-scores] Runtime formula tag: ${expectedFormula}`);
+  const { expectedFormula, expectedEducationState } = await runtimeCacheState();
+  if (!isKnownScoreFormulaTag(expectedFormula) || !isKnownEducationState(expectedEducationState)) {
+    throw new Error(
+      'Runtime manifest did not prove the active resilience formula and education cache state; aborting before score-cache reads, warmup, and interval writes',
+    );
   }
+  const expectedCacheState = { expectedFormula, expectedEducationState };
+  console.log(`[resilience-scores] Runtime formula tag: ${expectedFormula}`);
+  console.log(`[resilience-scores] Runtime education state: ${expectedEducationState}`);
 
   console.log(`[resilience-scores] Reading cached scores for ${countryCodes.length} countries...`);
 
   const getCommands = countryCodes.map((c) => ['GET', `${RESILIENCE_SCORE_CACHE_PREFIX}${c}`]);
   const preResults = await redisPipeline(url, token, getCommands);
-  const preWarmed = countCachedFromPipeline(preResults, expectedFormula);
+  const preWarmed = countCachedFromPipeline(preResults, expectedCacheState);
 
   console.log(`[resilience-scores] ${preWarmed}/${countryCodes.length} scores pre-warmed`);
 
@@ -421,7 +510,7 @@ async function seedResilienceScores() {
     const stillMissing = [];
     for (let i = 0; i < countryCodes.length; i++) {
       const raw = postResults[i]?.result ?? null;
-      if (parseCachedScorePayload(raw, { expectedFormula }) == null) stillMissing.push(countryCodes[i]);
+      if (parseCachedScorePayload(raw, expectedCacheState) == null) stillMissing.push(countryCodes[i]);
     }
 
     // Warm laggards individually (countries the bulk ranking timed out on)
@@ -449,10 +538,10 @@ async function seedResilienceScores() {
     }
 
     const finalResults = await redisPipeline(url, token, getCommands);
-    const finalWarmed = countCachedFromPipeline(finalResults, expectedFormula);
+    const finalWarmed = countCachedFromPipeline(finalResults, expectedCacheState);
     console.log(`[resilience-scores] Final: ${finalWarmed}/${countryCodes.length} cached`);
 
-    const intervalResult = await computeAndWriteIntervals(url, token, countryCodes, finalResults, { expectedFormula });
+    const intervalResult = await computeAndWriteIntervals(url, token, countryCodes, finalResults, expectedCacheState);
     const rankingPresent = await refreshRankingAggregate({ url, token, laggardsWarmed });
     return {
       skipped: false,
@@ -477,7 +566,7 @@ async function seedResilienceScores() {
     };
   }
 
-  const intervalResult = await computeAndWriteIntervals(url, token, countryCodes, preResults, { expectedFormula });
+  const intervalResult = await computeAndWriteIntervals(url, token, countryCodes, preResults, expectedCacheState);
   // Refresh the ranking aggregate on every cron, even when per-country
   // scores are still warm from the previous tick. Ranking has a 12h TTL vs
   // a 6h cron cadence — skipping the refresh when the key is still alive

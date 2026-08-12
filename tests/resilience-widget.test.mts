@@ -333,16 +333,7 @@ test('formatResilienceConfidence excludes retired dimensions by ID (not by cover
   assert.equal(formatResilienceConfidence(withRetired), 'Coverage 57% ✓');
 });
 
-test('formatResilienceConfidence counts a zero-coverage education dim in both shapes now that it is live', () => {
-  // Inverted by #6460. The first case previously expected 'Coverage 80% ✓',
-  // because `education` sat in the client mirror of
-  // RESILIENCE_FLAG_DARK_WHEN_ZERO_COVERAGE and its triple-zero shape was
-  // dropped from the widget's coverage mean.
-  //
-  // The dimension is now live, so both shapes are real coverage gaps and both
-  // read 40% — the mean of 0.8 and 0. The point of the pair is no longer
-  // dark-vs-outage; it is that the widget and the API agree, which is what the
-  // client/server parity test guards structurally.
+test('formatResilienceConfidence excludes only the education rollback shape', () => {
   const withZeroCoverageEducation: ResilienceScoreResponse = {
     ...baseResponse,
     domains: [{ id: 'social-governance', score: 80, weight: 0.19, dimensions: [
@@ -350,7 +341,7 @@ test('formatResilienceConfidence counts a zero-coverage education dim in both sh
       { id: 'education', score: 0, coverage: 0, observedWeight: 0, imputedWeight: 0 },
     ] }],
   };
-  assert.equal(formatResilienceConfidence(withZeroCoverageEducation), 'Coverage 40% ✓');
+  assert.equal(formatResilienceConfidence(withZeroCoverageEducation), 'Coverage 80% ✓');
 
   const withEducationOutage: ResilienceScoreResponse = {
     ...withZeroCoverageEducation,

@@ -1,17 +1,16 @@
 # Education dimension flag-flip runbook
 
-> **EXECUTED 2026-08-11 (#6460).** The dimension is active: `tier='core'`,
-> `RESILIENCE_EDUCATION_ENABLED` defaults to `true`, cache generations rotated
-> to score `v27` / ranking `v27` / history `v21` / intervals `v10`, and both
-> dark allow-list entries removed. Measured acceptance across 196 countries
-> against production seeds (pillar-combined penalized): Spearman 1.00, max
-> country drift 3.45, worst cohort median shift −1.08, 47/51 Core indicators
-> measurable. The procedure below is retained for rollback and audit context;
-> see the closeout section at the end for what was actually measured.
+> **PRE-DEPLOY IMPLEMENTATION READY (#6460 / PR #6473).** The proposed code
+> defaults `RESILIENCE_EDUCATION_ENABLED` to `true`, promotes the indicator to
+> `tier='core'`, and rotates cache generations to score `v27` / ranking `v27` /
+> history `v21` / intervals `v10`. The explicit `false` rollback remains dark
+> through the triple-zero discriminator. This document does not claim that PR
+> #6473 is merged, deployed, or accepted in production. Completion still needs
+> the first post-deploy refresh and one genuine post-flip artifact from step 5.
 >
 > One deviation from the procedure as written, recorded rather than waived: the
 > flip is expressed as a **code default** rather than a production env var. See
-> "Why the default and not an env var" in the closeout.
+> "Why the default and not an env var" in the pre-deploy validation section.
 
 Operational procedure for activating the `education` dimension of the Country
 Resilience Index — moving `RESILIENCE_EDUCATION_ENABLED` from off (shipped
@@ -45,12 +44,14 @@ All must be green before flipping:
    run in production:
    ```bash
    redis-cli --url $REDIS_URL GET seed-meta:resilience:education-attainment
-   # fetchedAt within the last 8 days, recordCount >= 180
+   # fetchedAt within the last 8 days, rankableRecordCount >= 180
    ```
    The validation floor in the seeder is 150, deliberately lower than the
    measured 181 so a transient World Bank dip does not poison seed-meta. The
    flip gate is the stricter **180** — a payload between 150 and 180 is healthy
-   enough to publish but not healthy enough to activate on.
+   enough to retain as last-good data, but both health surfaces report
+   `COVERAGE_PARTIAL` and the active scorer fails closed until rankable coverage
+   recovers. Total `recordCount` includes territories and cannot prove this gate.
 
    **180 is not a round number, it is a CI invariant.**
    `tests/resilience-indicator-tiering.test.mts` sets `CORE_MIN_COVERAGE = 180`
@@ -198,19 +199,24 @@ All must be green before flipping:
    produce the acceptance evidence, so a stale prefix there reads an abandoned
    namespace and returns a green verdict with no signal.
 
-6. **Ship the coverage-drop warning.** The 150 validation floor does not catch a
+6. **Ship the coverage-drop warning and active floor.** The 150 validation floor does not catch a
    partial fetch: 161 countries clears it while silently moving ~20 onto the
-   `unmonitored` imputation. While the dimension is dark that moves nothing
-   published; at flip it moves real scores. The design (sized to this seeder's
-   cadence, warn-not-fail, set-diff rather than count-only) is specified in
-   `scripts/seed-education-attainment.mjs` above `MIN_COUNTRIES`. Build it
-   before flipping, not after.
+   `unmonitored` imputation. The seeder remains warn-not-fail so a legitimate
+   World Bank revision cannot overwrite seed-meta with an error, but it writes
+   numeric `rankableRecordCount`. Both health surfaces enforce 180, and the
+   active scorer accepts only current meta that proves the same floor (with the
+   prior `countrySet` field as a transition fallback). Both health surfaces also
+   count usable rankable records in the canonical payload, so stale metadata
+   cannot conceal a partial publish. The set-diff warning remains useful because
+   it names which reporters changed. Build all parts before flipping, not after.
 
-7. **Remove the dark allow-list entry.** Drop `'education'` from
-   `FLAG_GATED_DARK_DIMENSIONS` in `tests/resilience-release-gate.test.mts` and
-   from `RESILIENCE_FLAG_DARK_WHEN_ZERO_COVERAGE` in `_dimension-scorers.ts`.
-   Leaving them in place would keep a live dimension excluded from the
-   confidence mean, understating real coverage gaps.
+7. **Split the active gate from rollback coverage semantics.** Remove
+   `'education'` from `FLAG_GATED_DARK_DIMENSIONS` in
+   `tests/resilience-release-gate.test.mts`, so the default-on release fixture
+   must carry real education coverage. Keep it in
+   `RESILIENCE_FLAG_DARK_WHEN_ZERO_COVERAGE` and the client mirror: those sets
+   exclude only the explicit false rollback's triple-zero shape. Active rows
+   and source failures carry observed or imputed weight and remain counted.
 
 ## Acceptance gates
 
@@ -250,7 +256,8 @@ anchors through an endpoint requiring `WORLDMONITOR_API_KEY`.
    locally on. Every gate must pass. If one fails, STOP and debug — do not waive.
 
 3. **Land the promotion PR**: tier `experimental`→`core`, EXTRACTION_RULES
-   implemented, cache prefixes bumped, dark allow-list entries removed.
+   implemented, cache prefixes bumped, active release gate enforced, and
+   triple-zero rollback coverage semantics retained.
 
 4. **Flip the flag** (owner): set `RESILIENCE_EDUCATION_ENABLED=true` in
    production and deploy.
@@ -274,19 +281,25 @@ returns the empty-data shape regardless of prefix, so rolling back creates a
 second cache migration for no benefit. Capture a rollback snapshot for the
 post-mortem.
 
-## Closeout — 2026-08-11
+Score, ranking, and interval payloads carry `_educationState` metadata, and
+history members carry the same state in their suffix. Readers reject the active
+state after rollback, so a `false` deployment cannot reuse active scores,
+rankings, sensitivity bands, or trend points while the new state warms.
+The interval publisher also refuses generations below 180 records. An accepted
+generation replaces the full rankable-country keyspace atomically, deleting
+omitted keys so old-state intervals cannot survive a partial refresh.
+
+## Pre-deploy validation — 2026-08-11
 
 ### Why the default and not an env var
 
 Energy v2 and `financialSystemExposure` both keep a `?? 'false'` code default
-and flip through the production environment. Education could not: it is the
-first dimension whose activation is **CI-coupled to its own flag**. Activation
-must remove `education` from `FLAG_GATED_DARK_DIMENSIONS` and from
-`RESILIENCE_FLAG_DARK_WHEN_ZERO_COVERAGE`, and both removals are only correct
-while the dimension is live. With the flag off,
-`tests/resilience-release-gate.test.mts` fails with *"US education should not
-fall back to zero-coverage placeholder scoring"*, and the coverage-mean removal
-drops the US below the `headlineEligible` 0.65 threshold in production.
+and flip through the production environment. Education uses a code default
+because activation changes the committed methodology and CI coverage contract
+together. The explicit rollback remains safe without removing `education` from
+`RESILIENCE_FLAG_DARK_WHEN_ZERO_COVERAGE`: the set excludes only the unique
+`coverage=0`, `observedWeight=0`, `imputedWeight=0` placeholder. Active rows and
+source failures carry weight and remain visible in coverage calculations.
 
 Keeping the default at `false` would therefore have required the env var in
 **both** the CI workflow and Vercel, splitting "is education on" across two
@@ -305,23 +318,29 @@ so baseline and proposed see byte-identical inputs).
 | `gate-1-spearman` | >= 0.85 | 1.00 |
 | `gate-2-country-drift` | <= 15 | 3.45 (VU) |
 | `gate-6-cohort-median` | <= 10 | −1.08 (fragile-states) |
-| `gate-7-matched-pair` | all hold | 0 regressions; `in-vs-za` pre-existing |
+| `gate-7-matched-pair` | all hold | 9/9 hold after audited `in-vs-za` rebaseline; gap 1.77, min 1 |
 | `gate-9-effective-influence` | >= 80% Core | 92.16% (47/51) |
 
 Education pairs post-flip: `pt-vs-uz` 5.84 (min 3), `es-vs-by` 9.01 (min 3),
 `ch-vs-tm` 28.28 (min 5). Southern-Europe cohort: PT −0.55, ES −0.29, IT −0.29,
 MT −0.43, GR +0.12 — inside the ~1.5-point taste bound.
 
-### Weight fallback: measured, not applied
+### Matched-pair rebaseline and weight fallback
 
-The pre-agreed fallback (halve 0.5 → 0.25 if any gate fails) was **measured and
-found not to apply.** The only failing pair, `in-vs-za`, was already below its
-minGap with the flag off (2.54 against min 3) and stayed below it at weight 0.25
-(2.13), because the baseline it walks back toward is itself under the threshold.
-A weight change cannot repair a pre-existing failure. Tracked in #6466, along
-with the reason nothing caught it earlier: `MATCHED_PAIRS` is only
-schema-validated in CI — `tests/resilience-cohort-config.test.mts` never scores
-a country — so live gaps are evaluated solely by manually-run harnesses.
+The pre-agreed fallback (halve 0.5 → 0.25 if a flip causes a gate failure) was
+measured and was not applied. The 2026-08-11 flag-off audit already put
+`in-vs-za` below its old 3-point floor at 2.54; education moved it to 1.77. The
+threshold, not the education scorer, was stale. #6466 rebaselines the pair to a
+1-point positive floor, matching other deliberately narrow whole-index peers.
+This is not a current-value waiver: the measured proposal keeps 0.77 points of
+headroom, and a near-tie or inversion still fails. The rationale and measured
+baseline/proposal are pinned in `tests/resilience-cohort-config.test.mts`.
+
+A fresh read-only rerun on 2026-08-12 was correctly rejected before verdict
+because unrelated `socialCohesion` and `stateContinuity` source-failure states
+made the absolute matched-pair gate invalid. No new acceptance artifact was
+created from that degraded run. Re-run after source health recovers; step 5
+remains the authoritative post-deploy completion gate.
 
 ### A trap this runbook did not anticipate
 

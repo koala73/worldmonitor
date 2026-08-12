@@ -233,7 +233,7 @@ const EXCLUDED_FROM_MCP = new Map([
   ['resilience:power-losses:v1',
     'deferred to a future resilience tool. Companion data to the resilience v2 energy bundle.'],
   ['resilience:education-attainment:v1',
-    'deferred to a future resilience tool. Single-indicator input to the education dimension, which is still flag-gated dark behind RESILIENCE_EDUCATION_ENABLED — exposing it via MCP would publish a series the index itself does not yet score (#6452).'],
+    'deferred to a future resilience tool. Single-indicator input to the active education dimension; canonical resilience scores and dimensions remain available through the Resilience REST and agent-skill surfaces, while a raw-series MCP contract needs separate product design.'],
   ['product-catalog:v3',
     'deferred to a future product-catalog tool. Used by the dashboard to render product metadata, not a queryable data slice.'],
   ['climate:zone-normals:v1',
@@ -395,6 +395,18 @@ const EXCLUDED_FROM_MCP = new Map([
   ['consumer-prices:coverage:us',
     'operational: consumer-price market/retailer completion and validator-rejection coverage published for /api/health; the underlying price observations are exposed through get_consumer_prices, while this health snapshot is not a queryable MCP slice (#5945).'],
 ]);
+
+const EDUCATION_EXCLUSION_REASON = EXCLUDED_FROM_MCP.get('resilience:education-attainment:v1');
+assert.match(
+  EDUCATION_EXCLUSION_REASON ?? '',
+  /active education dimension/,
+  'education MCP exclusion must describe the active construct, not the retired flag-dark state',
+);
+assert.doesNotMatch(
+  EDUCATION_EXCLUSION_REASON ?? '',
+  /flag-gated dark|does not yet score/i,
+  'education MCP exclusion must not retain pre-activation state',
+);
 
 // -----------------------------------------------------------------------------
 // Pure predicate helpers (no module-state coupling) — used by both the

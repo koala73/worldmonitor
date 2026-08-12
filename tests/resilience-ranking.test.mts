@@ -32,6 +32,7 @@ const originalApiKey = process.env.WORLDMONITOR_API_KEY;
 const originalSeedRefreshKey = process.env.WORLDMONITOR_SEED_REFRESH_KEY;
 const D6_RANKING_CACHE_TAG = {
   _formula: 'd6',
+  _educationState: 'education-on',
   _intervalMethodology: RESILIENCE_INTERVAL_METHODOLOGY,
 } as const;
 
@@ -301,6 +302,7 @@ describe('resilience ranking contracts', () => {
         lowConfidence: false,
         imputationShare: 0.05,
         _formula: 'd6',
+        _educationState: 'education-on',
       }),
     );
     // Untagged entry: must be rejected, ranking warm rebuilds US.
@@ -358,6 +360,7 @@ describe('resilience ranking contracts', () => {
       greyedOut: [],
       ...RANKING_META,
       _formula: 'pc', // mismatched — current env is flag-off ⇒ current='d6'
+      _educationState: 'education-on',
       _intervalMethodology: RESILIENCE_INTERVAL_METHODOLOGY,
     };
     redis.set(RESILIENCE_RANKING_CACHE_KEY, JSON.stringify(stale));
@@ -414,6 +417,7 @@ describe('resilience ranking contracts', () => {
         imputationShare: 0.05,
         headlineEligible: true,
         _formula: 'd6',
+        _educationState: 'education-on',
       }),
     );
     redis.set(
@@ -429,6 +433,7 @@ describe('resilience ranking contracts', () => {
         imputationShare: 0.1,
         headlineEligible: true,
         _formula: 'd6',
+        _educationState: 'education-on',
       }),
     );
     redis.set(
@@ -457,6 +462,7 @@ describe('resilience ranking contracts', () => {
         greyedOut: [],
         ...RANKING_META,
         _formula: 'd6',
+        _educationState: 'education-on',
         // Deliberately missing _intervalMethodology: old ranking payload.
       }),
     );
@@ -513,6 +519,7 @@ describe('resilience ranking contracts', () => {
         imputationShare: 0.05,
         headlineEligible: true,
         _formula: 'd6',
+        _educationState: 'education-on',
       }),
     );
     redis.set(
@@ -528,6 +535,7 @@ describe('resilience ranking contracts', () => {
         imputationShare: 0.1,
         headlineEligible: true,
         _formula: 'd6',
+        _educationState: 'education-on',
       }),
     );
     redis.set(
@@ -646,6 +654,7 @@ describe('resilience ranking contracts', () => {
         imputationShare: 0.05,
         headlineEligible: true,
         _formula: 'd6',
+        _educationState: 'education-on',
       }),
     );
     redis.set(
@@ -661,18 +670,21 @@ describe('resilience ranking contracts', () => {
         imputationShare: 0.1,
         headlineEligible: true,
         _formula: 'd6',
+        _educationState: 'education-on',
       }),
     );
     redis.set(`${RESILIENCE_INTERVAL_KEY_PREFIX}NO`, JSON.stringify({
       p05: 78,
       p95: 84,
       _formula: 'd6',
+      _educationState: 'education-on',
       methodology: RESILIENCE_INTERVAL_METHODOLOGY,
     }));
     redis.set(`${RESILIENCE_INTERVAL_KEY_PREFIX}US`, JSON.stringify({
       p05: 50,
       p95: 72,
       _formula: 'd6',
+      _educationState: 'education-on',
       methodology: RESILIENCE_INTERVAL_METHODOLOGY,
     }));
 
@@ -716,6 +728,7 @@ describe('resilience ranking contracts', () => {
         imputationShare: 0.05,
         headlineEligible: true,
         _formula: 'd6',
+        _educationState: 'education-on',
       }),
     );
     redis.set(
@@ -731,12 +744,14 @@ describe('resilience ranking contracts', () => {
         imputationShare: 0.1,
         headlineEligible: true,
         _formula: 'd6',
+        _educationState: 'education-on',
       }),
     );
     redis.set(`${RESILIENCE_INTERVAL_KEY_PREFIX}NO`, JSON.stringify({
       p05: 78,
       p95: 84,
       _formula: 'pc',
+      _educationState: 'education-on',
       methodology: RESILIENCE_INTERVAL_METHODOLOGY,
     }));
     redis.set(`${RESILIENCE_INTERVAL_KEY_PREFIX}US`, JSON.stringify({ p05: 58, p95: 64 }));
@@ -789,12 +804,14 @@ describe('resilience ranking contracts', () => {
         imputationShare: 0.05,
         headlineEligible: true,
         _formula: 'd6',
+        _educationState: 'education-on',
       }),
     );
     redis.set(`${RESILIENCE_INTERVAL_KEY_PREFIX}NO`, JSON.stringify({
       p05: 78,
       p95: 84,
       _formula: 'd6',
+      _educationState: 'education-on',
       methodology: 'legacy-weight-perturbation-v2',
     }));
 
@@ -845,6 +862,7 @@ describe('resilience ranking contracts', () => {
           imputationShare: 0,
           headlineEligible: true,
           _formula: 'd6',
+          _educationState: 'education-on',
         }),
       );
     }
@@ -908,6 +926,7 @@ describe('resilience ranking contracts', () => {
           imputationShare: 0,
           headlineEligible: true,
           _formula: 'd6',
+          _educationState: 'education-on',
         }),
       );
     }
@@ -958,16 +977,17 @@ describe('resilience ranking contracts', () => {
         imputationShare: 0,
         headlineEligible: true,
         _formula: 'd6',
+        _educationState: 'education-on',
       }));
     }
 
-    const rankingSetCommands: Array<Array<string>> = [];
+    const rankingPublishCommands: Array<Array<string>> = [];
     const captureRankingWrites = (async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
-      if (url.endsWith('/pipeline') && typeof init?.body === 'string') {
+      if (url.endsWith('/multi-exec') && typeof init?.body === 'string') {
         const commands = JSON.parse(init.body) as Array<Array<string>>;
-        for (const cmd of commands) {
-          if (cmd[0] === 'SET' && cmd[1] === RESILIENCE_RANKING_CACHE_KEY) rankingSetCommands.push(cmd);
+        if (commands.some((cmd) => cmd[1] === RESILIENCE_RANKING_CACHE_KEY)) {
+          rankingPublishCommands.push(...commands);
         }
       }
       return fetchImpl(input, init);
@@ -982,12 +1002,102 @@ describe('resilience ranking contracts', () => {
     assert.equal(response.partial, true);
     assert.ok(redis.has(RESILIENCE_RANKING_CACHE_KEY), '90% coverage without warm persistence failures must still publish');
     assert.ok(redis.has('seed-meta:resilience:ranking'), '90% coverage without warm persistence failures must write matching seed-meta');
-    assert.equal(Number(rankingSetCommands[0]?.[4]), 7200, 'sub-95% ranking publishes must use a 2h TTL');
+    assert.equal(rankingPublishCommands.length, 2, 'ranking and metadata must use one atomic Redis transaction');
+    assert.deepEqual(rankingPublishCommands.map((command) => command.slice(0, 2)), [
+      ['SET', RESILIENCE_RANKING_CACHE_KEY],
+      ['SET', 'seed-meta:resilience:ranking'],
+    ]);
+    assert.equal(Number(rankingPublishCommands[0]?.[4]), 7200, 'sub-95% ranking publishes must use a 2h TTL');
     const persisted = JSON.parse(redis.get(RESILIENCE_RANKING_CACHE_KEY)!);
     assert.equal(persisted.partial, true);
     assert.equal(persisted.scored, 9);
     assert.equal(persisted.total, 10);
     assert.equal(persisted.coverage, 0.9);
+    const persistedMeta = JSON.parse(redis.get('seed-meta:resilience:ranking')!);
+    assert.equal(persistedMeta._formula, 'd6');
+    assert.equal(persistedMeta._educationState, 'education-on');
+    assert.equal(persistedMeta._intervalMethodology, RESILIENCE_INTERVAL_METHODOLOGY);
+  });
+
+  it('publishes ranking and metadata in one supported transaction so opposite-state publishers cannot interleave', async () => {
+    const { redis, fetchImpl } = installRedis(RESILIENCE_FIXTURES);
+    redis.set('resilience:static:index:v1', JSON.stringify({
+      countries: ['NO', 'US'],
+      recordCount: 2,
+      failedDatasets: [],
+      seedYear: 2026,
+    }));
+    const domains = [{
+      id: 'political',
+      score: 80,
+      weight: 0.2,
+      dimensions: [{ id: 'd1', score: 80, coverage: 0.9, observedWeight: 1, imputedWeight: 0 }],
+    }];
+    for (const [index, countryCode] of ['NO', 'US'].entries()) {
+      redis.set(`${RESILIENCE_SCORE_CACHE_PREFIX}${countryCode}`, JSON.stringify({
+        countryCode,
+        overallScore: 80 - index,
+        level: 'high',
+        domains,
+        trend: 'stable',
+        change30d: 0,
+        lowConfidence: false,
+        imputationShare: 0,
+        headlineEligible: true,
+        _formula: 'd6',
+        _educationState: 'education-on',
+      }));
+    }
+
+    const staleCacheTag = {
+      _formula: 'pc',
+      _educationState: 'education-on',
+      _intervalMethodology: RESILIENCE_INTERVAL_METHODOLOGY,
+    } as const;
+    redis.set(RESILIENCE_RANKING_CACHE_KEY, JSON.stringify({
+      items: [],
+      greyedOut: [],
+      ...RANKING_META,
+      ...staleCacheTag,
+    }));
+    redis.set('seed-meta:resilience:ranking', JSON.stringify({
+      fetchedAt: Date.now(),
+      count: 2,
+      scored: 2,
+      total: 2,
+      coverage: 1,
+      partial: false,
+      ...staleCacheTag,
+    }));
+
+    let atomicPublishAttempts = 0;
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
+      if (url.endsWith('/multi-exec') && typeof init?.body === 'string') {
+        const commands = JSON.parse(init.body) as Array<Array<string>>;
+        if (
+          commands.length === 2
+          && commands[0]?.[0] === 'SET'
+          && commands[0]?.[1] === RESILIENCE_RANKING_CACHE_KEY
+          && commands[1]?.[0] === 'SET'
+          && commands[1]?.[1] === 'seed-meta:resilience:ranking'
+        ) {
+          atomicPublishAttempts++;
+          return new Response(JSON.stringify([
+            { error: 'simulated atomic ranking publish failure' },
+            { error: 'transaction aborted' },
+          ]), { status: 200 });
+        }
+      }
+      return fetchImpl(input, init);
+    }) as typeof fetch;
+
+    const response = await getResilienceRanking({ request: new Request('https://example.com') } as never, {});
+
+    assert.equal(response.scored, 2, 'the live response remains usable even when cache publication fails');
+    assert.equal(atomicPublishAttempts, 1);
+    assert.equal(JSON.parse(redis.get(RESILIENCE_RANKING_CACHE_KEY)!)._formula, 'pc');
+    assert.equal(JSON.parse(redis.get('seed-meta:resilience:ranking')!)._formula, 'pc');
   });
 
   it('returns explicit partial metadata for an empty scorable universe without caching', async () => {
@@ -1161,6 +1271,7 @@ describe('resilience ranking contracts', () => {
         lowConfidence: false,
         imputationShare: 0.05,
         _formula: 'd6',
+        _educationState: 'education-on',
       }),
     );
     redis.set(
@@ -1175,6 +1286,7 @@ describe('resilience ranking contracts', () => {
         lowConfidence: false,
         imputationShare: 0.1,
         _formula: 'd6',
+        _educationState: 'education-on',
       }),
     );
 
@@ -1512,6 +1624,7 @@ describe('resilience ranking contracts', () => {
         greyedOut: [],
         ...RANKING_META,
         _formula: 'stale-formula',
+        _educationState: 'education-on',
         _intervalMethodology: RESILIENCE_INTERVAL_METHODOLOGY,
       }),
     );

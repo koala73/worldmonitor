@@ -3704,6 +3704,44 @@ describe('bounded JSON-list history storage', { concurrency: 1 }, () => {
   });
 });
 
+describe('allowlisted Redis transactions', { concurrency: 1 }, () => {
+  it('uses /multi-exec and preserves preview key prefixes', async () => {
+    const redis = await importRedisFresh();
+    const restoreEnv = withEnv({
+      UPSTASH_REDIS_REST_URL: 'https://redis.test',
+      UPSTASH_REDIS_REST_TOKEN: 'token',
+      VERCEL_ENV: 'preview',
+      VERCEL_GIT_COMMIT_SHA: 'abcdef1234567890',
+    });
+    const originalFetch = globalThis.fetch;
+    const captured = [];
+    globalThis.fetch = async (url, init) => {
+      captured.push({ url: String(url), init });
+      return jsonResponse([{ result: 'OK' }, { result: 0 }]);
+    };
+
+    try {
+      const results = await redis.runRedisTransaction([
+        ['SET', 'generation:data', '{}', 'EX', 600],
+        ['DEL', 'generation:old'],
+      ]);
+
+      assert.deepEqual(results, [{ result: 'OK' }, { result: 0 }]);
+      assert.equal(captured[0].url, 'https://redis.test/multi-exec');
+      assert.deepEqual(JSON.parse(String(captured[0].init.body)), [
+        ['SET', 'preview:abcdef12:generation:data', '{}', 'EX', 600],
+        ['DEL', 'preview:abcdef12:generation:old'],
+      ]);
+      const proxy = readFileSync(resolve(root, 'docker/redis-rest-proxy.mjs'), 'utf8');
+      assert.match(proxy, /req\.url === '\/multi-exec'/);
+      assert.match(proxy, /'GET', 'SET', 'DEL'/);
+    } finally {
+      globalThis.fetch = originalFetch;
+      restoreEnv();
+    }
+  });
+});
+
 describe('getHashFieldsBatch empty-string handling (#3530)', { concurrency: 1 }, () => {
   it('preserves empty-string values, omits null/missing, and retains real strings', async () => {
     // Regression: getHashFieldsBatch used a truthy check (`if (values[i])`) that

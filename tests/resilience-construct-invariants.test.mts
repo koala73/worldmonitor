@@ -258,30 +258,14 @@ describe('construct invariants — sovereignFiscalBuffer (saturating transform)'
 });
 
 describe('isExcludedFromConfidenceMean — flag-dark branch', () => {
-  // #6460 activated `education`, which was the only member of
-  // RESILIENCE_FLAG_DARK_WHEN_ZERO_COVERAGE. The set is now EMPTY, so the
-  // positive branch of this predicate has no dimension to exercise and every
-  // assertion below would pass trivially — a suite that cannot fail.
-  //
-  // Rather than delete it (which would leave the mechanism untested until the
-  // next dark dimension needs it) or keep vacuous cases that look like
-  // coverage, the suite now pins the CURRENT contract and arms a tripwire: the
-  // emptiness assertion goes red the moment a dimension is added to the set,
-  // which is exactly when a positive case must be restored.
-  it('has an empty flag-dark set, so nothing is excluded on that branch', () => {
-    assert.deepEqual(
-      [...RESILIENCE_FLAG_DARK_WHEN_ZERO_COVERAGE],
-      [],
-      'A dimension was added to RESILIENCE_FLAG_DARK_WHEN_ZERO_COVERAGE. Restore a positive '
-      + 'triple-zero case here for it — the discriminator is the TRIPLE zero, not coverage===0 '
-      + 'alone, and without a member in the set every assertion in this suite passes vacuously.',
+  it('keeps education rollback-dark in the authoritative set', () => {
+    assert.ok(
+      RESILIENCE_FLAG_DARK_WHEN_ZERO_COVERAGE.has('education'),
+      'education must remain flag-dark for its explicit false rollback shape',
     );
   });
 
-  it('no longer excludes education now that it is live', () => {
-    // The behavioural change #6460 published: a dimension that used to leave
-    // the confidence mean now counts, so a real education coverage gap shows
-    // up in the user-facing number instead of being silently forgiven.
+  it('excludes only the triple-zero education rollback shape', () => {
     assert.equal(
       isExcludedFromConfidenceMean({
         id: 'education',
@@ -289,8 +273,8 @@ describe('isExcludedFromConfidenceMean — flag-dark branch', () => {
         observedWeight: 0,
         imputedWeight: 0,
       }),
-      false,
-      'education is activated — its triple-zero shape is an outage now, not a dark construct',
+      true,
+      'explicit false rollback must not reduce every country coverage merely because the serialized row remains present',
     );
   });
 

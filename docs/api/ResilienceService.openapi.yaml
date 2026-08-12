@@ -238,6 +238,7 @@ paths:
                                     "rankingKey": "example"
                                     "scorePrefix": "example"
                                 "constructVersions":
+                                    "education": "example"
                                     "energy": "example"
                                 "dataVersion": "example"
                                 "deployedCommitSha": "example"
@@ -709,12 +710,17 @@ components:
                 energy:
                     type: string
                     description: 'Safe derived energy construct version. Valid values: "legacy" or "v2".'
+                education:
+                    type: string
+                    description: 'Safe derived education construct version. Valid values: "active" or "rollback".'
         ResilienceRuntimeIntervalState:
             type: object
             properties:
                 available:
                     type: boolean
-                    description: True only when the public sample interval can be read for the active formula.
+                    description: |-
+                        True only when the public sample interval matches the active formula,
+                         education construct version, and interval methodology.
                 methodology:
                     type: string
                     description: Public methodology tag used to audit scoreInterval/rankStable semantics.

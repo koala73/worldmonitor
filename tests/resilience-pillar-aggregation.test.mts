@@ -108,17 +108,7 @@ describe('buildPillarList — flag-dark dimension invariance', () => {
   const structural = (pillars: ReturnType<typeof buildPillarList>) =>
     pillars.find((pillar) => pillar.id === 'structural-readiness')!;
 
-  it('counts a triple-zero education row in the pillar denominator now that it is live', () => {
-    // Inverted by #6460. This previously asserted that a triple-zero education
-    // row left pillar score and coverage IDENTICAL, because `education` was in
-    // RESILIENCE_FLAG_DARK_WHEN_ZERO_COVERAGE and the flag-dark shape was
-    // excluded from the denominator by design.
-    //
-    // With the dimension activated the set is empty, so the same shape is no
-    // longer a deliberate construct state — it is a dimension producing no
-    // data, and it must drag pillar coverage down exactly like the generic
-    // outage below. Keeping the old assertion would have hidden a dead
-    // education seeder behind an exclusion that no longer has a reason.
+  it('excludes a triple-zero education rollback row from the pillar denominator', () => {
     const before = structural(buildPillarList(baselineDomains(), true));
     const domains = baselineDomains();
     domains[1]!.dimensions.push({
@@ -132,8 +122,8 @@ describe('buildPillarList — flag-dark dimension invariance', () => {
     });
     const after = structural(buildPillarList(domains, true));
 
-    assert.ok(after.coverage < before.coverage, 'a live dimension with no data must reduce pillar coverage');
-    assert.notEqual(after.score, before.score);
+    assert.equal(after.coverage, before.coverage, 'the explicit false rollback shape must not reduce pillar coverage');
+    assert.equal(after.score, before.score);
   });
 
   it('keeps a generic zero-coverage outage in the pillar denominator', () => {

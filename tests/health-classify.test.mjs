@@ -93,6 +93,158 @@ test('classifyKey: fresh seed + data → OK', () => {
   assert.equal(entry.status, 'OK');
 });
 
+test('classifyKey: resilience ranking and interval metadata must match the active cache state', () => {
+  const original = {
+    RESILIENCE_PILLAR_COMBINE_ENABLED: process.env.RESILIENCE_PILLAR_COMBINE_ENABLED,
+    RESILIENCE_SCHEMA_V2_ENABLED: process.env.RESILIENCE_SCHEMA_V2_ENABLED,
+    RESILIENCE_EDUCATION_ENABLED: process.env.RESILIENCE_EDUCATION_ENABLED,
+  };
+  process.env.RESILIENCE_PILLAR_COMBINE_ENABLED = 'false';
+  process.env.RESILIENCE_SCHEMA_V2_ENABLED = 'true';
+  process.env.RESILIENCE_EDUCATION_ENABLED = 'true';
+
+  const expected = {
+    recordCount: 196,
+    _formula: 'd6',
+    _educationState: 'education-on',
+    _intervalMethodology: 'weight-perturbation-sensitivity-v3',
+  };
+
+  try {
+    for (const name of ['resilienceRanking', 'resilienceIntervals']) {
+      const dataKey = BOOTSTRAP_KEYS[name] ?? STANDALONE_KEYS[name];
+      assert.ok(dataKey, `${name} must have a registered data key`);
+      const classify = (tags) => classifyKey(
+        name,
+        dataKey,
+        { allowOnDemand: false },
+        makeCtx({
+          strens: { [dataKey]: 2048 },
+          metaValues: { [SEED_META[name].key]: seedMeta(tags) },
+        }),
+      );
+
+      const healthy = classify(expected);
+      assert.equal(healthy.status, 'OK', `${name} current cache state must be healthy`);
+      assert.equal(healthy.cacheState.ok, true);
+
+      for (const staleTags of [
+        {},
+        { ...expected, _formula: 'pc' },
+        { ...expected, _educationState: 'education-off' },
+        { ...expected, _intervalMethodology: 'weight-perturbation-sensitivity-v2' },
+      ]) {
+        const stale = classify(staleTags);
+        assert.equal(stale.status, 'STALE_SEED', `${name} must reject stale or missing cache-state tags`);
+        assert.equal(stale.cacheState.ok, false);
+        assert.equal(stale.cacheState.requiredFormula, 'd6');
+        assert.equal(stale.cacheState.requiredEducationState, 'education-on');
+        assert.equal(stale.cacheState.requiredIntervalMethodology, 'weight-perturbation-sensitivity-v3');
+      }
+    }
+  } finally {
+    for (const [key, value] of Object.entries(original)) {
+      if (value == null) delete process.env[key];
+      else process.env[key] = value;
+    }
+  }
+});
+
+test('classifyKey: resilience formula defaults active and only explicit false selects rollback', () => {
+  const originalPillar = process.env.RESILIENCE_PILLAR_COMBINE_ENABLED;
+  const originalSchema = process.env.RESILIENCE_SCHEMA_V2_ENABLED;
+  const originalEducation = process.env.RESILIENCE_EDUCATION_ENABLED;
+  process.env.RESILIENCE_SCHEMA_V2_ENABLED = 'true';
+  process.env.RESILIENCE_EDUCATION_ENABLED = 'true';
+
+  try {
+    for (const { raw, formula } of [
+      { raw: undefined, formula: 'pc' },
+      { raw: 'true', formula: 'pc' },
+      { raw: 'false', formula: 'd6' },
+    ]) {
+      if (raw === undefined) delete process.env.RESILIENCE_PILLAR_COMBINE_ENABLED;
+      else process.env.RESILIENCE_PILLAR_COMBINE_ENABLED = raw;
+      const dataKey = BOOTSTRAP_KEYS.resilienceRanking ?? STANDALONE_KEYS.resilienceRanking;
+      assert.ok(dataKey);
+      const tags = {
+        _formula: formula,
+        _educationState: 'education-on',
+        _intervalMethodology: 'weight-perturbation-sensitivity-v3',
+      };
+      const entry = classifyKey(
+        'resilienceRanking',
+        dataKey,
+        { allowOnDemand: false },
+        makeCtx({
+          strens: { [dataKey]: 2048 },
+          metaValues: { [SEED_META.resilienceRanking.key]: seedMeta(tags) },
+        }),
+      );
+      assert.equal(entry.status, 'OK', `pillar=${String(raw)} must require ${formula}`);
+      assert.equal(entry.cacheState.requiredFormula, formula);
+    }
+  } finally {
+    if (originalPillar == null) delete process.env.RESILIENCE_PILLAR_COMBINE_ENABLED;
+    else process.env.RESILIENCE_PILLAR_COMBINE_ENABLED = originalPillar;
+    if (originalSchema == null) delete process.env.RESILIENCE_SCHEMA_V2_ENABLED;
+    else process.env.RESILIENCE_SCHEMA_V2_ENABLED = originalSchema;
+    if (originalEducation == null) delete process.env.RESILIENCE_EDUCATION_ENABLED;
+    else process.env.RESILIENCE_EDUCATION_ENABLED = originalEducation;
+  }
+});
+
+test('classifyKey: resilience interval metadata below the publication floor is partial', () => {
+  const dataKey = STANDALONE_KEYS.resilienceIntervals;
+  const entry = classifyKey(
+    'resilienceIntervals',
+    dataKey,
+    { allowOnDemand: false },
+    makeCtx({
+      strens: { [dataKey]: 2048 },
+      metaValues: {
+        [SEED_META.resilienceIntervals.key]: seedMeta({
+          recordCount: 179,
+          _formula: 'pc',
+          _educationState: 'education-on',
+          _intervalMethodology: 'weight-perturbation-sensitivity-v3',
+        }),
+      },
+    }),
+  );
+
+  assert.equal(entry.status, 'COVERAGE_PARTIAL');
+  assert.equal(entry.records, 179);
+  assert.equal(entry.minRecordCount, 180);
+});
+
+test('classifyKey: resilience interval coverage fails closed on missing or malformed counts', () => {
+  const dataKey = STANDALONE_KEYS.resilienceIntervals;
+  const malformedCounts = [undefined, null, 'invalid', Infinity, {}, []];
+
+  for (const recordCount of malformedCounts) {
+    const entry = classifyKey(
+      'resilienceIntervals',
+      dataKey,
+      { allowOnDemand: false },
+      makeCtx({
+        strens: { [dataKey]: 2048 },
+        metaValues: {
+          [SEED_META.resilienceIntervals.key]: seedMeta({
+            recordCount,
+            _formula: 'pc',
+            _educationState: 'education-on',
+            _intervalMethodology: 'weight-perturbation-sensitivity-v3',
+          }),
+        },
+      }),
+    );
+
+    assert.equal(entry.status, 'COVERAGE_PARTIAL', `recordCount=${String(recordCount)}`);
+    assert.equal(entry.minRecordCount, 180);
+  }
+});
+
 test('classifyKey: consumer-price coverage below the declared completion floor degrades', () => {
   const key = BOOTSTRAP_KEYS.consumerPricesCoverage;
   const entry = classifyKey('consumerPricesCoverage', key, { allowOnDemand: false }, makeCtx({

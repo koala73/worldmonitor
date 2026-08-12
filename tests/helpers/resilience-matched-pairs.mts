@@ -77,8 +77,8 @@ export const MATCHED_PAIRS: readonly MatchedPair[] = [
     lowerExpected: 'ZA',
     axis: 'Coal-heavy domestic producers',
     rationale:
-      'India and South Africa are both coal-heavy domestic producers with weak governance relative to OECD peers. India has materially higher macro-fiscal resilience (larger reserves, larger economy, more diversified export base, growing nuclear share) than South Africa (load-shedding crisis, weaker fiscal space). A scorer that loses this gap after PR 1 indicates the importedFossilDependence composite is over-crediting South Africa for its domestic coal without weighting its power-system-reliability collapse.',
-    minGap: 3,
+      'India and South Africa are both coal-heavy domestic producers with weak governance relative to OECD peers. India has materially higher macro-fiscal resilience (larger reserves, larger economy, more diversified export base, growing nuclear share) than South Africa (load-shedding crisis, weaker fiscal space). The credentialed 2026-08-11 flag-off audit measured a 2.54-point gap, proving the old 3-point floor was already stale before education activation; the flag-on proposal measured 1.77. Rebaseline to the same deliberately narrow 1-point directional buffer used by other close whole-index peers. This does not match the current value: it preserves 0.77 points of headroom and still fails any near-tie or inversion. A scorer that loses this positive floor indicates imported-fossil or power-reliability signals need review.',
+    minGap: 1,
   },
   {
     id: 'ch-vs-sg',

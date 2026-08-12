@@ -1,5 +1,6 @@
 import countryNames from '../../shared/country-names.json';
 import iso2ToIso3 from '../../shared/iso2-to-iso3.json';
+import sovereignStatus from '../../scripts/shared/sovereign-status.json';
 
 export const G20_COUNTRIES = [
   'AR', 'AU', 'BR', 'CA', 'CN', 'DE', 'FR', 'GB', 'ID', 'IN',
@@ -420,15 +421,26 @@ export function buildReleaseGateFixtures(): ReleaseGateFixtureMap {
   fixtures['seed-meta:resilience:education-attainment'] = {
     status: 'ok',
     fetchedAt: Date.now(),
-    recordCount: descriptors.length,
+    recordCount: sovereignStatus.entries.length,
+    rankableRecordCount: sovereignStatus.entries.length,
   };
+  const educationCountries = Object.fromEntries(
+    sovereignStatus.entries.map((entry, index) => [
+      entry.iso2,
+      { value: 35 + (index % 45), year: 2024 },
+    ]),
+  );
+  for (const { code, profile } of descriptors) {
+    educationCountries[code] = {
+      value: round(clamp(qualityFor(profile) * 0.9 + 5, 2, 98), 1),
+      year: 2024,
+    };
+  }
   fixtures['resilience:education-attainment:v1'] = {
-    countries: Object.fromEntries(
-      descriptors.map(({ code, profile }) => [
-        code,
-        { value: round(clamp(qualityFor(profile) * 0.9 + 5, 2, 98), 1), year: 2024 },
-      ]),
-    ),
+    // The active scorer checks the payload-wide rankable floor. Fill the
+    // complete universe, then retain profile-derived values for every country
+    // whose ordering this release fixture asserts.
+    countries: educationCountries,
     seededAt: '2026-08-11T08:03:25.357Z',
   };
   fixtures['economic:national-debt:v1'] = { entries: debtEntries };

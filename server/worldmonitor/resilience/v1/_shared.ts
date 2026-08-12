@@ -20,6 +20,7 @@ import {
   RESILIENCE_DIMENSION_WEIGHTS,
   RESILIENCE_DOMAIN_ORDER,
   RESILIENCE_IMF_LABOR_KEY,
+  isEducationEnabled,
   isExcludedFromConfidenceMean,
   createMemoizedSeedReader,
   getResilienceDomainWeight,
@@ -387,6 +388,7 @@ const STALENESS_CONFIDENCE_COVERAGE_FACTOR: Record<string, number> = {
 // default-off writes land in the new v10/v5 namespace tagged as 'd6',
 // and only the in-payload tag check forces a rebuild / filter on flip.
 type CacheFormulaTag = 'd6' | 'pc';
+type EducationCacheState = 'education-on' | 'education-off';
 
 function currentCacheFormula(): CacheFormulaTag {
   // Mirrors the gating in buildResilienceScore's overallScore branch so
@@ -396,16 +398,36 @@ function currentCacheFormula(): CacheFormulaTag {
   return isPillarCombineEnabled() && RESILIENCE_SCHEMA_V2_ENABLED ? 'pc' : 'd6';
 }
 
+function currentEducationCacheState(): EducationCacheState {
+  return isEducationEnabled() ? 'education-on' : 'education-off';
+}
+
+export function getCurrentEducationCacheState(): EducationCacheState {
+  return currentEducationCacheState();
+}
+
+function educationCacheStateMatches(
+  value: unknown,
+  current = currentEducationCacheState(),
+): boolean {
+  // Missing, malformed, and contradictory cache metadata fail closed. The
+  // activation namespaces have not shipped to production yet, so there is no
+  // production compatibility reason to trust an untagged entry.
+  return value === current;
+}
+
 interface ResilienceHistoryPoint {
   date: string;
   score: number;
   formula: CacheFormulaTag;
+  educationState: EducationCacheState;
 }
 
 export interface ResilienceIntervalPayload {
   p05?: unknown;
   p95?: unknown;
   _formula?: unknown;
+  _educationState?: unknown;
   draws?: unknown;
   computedAt?: unknown;
   methodology?: unknown;
@@ -608,21 +630,20 @@ function decodeHistoryScore(date: string, rawSortedSetScore: unknown): number {
 }
 
 // Sorted-set member formats:
-//   - Current: `YYYY-MM-DD:FORMULA`, with the score encoded into the ZSET
+//   - Current: `YYYY-MM-DD:FORMULA:EDUCATION_STATE`, with the score encoded into the ZSET
 //     score as `YYYYMMDD + ((score*100)+1)/100000`. The member is stable per
-//     day+formula, so same-day rebuilds update the existing point instead of
+//     day+construct state, so same-day rebuilds update the existing point instead of
 //     shrinking the effective rolling window with duplicate same-day members.
 //   - Legacy: `YYYY-MM-DD:SCORE[:FORMULA]`. Untagged members predate the
 //     pillar-combined activation and are implicitly 'd6' (the only formula in
 //     use before this PR).
 //
-// On activation, readHistory callers filter by `currentCacheFormula()` so a
-// 30-day window of d6 points is not silently compared against a fresh pc point
-// (which would manufacture a ranking-wide fake-negative change30d / false
-// "falling" trend on day one).
+// On activation or rollback, readHistory callers filter by the current formula
+// and education state. This prevents a 30-day window from silently mixing
+// incompatible construct states and manufacturing false change30d/trend signals.
 function parseHistoryPoints(raw: unknown): ResilienceHistoryPoint[] {
   if (!Array.isArray(raw)) return [];
-  const historyByDateFormula = new Map<string, { point: ResilienceHistoryPoint; stableMember: boolean }>();
+  const historyByConstructState = new Map<string, { point: ResilienceHistoryPoint; stableMember: boolean }>();
 
   for (let index = 0; index < raw.length; index += 2) {
     const member = String(raw[index] || '');
@@ -634,15 +655,19 @@ function parseHistoryPoints(raw: unknown): ResilienceHistoryPoint[] {
     const score = stableMember ? decodeHistoryScore(date, raw[index + 1]) : Number(secondPart);
     const rawFormula = stableMember ? secondPart : parts[2];
     const formula: CacheFormulaTag = rawFormula === 'pc' ? 'pc' : 'd6';
+    const rawEducationState = stableMember ? parts[2] : parts[3];
+    const educationState: EducationCacheState = rawEducationState === 'education-off'
+      ? 'education-off'
+      : 'education-on';
     if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !Number.isFinite(score)) continue;
-    const key = `${date}:${formula}`;
-    const previous = historyByDateFormula.get(key);
+    const key = `${date}:${formula}:${educationState}`;
+    const previous = historyByConstructState.get(key);
     if (!previous || stableMember || !previous.stableMember) {
-      historyByDateFormula.set(key, { point: { date, score, formula }, stableMember });
+      historyByConstructState.set(key, { point: { date, score, formula, educationState }, stableMember });
     }
   }
 
-  return [...historyByDateFormula.values()]
+  return [...historyByConstructState.values()]
     .map((entry) => entry.point)
     .sort((left, right) => left.date.localeCompare(right.date));
 }
@@ -726,20 +751,26 @@ async function appendHistory(
   countryCode: string,
   overallScore: number,
   formula: CacheFormulaTag,
+  educationState: EducationCacheState,
 ): Promise<void> {
   const today = todayIsoDate();
   const dateScore = dateScoreForHistory(today);
-  // Current member format `YYYY-MM-DD:FORMULA` — see parseHistoryPoints above
+  // Current member format `YYYY-MM-DD:FORMULA:EDUCATION_STATE` — see parseHistoryPoints above
   // for the backwards-compatible reader. The formula tag is required because
   // the history prefix bump happens at PR deploy, not at flag flip, so the
   // series can accumulate d6-tagged entries during the default-off window; only
   // the per-member tag lets the reader correctly filter those out when the
   // pillar-combined formula later activates. Remove legacy same-day members
   // first so old `YYYY-MM-DD:SCORE:FORMULA` duplicates stop consuming the
-  // 30-member rolling window after the next write.
+  // 30-member rolling window after the next write. The first education-on write
+  // also removes the transitional `YYYY-MM-DD:FORMULA` member that the original
+  // activation head could have written before education-state tags landed.
   await runRedisPipeline([
+    ...(educationState === 'education-on'
+      ? [['ZREM', historyKey(countryCode), `${today}:${formula}`]]
+      : []),
     ['ZREMRANGEBYSCORE', historyKey(countryCode), dateScore, dateScore],
-    ['ZADD', historyKey(countryCode), encodeHistoryScore(today, overallScore), `${today}:${formula}`],
+    ['ZADD', historyKey(countryCode), encodeHistoryScore(today, overallScore), `${today}:${formula}:${educationState}`],
     ['ZREMRANGEBYRANK', historyKey(countryCode), 0, -31],
   ]);
 }
@@ -797,6 +828,7 @@ async function buildResilienceScore(
   // flips later. currentCacheFormula() reads the same two flags, so
   // the derivation is intentionally redundant-by-agreement.
   const formula: CacheFormulaTag = pillarEligible ? 'pc' : 'd6';
+  const educationState = currentEducationCacheState();
 
   const totalImputed = dimensions.reduce((sum, d) => sum + (d.imputedWeight ?? 0), 0);
   const totalObserved = dimensions.reduce((sum, d) => sum + (d.observedWeight ?? 0), 0);
@@ -811,11 +843,12 @@ async function buildResilienceScore(
   // a false "falling" trend across the ranking on activation day).
   const history = (await readHistory(normalizedCountryCode))
     .filter((point) => point.formula === formula)
+    .filter((point) => point.educationState === educationState)
     .filter((point) => point.date !== todayIsoDate());
   const scoreSeries = [...history.map((point) => point.score), overallScore];
   const oldestScore = history[0]?.score;
 
-  await appendHistory(normalizedCountryCode, overallScore, formula);
+  await appendHistory(normalizedCountryCode, overallScore, formula, educationState);
 
   const lowConfidence = computeLowConfidence(dimensions, imputationShare);
   // Plan 2026-04-26-002 §U7 (PR 6) — headline-eligible gate flips from
@@ -865,11 +898,15 @@ async function buildResilienceScore(
 // with a `_formula` marker so the reader can reject cross-formula cache
 // entries when `RESILIENCE_PILLAR_COMBINE_ENABLED` flips later. The
 // marker is stripped before the payload crosses back to callers.
-type CachedScorePayload = GetResilienceScoreResponse & { _formula?: CacheFormulaTag };
+type CachedScorePayload = GetResilienceScoreResponse & {
+  _formula?: CacheFormulaTag;
+  _educationState?: EducationCacheState;
+};
 
 function stripCacheMeta(payload: CachedScorePayload): GetResilienceScoreResponse {
-  const { _formula: _drop, ...rest } = payload;
+  const { _formula: _drop, _educationState: _dropEducationState, ...rest } = payload;
   void _drop;
+  void _dropEducationState;
   // Plan 2026-04-26-002 §U3+§U7 — `headlineEligible` backfill semantic
   // changes per cache prefix:
   //
@@ -904,10 +941,15 @@ export function getCurrentCacheFormula(): CacheFormulaTag {
 
 export function stampRankingCacheTag<T extends object>(
   payload: T,
-): T & { _formula: CacheFormulaTag; _intervalMethodology: typeof RESILIENCE_INTERVAL_METHODOLOGY } {
+): T & {
+  _formula: CacheFormulaTag;
+  _educationState: EducationCacheState;
+  _intervalMethodology: typeof RESILIENCE_INTERVAL_METHODOLOGY;
+} {
   return {
     ...payload,
     _formula: currentCacheFormula(),
+    _educationState: currentEducationCacheState(),
     _intervalMethodology: RESILIENCE_INTERVAL_METHODOLOGY,
   };
 }
@@ -915,8 +957,11 @@ export function stampRankingCacheTag<T extends object>(
 export function rankingCacheTagMatches(payload: unknown): boolean {
   if (!payload || typeof payload !== 'object') return false;
   const tag = (payload as { _formula?: unknown })._formula;
+  const educationState = (payload as { _educationState?: unknown })._educationState;
   const intervalMethodology = (payload as { _intervalMethodology?: unknown })._intervalMethodology;
-  return tag === currentCacheFormula() && intervalMethodology === RESILIENCE_INTERVAL_METHODOLOGY;
+  return tag === currentCacheFormula()
+    && educationCacheStateMatches(educationState)
+    && intervalMethodology === RESILIENCE_INTERVAL_METHODOLOGY;
 }
 
 export function isCurrentResilienceIntervalPayload(
@@ -940,6 +985,7 @@ export function isCurrentResilienceIntervalPayload(
     payload.p95 <= 100 &&
     payload.p05 <= payload.p95 &&
     payload._formula === currentCacheFormula() &&
+    educationCacheStateMatches(payload._educationState) &&
     payload.methodology === RESILIENCE_INTERVAL_METHODOLOGY
   );
 }
@@ -978,6 +1024,7 @@ export async function ensureResilienceScoreCached(countryCode: string, reader?: 
   }
 
   const current = currentCacheFormula();
+  const currentEducationState = currentEducationCacheState();
   const cacheKey = scoreCacheKey(normalizedCountryCode);
 
   let cached = await cachedFetchJson<CachedScorePayload>(
@@ -987,7 +1034,7 @@ export async function ensureResilienceScoreCached(countryCode: string, reader?: 
       const built = await buildResilienceScore(normalizedCountryCode, reader);
       // Tag with the formula buildResilienceScore actually used so
       // downstream readers can reject cross-formula entries.
-      return { ...built, _formula: current };
+      return { ...built, _formula: current, _educationState: currentEducationState };
     },
     300,
   );
@@ -1000,9 +1047,9 @@ export async function ensureResilienceScoreCached(countryCode: string, reader?: 
   // window would keep serving legacy scores. Legacy untagged entries
   // (pre-PR writes that happen to survive the v9→v10 bump via
   // external writers) are treated as stale-formula and rebuilt.
-  if (cached && cached._formula !== current) {
+  if (cached && (cached._formula !== current || !educationCacheStateMatches(cached._educationState))) {
     const rebuilt = await buildResilienceScore(normalizedCountryCode, reader);
-    cached = { ...rebuilt, _formula: current };
+    cached = { ...rebuilt, _formula: current, _educationState: currentEducationState };
     await setCachedJson(cacheKey, cached, RESILIENCE_SCORE_CACHE_TTL_SECONDS);
   }
 
@@ -1069,18 +1116,23 @@ export async function getCachedResilienceScores(countryCodes: string[]): Promise
     .filter(Boolean);
   if (normalized.length === 0) return new Map();
 
-  const results = await runRedisPipeline(normalized.map((countryCode) => ['GET', scoreCacheKey(countryCode)]));
+  const results = process.env.LOCAL_API_MODE === 'tauri-sidecar'
+    ? await Promise.all(normalized.map(async (countryCode) => ({
+      result: await getCachedJson(scoreCacheKey(countryCode), true),
+    })))
+    : await runRedisPipeline(normalized.map((countryCode) => ['GET', scoreCacheKey(countryCode)]));
   const scores = new Map<string, GetResilienceScoreResponse>();
   const current = currentCacheFormula();
+  const currentEducationState = currentEducationCacheState();
 
   for (let index = 0; index < normalized.length; index += 1) {
     const countryCode = normalized[index]!;
     const raw = results[index]?.result;
-    if (typeof raw !== 'string') continue;
     try {
       // Envelope-aware: resilience score keys are written by seed-resilience-scores
       // in contract mode (PR 2). unwrapEnvelope is a no-op on legacy bare-shape.
-      const parsed = unwrapEnvelope(JSON.parse(raw)).data as CachedScorePayload;
+      const decoded = typeof raw === 'string' ? JSON.parse(raw) : raw;
+      const parsed = unwrapEnvelope(decoded).data as CachedScorePayload;
       if (!parsed) continue;
       // Stale-formula skip: this bulk read feeds the ranking handler,
       // which mirrors the single-country cache miss path. Leaving the
@@ -1098,7 +1150,10 @@ export async function getCachedResilienceScores(countryCodes: string[]): Promise
       // path rebuilds them with the current tag. The `&&` short-circuit
       // would admit them and re-introduce the cross-formula drift the
       // whole cache-tag strategy is meant to prevent.
-      if (parsed._formula !== current) continue;
+      if (
+        parsed._formula !== current ||
+        !educationCacheStateMatches(parsed._educationState, currentEducationState)
+      ) continue;
       const publicPayload = stripCacheMeta(parsed);
       // P1 fix: cached payload is always v2 superset. Gate on serve.
       if (!RESILIENCE_SCHEMA_V2_ENABLED) {
@@ -1303,6 +1358,7 @@ export async function warmMissingResilienceScores(
   // making one round-trip per batch.
   const SET_BATCH = 30;
   const current = currentCacheFormula();
+  const currentEducationState = currentEducationCacheState();
   const allSetCommands = scores.map(({ cc, score }) => [
     'SET',
     scoreCacheKey(cc),
@@ -1310,7 +1366,7 @@ export async function warmMissingResilienceScores(
     // path in getCachedResilienceScores can filter stale entries after
     // a flag flip. Without this tag, warmed-then-flipped entries would
     // be served as-is until the 6h TTL expired.
-    JSON.stringify({ ...score, _formula: current } satisfies CachedScorePayload),
+    JSON.stringify({ ...score, _formula: current, _educationState: currentEducationState } satisfies CachedScorePayload),
     'EX',
     String(RESILIENCE_SCORE_CACHE_TTL_SECONDS),
   ]);

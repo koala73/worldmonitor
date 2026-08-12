@@ -6,6 +6,11 @@ import {
   parsePoolCounts,
   PREDICTION_MARKET_MIN_POOL_COUNTS,
 } from './_pool-coverage.js';
+import {
+  EDUCATION_MIN_RANKABLE_RECORD_COUNT,
+  parseEducationPayloadRankableRecordCount,
+  parseRankableRecordCount,
+} from './_rankable-coverage.js';
 // Seed-envelope helper. PR 1 imports it here so PR 2 can wire envelope-aware
 // reads at specific call sites without further plumbing. It's a no-op on
 // legacy-shape seed-meta values (they have no `_seed` wrapper and pass through
@@ -27,6 +32,63 @@ import {
 } from './_content-freshness.js';
 
 export const config = { runtime: 'edge' };
+
+// These tags are written into the ranking and interval seed metadata. Public
+// health must verify the metadata against this deployment's active scorer
+// state; key presence and a recent fetchedAt alone cannot prove that a cron
+// refreshed the cache after a formula or education rollback/activation.
+const RESILIENCE_INTERVAL_METHODOLOGY = 'weight-perturbation-sensitivity-v3';
+const RESILIENCE_INTERVAL_MIN_RECORD_COUNT = 180;
+
+function isEnabledEnv(name, defaultValue) {
+  return String(process.env[name] ?? defaultValue).toLowerCase() === 'true';
+}
+
+function isResiliencePillarCombineEnabled() {
+  // Mirrors server/worldmonitor/resilience/v1/_shared.ts exactly: only an
+  // explicit normalized `false` selects the rollback formula. Unset and all
+  // other values keep the production-default pillar formula active.
+  return process.env.RESILIENCE_PILLAR_COMBINE_ENABLED?.trim().toLowerCase() !== 'false';
+}
+
+function currentResilienceCacheFormula() {
+  return isResiliencePillarCombineEnabled()
+    && isEnabledEnv('RESILIENCE_SCHEMA_V2_ENABLED', 'true')
+    ? 'pc'
+    : 'd6';
+}
+
+function currentResilienceEducationState() {
+  return isEnabledEnv('RESILIENCE_EDUCATION_ENABLED', 'true')
+    ? 'education-on'
+    : 'education-off';
+}
+
+function assessResilienceCacheState(meta) {
+  const formula = meta?._formula === 'pc' || meta?._formula === 'd6'
+    ? meta._formula
+    : null;
+  const educationState = meta?._educationState === 'education-on'
+    || meta?._educationState === 'education-off'
+    ? meta._educationState
+    : null;
+  const intervalMethodology = meta?._intervalMethodology === RESILIENCE_INTERVAL_METHODOLOGY
+    ? meta._intervalMethodology
+    : null;
+  const requiredFormula = currentResilienceCacheFormula();
+  const requiredEducationState = currentResilienceEducationState();
+  return {
+    ok: formula === requiredFormula
+      && educationState === requiredEducationState
+      && intervalMethodology === RESILIENCE_INTERVAL_METHODOLOGY,
+    formula,
+    requiredFormula,
+    educationState,
+    requiredEducationState,
+    intervalMethodology,
+    requiredIntervalMethodology: RESILIENCE_INTERVAL_METHODOLOGY,
+  };
+}
 
 // Kept literal, mirroring api/seed-health.js: this Edge function imports only
 // from api/_*.js, so it cannot reach shared/china-decision-signal-manifest.ts.
@@ -768,8 +830,8 @@ const SEED_META = {
   vpdTrackerHistorical: { key: 'seed-meta:health:vpd-tracker',         maxStaleMin: 2880 }, // shares seed-meta key with vpdTrackerRealtime (same run)
   resilienceStaticIndex: { key: 'seed-meta:resilience:static',         maxStaleMin: 576000 }, // annual October snapshot; 400d threshold matches TTL and preserves prior-year data on source outages
   resilienceStaticFao:   { key: 'seed-meta:resilience:static',         maxStaleMin: 576000 }, // same seeder + same heartbeat as resilienceStaticIndex; required so EMPTY_DATA_OK + missing data degrades to STALE_SEED instead of silent OK
-  resilienceRanking:   { key: 'seed-meta:resilience:ranking',          maxStaleMin: 840 }, // RPC cache (12h TTL, refreshed every 6h by seed-resilience-scores cron); 14h budget tolerates 1 missed tick (12h gap) + ~2h jitter for in-flight deploys that preempt a scheduled tick; alerts at 2 missed ticks (18h gap). Bumped from 720 — see comment below.
-  resilienceIntervals: { key: 'seed-meta:resilience:intervals',        maxStaleMin: 840 }, // bundled into seed-bundle-resilience, written by the Resilience-Scores section. Real Railway cron is `0 */6 * * *` (every 6h on the hour, UTC) — empirically verified 2026-04-28 via Railway logs showing 6h gaps between successful runs (the prior `intervalMs=2h with hourly fires` claim did not match what's deployed; either the bundle interval gate or the Railway service schedule makes the effective cadence 6h). 840 = 14h staleness ≈ 2.33× cadence: tolerates 1 missed tick (12h gap) + ~2h jitter for in-flight deploys; alerts at 2 missed ticks (18h gap). Matches resilienceRanking above (same Resilience-Scores section writes both). Prior values: 20160 (14d, 168× — silent on real outage), 1080 (18h, 3× — over-permissive: masks a 12h outage), 720 (12h, 2× — exact floor; flipped UptimeRobot WARNING for ~1min on every Railway-deploy-preempted tick: 2026-05-10 incident at 18:02 UTC, seedAgeMin=722 vs maxStale=720 after the 12:00 UTC tick was skipped during an in-flight deploy), 360 (1× — false-positive on routine jitter, 2026-04-28: seedAgeMin=367 vs maxStale=360). Re-tighten ONLY if/when the actual Railway cron schedule is verified sub-6h.
+  resilienceRanking:   { key: 'seed-meta:resilience:ranking',          maxStaleMin: 840, requireResilienceCacheState: true }, // RPC cache (12h TTL, refreshed every 6h by seed-resilience-scores cron); 14h budget tolerates 1 missed tick (12h gap) + ~2h jitter for in-flight deploys that preempt a scheduled tick; alerts at 2 missed ticks (18h gap). Bumped from 720 — see comment below.
+  resilienceIntervals: { key: 'seed-meta:resilience:intervals',        maxStaleMin: 840, minRecordCount: RESILIENCE_INTERVAL_MIN_RECORD_COUNT, requireResilienceCacheState: true }, // bundled into seed-bundle-resilience, written by the Resilience-Scores section. Real Railway cron is `0 */6 * * *` (every 6h on the hour, UTC) — empirically verified 2026-04-28 via Railway logs showing 6h gaps between successful runs (the prior `intervalMs=2h with hourly fires` claim did not match what's deployed; either the bundle interval gate or the Railway service schedule makes the effective cadence 6h). 840 = 14h staleness ≈ 2.33× cadence: tolerates 1 missed tick (12h gap) + ~2h jitter for in-flight deploys; alerts at 2 missed ticks (18h gap). The 180-record floor matches the atomic publisher: a fresh probe cannot hide a mixed or shrunken fleet. Matches resilienceRanking above (same Resilience-Scores section writes both). Prior values: 20160 (14d, 168× — silent on real outage), 1080 (18h, 3× — over-permissive: masks a 12h outage), 720 (12h, 2× — exact floor; flipped UptimeRobot WARNING for ~1min on every Railway-deploy-preempted tick: 2026-05-10 incident at 18:02 UTC, seedAgeMin=722 vs maxStale=720 after the 12:00 UTC tick was skipped during an in-flight deploy), 360 (1× — false-positive on routine jitter, 2026-04-28: seedAgeMin=367 vs maxStale=360). Re-tighten ONLY if/when the actual Railway cron schedule is verified sub-6h.
   energyExposure:       { key: 'seed-meta:economic:owid-energy-mix',   maxStaleMin: 50400 }, // monthly cron on 1st; 50400min = 35d = TTL matches cron cadence + 5d buffer
   energyMixAll:         { key: 'seed-meta:economic:owid-energy-mix',   maxStaleMin: 50400 }, // same seed run as energyExposure; shares seed-meta key
   regulatoryActions:    { key: 'seed-meta:regulatory:actions',          maxStaleMin: 360 }, // 2h cron; 360min = 3x interval
@@ -856,6 +918,7 @@ const SEED_META = {
   educationAttainment:     {
     key: 'seed-meta:resilience:education-attainment',
     maxStaleMin: 11520,
+    minRankableRecordCount: EDUCATION_MIN_RANKABLE_RECORD_COUNT,
     // Pre-seed evidence per scripts/check-health-probe-cutovers.mts. #6450 shipped
     // the seeder but Railway refused the merge commit (its post-merge check suite
     // was red on two unrelated tests), so seed-bundle-macro ran an image without
@@ -1399,14 +1462,23 @@ function projectJodiChinaRow(meta, enabled) {
   };
 }
 
+function parseFiniteRecordCount(raw) {
+  if (typeof raw === 'number') return Number.isFinite(raw) && raw >= 0 ? raw : null;
+  if (typeof raw === 'string' && raw.trim() !== '') {
+    const parsed = Number(raw);
+    return Number.isFinite(parsed) && parsed >= 0 ? parsed : null;
+  }
+  return null;
+}
+
 function readSeedMeta(seedCfg, keyMetaValues, keyMetaErrors, now) {
   if (!seedCfg) {
-    return { hasMeta: false, seedAge: null, seedStale: null, seedError: false, sourceUnavailable: false, sourceBlocked: false, metaReadFailed: false, metaCount: null, contentAge: null, coverage: null, synthesisFailure: null, dominantFailureMode: null, chinaRow: null, workerControl: null };
+    return { hasMeta: false, seedAge: null, seedStale: null, seedError: false, sourceUnavailable: false, sourceBlocked: false, metaReadFailed: false, metaCount: null, contentAge: null, coverage: null, synthesisFailure: null, dominantFailureMode: null, chinaRow: null, workerControl: null, resilienceCacheState: null };
   }
   // Per-command Redis errors on the GET seed-meta half of the pipeline must
   // not silently fall through to STALE_SEED — promote to REDIS_PARTIAL.
   if (keyMetaErrors.get(seedCfg.key)) {
-    return { hasMeta: false, seedAge: null, seedStale: null, seedError: false, sourceUnavailable: false, sourceBlocked: false, metaReadFailed: true, metaCount: null, contentAge: null, coverage: null, synthesisFailure: null, dominantFailureMode: null, chinaRow: null, workerControl: null };
+    return { hasMeta: false, seedAge: null, seedStale: null, seedError: false, sourceUnavailable: false, sourceBlocked: false, metaReadFailed: true, metaCount: null, contentAge: null, coverage: null, synthesisFailure: null, dominantFailureMode: null, chinaRow: null, workerControl: null, resilienceCacheState: null };
   }
   // Unwrap through the envelope helper. Legacy seed-meta is a bare
   // `{ fetchedAt, recordCount, sourceVersion, status? }` object with no `_seed`
@@ -1414,13 +1486,17 @@ function readSeedMeta(seedCfg, keyMetaValues, keyMetaErrors, now) {
   // true envelope reads at the canonical-key layer; this import establishes
   // the dependency so behavior stays byte-identical in PR 1.
   const meta = unwrapEnvelope(parseRedisValue(keyMetaValues.get(seedCfg.key))).data;
-  const metaCount = meta?.count ?? meta?.recordCount ?? null;
+  const metaCount = parseFiniteRecordCount(meta?.count ?? meta?.recordCount ?? null);
+  const metaRankableCount = parseRankableRecordCount(meta);
   const poolCounts = parsePoolCounts(meta?.poolCounts, seedCfg.minPoolCounts);
   const errorCode = typeof meta?.errorCode === 'string'
     && /^[A-Z0-9_]{1,64}$/.test(meta.errorCode)
     ? meta.errorCode
     : null;
   const workerControl = projectCompanyMonitoringWorkerControl(meta, seedCfg.workerControl);
+  const resilienceCacheState = seedCfg.requireResilienceCacheState
+    ? assessResilienceCacheState(meta)
+    : null;
   if (meta?.status === 'error') {
     return {
       hasMeta: true,
@@ -1431,6 +1507,7 @@ function readSeedMeta(seedCfg, keyMetaValues, keyMetaErrors, now) {
       sourceBlocked: false,
       metaReadFailed: false,
       metaCount,
+      metaRankableCount,
       poolCounts,
       contentAge: null,
       contentFreshness: null,
@@ -1444,6 +1521,7 @@ function readSeedMeta(seedCfg, keyMetaValues, keyMetaErrors, now) {
       // read as current.
       chinaRow: null,
       workerControl,
+      resilienceCacheState,
     };
   }
   let seedAge = null;
@@ -1453,6 +1531,7 @@ function readSeedMeta(seedCfg, keyMetaValues, keyMetaErrors, now) {
     seedAge = Math.round((now - fetchedAt) / 60_000);
     seedStale = seedAge > seedCfg.maxStaleMin;
   }
+  if (resilienceCacheState?.ok === false) seedStale = true;
   // `unavailable` is the one sourceState that means "this deployment never opted
   // into the adapter" (the producer had no credential to try with), as opposed to
   // "the adapter was tried and is broken" (`stale`/`error`). Grading the two the
@@ -1615,6 +1694,7 @@ function readSeedMeta(seedCfg, keyMetaValues, keyMetaErrors, now) {
     sourceBlocked,
     metaReadFailed: false,
     metaCount,
+    metaRankableCount,
     poolCounts,
     contentAge,
     contentFreshness,
@@ -1625,6 +1705,7 @@ function readSeedMeta(seedCfg, keyMetaValues, keyMetaErrors, now) {
     dominantFailureMode,
     chinaRow,
     workerControl,
+    resilienceCacheState,
   };
 }
 
@@ -1699,7 +1780,11 @@ function classifyKey(name, redisKey, opts, ctx) {
   // Per-command Redis errors (data STRLEN or seed-meta GET) propagate as their
   // own bucket — don't conflate with "key missing", since ops needs to know if
   // the read itself failed.
-  if (keyErrors.get(redisKey) || meta.metaReadFailed) {
+  if (
+    keyErrors.get(redisKey) ||
+    meta.metaReadFailed ||
+    (name === 'educationAttainment' && ctx.educationPayloadReadFailed)
+  ) {
     const entry = { status: 'REDIS_PARTIAL', records: null };
     if (seedCfg) entry.maxStaleMin = seedCfg.maxStaleMin;
     return entry;
@@ -1715,6 +1800,7 @@ function classifyKey(name, redisKey, opts, ctx) {
     sourceUnavailable,
     sourceBlocked,
     metaCount,
+    metaRankableCount,
     poolCounts,
     contentAge,
     contentFreshness,
@@ -1725,7 +1811,11 @@ function classifyKey(name, redisKey, opts, ctx) {
     dominantFailureMode,
     chinaRow,
     workerControl,
+    resilienceCacheState,
   } = meta;
+  const rankableRecordCount = name === 'educationAttainment' && Object.hasOwn(ctx, 'educationPayloadRankableCount')
+    ? ctx.educationPayloadRankableCount
+    : metaRankableCount;
 
   // Pending activation: the producer has never published a contentFreshness
   // block, so this deployment simply predates the feature. Softened only for
@@ -1857,7 +1947,14 @@ function classifyKey(name, redisKey, opts, ctx) {
   // (e.g., 10/13 chokepoints because portwatch dropped some), this degrades
   // to COVERAGE_PARTIAL (warn) instead of reporting OK. Producer must write
   // seed-meta.recordCount using the *covered* count, not the shape size.
-  else if (seedCfg?.minRecordCount != null && records < seedCfg.minRecordCount) status = 'COVERAGE_PARTIAL';
+  else if (
+    seedCfg?.minRecordCount != null &&
+    (metaCount == null || metaCount < seedCfg.minRecordCount)
+  ) status = 'COVERAGE_PARTIAL';
+  else if (
+    seedCfg?.minRankableRecordCount != null &&
+    (rankableRecordCount == null || rankableRecordCount < seedCfg.minRankableRecordCount)
+  ) status = 'COVERAGE_PARTIAL';
   // Per-pool coverage is independent of aggregate volume. Missing/malformed
   // diagnostics fail closed: without all configured counts health cannot prove
   // that every category consumer has data.
@@ -1942,6 +2039,10 @@ function classifyKey(name, redisKey, opts, ctx) {
   if (seedAge !== null) entry.seedAgeMin = seedAge;
   if (seedCfg) entry.maxStaleMin = seedCfg.maxStaleMin;
   if (seedCfg?.minRecordCount != null) entry.minRecordCount = seedCfg.minRecordCount;
+  if (seedCfg?.minRankableRecordCount != null) {
+    entry.rankableRecordCount = rankableRecordCount;
+    entry.minRankableRecordCount = seedCfg.minRankableRecordCount;
+  }
   if (seedCfg?.minPoolCounts) entry.minPoolCounts = seedCfg.minPoolCounts;
   if (poolCounts) entry.poolCounts = poolCounts;
   if (coverage || seedCfg?.requireCoverage) entry.coverage = coverage;
@@ -1965,6 +2066,7 @@ function classifyKey(name, redisKey, opts, ctx) {
   // Closed, bounded projection from the worker's seed-meta. It contains only
   // control-loop state and counters, never work or customer identifiers.
   if (workerControl) entry.workerControl = workerControl;
+  if (resilienceCacheState) entry.cacheState = resilienceCacheState;
   // Surface content-age fields when seeder opted in (presence of
   // meta.maxContentAgeMin). Operators can distinguish "stale content" from
   // "stale seeder run" at a glance.
@@ -2621,6 +2723,7 @@ export async function handleHealth(req, ctx, options = {}) {
       ...allMetaKeys.map(k => ['GET', k]),
       ...activationEntries.map(([, marker]) => ['EXISTS', marker]),
       ['GET', CHINA_COVERAGE_SUMMARY_KEY],
+      ['GET', STANDALONE_KEYS.educationAttainment],
       ...fredRolloutCommands,
     ];
     if (!getRedisCredentials()) throw new Error('Redis not configured');
@@ -2678,7 +2781,10 @@ export async function handleHealth(req, ctx, options = {}) {
   );
   const chinaCoverageResult = results[allDataKeys.length + allMetaKeys.length + activationEntries.length];
   const chinaCoverageRaw = chinaCoverageResult?.error ? null : chinaCoverageResult?.result;
-  const fredRolloutOffset = allDataKeys.length + allMetaKeys.length + activationEntries.length + 1;
+  const educationPayloadResult = results[allDataKeys.length + allMetaKeys.length + activationEntries.length + 1];
+  const educationPayload = unwrapEnvelope(parseRedisValue(educationPayloadResult?.result)).data;
+  const educationPayloadRankableCount = parseEducationPayloadRankableRecordCount(educationPayload);
+  const fredRolloutOffset = allDataKeys.length + allMetaKeys.length + activationEntries.length + 2;
   const fredRatesRolloutUntil = parseFredRatesRolloutUntil(
     results.slice(fredRolloutOffset, fredRolloutOffset + fredRolloutCommands.length),
   );
@@ -2694,6 +2800,8 @@ export async function handleHealth(req, ctx, options = {}) {
     keyMetaErrors,
     activationStates,
     rolloutPendingUntilMs,
+    educationPayloadReadFailed: Boolean(educationPayloadResult?.error),
+    educationPayloadRankableCount,
     now: evaluationNow,
   };
   const checks = {};

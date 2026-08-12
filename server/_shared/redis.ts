@@ -551,15 +551,22 @@ export async function getCachedJsonBatch(keys: string[], raw = false): Promise<M
 }
 
 export type RedisPipelineCommand = Array<string | number>;
+export type RedisCommandResult = { result?: unknown; error?: string };
 
 function normalizePipelineCommand(command: RedisPipelineCommand, raw: boolean): RedisPipelineCommand {
   if (raw || command.length < 2) return [...command];
   const [verb, key, ...rest] = command;
   if (typeof verb !== 'string' || typeof key !== 'string') return [...command];
+  if (verb.toUpperCase() === 'EVAL') {
+    const keyCount = Number(rest[0]);
+    if (!Number.isInteger(keyCount) || keyCount < 0 || rest.length < keyCount + 1) return [...command];
+    const keys = rest.slice(1, keyCount + 1).map((item) => typeof item === 'string' ? prefixKey(item) : item);
+    return [verb, key, rest[0]!, ...keys, ...rest.slice(keyCount + 1)];
+  }
   return [verb, prefixKey(key), ...rest];
 }
 
-export async function runRedisPipeline(commands: RedisPipelineCommand[], raw = false): Promise<Array<{ result?: unknown }>> {
+export async function runRedisPipeline(commands: RedisPipelineCommand[], raw = false): Promise<RedisCommandResult[]> {
   if (process.env.LOCAL_API_MODE === 'tauri-sidecar') return [];
   if (commands.length === 0) return [];
 
@@ -581,9 +588,45 @@ export async function runRedisPipeline(commands: RedisPipelineCommand[], raw = f
       console.warn(`[redis] runRedisPipeline HTTP ${response.status}`);
       return [];
     }
-    return (await response.json()) as Array<{ result?: unknown }>;
+    return (await response.json()) as RedisCommandResult[];
   } catch (err) {
     console.warn('[redis] runRedisPipeline failed:', errMsg(err));
+    return [];
+  }
+}
+
+/** Execute allowlisted Redis commands in one MULTI/EXEC transaction. */
+export async function runRedisTransaction(commands: RedisPipelineCommand[], raw = false): Promise<RedisCommandResult[]> {
+  if (process.env.LOCAL_API_MODE === 'tauri-sidecar') return [];
+  if (commands.length === 0) return [];
+
+  const url = process.env.UPSTASH_REDIS_REST_URL;
+  const token = process.env.UPSTASH_REDIS_REST_TOKEN;
+  if (!url || !token) return [];
+
+  try {
+    const response = await fetch(`${url}/multi-exec`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json',
+        'User-Agent': 'worldmonitor-server/1.0 (redis)',
+      },
+      body: JSON.stringify(commands.map((command) => normalizePipelineCommand(command, raw))),
+      signal: AbortSignal.timeout(REDIS_PIPELINE_TIMEOUT_MS),
+    });
+    if (!response.ok) {
+      console.warn(`[redis] runRedisTransaction HTTP ${response.status}`);
+      return [];
+    }
+    const data = (await response.json().catch(() => null)) as RedisCommandResult[] | null;
+    if (!Array.isArray(data)) {
+      console.warn('[redis] runRedisTransaction returned an invalid response');
+      return [];
+    }
+    return data;
+  } catch (err) {
+    console.warn('[redis] runRedisTransaction failed:', errMsg(err));
     return [];
   }
 }

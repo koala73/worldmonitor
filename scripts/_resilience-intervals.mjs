@@ -284,6 +284,9 @@ export function buildScoreIntervalPayload(scoreData, options = {}) {
     p05: interval.p05,
     p95: interval.p95,
     _formula: formula,
+    ...(scoreData?._educationState === 'education-on' || scoreData?._educationState === 'education-off'
+      ? { _educationState: scoreData._educationState }
+      : {}),
     draws,
     computedAt: options.computedAt ?? new Date().toISOString(),
     methodology: RESILIENCE_INTERVAL_METHODOLOGY,

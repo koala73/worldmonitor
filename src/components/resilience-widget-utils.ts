@@ -45,12 +45,13 @@ const RESILIENCE_NOT_APPLICABLE_WHEN_ZERO_COVERAGE_IDS: ReadonlySet<string> = ne
 // active coverage universe. The parity test below keeps this set synchronized
 // with the server.
 //
-// Emptied 2026-08-11 (#6460): `education` was the only member and it is now
-// live, so excluding it here would understate a real coverage gap in the
-// widget's Coverage % while the API reported the true number. Kept as an empty
-// set rather than deleted so the next dimension shipping dark has both halves
-// of the mechanism already in place.
-const RESILIENCE_FLAG_DARK_WHEN_ZERO_COVERAGE_IDS: ReadonlySet<string> = new Set([]);
+// `education` stays in this set after activation because its explicit
+// RESILIENCE_EDUCATION_ENABLED=false rollback still serializes the unique
+// triple-zero dark shape. Active observations and source failures carry weight,
+// so they automatically remain in the coverage mean.
+const RESILIENCE_FLAG_DARK_WHEN_ZERO_COVERAGE_IDS: ReadonlySet<string> = new Set([
+  'education',
+]);
 
 // Mirrors server/worldmonitor/resilience/v1/_shared.ts. Keep this table
 // in sync so the widget Coverage % matches API overallCoverage semantics;
@@ -66,8 +67,8 @@ const STALENESS_CONFIDENCE_COVERAGE_FACTOR: Readonly<Record<string, number>> = {
 // visible to non-entitled users. The preview is blurred and
 // non-interactive via the .resilience-widget__preview CSS class, so
 // the exact values do not need to match any real country. They just
-// need to populate the 6 domain bars AND the 22-cell serialized
-// per-dimension confidence grid (20 active + 2 retired) with
+// need to populate the 6 domain bars AND the 23-cell serialized
+// per-dimension confidence grid (21 active + 2 retired) with
 // realistic-looking data so the gated card is not a blank gap. Raised
 // in PR #2949 review. Lives in this
 // dependency-free utils module so tests can import it without

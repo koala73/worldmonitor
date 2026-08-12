@@ -366,6 +366,7 @@ describe('rankable coverage and durable comparison baseline', () => {
       assert.equal(writes, 0, 'an unreadable baseline must never be replaced');
       assert.equal(result.freshnessMetaPatch.coverageComparisonUnavailable, 'redis timeout');
       assert.equal(result.freshnessMetaPatch.rankableCoverageBelowFloor, '179/180');
+      assert.equal(result.freshnessMetaPatch.rankableRecordCount, 179);
       assert.ok(warnings.some((line) => line.includes('last confirmed baseline was not replaced')));
     } finally {
       console.warn = originalWarn;
@@ -393,6 +394,7 @@ describe('rankable coverage and durable comparison baseline', () => {
       );
       assert.equal(written, [...current].sort().join(','));
       assert.equal(result.freshnessMetaPatch.rankableCoverageBelowFloor, '179/180');
+      assert.equal(result.freshnessMetaPatch.rankableRecordCount, 179);
     } finally {
       console.warn = originalWarn;
     }

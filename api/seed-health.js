@@ -6,6 +6,11 @@ import {
   parsePoolCounts,
   PREDICTION_MARKET_MIN_POOL_COUNTS,
 } from './_pool-coverage.js';
+import {
+  EDUCATION_MIN_RANKABLE_RECORD_COUNT,
+  parseEducationPayloadRankableRecordCount,
+  parseRankableRecordCount,
+} from './_rankable-coverage.js';
 import { unwrapEnvelope } from './_seed-envelope.js';
 import { projectChinaDecisionGroupDiagnostics } from './_china-decision-health.js';
 import {
@@ -22,6 +27,7 @@ export const config = { runtime: 'edge' };
 // Keep these literals in sync with scripts/_resilience-intervals.mjs. Edge
 // functions cannot import from scripts/, so tests enforce this mirror.
 const RESILIENCE_INTERVAL_KEY_PREFIX = 'resilience:intervals:v10:';
+const RESILIENCE_INTERVAL_MIN_RECORD_COUNT = 180;
 const RESILIENCE_INTERVAL_METHODOLOGY = 'weight-perturbation-sensitivity-v3';
 const RESILIENCE_INTERVAL_SOURCE_VERSION = `resilience-intervals:${RESILIENCE_INTERVAL_KEY_PREFIX}${RESILIENCE_INTERVAL_METHODOLOGY}`;
 const RESILIENCE_INTERVAL_PROBE_KEY = `${RESILIENCE_INTERVAL_KEY_PREFIX}US`;
@@ -179,14 +185,26 @@ const SEED_DOMAINS = {
   'economic:grocery-basket':  { key: 'seed-meta:economic:grocery-basket',  intervalMin: 5040 }, // weekly seed; intervalMin = maxStaleMin / 2
   'economic:bigmac':          { key: 'seed-meta:economic:bigmac',          intervalMin: 5040 }, // weekly seed; intervalMin = maxStaleMin / 2
   'resilience:static':        { key: 'seed-meta:resilience:static',        intervalMin: 288000 }, // annual October snapshot; intervalMin = health.js maxStaleMin / 2 (400d alert threshold)
+  'resilience:education-attainment': {
+    key: 'seed-meta:resilience:education-attainment',
+    intervalMin: 5760, // 11520min /api/health budget expressed as intervalMin * 2.
+    minRankableRecordCount: EDUCATION_MIN_RANKABLE_RECORD_COUNT,
+    dataProbe: {
+      key: 'resilience:education-attainment:v1',
+      kind: 'education_coverage',
+      minRankableRecordCount: EDUCATION_MIN_RANKABLE_RECORD_COUNT,
+    },
+  },
   'resilience:intervals':     {
     key: 'seed-meta:resilience:intervals',
     intervalMin: 420, // Same 840min freshness budget as api/health.js, expressed as intervalMin * 2.
+    minRecordCount: RESILIENCE_INTERVAL_MIN_RECORD_COUNT,
     dataProbe: {
       key: RESILIENCE_INTERVAL_PROBE_KEY,
       kind: 'resilience_interval',
       methodology: RESILIENCE_INTERVAL_METHODOLOGY,
       formula: currentResilienceCacheFormula(),
+      educationState: currentResilienceEducationState(),
       sourceVersion: RESILIENCE_INTERVAL_SOURCE_VERSION,
     },
   },
@@ -287,14 +305,24 @@ function isEnabledEnv(name, defaultValue) {
   return String(process.env[name] ?? defaultValue).toLowerCase() === 'true';
 }
 
+function isResiliencePillarCombineEnabled() {
+  return process.env.RESILIENCE_PILLAR_COMBINE_ENABLED?.trim().toLowerCase() !== 'false';
+}
+
 function currentResilienceCacheFormula() {
   // Mirrors server/worldmonitor/resilience/v1/_shared.ts currentCacheFormula().
   // Edge functions cannot import the server module, so this is intentionally
   // duplicated and guarded by tests.
-  return isEnabledEnv('RESILIENCE_PILLAR_COMBINE_ENABLED', 'false') &&
+  return isResiliencePillarCombineEnabled() &&
     isEnabledEnv('RESILIENCE_SCHEMA_V2_ENABLED', 'true')
     ? 'pc'
     : 'd6';
+}
+
+function currentResilienceEducationState() {
+  return isEnabledEnv('RESILIENCE_EDUCATION_ENABLED', 'true')
+    ? 'education-on'
+    : 'education-off';
 }
 
 function isValidResilienceIntervalPayload(payload) {
@@ -312,7 +340,12 @@ function isValidResilienceIntervalPayload(payload) {
 
 function evaluateDataProbe(cfg, raw) {
   if (!cfg) return null;
-  const requiredFormula = cfg.formula ?? null;
+  const requiredFormula = cfg.kind === 'resilience_interval'
+    ? currentResilienceCacheFormula()
+    : cfg.formula ?? null;
+  const requiredEducationState = cfg.kind === 'resilience_interval'
+    ? currentResilienceEducationState()
+    : cfg.educationState ?? null;
   if (!raw) {
     return {
       ok: false,
@@ -321,6 +354,7 @@ function evaluateDataProbe(cfg, raw) {
       requiredMethodology: cfg.methodology ?? null,
       requiredSourceVersion: cfg.sourceVersion ?? null,
       requiredFormula,
+      requiredEducationState,
     };
   }
 
@@ -333,11 +367,24 @@ function evaluateDataProbe(cfg, raw) {
       requiredMethodology: cfg.methodology ?? null,
       requiredSourceVersion: cfg.sourceVersion ?? null,
       requiredFormula,
+      requiredEducationState,
     };
   }
 
   const methodology = typeof parsed.methodology === 'string' ? parsed.methodology : null;
   const formula = typeof parsed._formula === 'string' ? parsed._formula : null;
+  const educationState = typeof parsed._educationState === 'string' ? parsed._educationState : null;
+  if (cfg.kind === 'education_coverage') {
+    const rankableRecordCount = parseEducationPayloadRankableRecordCount(parsed);
+    const ok = rankableRecordCount != null && rankableRecordCount >= cfg.minRankableRecordCount;
+    return {
+      ok,
+      status: ok ? 'ok' : 'coverage_partial',
+      key: cfg.key,
+      rankableRecordCount,
+      minRankableRecordCount: cfg.minRankableRecordCount,
+    };
+  }
   if (cfg.methodology && methodology !== cfg.methodology) {
     return {
       ok: false,
@@ -348,6 +395,8 @@ function evaluateDataProbe(cfg, raw) {
       requiredMethodology: cfg.methodology,
       requiredSourceVersion: cfg.sourceVersion ?? null,
       requiredFormula,
+      educationState,
+      requiredEducationState,
     };
   }
 
@@ -358,6 +407,24 @@ function evaluateDataProbe(cfg, raw) {
       key: cfg.key,
       formula,
       requiredFormula,
+      educationState,
+      requiredEducationState,
+      methodology,
+      requiredMethodology: cfg.methodology ?? null,
+      requiredSourceVersion: cfg.sourceVersion ?? null,
+    };
+  }
+
+  const educationStateMatches = educationState === requiredEducationState;
+  if (requiredEducationState && !educationStateMatches) {
+    return {
+      ok: false,
+      status: 'construct_mismatch',
+      key: cfg.key,
+      formula,
+      requiredFormula,
+      educationState,
+      requiredEducationState,
       methodology,
       requiredMethodology: cfg.methodology ?? null,
       requiredSourceVersion: cfg.sourceVersion ?? null,
@@ -371,6 +438,8 @@ function evaluateDataProbe(cfg, raw) {
       key: cfg.key,
       formula,
       requiredFormula,
+      educationState,
+      requiredEducationState,
       methodology,
       requiredMethodology: cfg.methodology ?? null,
       requiredSourceVersion: cfg.sourceVersion ?? null,
@@ -388,6 +457,8 @@ function evaluateDataProbe(cfg, raw) {
     requiredSourceVersion: cfg.sourceVersion ?? null,
     formula,
     requiredFormula,
+    educationState,
+    requiredEducationState,
     computedAt: typeof parsed.computedAt === 'string' ? parsed.computedAt : null,
   };
 }
@@ -514,6 +585,7 @@ export async function handleSeedHealth(req, options = {}) {
       }
       seeds[domain] = { status: 'missing', fetchedAt: null, recordCount: null, stale: true };
       if (cfg.minRecordCount != null) seeds[domain].minRecordCount = cfg.minRecordCount;
+      if (cfg.minRankableRecordCount != null) seeds[domain].minRankableRecordCount = cfg.minRankableRecordCount;
       if (cfg.minPoolCounts) seeds[domain].minPoolCounts = cfg.minPoolCounts;
       missingCount++;
       continue;
@@ -521,11 +593,14 @@ export async function handleSeedHealth(req, options = {}) {
 
     const ageMs = evaluationNow - (meta.fetchedAt || 0);
     const recordCount = parseFiniteRecordCount(meta.recordCount);
+    const rankableRecordCount = parseRankableRecordCount(meta);
     const poolCounts = parsePoolCounts(meta.poolCounts, cfg.minPoolCounts);
     const recordCoveragePartial = cfg.minRecordCount != null
       && (recordCount == null || recordCount < cfg.minRecordCount);
+    const rankableCoveragePartial = cfg.minRankableRecordCount != null
+      && (rankableRecordCount == null || rankableRecordCount < cfg.minRankableRecordCount);
     const poolCoveragePartial = hasPoolCoverageShortfall(poolCounts, cfg.minPoolCounts);
-    const coveragePartial = recordCoveragePartial || poolCoveragePartial;
+    const coveragePartial = recordCoveragePartial || rankableCoveragePartial || poolCoveragePartial;
     // Source-specific seed projections retain their last-good records while
     // reporting a current upstream failure through sourceState. Treat that as
     // an immediate operator error instead of waiting for the freshness window.
@@ -588,6 +663,7 @@ export async function handleSeedHealth(req, options = {}) {
     const freshnessStale = ageMs > maxStalenessMs;
     const stale = freshnessStale
       || recordCoveragePartial
+      || rankableCoveragePartial
       || isError
       || sourceMismatch
       || probe?.ok === false
@@ -622,6 +698,10 @@ export async function handleSeedHealth(req, options = {}) {
       stale,
     };
     if (cfg.minRecordCount != null) seeds[domain].minRecordCount = cfg.minRecordCount;
+    if (cfg.minRankableRecordCount != null) {
+      seeds[domain].rankableRecordCount = rankableRecordCount;
+      seeds[domain].minRankableRecordCount = cfg.minRankableRecordCount;
+    }
     if (cfg.minPoolCounts) seeds[domain].minPoolCounts = cfg.minPoolCounts;
     if (activationUnknown) seeds[domain].activationUnknown = true;
     if (poolCounts) seeds[domain].poolCounts = poolCounts;

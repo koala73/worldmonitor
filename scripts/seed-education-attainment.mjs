@@ -209,7 +209,7 @@ export function reduceAttainmentRecords(records, out = {}) {
     // upstream corruption, not a real reading.
     if (value < 0 || value > 100) continue;
     const year = Number(record?.date);
-    if (!Number.isFinite(year)) continue;
+    if (!Number.isSafeInteger(year) || year < 1900 || year > 2200) continue;
 
     const existing = out[iso2];
     if (!existing || year > existing.year) {
@@ -362,14 +362,14 @@ export async function afterPublish(data, context = {}) {
     );
   }
 
-  // No extra count field here: the shared writer owns total `recordCount`, while
-  // the rankable count can be derived from `countrySet`. The two intentionally
-  // differ because the World Bank payload includes territories outside the
-  // 196-country headline universe. writeFreshnessMetadata rebuilds `meta` from
-  // scratch on every write, so diagnostics clear on the next clean run.
+  // Keep total recordCount and rankableRecordCount distinct. The World Bank
+  // payload includes territories outside the 196-country headline universe,
+  // while the active Core contract requires at least 180 rankable countries.
+  // countrySet remains the exact diagnostic and transition fallback.
   return {
     freshnessMetaPatch: {
       [COUNTRY_SET_META_FIELD]: report.countrySet,
+      rankableRecordCount: report.countryCount,
       // Persisted so an operator reading seed-meta after the fact sees the same
       // verdict the run logged, without needing the Railway log retained.
       ...(report.dropExceeded ? { coverageDropped: report.dropped.join(',') } : {}),

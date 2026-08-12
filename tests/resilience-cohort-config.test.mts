@@ -108,6 +108,15 @@ describe('resilience matched-pair configuration', () => {
     }
   });
 
+  it('pins the India–South Africa rebaseline to the audited pre-flip condition', () => {
+    const pair = MATCHED_PAIRS.find((candidate) => candidate.id === 'in-vs-za');
+    assert.ok(pair, 'in-vs-za pair must remain configured');
+    assert.equal(pair.minGap, 1, 'the rebaseline keeps a positive one-point directional buffer');
+    assert.match(pair.rationale, /2026-08-11/);
+    assert.match(pair.rationale, /2\.54/);
+    assert.match(pair.rationale, /1\.77/);
+  });
+
   it('pair ids are unique', () => {
     const ids = MATCHED_PAIRS.map((p) => p.id);
     const unique = new Set(ids);
