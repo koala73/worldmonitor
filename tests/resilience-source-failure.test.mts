@@ -70,12 +70,36 @@ describe('education health-probe rollout sequencing', () => {
   // healthy meta entry over data nothing checks — the same misleading-green
   // shape the recoveryFuelStocks slot was removed for.
   it('registers both the data key and the seed-meta probe after the first production publish', () => {
-    assert.equal(healthTesting.STANDALONE_KEYS.educationAttainment, 'resilience:education-attainment:v1');
+    assert.equal(
+      healthTesting.STANDALONE_KEYS.educationAttainment,
+      'resilience:education-attainment:v1',
+      'educationAttainment needs its canonical data key in STANDALONE_KEYS, not the SEED_META entry alone',
+    );
     assert.equal(
       healthTesting.SEED_META.educationAttainment?.key,
       'seed-meta:resilience:education-attainment',
     );
+  });
+
+  it('keeps the seed-meta budget in step with the source-failure threshold', () => {
+    // The scorer-side threshold and the health budget are two sources of truth
+    // for "this seeder is dead". They must not drift apart, or one surface
+    // alarms while the other stays green on the same outage.
     assert.equal(healthTesting.SEED_META.educationAttainment?.maxStaleMin, 11520);
+  });
+
+  it('carries pre-seed cutover evidence bound to this probe', () => {
+    // check-health-probe-cutovers.mts validates SHAPE, not provenance — it
+    // cannot tell a traced Railway publish from a hand-primed key. This pins
+    // the fields that make the claim auditable after the fact.
+    const cutover = healthTesting.SEED_META.educationAttainment?.cutover;
+    assert.equal(cutover?.mode, 'preseed');
+    assert.equal(cutover?.fromKey, null, 'a brand-new probe transitions from no prior key');
+    assert.equal(cutover?.issue, 6452);
+    assert.equal(cutover?.evidence?.platform, 'railway');
+    assert.equal(cutover?.evidence?.service, 'seed-bundle-macro');
+    assert.equal(cutover?.evidence?.probeKey, 'seed-meta:resilience:education-attainment');
+    assert.equal(cutover?.evidence?.compactHealthStatus, 'OK');
   });
 });
 

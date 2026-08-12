@@ -18,7 +18,12 @@ import wgiIndicatorKeys from '../shared/wgi-indicator-keys.json' with { type: 'j
 const scriptMod = await import('../scripts/compare-resilience-current-vs-proposed.mjs');
 const registryMod = await import('../server/worldmonitor/resilience/v1/_indicator-registry.ts');
 
-const { buildIndicatorExtractionPlan, applyExtractionRule, EXTRACTION_RULES } = scriptMod;
+const {
+  buildIndicatorExtractionPlan,
+  applyExtractionRule,
+  readExtractionSources,
+  EXTRACTION_RULES,
+} = scriptMod;
 const { INDICATOR_REGISTRY } = registryMod;
 
 test('every INDICATOR_REGISTRY entry has an EXTRACTION_RULES row', () => {
@@ -174,6 +179,23 @@ test('applyExtractionRule — missing values return null (pairwise-drop contract
   assert.equal(applyExtractionRule(rule, {}, 'AE'), null);
   assert.equal(applyExtractionRule(rule, { staticRecord: null }, 'AE'), null);
   assert.equal(applyExtractionRule(rule, { staticRecord: { iea: null } }, 'AE'), null);
+});
+
+test('education extractor reads the canonical Redis payload and maps countries', async () => {
+  const requested = [];
+  const educationKey = 'resilience:education-attainment:v1';
+  const payload = { countries: { FR: { value: 82.5, year: 2023 } } };
+  const sources = await readExtractionSources('FR', async (key) => {
+    requested.push(key);
+    return key === educationKey ? payload : null;
+  });
+  const rule = EXTRACTION_RULES.femaleUpperSecondaryAttainment;
+
+  assert.equal(rule.type, 'bulk-v1-country-value');
+  assert.equal(rule.key, educationKey);
+  assert.ok(requested.includes(educationKey), 'source reader must fetch the canonical education key');
+  assert.equal(applyExtractionRule(rule, sources, 'FR'), 82.5);
+  assert.equal(applyExtractionRule(rule, sources, 'DE'), null);
 });
 
 test('applyExtractionRule — not-implemented rules short-circuit to null', () => {

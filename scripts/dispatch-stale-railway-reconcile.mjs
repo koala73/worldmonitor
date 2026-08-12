@@ -370,32 +370,36 @@ export class GitHubWatchdogClient {
         }
       }
       items.push(...pageItems);
-      const parsedNext = parseNextLink(response.headers.get('link'));
-      if (parsedNext !== null) {
-        const expectedNext = new URL(next, this.apiBase);
-        const currentPage = Number(expectedNext.searchParams.get('page'));
-        expectedNext.searchParams.set('page', String(currentPage + 1));
-        const actualNext = new URL(parsedNext, this.apiBase);
-        if (!Number.isSafeInteger(currentPage)
-          || currentPage < 1
-          || actualNext.origin !== expectedNext.origin
-          || actualNext.pathname !== expectedNext.pathname
-          || !exactQuery(actualNext, Object.fromEntries(expectedNext.searchParams))) {
-          throw new GitHubWatchdogError('GITHUB_READ_FAILED', `${collectionName} next link was not exact`);
+      // GitHub answers every paginated read with a `next` link on the numeric
+      // repository-ID path (`/repositories/<id>/statuses/<sha>`), not the
+      // `/repos/<owner>/<repo>/...` path that was requested. Treat the link as
+      // nothing but a boolean "another page exists" and synthesize the next
+      // request from our own allowlisted path, so the origin never routes a
+      // watchdog request. Completeness stays enforced below by the frozen
+      // total_count, duplicate-id, and truncation invariants.
+      const hasNextPage = parseNextLink(response.headers.get('link')) !== null;
+      let nextPage = null;
+      if (hasNextPage) {
+        const synthesized = new URL(next, this.apiBase);
+        const currentPage = Number(synthesized.searchParams.get('page'));
+        if (!Number.isSafeInteger(currentPage) || currentPage < 1) {
+          throw new GitHubWatchdogError('GITHUB_READ_FAILED', `${collectionName} page cursor was not exact`);
         }
+        synthesized.searchParams.set('page', String(currentPage + 1));
+        nextPage = `${synthesized.pathname}${synthesized.search}`;
       }
       if (frozenTotalCount !== null) {
         if (items.length > frozenTotalCount) {
           throw new GitHubWatchdogError('GITHUB_READ_FAILED', `${collectionName} exceeded total_count`);
         }
-        if (items.length < frozenTotalCount && parsedNext === null) {
+        if (items.length < frozenTotalCount && !hasNextPage) {
           throw new GitHubWatchdogError('GITHUB_READ_FAILED', `${collectionName} pagination was truncated without next`);
         }
-        if (items.length === frozenTotalCount && parsedNext !== null) {
+        if (items.length === frozenTotalCount && hasNextPage) {
           throw new GitHubWatchdogError('GITHUB_READ_FAILED', `${collectionName} exposed next after total_count`);
         }
       }
-      next = parsedNext;
+      next = nextPage;
     }
     if (frozenTotalCount !== null && items.length !== frozenTotalCount) {
       throw new GitHubWatchdogError('GITHUB_READ_FAILED', `${collectionName} did not match total_count`);
