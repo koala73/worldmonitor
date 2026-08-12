@@ -34,10 +34,6 @@
 import { enqueueSentryCall } from '@/bootstrap/sentry-defer';
 import { PREMIUM_RPC_PATHS } from '@/shared/premium-paths';
 import { PRO_FRESH_CACHE_RPC_PATHS } from '@/shared/pro-fresh-rpc';
-import {
-  billingVerificationRetryDelayMs,
-  readBillingVerificationCode,
-} from '@/services/billing-retry';
 import { withPremiumIntent } from './premium-intent';
 import { isDesktopRuntime } from './runtime';
 
@@ -50,11 +46,6 @@ let _testProviders: {
   getTesterKeys?: () => string[];
   getClerkToken?: () => Promise<string | null>;
   isClerkUserSignedIn?: () => boolean | Promise<boolean>;
-  /**
-   * Stands in for the Retry-After wait. Without it the billing-503 retry tests
-   * would sleep the real 5s the server asks for.
-   */
-  sleep?: (ms: number) => Promise<void>;
 } | null = null;
 
 type PremiumFetchInit = RequestInit & { forcePremium?: boolean };
@@ -138,113 +129,32 @@ export function reportServerError(
   } catch { /* ignore URL parse errors */ }
 }
 
-// ---------------------------------------------------------------------------
-// Retryable billing-verification 503 (#6483)
-// ---------------------------------------------------------------------------
-
 /**
- * Whether this call can be re-issued verbatim.
+ * The single dispatch point for every authenticated variant below: fetch, then
+ * report whatever the caller will actually receive.
  *
- * A `Request` owns a body stream the first attempt may already have consumed,
- * and a stream/blob `init.body` is single-use for the same reason. Everything
- * the generated RPC clients send is a URL string plus a string body (or no body
- * at all), so the common path is replayable; anything else declines the retry
- * rather than risk a truncated second request.
- */
-function isResendable(input: RequestInfo | URL, init?: RequestInit): boolean {
-  if (typeof Request !== 'undefined' && input instanceof Request) return false;
-  const body = init?.body;
-  if (body === undefined || body === null) return true;
-  return typeof body === 'string' || body instanceof URLSearchParams;
-}
-
-/**
- * Waits out the server's Retry-After. Rejects if `signal` aborts first, so a
- * caller that gave up is never kept waiting on our behalf.
- */
-function sleepBeforeRetry(ms: number, signal: AbortSignal | null): Promise<void> {
-  if (_testProviders?.sleep) return _testProviders.sleep(ms);
-  return new Promise((resolve, reject) => {
-    if (signal?.aborted) {
-      reject(signal.reason ?? new Error('Aborted'));
-      return;
-    }
-    const timer = setTimeout(() => {
-      signal?.removeEventListener('abort', onAbort);
-      resolve();
-    }, ms);
-    function onAbort(): void {
-      clearTimeout(timer);
-      reject(signal?.reason ?? new Error('Aborted'));
-    }
-    signal?.addEventListener('abort', onAbort, { once: true });
-  });
-}
-
-/**
- * ONE bounded retry when the gateway could not verify the caller's entitlement.
+ * The retryable billing-verification 503 (#6483) is honored one layer down, by
+ * `withBillingVerificationRetry` around the `window.fetch` patch in
+ * services/runtime.ts. It moved there because the server's contract is
+ * route-agnostic while this function is not: the legacy-Pro-bearer gate
+ * (server/gateway.ts:1467) 503s routes that are in neither ENDPOINT_ENTITLEMENTS
+ * nor PREMIUM_RPC_PATHS, and those callers never reach `premiumFetch`. Retrying
+ * here as well would double the bound to two attempts and ~10s of inline wait.
  *
- * Every tier-gated RPC (ENDPOINT_ENTITLEMENTS in
- * server/_shared/entitlement-check.ts) is answered with a retryable
- * `503 + Retry-After + X-Billing-Verification` when the Convex lookup behind it
- * fails — a Convex blip, not a verdict about the account. Until this existed,
- * the generated clients turned that into an immediate `ApiError` and the panel
- * went dead, so a self-healing few-second outage read to the user exactly like a
- * revoked subscription. WORLDMONITOR-Z4 is the shape of it: a signed-in Pro
- * user's `analyze-stock` and `list-stored-stock-backtests` failing one second
- * apart on the same dashboard paint, because `getEntitlements()`
- * negative-caches the failed lookup per user and every premium call in that
- * window inherits it.
- *
- * Bounded exactly like the notification-channels retry it shares a decision
- * point with: one extra attempt, only for the codes the server marks retryable,
- * only after waiting the delay it asked for. Deliberately NOT extended to the
- * other transient 503s on this path — `X-RateLimit-Mode: degraded` means Redis
- * is down and the limiter is the abuse defence, so a retry there adds load to a
- * degraded dependency instead of recovering anything.
- *
- * Any failure of the retry itself yields the ORIGINAL response, so the worst
- * case is exactly today's behavior: the caller sees the 503 it would have seen.
- */
-async function retryUnverifiableEntitlement(
-  first: Response,
-  input: RequestInfo | URL,
-  init?: RequestInit,
-): Promise<Response> {
-  if (first.status !== 503 || !isResendable(input, init)) return first;
-  const delayMs = billingVerificationRetryDelayMs({
-    status: first.status,
-    code: await readBillingVerificationCode(first),
-    retryAfterHeader: first.headers.get('Retry-After'),
-  });
-  if (delayMs === null) return first;
-  try {
-    await sleepBeforeRetry(delayMs, init?.signal ?? null);
-    return await globalThis.fetch(input, init);
-  } catch {
-    return first;
-  }
-}
-
-/**
- * The single dispatch point for every authenticated variant below: fetch, honor
- * a retryable billing-verification 503, then report whatever the caller will
- * actually receive.
- *
- * Reporting the FINAL response is the point. A transient that the retry absorbs
- * produces no Sentry event at all — matching how the two other expected-
- * transient 503s on this path are handled (see reportServerError) — while a
- * sustained outage still yields exactly one event per call, so the origin-5xx
- * canary keeps its signal.
+ * Reporting the FINAL response is still the point, and still works: the patch
+ * resolves to the post-retry response, so a transient it absorbs produces no
+ * Sentry event at all — matching how the two other expected-transient 503s on
+ * this path are handled (see reportServerError) — while a sustained outage
+ * still yields exactly one event per call, so the origin-5xx canary keeps its
+ * signal.
  */
 async function fetchReportingServerErrors(
   input: RequestInfo | URL,
   init?: RequestInit,
 ): Promise<Response> {
-  const first = await globalThis.fetch(input, init);
-  const final = await retryUnverifiableEntitlement(first, input, init);
-  reportServerError(final, input);
-  return final;
+  const res = await globalThis.fetch(input, init);
+  reportServerError(res, input);
+  return res;
 }
 
 function withCredentials(init?: RequestInit): RequestInit {
