@@ -17,6 +17,7 @@ import {
   loadCorpusData,
 } from '../scripts/build-crawlable-corpus.mjs';
 import { buildSitemapEntries } from '../scripts/build-sitemap.mjs';
+import { sourceProviderDisplayName } from '../scripts/crawlable-sources-page.mjs';
 
 const repoRoot = resolve(fileURLToPath(new URL('..', import.meta.url)));
 
@@ -43,6 +44,20 @@ const SOURCE_DOMAIN_IDS = new Set([
   'china',
   'technology',
 ]);
+
+describe('sources catalog provider names', () => {
+  it('uses public source names while retaining hostnames as separate metadata', () => {
+    assert.equal(sourceProviderDisplayName('acleddata.com', ['acleddata.com']), 'ACLED');
+    assert.equal(sourceProviderDisplayName('en.wikipedia.org', ['en.wikipedia.org']), 'Wikipedia');
+    assert.equal(
+      sourceProviderDisplayName('it.usembassy.gov', ['it.usembassy.gov']),
+      'U.S. Embassy & Consulates in Italy',
+    );
+    assert.equal(sourceProviderDisplayName('airlinegeeks.com', ['airlinegeeks.com']), 'AirlineGeeks');
+    assert.equal(sourceProviderDisplayName('feeds.arstechnica.com', ['feeds.arstechnica.com']), 'Ars Technica');
+    assert.equal(sourceProviderDisplayName('api.gdeltproject.org', ['api.gdeltproject.org']), 'GDELT');
+  });
+});
 
 function isJsonLdType(value, expectedType) {
   const type = value?.['@type'];
@@ -484,6 +499,18 @@ describe('crawlable corpus generator', () => {
       window.document.write(sourcesPage);
       window.HTMLElement.prototype.scrollIntoView = () => {};
       window.eval(filterScript);
+      const providerTitle = (provider) => (
+        window.document.querySelector(`.provider-card[data-provider="${provider}"] h3`)?.textContent
+      );
+      assert.equal(providerTitle('acleddata.com'), 'ACLED');
+      assert.equal(providerTitle('en.wikipedia.org'), 'Wikipedia');
+      assert.equal(providerTitle('it.usembassy.gov'), 'U.S. Embassy & Consulates in Italy');
+      assert.equal(providerTitle('airlinegeeks.com'), 'AirlineGeeks');
+      assert.equal(
+        window.document.querySelector('.provider-card[data-provider="acleddata.com"] .provider-hosts a')?.textContent,
+        'acleddata.com',
+        'the exact hostname must remain available as the traceability link',
+      );
       const visibleProviderCount = () => (
         [...window.document.querySelectorAll('.provider-card')].filter((card) => !card.hidden).length
       );
