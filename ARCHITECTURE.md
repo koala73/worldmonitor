@@ -197,7 +197,7 @@ CI enforces generated code freshness via `.github/workflows/proto-check.yml`: ru
 
 ### Bootstrap Hydration
 
-`/api/bootstrap` reads cached keys from Redis in a single batch call. The SPA fetches two tiers concurrently (fast + slow) with separate abort controllers and timeouts. Hydrated data is consumed on-demand by panels via `getHydratedData(key)`.
+`/api/bootstrap` reads cached keys from Redis in a single batch call. The SPA fetches two tiers concurrently (fast + slow) with separate abort controllers and timeouts. Large or opt-in datasets use a public, CDN-shielded single-key request and are consumed through `ensureHydrated(key)` only when their panel renders. Tier-hydrated data is consumed by panels via `getHydratedData(key)`.
 
 ### Seed Scripts
 
@@ -215,6 +215,8 @@ The Railway relay service (`scripts/ais-relay.cjs`) runs continuous seed loops:
 - UCDP events
 
 These are the primary seeders. Standalone `seed-*.mjs` scripts on Railway cron are secondary/backup.
+
+The market backup bundle also persists 14 days of timestamped hourly Yahoo closes for the news-to-market correlation panel. This series is an on-demand bootstrap key, so it does not increase the default hydration payload.
 
 ### Refresh Scheduling
 

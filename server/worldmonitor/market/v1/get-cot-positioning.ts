@@ -16,6 +16,9 @@ interface RawInstrument {
   assetManagerShort: number;
   leveragedFundsLong: number;
   leveragedFundsShort: number;
+  smallTraderLong: number;
+  smallTraderShort: number;
+  smallTraderAvailable?: boolean;
   dealerLong: number;
   dealerShort: number;
   netPct: number;
@@ -39,6 +42,9 @@ export async function getCotPositioning(
       assetManagerShort: String(item.assetManagerShort ?? 0),
       leveragedFundsLong: String(item.leveragedFundsLong ?? 0),
       leveragedFundsShort: String(item.leveragedFundsShort ?? 0),
+      smallTraderLong: String(item.smallTraderLong ?? 0),
+      smallTraderShort: String(item.smallTraderShort ?? 0),
+      smallTraderAvailable: item.smallTraderAvailable === true,
       dealerLong: String(item.dealerLong ?? 0),
       dealerShort: String(item.dealerShort ?? 0),
       netPct: Number(item.netPct ?? 0),

@@ -2476,6 +2476,7 @@ export class PanelLayoutManager implements AppModule {
     this.lazyDefaultPanel('fear-greed', () => import('@/components/FearGreedPanel'), 'FearGreedPanel');
     this.lazyDefaultPanel('aaii-sentiment', () => import('@/components/AAIISentimentPanel'), 'AAIISentimentPanel');
     this.lazyDefaultPanel('market-breadth', () => import('@/components/MarketBreadthPanel'), 'MarketBreadthPanel');
+    this.lazyDefaultPanel('news-market-correlation', () => import('@/components/NewsMarketCorrelationPanel'), 'NewsMarketCorrelationPanel');
     this.lazyDefaultPanel('macro-tiles', () => import('@/components/MacroTilesPanel'), 'MacroTilesPanel');
     this.lazyDefaultPanel('fsi', () => import('@/components/FSIPanel'), 'FSIPanel');
     this.lazyDefaultPanel('yield-curve', () => import('@/components/YieldCurvePanel'), 'YieldCurvePanel');
