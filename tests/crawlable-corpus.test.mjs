@@ -239,7 +239,8 @@ describe('crawlable corpus generator', () => {
       assert.equal(manifest.sections.crises.count, 4);
       assert.equal(manifest.sections.tools.count, 2);
       assert.equal(manifest.sections.research.count, 1);
-      assert.equal(manifest.generatorContentVersion, '2026-07-27');
+      assert.equal(manifest.sections.sources.count, 1);
+      assert.equal(manifest.generatorContentVersion, '2026-08-12');
       const sitemapEntries = buildSitemapEntries({
         repoRoot,
         publicDir: outDir,
@@ -268,6 +269,8 @@ describe('crawlable corpus generator', () => {
         ...manifest.sections.research.routes,
         manifest.sections.changelog.index,
         ...manifest.sections.changelog.routes,
+        manifest.sections.sources.index,
+        ...manifest.sections.sources.routes,
       ]);
       assert.deepEqual(corpusLocations, manifestLocations);
       const liveScriptTag = `<script type="module" nonce="${productionScriptNonce()}" src="/tools/live-tools.js"></script>`;
@@ -336,6 +339,7 @@ describe('crawlable corpus generator', () => {
         'tools/airspace-disruption-checker/index.html',
         'reference/changelog/index.html',
         'reference/changelog/page/2/index.html',
+        'sources/index.html',
         'crawlable-corpus.json',
       ]) {
         assert.ok(existsSync(join(outDir, path)), `missing generated file ${path}`);
@@ -348,7 +352,7 @@ describe('crawlable corpus generator', () => {
       const norway = read(outDir, 'countries/norway/index.html');
       assert.match(norway, /<h1>Norway country risk and resilience<\/h1>/);
       assert.match(norway, /<link rel="canonical" href="https:\/\/www\.worldmonitor\.app\/countries\/norway\/">/);
-      assert.match(norway, /<meta name="lastmod" content="2026-08-05">/);
+      assert.match(norway, /<meta name="lastmod" content="2026-08-12">/);
       assert.match(norway, /Source: docs\/snapshots\/resilience-ranking-2026-05-28\.json/);
       assert.doesNotMatch(norway, /id="app"/, 'country page must be raw static HTML, not the SPA shell');
       assert.match(norway, /data-live-country-risk data-country-code="NO" data-country-name="Norway"/);
@@ -389,6 +393,29 @@ describe('crawlable corpus generator', () => {
       assert.doesNotMatch(chokepointsIndex, /\d+ routes?<\/span>/, 'chokepoint index must not expose raw "N routes" counts');
       assert.doesNotMatch(chokepointsIndex, /hormuz_strait &middot;/, 'chokepoint index must not expose raw canonical ids');
       assert.match(chokepointsIndex, /Persian Gulf ↔ Gulf of Oman/, 'chokepoint cards should show the human region');
+
+      const sourcesPage = read(outDir, 'sources/index.html');
+      assert.match(sourcesPage, /<h1>Every source behind the map<\/h1>/);
+      assert.match(sourcesPage, /<link rel="canonical" href="https:\/\/www\.worldmonitor\.app\/sources\/">/);
+      assert.doesNotMatch(sourcesPage, /id="app"/, 'sources page must be raw static HTML, not the SPA shell');
+      // The hero counts render from the committed attribution manifest with the
+      // same active-host predicate as scripts/source-attribution.mjs
+      // sourceAttributionStats — a formula fork would advertise numbers the
+      // audited docs inventory does not back.
+      const attributionManifest = JSON.parse(
+        readFileSync(join(repoRoot, 'shared/source-attribution-manifest.json'), 'utf8'),
+      );
+      const activeAttributionEntries = attributionManifest.entries
+        .filter((entry) => entry.observed === true && entry.status !== 'excluded');
+      assert.ok(
+        sourcesPage.includes(`<strong>${activeAttributionEntries.length}</strong>`),
+        'sources page must render the audited active-host count',
+      );
+      assert.doesNotMatch(sourcesPage, /[?&]ref=/, 'sources CTAs must never use the affiliate ref= param');
+      // Domain cards deep-link into the docs catalog with the query BEFORE the
+      // fragment (utm after the anchor would be swallowed by the fragment).
+      assert.match(sourcesPage, /href="\/docs\/data-sources\?utm_source=seo-sources#finance-%26-economics"/);
+      assert.match(sourcesPage, /href="\/docs\/source-attribution\?utm_source=seo-sources"/);
 
       const hormuz = read(outDir, 'chokepoints/strait-of-hormuz/index.html');
       assert.match(hormuz, /<h1>Strait of Hormuz<\/h1>/);
@@ -484,8 +511,8 @@ describe('crawlable corpus generator', () => {
     assert.equal(data.sources.countryBboxes, 'shared/country-bboxes.js');
     assert.equal(data.sources.crisisRegistry, 'shared/crawlable-crises.json');
     assert.equal(data.resilience.capturedAt, '2026-05-28');
-    assert.equal(data.lastmod.countries, '2026-08-05');
-    assert.equal(data.lastmod.research, '2026-08-05');
+    assert.equal(data.lastmod.countries, '2026-08-12');
+    assert.equal(data.lastmod.research, '2026-08-12');
     assert.equal(data.crises.length, 4);
     assert.ok(data.crises.some((crisis) => crisis.slug === 'ukraine-war' && crisis.coverage.some((country) => country.code === 'UA')));
     assert.ok(data.countryBounds.some((country) => country.code === 'JP' && country.bounds[0] === 31.11));

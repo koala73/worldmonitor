@@ -31,12 +31,14 @@ const LIVE_TOOLS_SCRIPT_PATH = 'scripts/crawlable-live-tools.mjs';
 const COUNTRY_BBOXES_PATH = 'shared/country-bboxes.js';
 const CRISIS_REGISTRY_PATH = 'shared/crawlable-crises.json';
 const RESEARCH_REPORTS_INDEX_PATH = 'shared/research-reports/index.mjs';
+const SOURCE_ATTRIBUTION_MANIFEST_PATH = 'shared/source-attribution-manifest.json';
 // Last substantive change to the shared HTML template/content language. Data
 // families take the later of this version and their own committed source date,
 // so template changes are reflected without pretending every deploy is fresh.
-export const CORPUS_GENERATOR_CONTENT_VERSION = '2026-07-27';
+export const CORPUS_GENERATOR_CONTENT_VERSION = '2026-08-12';
 const COUNTRY_PAGE_CONTENT_VERSION = '2026-07-28';
 const CHOKEPOINT_PAGE_CONTENT_VERSION = '2026-07-28';
+const SOURCES_PAGE_CONTENT_VERSION = '2026-08-12';
 const DATASET_SCHEMA_CONTENT_VERSION = '2026-08-05';
 const DATASET_LICENSE = {
   '@type': 'CreativeWork',
@@ -169,6 +171,74 @@ const GENERATED_DIRS = [
   'tools',
   'reference/changelog',
   'research',
+  'sources',
+];
+
+// Hand-authored marketing copy for the /sources/ catalog page. Domains and
+// their docs anchors mirror docs/data-sources.mdx section headings; the
+// aggregate counts are computed from the committed attribution manifest, so
+// the page can never drift from the audited inventory.
+const SOURCE_DOMAINS = [
+  {
+    name: 'Geopolitics & Conflict',
+    anchor: 'geopolitics-%26-conflict',
+    blurb: 'Conflict events, protests, displacement, travel advisories, and rocket alerts — from academically curated databases to real-time sirens.',
+    providers: ['ACLED', 'UCDP', 'GDELT', 'UN OCHA HAPI', 'Polymarket', 'US / UK / AU travel advisories'],
+  },
+  {
+    name: 'Military & Strategic',
+    anchor: 'military-%26-strategic',
+    blurb: '226 military bases, live ADS-B military flights, naval activity, ~100 tracked satellites, and GPS jamming detected from transponder anomalies.',
+    providers: ['adsb.lol', 'Wingbits', 'CelesTrak', 'gpsjam.org', 'LiveUAMap'],
+  },
+  {
+    name: 'News & OSINT',
+    anchor: 'news-%26-osint',
+    blurb: 'Hundreds of tiered news feeds across six variants, a 56-channel Telegram OSINT lane, live TV, and webcam grids — every source disclosed and bias-tagged.',
+    providers: ['Reuters', 'BBC', 'AP', 'Al Jazeera', 'Bellingcat', 'ISW'],
+  },
+  {
+    name: 'Finance & Economics',
+    anchor: 'finance-%26-economics',
+    blurb: 'Official macro series from central banks and statistical agencies, live market and crypto data, and global trade flows.',
+    providers: ['FRED', 'ECB', 'BIS', 'Eurostat', 'World Bank', 'UN Comtrade', 'CoinGecko'],
+  },
+  {
+    name: 'Energy & Commodities',
+    anchor: 'energy-%26-commodities',
+    blurb: 'EU gas storage, US crude inventories, IEA oil stocks, gold reserves and ETF flows, fuel prices, and trader positioning.',
+    providers: ['GIE AGSI+', 'U.S. EIA', 'IEA', 'CFTC', 'IMF'],
+  },
+  {
+    name: 'Infrastructure & Cyber',
+    anchor: 'infrastructure-%26-cyber',
+    blurb: 'Undersea cables, pipelines, 62 strategic ports, AI datacenters, internet outages, and six live threat-intelligence feeds.',
+    providers: ['Cloudflare Radar', 'Submarine Cable Map', 'abuse.ch', 'AbuseIPDB', 'Epoch AI'],
+  },
+  {
+    name: 'Environment & Disasters',
+    anchor: 'environment-%26-disasters',
+    blurb: 'Earthquakes, UN-coordinated disaster alerts, satellite fire detection, Pacific cyclones, and climate anomalies over conflict-prone zones.',
+    providers: ['USGS', 'GDACS', 'NASA FIRMS', 'NASA EONET', 'Open-Meteo'],
+  },
+  {
+    name: 'Aviation & Airspace',
+    anchor: 'aviation-%26-airspace',
+    blurb: '115 monitored airports with delay and NOTAM closure detection, live flight tracking, and airline operations intelligence.',
+    providers: ['FAA', 'ICAO', 'AviationStack', 'adsb.lol', 'OpenSky Network'],
+  },
+  {
+    name: 'China Coverage',
+    anchor: 'china-coverage',
+    blurb: 'Source-attributed official lanes: NBS and SAFE macro, policy documents from six ministries, exchange disclosures, and cross-strait activity claims.',
+    providers: ['NBS', 'SAFE', "People's Bank of China", 'SSE / SZSE', 'Taiwan MND'],
+  },
+  {
+    name: 'Tech Ecosystem',
+    anchor: 'tech-ecosystem',
+    blurb: 'Company HQs, startup hubs, cloud regions, accelerators, and research signals from repository analytics to conference calendars.',
+    providers: ['Crunchbase News', 'GitHub', 'OSS Insight', 'Product Hunt'],
+  },
 ];
 
 const MONTHS = [
@@ -800,6 +870,23 @@ export async function loadCorpusData({ rootDir = DEFAULT_ROOT } = {}) {
     CORPUS_GENERATOR_CONTENT_VERSION,
     DATASET_SCHEMA_CONTENT_VERSION,
   );
+  const attributionManifest = readJson(rootDir, SOURCE_ATTRIBUTION_MANIFEST_PATH);
+  // Same active-host predicate as scripts/source-attribution.mjs
+  // sourceAttributionStats — counts must match the audited docs inventory.
+  const activeSourceEntries = (attributionManifest.entries || [])
+    .filter((entry) => entry.observed === true && entry.status !== 'excluded');
+  const sourceStats = {
+    activeHosts: activeSourceEntries.length,
+    structuredHosts: activeSourceEntries.filter((entry) => entry.kind.split('+').includes('structured')).length,
+    feedHosts: activeSourceEntries.filter((entry) => entry.kind.split('+').includes('feed')).length,
+    operationalStatusHosts: activeSourceEntries.filter((entry) => entry.kind.split('+').includes('operational-status')).length,
+    providerCount: new Set(activeSourceEntries.map((entry) => entry.provider)).size,
+  };
+  const sourcesLastmod = laterDate(
+    gitFileLastmod(rootDir, SOURCE_ATTRIBUTION_MANIFEST_PATH),
+    CORPUS_GENERATOR_CONTENT_VERSION,
+    SOURCES_PAGE_CONTENT_VERSION,
+  );
 
   return {
     generatorContentVersion: CORPUS_GENERATOR_CONTENT_VERSION,
@@ -814,6 +901,7 @@ export async function loadCorpusData({ rootDir = DEFAULT_ROOT } = {}) {
       countryBboxes: COUNTRY_BBOXES_PATH,
       crisisRegistry: CRISIS_REGISTRY_PATH,
       researchReports: RESEARCH_REPORTS_INDEX_PATH,
+      sourceAttributionManifest: SOURCE_ATTRIBUTION_MANIFEST_PATH,
     },
     lastmod: {
       countries: countriesLastmod,
@@ -822,7 +910,9 @@ export async function loadCorpusData({ rootDir = DEFAULT_ROOT } = {}) {
       tools: toolsLastmod,
       crises: crisesLastmod,
       research: researchLastmod,
+      sources: sourcesLastmod,
     },
+    sourceStats,
     resilience,
     countries,
     countryBounds,
@@ -939,6 +1029,11 @@ function pageDocument({
       .routes { list-style: none; padding: 0; margin: 20px 0 0; display: grid; gap: 8px; }
       .routes li { border: 1px solid var(--line); border-radius: 8px; padding: 11px 14px; background: var(--panel); color: var(--text); font-size: 14px; }
       .routes .vol { color: var(--muted); }
+      .domains { grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); }
+      .card.domain p { margin: 8px 0 12px; font-size: 14px; }
+      .card.domain .providers { display: flex; flex-wrap: wrap; gap: 6px; }
+      .card.domain .providers span { border: 1px solid var(--line); border-radius: 999px; padding: 3px 9px; color: var(--muted); font-size: 12px; }
+      .card.domain:hover { border-color: var(--accent); text-decoration: none; }
       .related { list-style: none; padding: 0; margin: 12px 0 0; display: flex; flex-wrap: wrap; gap: 0 20px; }
       .related a { display: inline-flex; align-items: center; min-height: 44px; }
       .source { margin-top: 34px; font-size: 13px; color: var(--muted); }
@@ -958,6 +1053,7 @@ function pageDocument({
     <header>
       <nav aria-label="Primary">
         <a href="/">World Monitor</a>
+        <a href="/sources/">Sources</a>
         <a href="/countries/">Countries</a>
         <a href="/chokepoints/">Chokepoints</a>
         <a href="/crises/">Crises</a>
@@ -975,6 +1071,56 @@ ${body}
   </body>
 </html>
 `;
+}
+
+function renderSourcesIndex({ sourceStats, baseUrl, lastmod }) {
+  const path = '/sources/';
+  const description = `Explore the ${sourceStats.activeHosts} audited upstream sources behind World Monitor — conflict, military, news, finance, energy, cyber, disaster, aviation and China data feeds.`;
+  // Query precedes the fragment — withUtmSource() would append after the
+  // anchor and push the query into the fragment, so build these by hand.
+  const docsHref = (anchor) => `/docs/data-sources?utm_source=seo-sources${anchor ? `#${anchor}` : ''}`;
+  const domainCards = SOURCE_DOMAINS.map((domain) => `        <a class="card domain" href="${docsHref(domain.anchor)}">
+          <strong>${escapeHtml(domain.name)}</strong>
+          <p>${escapeHtml(domain.blurb)}</p>
+          <span class="providers">${domain.providers.map((provider) => `<span>${escapeHtml(provider)}</span>`).join(' ')}</span>
+        </a>`).join('\n');
+  const body = `      <p class="eyebrow">Source catalog</p>
+      <h1>Every source behind the map</h1>
+      <p class="lede">World Monitor fuses ${sourceStats.activeHosts} audited upstream hosts — structured APIs, tiered news and OSINT feeds, and operational-status endpoints — into one live operating picture. Browse the catalog by domain below, then follow any card into the documentation for providers, cadences, and methodology.</p>
+      <div class="grid">
+        <div class="metric"><small>Upstream hosts</small><strong>${sourceStats.activeHosts}</strong>audited &amp; attributed</div>
+        <div class="metric"><small>Structured APIs</small><strong>${sourceStats.structuredHosts}</strong>datasets &amp; official statistics</div>
+        <div class="metric"><small>News &amp; OSINT feeds</small><strong>${sourceStats.feedHosts}</strong>tiered &amp; bias-tagged</div>
+        <div class="metric"><small>Status endpoints</small><strong>${sourceStats.operationalStatusHosts}</strong>cloud &amp; SaaS health</div>
+      </div>
+      <h2>Browse by domain</h2>
+      <div class="grid domains">
+${domainCards}
+      </div>
+      <h2>Audited, not advertised</h2>
+      <p class="lede">The numbers above are not marketing estimates. A generator scans the source tree for every URL it actually fetches, joins the result against a committed attribution manifest, and fails the build when they disagree — so this catalog cannot drift from what the code really ingests. The <a href="${docsHref('')}">data sources documentation</a> maps each domain in depth, and the <a href="${withUtmSource('/docs/source-attribution', 'seo-sources')}">source attribution ledger</a> lists every host with its license posture and required credit.</p>
+      <a class="cta" href="${withUtmSource('/dashboard', 'seo-sources')}">Open the live dashboard</a>
+      <p class="source">Source: ${SOURCE_ATTRIBUTION_MANIFEST_PATH} (committed attribution manifest). Feed tiering and bias metadata: <a href="${docsHref('source-credibility-%26-feed-tiering')}">source credibility &amp; feed tiering</a>.</p>`;
+  return pageDocument({
+    baseUrl,
+    path,
+    title: 'Data Source Catalog | World Monitor',
+    description,
+    lastmod,
+    jsonLd: {
+      '@context': 'https://schema.org',
+      '@type': 'CollectionPage',
+      name: 'World Monitor data source catalog',
+      description,
+      url: absoluteUrl(baseUrl, path),
+      inLanguage: 'en-US',
+    },
+    breadcrumbs: breadcrumbLd(baseUrl, [
+      { name: 'Home', path: '/' },
+      { name: 'Sources', path },
+    ]),
+    body,
+  });
 }
 
 function renderCountriesIndex({ countries, baseUrl, capturedAt, lastmod }) {
@@ -1679,6 +1825,11 @@ function buildManifest({ data, baseUrl, changelogPageCount }) {
         index: '/research/',
         routes: researchRoutes,
       },
+      sources: {
+        count: 1,
+        index: '/sources/',
+        routes: [],
+      },
       glossary: {
         count: glossaryRoutes.length,
         index: '/blog/glossary/',
@@ -1701,6 +1852,16 @@ export async function buildCorpus({
       rmSync(join(outDir, dir), { recursive: true, force: true });
     }
   }
+
+  writeGeneratedFile(
+    outDir,
+    'sources/index.html',
+    renderSourcesIndex({
+      sourceStats: data.sourceStats,
+      baseUrl,
+      lastmod: data.lastmod.sources,
+    }),
+  );
 
   writeGeneratedFile(
     outDir,
@@ -1874,7 +2035,8 @@ async function main() {
     + `${manifest.sections.crises.count} crisis trackers, `
     + `${manifest.sections.tools.count} live tools, `
     + `${manifest.sections.research.count} research reports, `
-    + `${manifest.sections.changelog.count} changelog pages. `
+    + `${manifest.sections.changelog.count} changelog pages, `
+    + `${manifest.sections.sources.count} source catalog page. `
     + `Glossary manifest references ${manifest.sections.glossary.count} existing blog pages.\n`,
   );
 }
