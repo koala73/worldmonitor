@@ -653,33 +653,57 @@ function defaultEntry(observed) {
   };
 }
 
+/**
+ * Every `excluded` row the generator writes itself carries one of these, so a
+ * row still wearing the text after its rule stopped applying is stale rather
+ * than curated. Human-written exclusions (PROVIDER_OVERRIDES) never match.
+ */
+const GENERATED_EXCLUSIONS = [
+  {
+    license: 'Excluded: live-video playback transport; channel/provider terms apply separately',
+    attribution: 'Excluded from the external-provider count: presentation-only HLS stream, not an ingested dataset.',
+    status: 'excluded',
+  },
+  {
+    license: 'Excluded: first-party, control-plane, UI, or rendering transport',
+    attribution: 'Excluded from the external-provider count: not an ingested upstream dataset.',
+    status: 'excluded',
+  },
+];
+
+/**
+ * Return the previous row to review status when its `excluded` no longer has a
+ * rule behind it. Two ways that happens: a host retired by an earlier
+ * regeneration is observed again, and a host excluded by a scanner rule (a
+ * playback-only origin, say) gains a real ingest reference. Both leave an
+ * active provider marked excluded, which drops it from the published count and
+ * from license review while every gate stays green — so exclusion is cleared
+ * unless a rule still asserts it.
+ */
+function clearStaleExclusion(previous, observed, override) {
+  const retired = previous.observed === false;
+  if (!retired && (previous.status !== 'excluded' || override.status === 'excluded')) return previous;
+  const fallback = defaultEntry(observed);
+  const wasGenerated = GENERATED_EXCLUSIONS.some(
+    (text) => text.license === previous.license && text.attribution === previous.attribution,
+  );
+  // The generator's own exclusion copy describes a surface this host no longer
+  // is, so it goes too. A curated credit is the reviewer's and survives.
+  return wasGenerated
+    ? { ...previous, status: fallback.status, license: fallback.license, attribution: fallback.attribution }
+    : { ...previous, status: fallback.status };
+}
+
 function mergeEntry(observed, previous) {
   const presentationOnly = observed.references.length > 0
     && observed.references.every((reference) => PRESENTATION_ONLY_FILES.has(reference.path));
   const override = PROVIDER_OVERRIDES[observed.host]
     || (presentationOnly
-      ? {
-        provider: observed.host,
-        license: 'Excluded: live-video playback transport; channel/provider terms apply separately',
-        attribution: 'Excluded from the external-provider count: presentation-only HLS stream, not an ingested dataset.',
-        status: 'excluded',
-      }
+      ? { provider: observed.host, ...GENERATED_EXCLUSIONS[0] }
       : EXCLUDED_HOSTS.has(observed.host) || observed.host.endsWith('.worldmonitor.app')
-      ? {
-        provider: observed.host,
-        license: 'Excluded: first-party, control-plane, UI, or rendering transport',
-        attribution: 'Excluded from the external-provider count: not an ingested upstream dataset.',
-        status: 'excluded',
-      }
+      ? { provider: observed.host, ...GENERATED_EXCLUSIONS[1] }
       : {});
-  const fallback = defaultEntry(observed);
-  // A row retired by an earlier regeneration carries status 'excluded' for a
-  // host the scanner now sees again. Retirement is bookkeeping, not a license
-  // verdict, so a revived host returns to the default review status instead of
-  // staying silently excluded from the active count. An override still wins.
-  const base = previous
-    ? (previous.observed === false ? { ...previous, status: fallback.status } : previous)
-    : fallback;
+  const base = previous ? clearStaleExclusion(previous, observed, override) : defaultEntry(observed);
   return {
     ...base,
     ...override,
@@ -894,18 +918,46 @@ function serializeManifest(manifest) {
   return `${JSON.stringify(manifest, null, 2)}\n`;
 }
 
+const REGENERATE_HINT = 'run node scripts/source-attribution.mjs --write';
+
+/**
+ * The whole `--check` verdict, exported so a test can prove each way it fails
+ * rather than only that it currently passes. Returns every error it found and,
+ * when clean, the stats the CLI prints.
+ */
+export function checkSourceAttribution(rootDir = ROOT) {
+  const inventory = scanUpstreamHosts(rootDir);
+  const previous = loadManifest(rootDir);
+  const errors = validateManifest(inventory, previous);
+  if (errors.length) return { errors };
+  // Compare the committed manifest against a rebuild, not against itself. The
+  // per-row validation above covers observed hosts; this catches the rest —
+  // retired rows, logical entries, and formatting — so --check and --write can
+  // no longer disagree about what the committed artifact should contain.
+  const manifestPath = join(rootDir, MANIFEST_PATH);
+  const committed = existsSync(manifestPath) ? readFileSync(manifestPath, 'utf8') : '';
+  if (committed !== serializeManifest(buildManifest(inventory, previous))) {
+    return { errors: [`${MANIFEST_PATH} is out of date; ${REGENERATE_HINT}`] };
+  }
+  const docsPath = join(rootDir, DOCS_PATH);
+  if (!existsSync(docsPath)) return { errors: [`${DOCS_PATH} is missing; ${REGENERATE_HINT}`] };
+  const actual = matchGeneratedAttributionSection(readFileSync(docsPath, 'utf8'));
+  if (actual !== renderAttributionSection(inventory, previous)) {
+    return { errors: [`${DOCS_PATH} is out of date; ${REGENERATE_HINT}`] };
+  }
+  return { errors: [], stats: sourceAttributionStats(inventory, previous) };
+}
+
 function main() {
-  const write = process.argv.includes('--write');
-  const inventory = scanUpstreamHosts(ROOT);
-  const previous = loadManifest(ROOT);
-  if (write) {
-    const manifest = buildManifest(inventory, previous);
+  if (process.argv.includes('--write')) {
+    const inventory = scanUpstreamHosts(ROOT);
+    const manifest = buildManifest(inventory, loadManifest(ROOT));
     writeFileSync(join(ROOT, MANIFEST_PATH), serializeManifest(manifest));
     updateDocs(ROOT, renderAttributionSection(inventory, manifest));
     printStats(sourceAttributionStats(inventory, manifest));
     return;
   }
-  const errors = validateManifest(inventory, previous);
+  const { errors, stats } = checkSourceAttribution(ROOT);
   if (errors.length) {
     console.error(`source-attribution: ${errors.length} manifest error(s)`);
     // A single stale scan can fault every row, so cap the listing: an unbounded
@@ -915,26 +967,7 @@ function main() {
     process.exitCode = 1;
     return;
   }
-  // Compare the committed manifest against a rebuild, not against itself. The
-  // per-row validation above covers observed hosts; this catches the rest —
-  // retired rows, logical entries, and formatting — so --check and --write can
-  // no longer disagree about what the committed artifact should contain.
-  const rebuilt = serializeManifest(buildManifest(inventory, previous));
-  if (read(ROOT, MANIFEST_PATH) !== rebuilt) {
-    console.error(`source-attribution: ${MANIFEST_PATH} is out of date; run node scripts/source-attribution.mjs --write`);
-    process.exitCode = 1;
-    return;
-  }
-  const expectedSection = renderAttributionSection(inventory, previous);
-  const docs = read(ROOT, DOCS_PATH);
-  const markerPattern = inventoryMarkerPattern(false);
-  const actual = docs.match(markerPattern)?.[0];
-  if (actual !== expectedSection) {
-    console.error('source-attribution: docs/source-attribution.mdx is out of date; run node scripts/source-attribution.mjs --write');
-    process.exitCode = 1;
-    return;
-  }
-  printStats(sourceAttributionStats(inventory, previous));
+  printStats(stats);
 }
 
 if (process.argv[1] && process.argv[1].endsWith('scripts/source-attribution.mjs')) main();
