@@ -15,12 +15,14 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
 import { writeResearchSection } from './build-research-reports.mjs';
+import { buildSourceCatalog, renderSourcesIndex } from './crawlable-sources-page.mjs';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 const DEFAULT_ROOT = resolve(__dirname, '..');
 const DEFAULT_OUT_DIR = join(DEFAULT_ROOT, 'public');
 const DEFAULT_BASE_URL = 'https://www.worldmonitor.app';
+const SCHEMA_ORG_CONTEXT_URL = 'https://schema.org';
 const RESILIENCE_SNAPSHOT_PATH = 'docs/snapshots/resilience-ranking-2026-05-28.json';
 const COUNTRY_NAMES_PATH = 'shared/country-names.json';
 const CHOKEPOINT_REGISTRY_PATH = 'src/config/chokepoint-registry.ts';
@@ -175,73 +177,6 @@ export const GENERATED_DIRS = [
   'reference/changelog',
   'research',
   'sources',
-];
-
-// Hand-authored marketing copy for the /sources/ catalog page. Domains and
-// their docs anchors mirror docs/data-sources.mdx section headings; the
-// aggregate counts are computed from the committed attribution manifest, so
-// the page can never drift from the audited inventory.
-const SOURCE_DOMAINS = [
-  {
-    name: 'Geopolitics & Conflict',
-    anchor: 'geopolitics-%26-conflict',
-    blurb: 'Conflict events, protests, displacement, travel advisories, and rocket alerts — from academically curated databases to real-time sirens.',
-    providers: ['ACLED', 'UCDP', 'GDELT', 'UN OCHA HAPI', 'Polymarket', 'US / UK / AU travel advisories'],
-  },
-  {
-    name: 'Military & Strategic',
-    anchor: 'military-%26-strategic',
-    blurb: '226 military bases, live ADS-B military flights, naval activity, ~100 tracked satellites, and GPS jamming detected from transponder anomalies.',
-    providers: ['adsb.lol', 'Wingbits', 'CelesTrak', 'gpsjam.org', 'LiveUAMap'],
-  },
-  {
-    name: 'News & OSINT',
-    anchor: 'news-%26-osint',
-    blurb: 'Hundreds of tiered news feeds across six variants, a 56-channel Telegram OSINT lane, live TV, and webcam grids — every source disclosed and bias-tagged.',
-    providers: ['Reuters', 'BBC', 'AP', 'Al Jazeera', 'Bellingcat', 'ISW'],
-  },
-  {
-    name: 'Finance & Economics',
-    anchor: 'finance-%26-economics',
-    blurb: 'Official macro series from central banks and statistical agencies, live market and crypto data, and global trade flows.',
-    providers: ['FRED', 'ECB', 'BIS', 'Eurostat', 'World Bank', 'UN Comtrade', 'CoinGecko'],
-  },
-  {
-    name: 'Energy & Commodities',
-    anchor: 'energy-%26-commodities',
-    blurb: 'EU gas storage, US crude inventories, IEA oil stocks, gold reserves and ETF flows, fuel prices, and trader positioning.',
-    providers: ['GIE AGSI+', 'U.S. EIA', 'IEA', 'CFTC', 'IMF'],
-  },
-  {
-    name: 'Infrastructure & Cyber',
-    anchor: 'infrastructure-%26-cyber',
-    blurb: 'Undersea cables, pipelines, 62 strategic ports, AI datacenters, internet outages, and six live threat-intelligence feeds.',
-    providers: ['Cloudflare Radar', 'Submarine Cable Map', 'abuse.ch', 'AbuseIPDB', 'Epoch AI'],
-  },
-  {
-    name: 'Environment & Disasters',
-    anchor: 'environment-%26-disasters',
-    blurb: 'Earthquakes, UN-coordinated disaster alerts, satellite fire detection, Pacific cyclones, and climate anomalies over conflict-prone zones.',
-    providers: ['USGS', 'GDACS', 'NASA FIRMS', 'NASA EONET', 'Open-Meteo'],
-  },
-  {
-    name: 'Aviation & Airspace',
-    anchor: 'aviation-%26-airspace',
-    blurb: '115 monitored airports with delay and NOTAM closure detection, live flight tracking, and airline operations intelligence.',
-    providers: ['FAA', 'ICAO', 'AviationStack', 'adsb.lol', 'OpenSky Network'],
-  },
-  {
-    name: 'China Coverage',
-    anchor: 'china-coverage',
-    blurb: 'Source-attributed official lanes: NBS and SAFE macro, policy documents from six ministries, exchange disclosures, and cross-strait activity claims.',
-    providers: ['NBS', 'SAFE', "People's Bank of China", 'SSE / SZSE', 'Taiwan MND'],
-  },
-  {
-    name: 'Tech Ecosystem',
-    anchor: 'tech-ecosystem',
-    blurb: 'Company HQs, startup hubs, cloud regions, accelerators, and research signals from repository analytics to conference calendars.',
-    providers: ['Crunchbase News', 'GitHub', 'OSS Insight', 'Product Hunt'],
-  },
 ];
 
 const MONTHS = [
@@ -878,6 +813,7 @@ export async function loadCorpusData({ rootDir = DEFAULT_ROOT } = {}) {
   // sourceAttributionStats — counts must match the audited docs inventory.
   const activeSourceEntries = (attributionManifest.entries || [])
     .filter((entry) => entry.observed === true && entry.status !== 'excluded');
+  const sourceCatalog = buildSourceCatalog(activeSourceEntries);
   const sourceStats = {
     activeHosts: activeSourceEntries.length,
     structuredHosts: activeSourceEntries.filter((entry) => entry.kind.split('+').includes('structured')).length,
@@ -885,6 +821,9 @@ export async function loadCorpusData({ rootDir = DEFAULT_ROOT } = {}) {
     operationalStatusHosts: activeSourceEntries.filter((entry) => entry.kind.split('+').includes('operational-status')).length,
     providerCount: new Set(activeSourceEntries.map((entry) => entry.provider)).size,
   };
+  if (sourceCatalog.length !== sourceStats.providerCount) {
+    throw new Error('Source catalog provider count drifted from the attribution manifest');
+  }
   const sourcesLastmod = laterDate(
     gitFileLastmod(rootDir, SOURCE_ATTRIBUTION_MANIFEST_PATH),
     CORPUS_GENERATOR_CONTENT_VERSION,
@@ -916,6 +855,7 @@ export async function loadCorpusData({ rootDir = DEFAULT_ROOT } = {}) {
       sources: sourcesLastmod,
     },
     sourceStats,
+    sourceCatalog,
     resilience,
     countries,
     countryBounds,
@@ -930,7 +870,7 @@ export async function loadCorpusData({ rootDir = DEFAULT_ROOT } = {}) {
 
 function breadcrumbLd(baseUrl, items) {
   return {
-    '@context': 'https://schema.org',
+    '@context': SCHEMA_ORG_CONTEXT_URL,
     '@type': 'BreadcrumbList',
     itemListElement: items.map((item, index) => ({
       '@type': 'ListItem',
@@ -952,11 +892,27 @@ function pageDocument({
   breadcrumbs,
   body,
   scriptSrcs = [],
+  inlineScript = '',
+  bodyClass = '',
+  headerNav = '',
+  footerBody = '',
+  extraStyles = '',
+  ogType = 'article',
   ogImage = OG_IMAGE_PATH,
   ogImageAlt = OG_IMAGE_ALT,
 }) {
   const canonical = absoluteUrl(baseUrl, path);
   const ld = [jsonLd, breadcrumbs].filter(Boolean);
+  const renderedNav = headerNav || `        <a href="/">World Monitor</a>
+        <a href="/sources/">Sources</a>
+        <a href="/countries/">Countries</a>
+        <a href="/chokepoints/">Chokepoints</a>
+        <a href="/crises/">Crises</a>
+        <a href="/tools/">Live tools</a>
+        <a href="/research/">Research</a>
+        <a href="/reference/changelog/">Changelog</a>
+        <a href="/blog/glossary/">Glossary</a>`;
+  const renderedFooter = footerBody || 'World Monitor reference corpus. Crawlable pages use committed snapshots; live API results are labelled separately.';
   return `<!doctype html>
 <html lang="en">
   <head>
@@ -968,7 +924,7 @@ function pageDocument({
     <link rel="canonical" href="${escapeHtml(canonical)}">
     ${lastmod ? `<meta name="lastmod" content="${escapeHtml(lastmod)}">` : []}
     ${paginationLinks.map((link) => `<link rel="${escapeHtml(link.rel)}" href="${escapeHtml(absoluteUrl(baseUrl, link.path))}">`).join(String.fromCharCode(10) + "    ")}
-    <meta property="og:type" content="article">
+    <meta property="og:type" content="${escapeHtml(ogType)}">
     <meta property="og:title" content="${escapeHtml(title)}">
     <meta property="og:description" content="${escapeHtml(description)}">
     <meta property="og:url" content="${escapeHtml(canonical)}">
@@ -1050,80 +1006,24 @@ function pageDocument({
       blockquote { margin: 16px 0 0; padding: 12px 16px; border-left: 2px solid var(--accent); background: var(--panel); border-radius: 0 8px 8px 0; }
       blockquote p { margin: 0; color: var(--text); font-size: 14px; }
       footer { border-top: 1px solid var(--line); padding-top: 20px; padding-bottom: 28px; color: var(--muted); font-size: 13px; }
+${extraStyles}
     </style>
   </head>
-  <body>
+  <body${bodyClass ? ` class="${escapeHtml(bodyClass)}"` : ''}>
     <header>
       <nav aria-label="Primary">
-        <a href="/">World Monitor</a>
-        <a href="/sources/">Sources</a>
-        <a href="/countries/">Countries</a>
-        <a href="/chokepoints/">Chokepoints</a>
-        <a href="/crises/">Crises</a>
-        <a href="/tools/">Live tools</a>
-        <a href="/research/">Research</a>
-        <a href="/reference/changelog/">Changelog</a>
-        <a href="/blog/glossary/">Glossary</a>
+${renderedNav}
       </nav>
     </header>
     <main>
 ${body}
     </main>
-    <footer>World Monitor reference corpus. Crawlable pages use committed snapshots; live API results are labelled separately.</footer>
+    <footer>${renderedFooter}</footer>
     ${scriptSrcs.map((src) => `<script type="module" nonce="wm-static-bootstrap" src="${escapeHtml(src)}"></script>`).join('\n    ')}
+    ${inlineScript ? `<script nonce="wm-static-bootstrap">${inlineScript}</script>` : ''}
   </body>
 </html>
 `;
-}
-
-function renderSourcesIndex({ sourceStats, baseUrl, lastmod }) {
-  const path = '/sources/';
-  const description = `Explore the ${sourceStats.activeHosts} audited upstream sources behind World Monitor — conflict, military, news, finance, energy, cyber, disaster, aviation and China data feeds.`;
-  // Query precedes the fragment — withUtmSource() would append after the
-  // anchor and push the query into the fragment, so build these by hand.
-  const docsHref = (anchor) => `/docs/data-sources?utm_source=seo-sources${anchor ? `#${anchor}` : ''}`;
-  const domainCards = SOURCE_DOMAINS.map((domain) => `        <a class="card domain" href="${docsHref(domain.anchor)}">
-          <strong>${escapeHtml(domain.name)}</strong>
-          <p>${escapeHtml(domain.blurb)}</p>
-          <span class="providers">${domain.providers.map((provider) => `<span>${escapeHtml(provider)}</span>`).join(' ')}</span>
-        </a>`).join('\n');
-  const body = `      <p class="eyebrow">Source catalog</p>
-      <h1>Every source behind the map</h1>
-      <p class="lede">World Monitor fuses ${sourceStats.activeHosts} audited upstream hosts — structured APIs, tiered news and OSINT feeds, and operational-status endpoints — into one live operating picture. Browse the catalog by domain below, then follow any card into the documentation for providers, cadences, and methodology.</p>
-      <div class="grid">
-        <div class="metric"><small>Upstream hosts</small><strong>${sourceStats.activeHosts}</strong>audited &amp; attributed</div>
-        <div class="metric"><small>Structured APIs</small><strong>${sourceStats.structuredHosts}</strong>datasets &amp; official statistics</div>
-        <div class="metric"><small>News &amp; OSINT feeds</small><strong>${sourceStats.feedHosts}</strong>tiered &amp; bias-tagged</div>
-        <div class="metric"><small>Status endpoints</small><strong>${sourceStats.operationalStatusHosts}</strong>cloud &amp; SaaS health</div>
-      </div>
-      <h2>Browse by domain</h2>
-      <div class="grid domains">
-${domainCards}
-      </div>
-      <h2>Audited, not advertised</h2>
-      <p class="lede">The numbers above are not marketing estimates. A generator scans the source tree for every URL it actually fetches, joins the result against a committed attribution manifest, and fails the build when they disagree — so this catalog cannot drift from what the code really ingests. The <a href="${docsHref('')}">data sources documentation</a> maps each domain in depth, and the <a href="${withUtmSource('/docs/source-attribution', 'seo-sources')}">source attribution ledger</a> lists every host with its license posture and required credit.</p>
-      <a class="cta" href="${withUtmSource('/dashboard', 'seo-sources')}">Open the live dashboard</a>
-      <p class="source">Source: ${SOURCE_ATTRIBUTION_MANIFEST_PATH} (committed attribution manifest). Feed tiering and bias metadata: <a href="${docsHref('source-credibility-%26-feed-tiering')}">source credibility &amp; feed tiering</a>.</p>`;
-  return pageDocument({
-    baseUrl,
-    path,
-    title: 'Data Source Catalog | World Monitor',
-    description,
-    lastmod,
-    jsonLd: {
-      '@context': 'https://schema.org',
-      '@type': 'CollectionPage',
-      name: 'World Monitor data source catalog',
-      description,
-      url: absoluteUrl(baseUrl, path),
-      inLanguage: 'en-US',
-    },
-    breadcrumbs: breadcrumbLd(baseUrl, [
-      { name: 'Home', path: '/' },
-      { name: 'Sources', path },
-    ]),
-    body,
-  });
 }
 
 function renderCountriesIndex({ countries, baseUrl, capturedAt, lastmod }) {
@@ -1861,8 +1761,16 @@ export async function buildCorpus({
     'sources/index.html',
     renderSourcesIndex({
       sourceStats: data.sourceStats,
+      sourceCatalog: data.sourceCatalog,
       baseUrl,
       lastmod: data.lastmod.sources,
+      helpers: {
+        absoluteUrl,
+        breadcrumbLd,
+        escapeHtml,
+        pageDocument,
+        withUtmSource,
+      },
     }),
   );
 

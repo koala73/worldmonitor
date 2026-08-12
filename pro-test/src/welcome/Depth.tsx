@@ -58,7 +58,14 @@ export const Depth = () => (
       <p className="text-center font-mono text-xs text-wm-muted mt-8">
         {t('welcome.depth.faith')}{' '}
         <a href={`${DASHBOARD_PATH}?ref=welcome-depth`} className="text-wm-green hover:text-green-300 transition-colors">{t('welcome.depth.faithCta')}</a>{' '}
-        {t('welcome.depth.faithNote')}
+        <a
+          href="/sources/?utm_source=welcome-depth"
+          data-umami-event="welcome-cta"
+          data-umami-event-target="welcome-sources-depth"
+          className="underline decoration-wm-border underline-offset-4 hover:text-wm-text transition-colors"
+        >
+          {t('welcome.depth.faithNote')}
+        </a>
       </p>
     </div>
   </section>

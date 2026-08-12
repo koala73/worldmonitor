@@ -6,6 +6,8 @@ import { join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { describe, it } from 'node:test';
 
+import { Window } from 'happy-dom';
+
 import {
   buildCorpus,
   chokepointMetaDescription,
@@ -29,6 +31,18 @@ function jsonLdObjects(html) {
 
 const DATASET_DESCRIPTION_MIN_LENGTH = 50;
 const DATASET_DESCRIPTION_MAX_LENGTH = 5000;
+const SOURCE_DOMAIN_IDS = new Set([
+  'geopolitics',
+  'military',
+  'news',
+  'finance',
+  'energy',
+  'infrastructure',
+  'environment',
+  'aviation',
+  'china',
+  'technology',
+]);
 
 function isJsonLdType(value, expectedType) {
   const type = value?.['@type'];
@@ -416,7 +430,7 @@ describe('crawlable corpus generator', () => {
       assert.match(chokepointsIndex, /Persian Gulf ↔ Gulf of Oman/, 'chokepoint cards should show the human region');
 
       const sourcesPage = read(outDir, 'sources/index.html');
-      assert.match(sourcesPage, /<h1>Every source behind the map<\/h1>/);
+      assert.match(sourcesPage, /<h1>See every source behind World Monitor\.<\/h1>/);
       assert.match(sourcesPage, /<link rel="canonical" href="https:\/\/www\.worldmonitor\.app\/sources\/">/);
       assert.doesNotMatch(sourcesPage, /id="app"/, 'sources page must be raw static HTML, not the SPA shell');
       // The hero counts render from the committed attribution manifest with the
@@ -428,10 +442,77 @@ describe('crawlable corpus generator', () => {
       );
       const activeAttributionEntries = attributionManifest.entries
         .filter((entry) => entry.observed === true && entry.status !== 'excluded');
+      const activeProviderNames = new Set(activeAttributionEntries.map((entry) => entry.provider));
       assert.ok(
         sourcesPage.includes(`<strong>${activeAttributionEntries.length}</strong>`),
-        'sources page must render the audited active-host count',
+        'sources page must render the tracked active-host count',
       );
+      assert.match(sourcesPage, /id="source-search"/);
+      assert.match(sourcesPage, /data-source-catalog/);
+      assert.match(sourcesPage, /data-source-filter="all"/);
+      const renderedProviders = [...sourcesPage.matchAll(/data-provider="([^"]+)"/g)]
+        .map((match) => match[1]);
+      assert.equal(
+        renderedProviders.length,
+        activeProviderNames.size,
+        'sources page must render one crawlable catalog row for every active provider',
+      );
+      assert.equal(
+        new Set(renderedProviders).size,
+        activeProviderNames.size,
+        'sources page must not duplicate providers in the complete catalog',
+      );
+      assert.deepEqual(
+        new Set(renderedProviders.map(decodeHtmlAttribute)),
+        activeProviderNames,
+        'sources page must render the exact active provider set from the attribution manifest',
+      );
+      const renderedDomains = [...sourcesPage.matchAll(/data-source-domain="([^"]+)"/g)]
+        .map((match) => match[1]);
+      assert.equal(renderedDomains.length, activeProviderNames.size);
+      assert.ok(renderedDomains.every((domain) => SOURCE_DOMAIN_IDS.has(domain)));
+      const renderedKinds = [...sourcesPage.matchAll(/data-source-kind="([^"]+)"/g)]
+        .map((match) => match[1]);
+      assert.doesNotMatch(
+        sourcesPage,
+        /audited upstream|audited &amp; attributed/i,
+        'inventory reconciliation must not be presented as completed rights review',
+      );
+      const filterScript = [...sourcesPage.matchAll(/<script nonce="wm-static-bootstrap">([\s\S]*?)<\/script>/g)].at(-1)?.[1];
+      assert.ok(filterScript, 'sources page must ship its progressive filter script');
+      const window = new Window({ url: 'https://www.worldmonitor.app/sources/' });
+      window.document.write(sourcesPage);
+      window.HTMLElement.prototype.scrollIntoView = () => {};
+      window.eval(filterScript);
+      const visibleProviderCount = () => (
+        [...window.document.querySelectorAll('.provider-card')].filter((card) => !card.hidden).length
+      );
+      const financeCount = renderedDomains.filter((domain) => domain === 'finance').length;
+      const financeButton = window.document.querySelector('[data-source-filter="finance"]');
+      financeButton.click();
+      assert.equal(visibleProviderCount(), financeCount, 'domain cards must filter the complete catalog');
+      assert.equal(financeButton.getAttribute('aria-pressed'), 'true');
+      const resetButton = window.document.querySelector('[data-source-filter="all"]');
+      resetButton.click();
+      assert.equal(visibleProviderCount(), activeProviderNames.size, 'reset must restore all providers');
+      const kindSelect = window.document.getElementById('source-kind');
+      kindSelect.value = 'structured';
+      kindSelect.dispatchEvent(new window.Event('change'));
+      assert.equal(
+        visibleProviderCount(),
+        renderedKinds.filter((kinds) => kinds.split(' ').includes('structured')).length,
+        'source type selection must filter the complete catalog',
+      );
+      resetButton.click();
+      const searchInput = window.document.getElementById('source-search');
+      searchInput.value = 'Hyperliquid';
+      searchInput.dispatchEvent(new window.Event('input'));
+      assert.equal(visibleProviderCount(), 1, 'search must match provider names and hosts');
+      searchInput.value = 'a provider that cannot exist';
+      searchInput.dispatchEvent(new window.Event('input'));
+      assert.equal(visibleProviderCount(), 0);
+      assert.equal(window.document.getElementById('source-no-results').hidden, false);
+      window.close();
       assert.doesNotMatch(sourcesPage, /[?&]ref=/, 'sources CTAs must never use the affiliate ref= param');
       // Domain cards deep-link into the docs catalog with the query BEFORE the
       // fragment (utm after the anchor would be swallowed by the fragment).
