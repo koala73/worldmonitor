@@ -19,7 +19,7 @@ import { terminalizeSystemDecision } from "./admission";
 import {
   companyMonitoringCandidateEvidenceSnapshotDigest as candidateEvidenceSnapshotDigest,
   companyMonitoringEvidenceShape as evidenceShape,
-} from "./admission-snapshot";
+} from "./admissionSnapshot";
 
 const EVIDENCE_BATCH_SIZE = 25;
 const CANDIDATE_BATCH_SIZE = 25;

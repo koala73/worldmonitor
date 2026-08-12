@@ -16,7 +16,7 @@ import { fingerprint, randomFence } from "./_shared";
 import {
   companyMonitoringCandidateEvidenceSnapshotDigest as candidateEvidenceSnapshotDigest,
   companyMonitoringEvidenceShape as evidenceShape,
-} from "./admission-snapshot";
+} from "./admissionSnapshot";
 
 const ADMISSION_LEASE_MS = 5 * 60 * 1000;
 const ADMISSION_ID = /^[A-Za-z0-9._:-]{1,128}$/;
