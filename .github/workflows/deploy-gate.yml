@@ -207,6 +207,35 @@ jobs:
               select(.commits.nodes[0].commit.status.context == null) |
               .headRefOid
             ')
+
+            # Invalidate every stale terminal result before any slower recovery
+            # reads start. If the first write pass has partial failures, retry
+            # every failed SHA once so the EXIT trap is not the only fallback
+            # for a multi-SHA cohort.
+            remaining_invalidation_shas="$stale_terminal_shas"
+            for invalidation_attempt in 1 2; do
+              if [ -z "$remaining_invalidation_shas" ]; then
+                break
+              fi
+              if [ "$invalidation_attempt" -eq 2 ]; then
+                echo "sweep: retrying stale gate invalidation for: $remaining_invalidation_shas"
+              fi
+              stale_invalidation_failures=""
+              for SHA in $remaining_invalidation_shas; do
+                active_sha="$SHA"
+                if ! post_gate_status "pending" "Required PR gate contract changed; re-evaluation scheduled"; then
+                  stale_invalidation_failures=$(printf '%s\n%s\n' "$stale_invalidation_failures" "$SHA" | sed '/^$/d')
+                fi
+                active_sha=""
+              done
+              remaining_invalidation_shas="$stale_invalidation_failures"
+            done
+            if [ -n "$remaining_invalidation_shas" ]; then
+              echo "::error::Could not invalidate stale gate statuses for: $remaining_invalidation_shas"
+              active_sha=$(printf '%s\n' "$remaining_invalidation_shas" | sed -n '1p')
+              exit 1
+            fi
+
             failed_missing_shas=""
             if [ -n "$missing_shas" ]; then
               recent_run_cutoff=$(($(date +%s) - 86400))
@@ -241,23 +270,6 @@ jobs:
             fi
             echo "sweep: re-evaluating pending or stale gate on:"
             echo "$shas"
-
-            # Invalidate every stale terminal result before the slower check-run
-            # reads start. A scheduled replacement can cancel this job at any
-            # point, but no old success may remain mergeable while it waits.
-            stale_invalidation_failures=""
-            for SHA in $stale_terminal_shas; do
-              active_sha="$SHA"
-              if ! post_gate_status "pending" "Required PR gate contract changed; re-evaluation scheduled"; then
-                stale_invalidation_failures=$(printf '%s\n%s\n' "$stale_invalidation_failures" "$SHA" | sed '/^$/d')
-              fi
-              active_sha=""
-            done
-            if [ -n "$stale_invalidation_failures" ]; then
-              echo "::error::Could not invalidate stale gate statuses for: $stale_invalidation_failures"
-              active_sha=$(printf '%s\n' "$stale_invalidation_failures" | sed -n '1p')
-              exit 1
-            fi
           fi
 
           for SHA in $shas; do

@@ -391,6 +391,10 @@ describe('deploy gate commit-status description', () => {
     assert.equal(result.posted[0].state, 'failure');
     assert.ok(result.posted[0].description.length <= 140);
     assert.match(result.posted[0].description, new RegExp(`Required PR gates did not pass \\(${REQUIRED.length}\\):`));
+    assert.ok(
+      result.posted[0].description.endsWith(`... ${GATE_STAMP}`),
+      'a truncated failure description must preserve the contract stamp',
+    );
   });
 
   it('keeps the whole list when it fits', () => {
@@ -536,6 +540,81 @@ describe('deploy gate commit-status description', () => {
         state: 'pending',
         description: stamped('Waiting for required PR gates (1): unit'),
       },
+    ]);
+  });
+
+  it('invalidates stale contracts before missing-status recovery reads', () => {
+    const staleSha = 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
+    const missingSha = 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb';
+    const result = runGate(conclusionsFor('success'), {
+      failedRunSha: missingSha,
+      sweepStatuses: [
+        {
+          sha: staleSha,
+          status: {
+            state: 'SUCCESS',
+            description: 'All required PR gates passed [gate-contract:001122334455]',
+          },
+        },
+        { sha: missingSha, status: null },
+      ],
+    });
+
+    assert.equal(result.status, 0, result.stderr);
+    assert.ok(
+      result.calls.indexOf('status:pending') < result.calls.indexOf('rest-failed-runs-page'),
+      'stale success must become fail-closed before the missing-status API lookup can wait or fail',
+    );
+    assert.deepEqual(result.postTargets.slice(0, 3), [staleSha, staleSha, missingSha]);
+  });
+
+  it('retries every stale contract whose first invalidation write fails', () => {
+    const firstStaleSha = 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
+    const secondStaleSha = 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb';
+    const result = runGate(conclusionsFor('success'), {
+      statusFailures: 2,
+      sweepStatuses: [
+        {
+          sha: firstStaleSha,
+          status: {
+            state: 'SUCCESS',
+            description: 'All required PR gates passed [gate-contract:001122334455]',
+          },
+        },
+        {
+          sha: secondStaleSha,
+          status: {
+            state: 'SUCCESS',
+            description: 'All required PR gates passed [gate-contract:001122334455]',
+          },
+        },
+      ],
+    });
+
+    assert.equal(result.status, 0, result.stderr);
+    assert.deepEqual(result.calls.slice(0, 6), [
+      'graphql-sweep-page',
+      'graphql-sweep-page',
+      'status:pending',
+      'status:pending',
+      'status:pending',
+      'status:pending',
+    ]);
+    assert.deepEqual(result.posted.slice(0, 2), [
+      {
+        state: 'pending',
+        description: stamped('Required PR gate contract changed; re-evaluation scheduled'),
+      },
+      {
+        state: 'pending',
+        description: stamped('Required PR gate contract changed; re-evaluation scheduled'),
+      },
+    ]);
+    assert.deepEqual(result.postTargets, [
+      firstStaleSha,
+      secondStaleSha,
+      firstStaleSha,
+      secondStaleSha,
     ]);
   });
 
