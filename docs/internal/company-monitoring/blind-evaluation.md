@@ -47,6 +47,69 @@ and raw content must remain outside the repository. Only aggregate forecasts,
 score reports, and their digests are eligible to be recorded here after the
 applicable approval.
 
+## Public-evidence curation
+
+The curation compiler validates genuine public-source provenance before it is
+reduced to the opaque blind-corpus format. It performs no web requests and writes
+no files. Keep its inputs and redirected outputs in a sealed path outside the
+repository. Invalid or unreadable inputs emit only stable error codes; the CLI
+does not echo sealed source text or paths to stderr.
+
+Each `cm_public_evidence_curation_v1` manifest records the collection, corpus,
+protocol, policy, model, query, and curator-access versions. Its custody block
+records the collector tool, model, run, `sealed_external` storage class, and the
+false `labelsVisibleToPolicyAuthors` boundary. Every researched candidate records:
+
+- its included or excluded disposition and a machine-readable exclusion reason;
+- exact legal, stable company, and corporate-family identities, US or GB
+  geography, and public proof that the company is private;
+- an exact occurrence identity, time, and geography; and
+- one or more sources with the exact URL, publisher and matching hostname,
+  title, bounded excerpt of at most 600 characters, published/observed/retrieved
+  timestamps, evidence authority, and syndication relationship. Publication and
+  occurrence timestamps declare `day` or `second` precision, so an official
+  date-only record is never padded with an invented time. Official government
+  records have their own evidence-authority value and are not represented as
+  company-authored evidence.
+
+Included candidates also have an opaque `cm_example_` ID and a declared primary
+source. The compiler rejects missing provenance, time travel, duplicate
+occurrences or primary content, source-URL reuse, raw schema additions, and a
+custody block that exposes labels to policy authors. Its output has only opaque
+IDs and domain-separated SHA-256 identities. `audit-split` rejects overlap among
+pilot, tracer, and Stage 3 inputs by opaque ID, occurrence, content, corporate
+family, or primary source origin.
+
+The separate `cm_gold_curation_v1` input contains only the opaque ID,
+publication eligibility, materiality, direction, and an optional real customer
+judgment. Use `null` for `customerUseful` unless a genuine external customer
+provided that judgment. The compiler derives the corporate-family digest from
+the evidence manifest and requires one label for every included row. It does not
+make or infer a label.
+
+```bash
+npm run --silent company-monitoring:curation -- audit-manifest \
+  /private/path/pilot-curation.json
+
+npm run --silent company-monitoring:curation -- audit-split \
+  /private/path/pilot-curation.json \
+  /private/path/tracer-curation.json \
+  /private/path/stage3-curation.json
+
+npm run --silent company-monitoring:curation -- compile-corpus \
+  /private/path/pilot-curation.json \
+  > /private/path/pilot-corpus.json
+
+npm run --silent company-monitoring:curation -- compile-gold \
+  /private/path/pilot-curation.json \
+  /private/path/pilot-gold-curation.json \
+  > /private/path/pilot-gold.json
+```
+
+Create classifier predictions while the evidence manifest is frozen and before
+the policy author can inspect the sealed gold input. The merged admission policy
+must remain unchanged for the complete pilot, tracer, and Stage 3 sequence.
+
 ## Progressive lifecycle
 
 1. Lock a pilot corpus and its prediction set to the approved protocol and the
@@ -101,7 +164,7 @@ The CLI writes canonical JSON to stdout and errors to stderr. It never writes a
 corpus or report file itself.
 
 ```bash
-npm run company-monitoring:blind-evaluation -- forecast \
+npm run --silent company-monitoring:blind-evaluation -- forecast \
   --protocol tests/fixtures/company-monitoring-evaluation/protocol.json \
   --approved-threshold-digest "$APPROVED_DIGEST" \
   --pilot-corpus /private/path/pilot-corpus.json \
@@ -124,7 +187,7 @@ provide the previous corpus, its independently retained digest, gold labels,
 predictions, and report.
 
 ```bash
-npm run company-monitoring:blind-evaluation -- score \
+npm run --silent company-monitoring:blind-evaluation -- score \
   --protocol tests/fixtures/company-monitoring-evaluation/protocol.json \
   --approved-threshold-digest "$APPROVED_DIGEST" \
   --corpus /private/path/stage3-corpus.json \
