@@ -145,3 +145,43 @@ Never paste a secret, password, OAuth token, session cookie, payment detail,
 invoice, CAPTCHA or deployment-owner token into chat or Git. If an account
 login, paid entitlement, terms acceptance, CAPTCHA or deployment ownership is
 actually necessary, open the exact official page before acting.
+
+## Phase 10 Windows desktop toolchain licence gate (2026-08-11)
+
+The new Tauri 2 launcher, independent desktop brand, PowerShell 5 syntax gate,
+secret scan and desktop configuration gate have passed. A **real** Windows
+desktop build was then attempted and stopped only because this machine has no
+`cargo` executable. GitHub HTTPS is available; this is a local compiler
+prerequisite, not a Provider-key or network problem.
+
+Do not paste a key, password, cookie, invoice, CAPTCHA, activation token or
+licence text into chat or Git. Before Codex runs either installer, the owner
+must explicitly confirm the following two package licences:
+
+- [ ] I authorize installation of **Rustup 1.29.0** from the Rust official
+  publisher (`Rustlang.Rustup` via the `winget` source), under the displayed
+  **Apache-2.0 OR MIT** licence, so the Tauri build can provide `cargo`.
+- [ ] I authorize installation of **Visual Studio Build Tools 2022 17.14.37**
+  from Microsoft (`Microsoft.VisualStudio.2022.BuildTools` via `winget`), under
+  the displayed **Microsoft proprietary licence**, with the Windows C++ build
+  tools required by Tauri's MSVC target.
+
+After the two boxes are explicitly confirmed, Codex will install only those
+two official packages, rerun `npm run desktop:tauri:build`, verify the native
+executable and installer, then create the new Desktop shortcut. The untouched
+legacy launcher remains at
+`D:\使用AI专属文件夹\global-intelligence-earth\全球热点追踪\scripts\Launch-Global-Intelligence-Earth.ps1`;
+it is not a fallback for the new launcher and will not be overwritten.
+
+## Phase 10 delivery receipt and remaining owner actions (2026-08-12)
+
+Both checkboxes above were confirmed by the owner. Rustup, the Visual Studio
+C++ workload, the checksum-verified Node runtime, final NSIS installer, native
+launcher, desktop shortcut and local loopback sidecar have been installed and
+tested. No Provider credential was requested or recorded.
+
+- [ ] If a signed Windows release is required, obtain and control the code-signing certificate and timestamp-service authorization outside chat/Git, then sign the final NSIS/binary in the release pipeline. Current verified status is `NotSigned`.
+- [ ] If an MSI rather than the delivered NSIS installer is required, authorize the WiX acquisition/retry in an environment where its download can finish; do not treat the absence of an MSI as a reason to distribute an uninstalled bare executable.
+- [ ] Before enabling real/near-real stock charts, obtain a Provider plan that explicitly permits the intended display/rebroadcast use. Store `MASSIVE_API_KEY` or the approved equivalent only in the protected desktop/server secret path; then capture source, symbol, exchange, currency, delay, as-of time and entitlement evidence for every visible bar.
+- [ ] Configure AIS/news/trade/model Providers only after their own contracts and terms are accepted. Their missing configuration remains a truthful disabled/degraded state.
+- [ ] Do not paste a certificate private key, Provider secret, password, OAuth token, cookie, payment method, invoice or CAPTCHA into chat, screenshots, logs or Git.

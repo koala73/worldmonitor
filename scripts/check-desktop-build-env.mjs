@@ -48,6 +48,7 @@ export const EXCLUDED_DESKTOP_BUILD_ENV = {
   VITE_OPENSKY_RELAY_URL: 'web-seeded runtime secret; desktop uses the OS-keyring path instead',
   VITE_TAURI_API_BASE_URL: 'dev-only override; default is correct in builds',
   VITE_TAURI_REMOTE_API_BASE_URL: 'dev-only override; default is correct in builds',
+  VITE_SELF_HOSTED_MODE: 'public, optional posture bit; ordinary desktop builds correctly default to false, while a self-hosted operator may explicitly set it alongside the server-only SELF_HOSTED_MODE before packaging',
   VITE_SENTRY_DSN: 'desktop telemetry deliberately unset today; revisit with #1942 diagnostics',
   VITE_DODO_ENVIRONMENT: 'dormant checkout overlay; desktop checkout flow is #5911',
   VITE_PMTILES_URL: 'web proxy URL; desktop uses VITE_PMTILES_URL_PUBLIC (direct R2)',

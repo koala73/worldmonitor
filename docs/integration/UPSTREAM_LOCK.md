@@ -190,3 +190,19 @@ The locked local intake remains unchanged; remote `upstream/main` remains an
 observed advance requiring a separately reviewed resync. Phase 9 performs no
 fetch into tracking refs, merge, rebase, push, force-push or `main` mutation.
 All commits remain on `integration/pokieticker-maritime-china-factory`.
+
+## Phase 10 native-desktop receipt
+
+Phase 10 is local Tauri configuration, Rust shell, NSIS hook, safe launcher,
+PowerShell shortcut, test and build-integrity work. It does not copy a
+PokieTicker, hosted WorldMonitor, Node.js, Provider, stock-market or AIS user
+interface; it packages the existing first-party application and a validated
+Node runtime required by its local sidecar. Node's upstream LICENSE accompanies
+the packaged executable runtime rather than being replaced with a local
+attribution claim.
+
+No upstream fetch, merge, rebase, push, force-push, `main` mutation or legacy
+project change was performed for this phase. The source intake lock remains the
+recorded local baseline; the observed remote upstream advance remains a
+separate resynchronization decision. The Windows installer is a local build
+artifact and is not committed as a Git blob.

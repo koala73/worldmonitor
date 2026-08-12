@@ -129,3 +129,17 @@ historical and cannot be called live.
 Phase 8 reads only presence/validity state through the existing runtime
 configuration boundary. It does not expose plaintext secrets, tail hashes,
 provider payloads or client-side keys.
+
+## Phase 10 desktop runtime capability matrix
+
+| Capability | Packaged / observed state | Condition for data-bearing success | Hard prohibition | Secret / licensing boundary |
+|---|---|---|---|---|
+| Native application shell | Installed Tauri 2 application, branded window and duplicate-safe launcher verified | Not data-bearing; native process and local sidecar are independently observable | Never use a bare release executable, legacy Express service or iframe as a substitute for the packaged app | No Provider key required |
+| Local API Node runtime | Official Node 22.14.0 package checksum/binary hash verified; `LICENSE` shipped with sidecar; loopback-only sidecar started | Local sidecar's own source-bearing endpoint result | Never call sidecar start, a port listener or a package checksum a market/news/AIS Provider success | Node license carried with packaged runtime; no frontend secret |
+| Market/stock display | Fail-closed visible error with no market Provider | Licensed response with matching symbol/provider/exchange/observed-or-as-of time/delay and display/rebroadcast right | Never fill failure with an arbitrary K-line, shared cache, quote-only OHLC repair or `实时` label | Protected desktop/server Provider store only; no `VITE_*` secret |
+| AIS/maritime display | No provider observation established by desktop delivery | Authorized AIS relay result with source/time/freshness/range fields | Never infer cargo, B/L, buyer, port call or route fact from sidecar availability | `AISSTREAM_API_KEY` server/relay protected store only |
+| Provider control center | Native entry exists, but no executor is asserted | Registered protected executor returns auditable result and provenance | Never let a button or desktop installation imply a request/success | Existing protected settings path only |
+
+Phase 10 did not add a Provider credential, endpoint impersonation, client-side
+secret or live-data claim. The native window's `加载市场数据失败` result is an
+intentional absence-of-observation display, not a zero-price or no-market fact.

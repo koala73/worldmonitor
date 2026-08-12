@@ -1,9 +1,9 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "World Monitor",
-  "mainBinaryName": "world-monitor",
+  "productName": "全球实时热点追踪·探长版",
+  "mainBinaryName": "global-intelligence-earth",
   "version": "2.10.0",
-  "identifier": "app.worldmonitor.desktop",
+  "identifier": "com.globalintelligenceearth.desktop",
   "build": {
     "beforeDevCommand": "npm run build:sidecar-sebuf && node scripts/build-sidecar-handlers.mjs && npm run dev",
     "beforeBuildCommand": "npm run build:desktop",
@@ -13,7 +13,7 @@
   "app": {
     "windows": [
       {
-        "title": "World Monitor",
+        "title": "全球实时热点追踪·探长版",
         "width": 1440,
         "height": 900,
         "minWidth": 1200,
@@ -42,8 +42,8 @@
       "appimage"
     ],
     "category": "Productivity",
-    "shortDescription": "World Monitor desktop app (all variants switchable in-app)",
-    "longDescription": "World Monitor desktop app for real-time global intelligence. Tech, finance, commodity, energy, and happy variants are selected in-app — one binary serves all of them.",
+    "shortDescription": "全球实时热点追踪·探长版桌面应用（功能视图可在应用内切换）",
+    "longDescription": "全球实时热点追踪·探长版是一款全球情报桌面应用。Based on World Monitor, modified and distributed under AGPL-3.0-only. 股票、总览及其他功能视图均在同一原生桌面应用中打开。",
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",

@@ -907,6 +907,10 @@ export default defineConfig(({ mode }) => {
         },
       },
       htmlVariantPlugin(activeMeta, activeVariant, isDesktopBuild),
+      // Tauri's app protocol resolves the primary webview at index.html. The
+      // public web deployment may rename that entry to dashboard.html for SEO,
+      // but desktop bundles must retain index.html or the installed native app
+      // shows "asset not found: index.html" on launch.
       !isDesktopBuild && dashboardHtmlOutputPlugin(),
       // Variant subdomain SEO pages only make sense on the web deployment,
       // which is always the 'full' build (variant selection is runtime by

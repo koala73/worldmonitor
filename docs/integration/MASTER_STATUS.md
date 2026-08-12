@@ -332,3 +332,19 @@ Proceed automatically to Phase 10 desktop packaging, launch surface and
 desktop-only security/operational verification. Missing Provider credentials
 remain a disabled/unknown state and do not block adapter, contract or desktop
 shell work.
+
+## Phase 10 - native Windows desktop delivery and local-runtime integrity
+
+Phase 10 delivers the independent-brand Tauri 2 application **全球实时热点追踪·探长版** without creating an Electron shell or returning to the old Express project. Its per-user NSIS installer, safe PowerShell 5 launcher and desktop shortcut open the packaged native overview; a second launch preserves the matching native window. The launcher does not probe or start legacy ports `4000`/`5173`, does not fall back to the old project, and does not launch the incomplete bare `target\\release` executable.
+
+The Windows artifact packages a checksum-verified official Node.js 22.14.0 runtime and its upstream LICENSE alongside the first-party local API sidecar. The final silent installer, launcher, branded application process and installed Node sidecar were all independently verified. The sidecar listened only on `127.0.0.1:46123`. The final installed application remains open for user inspection.
+
+With no licensed market Provider configured, the actual native market panel displays its fail-closed `加载市场数据失败` state instead of drawing a common fixture, cross-symbol bars, or a misleading live K-line. This phase proves desktop delivery and local runtime only; it does not claim a Provider observation, real-time market data, AIS data, news entitlement or authenticated user session.
+
+The core gates passed: Phase 10 tests 6/6, sidecar 371/371, DOM 293/293, typecheck, full lint, desktop/secret/version gates, API-contract and source attribution checks. The final NSIS artifact is 53,356,779 bytes with SHA-256 `9F0A44E20B847BEF42AE22A0F20E8C85F48616DA0E677A2B40C5F7518074D371`. It is intentionally unsigned because no code-signing certificate was supplied. Detailed evidence is in `evidence/phase10-desktop-delivery.md` and `evidence/phase10-command-log.md`.
+
+**Phase 10 implementation commit:** pending the immediate implementation commit. The following documentation receipt will backfill its immutable SHA.
+
+## Next action
+
+Proceed automatically to Phase 11's complete acceptance matrix. Licensed Provider-backed K-line, AIS, news and factory facts remain unavailable until their own contracts, credentials and source-bearing responses exist; their missing state is part of the acceptance record, not a reason to invent evidence.

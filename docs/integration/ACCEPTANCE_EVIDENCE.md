@@ -259,3 +259,26 @@ aviation tracking merely because a map layer is enabled.
 SELF-HOST CLOUD-FALLBACK PROHIBITION AND OBSERVABILITY UI.** It does not claim
 that a background job, Provider or local database is running until its own
 authenticated executor reports a source-bearing result.
+
+## Phase 10 - native Windows desktop delivery, integrity and fail-closed market view
+
+**Implementation commit:** pending the immediate Phase 10 implementation commit.
+
+| Check | Result | Evidence |
+|---|---|---|
+| Tauri 2 / independent brand | PASS | Branded `全球实时热点追踪·探长版` Tauri configuration, menus and native window retain explicit World Monitor / AGPL-3.0-only attribution without a copied page or Electron shell. |
+| Frontend embedding refresh | PASS | `build.rs` watches desktop `dist` entrypoints/assets; final installed application opened the complete native overview instead of the earlier rejected `asset not found: index.html` build. |
+| Checksum-verified local runtime | PASS | Official Node 22.14.0 archive and binary SHA-256 checks passed; the Node MIT LICENSE is bundled next to the installed sidecar runtime. |
+| Final installer and shortcut | PASS | Final NSIS installation exit 0; SHA-256 `9F0A44E20B847BEF42AE22A0F20E8C85F48616DA0E677A2B40C5F7518074D371`; Desktop shortcut regenerated with exit 0. |
+| Native process and local API | PASS | Launcher exit 0 created the branded installed application and installed Node sidecar; sidecar listener observed at `127.0.0.1:46123`. Duplicate launch exited 0 without a duplicate process. |
+| Legacy isolation | PASS | Launcher tests and review prohibit ports 4000/5173, bare release execution and old-project fallback. The legacy project/shortcut remain untouched. |
+| Secret safety | PASS | Strict Vite secret check passed; desktop build gate classified all required variables; logs recorded zero injected keychain secrets. No Provider secret was inspected or exposed. |
+| Visible native acceptance | PASS for desktop shell | Windows UI Automation saw the branded native window, upstream attribution and native stock/maritime/China/Provider entry links. The live window was left open for review. |
+| No fake market acceptance | PASS for no-provider state | Actual Markets content reported `加载市场数据失败`; premium paths requested authentication. No fake/common K-line, cross-symbol cache, historical-as-live label or Provider success was claimed. |
+| Automated gates | PASS | Focused 6/6; typecheck 0; sidecar 371/371; DOM 293/293; full lint 0 (33 existing warnings/9 infos); API contract 0; source check 0. |
+| Provider-backed stock / AIS / model acceptance | NOT CLAIMED | No valid Provider credential, entitlement, observed bar, source time, delay, news event, AIS message or model response was configured. |
+| Windows signing | DEFERRED | Installed executable status is `NotSigned`; signing needs an owner-supplied certificate and must not be simulated. |
+
+**Phase 10 gate: COMPLETED FOR NATIVE DESKTOP DELIVERY, INSTALLATION, LOCAL
+SIDECAR STARTUP, LAUNCHER IDEMPOTENCY AND FAIL-CLOSED NO-PROVIDER DISPLAY.** It
+does not certify any real-time financial, shipping, news or trade feed.

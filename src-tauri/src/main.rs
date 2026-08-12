@@ -18,12 +18,19 @@ use reqwest::Url;
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 use tauri::menu::{AboutMetadata, Menu, MenuItem, PredefinedMenuItem, Submenu};
-use tauri::{AppHandle, Manager, RunEvent, Webview, WebviewUrl, WebviewWindowBuilder, WindowEvent};
+use tauri::{AppHandle, Manager, RunEvent, Webview, WebviewUrl, WebviewWindowBuilder};
+#[cfg(target_os = "macos")]
+use tauri::WindowEvent;
 
 use cache_bounds::validate_cache_write_sizes;
 
 const DEFAULT_LOCAL_API_PORT: u16 = 46123;
 const MAX_LOCAL_API_PROXY_BYTES: usize = 16 * 1024 * 1024;
+// This is the user-confirmed product identity. Keep KEYRING_SERVICE below
+// unchanged: it is a storage namespace, not user-facing branding, and changing
+// it would strand credentials that users have already saved in their OS keychain.
+const PRODUCT_BRAND: &str = "全球实时热点追踪·探长版";
+const UPSTREAM_ATTRIBUTION: &str = "Based on World Monitor, modified and distributed under AGPL-3.0-only.";
 const KEYRING_SERVICE: &str = "world-monitor";
 const LOCAL_API_LOG_FILE: &str = "local-api.log";
 const DESKTOP_LOG_FILE: &str = "desktop.log";
@@ -861,7 +868,7 @@ fn open_settings_window(app: &AppHandle) -> Result<(), String> {
 
     #[allow(unused_mut)]
     let mut settings_builder = WebviewWindowBuilder::new(app, "settings", WebviewUrl::App("settings.html".into()))
-        .title("World Monitor Settings")
+        .title(format!("{} 设置", PRODUCT_BRAND))
         .inner_size(980.0, 600.0)
         .min_inner_size(820.0, 480.0)
         .resizable(true)
@@ -901,7 +908,7 @@ fn open_live_channels_window(app: &AppHandle, base_url: Option<String>) -> Resul
 
     #[allow(unused_mut)]
     let mut channels_builder = WebviewWindowBuilder::new(app, "live-channels", url)
-        .title("Channel management - World Monitor")
+        .title(format!("频道管理 — {}", PRODUCT_BRAND))
         .inner_size(680.0, 760.0)
         .min_inner_size(520.0, 600.0)
         .resizable(true)
@@ -968,19 +975,19 @@ fn build_app_menu(handle: &AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
     )?;
 
     let about_metadata = AboutMetadata {
-        name: Some("World Monitor".into()),
+        name: Some(PRODUCT_BRAND.into()),
         version: Some(env!("CARGO_PKG_VERSION").into()),
-        copyright: Some("\u{00a9} 2025 Elie Habib".into()),
-        website: Some("https://worldmonitor.app".into()),
-        website_label: Some("worldmonitor.app".into()),
+        copyright: Some(format!("{} \u{00a9} 2025 Elie Habib", UPSTREAM_ATTRIBUTION)),
+        website: Some("https://github.com/koala73/worldmonitor".into()),
+        website_label: Some("World Monitor upstream source (AGPL-3.0-only)".into()),
         ..Default::default()
     };
     let about_item =
-        PredefinedMenuItem::about(handle, Some("About World Monitor"), Some(about_metadata))?;
+        PredefinedMenuItem::about(handle, Some(&format!("关于 {}", PRODUCT_BRAND)), Some(about_metadata))?;
     let github_item = MenuItem::with_id(
         handle,
         MENU_HELP_GITHUB_ID,
-        "GitHub Repository",
+        "上游源码（World Monitor / AGPL）",
         true,
         None::<&str>,
     )?;
@@ -1698,7 +1705,7 @@ fn main() {
             Ok(())
         })
         .build(tauri::generate_context!())
-        .expect("error while running world-monitor tauri application")
+        .expect("error while running global intelligence desktop application")
         .run(|app, event| {
             match &event {
                 // macOS: hide window on close instead of quitting (standard behavior)

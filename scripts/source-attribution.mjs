@@ -35,6 +35,12 @@ const LOGICAL_KIND_RE = /^(?:candidate|structured|feed|operational-status)(?:\+(
 
 const SOURCE_ROOTS = ['scripts', 'server', 'api', 'src'];
 const SOURCE_EXTENSIONS = new Set(['.cjs', '.js', '.mjs', '.ts', '.tsx']);
+// Executable dependency acquisition is reviewed through the desktop packaging
+// and license evidence, rather than as user-facing upstream data provenance.
+// Keep it out of this inventory so a Windows runtime update cannot silently
+// rewrite every generated API-reference row while unrelated API artifacts are
+// pending in the shared worktree.
+const NON_DATA_SOURCE_FILES = new Set(['scripts/download-node-windows.mjs']);
 const FEED_FILES = new Set([
   'src/config/feeds.ts',
   // LiveNewsPanel owns optional native-video HLS feeds. They are observed for
@@ -567,6 +573,7 @@ export function scanUpstreamHosts(rootDir = ROOT) {
     hosts.set(host, current);
   };
   for (const relativePath of walkSourceFiles(rootDir)) {
+    if (NON_DATA_SOURCE_FILES.has(relativePath)) continue;
     const source = read(rootDir, relativePath);
     const lineStarts = [0];
     for (let offset = source.indexOf('\n'); offset !== -1; offset = source.indexOf('\n', offset + 1)) {

@@ -24,7 +24,7 @@ const USAGE = 'Usage: npm run desktop:package -- --os <macos|windows|linux> [--s
 if (showHelp) {
   console.log(USAGE);
   console.log('');
-  console.log('Packages the single World Monitor desktop binary. Variants (tech,');
+  console.log('Packages the single 全球实时热点追踪·探长版 desktop binary. Variants (tech,');
   console.log('finance, commodity, energy, happy) are selected in-app after install —');
   console.log('there is no per-variant package (#5908).');
   process.exit(0);

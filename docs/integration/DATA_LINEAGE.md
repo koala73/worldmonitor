@@ -214,3 +214,29 @@ Thus Phase 9 creates no factual market, news, AIS, port, trade, Customs or
 model record. Any future such record must independently carry Provider/source,
 observed/fetched/as-of time, delay/freshness, fallback reason and licence
 boundary before it reaches a user-facing claim.
+
+## Phase 10 desktop-package and local-sidecar lineage
+
+Phase 10 adds an executable-delivery lineage, not a data-provider lineage:
+
+1. **Artifact branch.** The source Tauri configuration, frontend `dist` output
+   and first-party sidecar files produce a local NSIS installer. Its SHA-256,
+   size and installed binary path identify an artifact, but establish no fact
+   about external data.
+2. **Runtime branch.** The official Node archive checksum, copied executable
+   checksum and bundled MIT LICENSE establish the integrity and license posture
+   of the local interpreter. They do not establish a stock price, source
+   response, Provider account or entitlement.
+3. **Local-service branch.** A branded native process starts the first-party
+   local API sidecar on a loopback-selected port. The process/path/port evidence
+   proves local availability only. It cannot make a failed, empty, stale or
+   unconfigured upstream request become a market/AIS/news/trade observation.
+4. **Display branch.** In the observed no-provider installation, the market
+   panel produced `加载市场数据失败` and premium views requested authentication.
+   This empty/degraded state remains the terminal display lineage. No K-line,
+   event, sentiment, price, vessel or trade value crosses it without the
+   independent source-bearing branches established in earlier phases.
+
+The desktop package never carries a frontend Provider secret. Existing desktop
+keychain injection reported zero secrets during verification; any future
+protected secret remains a configuration prerequisite, not data provenance.

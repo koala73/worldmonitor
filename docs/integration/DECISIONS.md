@@ -233,3 +233,52 @@ forces the sidecar cloud fallback off while the existing `LOCAL_API_TOKEN`
 default-deny gate remains required. Any future executor must return its own
 source-bearing metrics before the UI can show health, freshness, vessel count,
 trade value, queue depth, model metric or real-time market assertion.
+
+## D-0021 - Deliver the new desktop shell as an installed Tauri application
+
+**Decision:** Use the existing WorldMonitor Tauri 2 path with an NSIS
+per-user installer, a branded native executable and a PowerShell 5-safe
+desktop shortcut. The launcher resolves the installed artifact, installs it
+only when missing and treats an exact matching running process as success.
+
+**Reason:** The bare Rust release executable lacks the NSIS resource layout;
+the old Express desktop entry is neither the new mother nor a valid fallback.
+An installed native artifact is therefore required for repeatable opening,
+Chinese path handling, self-contained frontend resources and local sidecar
+supervision.
+
+**Consequence:** The new desktop path never probes/starts the old `4000` or
+`5173` services and never overwrites the preserved legacy launcher. An MSI is
+optional distribution work; the verified NSIS artifact is the current desktop
+delivery. Unsigned status remains explicit until the owner supplies a signing
+certificate.
+
+## D-0022 - Treat the bundled Node runtime as verified executable supply chain
+
+**Decision:** Download the fixed Node.js Windows archive from its official
+distribution URL, validate it against the official SHA-256 manifest, validate
+the copied `node.exe`, package the upstream LICENSE, and ignore the generated
+binary from source control.
+
+**Reason:** The Tauri sidecar needs a runtime in a clean user installation.
+Using ambient Node or an unverified archive would make the desktop result
+non-reproducible and could incorrectly turn a missing local runtime into a
+Provider failure.
+
+**Consequence:** The packager verifies/refreshes the Windows runtime before
+building. Runtime acquisition is license evidence, not a user-facing data
+Provider or live-data source. A local sidecar process/listener proves only
+first-party local service availability, never stock/AIS/news data freshness.
+
+## D-0023 - Desktop incremental frontend resources must invalidate Rust embed output
+
+**Decision:** Declare the Vite desktop entrypoints and assets as Cargo build
+script rerun inputs.
+
+**Reason:** A raw incremental Tauri build previously retained a web-only
+resource map and launched with `asset not found: index.html`. Treating the
+existence of an installer as proof would have hidden a real desktop defect.
+
+**Consequence:** Desktop build evidence requires an actual installed launch.
+The rejected missing-asset build remains documented; only the final installed
+overview/sidecar proof is accepted for Phase 10.
