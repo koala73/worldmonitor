@@ -2,7 +2,7 @@ import countryNames from '../../../../shared/country-names.json';
 import iso2ToIso3Json from '../../../../shared/iso2-to-iso3.json';
 import wgiIndicatorKeys from '../../../../shared/wgi-indicator-keys.json';
 import { normalizeCountryToken } from '../../../_shared/country-token';
-import { getCachedJson } from '../../../_shared/redis';
+import { getCachedJson, readCachedJson } from '../../../_shared/redis';
 import { classifyDimensionFreshness, readFreshnessMap, resolveSeedMetaKey } from './_dimension-freshness';
 import { getLanguageCoverageFactor } from './_language-coverage';
 import { MACRO_FISCAL_INDICATOR_WEIGHTS } from './_macro-fiscal-weights';
@@ -970,8 +970,53 @@ export function matchesCountryText(value: unknown, countryCode: string): boolean
 // dateToSortableNumber() removed in PR 3 §3.5: only the now-removed
 // getCountryBisExchangeRates() used it.
 
+// `seed-meta:` reads gate FAIL-CLOSED preflights, so for them a read ERROR and
+// a genuine MISS must not be the same answer. `getCachedJson` collapses both to
+// `null` (see `readCachedJson`, which does distinguish them), and a preflight
+// reading that `null` declares the producer dead.
+//
+// #6484: within 25 minutes of the education activation deploying, that turned a
+// 1500 ms Upstash timeout under the concurrent ranking warm into
+// `source-failure` for 196/196 countries — published, and cached for six hours,
+// while the seeder was healthy and the payload was present.
+//
+// Retrying only the ERROR case keeps the alarm honest: a genuinely absent
+// seed-meta still returns `null` on the first read and still fails closed,
+// which is the signal that a Railway bundle is not publishing.
+const SEED_META_READ_ATTEMPTS = 3;
+const SEED_META_RETRY_BASE_MS = 120;
+
+function isSeedMetaKey(key: string): boolean {
+  return key.startsWith('seed-meta:');
+}
+
+async function readSeedMetaResilient(key: string): Promise<unknown | null> {
+  let lastError: unknown = null;
+  for (let attempt = 0; attempt < SEED_META_READ_ATTEMPTS; attempt++) {
+    const read = await readCachedJson(key, true);
+    if (read.status === 'hit') return read.value;
+    // A genuine miss is information, not a failure — return it immediately so
+    // a dead producer still fails closed on the first attempt.
+    if (read.status === 'miss') return null;
+    lastError = read.error;
+    if (attempt < SEED_META_READ_ATTEMPTS - 1) {
+      await new Promise((resolve) => { setTimeout(resolve, SEED_META_RETRY_BASE_MS * 2 ** attempt); });
+    }
+  }
+  // Still failing after retries. Return null so behaviour matches today's
+  // fail-closed path rather than introducing a new throwing mode under load,
+  // but say so — an operator seeing source-failure needs to know whether the
+  // producer is dead or Redis was unreachable.
+  console.warn(
+    `[Resilience] seed-meta read failed after ${SEED_META_READ_ATTEMPTS} attempts key=${key} `
+    + `error=${lastError instanceof Error ? lastError.message : String(lastError)} — `
+    + 'downstream preflights will fail closed; this is a READ failure, not proof the producer is dead',
+  );
+  return null;
+}
+
 async function defaultSeedReader(key: string): Promise<unknown | null> {
-  return getCachedJson(key, true);
+  return isSeedMetaKey(key) ? readSeedMetaResilient(key) : getCachedJson(key, true);
 }
 
 export function createMemoizedSeedReader(reader: ResilienceSeedReader = defaultSeedReader): ResilienceSeedReader {
@@ -981,6 +1026,14 @@ export function createMemoizedSeedReader(reader: ResilienceSeedReader = defaultS
       const p = Promise.resolve(reader(key));
       cache.set(key, p);
       p.catch(() => cache.delete(key));
+      // Do NOT retain a null seed-meta result. This memo is shared across every
+      // country in a ranking build, so caching one unresolved read propagates it
+      // to all 196 — the #6484 amplifier. Evicting null costs at most one extra
+      // read per country for a key that is genuinely absent, and buys back the
+      // per-country retry that keeps a transient blip local.
+      if (isSeedMetaKey(key)) {
+        p.then((value) => { if (value == null) cache.delete(key); }).catch(() => {});
+      }
     }
     return cache.get(key)!;
   };
