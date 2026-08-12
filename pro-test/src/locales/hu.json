@@ -48,7 +48,7 @@
     "entF10": "Felhő, on-prem vagy air-gapped telepítés",
     "entF11": "Dedikált bevezetés és támogatás",
     "entCta": "Beszéljen az értékesítéssel",
-    "freeF2": "500+ feed, 531+ forrás, 50+ térképréteg"
+    "freeF2": "500+ feed, 533+ forrás, 50+ térképréteg"
   },
   "whyUpgrade": {
     "title": "Miért érdemes frissíteni",
@@ -565,7 +565,7 @@
       "s1l": "Térképrétegek",
       "s2v": "500+",
       "s2l": "Kurátori források",
-      "s3v": "529+",
+      "s3v": "531+",
       "s3l": "Adatszolgáltatók",
       "s4v": "13",
       "s4l": "Szűk keresztmetszetek · élő AIS",
@@ -583,7 +583,7 @@
       "s10l": "Pontozható hotspotok",
       "s11v": "92",
       "s11l": "Tőzsdék és eszközök",
-      "s12v": "60",
+      "s12v": "61",
       "s12l": "MCP eszközök",
       "s13v": "154",
       "s13l": "⌘K parancsok",
@@ -611,7 +611,7 @@
       "eyebrow": "Építőknek és AI ágenseknek",
       "title": "Építs élő világtudáson alapuló alkalmazásokat — bármilyen stackből.",
       "sub": "A térkép minden eleme API is. Kösd össze Claudeval MCP-n keresztül, hívd meg a REST végpontokat bárhonnan, vagy telepítsen natív klienst Pythonhoz, Rubyhoz, Gohoz vagy JavaScripthez — a kódod élő adatokkal kutat az edzésadatok helyett.",
-      "b1": "60 MCP-eszköz — kockázati pontszámok, szűk keresztmetszetek, konfliktusok, piacok, összefoglalók",
+      "b1": "61 MCP-eszköz — kockázati pontszámok, szűk keresztmetszetek, konfliktusok, piacok, összefoglalók",
       "b2": "Dokumentált REST API — 193 művelet, egy OpenAPI 3.1 specifikáció, egy kulcs",
       "b3": "Hivatalos SDK-k az npm-en, PyPI-n, RubyGemsen és Go-n — zéró függőség, MCP-első",
       "b4": "JMESPath vetítés minden hívásban — csak a szükséges mezőket kérj le",
@@ -620,7 +620,7 @@
       "termQuery": "Romlanak-e a vörös-tengeri kitettségünk ezekben a héten?",
       "termAnswer": "Az átmeneti számok csökkennek heti összehasonlítással; háborús kockázati szint megemelkedett; két sűrűség-anomália az utolsó 48 órában.",
       "termDocs": "Lásd a teljes eszközreferenciát →",
-      "promise": "Egy kulcs. 60 MCP-eszköz. Teljes REST API. Nyelvspecifikus kliensek."
+      "promise": "Egy kulcs. 61 MCP-eszköz. Teljes REST API. Nyelvspecifikus kliensek."
     },
     "pricing": {
       "eyebrow": "Hozzáférés",
@@ -638,7 +638,7 @@
       "proF1": "WM Analyst — csevegj 30+ élő szolgáltatáson keresztül, idézésekkel",
       "proF2": "Forgatókönyv-motor és Route Explorer — szimuláld a zavaroknak a becsapódása előtt",
       "proF3": "Személyes AI összefoglaló — naponta, naponta kétszer vagy hetente, Slackra, Telegramba vagy e-mailbe",
-      "proF4": "MCP, REST API és hivatalos SDK-k — 60 eszköz egy kulcs alatt",
+      "proF4": "MCP, REST API és hivatalos SDK-k — 61 eszköz egy kulcs alatt",
       "proF5": "Egyéni widgetépítő saját panelek készítéséhez",
       "cta": "Tekintsd meg a csomagokat és árakat",
       "note": "Már $39,99/hó · 3 hónap ingyenes éves számlázás esetén"
@@ -651,7 +651,7 @@
       "q2": "Mi az a globális hírszerzési irányítópult?",
       "a2": "Egy egyetlen élő nézet, amely olyan jeleket egyesít, amelyeket a legtöbb eszköz külön tárol: konfliktusesemények, hajó- és légiforgalom-követés, szállítási szűk keresztmetszetek, műholdak, tengeralatti kábelek, vezetékek, piacok és kiberfenyegetések — egy valós idejű világtérképen, AI-pontozással és összefoglalókkal. A World Monitor egy ingyenes ilyen.",
       "q3": "Honnan származnak az adatok?",
-      "a3": "529+ szolgáltatótól, név szerint: ACLED és UCDP a konfliktusokhoz, AISStream az élő hajókhoz, OpenSky a repülőgépekhez, NASA FIRMS a tüzekhez, USGS a földrengésekhez, IMF, BIS, FRED és Finnhub a piacokhoz és makrogazdasághoz — plusz 500+ válogatott hírhírforrás. Minden panel bemutatja forrásait és időbélyegeit.",
+      "a3": "531+ szolgáltatótól, név szerint: ACLED és UCDP a konfliktusokhoz, AISStream az élő hajókhoz, OpenSky a repülőgépekhez, NASA FIRMS a tüzekhez, USGS a földrengésekhez, IMF, BIS, FRED és Finnhub a piacokhoz és makrogazdasághoz — plusz 500+ válogatott hírhírforrás. Minden panel bemutatja forrásait és időbélyegeit.",
       "q4": "Valós időben tudom követni a szűk keresztmetszetek, például Hormuz vagy Bab el-Mandeb?",
       "a4": "Igen. 13 szűk keresztmetszetetet követünk élő AIS-hajószámokkal, heti változásokkal és zavaradási pontszámokkal — és a sűrűségi anomáliákat az egyes szorosok gördülő alapértékéhez képest jelezzük.",
       "q5": "Miben különbözik ez egy konfliktustérképtől, mint a Liveuamap?",
@@ -659,7 +659,7 @@
       "q6": "Miért bízzak egy riasztásban?",
       "a6": "Egy fontos szalagcím csak akkor jelenik meg, ha független forrásfajták megerősítik — hírosztályozás, kulcsszósebesség, kritikus pont eskalációja, katonai ugrások, hivatalos szirénák — deduplikálva és sebességkorláttal. Kevesebb riasztás, valódi riasztások.",
       "q7": "Használhatják azt AI-ügynökök, mint a Claude vagy a GPT?",
-      "a7": "Igen. A World Monitor egy 60 eszközből álló MCP-szervert szállít, így a Claude, a GPT vagy bármilyen MCP-kompatibilis ügynök lekérdezheti az élő kockázati pontszámokat, szűk keresztmetszet-státuszt, konfliktusokat, piacokat és összefoglalókat — JMESPath-vetítéssel, hogy az ügynökök pontosan azt kapják meg, amire szükségük van.",
+      "a7": "Igen. A World Monitor egy 61 eszközből álló MCP-szervert szállít, így a Claude, a GPT vagy bármilyen MCP-kompatibilis ügynök lekérdezheti az élő kockázati pontszámokat, szűk keresztmetszet-státuszt, konfliktusokat, piacokat és összefoglalókat — JMESPath-vetítéssel, hogy az ügynökök pontosan azt kapják meg, amire szükségük van.",
       "q8": "Szükségem van fiókra?",
       "a8": "Nem. Az irányítópult azonnal működik regisztráció nélkül. A fiók csak akkor számít, ha a Pro verzióra frissítesz vagy beállításokat szeretnél szinkronizálni az eszközök között.",
       "q9": "Nyílt forráskódú?",

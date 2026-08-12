@@ -209,6 +209,10 @@
       "description": "Global mining sites with coordinates, operator, mineral type, and production status. Covers 71 major mines spanning gold, silver, copper, lithium, uranium, coal, and other minerals worldwide."
     },
     {
+      "name": "get_mineral_production",
+      "description": "Who mines and who refines a commodity, with country shares and HHI. Answers \"who refines cobalt\" or \"what does Chile produce\". USGS Mineral Commodity Summaries plus BGS fill. Complements get_commodity_geo (deposit locations)."
+    },
+    {
       "name": "get_signal_convergence",
       "description": "Geographic signal convergence: grid cells where protests, military activity, naval movements, and earthquakes co-occur. The same multi-domain convergence engine the dashboard map runs, executed server-side over the seeded feeds: unrest events, tracked military flights, USNI fleet positions (region centroids), and USGS earthquakes are bucketed into one-degree cells over a 24-hour window, and any cell where enough distinct domains overlap becomes an alert scored by breadth and volume. Each alert carries coordinates, the contributing domains, a reverse-geocoded location name from the curated hotspot/chokepoint/conflict-zone gazetteer, and the total event count. Pass lat/lon/radius_km together to narrow to one area, or min_domains to tighten the co-occurrence bar. An empty alert list with fresh inputs means nothing is converging — signal in itself."
     },

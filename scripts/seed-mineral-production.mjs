@@ -21,7 +21,7 @@ import {
 loadEnvFile(import.meta.url);
 
 export { CANONICAL_KEY };
-export const TTL_SECONDS = 180 * 24 * 3600;
+export const TTL_SECONDS = 450 * 24 * 3600;
 export const SOURCE_VERSION = 'usgs-mcs-bgs-v1';
 export const MAX_STALE_MIN = 60 * 24 * 400;
 export const MAX_CONTENT_AGE_MIN = 18 * 30 * 24 * 60;
