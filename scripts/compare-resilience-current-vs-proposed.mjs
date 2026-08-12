@@ -345,20 +345,16 @@ const EXTRACTION_RULES = {
   newsThreatScore: { type: 'news-threat-score' },
 
   // ── education ───────────────────────────────────────────────────────
-  // Dark while RESILIENCE_EDUCATION_ENABLED=false: the scorer returns the
-  // empty-data shape, so the dimension contributes nothing to a
-  // current-vs-proposed comparison and there is no value to extract.
-  //
-  // THIS MUST BE IMPLEMENTED IN THE ACTIVATION PR. Once the flag flips and
-  // the tier is promoted to 'core', education carries real weight, and a
-  // `not-implemented` row here means gate-9 effective-vs-nominal influence
-  // evidence silently omits it — a green acceptance verdict computed over a
-  // formula the harness cannot see. Wire `resilience:education-attainment:v1`
-  // into the bulk payload load and extract `countries[iso2].value`.
-  femaleUpperSecondaryAttainment: {
-    type: 'not-implemented',
-    reason: 'education dim ships flag-dark at tier=experimental; wire resilience:education-attainment:v1 into the bulk payload load when the activation PR promotes it to core',
-  },
+  // Implemented ahead of the flag flip (#6460), deliberately BEFORE the tier
+  // promotion rather than alongside it. While the dim is dark this extracts a
+  // real per-country value that no gate consumes, which is harmless; the
+  // reverse order is not. Once education carries weight, a `not-implemented`
+  // row makes gate-9 effective-vs-nominal influence evidence silently omit it
+  // — a green acceptance verdict computed over a formula the harness cannot
+  // see. The payload shape matches the energy bulk seeds exactly
+  // ({ countries: { [ISO2]: { value, year } } }), so it reuses their extractor
+  // rather than introducing a shape family for one key.
+  femaleUpperSecondaryAttainment: { type: 'bulk-v1-country-value', key: 'resilience:education-attainment:v1' },
 
   // ── healthPublicService ─────────────────────────────────────────────
   hospitalBeds: { type: 'static-who', code: 'hospitalBeds' },
@@ -645,6 +641,11 @@ async function readExtractionSources(countryCode, reader) {
     'resilience:fossil-electricity-share:v1',
     'resilience:low-carbon-generation:v1',
     'resilience:power-losses:v1',
+    // #6460: the education activation key. The EXTRACTION_RULES row above is
+    // inert without this — `bulk-v1-country-value` reads `sources.bulkV1[key]`,
+    // so a rule whose key is never fetched returns null for every country and
+    // reports as unmeasurable rather than as an error.
+    'resilience:education-attainment:v1',
     // resilience:reserve-margin:v1 intentionally omitted — no seeder,
     // no registry entry, per plan §3.1 deferral. Add when the IEA
     // electricity-balance seeder lands.
@@ -1455,6 +1456,7 @@ export {
   EXTRACTION_RULES,
   buildIndicatorExtractionPlan,
   applyExtractionRule,
+  readExtractionSources,
 };
 
 // isMain guard so importing the helpers from a test file does not

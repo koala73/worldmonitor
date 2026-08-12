@@ -45,23 +45,68 @@ All must be green before flipping:
    176–179 would pass a laxer runbook check and then fail CI inside the
    publication PR. The gate and the invariant must be the same number.
 
-2. **Register the health probe, then confirm it green.** The probe is
-   deliberately **not** registered in the scaffold PR. `scripts/check-health-probe-cutovers.mts`
-   requires a new strict probe to carry machine-readable pre-seed evidence, or
-   an acknowledgement expiring by the producer's first scheduled run within 24
-   hours — neither is obtainable before the seeder has ever run, and the second
-   would require knowing the merge time in advance.
+2. **Register the health probe, then confirm it green.** ✅ **Done and accepted in #6452**
+   (2026-08-11). The probe was deliberately **not** registered in the scaffold PR,
+   because `scripts/check-health-probe-cutovers.mts` requires a new strict probe to
+   carry machine-readable pre-seed evidence, or an acknowledgement expiring by the
+   producer's first scheduled run within 24 hours — neither is obtainable before the
+   seeder has ever run, and the second would require knowing the merge time in advance.
 
-   So the order is: seeder ships → `seed-bundle-macro` publishes once → add the
-   `educationAttainment` SEED_META entry on the **pre-seed evidence** path,
-   citing the Railway service, `probeKey`, a real `compactHealthStatus: OK`,
-   and an HTTPS reference → then confirm `/api/health` reports OK.
+   The order was: seeder ships → `seed-bundle-macro` publishes once → add the
+   `educationAttainment` entry on the **pre-seed evidence** path, citing the Railway
+   service, `probeKey`, a real `compactHealthStatus: OK`, and an HTTPS reference →
+   then confirm `/api/health` reports OK.
 
-   Two allowlist entries exist only to bridge that gap and must be removed in
-   the same follow-up: `seed-meta:resilience:education-attainment` in
-   `KNOWN_SEEDS_NOT_IN_HEALTH` (`tests/resilience-dimension-freshness.test.mts`)
-   and in `TRACKED_STANDALONE_META_KEYS_NOT_IN_HEALTH`
-   (`tests/resilience-source-failure.test.mts`). Owned by #6452.
+   Post-deploy acceptance proved all three conditions on production:
+
+   ```
+   checks.educationAttainment = { "status": "OK", "records": 189,
+                                  "seedAgeMin": 338, "maxStaleMin": 11520 }
+   summary = { "total": 260, ..., "crit": 0 }
+   ```
+
+   **Keep these three conditions as the standard for the next probe** — the deployed SHA
+   carries the registration, the probed-key total moved to its new value, and the probe
+   itself reports `OK`. Two traps sit on that check, and they fail in **opposite**
+   directions, so neither one covers the other:
+
+   - **A stale CDN read looks like a failure that is not real.** `/api/health?compact=1`
+     served the *old* `total: 259` for several minutes after the deploy had completed; a
+     cache-busted request returned `260` with `x-vercel-cache: MISS`. Use the endpoint's
+     own registry size as the deploy signal rather than the Vercel commit status, and
+     bust the cache — otherwise you read a pre-deploy snapshot and conclude a landed
+     registration never landed.
+   - **A compact-only read looks like a pass that is not real.** The compact surface
+     carries `problems`, not a per-check map, so a probe is absent from it both when it
+     is healthy *and when it was never registered at all*. Confirming `OK` from absence
+     would green-light a probe that does not exist. Read the explicit
+     `checks.<probe>.status` on the operator surface.
+
+   **The publish did not happen on its own.** Railway refused the #6450 merge commit
+   because its post-merge check suite was red on two unrelated tests, so the service
+   kept running an image with no education script, and the reconciler that would
+   normally compensate is dormant pending #6378. The service had to be deployed to a
+   green head by hand before any tick could publish. Budget for that check rather than
+   assuming a merged seeder is a running seeder — and note that a `seed-meta` key can
+   be present and fresh without the Railway producer ever having run, so verify
+   provenance by sibling co-movement plus
+   `git cat-file -e <runningSha>:scripts/seed-education-attainment.mjs`.
+
+   Registration touches **five** sites, not the two the old text listed — both halves
+   of the probe, the sequencing test that asserts it is absent, and both bridging
+   allowlist entries:
+
+   - `STANDALONE_KEYS.educationAttainment` and `SEED_META.educationAttainment`
+     (`api/health.js`); registering only the latter leaves no canonical data key to probe
+   - `education health-probe rollout sequencing` (`tests/resilience-source-failure.test.mts`),
+     inverted from "not yet registered" to "registered on both halves"
+   - `KNOWN_SEEDS_NOT_IN_HEALTH` (`tests/resilience-dimension-freshness.test.mts`)
+   - `TRACKED_STANDALONE_META_KEYS_NOT_IN_HEALTH` (`tests/resilience-source-failure.test.mts`)
+
+   Two gates also move with it: `EXCLUDED_FROM_MCP` in
+   `tests/mcp-bootstrap-parity.test.mjs` needs the new canonical key, and the probed-key
+   total in `docs/{,zh/}api-platform.mdx` and `docs/{,zh/}health-endpoints.mdx` goes
+   259 → 260.
 
 3. **Registry tier promoted.** Change the `femaleUpperSecondaryAttainment` entry
    in `_indicator-registry.ts` from `tier: 'experimental'` to `tier: 'core'`.

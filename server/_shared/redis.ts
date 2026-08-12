@@ -651,6 +651,14 @@ const inflight = new Map<string, Promise<unknown>>();
 const FETCHER_TIMEOUT_MS_DEFAULT = 30_000;
 let fetcherTimeoutDefaultMs = FETCHER_TIMEOUT_MS_DEFAULT;
 
+/** Identifies the cache layer's own fetcher backstop without matching text. */
+export class CachedFetchTimeoutError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'CachedFetchTimeoutError';
+  }
+}
+
 // Test-only: override the DEFAULT inflight timeout so unit tests can exercise
 // the timeout branch without sleeping for 30s. Per-call `opts.timeoutMs` still
 // wins. No production caller should ever invoke this.
@@ -680,7 +688,7 @@ function withFetcherTimeout<T>(promise: Promise<T>, key: string, timeoutMs: numb
   let timer: ReturnType<typeof setTimeout> | undefined;
   const timeout = new Promise<never>((_, reject) => {
     timer = setTimeout(() => {
-      reject(new Error(`${callerName} timeout after ${timeoutMs}ms for "${key}"`));
+      reject(new CachedFetchTimeoutError(`${callerName} timeout after ${timeoutMs}ms for "${key}"`));
     }, timeoutMs);
   });
   return Promise.race([promise, timeout]).finally(() => {

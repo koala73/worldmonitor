@@ -9,13 +9,17 @@ import {
   companyEvidenceCanBlockObservation,
   normalizeCompanyEvidence,
   type EvidenceSubject,
-  type NormalizedCompanyEvidence,
   type ProviderEvidence,
 } from "../../shared/company-monitoring-evidence";
 import { COMPANY_MONITORING_LIMITS } from "../../shared/company-monitoring-contract";
 import {
   companyMonitoringProviderEvidenceValidator,
 } from "./validators";
+import { terminalizeSystemDecision } from "./admission";
+import {
+  companyMonitoringCandidateEvidenceSnapshotDigest as candidateEvidenceSnapshotDigest,
+  companyMonitoringEvidenceShape as evidenceShape,
+} from "./admissionSnapshot";
 
 const EVIDENCE_BATCH_SIZE = 25;
 const CANDIDATE_BATCH_SIZE = 25;
@@ -25,37 +29,10 @@ const MAX_INGESTION_ROWS = 100;
 // companies. Reject a wider internal expansion before the first write so the
 // receipt remains atomic and the mutation cannot exceed its scheduler budget.
 const MAX_EXPANDED_EVIDENCE_ROWS = 25 * 25;
-
 type EvidenceDoc = Doc<"companyMonitoringEvidence">;
 
 function nextUpdatedAt(row: { updatedAt: number } | null | undefined, now: number) {
   return Math.max(now, (row?.updatedAt ?? now - 1) + 1);
-}
-
-function evidenceShape(row: EvidenceDoc): NormalizedCompanyEvidence {
-  return {
-    ownerAccountId: row.ownerAccountId,
-    companyId: row.companyId,
-    provider: row.provider,
-    providerLocator: row.providerLocator,
-    providerLocatorHash: row.providerLocatorHash,
-    providerOrigin: row.providerOrigin,
-    providerOriginFingerprint: row.providerOriginFingerprint,
-    contentFingerprint: row.contentFingerprint,
-    evidenceFingerprint: row.evidenceFingerprint,
-    occurrenceDedupeKey: row.occurrenceDedupeKey,
-    matchedClaimIds: row.matchedClaimIds,
-    sourceAuthority: row.sourceAuthority,
-    independence: row.independence,
-    ...(row.url ? { url: row.url } : {}),
-    ...(row.title ? { title: row.title } : {}),
-    ...(row.text ? { text: row.text } : {}),
-    ...(row.author ? { author: row.author } : {}),
-    ...(row.authorAccountId ? { authorAccountId: row.authorAccountId } : {}),
-    publishedAt: row.publishedAt,
-    observedAt: row.observedAt,
-    ...(row.expiresAt !== undefined ? { expiresAt: row.expiresAt } : {}),
-  };
 }
 
 async function canonicalSubjects(
@@ -224,13 +201,44 @@ async function recomputeOccurrenceCandidate(
         .eq("occurrenceDedupeKey", occurrenceDedupeKey),
     )
     .unique();
+  if (
+    existing &&
+    existing.expiresAt <= now &&
+    existing.state !== "terminal"
+  ) {
+    await terminalizeSystemDecision(
+      ctx,
+      existing,
+      "expire",
+      "candidate_expired",
+      "hold_expired",
+      now,
+    );
+    return;
+  }
   if (active.length > 0) {
     const ranked = active.map(evidenceShape).sort(compareCompanyEvidence);
     const selected = ranked.slice(0, COMPANY_MONITORING_EVIDENCE_POLICY.maxReferences);
+    const evidenceSnapshotDigest = await candidateEvidenceSnapshotDigest({
+      selectionPolicyVersion: COMPANY_MONITORING_EVIDENCE_POLICY.version,
+      referenceCount: active.length,
+      referencesTruncated: active.length > selected.length,
+      evidence: selected,
+    });
+    const evidenceChanged = existing?.evidenceSnapshotDigest !== evidenceSnapshotDigest;
     const first = [...active].sort((left, right) =>
       left.observedAt - right.observedAt || left.evidenceFingerprint.localeCompare(right.evidenceFingerprint)
     )[0]!;
-    const lifecycle = candidateLifecycle(existing, now);
+    const lifecycle = evidenceChanged && existing?.state === "held"
+      ? { state: "pending_classification" as const }
+      : candidateLifecycle(existing, now);
+    const lifecycleChanged = Boolean(
+      existing && (
+        existing.state !== lifecycle.state ||
+        (lifecycle.state === "held" && existing.holdUntil !== lifecycle.holdUntil)
+      )
+    );
+    if (existing && !evidenceChanged && !lifecycleChanged) return;
     const row = {
       ownerAccountId,
       companyId,
@@ -248,7 +256,30 @@ async function recomputeOccurrenceCandidate(
       referenceCount: active.length,
       referencesTruncated: active.length > selected.length,
       selectionPolicyVersion: COMPANY_MONITORING_EVIDENCE_POLICY.version,
-      evidenceRevision: (existing?.evidenceRevision ?? 0) + 1,
+      evidenceRevision: existing
+        ? existing.evidenceRevision + (evidenceChanged ? 1 : 0)
+        : 1,
+      evidenceSnapshotDigest,
+      ...(existing?.lastAdmissionDecisionId
+        ? { lastAdmissionDecisionId: existing.lastAdmissionDecisionId }
+        : {}),
+      ...(!evidenceChanged && existing?.classificationWorkerId &&
+          existing.classificationLeaseToken && existing.classificationLeaseExpiresAt !== undefined
+        ? {
+            classificationWorkerId: existing.classificationWorkerId,
+            classificationLeaseToken: existing.classificationLeaseToken,
+            classificationLeaseExpiresAt: existing.classificationLeaseExpiresAt,
+            ...(existing.classificationRunId
+              ? { classificationRunId: existing.classificationRunId }
+              : {}),
+            ...(existing.classificationRequestedModelVersion
+              ? {
+                  classificationRequestedModelVersion:
+                    existing.classificationRequestedModelVersion,
+                }
+              : {}),
+          }
+        : {}),
       createdAt: existing?.createdAt ?? now,
       updatedAt: now,
     };
@@ -272,31 +303,51 @@ async function recomputeOccurrenceCandidate(
     return;
   }
   if (!existing) return;
+  const emptyEvidenceSnapshotDigest = await candidateEvidenceSnapshotDigest({
+    selectionPolicyVersion: existing.selectionPolicyVersion,
+    referenceCount: 0,
+    referencesTruncated: false,
+    evidence: [],
+  });
+  const evidenceAlreadyEmpty =
+    existing.referenceEvidenceFingerprints.length === 0 &&
+    existing.referenceCount === 0 &&
+    !existing.referencesTruncated &&
+    existing.evidenceSnapshotDigest === emptyEvidenceSnapshotDigest;
   if (existing.terminalReason === "admitted" || existing.terminalReason === "rejected") {
+    if (evidenceAlreadyEmpty) return;
     await ctx.db.patch(existing._id, {
       observationBlocking: false,
       referenceEvidenceFingerprints: [],
       referenceCount: 0,
       referencesTruncated: false,
       evidenceRevision: existing.evidenceRevision + 1,
+      evidenceSnapshotDigest: emptyEvidenceSnapshotDigest,
       updatedAt: now,
     });
     return;
   }
+  const terminalReason = fallbackLossReason ?? await occurrenceLossReason(
+    ctx,
+    ownerAccountId,
+    companyId,
+    occurrenceDedupeKey,
+  );
+  await terminalizeSystemDecision(
+    ctx,
+    existing,
+    "expire",
+    `candidate_${terminalReason}`,
+    terminalReason,
+    now,
+  );
+  if (evidenceAlreadyEmpty) return;
   await ctx.db.patch(existing._id, {
-    state: "terminal",
-    holdUntil: undefined,
-    terminalReason: fallbackLossReason ?? await occurrenceLossReason(
-      ctx,
-      ownerAccountId,
-      companyId,
-      occurrenceDedupeKey,
-    ),
-    observationBlocking: false,
     referenceEvidenceFingerprints: [],
     referenceCount: 0,
     referencesTruncated: false,
     evidenceRevision: existing.evidenceRevision + 1,
+    evidenceSnapshotDigest: emptyEvidenceSnapshotDigest,
     updatedAt: now,
   });
 }
@@ -505,6 +556,7 @@ function providerEvidenceFromRow(row: EvidenceDoc): ProviderEvidence {
   return {
     provider: row.provider,
     providerLocator: row.providerLocator,
+    ...(row.queryVersion ? { queryVersion: row.queryVersion } : {}),
     ...(row.url ? { url: row.url } : {}),
     ...(row.title ? { title: row.title } : {}),
     ...(row.text ? { text: row.text } : {}),
@@ -755,6 +807,16 @@ export async function purgeCompanyCandidatesBatch(
   ownerAccountId: string,
   companyId: string,
 ) {
+  const decisions = await ctx.db
+    .query("companyMonitoringAdmissionDecisions")
+    .withIndex("by_account_company", (q) =>
+      q.eq("ownerAccountId", ownerAccountId).eq("companyId", companyId),
+    )
+    .take(CANDIDATE_BATCH_SIZE + 1);
+  for (const row of decisions.slice(0, CANDIDATE_BATCH_SIZE)) await ctx.db.delete(row._id);
+  if (decisions.length > CANDIDATE_BATCH_SIZE) {
+    return { complete: false, deleted: decisions.length - 1 };
+  }
   const page = await ctx.db
     .query("companyMonitoringCandidates")
     .withIndex("by_account_company", (q) =>
@@ -763,7 +825,10 @@ export async function purgeCompanyCandidatesBatch(
     .take(CANDIDATE_BATCH_SIZE + 1);
   const batch = page.slice(0, CANDIDATE_BATCH_SIZE);
   for (const row of batch) await ctx.db.delete(row._id);
-  return { complete: page.length <= CANDIDATE_BATCH_SIZE, deleted: batch.length };
+  return {
+    complete: page.length <= CANDIDATE_BATCH_SIZE,
+    deleted: batch.length + decisions.length,
+  };
 }
 
 export async function purgeAccountEvidenceBatch(ctx: MutationCtx, ownerAccountId: string) {
@@ -776,6 +841,12 @@ export async function purgeAccountEvidenceBatch(ctx: MutationCtx, ownerAccountId
 }
 
 export async function purgeAccountCandidatesBatch(ctx: MutationCtx, ownerAccountId: string) {
+  const decisions = await ctx.db
+    .query("companyMonitoringAdmissionDecisions")
+    .withIndex("by_account_company", (q) => q.eq("ownerAccountId", ownerAccountId))
+    .take(CANDIDATE_BATCH_SIZE + 1);
+  for (const row of decisions.slice(0, CANDIDATE_BATCH_SIZE)) await ctx.db.delete(row._id);
+  if (decisions.length > CANDIDATE_BATCH_SIZE) return { complete: false };
   const page = await ctx.db
     .query("companyMonitoringCandidates")
     .withIndex("by_account_company", (q) => q.eq("ownerAccountId", ownerAccountId))
@@ -912,81 +983,4 @@ export const setAllCompanyProviderEvidenceStateForTest = internalMutation({
     state: v.union(v.literal("deleted"), v.literal("authority_lost")),
   },
   handler: setAllCompanyProviderEvidenceState,
-});
-
-// Classifier state changes stay behind an internal mutation.
-export const recordCandidateAttempt = internalMutation({
-  args: {
-    ownerAccountId: v.string(),
-    companyId: v.string(),
-    occurrenceDedupeKey: v.string(),
-    outcome: v.union(
-      v.literal("pending"),
-      v.literal("held"),
-      v.literal("admitted"),
-      v.literal("rejected"),
-    ),
-    holdUntil: v.optional(v.number()),
-  },
-  handler: async (ctx, args) => {
-    const candidate = await ctx.db
-      .query("companyMonitoringCandidates")
-      .withIndex("by_account_company_occurrence", (q) =>
-        q
-          .eq("ownerAccountId", args.ownerAccountId)
-          .eq("companyId", args.companyId)
-          .eq("occurrenceDedupeKey", args.occurrenceDedupeKey),
-      )
-      .unique();
-    const now = Date.now();
-    if (!candidate || candidate.state === "terminal" || candidate.expiresAt <= now) {
-      throw new ConvexError("COMPANY_MONITORING_CANDIDATE_NOT_ACTIVE");
-    }
-    const attemptCount = candidate.attemptCount + 1;
-    if (args.outcome === "held") {
-      const holdUntil = args.holdUntil;
-      if (
-        typeof holdUntil !== "number" ||
-        !Number.isSafeInteger(holdUntil) ||
-        holdUntil <= now ||
-        holdUntil > candidate.expiresAt
-      ) {
-        throw new ConvexError("COMPANY_MONITORING_CANDIDATE_HOLD_INVALID");
-      }
-      await ctx.db.patch(candidate._id, {
-        state: "held",
-        holdUntil,
-        terminalReason: undefined,
-        attemptCount,
-        updatedAt: now,
-      });
-      await ctx.scheduler.runAt(
-        holdUntil,
-        internal.companyMonitoring.evidence.recomputeCompanyEvidence,
-        {
-          ownerAccountId: args.ownerAccountId,
-          companyId: args.companyId,
-          occurrenceDedupeKey: args.occurrenceDedupeKey,
-        },
-      );
-    } else if (args.outcome === "pending") {
-      await ctx.db.patch(candidate._id, {
-        state: "pending_classification",
-        holdUntil: undefined,
-        terminalReason: undefined,
-        attemptCount,
-        updatedAt: now,
-      });
-    } else {
-      await ctx.db.patch(candidate._id, {
-        state: "terminal",
-        holdUntil: undefined,
-        terminalReason: args.outcome,
-        observationBlocking: false,
-        attemptCount,
-        updatedAt: now,
-      });
-    }
-    return { status: args.outcome, attemptCount };
-  },
 });

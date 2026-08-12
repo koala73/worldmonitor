@@ -370,32 +370,43 @@ export class GitHubWatchdogClient {
         }
       }
       items.push(...pageItems);
-      const parsedNext = parseNextLink(response.headers.get('link'));
-      if (parsedNext !== null) {
-        const expectedNext = new URL(next, this.apiBase);
-        const currentPage = Number(expectedNext.searchParams.get('page'));
-        expectedNext.searchParams.set('page', String(currentPage + 1));
-        const actualNext = new URL(parsedNext, this.apiBase);
-        if (!Number.isSafeInteger(currentPage)
-          || currentPage < 1
-          || actualNext.origin !== expectedNext.origin
-          || actualNext.pathname !== expectedNext.pathname
-          || !exactQuery(actualNext, Object.fromEntries(expectedNext.searchParams))) {
-          throw new GitHubWatchdogError('GITHUB_READ_FAILED', `${collectionName} next link was not exact`);
+      // GitHub answers every paginated read with a `next` link on the numeric
+      // repository-ID path (`/repositories/<id>/statuses/<sha>`), not the
+      // `/repos/<owner>/<repo>/...` path that was requested, so comparing the
+      // two never matches. Treat the link as nothing but a boolean "another
+      // page exists" and synthesize the next request from our own path.
+      //
+      // Completeness is proven per collection, NOT uniformly: the frozen
+      // total_count, duplicate-id, and truncation checks below all sit behind
+      // `frozenTotalCount !== null`, so they are inert for any caller that
+      // passes no readTotalCount. readNewestGate is exactly that caller — and
+      // the only one that paginates in production. Its walk is bounded solely
+      // by WATCHDOG_MAX_PAGES, and a short or Link-less response yields a
+      // partial prefix that surfaces as a fail-closed `state: 'missing'`
+      // (DEFERRED_NON_GREEN_MAIN), never as a dispatch. See #6474.
+      const hasNextPage = parseNextLink(response.headers.get('link')) !== null;
+      let nextPage = null;
+      if (hasNextPage) {
+        const synthesized = new URL(next, this.apiBase);
+        const currentPage = Number(synthesized.searchParams.get('page'));
+        if (!Number.isSafeInteger(currentPage) || currentPage < 1) {
+          throw new GitHubWatchdogError('GITHUB_READ_FAILED', `${collectionName} page cursor was not exact`);
         }
+        synthesized.searchParams.set('page', String(currentPage + 1));
+        nextPage = `${synthesized.pathname}${synthesized.search}`;
       }
       if (frozenTotalCount !== null) {
         if (items.length > frozenTotalCount) {
           throw new GitHubWatchdogError('GITHUB_READ_FAILED', `${collectionName} exceeded total_count`);
         }
-        if (items.length < frozenTotalCount && parsedNext === null) {
+        if (items.length < frozenTotalCount && !hasNextPage) {
           throw new GitHubWatchdogError('GITHUB_READ_FAILED', `${collectionName} pagination was truncated without next`);
         }
-        if (items.length === frozenTotalCount && parsedNext !== null) {
+        if (items.length === frozenTotalCount && hasNextPage) {
           throw new GitHubWatchdogError('GITHUB_READ_FAILED', `${collectionName} exposed next after total_count`);
         }
       }
-      next = parsedNext;
+      next = nextPage;
     }
     if (frozenTotalCount !== null && items.length !== frozenTotalCount) {
       throw new GitHubWatchdogError('GITHUB_READ_FAILED', `${collectionName} did not match total_count`);

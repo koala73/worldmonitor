@@ -11,6 +11,9 @@ import {
   companyMonitoringCompleteReceiptValidator,
   companyMonitoringCandidateStateValidator,
   companyMonitoringCandidateTerminalReasonValidator,
+  companyMonitoringAdmissionAuthorityValidator,
+  companyMonitoringAdmissionClassificationValidator,
+  companyMonitoringAdmissionConfidenceFloorsValidator,
   companyMonitoringEvidenceAuthorityValidator,
   companyMonitoringEvidenceIndependenceValidator,
   companyMonitoringEvidenceProviderValidator,
@@ -1276,6 +1279,7 @@ export default defineSchema({
     evidenceId: v.string(),
     provider: companyMonitoringEvidenceProviderValidator,
     providerLocator: v.string(),
+    queryVersion: v.optional(v.string()),
     providerLocatorHash: v.string(),
     providerOrigin: v.string(),
     providerOriginFingerprint: v.string(),
@@ -1303,6 +1307,11 @@ export default defineSchema({
       "companyId",
       "provider",
       "providerLocatorHash",
+    ])
+    .index("by_account_company_fingerprint", [
+      "ownerAccountId",
+      "companyId",
+      "evidenceFingerprint",
     ])
     .index("by_account_company_occurrence", [
       "ownerAccountId",
@@ -1348,6 +1357,13 @@ export default defineSchema({
     selectionPolicyVersion: v.string(),
     terminalReason: v.optional(companyMonitoringCandidateTerminalReasonValidator),
     evidenceRevision: v.number(),
+    evidenceSnapshotDigest: v.optional(v.string()),
+    lastAdmissionDecisionId: v.optional(v.id("companyMonitoringAdmissionDecisions")),
+    classificationWorkerId: v.optional(v.string()),
+    classificationLeaseToken: v.optional(v.string()),
+    classificationLeaseExpiresAt: v.optional(v.number()),
+    classificationRunId: v.optional(v.string()),
+    classificationRequestedModelVersion: v.optional(v.string()),
     createdAt: v.number(),
     updatedAt: v.number(),
   })
@@ -1357,7 +1373,56 @@ export default defineSchema({
       "companyId",
       "occurrenceDedupeKey",
     ])
-    .index("by_account_state_updatedAt", ["ownerAccountId", "state", "updatedAt"]),
+    .index("by_account_state_updatedAt", ["ownerAccountId", "state", "updatedAt"])
+    .index("by_state_updatedAt", ["state", "updatedAt"]),
+
+  // Append-only outcome ledger. Model output is never stored directly: only
+  // the strict normalized classification and deterministic policy result are
+  // durable. The replay index fences one classification run to one evidence
+  // revision while preserving every later retry as a separate row.
+  companyMonitoringAdmissionDecisions: defineTable({
+    ownerAccountId: v.string(),
+    companyId: v.string(),
+    candidateId: v.string(),
+    occurrenceDedupeKey: v.string(),
+    evidenceRevision: v.number(),
+    classificationRunId: v.string(),
+    submissionDigest: v.string(),
+    decision: v.union(
+      v.literal("publish"),
+      v.literal("hold"),
+      v.literal("reject"),
+      v.literal("expire"),
+    ),
+    reasonCodes: v.array(v.string()),
+    referenceEvidenceFingerprints: v.array(v.string()),
+    confidenceFloors: companyMonitoringAdmissionConfidenceFloorsValidator,
+    classification: v.optional(companyMonitoringAdmissionClassificationValidator),
+    overallConfidence: v.optional(v.number()),
+    authority: v.optional(companyMonitoringAdmissionAuthorityValidator),
+    queryVersions: v.array(v.string()),
+    classificationSchemaVersion: v.string(),
+    admissionPolicyVersion: v.string(),
+    sourcePolicyVersion: v.string(),
+    retryPolicyVersion: v.string(),
+    evidenceSelectionPolicyVersion: v.string(),
+    modelVersion: v.string(),
+    requestedModelVersion: v.optional(v.string()),
+    evidenceSnapshotDigest: v.optional(v.string()),
+    retryAt: v.optional(v.number()),
+    terminalAt: v.number(),
+    decidedAt: v.number(),
+    previousDecisionId: v.optional(v.id("companyMonitoringAdmissionDecisions")),
+  })
+    .index("by_account_company", ["ownerAccountId", "companyId"])
+    .index("by_account_candidate", ["ownerAccountId", "candidateId", "decidedAt"])
+    .index("by_replay_fence", [
+      "ownerAccountId",
+      "companyId",
+      "occurrenceDedupeKey",
+      "evidenceRevision",
+      "classificationRunId",
+    ]),
 
   // One durable company/source obligation. The closed state variants keep a
   // single uniqueness row while a work item's terminal receipt preserves the

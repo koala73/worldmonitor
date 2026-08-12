@@ -1062,6 +1062,8 @@ describe('cachedFetchJson inflight timeout (#3539)', { concurrency: 1 }, () => {
       assert.equal(r1.status, 'rejected');
       assert.equal(r2.status, 'rejected');
       assert.equal(r3.status, 'rejected');
+      assert.ok(r1.reason instanceof redis.CachedFetchTimeoutError);
+      assert.equal(r1.reason.name, 'CachedFetchTimeoutError');
       assert.match(r1.reason.message, /^cachedFetchJson timeout after 50ms for "hang:test:key"$/);
 
       // Critical assertion: a follow-up call after the timeout must trigger a
@@ -1194,7 +1196,11 @@ describe('cachedFetchJson inflight timeout (#3539)', { concurrency: 1 }, () => {
 
       await assert.rejects(
         () => redis.cachedFetchJsonWithMeta('meta:hang:key', 60, () => new Promise(() => {})),
-        /^Error: cachedFetchJsonWithMeta timeout after 50ms for "meta:hang:key"$/,
+        (err) => {
+          assert.ok(err instanceof redis.CachedFetchTimeoutError);
+          assert.match(err.message, /^cachedFetchJsonWithMeta timeout after 50ms for "meta:hang:key"$/);
+          return true;
+        },
       );
 
       // Subsequent call must succeed against a healthy fetcher — proves the

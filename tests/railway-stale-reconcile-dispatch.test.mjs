@@ -750,6 +750,73 @@ describe('allowlisted GitHub watchdog transport', () => {
     assert.ok(calls.some((call) => call.url.includes('/attempts/2/jobs?per_page=100&page=1')));
   });
 
+  // GitHub rewrites every paginated Link header to the numeric repository-ID
+  // form (`/repositories/<id>/statuses/<sha>`), never echoing back the
+  // `/repos/<owner>/<repo>/commits/<sha>/statuses` path that was requested.
+  // Mocks that build the next link from the request pathname cannot observe
+  // this, so the watchdog paginated fine in tests and deferred forever in
+  // production. Every paginated collection is affected; statuses is the one
+  // that always exceeds a single page on this repository.
+  it('paginates when GitHub rewrites next links to the repository-ID form', async () => {
+    const calls = [];
+    const client = new GitHubWatchdogClient({
+      repository: 'o/r',
+      token: 'token',
+      now: () => NOW,
+      fetchImpl: async (url) => {
+        calls.push(String(url));
+        const parsed = new URL(url);
+        const page = parsed.searchParams.get('page');
+        if (!parsed.pathname.endsWith('/statuses')) throw new Error(`unexpected ${url}`);
+        return page === '1'
+          ? json([{ context: 'other', state: 'success' }], {
+            link: `<https://api.github.com/repositories/1130564872/statuses/${HEAD}`
+              + '?per_page=100&page=2>; rel="next"',
+          })
+          : json([{ context: 'gate', state: 'success', updated_at: '2026-08-07T11:59:00Z' }]);
+      },
+    });
+
+    assert.equal((await client.readNewestGate(HEAD)).state, 'success');
+    // Page two must be fetched on the allowlisted canonical path we synthesized,
+    // never on the origin-supplied `/repositories/<id>/...` URL.
+    assert.deepEqual(calls, [
+      `https://api.github.com/repos/o/r/commits/${HEAD}/statuses?per_page=100&page=1`,
+      `https://api.github.com/repos/o/r/commits/${HEAD}/statuses?per_page=100&page=2`,
+    ]);
+  });
+
+  // Replaces the former 'skipped next page' rejection case. A skipped cursor
+  // was only dangerous while the origin's next URL was followed; now that the
+  // walk is synthesized, an origin advertising page 3 cannot make the watchdog
+  // skip page 2, and total_count still proves the read was complete.
+  it('ignores an origin-advertised page number and still walks every page', async () => {
+    const seen = [];
+    const client = new GitHubWatchdogClient({
+      repository: 'o/r',
+      token: 'token',
+      now: () => NOW,
+      fetchImpl: async (url) => {
+        const parsed = new URL(url);
+        const page = Number(parsed.searchParams.get('page'));
+        seen.push(page);
+        const skipAhead = new URL(parsed);
+        skipAhead.searchParams.set('page', '9');
+        return json(
+          page === 1
+            ? { total_count: 2, workflow_runs: [rawRun({ id: 1 })] }
+            : { total_count: 2, workflow_runs: [rawRun({ id: 2 })] },
+          { link: page === 1 ? `<${skipAhead}>; rel="next"` : null },
+        );
+      },
+    });
+
+    await client.readTargetRunSummaries();
+    // Every collection walked 1 then 2. The advertised page 9 was never fetched.
+    assert.deepEqual([...new Set(seen)].sort(), [1, 2]);
+    assert.equal(seen.length % 2, 0);
+  });
+
   it('hydrates attempt jobs with bounded concurrency while preserving attempt order', async () => {
     let activeReads = 0;
     let maxActiveReads = 0;
@@ -1094,10 +1161,6 @@ describe('allowlisted GitHub watchdog transport', () => {
       ['empty page', [
         { total_count: 2, workflow_runs: [rawRun({ id: 1 })], next: true },
         { total_count: 2, workflow_runs: [] },
-      ]],
-      ['skipped next page', [
-        { total_count: 2, workflow_runs: [rawRun({ id: 1 })], next: true, nextPage: 3 },
-        { total_count: 2, workflow_runs: [rawRun({ id: 2 })] },
       ]],
       ['next after total', [{ total_count: 1, workflow_runs: [rawRun({ id: 1 })], next: true }]],
     ];

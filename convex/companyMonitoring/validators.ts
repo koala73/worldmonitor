@@ -203,9 +203,65 @@ export const companyMonitoringCandidateTerminalReasonValidator = v.union(
   v.literal("company_removed"),
 );
 
+const companyMonitoringAdmissionAxisFields = {
+  confidence: v.number(),
+  rationale: v.string(),
+  evidenceIds: v.array(v.string()),
+};
+
+export const companyMonitoringAdmissionClassificationValidator = v.object({
+  attribution: v.object({
+    truth: v.union(
+      v.literal("confirmed"),
+      v.literal("wrong_company"),
+      v.literal("uncertain"),
+    ),
+    ...companyMonitoringAdmissionAxisFields,
+  }),
+  occurrence: v.object({
+    truth: v.union(v.literal("confirmed"), v.literal("false"), v.literal("uncertain")),
+    ...companyMonitoringAdmissionAxisFields,
+  }),
+  materiality: v.object({
+    truth: v.union(v.literal("material"), v.literal("not_material"), v.literal("uncertain")),
+    ...companyMonitoringAdmissionAxisFields,
+  }),
+  direction: v.union(v.literal("positive"), v.literal("negative"), v.literal("mixed")),
+  channels: v.array(v.union(v.literal("financial"), v.literal("reputation"))),
+  magnitude: v.union(
+    v.literal("low"),
+    v.literal("medium"),
+    v.literal("high"),
+    v.literal("critical"),
+  ),
+  category: v.string(),
+  title: v.string(),
+  neutralSummary: v.string(),
+  positiveRationale: v.string(),
+  negativeRationale: v.string(),
+  conflict: v.boolean(),
+});
+
+export const companyMonitoringAdmissionAuthorityValidator = v.object({
+  hasVerifiedFirstPartyPrimary: v.boolean(),
+  independentOriginCount: v.number(),
+  satisfiesAuthority: v.boolean(),
+  qualifyingEvidenceIds: v.array(v.string()),
+});
+
+export const companyMonitoringAdmissionConfidenceFloorsValidator = v.object({
+  attribution: v.number(),
+  eventTruth: v.number(),
+  materialImpact: v.number(),
+  overall: v.literal("minimum_axis"),
+});
+
 export const companyMonitoringProviderEvidenceValidator = v.object({
   provider: companyMonitoringEvidenceProviderValidator,
   providerLocator: v.string(),
+  // Optional only for rows written before #6011. Admission fails closed when
+  // a referenced row has no query version; every live ingestion path sets it.
+  queryVersion: v.optional(v.string()),
   url: v.optional(v.string()),
   title: v.optional(v.string()),
   text: v.optional(v.string()),
