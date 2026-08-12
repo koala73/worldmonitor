@@ -5,7 +5,7 @@ authentic, manual outreach. Any message requires separate explicit approval
 from the repository owner before sending (per #5668 guardrails), and nothing
 here may be automated. No dofollow placements, paid links, or link exchanges.
 
-Report: <https://www.worldmonitor.app/research/strait-of-hormuz-transit-report-2026-07/>
+Report: https://www.worldmonitor.app/research/strait-of-hormuz-transit-report-2026-07/
 Angle: original, recomputable numbers on the five-month transit collapse —
 1,400 transits since March 1 versus 14,547 in the same 2025 window, from IMF
 PortWatch data, with the AIS-undercount caveat stated up front and the full

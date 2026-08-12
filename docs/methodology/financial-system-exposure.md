@@ -60,7 +60,7 @@ The original construct dropped the slot for them. That was the single largest co
 | Country state | Component 1 slot |
 |---|---|
 | DRS row present; market-access proxy does not fire | `normalizeLowerBetter(value, 0, 15)`, full 0.35 weight, coverage 1.0 |
-| DRS row present; debt ≤1% GNI, BIS claims <5% GDP, and zero reporting parents | same observed score at 30% certainty: runtime weight 0.105, nominal weight 0.35, `certaintyCoverage 0.3` |
+| DRS row present; debt ≤1% GNI, BIS claims &lt;5% GDP, and zero reporting parents | same observed score at 30% certainty: runtime weight 0.105, nominal weight 0.35, `certaintyCoverage 0.3` |
 | No DRS row, `lendingType=LNX`, **and** present in BIS CBS | imputed score **75**, `certaintyCoverage 0.3`, `imputed: true`, `imputationClass: 'not-applicable'` |
 | Borrower missing its DRS row | slot drops out of the blend (possible partial payload) |
 | Absent from both DRS and BIS CBS | slot drops out of the blend (genuine data gap) |
