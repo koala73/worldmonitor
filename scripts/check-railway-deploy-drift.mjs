@@ -28,6 +28,7 @@
 
 import { spawnSync } from 'node:child_process';
 import { readFileSync, realpathSync } from 'node:fs';
+import { performance } from 'node:perf_hooks';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
 import { applyAcceptanceBaseline } from './check-seed-freshness.mjs';
@@ -427,6 +428,52 @@ export const DEEP_DEPLOYMENT_WINDOW = 400;
 // unbaselineable, retried next tick.
 export const DEEP_PASS_MAX_CANDIDATES = 40;
 
+// The workflow runs every 15 minutes with cancel-in-progress. A deep read that
+// starts just before this 13-minute deadline may still consume the Railway
+// CLI's 60-second timeout, leaving about one minute to classify and report
+// before the next tick can supersede the run. The workflow starts the clock in
+// its first step, so checkout, setup, probes, and a degraded shallow fallback
+// all spend this same budget rather than giving the deep pass a fresh window.
+export const DEEP_PASS_RUN_BUDGET_MS = 13 * 60 * 1000;
+const DEEP_PASS_ROTATION_MS = 15 * 60 * 1000;
+
+/**
+ * Convert the workflow's epoch start time into this process's monotonic clock.
+ * Missing or invalid workflow input falls back to a fresh local-script budget,
+ * which keeps direct CLI use bounded without mixing epoch and monotonic values.
+ */
+export function resolveDeepPassDeadlineAt({
+  jobStartedAtMs,
+  epochNow = Date.now(),
+  monotonicNow = performance.now(),
+}) {
+  const elapsedBeforeScriptMs = Number.isFinite(jobStartedAtMs)
+    ? Math.max(0, epochNow - jobStartedAtMs)
+    : 0;
+  return monotonicNow + Math.max(0, DEEP_PASS_RUN_BUDGET_MS - elapsedBeforeScriptMs);
+}
+
+/** Classify histories until the shared run deadline, then fail closed. */
+export function classifyFleetWithinDeadline(services, histories, {
+  classify,
+  deadlineAt,
+  monotonicNow = () => performance.now(),
+}) {
+  return services.map((service) => {
+    const history = histories.get(service.id) ?? {
+      deployments: null,
+      error: 'no history was read for this service',
+    };
+    if (monotonicNow() >= deadlineAt) {
+      return classify(service, {
+        deployments: null,
+        error: 'run deadline reached before deployment history classification',
+      });
+    }
+    return classify(service, history);
+  });
+}
+
 // A deep read that surfaces only an ANCIENT running record must not upgrade
 // the service to a healthy verdict (#6483 review, verified by execution): a
 // cron seeder records a running-status record per tick, so "nothing newer at
@@ -461,20 +508,40 @@ export async function deepenNoBuildWindows(results, {
   reclassify,
   concurrency = DEFAULT_CONCURRENCY,
   now = Date.now(),
+  deadlineAt = Number.POSITIVE_INFINITY,
+  monotonicNow = () => performance.now(),
 }) {
   const byName = new Map(services.map((service) => [service.name, service]));
   const eligible = results
     .map((result, index) => ({ result, index }))
     .filter(({ result }) => DEEP_CANDIDATE_VERDICTS.has(result.verdict) && byName.has(result.service));
-  const candidates = eligible.slice(0, DEEP_PASS_MAX_CANDIDATES);
+  // Keep the cap, but rotate its starting point once per workflow tick. A
+  // stable incident otherwise reselects the same alphabetically-first 40 on
+  // every run and the overflow never receives its promised deeper retry.
+  const rotationOffset = eligible.length === 0
+    ? 0
+    : (Math.floor(now / DEEP_PASS_ROTATION_MS) * DEEP_PASS_MAX_CANDIDATES) % eligible.length;
+  const rotated = [...eligible.slice(rotationOffset), ...eligible.slice(0, rotationOffset)];
+  const candidates = rotated.slice(0, DEEP_PASS_MAX_CANDIDATES);
   const capped = eligible.length - candidates.length;
   const out = [...results];
   let reclassified = 0;
+  let unchanged = 0;
   let failed = 0;
+  let deadlineDeferred = 0;
+  const deepenedServices = [];
   await mapWithConcurrency(candidates, concurrency, async ({ result, index }) => {
+    if (monotonicNow() >= deadlineAt) {
+      deadlineDeferred += 1;
+      return;
+    }
     const service = byName.get(result.service);
+    deepenedServices.push(result.service);
     try {
       const deployments = await readDeep(service);
+      if (!Array.isArray(deployments)) {
+        throw new Error('Railway deployment history was not an array');
+      }
       const next = reclassify(service, { deployments, error: null });
       // The healthy-upgrade age guard. Guarded only when the verdict rests on
       // a running record (PENDING_BUILD with no running source is fresh
@@ -484,8 +551,17 @@ export async function deepenNoBuildWindows(results, {
       if (!isProblemVerdict(next.verdict) && next.runningSha) {
         const runningAtMs = Date.parse(next.runningAt ?? '');
         if (!Number.isFinite(runningAtMs) || now - runningAtMs > DEEP_HEALTHY_MAX_AGE_MS) {
+          unchanged += 1;
           return;
         }
+      }
+      // A deeper but still undeterminable classification is not stronger than
+      // the shallow fact we already established. Keep that original alarm in
+      // place instead of replacing it with NO_DEPLOYMENTS, UNKNOWN_STATUS, or
+      // another inconclusive label.
+      if (UNDETERMINABLE_VERDICTS.includes(next.verdict)) {
+        unchanged += 1;
+        return;
       }
       out[index] = next;
       reclassified += 1;
@@ -502,11 +578,13 @@ export async function deepenNoBuildWindows(results, {
   });
   return {
     results: out,
-    deepened: candidates.length,
+    deepened: deepenedServices.length,
     reclassified,
+    unchanged,
     failed,
     capped,
-    deepenedServices: candidates.map(({ result }) => result.service),
+    deadlineDeferred,
+    deepenedServices,
   };
 }
 
@@ -770,6 +848,12 @@ function printReport(results, summary, headSha, graceSha, { verbose = false } = 
 }
 
 async function main() {
+  const runStartedAt = performance.now();
+  const jobStartedAtMs = Number(process.env.RAILWAY_DRIFT_JOB_STARTED_AT_MS);
+  const deepPassDeadlineAt = resolveDeepPassDeadlineAt({
+    jobStartedAtMs,
+    monotonicNow: runStartedAt,
+  });
   const asJson = process.argv.includes('--json');
   const strict = process.argv.includes('--strict');
   const expectedServices = readRepeatedArguments(process.argv, '--expected-service');
@@ -821,6 +905,12 @@ async function main() {
     graceSha = headSha;
   }
 
+  const assertRailwayCallCanStart = (operation) => {
+    if (performance.now() >= deepPassDeadlineAt) {
+      throw new Error(`Deploy-drift run deadline reached before ${operation}`);
+    }
+  };
+  assertRailwayCallCanStart('reading the Railway service list');
   const services = readRepositoryServices(environment);
   // What each service's container can be affected by. The registry is the
   // repository's declaration and the live config is what Railway is actually
@@ -830,6 +920,7 @@ async function main() {
     JSON.parse(readFileSync(REGISTRY_URL, 'utf8')).map((entry) => [entry.service, entry]),
   );
   // readEnvironmentConfig fails closed on an unexpected payload; see its comment.
+  assertRailwayCallCanStart('reading the Railway environment config');
   const liveById = readEnvironmentConfig(environment).services;
   const changedPathsSince = createChangedPathsReader(headSha, { git: runGit });
   const changedPathsIn = createCommitPathsReader({ git: runGit });
@@ -843,10 +934,17 @@ async function main() {
   } catch {
     // Unknown head time pages to the service-coverage rule alone.
   }
+  let environmentId = null;
+  assertRailwayCallCanStart('resolving the Railway environment id');
+  try {
+    environmentId = resolveEnvironmentId(environment);
+  } catch {
+    // The proven direct-read fallback does not require the environment id.
+  }
   const histories = await readDeploymentsForFleet({
     services,
     environment,
-    environmentId: (() => { try { return resolveEnvironmentId(environment); } catch { return null; } })(),
+    environmentId,
     window,
     concurrency,
     notBefore: headCommittedAt,
@@ -858,36 +956,46 @@ async function main() {
         ? `Read ${services.length} service histories in ${route.pages} fleet page(s) (${route.records} records), ${route.fellBack} direct fallback(s).`
         : `Reading service histories one at a time: ${route.reason}`);
     },
+    deadlineAt: deepPassDeadlineAt,
+    monotonicNow: () => performance.now(),
   });
 
   // One classifier closure for both passes: the shallow fleet read and the
   // deep per-service re-read must judge a history identically, or the deepen
   // pass could reach a different verdict for reasons other than depth.
+  const classificationDeadlineReached = () => performance.now() >= deepPassDeadlineAt;
   const classifyFrom = (service, { deployments, error }) => classifyServiceDeploy({
     service: service.name,
     deployments,
     error,
     headSha,
     graceSha,
-    isAncestor,
+    isAncestor: (ancestor, descendant) => (
+      classificationDeadlineReached() ? false : isAncestor(ancestor, descendant)
+    ),
     closure: resolveServiceClosure({
       registryEntry: registryByService.get(service.name) ?? null,
       liveService: liveById[service.id] ?? null,
     }),
-    changedPathsSince,
-    changedPathsIn,
+    changedPathsSince: (sha) => (
+      classificationDeadlineReached() ? null : changedPathsSince(sha)
+    ),
+    changedPathsIn: (sha) => (
+      classificationDeadlineReached() ? null : changedPathsIn(sha)
+    ),
   });
 
-  const shallowResults = (await mapWithConcurrency(services, concurrency, async (service) => {
-    const { deployments, error } = histories.get(service.id) ?? { deployments: null, error: 'no history was read for this service' };
-    return classifyFrom(service, { deployments, error });
-  })).sort((left, right) => left.service.localeCompare(right.service));
+  const shallowResults = classifyFleetWithinDeadline(services, histories, {
+    classify: classifyFrom,
+    deadlineAt: deepPassDeadlineAt,
+  }).sort((left, right) => left.service.localeCompare(right.service));
 
   const deepPass = await deepenNoBuildWindows(shallowResults, {
     services,
     readDeep: (service) => readDeployments(service, environment, DEEP_DEPLOYMENT_WINDOW),
     reclassify: classifyFrom,
     concurrency,
+    deadlineAt: deepPassDeadlineAt,
   });
   const { results } = deepPass;
   if (deepPass.deepened > 0) {
@@ -896,10 +1004,13 @@ async function main() {
     // apart: reclassified (the deep read answered), failed (the read never
     // landed — a tooling problem, not fleet state), unchanged (read landed but
     // stayed inconclusive or refused a stale healthy upgrade).
-    console.error(`Deepened ${deepPass.deepened} service history read(s) whose ${window}-record window left the source unidentified (deep window ${DEEP_DEPLOYMENT_WINDOW}): ${deepPass.reclassified} reclassified, ${deepPass.failed} failed, ${deepPass.deepened - deepPass.reclassified - deepPass.failed} unchanged.`);
+    console.error(`Deepened ${deepPass.deepened} service history read(s) whose ${window}-record window left the source unidentified (deep window ${DEEP_DEPLOYMENT_WINDOW}): ${deepPass.reclassified} reclassified, ${deepPass.failed} failed, ${deepPass.unchanged} unchanged.`);
   }
   if (deepPass.capped > 0) {
     console.error(`Deep pass capped at ${DEEP_PASS_MAX_CANDIDATES} candidate(s); ${deepPass.capped} kept their shallow verdict this run and retry next tick.`);
+  }
+  if (deepPass.deadlineDeferred > 0) {
+    console.error(`Deep pass reached its ${DEEP_PASS_RUN_BUDGET_MS / 60_000}-minute run deadline; ${deepPass.deadlineDeferred} candidate(s) kept their shallow verdict so this run can report before the next tick.`);
   }
 
   const summary = strict
@@ -919,8 +1030,10 @@ async function main() {
       deepPass: {
         attempted: deepPass.deepenedServices,
         reclassified: deepPass.reclassified,
+        unchanged: deepPass.unchanged,
         failed: deepPass.failed,
         capped: deepPass.capped,
+        deadlineDeferred: deepPass.deadlineDeferred,
       },
       summary,
       results,

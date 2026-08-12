@@ -14,6 +14,9 @@ import { fileURLToPath } from 'node:url';
 
 import YAML from 'yaml';
 
+import { DEEP_PASS_RUN_BUDGET_MS } from '../scripts/check-railway-deploy-drift.mjs';
+import { RAILWAY_CALL_TIMEOUT_MS } from '../scripts/railway-cli.mjs';
+
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const workflowSource = readFileSync(
   resolve(repoRoot, '.github/workflows/seed-freshness-monitor.yml'),
@@ -366,6 +369,9 @@ describe('seed freshness workflow control plane', () => {
       'actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10',
       'credential-bearing workflows must pin checkout to the repository-standard immutable SHA',
     );
+    const budgetStart = stepNamed('Start deploy-drift run budget');
+    assert.equal(monitorSteps.indexOf(budgetStart), 0, 'the run budget must start before checkout and every prerequisite');
+    assert.match(budgetStart.run, /RAILWAY_DRIFT_JOB_STARTED_AT_MS=.*date \+%s%3N/);
 
     const installIndex = monitorSteps.findIndex(
       (step) => step.name === 'Install pinned Railway CLI',
@@ -454,6 +460,11 @@ describe('seed freshness workflow control plane', () => {
       workflow.concurrency,
       { group: 'seed-freshness-monitor', 'cancel-in-progress': true },
       'a run slower than the interval must be superseded, not stacked',
+    );
+    assert.equal(workflow.on.schedule[0].cron, '*/15 * * * *');
+    assert.ok(
+      DEEP_PASS_RUN_BUDGET_MS + RAILWAY_CALL_TIMEOUT_MS < 15 * 60 * 1000,
+      'the run deadline plus one last Railway timeout must finish before the next tick supersedes it',
     );
 
     assert.match(

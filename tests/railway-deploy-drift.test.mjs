@@ -16,9 +16,12 @@ import { describe, it } from 'node:test';
 
 import {
   DEEP_PASS_MAX_CANDIDATES,
+  DEEP_PASS_RUN_BUDGET_MS,
   UNDETERMINABLE_VERDICTS,
   classifyServiceDeploy,
+  classifyFleetWithinDeadline,
   deepenNoBuildWindows,
+  resolveDeepPassDeadlineAt,
   isProblemVerdict,
   missingBaselinedServices,
   readRepeatedArguments,
@@ -1025,7 +1028,7 @@ describe('deep-window fallback for unidentified-source windows', () => {
   });
 
   it('stays NO_BUILD_IN_WINDOW when even the deep window holds no running build', async () => {
-    const { results } = await deepenNoBuildWindows([shallowNoBuild('seed-a')], {
+    const { results, reclassified, unchanged } = await deepenNoBuildWindows([shallowNoBuild('seed-a')], {
       services: [svc('seed-a')],
       readDeep: async () => [
         deployment('SKIPPED', { at: '2026-08-12T10:00:00.000Z' }),
@@ -1035,18 +1038,37 @@ describe('deep-window fallback for unidentified-source windows', () => {
       now: NOW,
     });
     assert.equal(results[0].verdict, 'NO_BUILD_IN_WINDOW');
+    assert.equal(reclassified, 0, 'an inconclusive deep read is not a reclassification');
+    assert.equal(unchanged, 1, 'an inconclusive deep read is observable as unchanged');
     assert.ok(isProblemVerdict(results[0].verdict), 'a truly buildless history must stay reported');
   });
 
-  it('reports a different undeterminable verdict when the deep read is empty', async () => {
-    const { results } = await deepenNoBuildWindows([shallowNoBuild('seed-a')], {
+  it('keeps the stronger shallow verdict when the deep read is empty', async () => {
+    const shallow = shallowNoBuild('seed-a');
+    const { results, reclassified, unchanged } = await deepenNoBuildWindows([shallowNoBuild('seed-a')], {
       services: [svc('seed-a')],
       readDeep: async () => [],
       reclassify,
       now: NOW,
     });
-    assert.equal(results[0].verdict, 'NO_DEPLOYMENTS');
+    assert.equal(results[0].verdict, shallow.verdict);
+    assert.equal(reclassified, 0, 'a different inconclusive verdict is not a resolved source');
+    assert.equal(unchanged, 1);
     assert.ok(isProblemVerdict(results[0].verdict), 'an inconclusive deep read must stay reported');
+  });
+
+  it('keeps the shallow verdict when deep records are malformed', async () => {
+    const shallow = shallowNoBuild('seed-a');
+    const result = await deepenNoBuildWindows([shallow], {
+      services: [svc('seed-a')],
+      readDeep: async () => [{}],
+      reclassify,
+      now: NOW,
+    });
+
+    assert.equal(result.results[0], shallow);
+    assert.equal(result.reclassified, 0);
+    assert.equal(result.unchanged, 1);
   });
 
   it('deepens an unidentified-source rejection and resolves it from the superset', async () => {
@@ -1096,6 +1118,89 @@ describe('deep-window fallback for unidentified-source windows', () => {
     assert.equal(kept.length, 2, 'overflow candidates keep their reported shallow verdict');
   });
 
+  it('rotates the capped cohort so persistent overflow is attempted next tick', async () => {
+    const count = DEEP_PASS_MAX_CANDIDATES + 2;
+    const input = Array.from({ length: count }, (_, index) => shallowNoBuild(`seed-${String(index).padStart(2, '0')}`));
+    const services = input.map((result) => svc(result.service));
+    const attempted = [];
+    const runAt = async (now) => {
+      const reads = [];
+      await deepenNoBuildWindows(input, {
+        services,
+        readDeep: async (service) => {
+          reads.push(service.name);
+          return [];
+        },
+        reclassify,
+        now,
+      });
+      attempted.push(reads);
+    };
+
+    await runAt(0);
+    await runAt(15 * 60 * 1000);
+
+    assert.equal(attempted[0].length, DEEP_PASS_MAX_CANDIDATES);
+    assert.equal(attempted[1].length, DEEP_PASS_MAX_CANDIDATES);
+    assert.deepEqual(
+      [...new Set(attempted.flat())].sort(),
+      input.map((result) => result.service).sort(),
+      'the next schedule slot must reach every service omitted by the prior cap',
+    );
+  });
+
+  it('stops starting deep reads at the run deadline and keeps shallow verdicts', async () => {
+    const input = [shallowNoBuild('seed-a'), shallowNoBuild('seed-b')];
+    const reads = [];
+    let elapsed = 0;
+    const result = await deepenNoBuildWindows(input, {
+      services: input.map((entry) => svc(entry.service)),
+      readDeep: async (service) => {
+        reads.push(service.name);
+        elapsed = 101;
+        return [deployment('SUCCESS', { at: '2026-08-11T00:00:00.000Z', sha: HEAD })];
+      },
+      reclassify,
+      concurrency: 1,
+      deadlineAt: 100,
+      monotonicNow: () => elapsed,
+      now: 0,
+    });
+
+    assert.deepEqual(reads, ['seed-a']);
+    assert.equal(result.deepened, 1);
+    assert.equal(result.deadlineDeferred, 1);
+    assert.equal(result.results[0].verdict, 'CURRENT');
+    assert.equal(result.results[1].verdict, 'NO_BUILD_IN_WINDOW');
+  });
+
+  it('keeps malformed deep responses failed and preserves the shallow verdict', async () => {
+    const shallow = shallowNoBuild('seed-a');
+    const result = await deepenNoBuildWindows([shallow], {
+      services: [svc('seed-a')],
+      readDeep: async () => ({ deployments: [] }),
+      reclassify,
+      now: NOW,
+    });
+
+    assert.equal(result.failed, 1);
+    assert.equal(result.reclassified, 0);
+    assert.equal(result.results[0], shallow);
+  });
+
+  it('reserves time to report before the next scheduled run can supersede it', () => {
+    assert.ok(DEEP_PASS_RUN_BUDGET_MS < 14 * 60 * 1000);
+  });
+
+  it('charges prerequisite time to the same scheduled-run budget', () => {
+    const deadlineAt = resolveDeepPassDeadlineAt({
+      jobStartedAtMs: 1_000,
+      epochNow: 11 * 60 * 1000 + 1_000,
+      monotonicNow: 50,
+    });
+    assert.equal(deadlineAt, 2 * 60 * 1000 + 50);
+  });
+
   it('leaves a service it cannot resolve in the fleet untouched', async () => {
     const shallow = shallowNoBuild('seed-gone');
     const reads = [];
@@ -1125,6 +1230,34 @@ describe('deep-window fallback for unidentified-source windows', () => {
     });
     assert.deepEqual(results.map((result) => result.service), ['a', 'b', 'c', 'd']);
     assert.deepEqual(results.map((result) => result.verdict), ['CURRENT', 'CURRENT', 'REJECTED_PUSH', 'CURRENT']);
+  });
+});
+
+describe('scheduled-run classification deadline', () => {
+  it('fails remaining histories closed after classification consumes the deadline', () => {
+    const services = [
+      { id: 'seed-a-id', name: 'seed-a' },
+      { id: 'seed-b-id', name: 'seed-b' },
+    ];
+    const histories = new Map(services.map((service) => [service.id, { deployments: [], error: null }]));
+    let elapsed = 0;
+    const classified = classifyFleetWithinDeadline(services, histories, {
+      classify: (service, history) => {
+        if (service.name === 'seed-a') elapsed = 101;
+        return classifyServiceDeploy({
+          service: service.name,
+          deployments: history.deployments,
+          error: history.error,
+          headSha: HEAD,
+        });
+      },
+      deadlineAt: 100,
+      monotonicNow: () => elapsed,
+    });
+
+    assert.equal(classified[0].verdict, 'NO_DEPLOYMENTS');
+    assert.equal(classified[1].verdict, 'QUERY_FAILED');
+    assert.match(classified[1].detail, /deadline/);
   });
 });
 

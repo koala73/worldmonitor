@@ -28,6 +28,12 @@ jobs:
       name: ingestion-acceptance-production
       deployment: false
     steps:
+      # Start the drift budget before checkout, setup, gate discovery, and the
+      # other probes. The final drift script consumes the remainder instead of
+      # taking a fresh 13 minutes after its prerequisites have already run.
+      - name: Start deploy-drift run budget
+        run: echo "RAILWAY_DRIFT_JOB_STARTED_AT_MS=$(date +%s%3N)" >> "$GITHUB_ENV"
+
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         with:
           # The deploy-drift check answers two questions from local history:
