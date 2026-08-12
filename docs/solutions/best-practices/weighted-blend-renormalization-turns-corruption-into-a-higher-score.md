@@ -14,7 +14,7 @@ applies_when:
 symptoms:
   - "Albania's financialSystemExposure score reads 74 -> 86 when the BIS parentCount field fails to parse (a stringified count instead of a raw number)"
   - "A corrupted, missing, or unparseable input component RAISES the published composite score instead of lowering it or leaving it neutral"
-  - "No existing test catches the regression, because every fixture in the suite is well-formed and never exercises the null-drop path"
+  - "No test caught the regression, because every fixture in the suite was well-formed and none exercised the null-drop path"
 related_components:
   - "bis-lbs-seeder"
   - "resilience-index-api"
@@ -86,9 +86,17 @@ Driving the real `scoreFinancialSystemExposure` against the pinned fixture:
 | diversity-conditioned (`normalizeDiversityConditionedBand`, `:818`, PR #6529) | 70 | 80 | **+10** |
 | both BIS slots coupled (attempted fix, reverted) | 70 | 83 | **+13** |
 
-The arithmetic behind the +10 row: the freed 0.15 redistributes onto Albania's
-debt leg (73) and FATF leg (100), both above the band leg. The denominator
-shrinks 1.00 → 0.85, and every surviving leg gains share.
+The arithmetic behind the +10 row: the freed 0.15 redistributes across **all**
+the survivors — debt (73), band (75), FATF (100) — and every one of them sits
+far above the redundancy leg (11) that was lost. The denominator shrinks
+1.00 → 0.85 and each surviving leg gains share.
+
+The comparison that matters is against the **dropped** leg, not against each
+other. Albania's redundancy leg reads 11 because two reporting parents is a
+concentrated funding base; losing that reading deletes the one leg that was
+dragging the dimension down. That is the general shape of the defect: a slot
+is dropped, and the score rises by exactly the amount that slot was arguing
+against.
 
 The regression **is** visible in the response — just not in the number anyone
 reads. Coverage is computed against the *nominal* design-time weights, never
@@ -103,8 +111,10 @@ Coverage tells the truth and falls. The headline score tells the opposite story
 and rises. A consumer ranking countries by `score` sees Albania improve.
 
 **No existing test could have caught this**, because every fixture in the suite
-is well-formed. The suite proves the happy path across all 23 `weightedBlend`
-call sites and never once feeds a half-parsed upstream row.
+was well-formed. The suite proved the happy path across all 23 `weightedBlend`
+call sites without once feeding a half-parsed upstream row. (One now exists —
+the guard described below feeds a stringified `parentCount` — but it covers a
+single dimension, and it was written *because* of this finding, not before it.)
 
 ## What didn't work
 
@@ -157,7 +167,7 @@ corrupted — under every transform in contention.** Not one run: a matrix.
 ```ts
 const honest     = await scoreFinancialSystemExposure('AL', createFinSysFixtureReader());
 const halfParsed = await scoreFinancialSystemExposure('AL', createFinSysFixtureReader({
-  bis: { AL: { ...real, parentCount: String(real.parentCount) } },
+  bis: { AL: { ...real, parentCount: String(real.parentCount) as unknown as number } },
 }));
 ```
 
@@ -209,7 +219,7 @@ both signals then point the same way.
 
 This is a property of `weightedBlend`'s drop-and-renormalise semantics, so it is
 **not specific to `financialSystemExposure`, to BIS data, or to `parentCount`**.
-There are 23 `weightedBlend([...])` call sites in
+There are 23 `weightedBlend` call sites in
 `server/worldmonitor/resilience/v1/_dimension-scorers.ts`, and every dimension
 whose slots can read at different levels inherits the behaviour.
 
