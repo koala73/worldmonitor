@@ -321,6 +321,7 @@ export default [
   "www.rt.com",
   "www.alarabiya.net",
   "tuoitrenews.vn",
+  "news.tuoitre.vn",
   "www.yonhapnewstv.co.kr",
   "www.chosun.com",
   "rss.libsyn.com",

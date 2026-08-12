@@ -426,7 +426,7 @@ export const FULL_FEEDS: Record<string, Feed[]> = {
     { name: 'Thai PBS', url: rss('https://news.google.com/rss/search?q=Thai+PBS+World+news&hl=en&gl=US&ceid=US:en'), lang: 'th' },
     // Vietnam
     { name: 'VnExpress', url: rss('https://vnexpress.net/rss/tin-moi-nhat.rss'), lang: 'vi', strategicDefault: true },
-    { name: 'Tuoi Tre News', url: rss('https://tuoitrenews.vn/rss'), lang: 'vi' },
+    { name: 'Tuoi Tre News', url: rss('https://news.tuoitre.vn/rss'), lang: 'vi' },
     // Korea
     { name: 'Yonhap News', url: rss('https://www.yonhapnewstv.co.kr/browse/feed/'), lang: 'ko', strategicDefault: true },
     { name: 'Chosun Ilbo', url: rss('https://www.chosun.com/arc/outboundfeeds/rss/?outputType=xml'), lang: 'ko' },
