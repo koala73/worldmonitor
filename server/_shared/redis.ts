@@ -626,6 +626,8 @@ export async function runRedisTransaction(commands: RedisPipelineCommand[], raw 
     }
     return data;
   } catch (err) {
+    // sentry-coverage-ok: callers treat an empty result as an unconfirmed
+    // transaction and preserve the previous cache generation.
     console.warn('[redis] runRedisTransaction failed:', errMsg(err));
     return [];
   }
