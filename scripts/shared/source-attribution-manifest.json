@@ -7001,6 +7001,21 @@
       ]
     },
     {
+      "host": "news.tuoitre.vn",
+      "provider": "news.tuoitre.vn",
+      "kind": "feed",
+      "observed": true,
+      "license": "Provider terms for this feed publisher; verify before redistribution",
+      "attribution": "Credit news.tuoitre.vn and link to the original feed publisher.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "src/config/feeds.ts",
+          "line": 429
+        }
+      ]
+    },
+    {
       "host": "news.un.org",
       "provider": "news.un.org",
       "kind": "feed",
@@ -9494,10 +9509,10 @@
       "host": "tuoitrenews.vn",
       "provider": "tuoitrenews.vn",
       "kind": "feed",
-      "observed": true,
+      "observed": false,
       "license": "Provider terms for this feed publisher; verify before redistribution",
       "attribution": "Credit tuoitrenews.vn and link to the original feed publisher.",
-      "status": "terms-review",
+      "status": "excluded",
       "references": [
         {
           "path": "src/config/feeds.ts",
