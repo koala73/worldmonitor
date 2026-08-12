@@ -26,15 +26,17 @@ import {
   companyMonitoringXIngestionValidator,
 } from "./validators";
 import {
-  claimNextAdmissionCandidateHandler,
   ingestCompanyEvidenceForCompanyIds,
   purgeAccountCandidatesBatch,
   purgeAccountEvidenceBatch,
-  recordAdmissionDecisionHandler,
-  recordAdmissionTransportFailureHandler,
   setAllCompanyProviderEvidenceState,
   setCompanyEvidenceStateForProviderLocators,
 } from "./evidence";
+import {
+  claimNextAdmissionCandidateHandler,
+  recordAdmissionDecisionHandler,
+  recordAdmissionTransportFailureHandler,
+} from "./admission";
 import {
   COMPANY_MONITORING_EVIDENCE_POLICY,
   type ProviderEvidence,
@@ -2297,10 +2299,15 @@ export const finalizeWork = mutation({
 
 /** Claim one exact normalized-evidence snapshot for deterministic classification. */
 export const claimNextAdmissionCandidate = mutation({
-  args: { secret: v.string(), workerId: v.string() },
+  args: {
+    secret: v.string(),
+    workerId: v.string(),
+    classificationRunId: v.string(),
+    requestedModelVersion: v.string(),
+  },
   handler: async (ctx, args) => {
     await requireWorkerSecret(args.secret);
-    return claimNextAdmissionCandidateHandler(ctx, args.workerId);
+    return claimNextAdmissionCandidateHandler(ctx, args);
   },
 });
 
@@ -2315,6 +2322,7 @@ export const finalizeAdmissionCandidate = mutation({
     occurrenceDedupeKey: v.string(),
     expectedEvidenceRevision: v.number(),
     classificationRunId: v.string(),
+    requestedModelVersion: v.string(),
     modelVersion: v.string(),
     modelOutput: v.optional(v.any()),
   },
@@ -2335,7 +2343,7 @@ export const finalizeAdmissionTransportFailure = mutation({
     occurrenceDedupeKey: v.string(),
     expectedEvidenceRevision: v.number(),
     classificationRunId: v.string(),
-    modelVersion: v.string(),
+    requestedModelVersion: v.string(),
   },
   handler: async (ctx, { secret, ...args }) => {
     await requireWorkerSecret(secret);

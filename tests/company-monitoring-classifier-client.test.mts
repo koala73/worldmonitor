@@ -60,6 +60,7 @@ describe('company-monitoring classifier client', () => {
       requestUrl = url;
       requestInit = init;
       return jsonResponse({
+        model,
         choices: [{
           finish_reason: 'stop',
           message: { role: 'assistant', content: JSON.stringify(untrustedOutput) },
@@ -76,7 +77,10 @@ describe('company-monitoring classifier client', () => {
       timeoutMs: 5_000,
     });
 
-    assert.equal(result, JSON.stringify(untrustedOutput));
+    assert.deepEqual(result, {
+      content: JSON.stringify(untrustedOutput),
+      resolvedModel: model,
+    });
     assert.equal(requestUrl, COMPANY_MONITORING_CLASSIFIER_ENDPOINT);
     assert.equal(requestInit?.method, 'POST');
     assert.ok(requestInit?.signal instanceof AbortSignal);
@@ -181,6 +185,7 @@ describe('company-monitoring classifier client', () => {
   it('returns malformed content from a complete choice unchanged for deterministic rejection', async () => {
     for (const content of ['not-json', '', '{"partial":']) {
       const fetchImpl: typeof fetch = async () => jsonResponse({
+        model,
         choices: [{
           finish_reason: 'stop',
           message: { role: 'assistant', content },
@@ -195,13 +200,72 @@ describe('company-monitoring classifier client', () => {
         fetchImpl,
       });
 
-      assert.equal(result, content);
+      assert.deepEqual(result, { content, resolvedModel: model });
     }
+  });
+
+  it('fails closed when the provider omits the resolved model identity', async () => {
+    const fetchImpl: typeof fetch = async () => jsonResponse({
+      choices: [{
+        finish_reason: 'stop',
+        message: { role: 'assistant', content: '{}' },
+      }],
+    });
+
+    await assert.rejects(
+      requestCompanyMonitoringClassification({ candidate, evidence, apiKey, model, fetchImpl }),
+      (error: unknown) =>
+        error instanceof CompanyMonitoringClassifierTransportError &&
+        error.code === 'provider_response' &&
+        error.message.includes('attest'),
+    );
+  });
+
+  it('fails closed when routing returns an unapproved resolved model identity', async () => {
+    const fetchImpl: typeof fetch = async () => jsonResponse({
+      model: 'provider/routed-model',
+      choices: [{
+        finish_reason: 'stop',
+        message: { role: 'assistant', content: '{}' },
+      }],
+    });
+
+    await assert.rejects(
+      requestCompanyMonitoringClassification({ candidate, evidence, apiKey, model, fetchImpl }),
+      (error: unknown) =>
+        error instanceof CompanyMonitoringClassifierTransportError &&
+        error.code === 'provider_response' &&
+        error.message.includes('unapproved'),
+    );
+  });
+
+  it('returns an explicitly approved routed model identity separately from content', async () => {
+    const resolvedModel = 'provider/routed-model';
+    const fetchImpl: typeof fetch = async () => jsonResponse({
+      model: resolvedModel,
+      choices: [{
+        finish_reason: 'stop',
+        message: { role: 'assistant', content: '{}' },
+      }],
+    });
+
+    assert.deepEqual(await requestCompanyMonitoringClassification({
+      candidate,
+      evidence,
+      apiKey,
+      model,
+      approvedResolvedModels: [resolvedModel],
+      fetchImpl,
+    }), {
+      content: '{}',
+      resolvedModel,
+    });
   });
 
   it('fails closed when a choice did not finish normally', async () => {
     for (const finishReason of ['length', 'content_filter']) {
       const fetchImpl: typeof fetch = async () => jsonResponse({
+        model,
         choices: [{
           finish_reason: finishReason,
           message: { role: 'assistant', content: '{}' },
@@ -219,6 +283,7 @@ describe('company-monitoring classifier client', () => {
 
   it('fails closed before parsing an oversized provider envelope', async () => {
     const fetchImpl: typeof fetch = async () => jsonResponse({
+      model,
       choices: [{
         finish_reason: 'stop',
         message: { role: 'assistant', content: 'x'.repeat(300_000) },
@@ -237,20 +302,20 @@ describe('company-monitoring classifier client', () => {
     const badResponses = [
       new Response('not-json', { status: 200 }),
       jsonResponse({}),
-      jsonResponse({ choices: [] }),
+      jsonResponse({ model, choices: [] }),
       jsonResponse({ choices: [
         { finish_reason: 'stop', message: { role: 'assistant', content: '{}' } },
         { finish_reason: 'stop', message: { role: 'assistant', content: '{}' } },
       ] }),
-      jsonResponse({ choices: [{
+      jsonResponse({ model, choices: [{
         finish_reason: 'stop',
         message: { role: 'assistant', content: { not: 'a string' } },
       }] }),
-      jsonResponse({ choices: [{
+      jsonResponse({ model, choices: [{
         finish_reason: 'stop',
         message: { role: 'assistant', content: '{}', refusal: 'cannot comply' },
       }] }),
-      jsonResponse({ choices: [{ message: { role: 'assistant', content: '{}' } }] }),
+      jsonResponse({ model, choices: [{ message: { role: 'assistant', content: '{}' } }] }),
     ];
 
     for (const response of badResponses) {

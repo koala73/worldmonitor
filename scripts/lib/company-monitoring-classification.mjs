@@ -138,7 +138,7 @@ function candidateForModel(candidate) {
   };
 }
 
-function evidenceForModel(row) {
+export function companyMonitoringEvidenceForClassification(row) {
   return {
     evidenceFingerprint: row.evidenceFingerprint,
     provider: row.provider,
@@ -183,7 +183,8 @@ function delimitedJson(value) {
  * tool_choice property. Callers own transport and provider adaptation.
  */
 export function buildCompanyMonitoringClassificationRequest({ candidate, evidence, model }) {
-  const selectedEvidence = candidateEvidence(candidate, evidence).map(evidenceForModel);
+  const selectedEvidence = candidateEvidence(candidate, evidence)
+    .map(companyMonitoringEvidenceForClassification);
   const candidateData = delimitedJson({
     candidate: candidateForModel(candidate),
     evidence: selectedEvidence,

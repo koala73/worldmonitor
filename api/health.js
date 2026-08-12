@@ -1292,18 +1292,50 @@ const TRADE_FLOW_DOMINANT_FAILURE_MODES = new Set([
 ]);
 
 const COMPANY_MONITORING_WORKER_STATUSES = new Set(['ok', 'error']);
-const COMPANY_MONITORING_WORKER_OUTCOMES = new Set([
+const COMPANY_MONITORING_SCAN_OUTCOMES = new Set([
   'starting', 'disabled', 'idle', 'completed', 'non_reassuring', 'fenced',
   'replayed', 'claim_error', 'finalize_error',
+]);
+const COMPANY_MONITORING_ADMISSION_OUTCOMES = new Set([
+  'disabled', 'idle', 'admission_recorded', 'admission_replayed',
+  'admission_transport_failure', 'admission_claim_error', 'admission_finalize_error',
+]);
+const COMPANY_MONITORING_WORKER_OUTCOMES = new Set([
+  ...COMPANY_MONITORING_SCAN_OUTCOMES,
+  ...COMPANY_MONITORING_ADMISSION_OUTCOMES,
 ]);
 const COMPANY_MONITORING_WORKER_COUNTERS = Object.freeze([
   'loops', 'claims', 'completed', 'nonReassuring', 'fenced', 'replayed',
   'executorErrors', 'claimErrors', 'finalizeErrors',
+  'admissionClaims', 'admissionRecorded', 'admissionReplayed',
+  'admissionTransportFailures', 'admissionClaimErrors', 'admissionFinalizeErrors',
 ]);
+
+function projectCompanyMonitoringWorkerSubsystem(raw, outcomes) {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)
+    || !COMPANY_MONITORING_WORKER_STATUSES.has(raw.status)
+    || !outcomes.has(raw.outcome)) return null;
+  return { status: raw.status, outcome: raw.outcome };
+}
 
 function projectCompanyMonitoringWorkerControl(meta, enabled) {
   if (!enabled || !COMPANY_MONITORING_WORKER_STATUSES.has(meta?.status)
     || !COMPANY_MONITORING_WORKER_OUTCOMES.has(meta?.outcome)) return null;
+  let subsystems;
+  if (meta.subsystems !== undefined) {
+    if (!meta.subsystems || typeof meta.subsystems !== 'object'
+      || Array.isArray(meta.subsystems)) return null;
+    const scan = projectCompanyMonitoringWorkerSubsystem(
+      meta.subsystems.scan,
+      COMPANY_MONITORING_SCAN_OUTCOMES,
+    );
+    const admission = projectCompanyMonitoringWorkerSubsystem(
+      meta.subsystems.admission,
+      COMPANY_MONITORING_ADMISSION_OUTCOMES,
+    );
+    if (!scan || !admission) return null;
+    subsystems = { scan, admission };
+  }
   const counters = {};
   for (const name of COMPANY_MONITORING_WORKER_COUNTERS) {
     const value = meta?.counters?.[name];
@@ -1311,7 +1343,12 @@ function projectCompanyMonitoringWorkerControl(meta, enabled) {
       ? Math.min(value, 9_999_999_999)
       : 0;
   }
-  return { status: meta.status, outcome: meta.outcome, counters };
+  return {
+    status: meta.status,
+    outcome: meta.outcome,
+    ...(subsystems ? { subsystems } : {}),
+    counters,
+  };
 }
 
 // A JODI producer's China record, projected for the wire. Opt-in per key via

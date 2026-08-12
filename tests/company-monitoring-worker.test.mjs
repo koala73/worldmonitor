@@ -163,10 +163,12 @@ describe('company monitoring Railway worker', () => {
         assert.equal(input.candidate, ADMISSION_CLAIM.candidate);
         assert.equal(input.evidence, ADMISSION_CLAIM.evidence);
         return {
+          requestedModelVersion: 'provider/classifier-v1',
           modelVersion: 'provider/classifier-v1',
           modelOutput: rawModelOutput,
         };
       },
+      admissionModelVersion: 'provider/classifier-v1',
       classificationRunId: () => 'classification-run-1',
       publishHealth: async () => true,
     });
@@ -175,6 +177,8 @@ describe('company monitoring Railway worker', () => {
     assert.deepEqual(calls[0], {
       secret: 'worker-secret',
       workerId: 'worker-a',
+      classificationRunId: 'classification-run-1',
+      requestedModelVersion: 'provider/classifier-v1',
     });
     assert.deepEqual(calls[1], {
       secret: 'worker-secret',
@@ -186,6 +190,7 @@ describe('company monitoring Railway worker', () => {
       expectedEvidenceRevision: 3,
       classificationRunId: 'classification-run-1',
       modelVersion: 'provider/classifier-v1',
+      requestedModelVersion: 'provider/classifier-v1',
       modelOutput: rawModelOutput,
     });
   });
@@ -220,7 +225,7 @@ describe('company monitoring Railway worker', () => {
       occurrenceDedupeKey: 'occurrence-1',
       expectedEvidenceRevision: 3,
       classificationRunId: 'classification-run-transport-1',
-      modelVersion: 'provider/classifier-v1',
+      requestedModelVersion: 'provider/classifier-v1',
     });
     assert.equal(health.at(-1).status, 'error');
     assert.equal(health.at(-1).outcome, 'admission_transport_failure');
@@ -235,7 +240,11 @@ describe('company monitoring Railway worker', () => {
       client: convexClient([new Error('claim unavailable')]),
       secret: 'worker-secret',
       workerId: 'worker-a',
-      executeAdmission: async () => ({ modelVersion: 'provider/classifier-v1', modelOutput: '{}' }),
+      executeAdmission: async () => ({
+        requestedModelVersion: 'provider/classifier-v1',
+        modelVersion: 'provider/classifier-v1',
+        modelOutput: '{}',
+      }),
       admissionModelVersion: 'provider/classifier-v1',
       publishHealth: async (payload) => { claimHealth.push(payload); },
     });
@@ -248,7 +257,11 @@ describe('company monitoring Railway worker', () => {
       client: convexClient([ADMISSION_CLAIM, new Error('finalize unavailable')]),
       secret: 'worker-secret',
       workerId: 'worker-a',
-      executeAdmission: async () => ({ modelVersion: 'provider/classifier-v1', modelOutput: '{}' }),
+      executeAdmission: async () => ({
+        requestedModelVersion: 'provider/classifier-v1',
+        modelVersion: 'provider/classifier-v1',
+        modelOutput: '{}',
+      }),
       admissionModelVersion: 'provider/classifier-v1',
       classificationRunId: () => 'classification-run-finalize-error',
       publishHealth: async (payload) => { finalizeHealth.push(payload); },
@@ -280,6 +293,7 @@ describe('company monitoring Railway worker', () => {
       fetchImpl: async (_url, init) => {
         capturedBody = JSON.parse(init.body);
         return new Response(JSON.stringify({
+          model: 'provider/classifier-v1',
           choices: [{
             finish_reason: 'stop',
             message: { role: 'assistant', content: 'not-json' },
@@ -292,11 +306,66 @@ describe('company monitoring Railway worker', () => {
       candidate: ADMISSION_CLAIM.candidate,
       evidence: ADMISSION_CLAIM.evidence,
     }), {
+      requestedModelVersion: 'provider/classifier-v1',
       modelVersion: 'provider/classifier-v1',
       modelOutput: 'not-json',
     });
     assert.equal(capturedBody.model, 'provider/classifier-v1');
     assert.equal('tools' in capturedBody, false);
+  });
+
+  it('keeps an admission finalize error visible across the next healthy scan heartbeat', async () => {
+    const health = [];
+    let classifierCalls = 0;
+    const worker = createCompanyMonitoringWorker({
+      client: convexClient([
+        ADMISSION_CLAIM,
+        new Error('finalize response unavailable'),
+        { status: 'idle' },
+        ADMISSION_CLAIM,
+        { status: 'recorded', decision: 'publish' },
+      ]),
+      secret: 'worker-secret',
+      workerId: 'worker-a',
+      executeAdmission: async () => {
+        classifierCalls += 1;
+        return {
+          requestedModelVersion: 'provider/classifier-v1',
+          modelVersion: 'provider/classifier-v1',
+          modelOutput: '{}',
+        };
+      },
+      admissionModelVersion: 'provider/classifier-v1',
+      classificationRunId: () => 'classification-run-sticky-error',
+      publishHealth: async (payload) => { health.push(payload); },
+    });
+
+    assert.equal(await worker.admissionTick(), 'finalize_error');
+    assert.equal(classifierCalls, 1);
+    assert.equal(health.at(-1).outcome, 'admission_finalize_error');
+    assert.deepEqual(health.at(-1).subsystems.admission, {
+      status: 'error',
+      outcome: 'admission_finalize_error',
+    });
+
+    assert.equal(await worker.tick(), 'idle');
+    assert.equal(classifierCalls, 1, 'a scan heartbeat must not invoke the classifier');
+    assert.equal(health.at(-1).status, 'error');
+    assert.equal(health.at(-1).outcome, 'admission_finalize_error');
+    assert.deepEqual(health.at(-1).subsystems.scan, { status: 'ok', outcome: 'idle' });
+    assert.deepEqual(health.at(-1).subsystems.admission, {
+      status: 'error',
+      outcome: 'admission_finalize_error',
+    });
+
+    assert.equal(await worker.admissionTick(), 'recorded');
+    assert.equal(classifierCalls, 2);
+    assert.equal(health.at(-1).status, 'ok');
+    assert.equal(health.at(-1).outcome, 'admission_recorded');
+    assert.deepEqual(health.at(-1).subsystems.admission, {
+      status: 'ok',
+      outcome: 'admission_recorded',
+    });
   });
 
   it('claims without accepting a tenant target and continues when Redis health is down', async () => {
@@ -498,8 +567,11 @@ describe('company monitoring worker health projection', () => {
     });
 
     const ok = await publisher({
-      status: 'ok',
-      outcome: 'idle',
+      activeSubsystem: 'scan',
+      subsystems: {
+        scan: { status: 'ok', outcome: 'idle' },
+        admission: { status: 'ok', outcome: 'disabled' },
+      },
       counters: { loops: 1, claims: 0, completed: 0, nonReassuring: 0, fenced: 0, replayed: 0, executorErrors: 0, claimErrors: 0, finalizeErrors: 0 },
     });
 
@@ -514,6 +586,11 @@ describe('company monitoring worker health projection', () => {
     const meta = JSON.parse(commands[1][2]);
     assert.equal(canonical.status, meta.status);
     assert.equal(canonical.outcome, meta.outcome);
+    assert.deepEqual(canonical.subsystems, meta.subsystems);
+    assert.deepEqual(canonical.subsystems, {
+      scan: { status: 'ok', outcome: 'idle' },
+      admission: { status: 'ok', outcome: 'disabled' },
+    });
     assert.deepEqual(canonical.counters, meta.counters);
     assert.equal(JSON.stringify(canonical).includes('worker-secret'), false);
     assert.equal(JSON.stringify(canonical).includes('account-private'), false);
@@ -535,8 +612,11 @@ describe('company monitoring worker health projection', () => {
 
     for (const outcome of ['claim_error', 'non_reassuring', 'fenced']) {
       assert.equal(await publisher({
-        status: outcome === 'claim_error' ? 'error' : 'ok',
-        outcome,
+        activeSubsystem: 'scan',
+        subsystems: {
+          scan: { status: outcome === 'claim_error' ? 'error' : 'ok', outcome },
+          admission: { status: 'ok', outcome: 'disabled' },
+        },
         counters: { loops: 1, claims: 0, completed: 0, nonReassuring: 0, fenced: 0, replayed: 0, executorErrors: 0, claimErrors: 1, finalizeErrors: 0 },
       }), true);
     }

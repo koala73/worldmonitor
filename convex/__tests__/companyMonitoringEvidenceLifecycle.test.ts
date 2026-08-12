@@ -10,12 +10,18 @@ import {
 import { internal } from "../_generated/api";
 
 const EVIDENCE = internal.companyMonitoring.evidence;
+const ADMISSION = (internal as any).companyMonitoring.admission;
 const COMPANIES = internal.companyMonitoring.companies;
 const ACCOUNT_A = "cm_account_evidence_a";
 const ACCOUNT_B = "cm_account_evidence_b";
 const COMPANY_A = "cm_company_01K27AAAAAAAAAAAAAAAAAAAAA";
 const COMPANY_B = "cm_company_01K27BBBBBBBBBBBBBBBBBBBBB";
 const DAY_MS = 24 * 60 * 60 * 1000;
+const REQUESTED_MODEL_VERSION = "cm-classifier-model-test";
+
+function claimArgs(workerId: string, classificationRunId = `claim-${workerId}`) {
+  return { workerId, classificationRunId, requestedModelVersion: REQUESTED_MODEL_VERSION };
+}
 
 installCompanyMonitoringTestEnvironment();
 
@@ -220,11 +226,12 @@ describe("Company Monitoring evidence persistence and candidate lifecycle", () =
       observationBlocking: true,
     });
 
-    const claim = await t.mutation(EVIDENCE.claimNextAdmissionCandidateForTest, {
-      workerId: "worker-evidence-lifecycle",
-    });
+    const claim = await t.mutation(
+      ADMISSION.claimNextAdmissionCandidateForTest,
+      claimArgs("worker-evidence-lifecycle", "lifecycle-hold-1"),
+    );
     expect(claim.status).toBe("claimed");
-    await t.mutation(EVIDENCE.recordAdmissionDecisionForTest, {
+    await t.mutation(ADMISSION.recordAdmissionDecisionForTest, {
       workerId: "worker-evidence-lifecycle",
       leaseToken: claim.leaseToken!,
       ownerAccountId: ACCOUNT_A,
@@ -232,6 +239,7 @@ describe("Company Monitoring evidence persistence and candidate lifecycle", () =
       occurrenceDedupeKey: original!.occurrenceDedupeKey,
       expectedEvidenceRevision: original!.evidenceRevision,
       classificationRunId: "lifecycle-hold-1",
+      requestedModelVersion: REQUESTED_MODEL_VERSION,
       modelVersion: "cm-classifier-model-test-v1",
       modelOutput: validMaterialOutput(original!.referenceEvidenceFingerprints[0]!),
     });
@@ -728,9 +736,7 @@ describe("Company Monitoring evidence persistence and candidate lifecycle", () =
     const candidate = await candidateFor(t, ACCOUNT_A, COMPANY_A);
     vi.setSystemTime(candidate!.expiresAt);
 
-    expect(await t.mutation(EVIDENCE.claimNextAdmissionCandidateForTest, {
-      workerId: "worker-delayed-expiry",
-    })).toEqual({ status: "idle" });
+    expect(await t.mutation(ADMISSION.claimNextAdmissionCandidateForTest, claimArgs("worker-delayed-expiry"))).toEqual({ status: "idle" });
     expect((await candidateFor(t, ACCOUNT_A, COMPANY_A))?.attemptCount).toBe(0);
     expect(await t.run(async (ctx) =>
       ctx.db.query("companyMonitoringAdmissionDecisions").collect()

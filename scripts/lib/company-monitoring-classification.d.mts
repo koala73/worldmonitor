@@ -22,6 +22,10 @@ export const COMPANY_MONITORING_RETRY_POLICY: Readonly<{
 
 export const COMPANY_MONITORING_CLASSIFICATION_JSON_SCHEMA: Readonly<Record<string, unknown>>;
 
+export function companyMonitoringEvidenceForClassification(
+  evidence: NormalizedCompanyEvidence,
+): Record<string, unknown>;
+
 export type CompanyMonitoringClassificationCandidate =
   Omit<NormalizedCompanyCandidate, "state"> & {
   state: "pending_classification" | "held" | "terminal";

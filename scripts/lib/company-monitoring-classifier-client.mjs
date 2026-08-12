@@ -95,7 +95,18 @@ async function readBoundedProviderResponse(response) {
   return chunks.join('');
 }
 
-async function parseProviderEnvelope(response) {
+function approvedResolvedModels(configuredModel, approvedResolvedModels) {
+  if (!Array.isArray(approvedResolvedModels)) {
+    throw configurationError('approvedResolvedModels must be an array of exact model identifiers');
+  }
+  const approved = new Set([configuredModel]);
+  for (const value of approvedResolvedModels) {
+    approved.add(requireConfiguredString(value, 'approvedResolvedModels entry'));
+  }
+  return approved;
+}
+
+async function parseProviderEnvelope(response, approvedModels) {
   const responseText = await readBoundedProviderResponse(response);
   let envelope;
   try {
@@ -106,6 +117,12 @@ async function parseProviderEnvelope(response) {
 
   if (!isRecord(envelope) || ('error' in envelope && envelope.error != null)) {
     throw providerResponseError('Classifier provider returned an invalid response envelope');
+  }
+  if (typeof envelope.model !== 'string' || envelope.model.length === 0 || envelope.model !== envelope.model.trim()) {
+    throw providerResponseError('Classifier provider did not attest the resolved model identity');
+  }
+  if (!approvedModels.has(envelope.model)) {
+    throw providerResponseError('Classifier provider returned an unapproved resolved model identity');
   }
   if (!Array.isArray(envelope.choices) || envelope.choices.length !== 1) {
     throw providerResponseError('Classifier provider must return exactly one choice');
@@ -132,7 +149,10 @@ async function parseProviderEnvelope(response) {
 
   // Deliberately do not parse or validate this string. The deterministic
   // policy evaluator owns all model-output validation and fail-closed reasons.
-  return message.content;
+  return {
+    content: message.content,
+    resolvedModel: envelope.model,
+  };
 }
 
 /**
@@ -149,9 +169,11 @@ export async function requestCompanyMonitoringClassification({
   model,
   fetchImpl = (...args) => globalThis.fetch(...args),
   timeoutMs = COMPANY_MONITORING_CLASSIFIER_DEFAULT_TIMEOUT_MS,
+  approvedResolvedModels: configuredApprovedResolvedModels = [],
 }) {
   const configuredApiKey = requireConfiguredString(apiKey, 'apiKey');
   const configuredModel = requireConfiguredString(model, 'model');
+  const approvedModels = approvedResolvedModels(configuredModel, configuredApprovedResolvedModels);
   const requestTimeoutMs = checkedTimeoutMs(timeoutMs);
   if (typeof fetchImpl !== 'function') {
     throw configurationError('fetchImpl must be a function');
@@ -201,5 +223,5 @@ export async function requestCompanyMonitoringClassification({
     );
   }
 
-  return await parseProviderEnvelope(response);
+  return await parseProviderEnvelope(response, approvedModels);
 }

@@ -1362,6 +1362,8 @@ export default defineSchema({
     classificationWorkerId: v.optional(v.string()),
     classificationLeaseToken: v.optional(v.string()),
     classificationLeaseExpiresAt: v.optional(v.number()),
+    classificationRunId: v.optional(v.string()),
+    classificationRequestedModelVersion: v.optional(v.string()),
     createdAt: v.number(),
     updatedAt: v.number(),
   })
@@ -1405,6 +1407,8 @@ export default defineSchema({
     retryPolicyVersion: v.string(),
     evidenceSelectionPolicyVersion: v.string(),
     modelVersion: v.string(),
+    requestedModelVersion: v.optional(v.string()),
+    evidenceSnapshotDigest: v.optional(v.string()),
     retryAt: v.optional(v.number()),
     terminalAt: v.number(),
     decidedAt: v.number(),
