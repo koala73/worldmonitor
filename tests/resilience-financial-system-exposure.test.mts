@@ -35,7 +35,6 @@ import {
   FIN_SYS_EXPOSURE_EMBARGO_POLICY_MAX_AGE_DAYS,
   FIN_SYS_EXPOSURE_EMBARGO_POLICY_REVIEWED_ON,
   FIN_SYS_EXPOSURE_EMBARGO_SCORE_CAP,
-  FIN_SYS_MARKET_ACCESS_CONSTRAINED_DEBT_CERTAINTY,
   FIN_SYS_MARKET_ACCESS_LOW_CLAIMS_PCT_GDP_MAX,
   FIN_SYS_MARKET_ACCESS_LOW_DEBT_PCT_GNI_MAX,
   normalizeBandLowerBetter,
@@ -673,11 +672,20 @@ describe('scoreFinancialSystemExposure — non-DRS short-term-debt slot (#6459)'
 });
 
 describe('scoreFinancialSystemExposure — market-access-constrained debt certainty (#6461)', () => {
-  const reader = (values: { debtPct: number; claimsPctGdp: number; parentCount: number }): ResilienceSeedReader =>
-    createFinSysFixtureReader({
-      debt: { [TEST_ISO2]: { value: values.debtPct, year: 2024 } },
-      bis: { [TEST_ISO2]: { totalXborderPctGdp: values.claimsPctGdp, parentCount: values.parentCount } },
-    });
+  const reader = (values: { debtPct: number; claimsPctGdp: unknown; parentCount: unknown }): ResilienceSeedReader =>
+    async (key) => {
+      if (key.startsWith('seed-meta:')) return { status: 'ok', fetchedAt: Date.now() };
+      if (key === 'economic:wb-external-debt:v1') {
+        return { countries: { [TEST_ISO2]: { value: values.debtPct, year: 2024 } } };
+      }
+      if (key === 'economic:bis-lbs:v1') {
+        return { countries: { [TEST_ISO2]: { totalXborderPctGdp: values.claimsPctGdp, parentCount: values.parentCount } } };
+      }
+      if (key === 'economic:fatf-listing:v1') {
+        return { listings: { IR: 'black', KP: 'black' }, publicationDate: '2026-06-01' };
+      }
+      return null;
+    };
 
   it('reduces score weight and coverage only when all three constraint signals hold', async () => {
     const result = await scoreFinancialSystemExposure(
@@ -689,10 +697,32 @@ describe('scoreFinancialSystemExposure — market-access-constrained debt certai
       }),
     );
 
-    const expectedObservedWeight = 0.35 * FIN_SYS_MARKET_ACCESS_CONSTRAINED_DEBT_CERTAINTY + 0.30 + 0.20 + 0.15;
-    const expectedCoverage = Number(expectedObservedWeight.toFixed(2));
-    assert.equal(result.coverage, expectedCoverage, 'the debt slot must report its attenuated certainty against nominal weight');
-    assert.equal(result.observedWeight, expectedObservedWeight, 'the observed runtime weight must match the attenuation applied to scoring');
+    assert.equal(result.coverage, 0.76, 'the debt slot must report its attenuated certainty against nominal weight');
+    assert.equal(result.observedWeight, 0.755, 'the observed runtime weight must match the pinned attenuation applied to scoring');
+  });
+
+  it('treats a missing or malformed parent count as unknown rather than observed zero', async () => {
+    for (const parentCount of [null, '']) {
+      const result = await scoreFinancialSystemExposure(
+        TEST_ISO2,
+        reader({ debtPct: 0.1, claimsPctGdp: 1, parentCount }),
+      );
+
+      assert.equal(result.coverage, 0.85, 'a corrupt parent count must drop its own slot without attenuating the debt observation');
+      assert.equal(result.observedWeight, 0.85, 'unknown parent count must not masquerade as the observed zero-parent signal');
+    }
+  });
+
+  it('treats missing or malformed claims as unknown rather than observed zero', async () => {
+    for (const claimsPctGdp of [null, '']) {
+      const result = await scoreFinancialSystemExposure(
+        TEST_ISO2,
+        reader({ debtPct: 0.1, claimsPctGdp, parentCount: 0 }),
+      );
+
+      assert.equal(result.coverage, 0.7, 'corrupt claims must drop their own slot without attenuating the debt observation');
+      assert.equal(result.observedWeight, 0.7, 'unknown claims must not masquerade as the observed low-claims signal');
+    }
   });
 
   it('keeps full debt confidence when any market-access signal clears its boundary', async () => {

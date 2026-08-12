@@ -451,6 +451,12 @@ function extractWeight(entry: string, indicatorId: string): number {
     assert.equal(typeof value, 'number', `Unknown macro-fiscal weight ${expression} for ${indicatorId}.`);
     return value;
   }
+  if (/^[A-Z][A-Z0-9_]*$/.test(expression)) {
+    const declaration = new RegExp(`\\b(?:export\\s+)?const\\s+${expression}\\s*=\\s*([^;]+);`).exec(SCORER_SOURCE);
+    const value = Number(declaration?.[1]?.trim());
+    assert.ok(Number.isFinite(value), `Unknown numeric scorer constant ${expression} for ${indicatorId}.`);
+    return value;
+  }
   const numeric = Number(expression);
   assert.ok(Number.isFinite(numeric), `Unsupported weight expression "${expression}" for ${indicatorId}.`);
   return numeric;

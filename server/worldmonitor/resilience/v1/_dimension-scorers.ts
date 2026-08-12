@@ -2068,9 +2068,9 @@ export async function scoreFinancialSystemExposure(
       // construct. Retain the reading at low confidence instead of deleting it
       // or introducing a new editorial country list.
       weight: marketAccessConstrainedDebt
-        ? 0.35 * FIN_SYS_MARKET_ACCESS_CONSTRAINED_DEBT_CERTAINTY
-        : 0.35,
-      nominalWeight: 0.35,
+        ? FIN_SYS_SHORT_TERM_DEBT_WEIGHT * FIN_SYS_MARKET_ACCESS_CONSTRAINED_DEBT_CERTAINTY
+        : FIN_SYS_SHORT_TERM_DEBT_WEIGHT,
+      nominalWeight: FIN_SYS_SHORT_TERM_DEBT_WEIGHT,
       certaintyCoverage: marketAccessConstrainedDebt
         ? FIN_SYS_MARKET_ACCESS_CONSTRAINED_DEBT_CERTAINTY
         : nonDrsDebtImputation?.certaintyCoverage,
@@ -2189,6 +2189,7 @@ interface BisLbsCountry {
 // zero reporting parents means no independent foreign-bank route clears the
 // redundancy floor. All three must hold, so ordinary low-debt borrowers keep
 // full weight when either banking signal shows real market access.
+const FIN_SYS_SHORT_TERM_DEBT_WEIGHT = 0.35;
 export const FIN_SYS_MARKET_ACCESS_CONSTRAINED_DEBT_CERTAINTY = 0.3;
 export const FIN_SYS_MARKET_ACCESS_LOW_DEBT_PCT_GNI_MAX = 1;
 export const FIN_SYS_MARKET_ACCESS_LOW_CLAIMS_PCT_GDP_MAX = 5;
@@ -2212,9 +2213,14 @@ function readBisLbsCountry(raw: unknown, countryCode: string): BisLbsCountry | n
   if (!countries || typeof countries !== 'object') return null;
   const entry = countries[countryCode];
   if (!entry || typeof entry !== 'object') return null;
+  const rawClaims = (entry as { totalXborderPctGdp?: unknown }).totalXborderPctGdp;
+  const rawParentCount = (entry as { parentCount?: unknown }).parentCount;
   return {
-    totalXborderPctGdp: safeNum((entry as { totalXborderPctGdp?: unknown }).totalXborderPctGdp),
-    parentCount: safeNum((entry as { parentCount?: unknown }).parentCount),
+    // `safeNum(null)` and `safeNum('')` are numeric zero by design. These
+    // fields use zero as a real financial-isolation signal, so require a raw
+    // number rather than manufacturing an observed zero from malformed data.
+    totalXborderPctGdp: typeof rawClaims === 'number' ? safeNum(rawClaims) : null,
+    parentCount: typeof rawParentCount === 'number' ? safeNum(rawParentCount) : null,
   };
 }
 

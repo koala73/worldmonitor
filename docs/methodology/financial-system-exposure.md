@@ -67,11 +67,15 @@ The original construct dropped the slot for them. That was the single largest co
 
 **Market-access constraint attenuation (#6461).** A near-zero short-term debt ratio is not full-strength evidence of low rollover vulnerability when the country has little commercial market access from which to borrow. The scorer uses a three-signal intersection already present in the construct: debt ≤1% of GNI, BIS cross-border claims below the 5% healthy-integration boundary, and zero independent foreign reporting parents. Only when all three hold does the debt leg retain 30% of its score weight and coverage certainty. If any signal clears its boundary, the observed debt ratio keeps full weight. This avoids an editorial country list and makes the rule self-expiring when market access appears in the source data.
 
+The low-claims and zero-parent signals must be observed numeric values. A missing or malformed BIS field is unknown, so it drops its own slot and does not trigger debt attenuation.
+
 On the 2026-08-11 production-shaped fixture, Chad moves from **67 at coverage 1.0** to **56 at coverage 0.76**. Its raw 0.14% debt observation still exists, but it no longer dominates the dimension while BIS reports claims at 1.11% of GDP and zero foreign parents.
 
 **Why `not-applicable` and not `unmonitored`**: non-participation in the DRS means there is no reported short-term external commercial debt to roll over. That is a mild positive, not an unknown, so the class that describes it is "the indicator does not apply here".
 
 **Discriminator**: the World Bank country catalog's `lendingType=LNX` classification is the explicit non-borrower signal. A missing DRS row is never enough by itself, because an accepted annual payload can still omit an eligible borrower. The imputation also requires a valid BIS CBS row. Payload schema v1 did not carry `nonDrsCountryCodes`; the scorer remains backward-compatible with that payload but treats eligibility as unknown, so the slot drops instead of receiving a positive imputation until schema v2 is seeded.
+
+This typed LNX/BIS imputation counts as a resolving component for FATF singleton handling. It is explicit `not-applicable` evidence with score 75 and partial certainty, not three-source absence, and therefore cannot produce a perfect 100-point dimension through the imputed-debt path.
 
 **Cadence**: monthly cron (WB IDS publishes annually; the cadence is for refresh-once-they-publish detection).
 
@@ -153,6 +157,8 @@ This page is a STABLE entry point that links to the current publication. Each FA
 **Grey rescaled 30 → 55 in #6459.** Grey-listing means "increased monitoring under an agreed action plan" — a jurisdiction actively remediating with FATF, not one a step away from the call-for-action black list. At 30 the gap to black was 30 points and the gap to compliant 70, which placed ordinary remediating economies closer to Iran and DPRK than to their actual peers. On the 2026-06-01 plenary list that included Monaco, whose FATF slot is its **only** resolving component in production (no BIS CBS row, no DRS row), so the mis-scaling propagated directly to its dimension score.
 
 **Compliant-by-absence singleton handling (#6461).** FATF enumerates AML/CFT deficiencies, not sanctions exposure, so an unlisted jurisdiction receives `compliant` by absence. That 100-point slot remains valid when another financial-system component resolves; dropping it globally would penalise roughly 170 ordinary unlisted jurisdictions. For a non-embargoed country where it is the **only** resolving component, however, the scorer drops the slot: absence from WB IDS, BIS CBS, and both FATF lists carries no positive information. A listed gray or black jurisdiction keeps its real observation. The comprehensive-embargo cohort also keeps non-zero observed provenance because the external cap is the construct signal and the executable sanctions anchor rejects a vacuous coverage-0 pass.
+
+The current seeder publishes only black and gray records. The scorer also accepts an explicit `compliant` record as observed provenance, rather than confusing a future explicit assessment with list absence; changing that payload contract requires its own calibration gate.
 
 **Coverage**: the source classifies the global universe by enumeration plus absence. Scorer coverage is conditional: a non-embargoed compliant-by-absence singleton contributes zero coverage, while listed jurisdictions and countries with another resolving component retain the 0.20 slot.
 
