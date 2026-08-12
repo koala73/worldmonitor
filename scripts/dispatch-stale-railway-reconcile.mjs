@@ -1441,11 +1441,24 @@ function defaultSleep(ms) {
 
 export async function readWatchdogSnapshot({ github, control, clock = Date.now }) {
   const now = clock();
-  const [main, runSummaries, status] = await Promise.all([
+  const [mainRead, runSummariesRead, controlRead] = await Promise.allSettled([
     github.readMainAndGate(),
     github.readTargetRunSummaries(),
     control.status(),
   ]);
+  // A control-plane rejection can settle before a concurrent GitHub read
+  // rejection. Preserve GitHub blindness as the primary failure so the named
+  // workflow marker and sustained-failure escalation cannot stay green.
+  const githubReadFailure = [mainRead, runSummariesRead].find(
+    (read) => read.status === 'rejected' && readFailureCodeOf(read.reason),
+  );
+  if (githubReadFailure) throw githubReadFailure.reason;
+  for (const read of [controlRead, mainRead, runSummariesRead]) {
+    if (read.status === 'rejected') throw read.reason;
+  }
+  const main = mainRead.value;
+  const runSummaries = runSummariesRead.value;
+  const status = controlRead.value;
   let controlState = unwrapControl(status);
   const relevantSummaries = selectRunSummariesForHydration({ now, runSummaries, controlState });
   const hydratedRuns = await github.hydrateTargetRuns(relevantSummaries);

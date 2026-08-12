@@ -2211,6 +2211,41 @@ describe('watchdog read-failure escalation', () => {
     assert.equal(controlDown.readFailureCode, null);
   });
 
+  it('preserves GitHub blindness when the control-plane rejection settles first', async () => {
+    const order = [];
+    const github = {
+      readMainAndGate: async () => {
+        await new Promise((resolve) => setImmediate(resolve));
+        order.push('github');
+        throw new GitHubWatchdogError('GITHUB_READ_FAILED', 'GitHub returned HTTP 500', { status: 500 });
+      },
+      readTargetRunSummaries: async () => [],
+      readReadFailureStreak: async () => 0,
+    };
+    const blind = await prepareRecoveryDispatch({
+      github,
+      control: {
+        status: async () => {
+          order.push('control');
+          throw new Error('control plane unreachable');
+        },
+      },
+      clock: () => NOW,
+    });
+
+    assert.deepEqual(order, ['control', 'github']);
+    assert.equal(blind.outcome, 'DEFERRED_AMBIGUOUS');
+    assert.equal(blind.readFailureCode, 'GITHUB_READ_FAILED');
+    assert.deepEqual(
+      await resolveReadFailureExit({ github, result: blind, sourceRunId: '1' }),
+      {
+        failJob: false,
+        streak: 1,
+        reason: '1 consecutive scheduled runs could not read GitHub (GITHUB_READ_FAILED)',
+      },
+    );
+  });
+
   // The marker step name is the contract between the controller and the
   // workflow: a rename on either side silently retires the detector.
   it('pins the workflow marker step to the controller constant', () => {
