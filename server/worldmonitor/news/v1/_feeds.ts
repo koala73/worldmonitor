@@ -67,6 +67,7 @@ export const VARIANT_FEEDS: Record<string, Record<string, ServerFeed[]>> = {
       { name: 'Politico', url: 'https://rss.politico.com/politics-news.xml' },
       { name: 'The Hill', url: 'https://thehill.com/news/feed' },
       { name: 'Axios', url: 'https://api.axios.com/feed/' },
+      { name: 'Fox News', url: 'https://moxie.foxnews.com/google-publisher/us.xml' },
       // Canada + North America key-country pack (#5960)
       { name: 'CBC News', url: 'https://www.cbc.ca/webfeed/rss/rss-world' },
       { name: 'Globe and Mail', url: 'https://www.theglobeandmail.com/arc/outboundfeeds/rss/category/canada/?outputType=xml' },

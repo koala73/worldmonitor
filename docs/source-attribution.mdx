@@ -12,7 +12,7 @@ The inventory is **generated, not hand-written**: `scripts/source-attribution.mj
 ## Observed Source Inventory
 
 {/* BEGIN GENERATED SOURCE ATTRIBUTION */}
-This generated inventory covers **749 active source hosts** representing **743 active providers** (**318 structured/API**, **463 feed**, and **30 operational-status** hosts). It is derived from source declarations in `scripts/`, `server/`, `api/`, and `src/`. Each row shows the configured provider identity and where the source is referenced. Syndication transports such as FeedBurner and Google News remain listed as hosts and are not counted as publishers.
+This generated inventory covers **747 active source hosts** representing **741 active providers** (**318 structured/API**, **461 feed**, and **30 operational-status** hosts). It is derived from source declarations in `scripts/`, `server/`, `api/`, and `src/`. Each row shows the configured provider identity and where the source is referenced. Syndication transports such as FeedBurner and Google News remain listed as hosts and are not counted as publishers.
 
 | Provider | Observed surface |
 | --- | --- |
@@ -187,7 +187,7 @@ This generated inventory covers **749 active source hosts** representing **743 a
 | de.euronews.com (de.euronews.com) | feed — src/config/feeds.ts |
 | de.usembassy.gov (de.usembassy.gov) | structured — scripts/seed-security-advisories.mjs |
 | decrypt.co (decrypt.co) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
-| defense.gov (defense.gov) | feed — src/config/feeds.ts |
+| defense.gov (defense.gov) | Excluded / candidate — No current fetch observed |
 | dev.events (dev.events) | structured — scripts/ais-relay.cjs, scripts/seed-research.mjs, server/worldmonitor/research/v1/list-tech-events.ts, src/config/variants/tech.ts |
 | dev.to (dev.to) | feed+structured — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts, src/config/variants/tech.ts |
 | devops.com (devops.com) | feed+structured — src/config/feeds.ts, src/config/variants/tech.ts |
@@ -396,7 +396,7 @@ This generated inventory covers **749 active source hosts** representing **743 a
 | mm.usembassy.gov (mm.usembassy.gov) | structured — scripts/seed-security-advisories.mjs |
 | mofcom.gov.cn (mofcom.gov.cn) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
 | montrealgazette.com (montrealgazette.com) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
-| moxie.foxnews.com (moxie.foxnews.com) | feed — src/config/feeds.ts |
+| moxie.foxnews.com (moxie.foxnews.com) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
 | mshibanami.github.io (mshibanami.github.io) | feed — src/config/feeds.ts |
 | msi.nga.mil (msi.nga.mil) | structured — server/worldmonitor/infrastructure/v1/get-cable-health.ts, server/worldmonitor/maritime/v1/list-navigational-warnings.ts |
 | mx.usembassy.gov (mx.usembassy.gov) | structured — scripts/seed-security-advisories.mjs |
@@ -649,7 +649,7 @@ This generated inventory covers **749 active source hosts** representing **743 a
 | webcams.windy.com (webcams.windy.com) | structured — src/components/PinnedWebcamsPanel.ts |
 | websummit.com (websummit.com) | structured — scripts/ais-relay.cjs, scripts/seed-research.mjs, server/worldmonitor/research/v1/list-tech-events.ts |
 | Welt (www.welt.de) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
-| whitehouse.gov (whitehouse.gov) | feed — src/config/feeds.ts |
+| whitehouse.gov (whitehouse.gov) | Excluded / candidate — No current fetch observed |
 | wilsoncenter.org (wilsoncenter.org) | feed — src/config/feeds.ts |
 | wingbits.com (customer-api.wingbits.com) | structured — scripts/ais-relay.cjs, scripts/seed-military-flights.mjs, server/worldmonitor/military/v1/_wingbits-aircraft-details.ts |
 | wingbits.com (ecs-api.wingbits.com) | structured — server/worldmonitor/military/v1/get-wingbits-live-flight.ts |
@@ -864,7 +864,7 @@ This generated inventory covers **749 active source hosts** representing **743 a
 | www.upworthy.com (www.upworthy.com) | feed — src/config/feeds.ts |
 | www.vanguardngr.com (www.vanguardngr.com) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
 | www.vercel-status.com (www.vercel-status.com) | operational-status — server/worldmonitor/infrastructure/v1/list-service-statuses.ts |
-| www.war.gov (www.war.gov) | feed — server/worldmonitor/news/v1/_feeds.ts |
+| www.war.gov (www.war.gov) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
 | www.weather.gov.hk (www.weather.gov.hk) | structured — scripts/natural/western-pacific-cyclones.mjs |
 | www.whitehouse.gov (www.whitehouse.gov) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
 | www.who.int (www.who.int) | feed+structured — scripts/seed-disease-outbreaks.mjs, scripts/seed-security-advisories.mjs, server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
