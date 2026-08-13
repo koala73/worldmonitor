@@ -195,7 +195,7 @@ async function readSeedHealth() {
   return { res, body };
 }
 
-test('seed-health flags fresh resilience interval meta when the current v10 data probe is absent', async () => {
+test('seed-health flags fresh resilience interval meta when the current v11 data probe is absent', async () => {
   installPipelineMock(new Map([
     [META_KEY, intervalMeta()],
   ]));
