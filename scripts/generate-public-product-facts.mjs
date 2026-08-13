@@ -191,6 +191,7 @@ const facts = {
     locales: stats.locales,
     variants: stats.variantCount,
     mapLayers: stats.layerDefinitions,
+    panelImplementations: stats.panelClasses,
     feedDefinitions: stats.feedDefinitions,
     freshnessTrackedSourceGroups: stats.freshnessSources,
     sourceAttributionHosts: stats.sourceAttributionHosts,

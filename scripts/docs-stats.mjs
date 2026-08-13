@@ -950,7 +950,9 @@ function claims(s) {
     { file: 'README.md', re: /(\d+)\+\s+curated news feeds/, value: s.feedDefinitions, min: true },
     { file: 'README.md', re: /(\d+)\+\s+observed upstream hosts/, value: s.sourceAttributionHosts },
     { file: 'README.md', re: /(\d+)\s+stock exchanges/, value: s.stockExchangeCount },
+    { file: 'README.md', re: /(\d+)\s+concrete panel implementations/, value: s.panelClasses },
     { file: 'docs/overview.mdx', re: /(\d+)\+\s+curated news feeds/, value: s.feedDefinitions, min: true },
+    { file: 'docs/overview.mdx', re: /(\d+)\s+concrete panel implementations/, value: s.panelClasses },
     { file: 'docs/overview.mdx', re: /(\d+)\+\s+observed upstream hosts/, value: s.sourceAttributionHosts },
     { file: 'docs/overview.mdx', re: /interface supports (\d+)\s+languages/, value: s.locales },
     { file: 'docs/overview.mdx', re: /lists (\d+)\s+active providers/, value: s.sourceAttribution.providerCount },
@@ -1025,10 +1027,14 @@ function claims(s) {
 
     // ---- MCP tool count on public agent-discovery and marketing surfaces (#5389) ----
     { file: 'public/home.md', re: /(\d+)-tool MCP server/, value: s.mcpToolCount },
+    { file: 'public/home.md', re: /(\d+)\s+concrete panel implementations/, value: s.panelClasses },
     { file: 'public/agents.md', re: /Streamable HTTP, (\d+)\s+tools/, value: s.mcpToolCount },
+    { file: 'public/agents.md', re: /(\d+)\s+concrete panel implementations/, value: s.panelClasses },
     { file: 'public/developers.md', re: /Streamable HTTP, (\d+)\s+tools/, value: s.mcpToolCount },
     { file: 'public/llms.txt', re: /Streamable HTTP, (\d+)\s+tools/, value: s.mcpToolCount },
+    { file: 'public/llms.txt', re: /(\d+)\s+concrete panel implementations/, value: s.panelClasses },
     { file: 'public/llms-full.txt', re: /Streamable HTTP, (\d+)\s+tools/, value: s.mcpToolCount },
+    { file: 'public/llms-full.txt', re: /(\d+)\s+concrete panel implementations/, value: s.panelClasses },
     { file: 'public/llms-full.txt', re: /MCP server endpoint, (\d+)\s+tools/, value: s.mcpToolCount },
     { file: 'public/ai-search.md', re: /- (\d+)\s+MCP tools/, value: s.mcpToolCount },
     { file: 'public/ai-search.md', re: /- (\d+)\s+supported languages/, value: s.locales },
@@ -1037,6 +1043,7 @@ function claims(s) {
     // drifted (24 vs 26) precisely because nothing pinned it; these siblings
     // were one capability change away from the same fate.
     { file: 'public/ai-search.md', re: /- (\d+)\s+map layer types/, value: s.layerDefinitions },
+    { file: 'public/ai-search.md', re: /- (\d+)\s+concrete panel implementations/, value: s.panelClasses },
     { file: 'public/ai-search.md', re: /- (\d+)\+\s+observed upstream hosts/, value: s.sourceAttributionHosts },
     { file: 'public/ai-search.md', re: /- (\d+)\s+live Country Instability Index countries/, value: s.tier1Countries },
     { file: 'public/ai-search.md', re: /- (\d+)-country resilience rankings/, value: s.rankableUniverseCountries },
@@ -1082,6 +1089,7 @@ function claims(s) {
     { file: 'docs/mcp-quickstart.mdx', re: /WorldMonitor exposes (\d+)\s+live tools/, value: s.mcpToolCount },
     { file: 'docs/mcp-quickstart.mdx', re: /receives (\d+)\s+compressed tool descriptions/, value: s.mcpToolCount },
     { file: 'public/mcp-server.md', re: /server ships \*\*(\d+)\s+tools\*\*/, value: s.mcpToolCount },
+    { file: 'public/product-facts.json', re: /"panelImplementations":\s*(\d+)/, value: s.panelClasses },
 
     { file: 'docs/data-sources.mdx', re: /monitors (\d+)\s+data sources/, value: s.freshnessSources },
     { file: 'docs/source-attribution.mdx', re: /\*\*(\d+) active upstream hosts\*\*/, value: s.sourceAttributionHosts },
@@ -1096,6 +1104,7 @@ function claims(s) {
     { file: 'docs/COMMUNITY-PROMOTION-GUIDE.md', re: /"(\d+)\s+global stock exchanges mapped/, value: s.stockExchangeCount },
     { file: 'docs/COMMUNITY-PROMOTION-GUIDE.md', re: /Finance variant with (\d+)\s+exchanges/, value: s.stockExchangeCount },
     { file: 'docs/PRESS_KIT.md', re: /\| Stock exchanges mapped \| (\d+) \|/, value: s.stockExchangeCount },
+    { file: 'docs/PRESS_KIT.md', re: /\| Panel implementations \| (\d+) concrete classes \|/, value: s.panelClasses },
     { file: 'public/llms-full.txt', re: /Stock Exchanges\*\*: (\d+)\s+global exchanges/, value: s.stockExchangeCount },
     { file: 'public/llms-full.txt', re: /Central Banks & Institutions\*\*: (\d+)\s+central-bank and supranational finance institutions/, value: s.centralBankInstitutionCount },
     { file: 'public/llms-full.txt', re: /Unique layers: (\d+)\s+stock exchanges/, value: s.stockExchangeCount },

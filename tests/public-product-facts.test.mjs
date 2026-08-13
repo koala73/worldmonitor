@@ -89,6 +89,7 @@ describe('public product facts generation contract', () => {
     assert.equal(sharedFacts.product.primaryCtaLabel, 'View Pro plans');
     assert.equal(sharedFacts.currency, 'USD');
     assert.equal(sharedFacts.capabilities.mcpTools, registryToolCount());
+    assert.equal(sharedFacts.capabilities.panelImplementations, readJson('docs/generated/stats.json').panelClasses);
     assert.equal(sharedFacts.capabilities.sourceAttributionHosts, readJson('docs/generated/stats.json').sourceAttributionHosts);
     assert.equal(
       sharedFacts.capabilities.sourceAttributionProviders,

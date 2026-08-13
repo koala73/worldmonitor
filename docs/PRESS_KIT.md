@@ -116,6 +116,7 @@ World Monitor aggregates publicly available data from dozens of sources. No prop
 | News feeds monitored | 500+ |
 | Live video streams | 8 |
 | Data layers on map | 56 layer types |
+| Panel implementations | 109 concrete classes |
 | Countries monitored | 200+ |
 | Languages supported | 27 (including RTL) |
 | Military bases mapped | 220+ |
