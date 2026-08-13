@@ -598,6 +598,10 @@ function validateCaptureProvenance(artifact, filename) {
 
 export function validateEducationAcceptanceArtifact(artifact, { filename } = {}) {
   validateCaptureProvenance(artifact, filename);
+  if (artifact.educationWeight !== shippedEducationWeight
+    || artifact.shippedEducationWeight !== shippedEducationWeight) {
+    throw new Error('acceptance artifact must measure the shipped education weight');
+  }
 
   const scoreEntries = artifact?.scores && typeof artifact.scores === 'object' && !Array.isArray(artifact.scores)
     ? Object.entries(artifact.scores)
