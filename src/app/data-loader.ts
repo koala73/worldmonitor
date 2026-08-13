@@ -156,9 +156,7 @@ import { mountCommunityWidget } from '@/components/CommunityWidget';
 import type { StockAnalysisPanel } from '@/components/StockAnalysisPanel';
 import type { StockBacktestPanel } from '@/components/StockBacktestPanel';
 import type { PredictionPanel } from '@/components/PredictionPanel';
-import type { MonitorPanel } from '@/components/MonitorPanel';
 import type { InsightsPanel } from '@/components/InsightsPanel';
-import type { ThreatTimelinePanel } from '@/components/ThreatTimelinePanel';
 import type { InternetDisruptionsPanel } from '@/components/InternetDisruptionsPanel';
 import type { StrategicPosturePanel } from '@/components/StrategicPosturePanel';
 import type { EconomicPanel } from '@/components/EconomicPanel';
@@ -1902,11 +1900,16 @@ export class DataLoaderManager implements AppModule {
       // their loading skeleton instead of asserting "no active hubs".
       this.ctx.clustersSettled = true;
 
-      const insightsPanel = this.ctx.panels['insights'] as InsightsPanel | undefined;
-      insightsPanel?.updateInsights(this.ctx.latestClusters);
+      // callPanel(), not `panels[key]?.method()`: both panels are deferred, and
+      // on a phone the IntersectionObserver margin is 700px — they are usually
+      // still unmounted shells when this pass completes. An optional-chained
+      // call drops the clustering result on the floor and the panel mounts
+      // minutes later onto its constructor's empty state, permanently (neither
+      // has a scheduled refresh). callPanel() queues instead, and panel-layout
+      // replays on lazy load. Both renders are safe while detached.
+      this.callPanel('insights', 'updateInsights', this.ctx.latestClusters);
       if (isPanelInVariantDefaults('threat-timeline')) {
-        const threatTimelinePanel = this.ctx.panels['threat-timeline'] as ThreatTimelinePanel | undefined;
-        void threatTimelinePanel?.refresh(this.ctx.latestClusters);
+        this.callPanel('threat-timeline', 'refresh', this.ctx.latestClusters);
       }
 
       hydrateGeoHubPanelFromClusters(
@@ -1930,11 +1933,9 @@ export class DataLoaderManager implements AppModule {
       }
     } catch (error) {
       console.error('[App] Clustering failed, clusters unchanged:', error);
-      const insightsPanel = this.ctx.panels['insights'] as InsightsPanel | undefined;
-      insightsPanel?.updateInsights([]);
+      this.callPanel('insights', 'updateInsights', []);
       if (isPanelInVariantDefaults('threat-timeline')) {
-        const threatTimelinePanel = this.ctx.panels['threat-timeline'] as ThreatTimelinePanel | undefined;
-        void threatTimelinePanel?.refresh([]);
+        this.callPanel('threat-timeline', 'refresh', []);
       }
     }
 
@@ -3942,8 +3943,14 @@ export class DataLoaderManager implements AppModule {
   }
 
   updateMonitorResults(): void {
-    const monitorPanel = this.ctx.panels['monitors'] as MonitorPanel | undefined;
-    monitorPanel?.renderResults(this.ctx.allNews);
+    // Queued, for the same reason as the cluster fan-out above: the boot call
+    // site is inside loadNews, which runs ONCE per work-list signature. Monitors
+    // is an opt-in panel, so it is always enabled mid-session and always mounts
+    // after that pass — an optional-chained call left its results area blank,
+    // which reads as "your keywords matched nothing" rather than as a panel that
+    // never got the news. The other two call sites (monitor edited, monitors
+    // list changed) run with the panel mounted and take callPanel's direct path.
+    this.callPanel('monitors', 'renderResults', this.ctx.allNews);
   }
 
   // Lazy-load the tech-activity service (→ tech-hub-index → the ~62KB tech-geo
