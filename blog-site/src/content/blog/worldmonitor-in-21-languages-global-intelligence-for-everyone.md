@@ -1,6 +1,6 @@
 ---
 title: "Intelligence Without Borders: World Monitor in 26 Languages"
-description: "World Monitor supports 26 languages with full RTL Arabic, CJK, and locale-specific news feeds. AI analysis and search in your preferred language, free."
+description: "World Monitor supports 27 languages with full RTL Arabic, CJK, and locale-specific news feeds. AI analysis and search in your preferred language, free."
 metaTitle: "World Monitor in 26 Languages | Multilingual OSINT"
 keywords: "multilingual intelligence dashboard, Arabic OSINT tool, Japanese intelligence platform, global dashboard localized, RTL intelligence dashboard"
 audience: "Non-English-speaking analysts, international organizations, global enterprises, multilingual researchers"
@@ -11,7 +11,7 @@ modifiedDate: "2026-07-22"
 
 The world doesn't operate in English. Crises unfold in Arabic. Markets move in Mandarin. Diplomatic cables are written in French. Military communications happen in Russian. Yet most intelligence platforms are English-only, forcing analysts to work in a second language during high-pressure situations.
 
-World Monitor speaks **26 languages** natively, with full interface localization, language-specific news feeds, AI analysis in your preferred language, and search that works in any supported script.
+World Monitor speaks **27 languages** natively, with full interface localization, language-specific news feeds, AI analysis in your preferred language, and search that works in any supported script.
 
 ## Full Interface Localization
 
@@ -105,7 +105,7 @@ When using local LLMs (Ollama, LM Studio), multilingual output depends on the mo
 
 ## Multilingual Command Palette
 
-The Cmd+K command palette indexes keywords in all 26 languages:
+The Cmd+K command palette indexes keywords in all 27 languages:
 
 - Search for "Allemagne" → Germany (French)
 - Search for "Japón" → Japan (Spanish)
@@ -125,7 +125,7 @@ You can manually switch languages at any time. The preference is saved to localS
 
 ### International Organizations (UN, NATO, EU)
 
-Staff from dozens of countries need a common intelligence picture in their working language. World Monitor's 26 languages cover the official languages of the UN (English, French, Spanish, Arabic, Chinese, Russian) and most NATO member languages.
+Staff from dozens of countries need a common intelligence picture in their working language. World Monitor's 27 languages cover the official languages of the UN (English, French, Spanish, Arabic, Chinese, Russian) and most NATO member languages.
 
 ### Multinational Corporations
 
@@ -171,4 +171,4 @@ Yes. World Monitor is open source and uses JSON-based translation files. Bilingu
 
 ---
 
-**Use World Monitor in your language at [worldmonitor.app](https://www.worldmonitor.app). 26 languages, full RTL support, locale-specific feeds. Free for everyone, everywhere.**
+**Use World Monitor in your language at [worldmonitor.app](https://www.worldmonitor.app). 27 languages, full RTL support, locale-specific feeds. Free for everyone, everywhere.**

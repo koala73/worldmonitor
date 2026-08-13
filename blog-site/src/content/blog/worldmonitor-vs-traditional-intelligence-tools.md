@@ -166,7 +166,7 @@ The AGPL-3.0 license ensures that improvements to the core platform benefit ever
 
 ## 26 Languages, Global Access
 
-Intelligence shouldn't be English-only. World Monitor supports **26 languages** with:
+Intelligence shouldn't be English-only. World Monitor supports **27 languages** with:
 
 - Fully localized interface including RTL for Arabic
 - Language-specific RSS feeds
