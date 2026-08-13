@@ -12,6 +12,11 @@ import path from 'node:path';
 import test from 'node:test';
 import { createLocalApiServer, __testing__ } from './local-api-server.mjs';
 
+test('keeps seed-owned defense snapshots cloud-preferred regardless of relay configuration', () => {
+  assert.equal(__testing__.isCloudPreferred('/api/bootstrap'), true);
+  assert.equal(__testing__.isCloudPreferred('/api/military/v1/get-defense-industrial-base'), true);
+});
+
 // The sidecar default-denies when LOCAL_API_TOKEN is unset (security fix:
 // previously "unset" meant "auth disabled", which made any standalone run
 // an open local-HTTP proxy). Set a stable test token + an authFetch helper
