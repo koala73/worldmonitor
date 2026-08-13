@@ -412,9 +412,11 @@ integration branch and create a Draft PR without changing `main`.
 
 ## Phase 12 - publication transport block
 
-The preflight record (`77fce4c05805f46b358b6958be5f489796e0d167`) and its
-SHA receipt (`2137cc70bd45bdc83f9b6bb39eaa1886125761c2`) are committed locally.
-The required ordinary push has **not** completed and no Draft PR exists.
+The preflight record (`77fce4c05805f46b358b6958be5f489796e0d167`), its SHA
+receipt (`2137cc70bd45bdc83f9b6bb39eaa1886125761c2`) and this transport-block
+record (`713572967a016143046800ec16598dfda1f124b3`) are committed locally.
+The following receipt records the immutable transport-block SHA. The required
+ordinary push has **not** completed and no Draft PR exists.
 
 Evidence from independent transports is consistent: the Codex runtime Git
 reset/fails its HTTPS connection; the system Git can read `origin/main` but a

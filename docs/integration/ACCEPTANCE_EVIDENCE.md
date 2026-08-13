@@ -340,3 +340,8 @@ the status of any Provider/data claim.
 preflight remains valid, but the integration branch, Draft PR, remote CI and
 deployment are not claimed. Resume only after the owner restores an
 authenticated HTTPS Git path or authorized SSH key outside chat/Git.
+
+**Transport-block record commit:**
+`713572967a016143046800ec16598dfda1f124b3`
+(`docs(integration): record Phase 12 transport block`). The following receipt
+commit backfills this immutable SHA; it does not change the blocked result.
