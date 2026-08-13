@@ -47,6 +47,7 @@ const REPO_ROOT = path.resolve(__dirname, '..');
 const HARNESS_PATH = 'scripts/dry-run-resilience-financial-system-exposure-flip.mjs';
 const FINANCIAL_DIMENSION_ID = 'financialSystemExposure';
 const FINANCIAL_FLAG = 'RESILIENCE_FIN_SYS_EXPOSURE_ENABLED';
+const FINANCE_WB_EXTERNAL_DEBT_KEY = 'economic:wb-external-debt:v1';
 const ACCEPTANCE_ARTIFACT_TYPE = 'resilience-financial-system-exposure-post-flip-acceptance';
 const GATE_THRESHOLDS = Object.freeze({
   SPEARMAN_VS_BASELINE_MIN: 0.85,
@@ -54,6 +55,13 @@ const GATE_THRESHOLDS = Object.freeze({
   MAX_NON_SANCTIONS_DELTA: 12,
 });
 const REPRESENTATIVE_COUNTRIES = ['US', 'PT', 'MC', 'RU', 'TD', 'ER', 'TW', 'VE'];
+
+export function normalizeProductionRead(key, raw) {
+  // The scorer needs the WB debt envelope's numeric schemaVersion to enforce
+  // the v2 non-DRS producer contract. Other seed readers receive the bare
+  // data shape, which matches defaultSeedReader's established behavior.
+  return key === FINANCE_WB_EXTERNAL_DEBT_KEY ? raw : unwrapEnvelope(raw).data;
+}
 
 const universe = Object.values(
   JSON.parse(readFileSync(path.join(REPO_ROOT, 'scripts/shared/sovereign-status.json'), 'utf8')).entries,
@@ -285,7 +293,7 @@ async function fetchKeyOnce(key) {
   const body = await response.json();
   if (body?.error) throw new Error(`Redis: ${body.error}`);
   if (body?.result == null) return null;
-  return unwrapEnvelope(JSON.parse(body.result)).data;
+  return normalizeProductionRead(key, JSON.parse(body.result));
 }
 
 async function readKey(key) {

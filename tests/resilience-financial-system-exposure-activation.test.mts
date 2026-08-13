@@ -6,6 +6,7 @@ import {
   ACCEPTANCE_ARTIFACT_TYPE,
   buildAcceptanceArtifact,
   evaluateGates,
+  normalizeProductionRead,
   validateAcceptanceArtifact,
 } from '../scripts/dry-run-resilience-financial-system-exposure-flip.mjs';
 
@@ -74,4 +75,20 @@ test('acceptance artifacts recompute their gates and preserve cache-generation e
 
   assert.equal(artifact.artifactType, ACCEPTANCE_ARTIFACT_TYPE);
   assert.equal(validateAcceptanceArtifact(artifact), 'PASS');
+});
+
+test('production reads preserve the WB debt envelope required by the fail-closed scorer', () => {
+  const envelope = {
+    _seed: { fetchedAt: 1, schemaVersion: 2 },
+    data: { countries: { US: { value: 1 } }, nonDrsCountryCodes: ['AD'] },
+  };
+
+  assert.deepEqual(
+    normalizeProductionRead('economic:wb-external-debt:v1', envelope),
+    envelope,
+  );
+  assert.deepEqual(
+    normalizeProductionRead('economic:bis-lbs:v1', envelope),
+    envelope.data,
+  );
 });
