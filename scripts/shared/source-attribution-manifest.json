@@ -6577,6 +6577,20 @@
       ]
     },
     {
+      "host": "tsimobile.viarail.ca",
+      "provider": "VIA Rail Tracker (unofficial)",
+      "kind": "structured",
+      "observed": true,
+      "license": "Unofficial undocumented JSON used by the VIA Rail Tracker; no published licence, schema, or SLA. Terms require review.",
+      "attribution": "VIA Rail Canada; unofficial live train JSON at tsimobile.viarail.ca. Not GTFS-Realtime; best-effort only.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "scripts/viarail-live.mjs"
+        }
+      ]
+    },
+    {
       "host": "tts.baidu.com",
       "provider": "tts.baidu.com",
       "kind": "structured",

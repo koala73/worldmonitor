@@ -485,6 +485,12 @@ const PROVIDER_OVERRIDES = {
     attribution: 'Excluded from the provider count: standards reference, not an ingested source.',
     status: 'excluded',
   },
+  'tsimobile.viarail.ca': {
+    provider: 'VIA Rail Tracker (unofficial)',
+    license: 'Unofficial undocumented JSON used by the VIA Rail Tracker; no published licence, schema, or SLA. Terms require review.',
+    attribution: 'VIA Rail Canada; unofficial live train JSON at tsimobile.viarail.ca. Not GTFS-Realtime; best-effort only.',
+    status: 'terms-review',
+  },
 };
 
 const LOGICAL_ENTRIES = [

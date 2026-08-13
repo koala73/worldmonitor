@@ -97,9 +97,9 @@ test('source inventory has complete metadata and matches the generated catalog',
   // Merge resolution: main's totals plus this branch's two new hosts (USDA FAS
   // PSD via api.fas.usda.gov, FAOSTAT via fenixservices.fao.org), so the merged
   // totals are neither side's numbers. Recomputed from the merged manifest.
-  assert.equal(stats.activeHosts, 536);
-  assert.equal(stats.providerCount, 534);
-  assert.equal(stats.observedHosts, 655);
+  assert.equal(stats.activeHosts, 537);
+  assert.equal(stats.providerCount, 535);
+  assert.equal(stats.observedHosts, 656);
   assert.ok(stats.reviewNeeded > 0, 'terms-review rows must remain visible until a license audit is complete');
 });
 

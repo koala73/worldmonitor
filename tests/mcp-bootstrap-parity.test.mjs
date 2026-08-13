@@ -67,6 +67,8 @@ const EXCLUDED_FROM_MCP = new Map([
     'operational: Japan Joint Staff transport status, errors, and last-success time consumed by api/health.js; #5580 owns final MCP composition for the separately attributed reviewed activity records.'],
   ['market:china:stock-connect:v1',
     'seeded and health-monitored only: #6155 delivers the SSE/SZSE Stock Connect turnover and margin data layer with no dashboard or MCP consumer yet. Exposing it now would advertise a slice whose framing still needs product review -- the series is GROSS northbound turnover, never the net flow the name suggests, because both exchanges stopped publishing the buy/sell split on 2024-08-16.'],
+  ['transit:viarail:live',
+    'seeded and health-monitored only: #6615 ingests unofficial VIA Rail Tracker JSON as an optional standalone source with no dashboard, proto, panel, or MCP consumer. The feed is undocumented and has no SLA; exposing it would advertise a slice that is best-effort last-good positions only.'],
   ['economic:fred:batch:v1',
     'operational: producer batch envelope written by seed-fred-rates for health and rollout validation; the individual FRED series are the queryable data surfaces, so the batch envelope is intentionally not exposed through MCP.'],
 

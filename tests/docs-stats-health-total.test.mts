@@ -338,8 +338,8 @@ describe('/api/health probed-key count doc gate (#6300)', () => {
     // only the conformance check can see it. Without this fixture, disabling
     // that check leaves all other tests green.
     const source = mutate(
-      "  intelHistoryIngestEnergyIntelligence:  'intel-history:ingest-health:energy:intelligence:v1',\n};",
-      "  intelHistoryIngestEnergyIntelligence:  'intel-history:ingest-health:energy:intelligence:v1',\n  ...EXTRA_STANDALONE_KEYS\n};",
+      "  viarailLive:           'transit:viarail:live',\n};",
+      "  viarailLive:           'transit:viarail:live',\n  ...EXTRA_STANDALONE_KEYS\n};",
     );
     assert.throws(() => parseHealthProbedKeys(source), /cannot read/);
   });
