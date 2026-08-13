@@ -9,12 +9,12 @@
 // meaning HEALTHY is the exact shape of the defect.
 //
 // The window is bounded by TIME, never by a run count, and that is what makes
-// the negative answer decidable. A count-bounded window was the first design
-// and it was unusable: this workflow is woken by every Deploy Gate evaluation
-// in the repository (~33/hour, measured), so the newest 30 runs span under an
-// hour and could never reach back past a three-hour threshold. The alarm could
-// not fire. With a time window, "no run in the window reconciled" is a proof —
-// including the window being EMPTY, which is the #6203 failure itself.
+// the negative answer decidable. A count-bounded window was unusable when every
+// Deploy Gate evaluation woke this workflow (~33/hour, measured): the newest 30
+// runs could not reach back past a three-hour threshold. Keep the time contract
+// under the bounded schedule so delayed or dropped ticks do not change the
+// liveness meaning. "No run in the window reconciled" is a proof, including an
+// EMPTY window, which is the #6203 failure itself.
 
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -130,10 +130,8 @@ describe('reconcile-age window summary', () => {
     assert.throws(() => summarizeReconcileHistory([]), /numeric now/);
   });
 
-  it('defaults the threshold to three times the workflow backstop interval', () => {
-    // Sized against the workflow's hourly cron backstop, not against a fixture:
-    // one missed hour is ordinary, three consecutive hours with nothing
-    // reconciling means neither the event nor the backstop is working.
+  it('keeps a three-hour liveness window around the bounded schedule', () => {
+    // The schedule gets 18 ten-minute opportunities before liveness alarms.
     assert.equal(DEFAULT_MAX_RECONCILE_AGE_MS, 3 * HOUR);
   });
 });
@@ -332,23 +330,18 @@ describe('the cross-file names this scanner depends on', () => {
     );
   });
 
-  it('names a workflow that actually exists, so the primary trigger cannot silently die', () => {
-    // `workflow_run.workflows` is a cross-file reference by DISPLAY NAME.
-    // Renaming Deploy Gate's `name:` would delete the reconciler's primary
-    // cadence and leave the hourly cron holding a green badge — the same
-    // silent-degradation shape #6203 is about, one indirection further out.
-    const upstream = workflow.on?.workflow_run?.workflows ?? [];
-    assert.ok(upstream.length > 0, 'the reconciler must declare an upstream workflow');
-    for (const name of upstream) {
-      const target = YAML.parse(readFileSync(
-        resolve(repoRoot, '.github/workflows/deploy-gate.yml'),
-        'utf8',
-      ));
-      assert.equal(
-        target.name,
-        name,
-        `railway-deploy-trigger waits on a workflow named ${JSON.stringify(name)}, but deploy-gate.yml is named ${JSON.stringify(target.name)}`,
-      );
-    }
+  it('uses a bounded schedule with enough attempts inside the liveness window', () => {
+    assert.equal(Object.hasOwn(workflow.on, 'workflow_run'), false);
+    const schedules = workflow.on?.schedule ?? [];
+    assert.deepEqual(schedules, [{ cron: '7,17,27,37,47,57 * * * *' }]);
+    const minutes = schedules[0].cron.split(' ')[0].split(',').map(Number);
+    const cyclic = [...minutes, minutes[0] + 60];
+    const gaps = cyclic.slice(1).map((minute, index) => minute - cyclic[index]);
+    const maxGapMinutes = Math.max(...gaps);
+    assert.equal(maxGapMinutes, 10);
+    assert.ok(
+      (DEFAULT_MAX_RECONCILE_AGE_MS / (maxGapMinutes * 60_000)) >= 18,
+      'the liveness window must include at least 18 scheduled attempts',
+    );
   });
 });
