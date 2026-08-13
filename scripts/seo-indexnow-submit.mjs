@@ -27,6 +27,10 @@ const BLOG_AUTHORS_DIR = new URL('../blog-site/src/pages/authors/', import.meta.
 const GLOSSARY_SOURCE = new URL('../blog-site/src/data/glossary.ts', import.meta.url);
 const ROOT_SITEMAP = new URL('../public/sitemap.xml', import.meta.url);
 const USER_AGENT = 'WorldMonitor-IndexNow/1.0 (+https://www.worldmonitor.app)';
+// Every host is submitted sequentially inside one 10-minute job, and fetch has
+// no default deadline — one unresponsive search engine would otherwise stall
+// the run until the job timeout and leave later hosts unsubmitted.
+const REQUEST_TIMEOUT_MS = 15_000;
 
 function decodeXml(value) {
   return String(value)
@@ -102,6 +106,12 @@ const WWW_URLS = uniqueSorted([
  * dashboards. Derived from the sitemap rather than restated so a new variant
  * cannot be silently omitted from IndexNow the way commodity and energy were
  * (#6563). The deploy workflow reads this export to submit each one.
+ *
+ * Deriving it makes this list agree with the sitemap by construction, so the
+ * sitemap cannot also be its proof: tests/indexnow-submit.test.mjs pins it to
+ * WEB_DASHBOARD_VARIANTS — the registry of variants the app actually serves —
+ * so a variant dropped upstream in build-sitemap.mjs fails there instead of
+ * quietly shrinking this list.
  */
 export const INDEXNOW_VARIANT_HOSTS = Object.freeze(
   uniqueSorted(ROOT_SITEMAP_URLS.map((url) => new URL(url).hostname))
@@ -144,6 +154,7 @@ export async function verifyIndexNowKey(batchConfig, { fetchImpl = globalThis.fe
   const response = await fetchImpl(batchConfig.keyLocation, {
     method: 'GET',
     redirect: 'manual',
+    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
     headers: {
       Accept: 'text/plain',
       'User-Agent': USER_AGENT,
@@ -163,6 +174,7 @@ export async function verifyIndexNowKey(batchConfig, { fetchImpl = globalThis.fe
 async function submit(endpoint, batchConfig, fetchImpl) {
   const response = await fetchImpl(endpoint, {
     method: 'POST',
+    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
     headers: {
       'Content-Type': 'application/json; charset=utf-8',
       'User-Agent': USER_AGENT,

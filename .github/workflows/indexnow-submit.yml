@@ -26,7 +26,10 @@ jobs:
         github.event.deployment.creator.login == 'vercel[bot]'
       )
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    # Seven hosts are now submitted sequentially rather than two; each request
+    # carries its own 15s deadline (REQUEST_TIMEOUT_MS), so this bounds a stuck
+    # run rather than being the only thing that ever stops one.
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         with:
@@ -96,11 +99,15 @@ jobs:
               || grep -Fxq "public/${APEX_KEY_PATH}" <<< "$CHANGED_FILES"; then
               SUBMIT_APEX=true
             fi
-            if grep -Eq '^(\.github/workflows/indexnow-submit\.yml|blog-site/src/.*|pro-test/index\.html|pro-test/src/.*|public/blog/.*|public/sitemap\.xml|scripts/build-crawlable-corpus\.mjs|scripts/build-sitemap\.mjs|scripts/seo-indexnow-submit\.mjs|vercel\.json)$' <<< "$CHANGED_FILES" \
+            if grep -Eq '^(\.github/workflows/indexnow-submit\.yml|blog-site/src/.*|pro-test/index\.html|pro-test/src/.*|public/blog/.*|public/pro/.*|public/sitemap\.xml|scripts/build-crawlable-corpus\.mjs|scripts/build-sitemap\.mjs|scripts/seo-indexnow-submit\.mjs|vercel\.json)$' <<< "$CHANGED_FILES" \
               || grep -Fxq "public/${WWW_KEY_PATH}" <<< "$CHANGED_FILES"; then
               SUBMIT_WWW=true
             fi
-            if grep -Eq '^(\.github/workflows/indexnow-submit\.yml|middleware\.ts|public/sitemap\.xml|scripts/build-sitemap\.mjs|scripts/seo-indexnow-submit\.mjs|src/config/variant-dashboard-html\.ts|src/config/variant-meta\.ts|vercel\.json)$' <<< "$CHANGED_FILES"; then
+            # Each variant batch submits the bare root as well as /dashboard, and
+            # vercel.json rewrites every variant root to /pro/welcome.html — so
+            # the welcome page's sources and committed build output change what
+            # five submitted URLs serve.
+            if grep -Eq '^(\.github/workflows/indexnow-submit\.yml|middleware\.ts|pro-test/index\.html|pro-test/src/.*|public/pro/.*|public/sitemap\.xml|scripts/build-sitemap\.mjs|scripts/seo-indexnow-submit\.mjs|src/config/variant-dashboard-html\.ts|src/config/variant-meta\.ts|vercel\.json)$' <<< "$CHANGED_FILES"; then
               SUBMIT_VARIANTS=true
             fi
             for key_path in $VARIANT_KEY_PATHS; do
@@ -125,6 +132,13 @@ jobs:
         # Every host is attempted even when one fails, so a single broken
         # variant cannot hide the state of the others.
         run: |
+          # An empty list would iterate zero times and exit 0 — green with zero
+          # submissions, the exact silent failure this step exists to end. Fail
+          # closed instead, so a lost gate output cannot look like success.
+          if [[ -z "${VARIANT_HOSTS// /}" ]]; then
+            echo "::error::no IndexNow variant hosts were derived from public/sitemap.xml"
+            exit 1
+          fi
           status=0
           for host in $VARIANT_HOSTS; do
             node scripts/seo-indexnow-submit.mjs --host "$host" || status=1
