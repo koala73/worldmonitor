@@ -49,3 +49,36 @@ next remote write is a normal (non-force) push of the named integration branch
 to the owner fork followed by a Draft PR to `daking32168-byte/worldmonitor:main`.
 No Provider, market, AIS, news, cargo, trade, factory, deployment or signing
 claim is implied by this publication preflight.
+
+## Publication transport result
+
+The Phase 12 preflight commit is
+`77fce4c05805f46b358b6958be5f489796e0d167`; its SHA receipt is
+`2137cc70bd45bdc83f9b6bb39eaa1886125761c2`. Neither commit is remote yet.
+
+1. The Codex runtime Git ordinary command
+   `git push --porcelain -u origin integration/pokieticker-maritime-china-factory`
+   did not finish in the bounded 64-second window. Its exact owned process
+   tree was stopped; follow-up native Git reads returned either `Recv failure:
+   Connection was reset` or a 443 connection failure.
+2. System Git `2.55.0.windows.3` independently read `origin/main` through
+   HTTP/1.1, but the identical non-force branch push failed with `Failed to
+   connect to github.com:443 after 21073 ms: Could not connect to server`.
+3. A batch-mode SSH probe reached `github.com` but returned `Permission denied
+   (publickey)`. No private key was inspected, generated or requested.
+4. The connected GitHub integration confirms owner-fork push permission and
+   remains able to read repository metadata, but its available mutations cannot
+   upload the existing local Git object pack. API reconstruction was rejected
+   because it would not preserve the actual 72-commit local/reversible chain.
+5. The final independent system-Git query was successful and returned only:
+
+   ```text
+   0fca203c776dd5fa4913c4bd52f99cd2c3c13a25    refs/heads/main
+   ```
+
+   Thus `main` remains unchanged and the integration branch is absent remotely.
+
+**Result:** `BLOCKED`. Do not claim a push, Draft PR, CI run, deployment,
+Provider activation or data-bearing result. Resume after an authenticated
+outbound HTTPS Git route or existing authorized SSH key is restored outside
+chat/Git, then perform the original normal non-force integration-branch push.

@@ -276,3 +276,12 @@ Phase 12 adds version-control provenance only:
    be treated as a market observation, K-line, AIS message, shipment/cargo
    fact, news causal conclusion, trade statistic or factory fact. Those
    branches remain closed until their separate source-bearing records exist.
+
+## Phase 12 transport-block lineage
+
+The block adds operational provenance, not product data: the recorded facts
+are HTTPS reset/connection failures, the SSH `publickey` denial, the successful
+read-only owner-main verification and the absence of the remote integration
+branch. These are release-transport observations only. They cannot be reused
+as evidence for a financial price, K-line, AIS/vessel/cargo event, news causal
+claim, trade value, factory status or Provider entitlement.

@@ -409,3 +409,32 @@ Markdown hard-break whitespace warning before publication. The evidence is
 
 Commit the Phase 12 preflight record, backfill its SHA, then publish the
 integration branch and create a Draft PR without changing `main`.
+
+## Phase 12 - publication transport block
+
+The preflight record (`77fce4c05805f46b358b6958be5f489796e0d167`) and its
+SHA receipt (`2137cc70bd45bdc83f9b6bb39eaa1886125761c2`) are committed locally.
+The required ordinary push has **not** completed and no Draft PR exists.
+
+Evidence from independent transports is consistent: the Codex runtime Git
+reset/fails its HTTPS connection; the system Git can read `origin/main` but a
+normal non-force push fails to connect to `github.com:443`; SSH reaches GitHub
+but returns `Permission denied (publickey)`. A final system-Git read verified
+that `origin/main` remains `0fca203c776dd5fa4913c4bd52f99cd2c3c13a25` and that
+`integration/pokieticker-maritime-china-factory` is absent remotely.
+
+The connected GitHub integration can verify the fork's push permission and can
+create a PR only after a branch exists, but it has no operation that uploads a
+local Git object pack. Reconstructing a fresh remote commit via API was
+rejected because it would discard the real local commit/SHA chain and violate
+the reversible-per-phase delivery requirement. No remote ref, `main`, upstream
+repository, Provider state, deployment or user file was changed.
+
+## Resume condition
+
+Restore one authenticated, outbound publication channel on this machine: a
+working HTTPS Git/Git Credential Manager or a GitHub-authorized SSH key. Do
+not paste any token, private key, password, cookie or CAPTCHA into chat or
+Git. The exact resume evidence and commands are in
+`docs/integration/evidence/phase12-publication-preflight.md`; the official
+GitHub login page and this status file are opened before pausing.

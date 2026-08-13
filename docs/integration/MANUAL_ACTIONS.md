@@ -215,3 +215,20 @@ will not be used to bypass the connected integration.
   payment data and CAPTCHA material outside chat, Git, screenshots and logs.
 - [ ] If a later deployment, release signing, paid Provider activation or
   upstream contribution is desired, explicitly authorize that separate action.
+
+## Phase 12 owner action required - publication transport (2026-08-14)
+
+The local commits and all preflight gates are complete, but the integration
+branch cannot yet be transmitted. The GitHub official login page has been
+opened in the default browser and the precise local status record is open for
+review.
+
+- [ ] Restore an authenticated HTTPS Git path for this machine. After logging
+  in outside chat, verify the terminal can run a normal `git push -u origin
+  integration/pokieticker-maritime-china-factory`; do not force push.
+- [ ] Or configure an existing GitHub-authorized SSH key in the operating
+  system and verify `ssh -T git@github.com`. Never paste a private key, PAT,
+  password, cookie, OAuth code or CAPTCHA into chat, Git, screenshots or logs.
+- [ ] Tell Codex only that the transport is restored. It will re-check the
+  remote branch, perform the normal branch-only push if still needed, create a
+  Draft PR, record its URL, and leave `main` untouched.

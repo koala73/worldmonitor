@@ -164,3 +164,11 @@ visibility only. It does not enable a Provider, create a credential, modify an
 entitlement, start a feed, or change any disabled/no-observation state. The PR
 must preserve every source/time/delay/license requirement already recorded in
 this matrix; a remote commit and passing CI are not Provider evidence.
+
+## Phase 12 publication transport block
+
+The absence of a successful Git push/PR is a source-control transport state,
+not a Provider state. It neither downgrades nor upgrades any provider row. In
+particular, do not compensate for a blocked publication by exposing a secret,
+enabling a feed, changing a data label or substituting test evidence for a
+source-bearing response.

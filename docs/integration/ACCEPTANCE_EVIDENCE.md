@@ -325,3 +325,18 @@ receipt commit backfills its immutable SHA before the branch is published.
 **Phase 12 preflight gate: PASSED FOR A BRANCH-ONLY DRAFT-PR PUBLICATION.** It
 does not publish a branch yet, certify remote CI, deploy a service, or change
 the status of any Provider/data claim.
+
+## Phase 12 - publication transport result
+
+| Check | Result | Evidence |
+|---|---|---|
+| Normal HTTPS push via Codex runtime Git | BLOCKED | `git push --porcelain -u origin integration/pokieticker-maritime-china-factory` exceeded the bounded wait; its owned process was stopped. Follow-up reads returned connection reset/failure to `github.com:443`. |
+| Normal HTTPS push via system Git | BLOCKED | System Git `2.55.0.windows.3` can read `origin/main`, but the same non-force push failed: `Failed to connect to github.com:443 after 21073 ms`. |
+| SSH alternative | BLOCKED | Batch SSH reached GitHub but returned `Permission denied (publickey)`; no private key was read, created or requested in chat. |
+| Remote mutation check | PASS: none occurred | Final system-Git `ls-remote` returned only `origin/main` at `0fca203c776dd5fa4913c4bd52f99cd2c3c13a25`; the integration branch is absent remotely. |
+| Plugin-only commit reconstruction | REJECTED | The connected GitHub integration lacks a local-object-pack upload operation. Creating replacement API commits would not preserve the real 72-commit local/reversible chain or its recorded SHA evidence. |
+
+**Phase 12 publication gate: BLOCKED ON LOCAL NETWORK/AUTH TRANSPORT.** The
+preflight remains valid, but the integration branch, Draft PR, remote CI and
+deployment are not claimed. Resume only after the owner restores an
+authenticated HTTPS Git path or authorized SSH key outside chat/Git.

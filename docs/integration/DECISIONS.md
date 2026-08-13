@@ -328,3 +328,18 @@ blanket staging/publishing action.
 **Consequence:** The Phase 11 commits and the Phase 12 documentation receipt
 are the only commits released by this phase. A remote PR is a review artifact,
 not a merge, deployment, Provider authorization or proof of live data.
+
+## D-0027 - Reject a replacement remote commit while transport is blocked
+
+**Decision:** Do not use GitHub's blob/tree/commit/ref APIs to synthesize a
+replacement remote branch while normal local Git transport is unavailable.
+
+**Reason:** The connected GitHub integration verifies write permission but does
+not upload the existing local object pack. Rebuilding one fresh commit would
+lose the 72 committed, reversible steps and invalidate the real SHAs already
+recorded in Phase 0-12 evidence.
+
+**Consequence:** Publication pauses honestly with no remote branch or PR until
+HTTPS Git authentication/networking or an existing authorized SSH route is
+restored. The only subsequent remote write remains a normal non-force push of
+the named integration branch to the owner fork.

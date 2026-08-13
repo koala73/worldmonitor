@@ -235,3 +235,13 @@ No fetch result was merged or rebased. Phase 12 may create/update only
 `origin/integration/pokieticker-maritime-china-factory` by a non-force push and
 may open only a Draft PR in `daking32168-byte/worldmonitor` targeting `main`.
 It must not push to, open a PR against, or mutate `koala73/worldmonitor`.
+
+## Phase 12 transport-block lock
+
+No remote write occurred. The final independent owner-fork query returned only
+`refs/heads/main` at `0fca203c776dd5fa4913c4bd52f99cd2c3c13a25`; no
+`integration/pokieticker-maritime-china-factory` remote ref exists. The failed
+transports were a non-force HTTPS Git push and a non-mutating SSH batch-auth
+probe; neither result authorizes a retry with `--force`, a direct `main` push,
+an upstream write, or remote commit reconstruction that loses local SHA
+lineage.
