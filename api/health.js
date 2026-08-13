@@ -798,6 +798,7 @@ const SEED_META = {
   marketCorrelationSeries: {
     key: 'seed-meta:market:correlation-series',
     maxStaleMin: 45,
+    minRecordCount: 6,
     cutover: {
       mode: 'expiring-ack',
       fromKey: null,

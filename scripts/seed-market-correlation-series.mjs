@@ -83,7 +83,7 @@ export async function fetchMarketCorrelationSeries({
 
 export function declareRecords(data) {
   return Array.isArray(data?.series)
-    ? data.series.reduce((total, item) => total + (Array.isArray(item?.points) ? item.points.length : 0), 0)
+    ? data.series.filter((item) => Array.isArray(item?.points) && item.points.length > 0).length
     : 0;
 }
 

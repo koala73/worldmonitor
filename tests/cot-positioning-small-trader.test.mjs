@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
 import { buildInstrument } from '../scripts/seed-cot.mjs';
+import { mapCotPositioning } from '../server/worldmonitor/market/v1/get-cot-positioning.ts';
 
 const target = { name: 'S&P 500 E-Mini', code: 'ES' };
 
@@ -59,5 +60,33 @@ describe('COT small-trader positioning', () => {
     assert.equal(instrument.smallTraderLong, 0);
     assert.equal(instrument.smallTraderShort, 0);
     assert.equal(instrument.smallTraderAvailable, false);
+  });
+
+  it('preserves the availability sentinel across the Redis-to-RPC boundary', async () => {
+    const response = mapCotPositioning({
+      reportDate: '2026-08-04',
+      instruments: [
+        {
+          name: 'Legacy', code: 'OLD', reportDate: '2026-08-04',
+          assetManagerLong: 1, assetManagerShort: 2,
+          leveragedFundsLong: 3, leveragedFundsShort: 4,
+          smallTraderLong: 0, smallTraderShort: 0,
+          dealerLong: 5, dealerShort: 6, netPct: 0,
+        },
+        {
+          name: 'Current', code: 'NEW', reportDate: '2026-08-04',
+          assetManagerLong: 1, assetManagerShort: 2,
+          leveragedFundsLong: 3, leveragedFundsShort: 4,
+          smallTraderLong: 7, smallTraderShort: 8, smallTraderAvailable: true,
+          dealerLong: 5, dealerShort: 6, netPct: 0,
+        },
+      ],
+    });
+
+    assert.equal(response.unavailable, false);
+    assert.equal(response.instruments[0].smallTraderAvailable, false);
+    assert.equal(response.instruments[1].smallTraderAvailable, true);
+    assert.equal(response.instruments[1].smallTraderLong, '7');
+    assert.equal(response.instruments[1].smallTraderShort, '8');
   });
 });

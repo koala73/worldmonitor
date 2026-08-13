@@ -6,6 +6,7 @@ import {
   fetchMarketCorrelationSeries,
   normalizeYahooSeries,
 } from '../scripts/seed-market-correlation-series.mjs';
+import { __testing__ as healthTesting } from '../api/health.js';
 
 function yahooFixture() {
   return {
@@ -53,7 +54,7 @@ describe('market correlation series seeder', () => {
     assert.equal(result.range, '14d');
     assert.equal(result.series.length, 1);
     assert.deepEqual(result.failures, [{ symbol: 'BTC-USD', reason: 'upstream-unavailable' }]);
-    assert.equal(declareRecords(result), 2);
+    assert.equal(declareRecords(result), 1);
   });
 
   it('rejects a run when every configured market fails', async () => {
@@ -65,5 +66,30 @@ describe('market correlation series seeder', () => {
       }),
       /all market correlation series fetches failed/i,
     );
+  });
+
+  it('reports partial health until every configured market is covered', () => {
+    const { BOOTSTRAP_KEYS, SEED_META, classifyKey } = healthTesting;
+    const dataKey = BOOTSTRAP_KEYS.marketCorrelationSeries;
+    const metaKey = SEED_META.marketCorrelationSeries.key;
+    const classify = (recordCount) => classifyKey(
+      'marketCorrelationSeries',
+      dataKey,
+      { allowOnDemand: true },
+      {
+        keyStrens: new Map([[dataKey, 2048]]),
+        keyErrors: new Map(),
+        keyMetaValues: new Map([[metaKey, JSON.stringify({
+          fetchedAt: Date.now() - 60_000,
+          recordCount,
+        })]]),
+        keyMetaErrors: new Map(),
+        now: Date.now(),
+      },
+    );
+
+    assert.equal(SEED_META.marketCorrelationSeries.minRecordCount, 6);
+    assert.equal(classify(1).status, 'COVERAGE_PARTIAL');
+    assert.equal(classify(6).status, 'OK');
   });
 });

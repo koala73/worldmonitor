@@ -3,6 +3,7 @@ import { describe, it } from 'node:test';
 
 import {
   analyzeNewsMarketCorrelation,
+  isMarketCorrelationPayload,
   type TimeSeriesPoint,
 } from '../src/services/news-market-correlation.ts';
 
@@ -72,6 +73,23 @@ describe('analyzeNewsMarketCorrelation', () => {
     assert.ok(result.leadLag.sampleSize >= 60);
   });
 
+  it('detects when market returns lead the news series by two hours', () => {
+    const newsValues = lcg(31, 72).map((value) => 10 + value * 90);
+    const news = newsValues.map((value, i) => point(i + 3, value));
+    const market = pricesFromReturns(newsValues.map((value) => value / 50_000));
+
+    const result = analyzeNewsMarketCorrelation(news, market, {
+      windowHours: 96,
+      maxLagHours: 6,
+    });
+
+    assert.equal(result.leadLag.relationship, 'market-leads');
+    assert.equal(result.leadLag.hours, 2);
+    assert.ok(result.leadLag.coefficient !== null);
+    assert.ok(result.leadLag.coefficient > 0.99);
+    assert.ok(result.leadLag.sampleSize >= 60);
+  });
+
   it('renders an uncorrelated fixture as no clear relationship', () => {
     const newsValues = lcg(123, 240).map((value) => 1 + value * 99);
     const returns = lcg(987654, 240).map((value) => (value - 0.5) / 100);
@@ -103,5 +121,34 @@ describe('analyzeNewsMarketCorrelation', () => {
     assert.equal(result.confidenceInterval, null);
     assert.equal(result.relationship, 'insufficient-data');
     assert.equal(result.leadLag.relationship, 'neither');
+  });
+
+  it('does not turn a two-hour price move into an hourly return', () => {
+    const result = analyzeNewsMarketCorrelation(
+      [point(2, 50)],
+      [point(0, 100), point(2, 110)],
+      { windowHours: 24, maxLagHours: 0 },
+    );
+
+    assert.deepEqual(result.alignedPoints, []);
+    assert.equal(result.sampleSize, 0);
+  });
+});
+
+describe('isMarketCorrelationPayload', () => {
+  it('accepts the persisted series shape and rejects malformed arrays', () => {
+    const valid = {
+      updatedAt: point(1, 1).timestamp,
+      range: '14d',
+      interval: '1h',
+      series: [{ symbol: '^GSPC', label: 'S&P 500', points: [point(1, 100)] }],
+    };
+
+    assert.equal(isMarketCorrelationPayload(valid), true);
+    assert.equal(isMarketCorrelationPayload({ ...valid, series: {} }), false);
+    assert.equal(isMarketCorrelationPayload({
+      ...valid,
+      series: [{ ...valid.series[0], points: [{ timestamp: point(1, 1).timestamp, value: '100' }] }],
+    }), false);
   });
 });

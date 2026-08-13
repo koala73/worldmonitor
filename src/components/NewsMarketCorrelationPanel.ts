@@ -3,25 +3,14 @@ import { fetchTopicTimeline, INTEL_TOPICS } from '@/services/gdelt-intel';
 import { ensureHydrated } from '@/services/bootstrap';
 import {
   analyzeNewsMarketCorrelation,
+  isMarketCorrelationPayload,
   parseSeriesTimestamp,
+  type MarketCorrelationPayload,
+  type MarketCorrelationSeries,
   type NewsMarketCorrelationResult,
   type TimeSeriesPoint,
 } from '@/services/news-market-correlation';
 import { escapeHtml, unsafeRawHtml } from '@/utils/sanitize';
-
-interface MarketCorrelationSeries {
-  symbol: string;
-  label: string;
-  points: TimeSeriesPoint[];
-}
-
-interface MarketCorrelationPayload {
-  updatedAt: string;
-  range: string;
-  interval: string;
-  series: MarketCorrelationSeries[];
-  failures?: Array<{ symbol: string; reason: string }>;
-}
 
 const MARKET_OPTIONS = [
   { symbol: '^GSPC', label: 'S&P 500' },
@@ -171,6 +160,7 @@ export class NewsMarketCorrelationPanel extends Panel {
   private windowHours = 168;
   private hasData = false;
   private requestGeneration = 0;
+  private renderedSelection: { topic: string; symbol: string; windowHours: number } | null = null;
 
   constructor() {
     super({
@@ -190,15 +180,19 @@ export class NewsMarketCorrelationPanel extends Panel {
     const windowHours = this.windowHours;
     if (!this.hasData) this.showLoading();
     try {
-      const [marketPayload, topicTimeline] = await Promise.all([
-        ensureHydrated('marketCorrelationSeries') as Promise<MarketCorrelationPayload | undefined>,
+      const [hydratedMarketPayload, topicTimeline] = await Promise.all([
+        ensureHydrated('marketCorrelationSeries'),
         fetchTopicTimeline(selectedTopic),
       ]);
       if (generation !== this.requestGeneration) return false;
+      const marketPayload = isMarketCorrelationPayload(hydratedMarketPayload)
+        ? hydratedMarketPayload
+        : undefined;
       const selectedMarket = marketPayload?.series?.find((item) => item.symbol === selectedSymbol);
       const market = selectedMarket?.points?.length ? selectedMarket : marketPayload?.series?.find((item) => item.points?.length);
       if (!topicTimeline?.vol?.length || !market?.points?.length || !marketPayload) {
-        if (!this.hasData) this.showError('Correlation series unavailable', () => void this.fetchData(), 300);
+        if (this.hasData) this.restoreRenderedSelection();
+        else this.showError('Correlation series unavailable', () => void this.fetchData(), 300);
         return false;
       }
       this.selectedSymbol = market.symbol;
@@ -208,15 +202,35 @@ export class NewsMarketCorrelationPanel extends Panel {
         maxLagHours: 6,
       });
       this.hasData = true;
+      this.renderedSelection = {
+        topic: selectedTopic,
+        symbol: market.symbol,
+        windowHours,
+      };
       this.renderPanel(newsPoints, marketPayload, market, analysis, windowHours);
       return true;
     } catch (error) {
       if (generation !== this.requestGeneration) return false;
-      if (!this.hasData) {
+      if (this.hasData) {
+        this.restoreRenderedSelection();
+      } else {
         this.showError(error instanceof Error ? error.message : 'Failed to load correlation series', () => void this.fetchData(), 300);
       }
       return false;
     }
+  }
+
+  private restoreRenderedSelection(): void {
+    if (!this.renderedSelection) return;
+    this.selectedTopic = this.renderedSelection.topic;
+    this.selectedSymbol = this.renderedSelection.symbol;
+    this.windowHours = this.renderedSelection.windowHours;
+    const topic = this.content.querySelector<HTMLSelectElement>('[data-role="news-topic"]');
+    const market = this.content.querySelector<HTMLSelectElement>('[data-role="market-symbol"]');
+    const window = this.content.querySelector<HTMLSelectElement>('[data-role="window-hours"]');
+    if (topic) topic.value = this.selectedTopic;
+    if (market) market.value = this.selectedSymbol;
+    if (window) window.value = String(this.windowHours);
   }
 
   private renderPanel(

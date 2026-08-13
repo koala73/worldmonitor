@@ -3,6 +3,44 @@ export interface TimeSeriesPoint {
   value: number;
 }
 
+export interface MarketCorrelationSeries {
+  symbol: string;
+  label: string;
+  points: TimeSeriesPoint[];
+}
+
+export interface MarketCorrelationPayload {
+  updatedAt: string;
+  range: string;
+  interval: string;
+  series: MarketCorrelationSeries[];
+  failures?: Array<{ symbol: string; reason: string }>;
+}
+
+function isTimeSeriesPoint(value: unknown): value is TimeSeriesPoint {
+  if (!value || typeof value !== 'object') return false;
+  const point = value as Partial<TimeSeriesPoint>;
+  return typeof point.timestamp === 'string' && Number.isFinite(point.value);
+}
+
+export function isMarketCorrelationPayload(value: unknown): value is MarketCorrelationPayload {
+  if (!value || typeof value !== 'object') return false;
+  const payload = value as Partial<MarketCorrelationPayload>;
+  if (
+    typeof payload.updatedAt !== 'string'
+    || typeof payload.range !== 'string'
+    || typeof payload.interval !== 'string'
+    || !Array.isArray(payload.series)
+  ) return false;
+
+  return payload.series.every((series) => Boolean(series)
+    && typeof series === 'object'
+    && typeof series.symbol === 'string'
+    && typeof series.label === 'string'
+    && Array.isArray(series.points)
+    && series.points.every(isTimeSeriesPoint));
+}
+
 export interface ConfidenceInterval {
   low: number;
   high: number;
@@ -162,7 +200,7 @@ export function analyzeNewsMarketCorrelation(
   for (let i = 1; i < marketEntries.length; i += 1) {
     const [previousTime, previousPrice] = marketEntries[i - 1]!;
     const [time, price] = marketEntries[i]!;
-    if (time - previousTime > bucketMs * 2 || previousPrice <= 0) continue;
+    if (time - previousTime !== bucketMs || previousPrice <= 0) continue;
     returns.set(time, (price - previousPrice) / previousPrice);
   }
 
