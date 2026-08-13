@@ -1,7 +1,7 @@
 import i18next from 'i18next';
 import LanguageDetector from 'i18next-browser-languagedetector';
 import en from './locales/en.json';
-import { resolveEffectiveWelcomeContentLanguage } from './welcome-language';
+import { isTraditionalChineseTag, resolveEffectiveWelcomeContentLanguage } from './welcome-language';
 
 type TranslationDictionary = Record<string, unknown>;
 
@@ -17,15 +17,12 @@ const localeModules = import.meta.glob<TranslationDictionary>(
   { import: 'default' },
 );
 
-// Mirror of TRADITIONAL_CHINESE_TAGS in src/services/i18n.ts — resolved before
-// the region suffix is stripped so zh-TW/zh-HK/zh-Hant reach the Traditional
-// dictionary instead of collapsing onto Simplified `zh`.
-const TRADITIONAL_CHINESE_TAGS = new Set(['zh-tw', 'zh-hk', 'zh-mo', 'zh-hant']);
-
 function normalize(lng: string): SupportedLanguage {
-  const tag = (lng || 'en').toLowerCase();
-  if (TRADITIONAL_CHINESE_TAGS.has(tag) || tag.startsWith('zh-hant')) return 'zh-TW';
-  const base = tag.split('-')[0] || 'en';
+  // isTraditionalChineseTag comes from welcome-language so this root has one
+  // copy of the rule, not two that can drift; the resolution has to run before
+  // the region suffix is stripped or zh-TW/zh-HK/zh-Hant collapse onto `zh`.
+  if (isTraditionalChineseTag(lng)) return 'zh-TW';
+  const base = (lng || 'en').toLowerCase().split('-')[0] || 'en';
   return SUPPORTED_SET.has(base as SupportedLanguage) ? base as SupportedLanguage : 'en';
 }
 
