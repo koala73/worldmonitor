@@ -57,6 +57,14 @@ export const DATASET_TO_DIMENSIONS: Readonly<Record<string, ReadonlyArray<Resili
   appliedTariffRate: ['tradePolicy'],
 };
 
+// Country/source pairs that are permanently outside an upstream's political
+// or statistical universe. Their missing rows are structural absences, not
+// adapter outages. Keep this narrow and evidence-backed: Taiwan is structurally
+// absent from WGI while remaining in the CRI universe.
+const STRUCTURAL_DATASET_ABSENCES: Readonly<Record<string, ReadonlySet<string>>> = {
+  wgi: new Set(['TW']),
+};
+
 /**
  * Read the resilience-static seed-meta and extract the failed dataset
  * adapter keys. Returns an empty array when the seed-meta is missing,
@@ -84,9 +92,14 @@ export async function readFailedDatasets(
  */
 export function failedDimensionsFromDatasets(
   failedDatasets: ReadonlyArray<string>,
+  countryCode?: string,
 ): Set<ResilienceDimensionId> {
   const out = new Set<ResilienceDimensionId>();
+  const normalizedCountryCode = countryCode?.trim().toUpperCase();
   for (const key of failedDatasets) {
+    if (normalizedCountryCode && STRUCTURAL_DATASET_ABSENCES[key]?.has(normalizedCountryCode)) {
+      continue;
+    }
     const dims = DATASET_TO_DIMENSIONS[key];
     if (!dims) continue;
     for (const dim of dims) out.add(dim);

@@ -19,6 +19,7 @@ import { describe, it } from 'node:test';
 
 import {
   combineExternalDebt,
+  createWbExternalDebtSeedOptions,
   deriveNonDrsCountryCodes,
   validate,
 } from '../scripts/seed-wb-external-debt.mjs';
@@ -172,5 +173,14 @@ describe('validate', () => {
       ample[`X${i.toString().padStart(2, '0')}`] = { value: 5, year: 2023 };
     }
     assert.equal(validate({ countries: ample, nonDrsCountryCodes: countryCodes(50) }), true);
+  });
+});
+
+describe('published seed contract', () => {
+  it('pins the canonical envelope at schema v2', () => {
+    const options = createWbExternalDebtSeedOptions(new Date('2026-08-12T00:00:00.000Z'));
+    assert.equal(options.schemaVersion, 2);
+    assert.equal(options.sourceVersion, 'wb-ids-2026');
+    assert.equal(options.validateFn, validate, 'the published schema must use the tested cohort validator');
   });
 });

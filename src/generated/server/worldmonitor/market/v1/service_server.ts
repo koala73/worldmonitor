@@ -511,6 +511,9 @@ export interface CotInstrument {
   dealerLong: string;
   dealerShort: string;
   netPct: number;
+  smallTraderLong: string;
+  smallTraderShort: string;
+  smallTraderAvailable: boolean;
 }
 
 export interface GetInsiderTransactionsRequest {

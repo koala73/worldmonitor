@@ -14,6 +14,9 @@ import { fileURLToPath } from 'node:url';
 
 import YAML from 'yaml';
 
+import { DEEP_PASS_RUN_BUDGET_MS } from '../scripts/check-railway-deploy-drift.mjs';
+import { RAILWAY_CALL_TIMEOUT_MS } from '../scripts/railway-cli.mjs';
+
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const workflowSource = readFileSync(
   resolve(repoRoot, '.github/workflows/seed-freshness-monitor.yml'),
@@ -21,13 +24,15 @@ const workflowSource = readFileSync(
 );
 const workflow = YAML.parse(workflowSource);
 const monitorSteps = workflow.jobs.monitor.steps;
+const driftJob = workflow.jobs.drift;
+const driftSteps = driftJob?.steps ?? [];
 
 // The one condition allowed to stop a probe: the fail-closed green-main gate.
 // Anything else (an earlier probe failing) must leave the later probes running.
 const GATE_GUARD = "${{ !cancelled() && steps.gate.conclusion != 'failure' }}";
 
-function stepNamed(name) {
-  const step = monitorSteps.find((candidate) => candidate.name === name);
+function stepNamed(name, steps = monitorSteps) {
+  const step = steps.find((candidate) => candidate.name === name);
   assert.ok(step, `seed freshness workflow must define "${name}"`);
   return step;
 }
@@ -366,7 +371,6 @@ describe('seed freshness workflow control plane', () => {
       'actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10',
       'credential-bearing workflows must pin checkout to the repository-standard immutable SHA',
     );
-
     const installIndex = monitorSteps.findIndex(
       (step) => step.name === 'Install pinned Railway CLI',
     );
@@ -375,9 +379,6 @@ describe('seed freshness workflow control plane', () => {
     );
     const auditIndex = monitorSteps.findIndex(
       (step) => step.name === 'Audit Railway ingestion deployment controls',
-    );
-    const driftIndex = monitorSteps.findIndex(
-      (step) => step.name === 'Check Railway deploy drift against main',
     );
     const healthIndex = monitorSteps.findIndex(
       (step) => step.name === 'Check ingestion operational acceptance',
@@ -388,57 +389,24 @@ describe('seed freshness workflow control plane', () => {
       installIndex < contextIndex && contextIndex < auditIndex && auditIndex < healthIndex,
       'Railway context and watch-path drift must be checked before compact health',
     );
-    // Deploy drift runs LAST. It fails whenever any service is off head —
-    // including on a baseline expiry — and a failing step cancels the ones
-    // behind it, so ordering it before compact health would let a deploy-drift
-    // problem silently stop the data-health probe entirely.
-    assert.ok(
-      healthIndex < driftIndex,
-      'deploy drift must not be able to cancel the compact-health probe',
+    assert.equal(
+      monitorSteps.some((step) => step.name === 'Check Railway deploy drift against main'),
+      false,
+      'deploy drift needs its own job conclusion instead of inheriting the gated monitor result',
     );
 
-    // Two questions need local history: `git merge-base --is-ancestor` for a
-    // merge that landed mid-run, and (#6142) the diff between the commit each
-    // service is RUNNING and head. The second is why a fixed depth no longer
-    // does — a service legitimately weeks behind on code it does not contain
-    // sits outside any of them, and an unreachable running commit reports as
-    // CLOSURE_UNKNOWN. Full history, no blobs.
+    // The scheduled gate may walk first-parent history to find a recent gated
+    // ancestor. Keep that proof available without downloading blobs.
     assert.equal(
       checkout.with?.['fetch-depth'],
       0,
-      'the deploy-drift check needs history back to each service\'s running commit',
+      'the green-main gate needs full first-parent history for ancestor fallback',
     );
     assert.equal(
       checkout.with?.filter,
       'blob:none',
-      'full history must be fetched without blobs — the closure diff walks trees only',
+      'the gate history walk needs commits and trees, not blobs',
     );
-
-    const drift = monitorSteps[driftIndex];
-    assert.equal(drift.env.RAILWAY_TOKEN, '${{ secrets.RAILWAY_PRODUCTION_TOKEN }}');
-    assert.equal(drift.env.RAILWAY_PROJECT_ID, '${{ vars.RAILWAY_PROJECT_ID }}');
-    assert.match(drift.run, /node scripts\/check-railway-deploy-drift\.mjs/);
-    assert.match(
-      drift.run,
-      /git fetch --quiet origin main/,
-      'a merge landing mid-run must be resolvable as ahead, not reported as behind',
-    );
-    // Passing --depth to a full clone SHALLOWS it, which would strand exactly
-    // the running commits the closure comparison needs — the checkout above
-    // fetches full history precisely so this cannot happen.
-    assert.doesNotMatch(
-      drift.run,
-      /git fetch[^\n]*--depth/,
-      're-fetching with a depth would re-shallow the full-history checkout',
-    );
-    assert.equal(
-      drift['continue-on-error'],
-      undefined,
-      'a merge that never reached production must fail the monitor, not annotate it',
-    );
-    // Gated on the green-main check only, exactly as compact health is: an
-    // earlier probe's failure must not be able to skip this one.
-    assert.equal(drift.if, GATE_GUARD, 'deploy drift stays behind the fail-closed gate and nothing else');
 
     assert.equal(
       workflow.jobs.monitor['timeout-minutes'],
@@ -449,6 +417,11 @@ describe('seed freshness workflow control plane', () => {
       workflow.concurrency,
       { group: 'seed-freshness-monitor', 'cancel-in-progress': true },
       'a run slower than the interval must be superseded, not stacked',
+    );
+    assert.equal(workflow.on.schedule[0].cron, '*/15 * * * *');
+    assert.ok(
+      DEEP_PASS_RUN_BUDGET_MS + RAILWAY_CALL_TIMEOUT_MS < 15 * 60 * 1000,
+      'the run deadline plus one last Railway timeout must finish before the next tick supersedes it',
     );
 
     assert.match(
@@ -502,5 +475,105 @@ describe('seed freshness workflow control plane', () => {
       const result = runRailwayContext(options);
       assert.notEqual(result.status, 0, `${label} must fail before the Railway audit`);
     }
+  });
+
+  it('publishes Railway deploy drift as an independent job conclusion', () => {
+    assert.ok(driftJob, 'workflow must define a dedicated drift job');
+    assert.equal(
+      driftJob.needs,
+      undefined,
+      'a gate failure must not skip the drift job or collapse its verdict into the monitor job',
+    );
+    assert.equal(driftJob.if, undefined, 'the independent drift job must run under default job semantics');
+    assert.equal(driftJob.name, 'Railway deploy drift');
+    assert.equal(driftJob['timeout-minutes'], 20);
+    // The STEP-level guard below is not enough: `continue-on-error` on the JOB
+    // publishes success over a failed drift step, which is the one thing this
+    // job's conclusion must never do. `monitor` already pins the job-level key.
+    assert.equal(
+      driftJob['continue-on-error'],
+      undefined,
+      'a green drift job must mean a clean fleet',
+    );
+    assert.deepEqual(driftJob.environment, {
+      name: 'ingestion-acceptance-production',
+      deployment: false,
+    });
+
+    const budgetStart = stepNamed('Start deploy-drift run budget', driftSteps);
+    assert.equal(driftSteps.indexOf(budgetStart), 0, 'the run budget must start before checkout and every prerequisite');
+    assert.match(budgetStart.run, /RAILWAY_DRIFT_JOB_STARTED_AT_MS=.*date \+%s%3N/);
+
+    const checkout = driftSteps.find(
+      (step) => typeof step.uses === 'string' && step.uses.startsWith('actions/checkout@'),
+    );
+    assert.ok(checkout, 'drift job must check out the trigger-head repository state');
+    assert.equal(checkout.uses, 'actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10');
+    assert.equal(checkout.with?.['fetch-depth'], 0);
+    assert.equal(checkout.with?.filter, 'blob:none');
+    // This checkout IS the comparison head: check-railway-deploy-drift.mjs resolves
+    // it with `git rev-parse HEAD`. Pinning `ref:` to anything else grades a stale
+    // tree, which reports a clean fleet while main sits undeployed.
+    assert.equal(
+      checkout.with?.ref,
+      undefined,
+      'the drift verdict must be measured against trigger head, not a pinned ref',
+    );
+
+    const setupNode = driftSteps.find(
+      (step) => typeof step.uses === 'string' && step.uses.startsWith('actions/setup-node@'),
+    );
+    assert.ok(setupNode, 'drift job must set up Node independently');
+    assert.equal(setupNode.uses, 'actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020');
+    assert.equal(setupNode.with?.['node-version'], '24');
+
+    const install = stepNamed('Install pinned Railway CLI', driftSteps);
+    assert.match(install.run, /npm install --global @railway\/cli@5\.30\.1/);
+
+    const context = stepNamed('Verify Railway production context', driftSteps);
+    assert.equal(context.env.RAILWAY_TOKEN, '${{ secrets.RAILWAY_PRODUCTION_TOKEN }}');
+    assert.equal(context.env.RAILWAY_PROJECT_ID, '${{ vars.RAILWAY_PROJECT_ID }}');
+    assert.match(
+      context.run,
+      /railway status --project "\$RAILWAY_PROJECT_ID" --environment production --json > \/dev\/null/,
+    );
+
+    const drift = stepNamed('Check Railway deploy drift against main', driftSteps);
+    assert.equal(drift.env.RAILWAY_TOKEN, '${{ secrets.RAILWAY_PRODUCTION_TOKEN }}');
+    assert.equal(drift.env.RAILWAY_PROJECT_ID, '${{ vars.RAILWAY_PROJECT_ID }}');
+    assert.match(drift.run, /node scripts\/check-railway-deploy-drift\.mjs/);
+    assert.match(
+      drift.run,
+      /git fetch --quiet origin main/,
+      'a merge landing mid-run must be resolvable as ahead, not reported as behind',
+    );
+    assert.doesNotMatch(
+      drift.run,
+      /git fetch[^\n]*--depth/,
+      're-fetching with a depth would re-shallow the full-history checkout',
+    );
+    // The script's exit code IS the fleet verdict. `git fetch ... || true` sits one
+    // line above it in the same run block, so a copied suffix is the likely way this
+    // regresses -- and YAML `continue-on-error` is not the only way to swallow it.
+    assert.doesNotMatch(
+      drift.run,
+      /check-railway-deploy-drift\.mjs[^\n]*\|\|/,
+      'shell suppression would publish a green drift job over a stranded fleet',
+    );
+    assert.equal(
+      drift['continue-on-error'],
+      undefined,
+      'a merge that never reached production must fail the drift job',
+    );
+    assert.equal(drift.if, undefined, 'no monitor gate expression may suppress the drift verdict');
+    assert.doesNotMatch(JSON.stringify(driftJob), /steps\.gate|needs\s*:/);
+    // Deliberate divergence from `monitor`, which detaches onto a gated ancestor when
+    // the gate falls back. The fleet is always judged against trigger head -- the
+    // strict reading. Pinned here so the baseline cannot change without a test edit.
+    assert.equal(
+      driftSteps.some((step) => typeof step.run === 'string' && step.run.includes('git checkout')),
+      false,
+      'drift is judged against trigger head; a gated-ancestor checkout would silently move the baseline',
+    );
   });
 });

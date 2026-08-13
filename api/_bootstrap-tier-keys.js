@@ -128,6 +128,7 @@ export const BOOTSTRAP_CACHE_KEYS = Object.freeze({
   energyCrisisPolicies: 'energy:crisis-policies:v1',
   aaiiSentiment: 'market:aaii-sentiment:v1',
   breadthHistory: 'market:breadth-history:v1',
+  marketCorrelationSeries: 'market:correlation-series:v1',
 });
 
 const SLOW_KEY_NAMES = new Set([
@@ -200,6 +201,7 @@ const ON_DEMAND_KEY_NAMES = new Set([
   // Sets with a bare quote matcher, so one apostrophe in prose opens a phantom
   // string and gets registered as a duplicate key.
   'fxYoy', 'sharedFxRates',
+  'marketCorrelationSeries',
 ]);
 
 /**

@@ -93,6 +93,82 @@ test('classifyKey: fresh seed + data → OK', () => {
   assert.equal(entry.status, 'OK');
 });
 
+test('classifyKey: non-empty failedDatasets surfaces a partial static seed as SEED_ERROR', () => {
+  const entry = classifyKey(
+    'resilienceStaticIndex',
+    STANDALONE_KEYS.resilienceStaticIndex,
+    { allowOnDemand: false },
+    makeCtx({
+      strens: { [STANDALONE_KEYS.resilienceStaticIndex]: 4096 },
+      metaValues: {
+        [SEED_META.resilienceStaticIndex.key]: seedMeta({
+          status: 'ok',
+          recordCount: 196,
+          failedDatasets: ['wgi'],
+        }),
+      },
+    }),
+  );
+
+  assert.equal(entry.status, 'SEED_ERROR');
+  assert.deepEqual(entry.failedDatasets, ['wgi']);
+  const snapshot = {
+    status: 'WARNING',
+    summary: { total: 1, ok: 0, warn: 1, crit: 0 },
+    checkedAt: new Date(NOW).toISOString(),
+    checks: { resilienceStaticIndex: entry },
+  };
+  assert.deepEqual(
+    healthResponseBody(snapshot, true).problems.resilienceStaticIndex.failedDatasets,
+    ['wgi'],
+  );
+  assert.deepEqual(
+    healthResponseBody(healthResponseBody(snapshot, true), true).problems.resilienceStaticIndex.failedDatasets,
+    ['wgi'],
+    'the cached compact snapshot preserves the failed adapter projection',
+  );
+
+  const siblingEntry = classifyKey(
+    'resilienceStaticFao',
+    STANDALONE_KEYS.resilienceStaticFao,
+    { allowOnDemand: false },
+    makeCtx({
+      strens: { [STANDALONE_KEYS.resilienceStaticFao]: 4096 },
+      metaValues: {
+        [SEED_META.resilienceStaticFao.key]: seedMeta({
+          status: 'ok',
+          recordCount: 196,
+          failedDatasets: ['wgi'],
+        }),
+      },
+    }),
+  );
+  assert.equal(siblingEntry.status, 'OK');
+  assert.equal(siblingEntry.failedDatasets, undefined);
+});
+
+test('classifyKey: failedDatasets projection validates, deduplicates, and stops at 50 entries', () => {
+  const valid = Array.from({ length: 60 }, (_, index) => `dataset-${index}`);
+  const entry = classifyKey(
+    'resilienceStaticIndex',
+    STANDALONE_KEYS.resilienceStaticIndex,
+    { allowOnDemand: false },
+    makeCtx({
+      strens: { [STANDALONE_KEYS.resilienceStaticIndex]: 4096 },
+      metaValues: {
+        [SEED_META.resilienceStaticIndex.key]: seedMeta({
+          status: 'ok',
+          recordCount: 196,
+          failedDatasets: [null, '', 'x'.repeat(101), valid[0], valid[0], ...valid.slice(1)],
+        }),
+      },
+    }),
+  );
+
+  assert.equal(entry.status, 'SEED_ERROR');
+  assert.deepEqual(entry.failedDatasets, valid.slice(0, 50));
+});
+
 test('classifyKey: resilience ranking and interval metadata must match the active cache state', () => {
   const original = {
     RESILIENCE_PILLAR_COMBINE_ENABLED: process.env.RESILIENCE_PILLAR_COMBINE_ENABLED,

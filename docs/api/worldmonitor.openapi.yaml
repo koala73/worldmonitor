@@ -45710,6 +45710,18 @@ components:
                 netPct:
                     type: number
                     format: double
+                smallTraderLong:
+                    type: string
+                    format: int64
+                    description: |-
+                        Non-reportable positions are the CFTC series closest to small traders.
+                         They are a residual category, not a direct measurement of all retail flow.
+                smallTraderShort:
+                    type: string
+                    format: int64
+                smallTraderAvailable:
+                    type: boolean
+                    description: False for cache rows written before the non-reportable fields were added.
         worldmonitor_market_v1_GetInsiderTransactionsRequest:
             type: object
             properties:

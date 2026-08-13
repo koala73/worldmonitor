@@ -143,6 +143,15 @@ export function validateAcceptanceBaseline(baseline) {
     ) {
       throw new Error(`Acknowledged baseline entry ${entry.name} needs a valid UTC ISO expiresAt instant`);
     }
+    // Optional rejection cohort: when present it must be a non-empty list of
+    // non-empty strings, or the cohort guard in applyAcceptanceBaseline would
+    // silently scope the acknowledgment to nothing.
+    if (Object.hasOwn(entry, 'rejectedShas')
+      && (!Array.isArray(entry.rejectedShas)
+        || entry.rejectedShas.length === 0
+        || entry.rejectedShas.some((sha) => typeof sha !== 'string' || sha.length === 0))) {
+      throw new Error(`Acknowledged baseline entry ${entry.name} needs rejectedShas to be a non-empty array of commit SHAs`);
+    }
     if (Object.hasOwn(entry, 'cutover')) {
       if (!entry.cutover || typeof entry.cutover !== 'object' || Array.isArray(entry.cutover)) {
         throw new Error(`Acknowledged baseline entry ${entry.name} needs a cutover object`);
@@ -223,10 +232,23 @@ export function applyAcceptanceBaseline(problems, baseline, now = Date.now()) {
     const entry = accepted.get(key);
     if (entry) {
       seen.add(key);
-      if (!Object.hasOwn(entry, 'expiresAt') || now < Date.parse(entry.expiresAt)) {
+      // An entry may scope its acknowledgment to an explicit rejection cohort
+      // (entry.rejectedShas). A problem carrying any SHA outside that cohort
+      // is NEW information wearing the acknowledged name:status — the exact
+      // shape a recovered service's next, unrelated rejection takes — and must
+      // block (#6483 cross-model review, verified by execution). Additive:
+      // callers whose problems or entries carry no rejectedShas are unchanged.
+      const novelRejections = Array.isArray(entry.rejectedShas) && Array.isArray(problem.rejectedShas)
+        ? problem.rejectedShas.filter((sha) => !entry.rejectedShas.includes(sha))
+        : [];
+      if (novelRejections.length > 0) {
+        blocking.push({ ...problem, novelRejections, issue: entry.issue });
+      } else if (!Object.hasOwn(entry, 'expiresAt') || now < Date.parse(entry.expiresAt)) {
         acknowledged.push({ ...problem, issue: entry.issue });
       } else {
-        blocking.push(problem);
+        // Carry the expired entry's identity so the report can attribute the
+        // red line to a scheduled re-page instead of a fresh outage.
+        blocking.push({ ...problem, expiredEntry: entry.expiresAt, issue: entry.issue });
       }
     } else {
       blocking.push(problem);

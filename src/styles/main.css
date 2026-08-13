@@ -7499,6 +7499,123 @@ body.playback-mode .status-dot {
   padding: 10px 14px;
 }
 
+.news-market-correlation {
+  padding: 10px 14px 12px;
+}
+
+.news-market-correlation__controls {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.news-market-correlation__controls label {
+  display: grid;
+  gap: 3px;
+  color: var(--text-dim);
+  font-size: calc(9px * var(--wm-panel-effective-scale, 1));
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.news-market-correlation__controls select {
+  min-width: 0;
+  padding: 5px 7px;
+  color: var(--text);
+  background: var(--bg-secondary);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 4px;
+  font-size: calc(10px * var(--wm-panel-effective-scale, 1));
+  text-transform: none;
+}
+
+.news-market-correlation__legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  color: var(--text-dim);
+  font-size: calc(9px * var(--wm-panel-effective-scale, 1));
+}
+
+.news-market-correlation__legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.news-market-correlation__dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+}
+
+.news-market-correlation__dot--news { background: #f59e0b; }
+.news-market-correlation__dot--market { background: #60a5fa; }
+
+.news-market-correlation__chart {
+  display: block;
+  width: 100%;
+  height: auto;
+  margin: 3px 0 6px;
+}
+
+.news-market-correlation__empty {
+  padding: 34px 8px;
+  color: var(--text-dim);
+  text-align: center;
+  font-size: calc(10px * var(--wm-panel-effective-scale, 1));
+}
+
+.news-market-correlation__stats {
+  display: grid;
+  grid-template-columns: 0.8fr 1fr 1.4fr;
+  gap: 6px;
+}
+
+.news-market-correlation__stats > div {
+  display: grid;
+  gap: 2px;
+  padding: 7px 8px;
+  background: rgba(255, 255, 255, 0.035);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 5px;
+}
+
+.news-market-correlation__stats span,
+.news-market-correlation__stats small {
+  color: var(--text-dim);
+  font-size: calc(8px * var(--wm-panel-effective-scale, 1));
+}
+
+.news-market-correlation__stats strong {
+  color: var(--text);
+  font-size: calc(13px * var(--wm-panel-effective-scale, 1));
+}
+
+.news-market-correlation__result--neutral strong { color: #a3a3a3; }
+.news-market-correlation__result--positive strong { color: #22c55e; }
+.news-market-correlation__result--negative strong { color: #ef4444; }
+
+.news-market-correlation__caveat,
+.news-market-correlation__freshness {
+  margin-top: 7px;
+  color: var(--text-dim);
+  font-size: calc(8px * var(--wm-panel-effective-scale, 1));
+  line-height: 1.35;
+}
+
+.news-market-correlation__freshness {
+  text-align: right;
+}
+
+@media (max-width: 640px) {
+  .news-market-correlation__controls,
+  .news-market-correlation__stats {
+    grid-template-columns: 1fr;
+  }
+}
+
 .liquidity-shifts-panel__section-title {
   font-size: calc(11px * var(--wm-panel-effective-scale, 1));
   font-weight: 700;
