@@ -127,7 +127,7 @@
     "test:e2e:visual:update:tech": "cross-env VITE_VARIANT=tech playwright test -g \"matches golden screenshots per layer and zoom\" --update-snapshots",
     "test:e2e:visual:update": "npm run test:e2e:visual:update:full && npm run test:e2e:visual:update:tech",
     "desktop:dev": "npm run check:prereqs:desktop && npm run version:sync && cross-env VITE_DESKTOP_RUNTIME=1 tauri dev -f devtools",
-    "desktop:tauri:build": "npm run check:prereqs:desktop:bundle && npm run security:vite-env-secrets -- --strict-local && npm run desktop:check-env && npm run version:sync && cross-env VITE_VARIANT=full VITE_DESKTOP_RUNTIME=1 tauri build",
+    "desktop:tauri:build": "npm run security:vite-env-secrets -- --strict-local && npm run check:prereqs:desktop:bundle && npm run desktop:check-env && npm run version:sync && cross-env VITE_VARIANT=full VITE_DESKTOP_RUNTIME=1 tauri build",
     "desktop:package:macos": "node scripts/desktop-package.mjs --os macos",
     "desktop:package:windows": "node scripts/desktop-package.mjs --os windows",
     "desktop:package:macos:sign": "node scripts/desktop-package.mjs --os macos --sign",
