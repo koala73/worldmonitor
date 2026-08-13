@@ -8,6 +8,7 @@
 
 import { isDebugBearRumScriptFrame } from './debugbear-rum';
 import { isIosLikeUserAgent } from './platform-ua';
+import { SENTRY_ALLOW_URLS } from './sentry-allow-urls';
 import { getSentryBuildMetadata } from './sentry-build-metadata';
 
 type SentryNs = typeof import('@sentry/browser');
@@ -65,10 +66,7 @@ function buildSentryInitOptions(): Parameters<SentryNs['init']>[0] {
       : location.hostname.includes('vercel.app') ? 'preview'
       : 'development',
     enabled: Boolean(sentryDsn) && !location.hostname.startsWith('localhost') && !('__TAURI_INTERNALS__' in window),
-    allowUrls: [
-      /https?:\/\/(www\.|tech\.|finance\.|commodity\.|happy\.)?worldmonitor\.app/,
-      /https?:\/\/.*\.vercel\.app/,
-    ],
+    allowUrls: SENTRY_ALLOW_URLS,
     sendDefaultPii: true,
     tracesSampleRate: 0.1,
     ignoreErrors: [
