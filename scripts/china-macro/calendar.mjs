@@ -19,6 +19,10 @@ export const NBS_TRANSIENT_FETCH_ATTEMPTS = 3;
 export const NBS_REQUEST_TIMEOUT_MS = 20_000;
 export const NBS_TRANSIENT_RETRY_DELAY_MS = 500;
 export const NBS_TOTAL_FETCH_BUDGET_MS = 75_000;
+const NBS_MAX_REDIRECTS = 1;
+const NBS_MAX_RESPONSE_BYTES = 2 * 1024 * 1024;
+const NBS_ORIGIN = 'https://www.stats.gov.cn';
+const NBS_CALENDAR_PATH_PREFIX = '/english/PressRelease/ReleaseCalendar/';
 export const CHINAMONEY_LPR_URL = 'https://www.chinamoney.com.cn/chinese/bklpr/?tab=2';
 export const CHINAMONEY_LPR_NOTICE_API = 'https://www.chinamoney.com.cn/ags/ms/cm-s-notice-query/contentsinshorttime';
 // Official LPR market-notice channel resolved by ChinaMoney's public
@@ -157,6 +161,17 @@ function requiredSourceError(prefix, reason) {
   return Object.assign(new Error(`${prefix}:${reason}`), { reason, nonRetryable: true });
 }
 
+function nbsTransportError(reason) {
+  return requiredSourceError('NBS_TRANSPORT_REJECTED', reason);
+}
+
+function isTrustedNbsCalendarUrl(url) {
+  return url.origin === NBS_ORIGIN
+    && url.username === ''
+    && url.password === ''
+    && url.pathname.startsWith(NBS_CALENDAR_PATH_PREFIX);
+}
+
 /** `Retry-After` is either delta-seconds or an HTTP date. Null when absent or unparseable. */
 function parseRetryAfterMs(value) {
   if (!value) return null;
@@ -166,21 +181,90 @@ function parseRetryAfterMs(value) {
   return Number.isFinite(retryAt) ? Math.max(0, retryAt - Date.now()) : null;
 }
 
-async function fetchText(fetchFn, url) {
-  const response = await fetchFn(url, {
-    headers: { Accept: 'text/html,application/xhtml+xml', 'User-Agent': 'WorldMonitor/2.10 (+https://worldmonitor.app)' },
-    signal: AbortSignal.timeout(NBS_REQUEST_TIMEOUT_MS),
-  });
-  if (!response.ok) {
-    const error = Object.assign(new Error(`HTTP_${response.status}`), { status: response.status });
-    // Carry the host's own backoff request out of the response, which is
-    // otherwise discarded here — the retry loop cannot honor a hint it never
-    // sees, and both sibling helpers (source-runtime.mjs, _seed-utils.mjs) do.
-    const retryAfterMs = parseRetryAfterMs(response.headers?.get?.('Retry-After'));
-    if (retryAfterMs != null) error.retryAfterMs = retryAfterMs;
-    throw error;
+async function fetchText(fetchFn, value, { onRequest, deadlineAt }) {
+  let target;
+  try {
+    target = new URL(value);
+  } catch {
+    throw nbsTransportError('INVALID_URL');
   }
-  return response.text();
+  if (!isTrustedNbsCalendarUrl(target)) throw nbsTransportError('UNAPPROVED_URL');
+
+  let redirects = 0;
+  for (;;) {
+    onRequest();
+    const response = await fetchFn(target.toString(), {
+      headers: { Accept: 'text/html,application/xhtml+xml', 'User-Agent': 'WorldMonitor/2.10 (+https://worldmonitor.app)' },
+      redirect: 'manual',
+      signal: AbortSignal.timeout(NBS_REQUEST_TIMEOUT_MS),
+    });
+    if (response.status >= 300 && response.status < 400) {
+      if (redirects >= NBS_MAX_REDIRECTS) throw nbsTransportError('REDIRECT_LIMIT_EXCEEDED');
+      const location = response.headers?.get?.('Location');
+      if (!location) throw nbsTransportError('REDIRECT_WITHOUT_LOCATION');
+
+      let redirectedTarget;
+      try {
+        redirectedTarget = new URL(location, target);
+      } catch {
+        throw nbsTransportError('REDIRECT_REJECTED_INVALID_URL');
+      }
+      if (!isTrustedNbsCalendarUrl(redirectedTarget)) {
+        throw nbsTransportError('REDIRECT_REJECTED_UNAPPROVED_URL');
+      }
+      // Redirects are extra HTTP hops inside one logical retry attempt. Reserve
+      // the full per-hop timeout against the same deadline used by retries so
+      // a chain cannot spend a fresh wall-clock budget of its own.
+      if (Date.now() + NBS_REQUEST_TIMEOUT_MS > deadlineAt) {
+        throw nbsTransportError(FETCH_BUDGET_EXHAUSTED_REASON);
+      }
+      target = redirectedTarget;
+      redirects += 1;
+      continue;
+    }
+    if (response.redirected) throw nbsTransportError('IMPLICIT_REDIRECT');
+    if (!response.ok) {
+      const error = Object.assign(new Error(`HTTP_${response.status}`), { status: response.status });
+      // Carry the host's own backoff request out of the response, which is
+      // otherwise discarded here — the retry loop cannot honor a hint it never
+      // sees, and both sibling helpers (source-runtime.mjs, _seed-utils.mjs) do.
+      const retryAfterMs = parseRetryAfterMs(response.headers?.get?.('Retry-After'));
+      if (retryAfterMs != null) error.retryAfterMs = retryAfterMs;
+      throw error;
+    }
+
+    const declaredLength = Number(response.headers?.get?.('Content-Length'));
+    if (Number.isFinite(declaredLength) && declaredLength > NBS_MAX_RESPONSE_BYTES) {
+      throw nbsTransportError('RESPONSE_TOO_LARGE');
+    }
+    if (response.body?.getReader) {
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      const chunks = [];
+      let received = 0;
+      try {
+        for (;;) {
+          const { done, value: chunk } = await reader.read();
+          if (done) break;
+          received += chunk.byteLength;
+          if (received > NBS_MAX_RESPONSE_BYTES) {
+            await reader.cancel('response exceeds NBS calendar source limit');
+            throw nbsTransportError('RESPONSE_TOO_LARGE');
+          }
+          chunks.push(decoder.decode(chunk, { stream: true }));
+        }
+        chunks.push(decoder.decode());
+        return chunks.join('');
+      } finally {
+        reader.releaseLock();
+      }
+    }
+    const text = await response.text();
+    if (new TextEncoder().encode(text).byteLength > NBS_MAX_RESPONSE_BYTES) {
+      throw nbsTransportError('RESPONSE_TOO_LARGE');
+    }
+    return text;
+  }
 }
 
 // Certificate VALIDATION failures are permanent: they mean the peer is not who
@@ -239,6 +323,7 @@ function isCertificateValidationFailure(error) {
  * retrying it would only triple the load on an official government host.
  */
 function isTransientFetchFailure(error) {
+  if (error?.nonRetryable) return false;
   if (Number.isInteger(error?.status)) {
     return error.status === 408 || error.status === 429 || (error.status >= 500 && error.status <= 599);
   }
@@ -260,11 +345,10 @@ function tagReason(error, reason) {
   return error;
 }
 
-async function fetchTextWithTransientRetry(fetchFn, url, { onAttempt, deadlineAt, sleepFn }) {
+async function fetchTextWithTransientRetry(fetchFn, url, { onRequest, deadlineAt, sleepFn }) {
   for (let attempt = 1; ; attempt++) {
-    onAttempt();
     try {
-      return await fetchText(fetchFn, url);
+      return await fetchText(fetchFn, url, { onRequest, deadlineAt });
     } catch (error) {
       if (isCertificateValidationFailure(error)) throw tagReason(error, TLS_CERT_UNTRUSTED_REASON);
       if (attempt >= NBS_TRANSIENT_FETCH_ATTEMPTS || !isTransientFetchFailure(error)) throw error;
@@ -314,9 +398,7 @@ export function currentCalendarLink(indexHtml, year) {
   } catch {
     throw requiredSourceError('NBS_CALENDAR_LINK_REJECTED', 'UNTRUSTED_NBS_CALENDAR_URL');
   }
-  const trustedOrigin = calendarUrl.origin === 'https://www.stats.gov.cn';
-  const trustedPath = calendarUrl.pathname.startsWith('/english/PressRelease/ReleaseCalendar/');
-  if (!trustedOrigin || !trustedPath) {
+  if (!isTrustedNbsCalendarUrl(calendarUrl)) {
     throw requiredSourceError('NBS_CALENDAR_LINK_REJECTED', 'UNTRUSTED_NBS_CALENDAR_URL');
   }
   return calendarUrl.toString();
@@ -335,11 +417,11 @@ export async function fetchChinaReleaseCalendar({
 
   let nbsEvents = [];
   let nbsRequestCount = 0;
-  // Counted per ATTEMPT, not per URL: a retry is a real request against an
-  // official host, so the audited requestCount has to include it.
+  // Counted per HTTP HOP, not per logical attempt or URL: redirects and retries
+  // are all real requests against the official host and belong in the audit.
   const nbsDeadlineAt = Date.now() + NBS_TOTAL_FETCH_BUDGET_MS;
   const fetchNbsText = (url) => fetchTextWithTransientRetry(fetchFn, url, {
-    onAttempt: () => { nbsRequestCount += 1; },
+    onRequest: () => { nbsRequestCount += 1; },
     deadlineAt: nbsDeadlineAt,
     sleepFn,
   });
