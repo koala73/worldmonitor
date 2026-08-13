@@ -261,6 +261,7 @@
           },
           {
             "tab": "API Reference",
+            "openapi": "api/worldmonitor.openapi.yaml",
             "groups": [
               {
                 "group": "Overview",
@@ -726,6 +727,7 @@
           },
           {
             "tab": "API 参考",
+            "openapi": "api/worldmonitor.openapi.yaml",
             "groups": [
               {
                 "group": "概览",
