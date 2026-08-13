@@ -144,6 +144,7 @@
       "scripts/_seed-contract.mjs",
       "scripts/_seed-envelope-source.mjs",
       "scripts/_seed-utils.mjs",
+      "scripts/_weather-alert-select.mjs",
       "scripts/_yahoo-sector-valuations.cjs",
       "scripts/ais-relay.cjs",
       "scripts/lib/llm-telemetry.cjs",
@@ -436,7 +437,17 @@
     "deployMode": "nixpacks-root-repo",
     "lifecycle": "planned",
     "service": "seed-weather-alerts",
-    "documentedAt": "docs/railway-seed-consolidation-runbook.md#standalone-seed-crons-added-after-this-snapshot"
+    "documentedAt": "docs/railway-seed-consolidation-runbook.md#standalone-seed-crons-added-after-this-snapshot",
+    "watchPatterns": [
+      "scripts/_seed-contract.mjs",
+      "scripts/_seed-envelope-source.mjs",
+      "scripts/_seed-utils.mjs",
+      "scripts/_weather-alert-select.mjs",
+      "scripts/lib/llm-telemetry.cjs",
+      "scripts/package-lock.json",
+      "scripts/package.json",
+      "scripts/seed-weather-alerts.mjs"
+    ]
   },
   {
     "entry": "scripts/seed-fx-yoy.mjs",

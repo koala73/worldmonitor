@@ -1045,6 +1045,20 @@
       ]
     },
     {
+      "host": "api.weather.gc.ca",
+      "provider": "Environment and Climate Change Canada (ECCC)",
+      "kind": "structured",
+      "observed": true,
+      "license": "ECCC Data Server End-use Licence; Government of Canada open data",
+      "attribution": "Environment and Climate Change Canada (ECCC) weather alerts via MSC GeoMet (https://api.weather.gc.ca/).",
+      "status": "reviewed",
+      "references": [
+        {
+          "path": "scripts/_weather-alert-select.mjs"
+        }
+      ]
+    },
+    {
       "host": "api.weather.gov",
       "provider": "api.weather.gov",
       "kind": "structured",
@@ -1054,10 +1068,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "scripts/ais-relay.cjs"
-        },
-        {
-          "path": "scripts/seed-weather-alerts.mjs"
+          "path": "scripts/_weather-alert-select.mjs"
         }
       ]
     },

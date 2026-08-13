@@ -3,18 +3,31 @@ import { readFileSync } from 'node:fs';
 import { describe, it } from 'node:test';
 
 import {
+  ECCC_ALERTS_URL,
+  ECCC_HOST,
+  ECCC_MAX_BYTES,
   MAX_ALERTS,
+  PER_SOURCE_FLOOR,
+  WEATHER_ALERTS_SOURCE_VERSION,
   calculateCentroid,
   eligibleAlertCount,
   extractCoordinates,
+  fetchApprovedWeatherJson,
   formatTruncationWarning,
+  mapEcccRiskToSeverity,
+  mergeAlertSources,
   requireAlertFeatures,
   selectAlerts,
+  selectEcccAlerts,
   validateSelectedAlerts,
 } from '../scripts/_weather-alert-select.mjs';
 
 const SEEDER_SOURCE = readFileSync(
   new URL('../scripts/seed-weather-alerts.mjs', import.meta.url),
+  'utf8',
+);
+const RELAY_SOURCE = readFileSync(
+  new URL('../scripts/ais-relay.cjs', import.meta.url),
   'utf8',
 );
 
@@ -135,6 +148,8 @@ describe('weather alert selection', () => {
     assert.equal(alert.coordinates.length, 5);
     assert.ok(Array.isArray(alert.centroid));
     assert.equal(alert.centroid.length, 2);
+    assert.equal(alert.countryCode, 'US');
+    assert.equal(alert.source, 'nws');
   });
 
   it('caps description length at 500 characters', () => {
@@ -179,5 +194,195 @@ describe('weather alert selection', () => {
 
   it('returns undefined centroid for an empty ring', () => {
     assert.equal(calculateCentroid([]), undefined);
+  });
+});
+
+
+const ECCC_POLYGON = {
+  type: 'Polygon',
+  coordinates: [[[-80, 43], [-79, 43], [-79, 44], [-80, 44], [-80, 43]]],
+};
+
+function ecccFeature({ id, status_en = 'active', risk_colour_en = 'red', alert_type = 'warning', geometry = ECCC_POLYGON, overrides = {} } = {}) {
+  return {
+    id,
+    geometry,
+    properties: {
+      alert_code: 'TOR',
+      alert_type,
+      alert_name_en: 'tornado warning',
+      alert_short_name_en: 'Tornado',
+      alert_text_en: 'A tornado warning is in effect.',
+      risk_colour_en,
+      feature_name_en: 'Toronto',
+      province: 'ON',
+      status_en,
+      validity_datetime: '2026-08-13T18:00:00.000Z',
+      expiration_datetime: '2026-08-13T22:00:00.000Z',
+      ...overrides,
+    },
+  };
+}
+
+describe('ECCC weather alert normalisation', () => {
+  it('maps an active polygon feature onto the existing record with CA/eccc stamps and a centroid', () => {
+    const [alert] = selectEcccAlerts([ecccFeature({ id: 'ca-active-1' })]);
+    assert.equal(alert.id, 'ca-active-1');
+    assert.equal(alert.countryCode, 'CA');
+    assert.equal(alert.source, 'eccc');
+    assert.equal(alert.severity, 'Extreme');
+    assert.equal(alert.event, 'tornado warning');
+    assert.match(alert.headline, /tornado warning/);
+    assert.equal(alert.areaDesc, 'Toronto, ON');
+    assert.equal(alert.coordinates.length, 5);
+    assert.ok(Array.isArray(alert.centroid));
+    assert.equal(alert.centroid.length, 2);
+    assert.equal(alert.centroid[0], -79.6);
+    assert.equal(alert.centroid[1], 43.4);
+  });
+
+  it('drops status_en=ended features even when mixed with active ones', () => {
+    const features = [
+      ecccFeature({ id: 'ended-keep-out', status_en: 'ended' }),
+      ecccFeature({ id: 'active-keep', status_en: 'active' }),
+      ecccFeature({ id: 'ended-2', status_en: 'ended', risk_colour_en: 'orange' }),
+    ];
+    const alerts = selectEcccAlerts(features);
+    assert.deepEqual(alerts.map(a => a.id), ['active-keep']);
+    assert.ok(!alerts.some(a => a.id === 'ended-keep-out'));
+    assert.ok(!alerts.some(a => a.id === 'ended-2'));
+  });
+
+  it('excludes ended ids from a merged published payload', () => {
+    const nws = selectAlerts([feature('Severe', 1)]);
+    const eccc = selectEcccAlerts([
+      ecccFeature({ id: 'ended-keep-out', status_en: 'ended' }),
+      ecccFeature({ id: 'ca-active', status_en: 'active' }),
+    ]);
+    const published = mergeAlertSources({ nws, eccc });
+    assert.ok(published.some(a => a.id === 'alert-1'));
+    assert.ok(published.some(a => a.id === 'ca-active' && a.countryCode === 'CA'));
+    assert.ok(!published.some(a => a.id === 'ended-keep-out'));
+  });
+
+  it('maps ECCC risk colours onto the NWS severity vocabulary', () => {
+    assert.equal(mapEcccRiskToSeverity('red'), 'Extreme');
+    assert.equal(mapEcccRiskToSeverity('orange'), 'Severe');
+    assert.equal(mapEcccRiskToSeverity('yellow'), 'Moderate');
+    assert.equal(mapEcccRiskToSeverity('green'), 'Minor');
+    assert.equal(mapEcccRiskToSeverity(undefined, 'warning'), 'Severe');
+    assert.equal(mapEcccRiskToSeverity('purple'), 'Unknown');
+  });
+
+  it('drops unmapped ECCC severity so it cannot pass isEligible', () => {
+    const alerts = selectEcccAlerts([
+      ecccFeature({ id: 'unknown-colour', risk_colour_en: 'purple', alert_type: 'other' }),
+      ecccFeature({ id: 'yellow-ok', risk_colour_en: 'yellow' }),
+    ]);
+    assert.deepEqual(alerts.map(a => a.id), ['yellow-ok']);
+    assert.equal(alerts[0].severity, 'Moderate');
+  });
+});
+
+describe('NWS + ECCC merge and per-source caps', () => {
+  it('still publishes ECCC when NWS is missing (failed source)', () => {
+    const eccc = selectEcccAlerts([ecccFeature({ id: 'ca-only' })]);
+    const published = mergeAlertSources({ nws: null, eccc });
+    assert.deepEqual(published.map(a => a.id), ['ca-only']);
+    assert.equal(published[0].source, 'eccc');
+  });
+
+  it('still publishes NWS when ECCC is missing (failed source)', () => {
+    const nws = selectAlerts([feature('Severe', 7)]);
+    const published = mergeAlertSources({ nws, eccc: undefined });
+    assert.deepEqual(published.map(a => a.id), ['alert-7']);
+    assert.equal(published[0].source, 'nws');
+  });
+
+  it('keeps a per-source floor so CA alerts are not dropped behind US small-craft', () => {
+    const nws = Array.from({ length: MAX_ALERTS }, (_, i) => selectAlerts([feature('Minor', i)])[0]);
+    const eccc = Array.from({ length: 10 }, (_, i) => selectEcccAlerts([
+      ecccFeature({ id: `ca-extreme-${i}`, risk_colour_en: 'red' }),
+    ])[0]);
+    const published = mergeAlertSources({ nws, eccc });
+    assert.equal(published.length, MAX_ALERTS);
+    const ca = published.filter(a => a.source === 'eccc');
+    assert.equal(ca.length, 10, 'all 10 Extreme CA alerts must survive the US Minor flood');
+    assert.ok(published.filter(a => a.source === 'nws').length >= PER_SOURCE_FLOOR);
+  });
+
+  it('publishes an empty merged set as valid quiet (zeroIsValid purge path)', () => {
+    const published = mergeAlertSources({ nws: [], eccc: [] });
+    assert.deepEqual(published, []);
+    assert.equal(validateSelectedAlerts({ alerts: published }), true);
+  });
+});
+
+describe('ECCC host policy and sourceVersion lockstep', () => {
+  it('queries status_en=active on the national collection URL', () => {
+    assert.match(ECCC_ALERTS_URL, /status_en=active/);
+    assert.match(ECCC_ALERTS_URL, /[?&]f=json/);
+    assert.match(ECCC_ALERTS_URL, /api\.weather\.gc\.ca/);
+    assert.equal(ECCC_HOST, 'api.weather.gc.ca');
+    assert.ok(ECCC_MAX_BYTES >= 2 * 1024 * 1024);
+    assert.ok(ECCC_MAX_BYTES <= 4 * 1024 * 1024);
+  });
+
+  it('bumps sourceVersion so NWS-only / ended-ECCC Redis snapshots are not reused', () => {
+    assert.equal(WEATHER_ALERTS_SOURCE_VERSION, 'nws+eccc-active');
+    assert.match(SEEDER_SOURCE, /sourceVersion:\s*WEATHER_ALERTS_SOURCE_VERSION/);
+    assert.match(RELAY_SOURCE, /sourceVersion:\s*WEATHER_ALERTS_SOURCE_VERSION/);
+    assert.doesNotMatch(SEEDER_SOURCE, /sourceVersion:\s*'nws-active'/);
+    assert.doesNotMatch(RELAY_SOURCE, /sourceVersion:\s*'nws-weather'/);
+  });
+
+  it('always writes the merged active set in the live relay writer (no skip-on-empty)', () => {
+    assert.match(RELAY_SOURCE, /Always write the merged active set/);
+    assert.doesNotMatch(RELAY_SOURCE, /existing data preserved/);
+    assert.match(RELAY_SOURCE, /zeroOk:\s*true/);
+    assert.match(SEEDER_SOURCE, /zeroIsValid:\s*true/);
+  });
+
+  it('does not import the seeder entrypoint from this test file', () => {
+    const testSource = readFileSync(new URL(import.meta.url), 'utf8');
+    assert.doesNotMatch(testSource, /from ['\"]\.\.\/scripts\/seed-weather-alerts\.mjs['\"]/);
+  });
+
+  it('rejects untrusted hosts and asks fetch to error on redirects', async () => {
+    await assert.rejects(
+      () => fetchApprovedWeatherJson('https://evil.example/alerts', { allowedHosts: [ECCC_HOST] }),
+      /UNTRUSTED_SOURCE_HOST/,
+    );
+    await assert.rejects(
+      () => fetchApprovedWeatherJson('http://api.weather.gc.ca/alerts', { allowedHosts: [ECCC_HOST] }),
+      /UNTRUSTED_SOURCE_HOST/,
+    );
+
+    let seen;
+    const fetchFn = async (url, opts) => {
+      seen = { url, opts };
+      return {
+        ok: true,
+        headers: { get: () => null },
+        text: async () => JSON.stringify({ type: 'FeatureCollection', features: [] }),
+      };
+    };
+    await fetchApprovedWeatherJson(ECCC_ALERTS_URL, { allowedHosts: [ECCC_HOST], fetchFn });
+    assert.equal(seen.opts.redirect, 'error');
+    assert.ok(seen.opts.signal);
+    assert.match(seen.opts.headers['User-Agent'], /Mozilla/);
+  });
+
+  it('enforces the byte ceiling', async () => {
+    const fetchFn = async () => ({
+      ok: true,
+      headers: { get: (name) => (name === 'content-length' ? String(ECCC_MAX_BYTES + 1) : null) },
+      body: { cancel: async () => {} },
+      text: async () => '{"features":[]}',
+    });
+    await assert.rejects(
+      () => fetchApprovedWeatherJson(ECCC_ALERTS_URL, { allowedHosts: [ECCC_HOST], fetchFn, maxBytes: ECCC_MAX_BYTES }),
+      /RESPONSE_TOO_LARGE/,
+    );
   });
 });

@@ -479,6 +479,12 @@ const PROVIDER_OVERRIDES = {
     attribution: 'Excluded from the provider count: namespace reference, not an ingested source.',
     status: 'excluded',
   },
+  'api.weather.gc.ca': {
+    provider: 'Environment and Climate Change Canada (ECCC)',
+    license: 'ECCC Data Server End-use Licence; Government of Canada open data',
+    attribution: 'Environment and Climate Change Canada (ECCC) weather alerts via MSC GeoMet (https://api.weather.gc.ca/).',
+    status: 'reviewed',
+  },
   'www.w3.org': {
     provider: 'W3C schema reference',
     license: 'Excluded: schema/standards reference',
