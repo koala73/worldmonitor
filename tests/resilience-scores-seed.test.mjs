@@ -385,7 +385,7 @@ describe('cached score interval payload classification', () => {
       const commands = requests[0].body;
       assert.equal(commands.length, listRankableCountries().length + 1);
       assert.ok(commands.every((command) => command[0] !== 'EVAL'));
-      assert.deepEqual(commands[0].slice(0, 2), ['SET', `resilience:intervals:v10:${listRankableCountries()[0]}`]);
+      assert.deepEqual(commands[0].slice(0, 2), ['SET', `resilience:intervals:v11:${listRankableCountries()[0]}`]);
       assert.deepEqual(commands.at(-1).slice(0, 2), ['SET', 'seed-meta:resilience:intervals']);
       const intervalPayload = JSON.parse(commands[0][2]);
       const metadataPayload = JSON.parse(commands.at(-1)[2]);
@@ -478,7 +478,7 @@ describe('cached score interval payload classification', () => {
     const publishedCodes = acceptedIntervalCountryCodes();
     const omittedCodes = allCountryCodes.filter((countryCode) => !publishedCodes.includes(countryCode));
     const redis = new Map([
-      [`resilience:intervals:v10:${omittedCodes[0]}`, JSON.stringify({
+      [`resilience:intervals:v11:${omittedCodes[0]}`, JSON.stringify({
         p05: 10,
         p95: 20,
         _formula: 'd6',
@@ -520,10 +520,10 @@ describe('cached score interval payload classification', () => {
       );
       assert.equal(result.recordCount, RESILIENCE_INTERVAL_MIN_RECORD_COUNT);
       for (const countryCode of omittedCodes) {
-        assert.equal(redis.has(`resilience:intervals:v10:${countryCode}`), false, 'omitted old-state interval must be deleted');
+        assert.equal(redis.has(`resilience:intervals:v11:${countryCode}`), false, 'omitted old-state interval must be deleted');
       }
       for (const countryCode of publishedCodes) {
-        assert.equal(JSON.parse(redis.get(`resilience:intervals:v10:${countryCode}`))._educationState, 'education-on');
+        assert.equal(JSON.parse(redis.get(`resilience:intervals:v11:${countryCode}`))._educationState, 'education-on');
       }
       const meta = JSON.parse(redis.get('seed-meta:resilience:intervals'));
       assert.equal(meta.recordCount, RESILIENCE_INTERVAL_MIN_RECORD_COUNT);

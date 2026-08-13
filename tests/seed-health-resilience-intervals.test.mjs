@@ -22,11 +22,11 @@ process.env.RESILIENCE_EDUCATION_ENABLED = 'true';
 const { default: handler } = await import('../api/seed-health.js');
 
 const META_KEY = 'seed-meta:resilience:intervals';
-const PROBE_KEY = 'resilience:intervals:v10:US';
+const PROBE_KEY = 'resilience:intervals:v11:US';
 const EDUCATION_META_KEY = 'seed-meta:resilience:education-attainment';
 const EDUCATION_DATA_KEY = 'resilience:education-attainment:v1';
 const METHODOLOGY = 'weight-perturbation-sensitivity-v3';
-const SOURCE_VERSION = `resilience-intervals:resilience:intervals:v10:${METHODOLOGY}`;
+const SOURCE_VERSION = `resilience-intervals:resilience:intervals:v11:${METHODOLOGY}`;
 
 function intervalMeta(overrides = {}) {
   return {

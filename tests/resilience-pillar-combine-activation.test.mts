@@ -322,9 +322,9 @@ describe('pillar-combined score activation', () => {
     );
 
     assert.notEqual(secondRead.overallScore, firstRead.overallScore, 'rollback must rebuild rather than serve the active education score cache');
-    const cached = JSON.parse(String(redis.get('resilience:score:v27:NO')));
+    const cached = JSON.parse(String(redis.get('resilience:score:v28:NO')));
     assert.equal(cached._educationState, 'education-off');
-    const history = sortedSets.get('resilience:history:v21:NO') ?? [];
+    const history = sortedSets.get('resilience:history:v22:NO') ?? [];
     assert.ok(history.some((entry) => entry.member.endsWith(':education-off')), 'rollback history must carry the inactive education state');
     assert.equal(secondRead.change30d, 0, 'active-state history must not leak into the rollback trend');
   });

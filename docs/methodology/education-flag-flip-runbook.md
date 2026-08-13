@@ -176,11 +176,11 @@ All must be green before flipping:
    below now names the CURRENT generation, so a future rotation starts from
    truth rather than from this flip's already-rotated values:
    ```bash
-   grep -rln "resilience:score:v27\|resilience:ranking:v27\|resilience:history:v21\|resilience:intervals:v10" \
+   grep -rln "resilience:score:v28\|resilience:ranking:v28\|resilience:history:v22\|resilience:intervals:v11" \
      --include='*.mjs' --include='*.ts' --include='*.js' --include='*.mts' \
      --include='*.mdx' --include='*.md' . | grep -v node_modules
    ```
-   Expect hits in the two methodology `.mdx` cache-key tables and their prose.
+   Expect hits in the two methodology `.mdx` cache-key tables and their prose, plus the current finance activation references.
    The historical bump-chain paragraph and
    `docs/solutions/conventions/verification-grep-must-cover-every-file-type-it-claims.md`
    deliberately retain OLD generations — they are history, not live references,

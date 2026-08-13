@@ -423,7 +423,7 @@ const STANDALONE_KEYS = {
   // USDA PSD food stocks + FAOSTAT production fill (#6440). RPC/MCP only —
   // not bootstrap-hydrated; country deep-dive fetches on demand.
   foodStocks:               'resilience:food-stocks:v1',
-  resilienceRanking:        'resilience:ranking:v27',
+  resilienceRanking:        'resilience:ranking:v28',
   productCatalog:           'product-catalog:v3',
   energySpineCountries:     'energy:spine:v1:_countries',
   energyExposure:           'energy:exposure:v1:index',
@@ -440,7 +440,7 @@ const STANDALONE_KEYS = {
   portwatchChokepointsRef:  'portwatch:chokepoints:ref:v1',
   chokepointFlows:          'energy:chokepoint-flows:v1',
   emberElectricity:         'energy:ember:v1:_all',
-  resilienceIntervals:      'resilience:intervals:v10:US',
+  resilienceIntervals:      'resilience:intervals:v11:US',
   sprPolicies:              'energy:spr-policies:v1',
   pipelinesGas:             'energy:pipelines:gas:v1',
   pipelinesOil:             'energy:pipelines:oil:v1',

@@ -75,8 +75,11 @@ function requireSeedRefreshKey() {
 // v24 → v25 for issue #4009: cyberDigital discovery-day smoothing changes
 // same-tag `pc` score values, so the seeder-written score/ranking namespace
 // must match the server reader bump.
-export const RESILIENCE_SCORE_CACHE_PREFIX = 'resilience:score:v27:';
-export const RESILIENCE_RANKING_CACHE_KEY = 'resilience:ranking:v27';
+// v27 → v28 for #6511: the owner-controlled financialSystemExposure flag is
+// live in production, so score and ranking writes must move out of the
+// education-only namespace before the next refresh.
+export const RESILIENCE_SCORE_CACHE_PREFIX = 'resilience:score:v28:';
+export const RESILIENCE_RANKING_CACHE_KEY = 'resilience:ranking:v28';
 // Must match the server-side RESILIENCE_RANKING_CACHE_TTL_SECONDS. Extended
 // to 12h (2x the cron interval) so a missed/slow cron can't create an
 // EMPTY_ON_DEMAND gap before the next successful rebuild.

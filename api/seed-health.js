@@ -26,7 +26,7 @@ export const config = { runtime: 'edge' };
 
 // Keep these literals in sync with scripts/_resilience-intervals.mjs. Edge
 // functions cannot import from scripts/, so tests enforce this mirror.
-const RESILIENCE_INTERVAL_KEY_PREFIX = 'resilience:intervals:v10:';
+const RESILIENCE_INTERVAL_KEY_PREFIX = 'resilience:intervals:v11:';
 const RESILIENCE_INTERVAL_MIN_RECORD_COUNT = 180;
 const RESILIENCE_INTERVAL_METHODOLOGY = 'weight-perturbation-sensitivity-v3';
 const RESILIENCE_INTERVAL_SOURCE_VERSION = `resilience-intervals:${RESILIENCE_INTERVAL_KEY_PREFIX}${RESILIENCE_INTERVAL_METHODOLOGY}`;

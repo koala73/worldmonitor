@@ -16,10 +16,10 @@ const CHINA_META_KEY = 'seed-meta:intelligence:china-decision-signals';
 const PORTWATCH_META_KEY = 'seed-meta:supply_chain:portwatch-ports';
 const PREDICTION_META_KEY = 'seed-meta:prediction:markets';
 const OPERATOR_KEY = 'china-decision-test-operator-key';
-const RESILIENCE_INTERVAL_PROBE_KEY = 'resilience:intervals:v10:US';
+const RESILIENCE_INTERVAL_PROBE_KEY = 'resilience:intervals:v11:US';
 const RESILIENCE_INTERVAL_METHODOLOGY = 'weight-perturbation-sensitivity-v3';
 const RESILIENCE_INTERVAL_SOURCE_VERSION =
-  `resilience-intervals:resilience:intervals:v10:${RESILIENCE_INTERVAL_METHODOLOGY}`;
+  `resilience-intervals:resilience:intervals:v11:${RESILIENCE_INTERVAL_METHODOLOGY}`;
 const EDUCATION_META_KEY = 'seed-meta:resilience:education-attainment';
 const EDUCATION_DATA_KEY = 'resilience:education-attainment:v1';
 const originalFetch = globalThis.fetch;

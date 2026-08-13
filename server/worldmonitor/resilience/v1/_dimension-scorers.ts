@@ -3626,20 +3626,22 @@ export const RESILIENCE_NOT_APPLICABLE_WHEN_ZERO_COVERAGE: ReadonlySet<Resilienc
 // `education` counted, the US happy-path build fell below the threshold and
 // dropped out of the headline ranking entirely.
 //
-// RECONCILIATION, decided 2026-08-11 at the education flip (#6460). The prior
-// note here said the two dark dimensions "should be reconciled together when
-// either flag flips". Education has now flipped, and the decision is to leave
-// `financialSystemExposure` OUT rather than fold it in:
+// RECONCILIATION, updated 2026-08-13 for the finance activation (#6511). The
+// prior note here said the two dark dimensions "should be reconciled together
+// when either flag flips". Education flipped on 2026-08-11 and
+// `financialSystemExposure` is now live in production through its owner-set
+// environment flag. Keep finance OUT of this exclusion set:
 //
 //   - Adding it would change `overallCoverage` for every country, and
 //     `headlineEligible` gates public ranking inclusion on `>= 0.65`. That is a
 //     published-number change for all 196 countries and needs its own
 //     measurement and its own cache-generation reasoning — it cannot ride along
 //     with a different dimension's activation.
-//   - #6459 retuned the construct but deliberately left it dark: "The dimension
-//     stays flag-dark; activation is Phase C and a separate PR." Folding it into
-//     the confidence mean now would half-activate a dimension whose activation
-//     is explicitly still pending.
+//   - #6459's retuned construct has now completed its separate activation phase;
+//     active observations and source failures must remain visible in confidence
+//     and headline eligibility. The code default remains false for CI and for
+//     the explicit production rollback path, but production runs with the
+//     owner-controlled flag on.
 //
 // Education remains in this set after activation for its explicit false
 // rollback. The triple-zero discriminator below means active observations and

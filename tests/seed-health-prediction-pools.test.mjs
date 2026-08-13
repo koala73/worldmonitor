@@ -21,7 +21,7 @@ const { default: handler } = await import('../api/seed-health.js');
 
 const PREDICTION_META_KEY = 'seed-meta:prediction:markets';
 const PORTWATCH_META_KEY = 'seed-meta:supply_chain:portwatch-ports';
-const RESILIENCE_INTERVAL_PROBE_KEY = 'resilience:intervals:v10:US';
+const RESILIENCE_INTERVAL_PROBE_KEY = 'resilience:intervals:v11:US';
 const RESILIENCE_INTERVAL_METHODOLOGY = 'weight-perturbation-sensitivity-v3';
 const EDUCATION_META_KEY = 'seed-meta:resilience:education-attainment';
 const EDUCATION_DATA_KEY = 'resilience:education-attainment:v1';

@@ -1,10 +1,10 @@
 # Financial System Exposure — construct definition
 
-**Status**: Active (added in plan 2026-04-25-004 Phase 2 — Ship 2; recalibrated in #6459 and #6461)
+**Status**: Active in production (activated 2026-08-12; added in plan 2026-04-25-004 Phase 2 — Ship 2; recalibrated in #6459 and #6461; activation protocol tracked in #6511)
 **Dimension ID**: `financialSystemExposure`
 **Domain**: `economic` (weight 0.50 within domain)
 **Type**: `stress`
-**Rollout**: Flag-gated dark behind `RESILIENCE_FIN_SYS_EXPOSURE_ENABLED` until component seeders are populating in production.
+**Rollout**: `RESILIENCE_FIN_SYS_EXPOSURE_ENABLED=true` is live in Vercel production. The code default remains `false` for CI and rollback; see the [flag-flip runbook](./financial-system-exposure-flag-flip-runbook.md).
 
 ## Question answered
 
@@ -265,7 +265,7 @@ seed-meta:economic:fatf-listing:v1
 
 Missing envelopes throw `ResilienceConfigurationError(message, missingKeys)` (two-arg form; `missingKeys` carries the absent seed keys). The same fail-closed behavior applies when healthy seed metadata is followed by an absent, malformed, or empty World Bank data envelope. The `scoreAllDimensions` catch path reads `err.missingKeys`, joins them for the source-failure log, and routes the dim to `imputationClass='source-failure'` with `score=0, coverage=0`. Per-country data gaps inside an otherwise-published envelope are distinct: per-component reads return null and the slot drops out of the weighted blend unless World Bank metadata explicitly confirms the non-DRS case above.
 
-When `RESILIENCE_FIN_SYS_EXPOSURE_ENABLED` is unset or false (default), the scorer returns the empty-data shape (no preflight, no throw, `imputationClass=null`). The dim drops out of the coverage-weighted economic-domain mean. This is the staged-rollout posture: the dim ships dark until seeders are populating in production, then ops flip the flag.
+When `RESILIENCE_FIN_SYS_EXPOSURE_ENABLED` is unset or false (the code default), the scorer returns the empty-data shape (no preflight, no throw, `imputationClass=null`). The dim drops out of the coverage-weighted economic-domain mean. Production sets the owner-controlled flag to `true`; setting it to `false` is the documented rollback and keeps CI's flag-off posture fail-closed.
 
 ## Methodology invariants
 
@@ -277,7 +277,7 @@ When `RESILIENCE_FIN_SYS_EXPOSURE_ENABLED` is unset or false (default), the scor
 
 The construct is calibrated such that countries with comprehensive financial sanctions and weak banking infrastructure score very low on this dim. The cohort sanity-check anchor:
 
-- **Russia, Iran, DPRK, Cuba, Venezuela, Belarus, Libya, Myanmar** must score < 20 on `financialSystemExposure`. If they don't, the construct is mis-calibrated and must be retuned before production rollout.
+- **Russia, Iran, DPRK, Cuba, Venezuela, Belarus, Libya, Myanmar** must score < 20 on `financialSystemExposure`. If they don't, the construct is mis-calibrated and the production flag must be rolled back before further activation work.
 
 **This anchor is executable (#6459). It was prose for three and a half months and nothing evaluated it, which is how an unsatisfiable construct sat merged and dark.** It now runs in CI:
 
@@ -314,13 +314,19 @@ When the flag flips on, every country's `financialSystemExposure` score moves fr
 
 **#6461 full-universe measurement (2026-08-12, 196 scorable countries, flag OFF → flag ON):** Spearman **0.99789**; **196/196 (100%)** move by less than 3 points; maximum absolute movement **2.35**; no country moves more than 12. ER and TW remain `headlineEligible=false` in both arms and resolve the dimension at 0/0. Chad moves +0.87 overall, resolves at 56/0.76, and remains eligible. The only eligibility change is Venezuela, false → true, from activation of its capped 15/0.65 observed dimension rather than from the two #6461 residual rules.
 
-Production already runs with the flag enabled, as tracked in #6511, so the OFF arm is a counterfactual baseline rather than the current deployment state. The cache-generation rotation and activation-protocol reconciliation remain separate operational work in #6511; this measurement does not close those gates.
+Production already runs with the flag enabled, as tracked in #6511, so the OFF arm is a counterfactual baseline rather than the current deployment state. The cache-generation rotation and activation-protocol reconciliation are recorded below and in the runbook; this historical measurement predates that closeout artifact.
 
 This live measurement was **degraded** by a WGI source-failure state that affected the same governance-related dimensions in both arms. The paired movement result is still a genuine same-run flag comparison, but it is not an undegraded production-health snapshot; do not use it to claim WGI health or final post-deploy acceptance.
 
 **#6519 schema-v1 → schema-v2 activation (2026-08-12, 196 scorable countries):** the fail-closed WB IDS seeder published 119 debt rows and 72 unique `lendingType=LNX` codes. The subsequent production ranking refresh moved **48** of the 71 countries with a missing IDS row and a valid BIS row from coverage 0.65 to 0.76 with `imputedWeight=0.35`. The other 23 are not confirmed `LNX` and correctly remain unknown; row absence alone cannot trigger the imputation. Across the full ranking, Spearman was **0.99997**, **196/196 (100%)** moved by less than 3 points, the maximum absolute movement was **0.35**, no country moved more than 12, and headline eligibility did not change. The committed capture is [`resilience-financial-system-exposure-non-drs-activation-2026-08-12.json`](../snapshots/resilience-financial-system-exposure-non-drs-activation-2026-08-12.json).
 
 The debt slot uses the `not-applicable` imputation class. The published dimension-level `imputationClass` remains `null` because `weightedBlend` reports a class only for a fully imputed dimension; the same result contains observed BIS and FATF inputs. `imputedWeight=0.35` is the published proof that the debt slot activated.
+
+### Post-flip production acceptance (#6511)
+
+The committed artifact [`resilience-financial-system-exposure-acceptance-{date}.json`](../snapshots/resilience-financial-system-exposure-acceptance-{date}.json) is the closeout evidence for the live activation. The read-only harness runs the full sovereign universe twice against the same production Upstash snapshot: a flag-off counterfactual and the flag-on production formula. It records the harness commit, source-input digest, resolved Redis key count, active cache namespaces, per-country score rows, representative countries, and the acceptance gates. It does not write Redis or create an artifact when a required read is unresolved.
+
+The acceptance thresholds are **Spearman ≥ 0.85**, **at least 60% of countries with |Δ| < 3 overall**, and **no non-sanctions country with |Δ| > 12 overall**. The artifact records the measured values and any headline-eligibility changes. A source-failure state is retained as a caveat; it is not silently treated as healthy coverage.
 
 ## Data sources and licensing
 
@@ -431,4 +437,4 @@ Measured effect on the 2026-08-11 production payloads (dimension score, before �
 | before | 68 | 48 | 52 | 0 | 100 | 45 | 59 | 54 | 54 | 54 | 80 | 89 | 30 |
 | after | 15 | 15 | 15 | 0 | 15 | 15 | 15 | 15 | 72 | 72 | 81 | 85 | 55 |
 
-The dimension remains flag-dark behind `RESILIENCE_FIN_SYS_EXPOSURE_ENABLED`; activation is a separate PR with its own flip runbook.
+The dimension is live behind `RESILIENCE_FIN_SYS_EXPOSURE_ENABLED` in production. The code default remains flag-off for CI and rollback. The cache rotation, read-only acceptance capture, and operator closeout are defined in [the activation runbook](./financial-system-exposure-flag-flip-runbook.md). #6461 is already closed by #6515, so no reprioritization mutation is required.

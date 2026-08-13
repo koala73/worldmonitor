@@ -21,7 +21,7 @@ const STALE_META_KEYS = new Set([
   'seed-meta:military-surges',
 ]);
 const MISSING_META_KEYS = new Set();
-const RESILIENCE_INTERVAL_PROBE_KEY = 'resilience:intervals:v10:US';
+const RESILIENCE_INTERVAL_PROBE_KEY = 'resilience:intervals:v11:US';
 const seedHealthSource = readFileSync(resolve(import.meta.dirname, '../api/seed-health.js'), 'utf8');
 const healthSource = readFileSync(resolve(import.meta.dirname, '../api/health.js'), 'utf8');
 
