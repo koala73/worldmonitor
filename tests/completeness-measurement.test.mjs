@@ -23,6 +23,14 @@ const readSrc = (rel) => readFileSync(resolve(root, rel), 'utf-8');
 const GN = 'https://news.google.com/rss/search?q=site%3Areuters.com&hl=en-US&gl=US&ceid=US:en';
 
 describe('feed-health payload (#4920a)', () => {
+  it('includes CBC native RSS so daily feed-health monitors it (#6624)', () => {
+    const feeds = extractServerFeeds();
+    const cbc = feeds.find((f) => f.name === 'CBC News');
+    assert.ok(cbc, 'CBC News must be in the server digest catalog feed-health publishes');
+    assert.equal(cbc.url, 'https://www.cbc.ca/webfeed/rss/rss-world');
+    assert.equal(isGoogleNewsWrapper(cbc.url), false, 'CBC is native RSS, not a GNews workaround');
+  });
+
   it('classifies wrappers and counts statuses', () => {
     const payload = buildFeedHealthPayload([
       { name: 'BBC', url: 'https://feeds.bbci.co.uk/news/world/rss.xml', status: 'OK', catalog: 'both' },

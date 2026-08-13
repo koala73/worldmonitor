@@ -65,6 +65,16 @@ describe('evaluateFetchedDigest: the degraded 200', () => {
     assert.equal(decision.rejectReason, 'no-categories');
   });
 
+  it('does not persist a zero-coverage body over a richer last-good (#6624)', () => {
+    // A CBC 403 that was mis-converted to HTTP 200 + empty categories is
+    // the poison shape. Coverage, not status, decides persist: zero
+    // categories must not overwrite a live digest:last-good entry.
+    const decision = evaluate(0, { categoryCount: 12, ageMs: 60_000 });
+    assert.equal(decision.accept, false);
+    assert.equal(decision.persist, false);
+    assert.equal(decision.rejectReason, 'no-categories');
+  });
+
   it('accepts and persists a single-category digest', () => {
     // The floor is one covered category, not a coverage ratio. Anything above
     // zero is real data for the categories it names.

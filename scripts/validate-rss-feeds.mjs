@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { XMLParser } from 'fast-xml-parser';
 import { isAllowedDomain } from '../api/_rss-allowed-domain-match.js';
+import { RSS_BROWSER_UA, RSS_ACCEPT } from '../api/_rss-fetch-headers.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const FEEDS_PATH = join(__dirname, '..', 'src', 'config', 'feeds.ts');
@@ -13,7 +14,8 @@ const FEEDS_PATH = join(__dirname, '..', 'src', 'config', 'feeds.ts');
 // measured against it too, not just the client list.
 const SERVER_FEEDS_PATH = join(__dirname, '..', 'server', 'worldmonitor', 'news', 'v1', '_feeds.ts');
 
-const CHROME_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36';
+// Same seeder-convention browser UA the live RSS proxy sends (#6624).
+const CHROME_UA = RSS_BROWSER_UA;
 const FETCH_TIMEOUT = 15_000;
 const CONCURRENCY = 10;
 const STALE_DAYS = 30;
@@ -176,7 +178,7 @@ async function fetchFeed(url) {
       try {
         resp = await fetch(currentUrl, {
           signal: controller.signal,
-          headers: { 'User-Agent': CHROME_UA, 'Accept': 'application/rss+xml, application/xml, text/xml, */*' },
+          headers: { 'User-Agent': CHROME_UA, 'Accept': RSS_ACCEPT },
           redirect: 'manual',
         });
       } finally {
@@ -206,7 +208,7 @@ async function fetchFeed(url) {
   try {
     const resp = await fetch(url, {
       signal: controller.signal,
-      headers: { 'User-Agent': CHROME_UA, 'Accept': 'application/rss+xml, application/xml, text/xml, */*' },
+      headers: { 'User-Agent': CHROME_UA, 'Accept': RSS_ACCEPT },
       redirect: 'follow',
     });
     if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
