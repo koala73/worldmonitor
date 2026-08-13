@@ -258,9 +258,9 @@ FIN_SYS_EXPOSURE_COMPREHENSIVE_EMBARGO  (server/worldmonitor/resilience/v1/_dime
 The dim implements the same fail-closed pattern as `scoreEnergy` v2. When `RESILIENCE_FIN_SYS_EXPOSURE_ENABLED=true`, the scorer preflights all 3 required seed envelopes:
 
 ```
-seed-meta:economic:wb-external-debt:v1
-seed-meta:economic:bis-lbs:v1
-seed-meta:economic:fatf-listing:v1
+seed-meta:economic:wb-external-debt
+seed-meta:economic:bis-lbs
+seed-meta:economic:fatf-listing
 ```
 
 Missing envelopes throw `ResilienceConfigurationError(message, missingKeys)` (two-arg form; `missingKeys` carries the absent seed keys). The same fail-closed behavior applies when healthy seed metadata is followed by an absent, malformed, or empty World Bank data envelope. The `scoreAllDimensions` catch path reads `err.missingKeys`, joins them for the source-failure log, and routes the dim to `imputationClass='source-failure'` with `score=0, coverage=0`. Per-country data gaps inside an otherwise-published envelope are distinct: per-component reads return null and the slot drops out of the weighted blend unless World Bank metadata explicitly confirms the non-DRS case above.

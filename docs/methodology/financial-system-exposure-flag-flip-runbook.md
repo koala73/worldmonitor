@@ -16,9 +16,9 @@ Run these checks from a clean checkout with the production Upstash credentials a
 1. Confirm the three required seed envelopes and their `seed-meta` records are present and fresh:
 
    ```text
-   seed-meta:economic:wb-external-debt:v1
-   seed-meta:economic:bis-lbs:v1
-   seed-meta:economic:fatf-listing:v1
+   seed-meta:economic:wb-external-debt
+   seed-meta:economic:bis-lbs
+   seed-meta:economic:fatf-listing
    ```
 
 2. Confirm the health endpoint reports the three inputs as healthy. A missing, malformed, empty, or stale envelope is a stop condition.
@@ -69,7 +69,7 @@ The harness reads the full sovereign universe and the required production Redis 
 - At least `60%` of countries have absolute overall movement below `3` points.
 - No non-sanctions country moves by more than `12` overall points.
 
-The artifact must include the harness commit, source-input digest, resolved Redis key count, current cache namespaces, per-country rows, representative countries, headline-eligibility changes, and any source-failure caveat.
+The artifact must include the harness commit, source-input digest, resolved Redis key count, current cache namespaces, per-country rows, representative countries, headline-eligibility changes, and any finance source-failure rows. Record broader source-health caveats from the capture logs in the closeout documentation; do not infer all-source health from a passing score gate.
 
 If credentials are unavailable, a required Redis read is unresolved, or a gate fails, stop. Do not retry a claimed capture, fill missing rows, mix a different cohort, or commit a synthetic artifact. Record the blocker in the issue or release notes and keep the flag rollback available.
 
