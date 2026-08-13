@@ -65,6 +65,7 @@
     "deploy-gate.yml",
     "deploy-railway-reconcile-control.yml",
     "deploy-worker.yml",
+    "desktop-release-train.yml",
     "docker-publish.yml",
     "feed-validation.yml",
     "indexnow-submit.yml",
@@ -90,7 +91,7 @@
     "typecheck.yml",
     "umami-storage-monitor.yml"
   ],
-  "workflowCount": 32,
+  "workflowCount": 33,
   "freshnessSources": 35,
   "freshnessRequiredForRisk": 2,
   "feedDefinitions": 632,
