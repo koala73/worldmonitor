@@ -453,20 +453,119 @@ test('artifact validator rejects inconsistent verdicts, scores, gate 9 inputs, p
   );
   const original = buildSyntheticAcceptanceArtifact(harnessCommitSha, sha256(harnessSource));
   assert.equal(validateEducationAcceptanceArtifact(original, { filename }).verdict, 'PASS');
-  const mutate = (change: (artifact: any) => void) => {
+  type AcceptancePairFixture = {
+    pairId: string;
+    gap: number;
+    minGap: number;
+  };
+  type AcceptanceGateFixture = {
+    id: string;
+    status: string;
+    evidence: {
+      spearman?: number;
+      topMovers?: Array<{ delta: number }>;
+      pairs?: AcceptancePairFixture[];
+    };
+  };
+  const findGate = (
+    artifact: ReturnType<typeof buildSyntheticAcceptanceArtifact>,
+    formula: 'pc' | 'd6',
+    id: string,
+  ): AcceptanceGateFixture => (
+    (artifact.acceptanceGates.gates[formula] as AcceptanceGateFixture[])
+      .find((candidate) => candidate.id === id)!
+  );
+  const findNoVsCa = (
+    artifact: ReturnType<typeof buildSyntheticAcceptanceArtifact>,
+    formula: 'pc' | 'd6',
+  ): AcceptancePairFixture => (
+    findGate(artifact, formula, 'gate-7-matched-pair').evidence.pairs!
+      .find((pair) => pair.pairId === 'no-vs-ca')!
+  );
+  const mutate = (change: (artifact: ReturnType<typeof buildSyntheticAcceptanceArtifact>) => void) => {
     const artifact = structuredClone(original);
     change(artifact);
     return () => validateEducationAcceptanceArtifact(artifact, { filename });
   };
+  const artifactPathPattern = String.raw`docs/snapshots/resilience-education-acceptance-\d{4}-\d{2}-\d{2}\.json`;
+  const productionRecaptureCommandPattern = String.raw`DRY_RUN_OUTPUT=docs/snapshots/resilience-education-acceptance-\$\(date -u \+%F\)\.json node --import tsx/esm scripts/dry-run-resilience-education-flip\.mjs`;
+  const actionableArtifactMutation = new RegExp(
+    `${artifactPathPattern}; re-capture against production seeds with: ${productionRecaptureCommandPattern}`,
+  );
+
+  const outcomeNeutralThresholdEdit = structuredClone(original);
+  const noVsCa = findNoVsCa(outcomeNeutralThresholdEdit, 'pc');
+  noVsCa.minGap += 1;
+  assert.equal(
+    validateEducationAcceptanceArtifact(outcomeNeutralThresholdEdit, { filename }).verdict,
+    'PASS',
+  );
+
+  const d6OutcomeNeutralThresholdEdit = structuredClone(original);
+  const d6NoVsCa = findNoVsCa(d6OutcomeNeutralThresholdEdit, 'd6');
+  d6NoVsCa.minGap += 1;
+  assert.equal(
+    validateEducationAcceptanceArtifact(d6OutcomeNeutralThresholdEdit, { filename }).verdict,
+    'PASS',
+  );
+
+  const nonGatingFailureArtifact = structuredClone(original);
+  for (const [countryCode, row] of Object.entries(nonGatingFailureArtifact.scores)) {
+    if (countryCode === 'US') row.proposed.d6 += 20;
+  }
+  const d6Baseline = new Map(
+    Object.entries(nonGatingFailureArtifact.scores).map(([countryCode, row]) => [countryCode, row.baseline]),
+  );
+  const d6Proposed = new Map(
+    Object.entries(nonGatingFailureArtifact.scores).map(([countryCode, row]) => [countryCode, row.proposed]),
+  );
+  const d6Gates = evaluateGates(d6Baseline, d6Proposed, 'd6');
+  nonGatingFailureArtifact.acceptanceGates.gates.d6 = d6Gates;
+  const nonGatingSummary = summarizeAcceptanceGates(nonGatingFailureArtifact.acceptanceGates.gates);
+  nonGatingFailureArtifact.acceptanceGates.nonGatingFailures = structuredClone(nonGatingSummary.nonGatingFailures);
+  nonGatingFailureArtifact.acceptanceGates.nonGatingFailures[0].detail = 'capture wording changed without changing the outcome';
+  assert.equal(
+    validateEducationAcceptanceArtifact(nonGatingFailureArtifact, { filename }).verdict,
+    'PASS',
+  );
 
   assert.throws(
     mutate((artifact) => { artifact.acceptanceGates.verdict = 'FAIL'; }),
-    /verdict does not match recomputed gates/,
+    actionableArtifactMutation,
+  );
+
+  assert.throws(
+    mutate((artifact) => {
+      findGate(artifact, 'pc', 'gate-1-spearman').status = 'fail';
+    }),
+    actionableArtifactMutation,
+  );
+
+  assert.throws(
+    mutate((artifact) => {
+      findGate(artifact, 'pc', 'gate-1-spearman').evidence.spearman = 0.99;
+    }),
+    actionableArtifactMutation,
+  );
+
+  assert.throws(
+    mutate((artifact) => {
+      const pair = findNoVsCa(artifact, 'pc');
+      pair.minGap = pair.gap + 1;
+    }),
+    actionableArtifactMutation,
+  );
+
+  assert.throws(
+    mutate((artifact) => {
+      findGate(artifact, 'pc', 'gate-2-country-drift').evidence.topMovers![0].delta = 1;
+    }),
+    actionableArtifactMutation,
   );
 
   assert.throws(
     mutate((artifact) => { artifact.scores.US.proposed.pc += 20; }),
-    /reported gates do not match recomputed gates/,
+    actionableArtifactMutation,
   );
 
   assert.throws(
@@ -475,7 +574,7 @@ test('artifact validator rejects inconsistent verdicts, scores, gate 9 inputs, p
         .find((candidate) => candidate.id === 'gate-9-effective-influence-baseline');
       gate.evidence.coreImplemented = 0;
     }),
-    /reported gates do not match recomputed gates/,
+    actionableArtifactMutation,
   );
 
   assert.throws(

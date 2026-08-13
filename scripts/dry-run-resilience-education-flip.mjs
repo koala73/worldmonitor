@@ -87,6 +87,123 @@ const canonicalize = (value) => {
 const canonicalJson = (value) => JSON.stringify(canonicalize(value));
 const sha256 = (value) => createHash('sha256').update(value).digest('hex');
 const jsonEqual = (left, right) => canonicalJson(left) === canonicalJson(right);
+const ACCEPTANCE_ARTIFACT_DIRECTORY = 'docs/snapshots';
+const ACCEPTANCE_RECAPTURE_COMMAND = 'DRY_RUN_OUTPUT=docs/snapshots/resilience-education-acceptance-$(date -u +%F).json node --import tsx/esm scripts/dry-run-resilience-education-flip.mjs';
+
+function formatAcceptanceArtifactPath(filename) {
+  if (typeof filename !== 'string' || filename.length === 0) {
+    return `${ACCEPTANCE_ARTIFACT_DIRECTORY}/resilience-education-acceptance-{date}.json`;
+  }
+  return filename.includes('/') ? filename : `${ACCEPTANCE_ARTIFACT_DIRECTORY}/${filename}`;
+}
+
+function acceptanceArtifactMismatchError(filename, detail) {
+  return new Error(
+    `${detail} for ${formatAcceptanceArtifactPath(filename)}; `
+    + `re-capture against production seeds with: ${ACCEPTANCE_RECAPTURE_COMMAND}`,
+  );
+}
+
+/**
+ * Project a serialized gate onto the acceptance conclusion it proves.
+ *
+ * Gate names, detail strings, thresholds, and rationales are useful capture
+ * evidence, but they are not themselves acceptance outcomes.
+ * Keep only the status and measured values here so a harmless calibration edit
+ * does not invalidate an otherwise identical measurement. Acceptance-relevant
+ * attribution is retained. A changed status or measured value still fails
+ * closed.
+ */
+export function projectAcceptanceGateOutcome(gate) {
+  const base = { id: gate?.id, status: gate?.status };
+  const evidence = gate?.evidence ?? {};
+
+  switch (gate?.id) {
+    case 'gate-1-spearman':
+      return {
+        ...base,
+        measured: {
+          spearman: evidence.spearman,
+          countries: evidence.countries,
+        },
+      };
+    case 'gate-2-country-drift': {
+      const topMovers = Array.isArray(evidence.topMovers)
+        ? evidence.topMovers.map((mover) => ({
+          countryCode: mover?.countryCode,
+          delta: mover?.delta,
+        }))
+        : null;
+      const topMover = topMovers?.[0] ?? null;
+      return {
+        ...base,
+        measured: {
+          maxAbsDelta: Number.isFinite(topMover?.delta) ? Math.abs(topMover.delta) : null,
+          topMovers,
+        },
+      };
+    }
+    case 'gate-6-cohort-median':
+      return {
+        ...base,
+        measured: Array.isArray(evidence.cohortShifts)
+          ? evidence.cohortShifts
+            .map((cohort) => ({
+              cohort: cohort?.cohort,
+              members: cohort?.members,
+              medianShift: cohort?.medianShift,
+            }))
+            .sort((left, right) => String(left.cohort).localeCompare(String(right.cohort)))
+          : null,
+      };
+    case 'gate-7-matched-pair':
+      return {
+        ...base,
+        measured: Array.isArray(evidence.pairs)
+          ? evidence.pairs
+            .map((pair) => ({
+              pairId: pair?.pairId,
+              status: pair?.status,
+              baselineStatus: pair?.baselineStatus,
+              regression: pair?.regression,
+              preExisting: pair?.preExisting,
+              gap: pair?.gap,
+              baselineGap: pair?.baselineGap,
+              gapDelta: pair?.gapDelta,
+            }))
+            .sort((left, right) => String(left.pairId).localeCompare(String(right.pairId)))
+          : null,
+        regressions: Array.isArray(evidence.regressions)
+          ? [...evidence.regressions].sort((left, right) => String(left).localeCompare(String(right)))
+          : null,
+        preExisting: Array.isArray(evidence.preExisting)
+          ? [...evidence.preExisting].sort((left, right) => String(left).localeCompare(String(right)))
+          : null,
+      };
+    case 'gate-9-effective-influence-baseline':
+      return {
+        ...base,
+        measured: {
+          coreImplemented: evidence.coreImplemented,
+          coreTotal: evidence.coreTotal,
+          educationPairedSampleSize: evidence.educationPairedSampleSize,
+          educationCountryCodes: Array.isArray(evidence.educationCountryCodes)
+            ? [...evidence.educationCountryCodes].sort()
+            : null,
+        },
+      };
+    default:
+      throw new Error(`unknown acceptance gate id: ${String(gate?.id)}`);
+  }
+}
+
+export function projectAcceptanceGateOutcomes(gates) {
+  return Array.isArray(gates)
+    ? gates
+      .map(projectAcceptanceGateOutcome)
+      .sort((left, right) => String(left.id).localeCompare(String(right.id)))
+    : null;
+}
 
 function getCaptureSourceState() {
   const trackedChanges = execFileSync(
@@ -300,6 +417,11 @@ const round2 = (v) => (v == null ? null : Math.round(v * 100) / 100);
 
 // ── gates ──────────────────────────────────────────────────────────────────
 
+function matchedPairStatus(gap, minGap) {
+  if (gap == null) return 'missing';
+  return gap >= minGap ? 'pass' : (gap > 0 ? 'near-flip' : 'inverted');
+}
+
 function evaluateGates(baseline, proposed, formula) {
   const gates = [];
   const add = (id, name, status, detail, evidence = {}) => gates.push({ id, name, status, detail, evidence });
@@ -345,12 +467,22 @@ function evaluateGates(baseline, proposed, formula) {
     const baseGap = b.has(pair.higherExpected) && b.has(pair.lowerExpected)
       ? b.get(pair.higherExpected) - b.get(pair.lowerExpected)
       : null;
+    const minGap = pair.minGap ?? 3;
+    const verdict = (g) => matchedPairStatus(g, minGap);
     if (hi == null || lo == null) {
-      return { pairId: pair.id, status: 'missing', gap: null, baselineGap: round2(baseGap), minGap: pair.minGap ?? 3 };
+      return {
+        pairId: pair.id,
+        status: 'missing',
+        baselineStatus: baseGap == null ? 'unknown' : verdict(baseGap),
+        regression: false,
+        preExisting: false,
+        gap: null,
+        baselineGap: round2(baseGap),
+        gapDelta: null,
+        minGap,
+      };
     }
     const gap = hi - lo;
-    const minGap = pair.minGap ?? 3;
-    const verdict = (g) => (g >= minGap ? 'pass' : (g > 0 ? 'near-flip' : 'inverted'));
     const status = verdict(gap);
     // A pair that ALREADY failed with the flag off was not broken by this
     // change, and the runbook's weight-fallback rule cannot fix it — halving
@@ -382,6 +514,83 @@ function evaluateGates(baseline, proposed, formula) {
     { pairs, regressions: regressions.map((x) => x.pairId), preExisting: preExisting.map((x) => x.pairId) });
 
   return gates;
+}
+
+function validateSerializedMatchedPairGate(gate, filename) {
+  const evidence = gate?.evidence;
+  if (!Array.isArray(evidence?.pairs)
+    || !Array.isArray(evidence?.regressions)
+    || !Array.isArray(evidence?.preExisting)) {
+    throw acceptanceArtifactMismatchError(
+      filename,
+      'reported matched-pair evidence does not match its serialized gap, baselineGap, and minGap',
+    );
+  }
+
+  const regressions = [];
+  const preExisting = [];
+  for (const pair of evidence.pairs) {
+    const validPair = pair
+      && typeof pair === 'object'
+      && typeof pair.pairId === 'string'
+      && Number.isFinite(pair.minGap)
+      && pair.minGap >= 0
+      && (pair.gap === null || Number.isFinite(pair.gap))
+      && (pair.baselineGap === null || Number.isFinite(pair.baselineGap));
+    if (!validPair) {
+      throw acceptanceArtifactMismatchError(
+        filename,
+        'reported matched-pair evidence does not match its serialized gap, baselineGap, and minGap',
+      );
+    }
+
+    const expectedStatus = matchedPairStatus(pair.gap, pair.minGap);
+    const expectedBaselineStatus = pair.baselineGap == null
+      ? 'unknown'
+      : matchedPairStatus(pair.baselineGap, pair.minGap);
+    const expectedRegression = expectedStatus !== 'pass' && expectedBaselineStatus === 'pass';
+    const expectedPreExisting = expectedStatus !== 'pass'
+      && expectedStatus !== 'missing'
+      && expectedBaselineStatus !== 'pass';
+    if (pair.status !== expectedStatus
+      || pair.baselineStatus !== expectedBaselineStatus
+      || pair.regression !== expectedRegression
+      || pair.preExisting !== expectedPreExisting) {
+      throw acceptanceArtifactMismatchError(
+        filename,
+        'reported matched-pair status or attribution does not match its serialized gap, baselineGap, and minGap',
+      );
+    }
+    const expectedGapDelta = pair.gap == null || pair.baselineGap == null
+      ? null
+      : round2(pair.gap - pair.baselineGap);
+    if (pair.gapDelta !== expectedGapDelta) {
+      throw acceptanceArtifactMismatchError(
+        filename,
+        'reported matched-pair gapDelta does not match its serialized gap and baselineGap',
+      );
+    }
+    if (expectedRegression) regressions.push(pair.pairId);
+    if (expectedPreExisting) preExisting.push(pair.pairId);
+  }
+
+  const sortIds = (ids) => [...ids].sort((left, right) => String(left).localeCompare(String(right)));
+  if (!jsonEqual(sortIds(evidence.regressions), sortIds(regressions))
+    || !jsonEqual(sortIds(evidence.preExisting), sortIds(preExisting))) {
+    throw acceptanceArtifactMismatchError(
+      filename,
+      'reported matched-pair attribution lists do not match their serialized pair outcomes',
+    );
+  }
+}
+
+function validateReportedMatchedPairAttribution(results, filename) {
+  for (const gates of Object.values(results ?? {})) {
+    if (!Array.isArray(gates)) continue;
+    for (const gate of gates) {
+      if (gate?.id === 'gate-7-matched-pair') validateSerializedMatchedPairGate(gate, filename);
+    }
+  }
 }
 
 export function evaluateExtractionCoverageGate({
@@ -643,17 +852,24 @@ export function validateEducationAcceptanceArtifact(artifact, { filename } = {})
     pc: [...evaluateGates(baseline, proposed, 'pc'), deriveRecordedExtractionCoverageGate(reportedGate9?.evidence)],
     d6: evaluateGates(baseline, proposed, 'd6'),
   };
-  if (!jsonEqual(reportedResults, recomputedResults)) {
-    throw new Error('reported gates do not match recomputed gates');
+  if (!jsonEqual(
+    Object.fromEntries(Object.entries(reportedResults ?? {}).map(([formula, gates]) => [formula, projectAcceptanceGateOutcomes(gates)])),
+    Object.fromEntries(Object.entries(recomputedResults).map(([formula, gates]) => [formula, projectAcceptanceGateOutcomes(gates)])),
+  )) {
+    throw acceptanceArtifactMismatchError(filename, 'reported gate outcomes do not match recomputed outcomes');
   }
 
+  validateReportedMatchedPairAttribution(reportedResults, filename);
   const summary = summarizeAcceptanceGates(recomputedResults);
   if (artifact.acceptanceGates.gatingFormula !== 'pc'
     || artifact.acceptanceGates.verdict !== summary.verdict) {
-    throw new Error('artifact verdict does not match recomputed gates');
+    throw acceptanceArtifactMismatchError(filename, 'artifact verdict does not match recomputed gates');
   }
-  if (!jsonEqual(artifact.acceptanceGates.nonGatingFailures, summary.nonGatingFailures)) {
-    throw new Error('artifact non-gating failures do not match recomputed gates');
+  if (!jsonEqual(
+    projectAcceptanceGateOutcomes(artifact.acceptanceGates.nonGatingFailures),
+    projectAcceptanceGateOutcomes(summary.nonGatingFailures),
+  )) {
+    throw acceptanceArtifactMismatchError(filename, 'artifact non-gating failures do not match recomputed outcomes');
   }
 
   return {
