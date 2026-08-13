@@ -46,7 +46,7 @@ World Monitor is a real-time global intelligence dashboard built as a TypeScript
         │ CoinGeck│ │  FRED   │ │ FIRMS   │
         │   ...   │ │   ...   │ │   ...   │
         └─────────┘ └─────────┘ └─────────┘
-           530+ observed upstream hosts
+           532+ observed upstream hosts
 ```
 
 **Source files**: `package.json`, `vercel.json`
@@ -92,7 +92,7 @@ World Monitor is a real-time global intelligence dashboard built as a TypeScript
 
 ### Component Model
 
-All panels extend the `Panel` base class (108 classes across `src/components`). Panels render via `setContent(html)` (debounced 150ms) and use event delegation on a stable `this.content` element. Panels support resizable row/col spans persisted to localStorage.
+All panels extend the `Panel` base class (109 classes across `src/components`). Panels render via `setContent(html)` (debounced 150ms) and use event delegation on a stable `this.content` element. Panels support resizable row/col spans persisted to localStorage.
 
 ### Dual Map System
 
@@ -197,7 +197,7 @@ CI enforces generated code freshness via `.github/workflows/proto-check.yml`: ru
 
 ### Bootstrap Hydration
 
-`/api/bootstrap` reads cached keys from Redis in a single batch call. The SPA fetches two tiers concurrently (fast + slow) with separate abort controllers and timeouts. Hydrated data is consumed on-demand by panels via `getHydratedData(key)`.
+`/api/bootstrap` reads cached keys from Redis in a single batch call. The SPA fetches two tiers concurrently (fast + slow) with separate abort controllers and timeouts. Large or opt-in datasets use a public, CDN-shielded single-key request and are consumed through `ensureHydrated(key)` only when their panel renders. Tier-hydrated data is consumed by panels via `getHydratedData(key)`.
 
 ### Seed Scripts
 
@@ -215,6 +215,8 @@ The Railway relay service (`scripts/ais-relay.cjs`) runs continuous seed loops:
 - UCDP events
 
 These are the primary seeders. Standalone `seed-*.mjs` scripts on Railway cron are secondary/backup.
+
+The market backup bundle also persists 14 days of timestamped hourly Yahoo closes for the news-to-market correlation panel. This series is an on-demand bootstrap key, so it does not increase the default hydration payload.
 
 ### Refresh Scheduling
 
@@ -373,7 +375,8 @@ Runs before every `git push`:
 | `seed-freshness-monitor.yml` | 15-minute cron, manual | Enforces production ingestion acceptance after a green scheduled main gate; fails on every actionable compact-health problem except explicitly on-demand sources without grading production before Railway deploys or runs |
 | `railway-deploy-trigger.yml` | Deploy Gate completion, hourly backstop, manual | Reconciles the Railway fleet forward under a bounded Durable Object lease: deploys each service whose dependency closure changed since the commit it is running, revalidates exact green `main` before every serial provider call, and counts success only after read-only terminal convergence plus strict zero drift; runner-less runs own no production lock |
 | `analytics-collector-monitor.yml` | 15-minute cron, manual | Probes the self-hosted Umami collector directly (heartbeat, tracker script, ingest route) and fails when events are being dropped — Railway reported a green deployment through the 4-day #5565 blackout, so deployment status is not trusted here |
-| `umami-storage-monitor.yml` | 15-minute cron, manual | Reads the Umami Postgres Railway volume without mutation, caches a bounded history, and fails on capacity or projected days-to-full thresholds |
+| `umami-storage-monitor.yml` | 15-minute cron, manual | Reads the Umami Postgres Railway volume and the `umami-retention` deployment history without mutation, caches a bounded history, and fails on capacity or projected days-to-full thresholds, or when the retention runner's newest deployment that ran is `CRASHED` |
+| `postmerge-deploy-monitor.yml` | 10-minute cron, manual | Alarms on a failed post-merge production deploy (#6376): reads the newest completed run on `main` of `convex-deploy.yml`, `deploy-railway-reconcile-control.yml` and `deploy-worker.yml` and fails when the deploy job did not run/succeed — covers the un-gated deployers outside `deploy-gate.yml`'s PR smoke list |
 | `perf-style-layout-budget.yml` | Twice-daily cron, manual (URL + budget inputs) | The #4536 forced-reflow gate the desktop main-thread baseline named but nothing enforced: captures `/dashboard` with the Playwright harness and fails when the `styleLayout` share of attributed main-thread self-time exceeds budget. Gates the *share*, not absolute ms, and runs scheduled rather than per-PR because lab absolutes are host-contention contaminated (KTD1) while the decomposition is stable. A report that measured nothing returns `unmeasured`, never a pass |
 | `contributor-trust.yml` | PR | Gates untrusted first-time-contributor runs |
 | `deploy-gate.yml` | After Test/Typecheck/Security Audit complete | Aggregates required smoke-gate statuses onto the head SHA for branch protection |

@@ -344,6 +344,18 @@ const EXTRACTION_RULES = {
   socialVelocity: { type: 'summarize-social-velocity' },
   newsThreatScore: { type: 'news-threat-score' },
 
+  // ── education ───────────────────────────────────────────────────────
+  // Implemented ahead of the flag flip (#6460), deliberately BEFORE the tier
+  // promotion rather than alongside it. While the dim is dark this extracts a
+  // real per-country value that no gate consumes, which is harmless; the
+  // reverse order is not. Once education carries weight, a `not-implemented`
+  // row makes gate-9 effective-vs-nominal influence evidence silently omit it
+  // — a green acceptance verdict computed over a formula the harness cannot
+  // see. The payload shape matches the energy bulk seeds exactly
+  // ({ countries: { [ISO2]: { value, year } } }), so it reuses their extractor
+  // rather than introducing a shape family for one key.
+  femaleUpperSecondaryAttainment: { type: 'bulk-v1-country-value', key: 'resilience:education-attainment:v1' },
+
   // ── healthPublicService ─────────────────────────────────────────────
   hospitalBeds: { type: 'static-who', code: 'hospitalBeds' },
   uhcIndex: { type: 'static-who', code: 'uhcIndex' },
@@ -629,6 +641,11 @@ async function readExtractionSources(countryCode, reader) {
     'resilience:fossil-electricity-share:v1',
     'resilience:low-carbon-generation:v1',
     'resilience:power-losses:v1',
+    // #6460: the education activation key. The EXTRACTION_RULES row above is
+    // inert without this — `bulk-v1-country-value` reads `sources.bulkV1[key]`,
+    // so a rule whose key is never fetched returns null for every country and
+    // reports as unmeasurable rather than as an error.
+    'resilience:education-attainment:v1',
     // resilience:reserve-margin:v1 intentionally omitted — no seeder,
     // no registry entry, per plan §3.1 deferral. Add when the IEA
     // electricity-balance seeder lands.
@@ -1439,6 +1456,7 @@ export {
   EXTRACTION_RULES,
   buildIndicatorExtractionPlan,
   applyExtractionRule,
+  readExtractionSources,
 };
 
 // isMain guard so importing the helpers from a test file does not

@@ -1062,6 +1062,8 @@ describe('cachedFetchJson inflight timeout (#3539)', { concurrency: 1 }, () => {
       assert.equal(r1.status, 'rejected');
       assert.equal(r2.status, 'rejected');
       assert.equal(r3.status, 'rejected');
+      assert.ok(r1.reason instanceof redis.CachedFetchTimeoutError);
+      assert.equal(r1.reason.name, 'CachedFetchTimeoutError');
       assert.match(r1.reason.message, /^cachedFetchJson timeout after 50ms for "hang:test:key"$/);
 
       // Critical assertion: a follow-up call after the timeout must trigger a
@@ -1194,7 +1196,11 @@ describe('cachedFetchJson inflight timeout (#3539)', { concurrency: 1 }, () => {
 
       await assert.rejects(
         () => redis.cachedFetchJsonWithMeta('meta:hang:key', 60, () => new Promise(() => {})),
-        /^Error: cachedFetchJsonWithMeta timeout after 50ms for "meta:hang:key"$/,
+        (err) => {
+          assert.ok(err instanceof redis.CachedFetchTimeoutError);
+          assert.match(err.message, /^cachedFetchJsonWithMeta timeout after 50ms for "meta:hang:key"$/);
+          return true;
+        },
       );
 
       // Subsequent call must succeed against a healthy fetcher — proves the
@@ -3697,6 +3703,44 @@ describe('bounded JSON-list history storage', { concurrency: 1 }, () => {
         (await redis.readCachedJsonList('history:key', 16)).status,
         'error',
       );
+    } finally {
+      globalThis.fetch = originalFetch;
+      restoreEnv();
+    }
+  });
+});
+
+describe('allowlisted Redis transactions', { concurrency: 1 }, () => {
+  it('uses /multi-exec and preserves preview key prefixes', async () => {
+    const redis = await importRedisFresh();
+    const restoreEnv = withEnv({
+      UPSTASH_REDIS_REST_URL: 'https://redis.test',
+      UPSTASH_REDIS_REST_TOKEN: 'token',
+      VERCEL_ENV: 'preview',
+      VERCEL_GIT_COMMIT_SHA: 'abcdef1234567890',
+    });
+    const originalFetch = globalThis.fetch;
+    const captured = [];
+    globalThis.fetch = async (url, init) => {
+      captured.push({ url: String(url), init });
+      return jsonResponse([{ result: 'OK' }, { result: 0 }]);
+    };
+
+    try {
+      const results = await redis.runRedisTransaction([
+        ['SET', 'generation:data', '{}', 'EX', 600],
+        ['DEL', 'generation:old'],
+      ]);
+
+      assert.deepEqual(results, [{ result: 'OK' }, { result: 0 }]);
+      assert.equal(captured[0].url, 'https://redis.test/multi-exec');
+      assert.deepEqual(JSON.parse(String(captured[0].init.body)), [
+        ['SET', 'preview:abcdef12:generation:data', '{}', 'EX', 600],
+        ['DEL', 'preview:abcdef12:generation:old'],
+      ]);
+      const proxy = readFileSync(resolve(root, 'docker/redis-rest-proxy.mjs'), 'utf8');
+      assert.match(proxy, /req\.url === '\/multi-exec'/);
+      assert.match(proxy, /'GET', 'SET', 'DEL'/);
     } finally {
       globalThis.fetch = originalFetch;
       restoreEnv();

@@ -2,6 +2,7 @@
 // so tests can import without triggering the top-level runSeed() call.
 
 import { isBriefLeadEligible } from './_clustering.mjs';
+import { countPublisherFamilies } from './shared/publisher-families.js';
 import {
   validateNoHallucinatedProperNouns,
   validateNoHallucinatedFacts,
@@ -59,7 +60,9 @@ export const BRIEF_REJECTIONS = Object.freeze({
  * Choose which clustered story to summarize for the WORLD BRIEF.
  *
  * Returns the first entry in `topStories` with either publisher diversity
- * (`sources.length >= 2`) or entity corroboration across related clusters.
+ * (>= MIN_CORROBORATING_PUBLISHERS distinct publisher families across
+ * `sources`, which holds feed LABELS — #6428) or entity corroboration across
+ * related clusters.
  * Callers should treat null as "publish status=degraded, no brief" — the
  * top-stories list itself is still published; only the brief paragraph is
  * suppressed.
@@ -121,9 +124,16 @@ Rules:
 
 export function synthesisUserPrompt(stories) {
   const lines = stories.map((story, i) => {
-    const sources = Array.isArray(story.sources) && story.sources.length > 0
-      ? story.sources.length
-      : (story.sourceCount ?? 1);
+    // #6428: the model writes the published brief from these lines, so this
+    // count is a corroboration claim reaching a reader. It counted feed
+    // LABELS, telling the model that four Reuters desks were four sources.
+    // clusterItems resolves the families onto the cluster; fall back to
+    // resolving them here, and to 1 — never to sourceCount, which is the
+    // ARTICLE count and would overstate in exactly the same direction.
+    const publishers = Number.isFinite(story.uniquePublisherCount)
+      ? story.uniquePublisherCount
+      : countPublisherFamilies(story.sources);
+    const sources = publishers > 0 ? publishers : 1;
     return `${i + 1}. ${story.primaryTitle} (${story.primarySource}, ${sources} source${sources === 1 ? '' : 's'})`;
   });
   return `Stories:\n${lines.join('\n')}\n\nCompile the world brief JSON.`;

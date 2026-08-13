@@ -129,6 +129,7 @@ generate: clean ## Generate code from proto definitions
 	@node scripts/openapi-inject-webhooks.mjs
 	@node scripts/openapi-inject-idempotency.mjs
 	@node scripts/openapi-inject-rate-limit-errors.mjs
+	@node scripts/openapi-inject-billing-verification.mjs
 	@node scripts/openapi-inject-async-jobs.mjs
 	@node scripts/openapi-inject-china-corridors.mjs
 	@node scripts/openapi-inject-china-decision-signals.mjs

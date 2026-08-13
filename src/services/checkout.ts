@@ -50,7 +50,7 @@ import {
   maskEmail,
   type CheckoutSuccessBannerState,
 } from './checkout-banner-state';
-import { loadActiveReferral } from './referral-capture';
+import { isAffiliateCode, loadActiveReferral } from './referral-capture';
 import { trackCheckoutStart } from './analytics';
 import { showDuplicateSubscriptionDialog } from './checkout-duplicate-dialog';
 import { showCheckoutPendingDialog } from './checkout-pending-dialog';
@@ -900,7 +900,20 @@ export async function startCheckout(
   // session or within the 7-day TTL on another tab. loadActiveReferral
   // returns null (and clears) on stale records, so this is safe to
   // call unconditionally.
-  const effectiveReferral = options?.referralCode ?? loadActiveReferral() ?? undefined;
+  //
+  // The passed code is validated here, not only inside loadActiveReferral:
+  // three callers hand us a value that never went through referral capture —
+  // the failure-retry banner replaying a saved attempt, a resumed pending
+  // intent, and the `?checkoutReferral=` URL param, which reaches this
+  // function straight off the URL with no charset check at all. Without this,
+  // a `welcome-*` tag captured before #6493 rides into Dodo's
+  // `affonso_referral`, which is the one thing that guard exists to prevent.
+  // An unusable passed code falls through to the stored one rather than
+  // suppressing it — it is not evidence that the visitor has no referral.
+  const passedReferral = options?.referralCode && isAffiliateCode(options.referralCode)
+    ? options.referralCode
+    : undefined;
+  const effectiveReferral = passedReferral ?? loadActiveReferral() ?? undefined;
   // Record the attempt BEFORE the network call so the failure-retry
   // banner has context even if every subsequent step fails (timeout,
   // user closes tab before Dodo redirects, SDK crashes, etc.).

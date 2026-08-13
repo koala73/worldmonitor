@@ -88,6 +88,14 @@ COPY shared/diplomacy-keywords.json ./shared/
 COPY shared/ticker-extract.js shared/ticker-extract.d.ts ./shared/
 COPY shared/stocks.json ./shared/
 COPY scripts/shared/notification-dedup.cjs ./scripts/shared/
+# #6428: corroboration counts publishers, not feed labels. Imported by
+# seed-digest-notifications.mjs (the corroboration run metric) as
+# shared/publisher-families.js, and by scripts/lib/digest-delivery-plan.mjs
+# (the cooldown source-evolution bypass) as scripts/shared/publisher-families.js
+# — the same module reached through two roots, so BOTH copies must ship.
+# Guarded by tests/dockerfile-digest-notifications-imports.test.mjs.
+COPY shared/publisher-families.js shared/publisher-families.d.ts ./shared/
+COPY scripts/shared/publisher-families.js ./scripts/shared/
 COPY shared/brief-llm-core.js shared/brief-llm-core.d.ts ./shared/
 COPY server/_shared/brief-render.js server/_shared/brief-render.d.ts ./server/_shared/
 # llm-sanitize is imported by scripts/lib/brief-llm.mjs on the fallback

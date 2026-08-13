@@ -84,6 +84,25 @@ describe('convex entry-point hygiene', () => {
     );
   });
 
+  // Convex names every pushed module by its path, and the server rejects a path
+  // component holding anything but alphanumerics, underscores or periods. The
+  // convex npm package does NOT check this locally — the only "no" comes from
+  // `evaluate_push`, i.e. post-merge, on main. `admission-snapshot.ts` (#6470)
+  // therefore passed every required gate and then took the whole production
+  // push down with `InvalidConfig: ... is not a valid path to a Convex module`,
+  // stranding every other convex/ change behind it exactly as #6232 did.
+  it('pushes no module whose path a Convex module name cannot express', () => {
+    const legalComponent = /^[A-Za-z0-9_.]+$/;
+    const offenders = convexEntryPoints().filter((relPath) =>
+      relPath.split(sep).some((component) => !legalComponent.test(component)),
+    );
+    assert.deepEqual(
+      offenders,
+      [],
+      `Convex module paths allow only alphanumerics, underscores and periods per component — rename these (hyphens are the usual culprit): ${offenders.join(', ')}`,
+    );
+  });
+
   // Guards the guard: if the filter above ever stops recognising real modules,
   // both assertions pass over an empty list and prove nothing.
   it('recognises the real backend modules', () => {

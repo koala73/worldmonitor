@@ -72,7 +72,11 @@ export type CacheReadResult = { status: 'hit'; value: unknown } | { status: 'mis
  * seed-owned keys written unprefixed by the Railway seeders, mirroring
  * `getCachedJson`'s own raw flag. Leave false for keys this app writes.
  */
-export async function readCachedJson(key: string, raw = false): Promise<CacheReadResult> {
+async function readCachedJsonInternal(
+  key: string,
+  raw = false,
+  unwrapSeedEnvelope = true,
+): Promise<CacheReadResult> {
   if (process.env.LOCAL_API_MODE === 'tauri-sidecar') {
     try {
       const { sidecarCacheGet } = await import('./sidecar-cache');
@@ -99,13 +103,18 @@ export async function readCachedJson(key: string, raw = false): Promise<CacheRea
     // Envelope-aware by default — RPC consumers get the bare payload regardless
     // of whether the writer has migrated to contract mode. Legacy shapes pass
     // through unchanged (unwrapEnvelope returns {_seed: null, data: raw}).
+    const parsed = JSON.parse(data.result);
     return {
       status: 'hit',
-      value: unwrapEnvelope(JSON.parse(data.result)).data,
+      value: unwrapSeedEnvelope ? unwrapEnvelope(parsed).data : parsed,
     };
   } catch (error) {
     return { status: 'error', error };
   }
+}
+
+export async function readCachedJson(key: string, raw = false): Promise<CacheReadResult> {
+  return readCachedJsonInternal(key, raw, true);
 }
 
 function logCacheReadError(key: string, err: unknown): void {
@@ -192,6 +201,14 @@ export async function getCachedRawString(key: string): Promise<string | null> {
 
 export async function getCachedJson(key: string, raw = false): Promise<unknown | null> {
   const read = await readCachedJson(key, raw);
+  if (read.status === 'hit') return read.value;
+  if (read.status === 'error') logCacheReadError(key, read.error);
+  return null;
+}
+
+/** Read a JSON value without discarding its runSeed contract metadata. */
+export async function getCachedEnvelopeJson(key: string, raw = false): Promise<unknown | null> {
+  const read = await readCachedJsonInternal(key, raw, false);
   if (read.status === 'hit') return read.value;
   if (read.status === 'error') logCacheReadError(key, read.error);
   return null;
@@ -551,15 +568,22 @@ export async function getCachedJsonBatch(keys: string[], raw = false): Promise<M
 }
 
 export type RedisPipelineCommand = Array<string | number>;
+export type RedisCommandResult = { result?: unknown; error?: string };
 
 function normalizePipelineCommand(command: RedisPipelineCommand, raw: boolean): RedisPipelineCommand {
   if (raw || command.length < 2) return [...command];
   const [verb, key, ...rest] = command;
   if (typeof verb !== 'string' || typeof key !== 'string') return [...command];
+  if (verb.toUpperCase() === 'EVAL') {
+    const keyCount = Number(rest[0]);
+    if (!Number.isInteger(keyCount) || keyCount < 0 || rest.length < keyCount + 1) return [...command];
+    const keys = rest.slice(1, keyCount + 1).map((item) => typeof item === 'string' ? prefixKey(item) : item);
+    return [verb, key, rest[0]!, ...keys, ...rest.slice(keyCount + 1)];
+  }
   return [verb, prefixKey(key), ...rest];
 }
 
-export async function runRedisPipeline(commands: RedisPipelineCommand[], raw = false): Promise<Array<{ result?: unknown }>> {
+export async function runRedisPipeline(commands: RedisPipelineCommand[], raw = false): Promise<RedisCommandResult[]> {
   if (process.env.LOCAL_API_MODE === 'tauri-sidecar') return [];
   if (commands.length === 0) return [];
 
@@ -581,9 +605,47 @@ export async function runRedisPipeline(commands: RedisPipelineCommand[], raw = f
       console.warn(`[redis] runRedisPipeline HTTP ${response.status}`);
       return [];
     }
-    return (await response.json()) as Array<{ result?: unknown }>;
+    return (await response.json()) as RedisCommandResult[];
   } catch (err) {
     console.warn('[redis] runRedisPipeline failed:', errMsg(err));
+    return [];
+  }
+}
+
+/** Execute allowlisted Redis commands in one MULTI/EXEC transaction. */
+export async function runRedisTransaction(commands: RedisPipelineCommand[], raw = false): Promise<RedisCommandResult[]> {
+  if (process.env.LOCAL_API_MODE === 'tauri-sidecar') return [];
+  if (commands.length === 0) return [];
+
+  const url = process.env.UPSTASH_REDIS_REST_URL;
+  const token = process.env.UPSTASH_REDIS_REST_TOKEN;
+  if (!url || !token) return [];
+
+  try {
+    const response = await fetch(`${url}/multi-exec`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json',
+        'User-Agent': 'worldmonitor-server/1.0 (redis)',
+      },
+      body: JSON.stringify(commands.map((command) => normalizePipelineCommand(command, raw))),
+      signal: AbortSignal.timeout(REDIS_PIPELINE_TIMEOUT_MS),
+    });
+    if (!response.ok) {
+      console.warn(`[redis] runRedisTransaction HTTP ${response.status}`);
+      return [];
+    }
+    const data = (await response.json().catch(() => null)) as RedisCommandResult[] | null;
+    if (!Array.isArray(data)) {
+      console.warn('[redis] runRedisTransaction returned an invalid response');
+      return [];
+    }
+    return data;
+  } catch (err) {
+    // sentry-coverage-ok: callers treat an empty result as an unconfirmed
+    // transaction and preserve the previous cache generation.
+    console.warn('[redis] runRedisTransaction failed:', errMsg(err));
     return [];
   }
 }
@@ -651,6 +713,14 @@ const inflight = new Map<string, Promise<unknown>>();
 const FETCHER_TIMEOUT_MS_DEFAULT = 30_000;
 let fetcherTimeoutDefaultMs = FETCHER_TIMEOUT_MS_DEFAULT;
 
+/** Identifies the cache layer's own fetcher backstop without matching text. */
+export class CachedFetchTimeoutError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'CachedFetchTimeoutError';
+  }
+}
+
 // Test-only: override the DEFAULT inflight timeout so unit tests can exercise
 // the timeout branch without sleeping for 30s. Per-call `opts.timeoutMs` still
 // wins. No production caller should ever invoke this.
@@ -680,7 +750,7 @@ function withFetcherTimeout<T>(promise: Promise<T>, key: string, timeoutMs: numb
   let timer: ReturnType<typeof setTimeout> | undefined;
   const timeout = new Promise<never>((_, reject) => {
     timer = setTimeout(() => {
-      reject(new Error(`${callerName} timeout after ${timeoutMs}ms for "${key}"`));
+      reject(new CachedFetchTimeoutError(`${callerName} timeout after ${timeoutMs}ms for "${key}"`));
     }, timeoutMs);
   });
   return Promise.race([promise, timeout]).finally(() => {

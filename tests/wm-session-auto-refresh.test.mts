@@ -1907,6 +1907,273 @@ describe('wm-session route-scoped recovery failures (#5674)', () => {
 // the cookie we just set never came back.
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// Layer 4 — a failed mint is not automatically a dead session (WORLDMONITOR-WG).
+//
+// `fetchNewSession` used to collapse five outcomes into a bare `null`: a non-2xx
+// status, a 200 with a malformed body, a network error, a CORS block, and its own
+// 10s timeout. `mint_failed` then skipped the route quorum and blacked out every
+// anonymous call for 15 minutes, justified by "the mint itself did not hand back
+// a cookie, so no route can succeed".
+//
+// Production disproved that premise. For 5 of the 7 most recent mint_failed
+// events, Axiom shows the server handled 121-216 /api/wm-session requests in a
+// +/-2.5 minute window around the event with ZERO rejections; the two others saw
+// only origin_403 from unrelated clients. The server never refused. The failure
+// was in the client's own transport, and one dropped request cost that user a
+// 15-minute blackout.
+//
+// So the verdict now depends on WHICH failure happened: a server refusal is still
+// session-wide, a transport failure is retried once and must corroborate across
+// two routes before it may black out the tab.
+// ---------------------------------------------------------------------------
+
+describe('wm-session mint failure cause (WORLDMONITOR-WG)', () => {
+  function captureSink() {
+    const captures: Array<{ msg: string; ctx: { level?: string; tags?: Record<string, string> } }> = [];
+    mod.__setWmSessionSentryEnqueueForTests(((fn: (s: unknown) => void) => {
+      fn({
+        captureMessage: (msg: string, ctx: { level?: string; tags?: Record<string, string> }) => {
+          captures.push({ msg, ctx });
+        },
+        addBreadcrumb: () => {},
+      });
+    }) as Parameters<typeof mod.__setWmSessionSentryEnqueueForTests>[0]);
+    return captures;
+  }
+
+  function isDegraded(resp: Response): boolean {
+    return resp.status === 503 && resp.headers.get('X-Wm-Session-Degraded') === '1';
+  }
+
+  it('does NOT black out the session when a single mint fails at the transport level', async () => {
+    // The whole bug in one assertion: one network blip on one route must not
+    // suppress every anonymous API call for 15 minutes.
+    memoryStorage.clear();
+    const captures = captureSink();
+
+    currentFetchHandler = (input) => {
+      const url = typeof input === 'string' ? input : (input instanceof URL ? input.href : input.url);
+      if (url.includes('/api/wm-session')) return Promise.reject(new TypeError('Failed to fetch'));
+      return Promise.resolve(new Response('unauthorized', { status: 401 }));
+    };
+
+    const originalWarn = console.warn;
+    console.warn = () => {};
+    try {
+      await wrappedFetch('https://api.worldmonitor.app/api/bootstrap');
+    } finally {
+      console.warn = originalWarn;
+    }
+
+    // Assert on the blackout itself, not on a follow-up route's status: a second
+    // route would corroborate and trip the quorum, so its response would be a
+    // plain 401 either way and could not tell the two behaviours apart.
+    const dead = captures.filter((c) => c.ctx.tags?.kind === 'wm_session_dead');
+    assert.equal(
+      dead.length,
+      0,
+      'one transport-level mint failure must not start a 15-minute degraded episode',
+    );
+    // And the session must genuinely still be usable, not merely unreported.
+    const publicRead = await wrappedFetch('https://api.worldmonitor.app/api/health?compact=1');
+    assert.equal(isDegraded(publicRead), false, 'anonymous calls must not be suppressed yet');
+  });
+
+  it('retries the mint once when the failure is transport-level', async () => {
+    memoryStorage.clear();
+    captureSink();
+
+    let mintCalls = 0;
+    currentFetchHandler = (input) => {
+      const url = typeof input === 'string' ? input : (input instanceof URL ? input.href : input.url);
+      if (url.includes('/api/wm-session')) {
+        mintCalls += 1;
+        return Promise.reject(new TypeError('Failed to fetch'));
+      }
+      return Promise.resolve(new Response('unauthorized', { status: 401 }));
+    };
+
+    const originalWarn = console.warn;
+    console.warn = () => {};
+    try {
+      await wrappedFetch('https://api.worldmonitor.app/api/bootstrap');
+    } finally {
+      console.warn = originalWarn;
+    }
+
+    // preflight mint + recovery mint + ONE transport retry.
+    assert.equal(mintCalls, 3, 'a transport failure earns exactly one retry, not zero and not a loop');
+  });
+
+  it('still blacks out immediately when the SERVER refuses to mint', async () => {
+    // Regression guard for the case the original design was written for: a real
+    // server refusal IS session-wide, and must keep skipping the quorum.
+    memoryStorage.clear();
+    const captures = captureSink();
+
+    let mintCalls = 0;
+    currentFetchHandler = (input) => {
+      const url = typeof input === 'string' ? input : (input instanceof URL ? input.href : input.url);
+      if (url.includes('/api/wm-session')) {
+        mintCalls += 1;
+        return Promise.resolve(new Response('mint unavailable', { status: 503 }));
+      }
+      return Promise.resolve(new Response('unauthorized', { status: 401 }));
+    };
+
+    const originalWarn = console.warn;
+    console.warn = () => {};
+    try {
+      await wrappedFetch('https://api.worldmonitor.app/api/bootstrap');
+      const other = await wrappedFetch('https://api.worldmonitor.app/api/economic/v1/get-bls-series');
+      assert.equal(isDegraded(other), true, 'a server refusal still suppresses anonymous calls');
+    } finally {
+      console.warn = originalWarn;
+    }
+
+    assert.equal(mintCalls, 2, 'a refusal is NOT retried — the server answered, it just said no');
+    const dead = captures.filter((c) => c.ctx.tags?.kind === 'wm_session_dead');
+    assert.equal(dead.length, 1);
+    assert.equal(dead[0].ctx.tags?.reason, 'mint_failed');
+    assert.equal(dead[0].ctx.tags?.mint_cause, 'refused', 'the discriminator that makes WG diagnosable');
+  });
+
+  it('treats a 200 with an unusable body as a SERVER verdict, not a transport failure', async () => {
+    // The server answered — it just answered with something we cannot use. That
+    // is session-wide like a refusal, so it must skip the quorum AND skip the
+    // retry: re-asking an endpoint that just replied nonsense gets more nonsense.
+    // Without this test the malformed/network classification is interchangeable.
+    memoryStorage.clear();
+    const captures = captureSink();
+
+    let mintCalls = 0;
+    currentFetchHandler = (input) => {
+      const url = typeof input === 'string' ? input : (input instanceof URL ? input.href : input.url);
+      if (url.includes('/api/wm-session')) {
+        mintCalls += 1;
+        // 200, valid JSON, but no usable expiry.
+        return Promise.resolve(new Response(JSON.stringify({ hadSession: true }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        }));
+      }
+      return Promise.resolve(new Response('unauthorized', { status: 401 }));
+    };
+
+    const originalWarn = console.warn;
+    console.warn = () => {};
+    try {
+      await wrappedFetch('https://api.worldmonitor.app/api/bootstrap');
+      const other = await wrappedFetch('https://api.worldmonitor.app/api/economic/v1/get-bls-series');
+      assert.equal(isDegraded(other), true, 'an unusable mint body is session-wide');
+    } finally {
+      console.warn = originalWarn;
+    }
+
+    assert.equal(mintCalls, 2, 'a malformed body is NOT retried — the server already answered');
+    const dead = captures.filter((c) => c.ctx.tags?.kind === 'wm_session_dead');
+    assert.equal(dead.length, 1);
+    assert.equal(dead[0].ctx.tags?.mint_cause, 'malformed');
+  });
+
+  it('classifies an unparseable mint body as malformed, not network', async () => {
+    // A body that is not JSON at all throws inside resp.json(). That throw lands
+    // in the same catch as a dropped connection, so without an inner guard it
+    // would be reported as `network` and wrongly earn a retry.
+    memoryStorage.clear();
+    const captures = captureSink();
+
+    let mintCalls = 0;
+    currentFetchHandler = (input) => {
+      const url = typeof input === 'string' ? input : (input instanceof URL ? input.href : input.url);
+      if (url.includes('/api/wm-session')) {
+        mintCalls += 1;
+        return Promise.resolve(new Response('<html>gateway error</html>', {
+          status: 200,
+          headers: { 'Content-Type': 'text/html' },
+        }));
+      }
+      return Promise.resolve(new Response('unauthorized', { status: 401 }));
+    };
+
+    const originalWarn = console.warn;
+    console.warn = () => {};
+    try {
+      await wrappedFetch('https://api.worldmonitor.app/api/bootstrap');
+    } finally {
+      console.warn = originalWarn;
+    }
+
+    assert.equal(mintCalls, 2, 'an unparseable body is not a transport failure, so it is not retried');
+    const dead = captures.filter((c) => c.ctx.tags?.kind === 'wm_session_dead');
+    assert.equal(dead.length, 1, 'and it is session-wide immediately');
+    assert.equal(dead[0].ctx.tags?.mint_cause, 'malformed');
+  });
+
+  it('blacks out on a transport failure only once TWO routes corroborate', async () => {
+    memoryStorage.clear();
+    const captures = captureSink();
+
+    currentFetchHandler = (input) => {
+      const url = typeof input === 'string' ? input : (input instanceof URL ? input.href : input.url);
+      if (url.includes('/api/wm-session')) return Promise.reject(new TypeError('Failed to fetch'));
+      return Promise.resolve(new Response('unauthorized', { status: 401 }));
+    };
+
+    const originalWarn = console.warn;
+    console.warn = () => {};
+    try {
+      await wrappedFetch('https://api.worldmonitor.app/api/bootstrap');
+      await wrappedFetch('https://api.worldmonitor.app/api/infrastructure/v1/get-cable-health');
+      const third = await wrappedFetch('https://api.worldmonitor.app/api/economic/v1/get-bls-series');
+      assert.equal(isDegraded(third), true, 'two corroborating routes DO justify the blackout');
+    } finally {
+      console.warn = originalWarn;
+    }
+
+    const dead = captures.filter((c) => c.ctx.tags?.kind === 'wm_session_dead');
+    assert.equal(dead.length, 1, 'exactly one capture per degraded episode');
+    assert.equal(dead[0].ctx.tags?.reason, 'mint_failed');
+    assert.equal(dead[0].ctx.tags?.mint_cause, 'network');
+    assert.equal(dead[0].ctx.tags?.route, '/api/wm-session', 'the mint is implicated, not a bystander route');
+  });
+
+  it('distinguishes a timeout from a network error', async () => {
+    // These need different remedies — a timeout points at our own budget, a
+    // network error points at the user's connectivity — so one tag must not
+    // stand for both.
+    memoryStorage.clear();
+    const captures = captureSink();
+    mod.__setWmSessionFetchTimeoutForTests(20);
+
+    currentFetchHandler = (input, init) => {
+      const url = typeof input === 'string' ? input : (input instanceof URL ? input.href : input.url);
+      if (url.includes('/api/wm-session')) {
+        // Never settles on its own — only the abort signal ends it, which is
+        // exactly how a hung mint behaves against the production budget.
+        return new Promise<Response>((_resolve, reject) => {
+          init?.signal?.addEventListener('abort', () => reject(new DOMException('Aborted', 'AbortError')));
+        });
+      }
+      return Promise.resolve(new Response('unauthorized', { status: 401 }));
+    };
+
+    const originalWarn = console.warn;
+    console.warn = () => {};
+    try {
+      await wrappedFetch('https://api.worldmonitor.app/api/bootstrap');
+      await wrappedFetch('https://api.worldmonitor.app/api/infrastructure/v1/get-cable-health');
+    } finally {
+      console.warn = originalWarn;
+    }
+
+    const dead = captures.filter((c) => c.ctx.tags?.kind === 'wm_session_dead');
+    assert.equal(dead.length, 1);
+    assert.equal(dead[0].ctx.tags?.mint_cause, 'timeout', 'an aborted mint is a timeout, not a network error');
+  });
+});
+
 describe('wm-session cookie-persistence detection (Layer 3)', () => {
   it('mints on browsers that do not implement AbortSignal.timeout', async () => {
     memoryStorage.clear();

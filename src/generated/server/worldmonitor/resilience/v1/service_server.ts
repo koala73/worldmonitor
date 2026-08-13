@@ -121,6 +121,7 @@ export interface ResilienceRankingCacheState {
 
 export interface ResilienceRuntimeConstructVersions {
   energy: string;
+  education: string;
 }
 
 export interface ResilienceRuntimeIntervalState {

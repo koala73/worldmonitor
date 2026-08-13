@@ -6,7 +6,7 @@
 //     violation that hard-fails at config time, not at write time).
 //   - maxContentAgeMin must be a positive integer (rejects 0, negatives,
 //     non-integer, undefined, null, strings).
-//   - contentMeta(rawData) runs BEFORE publishTransform(rawData) so seeders
+//   - contentMeta(rawData, runStartedAtMs) runs BEFORE publishTransform(rawData) so seeders
 //     can use pre-publish helper fields (e.g. _publishedAtIsSynthetic) for
 //     timestamp computation, then strip those helpers from the public payload.
 //   - contentMeta returning null OR throwing both result in newestItemAt:null
@@ -19,6 +19,10 @@ import { test, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 
 import { runSeed } from '../scripts/_seed-utils.mjs';
+import {
+  contentMeta as gdeltContentMeta,
+  fetchAllTopics,
+} from '../scripts/seed-gdelt-intel.mjs';
 
 const ORIGINAL_FETCH = globalThis.fetch;
 const ORIGINAL_EXIT = process.exit;
@@ -295,6 +299,67 @@ test('content-meta with valid timestamps → newestItemAt/oldestItemAt populated
   const meta = lastMetaSetBody('valid-timestamps');
   assert.equal(meta.newestItemAt, NEWEST);
   assert.equal(meta.oldestItemAt, OLDEST);
+  assert.equal(meta.maxContentAgeMin, 1440);
+});
+
+test('runSeed passes one run clock and publishes null for a persisted future GDELT stamp', async () => {
+  const FUTURE = '2099-01-01T00:00:00.000Z';
+  const TOPIC_IDS = ['military', 'cyber', 'nuclear', 'sanctions', 'intelligence', 'maritime'];
+  const previous = {
+    topics: TOPIC_IDS.map((id) => ({
+      id,
+      articles: [{ url: 'https://example.test/' + id }],
+      fetchedAt: FUTURE,
+      attemptedAt: FUTURE,
+    })),
+  };
+  let observedRunClock;
+  let fetchRunClock;
+
+  await runWithExitTrap(() =>
+    runSeed(
+      'test',
+      'gdelt-future-cache',
+      'test:gdelt-future-cache:v1',
+      (runContext) => {
+        fetchRunClock = runContext.runStartedAtMs;
+        return fetchAllTopics({
+          runStartedAtMs: fetchRunClock,
+          _now: () => fetchRunClock,
+          _loadPrevious: async () => previous,
+          _fetchArticles: async (topic) => ({
+            id: topic.id,
+            articles: [],
+            fetchedAt: FUTURE,
+            failureCode: 'GDELT_TEST_OUTAGE',
+          }),
+          _softBudgetMs: 60_000,
+          _minRequestBudgetMs: 1,
+          _interRequestDelayMs: 0,
+        });
+      },
+      {
+        validateFn: (data) => data?.topics?.filter((topic) => topic.articles.length > 0).length >= 3,
+        ttlSeconds: 3600,
+        declareRecords: (data) => data.topics.length,
+        sourceVersion: 'gdelt-future-cache-v1',
+        schemaVersion: 1,
+        maxStaleMin: 1440,
+        contentMeta: (data, runClock) => {
+          observedRunClock = runClock;
+          return gdeltContentMeta(data, runClock);
+        },
+        maxContentAgeMin: 1440,
+      },
+    ),
+  );
+
+  assert.ok(Number.isFinite(observedRunClock), 'runSeed must pass its immutable run clock to contentMeta');
+  assert.equal(observedRunClock, fetchRunClock, 'fetch ordering and content health must share the same run clock');
+  const meta = lastMetaSetBody('gdelt-future-cache');
+  assert.ok(meta, 'seed-meta must be written through the publish path');
+  assert.equal(meta.newestItemAt, null, 'a persisted far-future cache stamp must fail closed');
+  assert.equal(meta.oldestItemAt, null, 'a persisted far-future cache stamp must not renew the oldest edge');
   assert.equal(meta.maxContentAgeMin, 1440);
 });
 

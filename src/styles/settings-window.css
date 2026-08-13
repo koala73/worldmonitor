@@ -18,7 +18,7 @@
   background: var(--settings-bg);
   color: var(--settings-text);
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
-  font-size: 14px;
+  font-size: calc(14px * var(--wm-panel-effective-scale, 1));
   padding: 0;
   box-sizing: border-box;
   display: flex;
@@ -52,14 +52,14 @@
 }
 
 .settings-header-title {
-  font-size: 14px;
+  font-size: calc(14px * var(--wm-panel-effective-scale, 1));
   font-weight: 600;
   color: var(--settings-text);
   letter-spacing: -0.01em;
 }
 
 .settings-header-badge {
-  font-size: 10px;
+  font-size: calc(10px * var(--wm-panel-effective-scale, 1));
   font-weight: 600;
   padding: 2px 8px;
   border-radius: 8px;
@@ -97,7 +97,7 @@
   color: var(--settings-text);
   padding: 7px 10px;
   font: inherit;
-  font-size: 12px;
+  font-size: calc(12px * var(--wm-panel-effective-scale, 1));
   transition: border-color 0.15s;
   box-sizing: border-box;
 }
@@ -131,7 +131,7 @@
   background: transparent;
   color: var(--settings-text-secondary);
   font: inherit;
-  font-size: 13px;
+  font-size: calc(13px * var(--wm-panel-effective-scale, 1));
   cursor: pointer;
   transition: background 0.12s, color 0.12s;
   text-align: left;
@@ -179,7 +179,7 @@
 }
 
 .settings-nav-count {
-  font-size: 11px;
+  font-size: calc(11px * var(--wm-panel-effective-scale, 1));
   color: var(--settings-text-secondary);
   opacity: 0.7;
 }
@@ -221,7 +221,7 @@
 
 .settings-section-header h2 {
   margin: 0;
-  font-size: 18px;
+  font-size: calc(18px * var(--wm-panel-effective-scale, 1));
   font-weight: 600;
   color: var(--settings-text);
 }
@@ -249,7 +249,7 @@
 
 .settings-ov-ring-num {
   display: block;
-  font-size: 28px;
+  font-size: calc(28px * var(--wm-panel-effective-scale, 1));
   font-weight: 700;
   color: var(--settings-text);
   line-height: 1;
@@ -257,7 +257,7 @@
 
 .settings-ov-ring-label {
   display: block;
-  font-size: 11px;
+  font-size: calc(11px * var(--wm-panel-effective-scale, 1));
   color: var(--settings-text-secondary);
   margin-top: 2px;
 }
@@ -294,13 +294,13 @@
 .settings-ov-cat.ov-cat-warn { border-left: 3px solid var(--settings-red); opacity: 0.8; }
 
 .settings-ov-cat-label {
-  font-size: 13px;
+  font-size: calc(13px * var(--wm-panel-effective-scale, 1));
   font-weight: 500;
   color: var(--settings-text);
 }
 
 .settings-ov-cat-count {
-  font-size: 11px;
+  font-size: calc(11px * var(--wm-panel-effective-scale, 1));
   color: var(--settings-text-secondary);
 }
 
@@ -398,13 +398,13 @@
 }
 
 .settings-feat-name {
-  font-size: 13px;
+  font-size: calc(13px * var(--wm-panel-effective-scale, 1));
   font-weight: 600;
   color: var(--settings-text);
 }
 
 .settings-feat-desc {
-  font-size: 11px;
+  font-size: calc(11px * var(--wm-panel-effective-scale, 1));
   color: var(--settings-text-secondary);
   overflow: hidden;
   text-overflow: ellipsis;
@@ -412,7 +412,7 @@
 }
 
 .settings-feat-pill {
-  font-size: 10px;
+  font-size: calc(10px * var(--wm-panel-effective-scale, 1));
   font-weight: 600;
   padding: 3px 10px;
   border-radius: 10px;
@@ -438,7 +438,7 @@
 }
 
 .settings-feat-chevron {
-  font-size: 12px;
+  font-size: calc(12px * var(--wm-panel-effective-scale, 1));
   color: var(--settings-text-secondary);
   transition: transform 0.2s;
   flex-shrink: 0;
@@ -464,14 +464,14 @@
 
 .settings-feat-fallback {
   margin: 8px 16px 12px;
-  font-size: 12px;
+  font-size: calc(12px * var(--wm-panel-effective-scale, 1));
   color: var(--settings-yellow);
   line-height: 1.4;
 }
 
 .settings-feat-cat-tag {
   margin: 0 16px 8px;
-  font-size: 11px;
+  font-size: calc(11px * var(--wm-panel-effective-scale, 1));
   font-weight: 500;
   color: var(--settings-text-secondary);
   opacity: 0.7;
@@ -496,14 +496,14 @@
 
 .settings-secret-label {
   grid-area: label;
-  font-size: 12px;
+  font-size: calc(12px * var(--wm-panel-effective-scale, 1));
   font-weight: 500;
   color: var(--settings-text-secondary);
 }
 
 .settings-secret-status {
   grid-area: status;
-  font-size: 11px;
+  font-size: calc(11px * var(--wm-panel-effective-scale, 1));
   font-weight: 500;
   text-align: right;
 }
@@ -529,7 +529,7 @@
   border-radius: 6px;
   color: var(--settings-text);
   padding: 7px 10px;
-  font-size: 12px;
+  font-size: calc(12px * var(--wm-panel-effective-scale, 1));
   font-family: var(--font-mono);
   transition: border-color 0.15s;
   box-sizing: border-box;
@@ -561,7 +561,7 @@
   border-radius: 6px;
   color: var(--settings-text);
   padding: 7px 10px;
-  font-size: 12px;
+  font-size: calc(12px * var(--wm-panel-effective-scale, 1));
   font-family: var(--font-mono);
   cursor: pointer;
   transition: border-color 0.15s;
@@ -598,7 +598,7 @@
   right: 4px;
   top: 50%;
   transform: translateY(-50%);
-  font-size: 11px;
+  font-size: calc(11px * var(--wm-panel-effective-scale, 1));
   font-weight: 600;
   color: var(--settings-accent);
   background: rgba(96, 165, 250, 0.1);
@@ -618,14 +618,14 @@
 .settings-secret-hint {
   grid-area: hint;
   color: var(--settings-red);
-  font-size: 11px;
+  font-size: calc(11px * var(--wm-panel-effective-scale, 1));
 }
 
 /* ── Status bar ── */
 .settings-action-status {
   margin: 0;
   flex: 1;
-  font-size: 12px;
+  font-size: calc(12px * var(--wm-panel-effective-scale, 1));
   color: var(--settings-text-secondary);
   overflow: hidden;
   text-overflow: ellipsis;
@@ -648,7 +648,7 @@
 
 .settings-btn {
   font: inherit;
-  font-size: 13px;
+  font-size: calc(13px * var(--wm-panel-effective-scale, 1));
   font-weight: 600;
   padding: 8px 24px;
   border-radius: 6px;
@@ -697,7 +697,7 @@
 
 .debug-data-section h3 {
   margin: 0 0 10px;
-  font-size: 13px;
+  font-size: calc(13px * var(--wm-panel-effective-scale, 1));
   font-weight: 600;
   color: var(--settings-text-secondary);
   text-transform: uppercase;
@@ -720,7 +720,7 @@
   background: var(--settings-surface);
   color: var(--settings-text);
   font: inherit;
-  font-size: 13px;
+  font-size: calc(13px * var(--wm-panel-effective-scale, 1));
   padding: 8px 16px;
   border-radius: 6px;
   cursor: pointer;
@@ -747,7 +747,7 @@
 
 .diag-header h2 {
   margin: 0;
-  font-size: 15px;
+  font-size: calc(15px * var(--wm-panel-effective-scale, 1));
   font-weight: 600;
   color: var(--settings-text);
 }
@@ -758,7 +758,7 @@
 }
 
 .diag-toggles label {
-  font-size: 13px;
+  font-size: calc(13px * var(--wm-panel-effective-scale, 1));
   display: flex;
   align-items: center;
   gap: 6px;
@@ -779,7 +779,7 @@
 
 .diag-traffic-bar h3 {
   margin: 0;
-  font-size: 13px;
+  font-size: calc(13px * var(--wm-panel-effective-scale, 1));
   font-weight: 600;
   color: var(--settings-text-secondary);
 }
@@ -795,7 +795,7 @@
 }
 
 .diag-traffic-controls label {
-  font-size: 12px;
+  font-size: calc(12px * var(--wm-panel-effective-scale, 1));
   display: flex;
   align-items: center;
   gap: 5px;
@@ -808,7 +808,7 @@
   background: var(--settings-surface-inset);
   color: var(--settings-text-secondary);
   font: inherit;
-  font-size: 12px;
+  font-size: calc(12px * var(--wm-panel-effective-scale, 1));
   padding: 4px 12px;
   border-radius: 4px;
   cursor: pointer;
@@ -823,7 +823,7 @@
 .diag-traffic-log {
   max-height: 300px;
   overflow-y: auto;
-  font-size: 12px;
+  font-size: calc(12px * var(--wm-panel-effective-scale, 1));
   scrollbar-width: thin;
   scrollbar-color: rgba(255,255,255,0.12) transparent;
 }
@@ -836,14 +836,14 @@
   color: var(--settings-text-secondary);
   font-style: italic;
   margin: 12px 0;
-  font-size: 13px;
+  font-size: calc(13px * var(--wm-panel-effective-scale, 1));
 }
 
 .diag-table {
   width: 100%;
   border-collapse: collapse;
   font-family: var(--font-mono);
-  font-size: 12px;
+  font-size: calc(12px * var(--wm-panel-effective-scale, 1));
 }
 
 .diag-table th {
@@ -852,7 +852,7 @@
   border-bottom: 1px solid var(--settings-border-strong);
   color: var(--settings-text);
   font-weight: 600;
-  font-size: 11px;
+  font-size: calc(11px * var(--wm-panel-effective-scale, 1));
   text-transform: uppercase;
   letter-spacing: 0.04em;
   position: sticky;
@@ -892,7 +892,7 @@ tr.diag-err td { color: var(--settings-red); }
 
 .wm-hero-title {
   margin: 0 0 8px;
-  font-size: 22px;
+  font-size: calc(22px * var(--wm-panel-effective-scale, 1));
   font-weight: 700;
   color: var(--settings-text);
   letter-spacing: -0.01em;
@@ -900,7 +900,7 @@ tr.diag-err td { color: var(--settings-red); }
 
 .wm-hero-desc {
   margin: 0 auto;
-  font-size: 13px;
+  font-size: calc(13px * var(--wm-panel-effective-scale, 1));
   color: var(--settings-text-secondary);
   line-height: 1.5;
   max-width: 480px;
@@ -912,7 +912,7 @@ tr.diag-err td { color: var(--settings-red); }
   gap: 16px;
   margin: 14px 0;
   color: var(--settings-text-secondary);
-  font-size: 13px;
+  font-size: calc(13px * var(--wm-panel-effective-scale, 1));
   font-weight: 500;
 }
 
@@ -934,14 +934,14 @@ tr.diag-err td { color: var(--settings-red); }
 
 .wm-byok-title {
   margin: 0 0 2px;
-  font-size: 13px;
+  font-size: calc(13px * var(--wm-panel-effective-scale, 1));
   font-weight: 600;
   color: var(--settings-text);
 }
 
 .wm-byok-desc {
   margin: 0;
-  font-size: 12px;
+  font-size: calc(12px * var(--wm-panel-effective-scale, 1));
   color: var(--settings-text-secondary);
   line-height: 1.4;
 }
@@ -952,14 +952,14 @@ tr.diag-err td { color: var(--settings-red); }
 
 .wm-section-title {
   margin: 0 0 2px;
-  font-size: 14px;
+  font-size: calc(14px * var(--wm-panel-effective-scale, 1));
   font-weight: 600;
   color: var(--settings-text);
 }
 
 .wm-section-desc {
   margin: 0 0 8px;
-  font-size: 12px;
+  font-size: calc(12px * var(--wm-panel-effective-scale, 1));
   color: var(--settings-text-secondary);
   line-height: 1.4;
 }
@@ -982,7 +982,7 @@ tr.diag-err td { color: var(--settings-red); }
   border-radius: 6px;
   color: var(--settings-text);
   padding: 8px 36px 8px 12px;
-  font-size: 13px;
+  font-size: calc(13px * var(--wm-panel-effective-scale, 1));
   font-family: var(--font-mono);
   transition: border-color 0.15s;
   box-sizing: border-box;
@@ -1007,7 +1007,7 @@ tr.diag-err td { color: var(--settings-red); }
   border: none;
   color: var(--settings-text-secondary);
   cursor: pointer;
-  font-size: 16px;
+  font-size: calc(16px * var(--wm-panel-effective-scale, 1));
   padding: 2px 4px;
   opacity: 0.6;
   transition: opacity 0.15s;
@@ -1016,7 +1016,7 @@ tr.diag-err td { color: var(--settings-red); }
 .wm-toggle-vis:hover { opacity: 1; }
 
 .wm-badge {
-  font-size: 10px;
+  font-size: calc(10px * var(--wm-panel-effective-scale, 1));
   font-weight: 600;
   padding: 3px 10px;
   border-radius: 10px;
@@ -1047,7 +1047,7 @@ tr.diag-err td { color: var(--settings-red); }
   border: 1px solid var(--settings-accent);
   color: #fff;
   font: inherit;
-  font-size: 13px;
+  font-size: calc(13px * var(--wm-panel-effective-scale, 1));
   font-weight: 600;
   padding: 8px 20px;
   border-radius: 6px;
@@ -1067,7 +1067,7 @@ tr.diag-err td { color: var(--settings-red); }
 
 .wm-reg-status {
   margin: 8px 0 0;
-  font-size: 13px;
+  font-size: calc(13px * var(--wm-panel-effective-scale, 1));
   min-height: 20px;
 }
 
@@ -1094,7 +1094,7 @@ tr.diag-err td { color: var(--settings-red); }
 }
 
 .settings-search-empty p {
-  font-size: 14px;
+  font-size: calc(14px * var(--wm-panel-effective-scale, 1));
 }
 
 

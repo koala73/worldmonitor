@@ -24,6 +24,7 @@ const MIRRORED_FILES = [
   'hapi-app-identifier.json',
   'iso2-to-region.json',
   'iso3-to-iso2.json',
+  'publisher-families.js',
   'story-identity.js',
   'un-to-iso2.json',
 ];

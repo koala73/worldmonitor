@@ -4,17 +4,23 @@ import assert from 'node:assert/strict';
 import {
   createIntervalDiagnostics,
 } from '../scripts/_resilience-intervals.mjs';
+import { listRankableCountries } from '../scripts/shared/rankable-universe.mjs';
 import {
   RESILIENCE_RANKING_CACHE_KEY,
   RESILIENCE_RANKING_CACHE_TTL_SECONDS,
+  RESILIENCE_INTERVAL_MIN_RECORD_COUNT,
+  RESILIENCE_INTERVAL_PROBE_COUNTRY_CODE,
   RESILIENCE_SCORE_SECTION_META_TTL_SECONDS,
   RESILIENCE_SCORE_CACHE_PREFIX,
   RESILIENCE_STATIC_INDEX_KEY,
   buildIntervalPayloadFromCachedScore,
   buildSeedResultLogExtra,
+  computeAndWriteIntervals,
   computeIntervals,
   getIntervalWriteFailure,
+  fetchRuntimeCacheState,
   parseCachedScorePayload,
+  seedResilienceScores,
 } from '../scripts/seed-resilience-scores.mjs';
 
 const D6_DOMAINS = [
@@ -25,6 +31,16 @@ const D6_DOMAINS = [
   { id: 'health-food', score: 69, weight: 0.13 },
   { id: 'recovery', score: 71, weight: 0.25 },
 ];
+
+function acceptedIntervalCountryCodes() {
+  const withoutProbe = listRankableCountries().filter(
+    (countryCode) => countryCode !== RESILIENCE_INTERVAL_PROBE_COUNTRY_CODE,
+  );
+  return [
+    ...withoutProbe.slice(0, RESILIENCE_INTERVAL_MIN_RECORD_COUNT - 1),
+    RESILIENCE_INTERVAL_PROBE_COUNTRY_CODE,
+  ];
+}
 
 // Three pillars so a pc-tagged payload produces a real pillar-jitter interval.
 const PC_PILLARS = [
@@ -119,44 +135,125 @@ describe('score cache payload validation', () => {
         overallScore: 82,
         level: 'high',
         _formula: 'd6',
+        _educationState: 'education-on',
       };
+      const activeState = { expectedEducationState: 'education-on' };
 
-      assert.deepEqual(parseCachedScorePayload(JSON.stringify(valid)), valid);
+      assert.deepEqual(parseCachedScorePayload(JSON.stringify(valid), activeState), valid);
       assert.deepEqual(
         parseCachedScorePayload(JSON.stringify({
           _seed: { fetchedAt: Date.now(), recordCount: 1, sourceVersion: 'test', schemaVersion: 1, state: 'OK' },
           data: valid,
-        })),
+        }), activeState),
         valid,
         'contract envelopes should count when their inner score payload is valid',
       );
       // A 'pc' payload is valid even though the env resolves to 'd6'.
       assert.deepEqual(
-        parseCachedScorePayload(JSON.stringify({ ...valid, _formula: 'pc' })),
+        parseCachedScorePayload(JSON.stringify({ ...valid, _formula: 'pc' }), activeState),
         { ...valid, _formula: 'pc' },
         'pc payloads must be accepted regardless of the seeder env formula',
       );
       assert.deepEqual(
-        parseCachedScorePayload(JSON.stringify({ ...valid, _formula: 'pc' }), { expectedFormula: 'pc' }),
+        parseCachedScorePayload(JSON.stringify({ ...valid, _formula: 'pc' }), { ...activeState, expectedFormula: 'pc' }),
         { ...valid, _formula: 'pc' },
         'pc payloads must count when they match the live runtime formula',
       );
       assert.equal(
-        parseCachedScorePayload(JSON.stringify({ ...valid, _formula: 'pc' }), { expectedFormula: 'd6' }),
+        parseCachedScorePayload(JSON.stringify({ ...valid, _formula: 'pc' }), { ...activeState, expectedFormula: 'd6' }),
         null,
         'pc payloads must be treated as stale when the live runtime formula is d6',
       );
-      assert.equal(parseCachedScorePayload(JSON.stringify('__WM_NEG__')), null);
-      assert.equal(parseCachedScorePayload(JSON.stringify({ ...valid, overallScore: 0 })), null);
+      assert.equal(parseCachedScorePayload(JSON.stringify('__WM_NEG__'), activeState), null);
+      assert.equal(parseCachedScorePayload(JSON.stringify({ ...valid, overallScore: 0 }), activeState), null);
+      assert.equal(
+        parseCachedScorePayload(JSON.stringify({ ...valid, _educationState: 'education-off' }), activeState),
+        null,
+        'scores from the opposite education construct state must be stale',
+      );
       // Untagged / invalid-formula payloads are still rejected.
-      assert.equal(parseCachedScorePayload(JSON.stringify({ countryCode: 'NO', overallScore: 82 })), null);
-      assert.equal(parseCachedScorePayload(JSON.stringify({ ...valid, _formula: 'xx' })), null);
-      assert.equal(parseCachedScorePayload('not-json'), null);
+      assert.equal(parseCachedScorePayload(JSON.stringify({ countryCode: 'NO', overallScore: 82 }), activeState), null);
+      assert.equal(parseCachedScorePayload(JSON.stringify({ ...valid, _formula: 'xx' }), activeState), null);
+      assert.equal(parseCachedScorePayload('not-json', activeState), null);
     } finally {
       if (originalCombine == null) delete process.env.RESILIENCE_PILLAR_COMBINE_ENABLED;
       else process.env.RESILIENCE_PILLAR_COMBINE_ENABLED = originalCombine;
       if (originalSchema == null) delete process.env.RESILIENCE_SCHEMA_V2_ENABLED;
       else process.env.RESILIENCE_SCHEMA_V2_ENABLED = originalSchema;
+    }
+  });
+});
+
+describe('runtime education cache-state gate', () => {
+  it('maps both manifest flag states onto cache-state tags', async () => {
+    const responseFor = (enabled) => async () => new Response(JSON.stringify({
+      formulaTag: 'pc',
+      constructVersions: { education: enabled ? 'active' : 'rollback' },
+    }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+
+    assert.deepEqual(await fetchRuntimeCacheState(responseFor(true)), {
+      expectedFormula: 'pc',
+      expectedEducationState: 'education-on',
+    });
+    assert.deepEqual(await fetchRuntimeCacheState(responseFor(false)), {
+      expectedFormula: 'pc',
+      expectedEducationState: 'education-off',
+    });
+  });
+
+  it('returns an unproven state for a missing flag, unknown formula, HTTP failure, or malformed JSON', async () => {
+    assert.deepEqual(
+      await fetchRuntimeCacheState(async () => new Response(JSON.stringify({ formulaTag: 'pc', constructVersions: {} }), { status: 200 })),
+      { expectedFormula: 'pc', expectedEducationState: null },
+    );
+    assert.deepEqual(
+      await fetchRuntimeCacheState(async () => new Response(JSON.stringify({ formulaTag: 'unknown', constructVersions: { education: 'active' } }), { status: 200 })),
+      { expectedFormula: null, expectedEducationState: 'education-on' },
+    );
+    assert.deepEqual(
+      await fetchRuntimeCacheState(async () => new Response('unavailable', { status: 503 })),
+      { expectedFormula: null, expectedEducationState: null },
+    );
+    assert.deepEqual(
+      await fetchRuntimeCacheState(async () => new Response('{', { status: 200 })),
+      { expectedFormula: null, expectedEducationState: null },
+    );
+  });
+
+  it('aborts before score-cache reads and warmup when either manifest state is unproven', async () => {
+    const originalFetch = globalThis.fetch;
+    const originalUrl = process.env.UPSTASH_REDIS_REST_URL;
+    const originalToken = process.env.UPSTASH_REDIS_REST_TOKEN;
+    const requests = [];
+    process.env.UPSTASH_REDIS_REST_URL = 'https://redis.example.test';
+    process.env.UPSTASH_REDIS_REST_TOKEN = 'token';
+    globalThis.fetch = async (input) => {
+      const url = String(input);
+      requests.push(url);
+      assert.match(url, /\/get\/resilience%3Astatic%3Aindex%3Av1$/);
+      return new Response(JSON.stringify({ result: JSON.stringify({ countries: ['US'] }) }), { status: 200 });
+    };
+
+    try {
+      for (const runtimeState of [
+        { expectedFormula: 'pc', expectedEducationState: null },
+        { expectedFormula: null, expectedEducationState: 'education-on' },
+      ]) {
+        requests.length = 0;
+        await assert.rejects(
+          () => seedResilienceScores({
+            runtimeCacheState: async () => runtimeState,
+          }),
+          /aborting before score-cache reads, warmup, and interval writes/,
+        );
+        assert.equal(requests.length, 1, 'only the static-index read may occur before the manifest gate');
+      }
+    } finally {
+      globalThis.fetch = originalFetch;
+      if (originalUrl == null) delete process.env.UPSTASH_REDIS_REST_URL;
+      else process.env.UPSTASH_REDIS_REST_URL = originalUrl;
+      if (originalToken == null) delete process.env.UPSTASH_REDIS_REST_TOKEN;
+      else process.env.UPSTASH_REDIS_REST_TOKEN = originalToken;
     }
   });
 });
@@ -231,7 +328,7 @@ describe('interval seed health classification', () => {
     assert.equal(failure?.reason, 'unusable_score_formula');
   });
 
-  it('passes when at least one interval key is written', () => {
+  it('passes when the interval publication meets the coverage floor', () => {
     assert.equal(getIntervalWriteFailure({
       skipped: false,
       total: 196,
@@ -239,17 +336,212 @@ describe('interval seed health classification', () => {
       intervalsWritten: 196,
     }), null);
   });
+
+  it('fails when an interval publication is non-empty but below the coverage floor', () => {
+    const failure = getIntervalWriteFailure({
+      skipped: false,
+      total: 196,
+      recordCount: 196,
+      intervalsWritten: RESILIENCE_INTERVAL_MIN_RECORD_COUNT - 1,
+    });
+
+    assert.equal(failure?.reason, 'insufficient_interval_coverage');
+    assert.match(failure?.message ?? '', /179\/196/);
+  });
 });
 
 describe('cached score interval payload classification', () => {
+  it('publishes interval keys and freshness metadata in one proxy-supported transaction', async () => {
+    const originalFetch = globalThis.fetch;
+    const requests = [];
+    const countryCodes = acceptedIntervalCountryCodes();
+    const pipelineResults = countryCodes.map((countryCode) => ({
+      result: JSON.stringify({
+        countryCode,
+        _formula: 'd6',
+        _educationState: 'education-on',
+        overallScore: 70,
+        domains: D6_DOMAINS,
+      }),
+    }));
+    globalThis.fetch = async (input, init) => {
+      requests.push({ input: String(input), body: JSON.parse(init.body) });
+      return new Response(JSON.stringify([{ error: 'simulated interval write failure' }]), { status: 200 });
+    };
+
+    try {
+      await assert.rejects(
+        () => computeAndWriteIntervals(
+          'https://redis.example.test',
+          'token',
+          countryCodes,
+          pipelineResults,
+          { expectedFormula: 'd6', expectedEducationState: 'education-on' },
+        ),
+        /atomic publish failed persistence proof/,
+      );
+      assert.equal(requests.length, 1, 'the interval generation must use one Redis request');
+      assert.match(requests[0].input, /\/multi-exec$/);
+      const commands = requests[0].body;
+      assert.equal(commands.length, listRankableCountries().length + 1);
+      assert.ok(commands.every((command) => command[0] !== 'EVAL'));
+      assert.deepEqual(commands[0].slice(0, 2), ['SET', `resilience:intervals:v10:${listRankableCountries()[0]}`]);
+      assert.deepEqual(commands.at(-1).slice(0, 2), ['SET', 'seed-meta:resilience:intervals']);
+      const intervalPayload = JSON.parse(commands[0][2]);
+      const metadataPayload = JSON.parse(commands.at(-1)[2]);
+      assert.equal(intervalPayload._formula, 'd6');
+      assert.equal(intervalPayload._educationState, 'education-on');
+      assert.equal(metadataPayload._formula, intervalPayload._formula);
+      assert.equal(metadataPayload._educationState, intervalPayload._educationState);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it('refuses a one-country opposite-state generation before Redis publication', async () => {
+    const originalFetch = globalThis.fetch;
+    let requestCount = 0;
+    globalThis.fetch = async () => {
+      requestCount++;
+      throw new Error('Redis must not be called below the interval coverage floor');
+    };
+    const countryCodes = listRankableCountries();
+    const pipelineResults = countryCodes.map((countryCode, index) => ({
+      result: index === 0
+        ? JSON.stringify({
+          countryCode,
+          _formula: 'd6',
+          _educationState: 'education-on',
+          overallScore: 70,
+          domains: D6_DOMAINS,
+        })
+        : null,
+    }));
+
+    try {
+      await assert.rejects(
+        () => computeAndWriteIntervals(
+          'https://redis.example.test',
+          'token',
+          countryCodes,
+          pipelineResults,
+          { expectedFormula: 'd6', expectedEducationState: 'education-on' },
+        ),
+        /below the 180-country publication floor; the previous generation was preserved/,
+      );
+      assert.equal(requestCount, 0);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it('refuses an otherwise sufficient generation that omits the fixed health probe', async () => {
+    const originalFetch = globalThis.fetch;
+    let requestCount = 0;
+    globalThis.fetch = async () => {
+      requestCount++;
+      throw new Error('Redis must not be called without the health probe');
+    };
+    const countryCodes = listRankableCountries()
+      .filter((countryCode) => countryCode !== RESILIENCE_INTERVAL_PROBE_COUNTRY_CODE)
+      .slice(0, RESILIENCE_INTERVAL_MIN_RECORD_COUNT);
+    const pipelineResults = countryCodes.map((countryCode) => ({
+      result: JSON.stringify({
+        countryCode,
+        _formula: 'd6',
+        _educationState: 'education-on',
+        overallScore: 70,
+        domains: D6_DOMAINS,
+      }),
+    }));
+
+    try {
+      await assert.rejects(
+        () => computeAndWriteIntervals(
+          'https://redis.example.test',
+          'token',
+          countryCodes,
+          pipelineResults,
+          { expectedFormula: 'd6', expectedEducationState: 'education-on' },
+        ),
+        /missing the required US health probe; the previous generation was preserved/,
+      );
+      assert.equal(requestCount, 0);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it('atomically deletes omitted old-state intervals from an accepted generation', async () => {
+    const originalFetch = globalThis.fetch;
+    const allCountryCodes = listRankableCountries();
+    const publishedCodes = acceptedIntervalCountryCodes();
+    const omittedCodes = allCountryCodes.filter((countryCode) => !publishedCodes.includes(countryCode));
+    const redis = new Map([
+      [`resilience:intervals:v10:${omittedCodes[0]}`, JSON.stringify({
+        p05: 10,
+        p95: 20,
+        _formula: 'd6',
+        _educationState: 'education-off',
+        methodology: 'weight-perturbation-sensitivity-v3',
+      })],
+    ]);
+    globalThis.fetch = async (input, init) => {
+      assert.match(String(input), /\/multi-exec$/);
+      const commands = JSON.parse(init.body);
+      const results = commands.map(([verb, key, value]) => {
+        if (verb === 'DEL') return { result: redis.delete(key) ? 1 : 0 };
+        assert.equal(verb, 'SET');
+        redis.set(key, value);
+        return { result: 'OK' };
+      });
+      return new Response(JSON.stringify(results), { status: 200 });
+    };
+    const countryCodes = allCountryCodes;
+    const pipelineResults = countryCodes.map((countryCode) => ({
+      result: omittedCodes.includes(countryCode)
+        ? null
+        : JSON.stringify({
+          countryCode,
+          _formula: 'd6',
+          _educationState: 'education-on',
+          overallScore: 70,
+          domains: D6_DOMAINS,
+        }),
+    }));
+
+    try {
+      const result = await computeAndWriteIntervals(
+        'https://redis.example.test',
+        'token',
+        countryCodes,
+        pipelineResults,
+        { expectedFormula: 'd6', expectedEducationState: 'education-on' },
+      );
+      assert.equal(result.recordCount, RESILIENCE_INTERVAL_MIN_RECORD_COUNT);
+      for (const countryCode of omittedCodes) {
+        assert.equal(redis.has(`resilience:intervals:v10:${countryCode}`), false, 'omitted old-state interval must be deleted');
+      }
+      for (const countryCode of publishedCodes) {
+        assert.equal(JSON.parse(redis.get(`resilience:intervals:v10:${countryCode}`))._educationState, 'education-on');
+      }
+      const meta = JSON.parse(redis.get('seed-meta:resilience:intervals'));
+      assert.equal(meta.recordCount, RESILIENCE_INTERVAL_MIN_RECORD_COUNT);
+      assert.equal(meta._educationState, 'education-on');
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
   it('records formula skips for score payloads missing formula tags', () => {
     withD6CacheFormula(() => {
       const diagnostics = createIntervalDiagnostics();
       const payload = buildIntervalPayloadFromCachedScore(JSON.stringify({
         countryCode: 'MS',
         overallScore: 70,
+        _educationState: 'education-on',
         domains: D6_DOMAINS,
-      }), 'MS', diagnostics);
+      }), 'MS', diagnostics, { expectedEducationState: 'education-on' });
 
       assert.equal(payload, null);
       assert.equal(diagnostics.formulaSkipCount, 1);
@@ -275,10 +567,11 @@ describe('cached score interval payload classification', () => {
       const payload = buildIntervalPayloadFromCachedScore(JSON.stringify({
         countryCode: 'PC',
         _formula: 'pc',
+        _educationState: 'education-on',
         overallScore: 75,
         domains: D6_DOMAINS,
         pillars: PC_PILLARS,
-      }), 'PC', diagnostics, { expectedFormula: 'pc' });
+      }), 'PC', diagnostics, { expectedFormula: 'pc', expectedEducationState: 'education-on' });
 
       assert.ok(payload, 'pc payload must produce an interval even under a d6 seeder env');
       assert.equal(payload._formula, 'pc', 'interval formula must follow the payload tag, not the seeder env');
@@ -295,10 +588,11 @@ describe('cached score interval payload classification', () => {
       const payload = buildIntervalPayloadFromCachedScore(JSON.stringify({
         countryCode: 'ST',
         _formula: 'pc',
+        _educationState: 'education-on',
         overallScore: 75,
         domains: D6_DOMAINS,
         pillars: PC_PILLARS,
-      }), 'ST', diagnostics, { expectedFormula: 'd6' });
+      }), 'ST', diagnostics, { expectedFormula: 'd6', expectedEducationState: 'education-on' });
 
       assert.equal(payload, null);
       assert.equal(diagnostics.staleScorePayloadCount, 1);
@@ -318,9 +612,10 @@ describe('cached score interval payload classification', () => {
       const payload = buildIntervalPayloadFromCachedScore(JSON.stringify({
         countryCode: 'OK',
         _formula: 'd6',
+        _educationState: 'education-on',
         overallScore: 70,
         domains: D6_DOMAINS,
-      }), 'OK', diagnostics);
+      }), 'OK', diagnostics, { expectedEducationState: 'education-on' });
 
       assert.ok(payload);
       assert.equal(payload._formula, 'd6');
@@ -476,12 +771,17 @@ describe('script is self-contained .mjs', () => {
     const dir = dirname(fileURLToPath(import.meta.url));
     const src = readFileSync(join(dir, '..', 'scripts', 'seed-resilience-scores.mjs'), 'utf8');
     assert.match(src, /\/api\/resilience\/v1\/get-runtime-manifest/);
-    assert.match(src, /const expectedFormula = await fetchRuntimeFormulaTag\(\);/);
-    assert.match(src, /countCachedFromPipeline\(preResults, expectedFormula\)/);
-    assert.match(src, /parseCachedScorePayload\(raw, \{ expectedFormula \}\)/);
-    assert.match(src, /countCachedFromPipeline\(finalResults, expectedFormula\)/);
-    assert.match(src, /computeAndWriteIntervals\(url, token, countryCodes, finalResults, \{ expectedFormula \}\)/);
-    assert.match(src, /computeAndWriteIntervals\(url, token, countryCodes, preResults, \{ expectedFormula \}\)/);
+    assert.match(src, /const \{ expectedFormula, expectedEducationState \} = await runtimeCacheState\(\);/);
+    assert.match(src, /if \(!isKnownScoreFormulaTag\(expectedFormula\) \|\| !isKnownEducationState\(expectedEducationState\)\) \{/);
+    assert.match(src, /const expectedCacheState = \{ expectedFormula, expectedEducationState \};/);
+    assert.match(src, /countCachedFromPipeline\(preResults, expectedCacheState\)/);
+    assert.match(src, /parseCachedScorePayload\(raw, expectedCacheState\)/);
+    assert.match(src, /countCachedFromPipeline\(finalResults, expectedCacheState\)/);
+    assert.match(src, /computeAndWriteIntervals\(url, token, countryCodes, finalResults, expectedCacheState\)/);
+    assert.match(src, /computeAndWriteIntervals\(url, token, countryCodes, refreshedResults, expectedCacheState\)/);
+    assert.match(src, /_formula: options\.expectedFormula/);
+    assert.match(src, /_educationState: options\.expectedEducationState/);
+    assert.match(src, /_intervalMethodology: INTERVAL_METHODOLOGY/);
     assert.doesNotMatch(src, /currentCacheFormulaLocal/);
   });
 
@@ -526,6 +826,63 @@ describe('ensures ranking aggregate is present every cron, with truthful meta', 
       calls.length >= 2,
       `refreshRankingAggregate must be called from both branches (missing>0 and missing===0); found ${calls.length} call sites`,
     );
+  });
+
+  it('rotates the score cohort before reading interval inputs in both branches', () => {
+    const refreshCalls = [...src.matchAll(/const rankingPresent = await refreshRankingAggregate\([^;]+;/g)]
+      .map((match) => match.index);
+    const scoreReads = [...src.matchAll(/const (?:finalResults|refreshedResults) = await redisPipeline\(url, token, getCommands\);/g)]
+      .map((match) => match.index);
+    const intervalWrites = [...src.matchAll(/const intervalResult = await computeAndWriteIntervals\(url, token, countryCodes, (?:finalResults|refreshedResults), expectedCacheState\);/g)]
+      .map((match) => match.index);
+
+    assert.equal(refreshCalls.length, 2, 'warm and pre-warmed branches must each rotate the score cohort');
+    assert.equal(scoreReads.length, 2, 'each branch must re-read the score cohort after rotation');
+    assert.equal(intervalWrites.length, 2, 'each branch must publish intervals from its re-read cohort');
+    for (let index = 0; index < 2; index++) {
+      assert.ok(refreshCalls[index] < scoreReads[index], 'score rotation must precede the interval input read');
+      assert.ok(scoreReads[index] < intervalWrites[index], 'interval publication must use the post-rotation score read');
+    }
+  });
+
+  it('preserves the prior interval generation when the forced refresh does not complete', async () => {
+    const mod = await import('../scripts/seed-resilience-scores.mjs');
+    assert.equal(
+      typeof mod.refreshRankingAggregate,
+      'function',
+      'the refresh boundary must be directly testable as behavior, not only by source ordering',
+    );
+
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = (async (input) => {
+      const href = typeof input === 'string' ? input : input.url;
+      if (href.includes('/api/resilience/v1/get-resilience-ranking')) {
+        return new Response('gateway timeout', { status: 504 });
+      }
+      if (href.includes('/strlen/')) {
+        return new Response(JSON.stringify({ result: 31_370 }), { status: 200 });
+      }
+      if (href.includes('/get/seed-meta:resilience:ranking')) {
+        return new Response(JSON.stringify({
+          result: JSON.stringify({ fetchedAt: Date.now(), recordCount: 196 }),
+        }), { status: 200 });
+      }
+      throw new Error(`Unexpected fetch in refresh failure test: ${href}`);
+    });
+
+    try {
+      await assert.rejects(
+        () => mod.refreshRankingAggregate({
+          url: 'https://redis.example',
+          token: 'token',
+          laggardsWarmed: 0,
+        }),
+        /previous interval generation was preserved/i,
+        'an old ranking key must not make a failed refresh look safe for interval publication',
+      );
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
   });
 
   it('always triggers the rebuild HTTP call — never short-circuits on "key still present"', () => {

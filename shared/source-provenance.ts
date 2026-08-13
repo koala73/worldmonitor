@@ -12,7 +12,7 @@ export const SOURCE_TYPES: Record<string, SourceType> = {
   'AP News': 'wire', 'AFP': 'wire', 'Bloomberg': 'wire',
 
   // Government & International Org sources
-  'White House': 'gov', 'State Dept': 'gov', 'Pentagon': 'gov',
+  'White House': 'gov', 'White House Actions': 'gov', 'State Dept': 'gov', 'Pentagon': 'gov',
   'Treasury': 'gov', 'DOJ': 'gov', 'DHS': 'gov', 'CDC': 'gov',
   'FEMA': 'gov', 'Federal Reserve': 'gov', 'SEC': 'gov',
   'UN News': 'gov', 'CISA': 'gov',

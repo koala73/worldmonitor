@@ -1,0 +1,56 @@
+name: Post-merge Deploy Monitor
+
+# Alarms on a failed post-merge production deploy (#6376).
+#
+# Convex Deploy and Deploy Railway Reconcile Control run on push to main and
+# are outside the deploy gate's required list (they are post-merge, so they
+# cannot gate the PR that causes them). Both failed on main while main stayed
+# green (#6232, #6325/#6326). This scheduled monitor reads each monitored
+# workflow's run history on main and fails loudly when the newest run did not
+# deploy.
+#
+# Deliberately NOT gated on a green main (unlike seed-freshness-monitor.yml)
+# and NOT wired into the deploy gate: the deploys this checks are post-merge,
+# and the incidents it exists to catch had green main while the deploy failed —
+# gating on main would silence exactly the alarms we want (#5565, the same
+# reasoning analytics-collector-monitor.yml documents).
+
+on:
+  schedule:
+    - cron: '*/10 * * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: postmerge-deploy-monitor
+  cancel-in-progress: true
+
+jobs:
+  monitor:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          # The convex=false skip proof answers "did the head diff touch
+          # convex/": `git diff --name-only` walks trees only and never needs
+          # blobs, so full history with no blobs is both sufficient and fast.
+          fetch-depth: 0
+          filter: blob:none
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '24'
+
+      - name: Check post-merge deploys reached production
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -o pipefail
+          # Pick up commits merged since the checkout so the convex=false skip
+          # proof diffs the head the API reports, not the SHA the checkout was
+          # created at. Same shape as seed-freshness-monitor.yml's drift step.
+          git fetch --quiet origin main || true
+          node scripts/check-postmerge-deploys.mjs

@@ -12,7 +12,10 @@ import { describe, it } from 'node:test';
 
 import {
   createRailwayCliEnv,
+  DEPLOYMENT_READ_DEADLINE_ERROR,
+  readAllDeployments,
   readDeployments,
+  readDeploymentsForFleet,
   readFleetDeployments,
   runRailway,
 } from '../scripts/railway-cli.mjs';
@@ -213,6 +216,202 @@ describe('fleet paging', () => {
         api: () => ({}), accumulatorFactory: createFleetAccumulator,
       }),
       /no deployments connection/,
+    );
+  });
+
+  it('checks the shared run deadline before every fleet page', async () => {
+    let elapsed = 0;
+    let reads = 0;
+    await assert.rejects(
+      () => readFleetDeployments({
+        projectId: 'p',
+        environmentId: 'e',
+        serviceIds: ['a'],
+        notBefore: HEAD_AT,
+        deadlineAt: 100,
+        monotonicNow: () => elapsed,
+        api: () => {
+          reads += 1;
+          elapsed = 101;
+          return { deployments: page([node('a', 'SUCCESS', '2026-08-04T13:00:00Z', 'aaa')], true) };
+        },
+        accumulatorFactory: createFleetAccumulator,
+      }),
+      new RegExp(DEPLOYMENT_READ_DEADLINE_ERROR),
+    );
+    assert.equal(reads, 1, 'the second fleet page must not start after the deadline');
+  });
+});
+
+describe('fleet read deadline', () => {
+  it('does not start direct fallback reads after the shared run deadline', async () => {
+    let elapsed = 0;
+    const reads = [];
+    const services = [{ id: 'a' }, { id: 'b' }];
+    const result = await readDeploymentsForFleet({
+      services,
+      environment: 'production',
+      window: 50,
+      concurrency: 1,
+      deadlineAt: 100,
+      monotonicNow: () => elapsed,
+      readDirect: async (service) => {
+        reads.push(service.id);
+        elapsed = 101;
+        return [node(service.id, 'SUCCESS', '2026-08-04T11:00:00Z', 'aaa')];
+      },
+    });
+
+    assert.deepEqual(reads, ['a']);
+    assert.equal(result.get('a').error, null);
+    assert.equal(result.get('b').error, DEPLOYMENT_READ_DEADLINE_ERROR);
+  });
+
+  it('defers every read when prerequisites already consumed the budget', async () => {
+    const reads = [];
+    const services = [{ id: 'a' }, { id: 'b' }];
+    const result = await readDeploymentsForFleet({
+      services,
+      environment: 'production',
+      window: 50,
+      concurrency: 2,
+      deadlineAt: 100,
+      monotonicNow: () => 100,
+      readDirect: async (service) => {
+        reads.push(service.id);
+        return [];
+      },
+    });
+
+    assert.deepEqual(reads, []);
+    assert.deepEqual(
+      services.map(({ id }) => result.get(id).error),
+      [DEPLOYMENT_READ_DEADLINE_ERROR, DEPLOYMENT_READ_DEADLINE_ERROR],
+    );
+  });
+});
+
+describe('complete per-service history paging', () => {
+  it('caps every API page to the shared deadline and checks it before the next page', async () => {
+    const observedTimeouts = [];
+    const times = [10, 50];
+    let calls = 0;
+    await assert.rejects(
+      readAllDeployments(
+        { id: 'service-1', name: 'seed-one' },
+        'environment-1',
+        {
+          deadline: 50,
+          now: () => times.shift(),
+          api: async (_query, _variables, options) => {
+            calls += 1;
+            observedTimeouts.push(options.timeoutMs);
+            return {
+              deployments: {
+                edges: [],
+                pageInfo: { hasNextPage: true, endCursor: 'cursor-1' },
+              },
+            };
+          },
+        },
+      ),
+      /deadline expired before page 2/,
+    );
+
+    assert.equal(calls, 1, 'the expired deadline must stop before another API call');
+    assert.deepEqual(observedTimeouts, [40], 'the API page gets only the remaining proof budget');
+  });
+
+  it('continues by cursor until Railway proves exhaustion', async () => {
+    const calls = [];
+    const pages = [
+      {
+        edges: [{ node: { id: 'deployment-1', ...node('service-1', 'SUCCESS', '2026-08-04T11:00:00Z', 'aaa') } }],
+        pageInfo: { hasNextPage: true, endCursor: 'cursor-1' },
+      },
+      {
+        edges: [{ node: { id: 'deployment-2', ...node('service-1', 'REMOVED', '2026-08-03T11:00:00Z', 'bbb') } }],
+        pageInfo: { hasNextPage: false, endCursor: 'cursor-2' },
+      },
+    ];
+    const deployments = await readAllDeployments(
+      { id: 'service-1', name: 'seed-one' },
+      'environment-1',
+      {
+        api: async (_query, variables) => {
+          calls.push(variables);
+          return { deployments: pages.shift() };
+        },
+      },
+    );
+
+    assert.equal(deployments.length, 2);
+    assert.deepEqual(calls, [
+      { input: { serviceId: 'service-1', environmentId: 'environment-1' }, first: 500 },
+      { input: { serviceId: 'service-1', environmentId: 'environment-1' }, first: 500, after: 'cursor-1' },
+    ]);
+  });
+
+  it('fails closed when a cursor repeats', async () => {
+    await assert.rejects(
+      readAllDeployments(
+        { id: 'service-1', name: 'seed-one' },
+        'environment-1',
+        {
+          api: async () => ({
+            deployments: {
+              edges: [],
+              pageInfo: { hasNextPage: true, endCursor: 'stuck' },
+            },
+          }),
+        },
+      ),
+      /cursor did not advance/,
+    );
+  });
+
+  it('fails closed when the defensive page budget cannot prove exhaustion', async () => {
+    await assert.rejects(
+      readAllDeployments(
+        { id: 'service-1', name: 'seed-one' },
+        'environment-1',
+        {
+          maxPages: 1,
+          api: async () => ({
+            deployments: {
+              edges: [],
+              pageInfo: { hasNextPage: true, endCursor: 'cursor-1' },
+            },
+          }),
+        },
+      ),
+      /exceeded 1 pages/,
+    );
+  });
+
+  it('fails closed on an ambiguous page or a record from another service', async () => {
+    await assert.rejects(
+      readAllDeployments(
+        { id: 'service-1', name: 'seed-one' },
+        'environment-1',
+        { api: async () => ({ deployments: { edges: [], pageInfo: {} } }) },
+      ),
+      /incomplete deployment history page/,
+    );
+    await assert.rejects(
+      readAllDeployments(
+        { id: 'service-1', name: 'seed-one' },
+        'environment-1',
+        {
+          api: async () => ({
+            deployments: {
+              edges: [{ node: { id: 'deployment-1', ...node('service-2', 'SUCCESS', '2026-08-04T11:00:00Z', 'aaa') } }],
+              pageInfo: { hasNextPage: false, endCursor: null },
+            },
+          }),
+        },
+      ),
+      /malformed deployment history record/,
     );
   });
 });

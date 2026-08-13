@@ -36,7 +36,21 @@
     "and the reconciler in .github/workflows/railway-deploy-trigger.yml is now what",
     "keeps it there -- it judges each service against the commit it is RUNNING, so a",
     "webhook that goes quiet again self-heals on the next reconcile instead of needing",
-    "an entry here."
+    "an entry here.",
+    "",
+    "2026-08-12: this file briefly held 31 REJECTED_PUSH entries against #6378",
+    "while Railway wait-for-CI refusals (the 2026-08-07..12 deploy-gate outage,",
+    "fixed by #6513, plus the c001e7566 history reset) kept the reconciler-less",
+    "fleet knowingly behind. The fleet converged the same day and every entry",
+    "cleared on the next live run, so the list is empty again. The episode",
+    "hardened the mechanism, and those properties remain: an entry may pin a",
+    "rejectedShas cohort (a rejection carrying any SHA outside it blocks, so a",
+    "recovered service's NEXT rejection cannot inherit an old suppression);",
+    "REJECTED_PUSH with an unidentified running source is a separate",
+    "undeterminable verdict this file cannot acknowledge at all; entry-level",
+    "expiry re-pages WITH attribution (expiredEntry + issue on the blocking",
+    "item); and multi-entry cohorts should stagger expiries so a re-page is a",
+    "reviewable trickle, not a wall."
   ],
   "expiresAt": "2026-09-04",
   "acknowledged": []

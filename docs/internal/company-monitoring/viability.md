@@ -10,7 +10,7 @@
 Company Monitoring must not proceed to paid-provider runtime or customer-visible
 behavior. Only fixtures and dark contracts are permitted. The base-rate,
 provider-independent rediscovery, and external-customer usefulness studies have
-not run, and the provider policy package is not approved for runtime. Missing
+not run, and the provider-policy runtime checks have not completed. Missing
 evidence is a stop, not a zero and not a provisional pass.
 
 ## Stage 0 gate record
@@ -21,8 +21,12 @@ evidence is a stop, not a zero and not a provisional pass.
 | Provider-independent rediscovery | At least 100 frozen pairs, point estimate at least 0.60, exact one-sided 90% Clopper-Pearson lower bound at least 0.50 | Pair protocol preregistered; private manifest and aggregate result absent | Stop |
 | Historical usefulness | Same ten admitted impacts for two external target customers, including one independent customer; positive, negative, and mixed coverage; at least seven of ten useful from each | Protocol frozen; no external customer judgments recorded | Stop |
 | Admission quality | Every metric, denominator, bound method, calibration method, seed, and approver frozen before scoring | Frozen and integrity-bound to the named approval | Pass for Stage 0 contract freeze |
-| Provider policy | Separate paid-runtime approval for Exa; written X commercial-use evidence and enforced compliance; enforced model ZDR, no-training, no-reasoning, and pinned routing | Exa is approved only for evaluation; every paid-runtime result remains blocked | Stop |
+| Provider policy | Official API access, bounded retention, enforced X offline-content lifecycle controls, and enforced model ZDR, no-training, no-reasoning, and pinned routing | Runtime policy controls are incomplete; paid-provider runtime remains dark | Stop |
 | 500-company economics | Exactly one account-level shared-discovery workload of 500 companies; modeled monthly cost no more than $125 before paid beta | $110.8659375 including allocated infrastructure and 25% contingency | Pass as a model only |
+
+The provider-policy row is an operational summary. The linked `cm_eval_v1`
+machine contract remains authoritative for current stop reasons; changing this
+documentation does not revise that frozen contract.
 
 The machine test recomputes this table's decisive arithmetic and requires the
 recorded stop reasons to equal the computed reasons. Editing the prose cannot

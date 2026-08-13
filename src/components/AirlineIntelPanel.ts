@@ -122,7 +122,7 @@ export class AirlineIntelPanel extends Panel {
         this.liveIndicator = document.createElement('span');
         this.liveIndicator.className = 'live-badge';
         this.liveIndicator.textContent = '\u25CF LIVE';
-        this.liveIndicator.style.cssText = 'display:none;color:#22c55e;font-size:10px;font-weight:700;margin-left:8px;letter-spacing:0.5px;';
+        this.liveIndicator.style.cssText = 'display:none;color:#22c55e;font-size:calc(10px * var(--wm-panel-effective-scale, 1));font-weight:700;margin-left:8px;letter-spacing:0.5px;';
         this.header.querySelector('.panel-title')?.appendChild(this.liveIndicator);
 
         // Insert tab bar between header and content
@@ -470,13 +470,13 @@ export class AirlineIntelPanel extends Panel {
           <div class="track-flight-card" style="padding:8px 0;border-bottom:1px solid var(--border)">
             <div style="display:flex;gap:8px;align-items:baseline">
               <strong>${escapeHtml(f.flightNumber)}</strong>
-              <span style="color:#9ca3af;font-size:11px">${escapeHtml(f.carrier.name || f.carrier.iata)}</span>
-              <span style="color:${color};font-size:11px;margin-left:auto">${f.status}</span>
+              <span style="color:#9ca3af;font-size:calc(11px * var(--wm-panel-effective-scale, 1))">${escapeHtml(f.carrier.name || f.carrier.iata)}</span>
+              <span style="color:${color};font-size:calc(11px * var(--wm-panel-effective-scale, 1));margin-left:auto">${f.status}</span>
             </div>
-            <div style="font-size:12px;color:var(--text-dim)">${escapeHtml(f.origin.iata)} → ${escapeHtml(f.destination.iata)}${depStr ? ` · ${depStr}` : ''}${arrStr}</div>
-            ${f.aircraftType ? `<div style="font-size:11px;color:#6b7280">${escapeHtml(f.aircraftType)}</div>` : ''}
-            ${(f.gate || f.terminal) ? `<div style="font-size:11px;color:#6b7280">${f.gate ? `Gate ${escapeHtml(f.gate)}` : ''}${f.terminal ? `${f.gate ? ' · ' : ''}T${escapeHtml(f.terminal)}` : ''}</div>` : ''}
-            ${f.delayMinutes > 0 ? `<div style="color:#f97316;font-size:12px">+${f.delayMinutes}m delay</div>` : ''}
+            <div style="font-size:calc(12px * var(--wm-panel-effective-scale, 1));color:var(--text-dim)">${escapeHtml(f.origin.iata)} → ${escapeHtml(f.destination.iata)}${depStr ? ` · ${depStr}` : ''}${arrStr}</div>
+            ${f.aircraftType ? `<div style="font-size:calc(11px * var(--wm-panel-effective-scale, 1));color:#6b7280">${escapeHtml(f.aircraftType)}</div>` : ''}
+            ${(f.gate || f.terminal) ? `<div style="font-size:calc(11px * var(--wm-panel-effective-scale, 1));color:#6b7280">${f.gate ? `Gate ${escapeHtml(f.gate)}` : ''}${f.terminal ? `${f.gate ? ' · ' : ''}T${escapeHtml(f.terminal)}` : ''}</div>` : ''}
+            ${f.delayMinutes > 0 ? `<div style="color:#f97316;font-size:calc(12px * var(--wm-panel-effective-scale, 1))">+${f.delayMinutes}m delay</div>` : ''}
           </div>`;
             }).join('');
             setTrustedHtml(this.content, trustedHtml(`${searchBar}<div>${rows}</div>`, "legacy direct innerHTML migration"));
@@ -511,7 +511,7 @@ export class AirlineIntelPanel extends Panel {
         const items = this.newsData.map(n => `
       <div class="news-item" style="padding:8px 0;border-bottom:1px solid var(--border,#2a2a2a)">
         <a href="${sanitizeUrl(n.url)}" target="_blank" rel="noopener" class="news-link">${escapeHtml(n.title)}</a>
-        <div class="news-meta" style="font-size:11px;color:var(--text-dim,#888);margin-top:2px">${escapeHtml(n.sourceName)} · ${n.publishedAt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</div>
+        <div class="news-meta" style="font-size:calc(11px * var(--wm-panel-effective-scale, 1));color:var(--text-dim,#888);margin-top:2px">${escapeHtml(n.sourceName)} · ${n.publishedAt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</div>
       </div>`).join('');
         setTrustedHtml(this.content, trustedHtml(`<div class="news-list" style="padding:0 4px">${items}</div>`, "legacy direct innerHTML migration"));
     }
@@ -545,7 +545,7 @@ export class AirlineIntelPanel extends Panel {
           </select>
           <button id="priceSearchBtn" class="icon-btn" style="padding:4px 10px">${t('header.search')}</button>
         </div>
-        <div id="priceInlineErr" style="color:#ef4444;font-size:11px;min-height:14px"></div>`;
+        <div id="priceInlineErr" style="color:#ef4444;font-size:calc(11px * var(--wm-panel-effective-scale, 1));min-height:14px"></div>`;
 
             let body: string;
             if (this.googleFlightsData.length) {
@@ -586,10 +586,10 @@ export class AirlineIntelPanel extends Panel {
           <input id="datesToInput" class="price-input" placeholder="To" maxlength="3" value="${escapeHtml(this.pricesDest)}" style="width:54px">
           <input id="datesStartInput" class="price-input" type="date" value="${escapeHtml(this.datesStart || localDateStr())}" style="width:128px">
           <input id="datesEndInput" class="price-input" type="date" value="${escapeHtml(this.datesEnd)}" style="width:128px">
-          <label style="display:flex;align-items:center;gap:4px;font-size:12px">
+          <label style="display:flex;align-items:center;gap:4px;font-size:calc(12px * var(--wm-panel-effective-scale, 1))">
             <input id="datesRoundTripCheck" type="checkbox" ${this.datesRoundTrip ? 'checked' : ''}>${escapeHtml(t('components.airlineIntel.roundTrip'))}
           </label>
-          <label style="display:flex;align-items:center;gap:4px;font-size:12px">
+          <label style="display:flex;align-items:center;gap:4px;font-size:calc(12px * var(--wm-panel-effective-scale, 1))">
             ${escapeHtml(t('components.airlineIntel.tripDays'))}:
             <input id="datesTripDurInput" class="price-input" type="number" min="1" value="${this.datesTripDuration}" style="width:44px">
           </label>
@@ -601,7 +601,7 @@ export class AirlineIntelPanel extends Panel {
           </select>
           <button id="datesSearchBtn" class="icon-btn" style="padding:4px 10px">${t('header.search')}</button>
         </div>
-        <div id="datesInlineErr" style="color:#ef4444;font-size:11px;min-height:14px"></div>`;
+        <div id="datesInlineErr" style="color:#ef4444;font-size:calc(11px * var(--wm-panel-effective-scale, 1));min-height:14px"></div>`;
 
             let body: string;
             if (this.datesData.length) {

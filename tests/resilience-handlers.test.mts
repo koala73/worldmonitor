@@ -14,9 +14,11 @@ const originalRedisUrl = process.env.UPSTASH_REDIS_REST_URL;
 const originalRedisToken = process.env.UPSTASH_REDIS_REST_TOKEN;
 const originalVercelEnv = process.env.VERCEL_ENV;
 const originalPillarCombine = process.env.RESILIENCE_PILLAR_COMBINE_ENABLED;
+const originalEducation = process.env.RESILIENCE_EDUCATION_ENABLED;
 
 beforeEach(() => {
   process.env.RESILIENCE_PILLAR_COMBINE_ENABLED = 'false';
+  process.env.RESILIENCE_EDUCATION_ENABLED = 'true';
 });
 
 afterEach(() => {
@@ -29,6 +31,8 @@ afterEach(() => {
   else process.env.VERCEL_ENV = originalVercelEnv;
   if (originalPillarCombine == null) delete process.env.RESILIENCE_PILLAR_COMBINE_ENABLED;
   else process.env.RESILIENCE_PILLAR_COMBINE_ENABLED = originalPillarCombine;
+  if (originalEducation == null) delete process.env.RESILIENCE_EDUCATION_ENABLED;
+  else process.env.RESILIENCE_EDUCATION_ENABLED = originalEducation;
 });
 
 describe('resilience handlers', () => {
@@ -51,12 +55,12 @@ describe('resilience handlers', () => {
 
     assert.equal(response.countryCode, 'US');
     assert.equal(response.domains.length, 6);
-    // 20 active + 2 retired (fuelStockDays, reserveAdequacy) = 22. Retired
+    // 21 active + 2 retired (fuelStockDays, reserveAdequacy) = 23. Retired
     // dims stay in the response for structural continuity; they're
     // filtered out of confidence averages via RESILIENCE_RETIRED_DIMENSIONS.
-    // Plan 2026-04-25-004 Phase 2: financialSystemExposure is the 20th
-    // active dim (ships flag-gated dark; counted in the structural total).
-    assert.equal(response.domains.flatMap((domain) => domain.dimensions).length, 22);
+    // Plan 2026-04-25-004 Phase 2: financialSystemExposure was the 20th
+    // active dimension. Education is the 21st active dimension.
+    assert.equal(response.domains.flatMap((domain) => domain.dimensions).length, 23);
     assert.ok(response.overallScore > 0 && response.overallScore <= 100);
     assert.equal(response.level, response.overallScore >= 70 ? 'high' : response.overallScore >= 40 ? 'medium' : 'low');
     assert.equal(response.trend, 'rising');
@@ -84,7 +88,7 @@ describe('resilience handlers', () => {
     assert.equal((sortedSets.get(`${RESILIENCE_HISTORY_KEY_PREFIX}US`) ?? []).length, history.length, 'cache hit must not append history');
   });
 
-  it('collapses legacy same-day history members to one current member per date and formula', async () => {
+  it('collapses legacy same-day history members to one current member per construct state', async () => {
     const today = new Date().toISOString().slice(0, 10);
     const todayScore = Number(today.replace(/-/g, ''));
     process.env.UPSTASH_REDIS_REST_URL = 'https://redis.example';
@@ -95,6 +99,7 @@ describe('resilience handlers', () => {
     sortedSets.set(`${RESILIENCE_HISTORY_KEY_PREFIX}US`, [
       { member: `${today}:40:d6`, score: todayScore },
       { member: `${today}:41:d6`, score: todayScore },
+      { member: `${today}:d6`, score: todayScore + 0.0042 },
       { member: '2026-04-01:20:d6', score: 20260401 },
     ]);
     globalThis.fetch = fetchImpl;
@@ -106,7 +111,11 @@ describe('resilience handlers', () => {
     const history = sortedSets.get(`${RESILIENCE_HISTORY_KEY_PREFIX}US`) ?? [];
     const todaysEntries = history.filter((entry) => entry.member.startsWith(`${today}:`));
     assert.equal(todaysEntries.length, 1, 'same-day history must have one member after append');
-    assert.equal(todaysEntries[0]?.member, `${today}:d6`, 'current member must be stable per date/formula, not per rounded score');
+    assert.equal(
+      todaysEntries[0]?.member,
+      `${today}:d6:education-on`,
+      'current member must replace both scored and transitional same-day formats',
+    );
     assert.ok(
       (todaysEntries[0]?.score ?? 0) > todayScore && (todaysEntries[0]?.score ?? 0) < todayScore + 1,
       'current history score should carry date ordering plus encoded score fraction',

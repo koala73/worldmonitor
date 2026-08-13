@@ -9,12 +9,14 @@ import {
   CHROME_UA,
   runSeed,
   writeExtraKey,
-  readSeedSnapshot,
-  extendExistingTtl,
+  readExistingSeedMeta,
 } from './_seed-utils.mjs';
 import {
+  MAX_JODI_CONTENT_AGE_MIN,
   assessChinaJodiCoverage,
+  buildChinaRowDiagnostic,
   hasFiniteMeasurementAtPaths,
+  jodiDatasetContentMeta,
 } from './shared/jodi-content-age.mjs';
 
 loadEnvFile(import.meta.url);
@@ -156,39 +158,75 @@ export function assessChinaGasCoverage(records, now = new Date()) {
 }
 
 /**
- * Reject unusable China coverage without letting the prior per-country
- * snapshot expire behind the still-preserved canonical country list.
+ * Content age of the published gas snapshot, for runSeed's content-age
+ * contract. This is the staleness guard that used to ride on China's data
+ * month: when the world file stops advancing, health says STALE_CONTENT
+ * instead of serving a frozen vintage as if it were current.
  *
  * @param {Parameters<typeof assessChinaGasCoverage>[0]} records
  * @param {Date} now
- * @param {{
- *   readSnapshot?: (key: string) => Promise<unknown>,
- *   extendTtl?: (keys: string[], ttlSeconds: number) => Promise<unknown>,
- * }} deps
  */
-export async function enforceChinaGasCoverage(records, now = new Date(), deps = {}) {
-  const chinaCoverage = assessChinaGasCoverage(records, now);
-  if (chinaCoverage.ok) return chinaCoverage;
+export function gasContentMeta(records, now = new Date()) {
+  return jodiDatasetContentMeta(records, hasGasMeasurements, now);
+}
 
-  const readSnapshot = deps.readSnapshot ?? readSeedSnapshot;
-  const extendTtl = deps.extendTtl ?? extendExistingTtl;
-  const previousIso2List = await readSnapshot(CANONICAL_KEY).catch(() => null);
-  const previousCountryKeys = Array.isArray(previousIso2List)
-    ? previousIso2List
-      .filter((iso2) => typeof iso2 === 'string' && /^[A-Z]{2}$/.test(iso2))
-      .map((iso2) => `${KEY_PREFIX}${iso2}`)
-    : [];
-
-  if (previousCountryKeys.length > 0) {
-    await extendTtl(previousCountryKeys, GAS_TTL).catch(() => {});
+/**
+ * Record — never enforce — China's state for seed-meta.
+ *
+ * Until #6395 an unusable China row threw here and discarded all 63 parsed
+ * countries, so the whole dataset froze for 40 days behind one absent record.
+ * The publish now proceeds on the country floor alone (runSeed `validateFn`),
+ * and this diagnostic is what keeps the gap visible on /api/health.
+ *
+ * @param {Parameters<typeof assessChinaGasCoverage>[0]} records
+ * @param {Date} now
+ * @param {{ readPreviousMeta?: () => Promise<any> }} deps
+ */
+export async function buildGasChinaRowDiagnostic(records, now = new Date(), deps = {}) {
+  const readPreviousMeta = deps.readPreviousMeta ?? (() => readExistingSeedMeta('energy', 'jodi-gas'));
+  const previousMeta = await readPreviousMeta();
+  if (previousMeta?.chinaRow == null) {
+    // readExistingSeedMeta collapses "no prior record" and "read failed" into
+    // one null, so an ongoing gap re-dates to this run. Say so, or the reset is
+    // indistinguishable from a genuine new outage in the log.
+    console.warn('  China gas row: no previous record readable — dating any gap from this run');
   }
+  return buildChinaRowDiagnostic(
+    assessChinaGasCoverage(records, now),
+    previousMeta?.chinaRow ?? null,
+    now.getTime(),
+  );
+}
 
-  const error = new Error(`China JODI gas coverage failed: ${chinaCoverage.reason} (dataMonth=${chinaCoverage.dataMonth ?? 'missing'})`);
-  // The coverage result is deterministic for the downloaded snapshot. Tell
-  // runSeed's outer withRetry loop not to download and parse the same ZIP
-  // again after last-good country TTLs have already been preserved.
-  error.nonRetryable = true;
-  throw error;
+/**
+ * Parse a downloaded world file into country records and say, once, what
+ * happened to China. Separated from the download so the no-China path is
+ * exercisable without a network round trip.
+ *
+ * @param {string} csvText
+ * @param {Date} now
+ */
+export function buildGasRecordsFromCsv(csvText, now = new Date()) {
+  const rows = parseCsvRows(csvText);
+  console.log(`  Rows after TJ/flow/assessment filter: ${rows.length}`);
+  const parsed = buildCountryRecords(rows);
+
+  const chinaCoverage = assessChinaGasCoverage(parsed, now);
+
+  // A country whose every field parsed to null is not coverage: it would count
+  // toward MIN_COUNTRIES while serving no measurement to anyone. With no
+  // single-country gate standing behind that floor any more (#6395), the floor
+  // has to mean what it says, so only measurement-bearing countries are
+  // published. It also stops a null-only month from overwriting a country's
+  // last-good record — the key simply is not rewritten and ages out instead.
+  const records = parsed.filter(hasGasMeasurements);
+  console.log(`  Countries with gas data: ${records.length} of ${parsed.length} parsed`);
+  console.log(chinaCoverage.ok
+    ? `  China gas coverage: ok (dataMonth=${chinaCoverage.dataMonth})`
+    : `  China gas coverage: ${chinaCoverage.reason} (dataMonth=${chinaCoverage.dataMonth ?? 'missing'})`
+      + ` — publishing the other ${records.length} countries anyway`);
+
+  return records;
 }
 
 function findZipEntry(buf, filename) {
@@ -254,12 +292,7 @@ async function fetchAndParseCsv() {
 async function fetchJodiGas() {
   const csvText = await fetchAndParseCsv();
   console.log('  Parsing CSV rows...');
-  const rows = parseCsvRows(csvText);
-  console.log(`  Rows after TJ/flow/assessment filter: ${rows.length}`);
-  const records = buildCountryRecords(rows);
-  console.log(`  Countries with gas data: ${records.length}`);
-  await enforceChinaGasCoverage(records);
-  return records;
+  return buildGasRecordsFromCsv(csvText);
 }
 
 /**
@@ -331,8 +364,11 @@ if (isMain) {
         await writeExtraKey(`${KEY_PREFIX}${record.iso2}`, record, GAS_TTL);
       }
       // LNG vulnerability index is now written via extraKeys (gets TTL-preserved on failure)
+      return { freshnessMetaPatch: { chinaRow: await buildGasChinaRowDiagnostic(records) } };
     },
-  
+    contentMeta: gasContentMeta,
+    maxContentAgeMin: MAX_JODI_CONTENT_AGE_MIN,
+
     declareRecords,
     schemaVersion: 1,
     maxStaleMin: 57600,

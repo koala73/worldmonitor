@@ -8,7 +8,20 @@
       "APP_SECRET",
       "DATABASE_URL"
     ],
-    "watchPatterns": [],
+    "watchPatterns": [
+      ".dockerignore",
+      "Dockerfile.umami",
+      "docker/umami/21_update_session_data/migration.sql",
+      "docker/umami/runtime/21-update-session-data-prefix.sql",
+      "docker/umami/runtime/21-update-session-data-suffix.sql",
+      "docker/umami/runtime/package.json",
+      "docker/umami/runtime/pnpm-lock.yaml",
+      "docker/umami/runtime/pnpm-workspace.yaml",
+      "docker/umami/runtime/session-data-upsert.sql",
+      "docker/umami/runtime/upstream-23-update-session-data.sql",
+      "docker/umami/session-data-upsert.patch",
+      "docker/umami/v320-compat.patch"
+    ],
     "cronSchedule": null,
     "documentedAt": "docs/analytics-collector-operations.md#patched-runtime-image"
   },
@@ -26,6 +39,7 @@
       "PGPASSWORD"
     ],
     "watchPatterns": [
+      ".dockerignore",
       "scripts/umami-retention.sql",
       "Dockerfile.umami-retention"
     ],
@@ -38,10 +52,12 @@
     "dockerfile": "Dockerfile.digest-notifications",
     "service": "digest-notifications",
     "watchPatterns": [
+      ".dockerignore",
       "Dockerfile.digest-notifications",
       "api/_seed-envelope.js",
       "api/_upstash-json.js",
       "scripts/_digest-markdown.mjs",
+      "scripts/clear-delivered-entry.mjs",
       "scripts/lib/_upstash-pipeline.mjs",
       "scripts/lib/brief-compose.mjs",
       "scripts/lib/brief-dedup-consts.mjs",
@@ -80,17 +96,29 @@
       "scripts/shared/brief-llm-core.js",
       "scripts/shared/diplomacy-keywords.json",
       "scripts/shared/notification-dedup.cjs",
+      "scripts/shared/publisher-families.js",
       "scripts/shared/stocks.json",
+      "server/_shared/brief-render.d.ts",
       "server/_shared/brief-render.js",
+      "server/_shared/feelgood-classifier.d.ts",
       "server/_shared/feelgood-classifier.js",
+      "server/_shared/llm-sanitize.d.ts",
       "server/_shared/llm-sanitize.js",
+      "server/_shared/opinion-classifier.d.ts",
       "server/_shared/opinion-classifier.js",
+      "shared/brief-envelope.d.ts",
       "shared/brief-envelope.js",
+      "shared/brief-filter.d.ts",
       "shared/brief-filter.js",
+      "shared/brief-llm-core.d.ts",
       "shared/brief-llm-core.js",
       "shared/diplomacy-keywords.json",
+      "shared/ephemeral-live-classifier.d.ts",
       "shared/ephemeral-live-classifier.js",
+      "shared/publisher-families.d.ts",
+      "shared/publisher-families.js",
       "shared/stocks.json",
+      "shared/ticker-extract.d.ts",
       "shared/ticker-extract.js",
       "shared/url-classifier.js"
     ],
@@ -102,11 +130,13 @@
     "dockerfile": "Dockerfile.relay",
     "service": "ais-relay",
     "watchPatterns": [
+      ".dockerignore",
       "Dockerfile.relay",
       "data/israeli-localities-he-en.json",
       "data/oref-threat-translations-he-en.json",
       "data/telegram-channels.json",
       "scripts/_climate-news-helpers.mjs",
+      "scripts/_country-resolver.mjs",
       "scripts/_country-stock-index.mjs",
       "scripts/_html-entities.mjs",
       "scripts/_ingestion-coverage.cjs",
@@ -122,11 +152,13 @@
       "scripts/package.json",
       "scripts/seed-chokepoint-flows.mjs",
       "scripts/seed-climate-news.mjs",
+      "scripts/seed-ember-electricity.mjs",
       "scripts/shared/ai-tokens.json",
       "scripts/shared/closed-market-equity-maintenance.cjs",
       "scripts/shared/commodities.json",
       "scripts/shared/country-name-to-iso2.cjs",
       "scripts/shared/country-names.json",
+      "scripts/shared/iso2-to-region.json",
       "scripts/shared/crypto-sectors.json",
       "scripts/shared/crypto.json",
       "scripts/shared/defi-tokens.json",
@@ -167,6 +199,7 @@
       "PROXY_URL"
     ],
     "watchPatterns": [
+      ".dockerignore",
       "Dockerfile.seed-bundle-portwatch-port-activity",
       "scripts/_bundle-runner.mjs",
       "scripts/_country-resolver.mjs",
@@ -281,6 +314,7 @@
     "dockerfile": "Dockerfile.seed-bundle-resilience-validation",
     "service": "seed-bundle-resilience-validation",
     "watchPatterns": [
+      ".dockerignore",
       "Dockerfile.seed-bundle-resilience-validation",
       "scripts/_bundle-runner.mjs",
       "scripts/_country-resolver.mjs",
@@ -320,7 +354,9 @@
       "shared/country-names.json",
       "shared/iso2-to-iso3.json",
       "shared/iso3-to-iso2.json",
-      "shared/wgi-indicator-keys.json"
+      "shared/wgi-indicator-keys.json",
+      "tsconfig.api.json",
+      "tsconfig.json"
     ],
     "documentedAt": "Dockerfile.seed-bundle-resilience-validation"
   },
@@ -642,6 +678,7 @@
       "scripts/shared/country-names.json",
       "scripts/shared/diplomacy-keywords.json",
       "scripts/shared/geo-extract.mjs",
+      "scripts/shared/publisher-families.js",
       "scripts/shared/source-tiers.json",
       "scripts/shared/story-identity.js"
     ],
@@ -718,6 +755,7 @@
     ],
     "watchPatterns": [
       "scripts/_bundle-runner.mjs",
+      "scripts/_defense-industrial-source.mjs",
       "scripts/_defense-patents-source.mjs",
       "scripts/_proxy-utils.cjs",
       "scripts/_seed-contract.mjs",
@@ -730,9 +768,15 @@
       "scripts/seed-bundle-static-ref.mjs",
       "scripts/seed-chokepoint-baselines.mjs",
       "scripts/seed-defense-patents.mjs",
+      "scripts/seed-defense-industrial.mjs",
+      "scripts/seed-defense-industrial-suppliers.mjs",
+      "scripts/shared/country-name-to-iso2.cjs",
+      "scripts/shared/country-names.json",
+      "scripts/shared/iso3-to-iso2.json",
       "scripts/seed-military-bases.mjs",
       "scripts/seed-submarine-cables.mjs"
     ],
+    "cronSchedule": "0 3 * * *",
     "documentedAt": "docs/railway-seed-consolidation-runbook.md#bundle-3-seed-bundle-static-ref"
   },
   {
@@ -1018,6 +1062,7 @@
       "scripts/seed-china-macro.mjs",
       "scripts/seed-china-policy-events.mjs",
       "scripts/seed-china-release-calendar.mjs",
+      "scripts/seed-education-attainment.mjs",
       "scripts/seed-eurostat-country-data.mjs",
       "scripts/seed-eurostat-gov-debt-q.mjs",
       "scripts/seed-eurostat-house-prices.mjs",
@@ -1030,6 +1075,7 @@
       "scripts/shared/country-names.json",
       "scripts/shared/iso2-to-iso3.json",
       "scripts/shared/iso3-to-iso2.json",
+      "scripts/shared/sovereign-status.json",
       "shared/iso2-to-iso3.json"
     ],
     "documentedAt": "docs/railway-seed-consolidation-runbook.md#bundle-8-seed-bundle-macro"
@@ -1098,6 +1144,7 @@
       "scripts/seed-gold-etf-flows.mjs",
       "scripts/seed-gulf-quotes.mjs",
       "scripts/seed-hyperliquid-flow.mjs",
+      "scripts/seed-market-correlation-series.mjs",
       "scripts/seed-sec-8k-stream.mjs",
       "scripts/seed-sec-cik-map.mjs",
       "scripts/seed-stablecoin-markets.mjs",
@@ -1149,6 +1196,37 @@
       "scripts/shared/ucdp-candidate.cjs"
     ],
     "documentedAt": "docs/railway-seed-consolidation-runbook.md#bundle-11-seed-bundle-relay-backup"
+  },
+  {
+    "entry": "scripts/company-monitoring-worker.mjs",
+    "deployMode": "nixpacks-root-scripts",
+    "lifecycle": "planned",
+    "service": "company-monitoring-worker",
+    "startCommand": "node company-monitoring-worker.mjs",
+    "requiredEnv": [
+      "CONVEX_URL",
+      "COMPANY_MONITORING_WORKER_SECRET",
+      "UPSTASH_REDIS_REST_URL",
+      "UPSTASH_REDIS_REST_TOKEN",
+      "X_BEARER_TOKEN"
+    ],
+    "watchPatterns": [
+      "scripts/_proxy-utils.cjs",
+      "scripts/_seed-contract.mjs",
+      "scripts/_seed-envelope-source.mjs",
+      "scripts/_seed-utils.mjs",
+      "scripts/company-monitoring-worker.mjs",
+      "scripts/lib/company-monitoring-exa.mjs",
+      "scripts/lib/company-monitoring-x-provider.mjs",
+      "scripts/lib/llm-telemetry.cjs",
+      "scripts/lib/main-module.mjs",
+      "scripts/lib/notification-webhook-ssrf.cjs",
+      "scripts/nixpacks.toml",
+      "scripts/package-lock.json",
+      "scripts/package.json"
+    ],
+    "cronSchedule": null,
+    "documentedAt": "scripts/company-monitoring-worker.mjs (header docblock declares rootDirectory: scripts); lifecycle planned 2026-08-10 pending provisioning \u2014 see #6402"
   },
   {
     "entry": "scripts/scenario-worker.mjs",
@@ -1229,5 +1307,49 @@
     "watchPatterns": [],
     "cronSchedule": null,
     "documentedAt": "issue #5300 U3 Railway provisioning contract"
+  },
+  {
+    "entry": "scripts/seed-economy.mjs",
+    "deployMode": "nixpacks-root-scripts",
+    "service": "seed-economy",
+    "watchPatterns": [
+      "scripts/_seed-contract.mjs",
+      "scripts/_seed-envelope-source.mjs",
+      "scripts/_seed-utils.mjs",
+      "scripts/_proxy-utils.cjs",
+      "scripts/lib/llm-telemetry.cjs",
+      "scripts/seed-economy.mjs",
+      "scripts/nixpacks.toml",
+      "scripts/package.json",
+      "scripts/package-lock.json"
+    ],
+    "cronSchedule": "*/15 * * * *",
+    "documentedAt": "docs/railway-seed-consolidation-runbook.md#standalone-seed-crons-43-not-bundled"
+  },
+  {
+    "entry": "scripts/seed-fred-rates.mjs",
+    "deployMode": "nixpacks-root-scripts",
+    "service": "seed-fred-rates",
+    "requiredEnv": [
+      "FRED_API_KEY",
+      "UPSTASH_REDIS_REST_URL",
+      "UPSTASH_REDIS_REST_TOKEN",
+      "PROXY_URL"
+    ],
+    "watchPatterns": [
+      "scripts/_seed-contract.mjs",
+      "scripts/_seed-envelope-source.mjs",
+      "scripts/_fred-seeder.mjs",
+      "scripts/_seed-utils.mjs",
+      "scripts/_upstash-rest.mjs",
+      "scripts/_proxy-utils.cjs",
+      "scripts/lib/llm-telemetry.cjs",
+      "scripts/seed-fred-rates.mjs",
+      "scripts/nixpacks.toml",
+      "scripts/package.json",
+      "scripts/package-lock.json"
+    ],
+    "cronSchedule": "0 * * * *",
+    "documentedAt": "docs/market-data-cadence-audit.md"
   }
 ]

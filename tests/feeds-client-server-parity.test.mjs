@@ -26,6 +26,7 @@ import { describe, it } from 'node:test';
 import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import ts from 'typescript';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(__dirname, '..');
@@ -85,6 +86,67 @@ function extractFeedRouting(filePath) {
       out.set(name, { isGoogleNews: isGN, snippet: urlExpr.trim().slice(0, 120) });
     }
   }
+  return out;
+}
+
+/**
+ * Extract feed names by their containing category array.
+ *
+ * A global name match is insufficient here: the digest truncates and the
+ * client filters within each category, so a same-name client feed in another
+ * category cannot make a server item visible. The client intentionally uses
+ * CANONICAL_FEEDS, the cross-variant union for a category, when a user enables
+ * a custom panel; this extractor mirrors that behavior by unioning catalogs
+ * by category. Use the TypeScript AST so multiline entries remain visible.
+ *
+ * Returns a Map<category, Set<name>>.
+ */
+function extractFeedNamesByCategory(filePath) {
+  const src = readFileSync(filePath, 'utf-8');
+  const ast = ts.createSourceFile(filePath, src, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
+  const out = new Map();
+
+  const propertyName = (node) => {
+    if (ts.isIdentifier(node) || ts.isStringLiteral(node)) return node.text;
+    return null;
+  };
+
+  const collectNames = (category, elements) => {
+    for (const element of elements) {
+      if (!ts.isObjectLiteralExpression(element)) continue;
+      const nameProperty = element.properties.find(
+        property =>
+          ts.isPropertyAssignment(property) &&
+          propertyName(property.name) === 'name' &&
+          ts.isStringLiteral(property.initializer),
+      );
+      if (!nameProperty || !ts.isPropertyAssignment(nameProperty) || !ts.isStringLiteral(nameProperty.initializer)) {
+        continue;
+      }
+      const names = out.get(category) ?? new Set();
+      names.add(nameProperty.initializer.text);
+      out.set(category, names);
+    }
+  };
+
+  const visit = (node) => {
+    if (ts.isPropertyAssignment(node) && ts.isArrayLiteralExpression(node.initializer)) {
+      const category = propertyName(node.name);
+      if (category) collectNames(category, node.initializer.elements);
+    }
+    if (
+      ts.isVariableDeclaration(node) &&
+      ts.isIdentifier(node.name) &&
+      node.name.text === 'INTEL_SOURCES' &&
+      node.initializer &&
+      ts.isArrayLiteralExpression(node.initializer)
+    ) {
+      collectNames('intel', node.initializer.elements);
+    }
+    ts.forEachChild(node, visit);
+  };
+
+  visit(ast);
   return out;
 }
 
@@ -173,52 +235,36 @@ describe('feed parity: client vs server (PR #3715 follow-up)', () => {
   });
 
   // Server-only feeds get aggregated, ranked, and TRUNCATED to
-  // MAX_ITEMS_PER_CATEGORY in list-feed-digest.ts:1076-1082, THEN the client
-  // filters by `enabledNames` from src/config/feeds.ts (data-loader.ts:908-914).
+  // MAX_ITEMS_PER_CATEGORY in list-feed-digest.ts, THEN data-loader.ts filters
+  // them by `enabledNames` from src/config/feeds.ts.
   // If the server emits a feed whose name has no client-side counterpart, the
   // server fetches it for nothing AND its items crowd out visible items in the
   // same category, shrinking the visible result set. Exactly the
   // Commodity-Trade-Mantra failure mode the #3717 reviewer caught.
   //
-  // Five existing server-only entries are grandfathered (KNOWN_SERVER_ONLY).
-  // Each is its own per-feed judgment — they may be intentional enrichment
-  // that's never user-visible, or they may be the same crowd-out bug latent
-  // since before this test landed. They should be reviewed one-by-one (either
-  // restore the client-side name OR drop the server entry); the set should
-  // SHRINK over time, not grow.
-  const KNOWN_SERVER_ONLY = new Set([
-    'Trump - Truth Social',
-    'White House Actions',
-    'First Round Review',
-    'YC News',
-    'YC Blog',
-  ]);
-
-  it('no NEW server-only feed entries (crowd-out risk via MAX_ITEMS_PER_CATEGORY)', () => {
-    const newOrphans = [];
-    const resolvedKnown = [];
-    for (const name of server.keys()) {
-      if (client.has(name)) {
-        if (KNOWN_SERVER_ONLY.has(name)) resolvedKnown.push(name);
-        continue;
+  it('every server feed has a client home in the same category before MAX_ITEMS_PER_CATEGORY truncation', () => {
+    const clientByCategory = extractFeedNamesByCategory(CLIENT_PATH);
+    const serverByCategory = extractFeedNamesByCategory(SERVER_PATH);
+    const clientNameCount = [...clientByCategory.values()].reduce((sum, names) => sum + names.size, 0);
+    const serverNameCount = [...serverByCategory.values()].reduce((sum, names) => sum + names.size, 0);
+    assert.ok(clientNameCount > 50, `category parser found only ${clientNameCount} client feed names`);
+    assert.ok(serverNameCount > 50, `category parser found only ${serverNameCount} server feed names`);
+    const orphans = [];
+    for (const [category, serverNames] of serverByCategory) {
+      const clientNames = clientByCategory.get(category) ?? new Set();
+      for (const name of serverNames) {
+        if (!clientNames.has(name)) orphans.push(`${category}: ${name}`);
       }
-      if (KNOWN_SERVER_ONLY.has(name)) continue;
-      newOrphans.push(name);
     }
     assert.equal(
-      newOrphans.length,
+      orphans.length,
       0,
-      'NEW server-only feed entries detected. The server will fetch these, ' +
+      'Server-only feed entries detected. The server will fetch these, ' +
         'rank them into MAX_ITEMS_PER_CATEGORY, then the client filter will ' +
-        'drop them — silently shrinking the visible result set. Either add a ' +
-        'matching entry with the same name to src/config/feeds.ts, or remove ' +
+        'drop them from that category — silently shrinking the visible result set. Either add a ' +
+        'matching entry with the same name and category to src/config/feeds.ts, or remove ' +
         'the server entry:\n' +
-        newOrphans.map(n => `  - "${n}"`).join('\n'),
-    );
-    assert.equal(
-      resolvedKnown.length,
-      0,
-      `Server-only entries in KNOWN_SERVER_ONLY are now mirrored on the client — remove from the set: ${resolvedKnown.join(', ')}`,
+        orphans.map(entry => `  - ${entry}`).join('\n'),
     );
   });
 

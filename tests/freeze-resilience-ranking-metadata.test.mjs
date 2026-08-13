@@ -17,10 +17,11 @@ describe('freeze-resilience-ranking methodology metadata', () => {
   it('derives the active dimension count from the scorer registries', () => {
     const metadata = computeResilienceMethodologyMetadataFromSource(sourceText);
 
+    // 2026-08-10: +1 serialized / +1 active for the flag-dark `education` dim.
     assert.equal(metadata.domainCount, 6);
-    assert.equal(metadata.serializedDimensionCount, 22);
+    assert.equal(metadata.serializedDimensionCount, 23);
     assert.equal(metadata.retiredDimensionCount, 2);
-    assert.equal(metadata.activeDimensionCount, 20);
+    assert.equal(metadata.activeDimensionCount, 21);
   });
 
   it('builds frozen snapshot methodology with the live active dimension count', () => {
@@ -31,6 +32,6 @@ describe('freeze-resilience-ranking methodology metadata', () => {
     );
 
     assert.equal(methodology.dimensionCount, metadata.activeDimensionCount);
-    assert.match(methodology.coverageLabel, /20 per-dimension coverage values/);
+    assert.match(methodology.coverageLabel, /21 per-dimension coverage values/);
   });
 });

@@ -127,11 +127,12 @@ the live audit.
 
 The reconciliation controller is a dedicated Cloudflare Worker backed by one
 SQLite Durable Object. Its foundation can be deployed while the existing
-Railway trigger remains unchanged: keep both
+Railway integration remains unchanged. Keep both
 `RAILWAY_RECONCILE_CUTOVER_ACTIVE` and
 `RAILWAY_RECONCILE_AUTO_RECOVERY_ENABLED` set to `false` until the lease-aware
-target workflow has landed and the legacy trigger has been disabled and
-drained.
+target workflow, protected environments, role credentials, and authenticated
+status probe are ready. Activate the flags separately with the staged cutover
+below.
 
 Provision these GitHub Actions environments with a `main`-only deployment
 branch policy:
@@ -144,12 +145,43 @@ rejects every other host even if a workflow variable is misconfigured.
 |---|---|
 | `railway-reconcile-control-production` | Cloudflare deploy token, account ID, fixed control scope, and all four pairwise-distinct HMAC values |
 | `ingestion-acceptance-production-watchdog` | Watchdog HMAC only; no Railway credential |
-| `ingestion-acceptance-production-verification` | Read-only Railway Viewer token, project ID, and GitHub read evidence |
-| `ingestion-acceptance-production-breakglass` | Operator HMAC plus the same Viewer-only Railway access; require independent reviewers and prevent self-review |
+| `ingestion-acceptance-production` | Mutation HMAC, `RAILWAY_RECONCILE_DEPLOY_TOKEN_V2`, and project ID |
+| `ingestion-acceptance-production-verification` | Verifier HMAC, `RAILWAY_RECONCILE_VIEWER_TOKEN`, project ID, and GitHub read evidence |
+| `ingestion-acceptance-production-breakglass` | Operator HMAC plus the same `RAILWAY_RECONCILE_VIEWER_TOKEN`; required reviewers gate the resolve job |
+
+Both Railway tokens are distinct project tokens with identical capability; the
+names record intended use, not an enforced boundary. See the scope note below.
 
 The ordinary lease-aware mutation and verifier jobs receive only their own
-HMAC roles in their separately protected environments. The Viewer token must
-not be able to deploy, redeploy, edit configuration, or approve Railway work.
+HMAC roles in their separately protected environments.
+
+The Viewer token is **read-only by convention, not by credential scope.**
+Railway issues exactly two token types and neither accepts a role or scope:
+`apiTokenCreate` takes only `{name, workspaceId}` and inherits the creating
+user's permissions, and `projectTokenCreate` takes only
+`{projectId, environmentId, name}`. The `VIEWER` value on `ProjectRole` and
+`TeamRole` applies to project *members* — user accounts — not to tokens. A
+genuinely read-only token would require a separate Railway user account joined
+to the project as a `VIEWER` member, which this project does not maintain.
+
+So mint the Viewer and deploy tokens as two distinct project tokens on the one
+owner account: distinct tokens still give independent revocation, a separate
+audit trail, and blast-radius containment if one leaks. What they do not give
+is an inability to deploy. That property is enforced instead by the
+`--workflow-authorized` fence in `scripts/trigger-railway-deploys.mjs` and the
+workflow contract tests, so treat any change to those guards as a change to a
+security boundary. Note also that `projectTokenCreate` rejects a CLI session
+with `Not Authorized`; both tokens must be created from the Railway dashboard.
+
+Breakglass approval is **one-person by deliberate choice.** The environment
+requires a reviewer, so `resolve` pauses until a human approves and GitHub
+records who did, but `prevent_self_review` is **off**: the operator who
+dispatches recovery may approve their own run. Turning it on with a single
+reviewer would deadlock the emergency path — the one person able to trigger
+recovery would be forbidden from approving it, exactly when it is needed. Real
+two-person control needs a second named reviewer added first; until then the
+`approver` workflow input stays an audit assertion, not a verified second party.
+
 The protected resolver deliberately repeats the GitHub, convergence, and
 provider-inactivity reads after environment approval; the earlier proof is not
 fresh enough to authorize a state transition by itself.
@@ -165,6 +197,35 @@ Worker and the one matching consumer environment together and repeat both the
 version and authenticated status probes. Never rotate across an active lease,
 hold, or barrier: the old run would lose its only authorization path and the
 result would require protected operator recovery.
+
+#### Staged cutover
+
+Do not enable both activation flags in one operation.
+
+1. Confirm the current `main` head has an exact green `gate`, no target mutation
+   or verifier run is active, and authenticated controller status has no lease,
+   barrier, attempt, or dispatch hold. Confirm every protected environment has
+   only the role credentials its jobs read.
+2. Set `RAILWAY_RECONCILE_CUTOVER_ACTIVE=true` while keeping
+   `RAILWAY_RECONCILE_AUTO_RECOVERY_ENABLED=false`. This enables the ordinary
+   lease-fenced mutation and verifier cycle plus protected manual retry, but it
+   cannot authorize a watchdog dispatch. Run one exact-green-head cycle and
+   require terminal acceptance to populate `lastAccepted`. Unset the cutover
+   flag to roll back admission of new mutation jobs.
+3. Enable `RAILWAY_RECONCILE_AUTO_RECOVERY_ENABLED` only after `lastAccepted`
+   has been observed fresh, watchdog read failures fail the job after their
+   bounded streak, and a baseline exists for green deferrals caused by a live
+   paginated GitHub inventory. Run the watchdog in `dispatch` mode and require
+   `HEALTHY` with no dispatch. Unset this flag first to roll back automatic
+   recovery authority.
+
+The native Railway source integration is not the lease-aware mutation path. It
+can continue to accept ordinary builds: the reconcile trigger reads the live
+deployment inventory and treats an accepted or in-progress build for the exact
+commit as a no-op. The repository has no separate legacy GitHub workflow that
+deploys with `RAILWAY_PRODUCTION_TOKEN`; that token remains only in read paths.
+If either fact changes, disable and drain the new competing mutation path before
+the staged cutover.
 
 To print the authenticated raw controller state without dispatching anything,
 run the watchdog's `status` mode from `main`:
@@ -314,10 +375,22 @@ incident note.
 default branch. Scheduled runs first require the latest `main` commit's `gate`
 status to be green; a missing, pending, or failed gate makes the workflow fail
 closed instead of producing a green skipped run. Manual runs execute directly.
-After the repository gate, the workflow checks live Railway watch paths, cron
-schedules, required routing variables, and service presence against
-`scripts/railway-services.json`, then runs the deploy-drift check, then checks
-public compact health. It fails on
+The workflow runs two independent jobs. Read the one that answers your question.
+
+- `monitor` is the gated job. After the repository gate, it checks live Railway
+  watch paths, cron schedules, required routing variables, and service presence
+  against `scripts/railway-services.json`, then checks public compact health.
+- `Railway deploy drift` is a separate job. It has no `needs:` and no gate
+  condition, so it runs in parallel with `monitor` and publishes its own
+  conclusion. A failed gate turns `monitor` red but leaves this job's verdict
+  intact (#6523).
+
+During a gate outage, read the `Railway deploy drift` job, not `monitor`. A red
+`monitor` alone says nothing about the fleet. Note that the run's overall
+conclusion and its badge stay red whenever `monitor` fails, so you must open the
+run and read the job conclusions to tell a clean fleet from a stranded one.
+
+`monitor` fails on
 every actionable problem, including `SEED_ERROR`, `STALE_SEED`,
 `STALE_CONTENT`, and degraded composed coverage. Statuses that explicitly end
 in `_ON_DEMAND` remain informational. It deliberately does not run on an
@@ -416,11 +489,18 @@ The reconciliation control plane deliberately separates two failures:
   Manual Recovery** workflow records an audited resolution. Lease expiry alone
   never clears this barrier.
 
-The watchdog is observe-only unless both `RAILWAY_RECONCILE_CUTOVER_ACTIVE` and
-`RAILWAY_RECONCILE_AUTO_RECOVERY_ENABLED` are exactly `true`. The first flag is
-the hard fence against dispatching the legacy target contract; the second is
-the operational recovery switch. `RECOVERY_AUTHORIZED` means the controller
-persisted a one-use dispatch hold but has not yet dispatched it;
+The watchdog cannot create a hold or dispatch a new recovery unless both
+`RAILWAY_RECONCILE_CUTOVER_ACTIVE` and
+`RAILWAY_RECONCILE_AUTO_RECOVERY_ENABLED` are exactly `true`. Classification is
+deliberately read-and-repair: if an earlier authorized watchdog or manual
+recovery dispatch left a `DISPATCH_HELD` record, an ordinary scheduled run may
+bind its exact accepted workflow run or close it after definitive pre-dispatch
+rejection. That repair is independent of both flags because it completes an
+authorization that already exists; it never creates a hold or sends a dispatch.
+The first flag enables the lease-aware mutation contract and protected manual
+retry, while the second authorizes new automatic recovery. `RECOVERY_AUTHORIZED`
+means the controller persisted a one-use dispatch hold but has not yet
+dispatched it;
 `RECOVERY_DISPATCHED` means GitHub accepted the request and the controller
 durably bound its exact workflow run and attempt. A green
 watchdog run means only that observation did not poison `main`; authoritative
@@ -684,11 +764,11 @@ All new services share these settings:
 |---|---|
 | **Service name** | `seed-bundle-static-ref` |
 | **Start command** | `node scripts/seed-bundle-static-ref.mjs` |
-| **Cron schedule** | `0 3 * * 0` (weekly, Sunday 03:00 UTC) |
+| **Cron schedule** | `0 3 * * *` (daily at 03:00 UTC) |
 | **Watch paths** | `scripts/**`, `shared/**` |
 | **Replaces** | 4 services (including the retired defense-patents producer) |
 | **Net savings** | 3 slots |
-| **Members** | Submarine Cables (weekly), Defense Patents (weekly), Chokepoint Baselines (400d, runs rarely), Military Bases (30d, runs rarely) |
+| **Members** | Submarine Cables (weekly), Defense Patents (weekly), Defense Industrial Base (10d), Chokepoint Baselines (400d, runs rarely), Military Bases (30d, runs rarely) |
 | **Required variable** | `USPTO_API_KEY=${{shared.USPTO_API_KEY}}` |
 
 Defense Patents is an intentional data-series migration, not a continuation of
@@ -698,6 +778,20 @@ empty for wire compatibility. The producer marks the discontinuity with
 `sourceVersion: uspto-odp-v1` and `schemaVersion: 2`; operational comparisons
 must not treat pre-migration grant dates and post-migration filing dates as one
 continuous metric.
+
+Defense Industrial Base writes `military:industrial-base:v1` from World Bank
+`MS.MIL.*` series and `military:arms-suppliers:v1` from SIPRI-derived five-year
+supplier shares. Both values have a 30-day TTL. Each source is eligible every
+10 days, and the daily service evaluates that interval before day 10, which
+keeps the canonical TTL above the three-refresh safety floor. The sources run
+as separate bounded processes under a 570-second bundle budget, so one failure
+cannot block the other source's publication. A SIPRI portal failure preserves
+last-good supplier rows with their original timestamps. A separate
+SIPRI-completion marker stays old after a partial pass, so the next daily tick
+retries the portal instead of treating the partial pass as complete.
+Strict health-probe registration is a staged follow-up after the first Railway
+run publishes both seed-meta keys; the follow-up must cite real Railway
+pre-seed evidence under the health-probe cutover contract.
 
 ### Bundle 4: seed-bundle-resilience
 
@@ -869,7 +963,8 @@ Recovery is accepted only when:
 | **Watch paths** | `scripts/**`, `shared/**` |
 | **Replaces** | 6 services |
 | **Net savings** | 5 slots |
-| **Members** | BIS Data (12h), CBR Rates (daily), China Macro (36h), China Release Calendar (36h), China Policy Events (6h), BIS Extended (12h), BLS Series (daily), Eurostat (daily), Eurostat House Prices (7d), Eurostat Government Debt (2d), Eurostat Industrial Production (daily), IMF Macro (30d), National Debt (30d), FAO FFPI (daily), World Bank External Debt (30d), BIS LBS (7d), FATF Listing (30d) |
+| **Members** | BIS Data (12h), CBR Rates (daily), China Macro (36h), China Release Calendar (36h), China Policy Events (6h), BIS Extended (12h), BLS Series (daily), Eurostat (daily), Eurostat House Prices (7d), Eurostat Government Debt (2d), Eurostat Industrial Production (daily), IMF Macro (30d), National Debt (30d), FAO FFPI (daily), World Bank External Debt (30d), BIS LBS (7d), FATF Listing (30d), Education Attainment (7d) |
+| **Wall budget** | 570 seconds. The runner defers a section when its timeout plus 10-second kill grace cannot fit before Railway's 10-minute limit. Education stays last on six UTC days so a persistent failure in the new flag-dark producer cannot starve established production members; it gets first priority each Sunday UTC so sustained production load cannot defer its first envelope forever. |
 
 ### Bundle 9: seed-bundle-health
 
@@ -893,9 +988,9 @@ Recovery is accepted only when:
 | **Watch paths** | See `scripts/railway-services.json` (exact runtime closure; run `node scripts/audit-railway-watch-paths.mjs`) |
 | **Replaces** | 5 services |
 | **Net savings** | 4 slots |
-| **Members** | Crypto Quotes (5min), Hyperliquid Flow (5min), Stablecoin Markets (10min), ETF Flows (15min), China Corporate Disclosures (30min), China Stock Connect (60min), Gulf Quotes (10min), Token Panels (30min), Gold ETF Flows (2h), Gold CB Reserves (daily), SEC CIK Map (daily), SEC 8-K Stream (30min) |
+| **Members** | Crypto Quotes (5min), Hyperliquid Flow (5min), Stablecoin Markets (10min), ETF Flows (15min), Market Correlation Series (15min), China Corporate Disclosures (30min), China Stock Connect (60min), Gulf Quotes (10min), Token Panels (30min), Gold ETF Flows (2h), Gold CB Reserves (daily), SEC CIK Map (daily), SEC 8-K Stream (30min) |
 | **Required env** | `PROXY_URL` (required independently by Gulf Quotes / ETF Flows and selected for an exchange only when its source-specific setting is absent). Proxy configuration precedence is `SSE_PROXY_URL` → `SZSE_PROXY_URL` → `PROXY_URL` for SSE and `SZSE_PROXY_URL` → `PROXY_URL` for SZSE; the process selects the first non-empty setting rather than attempting each URL sequentially. This is the deployment contract; production provisioning and live fallback acceptance require separate verification. |
-| **Note** | Crypto Quotes, Stablecoin Markets, ETF Flows, Gulf Quotes, and Token Panels back up ais-relay inline loops. Hyperliquid Flow, China Corporate Disclosures, China Stock Connect, Gold ETF Flows, Gold CB Reserves, SEC CIK Map, and SEC 8-K Stream are primary in this bundle. China Corporate Disclosures reads official metadata only: SSE uses direct then the selected proxy, while SZSE uses direct then distinct port attempts within the selected proxy. China Stock Connect reads aggregate exchange statistics over direct then the selected proxy only — it stops short of the edge hop, because a seeder fetches upstream data and the web tier serves it from Redis, and borrowing an edge function's egress for acquisition inverts that. It additionally caps every `www.szse.cn` request in a run under one shared 100s wall-clock budget, because its SZSE endpoints are date-keyed and the number of probes depends on how many sessions the exchange has published. Gulf Quotes uses Alpha Vantage (richer than relay's Yahoo-only). |
+| **Note** | Crypto Quotes, Stablecoin Markets, ETF Flows, Gulf Quotes, and Token Panels back up ais-relay inline loops. Hyperliquid Flow, Market Correlation Series, China Corporate Disclosures, China Stock Connect, Gold ETF Flows, Gold CB Reserves, SEC CIK Map, and SEC 8-K Stream are primary in this bundle. China Corporate Disclosures reads official metadata only: SSE uses direct then the selected proxy, while SZSE uses direct then distinct port attempts within the selected proxy. China Stock Connect reads aggregate exchange statistics over direct then the selected proxy only — it stops short of the edge hop, because a seeder fetches upstream data and the web tier serves it from Redis, and borrowing an edge function's egress for acquisition inverts that. It additionally caps every `www.szse.cn` request in a run under one shared 100s wall-clock budget, because its SZSE endpoints are date-keyed and the number of probes depends on how many sessions the exchange has published. Gulf Quotes uses Alpha Vantage (richer than relay's Yahoo-only). |
 
 ### Bundle 11: seed-bundle-relay-backup
 
@@ -1103,7 +1198,7 @@ Start with lowest-risk, highest-savings bundles.
 | 4 | seed-bundle-portwatch | 3 | Medium (hourly, 4 members) | Hourly |
 | 5 | seed-bundle-climate | 4 | Medium (3h, 5 members) | 3h |
 | 6 | seed-bundle-energy-sources | 5 | Medium (daily, 6 members) | Daily |
-| 7 | seed-bundle-macro | 5 | Medium (daily, 6 members) | Daily |
+| 7 | seed-bundle-macro | 5 | Medium (daily, 18 members) | Daily |
 | 8 | seed-bundle-health | 3 | Medium (hourly, 5 members) | Hourly |
 | 9 | seed-bundle-derived-signals | 1 | Medium (5min bundle; one bounded 3h external member) | 5min |
 | 10 | seed-bundle-market-backup | 4 | Low (backup for relay) | 5min |

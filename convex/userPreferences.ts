@@ -6,6 +6,7 @@ import {
   USER_PREFS_WRITE_RATE_LIMIT,
   USER_PREFS_WRITE_RATE_WINDOW_MS,
 } from "./constants";
+import { ROLLING_DEPLOYMENT_PREFERENCE_KEYS } from "../shared/cloud-preferences-contract";
 
 export const getPreferencesByUserId = internalQuery({
   args: { userId: v.string(), variant: v.string() },
@@ -58,28 +59,23 @@ type UserPrefsWriteRateLimitResult =
 
 const RATE_LIMIT_COUNTER_SCAN_LIMIT = USER_PREFS_WRITE_RATE_LIMIT + 1;
 const RATE_LIMIT_STALE_CLEANUP_LIMIT = 5;
-const FREE_TIER_OWNERSHIP_KEYS = [
-  "worldmonitor-free-tier-source-ownership",
-  "worldmonitor-free-tier-layer-ownership",
-] as const;
-
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 /**
- * Older clients replace the complete preference blob without the ownership
- * sidecars. Preserve only those omitted fields from an existing row; an
- * explicit value, including the string "[]", remains authoritative.
+ * Older clients replace the complete preference blob without fields added by
+ * a newer deployment. Preserve only these omission-safe fields from an
+ * existing row; explicit reset values such as "[]" and "1" remain authoritative.
  */
-export function preserveOmittedFreeTierOwnership(
+export function preserveOmittedRollingDeploymentFields(
   existingData: unknown,
   incomingData: unknown,
 ): unknown {
   if (!isRecord(existingData) || !isRecord(incomingData)) return incomingData;
 
   let merged: Record<string, unknown> | null = null;
-  for (const key of FREE_TIER_OWNERSHIP_KEYS) {
+  for (const key of ROLLING_DEPLOYMENT_PREFERENCE_KEYS) {
     if (
       !Object.prototype.hasOwnProperty.call(incomingData, key)
       && typeof existingData[key] === "string"
@@ -182,7 +178,7 @@ export const setPreferences = mutation({
       )
       .unique();
 
-    const data = preserveOmittedFreeTierOwnership(existing?.data, args.data);
+    const data = preserveOmittedRollingDeploymentFields(existing?.data, args.data);
     const blobSize = JSON.stringify(data).length;
     if (blobSize > MAX_PREFS_BLOB_SIZE) {
       return {

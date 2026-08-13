@@ -935,6 +935,16 @@ function claims(s) {
     { file: 'README.md', re: /(\d+)\s+stock exchanges/, value: s.stockExchangeCount },
     { file: 'docs/overview.mdx', re: /(\d+)\+\s+curated news feeds/, value: s.feedDefinitions, min: true },
     { file: 'docs/overview.mdx', re: /(\d+)\+\s+observed upstream hosts/, value: s.sourceAttributionHosts },
+    { file: 'docs/overview.mdx', re: /interface supports (\d+)\s+languages/, value: s.locales },
+    { file: 'docs/overview.mdx', re: /lists (\d+)\s+active providers/, value: s.sourceAttribution.providerCount },
+    { file: 'docs/overview.mdx', re: /active providers, (\d+)\s+upstream hosts/, value: s.sourceAttribution.activeHosts },
+    { file: 'docs/overview.mdx', re: /upstream hosts, (\d+)\s+structured endpoints/, value: s.sourceAttribution.structuredHosts },
+    { file: 'docs/overview.mdx', re: /structured endpoints, and (\d+)\s+news and OSINT feeds/, value: s.sourceAttribution.feedHosts },
+    { file: 'docs/zh/overview.mdx', re: /界面支持 (\d+)\s*种语言/, value: s.locales },
+    { file: 'docs/zh/overview.mdx', re: /列出 (\d+)\s*个活跃提供方/, value: s.sourceAttribution.providerCount },
+    { file: 'docs/zh/overview.mdx', re: /活跃提供方、(\d+)\s*个上游主机/, value: s.sourceAttribution.activeHosts },
+    { file: 'docs/zh/overview.mdx', re: /上游主机、(\d+)\s*个结构化端点/, value: s.sourceAttribution.structuredHosts },
+    { file: 'docs/zh/overview.mdx', re: /结构化端点和 (\d+)\s*个新闻及 OSINT 数据流/, value: s.sourceAttribution.feedHosts },
 
     // ---- Translated READMEs ----
     // Same claims as README.md, pinned in each language. Without these the
@@ -1057,7 +1067,7 @@ function claims(s) {
     { file: 'public/mcp-server.md', re: /server ships \*\*(\d+)\s+tools\*\*/, value: s.mcpToolCount },
 
     { file: 'docs/data-sources.mdx', re: /monitors (\d+)\s+data sources/, value: s.freshnessSources },
-    { file: 'docs/data-sources.mdx', re: /\*\*(\d+) active upstream hosts\*\*/, value: s.sourceAttributionHosts },
+    { file: 'docs/source-attribution.mdx', re: /\*\*(\d+) active upstream hosts\*\*/, value: s.sourceAttributionHosts },
     { file: 'docs/data-sources.mdx', re: /across (\d+)\s+monitored airports/, value: s.airportCount },
     { file: 'docs/data-sources.mdx', re: /^(\d+)\s+airports across 5 regions/m, value: s.airportCount },
     { file: 'docs/data-sources.mdx', re: /(\d+)\s+global stock exchanges/, value: s.stockExchangeCount },

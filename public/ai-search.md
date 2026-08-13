@@ -41,7 +41,7 @@ World Monitor is useful for investors, portfolio managers, energy and commodity 
 
 - 56 map layer types
 - 500+ curated RSS feeds
-- 530+ observed upstream hosts
+- 532+ observed upstream hosts
 - 13 maritime chokepoints with AIS-based transit intelligence
 - 31 live Country Instability Index countries
 - 196-country resilience rankings
@@ -50,7 +50,7 @@ World Monitor is useful for investors, portfolio managers, energy and commodity 
 - 313 AI datacenters mapped
 - 29 scored hotspots
 - 92 exchanges and assets
-- 60 MCP tools
+- 61 MCP tools
 - 26 supported languages
 
 ## Source Examples

@@ -6,14 +6,14 @@
 
 This review freezes the policy and price inputs used by the Company Monitoring
 Stage 0 decision. It is not legal advice or a durable provider guarantee. Provider
-terms, prices, approved-use declarations, and model endpoints must be refreshed
+terms, prices, declared use cases, and model endpoints must be refreshed
 before any paid runtime is enabled.
 
 ## Exa
 
-Status for evaluation: approved. Status for paid runtime: blocked pending a
-separate runtime-scoped approval and its 64-hex evidence digest. Evaluation
-approval and API access cannot be reused as production approval.
+The Exa adapter remains dark while
+`COMPANY_MONITORING_ROLLOUT_FLAGS.exaProvider` in
+`convex/config/productCatalog.ts` is false.
 
 - Use only Exa's official API. No browser scraping or credential sharing.
 - The current Search price is $7 per 1,000 requests for up to ten results,
@@ -32,9 +32,9 @@ Sources: [Exa pricing](https://exa.ai/pricing),
 
 ## X
 
-Status: blocked pending written approval for the intended commercial use and a
-reviewed, enforced compliance implementation. An `approved` status alone is
-insufficient.
+The X adapter remains dark while `COMPANY_MONITORING_ROLLOUT_FLAGS.xProvider`
+in `convex/config/productCatalog.ts` is false. Activation must retain the
+content-handling controls below.
 
 - Use only the official X API. Recent search covers seven days and returns up to
   100 Posts per request; full-archive search is a separate pay-per-use or
@@ -43,20 +43,18 @@ insufficient.
   Pay-per-use plans have a two-million-Post monthly read cap.
 - X requires the declared use case to remain current. Its agreement requires an
   Enterprise plan when use grows beyond commercial prototyping, initial
-  integration, or a limited number of end users. Company Monitoring therefore
-  cannot infer production approval from API credentials or purchased credits.
+  integration, or a limited number of end users. API credentials and purchased
+  credits do not activate the Company Monitoring rollout flag.
 - Offline X Content must track deletion, edit, protection, suspension, and
   withholding. Applicable removals must occur as soon as reasonably possible and
   within 24 hours of a request. Batch compliance may be used for bounded audits;
   high-volume compliance streams require Enterprise access.
-- X Content may not train an AI or machine-learning model. This product may use a
-  version-locked inference policy only after the approved use case explicitly
-  covers it. Raw X text, handles, or provider URLs cannot enter customer alerts,
-  logs, or committed evaluation fixtures.
+- X Content may not train an AI or machine-learning model. Raw X text, handles,
+  or provider URLs cannot enter customer alerts, logs, or committed evaluation
+  fixtures.
 
-The runtime result passes only with a 64-hex written commercial-use evidence
-digest and affirmative enforcement flags for offline edit/deletion/protection/
-withholding compliance and the model-training prohibition.
+Before activation, runtime enforcement must cover offline edit, deletion,
+protection, and withholding handling plus the model-training prohibition.
 
 Sources: [X pricing](https://docs.x.com/x-api/getting-started/pricing),
 [usage and billing](https://docs.x.com/x-api/fundamentals/post-cap),
@@ -129,7 +127,7 @@ account cannot reuse this package.
 ## Frozen requirements and mutable runtime evidence
 
 Provider access, retention, compliance, and model-routing requirements are part
-of the frozen approved-threshold projection. Runtime approval status, evidence
-digests, and enforcement flags live in a separate mutable result record. That
-separation permits honest evidence to arrive without changing the approved
-threshold digest while preventing a status-only promotion.
+of the frozen approved-threshold projection. Runtime status, evidence digests,
+and enforcement flags live in a separate mutable result record. That separation
+permits honest evidence to arrive without changing the approved threshold digest
+while preventing a status-only promotion.

@@ -14,6 +14,7 @@ import {
   verifyNoActiveRailwayDeployments,
 } from '../scripts/resolve-railway-reconcile-control.mjs';
 import { RailwayReconcileControlClient } from '../scripts/railway-reconcile-control-client.mjs';
+import { readAllDeployments } from '../scripts/railway-cli.mjs';
 
 const HEAD = 'a'.repeat(40);
 const PRIOR_ID = 'attempt-prior-0001';
@@ -1013,19 +1014,176 @@ describe('read-only Railway provider inactivity proof', () => {
     });
 
     assert.deepEqual(proof, { ok: true, checkedServices: 17 });
-    assert.equal(calls.length, 17);
+    assert.equal(calls.length, 34, 'the complete scan is followed by a final fleet sweep');
     assert.ok(calls.every(({ environment, limit }) => environment === 'production' && limit === 1000));
     assert.equal(maxActive, 8);
   });
 
-  it('fails closed when exactly 1000 deployments do not prove history exhaustion', async () => {
+  it('shares one monotonic deadline with bounded and complete-history reads', async () => {
+    const service = { id: 'service-full', name: 'seed-full-history' };
+    const boundedOptions = [];
+    let boundedCalls = 0;
+    let completeOptions;
+    const monotonicNow = () => 1_000;
+    const proof = await verifyNoActiveRailwayDeployments({
+      deadline: 6_000,
+      monotonicNow,
+      readRepositoryServicesImpl: () => [service],
+      readDeploymentsImpl: async (_service, _environment, _limit, options) => {
+        boundedOptions.push(options);
+        boundedCalls += 1;
+        return boundedCalls === 1
+          ? Array.from({ length: 1000 }, (_, index) => ({ id: `deployment-${index}`, status: 'SUCCESS' }))
+          : [{ id: 'deployment-final', status: 'SUCCESS' }];
+      },
+      resolveEnvironmentIdImpl: () => 'environment-1',
+      readAllDeploymentsImpl: async (_service, _environmentId, options) => {
+        completeOptions = options;
+        return [{ id: 'deployment-complete', status: 'SUCCESS' }];
+      },
+    });
+
+    assert.deepEqual(proof, { ok: true, checkedServices: 1 });
+    assert.deepEqual(boundedOptions, [{ timeoutMs: 5000 }, { timeoutMs: 5000 }]);
+    assert.equal(completeOptions.deadline, 6000);
+    assert.equal(completeOptions.now, monotonicNow);
+  });
+
+  it('returns page-deadline exhaustion as incomplete provider evidence', async () => {
+    const service = { id: 'service-full', name: 'seed-full-history' };
+    let clock = 0;
     await assert.rejects(
       verifyNoActiveRailwayDeployments({
-        readRepositoryServicesImpl: () => [{ name: 'seed-full-history' }],
+        deadline: 10,
+        monotonicNow: () => clock,
+        readRepositoryServicesImpl: () => [service],
         readDeploymentsImpl: async () => Array.from(
           { length: 1000 },
           (_, index) => ({ id: `deployment-${index}`, status: 'SUCCESS' }),
         ),
+        resolveEnvironmentIdImpl: () => 'environment-1',
+        readAllDeploymentsImpl: (observedService, environmentId, options) => readAllDeployments(
+          observedService,
+          environmentId,
+          {
+            ...options,
+            api: async () => {
+              clock = 10;
+              return {
+                deployments: {
+                  edges: [],
+                  pageInfo: { hasNextPage: true, endCursor: 'cursor-1' },
+                },
+              };
+            },
+          },
+        ),
+      }),
+      (error) => error.code === 'PROVIDER_EVIDENCE_INCOMPLETE'
+        && error.cause?.message.includes('deadline expired before page 2'),
+    );
+  });
+
+  it('fails closed for REMOVING and unknown statuses in bounded histories', async () => {
+    for (const status of ['REMOVING', 'PROVIDER_ADDED_A_NEW_STATUS']) {
+      await assert.rejects(
+        verifyNoActiveRailwayDeployments({
+          readRepositoryServicesImpl: () => [{ id: 'service-1', name: 'seed-one' }],
+          readDeploymentsImpl: async () => [{ id: 'deployment-1', status }],
+        }),
+        (error) => error.code === 'PROVIDER_ACTIVITY_NOT_CLEARED',
+        status,
+      );
+    }
+  });
+
+  it('fails closed for REMOVING and unknown statuses in paginated histories', async () => {
+    for (const status of ['REMOVING', 'PROVIDER_ADDED_A_NEW_STATUS']) {
+      await assert.rejects(
+        verifyNoActiveRailwayDeployments({
+          readRepositoryServicesImpl: () => [{ id: 'service-1', name: 'seed-one' }],
+          readDeploymentsImpl: async () => Array.from(
+            { length: 1000 },
+            (_, index) => ({ id: `deployment-${index}`, status: 'SUCCESS' }),
+          ),
+          resolveEnvironmentIdImpl: () => 'environment-1',
+          readAllDeploymentsImpl: async () => [{ id: 'deployment-complete', status }],
+        }),
+        (error) => error.code === 'PROVIDER_ACTIVITY_NOT_CLEARED',
+        status,
+      );
+    }
+  });
+
+  it('rejects active work that appears only in the final fleet sweep', async () => {
+    let calls = 0;
+    await assert.rejects(
+      verifyNoActiveRailwayDeployments({
+        readRepositoryServicesImpl: () => [{ id: 'service-1', name: 'seed-one' }],
+        readDeploymentsImpl: async () => {
+          calls += 1;
+          return [{
+            id: calls === 1 ? 'deployment-initial' : 'deployment-inserted',
+            status: calls === 1 ? 'SUCCESS' : 'BUILDING',
+          }];
+        },
+      }),
+      (error) => error.code === 'PROVIDER_ACTIVITY_NOT_CLEARED',
+    );
+    assert.equal(calls, 2);
+  });
+
+  it('pages a full CLI window to positive exhaustion and checks older active work', async () => {
+    const service = { id: 'service-full', name: 'seed-full-history' };
+    const complete = Array.from(
+      { length: 1001 },
+      (_, index) => ({ id: `deployment-${index}`, status: index === 1000 ? 'BUILDING' : 'SUCCESS' }),
+    );
+    await assert.rejects(
+      verifyNoActiveRailwayDeployments({
+        readRepositoryServicesImpl: () => [service],
+        readDeploymentsImpl: async () => complete.slice(0, 1000),
+        resolveEnvironmentIdImpl(environment) {
+          assert.equal(environment, 'production');
+          return 'environment-1';
+        },
+        readAllDeploymentsImpl(observedService, environmentId) {
+          assert.equal(observedService, service);
+          assert.equal(environmentId, 'environment-1');
+          return complete;
+        },
+      }),
+      (error) => error.code === 'PROVIDER_ACTIVITY_NOT_CLEARED',
+    );
+  });
+
+  it('accepts a complete paginated history with no active provider work', async () => {
+    const complete = Array.from(
+      { length: 1001 },
+      (_, index) => ({ id: `deployment-${index}`, status: 'SUCCESS' }),
+    );
+    const proof = await verifyNoActiveRailwayDeployments({
+      readRepositoryServicesImpl: () => [{ id: 'service-full', name: 'seed-full-history' }],
+      readDeploymentsImpl: async () => complete.slice(0, 1000),
+      resolveEnvironmentIdImpl: () => 'environment-1',
+      readAllDeploymentsImpl: async () => complete,
+    });
+
+    assert.deepEqual(proof, { ok: true, checkedServices: 1 });
+  });
+
+  it('fails closed when complete history paging cannot prove exhaustion', async () => {
+    await assert.rejects(
+      verifyNoActiveRailwayDeployments({
+        readRepositoryServicesImpl: () => [{ id: 'service-full', name: 'seed-full-history' }],
+        readDeploymentsImpl: async () => Array.from(
+          { length: 1000 },
+          (_, index) => ({ id: `deployment-${index}`, status: 'SUCCESS' }),
+        ),
+        resolveEnvironmentIdImpl: () => 'environment-1',
+        readAllDeploymentsImpl: async () => {
+          throw new Error('page budget exhausted');
+        },
       }),
       (error) => error.code === 'PROVIDER_EVIDENCE_INCOMPLETE',
     );

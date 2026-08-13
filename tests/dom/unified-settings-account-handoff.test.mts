@@ -10,7 +10,10 @@ import type { UnifiedSettingsConfig } from '@/components/UnifiedSettings';
 import type { ApiKeyInfo, CreateApiKeyResult } from '@/services/api-keys';
 import type { ApiPlanLimitNotice } from '@/services/api-plan-limit-notices';
 import type { AuthSession } from '@/services/auth-state';
-import type { EntitlementState } from '@/services/entitlements';
+import type {
+  EntitlementState,
+  EntitlementVerificationStatus,
+} from '@/services/entitlements';
 import type { McpClientInfo, McpQuota } from '@/services/mcp-clients';
 
 let session: AuthSession = signedIn('A');
@@ -33,6 +36,11 @@ const mcpMocks = vi.hoisted(() => ({
 const entitlementMocks = vi.hoisted(() => ({
   state: null as EntitlementState | null,
   listeners: [] as Array<(state: EntitlementState | null) => void>,
+  verificationStatus: 'idle' as EntitlementVerificationStatus,
+  verificationListeners: [] as Array<(status: EntitlementVerificationStatus) => void>,
+}));
+const panelGatingMocks = vi.hoisted(() => ({
+  hasPremiumAccess: true,
 }));
 const storageValues = new Map<string, string>();
 const storage: Storage = {
@@ -59,6 +67,7 @@ vi.mock('@/services/auth-state', async (importOriginal) => ({
 
 vi.mock('@/services/entitlements', () => ({
   getEntitlementState: () => entitlementMocks.state,
+  getEntitlementVerificationStatus: () => entitlementMocks.verificationStatus,
   hasFeature: (feature: string) => Boolean(
     (entitlementMocks.state?.features as Record<string, unknown> | undefined)?.[feature],
   ),
@@ -74,10 +83,20 @@ vi.mock('@/services/entitlements', () => ({
       if (index >= 0) entitlementMocks.listeners.splice(index, 1);
     };
   },
+  onEntitlementVerificationChange: (
+    listener: (status: EntitlementVerificationStatus) => void,
+  ) => {
+    entitlementMocks.verificationListeners.push(listener);
+    listener(entitlementMocks.verificationStatus);
+    return () => {
+      const index = entitlementMocks.verificationListeners.indexOf(listener);
+      if (index >= 0) entitlementMocks.verificationListeners.splice(index, 1);
+    };
+  },
 }));
 
 vi.mock('@/services/panel-gating', () => ({
-  hasPremiumAccess: () => true,
+  hasPremiumAccess: () => panelGatingMocks.hasPremiumAccess,
 }));
 
 vi.mock('@/services/widget-store', () => ({
@@ -248,6 +267,11 @@ function emitEntitlement(state: EntitlementState | null): void {
   for (const listener of [...entitlementMocks.listeners]) listener(state);
 }
 
+function emitEntitlementVerification(status: EntitlementVerificationStatus): void {
+  entitlementMocks.verificationStatus = status;
+  for (const listener of [...entitlementMocks.verificationListeners]) listener(status);
+}
+
 function apiKey(id = 'key-a'): ApiKeyInfo {
   return {
     id,
@@ -303,11 +327,14 @@ beforeEach(() => {
   document.body.replaceChildren();
   authListeners.length = 0;
   entitlementMocks.listeners.length = 0;
+  entitlementMocks.verificationListeners.length = 0;
   entitlementMocks.state = entitlement({
     planKey: 'api_business',
     apiAccess: true,
     mcpAccess: true,
   });
+  entitlementMocks.verificationStatus = 'ready';
+  panelGatingMocks.hasPremiumAccess = true;
   storageValues.clear();
   vi.stubGlobal('localStorage', storage);
   session = signedIn('A');
@@ -342,6 +369,40 @@ afterEach(() => {
 });
 
 describe('UnifiedSettings real auth-subscription handoff', () => {
+  it('keeps checking past 12 seconds while entitlement verification is still in flight', () => {
+    vi.useFakeTimers();
+    panelGatingMocks.hasPremiumAccess = false;
+    entitlementMocks.state = null;
+    entitlementMocks.verificationStatus = 'pending';
+
+    try {
+      settings.open('billing');
+      expect(internal.overlay.textContent).toContain('Checking your plan');
+
+      vi.advanceTimersByTime(12_000);
+
+      expect(internal.overlay.textContent).toContain('Checking your plan');
+      expect(internal.overlay.textContent).not.toContain('Plan status unavailable');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('shows retry only after entitlement verification becomes unavailable', () => {
+    panelGatingMocks.hasPremiumAccess = false;
+    entitlementMocks.state = null;
+    entitlementMocks.verificationStatus = 'pending';
+    settings.open('billing');
+
+    expect(internal.overlay.textContent).toContain('Checking your plan');
+    expect(internal.overlay.querySelector('.retry-plan-status-btn')).toBeNull();
+
+    emitEntitlementVerification('unavailable');
+
+    expect(internal.overlay.textContent).toContain('Plan status unavailable');
+    expect(internal.overlay.querySelector('.retry-plan-status-btn')).not.toBeNull();
+  });
+
   it('synchronously purges A plaintext and rendered account lists when auth emits B', () => {
     internal.apiKeys = [apiKey()];
     internal.planLimitNotices = [notice()];

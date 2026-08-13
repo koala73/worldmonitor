@@ -696,8 +696,13 @@ export class NewsPanel extends Panel {
     shouldHighlight: boolean,
     showNewTag: boolean
   ): string {
-    const sourceBadge = cluster.sourceCount > 1
-      ? `<span class="source-count">${t('components.newsPanel.sources', { count: String(cluster.sourceCount) })}</span>`
+    // #6428: "N sources" is a corroboration claim, so it counts PUBLISHERS.
+    // cluster.sourceCount is the article count, which read nine reprints of
+    // one wire across one newsroom's feeds as nine sources. The velocity
+    // badge below keeps sourceCount — velocity IS about article volume.
+    const publisherCount = cluster.uniquePublisherCount ?? 0;
+    const sourceBadge = publisherCount > 1
+      ? `<span class="source-count">${t('components.newsPanel.sources', { count: String(publisherCount) })}</span>`
       : '';
 
     const velocity = cluster.velocity;

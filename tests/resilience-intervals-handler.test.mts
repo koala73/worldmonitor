@@ -11,6 +11,7 @@ const originalRedisUrl = process.env.UPSTASH_REDIS_REST_URL;
 const originalRedisToken = process.env.UPSTASH_REDIS_REST_TOKEN;
 const originalVercelEnv = process.env.VERCEL_ENV;
 const originalPillarCombine = process.env.RESILIENCE_PILLAR_COMBINE_ENABLED;
+const originalEducationFlag = process.env.RESILIENCE_EDUCATION_ENABLED;
 
 afterEach(() => {
   globalThis.fetch = originalFetch;
@@ -22,6 +23,8 @@ afterEach(() => {
   else process.env.VERCEL_ENV = originalVercelEnv;
   if (originalPillarCombine == null) delete process.env.RESILIENCE_PILLAR_COMBINE_ENABLED;
   else process.env.RESILIENCE_PILLAR_COMBINE_ENABLED = originalPillarCombine;
+  if (originalEducationFlag == null) delete process.env.RESILIENCE_EDUCATION_ENABLED;
+  else process.env.RESILIENCE_EDUCATION_ENABLED = originalEducationFlag;
 });
 
 describe('resilience score interval integration', () => {
@@ -33,10 +36,11 @@ describe('resilience score interval integration', () => {
 
     const fixtures = {
       ...RESILIENCE_FIXTURES,
-      'resilience:intervals:v9:US': {
+      'resilience:intervals:v10:US': {
         p05: 65.2,
         p95: 72.8,
         _formula: 'd6',
+        _educationState: 'education-on',
         draws: 100,
         computedAt: '2026-04-06T00:00:00.000Z',
         methodology: RESILIENCE_INTERVAL_METHODOLOGY,
@@ -64,7 +68,7 @@ describe('resilience score interval integration', () => {
 
     const fixtures = {
       ...RESILIENCE_FIXTURES,
-      'resilience:intervals:v9:US': {
+      'resilience:intervals:v10:US': {
         p05: 65.2,
         p95: 72.8,
         _formula: 'pc',
@@ -85,6 +89,37 @@ describe('resilience score interval integration', () => {
     assert.equal(response.scoreInterval, undefined, 'stale-formula scoreInterval should be ignored');
   });
 
+  it('omits an active-education interval after the rollback flag is false', async () => {
+    process.env.UPSTASH_REDIS_REST_URL = 'https://redis.example';
+    process.env.UPSTASH_REDIS_REST_TOKEN = 'token';
+    process.env.RESILIENCE_PILLAR_COMBINE_ENABLED = 'false';
+    process.env.RESILIENCE_EDUCATION_ENABLED = 'false';
+    delete process.env.VERCEL_ENV;
+
+    const fixtures = {
+      ...RESILIENCE_FIXTURES,
+      'resilience:intervals:v10:US': {
+        p05: 65.2,
+        p95: 72.8,
+        _formula: 'd6',
+        _educationState: 'education-on',
+        draws: 100,
+        computedAt: '2026-04-06T00:00:00.000Z',
+        methodology: RESILIENCE_INTERVAL_METHODOLOGY,
+      },
+    };
+
+    const { fetchImpl } = createRedisFetch(fixtures);
+    globalThis.fetch = fetchImpl;
+
+    const response = await getResilienceScore(
+      { request: new Request('https://example.com') } as never,
+      { countryCode: 'US' },
+    );
+
+    assert.equal(response.scoreInterval, undefined, 'active-education interval must be ignored after rollback');
+  });
+
   it('omits wrong-methodology interval data', async () => {
     process.env.UPSTASH_REDIS_REST_URL = 'https://redis.example';
     process.env.UPSTASH_REDIS_REST_TOKEN = 'token';
@@ -93,7 +128,7 @@ describe('resilience score interval integration', () => {
 
     const fixtures = {
       ...RESILIENCE_FIXTURES,
-      'resilience:intervals:v9:US': {
+      'resilience:intervals:v10:US': {
         p05: 65.2,
         p95: 72.8,
         _formula: 'd6',
@@ -122,7 +157,7 @@ describe('resilience score interval integration', () => {
 
     const fixtures = {
       ...RESILIENCE_FIXTURES,
-      'resilience:intervals:v9:US': {
+      'resilience:intervals:v10:US': {
         p05: 65.2,
         p95: 72.8,
         draws: 100,
@@ -156,7 +191,7 @@ describe('resilience score interval integration', () => {
     for (const item of cases) {
       const fixtures = {
         ...RESILIENCE_FIXTURES,
-        'resilience:intervals:v9:US': {
+        'resilience:intervals:v10:US': {
           p05: item.p05,
           p95: item.p95,
           _formula: 'd6',

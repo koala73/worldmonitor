@@ -162,6 +162,53 @@ describe('keyword-spike-core', () => {
     assert.ok(spike.sampleHeadlines.length > 0 && spike.sampleHeadlines.length <= 3);
   });
 
+  // #6428: `uniqueSources` gates the spike alert and is surfaced to agents by
+  // get_keyword_spikes. It counted feed LABELS read back from
+  // story:sources:v1 (raw `item.source` values, 7-day TTL), so one newsroom's
+  // own editions cleared MIN_SPIKE_SOURCE_COUNT on their own.
+  it('counts publishers, not feed labels, for spike source diversity', () => {
+    const HOUR = 60 * 60 * 1000;
+    const nowMs = 1_800_000_000_000;
+    const windowMs = 2 * HOUR;
+    const baselineDurationMs = 46 * HOUR;
+    const ONE_WIRE = ['Reuters World', 'Reuters US', 'Reuters Business'];
+
+    const build = (sources) => {
+      const stories = [];
+      for (let i = 0; i < 6; i++) {
+        stories.push({
+          title: `Zaporizhzhia plant shelling escalates (${i})`,
+          lastSeenMs: nowMs - (i * 10 * 60 * 1000),
+          sources: [sources[i % sources.length]],
+        });
+      }
+      for (let i = 0; i < 30; i++) {
+        stories.push({
+          title: `Weather outlook stays calm (${i})`,
+          lastSeenMs: nowMs - windowMs - (i * 90 * 60 * 1000),
+          sources: ['weather-wire'],
+        });
+      }
+      return stories;
+    };
+
+    const oneWire = computeKeywordSpikesFromStories(build(ONE_WIRE), { nowMs, windowMs, baselineDurationMs });
+    assert.ok(
+      !oneWire.map((s) => s.term).includes('zaporizhzhia'),
+      'three Reuters feed labels are one publisher and must not clear the diversity gate',
+    );
+
+    // Premise check: three real publishers on the same fixture must still spike,
+    // or the assertion above would hold because the term never spiked at all.
+    const distinct = computeKeywordSpikesFromStories(
+      build(['Reuters World', 'BBC World', 'Al Jazeera']),
+      { nowMs, windowMs, baselineDurationMs },
+    );
+    const spike = distinct.find((s) => s.term === 'zaporizhzhia');
+    assert.ok(spike, 'three distinct publishers must still spike');
+    assert.equal(spike.uniqueSources, 3);
+  });
+
   it('rejects spikes that lack source diversity', () => {
     const HOUR = 60 * 60 * 1000;
     const nowMs = 1_800_000_000_000;

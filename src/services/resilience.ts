@@ -1,5 +1,6 @@
 import type { GetResilienceRankingResponse, GetResilienceScoreResponse, ResilienceDomain, ResilienceDimension, ResilienceRankingItem, ScoreInterval } from '@/generated/client/worldmonitor/resilience/v1/service_client';
 import { getRpcBaseUrl } from '@/services/rpc-client';
+import { premiumFetch } from '@/services/premium-fetch';
 import { ResilienceServiceClient } from '@/services/generated-rpc-clients';
 
 export type ResilienceScoreResponse = GetResilienceScoreResponse;
@@ -10,8 +11,13 @@ let _client: InstanceType<typeof ResilienceServiceClient> | null = null;
 
 function getClient(): InstanceType<typeof ResilienceServiceClient> {
   if (!_client) {
+    // Both resilience RPCs are in PREMIUM_RPC_PATHS, so the global fetch patch
+    // was already attaching their Clerk bearer — but routing around
+    // `premiumFetch` also routed around `reportServerError`, which is why a real
+    // `billing_verification_503` on get-resilience-ranking (2026-08-08, 2026-08-10)
+    // never opened a Sentry issue the way its market and intelligence siblings did.
     _client = new ResilienceServiceClient(getRpcBaseUrl(), {
-      fetch: (...args: Parameters<typeof fetch>) => globalThis.fetch(...args),
+      fetch: premiumFetch,
     });
   }
   return _client;

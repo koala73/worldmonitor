@@ -150,7 +150,7 @@ describe('security advisory source contract', () => {
     const dataSourcesSection = markdownSection(
       readRepoFile('docs/data-sources.mdx'),
       '### Security Advisory Aggregation',
-      '### Airport Delay & NOTAM Monitoring',
+      '### Prediction Markets as Leading Indicators',
     );
     const pressKitAdvisoryLine = matchingLine(
       readRepoFile('docs/PRESS_KIT.md'),

@@ -53,10 +53,12 @@ vi.mock('@/services/auth-state', async (importOriginal) => ({
 
 vi.mock('@/services/entitlements', () => ({
   getEntitlementState: () => null,
+  getEntitlementVerificationStatus: () => 'ready',
   hasFeature: () => false,
   // Free tier: the upgrade branch, not the manage-billing branch.
   isEntitled: () => false,
   onEntitlementChange: () => () => {},
+  onEntitlementVerificationChange: () => () => {},
 }));
 
 vi.mock('@/services/panel-gating', () => ({

@@ -179,20 +179,32 @@ export function summarizeMarketCoverage(
   const completionRatio = attemptedPages > 0
     ? Number((completedPages / attemptedPages).toFixed(4))
     : null;
-  const hasSuccessfulRetailer = retailers.some((retailer) => retailer.pagesSucceeded > 0);
   const hasUnknownRetailer = retailers.some((retailer) => retailer.coverageStatus === 'unknown');
-  const hasPartialRetailer = retailers.some((retailer) => retailer.coverageStatus === 'partial');
-  const hasFailedRetailer = retailers.some((retailer) => retailer.coverageStatus === 'failed');
+  const hasBudgetTruncatedRetailer = retailers.some((retailer) => (
+    retailer.runStatus === 'partial'
+    && retailer.pagesAttempted > 0
+    && retailer.pagesSucceeded === retailer.pagesAttempted
+    && retailer.errorsCount === 0
+    && retailer.rejectedCount === 0
+  ));
 
   let status: MarketCoverageStatus = 'unknown';
-  if (retailers.length > 0 && hasSuccessfulRetailer && completionRatio != null && completionRatio < MIN_MARKET_COMPLETION_RATIO) {
+  if (
+    retailers.length > 0
+    && (completionRatio == null || completedPages === 0 || completionRatio < MIN_MARKET_COMPLETION_RATIO)
+  ) {
     status = 'degraded';
-  } else if (retailers.length > 0 && hasSuccessfulRetailer && (hasUnknownRetailer || hasPartialRetailer || hasFailedRetailer || completionRatio !== 1)) {
+  // Market health is governed by the declared aggregate floor. Terminal
+  // retailer noise stays in `retailers` and `failureReasons`, but does not make
+  // a roster-complete market operationally partial when the aggregate remains
+  // usable. An error-free terminal partial is the persisted budget-truncation
+  // shape: every attempted page succeeded, but planned targets were skipped.
+  // Unknown retailers likewise mean the producer cannot prove the roster has
+  // settled, so both states stay partial.
+  } else if (hasUnknownRetailer || hasBudgetTruncatedRetailer) {
     status = 'partial';
-  } else if (retailers.length > 0 && hasSuccessfulRetailer && completionRatio === 1 && !hasUnknownRetailer) {
+  } else if (retailers.length > 0) {
     status = 'healthy';
-  } else if (retailers.length > 0 && !hasSuccessfulRetailer) {
-    status = 'degraded';
   }
 
   return {

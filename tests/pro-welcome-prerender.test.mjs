@@ -43,6 +43,9 @@ test('built welcome page ships the real hero in #root before JavaScript', () => 
   assert.match(rootContent, /Which World Monitor license do I need\?/);
   assert.match(rootContent, /API Business lets that organization embed World Monitor data/);
   assert.match(rootContent, /href="\/docs\/terms"[^>]*>worldmonitor\.app\/docs\/terms<\/a>/);
+  assert.match(rootContent, /href="\/sources\/\?utm_source=welcome-hero"/);
+  assert.match(rootContent, /href="\/sources\/\?utm_source=welcome-depth"/);
+  assert.match(rootContent, /href="\/sources\/\?utm_source=welcome-footer"[^>]*>Sources<\/a>/);
   assert.match(rootContent, /Map layers/);
   const navContent = rootContent.slice(
     rootContent.indexOf('<nav'),
@@ -50,6 +53,7 @@ test('built welcome page ships the real hero in #root before JavaScript', () => 
   );
   assert.match(navContent, /href="\/blog\/"/);
   assert.match(navContent, />Blog<\/a>/);
+  assert.match(navContent, /href="\/sources\/\?utm_source=welcome-nav"[^>]*>Sources<\/a>/);
   assert.match(navContent, /id="welcome-tablet-navigation"/);
   assert.match(navContent, />Menu</);
   const headlineIndex = rootContent.indexOf('By the time it&#x27;s news,');

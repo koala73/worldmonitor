@@ -3,7 +3,14 @@ import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
 
 import { buildSpineEntry } from '../scripts/seed-energy-spine.mjs';
-import { withRetry } from '../scripts/_seed-utils.mjs';
+import {
+  MAX_JODI_CONTENT_AGE_MIN,
+  MIN_JODI_CONTENT_AGE_COUNTRIES,
+  buildChinaRowDiagnostic,
+  jodiDatasetContentMeta,
+} from '../scripts/shared/jodi-content-age.mjs';
+import { monthPeriodEnd } from '../scripts/shared/jodi-demand-change.mjs';
+import { __testing__ as healthTesting } from '../api/health.js';
 import {
   buildResponseFromSpine,
   getObservedJodiGasMeasurements,
@@ -135,49 +142,397 @@ describe('China JODI content validation', () => {
     );
   });
 
-  it('reports global and China oil coverage failures together', () => {
-    const reason = oilModule.formatCoverageFailureReason({
-      hasGlobalCoverage: false,
-      countryCount: 50,
-      chinaCoverage: { ok: false, reason: 'china-stale', dataMonth: '2025-12' },
-    });
+  it('reports the country-floor shortfall that is the only oil publish refusal', () => {
+    const reason = oilModule.formatCoverageFailureReason({ countryCount: 39 });
 
-    assert.match(reason, /only 50 countries, need >=40/);
-    assert.match(reason, /China JODI oil coverage failed: china-stale \(dataMonth=2025-12\)/);
+    assert.match(reason, /only 39 countries with usable measurements, need >=40/);
+    assert.doesNotMatch(reason, /China/i, 'China must never appear in a publish refusal');
+  });
+});
+
+// Issue #6395. On 2026-08-10 both JODI files still carried China, but every
+// China row was ASSESSMENT_CODE 3 ("null/uncertain"), which both parsers
+// correctly discard — so China resolved to `china-missing` and the China gate
+// discarded 51 oil and 63 gas country payloads that had parsed cleanly. One
+// country must never withhold the rest of the dataset.
+describe('JODI publishes the rest of the world without China (#6395)', () => {
+  const NOW = new Date('2026-08-10T00:00:00.000Z');
+  const GAS_CSV_HEADER = 'REF_AREA,TIME_PERIOD,ENERGY_PRODUCT,FLOW_BREAKDOWN,UNIT_MEASURE,OBS_VALUE,ASSESSMENT_CODE';
+
+  /** A world file where China reports only unusable (code 3) rows. */
+  function gasCsvWithChinaCode3(countryCount) {
+    const lines = [GAS_CSV_HEADER];
+    for (let index = 0; index < countryCount; index++) {
+      const iso2 = `X${String(index).padStart(2, '0')}`;
+      lines.push(`${iso2},2026-05,NATGAS,IMPLNG,TJ,95000,1`);
+      lines.push(`${iso2},2026-05,NATGAS,TOTIMPSB,TJ,380000,1`);
+    }
+    for (const flow of ['IMPLNG', 'TOTIMPSB', 'TOTDEMO']) {
+      lines.push(`CN,2026-05,NATGAS,${flow},TJ,1200000,3`);
+    }
+    return lines.join('\n');
+  }
+
+  function oilRowsWithChinaCode3(countryCount) {
+    const rows = [];
+    for (let index = 0; index < countryCount; index++) {
+      rows.push({
+        REF_AREA: `X${String(index).padStart(2, '0')}`,
+        TIME_PERIOD: '2026-05',
+        ENERGY_PRODUCT: 'GASDIES',
+        FLOW_BREAKDOWN: 'TOTDEMO',
+        UNIT_MEASURE: 'KBD',
+        OBS_VALUE: '894.4',
+        ASSESSMENT_CODE: '1',
+      });
+    }
+    for (const product of ['GASDIES', 'GASOLINE', 'JETKERO']) {
+      rows.push({
+        REF_AREA: 'CN',
+        TIME_PERIOD: '2026-05',
+        ENERGY_PRODUCT: product,
+        FLOW_BREAKDOWN: 'TOTDEMO',
+        UNIT_MEASURE: 'KBD',
+        OBS_VALUE: '3200',
+        ASSESSMENT_CODE: '3',
+      });
+    }
+    return rows;
+  }
+
+  it('gas: keeps every other country when China parses to nothing usable', () => {
+    const records = gasModule.buildGasRecordsFromCsv(gasCsvWithChinaCode3(63), NOW);
+
+    assert.equal(records.length, 63, 'the 63 parsed countries must survive the run');
+    assert.equal(records.some((record) => record.iso2 === 'CN'), false);
+    assert.equal(
+      gasModule.validateGasCountries(records.map((record) => record.iso2)),
+      true,
+      'runSeed validateFn is the only gas publish gate and it must pass',
+    );
+    assert.equal(gasModule.assessChinaGasCoverage(records, NOW).reason, 'china-missing');
   });
 
-  it('preserves prior gas country keys and does not retry deterministic China rejection', async () => {
-    const ttlExtensions = [];
-    let attempts = 0;
+  it('oil: publishes when China is unusable and refuses only below the country floor', () => {
+    const publishable = oilModule.prepareOilPublish({
+      allRows: oilRowsWithChinaCode3(45),
+      previousMeta: null,
+      now: NOW,
+    });
 
-    await assert.rejects(
-      () => withRetry(
-        async () => {
-          attempts++;
-          return gasModule.enforceChinaGasCoverage(
-            [gasRecord({ iso2: 'US' })],
-            new Date('2026-07-13T00:00:00.000Z'),
-            {
-              readSnapshot: async () => ['US', 'CN', 'invalid'],
-              extendTtl: async (keys, ttlSeconds) => { ttlExtensions.push({ keys, ttlSeconds }); },
-            },
-          );
+    assert.equal(publishable.refusalReason, null, 'an unusable China row must not refuse the publish');
+    assert.equal(publishable.countries.length, 45);
+    assert.equal(publishable.chinaCoverage.reason, 'china-missing');
+    assert.equal(publishable.metaPayload.recordCount, 45);
+    assert.equal(publishable.metaPayload.chinaRow.ok, false);
+
+    const refused = oilModule.prepareOilPublish({
+      allRows: oilRowsWithChinaCode3(39),
+      previousMeta: null,
+      now: NOW,
+    });
+
+    assert.match(refused.refusalReason, /only 39 countries with usable measurements, need >=40/);
+    assert.doesNotMatch(refused.refusalReason, /China/i);
+  });
+
+  it('oil: records the content-age trio the replacement staleness alarm reads', () => {
+    const { metaPayload } = oilModule.prepareOilPublish({
+      allRows: oilRowsWithChinaCode3(45),
+      previousMeta: null,
+      now: NOW,
+    });
+
+    assert.equal(metaPayload.newestItemAt, Date.parse(monthPeriodEnd('2026-05')));
+    assert.equal(metaPayload.oldestItemAt, Date.parse(monthPeriodEnd('2026-05')));
+    assert.equal(metaPayload.maxContentAgeMin, MAX_JODI_CONTENT_AGE_MIN);
+  });
+
+  it('the country floor counts countries that carry a measurement, not rows that parsed', () => {
+    // 45 countries reach the file, but only 39 report a usable value. Before
+    // #6395 an unusable China row was the incidental canary for this; the floor
+    // itself has to catch it now.
+    const rows = oilRowsWithChinaCode3(39);
+    for (let index = 0; index < 6; index++) {
+      rows.push({
+        REF_AREA: `E${String(index).padStart(2, '0')}`,
+        TIME_PERIOD: '2026-05',
+        ENERGY_PRODUCT: 'GASDIES',
+        FLOW_BREAKDOWN: 'TOTDEMO',
+        UNIT_MEASURE: 'KBD',
+        OBS_VALUE: '-',
+        ASSESSMENT_CODE: '1',
+      });
+    }
+
+    const refused = oilModule.prepareOilPublish({ allRows: rows, previousMeta: null, now: NOW });
+    assert.equal(refused.parsedCount, 45, 'all 45 countries still parse');
+    assert.match(refused.refusalReason, /only 39 countries with usable measurements/);
+    assert.equal(refused.countries.some((country) => country.iso2.startsWith('E')), false);
+
+    // Gas drops the same shape rather than publishing an all-null record over
+    // that country's last-good key.
+    const gasCsv = [
+      GAS_CSV_HEADER,
+      ...Array.from({ length: 55 }, (_, index) => {
+        const iso2 = `X${String(index).padStart(2, '0')}`;
+        return `${iso2},2026-05,NATGAS,IMPLNG,TJ,95000,1`;
+      }),
+      // Reports a flow, but with no readable value — a row, not coverage.
+      'ZZ,2026-05,NATGAS,IMPLNG,TJ,-,1',
+    ].join('\n');
+    const gasRecords = gasModule.buildGasRecordsFromCsv(gasCsv, NOW);
+    assert.equal(gasRecords.length, 55);
+    assert.equal(gasRecords.some((record) => record.iso2 === 'ZZ'), false);
+  });
+
+  it('dates the China gap once and carries that date across later runs', () => {
+    const firstSeen = Date.UTC(2026, 5, 1);
+    const absent = { ok: false, reason: 'china-missing', dataMonth: null, ageMonths: null };
+
+    const first = buildChinaRowDiagnostic(absent, null, firstSeen);
+    assert.deepEqual(first, {
+      ok: false,
+      reason: 'china-missing',
+      dataMonth: null,
+      ageMonths: null,
+      unavailableSince: firstSeen,
+    });
+
+    const later = buildChinaRowDiagnostic(absent, first, Date.UTC(2026, 7, 10));
+    assert.equal(later.unavailableSince, firstSeen, 'the gap must not look new on every tick');
+
+    const recovered = buildChinaRowDiagnostic(
+      { ok: true, reason: null, dataMonth: '2026-06', ageMonths: 2 },
+      later,
+      Date.UTC(2026, 8, 10),
+    );
+    assert.deepEqual(recovered, {
+      ok: true,
+      reason: null,
+      dataMonth: '2026-06',
+      ageMonths: 2,
+      unavailableSince: null,
+    });
+  });
+
+  const hasMeasurement = (record) => record.usable === true;
+  const reporters = (dataMonth, count, usable = true) =>
+    Array.from({ length: count }, () => ({ dataMonth, usable }));
+
+  it('dates dataset content age from the newest month that carries a measurement', () => {
+    const contentMeta = jodiDatasetContentMeta([
+      ...reporters('2026-01', 3),
+      ...reporters('2025-11', 3),
+      // A newer month whose every field parsed to null proves the download
+      // happened, never that the file still holds current observations.
+      ...reporters('2026-05', 5, false),
+      ...reporters('not-a-month', 5),
+      // Mis-dated countries must not vouch for the whole file's freshness.
+      ...reporters('2027-03', 5),
+    ], hasMeasurement, NOW);
+
+    assert.deepEqual(contentMeta, {
+      newestItemAt: Date.parse(monthPeriodEnd('2026-01')),
+      oldestItemAt: Date.parse(monthPeriodEnd('2025-11')),
+    });
+    assert.equal(jodiDatasetContentMeta(reporters('2026-01', 5, false), hasMeasurement, NOW), null);
+    assert.equal(jodiDatasetContentMeta(reporters('2027-03', 5), hasMeasurement, NOW), null);
+    assert.equal(jodiDatasetContentMeta(null, hasMeasurement, NOW), null);
+  });
+
+  it('one fast reporter cannot date a file everyone else stopped updating', () => {
+    // JODI carries a long reporting tail — a single country sitting on a
+    // current month while the leading cohort is frozen must not read as fresh.
+    const frozenFileWithOneLeader = [
+      ...reporters('2026-06', MIN_JODI_CONTENT_AGE_COUNTRIES - 1),
+      ...reporters('2025-09', 40),
+    ];
+
+    assert.equal(
+      jodiDatasetContentMeta(frozenFileWithOneLeader, hasMeasurement, NOW).newestItemAt,
+      Date.parse(monthPeriodEnd('2025-09')),
+      'the quorum month dates the file, not the leader',
+    );
+    assert.equal(
+      jodiDatasetContentMeta(
+        [...reporters('2026-06', MIN_JODI_CONTENT_AGE_COUNTRIES), ...reporters('2025-09', 40)],
+        hasMeasurement,
+        NOW,
+      ).newestItemAt,
+      Date.parse(monthPeriodEnd('2026-06')),
+      'once a quorum reports the newer month, the file is dated by it',
+    );
+  });
+
+  it('gas reads its previous run to age the gap, and re-dates it when it cannot', async () => {
+    const records = gasModule.buildGasRecordsFromCsv(gasCsvWithChinaCode3(63), NOW);
+    const firstSeen = Date.parse('2026-06-01T00:00:00.000Z');
+
+    const carried = await gasModule.buildGasChinaRowDiagnostic(records, NOW, {
+      readPreviousMeta: async () => ({
+        chinaRow: { ok: false, reason: 'china-missing', unavailableSince: firstSeen },
+      }),
+    });
+    assert.equal(carried.reason, 'china-missing');
+    assert.equal(carried.unavailableSince, firstSeen);
+
+    // Documented best-effort behaviour: with no readable previous record the
+    // gap can only be dated from this run.
+    const unreadable = await gasModule.buildGasChinaRowDiagnostic(records, NOW, {
+      readPreviousMeta: async () => null,
+    });
+    assert.equal(unreadable.unavailableSince, NOW.getTime());
+  });
+
+  it('a frozen upstream file reads STALE_CONTENT instead of publishing silently', () => {
+    const { classifyKey, STANDALONE_KEYS, SEED_META } = healthTesting;
+    const now = Date.parse('2026-08-10T00:00:00.000Z');
+    const key = STANDALONE_KEYS.jodiGas;
+    const metaKey = SEED_META.jodiGas.key;
+
+    const classify = (newestMonth) => classifyKey('jodiGas', key, {}, {
+      keyStrens: new Map([[key, 4096]]),
+      keyErrors: new Map(),
+      keyMetaValues: new Map([[metaKey, JSON.stringify({
+        fetchedAt: now - 60_000,
+        recordCount: 63,
+        newestItemAt: Date.parse(monthPeriodEnd(newestMonth)),
+        oldestItemAt: Date.parse(monthPeriodEnd('2024-01')),
+        maxContentAgeMin: MAX_JODI_CONTENT_AGE_MIN,
+        chinaRow: {
+          ok: false,
+          reason: 'china-missing',
+          dataMonth: null,
+          ageMonths: null,
+          unavailableSince: Date.parse('2026-06-01T00:00:00.000Z'),
         },
-        3,
-        0,
-      ),
-      (error) => {
-        assert.match(error.message, /China JODI gas coverage failed: china-missing/);
-        assert.equal(error.nonRetryable, true);
-        return true;
+      })]]),
+      keyMetaErrors: new Map(),
+      now,
+    });
+
+    // The observed 2026-08-10 state: gas has not moved past 2026-01.
+    const frozen = classify('2026-01');
+    assert.equal(frozen.status, 'STALE_CONTENT');
+    // The China gap rides along on every verdict, named, so an operator never
+    // has to read Railway logs to learn which country dropped out.
+    assert.deepEqual(frozen.chinaRow, {
+      ok: false,
+      reason: 'china-missing',
+      dataMonth: null,
+      ageMonths: null,
+      unavailableSince: Date.parse('2026-06-01T00:00:00.000Z'),
+    });
+
+    // ...and a live upstream stays OK: an absent China alone never warns.
+    const current = classify('2026-06');
+    assert.equal(current.status, 'OK');
+    assert.equal(current.chinaRow.reason, 'china-missing');
+  });
+
+  it('bounds the chinaRow relay so a producer cannot put arbitrary values on a public endpoint', () => {
+    const { classifyKey, STANDALONE_KEYS, SEED_META } = healthTesting;
+    const now = Date.parse('2026-08-10T00:00:00.000Z');
+    const key = STANDALONE_KEYS.jodiGas;
+    const metaKey = SEED_META.jodiGas.key;
+
+    const classifyWith = (meta, name = 'jodiGas', dataKey = key, metaK = metaKey) =>
+      classifyKey(name, dataKey, {}, {
+        keyStrens: new Map([[dataKey, 4096]]),
+        keyErrors: new Map(),
+        keyMetaValues: new Map([[metaK, JSON.stringify({
+          fetchedAt: now - 60_000,
+          recordCount: 63,
+          newestItemAt: Date.parse(monthPeriodEnd('2026-06')),
+          oldestItemAt: Date.parse(monthPeriodEnd('2024-01')),
+          maxContentAgeMin: MAX_JODI_CONTENT_AGE_MIN,
+          ...meta,
+        })]]),
+        keyMetaErrors: new Map(),
+        now,
+      });
+
+    // Free-text reason, junk month, non-numeric age, and a string timestamp all
+    // collapse to null rather than reaching the wire.
+    const junk = classifyWith({
+      chinaRow: {
+        ok: false,
+        reason: 'whatever the producer felt like writing',
+        dataMonth: 'not-a-month',
+        ageMonths: 'lots',
+        unavailableSince: 'yesterday',
       },
+    });
+    assert.deepEqual(junk.chinaRow, {
+      ok: false,
+      reason: null,
+      dataMonth: null,
+      ageMonths: null,
+      unavailableSince: null,
+    });
+
+    // A healthy China row never carries an outage start date.
+    const healthy = classifyWith({
+      chinaRow: {
+        ok: true,
+        reason: null,
+        dataMonth: '2026-05',
+        ageMonths: 3,
+        unavailableSince: Date.parse('2026-06-01T00:00:00.000Z'),
+      },
+    });
+    assert.deepEqual(healthy.chinaRow, {
+      ok: true,
+      reason: null,
+      dataMonth: '2026-05',
+      ageMonths: 3,
+      unavailableSince: null,
+    });
+
+    // A non-object block, and a key that never opted in, publish nothing.
+    assert.equal(classifyWith({ chinaRow: 'china-missing' }).chinaRow, undefined);
+    assert.equal(classifyWith({}).chinaRow, undefined);
+    assert.equal(
+      classifyWith(
+        { chinaRow: { ok: false, reason: 'china-missing' } },
+        'eiaPetroleum',
+        STANDALONE_KEYS.eiaPetroleum,
+        SEED_META.eiaPetroleum.key,
+      ).chinaRow,
+      undefined,
+      'only the three JODI-backed checks opt in',
     );
 
-    assert.equal(attempts, 1, 'deterministic coverage rejection must not redownload the JODI ZIP');
-    assert.deepEqual(ttlExtensions, [{
-      keys: ['energy:jodi-gas:v1:US', 'energy:jodi-gas:v1:CN'],
-      ttlSeconds: gasModule.GAS_TTL,
-    }]);
+    // A producer that reported status:'error' never got as far as assessing
+    // China; last run's verdict must not be relayed as this run's.
+    const errored = classifyWith({ status: 'error', chinaRow: { ok: false, reason: 'china-missing' } });
+    assert.equal(errored.chinaRow, undefined);
+  });
+
+  it('keeps the named China gap out of the anonymous compact body', () => {
+    const { healthResponseBody } = healthTesting;
+    const chinaRow = { ok: false, reason: 'china-missing', dataMonth: null, ageMonths: null, unavailableSince: 1 };
+    const snapshot = {
+      status: 'DEGRADED',
+      summary: {},
+      checkedAt: '2026-08-10T00:00:00.000Z',
+      checks: { jodiGas: { status: 'STALE_CONTENT', records: 57, chinaRow } },
+    };
+
+    // Same rule the contentFreshness/decisionGroups scrub follows: the STATUS
+    // is public, the named entity behind it is operator-only.
+    const compact = healthResponseBody(snapshot, true);
+    assert.equal(compact.problems.jodiGas.status, 'STALE_CONTENT');
+    assert.equal(compact.problems.jodiGas.chinaRow, undefined);
+    // ...and a cached compact snapshot written before the rule is scrubbed too.
+    assert.equal(
+      healthResponseBody({ ...snapshot, checks: undefined, problems: { jodiGas: { status: 'STALE_CONTENT', chinaRow } } }, true)
+        .problems.jodiGas.chinaRow,
+      undefined,
+    );
+    // The operator view keeps it.
+    assert.deepEqual(healthResponseBody(snapshot, false).checks.jodiGas.chinaRow, chinaRow);
   });
 });
 

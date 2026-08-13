@@ -138,15 +138,15 @@ describe('dedupeErrorResponses (fixture)', () => {
     const stats = dedupeErrorResponses(spec);
     assert.equal(stats.hoisted, 1, 'only the repeated 429 group is hoisted');
     assert.equal(stats.replacedRefs, 2);
-    assert.deepEqual(spec.components.responses.TooManyRequests, {
+    assert.deepEqual(spec.components.responses.E429, {
       description: 'slow down',
       headers: { 'Retry-After': {} },
     });
     assert.deepEqual(spec.paths['/a'].get.responses[429], {
-      $ref: '#/components/responses/TooManyRequests',
+      $ref: '#/components/responses/E429',
     });
     assert.deepEqual(spec.paths['/b'].post.responses[429], {
-      $ref: '#/components/responses/TooManyRequests',
+      $ref: '#/components/responses/E429',
     });
     // Unique 400s and both 200s stay put.
     assert.equal(spec.paths['/a'].get.responses[400].description, 'bad a');
@@ -166,13 +166,13 @@ describe('dedupeErrorResponses (fixture)', () => {
 
   it('avoids colliding with pre-existing component names', () => {
     const spec = fixture();
-    spec.components = { responses: { TooManyRequests: { description: 'taken' } } };
+    spec.components = { responses: { E429: { description: 'taken' } } };
     dedupeErrorResponses(spec);
-    assert.equal(spec.components.responses.TooManyRequests.description, 'taken');
-    assert.equal(spec.components.responses.TooManyRequests2.description, 'slow down');
+    assert.equal(spec.components.responses.E429.description, 'taken');
+    assert.equal(spec.components.responses.E429_2.description, 'slow down');
     assert.equal(
       spec.paths['/a'].get.responses[429].$ref,
-      '#/components/responses/TooManyRequests2',
+      '#/components/responses/E429_2',
     );
   });
 });
@@ -282,8 +282,8 @@ describe('public OpenAPI dedupe (real bundle)', () => {
 
   it('actually engages on the injected error docs (429 et al.)', () => {
     assert.ok(
-      deduped.components.responses.TooManyRequests,
-      'the per-op 429 rate-limit block must dedupe into components.responses.TooManyRequests',
+      deduped.components.responses.E429,
+      'the per-op 429 rate-limit block must dedupe into components.responses.E429',
     );
     assert.ok(stats.replacedRefs >= 500, `expected wide dedup, got ${stats.replacedRefs} refs`);
   });

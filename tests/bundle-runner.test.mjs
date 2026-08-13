@@ -9,10 +9,15 @@ import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { mkdirSync, writeFileSync, unlinkSync } from 'node:fs';
+import { createServer } from 'node:http';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { GRACEFUL_FETCH_FAILURE_EXIT_CODE } from '../scripts/_seed-utils.mjs';
-import { readSectionFreshness } from '../scripts/_bundle-runner.mjs';
+import { DAY, readSectionFreshness } from '../scripts/_bundle-runner.mjs';
+import {
+  atomicSwitch,
+  backfillSeedMetaFromActiveVersion,
+} from '../scripts/seed-military-bases.mjs';
 
 const SCRIPTS_DIR = fileURLToPath(new URL('../scripts/', import.meta.url));
 const FIXTURES_DIR = join(SCRIPTS_DIR, 'fixtures');
@@ -175,6 +180,345 @@ function writeFixture(name, body) {
   writeFileSync(path, body);
   return () => { try { unlinkSync(path); } catch {} };
 }
+
+async function startFakeUpstash({
+  strings = new Map(),
+  geoMembers = new Map(),
+  hashes = new Map(),
+  beforeCommand,
+  failCommand,
+} = {}) {
+  const pipelines = [];
+  const commands = [];
+  const reads = [];
+  const runCommand = (command, path) => {
+    const forcedFailure = failCommand?.({ command, path, strings, geoMembers, hashes });
+    if (forcedFailure) return { error: forcedFailure };
+
+    const [operation, key, ...args] = command;
+    if (operation === 'GET') return { result: strings.get(key) ?? null };
+    if (operation === 'SET') {
+      strings.set(key, args[0]);
+      return { result: 'OK' };
+    }
+    if (operation === 'ZCARD') return { result: geoMembers.get(key)?.length ?? 0 };
+    if (operation === 'HLEN') return { result: hashes.get(key)?.size ?? 0 };
+    if (operation === 'ZRANGE') {
+      const members = geoMembers.get(key) ?? [];
+      const start = Number(args[0]);
+      const rawEnd = Number(args[1]);
+      const end = rawEnd < 0 ? members.length + rawEnd : rawEnd;
+      return { result: members.slice(start, end + 1) };
+    }
+    if (operation === 'HMGET') {
+      const hash = hashes.get(key);
+      return { result: args.map(id => hash?.get(id) ?? null) };
+    }
+    if (operation === 'EVAL') {
+      const script = key;
+      const keyCount = Number(args[0]);
+      const keys = args.slice(1, 1 + keyCount);
+      const argv = args.slice(1 + keyCount);
+
+      if (script.includes("return {0, current or ''}")) {
+        const current = strings.get(keys[0]) ?? '';
+        if (current !== argv[0]) return { result: [0, current] };
+        strings.set(keys[1], argv[1]);
+        return { result: [1, current] };
+      }
+      if (script.includes('return ARGV[1]')) {
+        strings.set(keys[0], argv[0]);
+        strings.set(keys[1], argv[1]);
+        return { result: argv[0] };
+      }
+    }
+    return { error: `Unsupported fake command: ${operation}` };
+  };
+
+  const redis = createServer((req, res) => {
+    if (req.method === 'GET' && req.url?.startsWith('/get/')) {
+      const key = decodeURIComponent(req.url.slice('/get/'.length));
+      reads.push(key);
+      res.setHeader('Content-Type', 'application/json');
+      res.end(JSON.stringify({ result: strings.get(key) ?? null }));
+      return;
+    }
+    if (req.method === 'POST' && req.url === '/pipeline') {
+      let body = '';
+      req.setEncoding('utf8');
+      req.on('data', chunk => { body += chunk; });
+      req.on('end', async () => {
+        try {
+          const requestCommands = JSON.parse(body);
+          pipelines.push(requestCommands);
+          for (const command of requestCommands) {
+            await beforeCommand?.({ command, path: '/pipeline', strings, geoMembers, hashes });
+          }
+          res.setHeader('Content-Type', 'application/json');
+          res.end(JSON.stringify(requestCommands.map(command => runCommand(command, '/pipeline'))));
+        } catch (err) {
+          res.statusCode = 500;
+          res.end(String(err?.message || err));
+        }
+      });
+      return;
+    }
+    if (req.method === 'POST' && req.url === '/') {
+      let body = '';
+      req.setEncoding('utf8');
+      req.on('data', chunk => { body += chunk; });
+      req.on('end', async () => {
+        try {
+          const command = JSON.parse(body);
+          commands.push(command);
+          await beforeCommand?.({ command, path: '/', strings, geoMembers, hashes });
+          res.setHeader('Content-Type', 'application/json');
+          res.end(JSON.stringify(runCommand(command, '/')));
+        } catch (err) {
+          res.statusCode = 500;
+          res.end(String(err?.message || err));
+        }
+      });
+      return;
+    }
+    res.writeHead(404).end();
+  });
+  await new Promise((resolve, reject) => {
+    const onError = err => reject(err);
+    redis.once('error', onError);
+    redis.listen(0, '127.0.0.1', () => {
+      redis.off('error', onError);
+      resolve();
+    });
+  });
+  const address = redis.address();
+  assert.ok(address && typeof address === 'object');
+  return {
+    url: `http://127.0.0.1:${address.port}`,
+    token: 'isolated-test-token',
+    strings,
+    pipelines,
+    commands,
+    reads,
+    close: () => new Promise((resolve, reject) => {
+      redis.close(err => err ? reject(err) : resolve());
+    }),
+  };
+}
+
+async function runMilitaryGate(fakeRedis) {
+  const fixtureName = `_bundle-fixture-military-bases-must-not-run-${randomUUID()}.mjs`;
+  const cleanup = writeFixture(
+    fixtureName,
+    `console.log('military-bases-ran');\n`,
+  );
+  try {
+    return await runBundleWith([
+      {
+        label: 'Military-Bases',
+        script: fixtureName,
+        seedMetaKey: 'military:bases',
+        intervalMs: 30 * DAY,
+        timeoutMs: 5000,
+      },
+    ], {}, {
+      UPSTASH_REDIS_REST_URL: fakeRedis.url,
+      UPSTASH_REDIS_REST_TOKEN: fakeRedis.token,
+    });
+  } finally {
+    cleanup();
+  }
+}
+
+test('Military-Bases normal publication atomically writes metadata and gates', async () => {
+  const redis = await startFakeUpstash();
+  const version = Date.now();
+  const fetchedAt = version - 60_000;
+  try {
+    await atomicSwitch(redis.url, redis.token, '', version, 42, fetchedAt);
+    assert.equal(redis.commands.length, 1);
+    const [operation, script, keyCount, activeKey, seedMetaKey, publishedVersion, payload] = redis.commands[0];
+    assert.equal(operation, 'EVAL');
+    assert.match(script, /redis\.call\('SET', KEYS\[1\]/);
+    assert.equal(keyCount, '2');
+    assert.equal(activeKey, 'military:bases:active');
+    assert.equal(seedMetaKey, 'seed-meta:military:bases');
+    assert.equal(publishedVersion, String(version));
+    assert.deepEqual(JSON.parse(payload), {
+      fetchedAt,
+      recordCount: 42,
+      sourceVersion: String(version),
+    });
+    assert.equal(redis.strings.get(activeKey), String(version));
+    assert.equal(redis.strings.get(seedMetaKey), payload);
+
+    const { code, stdout, stderr } = await runMilitaryGate(redis);
+
+    assert.equal(code, 0, stderr);
+    assert.match(stdout, /\[Military-Bases\] Skipped, last seeded \d+min ago \(interval: 43200min\)/);
+    assert.match(stdout, /\[Bundle:test\] Finished .* ran:0 skipped:1/);
+    assert.doesNotMatch(stdout, /military-bases-ran/);
+    assert.deepEqual(redis.reads, ['seed-meta:military:bases']);
+  } finally {
+    await redis.close();
+  }
+});
+
+test('Military-Bases backfills metadata from validated active data without refreshing its age', async () => {
+  const version = String(Date.now() - 60_000);
+  const ids = ['base-a', 'base-b', 'base-c'];
+  const redis = await startFakeUpstash({
+    strings: new Map([['military:bases:active', version]]),
+    geoMembers: new Map([[`military:bases:geo:${version}`, ids]]),
+    hashes: new Map([[
+      `military:bases:meta:${version}`,
+      new Map(ids.map(id => [id, JSON.stringify({ name: id })])),
+    ]]),
+  });
+  try {
+    const result = await backfillSeedMetaFromActiveVersion(redis.url, redis.token, '');
+    assert.deepEqual(result, {
+      version,
+      fetchedAt: Number(version),
+      recordCount: ids.length,
+    });
+    assert.deepEqual(JSON.parse(redis.strings.get('seed-meta:military:bases')), {
+      fetchedAt: Number(version),
+      recordCount: ids.length,
+      sourceVersion: version,
+    });
+    assert.equal(
+      redis.pipelines.flat().some(command => command[0] === 'SET' && command[1] === 'military:bases:active'),
+      false,
+      'backfill must not rewrite or race the active pointer',
+    );
+    assert.equal(redis.pipelines.flat().some(command => command[0] === 'ZRANDMEMBER'), false);
+    assert.equal(redis.pipelines.flat().some(command => command[0] === 'ZRANGE'), true);
+
+    const { code, stdout, stderr } = await runMilitaryGate(redis);
+    assert.equal(code, 0, stderr);
+    assert.match(stdout, /\[Military-Bases\] Skipped/);
+    assert.doesNotMatch(stdout, /military-bases-ran/);
+  } finally {
+    await redis.close();
+  }
+});
+
+test('Military-Bases backfill fails closed when active GEO and META counts disagree', async () => {
+  const version = String(Date.now() - 60_000);
+  const redis = await startFakeUpstash({
+    strings: new Map([['military:bases:active', version]]),
+    geoMembers: new Map([[`military:bases:geo:${version}`, ['base-a', 'base-b']]]),
+    hashes: new Map([[
+      `military:bases:meta:${version}`,
+      new Map([['base-a', JSON.stringify({ name: 'base-a' })]]),
+    ]]),
+  });
+  try {
+    await assert.rejects(
+      backfillSeedMetaFromActiveVersion(redis.url, redis.token, ''),
+      /META count 1 != GEO count 2/,
+    );
+    assert.equal(redis.strings.has('seed-meta:military:bases'), false);
+    assert.equal(
+      redis.pipelines.flat().some(command => command[0] === 'SET' && command[1] === 'seed-meta:military:bases'),
+      false,
+    );
+  } finally {
+    await redis.close();
+  }
+});
+
+test('Military-Bases publication rejects an HTTP-200 Redis command error', async () => {
+  const redis = await startFakeUpstash({
+    failCommand: ({ command }) => command[0] === 'EVAL' ? 'forced command failure' : null,
+  });
+  try {
+    await assert.rejects(
+      atomicSwitch(redis.url, redis.token, '', Date.now(), 42),
+      /Redis command EVAL failed: forced command failure/,
+    );
+    assert.equal(redis.strings.has('military:bases:active'), false);
+    assert.equal(redis.strings.has('seed-meta:military:bases'), false);
+  } finally {
+    await redis.close();
+  }
+});
+
+test('Military-Bases backfill rejects an HTTP-200 pipeline command error', async () => {
+  const version = String(Date.now() - 60_000);
+  const redis = await startFakeUpstash({
+    strings: new Map([['military:bases:active', version]]),
+    failCommand: ({ command }) => command[0] === 'ZCARD' ? 'forced command failure' : null,
+  });
+  try {
+    await assert.rejects(
+      backfillSeedMetaFromActiveVersion(redis.url, redis.token, ''),
+      /Pipeline command 1\/2 ZCARD failed: forced command failure/,
+    );
+    assert.equal(redis.strings.has('seed-meta:military:bases'), false);
+  } finally {
+    await redis.close();
+  }
+});
+
+test('Military-Bases backfill cannot overwrite metadata for a newer active version', async () => {
+  const oldVersion = String(Date.now() - 120_000);
+  const newVersion = String(Date.now() - 60_000);
+  const ids = ['base-a', 'base-b'];
+  const newMeta = JSON.stringify({
+    fetchedAt: Number(newVersion),
+    recordCount: 1,
+    sourceVersion: newVersion,
+  });
+  let switched = false;
+  const redis = await startFakeUpstash({
+    strings: new Map([['military:bases:active', oldVersion]]),
+    geoMembers: new Map([[`military:bases:geo:${oldVersion}`, ids]]),
+    hashes: new Map([[
+      `military:bases:meta:${oldVersion}`,
+      new Map(ids.map(id => [id, JSON.stringify({ name: id })])),
+    ]]),
+    beforeCommand: ({ command, path, strings }) => {
+      if (!switched && path === '/' && command[0] === 'EVAL' && command[1].includes("return {0, current or ''}")) {
+        switched = true;
+        strings.set('military:bases:active', newVersion);
+        strings.set('seed-meta:military:bases', newMeta);
+      }
+    },
+  });
+  try {
+    await assert.rejects(
+      backfillSeedMetaFromActiveVersion(redis.url, redis.token, ''),
+      new RegExp(`Active version changed during validation \\(${oldVersion} -> ${newVersion}\\)`),
+    );
+    assert.equal(redis.strings.get('military:bases:active'), newVersion);
+    assert.equal(redis.strings.get('seed-meta:military:bases'), newMeta);
+  } finally {
+    await redis.close();
+  }
+});
+
+test('Military-Bases backfill validates every active record', async () => {
+  const version = String(Date.now() - 60_000);
+  const ids = Array.from({ length: 11 }, (_, index) => `base-${index + 1}`);
+  const metadata = new Map(ids.map(id => [id, JSON.stringify({ name: id })]));
+  metadata.set(ids.at(-1), '{invalid-json');
+  const redis = await startFakeUpstash({
+    strings: new Map([['military:bases:active', version]]),
+    geoMembers: new Map([[`military:bases:geo:${version}`, ids]]),
+    hashes: new Map([[`military:bases:meta:${version}`, metadata]]),
+  });
+  try {
+    await assert.rejects(
+      backfillSeedMetaFromActiveVersion(redis.url, redis.token, ''),
+      /ID "base-11" has invalid JSON in META hash/,
+    );
+    assert.equal(redis.strings.has('seed-meta:military:bases'), false);
+  } finally {
+    await redis.close();
+  }
+});
 
 test('streams child stdout live and reports Done on success', async () => {
   const cleanup = writeFixture(

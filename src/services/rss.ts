@@ -331,6 +331,7 @@ export async function fetchFeed(feed: Feed): Promise<NewsItem[]> {
     ingestHeadlines(parsed.map(item => ({
       title: item.title,
       pubDate: item.pubDate,
+      pubDateMissing: item.pubDateMissing,
       source: item.source,
       link: item.link,
     })));

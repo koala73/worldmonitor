@@ -13,7 +13,7 @@ WorldMonitor exposes its intelligence stack as a [Model Context Protocol](https:
 **Pro and API tiers can both connect via OAuth — no API key required.** Pro subscribers click _"Sign in with WorldMonitor Pro"_ on the consent page; API Starter / Business / Enterprise users may sign in the same way OR paste a `wm_…` key. Free-tier users see a `403 INSUFFICIENT_TIER` at the OAuth step.
 </Info>
 
-All paid tiers share the same MCP server and the same 60 tools. The current hard MCP daily reservation is enforced only for OAuth contexts at the Pro counter: **50 quota-consuming `tools/call` / `resources/read` calls per UTC day**. API-key (`wm_…`) MCP clients are protected by the **60 requests/minute/key** limiter in this handler; broader API Starter / Business REST allowances are enforced outside the MCP daily reservation path. (`describe_tool`, the v1.5.0 metadata-lookup helper, is exempt from the Pro daily quota.)
+All paid tiers share the same MCP server and the same 61 tools. The current hard MCP daily reservation is enforced only for OAuth contexts at the Pro counter: **50 quota-consuming `tools/call` / `resources/read` calls per UTC day**. API-key (`wm_…`) MCP clients are protected by the **60 requests/minute/key** limiter in this handler; broader API Starter / Business REST allowances are enforced outside the MCP daily reservation path. (`describe_tool`, the v1.5.0 metadata-lookup helper, is exempt from the Pro daily quota.)
 
 Pro subscribers can connect Claude Desktop / Cursor / claude.ai without ever pasting an API key — see [Pro sign-in flow](#pro-sign-in-flow) below. API Starter+ holders may continue to paste a `wm_…` key on the consent page (the original flow), or use the same OAuth path as Pro.
 
@@ -28,7 +28,7 @@ Pro subscribers can connect Claude Desktop / Cursor / claude.ai without ever pas
 | `https://api.worldmonitor.app/.well-known/oauth-authorization-server` | AS metadata (RFC 8414) |
 | `https://worldmonitor.app/.well-known/oauth-protected-resource` | Resource server metadata (RFC 9728) |
 
-Server identifier: `worldmonitor` v1.15.0.
+Server identifier: `worldmonitor` v1.16.0.
 
 Registry listings: the server is published in the [official MCP registry](https://registry.modelcontextprotocol.io/v0/servers?search=worldmonitor) as `app.worldmonitor/mcp` — a domain-verified namespace, so clients that resolve servers through the registry get the same endpoint and metadata as the server card above — and listed on [Smithery](https://smithery.ai/servers/worldmonitor/wm-mcp) and [mcp.so](https://mcp.so/server/world-monitor).
 
@@ -199,7 +199,7 @@ npx @modelcontextprotocol/inspector https://worldmonitor.app/mcp
 
 ## Tool catalog
 
-The server exposes 60 tools. Most are cache-reads over pre-seeded Redis keys (sub-second). The slower, non-cache paths are the six live LLM/external-API tools (`get_country_brief`, `analyze_situation`, `generate_forecasts`, `search_flights`, `search_flight_prices_by_date`, `classify_event`) plus the live geo RPC tools (`get_airspace`, `get_maritime_activity`), the bounded canonical procurement proxy (`get_procurement_opportunities`), the corporate-intelligence proxy (`get_company_intelligence`), the canonical China decision-signal RPC (`get_china_decision_signals`), and the three durable-history RPCs (`search_intel_history`, `get_intel_timeline`, `get_similar_events`). `get_world_brief` reads the dashboard's precomputed, citation-grounded `news:insights:v1` snapshot and does not make a request-time LLM call. The on-demand NLP utilities (`classify_event`, `extract_entities`, `get_news_clusters`, `get_keyword_spikes`) accept bounded caller text or compute over live seeded data; all but `classify_event` are fully deterministic. One (`describe_tool`, added v1.5.0) returns the full uncompressed definition of any other tool — useful when the compressed `tools/list` description is ambiguous; exempt from the Pro daily quota.
+The server exposes 61 tools. Most are cache-reads over pre-seeded Redis keys (sub-second). The slower, non-cache paths are the six live LLM/external-API tools (`get_country_brief`, `analyze_situation`, `generate_forecasts`, `search_flights`, `search_flight_prices_by_date`, `classify_event`) plus the live geo RPC tools (`get_airspace`, `get_maritime_activity`), the bounded canonical procurement proxy (`get_procurement_opportunities`), the corporate-intelligence proxy (`get_company_intelligence`), the canonical China decision-signal RPC (`get_china_decision_signals`), and the three durable-history RPCs (`search_intel_history`, `get_intel_timeline`, `get_similar_events`). `get_world_brief` reads the dashboard's precomputed, citation-grounded `news:insights:v1` snapshot and does not make a request-time LLM call. The on-demand NLP utilities (`classify_event`, `extract_entities`, `get_news_clusters`, `get_keyword_spikes`) accept bounded caller text or compute over live seeded data; all but `classify_event` are fully deterministic. One (`describe_tool`, added v1.5.0) returns the full uncompressed definition of any other tool — useful when the compressed `tools/list` description is ambiguous; exempt from the Pro daily quota.
 
 <Tip>
 For per-tool parameters, freshness budgets, timeouts, and concrete `curl` examples, see the [MCP Tools Reference](/mcp-tools-reference). For payload projection — every tool accepts an optional `jmespath` argument that typically cuts response size by 80-95% — see the [JMESPath guide](/mcp-jmespath).
@@ -393,11 +393,11 @@ Current follow-up trackers:
 - [#4525](https://github.com/koala73/worldmonitor/issues/4525) — pure-read deferred MCP coverage candidates.
 - [#4526](https://github.com/koala73/worldmonitor/issues/4526) — manual mapping and fetch-on-miss triage.
 
-See the [Tool catalog](#tool-catalog) above for the complete list of 60 tools, or the [MCP Tools Reference](/mcp-tools-reference) for per-tool details.
+See the [Tool catalog](#tool-catalog) above for the complete list of 61 tools, or the [MCP Tools Reference](/mcp-tools-reference) for per-tool details.
 
 ## Prompts and resources
 
-In addition to the 60 tools, WorldMonitor exposes MCP prompts and resources so clients can discover common workflows and address stable data slices without inventing tool plans from scratch.
+In addition to the 61 tools, WorldMonitor exposes MCP prompts and resources so clients can discover common workflows and address stable data slices without inventing tool plans from scratch.
 
 ### Prompts
 

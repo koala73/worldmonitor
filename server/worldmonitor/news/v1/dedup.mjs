@@ -14,6 +14,10 @@ import {
   clusterTexts,
   STORY_SIMILARITY_THRESHOLD,
 } from '../../../../shared/story-identity.js';
+// #6428: corroboration counts PUBLISHERS. `item.source` is a feed label, and
+// one newsroom ships many ("Reuters World", "Reuters US", …), so counting
+// labels let a wire corroborate itself.
+import { countPublisherFamilies } from '../../../../shared/publisher-families.js';
 
 /** @param {string[]} headlines */
 export function deduplicateHeadlines(headlines) {
@@ -88,11 +92,10 @@ export async function assignStoryIdentity(items, normalizeTitle, sha256Hex) {
       }
     }
 
-    const sources = new Set();
-    for (const i of indices) {
-      if (items[i].source) sources.add(items[i].source);
-    }
-    const corroborationCount = Math.max(1, sources.size);
+    const corroborationCount = Math.max(
+      1,
+      countPublisherFamilies(indices.map((i) => items[i].source)),
+    );
 
     if (canonical === null) {
       // Whole cluster normalizes to empty — sentinel identity per item,

@@ -40,7 +40,7 @@ import {
   resolveMarketQuoteProvider,
   type ProviderQuote,
 } from './_quote-provider';
-import { cachedFetchJson, readCachedJson } from '../../../_shared/redis';
+import { CachedFetchTimeoutError, cachedFetchJson, readCachedJson } from '../../../_shared/redis';
 
 const BOOTSTRAP_KEY = 'market:stocks-bootstrap:v1';
 
@@ -87,7 +87,13 @@ export function __resetUpstreamDeadlineForTests(): void {
  * surrounding Redis round-trips, so `cachedFetchJson`'s 30s default can never
  * outlive the request.
  */
-const QUOTE_PROVIDER_CALL_BUDGET_MS = 5_000;
+export const QUOTE_PROVIDER_CALL_BUDGET_MS = 5_000;
+
+/**
+ * Slack that keeps the per-call backstop from expiring on the same tick as the
+ * wall-clock deadline. See `gapFetchCallTimeoutMs` for why a tie is not benign.
+ */
+export const CALL_TIMEOUT_DEADLINE_GRACE_MS = 50;
 
 type Reason = MarketQuoteUnavailableReason;
 
@@ -180,6 +186,71 @@ function waitForAbort<T>(promise: Promise<T>, signal: AbortSignal): Promise<T> {
 }
 
 /**
+ * `cachedFetchJson`'s inflight timeout for one lookup, given the wall-clock
+ * window still left before the gap-fetch deadline.
+ *
+ * That timeout is a *backstop* — it exists only so a fetcher that never settles
+ * cannot pin the inflight slot for the isolate's life. Sizing it to exactly
+ * `remainingMs` made it expire on the same tick as the deadline, and Node ran
+ * whichever timer its queue happened to order first: when the backstop won, the
+ * signal had not flipped yet and our own cutoff was billed to the provider as
+ * PROVIDER_ERROR (#6468).
+ *
+ * The invariant that removes that race is that the two never expire together,
+ * and which one binds depends on the window:
+ *   - `remainingMs <= QUOTE_PROVIDER_CALL_BUDGET_MS` — the deadline binds, so
+ *     the backstop sits a grace *later* and the deadline always cuts first.
+ *   - `remainingMs >  QUOTE_PROVIDER_CALL_BUDGET_MS` — the call budget binds,
+ *     so the backstop fires *earlier*, on its own, well before the deadline.
+ * Neither branch can return `remainingMs`, so no window ties. The obvious
+ * `Math.min(BUDGET, remainingMs) + GRACE` spelling does not hold this: it ties
+ * at exactly `BUDGET + GRACE`, a window a lane reaches whenever it starts a
+ * lookup `GRACE`ms into a request.
+ *
+ * A cutoff in the second regime is still reported as the provider's — see
+ * `classifyGapFetchFailure`, which only charges the budget at the deadline.
+ */
+export function gapFetchCallTimeoutMs(remainingMs: number): number {
+  const remaining = Math.max(0, remainingMs);
+  return remaining <= QUOTE_PROVIDER_CALL_BUDGET_MS
+    ? remaining + CALL_TIMEOUT_DEADLINE_GRACE_MS
+    : QUOTE_PROVIDER_CALL_BUDGET_MS;
+}
+
+/**
+ * Why one lookup produced no quote, decided without reference to which timer
+ * callback ran first.
+ *
+ * `deadlineSignal.aborted` and `Date.now()` disagree at the boundary in *both*
+ * directions — the abort timer runs off libuv's monotonic clock, `Date.now()`
+ * off the wall clock — so either one alone mis-reads a cutoff that is ours.
+ * Reading them together makes a lookup that died at the boundary UPSTREAM_
+ * BUDGET_EXHAUSTED however the two clocks happen to be skewed.
+ *
+ * The deadline test stays *ahead* of `recorded` on purpose: an abort makes the
+ * provider adapter's own fetch reject, which it reports as `status: 'error'`.
+ * That entry describes our cutoff, not the provider, so it must not win here.
+ * Within the window `recorded` is the provider's real verdict and is used as-is;
+ * a failure with no verdict at all is still charged to the provider.
+ *
+ * One consequence, unchanged in kind from the abort-only precedence this
+ * replaces: a `rate_limited` verdict landing in the same millisecond as the
+ * deadline reads as budget, so it does not raise the response-level
+ * `rateLimited` flag. At that instant we are out of budget either way, and the
+ * next refresh re-attempts the symbol.
+ */
+export function classifyGapFetchFailure(input: {
+  deadlineAborted: boolean;
+  now: number;
+  deadline: number;
+  recorded: Reason | undefined;
+}): Reason {
+  const { deadlineAborted, now, deadline, recorded } = input;
+  if (deadlineAborted || now >= deadline) return REASON.budget;
+  return recorded ?? REASON.providerError;
+}
+
+/**
  * Resolve seed misses through the provider, one Redis-cached lookup per symbol.
  *
  * Returns a quote for each symbol it resolved and a reason for each it did not.
@@ -217,6 +288,9 @@ async function resolveMissingSymbols(missing: string[]): Promise<GapFetchResult>
   // not-found, never for a transient failure (cacheFetcherErrors: false).
   const liveOutcomes = new Map<string, Reason>();
 
+  /** One entry per cut-off lookup, emitted as a single line after the fan-out. */
+  const cutoffs: Array<{ reason: Reason; marginMs: number; err: string }> = [];
+
   await forEachWithConcurrency(attempted, UPSTREAM_CONCURRENCY, async (symbol) => {
     const remainingMs = deadline - Date.now();
     if (remainingMs <= 0 || deadlineSignal.aborted) {
@@ -241,19 +315,41 @@ async function resolveMissingSymbols(missing: string[]): Promise<GapFetchResult>
           throw new Error(outcome.status === 'rate_limited' ? 'provider rate limited' : outcome.message);
         },
         QUOTE_NEGATIVE_TTL_SECONDS,
-        { timeoutMs: Math.min(QUOTE_PROVIDER_CALL_BUDGET_MS, remainingMs), cacheFetcherErrors: false },
+        { timeoutMs: gapFetchCallTimeoutMs(remainingMs), cacheFetcherErrors: false },
       ), deadlineSignal);
 
       if (cached) quotes.set(symbol, cached);
       else reasons.set(symbol, liveOutcomes.get(symbol) ?? REASON.notFound);
-    } catch {
-      const reason = deadlineSignal.aborted
-        ? REASON.budget
-        : (liveOutcomes.get(symbol) ?? REASON.providerError);
+    } catch (err) {
+      const now = Date.now();
+      const reason = classifyGapFetchFailure({
+        deadlineAborted: deadlineSignal.aborted,
+        now,
+        deadline,
+        recorded: liveOutcomes.get(symbol),
+      });
       reasons.set(symbol, reason);
       if (reason === REASON.rateLimited) rateLimited = true;
+      // `marginMs` is how much of the window was left when a cutoff fired:
+      // <= 0 is the deadline, a large positive is the cache-layer backstop.
+      // Ordinary provider failures, rate limits, and unavailable backoffs are
+      // outcomes, not cutoffs, and stay out of this operational signal.
+      if (reason === REASON.budget || err instanceof CachedFetchTimeoutError) {
+        cutoffs.push({ reason, marginMs: deadline - now, err: err instanceof Error ? err.name : typeof err });
+      }
     }
   });
+
+  // #6468 was invisible in aggregate: the reason a lookup failed reaches
+  // exactly one consumer — an i18n string in the dashboard — so the whole
+  // incident was diagnosable only by a human noticing PROVIDER_ERROR creeping
+  // up. One line per gap fetch (never per symbol) makes the split queryable,
+  // and a `marginMs` trending toward 0 is the early warning that the deadline
+  // and the backstop are converging again. Only cut-off lookups are logged;
+  // a not-found ticker is routine and already visible to the caller.
+  if (cutoffs.length > 0) {
+    console.warn(`[ListMarketQuotes] gap-fetch cutoffs ${JSON.stringify({ attempted: attempted.length, cutoffs })}`);
+  }
 
   return { quotes, reasons, rateLimited, providerConfigured: true };
 }

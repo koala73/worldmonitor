@@ -1,5 +1,7 @@
 import { convexTest } from "convex-test";
 import { describe, expect, test } from "vitest";
+import { normalizeCompanyImportBatch } from "../../shared/company-monitoring-contract";
+import { fingerprint } from "../companyMonitoring/_shared";
 import {
   accountFor,
   CM,
@@ -17,6 +19,56 @@ import {
 installCompanyMonitoringTestEnvironment();
 
 describe("bounded onboarding and replay", () => {
+  test("records claim-level discovery and attribution uses for later evidence matching", async () => {
+    const t = convexTest(schema, modules);
+    await grantProvisioned(t, OWNER_A);
+    const created = await t.mutation(CM.companies.createCompanyForOwner, {
+      ownerUserId: OWNER_A,
+      clientRequestId: "claim-use-policy",
+      company: company("Attribution Ready", "attribution-ready"),
+    });
+    const account = await accountFor(t, OWNER_A);
+    const claims = await t.run(async (ctx) => ctx.db
+      .query("companyMonitoringClaims")
+      .withIndex("by_account_company", (q) =>
+        q.eq("ownerAccountId", account!.logicalAccountId).eq("companyId", created.companyId),
+      )
+      .collect());
+
+    expect(claims).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        type: "alias",
+        value: "Attribution Ready",
+        allowedUses: ["attribution", "discovery"],
+      }),
+      expect.objectContaining({
+        type: "domain",
+        allowedUses: ["attribution", "discovery"],
+      }),
+      expect.objectContaining({ type: "location", allowedUses: ["discovery"] }),
+      expect.objectContaining({ type: "customer_reference", allowedUses: ["discovery"] }),
+    ]));
+
+    await t.mutation(CM.companies.updateCompanyForOwner, {
+      ownerUserId: OWNER_A,
+      companyId: created.companyId,
+      patch: { name: "Attribution Ready Renamed" },
+    });
+    const renamedClaims = await t.run(async (ctx) => ctx.db
+      .query("companyMonitoringClaims")
+      .withIndex("by_account_company", (q) =>
+        q.eq("ownerAccountId", account!.logicalAccountId).eq("companyId", created.companyId),
+      )
+      .collect());
+    expect(renamedClaims).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        type: "alias",
+        value: "Attribution Ready Renamed",
+        allowedUses: ["attribution", "discovery"],
+      }),
+    ]));
+  });
+
   test("concurrent final-slot requests admit exactly one and preserve count parity", async () => {
     const t = convexTest(schema, modules);
     await grantProvisioned(t, OWNER_A);
@@ -178,6 +230,18 @@ describe("bounded onboarding and replay", () => {
             .eq("companyId", firstCompanyId!),
         )
         .collect(),
+      obligations: await ctx.db
+        .query("companyMonitoringScanObligations")
+        .withIndex("by_account_company_source", (q) =>
+          q.eq("ownerAccountId", root!.logicalAccountId),
+        )
+        .collect(),
+      work: await ctx.db
+        .query("companyMonitoringScanWorkItems")
+        .withIndex("by_account_state_selectionDueAt", (q) =>
+          q.eq("ownerAccountId", root!.logicalAccountId).eq("state", "due"),
+        )
+        .collect(),
     }));
     expect(stored.companies).toHaveLength(100);
     expect(stored.companies.every((row) =>
@@ -187,6 +251,8 @@ describe("bounded onboarding and replay", () => {
     expect(stored.firstCompanyClaims).toEqual(expect.arrayContaining([
       expect.objectContaining({ type: "domain", value: "batch-0.example" }),
     ]));
+    expect(stored.obligations).toHaveLength(200);
+    expect(stored.work).toHaveLength(8);
 
     const replayed = await t.action(CM.imports.importCompaniesForOwner, {
       ownerUserId: OWNER_A,
@@ -200,6 +266,49 @@ describe("bounded onboarding and replay", () => {
       Array.from({ length: 100 }, () => "replayed"),
     );
     expect(await accountFor(t, OWNER_A)).toMatchObject({ companyCount: 100 });
+    expect(await t.run(async (ctx) => ({
+      obligations: (await ctx.db.query("companyMonitoringScanObligations").collect()).length,
+      work: (await ctx.db.query("companyMonitoringScanWorkItems").collect()).length,
+    }))).toEqual({ obligations: 200, work: 8 });
+  });
+
+  test("an import retry heals rows committed before scan scheduling without duplicates", async () => {
+    const t = convexTest(schema, modules);
+    await grantProvisioned(t, OWNER_A);
+    const rows = [0, 1].map((ordinal) => ({
+      ...company(`Interrupted Batch ${ordinal}`, `interrupted-${ordinal}`),
+      clientImportId: "interrupted-scan-batch",
+      ordinal,
+    }));
+    const normalizedRows = normalizeCompanyImportBatch(rows);
+    for (const row of normalizedRows) {
+      await t.mutation(CM.imports.importCompanyRowForOwner, {
+        ownerUserId: OWNER_A,
+        row,
+        rowFingerprint: await fingerprint(row),
+      });
+    }
+    expect(await t.run(async (ctx) => ({
+      obligations: (await ctx.db.query("companyMonitoringScanObligations").collect()).length,
+      work: (await ctx.db.query("companyMonitoringScanWorkItems").collect()).length,
+    }))).toEqual({ obligations: 0, work: 0 });
+
+    const retry = await t.action(CM.imports.importCompaniesForOwner, {
+      ownerUserId: OWNER_A,
+      rows,
+    });
+    expect(retry.results.map((row: any) => row.status)).toEqual(["replayed", "replayed"]);
+    const healed = await t.run(async (ctx) => ({
+      obligations: (await ctx.db.query("companyMonitoringScanObligations").collect()).length,
+      work: (await ctx.db.query("companyMonitoringScanWorkItems").collect()).length,
+    }));
+    expect(healed).toEqual({ obligations: 4, work: 2 });
+
+    await t.action(CM.imports.importCompaniesForOwner, { ownerUserId: OWNER_A, rows });
+    expect(await t.run(async (ctx) => ({
+      obligations: (await ctx.db.query("companyMonitoringScanObligations").collect()).length,
+      work: (await ctx.db.query("companyMonitoringScanWorkItems").collect()).length,
+    }))).toEqual(healed);
   });
 
   test("committed direct and import rows replay, changed tuples conflict, and no-ops reevaluate", async () => {
@@ -460,7 +569,7 @@ describe("bounded onboarding and replay", () => {
     expect(claims).toEqual([]);
     expect(removedRow).toMatchObject({
       lifecycle: "removed",
-      purgePhase: "payload",
+      purgePhase: "scan",
       name: "Remove Corp",
     });
 

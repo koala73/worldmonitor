@@ -295,7 +295,7 @@ export const SERVER_NAME = 'worldmonitor';
 //     or auth change.
 // Keep aligned with public/.well-known/mcp/server-card.json::serverInfo.version
 // — discovery scanners cross-check both values.
-export const SERVER_VERSION = '1.15.0';
+export const SERVER_VERSION = '1.16.0';
 
 // MCP logging capability — valid severity levels per the 2025-03-26 spec
 // (RFC 5424 subset). Stateless HTTP transport: we ACK the level but do not

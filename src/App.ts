@@ -94,6 +94,7 @@ import type { EarningsCalendarPanel } from '@/components/EarningsCalendarPanel';
 import type { EconomicCalendarPanel } from '@/components/EconomicCalendarPanel';
 import type { CotPositioningPanel } from '@/components/CotPositioningPanel';
 import type { LiquidityShiftsPanel } from '@/components/LiquidityShiftsPanel';
+import type { NewsMarketCorrelationPanel } from '@/components/NewsMarketCorrelationPanel';
 import type { PositioningPanel } from '@/components/PositioningPanel';
 import type { GoldIntelligencePanel } from '@/components/GoldIntelligencePanel';
 import { isDesktopRuntime, waitForSidecarReady } from '@/services/runtime';
@@ -103,6 +104,7 @@ import { track, trackEvent, trackDeeplinkOpened, initAuthAnalytics } from '@/ser
 import { preloadCountryGeometry, isCountryGeometryLoaded, getCountryNameByCode } from '@/services/country-geometry';
 import { initI18n, t, I18N_RESOURCES_LOADED_EVENT, type I18nResourcesLoadedDetail } from '@/services/i18n';
 import { initDeferredDashboardFonts } from '@/bootstrap/secondary-startup';
+import { applyFontScale, FONT_SCALE_STORAGE_KEY } from '@/services/font-scale-settings';
 
 import {
   CANADA_ARCTIC_OPT_IN_SOURCES,
@@ -197,7 +199,16 @@ import {
   settleAccountOperation,
 } from '@/services/account-operation';
 import type { Id } from '../convex/_generated/dataModel';
-import { initEntitlementSubscription, destroyEntitlementSubscription, resetEntitlementState, onEntitlementChange, getEntitlementState } from '@/services/entitlements';
+import {
+  beginEntitlementVerification,
+  destroyEntitlementSubscription,
+  getEntitlementState,
+  initEntitlementSubscription,
+  markEntitlementVerificationUnavailable,
+  onEntitlementChange,
+  resetEntitlementState,
+  resetEntitlementVerification,
+} from '@/services/entitlements';
 import { initSubscriptionWatch, destroySubscriptionWatch } from '@/services/billing';
 import {
   FREE_TIER_FOLLOW_LIMIT,
@@ -380,6 +391,10 @@ export class App {
     let freeTierLimitsInvoked = false;
     const tierReconciliationDeferred = this.shouldDeferTierPreferenceReconciliation();
     invalidatePanelStorageCacheForKeys(keys);
+
+    if (keySet.has(FONT_SCALE_STORAGE_KEY)) {
+      applyFontScale();
+    }
 
     if (keySet.has(STORAGE_KEYS.panels)) {
       // Cloud can reconcile before Clerk/Convex finishes settling. Preserve
@@ -788,6 +803,10 @@ export class App {
     }
     if (shouldPrime('market-breadth')) {
       primeTask('marketBreadth', () => this.dataLoader.loadMarketBreadth());
+    }
+    if (shouldPrime('news-market-correlation')) {
+      const panel = this.state.panels['news-market-correlation'] as NewsMarketCorrelationPanel | undefined;
+      if (panel) primeTask('news-market-correlation', () => panel.fetchData());
     }
     if (shouldPrimeAny(['markets', 'heatmap', 'commodities', 'crypto', 'energy-complex'])) {
       primeTask('markets', () => this.dataLoader.loadMarkets());
@@ -1907,7 +1926,9 @@ export class App {
           ),
           effects: {
             destroyEntitlementSubscription,
+            beginEntitlementVerification,
             resetEntitlementState,
+            markEntitlementVerificationUnavailable,
             destroySubscriptionWatch,
             rebindConvexAuthForWatchHandoff,
             initEntitlementSubscription,
@@ -2024,6 +2045,7 @@ export class App {
         destroySubscriptionWatch();
         cloudPrefsSignOut();
         resetEntitlementState();
+        resetEntitlementVerification();
         this.tierPreferenceHandoff.clear();
         this.pendingPreferenceHandoffGeneration = undefined;
       }
@@ -3274,6 +3296,12 @@ export class App {
       () => this.dataLoader.loadMarketBreadth(),
       REFRESH_INTERVALS.marketBreadth,
       () => this.isPanelNearViewport('market-breadth')
+    );
+    this.refreshScheduler.scheduleRefresh(
+      'news-market-correlation',
+      () => (this.state.panels['news-market-correlation'] as NewsMarketCorrelationPanel).fetchData(),
+      REFRESH_INTERVALS.newsMarketCorrelation,
+      () => this.isPanelNearViewport('news-market-correlation')
     );
 
     // Refresh intelligence signals for CII (geopolitical variant only)

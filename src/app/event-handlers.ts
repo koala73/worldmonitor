@@ -1794,6 +1794,7 @@ export class EventHandlerManager implements AppModule {
             trackPanelToggled(key, nextConfig.enabled);
           }
           Object.assign(current, nextConfig);
+          if (nextConfig.fontScale === undefined) delete current.fontScale;
           // Object.assign cannot DELETE a key, so a stale gate marker would
           // survive a settings-driven toggle. Re-apply through the owner helper.
           if (enabledChanged) userSetPanelEnabled(current, nextConfig.enabled);
@@ -1841,10 +1842,26 @@ export class EventHandlerManager implements AppModule {
         }
       },
       getAllSourceNames: () => this.getAllSourceNames(),
+      // Sources are applied to ctx.disabledSources on click, but DataLoader
+      // only re-reads that set when a load runs — so before this, a source
+      // toggle first showed up at RefreshScheduler's `news` tick,
+      // REFRESH_INTERVALS.feeds = 20 minutes away, or on reload (#6380).
+      //
+      // No invalidateNewsHydration() here, deliberately: DataLoader's news gate
+      // keys its work-list signature on ctx.disabledSources
+      // (data-loader.ts shouldHydrateNews / newsWorkListSignature), so a real
+      // change re-arms the load on its own. Dropping the signature as well
+      // would ALSO refetch when the net change is nil — the toggled-off-and-
+      // back-on case UnifiedSettings already declines to report — and spending
+      // a digest request on a work-list that did not move is precisely what the
+      // #5376 budget guard exists to prevent.
+      onSourcesChanged: () => { void this.callbacks.loadAllData(); },
       getLocalizedPanelName: (key: string, fallback: string) => this.getLocalizedPanelName(key, fallback),
       resetLayout: () => {
         clearPanelSpans();
         clearPanelColSpans();
+        for (const panel of Object.values(this.ctx.panelSettings)) delete panel.fontScale;
+        saveToStorage(STORAGE_KEYS.panels, this.ctx.panelSettings);
         removeStorageValue(this.ctx.PANEL_ORDER_KEY);
         removeStorageValue(this.ctx.PANEL_ORDER_KEY + '-bottom');
         removeStorageValue(this.ctx.PANEL_ORDER_KEY + '-bottom-set');
@@ -1917,7 +1934,7 @@ export class EventHandlerManager implements AppModule {
         this.restoreSnapshot(snapshot);
       } else {
         this.ctx.isPlaybackMode = false;
-        this.callbacks.loadAllData();
+        void this.callbacks.loadAllData();
       }
     });
 

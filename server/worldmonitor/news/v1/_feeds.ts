@@ -381,7 +381,6 @@ export const VARIANT_FEEDS: Record<string, Record<string, ServerFeed[]>> = {
     ],
     accelerators: [
       { name: 'YC News', url: 'https://news.ycombinator.com/rss' },
-      { name: 'YC Blog', url: 'https://www.ycombinator.com/blog/rss/' },
       { name: 'Demo Day News', url: gn('("demo day" OR "YC batch" OR "accelerator batch") startup when:7d') },
     ],
     security: [

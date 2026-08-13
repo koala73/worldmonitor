@@ -10,6 +10,7 @@ import {
   ACCEPTED_FRESHNESS_MS,
   FINAL_ACCEPTANCE_STEP_NAME,
   GITHUB_API_VERSION,
+  GITHUB_PAGE_SIZE,
   GITHUB_WATCHDOG_USER_AGENT,
   GitHubWatchdogClient,
   GitHubWatchdogError,
@@ -24,12 +25,24 @@ import {
   WATCHDOG_DISPATCH_STEP_NAME,
   WATCHDOG_HISTORY_WINDOW_MS,
   WATCHDOG_JOB_READ_CONCURRENCY,
+  WATCHDOG_CLASSIFY_JOB_NAME,
   WATCHDOG_MAX_PAGES,
+  WATCHDOG_READ_FAILURE_STEP_NAME,
+  WATCHDOG_READ_FAILURE_STREAK_LIMIT,
+  WATCHDOG_READ_FAILURE_STREAK_WINDOW_MS,
+  WATCHDOG_READ_RETRY_ATTEMPTS,
+  WATCHDOG_READ_RETRY_BASE_MS,
+  WATCHDOG_READ_RETRY_MAX_MS,
+  WATCHDOG_SOURCE_WORKFLOW_FILE,
+  WATCHDOG_STREAK_API_RESERVE,
+  WATCHDOG_STREAK_PAGE_SIZE,
   classifyWatchdogSnapshot,
   dispatchGitHubRecovery,
   prepareRecoveryDispatch,
   readWatchdogSnapshot,
   rejectAuthorizedRecovery,
+  resolveReadFailureExit,
+  retryAttemptsFor,
 } from '../scripts/dispatch-stale-railway-reconcile.mjs';
 
 const NOW = Date.parse('2026-08-07T12:00:00Z');
@@ -653,10 +666,36 @@ describe('stale Railway reconcile classification', () => {
   });
 });
 
-function json(data, { status = 200, link = null } = {}) {
+const REPOSITORY_ID = 1130564872;
+
+// GitHub answers every paginated read with a `next` link on the numeric
+// repository-ID path (`/repositories/<id>/...`), never the
+// `/repos/<owner>/<repo>/...` path that was requested. Building the link from
+// the request pathname is the mock shape that let the watchdog paginate fine
+// in tests and defer forever in production, so the production form is the
+// shared default here: pass `next: <request url>` and every collection —
+// statuses, runs, jobs, the fail-closed table, the budget walk — is exercised
+// against the rewritten path. `link` stays available for the cases that must
+// forge some other shape.
+function productionNextLink(requestUrl, page = null) {
+  const next = new URL(requestUrl);
+  next.pathname = next.pathname.replace(/^\/repos\/[^/]+\/[^/]+/, `/repositories/${REPOSITORY_ID}`);
+  next.searchParams.set('page', String(page ?? Number(next.searchParams.get('page')) + 1));
+  return `<${next}>; rel="next"`;
+}
+
+function json(data, { status = 200, next = null, nextPage = null, link = null } = {}) {
+  const header = link ?? (next === null ? null : productionNextLink(next, nextPage));
   return Response.json(data, {
     status,
-    headers: link ? { link } : undefined,
+    headers: header ? { link: header } : undefined,
+  });
+}
+
+function throttled(status, headers = {}) {
+  return new Response(JSON.stringify({ message: `HTTP ${status}` }), {
+    status,
+    headers: { 'content-type': 'application/json', ...headers },
   });
 }
 
@@ -698,9 +737,7 @@ describe('allowlisted GitHub watchdog transport', () => {
         const page = parsed.searchParams.get('page');
         if (parsed.pathname.endsWith('/statuses')) {
           return page === '1'
-            ? json([{ context: 'other', state: 'success' }], {
-              link: `<https://api.github.com${parsed.pathname}?per_page=100&page=2>; rel="next"`,
-            })
+            ? json([{ context: 'other', state: 'success' }], { next: url })
             : json([{ context: 'gate', state: 'success', updated_at: '2026-08-07T11:59:00Z' }]);
         }
         if (parsed.pathname.endsWith('/railway-deploy-trigger.yml/runs')) {
@@ -708,23 +745,17 @@ describe('allowlisted GitHub watchdog transport', () => {
             return json({ total_count: 0, workflow_runs: [] });
           }
           if (page === '1') {
-            const next = new URL(parsed);
-            next.searchParams.set('page', '2');
             return json({ total_count: 2, workflow_runs: [{
               ...rawRun({ id: 11, runAttempt: 2, displayTitle: 'ordinary' }),
               created_at: '2026-08-07T11:00:00Z',
               updated_at: '2026-08-07T11:10:00Z',
-            }] }, {
-              link: `<${next}>; rel="next"`,
-            });
+            }] }, { next: url });
           }
           return json({ total_count: 2, workflow_runs: [rawRun({ id: 12 })] });
         }
         if (parsed.pathname.includes('/runs/11/attempts/1/jobs')) {
           return page === '1'
-            ? json({ total_count: 2, jobs: [{ id: 1, steps: [] }] }, {
-              link: `<https://api.github.com${parsed.pathname}?per_page=100&page=2>; rel="next"`,
-            })
+            ? json({ total_count: 2, jobs: [{ id: 1, steps: [] }] }, { next: url })
             : json({ total_count: 2, jobs: [{ id: 2, steps: [] }] });
         }
         if (parsed.pathname.includes('/runs/11/attempts/2/jobs')) {
@@ -748,6 +779,249 @@ describe('allowlisted GitHub watchdog transport', () => {
     )));
     assert.ok(calls.some((call) => call.url.includes('/attempts/1/jobs?per_page=100&page=2')));
     assert.ok(calls.some((call) => call.url.includes('/attempts/2/jobs?per_page=100&page=1')));
+  });
+
+  // GitHub rewrites every paginated Link header to the numeric repository-ID
+  // form (`/repositories/<id>/statuses/<sha>`), never echoing back the
+  // `/repos/<owner>/<repo>/commits/<sha>/statuses` path that was requested.
+  // Mocks that build the next link from the request pathname cannot observe
+  // this, so the watchdog paginated fine in tests and deferred forever in
+  // production. Every paginated collection is affected; statuses is the one
+  // that always exceeds a single page on this repository.
+  it('paginates when GitHub rewrites next links to the repository-ID form', async () => {
+    const calls = [];
+    const client = new GitHubWatchdogClient({
+      repository: 'o/r',
+      token: 'token',
+      now: () => NOW,
+      fetchImpl: async (url) => {
+        calls.push(String(url));
+        const parsed = new URL(url);
+        const page = parsed.searchParams.get('page');
+        if (!parsed.pathname.endsWith('/statuses')) throw new Error(`unexpected ${url}`);
+        return page === '1'
+          ? json([{ context: 'other', state: 'success' }], {
+            link: `<https://api.github.com/repositories/${REPOSITORY_ID}/statuses/${HEAD}`
+              + '?per_page=100&page=2>; rel="next"',
+          })
+          : json([{ context: 'gate', state: 'success', updated_at: '2026-08-07T11:59:00Z' }]);
+      },
+    });
+
+    assert.equal((await client.readNewestGate(HEAD)).state, 'success');
+    // Page two must be fetched on the allowlisted canonical path we synthesized,
+    // never on the origin-supplied `/repositories/<id>/...` URL.
+    assert.deepEqual(calls, [
+      `https://api.github.com/repos/o/r/commits/${HEAD}/statuses?per_page=100&page=1`,
+      `https://api.github.com/repos/o/r/commits/${HEAD}/statuses?per_page=100&page=2`,
+    ]);
+  });
+
+  // `readNewestGate` is the only paginated read with no `total_count`, so the
+  // frozen-total, duplicate-id, and truncation invariants are all inert on the
+  // one collection that actually paginates in production. Statuses come back
+  // newest-first, so the walk stops on the first `gate` and never pays for the
+  // pages behind it.
+  it('stops the status walk on the newest gate instead of draining every page', async () => {
+    const pages = [];
+    const client = new GitHubWatchdogClient({
+      repository: 'o/r',
+      token: 'token',
+      now: () => NOW,
+      fetchImpl: async (url) => {
+        pages.push(Number(new URL(url).searchParams.get('page')));
+        return json(
+          [
+            { context: 'other', state: 'success' },
+            { context: 'gate', state: 'success', updated_at: '2026-08-07T11:59:00Z' },
+            { context: 'gate', state: 'failure', updated_at: '2026-08-07T10:00:00Z' },
+          ],
+          { next: url },
+        );
+      },
+    });
+
+    assert.deepEqual(await client.readNewestGate(HEAD), {
+      state: 'success',
+      updatedAt: '2026-08-07T11:59:00Z',
+    });
+    assert.deepEqual(pages, [1]);
+  });
+
+  // A short or Link-less origin response used to return a partial prefix, and
+  // a walk that never reached the gate reported it as `missing`. That is
+  // fail-closed today only by accident of the `'missing'` mapping; a full
+  // final page with no `next` is a truncated read, not an absent gate.
+  it('rejects a truncated status walk instead of reporting the gate missing', async () => {
+    const fullPage = (context) => Array.from(
+      { length: GITHUB_PAGE_SIZE },
+      () => ({ context, state: 'success', updated_at: '2026-08-07T11:00:00Z' }),
+    );
+    const truncated = new GitHubWatchdogClient({
+      repository: 'o/r',
+      token: 'token',
+      now: () => NOW,
+      fetchImpl: async () => json(fullPage('other')),
+    });
+    await assert.rejects(
+      truncated.readNewestGate(HEAD),
+      (error) => error instanceof GitHubWatchdogError && error.code === 'GITHUB_READ_FAILED',
+    );
+
+    // A genuinely absent gate ends on a short page and stays `missing`, which
+    // the classifier maps to DEFERRED_NON_GREEN_MAIN.
+    const absent = new GitHubWatchdogClient({
+      repository: 'o/r',
+      token: 'token',
+      now: () => NOW,
+      fetchImpl: async (url) => (Number(new URL(url).searchParams.get('page')) === 1
+        ? json(fullPage('other'), { next: url })
+        : json([{ context: 'other', state: 'success' }])),
+    });
+    assert.deepEqual(await absent.readNewestGate(HEAD), { state: 'missing', updatedAt: null });
+  });
+
+  // One transient 403 mid-walk used to abort the whole read and land in the
+  // silent DEFERRED_AMBIGUOUS tier — during a failure storm, exactly the
+  // condition the watchdog exists to catch.
+  it('retries transient read failures with bounded jittered backoff', async () => {
+    const delays = [];
+    const responses = [
+      throttled(403),
+      throttled(500),
+      json({ object: { sha: HEAD } }),
+    ];
+    const client = new GitHubWatchdogClient({
+      repository: 'o/r',
+      token: 'token',
+      now: () => NOW,
+      sleep: async (ms) => { delays.push(ms); },
+      random: () => 1,
+      fetchImpl: async () => responses.shift(),
+    });
+
+    assert.equal(await client.readCurrentMain(), HEAD);
+    assert.equal(responses.length, 0);
+    // Every attempt is a real request, so retries are charged to the budget.
+    assert.equal(client.requestCount, 3);
+    assert.deepEqual(delays, [WATCHDOG_READ_RETRY_BASE_MS, WATCHDOG_READ_RETRY_BASE_MS * 2]);
+  });
+
+  it('bounds the retry ladder and keeps definitive read failures single-shot', async () => {
+    const exhausted = new GitHubWatchdogClient({
+      repository: 'o/r',
+      token: 'token',
+      now: () => NOW,
+      sleep: async () => {},
+      fetchImpl: async () => throttled(429),
+    });
+    await assert.rejects(
+      exhausted.readCurrentMain(),
+      (error) => error instanceof GitHubWatchdogError
+        && error.code === 'GITHUB_READ_FAILED'
+        && error.status === 429,
+    );
+    assert.equal(exhausted.requestCount, WATCHDOG_READ_RETRY_ATTEMPTS + 1);
+
+    for (const status of [401, 404, 422]) {
+      const definitive = new GitHubWatchdogClient({
+        repository: 'o/r',
+        token: 'token',
+        now: () => NOW,
+        sleep: async () => { throw new Error('a definitive read must not back off'); },
+        fetchImpl: async () => throttled(status),
+      });
+      await assert.rejects(
+        definitive.readCurrentMain(),
+        (error) => error.code === 'GITHUB_READ_FAILED' && error.status === status,
+      );
+      assert.equal(definitive.requestCount, 1, `HTTP ${status}`);
+    }
+  });
+
+  it('honors Retry-After and the rate-limit reset ahead of the exponential ceiling', async () => {
+    const cases = [
+      [{ 'retry-after': '3' }, 3_000],
+      [{ 'retry-after': new Date(NOW + 2_000).toUTCString() }, 2_000],
+      [{ 'x-ratelimit-remaining': '0', 'x-ratelimit-reset': String(Math.floor(NOW / 1_000) + 5) }, 5_000],
+      // A secondary-limit window longer than the ladder is clamped: sleeping it
+      // out would blow the classify job's own timeout, and the third failure
+      // escalates through the read-failure streak instead.
+      [{ 'retry-after': '600' }, WATCHDOG_READ_RETRY_MAX_MS],
+    ];
+    for (const [headers, expected] of cases) {
+      const delays = [];
+      const responses = [throttled(403, headers), json({ object: { sha: HEAD } })];
+      const client = new GitHubWatchdogClient({
+        repository: 'o/r',
+        token: 'token',
+        now: () => NOW,
+        sleep: async (ms) => { delays.push(ms); },
+        random: () => 0,
+        fetchImpl: async () => responses.shift(),
+      });
+      assert.equal(await client.readCurrentMain(), HEAD);
+      assert.deepEqual(delays, [expected], JSON.stringify(headers));
+    }
+  });
+
+  // The dispatch POST may already have created a run, so a resend would be a
+  // second Railway deploy. Transient POST statuses stay ambiguous and the
+  // durable hold decides — the retry ladder must never touch them.
+  it('never retries the dispatch POST', async () => {
+    for (const status of [403, 429, 500]) {
+      let calls = 0;
+      const client = new GitHubWatchdogClient({
+        repository: 'o/r',
+        token: 'token',
+        now: () => NOW,
+        sleep: async () => { throw new Error('a dispatch must not back off'); },
+        fetchImpl: async () => { calls += 1; return throttled(status); },
+      });
+      await assert.rejects(
+        client.dispatchRecovery({ recoveryAttemptId: 'recovery-1', expectedHeadSha: HEAD }),
+        (error) => error.code === 'GITHUB_DISPATCH_AMBIGUOUS' && error.ambiguous === true,
+      );
+      assert.equal(calls, 1, `HTTP ${status}`);
+    }
+    // The observed single call above holds even if the outer guard is removed,
+    // because a POST error never satisfies the read-retry classifier either.
+    // Pin the outer guard directly so it is not a rule only a second rule
+    // proves.
+    assert.equal(retryAttemptsFor('POST', WATCHDOG_READ_RETRY_ATTEMPTS), 1);
+    assert.equal(
+      retryAttemptsFor('GET', WATCHDOG_READ_RETRY_ATTEMPTS),
+      WATCHDOG_READ_RETRY_ATTEMPTS + 1,
+    );
+  });
+
+  // Replaces the former 'skipped next page' rejection case. A skipped cursor
+  // was only dangerous while the origin's next URL was followed; now that the
+  // walk is synthesized, an origin advertising page 3 cannot make the watchdog
+  // skip page 2, and total_count still proves the read was complete.
+  it('ignores an origin-advertised page number and still walks every page', async () => {
+    const seen = [];
+    const client = new GitHubWatchdogClient({
+      repository: 'o/r',
+      token: 'token',
+      now: () => NOW,
+      fetchImpl: async (url) => {
+        const parsed = new URL(url);
+        const page = Number(parsed.searchParams.get('page'));
+        seen.push(page);
+        return json(
+          page === 1
+            ? { total_count: 2, workflow_runs: [rawRun({ id: 1 })] }
+            : { total_count: 2, workflow_runs: [rawRun({ id: 2 })] },
+          page === 1 ? { next: url, nextPage: 9 } : {},
+        );
+      },
+    });
+
+    await client.readTargetRunSummaries();
+    // Every collection walked 1 then 2. The advertised page 9 was never fetched.
+    assert.deepEqual([...new Set(seen)].sort(), [1, 2]);
+    assert.equal(seen.length % 2, 0);
   });
 
   it('hydrates attempt jobs with bounded concurrency while preserving attempt order', async () => {
@@ -982,11 +1256,9 @@ describe('allowlisted GitHub watchdog transport', () => {
           const page = Number(parsed.searchParams.get('page'));
           const start = (page - 1) * 100;
           const workflowRuns = allRuns.slice(start, start + 100);
-          const next = new URL(parsed);
-          next.searchParams.set('page', String(page + 1));
           return json(
             { total_count: allRuns.length, workflow_runs: workflowRuns },
-            { link: start + workflowRuns.length < allRuns.length ? `<${next}>; rel="next"` : null },
+            start + workflowRuns.length < allRuns.length ? { next: url } : {},
           );
         }
         const match = /\/actions\/runs\/(\d+)\/attempts\/1\/jobs$/.exec(parsed.pathname);
@@ -1095,10 +1367,6 @@ describe('allowlisted GitHub watchdog transport', () => {
         { total_count: 2, workflow_runs: [rawRun({ id: 1 })], next: true },
         { total_count: 2, workflow_runs: [] },
       ]],
-      ['skipped next page', [
-        { total_count: 2, workflow_runs: [rawRun({ id: 1 })], next: true, nextPage: 3 },
-        { total_count: 2, workflow_runs: [rawRun({ id: 2 })] },
-      ]],
       ['next after total', [{ total_count: 1, workflow_runs: [rawRun({ id: 1 })], next: true }]],
     ];
 
@@ -1111,9 +1379,7 @@ describe('allowlisted GitHub watchdog transport', () => {
           const parsed = new URL(url);
           const page = Number(parsed.searchParams.get('page'));
           const body = pages[page - 1] ?? pages.at(-1);
-          const next = new URL(parsed);
-          next.searchParams.set('page', String(body.nextPage ?? page + 1));
-          return json(body, { link: body.next ? `<${next}>; rel="next"` : null });
+          return json(body, body.next ? { next: url, nextPage: body.nextPage ?? null } : {});
         },
       });
       await assert.rejects(
@@ -1150,9 +1416,7 @@ describe('allowlisted GitHub watchdog transport', () => {
           }
           const page = Number(parsed.searchParams.get('page'));
           const body = pages[page - 1] ?? pages.at(-1);
-          const next = new URL(parsed);
-          next.searchParams.set('page', String(page + 1));
-          return json(body, { link: body.next ? `<${next}>; rel="next"` : null });
+          return json(body, body.next ? { next: url } : {});
         },
       });
       await assert.rejects(
@@ -1173,9 +1437,7 @@ describe('allowlisted GitHub watchdog transport', () => {
       token: 'token',
       fetchImpl: async (url) => {
         pages += 1;
-        const next = new URL(url);
-        next.searchParams.set('page', String(pages + 1));
-        return json([], { link: `<${next}>; rel="next"` });
+        return json([], { next: url });
       },
     });
     await assert.rejects(
@@ -1416,6 +1678,49 @@ describe('durably held recovery dispatch orchestration', () => {
     assert.deepEqual([...started].sort(), ['main', 'runs', 'status']);
     release();
     assert.equal((await snapshotPromise).main.sha, HEAD);
+  });
+
+  it('repairs an already-issued dispatch hold during classification without creating a new dispatch', async () => {
+    const hold = {
+      state: 'DISPATCH_HELD',
+      recoveryAttemptId: 'operator-retry-already-issued',
+      headSha: HEAD,
+      sourceRunId: '9007',
+      sourceRunAttempt: 1,
+      sourceHeadSha: HEAD,
+    };
+    const bindCalls = [];
+    let bound = false;
+    const snapshot = await readWatchdogSnapshot({
+      github: {
+        readMainAndGate: async () => ({ sha: HEAD, gate: { state: 'success' } }),
+        readTargetRunSummaries: async () => [],
+        hydrateTargetRuns: async () => [],
+        findRunByRecoveryAttemptId: async () => ({ id: 9008, runAttempt: 1 }),
+      },
+      control: {
+        status: async () => ({
+          data: eligibleControl({
+            dispatchHolds: bound
+              ? [{ ...hold, state: 'RUN_BOUND', runId: '9008', runAttempt: 1 }]
+              : [hold],
+          }),
+        }),
+        bindRun: async (body) => {
+          bindCalls.push(body);
+          bound = true;
+        },
+      },
+      clock: () => NOW,
+    });
+
+    assert.deepEqual(bindCalls, [{
+      recoveryAttemptId: hold.recoveryAttemptId,
+      headSha: hold.headSha,
+      runId: '9008',
+      runAttempt: 1,
+    }]);
+    assert.equal(snapshot.controlState.dispatchHolds[0].state, 'RUN_BOUND');
   });
 
   it('closes a cancellation-before-job hold only after exact terminal source evidence proves POST never started', async () => {
@@ -1784,11 +2089,231 @@ describe('durably held recovery dispatch orchestration', () => {
   });
 });
 
+// The classify job used to be excluded from ever setting a non-zero exit code,
+// even when main() threw, and no workflow step gated on its outcome. Budget
+// exhaustion, the page cap, or one un-retried 403 all produced a warning, exit
+// 0, and a green check — the same green-while-dead shape that hid the
+// pagination bug for months. This suite owns the two ways it can now go red.
+describe('watchdog read-failure escalation', () => {
+  const watchdogRun = (id, { createdAt = new Date(NOW - 60_000).toISOString(), runAttempt = 1 } = {}) => ({
+    id,
+    run_attempt: runAttempt,
+    created_at: createdAt,
+  });
+
+  const classifyJobs = (markerConclusion, { jobName = WATCHDOG_CLASSIFY_JOB_NAME } = {}) => [{
+    id: 1,
+    name: jobName,
+    steps: [
+      { name: 'Read or classify reconciliation control state', conclusion: 'success' },
+      ...(markerConclusion === null
+        ? []
+        : [{ name: WATCHDOG_READ_FAILURE_STEP_NAME, conclusion: markerConclusion }]),
+    ],
+  }];
+
+  const streakClient = ({ runs, jobsByRun, calls = [] }) => new GitHubWatchdogClient({
+    repository: 'o/r',
+    token: 'token',
+    now: () => NOW,
+    maxRequests: WATCHDOG_STREAK_API_RESERVE,
+    fetchImpl: async (url) => {
+      const parsed = new URL(url);
+      calls.push(`${parsed.pathname}${parsed.search}`);
+      if (parsed.pathname.endsWith(`/${WATCHDOG_SOURCE_WORKFLOW_FILE}/runs`)) {
+        return json({ total_count: runs.length, workflow_runs: runs });
+      }
+      const match = /\/actions\/runs\/(\d+)\/attempts\/\d+\/jobs$/.exec(parsed.pathname);
+      if (match) {
+        const jobs = jobsByRun[match[1]] ?? [];
+        return json({ total_count: jobs.length, jobs });
+      }
+      throw new Error(`unexpected ${url}`);
+    },
+  });
+
+  it('counts consecutive marked runs and stops at the first run that read GitHub', async () => {
+    const calls = [];
+    const client = streakClient({
+      calls,
+      runs: [watchdogRun(31), watchdogRun(32), watchdogRun(33)],
+      jobsByRun: {
+        31: classifyJobs('success'),
+        32: classifyJobs('skipped'),
+        33: classifyJobs('success'),
+      },
+    });
+
+    assert.equal(await client.readReadFailureStreak(), 1);
+    // Run 33 sits behind an unmarked run, so its jobs are never read.
+    assert.ok(!calls.some((call) => call.includes('/runs/33/')));
+    assert.equal(
+      calls[0],
+      `/repos/o/r/actions/workflows/${WATCHDOG_SOURCE_WORKFLOW_FILE}`
+      + `/runs?event=schedule&status=completed&per_page=${WATCHDOG_STREAK_PAGE_SIZE}&page=1`,
+    );
+  });
+
+  it('excludes the current run, caps the walk at the limit, and stays inside its reserve', async () => {
+    const calls = [];
+    const client = streakClient({
+      calls,
+      runs: [41, 42, 43, 44, 45].map((id) => watchdogRun(id)),
+      jobsByRun: Object.fromEntries([41, 42, 43, 44, 45].map((id) => [id, classifyJobs('success')])),
+    });
+
+    assert.equal(await client.readReadFailureStreak({ excludeRunId: '41' }), WATCHDOG_READ_FAILURE_STREAK_LIMIT);
+    assert.ok(!calls.some((call) => call.includes('/runs/41/')));
+    assert.ok(client.requestCount <= WATCHDOG_STREAK_API_RESERVE);
+  });
+
+  it('treats an absent marker, an aged run, and a foreign job as no evidence', async () => {
+    const cases = [
+      // Cancelled before the marker step could run.
+      { runs: [watchdogRun(51)], jobsByRun: { 51: classifyJobs(null) } },
+      // Older than the streak window, so the schedule had a gap.
+      {
+        runs: [watchdogRun(52, {
+          createdAt: new Date(NOW - WATCHDOG_READ_FAILURE_STREAK_WINDOW_MS - 1_000).toISOString(),
+        })],
+        jobsByRun: { 52: classifyJobs('success') },
+      },
+      // A marker with the right name under some other job proves nothing.
+      { runs: [watchdogRun(53)], jobsByRun: { 53: classifyJobs('success', { jobName: 'dispatch' }) } },
+    ];
+    for (const [index, fixture] of cases.entries()) {
+      assert.equal(await streakClient(fixture).readReadFailureStreak(), 0, `case ${index}`);
+    }
+  });
+
+  it('fails the classify job only once the blindness is sustained', async () => {
+    const streaks = [];
+    const github = { readReadFailureStreak: async () => streaks.shift() };
+
+    // A classification that is ambiguous for a non-read reason stays green and
+    // never spends a request on the history.
+    assert.deepEqual(
+      await resolveReadFailureExit({
+        github: { readReadFailureStreak: async () => { throw new Error('must not read'); } },
+        result: { outcome: 'DEFERRED_AMBIGUOUS', readFailureCode: null },
+        sourceRunId: '1',
+      }),
+      { failJob: false, streak: 0, reason: null },
+    );
+
+    for (const [priors, failJob] of [[0, false], [1, false], [2, true], [3, true]]) {
+      streaks.push(priors);
+      const escalation = await resolveReadFailureExit({
+        github,
+        result: { outcome: 'DEFERRED_AMBIGUOUS', readFailureCode: 'GITHUB_READ_BUDGET_EXCEEDED' },
+        sourceRunId: '1',
+      });
+      assert.equal(escalation.streak, priors + 1);
+      assert.equal(escalation.failJob, failJob, `priors ${priors}`);
+    }
+  });
+
+  it('fails closed when the streak read itself cannot complete', async () => {
+    const escalation = await resolveReadFailureExit({
+      github: {
+        readReadFailureStreak: async () => {
+          throw new GitHubWatchdogError('GITHUB_READ_FAILED', 'GitHub returned HTTP 403', { status: 403 });
+        },
+      },
+      result: { outcome: 'DEFERRED_AMBIGUOUS', readFailureCode: 'GITHUB_READ_FAILED' },
+      sourceRunId: '1',
+    });
+
+    assert.equal(escalation.failJob, true);
+    assert.equal(escalation.streak, null);
+    assert.match(escalation.reason, /streak could not be read/);
+  });
+
+  it('reports a GitHub read failure distinctly from a control-plane failure', async () => {
+    const github = {
+      readMainAndGate: async () => {
+        throw new GitHubWatchdogError('GITHUB_READ_FAILED', 'GitHub returned HTTP 500', { status: 500 });
+      },
+      readTargetRunSummaries: async () => [],
+      hydrateTargetRuns: async () => [],
+    };
+    const blind = await prepareRecoveryDispatch({
+      github,
+      control: { status: async () => ({ data: {} }) },
+      clock: () => NOW,
+    });
+    assert.equal(blind.outcome, 'DEFERRED_AMBIGUOUS');
+    assert.equal(blind.readFailureCode, 'GITHUB_READ_FAILED');
+
+    const controlDown = await prepareRecoveryDispatch({
+      github: { ...github, readMainAndGate: async () => ({ sha: HEAD, gate: { state: 'success' } }) },
+      control: { status: async () => { throw new Error('control plane unreachable'); } },
+      clock: () => NOW,
+    });
+    assert.equal(controlDown.outcome, 'DEFERRED_AMBIGUOUS');
+    assert.equal(controlDown.readFailureCode, null);
+  });
+
+  it('preserves GitHub blindness when the control-plane rejection settles first', async () => {
+    const order = [];
+    const github = {
+      readMainAndGate: async () => {
+        await new Promise((resolve) => setImmediate(resolve));
+        order.push('github');
+        throw new GitHubWatchdogError('GITHUB_READ_FAILED', 'GitHub returned HTTP 500', { status: 500 });
+      },
+      readTargetRunSummaries: async () => [],
+      readReadFailureStreak: async () => 0,
+    };
+    const blind = await prepareRecoveryDispatch({
+      github,
+      control: {
+        status: async () => {
+          order.push('control');
+          throw new Error('control plane unreachable');
+        },
+      },
+      clock: () => NOW,
+    });
+
+    assert.deepEqual(order, ['control', 'github']);
+    assert.equal(blind.outcome, 'DEFERRED_AMBIGUOUS');
+    assert.equal(blind.readFailureCode, 'GITHUB_READ_FAILED');
+    assert.deepEqual(
+      await resolveReadFailureExit({ github, result: blind, sourceRunId: '1' }),
+      {
+        failJob: false,
+        streak: 1,
+        reason: '1 consecutive scheduled runs could not read GitHub (GITHUB_READ_FAILED)',
+      },
+    );
+  });
+
+  // The marker step name is the contract between the controller and the
+  // workflow: a rename on either side silently retires the detector.
+  it('pins the workflow marker step to the controller constant', () => {
+    const workflow = readFileSync(
+      resolve(fileURLToPath(new URL('../.github/workflows/', import.meta.url)), WATCHDOG_SOURCE_WORKFLOW_FILE),
+      'utf8',
+    );
+    assert.match(
+      workflow,
+      new RegExp(`^ {6}- name: ${WATCHDOG_READ_FAILURE_STEP_NAME}$`, 'm'),
+    );
+    // `always()` keeps the run that trips the streak from skipping its own
+    // marker and resetting the count.
+    assert.match(
+      workflow,
+      /^ {8}if: always\(\) && steps\.controller\.outputs\.read_failure == 'true'$/m,
+    );
+  });
+});
+
 describe('watchdog phase process contract', () => {
-  it('keeps classify warning-success but makes a non-dispatched dispatch phase fail with structured output', () => {
+  it('fails every phase, classify included, when the controller cannot run at all', () => {
     const tempRoot = mkdtempSync(resolve(tmpdir(), 'railway-watchdog-cli-'));
     try {
-      for (const [phase, expectedStatus] of [['classify', 0], ['dispatch', 1]]) {
+      for (const phase of ['classify', 'dispatch']) {
         const outputPath = resolve(tempRoot, `${phase}.output`);
         const result = spawnSync(process.execPath, [SCRIPT, '--phase', phase], {
           encoding: 'utf8',
@@ -1800,10 +2325,15 @@ describe('watchdog phase process contract', () => {
           },
         });
 
-        assert.equal(result.status, expectedStatus, result.stderr);
+        assert.equal(result.status, 1, result.stderr);
         assert.match(result.stdout, /::warning::DEFERRED_AMBIGUOUS:/);
+        assert.match(result.stdout, /::error::WATCHDOG_PHASE_FAILED:/);
         assert.equal(JSON.parse(result.stdout.trim().split('\n').at(-1)).outcome, 'DEFERRED_AMBIGUOUS');
-        assert.match(readFileSync(outputPath, 'utf8'), /^outcome=DEFERRED_AMBIGUOUS$/m);
+        const output = readFileSync(outputPath, 'utf8');
+        assert.match(output, /^outcome=DEFERRED_AMBIGUOUS$/m);
+        // A crash is not a read-path failure, so it must not leave a streak
+        // marker that a later run would count.
+        assert.match(output, /^read_failure=false$/m);
       }
     } finally {
       rmSync(tempRoot, { recursive: true, force: true });

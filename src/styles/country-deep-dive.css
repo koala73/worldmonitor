@@ -75,7 +75,7 @@
   background: var(--surface);
   color: var(--text-dim);
   border-radius: 6px;
-  font-size: 14px;
+  font-size: calc(14px * var(--wm-panel-effective-scale, 1));
   width: 32px;
   height: 32px;
   cursor: pointer;
@@ -91,7 +91,7 @@
 
 .cdp-market-volume {
   color: var(--text-faint);
-  font-size: 10px;
+  font-size: calc(10px * var(--wm-panel-effective-scale, 1));
 }
 
 .cdp-market-bar {
@@ -122,12 +122,12 @@
 
 .cdp-port-name {
   color: var(--text-secondary);
-  font-size: 12px;
+  font-size: calc(12px * var(--wm-panel-effective-scale, 1));
 }
 
 .cdp-port-meta {
   color: var(--text-faint);
-  font-size: 10px;
+  font-size: calc(10px * var(--wm-panel-effective-scale, 1));
   text-align: right;
 }
 
@@ -179,7 +179,7 @@
 }
 
 .cdp-flag {
-  font-size: 26px;
+  font-size: calc(26px * var(--wm-panel-effective-scale, 1));
   line-height: 1;
 }
 
@@ -191,14 +191,14 @@
 
 .cdp-country-name {
   margin: 0;
-  font-size: 18px;
+  font-size: calc(18px * var(--wm-panel-effective-scale, 1));
   color: var(--text);
   line-height: 1.2;
 }
 
 .cdp-country-subtitle {
   color: var(--text-muted);
-  font-size: 11px;
+  font-size: calc(11px * var(--wm-panel-effective-scale, 1));
 }
 
 .cdp-header-right {
@@ -211,7 +211,7 @@
   background: var(--surface);
   color: var(--text-dim);
   border-radius: 6px;
-  font-size: 11px;
+  font-size: calc(11px * var(--wm-panel-effective-scale, 1));
   padding: 0 8px;
   height: 32px;
   cursor: pointer;
@@ -238,7 +238,7 @@
 
 .cdp-card-title {
   margin: 0 0 8px;
-  font-size: 12px;
+  font-size: calc(12px * var(--wm-panel-effective-scale, 1));
   text-transform: uppercase;
   letter-spacing: 0.4px;
   color: var(--text-muted);
@@ -285,14 +285,14 @@
 .cdp-china-summary-signal-label {
   margin: 0;
   color: var(--text-secondary);
-  font-size: 11px;
+  font-size: calc(11px * var(--wm-panel-effective-scale, 1));
   line-height: 1.25;
 }
 
 .cdp-china-summary-state {
   flex: 0 0 auto;
   color: var(--text-muted);
-  font-size: 9px;
+  font-size: calc(9px * var(--wm-panel-effective-scale, 1));
   font-weight: 600;
   letter-spacing: 0.04em;
   text-transform: uppercase;
@@ -311,7 +311,7 @@
 .cdp-china-summary-signal-value {
   margin-top: 2px;
   color: var(--text);
-  font-size: 13px;
+  font-size: calc(13px * var(--wm-panel-effective-scale, 1));
   font-variant-numeric: tabular-nums;
   overflow-wrap: anywhere;
 }
@@ -321,7 +321,7 @@
 .cdp-china-summary-note {
   margin-top: 2px;
   color: var(--text-muted);
-  font-size: 9px;
+  font-size: calc(9px * var(--wm-panel-effective-scale, 1));
   line-height: 1.3;
   overflow-wrap: anywhere;
 }
@@ -364,18 +364,18 @@
 }
 
 .cdp-score-label {
-  font-size: 12px;
+  font-size: calc(12px * var(--wm-panel-effective-scale, 1));
   color: var(--text-muted);
 }
 
 .cdp-updated {
-  font-size: 10px;
+  font-size: calc(10px * var(--wm-panel-effective-scale, 1));
   color: var(--text-faint);
 }
 
 .cdp-score-value {
   margin-top: 6px;
-  font-size: 24px;
+  font-size: calc(24px * var(--wm-panel-effective-scale, 1));
   font-weight: 700;
 }
 
@@ -397,7 +397,7 @@
 
 .cdp-trend {
   color: var(--text-dim);
-  font-size: 11px;
+  font-size: calc(11px * var(--wm-panel-effective-scale, 1));
 }
 
 /* Maritime Activity Table */
@@ -409,7 +409,7 @@
   width: 100%;
   border-collapse: separate;
   border-spacing: 0;
-  font-size: 11px;
+  font-size: calc(11px * var(--wm-panel-effective-scale, 1));
 }
 
 .cdp-maritime-table th {
@@ -420,7 +420,7 @@
   text-align: left;
   color: var(--text-muted);
   font-weight: 600;
-  font-size: 10px;
+  font-size: calc(10px * var(--wm-panel-effective-scale, 1));
   text-transform: uppercase;
   letter-spacing: 0.5px;
   padding: 6px 8px;
@@ -449,7 +449,7 @@
 .cdp-maritime-anomaly {
   margin-left: 4px;
   color: var(--semantic-warning);
-  font-size: 12px;
+  font-size: calc(12px * var(--wm-panel-effective-scale, 1));
 }
 
 .cdp-maritime-trend.cdp-trend-up {
@@ -487,7 +487,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 10px;
+  font-size: calc(10px * var(--wm-panel-effective-scale, 1));
   font-weight: 600;
   color: var(--text-muted);
   text-align: center;
@@ -508,7 +508,7 @@
   display: flex;
   align-items: center;
   gap: 6px;
-  font-size: 11px;
+  font-size: calc(11px * var(--wm-panel-effective-scale, 1));
   color: var(--text-secondary);
 }
 
@@ -534,14 +534,14 @@
 
 .cdp-comp-icon {
   width: 18px;
-  font-size: 12px;
+  font-size: calc(12px * var(--wm-panel-effective-scale, 1));
   text-align: center;
   flex-shrink: 0;
 }
 
 .cdp-comp-label {
   width: 72px;
-  font-size: 11px;
+  font-size: calc(11px * var(--wm-panel-effective-scale, 1));
   color: var(--text-muted);
   flex-shrink: 0;
 }
@@ -563,7 +563,7 @@
 .cdp-comp-val {
   width: 28px;
   text-align: right;
-  font-size: 12px;
+  font-size: calc(12px * var(--wm-panel-effective-scale, 1));
   font-weight: 600;
   color: var(--text);
   flex-shrink: 0;
@@ -580,7 +580,7 @@
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  font-size: 10px;
+  font-size: calc(10px * var(--wm-panel-effective-scale, 1));
   padding: 2px 7px;
   border-radius: 999px;
   border: 1px solid transparent;
@@ -658,11 +658,11 @@
 
 .cdp-metric-label {
   color: var(--text-muted);
-  font-size: 11px;
+  font-size: calc(11px * var(--wm-panel-effective-scale, 1));
 }
 
 .cdp-metric-value {
-  font-size: 10px;
+  font-size: calc(10px * var(--wm-panel-effective-scale, 1));
   padding: 2px 6px;
   border-radius: 999px;
   border: 1px solid transparent;
@@ -725,7 +725,7 @@
 .cdp-news-title,
 .cdp-market-title {
   color: var(--text-secondary);
-  font-size: 12px;
+  font-size: calc(12px * var(--wm-panel-effective-scale, 1));
   line-height: 1.35;
 }
 
@@ -735,7 +735,7 @@
 .cdp-economic-source,
 .cdp-assessment-meta {
   color: var(--text-faint);
-  font-size: 10px;
+  font-size: calc(10px * var(--wm-panel-effective-scale, 1));
 }
 
 .cdp-signal-desc,
@@ -743,14 +743,14 @@
 .cdp-economic-value,
 .cdp-base-name {
   color: var(--text-secondary);
-  font-size: 12px;
+  font-size: calc(12px * var(--wm-panel-effective-scale, 1));
 }
 
 .cdp-type-badge,
 .cdp-severity-badge,
 .cdp-tier-badge,
 .cdp-state-badge {
-  font-size: 10px;
+  font-size: calc(10px * var(--wm-panel-effective-scale, 1));
   border-radius: 999px;
   padding: 2px 6px;
   border: 1px solid transparent;
@@ -801,7 +801,7 @@
 
 .cdp-market-link {
   margin-left: auto;
-  font-size: 11px;
+  font-size: calc(11px * var(--wm-panel-effective-scale, 1));
   color: var(--accent);
 }
 
@@ -823,18 +823,18 @@
 }
 
 .cdp-infra-label {
-  font-size: 11px;
+  font-size: calc(11px * var(--wm-panel-effective-scale, 1));
   color: var(--text-dim);
 }
 
 .cdp-infra-count {
-  font-size: 14px;
+  font-size: calc(14px * var(--wm-panel-effective-scale, 1));
   color: var(--text);
 }
 
 .cdp-subtitle {
   color: var(--text-muted);
-  font-size: 11px;
+  font-size: calc(11px * var(--wm-panel-effective-scale, 1));
   margin-top: 2px;
 }
 
@@ -847,6 +847,15 @@
   gap: 6px;
 }
 
+.cdp-defense-industrial {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+}
+
 .cdp-base-item {
   display: flex;
   justify-content: space-between;
@@ -855,11 +864,11 @@
 
 .cdp-base-distance {
   color: var(--text-faint);
-  font-size: 10px;
+  font-size: calc(10px * var(--wm-panel-effective-scale, 1));
 }
 
 .cdp-trend-token {
-  font-size: 13px;
+  font-size: calc(13px * var(--wm-panel-effective-scale, 1));
   font-weight: 700;
 }
 
@@ -890,7 +899,7 @@
 .cdp-assessment-text {
   margin: 0;
   color: var(--text-secondary);
-  font-size: 12px;
+  font-size: calc(12px * var(--wm-panel-effective-scale, 1));
   line-height: 1.45;
 }
 
@@ -905,7 +914,7 @@
 .cdp-loading-text,
 .cdp-empty {
   color: var(--text-muted);
-  font-size: 11px;
+  font-size: calc(11px * var(--wm-panel-effective-scale, 1));
 }
 
 .cdp-loading-line {
@@ -943,12 +952,12 @@
 }
 
 .cdp-geo-error-icon {
-  font-size: 28px;
+  font-size: calc(28px * var(--wm-panel-effective-scale, 1));
 }
 
 .cdp-geo-error-msg {
   color: var(--text-muted);
-  font-size: 13px;
+  font-size: calc(13px * var(--wm-panel-effective-scale, 1));
   line-height: 1.4;
 }
 
@@ -976,7 +985,7 @@
   border-radius: 999px;
   border: 1px solid var(--border);
   color: var(--text-faint);
-  font-size: 11px;
+  font-size: calc(11px * var(--wm-panel-effective-scale, 1));
   line-height: 1;
   cursor: help;
   flex-shrink: 0;
@@ -1023,7 +1032,7 @@
 }
 
 .resilience-widget__overall-score {
-  font-size: 26px;
+  font-size: calc(26px * var(--wm-panel-effective-scale, 1));
   font-weight: 700;
   color: var(--text);
   line-height: 1;
@@ -1031,7 +1040,7 @@
 
 .resilience-widget__overall-level,
 .resilience-widget__overall-trend {
-  font-size: 11px;
+  font-size: calc(11px * var(--wm-panel-effective-scale, 1));
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.06em;
@@ -1055,12 +1064,12 @@
 }
 
 .resilience-widget__domain-label {
-  font-size: 11px;
+  font-size: calc(11px * var(--wm-panel-effective-scale, 1));
   color: var(--text-muted);
 }
 
 .resilience-widget__domain-score {
-  font-size: 12px;
+  font-size: calc(12px * var(--wm-panel-effective-scale, 1));
   font-weight: 600;
   color: var(--text);
   text-align: right;
@@ -1091,7 +1100,7 @@
 }
 
 .resilience-widget__dimension-label {
-  font-size: 10px;
+  font-size: calc(10px * var(--wm-panel-effective-scale, 1));
   color: var(--text-muted);
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1139,7 +1148,7 @@
 }
 
 .resilience-widget__dimension-pct {
-  font-size: 10px;
+  font-size: calc(10px * var(--wm-panel-effective-scale, 1));
   font-weight: 600;
   color: var(--text);
   text-align: right;
@@ -1152,7 +1161,7 @@
    when the dimension has observed data or the scorer has not tagged
    the class. Tooltip is carried on the parent cell's `title`. */
 .resilience-widget__dimension-imputation {
-  font-size: 10px;
+  font-size: calc(10px * var(--wm-panel-effective-scale, 1));
   font-weight: 600;
   line-height: 1;
   text-align: center;
@@ -1170,7 +1179,7 @@
    classifier. Empty span when freshness is unknown so the grid column
    reserves its 10px slot and rows stay aligned. */
 .resilience-widget__dimension-freshness {
-  font-size: 9px;
+  font-size: calc(9px * var(--wm-panel-effective-scale, 1));
   line-height: 1;
   text-align: center;
   cursor: help;
@@ -1190,7 +1199,7 @@
 
 .resilience-widget__confidence,
 .resilience-widget__delta {
-  font-size: 11px;
+  font-size: calc(11px * var(--wm-panel-effective-scale, 1));
   color: var(--text-faint);
 }
 
@@ -1206,7 +1215,7 @@
 }
 
 .resilience-widget__gate-desc {
-  font-size: 11px;
+  font-size: calc(11px * var(--wm-panel-effective-scale, 1));
   color: var(--text-muted);
 }
 
@@ -1265,7 +1274,7 @@
   border-radius: 6px;
   background: transparent;
   color: var(--text-primary);
-  font-size: 12px;
+  font-size: calc(12px * var(--wm-panel-effective-scale, 1));
   cursor: pointer;
   transition: background 0.15s;
 }
@@ -1315,9 +1324,9 @@
 }
 
 .cdp-facts-thumbnail { float: right; max-width: 100px; border-radius: 6px; margin: 0 0 8px 12px; }
-.cdp-facts-summary { font-size: 0.82rem; color: var(--cdp-muted); line-height: 1.5; margin-bottom: 8px; }
+.cdp-facts-summary { font-size: calc(0.82rem * var(--wm-panel-effective-scale, 1)); color: var(--cdp-muted); line-height: 1.5; margin-bottom: 8px; }
 .cdp-facts-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
-.cdp-facts-grid .cdp-fact-item { font-size: 0.78rem; }
+.cdp-facts-grid .cdp-fact-item { font-size: calc(0.78rem * var(--wm-panel-effective-scale, 1)); }
 
 .cdp-card-help {
   display: inline-flex;
@@ -1330,7 +1339,7 @@
   border: 1px solid currentColor;
   background: transparent;
   color: var(--text-muted);
-  font-size: 0.625rem;
+  font-size: calc(0.625rem * var(--wm-panel-effective-scale, 1));
   font-weight: 600;
   line-height: 1;
   opacity: 0.5;
@@ -1342,12 +1351,12 @@
 .cdp-card-help:hover {
   opacity: 1;
 }
-.cdp-facts-grid .cdp-fact-label { color: var(--cdp-muted); text-transform: uppercase; font-size: 0.65rem; }
+.cdp-facts-grid .cdp-fact-label { color: var(--cdp-muted); text-transform: uppercase; font-size: calc(0.65rem * var(--wm-panel-effective-scale, 1)); }
 
-.cdp-vuln-index { font-size: 13px; color: #94a3b8; margin-bottom: 8px; }
-.cdp-section-sublabel { font-size: 10px; color: #64748b; margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.04em; }
-.cdp-trade-exposure-table { width: 100%; border-collapse: collapse; font-size: 12px; margin-bottom: 8px; }
-.cdp-trade-exposure-table th { color: #64748b; font-weight: 500; padding: 3px 0; text-align: left; border-bottom: 1px solid rgba(100,116,139,0.15); font-size: 10px; text-transform: uppercase; letter-spacing: 0.04em; }
+.cdp-vuln-index { font-size: calc(13px * var(--wm-panel-effective-scale, 1)); color: #94a3b8; margin-bottom: 8px; }
+.cdp-section-sublabel { font-size: calc(10px * var(--wm-panel-effective-scale, 1)); color: #64748b; margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.04em; }
+.cdp-trade-exposure-table { width: 100%; border-collapse: collapse; font-size: calc(12px * var(--wm-panel-effective-scale, 1)); margin-bottom: 8px; }
+.cdp-trade-exposure-table th { color: #64748b; font-weight: 500; padding: 3px 0; text-align: left; border-bottom: 1px solid rgba(100,116,139,0.15); font-size: calc(10px * var(--wm-panel-effective-scale, 1)); text-transform: uppercase; letter-spacing: 0.04em; }
 .cdp-trade-exposure-table th.cdp-exposure-score-header { text-align: right; }
 .cdp-chokepoint-name { color: #cbd5e1; padding: 3px 0; }
 .cdp-sector-label { color: #e2e8f0; padding: 3px 0; font-weight: 500; }
@@ -1355,12 +1364,12 @@
 .cdp-trade-exposure-table tbody tr { border-bottom: 1px solid rgba(100,116,139,0.08); }
 .cdp-exposure-bar-wrap { width: 40%; padding: 3px 6px; }
 .cdp-exposure-bar { height: 6px; background: linear-gradient(90deg, #3b82f6, #60a5fa); border-radius: 3px; min-width: 2px; }
-.cdp-exposure-pct { color: #64748b; text-align: right; font-size: 11px; white-space: nowrap; }
-.cdp-dep-badge { display: inline-block; font-size: 9px; padding: 1px 5px; border-radius: 3px; margin-left: 4px; font-weight: 600; vertical-align: middle; letter-spacing: 0.02em; }
+.cdp-exposure-pct { color: #64748b; text-align: right; font-size: calc(11px * var(--wm-panel-effective-scale, 1)); white-space: nowrap; }
+.cdp-dep-badge { display: inline-block; font-size: calc(9px * var(--wm-panel-effective-scale, 1)); padding: 1px 5px; border-radius: 3px; margin-left: 4px; font-weight: 600; vertical-align: middle; letter-spacing: 0.02em; }
 .cdp-dep-critical { background: rgba(220,38,38,0.12); color: #f87171; }
 .cdp-dep-compound { background: rgba(220,38,38,0.18); color: #ef4444; }
 .cdp-dep-ok { background: rgba(34,197,94,0.12); color: #4ade80; }
-.cdp-card-footer { font-size: 10px; color: #475569; margin-top: 6px; }
+.cdp-card-footer { font-size: calc(10px * var(--wm-panel-effective-scale, 1)); color: #475569; margin-top: 6px; }
 
 .cdp-pro-locked {
   display: flex;
@@ -1369,11 +1378,11 @@
   gap: 6px;
   padding: 16px;
   color: var(--text-dim);
-  font-size: 11px;
+  font-size: calc(11px * var(--wm-panel-effective-scale, 1));
 }
 
 .cdp-pro-lock-icon {
-  font-size: 20px;
+  font-size: calc(20px * var(--wm-panel-effective-scale, 1));
   opacity: 0.5;
 }
 
@@ -1388,7 +1397,7 @@
 }
 
 .cdp-pro-section-label {
-  font-size: 10px;
+  font-size: calc(10px * var(--wm-panel-effective-scale, 1));
   text-transform: uppercase;
   letter-spacing: 1px;
   color: var(--text-muted);
@@ -1412,14 +1421,14 @@
 }
 
 .cdp-pro-metric-label {
-  font-size: 10px;
+  font-size: calc(10px * var(--wm-panel-effective-scale, 1));
   color: var(--text-muted);
   text-transform: uppercase;
   margin-bottom: 2px;
 }
 
 .cdp-pro-metric-value {
-  font-size: 14px;
+  font-size: calc(14px * var(--wm-panel-effective-scale, 1));
   font-weight: 600;
   color: var(--text);
 }
@@ -1428,7 +1437,7 @@
   display: inline-block;
   padding: 2px 8px;
   border-radius: 4px;
-  font-size: 10px;
+  font-size: calc(10px * var(--wm-panel-effective-scale, 1));
   font-weight: 600;
   text-transform: uppercase;
 }
@@ -1441,7 +1450,7 @@
 .cdp-pro-flow-table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 11px;
+  font-size: calc(11px * var(--wm-panel-effective-scale, 1));
 }
 
 .cdp-pro-flow-table th {
@@ -1450,7 +1459,7 @@
   padding: 4px 6px;
   border-bottom: 1px solid var(--border);
   color: var(--text-muted);
-  font-size: 10px;
+  font-size: calc(10px * var(--wm-panel-effective-scale, 1));
   text-transform: uppercase;
 }
 
@@ -1468,7 +1477,7 @@
   justify-content: space-between;
   align-items: center;
   padding: 4px 0;
-  font-size: 11px;
+  font-size: calc(11px * var(--wm-panel-effective-scale, 1));
   border-bottom: 1px solid var(--border);
 }
 
@@ -1484,7 +1493,7 @@
   font-weight: 600;
   padding: 2px 6px;
   border-radius: 4px;
-  font-size: 10px;
+  font-size: calc(10px * var(--wm-panel-effective-scale, 1));
 }
 
 .cdp-trade-exposure-table tbody tr.cdp-sector-row {
@@ -1502,7 +1511,7 @@
   border-top: 1px solid rgba(100, 116, 139, 0.12);
 }
 .cdp-route-path {
-  font-size: 12px;
+  font-size: calc(12px * var(--wm-panel-effective-scale, 1));
   color: #e2e8f0;
   font-family: var(--mono-font, 'JetBrains Mono', monospace);
   padding: 6px 8px;
@@ -1515,13 +1524,13 @@
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 4px 12px;
-  font-size: 11px;
+  font-size: calc(11px * var(--wm-panel-effective-scale, 1));
   color: #94a3b8;
   margin-bottom: 10px;
 }
 .cdp-route-stats span { color: #e2e8f0; font-weight: 500; }
 .cdp-bypass-heading {
-  font-size: 10px;
+  font-size: calc(10px * var(--wm-panel-effective-scale, 1));
   font-weight: 600;
   color: #94a3b8;
   text-transform: uppercase;
@@ -1544,7 +1553,7 @@
   border-radius: 6px;
   background: var(--bg-secondary, #1a1a2e);
   color: var(--text);
-  font-size: 12px;
+  font-size: calc(12px * var(--wm-panel-effective-scale, 1));
   outline: none;
 }
 
@@ -1576,7 +1585,7 @@
   border: none;
   background: transparent;
   color: var(--text);
-  font-size: 11px;
+  font-size: calc(11px * var(--wm-panel-effective-scale, 1));
   text-align: left;
   cursor: pointer;
 }
@@ -1595,13 +1604,13 @@
 
 .cdp-product-name {
   font-weight: 600;
-  font-size: 12px;
+  font-size: calc(12px * var(--wm-panel-effective-scale, 1));
   color: var(--text);
 }
 
 .cdp-product-value {
   font-weight: 600;
-  font-size: 12px;
+  font-size: calc(12px * var(--wm-panel-effective-scale, 1));
   color: var(--accent, #3b82f6);
   white-space: nowrap;
 }
@@ -1609,7 +1618,7 @@
 .cdp-product-suppliers-table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 11px;
+  font-size: calc(11px * var(--wm-panel-effective-scale, 1));
 }
 
 .cdp-product-suppliers-table th {
@@ -1618,7 +1627,7 @@
   padding: 4px 6px;
   border-bottom: 1px solid var(--border);
   color: var(--text-muted);
-  font-size: 10px;
+  font-size: calc(10px * var(--wm-panel-effective-scale, 1));
   text-transform: uppercase;
 }
 
@@ -1665,7 +1674,7 @@
 
 .cdp-risk-badge {
   display: inline-block;
-  font-size: 9px;
+  font-size: calc(9px * var(--wm-panel-effective-scale, 1));
   padding: 1px 6px;
   border-radius: 3px;
   font-weight: 600;
@@ -1692,7 +1701,7 @@
 }
 
 .cdp-risk-chokepoints {
-  font-size: 10px;
+  font-size: calc(10px * var(--wm-panel-effective-scale, 1));
   color: #64748b;
   margin-top: 2px;
 }
@@ -1702,7 +1711,7 @@
   padding: 8px;
   background: rgba(100,116,139,0.06);
   border-radius: 6px;
-  font-size: 11px;
+  font-size: calc(11px * var(--wm-panel-effective-scale, 1));
 }
 
 .cdp-recommendations:empty {
@@ -1734,7 +1743,7 @@
   align-items: center;
   gap: 8px;
   margin-bottom: 10px;
-  font-size: 12px;
+  font-size: calc(12px * var(--wm-panel-effective-scale, 1));
   color: var(--text-muted, #94a3b8);
 }
 
@@ -1752,7 +1761,7 @@
 
 .cdp-cost-shock-calc-slider-label {
   display: block;
-  font-size: 12px;
+  font-size: calc(12px * var(--wm-panel-effective-scale, 1));
   color: var(--text-muted, #94a3b8);
   margin-bottom: 6px;
 }
@@ -1771,7 +1780,7 @@
 .cdp-cost-shock-calc-ticks {
   display: flex;
   justify-content: space-between;
-  font-size: 10px;
+  font-size: calc(10px * var(--wm-panel-effective-scale, 1));
   color: var(--text-muted, #64748b);
   margin-top: 4px;
 }
@@ -1779,7 +1788,7 @@
 .cdp-cost-shock-calc-table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 12px;
+  font-size: calc(12px * var(--wm-panel-effective-scale, 1));
 }
 
 .cdp-cost-shock-calc-table th {
@@ -1823,7 +1832,7 @@
   border-top: 2px solid color-mix(in srgb, var(--accent, #60a5fa) 40%, transparent);
   margin-top: 4px;
   font-weight: 600;
-  font-size: 13px;
+  font-size: calc(13px * var(--wm-panel-effective-scale, 1));
 }
 
 .cdp-cost-shock-calc-total-label {

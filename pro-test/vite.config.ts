@@ -17,6 +17,15 @@ function isWelcomeHydrationPreload(dep: string) {
 export default defineConfig({
   plugins: [react(), tailwindcss()],
   base: '/pro/',
+  // Local WebMCP testing uses chrome://flags/#enable-webmcp-testing instead of
+  // an origin-trial token. Keep the browser security gates aligned with the
+  // production homepage so the flag-based smoke exercises the real boundary.
+  server: {
+    headers: {
+      'Origin-Agent-Cluster': '?1',
+      'Permissions-Policy': 'tools=(self)',
+    },
+  },
   html: {
     cspNonce: STATIC_SCRIPT_NONCE,
   },

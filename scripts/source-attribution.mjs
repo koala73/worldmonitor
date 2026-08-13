@@ -17,11 +17,15 @@ import {
 } from 'node:fs';
 import { dirname, extname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { isDeepStrictEqual } from 'node:util';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const MANIFEST_PATH = 'shared/source-attribution-manifest.json';
-const DOCS_PATH = 'docs/data-sources.mdx';
-// MDX comments, not HTML ones: Mintlify parses docs/data-sources.mdx as MDX v3,
+// Byte-identical copy for services whose rootDirectory is scripts/ (they cannot
+// reach ../shared). tests/edge-functions.test.mjs asserts the two match.
+const MIRROR_PATH = 'scripts/shared/source-attribution-manifest.json';
+const DOCS_PATH = 'docs/source-attribution.mdx';
+// MDX comments, not HTML ones: Mintlify parses docs/source-attribution.mdx as MDX v3,
 // which rejects `<!--` ("Unexpected character `!` before name") and fails the
 // whole deployment. The markers are interpolated into RegExp below, and `{`,
 // `*`, `}` are metacharacters, so every interpolation must go through
@@ -30,6 +34,10 @@ const DOCS_PATH = 'docs/data-sources.mdx';
 const BEGIN_MARKER = '{/* BEGIN GENERATED SOURCE ATTRIBUTION */}';
 const END_MARKER = '{/* END GENERATED SOURCE ATTRIBUTION */}';
 const MANIFEST_STATUSES = new Set(['terms-review', 'reviewed', 'excluded']);
+const CREDIT_BEARING_STATUSES = new Set(['terms-review', 'reviewed']);
+const ERROR_PRINT_LIMIT = 20;
+const REGENERATE_HINT = 'run node scripts/source-attribution.mjs --write';
+const REFERENCE_DISPLAY_LIMIT = 4;
 const MANIFEST_KIND_RE = /^(?:structured|feed|operational-status)(?:\+(?:structured|feed|operational-status))*$/;
 const LOGICAL_KIND_RE = /^(?:candidate|structured|feed|operational-status)(?:\+(?:structured|feed|operational-status))*$/;
 
@@ -464,12 +472,14 @@ const LOGICAL_ENTRIES = [
 // A few seeders build a URL from a classification/configuration document and
 // therefore do not contain the provider host beside the eventual fetch call.
 // Keep those dynamic hosts explicit so the lexical pass still provides a
-// reviewable reference and the CI gate cannot silently drop them.
+// reviewable reference and the CI gate cannot silently drop them.  The file is
+// pinned but the line deliberately is not: a line pin hard-fails the whole scan
+// the moment an unrelated edit shifts it.
 const DYNAMIC_HOSTS = [
-  { host: 'www.swfinstitute.org', kind: 'structured', path: 'scripts/seed-sovereign-wealth.mjs', line: 24 },
-  { host: 'www.ifswf.org', kind: 'structured', path: 'scripts/seed-sovereign-wealth.mjs', line: 291 },
-  { host: 'www.visionofhumanity.org', kind: 'structured', path: 'scripts/seed-resilience-static.mjs', line: 614 },
-  { host: 'earth-search.aws.element84.com', kind: 'structured', path: 'server/worldmonitor/imagery/v1/search-imagery.ts', line: 10 },
+  { host: 'www.swfinstitute.org', kind: 'structured', path: 'scripts/seed-sovereign-wealth.mjs' },
+  { host: 'www.ifswf.org', kind: 'structured', path: 'scripts/seed-sovereign-wealth.mjs' },
+  { host: 'www.visionofhumanity.org', kind: 'structured', path: 'scripts/seed-resilience-static.mjs' },
+  { host: 'earth-search.aws.element84.com', kind: 'structured', path: 'server/worldmonitor/imagery/v1/search-imagery.ts' },
 ];
 
 const EXCLUDED_HOSTS = new Set([
@@ -558,12 +568,13 @@ function hostFromUrl(raw) {
 
 export function scanUpstreamHosts(rootDir = ROOT) {
   const hosts = new Map();
-  const recordHost = (host, kind, reference) => {
+  // References are recorded per file, never per line. A line number is not part
+  // of the attribution (which records license posture and required credit), and
+  // pinning one made every unrelated edit rewrite the committed manifest.
+  const recordHost = (host, kind, path) => {
     const current = hosts.get(host) || { host, kinds: new Set(), references: [] };
     current.kinds.add(kind);
-    if (!current.references.some((ref) => ref.path === reference.path && ref.line === reference.line)) {
-      current.references.push(reference);
-    }
+    if (!current.references.some((reference) => reference.path === path)) current.references.push({ path });
     hosts.set(host, current);
   };
   for (const relativePath of walkSourceFiles(rootDir)) {
@@ -600,26 +611,27 @@ export function scanUpstreamHosts(rootDir = ROOT) {
       if (!candidate) continue;
       const host = hostFromUrl(match[0]);
       if (!host) continue;
-      const lineNumber = lineNumberIndex + 1;
       const kind = relativePath === STATUS_FILE
         ? 'operational-status'
         : FEED_FILES.has(relativePath)
           ? 'feed'
           : 'structured';
-      recordHost(host, kind, { path: relativePath, line: lineNumber });
+      recordHost(host, kind, relativePath);
     }
   }
   for (const dynamic of DYNAMIC_HOSTS) {
     if (!existsSync(join(rootDir, dynamic.path))) continue;
     const source = read(rootDir, dynamic.path);
-    const line = source.split('\n')[dynamic.line - 1] || '';
-    if (!line.toLowerCase().includes(dynamic.host.toLowerCase())) {
-      throw new Error(`source-attribution: dynamic reference ${dynamic.path}:${dynamic.line} no longer mentions ${dynamic.host}`);
+    // Require the host in URL position rather than anywhere in the file, so a
+    // leftover mention in a comment or changelog note cannot keep a provider we
+    // stopped fetching in the active inventory.
+    if (!source.toLowerCase().includes(`//${dynamic.host.toLowerCase()}`)) {
+      throw new Error(`source-attribution: dynamic reference ${dynamic.path} no longer builds a URL for ${dynamic.host}`);
     }
-    recordHost(dynamic.host, dynamic.kind, { path: dynamic.path, line: dynamic.line });
+    recordHost(dynamic.host, dynamic.kind, dynamic.path);
   }
   return [...hosts.values()]
-    .map((entry) => ({ ...entry, kinds: [...entry.kinds].sort(), references: entry.references.sort((a, b) => a.path.localeCompare(b.path) || a.line - b.line) }))
+    .map((entry) => ({ ...entry, kinds: [...entry.kinds].sort(), references: entry.references.sort((a, b) => a.path.localeCompare(b.path)) }))
     .sort((a, b) => a.host.localeCompare(b.host));
 }
 
@@ -637,26 +649,67 @@ function defaultEntry(observed) {
   };
 }
 
-function mergeEntry(observed, previous) {
+/**
+ * Every `excluded` row the generator writes itself carries one of these, so a
+ * row still wearing the text after its rule stopped applying is stale rather
+ * than curated. Human-written exclusions (PROVIDER_OVERRIDES) never match.
+ */
+const GENERATED_EXCLUSIONS = [
+  {
+    license: 'Excluded: live-video playback transport; channel/provider terms apply separately',
+    attribution: 'Excluded from the external-provider count: presentation-only HLS stream, not an ingested dataset.',
+    status: 'excluded',
+  },
+  {
+    license: 'Excluded: first-party, control-plane, UI, or rendering transport',
+    attribution: 'Excluded from the external-provider count: not an ingested upstream dataset.',
+    status: 'excluded',
+  },
+];
+
+/**
+ * Return the previous row to review status when its `excluded` no longer has a
+ * rule behind it. Two ways that happens: a host retired by an earlier
+ * regeneration is observed again, and a host excluded by a scanner rule (a
+ * playback-only origin, say) gains a real ingest reference. Both leave an
+ * active provider marked excluded, which drops it from the published count and
+ * from license review while every gate stays green — so exclusion is cleared
+ * unless a rule still asserts it.
+ */
+function clearStaleExclusion(previous, observed, override) {
+  const retired = previous.observed === false;
+  if (!retired && (previous.status !== 'excluded' || override.status === 'excluded')) return previous;
+  const fallback = defaultEntry(observed);
+  const wasGenerated = GENERATED_EXCLUSIONS.some(
+    (text) => text.license === previous.license && text.attribution === previous.attribution,
+  );
+  // The generator's own exclusion copy describes a surface this host no longer
+  // is, so it goes too. A curated credit is the reviewer's and survives.
+  return wasGenerated
+    ? { ...previous, status: fallback.status, license: fallback.license, attribution: fallback.attribution }
+    : { ...previous, status: fallback.status };
+}
+
+/**
+ * Fields this script owns for a host, which therefore cannot be curated in the
+ * manifest — `--write` reasserts them on every run. Kept separate from
+ * mergeEntry so the validator can tell a reviewer *where* to make an edit
+ * stick instead of sending them to a command that would discard it.
+ */
+function overrideFor(observed) {
+  if (PROVIDER_OVERRIDES[observed.host]) return PROVIDER_OVERRIDES[observed.host];
   const presentationOnly = observed.references.length > 0
     && observed.references.every((reference) => PRESENTATION_ONLY_FILES.has(reference.path));
-  const override = PROVIDER_OVERRIDES[observed.host]
-    || (presentationOnly
-      ? {
-        provider: observed.host,
-        license: 'Excluded: live-video playback transport; channel/provider terms apply separately',
-        attribution: 'Excluded from the external-provider count: presentation-only HLS stream, not an ingested dataset.',
-        status: 'excluded',
-      }
-      : EXCLUDED_HOSTS.has(observed.host) || observed.host.endsWith('.worldmonitor.app')
-      ? {
-        provider: observed.host,
-        license: 'Excluded: first-party, control-plane, UI, or rendering transport',
-        attribution: 'Excluded from the external-provider count: not an ingested upstream dataset.',
-        status: 'excluded',
-      }
-      : {});
-  const base = previous || defaultEntry(observed);
+  if (presentationOnly) return { provider: observed.host, ...GENERATED_EXCLUSIONS[0] };
+  if (EXCLUDED_HOSTS.has(observed.host) || observed.host.endsWith('.worldmonitor.app')) {
+    return { provider: observed.host, ...GENERATED_EXCLUSIONS[1] };
+  }
+  return {};
+}
+
+function mergeEntry(observed, previous) {
+  const override = overrideFor(observed);
+  const base = previous ? clearStaleExclusion(previous, observed, override) : defaultEntry(observed);
   return {
     ...base,
     ...override,
@@ -670,7 +723,14 @@ function mergeEntry(observed, previous) {
 export function loadManifest(rootDir = ROOT) {
   const path = join(rootDir, MANIFEST_PATH);
   if (!existsSync(path)) return { version: 1, entries: [], logicalEntries: [] };
-  const manifest = JSON.parse(readFileSync(path, 'utf8'));
+  const raw = readFileSync(path, 'utf8');
+  let manifest;
+  try {
+    manifest = JSON.parse(raw);
+  } catch (error) {
+    // A bare "Unexpected end of JSON input" names no file; say which one.
+    throw new Error(`source-attribution: ${MANIFEST_PATH} is not valid JSON (${error.message})`);
+  }
   return {
     version: manifest.version || 1,
     entries: Array.isArray(manifest.entries) ? manifest.entries : [],
@@ -678,22 +738,60 @@ export function loadManifest(rootDir = ROOT) {
   };
 }
 
-export function buildManifest(inventory, previous = { entries: [], logicalEntries: [] }) {
+function retirementRequiredMessage(host) {
+  return `${host} left the scan; confirm removal with --retire ${host} or restore a discoverable reference`;
+}
+
+export function buildManifest(
+  inventory,
+  previous = { entries: [], logicalEntries: [] },
+  { retireHosts = [] } = {},
+) {
   const previousByHost = new Map((previous.entries || []).map((entry) => [entry.host, entry]));
   const entries = inventory.map((observed) => mergeEntry(observed, previousByHost.get(observed.host)));
   const observedHosts = new Set(inventory.map((entry) => entry.host));
+  const retireHostSet = new Set(retireHosts);
+  for (const host of retireHostSet) {
+    const previousEntry = previousByHost.get(host);
+    if (!previousEntry) throw new Error(`source-attribution: cannot retire unknown host ${host}`);
+    if (observedHosts.has(host)) {
+      throw new Error(`source-attribution: cannot retire ${host} because the scanner still finds it`);
+    }
+    if (previousEntry.observed === false) {
+      throw new Error(`source-attribution: cannot retire ${host} because it is already retired`);
+    }
+  }
   // Retain retired rows as explicit exclusions rather than silently deleting a
   // credit. This makes removals reviewable and keeps historical attribution
   // visible while ensuring only currently observed hosts count as active.
+  // Rows retired by an earlier run are carried through unchanged: skipping them
+  // made a second regeneration delete the credit the first one preserved, which
+  // also stopped --write from being a fixpoint the check could compare against.
   for (const oldEntry of previous.entries || []) {
-    if (!observedHosts.has(oldEntry.host) && oldEntry.observed !== false) {
-      entries.push({
-        ...oldEntry,
+    if (observedHosts.has(oldEntry.host)) continue;
+    // A retired row keeps its credit but loses its references: the scanner no
+    // longer finds the host in those files, so publishing them would assert a
+    // source path that does not contain it. The docs cell falls back to
+    // "No current fetch observed", which is what is actually true.
+    const { references, ...retained } = oldEntry;
+    if (retained.observed !== false && !MANIFEST_STATUSES.has(retained.status)) {
+      throw new Error(`source-attribution: cannot retire ${retained.host} because its manifest status is invalid`);
+    }
+    if (
+      retained.observed !== false
+      && CREDIT_BEARING_STATUSES.has(retained.status)
+      && !retireHostSet.has(retained.host)
+    ) {
+      throw new Error(`source-attribution: ${retirementRequiredMessage(retained.host)}`);
+    }
+    entries.push(retained.observed === false
+      ? retained
+      : {
+        ...retained,
         observed: false,
         status: 'excluded',
-        attribution: oldEntry.attribution || `Excluded: ${oldEntry.host} is no longer observed in the source tree.`,
+        attribution: retained.attribution || `Excluded: ${retained.host} is no longer observed in the source tree.`,
       });
-    }
   }
   const logicalEntries = [...LOGICAL_ENTRIES, ...(previous.logicalEntries || [])]
     .filter((entry, index, all) => all.findIndex((candidate) => candidate.provider === entry.provider && candidate.host === entry.host) === index)
@@ -716,32 +814,66 @@ export function validateManifest(inventory, manifest) {
     if (typeof entry.observed !== 'boolean') errors.push(`manifest entry ${label} observed must be boolean`);
     if (typeof entry.kind !== 'string' || !MANIFEST_KIND_RE.test(entry.kind)) errors.push(`invalid manifest kind for ${label}`);
     if (typeof entry.status !== 'string' || !MANIFEST_STATUSES.has(entry.status)) errors.push(`invalid manifest status for ${label}`);
-    if (entry.observed === true) {
-      if (!Array.isArray(entry.references) || entry.references.length === 0) {
-        errors.push(`manifest entry ${label} observed rows need at least one reference`);
-      } else {
-        for (const reference of entry.references) {
-          if (!reference || typeof reference.path !== 'string' || !reference.path.trim() || !Number.isInteger(reference.line) || reference.line < 1) {
-            errors.push(`manifest entry ${label} has an invalid source reference`);
-          }
-        }
+    if (entry.references !== undefined && !Array.isArray(entry.references)) {
+      errors.push(`manifest entry ${label} references must be an array`);
+    }
+    const references = Array.isArray(entry.references) ? entry.references : [];
+    if (entry.observed === true && references.length === 0) {
+      errors.push(`manifest entry ${label} observed rows need at least one reference`);
+    }
+    for (const reference of references) {
+      if (!reference || typeof reference.path !== 'string' || !reference.path.trim()) {
+        errors.push(`manifest entry ${label} has an invalid source reference`);
+      } else if (Object.keys(reference).length !== 1) {
+        // A line number here is the drift the rest of this validator exists to
+        // stop: it changes on every unrelated edit and credits nobody.
+        errors.push(`manifest entry ${label} reference ${reference.path} carries fields beyond path`);
       }
     }
     if (manifestByHost.has(entry.host)) errors.push(`duplicate manifest entry for ${entry.host}`);
     manifestByHost.set(entry.host, entry);
   }
   for (const entry of inventory) {
-    const manifestEntry = manifestByHost.get(entry.host);
-    if (!manifestEntry) errors.push(`missing manifest entry for ${entry.host}`);
-    else if (manifestEntry.observed !== true) {
-      errors.push(`manifest must mark current host ${entry.host} observed; excluded rows need an explicit exclusion reason`);
+    if (!Array.isArray(entry.references) || !Array.isArray(entry.kinds)) {
+      // mergeEntry below reads both. Report the bad row instead of letting a
+      // caller of this error-collecting function receive a raw TypeError.
+      errors.push(`inventory entry ${entry.host || '(unknown host)'} must carry kinds and references arrays`);
+      continue;
     }
+    const manifestEntry = manifestByHost.get(entry.host);
+    if (!manifestEntry) {
+      errors.push(`missing manifest entry for ${entry.host}`);
+      continue;
+    }
+    if (manifestEntry.observed !== true) {
+      errors.push(`manifest must mark current host ${entry.host} observed; excluded rows need an explicit exclusion reason`);
+      continue;
+    }
+    // Host-set membership alone cannot see a row whose scan-derived fields have
+    // gone stale, which is how a committed manifest drifted from the source tree
+    // while this gate stayed green. Every observed row must already equal what
+    // --write would produce for it, so the check and the generator agree.
+    const rebuilt = mergeEntry(entry, manifestEntry);
+    const stale = Object.keys(rebuilt).filter((field) => !isDeepStrictEqual(rebuilt[field], manifestEntry[field]));
+    if (!stale.length) continue;
+    // Sending a reviewer to --write for a field this script owns would discard
+    // the edit they just made to a compliance artifact. Name the real owner.
+    const owned = stale.filter((field) => field in overrideFor(entry));
+    errors.push(owned.length
+      ? `manifest entry ${entry.host} disagrees with this script on ${owned.join(', ')}; those fields are set in scripts/source-attribution.mjs (PROVIDER_OVERRIDES or an exclusion rule) and --write will overwrite the manifest — edit the script instead`
+      : `stale manifest entry for ${entry.host}: ${stale.join(', ')} no longer match the source tree; ${REGENERATE_HINT}`);
   }
   for (const entry of manifestEntries) {
     if (typeof entry.provider !== 'string' || !entry.provider.trim() || typeof entry.license !== 'string' || !entry.license.trim() || typeof entry.attribution !== 'string' || !entry.attribution.trim()) {
       errors.push(`incomplete attribution metadata for ${entry.host || '(unknown host)'}`);
     }
-    if (entry.observed && !observedByHost.has(entry.host)) errors.push(`manifest marks ${entry.host} observed but scanner found no current reference`);
+    if (entry.observed && !observedByHost.has(entry.host)) {
+      // Two very different causes, one of which --write resolves destructively:
+      // the provider really was removed, or the scanner simply lost sight of a
+      // URL that moved somewhere lexical discovery cannot see. Say both, because
+      // regenerating on the second retires a provider the code still fetches.
+      errors.push(`manifest marks ${entry.host} observed but scanner found no current reference — ${retirementRequiredMessage(entry.host)} or add it to DYNAMIC_HOSTS`);
+    }
   }
   for (const entry of manifest.logicalEntries || []) {
     const label = entry?.provider || '(unknown provider)';
@@ -787,7 +919,12 @@ export function renderAttributionSection(inventory, manifest) {
   const entries = [...(manifest.entries || []), ...(manifest.logicalEntries || [])]
     .sort((a, b) => (a.provider || '').localeCompare(b.provider || '') || a.host.localeCompare(b.host));
   const rows = entries.map((entry) => {
-    const refs = (entry.references || []).slice(0, 4).map((ref) => `${ref.path}:${ref.line}`).join(', ');
+    const references = entry.references || [];
+    // Say when the list is cut. A reader auditing where a provider is used
+    // otherwise reads four paths as the complete answer.
+    const refs = references.length > REFERENCE_DISPLAY_LIMIT
+      ? `${references.slice(0, REFERENCE_DISPLAY_LIMIT).map((reference) => reference.path).join(', ')}, +${references.length - REFERENCE_DISPLAY_LIMIT} more`
+      : references.map((reference) => reference.path).join(', ');
     const surface = entry.observed === false ? 'Excluded / candidate' : entry.kind;
     const sourceRef = refs || (entry.observed === false ? 'No current fetch observed' : 'Manifest-only review row');
     return `| ${markdownCell(entry.provider)} (${markdownCell(entry.host)}) | ${markdownCell(surface)} — ${markdownCell(sourceRef)} | ${markdownCell(entry.license)} | ${markdownCell(entry.attribution)} | ${markdownCell(entry.status)} |`;
@@ -838,38 +975,125 @@ export function buildSourceAttributionStats({ rootDir = ROOT } = {}) {
   return sourceAttributionStats(inventory, manifest);
 }
 
-function printStats(stats) {
-  console.log(`source-attribution: ${stats.activeHosts} active hosts (${stats.structuredHosts} structured/API, ${stats.feedHosts} feed, ${stats.operationalStatusHosts} operational-status; ${stats.reviewNeeded} terms-review)`);
+function printStats(stats, log = console.log) {
+  log(`source-attribution: ${stats.activeHosts} active hosts (${stats.structuredHosts} structured/API, ${stats.feedHosts} feed, ${stats.operationalStatusHosts} operational-status; ${stats.reviewNeeded} terms-review)`);
 }
 
-function main() {
-  const write = process.argv.includes('--write');
-  const inventory = scanUpstreamHosts(ROOT);
-  const previous = loadManifest(ROOT);
-  if (write) {
-    const manifest = buildManifest(inventory, previous);
-    writeFileSync(join(ROOT, MANIFEST_PATH), `${JSON.stringify(manifest, null, 2)}\n`);
-    updateDocs(ROOT, renderAttributionSection(inventory, manifest));
-    printStats(sourceAttributionStats(inventory, manifest));
-    return;
-  }
+function serializeManifest(manifest) {
+  return `${JSON.stringify(manifest, null, 2)}\n`;
+}
+
+/**
+ * The whole `--check` verdict, exported so a test can prove each way it fails
+ * rather than only that it currently passes. Returns every error it found and,
+ * when clean, the stats the CLI prints.
+ */
+export function checkSourceAttribution(rootDir = ROOT) {
+  // Before anything else, because an absent manifest otherwise surfaces as one
+  // "missing manifest entry" per host and never names the real cause.
+  const manifestPath = join(rootDir, MANIFEST_PATH);
+  if (!existsSync(manifestPath)) return { errors: [`${MANIFEST_PATH} is missing; ${REGENERATE_HINT}`] };
+  const docsPath = join(rootDir, DOCS_PATH);
+  if (!existsSync(docsPath)) return { errors: [`${DOCS_PATH} is missing; ${REGENERATE_HINT}`] };
+  const inventory = scanUpstreamHosts(rootDir);
+  const previous = loadManifest(rootDir);
   const errors = validateManifest(inventory, previous);
-  if (errors.length) {
-    console.error(`source-attribution: ${errors.length} manifest error(s)`);
-    for (const error of errors) console.error(`- ${error}`);
-    process.exitCode = 1;
-    return;
+  if (errors.length) return { errors };
+  // Compare the committed manifest against a rebuild, not against itself. The
+  // per-row validation above covers observed hosts; this catches the rest —
+  // retired rows, logical entries, and formatting — so --check and --write can
+  // no longer disagree about what the committed artifact should contain.
+  const rebuilt = serializeManifest(buildManifest(inventory, previous));
+  if (readFileSync(manifestPath, 'utf8') !== rebuilt) {
+    return { errors: [`${MANIFEST_PATH} is out of date; ${REGENERATE_HINT}`] };
   }
-  const expectedSection = renderAttributionSection(inventory, previous);
-  const docs = read(ROOT, DOCS_PATH);
-  const markerPattern = inventoryMarkerPattern(false);
-  const actual = docs.match(markerPattern)?.[0];
-  if (actual !== expectedSection) {
-    console.error('source-attribution: docs/data-sources.mdx is out of date; run node scripts/source-attribution.mjs --write');
-    process.exitCode = 1;
-    return;
+  const mirrorPath = join(rootDir, MIRROR_PATH);
+  if (!existsSync(mirrorPath) || readFileSync(mirrorPath, 'utf8') !== rebuilt) {
+    return { errors: [`${MIRROR_PATH} is out of sync with ${MANIFEST_PATH}; ${REGENERATE_HINT}`] };
   }
-  printStats(sourceAttributionStats(inventory, previous));
+  const actual = matchGeneratedAttributionSection(readFileSync(docsPath, 'utf8'));
+  if (actual !== renderAttributionSection(inventory, previous)) {
+    return { errors: [`${DOCS_PATH} is out of date; ${REGENERATE_HINT}`] };
+  }
+  return { errors: [], stats: sourceAttributionStats(inventory, previous) };
 }
 
-if (process.argv[1] && process.argv[1].endsWith('scripts/source-attribution.mjs')) main();
+function parseRetireHosts(args) {
+  const retireHosts = [];
+  for (let index = 0; index < args.length; index += 1) {
+    if (args[index] !== '--retire') continue;
+    const host = args[index + 1];
+    if (!host || host.startsWith('--')) {
+      throw new Error('source-attribution: --retire requires a host');
+    }
+    retireHosts.push(host);
+    index += 1;
+  }
+  return [...new Set(retireHosts)];
+}
+
+export function runSourceAttribution({
+  rootDir = ROOT,
+  args = [],
+  log = console.log,
+  warn = console.warn,
+  reportError = console.error,
+} = {}) {
+  let retireHosts;
+  try {
+    retireHosts = parseRetireHosts(args);
+  } catch (error) {
+    reportError(error.message);
+    return 1;
+  }
+  if (retireHosts.length && !args.includes('--write')) {
+    reportError('source-attribution: --retire requires --write');
+    return 1;
+  }
+  if (args.includes('--write')) {
+    try {
+      const inventory = scanUpstreamHosts(rootDir);
+      const previous = loadManifest(rootDir);
+      const manifest = buildManifest(inventory, previous, { retireHosts });
+      // Render and count before writing anything. Both throw on a manifest row
+      // that no longer validates, and a row retired by an earlier run is now kept
+      // rather than dropped — so writing first would leave the manifest rewritten,
+      // the docs stale, and every rerun repeating it.
+      const section = renderAttributionSection(inventory, manifest);
+      const stats = sourceAttributionStats(inventory, manifest);
+      const serialized = serializeManifest(manifest);
+      writeFileSync(join(rootDir, MANIFEST_PATH), serialized);
+      // The mirror is what `scripts/`-rooted Railway services read. Writing it
+      // here keeps a manual `cp` from being the only thing holding them equal.
+      writeFileSync(join(rootDir, MIRROR_PATH), serialized);
+      updateDocs(rootDir, section);
+      const retired = manifest.entries.filter((entry) => entry.observed === false).map((entry) => entry.host);
+      const newlyRetired = retired.filter(
+        (host) => (previous.entries || []).some((entry) => entry.host === host && entry.observed !== false),
+      );
+      if (newlyRetired.length) {
+        warn(`source-attribution: retired ${newlyRetired.length} host(s): ${newlyRetired.join(', ')}`);
+      }
+      printStats(stats, log);
+    } catch (error) {
+      reportError(error.message);
+      return 1;
+    }
+    return 0;
+  }
+  const { errors, stats } = checkSourceAttribution(rootDir);
+  if (errors.length) {
+    reportError(`source-attribution: ${errors.length} manifest error(s)`);
+    // A single stale scan can fault every row, so cap the listing: an unbounded
+    // dump buries the first (and usually only) cause the reader needs.
+    for (const error of errors.slice(0, ERROR_PRINT_LIMIT)) reportError(`- ${error}`);
+    if (errors.length > ERROR_PRINT_LIMIT) reportError(`- ...and ${errors.length - ERROR_PRINT_LIMIT} more`);
+    return 1;
+  }
+  printStats(stats, log);
+  return 0;
+}
+
+if (process.argv[1] && process.argv[1].endsWith('scripts/source-attribution.mjs')) {
+  process.exitCode = runSourceAttribution({ args: process.argv.slice(2) });
+}

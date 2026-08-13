@@ -271,6 +271,45 @@ after(() => {
 });
 
 describe('feed catalog drift', () => {
+  it('does not add unreviewed cross-category aliases for one server feed URL', () => {
+    // fetchAndParseRss caches parsed items by variant + URL, and each parsed
+    // item carries the feed name. Reusing one URL under different names in
+    // sibling categories lets a warm cache relabel one category's items; the
+    // client then drops them after they consumed the server category cap.
+    // Keep the two pre-existing aliases explicit until their panels can be
+    // reconciled, and reject every new instance of this failure mode.
+    const reviewedAliases = new Set([
+      'commodity|https://www.cnbc.com/id/100003114/device/rss/rss.html|finance:CNBC|markets:CNBC Markets',
+      'full|https://news.google.com/rss/search?q=(oil%20price%20OR%20OPEC%20OR%20%22natural%20gas%22%20OR%20pipeline%20OR%20LNG)%20when%3A2d&hl=en-US&gl=US&ceid=US:en|commodities:Oil & Gas|energy:Oil & Gas',
+    ]);
+    const unreviewedAliases: string[] = [];
+
+    for (const [variant, categories] of Object.entries(serverFeeds.VARIANT_FEEDS)) {
+      const byUrl = new Map<string, string[]>();
+      for (const [category, entries] of Object.entries(categories)) {
+        for (const feed of entries) {
+          if (typeof feed.url !== 'string') continue;
+          const labels = byUrl.get(feed.url) ?? [];
+          labels.push(`${category}:${feed.name}`);
+          byUrl.set(feed.url, labels);
+        }
+      }
+      for (const [url, labels] of byUrl) {
+        if (labels.length < 2) continue;
+        const signature = `${variant}|${url}|${labels.sort().join('|')}`;
+        if (!reviewedAliases.has(signature)) unreviewedAliases.push(signature);
+      }
+    }
+
+    assert.deepEqual(
+      unreviewedAliases,
+      [],
+      'A server digest variant reuses one feed URL under multiple category/source aliases. ' +
+        'Because the parsed RSS cache is keyed by variant + URL and retains source names, ' +
+        'remove the duplicate alias or explicitly review and grandfather it.',
+    );
+  });
+
   it('every default-enabled source resolves to a configured feed', () => {
     const configured = new Set(feeds.listConfiguredFeedNames());
     const dangling = [...feeds.getAllDefaultEnabledSources()]

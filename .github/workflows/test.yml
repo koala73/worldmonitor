@@ -56,7 +56,7 @@ jobs:
           # cross-directory-import + native-dep breakage class documented in
           # tests/dockerfile-digest-notifications-imports.test.mjs.
           DIGEST=$(echo "$FILES" | awk '
-            /^(scripts\/|shared\/|server\/_shared\/|api\/|Dockerfile\.digest-notifications|package\.json|package-lock\.json)/ { count++ }
+            /^(scripts\/|shared\/|server\/_shared\/|api\/|\.dockerignore$|Dockerfile\.digest-notifications|package\.json|package-lock\.json)/ { count++ }
             END { print count + 0 }
           ')
           echo "digest=$( [ "$DIGEST" -gt 0 ] && echo true || echo false )" >> "$GITHUB_OUTPUT"
@@ -80,6 +80,7 @@ jobs:
           # unit suite. Run a real PostgreSQL gate only when its managed image,
           # migration, patch, focused tests, or this workflow changes.
           UMAMI=$(echo "$FILES" | awk '
+            /^\.dockerignore$/ { count++ }
             /^Dockerfile\.umami$/ { count++ }
             /^Dockerfile\.umami-retention$/ { count++ }
             /^docker\/umami\// { count++ }
@@ -166,35 +167,27 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          # The health-probe cutover gate compares the exact PR base with the
+          # candidate tree. A shallow checkout would make that gate vacuous.
+          fetch-depth: 0
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: '24'
           cache: 'npm'
       - run: npm ci
+      - name: Enforce health-probe cutovers
+        env:
+          HEALTH_PROBE_CUTOVER_BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: node --import tsx scripts/check-health-probe-cutovers.mts "$HEALTH_PROBE_CUTOVER_BASE"
       - name: Build dashboard artifacts for built-output tests
         run: VITE_VARIANT=full ./node_modules/.bin/vite build
       - run: WM_EXPECT_BUILT_OUTPUT=1 npm run test:data
       - name: Edge function bundle check
-        run: |
-          # JS edge entries (existing loop, unchanged).
-          find api/ -name "*.js" -not -name "_*" -not -name "*.test.*" | while read f; do
-            npx esbuild "$f" --bundle --format=esm --platform=browser --outfile=/dev/null || {
-              echo "ERROR: esbuild failed to bundle $f"
-              exit 1
-            }
-          done
-          # TS edge entries — opt-in allowlist. Most TS endpoints pull in
-          # loaders esbuild doesn't ship by default (e.g. @vercel/og WASM
-          # imports under api/brief/carousel/...), so we don't auto-include
-          # api/*.ts the way we do api/*.js. Add a new entry to this list
-          # ONLY after confirming `npx esbuild <file> --bundle --format=esm
-          # --platform=browser --outfile=/dev/null` succeeds locally.
-          for f in api/mcp.ts; do
-            npx esbuild "$f" --bundle --format=esm --platform=browser --outfile=/dev/null || {
-              echo "ERROR: esbuild failed to bundle $f"
-              exit 1
-            }
-          done
+        # Shared checker with caller-specific profiles. Tracked files are the
+        # deployable contract, so ignored Node sidecar bundles left by local
+        # builds are never inputs.
+        run: node scripts/check-edge-function-bundles.mjs --caller=ci
       - name: Sidecar handler bundles build (#5902)
         # The desktop sidecar loads esbuild-bundled api/{domain}/v1/[rpc].js
         # handlers whose import graph spans src/ and server/ (via the @/
@@ -483,6 +476,60 @@ jobs:
       # regression guard no job invokes reports green while the regression
       # ships.
       - run: npm run test:e2e:ci-smoke
+      # playwright.config.ts already retains a trace, a video and a screenshot
+      # for every failed test (retain-on-failure) — but nothing collected them,
+      # so they died with the runner and every flake in this required gate was
+      # undiagnosable after the fact (#6496: a "Target page, context or browser
+      # has been closed" close whose cause the log could not name).
+      #
+      # ONE UPLOAD PER PLAYWRIGHT RUN, each immediately after its own. Playwright
+      # clears the output dir when it starts, so a single upload at the end of
+      # the job collects only the LAST run's leftovers: run 31587725167 proved
+      # it, uploading the WebMCP step's screenshots while the ci-smoke flake's
+      # trace — the whole point of the upload — had already been deleted.
+      #
+      # `!cancelled()`, NOT `failure()`: retries mean the most common flake here
+      # never reddens the job at all. Run 31586695334 finished green-but-flaky —
+      # settings-source-live-apply failed at bootUntilNewsSettles and passed on
+      # retry — and Playwright kept the failed attempt's trace either way. A
+      # `failure()` guard would have thrown away the only evidence of the exact
+      # class of bug this step exists to catch.
+      #
+      # `ignore`, not `warn`: a clean ci-smoke run leaves nothing but a hidden
+      # .last-run.json, which the action skips, and a warning printed on every
+      # green run is noise that teaches people to skip the log.
+      #
+      # run_attempt is in the name because a re-run keeps the same run_id and
+      # v6 rejects a duplicate artifact name within one run — that collision
+      # would land exactly when someone re-runs the job to chase a flake.
+      - name: Upload ci-smoke Playwright artifacts
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: playwright-ci-smoke-${{ github.run_id }}-${{ github.run_attempt }}
+          path: test-results/
+          if-no-files-found: ignore
+          retention-days: 14
+      # WebMCP is exposed only by an enabled Chrome milestone. Keep this probe
+      # separate from the bundled-Chromium smoke so an unavailable or stale
+      # system Chrome fails the required PR job instead of silently skipping.
+      - name: Run strict WebMCP iframe smoke in Chrome
+        id: webmcp
+        run: npm run test:e2e:webmcp
+      # Gated on the WebMCP step having actually run: when ci-smoke fails this
+      # step is skipped, and without the guard this upload would re-publish the
+      # ci-smoke output the step above already has, under a second name.
+      # embed.spec.ts attaches screenshots on success, so unlike the ci-smoke
+      # artifact this one appears on green runs too — its presence is not by
+      # itself a failure signal.
+      - name: Upload WebMCP Playwright artifacts
+        if: ${{ !cancelled() && steps.webmcp.outcome != 'skipped' }}
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: playwright-webmcp-${{ github.run_id }}-${{ github.run_attempt }}
+          path: test-results/
+          if-no-files-found: ignore
+          retention-days: 14
 
   resilience-validation-smoke:
     needs: changes

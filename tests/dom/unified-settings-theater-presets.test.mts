@@ -60,9 +60,11 @@ vi.mock('@/services/auth-state', async (importOriginal) => ({
 
 vi.mock('@/services/entitlements', () => ({
   getEntitlementState: () => entitlementState,
+  getEntitlementVerificationStatus: () => 'ready',
   hasFeature: () => true,
   isEntitled: () => true,
   onEntitlementChange: () => () => {},
+  onEntitlementVerificationChange: () => () => {},
 }));
 
 vi.mock('@/services/panel-gating', () => ({
