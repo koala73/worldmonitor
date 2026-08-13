@@ -702,12 +702,34 @@ describe('welcome landing page routing', () => {
       );
     }
 
-    for (const variant of ['full', 'tech', 'finance', 'commodity', 'happy']) {
-      assert.ok(
-        middlewareSource.includes(`href="${variantUrls[variant]}"`),
-        `AI crawler body must link ${variant} to its dashboard canonical`
-      );
-    }
+    assert.ok(
+      middlewareSource.includes(`href="${variantUrls.full}"`),
+      'AI crawler body must link the full dashboard canonical',
+    );
+    assert.match(
+      middlewareSource,
+      /const AI_CRAWLER_VARIANT_LINKS = Object\.values\(VARIANT_HOST_MAP\)/,
+      'AI crawler body links must be derived from the canonical variant host map',
+    );
+    assert.match(
+      middlewareSource,
+      /const og = VARIANT_OG\[variant\]/,
+      'AI crawler body link labels and URLs must come from variant metadata',
+    );
+    assert.match(
+      middlewareSource,
+      /escHtml\(og\.url\)/,
+      'AI crawler body link URLs must stay HTML-escaped',
+    );
+    assert.match(
+      middlewareSource,
+      /escHtml\(og\.name\)/,
+      'AI crawler body link labels must stay HTML-escaped',
+    );
+    assert.ok(
+      middlewareSource.includes('${AI_CRAWLER_VARIANT_LINKS}'),
+      'AI crawler body must render the generated variant links',
+    );
   });
 
   it('redirects legacy root map-state deep links to /dashboard before welcome routing', () => {
