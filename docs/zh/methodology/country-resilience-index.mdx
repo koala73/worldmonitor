@@ -802,7 +802,8 @@ v17.1 在评分时将修复扩展到 `liquidReserveAdequacy`（无种子器变�
 
 - **缓存代际已轮换**：分数/排名从 `v27` 到 `v28`，历史从 `v21` 到 `v22`，区间从 `v10` 到 `v11`。这避免教育专用和金融启用的分数、趋势、排名及稳定区间混用。
 - **验收脚本**：`scripts/dry-run-resilience-financial-system-exposure-flip.mjs` 对同一生产 Upstash 快照执行完整主权国家范围的关闭标志和开启标志对照。脚本只读 Redis；未解析的读取会失败关闭，并且不会写入工件。
-- **验收门**：Spearman 至少为 0.85；至少 60% 的国家整体变化小于 3 分；非制裁队列国家不得有超过 12 分的整体变化。标题合格变化和来源故障说明保留在已提交工件中。
+- **验收结果（196 国，2026-08-13）**：Spearman **0.9983**；**196/196（100%）** 的整体变化小于 3 分；最大绝对变化 **2.23**；非制裁国家没有超过 12 分的变化；标题合格状态变化为 **0**。捕获解析了 **650** 个 Redis 键，并使用分数/排名 `v28`、历史 `v22`、区间 `v11`。同一次运行输出了已知的静态 WGI 来源故障诊断，因此这是金融启用的配对量测，不代表所有上游来源均健康。
+- **验收门**：Spearman 至少为 0.85；至少 60% 的国家整体变化小于 3 分；非制裁队列国家不得有超过 12 分的整体变化。标题合格变化和金融来源故障行保留在已提交工件中。
 - **问题状态**：#6461 已由 #6515 关闭，后者落地了剩余的“缺失即强度”修复，因此不需要修改已关闭问题的优先级。
 
-操作步骤见 [`financial-system-exposure-flag-flip-runbook.md`](./financial-system-exposure-flag-flip-runbook.md)；量测结果见已提交的 `resilience-financial-system-exposure-acceptance-{date}.json` 快照。
+操作步骤见 [`financial-system-exposure-flag-flip-runbook.md`](./financial-system-exposure-flag-flip-runbook.md)；量测结果见已提交的 [`resilience-financial-system-exposure-acceptance-2026-08-13.json`](../snapshots/resilience-financial-system-exposure-acceptance-2026-08-13.json) 快照。

@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
+import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
 import {
@@ -91,4 +92,28 @@ test('production reads preserve the WB debt envelope required by the fail-closed
     normalizeProductionRead('economic:bis-lbs:v1', envelope),
     envelope.data,
   );
+});
+
+test('the committed production acceptance artifact is internally consistent', () => {
+  const artifact = JSON.parse(readFileSync(
+    new URL('../docs/snapshots/resilience-financial-system-exposure-acceptance-2026-08-13.json', import.meta.url),
+    'utf8',
+  ));
+
+  assert.equal(validateAcceptanceArtifact(artifact), 'PASS');
+  assert.deepEqual(artifact.capture.cacheNamespaces, {
+    score: 'resilience:score:v28:',
+    ranking: 'resilience:ranking:v28',
+    history: 'resilience:history:v22:',
+    intervals: 'resilience:intervals:v11:',
+  });
+  assert.equal(artifact.capture.redis.resolvedKeyCount, 650);
+  assert.equal(artifact.acceptanceGates.gates[0].evidence.spearman >= 0.998, true);
+  assert.equal(artifact.acceptanceGates.gates[1].evidence.underThreeCount, 196);
+  assert.equal(artifact.acceptanceGates.gates[1].evidence.maxAbsDelta < 2.24, true);
+  assert.equal(artifact.acceptanceGates.gates[2].evidence.changes.length, 0);
+  const harnessSha256 = createHash('sha256')
+    .update(readFileSync(new URL('../scripts/dry-run-resilience-financial-system-exposure-flip.mjs', import.meta.url)))
+    .digest('hex');
+  assert.equal(artifact.capture.harnessSha256, harnessSha256);
 });

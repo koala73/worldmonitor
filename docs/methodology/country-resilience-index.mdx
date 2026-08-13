@@ -938,10 +938,11 @@ Self-assessed against the standard composite-indicator review axes on a 0-10 sca
 
 - **Cache generations rotated** — score/ranking `v27`→`v28`, history `v21`→`v22`, and intervals `v10`→`v11`. The rotation keeps education-only and finance-on scores, history, rankings, and stability bands separate.
 - **Acceptance harness.** `scripts/dry-run-resilience-financial-system-exposure-flip.mjs` reads one production Upstash snapshot without writing Redis, then compares flag-off and flag-on full-universe scores. It fails closed on unresolved reads and records source and harness provenance in the committed acceptance artifact.
-- **Acceptance gates.** Spearman must be at least 0.85, at least 60% of countries must move by less than 3 overall points, and no non-sanctions country may move by more than 12 points. Headline-eligibility changes and source-failure caveats remain explicit in the artifact.
+- **Measured acceptance (196 countries, 2026-08-13).** Spearman **0.9983**; **196/196 (100%)** moved by less than 3 overall points; maximum absolute movement **2.23**; no non-sanctions country moved by more than 12; headline eligibility changed for **0** countries. The capture resolved **650** Redis keys and used score/ranking `v28`, history `v22`, and intervals `v11`. The run emitted the known static WGI source-failure diagnostics, so this is a paired finance activation measurement, not an all-source health claim.
+- **Acceptance gates.** Spearman must be at least 0.85, at least 60% of countries must move by less than 3 overall points, and no non-sanctions country may move by more than 12 points. Headline-eligibility changes and finance source-failure rows remain explicit in the artifact.
 - **Issue state.** #6461 is already closed by #6515, which landed the residual absence-as-strength fix. No issue reprioritization mutation is required.
 
-See [`financial-system-exposure-flag-flip-runbook.md`](./financial-system-exposure-flag-flip-runbook.md) and the committed `resilience-financial-system-exposure-acceptance-{date}.json` snapshot for the operator procedure and measured result.
+See [`financial-system-exposure-flag-flip-runbook.md`](./financial-system-exposure-flag-flip-runbook.md) and the committed [`resilience-financial-system-exposure-acceptance-2026-08-13.json`](../snapshots/resilience-financial-system-exposure-acceptance-2026-08-13.json) snapshot for the operator procedure and measured result.
 
 ### Editorial notes
 

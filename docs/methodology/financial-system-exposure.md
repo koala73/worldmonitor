@@ -324,9 +324,11 @@ The debt slot uses the `not-applicable` imputation class. The published dimensio
 
 ### Post-flip production acceptance (#6511)
 
-The committed artifact [`resilience-financial-system-exposure-acceptance-{date}.json`](../snapshots/resilience-financial-system-exposure-acceptance-{date}.json) is the closeout evidence for the live activation. The read-only harness runs the full sovereign universe twice against the same production Upstash snapshot: a flag-off counterfactual and the flag-on production formula. It records the harness commit, source-input digest, resolved Redis key count, active cache namespaces, per-country score rows, representative countries, and the acceptance gates. It does not write Redis or create an artifact when a required read is unresolved.
+The committed artifact [`resilience-financial-system-exposure-acceptance-2026-08-13.json`](../snapshots/resilience-financial-system-exposure-acceptance-2026-08-13.json) is the closeout evidence for the live activation. The read-only harness runs the full sovereign universe twice against the same production Upstash snapshot: a flag-off counterfactual and the flag-on production formula. It records the harness commit, source-input digest, resolved Redis key count, active cache namespaces, per-country score rows, representative countries, and the acceptance gates. It does not write Redis or create an artifact when a required read is unresolved.
 
 The acceptance thresholds are **Spearman ≥ 0.85**, **at least 60% of countries with |Δ| < 3 overall**, and **no non-sanctions country with |Δ| > 12 overall**. The artifact records the measured values and any headline-eligibility changes. A source-failure state is retained as a caveat; it is not silently treated as healthy coverage.
+
+**Measured acceptance (2026-08-13, 196 countries):** Spearman **0.9983**; **196/196 (100%)** moved by less than 3 overall points; maximum absolute movement **2.23**; no non-sanctions country moved by more than 12; headline eligibility changed for **0** countries. Representative finance scores after activation are US **84** at coverage 0.76, PT **66** at 0.76, MC **55** at 0.20, RU **15** at 1.0, TD **56** at 0.76, and VE **15** at 0.65. The capture resolved **650** Redis keys and used score/ranking `v28`, history `v22`, and intervals `v11`. The same run emitted the known static WGI source-failure diagnostics; treat this as a paired finance activation measurement, not a claim that every upstream source was healthy.
 
 ## Data sources and licensing
 
