@@ -2,7 +2,7 @@
 
 > Real-time global intelligence dashboard — AI-powered news aggregation, geopolitical monitoring, and infrastructure tracking in a unified situational awareness interface.
 
-World Monitor is an open-source (AGPL-3.0) intelligence platform that aggregates 500+ curated news feeds, 56 map layer types, and multiple AI models into a single dashboard. It runs as a web app, installable PWA, and native desktop application (Tauri) for macOS, Windows, and Linux.
+World Monitor is an open-source (AGPL-3.0) intelligence platform that aggregates 500+ curated news feeds, 56 map layer types, 109 concrete panel implementations, and multiple AI models into a single dashboard. It runs as a web app, installable PWA, and native desktop application (Tauri) for macOS, Windows, and Linux.
 
 A single codebase produces six specialized variants — geopolitical, technology, finance, commodity, happy, and energy — each with distinct feeds, panels, map layers, and branding. The multi-variant architecture uses build-time selection via the VITE_VARIANT environment variable, with runtime switching available via the header bar. Each variant tree-shakes unused data files so audience-specific builds can omit unrelated panels, feeds, and map registries.
 
@@ -253,6 +253,7 @@ Build-time: Vite HTML plugin transforms meta tags, Open Graph data, PWA manifest
 ## Desktop Application
 
 Native desktop app built with Tauri (Rust + Node.js sidecar). The sidecar mirrors all 60+ cloud API handlers locally with gzip compression. Features:
+
 - OS keychain integration for configured upstream API keys (macOS Keychain, Windows Credential Manager)
 - Token-authenticated sidecar prevents unauthorized local access
 - Cloud fallback when local handlers fail

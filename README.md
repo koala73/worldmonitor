@@ -52,6 +52,7 @@
 
 - **500+ curated news feeds** across 15 categories, AI-synthesized into briefs
 - **Dual map engine** — 3D globe (globe.gl) and WebGL flat map (deck.gl) with 56 map layer types
+- **Panel inventory** — 109 concrete panel implementations across six specialized variants
 - **Cross-stream correlation** — military, economic, disaster, and escalation signal convergence
 - **Country Instability Index (CII)** — server-authoritative CII v8 stress scoring for 31 Tier-1 countries
 - **Finance radar** — 29 stock exchanges, commodities, crypto, and 7-signal market composite

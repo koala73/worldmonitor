@@ -2,7 +2,7 @@
 
 > Real-time global intelligence dashboard — AI-powered news aggregation, geopolitical monitoring, and infrastructure tracking in a unified situational awareness interface.
 
-World Monitor is an open-source (AGPL-3.0) intelligence platform that aggregates 500+ news feeds, 56 map layer types, and multiple AI models into a single dashboard. Used by 2M+ people across 190+ countries, as featured in WIRED. It runs as a web app, installable PWA, and native desktop application (Tauri) for macOS, Windows, and Linux.
+World Monitor is an open-source (AGPL-3.0) intelligence platform that aggregates 500+ news feeds, 56 map layer types, 109 concrete panel implementations, and multiple AI models into a single dashboard. Used by 2M+ people across 190+ countries, as featured in WIRED. It runs as a web app, installable PWA, and native desktop application (Tauri) for macOS, Windows, and Linux.
 
 A single codebase produces six specialized variants — geopolitical (World Monitor), technology (Tech Monitor), finance (Finance Monitor), commodities (Commodity Monitor), positive news (Happy Monitor), and energy (Energy Monitor) — each with distinct feeds, panels, map layers, and branding. The multi-variant architecture uses build-time selection via the VITE_VARIANT environment variable, with runtime switching available via the header bar.
 
