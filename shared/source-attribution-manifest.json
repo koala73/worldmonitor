@@ -5162,6 +5162,9 @@
           "path": "scripts/seed-gulf-quotes.mjs"
         },
         {
+          "path": "scripts/seed-market-correlation-series.mjs"
+        },
+        {
           "path": "scripts/seed-market-quotes.mjs"
         },
         {

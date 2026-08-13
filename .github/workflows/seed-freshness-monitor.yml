@@ -5,9 +5,9 @@ on:
     - cron: '*/15 * * * *'
   workflow_dispatch:
 
-# The drift check queries every service serially, so a slow run can outlast the
-# 15-minute interval. Superseding is correct for a read-only probe: the newer
-# run reads newer state and answers the same question better.
+# The drift job queries every service serially, so a slow run can outlast the
+# 15-minute interval. Superseding is correct for read-only probes: the newer
+# run reads newer state and answers the same questions better.
 concurrency:
   group: seed-freshness-monitor
   cancel-in-progress: true
@@ -19,32 +19,15 @@ permissions:
 jobs:
   monitor:
     runs-on: ubuntu-latest
-    # Was 5, which predates the deploy-drift step: that step alone makes one
-    # service-list plus one deployment-list call per service (77 in production),
-    # each a CLI auth + GraphQL round trip. Per-call timeouts bound a hung call;
-    # this bounds the run.
     timeout-minutes: 20
     environment:
       name: ingestion-acceptance-production
       deployment: false
     steps:
-      # Start the drift budget before checkout, setup, gate discovery, and the
-      # other probes. The final drift script consumes the remainder instead of
-      # taking a fresh 13 minutes after its prerequisites have already run.
-      - name: Start deploy-drift run budget
-        run: echo "RAILWAY_DRIFT_JOB_STARTED_AT_MS=$(date +%s%3N)" >> "$GITHUB_ENV"
-
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         with:
-          # The deploy-drift check answers two questions from local history:
-          # "is this service running something newer than the head we read"
-          # (`git merge-base --is-ancestor`, for a merge that landed mid-run),
-          # and since #6142 "has anything that reaches this service changed
-          # since the commit it is running". The second needs the RUNNING commit
-          # to exist locally, and a service that is legitimately weeks behind on
-          # code it does not contain sits far outside any fixed depth — where
-          # the answer becomes CLOSURE_UNKNOWN, which reports. Full history with
-          # no blobs: `git diff --name-only` walks trees and never needs blobs.
+          # The scheduled gate can fall back to the newest recent gated main
+          # ancestor. That first-parent walk needs full history but no blobs.
           fetch-depth: 0
           filter: blob:none
 
@@ -117,15 +100,10 @@ jobs:
           GATED_SHA: ${{ steps.gate.outputs.sha }}
         run: git checkout --detach "$GATED_SHA"
 
-      # `if` on this and the next step: the ungated drift check at the bottom
-      # needs the CLI and a verified token even when the green-main gate failed,
-      # and default step semantics would skip both after any earlier failure.
       - name: Install pinned Railway CLI
-        if: ${{ !cancelled() }}
         run: npm install --global @railway/cli@5.30.1
 
       - name: Verify Railway production context
-        if: ${{ !cancelled() }}
         env:
           RAILWAY_TOKEN: ${{ secrets.RAILWAY_PRODUCTION_TOKEN }}
           RAILWAY_PROJECT_ID: ${{ vars.RAILWAY_PROJECT_ID }}
@@ -156,23 +134,78 @@ jobs:
         if: ${{ !cancelled() && steps.gate.conclusion != 'failure' }}
         run: node scripts/check-seed-freshness.mjs
 
-      # Last, and NOT gated on green main — deliberately, unlike compact health.
+  # This job has no dependency on `monitor` by design. A green-main gate outage
+  # must leave the fleet verdict machine-visible as its own check conclusion:
+  # otherwise "gate failed, drift clean" and "gate failed, fleet stranded" are
+  # the same already-red job to badges, notifications, and operators (#6523).
+  drift:
+    name: Railway deploy drift
+    runs-on: ubuntu-latest
+    # One service-list plus one deployment-list call per service (77 in
+    # production), each a CLI auth + GraphQL round trip. Per-call timeouts bound
+    # a hung call; this bounds the job.
+    timeout-minutes: 20
+    environment:
+      name: ingestion-acceptance-production
+      deployment: false
+    steps:
+      # Start the drift budget before checkout, setup, and token verification.
+      # The final script consumes the remainder instead of taking a fresh 13
+      # minutes after its prerequisites have already run.
+      - name: Start deploy-drift run budget
+        run: echo "RAILWAY_DRIFT_JOB_STARTED_AT_MS=$(date +%s%3N)" >> "$GITHUB_ENV"
+
+      # This checkout IS the comparison head: check-railway-deploy-drift.mjs takes
+      # `--head` from `git rev-parse HEAD`, and nothing here passes one.
       #
-      # The audit above proves no service CAN silently skip a merge; this proves
-      # none actually did. Both are needed: a cleared filter does nothing for a
-      # webhook that stopped delivering (#6064), and this check catches that
-      # without knowing why.
+      # BEHAVIOR CHANGE vs the pre-split step, recorded deliberately. `monitor`
+      # detaches onto a gated ancestor when the gate falls back (head ungated, an
+      # ancestor green); the old drift step inherited that tree and judged the fleet
+      # against the ancestor. This job has no gate and no detach, so it always judges
+      # against trigger head -- what the old comment called the strict reading, now
+      # applied on the fallback path too, not just on gate failure.
       #
-      # The green-main gate must not silence this step because they share an
-      # upstream: an ungated or red main is exactly when Railway's wait-for-CI
-      # refuses pushes and drift GROWS. During #6483 the gate failed for days,
-      # this step sat skipped, and a seeder served a dead cache namespace for
-      # 25h with the alarm silenced. A gate failure still fails the run — it
-      # just no longer blinds the probe that measures its blast radius. With
-      # the gate failed, the tree stays at the trigger head, so drift is judged
-      # against real main rather than a gated ancestor: the strict reading.
+      # The cost is bounded and fails closed. Only services whose watch-path closure
+      # intersects the ungated commits can flip to BEHIND (check-railway-deploy-drift
+      # returns CURRENT_FOR_CLOSURE otherwise), and DEFAULT_BUILD_GRACE_MS absorbs the
+      # first 30 minutes, so this needs a genuine gate stall rather than routine gate
+      # latency. It reports a false red, never a false green.
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          # The drift check asks whether a service is running something newer
+          # than trigger head and whether reachable paths changed since its
+          # running commit. A legitimately old service can sit outside any
+          # fixed depth. Full history with no blobs keeps that answer knowable.
+          fetch-depth: 0
+          filter: blob:none
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '24'
+
+      - name: Install pinned Railway CLI
+        run: npm install --global @railway/cli@5.30.1
+
+      - name: Verify Railway production context
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_PRODUCTION_TOKEN }}
+          RAILWAY_PROJECT_ID: ${{ vars.RAILWAY_PROJECT_ID }}
+        run: |
+          if [ -z "$RAILWAY_TOKEN" ]; then
+            echo "::error::RAILWAY_PRODUCTION_TOKEN is required for the read-only production deploy-drift probe."
+            exit 1
+          fi
+          if [ -z "$RAILWAY_PROJECT_ID" ]; then
+            echo "::error::RAILWAY_PROJECT_ID Actions environment variable is required for the production deploy-drift probe."
+            exit 1
+          fi
+          railway status --project "$RAILWAY_PROJECT_ID" --environment production --json > /dev/null
+          echo "Project-scoped Railway token is valid for the expected production context."
+
+      # The config audit in `monitor` proves no service CAN silently skip a
+      # merge; this proves none actually did. It is intentionally ungated so a
+      # new drift emergency still flips this job while the gate job is red.
       - name: Check Railway deploy drift against main
-        if: ${{ !cancelled() }}
         env:
           RAILWAY_TOKEN: ${{ secrets.RAILWAY_PRODUCTION_TOKEN }}
           RAILWAY_PROJECT_ID: ${{ vars.RAILWAY_PROJECT_ID }}

@@ -84,6 +84,7 @@ export { NationalDebtPanel } from './NationalDebtPanel';
 export * from './FearGreedPanel';
 export * from './AAIISentimentPanel';
 export * from './MarketBreadthPanel';
+export * from './NewsMarketCorrelationPanel';
 export * from './MacroTilesPanel';
 export * from './FSIPanel';
 export * from './YieldCurvePanel';

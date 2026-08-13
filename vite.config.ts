@@ -103,6 +103,7 @@ const PANEL_CLUSTER: Record<string, PanelChunkName> = {
   GoldIntelligence: 'panels-markets', LiquidityShifts: 'panels-markets',
   MacroSignals: 'panels-markets', Market: 'panels-markets',
   MarketBreadth: 'panels-markets', MarketImplications: 'panels-markets',
+  NewsMarketCorrelation: 'panels-markets',
   Positioning: 'panels-markets', Stablecoin: 'panels-markets',
   StockAnalysis: 'panels-markets', StockBacktest: 'panels-markets',
   WsbTickerScanner: 'panels-markets', YieldCurve: 'panels-markets',

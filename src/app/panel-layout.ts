@@ -230,6 +230,7 @@ export const DEFERRED_PANEL_NATURAL_FOOTPRINTS: Readonly<Record<string, Deferred
   'internet-disruptions': { rowSpan: 2 },
   'live-news': { className: 'panel-wide' },
   'live-webcams': { className: 'panel-wide' },
+  'news-market-correlation': { rowSpan: 2, className: 'panel-wide' },
   'oil-inventories': { rowSpan: 2 },
   'pipeline-status': { rowSpan: 2 },
   'sanctions-pressure': { rowSpan: 2 },
@@ -2476,6 +2477,7 @@ export class PanelLayoutManager implements AppModule {
     this.lazyDefaultPanel('fear-greed', () => import('@/components/FearGreedPanel'), 'FearGreedPanel');
     this.lazyDefaultPanel('aaii-sentiment', () => import('@/components/AAIISentimentPanel'), 'AAIISentimentPanel');
     this.lazyDefaultPanel('market-breadth', () => import('@/components/MarketBreadthPanel'), 'MarketBreadthPanel');
+    this.lazyDefaultPanel('news-market-correlation', () => import('@/components/NewsMarketCorrelationPanel'), 'NewsMarketCorrelationPanel');
     this.lazyDefaultPanel('macro-tiles', () => import('@/components/MacroTilesPanel'), 'MacroTilesPanel');
     this.lazyDefaultPanel('fsi', () => import('@/components/FSIPanel'), 'FSIPanel');
     this.lazyDefaultPanel('yield-curve', () => import('@/components/YieldCurvePanel'), 'YieldCurvePanel');
