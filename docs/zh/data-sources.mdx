@@ -17,7 +17,7 @@ World Monitor 将**500 多个上游主机**——结构化 API、新闻与 OSINT
 | [金融与经济](#金融与经济) | 市场、宏观序列、央行、加密货币、贸易流向 | FRED、ECB、BIS、Eurostat、World Bank、CoinGecko |
 | [能源与大宗商品](#能源与大宗商品) | 天然气储存、石油库存、燃料价格、黄金与金属 | GIE AGSI+、U.S. EIA、IEA、CFTC |
 | [基础设施与网络安全](#基础设施与网络安全) | 海底光缆、管道、港口、互联网中断、威胁 IOC | Cloudflare Radar、Submarine Cable Map、abuse.ch |
-| [环境与灾害](#环境与灾害) | 地震、灾害、野火、气旋、气候异常 | USGS、CWFIS/NRCan、GDACS、NASA FIRMS/EONET、Open-Meteo |
+| [环境与灾害](#环境与灾害) | 地震、灾害、野火、气旋、气候异常 | USGS、CWFIS/NRCan、BC Wildfire Service、GDACS、NASA FIRMS/EONET、Open-Meteo |
 | [航空与空域](#航空与空域) | 机场延误、NOTAM 关闭、航班跟踪、机票价格 | FAA、ICAO、AviationStack、adsb.lol |
 | [中国覆盖](#中国覆盖) | 官方宏观、政策、企业披露、台海活动 | NBS、SAFE、PBoC、台湾国防部、SSE/SZSE |
 | [科技生态](#科技生态) | 公司总部、创业公司、云区域、研究信号 | Crunchbase News、GitHub、OSS Insight |
@@ -480,7 +480,7 @@ IOC 分为四种类型（`c2_server`、`malware_host`、`phishing`、`malicious_
 来自独立政府与联合国协调来源的自然灾害与气候压力。
 
 - 来自 3 个数据源的自然灾害（USGS M4.5+ 地震、GDACS 警报、NASA EONET 事件）
-- NASA FIRMS 卫星火灾探测（VIIRS 热点），并与 CWFIS 全国机构报告的在燃火合并；计划火以 kind=prescribed / emergency=false 入库（地图与 RPC 尚未按该标记过滤）
+- NASA FIRMS 卫星火灾探测（VIIRS 热点），并与 CWFIS 全国机构报告的在燃火及 BC 当前火点（OpenMaps KML）合并；计划火单独标注，不作为紧急事件告警
 - 西太平洋热带气旋观测（香港天文台、日本气象厅）
 - 15 个冲突与灾害高发区域的气候异常检测（Open-Meteo ERA5）
 - 天气警报和恶劣天气状况
@@ -493,6 +493,7 @@ IOC 分为四种类型（`c2_server`、`malware_host`、`phishing`、`malicious_
 | USGS Earthquake Hazards | 全球地震活动 | [earthquake.usgs.gov](https://earthquake.usgs.gov) |
 | NASA FIRMS | 近实时野火/火灾探测（VIIRS） | [firms.modaps.eosdis.nasa.gov](https://firms.modaps.eosdis.nasa.gov) |
 | CWFIS / CWFIF (NRCan) | 加拿大全国在燃与计划野火（WFS） | [geoserver.cwfif.nrcan.gc.ca](https://geoserver.cwfif.nrcan.gc.ca/geoserver/ows?service=WFS&version=2.0.0&request=GetCapabilities) |
+| BC Wildfire Service | 卑诗省当前野火点（OpenMaps KML / PROT_CURRENT_FIRE_PNTS_SP）；充实 CWFIS | [openmaps.gov.bc.ca](https://openmaps.gov.bc.ca/kml/geo/layers/WHSE_LAND_AND_NATURAL_RESOURCE.PROT_CURRENT_FIRE_PNTS_SP_loader.kml) |
 | NASA EONET | 自然事件 — 风暴、火山、洪水 | [eonet.gsfc.nasa.gov](https://eonet.gsfc.nasa.gov) |
 | GDACS | 联合国协调的全球灾害警报 | [gdacs.org](https://www.gdacs.org) |
 | 香港天文台 | 本地热带气旋警告信号 | [data.weather.gov.hk](https://data.weather.gov.hk/weatherAPI/opendata/weather.php?dataType=warnsum&lang=en) |

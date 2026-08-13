@@ -95,8 +95,8 @@ test('source inventory has complete metadata and matches the generated catalog',
 
   const stats = sourceAttributionStats(inventory, manifest);
   const docsStats = JSON.parse(readFileSync(join(rootDir, 'docs/generated/stats.json'), 'utf8'));
-  // Lockstep with docs:stats so a new host (CWFIS) cannot leave these
-  // three asserts a commit behind the restuck inventory.
+  // Lockstep with docs:stats so a new host (CWFIS / BC Wildfire) cannot leave
+  // these three asserts a commit behind the restuck inventory.
   assert.equal(stats.activeHosts, docsStats.sourceAttribution.activeHosts);
   assert.equal(stats.providerCount, docsStats.sourceAttribution.providerCount);
   assert.equal(stats.observedHosts, docsStats.sourceAttribution.observedHosts);
@@ -140,6 +140,7 @@ test('the issue audit providers are represented by named attribution rows', () =
     'NSIDC',
     'Fintraffic Digitraffic',
     'CWFIS / CWFIF (NRCan)',
+    'BC Wildfire Service (OpenMaps)',
   ]) {
     assert.ok(names.has(provider), `missing named provider row: ${provider}`);
   }

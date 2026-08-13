@@ -13,8 +13,8 @@ import { compactWildfireDashboardPayload, WILDFIRE_CANONICAL_DETECTION_LIMIT } f
 import {
   cwfisWildfireAfterPublish,
   fetchCwfisFires,
-  mergeWildfireSources,
 } from './wildfire/cwfis-wfs.mjs';
+import { fetchBcFirePoints, mergeWildfireSourcesWithBc } from './wildfire/bc-fire-points.mjs';
 
 loadEnvFile(import.meta.url);
 
@@ -147,7 +147,7 @@ export function declareRecords(data) {
 // Ranking is the dashboard comparator (possibleExplosion -> confidence -> brightness -> frp ->
 // detectedAt), so what gets dropped is always the lowest-signal tail, and the real FIRMS count
 // survives in `pagination.totalCount`.
-const CANONICAL_SOURCE_VERSION = `${FIRMS_SOURCES.join('+')}+cwfis-wfs-v1`;
+const CANONICAL_SOURCE_VERSION = `${FIRMS_SOURCES.join('+')}+cwfis-wfs-v1+bc-wildfire-kml-v1`;
 
 function measureCanonicalPublishBytes(data) {
   return Buffer.byteLength(JSON.stringify(buildEnvelope({
@@ -179,7 +179,7 @@ async function fetchMergedWildfires() {
   const apiKey = process.env.NASA_FIRMS_API_KEY || process.env.FIRMS_API_KEY || '';
   const cache = new Map();
   // Missing config is NOT runtime degradation. Without this refusal an absent key
-  // reaches mergeWildfireSources, is swallowed by allSettled, and silently
+  // reaches mergeWildfireSourcesWithBc, is swallowed by allSettled, and silently
   // republishes the canonical worldwide key as Canada-only on every tick.
   // Let a live FIRMS outage degrade; never let a misconfigured deploy do it.
   if (!apiKey) {
@@ -187,9 +187,10 @@ async function fetchMergedWildfires() {
     process.exit(1);
   }
   console.log('  FIRMS key configured');
-  return mergeWildfireSources({
+  return mergeWildfireSourcesWithBc({
     fetchFirms: async () => fetchAllRegions(apiKey),
     fetchCwfis: () => fetchCwfisFires({ fetchFn: globalThis.fetch, cache }),
+    fetchBcWildfire: () => fetchBcFirePoints({ fetchFn: globalThis.fetch, cache }),
   });
 }
 

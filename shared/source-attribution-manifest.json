@@ -4755,6 +4755,20 @@
       ]
     },
     {
+      "host": "openmaps.gov.bc.ca",
+      "provider": "BC Wildfire Service (OpenMaps)",
+      "kind": "structured",
+      "observed": true,
+      "license": "Open Government Licence - British Columbia; redistribution granted (copy, modify, publish, distribute, including commercial use) with attribution",
+      "attribution": "Contains information licensed under the Open Government Licence – British Columbia. BC Wildfire Service, Current Fire Locations (PROT_CURRENT_FIRE_PNTS_SP), Government of British Columbia. https://catalogue.data.gov.bc.ca/dataset/bc-wildfire-fire-locations-current. Evidence: https://www2.gov.bc.ca/gov/content/data/policy-standards/data-policies/open-data/open-government-licence-bc and https://open.canada.ca/data/en/dataset/2790e3f7-6395-4230-8545-04efb5a18800",
+      "status": "reviewed",
+      "references": [
+        {
+          "path": "scripts/wildfire/bc-fire-points.mjs"
+        }
+      ]
+    },
+    {
       "host": "openrouter.ai",
       "provider": "openrouter.ai",
       "kind": "structured",

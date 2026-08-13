@@ -1387,6 +1387,7 @@
       "scripts/package-lock.json",
       "scripts/package.json",
       "scripts/seed-fire-detections.mjs",
+      "scripts/wildfire/bc-fire-points.mjs",
       "scripts/wildfire/cwfis-wfs.mjs"
     ],
     "cronSchedule": "*/10 * * * *",

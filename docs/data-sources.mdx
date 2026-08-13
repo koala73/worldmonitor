@@ -3,7 +3,7 @@ title: "Data Sources"
 description: "Every data source behind World Monitor, segmented by intelligence domain — what each domain covers, the providers behind it, and deep-dive links for methodology, cadence, and fallback ordering."
 ---
 
-World Monitor fuses **535 active providers across 537 upstream hosts** — structured APIs, news and OSINT feeds, and operational-status endpoints — into one live operating picture across six product variants. The separate application inventory contains **500+ curated news feeds** and 56 Telegram channels; these are different inventory layers and are not added to the provider or host totals. This page is the catalog: start with the domain map below, open the domain you care about, then follow the deep-dive links for methodology and freshness guarantees.
+World Monitor fuses **536 active providers across 538 upstream hosts** — structured APIs, news and OSINT feeds, and operational-status endpoints — into one live operating picture across six product variants. The separate application inventory contains **500+ curated news feeds** and 56 Telegram channels; these are different inventory layers and are not added to the provider or host totals. This page is the catalog: start with the domain map below, open the domain you care about, then follow the deep-dive links for methodology and freshness guarantees.
 
 Data flows one way: Railway seeders and edge functions fetch upstream sources on fixed cadences, normalize and cache the results in Redis, and the dashboard hydrates from those caches — so a burst of traffic never multiplies load on any provider. The [architecture guide](/architecture) covers the pipeline in depth, and the machine-audited inventory of every observed upstream host lives in the [full source inventory](/source-attribution).
 
@@ -17,7 +17,7 @@ Data flows one way: Railway seeders and edge functions fetch upstream sources on
 | [Finance & Economics](#finance-%26-economics) | Markets, macro series, central banks, crypto, trade flows | FRED, ECB, BIS, Eurostat, World Bank, CoinGecko |
 | [Energy & Commodities](#energy-%26-commodities) | Gas storage, oil inventories, fuel prices, gold and metals | GIE AGSI+, U.S. EIA, IEA, CFTC |
 | [Infrastructure & Cyber](#infrastructure-%26-cyber) | Undersea cables, pipelines, ports, outages, threat IOCs | Cloudflare Radar, Submarine Cable Map, abuse.ch |
-| [Environment & Disasters](#environment-%26-disasters) | Earthquakes, disasters, wildfires, cyclones, climate anomalies | USGS, CWFIS/NRCan, GDACS, NASA FIRMS/EONET, Open-Meteo |
+| [Environment & Disasters](#environment-%26-disasters) | Earthquakes, disasters, wildfires, cyclones, climate anomalies | USGS, CWFIS/NRCan, BC Wildfire Service, GDACS, NASA FIRMS/EONET, Open-Meteo |
 | [Aviation & Airspace](#aviation-%26-airspace) | Airport delays, NOTAM closures, flight tracking, prices | FAA, ICAO, AviationStack, adsb.lol |
 | [China Coverage](#china-coverage) | Official macro, policy, disclosures, cross-strait activity | NBS, SAFE, PBoC, Taiwan MND, SSE/SZSE |
 | [Tech Ecosystem](#tech-ecosystem) | Company HQs, startups, cloud regions, research signals | Crunchbase News, GitHub, OSS Insight |
@@ -514,7 +514,7 @@ Ports are ranked by throughput and weighted by strategic importance in the infra
 Natural hazards and climate stress, merged from independent government and UN-coordinated sources.
 
 - Natural disasters from 3 sources (USGS earthquakes M4.5+, GDACS alerts, NASA EONET events)
-- NASA FIRMS satellite fire detection (VIIRS thermal hotspots) merged with CWFIS national agency-reported active fires; prescribed burns are stored with kind=prescribed and emergency=false (the map and RPC do not yet filter on that flag)
+- NASA FIRMS satellite fire detection (VIIRS thermal hotspots) merged with CWFIS national agency-reported active fires and BC Wildfire current fire points (OpenMaps KML); prescribed burns are labelled and never paged as emergencies
 - Western Pacific tropical-cyclone observations (Hong Kong Observatory, Japan Meteorological Agency)
 - Climate anomaly detection over 15 conflict- and disaster-prone zones (Open-Meteo ERA5)
 - Weather alerts and severe conditions
@@ -527,6 +527,7 @@ Natural hazards and climate stress, merged from independent government and UN-co
 | USGS Earthquake Hazards | Global seismic activity | [earthquake.usgs.gov](https://earthquake.usgs.gov) |
 | NASA FIRMS | Near real-time wildfire/fire detections (VIIRS) | [firms.modaps.eosdis.nasa.gov](https://firms.modaps.eosdis.nasa.gov) |
 | CWFIS / CWFIF (NRCan) | Canadian national active and prescribed wildland fires (WFS) | [geoserver.cwfif.nrcan.gc.ca](https://geoserver.cwfif.nrcan.gc.ca/geoserver/ows?service=WFS&version=2.0.0&request=GetCapabilities) |
+| BC Wildfire Service | B.C. current wildfire points (OpenMaps KML / PROT_CURRENT_FIRE_PNTS_SP); enriches CWFIS | [openmaps.gov.bc.ca](https://openmaps.gov.bc.ca/kml/geo/layers/WHSE_LAND_AND_NATURAL_RESOURCE.PROT_CURRENT_FIRE_PNTS_SP_loader.kml) |
 | NASA EONET | Natural events — storms, volcanoes, floods | [eonet.gsfc.nasa.gov](https://eonet.gsfc.nasa.gov) |
 | GDACS | UN-coordinated global disaster alerts | [gdacs.org](https://www.gdacs.org) |
 | Hong Kong Observatory | Local tropical-cyclone warning signals | [data.weather.gov.hk](https://data.weather.gov.hk/weatherAPI/opendata/weather.php?dataType=warnsum&lang=en) |

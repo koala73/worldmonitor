@@ -237,7 +237,7 @@ Page Load → parallel fetch ─┬─ /api/bootstrap?tier=fast  (s-maxage=1200)
 | `seed-crypto-quotes` | CoinGecko（BTC、ETH、SOL、XRP+） | 5 分钟 | `market:crypto:v1` |
 | `seed-cyber-threats` | Feodo、URLhaus、C2Intel、OTX、AbuseIPDB | 2 小时 | `cyber:threats-bootstrap:v2` |
 | `seed-internet-outages` | Cloudflare Radar | 5 分钟 | `infra:outages:v1` |
-| `seed-fire-detections` | NASA FIRMS VIIRS 与 CWFIS 全国在燃/计划火（CWFIF WFS） | 10 分钟 | `wildfire:fires:v1` |
+| `seed-fire-detections` | NASA FIRMS VIIRS、CWFIS 全国在燃/计划火（CWFIF WFS）与 BC 当前火点（OpenMaps KML） | 10 分钟 | `wildfire:fires:v1` |
 | `seed-climate-anomalies` | Open-Meteo ERA5 | 15 分钟 | `climate:anomalies:v2` |
 | `seed-natural-events` | USGS + GDACS + NASA EONET | 2 小时 | `natural:events:v1` |
 | `seed-airport-delays` | FAA + AviationStack + ICAO NOTAM | 10 分钟 | `aviation:delays-bootstrap:v1` |
