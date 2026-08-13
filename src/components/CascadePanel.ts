@@ -45,7 +45,14 @@ export class CascadePanel extends Panel {
       this.render();
     } catch (error) {
       console.error('[CascadePanel] Init error:', error);
-      this.showError(t('common.failedDependencyGraph'));
+      // With no `onRetry`, `Panel.showError` leaves `retryCallback` null and so
+      // arms no countdown — and nothing else re-renders this panel: the error
+      // DOM carries none of the controls `setupDelegatedListeners` binds, and
+      // `refresh()` has no callers. The panel stayed dead for the session and
+      // the `setTrustedContent` clear below could never be reached.
+      // `preloadCables()` nulls its cached promise on failure, so a retry
+      // genuinely re-attempts the import.
+      this.showError(t('common.failedDependencyGraph'), () => void this.init());
     }
   }
 

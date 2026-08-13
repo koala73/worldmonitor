@@ -213,6 +213,71 @@ describe('Panel error state is cleared by direct-write content renders', () => {
     expect(internals(panel).content.querySelector('.recovered')).not.toBeNull();
   });
 
+  it('a trusted-HTML render cancels a debounced write still in flight', () => {
+    // The twin of the case above. setContentNodes and setTrustedContent are
+    // documented as true twins, but only the node half had a debounce-race
+    // test — deleting cancelPendingContentWrite() from setTrustedContent alone
+    // passed the entire suite.
+    panel.setSafeContent(unsafeRawHtml('<div class="stale">stale</div>', 'test fixture'));
+
+    (panel as unknown as { setTrustedContent: (html: unknown) => void })
+      .setTrustedContent(trustedHtml('<div class="recovered">real data</div>', 'test fixture'));
+    expect(internals(panel).content.querySelector('.recovered')).not.toBeNull();
+
+    vi.advanceTimersByTime(500);
+
+    expect(internals(panel).content.querySelector('.stale')).toBeNull();
+    expect(internals(panel).content.querySelector('.recovered')).not.toBeNull();
+  });
+
+  it('showError is not overwritten by a debounced write queued before it', () => {
+    // The #6557 symptom reached from the other direction. showError paints
+    // through replaceContent, which did not cancel the pending write, so the
+    // queued data HTML committed 150ms later OVER the error DOM while the chip
+    // stayed set — correct-looking data under a red chip nothing clears.
+    panel.setSafeContent(unsafeRawHtml('<div class="stale">stale data</div>', 'test fixture'));
+
+    panel.showError('boom', vi.fn(), 30);
+    expect(internals(panel).content.querySelector('.panel-error-state')).not.toBeNull();
+
+    vi.advanceTimersByTime(500);
+
+    expect(internals(panel).content.querySelector('.stale')).toBeNull();
+    expect(internals(panel).content.querySelector('.panel-error-state')).not.toBeNull();
+    expect(hasErrorChip(panel)).toBe(true);
+  });
+
+  it('a lock landing during the debounce window does not leak the payload', () => {
+    // The paywall half of the same seam: setContentImmediate is the one
+    // immediate write with no _locked bail, so a write queued just before
+    // showGatedCta/showLocked painted premium markup over the upgrade CTA and
+    // was never repainted, because every other writer bails while locked.
+    panel.setSafeContent(unsafeRawHtml('<div class="premium-payload">paid</div>', 'test fixture'));
+
+    panel.showLocked(['probe feature']);
+    expect(internals(panel).content.querySelector('.panel-locked-state')).not.toBeNull();
+
+    vi.advanceTimersByTime(500);
+
+    expect(internals(panel).content.querySelector('.premium-payload')).toBeNull();
+    expect(internals(panel).content.querySelector('.panel-locked-state')).not.toBeNull();
+  });
+
+  it('the debounced commit itself refuses to write to a locked panel', () => {
+    // Pins setContentImmediate's own _locked bail rather than the caller-side
+    // cancel. Every lock path today repaints through replaceContent, which now
+    // cancels the pending write, so the lock-during-debounce case above passes
+    // with or without this guard — it would be an unpinned, unobservable
+    // guarantee. Here the lock is set WITHOUT a repaint, which is the shape a
+    // future gating path that only toggles state would take.
+    panel.setSafeContent(unsafeRawHtml('<div class="premium-payload">paid</div>', 'test fixture'));
+    (panel as unknown as { _locked: boolean })._locked = true;
+
+    vi.advanceTimersByTime(500);
+
+    expect(internals(panel).content.querySelector('.premium-payload')).toBeNull();
+  });
+
   it('a locked panel is not painted over by either helper', () => {
     // The helpers are advertised as twins of setSafeContent, which bails while
     // locked. Without the same bail, a gated panel migrating onto them would
@@ -368,5 +433,21 @@ describe('CascadePanel recovery render clears the error chip', () => {
     expect(hasErrorChip(panel)).toBe(false);
     expect(internals(panel).retryCountdownTimer).toBeNull();
     expect(internals(panel).retryAttempt).toBe(0);
+  });
+
+  it("init()'s failure arms a retry, so the recovery render is reachable", () => {
+    // Without an onRetry, Panel.showError leaves retryCallback null and arms no
+    // countdown — and nothing else re-renders this panel: the error DOM carries
+    // none of the controls setupDelegatedListeners binds, and refresh() has no
+    // callers. The clear above was unreachable in the real failure, so the
+    // wiring test passed while production stayed dead for the session.
+    const init = vi.fn();
+    panel.showError('boom', () => void init(), 30);
+
+    expect(hasErrorChip(panel)).toBe(true);
+    expect(internals(panel).retryCountdownTimer).not.toBeNull();
+
+    vi.advanceTimersByTime(31_000);
+    expect(init).toHaveBeenCalled();
   });
 });

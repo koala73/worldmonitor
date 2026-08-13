@@ -358,6 +358,15 @@ if changed '^(src/|scripts/enforce-safe-html\.mjs$)'; then
   npm run lint:safe-html || exit 1
 fi
 
+# Gated on src/ (not on the test file) because the edit this guard exists to
+# catch is "someone changed a panel" — prepush-changed-tests.sh only selects a
+# test file when that test file is itself in the changed set, so a test-only
+# guard would first surface in CI after the PR was already open (#6557).
+if changed '^(src/components/|scripts/enforce-panel-content-writes\.mjs$)'; then
+  echo "Running Panel content-write check..."
+  npm run lint:panel-content-writes || exit 1
+fi
+
 if changed '^(src/|api/|server/|scripts/check-sentry-coverage\.mjs$)'; then
   echo "Running Sentry-coverage check..."
   node scripts/check-sentry-coverage.mjs || exit 1

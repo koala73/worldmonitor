@@ -1244,6 +1244,17 @@ export class Panel {
    * add the error-state clear this method must not do.
    */
   private replaceContent(...children: DomChild[]): void {
+    // Structural, for the same reason `invalidateCommittedHtml` is: EVERY
+    // immediate write must drop a queued one, and `showError` / `showRetrying` /
+    // `showLoading` / `showLocked` / `showGatedCta` / `showConfigError` /
+    // `unlockPanel` all land content through here. Without it a `setSafeContent`
+    // queued moments earlier commits `contentDebounceMs` later and paints over
+    // the render that just replaced it — under a chip nothing then clears, which
+    // is #6557 reached from the other direction.
+    //
+    // This does not self-cancel the debounce: `setContentImmediate` writes via
+    // `setTrustedHtml` and never routes through here.
+    this.cancelPendingContentWrite();
     replaceChildren(this.content, ...children);
     this.invalidateCommittedHtml();
   }
@@ -1310,14 +1321,7 @@ export class Panel {
       // open settings, then close within the debounce window, and the settings
       // markup commits after the clock has been asked to come back (which also
       // strands the cached row handles, so the clock stops ticking).
-      if (this.pendingContentHtml !== null) {
-        this.pendingContentHtml = null;
-        this.pendingContentCallback = null;
-        if (this.contentDebounceTimer) {
-          clearTimeout(this.contentDebounceTimer);
-          this.contentDebounceTimer = null;
-        }
-      }
+      this.cancelPendingContentWrite();
       afterUpdate?.();
       return;
     }
@@ -1336,6 +1340,15 @@ export class Panel {
   }
 
   private setContentImmediate(html: string): void {
+    // The lock is re-checked HERE, not only at schedule time in `setContentHtml`.
+    // A panel locked during the debounce window (showGatedCta / showLocked fire
+    // from the async entitlement pass) would otherwise have this timer paint the
+    // premium payload over the upgrade CTA, and no later writer repaints it
+    // because every other write path bails on `_locked`.
+    if (this._locked) {
+      this.cancelPendingContentWrite();
+      return;
+    }
     if (this.contentDebounceTimer) {
       clearTimeout(this.contentDebounceTimer);
       this.contentDebounceTimer = null;
