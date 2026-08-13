@@ -24,12 +24,13 @@
  *    Ubuntu t64 ABI transition renamed libfuse2 -> libfuse2t64 mid-LTS, which
  *    is exactly this failure.
  *
- * Scopes: `web` prerequisites gate any build; `desktop` ones are needed only
- * for the Tauri bundle, so a contributor who never touches the desktop app is
- * never asked to install GTK.
+ * Scopes: `web` prerequisites gate any build; `desktop` adds the Tauri
+ * development requirements; `--bundle` also checks release-only packaging
+ * tools. A contributor who never touches the desktop app is never asked to
+ * install GTK.
  *
  * Run: node scripts/check-build-prereqs.mjs [--scope web|desktop|all]
- *                                           [--json] [--warn-only]
+ *                                           [--bundle] [--json] [--warn-only]
  */
 
 import { execFileSync } from 'node:child_process';
@@ -264,9 +265,13 @@ export function detectDistroFamily(osReleaseText) {
   return null;
 }
 
-function commandExists(command) {
+export function commandExists(command, { platform = process.platform, exec = execFileSync } = {}) {
   try {
-    execFileSync('sh', ['-c', `command -v ${command}`], { stdio: 'ignore' });
+    if (platform === 'win32') {
+      exec('where.exe', [command], { stdio: 'ignore' });
+    } else {
+      exec('sh', ['-c', 'command -v "$1"', 'sh', command], { stdio: 'ignore' });
+    }
     return true;
   } catch {
     return false;
@@ -291,18 +296,22 @@ function sonameHas(soname) {
   }
 }
 
-export function runProbe(probe, env = process) {
+export function runProbe(
+  probe,
+  env = process,
+  { hasCommand = (command) => commandExists(command, { platform: env.platform }) } = {},
+) {
   switch (probe.kind) {
     case 'node-major': {
       const major = Number.parseInt(String(env.versions?.node ?? '0').split('.')[0], 10);
       return { ok: Number.isFinite(major) && major >= probe.min, detail: `found v${env.versions?.node ?? '?'}` };
     }
     case 'command':
-      return { ok: commandExists(probe.command), detail: probe.command };
+      return { ok: hasCommand(probe.command), detail: probe.command };
     case 'pkg-config':
       // Without pkg-config itself every module probe would report missing and
       // bury the one prerequisite that actually needs installing first.
-      if (!commandExists('pkg-config')) return { ok: false, detail: 'pkg-config unavailable', skipped: true };
+      if (!hasCommand('pkg-config')) return { ok: false, detail: 'pkg-config unavailable', skipped: true };
       return { ok: pkgConfigHas(probe.module), detail: probe.module };
     case 'soname':
       return { ok: sonameHas(probe.soname), detail: probe.soname };
@@ -312,15 +321,15 @@ export function runProbe(probe, env = process) {
 }
 
 /**
- * Pick the package name to print. On Debian family we ask the archive which
- * candidate exists so a rename never yields an uninstallable line; elsewhere
- * (and when apt-cache is absent) we take the first candidate.
+ * Pick the package name to print. When archive verification is required, only
+ * a confirmed candidate is safe for the combined install command. Other
+ * families use their first recorded candidate when no archive lookup exists.
  */
-export function resolvePackage(candidates, archiveHas) {
+export function resolvePackage(candidates, archiveHas, { requireArchive = false } = {}) {
   const list = (Array.isArray(candidates) ? candidates : [candidates]).filter(Boolean);
   if (list.length === 0) return null;
-  if (list.length === 1 || !archiveHas) return list[0];
-  return list.find((name) => archiveHas(name)) ?? list[0];
+  if (!archiveHas) return requireArchive ? null : list[0];
+  return list.find((name) => archiveHas(name)) ?? null;
 }
 
 function aptArchiveHas(name) {
@@ -332,30 +341,60 @@ function aptArchiveHas(name) {
   }
 }
 
-export function checkBuildPrereqs({ scope = 'all', platform = process.platform, family = null } = {}) {
+export function checkBuildPrereqs({
+  scope = 'all',
+  bundle = scope === 'all',
+  platform = process.platform,
+  family = null,
+  dependencies = {},
+} = {}) {
+  const checkCommand = dependencies.commandExists ?? ((command) => commandExists(command, { platform }));
+  const probe = dependencies.runProbe ?? ((value) => runProbe(value, process, { hasCommand: checkCommand }));
+
   const applicable = BUILD_PREREQS.filter((p) => {
-    if (scope !== 'all' && p.scope !== scope) return false;
+    if (scope === 'web' && p.scope !== 'web') return false;
+    if (scope === 'desktop' && !['web', 'desktop'].includes(p.scope)) return false;
     if (p.platform === 'linux' && platform !== 'linux') return false;
+    if (p.bundleOnly && !bundle) return false;
     return true;
   });
 
-  const archiveHas = family?.family === 'debian' && commandExists('apt-cache') ? aptArchiveHas : null;
+  const archiveHas = dependencies.archiveHas !== undefined
+    ? dependencies.archiveHas
+    : family?.family === 'debian' && checkCommand('apt-cache')
+      ? aptArchiveHas
+      : null;
+  const requireArchive = family?.family === 'debian';
 
   const results = applicable.map((prereq) => {
-    const { ok, detail, skipped } = runProbe(prereq.probe);
-    const pkg = family && prereq.packages ? resolvePackage(prereq.packages[family.family], archiveHas) : null;
+    const { ok, detail, skipped } = probe(prereq.probe);
+    const pkg = family && prereq.packages && !skipped
+      ? resolvePackage(prereq.packages[family.family], archiveHas, { requireArchive })
+      : null;
     return { prereq, ok, detail, skipped, pkg };
   });
 
-  return { results, missing: results.filter((r) => !r.ok) };
+  return {
+    results,
+    missing: results.filter((result) => !result.ok && !result.skipped),
+    blocked: results.filter((result) => result.skipped),
+  };
 }
 
-function report(missing, family, scope) {
+function report(missing, blocked, family, scope) {
   console.error(`\n::error::build prereqs: ${missing.length} missing for scope "${scope}"\n`);
   for (const { prereq, detail } of missing) {
     console.error(`  ✗ ${prereq.id.padEnd(20)} ${prereq.why}`);
     console.error(`    ${' '.repeat(20)} probe: ${detail}${prereq.bundleOnly ? '  (bundling only)' : ''}`);
     if (prereq.hint) console.error(`    ${' '.repeat(20)} ${prereq.hint}`);
+  }
+
+  if (blocked.length > 0) {
+    console.error('  Not checked because another prerequisite is unavailable:\n');
+    for (const { prereq, detail } of blocked) {
+      console.error(`  ? ${prereq.id.padEnd(20)} ${detail}`);
+    }
+    console.error('\n  Install the confirmed prerequisite above, then rerun this check.\n');
   }
 
   const packages = [...new Set(missing.map((m) => m.pkg).filter(Boolean))];
@@ -370,11 +409,16 @@ function report(missing, family, scope) {
     }
   } else if (!family) {
     console.error('\n  Unrecognized distribution — install the pkg-config modules listed above using your package manager.\n');
+  } else if (family.family === 'debian' && missing.some((item) => item.prereq.packages && !item.pkg)) {
+    console.error(
+      '\n  Could not verify one or more Debian package names with apt-cache.\n'
+        + '  Run `sudo apt-get update`, then rerun this check; no guessed combined install command was printed.\n',
+    );
   }
 
   const toolchainOnly = missing.every((m) => !m.pkg);
   if (!toolchainOnly) {
-    console.error('  Only needed for the desktop bundle; `npm run build` (web) does not require these.\n');
+    console.error('  Only needed for desktop workflows; `npm run build` (web) does not require these.\n');
   }
 }
 
@@ -386,6 +430,7 @@ if (isMainModule(import.meta.url, process.argv[1])) {
     console.error(`::error::build prereqs: unknown --scope "${scope}" (expected web, desktop, or all)`);
     process.exit(2);
   }
+  const bundle = argv.includes('--bundle') || scope === 'all';
 
   let osRelease = '';
   try {
@@ -396,10 +441,20 @@ if (isMainModule(import.meta.url, process.argv[1])) {
   }
   const family = process.platform === 'linux' ? detectDistroFamily(osRelease) : null;
 
-  const { results, missing } = checkBuildPrereqs({ scope, family });
+  const { results, missing, blocked } = checkBuildPrereqs({ scope, bundle, family });
 
   if (argv.includes('--json')) {
-    console.log(JSON.stringify({ scope, family: family?.family ?? null, results: results.map((r) => ({ id: r.prereq.id, ok: r.ok, package: r.pkg })) }, null, 2));
+    console.log(JSON.stringify({
+      scope,
+      bundle,
+      family: family?.family ?? null,
+      results: results.map((result) => ({
+        id: result.prereq.id,
+        ok: result.ok && !result.skipped,
+        status: result.skipped ? 'blocked' : result.ok ? 'present' : 'missing',
+        package: result.pkg,
+      })),
+    }, null, 2));
     process.exit(missing.length > 0 && !argv.includes('--warn-only') ? 1 : 0);
   }
 
@@ -408,7 +463,7 @@ if (isMainModule(import.meta.url, process.argv[1])) {
     process.exit(0);
   }
 
-  report(missing, family, scope);
+  report(missing, blocked, family, scope);
   if (argv.includes('--warn-only')) {
     console.error('  --warn-only: continuing despite missing prerequisites.\n');
     process.exit(0);

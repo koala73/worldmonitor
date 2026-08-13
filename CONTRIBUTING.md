@@ -125,14 +125,16 @@ The dev server runs at `http://localhost:3000` (override the port with `DEV_PORT
 
 ### Build Prerequisites
 
-`npm run check:prereqs` reports everything missing in one pass and prints a
-single install command for your distribution. It runs automatically before
-`npm run desktop:dev` and `npm run desktop:tauri:build`.
+`npm run check:prereqs` reports everything missing in one pass and, when the
+local package archive confirms the names, prints a single install command for
+your distribution. It runs automatically before `npm run desktop:dev` and
+`npm run desktop:tauri:build`.
 
 ```bash
 npm run check:prereqs              # everything
 npm run check:prereqs -- --scope web       # web app only
-npm run check:prereqs:desktop              # desktop bundle only
+npm run check:prereqs:desktop              # desktop development
+npm run check:prereqs:desktop:bundle       # desktop bundle, including AppImage tools
 npm run check:prereqs -- --json            # machine-readable, for CI
 npm run check:prereqs -- --warn-only       # report but do not fail
 ```

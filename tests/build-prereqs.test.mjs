@@ -19,10 +19,13 @@
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
 
 import {
   BUILD_PREREQS,
   UNVERIFIED_PACKAGE_FAMILIES,
+  commandExists,
   detectDistroFamily,
   resolvePackage,
   checkBuildPrereqs,
@@ -70,9 +73,22 @@ describe('resolvePackage', () => {
     assert.equal(resolvePackage(['libfuse2t64', 'libfuse2'], null), 'libfuse2t64');
   });
 
-  test('falls back to the first candidate when nothing matches', () => {
-    // Better to print a name the user can correct than to print nothing.
-    assert.equal(resolvePackage(['a', 'b'], () => false), 'a');
+  test('returns null when no archive candidate can be verified', () => {
+    assert.equal(resolvePackage(['a', 'b'], () => false), null);
+  });
+
+  test('verifies a single candidate when archive resolution is required', () => {
+    const checked = [];
+    const archiveHas = (name) => {
+      checked.push(name);
+      return false;
+    };
+    assert.equal(resolvePackage('libglib2.0-dev', archiveHas), null);
+    assert.deepEqual(checked, ['libglib2.0-dev']);
+  });
+
+  test('does not guess when a required archive is unavailable', () => {
+    assert.equal(resolvePackage(['libfuse2t64', 'libfuse2'], null, { requireArchive: true }), null);
   });
 
   test('accepts a bare string as a one-element list', () => {
@@ -161,17 +177,133 @@ describe('checkBuildPrereqs scoping', () => {
     assert.ok(!results.some((r) => r.prereq.id === 'gtk3'));
   });
 
+  test('desktop scope includes the shared Node floor', () => {
+    const { results } = checkBuildPrereqs({
+      scope: 'desktop',
+      platform: 'darwin',
+      dependencies: { runProbe: () => ({ ok: true, detail: 'stubbed' }) },
+    });
+    assert.ok(results.some((r) => r.prereq.id === 'node'));
+  });
+
+  test('desktop scope fails when the shared Node floor fails', () => {
+    const { missing } = checkBuildPrereqs({
+      scope: 'desktop',
+      platform: 'darwin',
+      dependencies: {
+        runProbe: (probe) => probe.kind === 'node-major'
+          ? { ok: false, detail: 'found v20.0.0' }
+          : { ok: true, detail: 'stubbed' },
+      },
+    });
+    assert.ok(missing.some((r) => r.prereq.id === 'node'));
+  });
+
   test('linux-only entries are skipped on other platforms', () => {
-    const { results } = checkBuildPrereqs({ scope: 'desktop', platform: 'darwin' });
+    const { results } = checkBuildPrereqs({
+      scope: 'desktop',
+      platform: 'darwin',
+      dependencies: { runProbe: () => ({ ok: true, detail: 'stubbed' }) },
+    });
     assert.ok(!results.some((r) => r.prereq.platform === 'linux'));
     // Rust is still required on macOS.
     assert.ok(results.some((r) => r.prereq.id === 'rustc'));
   });
 
-  test('desktop scope on linux includes the bundling prerequisites', () => {
-    const { results } = checkBuildPrereqs({ scope: 'desktop', platform: 'linux' });
+  test('desktop development excludes bundling prerequisites', () => {
+    const { results } = checkBuildPrereqs({
+      scope: 'desktop',
+      platform: 'linux',
+      dependencies: { runProbe: () => ({ ok: true, detail: 'stubbed' }) },
+    });
+    assert.ok(!results.some((r) => r.prereq.bundleOnly));
+  });
+
+  test('desktop bundle scope on linux includes the bundling prerequisites', () => {
+    const { results } = checkBuildPrereqs({
+      scope: 'desktop',
+      bundle: true,
+      platform: 'linux',
+      dependencies: { runProbe: () => ({ ok: true, detail: 'stubbed' }) },
+    });
     for (const id of ['webkit2gtk', 'librsvg', 'patchelf', 'fuse2']) {
       assert.ok(results.some((r) => r.prereq.id === id), `missing ${id}`);
     }
+  });
+
+  test('blocked pkg-config probes are not reported as confirmed missing', () => {
+    const { missing, blocked } = checkBuildPrereqs({
+      scope: 'desktop',
+      platform: 'linux',
+      family: { family: 'debian', install: 'sudo apt-get install -y' },
+      dependencies: {
+        commandExists: () => false,
+        archiveHas: null,
+        runProbe: (probe) => {
+          if (probe.kind === 'pkg-config') {
+            return { ok: false, detail: 'pkg-config unavailable', skipped: true };
+          }
+          if (probe.kind === 'command' && probe.command === 'pkg-config') {
+            return { ok: false, detail: 'pkg-config' };
+          }
+          return { ok: true, detail: 'stubbed' };
+        },
+      },
+    });
+
+    assert.deepEqual(missing.map((r) => r.prereq.id), ['pkg-config']);
+    assert.ok(blocked.length > 0);
+    assert.ok(blocked.every((r) => r.skipped));
+  });
+
+  test('Debian install commands do not receive unverified package names', () => {
+    const { missing } = checkBuildPrereqs({
+      scope: 'desktop',
+      platform: 'linux',
+      family: { family: 'debian', install: 'sudo apt-get install -y' },
+      dependencies: {
+        archiveHas: () => false,
+        runProbe: (probe) => probe.kind === 'command' && probe.command === 'pkg-config'
+          ? { ok: false, detail: 'pkg-config' }
+          : { ok: true, detail: 'stubbed' },
+      },
+    });
+
+    const pkgConfig = missing.find((r) => r.prereq.id === 'pkg-config');
+    assert.equal(pkgConfig.pkg, null);
+  });
+});
+
+describe('command lookup', () => {
+  test('uses where.exe instead of a POSIX shell on native Windows', () => {
+    const calls = [];
+    const exec = (file, args) => calls.push({ file, args });
+
+    assert.equal(commandExists('rustc', { platform: 'win32', exec }), true);
+    assert.deepEqual(calls, [{ file: 'where.exe', args: ['rustc'] }]);
+  });
+});
+
+describe('package script wiring', () => {
+  test('desktop development and bundling use different prerequisite modes', () => {
+    const packageJson = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'));
+    assert.match(packageJson.scripts['desktop:dev'], /^npm run check:prereqs:desktop &&/);
+    assert.match(packageJson.scripts['desktop:tauri:build'], /^npm run check:prereqs:desktop:bundle &&/);
+    assert.match(packageJson.scripts['check:prereqs:desktop:bundle'], /--scope desktop --bundle$/);
+  });
+});
+
+describe('CLI output', () => {
+  test('JSON output exposes explicit status without dropping the ok field', () => {
+    const script = fileURLToPath(new URL('../scripts/check-build-prereqs.mjs', import.meta.url));
+    const result = spawnSync(process.execPath, [script, '--scope', 'web', '--json'], { encoding: 'utf8' });
+
+    assert.equal(result.status, 0, result.stderr);
+    const payload = JSON.parse(result.stdout);
+    assert.equal(payload.scope, 'web');
+    assert.equal(payload.bundle, false);
+    assert.deepEqual(payload.results.map((item) => item.id), ['node']);
+    assert.equal(payload.results[0].ok, true);
+    assert.equal(payload.results[0].status, 'present');
   });
 });
