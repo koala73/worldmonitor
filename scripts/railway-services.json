@@ -1144,6 +1144,7 @@
       "scripts/seed-gold-etf-flows.mjs",
       "scripts/seed-gulf-quotes.mjs",
       "scripts/seed-hyperliquid-flow.mjs",
+      "scripts/seed-market-correlation-series.mjs",
       "scripts/seed-sec-8k-stream.mjs",
       "scripts/seed-sec-cik-map.mjs",
       "scripts/seed-stablecoin-markets.mjs",

@@ -375,10 +375,22 @@ incident note.
 default branch. Scheduled runs first require the latest `main` commit's `gate`
 status to be green; a missing, pending, or failed gate makes the workflow fail
 closed instead of producing a green skipped run. Manual runs execute directly.
-After the repository gate, the workflow checks live Railway watch paths, cron
-schedules, required routing variables, and service presence against
-`scripts/railway-services.json`, then runs the deploy-drift check, then checks
-public compact health. It fails on
+The workflow runs two independent jobs. Read the one that answers your question.
+
+- `monitor` is the gated job. After the repository gate, it checks live Railway
+  watch paths, cron schedules, required routing variables, and service presence
+  against `scripts/railway-services.json`, then checks public compact health.
+- `Railway deploy drift` is a separate job. It has no `needs:` and no gate
+  condition, so it runs in parallel with `monitor` and publishes its own
+  conclusion. A failed gate turns `monitor` red but leaves this job's verdict
+  intact (#6523).
+
+During a gate outage, read the `Railway deploy drift` job, not `monitor`. A red
+`monitor` alone says nothing about the fleet. Note that the run's overall
+conclusion and its badge stay red whenever `monitor` fails, so you must open the
+run and read the job conclusions to tell a clean fleet from a stranded one.
+
+`monitor` fails on
 every actionable problem, including `SEED_ERROR`, `STALE_SEED`,
 `STALE_CONTENT`, and degraded composed coverage. Statuses that explicitly end
 in `_ON_DEMAND` remain informational. It deliberately does not run on an
@@ -976,9 +988,9 @@ Recovery is accepted only when:
 | **Watch paths** | See `scripts/railway-services.json` (exact runtime closure; run `node scripts/audit-railway-watch-paths.mjs`) |
 | **Replaces** | 5 services |
 | **Net savings** | 4 slots |
-| **Members** | Crypto Quotes (5min), Hyperliquid Flow (5min), Stablecoin Markets (10min), ETF Flows (15min), China Corporate Disclosures (30min), China Stock Connect (60min), Gulf Quotes (10min), Token Panels (30min), Gold ETF Flows (2h), Gold CB Reserves (daily), SEC CIK Map (daily), SEC 8-K Stream (30min) |
+| **Members** | Crypto Quotes (5min), Hyperliquid Flow (5min), Stablecoin Markets (10min), ETF Flows (15min), Market Correlation Series (15min), China Corporate Disclosures (30min), China Stock Connect (60min), Gulf Quotes (10min), Token Panels (30min), Gold ETF Flows (2h), Gold CB Reserves (daily), SEC CIK Map (daily), SEC 8-K Stream (30min) |
 | **Required env** | `PROXY_URL` (required independently by Gulf Quotes / ETF Flows and selected for an exchange only when its source-specific setting is absent). Proxy configuration precedence is `SSE_PROXY_URL` → `SZSE_PROXY_URL` → `PROXY_URL` for SSE and `SZSE_PROXY_URL` → `PROXY_URL` for SZSE; the process selects the first non-empty setting rather than attempting each URL sequentially. This is the deployment contract; production provisioning and live fallback acceptance require separate verification. |
-| **Note** | Crypto Quotes, Stablecoin Markets, ETF Flows, Gulf Quotes, and Token Panels back up ais-relay inline loops. Hyperliquid Flow, China Corporate Disclosures, China Stock Connect, Gold ETF Flows, Gold CB Reserves, SEC CIK Map, and SEC 8-K Stream are primary in this bundle. China Corporate Disclosures reads official metadata only: SSE uses direct then the selected proxy, while SZSE uses direct then distinct port attempts within the selected proxy. China Stock Connect reads aggregate exchange statistics over direct then the selected proxy only — it stops short of the edge hop, because a seeder fetches upstream data and the web tier serves it from Redis, and borrowing an edge function's egress for acquisition inverts that. It additionally caps every `www.szse.cn` request in a run under one shared 100s wall-clock budget, because its SZSE endpoints are date-keyed and the number of probes depends on how many sessions the exchange has published. Gulf Quotes uses Alpha Vantage (richer than relay's Yahoo-only). |
+| **Note** | Crypto Quotes, Stablecoin Markets, ETF Flows, Gulf Quotes, and Token Panels back up ais-relay inline loops. Hyperliquid Flow, Market Correlation Series, China Corporate Disclosures, China Stock Connect, Gold ETF Flows, Gold CB Reserves, SEC CIK Map, and SEC 8-K Stream are primary in this bundle. China Corporate Disclosures reads official metadata only: SSE uses direct then the selected proxy, while SZSE uses direct then distinct port attempts within the selected proxy. China Stock Connect reads aggregate exchange statistics over direct then the selected proxy only — it stops short of the edge hop, because a seeder fetches upstream data and the web tier serves it from Redis, and borrowing an edge function's egress for acquisition inverts that. It additionally caps every `www.szse.cn` request in a run under one shared 100s wall-clock budget, because its SZSE endpoints are date-keyed and the number of probes depends on how many sessions the exchange has published. Gulf Quotes uses Alpha Vantage (richer than relay's Yahoo-only). |
 
 ### Bundle 11: seed-bundle-relay-backup
 

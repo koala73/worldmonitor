@@ -214,13 +214,11 @@ export function declareRecords(data) {
   return Object.keys(data?.countries || {}).length;
 }
 
-export { CANONICAL_KEY, CACHE_TTL, fetchWbExternalDebt };
-
-if (process.argv[1]?.endsWith('seed-wb-external-debt.mjs')) {
-  runSeed('economic', 'wb-external-debt', CANONICAL_KEY, fetchWbExternalDebt, {
+export function createWbExternalDebtSeedOptions(now = new Date()) {
+  return {
     validateFn: validate,
     ttlSeconds: CACHE_TTL,
-    sourceVersion: `wb-ids-${new Date().getFullYear()}`,
+    sourceVersion: `wb-ids-${now.getFullYear()}`,
     recordCount: (data) => Object.keys(data?.countries ?? {}).length,
     // Empty result = real upstream failure (floor is 80 LMICs). Without this,
     // a transient WB outage would refresh seed-meta on a tiny payload and
@@ -231,7 +229,19 @@ if (process.argv[1]?.endsWith('seed-wb-external-debt.mjs')) {
     maxStaleMin: 100800,
     contentMeta: wbCountryDictContentMeta,
     maxContentAgeMin: MAX_CONTENT_AGE_MIN,
-  }).catch((err) => {
+  };
+}
+
+export { CANONICAL_KEY, CACHE_TTL, fetchWbExternalDebt };
+
+if (process.argv[1]?.endsWith('seed-wb-external-debt.mjs')) {
+  runSeed(
+    'economic',
+    'wb-external-debt',
+    CANONICAL_KEY,
+    fetchWbExternalDebt,
+    createWbExternalDebtSeedOptions(),
+  ).catch((err) => {
     const _cause = err.cause ? ` (cause: ${err.cause.message || err.cause.code || err.cause})` : '';
     console.error('FATAL:', (err.message || err) + _cause);
     process.exit(1);

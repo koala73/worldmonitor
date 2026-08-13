@@ -361,10 +361,16 @@ recovered, and an expiry that reddened the monitor over zero entries would be a
 finding-free failure on a check whose whole value is that its reds mean
 something.
 
-`.github/workflows/seed-freshness-monitor.yml` runs the drift check in the step
-**Check Railway deploy drift against main**, between the config audit and the
-compact-health check. Its checkout uses `fetch-depth: 50` and the step re-fetches
-main first, for the ancestry reason above.
+`.github/workflows/seed-freshness-monitor.yml` runs the drift check in its own
+`drift` job, named **Railway deploy drift**. That job has no `needs:` and no gate
+condition, so it runs in parallel with the `monitor` job and reports its own
+conclusion. It has no ordering relationship to the config audit or the
+compact-health check, which stay in `monitor` (#6523).
+
+The drift job checks out with `fetch-depth: 0`, and the step re-fetches main
+first, for the ancestry reason above. The job does not detach onto a gated
+ancestor the way `monitor` does, so the fleet is always judged against trigger
+head.
 
 ### Still true, and unchanged
 
@@ -413,6 +419,17 @@ skip. It deliberately does not run on an ingestion push because Railway may not
 have deployed or executed that revision yet. That separates a code failure from
 the operational case this guard targets: repository checks are green while a
 Railway producer, deployment trigger, or composed coverage is still unhealthy.
+
+**Exception, added after #6483: the deploy-drift step is NOT gated on green
+main.** The gate and the drift it measures share an upstream — an ungated or
+red main is exactly when Railway's wait-for-CI refuses pushes and drift grows —
+and during #6483 the gate failed for days while the drift step sat skipped, so
+a seeder served a dead cache namespace for 25h inside a permanently-red
+monitor. The drift step and its two prerequisites (CLI install, token verify)
+now run under `if: !cancelled()`; a gate failure still fails the run, it just
+no longer blinds the one probe that measures its blast radius. Freshness
+acceptance stays gated: it grades data against code expectations and needs a
+gated revision to grade against.
 
 ## Prevention
 

@@ -17,6 +17,7 @@ import { promisify } from 'node:util';
 const execFileAsync = promisify(execFile);
 
 export const REPOSITORY = 'koala73/worldmonitor';
+export const DEPLOYMENT_READ_DEADLINE_ERROR = 'run deadline reached before deployment history read';
 
 const GIT_CALL_TIMEOUT_MS = 30_000;
 const RAILWAY_CLI_ENV_KEYS = Object.freeze([
@@ -328,12 +329,17 @@ export async function readFleetDeployments({
   maxPages = FLEET_MAX_PAGES,
   api = runRailwayApi,
   accumulatorFactory,
+  deadlineAt = Number.POSITIVE_INFINITY,
+  monotonicNow = Date.now,
 }) {
   const accumulator = accumulatorFactory({ serviceIds, notBefore });
   let after = null;
   let pages = 0;
   let records = 0;
   while (pages < maxPages) {
+    if (monotonicNow() >= deadlineAt) {
+      throw new Error(DEPLOYMENT_READ_DEADLINE_ERROR);
+    }
     const data = api(FLEET_QUERY, {
       input: { projectId, environmentId },
       first: pageSize,
@@ -387,12 +393,17 @@ export async function readDeploymentsForFleet({
   notBefore = Number.NEGATIVE_INFINITY,
   accumulatorFactory,
   onRoute = () => {},
+  deadlineAt = Number.POSITIVE_INFINITY,
+  monotonicNow = Date.now,
+  readDirect = readDeployments,
 }) {
   const byId = new Map(services.map((service) => [service.id, service]));
   const results = new Map();
   let needDirect = services;
 
-  if (projectId && environmentId && accumulatorFactory) {
+  if (monotonicNow() >= deadlineAt) {
+    onRoute({ route: 'per-service', reason: DEPLOYMENT_READ_DEADLINE_ERROR });
+  } else if (projectId && environmentId && accumulatorFactory) {
     try {
       const fleet = await readFleetDeployments({
         projectId,
@@ -400,6 +411,8 @@ export async function readDeploymentsForFleet({
         serviceIds: [...byId.keys()],
         notBefore,
         accumulatorFactory,
+        deadlineAt,
+        monotonicNow,
       });
       if (fleet.unresolved.length === byId.size) {
         // A capped, non-exhausted stream leaves every history partial. Release
@@ -431,8 +444,15 @@ export async function readDeploymentsForFleet({
   }
 
   await mapWithConcurrency(needDirect, concurrency, async (service) => {
+    if (monotonicNow() >= deadlineAt) {
+      results.set(service.id, {
+        deployments: null,
+        error: DEPLOYMENT_READ_DEADLINE_ERROR,
+      });
+      return;
+    }
     try {
-      results.set(service.id, { deployments: await readDeployments(service, environment, window), error: null });
+      results.set(service.id, { deployments: await readDirect(service, environment, window), error: null });
     } catch (error) {
       results.set(service.id, {
         deployments: null,
