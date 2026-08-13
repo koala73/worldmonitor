@@ -19,6 +19,16 @@
  * existing bundles whose individual sections already exceed 9min (e.g.
  * 600_000-1 timeouts in imf-extended, energy-sources) are not silently
  * broken by adopting the runner.
+ *
+ * Deferral is only ever meant to shed load under pressure, so two guards keep
+ * it from turning into a silent outage (#6556, where seed-bundle-resilience
+ * deferred all three sections on every tick and exited 0 for six hours):
+ *   1. A section whose worst case does not fit the WHOLE budget can never be
+ *      admitted on any tick. That is a static config error, not pressure, so
+ *      runBundle throws before spawning anything.
+ *   2. A tick that admitted work yet completed none of it while deferring a
+ *      due section exits non-zero. `ran:0 deferred:>0` is otherwise
+ *      indistinguishable from a healthy no-op in Railway's badge.
  */
 
 import { spawn } from 'node:child_process';
@@ -107,7 +117,32 @@ export async function readSectionFreshness(section, readKey = readRedisKey) {
 // Stream child stdio line-by-line so hung sections surface progress instead of
 // looking like a silent crash. Escalate SIGTERM → SIGKILL on timeout so child
 // processes with in-flight HTTPS sockets can't outlive the deadline.
-const KILL_GRACE_MS = 10_000;
+//
+// Exported because a section's worst-case wall time is `timeoutMs +
+// KILL_GRACE_MS`, and both the startup admission check below and the
+// repo-wide gate in tests/bundle-budget-admission.test.mjs must compute it
+// from the same constant rather than a copied literal.
+export const KILL_GRACE_MS = 10_000;
+export const DEFAULT_SECTION_TIMEOUT_MS = 300_000;
+
+/**
+ * Worst-case wall time a section can occupy: its own timeout plus the grace
+ * window the runner allows between SIGTERM and SIGKILL.
+ */
+export function sectionWorstCaseMs(section) {
+  return (section.timeoutMs || DEFAULT_SECTION_TIMEOUT_MS) + KILL_GRACE_MS;
+}
+
+/**
+ * Sections that can never be admitted, whatever else the tick does. The
+ * admission test in runBundle is `elapsed + worstCase <= maxBundleMs`, so a
+ * section whose worst case alone exceeds the budget fails it even as the
+ * first section of an otherwise empty tick. Returns [] when unbudgeted.
+ */
+export function findUnadmittableSections(sections, maxBundleMs) {
+  if (!Number.isFinite(maxBundleMs)) return [];
+  return sections.filter((section) => sectionWorstCaseMs(section) > maxBundleMs);
+}
 
 function streamLines(stream, onLine) {
   let buf = '';
@@ -284,8 +319,29 @@ export async function runBundle(label, sections, opts = {}) {
     }
   }
 
-  const t0 = Date.now();
   const maxBundleMs = opts.maxBundleMs ?? Infinity;
+
+  // Admission arithmetic assertion. The per-tick budget check below defers a
+  // section whose worst case does not fit the REMAINING budget — a load-shed
+  // that assumes the section fits the budget at all. When it does not, the
+  // section is deferred on every tick forever and the bundle still exits 0:
+  // #6556 shipped maxBundleMs 570s against a cheapest section of 610s, so
+  // seed-bundle-resilience ran nothing for six hours under a green Railway
+  // badge. Throw instead, alongside the dependsOn contract above, so the
+  // misconfiguration surfaces on the first tick rather than as data ageing
+  // out half a day later.
+  const unadmittable = findUnadmittableSections(sections, maxBundleMs);
+  if (unadmittable.length > 0) {
+    const detail = unadmittable
+      .map((s) => `'${s.label}' needs ${sectionWorstCaseMs(s)}ms (timeoutMs ${s.timeoutMs || DEFAULT_SECTION_TIMEOUT_MS} + ${KILL_GRACE_MS}ms kill grace)`)
+      .join('; ');
+    throw new Error(
+      `[Bundle:${label}] maxBundleMs=${maxBundleMs} is below the worst case of ${unadmittable.length} section(s), which can therefore never be admitted on any tick: ${detail}. `
+      + 'Lower those section timeouts, or raise maxBundleMs (it must stay under the Railway container cap).',
+    );
+  }
+
+  const t0 = Date.now();
   const budgetLabel = Number.isFinite(maxBundleMs) ? `, budget ${Math.round(maxBundleMs / 1000)}s` : '';
   console.log(`[Bundle:${label}] Starting (${sections.length} sections${budgetLabel})`);
 
@@ -302,7 +358,7 @@ export async function runBundle(label, sections, opts = {}) {
     }
 
     const scriptPath = join(__dirname, section.script);
-    const timeout = section.timeoutMs || 300_000;
+    const timeout = section.timeoutMs || DEFAULT_SECTION_TIMEOUT_MS;
 
     const freshness = await readSectionFreshness(section);
     if (freshness?.fetchedAt) {
@@ -319,7 +375,9 @@ export async function runBundle(label, sections, opts = {}) {
     const elapsedBundle = Date.now() - t0;
     // Worst-case runtime is timeoutMs + KILL_GRACE_MS (child may ignore SIGTERM
     // and need SIGKILL after grace). Admit only when the full worst-case fits.
-    const worstCase = timeout + KILL_GRACE_MS;
+    // Shared with the startup check so the two can never disagree about which
+    // sections are admittable.
+    const worstCase = sectionWorstCaseMs(section);
     if (elapsedBundle + worstCase > maxBundleMs) {
       const remainingSec = Math.max(0, Math.round((maxBundleMs - elapsedBundle) / 1000));
       const needSec = Math.round(worstCase / 1000);
@@ -368,11 +426,22 @@ export async function runBundle(label, sections, opts = {}) {
 
   const totalSec = ((Date.now() - t0) / 1000).toFixed(1);
   console.log(`[Bundle:${label}] Finished in ${totalSec}s, ran:${ran} skipped:${skipped} deferred:${deferred} failed:${failed} graceful:${gracefulFailed}`);
-  // Graceful-only run (transient skips, no hard failures): exit 0 so Railway
-  // does not paint CRASHED and fire a spurious alert. Real staleness is caught
-  // independently by the /api/health freshness monitor keyed on seed-meta TTL.
-  if (failed === 0 && gracefulFailed > 0) {
+  // A tick that completed no section while deferring a due one accomplished
+  // nothing AND shed work. Deferral only pays for itself if the deferred
+  // section runs on a later tick, so this state repeating is a stalled
+  // service — the shape that made #6556 invisible for six hours. Report it as
+  // a failure; `ran:0 deferred:0` (everything fresh) stays a healthy no-op.
+  const starvedTick = ran === 0 && deferred > 0;
+  if (starvedTick) {
+    console.error(
+      `[Bundle:${label}] ran:0 while ${deferred} due section(s) were deferred — this tick published nothing and shed work. `
+      + 'Exiting non-zero: a fully-deferred tick is indistinguishable from a healthy no-op, so it must not report success.',
+    );
+  } else if (failed === 0 && gracefulFailed > 0) {
+    // Graceful-only run (transient skips, no hard failures): exit 0 so Railway
+    // does not paint CRASHED and fire a spurious alert. Real staleness is caught
+    // independently by the /api/health freshness monitor keyed on seed-meta TTL.
     console.log(`[Bundle:${label}] ${gracefulFailed} graceful fetch skip(s), no hard failures — no data lost, exiting 0 (not a crash)`);
   }
-  process.exit(failed > 0 ? 1 : 0);
+  process.exit(failed > 0 || starvedTick ? 1 : 0);
 }
