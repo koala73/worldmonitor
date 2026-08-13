@@ -516,6 +516,69 @@ missing number, and they justify very different scores. A country nobody
 surveys must not be scored like a country where the thing being measured
 verifiably does not happen.
 
+## Seed Bundle Orchestration
+
+### Bundle Wall Budget
+
+The total wall-clock time one bundle tick may occupy, chosen to sit below the
+container's hard kill so a member is shed cleanly instead of being killed
+mid-publish.
+
+The budget only shapes anything while it stays under that kill; at or above it
+the container dies first and the budget is decorative. Every member must fit the
+budget outright — a member whose worst case cannot fit is not under pressure, it
+can never run at all, which is a configuration error rather than load.
+
+### Section Worst Case
+
+The longest wall-clock a member can occupy: its own timeout plus the grace the
+runner allows between asking a child to stop and forcing it.
+
+Distinct from expected runtime, which is usually far smaller. Admission is
+decided on the worst case, so an over-declared timeout costs the bundle budget
+the member will never actually spend.
+
+### Admission Headroom
+
+Slack reserved above a member's worst case to cover the work the runner itself
+performs before it admits anything.
+
+Load-bearing rather than defensive: the runner's freshness checks run before the
+budget test, so the budget is already partly spent when the first member is
+considered. Deriving this from the runner's own per-check bound, rather than
+choosing a number, is what keeps the admission rule and the runtime rule from
+drifting apart — when they drift, the admission rule accepts a band of
+configurations the runtime rejects on every tick.
+
+### Section Deferral
+
+A due member skipped for lack of remaining budget on this tick, expected to run
+on a later one.
+
+Deferral is load-shedding, not failure — but it only pays for itself if the
+member eventually runs. A member deferred on every tick is a stall wearing
+deferral's clothing, and telling those two apart is the whole reason this
+vocabulary exists.
+
+### Graceful Skip
+
+A member that hit a transient upstream failure, extended its last-good data
+instead of publishing, and lost nothing.
+
+It must not crash the bundle: one rate-limited source firing a deploy-crash
+alert is the alert fatigue that makes the alarm worthless. Real staleness is
+caught by freshness monitoring on the published data, never by the tick's exit
+status.
+
+### Starved Tick
+
+A tick that completed no member while deferring due work — it published nothing
+and shed work at the same time.
+
+Indistinguishable from a healthy no-op by exit status alone, which is why it is
+named and reported explicitly. A tick where every member was merely fresh is a
+healthy no-op and must not be confused with it.
+
 ## Flagged ambiguities
 
 - *"Pool"* had been used for both a labelled market category and the complete set of markets — these are distinct. A pool is always a labelled subset; the complete set has no pool and must be requested as an explicit union.
