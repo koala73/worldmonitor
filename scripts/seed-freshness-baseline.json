@@ -88,12 +88,12 @@
       "name": "mineralProduction",
       "status": "EMPTY",
       "issue": 6439,
-      "reason": "New USGS/BGS mineral-production probe. seed-bundle-static-ref runs weekly (`0 3 * * 0`, Sunday 03:00 UTC), so the key cannot exist until the first Sunday run after this PR deploys; EMPTY is expected until then. The rollout window below is anchored to that real cron window rather than an arbitrary instant -- MAX_ROLLOUT_WINDOW_MS caps firstScheduledRunAt-activatedAt at 24h, so activatedAt marks the start of the 24h window preceding the run, not the deploy instant. If this PR has not merged by 2026-08-16T03:00Z, re-anchor both to the following Sunday.",
-      "expiresAt": "2026-08-16T03:00:00.000Z",
+      "reason": "New USGS/BGS mineral-production probe. seed-bundle-static-ref runs daily at 03:00 UTC (`0 3 * * *` in scripts/railway-services.json), so the key cannot exist until the first tick after this PR deploys; EMPTY is expected until then. Anchored to that real cron window: MAX_ROLLOUT_WINDOW_MS caps firstScheduledRunAt-activatedAt at 24h, and a daily tick fits inside it. If this PR has not merged by 2026-08-14T03:00Z, re-anchor both to the next 03:00 UTC tick.",
+      "expiresAt": "2026-08-14T03:00:00.000Z",
       "cutover": {
         "probeKey": "seed-meta:supply-chain:mineral-production",
-        "activatedAt": "2026-08-15T03:00:00.000Z",
-        "firstScheduledRunAt": "2026-08-16T03:00:00.000Z"
+        "activatedAt": "2026-08-13T06:00:00.000Z",
+        "firstScheduledRunAt": "2026-08-14T03:00:00.000Z"
       }
     }
   ]

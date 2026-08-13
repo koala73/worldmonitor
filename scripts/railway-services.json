@@ -776,8 +776,6 @@
       "scripts/seed-military-bases.mjs",
       "scripts/seed-mineral-production.mjs",
       "scripts/seed-submarine-cables.mjs",
-      "scripts/shared/country-name-to-iso2.cjs",
-      "scripts/shared/country-names.json",
       "scripts/shared/mineral-commodities.json",
       "scripts/shared/mineral-country-aliases.json",
       "scripts/shared/mineral-production-parse.mjs"
