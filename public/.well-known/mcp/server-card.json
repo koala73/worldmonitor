@@ -153,6 +153,10 @@
       "description": "Nuclear test-site seismic monitor: USGS earthquakes near known test sites scored for proliferation concern. Watches seismic events within 100 km of the monitored nuclear test sites (Punggye-ri, Lop Nur, Novaya Zemlya, the Nevada National Security Site, Semipalatinsk, and other historical sites) and scores each event 0-100 from magnitude, proximity, and depth — shallow events close to a site score highest, since underground tests are shallow by nature. Concern bands: low, moderate, elevated, critical. Includes a per-site rollup (event count, max concern, max magnitude). An empty list with fresh data means no seismicity near any monitored site in the current feed window."
     },
     {
+      "name": "get_defense_industrial_base",
+      "description": "Return one country's latest World Bank military-capacity indicators and SIPRI-derived five-year arms-supplier shares and concentration. Use this to answer who supplies a country's major weapons and how concentrated that dependency is. TIV is a transfer-volume indicator, not money."
+    },
+    {
       "name": "get_china_decision_signals",
       "description": "Return the bounded six-domain China decision-signal snapshot used by the public country summary. Every item retains canonical provenance, revision, supersession, translation, confidence, corroboration, and freshness claims; unavailable domains remain explicit rather than becoming zero or normal. Detailed bilateral trade rows and operator-only source health are intentionally excluded."
     },
@@ -207,6 +211,10 @@
     {
       "name": "get_commodity_geo",
       "description": "Global mining sites with coordinates, operator, mineral type, and production status. Covers 71 major mines spanning gold, silver, copper, lithium, uranium, coal, and other minerals worldwide."
+    },
+    {
+      "name": "get_mineral_production",
+      "description": "Who mines and who refines a commodity, with country shares and HHI. Answers \"who refines cobalt\" or \"what does Chile produce\". USGS Mineral Commodity Summaries plus BGS fill. Complements get_commodity_geo (deposit locations)."
     },
     {
       "name": "get_signal_convergence",

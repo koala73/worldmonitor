@@ -2518,7 +2518,17 @@ export async function runSeed(domain, resource, canonicalKey, fetchFn, opts = {}
         }
         await writeExtraKey(ek.key, ekData, ek.ttl || ttlSeconds, ekEnvelope);
         if (contractMode && ek.metaKey) {
-          const wroteMeta = await writeSeedMeta(ek.key, ekEnvelope?.recordCount ?? 0, ek.metaKey, ek.metaTtlSeconds);
+          const metaExtra = typeof ek.metaExtra === 'function'
+            ? ek.metaExtra(ekData, data)
+            : ek.metaExtra;
+          const wroteMeta = await writeSeedMeta(
+            ek.key,
+            ekEnvelope?.recordCount ?? 0,
+            ek.metaKey,
+            ek.metaTtlSeconds,
+            ek.coverage,
+            metaExtra,
+          );
           if (!wroteMeta && ek.metaCritical) throw new Error(`Extra key ${ek.key}: seed-meta ${ek.metaKey} write failed`);
         }
       }

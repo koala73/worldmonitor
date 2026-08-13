@@ -9,12 +9,11 @@
 //   economic:bis-lbs:v1           (200 countries)
 //   economic:fatf-listing:v1      (FATF plenary publication 2026-06-01)
 //
-// The `nonDrsCountryCodes` subset is pinned from the World Bank country
-// catalog's lendingType=LNX classification captured on the same date. The
-// values are pinned, not live-fetched, so the calibration gates are
-// deterministic and run in CI without credentials. The subset is the union
-// of the `sanctions-isolated` cohort, the dimension-level matched pairs,
-// and the issue's stub probe, plus DE as an unremarkable-OECD control.
+// The `nonDrsCountryCodes` cohort is pinned from the World Bank country
+// catalog's lendingType=LNX classification. The values are pinned, not
+// live-fetched, so the calibration gates are deterministic and run in CI
+// without credentials. It includes every LNX country used by this fixture and
+// stays above the producer contract's 40-country fail-closed floor.
 //
 // WHY REAL VALUES MATTER HERE: the failure this file exists to prevent is a
 // construct that ranks financially severed states ABOVE financially deep
@@ -66,7 +65,11 @@ export const FINSYS_DEBT_FIXTURE: Readonly<Record<string, FinSysDebtEntry>> = {
 
 /** World Bank country-catalog records classified as lendingType=LNX. */
 export const FINSYS_NON_DRS_COUNTRY_CODES: ReadonlyArray<string> = [
-  'CH', 'CU', 'DE', 'GB', 'KP', 'LU', 'MC', 'SG', 'US',
+  'AD', 'AE', 'AT', 'AU', 'BE', 'BH', 'BN', 'BS', 'CA', 'CH', 'CU', 'CY',
+  'CZ', 'DE', 'DK', 'EE', 'ES', 'FI', 'FR', 'GB', 'GR', 'HK', 'HU', 'IE',
+  'IL', 'IS', 'IT', 'JP', 'KP', 'KR', 'KW', 'LI', 'LT', 'LU', 'LV', 'MC',
+  'MO', 'MT', 'NL', 'NO', 'NZ', 'OM', 'PT', 'QA', 'SA', 'SE', 'SG', 'SI',
+  'SK', 'SM', 'US',
 ];
 
 /** `economic:bis-lbs:v1` — BIS CBS by-parent claims and reporter count. */
@@ -134,6 +137,7 @@ export function createFinSysFixtureReader(
   nowMs: number = Date.now(),
 ): ResilienceSeedReader {
   const debt = {
+    schemaVersion: 2,
     countries: { ...FINSYS_DEBT_FIXTURE, ...(overrides.debt ?? {}) },
     nonDrsCountryCodes: FINSYS_NON_DRS_COUNTRY_CODES,
   };

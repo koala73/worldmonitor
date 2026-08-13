@@ -67,6 +67,19 @@
       "stable": "Стабилно"
     },
     "militaryActivity": "Военна активност",
+    "defenseIndustrial": {
+      "title": "Defense Industrial Base",
+      "expenditure": "Military spend",
+      "personnel": "Personnel",
+      "armsImports": "Arms imports",
+      "concentration": "Supplier HHI",
+      "suppliers": "Arms suppliers ({{start}}–{{end}})",
+      "source": "Sources: World Bank and SIPRI Arms Transfers Database. TIV measures transfer volume, not financial value.",
+      "sourceWorldBank": "Source: World Bank.",
+      "unavailable": "Not available",
+      "coverage": "Mapped coverage",
+      "supplierRetained": "Supplier data retained from the last successful importer refresh."
+    },
     "economicIndicators": "Икономически показатели",
     "ownFlights": "Собствени полети",
     "foreignFlights": "Чужди полети",
@@ -852,7 +865,12 @@
       "loadingHistory": "Зареждане на история на преходите…",
       "historyUnavailable": "История на преходите недостъпна",
       "transitDataUnavailable": "Данни за преходите недостъпни (източник частичен)",
-      "infoTooltip": "<strong>Монитор на веригата на доставки</strong> Глобално проследяване на логистиката и ресурсите:<ul><li><strong>Тесни места</strong>: Статус на морските преходи, оценки на прекъсванията и брой кораби</li><li><strong>Корабоплаване</strong>: Тенденции на Балтийския индекс на сухи товари и тарифи на фрахт</li><li><strong>Минерали</strong>: Риск на концентрация на критични минерали (HHI) и основни производители</li></ul>Щракнете на карта на тесното място, за да разширите диаграма на историята на преходите."
+      "infoTooltip": "<strong>Монитор на веригата на доставки</strong> Глобално проследяване на логистиката и ресурсите:<ul><li><strong>Тесни места</strong>: Статус на морските преходи, оценки на прекъсванията и брой кораби</li><li><strong>Корабоплаване</strong>: Тенденции на Балтийския индекс на сухи товари и тарифи на фрахт</li><li><strong>Минерали</strong>: Риск на концентрация на критични минерали (HHI) и основни производители</li></ul>Щракнете на карта на тесното място, за да разширите диаграма на историята на преходите.",
+      "mineStage": "Mine",
+      "refineryStage": "Refine",
+      "stageUnavailable": "No published figures for this stage",
+      "withheldNote": "W withheld",
+      "productionCaption": "Country shares of actual production. The map deposits layer shows where resources sit; this table shows who mines or refines them."
     },
     "tradePolicy": {
       "tariffs": "Митнически такси",

@@ -164,6 +164,7 @@ Force posture and strategic infrastructure, tracked from open sources in real ti
 - Spaceports & launch facilities
 - **Orbital surveillance** — ~80–120 intelligence-relevant satellites tracked in real time via CelesTrak TLE data and client-side SGP4 propagation (satellite.js). Country-coded markers at orbital altitude, 15-min orbit trails, ground footprints. Globe-only. [Details →](/orbital-surveillance)
 - GPS/GNSS jamming zones from ADS-B transponder analysis (H3 hex grid, interference % classification)
+- Defense industrial-base indicators from the World Bank and derived five-year arms-supplier dependency shares from SIPRI
 
 **Key providers**
 
@@ -172,6 +173,20 @@ Force posture and strategic infrastructure, tracked from open sources in real ti
 | CelesTrak | Satellite TLE data for orbital tracking | [celestrak.org](https://celestrak.org) |
 | gpsjam.org | ADS-B-derived GPS interference grid | [gpsjam.org](https://gpsjam.org) |
 | LiveUAMap | Geocoded conflict events (Iran theater) | [liveuamap.com](https://liveuamap.com) |
+| World Bank Open Data | Military expenditure, personnel, and national arms-transfer totals (`MS.MIL.*`) | [api.worldbank.org](https://api.worldbank.org/) |
+| SIPRI Arms Transfers Database | Derived supplier shares and HHI for delivered major conventional weapons; no full-database mirror | [armstransfers.sipri.org](https://armstransfers.sipri.org/) |
+
+### Defense Industrial Base Licensing
+
+| Source | Stored and displayed | License and attribution posture |
+|--------|----------------------|---------------------------------|
+| World Bank Open Data | Latest and previous annual `MS.MIL.*` observations per country | [CC BY 4.0](https://www.worldbank.org/en/about/legal/terms-of-use-for-datasets); attribute World Bank. |
+| SIPRI Arms Transfers Database | Per-importer five-year supplier shares and HHI only | SIPRI attribution is required. The full database is not redistributed. SIPRI fair use permits non-commercial analytical use and reproduction of less than 10% of a dataset; commercial use requires authorization and may require a royalty. See [SIPRI terms](https://www.sipri.org/about/terms-and-conditions). |
+
+SIPRI TIV measures the volume of transfers of major conventional weapons. It is
+not a financial value. The annual seeder reads the current public portal output,
+maps recognized state entities to ISO-2 codes, logs and skips unmapped entities,
+and publishes only derived aggregates for the newest complete five-year window.
 
 Deep dives: [Military tracking](/military-tracking) · [Maritime intelligence](/maritime-intelligence) · [Orbital surveillance](/orbital-surveillance)
 
@@ -418,6 +433,7 @@ Physical-economy fundamentals for the Energy and Commodity variants: storage, in
 - CFTC Commitments of Traders positioning (reviewed US government data)
 - Global fuel-price tracking with national statistical sources (for example Malaysia's data.gov.my and Mexico's datos.gob.mx)
 - Commodity news network: precious metals, base metals, critical minerals, mining companies, and supply-chain feeds — see the [feed inventory](#server-side-feed-aggregation)
+- Mineral production and processing shares by country and stage (USGS Mineral Commodity Summaries, BGS World Mineral Production fill). Complements the static critical-minerals deposits map layer: deposits are where it *could* come from; these shares are where it *does*, at mine vs refinery.
 - Energy chokepoint and tanker context via [maritime intelligence](/maritime-intelligence) and the [Hormuz tracker](/panels/hormuz-tracker)
 
 **Key providers**
@@ -426,6 +442,10 @@ Physical-economy fundamentals for the Energy and Commodity variants: storage, in
 |----------|------|------|
 | GIE AGSI+ | EU natural gas storage levels | [agsi.gie.eu](https://agsi.gie.eu) |
 | U.S. EIA | Crude oil inventories, fuel prices, energy data | [eia.gov/opendata](https://www.eia.gov/opendata) |
+| USGS Mineral Commodity Summaries | Annual mine and refinery production by country (public domain) | [sciencebase.gov MCS 2026](https://doi.org/10.5066/P1WKQ63T) |
+| BGS World Mineral Production | Cross-check / fill where USGS lacks a world table (attribution required) | [bgs.ac.uk world mineral statistics](https://www.bgs.ac.uk/mineralsuk/statistics/world-mineral-statistics/) |
+
+Licensing: USGS MCS data is U.S. public domain. BGS World Mineral Production requires attribution to the British Geological Survey; IEA critical-minerals datasets are not ingested because redistribution terms are stricter than USGS/BGS, so USGS-unpublished REE refining shares are omitted.
 
 Deep dives: [Energy crisis panel](/panels/energy-crisis) · [Chokepoints methodology](/methodology/chokepoints) · [Pipelines methodology](/methodology/pipelines) · [Storage methodology](/methodology/storage)
 

@@ -515,6 +515,37 @@ curl -s https://worldmonitor.app/mcp \
 
 </CodeGroup>
 
+### `get_mineral_production`
+
+Country shares of mine and refinery production, plus HHI, from the annual USGS Mineral Commodity Summaries seed (BGS fills commodities MCS lacks, notably uranium). Use this for "who refines X" / "what does country Y produce". Deposit locations stay on `get_commodity_geo`.
+
+**Parameters:**
+
+| Name | Type | Required | Description |
+|------|------|---------:|-------------|
+| `commodity` | string | no | Commodity id or label (`cobalt`, `lithium`, `ree`, …) |
+| `iso2` | string | no | ISO 3166-1 alpha-2 producer filter |
+| `stage` | string: mine / refinery | no | Restrict to one stage |
+
+- **API endpoints:** `GET /api/supply-chain/v1/get-mineral-production`
+- **Kind:** cache read — Redis seed `supply-chain:mineral-production:v1`.
+- **Freshness budget:** annual MCS edition. Withheld USGS values stay flagged and are never treated as zero.
+
+<CodeGroup>
+
+```bash curl
+curl -s https://worldmonitor.app/mcp \
+  -H "X-WorldMonitor-Key: $WM_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "jsonrpc":"2.0","id":1,
+    "method":"tools/call",
+    "params":{"name":"get_mineral_production","arguments":{"commodity":"cobalt","stage":"mine"}}
+  }'
+```
+
+</CodeGroup>
+
 ### `get_commodity_geo`
 
 Global mining sites with coordinates, operator, mineral type, and production status. Covers 71 major mines spanning gold, silver, copper, lithium, uranium, coal, and other minerals worldwide.
@@ -669,6 +700,37 @@ curl -s https://worldmonitor.app/mcp \
 ```
 
 </CodeGroup>
+
+### `get_defense_industrial_base`
+
+Returns a country's latest World Bank military expenditure, armed-forces
+personnel, and arms import/export TIV observations together with SIPRI-derived
+supplier shares and a five-year supplier HHI. Use it to answer questions such
+as “who supplies Ukraine's major weapons, and how concentrated is that
+dependency?” TIV is a transfer-volume indicator, not a financial value.
+
+**Parameters:**
+
+| Name | Type | Required | Description |
+|------|------|---------:|-------------|
+| `country_code` | string | **yes** | ISO 3166-1 alpha-2 country code, for example `UA`, `DE`, or `IN`. |
+
+- **API endpoint:** `GET /api/military/v1/get-defense-industrial-base`
+- **Kind:** live RPC backed by two annual Redis snapshots.
+- **Freshness:** `industrialFetchedAt` and `supplierFetchedAt` report the two source clocks separately. `supplierRetained` identifies an importer row preserved after a partial SIPRI failure; `fetchedAt` is the older clock among the values served. Seeder liveness alarms after 28 days, and source observation years are checked separately against the annual content-age budget.
+- **Mapping:** `supplierMappingCoverage` reports the share of positive supplier TIV mapped to ISO2 suppliers. Supplier shares and HHI keep unmapped positive TIV in the denominator.
+- **Licensing:** the response contains derived SIPRI aggregates only and identifies SIPRI as the source. It does not reproduce the full database.
+
+```bash curl
+curl -s https://worldmonitor.app/mcp \
+  -H "X-WorldMonitor-Key: $WM_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "jsonrpc":"2.0","id":1,
+    "method":"tools/call",
+    "params":{"name":"get_defense_industrial_base","arguments":{"country_code":"UA"}}
+  }'
+```
 
 ### `get_country_brief`
 

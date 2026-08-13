@@ -46,6 +46,7 @@ import {
   FINSYS_BIS_FIXTURE,
   FINSYS_DEBT_FIXTURE,
   FINSYS_FIXTURE_CAPTURED_AT,
+  FINSYS_NON_DRS_COUNTRY_CODES,
   createFinSysFixtureReader,
 } from './helpers/resilience-finsys-fixtures.mts';
 
@@ -76,12 +77,29 @@ function blendFinSys(band: number, parentCount: number | null): number {
   return Math.round(num / den);
 }
 const VALID_DEBT_CONTROL_COUNTRY = 'ZZ';
+const VALID_DEBT_SCHEMA_VERSION = 2;
 
-function reachableDebtEnvelope(nonDrsCountryCodes: ReadonlyArray<string> = []): unknown {
+function reachableDebtEnvelope(additionalNonDrsCountryCodes: ReadonlyArray<string> = []): unknown {
   return {
-    countries: { [VALID_DEBT_CONTROL_COUNTRY]: { value: 1, year: 2024 } },
-    nonDrsCountryCodes,
+    _seed: {
+      fetchedAt: Date.now(),
+      recordCount: 1,
+      sourceVersion: 'wb-ids-test',
+      schemaVersion: VALID_DEBT_SCHEMA_VERSION,
+      state: 'OK',
+    },
+    data: {
+      countries: { [VALID_DEBT_CONTROL_COUNTRY]: { value: 1, year: 2024 } },
+      nonDrsCountryCodes: [...new Set([...FINSYS_NON_DRS_COUNTRY_CODES, ...additionalNonDrsCountryCodes])],
+    },
   };
+}
+
+function readerWithDebtPayload(debtPayload: unknown): ResilienceSeedReader {
+  const fixtureReader = createFinSysFixtureReader();
+  return async (key) => (
+    key === 'economic:wb-external-debt:v1' ? debtPayload : fixtureReader(key)
+  );
 }
 
 // The dim is flag-gated for staged rollout (matches energy v2 pattern).
@@ -253,26 +271,34 @@ describe('scoreFinancialSystemExposure — fail-closed preflight', () => {
   });
 
   it('throws when healthy seed-meta is followed by an absent or malformed WB data envelope', async () => {
+    const validNonDrsCountryCodes = [...FINSYS_NON_DRS_COUNTRY_CODES];
+    const malformedNonDrsCountryCodes = [...validNonDrsCountryCodes];
+    malformedNonDrsCountryCodes[0] = 'bad';
+    const duplicateNonDrsCountryCodes = [...validNonDrsCountryCodes];
+    duplicateNonDrsCountryCodes[0] = duplicateNonDrsCountryCodes[1];
     for (const debtPayload of [
       null,
       {},
-      { countries: {} },
-      { countries: [], nonDrsCountryCodes: [] },
-      { countries: { ZZ: { value: 1 } }, nonDrsCountryCodes: ['LU', 'LU'] },
+      { schemaVersion: VALID_DEBT_SCHEMA_VERSION, countries: {} },
+      { schemaVersion: VALID_DEBT_SCHEMA_VERSION, countries: [], nonDrsCountryCodes: [] },
+      {
+        schemaVersion: VALID_DEBT_SCHEMA_VERSION,
+        countries: { [VALID_DEBT_CONTROL_COUNTRY]: { value: 1, year: 2024 } },
+        nonDrsCountryCodes: FINSYS_NON_DRS_COUNTRY_CODES.slice(0, 39),
+      },
+      {
+        schemaVersion: VALID_DEBT_SCHEMA_VERSION,
+        countries: { ZZ: { value: 1 } },
+        nonDrsCountryCodes: malformedNonDrsCountryCodes,
+      },
+      {
+        schemaVersion: VALID_DEBT_SCHEMA_VERSION,
+        countries: { ZZ: { value: 1 } },
+        nonDrsCountryCodes: duplicateNonDrsCountryCodes,
+      },
     ]) {
-      const reader: ResilienceSeedReader = async (key) => {
-        if (key.startsWith('seed-meta:')) return { fetchedAt: Date.now(), status: 'ok' };
-        if (key === 'economic:wb-external-debt:v1') return debtPayload;
-        if (key === 'economic:bis-lbs:v1') {
-          return { countries: { [TEST_ISO2]: { totalXborderPctGdp: 25, parentCount: 10 } } };
-        }
-        if (key === 'economic:fatf-listing:v1') {
-          return { listings: { IR: 'black', KP: 'black' }, publicationDate: '2026-06-01' };
-        }
-        return null;
-      };
       await assert.rejects(
-        () => scoreFinancialSystemExposure(TEST_ISO2, reader),
+        () => scoreFinancialSystemExposure(TEST_ISO2, readerWithDebtPayload(debtPayload)),
         (err: unknown) => (
           err instanceof ResilienceConfigurationError
           && err.missingKeys.includes('economic:wb-external-debt:v1')
@@ -280,6 +306,47 @@ describe('scoreFinancialSystemExposure — fail-closed preflight', () => {
         'source-level WB data failure must not become a positive per-country imputation',
       );
     }
+  });
+
+  it('throws when the WB payload regresses to schema v1 without non-DRS metadata', async () => {
+    const reader = readerWithDebtPayload({
+      countries: { [VALID_DEBT_CONTROL_COUNTRY]: { value: 1, year: 2024 } },
+    });
+
+    await assert.rejects(
+      () => scoreFinancialSystemExposure(TEST_ISO2, reader),
+      (err: unknown) => (
+        err instanceof ResilienceConfigurationError
+        && err.missingKeys.includes('economic:wb-external-debt:v1')
+        && /schema v2.*nonDrsCountryCodes/.test(err.message)
+      ),
+      'the active non-DRS path must fail closed when production falls back to schema v1',
+    );
+  });
+
+  it('throws when an otherwise valid-looking WB payload declares schema v1', async () => {
+    const reader = readerWithDebtPayload({
+      _seed: {
+        fetchedAt: Date.now(),
+        recordCount: 1,
+        sourceVersion: 'wb-ids-test',
+        schemaVersion: 1,
+        state: 'OK',
+      },
+      data: {
+        countries: { [VALID_DEBT_CONTROL_COUNTRY]: { value: 1, year: 2024 } },
+        nonDrsCountryCodes: FINSYS_NON_DRS_COUNTRY_CODES,
+      },
+    });
+
+    await assert.rejects(
+      () => scoreFinancialSystemExposure(TEST_ISO2, reader),
+      (err: unknown) => (
+        err instanceof ResilienceConfigurationError
+        && err.missingKeys.includes('economic:wb-external-debt:v1')
+      ),
+      'the scorer must enforce the numeric schema boundary before using the unwrapped payload',
+    );
   });
 });
 
@@ -309,7 +376,9 @@ describe('scoreFinancialSystemExposure — formula math', () => {
       if (key === 'seed-meta:economic:wb-external-debt') return { fetchedAt: Date.now() };
       if (key === 'seed-meta:economic:bis-lbs') return { fetchedAt: Date.now() };
       if (key === 'seed-meta:economic:fatf-listing') return { fetchedAt: Date.now() };
-      if (key === 'economic:wb-external-debt:v1') return { countries: { [TEST_ISO2]: { value: 0, year: 2024 } } };
+      if (key === 'economic:wb-external-debt:v1') {
+        return { schemaVersion: VALID_DEBT_SCHEMA_VERSION, countries: { [TEST_ISO2]: { value: 0, year: 2024 } }, nonDrsCountryCodes: FINSYS_NON_DRS_COUNTRY_CODES };
+      }
       if (key === 'economic:bis-lbs:v1') return { countries: { [TEST_ISO2]: { totalXborderPctGdp: 25, parentCount: 10 } } };
       if (key === 'economic:fatf-listing:v1') return { listings: { [TEST_ISO2]: 'compliant' }, publicationDate: '2026-02-13' };
       return null;
@@ -323,7 +392,9 @@ describe('scoreFinancialSystemExposure — formula math', () => {
     if (key === 'seed-meta:economic:wb-external-debt') return { fetchedAt: Date.now() };
     if (key === 'seed-meta:economic:bis-lbs') return { fetchedAt: Date.now() };
     if (key === 'seed-meta:economic:fatf-listing') return { fetchedAt: Date.now() };
-    if (key === 'economic:wb-external-debt:v1') return { countries: { [TEST_ISO2]: { value: 15, year: 2024 } } };
+    if (key === 'economic:wb-external-debt:v1') {
+      return { schemaVersion: VALID_DEBT_SCHEMA_VERSION, countries: { [TEST_ISO2]: { value: 15, year: 2024 } }, nonDrsCountryCodes: FINSYS_NON_DRS_COUNTRY_CODES };
+    }
     if (key === 'economic:bis-lbs:v1') return { countries: { [TEST_ISO2]: { totalXborderPctGdp: xborderPct, parentCount: 1 } } };
     if (key === 'economic:fatf-listing:v1') return { listings: { [TEST_ISO2]: 'black' }, publicationDate: '2026-02-13' };
     return null;
@@ -747,7 +818,9 @@ describe('scoreFinancialSystemExposure — half-parsed BIS row (pre-existing ble
 describe('scoreFinancialSystemExposure — comprehensive-embargo cap (#6459)', () => {
   const bestCaseReader = (iso2: string): ResilienceSeedReader => async (key) => {
     if (key.startsWith('seed-meta:')) return { status: 'ok', fetchedAt: Date.now() };
-    if (key === 'economic:wb-external-debt:v1') return { countries: { [iso2]: { value: 0, year: 2024 } } };
+    if (key === 'economic:wb-external-debt:v1') {
+      return { schemaVersion: VALID_DEBT_SCHEMA_VERSION, countries: { [iso2]: { value: 0, year: 2024 } }, nonDrsCountryCodes: FINSYS_NON_DRS_COUNTRY_CODES };
+    }
     if (key === 'economic:bis-lbs:v1') return { countries: { [iso2]: { totalXborderPctGdp: 25, parentCount: 10 } } };
     if (key === 'economic:fatf-listing:v1') {
       return { listings: { IR: 'black', KP: 'black' }, publicationDate: '2026-06-01' };
@@ -828,7 +901,7 @@ describe('scoreFinancialSystemExposure — non-DRS short-term-debt slot (#6459)'
     if (key.startsWith('seed-meta:')) return { status: 'ok', fetchedAt: Date.now() };
     if (key === 'economic:wb-external-debt:v1') {
       return opts.debtRow
-        ? { countries: { [TEST_ISO2]: { value: 0, year: 2024 } }, nonDrsCountryCodes: [] }
+        ? { schemaVersion: VALID_DEBT_SCHEMA_VERSION, countries: { [TEST_ISO2]: { value: 0, year: 2024 } }, nonDrsCountryCodes: FINSYS_NON_DRS_COUNTRY_CODES }
         : reachableDebtEnvelope(opts.confirmedNonDrs ? [TEST_ISO2] : []);
     }
     if (key === 'economic:bis-lbs:v1') {
@@ -904,7 +977,11 @@ describe('scoreFinancialSystemExposure — market-access-constrained debt certai
     async (key) => {
       if (key.startsWith('seed-meta:')) return { status: 'ok', fetchedAt: Date.now() };
       if (key === 'economic:wb-external-debt:v1') {
-        return { countries: { [TEST_ISO2]: { value: values.debtPct, year: 2024 } } };
+        return {
+          schemaVersion: VALID_DEBT_SCHEMA_VERSION,
+          countries: { [TEST_ISO2]: { value: values.debtPct, year: 2024 } },
+          nonDrsCountryCodes: FINSYS_NON_DRS_COUNTRY_CODES,
+        };
       }
       if (key === 'economic:bis-lbs:v1') {
         return { countries: { [TEST_ISO2]: { totalXborderPctGdp: values.claimsPctGdp, parentCount: values.parentCount } } };
@@ -1072,8 +1149,9 @@ describe('scoreFinancialSystemExposure — #6459 inversion probe (pinned)', () =
     if (key === 'economic:wb-external-debt:v1') {
       // MC/LU absent: neither is a World Bank Debtor Reporting System filer.
       return {
+        schemaVersion: VALID_DEBT_SCHEMA_VERSION,
         countries: { RU: { value: 3, year: 2024 }, TD: { value: 1, year: 2024 } },
-        nonDrsCountryCodes: ['LU', 'MC'],
+        nonDrsCountryCodes: FINSYS_NON_DRS_COUNTRY_CODES,
       };
     }
     if (key === 'economic:bis-lbs:v1') {

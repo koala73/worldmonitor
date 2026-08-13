@@ -10,13 +10,14 @@ run-name: Deploy Gate ${{ github.event.workflow_run.head_sha || github.event_nam
 # can serve stale reads (~1 min normally, longer during GitHub degradation),
 # and the last workflow_run event for a SHA is the last time anything
 # re-evaluates. The sweep finds open-PR head SHAs whose gate status is pending
-# and re-evaluates them, so a stranded PR heals within 30 minutes
-# with no manual re-run.
+# or whose required-check contract stamp is stale, then re-evaluates them. A
+# stranded PR heals within 30 minutes, and a success from an older gate cannot
+# stay mergeable after the required set changes (#5851).
 
 # Four workflow_run events can target the same SHA. Keep only the newest
 # evaluator so their retry windows do not multiply the installation API load.
 concurrency:
-  group: deploy-gate-${{ github.event.workflow_run.head_sha || github.event_name }}
+  group: deploy-gate-${{ github.event.workflow_run.head_sha || 'sweep' }}
   cancel-in-progress: true
 
 on:
@@ -52,13 +53,18 @@ jobs:
           # reads as "missing", not "failure", to branch protection, to
           # check-railway-deploy-drift.mjs and to the Seed Freshness Monitor.
           # Keep the state and the COUNT, which survive truncation; the full
-          # list is already in this log.
+          # list is already in this log. Reserve space for the contract stamp:
+          # the sweep uses it to distinguish current evidence from a stale
+          # success that covered an older required list (#5851).
           gate_description() {
             text="$1"
-            if [ "${#text}" -le 140 ]; then
-              printf '%s' "$text"
+            suffix=" $gate_stamp"
+            text_limit=$((140 - ${#suffix}))
+            if [ "${#text}" -le "$text_limit" ]; then
+              printf '%s%s' "$text" "$suffix"
             else
-              printf '%s...' "${text:0:137}"
+              preview_length=$((text_limit - 3))
+              printf '%s...%s' "${text:0:$preview_length}" "$suffix"
             fi
           }
           name_count() {
@@ -140,6 +146,8 @@ jobs:
           # `typecheck-changes` / `lint-changes` so all three are evaluated
           # instead of two being masked by the third (#5822).
           required='["changes","typecheck-changes","lint-changes","docs-stats","unit","consumer-prices","umami-postgres","sidecar","convex-tests","dom-tests","desktop-config","desktop-rust","variant-smoke-full","resilience-validation-smoke","digest-image","typecheck","biome","public-docs","mintlify-slugs","security-audit"]'
+          gate_contract=$(REQUIRED_JOBS="$required" python3 -c 'import hashlib, os; print(hashlib.sha256(os.environ["REQUIRED_JOBS"].encode()).hexdigest()[:12])')
+          gate_stamp="[gate-contract:$gate_contract]"
           repo_owner=${REPO%%/*}
           repo_name=${REPO#*/}
 
@@ -148,12 +156,13 @@ jobs:
             shas="$SHA"
           else
             # schedule / workflow_dispatch — read every open PR head and its
-            # `gate` context in one paginated GraphQL query. A failed
-            # event-driven run normally posts pending through the EXIT trap. If
-            # even that write fails, cross-reference missing contexts with
-            # recent failed runs of this workflow. That recovers an old head
-            # whose checks were rerun without re-evaluating every dormant
-            # legacy PR with no gate context (#5851).
+            # `gate` context in one paginated GraphQL query. Pending statuses
+            # and statuses without the exact current required-set stamp are
+            # re-evaluated. A failed event-driven run normally posts pending
+            # through the EXIT trap. If even that write fails, cross-reference
+            # missing contexts with recent failed runs of this workflow. That
+            # recovers an old head whose checks were rerun without evaluating
+            # every dormant legacy PR with no gate context (#5851).
             pr_gate_states=$(gh_api_with_rate_limit_retry graphql graphql --paginate --slurp \
               -f owner="$repo_owner" \
               -f name="$repo_name" \
@@ -165,7 +174,7 @@ jobs:
                       commits(last: 1) {
                         nodes {
                           commit {
-                            status { context(name: "gate") { state } }
+                            status { context(name: "gate") { state description } }
                           }
                         }
                       }
@@ -174,16 +183,59 @@ jobs:
                   }
                 }
               }')
-            pending_shas=$(printf '%s\n' "$pr_gate_states" | jq -r '
-              .[].data.repository.pullRequests.nodes[] |
-              select(.commits.nodes[0].commit.status.context.state == "PENDING") |
-              .headRefOid
-            ')
+            stale_terminal_shas=$(printf '%s\n' "$pr_gate_states" |
+              jq -r --arg gate_stamp "$gate_stamp" '
+                .[].data.repository.pullRequests.nodes[] |
+                .commits.nodes[0].commit.status.context as $gate |
+                select(
+                  $gate != null and
+                  $gate.state != "PENDING" and
+                  (($gate.description // "") | endswith($gate_stamp) | not)
+                ) |
+                .headRefOid
+              ' |
+              awk '!seen[$0]++')
+            pending_shas=$(printf '%s\n' "$pr_gate_states" |
+              jq -r '
+                .[].data.repository.pullRequests.nodes[] |
+                select(.commits.nodes[0].commit.status.context.state == "PENDING") |
+                .headRefOid
+              ' |
+              awk '!seen[$0]++')
             missing_shas=$(printf '%s\n' "$pr_gate_states" | jq -r '
               .[].data.repository.pullRequests.nodes[] |
               select(.commits.nodes[0].commit.status.context == null) |
               .headRefOid
             ')
+
+            # Invalidate every stale terminal result before any slower recovery
+            # reads start. If the first write pass has partial failures, retry
+            # every failed SHA once so the EXIT trap is not the only fallback
+            # for a multi-SHA cohort.
+            remaining_invalidation_shas="$stale_terminal_shas"
+            for invalidation_attempt in 1 2; do
+              if [ -z "$remaining_invalidation_shas" ]; then
+                break
+              fi
+              if [ "$invalidation_attempt" -eq 2 ]; then
+                echo "sweep: retrying stale gate invalidation for: $remaining_invalidation_shas"
+              fi
+              stale_invalidation_failures=""
+              for SHA in $remaining_invalidation_shas; do
+                active_sha="$SHA"
+                if ! post_gate_status "pending" "Required PR gate contract changed; re-evaluation scheduled"; then
+                  stale_invalidation_failures=$(printf '%s\n%s\n' "$stale_invalidation_failures" "$SHA" | sed '/^$/d')
+                fi
+                active_sha=""
+              done
+              remaining_invalidation_shas="$stale_invalidation_failures"
+            done
+            if [ -n "$remaining_invalidation_shas" ]; then
+              echo "::error::Could not invalidate stale gate statuses for: $remaining_invalidation_shas"
+              active_sha=$(printf '%s\n' "$remaining_invalidation_shas" | sed -n '1p')
+              exit 1
+            fi
+
             failed_missing_shas=""
             if [ -n "$missing_shas" ]; then
               recent_run_cutoff=$(($(date +%s) - 86400))
@@ -206,12 +258,17 @@ jobs:
                 fi
               done)
             fi
-            shas=$(printf '%s\n%s\n' "$pending_shas" "$failed_missing_shas" | sed '/^$/d' | sort -u)
+            # A SHA can head more than one open PR. Deduplicate without sorting:
+            # stale terminal candidates must stay ahead of already-fail-closed
+            # pending candidates so a busy sweep cannot starve stale greens.
+            shas=$(printf '%s\n%s\n%s\n' "$stale_terminal_shas" "$pending_shas" "$failed_missing_shas" |
+              sed '/^$/d' |
+              awk '!seen[$0]++')
             if [ -z "$shas" ]; then
-              echo "sweep: no open PRs with a pending gate status"
+              echo "sweep: no open PRs with a pending or stale gate status"
               exit 0
             fi
-            echo "sweep: re-evaluating pending gate on:"
+            echo "sweep: re-evaluating pending or stale gate on:"
             echo "$shas"
           fi
 
@@ -235,6 +292,12 @@ jobs:
           # core.
           # NOTE: the python3 -c body must stay at column 0 of the block scalar —
           # indenting it with the loops would be a Python IndentationError.
+          max_attempts=2
+          if [ -n "$stale_terminal_shas" ] && printf '%s\n' "$stale_terminal_shas" | grep -qx "$SHA"; then
+            # The stale result is already fail-closed above. Do not let its
+            # 60-second retry delay starve the rest of the sweep.
+            max_attempts=1
+          fi
           for attempt in 1 2; do
             runs=$(gh_api_with_rate_limit_retry graphql graphql --paginate --slurp \
               -f owner="$repo_owner" \
@@ -291,6 +354,9 @@ jobs:
             failed=$(echo "$status" | awk -F= '/^failed=/ { print $2 }')
 
             if [ -z "$pending" ]; then
+              break
+            fi
+            if [ "$attempt" -ge "$max_attempts" ]; then
               break
             fi
             if [ "$attempt" -lt 2 ]; then

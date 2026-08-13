@@ -36,8 +36,8 @@ Primary health endpoint. Checks all Redis-backed data keys and seed freshness me
 {
   "status": "HEALTHY | WARNING | DEGRADED | UNHEALTHY | REDIS_DOWN",
   "summary": {
-    "total": 260,
-    "ok": 260,
+    "total": 261,
+    "ok": 261,
     "warn": 0,
     "onDemandWarn": 0,
     "staleContent": 0,
@@ -110,7 +110,7 @@ Keys are grouped into three tiers that determine alert severity:
 | `COVERAGE_PARTIAL` | Warn | Aggregate records or a required subgroup is below the key's declared coverage floor (for example, 139/174 PortWatch countries or an empty prediction-market pool) |
 | `COVERAGE_DEGRADED` | Warn | The producer's own coverage diagnostics are missing, or its completion ratio is below the key's `minSuccessRate` (for example, a consumer-price market that completed 4 of 12 retailer pages) |
 | `ROLLOUT_PENDING` | Warn | A newly deployed schema whose producer has not reached its first scheduled run yet. **Bounded**: the entry carries a `rolloutPendingUntil` deadline compiled into `api/health.js`, and the state becomes `EMPTY` (crit) once that passes or once the producer writes its durable activation marker. Counted in `summary.rolloutPending` |
-| `SEED_ERROR` | Warn | `seed-meta` reports `status: "error"` from the last seed run, **or** a producer that serves last-known-good has failed often enough to cross its declared failure contract (see below) |
+| `SEED_ERROR` | Warn | `seed-meta` reports `status: "error"` from the last seed run, a producer that serves last-known-good has failed often enough to cross its declared failure contract (see below), **or** the resilience static index reports one or more failed source adapters |
 | `REDIS_PARTIAL` | Warn | A single per-command Redis error on this key's STRLEN/GET (not a full outage) |
 | `EMPTY_ON_DEMAND` | Warn | On-demand key has no data yet (expected until first request); counted in `summary.onDemandWarn` |
 | `EMPTY` | Crit | Bootstrap or seeded standalone key has no data. Outranks any concurrent producer fault, which would otherwise report the softer `SEED_ERROR` (see below) |
@@ -189,6 +189,13 @@ reason. (`SOURCE_BLOCKED` publishes no `errorCode`; its cause is the status
 itself.) `lastSynthesisFailureCode` is broader still: like the other
 last-known-good diagnostics above, it is published on every status whenever the
 producer recorded one.
+
+The `resilienceStaticIndex` check also publishes `failedDatasets` when its
+static-index seed metadata names failed source adapters. This is a validated,
+deduplicated list of at most 50 adapter keys. A non-empty list makes the check
+`SEED_ERROR` and remains visible in the public `?compact=1` problem projection.
+The sibling `resilienceStaticFao` check shares the producer heartbeat but does
+not inherit failures for unrelated adapters.
 
 ### JODI China Row
 

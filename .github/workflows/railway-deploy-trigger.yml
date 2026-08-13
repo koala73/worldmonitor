@@ -4,12 +4,8 @@ run-name: >-
   @ ${{ github.event_name == 'workflow_dispatch' && inputs.expected_head_sha || github.sha }}
 
 on:
-  workflow_run:
-    workflows: ["Deploy Gate"]
-    types: [completed]
-    branches: [main]
   schedule:
-    - cron: '37 * * * *'
+    - cron: '7,17,27,37,47,57 * * * *'
   workflow_dispatch:
     inputs:
       dryRun:

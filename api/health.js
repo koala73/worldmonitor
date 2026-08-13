@@ -339,6 +339,7 @@ const STANDALONE_KEYS = {
   shippingRates:         'supply_chain:shipping:v2',
   chokepoints:           'supply_chain:chokepoints:v4',
   minerals:              'supply_chain:minerals:v2',
+  mineralProduction:     'supply-chain:mineral-production:v1',
   giving:                'giving:summary:v2',
   gpsjam:                'intelligence:gpsjam:v2',
   // Corporate intelligence (issue #5695): SEC ticker→CIK registry + 8-K
@@ -795,6 +796,17 @@ const SEED_META = {
   gscpi:             { key: 'seed-meta:economic:gscpi',               maxStaleMin: 2880 }, // 24h interval; 2880min = 48h = 2x interval
   fearGreedIndex:    { key: 'seed-meta:market:fear-greed',            maxStaleMin: 720 }, // 6h cron; 720min = 12h = 2x interval
   breadthHistory:    { key: 'seed-meta:market:breadth-history',       maxStaleMin: 5760 }, // cron at 02:00 UTC, Tue-Sat (captures Mon-Fri market close); max gap Sat→Tue = 72h + 24h miss buffer = 96h = 5760min. 48h was wrong — alarmed every Monday morning when Sun+Mon are intentionally skipped.
+  marketCorrelationSeries: {
+    key: 'seed-meta:market:correlation-series',
+    maxStaleMin: 45,
+    minRecordCount: 6,
+    cutover: {
+      mode: 'expiring-ack',
+      fromKey: null,
+      issue: 6418,
+      status: 'EMPTY',
+    },
+  }, // 15min bundle member; three missed runs should alert before the 14d chart ages materially.
   hormuzTracker:     { key: 'seed-meta:supply_chain:hormuz_tracker',  maxStaleMin: 2880 }, // daily cron; 2880min = 48h = 2x interval
   earningsCalendar:  { key: 'seed-meta:market:earnings-calendar',     maxStaleMin: 1440 }, // 12h cron; 1440min = 24h = 2x interval
   econCalendar:      { key: 'seed-meta:economic:econ-calendar',       maxStaleMin: 1440 }, // 12h cron; 1440min = 24h = 2x interval
@@ -828,7 +840,7 @@ const SEED_META = {
   productCatalog:    { key: 'seed-meta:product-catalog',               maxStaleMin: 1080 }, // relay loop every 6h; 1080 = 18h = 3x interval
   vpdTrackerRealtime:   { key: 'seed-meta:health:vpd-tracker',         maxStaleMin: 2880 }, // daily seed (0 2 * * *); 2880min = 48h = 2x interval
   vpdTrackerHistorical: { key: 'seed-meta:health:vpd-tracker',         maxStaleMin: 2880 }, // shares seed-meta key with vpdTrackerRealtime (same run)
-  resilienceStaticIndex: { key: 'seed-meta:resilience:static',         maxStaleMin: 576000 }, // annual October snapshot; 400d threshold matches TTL and preserves prior-year data on source outages
+  resilienceStaticIndex: { key: 'seed-meta:resilience:static',         maxStaleMin: 576000, projectFailedDatasets: true }, // annual October snapshot; 400d threshold matches TTL and preserves prior-year data on source outages
   resilienceStaticFao:   { key: 'seed-meta:resilience:static',         maxStaleMin: 576000 }, // same seeder + same heartbeat as resilienceStaticIndex; required so EMPTY_DATA_OK + missing data degrades to STALE_SEED instead of silent OK
   resilienceRanking:   { key: 'seed-meta:resilience:ranking',          maxStaleMin: 840, requireResilienceCacheState: true }, // RPC cache (12h TTL, refreshed every 6h by seed-resilience-scores cron); 14h budget tolerates 1 missed tick (12h gap) + ~2h jitter for in-flight deploys that preempt a scheduled tick; alerts at 2 missed ticks (18h gap). Bumped from 720 — see comment below.
   resilienceIntervals: { key: 'seed-meta:resilience:intervals',        maxStaleMin: 840, minRecordCount: RESILIENCE_INTERVAL_MIN_RECORD_COUNT, requireResilienceCacheState: true }, // bundled into seed-bundle-resilience, written by the Resilience-Scores section. Real Railway cron is `0 */6 * * *` (every 6h on the hour, UTC) — empirically verified 2026-04-28 via Railway logs showing 6h gaps between successful runs (the prior `intervalMs=2h with hourly fires` claim did not match what's deployed; either the bundle interval gate or the Railway service schedule makes the effective cadence 6h). 840 = 14h staleness ≈ 2.33× cadence: tolerates 1 missed tick (12h gap) + ~2h jitter for in-flight deploys; alerts at 2 missed ticks (18h gap). The 180-record floor matches the atomic publisher: a fresh probe cannot hide a mixed or shrunken fleet. Matches resilienceRanking above (same Resilience-Scores section writes both). Prior values: 20160 (14d, 168× — silent on real outage), 1080 (18h, 3× — over-permissive: masks a 12h outage), 720 (12h, 2× — exact floor; flipped UptimeRobot WARNING for ~1min on every Railway-deploy-preempted tick: 2026-05-10 incident at 18:02 UTC, seedAgeMin=722 vs maxStale=720 after the 12:00 UTC tick was skipped during an in-flight deploy), 360 (1× — false-positive on routine jitter, 2026-04-28: seedAgeMin=367 vs maxStale=360). Re-tighten ONLY if/when the actual Railway cron schedule is verified sub-6h.
@@ -853,6 +865,25 @@ const SEED_META = {
   jodiGas:              { key: 'seed-meta:energy:jodi-gas',               maxStaleMin: 60 * 24 * 40, chinaRow: true }, // monthly cron on 25th; 40d threshold matches 35d TTL + 5d buffer
   lngVulnerability:     { key: 'seed-meta:energy:jodi-gas',               maxStaleMin: 60 * 24 * 40, chinaRow: true }, // written by jodi-gas seeder afterPublish; shares seed-meta key
   chokepointBaselines:  { key: 'seed-meta:energy:chokepoint-baselines', maxStaleMin: 60 * 24 * 400 }, // 400 days
+  // maxStaleMin is 120d = 2x the 60-day bundle interval, matching the repo's
+  // 2-3x norm. The data is annual but the PUBLISHER runs every 60 days, so the
+  // previous 400-day budget (6.7x cadence) would have let a dead seeder read OK
+  // until ~2027-09; the 540-day content-age gate would not have covered it
+  // either. Sized to the publisher, not the source.
+  // Keep `key` and `maxStaleMin` adjacent: the coverage guard in
+  // tests/seed-ttl-outlives-staleness-fleet.test.mjs matches them with a single
+  // regex that only tolerates whitespace between the two, so a comment placed
+  // between them drops this gate from the parsed set.
+  mineralProduction:    {
+    key: 'seed-meta:supply-chain:mineral-production',
+    maxStaleMin: 60 * 24 * 120,
+    cutover: {
+      mode: 'expiring-ack',
+      fromKey: null,
+      issue: 6439,
+      status: 'EMPTY',
+    },
+  },
   sprPolicies:          { key: 'seed-meta:energy:spr-policies',         maxStaleMin: 60 * 24 * 400 }, // 400 days; static registry, same cadence as chokepoint baselines
   pipelinesGas:         { key: 'seed-meta:energy:pipelines-gas',        maxStaleMin: 20_160 }, // 14d — weekly cron (7d) × 2 headroom
   pipelinesOil:         { key: 'seed-meta:energy:pipelines-oil',        maxStaleMin: 20_160 }, // 14d — same seed-pipelines.mjs publishes both keys
@@ -1487,6 +1518,16 @@ function readSeedMeta(seedCfg, keyMetaValues, keyMetaErrors, now) {
   // the dependency so behavior stays byte-identical in PR 1.
   const meta = unwrapEnvelope(parseRedisValue(keyMetaValues.get(seedCfg.key))).data;
   const metaCount = parseFiniteRecordCount(meta?.count ?? meta?.recordCount ?? null);
+  const failedDatasets = [];
+  const seenFailedDatasets = new Set();
+  if (seedCfg.projectFailedDatasets && Array.isArray(meta?.failedDatasets)) {
+    for (const entry of meta.failedDatasets) {
+      if (typeof entry !== 'string' || entry.length === 0 || entry.length > 100 || seenFailedDatasets.has(entry)) continue;
+      seenFailedDatasets.add(entry);
+      failedDatasets.push(entry);
+      if (failedDatasets.length === 50) break;
+    }
+  }
   const metaRankableCount = parseRankableRecordCount(meta);
   const poolCounts = parsePoolCounts(meta?.poolCounts, seedCfg.minPoolCounts);
   const errorCode = typeof meta?.errorCode === 'string'
@@ -1522,6 +1563,7 @@ function readSeedMeta(seedCfg, keyMetaValues, keyMetaErrors, now) {
       chinaRow: null,
       workerControl,
       resilienceCacheState,
+      failedDatasets,
     };
   }
   let seedAge = null;
@@ -1689,7 +1731,7 @@ function readSeedMeta(seedCfg, keyMetaValues, keyMetaErrors, now) {
     hasMeta: meta != null,
     seedAge,
     seedStale,
-    seedError: sourceDegraded,
+    seedError: sourceDegraded || failedDatasets.length > 0,
     sourceUnavailable,
     sourceBlocked,
     metaReadFailed: false,
@@ -1706,6 +1748,7 @@ function readSeedMeta(seedCfg, keyMetaValues, keyMetaErrors, now) {
     chinaRow,
     workerControl,
     resilienceCacheState,
+    failedDatasets,
   };
 }
 
@@ -1812,6 +1855,7 @@ function classifyKey(name, redisKey, opts, ctx) {
     chinaRow,
     workerControl,
     resilienceCacheState,
+    failedDatasets,
   } = meta;
   const rankableRecordCount = name === 'educationAttainment' && Object.hasOwn(ctx, 'educationPayloadRankableCount')
     ? ctx.educationPayloadRankableCount
@@ -2067,6 +2111,7 @@ function classifyKey(name, redisKey, opts, ctx) {
   // control-loop state and counters, never work or customer identifiers.
   if (workerControl) entry.workerControl = workerControl;
   if (resilienceCacheState) entry.cacheState = resilienceCacheState;
+  if (failedDatasets?.length > 0) entry.failedDatasets = failedDatasets;
   // Surface content-age fields when seeder opted in (presence of
   // meta.maxContentAgeMin). Operators can distinguish "stale content" from
   // "stale seeder run" at a glance.

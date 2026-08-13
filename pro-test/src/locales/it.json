@@ -48,7 +48,7 @@
     "entF10": "Deployment cloud, on-premises o air-gapped",
     "entF11": "Onboarding e supporto dedicati",
     "entCta": "Parla con le vendite",
-    "freeF2": "500+ feed, 531+ fonti, 50+ livelli mappa"
+    "freeF2": "500+ feed, 534+ fonti, 50+ livelli mappa"
   },
   "whyUpgrade": {
     "title": "Perché fare l'upgrade",
@@ -565,7 +565,7 @@
       "s1l": "Livelli mappa",
       "s2v": "500+",
       "s2l": "Feed curati",
-      "s3v": "529+",
+      "s3v": "532+",
       "s3l": "Provider di dati",
       "s4v": "13",
       "s4l": "Punti critici · AIS live",
@@ -583,7 +583,7 @@
       "s10l": "Hotspot con punteggio",
       "s11v": "92",
       "s11l": "Borse & asset",
-      "s12v": "60",
+      "s12v": "62",
       "s12l": "Strumenti MCP",
       "s13v": "154",
       "s13l": "Comandi ⌘K",
@@ -611,7 +611,7 @@
       "eyebrow": "Per creatori e agenti AI",
       "title": "Costruisci su intelligence del mondo in tempo reale — da qualsiasi stack.",
       "sub": "Tutto sulla mappa è anche un'API. Integrala in Claude tramite MCP, chiama gli endpoint REST da qualsiasi luogo, o installa un client nativo per Python, Ruby, Go o JavaScript — il tuo codice ricerca con dati in tempo reale invece di memorie di dati di training.",
-      "b1": "60 strumenti MCP — punteggi di rischio, colli di bottiglia, conflitti, mercati, briefing",
+      "b1": "62 strumenti MCP — punteggi di rischio, colli di bottiglia, conflitti, mercati, briefing",
       "b2": "API REST documentata — 193 operazioni, una specifica OpenAPI 3.1, una chiave",
       "b3": "SDK ufficiali su npm, PyPI, RubyGems e Go — zero dipendenze, MCP-first",
       "b4": "Proiezione JMESPath su ogni chiamata — recupera esattamente i campi di cui hai bisogno",
@@ -620,7 +620,7 @@
       "termQuery": "La nostra esposizione al Mar Rosso peggiora questa settimana?",
       "termAnswer": "I conteggi di transito diminuiscono da settimana a settimana; tier di rischio di guerra elevato; due anomalie di densità nelle ultime 48 ore.",
       "termDocs": "Vedi il riferimento strumento completo →",
-      "promise": "Una chiave. 60 strumenti MCP. Un'API REST completa. Client nativi del linguaggio."
+      "promise": "Una chiave. 62 strumenti MCP. Un'API REST completa. Client nativi del linguaggio."
     },
     "pricing": {
       "eyebrow": "Accesso",
@@ -638,7 +638,7 @@
       "proF1": "WM Analyst — chat con 30+ servizi live, con citazioni",
       "proF2": "Scenario engine & Route Explorer — simula i disagi prima che si verifichino",
       "proF3": "Digest AI personale — giornaliero, due volte al giorno o settimanale, su Slack, Telegram o email",
-      "proF4": "MCP, API REST e SDK ufficiali — 60 strumenti con una sola chiave",
+      "proF4": "MCP, API REST e SDK ufficiali — 62 strumenti con una sola chiave",
       "proF5": "Generatore widget personalizzato per i tuoi pannelli",
       "cta": "Visualizza piani e prezzi",
       "note": "Da $39.99/mo · 3 mesi gratis con fatturazione annuale"
@@ -651,7 +651,7 @@
       "q2": "Che cos'è una dashboard di intelligence globale?",
       "a2": "Una vista live unica che fonde segnali che la maggior parte degli strumenti mantiene separati: eventi di conflitto, tracciamento di navi e aeromobili, punti di strozzatura dello shipping, satelliti, cavi sottomarini, oleodotti, mercati e minacce cyber — su una mappa mondiale in tempo reale, con punteggio IA e brief. World Monitor è una gratuita.",
       "q3": "Da dove provengono i dati?",
-      "a3": "529+ provider, nominati: ACLED e UCDP per i conflitti, AISStream per le navi live, OpenSky per gli aeromobili, NASA FIRMS per gli incendi, USGS per i terremoti, IMF, BIS, FRED e Finnhub per i mercati e le macro — più 500+ feed di notizie curati. Ogni pannello cita le sue fonti e i timestamp inline.",
+      "a3": "532+ provider, nominati: ACLED e UCDP per i conflitti, AISStream per le navi live, OpenSky per gli aeromobili, NASA FIRMS per gli incendi, USGS per i terremoti, IMF, BIS, FRED e Finnhub per i mercati e le macro — più 500+ feed di notizie curati. Ogni pannello cita le sue fonti e i timestamp inline.",
       "q4": "Posso monitorare i punti di strozzatura come Hormuz o Bab el-Mandeb in tempo reale?",
       "a4": "Sì. 13 punti di strozzatura sono tracciati con conteggi di navi AIS live, variazione dei transiti da settimana a settimana e punteggio di disruption — e le anomalie di densità sono segnalate rispetto alla baseline mobile di ogni stretto.",
       "q5": "Com'è diverso da una mappa di conflitti come Liveuamap?",
@@ -659,7 +659,7 @@
       "q6": "Perché dovrei fidarmi di un avviso?",
       "a6": "Un banner di breaking si attiva solo quando i tipi di origine indipendenti corroborano — classificazione delle notizie, velocità delle parole chiave, escalation degli hotspot, aumenti militari, sirene ufficiali — deduplicati e rate-limited. Meno avvisi, veri.",
       "q7": "Gli agenti IA come Claude o GPT possono usarlo?",
-      "a7": "Sì. World Monitor dispone di un server MCP con 60 strumenti, quindi Claude, GPT o qualsiasi agente compatibile con MCP può interrogare punteggi di rischio live, stato dei colli di bottiglia, conflitti, mercati e briefing — con proiezione JMESPath affinché gli agenti recuperino esattamente quello di cui hanno bisogno.",
+      "a7": "Sì. World Monitor dispone di un server MCP con 62 strumenti, quindi Claude, GPT o qualsiasi agente compatibile con MCP può interrogare punteggi di rischio live, stato dei colli di bottiglia, conflitti, mercati e briefing — con proiezione JMESPath affinché gli agenti recuperino esattamente quello di cui hanno bisogno.",
       "q8": "Ho bisogno di un account?",
       "a8": "No. La dashboard funziona istantaneamente senza iscrizione. Un account è importante solo quando esegui l'upgrade a Pro o desideri sincronizzare le impostazioni tra i dispositivi.",
       "q9": "È open source?",

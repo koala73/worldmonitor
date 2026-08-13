@@ -83,6 +83,18 @@ const PROVIDER_OVERRIDES = {
     attribution: 'U.S. Commodity Futures Trading Commission (CFTC), Commitments of Traders.',
     status: 'reviewed',
   },
+  'www.sciencebase.gov': {
+    provider: 'USGS ScienceBase (Mineral Commodity Summaries)',
+    license: 'U.S. government public-domain mineral statistics (USGS MCS data release)',
+    attribution: 'U.S. Geological Survey Mineral Commodity Summaries; link to the ScienceBase data release (https://doi.org/10.5066/P1WKQ63T).',
+    status: 'reviewed',
+  },
+  'ogcapi.bgs.ac.uk': {
+    provider: 'British Geological Survey World Mineral Statistics',
+    license: 'BGS mineral statistics terms; attribution required; redistribution restricted',
+    attribution: 'British Geological Survey (BGS) World Mineral Production; credit BGS and link to https://www.bgs.ac.uk/mineralsuk/statistics/world-mineral-statistics/.',
+    status: 'reviewed',
+  },
   'feeds.finra.org': {
     provider: 'FINRA',
     license: 'FINRA feed terms',

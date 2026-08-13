@@ -48,7 +48,7 @@
     "entF10": "Cloud, on-premises nebo air-gapped nasazení",
     "entF11": "Dedikovaný onboarding a podpora",
     "entCta": "Kontaktujte prodej",
-    "freeF2": "500+ kanálů, 531+ zdrojů, 50+ mapových vrstev"
+    "freeF2": "500+ kanálů, 534+ zdrojů, 50+ mapových vrstev"
   },
   "whyUpgrade": {
     "title": "Proč upgradovat",
@@ -565,7 +565,7 @@
       "s1l": "Mapové vrstvy",
       "s2v": "500+",
       "s2l": "Kurátorované zdroje",
-      "s3v": "529+",
+      "s3v": "532+",
       "s3l": "Poskytovatelé dat",
       "s4v": "13",
       "s4l": "Kritické body · živý AIS",
@@ -583,7 +583,7 @@
       "s10l": "Skórované hotspoty",
       "s11v": "92",
       "s11l": "Burzy a aktiva",
-      "s12v": "60",
+      "s12v": "62",
       "s12l": "MCP nástroje",
       "s13v": "154",
       "s13l": "⌘K příkazy",
@@ -611,7 +611,7 @@
       "eyebrow": "Pro tvůrce a AI agenty",
       "title": "Vytvářejte na základě živé světové inteligence — z libovolného stacku.",
       "sub": "Vše na mapě je také API. Připojte to do Claudea přes MCP, zavolejte REST endpointy odkudkoli, nebo nainstalujte nativního klienta pro Python, Ruby, Go nebo JavaScript — váš kód provádí výzkum s živými daty místo paměti trénovacích dat.",
-      "b1": "60 nástrojů MCP — skóre rizika, kritické body, konflikty, trhy, přehledy",
+      "b1": "62 nástrojů MCP — skóre rizika, kritické body, konflikty, trhy, přehledy",
       "b2": "Dokumentované REST API — 193 operací, jedna specifikace OpenAPI 3.1, jeden klíč",
       "b3": "Oficiální SDK na npm, PyPI, RubyGems a Go — bez závislostí, MCP-first",
       "b4": "JMESPath projekce na každém volání — načtěte přesně ta pole, která potřebujete",
@@ -620,7 +620,7 @@
       "termQuery": "Zhoršuje se naše expozice Červenému moři tento týden?",
       "termAnswer": "Počty tranzitů se týdně snižují; válečné riziko zvýšeno; dvě anomálie hustoty za posledních 48h.",
       "termDocs": "Podívejte se na úplný odkaz na nástroje →",
-      "promise": "Jeden klíč. 60 nástrojů MCP. Kompletní REST API. Klienti v nativních jazycích."
+      "promise": "Jeden klíč. 62 nástrojů MCP. Kompletní REST API. Klienti v nativních jazycích."
     },
     "pricing": {
       "eyebrow": "Přístup",
@@ -638,7 +638,7 @@
       "proF1": "WM Analyst — chat přes 30+ živých služeb s citacemi",
       "proF2": "Scenario engine & Route Explorer — simuluj narušení dříve, než se stanou",
       "proF3": "Osobní AI digest — denně, dvakrát denně nebo týdně, do Slack, Telegram nebo e-mailu",
-      "proF4": "MCP, REST API a oficiální SDK — 60 nástrojů pod jedním klíčem",
+      "proF4": "MCP, REST API a oficiální SDK — 62 nástrojů pod jedním klíčem",
       "proF5": "Vlastní konstruktor widgetů pro vaše vlastní panely",
       "cta": "Zobrazit plány a ceny",
       "note": "Od 39,99 Kč/měs · 3 měsíce zdarma při ročním fakturaci"
@@ -651,14 +651,14 @@
       "q2": "Co je globální inteligentní panel?",
       "a2": "Jediné živé zobrazení, které spojuje signály, které většina nástrojů drží odděleně: konfliktní události, sledování lodí a letadel, kritická místa v přepravě, satelity, podmořské kabely, potrubí, trhy a kybernetické hrozby — na jedné mapě světa v reálném čase s AI skórováním a souhrny. World Monitor je ten zdarma.",
       "q3": "Odkud data pocházejí?",
-      "a3": "Od 529+ poskytovatelů, jmenovaných: ACLED a UCDP pro konflikty, AISStream pro živé lodě, OpenSky pro letadla, NASA FIRMS pro požáry, USGS pro zemětřesení, IMF, BIS, FRED a Finnhub pro trhy a makroekonomiku — plus 500+ kurátorských zpravodajských kanálů. Každý panel cituje své zdroje a časové značky přímo.",
+      "a3": "Od 532+ poskytovatelů, jmenovaných: ACLED a UCDP pro konflikty, AISStream pro živé lodě, OpenSky pro letadla, NASA FIRMS pro požáry, USGS pro zemětřesení, IMF, BIS, FRED a Finnhub pro trhy a makroekonomiku — plus 500+ kurátorských zpravodajských kanálů. Každý panel cituje své zdroje a časové značky přímo.",
       "q4": "Mohu sledovat kritická místa jako Hormuz nebo Bab el-Mandeb v reálném čase?",
       "a4": "Ano. 13 kritických míst je sledováno s živými počty AIS lodí, změnou tranzitu týden od týdne a skórováním narušení — a anomálie hustoty jsou označeny vůči klouzavému základnímu bodu každého průlivu.",
       "q5": "Jak se liší od mapy konfliktů jako Liveuamap?",
       "a5": "Konflikty jsou pouze jedna vrstva z 56. World Monitor spojuje konflikty s přepravou, vojenskými lety, infrastrukturou, trhy a kybernetiku — pak AI skóruje konvergenci: indexy nestability, eskalaci hotspotů, potvrzené alerty na nejdůležitější zprávy a denní souhrny.",
       "a6": "Přerušující banner se aktivuje pouze pokud si nezávislé typy zdrojů potvrdí — klasifikace zpráv, rychlost klíčových slov, eskalace hotspotů, vojenské nárůsty, oficiální sirény — deduplikovány a omezeny podle frekvence. Méně alertů, skutečné.",
       "q7": "Mohou jej používat AI agenti jako Claude nebo GPT?",
-      "a7": "Ano. World Monitor má server MCP s 60 nástroji, takže Claude, GPT nebo jakýkoli agent kompatibilní s MCP mohou dotazovat živá skóre rizika, stav kritických bodů, konflikty, trhy a přehledy — s projekcí JMESPath, aby agenti získali přesně to, co potřebují.",
+      "a7": "Ano. World Monitor má server MCP s 62 nástroji, takže Claude, GPT nebo jakýkoli agent kompatibilní s MCP mohou dotazovat živá skóre rizika, stav kritických bodů, konflikty, trhy a přehledy — s projekcí JMESPath, aby agenti získali přesně to, co potřebují.",
       "q8": "Potřebuji účet?",
       "a8": "Ne. Dashboard funguje okamžitě bez registrace. Účet je důležitý pouze pokud upgradujete na Pro nebo chcete synchronizovat nastavení mezi zařízeními.",
       "q9": "Je to open source?",

@@ -216,21 +216,19 @@ running commit makes the run idempotent, removes any dependence on
 or a manual `railway up` recovery — none of which a push-shaped trigger
 recovers from.
 
-**What wakes it (#6203).** `workflow_run` on **Deploy Gate** completing against
-`main`, plus an hourly cron as the backstop. It originally ran on a 5-minute
-cron alone, and that cadence does not exist on this repository: measured over
-the 2h03m after `e2db6b6a9` merged, the workflow produced **one** scheduled run
-against ~24 expected ticks, while the fleet sat 19.5h behind. GitHub documents
-`schedule` as best-effort and drops high-frequency crons under load — the
-15-minute Seed Freshness Monitor was landing every 25–50 minutes in the same
-window. Deploy Gate completing is both immediate and immune to that throttling,
-and it fires exactly when the `gate` status this workflow reads has just been
-written. The cron survives only the case an event cannot: an event-delivery
-outage (#6064).
+**What wakes it (#6203, #6378).** One offset ten-minute schedule plus protected
+manual dispatch. The former `workflow_run` on every **Deploy Gate** completion
+produced 577 target runs in one measured day, including 273 failed or cancelled
+runs. The watchdog then exhausted its 250-request budget while reading every
+non-success job and became blind to the durable mutation barrier it was meant
+to report.
 
-The chain is `Test` → `Deploy Gate` → `Railway Deploy Trigger`. GitHub refuses
-to chain `workflow_run` more than three levels deep, so **nothing may be
-triggered off this workflow's completion** — that link is spent.
+The schedule gives the three-hour liveness window 18 opportunities and every
+tick re-reads the exact current `main` SHA and newest `gate` status before it can
+touch Railway. GitHub schedules remain best-effort, so missing ticks do not
+count as success: a window with no completed strict acceptance stays red. The
+bounded cadence also keeps a first-activation 24-hour history below the
+watchdog request ceiling.
 
 **Why workflow success is not reconciliation success.** "Railway returned a
 deployment ID", "nothing needed a build", and "the fleet reached terminal
@@ -254,13 +252,20 @@ runner-less orphan may remain visible forever without blocking production: it
 owns no workflow-level production lock and any later runner must contend for
 the same bounded Durable Object lease.
 
+The watchdog treats the durable control record as its history boundary. An
+active mutation barrier needs only active and explicitly referenced run jobs,
+because that barrier already forbids recovery. After strict terminal
+acceptance, `lastAccepted.acceptedAt` retires older failures while failures that
+finish after the watermark are still hydrated. Before the first acceptance it
+keeps the full fail-closed non-success scan.
+
 GitHub evidence is bounded instead of rescanning the permanent Actions archive.
 The watchdog combines a 24-hour target-workflow summary window with separate
 queries for every active status, repeats the active sweep around the history
-read, and defers if that inventory changes. It hydrates attempt jobs only for
-active, recent, durably referenced, or non-success terminal runs, under a
-10-page ceiling, 250-request ceiling, and 10-second per-request timeout. The
-protected recovery reader uses exact run IDs when supplied and applies its own
+read, and defers if that inventory changes. Its durable barrier and strict
+acceptance watermark bound which attempt jobs need hydration, under a 10-page
+ceiling, 250-request ceiling, and 10-second per-request timeout. The protected
+recovery reader uses exact run IDs when supplied and applies its own
 page/request/time bounds. An exhausted budget fails closed.
 
 The dormant control-plane foundation does not retire the existing
@@ -361,10 +366,16 @@ recovered, and an expiry that reddened the monitor over zero entries would be a
 finding-free failure on a check whose whole value is that its reds mean
 something.
 
-`.github/workflows/seed-freshness-monitor.yml` runs the drift check in the step
-**Check Railway deploy drift against main**, between the config audit and the
-compact-health check. Its checkout uses `fetch-depth: 50` and the step re-fetches
-main first, for the ancestry reason above.
+`.github/workflows/seed-freshness-monitor.yml` runs the drift check in its own
+`drift` job, named **Railway deploy drift**. That job has no `needs:` and no gate
+condition, so it runs in parallel with the `monitor` job and reports its own
+conclusion. It has no ordering relationship to the config audit or the
+compact-health check, which stay in `monitor` (#6523).
+
+The drift job checks out with `fetch-depth: 0`, and the step re-fetches main
+first, for the ancestry reason above. The job does not detach onto a gated
+ancestor the way `monitor` does, so the fleet is always judged against trigger
+head.
 
 ### Still true, and unchanged
 
@@ -413,6 +424,17 @@ skip. It deliberately does not run on an ingestion push because Railway may not
 have deployed or executed that revision yet. That separates a code failure from
 the operational case this guard targets: repository checks are green while a
 Railway producer, deployment trigger, or composed coverage is still unhealthy.
+
+**Exception, added after #6483: the deploy-drift step is NOT gated on green
+main.** The gate and the drift it measures share an upstream — an ungated or
+red main is exactly when Railway's wait-for-CI refuses pushes and drift grows —
+and during #6483 the gate failed for days while the drift step sat skipped, so
+a seeder served a dead cache namespace for 25h inside a permanently-red
+monitor. The drift step and its two prerequisites (CLI install, token verify)
+now run under `if: !cancelled()`; a gate failure still fails the run, it just
+no longer blinds the one probe that measures its blast radius. Freshness
+acceptance stays gated: it grades data against code expectations and needs a
+gated revision to grade against.
 
 ## Prevention
 

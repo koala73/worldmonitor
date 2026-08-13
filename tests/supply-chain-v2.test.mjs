@@ -317,6 +317,10 @@ describe('Gateway daily cache tier', () => {
     assert.match(src, /\/api\/supply-chain\/v1\/get-critical-minerals':\s*'daily'/);
   });
 
+  it('mineral production route uses daily tier', () => {
+    assert.match(src, /\/api\/supply-chain\/v1\/get-mineral-production':\s*'daily'/);
+  });
+
   it('critical minerals route does NOT use static tier', () => {
     assert.doesNotMatch(src, /\/api\/supply-chain\/v1\/get-critical-minerals':\s*'static'/);
   });
@@ -377,6 +381,15 @@ describe('SupplyChainPanel v2 changes', () => {
   it('has fallback for aisDisruptions when absent (v1 cache compat)', () => {
     assert.match(src, /cp\.aisDisruptions\s*\?\?\s*\(/,
       'Should have nullish coalescing fallback for aisDisruptions');
+  });
+
+  it('handles Mine/Refine clicks before the section-tab early return', () => {
+    const stageIdx = src.indexOf("closest('[data-mineral-stage]')");
+    const tabIdx = src.indexOf("closest('.panel-tab')");
+    assert.ok(stageIdx > 0, 'Mine/Refine buttons must have a click target');
+    assert.ok(tabIdx > 0, 'section tabs must still be wired');
+    assert.ok(stageIdx < tabIdx, 'data-mineral-stage must be read before .panel-tab returns');
+    assert.match(src, /data-mineral-stage="refinery"/);
   });
 });
 

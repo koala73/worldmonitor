@@ -1074,6 +1074,9 @@
       "status": "terms-review",
       "references": [
         {
+          "path": "scripts/_defense-industrial-source.mjs"
+        },
+        {
           "path": "scripts/ais-relay.cjs"
         },
         {
@@ -1292,6 +1295,20 @@
         },
         {
           "path": "src/config/feeds.ts"
+        }
+      ]
+    },
+    {
+      "host": "atbackend.sipri.org",
+      "provider": "SIPRI Arms Transfers Database",
+      "kind": "structured",
+      "observed": true,
+      "license": "SIPRI fair use permits limited non-commercial use; commercial use requires prior authorization and may require a royalty",
+      "attribution": "Credit the SIPRI Arms Transfers Database and link to SIPRI terms and the public database portal.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "scripts/_defense-industrial-source.mjs"
         }
       ]
     },
@@ -4619,6 +4636,20 @@
       ]
     },
     {
+      "host": "ogcapi.bgs.ac.uk",
+      "provider": "British Geological Survey World Mineral Statistics",
+      "kind": "structured",
+      "observed": true,
+      "license": "BGS mineral statistics terms; attribution required; redistribution restricted",
+      "attribution": "British Geological Survey (BGS) World Mineral Production; credit BGS and link to https://www.bgs.ac.uk/mineralsuk/statistics/world-mineral-statistics/.",
+      "status": "reviewed",
+      "references": [
+        {
+          "path": "scripts/seed-mineral-production.mjs"
+        }
+      ]
+    },
+    {
       "host": "oilprice.com",
       "provider": "oilprice.com",
       "kind": "feed+structured",
@@ -5160,6 +5191,9 @@
         },
         {
           "path": "scripts/seed-gulf-quotes.mjs"
+        },
+        {
+          "path": "scripts/seed-market-correlation-series.mjs"
         },
         {
           "path": "scripts/seed-market-quotes.mjs"
@@ -9644,6 +9678,20 @@
         },
         {
           "path": "src/config/variants/tech.ts"
+        }
+      ]
+    },
+    {
+      "host": "www.sciencebase.gov",
+      "provider": "USGS ScienceBase (Mineral Commodity Summaries)",
+      "kind": "structured",
+      "observed": true,
+      "license": "U.S. government public-domain mineral statistics (USGS MCS data release)",
+      "attribution": "U.S. Geological Survey Mineral Commodity Summaries; link to the ScienceBase data release (https://doi.org/10.5066/P1WKQ63T).",
+      "status": "reviewed",
+      "references": [
+        {
+          "path": "scripts/seed-mineral-production.mjs"
         }
       ]
     },

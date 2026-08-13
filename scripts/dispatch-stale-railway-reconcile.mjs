@@ -1405,6 +1405,20 @@ function durableRunReferences(controlState) {
   return { runIds, identifiers };
 }
 
+function acceptedHistoryWatermark(controlState, now) {
+  const accepted = controlState?.lastAccepted;
+  if (!accepted || typeof accepted !== 'object' || Array.isArray(accepted)) return null;
+  if (!validIdentifier(accepted.attemptId)
+    || !validGitHubRunId(accepted.runId)
+    || !/^[0-9a-f]{40}$/i.test(accepted.headSha ?? '')
+    || !Number.isFinite(accepted.acceptedAt)
+    || accepted.acceptedAt < 0
+    || accepted.acceptedAt > now) {
+    return null;
+  }
+  return accepted.acceptedAt;
+}
+
 function selectRunSummariesForHydration({ now, runSummaries, controlState }) {
   if (!Number.isFinite(now) || !Array.isArray(runSummaries)) {
     throw new GitHubWatchdogError('GITHUB_READ_FAILED', 'workflow run hydration inputs were invalid');
@@ -1416,14 +1430,35 @@ function selectRunSummariesForHydration({ now, runSummaries, controlState }) {
     POST_MUTATION_ACTIVE_MS,
   );
   const identifierList = [...identifiers];
-  return runSummaries.filter((run) => (
-    isActiveRun(run)
-    || (run.status === 'completed' && !['success', 'skipped'].includes(run.conclusion))
-    || Date.parse(run.createdAt) >= recentCutoff
-    || Date.parse(run.updatedAt) >= recentCutoff
-    || runIds.has(String(run.id))
-    || identifierList.some((identifier) => displayTitleHasIdentifier(run.displayTitle, identifier))
-  ));
+  const acceptedAt = acceptedHistoryWatermark(controlState, now);
+  const barrierActive = controlState?.barrier !== null
+    && controlState?.barrier !== undefined;
+  return runSummaries.filter((run) => {
+    const durableReference = runIds.has(String(run.id))
+      || identifierList.some((identifier) => displayTitleHasIdentifier(run.displayTitle, identifier));
+    if (isActiveRun(run) || durableReference) return true;
+
+    // A durable mutation barrier is already stronger than any GitHub marker:
+    // classification cannot authorize a retry until protected operator
+    // resolution clears it. Reading every older failed job adds no safety and
+    // can make the observer blind before it reports the barrier itself.
+    if (barrierActive) return false;
+
+    const createdAt = Date.parse(run.createdAt);
+    const updatedAt = Date.parse(run.updatedAt);
+    const terminalNonSuccess = run.status === 'completed'
+      && !['success', 'skipped'].includes(run.conclusion);
+    if (acceptedAt !== null) {
+      // Strict terminal acceptance is a durable evidence watermark. Earlier
+      // failures are retired by that exact acceptance; a run created earlier
+      // but completed later is still hydrated through updatedAt.
+      return terminalNonSuccess && (createdAt >= acceptedAt || updatedAt >= acceptedAt);
+    }
+
+    // Before the first strict acceptance there is no safe watermark. Preserve
+    // the full fail-closed scan and its recent-success proof surface.
+    return terminalNonSuccess || createdAt >= recentCutoff || updatedAt >= recentCutoff;
+  });
 }
 
 function mergeRunInventory(runSummaries, hydratedRuns) {
@@ -1464,6 +1499,10 @@ export async function readWatchdogSnapshot({ github, control, clock = Date.now }
   const hydratedRuns = await github.hydrateTargetRuns(relevantSummaries);
   const runInventory = mergeRunInventory(runSummaries, hydratedRuns);
 
+  // This loop repairs only an authorization that already exists. It never
+  // creates a hold or dispatches a run, so it stays active even when automatic
+  // recovery is disabled. Otherwise a successful GitHub dispatch followed by
+  // a failed bind step could leave the durable hold ambiguous forever.
   for (const hold of controlState.dispatchHolds ?? []) {
     if (hold?.state !== 'DISPATCH_HELD' || !hold.recoveryAttemptId) continue;
     const correlated = await github.findRunByRecoveryAttemptId(hold.recoveryAttemptId, runInventory);

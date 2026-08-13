@@ -2,6 +2,7 @@ const PUBLIC_SHARED_RPC_PATHS = new Set([
   '/api/news/v1/list-feed-digest',
   '/api/displacement/v1/get-displacement-summary',
   '/api/forecast/v1/get-forecasts',
+  '/api/military/v1/get-defense-industrial-base',
 ]);
 
 const NEWS_VARIANTS = new Set(['full', 'tech', 'finance', 'happy', 'commodity', 'energy']);
@@ -25,6 +26,7 @@ const DISPLACEMENT_PUBLIC_SEARCH = 'flow_limit=50&public=1';
 // 30-minute tick fell through to this RPC, which had no CDN shield — ~17.5k uncached
 // origin reads/day of a 188 KB payload (#5300).
 const FORECASTS_PUBLIC_SEARCH = 'public=1';
+const DEFENSE_INDUSTRIAL_QUERY_KEYS = new Set(['country_code', 'public']);
 
 function hasSingleValue(params: URLSearchParams, key: string): boolean {
   return params.getAll(key).length === 1;
@@ -74,6 +76,12 @@ function isNewsDigestShape(params: URLSearchParams): boolean {
     && NEWS_LANGUAGES.has(params.get('lang') ?? '');
 }
 
+function isDefenseIndustrialShape(params: URLSearchParams): boolean {
+  return hasOnlyKeys(params, DEFENSE_INDUSTRIAL_QUERY_KEYS)
+    && hasSingleValue(params, 'country_code')
+    && /^[A-Z]{2}$/.test(params.get('country_code') ?? '');
+}
+
 export function isPublicSharedRpcRequest(urlLike: string | URL, method = 'GET'): boolean {
   if (method.toUpperCase() !== 'GET') return false;
 
@@ -96,6 +104,7 @@ export function isPublicSharedRpcRequest(urlLike: string | URL, method = 'GET'):
 
   if (pathname === '/api/news/v1/list-feed-digest') return isNewsDigestShape(params);
   if (pathname === '/api/forecast/v1/get-forecasts') return search === FORECASTS_PUBLIC_SEARCH;
+  if (pathname === '/api/military/v1/get-defense-industrial-base') return isDefenseIndustrialShape(params);
   return search === DISPLACEMENT_PUBLIC_SEARCH;
 }
 

@@ -73,7 +73,7 @@ On the 2026-08-11 production-shaped fixture, Chad moves from **67 at coverage 1.
 
 **Why `not-applicable` and not `unmonitored`**: non-participation in the DRS means there is no reported short-term external commercial debt to roll over. That is a mild positive, not an unknown, so the class that describes it is "the indicator does not apply here".
 
-**Discriminator**: the World Bank country catalog's `lendingType=LNX` classification is the explicit non-borrower signal. A missing DRS row is never enough by itself, because an accepted annual payload can still omit an eligible borrower. The imputation also requires a valid BIS CBS row. Payload schema v1 did not carry `nonDrsCountryCodes`; the scorer remains backward-compatible with that payload but treats eligibility as unknown, so the slot drops instead of receiving a positive imputation until schema v2 is seeded.
+**Discriminator**: the World Bank country catalog's `lendingType=LNX` classification is the explicit non-borrower signal. A missing DRS row is never enough by itself, because an accepted annual payload can still omit an eligible borrower. The imputation also requires a valid BIS CBS row. Payload schema v1 did not carry `nonDrsCountryCodes`; the active scorer now fails closed unless this schema-v2 field contains at least 40 valid unique codes, matching the seeder's producer contract.
 
 This typed LNX/BIS imputation counts as a resolving component for FATF singleton handling. It is explicit `not-applicable` evidence with score 75 and partial certainty, not three-source absence, and therefore cannot produce a perfect 100-point dimension through the imputed-debt path.
 
@@ -318,6 +318,10 @@ Production already runs with the flag enabled, as tracked in #6511, so the OFF a
 
 This live measurement was **degraded** by a WGI source-failure state that affected the same governance-related dimensions in both arms. The paired movement result is still a genuine same-run flag comparison, but it is not an undegraded production-health snapshot; do not use it to claim WGI health or final post-deploy acceptance.
 
+**#6519 schema-v1 → schema-v2 activation (2026-08-12, 196 scorable countries):** the fail-closed WB IDS seeder published 119 debt rows and 72 unique `lendingType=LNX` codes. The subsequent production ranking refresh moved **48** of the 71 countries with a missing IDS row and a valid BIS row from coverage 0.65 to 0.76 with `imputedWeight=0.35`. The other 23 are not confirmed `LNX` and correctly remain unknown; row absence alone cannot trigger the imputation. Across the full ranking, Spearman was **0.99997**, **196/196 (100%)** moved by less than 3 points, the maximum absolute movement was **0.35**, no country moved more than 12, and headline eligibility did not change. The committed capture is [`resilience-financial-system-exposure-non-drs-activation-2026-08-12.json`](../snapshots/resilience-financial-system-exposure-non-drs-activation-2026-08-12.json).
+
+The debt slot uses the `not-applicable` imputation class. The published dimension-level `imputationClass` remains `null` because `weightedBlend` reports a class only for a fully imputed dimension; the same result contains observed BIS and FATF inputs. `imputedWeight=0.35` is the published proof that the debt slot activated.
+
 ## Data sources and licensing
 
 | Component | Source | License |
@@ -363,6 +367,8 @@ redis-cli GET 'economic:bis-lbs:v1' | jq '.countries.BR'
 ```
 
 If any of these return null or empty, **do NOT flip the flag** — flipping with absent envelopes throws `ResilienceConfigurationError` on every `/api/resilience/*` request and stamps every country's `financialSystemExposure` as `imputationClass='source-failure'`. The fix is recoverable (flip the flag back OFF, fix the seeder, re-run, retry) but produces user-visible Sentry noise during the gap.
+
+The active non-DRS path also requires the WB debt contract envelope to be schema v2. The scorer preserves this canonical envelope long enough to enforce numeric `_seed.schemaVersion >= 2`, then validates at least 40 valid unique entries in `data.nonDrsCountryCodes`. A schema-v1 payload is now a fail-closed configuration error instead of silently disabling the imputation for every eligible country.
 
 ## Alternatives considered (and rejected)
 
