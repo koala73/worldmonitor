@@ -51,6 +51,7 @@ const ENGLISH_CEILING = {
   fa: 573, fr: 66, hi: 115, hr: 55, hu: 51, it: 61,
   ja: 51, ko: 49, nl: 67, pl: 55, pt: 55, ro: 61,
   ru: 51, sv: 61, th: 54, tr: 51, uk: 574, vi: 53, zh: 49,
+  'zh-TW': 49,
 };
 
 describe('pro locale freshness', () => {

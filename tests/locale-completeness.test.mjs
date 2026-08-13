@@ -42,6 +42,7 @@ const US_SCOPE_TOKENS = {
   'tr.json': /ABD/,
   'uk.json': /США/,
   'vi.json': /Hoa Kỳ/,
+  'zh-TW.json': /美國/,
   'zh.json': /美国/,
 };
 

@@ -16,7 +16,7 @@ import enShellTranslation from '../locales/en.shell.json';
 // the moment they pick another language explicitly, that choice persists here.
 const EXPLICIT_LOCALE_KEY = 'wm-locale-explicit';
 
-const SUPPORTED_LANGUAGES = ['en', 'bg', 'cs', 'fr', 'de', 'el', 'es', 'hr', 'hu', 'it', 'pl', 'pt', 'nl', 'sv', 'ru', 'uk', 'ar', 'fa', 'zh', 'ja', 'ko', 'ro', 'tr', 'th', 'vi', 'hi'] as const;
+const SUPPORTED_LANGUAGES = ['en', 'bg', 'cs', 'fr', 'de', 'el', 'es', 'hr', 'hu', 'it', 'pl', 'pt', 'nl', 'sv', 'ru', 'uk', 'ar', 'fa', 'zh', 'zh-TW', 'ja', 'ko', 'ro', 'tr', 'th', 'vi', 'hi'] as const;
 type SupportedLanguage = typeof SUPPORTED_LANGUAGES[number];
 type TranslationDictionary = Record<string, unknown>;
 
@@ -40,8 +40,17 @@ const localeModules = import.meta.glob<TranslationDictionary>(
 
 const RTL_LANGUAGES = new Set(['ar', 'fa']);
 
+// Traditional-Chinese tags must be resolved before the region suffix is
+// stripped — zh-TW/zh-HK/zh-Hant would otherwise collapse to `zh` and serve the
+// Simplified dictionary to readers who asked for Traditional.
+const TRADITIONAL_CHINESE_TAGS = new Set(['zh-tw', 'zh-hk', 'zh-mo', 'zh-hant']);
+
 function normalizeLanguage(lng: string): SupportedLanguage {
-  const base = (lng || 'en').split('-')[0]?.toLowerCase() || 'en';
+  const tag = (lng || 'en').toLowerCase();
+  if (TRADITIONAL_CHINESE_TAGS.has(tag) || tag.startsWith('zh-hant')) {
+    return 'zh-TW';
+  }
+  const base = tag.split('-')[0] || 'en';
   if (SUPPORTED_LANGUAGE_SET.has(base as SupportedLanguage)) {
     return base as SupportedLanguage;
   }
@@ -50,7 +59,9 @@ function normalizeLanguage(lng: string): SupportedLanguage {
 
 function applyDocumentDirection(lang: string): void {
   const base = lang.split('-')[0] || lang;
-  document.documentElement.setAttribute('lang', base === 'zh' ? 'zh-CN' : base);
+  const isTraditionalChinese = normalizeLanguage(lang) === 'zh-TW';
+  const documentLang = isTraditionalChinese ? 'zh-TW' : base === 'zh' ? 'zh-CN' : base;
+  document.documentElement.setAttribute('lang', documentLang);
   if (RTL_LANGUAGES.has(base)) {
     document.documentElement.setAttribute('dir', 'rtl');
   } else {
@@ -267,7 +278,8 @@ export const LANGUAGES = [
   { code: 'ar', label: 'العربية', flag: '🇸🇦' },
   { code: 'fa', label: 'فارسی', flag: '🇮🇷' },
   { code: 'cs', label: 'Čeština', flag: '🇨🇿' },
-  { code: 'zh', label: '中文', flag: '🇨🇳' },
+  { code: 'zh', label: '简体中文', flag: '🇨🇳' },
+  { code: 'zh-TW', label: '繁體中文', flag: '🇹🇼' },
   { code: 'fr', label: 'Français', flag: '🇫🇷' },
   { code: 'de', label: 'Deutsch', flag: '🇩🇪' },
   { code: 'el', label: 'Ελληνικά', flag: '🇬🇷' },
