@@ -27,9 +27,15 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { basename, dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { DEFAULT_SECTION_TIMEOUT_MS, KILL_GRACE_MS } from '../scripts/_bundle-runner.mjs';
+import {
+  ADMISSION_HEADROOM_MS,
+  DEFAULT_SECTION_TIMEOUT_MS,
+  KILL_GRACE_MS,
+  sectionWorstCaseMs,
+} from '../scripts/_bundle-runner.mjs';
 import {
   countSectionAnchors,
+  countSectionScriptKeys,
   extractBundleOption,
   extractBundleSections,
   listBundleFiles,
@@ -39,6 +45,11 @@ import {
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const SCRIPTS_DIR = join(resolve(__dirname, '..'), 'scripts');
+
+// Railway hard-kills a cron container at 10 minutes. Every wall budget exists
+// to keep a section from being SIGKILLed mid-publish by that limit, so a budget
+// at or above it is not a budget.
+const RAILWAY_CONTAINER_CAP_MS = 600_000;
 
 /**
  * Parse every bundle once. Throws rather than skipping on any unresolvable
@@ -53,11 +64,37 @@ function readBudgetedBundles() {
     const name = basename(bundlePath);
     // Strip once: identifier resolution must not read a commented-out
     // declaration, and the anchor count must match what the extractor saw.
-    const src = stripLineComments(readFileSync(bundlePath, 'utf-8'));
+    const raw = readFileSync(bundlePath, 'utf-8');
+    const src = stripLineComments(raw);
+    // stripLineComments is a string scanner, not a JS tokenizer: it cannot tell
+    // a comment from a regex literal, so `const RE = /[//]/` would swallow the
+    // rest of the file. Both the extractor and the counts below read the
+    // STRIPPED source, so that truncation hides sections from every check at
+    // once and the gate passes on a file it never saw. Comparing the script-key
+    // count across the strip is what makes that loud. A deliberately
+    // commented-out section trips this too — delete it rather than commenting
+    // it, so the gate keeps meaning what it says.
+    assert.equal(
+      countSectionScriptKeys(src),
+      countSectionScriptKeys(raw),
+      `${name}: ${countSectionScriptKeys(raw) - countSectionScriptKeys(src)} \`script:\` key(s) disappeared when `
+      + 'comments were stripped. Either a section is commented out (delete it instead), or the stripper mis-read a '
+      + 'regex literal and truncated the file. Either way this gate is not reading the real config.',
+    );
     if (src.includes('maxBundleMs')) sawMaxBundleMsLiteral++;
 
     const budgetExpr = extractBundleOption(src, 'maxBundleMs');
     if (budgetExpr == null) continue;          // unbudgeted bundle — nothing to check
+
+    // extractBundleOption takes the FIRST textual `maxBundleMs:` in the file.
+    // A second one (a defaults object, a commented example that survived) would
+    // make the gate check a budget the runner never uses.
+    assert.equal(
+      (src.match(/maxBundleMs:/g) || []).length,
+      1,
+      `${name}: expected exactly one maxBundleMs declaration, found `
+      + `${(src.match(/maxBundleMs:/g) || []).length}. The gate cannot tell which one runBundle receives.`,
+    );
 
     const maxBundleMs = resolveExpr(src, budgetExpr, {}, { file: bundlePath });
     assert.ok(
@@ -65,14 +102,34 @@ function readBudgetedBundles() {
       `${name}: maxBundleMs expression "${budgetExpr}" did not resolve to a positive number. `
       + 'Extend tests/helpers/bundle-section-parser.mjs rather than leaving this bundle unchecked.',
     );
+    // The budget only means anything if it is under the ceiling it exists to
+    // stay beneath. Nothing else in the repo checks this: a bundle declaring
+    // maxBundleMs 900_000 would satisfy every per-section assertion below and
+    // still be hard-killed by Railway at 10 minutes, mid-publish.
+    assert.ok(
+      maxBundleMs < RAILWAY_CONTAINER_CAP_MS,
+      `${name}: maxBundleMs ${maxBundleMs}ms is at or above Railway's ${RAILWAY_CONTAINER_CAP_MS}ms container kill. `
+      + 'The container dies before the budget is reached, so the budget shapes nothing.',
+    );
 
     const sections = extractBundleSections(src);
-    const anchors = countSectionAnchors(src);
     assert.equal(
       sections.length,
-      anchors,
-      `${name}: parsed ${sections.length} section(s) from ${anchors} \`{ label: ... }\` anchor(s). `
+      countSectionAnchors(src),
+      `${name}: parsed ${sections.length} section(s) from ${countSectionAnchors(src)} \`{ label: ... }\` anchor(s). `
       + 'A dropped section is a silent pass — fix the parser before trusting this gate.',
+    );
+    // Second, independent count. The anchor check above shares its regex with
+    // the extractor, so on its own it only proves the extractor agrees with
+    // itself — a section the anchor cannot see is missing from both sides and
+    // the equality still holds. `script:` is declared by every section and is
+    // matched by a different pattern, so this is the check that actually
+    // catches a section the gate never read.
+    assert.equal(
+      sections.length,
+      countSectionScriptKeys(src),
+      `${name}: parsed ${sections.length} section(s) but found ${countSectionScriptKeys(src)} \`script:\` key(s). `
+      + 'The gate is not reading every declared section — fix the parser before trusting it.',
     );
     assert.ok(sections.length > 0, `${name} declares maxBundleMs but no parseable sections`);
 
@@ -87,7 +144,10 @@ function readBudgetedBundles() {
           Number.isFinite(timeoutMs) && timeoutMs > 0,
           `${name} / ${section.label}: timeoutMs expression "${section.timeoutMsExpr}" did not resolve to a positive number.`,
         );
-        return { ...section, timeoutMs, worstCaseMs: timeoutMs + KILL_GRACE_MS };
+        // Call the runner's own helper rather than restating `timeoutMs +
+        // KILL_GRACE_MS`. A gate that recomputes the formula it is guarding
+        // stops guarding it the moment the formula changes.
+        return { ...section, timeoutMs, worstCaseMs: sectionWorstCaseMs({ timeoutMs }) };
       }),
     });
   }
@@ -117,12 +177,17 @@ test('every budgeted bundle section fits its own bundle budget', () => {
   for (const bundle of budgeted) {
     for (const section of bundle.sections) {
       checked++;
-      if (section.worstCaseMs <= bundle.maxBundleMs) continue;
+      // Same threshold the runner enforces, headroom included. Comparing bare
+      // worstCase against the budget would pass a section sized at exactly
+      // `maxBundleMs - KILL_GRACE_MS`, which the runtime check then defers on
+      // every tick forever — #6556 surviving its own gate.
+      if (section.worstCaseMs + ADMISSION_HEADROOM_MS <= bundle.maxBundleMs) continue;
       violations.push(
-        `${bundle.name} / ${section.label}: worst case ${section.worstCaseMs}ms `
-        + `(timeoutMs ${section.timeoutMs} + ${KILL_GRACE_MS}ms kill grace) exceeds maxBundleMs ${bundle.maxBundleMs}ms `
-        + `— it can never be admitted. Lower timeoutMs to <= ${bundle.maxBundleMs - KILL_GRACE_MS}, or raise the budget `
-        + 'below Railway\'s 10-minute container cap.',
+        `${bundle.name} / ${section.label}: needs ${section.worstCaseMs + ADMISSION_HEADROOM_MS}ms `
+        + `(timeoutMs ${section.timeoutMs} + ${KILL_GRACE_MS}ms kill grace + ${ADMISSION_HEADROOM_MS}ms admission headroom) `
+        + `but maxBundleMs is ${bundle.maxBundleMs}ms — it can never be admitted. Lower timeoutMs to <= `
+        + `${bundle.maxBundleMs - KILL_GRACE_MS - ADMISSION_HEADROOM_MS}, or raise the budget below Railway's `
+        + '10-minute container cap.',
       );
     }
   }
@@ -144,8 +209,8 @@ test('seed-bundle-resilience admits Resilience-Scores on a cron tick (#6556 regr
 
   for (const section of bundle.sections) {
     assert.ok(
-      section.worstCaseMs <= bundle.maxBundleMs,
-      `${section.label} needs ${section.worstCaseMs}ms of a ${bundle.maxBundleMs}ms budget — it would be deferred forever`,
+      section.worstCaseMs + ADMISSION_HEADROOM_MS <= bundle.maxBundleMs,
+      `${section.label} needs ${section.worstCaseMs + ADMISSION_HEADROOM_MS}ms of a ${bundle.maxBundleMs}ms budget — it would be deferred forever`,
     );
   }
 

@@ -49,12 +49,17 @@ loadEnvFile(import.meta.url);
 const REDIS_URL = process.env.UPSTASH_REDIS_REST_URL;
 const REDIS_TOKEN = process.env.UPSTASH_REDIS_REST_TOKEN;
 
+// Per-read bound on the freshness gate's Redis lookups. Exported because the
+// admission headroom below is derived from it: those reads run BEFORE a section
+// can be admitted, so they are budget the section will never get.
+export const REDIS_READ_TIMEOUT_MS = 5_000;
+
 async function readRedisKey(key) {
   if (!REDIS_URL || !REDIS_TOKEN) return null;
   try {
     const resp = await fetch(`${REDIS_URL}/get/${encodeURIComponent(key)}`, {
       headers: { Authorization: `Bearer ${REDIS_TOKEN}` },
-      signal: AbortSignal.timeout(5_000),
+      signal: AbortSignal.timeout(REDIS_READ_TIMEOUT_MS),
     });
     if (!resp.ok) return null;
     const body = await resp.json();
@@ -134,14 +139,31 @@ export function sectionWorstCaseMs(section) {
 }
 
 /**
- * Sections that can never be admitted, whatever else the tick does. The
- * admission test in runBundle is `elapsed + worstCase <= maxBundleMs`, so a
- * section whose worst case alone exceeds the budget fails it even as the
- * first section of an otherwise empty tick. Returns [] when unbudgeted.
+ * Slack a section must leave on top of its own worst case to be admittable in
+ * practice. The runtime test is `elapsed + worstCase <= maxBundleMs` and
+ * `elapsed` is never 0: before the first section is admitted the runner has
+ * already run its freshness gate, which makes up to three Redis reads
+ * (canonicalKey, freshnessMetaKey, completionMetaKey), each bounded by
+ * REDIS_READ_TIMEOUT_MS.
+ *
+ * Without this, a section sized at exactly maxBundleMs - KILL_GRACE_MS passes a
+ * naive `worstCase > maxBundleMs` check and is still deferred on every tick
+ * forever — #6556 surviving its own fix. Sizing the headroom off the read
+ * timeout keeps the two numbers linked instead of drifting apart.
+ */
+export const ADMISSION_HEADROOM_MS = 3 * REDIS_READ_TIMEOUT_MS;
+
+/**
+ * Sections that can never be admitted, whatever else the tick does. A section
+ * whose worst case plus ADMISSION_HEADROOM_MS exceeds the budget fails the
+ * runtime admission test even as the first section of an otherwise empty tick.
+ * Returns [] when unbudgeted.
  */
 export function findUnadmittableSections(sections, maxBundleMs) {
   if (!Number.isFinite(maxBundleMs)) return [];
-  return sections.filter((section) => sectionWorstCaseMs(section) > maxBundleMs);
+  return sections.filter(
+    (section) => sectionWorstCaseMs(section) + ADMISSION_HEADROOM_MS > maxBundleMs,
+  );
 }
 
 function streamLines(stream, onLine) {
@@ -321,6 +343,18 @@ export async function runBundle(label, sections, opts = {}) {
 
   const maxBundleMs = opts.maxBundleMs ?? Infinity;
 
+  // A declared-but-unusable budget must not read as "no budget". Every guard
+  // below is gated on Number.isFinite(maxBundleMs), so `maxBundleMs: '570000'`
+  // or a NaN from `Number(process.env.X)` would silently disable the admission
+  // check AND the per-tick deferral, restoring the exact #6556 shape by a
+  // different route. Only an omitted budget means unbudgeted.
+  if (opts.maxBundleMs != null && !(Number.isFinite(maxBundleMs) && maxBundleMs > 0)) {
+    throw new Error(
+      `[Bundle:${label}] maxBundleMs must be a positive finite number, got ${JSON.stringify(opts.maxBundleMs)}. `
+      + 'Omit the option entirely for an unbudgeted bundle.',
+    );
+  }
+
   // Admission arithmetic assertion. The per-tick budget check below defers a
   // section whose worst case does not fit the REMAINING budget — a load-shed
   // that assumes the section fits the budget at all. When it does not, the
@@ -333,11 +367,15 @@ export async function runBundle(label, sections, opts = {}) {
   const unadmittable = findUnadmittableSections(sections, maxBundleMs);
   if (unadmittable.length > 0) {
     const detail = unadmittable
-      .map((s) => `'${s.label}' needs ${sectionWorstCaseMs(s)}ms (timeoutMs ${s.timeoutMs || DEFAULT_SECTION_TIMEOUT_MS} + ${KILL_GRACE_MS}ms kill grace)`)
+      .map((s) => `'${s.label}' needs ${sectionWorstCaseMs(s) + ADMISSION_HEADROOM_MS}ms (timeoutMs ${s.timeoutMs || DEFAULT_SECTION_TIMEOUT_MS} + ${KILL_GRACE_MS}ms kill grace + ${ADMISSION_HEADROOM_MS}ms admission headroom)`)
       .join('; ');
+    const largestFittingTimeoutMs = maxBundleMs - KILL_GRACE_MS - ADMISSION_HEADROOM_MS;
+    const remedy = largestFittingTimeoutMs > 0
+      ? `Lower those section timeouts to at most ${largestFittingTimeoutMs}ms, or raise maxBundleMs (it must stay under the Railway container cap).`
+      : `No section timeout can fit this budget at all — ${KILL_GRACE_MS}ms kill grace plus ${ADMISSION_HEADROOM_MS}ms admission headroom already exceed it. Raise maxBundleMs (it must stay under the Railway container cap).`;
     throw new Error(
       `[Bundle:${label}] maxBundleMs=${maxBundleMs} is below the worst case of ${unadmittable.length} section(s), which can therefore never be admitted on any tick: ${detail}. `
-      + 'Lower those section timeouts, or raise maxBundleMs (it must stay under the Railway container cap).',
+      + remedy,
     );
   }
 
@@ -431,7 +469,13 @@ export async function runBundle(label, sections, opts = {}) {
   // section runs on a later tick, so this state repeating is a stalled
   // service — the shape that made #6556 invisible for six hours. Report it as
   // a failure; `ran:0 deferred:0` (everything fresh) stays a healthy no-op.
-  const starvedTick = ran === 0 && deferred > 0;
+  // `gracefulFailed === 0` is load-bearing: a tick whose only admitted section
+  // hit a transient upstream blip (child exit 75, last-good TTL extended, no
+  // data lost) already has an exit-0 exemption precisely so one flaky source
+  // does not fire "Deploy Crashed!". Without this clause a benign 429 that
+  // happened to also push a sibling past the budget would page — alert fatigue
+  // on the exact alarm this change exists to make trustworthy.
+  const starvedTick = ran === 0 && deferred > 0 && gracefulFailed === 0;
   if (starvedTick) {
     console.error(
       `[Bundle:${label}] ran:0 while ${deferred} due section(s) were deferred — this tick published nothing and shed work. `

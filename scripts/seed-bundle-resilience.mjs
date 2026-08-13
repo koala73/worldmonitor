@@ -19,10 +19,15 @@ import { runBundle, HOUR, DAY } from './_bundle-runner.mjs';
 await runBundle('resilience', [
   // Warm runs finish in ~5.7s (196/196 scores already cached; the work is an
   // intervals recompute, one /refresh=1 call bounded at 60s, and 2 verify
-  // GETs). Cold runs are 1-2min. 240s is ~2x the cold path. The individual
-  // laggard warm-up (batches of 5 x 30s over up to 196 countries) can exceed
-  // any value that fits the container cap, so it is bounded by the seeder's
-  // own per-request timeouts rather than by this number.
+  // GETs). Cold runs are 1-2min. 240s is ~2x the cold path.
+  //
+  // Caveat: the individual laggard warm-up has no aggregate deadline of its
+  // own — batches of 5 countries at a 30s per-request timeout over up to 196
+  // countries is ~20min worst case, so a badly degraded run is SIGTERM'd here
+  // at 240s rather than finishing. That is not a regression: the old 600s
+  // timeout sat above Railway's 10-minute container kill, so the same run died
+  // by container SIGKILL with its logs lost. Giving that phase its own budget
+  // (like Food-Stocks' fetchPhaseTimeoutMs) is tracked separately.
   { label: 'Resilience-Scores', script: 'seed-resilience-scores.mjs', seedMetaKey: 'resilience:scores', intervalMs: 2 * HOUR, timeoutMs: 240_000 },
   // 11 dataset adapters run concurrently (Promise.allSettled), each fetch
   // withRetry(2, 750) over a 30s timeout, so the design worst case is ~92s for

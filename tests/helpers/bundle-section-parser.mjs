@@ -165,15 +165,34 @@ export function resolveExpr(src, expr, scope = {}, opts = {}) {
   return safeEval(expr, expanded);
 }
 
-const SECTION_ANCHOR_RE = /\{\s*label:\s*'([^']+)'/g;
+const SECTION_ANCHOR_RE = /\{\s*label:\s*(['"])((?:(?!\1).)+)\1/g;
+
+// Deliberately a DIFFERENT token from the anchor regex. A section-count check
+// that re-uses SECTION_ANCHOR_RE only proves the extractor agrees with itself:
+// a section written as `{ script: 'x.mjs', label: 'y' }` (label not first) or
+// with a double-quoted label is missed by BOTH the extractor and an
+// anchor-derived count, the two numbers match, and the gate passes on a bundle
+// it never actually read. Every real section declares `script:`, so counting
+// that independently is what makes the comparison load-bearing.
+const SECTION_SCRIPT_KEY_RE = /(?:^|[{,\s])script:\s*['"]/g;
 
 /**
- * Count `{ label: '...' }` anchors in already-comment-stripped source.
+ * Count `{ label: ... }` anchors in already-comment-stripped source.
  * `extractBundleSections` drops an anchor it cannot fully parse; comparing
  * the two counts is how a caller proves nothing was dropped silently.
  */
 export function countSectionAnchors(bundleSrc) {
   return [...bundleSrc.matchAll(SECTION_ANCHOR_RE)].length;
+}
+
+/**
+ * Count `script:` keys in already-comment-stripped source — an independent
+ * lower bound on how many sections the file declares. Callers assert this
+ * against `extractBundleSections(...).length` so a section the anchor regex
+ * cannot see still fails the gate instead of vanishing from it.
+ */
+export function countSectionScriptKeys(bundleSrc) {
+  return [...bundleSrc.matchAll(SECTION_SCRIPT_KEY_RE)].length;
 }
 
 /**
@@ -190,7 +209,7 @@ export function extractBundleSections(rawBundleSrc) {
   const bundleSrc = stripLineComments(rawBundleSrc);
   const sections = [];
   for (const m of bundleSrc.matchAll(SECTION_ANCHOR_RE)) {
-    const label = m[1];
+    const label = m[2];
     const startIdx = m.index;
     // Walk forward balancing braces, respecting string literals.
     let depth = 0, endIdx = -1, inStr = false, strCh = '';
@@ -207,15 +226,28 @@ export function extractBundleSections(rawBundleSrc) {
     }
     if (endIdx < 0) continue;     // unbalanced — skip
     const block = bundleSrc.slice(startIdx, endIdx + 1);
-    const scriptM = block.match(/script:\s*'([^']+)'/);
+    const scriptM = block.match(/script:\s*['"]([^'"]+)['"]/);
     const intervalM = block.match(/intervalMs:\s*([^,}\n]+)/);
     if (!scriptM || !intervalM) continue;
-    const timeoutM = block.match(/timeoutMs:\s*([^,}\n]+)/);
+    // Shapes this text scanner cannot read correctly. Each would yield a WRONG
+    // timeout rather than no timeout, and a wrong (usually smaller) number is
+    // one a budget gate happily passes — the silent-pass this parser exists to
+    // avoid. No bundle uses any of them today; if one ever does, drop the
+    // section so the caller's script-key count check fails loudly instead of
+    // the gate quietly checking a number nobody wrote.
+    //
+    //   nested:    `retry: { timeoutMs: 500 }, timeoutMs: 300_000` -> reads 500
+    //   shorthand: `{ ..., timeoutMs }`                            -> reads none, defaults
+    //   spread:    `{ ...COMMON }`                                 -> reads none, defaults
+    const timeoutMatches = [...block.matchAll(/timeoutMs:\s*([^,}\n]+)/g)];
+    const hasShorthandTimeout = /[{,]\s*timeoutMs\s*[,}]/.test(block);
+    const hasSpread = /\.\.\./.test(block);
+    if (timeoutMatches.length > 1 || hasShorthandTimeout || hasSpread) continue;
     sections.push({
       label,
       script: scriptM[1],
       intervalMsExpr: intervalM[1].trim(),
-      timeoutMsExpr: timeoutM ? timeoutM[1].trim() : null,
+      timeoutMsExpr: timeoutMatches.length === 1 ? timeoutMatches[0][1].trim() : null,
     });
   }
   return sections;

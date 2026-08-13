@@ -15,6 +15,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
   countSectionAnchors,
+  countSectionScriptKeys,
   extractBundleOption,
   extractBundleSections,
   resolveExpr,
@@ -211,4 +212,65 @@ test('countSectionAnchors exceeds parsed sections when one cannot be read', () =
   const sample = "const S = [{ label: 'NoScript', intervalMs: 1000 }];\n";
   assert.equal(extractBundleSections(sample).length, 0);
   assert.equal(countSectionAnchors(stripLineComments(sample)), 1);
+});
+
+// ── Anti-vacuity: the script-key count must be independent of the anchor ──
+
+test('a section whose label is not the first key is still counted', () => {
+  // The hole a self-comparing check cannot see. The anchor regex requires
+  // `{` immediately before `label:`, so this section is invisible to it —
+  // and if the gate derived its "nothing was dropped" count from that same
+  // regex, both sides would read 0 and the gate would pass on a bundle it
+  // never parsed. The independent `script:` count is what catches it.
+  const sample = "const S = [{ script: 'seed-a.mjs', label: 'LabelSecond', intervalMs: 1000, timeoutMs: 60_000 }];\n";
+  const stripped = stripLineComments(sample);
+  assert.equal(countSectionAnchors(stripped), 0, 'anchor regex cannot see this shape');
+  assert.equal(extractBundleSections(sample).length, 0, 'extractor cannot see it either');
+  assert.equal(countSectionScriptKeys(stripped), 1, 'the independent count must still see it');
+});
+
+test('a double-quoted label is parsed rather than silently dropped', () => {
+  const sample = 'const S = [{ label: "DoubleQuoted", script: "seed-a.mjs", intervalMs: 1000, timeoutMs: 60_000 }];\n';
+  const sections = extractBundleSections(sample);
+  assert.equal(sections.length, 1);
+  assert.equal(sections[0].label, 'DoubleQuoted');
+  assert.equal(sections[0].script, 'seed-a.mjs');
+  assert.equal(sections[0].timeoutMsExpr, '60_000');
+  assert.equal(countSectionScriptKeys(stripLineComments(sample)), 1);
+});
+
+test('countSectionScriptKeys ignores a script-like key inside a longer name', () => {
+  // `postScript:` must not inflate the count, or the gate fails on a healthy
+  // bundle — a false alarm is its own kind of broken guard.
+  const sample = "const S = [{ label: 'A', script: 'seed-a.mjs', postScript: 'x', intervalMs: 1 }];\n";
+  assert.equal(countSectionScriptKeys(stripLineComments(sample)), 1);
+});
+
+test('a shorthand or spread timeout is dropped rather than defaulted', () => {
+  // Both shapes make the scanner find NO `timeoutMs:` and fall back to the
+  // runner's 300s default — a number nobody wrote, and a smaller one than the
+  // real 900s, so a budget gate would pass a section that cannot fit.
+  const shorthand = "const timeoutMs = 900_000;\nconst S = [{ label: 'A', script: 'seed-a.mjs', intervalMs: 1, timeoutMs }];\n";
+  assert.equal(extractBundleSections(shorthand).length, 0, 'shorthand timeout must not be defaulted');
+  assert.equal(countSectionScriptKeys(stripLineComments(shorthand)), 1, 'the count still sees it, so the gate fails loudly');
+
+  const spread = "const COMMON = { timeoutMs: 900_000 };\nconst S = [{ label: 'A', script: 'seed-a.mjs', intervalMs: 1, ...COMMON }];\n";
+  assert.equal(extractBundleSections(spread).length, 0, 'spread config must not be defaulted');
+  assert.equal(countSectionScriptKeys(stripLineComments(spread)), 1);
+});
+
+test('a section declaring a nested timeoutMs is dropped rather than mis-read', () => {
+  // Reading the FIRST timeoutMs in the block would take the nested retry
+  // budget as the section's own — a smaller number that a budget gate would
+  // happily pass. Fail closed: drop it so the caller's count check fires.
+  const sample = [
+    "const S = [{",
+    "  label: 'Nested', script: 'seed-a.mjs', intervalMs: 1000,",
+    "  retry: { timeoutMs: 500 },",
+    "  timeoutMs: 300_000,",
+    "}];",
+  ].join('\n');
+  const stripped = stripLineComments(sample);
+  assert.equal(extractBundleSections(sample).length, 0, 'ambiguous timeout must not be guessed');
+  assert.equal(countSectionScriptKeys(stripped), 1, 'the count still sees the section, so the gate fails loudly');
 });
