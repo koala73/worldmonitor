@@ -364,7 +364,20 @@ export async function runBundle(label, sections, opts = {}) {
   // badge. Throw instead, alongside the dependsOn contract above, so the
   // misconfiguration surfaces on the first tick rather than as data ageing
   // out half a day later.
-  const unadmittable = findUnadmittableSections(sections, maxBundleMs);
+  //
+  // Sections already failing the requiredEnv gate are excluded. They cannot run
+  // this tick regardless of their timeout, so throwing on their arithmetic
+  // would take the bundle's HEALTHY members down as collateral during an
+  // environment outage — the per-section CONFIG_ERROR path deliberately fails
+  // only the affected section. Nothing is hidden by deferring the question:
+  // tests/bundle-budget-admission.test.mjs checks every section's arithmetic
+  // statically, with no knowledge of the environment, so an oversized timeout
+  // still cannot reach production behind a missing secret.
+  const envGated = new Set(missingEnvBySection.keys());
+  const unadmittable = findUnadmittableSections(
+    sections.filter((section) => !envGated.has(section.label)),
+    maxBundleMs,
+  );
   if (unadmittable.length > 0) {
     const detail = unadmittable
       .map((s) => `'${s.label}' needs ${sectionWorstCaseMs(s) + ADMISSION_HEADROOM_MS}ms (timeoutMs ${s.timeoutMs || DEFAULT_SECTION_TIMEOUT_MS} + ${KILL_GRACE_MS}ms kill grace + ${ADMISSION_HEADROOM_MS}ms admission headroom)`)

@@ -17,9 +17,11 @@ import { runBundle, HOUR, DAY } from './_bundle-runner.mjs';
 // under a green badge. A timeout above the container cap never bounded anything
 // anyway: Railway SIGKILLs at 10 minutes, taking the logs with it.
 await runBundle('resilience', [
-  // Warm runs finish in ~5.7s (196/196 scores already cached; the work is an
-  // intervals recompute, one /refresh=1 call bounded at 60s, and 2 verify
-  // GETs). Cold runs are 1-2min. 240s is ~2x the cold path.
+  // Warm runs finish in ~5.7s — measured, not estimated: the last healthy
+  // production tick before #6531 logged `[Resilience-Scores] Done (5.7s)` with
+  // 196/196 scores pre-warmed (quoted in #6556). The work is an intervals
+  // recompute, one /refresh=1 call bounded at 60s, and 2 verify GETs. Cold runs
+  // are 1-2min. 240s is ~2x the cold path.
   //
   // Caveat: the individual laggard warm-up has no aggregate deadline of its
   // own — batches of 5 countries at a 30s per-request timeout over up to 196

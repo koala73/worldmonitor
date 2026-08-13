@@ -672,6 +672,39 @@ test('a section whose worst case exceeds the whole budget is rejected at startup
   }
 });
 
+test('an env-gated section does not take its healthy siblings down via the admission check', async () => {
+  // The startup throw is deliberately loud, but its blast radius is the whole
+  // bundle. A section already failing the requiredEnv gate cannot run this tick
+  // whatever its timeout says, so letting its arithmetic throw would stop the
+  // bundle's healthy members from publishing for the duration of an unrelated
+  // secret outage — while requiredEnv's own path exists precisely to fail only
+  // the affected section. Nothing is lost: the CI gate checks that timeout
+  // statically, with no knowledge of the environment.
+  const cleanup = writeFixture('_bundle-fixture-env-gated-sibling.mjs', `console.log('healthy-sibling-ran');\n`);
+  try {
+    const { code, stdout, stderr } = await runBundleWith(
+      [
+        { label: 'HEALTHY', script: '_bundle-fixture-env-gated-sibling.mjs', intervalMs: 1, timeoutMs: 5_000 },
+        {
+          label: 'GATED_AND_OVERSIZED',
+          script: '_bundle-fixture-must-not-run.mjs',
+          intervalMs: 1,
+          timeoutMs: 5_000_000,                       // would throw on its own
+          requiredEnv: ['WM_BUNDLE_TEST_ABSENT_SECRET'],
+        },
+      ],
+      { maxBundleMs: 60_000 },
+    );
+    assert.match(stdout, /\[HEALTHY\] healthy-sibling-ran/, `the healthy section must still run; stdout:\n${stdout}`);
+    assert.match(stderr, /section=GATED_AND_OVERSIZED status=CONFIG_ERROR/);
+    assert.equal(code, 1, 'the missing secret still fails the bundle');
+    assert.doesNotMatch(stdout + stderr, /can therefore never be admitted/, 'must not throw on an env-gated section');
+    assert.doesNotMatch(stdout + stderr, /must-not-run/);
+  } finally {
+    cleanup();
+  }
+});
+
 test('a declared-but-unusable maxBundleMs fails instead of silently unbudgeting', async () => {
   // Every budget guard is gated on Number.isFinite(maxBundleMs), so a string
   // (or a NaN from Number(process.env.X)) would turn all of them off and let a
