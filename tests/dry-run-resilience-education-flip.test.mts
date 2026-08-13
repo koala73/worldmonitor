@@ -14,6 +14,7 @@ import {
   parseEducationWeightOverride,
   spearman,
   summarizeAcceptanceGates,
+  validateEducationAcceptanceArtifact,
 } from '../scripts/dry-run-resilience-education-flip.mjs';
 
 const universe = sovereignStatus.entries.map((entry) => entry.iso2);
@@ -302,31 +303,59 @@ test('gate 9 requires both Core coverage and a real 181-country education sample
   assert.equal(unimplementedEducation.status, 'fail');
 });
 
-test('committed education acceptance artifacts contain a passing active-formula capture', () => {
+function readEducationAcceptanceArtifacts() {
   const filenames = readdirSync(new URL('../docs/snapshots/', import.meta.url))
     .filter((filename) => /^resilience-education-acceptance-\d{4}-\d{2}-\d{2}\.json$/.test(filename));
   assert.ok(filenames.length > 0, 'at least one genuine education acceptance artifact must be committed');
 
-  for (const filename of filenames) {
-    const artifact = JSON.parse(readFileSync(
+  return filenames.map((filename) => ({
+    filename,
+    artifact: JSON.parse(readFileSync(
       new URL(`../docs/snapshots/${filename}`, import.meta.url),
       'utf8',
-    ));
-    assert.equal(artifact.acceptanceGates?.verdict, 'PASS', `${filename} must record PASS`);
-    assert.equal(artifact.acceptanceGates?.gatingFormula, 'pc', `${filename} must gate the published formula`);
-    assert.equal(artifact.universeSize, universe.length);
-    assert.equal(artifact.educationCoverageCountries, EXPECTED_EDUCATION_COVERAGE);
-    assert.deepEqual(artifact.blockingSourceFailures, {});
+    )),
+  }));
+}
 
-    const activeGates = new Map(artifact.acceptanceGates.gates.pc.map((gate) => [gate.id, gate]));
-    for (const gateId of [
-      'gate-1-spearman',
-      'gate-2-country-drift',
-      'gate-6-cohort-median',
-      'gate-7-matched-pair',
-      'gate-9-effective-influence-baseline',
-    ]) {
-      assert.equal(activeGates.get(gateId)?.status, 'pass', `${filename} ${gateId} must pass`);
-    }
+test('committed education acceptance artifacts are derived from their scores and capture inputs', () => {
+  for (const { filename, artifact } of readEducationAcceptanceArtifacts()) {
+    const validation = validateEducationAcceptanceArtifact(artifact, { filename });
+    assert.equal(validation.verdict, 'PASS');
+    assert.equal(validation.activeFormula, 'pc');
+    assert.equal(validation.universeSize, universe.length);
+    assert.equal(validation.educationCoverageCountries, EXPECTED_EDUCATION_COVERAGE);
   }
+});
+
+test('artifact validator rejects forged verdicts, scores, gate 9 inputs, and provenance', () => {
+  const [{ filename, artifact: original }] = readEducationAcceptanceArtifacts();
+  const mutate = (change: (artifact: any) => void) => {
+    const artifact = structuredClone(original);
+    change(artifact);
+    return () => validateEducationAcceptanceArtifact(artifact, { filename });
+  };
+
+  assert.throws(
+    mutate((artifact) => { artifact.acceptanceGates.verdict = 'FAIL'; }),
+    /verdict does not match recomputed gates/,
+  );
+
+  assert.throws(
+    mutate((artifact) => { artifact.scores.US.proposed.pc += 20; }),
+    /reported gates do not match recomputed gates/,
+  );
+
+  assert.throws(
+    mutate((artifact) => {
+      const gate = artifact.acceptanceGates.gates.pc
+        .find((candidate) => candidate.id === 'gate-9-effective-influence-baseline');
+      gate.evidence.coreImplemented = 0;
+    }),
+    /reported gates do not match recomputed gates/,
+  );
+
+  assert.throws(
+    mutate((artifact) => { delete artifact.capture.redis.snapshotSha256; }),
+    /capture provenance is malformed/,
+  );
 });
